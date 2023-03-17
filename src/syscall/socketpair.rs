@@ -23,11 +23,11 @@ pub fn socketpair(
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let sv_slice = sv.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let mut mem_space_guard = mem_space.lock();
+	let sv_slice = sv.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds = fds_mutex.lock();
+	let mut fds = fds_mutex.lock();
 
 	// Create socket
 	let sock = Socket::new(domain, r#type, protocol);

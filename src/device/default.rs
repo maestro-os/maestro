@@ -119,7 +119,7 @@ impl IO for RandomDeviceHandle {
 	}
 
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		let pool = rand::ENTROPY_POOL.lock();
+		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
 			let len = pool.read(buff, false);
@@ -130,7 +130,7 @@ impl IO for RandomDeviceHandle {
 	}
 
 	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
-		let pool = rand::ENTROPY_POOL.lock();
+		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
 			let len = pool.write(&buff);
@@ -168,7 +168,7 @@ impl IO for URandomDeviceHandle {
 	}
 
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		let pool = rand::ENTROPY_POOL.lock();
+		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
 			let len = pool.read(buff, true);
@@ -179,7 +179,7 @@ impl IO for URandomDeviceHandle {
 	}
 
 	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
-		let pool = rand::ENTROPY_POOL.lock();
+		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
 			let len = pool.write(&buff);

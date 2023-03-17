@@ -112,7 +112,7 @@ impl OpenFile {
 		let open_file_mutex = match Self::get(&location) {
 			Some(open_file_mutex) => {
 				{
-					let open_file = open_file_mutex.lock();
+					let mut open_file = open_file_mutex.lock();
 
 					let read = open_file.can_read()
 						|| flags & O_RDONLY != 0
@@ -170,12 +170,12 @@ impl OpenFile {
 		let open_file_mutex = Self::get(&location).ok_or_else(|| errno!(ENOENT))?;
 
 		{
-			let open_file = open_file_mutex.lock();
+			let mut open_file = open_file_mutex.lock();
 			open_file.ref_count += 1;
 
 			// If the file points to a buffer, increment the number of open ends
 			if let Some(buff_mutex) = buffer::get(&open_file.location) {
-				let buff = buff_mutex.lock();
+				let mut buff = buff_mutex.lock();
 				buff.increment_open(read, write);
 			}
 		}
@@ -199,16 +199,16 @@ impl OpenFile {
 		read: bool,
 		write: bool
 	) {
-		let open_files = OPEN_FILES.lock();
+		let mut open_files = OPEN_FILES.lock();
 
 		let Some(open_file_mutex) = open_files.get(location) else {
 			return;
 		};
-		let open_file = open_file_mutex.lock();
+		let mut open_file = open_file_mutex.lock();
 
 		// If the file points to a buffer, decrement the number of open ends
 		if let Some(buff_mutex) = buffer::get(&open_file.location) {
-			let buff = buff_mutex.lock();
+			let mut buff = buff_mutex.lock();
 			buff.decrement_open(read, write);
 		}
 
@@ -231,7 +231,7 @@ impl OpenFile {
 	/// The name of the file is not set since it cannot be known from this structure.
 	pub fn get_file(&self) -> Result<SharedPtr<File>, Errno> {
 		let vfs_mutex = vfs::get();
-		let vfs = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
 		vfs.get_file_by_location(&self.location)
@@ -279,15 +279,15 @@ impl OpenFile {
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		let file_mutex = self.get_file()?;
-		let file = file_mutex.lock();
+		let mut file = file_mutex.lock();
 
 		match file.get_content() {
 			FileContent::Regular => match request.get_old_format() {
 				ioctl::FIONREAD => {
-					let mem_space_guard = mem_space.lock();
+					let mut mem_space_guard = mem_space.lock();
 					let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
 					let count_ref = count_ptr
-						.get_mut(&mem_space_guard)?
+						.get_mut(&mut mem_space_guard)?
 						.ok_or_else(|| errno!(EFAULT))?;
 
 					let size = file.get_size();
@@ -318,7 +318,7 @@ impl OpenFile {
 		match file.get_content() {
 			FileContent::Fifo | FileContent::Socket => {
 				if let Some(buff_mutex) = buffer::get(self.get_location()) {
-					let buff = buff_mutex.lock();
+					let mut buff = buff_mutex.lock();
 					return buff.get_block_handler().add_waiting_process(proc, mask);
 				}
 			}
@@ -334,7 +334,7 @@ impl OpenFile {
 				});
 
 				if let Some(dev_mutex) = dev_mutex {
-					let dev = dev_mutex.lock();
+					let mut dev = dev_mutex.lock();
 
 					if let Some(h) = dev.get_handle().get_block_handler() {
 						return h.add_waiting_process(proc, mask);
@@ -353,7 +353,7 @@ impl OpenFile {
 				});
 
 				if let Some(dev_mutex) = dev_mutex {
-					let dev = dev_mutex.lock();
+					let mut dev = dev_mutex.lock();
 
 					if let Some(h) = dev.get_handle().get_block_handler() {
 						return h.add_waiting_process(proc, mask);
@@ -383,7 +383,7 @@ impl IO for OpenFile {
 		}
 
 		let file_mutex = self.get_file()?;
-		let file = file_mutex.lock();
+		let mut file = file_mutex.lock();
 
 		if matches!(file.get_content(), FileContent::Directory(_)) {
 			return Err(errno!(EISDIR));
@@ -408,7 +408,7 @@ impl IO for OpenFile {
 		}
 
 		let file_mutex = self.get_file()?;
-		let file = file_mutex.lock();
+		let mut file = file_mutex.lock();
 
 		if matches!(file.get_content(), FileContent::Directory(_)) {
 			return Err(errno!(EISDIR));
@@ -433,7 +433,7 @@ impl IO for OpenFile {
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
 		let file_mutex = self.get_file()?;
-		let file = file_mutex.lock();
+		let mut file = file_mutex.lock();
 
 		file.poll(mask)
 	}

@@ -80,11 +80,11 @@ impl VFS {
 
 				// Getting the IO interface
 				let io_mutex = mountpoint.get_source().get_io()?;
-				let io = io_mutex.lock();
+				let mut io = io_mutex.lock();
 
 				// The filesystem
 				let fs_mutex = mountpoint.get_filesystem();
-				let fs = fs_mutex.lock();
+				let mut fs = fs_mutex.lock();
 
 				let mut file = fs.load_file(&mut *io, *inode, String::new())?;
 
@@ -130,14 +130,14 @@ impl VFS {
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io = io_mutex.lock();
+		let mut io = io_mutex.lock();
 
 		// Getting the path from the start of the filesystem to the file
 		let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 		// The filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs = fs_mutex.lock();
+		let mut fs = fs_mutex.lock();
 
 		// The root inode
 		let mut inode = fs.get_root_inode(&mut *io)?;
@@ -264,11 +264,11 @@ impl VFS {
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io = io_mutex.lock();
+		let mut io = io_mutex.lock();
 
 		// The filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs = fs_mutex.lock();
+		let mut fs = fs_mutex.lock();
 
 		let inode = fs.get_inode(&mut *io, Some(parent.get_location().get_inode()), &name)?;
 		let mut file = fs.load_file(&mut *io, inode, name)?;
@@ -345,11 +345,11 @@ impl VFS {
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io = io_mutex.lock();
+		let mut io = io_mutex.lock();
 
 		// Getting the filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs = fs_mutex.lock();
+		let mut fs = fs_mutex.lock();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
@@ -409,11 +409,11 @@ impl VFS {
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io = io_mutex.lock();
+		let mut io = io_mutex.lock();
 
 		// Getting the filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs = fs_mutex.lock();
+		let mut fs = fs_mutex.lock();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
@@ -462,11 +462,11 @@ impl VFS {
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
-		let io = io_mutex.lock();
+		let mut io = io_mutex.lock();
 
 		// Getting the filesystem
 		let fs_mutex = mountpoint.get_filesystem();
-		let fs = fs_mutex.lock();
+		let mut fs = fs_mutex.lock();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}

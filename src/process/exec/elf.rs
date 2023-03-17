@@ -597,12 +597,12 @@ impl ELFExecutor {
 			// Getting file
 			let interp_file_mutex = {
 				let vfs_mutex = vfs::get();
-				let vfs = vfs_mutex.lock();
+				let mut vfs = vfs_mutex.lock();
 				let vfs = vfs.as_mut().unwrap();
 
 				vfs.get_file_from_path(&interp_path, self.info.euid, self.info.egid, true)?
 			};
-			let interp_file = interp_file_mutex.lock();
+			let mut interp_file = interp_file_mutex.lock();
 
 			let interp_image =
 				read_exec_file(&mut *interp_file, self.info.euid, self.info.egid)?;

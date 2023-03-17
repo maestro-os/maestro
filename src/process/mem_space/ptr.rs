@@ -74,7 +74,7 @@ impl<T: Sized> SyscallPtr<T> {
 	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MutexGuard<MemSpace, INT>,
 	) -> Result<Option<&'a mut T>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -173,7 +173,7 @@ impl<T: Sized> SyscallSlice<T> {
 	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MutexGuard<MemSpace, INT>,
 		len: usize,
 	) -> Result<Option<&'a mut [T]>, Errno> {
 		if self.is_null() {
@@ -265,7 +265,7 @@ impl SyscallString {
 	/// If the string is not accessible, the function returns an error.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MutexGuard<MemSpace, INT>,
 	) -> Result<Option<&'a mut [u8]>, Errno> {
 		if self.is_null() {
 			return Ok(None);

@@ -30,7 +30,7 @@ static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 /// If the maximum amount of file descriptors is reached, the function does
 /// nothing and returns an error with the appropriate errno.
 fn increment_total() -> Result<(), Errno> {
-	let total_fd = TOTAL_FD.lock();
+	let mut total_fd = TOTAL_FD.lock();
 
 	if *total_fd >= TOTAL_MAX_FD {
 		return Err(errno!(ENFILE));
@@ -165,7 +165,7 @@ impl IO for FileDescriptor {
 		}
 
 		let open_file_mutex = self.get_open_file()?;
-		let open_file = open_file_mutex.lock();
+		let mut open_file = open_file_mutex.lock();
 
 		open_file.read(off, buf)
 	}
@@ -176,14 +176,14 @@ impl IO for FileDescriptor {
 		}
 
 		let open_file_mutex = self.get_open_file()?;
-		let open_file = open_file_mutex.lock();
+		let mut open_file = open_file_mutex.lock();
 
 		open_file.write(off, buf)
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
 		let open_file_mutex = self.get_open_file()?;
-		let open_file = open_file_mutex.lock();
+		let mut open_file = open_file_mutex.lock();
 
 		open_file.poll(mask)
 	}

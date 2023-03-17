@@ -26,7 +26,7 @@ static DRIVERS: Mutex<Vec<SharedPtr<dyn Driver>>> = Mutex::new(Vec::new());
 
 /// Registers the given driver.
 pub fn register<D: 'static + Driver>(driver: D) -> Result<(), Errno> {
-	let drivers = DRIVERS.lock();
+	let mut drivers = DRIVERS.lock();
 
 	let m = SharedPtr::new(driver)?;
 	drivers.push(m)

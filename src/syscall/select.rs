@@ -160,38 +160,38 @@ pub fn do_select<T: TimeUnit>(
 			}
 
 			let open_file_mutex = fd.get_open_file()?;
-			let open_file = open_file_mutex.lock();
+			let mut open_file = open_file_mutex.lock();
 
 			let result = open_file.poll(mask)?;
 
 			// Setting results
-			let mem_space_guard = mem_space.lock();
+			let mut mem_space_guard = mem_space.lock();
 			if read && result & io::POLLIN != 0 {
-				readfds.get_mut(&mem_space_guard)?.map(|fds| fds.set(fd_id));
+				readfds.get_mut(&mut mem_space_guard)?.map(|fds| fds.set(fd_id));
 				events_count += 1;
 			} else {
 				readfds
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.map(|fds| fds.clear(fd_id));
 			}
 			if write && result & io::POLLOUT != 0 {
 				writefds
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.map(|fds| fds.set(fd_id));
 				events_count += 1;
 			} else {
 				writefds
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.map(|fds| fds.clear(fd_id));
 			}
 			if except && result & io::POLLPRI != 0 {
 				exceptfds
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.map(|fds| fds.set(fd_id));
 				events_count += 1;
 			} else {
 				exceptfds
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.map(|fds| fds.clear(fd_id));
 			}
 		}

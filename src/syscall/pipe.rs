@@ -17,11 +17,11 @@ pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let pipefd_slice = pipefd.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let mut mem_space_guard = mem_space.lock();
+	let pipefd_slice = pipefd.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds = fds_mutex.lock();
+	let mut fds = fds_mutex.lock();
 
 	// Create pipe
 	let loc = buffer::register(None, SharedPtr::new(PipeBuffer::failable_default()?)?)?;

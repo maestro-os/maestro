@@ -18,7 +18,7 @@ pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<
 	let bypass_threshold = flags & GRND_RANDOM == 0;
 	let nonblock = flags & GRND_NONBLOCK != 0;
 
-	let pool_guard = rand::ENTROPY_POOL.lock();
+	let mut pool_guard = rand::ENTROPY_POOL.lock();
 	let Some(pool) = &mut *pool_guard else {
 		return Ok(0);
 	};
@@ -32,9 +32,9 @@ pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<
 	let proc = proc_mutex.lock();
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space_mutex.lock();
+	let mut mem_space_guard = mem_space_mutex.lock();
 
-	if let Some(buf) = buf.get_mut(&mem_space_guard, buflen)? {
+	if let Some(buf) = buf.get_mut(&mut mem_space_guard, buflen)? {
 		let mut i = 0;
 		while i < buf.len() {
 			i += pool.read(&mut buf[i..], bypass_threshold);

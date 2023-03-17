@@ -34,7 +34,7 @@ pub fn readlink(
 	// Getting link's target
 	let target = {
 		let vfs_mutex = vfs::get();
-		let vfs = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
 		// Getting file
@@ -53,10 +53,10 @@ pub fn readlink(
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
+		let mut mem_space_guard = mem_space.lock();
 
 		let buffer = buf
-			.get_mut(&mem_space_guard, bufsiz)?
+			.get_mut(&mut mem_space_guard, bufsiz)?
 			.ok_or(errno!(EFAULT))?;
 		util::slice_copy(target.as_bytes(), buffer);
 	}

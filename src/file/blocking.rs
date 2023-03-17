@@ -50,7 +50,7 @@ impl BlockHandler {
 				return true;
 			}
 
-			let proc = proc_mutex.lock();
+			let mut proc = proc_mutex.lock();
 			proc.wake();
 
 			false

@@ -47,7 +47,7 @@ pub fn mount(
 		let target_path = Path::from_str(target_slice, true)?;
 		let target_path = super::util::get_absolute_path(&*proc, target_path)?;
 		let target_mutex = {
-			let vfs = vfs::get().lock();
+			let mut vfs = vfs::get().lock();
 			let vfs = vfs.as_mut().unwrap();
 
 			vfs.get_file_from_path(&target_path, proc.get_euid(), proc.get_egid(), true)?

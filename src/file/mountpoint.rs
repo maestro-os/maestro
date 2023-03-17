@@ -80,7 +80,7 @@ impl MountSource {
 		let path = cwd.concat(&path)?;
 		let result = {
 			let vfs_mutex = vfs::get();
-			let vfs = vfs_mutex.lock();
+			let mut vfs = vfs_mutex.lock();
 			let vfs = vfs.as_mut().unwrap();
 
 			vfs.get_file_from_path(&path, 0, 0, true)
@@ -200,7 +200,7 @@ fn load_fs(
 ) -> Result<SharedPtr<dyn Filesystem>, Errno> {
 	// Getting the I/O interface
 	let io_mutex = source.get_io()?;
-	let io = io_mutex.lock();
+	let mut io = io_mutex.lock();
 
 	// Getting the filesystem type
 	let fs_type_mutex = match fs_type {
@@ -216,7 +216,7 @@ fn load_fs(
 	let fs = fs_type.load_filesystem(&mut *io, path, readonly)?;
 
 	// Inserting new filesystem into filesystems list
-	let container = FILESYSTEMS.lock();
+	let mut container = FILESYSTEMS.lock();
 	container.insert(
 		source,
 		LoadedFS {
@@ -233,7 +233,7 @@ fn load_fs(
 /// `take` tells whether the function increments the references count.
 /// If the filesystem isn't loaded, the function returns None.
 fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>> {
-	let container = FILESYSTEMS.lock();
+	let mut container = FILESYSTEMS.lock();
 
 	let fs = container.get_mut(source)?;
 	if take {
@@ -253,7 +253,7 @@ pub fn get_fs(source: &MountSource) -> Option<SharedPtr<dyn Filesystem>> {
 /// If no reference on the filesystem is left, the function unloads it.
 /// If the filesystem doesn't exist, the function does nothing.
 fn drop_fs(source: &MountSource) {
-	let container = FILESYSTEMS.lock();
+	let mut container = FILESYSTEMS.lock();
 
 	if let Some(fs) = container.get_mut(source) {
 		fs.ref_count -= 1;
@@ -401,7 +401,7 @@ pub fn create(
 	// TODO clean
 	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
 	// the locks of MOUNT_POINTS
-	let path_to_id = PATH_TO_ID.lock();
+	let mut path_to_id = PATH_TO_ID.lock();
 
 	// TODO clean
 	// ID allocation
@@ -425,7 +425,7 @@ pub fn create(
 
 	// Insertion
 	{
-		let mount_points = MOUNT_POINTS.lock();
+		let mut mount_points = MOUNT_POINTS.lock();
 
 		mount_points.insert(id, mountpoint.clone())?;
 		if let Err(e) = path_to_id.insert(path, id) {
@@ -445,11 +445,11 @@ pub fn create(
 ///
 /// If the mountpoint is busy, the function returns `EBUSY`.
 pub fn remove(path: &Path) -> Result<(), Errno> {
-	let path_to_id = PATH_TO_ID.lock();
-	let mount_points = MOUNT_POINTS.lock();
+	let mut path_to_id = PATH_TO_ID.lock();
+	let mut mount_points = MOUNT_POINTS.lock();
 
-	let id = path_to_id.get(path).ok_or(errno!(EINVAL))?;
-	let _mountpoint = mount_points.get(id).ok_or(errno!(EINVAL))?;
+	let id = path_to_id.get(path).ok_or(errno!(EINVAL))?.clone();
+	let _mountpoint = mount_points.get(&id).ok_or(errno!(EINVAL))?;
 
 	// TODO Check if busy (EBUSY)
 	// TODO Check if another mount point is present in a subdirectory (EBUSY)

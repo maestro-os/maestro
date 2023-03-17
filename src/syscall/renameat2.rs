@@ -49,13 +49,13 @@ pub fn renameat2(
 		(uid, gid, old, new_parent, new_name)
 	};
 
-	let old = old_mutex.lock();
-	let new_parent = new_parent_mutex.lock();
+	let mut old = old_mutex.lock();
+	let mut new_parent = new_parent_mutex.lock();
 
 	// TODO Check permissions if sticky bit is set
 
 	let vfs = vfs::get();
-	let vfs = vfs.lock();
+	let mut vfs = vfs.lock();
 	let vfs = vfs.as_mut().unwrap();
 
 	if new_parent.get_location().get_mountpoint_id() == old.get_location().get_mountpoint_id() {

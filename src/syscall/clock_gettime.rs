@@ -19,8 +19,8 @@ pub fn clock_gettime(_clock_id: i32, tp: SyscallPtr<Timespec>) -> Result<i32, Er
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-		let timespec = tp.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let mut mem_space_guard = mem_space.lock();
+		let timespec = tp.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 		*timespec = curr_time;
 	}

@@ -308,10 +308,10 @@ pub fn init() -> Result<(), Errno> {
 		}
 
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		let sched = sched_mutex.lock();
+		let mut sched = sched_mutex.lock();
 
 		if let Some(curr_proc) = sched.get_current_process() {
-			let curr_proc = curr_proc.lock();
+			let mut curr_proc = curr_proc.lock();
 
 			match id {
 				// Divide-by-zero
@@ -367,20 +367,20 @@ pub fn init() -> Result<(), Errno> {
 	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
 		let curr_proc = {
 			let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-			let sched = sched_mutex.lock();
+			let mut sched = sched_mutex.lock();
 
 			sched.get_current_process()
 		};
 
 		if let Some(curr_proc) = curr_proc {
-			let curr_proc = curr_proc.lock();
+			let mut curr_proc = curr_proc.lock();
 
 			let accessed_ptr = unsafe { cpu::cr2_get() };
 
 			// Handling page fault
 			let success = {
 				let mem_space_mutex = curr_proc.get_mem_space().unwrap();
-				let mem_space = mem_space_mutex.lock();
+				let mut mem_space = mem_space_mutex.lock();
 
 				mem_space.handle_page_fault(accessed_ptr, code)
 			};
@@ -456,7 +456,7 @@ impl Process {
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
 
 		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
-			let fs_guard = fs.lock();
+			let mut fs_guard = fs.lock();
 			let fs = &mut *fs_guard as &mut dyn Any;
 
 			if let Some(procfs) = fs.downcast_mut::<ProcFS>() {
@@ -473,7 +473,7 @@ impl Process {
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
 
 		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
-			let fs_guard = fs.lock();
+			let mut fs_guard = fs.lock();
 			let fs = &mut *fs_guard as &mut dyn Any;
 
 			if let Some(procfs) = fs.downcast_mut::<ProcFS>() {
@@ -498,7 +498,7 @@ impl Process {
 			let mut fds_table = FileDescriptorTable::default();
 
 			let vfs_mutex = vfs::get();
-			let vfs = vfs_mutex.lock();
+			let mut vfs = vfs_mutex.lock();
 			let vfs = vfs.as_mut().unwrap();
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
@@ -628,7 +628,7 @@ impl Process {
 		if new_pgid != self.pid {
 			// Adding the process to the new group
 			if let Some(proc_mutex) = Process::get_by_pid(new_pgid) {
-				let new_group_process = proc_mutex.lock();
+				let mut new_group_process = proc_mutex.lock();
 
 				let i = new_group_process
 					.process_group
@@ -643,7 +643,7 @@ impl Process {
 		// Removing the process from its old group
 		if self.is_in_group() {
 			if let Some(proc_mutex) = Process::get_by_pid(old_pgid) {
-				let old_group_process = proc_mutex.lock();
+				let mut old_group_process = proc_mutex.lock();
 
 				if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
 					old_group_process.process_group.remove(i);
@@ -821,7 +821,7 @@ impl Process {
 
 			// Attaching every child to the init process
 			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
-			let init_proc = init_proc_mutex.lock();
+			let mut init_proc = init_proc_mutex.lock();
 			for child_pid in self.children.iter() {
 				// Check just in case
 				if *child_pid == self.pid {
@@ -865,7 +865,7 @@ impl Process {
 		// Wake the parent
 		if let Some(parent) = self.get_parent() {
 			let parent = parent.get().unwrap();
-			let parent = parent.lock();
+			let mut parent = parent.lock();
 
 			parent.kill(&Signal::SIGCHLD, false);
 			parent.wake();
@@ -1285,7 +1285,7 @@ impl Process {
 		for pid in self.process_group.iter() {
 			if *pid != self.pid {
 				if let Some(proc_mutex) = Process::get_by_pid(*pid) {
-					let proc = proc_mutex.lock();
+					let mut proc = proc_mutex.lock();
 					proc.kill(&sig, no_handler);
 				}
 			}
@@ -1432,7 +1432,7 @@ impl Process {
 		// Resetting the parent's vfork state if needed
 		if let Some(parent) = self.get_parent() {
 			let parent_mutex = parent.get().unwrap();
-			let parent = parent_mutex.lock();
+			let mut parent = parent_mutex.lock();
 			parent.vfork_state = VForkState::None;
 		}
 	}
@@ -1515,7 +1515,7 @@ impl Drop for Process {
 		});
 
 		// Freeing the PID
-		let pid_manager = unsafe { PID_MANAGER.assume_init_mut() }.lock();
+		let mut pid_manager = unsafe { PID_MANAGER.assume_init_mut() }.lock();
 		pid_manager.release_pid(self.pid);
 	}
 }

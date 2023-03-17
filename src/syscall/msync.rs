@@ -33,7 +33,7 @@ pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errn
 
 	// The process's memory space
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space = mem_space.lock();
+	let mut mem_space = mem_space.lock();
 
 	let mut i = 0;
 	while i < length {

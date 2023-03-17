@@ -227,7 +227,7 @@ static FILESYSTEMS: Mutex<Vec<SharedPtr<dyn FilesystemType>>> = Mutex::new(Vec::
 
 /// Registers a new filesystem type `fs`.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
-	let container = FILESYSTEMS.lock();
+	let mut container = FILESYSTEMS.lock();
 	container.push(SharedPtr::new(fs_type)?)
 }
 

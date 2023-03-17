@@ -138,7 +138,7 @@ pub fn do_mmap(
 
 	// The process's memory space
 	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space = mem_space_mutex.lock();
+	let mut mem_space = mem_space_mutex.lock();
 
 	let flags = get_flags(flags, prot);
 

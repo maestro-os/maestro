@@ -29,12 +29,12 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 
 	let file_mutex = {
 		let vfs_mutex = vfs::get();
-		let vfs = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
 		vfs.get_file_from_path(&path, uid, gid, true)?
 	};
-	let file = file_mutex.lock();
+	let mut file = file_mutex.lock();
 
 	// Checking permissions
 	if uid != file::ROOT_UID && uid != file.get_uid() {

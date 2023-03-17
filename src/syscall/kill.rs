@@ -17,7 +17,7 @@ use super::util;
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let curr_proc = proc_mutex.lock();
+	let mut curr_proc = proc_mutex.lock();
 
 	let uid = curr_proc.get_uid();
 	let euid = curr_proc.get_euid();
@@ -42,7 +42,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 		f(&mut *curr_proc)?;
 	} else {
 		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		let target_proc = target_mutex.lock();
+		let mut target_proc = target_mutex.lock();
 
 		f(&mut *target_proc)?;
 	}
@@ -102,7 +102,7 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 		try_kill_group(0, &sig)
 	} else if pid == -1 {
 		// Kill all processes for which the current process has the permission
-		let sched = process::get_scheduler().lock();
+		let mut sched = process::get_scheduler().lock();
 
 		for (pid, _) in sched.iter_process() {
 			if *pid == process::pid::INIT_PID {
@@ -139,7 +139,7 @@ pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc = proc_mutex.lock();
+		let mut proc = proc_mutex.lock();
 
 		// POSIX requires that at least one pending signal is executed before returning
 		if proc.has_signal_pending() {

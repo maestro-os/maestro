@@ -51,7 +51,7 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc = proc_mutex.lock();
+		let mut proc = proc_mutex.lock();
 
 		let new_cwd = super::util::get_absolute_path(&*proc, new_cwd)?;
 		proc.set_cwd(new_cwd)?;

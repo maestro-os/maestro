@@ -19,11 +19,11 @@ pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
 	let path = super::util::get_absolute_path(&*proc, path)?;
 
 	let vfs_mutex = vfs::get();
-	let vfs = vfs_mutex.lock();
+	let mut vfs = vfs_mutex.lock();
 	let vfs = vfs.as_mut().unwrap();
 
 	let file_mutex = vfs.get_file_from_path(&path, proc.get_euid(), proc.get_egid(), true)?;
-	let file = file_mutex.lock();
+	let mut file = file_mutex.lock();
 
 	file.set_size(length as _);
 

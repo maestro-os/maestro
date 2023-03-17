@@ -37,7 +37,7 @@ pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, 
 	let mountpoint = mountpoint_mutex.lock();
 
 	let io_mutex = mountpoint.get_source().get_io()?;
-	let io = io_mutex.lock();
+	let mut io = io_mutex.lock();
 
 	let fs_mutex = mountpoint.get_filesystem();
 	let fs = fs_mutex.lock();
@@ -50,10 +50,10 @@ pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, 
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
+		let mut mem_space_guard = mem_space.lock();
 
 		let buf = buf
-			.get_mut(&mem_space_guard)?
+			.get_mut(&mut mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		*buf = stat;
 	}

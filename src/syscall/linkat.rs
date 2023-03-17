@@ -44,16 +44,16 @@ pub fn linkat(
 		(old, new_parent, new_name, euid, egid)
 	};
 
-	let old = old_mutex.lock();
+	let mut old = old_mutex.lock();
 
 	if old.get_type() == FileType::Directory {
 		return Err(errno!(EISDIR));
 	}
 
-	let new_parent = new_parent_mutex.lock();
+	let mut new_parent = new_parent_mutex.lock();
 
 	let vfs_mutex = vfs::get();
-	let vfs = vfs_mutex.lock();
+	let mut vfs = vfs_mutex.lock();
 	let vfs = vfs.as_mut().unwrap();
 
 	vfs.create_link(&mut *old, &mut *new_parent, &new_name, uid, gid)?;

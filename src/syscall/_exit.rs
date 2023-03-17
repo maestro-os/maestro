@@ -13,7 +13,7 @@ use macros::syscall;
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	let (_pid, _tid) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc = proc_mutex.lock();
+		let mut proc = proc_mutex.lock();
 
 		proc.exit(status, false);
 

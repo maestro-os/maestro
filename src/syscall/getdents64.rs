@@ -50,11 +50,11 @@ pub fn getdents64(fd: c_int, dirp: SyscallSlice<c_void>, count: usize) -> Result
 	};
 
 	// Getting file
-	let open_file = open_file_mutex.lock();
+	let mut open_file = open_file_mutex.lock();
 
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 	let dirp_slice = dirp
-		.get_mut(&mem_space_guard, count)?
+		.get_mut(&mut mem_space_guard, count)?
 		.ok_or_else(|| errno!(EFAULT))?;
 
 	let mut off = 0;

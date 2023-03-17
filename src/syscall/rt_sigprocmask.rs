@@ -24,18 +24,14 @@ pub fn rt_sigprocmask(
 	sigsetsize: usize,
 ) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc = proc_mutex.lock();
+	let mut proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
-	// Getting slices
-	let set_slice = set.get(&mem_space_guard, sigsetsize as _)?;
-	let oldset_slice = oldset.get_mut(&mem_space_guard, sigsetsize as _)?;
-
-	// The current set
 	let curr = proc.get_sigmask_mut().as_slice_mut();
 
+	let oldset_slice = oldset.get_mut(&mut mem_space_guard, sigsetsize as _)?;
 	if let Some(oldset) = oldset_slice {
 		// Saving the old set
 		for i in 0..min(oldset.len(), curr.len()) {
@@ -43,6 +39,7 @@ pub fn rt_sigprocmask(
 		}
 	}
 
+	let set_slice = set.get(&mem_space_guard, sigsetsize as _)?;
 	if let Some(set) = set_slice {
 		// Applies the operation
 		match how {

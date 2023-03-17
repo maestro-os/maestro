@@ -119,7 +119,7 @@ impl MapResidence {
 
 	/// TODO doc
 	fn alloc() -> Result<*const c_void, Errno> {
-		let ref_counter = PHYSICAL_REF_COUNTER.lock();
+		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
 
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
 
@@ -135,7 +135,7 @@ impl MapResidence {
 
 	/// TODO doc
 	fn free(ptr: *const c_void) {
-		let ref_counter = PHYSICAL_REF_COUNTER.lock();
+		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
 		ref_counter.decrement(ptr);
 
 		if ref_counter.can_free(ptr) {

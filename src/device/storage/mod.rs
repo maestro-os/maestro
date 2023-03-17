@@ -288,10 +288,10 @@ impl DeviceHandle for StorageDeviceHandle {
 				};
 
 				// Write to userspace
-				let mem_space_guard = mem_space.lock();
+				let mut mem_space_guard = mem_space.lock();
 				let hd_geo_ptr: SyscallPtr<HdGeometry> = (argp as usize).into();
 				let hd_geo_ref = hd_geo_ptr
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
 				*hd_geo_ref = hd_geo;
 
@@ -320,10 +320,10 @@ impl DeviceHandle for StorageDeviceHandle {
 					}
 				};
 
-				let mem_space_guard = mem_space.lock();
+				let mut mem_space_guard = mem_space.lock();
 				let size_ptr: SyscallPtr<u32> = (argp as usize).into();
 				let size_ref = size_ptr
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
 				*size_ref = blk_size as _;
 
@@ -333,10 +333,10 @@ impl DeviceHandle for StorageDeviceHandle {
 			ioctl::BLKGETSIZE64 => {
 				let size = self.get_size();
 
-				let mem_space_guard = mem_space.lock();
+				let mut mem_space_guard = mem_space.lock();
 				let size_ptr: SyscallPtr<u64> = (argp as usize).into();
 				let size_ref = size_ptr
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
 				*size_ref = size;
 
@@ -364,7 +364,7 @@ impl IO for StorageDeviceHandle {
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if let Some(interface) = self.interface.get() {
-			let interface = interface.lock();
+			let mut interface = interface.lock();
 
 			// Check offset
 			let (start, size) = match &self.partition {
@@ -389,7 +389,7 @@ impl IO for StorageDeviceHandle {
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		if let Some(interface) = self.interface.get() {
-			let interface = interface.lock();
+			let mut interface = interface.lock();
 
 			// Check offset
 			let (start, size) = match &self.partition {
@@ -451,7 +451,7 @@ impl StorageManager {
 		path_prefix: String,
 	) -> Result<(), Errno> {
 		if let Some(storage_mutex) = storage.get() {
-			let s = storage_mutex.lock();
+			let mut s = storage_mutex.lock();
 
 			if let Some(partitions_table) = partition::read(&mut *s)? {
 				let partitions = partitions_table.get_partitions(&mut *s)?;

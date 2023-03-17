@@ -79,7 +79,7 @@ pub fn openat(
 	};
 
 	let (loc, read, write, cloexec) = {
-		let f = file.lock();
+		let mut f = file.lock();
 
 		let loc = f.get_location().clone();
 		let (read, write, cloexec) = super::open::handle_flags(&mut *f, flags, uid, gid)?;
@@ -93,7 +93,7 @@ pub fn openat(
 	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds = fds_mutex.lock();
+	let mut fds = fds_mutex.lock();
 
 	let mut fd_flags = 0;
 	if cloexec {

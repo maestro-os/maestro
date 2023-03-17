@@ -659,14 +659,14 @@ impl File {
 
 			FileContent::Fifo => {
 				let buff_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
-				let buff = buff_mutex.lock();
+				let mut buff = buff_mutex.lock();
 
 				buff.ioctl(mem_space, request, argp)
 			}
 
 			FileContent::Socket => {
 				let buff_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
-				let buff = buff_mutex.lock();
+				let mut buff = buff_mutex.lock();
 
 				buff.ioctl(mem_space, request, argp)
 			}
@@ -675,26 +675,28 @@ impl File {
 				major,
 				minor,
 			} => {
-				let dev = device::get(&DeviceID {
+				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Block,
 					major: *major,
 					minor: *minor
 				}).ok_or_else(|| errno!(ENODEV))?;
 
-				dev.lock().get_handle().ioctl(mem_space, request, argp)
+				let mut dev = dev_mutex.lock();
+				dev.get_handle().ioctl(mem_space, request, argp)
 			},
 
 			FileContent::CharDevice {
 				major,
 				minor,
 			} => {
-				let dev = device::get(&DeviceID {
+				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Char,
 					major: *major,
 					minor: *minor,
 				}).ok_or_else(|| errno!(ENODEV))?;
 
-				dev.lock().get_handle().ioctl(mem_space, request, argp)
+				let mut dev = dev_mutex.lock();
+				dev.get_handle().ioctl(mem_space, request, argp)
 			}
 		}
 	}
@@ -712,10 +714,10 @@ impl File {
 			let mountpoint = mountpoint_mutex.lock();
 
 			let io_mutex = mountpoint.get_source().get_io()?;
-			let io = io_mutex.lock();
+			let mut io = io_mutex.lock();
 
 			let fs_mutex = mountpoint.get_filesystem();
-			let fs = fs_mutex.lock();
+			let mut fs = fs_mutex.lock();
 
 			fs.update_inode(&mut *io, self)
 		} else {
@@ -814,10 +816,10 @@ impl IO for File {
 				return Ok((0, true));
 			};
 
-			let io = io_mutex.lock();
+			let mut io = io_mutex.lock();
 
 			if let Some((fs_mutex, inode)) = fs {
-				let fs = fs_mutex.lock();
+				let mut fs = fs_mutex.lock();
 				fs.read_node(&mut *io, inode, off, buff)
 			} else {
 				io.read(off, buff)
@@ -831,10 +833,10 @@ impl IO for File {
 				return Ok(0);
 			};
 
-			let io = io_mutex.lock();
+			let mut io = io_mutex.lock();
 
 			if let Some((fs_mutex, inode)) = fs {
-				let fs = fs_mutex.lock();
+				let mut fs = fs_mutex.lock();
 				fs.write_node(&mut *io, inode, off, buff)?;
 				Ok(buff.len() as _)
 			} else {
@@ -849,7 +851,7 @@ impl IO for File {
 				return Ok(0);
 			};
 
-			let io = io_mutex.lock();
+			let mut io = io_mutex.lock();
 			io.poll(mask)
 		})
 	}

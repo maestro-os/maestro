@@ -17,7 +17,7 @@ pub fn dup2(oldfd: c_int, newfd: c_int) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds = fds_mutex.lock();
+	let mut fds = fds_mutex.lock();
 
 	let newfd = fds.duplicate_fd(oldfd as _, NewFDConstraint::Fixed(newfd as _), false)?;
 	Ok(newfd.get_id() as _)

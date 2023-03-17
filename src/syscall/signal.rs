@@ -39,7 +39,7 @@ pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
 
 	let old_handler = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc = proc_mutex.lock();
+		let mut proc = proc_mutex.lock();
 
 		let old_handler = proc.get_signal_handler(&signal);
 		proc.set_signal_handler(&signal, h);

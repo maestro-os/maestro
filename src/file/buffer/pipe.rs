@@ -96,10 +96,10 @@ impl Buffer for PipeBuffer {
 	) -> Result<u32, Errno> {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
-				let mem_space_guard = mem_space.lock();
+				let mut mem_space_guard = mem_space.lock();
 				let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
 				let count_ref = count_ptr
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
 				*count_ref = self.get_available_len() as _;
 			}

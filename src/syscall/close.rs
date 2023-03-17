@@ -16,7 +16,7 @@ pub fn close(fd: c_int) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds = fds_mutex.lock();
+	let mut fds = fds_mutex.lock();
 
 	fds.close_fd(fd as _)?;
 	Ok(0)

@@ -30,7 +30,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 
 	{
 		let vfs_mutex = vfs::get();
-		let vfs = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
 		let dir_mutex = vfs.get_file_from_path(&new_cwd, uid, gid, true)?;
@@ -48,7 +48,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 	// Setting new cwd
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc = proc_mutex.lock();
+		let mut proc = proc_mutex.lock();
 		proc.set_cwd(new_cwd)?;
 	}
 

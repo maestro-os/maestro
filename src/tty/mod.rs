@@ -173,7 +173,7 @@ pub fn current() -> Option<TTYHandle> {
 /// Initializes the init TTY.
 pub fn init() {
 	let init_tty_mutex = get(None).unwrap();
-	let init_tty = init_tty_mutex.lock();
+	let mut init_tty = init_tty_mutex.lock();
 
 	init_tty.init(None);
 	init_tty.show();
@@ -662,7 +662,7 @@ impl TTY {
 		}
 
 		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
-			let proc = proc_mutex.lock();
+			let mut proc = proc_mutex.lock();
 			proc.kill_group(sig, false);
 		}
 	}

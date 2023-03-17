@@ -49,7 +49,7 @@ fn get_file(
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
 	let vfs_mutex = vfs::get();
-	let vfs = vfs_mutex.lock();
+	let mut vfs = vfs_mutex.lock();
 	let vfs = vfs.as_mut().unwrap();
 
 	if flags & open_file::O_CREAT != 0 {
@@ -60,7 +60,7 @@ fn get_file(
 
 		// The parent directory
 		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-		let parent = parent_mutex.lock();
+		let mut parent = parent_mutex.lock();
 
 		let file_result =
 			vfs.get_file_from_parent(&mut *parent, name.failable_clone()?, uid, gid, follow_links);
@@ -151,7 +151,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let file = get_file(path, flags, mode, uid, gid)?;
 
 	let (loc, read, write, cloexec) = {
-		let f = file.lock();
+		let mut f = file.lock();
 
 		let loc = f.get_location().clone();
 		let (read, write, cloexec) = handle_flags(&mut *f, flags, uid, gid)?;
@@ -165,7 +165,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();
-	let fds = fds_mutex.lock();
+	let mut fds = fds_mutex.lock();
 
 	let mut fd_flags = 0;
 	if cloexec {

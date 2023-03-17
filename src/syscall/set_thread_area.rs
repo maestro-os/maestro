@@ -54,13 +54,13 @@ pub fn get_entry<'a>(
 #[syscall]
 pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc = proc_mutex.lock();
+	let mut proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
 	// A reference to the user_desc structure
-	let info = u_info.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let info = u_info.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Getting the entry with its id
 	let (id, entry) = get_entry(&mut *proc, info.get_entry_number())?;

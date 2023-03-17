@@ -103,7 +103,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
 	// Resetting signals
 	proc.sigmask.clear_all();
 	{
-		let handlers = proc.signal_handlers.lock();
+		let mut handlers = proc.signal_handlers.lock();
 
 		for i in 0..handlers.len() {
 			handlers[i] = SignalHandler::Default;

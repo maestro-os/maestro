@@ -13,7 +13,7 @@ pub fn brk(regs: &Regs) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space = mem_space.lock();
+	let mut mem_space = mem_space.lock();
 
 	let old = mem_space.get_brk_ptr();
 

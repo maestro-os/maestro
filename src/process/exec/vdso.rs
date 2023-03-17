@@ -76,7 +76,7 @@ fn load_image() -> Result<VDSO, Errno> {
 ///
 /// The function returns the virtual pointer to the mapped vDSO.
 pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
-	let elf_image = ELF_IMAGE.lock();
+	let mut elf_image = ELF_IMAGE.lock();
 
 	if elf_image.is_none() {
 		let img = load_image().expect("Failed to load vDSO");

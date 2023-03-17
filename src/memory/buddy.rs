@@ -176,7 +176,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 		let z = get_suitable_zone(i);
 
 		if let Some(z) = z {
-			let zone = z.lock();
+			let mut zone = z.lock();
 
 			let frame = zone.get_available_frame(order);
 			if let Some(f) = frame {
@@ -218,7 +218,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(order <= MAX_ORDER);
 
 	let z = get_zone_for_pointer(ptr).unwrap();
-	let zone = z.lock();
+	let mut zone = z.lock();
 
 	let frame_id = zone.get_frame_id_from_ptr(ptr);
 	debug_assert!(frame_id < zone.get_pages_count());
@@ -245,7 +245,7 @@ pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 /// - Positive value: The number of newly allocated chunks
 /// - Negative value: The absolute value is a the number of newly freed chunks
 pub fn update_stats(n: isize) {
-	let mem_info = stats::MEM_INFO.lock();
+	let mut mem_info = stats::MEM_INFO.lock();
 
 	if n >= 0 {
 		mem_info.mem_free -= n as usize;

@@ -96,7 +96,7 @@ pub fn do_writev(
 	};
 
 	idt::wrap_disable_interrupts(|| {
-		let open_file = open_file_mutex.lock();
+		let mut open_file = open_file_mutex.lock();
 
 		// The offset to restore on the fd after the write operation
 		let mut prev_off = None;
@@ -117,7 +117,7 @@ pub fn do_writev(
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {
 				let proc_mutex = Process::get_current().unwrap();
-				let proc = proc_mutex.lock();
+				let mut proc = proc_mutex.lock();
 
 				proc.kill(&Signal::SIGPIPE, false);
 			}

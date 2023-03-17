@@ -177,7 +177,7 @@ pub fn get_file_at(
 		drop(process);
 
 		let vfs_mutex = vfs::get();
-		let vfs = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 		vfs.as_mut()
 			.unwrap()
 			.get_file_from_path(&path, uid, gid, follow_links)
@@ -205,7 +205,7 @@ pub fn get_parent_at_with_name(
 	drop(process);
 
 	let vfs_mutex = vfs::get();
-	let vfs = vfs_mutex.lock();
+	let mut vfs = vfs_mutex.lock();
 	let vfs = vfs.as_mut().unwrap();
 
 	let parent_mutex = vfs.get_file_from_path(&path, uid, gid, follow_links)?;
@@ -238,10 +238,10 @@ pub fn create_file_at(
 		get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
 
 	let vfs_mutex = vfs::get();
-	let vfs = vfs_mutex.lock();
+	let mut vfs = vfs_mutex.lock();
 	let vfs = vfs.as_mut().unwrap();
 
-	let parent = parent_mutex.lock();
+	let mut parent = parent_mutex.lock();
 
 	vfs.create_file(&mut *parent, name, uid, gid, mode, content)
 }
@@ -307,7 +307,7 @@ pub fn handle_proc_state() {
 /// `regs` is the registers state passed to the current syscall.
 pub fn signal_check(regs: &Regs) {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc = proc_mutex.lock();
+	let mut proc = proc_mutex.lock();
 
 	if proc.get_next_signal().is_some() {
 		// Returning the system call early to resume it later

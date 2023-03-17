@@ -28,7 +28,7 @@ pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno
 
 	let file_mutex = {
 		let vfs_mutex = vfs::get();
-		let vfs = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
 		vfs.get_file_from_path(&path, uid, gid, true)?
@@ -39,7 +39,7 @@ pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno
 	let mountpoint = mountpoint_mutex.lock();
 
 	let io_mutex = mountpoint.get_source().get_io()?;
-	let io = io_mutex.lock();
+	let mut io = io_mutex.lock();
 
 	let fs_mutex = mountpoint.get_filesystem();
 	let fs = fs_mutex.lock();
@@ -52,10 +52,10 @@ pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
+		let mut mem_space_guard = mem_space.lock();
 
 		let buf = buf
-			.get_mut(&mem_space_guard)?
+			.get_mut(&mut mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		*buf = stat;
 	}

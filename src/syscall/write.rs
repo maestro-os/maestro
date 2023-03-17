@@ -49,7 +49,7 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 
 		// Trying to write and getting the length of written data
 		let (len, flags) = idt::wrap_disable_interrupts(|| {
-			let open_file = open_file_mutex.lock();
+			let mut open_file = open_file_mutex.lock();
 
 			let mem_space_guard = mem_space.lock();
 			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
@@ -62,7 +62,7 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 					// If writing to a broken pipe, kill with SIGPIPE
 					if e.as_int() == errno::EPIPE {
 						let proc_mutex = Process::get_current().unwrap();
-						let proc = proc_mutex.lock();
+						let mut proc = proc_mutex.lock();
 
 						proc.kill(&Signal::SIGPIPE, false);
 					}
@@ -87,9 +87,9 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 		// Make process sleep
 		{
 			let proc_mutex = Process::get_current().unwrap();
-			let proc = proc_mutex.lock();
+			let mut proc = proc_mutex.lock();
 
-			let open_file = open_file_mutex.lock();
+			let mut open_file = open_file_mutex.lock();
 			open_file.add_waiting_process(&mut *proc, io::POLLOUT | io::POLLERR)?;
 		}
 		unsafe {

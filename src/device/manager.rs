@@ -57,7 +57,7 @@ static DEVICE_MANAGERS: Mutex<HashMap<String, SharedPtr<dyn DeviceManager>>>
 
 /// Registers the given device manager.
 pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {
-	let device_managers = DEVICE_MANAGERS.lock();
+	let mut device_managers = DEVICE_MANAGERS.lock();
 
 	let name = String::try_from(manager.get_name())?;
 
@@ -81,7 +81,7 @@ pub fn on_plug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 	let device_managers = DEVICE_MANAGERS.lock();
 
 	for (_, m) in device_managers.iter() {
-		let manager = m.lock();
+		let mut manager = m.lock();
 		manager.on_plug(dev)?;
 	}
 
@@ -95,7 +95,7 @@ pub fn on_unplug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 	let device_managers = DEVICE_MANAGERS.lock();
 
 	for (_, m) in device_managers.iter() {
-		let manager = m.lock();
+		let mut manager = m.lock();
 		manager.on_unplug(dev)?;
 	}
 

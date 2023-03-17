@@ -193,7 +193,7 @@ extern "C" {
 /// `init_path` is the path to the init program.
 fn init(init_path: String) -> Result<(), Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc = proc_mutex.lock();
+	let mut proc = proc_mutex.lock();
 
 	if cfg!(config_debug_testprocess) {
 		// The pointer to the beginning of the test process
@@ -215,12 +215,12 @@ fn init(init_path: String) -> Result<(), Errno> {
 
 		let file_mutex = {
 			let vfs_mutex = vfs::get();
-			let vfs = vfs_mutex.lock();
+			let mut vfs = vfs_mutex.lock();
 			let vfs = vfs.as_mut().unwrap();
 
 			vfs.get_file_from_path(&path, 0, 0, true)?
 		};
-		let file = file_mutex.lock();
+		let mut file = file_mutex.lock();
 
 		let exec_info = ExecInfo {
 			uid: proc.get_uid(),

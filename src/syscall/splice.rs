@@ -80,7 +80,7 @@ pub fn splice(
 	}?;
 
 	let len = {
-		let input = input_mutex.lock();
+		let mut input = input_mutex.lock();
 
 		let prev_off = input.get_offset();
 
@@ -99,7 +99,7 @@ pub fn splice(
 	while i < len {
 		// TODO Check for signal (and handle syscall restart correctly with offsets)
 
-		let output = output_mutex.lock();
+		let mut output = output_mutex.lock();
 
 		let prev_off = output.get_offset();
 

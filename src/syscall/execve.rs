@@ -101,7 +101,7 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 /// Performs the execution on the current process.
 fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc = proc_mutex.lock();
+	let mut proc = proc_mutex.lock();
 
 	// Executing the program
 	exec::exec(&mut *proc, program_image)?;
@@ -110,13 +110,15 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 
 // TODO clean
 /// Builds a program image.
-/// `file` is the executable file.
-/// `uid` is the real user ID.
-/// `euid` is the effective user ID.
-/// `gid` is the real group ID.
-/// `egid` is the effective group ID.
-/// `argv` is the arguments list.
-/// `envp` is the environment variables list.
+///
+/// Arguments:
+/// - `file` is the executable file.
+/// - `uid` is the real user ID.
+/// - `euid` is the effective user ID.
+/// - `gid` is the real group ID.
+/// - `egid` is the effective group ID.
+/// - `argv` is the arguments list.
+/// - `envp` is the environment variables list.
 fn build_image(
 	file: SharedPtr<File>,
 	uid: Uid,
@@ -126,7 +128,7 @@ fn build_image(
 	argv: Vec<String>,
 	envp: Vec<String>,
 ) -> Result<ProgramImage, Errno> {
-	let file = file.lock();
+	let mut file = file.lock();
 	if !file.can_execute(euid, egid) {
 		return Err(errno!(EACCES));
 	}
@@ -184,12 +186,12 @@ pub fn execve(
 		// The file
 		let file = {
 			let vfs_mutex = vfs::get();
-			let vfs = vfs_mutex.lock();
+			let mut vfs = vfs_mutex.lock();
 			let vfs = vfs.as_mut().unwrap();
 
 			vfs.get_file_from_path(&path, uid, gid, true)?
 		};
-		let f = file.lock();
+		let mut f = file.lock();
 
 		if !f.can_execute(euid, egid) {
 			return Err(errno!(EACCES));
@@ -231,7 +233,7 @@ pub fn execve(
 	// The file
 	let file = {
 		let vfs_mutex = vfs::get();
-		let vfs = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
 		vfs.get_file_from_path(&path, uid, gid, true)?

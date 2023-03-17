@@ -33,10 +33,10 @@ pub fn getrusage(who: c_int, usage: SyscallPtr<RUsage>) -> Result<i32, Errno> {
 	};
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
 	let usage_val = usage
-		.get_mut(&mem_space_guard)?
+		.get_mut(&mut mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
 	*usage_val = rusage;
 

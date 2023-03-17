@@ -40,12 +40,12 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		// Creating the directory
 		{
 			let vfs_mutex = vfs::get();
-			let vfs = vfs_mutex.lock();
+			let mut vfs = vfs_mutex.lock();
 			let vfs = vfs.as_mut().unwrap();
 
 			// Getting parent directory
 			let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-			let parent = parent_mutex.lock();
+			let mut parent = parent_mutex.lock();
 
 			vfs.create_file(
 				&mut *parent,

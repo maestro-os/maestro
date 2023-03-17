@@ -47,10 +47,10 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 
 		let (len, flags) = {
 			let (len, eof, flags) = idt::wrap_disable_interrupts(|| {
-				let open_file = open_file_mutex.lock();
+				let mut open_file = open_file_mutex.lock();
 
-				let mem_space_guard = mem_space.lock();
-				let buf_slice = buf.get_mut(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+				let mut mem_space_guard = mem_space.lock();
+				let buf_slice = buf.get_mut(&mut mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
 				let flags = open_file.get_flags();
 				let (len, eof) = open_file.read(0, buf_slice)?;
@@ -72,9 +72,9 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 		// Make process sleep
 		{
 			let proc_mutex = Process::get_current().unwrap();
-			let proc = proc_mutex.lock();
+			let mut proc = proc_mutex.lock();
 
-			let open_file = open_file_mutex.lock();
+			let mut open_file = open_file_mutex.lock();
 			open_file.add_waiting_process(&mut *proc, io::POLLIN | io::POLLERR)?;
 		}
 		unsafe {

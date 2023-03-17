@@ -175,8 +175,8 @@ where
 	debug_assert!(id < idt::ENTRIES_COUNT);
 
 	idt::wrap_disable_interrupts(|| {
-		let mutex = unsafe { CALLBACKS.assume_init_mut() }[id];
-		let vec = mutex.lock();
+		let mutex = &unsafe { CALLBACKS.assume_init_mut() }[id];
+		let mut vec = mutex.lock();
 
 		let index = {
 			let r = vec.binary_search_by(|x| x.priority.cmp(&priority));
@@ -204,8 +204,8 @@ where
 
 /// Removes the callback with id `id`, priority `priority` and pointer `ptr`.
 fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
-	let mutex = unsafe { CALLBACKS.assume_init_mut() }[id];
-	let vec = mutex.lock();
+	let mutex = &unsafe { CALLBACKS.assume_init_mut() }[id];
+	let mut vec = mutex.lock();
 
 	let res = vec.binary_search_by(|x| x.priority.cmp(&priority));
 	if let Ok(index) = res {
@@ -254,7 +254,7 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	// Feed entropy pool
 	{
-		let pool = rand::ENTROPY_POOL.lock();
+		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
 			feed_entropy(pool, &id);
@@ -266,7 +266,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 
 	let action = {
 		let mutex = unsafe { &mut CALLBACKS.assume_init_mut()[id as usize] };
-		let callbacks = mutex.lock();
+		let mut callbacks = mutex.lock();
 
 		let mut last_action = {
 			if (id as usize) < ERROR_MESSAGES.len() {

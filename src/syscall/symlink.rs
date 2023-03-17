@@ -42,7 +42,7 @@ pub fn symlink(
 	};
 
 	let vfs_mutex = vfs::get();
-	let vfs = vfs_mutex.lock();
+	let mut vfs = vfs_mutex.lock();
 	let vfs = vfs.as_mut().unwrap();
 
 	// Getting the path of the parent directory
@@ -52,7 +52,7 @@ pub fn symlink(
 
 	// The parent directory
 	let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-	let parent = parent_mutex.lock();
+	let mut parent = parent_mutex.lock();
 
 	vfs.create_file(&mut *parent, name, uid, gid, 0o777, FileContent::Link(target))?;
 

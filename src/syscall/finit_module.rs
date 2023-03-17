@@ -33,7 +33,7 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 				.ok_or_else(|| errno!(EBADF))?
 				.get_open_file()?
 		};
-		let open_file = open_file_mutex.lock();
+		let mut open_file = open_file_mutex.lock();
 
 		let len = open_file.get_size(); // TODO Error if file is too large for 32bit?
 		let mut image = malloc::Alloc::new_default(len as usize)?;

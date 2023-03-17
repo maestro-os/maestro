@@ -27,7 +27,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 	// Removing the directory
 	{
 		let vfs_mutex = vfs::get();
-		let vfs = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
 		// Getting directory

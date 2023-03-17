@@ -14,10 +14,10 @@ pub fn fork() -> Result<i32, Errno> {
 	// A weak pointer to the new process's parent
 	let parent = curr_mutex.new_weak();
 
-	let curr_proc = curr_mutex.lock();
+	let mut curr_proc = curr_mutex.lock();
 
 	let new_mutex = curr_proc.fork(parent, ForkOptions::default())?;
-	let new_proc = new_mutex.lock();
+	let mut new_proc = new_mutex.lock();
 
 	// Setting registers
 	let mut regs = regs.clone();

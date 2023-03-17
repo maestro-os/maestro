@@ -45,10 +45,10 @@ pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Re
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
+		let mut mem_space_guard = mem_space.lock();
 
 		let remaining = rem
-			.get_mut(&mem_space_guard)?
+			.get_mut(&mut mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		*remaining = Timespec32::default();
 	}

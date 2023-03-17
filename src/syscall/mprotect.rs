@@ -43,7 +43,7 @@ pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> Result<i32, Errno
 		(uid, gid, mem_space)
 	};
 
-	let mem_space = mem_space_mutex.lock();
+	let mut mem_space = mem_space_mutex.lock();
 	mem_space.set_prot(addr, len, flags, uid, gid)?;
 
 	Ok(0)

@@ -75,7 +75,7 @@ pub fn clone(
 		// A weak pointer to the new process's parent
 		let parent = curr_mutex.new_weak();
 
-		let curr_proc = curr_mutex.lock();
+		let mut curr_proc = curr_mutex.lock();
 
 		if flags & CLONE_PARENT_SETTID != 0 {
 			// TODO
@@ -90,7 +90,7 @@ pub fn clone(
 			vfork: flags & CLONE_VFORK != 0,
 		};
 		let new_mutex = curr_proc.fork(parent, fork_options)?;
-		let new_proc = new_mutex.lock();
+		let mut new_proc = new_mutex.lock();
 
 		// Setting the process's registers
 		let mut new_regs = regs.clone();

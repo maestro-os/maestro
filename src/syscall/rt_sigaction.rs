@@ -18,13 +18,13 @@ pub fn rt_sigaction(
 	let signal = Signal::from_id(signum as _)?;
 
 	let proc_mutex = Process::get_current().unwrap();
-	let proc = proc_mutex.lock();
+	let mut proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
 	// Save the old structure
-	if let Some(oldact) = oldact.get_mut(&mem_space_guard)? {
+	if let Some(oldact) = oldact.get_mut(&mut mem_space_guard)? {
 		let action = proc.get_signal_handler(&signal).get_action();
 		*oldact = action;
 	}

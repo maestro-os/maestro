@@ -16,13 +16,13 @@ pub fn time(tloc: SyscallPtr<u32>) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
 	// Getting the current timestamp
 	let time = time::get(TimestampScale::Second, false).unwrap_or(0);
 
 	// Writing the timestamp to the given location, if not null
-	if let Some(tloc) = tloc.get_mut(&mem_space_guard)? {
+	if let Some(tloc) = tloc.get_mut(&mut mem_space_guard)? {
 		*tloc = time as _;
 	}
 

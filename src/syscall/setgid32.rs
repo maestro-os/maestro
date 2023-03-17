@@ -9,7 +9,7 @@ use macros::syscall;
 #[syscall]
 pub fn setgid32(gid: Gid) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc = proc_mutex.lock();
+	let mut proc = proc_mutex.lock();
 
 	// TODO Implement correctly
 	if proc.get_gid() == ROOT_GID && proc.get_egid() == ROOT_GID {

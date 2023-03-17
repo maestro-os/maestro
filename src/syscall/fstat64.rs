@@ -121,9 +121,9 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
+		let mut mem_space_guard = mem_space.lock();
 
-		let statbuf = statbuf.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let statbuf = statbuf.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 		*statbuf = stat;
 	}
 

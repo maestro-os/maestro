@@ -32,7 +32,7 @@ pub fn fchmodat(
 
 		(file_mutex, uid)
 	};
-	let file = file_mutex.lock();
+	let mut file = file_mutex.lock();
 
 	// Checking permissions
 	if uid != file::ROOT_UID && uid != file.get_uid() {

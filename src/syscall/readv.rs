@@ -13,6 +13,7 @@ use crate::process::iovec::IOVec;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::signal::Signal;
+use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use macros::syscall;
@@ -32,13 +33,21 @@ fn read(
 	iovcnt: usize,
 	open_file: &mut OpenFile,
 ) -> Result<i32, Errno> {
-	let mem_space_guard = mem_space.lock();
-	let iov_slice = iov.get(&mem_space_guard, iovcnt)?.ok_or(errno!(EFAULT))?;
+	let mut mem_space_guard = mem_space.lock();
+
+	let iov = {
+		let iov_slice = iov.get(&mem_space_guard, iovcnt)?.ok_or(errno!(EFAULT))?;
+
+		let mut iov = Vec::new();
+		iov.extend_from_slice(iov_slice)?;
+
+		iov
+	};
 
 	let nonblock = open_file.get_flags() & O_NONBLOCK != 0;
 	let mut total_len = 0;
 
-	for i in iov_slice {
+	for i in iov {
 		// Ignoring zero entry
 		if i.iov_len == 0 {
 			continue;
@@ -48,7 +57,7 @@ fn read(
 		let l = min(i.iov_len, i32::MAX as usize - total_len);
 		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
 
-		if let Some(slice) = ptr.get_mut(&mem_space_guard, l)? {
+		if let Some(slice) = ptr.get_mut(&mut mem_space_guard, l)? {
 			// TODO Handle in a loop?
 			let (len, eof) = open_file.read(0, slice)?;
 			if len == 0 && (eof || nonblock) {
@@ -104,7 +113,7 @@ pub fn do_readv(
 	};
 
 	idt::wrap_disable_interrupts(|| {
-		let open_file = open_file_mutex.lock();
+		let mut open_file = open_file_mutex.lock();
 
 		// The offset to restore on the fd after the write operation
 		let mut prev_off = None;
@@ -125,7 +134,7 @@ pub fn do_readv(
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {
 				let proc_mutex = Process::get_current().unwrap();
-				let proc = proc_mutex.lock();
+				let mut proc = proc_mutex.lock();
 
 				proc.kill(&Signal::SIGPIPE, false);
 			}

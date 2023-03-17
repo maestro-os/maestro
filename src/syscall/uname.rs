@@ -31,8 +31,8 @@ pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let utsname = buf.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let mut mem_space_guard = mem_space.lock();
+	let utsname = buf.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	*utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],

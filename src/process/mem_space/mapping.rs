@@ -32,7 +32,7 @@ static DEFAULT_PAGE: Mutex<Option<*const c_void>> = Mutex::new(None);
 
 /// Returns a physical pointer to the default page.
 fn get_default_page() -> *const c_void {
-	let default_page = DEFAULT_PAGE.lock();
+	let mut default_page = DEFAULT_PAGE.lock();
 
 	match &mut *default_page {
 		Some(ptr) => *ptr,
@@ -479,7 +479,7 @@ impl MemMapping {
 				new_mapping.map(i)?;
 			}
 		} else {
-			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+			let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 
 			for i in 0..self.size.get() {
 				if let Some(phys_ptr) = self.get_physical_page(i) {
@@ -512,7 +512,7 @@ impl MemMapping {
 
 		unsafe {
 			vmem::switch(self.get_vmem(), || {
-				let file = file.lock();
+				let mut file = file.lock();
 
 				// TODO Make use of dirty flag if present on the current architecure to update
 				// only pages that have been modified

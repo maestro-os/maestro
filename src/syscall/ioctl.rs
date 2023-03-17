@@ -127,7 +127,7 @@ pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Er
 	};
 
 	// Getting the device file
-	let open_file = open_file_mutex.lock();
+	let mut open_file = open_file_mutex.lock();
 
 	// Executing ioctl with the current memory space
 	let ret = open_file.ioctl(mem_space, request, argp)?;

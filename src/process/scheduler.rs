@@ -320,12 +320,12 @@ impl Scheduler {
 		cli!();
 
 		let tmp_stack = {
-			let sched = sched_mutex.lock();
+			let mut sched = sched_mutex.lock();
 			sched.total_ticks += 1;
 
 			// If a process is running, save its registers
 			if let Some(curr_proc) = sched.get_current_process() {
-				let curr_proc = curr_proc.lock();
+				let mut curr_proc = curr_proc.lock();
 
 				curr_proc.set_regs(*regs);
 				curr_proc.syscalling = ring < 3;
@@ -340,7 +340,7 @@ impl Scheduler {
 		};
 
 		loop {
-			let sched = sched_mutex.lock();
+			let mut sched = sched_mutex.lock();
 
 			if let Some(next_proc) = sched.get_next_process() {
 				// Set the process as current
@@ -351,7 +351,7 @@ impl Scheduler {
 				unsafe {
 					stack::switch(Some(tmp_stack), move || {
 						let (resume, syscalling, regs) = {
-							let next_proc = next_proc.1.lock();
+							let mut next_proc = next_proc.1.lock();
 
 							next_proc.prepare_switch();
 

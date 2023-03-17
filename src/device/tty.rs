@@ -99,15 +99,15 @@ impl DeviceHandle for TTYDeviceHandle {
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let proc = proc_mutex.lock();
-		let tty = tty_mutex.lock();
+		let mut proc = proc_mutex.lock();
+		let mut tty = tty_mutex.lock();
 
 		match request.get_old_format() {
 			ioctl::TCGETS => {
-				let mem_space_guard = mem_space.lock();
+				let mut mem_space_guard = mem_space.lock();
 				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
 				let termios_ref = termios_ptr
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
 				*termios_ref = tty.get_termios().clone();
 
@@ -129,10 +129,10 @@ impl DeviceHandle for TTYDeviceHandle {
 			}
 
 			ioctl::TIOCGPGRP => {
-				let mem_space_guard = mem_space.lock();
+				let mut mem_space_guard = mem_space.lock();
 				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
 				let pgid_ref = pgid_ptr
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
 				*pgid_ref = tty.get_pgrp();
 
@@ -153,10 +153,10 @@ impl DeviceHandle for TTYDeviceHandle {
 			}
 
 			ioctl::TIOCGWINSZ => {
-				let mem_space_guard = mem_space.lock();
+				let mut mem_space_guard = mem_space.lock();
 				let winsize: SyscallPtr<WinSize> = (argp as usize).into();
 				let winsize_ref = winsize
-					.get_mut(&mem_space_guard)?
+					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
 				*winsize_ref = tty.get_winsize().clone();
 
@@ -199,8 +199,8 @@ impl IO for TTYDeviceHandle {
 
 	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let proc = proc_mutex.lock();
-		let tty = tty_mutex.lock();
+		let mut proc = proc_mutex.lock();
+		let mut tty = tty_mutex.lock();
 
 		self.check_sigttin(&mut *proc, &*tty)?;
 
@@ -210,8 +210,8 @@ impl IO for TTYDeviceHandle {
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let proc = proc_mutex.lock();
-		let tty = tty_mutex.lock();
+		let mut proc = proc_mutex.lock();
+		let mut tty = tty_mutex.lock();
 
 		self.check_sigttou(&mut *proc, &*tty)?;
 

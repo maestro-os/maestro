@@ -25,11 +25,11 @@ pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
 	}
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
 	let cwd_slice = cwd.as_bytes();
 	let buf_slice = buf
-		.get_mut(&mem_space_guard, size as _)?
+		.get_mut(&mut mem_space_guard, size as _)?
 		.ok_or_else(|| errno!(EINVAL))?;
 	util::slice_copy(cwd_slice, buf_slice);
 	buf_slice[cwd.len()] = b'\0';

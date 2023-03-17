@@ -318,7 +318,7 @@ pub fn is_loaded(name: &[u8]) -> bool {
 
 /// Adds the given module to the modules list.
 pub fn add(module: Module) -> Result<(), Errno> {
-	let modules = MODULES.lock();
+	let mut modules = MODULES.lock();
 	modules.insert(module.name.failable_clone()?, module)?;
 
 	Ok(())
@@ -326,6 +326,6 @@ pub fn add(module: Module) -> Result<(), Errno> {
 
 /// Removes the module with name `name`.
 pub fn remove(name: &[u8]) {
-	let modules = MODULES.lock();
+	let mut modules = MODULES.lock();
 	modules.remove(name);
 }

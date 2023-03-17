@@ -712,7 +712,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		None => {
 			{
 				let proc_mutex = Process::get_current().unwrap();
-				let proc = proc_mutex.lock();
+				let mut proc = proc_mutex.lock();
 
 				if cfg!(feature = "strace") {
 					crate::println!(

@@ -200,9 +200,9 @@ impl Device {
 		drop(dev);
 
 		let vfs_mutex = vfs::get();
-		let vfs_guard = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 
-		if let Some(vfs) = vfs_guard.as_mut() {
+		if let Some(vfs) = vfs.as_mut() {
 			// Tells whether the file already exists
 			let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
 
@@ -214,7 +214,7 @@ impl Device {
 
 				// Getting the parent directory
 				let parent_mutex = vfs.get_file_from_path(&dir_path, 0, 0, true)?;
-				let parent = parent_mutex.lock();
+				let mut parent = parent_mutex.lock();
 
 				// Creating the device file
 				vfs.create_file(&mut *parent, filename, 0, 0, mode, file_content)?;
@@ -229,9 +229,9 @@ impl Device {
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
 		let vfs_mutex = vfs::get();
-		let vfs_guard = vfs_mutex.lock();
+		let mut vfs = vfs_mutex.lock();
 
-		if let Some(vfs) = vfs_guard.as_mut() {
+		if let Some(vfs) = vfs.as_mut() {
 			if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
 				let file = file_mutex.lock();
 				vfs.remove_file(&*file, 0, 0)?;
@@ -281,7 +281,7 @@ pub fn register(device: Device) -> Result<(), Errno> {
 	let dev_mutex = SharedPtr::new(device)?;
 
 	{
-		let devs = DEVICES.lock();
+		let mut devs = DEVICES.lock();
 		devs.insert(id, dev_mutex.clone())?;
 	}
 
@@ -298,13 +298,13 @@ pub fn register(device: Device) -> Result<(), Errno> {
 /// If files management is initialized, the function removes the associated device file.
 pub fn unregister(id: &DeviceID) -> Result<(), Errno> {
 	let dev_mutex = {
-		let devs = DEVICES.lock();
+		let mut devs = DEVICES.lock();
 		devs.remove(id)
 	};
 
 	if let Some(dev_mutex) = dev_mutex {
 		// Remove file
-		let dev = dev_mutex.lock();
+		let mut dev = dev_mutex.lock();
 		dev.remove_file()?;
 	}
 
