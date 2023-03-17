@@ -192,7 +192,7 @@ extern "C" {
 /// Launches the init process.
 /// `init_path` is the path to the init program.
 fn init(init_path: String) -> Result<(), Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::new()?;
 	let mut proc = proc_mutex.lock();
 
 	if cfg!(config_debug_testprocess) {
