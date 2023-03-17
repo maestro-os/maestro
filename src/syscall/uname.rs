@@ -27,9 +27,8 @@ struct Utsname {
 
 #[syscall]
 pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
@@ -45,8 +44,7 @@ pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
 
 	util::slice_copy(&crate::NAME.as_bytes(), &mut utsname.sysname);
 
-	let hostname_guard = crate::HOSTNAME.lock();
-	let hostname = hostname_guard.get().as_slice();
+	let hostname = crate::HOSTNAME.lock();
 	util::slice_copy(&hostname, &mut utsname.nodename);
 
 	util::slice_copy(&crate::VERSION.as_bytes(), &mut utsname.release);

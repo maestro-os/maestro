@@ -711,20 +711,19 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// The system call doesn't exist. Kill the process with SIGSYS
 		None => {
 			{
-				let mutex = Process::get_current().unwrap();
-				let guard = mutex.lock();
-				let curr_proc = guard.get_mut();
+				let proc_mutex = Process::get_current().unwrap();
+				let proc = proc_mutex.lock();
 
 				if cfg!(feature = "strace") {
 					crate::println!(
 						"[strace PID: {}] invalid syscall (ID: 0x{:x})",
-						curr_proc.get_pid(),
+						proc.get_pid(),
 						id
 					);
 				}
 
 				// SIGSYS cannot be caught, thus the process will be terminated
-				curr_proc.kill(&Signal::SIGSYS, true);
+				proc.kill(&Signal::SIGSYS, true);
 			}
 
 			crate::enter_loop();

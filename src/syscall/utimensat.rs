@@ -20,14 +20,13 @@ pub fn utimensat(
 ) -> Result<i32, Errno> {
 	let (file_mutex, atime, mtime) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
 		let file_mutex = match pathname.get(&mem_space_guard)? {
-			Some(pathname) => util::get_file_at(proc_guard, true, dirfd, pathname, flags)?,
+			Some(pathname) => util::get_file_at(proc, true, dirfd, pathname, flags)?,
 
 			None if dirfd != AT_FDCWD => {
 				if dirfd < 0 {
@@ -37,12 +36,10 @@ pub fn utimensat(
 				proc.get_fds()
 					.unwrap()
 					.lock()
-					.get()
 					.get_fd(dirfd as _)
 					.ok_or(errno!(EBADF))?
 					.get_open_file()?
 					.lock()
-					.get()
 					.get_file()?
 			}
 
@@ -57,8 +54,7 @@ pub fn utimensat(
 		(file_mutex, atime, mtime)
 	};
 
-	let file_guard = file_mutex.lock();
-	let file = file_guard.get_mut();
+	let file = file_mutex.lock();
 
 	// TODO clean
 	file.set_atime(atime.to_nano() / 1000000000);

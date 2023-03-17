@@ -11,9 +11,8 @@ use macros::syscall;
 #[syscall]
 pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i32, Errno> {
 	let (file_mutex, uid, gid) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let uid = proc.get_euid();
 		let gid = proc.get_egid();
@@ -24,18 +23,17 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 
-		let file = util::get_file_at(guard, false, dirfd, pathname, flags)?;
+		let file = util::get_file_at(proc, false, dirfd, pathname, flags)?;
 
 		(file, uid, gid)
 	};
-	let file_guard = file_mutex.lock();
-	let file = file_guard.get_mut();
+	let file = file_mutex.lock();
 
 	let vfs_mutex = vfs::get();
-	let vfs_guard = vfs_mutex.lock();
-	let vfs = vfs_guard.get_mut().as_mut().unwrap();
+	let vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
-	vfs.remove_file(file, uid, gid)?;
+	vfs.remove_file(&*file, uid, gid)?;
 
 	Ok(0)
 }

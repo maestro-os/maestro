@@ -56,10 +56,7 @@ pub unsafe fn get_str_array(
 		let elem_ptr = ptr.add(len);
 
 		// Checking access on elem_ptr
-		if !mem_space_guard
-			.get()
-			.can_access(elem_ptr as _, size_of::<*const u8>(), true, false)
-		{
+		if !mem_space_guard.can_access(elem_ptr as _, size_of::<*const u8>(), true, false) {
 			return Err(errno!(EFAULT));
 		}
 
@@ -89,11 +86,10 @@ pub unsafe fn get_str_array(
 ///
 /// `process_guard` is the guard of the current process.
 fn build_path_from_fd(
-	process_guard: &MutexGuard<Process, false>,
+	process: &MutexGuard<Process, false>,
 	dirfd: i32,
 	pathname: &[u8],
 ) -> Result<Path, Errno> {
-	let process = process_guard.get();
 	let path = Path::from_str(pathname, true)?;
 
 	if path.is_absolute() {
@@ -112,8 +108,7 @@ fn build_path_from_fd(
 		}
 
 		let fds_mutex = process.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds
 			.get_fd(dirfd as _)
@@ -121,14 +116,12 @@ fn build_path_from_fd(
 			.get_open_file()?;
 
 		// Unlocking to avoid deadlock with procfs
-		drop(process_guard);
+		drop(process);
 
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get();
+		let open_file = open_file_mutex.lock();
 
 		let file_mutex = open_file.get_file()?;
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get();
+		let file = file_mutex.lock();
 
 		file.get_path()?.concat(&path)
 	}
@@ -137,20 +130,18 @@ fn build_path_from_fd(
 /// Returns the file for the given path `pathname`.
 ///
 /// Arguments:
-/// - `process_guard` is the mutex guard of the current process.
+/// - `process` is the mutex guard of the current process.
 /// - `follow_links` tells whether symbolic links may be followed.
 /// - `dirfd` is the file descriptor of the parent directory.
 /// - `pathname` is the path relative to the parent directory.
 /// - `flags` is an integer containing AT_* flags.
 pub fn get_file_at(
-	process_guard: MutexGuard<Process, false>,
+	process: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
 	flags: i32,
 ) -> Result<SharedPtr<File>, Errno> {
-	let process = process_guard.get();
-
 	if pathname.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
@@ -160,8 +151,7 @@ pub fn get_file_at(
 			}
 
 			let fds_mutex = process.get_fds().unwrap();
-			let fds_guard = fds_mutex.lock();
-			let fds = fds_guard.get();
+			let fds = fds_mutex.lock();
 
 			let open_file_mutex = fds
 				.get_fd(dirfd as _)
@@ -169,10 +159,9 @@ pub fn get_file_at(
 				.get_open_file()?;
 
 			// Unlocking to avoid deadlock with procfs
-			drop(process_guard);
+			drop(process);
 
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get();
+			let open_file = open_file_mutex.lock();
 
 			open_file.get_file()
 		} else {
@@ -182,16 +171,14 @@ pub fn get_file_at(
 		let uid = process.get_euid();
 		let gid = process.get_egid();
 
-		let path = build_path_from_fd(&process_guard, dirfd, pathname)?;
+		let path = build_path_from_fd(&process, dirfd, pathname)?;
 
 		// Unlocking to avoid deadlock with procfs
-		drop(process_guard);
+		drop(process);
 
-		let vfs = vfs::get();
-		let vfs_guard = vfs.lock();
-		vfs_guard
-			.get_mut()
-			.as_mut()
+		let vfs_mutex = vfs::get();
+		let vfs = vfs_mutex.lock();
+		vfs.as_mut()
 			.unwrap()
 			.get_file_from_path(&path, uid, gid, follow_links)
 	}
@@ -199,7 +186,7 @@ pub fn get_file_at(
 
 /// TODO doc
 pub fn get_parent_at_with_name(
-	process_guard: MutexGuard<Process, false>,
+	process: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
@@ -208,56 +195,55 @@ pub fn get_parent_at_with_name(
 		return Err(errno!(ENOENT));
 	}
 
-	let mut path = build_path_from_fd(&process_guard, dirfd, pathname)?;
+	let mut path = build_path_from_fd(&process, dirfd, pathname)?;
 	let name = path.pop().unwrap();
 
-	let process = process_guard.get();
 	let uid = process.get_euid();
 	let gid = process.get_egid();
 
 	// Unlocking to avoid deadlock with procfs
-	drop(process_guard);
+	drop(process);
 
 	let vfs_mutex = vfs::get();
-	let vfs_guard = vfs_mutex.lock();
-	let vfs = vfs_guard.get_mut().as_mut().unwrap();
+	let vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
 	let parent_mutex = vfs.get_file_from_path(&path, uid, gid, follow_links)?;
 	Ok((parent_mutex, name))
 }
 
 /// Creates the given file `file` at the given pathname `pathname`.
-/// `process_guard` is the mutex guard of the current process.
-/// `follow_links` tells whether symbolic links may be followed.
-/// `dirfd` is the file descriptor of the parent directory.
-/// `pathname` is the path relative to the parent directory.
-/// `mode` is the permissions of the newly created file.
-/// `content` is the content of the newly created file.
+///
+/// Arguments:
+/// - `process` is the mutex guard of the current process.
+/// - `follow_links` tells whether symbolic links may be followed.
+/// - `dirfd` is the file descriptor of the parent directory.
+/// - `pathname` is the path relative to the parent directory.
+/// - `mode` is the permissions of the newly created file.
+/// - `content` is the content of the newly created file.
 pub fn create_file_at(
-	process_guard: MutexGuard<Process, false>,
+	process: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
 	mode: Mode,
 	content: FileContent,
 ) -> Result<SharedPtr<File>, Errno> {
-	let process = process_guard.get();
 	let uid = process.get_euid();
 	let gid = process.get_egid();
 	let umask = process.get_umask();
 	let mode = mode & !umask;
 
 	let (parent_mutex, name) =
-		get_parent_at_with_name(process_guard, follow_links, dirfd, pathname)?;
+		get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
 
 	let vfs_mutex = vfs::get();
-	let vfs_guard = vfs_mutex.lock();
-	let vfs = vfs_guard.get_mut().as_mut().unwrap();
+	let vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
-	let parent_guard = parent_mutex.lock();
-	let parent = parent_guard.get_mut();
+	let parent = parent_mutex.lock();
 
-	vfs.create_file(parent, name, uid, gid, mode, content)
+	vfs.create_file(&mut *parent, name, uid, gid, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.
@@ -272,15 +258,14 @@ pub fn create_file_at(
 /// If returning, the function returns the mutex lock of the current process.
 pub fn handle_proc_state() {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let proc = proc_mutex.lock();
 
 	match proc.get_state() {
 		// The process is executing a signal handler. Make the scheduler jump to it
 		State::Running => {
 			if proc.is_handling_signal() {
 				let regs = proc.get_regs().clone();
-				drop(proc_guard);
+				drop(proc);
 				drop(proc_mutex);
 
 				unsafe {
@@ -291,7 +276,7 @@ pub fn handle_proc_state() {
 
 		// The process is sleeping or has been stopped. Waiting until wakeup
 		State::Sleeping | State::Stopped => {
-			drop(proc_guard);
+			drop(proc);
 			drop(proc_mutex);
 
 			unsafe {
@@ -301,7 +286,7 @@ pub fn handle_proc_state() {
 
 		// The process has been killed. Stopping execution and waiting for the next tick
 		State::Zombie => {
-			drop(proc_guard);
+			drop(proc);
 			drop(proc_mutex);
 
 			unsafe {
@@ -322,8 +307,7 @@ pub fn handle_proc_state() {
 /// `regs` is the registers state passed to the current syscall.
 pub fn signal_check(regs: &Regs) {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let proc = proc_mutex.lock();
 
 	if proc.get_next_signal().is_some() {
 		// Returning the system call early to resume it later
@@ -336,7 +320,7 @@ pub fn signal_check(regs: &Regs) {
 		// Switching to handle the signal
 		proc.prepare_switch();
 
-		drop(proc_guard);
+		drop(proc);
 		drop(proc_mutex);
 
 		handle_proc_state();

@@ -151,8 +151,7 @@ impl<'a> TTYHandle {
 /// If the id doesn't exist, the function returns None.
 pub fn get(id: Option<usize>) -> Option<TTYHandle> {
 	if let Some(id) = id {
-		let ttys_guard = TTYS.lock();
-		let ttys = ttys_guard.get();
+		let ttys = TTYS.lock();
 
 		if id < ttys.len() {
 			Some(TTYHandle::Normal(ttys[id].clone()))
@@ -165,16 +164,16 @@ pub fn get(id: Option<usize>) -> Option<TTYHandle> {
 }
 
 /// Returns a reference to the current TTY.
-/// If the function returns None, the current TTY doesn't exist.
+///
+/// If the current TTY doesn't exist, the function returns `None`.
 pub fn current() -> Option<TTYHandle> {
-	get(*CURRENT_TTY.lock().get())
+	get(*CURRENT_TTY.lock())
 }
 
 /// Initializes the init TTY.
 pub fn init() {
 	let init_tty_mutex = get(None).unwrap();
-	let init_tty_guard = init_tty_mutex.lock();
-	let init_tty = init_tty_guard.get_mut();
+	let init_tty = init_tty_mutex.lock();
 
 	init_tty.init(None);
 	init_tty.show();
@@ -185,11 +184,8 @@ pub fn init() {
 /// If the TTY doesn't exist, the function does nothing.
 pub fn switch(id: Option<usize>) {
 	if let Some(tty) = get(id) {
-		*CURRENT_TTY.lock().get_mut() = id;
-
-		let guard = tty.lock();
-		let t = guard.get_mut();
-		t.show();
+		*CURRENT_TTY.lock() = id;
+		tty.lock().show();
 	}
 }
 
@@ -228,7 +224,7 @@ impl TTY {
 
 	/// Updates the TTY to the screen.
 	pub fn update(&mut self) {
-		let current_tty = *CURRENT_TTY.lock().get();
+		let current_tty = *CURRENT_TTY.lock();
 		if self.id != current_tty || !self.update {
 			return;
 		}
@@ -433,7 +429,7 @@ impl TTY {
 	pub fn write(&mut self, buffer: &[u8]) {
 		// TODO Add a compilation and/or runtime option for this
 		if let Some(serial) = serial::get(serial::COM1) {
-			serial.lock().get_mut().write(buffer);
+			serial.lock().write(buffer);
 		}
 
 		let mut i = 0;
@@ -666,9 +662,7 @@ impl TTY {
 		}
 
 		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get_mut();
-
+			let proc = proc_mutex.lock();
 			proc.kill_group(sig, false);
 		}
 	}

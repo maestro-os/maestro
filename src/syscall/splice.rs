@@ -49,16 +49,12 @@ pub fn splice(
 
 	{
 		let input_type = input_mutex.lock()
-			.get()
 			.get_file()?
 			.lock()
-			.get()
 			.get_type();
 		let output_type = output_mutex.lock()
-			.get()
 			.get_file()?
 			.lock()
-			.get()
 			.get_type();
 
 		let in_is_pipe = matches!(input_type, FileType::Fifo);
@@ -84,8 +80,7 @@ pub fn splice(
 	}?;
 
 	let len = {
-		let input_guard = input_mutex.lock();
-		let input = input_guard.get_mut();
+		let input = input_mutex.lock();
 
 		let prev_off = input.get_offset();
 
@@ -104,8 +99,7 @@ pub fn splice(
 	while i < len {
 		// TODO Check for signal (and handle syscall restart correctly with offsets)
 
-		let output_guard = output_mutex.lock();
-		let output = output_guard.get_mut();
+		let output = output_mutex.lock();
 
 		let prev_off = output.get_offset();
 

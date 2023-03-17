@@ -16,9 +16,8 @@ pub fn symlink(
 	linkpath: SyscallString,
 ) -> Result<i32, Errno> {
 	let (uid, gid, target, linkpath) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let uid = proc.get_euid();
 		let gid = proc.get_egid();
@@ -43,8 +42,8 @@ pub fn symlink(
 	};
 
 	let vfs_mutex = vfs::get();
-	let vfs_guard = vfs_mutex.lock();
-	let vfs = vfs_guard.get_mut().as_mut().unwrap();
+	let vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
 	// Getting the path of the parent directory
 	let mut parent_path = linkpath;
@@ -53,10 +52,9 @@ pub fn symlink(
 
 	// The parent directory
 	let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-	let parent_guard = parent_mutex.lock();
-	let parent = parent_guard.get_mut();
+	let parent = parent_mutex.lock();
 
-	vfs.create_file(parent, name, uid, gid, 0o777, FileContent::Link(target))?;
+	vfs.create_file(&mut *parent, name, uid, gid, 0o777, FileContent::Link(target))?;
 
 	Ok(0)
 }

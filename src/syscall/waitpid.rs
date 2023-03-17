@@ -100,12 +100,10 @@ fn check_waitable(
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
 	while let Some(pid) = get_target(curr_proc, pid, i) {
-		let scheduler_guard = process::get_scheduler().lock();
-		let scheduler = scheduler_guard.get_mut();
+		let sched = process::get_scheduler().lock();
 
-		if let Some(p) = scheduler.get_by_pid(pid) {
-			let p_guard = p.lock();
-			let p = p_guard.get_mut();
+		if let Some(p) = sched.get_by_pid(pid) {
+			let p = p.lock();
 
 			let stopped = matches!(p.get_state(), State::Stopped);
 			let zombie = matches!(p.get_state(), State::Zombie);
@@ -126,10 +124,10 @@ fn check_waitable(
 
 					// If the process was a zombie, remove it
 					if exit_check {
-						drop(p_guard);
+						drop(p);
 
 						curr_proc.remove_child(pid);
-						scheduler.remove_process(pid);
+						sched.remove_process(pid);
 					}
 				}
 
@@ -168,14 +166,19 @@ pub fn do_waitpid(
 		cli!();
 
 		{
-			let mutex = Process::get_current().unwrap();
-			let guard = mutex.lock();
-			let proc = guard.get_mut();
+			let proc_mutex = Process::get_current().unwrap();
+			let proc = proc_mutex.lock();
 
 			// Check if at least one target process is waitable
 			let mut wstatus_val = Default::default();
 			let mut rusage_val = Default::default();
-			let result = check_waitable(proc, pid, &mut wstatus_val, options, &mut rusage_val)?;
+			let result = check_waitable(
+				&mut *proc,
+				pid,
+				&mut wstatus_val,
+				options,
+				&mut rusage_val
+			)?;
 
 			// Setting values to userspace
 			{

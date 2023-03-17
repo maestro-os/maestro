@@ -38,8 +38,7 @@ static CLOCK_SOURCES: Mutex<HashMap<String, ClockSourceWrapper>> = Mutex::new(Ha
 
 /// Adds the new clock source to the clock sources list.
 pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno> {
-	let guard = CLOCK_SOURCES.lock();
-	let sources = guard.get_mut();
+	let sources = CLOCK_SOURCES.lock();
 
 	let name = String::try_from(source.get_name())?;
 	sources.insert(
@@ -57,23 +56,23 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 /// Removes the clock source with the given name.
 /// If the clock source doesn't exist, the function does nothing.
 pub fn remove_clock_source(name: &str) {
-	let guard = CLOCK_SOURCES.lock();
-	let sources = guard.get_mut();
-
+	let sources = CLOCK_SOURCES.lock();
 	sources.remove(name.as_bytes());
 }
 
 /// Returns the current timestamp from the preferred clock source.
-/// `scale` specifies the scale of the returned timestamp.
-/// `monotonic` tells whether the returned time should be monotonic.
-/// If no clock source is available, the function returns None.
+///
+/// Arguments:
+/// - `scale` specifies the scale of the returned timestamp.
+/// - `monotonic` tells whether the returned time should be monotonic.
+///
+/// If no clock source is available, the function returns `None`.
 pub fn get(scale: TimestampScale, monotonic: bool) -> Option<Timestamp> {
-	let guard = CLOCK_SOURCES.lock();
-	let sources = guard.get_mut();
-
+	let sources = CLOCK_SOURCES.lock();
 	if sources.is_empty() {
 		return None;
 	}
+
 	// Getting clock source
 	let clock_src = sources.get_mut("cmos".as_bytes())?; // TODO Select the preferred source
 

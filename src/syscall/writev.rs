@@ -81,15 +81,13 @@ pub fn do_writev(
 	// TODO Handle flags
 
 	let (mem_space, open_file_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds.get_fd(fd as _)
 			.ok_or(errno!(EBADF))?
@@ -98,8 +96,7 @@ pub fn do_writev(
 	};
 
 	idt::wrap_disable_interrupts(|| {
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
+		let open_file = open_file_mutex.lock();
 
 		// The offset to restore on the fd after the write operation
 		let mut prev_off = None;
@@ -115,13 +112,12 @@ pub fn do_writev(
 			}
 		}
 
-		let result = write(mem_space, iov, iovcnt as _, open_file);
+		let result = write(mem_space, iov, iovcnt as _, &mut *open_file);
 		match &result {
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {
-				let mutex = Process::get_current().unwrap();
-				let guard = mutex.lock();
-				let proc = guard.get_mut();
+				let proc_mutex = Process::get_current().unwrap();
+				let proc = proc_mutex.lock();
 
 				proc.kill(&Signal::SIGPIPE, false);
 			}

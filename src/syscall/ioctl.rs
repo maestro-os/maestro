@@ -110,15 +110,13 @@ pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Er
 
 	// Getting the memory space and file
 	let (mem_space, open_file_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 
 		let fds_mutex = proc.get_fds().unwrap();
-		let fds_guard = fds_mutex.lock();
-		let fds = fds_guard.get();
+		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds
 			.get_fd(fd as _)
@@ -129,8 +127,7 @@ pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Er
 	};
 
 	// Getting the device file
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get_mut();
+	let open_file = open_file_mutex.lock();
 
 	// Executing ioctl with the current memory space
 	let ret = open_file.ioctl(mem_space, request, argp)?;

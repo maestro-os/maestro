@@ -107,8 +107,7 @@ impl<T: ?Sized, const INT: bool> SharedPtr<T, INT> {
 	/// Creates a weak pointer for the current shared pointer.
 	pub fn new_weak(&self) -> WeakPtr<T, INT> {
 		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get_mut();
+		let refs = inner.ref_counter.lock();
 		refs.weak_count += 1;
 
 		WeakPtr {
@@ -121,8 +120,7 @@ impl<T: ?Sized, const INT: bool> Clone for SharedPtr<T, INT> {
 	fn clone(&self) -> Self {
 		// Incrementing the number of shared references
 		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get_mut();
+		let refs = inner.ref_counter.lock();
 		refs.shared_count += 1;
 
 		Self {
@@ -161,8 +159,7 @@ impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 
 		// Decrementing the number of shared references
 		{
-			let guard = inner.ref_counter.lock();
-			let refs = guard.get_mut();
+			let refs = inner.ref_counter.lock();
 			refs.shared_count -= 1;
 
 			if !refs.must_drop() {
@@ -206,8 +203,7 @@ impl<T: ?Sized, const INT: bool> WeakPtr<T, INT> {
 	/// Returns an immutable reference to the object.
 	pub fn get(&self) -> Option<&Mutex<T, INT>> {
 		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get();
+		let refs = inner.ref_counter.lock();
 
 		if refs.is_weak_available() {
 			Some(&inner.obj)
@@ -221,8 +217,7 @@ impl<T: ?Sized, const INT: bool> Clone for WeakPtr<T, INT> {
 	fn clone(&self) -> Self {
 		// Incrementing the number of weak references
 		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get_mut();
+		let refs = inner.ref_counter.lock();
 		refs.weak_count += 1;
 
 		Self {
@@ -247,8 +242,7 @@ impl<T: ?Sized, const INT: bool> Drop for WeakPtr<T, INT> {
 
 		// Decrementing the number of shared references
 		{
-			let guard = inner.ref_counter.lock();
-			let refs = guard.get_mut();
+			let refs = inner.ref_counter.lock();
 			refs.weak_count -= 1;
 
 			if !refs.must_drop() {

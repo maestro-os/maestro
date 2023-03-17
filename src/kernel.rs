@@ -158,7 +158,7 @@ fn init_vmem() -> Result<(), Errno> {
 	kernel_vmem.protect_kernel()?;
 
 	// Assigning to the global variable
-	*KERNEL_VMEM.lock().get_mut() = Some(kernel_vmem);
+	*KERNEL_VMEM.lock() = Some(kernel_vmem);
 
 	// Binding the kernel virtual memory context
 	bind_vmem();
@@ -172,7 +172,7 @@ pub fn get_vmem() -> &'static Mutex<Option<Box<dyn VMem>>> {
 
 /// Tells whether memory management has been fully initialized.
 pub fn is_memory_init() -> bool {
-	get_vmem().lock().get().is_some()
+	get_vmem().lock().is_some()
 }
 
 /// Binds the kernel's virtual memory context.
@@ -180,7 +180,7 @@ pub fn is_memory_init() -> bool {
 pub fn bind_vmem() {
 	let guard = KERNEL_VMEM.lock();
 
-	if let Some(vmem) = guard.get().as_ref() {
+	if let Some(vmem) = guard.as_ref() {
 		vmem.bind();
 	}
 }
@@ -192,9 +192,8 @@ extern "C" {
 /// Launches the init process.
 /// `init_path` is the path to the init program.
 fn init(init_path: String) -> Result<(), Errno> {
-	let mutex = Process::new()?;
-	let lock = mutex.lock();
-	let proc = lock.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	if cfg!(config_debug_testprocess) {
 		// The pointer to the beginning of the test process
@@ -214,14 +213,14 @@ fn init(init_path: String) -> Result<(), Errno> {
 			env.push(b"RUST_BACKTRACE=full".try_into()?)?;
 		}
 
-		let file = {
+		let file_mutex = {
 			let vfs_mutex = vfs::get();
-			let vfs_guard = vfs_mutex.lock();
-			let vfs = vfs_guard.get_mut().as_mut().unwrap();
+			let vfs = vfs_mutex.lock();
+			let vfs = vfs.as_mut().unwrap();
 
 			vfs.get_file_from_path(&path, 0, 0, true)?
 		};
-		let file_guard = file.lock();
+		let file = file_mutex.lock();
 
 		let exec_info = ExecInfo {
 			uid: proc.get_uid(),
@@ -232,9 +231,9 @@ fn init(init_path: String) -> Result<(), Errno> {
 			argv: vec![init_path]?,
 			envp: env,
 		};
-		let program_image = exec::build_image(file_guard.get_mut(), exec_info)?;
+		let program_image = exec::build_image(&mut *file, exec_info)?;
 
-		exec::exec(proc, program_image)
+		exec::exec(&mut *proc, program_image)
 	}
 }
 

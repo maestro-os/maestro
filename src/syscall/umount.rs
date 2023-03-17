@@ -11,9 +11,8 @@ use macros::syscall;
 
 #[syscall]
 pub fn umount(target: SyscallString) -> Result<i32, Errno> {
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	// Getting a slice to the string
 	let mem_space = proc.get_mem_space().unwrap();

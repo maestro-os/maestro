@@ -100,8 +100,7 @@ pub fn statx(
 	// Getting the file
 	let file_mutex = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -109,10 +108,9 @@ pub fn statx(
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		util::get_file_at(proc_guard, follow_links, dirfd, pathname, flags)?
+		util::get_file_at(proc, follow_links, dirfd, pathname, flags)?
 	};
-	let file_guard = file_mutex.lock();
-	let file = file_guard.get();
+	let file = file_mutex.lock();
 
 	// TODO Use mask?
 
@@ -135,8 +133,7 @@ pub fn statx(
 			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using
 			// the mountpoint and locking vfs requires disabling interrupts
 			crate::idt::wrap_disable_interrupts(|| {
-				let mountpoint_guard = mountpoint_mutex.lock();
-				let mountpoint = mountpoint_guard.get();
+				let mountpoint = mountpoint_mutex.lock();
 
 				match mountpoint.get_source() {
 					MountSource::Device {
@@ -205,8 +202,7 @@ pub fn statx(
 
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
