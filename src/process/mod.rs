@@ -793,7 +793,7 @@ impl Process {
 
 	/// Sets the process's state to `new_state`.
 	pub fn set_state(&mut self, new_state: State) {
-		if self.state == new_state || matches!(self.state, State::Zombie) {
+		if self.state == new_state || self.state == State::Zombie {
 			return;
 		}
 
@@ -806,7 +806,7 @@ impl Process {
 
 		self.state = new_state;
 
-		if matches!(self.state, State::Zombie) {
+		if self.state == State::Zombie {
 			if self.is_init() {
 				kernel_panic!("Terminated init process!");
 			}

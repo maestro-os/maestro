@@ -178,6 +178,11 @@ impl Scheduler {
 		}
 	}
 
+	/// Returns the current ticking frequency of the scheduler.
+	pub fn get_ticking_frequency(&self) -> Rational {
+		Rational::from_integer((10 * self.running_procs) as _)
+	}
+
 	/// Increments the number of running processes.
 	pub fn increment_running(&mut self) {
 		self.running_procs += 1;
@@ -187,8 +192,7 @@ impl Scheduler {
 			pic::enable_irq(0x0);
 
 			// Set ticking frequency
-			let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
-			pit::set_frequency(freq);
+			pit::set_frequency(self.get_ticking_frequency());
 		}
 	}
 
@@ -201,8 +205,7 @@ impl Scheduler {
 			pic::disable_irq(0x0);
 		} else {
 			// Set ticking frequency
-			let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
-			pit::set_frequency(freq);
+			pit::set_frequency(self.get_ticking_frequency());
 		}
 	}
 
@@ -369,11 +372,15 @@ impl Scheduler {
 					.unwrap();
 				}
 			} else {
+				// No process to run. Just wait
 				break;
 			}
 		}
 
-		// No process to run. Just wait
+		{
+			sched_mutex.lock().curr_proc = None;
+		}
+
 		unsafe {
 			event::unlock_callbacks(0x20);
 			pic::end_of_interrupt(0x0);

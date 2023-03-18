@@ -458,10 +458,6 @@ impl TTY {
 		}
 
 		self.update();
-
-		if !buffer.is_empty() {
-			self.block_handler.wake_processes(io::POLLIN);
-		}
 	}
 
 	/// Returns the number of bytes available to be read from the TTY.
@@ -482,18 +478,25 @@ impl TTY {
 		if self.termios.c_lflag & termios::ICANON != 0 {
 			let eof = self.termios.c_cc[termios::VEOF as usize];
 
-			if buff[0] == eof {
+			if len > 0 && self.input_buffer[0] == eof {
 				// Shifting data
 				self.input_buffer.rotate_left(len);
 				self.input_size -= len;
 				self.available_size -= len;
 
 				return (0, true);
-			} else if let Some(eof_off) = buff[..len].iter().position(|v| *v == eof) {
+			}
+
+			let eof_off = self.input_buffer[..len].iter().position(|v| *v == eof);
+			if let Some(eof_off) = eof_off {
 				// Making the next call EOF
 				len = eof_off;
 			}
 		} else if len < self.termios.c_cc[termios::VMIN as usize] as usize {
+			return (0, false);
+		}
+
+		if len == 0 {
 			return (0, false);
 		}
 
@@ -508,8 +511,6 @@ impl TTY {
 		if self.termios.c_iflag & termios::IMAXBEL != 0 && self.input_size >= buff.len() {
 			self.ring_bell();
 		}
-
-		self.block_handler.wake_processes(io::POLLOUT);
 
 		(len, false)
 	}
