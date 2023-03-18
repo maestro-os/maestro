@@ -134,8 +134,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 				crate::idt::wrap_disable_interrupts(|| {
 					let pid = {
 						let proc_mutex = crate::process::Process::get_current().unwrap();
-						let proc_guard = proc_mutex.lock();
-						let proc = proc_guard.get();
+						let proc = proc_mutex.lock();
 
 						proc.get_pid()
 					};
@@ -155,8 +154,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 				crate::idt::wrap_disable_interrupts(|| {
 					let pid = {
 						let proc_mutex = crate::process::Process::get_current().unwrap();
-						let proc_guard = proc_mutex.lock();
-						let proc = proc_guard.get();
+						let proc = proc_mutex.lock();
 
 						proc.get_pid()
 					};
