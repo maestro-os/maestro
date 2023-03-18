@@ -182,14 +182,12 @@ impl Scheduler {
 	pub fn increment_running(&mut self) {
 		self.running_procs += 1;
 
-		crate::println!("in {}", self.running_procs); // TODO rm
 		// Enable ticking if necessary
 		if self.running_procs > 1 {
 			pic::enable_irq(0x0);
 
 			// Set ticking frequency
 			let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
-			crate::println!("freq {}", freq); // TODO rm
 			pit::set_frequency(freq);
 		}
 	}
@@ -198,14 +196,12 @@ impl Scheduler {
 	pub fn decrement_running(&mut self) {
 		self.running_procs -= 1;
 
-		crate::println!("de {}", self.running_procs); // TODO rm
 		if self.running_procs <= 1 {
 			// Disable ticking
 			pic::disable_irq(0x0);
 		} else {
 			// Set ticking frequency
 			let freq = Rational::from_integer((10 * (self.running_procs - 1)) as _);
-			crate::println!("freq {}", freq); // TODO rm
 			pit::set_frequency(freq);
 		}
 	}

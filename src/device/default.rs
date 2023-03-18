@@ -14,6 +14,7 @@ use crate::errno;
 use crate::file::blocking::BlockHandler;
 use crate::file::path::Path;
 use crate::logger;
+use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::io::IO;
@@ -23,6 +24,7 @@ use super::DeviceType;
 use super::id;
 
 /// Structure representing a device which does nothing.
+#[derive(Default)]
 pub struct NullDeviceHandle {}
 
 impl DeviceHandle for NullDeviceHandle {
@@ -56,6 +58,7 @@ impl IO for NullDeviceHandle {
 }
 
 /// Structure representing a device gives null bytes.
+#[derive(Default)]
 pub struct ZeroDeviceHandle {}
 
 impl DeviceHandle for ZeroDeviceHandle {
@@ -94,7 +97,11 @@ impl IO for ZeroDeviceHandle {
 
 /// The random device allows to get random bytes. This device will block reading
 /// until enough entropy is available.
-pub struct RandomDeviceHandle {}
+#[derive(Default)]
+pub struct RandomDeviceHandle {
+	/// The device's block handler.
+	block_handler: BlockHandler,
+}
 
 impl DeviceHandle for RandomDeviceHandle {
 	fn ioctl(
@@ -107,9 +114,8 @@ impl DeviceHandle for RandomDeviceHandle {
 		Err(errno!(EINVAL))
 	}
 
-	fn get_block_handler(&mut self) -> Option<&mut BlockHandler> {
-		// TODO
-		todo!();
+	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+		self.block_handler.add_waiting_process(proc, mask)
 	}
 }
 
@@ -121,6 +127,8 @@ impl IO for RandomDeviceHandle {
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
+		self.block_handler.wake_processes(io::POLLIN);
+
 		if let Some(pool) = &mut *pool {
 			let len = pool.read(buff, false);
 			Ok((len as _, false))
@@ -131,6 +139,8 @@ impl IO for RandomDeviceHandle {
 
 	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
 		let mut pool = rand::ENTROPY_POOL.lock();
+
+		self.block_handler.wake_processes(io::POLLOUT);
 
 		if let Some(pool) = &mut *pool {
 			let len = pool.write(&buff);
@@ -148,6 +158,7 @@ impl IO for RandomDeviceHandle {
 /// This device works exactly like the random device, except it doesn't block.
 /// If not enough entropy is available, the output might not have a sufficient
 /// quality.
+#[derive(Default)]
 pub struct URandomDeviceHandle {}
 
 impl DeviceHandle for URandomDeviceHandle {
@@ -195,6 +206,7 @@ impl IO for URandomDeviceHandle {
 }
 
 /// Structure representing the kernel logs.
+#[derive(Default)]
 pub struct KMsgDeviceHandle {}
 
 impl DeviceHandle for KMsgDeviceHandle {
@@ -255,7 +267,7 @@ pub fn create() -> Result<(), Errno> {
 		},
 		null_path,
 		0o666,
-		NullDeviceHandle {},
+		NullDeviceHandle::default(),
 	)?;
 	device::register(null_device)?;
 
@@ -268,7 +280,7 @@ pub fn create() -> Result<(), Errno> {
 		},
 		zero_path,
 		0o666,
-		ZeroDeviceHandle {},
+		ZeroDeviceHandle::default(),
 	)?;
 	device::register(zero_device)?;
 
@@ -281,7 +293,7 @@ pub fn create() -> Result<(), Errno> {
 		},
 		random_path,
 		0o666,
-		RandomDeviceHandle {},
+		RandomDeviceHandle::default(),
 	)?;
 	device::register(random_device)?;
 
@@ -294,7 +306,7 @@ pub fn create() -> Result<(), Errno> {
 		},
 		urandom_path,
 		0o666,
-		URandomDeviceHandle {},
+		URandomDeviceHandle::default(),
 	)?;
 	device::register(urandom_device)?;
 
@@ -307,7 +319,7 @@ pub fn create() -> Result<(), Errno> {
 		},
 		kmsg_path,
 		0o600,
-		KMsgDeviceHandle {},
+		KMsgDeviceHandle::default(),
 	)?;
 	device::register(kmsg_device)?;
 

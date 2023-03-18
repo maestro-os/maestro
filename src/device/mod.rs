@@ -30,10 +30,10 @@ use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::blocking::BlockHandler;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file;
+use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::FailableClone;
@@ -115,9 +115,16 @@ pub trait DeviceHandle: IO {
 		argp: *const c_void,
 	) -> Result<u32, Errno>;
 
-	/// Returns the block handler of the device.
-	fn get_block_handler(&mut self) -> Option<&mut BlockHandler> {
-		None
+	/// Adds the given process to the list of processes waiting on the device.
+	///
+	/// The function sets the state of the process to `Sleeping`.
+	/// When the event occurs, the process will be woken up.
+	///
+	/// `mask` is the mask of poll event to wait for.
+	///
+	/// If the device cannot block, the function does nothing.
+	fn add_waiting_process(&mut self, _proc: &mut Process, _mask: u32) -> Result<(), Errno> {
+		Ok(())
 	}
 }
 

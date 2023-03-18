@@ -319,7 +319,7 @@ impl OpenFile {
 			FileContent::Fifo | FileContent::Socket => {
 				if let Some(buff_mutex) = buffer::get(self.get_location()) {
 					let mut buff = buff_mutex.lock();
-					return buff.get_block_handler().add_waiting_process(proc, mask);
+					return buff.add_waiting_process(proc, mask);
 				}
 			}
 
@@ -335,10 +335,7 @@ impl OpenFile {
 
 				if let Some(dev_mutex) = dev_mutex {
 					let mut dev = dev_mutex.lock();
-
-					if let Some(h) = dev.get_handle().get_block_handler() {
-						return h.add_waiting_process(proc, mask);
-					}
+					return dev.get_handle().add_waiting_process(proc, mask);
 				}
 			}
 
@@ -354,10 +351,7 @@ impl OpenFile {
 
 				if let Some(dev_mutex) = dev_mutex {
 					let mut dev = dev_mutex.lock();
-
-					if let Some(h) = dev.get_handle().get_block_handler() {
-						return h.add_waiting_process(proc, mask);
-					}
+					return dev.get_handle().add_waiting_process(proc, mask);
 				}
 			}
 

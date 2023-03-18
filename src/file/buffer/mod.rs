@@ -7,6 +7,7 @@ use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::FileLocation;
 use crate::file::blocking::BlockHandler;
+use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::FailableDefault;
@@ -33,8 +34,17 @@ pub trait Buffer: IO {
 	/// - `write` tells whether the open end allows writing.
 	fn decrement_open(&mut self, read: bool, write: bool);
 
-	/// Returns the block handler for the buffer.
-	fn get_block_handler(&mut self) -> &mut BlockHandler;
+	/// Adds the given process to the list of processes waiting on the buffer.
+	///
+	/// The function sets the state of the process to `Sleeping`.
+	/// When the event occurs, the process will be woken up.
+	///
+	/// `mask` is the mask of poll event to wait for.
+	///
+	/// If the buffer cannot block, the function does nothing.
+	fn add_waiting_process(&mut self, _proc: &mut Process, _mask: u32) -> Result<(), Errno> {
+		Ok(())
+	}
 
 	/// Performs an ioctl operation on the file.
 	///

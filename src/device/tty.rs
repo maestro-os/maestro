@@ -5,7 +5,6 @@ use core::ffi::c_void;
 use crate::device::DeviceHandle;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::blocking::BlockHandler;
 use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
@@ -181,9 +180,11 @@ impl DeviceHandle for TTYDeviceHandle {
 		}
 	}
 
-	fn get_block_handler(&mut self) -> Option<&mut BlockHandler> {
-		// TODO
-		todo!();
+	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());
+		let mut tty = tty_mutex.lock();
+
+		tty.add_waiting_process(proc, mask)
 	}
 }
 

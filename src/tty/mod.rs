@@ -9,21 +9,24 @@
 mod ansi;
 pub mod termios;
 
-use crate::device::serial;
-use crate::memory::vmem;
-use crate::process::pid::Pid;
-use crate::process::signal::Signal;
-use crate::process::Process;
-use crate::tty::termios::Termios;
-use crate::util;
-use crate::util::container::vec::Vec;
-use crate::util::lock::IntMutex;
-use crate::util::lock::MutexGuard;
-use crate::util::ptr::IntSharedPtr;
-use crate::vga;
 use core::cmp::*;
 use core::mem::MaybeUninit;
 use core::ptr;
+use crate::device::serial;
+use crate::errno::Errno;
+use crate::file::blocking::BlockHandler;
+use crate::memory::vmem;
+use crate::process::Process;
+use crate::process::pid::Pid;
+use crate::process::signal::Signal;
+use crate::tty::termios::Termios;
+use crate::util::container::vec::Vec;
+use crate::util::io;
+use crate::util::lock::IntMutex;
+use crate::util::lock::MutexGuard;
+use crate::util::ptr::IntSharedPtr;
+use crate::util;
+use crate::vga;
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -112,6 +115,9 @@ pub struct TTY {
 
 	/// The size of the TTY.
 	winsize: WinSize,
+
+	/// The TTY's block handler.
+	block_handler: BlockHandler,
 }
 
 /// The initialization TTY.
@@ -215,6 +221,8 @@ impl TTY {
 			ws_xpixel: vga::PIXEL_WIDTH as _,
 			ws_ypixel: vga::PIXEL_HEIGHT as _,
 		};
+
+		self.block_handler = BlockHandler::default();
 	}
 
 	/// Returns the id of the TTY.
@@ -450,6 +458,10 @@ impl TTY {
 		}
 
 		self.update();
+
+		if !buffer.is_empty() {
+			self.block_handler.wake_processes(io::POLLIN);
+		}
 	}
 
 	/// Returns the number of bytes available to be read from the TTY.
@@ -496,6 +508,8 @@ impl TTY {
 		if self.termios.c_iflag & termios::IMAXBEL != 0 && self.input_size >= buff.len() {
 			self.ring_bell();
 		}
+
+		self.block_handler.wake_processes(io::POLLOUT);
 
 		(len, false)
 	}
@@ -605,6 +619,8 @@ impl TTY {
 				}
 			}
 		}
+
+		self.block_handler.wake_processes(io::POLLIN);
 	}
 
 	/// Erases `count` characters in TTY.
@@ -633,6 +649,8 @@ impl TTY {
 				self.input(&[0x7f]);
 			}
 		}
+
+		self.block_handler.wake_processes(io::POLLIN);
 	}
 
 	/// Returns the terminal IO settings.
@@ -691,5 +709,15 @@ impl TTY {
 
 		// Sending a SIGWINCH if a process group is present
 		self.send_signal(Signal::SIGWINCH);
+	}
+
+	/// Adds the given process to the list of processes waiting on the TTY.
+	///
+	/// The function sets the state of the process to `Sleeping`.
+	/// When the event occurs, the process will be woken up.
+	///
+	/// `mask` is the mask of poll event to wait for.
+	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+		self.block_handler.add_waiting_process(proc, mask)
 	}
 }

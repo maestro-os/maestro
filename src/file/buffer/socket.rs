@@ -3,6 +3,7 @@
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::buffer::BlockHandler;
+use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::FailableDefault;
@@ -79,8 +80,8 @@ impl Buffer for Socket {
 		todo!();
 	}
 
-	fn get_block_handler(&mut self) -> &mut BlockHandler {
-		&mut self.block_handler
+	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+		self.block_handler.add_waiting_process(proc, mask)
 	}
 
 	fn ioctl(

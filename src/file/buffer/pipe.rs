@@ -6,6 +6,7 @@ use core::ffi::c_void;
 use crate::file::Errno;
 use crate::file::buffer::BlockHandler;
 use crate::limits;
+use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::syscall::ioctl;
@@ -72,9 +73,7 @@ impl Buffer for PipeBuffer {
 		if read {
 			self.read_ends -= 1;
 
-			crate::println!("A: {}", self.read_ends); // TODO rm
 			if self.read_ends == 0 {
-				crate::println!("pipe closed"); // TODO rm
 				self.block_handler.wake_processes(io::POLLERR);
 			}
 		}
@@ -84,8 +83,8 @@ impl Buffer for PipeBuffer {
 		}
 	}
 
-	fn get_block_handler(&mut self) -> &mut BlockHandler {
-		&mut self.block_handler
+	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+		self.block_handler.add_waiting_process(proc, mask)
 	}
 
 	fn ioctl(
