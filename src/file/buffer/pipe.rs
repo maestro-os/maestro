@@ -80,6 +80,10 @@ impl Buffer for PipeBuffer {
 
 		if write {
 			self.write_ends -= 1;
+
+			if self.write_ends == 0 {
+				self.block_handler.wake_processes(io::POLLERR);
+			}
 		}
 	}
 
