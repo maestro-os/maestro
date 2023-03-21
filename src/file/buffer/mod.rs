@@ -3,6 +3,7 @@
 pub mod pipe;
 pub mod socket;
 
+use core::any::Any;
 use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::FileLocation;
@@ -19,7 +20,7 @@ use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 
 /// Trait representing a buffer.
-pub trait Buffer: IO {
+pub trait Buffer: IO + Any {
 	/// Increments the number of open ends.
 	///
 	/// Arguments:

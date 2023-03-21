@@ -3,6 +3,7 @@
 use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file::buffer::socket::SockState;
+use crate::file::buffer::socket::Socket;
 use crate::file::buffer;
 use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallSlice;
@@ -33,6 +34,7 @@ pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: usize) -> Result<
 
 	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;
 	let sock = sock_mutex.lock();
+	let sock = sock.downcast_ref::<Socket>().unwrap();
 
 	sock.connect(addr_slice)?;
 
