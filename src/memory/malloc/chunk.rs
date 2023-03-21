@@ -89,11 +89,13 @@ impl Chunk {
 	}
 
 	/// Tells the whether the chunk is free.
+	#[inline]
 	pub fn is_used(&self) -> bool {
 		(self.flags & CHUNK_FLAG_USED) != 0
 	}
 
 	/// Sets the chunk used or free.
+	#[inline]
 	pub fn set_used(&mut self, used: bool) {
 		#[cfg(config_debug_malloc_check)]
 		self.check();
@@ -108,17 +110,20 @@ impl Chunk {
 		self.check();
 	}
 
-	/// Returns a pointer to the chunks' data.
-	pub fn get_ptr(&mut self) -> *mut c_void {
-		unsafe { (self as *mut Self as *mut c_void).add(size_of::<Self>()) }
-	}
-
-	/// Returns a const pointer to the chunks' data.
-	pub fn get_const_ptr(&self) -> *const c_void {
+	/// Returns an immutable pointer to the chunks' data.
+	#[inline]
+	pub fn get_ptr(&self) -> *const c_void {
 		unsafe { (self as *const Self as *const c_void).add(size_of::<Self>()) }
 	}
 
+	/// Returns a mutable pointer to the chunks' data.
+	#[inline]
+	pub fn get_ptr_mut(&mut self) -> *mut c_void {
+		unsafe { (self as *mut Self as *mut c_void).add(size_of::<Self>()) }
+	}
+
 	/// Returns the size of the chunk.
+	#[inline]
 	pub fn get_size(&self) -> usize {
 		self.size
 	}
@@ -165,6 +170,7 @@ impl Chunk {
 	/// Returns a mutable reference for the given chunk as a free chunk.
 	///
 	/// The result is undefined if the chunk is used.
+	#[inline]
 	pub fn as_free_chunk(&mut self) -> &mut FreeChunk {
 		debug_assert!(!self.is_used());
 
@@ -372,17 +378,20 @@ impl FreeChunk {
 		}
 	}
 
-	/// Returns a pointer to the chunks' data.
-	pub fn get_ptr(&mut self) -> *mut c_void {
+	/// Returns an immutable pointer to the chunks' data.
+	#[inline]
+	pub fn get_ptr(&self) -> *const c_void {
 		self.chunk.get_ptr()
 	}
 
-	/// Returns a const pointer to the chunks' data.
-	pub fn get_const_ptr(&self) -> *const c_void {
-		self.chunk.get_const_ptr()
+	/// Returns a mutable pointer to the chunks' data.
+	#[inline]
+	pub fn get_ptr_mut(&mut self) -> *mut c_void {
+		self.chunk.get_ptr_mut()
 	}
 
 	/// Returns the size of the chunk.
+	#[inline]
 	pub fn get_size(&self) -> usize {
 		self.chunk.get_size()
 	}
@@ -397,6 +406,7 @@ impl FreeChunk {
 	}
 
 	/// Returns the chunk object.
+	#[inline]
 	pub fn get_chunk(&mut self) -> &mut Chunk {
 		&mut self.chunk
 	}
@@ -430,7 +440,9 @@ impl FreeChunk {
 	}
 }
 
+// TODO put as const when stable
 /// Returns the minimum data size for a chunk.
+#[inline(always)]
 fn get_min_chunk_size() -> usize {
 	max(size_of::<FreeChunk>() - size_of::<Chunk>(), FREE_CHUNK_MIN)
 }

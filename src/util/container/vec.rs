@@ -235,7 +235,7 @@ impl<T> Vec<T> {
 
 		unsafe {
 			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
-			ptr::copy(
+			ptr::copy_nonoverlapping(
 				other.as_ptr(),
 				self_ptr.offset(self.len as _),
 				other.len()
@@ -361,6 +361,10 @@ impl<T> Vec<T> {
 			}
 
 			self.len = len;
+		}
+
+		if len == 0 {
+			self.data = None;
 		}
 	}
 

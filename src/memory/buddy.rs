@@ -118,13 +118,8 @@ pub fn get_frame_size(order: FrameOrder) -> usize {
 	memory::PAGE_SIZE << order
 }
 
-/// Returns the size of the metadata for one frame.
-#[inline(always)]
-pub const fn get_frame_metadata_size() -> usize {
-	size_of::<Frame>()
-}
-
 /// Returns the buddy order required to fit the given number of pages.
+#[inline(always)]
 pub fn get_order(pages: usize) -> FrameOrder {
 	let mut order: FrameOrder = 0;
 
@@ -133,6 +128,12 @@ pub fn get_order(pages: usize) -> FrameOrder {
 	}
 
 	order
+}
+
+/// Returns the size of the metadata for one frame.
+#[inline(always)]
+pub const fn get_frame_metadata_size() -> usize {
+	size_of::<Frame>()
 }
 
 /// Returns a mutable reference to a zone suitable for an allocation with the

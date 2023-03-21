@@ -67,7 +67,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	assert!(!chunk.is_used());
 	chunk.set_used(true);
 
-	let ptr = chunk.get_ptr();
+	let ptr = chunk.get_ptr_mut();
 	debug_assert!(util::is_aligned(ptr, chunk::ALIGNEMENT));
 	debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
 

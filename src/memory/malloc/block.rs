@@ -70,6 +70,7 @@ impl Block {
 	}
 
 	/// Returns the total size of the block in bytes.
+	#[inline]
 	fn get_total_size(&self) -> usize {
 		buddy::get_frame_size(self.order)
 	}
