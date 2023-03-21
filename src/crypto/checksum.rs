@@ -1,5 +1,5 @@
-//! This module implements checksum algorithms. A checksum is a value allowing to verify the
-//! integrity of a structure.
+//! This module implements checksum algorithms. A checksum is a value allowing
+//! to verify the integrity of a structure.
 
 /// Computes a checksum on `data` according to RFC1071.
 pub fn compute_rfc1071(data: &[u8]) -> u32 {
@@ -26,8 +26,10 @@ pub fn compute_rfc1071(data: &[u8]) -> u32 {
 }
 
 /// Computes the lookup table for the given generator polynomial.
-/// `table` is filled with the table's values.
-/// `polynom` is the polynom.
+///
+/// Arguments:
+/// - `table` is filled with the table's values.
+/// - `polynom` is the polynom.
 pub fn compute_crc32_lookuptable(table: &mut [u32; 256], polynom: u32) {
 	// Little endian
 	let mut i = table.len() / 2;
@@ -46,41 +48,20 @@ pub fn compute_crc32_lookuptable(table: &mut [u32; 256], polynom: u32) {
 
 		i = i >> 1;
 	}
-
-	// Big endian
-	/*let mut i = 1;
-	let mut crc = 0x80000000;
-
-	while i < table.len() {
-		if crc & 0x80000000 != 0 {
-			crc = (crc << 1) ^ polynom;
-		} else {
-			crc = crc << 1;
-		}
-
-		for j in 0..i {
-			table[i ^ j] = crc ^ table[j];
-		}
-
-		i = i << 1;
-	}*/
 }
 
-/// Computes the CRC32 checksum on the given data `data` with the given table `table` for the
-/// wanted generator polynomial.
+/// Computes the CRC32 checksum on the given data `data` with the given table
+/// `table` for the wanted generator polynomial.
 pub fn compute_crc32(data: &[u8], table: &[u32; 256]) -> u32 {
 	// Sarwate algorithm
-	//let mut crc = !(0 as u32);
-	let mut crc = 0 as u32;
+	let mut crc = !0u32;
 
 	for b in data {
-		let i = ((crc & 0xff) ^ (*b as u32)) as usize;
+		let i = ((crc as usize) ^ (*b as usize)) & 0xff;
 		crc = table[i] ^ (crc >> 8);
-		/*let i = ((crc ^ ((*b as u32) << 24)) >> 24) as usize;
-		crc = table[i] ^ (crc << 8);*/
 	}
 
-	crc
+	!crc
 }
 
 #[cfg(test)]

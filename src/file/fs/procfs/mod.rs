@@ -1,12 +1,19 @@
-//! The procfs is a virtual filesystem which provides informations about processes.
+//! The procfs is a virtual filesystem which provides informations about
+//! processes.
 
 mod mem_info;
 mod proc_dir;
 mod self_link;
 mod sys_dir;
 
-use core::any::Any;
+use super::kernfs;
+use super::kernfs::node::DummyKernFSNode;
+use super::kernfs::KernFS;
+use super::Filesystem;
+use super::FilesystemType;
 use crate::errno::Errno;
+use crate::file::fs::Statfs;
+use crate::file::path::Path;
 use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
@@ -15,27 +22,22 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::process;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use core::any::Any;
 use mem_info::MemInfo;
 use proc_dir::ProcDir;
 use self_link::SelfNode;
-use super::Filesystem;
-use super::FilesystemType;
-use super::kernfs::KernFS;
-use super::kernfs::node::DummyKernFSNode;
-use super::kernfs;
 use sys_dir::SysDir;
 
 /// Structure representing the procfs.
+///
 /// On the inside, the procfs works using a kernfs.
 pub struct ProcFS {
 	/// The kernfs.
@@ -47,11 +49,13 @@ pub struct ProcFS {
 
 impl ProcFS {
 	/// Creates a new instance.
-	/// `readonly` tells whether the filesystem is readonly.
-	/// `mountpath` is the path at which the filesystem is mounted.
+	///
+	/// Arguments:
+	/// - `readonly` tells whether the filesystem is readonly.
+	/// - `mountpath` is the path at which the filesystem is mounted.
 	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
-			fs: KernFS::new(String::from(b"procfs")?, readonly, mountpath)?,
+			fs: KernFS::new(b"procfs".try_into()?, readonly, mountpath)?,
 
 			procs: HashMap::new(),
 		};
@@ -62,9 +66,9 @@ impl ProcFS {
 		let node = MemInfo {};
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"meminfo")?,
+			b"meminfo".try_into()?,
 			DirEntry {
-				inode: inode,
+				inode,
 				entry_type: FileType::Regular,
 			},
 		)?;
@@ -74,13 +78,13 @@ impl ProcFS {
 			0o777,
 			0,
 			0,
-			FileContent::Link(String::from(b"self/mounts")?),
+			FileContent::Link(b"self/mounts".try_into()?),
 		);
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"mounts")?,
+			b"mounts".try_into()?,
 			DirEntry {
-				inode: inode,
+				inode,
 				entry_type: FileType::Link,
 			},
 		)?;
@@ -89,9 +93,9 @@ impl ProcFS {
 		let node = SelfNode {};
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"self")?,
+			b"self".try_into()?,
 			DirEntry {
-				inode: inode,
+				inode,
 				entry_type: FileType::Link,
 			},
 		)?;
@@ -100,9 +104,9 @@ impl ProcFS {
 		let node = SysDir::new(&mut fs.fs)?;
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
-			String::from(b"sys")?,
+			b"sys".try_into()?,
 			DirEntry {
-				inode: inode,
+				inode,
 				entry_type: FileType::Directory,
 			},
 		)?;
@@ -113,8 +117,7 @@ impl ProcFS {
 
 		// Adding existing processes
 		{
-			let scheduler_guard = process::get_scheduler().lock();
-			let scheduler = scheduler_guard.get_mut();
+			let mut scheduler = process::get_scheduler().lock();
 
 			for (pid, _) in scheduler.iter_process() {
 				fs.add_process(*pid)?;
@@ -137,10 +140,10 @@ impl ProcFS {
 		match &mut content {
 			FileContent::Directory(entries) => oom::wrap(|| {
 				entries.insert(
-					String::from_number(pid as _)?,
+					crate::format!("{}", pid)?,
 					DirEntry {
 						entry_type: FileType::Directory,
-						inode: inode,
+						inode,
 					},
 				)?;
 				Ok(())
@@ -153,6 +156,7 @@ impl ProcFS {
 	}
 
 	/// Removes the process with pid `pid` from the filesystem.
+	///
 	/// If the process doesn't exist, the function does nothing.
 	pub fn remove_process(&mut self, pid: Pid) -> Result<(), Errno> {
 		if let Some(inode) = self.procs.remove(&pid) {
@@ -161,7 +165,7 @@ impl ProcFS {
 			let mut content = oom::wrap(|| root.get_content().into_owned());
 			match &mut content {
 				FileContent::Directory(entries) => oom::wrap(|| {
-					entries.remove(&String::from_number(pid as _)?);
+					entries.remove(&crate::format!("{}", pid)?);
 					Ok(())
 				}),
 				_ => unreachable!(),
@@ -207,7 +211,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		io: &mut dyn IO,
 		parent: Option<INode>,
-		name: &String,
+		name: &[u8],
 	) -> Result<INode, Errno> {
 		self.fs.get_inode(io, parent, name)
 	}
@@ -233,7 +237,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		_io: &mut dyn IO,
 		_parent_inode: INode,
-		_name: &String,
+		_name: &[u8],
 		_inode: INode,
 	) -> Result<(), Errno> {
 		Err(errno!(EACCES))
@@ -247,7 +251,7 @@ impl Filesystem for ProcFS {
 		&mut self,
 		_io: &mut dyn IO,
 		_parent_inode: INode,
-		_name: &String,
+		_name: &[u8],
 	) -> Result<(), Errno> {
 		Err(errno!(EACCES))
 	}

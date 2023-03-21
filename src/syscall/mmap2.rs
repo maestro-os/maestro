@@ -1,18 +1,21 @@
-//! The `mmap2` system call is similar to `mmap`, except it takes a file offset in pages.
+//! The `mmap2` system call is similar to `mmap`, except it takes a file offset
+//! in pages.
 
 use super::mmap;
 use crate::errno::Errno;
-use crate::process::regs::Regs;
+use core::ffi::c_int;
 use core::ffi::c_void;
+use macros::syscall;
 
-/// The implementation of the `mmap2` syscall.
-pub fn mmap2(regs: &Regs) -> Result<i32, Errno> {
-	let addr = regs.ebx as *mut c_void;
-	let length = regs.ecx as usize;
-	let prot = regs.edx as i32;
-	let flags = regs.esi as i32;
-	let fd = regs.edi as i32;
-	let offset = regs.ebp as u32;
-
+// TODO Check last argument type
+#[syscall]
+pub fn mmap2(
+	addr: *mut c_void,
+	length: usize,
+	prot: c_int,
+	flags: c_int,
+	fd: c_int,
+	offset: u64,
+) -> Result<i32, Errno> {
 	mmap::do_mmap(addr, length, prot, flags, fd, (offset as u64) * 4096)
 }

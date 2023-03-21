@@ -1,10 +1,13 @@
-//! The `reboot` system call allows the superuser to power off, reboot, halt or suspend the system.
+//! The `reboot` system call allows the superuser to power off, reboot, halt or
+//! suspend the system.
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use core::arch::asm;
+use core::ffi::c_int;
+use core::ffi::c_void;
+use macros::syscall;
 
 /// First magic number.
 const MAGIC: u32 = 0xde145e83;
@@ -20,26 +23,22 @@ const CMD_HALT: u32 = 2;
 /// Command to suspend the system.
 const CMD_SUSPEND: u32 = 3;
 
-/// The implementation of the `reboot` syscall.
-pub fn reboot(regs: &Regs) -> Result<i32, Errno> {
-	let magic = regs.ebx as u32;
-	let magic2 = regs.ecx as u32;
-	let cmd = regs.edx as u32;
-
-	if magic != MAGIC || magic2 != MAGIC2 {
+#[syscall]
+pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> Result<i32, Errno> {
+	if (magic as u32) != MAGIC || (magic2 as u32) != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}
 
 	{
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
-		if proc.get_uid() != 0 {
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
+
+		if proc.uid != 0 {
 			return Err(errno!(EPERM));
 		}
 	}
 
-	match cmd {
+	match cmd as u32 {
 		CMD_POWEROFF => {
 			crate::println!("Power down...");
 

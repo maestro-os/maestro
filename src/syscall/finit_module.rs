@@ -1,34 +1,39 @@
 //! The `finit_module` system call allows to load a module on the kernel.
 
-use crate::errno;
+use core::ffi::c_int;
 use crate::errno::Errno;
+use crate::errno;
 use crate::memory::malloc;
-use crate::module;
 use crate::module::Module;
-use crate::process::regs::Regs;
+use crate::module;
 use crate::process::Process;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::util::io::IO;
+use macros::syscall;
 
-/// The implementation of the `finit_module` syscall.
-pub fn finit_module(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as u32;
+#[syscall]
+pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> Result<i32, Errno> {
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
 
 	let image = {
 		let open_file_mutex = {
 			let proc_mutex = Process::get_current().unwrap();
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get_mut();
+			let proc = proc_mutex.lock();
 
-			if proc.get_uid() != 0 {
+			if proc.uid != 0 {
 				return Err(errno!(EPERM));
 			}
 
-			proc.get_fd(fd)
+			let fds_mutex = proc.get_fds().unwrap();
+			let fds = fds_mutex.lock();
+
+			fds.get_fd(fd as _)
 				.ok_or_else(|| errno!(EBADF))?
-				.get_open_file()
+				.get_open_file()?
 		};
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
+		let mut open_file = open_file_mutex.lock();
 
 		let len = open_file.get_size(); // TODO Error if file is too large for 32bit?
 		let mut image = malloc::Alloc::new_default(len as usize)?;

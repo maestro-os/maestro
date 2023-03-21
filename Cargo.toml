@@ -9,3 +9,13 @@ edition = "2021"
 name = "kernel"
 path = "src/kernel.rs"
 crate-type = ["dylib", "staticlib"]
+
+[dependencies]
+macros = { path = "macros/" }
+
+[features]
+default = []
+strace = ["macros/strace"]
+
+[profile.release]
+lto = true

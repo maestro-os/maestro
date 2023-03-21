@@ -1,20 +1,24 @@
 //! This file handles kernel panics.
-//! A kernel panic occurs when an error is raised that the kernel cannot recover from. This is an
-//! undesirable state which requires to reboot the host machine.
+//!
+//! A kernel panic occurs when an error is raised that the kernel cannot recover
+//! from. This is an undesirable state which requires to reboot the host
+//! machine.
 
 use crate::cpu;
 #[cfg(config_debug_debug)]
 use crate::debug;
 use crate::process::regs::Regs;
 use core::ffi::c_void;
-use core::fmt::Arguments;
 use core::fmt;
+use core::fmt::Arguments;
 #[cfg(config_debug_debug)]
 use core::ptr::null_mut;
 
 /// Macro triggering a kernel panic.
-/// `reason` is the reason of the kernel panic.
-/// `code` is an optional special code provided with the reason.
+///
+/// Arguments:
+/// - `reason` is the reason of the kernel panic.
+/// - `code` is an optional special code provided with the reason.
 #[macro_export]
 macro_rules! kernel_panic {
 	($($reason:tt)*) => {
@@ -23,8 +27,10 @@ macro_rules! kernel_panic {
 }
 
 /// Initializes the TTY and prints a panic message.
-/// `reason` is the reason of the kernel panic.
-/// `regs` is the registers state.
+///
+/// Arguments:
+/// - `reason` is the reason of the kernel panic.
+/// - `regs` is the registers state.
 fn print_panic(reason: Arguments, regs: Option<&Regs>) {
 	crate::println!("--- KERNEL PANIC ---\n");
 	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
@@ -41,8 +47,10 @@ fn print_panic(reason: Arguments, regs: Option<&Regs>) {
 }
 
 /// Re-initializes the TTY, prints the panic message and halts the kernel.
-/// `reason` is the reason of the kernel panic.
-/// `regs` is the registers state.
+///
+/// Arguments:
+/// - `reason` is the reason of the kernel panic.
+/// - `regs` is the registers state.
 #[cfg(not(config_debug_debug))]
 pub fn kernel_panic_(
 	reason: Arguments,
@@ -56,12 +64,15 @@ pub fn kernel_panic_(
 	crate::halt();
 }
 
-/// Same as the release version, except the function also prints the kernel's callstack.
-/// `reason` is the reason of the kernel panic.
-/// `regs` is the registers state.
-/// `file` is the file in which the kernel panic was triggerd.
-/// `line` is the line at which the kernel panic was triggerd.
-/// `column` is the column at which the kernel panic was triggerd.
+/// Same as the release version, except the function also prints the kernel's
+/// callstack.
+///
+/// Arguments:
+/// - `reason` is the reason of the kernel panic.
+/// - `regs` is the registers state.
+/// - `file` is the file in which the kernel panic was triggerd.
+/// - `line` is the line at which the kernel panic was triggerd.
+/// - `column` is the column at which the kernel panic was triggerd.
 #[cfg(config_debug_debug)]
 pub fn kernel_panic_(reason: Arguments, regs: Option<&Regs>, file: &str, line: u32, col: u32) -> ! {
 	crate::cli!();
@@ -105,7 +116,8 @@ pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::halt();
 }
 
-/// Same as the release version, except the function also prints the kernel's callstack.
+/// Same as the release version, except the function also prints the kernel's
+/// callstack.
 #[cfg(config_debug_debug)]
 pub fn rust_panic<'a>(args: &'a fmt::Arguments<'a>) -> ! {
 	crate::cli!();

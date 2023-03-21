@@ -2,17 +2,22 @@
 
 use crate::errno::Errno;
 use crate::file::fd::NewFDConstraint;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use core::ffi::c_int;
+use macros::syscall;
 
-/// The implementation of the `dup` syscall.
-pub fn dup(regs: &Regs) -> Result<i32, Errno> {
-	let oldfd = regs.ebx;
+#[syscall]
+pub fn dup(oldfd: c_int) -> Result<i32, Errno> {
+	if oldfd < 0 {
+		return Err(errno!(EBADF));
+	}
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
-	let newfd = proc.duplicate_fd(oldfd, NewFDConstraint::None, false)?;
+	let fds_mutex = proc.get_fds().unwrap();
+	let mut fds = fds_mutex.lock();
+
+	let newfd = fds.duplicate_fd(oldfd as _, NewFDConstraint::None, false)?;
 	Ok(newfd.get_id() as _)
 }

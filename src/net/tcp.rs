@@ -2,7 +2,7 @@
 //! two-way, connection-based byte streams.
 
 use crate::errno::Errno;
-use crate::file::socket::Socket;
+use crate::file::buffer::socket::Socket;
 
 /// Initiates a TCP connection on the given socket `sock`.
 pub fn init_connection(_sock: &mut Socket) -> Result<(), Errno> {

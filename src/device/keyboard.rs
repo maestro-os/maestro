@@ -142,11 +142,13 @@ pub enum KeyboardKey {
 impl KeyboardKey {
 	// TODO Implement correctly with modifiers
 	/// Returns the TTY characters for the given current.
-	/// `shift` tells whether shift is pressed. This value has to be inverted if caps lock is
-	/// enabled.
-	/// `alt` tells whether alt is pressed.
-	/// `ctrl` tells whether control is pressed.
-	/// `meta` tells whether meta is pressed.
+	///
+	/// Arguments:
+	/// - `shift` tells whether shift is pressed. This value has to be inverted if
+	/// caps lock is enabled.
+	/// - `alt` tells whether alt is pressed.
+	/// - `ctrl` tells whether control is pressed.
+	/// - `meta` tells whether meta is pressed.
 	pub fn get_tty_chars(&self, shift: bool, _alt: bool, ctrl: bool, _meta: bool) -> Option<&[u8]> {
 		match self {
 			Self::KeyHome => return Some(b"\x1b[1~"),
@@ -209,7 +211,6 @@ impl KeyboardKey {
 				Self::KeyCursorDown => return Some(b"\x1b[1;5B"),
 
 				// TODO ^ and _
-
 				_ => {}
 			}
 		}
@@ -408,12 +409,14 @@ pub enum KeyboardLED {
 	// TODO Add the japanese keyboard Kana mode
 }
 
-/// Structure representing a key that can enabled, such as caps lock. Such a key is usually
-/// associated with an LED on the keyboard.
+/// Structure representing a key that can enabled, such as caps lock.
+///
+/// Such a key is usually associated with an LED on the keyboard.
 pub struct EnableKey {
 	/// The key's state.
 	state: bool,
-	/// Tells whether to ignore the next pressed actions until a release action is received.
+	/// Tells whether to ignore the next pressed actions until a release action
+	/// is received.
 	ignore: bool,
 }
 
@@ -427,8 +430,10 @@ impl EnableKey {
 	}
 
 	/// Handles a keyboard input.
+	///
 	/// `kbd_manager` is the keyboard manager.
-	/// If the state changed, the function returns true.
+	///
+	/// If the state changed, the function returns `true`.
 	pub fn input(&mut self, action: KeyboardAction) -> bool {
 		match action {
 			KeyboardAction::Pressed => {
@@ -457,8 +462,10 @@ impl EnableKey {
 /// Trait representing a keyboard.
 pub trait Keyboard {
 	/// Sets the state of the given LED.
-	/// `led` is the LED.
-	/// `enabled` tells whether the LED is enabled.
+	///
+	/// Arguments:
+	/// - `led` is the LED.
+	/// - `enabled` tells whether the LED is enabled.
 	fn set_led(&mut self, led: KeyboardLED, enabled: bool);
 }
 
@@ -545,25 +552,25 @@ impl KeyboardManager {
 			if self.ctrl && self.alt {
 				// TODO TTYs must be allocated first
 				// Switching TTY
-				match key {
-					KeyboardKey::KeyF1 => tty::switch(Some(0)),
-					KeyboardKey::KeyF2 => tty::switch(Some(1)),
-					KeyboardKey::KeyF3 => tty::switch(Some(2)),
-					KeyboardKey::KeyF4 => tty::switch(Some(3)),
-					KeyboardKey::KeyF5 => tty::switch(Some(4)),
-					KeyboardKey::KeyF6 => tty::switch(Some(5)),
-					KeyboardKey::KeyF7 => tty::switch(Some(6)),
-					KeyboardKey::KeyF8 => tty::switch(Some(7)),
-					KeyboardKey::KeyF9 => tty::switch(Some(8)),
+				let id = match key {
+					KeyboardKey::KeyF1 => Some(0),
+					KeyboardKey::KeyF2 => Some(1),
+					KeyboardKey::KeyF3 => Some(2),
+					KeyboardKey::KeyF4 => Some(3),
+					KeyboardKey::KeyF5 => Some(4),
+					KeyboardKey::KeyF6 => Some(5),
+					KeyboardKey::KeyF7 => Some(6),
+					KeyboardKey::KeyF8 => Some(7),
+					KeyboardKey::KeyF9 => Some(8),
 
-					_ => {}
-				}
+					_ => None,
+				};
+				tty::switch(id);
 			}
 
 			// Getting the tty
 			if let Some(tty_mutex) = tty::current() {
-				let tty_guard = tty_mutex.lock();
-				let tty = tty_guard.get_mut();
+				let mut tty = tty_mutex.lock();
 
 				let ctrl = self.ctrl || self.right_ctrl;
 				let alt = self.alt || self.right_alt;
@@ -579,8 +586,10 @@ impl KeyboardManager {
 	}
 
 	/// Sets the state of the LED on every keyboards.
-	/// `led` is the keyboard LED.
-	/// `enabled` tells whether the LED is lit.
+	///
+	/// Arguments:
+	/// - `led` is the keyboard LED.
+	/// - `enabled` tells whether the LED is lit.
 	pub fn set_led(&mut self, _led: KeyboardLED, _enabled: bool) {
 		// TODO Iterate on keyboards
 		/*if let Some(ps2) = &mut self.ps2_keyboard {
@@ -592,10 +601,6 @@ impl KeyboardManager {
 impl DeviceManager for KeyboardManager {
 	fn get_name(&self) -> &'static str {
 		"kbd"
-	}
-
-	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		Ok(())
 	}
 
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {

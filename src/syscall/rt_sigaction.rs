@@ -2,29 +2,29 @@
 
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::signal::SigAction;
 use crate::process::signal::SignalHandler;
 use crate::process::Process;
 use crate::syscall::Signal;
+use core::ffi::c_int;
+use macros::syscall;
 
-/// The implementation of the `rt_sigaction` syscall.
-pub fn rt_sigaction(regs: &Regs) -> Result<i32, Errno> {
-	let signum = regs.ebx as i32;
-	let act: SyscallPtr<SigAction> = (regs.ecx as usize).into();
-	let oldact: SyscallPtr<SigAction> = (regs.edx as usize).into();
-
+#[syscall]
+pub fn rt_sigaction(
+	signum: c_int,
+	act: SyscallPtr<SigAction>,
+	oldact: SyscallPtr<SigAction>,
+) -> Result<i32, Errno> {
 	let signal = Signal::from_id(signum as _)?;
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let mut proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
 	// Save the old structure
-	if let Some(oldact) = oldact.get_mut(&mem_space_guard)? {
+	if let Some(oldact) = oldact.get_mut(&mut mem_space_guard)? {
 		let action = proc.get_signal_handler(&signal).get_action();
 		*oldact = action;
 	}

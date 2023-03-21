@@ -1,12 +1,13 @@
 //! The `clone` system call creates a child process.
 
+use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
-use crate::process::user_desc::UserDesc;
 use crate::process::ForkOptions;
 use crate::process::Process;
-use core::ffi::c_void;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::scheduler;
+use crate::process::user_desc::UserDesc;
+use macros::syscall;
 
 /// TODO doc
 const CLONE_IO: i32 = -0x80000000;
@@ -14,9 +15,11 @@ const CLONE_IO: i32 = -0x80000000;
 const CLONE_VM: i32 = 0x100;
 /// TODO doc
 const CLONE_FS: i32 = 0x200;
-/// If specified, the parent and child processes share the same file descriptors table.
+/// If specified, the parent and child processes share the same file descriptors
+/// table.
 const CLONE_FILES: i32 = 0x400;
-/// If specified, the parent and child processes share the same signal handlers table.
+/// If specified, the parent and child processes share the same signal handlers
+/// table.
 const CLONE_SIGHAND: i32 = 0x800;
 /// TODO doc
 const CLONE_PIDFD: i32 = 0x1000;
@@ -57,22 +60,22 @@ const CLONE_NEWPID: i32 = 0x20000000;
 /// TODO doc
 const CLONE_NEWNET: i32 = 0x40000000;
 
-/// The implementation of the `clone` syscall.
-pub fn clone(regs: &Regs) -> Result<i32, Errno> {
-	let flags = regs.ebx as i32;
-	let stack = regs.ecx as *mut c_void;
-	let _parent_tid: SyscallPtr<i32> = (regs.edx as usize).into();
-	let tls = regs.esi as i32;
-	let _child_tid: SyscallPtr<i32> = (regs.edi as usize).into();
-
+// TODO Check args types
+#[syscall]
+pub fn clone(
+	flags: i32,
+	stack: *mut c_void,
+	_parent_tid: SyscallPtr<i32>,
+	tls: i32,
+	_child_tid: SyscallPtr<i32>,
+) -> Result<i32, Errno> {
 	let new_tid = {
 		// The current process
 		let curr_mutex = Process::get_current().unwrap();
 		// A weak pointer to the new process's parent
 		let parent = curr_mutex.new_weak();
 
-		let curr_guard = curr_mutex.lock();
-		let curr_proc = curr_guard.get_mut();
+		let mut curr_proc = curr_mutex.lock();
 
 		if flags & CLONE_PARENT_SETTID != 0 {
 			// TODO
@@ -87,8 +90,7 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 			vfork: flags & CLONE_VFORK != 0,
 		};
 		let new_mutex = curr_proc.fork(parent, fork_options)?;
-		let new_guard = new_mutex.lock();
-		let new_proc = new_guard.get_mut();
+		let mut new_proc = new_mutex.lock();
 
 		// Setting the process's registers
 		let mut new_regs = regs.clone();
@@ -122,9 +124,11 @@ pub fn clone(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	if flags & CLONE_VFORK != 0 {
-		// Letting another process run instead of the current. Because the current process must now
-		// wait for the child process to terminate or execute a program
-		crate::wait();
+		// Letting another process run instead of the current. Because the current
+		// process must now wait for the child process to terminate or execute a program
+		unsafe {
+			scheduler::end_tick();
+		}
 	}
 
 	Ok(new_tid as _)

@@ -1,27 +1,31 @@
-//! This module handles filesystems. Every filesystems are unified by the Virtual FileSystem (VFS).
-//! The root filesystem is passed to the kernel as an argument when booting. Other filesystems are
-//! mounted into subdirectories.
+//! This module handles filesystems. Every filesystems are unified by the
+//! Virtual FileSystem (VFS).
+//!
+//! The root filesystem is passed to the kernel as an argument when booting.
+//! Other filesystems are mounted into subdirectories.
 
+pub mod blocking;
+pub mod buffer;
 pub mod fd;
 pub mod fs;
+pub mod mapping;
 pub mod mountpoint;
 pub mod open_file;
 pub mod path;
-pub mod pipe;
-pub mod socket;
 pub mod util;
 pub mod vfs;
 
-use core::cmp::max;
 use core::ffi::c_void;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::device;
 use crate::errno::Errno;
 use crate::errno;
-use crate::file::mountpoint::MountPoint;
-use crate::file::mountpoint::MountSource;
-use crate::file::vfs::VFS;
+use crate::file::buffer::pipe::PipeBuffer;
+use crate::file::buffer::socket::Socket;
+use crate::file::fs::Filesystem;
 use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::time;
@@ -31,7 +35,11 @@ use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use mountpoint::MountPoint;
+use mountpoint::MountSource;
+use open_file::OpenFile;
 use path::Path;
+use vfs::VFS;
 
 /// Type representing a user ID.
 pub type Uid = u16;
@@ -132,7 +140,8 @@ pub enum FileType {
 
 impl FileType {
 	/// Returns the type corresponding to the given mode `mode`.
-	/// If the type doesn't exist, the function returns None.
+	///
+	/// If the type doesn't exist, the function returns `None`.
 	pub fn from_mode(mode: Mode) -> Option<Self> {
 		match mode & 0o770000 {
 			S_IFSOCK => Some(Self::Socket),
@@ -174,20 +183,52 @@ impl FileType {
 	}
 }
 
-/// Structure representing the location of a file on a disk.
+/// The location of a file on a disk.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FileLocation {
-	/// The ID of the mountpoint of the file.
-	pub mountpoint_id: Option<u32>,
+pub enum FileLocation {
+	/// The file is located on a filesystem.
+	Filesystem {
+		/// The ID of the mountpoint of the file.
+		mountpoint_id: Option<u32>,
+		/// The file's inode.
+		inode: INode,
+	},
 
-	/// The file's inode.
-	pub inode: INode,
+	/// The file is not located on a filesystem.
+	Virtual {
+		/// The ID of the file.
+		id: u32,
+	},
 }
 
 impl FileLocation {
-	/// Returns the mountpoint associated with the file's location.
+	/// Returns the ID of the mountpoint.
+	pub fn get_mountpoint_id(&self) -> Option<u32> {
+		match self {
+			Self::Filesystem {
+				mountpoint_id,
+				..
+			} => mountpoint_id.clone(),
+
+			_ => None,
+		}
+	}
+
+	/// Returns the mountpoint.
 	pub fn get_mountpoint(&self) -> Option<SharedPtr<MountPoint>> {
-		mountpoint::from_id(self.mountpoint_id?)
+		mountpoint::from_id(self.get_mountpoint_id()?)
+	}
+
+	/// Returns the inode.
+	pub fn get_inode(&self) -> INode {
+		match self {
+			Self::Filesystem {
+				inode,
+				..
+			} => *inode,
+
+			Self::Virtual { id } => *id as _,
+		}
 	}
 }
 
@@ -214,8 +255,10 @@ impl FailableClone for DirEntry {
 pub enum FileContent {
 	/// The file is a regular file. No data.
 	Regular,
-	/// The file is a directory. The hashmap contains the list of entries. The key is the name of
-	/// the entry and the value is the entry itself.
+	/// The file is a directory.
+	///
+	/// The hashmap contains the list of entries. The key is the name of the entry and the value is
+	/// the entry itself.
 	Directory(HashMap<String, DirEntry>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
@@ -240,8 +283,12 @@ impl FileContent {
 			Self::Link(_) => FileType::Link,
 			Self::Fifo => FileType::Fifo,
 			Self::Socket => FileType::Socket,
-			Self::BlockDevice { .. } => FileType::BlockDevice,
-			Self::CharDevice { .. } => FileType::CharDevice,
+			Self::BlockDevice {
+				..
+			} => FileType::BlockDevice,
+			Self::CharDevice {
+				..
+			} => FileType::CharDevice,
 		}
 	}
 }
@@ -255,12 +302,18 @@ impl FailableClone for FileContent {
 			Self::Fifo => Self::Fifo,
 			Self::Socket => Self::Socket,
 
-			Self::BlockDevice { major, minor } => Self::BlockDevice {
+			Self::BlockDevice {
+				major,
+				minor,
+			} => Self::BlockDevice {
 				major: *major,
 				minor: *minor,
 			},
 
-			Self::CharDevice { major, minor } => Self::CharDevice {
+			Self::CharDevice {
+				major,
+				minor,
+			} => Self::CharDevice {
 				major: *major,
 				minor: *minor,
 			},
@@ -294,30 +347,29 @@ pub struct File {
 	mode: Mode,
 
 	/// Timestamp of the last modification of the metadata.
-	ctime: Timestamp,
+	pub ctime: Timestamp,
 	/// Timestamp of the last modification of the file.
-	mtime: Timestamp,
+	pub mtime: Timestamp,
 	/// Timestamp of the last access to the file.
-	atime: Timestamp,
+	pub atime: Timestamp,
 
 	/// The location the file is stored on.
 	location: FileLocation,
 	/// The content of the file.
 	content: FileContent,
-
-	/// The number of locations where this file being is used. If non-zero, the file is considered
-	/// busy.
-	ref_count: usize,
 }
 
 impl File {
 	/// Creates a new instance.
-	/// `name` is the name of the file.
-	/// `uid` is the id of the owner user.
-	/// `gid` is the id of the owner group.
-	/// `mode` is the permission of the file.
-	/// `location` is the location of the file.
-	/// `content` is the content of the file. This value also determines the file type.
+	///
+	/// Arguments:
+	/// - `name` is the name of the file.
+	/// - `uid` is the id of the owner user.
+	/// - `gid` is the id of the owner group.
+	/// - `mode` is the permission of the file.
+	/// - `location` is the location of the file.
+	/// - `content` is the content of the file. This value also determines the
+	/// file type.
 	fn new(
 		name: String,
 		uid: Uid,
@@ -347,8 +399,6 @@ impl File {
 
 			location,
 			content,
-
-			ref_count: 0,
 		})
 	}
 
@@ -373,6 +423,7 @@ impl File {
 	}
 
 	/// Sets the file's parent path.
+	///
 	/// If the path isn't absolute, the behaviour is undefined.
 	pub fn set_parent_path(&mut self, parent_path: Path) {
 		self.parent_path = parent_path;
@@ -449,7 +500,8 @@ impl File {
 		self.ctime = timestamp;
 	}
 
-	/// Returns an immutable reference to the location at which the file is stored.
+	/// Returns an immutable reference to the location at which the file is
+	/// stored.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location
 	}
@@ -513,37 +565,8 @@ impl File {
 		self.ctime = timestamp;
 	}
 
-	/// Returns the timestamp of the last modification of the file's metadata.
-	pub fn get_ctime(&self) -> Timestamp {
-		self.ctime
-	}
-
-	/// Sets the timestamp of the last modification of the file's metadata.
-	pub fn set_ctime(&mut self, ctime: Timestamp) {
-		self.ctime = ctime;
-	}
-
-	/// Returns the timestamp of the last modification to the file.
-	pub fn get_mtime(&self) -> Timestamp {
-		self.mtime
-	}
-
-	/// Sets the timestamp of the last modification to the file.
-	pub fn set_mtime(&mut self, mtime: Timestamp) {
-		self.mtime = mtime;
-	}
-
-	/// Returns the timestamp of the last access to the file.
-	pub fn get_atime(&self) -> Timestamp {
-		self.atime
-	}
-
-	/// Sets the timestamp of the last access to the file.
-	pub fn set_atime(&mut self, atime: Timestamp) {
-		self.atime = atime;
-	}
-
 	/// Tells whether the directory is empty or not.
+	///
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn is_empty_directory(&self) -> Result<bool, Errno> {
 		if let FileContent::Directory(entries) = &self.content {
@@ -554,7 +577,10 @@ impl File {
 	}
 
 	/// Adds the directory entry `entry` to the current directory's entries.
-	/// `name` is the name of the entry.
+	///
+	/// Arguments:
+	/// - `name` is the name of the entry.
+	///
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn add_entry(&mut self, name: String, entry: DirEntry) -> Result<(), Errno> {
 		if let FileContent::Directory(entries) = &mut self.content {
@@ -566,6 +592,7 @@ impl File {
 	}
 
 	/// Removes the file with name `name` from the current file's entries.
+	///
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn remove_entry(&mut self, name: &String) -> Result<(), Errno> {
 		if let FileContent::Directory(entries) = &mut self.content {
@@ -579,7 +606,7 @@ impl File {
 	/// Creates a directory entry corresponding to the current file.
 	pub fn to_dir_entry(&self) -> DirEntry {
 		DirEntry {
-			inode: self.location.inode,
+			inode: self.location.get_inode(),
 			entry_type: self.get_type(),
 		}
 	}
@@ -595,13 +622,15 @@ impl File {
 	}
 
 	/// Performs an ioctl operation on the file.
-	/// `mem_space` is the memory space on which pointers are to be dereferenced.
-	/// `request` is the ID of the request to perform.
-	/// `argp` is a pointer to the argument.
+	///
+	/// Arguments:
+	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
+	/// - `request` is the ID of the request to perform.
+	/// - `argp` is a pointer to the argument.
 	pub fn ioctl(
 		&mut self,
 		mem_space: IntSharedPtr<MemSpace>,
-		request: u32,
+		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		match &self.content {
@@ -610,110 +639,150 @@ impl File {
 			FileContent::Link(_target) => Err(errno!(EINVAL)),
 
 			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
+				let buff_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				let mut buff = buff_mutex.lock();
 
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
-				pipe.ioctl(mem_space, request, argp)
+				buff.ioctl(mem_space, request, argp)
 			}
 
 			FileContent::Socket => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
+				let buff_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
+				let mut buff = buff_mutex.lock();
 
-				let sock_mutex = vfs.get_named_socket(self.get_location())?;
-				let sock_guard = sock_mutex.lock();
-				let _sock = sock_guard.get_mut();
-
-				// TODO
-				todo!();
+				buff.ioctl(mem_space, request, argp)
 			}
 
-			// TODO Check if correct
-			FileContent::BlockDevice { .. } => Err(errno!(ENOTTY)),
+			FileContent::BlockDevice {
+				major,
+				minor,
+			} => {
+				let dev_mutex = device::get(&DeviceID {
+					type_: DeviceType::Block,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
 
-			FileContent::CharDevice { major, minor } => {
-				let dev = device::get_device(DeviceType::Char, *major, *minor)
-					.ok_or_else(|| errno!(ENODEV))?;
-				let guard = dev.lock();
-				guard.get_mut().get_handle().ioctl(mem_space, request, argp)
+				let mut dev = dev_mutex.lock();
+				dev.get_handle().ioctl(mem_space, request, argp)
 			},
-		}
-	}
 
-	/// Increments the number of times the file is open.
-	/// `write` tells whether the file is open with write permission.
-	pub fn increment_open(&mut self, write: bool) -> Result<(), Errno> {
-		self.ref_count += 1;
+			FileContent::CharDevice {
+				major,
+				minor,
+			} => {
+				let dev_mutex = device::get(&DeviceID {
+					type_: DeviceType::Char,
+					major: *major,
+					minor: *minor,
+				}).ok_or_else(|| errno!(ENODEV))?;
 
-		// If the file is a pipe, update the number of ends
-		match self.content {
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
-
-				pipe.increment_open(write);
+				let mut dev = dev_mutex.lock();
+				dev.get_handle().ioctl(mem_space, request, argp)
 			}
-
-			_ => {}
-		}
-
-		Ok(())
-	}
-
-	/// Decrements the number of times the file is open.
-	/// `write` tells whether the file is open with write permission.
-	pub fn decrement_open(&mut self, write: bool) {
-		self.ref_count -= 1;
-
-		// If the file is a pipe, update the number of ends
-		match self.content {
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				// `unwrap` shouldn't fail since the pipe is supposed to already be allocated
-				let pipe_mutex = vfs.get_named_fifo(self.get_location()).unwrap();
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
-
-				pipe.decrement_open(write);
-			}
-
-			_ => {}
 		}
 	}
 
 	/// Tells whether the file is busy.
 	pub fn is_busy(&self) -> bool {
-		self.ref_count > 0
+		OpenFile::get(&self.location).is_some()
 	}
 
 	/// Synchronizes the file with the device.
+	///
+	/// If no device is associated with the file, the function does nothing.
 	pub fn sync(&self) -> Result<(), Errno> {
-		let mountpoint_mutex = self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-		let mountpoint_guard = mountpoint_mutex.lock();
-		let mountpoint = mountpoint_guard.get_mut();
+		if let Some(mountpoint_mutex) = self.location.get_mountpoint() {
+			let mountpoint = mountpoint_mutex.lock();
 
-		let io_mutex = mountpoint.get_source().get_io()?;
-		let io_guard = io_mutex.lock();
-		let io = io_guard.get_mut();
+			let io_mutex = mountpoint.get_source().get_io()?;
+			let mut io = io_mutex.lock();
 
-		let fs_mutex = mountpoint.get_filesystem();
-		let fs_guard = fs_mutex.lock();
-		let fs = fs_guard.get_mut();
+			let fs_mutex = mountpoint.get_filesystem();
+			let mut fs = fs_mutex.lock();
 
-		fs.update_inode(io, self)
+			fs.update_inode(&mut *io, self)
+		} else {
+			Ok(())
+		}
+	}
+
+	/// Wrapper for I/O operations on files.
+	///
+	/// For the current file, the function takes a closure which provides the following arguments:
+	/// - The I/O interface to write the file, if any.
+	/// - The filesystem of the file, if any.
+	fn io_op<R, F>(&self, f: F)-> Result<R, Errno>
+		where F: FnOnce(
+			Option<SharedPtr<dyn IO>>,
+			Option<(SharedPtr<dyn Filesystem>, INode)>
+		) -> Result<R, Errno> {
+		match &self.content {
+			FileContent::Regular => match self.location {
+				FileLocation::Filesystem {
+					inode,
+					..
+				} => {
+					let (io, fs) = {
+						let mountpoint_mutex = self.location.get_mountpoint()
+							.ok_or_else(|| errno!(EIO))?;
+						let mountpoint = mountpoint_mutex.lock();
+
+						let io = mountpoint.get_source().get_io()?;
+						let fs = mountpoint.get_filesystem();
+
+						(io, fs)
+					};
+
+					f(Some(io), Some((fs, inode)))
+				},
+
+				FileLocation::Virtual { .. } => {
+					let io = buffer::get(&self.location)
+						.map(|io| io as _);
+					f(io, None)
+				},
+			}
+
+			FileContent::Directory(_) => Err(errno!(EISDIR)),
+
+			FileContent::Link(_) => Err(errno!(EINVAL)),
+
+			FileContent::Fifo => {
+				let io = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				f(Some(io as _), None)
+			},
+
+			FileContent::Socket => {
+				let io = buffer::get_or_default::<Socket>(self.get_location())?;
+				f(Some(io as _), None)
+			},
+
+			FileContent::BlockDevice {
+				major,
+				minor,
+			} => {
+				let io = device::get(&DeviceID {
+					type_: DeviceType::Block,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
+
+				f(Some(io as _), None)
+			},
+
+			FileContent::CharDevice {
+				major,
+				minor,
+			} => {
+				let io = device::get(&DeviceID {
+					type_: DeviceType::Char,
+					major: *major,
+					minor: *minor
+				}).ok_or_else(|| errno!(ENODEV))?;
+
+				f(Some(io as _), None)
+			}
+		}
 	}
 }
 
@@ -723,244 +792,73 @@ impl IO for File {
 	}
 
 	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		match &self.content {
-			FileContent::Regular => {
-				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex =
-						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-					let mountpoint_guard = mountpoint_mutex.lock();
-					let mountpoint = mountpoint_guard.get_mut();
+		self.io_op(|io, fs| {
+			let Some(io_mutex) = io else {
+				return Ok((0, true));
+			};
 
-					let io_mutex = mountpoint.get_source().get_io()?;
-					let fs_mutex = mountpoint.get_filesystem();
-					(io_mutex, fs_mutex)
-				};
+			let mut io = io_mutex.lock();
 
-				let io_guard = io_mutex.lock();
-				let io = io_guard.get_mut();
-
-				let fs_guard = fs_mutex.lock();
-				let fs = fs_guard.get_mut();
-
-				fs.read_node(io, self.location.inode, off, buff)
+			if let Some((fs_mutex, inode)) = fs {
+				let mut fs = fs_mutex.lock();
+				fs.read_node(&mut *io, inode, off, buff)
+			} else {
+				io.read(off, buff)
 			}
-
-			FileContent::Directory(_) => Err(errno!(EISDIR)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
-				pipe.read(off as _, buff)
-			}
-
-			FileContent::Socket => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let sock_mutex = vfs.get_named_socket(self.get_location())?;
-				let sock_guard = sock_mutex.lock();
-				let _sock = sock_guard.get_mut();
-
-				// TODO
-				todo!();
-			}
-
-			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
-				let dev = match self.content {
-					FileContent::BlockDevice { major, minor } => {
-						device::get_device(DeviceType::Block, major, minor)
-					}
-
-					FileContent::CharDevice { major, minor } => {
-						device::get_device(DeviceType::Char, major, minor)
-					}
-
-					_ => unreachable!(),
-				}
-				.ok_or_else(|| errno!(ENODEV))?;
-
-				let guard = dev.lock();
-				guard.get_mut().get_handle().read(off as _, buff)
-			}
-		}
+		})
 	}
 
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
-		match &self.content {
-			FileContent::Regular => {
-				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex =
-						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-					let mountpoint_guard = mountpoint_mutex.lock();
-					let mountpoint = mountpoint_guard.get_mut();
+		self.io_op(|io, fs| {
+			let Some(io_mutex) = io else {
+				return Ok(0);
+			};
 
-					let io_mutex = mountpoint.get_source().get_io()?;
-					let fs_mutex = mountpoint.get_filesystem();
-					(io_mutex, fs_mutex)
-				};
+			let mut io = io_mutex.lock();
 
-				let io_guard = io_mutex.lock();
-				let io = io_guard.get_mut();
-
-				let fs_guard = fs_mutex.lock();
-				let fs = fs_guard.get_mut();
-
-				fs.write_node(io, self.location.inode, off, buff)?;
-
-				self.size = max(off + buff.len() as u64, self.size);
+			if let Some((fs_mutex, inode)) = fs {
+				let mut fs = fs_mutex.lock();
+				fs.write_node(&mut *io, inode, off, buff)?;
 				Ok(buff.len() as _)
+			} else {
+				io.write(off, buff)
 			}
-
-			FileContent::Directory(_) => Err(errno!(EISDIR)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
-				pipe.write(off as _, buff)
-			}
-
-			FileContent::Socket => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let sock_mutex = vfs.get_named_socket(self.get_location())?;
-				let sock_guard = sock_mutex.lock();
-				let _sock = sock_guard.get_mut();
-
-				// TODO
-				todo!();
-			}
-
-			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
-				let dev = match self.content {
-					FileContent::BlockDevice { major, minor } => {
-						device::get_device(DeviceType::Block, major, minor)
-					}
-
-					FileContent::CharDevice { major, minor } => {
-						device::get_device(DeviceType::Char, major, minor)
-					}
-
-					_ => unreachable!(),
-				}
-				.ok_or_else(|| errno!(ENODEV))?;
-
-				let guard = dev.lock();
-				guard.get_mut().get_handle().write(off as _, buff)
-			}
-		}
+		})
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
-		match &self.content {
-			FileContent::Regular => {
-				let (io_mutex, fs_mutex) = {
-					let mountpoint_mutex =
-						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-					let mountpoint_guard = mountpoint_mutex.lock();
-					let mountpoint = mountpoint_guard.get_mut();
+		self.io_op(|io, _| {
+			let Some(io_mutex) = io else {
+				return Ok(0);
+			};
 
-					let io_mutex = mountpoint.get_source().get_io()?;
-					let fs_mutex = mountpoint.get_filesystem();
-					(io_mutex, fs_mutex)
-				};
-
-				let io_guard = io_mutex.lock();
-				let _io = io_guard.get_mut();
-
-				let fs_guard = fs_mutex.lock();
-				let _fs = fs_guard.get_mut();
-
-				// TODO
-				todo!();
-			}
-
-			FileContent::Directory(_) => Err(errno!(EISDIR)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let pipe_mutex = vfs.get_named_fifo(self.get_location())?;
-				let pipe_guard = pipe_mutex.lock();
-				let pipe = pipe_guard.get_mut();
-				pipe.poll(mask)
-			}
-
-			FileContent::Socket => {
-				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
-
-				let sock_mutex = vfs.get_named_socket(self.get_location())?;
-				let sock_guard = sock_mutex.lock();
-				let _sock = sock_guard.get_mut();
-
-				// TODO
-				todo!();
-			}
-
-			FileContent::BlockDevice { .. } | FileContent::CharDevice { .. } => {
-				let dev = match self.content {
-					FileContent::BlockDevice { major, minor } => {
-						device::get_device(DeviceType::Block, major, minor)
-					}
-
-					FileContent::CharDevice { major, minor } => {
-						device::get_device(DeviceType::Char, major, minor)
-					}
-
-					_ => unreachable!(),
-				}
-				.ok_or_else(|| errno!(ENODEV))?;
-
-				let guard = dev.lock();
-				guard.get_mut().get_handle().poll(mask)
-			}
-		}
+			let mut io = io_mutex.lock();
+			io.poll(mask)
+		})
 	}
 }
 
 /// Initializes files management.
-/// `root_device_type` is the type of the root device file. If not a device, the behaviour is
-/// undefined.
-/// `root_major` is the major number of the device at the root of the VFS.
-/// `root_minor` is the minor number of the device at the root of the VFS.
-pub fn init(root_device_type: DeviceType, root_major: u32, root_minor: u32) -> Result<(), Errno> {
+///
+/// `root` is the set of major and minor numbers of the root device. If `None`, a tmpfs is used.
+pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	fs::register_defaults()?;
 
 	// Creating the root mountpoint
-	let mount_source = MountSource::Device {
-		dev_type: root_device_type,
+	let mount_source = match root {
+		Some((major, minor)) => MountSource::Device {
+			dev_type: DeviceType::Block,
 
-		major: root_major,
-		minor: root_minor,
+			major,
+			minor,
+		},
+
+		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
 	mountpoint::create(mount_source, None, 0, Path::root())?;
 
 	// Initializing the VFS
-	let vfs = VFS::new()?;
-	let guard = vfs::get().lock();
-	*guard.get_mut() = Some(vfs);
+	*vfs::get().lock() = Some(VFS::new());
 
 	Ok(())
 }

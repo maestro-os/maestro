@@ -1,6 +1,7 @@
 //! This module implements program execution.
 
 pub mod elf;
+pub mod vdso;
 
 use core::ffi::c_void;
 use crate::errno::Errno;
@@ -14,6 +15,7 @@ use crate::process::signal::SignalHandler;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::SharedPtr;
 
 /// Structure storing informations to prepare a program image to be executed.
 pub struct ExecInfo {
@@ -52,8 +54,8 @@ pub struct ProgramImage {
 	kernel_stack: *const c_void,
 }
 
-/// Trait representing a program executor, whose role is to load a program and to preprare it for
-/// execution.
+/// Trait representing a program executor, whose role is to load a program and
+/// to preprare it for execution.
 pub trait Executor {
 	/// Builds a program image.
 	/// `file` is the program's file.
@@ -61,10 +63,13 @@ pub trait Executor {
 }
 
 /// Builds a program image from the given executable file.
-/// `file` is the program's file.
-/// `info` is the set execution informations for the program.
-/// The function returns a memory space containing the program image and the pointer to the entry
-/// point.
+///
+/// Arguments:
+/// - `file` is the program's file.
+/// - `info` is the set execution informations for the program.
+///
+/// The function returns a memory space containing the program image and the
+/// pointer to the entry point.
 pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errno> {
 	// TODO Support other formats than ELF (wasm?)
 
@@ -74,13 +79,24 @@ pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errn
 
 /// Executes the program image `image` on the process `proc`.
 pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
-	proc.set_argv(image.argv);
+	proc.argv = image.argv;
 	// TODO Set exec path
 
-	// Duplicate file descriptors
-	proc.duplicate_fds()?; // TODO Undo on fail
+	// Duplicate file descriptor table
+	let fds = proc.get_fds()
+		.map(|fds_mutex| {
+			let fds = fds_mutex.lock();
+			let new_fds = fds.duplicate(true)?;
+
+			SharedPtr::new(new_fds)
+		})
+		.transpose()?;
+
 	// Setting the new memory space to the process
 	proc.set_mem_space(Some(IntSharedPtr::new(image.mem_space)?));
+
+	// Set new file descriptor table
+	proc.set_fds(fds);
 
 	// Setting the process's stacks
 	proc.user_stack = Some(image.user_stack);
@@ -90,8 +106,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
 	// Resetting signals
 	proc.sigmask.clear_all();
 	{
-		let handlers_guard = proc.signal_handlers.lock();
-		let handlers = handlers_guard.get_mut();
+		let mut handlers = proc.signal_handlers.lock();
 
 		for i in 0..handlers.len() {
 			handlers[i] = SignalHandler::Default;

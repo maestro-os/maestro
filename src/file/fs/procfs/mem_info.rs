@@ -1,5 +1,5 @@
-//! This module implements the meminfo node, allowing to retrieve informations about memory usage
-//! of the system.
+//! This module implements the meminfo node, allowing to retrieve informations
+//! about memory usage of the system.
 
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::KernFSNode;
@@ -34,8 +34,7 @@ impl IO for MemInfo {
 		}
 
 		// Generating content
-		let mem_info_guard = memory::stats::MEM_INFO.lock();
-		let mem_info = mem_info_guard.get();
+		let mem_info = memory::stats::MEM_INFO.lock();
 		let content = mem_info.to_string()?;
 
 		// Copying content to userspace buffer

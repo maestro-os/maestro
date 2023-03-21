@@ -54,6 +54,8 @@ CONFIG_ARCH := $(shell $(CONFIG_ATTR_SCRIPT) GENERAL_ARCH)
 CONFIG_DEBUG := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_DEBUG)
 # Tells whether to compile for unit testing
 CONFIG_DEBUG_TEST := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_TEST)
+# Tells whether to compile with the strace feature
+CONFIG_DEBUG_STRACE := $(shell $(CONFIG_ATTR_SCRIPT) DEBUG_STRACE)
 
 
 
@@ -111,9 +113,6 @@ DIRS := $(shell find $(SRC_DIR) -type d)
 # The list of object directories
 OBJ_DIRS := $(patsubst $(SRC_DIR)%, $(OBJ_DIR)%, $(DIRS))
 
-# The list of all sources to compile
-SRC := $(ASM_SRC) $(C_SRC)
-
 # The list of assembly objects
 ASM_OBJ := $(patsubst $(SRC_DIR)%.s, $(OBJ_DIR)%.s.o, $(ASM_SRC))
 # The list of C language objects
@@ -125,22 +124,28 @@ OBJ := $(ASM_OBJ) $(C_OBJ)
 # Cargo
 CARGO = cargo +nightly
 # Cargo flags
-CARGOFLAGS = --verbose --target $(TARGET)
+CARGOFLAGS = --verbose -Zbuild-std=core --target $(TARGET)
 ifeq ($(CONFIG_DEBUG), false)
 CARGOFLAGS += --release
 endif
 ifeq ($(CONFIG_DEBUG_TEST), true)
 CARGOFLAGS += --tests
 endif
+ifeq ($(CONFIG_DEBUG_STRACE), true)
+CARGOFLAGS += --features strace
+endif
 
 # The Rust language compiler flags
-RUSTFLAGS = -Zmacro-backtrace $(CONFIG_ARGS) #-Zsymbol-mangling-version=v0 
+RUSTFLAGS = -Zmacro-backtrace $(CONFIG_ARGS)
 ifeq ($(CONFIG_DEBUG), true)
 RUSTFLAGS += -Cforce-frame-pointers=y -Cdebuginfo=2
 endif
 
 # The list of Rust language source files
 RUST_SRC := $(shell find $(SRC_DIR) -type f -name "*.rs")
+
+# The list of all sources to compile
+SRC := $(ASM_SRC) $(C_SRC) $(RUST_SRC)
 
 
 
@@ -160,30 +165,45 @@ DOC_DIR = doc/book/
 
 
 ifeq ($(CONFIG_EXISTS), 0)
- ifneq ($(CONFIG_DEBUG_TEST), true)
-# The rule to compile everything
-all: $(NAME) iso doc
+# The rule to compile the kernel image
+$(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
+	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
+ ifeq ($(CONFIG_DEBUG_TEST), false)
+  ifeq ($(CONFIG_DEBUG), false)
+	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
+  else
+	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
+  endif
  else
-# The rule to compile everything
-all: $(NAME) iso
+	cp `find target/target/debug/deps/ -name 'kernel-*' -executable` maestro
  endif
 
+ ifeq ($(CONFIG_DEBUG_TEST), false)
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS) --document-private-items
 	mdbook build doc/
 	rm -rf $(DOC_DIR)/references/
 	cp -r target/target/doc/ $(DOC_DIR)/references/
+
+all: iso doc
+ else
+doc:
+	echo "Documentation cannot be built when building unit tests"
+
+.SILENT: doc
+
+all: iso
+ endif
 else
-noconfig:
-	echo "File $(CONFIG_FILE) doesn't exist. Use \`make config\` to create it"
+noconf:
+	echo "File $(CONFIG_FILE) doesn't exist. Create it from file `default.config`"
 	false
 
-all: noconfig
-doc: noconfig
+doc: noconf
 
-.PHONY: noconfig
-.SILENT: noconfig
+.PHONY: noconf
+.SILENT: noconf doc
 endif
 
 .PHONY: all doc
@@ -201,7 +221,7 @@ $(OBJ_DIRS):
 	mkdir -p $(OBJ_DIRS)
 
 # The rule to build the library
-$(LIB_NAME): $(OBJ_DIRS) $(OBJ)
+$(LIB_NAME): vdso.so $(OBJ_DIRS) $(OBJ)
 	$(AR) $(ARFLAGS) $@ $(OBJ)
 
 # The rule to compile assembly objects
@@ -211,19 +231,6 @@ $(OBJ_DIR)%.s.o: $(SRC_DIR)%.s $(HDR) $(TOUCH_UPDATE_FILES)
 # The rule to compile C language objects
 $(OBJ_DIR)%.c.o: $(SRC_DIR)%.c $(HDR) $(TOUCH_UPDATE_FILES)
 	$(CC) $(CFLAGS) -I $(SRC_DIR) -c $< -o $@
-
-# The rule to compile the kernel image
-$(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
-	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
-ifeq ($(CONFIG_DEBUG_TEST), false)
- ifeq ($(CONFIG_DEBUG), false)
-	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
- else
-	$(CC) $(CFLAGS) -o $(NAME) target/target/debug/libkernel.a -T$(LINKER)
- endif
-else
-	cp `find target/target/debug/deps/ -name 'kernel-*' -executable` maestro
-endif
 
 # Alias for $(NAME).iso
 iso: $(NAME).iso
@@ -239,7 +246,23 @@ $(NAME).iso: $(NAME) grub.cfg
 clippy:
 	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
 
+# Updates the tags file
+tags: $(SRC)
+	ctags --languages=+rust $(SRC)
+
 .PHONY: iso clippy
+
+
+
+# ------------------------------------------------------------------------------
+#    Kernel compilation
+# ------------------------------------------------------------------------------
+
+
+
+# Compiles the vdso
+vdso.so: Makefile vdso/linker.ld vdso/$(CONFIG_ARCH).s
+	$(CC) -nostdlib -ffreestanding -shared -fPIC -Tvdso/linker.ld -o $@ vdso/$(CONFIG_ARCH).s
 
 
 
@@ -291,50 +314,7 @@ selftest: iso $(QEMU_DISK)
 cputest: iso
 	qemu-system-i386 $(QEMU_FLAGS) -d int,cpu >cpu_out 2>&1
 
-# The rule to test the kernel using Bochs. The configuration for Bochs can be found in the file
-# `.bochsrc`
-bochs: iso
-	bochs
-
-# The rule to run virtualbox
-virtualbox: iso
-	virtualbox
-
-.PHONY: test selftest cputest bochs virtualbox
-
-
-
-# ------------------------------------------------------------------------------
-#    Configuration
-# ------------------------------------------------------------------------------
-
-
-
-# The path of the configuration utility
-CONFIG_UTIL_PATH := config/target/release/config
-# The list of the sources for the configuration utility
-CONFIG_UTIL_SRC := $(shell find config/src/ -type f -name "*.rs")
-# The path where is the configuration utility is build
-CONFIG_UTIL_BUILD_PATH = /tmp/$(NAME)_config
-
-# Builds the configuration utility into a tmp directory.
-$(CONFIG_UTIL_PATH): $(CONFIG_UTIL_SRC)
-	rm -rf $(CONFIG_UTIL_BUILD_PATH)
-	cp -r config/ $(CONFIG_UTIL_BUILD_PATH)
-	cd $(CONFIG_UTIL_BUILD_PATH) && cargo build --release
-	cp -r $(CONFIG_UTIL_BUILD_PATH)/target/ config/target/
-	rm -r $(CONFIG_UTIL_BUILD_PATH)
-
-# Runs the configuration utility to create the configuration file
-$(CONFIG_FILE): $(CONFIG_UTIL_PATH)
-	$(CONFIG_UTIL_PATH)
-	@stat $(CONFIG_FILE) >/dev/null 2>&1 && echo "The configuration file is now ready. You may want to type \
-\`make clean\` before compiling with \`make\`" || true
-
-# Runs the configuration utility to create the configuration file
-config: $(CONFIG_FILE)
-
-.PHONY: config $(CONFIG_FILE)
+.PHONY: test selftest cputest
 
 
 
@@ -354,9 +334,9 @@ clean:
 fclean: clean
 	rm -rf target/
 	rm -f $(NAME)
+	rm -f vdso.so
 	rm -f $(NAME).iso
 	rm -rf $(DOC_DIR)
-	rm -rf config/target/
 
 # The rule to recompile everything
 re: fclean all

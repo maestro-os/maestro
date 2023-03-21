@@ -2,16 +2,14 @@
 
 use super::open;
 use crate::errno::Errno;
-use crate::file;
 use crate::file::open_file;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
+use core::ffi::c_int;
+use macros::syscall;
 
-/// The implementation of the `creat` syscall.
-pub fn creat(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let mode = regs.ecx as file::Mode;
-
+// TODO Check args type
+#[syscall]
+pub fn creat(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	let flags = open_file::O_CREAT | open_file::O_WRONLY | open_file::O_TRUNC;
-	open::open_(pathname, flags, mode)
+	open::open_(pathname, flags, mode as _)
 }

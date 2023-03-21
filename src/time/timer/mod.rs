@@ -17,13 +17,17 @@ pub trait Timer {
 	/// Returns the current frequency of the timer in hertz.
 	fn get_curr_frequency(&self) -> Rational;
 
-	/// Sets the current frequency of the timer in hertz. The timer is approximating the given
-	/// frequency to the closest supported. To get the exact frequency, one should use
-	/// `get_curr_frequency` after setting it.
+	/// Sets the current frequency of the timer in hertz.
+	///
+	/// The timer is approximating the given frequency to the closest supported.
+	///
+	/// To get the exact frequency, one should use `get_curr_frequency` after setting it.
+	///
 	/// If the given frequency is negative, the behaviour is undefined.
 	fn set_curr_frequency(&mut self, frequency: Rational);
 
-	/// Defines the callback which is called each times the timer sends a signal.
+	/// Defines the callback which is called each times the timer sends a
+	/// signal.
 	fn set_callback(&mut self, callback: Box<dyn FnMut()>);
 }
 
@@ -33,8 +37,8 @@ pub trait Tickable {
 	fn tick(&mut self);
 }
 
-/// The frequency divider allows to take as input the signal of a timer and to divide it to target
-/// a lower frequency.
+/// The frequency divider allows to take as input the signal of a timer and to
+/// divide it to target a lower frequency.
 pub struct FrequencyDivider<O: Fn()> {
 	/// The number of signals to count before sending one signal to the output.
 	count: u64,
@@ -56,8 +60,8 @@ impl<O: Fn()> FrequencyDivider<O> {
 		}
 	}
 
-	/// Returns `b` in the formula `a / b = c`, where `a` is the input frequency and `c` is the
-	/// output frequency.
+	/// Returns `b` in the formula `a / b = c`, where `a` is the input frequency
+	/// and `c` is the output frequency.
 	pub fn get_count(&self) -> u64 {
 		self.count
 	}
@@ -80,12 +84,13 @@ struct TickableWrapper {
 
 	/// `frequency` is the object's ticking frequency.
 	frequency: Rational,
-	/// `once` tells whether the object has to be ticked only once. If true, the object will be
-	/// removed right after being ticked.
+	/// Tells whether the object has to be ticked only once. If `true`, the
+	/// object will be removed right after being ticked.
 	once: bool,
 }
 
-/// A structure managing a timer, allowing to link the timer to its tickable objects.
+/// A structure managing a timer, allowing to link the timer to its tickable
+/// objects.
 pub struct TimerManager {
 	/// The timer bound to the current manager.
 	timer: Box<dyn Timer>,
@@ -95,8 +100,9 @@ pub struct TimerManager {
 }
 
 impl TimerManager {
-	/// Creates a new instance with the given timer. The structure will redefine the timer's
-	/// callback.
+	/// Creates a new instance with the given timer.
+	///
+	/// This function will redefine the timer's callback.
 	pub fn new<T: 'static + Timer>(mut timer: T) -> Result<Self, Errno> {
 		timer.set_callback(Box::new(|| {
 			// TODO
@@ -110,10 +116,12 @@ impl TimerManager {
 	}
 
 	/// Registers the given object to be ticked.
-	/// `tickable` is the object to be ticked.
-	/// `frequency` is the object's ticking frequency.
-	/// `once` tells whether the object has to be ticked only once. If true, the object will be
-	/// removed right after being ticked.
+	///
+	/// Arguments:
+	/// - `tickable` is the object to be ticked.
+	/// - `frequency` is the object's ticking frequency.
+	/// - `once` tells whether the object has to be ticked only once. If `true`, the
+	/// - object will be removed right after being ticked.
 	pub fn register_tickable<T: 'static + Tickable>(
 		&mut self,
 		tickable: T,

@@ -1,28 +1,30 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
-use core::cmp::min;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::idt;
 use crate::limits;
-use crate::process::Process;
 use crate::process::iovec::IOVec;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
+use crate::process::mem_space::MemSpace;
 use crate::process::signal::Signal;
+use crate::process::Process;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
+use core::cmp::min;
+use core::ffi::c_int;
+use macros::syscall;
 
 // TODO Handle blocking writes (and thus, EINTR)
 
-// TODO Check the operation is atomic on the file?
-/// Writes the given chunks of files to the file.
-/// `mem_space` is the memory space of the current process.
-/// `iov` is the set of chunks.
-/// `iovcnt` is the number of chunks in `iov`.
-/// `open_file` is the file to write to.
+/// Writes the given chunks to the file.
+///
+/// Arguments:
+/// - `mem_space` is the memory space of the current process.
+/// - `iov` is the set of chunks.
+/// - `iovcnt` is the number of chunks in `iov`.
+/// - `open_file` is the file to write to.
 fn write(
 	mem_space: IntSharedPtr<MemSpace>,
 	iov: SyscallSlice<IOVec>,
@@ -32,7 +34,6 @@ fn write(
 	let mem_space_guard = mem_space.lock();
 	let iov_slice = iov.get(&mem_space_guard, iovcnt)?.ok_or(errno!(EFAULT))?;
 
-	// TODO If total length gets out of bounds, stop
 	let mut total_len = 0;
 
 	for i in iov_slice {
@@ -46,7 +47,7 @@ fn write(
 		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
 
 		if let Some(slice) = ptr.get(&mem_space_guard, l)? {
-			// TODO Handle in a loop like `write`?
+			// TODO Handle in a loop?
 			total_len += open_file.write(0, slice)? as usize;
 		}
 	}
@@ -55,7 +56,13 @@ fn write(
 }
 
 /// Peforms the writev operation.
-/// TODO doc params
+///
+/// Arguments:
+/// - `fd` is the file descriptor.
+/// - `iov` the IO vector.
+/// - `iovcnt` the number of entries in the IO vector.
+/// - `offset` is the offset in the file.
+/// - `flags` is the set of flags.
 pub fn do_writev(
 	fd: i32,
 	iov: SyscallSlice<IOVec>,
@@ -63,26 +70,33 @@ pub fn do_writev(
 	offset: Option<isize>,
 	_flags: Option<i32>,
 ) -> Result<i32, Errno> {
-	// TODO Handle flags
-
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
 	// Checking the size of the vector is in bounds
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
 
+	// TODO Handle flags
+
 	let (mem_space, open_file_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let open_file_mutex = proc.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file();
+
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds = fds_mutex.lock();
+
+		let open_file_mutex = fds.get_fd(fd as _)
+			.ok_or(errno!(EBADF))?
+			.get_open_file()?;
 		(mem_space, open_file_mutex)
 	};
 
 	idt::wrap_disable_interrupts(|| {
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get_mut();
+		let mut open_file = open_file_mutex.lock();
 
 		// The offset to restore on the fd after the write operation
 		let mut prev_off = None;
@@ -98,18 +112,17 @@ pub fn do_writev(
 			}
 		}
 
-		let result = write(mem_space, iov, iovcnt as _, open_file);
+		let result = write(mem_space, iov, iovcnt as _, &mut *open_file);
 		match &result {
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {
-				let mutex = Process::get_current().unwrap();
-				let guard = mutex.lock();
-				let proc = guard.get_mut();
+				let proc_mutex = Process::get_current().unwrap();
+				let mut proc = proc_mutex.lock();
 
 				proc.kill(&Signal::SIGPIPE, false);
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 
 		// Restoring previous offset
@@ -121,11 +134,7 @@ pub fn do_writev(
 	})
 }
 
-/// The implementation of the `writev` syscall.
-pub fn writev(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-	let iov: SyscallSlice<IOVec> = (regs.ecx as usize).into();
-	let iovcnt = regs.edx as i32;
-
+#[syscall]
+pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> Result<i32, Errno> {
 	do_writev(fd, iov, iovcnt, None, None)
 }

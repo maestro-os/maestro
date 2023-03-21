@@ -1,14 +1,15 @@
-//! This module implements the `set_thread_area` system call, which allows to set a TLS area.
+//! This module implements the `set_thread_area` system call, which allows to
+//! set a TLS area.
 
 use crate::errno;
 use crate::errno::Errno;
 use crate::gdt;
 use crate::process;
 use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::regs::Regs;
 use crate::process::user_desc::UserDesc;
 use crate::process::Process;
 use core::mem::size_of;
+use macros::syscall;
 
 /// The index of the first entry for TLS segments in the GDT.
 const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
@@ -25,6 +26,7 @@ pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
 }
 
 /// Returns an entry ID for the given process and entry number.
+///
 /// If the id is `-1`, the function shall find a free entry.
 pub fn get_entry<'a>(
 	proc: &'a mut Process,
@@ -50,22 +52,19 @@ pub fn get_entry<'a>(
 	Ok((id, &mut proc.get_tls_entries()[id]))
 }
 
-/// The implementation of the `set_thread_area` syscall.
-pub fn set_thread_area(regs: &Regs) -> Result<i32, Errno> {
-	let u_info: SyscallPtr<UserDesc> = (regs.ebx as usize).into();
-
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+#[syscall]
+pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
+	let proc_mutex = Process::get_current().unwrap();
+	let mut proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
 	// A reference to the user_desc structure
-	let info = u_info.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let info = u_info.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	// Getting the entry with its id
-	let (id, entry) = get_entry(proc, info.get_entry_number())?;
+	let (id, entry) = get_entry(&mut *proc, info.get_entry_number())?;
 
 	// Updating the entry
 	*entry = info.to_descriptor();

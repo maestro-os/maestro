@@ -1,15 +1,21 @@
-//! When a pointer is passed to the kernel through a system call, the kernel is required to check
-//! the process is allowed to access it to ensure safety. This module implements objets that wrap
-//! pointers in order to check they are accessible.
+//! When a pointer is passed to the kernel through a system call, the kernel is
+//! required to check the process is allowed to access it to ensure safety.
 //!
-//! Those structure are especially useful in the cases where several processes share the same
-//! memory space, making it possible to revoke the access to the pointer while it is being used.
+//! This module implements objets that wrap pointers in order to check they are
+//! accessible.
+//!
+//! Those structure are especially useful in the cases where several processes
+//! share the same memory space, making it possible to revoke the access to the
+//! pointer while it is being used.
 
-use super::MemSpace;
-use crate::errno::Errno;
-use crate::util::lock::MutexGuard;
+use core::fmt;
 use core::mem::size_of;
 use core::slice;
+use crate::errno::Errno;
+use crate::process::Process;
+use crate::util::DisplayableStr;
+use crate::util::lock::MutexGuard;
+use super::MemSpace;
 
 /// Wrapper for a pointer to a simple data.
 pub struct SyscallPtr<T: Sized> {
@@ -19,7 +25,9 @@ pub struct SyscallPtr<T: Sized> {
 
 impl<T: Sized> From<usize> for SyscallPtr<T> {
 	fn from(val: usize) -> Self {
-		Self { ptr: val as _ }
+		Self {
+			ptr: val as _,
+		}
 	}
 }
 
@@ -40,7 +48,9 @@ impl<T: Sized> SyscallPtr<T> {
 	}
 
 	/// Returns an immutable reference to the value of the pointer.
-	/// If the pointer is null, the function returns None.
+	///
+	/// If the pointer is null, the function returns `None`.
+	///
 	/// If the value is not accessible, the function returns an error.
 	pub fn get<'a, const INT: bool>(
 		&self,
@@ -50,10 +60,7 @@ impl<T: Sized> SyscallPtr<T> {
 			return Ok(None);
 		}
 
-		if mem_space
-			.get()
-			.can_access(self.ptr as _, size_of::<T>(), true, false)
-		{
+		if mem_space.can_access(self.ptr as _, size_of::<T>(), true, false) {
 			Ok(Some(unsafe {
 				// Safe because access is checked before
 				&*self.ptr
@@ -64,24 +71,24 @@ impl<T: Sized> SyscallPtr<T> {
 	}
 
 	/// Returns a mutable reference to the value of the pointer.
-	/// If the pointer is null, the function returns None.
+	///
+	/// If the pointer is null, the function returns `None`.
+	///
 	/// If the value is not accessible, the function returns an error.
-	///	If the value is located on lazily allocated pages, the function allocates physical pages in
-	/// order to allow writing.
+	///
+	///	If the value is located on lazily allocated pages, the function
+	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MutexGuard<MemSpace, INT>,
 	) -> Result<Option<&'a mut T>, Errno> {
 		if self.is_null() {
 			return Ok(None);
 		}
 
-		if mem_space
-			.get()
-			.can_access(self.ptr as _, size_of::<T>(), true, true)
-		{
+		if mem_space.can_access(self.ptr as _, size_of::<T>(), true, true) {
 			// Allocating physical pages if necessary
-			mem_space.get_mut().alloc(self.ptr, 1)?;
+			mem_space.alloc(self.ptr, 1)?;
 
 			Ok(Some(unsafe {
 				// Safe because access is checked before
@@ -93,8 +100,29 @@ impl<T: Sized> SyscallPtr<T> {
 	}
 }
 
-/// Wrapper for a slice. Internally, the structure contains only a pointer. The size of the slice
-/// is given when trying to access it.
+impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
+
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space = mem_space_mutex.lock();
+
+		match self.get(&mem_space) {
+			Ok(Some(s)) => write!(fmt, "{:p} = {:?}", self.as_ptr(), s),
+
+			Ok(None) => write!(fmt, "NULL"),
+
+			Err(_) => write!(fmt, "{:p} = (cannot read)", self.as_ptr()),
+		}
+	}
+}
+
+/// Wrapper for a slice.
+///
+/// Internally, the structure contains only a pointer.
+///
+/// The size of the slice is given when trying to access it.
 pub struct SyscallSlice<T: Sized> {
 	/// The pointer.
 	ptr: *mut T,
@@ -102,7 +130,9 @@ pub struct SyscallSlice<T: Sized> {
 
 impl<T: Sized> From<usize> for SyscallSlice<T> {
 	fn from(val: usize) -> Self {
-		Self { ptr: val as _ }
+		Self {
+			ptr: val as _,
+		}
 	}
 }
 
@@ -123,7 +153,9 @@ impl<T: Sized> SyscallSlice<T> {
 	}
 
 	/// Returns an immutable reference to the slice.
+	///
 	/// `len` is the in number of elements in the slice.
+	///
 	/// If the slice is not accessible, the function returns an error.
 	pub fn get<'a, const INT: bool>(
 		&self,
@@ -135,7 +167,7 @@ impl<T: Sized> SyscallSlice<T> {
 		}
 
 		let size = size_of::<T>() * len;
-		if mem_space.get().can_access(self.ptr as _, size, true, false) {
+		if mem_space.can_access(self.ptr as _, size, true, false) {
 			Ok(Some(unsafe {
 				// Safe because access is checked before
 				slice::from_raw_parts(self.ptr, len)
@@ -146,13 +178,16 @@ impl<T: Sized> SyscallSlice<T> {
 	}
 
 	/// Returns a mutable reference to the slice.
+	///
 	/// `len` is the in number of elements in the slice.
+	///
 	/// If the slice is not accessible, the function returns an error.
-	///	If the slice is located on lazily allocated pages, the function allocates physical pages in
-	/// order to allow writing.
+	///
+	///	If the slice is located on lazily allocated pages, the function
+	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MutexGuard<MemSpace, INT>,
 		len: usize,
 	) -> Result<Option<&'a mut [T]>, Errno> {
 		if self.is_null() {
@@ -160,9 +195,9 @@ impl<T: Sized> SyscallSlice<T> {
 		}
 
 		let size = size_of::<T>() * len;
-		if mem_space.get().can_access(self.ptr as _, size, true, true) {
+		if mem_space.can_access(self.ptr as _, size, true, true) {
 			// Allocating physical pages if necessary
-			mem_space.get_mut().alloc(self.ptr as *const u8, len)?;
+			mem_space.alloc(self.ptr as *const u8, len)?;
 
 			Ok(Some(unsafe {
 				// Safe because access is checked before
@@ -170,6 +205,19 @@ impl<T: Sized> SyscallSlice<T> {
 			}))
 		} else {
 			Err(errno!(EFAULT))
+		}
+	}
+}
+
+impl<T: fmt::Debug> fmt::Debug for SyscallSlice<T> {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// TODO Print value? (how to get the length of the slice?)
+		let ptr = self.as_ptr();
+
+		if !ptr.is_null() {
+			write!(fmt, "{:p}", ptr)
+		} else {
+			write!(fmt, "NULL")
 		}
 	}
 }
@@ -182,7 +230,9 @@ pub struct SyscallString {
 
 impl From<usize> for SyscallString {
 	fn from(val: usize) -> Self {
-		Self { ptr: val as _ }
+		Self {
+			ptr: val as _,
+		}
 	}
 }
 
@@ -203,6 +253,7 @@ impl SyscallString {
 	}
 
 	/// Returns an immutable reference to the string.
+	///
 	/// If the string is not accessible, the function returns an error.
 	pub fn get<'a, const INT: bool>(
 		&self,
@@ -212,9 +263,7 @@ impl SyscallString {
 			return Ok(None);
 		}
 
-		let len = mem_space
-			.get()
-			.can_access_string(self.ptr, true, false)
+		let len = mem_space.can_access_string(self.ptr, true, false)
 			.ok_or_else(|| errno!(EFAULT))?;
 		Ok(Some(unsafe {
 			// Safe because access is checked before
@@ -223,28 +272,51 @@ impl SyscallString {
 	}
 
 	/// Returns a mutable reference to the string.
+	///
+	///	If the string is located on lazily allocated pages, the function
+	/// allocates physical pages in order to allow writing.
+	///
 	/// If the string is not accessible, the function returns an error.
-	///	If the string is located on lazily allocated pages, the function allocates physical pages
-	/// in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MutexGuard<MemSpace, INT>,
 	) -> Result<Option<&'a mut [u8]>, Errno> {
 		if self.is_null() {
 			return Ok(None);
 		}
 
-		let len = mem_space
-			.get()
-			.can_access_string(self.ptr, true, true)
+		let len = mem_space.can_access_string(self.ptr, true, true)
 			.ok_or_else(|| errno!(EFAULT))?;
 
 		// Allocating physical pages if necessary
-		mem_space.get_mut().alloc(self.ptr as *const u8, len)?;
+		mem_space.alloc(self.ptr as *const u8, len)?;
 
 		Ok(Some(unsafe {
 			// Safe because access is checked before
 			slice::from_raw_parts_mut(self.ptr, len)
 		}))
+	}
+}
+
+impl fmt::Debug for SyscallString {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
+
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space = mem_space_mutex.lock();
+
+		match self.get(&mem_space) {
+			Ok(Some(s)) => {
+				// TODO Add backslashes to escape `"` and `\`
+
+				let s = DisplayableStr(s);
+				write!(fmt, "{:p} = \"{}\"", self.as_ptr(), s)
+			}
+
+			Ok(None) => write!(fmt, "NULL"),
+
+			Err(_) => write!(fmt, "{:p} = (cannot read)", self.as_ptr()),
+		}
 	}
 }

@@ -1,29 +1,31 @@
 //! The `execve` system call allows to execute a program from a file.
 
-use core::ops::Range;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
-use crate::file::path::Path;
-use crate::file::vfs;
 use crate::memory::stack;
-use crate::process::Process;
+use crate::process;
+use crate::process::exec;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::ProgramImage;
-use crate::process::exec;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process;
+use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use core::ops::Range;
+use macros::syscall;
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
-/// The maximum number of interpreter that can be used recursively for an execution.
+/// The maximum number of interpreter that can be used recursively for an
+/// execution.
 const INTERP_MAX: usize = 4;
 
 // TODO Use ARG_MAX
@@ -33,18 +35,25 @@ struct Shebang {
 	/// The shebang's string.
 	buff: [u8; SHEBANG_MAX],
 
-	/// The range on the shebang's string which represents the location of the interpreter.
+	/// The range on the shebang's string which represents the location of the
+	/// interpreter.
 	interp: Range<usize>,
-	/// The range on the shebang's string which represents the location of the optional argument.
+	/// The range on the shebang's string which represents the location of the
+	/// optional argument.
 	arg: Option<Range<usize>>,
 }
 
 /// Peeks the shebang in the file.
-/// `file` is the file from which the shebang is to be read.
-/// `buff` is the buffer to write the shebang into.
-/// If the file has a shebang, the function returns its size in bytes + the offset to the end of
-/// the interpreter. If the string is longer than the interpreter's name, the remaining characters
-/// shall be used as an argument.
+///
+/// Arguments:
+/// - `file` is the file from which the shebang is to be read.
+/// - `buff` is the buffer to write the shebang into.
+///
+/// If the file has a shebang, the function returns its size in bytes + the
+/// offset to the end of the interpreter.
+///
+/// If the string is longer than the interpreter's name, the remaining characters shall be used as
+/// an argument.
 fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 	let mut buff: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
 
@@ -84,7 +93,11 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 			.filter(|arg| !arg.is_empty())
 			.next();
 
-		Ok(Some(Shebang { buff, interp, arg }))
+		Ok(Some(Shebang {
+			buff,
+			interp,
+			arg,
+		}))
 	} else {
 		Ok(None)
 	}
@@ -93,23 +106,24 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 /// Performs the execution on the current process.
 fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let mut proc = proc_mutex.lock();
 
 	// Executing the program
-	exec::exec(proc, program_image)?;
+	exec::exec(&mut *proc, program_image)?;
 	Ok(*proc.get_regs())
 }
 
 // TODO clean
 /// Builds a program image.
-/// `file` is the executable file.
-/// `uid` is the real user ID.
-/// `euid` is the effective user ID.
-/// `gid` is the real group ID.
-/// `egid` is the effective group ID.
-/// `argv` is the arguments list.
-/// `envp` is the environment variables list.
+///
+/// Arguments:
+/// - `file` is the executable file.
+/// - `uid` is the real user ID.
+/// - `euid` is the effective user ID.
+/// - `gid` is the real group ID.
+/// - `egid` is the effective group ID.
+/// - `argv` is the arguments list.
+/// - `envp` is the environment variables list.
 fn build_image(
 	file: SharedPtr<File>,
 	uid: Uid,
@@ -119,8 +133,7 @@ fn build_image(
 	argv: Vec<String>,
 	envp: Vec<String>,
 ) -> Result<ProgramImage, Errno> {
-	let file_guard = file.lock();
-	let file = file_guard.get_mut();
+	let mut file = file.lock();
 	if !file.can_execute(euid, egid) {
 		return Err(errno!(EACCES));
 	}
@@ -135,19 +148,18 @@ fn build_image(
 		envp,
 	};
 
-	exec::build_image(file, exec_info)
+	exec::build_image(&mut *file, exec_info)
 }
 
-/// The implementation of the `execve` syscall.
-pub fn execve(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let argv = regs.ecx as *const () as *const *const u8;
-	let envp = regs.edx as *const () as *const *const u8;
-
+#[syscall]
+pub fn execve(
+	pathname: SyscallString,
+	argv: *const *const u8,
+	envp: *const *const u8,
+) -> Result<i32, Errno> {
 	let (mut path, mut argv, envp, uid, gid, euid, egid) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let path = {
 			let mem_space = proc.get_mem_space().unwrap();
@@ -160,15 +172,15 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 				true,
 			)?
 		};
-		let path = super::util::get_absolute_path(proc, path)?;
+		let path = super::util::get_absolute_path(&*proc, path)?;
 
-		let argv = unsafe { super::util::get_str_array(proc, argv)? };
-		let envp = unsafe { super::util::get_str_array(proc, envp)? };
+		let argv = unsafe { super::util::get_str_array(&*proc, argv)? };
+		let envp = unsafe { super::util::get_str_array(&*proc, envp)? };
 
-		let uid = proc.get_uid();
-		let gid = proc.get_gid();
-		let euid = proc.get_euid();
-		let egid = proc.get_egid();
+		let uid = proc.uid;
+		let gid = proc.gid;
+		let euid = proc.euid;
+		let egid = proc.egid;
 
 		(path, argv, envp, uid, gid, euid, egid)
 	};
@@ -178,24 +190,20 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 	while i < INTERP_MAX + 1 {
 		// The file
 		let file = {
-			let files_mutex = vfs::get();
-			let files_guard = files_mutex.lock();
-			let vfs = files_guard.get_mut();
+			let vfs_mutex = vfs::get();
+			let mut vfs = vfs_mutex.lock();
+			let vfs = vfs.as_mut().unwrap();
 
-			vfs
-				.as_mut()
-				.unwrap()
-				.get_file_from_path(&path, uid, gid, true)?
+			vfs.get_file_from_path(&path, uid, gid, true)?
 		};
-		let guard = file.lock();
-		let f = guard.get_mut();
+		let mut f = file.lock();
 
 		if !f.can_execute(euid, egid) {
 			return Err(errno!(EACCES));
 		}
 
 		// If the file has a shebang, process it
-		if let Some(shebang) = peek_shebang(f)? {
+		if let Some(shebang) = peek_shebang(&mut *f)? {
 			// If too many interpreter recursions, abort
 			if i == INTERP_MAX {
 				return Err(errno!(ELOOP));
@@ -203,18 +211,18 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 			// Adding the script to arguments
 			if argv.is_empty() {
-				argv.push(path.as_string()?)?;
+				argv.push(crate::format!("{}", path)?)?;
 			} else {
-				argv[0] = path.as_string()?;
+				argv[0] = crate::format!("{}", path)?;
 			}
 
 			// Setting interpreter to arguments
-			let interp = String::from(&shebang.buff[shebang.interp.clone()])?;
+			let interp = String::try_from(&shebang.buff[shebang.interp.clone()])?;
 			argv.insert(0, interp)?;
 
 			// Setting optional argument if it exists
 			if let Some(arg) = shebang.arg {
-				let arg = String::from(&shebang.buff[arg])?;
+				let arg = String::try_from(&shebang.buff[arg])?;
 				argv.insert(1, arg)?;
 			}
 
@@ -229,21 +237,18 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 
 	// The file
 	let file = {
-		let files_mutex = vfs::get();
-		let files_guard = files_mutex.lock();
-		let vfs = files_guard.get_mut();
+		let vfs_mutex = vfs::get();
+		let mut vfs = vfs_mutex.lock();
+		let vfs = vfs.as_mut().unwrap();
 
-		vfs
-			.as_mut()
-			.unwrap()
-			.get_file_from_path(&path, uid, gid, true)?
+		vfs.get_file_from_path(&path, uid, gid, true)?
 	};
 
 	// Dropping path to avoid memory leak
 	drop(path);
 
-	// Disabling interrupt to prevent stack switching while using a temporary stack, preventing
-	// this temporary stack from being used as a signal handling stack
+	// Disabling interrupt to prevent stack switching while using a temporary stack,
+	// preventing this temporary stack from being used as a signal handling stack
 	cli!();
 
 	// Building the program's image
@@ -254,19 +259,19 @@ pub fn execve(regs: &Regs) -> Result<i32, Errno> {
 		.unwrap()?
 	};
 
-	// The tmp stack will not be used since the scheduler cannot be ticked when interrupts are
-	// disabled
-	// A temporary stack cannot be allocated since it wouldn't be possible to free it on success
+	// The tmp stack will not be used since the scheduler cannot be ticked when
+	// interrupts are disabled
+	// A temporary stack cannot be allocated since it wouldn't be possible to free
+	// it on success
 	let tmp_stack = {
 		let core = 0; // TODO Get current core ID
 		process::get_scheduler()
 			.lock()
-			.get_mut()
 			.get_tmp_stack(core)
 	};
 
-	// Switching to another stack in order to avoid crashing when switching to the new memory
-	// space
+	// Switching to another stack in order to avoid crashing when switching to the
+	// new memory space
 	unsafe {
 		stack::switch(Some(tmp_stack), move || -> Result<(), Errno> {
 			let regs = do_exec(program_image)?;

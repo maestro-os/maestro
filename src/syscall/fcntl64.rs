@@ -1,14 +1,11 @@
 //! The `fcntl64` syscall call allows to manipulate a file descriptor.
 
 use crate::errno::Errno;
-use crate::process::regs::Regs;
+use core::ffi::c_int;
 use core::ffi::c_void;
+use macros::syscall;
 
-/// The implementation of the `fcntl64` syscall.
-pub fn fcntl64(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-	let cmd = regs.ecx as i32;
-	let arg = regs.edx as *mut c_void;
-
+#[syscall]
+pub fn fcntl64(fd: c_int, cmd: c_int, arg: *mut c_void) -> Result<i32, Errno> {
 	super::fcntl::do_fcntl(fd, cmd, arg, true)
 }

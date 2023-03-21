@@ -34,11 +34,19 @@ impl RefCounter {
 	}
 }
 
-/// Inner structure of the shared pointer. The same instance of this structure is shared with
-/// every clones of a SharedPtr and WeakPtr structures. This structure holds the number of
-/// SharedPtr and WeakPtr holding it. Each time the pointer is cloned, the counter is incremented.
-/// Each time a copy is dropped, the counter is decrementer. The inner structure and the object
-/// wrapped by the shared pointer is dropped at the moment the counter reaches `0`.
+/// Inner structure of the shared pointer.
+///
+/// The same instance of this structure is shared with every clones of a `SharedPtr` and `WeakPtr`
+/// structures.
+///
+/// This structure holds the number of SharedPtr and WeakPtr holding it.
+///
+/// Each time the pointer is cloned, the counter is incremented.
+///
+/// Each time a copy is dropped, the counter is decremented.
+///
+/// The inner structure and the object wrapped by the shared pointer is dropped at the moment the
+/// counter reaches `0`.
 struct SharedPtrInner<T: ?Sized, const INT: bool> {
 	/// The reference counter.
 	ref_counter: Mutex<RefCounter, INT>,
@@ -48,8 +56,9 @@ struct SharedPtrInner<T: ?Sized, const INT: bool> {
 }
 
 impl<T, const INT: bool> SharedPtrInner<T, INT> {
-	/// Creates a new instance with the given object. The shared pointer counter is initialized to
-	/// `1`.
+	/// Creates a new instance with the given object.
+	///
+	/// The shared pointer counter is initialized to `1`.
 	fn new(obj: T) -> Self {
 		Self {
 			ref_counter: Mutex::new(RefCounter {
@@ -62,17 +71,22 @@ impl<T, const INT: bool> SharedPtrInner<T, INT> {
 	}
 }
 
-/// A shared pointer is a structure which allows to share ownership of an object between several
-/// objects. The object counts the number of references to it. When this count reaches zero, the
-/// object is freed.
+/// A shared pointer is a structure which allows to share ownership of an object
+/// between several objects.
+///
+/// The object counts the number of references to it.
+///
+/// When this count reaches zero, the object is freed.
 #[derive(Debug)]
 pub struct SharedPtr<T: ?Sized, const INT: bool = true> {
-	/// A pointer to the inner structure shared by every clones of this structure.
+	/// A pointer to the inner structure shared by every clones of this
+	/// structure.
 	inner: NonNull<SharedPtrInner<T, INT>>,
 }
 
 impl<T, const INT: bool> SharedPtr<T, INT> {
-	/// Creates a new shared pointer for the given Mutex `obj` containing the object.
+	/// Creates a new shared pointer for the given Mutex `obj` containing the
+	/// object.
 	pub fn new(obj: T) -> Result<Self, Errno> {
 		let inner = unsafe {
 			malloc::alloc(size_of::<SharedPtrInner<T, INT>>())? as *mut SharedPtrInner<T, INT>
@@ -103,11 +117,12 @@ impl<T: ?Sized, const INT: bool> SharedPtr<T, INT> {
 	/// Creates a weak pointer for the current shared pointer.
 	pub fn new_weak(&self) -> WeakPtr<T, INT> {
 		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get_mut();
+		let mut refs = inner.ref_counter.lock();
 		refs.weak_count += 1;
 
-		WeakPtr { inner: self.inner }
+		WeakPtr {
+			inner: self.inner,
+		}
 	}
 }
 
@@ -115,11 +130,12 @@ impl<T: ?Sized, const INT: bool> Clone for SharedPtr<T, INT> {
 	fn clone(&self) -> Self {
 		// Incrementing the number of shared references
 		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get_mut();
+		let mut refs = inner.ref_counter.lock();
 		refs.shared_count += 1;
 
-		Self { inner: self.inner }
+		Self {
+			inner: self.inner,
+		}
 	}
 }
 
@@ -153,8 +169,7 @@ impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 
 		// Decrementing the number of shared references
 		{
-			let guard = inner.ref_counter.lock();
-			let refs = guard.get_mut();
+			let mut refs = inner.ref_counter.lock();
 			refs.shared_count -= 1;
 
 			if !refs.must_drop() {
@@ -162,9 +177,9 @@ impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 			}
 		}
 
-		// At this point, the object is guaranteed to not be in use because the number of
-		// references is 0 and the callee can only get a reference to the mutex, ensuring it is
-		// unlocked before dropping the current pointer
+		// At this point, the object is guaranteed to not be in use because the number
+		// of references is 0 and the callee can only get a reference to the mutex,
+		// ensuring it is unlocked before dropping the current pointer
 
 		// Dropping inner structure
 		unsafe {
@@ -174,15 +189,23 @@ impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 	}
 }
 
-/// This type represents a weak pointer except the internal mutex disables interrupts while locked.
+/// This type represents a weak pointer except the internal mutex disables
+/// interrupts while locked.
 pub type IntSharedPtr<T> = SharedPtr<T, false>;
 
-/// A weak pointer is a type of pointer that can be created from a shared pointer. It works by
-/// keeping a reference to the same object as the shared pointer it was created from. However, a
-/// weak pointer cannot have the ownership of the object. Meaning that when all shared pointers
-/// drop the object, the weak pointer shall loose the access to the object.
+/// A weak pointer is a type of pointer that can be created from a shared
+/// pointer.
+///
+/// It works by keeping a reference to the same object as the shared
+/// pointer it was created from.
+///
+/// However, a weak pointer cannot have the ownership of the object.
+///
+/// Meaning that when all shared pointers drop the object, the weak pointer shall loose the access
+/// to the object.
 pub struct WeakPtr<T: ?Sized, const INT: bool = true> {
-	/// A pointer to the inner structure shared by every clones of this structure.
+	/// A pointer to the inner structure shared by every clones of this
+	/// structure.
 	inner: NonNull<SharedPtrInner<T, INT>>,
 }
 
@@ -195,8 +218,7 @@ impl<T: ?Sized, const INT: bool> WeakPtr<T, INT> {
 	/// Returns an immutable reference to the object.
 	pub fn get(&self) -> Option<&Mutex<T, INT>> {
 		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get();
+		let refs = inner.ref_counter.lock();
 
 		if refs.is_weak_available() {
 			Some(&inner.obj)
@@ -210,11 +232,12 @@ impl<T: ?Sized, const INT: bool> Clone for WeakPtr<T, INT> {
 	fn clone(&self) -> Self {
 		// Incrementing the number of weak references
 		let inner = self.get_inner();
-		let guard = inner.ref_counter.lock();
-		let refs = guard.get_mut();
+		let mut refs = inner.ref_counter.lock();
 		refs.weak_count += 1;
 
-		Self { inner: self.inner }
+		Self {
+			inner: self.inner,
+		}
 	}
 }
 
@@ -234,8 +257,7 @@ impl<T: ?Sized, const INT: bool> Drop for WeakPtr<T, INT> {
 
 		// Decrementing the number of shared references
 		{
-			let guard = inner.ref_counter.lock();
-			let refs = guard.get_mut();
+			let mut refs = inner.ref_counter.lock();
 			refs.weak_count -= 1;
 
 			if !refs.must_drop() {
@@ -243,9 +265,9 @@ impl<T: ?Sized, const INT: bool> Drop for WeakPtr<T, INT> {
 			}
 		}
 
-		// At this point, the object is guaranteed to not be in use because the number of
-		// references is 0 and the callee can only get a reference to the mutex, ensuring it is
-		// unlocked before dropping the current pointer
+		// At this point, the object is guaranteed to not be in use because the number
+		// of references is 0 and the callee can only get a reference to the mutex,
+		// ensuring it is unlocked before dropping the current pointer
 
 		// Dropping inner structure
 		unsafe {
@@ -255,5 +277,6 @@ impl<T: ?Sized, const INT: bool> Drop for WeakPtr<T, INT> {
 	}
 }
 
-/// This type represents a weak pointer except the internal mutex disables interrupts while locked.
+/// This type represents a weak pointer except the internal mutex disables
+/// interrupts while locked.
 pub type IntWeakPtr<T> = WeakPtr<T, false>;

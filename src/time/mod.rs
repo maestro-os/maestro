@@ -1,6 +1,7 @@
 //! This module handles time-releated features.
-//! The kernel stores a list of clock sources. A clock source is an object that allow to get the
-//! current timestamp.
+//!
+//! The kernel stores a list of clock sources. A clock source is an object that
+//! allow to get the current timestamp.
 
 pub mod timer;
 pub mod unit;
@@ -28,8 +29,10 @@ struct ClockSourceWrapper {
 	/// The clock source.
 	src: Box<dyn ClockSource>,
 
-	/// The last timestamp returned by the clock. This timestamp is used in case the caller
-	/// requires monotonic time and the clock came back in the past.
+	/// The last timestamp returned by the clock.
+	///
+	/// This timestamp is used in case the caller requires monotonic time and the clock came back
+	/// in the past.
 	last: [Timestamp; 4],
 }
 
@@ -38,10 +41,9 @@ static CLOCK_SOURCES: Mutex<HashMap<String, ClockSourceWrapper>> = Mutex::new(Ha
 
 /// Adds the new clock source to the clock sources list.
 pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno> {
-	let guard = CLOCK_SOURCES.lock();
-	let sources = guard.get_mut();
+	let mut sources = CLOCK_SOURCES.lock();
 
-	let name = String::from(source.get_name().as_bytes())?;
+	let name = String::try_from(source.get_name())?;
 	sources.insert(
 		name,
 		ClockSourceWrapper {
@@ -55,25 +57,26 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 }
 
 /// Removes the clock source with the given name.
+///
 /// If the clock source doesn't exist, the function does nothing.
 pub fn remove_clock_source(name: &str) {
-	let guard = CLOCK_SOURCES.lock();
-	let sources = guard.get_mut();
-
+	let mut sources = CLOCK_SOURCES.lock();
 	sources.remove(name.as_bytes());
 }
 
 /// Returns the current timestamp from the preferred clock source.
-/// `scale` specifies the scale of the returned timestamp.
-/// `monotonic` tells whether the returned time should be monotonic.
-/// If no clock source is available, the function returns None.
+///
+/// Arguments:
+/// - `scale` specifies the scale of the returned timestamp.
+/// - `monotonic` tells whether the returned time should be monotonic.
+///
+/// If no clock source is available, the function returns `None`.
 pub fn get(scale: TimestampScale, monotonic: bool) -> Option<Timestamp> {
-	let guard = CLOCK_SOURCES.lock();
-	let sources = guard.get_mut();
-
+	let mut sources = CLOCK_SOURCES.lock();
 	if sources.is_empty() {
 		return None;
 	}
+
 	// Getting clock source
 	let clock_src = sources.get_mut("cmos".as_bytes())?; // TODO Select the preferred source
 
@@ -102,9 +105,12 @@ pub fn get(scale: TimestampScale, monotonic: bool) -> Option<Timestamp> {
 }
 
 /// Returns the current timestamp from the given clock `clk`.
-/// `scale` specifies the scale of the returned timestamp.
-/// `monotonic` tells whether the returned time should be monotonic.
-/// If the clock doesn't exist, the function returns None.
+///
+/// Arguments:
+/// - `scale` specifies the scale of the returned timestamp.
+/// - `monotonic` tells whether the returned time should be monotonic.
+///
+/// If the clock doesn't exist, the function returns `None`.
 pub fn get_struct<T: TimeUnit>(_clk: &[u8], monotonic: bool) -> Option<T> {
 	// TODO use the given clock
 	let ts = get(TimestampScale::Nanosecond, monotonic)?;

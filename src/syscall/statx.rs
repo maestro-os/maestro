@@ -6,12 +6,15 @@ use crate::file::mountpoint::MountSource;
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::util::io::IO;
+use core::ffi::c_int;
+use core::ffi::c_uint;
+use macros::syscall;
 
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]
+#[derive(Debug)]
 struct StatxTimestamp {
 	/// Seconds since the Epoch (UNIX time)
 	tv_sec: i64,
@@ -23,6 +26,7 @@ struct StatxTimestamp {
 
 /// Structure containing the extended attributes for a file.
 #[repr(C)]
+#[derive(Debug)]
 struct Statx {
 	/// Mask of bits indicating filled fields
 	stx_mask: u32,
@@ -76,14 +80,14 @@ struct Statx {
 	__padding1: [u64; 13],
 }
 
-/// The implementation of the `statx` syscall.
-pub fn statx(regs: &Regs) -> Result<i32, Errno> {
-	let dirfd = regs.ebx as i32;
-	let pathname: SyscallString = (regs.ecx as usize).into();
-	let flags = regs.edx as i32;
-	let _mask = regs.esi as u32;
-	let statxbuff: SyscallPtr<Statx> = (regs.edi as usize).into();
-
+#[syscall]
+pub fn statx(
+	dirfd: c_int,
+	pathname: SyscallString,
+	flags: c_int,
+	_mask: c_uint,
+	statxbuff: SyscallPtr<Statx>,
+) -> Result<i32, Errno> {
 	if pathname.is_null() || statxbuff.is_null() {
 		return Err(errno!(EINVAL));
 	}
@@ -96,8 +100,7 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 	// Getting the file
 	let file_mutex = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -105,39 +108,49 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		util::get_file_at(proc_guard, follow_links, dirfd, pathname, flags)?
+		util::get_file_at(proc, follow_links, dirfd, pathname, flags)?
 	};
-	let file_guard = file_mutex.lock();
-	let file = file_guard.get();
+	let file = file_mutex.lock();
 
 	// TODO Use mask?
 
 	// If the file is a device, get the major and minor numbers
 	let (stx_rdev_major, stx_rdev_minor) = match file.get_content() {
-		FileContent::BlockDevice { major, minor } | FileContent::CharDevice { major, minor } => {
-			(*major, *minor)
+		FileContent::BlockDevice {
+			major,
+			minor,
 		}
+		| FileContent::CharDevice {
+			major,
+			minor,
+		} => (*major, *minor),
 		_ => (0, 0),
 	};
 
 	// Getting the major and minor numbers of the device of the file's filesystem
 	let (stx_dev_major, stx_dev_minor) = {
 		if let Some(mountpoint_mutex) = file.get_location().get_mountpoint() {
-			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using the
-			// mountpoint and locking vfs requires disabling interrupts
+			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using
+			// the mountpoint and locking vfs requires disabling interrupts
 			crate::idt::wrap_disable_interrupts(|| {
-				let mountpoint_guard = mountpoint_mutex.lock();
-				let mountpoint = mountpoint_guard.get();
+				let mountpoint = mountpoint_mutex.lock();
 
 				match mountpoint.get_source() {
-					MountSource::Device { major, minor, .. } => (*major, *minor),
-					MountSource::File(_) | MountSource::NoDev(_) => (0, 0),
+					MountSource::Device {
+						major,
+						minor,
+						..
+					} => (*major, *minor),
+
+					_ => (0, 0),
 				}
 			})
 		} else {
 			(0, 0)
 		}
 	};
+
+	let inode = file.get_location().get_inode();
 
 	// Filling the structure
 	let statx_val = Statx {
@@ -151,28 +164,28 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 		__padding0: 0,
 
-		stx_ino: file.get_location().inode,
+		stx_ino: inode,
 		stx_size: file.get_size(),
 		stx_blocks: file.get_blocks_count(),
 		stx_attributes_mask: 0, // TODO
 
 		stx_atime: StatxTimestamp {
-			tv_sec: file.get_atime() as _,
+			tv_sec: file.atime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
 		stx_btime: StatxTimestamp {
-			tv_sec: 0, // TODO
+			tv_sec: 0,  // TODO
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
 		stx_ctime: StatxTimestamp {
-			tv_sec: file.get_ctime() as _,
+			tv_sec: file.ctime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
 		stx_mtime: StatxTimestamp {
-			tv_sec: file.get_mtime() as _,
+			tv_sec: file.mtime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
@@ -189,13 +202,12 @@ pub fn statx(regs: &Regs) -> Result<i32, Errno> {
 
 	{
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get_mut();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
+		let mut mem_space_guard = mem_space.lock();
 
-		let statx = statxbuff.get_mut(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let statx = statxbuff.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 		*statx = statx_val;
 	}
 

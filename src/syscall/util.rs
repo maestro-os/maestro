@@ -6,36 +6,43 @@ use crate::errno;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::open_file::FDTarget;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::Process;
+use crate::process::State;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
-use crate::process::state::State;
+use crate::process::scheduler;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
 
-/// Returns the absolute path according to the process's current working directory.
-/// `process` is the process.
-/// `path` is the path.
+/// Returns the absolute path according to the process's current working
+/// directory.
+///
+/// Arguments:
+/// - `process` is the process.
+/// - `path` is the path.
 pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
-	if !path.is_absolute() {
+	let path = if !path.is_absolute() {
 		let cwd = process.get_cwd();
-		cwd.concat(&path)
+		cwd.concat(&path)?
 	} else {
-		Ok(path)
-	}
+		path
+	};
+
+	let chroot = process.get_chroot();
+	chroot.concat(&path)
 }
 
 // TODO Find a safer and cleaner solution
-/// Checks that the given array of strings at pointer `ptr` is accessible to process `proc`, then
-/// returns its content.
-/// If the array or its content strings are not accessible by the process, the function returns an
-/// error.
+/// Checks that the given array of strings at pointer `ptr` is accessible to
+/// process `proc`, then returns its content.
+///
+/// If the array or its content strings are not accessible by the process, the
+/// function returns an error.
 pub unsafe fn get_str_array(
 	process: &Process,
 	ptr: *const *const u8,
@@ -49,10 +56,7 @@ pub unsafe fn get_str_array(
 		let elem_ptr = ptr.add(len);
 
 		// Checking access on elem_ptr
-		if !mem_space_guard
-			.get()
-			.can_access(elem_ptr as _, size_of::<*const u8>(), true, false)
-		{
+		if !mem_space_guard.can_access(elem_ptr as _, size_of::<*const u8>(), true, false) {
 			return Err(errno!(EFAULT));
 		}
 
@@ -71,21 +75,21 @@ pub unsafe fn get_str_array(
 		let elem = *ptr.add(i);
 		let s: SyscallString = (elem as usize).into();
 
-		arr.push(String::from(s.get(&mem_space_guard)?.unwrap())?)?;
+		arr.push(String::try_from(s.get(&mem_space_guard)?.unwrap())?)?;
 	}
 
 	Ok(arr)
 }
 
-/// Builds a path with the given directory file descriptor `dirfd` as a base, concatenated with the
-/// given pathname `pathname`.
+/// Builds a path with the given directory file descriptor `dirfd` as a base,
+/// concatenated with the given pathname `pathname`.
+///
 /// `process_guard` is the guard of the current process.
 fn build_path_from_fd(
-	process_guard: &MutexGuard<Process, false>,
+	process: &MutexGuard<Process, false>,
 	dirfd: i32,
 	pathname: &[u8],
 ) -> Result<Path, Errno> {
-	let process = process_guard.get();
 	let path = Path::from_str(pathname, true)?;
 
 	if path.is_absolute() {
@@ -103,41 +107,41 @@ fn build_path_from_fd(
 			return Err(errno!(EBADF));
 		}
 
-		let open_file_mutex = process
+		let fds_mutex = process.get_fds().unwrap();
+		let fds = fds_mutex.lock();
+
+		let open_file_mutex = fds
 			.get_fd(dirfd as _)
 			.ok_or(errno!(EBADF))?
-			.get_open_file();
-		let open_file_guard = open_file_mutex.lock();
-		let open_file = open_file_guard.get();
+			.get_open_file()?;
 
-		match open_file.get_target() {
-			FDTarget::File(file_mutex) => {
-				let file_guard = file_mutex.lock();
-				let file = file_guard.get();
+		// Unlocking to avoid deadlock with procfs
+		drop(process);
 
-				file.get_path()?.concat(&path)
-			}
+		let open_file = open_file_mutex.lock();
 
-			_ => Err(errno!(ENOTDIR)),
-		}
+		let file_mutex = open_file.get_file()?;
+		let file = file_mutex.lock();
+
+		file.get_path()?.concat(&path)
 	}
 }
 
 /// Returns the file for the given path `pathname`.
-/// `process_guard` is the mutex guard of the current process.
-/// `follow_links` tells whether symbolic links may be followed.
-/// `dirfd` is the file descriptor of the parent directory.
-/// `pathname` is the path relative to the parent directory.
-/// `flags` is an integer containing AT_* flags.
+///
+/// Arguments:
+/// - `process` is the mutex guard of the current process.
+/// - `follow_links` tells whether symbolic links may be followed.
+/// - `dirfd` is the file descriptor of the parent directory.
+/// - `pathname` is the path relative to the parent directory.
+/// - `flags` is an integer containing AT_* flags.
 pub fn get_file_at(
-	process_guard: MutexGuard<Process, false>,
+	process: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
 	flags: i32,
 ) -> Result<SharedPtr<File>, Errno> {
-	let process = process_guard.get();
-
 	if pathname.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
@@ -146,31 +150,35 @@ pub fn get_file_at(
 				return Err(errno!(EBADF));
 			}
 
-			let open_file_mutex = process
+			let fds_mutex = process.get_fds().unwrap();
+			let fds = fds_mutex.lock();
+
+			let open_file_mutex = fds
 				.get_fd(dirfd as _)
 				.ok_or(errno!(EBADF))?
-				.get_open_file();
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get();
+				.get_open_file()?;
 
-			open_file.get_target().get_file()
+			// Unlocking to avoid deadlock with procfs
+			drop(process);
+
+			let open_file = open_file_mutex.lock();
+
+			open_file.get_file()
 		} else {
 			Err(errno!(ENOENT))
 		}
 	} else {
-		let uid = process.get_euid();
-		let gid = process.get_egid();
+		let uid = process.euid;
+		let gid = process.egid;
 
-		let path = build_path_from_fd(&process_guard, dirfd, pathname)?;
+		let path = build_path_from_fd(&process, dirfd, pathname)?;
 
 		// Unlocking to avoid deadlock with procfs
-		drop(process_guard);
+		drop(process);
 
-		let vfs = vfs::get();
-		let vfs_guard = vfs.lock();
-		vfs_guard
-			.get_mut()
-			.as_mut()
+		let vfs_mutex = vfs::get();
+		let mut vfs = vfs_mutex.lock();
+		vfs.as_mut()
 			.unwrap()
 			.get_file_from_path(&path, uid, gid, follow_links)
 	}
@@ -178,7 +186,7 @@ pub fn get_file_at(
 
 /// TODO doc
 pub fn get_parent_at_with_name(
-	process_guard: MutexGuard<Process, false>,
+	process: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
@@ -187,78 +195,76 @@ pub fn get_parent_at_with_name(
 		return Err(errno!(ENOENT));
 	}
 
-	let mut path = build_path_from_fd(&process_guard, dirfd, pathname)?;
+	let mut path = build_path_from_fd(&process, dirfd, pathname)?;
 	let name = path.pop().unwrap();
 
-	let process = process_guard.get();
-	let uid = process.get_euid();
-	let gid = process.get_egid();
+	let uid = process.euid;
+	let gid = process.egid;
 
 	// Unlocking to avoid deadlock with procfs
-	drop(process_guard);
+	drop(process);
 
 	let vfs_mutex = vfs::get();
-	let vfs_guard = vfs_mutex.lock();
-	let vfs = vfs_guard.get_mut().as_mut().unwrap();
+	let mut vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
 	let parent_mutex = vfs.get_file_from_path(&path, uid, gid, follow_links)?;
 	Ok((parent_mutex, name))
 }
 
 /// Creates the given file `file` at the given pathname `pathname`.
-/// `process_guard` is the mutex guard of the current process.
-/// `follow_links` tells whether symbolic links may be followed.
-/// `dirfd` is the file descriptor of the parent directory.
-/// `pathname` is the path relative to the parent directory.
-/// `mode` is the permissions of the newly created file.
-/// `content` is the content of the newly created file.
+///
+/// Arguments:
+/// - `process` is the mutex guard of the current process.
+/// - `follow_links` tells whether symbolic links may be followed.
+/// - `dirfd` is the file descriptor of the parent directory.
+/// - `pathname` is the path relative to the parent directory.
+/// - `mode` is the permissions of the newly created file.
+/// - `content` is the content of the newly created file.
 pub fn create_file_at(
-	process_guard: MutexGuard<Process, false>,
+	process: MutexGuard<Process, false>,
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
 	mode: Mode,
 	content: FileContent,
 ) -> Result<SharedPtr<File>, Errno> {
-	let process = process_guard.get();
-	let uid = process.get_euid();
-	let gid = process.get_egid();
-	let umask = process.get_umask();
-	let mode = mode & !umask;
+	let uid = process.euid;
+	let gid = process.egid;
+	let mode = mode & !process.umask;
 
 	let (parent_mutex, name) =
-		get_parent_at_with_name(process_guard, follow_links, dirfd, pathname)?;
+		get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
 
 	let vfs_mutex = vfs::get();
-	let vfs_guard = vfs_mutex.lock();
-	let vfs = vfs_guard.get_mut().as_mut().unwrap();
+	let mut vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
-	let parent_guard = parent_mutex.lock();
-	let parent = parent_guard.get_mut();
+	let mut parent = parent_mutex.lock();
 
-	vfs.create_file(parent, name, uid, gid, mode, content)
+	vfs.create_file(&mut *parent, name, uid, gid, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.
 ///
-/// When the state of the current process has been changed, execution may not resume. In which
-/// case, the current function handles the execcution flow accordingly.
+/// When the state of the current process has been changed, execution may not
+/// resume. In which case, the current function handles the execution flow
+/// accordingly.
 ///
-/// The functions locks the mutex of the current process. Thus, the caller must ensure the mutex
-/// isn't already locked to prevent a deadlock.
+/// The functions locks the mutex of the current process. Thus, the caller must
+/// ensure the mutex isn't already locked to prevent a deadlock.
 ///
 /// If returning, the function returns the mutex lock of the current process.
 pub fn handle_proc_state() {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let proc = proc_mutex.lock();
 
 	match proc.get_state() {
 		// The process is executing a signal handler. Make the scheduler jump to it
 		State::Running => {
 			if proc.is_handling_signal() {
 				let regs = proc.get_regs().clone();
-				drop(proc_guard);
+				drop(proc);
 				drop(proc_mutex);
 
 				unsafe {
@@ -268,36 +274,39 @@ pub fn handle_proc_state() {
 		}
 
 		// The process is sleeping or has been stopped. Waiting until wakeup
-		State::Sleeping(_) | State::Stopped => {
-			drop(proc_guard);
+		State::Sleeping | State::Stopped => {
+			drop(proc);
 			drop(proc_mutex);
 
-			crate::wait();
+			unsafe {
+				scheduler::end_tick();
+			}
 		}
 
 		// The process has been killed. Stopping execution and waiting for the next tick
 		State::Zombie => {
-			drop(proc_guard);
+			drop(proc);
 			drop(proc_mutex);
 
-			crate::enter_loop();
+			unsafe {
+				scheduler::end_tick();
+			}
 		}
 	}
 }
 
 /// Checks whether the current syscall must be interrupted to execute a signal.
 ///
-/// If interrupted, the function doesn't return and the control flow jumps directly to handling the
-/// signal.
+/// If interrupted, the function doesn't return and the control flow jumps
+/// directly to handling the signal.
 ///
-/// The functions locks the mutex of the current process. Thus, the caller must ensure the mutex
-/// isn't already locked to prevent a deadlock.
+/// The functions locks the mutex of the current process. Thus, the caller must
+/// ensure the mutex isn't already locked to prevent a deadlock.
 ///
 /// `regs` is the registers state passed to the current syscall.
 pub fn signal_check(regs: &Regs) {
 	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	let mut proc = proc_mutex.lock();
 
 	if proc.get_next_signal().is_some() {
 		// Returning the system call early to resume it later
@@ -310,7 +319,7 @@ pub fn signal_check(regs: &Regs) {
 		// Switching to handle the signal
 		proc.prepare_switch();
 
-		drop(proc_guard);
+		drop(proc);
 		drop(proc_mutex);
 
 		handle_proc_state();

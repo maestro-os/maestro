@@ -14,7 +14,7 @@ use crate::process::pid::Pid;
 use crate::time::unit::Clock;
 use signal_trampoline::signal_trampoline;
 use super::Process;
-use super::state::State;
+use super::State;
 
 /// Type representing a signal handler.
 pub type SigHandler = extern "C" fn(i32);
@@ -24,8 +24,8 @@ pub const SIG_IGN: *const c_void = 0x0 as _;
 /// The default action for the signal.
 pub const SIG_DFL: *const c_void = 0x1 as _;
 
-/// The size of the signal handlers table (the number of signals + 1, since indexing begins at 1
-/// instead of 0).
+/// The size of the signal handlers table (the number of signals + 1, since
+/// indexing begins at 1 instead of 0).
 pub const SIGNALS_COUNT: usize = 32;
 
 /// Enumeration representing the action to perform for a signal.
@@ -117,7 +117,8 @@ pub struct SigAction {
 	pub sa_handler: Option<SigHandler>,
 	/// Used instead of `sa_handler` if SA_SIGINFO is specified in `sa_flags`.
 	pub sa_sigaction: Option<extern "C" fn(i32, *mut SigInfo, *mut c_void)>,
-	/// A mask of signals that should be masked while executing the signal handler.
+	/// A mask of signals that should be masked while executing the signal
+	/// handler.
 	pub sa_mask: SigSet,
 	/// A set of flags which modifies the behaviour of the signal.
 	pub sa_flags: i32,
@@ -175,7 +176,7 @@ impl SignalHandler {
 
 // TODO reorder
 /// Enumeration of signal types.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Signal {
 	/// Process abort.
 	SIGABRT,
@@ -356,9 +357,11 @@ impl Signal {
 	}
 
 	/// Executes the action associated with the signal for process `process`.
+	///
 	/// If the process is not the current process, the behaviour is undefined.
-	/// If `no_handler` is true, the function executes the default action of the signal regardless
-	/// the user-specified action.
+	///
+	/// If `no_handler` is `true`, the function executes the default action of the
+	/// signal regardless the user-specified action.
 	pub fn execute_action(&self, process: &mut Process, no_handler: bool) {
 		process.signal_clear(self.clone());
 
@@ -376,8 +379,8 @@ impl Signal {
 		match handler {
 			SignalHandler::Ignore => {}
 			SignalHandler::Default => {
-				// Signals on the init process can be executed only if the process has set a signal
-				// handler
+				// Signals on the init process can be executed only if the process has set a
+				// signal handler
 				if self.can_catch() && process.is_init() {
 					return;
 				}
@@ -386,7 +389,7 @@ impl Signal {
 				match action {
 					SignalAction::Terminate | SignalAction::Abort => {
 						process.exit(self.get_id() as _, true);
-					},
+					}
 
 					SignalAction::Ignore => {}
 
@@ -423,14 +426,12 @@ impl Signal {
 				// FIXME Don't write data out of the stack
 				oom::wrap(|| {
 					let mem_space = process.get_mem_space().unwrap();
-					let mem_space_guard = mem_space.lock();
-					let mem_space = mem_space_guard.get_mut();
+					let mut mem_space = mem_space.lock();
 
 					mem_space.bind();
 					mem_space.alloc(signal_esp as *mut u32, 3)
 				});
-				let signal_data =
-					unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 3) };
+				let signal_data = unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 3) };
 
 				// The signal number
 				signal_data[2] = self.get_id() as _;
@@ -456,9 +457,9 @@ impl Signal {
 				process.signal_save(self.clone());
 				// Setting the process's registers to call the signal handler
 				process.set_regs(regs);
-			},
+			}
 
-			_ => {},
+			_ => {}
 		}
 	}
 }

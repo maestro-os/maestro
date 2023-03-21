@@ -3,36 +3,28 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
+use crate::process::Process;
+use macros::syscall;
 
-/// The implementation of the `truncate` syscall.
-pub fn truncate(regs: &Regs) -> Result<i32, Errno> {
-	let path: SyscallString = (regs.ebx as usize).into();
-	let length = regs.ecx as usize;
+#[syscall]
+pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let mem_space_mutex = proc.get_mem_space().unwrap();
+	let mem_space = mem_space_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let path = Path::from_str(path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-	let path = super::util::get_absolute_path(proc, path)?;
+	let path = Path::from_str(path.get(&mem_space)?.ok_or(errno!(EFAULT))?, true)?;
+	let path = super::util::get_absolute_path(&*proc, path)?;
 
-	let mutex = vfs::get();
-	let guard = mutex.lock();
-	let vfs = guard.get_mut();
+	let vfs_mutex = vfs::get();
+	let mut vfs = vfs_mutex.lock();
+	let vfs = vfs.as_mut().unwrap();
 
-	let file_mutex = vfs.as_mut().unwrap().get_file_from_path(
-		&path,
-		proc.get_euid(),
-		proc.get_egid(),
-		true,
-	)?;
-	let file_guard = file_mutex.lock();
-	let file = file_guard.get_mut();
+	let file_mutex = vfs.get_file_from_path(&path, proc.euid, proc.egid, true)?;
+	let mut file = file_mutex.lock();
+
 	file.set_size(length as _);
 
 	Ok(0)

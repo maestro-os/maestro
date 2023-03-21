@@ -66,7 +66,7 @@ pub struct LinkLayer {
 	iface: Box<dyn Interface>,
 
 	/// The ring buffer used to receive packets.
-	rx_buff: RingBuffer<u8>,
+	rx_buff: RingBuffer<u8, Vec<u8>>,
 }
 
 impl LinkLayer {
@@ -75,7 +75,7 @@ impl LinkLayer {
 		Ok(Self {
 			iface,
 
-			rx_buff: RingBuffer::new(RX_BUFF_SIZE)?,
+			rx_buff: RingBuffer::new(crate::vec![0; RX_BUFF_SIZE]?),
 		})
 	}
 }

@@ -1,27 +1,23 @@
 //! This module implements ACPI related features.
-//! The ACPI interface provides informations about the system, allowing to control components such
-//! as cooling and powering.
 //!
-//! The first step in initialization is to read the RSDP table in order to get a pointer to the
-//! RSDT, referring to every other available tables.
+//! The ACPI interface provides informations about the system, allowing to
+//! control components such as cooling and powering.
+//!
+//! The first step in initialization is to read the RSDP table in order to get a
+//! pointer to the RSDT, referring to every other available tables.
 
-use core::intrinsics::wrapping_add;
+use core::mem::size_of;
 use data::ACPIData;
+use dsdt::Dsdt;
 use fadt::Fadt;
 use madt::Madt;
 
+mod aml;
 mod data;
+mod dsdt;
 mod fadt;
 mod madt;
 mod rsdt;
-
-/// Trait representing an ACPI table.
-pub trait ACPITable {
-	/// Returns the expected signature for the structure.
-	fn get_expected_signature() -> &'static [u8; 4]
-	where
-		Self: Sized;
-}
 
 /// An ACPI table header.
 #[repr(C)]
@@ -61,19 +57,38 @@ impl ACPITableHeader {
 	}
 
 	/// Checks that the table is valid.
-	pub fn check(&self) -> bool {
+	pub fn check<T: ACPITable + ?Sized>(&self) -> bool {
+		if self.signature != *T::get_expected_signature() {
+			return false;
+		}
+
 		let length = self.get_length();
+		if length < size_of::<Self>() {
+			return false;
+		}
+
 		let mut sum: u8 = 0;
 
 		for i in 0..length {
 			let byte = unsafe {
-				// Safe since every bytes of `s` are readable.
-				*((self as *const Self as *const u8 as usize + i) as *const u8)
+				// Safe since every bytes of `self` are readable.
+				*(self as *const Self as *const u8).add(i)
 			};
-			sum = wrapping_add(sum, byte);
+			sum = sum.wrapping_add(byte);
 		}
 
 		sum == 0
+	}
+}
+
+/// Trait representing an ACPI table.
+pub trait ACPITable {
+	/// Returns the expected signature for the structure.
+	fn get_expected_signature() -> &'static [u8; 4];
+
+	/// Returns a reference to the table's header.
+	fn get_header(&self) -> &ACPITableHeader {
+		unsafe { &*(self as *const _ as *const ACPITableHeader) }
 	}
 }
 
@@ -83,12 +98,13 @@ static mut CENTURY_REGISTER: bool = false;
 /// Tells whether the century register of the CMOS is present.
 pub fn is_century_register_present() -> bool {
 	unsafe {
-		// Safe because the value is only set once
+		// Safe because the value is only set once at boot
 		CENTURY_REGISTER
 	}
 }
 
 /// Initializes ACPI.
+///
 /// This function must be called only once, at boot.
 pub fn init() {
 	// Reading ACPI data
@@ -97,7 +113,7 @@ pub fn init() {
 	});
 
 	if let Some(data) = data {
-		if let Some(madt) = data.get_table::<Madt>() {
+		if let Some(madt) = data.get_table_sized::<Madt>() {
 			// Registering CPU cores
 			madt.foreach_entry(|e: &madt::EntryHeader| match e.get_type() {
 				0 => {
@@ -112,8 +128,21 @@ pub fn init() {
 		unsafe {
 			// Safe because the value is only set once
 			CENTURY_REGISTER = data
-				.get_table::<Fadt>()
+				.get_table_sized::<Fadt>()
 				.map_or(false, |fadt| fadt.century != 0);
+		}
+
+		// Getting the DSDT
+		let dsdt = data.get_table_unsized::<Dsdt>().or_else(|| {
+			data.get_table_sized::<Fadt>()
+				.and_then(|fadt| fadt.get_dsdt())
+		});
+		if let Some(dsdt) = dsdt {
+			// Parsing AML code
+			let aml = dsdt.get_aml();
+			let _ast = aml::parse(aml);
+
+			// TODO
 		}
 	}
 }

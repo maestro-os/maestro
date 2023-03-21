@@ -1,23 +1,21 @@
-//! The `signal` syscall allows to specify a pointer to a function to be called when a specific
-//! signal is received by the current process.
+//! The `signal` syscall allows to specify a pointer to a function to be called
+//! when a specific signal is received by the current process.
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::signal;
 use crate::process::signal::SigAction;
 use crate::process::signal::SigHandler;
 use crate::process::signal::Signal;
 use crate::process::signal::SignalHandler;
 use crate::process::Process;
+use core::ffi::c_int;
 use core::ffi::c_void;
 use core::mem::transmute;
+use macros::syscall;
 
-/// The implementation of the `signal` syscall.
-pub fn signal(regs: &Regs) -> Result<i32, Errno> {
-	let signum = regs.ebx as i32;
-	let handler = regs.ecx as *const c_void;
-
+#[syscall]
+pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
 	if signum < 0 {
 		return Err(errno!(EINVAL));
 	}
@@ -40,9 +38,8 @@ pub fn signal(regs: &Regs) -> Result<i32, Errno> {
 	};
 
 	let old_handler = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let mut proc = proc_mutex.lock();
 
 		let old_handler = proc.get_signal_handler(&signal);
 		proc.set_signal_handler(&signal, h);

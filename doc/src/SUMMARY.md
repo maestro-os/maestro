@@ -32,25 +32,22 @@
 - [Physical memory map](./memory/phys_mem_map.md)
 - [Allocators](./memory/alloc/main.md)
 	- [Buddy allocator](./memory/alloc/buddy.md)
-	- [kmalloc](./memory/alloc/kmalloc.md)
+	- [malloc](./memory/alloc/malloc.md)
 - [Virtual memory](./memory/vmem/main.md)
 	- [Memory map](./memory/vmem/mem_map.md)
-	- [Virtual memory context](./memory/vmem/vmem.md)
 	- [Memory space](./memory/vmem/mem_space.md)
 
 
 
 # Process
 
-- [Process](./process/main.md)
-	- [Scheduler](./process/scheduler.md)
+- [Process](./process.md)
 
 
 
 # Device
 
-- [Devices](./device/main.md)
-- [Devices list](./device/list.md)
+- [Devices](./device.md)
 
 
 

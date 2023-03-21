@@ -1,39 +1,35 @@
 //! The `mknod` system call allows to create a new node on a filesystem.
 
 use crate::device::id;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::FileContent;
-use crate::file::FileType;
+use crate::errno::Errno;
+use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::file;
-use crate::process::Process;
+use crate::file::FileContent;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
+use macros::syscall;
 
-/// The implementation of the `getuid` syscall.
-pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let mode = regs.ecx as file::Mode;
-	let dev = regs.edx as u64;
-
+// TODO Check args type
+#[syscall]
+pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32, Errno> {
 	let (path, umask, uid, gid) = {
-		// Getting the process
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(proc, path)?;
+		let path = super::util::get_absolute_path(&*proc, path)?;
 
-		let umask = proc.get_umask();
-		let uid = proc.get_uid();
-		let gid = proc.get_gid();
+		let umask = proc.umask;
+		let uid = proc.uid;
+		let gid = proc.gid;
+
 		(path, umask, uid, gid)
 	};
 
@@ -60,24 +56,29 @@ pub fn mknod(regs: &Regs) -> Result<i32, Errno> {
 		FileType::Regular => FileContent::Regular,
 		FileType::Fifo => FileContent::Fifo,
 		FileType::Socket => FileContent::Socket,
-		FileType::BlockDevice => FileContent::BlockDevice { major, minor },
-		FileType::CharDevice => FileContent::CharDevice { major, minor },
+		FileType::BlockDevice => FileContent::BlockDevice {
+			major,
+			minor,
+		},
+		FileType::CharDevice => FileContent::CharDevice {
+			major,
+			minor,
+		},
 
 		_ => return Err(errno!(EPERM)),
 	};
 
 	// Creating the node
 	{
-		let mutex = vfs::get();
-		let guard = mutex.lock();
-		let vfs = guard.get_mut().as_mut().unwrap();
+		let vfs_mutex = vfs::get();
+		let mut vfs = vfs_mutex.lock();
+		let vfs = vfs.as_mut().unwrap();
 
 		// Getting parent directory
 		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-		let parent_guard = parent_mutex.lock();
-		let parent = parent_guard.get_mut();
+		let mut parent = parent_mutex.lock();
 
-		vfs.create_file(parent, name, uid, gid, mode, file_content)?;
+		vfs.create_file(&mut *parent, name, uid, gid, mode, file_content)?;
 	}
 
 	Ok(0)

@@ -5,6 +5,7 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::null;
+use core::ptr;
 use core::slice;
 use core::str;
 use crate::cpu;
@@ -14,11 +15,12 @@ use crate::elf::relocation::Relocation;
 use crate::elf;
 use crate::errno::Errno;
 use crate::errno;
+use crate::exec::vdso::MappedVDSO;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
-use crate::file::vfs;
 use crate::file::path::Path;
+use crate::file::vfs;
 use crate::memory::malloc;
 use crate::memory::vmem;
 use crate::memory;
@@ -26,7 +28,9 @@ use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
 use crate::process::mem_space::MapConstraint;
+use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
+use crate::process::mem_space;
 use crate::process;
 use crate::util::FailableClone;
 use crate::util::container::string::String;
@@ -34,17 +38,19 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
 use crate::util;
+use super::vdso;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
 /// Entry with no meaning, to be ignored.
 const AT_IGNORE: i32 = 1;
-/// Entry containing a file descriptor to the application object file in case the program is run
-/// using an interpreter.
+/// Entry containing a file descriptor to the application object file in case
+/// the program is run using an interpreter.
 const AT_EXECFD: i32 = 2;
 /// Entry containing a pointer to the program header table for the interpreter.
 const AT_PHDR: i32 = 3;
-/// The size in bytes of one entry in the program header table to which AT_PHDR points.
+/// The size in bytes of one entry in the program header table to which AT_PHDR
+/// points.
 const AT_PHENT: i32 = 4;
 /// The number of entries in the program header table to which AT_PHDR points.
 const AT_PHNUM: i32 = 5;
@@ -54,8 +60,8 @@ const AT_PAGESZ: i32 = 6;
 const AT_BASE: i32 = 7;
 /// Contains flags.
 const AT_FLAGS: i32 = 8;
-/// Entry with the pointer to the entry point of the program to which the interpreter should
-/// transfer control.
+/// Entry with the pointer to the entry point of the program to which the
+/// interpreter should transfer control.
 const AT_ENTRY: i32 = 9;
 /// A boolean value. If non-zero, the program is non-ELF.
 const AT_NOTELF: i32 = 10;
@@ -83,16 +89,27 @@ const AT_RANDOM: i32 = 25;
 const AT_HWCAP2: i32 = 26;
 /// A pointer to the filename of the executed program.
 const AT_EXECFN: i32 = 31;
+/// A pointer to the entry point of the vDSO.
+const AT_SYSINFO: i32 = 32;
+/// A pointer to the beginning of the vDSO ELF image.
+const AT_SYSINFO_EHDR: i32 = 33;
 
-/// Informations returned after loading an ELF program used to finish initialization.
+/// Informations returned after loading an ELF program used to finish
+/// initialization.
 #[derive(Debug)]
 struct ELFLoadInfo {
 	/// The load base address
 	load_base: *const c_void,
 	/// The pointer to the end of loaded segments
 	load_end: *const c_void,
+
 	/// The pointer to the program header if present
-	phdr: Option<*const c_void>,
+	phdr: *const c_void,
+	/// The length in bytes of an entry in the program headers table.
+	phentsize: usize,
+	/// The number of entries in the program headers table.
+	phnum: usize,
+
 	/// The pointer to the entry point
 	entry_point: *const c_void,
 
@@ -130,34 +147,38 @@ struct AuxEntryDesc {
 impl AuxEntryDesc {
 	/// Creates a new instance with the given type `a_type` and value `a_val`.
 	pub fn new(a_type: i32, a_val: AuxEntryDescValue) -> Self {
-		Self { a_type, a_val }
+		Self {
+			a_type,
+			a_val,
+		}
 	}
 }
 
-/// Builds an auxilary vector with execution informations `exec_info` and load informations
-/// `load_info`.
-/// `parser` is a reference to the ELF parser.
+/// Builds an auxilary vector.
+///
+/// Arguments:
+/// - `exec_info` is the set of execution informations.
+/// - `load_info` is the set of ELF load informations.
+/// - `vdso` is the set of vDSO informations.
 fn build_auxilary(
 	exec_info: &ExecInfo,
 	load_info: &ELFLoadInfo,
-	parser: &ELFParser,
+	vdso: &MappedVDSO,
 ) -> Result<Vec<AuxEntryDesc>, Errno> {
 	let mut aux = Vec::new();
 
-	if let Some(phdr) = load_info.phdr {
-		aux.push(AuxEntryDesc::new(
-			AT_PHDR,
-			AuxEntryDescValue::Number(phdr as _),
-		))?;
-		aux.push(AuxEntryDesc::new(
-			AT_PHENT,
-			AuxEntryDescValue::Number(parser.get_header().get_phentsize() as _),
-		))?;
-		aux.push(AuxEntryDesc::new(
-			AT_PHNUM,
-			AuxEntryDescValue::Number(parser.get_header().get_phnum() as _),
-		))?;
-	}
+	aux.push(AuxEntryDesc::new(
+		AT_PHDR,
+		AuxEntryDescValue::Number(load_info.phdr as _),
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_PHENT,
+		AuxEntryDescValue::Number(load_info.phentsize as _),
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_PHNUM,
+		AuxEntryDescValue::Number(load_info.phnum as _),
+	))?;
 
 	aux.push(AuxEntryDesc::new(
 		AT_PAGESZ,
@@ -219,15 +240,30 @@ fn build_auxilary(
 		AT_EXECFN,
 		AuxEntryDescValue::String("TODO\0".as_bytes()),
 	))?; // TODO
+
+	// vDSO
+	aux.push(AuxEntryDesc::new(
+		AT_SYSINFO,
+		AuxEntryDescValue::Number(vdso.entry.as_ptr() as _)
+	))?;
+	aux.push(AuxEntryDesc::new(
+		AT_SYSINFO_EHDR,
+		AuxEntryDescValue::Number(vdso.ptr.as_ptr() as _)
+	))?;
+
+	// End
 	aux.push(AuxEntryDesc::new(AT_NULL, AuxEntryDescValue::Number(0)))?;
 
 	Ok(aux)
 }
 
-/// Reads the file `file`. If the file is not executable, the function returns an
-/// error.
-/// `uid` is the User ID of the executing user.
-/// `gid` is the Group ID of the executing user.
+/// Reads the file `file`.
+///
+/// Arguments:
+/// - `uid` is the User ID of the executing user.
+/// - `gid` is the Group ID of the executing user.
+///
+/// If the file is not executable, the function returns an error.
 fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
 	// Check that the file can be executed by the user
 	if !file.can_execute(uid, gid) {
@@ -252,11 +288,13 @@ pub struct ELFExecutor {
 
 impl ELFExecutor {
 	/// Creates a new instance to execute the given program.
-	/// `uid` is the User ID of the executing user.
-	/// `gid` is the Group ID of the executing user.
+	///
+	/// Arguments:
+	/// - `uid` is the User ID of the executing user.
+	/// - `gid` is the Group ID of the executing user.
 	pub fn new(info: ExecInfo) -> Result<Self, Errno> {
 		Ok(Self {
-			info
+			info,
 		})
 	}
 
@@ -265,8 +303,11 @@ impl ELFExecutor {
 	/// included.
 	/// - The required size in bytes for the data to be written on the stack before the program
 	/// starts.
-	fn get_init_stack_size(argv: &[String], envp: &[String], aux: &[AuxEntryDesc])
-		-> (usize, usize) {
+	fn get_init_stack_size(
+		argv: &[String],
+		envp: &[String],
+		aux: &[AuxEntryDesc],
+	) -> (usize, usize) {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for a in aux {
@@ -300,12 +341,15 @@ impl ELFExecutor {
 
 	// TODO Clean
 	/// Initializes the stack data of the process according to the System V ABI.
-	/// `user_stack` the pointer to the user stack.
-	/// `argv` is the list of arguments.
-	/// `envp` is the environment.
-	/// `aux` is the auxilary vector.
-	/// The function returns the distance between the top of the stack and the new bottom after the
-	/// data has been written.
+	///
+	/// Arguments:
+	/// - `user_stack` the pointer to the user stack.
+	/// - `argv` is the list of arguments.
+	/// - `envp` is the environment.
+	/// - `aux` is the auxilary vector.
+	///
+	/// The function returns the distance between the top of the stack and the
+	/// new bottom after the data has been written.
 	fn init_stack(
 		&self,
 		user_stack: *const c_void,
@@ -315,8 +359,8 @@ impl ELFExecutor {
 	) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
 
-		// A slice on the stack representing the region which will containing the arguments and
-		// environment variables
+		// A slice on the stack representing the region which will containing the
+		// arguments and environment variables
 		let info_slice = unsafe {
 			slice::from_raw_parts_mut((user_stack as usize - info_size) as *mut u8, info_size)
 		};
@@ -413,23 +457,28 @@ impl ELFExecutor {
 	}
 
 	/// Allocates memory in userspace for an ELF segment.
+	///
 	/// If the segment isn't loadable, the function does nothing.
-	/// `load_base` is the address at which the executable is loaded.
-	/// `mem_space` is the memory space to allocate into.
-	/// `seg` is the segment for which the memory is allocated.
-	/// If loaded, the function return the pointer to the end of the segment in virtual memory.
+	///
+	/// Arguments:
+	/// - `load_base` is the address at which the executable is loaded.
+	/// - `mem_space` is the memory space to allocate into.
+	/// - `seg` is the segment for which the memory is allocated.
+	///
+	/// If loaded, the function return the pointer to the end of the segment in
+	/// virtual memory.
 	fn alloc_segment(
-		load_base: *const u8,
+		load_base: *const c_void,
 		mem_space: &mut MemSpace,
 		seg: &ELF32ProgramHeader,
 	) -> Result<Option<*const c_void>, Errno> {
 		// Loading only loadable segments
-		if seg.p_type != elf::PT_LOAD {
+		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
 			return Ok(None);
 		}
 
 		// Checking the alignment is correct
-		if !math::is_power_of_two(seg.p_align) {
+		if !seg.p_align.is_power_of_two() {
 			return Err(errno!(EINVAL));
 		}
 
@@ -438,20 +487,19 @@ impl ELFExecutor {
 		// The pointer to the beginning of the segment in memory
 		let mem_begin = unsafe { load_base.add(seg.p_vaddr as usize - pad) };
 		// The length of the memory to allocate in pages
-		let pages = math::ceil_division(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
+		let pages = math::ceil_div(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
 		if pages > 0 {
 			mem_space.map(
 				MapConstraint::Fixed(mem_begin as _),
 				pages,
 				seg.get_mem_space_flags(),
-				None,
-				0,
+				MapResidence::Normal,
 			)?;
 
 			// TODO Lazy allocation
 			// Pre-allocating the pages to make them writable
-			mem_space.alloc(mem_begin as *const u8, pages * memory::PAGE_SIZE)?;
+			mem_space.alloc(mem_begin as *const c_void, pages * memory::PAGE_SIZE)?;
 		}
 
 		// The pointer to the end of the virtual memory chunk
@@ -460,43 +508,82 @@ impl ELFExecutor {
 	}
 
 	/// Copies the segment's data into memory.
+	///
 	/// If the segment isn't loadable, the function does nothing.
-	/// `load_base` is the address at which the executable is loaded.
-	/// `seg` is the segment.
-	/// `image` is the ELF file image.
-	fn copy_segment(load_base: *const u8, seg: &ELF32ProgramHeader, image: &[u8]) {
+	///
+	/// Arguments:
+	/// - `load_base` is the address at which the executable is loaded.
+	/// - `seg` is the segment.
+	/// - `image` is the ELF file image.
+	fn copy_segment(load_base: *const c_void, seg: &ELF32ProgramHeader, image: &[u8]) {
 		// Loading only loadable segments
-		if seg.p_type != elf::PT_LOAD {
+		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
 			return;
 		}
 
-		// The pointer to the beginning of the segment in the virtual memory
-		let begin = unsafe { load_base.add(seg.p_vaddr as usize) as *mut _ };
-		// The length of the segment in bytes
-		let len = min(seg.p_memsz, seg.p_filesz) as usize;
 		// A slice to the beginning of the segment's data in the file
 		let file_begin = &image[seg.p_offset as usize];
 
+		// The pointer to the beginning of the segment in the virtual memory
+		let begin = unsafe { load_base.add(seg.p_vaddr as usize) as *mut _ };
+		// The length of data to be copied from file
+		let len = min(seg.p_memsz, seg.p_filesz) as usize;
+
 		// Copying the segment's data
 		unsafe {
-			// Safe because the module ELF image is valid at this point
-			vmem::write_lock_wrap(|| {
-				util::memcpy(begin, file_begin as *const _ as _, len);
-			});
+			vmem::write_lock_wrap(|| ptr::copy_nonoverlapping(file_begin, begin, len));
 		}
 	}
 
 	/// Loads the ELF file parsed by `elf` into the memory space `mem_space`.
-	/// `load_base` is the base address at which the ELF is loaded.
-	/// `interp` tells whether the function loads an interpreter.
+	///
+	/// Arguments:
+	/// - `elf` is the ELF image.
+	/// - `mem_space` is the memory space.
+	/// - `load_base` is the base address at which the ELF is loaded.
+	/// - `interp` tells whether the function loads an interpreter.
 	fn load_elf(
 		&self,
 		elf: &ELFParser,
 		mem_space: &mut MemSpace,
-		load_base: *const u8,
+		load_base: *const c_void,
 		interp: bool,
 	) -> Result<ELFLoadInfo, Errno> {
-		let interp_path = elf.get_interpreter_path();
+		// Allocating memory for segments
+		let mut load_end = load_base;
+		for seg in elf.iter_segments() {
+			if let Some(end) = Self::alloc_segment(load_base, mem_space, seg)? {
+				load_end = max(end, load_end);
+			}
+		}
+
+		let ehdr = elf.get_header();
+		let phentsize = ehdr.e_phentsize as usize;
+		let phnum = ehdr.e_phnum as usize;
+
+		// The size in bytes of the phdr table
+		let phdr_size = phentsize as usize * phnum as usize;
+
+		let phdr = elf.iter_segments()
+			.filter(|seg| seg.p_type == elf::PT_PHDR)
+			.map(|seg| seg.p_vaddr as *mut c_void)
+			.next();
+		let (phdr, phdr_needs_copy) = match phdr {
+			Some(phdr) => (phdr, false),
+
+			// Not phdr segment. Load it manually
+			None => {
+				let page_size = math::ceil_div(phdr_size, memory::PAGE_SIZE);
+				let phdr = mem_space.map(
+					MapConstraint::None,
+					page_size,
+					mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
+					MapResidence::Normal,
+				)?;
+
+				(phdr, true)
+			},
+		};
 
 		let mut entry_point =
 			(load_base as usize + elf.get_header().e_entry as usize) as *const c_void;
@@ -504,29 +591,8 @@ impl ELFExecutor {
 		let mut interp_load_base = None;
 		let mut interp_entry = None;
 
-		// Allocating memory for segments
-		let mut load_end: Result<*const c_void, Errno> = Ok(load_base as _);
-		// The pointer to the program header table in memory
-		let mut phdr: Option<*const c_void> = None;
-		elf.foreach_segments(|seg| {
-			load_end = Self::alloc_segment(load_base, mem_space, seg).map(|end| {
-				if let Some(end) = end {
-					max(end, load_end.unwrap())
-				} else {
-					load_end.unwrap()
-				}
-			});
-
-			// If PHDR, keep the pointer
-			if seg.p_type == elf::PT_PHDR {
-				phdr = Some((load_base as usize + seg.p_vaddr as usize) as _);
-			}
-
-			load_end.is_ok()
-		});
-		let mut load_end = load_end?;
-
 		// Loading the interpreter, if present
+		let interp_path = elf.get_interpreter_path();
 		if let Some(interp_path) = interp_path {
 			// If the interpreter tries to load another interpreter, return an error
 			if interp {
@@ -538,15 +604,15 @@ impl ELFExecutor {
 			// Getting file
 			let interp_file_mutex = {
 				let vfs_mutex = vfs::get();
-				let vfs_guard = vfs_mutex.lock();
-				let vfs = vfs_guard.get_mut().as_mut().unwrap();
+				let mut vfs = vfs_mutex.lock();
+				let vfs = vfs.as_mut().unwrap();
 
 				vfs.get_file_from_path(&interp_path, self.info.euid, self.info.egid, true)?
 			};
-			let interp_file_guard = interp_file_mutex.lock();
+			let mut interp_file = interp_file_mutex.lock();
 
 			let interp_image =
-				read_exec_file(interp_file_guard.get_mut(), self.info.euid, self.info.egid)?;
+				read_exec_file(&mut *interp_file, self.info.euid, self.info.egid)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
@@ -562,20 +628,32 @@ impl ELFExecutor {
 		unsafe {
 			vmem::switch(mem_space.get_vmem().as_ref(), move || {
 				// Copying segments' data
-				elf.foreach_segments(|seg| {
+				for seg in elf.iter_segments() {
 					Self::copy_segment(load_base, seg, elf.get_image());
-					true
-				});
+				}
+
+				// Copy phdr's data if necessary
+				if phdr_needs_copy {
+					let image_phdr = &elf.get_image()[(ehdr.e_phoff as usize)..];
+
+					vmem::write_lock_wrap(|| {
+						ptr::copy_nonoverlapping::<u8>(
+							image_phdr.as_ptr(),
+							phdr as _,
+							phdr_size
+						);
+					});
+				}
 
 				// Performing relocations if no interpreter is present
-				if interp_path.is_none() {
+				if !interp && interp_path.is_none() {
 					// Closure returning a symbol from its name
 					let get_sym = |name: &str| elf.get_symbol_by_name(name);
 
 					// Closure returning the value for a given symbol
 					let get_sym_val = |sym_section: u32, sym: u32| {
-						let section = elf.get_section_by_index(sym_section)?;
-						let sym = elf.get_symbol_by_index(section, sym)?;
+						let section = elf.iter_sections().nth(sym_section as usize)?;
+						let sym = elf.iter_symbols(section).nth(sym as usize)?;
 
 						if sym.is_defined() {
 							Some(load_base as u32 + sym.st_value)
@@ -584,22 +662,31 @@ impl ELFExecutor {
 						}
 					};
 
-					elf.foreach_rel(|section, rel| {
-						rel.perform(load_base as _, section, get_sym, get_sym_val);
-						true
-					});
-					elf.foreach_rela(|section, rela| {
-						rela.perform(load_base as _, section, get_sym, get_sym_val);
-						true
-					});
+					for section in elf.iter_sections() {
+						for rel in elf.iter_rel(section) {
+							rel.perform(load_base as _, section, get_sym, get_sym_val)
+								.or_else(|_| Err(errno!(EINVAL)))?;
+						}
+
+						for rela in elf.iter_rela(section) {
+							rela.perform(load_base as _, section, get_sym, get_sym_val)
+								.or_else(|_| Err(errno!(EINVAL)))?;
+						}
+					}
 				}
-			});
+
+				Ok(())
+			})?;
 		}
 
 		Ok(ELFLoadInfo {
 			load_base: load_base as _,
 			load_end,
+
 			phdr,
+			phentsize,
+			phnum,
+
 			entry_point,
 
 			interp_load_base,
@@ -609,8 +696,8 @@ impl ELFExecutor {
 }
 
 impl Executor for ELFExecutor {
-	// TODO Ensure there is no way to write in kernel space (check segments position and
-	// relocations)
+	// TODO Ensure there is no way to write in kernel space (check segments position
+	// and relocations)
 	// TODO Handle suid and sgid
 	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno> {
 		// The ELF file image
@@ -622,21 +709,24 @@ impl Executor for ELFExecutor {
 		let mut mem_space = MemSpace::new()?;
 
 		// Loading the ELF
-		let load_info = self.load_elf(&parser, &mut mem_space, null::<u8>(), false)?;
+		let load_info = self.load_elf(&parser, &mut mem_space, null::<c_void>(), false)?;
 
 		// The user stack
 		let user_stack =
 			mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
 
+		// Map the vDSO
+		let vdso = vdso::map(&mut mem_space)?;
+
 		// The auxilary vector
-		let aux = build_auxilary(&self.info, &load_info, &parser)?;
+		let aux = build_auxilary(&self.info, &load_info, &vdso)?;
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
 		// Pre-allocating pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
-			let pages_count = math::ceil_division(total_size, memory::PAGE_SIZE);
+			let pages_count = math::ceil_div(total_size, memory::PAGE_SIZE);
 			// Checking that the data doesn't exceed the stack's size
 			if pages_count >= process::USER_STACK_SIZE {
 				return Err(errno!(ENOMEM));

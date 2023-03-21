@@ -1,44 +1,37 @@
-//! The `syncfs` system call allows to synchronize the filesystem containing the file pointed by
-//! the given file descriptor.
+//! The `syncfs` system call allows to synchronize the filesystem containing the
+//! file pointed by the given file descriptor.
 
 use crate::errno::Errno;
-use crate::file::open_file::FDTarget;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use core::ffi::c_int;
+use macros::syscall;
 
-/// The implementation of the `syncfs` syscall.
-pub fn syncfs(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-
+#[syscall]
+pub fn syncfs(fd: c_int) -> Result<i32, Errno> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
 
 	let open_file_mutex = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
-		let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-		fd.get_open_file()
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds = fds_mutex.lock();
+
+		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+		fd.get_open_file()?
 	};
 
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get();
+	let open_file = open_file_mutex.lock();
 
-	match open_file.get_target() {
-		FDTarget::File(f) => {
-			let file_guard = f.lock();
-			let file = file_guard.get();
+	let file_mutex = open_file.get_file()?;
+	let file = file_mutex.lock();
 
-			let location = file.get_location();
-			let _mountpoint = location.get_mountpoint();
+	let location = file.get_location();
+	let _mountpoint = location.get_mountpoint();
 
-			// TODO Sync all files on mountpoint
+	// TODO Sync all files on mountpoint
 
-			Ok(0)
-		}
-
-		_ => Ok(0),
-	}
+	Ok(0)
 }

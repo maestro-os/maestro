@@ -1,11 +1,13 @@
-//! The Multiboot standard specifies an interface to load and boot the kernel image. It provides
-//! critical informations such as the memory mapping and the ELF structure of the kernel.
+//! The Multiboot standard specifies an interface to load and boot the kernel
+//! image. It provides critical informations such as the memory mapping and the
+//! ELF structure of the kernel.
 
 use crate::memory;
 use crate::util;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
+use core::slice;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -393,6 +395,10 @@ pub struct BootInfo {
 	pub elf_shndx: u32,
 	/// A pointer to the kernel's ELF sections.
 	pub elf_sections: *const c_void,
+
+	/// Slice of data representing an initramfs image.
+	/// If `None`, no initramfs is loaded.
+	pub initramfs: Option<&'static [u8]>,
 }
 
 /// The field storing the informations given to the kernel at boot time.
@@ -410,6 +416,8 @@ static mut BOOT_INFO: BootInfo = BootInfo {
 	elf_entsize: 0,
 	elf_shndx: 0,
 	elf_sections: null(),
+
+	initramfs: None,
 };
 
 /// Returns the boot informations provided by Multiboot.
@@ -440,7 +448,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagString;
 
 			unsafe {
-				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const u8);
 				boot_info.cmdline = Some(util::str_from_ptr(ptr));
 			}
 		}
@@ -449,8 +457,25 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 			let t = tag as *const TagString;
 
 			unsafe {
-				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const _) as *const u8;
+				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const u8);
 				boot_info.loader_name = Some(util::str_from_ptr(ptr));
+			}
+		}
+
+		TAG_TYPE_MODULE => {
+			let t = tag as *const TagModule;
+
+			let (begin, end) = unsafe {
+				let begin = memory::kern_to_virt((*t).mod_start as *const u8);
+				let end = memory::kern_to_virt((*t).mod_end as *const u8);
+
+				(begin, end)
+			};
+			let size = end as usize - begin as usize;
+			let data = unsafe { slice::from_raw_parts::<u8>(begin, size) };
+
+			if size > 0 {
+				boot_info.initramfs = Some(data);
 			}
 		}
 
@@ -486,11 +511,13 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 	}
 }
 
-/// Reads the multiboot tags from the given `ptr` and fills the boot informations structure.
+/// Reads the multiboot tags from the given `ptr` and fills the boot
+/// informations structure.
 ///
 /// # Safety
 ///
-/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is undefined.
+/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is
+/// undefined.
 pub fn read_tags(ptr: *const c_void) {
 	unsafe {
 		let mut tag = (ptr.offset(8)) as *const Tag;

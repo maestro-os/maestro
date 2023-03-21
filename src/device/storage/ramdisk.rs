@@ -1,23 +1,27 @@
-//! A ramdisk is a virtual storage device stored on the RAM. From the point of view of the
-//! userspace, it works exactly the same.
-//! Ramdisks are lazily allocated so they do not use much memory as long as they are not used.
+//! A ramdisk is a virtual storage device stored on the RAM. From the point of
+//! view of the userspace, it works exactly the same.
+//!
+//! Ramdisks are lazily allocated so they do not use much memory as long as they
+//! are not used.
 
-use super::StorageInterface;
-use crate::device;
-use crate::device::id;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 use crate::device::Device;
 use crate::device::DeviceHandle;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::errno;
+use crate::device::id;
+use crate::device;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
+use crate::syscall::ioctl;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::StorageInterface;
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;
@@ -37,7 +41,9 @@ struct RAMDisk {
 impl RAMDisk {
 	/// Creates a new ramdisk.
 	pub fn new() -> Self {
-		Self { data: None }
+		Self {
+			data: None,
+		}
 	}
 
 	/// Tells whether the disk is allocated.
@@ -132,7 +138,7 @@ impl DeviceHandle for RAMDiskHandle {
 	fn ioctl(
 		&mut self,
 		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
+		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
 		// TODO
@@ -164,22 +170,24 @@ pub fn create() -> Result<(), Errno> {
 	let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Block, Some(RAM_DISK_MAJOR))?);
 
 	for i in 0..RAM_DISK_COUNT {
-		let mut name = String::from(b"ram")?;
-		name.append(String::from_number(i as _)?)?;
+		let mut name = String::try_from(b"ram")?;
+		name.append(crate::format!("{}", i)?)?;
 
 		let mut path = Path::root();
-		path.push(String::from(b"dev")?)?;
+		path.push(String::try_from(b"dev")?)?;
 		path.push(name)?;
 
 		let dev = Device::new(
-			RAM_DISK_MAJOR,
-			i as _,
+			DeviceID {
+				type_: DeviceType::Block,
+				major: RAM_DISK_MAJOR, 
+				minor: i as _,
+			},
 			path,
 			0o666,
-			DeviceType::Block,
 			RAMDiskHandle::new(),
 		)?;
-		device::register_device(dev)?;
+		device::register(dev)?;
 	}
 
 	Ok(())

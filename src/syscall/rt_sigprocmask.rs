@@ -3,9 +3,10 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
 use crate::process::Process;
 use core::cmp::min;
+use core::ffi::c_int;
+use macros::syscall;
 
 /// Performs the union of the given mask with the current mask.
 const SIG_BLOCK: i32 = 0;
@@ -15,27 +16,22 @@ const SIG_UNBLOCK: i32 = 1;
 const SIG_SETMASK: i32 = 2;
 
 // TODO Use SigSet in crate::process::signal
-/// The implementation of the `rt_sigprocmask` syscall.
-pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
-	let how = regs.ebx as i32;
-	let set: SyscallSlice<u8> = (regs.ecx as usize).into();
-	let oldset: SyscallSlice<u8> = (regs.edx as usize).into();
-	let sigsetsize = regs.esi as u32;
-
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+#[syscall]
+pub fn rt_sigprocmask(
+	how: c_int,
+	set: SyscallSlice<u8>,
+	oldset: SyscallSlice<u8>,
+	sigsetsize: usize,
+) -> Result<i32, Errno> {
+	let proc_mutex = Process::get_current().unwrap();
+	let mut proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 
-	// Getting slices
-	let set_slice = set.get(&mem_space_guard, sigsetsize as _)?;
-	let oldset_slice = oldset.get_mut(&mem_space_guard, sigsetsize as _)?;
-
-	// The current set
 	let curr = proc.get_sigmask_mut().as_slice_mut();
 
+	let oldset_slice = oldset.get_mut(&mut mem_space_guard, sigsetsize as _)?;
 	if let Some(oldset) = oldset_slice {
 		// Saving the old set
 		for i in 0..min(oldset.len(), curr.len()) {
@@ -43,6 +39,7 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 		}
 	}
 
+	let set_slice = set.get(&mem_space_guard, sigsetsize as _)?;
 	if let Some(set) = set_slice {
 		// Applies the operation
 		match how {
@@ -50,19 +47,19 @@ pub fn rt_sigprocmask(regs: &Regs) -> Result<i32, Errno> {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] |= set[i];
 				}
-			},
+			}
 
 			SIG_UNBLOCK => {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] &= !set[i];
 				}
-			},
+			}
 
 			SIG_SETMASK => {
 				for i in 0..min(set.len(), curr.len()) {
 					curr[i] = set[i];
 				}
-			},
+			}
 
 			_ => return Err(errno!(EINVAL)),
 		}

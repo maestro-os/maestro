@@ -1,4 +1,5 @@
-//! This module implements a procfs node which allows to get the list of mountpoint.
+//! This module implements a procfs node which allows to get the list of
+//! mountpoint.
 
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::KernFSNode;
@@ -27,10 +28,7 @@ impl KernFSNode for Mounts {
 
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_euid()
+			proc_mutex.lock().euid
 		} else {
 			0
 		}
@@ -38,10 +36,7 @@ impl KernFSNode for Mounts {
 
 	fn get_gid(&self) -> Gid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_egid()
+			proc_mutex.lock().egid
 		} else {
 			0
 		}
@@ -64,11 +59,10 @@ impl IO for Mounts {
 
 		// Generating content
 		let mut content = String::new();
-		let guard = mountpoint::MOUNT_POINTS.lock();
-		let container = guard.get_mut();
+		let container = mountpoint::MOUNT_POINTS.lock();
+
 		for (_, mp_mutex) in container.iter() {
-			let mp_guard = mp_mutex.lock();
-			let mp = mp_guard.get();
+			let mp = mp_mutex.lock();
 
 			let fs_type = mp.get_filesystem_type();
 			let flags = "TODO"; // TODO

@@ -1,0 +1,21 @@
+name: Check
+on: push
+jobs:
+    Debug:
+        runs-on: [self-hosted, linux]
+        steps:
+            - uses: actions/checkout@v2
+            - name: Compilation
+              run: "testing/debug.sh"
+    Release:
+        runs-on: [self-hosted, linux]
+        steps:
+            - uses: actions/checkout@v2
+            - name: Compilation
+              run: "testing/release.sh"
+    Selftests:
+        runs-on: [self-hosted, linux]
+        steps:
+            - uses: actions/checkout@v2
+            - name: Running selftests
+              run: "testing/selftest.sh"

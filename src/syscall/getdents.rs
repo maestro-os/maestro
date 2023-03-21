@@ -1,14 +1,15 @@
-//! The `getdents` system call allows to get the list of entries in a given directory.
+//! The `getdents` system call allows to get the list of entries in a given
+//! directory.
 
 use crate::errno::Errno;
-use crate::file::open_file::FDTarget;
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use core::ffi::c_uint;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr;
+use macros::syscall;
 
 /// Structure representing a Linux directory entry.
 #[repr(C)]
@@ -20,38 +21,37 @@ struct LinuxDirent {
 	/// Length of this entry.
 	d_reclen: u16,
 	/// Filename (null-terminated).
-	/// The filename is immediately followed by a zero padding byte, then a byte indicating the
-	/// type of the entry.
+	///
+	/// The filename is immediately followed by a zero padding byte, then a byte
+	/// indicating the type of the entry.
 	d_name: [u8; 0],
 }
 
-/// The implementation of the `getdents` syscall.
-pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as u32;
-	let dirp: SyscallSlice<c_void> = (regs.ecx as usize).into();
-	let count = regs.edx as u32;
-
+#[syscall]
+pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result<i32, Errno> {
 	let (mem_space, open_file_mutex) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
-		let open_file_mutex = proc
+
+		let fds_mutex = proc.get_fds().unwrap();
+		let fds = fds_mutex.lock();
+
+		let open_file_mutex = fds
 			.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file();
+			.get_open_file()?;
 
 		(mem_space, open_file_mutex)
 	};
 
 	// Getting file
-	let open_file_guard = open_file_mutex.lock();
-	let open_file = open_file_guard.get_mut();
+	let mut open_file = open_file_mutex.lock();
 
-	let mem_space_guard = mem_space.lock();
+	let mut mem_space_guard = mem_space.lock();
 	let dirp_slice = dirp
-		.get_mut(&mem_space_guard, count as _)?
+		.get_mut(&mut mem_space_guard, count as _)?
 		.ok_or_else(|| errno!(EFAULT))?;
 
 	let mut off = 0;
@@ -59,14 +59,9 @@ pub fn getdents(regs: &Regs) -> Result<i32, Errno> {
 	let start = open_file.get_offset();
 
 	{
-		// Getting entries from the directory
-		let fd_target = open_file.get_target();
-		let file_mutex = match fd_target {
-			FDTarget::File(file) => file,
-			_ => return Err(errno!(ENOTDIR)),
-		};
-		let file_guard = file_mutex.lock();
-		let file = file_guard.get();
+		let file_mutex = open_file.get_file()?;
+		let file = file_mutex.lock();
+
 		let entries = match file.get_content() {
 			FileContent::Directory(entries) => entries,
 			_ => return Err(errno!(ENOTDIR)),

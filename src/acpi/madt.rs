@@ -6,17 +6,19 @@ use super::ACPITableHeader;
 /// The offset of the entries in the MADT.
 const ENTRIES_OFF: usize = 0x2c;
 
-/// Indicates that the system also has a PC-AT-compatible dual-8259 setup (which must be disabled
-/// when enabling ACPI APIC).
+/// Indicates that the system also has a PC-AT-compatible dual-8259 setup (which
+/// must be disabled when enabling ACPI APIC).
 const PCAT_COMPAT: u32 = 0b1;
 
 /// The Multiple APIC Description Table.
 #[repr(C)]
+#[derive(Debug)]
 pub struct Madt {
 	/// The table's header.
 	pub header: ACPITableHeader,
 
-	/// The physical address at which each process can access its local interrupt controller.
+	/// The physical address at which each process can access its local
+	/// interrupt controller.
 	local_apic_addr: u32,
 	/// APIC flags.
 	flags: u32,
@@ -47,6 +49,7 @@ impl ACPITable for Madt {
 
 /// Represents an MADT entry header.
 #[repr(C)]
+#[derive(Debug)]
 pub struct EntryHeader {
 	/// The entry type.
 	entry_type: u8,

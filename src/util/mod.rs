@@ -12,12 +12,23 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
-use crate::errno::Errno;
 use core::cmp::min;
+use core::ffi::c_int;
 use core::ffi::c_void;
+use core::fmt::Write;
 use core::fmt;
 use core::mem::size_of;
 use core::slice;
+use crate::errno::Errno;
+
+// C functions required by LLVM
+extern "C" {
+	fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *const c_void;
+	fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *const c_void;
+	fn memcmp(dest: *const c_void, src: *const c_void, n: usize) -> c_int;
+	fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void;
+	fn strlen(s: *const c_void) -> usize;
+}
 
 /// Tells if pointer `ptr` is aligned on boundary `n`.
 #[inline(always)]
@@ -25,21 +36,25 @@ pub fn is_aligned<T>(ptr: *const T, n: usize) -> bool {
 	((ptr as usize) & (n - 1)) == 0
 }
 
-/// Aligns down a pointer. The retuned value shall be lower than `ptr` or equal
-/// if the pointer is already aligned.
+/// Aligns down a pointer.
+///
+/// The retuned value shall be lower than `ptr` or equal if the pointer is already aligned.
 #[inline(always)]
 pub fn down_align<T>(ptr: *const T, n: usize) -> *const T {
 	((ptr as usize) & !(n - 1)) as *const T
 }
 
-/// Aligns up a pointer. The returned value shall be greater than `ptr`.
+/// Aligns up a pointer.
+///
+/// The returned value shall be greater than `ptr`.
 #[inline(always)]
 pub fn up_align<T>(ptr: *const T, n: usize) -> *const T {
 	((down_align(ptr, n) as usize) + n) as *const T
 }
 
-/// Aligns a pointer. The returned value shall be greater than `ptr` or equal if
-/// the pointer is already aligned.
+/// Aligns a pointer.
+///
+/// The returned value shall be greater than `ptr` or equal if the pointer is already aligned.
 #[inline(always)]
 pub fn align<T>(ptr: *const T, n: usize) -> *const T {
 	if is_aligned(ptr, n) {
@@ -51,7 +66,7 @@ pub fn align<T>(ptr: *const T, n: usize) -> *const T {
 
 /// Returns the of a type in bits.
 #[inline(always)]
-pub fn bit_size_of<T>() -> usize {
+pub const fn bit_size_of<T>() -> usize {
 	size_of::<T>() * 8
 }
 
@@ -62,13 +77,15 @@ macro_rules! offset_of {
 		#[allow(unused_unsafe)]
 		unsafe {
 			let ptr = core::ptr::NonNull::<core::ffi::c_void>::dangling().as_ptr();
-			(&(*(ptr as *const $type)).$field) as *const _ as usize - ptr as usize
+			(&(*(ptr as *const $type)).$field) as *const _ as usize - (ptr as usize)
 		}
 	};
 }
 
 /// Returns the structure of type `type` that contains the structure in field `field` at pointer
-/// `ptr`. The type must be a pointer type.
+/// `ptr`.
+///
+/// The type must be a pointer type.
 #[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
@@ -87,48 +104,26 @@ macro_rules! register_get {
 	}};
 }
 
-extern "C" {
-	/// Copies the given memory area `src` to `dest` with size `n`.
-	/// If the given memory areas are overlapping, the behaviour is undefined.
-	pub fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-	/// Same as memcpy, except the function can handle overlapping memory areas.
-	pub fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-	/// Compares strings of byte `s1` and `s2` with length `n` and returns the
-	/// diffence between the first bytes that differ.
-	pub fn memcmp(s1: *const c_void, s2: *const c_void, n: usize) -> i32;
-	/// Fills the `n` first bytes of the memory area pointed to by `s`, with the
-	/// value `c`.
-	pub fn memset(s: *mut c_void, c: i32, n: usize) -> *mut c_void;
-
-	/// Zeros the given chunk of memory `s` with the given size `n`.
-	pub fn bzero(s: *mut c_void, n: usize);
-}
-
 /// Zeroes the given object.
-/// The function is marked unsafe since there exist some objects for which a representation full of
-/// zeros is invalid.
+///
+/// # Safety
+///
+/// The caller must ensure an object with type `T` represented with only zeros is valid.
+/// If not, the behaviour is undefined.
 pub unsafe fn zero_object<T>(obj: &mut T) {
-	let ptr = obj as *mut T as *mut c_void;
+	let ptr = obj as *mut T as *mut u8;
 	let size = size_of::<T>();
 
-	bzero(ptr, size);
+	let slice = slice::from_raw_parts_mut(ptr, size);
+	slice.fill(0);
 }
 
-/// Returns the length of the string `s`.
-/// If the pointer or the string is invalid, the behaviour is undefined.
-#[no_mangle]
-pub unsafe extern "C" fn strlen(s: *const u8) -> usize {
-	let mut i = 0;
-
-	while *s.add(i) != b'\0' {
-		i += 1;
-	}
-
-	i
-}
-
-/// Like `strlen`, but limited to the first `n` bytes.
-/// If the pointer or the string is invalid, the behaviour is undefined.
+/// Returns the length of the C-style string pointed to by `s`, but limited to the first `n` bytes.
+///
+/// # Safety
+///
+/// The caller must ensure the pointer points to a valid chunk of memory, ending with at least one
+/// 0 byte.
 pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 	let mut i = 0;
 
@@ -141,16 +136,16 @@ pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 
 /// Returns a slice representing a C string beginning at the given pointer.
 pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
-	slice::from_raw_parts(ptr, strlen(ptr))
+	slice::from_raw_parts(ptr, strlen(ptr as *const _))
 }
 
 /// Returns an immutable slice to the given value.
 pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
-	unsafe { slice::from_raw_parts(&val as *const _ as *const u8, size_of::<T>()) }
+	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of::<T>()) }
 }
 
-/// Returns the length of the string representation of the number at the beginning of the given
-/// string `s`.
+/// Returns the length of the string representation of the number at the
+/// beginning of the given string `s`.
 pub fn nbr_len(s: &[u8]) -> usize {
 	let mut i = 0;
 
@@ -165,20 +160,36 @@ pub fn nbr_len(s: &[u8]) -> usize {
 	i
 }
 
-/// Copies from slice `src` to `dst`. If one slice is smaller than the other, the function stops
-/// when the end of the smallest is reached.
+/// Copies from slice `src` to `dst`.
+///
+/// If slice are not of the same length, the function copies only up to the length of the smallest.
 pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
 }
 
 /// Reinterprets the given slice of bytes as another type.
-pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> &'a T {
-	&*(slice.as_ptr() as *const _)
+///
+/// If the type is too large in size to fit in the slice, the function returns `None`.
+///
+/// # Safety
+///
+/// Not every types are defined for every possible memory representations. Thus, some values
+/// passed as input to this function might be invalid for a given type, which is undefined.
+///
+/// The caller must ensure the sanity of the given input.
+pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
+	if size_of::<T>() <= slice.len() {
+		// Safe because the slice is large enough
+		let val = &*(slice.as_ptr() as *const T);
+		Some(val)
+	} else {
+		None
+	}
 }
 
-/// Trait allowing to perform a clone of a structure that can possibly fail (on memory allocation
-/// failure, for example).
+/// Trait allowing to perform a clone of a structure that can possibly fail (on
+/// memory allocation failure, for example).
 pub trait FailableClone {
 	/// Clones the object. If the clone fails, the function returns Err.
 	fn failable_clone(&self) -> Result<Self, Errno>
@@ -186,8 +197,9 @@ pub trait FailableClone {
 		Self: Sized;
 }
 
-/// Implements FailableClone with the default implemention for the given type. The type must
-/// implement Clone.
+// TODO add a derive macro for types other than primitives
+/// Implements `FailableClone` with the default implemention for the given type.
+/// The type must implement `Clone`.
 #[macro_export]
 macro_rules! failable_clone_impl {
 	($type:ty) => {
@@ -213,17 +225,23 @@ failable_clone_impl!(usize);
 failable_clone_impl!(*mut c_void);
 failable_clone_impl!(*const c_void);
 
-/// Wrapper structure allowing to implement the Display trait on the [u8] type to display it as a
-/// string.
-pub struct DisplayableStr<'a> {
-	/// The string to be displayed.
-	pub s: &'a [u8],
+/// Same as the Default trait, but the operation can possibly fail (on memory allocation failure,
+/// for example).
+pub trait FailableDefault {
+	/// Returns the default value. On fail, the function returns Err.
+	fn failable_default() -> Result<Self, Errno>
+	where
+		Self: Sized;
 }
+
+/// Wrapper structure allowing to implement the Display trait on the [u8] type
+/// to display it as a string.
+pub struct DisplayableStr<'a>(pub &'a [u8]);
 
 impl<'a> fmt::Display for DisplayableStr<'a> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-		for b in self.s {
-			write!(fmt, "{}", *b as char)?;
+		for b in self.0 {
+			fmt.write_char(*b as char)?;
 		}
 
 		Ok(())
@@ -281,47 +299,6 @@ mod test {
 	}
 
 	#[test_case]
-	fn memmove0() {
-		let mut dest: [usize; 100] = [0; 100];
-		let mut src: [usize; 100] = [0; 100];
-
-		for i in 0..100 {
-			src[i] = i;
-		}
-		unsafe {
-			memmove(
-				dest.as_mut_ptr() as _,
-				src.as_ptr() as _,
-				100 * size_of::<usize>(),
-			);
-		}
-		for i in 0..100 {
-			debug_assert_eq!(dest[i], i);
-		}
-	}
-
-	#[test_case]
-	fn memmove1() {
-		let mut buff: [usize; 100] = [0; 100];
-
-		for i in 0..100 {
-			buff[i] = i;
-		}
-		unsafe {
-			memmove(
-				buff.as_mut_ptr() as _,
-				buff.as_ptr() as _,
-				100 * size_of::<usize>(),
-			);
-		}
-		for i in 0..100 {
-			debug_assert_eq!(buff[i], i);
-		}
-	}
-
-	// TODO More tests on memmove
-
-	#[test_case]
 	fn memcmp0() {
 		let mut b0: [u8; 100] = [0; 100];
 		let mut b1: [u8; 100] = [0; 100];
@@ -350,21 +327,4 @@ mod test {
 	// TODO More tests on memcmp
 
 	// TODO Test `memset`
-
-	#[test_case]
-	fn memmove0() {
-		let mut buff: [u8; 100] = [0; 100];
-
-		for i in 0..100 {
-			buff[i] = i as _;
-		}
-		unsafe {
-			bzero(buff.as_mut_ptr() as _, 100);
-		}
-		for i in 0..100 {
-			debug_assert_eq!(buff[i], 0);
-		}
-	}
-
-	// TODO More tests on memmove
 }

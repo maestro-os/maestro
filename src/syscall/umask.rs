@@ -2,18 +2,16 @@
 
 use crate::errno::Errno;
 use crate::file;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
-/// The implementation of the `umask` syscall.
-pub fn umask(regs: &Regs) -> Result<i32, Errno> {
-	let mask = regs.ebx as file::Mode;
+#[syscall]
+pub fn umask(mask: file::Mode) -> Result<i32, Errno> {
+	let proc_mutex = Process::get_current().unwrap();
+	let mut proc = proc_mutex.lock();
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let prev = proc.umask;
+	proc.umask = mask & 0o777;
 
-	let prev = proc.get_umask();
-	proc.set_umask(mask & 0o777);
 	Ok(prev as _)
 }

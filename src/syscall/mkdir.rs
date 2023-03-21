@@ -1,29 +1,25 @@
 //! The mkdir system call allows to create a directory.
 
 use crate::errno::Errno;
-use crate::file::FileContent;
+use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::file;
-use crate::process::Process;
+use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
-use crate::util::FailableClone;
+use crate::process::Process;
 use crate::util::container::hashmap::HashMap;
+use crate::util::FailableClone;
+use macros::syscall;
 
-/// The implementation of the `mkdir` syscall.
-pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let mode = regs.ecx as file::Mode;
-
+#[syscall]
+pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 	let (path, mode, uid, gid) = {
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
 
-		let mode = mode & !proc.get_umask();
-		let uid = proc.get_uid();
-		let gid = proc.get_gid();
+		let mode = mode & !proc.umask;
+		let uid = proc.uid;
+		let gid = proc.gid;
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -31,7 +27,7 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 		// The path to the directory to create
 		let mut path =
 			Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		path = super::util::get_absolute_path(proc, path)?;
+		path = super::util::get_absolute_path(&*proc, path)?;
 
 		(path, mode, uid, gid)
 	};
@@ -43,17 +39,16 @@ pub fn mkdir(regs: &Regs) -> Result<i32, Errno> {
 	if let Some(name) = parent_path.pop() {
 		// Creating the directory
 		{
-			let mutex = vfs::get();
-			let guard = mutex.lock();
-			let vfs = guard.get_mut().as_mut().unwrap();
+			let vfs_mutex = vfs::get();
+			let mut vfs = vfs_mutex.lock();
+			let vfs = vfs.as_mut().unwrap();
 
 			// Getting parent directory
 			let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-			let parent_guard = parent_mutex.lock();
-			let parent = parent_guard.get_mut();
+			let mut parent = parent_mutex.lock();
 
 			vfs.create_file(
-				parent,
+				&mut *parent,
 				name,
 				uid,
 				gid,

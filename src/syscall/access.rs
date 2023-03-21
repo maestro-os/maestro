@@ -3,15 +3,17 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
+use crate::process::Process;
 use crate::util::FailableClone;
+use core::ffi::c_int;
+use macros::syscall;
 
-/// Special value, telling to take the path relative to the current working directory.
+/// Special value, telling to take the path relative to the current working
+/// directory.
 pub const AT_FDCWD: i32 = -100;
-/// If pathname is a symbolic link, do not dereference it: instead return information about the
-/// link itself.
+/// If pathname is a symbolic link, do not dereference it: instead return
+/// information about the link itself.
 pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 /// Perform access checks using the effective user and group IDs.
 pub const AT_EACCESS: i32 = 0x200;
@@ -36,10 +38,13 @@ const W_OK: i32 = 2;
 const X_OK: i32 = 1;
 
 /// Performs the access operation.
-/// `dirfd` is the file descriptor of the directory relative to which the check is done.
-/// `pathname` is the path to the file.
-/// `mode` is a bitfield of access permissions to check.
-/// `flags` is a set of flags.
+///
+/// Arguments:
+/// - `dirfd` is the file descriptor of the directory relative to which the check
+/// is done.
+/// - `pathname` is the path to the file.
+/// - `mode` is a bitfield of access permissions to check.
+/// - `flags` is a set of flags.
 pub fn do_access(
 	dirfd: Option<i32>,
 	pathname: SyscallString,
@@ -52,8 +57,7 @@ pub fn do_access(
 
 	let (path, uid, gid, cwd) = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space_mutex.lock();
@@ -65,9 +69,9 @@ pub fn do_access(
 
 		let (uid, gid) = {
 			if flags & AT_EACCESS != 0 {
-				(proc.get_euid(), proc.get_egid())
+				(proc.euid, proc.egid)
 			} else {
-				(proc.get_uid(), proc.get_gid())
+				(proc.uid, proc.gid)
 			}
 		};
 
@@ -89,14 +93,13 @@ pub fn do_access(
 			}
 		}
 
-		let vfs_guard = vfs::get().lock();
-		let vfs = vfs_guard.get_mut().as_mut().unwrap();
+		let mut vfs = vfs::get().lock();
+		let vfs = vfs.as_mut().unwrap();
 		vfs.get_file_from_path(&path, uid, gid, follow_symlinks)?
 	};
 
 	{
-		let file_guard = file.lock();
-		let file = file_guard.get();
+		let file = file.lock();
 
 		// Do access checks
 		if (mode & R_OK != 0) && !file.can_read(uid, gid) {
@@ -113,10 +116,7 @@ pub fn do_access(
 	return Ok(0);
 }
 
-/// The implementation of the `access` syscall.
-pub fn access(regs: &Regs) -> Result<i32, Errno> {
-	let pathname: SyscallString = (regs.ebx as usize).into();
-	let mode = regs.ecx as i32;
-
+#[syscall]
+pub fn access(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	do_access(None, pathname, mode, None)
 }

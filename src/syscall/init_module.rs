@@ -5,20 +5,22 @@ use crate::errno::Errno;
 use crate::module;
 use crate::module::Module;
 use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::regs::Regs;
+use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use core::ffi::c_ulong;
+use macros::syscall;
 
-/// The implementation of the `init_module` syscall.
-pub fn init_module(regs: &Regs) -> Result<i32, Errno> {
-	let module_image: SyscallSlice<u8> = (regs.ebx as usize).into();
-	let len = regs.ecx;
-
+#[syscall]
+pub fn init_module(
+	module_image: SyscallSlice<u8>,
+	len: c_ulong,
+	_param_values: SyscallString,
+) -> Result<i32, Errno> {
 	let module = {
 		let proc_mutex = Process::get_current().unwrap();
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
-		if proc.get_uid() != 0 {
+		if proc.euid != 0 {
 			return Err(errno!(EPERM));
 		}
 

@@ -1,20 +1,18 @@
-//! The `umount` system call allows to unmount a filesystem previously mounted with `mount`.
+//! The `umount` system call allows to unmount a filesystem previously mounted
+//! with `mount`.
 
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
-/// The implementation of the `umount` syscall.
-pub fn umount(regs: &Regs) -> Result<i32, Errno> {
-	let target: SyscallString = (regs.ebx as usize).into();
-
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get();
+#[syscall]
+pub fn umount(target: SyscallString) -> Result<i32, Errno> {
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	// Getting a slice to the string
 	let mem_space = proc.get_mem_space().unwrap();
@@ -23,10 +21,7 @@ pub fn umount(regs: &Regs) -> Result<i32, Errno> {
 
 	// Getting the mountpoint
 	let target_path = Path::from_str(target_slice, true)?;
-	let _mountpoint = mountpoint::from_path(&target_path).ok_or(errno!(EINVAL))?;
-
-	// TODO Check if busy (EBUSY)
-	// TODO If not, sync and unmount
+	mountpoint::remove(&target_path)?;
 
 	Ok(0)
 }

@@ -1,5 +1,5 @@
-//! This module handles the PIT (Programmable Interrupt Timer) which allows to trigger
-//! interruptions at a fixed interval.
+//! This module handles the PIT (Programmable Interrupt Timer) which allows to
+//! trigger interruptions at a fixed interval.
 
 use crate::idt;
 use crate::io;
@@ -23,11 +23,12 @@ const SELECT_CHANNEL_0: u8 = 0b00 << 6;
 const SELECT_CHANNEL_1: u8 = 0b01 << 6;
 /// Select PIT channel 2.
 const SELECT_CHANNEL_2: u8 = 0b10 << 6;
-/// The read back command, used to read the current state of the PIT (doesn't work on 8253 and
-/// older).
+/// The read back command, used to read the current state of the PIT (doesn't
+/// work on 8253 and older).
 const READ_BACK_COMMAND: u8 = 0b11 << 6;
 
-/// Tells the PIT to copy the current count to the latch register to be read by the CPU.
+/// Tells the PIT to copy the current count to the latch register to be read by
+/// the CPU.
 const ACCESS_LATCH_COUNT_VALUE: u8 = 0b00 << 4;
 /// Tells the PIT to read only the lowest 8 bits of the counter value.
 const ACCESS_LOBYTE: u8 = 0b01 << 4;
@@ -62,6 +63,8 @@ pub fn init() {
 			PIT_COMMAND,
 			SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
 		);
+
+		set_frequency(Rational::from_integer(1));
 	});
 }
 
@@ -74,7 +77,7 @@ fn set_value(count: u16) {
 }
 
 /// Sets the current frequency of the PIT.
-pub fn set_curr_frequency(frequency: Rational) {
+pub fn set_frequency(frequency: Rational) {
 	let mut c = {
 		if frequency != From::from(0) {
 			(BASE_FREQUENCY / frequency).as_integer()

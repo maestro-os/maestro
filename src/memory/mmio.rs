@@ -20,8 +20,8 @@ pub struct MMIO {
 impl MMIO {
 	/// Maps the MMIO's memory.
 	fn map(&self) -> Result<(), Errno> {
-		let paging_lock = crate::get_vmem().lock();
-		let paging = paging_lock.get_mut().as_mut().unwrap();
+		let mut paging_lock = crate::get_vmem().lock();
+		let paging = paging_lock.as_mut().unwrap();
 
 		// Mapping the memory
 		let flags = vmem::x86::FLAG_GLOBAL

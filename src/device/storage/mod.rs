@@ -6,22 +6,31 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use crate::device;
-use crate::device::bus::pci;
-use crate::device::id;
-use crate::device::id::MajorBlock;
-use crate::device::manager::DeviceManager;
-use crate::device::manager::PhysicalDevice;
+use core::cmp::min;
+use core::ffi::c_uchar;
+use core::ffi::c_ulong;
+use core::ffi::c_ushort;
+use core::ffi::c_void;
 use crate::device::Device;
 use crate::device::DeviceHandle;
+use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::errno;
+use crate::device::bus::pci;
+use crate::device::id::MajorBlock;
+use crate::device::id;
+use crate::device::manager::DeviceManager;
+use crate::device::manager::PhysicalDevice;
+use crate::device;
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::errno;
 use crate::file::Mode;
+use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
+use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::oom;
+use crate::syscall::ioctl;
+use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -29,9 +38,6 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
-use crate::util::FailableClone;
-use core::cmp::min;
-use core::ffi::c_void;
 use partition::Partition;
 
 /// The major number for storage devices.
@@ -41,38 +47,61 @@ const STORAGE_MODE: Mode = 0o660;
 /// The maximum number of partitions in a disk.
 const MAX_PARTITIONS: usize = 16;
 
-/// Trait representing a storage interface. A storage block is the atomic unit for I/O access on
-/// the storage device.
+/// Hard drive geometry.
+#[derive(Debug)]
+#[repr(C)]
+struct HdGeometry {
+	/// The number of heads (CHS).
+	heads: c_uchar,
+	/// The number of sectors (CHS).
+	sectors: c_uchar,
+	/// The number of cylinders (CHS).
+	cylinders: c_ushort,
+	/// Starting LBA of the device.
+	start: c_ulong,
+}
+
+/// Trait representing a storage interface.
+///
+/// A storage block is the atomic unit for I/O access on the storage device.
 pub trait StorageInterface {
 	/// Returns the size of the storage blocks in bytes.
-	/// This value must not change.
+	///
+	/// This value is guaranteed to be fixed.
 	fn get_block_size(&self) -> u64;
 	/// Returns the number of storage blocks.
-	/// This value must not change.
+	///
+	/// This value is guaranteed to be fixed.
 	fn get_blocks_count(&self) -> u64;
 
 	/// Returns the size of the storage in bytes.
-	/// This value must not change.
+	///
+	/// This value is guaranteed to be fixed.
 	fn get_size(&self) -> u64 {
 		self.get_block_size() * self.get_blocks_count()
 	}
 
-	/// Reads `size` blocks from storage at block offset `offset`, writing the data to `buf`.
+	/// Reads `size` blocks from storage at block offset `offset`, writing the
+	/// data to `buf`.
+	///
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
-	/// Writes `size` blocks to storage at block offset `offset`, reading the data from `buf`.
+	/// Writes `size` blocks to storage at block offset `offset`, reading the
+	/// data from `buf`.
+	///
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
 
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writing the data to `buf`.
+	///
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<(u64, bool), Errno> {
 		let block_size = self.get_block_size();
 		let blocks_count = self.get_blocks_count();
 
 		let blk_begin = offset / block_size;
-		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
+		let blk_end = math::ceil_div(offset + buf.len() as u64, block_size);
 		if blk_begin > blocks_count || blk_end > blocks_count {
 			return Err(errno!(EINVAL));
 		}
@@ -125,13 +154,14 @@ pub trait StorageInterface {
 
 	// Unit testing is done through ramdisk testing
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
+	///
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
 		let blocks_count = self.get_blocks_count();
 
 		let blk_begin = offset / block_size;
-		let blk_end = math::ceil_division(offset + buf.len() as u64, block_size);
+		let blk_end = math::ceil_div(offset + buf.len() as u64, block_size);
 		if blk_begin > blocks_count || blk_end > blocks_count {
 			return Err(errno!(EINVAL));
 		}
@@ -190,20 +220,41 @@ pub trait StorageInterface {
 pub struct StorageDeviceHandle {
 	/// A reference to the storage interface.
 	interface: WeakPtr<dyn StorageInterface>,
-
-	/// The partition associated with the handle.
+	/// The partition associated with the handle. If `None`, the handle covers the whole device.
 	partition: Option<Partition>,
+
+	/// The major number of the device.
+	major: u32,
+	/// The ID of the storage device in the manager.
+	storage_id: u32,
+	/// The path to the file of the main device containing the partition table.
+	path_prefix: String,
 }
 
 impl StorageDeviceHandle {
-	/// Creates a new instance for the given storage interface and the given partition number.
-	/// `interface` is the storage interface.
-	/// `partition` is the partition. If None, the handle works on the whole storage device.
-	pub fn new(interface: WeakPtr<dyn StorageInterface>, partition: Option<Partition>) -> Self {
+	/// Creates a new instance for the given storage interface and the given
+	/// partition number.
+	///
+	/// Arguments:
+	/// - `interface` is the storage interface.
+	/// - `partition` is the partition. If `None`, the handle works on the whole storage device.
+	/// - `major` is the major number of the device.
+	/// - `storage_id` is the ID of the storage device in the manager.
+	/// - `path_prefix` is the path to the file of the main device containing the partition table.
+	pub fn new(
+		interface: WeakPtr<dyn StorageInterface>,
+		partition: Option<Partition>,
+		major: u32,
+		storage_id: u32,
+		path_prefix: String
+	) -> Self {
 		Self {
 			interface,
-
 			partition,
+
+			major,
+			storage_id,
+			path_prefix
 		}
 	}
 }
@@ -211,22 +262,109 @@ impl StorageDeviceHandle {
 impl DeviceHandle for StorageDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
-		_request: u32,
-		_argp: *const c_void,
+		mem_space: IntSharedPtr<MemSpace>,
+		request: ioctl::Request,
+		argp: *const c_void,
 	) -> Result<u32, Errno> {
-		// TODO
-		Err(errno!(EINVAL))
+		match request.get_old_format() {
+			ioctl::HDIO_GETGEO => {
+				// The total size of the disk
+				let size = {
+					if let Some(interface) = self.interface.get() {
+						let interface = interface.lock();
+						interface.get_block_size() * interface.get_blocks_count()
+					} else {
+						0
+					}
+				};
+
+				// Translate from LBA to CHS
+				let s = (size % c_uchar::MAX as u64) as _;
+				let h = ((size - s as u64) / c_uchar::MAX as u64 % c_uchar::MAX as u64) as _;
+				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
+
+				// Starting LBA of the partition
+				let start = self.partition.as_ref()
+					.map(|p| p.get_offset())
+					.unwrap_or(0) as _;
+
+				let hd_geo = HdGeometry {
+					heads: h,
+					sectors: s,
+					cylinders: c,
+					start,
+				};
+
+				// Write to userspace
+				let mut mem_space_guard = mem_space.lock();
+				let hd_geo_ptr: SyscallPtr<HdGeometry> = (argp as usize).into();
+				let hd_geo_ref = hd_geo_ptr
+					.get_mut(&mut mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*hd_geo_ref = hd_geo;
+
+				Ok(0)
+			}
+
+			ioctl::BLKRRPART => {
+				StorageManager::clear_partitions(self.major)?;
+				StorageManager::read_partitions(
+					self.interface.clone(),
+					self.major,
+					self.storage_id,
+					self.path_prefix.failable_clone()?
+				)?;
+
+				Ok(0)
+			}
+
+			ioctl::BLKSSZGET => {
+				let blk_size = {
+					if let Some(interface) = self.interface.get() {
+						let interface = interface.lock();
+						interface.get_block_size()
+					} else {
+						0
+					}
+				};
+
+				let mut mem_space_guard = mem_space.lock();
+				let size_ptr: SyscallPtr<u32> = (argp as usize).into();
+				let size_ref = size_ptr
+					.get_mut(&mut mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*size_ref = blk_size as _;
+
+				Ok(0)
+			}
+
+			ioctl::BLKGETSIZE64 => {
+				let size = self.get_size();
+
+				let mut mem_space_guard = mem_space.lock();
+				let size_ptr: SyscallPtr<u64> = (argp as usize).into();
+				let size_ref = size_ptr
+					.get_mut(&mut mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				*size_ref = size;
+
+				Ok(0)
+			}
+
+			_ => Err(errno!(EINVAL)),
+		}
 	}
 }
 
 impl IO for StorageDeviceHandle {
 	fn get_size(&self) -> u64 {
 		if let Some(interface) = self.interface.get() {
-			let interface_guard = interface.lock();
-			let interface = interface_guard.get();
+			let interface = interface.lock();
 
-			interface.get_block_size() * interface.get_blocks_count()
+			let blocks_count = self.partition.as_ref()
+				.map(|p| p.get_size())
+				.unwrap_or_else(|| interface.get_blocks_count());
+			interface.get_block_size() * blocks_count
 		} else {
 			0
 		}
@@ -234,8 +372,7 @@ impl IO for StorageDeviceHandle {
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
 		if let Some(interface) = self.interface.get() {
-			let interface_guard = interface.lock();
-			let interface = interface_guard.get_mut();
+			let mut interface = interface.lock();
 
 			// Check offset
 			let (start, size) = match &self.partition {
@@ -260,8 +397,7 @@ impl IO for StorageDeviceHandle {
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
 		if let Some(interface) = self.interface.get() {
-			let interface_guard = interface.lock();
-			let interface = interface_guard.get_mut();
+			let mut interface = interface.lock();
 
 			// Check offset
 			let (start, size) = match &self.partition {
@@ -290,6 +426,7 @@ impl IO for StorageDeviceHandle {
 }
 
 /// An instance of StorageManager manages devices on a whole major number.
+///
 /// The manager has name `storage`.
 pub struct StorageManager {
 	/// The allocated device major number for storage devices.
@@ -307,10 +444,83 @@ impl StorageManager {
 		})
 	}
 
-	// TODO Handle the case where there is more devices that the number of devices that can be
-	// handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
-	/// Adds a storage device.
+	/// Creates device files for every partitions on the storage device, within the limit of
+	/// `MAX_PARTITIONS`.
+	///
+	/// Arguments:
+	/// - `storage` is the storage interface.
+	/// - `major` is the major number of the device.
+	/// - `storage_id` is the ID of the storage device in the manager.
+	/// - `path_prefix` is the path to the file of the main device containing the partition table.
+	pub fn read_partitions(
+		storage: WeakPtr<dyn StorageInterface>,
+		major: u32,
+		storage_id: u32,
+		path_prefix: String,
+	) -> Result<(), Errno> {
+		if let Some(storage_mutex) = storage.get() {
+			let mut s = storage_mutex.lock();
+
+			if let Some(partitions_table) = partition::read(&mut *s)? {
+				let partitions = partitions_table.get_partitions(&mut *s)?;
+
+				let iter = partitions.into_iter().take(MAX_PARTITIONS - 1);
+				for (i, partition) in iter.enumerate() {
+					let part_nbr = (i + 1) as u32;
+
+					// Adding the partition number to the path
+					let path_str = (
+						path_prefix.failable_clone()? + crate::format!("{}", part_nbr)?
+					)?;
+					let path = Path::from_str(path_str.as_bytes(), false)?;
+
+					// Creating the partition's device file
+					let handle = StorageDeviceHandle::new(
+						storage.clone(),
+						Some(partition),
+						major,
+						storage_id,
+						path_prefix.failable_clone()?
+					);
+					let device = Device::new(
+						DeviceID {
+							type_: DeviceType::Block,
+							// TODO use a different major for different storage device types
+							major: STORAGE_MAJOR,
+							minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
+						},
+						path,
+						STORAGE_MODE,
+						handle,
+					)?;
+					device::register(device)?;
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	/// Clears device files for every partitions.
+	///
+	/// `major` is the major number of the devices to be removed.
+	pub fn clear_partitions(major: u32) -> Result<(), Errno> {
+		for i in 1..MAX_PARTITIONS {
+			device::unregister(&DeviceID {
+				type_: DeviceType::Block,
+				major,
+				minor: i as _,
+			})?;
+		}
+
+		Ok(())
+	}
+
+	// TODO Handle the case where there is more devices that the number of devices
+	// that can be handled in the range of minor numbers
+	// TODO When failing, remove previously registered devices
+	/// Adds the given storage device to the manager.
 	fn add(&mut self, storage: SharedPtr<dyn StorageInterface>) -> Result<(), Errno> {
 		// The device files' major number
 		let major = self.major_block.get_major();
@@ -318,52 +528,38 @@ impl StorageManager {
 		let storage_id = self.interfaces.len() as u32;
 
 		// The prefix is the path of the main device file
-		let mut prefix = String::from(b"/dev/sd")?;
-		prefix.push(b'a' + (storage_id as u8))?; // TODO Handle if out of the alphabet
+		let mut prefix = String::try_from(b"/dev/sd")?;
+		// TODO Handle if out of the alphabet
+		prefix.push(b'a' + (storage_id as u8))?;
 		// The path of the main device file
 		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 
 		// Creating the main device file
-		let main_handle = StorageDeviceHandle::new(storage.new_weak(), None);
-		let main_device = Device::new(
+		let main_handle = StorageDeviceHandle::new(
+			storage.new_weak(),
+			None,
 			major,
-			storage_id * MAX_PARTITIONS as u32,
+			storage_id,
+			prefix.failable_clone()?
+		);
+		let main_device = Device::new(
+			DeviceID {
+				type_: DeviceType::Block,
+				major,
+				minor: storage_id * MAX_PARTITIONS as u32,
+			},
 			main_path,
 			STORAGE_MODE,
-			DeviceType::Block,
 			main_handle,
 		)?;
-		device::register_device(main_device)?;
+		device::register(main_device)?;
 
-		// Creating device files for every partitions (within the limit of MAX_PARTITIONS)
-		{
-			let storage_guard = storage.lock();
-			let s = storage_guard.get_mut();
-
-			if let Some(partitions_table) = partition::read(s)? {
-				let partitions = partitions_table.get_partitions(s)?;
-
-				for (i, partition) in partitions.into_iter().take(MAX_PARTITIONS).enumerate() {
-					let i = i + 1;
-
-					// Adding the partition number to the path
-					let path_str = (prefix.failable_clone()? + String::from_number(i as _)?)?;
-					let path = Path::from_str(path_str.as_bytes(), false)?;
-
-					// Creating the partition's device file
-					let handle = StorageDeviceHandle::new(storage.new_weak(), Some(partition));
-					let device = Device::new(
-						major,
-						storage_id * MAX_PARTITIONS as u32 + i as u32,
-						path.failable_clone()?,
-						STORAGE_MODE,
-						DeviceType::Block,
-						handle,
-					)?;
-					device::register_device(device)?;
-				}
-			}
-		}
+		Self::read_partitions(
+			storage.new_weak(),
+			major,
+			storage_id,
+			prefix
+		)?;
 
 		self.interfaces.push(storage)
 	}
@@ -371,6 +567,7 @@ impl StorageManager {
 	// TODO Function to remove a device
 
 	/// Fills a random buffer `buff` of size `size` with seed `seed`.
+	///
 	/// The function returns the seed for the next block.
 	#[cfg(config_debug_storagetest)]
 	fn random_block(size: u64, buff: &mut [u8], seed: u32) -> u32 {
@@ -386,8 +583,9 @@ impl StorageManager {
 
 	// TODO Test with several blocks at a time
 	/// Tests the given interface with the given interface `interface`.
-	/// `seed` is the seed for pseudo random generation. The function will set this variable to
-	/// another value for the next iteration.
+	///
+	/// `seed` is the seed for pseudo random generation. The function will set
+	/// this variable to another value for the next iteration.
 	#[cfg(config_debug_storagetest)]
 	fn test_interface(interface: &mut dyn StorageInterface, seed: u32) -> bool {
 		let block_size = interface.get_block_size();
@@ -423,7 +621,9 @@ impl StorageManager {
 	}
 
 	/// Performs testing of storage devices and drivers.
-	/// If every tests pass, the function returns `true`. Else, it returns `false`.
+	///
+	/// If every tests pass, the function returns `true`. Else, it returns
+	/// `false`.
 	#[cfg(config_debug_storagetest)]
 	fn perform_test(&mut self) -> bool {
 		let mut seed = 42;
@@ -460,8 +660,9 @@ impl StorageManager {
 	}
 
 	/// Tests every storage drivers on every storage devices.
-	/// The execution of this function removes all the data on every connected writable disks, so
-	/// it must be used carefully.
+	///
+	/// The execution of this function removes all the data on every connected
+	/// writable disks, so it must be used carefully.
 	#[cfg(config_debug_storagetest)]
 	pub fn test(&mut self) {
 		crate::println!("Running disks tests... ({} devices)", self.interfaces.len());
@@ -478,26 +679,6 @@ impl StorageManager {
 impl DeviceManager for StorageManager {
 	fn get_name(&self) -> &'static str {
 		"storage"
-	}
-
-	fn legacy_detect(&mut self) -> Result<(), Errno> {
-		// TODO Detect floppy disks
-
-		// TODO rm?
-		/*for i in 0..4 {
-			let secondary = (i & 0b10) != 0;
-			let slave = (i & 0b01) != 0;
-
-			if let Ok(dev) = PATAInterface::new(secondary, slave) {
-				let interface = Box::new(dev)?;
-				// TODO Use a constant for the sectors count
-				let cached_interface = CachedStorageInterface::new(interface, 128)?;
-
-				self.add(Box::new(cached_interface)?)?;
-			}
-		}*/
-
-		Ok(())
 	}
 
 	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno> {
@@ -533,7 +714,7 @@ impl DeviceManager for StorageManager {
 	}
 
 	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
-		// TODO
-		Ok(())
+		// TODO remove device
+		todo!();
 	}
 }

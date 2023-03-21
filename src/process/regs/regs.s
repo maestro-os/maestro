@@ -7,7 +7,9 @@
 
 /*
  * This macro stores the values of every registers after an interruption was triggered.
+ *
  * Memory is allocated on the stack to store the values.
+ *
  * The stack frame is used as a reference to place the register values.
  */
 .macro GET_REGS n

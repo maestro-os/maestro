@@ -1,30 +1,30 @@
-//! The `vfork` system call works the same as the `fork` system call, except the parnet process is
-//! blocked until the child process exits or executes a program. During that time, the child
-//! process also shares the same memory space as the parent.
+//! The `vfork` system call works the same as the `fork` system call, except the
+//! parnet process is blocked until the child process exits or executes a
+//! program. During that time, the child process also shares the same memory
+//! space as the parent.
 
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::ForkOptions;
 use crate::process::Process;
+use crate::process::scheduler;
+use macros::syscall;
 
-/// The implementation of the `vfork` syscall.
-pub fn vfork(regs: &Regs) -> Result<i32, Errno> {
+#[syscall]
+pub fn vfork() -> Result<i32, Errno> {
 	let new_pid = {
 		// The current process
 		let curr_mutex = Process::get_current().unwrap();
 		// A weak pointer to the new process's parent
 		let parent = curr_mutex.new_weak();
 
-		let curr_guard = curr_mutex.lock();
-		let curr_proc = curr_guard.get_mut();
+		let mut curr_proc = curr_mutex.lock();
 
 		let fork_options = ForkOptions {
 			vfork: true,
 			..ForkOptions::default()
 		};
 		let new_mutex = curr_proc.fork(parent, fork_options)?;
-		let new_guard = new_mutex.lock();
-		let new_proc = new_guard.get_mut();
+		let mut new_proc = new_mutex.lock();
 
 		// Setting registers
 		let mut regs = regs.clone();
@@ -35,9 +35,11 @@ pub fn vfork(regs: &Regs) -> Result<i32, Errno> {
 		new_proc.get_pid()
 	};
 
-	// Letting another process run instead of the current. Because the current process must now
-	// wait for the child process to terminate or execute a program
-	crate::wait();
+	// Letting another process run instead of the current. Because the current
+	// process must now wait for the child process to terminate or execute a program
+	unsafe {
+		scheduler::end_tick();
+	}
 
 	Ok(new_pid as _)
 }

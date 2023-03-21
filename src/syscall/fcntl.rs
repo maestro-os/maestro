@@ -2,11 +2,11 @@
 
 use crate::errno::Errno;
 use crate::file::fd::NewFDConstraint;
-use crate::file::open_file::FDTarget;
 use crate::file::FileContent;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use core::ffi::c_int;
 use core::ffi::c_void;
+use macros::syscall;
 
 /// TODO doc
 const F_DUPFD: i32 = 0;
@@ -102,41 +102,46 @@ const F_SEAL_WRITE: i32 = 8;
 /// Performs the fcntl system call.
 /// `fcntl64` tells whether this is the fcntl64 system call.
 pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
-	let proc_guard = proc_mutex.lock();
-	let proc = proc_guard.get_mut();
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
 
-	//crate::println!("fcntl: {} {} {:p} {}", fd, cmd, arg, _fcntl64); // TODO rm
+	let fds_mutex = {
+		let proc_mutex = Process::get_current().unwrap();
+		let proc = proc_mutex.lock();
+
+		proc.get_fds().unwrap()
+	};
+	let mut fds = fds_mutex.lock();
 
 	match cmd {
-		F_DUPFD => Ok(proc
+		F_DUPFD => Ok(fds
 			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?
 			.get_id() as _),
 
 		F_GETFD => {
-			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			Ok(fd.get_flags())
 		}
 
 		F_SETFD => {
-			// TODO
+			let fd = fds.get_fd_mut(fd as _).ok_or_else(|| errno!(EBADF))?;
+			fd.set_flags(arg as _);
 			Ok(0)
 		}
 
 		F_GETFL => {
-			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-			let open_file_mutex = fd.get_open_file();
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get();
+			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let open_file_mutex = fd.get_open_file()?;
+			let open_file = open_file_mutex.lock();
 
 			Ok(open_file.get_flags())
 		}
 
 		F_SETFL => {
-			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-			let open_file_mutex = fd.get_open_file();
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get_mut();
+			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+			let open_file_mutex = fd.get_open_file()?;
+			let mut open_file = open_file_mutex.lock();
 
 			open_file.set_flags(arg as _);
 			Ok(0)
@@ -144,129 +149,116 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 
 		F_GETLK => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLK => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLKW => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETOWN => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETOWN => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETSIG => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETSIG => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETLK64 => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLK64 => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLKW64 => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETOWN_EX => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETOWN_EX => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_OFD_GETLK => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_OFD_SETLK => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_OFD_SETLKW => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SETLEASE => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETLEASE => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_NOTIFY => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
-		F_DUPFD_CLOEXEC => Ok(proc
+		F_DUPFD_CLOEXEC => Ok(fds
 			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), true)?
 			.get_id() as _),
 
 		F_SETPIPE_SZ => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GETPIPE_SZ => {
-			let fd = proc.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-			let open_file_mutex = fd.get_open_file();
-			let open_file_guard = open_file_mutex.lock();
-			let open_file = open_file_guard.get();
+			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 
-			match open_file.get_target() {
-				FDTarget::File(mutex) => {
-					let guard = mutex.lock();
-					let file = guard.get();
+			let open_file_mutex = fd.get_open_file()?;
+			let open_file = open_file_mutex.lock();
 
-					match file.get_content() {
-						FileContent::Fifo => {
-							// TODO
-							todo!();
-						}
+			let file_mutex = open_file.get_file()?;
+			let file = file_mutex.lock();
 
-						_ => Ok(0),
-					}
-				}
-
-				FDTarget::Pipe(mutex) => {
-					let guard = mutex.lock();
-					let pipe = guard.get();
-
-					Ok(pipe.get_available_len() as _)
+			match file.get_content() {
+				FileContent::Fifo => {
+					// TODO
+					todo!();
 				}
 
 				_ => Ok(0),
@@ -275,43 +267,39 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 
 		F_ADD_SEALS => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GET_SEALS => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GET_RW_HINT => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SET_RW_HINT => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_GET_FILE_RW_HINT => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		F_SET_FILE_RW_HINT => {
 			// TODO
-			Ok(0)
+			todo!();
 		}
 
 		_ => Err(errno!(EINVAL)),
 	}
 }
 
-/// The implementation of the `fcntl` syscall.
-pub fn fcntl(regs: &Regs) -> Result<i32, Errno> {
-	let fd = regs.ebx as i32;
-	let cmd = regs.ecx as i32;
-	let arg = regs.edx as *mut c_void;
-
+#[syscall]
+pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> Result<i32, Errno> {
 	do_fcntl(fd, cmd, arg, false)
 }

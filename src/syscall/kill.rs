@@ -1,25 +1,27 @@
-//! This module implements the `kill` system call, which allows to send a signal to a process.
+//! This module implements the `kill` system call, which allows to send a signal
+//! to a process.
 
+use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::errno;
 use crate::process::Process;
+use crate::process::State;
 use crate::process::pid::Pid;
-use crate::process::regs::Regs;
 use crate::process::signal::Signal;
-use crate::process::state::State;
 use crate::process;
+use macros::syscall;
 use super::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
-/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
-/// that could be killed.
+///
+/// If `sig` is `None`, the function doesn't send a signal, but still checks if
+/// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
-	let curr_mutex = Process::get_current().unwrap();
-	let curr_guard = curr_mutex.lock();
-	let curr_proc = curr_guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let mut curr_proc = proc_mutex.lock();
 
-	let uid = curr_proc.get_uid();
-	let euid = curr_proc.get_euid();
+	let uid = curr_proc.uid;
+	let euid = curr_proc.euid;
 
 	// Closure sending the signal
 	let f = |target: &mut Process| {
@@ -38,32 +40,33 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	};
 
 	if pid == curr_proc.get_pid() {
-		f(curr_proc)?;
+		f(&mut *curr_proc)?;
 	} else {
 		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		let target_guard = target_mutex.lock();
-		let target_proc = target_guard.get_mut();
+		let mut target_proc = target_mutex.lock();
 
-		f(target_proc)?;
+		f(&mut *target_proc)?;
 	}
 
 	Ok(())
 }
 
 /// Tries to kill a process group.
-/// `pid` TODO doc
-/// `sig` is the signal to send.
-/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
-/// that could be killed.
+///
+/// Arguments:
+/// - `pid` is the a value that determine which process(es) to kill.
+/// - `sig` is the signal to send.
+///
+/// If `sig` is `None`, the function doesn't send a signal, but still checks if
+/// there is a process that could be killed.
 fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 	let pgid = match pid {
 		0 => {
 			let curr_mutex = Process::get_current().unwrap();
-			let curr_guard = curr_mutex.lock();
-			let curr_proc = curr_guard.get_mut();
+			let curr_proc = curr_mutex.lock();
 
 			curr_proc.get_pgid()
-		},
+		}
 
 		i if i < 0 => -pid as Pid,
 		_ => pid as Pid,
@@ -71,9 +74,8 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 
 	// Killing process group
 	{
-		let mutex = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
+		let proc = proc_mutex.lock();
 
 		let group = proc.get_group_processes();
 
@@ -93,8 +95,8 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.
-/// If `sig` is None, the function doesn't send a signal, but still checks if there is a process
-/// that could be killed.
+/// If `sig` is `None`, the function doesn't send a signal, but still checks if
+/// there is a process that could be killed.
 fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 	if pid > 0 {
 		// Kill the process with the given PID
@@ -104,10 +106,9 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 		try_kill_group(0, &sig)
 	} else if pid == -1 {
 		// Kill all processes for which the current process has the permission
-		let scheduler_guard = process::get_scheduler().lock();
-		let scheduler = scheduler_guard.get_mut();
+		let mut sched = process::get_scheduler().lock();
 
-		for (pid, _) in scheduler.iter_process() {
+		for (pid, _) in sched.iter_process() {
 			if *pid == process::pid::INIT_PID {
 				continue;
 			}
@@ -125,11 +126,8 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 	}
 }
 
-/// The implementation of the `kill` syscall.
-pub fn kill(regs: &Regs) -> Result<i32, Errno> {
-	let pid = regs.ebx as i32;
-	let sig = regs.ecx as i32;
-
+#[syscall]
+pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {
 		return Err(errno!(EINVAL));
 	}
@@ -144,9 +142,8 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 	send_signal(pid, sig)?;
 
 	{
-		let mutex = Process::get_current().unwrap();
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_current().unwrap();
+		let mut proc = proc_mutex.lock();
 
 		// POSIX requires that at least one pending signal is executed before returning
 		if proc.has_signal_pending() {
@@ -158,7 +155,6 @@ pub fn kill(regs: &Regs) -> Result<i32, Errno> {
 			// Set the process to execute the signal action
 			proc.signal_next();
 		}
-
 	}
 
 	util::handle_proc_state();

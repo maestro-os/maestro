@@ -1,14 +1,16 @@
 //! This module implements types representing timestamps.
 
-use crate::util::math;
 use core::cmp::Ordering;
+use core::ffi::c_long;
 use core::ops::Add;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;
-/// Type representing a timestamp in microseconds. Equivalent to POSIX's `suseconds_t`.
+/// Type representing a timestamp in microseconds. Equivalent to POSIX's
+/// `suseconds_t`.
 pub type UTimestamp = u64;
-/// Type representing an elapsed number of ticks. Equivalent to POSIX's `clock_t`.
+/// Type representing an elapsed number of ticks. Equivalent to POSIX's
+/// `clock_t`.
 pub type Clock = u32;
 
 /// Enumeration of available timestamp scales.
@@ -25,24 +27,25 @@ pub enum TimestampScale {
 }
 
 impl TimestampScale {
-	/// Returns the order of the scale as a power of 10.
-	pub fn as_power(&self) -> i64 {
+	/// Returns the order of the scale as a power of `10`.
+	pub fn as_power(&self) -> u32 {
 		match self {
 			Self::Second => 0,
-			Self::Millisecond => -3,
-			Self::Microsecond => -6,
-			Self::Nanosecond => -9,
+			Self::Millisecond => 3,
+			Self::Microsecond => 6,
+			Self::Nanosecond => 9,
 		}
 	}
 
 	/// Converts the given value `val` from scale `from` to scale `to`.
 	pub fn convert(val: Timestamp, from: Self, to: Self) -> Timestamp {
-		let delta = -(to.as_power() - from.as_power());
+		let to_power = to.as_power();
+		let from_power = from.as_power();
 
-		if delta >= 0 {
-			val * math::pow(10, delta as _)
+		if to_power > from_power {
+			val * 10_u64.pow(to_power - from_power)
 		} else {
-			val / math::pow(10, -delta as _)
+			val / 10_u64.pow(from_power - to_power)
 		}
 	}
 }
@@ -82,7 +85,7 @@ impl TimeUnit for Timeval {
 	}
 
 	fn to_nano(&self) -> u64 {
-		self.tv_sec * 1000000000 + self.tv_usec * 1000
+		self.tv_sec.wrapping_mul(1000000000).wrapping_add(self.tv_usec.wrapping_mul(1000))
 	}
 
 	fn is_zero(&self) -> bool {
@@ -124,7 +127,7 @@ pub struct Timespec {
 	/// Seconds
 	pub tv_sec: Timestamp,
 	/// Nanoseconds
-	pub tv_nsec: u32,
+	pub tv_nsec: c_long,
 }
 
 impl TimeUnit for Timespec {
@@ -139,7 +142,7 @@ impl TimeUnit for Timespec {
 	}
 
 	fn to_nano(&self) -> u64 {
-		self.tv_sec * 1000000000 + self.tv_nsec as u64
+		self.tv_sec.wrapping_mul(1000000000).wrapping_add(self.tv_nsec as u64)
 	}
 
 	fn is_zero(&self) -> bool {
@@ -196,7 +199,7 @@ impl TimeUnit for Timespec32 {
 	}
 
 	fn to_nano(&self) -> u64 {
-		self.tv_sec as u64 * 1000000000 + self.tv_nsec as u64
+		(self.tv_sec as u64).wrapping_mul(1000000000).wrapping_add(self.tv_nsec as u64)
 	}
 
 	fn is_zero(&self) -> bool {

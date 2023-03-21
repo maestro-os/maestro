@@ -1,5 +1,5 @@
-//! This module implements the status file, which allows to retrieve the current status of the
-//! process.
+//! This module implements the status file, which allows to retrieve the current
+//! status of the process.
 
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::KernFSNode;
@@ -26,10 +26,7 @@ impl KernFSNode for Status {
 
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_euid()
+			proc_mutex.lock().euid
 		} else {
 			0
 		}
@@ -37,10 +34,7 @@ impl KernFSNode for Status {
 
 	fn get_gid(&self) -> Gid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_egid()
+			proc_mutex.lock().egid
 		} else {
 			0
 		}
@@ -62,16 +56,15 @@ impl IO for Status {
 		}
 
 		let proc_mutex = Process::get_by_pid(self.pid).ok_or_else(|| errno!(ENOENT))?;
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
-		let name = proc.get_argv()
+		let name = proc.argv
 			.iter()
-			.map(| name | unsafe { name.as_str_unchecked() })
+			.map(|name| unsafe { name.as_str_unchecked() })
 			.next()
 			.unwrap_or("?");
 
-		let umask = proc.get_umask();
+		let umask = proc.umask;
 
 		let state = proc.get_state();
 		let state_char = state.get_char();
@@ -80,19 +73,20 @@ impl IO for Status {
 		let pid = proc.get_pid();
 		let ppid = proc.get_parent_pid();
 
-		let uid = proc.get_uid();
-		let euid = proc.get_euid();
-		let suid = proc.get_suid();
+		let uid = proc.uid;
+		let euid = proc.euid;
+		let suid = proc.suid;
 		let ruid = 0; // TODO
 
-		let gid = proc.get_gid();
-		let egid = proc.get_egid();
-		let sgid = proc.get_sgid();
+		let gid = proc.gid;
+		let egid = proc.egid;
+		let sgid = proc.sgid;
 		let rgid = 0; // TODO
 
 		// TODO Fill every fields with process's data
 		// Generating content
-		let content = crate::format!("Name: {name}
+		let content = crate::format!(
+			"Name: {name}
 Umask: {umask:4o}
 State: {state_char} ({state_name})
 Tgid: 0
@@ -149,7 +143,8 @@ Mems_allowed: 00000001
 Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
 nonvoluntary_ctxt_switches: 0
-")?;
+"
+		)?;
 
 		// Copying content to userspace buffer
 		let content_bytes = content.as_bytes();

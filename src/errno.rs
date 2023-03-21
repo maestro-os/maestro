@@ -40,17 +40,26 @@ pub struct Errno {
 
 impl Errno {
 	/// Creates a new instance.
-	/// This function should not be used directly but only through the `errno` macro.
+	///
+	/// This function should not be used directly but only through the `errno`
+	/// macro.
 	#[cfg(not(config_debug_debug))]
 	pub fn new(errno: i32) -> Self {
-		Self { errno }
+		Self {
+			errno,
+		}
 	}
 
 	/// Creates a new instance.
-	/// This function should not be used directly but only through the `errno` macro.
+	///
+	/// This function should not be used directly but only through the `errno`
+	/// macro.
 	#[cfg(config_debug_debug)]
 	pub fn new(errno: i32, location: ErrnoLocation) -> Self {
-		Self { errno, location }
+		Self {
+			errno,
+			location,
+		}
 	}
 
 	/// Returns the integer representation of the errno.
@@ -225,6 +234,7 @@ impl fmt::Display for Errno {
 }
 
 /// Raises an errno.
+///
 /// `errno` is the name of the errno.
 #[cfg(not(config_debug_debug))]
 #[macro_export]
@@ -235,6 +245,7 @@ macro_rules! errno {
 }
 
 /// Raises an errno.
+///
 /// `errno` is the name of the errno.
 #[cfg(config_debug_debug)]
 #[macro_export]

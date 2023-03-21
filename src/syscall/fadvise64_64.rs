@@ -1,10 +1,12 @@
 //! The `fadvise64_64` syscall gives hints to the kernel about file accesses.
 
 use crate::errno::Errno;
-use crate::process::regs::Regs;
+use core::ffi::c_int;
+use macros::syscall;
 
-/// The implementation of the `setgid32` syscall.
-pub fn fadvise64_64(_regs: &Regs) -> Result<i32, Errno> {
+// TODO Check args type
+#[syscall]
+pub fn fadvise64_64(_fd: c_int, _offset: u64, _len: u64, _advice: c_int) -> Result<i32, Errno> {
 	// TODO
 	Ok(0)
 }

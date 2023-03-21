@@ -1,26 +1,27 @@
-//! The Box structure allows to hold an object on the heap and handles its memory properly.
+//! The `Box` structure allows to hold an object on the heap and handles its
+//! memory properly.
 
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::malloc;
-use crate::util::FailableClone;
 use core::ffi::c_void;
+use core::fmt;
 use core::marker::Unsize;
-use core::mem;
 use core::mem::size_of_val;
-use core::mem::transmute;
-use core::mem::ManuallyDrop;
-use core::mem::MaybeUninit;
+use core::mem;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
-use core::ptr::copy_nonoverlapping;
-use core::ptr::drop_in_place;
 use core::ptr::NonNull;
+use core::ptr::drop_in_place;
+use core::ptr;
+use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::memory;
+use crate::util::FailableClone;
 
-/// This structure allows to store an object in an allocated region of memory.
-/// The object is owned by the Box and will be freed whenever the Box is dropped.
-/// The Box uses the `malloc` allocator.
+/// A `Box` allows to store an object on the heap.
+///
+/// The object is owned by the Box and will be freed whenever it is dropped.
+///
+/// Box uses the `malloc` allocator.
 pub struct Box<T: ?Sized> {
 	/// Pointer to the allocated memory
 	ptr: NonNull<T>,
@@ -28,17 +29,20 @@ pub struct Box<T: ?Sized> {
 
 impl<T> Box<T> {
 	/// Creates a new instance and places the given value `value` into it.
+	///
 	/// If the allocation fails, the function shall return an error.
 	pub fn new(value: T) -> Result<Box<T>, Errno> {
-		let value_ref = &ManuallyDrop::new(value);
-
 		let ptr = {
-			let size = size_of_val(value_ref);
+			let size = size_of_val(&value);
 
 			if size > 0 {
-				let ptr = unsafe { transmute::<*mut c_void, *mut T>(malloc::alloc(size)?) };
+				let ptr = unsafe { malloc::alloc(size)? as *mut T };
 				unsafe {
-					copy_nonoverlapping(value_ref as *const _ as *const u8, ptr as *mut u8, size);
+					ptr::copy_nonoverlapping(
+						&value as *const _ as *const u8,
+						ptr as *mut u8,
+						size
+					);
 				}
 
 				NonNull::new(ptr).unwrap()
@@ -47,38 +51,47 @@ impl<T> Box<T> {
 			}
 		};
 
-		Ok(Self { ptr })
+		// Prevent double drop
+		mem::forget(value);
+
+		Ok(Self {
+			ptr,
+		})
 	}
 
-	/// Returns the value owned by the Box, taking its ownership.
+	/// Returns the value owned by the `Box`, taking its ownership.
 	pub fn take(self) -> T {
 		unsafe {
-			let mut t = MaybeUninit::<T>::uninit();
-			copy_nonoverlapping(self.ptr.as_ptr(), t.as_mut_ptr(), 1);
+			let t = ptr::read(self.ptr.as_ptr());
+
 			malloc::free(self.ptr.as_ptr() as _);
 			mem::forget(self);
-			t.assume_init()
+
+			t
 		}
 	}
 }
 
 impl<T: ?Sized> Box<T> {
-	/// Creates a new instance from a raw pointer. The newly created Box takes the ownership of the
-	/// pointer.
-	/// The given pointer must be an address to a region of memory allocated with the memory
-	/// allocator since its the allocator that the Box will use to free it.
+	/// Creates a new instance from a raw pointer.
+	///
+	/// The newly created `Box` takes the ownership of the pointer.
+	///
+	/// The given pointer must be an address to a region of memory allocated
+	/// with the memory allocator since its the allocator that the `Box` will use
+	/// to free it.
 	pub unsafe fn from_raw(ptr: *mut T) -> Self {
 		Self {
 			ptr: NonNull::new(ptr).unwrap(),
 		}
 	}
 
-	/// Returns a pointer to the data wrapped into the Box.
+	/// Returns a pointer to the data wrapped into the `Box`.
 	pub fn as_ptr(&self) -> *const T {
 		self.ptr.as_ptr()
 	}
 
-	/// Returns a mutable pointer to the data wrapped into the Box.
+	/// Returns a mutable pointer to the data wrapped into the `Box`.
 	pub fn as_mut_ptr(&mut self) -> *mut T {
 		self.ptr.as_ptr()
 	}
@@ -121,6 +134,18 @@ impl<T: ?Sized + Clone> FailableClone for Box<T> {
 impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Box<U>> for Box<T> {}
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
+
+impl<T: ?Sized + fmt::Display> fmt::Display for Box<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}", self.as_ref())
+	}
+}
+
+impl<T: ?Sized + fmt::Debug> fmt::Debug for Box<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{:?}", self.as_ref())
+	}
+}
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {

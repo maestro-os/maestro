@@ -1,7 +1,7 @@
 //! This module defines sockaddr structures used by system calls to define connection informations
 //! on sockets.
 
-use crate::types::c_short;
+use core::ffi::c_short;
 use super::Address;
 
 /// Structure providing connection informations for sockets with IPv4.

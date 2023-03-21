@@ -24,7 +24,8 @@ pub const PATH_SEPARATOR: char = '/';
 pub struct Path {
 	/// Tells whether the path is absolute or relative.
 	absolute: bool,
-	/// An array containing the different parts of the path which are separated with `/`.
+	/// An array containing the different parts of the path which are separated
+	/// with `/`.
 	parts: Vec<String>,
 }
 
@@ -38,9 +39,11 @@ impl Path {
 	}
 
 	/// Creates a new instance from string.
-	/// `path` is the path.
-	/// `user` tells whether the path was supplied by the user (to check the length and return an
-	/// error if too long).
+	///
+	/// Arguments:
+	/// - `path` is the path.
+	/// - `user` tells whether the path was supplied by the user (to check the
+	/// length and return an error if too long).
 	pub fn from_str(path: &[u8], user: bool) -> Result<Self, Errno> {
 		if user && path.len() + 1 >= limits::PATH_MAX {
 			return Err(errno!(ENAMETOOLONG));
@@ -48,17 +51,17 @@ impl Path {
 
 		let mut parts = Vec::new();
 		for p in path.split(|c| *c == PATH_SEPARATOR as u8) {
-			if p.len() + 1 >= limits::NAME_MAX {
+			if p.len() > limits::NAME_MAX {
 				return Err(errno!(ENAMETOOLONG));
 			}
 
 			if !p.is_empty() {
-				parts.push(String::from(p)?)?;
+				parts.push(p.try_into()?)?;
 			}
 		}
 
 		Ok(Self {
-			absolute: !path.is_empty() && path[0] == PATH_SEPARATOR as u8,
+			absolute: path.first() == Some(&(PATH_SEPARATOR as u8)),
 			parts,
 		})
 	}
@@ -78,28 +81,10 @@ impl Path {
 		self.parts.is_empty()
 	}
 
-	/// Returns the number of elements in the path, namely, the number of elements separated by
-	/// `/`.
+	/// Returns the number of elements in the path, namely, the number of
+	/// elements separated by `/`.
 	pub fn get_elements_count(&self) -> usize {
 		self.parts.len()
-	}
-
-	/// Converts the path into a String and returns it.
-	pub fn as_string(&self) -> Result<String, Errno> {
-		let mut s = String::new();
-		if self.absolute {
-			s.push(b'/')?;
-		}
-
-		for (i, p) in self.parts.iter().enumerate() {
-			s.append(p)?;
-
-			if i + 1 < self.parts.len() {
-				s.push(b'/')?;
-			}
-		}
-
-		Ok(s)
 	}
 
 	/// Pushes the given filename `filename` onto the path.
@@ -114,6 +99,13 @@ impl Path {
 	/// Pops the filename on top of the path.
 	pub fn pop(&mut self) -> Option<String> {
 		self.parts.pop()
+	}
+
+	/// Returns a reference to the last element.
+	///
+	/// If the path is empty, the function returns `None`.
+	pub fn last(&self) -> Option<&String> {
+		self.parts.as_slice().last()
 	}
 
 	/// Tells whether the current path begins with the path `other`.
@@ -159,34 +151,10 @@ impl Path {
 		})
 	}
 
-	// FIXME Unused: remove?
-	/// Reduces the path, removing all useless `.` and `..`.
-	pub fn reduce(&mut self) -> Result<(), Errno> {
-		let mut i = 0;
-		while i < self.parts.len() {
-			let part = &self.parts[i];
-
-			if part == "." || (part == ".." && self.absolute && i == 0) {
-				self.parts.remove(i);
-			} else if part == ".." && i > 0 && self.parts[i - 1] != ".." {
-				self.parts.remove(i);
-				self.parts.remove(i - 1);
-				i -= 1;
-			} else {
-				i += 1;
-			}
-		}
-
-		if !self.absolute && self.parts.is_empty() {
-			self.parts.push(String::from(b".")?)?;
-		}
-
-		Ok(())
-	}
-
-	/// Concats the current path with another path `other` to create a new path. The path is not
-	/// automaticaly reduced.
-	/// If the `other` path is absolute, the resulting path exactly equals `other`.
+	/// Concats the current path with another path `other` to create a new path.
+	///
+	/// If the `other` path is absolute, the resulting path exactly equals
+	/// `other`.
 	pub fn concat(&self, other: &Self) -> Result<Self, Errno> {
 		if other.is_absolute() {
 			other.failable_clone()
@@ -240,6 +208,10 @@ impl Eq for Path {}
 
 impl PartialEq for Path {
 	fn eq(&self, other: &Self) -> bool {
+		if self.parts.len() != other.parts.len() {
+			return false;
+		}
+
 		for i in 0..self.parts.len() {
 			if self.parts[i] != other.parts[i] {
 				return false;
@@ -297,69 +269,6 @@ mod test {
 	#[test_case]
 	fn path_absolute4() {
 		assert!(!Path::from_str(b"./", false).unwrap().is_absolute());
-	}
-
-	#[test_case]
-	fn path_reduce0() {
-		let mut path = Path::from_str(b"/.", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), "/");
-	}
-
-	#[test_case]
-	fn path_reduce1() {
-		let mut path = Path::from_str(b"/..", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), "/");
-	}
-
-	#[test_case]
-	fn path_reduce2() {
-		let mut path = Path::from_str(b"./", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), ".");
-	}
-
-	#[test_case]
-	fn path_reduce3() {
-		let mut path = Path::from_str(b"../", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), "..");
-	}
-
-	#[test_case]
-	fn path_reduce4() {
-		let mut path = Path::from_str(b"../bleh", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), "../bleh");
-	}
-
-	#[test_case]
-	fn path_reduce5() {
-		let mut path = Path::from_str(b"../bleh/..", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), "..");
-	}
-
-	#[test_case]
-	fn path_reduce6() {
-		let mut path = Path::from_str(b"../bleh/../bluh", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), "../bluh");
-	}
-
-	#[test_case]
-	fn path_reduce7() {
-		let mut path = Path::from_str(b"/bleh/../bluh", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), "/bluh");
-	}
-
-	#[test_case]
-	fn path_reduce8() {
-		let mut path = Path::from_str(b"/bleh/../../bluh", false).unwrap();
-		path.reduce().unwrap();
-		assert_eq!(path.as_string().unwrap(), "/bluh");
 	}
 
 	// TODO test concat

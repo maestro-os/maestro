@@ -1,5 +1,6 @@
-//! The PIC is a component handling external interruptions, which allows to block interruptions
-//! until the CPU tells that it's ready to handle another one.
+//! The PIC is a component handling external interruptions, which allows to
+//! block interruptions until the CPU tells that it's ready to handle another
+//! one.
 
 use crate::io;
 
@@ -35,7 +36,7 @@ const ICW4_AUTO: u8 = 0x02;
 /// TODO doc
 const ICW4_BUF_SLAVE: u8 = 0x08;
 /// TODO doc
-const ICW4_BUF_MASTER: u8 = 0x0C;
+const ICW4_BUF_MASTER: u8 = 0x0c;
 /// TODO doc
 const ICW4_SFNM: u8 = 0x10;
 
@@ -62,6 +63,36 @@ pub fn init(offset1: u8, offset2: u8) {
 
 		io::outb(MASTER_DATA, mask1);
 		io::outb(SLAVE_DATA, mask2);
+	}
+}
+
+/// Enable interruptions on the given IRQ.
+pub fn enable_irq(mut n: u8) {
+	let port = if n < 8 {
+		MASTER_DATA
+	} else {
+		n -= 8;
+		SLAVE_DATA
+	};
+
+	unsafe {
+		let value = io::inb(port) | (1 << n);
+		io::outb(port, value);
+	}
+}
+
+/// Disable interruptions on the given IRQ.
+pub fn disable_irq(mut n: u8) {
+	let port = if n < 8 {
+		MASTER_DATA
+	} else {
+		n -= 8;
+		SLAVE_DATA
+	};
+
+	unsafe {
+		let value = io::inb(port) & !(1 << n);
+		io::outb(port, value);
 	}
 }
 

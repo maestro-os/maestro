@@ -1,11 +1,13 @@
 //! This module handles process PIDs.
-//! Each process must have an unique PID, thus they have to be allocated. The kernel uses a
-//! bitfield to store the used PIDs.
+//!
+//! Each process must have an unique PID, thus they have to be allocated.
+//! A bitfield is used to store the used PIDs.
 
 use crate::errno::Errno;
 use crate::util::container::id_allocator::IDAllocator;
 
-/// Type representing a Process ID. This ID is unique for every running processes.
+/// Type representing a Process ID. This ID is unique for every running
+/// processes.
 pub type Pid = u16;
 
 /// The maximum possible PID.
@@ -43,6 +45,7 @@ impl PIDManager {
 	}
 
 	/// Releases the given PID `pid` to make it available for other processes.
+	///
 	/// If the PID wasn't allocated, the function does nothing.
 	pub fn release_pid(&mut self, pid: Pid) {
 		debug_assert!(pid >= 1);

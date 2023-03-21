@@ -1,14 +1,15 @@
 //! This module implements the ELF parser.
 
+use super::iter::ELFIterator;
 use super::*;
 use crate::elf::relocation::ELF32Rel;
 use crate::elf::relocation::ELF32Rela;
 use crate::errno;
 use crate::errno::Errno;
 use core::mem::size_of;
-use core::slice;
 
 /// The ELF parser allows to parse an ELF image and retrieve informations on it.
+///
 /// It is especially useful to load a kernel module or a userspace program.
 pub struct ELFParser<'a> {
 	/// The ELF image.
@@ -16,38 +17,10 @@ pub struct ELFParser<'a> {
 }
 
 impl<'a> ELFParser<'a> {
-	/// Returns the structure at offset `off`. The generic argument `T` tells which structure to
-	/// return.
-	/// If the image is invalid or if the offset is outside of the image, the behaviour is
-	/// undefined.
-	pub fn get_struct<T>(&self, off: usize) -> &T {
-		debug_assert!(off < self.image.len());
-
-		unsafe {
-			// Safe because the slice is large enough
-			&*(&self.image[off] as *const u8 as *const T)
-		}
-	}
-
 	/// Returns the image's header.
-	/// If the image is invalid, the behaviour is undefined.
 	pub fn get_header(&self) -> &ELF32ELFHeader {
-		self.get_struct::<ELF32ELFHeader>(0)
-	}
-
-	/// Returns a slice to the array of program headers.
-	pub fn get_phdr_table(&self) -> &[ELF32ProgramHeader] {
-		// TODO Potential problem if e_phentsize doesn't match the size of an entry
-		let phoff = self.get_header().e_phoff;
-		let phnum = self.get_header().e_phnum;
-
-		unsafe {
-			// Safe because the slice is large enough
-			slice::from_raw_parts(
-				&self.image[phoff as usize] as *const u8 as *const _,
-				phnum as usize,
-			)
-		}
+		// Safe because the image is already checked to be large enough on parser instanciation
+		unsafe { util::reinterpret::<ELF32ELFHeader>(self.image) }.unwrap()
 	}
 
 	/// Returns the offset the content of the section containing section names.
@@ -58,10 +31,11 @@ impl<'a> ELFParser<'a> {
 
 		// The offset of the section containing section names
 		let shstr_off = (shoff + shentsize as u32 * ehdr.e_shstrndx as u32) as usize;
-		// The header of the section containing section names
-		let shstr = self.get_struct::<ELF32SectionHeader>(shstr_off);
 
-		shstr.sh_offset as _
+		// Safe because the image is already checked to be large enough on parser instanciation
+		let shstr =
+			unsafe { util::reinterpret::<ELF32SectionHeader>(&self.image[shstr_off..]) }.unwrap();
+		shstr.sh_offset as usize
 	}
 
 	// TODO Support 64 bit
@@ -98,10 +72,13 @@ impl<'a> ELFParser<'a> {
 			return Err(errno!(EINVAL));
 		}
 
-		if ehdr.e_phoff + ehdr.e_phentsize as u32 * ehdr.e_phnum as u32 > self.image.len() as u32 {
+		let phdr_end = ehdr.e_phoff as usize + ehdr.e_phentsize as usize * ehdr.e_phnum as usize;
+		if phdr_end > self.image.len() {
 			return Err(errno!(EINVAL));
 		}
-		if ehdr.e_shoff + ehdr.e_shentsize as u32 * ehdr.e_shnum as u32 > self.image.len() as u32 {
+
+		let shdr_end = ehdr.e_shoff as usize + ehdr.e_shentsize as usize * ehdr.e_shnum as usize;
+		if shdr_end > self.image.len() {
 			return Err(errno!(EINVAL));
 		}
 		if ehdr.e_shstrndx >= ehdr.e_shnum {
@@ -110,14 +87,22 @@ impl<'a> ELFParser<'a> {
 
 		for i in 0..ehdr.e_phnum {
 			let off = (ehdr.e_phoff + ehdr.e_phentsize as u32 * i as u32) as usize;
-			let phdr = self.get_struct::<ELF32ProgramHeader>(off);
+			let phdr = unsafe {
+				// Safe because in range of the slice
+				util::reinterpret::<ELF32ProgramHeader>(&self.image[off..])
+			}
+			.unwrap();
 
 			phdr.is_valid(self.image.len())?;
 		}
 
 		for i in 0..ehdr.e_shnum {
 			let off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * i as u32) as usize;
-			let shdr = self.get_struct::<ELF32SectionHeader>(off);
+			let shdr = unsafe {
+				// Safe because in range of the slice
+				util::reinterpret::<ELF32SectionHeader>(&self.image[off..])
+			}
+			.unwrap();
 
 			shdr.is_valid(self.image.len())?;
 		}
@@ -126,9 +111,13 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Creates a new instance for the given image.
-	/// The function checks if the image is valid. If not, the function retuns an error.
+	///
+	/// The function checks if the image is valid. If not, the function retuns
+	/// an error.
 	pub fn new(image: &'a [u8]) -> Result<Self, Errno> {
-		let p = Self { image };
+		let p = Self {
+			image,
+		};
 
 		p.check_image()?;
 		Ok(p)
@@ -139,204 +128,123 @@ impl<'a> ELFParser<'a> {
 		self.image
 	}
 
-	/// Calls the given function `f` for each segments in the image.
-	/// If the function returns `false`, the loop breaks.
-	pub fn foreach_segments<F: FnMut(&ELF32ProgramHeader) -> bool>(&self, mut f: F) {
+	/// Returns an iterator on the image's segment headers.
+	pub fn iter_segments(&self) -> ELFIterator<ELF32ProgramHeader> {
 		let ehdr = self.get_header();
-		let phoff = ehdr.e_phoff;
-		let phnum = ehdr.e_phnum;
-		let phentsize = ehdr.e_phentsize;
+		let phoff = ehdr.e_phoff as usize;
+		let phnum = ehdr.e_phnum as usize;
+		let phentsize = ehdr.e_phentsize as usize;
 
-		for i in 0..phnum {
-			let off = (phoff + phentsize as u32 * i as u32) as usize;
-			let hdr = self.get_struct::<ELF32ProgramHeader>(off);
+		let end = phoff + (phnum * phentsize);
+		let table = &self.image[phoff..end];
 
-			if !f(hdr) {
-				break;
-			}
-		}
+		ELFIterator::<ELF32ProgramHeader>::new(table, phentsize)
 	}
 
-	/// Calls the given function `f` for each section in the image.
-	/// The first argument of the function is the offset of the section header in the image.
-	/// The second argument is a reference to the section header.
-	/// If the function returns `false`, the loop breaks.
-	pub fn foreach_sections<F: FnMut(usize, &ELF32SectionHeader) -> bool>(&self, mut f: F) {
+	/// Returns an iterator on the image's section headers.
+	pub fn iter_sections(&self) -> ELFIterator<ELF32SectionHeader> {
 		let ehdr = self.get_header();
-		let shoff = ehdr.e_shoff;
-		let shnum = ehdr.e_shnum;
-		let shentsize = ehdr.e_shentsize;
+		let shoff = ehdr.e_shoff as usize;
+		let shnum = ehdr.e_shnum as usize;
+		let shentsize = ehdr.e_shentsize as usize;
 
-		for i in 0..shnum {
-			let off = (shoff + shentsize as u32 * i as u32) as usize;
-			let hdr = self.get_struct::<ELF32SectionHeader>(off);
+		let end = shoff + (shnum * shentsize);
+		let table = &self.image[shoff..end];
 
-			if !f(off, hdr) {
-				break;
-			}
-		}
+		ELFIterator::<ELF32SectionHeader>::new(table, shentsize)
 	}
 
-	/// Iterates on every relocations that don't have an addend and calls the function `f` for
-	/// each.
-	/// The first argument of the closure is the header of the section containing the relocation
-	/// and the second argument is the relocation.
-	/// If the function returns `false`, the loop breaks.
-	pub fn foreach_rel<F: FnMut(&ELF32SectionHeader, &ELF32Rel) -> bool>(&self, mut f: F) {
-		self.foreach_sections(|_, section| {
-			if section.sh_type != SHT_REL {
-				return true;
-			}
-
-			let shoff = section.sh_offset;
-			let entsize = section.sh_entsize;
-			let num = section.sh_size / entsize;
-
-			for i in 0..num {
-				let off = (shoff + entsize as u32 * i as u32) as usize;
-				let hdr = self.get_struct::<ELF32Rel>(off);
-
-				if !f(section, hdr) {
-					return false;
-				}
-			}
-
-			true
-		});
-	}
-
-	/// Iterates on every relocations that have an addend and calls the function `f` for each.
-	/// The first argument of the closure is the header of the section containing the relocation
-	/// and the second argument is the relocation.
-	/// If the function returns `false`, the loop breaks.
-	pub fn foreach_rela<F: FnMut(&ELF32SectionHeader, &ELF32Rela) -> bool>(&self, mut f: F) {
-		self.foreach_sections(|_, section| {
-			if section.sh_type != SHT_RELA {
-				return true;
-			}
-
-			let shoff = section.sh_offset;
-			let entsize = section.sh_entsize;
-			let num = section.sh_size / entsize;
-
-			for i in 0..num {
-				let off = (shoff + entsize as u32 * i as u32) as usize;
-				let hdr = self.get_struct::<ELF32Rela>(off);
-
-				if !f(section, hdr) {
-					return false;
-				}
-			}
-
-			true
-		});
-	}
-
-	/// Calls the given function `f` for each symbol in the image.
-	/// The first argument of the function is the offset of the symbol in the image.
-	/// The second argument is a reference to the symbol.
-	/// If the function returns `false`, the loop breaks.
-	pub fn foreach_symbol<F: FnMut(usize, &ELF32Sym) -> bool>(&self, mut f: F) {
-		self.foreach_sections(|_, section| {
-			if section.sh_type == SHT_SYMTAB {
-				let begin = section.sh_offset;
-				let mut i = 0;
-
-				// TODO When checking the image, check the size of the section is a multiple of the
-				// size of a symbol
-				while i < section.sh_size {
-					let off = begin as usize + i as usize;
-					let sym = unsafe {
-						// Safe because the slice is large enough
-						&*(&self.image[off] as *const u8 as *const ELF32Sym)
-					};
-
-					if !f(off, sym) {
-						return false;
-					}
-
-					i += section.sh_entsize;
-				}
-			}
-
-			true
-		});
-	}
-
-	/// Returns the section with index `section_index`. If the section doesn't exist, the function
-	/// return None.
-	pub fn get_section_by_index(&self, section_index: u32) -> Option<&ELF32SectionHeader> {
-		let ehdr = self.get_header();
-		if section_index >= ehdr.e_shnum as u32 {
-			return None;
+	// FIXME: Passing an invalid section is undefined
+	/// Returns an iterator on the relocations (without addend) of the given section.
+	///
+	/// If the section doesn't have the correct type, the function returns an empty iterator.
+	pub fn iter_rel(&self, section: &ELF32SectionHeader) -> ELFIterator<ELF32Rel> {
+		let begin = section.sh_offset as usize;
+		let mut end = begin + section.sh_size as usize;
+		if section.sh_type != SHT_REL {
+			end = begin;
 		}
 
-		let section_off = (ehdr.e_shoff + ehdr.e_shentsize as u32 * section_index as u32) as usize;
-		Some(self.get_struct::<ELF32SectionHeader>(section_off))
+		let table = &self.image[begin..end];
+		ELFIterator::<ELF32Rel>::new(table, section.sh_entsize as usize)
 	}
 
-	/// Returns the section with name `name`. If the section doesn't exist, the function returns
-	/// None.
+	/// Returns an iterator on the relocations (with addend) of the given section.
+	///
+	/// If the section doesn't have the correct type, the function returns an empty iterator.
+	pub fn iter_rela(&self, section: &ELF32SectionHeader) -> ELFIterator<ELF32Rela> {
+		let begin = section.sh_offset as usize;
+		let mut end = begin + section.sh_size as usize;
+		if section.sh_type != SHT_RELA {
+			end = begin;
+		}
+
+		let table = &self.image[begin..end];
+		ELFIterator::<ELF32Rela>::new(table, section.sh_entsize as usize)
+	}
+
+	/// Returns an iterator on the symbols of the given section.
+	///
+	/// If the section doesn't have the correct type, the function returns an empty iterator.
+	pub fn iter_symbols(&self, section: &ELF32SectionHeader) -> ELFIterator<ELF32Sym> {
+		let begin = section.sh_offset as usize;
+		let mut end = begin + section.sh_size as usize;
+		if section.sh_type != SHT_SYMTAB && section.sh_type != SHT_DYNSYM {
+			end = begin;
+		}
+
+		let table = &self.image[begin..end];
+		ELFIterator::<ELF32Sym>::new(table, section.sh_entsize as usize)
+	}
+
+	/// Returns the section with name `name`.
+	///
+	/// If the section doesn't exist, the function returns `None`.
 	pub fn get_section_by_name(&self, name: &str) -> Option<&ELF32SectionHeader> {
 		let shstr_off = self.get_shstr_offset();
-		let mut r = None;
 
-		self.foreach_sections(|off, section| {
-			let section_name = &self.image[(shstr_off + section.sh_name as usize)..];
+		self.iter_sections()
+			.filter(|s| {
+				let section_name_begin = shstr_off + s.sh_name as usize;
+				let section_name_end = section_name_begin + name.len();
 
-			if &section_name[..min(section_name.len(), name.len())] == name.as_bytes() {
-				r = Some(off);
-				false
-			} else {
-				true
-			}
-		});
-
-		Some(self.get_struct::<ELF32SectionHeader>(r?))
+				if section_name_end <= self.image.len() {
+					let section_name = &self.image[section_name_begin..section_name_end];
+					section_name == name.as_bytes()
+				} else {
+					false
+				}
+			})
+			.next()
 	}
 
-	/// Returns the symbol with the given section and symbol index. If the symbol doesn't exist,
-	/// the function returns None.
-	/// `section` is the symbol's section.
-	/// `symbol_index` is the symbol index.
-	pub fn get_symbol_by_index(
-		&self,
-		section: &ELF32SectionHeader,
-		symbol_index: u32,
-	) -> Option<&ELF32Sym> {
-		if section.sh_type != SHT_SYMTAB && section.sh_type != SHT_DYNSYM {
-			return None;
-		}
-		if symbol_index >= section.sh_size / section.sh_entsize {
-			return None;
-		}
-
-		let sym_off = (section.sh_offset + section.sh_entsize * symbol_index as u32) as usize;
-		Some(self.get_struct::<ELF32Sym>(sym_off))
-	}
-
-	/// Returns the symbol with name `name`. If the symbol doesn't exist, the function returns
-	/// None.
+	/// Returns the symbol with name `name`.
+	///
+	/// If the symbol doesn't exist, the function returns `None`.
 	pub fn get_symbol_by_name(&self, name: &str) -> Option<&ELF32Sym> {
 		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
-		let mut r = None;
 
-		self.foreach_symbol(|off, sym| {
-			let sym_name = &self.image[(strtab_section.sh_offset + sym.st_name) as usize..];
+		self.iter_sections()
+			.map(|s| {
+				self.iter_symbols(s).filter(|sym| {
+					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
+					let sym_name_end = sym_name_begin + name.len();
 
-			if &sym_name[..min(sym_name.len(), name.len())] == name.as_bytes() {
-				r = Some(off);
-				false
-			} else {
-				true
-			}
-		});
-
-		Some(self.get_struct::<ELF32Sym>(r?))
+					if sym_name_end <= self.image.len() {
+						let sym_name = &self.image[sym_name_begin..sym_name_end];
+						sym_name == name.as_bytes()
+					} else {
+						false
+					}
+				})
+			})
+			.flatten()
+			.next()
 	}
 
-	/// Returns the name of the symbol `sym` using the string table section `strtab`. If the symbol
-	/// name doesn't exist, the function returns None.
+	/// Returns the name of the symbol `sym` using the string table section `strtab`.
+	///
+	/// If the symbol name doesn't exist, the function returns `None`.
 	pub fn get_symbol_name(&self, strtab: &ELF32SectionHeader, sym: &ELF32Sym) -> Option<&[u8]> {
 		if sym.st_name != 0 {
 			let begin_off = (strtab.sh_offset + sym.st_name) as usize;
@@ -353,34 +261,25 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Returns the path to the ELF's interpreter.
-	/// If the ELF doesn't have an interpreter, the function returns None.
+	///
+	/// If the ELF doesn't have an interpreter, the function returns `None`.
 	pub fn get_interpreter_path(&self) -> Option<&[u8]> {
-		let mut path: Option<&[u8]> = None;
+		self.iter_segments()
+			.filter(|seg| seg.p_type == PT_INTERP)
+			.map(|seg| {
+				let begin = seg.p_offset as usize;
+				let end = begin + seg.p_filesz as usize;
+				// The slice won't exceed the size of the image since this is checked at parser
+				// instanciation
+				let path = &self.image[begin..end];
 
-		self.foreach_segments(|segment| {
-			if segment.p_type == PT_INTERP {
-				let begin = segment.p_offset as usize;
-				let end = (segment.p_offset + segment.p_filesz) as usize;
-				// TODO Ensure the slice doesn't exceed the size of the image
-				let slice = &self.image[begin..end];
-
-				// Removing the ending `\0` if present
-				for (i, b) in slice.iter().enumerate() {
-					if *b == 0 {
-						path = Some(&slice[..i]);
-						break;
-					}
+				// Exclude trailing `\0` if present
+				if let Some(i) = path.iter().position(|c| *c == b'\0') {
+					&path[..i]
+				} else {
+					path
 				}
-				if path.is_none() {
-					path = Some(slice);
-				}
-
-				false
-			} else {
-				true
-			}
-		});
-
-		path
+			})
+			.next()
 	}
 }

@@ -1,14 +1,13 @@
 //! The `getgid` syscall returns the GID of the process's owner.
 
 use crate::errno::Errno;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
-/// The implementation of the `getgid` syscall.
-pub fn getgid(_: &Regs) -> Result<i32, Errno> {
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+#[syscall]
+pub fn getgid() -> Result<i32, Errno> {
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
-	Ok(proc.get_gid() as _)
+	Ok(proc.gid as _)
 }

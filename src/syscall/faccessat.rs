@@ -2,13 +2,10 @@
 
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
+use core::ffi::c_int;
+use macros::syscall;
 
-/// The implementation of the `faccessat` syscall.
-pub fn faccessat(regs: &Regs) -> Result<i32, Errno> {
-	let dir_fd = regs.ebx as i32;
-	let pathname: SyscallString = (regs.ecx as usize).into();
-	let mode = regs.edx as i32;
-
+#[syscall]
+pub fn faccessat(dir_fd: c_int, pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	super::access::do_access(Some(dir_fd), pathname, mode, None)
 }

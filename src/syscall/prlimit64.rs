@@ -3,14 +3,16 @@
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use core::ffi::c_int;
+use macros::syscall;
 
 /// The amount of seconds of CPU time the process can consume.
 const RLIMIT_CPU: i32 = 0;
 /// The maximum size of a file the process may create, in bytes.
 const RLIMIT_FSIZE: i32 = 1;
-/// The maximum size of the process's data segment in bytes, rounded down to the page size.
+/// The maximum size of the process's data segment in bytes, rounded down to the
+/// page size.
 const RLIMIT_DATA: i32 = 2;
 /// TODO doc
 const RLIMIT_STACK: i32 = 3;
@@ -20,15 +22,16 @@ const RLIMIT_CORE: i32 = 4;
 const RLIMIT_RSS: i32 = 5;
 /// TODO doc
 const RLIMIT_NPROC: i32 = 6;
-/// A value one greater than the maximum number of file descriptors that can be open by the
-/// process.
+/// A value one greater than the maximum number of file descriptors that can be
+/// open by the process.
 const RLIMIT_NOFILE: i32 = 7;
 /// TODO doc
 const RLIMIT_MEMLOCK: i32 = 8;
-/// The maximum size of the memory space in bytes, rounded down to the page size.
+/// The maximum size of the memory space in bytes, rounded down to the page
+/// size.
 const RLIMIT_AS: i32 = 9;
-/// The limit on the combined number of flock(2) locks and fcntl(2) leases the process may
-/// establish.
+/// The limit on the combined number of flock(2) locks and fcntl(2) leases the
+/// process may establish.
 const RLIMIT_LOCKS: i32 = 10;
 /// TODO doc
 const RLIMIT_SIGPENDING: i32 = 11;
@@ -48,6 +51,7 @@ type RLim = u64;
 
 /// Structure representing a resource limit.
 #[repr(C)]
+#[derive(Debug)]
 struct RLimit {
 	/// Soft limit
 	rlim_cur: RLim,
@@ -55,13 +59,14 @@ struct RLimit {
 	rlim_max: RLim,
 }
 
-/// The implementation of the `prlimit64` syscall.
-pub fn prlimit64(regs: &Regs) -> Result<i32, Errno> {
-	let pid = regs.ebx as Pid;
-	let resource = regs.ecx as i32;
-	let _new_limit: SyscallPtr<RLimit> = (regs.edx as usize).into();
-	let _old_limit: SyscallPtr<RLimit> = (regs.esi as usize).into();
-
+// TODO Check args types
+#[syscall]
+pub fn prlimit64(
+	pid: Pid,
+	resource: c_int,
+	_new_limit: SyscallPtr<RLimit>,
+	_old_limit: SyscallPtr<RLimit>,
+) -> Result<i32, Errno> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid == 0 {
 		None
@@ -70,10 +75,8 @@ pub fn prlimit64(regs: &Regs) -> Result<i32, Errno> {
 		Some(Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?)
 	};
 
-	// The current process
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let proc = proc_mutex.lock();
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let _mem_space_guard = mem_space_mutex.lock();

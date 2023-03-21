@@ -1,29 +1,32 @@
-//! The TeleTypeWriter (TTY) is an electromechanical device that was used in the past to send and
-//! receive typed messages through a communication channel.
+//! The TeleTypeWriter (TTY) is an electromechanical device that was used in the
+//! past to send and receive typed messages through a communication channel.
 //!
 //! This module implements line discipline for TTYs.
 //!
-//! At startup, the kernel has one TTY: the init TTY, which is stored separately because at the
-//! time of creation, memory management isn't initialized yet.
+//! At startup, the kernel has one TTY: the init TTY, which is stored separately
+//! because at the time of creation, memory management isn't initialized yet.
 
 mod ansi;
 pub mod termios;
 
-use crate::device::serial;
-use crate::memory::vmem;
-use crate::process::pid::Pid;
-use crate::process::signal::Signal;
-use crate::process::Process;
-use crate::tty::termios::Termios;
-use crate::util;
-use crate::util::container::vec::Vec;
-use crate::util::lock::IntMutex;
-use crate::util::lock::MutexGuard;
-use crate::util::ptr::IntSharedPtr;
-use crate::vga;
 use core::cmp::*;
 use core::mem::MaybeUninit;
 use core::ptr;
+use crate::device::serial;
+use crate::errno::Errno;
+use crate::file::blocking::BlockHandler;
+use crate::memory::vmem;
+use crate::process::Process;
+use crate::process::pid::Pid;
+use crate::process::signal::Signal;
+use crate::tty::termios::Termios;
+use crate::util::container::vec::Vec;
+use crate::util::io;
+use crate::util::lock::IntMutex;
+use crate::util::lock::MutexGuard;
+use crate::util::ptr::IntSharedPtr;
+use crate::util;
+use crate::vga;
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -61,7 +64,8 @@ pub struct WinSize {
 	pub ws_ypixel: u16,
 }
 
-/// Returns the position of the cursor in the history array from `x` and `y` position.
+/// Returns the position of the cursor in the history array from `x` and `y`
+/// position.
 fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
 	let off = (y * vga::WIDTH + x) as usize;
 	debug_assert!(off < HISTORY_SIZE);
@@ -76,7 +80,7 @@ fn get_tab_size(cursor_x: vga::Pos) -> usize {
 // TODO Use the values in winsize
 /// Structure representing a TTY.
 pub struct TTY {
-	/// The id of the TTY. If None, the TTY is the init TTY.
+	/// The id of the TTY. If `None`, the TTY is the init TTY.
 	id: Option<usize>,
 	/// The X position of the cursor in the history
 	cursor_x: vga::Pos,
@@ -111,6 +115,9 @@ pub struct TTY {
 
 	/// The size of the TTY.
 	winsize: WinSize,
+
+	/// The TTY's block handler.
+	block_handler: BlockHandler,
 }
 
 /// The initialization TTY.
@@ -119,12 +126,14 @@ static mut INIT_TTY: MaybeUninit<IntMutex<TTY>> = MaybeUninit::uninit();
 /// The list of every TTYs except the init TTY.
 static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
 
-/// The current TTY being displayed on screen. If None, the init TTY is being displayed.
+/// The current TTY being displayed on screen. If `None`, the init TTY is being
+/// displayed.
 static CURRENT_TTY: IntMutex<Option<usize>> = IntMutex::new(None);
 
 /// Enumeration of the different type of handles for a TTY.
-/// Because the initial TTY is created while memory allocation isn't available yet, the kernel
-/// cannot use shared pointer. So we need different ways to lock the TTY.
+///
+/// Because the initial TTY is created while memory allocation isn't available
+/// yet, the kernel cannot use shared pointer. So we need different ways to lock the TTY.
 #[derive(Clone)]
 pub enum TTYHandle {
 	/// Handle to the init TTY.
@@ -144,12 +153,13 @@ impl<'a> TTYHandle {
 }
 
 /// Returns a mutable reference to the TTY with identifier `id`.
-/// If `id` is None, the function returns the init TTY.
-/// If the id doesn't exist, the function returns None.
+///
+/// If `id` is `None`, the function returns the init TTY.
+///
+/// If the id doesn't exist, the function returns `None`.
 pub fn get(id: Option<usize>) -> Option<TTYHandle> {
 	if let Some(id) = id {
-		let ttys_guard = TTYS.lock();
-		let ttys = ttys_guard.get();
+		let ttys = TTYS.lock();
 
 		if id < ttys.len() {
 			Some(TTYHandle::Normal(ttys[id].clone()))
@@ -162,36 +172,36 @@ pub fn get(id: Option<usize>) -> Option<TTYHandle> {
 }
 
 /// Returns a reference to the current TTY.
-/// If the function returns None, the current TTY doesn't exist.
+///
+/// If the current TTY doesn't exist, the function returns `None`.
 pub fn current() -> Option<TTYHandle> {
-	get(*CURRENT_TTY.lock().get())
+	get(*CURRENT_TTY.lock())
 }
 
 /// Initializes the init TTY.
 pub fn init() {
 	let init_tty_mutex = get(None).unwrap();
-	let init_tty_guard = init_tty_mutex.lock();
-	let init_tty = init_tty_guard.get_mut();
+	let mut init_tty = init_tty_mutex.lock();
 
 	init_tty.init(None);
 	init_tty.show();
 }
 
 /// Switches to TTY with id `id`.
-/// If `id` is None, the init TTY is used.
+///
+/// If `id` is `None`, the init TTY is used.
+///
 /// If the TTY doesn't exist, the function does nothing.
 pub fn switch(id: Option<usize>) {
 	if let Some(tty) = get(id) {
-		*CURRENT_TTY.lock().get_mut() = id;
-
-		let guard = tty.lock();
-		let t = guard.get_mut();
-		t.show();
+		*CURRENT_TTY.lock() = id;
+		tty.lock().show();
 	}
 }
 
 impl TTY {
 	/// Creates a new TTY.
+	///
 	/// `id` is the ID of the TTY.
 	pub fn init(&mut self, id: Option<usize>) {
 		unsafe { util::zero_object(self) }
@@ -216,6 +226,8 @@ impl TTY {
 			ws_xpixel: vga::PIXEL_WIDTH as _,
 			ws_ypixel: vga::PIXEL_HEIGHT as _,
 		};
+
+		self.block_handler = BlockHandler::default();
 	}
 
 	/// Returns the id of the TTY.
@@ -225,7 +237,7 @@ impl TTY {
 
 	/// Updates the TTY to the screen.
 	pub fn update(&mut self) {
-		let current_tty = *CURRENT_TTY.lock().get();
+		let current_tty = *CURRENT_TTY.lock();
 		if self.id != current_tty || !self.update {
 			return;
 		}
@@ -290,8 +302,9 @@ impl TTY {
 		self.set_bgcolor(bg);
 	}
 
-	/// Sets the blinking state of the text for TTY. `true` means blinking text, `false` means not
-	/// blinking.
+	/// Sets the blinking state of the text for TTY.
+	///
+	/// `true` means blinking text, `false` means not blinking.
 	pub fn set_blinking(&mut self, blinking: bool) {
 		if blinking {
 			self.current_color |= 0x80;
@@ -364,14 +377,16 @@ impl TTY {
 		debug_assert!(self.cursor_y - self.screen_y < vga::HEIGHT);
 	}
 
-	/// Moves the cursor forward `x` characters horizontally and `y` characters vertically.
+	/// Moves the cursor forward `x` characters horizontally and `y` characters
+	/// vertically.
 	fn cursor_forward(&mut self, x: usize, y: usize) {
 		self.cursor_x += x as vga::Pos;
 		self.cursor_y += y as vga::Pos;
 		self.fix_pos();
 	}
 
-	/// Moves the cursor backwards `x` characters horizontally and `y` characters vertically.
+	/// Moves the cursor backwards `x` characters horizontally and `y`
+	/// characters vertically.
 	fn cursor_backward(&mut self, x: usize, y: usize) {
 		self.cursor_x -= x as vga::Pos;
 		self.cursor_y -= y as vga::Pos;
@@ -428,7 +443,7 @@ impl TTY {
 	pub fn write(&mut self, buffer: &[u8]) {
 		// TODO Add a compilation and/or runtime option for this
 		if let Some(serial) = serial::get(serial::COM1) {
-			serial.lock().get_mut().write(buffer);
+			serial.lock().write(buffer);
 		}
 
 		let mut i = 0;
@@ -458,9 +473,13 @@ impl TTY {
 
 	// TODO Implement IUTF8
 	/// Reads inputs from the TTY and places it into the buffer `buff`.
-	/// The function returns the number of bytes read and whether the EOF is reached.
-	/// Note that reaching the EOF doesn't necessary mean the TTY is closed. Subsequent calls to
-	/// this function might still successfully read data.
+	///
+	/// The function returns the number of bytes read and whether the EOF is
+	/// reached.
+	///
+	/// Note that reaching the EOF doesn't necessary mean the TTY is
+	/// closed. Subsequent calls to this function might still successfully read
+	/// data.
 	pub fn read(&mut self, buff: &mut [u8]) -> (usize, bool) {
 		// The length of data to consume
 		let mut len = min(buff.len(), self.available_size);
@@ -468,18 +487,25 @@ impl TTY {
 		if self.termios.c_lflag & termios::ICANON != 0 {
 			let eof = self.termios.c_cc[termios::VEOF as usize];
 
-			if buff[0] == eof {
+			if len > 0 && self.input_buffer[0] == eof {
 				// Shifting data
 				self.input_buffer.rotate_left(len);
 				self.input_size -= len;
 				self.available_size -= len;
 
 				return (0, true);
-			} else if let Some(eof_off) = buff[..len].iter().position(|v| *v == eof) {
+			}
+
+			let eof_off = self.input_buffer[..len].iter().position(|v| *v == eof);
+			if let Some(eof_off) = eof_off {
 				// Making the next call EOF
 				len = eof_off;
 			}
 		} else if len < self.termios.c_cc[termios::VMIN as usize] as usize {
+			return (0, false);
+		}
+
+		if len == 0 {
 			return (0, false);
 		}
 
@@ -499,7 +525,8 @@ impl TTY {
 	}
 
 	// TODO Implement IUTF8
-	/// Takes the given string `buffer` as input, making it available from the terminal input.
+	/// Takes the given string `buffer` as input, making it available from the
+	/// terminal input.
 	pub fn input(&mut self, buffer: &[u8]) {
 		// The length to write to the input buffer
 		let len = min(buffer.len(), self.input_buffer.len() - self.input_size);
@@ -602,6 +629,8 @@ impl TTY {
 				}
 			}
 		}
+
+		self.block_handler.wake_processes(io::POLLIN);
 	}
 
 	/// Erases `count` characters in TTY.
@@ -630,6 +659,8 @@ impl TTY {
 				self.input(&[0x7f]);
 			}
 		}
+
+		self.block_handler.wake_processes(io::POLLIN);
 	}
 
 	/// Returns the terminal IO settings.
@@ -659,9 +690,7 @@ impl TTY {
 		}
 
 		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get_mut();
-
+			let mut proc = proc_mutex.lock();
 			proc.kill_group(sig, false);
 		}
 	}
@@ -672,8 +701,9 @@ impl TTY {
 	}
 
 	/// Sets the window size of the TTY.
-	/// If a foreground process group is set on the TTY, the function shall send it a `SIGWINCH`
-	/// signal.
+	///
+	/// If a foreground process group is set on the TTY, the function shall send
+	/// it a `SIGWINCH` signal.
 	pub fn set_winsize(&mut self, mut winsize: WinSize) {
 		// Clamping values
 		if winsize.ws_col > vga::WIDTH as _ {
@@ -690,5 +720,15 @@ impl TTY {
 
 		// Sending a SIGWINCH if a process group is present
 		self.send_signal(Signal::SIGWINCH);
+	}
+
+	/// Adds the given process to the list of processes waiting on the TTY.
+	///
+	/// The function sets the state of the process to `Sleeping`.
+	/// When the event occurs, the process will be woken up.
+	///
+	/// `mask` is the mask of poll event to wait for.
+	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+		self.block_handler.add_waiting_process(proc, mask)
 	}
 }

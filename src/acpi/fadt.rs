@@ -1,7 +1,9 @@
 //! This module handles ACPI's Fixed ACPI Description Table (FADT).
 
+use super::dsdt::Dsdt;
 use super::ACPITable;
 use super::ACPITableHeader;
+use core::slice;
 
 /// TODO doc
 pub struct GenericAddr {
@@ -12,8 +14,9 @@ pub struct GenericAddr {
 	address: u8,
 }
 
-/// The Fixed ACPI Description Table. The documentation of every fields can be found in the ACPI
-/// documentation.
+/// The Fixed ACPI Description Table.
+///
+/// The documentation of every fields can be found in the ACPI documentation.
 #[repr(C)]
 pub struct Fadt {
 	/// The table's header.
@@ -80,8 +83,35 @@ pub struct Fadt {
 	pub x_gpe1_block: GenericAddr,
 }
 
+impl Fadt {
+	/// Returns a reference to the DSDT if it exists.
+	pub fn get_dsdt(&self) -> Option<&Dsdt> {
+		let dsdt = if self.x_dsdt != 0 {
+			self.x_dsdt
+		} else {
+			self.dsdt as _
+		} as *const u8;
+		// TODO Add displacement relative to ACPI data buffer
+
+		if !dsdt.is_null() {
+			let dsdt = unsafe {
+				let dsdt_slice = slice::from_raw_parts(dsdt, 1);
+				&*(dsdt_slice as *const [u8] as *const [()] as *const Dsdt)
+			};
+
+			if !dsdt.get_header().check::<Dsdt>() {
+				crate::kernel_panic!("Invalid ACPI structure!");
+			}
+
+			Some(dsdt)
+		} else {
+			None
+		}
+	}
+}
+
 impl ACPITable for Fadt {
 	fn get_expected_signature() -> &'static [u8; 4] {
-		&[b'F', b'A', b'D', b'T']
+		&[b'F', b'A', b'C', b'P']
 	}
 }

@@ -12,7 +12,8 @@ const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
 
 extern "C" {
 	/// Performs the stack switching for the given stack and closure to execute.
-	/// `s` is the StackLambda structure.
+	///
+	/// `s` is the `StackLambda` structure.
 	fn stack_switch_(stack: *mut c_void, s: *mut c_void, f: *const c_void);
 }
 
@@ -34,19 +35,24 @@ impl<F: FnOnce() -> T, T> StackLambda<F, T> {
 	}
 }
 
-/// Executes the given closure `f` while being on the given stack. `stack` is the pointer to the
-/// beginning of the alternate stack.
-/// If the given stack is None, the function allocates a temporary stack.
+/// Executes the given closure `f` while being on the given stack.
+///
+/// `stack` is the pointer to the beginning of the alternate stack.
+///
+/// If the given stack is `None`, the function allocates a temporary stack.
 ///
 /// # Safety
 ///
 /// If the stack `stack` is invalid, the behaviour is undefined.
 ///
-/// When passing a closure to this function, the usage of the `move` keyword is should be used in
-/// the case the previous stack becomes unreachable. This keyword ensures that variables are
-/// captured by value and not by reference, thus avoiding to create dangling references.
+/// When passing a closure to this function, the `move` keyword should be used in the case the
+/// previous stack becomes unreachable. This keyword ensures that variables are captured by value
+/// and not by reference, thus avoiding to create dangling references.
 pub unsafe fn switch<F: FnOnce() -> T, T>(stack: Option<*mut c_void>, f: F) -> Result<T, Errno> {
-	let mut f = StackLambda { f, ret_val: None };
+	let mut f = StackLambda {
+		f,
+		ret_val: None,
+	};
 	let func = StackLambda::<F, T>::exec;
 
 	if let Some(stack) = stack {

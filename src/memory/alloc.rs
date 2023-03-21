@@ -1,22 +1,25 @@
 //! This file handles memory allocators initialization for the kernel.
-//! The physical memory is divided into zones. Each zones contains frames that can be allocated by
-//! the buddy allocator
+//!
+//! The physical memory is divided into zones. Each zones contains frames that
+//! can be allocated by the buddy allocator
 //!
 //! The following zones exist:
 //! - Kernel: Memory to be allocated by the kernel, shared accross processes. This zone requires
-//! that every frames of virtual memory are associated with a unique physical frame.
+//! that every frames of virtual memory are associated with a unique physical
+//! frame.
 //! - MMIO: Memory used for Memory Mapped I/O. This zones requires only virtual memory, thus it
 //! overlaps with the user zone which allocates the physical memory.
 //! - User: Memory used for userspace mappings. This zone doesn't requires virtual memory to
-//! correspond with the physical memory, thus it can be located outside of the kernelspace.
+//! correspond with the physical memory, thus it can be located outside of the
+//! kernelspace.
 
-use core::cmp::min;
-use core::ffi::c_void;
+use crate::memory;
 use crate::memory::buddy;
 use crate::memory::memmap;
-use crate::memory;
-use crate::util::math;
 use crate::util;
+use crate::util::math;
+use core::cmp::min;
+use core::ffi::c_void;
 
 /// Initializes the memory allocators.
 pub fn init() {
@@ -40,7 +43,7 @@ pub fn init() {
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 
 	// Updating the number of available pages
-	available_pages -= math::ceil_division(metadata_size, memory::PAGE_SIZE);
+	available_pages -= math::ceil_div(metadata_size, memory::PAGE_SIZE);
 
 	// The beginning of the kernel's zone
 	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void;

@@ -1,5 +1,5 @@
-//! This module implements storage caches, allowing to cache disk sectors to avoid unnecessary
-//! accesses to the storage device.
+//! This module implements storage caches, allowing to cache disk sectors to
+//! avoid unnecessary accesses to the storage device.
 
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
@@ -7,6 +7,7 @@ use crate::memory::malloc;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::ring_buffer::RingBuffer;
+use crate::util::container::vec::Vec;
 
 /// Structure representing a cached sector.
 struct CachedSector {
@@ -17,9 +18,12 @@ struct CachedSector {
 	data: malloc::Alloc<u8>,
 }
 
-/// Structure representing a storage cache. The number of sectors and their size is fixed at
-/// initialization.
-/// The cache needs to be flushed before being dropped. Otherwise, the updated data shall be lost.
+/// Structure representing a storage cache.
+///
+/// The number of sectors and their size is fixed at initialization.
+///
+/// The cache needs to be flushed before being dropped. Otherwise, the updated
+/// data shall be lost.
 pub struct StorageCache {
 	/// The size of a sector in bytes.
 	sector_size: usize,
@@ -27,22 +31,25 @@ pub struct StorageCache {
 	/// Cached sectors.
 	sectors: HashMap<u64, CachedSector>,
 
-	/// Fifo storing sector indexes. When the fifo is full, the oldest sector shall be discarded
-	/// from the cache.
-	fifo: RingBuffer<u64>,
+	/// Fifo storing sector indexes.
+	///
+	/// When the fifo is full, the oldest sector shall be discarded from the cache.
+	fifo: RingBuffer<u64, Vec<u64>>,
 }
 
 impl StorageCache {
 	/// Creates a new instance.
-	/// `count` is maximum number of sectors the cache can contain.
-	/// `size` is the size of a sector in bytes.
+	///
+	/// Arguments:
+	/// - `count` is maximum number of sectors the cache can contain.
+	/// - `size` is the size of a sector in bytes.
 	pub fn new(count: usize, size: usize) -> Result<Self, Errno> {
 		Ok(Self {
 			sector_size: size,
 
 			sectors: HashMap::new(),
 
-			fifo: RingBuffer::new(count)?,
+			fifo: RingBuffer::new(crate::vec![0; count]?),
 		})
 	}
 
@@ -51,9 +58,13 @@ impl StorageCache {
 		self.sectors.len() >= self.fifo.get_size()
 	}
 
-	/// Reads the sector with index `sector` and writes its content into the buffer `buff`.
+	/// Reads the sector with index `sector` and writes its content into the
+	/// buffer `buff`.
 	pub fn read(&mut self, sector: u64, buff: &mut [u8]) -> Result<Option<()>, Errno> {
-		if let Some(CachedSector { data, .. }) = self.sectors.get(&sector) {
+		if let Some(CachedSector {
+			data, ..
+		}) = self.sectors.get(&sector)
+		{
 			buff.copy_from_slice(data.as_slice());
 			Ok(Some(()))
 		} else {
@@ -61,11 +72,19 @@ impl StorageCache {
 		}
 	}
 
-	/// Writes the sector with index `sector` with the content of the buffer `buff`.
-	/// `flush_hook` is a function used to write a sector to the disk. It is called in case the
-	/// cache needs to free up a slot for a sector.
+	/// Writes the sector with index `sector` with the content of the buffer
+	/// `buff`.
+	///
+	/// `flush_hook` is a function used to write a sector to the disk.
+	///
+	/// It is called in case the cache needs to free up a slot for a sector.
 	pub fn write(&mut self, sector: u64, buff: &[u8]) -> Result<Option<()>, Errno> {
-		if let Some(CachedSector { written, data, .. }) = self.sectors.get_mut(&sector) {
+		if let Some(CachedSector {
+			written,
+			data,
+			..
+		}) = self.sectors.get_mut(&sector)
+		{
 			data.as_slice_mut().copy_from_slice(buff);
 			*written = true;
 			Ok(Some(()))
@@ -74,11 +93,15 @@ impl StorageCache {
 		}
 	}
 
-	/// Inserts a new sector in the cache. If no space is left, the cache frees up slots of other
-	/// sectors to retrieve space.
+	/// Inserts a new sector in the cache.
+	///
+	/// If no space is left, the cache frees up slots of other sectors to retrieve space.
+	///
 	/// Sectors that have been freed up are written to the disk using `flush_hook`.
-	/// `sector` is the index of the sector.
-	/// `buff` is a buffer containing the sector's data.
+	///
+	/// Arguments:
+	/// - `sector` is the index of the sector.
+	/// - `buff` is a buffer containing the sector's data.
 	pub fn insert<F>(&mut self, sector: u64, buff: &[u8], mut flush_hook: F) -> Result<(), Errno>
 	where
 		F: FnMut(u64, &[u8]) -> Result<(), Errno>,
@@ -113,7 +136,10 @@ impl StorageCache {
 	}
 
 	/// Flushes the cache, writing every updated sectors to the disk.
-	/// Sectors that have been updated are written to the disk using `flush_hook`.
+	///
+	/// Sectors that have been updated are written to the disk using
+	/// `flush_hook`.
+	///
 	/// On error, flushing is not completed.
 	pub fn flush<F>(&mut self, mut flush_hook: F) -> Result<(), Errno>
 	where
@@ -133,7 +159,9 @@ impl StorageCache {
 }
 
 /// Structure representing a storage interface wrapped into a cache.
-/// On drop, the cache is flushed to the storage device. When flushing fails, data is lost.
+///
+/// On drop, the cache is flushed to the storage device. When flushing fails,
+/// data is lost.
 pub struct CachedStorageInterface {
 	/// The wrapped interface.
 	storage_interface: Box<dyn StorageInterface>,
@@ -144,8 +172,10 @@ pub struct CachedStorageInterface {
 
 impl CachedStorageInterface {
 	/// Creates a new instance.
-	/// `storage_interface` is the interface to wrap.
-	/// `sectors_count` is the maximum number of sectors in the cache.
+	///
+	/// Arguments:
+	/// - `storage_interface` is the interface to wrap.
+	/// - `sectors_count` is the maximum number of sectors in the cache.
 	pub fn new(
 		storage_interface: Box<dyn StorageInterface>,
 		sectors_count: usize,

@@ -1,3 +1,0 @@
-# Devices list
-
-TODO

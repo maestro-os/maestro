@@ -1,17 +1,18 @@
-//! The cmdline node allows to retrieve the list of command line arguments of the process.
+//! The cmdline node allows to retrieve the list of command line arguments of
+//! the process.
 
-use core::cmp::min;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::process::Process;
 use crate::process::pid::Pid;
+use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
+use core::cmp::min;
 
 /// Structure representing the cmdline node of the procfs.
 pub struct Cmdline {
@@ -26,10 +27,8 @@ impl KernFSNode for Cmdline {
 
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_euid()
+			proc_mutex.lock().euid
+			
 		} else {
 			0
 		}
@@ -37,10 +36,7 @@ impl KernFSNode for Cmdline {
 
 	fn get_gid(&self) -> Gid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc_guard = proc_mutex.lock();
-			let proc = proc_guard.get();
-
-			proc.get_egid()
+			proc_mutex.lock().egid
 		} else {
 			0
 		}
@@ -62,12 +58,11 @@ impl IO for Cmdline {
 		}
 
 		let proc_mutex = Process::get_by_pid(self.pid).ok_or_else(|| errno!(ENOENT))?;
-		let proc_guard = proc_mutex.lock();
-		let proc = proc_guard.get();
+		let proc = proc_mutex.lock();
 
 		// Generating content
 		let mut content = String::new();
-		for a in proc.get_argv() {
+		for a in &proc.argv {
 			content.append(a)?;
 			content.push(b'\0')?;
 		}

@@ -1,5 +1,5 @@
-//! A hashmap is a data structure that stores key/value pairs into buckets and uses the hash of the
-//! key to quickly get the bucket storing the value.
+//! A hashmap is a data structure that stores key/value pairs into buckets and
+//! uses the hash of the key to quickly get the bucket storing the value.
 
 use super::vec::Vec;
 use crate::errno::Errno;
@@ -26,7 +26,10 @@ struct XORHasher {
 impl XORHasher {
 	/// Creates a new instance.
 	pub fn new() -> Self {
-		Self { value: 0, off: 0 }
+		Self {
+			value: 0,
+			off: 0,
+		}
 	}
 }
 
@@ -44,7 +47,9 @@ impl Hasher for XORHasher {
 }
 
 /// A bucket is a list storing elements that match a given hash range.
-/// Since hashing function have collisions, several elements can have the same hash.
+///
+/// Since hashing function have collisions, several elements can have the same
+/// hash.
 #[derive(Debug)]
 struct Bucket<K: Eq + Hash, V> {
 	/// The vector storing the key/value pairs.
@@ -59,8 +64,9 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 		}
 	}
 
-	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
-	/// present, the function return None.
+	/// Returns an immutable reference to the value with the given key `k`.
+	///
+	/// If the key isn't present, the function return `None`.
 	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
@@ -75,8 +81,9 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 		None
 	}
 
-	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
-	/// the function return None.
+	/// Returns a mutable reference to the value with the given key `k`.
+	///
+	/// If the key isn't present, the function return `None`.
 	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,
@@ -91,16 +98,18 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 		None
 	}
 
-	/// Inserts a new element into the bucket. If the key was already present, the function
-	/// returns the previous value.
+	/// Inserts a new element into the bucket.
+	///
+	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, Errno> {
 		let old = self.remove(&k);
 		self.elements.push((k, v))?;
 		Ok(old)
 	}
 
-	/// Removes an element from the bucket. If the key was present, the function returns the
-	/// value.
+	/// Removes an element from the bucket.
+	///
+	/// If the key was present, the function returns the value.
 	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,
@@ -123,7 +132,9 @@ impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K,
 			v.push((key.failable_clone()?, value.failable_clone()?))?;
 		}
 
-		Ok(Self { elements: v })
+		Ok(Self {
+			elements: v,
+		})
 	}
 }
 
@@ -137,6 +148,12 @@ pub struct HashMap<K: Eq + Hash, V> {
 
 	/// The number of elements in the container.
 	len: usize,
+}
+
+impl<K: Eq + Hash, V> Default for HashMap<K, V> {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl<K: Eq + Hash, V> HashMap<K, V> {
@@ -186,8 +203,9 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		(hasher.finish() % (self.buckets_count as u64)) as usize
 	}
 
-	/// Returns an immutable reference to the value with the given key `k`. If the key isn't
-	/// present, the function return None.
+	/// Returns an immutable reference to the value with the given key `k`.
+	///
+	/// If the key isn't present, the function return `None`.
 	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
@@ -202,8 +220,9 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		}
 	}
 
-	/// Returns a mutable reference to the value with the given key `k`. If the key isn't present,
-	/// the function return None.
+	/// Returns a mutable reference to the value with the given key `k`.
+	///
+	/// If the key isn't present, the function return `None`.
 	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,
@@ -218,13 +237,23 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		}
 	}
 
-	/// Creates an iterator for the hash map.
-	pub fn iter(&self) -> HashMapIterator<K, V> {
-		HashMapIterator::new(self)
+	/// Tells whether the hash map contains the given key `k`.
+	pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
+		self.get(k).is_some()
 	}
 
-	/// Inserts a new element into the hash map. If the key was already present, the function
-	/// returns the previous value.
+	/// Creates an iterator of immutable references for the hash map.
+	pub fn iter(&self) -> Iter<K, V> {
+		Iter::new(self)
+	}
+
+	/// Inserts a new element into the hash map.
+	///
+	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, Errno> {
 		let index = self.get_bucket_index(&k);
 		if index >= self.buckets.len() {
@@ -244,8 +273,9 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		Ok(result)
 	}
 
-	/// Removes an element from the hash map. If the key was present, the function returns the
-	/// value.
+	/// Removes an element from the hash map.
+	///
+	/// If the key was present, the function returns the previous value.
 	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,
@@ -264,6 +294,18 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		} else {
 			None
 		}
+	}
+
+	/// Retains only the elements for which the given predicate returns `true`.
+	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut f: F) {
+		let mut len = 0;
+
+		for b in self.buckets.iter_mut() {
+			b.elements.retain(|(k, v): &mut (K, V)| f(&k, &mut *v));
+			len += b.elements.len();
+		}
+
+		self.len = len;
 	}
 
 	/// Drops all elements in the hash map.
@@ -303,8 +345,8 @@ impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for HashMap<K
 	}
 }
 
-/// An iterator for the Vec structure.
-pub struct HashMapIterator<'a, K: Hash + Eq, V> {
+/// An iterator for the HashMap structure.
+pub struct Iter<'a, K: Hash + Eq, V> {
 	/// The hash map to iterate into.
 	hm: &'a HashMap<K, V>,
 
@@ -314,7 +356,7 @@ pub struct HashMapIterator<'a, K: Hash + Eq, V> {
 	curr_element: usize,
 }
 
-impl<'a, K: Hash + Eq, V> HashMapIterator<'a, K, V> {
+impl<'a, K: Hash + Eq, V> Iter<'a, K, V> {
 	/// Creates a hash map iterator for the given reference.
 	fn new(hm: &'a HashMap<K, V>) -> Self {
 		Self {
@@ -326,8 +368,8 @@ impl<'a, K: Hash + Eq, V> HashMapIterator<'a, K, V> {
 	}
 }
 
-impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
-	type Item = &'a (K, V);
+impl<'a, K: Hash + Eq, V> Iterator for Iter<'a, K, V> {
+	type Item = (&'a K, &'a V);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.curr_bucket >= self.hm.buckets.len() {
@@ -352,13 +394,18 @@ impl<'a, K: Hash + Eq, V> Iterator for HashMapIterator<'a, K, V> {
 			}
 		}
 
-		let e = &self.hm.buckets[self.curr_bucket].elements[self.curr_element];
+		let (k, v) = self.hm.buckets[self.curr_bucket].elements.index(self.curr_element);
 		self.curr_element += 1;
-		Some(e)
+		Some((k, v))
 	}
 
 	fn count(self) -> usize {
 		self.hm.len()
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.hm.len();
+		(len, Some(len))
 	}
 }
 

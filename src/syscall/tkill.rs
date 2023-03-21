@@ -3,23 +3,20 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::pid::Pid;
-use crate::process::regs::Regs;
 use crate::process::signal::Signal;
 use crate::process::Process;
+use core::ffi::c_int;
+use macros::syscall;
 
-/// The implementation of the `tkill` syscall.
-pub fn tkill(regs: &Regs) -> Result<i32, Errno> {
-	let tid = regs.ebx as Pid;
-	let sig = regs.ecx as i32;
-
+#[syscall]
+pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {
 		return Err(errno!(EINVAL));
 	}
 	let signal = Signal::from_id(sig as _)?;
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let mut proc = proc_mutex.lock();
 
 	// Checking if the thread to kill is the current
 	if proc.get_tid() == tid {
@@ -27,11 +24,10 @@ pub fn tkill(regs: &Regs) -> Result<i32, Errno> {
 	} else {
 		// Getting the thread
 		let thread_mutex = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
-		let thread_guard = thread_mutex.lock();
-		let thread = thread_guard.get_mut();
+		let mut thread = thread_mutex.lock();
 
 		// Checking permissions
-		if thread.can_kill(proc.get_uid()) || thread.can_kill(proc.get_euid()) {
+		if thread.can_kill(proc.uid) || thread.can_kill(proc.euid) {
 			return Err(errno!(EPERM));
 		}
 

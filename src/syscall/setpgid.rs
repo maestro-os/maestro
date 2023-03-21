@@ -1,22 +1,21 @@
-//! This module implements the `setpgid` system call, which allows to set the process group ID of a
-//! process.
+//! This module implements the `setpgid` system call, which allows to set the
+//! process group ID of a process.
 
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::pid::Pid;
-use crate::process::regs::Regs;
 use crate::process::Process;
+use macros::syscall;
 
-/// The implementation of the `setpgid` syscall.
-pub fn setpgid(regs: &Regs) -> Result<i32, Errno> {
-	let mut pid = regs.ebx as Pid;
-	let mut pgid = regs.ecx as Pid;
+#[syscall]
+pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
+	let mut pid = pid;
+	let mut pgid = pgid;
 
 	// TODO Check processes SID
 
-	let mutex = Process::get_current().unwrap();
-	let guard = mutex.lock();
-	let proc = guard.get_mut();
+	let proc_mutex = Process::get_current().unwrap();
+	let mut proc = proc_mutex.lock();
 
 	if pid == 0 {
 		pid = proc.get_pid();
@@ -28,11 +27,10 @@ pub fn setpgid(regs: &Regs) -> Result<i32, Errno> {
 	if pid == proc.get_pid() {
 		proc.set_pgid(pgid)?;
 	} else {
-		drop(guard);
+		drop(proc);
 
-		let mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		let guard = mutex.lock();
-		let proc = guard.get_mut();
+		let proc_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
+		let mut proc = proc_mutex.lock();
 
 		proc.set_pgid(pgid)?;
 	}

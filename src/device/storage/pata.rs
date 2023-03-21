@@ -1,11 +1,16 @@
 //! This module implements the PATA interface for hard drives.
-//! The PATA interface is an old, deprecated interface that has been replaced by the SATA
-//! interface.
-//! ATA devices may be detected by the PCI, but if not, it doesn't mean that they are not present.
-//! The disk(s) may instead use the standardized IO ports for legacy support.
+//!
+//! The PATA interface is an old, deprecated interface that has been replaced by
+//! the SATA interface.
+//!
+//! ATA devices may be detected by the PCI, but if not, it doesn't mean that
+//! they are not present. The disk(s) may instead use the standardized IO ports
+//! for legacy support.
 //!
 //! Legacy PATA can support up to two buses, each supporting up to two drives.
-//! Each bus has its own set of ports. Before using a drive, the kernel has to:
+//! Each bus has its own set of ports.
+//!
+//! Before using a drive, the kernel has to:
 //! - Reset the ATA controller
 //! - Select the drive (with the dedicated command)
 //! - Identify it to retrieve informations, such as whether the drives support LBA48
@@ -94,14 +99,15 @@ const STATUS_BSY: u8 = 0b10000000;
 /// The size of a sector in bytes.
 const SECTOR_SIZE: u64 = 512;
 
-// TODO Synchronize both master and slave disks so that another thread cannot trigger a select
-// while operating on a drive
+// TODO Synchronize both master and slave disks so that another thread cannot
+// trigger a select while operating on a drive
 
 /// Applies a delay. `n` determines the amount to wait.
-/// This function is a dirty hack and the actual delay is approximative but **should** be
-/// sufficient.
+///
+/// This function is a dirty hack and the actual delay is approximative but
+/// **should** be sufficient.
 fn delay(n: u32) {
-	let n = math::ceil_division(n, 30) * 1000;
+	let n = math::ceil_div(n, 30) * 1000;
 
 	for _ in 0..n {
 		unsafe {
@@ -118,7 +124,8 @@ enum PortOffset {
 	Control(u16),
 }
 
-/// Structure representing a PATA interface. An instance is associated with a unique disk.
+/// Structure representing a PATA interface. An instance is associated with a
+/// unique disk.
 #[derive(Debug)]
 pub struct PATAInterface {
 	/// The channel on which the disk is located.
@@ -134,9 +141,13 @@ pub struct PATAInterface {
 }
 
 impl PATAInterface {
-	/// Creates a new instance. On error, the function returns a string telling the cause.
-	/// `channel` is the IDE channel of the disk.
-	/// `slave` tells whether the disk is the slave disk.
+	/// Creates a new instance.
+	///
+	/// On error, the function returns a string telling the cause.
+	///
+	/// Arguments:
+	/// - `channel` is the IDE channel of the disk.
+	/// - `slave` tells whether the disk is the slave disk.
 	pub fn new(channel: ide::Channel, slave: bool) -> Result<Self, &'static str> {
 		let mut s = Self {
 			channel,
@@ -210,14 +221,17 @@ impl PATAInterface {
 	}
 
 	/// Tells whether the disk's buses are floating.
-	/// A floating bus means there is no hard drive connected. However, if the bus isn't floating,
-	/// it doesn't necessarily mean there is a disk.
+	///
+	/// A floating bus means there is no hard drive connected.
+	///
+	/// However, if the bus isn't floating, it doesn't necessarily mean there is a disk.
 	fn is_floating(&self) -> bool {
 		self.get_status() == 0xff
 	}
 
-	/// Waits until the drive is not busy anymore. If the drive wasn't busy, the function doesn't
-	/// do anything.
+	/// Waits until the drive is not busy anymore.
+	///
+	/// If the drive wasn't busy, the function doesn't do anything.
 	fn wait_busy(&self) {
 		if self.is_floating() {
 			return;
@@ -226,14 +240,19 @@ impl PATAInterface {
 		while self.get_status() & STATUS_BSY != 0 {}
 	}
 
-	/// Sends the given command on the bus. The function doesn't check if the drive is ready since
-	/// it can allow to select the drive.
+	/// Sends the given command on the bus.
+	///
+	/// The function doesn't check if the drive is ready since it can allow to select the drive.
+	///
 	/// `command` is the command.
 	fn send_command(&self, command: u8) {
 		self.outb(PortOffset::ATA(COMMAND_REGISTER_OFFSET), command);
 	}
 
-	/// Selects the drive. This operation is necessary in order to send command to the drive.
+	/// Selects the drive.
+	///
+	/// This operation is necessary in order to send command to the drive.
+	///
 	/// If the drive is already selected, the function does nothing unless `init` is set.
 	fn select(&self, init: bool) {
 		if !init {
@@ -257,7 +276,9 @@ impl PATAInterface {
 		self.wait_busy();
 	}
 
-	/// Resets both master and slave devices. The current drive may not be selected anymore.
+	/// Resets both master and slave devices.
+	///
+	/// The current drive may not be selected anymore after this function returns.
 	fn reset(&self) {
 		self.outb(PortOffset::Control(0), 1 << 2);
 		delay(5000);
@@ -266,8 +287,9 @@ impl PATAInterface {
 		delay(5000);
 	}
 
-	/// Identifies the drive, retrieving informations about the drive. On error, the function
-	/// returns a string telling the cause.
+	/// Identifies the drive, retrieving informations about the drive.
+	///
+	/// On error, the function returns a string telling the cause.
 	fn identify(&mut self) -> Result<(), &'static str> {
 		self.reset();
 		self.select(true);
@@ -337,7 +359,9 @@ impl PATAInterface {
 		Ok(())
 	}
 
-	/// Waits for the drive to be ready for IO operation. The device is assumed to be selected.
+	/// Waits for the drive to be ready for IO operation.
+	///
+	/// The device is assumed to be selected.
 	fn wait_io(&self) -> Result<(), Errno> {
 		loop {
 			let status = self.get_status();

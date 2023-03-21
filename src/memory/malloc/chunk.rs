@@ -1,7 +1,11 @@
-//! In the malloc allocator, a chunk of memory is a subdivision of a Block. It represents a portion
-//! of memory that might be available for allocation, or might be already allocated.
+//! In the malloc allocator, a chunk of memory is a subdivision of a `Block`.
+//!
+//! It represents a portion of memory that might be available for allocation, or
+//! might be already allocated.
+//!
 //! Chunks of the same blocks are linked to each others by a double linked list, which allows to
 //! split and merge nearby chunks when necessary.
+//!
 //! If a chunk is not allocated, it is stored in a free list, stored by size.
 
 use super::block::Block;
@@ -10,7 +14,6 @@ use crate::list_new;
 use crate::util;
 use crate::util::list::List;
 use crate::util::list::ListNode;
-use crate::util::math;
 use core::cmp::{max, min};
 use core::ffi::c_void;
 use core::mem::size_of;
@@ -86,11 +89,13 @@ impl Chunk {
 	}
 
 	/// Tells the whether the chunk is free.
+	#[inline]
 	pub fn is_used(&self) -> bool {
 		(self.flags & CHUNK_FLAG_USED) != 0
 	}
 
 	/// Sets the chunk used or free.
+	#[inline]
 	pub fn set_used(&mut self, used: bool) {
 		#[cfg(config_debug_malloc_check)]
 		self.check();
@@ -105,23 +110,26 @@ impl Chunk {
 		self.check();
 	}
 
-	/// Returns a pointer to the chunks' data.
-	pub fn get_ptr(&mut self) -> *mut c_void {
-		unsafe { (self as *mut Self as *mut c_void).add(size_of::<Self>()) }
-	}
-
-	/// Returns a const pointer to the chunks' data.
-	pub fn get_const_ptr(&self) -> *const c_void {
+	/// Returns an immutable pointer to the chunks' data.
+	#[inline]
+	pub fn get_ptr(&self) -> *const c_void {
 		unsafe { (self as *const Self as *const c_void).add(size_of::<Self>()) }
 	}
 
+	/// Returns a mutable pointer to the chunks' data.
+	#[inline]
+	pub fn get_ptr_mut(&mut self) -> *mut c_void {
+		unsafe { (self as *mut Self as *mut c_void).add(size_of::<Self>()) }
+	}
+
 	/// Returns the size of the chunk.
+	#[inline]
 	pub fn get_size(&self) -> usize {
 		self.size
 	}
 
-	/// Checks that the chunk is correct. This function uses assertions and thus is useful only in
-	/// debug mode.
+	/// Checks that the chunk is correct. This function uses assertions and thus
+	/// is useful only in debug mode.
 	#[cfg(config_debug_malloc_check)]
 	pub fn check(&self) {
 		#[cfg(config_debug_malloc_magic)]
@@ -159,16 +167,20 @@ impl Chunk {
 		debug_assert!(util::is_aligned(self.get_const_ptr(), ALIGNEMENT));
 	}
 
-	/// Returns a mutable reference for the given chunk as a free chunk. The result is undefined if
-	/// the chunk is used.
+	/// Returns a mutable reference for the given chunk as a free chunk.
+	///
+	/// The result is undefined if the chunk is used.
+	#[inline]
 	pub fn as_free_chunk(&mut self) -> &mut FreeChunk {
 		debug_assert!(!self.is_used());
 
 		unsafe { &mut *(self as *mut Self as *mut FreeChunk) }
 	}
 
-	/// Returns the reference to the next chunk for splitting the current chunk with given size
-	/// `size`. If the chunk cannot be split, the function returns None.
+	/// Returns the reference to the next chunk for splitting the current chunk
+	/// with given size `size`.
+	///
+	/// If the chunk cannot be split, the function returns `None`.
 	fn get_split_next_chunk(&mut self, size: usize) -> Option<*mut FreeChunk> {
 		let min_data_size = get_min_chunk_size();
 		let next_ptr = util::align(
@@ -186,9 +198,11 @@ impl Chunk {
 		}
 	}
 
-	/// Splits the chunk with the given size `size` if necessary. The function might create a new
-	/// chunk next to the current. The created chunk will be inserted in the free list but the
-	/// current chunk will not.
+	/// Splits the chunk with the given size `size` if necessary.
+	///
+	/// The function might create a new chunk next to the current.
+	///
+	/// The created chunk will be inserted in the free list but the current chunk will not.
 	pub fn split(&mut self, size: usize) {
 		#[cfg(config_debug_malloc_check)]
 		self.check();
@@ -222,8 +236,10 @@ impl Chunk {
 		self.check();
 	}
 
-	/// Tries to coalesce the chunk it with adjacent chunks if they are free. The function returns
-	/// the resulting chunk, which will not be inserted into any free list.
+	/// Tries to coalesce the chunk it with adjacent chunks if they are free.
+	///
+	/// The function returns the resulting chunk, which will not be inserted
+	/// into any free list.
 	pub fn coalesce(&mut self) -> &mut Chunk {
 		if !self.is_used() {
 			self.as_free_chunk().free_list_remove();
@@ -260,8 +276,11 @@ impl Chunk {
 		self
 	}
 
-	/// Tries to grow the given chunk of `delta` more bytes. If not possible, the function returns
-	/// `false`. The function might alter the free list to get the space needed.
+	/// Tries to grow the given chunk of `delta` more bytes.
+	///
+	/// If not possible, the function returns `false`.
+	///
+	/// The function might alter the free list to get the space needed.
 	pub fn grow(&mut self, delta: usize) -> bool {
 		debug_assert!(self.is_used());
 		debug_assert!(delta != 0);
@@ -296,8 +315,11 @@ impl Chunk {
 		true
 	}
 
-	/// Tries to shrink the given chunk of `delta` less bytes. If not possible, the function
-	/// returns `false`. The function might alter the free list to relinquish the space.
+	/// Tries to shrink the given chunk of `delta` less bytes.
+	///
+	/// If not possible, the function returns `false`.
+	///
+	/// The function might alter the free list to relinquish the space.
 	pub fn shrink(&mut self, delta: usize) {
 		debug_assert!(self.is_used());
 		debug_assert_ne!(delta, 0);
@@ -319,8 +341,10 @@ impl Chunk {
 }
 
 impl FreeChunk {
-	/// Creates a new free with the given size `size` in bytes, meant to be the first chunk of a
-	/// block. The chunk is **not** inserted into the free list.
+	/// Creates a new free with the given size `size` in bytes, meant to be the
+	/// first chunk of a block.
+	///
+	/// The chunk is **not** inserted into the free list.
 	pub fn new_first(ptr: *mut c_void, size: usize) {
 		unsafe {
 			ptr::write(
@@ -339,7 +363,8 @@ impl FreeChunk {
 		}
 	}
 
-	/// Creates a new free chunk. `size` is the size of the available memory in the chunk.
+	/// Creates a new free chunk. `size` is the size of the available memory in
+	/// the chunk.
 	pub fn new(size: usize) -> Self {
 		Self {
 			chunk: Chunk {
@@ -353,23 +378,27 @@ impl FreeChunk {
 		}
 	}
 
-	/// Returns a pointer to the chunks' data.
-	pub fn get_ptr(&mut self) -> *mut c_void {
+	/// Returns an immutable pointer to the chunks' data.
+	#[inline]
+	pub fn get_ptr(&self) -> *const c_void {
 		self.chunk.get_ptr()
 	}
 
-	/// Returns a const pointer to the chunks' data.
-	pub fn get_const_ptr(&self) -> *const c_void {
-		self.chunk.get_const_ptr()
+	/// Returns a mutable pointer to the chunks' data.
+	#[inline]
+	pub fn get_ptr_mut(&mut self) -> *mut c_void {
+		self.chunk.get_ptr_mut()
 	}
 
 	/// Returns the size of the chunk.
+	#[inline]
 	pub fn get_size(&self) -> usize {
 		self.chunk.get_size()
 	}
 
-	/// Checks that the chunk is correct. This function uses assertions and thus is useful only in
-	/// debug mode.
+	/// Checks that the chunk is correct.
+	///
+	/// This function uses assertions and thus is useful only in debug mode.
 	#[cfg(config_debug_malloc_check)]
 	pub fn check(&self) {
 		assert!(!self.chunk.is_used());
@@ -377,6 +406,7 @@ impl FreeChunk {
 	}
 
 	/// Returns the chunk object.
+	#[inline]
 	pub fn get_chunk(&mut self) -> &mut Chunk {
 		&mut self.chunk
 	}
@@ -410,7 +440,9 @@ impl FreeChunk {
 	}
 }
 
+// TODO put as const when stable
 /// Returns the minimum data size for a chunk.
+#[inline(always)]
 fn get_min_chunk_size() -> usize {
 	max(size_of::<FreeChunk>() - size_of::<Chunk>(), FREE_CHUNK_MIN)
 }
@@ -428,13 +460,18 @@ fn check_free_lists() {
 	}
 }
 
-/// Returns the free list for the given size `size`. If `insert` is not set, the function may
-/// return a free list that contain chunks greater than the required size so that it can be split.
+/// Returns the free list for the given size `size`.
+///
+/// If `insert` is not set, the function may return a free list that contain chunks greater than
+/// the required size so that it can be split.
 fn get_free_list(size: usize, insert: bool) -> Option<&'static mut FreeList> {
 	#[cfg(config_debug_malloc_check)]
 	check_free_lists();
 
-	let mut i = math::log2(size / FREE_LIST_SMALLEST_SIZE);
+	let mut i = size / FREE_LIST_SMALLEST_SIZE;
+	if i > 0 {
+		i = i.ilog2() as usize;
+	}
 	i = min(i, FREE_LIST_BINS - 1);
 
 	let free_lists = unsafe { FREE_LISTS.assume_init_mut() };
@@ -463,8 +500,11 @@ pub fn init_free_lists() {
 	}
 }
 
-/// Returns a reference to a free chunk suitable for an allocation of given size `size`.
-/// On success, the return value MUST be used or might result in a memory leak.
+/// Returns a reference to a free chunk suitable for an allocation of given size
+/// `size`.
+///
+/// On success, the return value MUST be used or might result in a
+/// memory leak.
 pub fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno> {
 	let free_list = get_free_list(size, false);
 	let chunk = {

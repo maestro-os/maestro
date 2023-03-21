@@ -1,24 +1,5 @@
 //! An inode represents a file in the filesystem.
 
-use core::cmp::max;
-use core::cmp::min;
-use core::mem::size_of;
-use core::ptr::addr_of;
-use core::ptr::copy_nonoverlapping;
-use core::ptr;
-use core::slice;
-use crate::errno::Errno;
-use crate::errno;
-use crate::file::FileType;
-use crate::file::Mode;
-use crate::file;
-use crate::limits;
-use crate::memory::malloc;
-use crate::util::boxed::Box;
-use crate::util::container::string::String;
-use crate::util::io::IO;
-use crate::util::math;
-use super::Superblock;
 use super::block_group_descriptor::BlockGroupDescriptor;
 use super::directory_entry::DirectoryEntry;
 use super::read;
@@ -26,6 +7,25 @@ use super::read_block;
 use super::write;
 use super::write_block;
 use super::zero_blocks;
+use super::Superblock;
+use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::FileType;
+use crate::file::Mode;
+use crate::limits;
+use crate::memory::malloc;
+use crate::util::boxed::Box;
+use crate::util::container::string::String;
+use crate::util::io::IO;
+use crate::util::math;
+use core::cmp::max;
+use core::cmp::min;
+use core::mem::size_of;
+use core::ptr;
+use core::ptr::addr_of;
+use core::ptr::copy_nonoverlapping;
+use core::slice;
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: u8 = 12;
@@ -102,7 +102,8 @@ const INODE_FLAG_JOURNAL_FILE: u32 = 0x40000;
 /// The size of a sector in bytes.
 const SECTOR_SIZE: u32 = 512;
 
-/// The limit length for a symlink to be stored in the inode itself instead of a separate block.
+/// The limit length for a symlink to be stored in the inode itself instead of a
+/// separate block.
 const SYMLINK_INODE_STORE_LIMIT: u64 = 60;
 
 /// The inode of the root directory.
@@ -114,9 +115,10 @@ pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
 	| INODE_PERMISSION_IROTH
 	| INODE_PERMISSION_IXOTH;
 
-/// An inode represents a file in the filesystem. The name of the file is not included in the inode
-/// but in the directory entry associated with it since several entries can refer to the same
-/// inode (hard links).
+/// An inode represents a file in the filesystem.
+///
+/// The name of the file is not included in the inode but in the directory entry associated with it
+/// since several entries can refer to the same inode (hard links).
 #[repr(C, packed)]
 pub struct Ext2INode {
 	/// Type and permissions.
@@ -165,9 +167,11 @@ pub struct Ext2INode {
 
 impl Ext2INode {
 	/// Returns the offset of the inode on the disk in bytes.
-	/// `i` is the inode's index (starting at `1`).
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	///
+	/// Arguments:
+	/// - `i` is the inode's index (starting at `1`).
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
 	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<u64, Errno> {
 		// Checking the inode is correct
 		if i == 0 {
@@ -210,9 +214,12 @@ impl Ext2INode {
 		mode as u16 | t
 	}
 
-	/// Reads the `i`th inode from the given device. The index `i` starts at `1`.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	/// Reads the `i`th inode from the given device.
+	///
+	/// Arguments:
+	/// - `i` is the inode's index (starting at `1`).
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<Self, Errno> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
 
@@ -247,6 +254,7 @@ impl Ext2INode {
 	}
 
 	/// Returns the size of the file.
+	///
 	/// `superblock` is the filesystem's superblock.
 	pub fn get_size(&self, superblock: &Superblock) -> u64 {
 		let has_version = superblock.major_version >= 1;
@@ -260,8 +268,10 @@ impl Ext2INode {
 	}
 
 	/// Sets the file's size.
-	/// `superblock` is the filesystem's superblock.
-	/// `size` is the file's size.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `size` is the file's size.
 	fn set_size(&mut self, superblock: &Superblock, size: u64) {
 		let has_version = superblock.major_version >= 1;
 		let has_feature = superblock.write_required_features & super::WRITE_REQUIRED_64_BITS != 0;
@@ -275,21 +285,24 @@ impl Ext2INode {
 	}
 
 	/// Increments the number of used sectors of one block.
+	///
 	/// `blk_size` is the size of a block.
 	fn increment_used_sectors(&mut self, blk_size: u32) {
-		self.used_sectors += math::ceil_division(blk_size, SECTOR_SIZE);
+		self.used_sectors += math::ceil_div(blk_size, SECTOR_SIZE);
 	}
 
 	/// Decrements the number of used sectors of one block.
+	///
 	/// `blk_size` is the size of a block.
 	fn decrement_used_sectors(&mut self, blk_size: u32) {
 		if self.used_sectors > 0 {
-			self.used_sectors -= math::ceil_division(blk_size, SECTOR_SIZE);
+			self.used_sectors -= math::ceil_div(blk_size, SECTOR_SIZE);
 		}
 	}
 
-	/// Turns a block offset into an Option./ Namely, if the block offset is zero, the function
-	/// returns None.
+	/// Turns a block offset into an `Option`.
+	///
+	/// Namely, if the block offset is zero, the function returns `None`.
 	fn blk_offset_to_option(blk: u32) -> Option<u32> {
 		if blk != 0 {
 			Some(blk)
@@ -299,8 +312,10 @@ impl Ext2INode {
 	}
 
 	/// Returns the number of indirections for the given content block offset.
-	/// `off` is the block offset.
-	/// `entries_per_blk` is the number of entries per block.
+	///
+	/// Arguments:
+	/// - `off` is the block offset.
+	/// - `entries_per_blk` is the number of entries per block.
 	fn get_content_blk_indirections_count(off: u32, entries_per_blk: u32) -> u8 {
 		if off < DIRECT_BLOCKS_COUNT as u32 {
 			0
@@ -314,12 +329,16 @@ impl Ext2INode {
 	}
 
 	/// Resolves block indirections.
-	/// `n` is the number of indirections to resolve.
-	/// `begin` is the beginning block.
-	/// `off` is the offset of the block relative to the specified beginning block.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// If the block doesn't exist, the function returns None.
+	///
+	/// Arguments:
+	/// - `n` is the number of indirections to resolve.
+	/// - `begin` is the beginning block.
+	/// - `off` is the offset of the block relative to the specified beginning
+	/// block.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
+	/// If the block doesn't exist, the function returns `None`.
 	fn resolve_indirections(
 		n: u8,
 		begin: u32,
@@ -335,7 +354,7 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
@@ -351,11 +370,15 @@ impl Ext2INode {
 		}
 	}
 
-	/// Returns the block id of the node's content block at the given offset `i`.
-	/// `i` is the block offset in the node's content.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// If the block doesn't exist, the function returns None.
+	/// Returns the block id of the node's content block at the given offset
+	/// `i`.
+	///
+	/// Arguments:
+	/// - `i` is the block offset in the node's content.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
+	/// If the block doesn't exist, the function returns `None`.
 	fn get_content_block_off(
 		&self,
 		i: u32,
@@ -404,12 +427,17 @@ impl Ext2INode {
 		}
 	}
 
-	/// Allocates a new block for the content of the file through block indirections.
-	/// `n` is the number of indirections to resolve.
-	/// `begin` is the beginning block.
-	/// `off` is the offset of the block relative to the specified beginning block.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	/// Allocates a new block for the content of the file through block
+	/// indirections.
+	///
+	/// Arguments:
+	/// - `n` is the number of indirections to resolve.
+	/// - `begin` is the beginning block.
+	/// - `off` is the offset of the block relative to the specified beginning
+	/// block.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
 	/// The function returns the the allocated block.
 	fn indirections_alloc(
 		&mut self,
@@ -427,7 +455,7 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
@@ -456,9 +484,12 @@ impl Ext2INode {
 
 	/// Allocates a block for the node's content block at the given offset `i`.
 	/// If the block is already allocated, the function does nothing.
-	/// `i` is the block offset in the node's content.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	///
+	/// Arguments:
+	/// - `i` is the block offset in the node's content.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
 	/// On success, the function returns the allocated final block offset.
 	fn alloc_content_block(
 		&mut self,
@@ -557,12 +588,17 @@ impl Ext2INode {
 	}
 
 	/// Frees a block of the content of the file through block indirections.
-	/// `n` is the number of indirections to resolve.
-	/// `begin` is the beginning block.
-	/// `off` is the offset of the block relative to the specified beginning block.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// The function returns a boolean telling whether the block at `begin` has been freed.
+	///
+	/// Arguments:
+	/// - `n` is the number of indirections to resolve.
+	/// - `begin` is the beginning block.
+	/// - `off` is the offset of the block relative to the specified beginning
+	/// block.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
+	/// The function returns a boolean telling whether the block at `begin` has
+	/// been freed.
 	fn indirections_free(
 		&mut self,
 		n: u8,
@@ -579,7 +615,7 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = math::pow(entries_per_blk as u32, (n - 1) as _);
+			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
@@ -611,9 +647,11 @@ impl Ext2INode {
 
 	/// Frees a content block at block offset `i` in file.
 	/// If the block isn't allocated, the function does nothing.
-	/// `i` is the id of the block.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	///
+	/// Arguments:
+	/// - `i` is the id of the block.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
 	fn free_content_block(
 		&mut self,
 		i: u32,
@@ -676,12 +714,15 @@ impl Ext2INode {
 	}
 
 	/// Reads the content of the inode.
-	/// `off` is the offset at which the inode is read.
-	/// `buff` is the buffer in which the data is to be written.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// The function returns the number of bytes that have been read and boolean telling whether
-	/// EOF is reached.
+	///
+	/// Arguments:
+	/// - `off` is the offset at which the inode is read.
+	/// - `buff` is the buffer in which the data is to be written.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
+	/// The function returns the number of bytes that have been read and boolean
+	/// telling whether EOF is reached.
 	pub fn read_content(
 		&self,
 		off: u64,
@@ -725,10 +766,13 @@ impl Ext2INode {
 	}
 
 	/// Writes the content of the inode.
-	/// `off` is the offset at which the inode is written.
-	/// `buff` is the buffer in which the data is to be written.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	///
+	/// Arguments:
+	/// - `off` is the offset at which the inode is written.
+	/// - `buff` is the buffer in which the data is to be written.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
 	/// The function returns the number of bytes that have been written.
 	pub fn write_content(
 		&mut self,
@@ -782,10 +826,14 @@ impl Ext2INode {
 	}
 
 	/// Truncates the file to the given size `size`.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// `size` is the new size of the inode's content.
-	/// If `size` is greater than or equal to the previous size, the function does nothing.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `size` is the new size of the inode's content.
+	///
+	/// If `size` is greater than or equal to the previous size, the function
+	/// does nothing.
 	pub fn truncate(
 		&mut self,
 		superblock: &mut Superblock,
@@ -804,9 +852,9 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 
 		// The index of the beginning block to free
-		let begin = math::ceil_division(size, blk_size as _) as u32;
+		let begin = math::ceil_div(size, blk_size as _) as u32;
 		// The index of the end block to free
-		let end = math::ceil_division(old_size, blk_size as _) as u32;
+		let end = math::ceil_div(old_size, blk_size as _) as u32;
 		for i in begin..end {
 			// TODO Optimize
 			self.free_content_block(i, superblock, io)?;
@@ -816,10 +864,12 @@ impl Ext2INode {
 	}
 
 	/// Frees all content blocks by doing redirections.
-	/// `begin` is the beginning block.
-	/// `n` is the number of indicrections.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	///
+	/// Arguments:
+	/// - `begin` is the beginning block.
+	/// - `n` is the number of indicrections.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
 	fn indirect_free_all(
 		begin: u32,
 		n: usize,
@@ -853,9 +903,10 @@ impl Ext2INode {
 	}
 
 	/// Frees all the content blocks of the inode.
-	/// `range` is the range on which content blocks will be removed.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
 	pub fn free_content(
 		&mut self,
 		superblock: &mut Superblock,
@@ -899,9 +950,12 @@ impl Ext2INode {
 	}
 
 	/// Reads the directory entry at offset `off` and returns it.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// `off` is the offset of the directory entry.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `off` is the offset of the directory entry.
+	///
 	/// If the file is not a directory, the behaviour is undefined.
 	fn read_dirent(
 		&self,
@@ -920,9 +974,12 @@ impl Ext2INode {
 	}
 
 	/// Writes the directory entry at offset `off`.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// `off` is the offset of the directory entry.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `off` is the offset of the directory entry.
+	///
 	/// If the file is not a directory, the behaviour is undefined.
 	pub fn write_dirent(
 		&mut self,
@@ -940,9 +997,12 @@ impl Ext2INode {
 	}
 
 	/// Returns an iterator to the node's directory entries.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// If the node is not a directory, the function returns None.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
+	/// If the node is not a directory, the function returns `None`.
 	pub fn iter_dirent<'n, 's, 'i>(
 		&'n self,
 		superblock: &'s Superblock,
@@ -968,10 +1028,15 @@ impl Ext2INode {
 	}
 
 	/// Returns the directory entry with the given name `name`.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// If the entry doesn't exist, the function returns None.
-	/// If the file is not a directory, the function returns None.
+	///
+	/// Arguments:
+	/// - `name` is the name of the entry.
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
+	/// If the entry doesn't exist, the function returns `None`.
+	///
+	/// If the file is not a directory, the function returns `None`.
 	pub fn get_dirent(
 		&self,
 		name: &[u8],
@@ -992,13 +1057,19 @@ impl Ext2INode {
 		Ok(None)
 	}
 
-	/// Looks for a splittable entry in the inode which is large enough to fit another entry with
-	/// the given size.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// `min_size` is the minimum size of the new entry in bytes.
-	/// If the function finds an entry, it returns its offset. Else, the function returns None.
-	/// If the file is not a directory, the function returns None.
+	/// Looks for a splittable entry in the inode which is large enough to fit
+	/// another entry with the given size.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `min_size` is the minimum size of the new entry in bytes.
+	///
+	/// If the function finds an entry, it returns its offset. Else, the
+	/// function returns `None`.
+	///
+	/// If the file is not a directory, the function
+	/// returns `None`.
 	fn get_splittable_entry(
 		&self,
 		superblock: &Superblock,
@@ -1019,13 +1090,17 @@ impl Ext2INode {
 	}
 
 	/// Adds a new entry to the current directory.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// `entry_inode` is the inode of the entry.
-	/// `name` is the name of the entry.
-	/// `file_type` is the type of the entry.
-	/// If the block allocation fails or if the entry name is already used, the function returns an
-	/// error.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `entry_inode` is the inode of the entry.
+	/// - `name` is the name of the entry.
+	/// - `file_type` is the type of the entry.
+	///
+	/// If the block allocation fails or if the entry name is already used, the
+	/// function returns an error.
+	///
 	/// If the file is not a directory, the behaviour is undefined.
 	pub fn add_dirent(
 		&mut self,
@@ -1056,12 +1131,7 @@ impl Ext2INode {
 			let mut entry = self.read_dirent(superblock, io, entry_off)?;
 
 			let mut new_entry = entry.split(entry_size)?;
-			self.write_dirent(
-				superblock,
-				io,
-				&entry,
-				entry_off,
-			)?;
+			self.write_dirent(superblock, io, &entry, entry_off)?;
 
 			new_entry.set_inode(entry_inode);
 			new_entry.set_name(superblock, name);
@@ -1079,11 +1149,14 @@ impl Ext2INode {
 		}
 	}
 
-	// TODO Clean: Code from `foreach_directory_entry` has been duplicated to avoid borrow errors
+	// TODO Clean: Code from `foreach_directory_entry` has been duplicated to avoid
+	// borrow errors
 	/// Removes the entry from the current directory.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
-	/// `name` is the name of the entry.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `name` is the name of the entry.
 	pub fn remove_dirent<S: AsRef<[u8]>>(
 		&mut self,
 		superblock: &mut Superblock,
@@ -1150,9 +1223,9 @@ impl Ext2INode {
 		// If the last content blocks can be freed, free them
 		if let Some((last_free_off, _)) = prev_free {
 			// The first content block that can be freed
-			let first_free_blk = math::ceil_division(last_free_off, blk_size as u64) as u32;
+			let first_free_blk = math::ceil_div(last_free_off, blk_size as u64) as u32;
 			// The number of content blocks in the inode
-			let blk_count = math::ceil_division(self.get_size(superblock), blk_size as u64) as u32;
+			let blk_count = math::ceil_div(self.get_size(superblock), blk_size as u64) as u32;
 
 			for i in first_free_blk..blk_count {
 				self.free_content_block(i, superblock, io)?;
@@ -1164,8 +1237,11 @@ impl Ext2INode {
 	}
 
 	/// Returns the link target of the inode.
-	/// `superblock` is the filesystem's superblock.
-	/// `io` is the I/O interface.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
 	/// The function returns a string containing the target.
 	pub fn get_link(&self, superblock: &Superblock, io: &mut dyn IO) -> Result<String, Errno> {
 		if !matches!(self.get_type(), FileType::Link) {
@@ -1183,17 +1259,19 @@ impl Ext2INode {
 				slice::from_raw_parts(ptr, len as usize)
 			};
 
-			String::from(buff)
+			String::try_from(buff)
 		} else {
 			let mut buff = malloc::Alloc::<u8>::new_default(limits::SYMLINK_MAX)?;
 			self.read_content(0, buff.as_slice_mut(), superblock, io)?;
 
-			String::from(&buff.as_slice()[..(len as usize)])
+			String::try_from(&buff.as_slice()[..(len as usize)])
 		}
 	}
 
 	/// Sets the link target of the inode.
+	///
 	/// `target` is the new target.
+	///
 	/// If the target is too long, it is truncated.
 	pub fn set_link(
 		&mut self,
@@ -1227,6 +1305,7 @@ impl Ext2INode {
 	}
 
 	/// Returns the device major and minor numbers associated with the device.
+	///
 	/// If the file is not a device file, the behaviour is undefined.
 	pub fn get_device(&self) -> (u8, u8) {
 		debug_assert!(
@@ -1238,8 +1317,11 @@ impl Ext2INode {
 	}
 
 	/// Sets the device major and minor numbers associated with the device.
-	/// `major` is the major number.
-	/// `minor` is the minor number.
+	///
+	/// Arguments:
+	/// - `major` is the major number.
+	/// - `minor` is the minor number.
+	///
 	/// If the file is not a device file, the behaviour is undefined.
 	pub fn set_device(&mut self, major: u8, minor: u8) {
 		debug_assert!(
@@ -1257,7 +1339,9 @@ impl Ext2INode {
 }
 
 /// An itertor on the directory entries of a node (including free entries).
-/// The iterator gives the offset of the directory entry and the directory entry itself.
+///
+/// The iterator gives the offset of the directory entry and the directory entry
+/// itself.
 pub struct DirentIterator<'n, 's, 'i> {
 	/// The node.
 	node: &'n Ext2INode,
@@ -1303,11 +1387,9 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 
 		// The offset of the entry in the current block
 		let inner_off = (self.off % blk_size) as usize;
-		// Safe because the data is block-aligned and an entry cannot be larger than the size of a
-		// block
-		let entry_result = unsafe {
-			DirectoryEntry::from(&self.buff.as_slice()[inner_off..])
-		};
+		// Safe because the data is block-aligned and an entry cannot be larger than the
+		// size of a block
+		let entry_result = unsafe { DirectoryEntry::from(&self.buff.as_slice()[inner_off..]) };
 		let entry = match entry_result {
 			Ok(entry) => entry,
 			Err(e) => return Some(Err(e)),

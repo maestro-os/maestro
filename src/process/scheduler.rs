@@ -1,12 +1,13 @@
-//! The role of the process scheduler is to interrupt the currently running process periodicaly
-//! to switch to another process that is in running state. The interruption is fired by the PIT
-//! on IDT0.
+//! The role of the process scheduler is to interrupt the currently running
+//! process periodicaly to switch to another process that is in running state.
 //!
-//! A scheduler cycle is a period during which the scheduler iterates through every processes.
-//! The scheduler works by assigning a number of quantum for each process, based on the number of
-//! running processes and their priority.
-//! This number represents the number of ticks during which the process keeps running until
-//! switching to the next process.
+//! The interruption is fired by the PIT on IDT0.
+//!
+//! A scheduler cycle is a period during which the scheduler iterates through
+//! every processes. The scheduler works by assigning a number of quantum for
+//! each process, based on the number of running processes and their priority.
+//! This number represents the number of ticks during which the process keeps
+//! running until switching to the next process.
 
 use core::cmp::max;
 use core::ffi::c_void;
@@ -18,14 +19,16 @@ use crate::memory::malloc;
 use crate::memory::stack;
 use crate::memory;
 use crate::process::Process;
+use crate::process::State;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
-use crate::process::state::State;
 use crate::process;
+use crate::time::timer::pit;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
+use crate::util::math::rational::Rational;
 use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 
@@ -41,15 +44,20 @@ pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
 	tmp_stacks: Vec<malloc::Alloc<u8>>,
 
-	/// The ticking callback hook, called at a regular interval to make the scheduler work.
+	/// The ticking callback hook, called at a regular interval to make the
+	/// scheduler work.
 	tick_callback_hook: CallbackHook,
 	/// The total number of ticks since the instanciation of the scheduler.
 	total_ticks: u64,
 
-	/// A binary tree containing all processes registered to the current scheduler.
+	/// A binary tree containing all processes registered to the current
+	/// scheduler.
 	processes: Map<Pid, IntSharedPtr<Process>>,
 	/// The currently running process with its PID.
 	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
+
+	/// The current number of running processes.
+	running_procs: usize,
 
 	/// The sum of all priorities, used to compute the average priority.
 	priority_sum: usize,
@@ -79,6 +87,8 @@ impl Scheduler {
 			processes: Map::new(),
 			curr_proc: None,
 
+			running_procs: 0,
+
 			priority_sum: 0,
 			priority_max: 0,
 		})
@@ -93,34 +103,47 @@ impl Scheduler {
 		}
 	}
 
+	/// Returns the total number of ticks since the instanciation of the
+	/// scheduler.
+	pub fn get_total_ticks(&self) -> u64 {
+		self.total_ticks
+	}
+
 	/// Returns an iterator on the scheduler's processes.
 	pub fn iter_process<'a>(&'a mut self) -> MapIterator<'a, Pid, IntSharedPtr<Process>> {
 		self.processes.iter()
 	}
 
-	/// Returns the process with PID `pid`. If the process doesn't exist, the function returns
-	/// None.
+	/// Returns the process with PID `pid`.
+	///
+	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(&self, pid: Pid) -> Option<IntSharedPtr<Process>> {
 		Some(self.processes.get(pid)?.clone())
 	}
 
-	/// Returns the process with TID `tid`. If the process doesn't exist, the function returns
-	/// None.
+	/// Returns the process with TID `tid`.
+	///
+	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(&self, _tid: Pid) -> Option<IntSharedPtr<Process>> {
 		// TODO
 		todo!();
 	}
 
-	/// Returns the current running process. If no process is running, the function returns None.
+	/// Returns the current running process.
+	///
+	/// If no process is running, the function returns `None`.
 	pub fn get_current_process(&mut self) -> Option<IntSharedPtr<Process>> {
 		Some(self.curr_proc.as_ref().cloned()?.1)
 	}
 
 	/// Updates the scheduler's heuristic with the new priority of a process.
-	/// `old` is the old priority of the process.
-	/// `new` is the new priority of the process.
-	/// The function doesn't need to know the process which has been updated since it updates
-	/// global informations.
+	///
+	/// Arguments:
+	/// - `old` is the old priority of the process.
+	/// - `new` is the new priority of the process.
+	///
+	/// The function doesn't need to know the process which has been updated
+	/// since it updates global informations.
 	pub fn update_priority(&mut self, old: usize, new: usize) {
 		self.priority_sum = self.priority_sum - old + new;
 
@@ -135,6 +158,11 @@ impl Scheduler {
 	pub fn add_process(&mut self, process: Process) -> Result<IntSharedPtr<Process>, Errno> {
 		let pid = process.get_pid();
 		let priority = process.get_priority();
+
+		if *process.get_state() == State::Running {
+			self.increment_running();
+		}
+
 		let ptr = IntSharedPtr::new(process)?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
@@ -145,29 +173,67 @@ impl Scheduler {
 	/// Removes the process with the given pid `pid`.
 	pub fn remove_process(&mut self, pid: Pid) {
 		if let Some(proc_mutex) = self.get_by_pid(pid) {
-			let guard = proc_mutex.lock();
-			let process = guard.get();
+			let proc = proc_mutex.lock();
 
-			let priority = process.get_priority();
-			self.processes.remove(pid);
+			if *proc.get_state() == State::Running {
+				self.decrement_running();
+			}
+
+			let priority = proc.get_priority();
+			self.processes.remove(&pid);
 			self.update_priority(priority, 0);
+		}
+	}
+
+	/// Returns the current ticking frequency of the scheduler.
+	pub fn get_ticking_frequency(&self) -> Rational {
+		Rational::from_integer((10 * self.running_procs) as _)
+	}
+
+	/// Increments the number of running processes.
+	pub fn increment_running(&mut self) {
+		self.running_procs += 1;
+
+		// Enable ticking if necessary
+		if self.running_procs > 1 {
+			pic::enable_irq(0x0);
+
+			// Set ticking frequency
+			pit::set_frequency(self.get_ticking_frequency());
+		}
+	}
+
+	/// Decrements the number of running processes.
+	pub fn decrement_running(&mut self) {
+		self.running_procs -= 1;
+
+		if self.running_procs <= 1 {
+			// Disable ticking
+			pic::disable_irq(0x0);
+		} else {
+			// Set ticking frequency
+			pit::set_frequency(self.get_ticking_frequency());
 		}
 	}
 
 	// TODO Clean
 	/// Returns the average priority of a process.
-	/// `priority_sum` is the sum of all processes' priorities.
-	/// `processes_count` is the number of processes.
+	///
+	/// Arguments:
+	/// - `priority_sum` is the sum of all processes' priorities.
+	/// - `processes_count` is the number of processes.
 	fn get_average_priority(priority_sum: usize, processes_count: usize) -> usize {
 		priority_sum / processes_count
 	}
 
 	// TODO Clean
 	/// Returns the number of quantum for the given priority.
-	/// `priority` is the process's priority.
-	/// `priority_sum` is the sum of all processes' priorities.
-	/// `priority_max` is the highest priority a process currently has.
-	/// `processes_count` is the number of processes.
+	///
+	/// Arguments:
+	/// - `priority` is the process's priority.
+	/// - `priority_sum` is the sum of all processes' priorities.
+	/// - `priority_max` is the highest priority a process currently has.
+	/// - `processes_count` is the number of processes.
 	fn get_quantum_count(
 		priority: usize,
 		priority_sum: usize,
@@ -186,6 +252,8 @@ impl Scheduler {
 
 	// TODO Clean
 	/// Tells whether the given process `process` can run.
+	///
+	/// TODO args
 	fn can_run(
 		process: &Process,
 		_priority_sum: usize,
@@ -194,8 +262,8 @@ impl Scheduler {
 	) -> bool {
 		if process.can_run() {
 			// TODO fix
-			//process.quantum_count < Self::get_quantum_count(process.get_priority(), priority_sum,
-			//	priority_max, processes_count)
+			//process.quantum_count < Self::get_quantum_count(process.get_priority(),
+			// priority_sum, 	priority_max, processes_count)
 			true
 		} else {
 			false
@@ -203,85 +271,69 @@ impl Scheduler {
 	}
 
 	// TODO Clean
-	/// Returns the next process to run with its PID. If the process is changed, the quantum count
-	/// of the previous process is reset.
+	/// Returns the next process to run with its PID.
+	///
+	/// If the process is changed, the quantum count of the previous process is reset.
 	fn get_next_process(&self) -> Option<(Pid, IntSharedPtr<Process>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
 		let processes_count = self.processes.count();
-		// If no process exist, nothing to run
-		if processes_count == 0 {
-			return None;
-		}
 
-		// Getting the current process, or take the first process in the list if no process is
-		// running
+		// Getting the current process, or take the first process in the list if no
+		// process is running
 		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
-			let (pid, proc) = self.processes.get_min(0)?;
-			Some((*pid, proc.clone()))
+			self.processes.iter()
+				.next()
+				.map(|(pid, proc)| (*pid, proc.clone()))
 		})?;
 
-		// Closure iterating the tree to find an available process
-		let next = |iter: MapIterator<Pid, IntSharedPtr<Process>>| {
-			let mut proc: Option<(Pid, IntSharedPtr<Process>)> = None;
-
-			// Iterating over processes
-			for (pid, process) in iter {
-				let runnable = {
-					let guard = process.lock();
-					Self::can_run(guard.get(), priority_sum, priority_max, processes_count)
-				};
-
-				// FIXME Potenial race condition? (checking if runnable, then unlocking and using
-				// the result of the check)
-				if runnable {
-					proc = Some((*pid, process.clone()));
-					break;
-				}
-			}
-
-			proc
+		let process_filter = |(_, proc): &(&Pid, &IntSharedPtr<Process>)| {
+			let guard = proc.lock();
+			Self::can_run(&*guard, priority_sum, priority_max, processes_count)
 		};
 
-		let mut iter = self.processes.iter();
-		// Setting the iterator next to the current running process
-		iter.jump(&curr_pid);
-		iter.next();
+		let next_proc = self.processes.range((curr_pid + 1)..)
+			.filter(process_filter)
+			.next()
+			.or_else(|| {
+				// If no suitable process is found, go back to the beginning to check processes
+				// located before the previous process (looping)
 
-		// Running the loop to reach the end of processes list
-		let mut next_proc = next(iter);
-		// If no suitable process is found, going back to the beginning to check the processes
-		// located before the previous process
-		if next_proc.is_none() {
-			next_proc = next(self.processes.iter());
-		}
+				self.processes.iter()
+					.filter(process_filter)
+					.next()
+			})
+			.map(|(pid, proc)| (*pid, proc));
 
 		let (next_pid, next_proc) = next_proc?;
-
 		if next_pid != curr_pid || processes_count == 1 {
-			curr_proc.lock().get_mut().quantum_count = 0;
+			curr_proc.lock().quantum_count = 0;
 		}
-		Some((next_pid, next_proc))
+		Some((next_pid, next_proc.clone()))
 	}
 
-	/// Ticking the scheduler. This function saves the data of the currently running process, then
-	/// switches to the next process to run.
-	/// `sched_mutex` is the scheduler's mutex.
-	/// `regs` is the state of the registers from the paused context.
-	/// `ring` is the ring of the paused context.
+	/// Ticking the scheduler.
+	///
+	/// This function saves the data of the currently running process, then switches to the next
+	/// process to run.
+	///
+	/// If no process is ready to run, the scheduler halts the system until a process is runnable.
+	///
+	/// Arguments:
+	/// - `sched_mutex` is the scheduler's mutex.
+	/// - `regs` is the state of the registers from the paused context.
+	/// - `ring` is the ring of the paused context.
 	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
 		cli!();
 
 		let tmp_stack = {
-			let sched_guard = sched_mutex.lock();
-			let scheduler = sched_guard.get_mut();
-			scheduler.total_ticks += 1;
+			let mut sched = sched_mutex.lock();
+			sched.total_ticks += 1;
 
 			// If a process is running, save its registers
-			if let Some(curr_proc) = scheduler.get_current_process() {
-				let guard = curr_proc.lock();
-				let curr_proc = guard.get_mut();
+			if let Some(curr_proc) = sched.get_current_process() {
+				let mut curr_proc = curr_proc.lock();
 
 				curr_proc.set_regs(*regs);
 				curr_proc.syscalling = ring < 3;
@@ -289,32 +341,30 @@ impl Scheduler {
 
 			// The current core ID
 			let core_id = 0; // TODO
-			// Getting the temporary stack
-			let tmp_stack = scheduler.get_tmp_stack(core_id);
+			 // Getting the temporary stack
+			let tmp_stack = sched.get_tmp_stack(core_id);
 
 			tmp_stack
 		};
 
 		loop {
-			let sched_guard = sched_mutex.lock();
-			let scheduler = sched_guard.get_mut();
+			let mut sched = sched_mutex.lock();
 
-			if let Some(next_proc) = scheduler.get_next_process() {
+			if let Some(next_proc) = sched.get_next_process() {
 				// Set the process as current
-				scheduler.curr_proc = Some(next_proc.clone());
+				sched.curr_proc = Some(next_proc.clone());
 
-				drop(sched_guard);
+				drop(sched);
 
 				unsafe {
 					stack::switch(Some(tmp_stack), move || {
 						let (resume, syscalling, regs) = {
-							let next_proc_guard = next_proc.1.lock();
-							let proc = next_proc_guard.get_mut();
+							let mut next_proc = next_proc.1.lock();
 
-							proc.prepare_switch();
+							next_proc.prepare_switch();
 
-							let resume = matches!(proc.get_state(), State::Running);
-							(resume, proc.is_syscalling(), proc.regs)
+							let resume = matches!(next_proc.get_state(), State::Running);
+							(resume, next_proc.is_syscalling(), next_proc.regs)
 						};
 						drop(next_proc);
 
@@ -331,20 +381,26 @@ impl Scheduler {
 					.unwrap();
 				}
 			} else {
+				// No process to run. Just wait
 				break;
 			}
 		}
 
-		// No process to run. Just wait
+		{
+			sched_mutex.lock().curr_proc = None;
+		}
+
 		unsafe {
 			event::unlock_callbacks(0x20);
 			pic::end_of_interrupt(0x0);
 			crate::loop_reset(tmp_stack);
 		}
 	}
+}
 
-	/// Returns the total number of ticks since the instanciation of the scheduler.
-	pub fn get_total_ticks(&self) -> u64 {
-		self.total_ticks
-	}
+extern "C" {
+	/// Ends the current tick on the current CPU.
+	///
+	/// The function returns at the tick assigned to the current process.
+	pub fn end_tick();
 }
