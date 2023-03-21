@@ -67,7 +67,11 @@ static BUFFERS: Mutex<HashMap<FileLocation, SharedPtr<dyn Buffer>>>
 /// Buffer ID allocator.
 static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
-/// TODO doc
+/// Executes the given closure, passing the ID allocator.
+///
+/// This function allows to access the ID allocator without bothering about its mutex.
+///
+/// If the ID allocator is not initialized, the function initializes it.
 fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
 	where F: FnOnce(&mut IDAllocator) -> Result<T, Errno> {
 	let mut id_allocator = ID_ALLOCATOR.lock();

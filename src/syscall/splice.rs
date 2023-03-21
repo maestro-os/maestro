@@ -1,4 +1,4 @@
-//! TODO doc
+//! The `splice` system call splice data from one pipe to another.
 
 use core::cmp::min;
 use core::ffi::c_int;

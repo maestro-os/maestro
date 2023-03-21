@@ -51,9 +51,12 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 }
 
 /// Tries to kill a process group.
-/// `pid` TODO doc
-/// `sig` is the signal to send.
-/// If `sig` is None, the function doesn't send a signal, but still checks if
+///
+/// Arguments:
+/// - `pid` is the a value that determine which process(es) to kill.
+/// - `sig` is the signal to send.
+///
+/// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 	let pgid = match pid {

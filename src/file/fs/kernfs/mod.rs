@@ -158,7 +158,9 @@ impl KernFS {
 	}
 
 	/// Removes the node with inode `inode`.
+	///
 	/// If the node is a non-empty directory, its content is **NOT** removed.
+	///
 	/// If the node doesn't exist, the function does nothing.
 	pub fn remove_node(&mut self, inode: INode) -> Result<Option<Box<dyn KernFSNode>>, Errno> {
 		if (inode as usize) < self.nodes.len() {
@@ -173,7 +175,12 @@ impl KernFS {
 	}
 
 	// TODO Clean
-	/// TODO doc
+	/// Adds a file to the kernfs.
+	///
+	/// Arguments
+	/// - `parent_inode` is the inode of the parent directory in which the file is inserted.
+	/// - `node` is the node of the new file.
+	/// - `name` is the name of the new file.
 	pub fn add_file_inner<N: 'static + KernFSNode>(
 		&mut self,
 		parent_inode: INode,
