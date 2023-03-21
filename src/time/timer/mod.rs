@@ -84,7 +84,7 @@ struct TickableWrapper {
 
 	/// `frequency` is the object's ticking frequency.
 	frequency: Rational,
-	/// Tells whether the object has to be ticked only once. If true, the
+	/// Tells whether the object has to be ticked only once. If `true`, the
 	/// object will be removed right after being ticked.
 	once: bool,
 }
@@ -120,7 +120,7 @@ impl TimerManager {
 	/// Arguments:
 	/// - `tickable` is the object to be ticked.
 	/// - `frequency` is the object's ticking frequency.
-	/// - `once` tells whether the object has to be ticked only once. If true, the
+	/// - `once` tells whether the object has to be ticked only once. If `true`, the
 	/// - object will be removed right after being ticked.
 	pub fn register_tickable<T: 'static + Tickable>(
 		&mut self,

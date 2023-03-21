@@ -123,7 +123,7 @@ impl<T> Vec<T> {
 		self.len
 	}
 
-	/// Returns true if the vector contains no elements.
+	/// Returns `true` if the vector contains no elements.
 	#[inline(always)]
 	pub fn is_empty(&self) -> bool {
 		self.len == 0

@@ -360,7 +360,7 @@ impl Signal {
 	///
 	/// If the process is not the current process, the behaviour is undefined.
 	///
-	/// If `no_handler` is true, the function executes the default action of the
+	/// If `no_handler` is `true`, the function executes the default action of the
 	/// signal regardless the user-specified action.
 	pub fn execute_action(&self, process: &mut Process, no_handler: bool) {
 		process.signal_clear(self.clone());

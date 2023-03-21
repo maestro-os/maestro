@@ -136,17 +136,17 @@ type ExitStatus = u8;
 /// Structure representing options to be passed to the fork function.
 #[derive(Debug)]
 pub struct ForkOptions {
-	/// If true, the parent and child processes both share the same address
+	/// If `true`, the parent and child processes both share the same address
 	/// space.
 	pub share_memory: bool,
-	/// If true, the parent and child processes both share the same file
+	/// If `true`, the parent and child processes both share the same file
 	/// descriptors table.
 	pub share_fd: bool,
-	/// If true, the parent and child processes both share the same signal
+	/// If `true`, the parent and child processes both share the same signal
 	/// handlers table.
 	pub share_sighand: bool,
 
-	/// If true, the parent is stopped until the child process exits or executes
+	/// If `true`, the parent is stopped until the child process exits or executes
 	/// a program.
 	pub vfork: bool,
 }
@@ -1274,7 +1274,7 @@ impl Process {
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
 	///
-	/// If `no_handler` is true and if the process is already handling a signal,
+	/// If `no_handler` is `true` and if the process is already handling a signal,
 	/// the function executes the default action of the signal regardless the
 	/// user-specified action.
 	pub fn kill(&mut self, sig: &Signal, no_handler: bool) {
@@ -1468,7 +1468,7 @@ impl Process {
 	/// This function changes the process's status to `Zombie`.
 	///
 	/// `signaled` tells whether the process has been terminated by a signal. If
-	/// true, `status` is interpreted as the signal number.
+	/// `true`, `status` is interpreted as the signal number.
 	pub fn exit(&mut self, status: u32, signaled: bool) {
 		if signaled {
 			self.exit_status = 0;

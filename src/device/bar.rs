@@ -19,7 +19,7 @@ pub enum BAR {
 	MemorySpace {
 		/// The type of the BAR, specifying the size of the register.
 		type_: BARType,
-		/// If true, read accesses don't have any side effects.
+		/// If `true`, read accesses don't have any side effects.
 		prefetchable: bool,
 
 		/// Physical address to the register.

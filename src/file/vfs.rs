@@ -219,7 +219,7 @@ impl VFS {
 	/// Arguments:
 	/// - `uid` is the User ID of the user creating the file.
 	/// - `gid` is the Group ID of the user creating the file.
-	/// - `follow_links` is true, the function follows symbolic links.
+	/// - `follow_links` is `true`, the function follows symbolic links.
 	pub fn get_file_from_path(
 		&mut self,
 		path: &Path,
@@ -240,7 +240,7 @@ impl VFS {
 	/// - `name` is the name of the file.
 	/// - `uid` is the User ID of the user creating the file.
 	/// - `gid` is the Group ID of the user creating the file.
-	/// - `follow_links` is true, the function follows symbolic links.
+	/// - `follow_links` is `true`, the function follows symbolic links.
 	pub fn get_file_from_parent(
 		&mut self,
 		parent: &mut File,

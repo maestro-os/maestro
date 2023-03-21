@@ -257,7 +257,7 @@ impl ArgsParser {
 		&self.init
 	}
 
-	/// If true, the kernel doesn't print logs while booting.
+	/// If `true`, the kernel doesn't print logs while booting.
 	pub fn is_silent(&self) -> bool {
 		self.silent
 	}

@@ -433,7 +433,7 @@ impl EnableKey {
 	///
 	/// `kbd_manager` is the keyboard manager.
 	///
-	/// If the state changed, the function returns true.
+	/// If the state changed, the function returns `true`.
 	pub fn input(&mut self, action: KeyboardAction) -> bool {
 		match action {
 			KeyboardAction::Pressed => {
