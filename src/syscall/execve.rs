@@ -44,11 +44,16 @@ struct Shebang {
 }
 
 /// Peeks the shebang in the file.
-/// `file` is the file from which the shebang is to be read.
-/// `buff` is the buffer to write the shebang into.
+///
+/// Arguments:
+/// - `file` is the file from which the shebang is to be read.
+/// - `buff` is the buffer to write the shebang into.
+///
 /// If the file has a shebang, the function returns its size in bytes + the
-/// offset to the end of the interpreter. If the string is longer than the
-/// interpreter's name, the remaining characters shall be used as an argument.
+/// offset to the end of the interpreter.
+///
+/// If the string is longer than the interpreter's name, the remaining characters shall be used as
+/// an argument.
 fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 	let mut buff: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
 

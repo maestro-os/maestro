@@ -230,14 +230,16 @@ pub enum MapConstraint {
 /// Structure representing the virtual memory space of a context.
 pub struct MemSpace {
 	/// Binary tree storing the list of memory gaps, ready for new mappings.
-	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
+	///
+	/// The container is sorted by pointer to the beginning of the mapping on the virtual memory.
 	gaps: Map<*const c_void, MemGap>,
 	/// Binary tree storing the list of memory gaps, sorted by size and then by
 	/// beginning address.
 	gaps_size: Map<(NonZeroUsize, *const c_void), ()>,
 
-	/// Binary tree storing the list of memory mappings. Sorted by pointer to
-	/// the beginning of the mapping on the virtual memory.
+	/// Binary tree storing the list of memory mappings.
+	///
+	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
 	mappings: Map<*const c_void, MemMapping>,
 
 	/// The number of used virtual memory pages.
@@ -925,6 +927,7 @@ impl MemSpace {
 	/// Function called whenever the CPU triggered a page fault for the context.
 	///
 	/// This function determines whether the process should continue or not.
+	///
 	/// If continuing, the function must resolve the issue before returning.
 	/// A typical situation where is function is usefull is for Copy-On-Write allocations.
 	///

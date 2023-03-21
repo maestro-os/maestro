@@ -37,6 +37,7 @@ use self_link::SelfNode;
 use sys_dir::SysDir;
 
 /// Structure representing the procfs.
+///
 /// On the inside, the procfs works using a kernfs.
 pub struct ProcFS {
 	/// The kernfs.
@@ -48,8 +49,10 @@ pub struct ProcFS {
 
 impl ProcFS {
 	/// Creates a new instance.
-	/// `readonly` tells whether the filesystem is readonly.
-	/// `mountpath` is the path at which the filesystem is mounted.
+	///
+	/// Arguments:
+	/// - `readonly` tells whether the filesystem is readonly.
+	/// - `mountpath` is the path at which the filesystem is mounted.
 	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut fs = Self {
 			fs: KernFS::new(b"procfs".try_into()?, readonly, mountpath)?,
@@ -153,6 +156,7 @@ impl ProcFS {
 	}
 
 	/// Removes the process with pid `pid` from the filesystem.
+	///
 	/// If the process doesn't exist, the function does nothing.
 	pub fn remove_process(&mut self, pid: Pid) -> Result<(), Errno> {
 		if let Some(inode) = self.procs.remove(&pid) {

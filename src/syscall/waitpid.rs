@@ -27,9 +27,12 @@ pub const WCONTINUED: i32 = 8;
 pub const WNOWAIT: i32 = 0x1000000;
 
 /// Returns the `i`th target process for the given constraint `pid`.
-/// `curr_proc` is the current process.
-/// `pid` is the constraint given to the system call.
-/// `i` is the index of the target process.
+///
+/// Arguments:
+/// - `curr_proc` is the current process.
+/// - `pid` is the constraint given to the system call.
+/// - `i` is the index of the target process.
+///
 /// The function is built such as iterating on `i` until the function returns
 /// `None` gives every targets for the system call.
 fn get_target(curr_proc: &Process, pid: i32, i: usize) -> Option<Pid> {
@@ -85,11 +88,14 @@ fn get_wstatus(proc: &Process) -> i32 {
 
 /// Checks if at least one process corresponding to the given constraint is
 /// waitable. If yes, the function clears its waitable state, sets the wstatus
-/// and returns the process's PID. `curr_proc` is the current process.
-/// `pid` is the constraint given to the system call.
-/// `wstatus` is a reference to the wait status.
-/// `options` is a set of flags.
-/// `rusage` is the pointer to the resource usage structure.
+/// and returns the process's PID.
+///
+/// Arguments:
+/// - `curr_proc` is the current process.
+/// - `pid` is the constraint given to the system call.
+/// - `wstatus` is a reference to the wait status.
+/// - `options` is a set of flags.
+/// - `rusage` is the pointer to the resource usage structure.
 fn check_waitable(
 	curr_proc: &mut Process,
 	pid: i32,
@@ -147,11 +153,13 @@ fn check_waitable(
 }
 
 /// Executes the `waitpid` system call.
-/// `regs` is the registers state.
-/// `pid` is the PID to wait for.
-/// `wstatus` is the pointer on which to write the status.
-/// `options` are flags passed with the syscall.
-/// `rusage` is the pointer to the resource usage structure.
+///
+/// Arguments:
+/// - `regs` is the registers state.
+/// - `pid` is the PID to wait for.
+/// - `wstatus` is the pointer on which to write the status.
+/// - `options` are flags passed with the syscall.
+/// - `rusage` is the pointer to the resource usage structure.
 pub fn do_waitpid(
 	regs: &Regs,
 	pid: i32,

@@ -10,6 +10,7 @@ use crate::util::container::vec::Vec;
 use crate::vga;
 
 /// Command line argument parser.
+///
 /// Every bytes in the command line are interpreted as ASCII characters.
 pub struct ArgsParser {
 	/// The root device major and minor numbers.
@@ -136,8 +137,11 @@ impl ArgsParser {
 	}
 
 	/// Tokenizes the command line arguments and returns an array containing all
-	/// the tokens. Every characters are interpreted as ASCII characters. If a
-	/// non-ASCII character is passed, the function returns an error.
+	/// the tokens.
+	///
+	/// Every characters are interpreted as ASCII characters.
+	///
+	/// If a non-ASCII character is passed, the function returns an error.
 	fn tokenize(cmdline: &[u8]) -> Result<Vec<Token>, ParseError> {
 		let mut tokens = Vec::new();
 		let mut i = 0;

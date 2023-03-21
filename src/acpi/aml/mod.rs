@@ -137,8 +137,10 @@ const BREAK_POINT_OP: u8 = 0xcc;
 const ONES_OP: u8 = 0xff;
 
 /// An enumeration representing error messages.
-/// An error message can either be allocated or static. This enumeration contains both these
-/// possibilities.
+///
+/// An error message can either be allocated or static.
+///
+/// This enumeration contains both these possibilities.
 pub enum ErrorMessage {
 	/// Allocated error message.
 	Allocated(String),
@@ -157,8 +159,10 @@ pub struct Error {
 /// Trait representing a parseable object.
 pub trait AMLParseable: Sized {
 	/// Parses the object from the given bytes `b`.
-	/// `off` is the offset in the bytecode during parsing. This value is used only to located
-	/// errors.
+	///
+	/// `off` is the offset in the bytecode during parsing.
+	/// This value is used only to locate errors.
+	///
 	/// The function returns an instance of the parsed object and the consumed length.
 	/// On parsing error, the function returns an error message.
 	fn parse(off: usize, b: &[u8]) -> Result<Option<(Self, usize)>, Error>;
@@ -256,6 +260,7 @@ pub struct AMLCode {
 }
 
 /// Parses the given AML code.
+///
 /// On parsing error, the function returns an error message.
 pub fn parse(_aml: &[u8]) -> Result<AMLCode, String> {
 	// TODO

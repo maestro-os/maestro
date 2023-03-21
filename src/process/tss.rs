@@ -2,8 +2,10 @@
 //! is mostly deprecated but that must still be used in order to perform
 //! software context switching because it allows to store the pointers to the
 //! stacks to use whenever an interruption happens and requires switching the
-//! protection ring, and thus the stack. The structure has to be registered into
-//! the GDT into the TSS segment, and must be loaded using instruction `ltr`.
+//! protection ring, and thus the stack.
+//!
+//! The structure has to be registered into the GDT into the TSS segment, and must be loaded using
+//! instruction `ltr`.
 
 use crate::gdt;
 use core::mem::size_of;

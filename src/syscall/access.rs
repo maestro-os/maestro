@@ -38,10 +38,13 @@ const W_OK: i32 = 2;
 const X_OK: i32 = 1;
 
 /// Performs the access operation.
-/// `dirfd` is the file descriptor of the directory relative to which the check
-/// is done. `pathname` is the path to the file.
-/// `mode` is a bitfield of access permissions to check.
-/// `flags` is a set of flags.
+///
+/// Arguments:
+/// - `dirfd` is the file descriptor of the directory relative to which the check
+/// is done.
+/// - `pathname` is the path to the file.
+/// - `mode` is a bitfield of access permissions to check.
+/// - `flags` is a set of flags.
 pub fn do_access(
 	dirfd: Option<i32>,
 	pathname: SyscallString,

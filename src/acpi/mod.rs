@@ -1,4 +1,5 @@
 //! This module implements ACPI related features.
+//!
 //! The ACPI interface provides informations about the system, allowing to
 //! control components such as cooling and powering.
 //!
@@ -103,6 +104,7 @@ pub fn is_century_register_present() -> bool {
 }
 
 /// Initializes ACPI.
+///
 /// This function must be called only once, at boot.
 pub fn init() {
 	// Reading ACPI data

@@ -4,7 +4,7 @@
 //! This allocator works by dividing frames of memory in two until the a frame
 //! of the required size is available.
 //!
-//! The order of a frame is the `n` in the expression `2^^n` that represents the
+//! The order of a frame is the `n` in the expression `pow(2, n)` that represents the
 //! size of a frame in pages.
 
 use super::stats;
@@ -65,10 +65,13 @@ pub struct Zone {
 	free_list: [Option<*mut Frame>; (MAX_ORDER + 1) as usize],
 }
 
-/// Structure representing the metadata for a frame of physical memory. The
-/// structure has an internal linked list for the free list. This linked list
-/// doesn't store pointers but frame identifiers to save memory. If either
-/// `prev` or `next` has value `FRAME_STATE_USED`, the frame is marked as used.
+/// Structure representing the metadata for a frame of physical memory.
+///
+/// The structure has an internal linked list for the free list.
+/// This linked list doesn't store pointers but frame identifiers to save memory.
+///
+/// If either `prev` or `next` has value `FRAME_STATE_USED`, the frame is marked as used.
+///
 /// If a frame points to itself, it means that no more elements are present in
 /// the list.
 #[repr(packed)]
@@ -95,8 +98,10 @@ pub unsafe fn prepare() {
 	util::zero_object(&mut ZONES);
 }
 
-/// Sets the zone at the given slot `slot`. It is required to call function
-/// `prepare` once before calling this one.
+/// Sets the zone at the given slot `slot`.
+///
+/// It is required to call function `prepare` once before calling this one.
+///
 /// Setting each zone slot is required before using the allocator. If one or
 /// more slot isn't set, the behaviour of the allocator is undefined.
 pub fn set_zone_slot(slot: usize, zone: Zone) {
@@ -165,8 +170,12 @@ fn get_zone_for_pointer(ptr: *const c_void) -> Option<&'static mut IntMutex<Zone
 	None
 }
 
-/// Allocates a frame of memory using the buddy allocator. `order` is the order
-/// of the frame to be allocated. The given frame shall fit the flags `flags`.
+/// Allocates a frame of memory using the buddy allocator.
+///
+/// `order` is the order of the frame to be allocated.
+///
+/// The given frame shall fit the flags `flags`.
+///
 /// If no suitable frame is found, the function returns an Err.
 pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 	debug_assert!(order <= MAX_ORDER);
@@ -201,7 +210,10 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 	Err(errno!(ENOMEM))
 }
 
-/// Calls `alloc` with order `order`. The allocated frame is in the kernel zone.
+/// Calls `alloc` with order `order`.
+///
+/// The allocated frame is in the kernel zone.
+///
 /// The function returns the *virtual* address, not the physical one.
 pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, Errno> {
 	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
@@ -212,6 +224,7 @@ pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, Errno> {
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator.
+///
 /// The given order must be the same as the one given to allocate the frame.
 pub fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
@@ -234,13 +247,16 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	update_stats(-4 * math::pow2(order as usize) as isize);
 }
 
-/// Frees the given memory frame. `ptr` is the *virtual* address to the
-/// beginning of the frame and and `order` is the order of the frame.
+/// Frees the given memory frame.
+///
+/// `ptr` is the *virtual* address to the beginning of the frame and `order` is the order of the
+/// frame.
 pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 	free(memory::kern_to_phys(ptr), order);
 }
 
 /// Updates stats on memory usage.
+///
 /// `n` is the delta of allocated chunks:
 /// - Positive value: The number of newly allocated chunks
 /// - Negative value: The absolute value is a the number of newly freed chunks
@@ -297,8 +313,11 @@ impl Zone {
 		self.check_free_list();
 	}
 
-	/// Creates a zone with type `type_`. The zone covers the memory from
-	/// pointer `begin` to `begin + size` where `size` is the size in bytes.
+	/// Creates a zone with type `type_`.
+	///
+	/// The zone covers the memory from pointer `begin` to `begin + size` where `size` is the size
+	/// in bytes.
+	///
 	/// `metadata_begin` must be a virtual address and `begin` must be a
 	/// physical address.
 	pub fn new(
@@ -354,13 +373,15 @@ impl Zone {
 		None
 	}
 
-	/// Returns the identifier for the frame at the given pointer `ptr`. The
-	/// pointer must point to the frame itself, not the Frame structure.
+	/// Returns the identifier for the frame at the given pointer `ptr`.
+	///
+	/// The pointer must point to the frame itself, not the Frame structure.
 	fn get_frame_id_from_ptr(&self, ptr: *const c_void) -> FrameID {
 		(((ptr as usize) - (self.begin as usize)) / memory::PAGE_SIZE) as _
 	}
 
 	/// Returns a mutable reference to the frame with the given identifier `id`.
+	///
 	/// The given identifier **must** be in the range of the zone.
 	fn get_frame(&self, id: FrameID) -> *mut Frame {
 		debug_assert!(id < self.get_pages_count());
@@ -368,10 +389,13 @@ impl Zone {
 	}
 
 	/// Debug function.
-	/// Checks the correctness of the free list for the zone. Every frames in
-	/// the free list must have an order equal to the order of the bucket it's
-	/// inserted in and must be free. If a frame is the first of a list, it must
-	/// not have a previous element.
+	///
+	/// Checks the correctness of the free list for the zone.
+	///
+	/// Every frames in the free list must have an order equal to the order of the bucket it's
+	/// inserted in and must be free.
+	///
+	/// If a frame is the first of a list, it must not have a previous element.
 	///
 	/// If a frame is invalid, the function shall result in the kernel
 	/// panicking.
@@ -462,8 +486,9 @@ impl Frame {
 		self.next = id;
 	}
 
-	/// Debug function to assert that the chunk is valid. Invalid chunk shall
-	/// result in the kernel panicking.
+	/// Debug function to assert that the chunk is valid.
+	///
+	/// Invalid chunk shall result in the kernel panicking.
 	#[cfg(config_debug_debug)]
 	pub fn check_broken(&self, zone: &Zone) {
 		debug_assert!(self.prev == FRAME_STATE_USED || self.prev < zone.get_pages_count());
@@ -473,6 +498,7 @@ impl Frame {
 
 	/// Returns the identifier of the buddy frame in zone `zone`, taking in
 	/// account the frame's order.
+	///
 	/// The return value might be invalid and the caller has the reponsibility
 	/// to check that it is below the number of frames in the zone.
 	pub fn get_buddy_id(&self, zone: &Zone) -> FrameID {
@@ -548,8 +574,9 @@ impl Frame {
 
 	/// Unlinks the frame from zone `zone`'s free list, splits it until it
 	/// reaches the required order `order` while linking the new free frames to
-	/// the free list. At the end of the function, the current frame is **not**
-	/// linked to the free list.
+	/// the free list.
+	///
+	/// At the end of the function, the current frame is **not** linked to the free list.
 	///
 	/// The frame must not be marked as used.
 	pub fn split(&mut self, zone: &mut Zone, order: FrameOrder) {
@@ -580,11 +607,15 @@ impl Frame {
 	}
 
 	/// Coealesces the frame in zone `zone` with free buddy blocks recursively
-	/// until no buddy is available anymore. Buddies that are merged with the
-	/// frame are unlinked. The order of the frame is incremented at each merge.
-	/// The frame is linked to the free list at the end.
+	/// until no buddy is available anymore.
 	///
-	/// The frame must not be marked as used.
+	/// The current frame must not be marked as used.
+	///
+	/// Buddies that are merged with the frame are unlinked.
+	///
+	/// The order of the frame is incremented at each merge.
+	///
+	/// The frame is linked to the free list by the function.
 	pub fn coalesce(&mut self, zone: &mut Zone) {
 		#[cfg(config_debug_debug)]
 		self.check_broken(zone);

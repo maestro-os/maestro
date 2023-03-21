@@ -33,11 +33,13 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 // TODO Implement all flags
 
 /// Returns the file at the given path `path`.
+///
 /// If the file doesn't exist and the O_CREAT flag is set, the file is created,
-/// then the function returns it. If the flag is not set, the function returns
-/// an error with the appropriate errno. If the file is to be created, the
-/// function uses `mode` to set its permissions and `uid and `gid` to set the
-/// user ID and group ID.
+/// then the function returns it.
+/// If the flag is not set, the function returns an error with the appropriate errno.
+///
+/// If the file is to be created, the/ function uses `mode` to set its permissions and `uid and
+/// `gid` to set the user ID and group ID.
 fn get_file(
 	path: Path,
 	flags: i32,

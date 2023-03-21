@@ -257,10 +257,13 @@ fn build_auxilary(
 	Ok(aux)
 }
 
-/// Reads the file `file`. If the file is not executable, the function returns
-/// an error.
-/// `uid` is the User ID of the executing user.
-/// `gid` is the Group ID of the executing user.
+/// Reads the file `file`.
+///
+/// Arguments:
+/// - `uid` is the User ID of the executing user.
+/// - `gid` is the Group ID of the executing user.
+///
+/// If the file is not executable, the function returns an error.
 fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
 	// Check that the file can be executed by the user
 	if !file.can_execute(uid, gid) {
@@ -285,8 +288,10 @@ pub struct ELFExecutor {
 
 impl ELFExecutor {
 	/// Creates a new instance to execute the given program.
-	/// `uid` is the User ID of the executing user.
-	/// `gid` is the Group ID of the executing user.
+	///
+	/// Arguments:
+	/// - `uid` is the User ID of the executing user.
+	/// - `gid` is the Group ID of the executing user.
 	pub fn new(info: ExecInfo) -> Result<Self, Errno> {
 		Ok(Self {
 			info,
@@ -452,6 +457,7 @@ impl ELFExecutor {
 	}
 
 	/// Allocates memory in userspace for an ELF segment.
+	///
 	/// If the segment isn't loadable, the function does nothing.
 	///
 	/// Arguments:
@@ -502,6 +508,7 @@ impl ELFExecutor {
 	}
 
 	/// Copies the segment's data into memory.
+	///
 	/// If the segment isn't loadable, the function does nothing.
 	///
 	/// Arguments:

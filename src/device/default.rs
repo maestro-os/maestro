@@ -95,8 +95,9 @@ impl IO for ZeroDeviceHandle {
 	}
 }
 
-/// The random device allows to get random bytes. This device will block reading
-/// until enough entropy is available.
+/// The random device allows to get random bytes.
+///
+/// This device will block reading until enough entropy is available.
 #[derive(Default)]
 pub struct RandomDeviceHandle {
 	/// The device's block handler.
@@ -156,6 +157,7 @@ impl IO for RandomDeviceHandle {
 }
 
 /// This device works exactly like the random device, except it doesn't block.
+///
 /// If not enough entropy is available, the output might not have a sufficient
 /// quality.
 #[derive(Default)]

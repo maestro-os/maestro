@@ -17,9 +17,12 @@ pub trait Timer {
 	/// Returns the current frequency of the timer in hertz.
 	fn get_curr_frequency(&self) -> Rational;
 
-	/// Sets the current frequency of the timer in hertz. The timer is
-	/// approximating the given frequency to the closest supported. To get the
-	/// exact frequency, one should use `get_curr_frequency` after setting it.
+	/// Sets the current frequency of the timer in hertz.
+	///
+	/// The timer is approximating the given frequency to the closest supported.
+	///
+	/// To get the exact frequency, one should use `get_curr_frequency` after setting it.
+	///
 	/// If the given frequency is negative, the behaviour is undefined.
 	fn set_curr_frequency(&mut self, frequency: Rational);
 
@@ -81,7 +84,7 @@ struct TickableWrapper {
 
 	/// `frequency` is the object's ticking frequency.
 	frequency: Rational,
-	/// `once` tells whether the object has to be ticked only once. If true, the
+	/// Tells whether the object has to be ticked only once. If true, the
 	/// object will be removed right after being ticked.
 	once: bool,
 }
@@ -97,8 +100,9 @@ pub struct TimerManager {
 }
 
 impl TimerManager {
-	/// Creates a new instance with the given timer. The structure will redefine
-	/// the timer's callback.
+	/// Creates a new instance with the given timer.
+	///
+	/// This function will redefine the timer's callback.
 	pub fn new<T: 'static + Timer>(mut timer: T) -> Result<Self, Errno> {
 		timer.set_callback(Box::new(|| {
 			// TODO
@@ -112,10 +116,12 @@ impl TimerManager {
 	}
 
 	/// Registers the given object to be ticked.
-	/// `tickable` is the object to be ticked.
-	/// `frequency` is the object's ticking frequency.
-	/// `once` tells whether the object has to be ticked only once. If true, the
-	/// object will be removed right after being ticked.
+	///
+	/// Arguments:
+	/// - `tickable` is the object to be ticked.
+	/// - `frequency` is the object's ticking frequency.
+	/// - `once` tells whether the object has to be ticked only once. If true, the
+	/// - object will be removed right after being ticked.
 	pub fn register_tickable<T: 'static + Tickable>(
 		&mut self,
 		tickable: T,

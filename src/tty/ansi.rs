@@ -55,8 +55,10 @@ impl ANSIBuffer {
 	}
 
 	/// Pushes the data from the given buffer `buffer` into the current buffer.
+	///
 	/// If more characters are pushed than the remaining capacity, the function
 	/// truncates the data to be pushed.
+	///
 	/// The function returns the number of characters that have been pushed.
 	pub fn push_back(&mut self, buffer: &[u8]) -> usize {
 		let len = min(buffer.len(), BUFFER_SIZE - self.cursor);
@@ -77,6 +79,7 @@ impl ANSIBuffer {
 }
 
 /// Converts ANSI color `id` to VGA color.
+///
 /// If the given color is invalid, the behaviour is undefined.
 fn get_vga_color(id: u8) -> vga::Color {
 	match id {
@@ -102,6 +105,7 @@ fn get_vga_color(id: u8) -> vga::Color {
 }
 
 /// Moves the cursor on TTY `tty` in the given direction `d`.
+///
 /// `n` is the number of cells to travel. If `None`, the default is used (`1`).
 fn move_cursor(tty: &mut TTY, d: char, n: Option<i16>) -> ANSIState {
 	let n = n.unwrap_or(1);
@@ -140,6 +144,7 @@ fn move_cursor(tty: &mut TTY, d: char, n: Option<i16>) -> ANSIState {
 }
 
 /// Handles an Select Graphics Renderition (SGR) command.
+///
 /// `command` is the id of the command. If `None`, the default is used (`0`).
 fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 	let command = command.unwrap_or(0);
@@ -230,6 +235,7 @@ fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 }
 
 /// Parses the CSI sequence in the given TTY's buffer.
+///
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
 fn parse_csi(tty: &mut TTY) -> (ANSIState, usize) {
@@ -299,6 +305,7 @@ fn parse_csi(tty: &mut TTY) -> (ANSIState, usize) {
 }
 
 /// Parses the sequence in the given TTY's buffer.
+///
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
 fn parse(tty: &mut TTY) -> (ANSIState, usize) {
@@ -318,9 +325,11 @@ fn parse(tty: &mut TTY) -> (ANSIState, usize) {
 }
 
 /// Handles an ANSI escape code stored into buffer `buffer` on the TTY `tty`.
+///
 /// If the buffer doesn't begin with the ANSI escape character, the behaviour is
-/// undefined. The function returns the number of bytes consumed by the
-/// function.
+/// undefined.
+///
+/// The function returns the number of bytes consumed by the function.
 pub fn handle(tty: &mut TTY, buffer: &[u8]) -> usize {
 	if tty.ansi_buffer.is_empty() || buffer[0] != ESCAPE_CHAR as _ {
 		return 0;

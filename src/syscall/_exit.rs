@@ -8,8 +8,10 @@ use crate::process::scheduler;
 use macros::syscall;
 
 /// Exits the current process.
-/// `status` is the exit status.
-/// `thread_group`: if true, the function exits the whole process group.
+///
+/// Arguments:
+/// - `status` is the exit status.
+/// - `thread_group`: if true, the function exits the whole process group.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	let (_pid, _tid) = {
 		let proc_mutex = Process::get_current().unwrap();

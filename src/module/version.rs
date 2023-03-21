@@ -1,4 +1,5 @@
 //! The module implements a Version structure.
+//!
 //! A version is divided into the following component:
 //! - Major: Version including breaking changes
 //! - Minor: Version including new features

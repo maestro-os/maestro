@@ -10,7 +10,9 @@
 .section .text
 
 /*
- * This macro creates a function to handle an error interrupt that does **not** pass an additional error code.
+ * This macro creates a function to handle an error interrupt that does **not** pass an additional
+ * error code.
+ *
  * `n` is the id in the interrupt vector.
  */
 .macro ERROR_NOCODE	n

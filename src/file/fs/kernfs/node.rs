@@ -79,8 +79,10 @@ pub trait KernFSNode: Any + IO {
 }
 
 /// Structure representing a dummy kernfs node (with the default behaviour).
-/// This node doesn't implement regular files' content handling. This calling
-/// `read` or `write` does nothing.
+///
+/// This node doesn't implement regular files' content handling.
+///
+/// Calling `read` or `write` on this structure does nothing.
 pub struct DummyKernFSNode {
 	/// The number of hard links to the node.
 	hard_links_count: u16,
@@ -105,10 +107,12 @@ pub struct DummyKernFSNode {
 
 impl DummyKernFSNode {
 	/// Creates a new node.
-	/// `mode` is the node's mode.
-	/// `uid` is the node owner's user ID.
-	/// `gid` is the node owner's group ID.
-	/// `content` is the node's content.
+	///
+	/// Arguments:
+	/// - `mode` is the node's mode.
+	/// - `uid` is the node owner's user ID.
+	/// - `gid` is the node owner's group ID.
+	/// - `content` is the node's content.
 	pub fn new(mode: Mode, uid: Uid, gid: Gid, content: FileContent) -> Self {
 		// The current timestamp
 		let ts = time::get(TimestampScale::Second, true).unwrap_or(0);

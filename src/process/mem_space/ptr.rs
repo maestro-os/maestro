@@ -1,6 +1,7 @@
 //! When a pointer is passed to the kernel through a system call, the kernel is
-//! required to check the process is allowed to access it to ensure safety. This
-//! module implements objets that wrap pointers in order to check they are
+//! required to check the process is allowed to access it to ensure safety.
+//!
+//! This module implements objets that wrap pointers in order to check they are
 //! accessible.
 //!
 //! Those structure are especially useful in the cases where several processes
@@ -47,7 +48,9 @@ impl<T: Sized> SyscallPtr<T> {
 	}
 
 	/// Returns an immutable reference to the value of the pointer.
+	///
 	/// If the pointer is null, the function returns `None`.
+	///
 	/// If the value is not accessible, the function returns an error.
 	pub fn get<'a, const INT: bool>(
 		&self,
@@ -68,8 +71,11 @@ impl<T: Sized> SyscallPtr<T> {
 	}
 
 	/// Returns a mutable reference to the value of the pointer.
+	///
 	/// If the pointer is null, the function returns `None`.
+	///
 	/// If the value is not accessible, the function returns an error.
+	///
 	///	If the value is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(
@@ -112,8 +118,11 @@ impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 	}
 }
 
-/// Wrapper for a slice. Internally, the structure contains only a pointer. The
-/// size of the slice is given when trying to access it.
+/// Wrapper for a slice.
+///
+/// Internally, the structure contains only a pointer.
+///
+/// The size of the slice is given when trying to access it.
 pub struct SyscallSlice<T: Sized> {
 	/// The pointer.
 	ptr: *mut T,
@@ -144,7 +153,9 @@ impl<T: Sized> SyscallSlice<T> {
 	}
 
 	/// Returns an immutable reference to the slice.
+	///
 	/// `len` is the in number of elements in the slice.
+	///
 	/// If the slice is not accessible, the function returns an error.
 	pub fn get<'a, const INT: bool>(
 		&self,
@@ -167,8 +178,11 @@ impl<T: Sized> SyscallSlice<T> {
 	}
 
 	/// Returns a mutable reference to the slice.
+	///
 	/// `len` is the in number of elements in the slice.
+	///
 	/// If the slice is not accessible, the function returns an error.
+	///
 	///	If the slice is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
 	pub fn get_mut<'a, const INT: bool>(

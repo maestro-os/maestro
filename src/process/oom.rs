@@ -32,9 +32,11 @@ pub fn kill() {
 	// TODO Get the process with the highest OOM score (ignore init process)
 }
 
-/// Executes the given function. On fail due to a lack of memory, the function
-/// runs the OOM killer, then tries again. If the OOM killer is unable to free
-/// enough memory, the kernel may panic.
+/// Executes the given function.
+///
+/// On fail due to a lack of memory, the function runs the OOM killer, then tries again.
+///
+/// If the OOM killer is unable to free enough memory, the kernel may panic.
 pub fn wrap<T, F: FnMut() -> Result<T, Errno>>(mut f: F) -> T {
 	for _ in 0..MAX_TRIES {
 		match f() {

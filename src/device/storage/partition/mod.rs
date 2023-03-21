@@ -45,6 +45,7 @@ impl Partition {
 /// Trait representing a partition table.
 pub trait Table {
 	/// Reads the partition table from the given storage interface `storage`.
+	///
 	/// If the partition table isn't present on the storage interface, the
 	/// function returns `None`.
 	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno>
@@ -55,12 +56,14 @@ pub trait Table {
 	fn get_type(&self) -> &'static str;
 
 	/// Reads the partitions list.
+	///
 	/// `storage` is the storage interface on which the partitions are to be
 	/// read.
 	fn get_partitions(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno>;
 }
 
 /// Reads the list of partitions from the given storage interface `storage`.
+///
 /// If no partitions table is present, the function returns `None`.
 pub fn read(storage: &mut dyn StorageInterface) -> Result<Option<Box<dyn Table>>, Errno> {
 	// Trying GPT

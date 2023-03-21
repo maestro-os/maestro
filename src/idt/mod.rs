@@ -160,8 +160,11 @@ fn get_c_fn_ptr(f: unsafe extern "C" fn()) -> *const c_void {
 	unsafe { core::mem::transmute::<_, _>(f as *const c_void) }
 }
 
-/// Initializes the IDT. This function must be called only once at kernel
-/// initialization. When returning, maskable interrupts are disabled by default.
+/// Initializes the IDT.
+///
+/// This function must be called only once at kernel initialization.
+///
+/// When returning, maskable interrupts are disabled by default.
 pub fn init() {
 	cli!();
 	pic::init(0x20, 0x28);
@@ -239,6 +242,7 @@ pub fn is_interrupt_enabled() -> bool {
 }
 
 /// Executes the given function `f` with maskable interruptions disabled.
+///
 /// This function saves the state of the interrupt flag and restores it before
 /// returning.
 pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {

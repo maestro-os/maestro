@@ -81,8 +81,10 @@ pub struct InterruptResult {
 	/// Tells whether to skip execution of the next interrupt handlers (with
 	/// lower priority).
 	skip_next: bool,
-	/// The action to execute after the handler. The last handler decides which
-	/// action to execute unless the `skip_next` variable is set to `true`.
+	/// The action to execute after the handler.
+	///
+	/// The last handler decides which action to execute unless the `skip_next` variable is set to
+	/// `true`.
 	action: InterruptResultAction,
 }
 
@@ -103,12 +105,15 @@ struct CallbackWrapper {
 	priority: u32,
 
 	/// The callback
-	/// First argument: `id` is the id of the interrupt.
-	/// Second argument: `code` is an optional code associated with the
-	/// interrupt. If no code is given, the value is `0`.
-	/// Third argument: `regs` the values of the registers when the interruption
-	/// was triggered. Fourth argument: `ring` tells the ring at which the code
-	/// was running. The return value tells which action to perform next.
+	///
+	/// Arguments:
+	/// - `id` is the id of the interrupt.
+	/// - `code` is an optional code associated with the interrupt. If no code is given, the value
+	/// is `0`.
+	/// - `regs` the values of the registers when the interruption was triggered.
+	/// - `ring` tells the ring at which the code was running.
+	///
+	/// The return value tells which action to perform next.
 	callback: Box<dyn FnMut(u32, u32, &Regs, u32) -> InterruptResult>,
 }
 

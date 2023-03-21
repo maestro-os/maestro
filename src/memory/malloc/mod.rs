@@ -1,7 +1,10 @@
 //! This module implements the memory allocation utility for kernelside
-//! operations. An unsafe interface is provided, inspired from the C language's
-//! malloc interface. The module also provides the structure `Alloc` which
-//! safely manages a memory allocation.
+//! operations.
+//!
+//! An unsafe interface is provided, inspired from the C language's
+//! malloc interface.
+//!
+//! The module also provides the structure `Alloc` which safely manages a memory allocation.
 
 mod block;
 mod chunk;
@@ -125,6 +128,7 @@ pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> 
 ///
 /// If `ptr` doesn't point to a valid chunk of memory allocated with the `alloc`
 /// function, the behaviour is undefined.
+///
 /// Using memory after it was freed causes an undefined behaviour.
 pub unsafe fn free(ptr: *mut c_void) {
 	let _ = MUTEX.lock();
@@ -147,6 +151,7 @@ pub unsafe fn free(ptr: *mut c_void) {
 }
 
 /// Structure representing a kernelside allocation.
+///
 /// The structure holds one or more elements of the given type. Freeing the
 /// allocation doesn't call `drop` on its elements.
 #[derive(Debug)]
@@ -157,11 +162,13 @@ pub struct Alloc<T> {
 
 impl<T> Alloc<T> {
 	/// Allocates `size` element in the kernel memory and returns a structure
-	/// wrapping a slice allowing to access it. If the allocation fails, the
-	/// function shall return an error.
+	/// wrapping a slice allowing to access it.
+	///
+	/// If the allocation fails, the function shall return an error.
 	///
 	/// The allocated memory is **not** initialized, meaning it may contain garbage, or even
 	/// sensitive informations.
+	///
 	/// It is the caller's responsibility to ensure the chunk of memory is correctly initialized.
 	///
 	/// # Safety
@@ -221,10 +228,13 @@ impl<T> Alloc<T> {
 		self.slice.len()
 	}
 
-	/// Changes the size of the memory allocation. All new elements are
-	/// initialized to zero. `n` is the new size of the chunk of memory (in
-	/// number of elements). If the reallocation fails, the chunk is left
-	/// untouched and the function returns an error.
+	/// Changes the size of the memory allocation.
+	///
+	/// All new elements are initialized to zero.
+	///
+	/// `n` is the new size of the chunk of memory (in number of elements).
+	///
+	/// If the reallocation fails, the chunk is left untouched and the function returns an error.
 	///
 	/// # Safety
 	///
@@ -243,9 +253,11 @@ impl<T> Alloc<T> {
 
 impl<T: Default> Alloc<T> {
 	/// Allocates `size` element in the kernel memory and returns a structure
-	/// wrapping a slice allowing to access it. If the allocation fails, the
-	/// function shall return an error. The function will fill the memory with
-	/// the default value for the object T.
+	/// wrapping a slice allowing to access it.
+	///
+	/// If the allocation fails, the function shall return an error.
+	///
+	/// The function will fill the memory with the default value for the object T.
 	pub fn new_default(size: usize) -> Result<Self, Errno> {
 		let mut alloc = unsafe {
 			// Safe because the memory is set right after
@@ -261,8 +273,10 @@ impl<T: Default> Alloc<T> {
 		Ok(alloc)
 	}
 
-	/// Resizes the current allocation. If new elements are added, the function
-	/// initializes them with the default value.
+	/// Resizes the current allocation.
+	///
+	/// If new elements are added, the function initializes them with the default value.
+	///
 	/// `n` is the new size of the chunk of memory (in number of elements).
 	///
 	/// # Safety
@@ -286,9 +300,11 @@ impl<T: Default> Alloc<T> {
 
 impl<T: Clone> Alloc<T> {
 	/// Allocates `size` element in the kernel memory and returns a structure
-	/// wrapping a slice allowing to access it. If the allocation fails, the
-	/// function shall return an error. `val` is a value that will be cloned to
-	/// fill the memory.
+	/// wrapping a slice allowing to access it.
+	///
+	/// If the allocation fails, the function shall return an error.
+	///
+	/// `val` is a value that will be cloned to fill the memory.
 	pub fn new_clonable(size: usize, val: T) -> Result<Self, Errno> {
 		let mut alloc = unsafe {
 			// Safe because the memory is set right after

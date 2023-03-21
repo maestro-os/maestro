@@ -7,6 +7,7 @@ use crate::util::math::ceil_div;
 use crate::util::FailableClone;
 
 /// A bitfield is a data structure meant to contain only boolean values.
+///
 /// The size of the bitfield is specified at initialization.
 pub struct Bitfield {
 	/// The bitfield's data.
@@ -78,8 +79,11 @@ impl Bitfield {
 		}
 	}
 
-	/// Finds a clear bit. The function returns the offset to the bit. If none
-	/// is found, the function returns `None`.
+	/// Finds a clear bit.
+	///
+	/// The function returns the offset to the bit.
+	///
+	/// If none is found, the function returns `None`.
 	pub fn find_clear(&self) -> Option<usize> {
 		for i in 0..self.len {
 			if !self.is_set(i) {
@@ -90,8 +94,11 @@ impl Bitfield {
 		None
 	}
 
-	/// Finds a set bit. The function returns the offset to the bit. If none is
-	/// found, the function returns `None`.
+	/// Finds a set bit.
+	///
+	/// The function returns the offset to the bit.
+	///
+	/// If none is found, the function returns `None`.
 	pub fn find_set(&self) -> Option<usize> {
 		for i in 0..self.len {
 			if self.is_set(i) {
@@ -117,8 +124,11 @@ impl Bitfield {
 	}
 
 	/// Calls the given function `f` for each bits in the field.
-	/// The first argument of the function is the index of the bit.
-	/// The second argument is the value of the bit.
+	///
+	/// Arguments:
+	/// - The index of the bit.
+	/// - The value of the bit.
+	///
 	/// If the function returns `false`, the iteration stops. Else, it
 	/// continues.
 	pub fn for_each<F: FnMut(usize, bool) -> bool>(&self, mut f: F) {

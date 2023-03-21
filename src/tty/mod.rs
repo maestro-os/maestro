@@ -131,9 +131,9 @@ static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
 static CURRENT_TTY: IntMutex<Option<usize>> = IntMutex::new(None);
 
 /// Enumeration of the different type of handles for a TTY.
+///
 /// Because the initial TTY is created while memory allocation isn't available
-/// yet, the kernel cannot use shared pointer. So we need different ways to lock
-/// the TTY.
+/// yet, the kernel cannot use shared pointer. So we need different ways to lock the TTY.
 #[derive(Clone)]
 pub enum TTYHandle {
 	/// Handle to the init TTY.
@@ -153,7 +153,9 @@ impl<'a> TTYHandle {
 }
 
 /// Returns a mutable reference to the TTY with identifier `id`.
+///
 /// If `id` is `None`, the function returns the init TTY.
+///
 /// If the id doesn't exist, the function returns `None`.
 pub fn get(id: Option<usize>) -> Option<TTYHandle> {
 	if let Some(id) = id {
@@ -186,7 +188,9 @@ pub fn init() {
 }
 
 /// Switches to TTY with id `id`.
+///
 /// If `id` is `None`, the init TTY is used.
+///
 /// If the TTY doesn't exist, the function does nothing.
 pub fn switch(id: Option<usize>) {
 	if let Some(tty) = get(id) {
@@ -197,6 +201,7 @@ pub fn switch(id: Option<usize>) {
 
 impl TTY {
 	/// Creates a new TTY.
+	///
 	/// `id` is the ID of the TTY.
 	pub fn init(&mut self, id: Option<usize>) {
 		unsafe { util::zero_object(self) }
@@ -297,8 +302,9 @@ impl TTY {
 		self.set_bgcolor(bg);
 	}
 
-	/// Sets the blinking state of the text for TTY. `true` means blinking text,
-	/// `false` means not blinking.
+	/// Sets the blinking state of the text for TTY.
+	///
+	/// `true` means blinking text, `false` means not blinking.
 	pub fn set_blinking(&mut self, blinking: bool) {
 		if blinking {
 			self.current_color |= 0x80;
@@ -467,8 +473,11 @@ impl TTY {
 
 	// TODO Implement IUTF8
 	/// Reads inputs from the TTY and places it into the buffer `buff`.
+	///
 	/// The function returns the number of bytes read and whether the EOF is
-	/// reached. Note that reaching the EOF doesn't necessary mean the TTY is
+	/// reached.
+	///
+	/// Note that reaching the EOF doesn't necessary mean the TTY is
 	/// closed. Subsequent calls to this function might still successfully read
 	/// data.
 	pub fn read(&mut self, buff: &mut [u8]) -> (usize, bool) {
@@ -692,6 +701,7 @@ impl TTY {
 	}
 
 	/// Sets the window size of the TTY.
+	///
 	/// If a foreground process group is set on the TTY, the function shall send
 	/// it a `SIGWINCH` signal.
 	pub fn set_winsize(&mut self, mut winsize: WinSize) {

@@ -61,33 +61,40 @@ struct HdGeometry {
 	start: c_ulong,
 }
 
-/// Trait representing a storage interface. A storage block is the atomic unit
-/// for I/O access on the storage device.
+/// Trait representing a storage interface.
+///
+/// A storage block is the atomic unit for I/O access on the storage device.
 pub trait StorageInterface {
 	/// Returns the size of the storage blocks in bytes.
-	/// This value must not change.
+	///
+	/// This value is guaranteed to be fixed.
 	fn get_block_size(&self) -> u64;
 	/// Returns the number of storage blocks.
-	/// This value must not change.
+	///
+	/// This value is guaranteed to be fixed.
 	fn get_blocks_count(&self) -> u64;
 
 	/// Returns the size of the storage in bytes.
-	/// This value must not change.
+	///
+	/// This value is guaranteed to be fixed.
 	fn get_size(&self) -> u64 {
 		self.get_block_size() * self.get_blocks_count()
 	}
 
 	/// Reads `size` blocks from storage at block offset `offset`, writing the
-	/// data to `buf`. If the offset and size are out of bounds, the function
-	/// returns an error.
+	/// data to `buf`.
+	///
+	/// If the offset and size are out of bounds, the function returns an error.
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the
-	/// data from `buf`. If the offset and size are out of bounds, the function
-	/// returns an error.
+	/// data from `buf`.
+	///
+	/// If the offset and size are out of bounds, the function returns an error.
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
 
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writing the data to `buf`.
+	///
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<(u64, bool), Errno> {
 		let block_size = self.get_block_size();
@@ -147,6 +154,7 @@ pub trait StorageInterface {
 
 	// Unit testing is done through ramdisk testing
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
+	///
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
@@ -418,6 +426,7 @@ impl IO for StorageDeviceHandle {
 }
 
 /// An instance of StorageManager manages devices on a whole major number.
+///
 /// The manager has name `storage`.
 pub struct StorageManager {
 	/// The allocated device major number for storage devices.
@@ -558,6 +567,7 @@ impl StorageManager {
 	// TODO Function to remove a device
 
 	/// Fills a random buffer `buff` of size `size` with seed `seed`.
+	///
 	/// The function returns the seed for the next block.
 	#[cfg(config_debug_storagetest)]
 	fn random_block(size: u64, buff: &mut [u8], seed: u32) -> u32 {
@@ -573,6 +583,7 @@ impl StorageManager {
 
 	// TODO Test with several blocks at a time
 	/// Tests the given interface with the given interface `interface`.
+	///
 	/// `seed` is the seed for pseudo random generation. The function will set
 	/// this variable to another value for the next iteration.
 	#[cfg(config_debug_storagetest)]
@@ -610,6 +621,7 @@ impl StorageManager {
 	}
 
 	/// Performs testing of storage devices and drivers.
+	///
 	/// If every tests pass, the function returns `true`. Else, it returns
 	/// `false`.
 	#[cfg(config_debug_storagetest)]
@@ -648,6 +660,7 @@ impl StorageManager {
 	}
 
 	/// Tests every storage drivers on every storage devices.
+	///
 	/// The execution of this function removes all the data on every connected
 	/// writable disks, so it must be used carefully.
 	#[cfg(config_debug_storagetest)]

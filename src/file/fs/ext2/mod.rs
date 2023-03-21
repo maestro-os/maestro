@@ -133,8 +133,11 @@ const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
 const MAX_NAME_LEN: usize = 255;
 
 /// Reads an object of the given type on the given device.
-/// `offset` is the offset in bytes on the device.
-/// `io` is the I/O interface of the device.
+///
+/// Arguments:
+/// - `offset` is the offset in bytes on the device.
+/// - `io` is the I/O interface of the device.
+///
 /// The function is marked unsafe because if the read object is invalid, the
 /// behaviour is undefined.
 unsafe fn read<T>(offset: u64, io: &mut dyn IO) -> Result<T, Errno> {
@@ -149,9 +152,11 @@ unsafe fn read<T>(offset: u64, io: &mut dyn IO) -> Result<T, Errno> {
 }
 
 /// Writes an object of the given type on the given device.
-/// `obj` is the object to write.
-/// `offset` is the offset in bytes on the device.
-/// `io` is the I/O interface of the device.
+///
+/// Arguments:
+/// - `obj` is the object to write.
+/// - `offset` is the offset in bytes on the device.
+/// - `io` is the I/O interface of the device.
 fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> Result<(), Errno> {
 	let size = size_of_val(obj);
 	let ptr = obj as *const T as *const u8;
@@ -162,10 +167,14 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> Result<(), Errno> {
 }
 
 /// Reads the `off`th block on the given device and writes the data onto the
-/// given buffer. `off` is the offset of the block on the device.
-/// `superblock` is the filesystem's superblock.
-/// `io` is the I/O interface of the device.
-/// `buff` is the buffer to write the data on.
+/// given buffer.
+///
+/// Arguments:
+/// - `off` is the offset of the block on the device.
+/// - `superblock` is the filesystem's superblock.
+/// - `io` is the I/O interface of the device.
+/// - `buff` is the buffer to write the data on.
+///
 /// If the block is outside of the storage's bounds, the function returns a
 /// error.
 fn read_block<T>(
@@ -184,10 +193,14 @@ fn read_block<T>(
 }
 
 /// Writes the `off`th block on the given device, reading the data onto the
-/// given buffer. `off` is the offset of the block on the device.
-/// `superblock` is the filesystem's superblock.
-/// `io` is the I/O interface of the device.
-/// `buff` is the buffer to read from.
+/// given buffer.
+///
+/// Arguments:
+/// - `off` is the offset of the block on the device.
+/// - `superblock` is the filesystem's superblock.
+/// - `io` is the I/O interface of the device.
+/// - `buff` is the buffer to read from.
+///
 /// If the block is outside of the storage's bounds, the function returns a
 /// error.
 fn write_block<T>(
@@ -205,10 +218,13 @@ fn write_block<T>(
 }
 
 /// Zeros the given set of `count` blocks, starting at offset `off`.
-/// `off` is the offset of the block on the device.
-/// `count` is the number of blocks to zero.
-/// `superblock` is the filesystem's superblock.
-/// `io` is the I/O interface of the device.
+///
+/// Arguments:
+/// - `off` is the offset of the block on the device.
+/// - `count` is the number of blocks to zero.
+/// - `superblock` is the filesystem's superblock.
+/// - `io` is the I/O interface of the device.
+///
 /// If a block is outside of the storage's bounds, the function returns a error.
 fn zero_blocks(
 	off: u64,
@@ -372,8 +388,11 @@ impl Superblock {
 	}
 
 	/// Searches in the given bitmap block `bitmap` for the first element that
-	/// is not set. The function returns the index to the element. If every
-	/// elements are set, the function returns `None`.
+	/// is not set.
+	///
+	/// The function returns the index to the element.
+	///
+	/// If every elements are set, the function returns `None`.
 	fn search_bitmap_blk(bitmap: &[u8]) -> Option<u32> {
 		for (i, b) in bitmap.iter().enumerate() {
 			if *b == 0xff {
@@ -391,9 +410,11 @@ impl Superblock {
 	}
 
 	/// Searches into a bitmap starting at block `start`.
-	/// `io` is the I/O interface.
-	/// `start` is the starting block.
-	/// `size` is the number of entries.
+	///
+	/// Arguments:
+	/// - `io` is the I/O interface.
+	/// - `start` is the starting block.
+	/// - `size` is the number of entries.
 	fn search_bitmap(&self, io: &mut dyn IO, start: u32, size: u32) -> Result<Option<u32>, Errno> {
 		let blk_size = self.get_block_size();
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
@@ -414,10 +435,13 @@ impl Superblock {
 	}
 
 	/// Changes the state of the given entry in the the given bitmap.
-	/// `io` is the I/O interface.
-	/// `start` is the starting block.
-	/// `i` is the index of the entry to modify.
-	/// `val` is the value to set the entry to.
+	///
+	/// Arguments:
+	/// - `io` is the I/O interface.
+	/// - `start` is the starting block.
+	/// - `i` is the index of the entry to modify.
+	/// - `val` is the value to set the entry to.
+	///
 	/// The function returns the previous value of the entry.
 	fn set_bitmap(&self, io: &mut dyn IO, start: u32, i: u32, val: bool) -> Result<bool, Errno> {
 		let blk_size = self.get_block_size();
@@ -442,6 +466,7 @@ impl Superblock {
 	}
 
 	/// Returns the id of a free inode in the filesystem.
+	///
 	/// `io` is the I/O interface.
 	pub fn get_free_inode(&self, io: &mut dyn IO) -> Result<u32, Errno> {
 		for i in 0..self.get_block_groups_count() {
@@ -459,9 +484,12 @@ impl Superblock {
 	}
 
 	/// Marks the inode `inode` used on the filesystem.
-	/// `io` is the I/O interface.
-	/// `inode` is the inode number.
-	/// `directory` tells whether the inode is allocated for a directory.
+	///
+	/// Arguments:
+	/// - `io` is the I/O interface.
+	/// - `inode` is the inode number.
+	/// - `directory` tells whether the inode is allocated for a directory.
+	///
 	/// If the inode is already marked as used, the behaviour is undefined.
 	pub fn mark_inode_used(
 		&mut self,
@@ -492,10 +520,14 @@ impl Superblock {
 	}
 
 	/// Marks the inode `inode` available on the filesystem.
-	/// `io` is the I/O interface.
-	/// `inode` is the inode number.
-	/// `directory` tells whether the inode is allocated for a directory.
+	///
+	/// Arguments:
+	/// - `io` is the I/O interface.
+	/// - `inode` is the inode number.
+	/// - `directory` tells whether the inode is allocated for a directory.
+	///
 	/// If `inode` is zero, the function does nothing.
+	///
 	/// If the inode is already marked as free, the behaviour is undefined.
 	pub fn free_inode(
 		&mut self,
@@ -526,6 +558,7 @@ impl Superblock {
 	}
 
 	/// Returns the id of a free block in the filesystem.
+	///
 	/// `io` is the I/O interface.
 	pub fn get_free_block(&self, io: &mut dyn IO) -> Result<u32, Errno> {
 		for i in 0..self.get_block_groups_count() {
@@ -548,8 +581,11 @@ impl Superblock {
 	}
 
 	/// Marks the block `blk` used on the filesystem.
-	/// `io` is the I/O interface.
-	/// `blk` is the block number.
+	///
+	/// Arguments:
+	/// - `io` is the I/O interface.
+	/// - `blk` is the block number.
+	///
 	/// If `blk` is zero, the function does nothing.
 	pub fn mark_block_used(&mut self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
 		if blk == 0 {
@@ -575,8 +611,11 @@ impl Superblock {
 	}
 
 	/// Marks the block `blk` available on the filesystem.
-	/// `io` is the I/O interface.
-	/// `blk` is the block number.
+	///
+	/// Arguments:
+	/// - `io` is the I/O interface.
+	/// - `blk` is the block number.
+	///
 	/// If `blk` is zero, the function does nothing.
 	pub fn free_block(&mut self, io: &mut dyn IO, blk: u32) -> Result<(), Errno> {
 		if blk == 0 {
@@ -621,9 +660,14 @@ struct Ext2Fs {
 
 impl Ext2Fs {
 	/// Creates a new instance.
+	///
 	/// If the filesystem cannot be mounted, the function returns an Err.
-	/// `mountpath` is the path on which the filesystem is mounted.
-	/// `readonly` tells whether the filesystem is mounted in read-only.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `mountpath` is the path on which the filesystem is mounted.
+	/// - `readonly` tells whether the filesystem is mounted in read-only.
 	fn new(
 		mut superblock: Superblock,
 		io: &mut dyn IO,

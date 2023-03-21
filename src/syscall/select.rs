@@ -57,12 +57,14 @@ impl FDSet {
 }
 
 /// Performs the select operation.
-/// `nfds` is the number of the highest checked fd + 1.
-/// `readfds` is the bitfield of fds to check for read operations.
-/// `writefds` is the bitfield of fds to check for write operations.
-/// `exceptfds` is the bitfield of fds to check for exceptional conditions.
-/// `timeout` is the timeout after which the syscall returns.
-/// `sigmask` TODO
+///
+/// Arguments:
+/// - `nfds` is the number of the highest checked fd + 1.
+/// - `readfds` is the bitfield of fds to check for read operations.
+/// - `writefds` is the bitfield of fds to check for write operations.
+/// - `exceptfds` is the bitfield of fds to check for exceptional conditions.
+/// - `timeout` is the timeout after which the syscall returns.
+/// - `sigmask` TODO
 pub fn do_select<T: TimeUnit>(
 	nfds: u32,
 	readfds: SyscallPtr<FDSet>,

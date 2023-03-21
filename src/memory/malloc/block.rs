@@ -29,9 +29,11 @@ pub struct Block {
 
 impl Block {
 	/// Allocates a new block of memory with the minimum available size
-	/// `min_size` in bytes. The buddy allocator must be initialized before
-	/// using this function. The underlying chunk created by this function is
-	/// **not** inserted into the free list.
+	/// `min_size` in bytes.
+	///
+	/// The buddy allocator must be initialized before using this function.
+	///
+	/// The underlying chunk created by this function is **not** inserted into the free list.
 	pub fn new(min_size: usize) -> Result<&'static mut Self, Errno> {
 		let total_min_size = size_of::<Block>() + min_size;
 		let order = buddy::get_order(math::ceil_div(total_min_size, memory::PAGE_SIZE));

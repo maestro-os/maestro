@@ -45,6 +45,7 @@ fn get_flags(flags: i32, prot: i32) -> u8 {
 }
 
 /// Performs the `mmap` system call.
+///
 /// This function takes a `u64` for `offset` to allow implementing the `mmap2`
 /// syscall.
 pub fn do_mmap(

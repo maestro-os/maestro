@@ -1,4 +1,5 @@
 //! This module implements file descriptors-related features.
+//!
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
@@ -27,6 +28,7 @@ pub const FD_CLOEXEC: i32 = 1;
 static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 
 /// Increments the total number of file descriptors open system-wide.
+///
 /// If the maximum amount of file descriptors is reached, the function does
 /// nothing and returns an error with the appropriate errno.
 fn increment_total() -> Result<(), Errno> {

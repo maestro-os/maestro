@@ -34,10 +34,14 @@ use version::Version;
 /// The magic number that must be present inside of a module.
 pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
 
-/// Macro used to declare a kernel module. This macro must be used only inside
-/// of a kernel module. `name` (str) is the module's name.
-/// `version` (Version) is the module's version.
-/// `deps` ([&str]) is the list of the module's dependencies.
+/// Macro used to declare a kernel module.
+///
+/// This macro must be used only inside of a kernel module.
+///
+/// Arguments:
+/// - `name` (str) is the module's name.
+/// - `version` (Version) is the module's version.
+/// - `deps` ([&str]) is the list of the module's dependencies.
 #[macro_export]
 macro_rules! module {
 	($name:expr, $version:expr, $deps:expr) => {
@@ -84,8 +88,10 @@ impl Module {
 			.unwrap_or(0)
 	}
 
-	/// Resolves an external symbol from the kernel or another module. If the
-	/// symbol doesn't exist, the function returns `None`.
+	/// Resolves an external symbol from the kernel or another module.
+	///
+	/// If the symbol doesn't exist, the function returns `None`.
+	///
 	/// `name` is the name of the symbol to look for.
 	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
 		let boot_info = multiboot::get_boot_info();
@@ -105,9 +111,9 @@ impl Module {
 	/// Returns the value of the given attribute of a module.
 	///
 	/// Arguments:
-	/// `mem` is the segment of memory on which the module is loaded.
-	/// `parser` is the module's parser.
-	/// `name` is the attribute's name.
+	/// - `mem` is the segment of memory on which the module is loaded.
+	/// - `parser` is the module's parser.
+	/// - `name` is the attribute's name.
 	///
 	/// If the attribute doesn't exist, the function returns `None`.
 	fn get_module_attibute<'a, T>(mem: &'a [u8], parser: &ELFParser<'a>, name: &str) -> Option<T> {

@@ -49,6 +49,7 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn Driver>> {
 }
 
 /// Function that is called when a new device is plugged in.
+///
 /// `dev` is the device that has been plugged in.
 pub fn on_plug(dev: &dyn PhysicalDevice) {
 	let drivers = DRIVERS.lock();
@@ -60,6 +61,7 @@ pub fn on_plug(dev: &dyn PhysicalDevice) {
 }
 
 /// Function that is called when a device is plugged out.
+///
 /// `dev` is the device that has been plugged out.
 pub fn on_unplug(dev: &dyn PhysicalDevice) {
 	let drivers = DRIVERS.lock();

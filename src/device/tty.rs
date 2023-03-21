@@ -29,6 +29,7 @@ pub struct TTYDeviceHandle {
 
 impl TTYDeviceHandle {
 	/// Creates a new instance for the given TTY `tty`.
+	///
 	/// If `tty` is `None`, the device works with the current process's TTY.
 	pub fn new(tty: Option<TTYHandle>) -> Self {
 		Self {
@@ -47,10 +48,14 @@ impl TTYDeviceHandle {
 		Ok((proc_mutex, tty_mutex))
 	}
 
-	/// Checks whether the process is allowed to read from the TTY. If not, it
-	/// is killed with a SIGTTIN signal.
-	/// `process` is the process.
-	/// `tty` is the TTY.
+	/// Checks whether the process is allowed to read from the TTY.
+	///
+	/// If not, it is killed with a `SIGTTIN` signal.
+	///
+	/// Arguments:
+	/// - `process` is the process.
+	/// - `tty` is the TTY.
+	///
 	/// This function must be called before performing the read operation.
 	fn check_sigttin(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
 		if proc.get_pgid() != tty.get_pgrp() {
@@ -67,10 +72,14 @@ impl TTYDeviceHandle {
 		Ok(())
 	}
 
-	/// Checks whether the process is allowed to write to the TTY. If not, it is
-	/// killed with a SIGTTOU signal.
-	/// `process` is the process.
-	/// `tty` is the TTY.
+	/// Checks whether the process is allowed to write to the TTY.
+	///
+	/// If not, it is killed with a `SIGTTOU` signal.
+	///
+	/// Arguments:
+	/// - `process` is the process.
+	/// - `tty` is the TTY.
+	///
 	/// This function must be called before performing the write operation.
 	fn check_sigttou(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
 		if tty.get_termios().c_lflag & termios::TOSTOP != 0 {

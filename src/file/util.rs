@@ -14,9 +14,13 @@ use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::FailableClone;
 
-/// Creates the directories necessary to reach path `path`. On success, the
-/// function returns the number of created directories (without the directories
-/// that already existed). If relative, the path is taken from the root.
+/// Creates the directories necessary to reach path `path`.
+///
+/// On success, the function returns the number of created directories (without the directories
+/// that already existed).
+///
+/// If relative, the path is taken from the root.
+///
 /// `vfs` is a reference to the VFS.
 pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 	let path = Path::root().concat(path)?;
@@ -54,6 +58,7 @@ pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 }
 
 /// Copies the file `old` into the directory `new_parent` with name `new_name`.
+///
 /// `vfs` is a reference to the VFS.
 pub fn copy_file(
 	vfs: &mut VFS,

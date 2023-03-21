@@ -140,6 +140,7 @@ pub enum FileType {
 
 impl FileType {
 	/// Returns the type corresponding to the given mode `mode`.
+	///
 	/// If the type doesn't exist, the function returns `None`.
 	pub fn from_mode(mode: Mode) -> Option<Self> {
 		match mode & 0o770000 {
@@ -254,8 +255,10 @@ impl FailableClone for DirEntry {
 pub enum FileContent {
 	/// The file is a regular file. No data.
 	Regular,
-	/// The file is a directory. The hashmap contains the list of entries. The
-	/// key is the name of the entry and the value is the entry itself.
+	/// The file is a directory.
+	///
+	/// The hashmap contains the list of entries. The key is the name of the entry and the value is
+	/// the entry itself.
 	Directory(HashMap<String, DirEntry>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
@@ -358,12 +361,14 @@ pub struct File {
 
 impl File {
 	/// Creates a new instance.
-	/// `name` is the name of the file.
-	/// `uid` is the id of the owner user.
-	/// `gid` is the id of the owner group.
-	/// `mode` is the permission of the file.
-	/// `location` is the location of the file.
-	/// `content` is the content of the file. This value also determines the
+	///
+	/// Arguments:
+	/// - `name` is the name of the file.
+	/// - `uid` is the id of the owner user.
+	/// - `gid` is the id of the owner group.
+	/// - `mode` is the permission of the file.
+	/// - `location` is the location of the file.
+	/// - `content` is the content of the file. This value also determines the
 	/// file type.
 	fn new(
 		name: String,
@@ -418,6 +423,7 @@ impl File {
 	}
 
 	/// Sets the file's parent path.
+	///
 	/// If the path isn't absolute, the behaviour is undefined.
 	pub fn set_parent_path(&mut self, parent_path: Path) {
 		self.parent_path = parent_path;
@@ -590,6 +596,7 @@ impl File {
 	}
 
 	/// Tells whether the directory is empty or not.
+	///
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn is_empty_directory(&self) -> Result<bool, Errno> {
 		if let FileContent::Directory(entries) = &self.content {
@@ -600,7 +607,10 @@ impl File {
 	}
 
 	/// Adds the directory entry `entry` to the current directory's entries.
-	/// `name` is the name of the entry.
+	///
+	/// Arguments:
+	/// - `name` is the name of the entry.
+	///
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn add_entry(&mut self, name: String, entry: DirEntry) -> Result<(), Errno> {
 		if let FileContent::Directory(entries) = &mut self.content {
@@ -612,6 +622,7 @@ impl File {
 	}
 
 	/// Removes the file with name `name` from the current file's entries.
+	///
 	/// If the current file isn't a directory, the function returns an error.
 	pub fn remove_entry(&mut self, name: &String) -> Result<(), Errno> {
 		if let FileContent::Directory(entries) = &mut self.content {

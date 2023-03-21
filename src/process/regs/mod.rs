@@ -15,11 +15,14 @@ const DEFAULT_MXCSR: u32 = 0b1111111000000;
 
 extern "C" {
 	/// This function switches to a userspace context.
-	/// `regs` is the structure of registers to restore to resume the context.
-	/// `data_selector` is the user data segment selector.
-	/// `code_selector` is the user code segment selector.
+	///
+	/// Arguments:
+	/// - `regs` is the structure of registers to restore to resume the context.
+	/// - `data_selector` is the user data segment selector.
+	/// - `code_selector` is the user code segment selector.
 	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
 	/// This function switches to a kernelspace context.
+	///
 	/// `regs` is the structure of registers to restore to resume the context.
 	fn context_switch_kernel(regs: &Regs) -> !;
 }
@@ -50,8 +53,9 @@ pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
 	}
 }
 
-/// Structure representing the list of registers for a context. The content of
-/// this structure depends on the architecture for which the kernel is compiled.
+/// Structure representing the list of registers for a context.
+///
+/// The content of this structure depends on the architecture for which the kernel is compiled.
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
 //#[cfg(config_general_arch = "x86")]

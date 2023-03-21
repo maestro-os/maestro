@@ -409,8 +409,9 @@ pub enum KeyboardLED {
 	// TODO Add the japanese keyboard Kana mode
 }
 
-/// Structure representing a key that can enabled, such as caps lock. Such a key
-/// is usually associated with an LED on the keyboard.
+/// Structure representing a key that can enabled, such as caps lock.
+///
+/// Such a key is usually associated with an LED on the keyboard.
 pub struct EnableKey {
 	/// The key's state.
 	state: bool,
@@ -429,7 +430,9 @@ impl EnableKey {
 	}
 
 	/// Handles a keyboard input.
+	///
 	/// `kbd_manager` is the keyboard manager.
+	///
 	/// If the state changed, the function returns true.
 	pub fn input(&mut self, action: KeyboardAction) -> bool {
 		match action {
@@ -459,8 +462,10 @@ impl EnableKey {
 /// Trait representing a keyboard.
 pub trait Keyboard {
 	/// Sets the state of the given LED.
-	/// `led` is the LED.
-	/// `enabled` tells whether the LED is enabled.
+	///
+	/// Arguments:
+	/// - `led` is the LED.
+	/// - `enabled` tells whether the LED is enabled.
 	fn set_led(&mut self, led: KeyboardLED, enabled: bool);
 }
 

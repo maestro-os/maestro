@@ -27,6 +27,7 @@ pub struct SysDir {
 
 impl SysDir {
 	/// Creates a new instance.
+	///
 	/// The function adds every nodes to the given kernfs `fs`.
 	pub fn new(fs: &mut KernFS) -> Result<Self, Errno> {
 		let mut entries = HashMap::new();

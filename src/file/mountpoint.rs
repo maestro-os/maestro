@@ -64,7 +64,9 @@ pub enum MountSource {
 	},
 
 	/// The mountpoint is bound to a virtual filesystem and thus isn't
-	/// associated with any device. The string value is the name of the source.
+	/// associated with any device.
+	///
+	///The string value is the name of the source.
 	NoDev(String),
 }
 
@@ -230,7 +232,9 @@ fn load_fs(
 }
 
 /// Returns the loaded filesystem with the given source `source`.
+///
 /// `take` tells whether the function increments the references count.
+///
 /// If the filesystem isn't loaded, the function returns `None`.
 fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>> {
 	let mut container = FILESYSTEMS.lock();
@@ -244,13 +248,16 @@ fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>
 }
 
 /// Returns the loaded filesystem with the given source `source`.
+///
 /// If the filesystem isn't loaded, the function returns `None`.
 pub fn get_fs(source: &MountSource) -> Option<SharedPtr<dyn Filesystem>> {
 	get_fs_(source, false)
 }
 
 /// Drops a reference to the filesystem with the given source `source`.
+///
 /// If no reference on the filesystem is left, the function unloads it.
+///
 /// If the filesystem doesn't exist, the function does nothing.
 fn drop_fs(source: &MountSource) {
 	let mut container = FILESYSTEMS.lock();

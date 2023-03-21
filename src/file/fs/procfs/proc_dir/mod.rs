@@ -41,6 +41,7 @@ pub struct ProcDir {
 
 impl ProcDir {
 	/// Creates a new instance for the process with the given PID `pid`.
+	///
 	/// The function adds every nodes to the given kernfs `fs`.
 	pub fn new(pid: Pid, fs: &mut KernFS) -> Result<Self, Errno> {
 		let mut entries = HashMap::new();

@@ -2,7 +2,8 @@
 //! multithreaded code for example.
 //!
 //! Mutual exclusion is used to protect data from concurrent access.
-//! A Mutex allows to ensure that one, and only thread accesses the data stored
+//!
+//! A `Mutex` allows to ensure that one, and only thread accesses the data stored
 //! into it at the same time. Preventing race conditions. They usually work
 //! using spinlocks.
 //!
@@ -36,6 +37,7 @@ struct State {
 
 // TODO When implementing multicore, use an array. One element per core
 /// Saved state of interruptions for the current thread.
+///
 /// This variable doesn't require synchonization since interruptions are always
 /// disabled when it is accessed.
 static mut INT_DISABLE_REFS: State = State {

@@ -26,8 +26,7 @@ use super::gap::MemGap;
 /// A pointer to the default physical page of memory.
 ///
 /// This page is meant to be mapped in read-only and is a placeholder for pages that are accessed
-/// without
-/// being allocated nor written.
+/// without being allocated nor written.
 static DEFAULT_PAGE: Mutex<Option<*const c_void>> = Mutex::new(None);
 
 /// Returns a physical pointer to the default page.
@@ -357,8 +356,11 @@ impl MemMapping {
 	/// - `size` is the number of pages to unmap.
 	///
 	/// If the region to be unmapped is out of bounds, it is truncated to the end of the mapping.
+	///
 	/// The newly created mappings correspond to the remaining pages.
+	///
 	/// The newly created gap is in place of the unmapped portion.
+	///
 	/// If the mapping is totaly unmapped, the function returns no new mappings.
 	///
 	/// The function doesn't flush the virtual memory context.

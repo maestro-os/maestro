@@ -1,6 +1,8 @@
 //! The Executable and Linkable Format (ELF) is a format of executable files
-//! commonly used in UNIX systems. This module implements a parser allowing to
-//! handle this format, including the kernel image itself.
+//! commonly used in UNIX systems.
+//!
+//! This module implements a parser allowing to handle this format, including the kernel image
+//! itself.
 
 pub mod iter;
 pub mod parser;

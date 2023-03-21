@@ -1,4 +1,5 @@
 //! This file handles memory allocators initialization for the kernel.
+//!
 //! The physical memory is divided into zones. Each zones contains frames that
 //! can be allocated by the buddy allocator
 //!

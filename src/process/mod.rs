@@ -1,4 +1,6 @@
-//! A process is a task running on the kernel. A multitasking system allows
+//! A process is a task running on the kernel.
+//!
+//! A multitasking system allows
 //! several processes to run at the same time by sharing the CPU resources using
 //! a scheduler.
 
@@ -163,8 +165,10 @@ impl Default for ForkOptions {
 
 /// The vfork operation is similar to the fork operation except the parent
 /// process isn't executed until the child process exits or executes a program.
+///
 /// The reason for this is to prevent useless copies of memory pages when the
 /// child process is created only to execute a program.
+///
 /// It implies that the child process shares the same memory space as the
 /// parent.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -420,7 +424,7 @@ pub fn init() -> Result<(), Errno> {
 	Ok(())
 }
 
-/// Returns a mutable reference to the scheduler's Mutex.
+/// Returns a mutable reference to the scheduler's `Mutex`.
 pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
 	unsafe {
 		// Safe because using Mutex
@@ -429,22 +433,25 @@ pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
 }
 
 impl Process {
-	/// Returns the process with PID `pid`. If the process doesn't exist, the
-	/// function returns `None`.
+	/// Returns the process with PID `pid`.
+	///
+	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<IntSharedPtr<Self>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_by_pid(pid)
 	}
 
-	/// Returns the process with TID `tid`. If the process doesn't exist, the
-	/// function returns `None`.
+	/// Returns the process with TID `tid`.
+	///
+	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(tid: Pid) -> Option<IntSharedPtr<Self>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_by_tid(tid)
 	}
 
-	/// Returns the current running process. If no process is running, the
-	/// function returns `None`.
+	/// Returns the current running process.
+	///
+	/// If no process is running, the function returns `None`.
 	pub fn get_current() -> Option<IntSharedPtr<Self>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_current_process()
@@ -875,8 +882,9 @@ impl Process {
 		self.waitable = false;
 	}
 
-	/// Returns the priority of the process. A greater number means a higher
-	/// priority relative to other processes.
+	/// Returns the priority of the process.
+	///
+	/// A greater number means a higher priority relative to other processes.
 	#[inline(always)]
 	pub fn get_priority(&self) -> usize {
 		self.priority
@@ -923,6 +931,7 @@ impl Process {
 	}
 
 	/// Returns a reference to the process's memory space.
+	///
 	/// If the process is terminated, the function returns `None`.
 	#[inline(always)]
 	pub fn get_mem_space(&self) -> Option<IntSharedPtr<MemSpace>> {
@@ -952,6 +961,7 @@ impl Process {
 	}
 
 	/// Sets the process's current working directory.
+	///
 	/// If the given path is relative, it is made absolute by concatenated with
 	/// `/`.
 	#[inline(always)]
@@ -1013,6 +1023,7 @@ impl Process {
 	}
 
 	/// Prepares for context switching to the process.
+	///
 	/// The function may update the state of the process. Thus, the caller must
 	/// check the state to ensure the process can actually be run.
 	pub fn prepare_switch(&mut self) {
@@ -1046,6 +1057,7 @@ impl Process {
 	}
 
 	/// Initializes the process to run without a program.
+	///
 	/// `pc` is the initial program counter.
 	pub fn init_dummy(&mut self, pc: *const c_void) -> Result<(), Errno> {
 		// Creating the memory space and the stacks
@@ -1096,11 +1108,17 @@ impl Process {
 		self.termsig
 	}
 
-	/// Forks the current process. The internal state of the process (registers
-	/// and memory) are copied.
-	/// `parent` is the parent of the new process.
-	/// `fork_options` are the options for the fork operation.
-	/// On fail, the function returns an Err with the appropriate Errno.
+	/// Forks the current process.
+	///
+	/// The internal state of the process (registers and memory) are always copied.
+	/// Other data may be copied according to provided fork options.
+	///
+	/// Arguments:
+	/// - `parent` is the parent of the new process.
+	/// - `fork_options` are the options for the fork operation.
+	///
+	/// On fail, the function returns an `Err` with the appropriate Errno.
+	///
 	/// If the process is not running, the behaviour is undefined.
 	pub fn fork(
 		&mut self,
@@ -1251,8 +1269,11 @@ impl Process {
 		self.handled_signal.is_some()
 	}
 
-	/// Kills the process with the given signal `sig`. If the process doesn't
-	/// have a signal handler, the default action for the signal is executed.
+	/// Kills the process with the given signal `sig`.
+	///
+	/// If the process doesn't have a signal handler, the default action for the signal is
+	/// executed.
+	///
 	/// If `no_handler` is true and if the process is already handling a signal,
 	/// the function executes the default action of the signal regardless the
 	/// user-specified action.
@@ -1278,6 +1299,7 @@ impl Process {
 	}
 
 	/// Kills every processes in the process group.
+	///
 	/// Arguments are the same as `kill`.
 	pub fn kill_group(&mut self, sig: Signal, no_handler: bool) {
 		for pid in self.process_group.iter() {
@@ -1322,6 +1344,7 @@ impl Process {
 	}
 
 	/// Returns the ID of the next signal to be executed.
+	///
 	/// If no signal is pending or is the process is already handling a signal,
 	/// the function returns `None`.
 	pub fn get_next_signal(&self) -> Option<Signal> {
@@ -1346,6 +1369,7 @@ impl Process {
 	}
 
 	/// Makes the process handle the next signal.
+	///
 	/// If no signal is pending or is the process is already handling a signal,
 	/// the function does nothing.
 	pub fn signal_next(&mut self) {
@@ -1361,13 +1385,16 @@ impl Process {
 	}
 
 	/// Clear the signal from the list of pending signals.
+	///
 	/// If the signal is already cleared, the function does nothing.
 	pub fn signal_clear(&mut self, sig: Signal) {
 		self.sigpending.clear(sig.get_id() as _);
 	}
 
 	/// Saves the process's state to handle a signal.
+	///
 	/// `sig` is the signal.
+	///
 	/// If the process is already handling a signal, the behaviour is undefined.
 	pub fn signal_save(&mut self, sig: Signal) {
 		debug_assert!(!self.is_handling_signal());
@@ -1397,6 +1424,7 @@ impl Process {
 	}
 
 	/// Updates the `n`th TLS entry in the GDT.
+	///
 	/// If `n` is out of bounds, the function does nothing.
 	pub fn update_tls(&self, n: usize) {
 		if n < TLS_ENTRIES_COUNT {
@@ -1435,8 +1463,10 @@ impl Process {
 		}
 	}
 
-	/// Exits the process with the given `status`. This function changes the
-	/// process's status to `Zombie`.
+	/// Exits the process with the given `status`.
+	///
+	/// This function changes the process's status to `Zombie`.
+	///
 	/// `signaled` tells whether the process has been terminated by a signal. If
 	/// true, `status` is interpreted as the signal number.
 	pub fn exit(&mut self, status: u32, signaled: bool) {
@@ -1470,8 +1500,9 @@ impl Process {
 	}
 
 	/// Returns the OOM score, used by the OOM killer to determine the process
-	/// to kill in case the system runs out of memory. A higher score means a
-	/// higher probability of getting killed.
+	/// to kill in case the system runs out of memory.
+	///
+	/// A higher score means a higher probability of getting killed.
 	pub fn get_oom_score(&self) -> u16 {
 		let mut score = 0;
 

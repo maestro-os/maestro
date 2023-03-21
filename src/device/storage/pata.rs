@@ -103,6 +103,7 @@ const SECTOR_SIZE: u64 = 512;
 // trigger a select while operating on a drive
 
 /// Applies a delay. `n` determines the amount to wait.
+///
 /// This function is a dirty hack and the actual delay is approximative but
 /// **should** be sufficient.
 fn delay(n: u32) {
@@ -140,9 +141,13 @@ pub struct PATAInterface {
 }
 
 impl PATAInterface {
-	/// Creates a new instance. On error, the function returns a string telling
-	/// the cause. `channel` is the IDE channel of the disk.
-	/// `slave` tells whether the disk is the slave disk.
+	/// Creates a new instance.
+	///
+	/// On error, the function returns a string telling the cause.
+	///
+	/// Arguments:
+	/// - `channel` is the IDE channel of the disk.
+	/// - `slave` tells whether the disk is the slave disk.
 	pub fn new(channel: ide::Channel, slave: bool) -> Result<Self, &'static str> {
 		let mut s = Self {
 			channel,
@@ -216,14 +221,17 @@ impl PATAInterface {
 	}
 
 	/// Tells whether the disk's buses are floating.
-	/// A floating bus means there is no hard drive connected. However, if the
-	/// bus isn't floating, it doesn't necessarily mean there is a disk.
+	///
+	/// A floating bus means there is no hard drive connected.
+	///
+	/// However, if the bus isn't floating, it doesn't necessarily mean there is a disk.
 	fn is_floating(&self) -> bool {
 		self.get_status() == 0xff
 	}
 
-	/// Waits until the drive is not busy anymore. If the drive wasn't busy, the
-	/// function doesn't do anything.
+	/// Waits until the drive is not busy anymore.
+	///
+	/// If the drive wasn't busy, the function doesn't do anything.
 	fn wait_busy(&self) {
 		if self.is_floating() {
 			return;
@@ -232,16 +240,20 @@ impl PATAInterface {
 		while self.get_status() & STATUS_BSY != 0 {}
 	}
 
-	/// Sends the given command on the bus. The function doesn't check if the
-	/// drive is ready since it can allow to select the drive.
+	/// Sends the given command on the bus.
+	///
+	/// The function doesn't check if the drive is ready since it can allow to select the drive.
+	///
 	/// `command` is the command.
 	fn send_command(&self, command: u8) {
 		self.outb(PortOffset::ATA(COMMAND_REGISTER_OFFSET), command);
 	}
 
-	/// Selects the drive. This operation is necessary in order to send command
-	/// to the drive. If the drive is already selected, the function does
-	/// nothing unless `init` is set.
+	/// Selects the drive.
+	///
+	/// This operation is necessary in order to send command to the drive.
+	///
+	/// If the drive is already selected, the function does nothing unless `init` is set.
 	fn select(&self, init: bool) {
 		if !init {
 			// TODO Select if necessary
@@ -264,8 +276,9 @@ impl PATAInterface {
 		self.wait_busy();
 	}
 
-	/// Resets both master and slave devices. The current drive may not be
-	/// selected anymore.
+	/// Resets both master and slave devices.
+	///
+	/// The current drive may not be selected anymore after this function returns.
 	fn reset(&self) {
 		self.outb(PortOffset::Control(0), 1 << 2);
 		delay(5000);
@@ -274,8 +287,9 @@ impl PATAInterface {
 		delay(5000);
 	}
 
-	/// Identifies the drive, retrieving informations about the drive. On error,
-	/// the function returns a string telling the cause.
+	/// Identifies the drive, retrieving informations about the drive.
+	///
+	/// On error, the function returns a string telling the cause.
 	fn identify(&mut self) -> Result<(), &'static str> {
 		self.reset();
 		self.select(true);
@@ -345,8 +359,9 @@ impl PATAInterface {
 		Ok(())
 	}
 
-	/// Waits for the drive to be ready for IO operation. The device is assumed
-	/// to be selected.
+	/// Waits for the drive to be ready for IO operation.
+	///
+	/// The device is assumed to be selected.
 	fn wait_io(&self) -> Result<(), Errno> {
 		loop {
 			let status = self.get_status();

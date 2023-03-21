@@ -63,8 +63,11 @@ pub trait Executor {
 }
 
 /// Builds a program image from the given executable file.
-/// `file` is the program's file.
-/// `info` is the set execution informations for the program.
+///
+/// Arguments:
+/// - `file` is the program's file.
+/// - `info` is the set execution informations for the program.
+///
 /// The function returns a memory space containing the program image and the
 /// pointer to the entry point.
 pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errno> {

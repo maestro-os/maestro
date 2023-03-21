@@ -26,7 +26,9 @@ const CHECKSUM_POLYNOM: u32 = 0xedb88320;
 type GUID = [u8; 16];
 
 /// Translates the given LBA value `lba` into a positive LBA value.
+///
 /// `storage_size` is the number of blocks on the storage device.
+///
 /// If the LBA is out of bounds of the storage device, the function returns
 /// `None`.
 fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {

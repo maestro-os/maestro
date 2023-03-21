@@ -111,6 +111,7 @@ pub fn enter_loop() -> ! {
 }
 
 /// Resets the stack to the given value, then calls `enter_loop`.
+///
 /// The function is unsafe because the pointer passed in parameter might be
 /// invalid.
 pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
@@ -176,6 +177,7 @@ pub fn is_memory_init() -> bool {
 }
 
 /// Binds the kernel's virtual memory context.
+///
 /// If the kernel vmem is not initialized, the function does nothing.
 pub fn bind_vmem() {
 	let guard = KERNEL_VMEM.lock();
@@ -190,6 +192,7 @@ extern "C" {
 }
 
 /// Launches the init process.
+///
 /// `init_path` is the path to the init program.
 fn init(init_path: String) -> Result<(), Errno> {
 	let proc_mutex = Process::new()?;
@@ -238,10 +241,14 @@ fn init(init_path: String) -> Result<(), Errno> {
 }
 
 /// This is the main function of the Rust source code, responsible for the
-/// initialization of the kernel. When calling this function, the CPU must be in
-/// Protected Mode with the GDT loaded with space for the Task State Segment.
-/// `magic` is the magic number passed by Multiboot.
-/// `multiboot_ptr` is the pointer to the Multiboot booting informations
+/// initialization of the kernel.
+///
+/// When calling this function, the CPU must be in Protected Mode with the GDT loaded with space
+/// for the Task State Segment.
+///
+/// Arguments:
+/// - `magic` is the magic number passed by Multiboot.
+/// - `multiboot_ptr` is the pointer to the Multiboot booting informations
 /// structure.
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {

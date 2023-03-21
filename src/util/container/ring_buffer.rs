@@ -11,10 +11,13 @@
 use core::cmp::min;
 use core::marker::PhantomData;
 
-/// Structure representing a ring buffer. The buffer has a limited size which
-/// must be given at initialization.
+/// Structure representing a ring buffer.
+///
+/// The buffer has a limited size which must be given at initialization.
+///
 /// The buffer used to store the data is specified by the generic argument `B`.
-/// By default, a Vec is used.
+///
+/// By default, a `Vec` is used.
 #[derive(Debug)]
 pub struct RingBuffer<T, B: AsRef<[T]> + AsMut<[T]>> {
 	/// The linear buffer.
@@ -31,6 +34,7 @@ pub struct RingBuffer<T, B: AsRef<[T]> + AsMut<[T]>> {
 
 impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 	/// Creates a new instance.
+	///
 	/// `buffer` is the buffer to be used.
 	pub fn new(buffer: B) -> Self {
 		Self {
@@ -55,8 +59,9 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		self.read_cursor == self.write_cursor
 	}
 
-	/// Returns the length in bytes of the data in the buffer. If the buffer is
-	/// empty, the function returns zero.
+	/// Returns the length in bytes of the data in the buffer.
+	///
+	/// If the buffer is empty, the function returns zero.
 	pub fn get_data_len(&self) -> usize {
 		if self.read_cursor <= self.write_cursor {
 			self.write_cursor - self.read_cursor
@@ -77,8 +82,9 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		self.buffer.as_mut()
 	}
 
-	/// Reads data from the buffer and writes it in `buf`. The function returns
-	/// the number of bytes read.
+	/// Reads data from the buffer and writes it in `buf`.
+	///
+	/// The function returns the number of bytes read.
 	pub fn read(&mut self, buf: &mut [T]) -> usize {
 		let cursor = self.read_cursor;
 		let len = min(buf.len(), self.get_data_len());
@@ -103,8 +109,9 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		len
 	}
 
-	/// Writes data in `buf` to the buffer. The function returns the number of
-	/// bytes written.
+	/// Writes data in `buf` to the buffer.
+	///
+	/// The function returns the number of bytes written.
 	pub fn write(&mut self, buf: &[T]) -> usize {
 		let cursor = self.write_cursor;
 		let len = min(buf.len(), self.get_available_len());

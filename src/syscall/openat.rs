@@ -26,7 +26,9 @@ use super::util;
 ///
 /// If the file doesn't exist and the `O_CREAT` flag is set, the file is created,
 /// then the function returns it.
+///
 /// If the flag is not set, the function returns an error with the appropriate errno.
+///
 /// If the file is to be created, the function uses `mode` to set its permissions.
 fn get_file(
 	dirfd: i32,

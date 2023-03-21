@@ -27,7 +27,9 @@ const TYPE_INDICATOR_SOCKET: u8 = 6;
 const TYPE_INDICATOR_SYMLINK: u8 = 7;
 
 /// A directory entry is a structure stored in the content of an inode of type
-/// Directory. Each directory entry represent a file that is the stored in the
+/// `Directory`.
+///
+/// Each directory entry represent a file that is the stored in the
 /// directory and points to its inode.
 #[repr(C, packed)]
 pub struct DirectoryEntry {
@@ -45,6 +47,7 @@ pub struct DirectoryEntry {
 
 impl DirectoryEntry {
 	/// Creates a new free instance.
+	///
 	/// `total_size` is the size of the entry, including the name.
 	pub fn new_free(total_size: u16) -> Result<Box<Self>, Errno> {
 		let slice = unsafe {
@@ -57,12 +60,16 @@ impl DirectoryEntry {
 	}
 
 	/// Creates a new instance.
-	/// `superblock` is the filesystem's superblock.
-	/// `inode` is the entry's inode.
-	/// `total_size` is the size of the entry, including the name.
-	/// `file_type` is the entry's type.
-	/// `name` is the entry's name.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `inode` is the entry's inode.
+	/// - `total_size` is the size of the entry, including the name.
+	/// - `file_type` is the entry's type.
+	/// - `name` is the entry's name.
+	///
 	/// If the given `inode` is zero, the entry is free.
+	///
 	/// If the total size is not large enough to hold the entry, the function
 	/// returns an error.
 	pub fn new(
@@ -101,6 +108,7 @@ impl DirectoryEntry {
 	}
 
 	/// Sets the entry's inode.
+	///
 	/// If `inode` is zero, the entry is set free.
 	pub fn set_inode(&mut self, inode: u32) {
 		self.inode = inode;
@@ -112,6 +120,7 @@ impl DirectoryEntry {
 	}
 
 	/// Returns the length the entry's name.
+	///
 	/// `superblock` is the filesystem's superblock.
 	pub fn get_name_length(&self, superblock: &Superblock) -> usize {
 		if superblock.required_features & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
@@ -122,6 +131,7 @@ impl DirectoryEntry {
 	}
 
 	/// Returns the entry's name.
+	///
 	/// `superblock` is the filesystem's superblock.
 	pub fn get_name(&self, superblock: &Superblock) -> &[u8] {
 		let name_length = self.get_name_length(superblock);
@@ -129,6 +139,7 @@ impl DirectoryEntry {
 	}
 
 	/// Sets the name of the entry.
+	///
 	/// If the length of the entry is shorted than the required space, the name
 	/// shall be truncated.
 	pub fn set_name(&mut self, superblock: &Superblock, name: &[u8]) {
@@ -192,7 +203,9 @@ impl DirectoryEntry {
 	}
 
 	/// Splits the current entry into two entries and return the newly created
-	/// entry. `new_size` is the size of the new entry.
+	/// entry.
+	///
+	/// `new_size` is the size of the new entry.
 	pub fn split(&mut self, new_size: u16) -> Result<Box<Self>, Errno> {
 		let curr_entry_new_size = self.total_size - new_size;
 		let new_entry = DirectoryEntry::new_free(new_size)?;
@@ -202,6 +215,7 @@ impl DirectoryEntry {
 	}
 
 	/// Merges the current entry with the given entry `entry`.
+	///
 	/// If both entries are not on the same page or if `entry` is not located
 	/// right after the current entry, the behaviour is undefined.
 	pub fn merge(&mut self, entry: Box<Self>) {

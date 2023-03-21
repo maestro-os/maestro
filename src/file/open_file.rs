@@ -69,9 +69,10 @@ static OPEN_FILES: Mutex<HashMap<FileLocation, SharedPtr<OpenFile>>> = Mutex::ne
 // TODO Keep a different references counter for read and write.
 // And increment/decrement on open and close (using FD's flags)
 
-/// An open file description. This structure is pointed to by file descriptors
-/// and point to files. They exist to ensure several file descriptors can share
-/// the same open file.
+/// An open file description.
+///
+/// This structure is pointed to by file descriptors and point to files.
+/// They exist to ensure several file descriptors can share the same open file.
 #[derive(Debug)]
 pub struct OpenFile {
 	/// The location of the file.
@@ -244,8 +245,8 @@ impl OpenFile {
 
 	/// Sets the open file flags.
 	///
-	/// File access mode (O_RDONLY, O_WRONLY, O_RDWR) and file creation flags
-	/// (O_CREAT, O_EXCL, O_NOCTTY, O_TRUNC) are ignored.
+	/// File access mode (`O_RDONLY`, `O_WRONLY`, `O_RDWR`) and file creation flags
+	/// (`O_CREAT`, `O_EXCL`, `O_NOCTTY`, `O_TRUNC`) are ignored.
 	pub fn set_flags(&mut self, flags: i32) {
 		let ignored_flags = O_RDONLY | O_WRONLY | O_RDWR | O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC;
 		self.flags = (self.flags & ignored_flags) | (flags & !ignored_flags);

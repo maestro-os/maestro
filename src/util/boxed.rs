@@ -1,4 +1,4 @@
-//! The Box structure allows to hold an object on the heap and handles its
+//! The `Box` structure allows to hold an object on the heap and handles its
 //! memory properly.
 
 use core::ffi::c_void;
@@ -17,7 +17,7 @@ use crate::memory::malloc;
 use crate::memory;
 use crate::util::FailableClone;
 
-/// A Box allows to store an object on the heap.
+/// A `Box` allows to store an object on the heap.
 ///
 /// The object is owned by the Box and will be freed whenever it is dropped.
 ///
@@ -59,7 +59,7 @@ impl<T> Box<T> {
 		})
 	}
 
-	/// Returns the value owned by the Box, taking its ownership.
+	/// Returns the value owned by the `Box`, taking its ownership.
 	pub fn take(self) -> T {
 		unsafe {
 			let t = ptr::read(self.ptr.as_ptr());
@@ -74,10 +74,11 @@ impl<T> Box<T> {
 
 impl<T: ?Sized> Box<T> {
 	/// Creates a new instance from a raw pointer.
-	/// The newly created Box takes the ownership of the pointer.
+	///
+	/// The newly created `Box` takes the ownership of the pointer.
 	///
 	/// The given pointer must be an address to a region of memory allocated
-	/// with the memory allocator since its the allocator that the Box will use
+	/// with the memory allocator since its the allocator that the `Box` will use
 	/// to free it.
 	pub unsafe fn from_raw(ptr: *mut T) -> Self {
 		Self {
@@ -85,12 +86,12 @@ impl<T: ?Sized> Box<T> {
 		}
 	}
 
-	/// Returns a pointer to the data wrapped into the Box.
+	/// Returns a pointer to the data wrapped into the `Box`.
 	pub fn as_ptr(&self) -> *const T {
 		self.ptr.as_ptr()
 	}
 
-	/// Returns a mutable pointer to the data wrapped into the Box.
+	/// Returns a mutable pointer to the data wrapped into the `Box`.
 	pub fn as_mut_ptr(&mut self) -> *mut T {
 		self.ptr.as_ptr()
 	}

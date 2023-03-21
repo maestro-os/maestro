@@ -1,5 +1,7 @@
 //! The VFS (Virtual FileSystem) is a entity which aggregates every mounted
-//! filesystems into one. To manipulate files, the VFS should be used instead of
+//! filesystems into one.
+//!
+//! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
 use core::ptr::NonNull;
@@ -511,8 +513,10 @@ impl VFS {
 static VFS: IntMutex<Option<VFS>> = IntMutex::new(None);
 
 /// Returns a mutable reference to the VFS.
-/// If the cache is not initialized, the Option is `None`. If the function is
-/// called from a module, the VFS can be assumed to be initialized.
+///
+/// If the cache is not initialized, the Option is `None`.
+///
+/// If the function is called from a module, the VFS can be assumed to be initialized.
 pub fn get() -> &'static IntMutex<Option<VFS>> {
 	&VFS
 }

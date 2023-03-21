@@ -20,6 +20,7 @@ pub struct MemGap {
 impl MemGap {
 	/// Creates a new instance.
 	///
+	/// Arguments:
 	/// - `begin` is a pointer on the virtual memory to the beginning of the gap.
 	/// This pointer must be page-aligned.
 	/// - `size` is the size of the gap in pages.
@@ -58,7 +59,7 @@ impl MemGap {
 	/// - `size` is the size of the part to consume.
 	///
 	/// The function returns a new gap. If the gap is fully consumed, the
-	/// function returns `(`None`, None)`.
+	/// function returns `(None, None)`.
 	pub fn consume(&self, off: usize, size: usize) -> (Option<Self>, Option<Self>) {
 		// The new gap located before the mapping
 		let left = NonZeroUsize::new(off)

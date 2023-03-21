@@ -3,6 +3,7 @@
 //!
 //! The issue when retrieving such information is that if the system has too
 //! much memory, the ACPI data may be too high in memory to recover directly.
+//!
 //! The structure implemented in this module uses a temporary virtual memory
 //! context to get a copy of the data.
 
@@ -73,8 +74,9 @@ impl Rsdp {
 	}
 }
 
-/// This structure is the version 2.0 of the RSDP. This structure contains the
-/// field from the previous version, plus some extra fields.
+/// This structure is the version 2.0 of the RSDP.
+///
+/// This structure contains the field from the previous version, plus some extra fields.
 #[repr(C)]
 #[derive(Debug)]
 struct Rsdp2 {
@@ -125,7 +127,9 @@ impl ACPIData {
 	// TODO Clean
 	/// Reads the ACPI data from memory and returns a buffer containing it with its offset in
 	/// physical memory.
+	///
 	/// If no ACPI data is found, the function returns `None`.
+	///
 	/// If the data is invalid, the function makes the kernel panic.
 	pub fn read() -> Result<Option<Self>, Errno> {
 		let rsdp = unsafe { find_rsdp() };
@@ -222,8 +226,8 @@ impl ACPIData {
 
 	// TODO Minimize duplicate code between get_table_*
 
-	/// Returns a reference to the ACPI table with type T.
-	/// The table must be Sized.
+	/// Returns a reference to the ACPI table with type `T`.
+	///
 	/// If the table doesn't exist, the function returns `None`.
 	pub fn get_table_sized<T: ACPITable>(&self) -> Option<&T> {
 		let rsdt_ptr =
@@ -262,8 +266,10 @@ impl ACPIData {
 		None
 	}
 
-	/// Returns a reference to the ACPI table with type T.
-	/// The table must be Unsized.
+	/// Returns a reference to the ACPI table with type `T`.
+	///
+	/// The table must be `Unsized`.
+	///
 	/// If the table doesn't exist, the function returns `None`.
 	pub fn get_table_unsized<T: ACPITable + ?Sized + Pointee<Metadata = usize>>(
 		&self,

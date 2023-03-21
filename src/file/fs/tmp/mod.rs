@@ -1,4 +1,5 @@
 //! Tmpfs (Temporary file system) is, as its name states a temporary filesystem.
+//!
 //! The files are stored on the kernel's memory and thus are removed when the
 //! filesystem is unmounted.
 
@@ -36,6 +37,7 @@ fn get_used_size<N: KernFSNode>(node: &N) -> usize {
 }
 
 /// Structure representing the temporary file system.
+///
 /// On the inside, the tmpfs works using a kernfs.
 pub struct TmpFS {
 	/// The maximum amount of memory in bytes the filesystem can use.

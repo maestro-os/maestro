@@ -1,6 +1,7 @@
 //! The PCI (Peripheral Component Interconnect) is a bus which allows to attach
-//! hardware devices on the motherboard. There here-module allows to retrieve
-//! informations on the devices attached to the computer's PCI.
+//! hardware devices on the motherboard.
+//!
+//! This module allows to retrieve informations on the devices attached to the computer's PCI.
 //!
 //! The device ID, vendor ID, class and subclass of a device allows to determine
 //! which driver is required for the device.
@@ -108,11 +109,13 @@ fn write_long(bus: u8, device: u8, func: u8, reg_off: u8, value: u32) {
 }
 
 /// Reads PCI configuration and writes it into `buf`.
-/// `bus` is the bus number.
-/// `device` is the device number.
-/// `func` is the function number.
-/// `off` is the register offset.
-/// `buf` is the data buffer to write to.
+///
+/// Arguments:
+/// - `bus` is the bus number.
+/// - `device` is the device number.
+/// - `func` is the function number.
+/// - `off` is the register offset.
+/// - `buf` is the data buffer to write to.
 fn read_data(bus: u8, device: u8, func: u8, off: usize, buf: &mut [u32]) {
 	let end = min(off + buf.len(), 0x12);
 
@@ -122,11 +125,13 @@ fn read_data(bus: u8, device: u8, func: u8, off: usize, buf: &mut [u32]) {
 }
 
 /// Writes PCI configuration from `buf`.
-/// `bus` is the bus number.
-/// `device` is the device number.
-/// `func` is the function number.
-/// `off` is the register offset.
-/// `buf` is the data buffer to read from.
+///
+/// Arguments:
+/// - `bus` is the bus number.
+/// - `device` is the device number.
+/// - `func` is the function number.
+/// - `off` is the register offset.
+/// - `buf` is the data buffer to read from.
 fn write_data(bus: u8, device: u8, func: u8, off: usize, buf: &[u32]) {
 	let end = min(off + buf.len(), 16);
 
@@ -179,10 +184,12 @@ pub struct PCIDevice {
 
 impl PCIDevice {
 	/// Creates a new instance of PCI device.
-	/// `bus` is the PCI bus.
-	/// `device` is the device number on the bus.
-	/// `function` is the function number on the device.
-	/// `data` is the data returned by the PCI.
+	///
+	/// Arguments:
+	/// - `bus` is the PCI bus.
+	/// - `device` is the device number on the bus.
+	/// - `function` is the function number on the device.
+	/// - `data` is the data returned by the PCI.
 	fn new(bus: u8, device: u8, function: u8, data: &[u32; 16]) -> Self {
 		Self {
 			bus,
@@ -253,6 +260,7 @@ impl PCIDevice {
 	}
 
 	/// Returns the size of the address space of the `n`th BAR.
+	///
 	/// `io` tells whether the BAR is in IO space.
 	pub fn get_bar_size(&self, n: u8, io: bool) -> Option<usize> {
 		let reg_off = self.get_bar_reg_off(n)?;
@@ -368,8 +376,9 @@ impl PhysicalDevice for PCIDevice {
 	}
 }
 
-/// This manager handles every devices connected to the PCI bus. Since the PCI
-/// bus is not a hotplug bus, calling on_unplug on this structure has no effect.
+/// This manager handles every devices connected to the PCI bus.
+///
+/// Since the PCI bus is not a hotplug bus, calling `on_unplug` on this structure has no effect.
 pub struct PCIManager {
 	/// The list of PCI devices.
 	devices: Vec<PCIDevice>,
@@ -384,6 +393,7 @@ impl PCIManager {
 	}
 
 	/// Scans for PCI devices and registers them on the manager.
+	///
 	/// If the PCI has already been scanned, this function does nothing.
 	pub fn scan(&mut self) -> Result<(), Errno> {
 		// Avoid calling `on_plug` twice for the same devices
@@ -441,6 +451,7 @@ impl PCIManager {
 	}
 
 	/// Returns the list of PCI devices.
+	///
 	/// If the PCI hasn't been scanned, the function returns an empty vector.
 	#[inline(always)]
 	pub fn get_devices(&self) -> &Vec<PCIDevice> {

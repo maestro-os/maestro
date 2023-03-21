@@ -115,9 +115,10 @@ pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
 	| INODE_PERMISSION_IROTH
 	| INODE_PERMISSION_IXOTH;
 
-/// An inode represents a file in the filesystem. The name of the file is not
-/// included in the inode but in the directory entry associated with it since
-/// several entries can refer to the same inode (hard links).
+/// An inode represents a file in the filesystem.
+///
+/// The name of the file is not included in the inode but in the directory entry associated with it
+/// since several entries can refer to the same inode (hard links).
 #[repr(C, packed)]
 pub struct Ext2INode {
 	/// Type and permissions.
@@ -1158,6 +1159,7 @@ impl Ext2INode {
 	// borrow errors
 	/// Removes the entry from the current directory.
 	///
+	/// Arguments:
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
 	/// - `name` is the name of the entry.
@@ -1343,6 +1345,7 @@ impl Ext2INode {
 }
 
 /// An itertor on the directory entries of a node (including free entries).
+///
 /// The iterator gives the offset of the directory entry and the directory entry
 /// itself.
 pub struct DirentIterator<'n, 's, 'i> {

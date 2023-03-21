@@ -13,6 +13,7 @@ use macros::syscall;
 use super::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
+///
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {

@@ -1,5 +1,6 @@
 //! The Master Boot Record (MBR) is a standard partitions table format used on
 //! the x86 architecture.
+//!
 //! The partition table is located on the first sector of the boot disk,
 //! alongside with the boot code.
 

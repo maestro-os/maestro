@@ -1,5 +1,6 @@
 //! The role of the process scheduler is to interrupt the currently running
 //! process periodicaly to switch to another process that is in running state.
+//!
 //! The interruption is fired by the PIT on IDT0.
 //!
 //! A scheduler cycle is a period during which the scheduler iterates through
@@ -113,28 +114,34 @@ impl Scheduler {
 		self.processes.iter()
 	}
 
-	/// Returns the process with PID `pid`. If the process doesn't exist, the
-	/// function returns `None`.
+	/// Returns the process with PID `pid`.
+	///
+	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(&self, pid: Pid) -> Option<IntSharedPtr<Process>> {
 		Some(self.processes.get(pid)?.clone())
 	}
 
-	/// Returns the process with TID `tid`. If the process doesn't exist, the
-	/// function returns `None`.
+	/// Returns the process with TID `tid`.
+	///
+	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(&self, _tid: Pid) -> Option<IntSharedPtr<Process>> {
 		// TODO
 		todo!();
 	}
 
-	/// Returns the current running process. If no process is running, the
-	/// function returns `None`.
+	/// Returns the current running process.
+	///
+	/// If no process is running, the function returns `None`.
 	pub fn get_current_process(&mut self) -> Option<IntSharedPtr<Process>> {
 		Some(self.curr_proc.as_ref().cloned()?.1)
 	}
 
 	/// Updates the scheduler's heuristic with the new priority of a process.
-	/// `old` is the old priority of the process.
-	/// `new` is the new priority of the process.
+	///
+	/// Arguments:
+	/// - `old` is the old priority of the process.
+	/// - `new` is the new priority of the process.
+	///
 	/// The function doesn't need to know the process which has been updated
 	/// since it updates global informations.
 	pub fn update_priority(&mut self, old: usize, new: usize) {
@@ -245,6 +252,8 @@ impl Scheduler {
 
 	// TODO Clean
 	/// Tells whether the given process `process` can run.
+	///
+	/// TODO args
 	fn can_run(
 		process: &Process,
 		_priority_sum: usize,

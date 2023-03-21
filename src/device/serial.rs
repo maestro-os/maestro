@@ -104,8 +104,9 @@ impl Serial {
 		true
 	}
 
-	/// Creates a new instance for the specified port. If the port doesn't
-	/// exist, the function returns `None`.
+	/// Creates a new instance for the specified port.
+	///
+	/// If the port doesn't exist, the function returns `None`.
 	fn from_port(port: u16) -> Option<Serial> {
 		let mut s = Self {
 			regs_off: port,
@@ -118,8 +119,10 @@ impl Serial {
 		}
 	}
 
-	/// Sets the port's baud rate. If the baud rate is not supported, the
-	/// function approximates it to the nearest supported value.
+	/// Sets the port's baud rate.
+	///
+	/// If the baud rate is not supported, the function approximates it to the nearest supported
+	/// value.
 	pub fn set_baud_rate(&mut self, baud: u32) {
 		let div = (UART_FREQUENCY / baud) as u16;
 
@@ -157,8 +160,11 @@ impl Serial {
 static mut PORTS: [Option<Mutex<Serial>>; 4] = [None, None, None, None];
 
 /// Returns an instance to an object allowing to use the given serial
-/// communication port. If the port is not initialized, the function tries to do
-/// it. If the port doesn't exist, the function returns `None`.
+/// communication port.
+///
+/// If the port is not initialized, the function tries to do it.
+///
+/// If the port doesn't exist, the function returns `None`.
 pub fn get(port: u16) -> Option<&'static mut Mutex<Serial>> {
 	let i = match port {
 		COM1 => 0,

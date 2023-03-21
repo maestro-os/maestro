@@ -36,21 +36,25 @@ pub fn is_aligned<T>(ptr: *const T, n: usize) -> bool {
 	((ptr as usize) & (n - 1)) == 0
 }
 
-/// Aligns down a pointer. The retuned value shall be lower than `ptr` or equal
-/// if the pointer is already aligned.
+/// Aligns down a pointer.
+///
+/// The retuned value shall be lower than `ptr` or equal if the pointer is already aligned.
 #[inline(always)]
 pub fn down_align<T>(ptr: *const T, n: usize) -> *const T {
 	((ptr as usize) & !(n - 1)) as *const T
 }
 
-/// Aligns up a pointer. The returned value shall be greater than `ptr`.
+/// Aligns up a pointer.
+///
+/// The returned value shall be greater than `ptr`.
 #[inline(always)]
 pub fn up_align<T>(ptr: *const T, n: usize) -> *const T {
 	((down_align(ptr, n) as usize) + n) as *const T
 }
 
-/// Aligns a pointer. The returned value shall be greater than `ptr` or equal if
-/// the pointer is already aligned.
+/// Aligns a pointer.
+///
+/// The returned value shall be greater than `ptr` or equal if the pointer is already aligned.
 #[inline(always)]
 pub fn align<T>(ptr: *const T, n: usize) -> *const T {
 	if is_aligned(ptr, n) {
@@ -78,8 +82,10 @@ macro_rules! offset_of {
 	};
 }
 
-/// Returns the structure of type `type` that contains the structure in field
-/// `field` at pointer `ptr`. The type must be a pointer type.
+/// Returns the structure of type `type` that contains the structure in field `field` at pointer
+/// `ptr`.
+///
+/// The type must be a pointer type.
 #[macro_export]
 macro_rules! container_of {
 	($ptr:expr, $type:ty, $field:ident) => {
@@ -163,6 +169,7 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 }
 
 /// Reinterprets the given slice of bytes as another type.
+///
 /// If the type is too large in size to fit in the slice, the function returns `None`.
 ///
 /// # Safety
@@ -190,8 +197,9 @@ pub trait FailableClone {
 		Self: Sized;
 }
 
-/// Implements FailableClone with the default implemention for the given type.
-/// The type must implement Clone.
+// TODO add a derive macro for types other than primitives
+/// Implements `FailableClone` with the default implemention for the given type.
+/// The type must implement `Clone`.
 #[macro_export]
 macro_rules! failable_clone_impl {
 	($type:ty) => {
@@ -217,7 +225,8 @@ failable_clone_impl!(usize);
 failable_clone_impl!(*mut c_void);
 failable_clone_impl!(*const c_void);
 
-/// Same as the Default trait, but the operation can possibly fail (on memory allocation failure, for example).
+/// Same as the Default trait, but the operation can possibly fail (on memory allocation failure,
+/// for example).
 pub trait FailableDefault {
 	/// Returns the default value. On fail, the function returns Err.
 	fn failable_default() -> Result<Self, Errno>

@@ -9,6 +9,7 @@ use crate::errno::Errno;
 use core::mem::size_of;
 
 /// The ELF parser allows to parse an ELF image and retrieve informations on it.
+///
 /// It is especially useful to load a kernel module or a userspace program.
 pub struct ELFParser<'a> {
 	/// The ELF image.
@@ -110,6 +111,7 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Creates a new instance for the given image.
+	///
 	/// The function checks if the image is valid. If not, the function retuns
 	/// an error.
 	pub fn new(image: &'a [u8]) -> Result<Self, Errno> {
@@ -195,8 +197,9 @@ impl<'a> ELFParser<'a> {
 		ELFIterator::<ELF32Sym>::new(table, section.sh_entsize as usize)
 	}
 
-	/// Returns the section with name `name`. If the section doesn't exist, the
-	/// function returns `None`.
+	/// Returns the section with name `name`.
+	///
+	/// If the section doesn't exist, the function returns `None`.
 	pub fn get_section_by_name(&self, name: &str) -> Option<&ELF32SectionHeader> {
 		let shstr_off = self.get_shstr_offset();
 
@@ -216,6 +219,7 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Returns the symbol with name `name`.
+	///
 	/// If the symbol doesn't exist, the function returns `None`.
 	pub fn get_symbol_by_name(&self, name: &str) -> Option<&ELF32Sym> {
 		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
@@ -239,6 +243,7 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Returns the name of the symbol `sym` using the string table section `strtab`.
+	///
 	/// If the symbol name doesn't exist, the function returns `None`.
 	pub fn get_symbol_name(&self, strtab: &ELF32SectionHeader, sym: &ELF32Sym) -> Option<&[u8]> {
 		if sym.st_name != 0 {
@@ -256,6 +261,7 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Returns the path to the ELF's interpreter.
+	///
 	/// If the ELF doesn't have an interpreter, the function returns `None`.
 	pub fn get_interpreter_path(&self) -> Option<&[u8]> {
 		self.iter_segments()

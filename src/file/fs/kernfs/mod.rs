@@ -43,8 +43,9 @@ pub struct KernFS {
 	/// The path at which the filesystem is mounted.
 	mountpath: Path,
 
-	/// The list of nodes of the filesystem. The index in this vector is the
-	/// inode.
+	/// The list of nodes of the filesystem.
+	///
+	/// The index in this vector is the inode.
 	nodes: Vec<Option<Box<dyn KernFSNode>>>,
 	/// A list of free inodes.
 	free_nodes: Vec<INode>,
@@ -52,9 +53,11 @@ pub struct KernFS {
 
 impl KernFS {
 	/// Creates a new instance.
-	/// `name` is the name of the filesystem.
-	/// `readonly` tells whether the filesystem is readonly.
-	/// `mountpath` is the path at which the filesystem is mounted.
+	///
+	/// Arguments:
+	/// - `name` is the name of the filesystem.
+	/// - `readonly` tells whether the filesystem is readonly.
+	/// - `mountpath` is the path at which the filesystem is mounted.
 	pub fn new(name: String, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
 		let mut nodes = Vec::new();
 		nodes.push(None)?;
@@ -116,8 +119,9 @@ impl KernFS {
 		Ok(())
 	}
 
-	/// Returns an immutable reference to the node with inode `inode`. If the
-	/// node doesn't exist, the function returns an error.
+	/// Returns an immutable reference to the node with inode `inode`.
+	///
+	/// If the node doesn't exist, the function returns an error.
 	pub fn get_node(&self, inode: INode) -> Result<&Box<dyn KernFSNode>, Errno> {
 		if inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
@@ -128,8 +132,9 @@ impl KernFS {
 			.ok_or_else(|| errno!(ENOENT))
 	}
 
-	/// Returns a mutable reference to the node with inode `inode`. If the node
-	/// doesn't exist, the function returns an error.
+	/// Returns a mutable reference to the node with inode `inode`.
+	///
+	/// If the node doesn't exist, the function returns an error.
 	pub fn get_node_mut(&mut self, inode: INode) -> Result<&mut Box<dyn KernFSNode>, Errno> {
 		if inode as usize >= self.nodes.len() {
 			return Err(errno!(ENOENT));
@@ -141,6 +146,7 @@ impl KernFS {
 	}
 
 	/// Adds the given node `node` to the filesystem.
+	///
 	/// The function returns the allocated inode.
 	pub fn add_node(&mut self, node: Box<dyn KernFSNode>) -> Result<INode, Errno> {
 		if let Some(free_node) = self.free_nodes.pop() {

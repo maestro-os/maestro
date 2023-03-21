@@ -1,4 +1,5 @@
 //! This modules handles kernel logging.
+//!
 //! If the logger is silent, it will not print the logs on the screen but it
 //! will keep it in memory anyways.
 

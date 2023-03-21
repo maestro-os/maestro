@@ -34,13 +34,19 @@ impl RefCounter {
 	}
 }
 
-/// Inner structure of the shared pointer. The same instance of this structure
-/// is shared with every clones of a SharedPtr and WeakPtr structures. This
-/// structure holds the number of SharedPtr and WeakPtr holding it. Each time
-/// the pointer is cloned, the counter is incremented. Each time a copy is
-/// dropped, the counter is decrementer. The inner structure and the object
-/// wrapped by the shared pointer is dropped at the moment the counter reaches
-/// `0`.
+/// Inner structure of the shared pointer.
+///
+/// The same instance of this structure is shared with every clones of a `SharedPtr` and `WeakPtr`
+/// structures.
+///
+/// This structure holds the number of SharedPtr and WeakPtr holding it.
+///
+/// Each time the pointer is cloned, the counter is incremented.
+///
+/// Each time a copy is dropped, the counter is decremented.
+///
+/// The inner structure and the object wrapped by the shared pointer is dropped at the moment the
+/// counter reaches `0`.
 struct SharedPtrInner<T: ?Sized, const INT: bool> {
 	/// The reference counter.
 	ref_counter: Mutex<RefCounter, INT>,
@@ -50,8 +56,9 @@ struct SharedPtrInner<T: ?Sized, const INT: bool> {
 }
 
 impl<T, const INT: bool> SharedPtrInner<T, INT> {
-	/// Creates a new instance with the given object. The shared pointer counter
-	/// is initialized to `1`.
+	/// Creates a new instance with the given object.
+	///
+	/// The shared pointer counter is initialized to `1`.
 	fn new(obj: T) -> Self {
 		Self {
 			ref_counter: Mutex::new(RefCounter {
@@ -65,7 +72,10 @@ impl<T, const INT: bool> SharedPtrInner<T, INT> {
 }
 
 /// A shared pointer is a structure which allows to share ownership of an object
-/// between several objects. The object counts the number of references to it.
+/// between several objects.
+///
+/// The object counts the number of references to it.
+///
 /// When this count reaches zero, the object is freed.
 #[derive(Debug)]
 pub struct SharedPtr<T: ?Sized, const INT: bool = true> {
@@ -184,10 +194,15 @@ impl<T: ?Sized, const INT: bool> Drop for SharedPtr<T, INT> {
 pub type IntSharedPtr<T> = SharedPtr<T, false>;
 
 /// A weak pointer is a type of pointer that can be created from a shared
-/// pointer. It works by keeping a reference to the same object as the shared
-/// pointer it was created from. However, a weak pointer cannot have the
-/// ownership of the object. Meaning that when all shared pointers
-/// drop the object, the weak pointer shall loose the access to the object.
+/// pointer.
+///
+/// It works by keeping a reference to the same object as the shared
+/// pointer it was created from.
+///
+/// However, a weak pointer cannot have the ownership of the object.
+///
+/// Meaning that when all shared pointers drop the object, the weak pointer shall loose the access
+/// to the object.
 pub struct WeakPtr<T: ?Sized, const INT: bool = true> {
 	/// A pointer to the inner structure shared by every clones of this
 	/// structure.

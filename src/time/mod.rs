@@ -1,4 +1,5 @@
 //! This module handles time-releated features.
+//!
 //! The kernel stores a list of clock sources. A clock source is an object that
 //! allow to get the current timestamp.
 
@@ -28,8 +29,10 @@ struct ClockSourceWrapper {
 	/// The clock source.
 	src: Box<dyn ClockSource>,
 
-	/// The last timestamp returned by the clock. This timestamp is used in case
-	/// the caller requires monotonic time and the clock came back in the past.
+	/// The last timestamp returned by the clock.
+	///
+	/// This timestamp is used in case the caller requires monotonic time and the clock came back
+	/// in the past.
 	last: [Timestamp; 4],
 }
 
@@ -54,6 +57,7 @@ pub fn add_clock_source<T: 'static + ClockSource>(source: T) -> Result<(), Errno
 }
 
 /// Removes the clock source with the given name.
+///
 /// If the clock source doesn't exist, the function does nothing.
 pub fn remove_clock_source(name: &str) {
 	let mut sources = CLOCK_SOURCES.lock();
@@ -101,8 +105,11 @@ pub fn get(scale: TimestampScale, monotonic: bool) -> Option<Timestamp> {
 }
 
 /// Returns the current timestamp from the given clock `clk`.
-/// `scale` specifies the scale of the returned timestamp.
-/// `monotonic` tells whether the returned time should be monotonic.
+///
+/// Arguments:
+/// - `scale` specifies the scale of the returned timestamp.
+/// - `monotonic` tells whether the returned time should be monotonic.
+///
 /// If the clock doesn't exist, the function returns `None`.
 pub fn get_struct<T: TimeUnit>(_clk: &[u8], monotonic: bool) -> Option<T> {
 	// TODO use the given clock

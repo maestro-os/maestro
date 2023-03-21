@@ -42,6 +42,7 @@ pub struct Channel {
 
 impl Channel {
 	/// Returns a new instance representing the channel in compatibility mode.
+	///
 	/// `secondary` tells whether the primary or secondary channel is picked.
 	pub fn new_compatibility(secondary: bool) -> Self {
 		if secondary {
@@ -85,7 +86,8 @@ pub struct Controller {
 }
 
 impl Controller {
-	/// Creates a new instance from the given PhysicalDevice.
+	/// Creates a new instance from the given `PhysicalDevice`.
+	///
 	/// If the given device is not an IDE controller, the behaviour is
 	/// undefined.
 	pub fn new(dev: &dyn PhysicalDevice) -> Self {
@@ -124,8 +126,10 @@ impl Controller {
 	}
 
 	/// Detects a disk on the controller.
-	/// `channel` is the channel to check.
-	/// `slave` tells whether the disk is the slave disk.
+	///
+	/// Arguments:
+	/// - `channel` is the channel to check.
+	/// - `slave` tells whether the disk is the slave disk.
 	pub fn detect(
 		&self,
 		channel: Channel,
@@ -148,6 +152,7 @@ impl Controller {
 
 	/// Detects all disks on the controller. For each disks, the function calls
 	/// the given closure `f`.
+	///
 	/// If an error is returned from a call to the closure, the function returns
 	/// with the same error.
 	pub fn detect_all(&self) -> Result<Vec<SharedPtr<dyn StorageInterface>>, Errno> {

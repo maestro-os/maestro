@@ -7,6 +7,7 @@ pub trait NetworkInterface {
 	// TODO Reading (use interrupts)
 
 	/// Writes the data from `buff` to the interface.
+	///
 	/// The function returns the number of bytes written.
 	fn write(&self, buff: &[u8]) -> usize;
 }

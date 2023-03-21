@@ -1,14 +1,17 @@
 //! x86 virtual memory works with a tree structure. Each element is an array of
 //! subelements. The position of the elements in the arrays allows to tell the
-//! virtual address for the mapping. Under 32 bits, elements are array of 32
-//! bits long words that can contain 1024 entries. The following elements are
-//! available:
+//! virtual address for the mapping.
+//!
+//! Under 32 bits, elements are array of 32 bits long words that can contain 1024 entries.
+//!
+//! The following elements are available:
 //! - Page directory: The main element, contains page tables
 //! - Page table: Represents a block of 4MB, each entry is a page
 //!
-//! Under 32 bits, pages are 4096 bytes large. Each entries of elements contains
-//! the physical address to the element/page and some flags. The flags can be
-//! stored with the address in only 4 bytes large entries because addresses have
+//! Under 32 bits, pages are 4096 bytes large.
+//!
+//! Each entries of elements contains the physical address to the element/page and some flags.
+//! The flags can be stored with the address in only 4 bytes large entries because addresses have
 //! to be page-aligned, freeing 12 bits in the entry for the flags.
 //!
 //! For each entries of each elements, the kernel must keep track of how many
@@ -87,8 +90,11 @@ extern "C" {
 }
 
 /// When editing a virtual memory context, the kernel might edit pages in kernel
-/// space. These pages being shared with every contexts, another context might
-/// be modifying the space pages at the same time.
+/// space.
+///
+/// These pages being shared with every contexts, another context might be modifying the same
+/// context at the same time.
+///
 /// To prevent this issue, this mutex has to be locked whenever modifying kernel
 /// space mappings.
 static GLOBAL_MUTEX: Mutex<()> = Mutex::new(());
@@ -98,8 +104,10 @@ static mut KERNEL_TABLES_INIT: bool = false;
 /// Array storing kernel space paging tables.
 static mut KERNEL_TABLES: [*mut u32; 256] = [0 as _; 256];
 
-/// Returns the array of kernel space paging tables. If the table is not
-/// initialized, the function initializes it.
+/// Returns the array of kernel space paging tables.
+///
+/// If the table is not initialized, the function initializes it.
+///
 /// The first time this function is called, it is **not** thread safe.
 unsafe fn get_kernel_tables() -> Result<&'static [*mut u32; 256], Errno> {
 	if !KERNEL_TABLES_INIT {
@@ -221,9 +229,10 @@ mod table {
 		Ok(())
 	}
 
-	/// Expands a large block into a page table. This function allocates a new
-	/// page table and fills it so that the memory mapping keeps the same
-	/// behavior.
+	/// Expands a large block into a page table.
+	///
+	/// This function allocates a new page table and fills it so that the memory mapping keeps the
+	/// same behavior.
 	pub fn expand(vmem: *mut u32, index: usize) -> Result<(), Errno> {
 		let mut dir_entry_value = obj_get(vmem, index);
 		debug_assert!(dir_entry_value & FLAG_PRESENT != 0);
@@ -324,8 +333,9 @@ impl X86VMem {
 		}
 	}
 
-	/// Initializes a new page directory. The kernel memory is mapped into the
-	/// context by default.
+	/// Initializes a new page directory.
+	///
+	/// The kernel memory is mapped into the context by default.
 	pub fn new() -> Result<Self, Errno> {
 		let vmem = Self {
 			page_dir: alloc_obj()?,
@@ -343,16 +353,21 @@ impl X86VMem {
 	}
 
 	/// Returns the index of the element corresponding to the given virtual
-	/// address `ptr` for element at level `level` in the tree. The level
-	/// represents the depth in the tree. `0` is the deepest.
+	/// address `ptr` for element at level `level` in the tree.
+	///
+	/// The level represents the depth in the tree. `0` is the deepest.
 	fn get_addr_element_index(ptr: *const c_void, level: usize) -> usize {
 		((ptr as usize) >> (12 + level * 10)) & 0x3ff
 	}
 
 	// TODO Adapt to 5 level paging
-	/// Resolves the paging entry for the given pointer. If no entry is found,
-	/// `None` is returned. The entry must be marked as present to be found. If
-	/// Page Size Extension (PSE) is used, an entry of the page directory might
+	/// Resolves the paging entry for the given pointer.
+	///
+	/// If no entry is found, `None` is returned.
+	///
+	/// The entry must be marked as present to be found.
+	///
+	/// If Page Size Extension (PSE) is used, an entry of the page directory might
 	/// be returned.
 	pub fn resolve(&self, ptr: *const c_void) -> Option<*const u32> {
 		let dir_entry_index = Self::get_addr_element_index(ptr, 1);
@@ -374,9 +389,12 @@ impl X86VMem {
 	}
 
 	/// Resolves the entry for the given virtual address `ptr` and returns its
-	/// flags. This function might return a page directory entry if a large
-	/// block is present at the corresponding location. If no entry is found,
-	/// the function returns `None`.
+	/// flags.
+	///
+	/// This function might return a page directory entry if a large
+	/// block is present at the corresponding location.
+	///
+	/// If no entry is found, the function returns `None`.
 	pub fn get_flags(&self, ptr: *const c_void) -> Option<u32> {
 		self.resolve(ptr).map(|e| unsafe { *e & FLAGS_MASK })
 	}
@@ -676,6 +694,7 @@ impl FailableClone for X86VMem {
 
 impl Drop for X86VMem {
 	/// Destroys the given page directory, including its children elements.
+	///
 	/// If the page directory is being used, the kernel shall panic.
 	fn drop(&mut self) {
 		if self.is_bound() {

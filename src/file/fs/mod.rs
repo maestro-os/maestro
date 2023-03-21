@@ -207,13 +207,16 @@ pub trait FilesystemType {
 	fn get_name(&self) -> &[u8];
 
 	/// Tells whether the given IO interface has the current filesystem.
+	///
 	/// `io` is the IO interface.
 	fn detect(&self, io: &mut dyn IO) -> Result<bool, Errno>;
 
 	/// Creates a new instance of the filesystem to mount it.
-	/// `io` is the IO interface.
-	/// `mountpath` is the path on which the filesystem is mounted.
-	/// `readonly` tells whether the filesystem is mounted in read-only.
+	///
+	/// Arguments:
+	/// - `io` is the IO interface.
+	/// - `mountpath` is the path on which the filesystem is mounted.
+	/// - `readonly` tells whether the filesystem is mounted in read-only.
 	fn load_filesystem(
 		&self,
 		io: &mut dyn IO,
@@ -267,6 +270,7 @@ pub fn detect(io: &mut dyn IO) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
 }
 
 /// Registers the filesystems that are implemented inside of the kernel itself.
+///
 /// This function must be called only once, at initialization.
 pub fn register_defaults() -> Result<(), Errno> {
 	register(ext2::Ext2FsType {})?;

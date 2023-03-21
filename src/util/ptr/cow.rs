@@ -27,8 +27,11 @@ impl<'a, T: 'a + FailableClone> Cow<'a, T> {
 		!self.is_borrowed()
 	}
 
-	/// Turns the wrapped value into an owned version. This function clones the
-	/// value if necessary. On fail, the function returns an error.
+	/// Turns the wrapped value into an owned version.
+	///
+	/// This function clones the value if necessary.
+	///
+	/// On fail, the function returns an error.
 	pub fn into_owned(self) -> Result<T, Errno> {
 		match self {
 			Self::Borrowed(r) => r.failable_clone(),

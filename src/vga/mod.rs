@@ -1,5 +1,6 @@
 //! This file handles the VGA text mode, allowing to easily write text on the
 //! screen.
+//!
 //! This module doesn't support concurrency. It is the callers' reponsibility to
 //! handle it.
 //!

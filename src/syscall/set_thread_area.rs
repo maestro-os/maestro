@@ -26,6 +26,7 @@ pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
 }
 
 /// Returns an entry ID for the given process and entry number.
+///
 /// If the id is `-1`, the function shall find a free entry.
 pub fn get_entry<'a>(
 	proc: &'a mut Process,

@@ -40,13 +40,16 @@ impl String {
 	}
 
 	/// Returns a reference to the wrapped string.
+	///
 	/// If the string isn't a valid UTF-8 string, the function returns `None`.
 	pub fn as_str(&self) -> Option<&str> {
 		str::from_utf8(self.as_bytes()).ok()
 	}
 
 	/// Same as `as_str` except the function doesn't check the string is a
-	/// correct UTF-8 sequence. If invalid, the behaviour is undefined.
+	/// correct UTF-8 sequence.
+	///
+	/// If invalid, the behaviour is undefined.
 	pub unsafe fn as_str_unchecked(&self) -> &str {
 		str::from_utf8_unchecked(self.as_bytes())
 	}
