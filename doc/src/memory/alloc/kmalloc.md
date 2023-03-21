@@ -1,3 +1,0 @@
-# kmalloc
-
-TODO
