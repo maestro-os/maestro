@@ -170,7 +170,7 @@ pub fn statx(
 		stx_attributes_mask: 0, // TODO
 
 		stx_atime: StatxTimestamp {
-			tv_sec: file.get_atime() as _,
+			tv_sec: file.atime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
@@ -180,12 +180,12 @@ pub fn statx(
 			__reserved: 0,
 		},
 		stx_ctime: StatxTimestamp {
-			tv_sec: file.get_ctime() as _,
+			tv_sec: file.ctime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
 		stx_mtime: StatxTimestamp {
-			tv_sec: file.get_mtime() as _,
+			tv_sec: file.mtime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},

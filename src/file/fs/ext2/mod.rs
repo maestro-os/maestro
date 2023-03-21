@@ -889,9 +889,9 @@ impl Filesystem for Ext2Fs {
 		file.set_hard_links_count(inode_.hard_links_count as _);
 		file.set_blocks_count(inode_.used_sectors as _);
 		file.set_size(inode_.get_size(&self.superblock));
-		file.set_ctime(inode_.ctime as _);
-		file.set_mtime(inode_.mtime as _);
-		file.set_atime(inode_.atime as _);
+		file.ctime = inode_.ctime as _;
+		file.mtime = inode_.mtime as _;
+		file.atime = inode_.atime as _;
 
 		Ok(file)
 	}
@@ -939,9 +939,9 @@ impl Filesystem for Ext2Fs {
 			mode: Ext2INode::get_file_mode(file.get_type(), mode),
 			uid,
 			size_low: 0,
-			ctime: file.get_ctime() as _,
-			mtime: file.get_mtime() as _,
-			atime: file.get_atime() as _,
+			ctime: file.ctime as _,
+			mtime: file.mtime as _,
+			atime: file.atime as _,
 			dtime: 0,
 			gid,
 			hard_links_count: 1,
@@ -1119,9 +1119,9 @@ impl Filesystem for Ext2Fs {
 		inode_.uid = file.get_uid();
 		inode_.gid = file.get_gid();
 		inode_.set_permissions(file.get_permissions());
-		inode_.ctime = file.get_ctime() as _;
-		inode_.mtime = file.get_mtime() as _;
-		inode_.atime = file.get_atime() as _;
+		inode_.ctime = file.ctime as _;
+		inode_.mtime = file.mtime as _;
+		inode_.atime = file.atime as _;
 		inode_.write(inode as _, &self.superblock, io)
 	}
 

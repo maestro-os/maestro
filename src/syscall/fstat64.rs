@@ -100,17 +100,17 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 		st_blocks: file.get_blocks_count(),
 
 		st_atim: Timespec::from_nano(TimestampScale::convert(
-			file.get_atime(),
+			file.atime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond
 		)),
 		st_mtim: Timespec::from_nano(TimestampScale::convert(
-			file.get_mtime(),
+			file.mtime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond
 		)),
 		st_ctim: Timespec::from_nano(TimestampScale::convert(
-			file.get_ctime(),
+			file.ctime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond
 		)),

@@ -386,7 +386,7 @@ impl IO for OpenFile {
 
 		// Updating access timestamp
 		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
-		file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
+		file.atime = timestamp; // TODO Only if the mountpoint has the option enabled
 		file.sync()?; // TODO Lazy
 
 		let (len, eof) = file.read(self.curr_off, buf)?;
@@ -416,8 +416,8 @@ impl IO for OpenFile {
 
 		// Updating access timestamps
 		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
-		file.set_atime(timestamp); // TODO Only if the mountpoint has the option enabled
-		file.set_mtime(timestamp);
+		file.atime = timestamp; // TODO Only if the mountpoint has the option enabled
+		file.mtime = timestamp;
 		file.sync()?; // TODO Lazy
 
 		let len = file.write(self.curr_off, buf)?;

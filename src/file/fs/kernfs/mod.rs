@@ -347,9 +347,9 @@ impl Filesystem for KernFS {
 		)?;
 		file.set_hard_links_count(node.get_hard_links_count());
 		file.set_size(node.get_size());
-		file.set_ctime(node.get_ctime());
-		file.set_mtime(node.get_mtime());
-		file.set_atime(node.get_atime());
+		file.ctime = node.get_ctime();
+		file.mtime = node.get_mtime();
+		file.atime = node.get_atime();
 
 		Ok(file)
 	}
@@ -424,9 +424,9 @@ impl Filesystem for KernFS {
 		node.set_uid(file.get_uid());
 		node.set_gid(file.get_gid());
 		node.set_mode(file.get_mode());
-		node.set_ctime(file.get_ctime());
-		node.set_mtime(file.get_mtime());
-		node.set_atime(file.get_atime());
+		node.set_ctime(file.ctime);
+		node.set_mtime(file.mtime);
+		node.set_atime(file.atime);
 
 		Ok(())
 	}

@@ -57,8 +57,8 @@ pub fn utimensat(
 	let mut file = file_mutex.lock();
 
 	// TODO clean
-	file.set_atime(atime.to_nano() / 1000000000);
-	file.set_mtime(mtime.to_nano() / 1000000000);
+	file.atime = atime.to_nano() / 1000000000;
+	file.mtime = mtime.to_nano() / 1000000000;
 
 	// TODO sync only when required
 	file.sync()?;

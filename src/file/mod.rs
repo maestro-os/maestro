@@ -347,11 +347,11 @@ pub struct File {
 	mode: Mode,
 
 	/// Timestamp of the last modification of the metadata.
-	ctime: Timestamp,
+	pub ctime: Timestamp,
 	/// Timestamp of the last modification of the file.
-	mtime: Timestamp,
+	pub mtime: Timestamp,
 	/// Timestamp of the last access to the file.
-	atime: Timestamp,
+	pub atime: Timestamp,
 
 	/// The location the file is stored on.
 	location: FileLocation,
@@ -563,36 +563,6 @@ impl File {
 
 		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
 		self.ctime = timestamp;
-	}
-
-	/// Returns the timestamp of the last modification of the file's metadata.
-	pub fn get_ctime(&self) -> Timestamp {
-		self.ctime
-	}
-
-	/// Sets the timestamp of the last modification of the file's metadata.
-	pub fn set_ctime(&mut self, ctime: Timestamp) {
-		self.ctime = ctime;
-	}
-
-	/// Returns the timestamp of the last modification to the file.
-	pub fn get_mtime(&self) -> Timestamp {
-		self.mtime
-	}
-
-	/// Sets the timestamp of the last modification to the file.
-	pub fn set_mtime(&mut self, mtime: Timestamp) {
-		self.mtime = mtime;
-	}
-
-	/// Returns the timestamp of the last access to the file.
-	pub fn get_atime(&self) -> Timestamp {
-		self.atime
-	}
-
-	/// Sets the timestamp of the last access to the file.
-	pub fn set_atime(&mut self, atime: Timestamp) {
-		self.atime = atime;
 	}
 
 	/// Tells whether the directory is empty or not.
