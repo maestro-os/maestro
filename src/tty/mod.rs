@@ -80,7 +80,7 @@ fn get_tab_size(cursor_x: vga::Pos) -> usize {
 // TODO Use the values in winsize
 /// Structure representing a TTY.
 pub struct TTY {
-	/// The id of the TTY. If None, the TTY is the init TTY.
+	/// The id of the TTY. If `None`, the TTY is the init TTY.
 	id: Option<usize>,
 	/// The X position of the cursor in the history
 	cursor_x: vga::Pos,
@@ -126,7 +126,7 @@ static mut INIT_TTY: MaybeUninit<IntMutex<TTY>> = MaybeUninit::uninit();
 /// The list of every TTYs except the init TTY.
 static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
 
-/// The current TTY being displayed on screen. If None, the init TTY is being
+/// The current TTY being displayed on screen. If `None`, the init TTY is being
 /// displayed.
 static CURRENT_TTY: IntMutex<Option<usize>> = IntMutex::new(None);
 
@@ -153,8 +153,8 @@ impl<'a> TTYHandle {
 }
 
 /// Returns a mutable reference to the TTY with identifier `id`.
-/// If `id` is None, the function returns the init TTY.
-/// If the id doesn't exist, the function returns None.
+/// If `id` is `None`, the function returns the init TTY.
+/// If the id doesn't exist, the function returns `None`.
 pub fn get(id: Option<usize>) -> Option<TTYHandle> {
 	if let Some(id) = id {
 		let ttys = TTYS.lock();
@@ -186,7 +186,7 @@ pub fn init() {
 }
 
 /// Switches to TTY with id `id`.
-/// If `id` is None, the init TTY is used.
+/// If `id` is `None`, the init TTY is used.
 /// If the TTY doesn't exist, the function does nothing.
 pub fn switch(id: Option<usize>) {
 	if let Some(tty) = get(id) {

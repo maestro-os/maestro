@@ -125,7 +125,7 @@ impl ACPIData {
 	// TODO Clean
 	/// Reads the ACPI data from memory and returns a buffer containing it with its offset in
 	/// physical memory.
-	/// If no ACPI data is found, the function returns None.
+	/// If no ACPI data is found, the function returns `None`.
 	/// If the data is invalid, the function makes the kernel panic.
 	pub fn read() -> Result<Option<Self>, Errno> {
 		let rsdp = unsafe { find_rsdp() };
@@ -224,7 +224,7 @@ impl ACPIData {
 
 	/// Returns a reference to the ACPI table with type T.
 	/// The table must be Sized.
-	/// If the table doesn't exist, the function returns None.
+	/// If the table doesn't exist, the function returns `None`.
 	pub fn get_table_sized<T: ACPITable>(&self) -> Option<&T> {
 		let rsdt_ptr =
 			unsafe { self.data.as_ptr().add(self.rsdt as usize - self.off) as *const Rsdt };
@@ -264,7 +264,7 @@ impl ACPIData {
 
 	/// Returns a reference to the ACPI table with type T.
 	/// The table must be Unsized.
-	/// If the table doesn't exist, the function returns None.
+	/// If the table doesn't exist, the function returns `None`.
 	pub fn get_table_unsized<T: ACPITable + ?Sized + Pointee<Metadata = usize>>(
 		&self,
 	) -> Option<&T> {

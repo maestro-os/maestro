@@ -140,7 +140,7 @@ pub enum FileType {
 
 impl FileType {
 	/// Returns the type corresponding to the given mode `mode`.
-	/// If the type doesn't exist, the function returns None.
+	/// If the type doesn't exist, the function returns `None`.
 	pub fn from_mode(mode: Mode) -> Option<Self> {
 		match mode & 0o770000 {
 			S_IFSOCK => Some(Self::Socket),
@@ -859,7 +859,7 @@ impl IO for File {
 
 /// Initializes files management.
 ///
-/// `root` is the set of major and minor numbers of the root device. If None, a tmpfs is used.
+/// `root` is the set of major and minor numbers of the root device. If `None`, a tmpfs is used.
 pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	fs::register_defaults()?;
 

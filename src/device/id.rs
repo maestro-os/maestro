@@ -62,7 +62,7 @@ impl MajorBlock {
 	}
 
 	/// Allocates a minor number on the current major number block.
-	/// If `minor` is not None, the function shall allocate the given minor
+	/// If `minor` is not `None`, the function shall allocate the given minor
 	/// number. If the allocation fails, the function returns an Err.
 	pub fn alloc_minor(&mut self, minor: Option<u32>) -> Result<u32, Errno> {
 		self.allocator.alloc(minor)
@@ -87,7 +87,7 @@ static CHAR_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
 /// Allocates a major number.
 /// `device_type` is the type of device for the major block to be allocated.
-/// If `major` is not None, the function shall allocate the specific given major
+/// If `major` is not `None`, the function shall allocate the specific given major
 /// number. If the allocation fails, the function returns an Err.
 pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorBlock, Errno> {
 	let mut major_allocator = match device_type {

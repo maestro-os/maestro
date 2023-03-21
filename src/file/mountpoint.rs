@@ -231,7 +231,7 @@ fn load_fs(
 
 /// Returns the loaded filesystem with the given source `source`.
 /// `take` tells whether the function increments the references count.
-/// If the filesystem isn't loaded, the function returns None.
+/// If the filesystem isn't loaded, the function returns `None`.
 fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>> {
 	let mut container = FILESYSTEMS.lock();
 
@@ -244,7 +244,7 @@ fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>
 }
 
 /// Returns the loaded filesystem with the given source `source`.
-/// If the filesystem isn't loaded, the function returns None.
+/// If the filesystem isn't loaded, the function returns `None`.
 pub fn get_fs(source: &MountSource) -> Option<SharedPtr<dyn Filesystem>> {
 	get_fs_(source, false)
 }

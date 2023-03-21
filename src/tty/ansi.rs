@@ -102,7 +102,7 @@ fn get_vga_color(id: u8) -> vga::Color {
 }
 
 /// Moves the cursor on TTY `tty` in the given direction `d`.
-/// `n` is the number of cells to travel. If None, the default is used (`1`).
+/// `n` is the number of cells to travel. If `None`, the default is used (`1`).
 fn move_cursor(tty: &mut TTY, d: char, n: Option<i16>) -> ANSIState {
 	let n = n.unwrap_or(1);
 
@@ -140,7 +140,7 @@ fn move_cursor(tty: &mut TTY, d: char, n: Option<i16>) -> ANSIState {
 }
 
 /// Handles an Select Graphics Renderition (SGR) command.
-/// `command` is the id of the command. If None, the default is used (`0`).
+/// `command` is the id of the command. If `None`, the default is used (`0`).
 fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 	let command = command.unwrap_or(0);
 

@@ -22,7 +22,7 @@ use core::ffi::c_void;
 /// architecture has its own structure implementing this trait.
 pub trait VMem: FailableClone {
 	/// Translates the given virtual address `ptr` to the corresponding physical
-	/// address. If the address is not mapped, the function returns None.
+	/// address. If the address is not mapped, the function returns `None`.
 	fn translate(&self, ptr: *const c_void) -> Option<*const c_void>;
 
 	/// Tells whether the given pointer `ptr` is mapped or not.

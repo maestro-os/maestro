@@ -351,7 +351,7 @@ impl X86VMem {
 
 	// TODO Adapt to 5 level paging
 	/// Resolves the paging entry for the given pointer. If no entry is found,
-	/// None is returned. The entry must be marked as present to be found. If
+	/// `None` is returned. The entry must be marked as present to be found. If
 	/// Page Size Extension (PSE) is used, an entry of the page directory might
 	/// be returned.
 	pub fn resolve(&self, ptr: *const c_void) -> Option<*const u32> {
@@ -376,7 +376,7 @@ impl X86VMem {
 	/// Resolves the entry for the given virtual address `ptr` and returns its
 	/// flags. This function might return a page directory entry if a large
 	/// block is present at the corresponding location. If no entry is found,
-	/// the function returns None.
+	/// the function returns `None`.
 	pub fn get_flags(&self, ptr: *const c_void) -> Option<u32> {
 		self.resolve(ptr).map(|e| unsafe { *e & FLAGS_MASK })
 	}

@@ -58,7 +58,7 @@ impl MemGap {
 	/// - `size` is the size of the part to consume.
 	///
 	/// The function returns a new gap. If the gap is fully consumed, the
-	/// function returns `(None, None)`.
+	/// function returns `(`None`, None)`.
 	pub fn consume(&self, off: usize, size: usize) -> (Option<Self>, Option<Self>) {
 		// The new gap located before the mapping
 		let left = NonZeroUsize::new(off)

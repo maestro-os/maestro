@@ -511,7 +511,7 @@ impl VFS {
 static VFS: IntMutex<Option<VFS>> = IntMutex::new(None);
 
 /// Returns a mutable reference to the VFS.
-/// If the cache is not initialized, the Option is None. If the function is
+/// If the cache is not initialized, the Option is `None`. If the function is
 /// called from a module, the VFS can be assumed to be initialized.
 pub fn get() -> &'static IntMutex<Option<VFS>> {
 	&VFS

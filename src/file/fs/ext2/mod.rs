@@ -373,7 +373,7 @@ impl Superblock {
 
 	/// Searches in the given bitmap block `bitmap` for the first element that
 	/// is not set. The function returns the index to the element. If every
-	/// elements are set, the function returns None.
+	/// elements are set, the function returns `None`.
 	fn search_bitmap_blk(bitmap: &[u8]) -> Option<u32> {
 		for (i, b) in bitmap.iter().enumerate() {
 			if *b == 0xff {

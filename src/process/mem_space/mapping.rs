@@ -87,7 +87,7 @@ impl MemMapping {
 	/// than 0.
 	/// - `flags` the mapping's flags.
 	/// - `file` is the open file the mapping points to, with an offset in it.
-	/// If None, the mapping doesn't point to any file.
+	/// If `None`, the mapping doesn't point to any file.
 	/// - `vmem` is the virtual memory context handler associated with the mapping.
 	pub fn new(
 		begin: *const c_void,
@@ -151,7 +151,7 @@ impl MemMapping {
 	/// Returns a pointer to the physical page of memory associated with the
 	/// mapping at page offset `offset`.
 	///
-	/// If no page is associated, the function returns None.
+	/// If no page is associated, the function returns `None`.
 	pub fn get_physical_page(&self, offset: usize) -> Option<*const c_void> {
 		if offset >= self.size.get() {
 			return None;

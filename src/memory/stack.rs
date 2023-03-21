@@ -36,7 +36,7 @@ impl<F: FnOnce() -> T, T> StackLambda<F, T> {
 
 /// Executes the given closure `f` while being on the given stack. `stack` is
 /// the pointer to the beginning of the alternate stack.
-/// If the given stack is None, the function allocates a temporary stack.
+/// If the given stack is `None`, the function allocates a temporary stack.
 ///
 /// # Safety
 ///

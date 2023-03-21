@@ -163,7 +163,7 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 }
 
 /// Reinterprets the given slice of bytes as another type.
-/// If the type is too large in size to fit in the slice, the function returns None.
+/// If the type is too large in size to fit in the slice, the function returns `None`.
 ///
 /// # Safety
 ///

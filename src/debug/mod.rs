@@ -57,7 +57,7 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 /// Fills the slice `stack` with the callstack starting at `ebp`. The first
 /// element is the last called function and the last element is the first called
 /// function. When the stack ends, the function fills the rest of the slice with
-/// None.
+/// `None`.
 pub fn get_callstack(ebp: *mut u32, stack: &mut [*mut c_void]) {
 	stack.fill(null_mut::<c_void>());
 

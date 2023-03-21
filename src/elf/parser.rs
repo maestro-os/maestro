@@ -196,7 +196,7 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Returns the section with name `name`. If the section doesn't exist, the
-	/// function returns None.
+	/// function returns `None`.
 	pub fn get_section_by_name(&self, name: &str) -> Option<&ELF32SectionHeader> {
 		let shstr_off = self.get_shstr_offset();
 
@@ -216,7 +216,7 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Returns the symbol with name `name`.
-	/// If the symbol doesn't exist, the function returns None.
+	/// If the symbol doesn't exist, the function returns `None`.
 	pub fn get_symbol_by_name(&self, name: &str) -> Option<&ELF32Sym> {
 		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
 
@@ -239,7 +239,7 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Returns the name of the symbol `sym` using the string table section `strtab`.
-	/// If the symbol name doesn't exist, the function returns None.
+	/// If the symbol name doesn't exist, the function returns `None`.
 	pub fn get_symbol_name(&self, strtab: &ELF32SectionHeader, sym: &ELF32Sym) -> Option<&[u8]> {
 		if sym.st_name != 0 {
 			let begin_off = (strtab.sh_offset + sym.st_name) as usize;
@@ -256,7 +256,7 @@ impl<'a> ELFParser<'a> {
 	}
 
 	/// Returns the path to the ELF's interpreter.
-	/// If the ELF doesn't have an interpreter, the function returns None.
+	/// If the ELF doesn't have an interpreter, the function returns `None`.
 	pub fn get_interpreter_path(&self) -> Option<&[u8]> {
 		self.iter_segments()
 			.filter(|seg| seg.p_type == PT_INTERP)

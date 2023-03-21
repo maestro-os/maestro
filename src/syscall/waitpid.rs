@@ -31,7 +31,7 @@ pub const WNOWAIT: i32 = 0x1000000;
 /// `pid` is the constraint given to the system call.
 /// `i` is the index of the target process.
 /// The function is built such as iterating on `i` until the function returns
-/// None gives every targets for the system call.
+/// `None` gives every targets for the system call.
 fn get_target(curr_proc: &Process, pid: i32, i: usize) -> Option<Pid> {
 	if pid < -1 {
 		let group_processes = curr_proc.get_group_processes();

@@ -169,7 +169,7 @@ impl Chunk {
 
 	/// Returns the reference to the next chunk for splitting the current chunk
 	/// with given size `size`. If the chunk cannot be split, the function
-	/// returns None.
+	/// returns `None`.
 	fn get_split_next_chunk(&mut self, size: usize) -> Option<*mut FreeChunk> {
 		let min_data_size = get_min_chunk_size();
 		let next_ptr = util::align(

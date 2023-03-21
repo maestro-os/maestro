@@ -23,13 +23,13 @@ use crate::util::ptr::IntSharedPtr;
 
 /// Structure representing a TTY device's handle.
 pub struct TTYDeviceHandle {
-	/// The device's TTY. If None, using the current process's TTY.
+	/// The device's TTY. If `None`, using the current process's TTY.
 	tty: Option<TTYHandle>,
 }
 
 impl TTYDeviceHandle {
 	/// Creates a new instance for the given TTY `tty`.
-	/// If `tty` is None, the device works with the current process's TTY.
+	/// If `tty` is `None`, the device works with the current process's TTY.
 	pub fn new(tty: Option<TTYHandle>) -> Self {
 		Self {
 			tty,

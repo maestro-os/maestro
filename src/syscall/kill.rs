@@ -13,7 +13,7 @@ use macros::syscall;
 use super::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
-/// If `sig` is None, the function doesn't send a signal, but still checks if
+/// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	let proc_mutex = Process::get_current().unwrap();
@@ -94,7 +94,7 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.
-/// If `sig` is None, the function doesn't send a signal, but still checks if
+/// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
 	if pid > 0 {

@@ -85,7 +85,7 @@ impl Module {
 	}
 
 	/// Resolves an external symbol from the kernel or another module. If the
-	/// symbol doesn't exist, the function returns None.
+	/// symbol doesn't exist, the function returns `None`.
 	/// `name` is the name of the symbol to look for.
 	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
 		let boot_info = multiboot::get_boot_info();
@@ -109,7 +109,7 @@ impl Module {
 	/// `parser` is the module's parser.
 	/// `name` is the attribute's name.
 	///
-	/// If the attribute doesn't exist, the function returns None.
+	/// If the attribute doesn't exist, the function returns `None`.
 	fn get_module_attibute<'a, T>(mem: &'a [u8], parser: &ELFParser<'a>, name: &str) -> Option<T> {
 		let sym = parser.get_symbol_by_name(name)?;
 

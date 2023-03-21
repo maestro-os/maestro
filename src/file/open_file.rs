@@ -90,7 +90,7 @@ pub struct OpenFile {
 impl OpenFile {
 	/// Returns the open file at the given location.
 	///
-	/// If the location doesn't exist or if the file isn't open, the function returns None.
+	/// If the location doesn't exist or if the file isn't open, the function returns `None`.
 	pub fn get(location: &FileLocation) -> Option<SharedPtr<Self>> {
 		OPEN_FILES.lock()
 			.get(location)

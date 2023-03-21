@@ -40,7 +40,7 @@ impl String {
 	}
 
 	/// Returns a reference to the wrapped string.
-	/// If the string isn't a valid UTF-8 string, the function returns None.
+	/// If the string isn't a valid UTF-8 string, the function returns `None`.
 	pub fn as_str(&self) -> Option<&str> {
 		str::from_utf8(self.as_bytes()).ok()
 	}

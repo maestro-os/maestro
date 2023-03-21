@@ -37,7 +37,7 @@ pub struct MappedVDSO {
 	pub entry: NonNull<c_void>,
 }
 
-/// The info of the vDSO. If None, the vDSO is not loaded yet.
+/// The info of the vDSO. If `None`, the vDSO is not loaded yet.
 static ELF_IMAGE: Mutex<Option<VDSO>> = Mutex::new(None);
 
 /// TODO doc

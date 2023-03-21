@@ -430,21 +430,21 @@ pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
 
 impl Process {
 	/// Returns the process with PID `pid`. If the process doesn't exist, the
-	/// function returns None.
+	/// function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<IntSharedPtr<Self>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_by_pid(pid)
 	}
 
 	/// Returns the process with TID `tid`. If the process doesn't exist, the
-	/// function returns None.
+	/// function returns `None`.
 	pub fn get_by_tid(tid: Pid) -> Option<IntSharedPtr<Self>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_by_tid(tid)
 	}
 
 	/// Returns the current running process. If no process is running, the
-	/// function returns None.
+	/// function returns `None`.
 	pub fn get_current() -> Option<IntSharedPtr<Self>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_current_process()
@@ -923,7 +923,7 @@ impl Process {
 	}
 
 	/// Returns a reference to the process's memory space.
-	/// If the process is terminated, the function returns None.
+	/// If the process is terminated, the function returns `None`.
 	#[inline(always)]
 	pub fn get_mem_space(&self) -> Option<IntSharedPtr<MemSpace>> {
 		self.mem_space.clone()
@@ -1323,7 +1323,7 @@ impl Process {
 
 	/// Returns the ID of the next signal to be executed.
 	/// If no signal is pending or is the process is already handling a signal,
-	/// the function returns None.
+	/// the function returns `None`.
 	pub fn get_next_signal(&self) -> Option<Signal> {
 		if self.is_handling_signal() {
 			return None;

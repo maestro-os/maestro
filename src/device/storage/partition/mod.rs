@@ -46,7 +46,7 @@ impl Partition {
 pub trait Table {
 	/// Reads the partition table from the given storage interface `storage`.
 	/// If the partition table isn't present on the storage interface, the
-	/// function returns None.
+	/// function returns `None`.
 	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno>
 	where
 		Self: Sized;
@@ -61,7 +61,7 @@ pub trait Table {
 }
 
 /// Reads the list of partitions from the given storage interface `storage`.
-/// If no partitions table is present, the function returns None.
+/// If no partitions table is present, the function returns `None`.
 pub fn read(storage: &mut dyn StorageInterface) -> Result<Option<Box<dyn Table>>, Errno> {
 	// Trying GPT
 	match GPT::read(storage)? {

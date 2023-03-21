@@ -256,7 +256,7 @@ type SyscallHandler = &'static dyn Fn(&Regs) -> Result<i32, Errno>;
 
 /// Returns the system call associated with the given ID `id`.
 ///
-/// If the syscall doesn't exist, the function returns None.
+/// If the syscall doesn't exist, the function returns `None`.
 fn get_syscall(id: u32) -> Option<SyscallHandler> {
 	match id {
 		0x001 => Some(&_exit),

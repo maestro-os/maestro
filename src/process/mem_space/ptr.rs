@@ -47,7 +47,7 @@ impl<T: Sized> SyscallPtr<T> {
 	}
 
 	/// Returns an immutable reference to the value of the pointer.
-	/// If the pointer is null, the function returns None.
+	/// If the pointer is null, the function returns `None`.
 	/// If the value is not accessible, the function returns an error.
 	pub fn get<'a, const INT: bool>(
 		&self,
@@ -68,7 +68,7 @@ impl<T: Sized> SyscallPtr<T> {
 	}
 
 	/// Returns a mutable reference to the value of the pointer.
-	/// If the pointer is null, the function returns None.
+	/// If the pointer is null, the function returns `None`.
 	/// If the value is not accessible, the function returns an error.
 	///	If the value is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.

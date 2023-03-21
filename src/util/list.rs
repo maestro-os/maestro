@@ -157,12 +157,12 @@ impl ListNode {
 		self.prev.is_none() && self.next.is_none()
 	}
 
-	/// Returns the previous element if it exsits, or None.
+	/// Returns the previous element if it exists, or `None`.
 	pub fn get_prev(&self) -> Option<&'static mut ListNode> {
 		Some(unsafe { &mut *(self.prev?.as_ptr()) })
 	}
 
-	/// Returns the next element if it exsits, or None.
+	/// Returns the next element if it exists, or `None`.
 	pub fn get_next(&self) -> Option<&'static mut ListNode> {
 		Some(unsafe { &mut *(self.next?.as_ptr()) })
 	}

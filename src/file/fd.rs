@@ -263,7 +263,7 @@ impl FileDescriptorTable {
 
 	/// Returns an immutable reference to the file descriptor with ID `id`.
 	///
-	/// If the file descriptor doesn't exist, the function returns None.
+	/// If the file descriptor doesn't exist, the function returns `None`.
 	pub fn get_fd(&self, id: u32) -> Option<&FileDescriptor> {
 		let result = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id));
 		result.ok().map(|index| &self.fds[index])
@@ -271,7 +271,7 @@ impl FileDescriptorTable {
 
 	/// Returns a mutable reference to the file descriptor with ID `id`.
 	///
-	/// If the file descriptor doesn't exist, the function returns None.
+	/// If the file descriptor doesn't exist, the function returns `None`.
 	pub fn get_fd_mut(&mut self, id: u32) -> Option<&mut FileDescriptor> {
 		let result = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id));
 		result.ok().map(|index| &mut self.fds[index])

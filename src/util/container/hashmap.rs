@@ -64,7 +64,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	}
 
 	/// Returns an immutable reference to the value with the given key `k`. If
-	/// the key isn't present, the function return None.
+	/// the key isn't present, the function return `None`.
 	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
@@ -80,7 +80,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	}
 
 	/// Returns a mutable reference to the value with the given key `k`. If the
-	/// key isn't present, the function return None.
+	/// key isn't present, the function return `None`.
 	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,
@@ -199,7 +199,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	}
 
 	/// Returns an immutable reference to the value with the given key `k`. If
-	/// the key isn't present, the function return None.
+	/// the key isn't present, the function return `None`.
 	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
@@ -215,7 +215,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	}
 
 	/// Returns a mutable reference to the value with the given key `k`. If the
-	/// key isn't present, the function return None.
+	/// key isn't present, the function return `None`.
 	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,

@@ -34,7 +34,7 @@ pub trait PhysicalDevice {
 	fn is_hotplug(&self) -> bool;
 
 	/// Returns the `n`'th BAR.
-	/// If the BAR doesn't exist, the function returns None.
+	/// If the BAR doesn't exist, the function returns `None`.
 	fn get_bar(&self, n: u8) -> Option<BAR>;
 }
 

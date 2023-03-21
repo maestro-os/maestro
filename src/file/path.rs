@@ -102,7 +102,7 @@ impl Path {
 	}
 
 	/// Returns a reference to the last element.
-	/// If the path is empty, the function returns None.
+	/// If the path is empty, the function returns `None`.
 	pub fn last(&self) -> Option<&String> {
 		self.parts.as_slice().last()
 	}

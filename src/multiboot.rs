@@ -397,7 +397,7 @@ pub struct BootInfo {
 	pub elf_sections: *const c_void,
 
 	/// Slice of data representing an initramfs image.
-	/// If None, no initramfs is loaded.
+	/// If `None`, no initramfs is loaded.
 	pub initramfs: Option<&'static [u8]>,
 }
 
