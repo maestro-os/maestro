@@ -177,10 +177,10 @@ pub fn execve(
 		let argv = unsafe { super::util::get_str_array(&*proc, argv)? };
 		let envp = unsafe { super::util::get_str_array(&*proc, envp)? };
 
-		let uid = proc.get_uid();
-		let gid = proc.get_gid();
-		let euid = proc.get_euid();
-		let egid = proc.get_egid();
+		let uid = proc.uid;
+		let gid = proc.gid;
+		let euid = proc.euid;
+		let egid = proc.egid;
 
 		(path, argv, envp, uid, gid, euid, egid)
 	};

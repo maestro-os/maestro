@@ -193,7 +193,7 @@ pub struct Process {
 	tid: Pid,
 
 	/// The argv of the process.
-	argv: Vec<String>,
+	pub argv: Vec<String>,
 	/// The path to the process's executable.
 	exec_path: Path,
 
@@ -201,22 +201,22 @@ pub struct Process {
 	tty: TTYHandle,
 
 	/// The real ID of the process's user owner.
-	uid: Uid,
+	pub uid: Uid,
 	/// The real ID of the process's group owner.
-	gid: Gid,
+	pub gid: Gid,
 
 	/// The effective ID of the process's user owner.
-	euid: Uid,
+	pub euid: Uid,
 	/// The effective ID of the process's group owner.
-	egid: Gid,
+	pub egid: Gid,
 
 	/// The saved user ID of the process's owner.
-	suid: Uid,
+	pub suid: Uid,
 	/// The saved group ID of the process's owner.
-	sgid: Gid,
+	pub sgid: Gid,
 
 	/// The process's current umask.
-	umask: file::Mode,
+	pub umask: file::Mode,
 
 	/// The current state of the process.
 	state: State,
@@ -688,16 +688,6 @@ impl Process {
 		}
 	}
 
-	/// Returns the argv of the process.
-	pub fn get_argv(&self) -> &Vec<String> {
-		&self.argv
-	}
-
-	/// Sets the argv of the process.
-	pub fn set_argv(&mut self, argv: Vec<String>) {
-		self.argv = argv;
-	}
-
 	/// Returns the path to the executable file of the process.
 	pub fn get_exec_path(&self) -> &Path {
 		&self.exec_path
@@ -706,90 +696,6 @@ impl Process {
 	/// Returns the TTY associated with the process.
 	pub fn get_tty(&self) -> TTYHandle {
 		self.tty.clone()
-	}
-
-	/// Returns the process's real user owner ID.
-	#[inline(always)]
-	pub fn get_uid(&self) -> Uid {
-		self.uid
-	}
-
-	/// Sets the process's real user owner ID.
-	#[inline(always)]
-	pub fn set_uid(&mut self, uid: Uid) {
-		self.uid = uid;
-	}
-
-	/// Returns the process's real group owner ID.
-	#[inline(always)]
-	pub fn get_gid(&self) -> Gid {
-		self.gid
-	}
-
-	/// Sets the process's real group owner ID.
-	#[inline(always)]
-	pub fn set_gid(&mut self, gid: Gid) {
-		self.gid = gid;
-	}
-
-	/// Returns the process's effective user owner ID.
-	#[inline(always)]
-	pub fn get_euid(&self) -> Uid {
-		self.euid
-	}
-
-	/// Sets the process's effective user owner ID.
-	#[inline(always)]
-	pub fn set_euid(&mut self, uid: Uid) {
-		self.euid = uid;
-	}
-
-	/// Returns the process's effective group owner ID.
-	#[inline(always)]
-	pub fn get_egid(&self) -> Gid {
-		self.egid
-	}
-
-	/// Sets the process's effective group owner ID.
-	#[inline(always)]
-	pub fn set_egid(&mut self, gid: Gid) {
-		self.egid = gid;
-	}
-
-	/// Returns the process's saved user owner ID.
-	#[inline(always)]
-	pub fn get_suid(&self) -> Uid {
-		self.suid
-	}
-
-	/// Sets the process's saved user owner ID.
-	#[inline(always)]
-	pub fn set_suid(&mut self, uid: Uid) {
-		self.suid = uid;
-	}
-
-	/// Returns the process's saved group owner ID.
-	#[inline(always)]
-	pub fn get_sgid(&self) -> Gid {
-		self.sgid
-	}
-
-	/// Sets the process's saved group owner ID.
-	#[inline(always)]
-	pub fn set_sgid(&mut self, gid: Gid) {
-		self.sgid = gid;
-	}
-
-	/// Returns the file creation mask.
-	#[inline(always)]
-	pub fn get_umask(&self) -> file::Mode {
-		self.umask
-	}
-
-	/// Sets the file creation mask.
-	#[inline(always)]
-	pub fn set_umask(&mut self, umask: file::Mode) {
-		self.umask = umask;
 	}
 
 	/// Returns the process's current state.

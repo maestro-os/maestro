@@ -8,5 +8,5 @@ pub fn getegid(_: &Regs) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let proc = proc_mutex.lock();
 
-	Ok(proc.get_egid() as _)
+	Ok(proc.egid as _)
 }

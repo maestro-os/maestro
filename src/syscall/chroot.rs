@@ -14,8 +14,8 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let mut proc = proc_mutex.lock();
 
-	let uid = proc.get_euid();
-	let gid = proc.get_egid();
+	let uid = proc.euid;
+	let gid = proc.egid;
 
 	// Checking permission
 	if uid != file::ROOT_UID {

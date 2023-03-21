@@ -27,7 +27,7 @@ pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
 		let mut thread = thread_mutex.lock();
 
 		// Checking permissions
-		if thread.can_kill(proc.get_uid()) || thread.can_kill(proc.get_euid()) {
+		if thread.can_kill(proc.uid) || thread.can_kill(proc.euid) {
 			return Err(errno!(EPERM));
 		}
 

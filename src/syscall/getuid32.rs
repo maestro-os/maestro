@@ -9,5 +9,5 @@ pub fn getuid32() -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let proc = proc_mutex.lock();
 
-	Ok(proc.get_uid() as _)
+	Ok(proc.uid as _)
 }

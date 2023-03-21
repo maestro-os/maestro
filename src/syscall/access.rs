@@ -69,9 +69,9 @@ pub fn do_access(
 
 		let (uid, gid) = {
 			if flags & AT_EACCESS != 0 {
-				(proc.get_euid(), proc.get_egid())
+				(proc.euid, proc.egid)
 			} else {
-				(proc.get_uid(), proc.get_gid())
+				(proc.uid, proc.gid)
 			}
 		};
 

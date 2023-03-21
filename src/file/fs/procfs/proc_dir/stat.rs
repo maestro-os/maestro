@@ -26,7 +26,7 @@ impl KernFSNode for Stat {
 
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			proc_mutex.lock().get_euid()
+			proc_mutex.lock().euid
 		} else {
 			0
 		}
@@ -34,7 +34,7 @@ impl KernFSNode for Stat {
 
 	fn get_gid(&self) -> Gid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			proc_mutex.lock().get_egid()
+			proc_mutex.lock().egid
 		} else {
 			0
 		}
@@ -58,8 +58,7 @@ impl IO for Stat {
 		let proc_mutex = Process::get_by_pid(self.pid).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
 
-		let name = proc
-			.get_argv()
+		let name = proc.argv
 			.iter()
 			.map(|name| unsafe { name.as_str_unchecked() })
 			.next()

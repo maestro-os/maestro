@@ -22,7 +22,7 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 			let proc_mutex = Process::get_current().unwrap();
 			let proc = proc_mutex.lock();
 
-			if proc.get_uid() != 0 {
+			if proc.uid != 0 {
 				return Err(errno!(EPERM));
 			}
 

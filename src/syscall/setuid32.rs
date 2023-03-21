@@ -12,10 +12,10 @@ pub fn setuid32(uid: Uid) -> Result<i32, Errno> {
 	let mut proc = proc_mutex.lock();
 
 	// TODO Implement correctly
-	if proc.get_uid() == ROOT_UID && proc.get_euid() == ROOT_UID {
-		proc.set_uid(uid);
-		proc.set_euid(uid);
-		proc.set_suid(uid);
+	if proc.uid == ROOT_UID && proc.euid == ROOT_UID {
+		proc.uid = uid;
+		proc.euid = uid;
+		proc.suid = uid;
 
 		Ok(0)
 	} else {

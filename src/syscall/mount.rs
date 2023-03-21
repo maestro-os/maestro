@@ -50,7 +50,7 @@ pub fn mount(
 			let mut vfs = vfs::get().lock();
 			let vfs = vfs.as_mut().unwrap();
 
-			vfs.get_file_from_path(&target_path, proc.get_euid(), proc.get_egid(), true)?
+			vfs.get_file_from_path(&target_path, proc.euid, proc.egid, true)?
 		};
 		let target_file = target_mutex.lock();
 

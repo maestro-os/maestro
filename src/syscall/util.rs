@@ -168,8 +168,8 @@ pub fn get_file_at(
 			Err(errno!(ENOENT))
 		}
 	} else {
-		let uid = process.get_euid();
-		let gid = process.get_egid();
+		let uid = process.euid;
+		let gid = process.egid;
 
 		let path = build_path_from_fd(&process, dirfd, pathname)?;
 
@@ -198,8 +198,8 @@ pub fn get_parent_at_with_name(
 	let mut path = build_path_from_fd(&process, dirfd, pathname)?;
 	let name = path.pop().unwrap();
 
-	let uid = process.get_euid();
-	let gid = process.get_egid();
+	let uid = process.euid;
+	let gid = process.egid;
 
 	// Unlocking to avoid deadlock with procfs
 	drop(process);
@@ -229,10 +229,9 @@ pub fn create_file_at(
 	mode: Mode,
 	content: FileContent,
 ) -> Result<SharedPtr<File>, Errno> {
-	let uid = process.get_euid();
-	let gid = process.get_egid();
-	let umask = process.get_umask();
-	let mode = mode & !umask;
+	let uid = process.euid;
+	let gid = process.egid;
+	let mode = mode & !process.umask;
 
 	let (parent_mutex, name) =
 		get_parent_at_with_name(process, follow_links, dirfd, pathname)?;

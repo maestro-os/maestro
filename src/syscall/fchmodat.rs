@@ -23,7 +23,7 @@ pub fn fchmodat(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let uid = proc.get_euid();
+		let uid = proc.euid;
 
 		let pathname = pathname
 			.get(&mem_space_guard)?

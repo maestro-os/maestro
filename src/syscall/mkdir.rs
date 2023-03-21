@@ -17,9 +17,9 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
 
-		let mode = mode & !proc.get_umask();
-		let uid = proc.get_uid();
-		let gid = proc.get_gid();
+		let mode = mode & !proc.umask;
+		let uid = proc.uid;
+		let gid = proc.gid;
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();

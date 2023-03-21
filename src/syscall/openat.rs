@@ -77,7 +77,7 @@ pub fn openat(
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
 
-		(proc.get_euid(), proc.get_egid())
+		(proc.euid, proc.egid)
 	};
 
 	let (loc, read, write, cloexec) = {

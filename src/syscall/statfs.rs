@@ -23,7 +23,7 @@ pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno
 		let path = Path::from_str(path, true)?;
 		let path = super::util::get_absolute_path(&*proc, path)?;
 
-		(path, proc.get_euid(), proc.get_egid())
+		(path, proc.euid, proc.egid)
 	};
 
 	let file_mutex = {

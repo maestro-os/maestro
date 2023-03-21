@@ -17,7 +17,7 @@ pub fn delete_module(name: SyscallString, _flags: c_uint) -> Result<i32, Errno> 
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
 
-		if proc.get_euid() != 0 {
+		if proc.euid != 0 {
 			return Err(errno!(EPERM));
 		}
 

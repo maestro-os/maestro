@@ -10,8 +10,8 @@ pub fn umask(mask: file::Mode) -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let mut proc = proc_mutex.lock();
 
-	let prev = proc.get_umask();
-	proc.set_umask(mask & 0o777);
+	let prev = proc.umask;
+	proc.umask = mask & 0o777;
 
 	Ok(prev as _)
 }

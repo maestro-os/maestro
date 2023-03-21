@@ -18,7 +18,7 @@ pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	// Checking permission
-	if proc.get_euid() != file::ROOT_UID {
+	if proc.euid != file::ROOT_UID {
 		return Err(errno!(EPERM));
 	}
 

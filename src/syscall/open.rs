@@ -142,9 +142,9 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 		let abs_path = super::util::get_absolute_path(&proc, path)?;
 
-		let mode = mode & !proc.get_umask();
-		let uid = proc.get_euid();
-		let gid = proc.get_egid();
+		let mode = mode & !proc.umask;
+		let uid = proc.euid;
+		let gid = proc.egid;
 
 		(abs_path, mode, uid, gid)
 	};

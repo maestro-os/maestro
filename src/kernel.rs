@@ -226,10 +226,10 @@ fn init(init_path: String) -> Result<(), Errno> {
 		let mut file = file_mutex.lock();
 
 		let exec_info = ExecInfo {
-			uid: proc.get_uid(),
-			euid: proc.get_euid(),
-			gid: proc.get_gid(),
-			egid: proc.get_egid(),
+			uid: proc.uid,
+			euid: proc.euid,
+			gid: proc.gid,
+			egid: proc.egid,
 
 			argv: vec![init_path]?,
 			envp: env,

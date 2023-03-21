@@ -17,7 +17,7 @@ pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
 
-		let uid = proc.get_euid();
+		let uid = proc.euid;
 
 		let fds_mutex = proc.get_fds().unwrap();
 		let fds = fds_mutex.lock();

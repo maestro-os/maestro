@@ -23,8 +23,8 @@ pub fn linkat(
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
 
-		let euid = proc.get_euid();
-		let egid = proc.get_egid();
+		let euid = proc.euid;
+		let egid = proc.egid;
 
 		let mem_space = proc.get_mem_space().clone().unwrap();
 		let mem_space_guard = mem_space.lock();

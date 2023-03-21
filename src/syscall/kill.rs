@@ -20,8 +20,8 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let mut curr_proc = proc_mutex.lock();
 
-	let uid = curr_proc.get_uid();
-	let euid = curr_proc.get_euid();
+	let uid = curr_proc.uid;
+	let euid = curr_proc.euid;
 
 	// Closure sending the signal
 	let f = |target: &mut Process| {

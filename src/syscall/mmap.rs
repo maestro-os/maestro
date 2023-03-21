@@ -86,8 +86,8 @@ pub fn do_mmap(
 	let proc_mutex = Process::get_current().unwrap();
 	let proc = proc_mutex.lock();
 
-	let uid = proc.get_euid();
-	let gid = proc.get_egid();
+	let uid = proc.euid;
+	let gid = proc.egid;
 
 	// The file the mapping points to
 	let open_file_mutex = if fd >= 0 {

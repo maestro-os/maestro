@@ -28,7 +28,7 @@ pub fn readlink(
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 		let path = super::util::get_absolute_path(&*proc, path)?;
 
-		(path, proc.get_euid(), proc.get_egid())
+		(path, proc.euid, proc.egid)
 	};
 
 	// Getting link's target

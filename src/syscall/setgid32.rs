@@ -12,10 +12,10 @@ pub fn setgid32(gid: Gid) -> Result<i32, Errno> {
 	let mut proc = proc_mutex.lock();
 
 	// TODO Implement correctly
-	if proc.get_gid() == ROOT_GID && proc.get_egid() == ROOT_GID {
-		proc.set_gid(gid);
-		proc.set_egid(gid);
-		proc.set_sgid(gid);
+	if proc.gid == ROOT_GID && proc.egid == ROOT_GID {
+		proc.gid = gid;
+		proc.egid = gid;
+		proc.sgid = gid;
 
 		Ok(0)
 	} else {

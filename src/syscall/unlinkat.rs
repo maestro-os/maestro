@@ -14,8 +14,8 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
 
-		let uid = proc.get_euid();
-		let gid = proc.get_egid();
+		let uid = proc.euid;
+		let gid = proc.egid;
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
