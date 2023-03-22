@@ -1,5 +1,6 @@
 //! The `connect` system call connects a socket to a distant host.
 
+use core::any::Any;
 use core::ffi::c_int;
 use crate::errno::Errno;
 use crate::file::buffer::socket::SockState;
@@ -19,10 +20,8 @@ pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: usize) -> Result<
 	let proc_mutex = Process::get_current().unwrap();
 	let proc = proc_mutex.lock();
 
-	let uid = proc.euid;
-	let gid = proc.egid;
-
-	let mem_space = proc.get_mem_space().unwrap().lock();
+	let mem_space_mutex = proc.get_mem_space().unwrap();
+	let mem_space = mem_space_mutex.lock();
 	let addr_slice = addr.get(&mem_space, addrlen)?.ok_or_else(|| errno!(EFAULT))?;
 
 	let fds_mutex = proc.get_fds().unwrap();
@@ -33,8 +32,8 @@ pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: usize) -> Result<
 	let open_file = open_file_mutex.lock();
 
 	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;
-	let sock = sock_mutex.lock();
-	let sock = sock.downcast_ref::<Socket>().unwrap();
+	let mut sock = sock_mutex.lock();
+	let sock = (&mut *sock as &mut dyn Any).downcast_mut::<Socket>().unwrap();
 
 	sock.connect(addr_slice)?;
 

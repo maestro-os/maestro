@@ -37,7 +37,6 @@ pub fn socketpair(
 	}
 
 	let sock = Socket::new(sock_domain, sock_type, protocol)?;
-	let sock2 = sock.clone();
 
 	let loc = buffer::register(None, sock)?;
 	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
@@ -46,7 +45,10 @@ pub fn socketpair(
 	let mut fds = fds_mutex.lock();
 
 	let fd0 = fds.create_fd(loc.clone(), 0, true, true)?;
+	sv_slice[0] = fd0.get_id() as _;
+
 	let fd1 = fds.create_fd(loc, 0, true, true)?;
+	sv_slice[1] = fd1.get_id() as _;
 
 	Ok(0)
 }
