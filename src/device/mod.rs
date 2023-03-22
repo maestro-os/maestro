@@ -20,7 +20,6 @@ pub mod driver;
 pub mod id;
 pub mod keyboard;
 pub mod manager;
-pub mod network;
 pub mod serial;
 pub mod storage;
 pub mod tty;
