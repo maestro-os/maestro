@@ -13,8 +13,9 @@ pub trait Driver {
 	/// Returns the name of the driver.
 	fn get_name(&self) -> &str;
 
-	/// Function called when a new device is plugged in. If the driver is not
-	/// compatible with the device, the function shall ignore it.
+	/// Function called when a new device is plugged in.
+	///
+	/// If the driver is not compatible with the device, the function shall ignore it.
 	fn on_plug(&self, dev: &dyn PhysicalDevice);
 
 	/// Function called when a device in unplugged.
@@ -30,6 +31,12 @@ pub fn register<D: 'static + Driver>(driver: D) -> Result<(), Errno> {
 
 	let m = SharedPtr::new(driver)?;
 	drivers.push(m)
+}
+
+/// Unregisters the driver with the given name.
+pub fn unregister(_name: &str) -> Result<(), Errno> {
+	// TODO
+	todo!();
 }
 
 /// Returns the driver with name `name`.

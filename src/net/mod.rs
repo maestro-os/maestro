@@ -60,3 +60,17 @@ pub trait Interface {
 
 /// The list of network interfaces.
 pub static INTERFACES: Mutex<Vec<Box<dyn Interface>>> = Mutex::new(Vec::new());
+
+/// Registers the given network interface.
+pub fn register_iface<I: 'static + Interface>(iface: I) -> Result<(), Errno> {
+	let mut interfaces = INTERFACES.lock();
+
+	let i = Box::new(iface)?;
+	interfaces.push(i)
+}
+
+/// Unregisters the network interface with the given name.
+pub fn unregister_iface(_name: &str) {
+	// TODO
+	todo!();
+}
