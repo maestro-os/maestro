@@ -9,12 +9,8 @@ pub mod tcp;
 
 use crate::errno::Errno;
 use crate::util::boxed::Box;
-use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
-
-/// The size of the receive ring buffer for each interface.
-const RX_BUFF_SIZE: usize = 4096;
 
 /// Type representing a Media Access Control (MAC) address.
 pub type MAC = [u8; 6];
@@ -52,33 +48,15 @@ pub trait Interface {
 	fn get_addresses(&self) -> &[BindAddress];
 
 	/// Reads data from the network interface and writes it into `buff`.
+	///
 	/// The function returns the number of bytes read.
 	fn read(&mut self, buff: &mut [u8]) -> Result<(u64, bool), Errno>;
 
 	/// Reads data from `buff` and writes it into the network interface.
+	///
 	/// The function returns the number of bytes written.
 	fn write(&mut self, buff: &[u8]) -> Result<u64, Errno>;
 }
 
-/// A link layer.
-pub struct LinkLayer {
-	/// The network interface.
-	iface: Box<dyn Interface>,
-
-	/// The ring buffer used to receive packets.
-	rx_buff: RingBuffer<u8, Vec<u8>>,
-}
-
-impl LinkLayer {
-	/// Creates a new instance.
-	pub fn new(iface: Box<dyn Interface>) -> Result<Self, Errno> {
-		Ok(Self {
-			iface,
-
-			rx_buff: RingBuffer::new(crate::vec![0; RX_BUFF_SIZE]?),
-		})
-	}
-}
-
-/// The current list of interfaces. The container stores link layers, one for each interface.
-static INTERFACES: Mutex<Vec<LinkLayer>> = Mutex::new(Vec::new());
+/// The list of network interfaces.
+pub static INTERFACES: Mutex<Vec<Box<dyn Interface>>> = Mutex::new(Vec::new());

@@ -1,6 +1,7 @@
 //! This module implements the local loopback.
 
 use crate::errno::Errno;
+use super::Address;
 use super::BindAddress;
 use super::Interface;
 use super::MAC;
@@ -18,11 +19,25 @@ impl Interface for LocalLoopback {
 	}
 
 	fn get_mac(&self) -> &MAC {
-		&[0xff; 6]
+		&[0x00; 6]
 	}
 
 	fn get_addresses(&self) -> &[BindAddress] {
-		&[]
+		&[
+			BindAddress {
+				addr: Address::IPv4([127, 0, 0, 1]),
+				subnet_mask: 8,
+			},
+			BindAddress {
+				addr: Address::IPv6([
+					0x00, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x01
+				]),
+				subnet_mask: 128,
+			},
+		]
 	}
 
 	fn read(&mut self, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
