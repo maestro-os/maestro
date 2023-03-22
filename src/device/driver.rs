@@ -34,7 +34,7 @@ pub fn register<D: 'static + Driver>(driver: D) -> Result<(), Errno> {
 }
 
 /// Unregisters the driver with the given name.
-pub fn unregister(_name: &str) -> Result<(), Errno> {
+pub fn unregister(_name: &str) {
 	// TODO
 	todo!();
 }
