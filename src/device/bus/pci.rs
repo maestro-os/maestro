@@ -436,7 +436,8 @@ impl PCIManager {
 					read_data(bus, device, func, 0, &mut data);
 
 					// Enabling Memory space and I/O space for BARs
-					write_long(bus, device, func, 0x4, data[1] | 0b11);
+					data[1] |= 0b11;
+					write_long(bus, device, func, 0x1, data[1]);
 
 					// Registering the device
 					let dev = PCIDevice::new(bus, device, func, &data);
