@@ -147,8 +147,8 @@ fn init_vmem() -> Result<(), Errno> {
 	)?;
 
 	// Mapping VGA's buffer
-	let vga_flags =
-		vmem::x86::FLAG_CACHE_DISABLE | vmem::x86::FLAG_WRITE_THROUGH | vmem::x86::FLAG_WRITE;
+	let vga_flags = vmem::x86::FLAG_CACHE_DISABLE | vmem::x86::FLAG_WRITE_THROUGH
+		| vmem::x86::FLAG_WRITE | vmem::x86::FLAG_GLOBAL;
 	kernel_vmem.map_range(
 		vga::BUFFER_PHYS as _,
 		vga::get_buffer_virt() as _,

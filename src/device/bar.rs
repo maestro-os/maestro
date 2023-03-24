@@ -97,12 +97,12 @@ impl BAR {
 				..
 			} => match type_ {
 				BARType::Size32 => unsafe {
-					let addr = (*address as *const u32).add(off);
+					let addr = (address + off as u64) as *const u32;
 					ptr::read_volatile::<u32>(addr).into()
 				},
 
 				BARType::Size64 => unsafe {
-					let addr = (*address as *const u64).add(off);
+					let addr = (address + off as u64) as *const u64;
 					ptr::read_volatile::<u64>(addr)
 				},
 			},
@@ -136,12 +136,12 @@ impl BAR {
 				..
 			} => match type_ {
 				BARType::Size32 => unsafe {
-					let addr = (*address as *mut u32).add(off);
+					let addr = (address + off as u64) as *mut u32;
 					ptr::write_volatile::<u32>(addr, val as _);
 				},
 
 				BARType::Size64 => unsafe {
-					let addr = (*address as *mut u64).add(off);
+					let addr = (address + off as u64) as *mut u64;
 					ptr::write_volatile::<u64>(addr, val);
 				},
 			},
