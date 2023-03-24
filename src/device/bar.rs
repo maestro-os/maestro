@@ -36,7 +36,7 @@ pub enum BAR {
 
 		/// The size of the address space in bytes.
 		size: usize,
-	},
+	}
 }
 
 impl BAR {
@@ -48,6 +48,7 @@ impl BAR {
 				size,
 				..
 			} => (*address, *size),
+
 			Self::IOSpace {
 				address,
 				size,
@@ -68,6 +69,7 @@ impl BAR {
 			Self::MemorySpace {
 				size, ..
 			} => *size,
+
 			Self::IOSpace {
 				size, ..
 			} => *size,
@@ -80,6 +82,7 @@ impl BAR {
 			Self::MemorySpace {
 				prefetchable, ..
 			} => *prefetchable,
+
 			Self::IOSpace {
 				..
 			} => false,
@@ -99,13 +102,13 @@ impl BAR {
 				BARType::Size32 => unsafe {
 					let addr = (address + off as u64) as *const u32;
 					ptr::read_volatile::<u32>(addr).into()
-				},
+				}
 
 				BARType::Size64 => unsafe {
 					let addr = (address + off as u64) as *const u64;
 					ptr::read_volatile::<u64>(addr)
-				},
-			},
+				}
+			}
 
 			Self::IOSpace {
 				address, ..
@@ -138,13 +141,13 @@ impl BAR {
 				BARType::Size32 => unsafe {
 					let addr = (address + off as u64) as *mut u32;
 					ptr::write_volatile::<u32>(addr, val as _);
-				},
+				}
 
 				BARType::Size64 => unsafe {
 					let addr = (address + off as u64) as *mut u64;
 					ptr::write_volatile::<u64>(addr, val);
-				},
-			},
+				}
+			}
 
 			Self::IOSpace {
 				address, ..

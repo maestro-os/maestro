@@ -143,7 +143,7 @@ fn init_vmem() -> Result<(), Errno> {
 		null::<c_void>(),
 		memory::PROCESS_END,
 		memory::get_kernelspace_size() / memory::PAGE_SIZE,
-		vmem::x86::FLAG_WRITE | vmem::x86::FLAG_GLOBAL,
+		vmem::x86::FLAG_WRITE,
 	)?;
 
 	// Mapping VGA's buffer
