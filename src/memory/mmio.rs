@@ -3,6 +3,7 @@
 
 use core::ffi::c_void;
 use crate::errno::Errno;
+use crate::process::oom;
 use super::buddy;
 use super::vmem;
 
@@ -67,7 +68,7 @@ impl MMIO {
 	/// Unmaps the MMIO chunk.
 	///
 	/// The previously allocated chunk is freed by this function.
-	pub fn unmap(self) -> Result<(), Errno> {
+	pub fn unmap(&self) -> Result<(), Errno> {
 		let mut vmem = crate::get_vmem().lock();
 		vmem.as_mut().unwrap().map_range(
 			self.phys_addr,
@@ -80,5 +81,11 @@ impl MMIO {
 		buddy::free_kernel(self.phys_addr, order);
 
 		Ok(())
+	}
+}
+
+impl Drop for MMIO {
+	fn drop(&mut self) {
+		oom::wrap(|| self.unmap());
 	}
 }

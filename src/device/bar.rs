@@ -41,25 +41,17 @@ pub enum BAR {
 
 impl BAR {
 	/// Returns the base address.
-	pub fn get_physical_address(&self) -> Option<*mut ()> {
-		let (addr, size) = match self {
+	pub fn get_address(&self) -> *mut () {
+		match self {
 			Self::MemorySpace {
 				address,
-				size,
 				..
-			} => (*address, *size),
+			} => *address as _,
 
 			Self::IOSpace {
 				address,
-				size,
 				..
-			} => (*address, *size),
-		};
-
-		if (addr + size as u64) > usize::MAX as u64 {
-			Some(addr as _)
-		} else {
-			None
+			} => *address as _,
 		}
 	}
 
