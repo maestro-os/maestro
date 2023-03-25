@@ -10,17 +10,20 @@
 //! specify the address of the device's registers in memory, allowing
 //! communications through DMA (Direct Memory Access).
 
-use crate::device::bar::BARType;
-use crate::device::bar::BAR;
-use crate::device::driver;
-use crate::device::manager;
-use crate::device::manager::PhysicalDevice;
-use crate::device::DeviceManager;
-use crate::errno::Errno;
-use crate::io;
-use crate::util::container::vec::Vec;
 use core::cmp::min;
 use core::mem::size_of;
+use crate::device::DeviceManager;
+use crate::device::bar::BAR;
+use crate::device::bar::BARType;
+use crate::device::driver;
+use crate::device::manager::PhysicalDevice;
+use crate::device::manager;
+use crate::errno::Errno;
+use crate::io;
+use crate::memory::mmio::MMIO;
+use crate::memory;
+use crate::util::container::vec::Vec;
+use crate::util::math;
 
 /// The port used to specify the configuration address.
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
@@ -180,9 +183,138 @@ pub struct PCIDevice {
 
 	/// Additional informations about the device.
 	info: [u32; 12],
+
+	/// The list of BARs for the device.
+	bars: Vec<Option<BAR>>,
+	/// The list of MMIOs associated with the device's BARs.
+	mmios: Vec<MMIO>,
 }
 
 impl PCIDevice {
+	/// Returns the maximum number of BARs for the current device.
+	fn get_max_bars_count(&self) -> u8 {
+		match self.header_type {
+			0x00 => 6,
+			0x01 => 2,
+
+			_ => 0,
+		}
+	}
+
+	/// Returns the offset of the register for the `n`th BAR.
+	fn get_bar_reg_off(&self, n: u8) -> Option<u16> {
+		if n < self.get_max_bars_count() {
+			Some(0x4 + n as u16)
+		} else {
+			None
+		}
+	}
+
+	/// Returns the size of the address space of the `n`th BAR.
+	///
+	/// `io` tells whether the BAR is in I/O space.
+	fn get_bar_size(&self, n: u8, io: bool) -> Option<usize> {
+		let reg_off = self.get_bar_reg_off(n)?;
+		// Saving the register
+		let save = read_long(self.bus, self.device, self.function, reg_off as _);
+
+		// Writing all 1s on register
+		write_long(self.bus, self.device, self.function, reg_off as _, !0u32);
+
+		let mut size =
+			(!read_long(self.bus, self.device, self.function, reg_off as _)).wrapping_add(1);
+		if io {
+			size &= 0xffff;
+		}
+
+		// Restoring the register's value
+		write_long(self.bus, self.device, self.function, reg_off as _, save);
+
+		Some(size as _)
+	}
+
+	/// Loads and returns the `n`th BAR.
+	///
+	/// If it doesn't exist, the function returns `None`.
+	///
+	/// A BAR may be accompanied with an MMIO, allowing to map a portion of virtual memory in order
+	/// to make the BAR accessible.
+	///
+	/// Dropping the MMIO makes using the associated BAR an undefined behaviour.
+	fn load_bar(&self, n: u8) -> Result<Option<(BAR, Option<MMIO>)>, Errno> {
+		let Some(bar_off) = self.get_bar_reg_off(n) else {
+			return Ok(None);
+		};
+
+		// The BAR's value
+		let value = read_long(self.bus, self.device, self.function, bar_off as _);
+		// Tells whether the BAR is in IO space.
+		let io = (value & 0b1) != 0;
+		// The address space's size
+		let size = self.get_bar_size(n, io).unwrap();
+
+		if !io {
+			let type_ = match ((value >> 1) & 0b11) as u8 {
+				0x0 => BARType::Size32,
+				0x2 => BARType::Size64,
+
+				_ => return Ok(None),
+			};
+			let mut address = match type_ {
+				BARType::Size32 => (value & 0xfffffff0) as u64,
+
+				BARType::Size64 => {
+					let Some(next_bar_off) = self.get_bar_reg_off(n + 1) else {
+						return Ok(None);
+					};
+
+					// The next BAR's value
+					let next_value = read_long(
+						self.bus,
+						self.device,
+						self.function,
+						next_bar_off as _
+					);
+					(value & 0xfffffff0) as u64 | ((next_value as u64) << 32)
+				}
+			};
+			if address == 0 {
+				return Ok(None);
+			}
+
+			// Create MMIO
+			let pages = math::ceil_div(size, memory::PAGE_SIZE);
+			let mut mmio = MMIO::new(address as _, pages)?;
+			address = mmio.as_mut_ptr() as _;
+
+			Ok(Some((
+				BAR::MemorySpace {
+					type_,
+					prefetchable: value & 0b1000 != 0,
+
+					address,
+
+					size,
+				},
+				Some(mmio)
+			)))
+		} else {
+			let address = (value & 0xfffffffc) as u64;
+			if address == 0 {
+				return Ok(None);
+			}
+
+			Ok(Some((
+				BAR::IOSpace {
+					address,
+
+					size,
+				},
+				None
+			)))
+		}
+	}
+
 	/// Creates a new instance of PCI device.
 	///
 	/// Arguments:
@@ -190,8 +322,8 @@ impl PCIDevice {
 	/// - `device` is the device number on the bus.
 	/// - `function` is the function number on the device.
 	/// - `data` is the data returned by the PCI.
-	fn new(bus: u8, device: u8, function: u8, data: &[u32; 16]) -> Self {
-		Self {
+	fn new(bus: u8, device: u8, function: u8, data: &[u32; 16]) -> Result<Self, Errno> {
+		let mut dev = Self {
 			bus,
 			device,
 			function,
@@ -216,7 +348,35 @@ impl PCIDevice {
 				data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12],
 				data[13], data[14], data[15],
 			],
+
+			bars: Vec::new(),
+			mmios: Vec::new(),
+		};
+
+		// Load BARs
+		let mut i = 0;
+		while i < dev.get_max_bars_count() {
+			let bar = if let Some((bar, mmio)) = dev.load_bar(i)? {
+				// Skip the next BAR if necessary
+				match &bar {
+					BAR::MemorySpace { type_, ..  } if matches!(type_, BARType::Size64) => i += 1,
+					_ => {},
+				}
+
+				if let Some(mmio) = mmio {
+					dev.mmios.push(mmio)?;
+				}
+
+				Some(bar)
+			} else {
+				None
+			};
+			dev.bars.push(bar)?;
+
+			i += 1;
 		}
+
+		Ok(dev)
 	}
 
 	/// Returns the PCI bus ID.
@@ -242,44 +402,6 @@ impl PCIDevice {
 	pub fn get_header_type(&self) -> u8 {
 		// Clear the Multi-Function flag
 		self.header_type & 0b01111111
-	}
-
-	/// Returns the offset of the register for the `n`th BAR.
-	fn get_bar_reg_off(&self, n: u8) -> Option<u16> {
-		let limit = match self.get_header_type() {
-			0x00 => 6,
-			0x01 => 2,
-			_ => 0,
-		};
-
-		if n < limit {
-			Some(0x4 + n as u16)
-		} else {
-			None
-		}
-	}
-
-	/// Returns the size of the address space of the `n`th BAR.
-	///
-	/// `io` tells whether the BAR is in IO space.
-	pub fn get_bar_size(&self, n: u8, io: bool) -> Option<usize> {
-		let reg_off = self.get_bar_reg_off(n)?;
-		// Saving the register
-		let save = read_long(self.bus, self.device, self.function, reg_off as _);
-
-		// Writing all 1s on register
-		write_long(self.bus, self.device, self.function, reg_off as _, !0u32);
-
-		let mut size =
-			(!read_long(self.bus, self.device, self.function, reg_off as _)).wrapping_add(1);
-		if io {
-			size &= 0xffff;
-		}
-
-		// Restoring the register's value
-		write_long(self.bus, self.device, self.function, reg_off as _, save);
-
-		Some(size as _)
 	}
 
 	/// Returns the interrupt PIN used by the device.
@@ -327,52 +449,8 @@ impl PhysicalDevice for PCIDevice {
 		false
 	}
 
-	fn get_bar(&self, n: u8) -> Option<BAR> {
-		let bar_off = self.get_bar_reg_off(n)?;
-		// The BAR's value
-		let value = read_long(self.bus, self.device, self.function, bar_off as _);
-		// Tells whether the BAR is in IO space.
-		let io = (value & 0b1) != 0;
-		// The address space's size
-		let size = self.get_bar_size(n, io).unwrap();
-
-		let bar = if !io {
-			let type_ = match ((value >> 1) & 0b11) as u8 {
-				0x0 => BARType::Size32,
-				0x2 => BARType::Size64,
-
-				_ => return None,
-			};
-			let address = match type_ {
-				BARType::Size32 => (value & 0xfffffff0) as u64,
-
-				BARType::Size64 => {
-					// The next BAR's value
-					let next_bar_off = self.get_bar_reg_off(n + 1)?;
-					let next_value =
-						read_long(self.bus, self.device, self.function, next_bar_off as _);
-
-					(value & 0xfffffff0) as u64 | ((next_value as u64) << 32)
-				}
-			};
-
-			BAR::MemorySpace {
-				type_,
-				prefetchable: value & 0b1000 != 0,
-
-				address,
-
-				size,
-			}
-		} else {
-			BAR::IOSpace {
-				address: (value & 0xfffffffc) as u64,
-
-				size,
-			}
-		};
-
-		Some(bar)
+	fn get_bars(&self) -> &[Option<BAR>] {
+		&self.bars
 	}
 }
 
@@ -440,7 +518,7 @@ impl PCIManager {
 					write_long(bus, device, func, 0x1, data[1]);
 
 					// Registering the device
-					let dev = PCIDevice::new(bus, device, func, &data);
+					let dev = PCIDevice::new(bus, device, func, &data)?;
 					driver::on_plug(&dev);
 					manager::on_plug(&dev)?;
 					self.devices.push(dev)?;

@@ -88,23 +88,24 @@ pub struct Controller {
 impl Controller {
 	/// Creates a new instance from the given `PhysicalDevice`.
 	///
-	/// If the given device is not an IDE controller, the behaviour is
-	/// undefined.
-	pub fn new(dev: &dyn PhysicalDevice) -> Self {
-		debug_assert_eq!(dev.get_class(), pci::CLASS_MASS_STORAGE_CONTROLLER);
-		debug_assert_eq!(dev.get_subclass(), 0x01);
+	/// If the given device is not an IDE controller, the function returns `None`.
+	pub fn new(dev: &dyn PhysicalDevice) -> Option<Self> {
+		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER || dev.get_subclass() != 0x01 {
+			return None;
+		}
 
-		Self {
+		let bars = dev.get_bars();
+		Some(Self {
 			prog_if: dev.get_prog_if(),
 
 			bars: [
-				dev.get_bar(0),
-				dev.get_bar(1),
-				dev.get_bar(2),
-				dev.get_bar(3),
-				dev.get_bar(4),
+				bars[0].clone(),
+				bars[1].clone(),
+				bars[2].clone(),
+				bars[3].clone(),
+				bars[4].clone(),
 			],
-		}
+		})
 	}
 
 	/// Tells whether the primary bus of the controller is in PCI mode.

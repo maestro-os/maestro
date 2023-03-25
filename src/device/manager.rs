@@ -35,10 +35,8 @@ pub trait PhysicalDevice {
 	/// Tells whether the device is a hotplug device or not.
 	fn is_hotplug(&self) -> bool;
 
-	/// Returns the `n`'th BAR.
-	///
-	/// If the BAR doesn't exist, the function returns `None`.
-	fn get_bar(&self, n: u8) -> Option<BAR>;
+	/// Returns the list of available BARs for the device.
+	fn get_bars(&self) -> &[Option<BAR>];
 }
 
 /// Trait representing a structure managing the link between physical devices

@@ -23,7 +23,7 @@ pub enum BAR {
 		/// If `true`, read accesses don't have any side effects.
 		prefetchable: bool,
 
-		/// Physical address to the register.
+		/// Virtual address to the registers.
 		address: u64,
 
 		/// The size of the address space in bytes.
@@ -31,7 +31,7 @@ pub enum BAR {
 	},
 
 	IOSpace {
-		/// Address to the register in I/O space.
+		/// Address to the registers in I/O space.
 		address: u64,
 
 		/// The size of the address space in bytes.
@@ -89,7 +89,6 @@ impl BAR {
 		}
 	}
 
-	// TODO Use virtual addresses instead
 	/// Reads a value from the register at offset `off`.
 	#[inline(always)]
 	pub fn read<T>(&self, off: usize) -> u64 {
@@ -128,7 +127,6 @@ impl BAR {
 		}
 	}
 
-	// TODO Use virtual addresses instead
 	/// Writes a value to the register at offset `off`.
 	#[inline(always)]
 	pub fn write<T>(&self, off: usize, val: u64) {

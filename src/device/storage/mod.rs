@@ -687,28 +687,25 @@ impl DeviceManager for StorageManager {
 			return Ok(());
 		}
 
-		match dev.get_subclass() {
-			// IDE controller
-			0x01 => {
-				let ide = ide::Controller::new(dev);
+		// Detect IDE controller
+		if let Some(ide) = ide::Controller::new(dev) {
+			oom::wrap(|| {
+				for interface in ide.detect_all()? {
+					match self.add(interface) {
+						Err(e) if e == errno!(ENOMEM) => return Err(e),
+						Err(e) => return Ok(Err(e)),
 
-				oom::wrap(|| {
-					for interface in ide.detect_all()? {
-						match self.add(interface) {
-							Err(e) if e == errno!(ENOMEM) => return Err(e),
-							Err(e) => return Ok(Err(e)),
-
-							_ => {}
-						}
+						_ => {}
 					}
+				}
 
-					Ok(Ok(()))
-				})?;
-			}
+				Ok(Ok(()))
+			})?;
 
-			// TODO Handle other controller types
-			_ => {}
+			return Ok(());
 		}
+
+		// TODO Handle other controller types
 
 		Ok(())
 	}
