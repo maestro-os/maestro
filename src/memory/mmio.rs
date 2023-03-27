@@ -45,7 +45,7 @@ impl MMIO {
 		let virt_addr = buddy::alloc_kernel(order)?;
 
 		let mut flags = MMIO_FLAGS;
-		if prefetchable {
+		if !prefetchable {
 			flags |= vmem::x86::FLAG_CACHE_DISABLE;
 		}
 
