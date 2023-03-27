@@ -11,8 +11,7 @@ use super::vmem;
 const DEFAULT_FLAGS: u32 = vmem::x86::FLAG_WRITE;
 
 /// MMIO flags in virtual memory.
-const MMIO_FLAGS: u32 = vmem::x86::FLAG_CACHE_DISABLE
-	| vmem::x86::FLAG_WRITE_THROUGH
+const MMIO_FLAGS: u32 = vmem::x86::FLAG_WRITE_THROUGH
 	| vmem::x86::FLAG_WRITE
 	| vmem::x86::FLAG_GLOBAL;
 
@@ -36,16 +35,22 @@ impl MMIO {
 	/// Arguments:
 	/// - `phys_addr` is the address in physical memory to the chunk to be mapped.
 	/// - `pages` is the number of pages to be mapped.
+	/// - `prefetchable` tells whether memory can be prefeteched.
 	///
 	/// The virtual address is allocated by this function.
 	///
 	/// If not enough physical or virtual memory is available, the function returns an error.
-	pub fn new(phys_addr: *mut c_void, pages: usize) -> Result<Self, Errno> {
+	pub fn new(phys_addr: *mut c_void, pages: usize, prefetchable: bool) -> Result<Self, Errno> {
 		let order = buddy::get_order(pages);
 		let virt_addr = buddy::alloc_kernel(order)?;
 
+		let mut flags = MMIO_FLAGS;
+		if prefetchable {
+			flags |= vmem::x86::FLAG_CACHE_DISABLE;
+		}
+
 		let mut vmem = crate::get_vmem().lock();
-		vmem.as_mut().unwrap().map_range(phys_addr, virt_addr, pages, MMIO_FLAGS)?;
+		vmem.as_mut().unwrap().map_range(phys_addr, virt_addr, pages, flags)?;
 
 		Ok(Self {
 			phys_addr,

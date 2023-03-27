@@ -282,15 +282,17 @@ impl PCIDevice {
 				return Ok(None);
 			}
 
+			let prefetchable = value & 0b1000 != 0;
+
 			// Create MMIO
 			let pages = math::ceil_div(size, memory::PAGE_SIZE);
-			let mut mmio = MMIO::new(address as _, pages)?;
+			let mut mmio = MMIO::new(address as _, pages, prefetchable)?;
 			address = mmio.as_mut_ptr() as _;
 
 			Ok(Some((
 				BAR::MemorySpace {
 					type_,
-					prefetchable: value & 0b1000 != 0,
+					prefetchable,
 
 					address,
 
