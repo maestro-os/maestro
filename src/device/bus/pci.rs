@@ -405,17 +405,6 @@ impl PCIDevice {
 		// Clear the Multi-Function flag
 		self.header_type & 0b01111111
 	}
-
-	/// Returns the interrupt PIN used by the device.
-	pub fn get_interrupt_pin(&self) -> Option<u8> {
-		let n = ((self.info[11] >> 8) & 0xff) as u8;
-
-		if n != 0 {
-			Some(n)
-		} else {
-			None
-		}
-	}
 }
 
 impl PhysicalDevice for PCIDevice {
@@ -453,6 +442,26 @@ impl PhysicalDevice for PCIDevice {
 
 	fn get_bars(&self) -> &[Option<BAR>] {
 		&self.bars
+	}
+
+	fn get_interrupt_line(&self) -> Option<u8> {
+		let n = (self.info[11] & 0xff) as u8;
+
+		if n != 0xff {
+			Some(n)
+		} else {
+			None
+		}
+	}
+
+	fn get_interrupt_pin(&self) -> Option<u8> {
+		let n = ((self.info[11] >> 8) & 0xff) as u8;
+
+		if n != 0 {
+			Some(n)
+		} else {
+			None
+		}
 	}
 }
 

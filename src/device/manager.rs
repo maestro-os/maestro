@@ -37,6 +37,15 @@ pub trait PhysicalDevice {
 
 	/// Returns the list of available BARs for the device.
 	fn get_bars(&self) -> &[Option<BAR>];
+
+	/// Returns the interrupt line used by the device.
+	///
+	/// If the device doesn't use any, the function returns `None`.
+	fn get_interrupt_line(&self) -> Option<u8>;
+	/// Returns the interrupt PIN used by the device.
+	///
+	/// If the device doesn't use any, the function returns `None`.
+	fn get_interrupt_pin(&self) -> Option<u8>;
 }
 
 /// Trait representing a structure managing the link between physical devices
