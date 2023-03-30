@@ -96,13 +96,13 @@ extern "C" {
 	fn kernel_halt() -> !;
 }
 
-/*/// Makes the kernel wait for an interrupt, then returns.
+/// Makes the kernel wait for an interrupt, then returns.
 /// This function enables interrupts.
 pub fn wait() {
 	unsafe {
 		kernel_wait();
 	}
-}*/
+}
 
 /// Enters the kernel loop and processes every interrupts indefinitely.
 pub fn enter_loop() -> ! {
