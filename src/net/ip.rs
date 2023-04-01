@@ -3,6 +3,8 @@
 use core::mem::size_of;
 use core::slice;
 use crate::crypto::checksum;
+use crate::errno::Errno;
+use super::Layer;
 
 /// The IPv4 header (RFC 791).
 #[repr(C, packed)]
@@ -21,7 +23,7 @@ pub struct IPv4Header {
 
 	/// Time-To-Live.
 	ttl: u8,
-	/// TODO doc
+	/// Protocol number.
 	protocol: u8,
 	/// The checksum of the header (RFC 1071).
 	hdr_checksum: u16,
@@ -36,7 +38,9 @@ pub struct IPv4Header {
 }
 
 impl IPv4Header {
-	/// Checks the checksum of the packet. If correct, the function returns `true`.
+	/// Checks the checksum of the packet.
+	///
+	/// If correct, the function returns `true`.
 	pub fn check_checksum(&self) -> bool {
 		let slice = unsafe {
 			slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>())
@@ -54,7 +58,7 @@ pub struct IPv6Header {
 
 	/// The length of the payload.
 	payload_length: u16,
-	/// TODO doc
+	/// The type of the next header.
 	next_header: u8,
 	/// The number of hops remaining before discarding the packet.
 	hop_limit: u8,
@@ -63,4 +67,18 @@ pub struct IPv6Header {
 	src_addr: [u8; 16],
 	/// Destination address.
 	dst_addr: [u8; 16],
+}
+
+/// TODO doc
+pub struct IPLayer {}
+
+impl Layer for IPLayer {
+	fn transmit<'c, F>(
+		&self,
+		buff: impl Iterator<Item = &'c [u8]>,
+		next: F
+	) -> Result<(), Errno>
+		where F: Fn(impl Iterator<Item = &'c [u8]>) -> Result<(), Errno> {
+		next([].iter())
+	}
 }

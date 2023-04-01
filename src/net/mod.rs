@@ -74,3 +74,19 @@ pub fn unregister_iface(_name: &str) {
 	// TODO
 	todo!();
 }
+
+/// A network layer. Such objects can be stacked to for the network stack.
+///
+/// A layer stack acts as a pipeline, passing packets from one layer to the other.
+pub trait Layer {
+	// TODO receive
+
+	/// Transmits data in the given buffer.
+	fn transmit<'c, F>(
+		&self,
+		buff: impl Iterator<Item = &'c [u8]>,
+		next: F
+	) -> Result<(), Errno>
+		where Self: Sized,
+			F: Fn() -> Result<(), Errno>;
+}
