@@ -70,20 +70,43 @@ pub struct IPv6Header {
 	dst_addr: [u8; 16],
 }
 
-/// The network layer for the IP protocol.
-pub struct IPLayer {}
+/// The network layer for the IPv4 protocol.
+pub struct IPv4Layer {}
 
-impl Layer for IPLayer {
+impl Layer for IPv4Layer {
 	fn transmit<'c, F>(
 		&self,
 		mut buff: BuffList<'c>,
 		next: F
 	) -> Result<(), Errno>
 		where F: Fn(BuffList<'c>) -> Result<(), Errno> {
-		// TODO
-		let hdr_buff = [0].as_slice();
+		let hdr = IPv4Header {
+			version_ihl: 0, // TODO
+			type_of_service: 0, // TODO
+			total_length: 0, // TODO
+
+			identification: 0, // TODO
+			flags_fragment_offset: 0, // TODO
+
+			ttl: 0, // TODO
+			protocol: 0, // TODO
+			hdr_checksum: 0, // TODO
+
+			src_addr: [0; 4], // TODO
+			dst_addr: [0; 4], // TODO
+
+			options: 0, // TODO
+		};
+		let hdr_buff = unsafe {
+			slice::from_raw_parts::<u8>(
+				&hdr as *const _ as *const _,
+				size_of::<IPv4Header>()
+			)
+		};
 
 		buff.push_front(hdr_buff.into());
 		next(buff)
 	}
 }
+
+// TODO IPv6
