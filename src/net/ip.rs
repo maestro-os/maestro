@@ -4,6 +4,7 @@ use core::mem::size_of;
 use core::slice;
 use crate::crypto::checksum;
 use crate::errno::Errno;
+use super::BuffList;
 use super::Layer;
 
 /// The IPv4 header (RFC 791).
@@ -69,16 +70,20 @@ pub struct IPv6Header {
 	dst_addr: [u8; 16],
 }
 
-/// TODO doc
+/// The network layer for the IP protocol.
 pub struct IPLayer {}
 
 impl Layer for IPLayer {
 	fn transmit<'c, F>(
 		&self,
-		buff: impl Iterator<Item = &'c [u8]>,
+		mut buff: BuffList<'c>,
 		next: F
 	) -> Result<(), Errno>
-		where F: Fn(impl Iterator<Item = &'c [u8]>) -> Result<(), Errno> {
-		next([].iter())
+		where F: Fn(BuffList<'c>) -> Result<(), Errno> {
+		// TODO
+		let hdr_buff = [0].as_slice();
+
+		buff.push_front(hdr_buff.into());
+		next(buff)
 	}
 }

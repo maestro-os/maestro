@@ -7,6 +7,7 @@ pub mod osi;
 pub mod sockaddr;
 pub mod tcp;
 
+use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
@@ -75,6 +76,31 @@ pub fn unregister_iface(_name: &str) {
 	todo!();
 }
 
+/// A linked-list of buffers representing a packet being built.
+pub struct BuffList<'b> {
+	/// The buffer.
+	b: &'b [u8],
+	/// The next buffer in the list.
+	next: Option<NonNull<BuffList<'b>>>,
+}
+
+impl<'b> From<&'b [u8]> for BuffList<'b> {
+	fn from(b: &'b [u8]) -> Self {
+		Self {
+			b,
+			next: None,
+		}
+	}
+}
+
+impl<'b> BuffList<'b> {
+	/// Pushes another buffer at the front of the list.
+	pub fn push_front<'o>(&mut self, mut other: BuffList<'o>) -> BuffList<'o> where 'b: 'o {
+		other.next = NonNull::new(self);
+		other
+	}
+}
+
 /// A network layer. Such objects can be stacked to for the network stack.
 ///
 /// A layer stack acts as a pipeline, passing packets from one layer to the other.
@@ -82,11 +108,14 @@ pub trait Layer {
 	// TODO receive
 
 	/// Transmits data in the given buffer.
+	///
+	/// Arguments:
+	/// - `buff` is the list of buffer which composes the packet being built.
+	/// - `next` is the function called to pass the buffers list to the next layer.
 	fn transmit<'c, F>(
 		&self,
-		buff: impl Iterator<Item = &'c [u8]>,
+		buff: BuffList<'c>,
 		next: F
 	) -> Result<(), Errno>
-		where Self: Sized,
-			F: Fn() -> Result<(), Errno>;
+		where Self: Sized, F: Fn(BuffList<'c>) -> Result<(), Errno>;
 }
