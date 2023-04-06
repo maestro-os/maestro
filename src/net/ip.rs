@@ -16,13 +16,13 @@ const FLAG_DF: u8 = 0b010;
 const FLAG_MF: u8 = 0b100;
 
 /// Protocol: TCP
-const PROTO_TCP: u8 = 0x06;
+pub const PROTO_TCP: u8 = 0x06;
 /// Protocol: UDP
-const PROTO_UDP: u8 = 0x11;
+pub const PROTO_UDP: u8 = 0x11;
 
 /// The IPv4 header (RFC 791).
 #[repr(C, packed)]
-pub struct IPv4Header {
+struct IPv4Header {
 	/// The version of the header with the IHL (header length).
 	version_ihl: u8,
 	/// The type of service.
@@ -73,7 +73,7 @@ impl IPv4Header {
 
 /// The IPv6 header (RFC 8200).
 #[repr(C, packed)]
-pub struct IPv6Header {
+struct IPv6Header {
 	/// The version, traffic class and flow label.
 	version_traffic_class_flow_label: u32,
 

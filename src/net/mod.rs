@@ -8,6 +8,7 @@ pub mod sockaddr;
 pub mod tcp;
 
 use core::ptr::NonNull;
+use core::ptr;
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
@@ -110,6 +111,29 @@ impl<'b> BuffList<'b> {
 		other.next_len = self.b.len() + self.next_len;
 
 		other
+	}
+
+	/// Collects all buffers into one.
+	pub fn collect(&self) -> Result<Vec<u8>, Errno> {
+		let len = self.len();
+		let mut final_buff = crate::vec![0; len]?;
+
+		let mut node = NonNull::new(self as *const _ as *mut Self);
+		let mut i = 0;
+		while let Some(mut curr) = node {
+			let curr = unsafe {
+				curr.as_mut()
+			};
+			let buf = curr.b;
+			unsafe {
+				ptr::copy_nonoverlapping(buf.as_ptr(), &mut final_buff[i], buf.len());
+			}
+
+			node = curr.next;
+			i += buf.len();
+		}
+
+		Ok(final_buff)
 	}
 }
 

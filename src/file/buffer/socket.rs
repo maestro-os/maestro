@@ -10,9 +10,12 @@ use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::buffer::BlockHandler;
+use crate::net::Layer;
+use crate::net::ip::IPv4Layer;
 use crate::net::sockaddr::SockAddr;
 use crate::net::sockaddr::SockAddrIn6;
 use crate::net::sockaddr::SockAddrIn;
+use crate::net::tcp::TCPLayer;
 use crate::net::tcp;
 use crate::process::Process;
 use crate::process::mem_space::MemSpace;
@@ -45,8 +48,9 @@ pub enum SockDomain {
 }
 
 impl SockDomain {
-	/// Returns the domain associated with the given id. If the id doesn't match any, the function
-	/// returns None.
+	/// Returns the domain associated with the given id.
+	///
+	/// If the id doesn't match any, the function returns `None`.
 	pub fn from(id: i32) -> Option<Self> {
 		match id {
 			1 => Some(Self::AfUnix),
@@ -93,8 +97,9 @@ pub enum SockType {
 }
 
 impl SockType {
-	/// Returns the type associated with the given id. If the id doesn't match any, the function
-	/// returns None.
+	/// Returns the type associated with the given id.
+	///
+	/// If the id doesn't match any, the function returns `None`.
 	pub fn from(id: i32) -> Option<Self> {
 		match id {
 			1 => Some(Self::SockStream),
@@ -316,9 +321,40 @@ impl IO for Socket {
 	}
 
 	/// Note: This implemention ignores the offset.
-	fn write(&mut self, _: u64, _buf: &[u8]) -> Result<u64, Errno> {
-		// TODO
-		todo!();
+	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
+		// TODO get appropriate network iface
+
+		let network_layer = match self.domain {
+			SockDomain::AfUnix => todo!(),
+
+			SockDomain::AfInet => IPv4Layer {
+				protocol: 0, // TODO
+
+				src_addr: [0; 4], // TODO
+				dst_addr: [0; 4], // TODO
+			},
+
+			SockDomain::AfInet6 => todo!(),
+			SockDomain::AfNetlink => todo!(),
+			SockDomain::AfPacket => todo!(),
+		};
+
+		let transport_layer = match self.type_ {
+			SockType::SockStream => TCPLayer {},
+			SockType::SockDgram => todo!(),
+			SockType::SockSeqpacket => todo!(),
+			SockType::SockRaw => todo!(),
+		};
+
+		network_layer.transmit(buf.into(), |bufs| {
+			transport_layer.transmit(bufs, |bufs| {
+				let _buff = bufs.collect();
+				// TODO write to network iface
+				todo!();
+			})
+		})?;
+
+		Ok(buf.len() as _)
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
