@@ -80,23 +80,35 @@ pub fn unregister_iface(_name: &str) {
 pub struct BuffList<'b> {
 	/// The buffer.
 	b: &'b [u8],
+
 	/// The next buffer in the list.
 	next: Option<NonNull<BuffList<'b>>>,
+	/// The length of following buffers.
+	next_len: usize,
 }
 
 impl<'b> From<&'b [u8]> for BuffList<'b> {
 	fn from(b: &'b [u8]) -> Self {
 		Self {
 			b,
+
 			next: None,
+			next_len: 0,
 		}
 	}
 }
 
 impl<'b> BuffList<'b> {
+	/// Returns the length of the buffer, plus following buffers.
+	pub fn len(&self) -> usize {
+		self.b.len() + self.next_len
+	}
+
 	/// Pushes another buffer at the front of the list.
 	pub fn push_front<'o>(&mut self, mut other: BuffList<'o>) -> BuffList<'o> where 'b: 'o {
 		other.next = NonNull::new(self);
+		other.next_len = self.b.len() + self.next_len;
+
 		other
 	}
 }

@@ -2,7 +2,7 @@
 //! to verify the integrity of a structure.
 
 /// Computes a checksum on `data` according to RFC1071.
-pub fn compute_rfc1071(data: &[u8]) -> u32 {
+pub fn compute_rfc1071(data: &[u8]) -> u16 {
 	let mut sum: u32 = 0;
 	let mut i = 0;
 
@@ -22,7 +22,7 @@ pub fn compute_rfc1071(data: &[u8]) -> u32 {
 		sum = (sum & 0xffff) + (sum >> 16);
 	}
 
-	!sum
+	(!sum) as u16
 }
 
 /// Computes the lookup table for the given generator polynomial.

@@ -7,6 +7,19 @@ use crate::errno::Errno;
 use super::BuffList;
 use super::Layer;
 
+/// The default TTL value.
+const DEFAULT_TTL: u8 = 128;
+
+/// IPv4 flag: Do not fragment the packet
+const FLAG_DF: u8 = 0b010;
+/// IPv4 flag: More fragments are to come after this one
+const FLAG_MF: u8 = 0b100;
+
+/// Protocol: TCP
+const PROTO_TCP: u8 = 0x06;
+/// Protocol: UDP
+const PROTO_UDP: u8 = 0x11;
+
 /// The IPv4 header (RFC 791).
 #[repr(C, packed)]
 pub struct IPv4Header {
@@ -33,9 +46,6 @@ pub struct IPv4Header {
 	src_addr: [u8; 4],
 	/// Destination address.
 	dst_addr: [u8; 4],
-
-	/// TODO doc
-	options: u32,
 }
 
 impl IPv4Header {
@@ -48,6 +58,16 @@ impl IPv4Header {
 		};
 
 		checksum::compute_rfc1071(slice) == 0
+	}
+
+	/// Computes the checksum of the header and writes it into the appropriate field.
+	pub fn compute_checksum(&mut self) {
+		self.hdr_checksum = 0;
+
+		let slice = unsafe {
+			slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>())
+		};
+		self.hdr_checksum = checksum::compute_rfc1071(slice);
 	}
 }
 
@@ -71,7 +91,15 @@ pub struct IPv6Header {
 }
 
 /// The network layer for the IPv4 protocol.
-pub struct IPv4Layer {}
+pub struct IPv4Layer {
+	/// The protocol ID.
+	pub protocol: u8,
+
+	/// The source IPv4.
+	pub src_addr: [u8; 4],
+	/// The destination IPv4.
+	pub dst_addr: [u8; 4],
+}
 
 impl Layer for IPv4Layer {
 	fn transmit<'c, F>(
@@ -80,23 +108,30 @@ impl Layer for IPv4Layer {
 		next: F
 	) -> Result<(), Errno>
 		where F: Fn(BuffList<'c>) -> Result<(), Errno> {
-		let hdr = IPv4Header {
-			version_ihl: 0, // TODO
-			type_of_service: 0, // TODO
-			total_length: 0, // TODO
+		let hdr_len = size_of::<IPv4Header>() as u16; // TODO add options support?
+
+		let dscp = 0; // TODO
+		let ecn = 0; // TODO
+
+		// TODO check endianess
+		let mut hdr = IPv4Header {
+			version_ihl: 4 | (((hdr_len / 4) as u8) << 4),
+			type_of_service: (dscp << 2) | ecn,
+			total_length: hdr_len + buff.len() as u16,
 
 			identification: 0, // TODO
 			flags_fragment_offset: 0, // TODO
 
-			ttl: 0, // TODO
-			protocol: 0, // TODO
-			hdr_checksum: 0, // TODO
+			// TODO allow setting a different value
+			ttl: DEFAULT_TTL,
+			protocol: self.protocol,
+			hdr_checksum: 0,
 
-			src_addr: [0; 4], // TODO
-			dst_addr: [0; 4], // TODO
-
-			options: 0, // TODO
+			src_addr: self.src_addr,
+			dst_addr: self.dst_addr,
 		};
+		hdr.compute_checksum();
+
 		let hdr_buff = unsafe {
 			slice::from_raw_parts::<u8>(
 				&hdr as *const _ as *const _,
