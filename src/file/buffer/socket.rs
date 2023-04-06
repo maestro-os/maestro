@@ -12,6 +12,7 @@ use crate::file::Uid;
 use crate::file::buffer::BlockHandler;
 use crate::net::Layer;
 use crate::net::ip::IPv4Layer;
+use crate::net::ip;
 use crate::net::sockaddr::SockAddr;
 use crate::net::sockaddr::SockAddrIn6;
 use crate::net::sockaddr::SockAddrIn;
@@ -328,22 +329,27 @@ impl IO for Socket {
 			SockDomain::AfUnix => todo!(),
 
 			SockDomain::AfInet => IPv4Layer {
-				protocol: 0, // TODO
+				protocol: match self.type_ {
+					SockType::SockStream => ip::PROTO_TCP,
+					SockType::SockDgram => ip::PROTO_UDP,
+					SockType::SockSeqpacket => todo!(), // TODO
+					SockType::SockRaw => todo!(), // TODO
+				},
 
 				src_addr: [0; 4], // TODO
 				dst_addr: [0; 4], // TODO
 			},
 
-			SockDomain::AfInet6 => todo!(),
-			SockDomain::AfNetlink => todo!(),
-			SockDomain::AfPacket => todo!(),
+			SockDomain::AfInet6 => todo!(), // TODO
+			SockDomain::AfNetlink => todo!(), // TODO
+			SockDomain::AfPacket => todo!(), // TODO
 		};
 
 		let transport_layer = match self.type_ {
 			SockType::SockStream => TCPLayer {},
-			SockType::SockDgram => todo!(),
-			SockType::SockSeqpacket => todo!(),
-			SockType::SockRaw => todo!(),
+			SockType::SockDgram => todo!(), // TODO
+			SockType::SockSeqpacket => todo!(), // TODO
+			SockType::SockRaw => todo!(), // TODO
 		};
 
 		network_layer.transmit(buf.into(), |bufs| {

@@ -11,8 +11,10 @@ use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
 use crate::util::boxed::Box;
+use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
+use crate::util::ptr::SharedPtr;
 
 /// Type representing a Media Access Control (MAC) address.
 pub type MAC = [u8; 6];
@@ -60,8 +62,24 @@ pub trait Interface {
 	fn write(&mut self, buff: &[u8]) -> Result<u64, Errno>;
 }
 
+/// An entry in the routing table.
+pub struct Route {
+	/// The destination address. If `None`, this is the default destination.
+	dst: Option<BindAddress>,
+
+	/// The name of the network interface.
+	iface: String,
+	/// The gateway's address.
+	gateway: Address,
+
+	/// The route's metric. The route with the lowest metric has priority.
+	metric: u32,
+}
+
 /// The list of network interfaces.
 pub static INTERFACES: Mutex<Vec<Box<dyn Interface>>> = Mutex::new(Vec::new());
+/// The routing table.
+pub static ROUTING_TABLE: Mutex<Vec<Route>> = Mutex::new(Vec::new());
 
 /// Registers the given network interface.
 pub fn register_iface<I: 'static + Interface>(iface: I) -> Result<(), Errno> {
@@ -74,6 +92,20 @@ pub fn register_iface<I: 'static + Interface>(iface: I) -> Result<(), Errno> {
 /// Unregisters the network interface with the given name.
 pub fn unregister_iface(_name: &str) {
 	// TODO
+	todo!();
+}
+
+/// Returns the network interface to be used to transmit a packet to the given 
+pub fn get_iface_for(_addr: Address) -> Option<SharedPtr<dyn Interface>> {
+	// TODO check for a route, by priority:
+	// - with the given address as gateway
+	// - that match the network prefix
+	// - a default route
+	//
+	// If several routes match, take the one with the lowest metric
+
+	// TODO For the matching route, return the corresponding iface
+
 	todo!();
 }
 
