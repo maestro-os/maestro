@@ -12,7 +12,7 @@ use core::cmp::Ordering;
 use core::ptr::NonNull;
 use core::ptr;
 use crate::errno::Errno;
-use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
@@ -157,30 +157,38 @@ impl Route {
 }
 
 /// The list of network interfaces.
-pub static INTERFACES: Mutex<Vec<Box<dyn Interface>>> = Mutex::new(Vec::new());
+pub static INTERFACES: Mutex<HashMap<String, SharedPtr<dyn Interface>>>
+	= Mutex::new(HashMap::new());
 /// The routing table.
 pub static ROUTING_TABLE: Mutex<Vec<Route>> = Mutex::new(Vec::new());
 
 /// Registers the given network interface.
-pub fn register_iface<I: 'static + Interface>(iface: I) -> Result<(), Errno> {
+///
+/// Arguments:
+/// - `name` is the name of the interface.
+/// - `iface` is the interface to register.
+pub fn register_iface<I: 'static + Interface>(name: String, iface: I) -> Result<(), Errno> {
 	let mut interfaces = INTERFACES.lock();
 
-	let i = Box::new(iface)?;
-	interfaces.push(i)
+	let i = SharedPtr::new(iface)?;
+	interfaces.insert(name, i)?;
+
+	Ok(())
 }
 
 /// Unregisters the network interface with the given name.
-pub fn unregister_iface(_name: &[u8]) {
-	// TODO
-	todo!();
+pub fn unregister_iface(name: &[u8]) {
+	let mut interfaces = INTERFACES.lock();
+	interfaces.remove(name);
 }
 
 /// Returns the network interface with the given name.
 ///
 /// If the interface doesn't exist, thhe function returns `None`.
-pub fn get_iface(_name: &[u8]) -> Option<SharedPtr<dyn Interface>> {
-	// TODO
-	todo!();
+pub fn get_iface(name: &[u8]) -> Option<SharedPtr<dyn Interface>> {
+	INTERFACES.lock()
+		.get(name)
+		.cloned()
 }
 
 /// Returns the network interface to be used to transmit a packet to the given destination address.
