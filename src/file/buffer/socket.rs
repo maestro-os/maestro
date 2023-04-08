@@ -10,6 +10,7 @@ use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::buffer::BlockHandler;
+use crate::net::BuffList;
 use crate::net::Layer;
 use crate::net::ip::IPv4Layer;
 use crate::net::ip;
@@ -18,6 +19,7 @@ use crate::net::sockaddr::SockAddrIn6;
 use crate::net::sockaddr::SockAddrIn;
 use crate::net::tcp::TCPLayer;
 use crate::net::tcp;
+use crate::net;
 use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
@@ -323,41 +325,72 @@ impl IO for Socket {
 
 	/// Note: This implemention ignores the offset.
 	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
-		// TODO get appropriate network iface
-
-		let network_layer = match self.domain {
+		let (
+			transport,
+			network,
+			iface
+		) = match self.domain {
 			SockDomain::AfUnix => todo!(),
 
-			SockDomain::AfInet => IPv4Layer {
-				protocol: match self.type_ {
-					SockType::SockStream => ip::PROTO_TCP,
-					SockType::SockDgram => ip::PROTO_UDP,
+			dom @ (SockDomain::AfInet | SockDomain::AfInet6) => {
+				let transport = match self.type_ {
+					SockType::SockStream => TCPLayer {},
+					SockType::SockDgram => todo!(), // TODO
 					SockType::SockSeqpacket => todo!(), // TODO
 					SockType::SockRaw => todo!(), // TODO
-				},
+				};
 
-				src_addr: [0; 4], // TODO
-				dst_addr: [0; 4], // TODO
+				let network = match dom {
+					SockDomain::AfInet => IPv4Layer {
+						protocol: match self.type_ {
+							SockType::SockStream => ip::PROTO_TCP,
+							SockType::SockDgram => ip::PROTO_UDP,
+							SockType::SockSeqpacket => todo!(), // TODO
+							SockType::SockRaw => todo!(), // TODO
+						},
+
+						src_addr: [0; 4], // TODO
+						dst_addr: [0; 4], // TODO
+					},
+
+					SockDomain::AfInet6 => todo!(), // TODO
+
+					_ => unreachable!(),
+				};
+
+				// TODO use real dst addr
+				let iface = net::get_iface_for(net::Address::IPv4([0; 4]));
+
+				(
+					Some(transport),
+					network,
+					iface
+				)
 			},
 
-			SockDomain::AfInet6 => todo!(), // TODO
 			SockDomain::AfNetlink => todo!(), // TODO
+
 			SockDomain::AfPacket => todo!(), // TODO
 		};
 
-		let transport_layer = match self.type_ {
-			SockType::SockStream => TCPLayer {},
-			SockType::SockDgram => todo!(), // TODO
-			SockType::SockSeqpacket => todo!(), // TODO
-			SockType::SockRaw => todo!(), // TODO
-		};
+		network.transmit(buf.into(), |bufs| {
+			let f = |bufs: BuffList<'_>| {
+				let Some(ref iface_mutex) = iface else {
+					return Ok(());
+				};
+				let mut iface = iface_mutex.lock();
 
-		network_layer.transmit(buf.into(), |bufs| {
-			transport_layer.transmit(bufs, |bufs| {
-				let _buff = bufs.collect();
-				// TODO write to network iface
-				todo!();
-			})
+				let buff = bufs.collect()?;
+				iface.write(&buff)?;
+
+				Ok(())
+			};
+
+			if let Some(ref transport) = transport {
+				transport.transmit(bufs, f)
+			} else {
+				f(bufs)
+			}
 		})?;
 
 		Ok(buf.len() as _)
