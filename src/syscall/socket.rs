@@ -20,8 +20,8 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> Result<i32, Errn
 	let uid = proc.euid;
 	let gid = proc.egid;
 
-	let sock_domain = SockDomain::from(domain).ok_or_else(|| errno!(EAFNOSUPPORT))?;
-	let sock_type = SockType::from(r#type).ok_or_else(|| errno!(EPROTONOSUPPORT))?;
+	let sock_domain = SockDomain::try_from(domain as u32)?;
+	let sock_type = SockType::try_from(r#type as u32)?;
 	if !sock_domain.can_use(uid, gid) || !sock_type.can_use(uid, gid) {
 		return Err(errno!(EACCES));
 	}

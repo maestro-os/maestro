@@ -30,8 +30,8 @@ pub fn socketpair(
 	let mut mem_space_guard = mem_space.lock();
 	let sv_slice = sv.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
-	let sock_domain = SockDomain::from(domain).ok_or_else(|| errno!(EAFNOSUPPORT))?;
-	let sock_type = SockType::from(r#type).ok_or_else(|| errno!(EPROTONOSUPPORT))?;
+	let sock_domain = SockDomain::try_from(domain as u32)?;
+	let sock_type = SockType::try_from(r#type as u32)?;
 	if !sock_domain.can_use(uid, gid) || !sock_type.can_use(uid, gid) {
 		return Err(errno!(EACCES));
 	}

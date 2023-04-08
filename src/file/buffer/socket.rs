@@ -10,7 +10,6 @@ use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::file::Uid;
 use crate::file::buffer::BlockHandler;
-use crate::net::BuffList;
 use crate::net::Layer;
 use crate::net::ip::IPv4Layer;
 use crate::net::ip;
@@ -24,6 +23,7 @@ use crate::process::Process;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::FailableDefault;
+use crate::util::boxed::Box;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -36,7 +36,7 @@ use super::Buffer;
 const BUFFER_SIZE: usize = 65536;
 
 /// Enumeration of socket domains.
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub enum SockDomain {
 	/// Local communication.
 	AfUnix,
@@ -45,27 +45,28 @@ pub enum SockDomain {
 	/// IPv6 Internet Protocols.
 	AfInet6,
 	/// Kernel user interface device.
-	AfNetlink,
+	AfNetlink(Box<net::netlink::Handle>),
 	/// Low level packet interface.
 	AfPacket,
 }
 
-impl SockDomain {
-	/// Returns the domain associated with the given id.
-	///
-	/// If the id doesn't match any, the function returns `None`.
-	pub fn from(id: i32) -> Option<Self> {
-		match id {
-			1 => Some(Self::AfUnix),
-			2 => Some(Self::AfInet),
-			10 => Some(Self::AfInet6),
-			16 => Some(Self::AfNetlink),
-			17 => Some(Self::AfPacket),
+impl TryFrom<u32> for SockDomain {
+	type Error = Errno;
 
-			_ => None,
+	fn try_from(id: u32) -> Result<Self, Self::Error> {
+		match id {
+			1 => Ok(Self::AfUnix),
+			2 => Ok(Self::AfInet),
+			10 => Ok(Self::AfInet6),
+			16 => Ok(Self::AfNetlink(Box::new(net::netlink::Handle::new()?)?)),
+			17 => Ok(Self::AfPacket),
+
+			_ => Err(errno!(EAFNOSUPPORT)),
 		}
 	}
+}
 
+impl SockDomain {
 	/// Tells whether the given user has the permission to use the socket domain.
 	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
 		match self {
@@ -99,21 +100,22 @@ pub enum SockType {
 	SockRaw,
 }
 
-impl SockType {
-	/// Returns the type associated with the given id.
-	///
-	/// If the id doesn't match any, the function returns `None`.
-	pub fn from(id: i32) -> Option<Self> {
-		match id {
-			1 => Some(Self::SockStream),
-			2 => Some(Self::SockDgram),
-			5 => Some(Self::SockSeqpacket),
-			3 => Some(Self::SockRaw),
+impl TryFrom<u32> for SockType {
+	type Error = Errno;
 
-			_ => None,
+	fn try_from(id: u32) -> Result<Self, Self::Error> {
+		match id {
+			1 => Ok(Self::SockStream),
+			2 => Ok(Self::SockDgram),
+			5 => Ok(Self::SockSeqpacket),
+			3 => Ok(Self::SockRaw),
+
+			_ => Err(errno!(EPROTONOSUPPORT)),
 		}
 	}
+}
 
+impl SockType {
 	/// Tells whether the given user has the permission to use the socket type.
 	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
 		match self {
@@ -184,14 +186,14 @@ impl Socket {
 
 	/// Returns the socket's domain.
 	#[inline(always)]
-	pub fn get_domain(&self) -> SockDomain {
-		self.domain
+	pub fn get_domain(&self) -> &SockDomain {
+		&self.domain
 	}
 
 	/// Returns the socket's type.
 	#[inline(always)]
-	pub fn get_type(&self) -> SockType {
-		self.type_
+	pub fn get_type(&self) -> &SockType {
+		&self.type_
 	}
 
 	/// Returns the socket's protocol.
@@ -229,7 +231,7 @@ impl Socket {
 			);
 		}
 
-		let domain = SockDomain::from(sin_family as _).ok_or_else(|| errno!(EAFNOSUPPORT))?;
+		let domain = SockDomain::try_from(sin_family as u32)?;
 		if sockaddr.len() < domain.get_sockaddr_len() {
 			return Err(errno!(EINVAL));
 		}
@@ -312,10 +314,7 @@ impl Buffer for Socket {
 }
 
 impl IO for Socket {
-	fn get_size(&self) -> u64 {
-		// TODO
-		0
-	}
+	fn get_size(&self) -> u64 { 0 }
 
 	/// Note: This implemention ignores the offset.
 	fn read(&mut self, _: u64, _buf: &mut [u8]) -> Result<(u64, bool), Errno> {
@@ -325,11 +324,7 @@ impl IO for Socket {
 
 	/// Note: This implemention ignores the offset.
 	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
-		let (
-			transport,
-			network,
-			iface
-		) = match self.domain {
+		match &mut self.domain {
 			SockDomain::AfUnix => todo!(),
 
 			dom @ (SockDomain::AfInet | SockDomain::AfInet6) => {
@@ -359,41 +354,31 @@ impl IO for Socket {
 				};
 
 				// TODO use real dst addr
-				let iface = net::get_iface_for(net::Address::IPv4([0; 4]));
+				if let Some(iface) = net::get_iface_for(net::Address::IPv4([0; 4])) {
+					network.transmit(buf.into(), |bufs| {
+						transport.transmit(bufs, |bufs| {
+							let buff = bufs.collect()?;
+							let mut iface = iface.lock();
+							iface.write(&buff)?;
 
-				(
-					Some(transport),
-					network,
-					iface
-				)
+							Ok(())
+						})
+					})?;
+
+					Ok(buf.len() as _)
+				} else {
+					// TODO error (errno to be determined)
+					todo!();
+				}
 			},
 
-			SockDomain::AfNetlink => todo!(), // TODO
+			SockDomain::AfNetlink(n) => {
+				n.family = self.protocol;
+				n.write(buf)
+			},
 
 			SockDomain::AfPacket => todo!(), // TODO
-		};
-
-		network.transmit(buf.into(), |bufs| {
-			let f = |bufs: BuffList<'_>| {
-				let Some(ref iface_mutex) = iface else {
-					return Ok(());
-				};
-				let mut iface = iface_mutex.lock();
-
-				let buff = bufs.collect()?;
-				iface.write(&buff)?;
-
-				Ok(())
-			};
-
-			if let Some(ref transport) = transport {
-				transport.transmit(bufs, f)
-			} else {
-				f(bufs)
-			}
-		})?;
-
-		Ok(buf.len() as _)
+		}
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
