@@ -3,6 +3,7 @@
 
 #![no_std]
 #![no_main]
+#![feature(array_chunks)]
 #![feature(allow_internal_unstable)]
 #![feature(coerce_unsized)]
 #![feature(custom_test_frameworks)]
