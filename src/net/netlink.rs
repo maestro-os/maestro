@@ -1,6 +1,9 @@
 //! `netlink` is an interface between the kernel and userspace.
 
+use core::mem::size_of;
 use crate::errno::Errno;
+use crate::util::container::ring_buffer::RingBuffer;
+use crate::util::container::vec::Vec;
 
 /// Netlink message header.
 #[repr(C)]
@@ -17,20 +20,27 @@ struct NLMsgHdr {
 	nlmsg_pid: u32,
 }
 
-/// TODO doc
+/// The netlink handle for a socket. Each socket must have its own instance.
 #[derive(Debug)]
 pub struct Handle {
-	/// TODO doc
+	/// Socket family being used
 	pub family: i32,
 
-	// TODO buffers
+	/// The buffer for read operations.
+	read_buff: RingBuffer<u8, Vec<u8>>,
+	/// The buffer for write operations.
+	write_buff: RingBuffer<u8, Vec<u8>>,
 }
 
 impl Handle {
 	/// Creates a new handle.
 	pub fn new() -> Result<Self, Errno> {
-		// TODO
-		todo!();
+		Ok(Self {
+			family: 0,
+
+			read_buff: RingBuffer::new(crate::vec![0; 16384]?),
+			write_buff: RingBuffer::new(crate::vec![0; 16384]?),
+		})
 	}
 }
 
@@ -38,16 +48,26 @@ impl Handle {
 	/// Reads data from the I/O and writes it into `buff`.
 	///
 	/// The function returns the number of bytes read.
-	pub fn read(&mut self, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		// TODO
-		todo!();
+	pub fn read(&mut self, buff: &mut [u8]) -> Result<(usize, bool), Errno> {
+		let len = self.read_buff.read(buff);
+		Ok((len, false))
 	}
 
 	/// Reads data from `buff` and writes it into the I/O.
 	///
 	/// The function returns the number of bytes written.
-	pub fn write(&mut self, _buff: &[u8]) -> Result<u64, Errno> {
-		// TODO
+	pub fn write(&mut self, buff: &[u8]) -> Result<usize, Errno> {
+		let len = self.write_buff.write(buff);
+
+		// Read message header
+		let mut buf: [u8; size_of::<NLMsgHdr>()] = [0; size_of::<NLMsgHdr>()];
+		let l = self.write_buff.peek(buf.as_mut_slice());
+		if l < buf.len() {
+			return Ok(len);
+		}
+		let _hdr = buf.as_ptr() as *const NLMsgHdr;
+
+		// TODO handle message
 		todo!();
 	}
 

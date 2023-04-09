@@ -374,7 +374,9 @@ impl IO for Socket {
 
 			SockDomain::AfNetlink(n) => {
 				n.family = self.protocol;
-				n.write(buf)
+
+				let len = n.write(buf)?;
+				Ok(len as u64)
 			},
 
 			SockDomain::AfPacket => todo!(), // TODO

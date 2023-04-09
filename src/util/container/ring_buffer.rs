@@ -82,10 +82,12 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		self.buffer.as_mut()
 	}
 
-	/// Reads data from the buffer and writes it in `buf`.
+	/// Peeks dat afrom the buffer and writes it in `buf`.
 	///
-	/// The function returns the number of bytes read.
-	pub fn read(&mut self, buf: &mut [T]) -> usize {
+	/// Contrary to `read`, this function doesn't consume the data.
+	///
+	/// The function returns the number of elements read.
+	pub fn peek(&mut self, buf: &mut [T]) -> usize {
 		let cursor = self.read_cursor;
 		let len = min(buf.len(), self.get_data_len());
 
@@ -105,13 +107,23 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 			buf[l0 + i] = buffer[i];
 		}
 
+		len
+	}
+
+	/// Reads data from the buffer and writes it in `buf`.
+	///
+	/// The function returns the number of elements read.
+	pub fn read(&mut self, buf: &mut [T]) -> usize {
+		let len = self.peek(buf);
+		let buffer_size = self.get_size();
+
 		self.read_cursor = (self.read_cursor + len) % buffer_size;
 		len
 	}
 
 	/// Writes data in `buf` to the buffer.
 	///
-	/// The function returns the number of bytes written.
+	/// The function returns the number of elements written.
 	pub fn write(&mut self, buf: &[T]) -> usize {
 		let cursor = self.write_cursor;
 		let len = min(buf.len(), self.get_available_len());
@@ -139,6 +151,9 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 	/// Clears the buffer.
 	#[inline(always)]
 	pub fn clear(&mut self) {
+		// FIXME: Elements in the container must be dropped here. However, using another container
+		// for storage might result in double dropping
+
 		self.read_cursor = 0;
 		self.write_cursor = 0;
 	}
@@ -187,5 +202,5 @@ mod test {
 		}
 	}
 
-	// TODO More tests
+	// TODO peek
 }
