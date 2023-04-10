@@ -325,7 +325,7 @@ impl IO for Socket {
 	/// Note: This implemention ignores the offset.
 	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
 		match &mut self.domain {
-			SockDomain::AfUnix => todo!(),
+			SockDomain::AfUnix => todo!(), // TODO
 
 			dom @ (SockDomain::AfInet | SockDomain::AfInet6) => {
 				let transport = match self.type_ {
@@ -370,16 +370,34 @@ impl IO for Socket {
 					// TODO error (errno to be determined)
 					todo!();
 				}
-			},
+			}
 
 			SockDomain::AfNetlink(n) => {
 				n.family = self.protocol;
 
 				let len = n.write(buf)?;
 				Ok(len as u64)
-			},
+			}
 
-			SockDomain::AfPacket => todo!(), // TODO
+			SockDomain::AfPacket => {
+				match self.type_ {
+					SockType::SockDgram => todo!(), // TODO
+
+					SockType::SockRaw => {
+						if let Some(iface) = net::get_iface_for(net::Address::IPv4([0; 4])) {
+							let mut iface = iface.lock();
+							iface.write(buf)?;
+
+							Ok(buf.len() as _)
+						} else {
+							// TODO error (errno to be determined)
+							todo!();
+						}
+					}
+
+					_ => todo!(), // TODO invalid
+				}
+			}
 		}
 	}
 
