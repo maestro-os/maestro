@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [package]
 name = "maestro"
 version = "0.1.0"
@@ -25,3 +27,6 @@ strace = ["macros/strace"]
 [profile.release]
 lto = true
 panic = "abort"
+
+[profile.dev]
+rustflags = ["-Cforce-frame-pointers=yes"]

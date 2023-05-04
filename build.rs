@@ -12,6 +12,10 @@ use std::process::exit;
 /// The path to the configuration file.
 const CONFIG_PATH: &str = "config.toml";
 
+// TODO read target from json target instead of separate file
+// TODO remove arch from both config file and cfg, and use `--target` with path to specify the
+// architecture, and use Rust builtin cfg to check the architecture
+
 /// The debug section of the configuration file.
 #[derive(Deserialize)]
 struct ConfigDebug {
