@@ -3,7 +3,7 @@
 
 // TODO Make this file fully cross-platform
 
-#[cfg(config_general_arch = "x86")]
+#[cfg(config_arch = "x86")]
 pub mod x86;
 
 use crate::cpu;

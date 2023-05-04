@@ -905,30 +905,6 @@ impl Process {
 		self.quantum_count += 1;
 	}
 
-	/// Initializes the process to run without a program.
-	///
-	/// `pc` is the initial program counter.
-	pub fn init_dummy(&mut self, pc: *const c_void) -> Result<(), Errno> {
-		// Creating the memory space and the stacks
-		let mut mem_space = MemSpace::new()?;
-		let kernel_stack = mem_space.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
-		let user_stack = mem_space.map_stack(USER_STACK_SIZE, USER_STACK_FLAGS)?;
-
-		self.mem_space = Some(IntSharedPtr::new(mem_space)?);
-		self.kernel_stack = Some(kernel_stack);
-		self.user_stack = Some(user_stack);
-
-		// Setting the registers' initial state
-		let regs = Regs {
-			esp: user_stack as _,
-			eip: pc as _,
-			..Default::default()
-		};
-		self.regs = regs;
-
-		Ok(())
-	}
-
 	/// Returns the exit status if the process has ended.
 	#[inline(always)]
 	pub fn get_exit_status(&self) -> Option<ExitStatus> {

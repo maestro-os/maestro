@@ -187,57 +187,42 @@ pub fn bind_vmem() {
 	}
 }
 
-extern "C" {
-	fn test_process();
-}
-
 /// Launches the init process.
 ///
 /// `init_path` is the path to the init program.
 fn init(init_path: String) -> Result<(), Errno> {
+	let path = Path::from_str(&init_path, true)?;
+
 	let proc_mutex = Process::new()?;
 	let mut proc = proc_mutex.lock();
 
-	if cfg!(config_debug_testprocess) {
-		// The pointer to the beginning of the test process
-		let test_begin =
-			unsafe { core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process) };
+	// The initial environment
+	let env: Vec<String> = vec![
+		b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
+		b"TERM=maestro".try_into()?,
+	]?;
 
-		proc.init_dummy(test_begin)
-	} else {
-		let path = Path::from_str(INIT_PATH, false)?;
+	let file_mutex = {
+		let vfs_mutex = vfs::get();
+		let mut vfs = vfs_mutex.lock();
+		let vfs = vfs.as_mut().unwrap();
 
-		// The initial environment
-		let mut env: Vec<String> = vec![
-			b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
-			b"TERM=maestro".try_into()?,
-		]?;
-		if cfg!(config_debug_rust_backtrace) {
-			env.push(b"RUST_BACKTRACE=full".try_into()?)?;
-		}
+		vfs.get_file_from_path(&path, 0, 0, true)?
+	};
+	let mut file = file_mutex.lock();
 
-		let file_mutex = {
-			let vfs_mutex = vfs::get();
-			let mut vfs = vfs_mutex.lock();
-			let vfs = vfs.as_mut().unwrap();
+	let exec_info = ExecInfo {
+		uid: proc.uid,
+		euid: proc.euid,
+		gid: proc.gid,
+		egid: proc.egid,
 
-			vfs.get_file_from_path(&path, 0, 0, true)?
-		};
-		let mut file = file_mutex.lock();
+		argv: vec![init_path]?,
+		envp: env,
+	};
+	let program_image = exec::build_image(&mut *file, exec_info)?;
 
-		let exec_info = ExecInfo {
-			uid: proc.uid,
-			euid: proc.euid,
-			gid: proc.gid,
-			egid: proc.egid,
-
-			argv: vec![init_path]?,
-			envp: env,
-		};
-		let program_image = exec::build_image(&mut *file, exec_info)?;
-
-		exec::exec(&mut *proc, program_image)
-	}
+	exec::exec(&mut *proc, program_image)
 }
 
 /// This is the main function of the Rust source code, responsible for the

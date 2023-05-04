@@ -13,6 +13,11 @@ crate-type = ["dylib", "staticlib"]
 [dependencies]
 macros = { path = "macros/" }
 
+[build-dependencies]
+cc = { version = "1.0.79", features = ["parallel"] }
+serde = { version = "*", features = ["derive"] }
+toml = "0.7.3"
+
 [features]
 default = []
 strace = ["macros/strace"]

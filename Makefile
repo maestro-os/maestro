@@ -167,7 +167,7 @@ DOC_DIR = doc/book/
 ifeq ($(CONFIG_EXISTS), 0)
 # The rule to compile the kernel image
 $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
-	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) build $(CARGOFLAGS)
  ifeq ($(CONFIG_DEBUG_TEST), false)
   ifeq ($(CONFIG_DEBUG), false)
 	$(CC) $(CFLAGS) -o $(NAME) target/target/release/libkernel.a -T$(LINKER)
@@ -181,7 +181,7 @@ $(NAME): $(LIB_NAME) $(RUST_SRC) $(LINKER) $(TOUCH_UPDATE_FILES)
  ifeq ($(CONFIG_DEBUG_TEST), false)
 # Builds the documentation
 doc: $(SRC) $(DOC_SRC)
-	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS) --document-private-items
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) doc $(CARGOFLAGS) --document-private-items
 	mdbook build doc/
 	rm -rf $(DOC_DIR)/references/
 	cp -r target/target/doc/ $(DOC_DIR)/references/
@@ -244,7 +244,7 @@ $(NAME).iso: $(NAME) grub.cfg
 
 # Runs clippy on the Rust code
 clippy:
-	$(CONFIG_ENV) RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
+	RUSTFLAGS='$(RUSTFLAGS)' $(CARGO) clippy $(CARGOFLAGS)
 
 # Updates the tags file
 tags: $(SRC)

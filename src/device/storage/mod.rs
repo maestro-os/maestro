@@ -563,7 +563,7 @@ impl StorageManager {
 	/// Fills a random buffer `buff` of size `size` with seed `seed`.
 	///
 	/// The function returns the seed for the next block.
-	#[cfg(config_debug_storagetest)]
+	#[cfg(config_debug_storage_test)]
 	fn random_block(size: u64, buff: &mut [u8], seed: u32) -> u32 {
 		let mut s = seed;
 
@@ -580,7 +580,7 @@ impl StorageManager {
 	///
 	/// `seed` is the seed for pseudo random generation. The function will set
 	/// this variable to another value for the next iteration.
-	#[cfg(config_debug_storagetest)]
+	#[cfg(config_debug_storage_test)]
 	fn test_interface(interface: &mut dyn StorageInterface, seed: u32) -> bool {
 		let block_size = interface.get_block_size();
 		let blocks_count = min(1024, interface.get_blocks_count());
@@ -618,7 +618,7 @@ impl StorageManager {
 	///
 	/// If every tests pass, the function returns `true`. Else, it returns
 	/// `false`.
-	#[cfg(config_debug_storagetest)]
+	#[cfg(config_debug_storage_test)]
 	fn perform_test(&mut self) -> bool {
 		let mut seed = 42;
 		let iterations_count = 10;
@@ -657,7 +657,7 @@ impl StorageManager {
 	///
 	/// The execution of this function removes all the data on every connected
 	/// writable disks, so it must be used carefully.
-	#[cfg(config_debug_storagetest)]
+	#[cfg(config_debug_storage_test)]
 	pub fn test(&mut self) {
 		crate::println!("Running disks tests... ({} devices)", self.interfaces.len());
 

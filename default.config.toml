@@ -1,0 +1,34 @@
+# This is the default configuration for the kernel compilation.
+# To setup a configuration, copy this file under the name `config.toml`, then modify it
+
+
+
+# The CPU architecture for which the kernel is compiled.
+arch = "x86"
+
+[debug]
+# Tells whether the kernel is compiled in debug mode.
+debug = false
+# If enabled, selftesting is enabled.
+#
+# This option requires debug mode to be enabled.
+test = false
+# If enabled, the kernel tests storage.
+#
+# **Warning**: this option is destructive for any data present on disks connected to the
+# host.
+storage_test = false
+
+# If enabled, the kernel is compiled for QEMU. This feature is not *required* for QEMU but
+# it can provide additional features.
+qemu = false
+
+# If enabled, the kernel places a magic number in malloc chunks to allow checking integrity.
+malloc_magic = false
+# If enabled, the kernel checks integrity of memory allocations.
+#
+# **Warning**: this options slows down the system significantly.
+malloc_check = false
+
+# Enables system call tracing.
+strace = false

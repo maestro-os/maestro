@@ -338,7 +338,7 @@ pub fn init() -> Result<(), Errno> {
 	bus::detect()?;
 
 	// Testing disk I/O (if enabled)
-	#[cfg(config_debug_storagetest)]
+	#[cfg(config_debug_storage_test)]
 	{
 		// Getting back the storage manager since it has been moved
 		let storage_manager = manager::get_by_name("storage").unwrap();
