@@ -1,6 +1,7 @@
 //! TODO doc
 
 use serde::Deserialize;
+use std::env;
 use std::fs;
 use std::io;
 use std::io::ErrorKind;
@@ -36,9 +37,6 @@ struct ConfigDebug {
 	///
 	/// **Warning**: this options slows down the system significantly.
 	malloc_check: bool,
-
-	/// Enables system call tracing.
-	strace: bool,
 }
 
 /// The compilation configuration.
@@ -78,11 +76,6 @@ impl Config {
 			"cargo:rustc-cfg=config_debug_malloc_check=\"{}\"",
 			self.debug.malloc_check
 		);
-
-		println!(
-			"cargo:rustc-cfg=config_debug_strace=\"{}\"",
-			self.debug.strace
-		);
 	}
 }
 
@@ -117,25 +110,46 @@ fn list_c_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
 /// Returns the triplet for the given architecture.
 ///
 /// If the architecture is not supported, the function returns `None`.
-fn arch_to_triplet(arch: &str) -> Option<&'static str> {
-	match arch.to_lowercase().as_str() {
-		"x86" => Some("i686-unknown-none"),
-		_ => None,
-	}
+fn arch_to_triplet(arch: &str) -> io::Result<String> {
+	let path = PathBuf::from(format!("arch/{arch}/triplet"));
+	let content = fs::read_to_string(path)?;
+
+	Ok(content.trim().into())
 }
 
 /// Compiles the C and assembly code.
 ///
-/// `arch` is the architecture to compile for.
-fn compile_c(arch: &str) -> io::Result<()> {
+/// Arguments:
+/// - `arch` is the architecture to compile for.
+/// - `debug` tells whether compiling in debug mode.
+fn compile_c(arch: &str, debug: bool) -> io::Result<()> {
 	let triplet = arch_to_triplet(arch).unwrap(); // TODO handle error
 	let files = list_c_files(Path::new("src"))?;
 
-	cc::Build::new()
-		.target(triplet)
-		.files(files)
+	for f in &files {
+		println!("cargo:rerun-if-changed={}", f.display());
+	}
+
+	let mut build = cc::Build::new();
+	build
+		.flag("-nostdlib")
+		.flag("-ffreestanding")
+		.flag("-fno-stack-protector")
+		.flag("-fno-pic")
+		.flag("-mno-red-zone")
+		.flag("-Wall")
+		.flag("-Wextra")
+		.flag("-Werror")
 		.flag(&format!("-Tarch/{}/linker.ld", arch))
-		.compile("libmaestro.a");
+		.target(&triplet)
+		.debug(debug)
+		.files(files);
+
+	if !debug {
+		build.opt_level(2);
+	}
+
+	build.compile("libmaestro.a");
 
 	Ok(())
 }
@@ -148,6 +162,14 @@ fn link_library() {
 }
 
 fn main() {
+	let profile = env::var("PROFILE").unwrap();
+	let debug = match profile.as_str() {
+		"debug" => true,
+		"release" => false,
+
+		_ => panic!("invalid compilation profile"),
+	};
+
 	// Read compilation configuration
 	let config_str = match fs::read_to_string(CONFIG_PATH) {
 		Ok(content) => content,
@@ -175,7 +197,9 @@ fn main() {
 
 	config.set_cfg();
 
-	compile_c(&config.arch).unwrap_or_else(|e| {
+	// TODO compile vDSO
+
+	compile_c(&config.arch, debug).unwrap_or_else(|e| {
 		eprintln!("Compilation failed: {}", e);
 		exit(1);
 	});
