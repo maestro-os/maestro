@@ -19,3 +19,4 @@ strace = ["macros/strace"]
 
 [profile.release]
 lto = true
+panic = "abort"
