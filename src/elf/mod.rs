@@ -429,9 +429,8 @@ pub fn get_sections_end(
 		let hdr_offset = i * entsize;
 		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
 
-		let addr = unsafe {
-			memory::kern_to_phys(hdr.sh_addr as *const c_void).add(hdr.sh_size as _)
-		};
+		let addr =
+			unsafe { memory::kern_to_phys(hdr.sh_addr as *const c_void).add(hdr.sh_size as _) };
 		end = max(end, addr as usize);
 	}
 
@@ -449,7 +448,9 @@ pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'st
 	debug_assert!(offset < strtab_section.sh_size);
 
 	unsafe {
-		util::str_from_ptr(memory::kern_to_virt((strtab_section.sh_addr + offset) as *const u8))
+		util::str_from_ptr(memory::kern_to_virt(
+			(strtab_section.sh_addr + offset) as *const u8,
+		))
 	}
 }
 

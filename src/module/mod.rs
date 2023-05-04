@@ -9,25 +9,25 @@
 
 pub mod version;
 
-use core::cmp::min;
-use core::mem::size_of;
-use core::mem::transmute;
-use core::ptr;
-use crate::elf::ELF32Sym;
+use crate::elf;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
-use crate::elf;
-use crate::errno::Errno;
+use crate::elf::ELF32Sym;
 use crate::errno;
-use crate::memory::malloc;
+use crate::errno::Errno;
 use crate::memory;
+use crate::memory::malloc;
 use crate::multiboot;
-use crate::util::DisplayableStr;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
+use crate::util::DisplayableStr;
+use crate::util::FailableClone;
+use core::cmp::min;
+use core::mem::size_of;
+use core::mem::transmute;
+use core::ptr;
 use version::Dependency;
 use version::Version;
 
@@ -193,16 +193,12 @@ impl Module {
 
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel(section) {
-				unsafe {
-					rel.perform(load_base as _, section, get_sym, get_sym_val)
-				}
+				unsafe { rel.perform(load_base as _, section, get_sym, get_sym_val) }
 					.or_else(|_| Err(errno!(EINVAL)))?;
 			}
 
 			for rela in parser.iter_rela(section) {
-				unsafe {
-					rela.perform(load_base as _, section, get_sym, get_sym_val)
-				}
+				unsafe { rela.perform(load_base as _, section, get_sym, get_sym_val) }
 					.or_else(|_| Err(errno!(EINVAL)))?;
 			}
 		}
@@ -234,12 +230,15 @@ impl Module {
 			})?;
 
 		// Getting the module's dependencies
-		let deps =
-			Self::get_module_attibute::<&'static [Dependency]>(mem.as_slice(), &parser, "MOD_DEPS")
-				.ok_or_else(|| {
-					crate::println!("Missing `MOD_DEPS` symbol in module image");
-					errno!(EINVAL)
-				})?;
+		let deps = Self::get_module_attibute::<&'static [Dependency]>(
+			mem.as_slice(),
+			&parser,
+			"MOD_DEPS",
+		)
+		.ok_or_else(|| {
+			crate::println!("Missing `MOD_DEPS` symbol in module image");
+			errno!(EINVAL)
+		})?;
 		let deps = Vec::from_slice(deps)?;
 
 		crate::println!("Loading module `{}` version {}", name, version);

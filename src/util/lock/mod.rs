@@ -19,11 +19,11 @@
 
 pub mod spinlock;
 
+use crate::idt;
+use crate::util::lock::spinlock::Spinlock;
 use core::cell::UnsafeCell;
 use core::ops::Deref;
 use core::ops::DerefMut;
-use crate::idt;
-use crate::util::lock::spinlock::Spinlock;
 
 /// Structure representing the saved state of interruptions for the current
 /// thread.
@@ -57,17 +57,13 @@ impl<'a, T: ?Sized + 'a, const INT: bool> Deref for MutexGuard<'a, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe {
-			self.mutex.get_payload()
-		}
+		unsafe { self.mutex.get_payload() }
 	}
 }
 
 impl<'a, T: ?Sized + 'a, const INT: bool> DerefMut for MutexGuard<'a, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		unsafe {
-			self.mutex.get_mut_payload()
-		}
+		unsafe { self.mutex.get_mut_payload() }
 	}
 }
 

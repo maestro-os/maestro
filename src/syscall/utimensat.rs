@@ -1,22 +1,22 @@
 //! The `utimensat` system call allows to change the timestamps of a file.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
-use crate::process::Process;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::time::unit::TimeUnit;
-use crate::time::unit::Timespec;
-use macros::syscall;
 use super::access::AT_FDCWD;
 use super::util;
+use crate::errno::Errno;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
+use crate::time::unit::TimeUnit;
+use crate::time::unit::Timespec;
+use core::ffi::c_int;
+use macros::syscall;
 
 #[syscall]
 pub fn utimensat(
 	dirfd: c_int,
 	pathname: SyscallString,
 	times: SyscallPtr<[Timespec; 2]>,
-	flags: c_int
+	flags: c_int,
 ) -> Result<i32, Errno> {
 	let (file_mutex, atime, mtime) = {
 		let proc_mutex = Process::get_current().unwrap();

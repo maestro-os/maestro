@@ -918,10 +918,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// Checking if the file already exists
-		if parent
-			.get_dirent(&name, &self.superblock, io)?
-			.is_some()
-		{
+		if parent.get_dirent(&name, &self.superblock, io)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
 

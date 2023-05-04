@@ -1,44 +1,44 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
-use core::cmp::max;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr::null;
-use core::ptr;
-use core::slice;
-use core::str;
+use super::vdso;
 use crate::cpu;
-use crate::elf::ELF32ProgramHeader;
+use crate::elf;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
-use crate::elf;
-use crate::errno::Errno;
+use crate::elf::ELF32ProgramHeader;
 use crate::errno;
+use crate::errno::Errno;
 use crate::exec::vdso::MappedVDSO;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
-use crate::file::path::Path;
-use crate::file::vfs;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::vmem;
-use crate::memory;
+use crate::process;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
+use crate::process::mem_space;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
-use crate::process::mem_space;
-use crate::process;
-use crate::util::FailableClone;
+use crate::util;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
-use crate::util;
-use super::vdso;
+use crate::util::FailableClone;
+use core::cmp::max;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
+use core::ptr::null;
+use core::slice;
+use core::str;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -244,11 +244,11 @@ fn build_auxilary(
 	// vDSO
 	aux.push(AuxEntryDesc::new(
 		AT_SYSINFO,
-		AuxEntryDescValue::Number(vdso.entry.as_ptr() as _)
+		AuxEntryDescValue::Number(vdso.entry.as_ptr() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_SYSINFO_EHDR,
-		AuxEntryDescValue::Number(vdso.ptr.as_ptr() as _)
+		AuxEntryDescValue::Number(vdso.ptr.as_ptr() as _),
 	))?;
 
 	// End
@@ -564,7 +564,8 @@ impl ELFExecutor {
 		// The size in bytes of the phdr table
 		let phdr_size = phentsize as usize * phnum as usize;
 
-		let phdr = elf.iter_segments()
+		let phdr = elf
+			.iter_segments()
 			.filter(|seg| seg.p_type == elf::PT_PHDR)
 			.map(|seg| seg.p_vaddr as *mut c_void)
 			.next();
@@ -582,7 +583,7 @@ impl ELFExecutor {
 				)?;
 
 				(phdr, true)
-			},
+			}
 		};
 
 		let mut entry_point =
@@ -611,8 +612,7 @@ impl ELFExecutor {
 			};
 			let mut interp_file = interp_file_mutex.lock();
 
-			let interp_image =
-				read_exec_file(&mut *interp_file, self.info.euid, self.info.egid)?;
+			let interp_image = read_exec_file(&mut *interp_file, self.info.euid, self.info.egid)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
@@ -637,11 +637,7 @@ impl ELFExecutor {
 					let image_phdr = &elf.get_image()[(ehdr.e_phoff as usize)..];
 
 					vmem::write_lock_wrap(|| {
-						ptr::copy_nonoverlapping::<u8>(
-							image_phdr.as_ptr(),
-							phdr as _,
-							phdr_size
-						);
+						ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr as _, phdr_size);
 					});
 				}
 

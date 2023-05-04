@@ -1,19 +1,19 @@
 //! This module implements a binary tree container.
 
-use core::cmp::Ordering;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc;
+use crate::util::FailableClone;
 use core::cmp::max;
+use core::cmp::Ordering;
 use core::fmt;
-use core::mem::size_of;
 use core::mem;
+use core::mem::size_of;
 use core::ops::Bound;
 use core::ops::RangeBounds;
-use core::ptr::NonNull;
-use core::ptr::drop_in_place;
 use core::ptr;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::memory;
-use crate::util::FailableClone;
+use core::ptr::drop_in_place;
+use core::ptr::NonNull;
 
 #[cfg(config_debug_debug)]
 use crate::util::container::vec::Vec;
@@ -541,12 +541,12 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				}
 
 				None
-			},
+			}
 
 			Bound::Excluded(_key) => {
 				// TODO
 				todo!();
-			},
+			}
 
 			Bound::Unbounded => NonNull::new(Self::get_leftmost_node(node?)),
 		}

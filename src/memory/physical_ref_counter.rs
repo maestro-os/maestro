@@ -4,11 +4,11 @@
 //! For each page that is referenced more than once, the counter stores the
 //! number of references to that page.
 
-use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::memory;
-use crate::util::container::hashmap::HashMap;
 use crate::util;
+use crate::util::container::hashmap::HashMap;
+use core::ffi::c_void;
 
 /// Structure representing the reference counter for all physical pages.
 pub struct PhysRefCounter {
@@ -31,9 +31,7 @@ impl PhysRefCounter {
 	/// If the page isn't stored into the structure, the function returns `0`.
 	pub fn get_ref_count(&self, ptr: *const c_void) -> usize {
 		let ptr = util::down_align(ptr, memory::PAGE_SIZE);
-		self.ref_counts.get(&ptr)
-			.cloned()
-			.unwrap_or(0)
+		self.ref_counts.get(&ptr).cloned().unwrap_or(0)
 	}
 
 	/// Tells whether the given page is shared.

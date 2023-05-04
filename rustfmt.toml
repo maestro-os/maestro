@@ -3,6 +3,7 @@ comment_width = 99
 condense_wildcard_suffixes = true
 hard_tabs = true
 hex_literal_case = "Lower"
+max_width = 99
 newline_style = "Unix"
 reorder_impl_items = true
 struct_lit_single_line = false

@@ -9,35 +9,35 @@ mod gap;
 mod mapping;
 pub mod ptr;
 
-use core::cmp::Ordering;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::fmt;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::ptr::NonNull;
-use core::ptr::null;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::Gid;
 use crate::file::Uid;
 use crate::idt;
+use crate::memory;
 use crate::memory::buddy;
 use crate::memory::physical_ref_counter::PhysRefCounter;
 use crate::memory::stack;
-use crate::memory::vmem::VMem;
 use crate::memory::vmem;
-use crate::memory;
+use crate::memory::vmem::VMem;
 use crate::process::oom;
 use crate::process::open_file::OpenFile;
-use crate::util::FailableClone;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::map::Map;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
-use crate::util;
+use crate::util::FailableClone;
+use core::cmp::min;
+use core::cmp::Ordering;
+use core::ffi::c_void;
+use core::fmt;
+use core::mem::size_of;
+use core::num::NonZeroUsize;
+use core::ptr::null;
+use core::ptr::NonNull;
 use gap::MemGap;
 use mapping::MemMapping;
 
@@ -109,11 +109,15 @@ impl MapResidence {
 	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
 	pub fn offset_add(&mut self, pages: usize) {
 		match self {
-			Self::File { off, ..  } => *off += pages as u64 * memory::PAGE_SIZE as u64,
+			Self::File {
+				off, ..
+			} => *off += pages as u64 * memory::PAGE_SIZE as u64,
 
-			Self::Swap { page_off, ..  } => *page_off += pages,
+			Self::Swap {
+				page_off, ..
+			} => *page_off += pages,
 
-			_ => {},
+			_ => {}
 		}
 	}
 
@@ -171,7 +175,9 @@ impl MapResidence {
 				todo!();
 			}
 
-			MapResidence::Swap { .. } => {
+			MapResidence::Swap {
+				..
+			} => {
 				// TODO
 				todo!();
 			}
@@ -201,7 +207,9 @@ impl MapResidence {
 				todo!();
 			}
 
-			MapResidence::Swap { .. } => {
+			MapResidence::Swap {
+				..
+			} => {
 				// TODO
 				todo!();
 			}
@@ -314,9 +322,7 @@ impl MemSpace {
 	) -> Option<&'a MemGap> {
 		gaps.cmp_get(|key, value| {
 			let begin = *key;
-			let end = unsafe {
-				begin.add(value.get_size().get() * memory::PAGE_SIZE)
-			};
+			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -423,15 +429,12 @@ impl MemSpace {
 			// match the address returned by the `mmap` syscall)
 			MapConstraint::Hint(addr) => {
 				// Getting the gap for the pointer
-				let mut gap = Self::gap_by_ptr(&self.gaps, addr)
-					.ok_or_else(|| errno!(ENOMEM))?;
+				let mut gap = Self::gap_by_ptr(&self.gaps, addr).ok_or_else(|| errno!(ENOMEM))?;
 
 				// The offset in the gap
 				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
 				// The end of the gap
-				let end = unsafe {
-					size.unchecked_add(off)
-				};
+				let end = unsafe { size.unchecked_add(off) };
 
 				if end > gap.get_size() {
 					// Hint cannot be satisfied. Get a gap large enough
@@ -439,9 +442,7 @@ impl MemSpace {
 						.ok_or_else(|| errno!(ENOMEM))?;
 				}
 
-				let addr = unsafe {
-					gap.get_begin().add(off * memory::PAGE_SIZE)
-				};
+				let addr = unsafe { gap.get_begin().add(off * memory::PAGE_SIZE) };
 				(Some(gap), addr)
 			}
 
@@ -520,9 +521,7 @@ impl MemSpace {
 	) -> Option<&MemMapping> {
 		mappings.cmp_get(|key, value| {
 			let begin = *key;
-			let end = unsafe {
-				begin.add(value.get_size().get() * memory::PAGE_SIZE)
-			};
+			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -544,9 +543,7 @@ impl MemSpace {
 	) -> Option<&mut MemMapping> {
 		mappings.cmp_get_mut(|key, value| {
 			let begin = *key;
-			let end = unsafe {
-				begin.add(value.get_size().get() * memory::PAGE_SIZE)
-			};
+			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -592,9 +589,7 @@ impl MemSpace {
 		let mut i = 0;
 		while i < size.get() {
 			// The pointer of the page
-			let page_ptr = unsafe {
-				ptr.add(i * memory::PAGE_SIZE)
-			};
+			let page_ptr = unsafe { ptr.add(i * memory::PAGE_SIZE) };
 
 			// The mapping containing the page
 			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, page_ptr) {
@@ -860,7 +855,7 @@ impl MemSpace {
 		_len: usize,
 		_prot: u8,
 		_uid: Uid,
-		_gid: Gid
+		_gid: Gid,
 	) -> Result<(), Errno> {
 		// TODO Iterate on mappings in the range:
 		//		If the mapping is shared and associated to a file, check file permissions match
@@ -905,7 +900,12 @@ impl MemSpace {
 			let pages = math::ceil_div(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 
-			self.map(MapConstraint::Fixed(begin), pages, flags, MapResidence::Normal)?;
+			self.map(
+				MapConstraint::Fixed(begin),
+				pages,
+				flags,
+				MapResidence::Normal,
+			)?;
 		} else {
 			// Free memory
 

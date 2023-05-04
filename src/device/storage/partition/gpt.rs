@@ -1,19 +1,19 @@
 //! The GUID Partition Table (GPT) is a standard partitions table format. It is
 //! a successor of MBR.
 
-use core::mem::size_of;
-use core::slice;
+use super::Partition;
+use super::Table;
 use crate::crypto::checksum::compute_crc32;
 use crate::crypto::checksum::compute_crc32_lookuptable;
 use crate::device::storage::StorageInterface;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::memory::malloc;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-use crate::util;
-use super::Partition;
-use super::Table;
+use core::mem::size_of;
+use core::slice;
 
 /// The signature in the GPT header.
 const GPT_SIGNATURE: &[u8] = b"EFI PART";
@@ -201,7 +201,10 @@ impl GPT {
 	/// Returns the list of entries in the table.
 	///
 	/// `storage` is the storage device interface.
-	fn get_entries(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Box<GPTEntry>>, Errno> {
+	fn get_entries(
+		&self,
+		storage: &mut dyn StorageInterface,
+	) -> Result<Vec<Box<GPTEntry>>, Errno> {
 		let block_size = storage.get_block_size();
 		let blocks_count = storage.get_blocks_count();
 

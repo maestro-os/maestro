@@ -394,7 +394,9 @@ impl<'a, K: Hash + Eq, V> Iterator for Iter<'a, K, V> {
 			}
 		}
 
-		let (k, v) = self.hm.buckets[self.curr_bucket].elements.index(self.curr_element);
+		let (k, v) = self.hm.buckets[self.curr_bucket]
+			.elements
+			.index(self.curr_element);
 		self.curr_element += 1;
 		Some((k, v))
 	}

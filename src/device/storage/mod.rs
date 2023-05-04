@@ -6,31 +6,25 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use core::cmp::min;
-use core::ffi::c_uchar;
-use core::ffi::c_ulong;
-use core::ffi::c_ushort;
-use core::ffi::c_void;
+use crate::device;
+use crate::device::bus::pci;
+use crate::device::id;
+use crate::device::id::MajorBlock;
+use crate::device::manager::DeviceManager;
+use crate::device::manager::PhysicalDevice;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::device::bus::pci;
-use crate::device::id::MajorBlock;
-use crate::device::id;
-use crate::device::manager::DeviceManager;
-use crate::device::manager::PhysicalDevice;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::Mode;
+use crate::errno::Errno;
 use crate::file::path::Path;
+use crate::file::Mode;
 use crate::memory::malloc;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::MemSpace;
 use crate::process::oom;
 use crate::syscall::ioctl;
-use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -38,6 +32,12 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
+use crate::util::FailableClone;
+use core::cmp::min;
+use core::ffi::c_uchar;
+use core::ffi::c_ulong;
+use core::ffi::c_ushort;
+use core::ffi::c_void;
 use partition::Partition;
 
 /// The major number for storage devices.
@@ -246,7 +246,7 @@ impl StorageDeviceHandle {
 		partition: Option<Partition>,
 		major: u32,
 		storage_id: u32,
-		path_prefix: String
+		path_prefix: String,
 	) -> Self {
 		Self {
 			interface,
@@ -254,7 +254,7 @@ impl StorageDeviceHandle {
 
 			major,
 			storage_id,
-			path_prefix
+			path_prefix,
 		}
 	}
 }
@@ -284,9 +284,7 @@ impl DeviceHandle for StorageDeviceHandle {
 				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
 
 				// Starting LBA of the partition
-				let start = self.partition.as_ref()
-					.map(|p| p.get_offset())
-					.unwrap_or(0) as _;
+				let start = self.partition.as_ref().map(|p| p.get_offset()).unwrap_or(0) as _;
 
 				let hd_geo = HdGeometry {
 					heads: h,
@@ -312,7 +310,7 @@ impl DeviceHandle for StorageDeviceHandle {
 					self.interface.clone(),
 					self.major,
 					self.storage_id,
-					self.path_prefix.failable_clone()?
+					self.path_prefix.failable_clone()?,
 				)?;
 
 				Ok(0)
@@ -361,7 +359,9 @@ impl IO for StorageDeviceHandle {
 		if let Some(interface) = self.interface.get() {
 			let interface = interface.lock();
 
-			let blocks_count = self.partition.as_ref()
+			let blocks_count = self
+				.partition
+				.as_ref()
 				.map(|p| p.get_size())
 				.unwrap_or_else(|| interface.get_blocks_count());
 			interface.get_block_size() * blocks_count
@@ -470,9 +470,8 @@ impl StorageManager {
 					let part_nbr = (i + 1) as u32;
 
 					// Adding the partition number to the path
-					let path_str = (
-						path_prefix.failable_clone()? + crate::format!("{}", part_nbr)?
-					)?;
+					let path_str =
+						(path_prefix.failable_clone()? + crate::format!("{}", part_nbr)?)?;
 					let path = Path::from_str(path_str.as_bytes(), false)?;
 
 					// Creating the partition's device file
@@ -481,7 +480,7 @@ impl StorageManager {
 						Some(partition),
 						major,
 						storage_id,
-						path_prefix.failable_clone()?
+						path_prefix.failable_clone()?,
 					);
 					let device = Device::new(
 						DeviceID {
@@ -540,7 +539,7 @@ impl StorageManager {
 			None,
 			major,
 			storage_id,
-			prefix.failable_clone()?
+			prefix.failable_clone()?,
 		);
 		let main_device = Device::new(
 			DeviceID {
@@ -554,12 +553,7 @@ impl StorageManager {
 		)?;
 		device::register(main_device)?;
 
-		Self::read_partitions(
-			storage.new_weak(),
-			major,
-			storage_id,
-			prefix
-		)?;
+		Self::read_partitions(storage.new_weak(), major, storage_id, prefix)?;
 
 		self.interfaces.push(storage)
 	}

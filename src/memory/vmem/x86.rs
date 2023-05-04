@@ -23,17 +23,17 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a
 //! page table.
 
+use crate::cpu;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::buddy;
+use crate::memory::vmem::VMem;
+use crate::util;
+use crate::util::lock::Mutex;
+use crate::util::FailableClone;
 use core::ffi::c_void;
 use core::ptr;
 use core::slice;
-use crate::cpu;
-use crate::errno::Errno;
-use crate::memory::buddy;
-use crate::memory::vmem::VMem;
-use crate::memory;
-use crate::util::FailableClone;
-use crate::util::lock::Mutex;
-use crate::util;
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.
@@ -140,9 +140,7 @@ fn alloc_obj() -> Result<*mut u32, Errno> {
 	let ptr = buddy::alloc_kernel(0)? as *mut u8;
 
 	// Zero memory
-	let slice = unsafe {
-		slice::from_raw_parts_mut(ptr, buddy::get_frame_size(0))
-	};
+	let slice = unsafe { slice::from_raw_parts_mut(ptr, buddy::get_frame_size(0)) };
 	slice.fill(0);
 
 	Ok(ptr as _)
@@ -521,7 +519,8 @@ impl VMem for X86VMem {
 		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
 		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
 		debug_assert!(
-			(virtaddr as usize / memory::PAGE_SIZE) + pages <= (usize::MAX / memory::PAGE_SIZE) + 1
+			(virtaddr as usize / memory::PAGE_SIZE) + pages
+				<= (usize::MAX / memory::PAGE_SIZE) + 1
 		);
 		debug_assert_eq!(flags & ADDR_MASK, 0);
 

@@ -12,14 +12,14 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use crate::errno::Errno;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_void;
-use core::fmt::Write;
 use core::fmt;
+use core::fmt::Write;
 use core::mem::size_of;
 use core::slice;
-use crate::errno::Errno;
 
 // C functions required by LLVM
 extern "C" {

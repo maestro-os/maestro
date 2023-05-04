@@ -15,26 +15,26 @@ pub mod path;
 pub mod util;
 pub mod vfs;
 
-use core::ffi::c_void;
+use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
+use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
-use crate::time;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::ffi::c_void;
 use mountpoint::MountPoint;
 use mountpoint::MountSource;
 use open_file::OpenFile;
@@ -206,8 +206,7 @@ impl FileLocation {
 	pub fn get_mountpoint_id(&self) -> Option<u32> {
 		match self {
 			Self::Filesystem {
-				mountpoint_id,
-				..
+				mountpoint_id, ..
 			} => mountpoint_id.clone(),
 
 			_ => None,
@@ -223,11 +222,12 @@ impl FileLocation {
 	pub fn get_inode(&self) -> INode {
 		match self {
 			Self::Filesystem {
-				inode,
-				..
+				inode, ..
 			} => *inode,
 
-			Self::Virtual { id } => *id as _,
+			Self::Virtual {
+				id,
+			} => *id as _,
 		}
 	}
 }
@@ -257,8 +257,8 @@ pub enum FileContent {
 	Regular,
 	/// The file is a directory.
 	///
-	/// The hashmap contains the list of entries. The key is the name of the entry and the value is
-	/// the entry itself.
+	/// The hashmap contains the list of entries. The key is the name of the entry and the value
+	/// is the entry itself.
 	Directory(HashMap<String, DirEntry>),
 	/// The file is a link. The data is the link's target.
 	Link(String),
@@ -659,12 +659,13 @@ impl File {
 				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Block,
 					major: *major,
-					minor: *minor
-				}).ok_or_else(|| errno!(ENODEV))?;
+					minor: *minor,
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
 
 				let mut dev = dev_mutex.lock();
 				dev.get_handle().ioctl(mem_space, request, argp)
-			},
+			}
 
 			FileContent::CharDevice {
 				major,
@@ -674,7 +675,8 @@ impl File {
 					type_: DeviceType::Char,
 					major: *major,
 					minor: *minor,
-				}).ok_or_else(|| errno!(ENODEV))?;
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
 
 				let mut dev = dev_mutex.lock();
 				dev.get_handle().ioctl(mem_space, request, argp)
@@ -711,20 +713,21 @@ impl File {
 	/// For the current file, the function takes a closure which provides the following arguments:
 	/// - The I/O interface to write the file, if any.
 	/// - The filesystem of the file, if any.
-	fn io_op<R, F>(&self, f: F)-> Result<R, Errno>
-		where F: FnOnce(
+	fn io_op<R, F>(&self, f: F) -> Result<R, Errno>
+	where
+		F: FnOnce(
 			Option<SharedPtr<dyn IO>>,
-			Option<(SharedPtr<dyn Filesystem>, INode)>
-		) -> Result<R, Errno> {
+			Option<(SharedPtr<dyn Filesystem>, INode)>,
+		) -> Result<R, Errno>,
+	{
 		match &self.content {
 			FileContent::Regular => match self.location {
 				FileLocation::Filesystem {
-					inode,
-					..
+					inode, ..
 				} => {
 					let (io, fs) = {
-						let mountpoint_mutex = self.location.get_mountpoint()
-							.ok_or_else(|| errno!(EIO))?;
+						let mountpoint_mutex =
+							self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 						let mountpoint = mountpoint_mutex.lock();
 
 						let io = mountpoint.get_source().get_io()?;
@@ -734,14 +737,15 @@ impl File {
 					};
 
 					f(Some(io), Some((fs, inode)))
-				},
+				}
 
-				FileLocation::Virtual { .. } => {
-					let io = buffer::get(&self.location)
-						.map(|io| io as _);
+				FileLocation::Virtual {
+					..
+				} => {
+					let io = buffer::get(&self.location).map(|io| io as _);
 					f(io, None)
-				},
-			}
+				}
+			},
 
 			FileContent::Directory(_) => Err(errno!(EISDIR)),
 
@@ -750,12 +754,12 @@ impl File {
 			FileContent::Fifo => {
 				let io = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
 				f(Some(io as _), None)
-			},
+			}
 
 			FileContent::Socket => {
 				let io = buffer::get_or_default::<Socket>(self.get_location())?;
 				f(Some(io as _), None)
-			},
+			}
 
 			FileContent::BlockDevice {
 				major,
@@ -764,11 +768,12 @@ impl File {
 				let io = device::get(&DeviceID {
 					type_: DeviceType::Block,
 					major: *major,
-					minor: *minor
-				}).ok_or_else(|| errno!(ENODEV))?;
+					minor: *minor,
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
 
 				f(Some(io as _), None)
-			},
+			}
 
 			FileContent::CharDevice {
 				major,
@@ -777,8 +782,9 @@ impl File {
 				let io = device::get(&DeviceID {
 					type_: DeviceType::Char,
 					major: *major,
-					minor: *minor
-				}).ok_or_else(|| errno!(ENODEV))?;
+					minor: *minor,
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
 
 				f(Some(io as _), None)
 			}

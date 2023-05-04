@@ -61,7 +61,9 @@ pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 	let mut mem_space_guard = mem_space.lock();
 
 	// A reference to the user_desc structure
-	let info = u_info.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
+	let info = u_info
+		.get_mut(&mut mem_space_guard)?
+		.ok_or(errno!(EFAULT))?;
 
 	// Getting the entry with its id
 	let (id, entry) = get_entry(&mut *proc, info.get_entry_number())?;

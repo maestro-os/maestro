@@ -1,16 +1,16 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
-use crate::process::State;
+use crate::errno::Errno;
+use crate::process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::rusage::RUsage;
 use crate::process::scheduler;
-use crate::process;
+use crate::process::Process;
+use crate::process::State;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -180,13 +180,8 @@ pub fn do_waitpid(
 			// Check if at least one target process is waitable
 			let mut wstatus_val = Default::default();
 			let mut rusage_val = Default::default();
-			let result = check_waitable(
-				&mut *proc,
-				pid,
-				&mut wstatus_val,
-				options,
-				&mut rusage_val
-			)?;
+			let result =
+				check_waitable(&mut *proc, pid, &mut wstatus_val, options, &mut rusage_val)?;
 
 			// Setting values to userspace
 			{

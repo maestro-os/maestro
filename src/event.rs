@@ -2,20 +2,20 @@
 //! register callbacks for each interrupts. Each callback has a priority number
 //! and is called in descreasing order.
 
-use core::ffi::c_void;
-use core::mem::MaybeUninit;
-use crate::crypto::rand::EntropyPool;
 use crate::crypto::rand;
+use crate::crypto::rand::EntropyPool;
 use crate::errno::Errno;
-use crate::idt::pic;
 use crate::idt;
+use crate::idt::pic;
 use crate::panic;
 use crate::process::regs::Regs;
 use crate::process::tss;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
-use crate::util;
+use core::ffi::c_void;
+use core::mem::MaybeUninit;
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.

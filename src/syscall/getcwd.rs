@@ -1,10 +1,10 @@
 //! The getcwd system call allows to retrieve the current working directory of
 //! the current process.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::Process;
 use crate::util;
 use macros::syscall;
 

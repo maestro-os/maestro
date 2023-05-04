@@ -1,21 +1,21 @@
 //! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
-use core::cmp::min;
-use core::ffi::c_int;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::open_file::O_NONBLOCK;
+use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
+use crate::file::open_file::O_NONBLOCK;
 use crate::idt;
 use crate::limits;
-use crate::process::Process;
 use crate::process::iovec::IOVec;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::mem_space::MemSpace;
 use crate::process::signal::Signal;
+use crate::process::Process;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
+use core::cmp::min;
+use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Handle blocking writes (and thus, EINTR)
@@ -106,9 +106,7 @@ pub fn do_readv(
 		let fds_mutex = proc.get_fds().unwrap();
 		let fds = fds_mutex.lock();
 
-		let open_file_mutex = fds.get_fd(fd as _)
-			.ok_or(errno!(EBADF))?
-			.get_open_file()?;
+		let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file()?;
 		(mem_space, open_file_mutex)
 	};
 

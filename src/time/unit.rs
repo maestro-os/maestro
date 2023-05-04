@@ -85,7 +85,9 @@ impl TimeUnit for Timeval {
 	}
 
 	fn to_nano(&self) -> u64 {
-		self.tv_sec.wrapping_mul(1000000000).wrapping_add(self.tv_usec.wrapping_mul(1000))
+		self.tv_sec
+			.wrapping_mul(1000000000)
+			.wrapping_add(self.tv_usec.wrapping_mul(1000))
 	}
 
 	fn is_zero(&self) -> bool {
@@ -142,7 +144,9 @@ impl TimeUnit for Timespec {
 	}
 
 	fn to_nano(&self) -> u64 {
-		self.tv_sec.wrapping_mul(1000000000).wrapping_add(self.tv_nsec as u64)
+		self.tv_sec
+			.wrapping_mul(1000000000)
+			.wrapping_add(self.tv_nsec as u64)
 	}
 
 	fn is_zero(&self) -> bool {
@@ -199,7 +203,9 @@ impl TimeUnit for Timespec32 {
 	}
 
 	fn to_nano(&self) -> u64 {
-		(self.tv_sec as u64).wrapping_mul(1000000000).wrapping_add(self.tv_nsec as u64)
+		(self.tv_sec as u64)
+			.wrapping_mul(1000000000)
+			.wrapping_add(self.tv_nsec as u64)
 	}
 
 	fn is_zero(&self) -> bool {

@@ -52,8 +52,8 @@ pub trait DeviceManager {
 }
 
 /// The list of device managers.
-static DEVICE_MANAGERS: Mutex<HashMap<String, SharedPtr<dyn DeviceManager>>>
-	= Mutex::new(HashMap::new());
+static DEVICE_MANAGERS: Mutex<HashMap<String, SharedPtr<dyn DeviceManager>>> =
+	Mutex::new(HashMap::new());
 
 /// Registers the given device manager.
 pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {

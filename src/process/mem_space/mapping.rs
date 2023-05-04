@@ -2,26 +2,26 @@
 //! may be mapped at the process's creation or by the process itself using
 //! system calls.
 
-use core::ffi::c_void;
-use core::fmt;
-use core::num::NonZeroUsize;
-use core::ptr::NonNull;
-use core::ptr;
-use core::slice;
+use super::gap::MemGap;
+use super::MapResidence;
+use super::MemSpace;
 use crate::errno::Errno;
+use crate::memory;
 use crate::memory::buddy;
 use crate::memory::malloc;
 use crate::memory::physical_ref_counter::PhysRefCounter;
-use crate::memory::vmem::VMem;
 use crate::memory::vmem;
-use crate::memory;
+use crate::memory::vmem::VMem;
 use crate::process::oom;
+use crate::util;
 use crate::util::io::IO;
 use crate::util::lock::*;
-use crate::util;
-use super::MapResidence;
-use super::MemSpace;
-use super::gap::MemGap;
+use core::ffi::c_void;
+use core::fmt;
+use core::num::NonZeroUsize;
+use core::ptr;
+use core::ptr::NonNull;
+use core::slice;
 
 /// A pointer to the default physical page of memory.
 ///
@@ -44,14 +44,12 @@ fn get_default_page() -> *const c_void {
 
 			// Zero page
 			let virt_ptr = memory::kern_to_virt(ptr) as *mut u8;
-			let slice = unsafe {
-				slice::from_raw_parts_mut(virt_ptr, memory::PAGE_SIZE)
-			};
+			let slice = unsafe { slice::from_raw_parts_mut(virt_ptr, memory::PAGE_SIZE) };
 			slice.fill(0);
 
 			*default_page = Some(ptr);
 			ptr
-		},
+		}
 	}
 }
 
@@ -269,7 +267,7 @@ impl MemMapping {
 							// Zero memory
 							let slice = slice::from_raw_parts_mut::<u8>(
 								virt_ptr as *mut _,
-								memory::PAGE_SIZE
+								memory::PAGE_SIZE,
 							);
 							slice.fill(0);
 						}
@@ -288,17 +286,15 @@ impl MemMapping {
 	///
 	/// The default page is dependent on the nature of the mapping's residence.
 	pub fn map_default(&mut self) -> Result<(), Errno> {
-		let use_default = self.flags & super::MAPPING_FLAG_NOLAZY == 0
-			&& self.residence.is_normal();
+		let use_default =
+			self.flags & super::MAPPING_FLAG_NOLAZY == 0 && self.residence.is_normal();
 
 		if use_default {
 			let vmem = self.get_mut_vmem();
 			let default_page = get_default_page();
 
 			for i in 0..self.size.get() {
-				let virt_ptr = unsafe {
-					self.begin.add(i * memory::PAGE_SIZE)
-				};
+				let virt_ptr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
 				let flags = self.get_vmem_flags(false, i);
 
 				vmem.map(default_page, virt_ptr, flags)?;
@@ -372,27 +368,25 @@ impl MemMapping {
 		let begin_ptr = unsafe { self.begin.add(begin * memory::PAGE_SIZE) };
 
 		// The mapping located before the gap to be created
-		let prev = NonZeroUsize::new(begin)
-			.map(|begin| {
-				Self {
-					begin: self.begin,
-					size: begin,
-					flags: self.flags,
+		let prev = NonZeroUsize::new(begin).map(|begin| Self {
+			begin: self.begin,
+			size: begin,
+			flags: self.flags,
 
-					residence: self.residence.clone(),
+			residence: self.residence.clone(),
 
-					vmem: self.vmem,
-				}
-			});
+			vmem: self.vmem,
+		});
 
-		let gap = NonZeroUsize::new(size)
-			.map(|size| MemGap::new(begin_ptr, size));
+		let gap = NonZeroUsize::new(size).map(|size| MemGap::new(begin_ptr, size));
 
 		// The mapping located after the gap to be created
 		let next = {
 			let end = begin + size;
 
-			self.size.get().checked_sub(end)
+			self.size
+				.get()
+				.checked_sub(end)
 				.and_then(|size| NonZeroUsize::new(size))
 				.map(|size| {
 					let begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
@@ -473,9 +467,7 @@ impl MemMapping {
 
 		if nolazy {
 			for i in 0..self.size.get() {
-				let virt_ptr = unsafe {
-					self.begin.add(i * memory::PAGE_SIZE)
-				};
+				let virt_ptr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
 
 				new_mapping.get_mut_vmem().unmap(virt_ptr)?;
 				new_mapping.map(i)?;
@@ -520,7 +512,7 @@ impl MemMapping {
 				// only pages that have been modified
 				let slice = slice::from_raw_parts(
 					self.begin as *mut u8,
-					self.size.get() * memory::PAGE_SIZE
+					self.size.get() * memory::PAGE_SIZE,
 				);
 
 				let mut i = 0;
@@ -542,10 +534,7 @@ impl fmt::Debug for MemMapping {
 		write!(
 			f,
 			"MemMapping {{ begin: {:p}, end: {:p}, flags: {}, residence: {:?} }}",
-			self.begin,
-			end,
-			self.flags,
-			self.residence,
+			self.begin, end, self.flags, self.residence,
 		)
 	}
 }

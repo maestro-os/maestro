@@ -207,7 +207,9 @@ pub fn statx(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mut mem_space_guard = mem_space.lock();
 
-		let statx = statxbuff.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let statx = statxbuff
+			.get_mut(&mut mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
 		*statx = statx_val;
 	}
 

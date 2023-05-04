@@ -1,24 +1,24 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
-use core::cmp::max;
-use core::fmt;
+use super::fs;
+use super::fs::Filesystem;
+use super::fs::FilesystemType;
+use super::path::Path;
+use super::vfs;
+use super::FileContent;
+use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::device;
 use crate::errno::Errno;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::DummyIO;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use super::FileContent;
-use super::fs::Filesystem;
-use super::fs::FilesystemType;
-use super::fs;
-use super::path::Path;
-use super::vfs;
+use crate::util::FailableClone;
+use core::cmp::max;
+use core::fmt;
 
 /// Permits mandatory locking on files.
 const FLAG_MANDLOCK: u32 = 0b000000000001;
@@ -93,14 +93,20 @@ impl MountSource {
 				let file = file_mutex.lock();
 
 				match file.get_content() {
-					FileContent::BlockDevice { major, minor } => Ok(Self::Device {
+					FileContent::BlockDevice {
+						major,
+						minor,
+					} => Ok(Self::Device {
 						dev_type: DeviceType::Block,
 
 						major: *major,
 						minor: *minor,
 					}),
 
-					FileContent::CharDevice { major, minor } => Ok(Self::Device {
+					FileContent::CharDevice {
+						major,
+						minor,
+					} => Ok(Self::Device {
 						dev_type: DeviceType::Char,
 
 						major: *major,
@@ -109,7 +115,7 @@ impl MountSource {
 
 					_ => Err(errno!(EINVAL)),
 				}
-			},
+			}
 
 			Err(err) if err == errno!(ENOENT) => Ok(Self::NoDev(String::try_from(string)?)),
 
@@ -130,7 +136,8 @@ impl MountSource {
 					type_: *dev_type,
 					major: *major,
 					minor: *minor,
-				}).ok_or_else(|| errno!(ENODEV))?;
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
 				Ok(dev as _)
 			}
 
@@ -427,7 +434,7 @@ pub fn create(
 		source,
 		fs_type,
 		flags,
-		path.failable_clone()?
+		path.failable_clone()?,
 	)?)?;
 
 	// Insertion

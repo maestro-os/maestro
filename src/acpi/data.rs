@@ -7,22 +7,22 @@
 //! The structure implemented in this module uses a temporary virtual memory
 //! context to get a copy of the data.
 
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr::Pointee;
-use core::ptr::copy_nonoverlapping;
-use core::ptr;
-use core::slice;
+use crate::acpi::rsdt::Rsdt;
 use crate::acpi::ACPITable;
 use crate::acpi::ACPITableHeader;
-use crate::acpi::rsdt::Rsdt;
 use crate::errno::Errno;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::vmem;
-use crate::memory;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
-use crate::util;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
+use core::ptr::copy_nonoverlapping;
+use core::ptr::Pointee;
+use core::slice;
 
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &[u8] = b"RSD PTR ";

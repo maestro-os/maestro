@@ -1,12 +1,12 @@
 //! A gap is a region of the virtual memory which is available for allocation.
 
+use crate::memory;
+use crate::util;
+use crate::util::FailableClone;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::fmt;
 use core::num::NonZeroUsize;
-use crate::memory;
-use crate::util::FailableClone;
-use crate::util;
 
 /// A gap in the memory space that can use for new mappings.
 #[derive(Clone)]
@@ -62,21 +62,21 @@ impl MemGap {
 	/// function returns `(None, None)`.
 	pub fn consume(&self, off: usize, size: usize) -> (Option<Self>, Option<Self>) {
 		// The new gap located before the mapping
-		let left = NonZeroUsize::new(off)
-			.map(|off| {
-				let addr = self.begin;
-				let size = min(off, self.size);
+		let left = NonZeroUsize::new(off).map(|off| {
+			let addr = self.begin;
+			let size = min(off, self.size);
 
-				Self::new(addr, size)
-			});
+			Self::new(addr, size)
+		});
 
 		// The new gap located after the mapping
-		let right = self.size.get().checked_sub(off + size)
+		let right = self
+			.size
+			.get()
+			.checked_sub(off + size)
 			.and_then(|size| NonZeroUsize::new(size))
 			.map(|gap_size| {
-				let addr = unsafe {
-					self.begin.add((off + size) * memory::PAGE_SIZE)
-				};
+				let addr = unsafe { self.begin.add((off + size) * memory::PAGE_SIZE) };
 
 				Self::new(addr, gap_size)
 			});
@@ -88,13 +88,15 @@ impl MemGap {
 	///
 	/// If the gaps are not adjacent, the function does nothing.
 	pub fn merge(&mut self, other: Self) {
-		if self.get_begin() == other.get_end() { // If `other` is before
+		if self.get_begin() == other.get_end() {
+			// If `other` is before
 			self.begin = other.begin;
 
 			unsafe {
 				self.size = self.size.unchecked_add(other.size.get());
 			}
-		} else if self.get_end() == other.get_begin() { // If `other` is after
+		} else if self.get_end() == other.get_begin() {
+			// If `other` is after
 			unsafe {
 				self.size = self.size.unchecked_add(other.size.get());
 			}
@@ -106,6 +108,11 @@ crate::failable_clone_impl!(MemGap);
 
 impl fmt::Debug for MemGap {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "MemGap {{ begin: {:p}, end: {:p} }}", self.begin, self.get_end())
+		write!(
+			f,
+			"MemGap {{ begin: {:p}, end: {:p} }}",
+			self.begin,
+			self.get_end()
+		)
 	}
 }

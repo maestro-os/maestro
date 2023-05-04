@@ -1,12 +1,12 @@
 //! The `delete_module` system call allows to unload a module from the kernel.
 
-use core::ffi::c_uint;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::module;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
 use crate::util::container::string::String;
+use core::ffi::c_uint;
 use macros::syscall;
 
 // TODO handle flags

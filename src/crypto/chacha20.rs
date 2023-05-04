@@ -44,16 +44,16 @@ pub fn block(input: &[u8; 64], output: &mut [u8; 64]) {
 
 	for _ in (0..20).step_by(2) {
 		// Odd round
-		quarter_round!(buff[0], buff[4], buff[8],  buff[12]);
-		quarter_round!(buff[1], buff[5], buff[9],  buff[13]);
+		quarter_round!(buff[0], buff[4], buff[8], buff[12]);
+		quarter_round!(buff[1], buff[5], buff[9], buff[13]);
 		quarter_round!(buff[2], buff[6], buff[10], buff[14]);
 		quarter_round!(buff[3], buff[7], buff[11], buff[15]);
 
 		// Even round
 		quarter_round!(buff[0], buff[5], buff[10], buff[15]);
 		quarter_round!(buff[1], buff[6], buff[11], buff[12]);
-		quarter_round!(buff[2], buff[7], buff[8],  buff[13]);
-		quarter_round!(buff[3], buff[4], buff[9],  buff[14]);
+		quarter_round!(buff[2], buff[7], buff[8], buff[13]);
+		quarter_round!(buff[3], buff[4], buff[9], buff[14]);
 	}
 
 	unsafe {

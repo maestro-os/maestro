@@ -1,18 +1,18 @@
 //! The `openat` syscall allows to open a file.
 
-use core::ffi::c_int;
+use super::util;
 use crate::errno::Errno;
+use crate::file;
+use crate::file::fd::FD_CLOEXEC;
+use crate::file::open_file;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::fd::FD_CLOEXEC;
-use crate::file::open_file;
-use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
 use crate::util::ptr::SharedPtr;
+use core::ffi::c_int;
 use macros::syscall;
-use super::util;
 
 // TODO Implement all flags
 

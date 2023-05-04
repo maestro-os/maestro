@@ -670,9 +670,8 @@ mod test {
 		let alloc_pages = allocated_pages_count();
 
 		if let Ok(p) = alloc_kernel(0) {
-			let slice = unsafe {
-				core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0))
-			};
+			let slice =
+				unsafe { core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0)) };
 			slice.fill(!0);
 
 			free_kernel(p, 0);
@@ -688,9 +687,8 @@ mod test {
 		let alloc_pages = allocated_pages_count();
 
 		if let Ok(p) = alloc_kernel(1) {
-			let slice = unsafe {
-				core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0))
-			};
+			let slice =
+				unsafe { core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0)) };
 			slice.fill(!0);
 
 			free_kernel(p, 1);
@@ -703,9 +701,8 @@ mod test {
 
 	fn lifo_test(i: usize) {
 		if let Ok(p) = alloc_kernel(0) {
-			let slice = unsafe {
-				core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0))
-			};
+			let slice =
+				unsafe { core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0)) };
 			slice.fill(!0);
 
 			if i > 0 {
@@ -749,9 +746,8 @@ mod test {
 
 	fn get_dangling(order: FrameOrder) -> *mut c_void {
 		if let Ok(p) = alloc_kernel(order) {
-			let slice = unsafe {
-				core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0))
-			};
+			let slice =
+				unsafe { core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0)) };
 			slice.fill(!0);
 
 			free_kernel(p, 0);

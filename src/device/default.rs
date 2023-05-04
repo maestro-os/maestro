@@ -1,27 +1,27 @@
 //! This module implements default devices.
 
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::id;
+use super::DeviceType;
 use crate::crypto::rand;
+use crate::device;
+use crate::device::tty::TTYDeviceHandle;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceID;
-use crate::device::tty::TTYDeviceHandle;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::file::path::Path;
 use crate::logger;
-use crate::process::Process;
 use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util::io::IO;
 use crate::util::io;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use super::DeviceType;
-use super::id;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 
 /// Structure representing a device which does nothing.
 #[derive(Default)]

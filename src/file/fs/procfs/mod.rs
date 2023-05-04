@@ -74,12 +74,8 @@ impl ProcFS {
 		)?;
 
 		// Creating /proc/mounts
-		let node = DummyKernFSNode::new(
-			0o777,
-			0,
-			0,
-			FileContent::Link(b"self/mounts".try_into()?),
-		);
+		let node =
+			DummyKernFSNode::new(0o777, 0, 0, FileContent::Link(b"self/mounts".try_into()?));
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			b"mounts".try_into()?,

@@ -1,12 +1,12 @@
 //! The `renameat2` allows to rename a file.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
-use crate::file::FileType;
-use crate::file::vfs;
 use crate::file;
-use crate::process::Process;
+use crate::file::vfs;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Flag: Don't replace new path if it exists. Return an error instead.

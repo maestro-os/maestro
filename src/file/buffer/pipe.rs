@@ -1,22 +1,22 @@
 //! A pipe is an object that links two file descriptors together. One reading
 //! and another writing, with a buffer in between.
 
-use core::ffi::c_int;
-use core::ffi::c_void;
-use crate::file::Errno;
+use super::Buffer;
 use crate::file::buffer::BlockHandler;
+use crate::file::Errno;
 use crate::limits;
-use crate::process::Process;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util::FailableDefault;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
-use crate::util::io::IO;
 use crate::util::io;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use super::Buffer;
+use crate::util::FailableDefault;
+use core::ffi::c_int;
+use core::ffi::c_void;
 
 /// Structure representing a buffer buffer.
 #[derive(Debug)]

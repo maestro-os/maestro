@@ -3,20 +3,20 @@
 pub mod pipe;
 pub mod socket;
 
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::file::FileLocation;
 use crate::file::blocking::BlockHandler;
-use crate::process::Process;
+use crate::file::FileLocation;
 use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util::FailableDefault;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableDefault;
+use core::ffi::c_void;
 
 /// Trait representing a buffer.
 pub trait Buffer: IO {
@@ -62,8 +62,7 @@ pub trait Buffer: IO {
 
 /// All the system's buffer. The key is the location of the file associated with the
 /// entry.
-static BUFFERS: Mutex<HashMap<FileLocation, SharedPtr<dyn Buffer>>>
-	= Mutex::new(HashMap::new());
+static BUFFERS: Mutex<HashMap<FileLocation, SharedPtr<dyn Buffer>>> = Mutex::new(HashMap::new());
 /// Buffer ID allocator.
 static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
@@ -73,7 +72,9 @@ static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 ///
 /// If the ID allocator is not initialized, the function initializes it.
 fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
-	where F: FnOnce(&mut IDAllocator) -> Result<T, Errno> {
+where
+	F: FnOnce(&mut IDAllocator) -> Result<T, Errno>,
+{
 	let mut id_allocator = ID_ALLOCATOR.lock();
 
 	let id_allocator = match &mut *id_allocator {
@@ -81,7 +82,7 @@ fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
 		None => {
 			*id_allocator = Some(IDAllocator::new(65536)?);
 			id_allocator.as_mut().unwrap()
-		},
+		}
 	};
 
 	f(id_allocator)
@@ -99,7 +100,7 @@ pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
 ///
 /// If the buffer doesn't exist, the function registers a new default buffer.
 pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
-	loc: &FileLocation
+	loc: &FileLocation,
 ) -> Result<SharedPtr<dyn Buffer>, Errno> {
 	let mut buffers = BUFFERS.lock();
 
@@ -111,7 +112,7 @@ pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
 			buffers.insert(loc.clone(), buff.clone())?;
 
 			Ok(buff)
-		},
+		}
 	}
 }
 
@@ -127,11 +128,14 @@ pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
 /// The function returns the location associated with the buffer.
 pub fn register(
 	loc: Option<FileLocation>,
-	buff: SharedPtr<dyn Buffer>
+	buff: SharedPtr<dyn Buffer>,
 ) -> Result<FileLocation, Errno> {
 	let loc = id_allocator_do(|id_allocator| match loc {
 		Some(loc) => {
-			if let FileLocation::Virtual { id } = loc {
+			if let FileLocation::Virtual {
+				id,
+			} = loc
+			{
 				id_allocator.set_used(id);
 			}
 
@@ -140,7 +144,7 @@ pub fn register(
 
 		None => Ok(FileLocation::Virtual {
 			id: id_allocator.alloc(None)?,
-		})
+		}),
 	})?;
 
 	let mut buffers = BUFFERS.lock();
@@ -157,7 +161,10 @@ pub fn release(loc: &FileLocation) {
 
 	let _ = buffers.remove(loc);
 
-	if let FileLocation::Virtual { id } = loc {
+	if let FileLocation::Virtual {
+		id,
+	} = loc
+	{
 		let _ = id_allocator_do(|id_allocator| {
 			id_allocator.free(*id);
 			Ok(())

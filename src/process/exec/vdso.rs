@@ -1,22 +1,22 @@
 //! The vDSO (virtual dynamic shared object) is a small shared library that the kernel
 //! automatically maps into the memory space of all userspace programs.
 
-use core::cmp::min;
-use core::ffi::c_void;
-use core::ptr::NonNull;
-use core::ptr;
 use crate::elf::parser::ELFParser;
 use crate::errno::Errno;
-use crate::memory::buddy;
 use crate::memory;
+use crate::memory::buddy;
+use crate::process::mem_space;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
-use crate::process::mem_space;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::ptr;
+use core::ptr::NonNull;
 
 /// Structure storing informations on the vDSO ELF image.
 struct VDSO {
@@ -91,12 +91,10 @@ pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
 		mem_space::MAPPING_FLAG_USER,
 		MapResidence::Static {
 			pages: img.pages.clone(),
-		}
+		},
 	)?;
 
-	let entry = unsafe {
-		ptr.add(img.entry_off)
-	};
+	let entry = unsafe { ptr.add(img.entry_off) };
 
 	Ok(MappedVDSO {
 		ptr: NonNull::new(ptr).unwrap(),

@@ -1,19 +1,16 @@
 //! The `rename` system call renames a file.
 
 use crate::errno::Errno;
-use crate::file::FileType;
+use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::file;
-use crate::process::Process;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
 use macros::syscall;
 
 #[syscall]
-pub fn rename(
-	oldpath: SyscallString,
-	newpath: SyscallString,
-) -> Result<i32, Errno> {
+pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
 	let vfs = vfs::get();
 	let mut vfs = vfs.lock();
 	let vfs = vfs.as_mut().unwrap();

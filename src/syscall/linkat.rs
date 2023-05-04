@@ -1,13 +1,13 @@
 //! This `linkat` syscall creates a new hard link to a file.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
-use crate::file::FileType;
-use crate::file::vfs;
-use crate::process::Process;
-use crate::process::mem_space::ptr::SyscallString;
-use macros::syscall;
 use super::access;
+use crate::errno::Errno;
+use crate::file::vfs;
+use crate::file::FileType;
+use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
+use core::ffi::c_int;
+use macros::syscall;
 
 #[syscall]
 pub fn linkat(

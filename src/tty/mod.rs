@@ -9,24 +9,24 @@
 mod ansi;
 pub mod termios;
 
-use core::cmp::*;
-use core::mem::MaybeUninit;
-use core::ptr;
 use crate::device::serial;
 use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::memory::vmem;
-use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
+use crate::process::Process;
 use crate::tty::termios::Termios;
+use crate::util;
 use crate::util::container::vec::Vec;
 use crate::util::io;
 use crate::util::lock::IntMutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
-use crate::util;
 use crate::vga;
+use core::cmp::*;
+use core::mem::MaybeUninit;
+use core::ptr;
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;

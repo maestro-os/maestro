@@ -7,9 +7,10 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use core::any::Any;
-use crate::errno::Errno;
+use super::path::Path;
+use super::File;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::INode;
@@ -20,8 +21,7 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use super::File;
-use super::path::Path;
+use core::any::Any;
 
 /// This structure is used in the f_fsid field of statfs. It is currently
 /// unused.

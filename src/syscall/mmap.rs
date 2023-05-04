@@ -1,17 +1,17 @@
 //! The `mmap` system call allows the process to allocate memory.
 
-use core::ffi::c_int;
-use core::ffi::c_void;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::FileType;
 use crate::memory;
-use crate::process::Process;
-use crate::process::mem_space::MapResidence;
 use crate::process::mem_space;
+use crate::process::mem_space::MapResidence;
+use crate::process::Process;
 use crate::syscall::mmap::mem_space::MapConstraint;
-use crate::util::math;
 use crate::util;
+use crate::util::math;
+use core::ffi::c_int;
+use core::ffi::c_void;
 use macros::syscall;
 
 /// Data can be read.
@@ -124,7 +124,7 @@ pub fn do_mmap(
 		if prot & PROT_WRITE != 0 && !file.can_write(uid, gid) {
 			return Err(errno!(EPERM));
 		}
-		// TODO check exec
+	// TODO check exec
 	} else {
 		// TODO If the mapping requires a fd, return an error
 	}
@@ -144,24 +144,14 @@ pub fn do_mmap(
 	let flags = get_flags(flags, prot);
 
 	// The pointer on the virtual memory to the beginning of the mapping
-	let result = mem_space.map(
-		constraint,
-		pages,
-		flags,
-		residence.clone(),
-	);
+	let result = mem_space.map(constraint, pages, flags, residence.clone());
 
 	let result = match result {
 		Ok(ptr) => Ok(ptr),
 
 		Err(e) => {
 			if constraint != MapConstraint::None {
-				mem_space.map(
-					MapConstraint::None,
-					pages,
-					flags,
-					residence,
-				)
+				mem_space.map(MapConstraint::None, pages, flags, residence)
 			} else {
 				Err(e)
 			}

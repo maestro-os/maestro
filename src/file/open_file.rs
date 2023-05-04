@@ -1,30 +1,30 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
-use core::cmp::min;
-use core::ffi::c_int;
-use core::ffi::c_void;
-use crate::device::DeviceType;
 use crate::device;
-use crate::errno::Errno;
+use crate::device::DeviceType;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::buffer;
+use crate::file::vfs;
 use crate::file::DeviceID;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
-use crate::file::buffer;
-use crate::file::vfs;
-use crate::process::Process;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::time::unit::TimestampScale;
 use crate::time;
+use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use core::cmp::min;
+use core::ffi::c_int;
+use core::ffi::c_void;
 
 /// Read only.
 pub const O_RDONLY: i32 = 0b00000000000000000000000000000000;
@@ -93,9 +93,7 @@ impl OpenFile {
 	///
 	/// If the location doesn't exist or if the file isn't open, the function returns `None`.
 	pub fn get(location: &FileLocation) -> Option<SharedPtr<Self>> {
-		OPEN_FILES.lock()
-			.get(location)
-			.cloned()
+		OPEN_FILES.lock().get(location).cloned()
 	}
 
 	/// Creates a new open file description and inserts it into the open files list.
@@ -106,21 +104,16 @@ impl OpenFile {
 	///
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
-	pub fn new(
-		location: FileLocation,
-		flags: i32,
-	) -> Result<SharedPtr<Self>, Errno> {
+	pub fn new(location: FileLocation, flags: i32) -> Result<SharedPtr<Self>, Errno> {
 		let open_file_mutex = match Self::get(&location) {
 			Some(open_file_mutex) => {
 				{
 					let mut open_file = open_file_mutex.lock();
 
-					let read = open_file.can_read()
-						|| flags & O_RDONLY != 0
-						|| flags & O_RDWR != 0;
-					let write = open_file.can_write()
-						|| flags & O_WRONLY != 0
-						|| flags & O_RDWR != 0;
+					let read =
+						open_file.can_read() || flags & O_RDONLY != 0 || flags & O_RDWR != 0;
+					let write =
+						open_file.can_write() || flags & O_WRONLY != 0 || flags & O_RDWR != 0;
 
 					let mut new_flags = (open_file.flags & !0b11) | (flags & !0b11);
 					if read && write {
@@ -135,7 +128,7 @@ impl OpenFile {
 				}
 
 				open_file_mutex
-			},
+			}
 
 			None => {
 				let open_file = SharedPtr::new(Self {
@@ -147,11 +140,10 @@ impl OpenFile {
 					ref_count: 0,
 				})?;
 
-				OPEN_FILES.lock()
-					.insert(location, open_file.clone())?;
+				OPEN_FILES.lock().insert(location, open_file.clone())?;
 
 				open_file
-			},
+			}
 		};
 
 		Ok(open_file_mutex)
@@ -166,7 +158,7 @@ impl OpenFile {
 	pub fn open(
 		location: FileLocation,
 		read: bool,
-		write: bool
+		write: bool,
 	) -> Result<SharedPtr<Self>, Errno> {
 		let open_file_mutex = Self::get(&location).ok_or_else(|| errno!(ENOENT))?;
 
@@ -195,11 +187,7 @@ impl OpenFile {
 	/// - `write` tells whether the file descriptor is open for writing.
 	///
 	/// If the file is not open, the function does nothing.
-	pub fn close(
-		location: &FileLocation,
-		read: bool,
-		write: bool
-	) {
+	pub fn close(location: &FileLocation, read: bool, write: bool) {
 		let mut open_files = OPEN_FILES.lock();
 
 		let Some(open_file_mutex) = open_files.get(location) else {
@@ -326,12 +314,12 @@ impl OpenFile {
 
 			FileContent::BlockDevice {
 				major,
-				minor
+				minor,
 			} => {
 				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Block,
 					major: *major,
-					minor: *minor
+					minor: *minor,
 				});
 
 				if let Some(dev_mutex) = dev_mutex {
@@ -342,12 +330,12 @@ impl OpenFile {
 
 			FileContent::CharDevice {
 				major,
-				minor
+				minor,
 			} => {
 				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Char,
 					major: *major,
-					minor: *minor
+					minor: *minor,
 				});
 
 				if let Some(dev_mutex) = dev_mutex {
@@ -356,7 +344,7 @@ impl OpenFile {
 				}
 			}
 
-			_ => {},
+			_ => {}
 		}
 
 		Ok(())
@@ -365,9 +353,7 @@ impl OpenFile {
 
 impl IO for OpenFile {
 	fn get_size(&self) -> u64 {
-		self.get_file()
-			.map(|f| f.lock().get_size())
-			.unwrap_or(0)
+		self.get_file().map(|f| f.lock().get_size()).unwrap_or(0)
 	}
 
 	/// Note: on this specific implementation, the offset is ignored since

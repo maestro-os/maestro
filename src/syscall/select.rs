@@ -1,20 +1,20 @@
 //! `select` waits for a file descriptor in the given sets to be readable,
 //! writable or for an exception to occur.
 
+use crate::errno::Errno;
+use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::scheduler;
+use crate::process::Process;
+use crate::time;
+use crate::time::unit::TimeUnit;
+use crate::time::unit::Timeval;
+use crate::util::io;
+use crate::util::io::IO;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_long;
 use core::mem::size_of;
-use crate::errno::Errno;
-use crate::process::Process;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::scheduler;
-use crate::time::unit::TimeUnit;
-use crate::time::unit::Timeval;
-use crate::time;
-use crate::util::io::IO;
-use crate::util::io;
 use macros::syscall;
 
 /// The number of file descriptors in FDSet.
@@ -169,7 +169,9 @@ pub fn do_select<T: TimeUnit>(
 			// Setting results
 			let mut mem_space_guard = mem_space.lock();
 			if read && result & io::POLLIN != 0 {
-				readfds.get_mut(&mut mem_space_guard)?.map(|fds| fds.set(fd_id));
+				readfds
+					.get_mut(&mut mem_space_guard)?
+					.map(|fds| fds.set(fd_id));
 				events_count += 1;
 			} else {
 				readfds

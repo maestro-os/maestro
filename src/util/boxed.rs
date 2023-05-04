@@ -1,21 +1,21 @@
 //! The `Box` structure allows to hold an object on the heap and handles its
 //! memory properly.
 
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc;
+use crate::util::FailableClone;
 use core::ffi::c_void;
 use core::fmt;
 use core::marker::Unsize;
-use core::mem::size_of_val;
 use core::mem;
+use core::mem::size_of_val;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
-use core::ptr::NonNull;
-use core::ptr::drop_in_place;
 use core::ptr;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::memory;
-use crate::util::FailableClone;
+use core::ptr::drop_in_place;
+use core::ptr::NonNull;
 
 /// A `Box` allows to store an object on the heap.
 ///
@@ -41,7 +41,7 @@ impl<T> Box<T> {
 					ptr::copy_nonoverlapping(
 						&value as *const _ as *const u8,
 						ptr as *mut u8,
-						size
+						size,
 					);
 				}
 

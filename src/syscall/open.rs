@@ -1,24 +1,24 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::fd::FD_CLOEXEC;
+use crate::file::open_file;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fd::FD_CLOEXEC;
-use crate::file::open_file;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::util::FailableClone;
+use crate::process::Process;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Mask of status flags to be kept by an open file description.
@@ -99,7 +99,7 @@ pub fn handle_flags(
 	file: &mut File,
 	flags: i32,
 	uid: Uid,
-	gid: Gid
+	gid: Gid,
 ) -> Result<(bool, bool, bool), Errno> {
 	let (read, write) = match flags & 0b11 {
 		open_file::O_RDONLY => (true, false),

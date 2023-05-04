@@ -8,14 +8,14 @@
 //! share the same memory space, making it possible to revoke the access to the
 //! pointer while it is being used.
 
+use super::MemSpace;
+use crate::errno::Errno;
+use crate::process::Process;
+use crate::util::lock::MutexGuard;
+use crate::util::DisplayableStr;
 use core::fmt;
 use core::mem::size_of;
 use core::slice;
-use crate::errno::Errno;
-use crate::process::Process;
-use crate::util::DisplayableStr;
-use crate::util::lock::MutexGuard;
-use super::MemSpace;
 
 /// Wrapper for a pointer to a simple data.
 pub struct SyscallPtr<T: Sized> {
@@ -263,7 +263,8 @@ impl SyscallString {
 			return Ok(None);
 		}
 
-		let len = mem_space.can_access_string(self.ptr, true, false)
+		let len = mem_space
+			.can_access_string(self.ptr, true, false)
 			.ok_or_else(|| errno!(EFAULT))?;
 		Ok(Some(unsafe {
 			// Safe because access is checked before
@@ -285,7 +286,8 @@ impl SyscallString {
 			return Ok(None);
 		}
 
-		let len = mem_space.can_access_string(self.ptr, true, true)
+		let len = mem_space
+			.can_access_string(self.ptr, true, true)
 			.ok_or_else(|| errno!(EFAULT))?;
 
 		// Allocating physical pages if necessary

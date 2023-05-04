@@ -1,15 +1,15 @@
 //! This file implements sockets.
 
-use core::ffi::c_void;
+use super::Buffer;
 use crate::errno::Errno;
 use crate::file::buffer::BlockHandler;
-use crate::process::Process;
 use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util::FailableDefault;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use super::Buffer;
+use crate::util::FailableDefault;
+use core::ffi::c_void;
 
 /// The maximum size of a socket's buffers.
 const BUFFER_SIZE: usize = 65536;

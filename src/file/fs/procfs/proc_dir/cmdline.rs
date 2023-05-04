@@ -28,7 +28,6 @@ impl KernFSNode for Cmdline {
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
 			proc_mutex.lock().euid
-			
 		} else {
 			0
 		}

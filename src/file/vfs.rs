@@ -4,9 +4,13 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use core::ptr::NonNull;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::buffer;
+use crate::file::mapping::FileMappingManager;
+use crate::file::mountpoint;
+use crate::file::path::Path;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -15,16 +19,12 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
-use crate::file::buffer;
-use crate::file::mapping::FileMappingManager;
-use crate::file::mountpoint;
-use crate::file::path::Path;
-use crate::file;
 use crate::limits;
-use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::lock::IntMutex;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::ptr::NonNull;
 
 /// Updates the location of the file `file` according to the given mountpoint
 /// `mountpoint`.
@@ -33,11 +33,10 @@ use crate::util::ptr::SharedPtr;
 fn update_location(file: &mut File, mountpoint: &MountPoint) {
 	match file.get_location_mut() {
 		FileLocation::Filesystem {
-			mountpoint_id,
-			..
+			mountpoint_id, ..
 		} => *mountpoint_id = Some(mountpoint.get_id()),
 
-		_ => {},
+		_ => {}
 	}
 }
 
@@ -47,7 +46,6 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 /// as a cache to speedup file accesses.
 pub struct VFS {
 	// TODO Add files caching
-
 	/// Structure managing file mappings.
 	file_mappings_manager: FileMappingManager,
 }
@@ -68,16 +66,14 @@ impl VFS {
 	/// If the file doesn't exist, the function returns an error.
 	pub fn get_file_by_location(
 		&mut self,
-		location: &FileLocation
+		location: &FileLocation,
 	) -> Result<SharedPtr<File>, Errno> {
 		match location {
 			FileLocation::Filesystem {
-				inode,
-				..
+				inode, ..
 			} => {
 				// Getting the mountpoint
-				let mountpoint_mutex = location.get_mountpoint()
-					.ok_or_else(|| errno!(ENOENT))?;
+				let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 				let mountpoint = mountpoint_mutex.lock();
 
 				// Getting the IO interface
@@ -92,9 +88,11 @@ impl VFS {
 
 				update_location(&mut file, &mountpoint);
 				SharedPtr::new(file)
-			},
+			}
 
-			FileLocation::Virtual { id } => {
+			FileLocation::Virtual {
+				id,
+			} => {
 				let name = crate::format!("virtual:{}", id)?;
 				let content = FileContent::Fifo; // TODO
 
@@ -104,9 +102,9 @@ impl VFS {
 					0, // TODO
 					0o666,
 					location.clone(),
-					content
+					content,
 				)?)
-			},
+			}
 		}
 	}
 
@@ -489,11 +487,7 @@ impl VFS {
 	/// On success, the function returns a reference to the page.
 	///
 	/// If the file doesn't exist, the function returns an error.
-	pub fn map_file(
-		&mut self,
-		loc: FileLocation,
-		off: usize
-	) -> Result<NonNull<u8>, Errno> {
+	pub fn map_file(&mut self, loc: FileLocation, off: usize) -> Result<NonNull<u8>, Errno> {
 		// TODO if the page is being init, read from disk
 		self.file_mappings_manager.map(loc, off)?;
 

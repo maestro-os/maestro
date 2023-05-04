@@ -1,13 +1,13 @@
 //! When booting, the kernel can take command line arguments. This module
 //! implements a parse for these arguments.
 
-use core::cmp::min;
-use core::str;
-use crate::util::DisplayableStr;
-use crate::util::FailableClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::DisplayableStr;
+use crate::util::FailableClone;
 use crate::vga;
+use core::cmp::min;
+use core::str;
 
 /// Command line argument parser.
 ///
