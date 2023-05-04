@@ -1,23 +1,22 @@
-/// This module implements utility functions for system calls.
-
-use core::mem::size_of;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::process::Process;
-use crate::process::State;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::process::scheduler;
-use crate::util::FailableClone;
+use crate::process::Process;
+use crate::process::State;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+/// This module implements utility functions for system calls.
+use core::mem::size_of;
 
 /// Returns the absolute path according to the process's current working
 /// directory.
@@ -33,8 +32,7 @@ pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 		path
 	};
 
-	let chroot = process.get_chroot();
-	chroot.concat(&path)
+	process.chroot.concat(&path)
 }
 
 // TODO Find a safer and cleaner solution
@@ -233,8 +231,7 @@ pub fn create_file_at(
 	let gid = process.egid;
 	let mode = mode & !process.umask;
 
-	let (parent_mutex, name) =
-		get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
+	let (parent_mutex, name) = get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
 
 	let vfs_mutex = vfs::get();
 	let mut vfs = vfs_mutex.lock();
@@ -263,7 +260,7 @@ pub fn handle_proc_state() {
 		// The process is executing a signal handler. Make the scheduler jump to it
 		State::Running => {
 			if proc.is_handling_signal() {
-				let regs = proc.get_regs().clone();
+				let regs = proc.regs.clone();
 				drop(proc);
 				drop(proc_mutex);
 
@@ -313,8 +310,8 @@ pub fn signal_check(regs: &Regs) {
 		let mut r = regs.clone();
 		// TODO Clean
 		r.eip -= 2; // TODO Handle the case where the instruction insn't two bytes long (sysenter)
-		proc.set_regs(r);
-		proc.set_syscalling(false);
+		proc.regs = r;
+		proc.syscalling = false;
 
 		// Switching to handle the signal
 		proc.prepare_switch();

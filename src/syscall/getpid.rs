@@ -9,5 +9,5 @@ pub fn getpid() -> Result<i32, Errno> {
 	let proc_mutex = Process::get_current().unwrap();
 	let proc = proc_mutex.lock();
 
-	Ok(proc.get_pid() as _)
+	Ok(proc.pid as _)
 }

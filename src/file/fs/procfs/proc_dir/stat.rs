@@ -58,7 +58,8 @@ impl IO for Stat {
 		let proc_mutex = Process::get_by_pid(self.pid).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
 
-		let name = proc.argv
+		let name = proc
+			.argv
 			.iter()
 			.map(|name| unsafe { name.as_str_unchecked() })
 			.next()
@@ -67,16 +68,16 @@ impl IO for Stat {
 		let state = proc.get_state();
 		let state_char = state.get_char();
 
-		let pid = proc.get_pid();
+		let pid = proc.pid;
 		let ppid = proc.get_parent_pid();
-		let pgid = proc.get_pgid();
+		let pgid = proc.pgid;
 		let sid = 0; // TODO
 
 		let user_jiffies = 0; // TODO
 		let kernel_jiffies = 0; // TODO
 
-		let priority = proc.get_priority();
-		let nice = proc.get_nice();
+		let priority = proc.priority;
+		let nice = proc.nice;
 
 		let num_threads = 1; // TODO
 
@@ -84,8 +85,8 @@ impl IO for Stat {
 		//let vmem_usage = proc.get_vmem_usage();
 		let vmem_usage = 0;
 
-		let esp = proc.get_regs().esp;
-		let eip = proc.get_regs().eip;
+		let esp = proc.regs.esp;
+		let eip = proc.regs.eip;
 
 		// TODO Fill every fields with process's data
 		// Generating content

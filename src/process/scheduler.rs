@@ -9,28 +9,28 @@
 //! This number represents the number of ticks during which the process keeps
 //! running until switching to the next process.
 
-use core::cmp::max;
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event::CallbackHook;
 use crate::event;
+use crate::event::CallbackHook;
 use crate::idt::pic;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::stack;
-use crate::memory;
-use crate::process::Process;
-use crate::process::State;
+use crate::process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
-use crate::process;
+use crate::process::Process;
+use crate::process::State;
 use crate::time::timer::pit;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
-use crate::util::math::rational::Rational;
 use crate::util::math;
+use crate::util::math::rational::Rational;
 use crate::util::ptr::IntSharedPtr;
+use core::cmp::max;
+use core::ffi::c_void;
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
@@ -156,8 +156,8 @@ impl Scheduler {
 
 	/// Adds a process to the scheduler.
 	pub fn add_process(&mut self, process: Process) -> Result<IntSharedPtr<Process>, Errno> {
-		let pid = process.get_pid();
-		let priority = process.get_priority();
+		let pid = process.pid;
+		let priority = process.priority;
 
 		if *process.get_state() == State::Running {
 			self.increment_running();
@@ -179,7 +179,7 @@ impl Scheduler {
 				self.decrement_running();
 			}
 
-			let priority = proc.get_priority();
+			let priority = proc.priority;
 			self.processes.remove(&pid);
 			self.update_priority(priority, 0);
 		}
@@ -282,7 +282,8 @@ impl Scheduler {
 		// Getting the current process, or take the first process in the list if no
 		// process is running
 		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
-			self.processes.iter()
+			self.processes
+				.iter()
 				.next()
 				.map(|(pid, proc)| (*pid, proc.clone()))
 		})?;
@@ -292,16 +293,16 @@ impl Scheduler {
 			Self::can_run(&*guard, priority_sum, priority_max, processes_count)
 		};
 
-		let next_proc = self.processes.range((curr_pid + 1)..)
+		let next_proc = self
+			.processes
+			.range((curr_pid + 1)..)
 			.filter(process_filter)
 			.next()
 			.or_else(|| {
 				// If no suitable process is found, go back to the beginning to check processes
 				// located before the previous process (looping)
 
-				self.processes.iter()
-					.filter(process_filter)
-					.next()
+				self.processes.iter().filter(process_filter).next()
 			})
 			.map(|(pid, proc)| (*pid, proc));
 
@@ -335,13 +336,13 @@ impl Scheduler {
 			if let Some(curr_proc) = sched.get_current_process() {
 				let mut curr_proc = curr_proc.lock();
 
-				curr_proc.set_regs(*regs);
+				curr_proc.regs = *regs;
 				curr_proc.syscalling = ring < 3;
 			}
 
 			// The current core ID
 			let core_id = 0; // TODO
-			 // Getting the temporary stack
+				 // Getting the temporary stack
 			let tmp_stack = sched.get_tmp_stack(core_id);
 
 			tmp_stack
@@ -364,7 +365,7 @@ impl Scheduler {
 							next_proc.prepare_switch();
 
 							let resume = matches!(next_proc.get_state(), State::Running);
-							(resume, next_proc.is_syscalling(), next_proc.regs)
+							(resume, next_proc.syscalling, next_proc.regs)
 						};
 						drop(next_proc);
 

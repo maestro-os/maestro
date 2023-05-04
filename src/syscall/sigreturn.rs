@@ -19,7 +19,7 @@ pub fn sigreturn() -> Result<i32, Errno> {
 		// Restores the state of the process before the signal handler
 		proc.signal_restore();
 
-		proc.get_regs().clone()
+		proc.regs.clone()
 	};
 
 	unsafe {

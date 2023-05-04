@@ -29,7 +29,7 @@ pub fn rt_sigprocmask(
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
 
-	let curr = proc.get_sigmask_mut().as_slice_mut();
+	let curr = proc.sigmask.as_slice_mut();
 
 	let oldset_slice = oldset.get_mut(&mut mem_space_guard, sigsetsize as _)?;
 	if let Some(oldset) = oldset_slice {

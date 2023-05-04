@@ -13,7 +13,7 @@ pub fn getpgid(pid: Pid) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	if pid == 0 {
-		Ok(proc.get_pgid() as _)
+		Ok(proc.pgid as _)
 	} else {
 		let proc_mutex = {
 			if let Some(proc) = Process::get_by_pid(pid) {
@@ -24,6 +24,6 @@ pub fn getpgid(pid: Pid) -> Result<i32, Errno> {
 		};
 		let proc = proc_mutex.lock();
 
-		Ok(proc.get_pgid() as _)
+		Ok(proc.pgid as _)
 	}
 }

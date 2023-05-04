@@ -1,16 +1,16 @@
 //! This module implements the `kill` system call, which allows to send a signal
 //! to a process.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
+use super::util;
 use crate::errno;
-use crate::process::Process;
-use crate::process::State;
+use crate::errno::Errno;
+use crate::process;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
-use crate::process;
+use crate::process::Process;
+use crate::process::State;
+use core::ffi::c_int;
 use macros::syscall;
-use super::util;
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 ///
@@ -39,7 +39,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 		Ok(())
 	};
 
-	if pid == curr_proc.get_pid() {
+	if pid == curr_proc.pid {
 		f(&mut *curr_proc)?;
 	} else {
 		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
@@ -65,7 +65,7 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 			let curr_mutex = Process::get_current().unwrap();
 			let curr_proc = curr_mutex.lock();
 
-			curr_proc.get_pgid()
+			curr_proc.pgid
 		}
 
 		i if i < 0 => -pid as Pid,
@@ -150,7 +150,7 @@ pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 			// Setting the return value of the system call to `0` after executing a signal
 			let mut return_regs = regs.clone();
 			return_regs.eax = 0;
-			proc.set_regs(return_regs);
+			proc.regs = return_regs;
 
 			// Set the process to execute the signal action
 			proc.signal_next();

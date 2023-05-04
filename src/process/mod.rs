@@ -19,20 +19,12 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
-use core::any::Any;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
-use core::mem::MaybeUninit;
-use core::mem::size_of;
-use core::ptr::NonNull;
 use crate::cpu;
-use crate::errno::Errno;
 use crate::errno;
-use crate::event::{InterruptResult, InterruptResultAction};
+use crate::errno::Errno;
 use crate::event;
-use crate::file::Gid;
-use crate::file::ROOT_UID;
-use crate::file::Uid;
+use crate::event::{InterruptResult, InterruptResultAction};
+use crate::file;
 use crate::file::fd::FileDescriptorTable;
 use crate::file::fd::NewFDConstraint;
 use crate::file::fs::procfs::ProcFS;
@@ -40,13 +32,14 @@ use crate::file::mountpoint;
 use crate::file::open_file;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::file;
+use crate::file::Gid;
+use crate::file::Uid;
+use crate::file::ROOT_UID;
 use crate::gdt;
 use crate::memory;
 use crate::process::mountpoint::MountSource;
-use crate::tty::TTYHandle;
 use crate::tty;
-use crate::util::FailableClone;
+use crate::tty::TTYHandle;
 use crate::util::container::bitfield::Bitfield;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -54,6 +47,13 @@ use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::FailableClone;
+use core::any::Any;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::ManuallyDrop;
+use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 use mem_space::MemSpace;
 use pid::PIDManager;
 use pid::Pid;
@@ -186,11 +186,11 @@ enum VForkState {
 /// about a process.
 pub struct Process {
 	/// The ID of the process.
-	pid: Pid,
+	pub pid: Pid,
 	/// The ID of the process group.
-	pgid: Pid,
+	pub pgid: Pid,
 	/// The thread ID of the process.
-	tid: Pid,
+	pub tid: Pid,
 
 	/// The argv of the process.
 	pub argv: Vec<String>,
@@ -225,9 +225,9 @@ pub struct Process {
 	vfork_state: VForkState,
 
 	/// The priority of the process.
-	priority: usize,
+	pub priority: usize,
 	/// The nice value of the process.
-	nice: usize,
+	pub nice: usize,
 	/// The number of quantum run during the cycle.
 	quantum_count: usize,
 
@@ -239,9 +239,9 @@ pub struct Process {
 	process_group: Vec<Pid>,
 
 	/// The last saved registers state.
-	regs: Regs,
+	pub regs: Regs,
 	/// Tells whether the process was syscalling or not.
-	syscalling: bool,
+	pub syscalling: bool,
 
 	/// Tells whether the process is handling a signal.
 	handled_signal: Option<Signal>,
@@ -261,12 +261,12 @@ pub struct Process {
 	/// The current working directory.
 	cwd: Path,
 	/// The current chroot path.
-	chroot: Path,
+	pub chroot: Path,
 	/// The list of open file descriptors with their respective ID.
 	file_descriptors: Option<SharedPtr<FileDescriptorTable>>,
 
 	/// A bitfield storing the set of blocked signals.
-	sigmask: Bitfield,
+	pub sigmask: Bitfield,
 	/// A bitfield storing the set of pending signals.
 	sigpending: Bitfield,
 	/// The list of signal handlers.
@@ -596,25 +596,7 @@ impl Process {
 	/// Tells whether the process is the init process.
 	#[inline(always)]
 	pub fn is_init(&self) -> bool {
-		self.get_pid() == pid::INIT_PID
-	}
-
-	/// Returns the process's PID.
-	#[inline(always)]
-	pub fn get_pid(&self) -> Pid {
-		self.pid
-	}
-
-	/// Returns the process's group ID.
-	#[inline(always)]
-	pub fn get_pgid(&self) -> Pid {
-		self.pgid
-	}
-
-	/// Returns the process's thread ID.
-	#[inline(always)]
-	pub fn get_tid(&self) -> Pid {
-		self.tid
+		self.pid == pid::INIT_PID
 	}
 
 	/// Tells whether the process is among a group and is not its owner.
@@ -682,9 +664,9 @@ impl Process {
 	pub fn get_parent_pid(&self) -> Pid {
 		if let Some(parent) = &self.parent {
 			let parent = parent.get().unwrap();
-			parent.lock().get_pid()
+			parent.lock().pid
 		} else {
-			self.get_pid()
+			self.pid
 		}
 	}
 
@@ -788,19 +770,6 @@ impl Process {
 		self.waitable = false;
 	}
 
-	/// Returns the priority of the process.
-	///
-	/// A greater number means a higher priority relative to other processes.
-	#[inline(always)]
-	pub fn get_priority(&self) -> usize {
-		self.priority
-	}
-
-	/// Returns the nice value of the process.
-	pub fn get_nice(&self) -> usize {
-		self.nice
-	}
-
 	/// Returns the process's parent if exists.
 	#[inline(always)]
 	pub fn get_parent(&self) -> Option<&IntWeakPtr<Process>> {
@@ -876,20 +845,6 @@ impl Process {
 		Ok(())
 	}
 
-	/// Returns the path to the root directory of the current process (chroot
-	/// path).
-	#[inline(always)]
-	pub fn get_chroot(&self) -> &Path {
-		&self.chroot
-	}
-
-	/// Sets the path to the root directory of the current process (chroot
-	/// path).
-	#[inline(always)]
-	pub fn set_chroot(&mut self, path: Path) {
-		self.chroot = path;
-	}
-
 	/// Returns the file descriptor table associated with the process.
 	pub fn get_fds(&self) -> Option<SharedPtr<FileDescriptorTable>> {
 		self.file_descriptors.clone()
@@ -898,18 +853,6 @@ impl Process {
 	/// Sets the file descriptor table of the process.
 	pub fn set_fds(&mut self, fds: Option<SharedPtr<FileDescriptorTable>>) {
 		self.file_descriptors = fds;
-	}
-
-	/// Returns the process's saved state registers.
-	#[inline(always)]
-	pub fn get_regs(&self) -> &Regs {
-		&self.regs
-	}
-
-	/// Sets the process's saved state registers.
-	#[inline(always)]
-	pub fn set_regs(&mut self, regs: Regs) {
-		self.regs = regs;
 	}
 
 	/// Updates the TSS on the current core for the process.
@@ -939,7 +882,7 @@ impl Process {
 
 		// If the process is not in a syscall and a signal is pending on the process,
 		// execute it
-		if !self.is_syscalling() {
+		if !self.syscalling {
 			self.signal_next();
 
 			if !matches!(self.state, State::Running) {
@@ -984,18 +927,6 @@ impl Process {
 		self.regs = regs;
 
 		Ok(())
-	}
-
-	/// Tells whether the process was syscalling before being interrupted.
-	#[inline(always)]
-	pub fn is_syscalling(&self) -> bool {
-		self.syscalling
-	}
-
-	/// Sets the process's syscalling state.
-	#[inline(always)]
-	pub fn set_syscalling(&mut self, syscalling: bool) {
-		self.syscalling = syscalling;
 	}
 
 	/// Returns the exit status if the process has ended.
@@ -1070,7 +1001,8 @@ impl Process {
 		let file_descriptors = if fork_options.share_fd {
 			self.file_descriptors.clone()
 		} else {
-			self.file_descriptors.as_ref()
+			self.file_descriptors
+				.as_ref()
 				.map(|fds| {
 					let fds = fds.lock();
 					let new_fds = fds.duplicate(false)?;
@@ -1218,18 +1150,6 @@ impl Process {
 		}
 
 		self.kill(&sig, no_handler);
-	}
-
-	/// Returns an immutable reference to the process's blocked signals mask.
-	#[inline(always)]
-	pub fn get_sigmask(&self) -> &Bitfield {
-		&self.sigmask
-	}
-
-	/// Returns a mutable reference to the process's blocked signals mask.
-	#[inline(always)]
-	pub fn get_sigmask_mut(&mut self) -> &mut Bitfield {
-		&mut self.sigmask
 	}
 
 	/// Tells whether the given signal is blocked by the process.
@@ -1440,9 +1360,7 @@ impl Drop for Process {
 		oom::wrap(|| {
 			if let Some(kernel_stack) = self.kernel_stack {
 				if let Some(mutex) = &self.mem_space {
-					mutex
-						.lock()
-						.unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
+					mutex.lock().unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
 				}
 			}
 

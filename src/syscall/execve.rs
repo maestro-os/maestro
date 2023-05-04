@@ -110,7 +110,7 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 
 	// Executing the program
 	exec::exec(&mut *proc, program_image)?;
-	Ok(*proc.get_regs())
+	Ok(proc.regs)
 }
 
 // TODO clean
@@ -265,9 +265,7 @@ pub fn execve(
 	// it on success
 	let tmp_stack = {
 		let core = 0; // TODO Get current core ID
-		process::get_scheduler()
-			.lock()
-			.get_tmp_stack(core)
+		process::get_scheduler().lock().get_tmp_stack(core)
 	};
 
 	// Switching to another stack in order to avoid crashing when switching to the

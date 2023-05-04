@@ -1,12 +1,12 @@
 //! The `clone` system call creates a child process.
 
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::process::ForkOptions;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::scheduler;
 use crate::process::user_desc::UserDesc;
+use crate::process::ForkOptions;
+use crate::process::Process;
+use core::ffi::c_void;
 use macros::syscall;
 
 /// TODO doc
@@ -109,7 +109,7 @@ pub fn clone(
 			// TODO
 			todo!();
 		}
-		new_proc.set_regs(new_regs);
+		new_proc.regs = new_regs;
 
 		if flags & CLONE_CHILD_CLEARTID != 0 {
 			// TODO new_proc.set_clear_child_tid(child_tid);
@@ -120,7 +120,7 @@ pub fn clone(
 			todo!();
 		}
 
-		new_proc.get_tid()
+		new_proc.tid
 	};
 
 	if flags & CLONE_VFORK != 0 {

@@ -1,25 +1,25 @@
 //! Each TTY or pseudo-TTY has to be associated with a device file in order to
 //! communicate with it.
 
-use core::ffi::c_void;
 use crate::device::DeviceHandle;
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
-use crate::process::mem_space::MemSpace;
+use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::MemSpace;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
 use crate::process::signal::SignalHandler;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::tty::TTY;
+use crate::tty::termios;
+use crate::tty::termios::Termios;
 use crate::tty::TTYHandle;
 use crate::tty::WinSize;
-use crate::tty::termios::Termios;
-use crate::tty::termios;
-use crate::util::io::IO;
+use crate::tty::TTY;
 use crate::util::io;
+use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
+use core::ffi::c_void;
 
 /// Structure representing a TTY device's handle.
 pub struct TTYDeviceHandle {
@@ -58,7 +58,7 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the read operation.
 	fn check_sigttin(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
-		if proc.get_pgid() != tty.get_pgrp() {
+		if proc.pgid != tty.get_pgrp() {
 			if proc.is_signal_blocked(&Signal::SIGTTIN)
 				|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
 				|| proc.is_in_orphan_process_group()

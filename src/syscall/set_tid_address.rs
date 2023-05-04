@@ -19,12 +19,10 @@ pub fn set_tid_address(tidptr: SyscallPtr<c_int>) -> Result<i32, Errno> {
 	let ptr = NonNull::new(tidptr.as_ptr_mut());
 	proc.set_clear_child_tid(ptr);
 
-	let tid = proc.get_tid();
-
 	// Setting the TID at pointer if accessible
 	if let Some(tidptr) = tidptr.get_mut(&mut mem_space_guard)? {
-		*tidptr = tid as _;
+		*tidptr = proc.tid as _;
 	}
 
-	Ok(tid as _)
+	Ok(proc.tid as _)
 }

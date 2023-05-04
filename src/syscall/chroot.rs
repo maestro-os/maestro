@@ -33,6 +33,6 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let vfs = vfs.as_mut().unwrap();
 	vfs.get_file_from_path(&path, uid, gid, true)?;
 
-	proc.set_chroot(path);
+	proc.chroot = path;
 	Ok(0)
 }

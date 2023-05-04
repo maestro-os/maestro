@@ -1,10 +1,10 @@
 //! The _exit syscall allows to terminate the current process with the given
 //! status code.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::scheduler;
+use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Exits the current process.
@@ -19,7 +19,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 
 		proc.exit(status, false);
 
-		(proc.get_pid(), proc.get_tid())
+		(proc.pid, proc.tid)
 	};
 
 	if thread_group {

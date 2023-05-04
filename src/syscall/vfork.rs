@@ -4,9 +4,9 @@
 //! space as the parent.
 
 use crate::errno::Errno;
+use crate::process::scheduler;
 use crate::process::ForkOptions;
 use crate::process::Process;
-use crate::process::scheduler;
 use macros::syscall;
 
 #[syscall]
@@ -30,9 +30,9 @@ pub fn vfork() -> Result<i32, Errno> {
 		let mut regs = regs.clone();
 		// Setting return value to `0`
 		regs.eax = 0;
-		new_proc.set_regs(regs);
+		new_proc.regs = regs;
 
-		new_proc.get_pid()
+		new_proc.pid
 	};
 
 	// Letting another process run instead of the current. Because the current

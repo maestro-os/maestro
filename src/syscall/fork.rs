@@ -23,7 +23,7 @@ pub fn fork() -> Result<i32, Errno> {
 	let mut regs = regs.clone();
 	// Setting return value to `0`
 	regs.eax = 0;
-	new_proc.set_regs(regs);
+	new_proc.regs = regs;
 
-	Ok(new_proc.get_pid() as _)
+	Ok(new_proc.pid as _)
 }
