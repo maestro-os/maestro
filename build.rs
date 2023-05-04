@@ -117,21 +117,47 @@ fn arch_to_triplet(arch: &str) -> io::Result<String> {
 	Ok(content.trim().into())
 }
 
+/// Compiles the vDSO.
+///
+/// `arch` is the architecture to compile for.
+fn compile_vdso(arch: &str) -> io::Result<()> {
+	let triplet = arch_to_triplet(arch)?;
+
+	cc::Build::new()
+		.flag("-nostdlib")
+		.flag("-ffreestanding")
+		.flag("-mno-red-zone")
+		.flag("-Wall")
+		.flag("-Wextra")
+		.flag("-Werror")
+		.pic(true)
+		.flag("-Tvdso/linker.ld")
+		.shared_flag(true)
+		.target(&triplet)
+		.file(format!("vdso/{arch}.s"))
+		.compile("vdso.so");
+
+	println!("cargo:rerun-if-changed=vdso/linker.ld");
+	println!("cargo:rerun-if-changed=vdso/{arch}.s");
+
+	Ok(())
+}
+
 /// Compiles the C and assembly code.
 ///
-/// Arguments:
-/// - `arch` is the architecture to compile for.
-/// - `debug` tells whether compiling in debug mode.
-fn compile_c(arch: &str, debug: bool) -> io::Result<()> {
-	let triplet = arch_to_triplet(arch).unwrap(); // TODO handle error
-	let files = list_c_files(Path::new("src"))?;
+/// `arch` is the architecture to compile for.
+fn compile_c(arch: &str) -> io::Result<()> {
+	let triplet = arch_to_triplet(arch)?;
 
+	let debug = env::var("PROFILE").unwrap() == "debug";
+	let opt_level: u32 = env::var("OPT_LEVEL").unwrap().parse().unwrap();
+
+	let files = list_c_files(Path::new("src"))?;
 	for f in &files {
 		println!("cargo:rerun-if-changed={}", f.display());
 	}
 
-	let mut build = cc::Build::new();
-	build
+	cc::Build::new()
 		.flag("-nostdlib")
 		.flag("-ffreestanding")
 		.flag("-fno-stack-protector")
@@ -143,13 +169,9 @@ fn compile_c(arch: &str, debug: bool) -> io::Result<()> {
 		.flag(&format!("-Tarch/{}/linker.ld", arch))
 		.target(&triplet)
 		.debug(debug)
-		.files(files);
-
-	if !debug {
-		build.opt_level(2);
-	}
-
-	build.compile("libmaestro.a");
+		.opt_level(opt_level)
+		.files(files)
+		.compile("libmaestro.a");
 
 	Ok(())
 }
@@ -162,14 +184,6 @@ fn link_library() {
 }
 
 fn main() {
-	let profile = env::var("PROFILE").unwrap();
-	let debug = match profile.as_str() {
-		"debug" => true,
-		"release" => false,
-
-		_ => panic!("invalid compilation profile"),
-	};
-
 	// Read compilation configuration
 	let config_str = match fs::read_to_string(CONFIG_PATH) {
 		Ok(content) => content,
@@ -197,9 +211,11 @@ fn main() {
 
 	config.set_cfg();
 
-	// TODO compile vDSO
-
-	compile_c(&config.arch, debug).unwrap_or_else(|e| {
+	compile_vdso(&config.arch).unwrap_or_else(|e| {
+		eprintln!("vDSO compilation failed: {}", e);
+		exit(1);
+	});
+	compile_c(&config.arch).unwrap_or_else(|e| {
 		eprintln!("Compilation failed: {}", e);
 		exit(1);
 	});

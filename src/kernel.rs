@@ -1,5 +1,10 @@
 //! Maestro is a Unix kernel written in Rust. This reference documents
 //! interfaces for modules and the kernel's internals.
+//!
+//! # Features
+//!
+//! The crate has the following features:
+//! - `strace`: if enabled, the kernel traces system calls. This is a debug feature.
 
 #![no_std]
 #![no_main]
