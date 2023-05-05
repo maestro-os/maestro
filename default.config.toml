@@ -3,9 +3,6 @@
 
 
 
-# The CPU architecture for which the kernel is compiled.
-arch = "x86"
-
 [debug]
 # Tells whether the kernel is compiled in debug mode.
 debug = false

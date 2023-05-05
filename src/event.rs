@@ -19,7 +19,7 @@ use core::mem::MaybeUninit;
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
-#[cfg(config_arch = "x86")]
+#[cfg(target_arch = "x86")]
 static ERROR_MESSAGES: &[&str] = &[
 	"Divide-by-zero Error",
 	"Debug",
