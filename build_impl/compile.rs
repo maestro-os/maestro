@@ -1,12 +1,13 @@
 //! Some parts of the kernel are implemented in C and assembly language. Those parts are compiled
 //! by the code present in this module.
 
-use super::util;
 use crate::target::Target;
 use std::env;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
+use super::util;
 
 /// Compiles the vDSO.
 ///
@@ -14,6 +15,10 @@ use std::path::PathBuf;
 pub fn compile_vdso(target: &Target) {
 	let file = PathBuf::from(format!("vdso/{}.s", target.get_name()));
 
+	println!("cargo:rerun-if-changed=vdso/linker.ld");
+	println!("cargo:rerun-if-changed={}", file.display());
+
+	// Compile as static library
 	cc::Build::new()
 		.no_default_flags(true)
 		.flag("-nostdlib")
@@ -24,14 +29,34 @@ pub fn compile_vdso(target: &Target) {
 		//.flag("-Werror")
 		.pic(true)
 		.target(target.get_triplet())
-		.flag("-Tvdso/linker.ld")
-		.shared_flag(true)
-		.static_flag(false)
 		.file(&file)
-		.compile("vdso.so");
+		.compile("vdso");
 
-	println!("cargo:rerun-if-changed=vdso/linker.ld");
-	println!("cargo:rerun-if-changed={}", file.display());
+	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+	// The path to the static library
+	let static_path = out_dir.join("libvdso.a");
+	// The path to the shared library to be compiled
+	let shared_path = out_dir.join("vdso.so");
+
+	// Link into a shared library
+	//
+	// A second pass for linking is required since the crate `cc` can only build static libraries
+	let status = Command::new(target.get_linker())
+		.arg("-Tvdso/linker.ld")
+		.arg("-shared")
+		.arg(static_path)
+		.arg("-o")
+		.arg(&shared_path)
+		.status()
+		.unwrap();
+	if !status.success() {
+		// TODO
+		todo!();
+	}
+
+	// Pass vDSO path to the rest of the codebase
+	println!("cargo:rustc-env=VDSO_PATH={}", shared_path.display());
 }
 
 /// Compiles the C and assembly code that are parts of the kernel's codebase.

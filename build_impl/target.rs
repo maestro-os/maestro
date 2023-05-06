@@ -14,6 +14,8 @@ pub struct TargetFile {
 	/// The LLVM target triplet.
 	#[serde(rename = "llvm-target")]
 	llvm_target: String,
+	/// The linker to use.
+	linker: String,
 }
 
 /// Structure representing a build target.
@@ -22,6 +24,9 @@ pub struct Target {
 	name: String,
 	/// The target triplet.
 	triplet: String,
+
+	/// The linker to use.
+	linker: String,
 }
 
 impl Target {
@@ -34,7 +39,6 @@ impl Target {
             return Ok(None);
         };
 		let target_path = PathBuf::from(format!("arch/{arch}/target.json"));
-		eprintln!("{}", target_path.display());
 
 		// Read and parse target file
 		let content = fs::read_to_string(target_path)?;
@@ -44,6 +48,8 @@ impl Target {
 		Ok(Some(Target {
 			name: arch,
 			triplet: content.llvm_target,
+
+			linker: content.linker,
 		}))
 	}
 
@@ -60,5 +66,10 @@ impl Target {
 	/// Returns the target's triplet.
 	pub fn get_triplet(&self) -> &str {
 		&self.triplet
+	}
+
+	/// Returns the linker to use.
+	pub fn get_linker(&self) -> &str {
+		&self.linker
 	}
 }

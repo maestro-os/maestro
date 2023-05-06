@@ -18,7 +18,7 @@ use core::ffi::c_void;
 use core::ptr;
 use core::ptr::NonNull;
 
-/// Structure storing informations on the vDSO ELF image.
+/// Informations on the vDSO ELF image.
 struct VDSO {
 	/// The list of pages on which the image is loaded.
 	pages: SharedPtr<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
@@ -40,9 +40,9 @@ pub struct MappedVDSO {
 /// The info of the vDSO. If `None`, the vDSO is not loaded yet.
 static ELF_IMAGE: Mutex<Option<VDSO>> = Mutex::new(None);
 
-/// TODO doc
+/// Loads the vDSO in memory and returns the image.
 fn load_image() -> Result<VDSO, Errno> {
-	let const_img = include_bytes!("../../../vdso.so");
+	let const_img = include_bytes!(env!("VDSO_PATH"));
 
 	let parser = ELFParser::new(const_img)?;
 	let entry_off = parser.get_header().e_entry as _;
