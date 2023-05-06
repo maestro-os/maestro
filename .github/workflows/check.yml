@@ -22,6 +22,6 @@ jobs:
         steps:
             - uses: actions/checkout@v2
             - name: Compilation
-              run: "CARGOFLAGS='--test' test/build.sh"
+              run: "CARGOFLAGS='--test' scripts/ci/build.sh"
             - name: Run tests
               run: "scripts/ci/selftest.sh"
