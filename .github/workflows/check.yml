@@ -7,16 +7,16 @@ jobs:
             - uses: actions/checkout@v2
             - name: Compilation
               run: "scripts/ci/build.sh"
-			- name: Check Multiboot2 for x86
-			  run: "grub-file --is-x86-multiboot2 target/target/debug/libkernel.so"
+            - name: Check Multiboot2 for x86
+              run: "grub-file --is-x86-multiboot2 target/target/debug/libkernel.so"
     Release:
         runs-on: [self-hosted, linux]
         steps:
             - uses: actions/checkout@v2
             - name: Compilation
               run: "CARGOFLAGS='--release' scripts/ci/build.sh"
-			- name: Check Multiboot2 for x86
-			  run: "grub-file --is-x86-multiboot2 target/target/release/libkernel.so"
+            - name: Check Multiboot2 for x86
+              run: "grub-file --is-x86-multiboot2 target/target/release/libkernel.so"
     Selftest:
         runs-on: [self-hosted, linux]
         steps:
