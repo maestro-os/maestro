@@ -1,6 +1,6 @@
 .global pse_enable
 
-.section .boot.text
+.section .boot.text, "x"
 
 /*
  * Enables Page Size Extension (PSE) and paging using the given page directory.

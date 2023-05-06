@@ -5,10 +5,7 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 
-/// Lists paths to C and assembly files.
-pub fn list_c_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
-	let mut paths = vec![];
-
+fn list_c_files_impl(dir: &Path, paths: &mut Vec<PathBuf>) -> io::Result<()> {
 	for e in fs::read_dir(dir)? {
 		let e = e?;
 		let e_path = e.path();
@@ -26,9 +23,16 @@ pub fn list_c_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
 
 			paths.push(e_path);
 		} else if e_type.is_dir() {
-			list_c_files(&e_path)?;
+			list_c_files_impl(&e_path, paths)?;
 		}
 	}
 
+	Ok(())
+}
+
+/// Lists paths to C and assembly files.
+pub fn list_c_files(dir: &Path) -> io::Result<Vec<PathBuf>> {
+	let mut paths = vec![];
+	list_c_files_impl(dir, &mut paths)?;
 	Ok(paths)
 }

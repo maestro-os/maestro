@@ -8,13 +8,6 @@ use std::io::ErrorKind;
 use std::process::exit;
 use target::Target;
 
-/// Links the kernel library into an executable.
-fn link_library() {
-	println!("cargo:rustc-link-search=native=./");
-	println!("cargo:rustc-link-lib=static=maestro");
-	println!("cargo:rerun-if-changed=libmaestro.a");
-}
-
 fn main() {
 	let config = Config::read().unwrap_or_else(|e| {
 		if e.kind() == ErrorKind::NotFound {
@@ -48,7 +41,6 @@ fn main() {
 		exit(1);
 	});
 	compile::compile_vdso(&target);
-	link_library();
 
 	// Add the linker script
 	println!(

@@ -71,6 +71,9 @@ pub fn compile_c(target: &Target) -> io::Result<()> {
 		println!("cargo:rerun-if-changed={}", f.display());
 	}
 
+	println!("cargo:rustc-link-lib=static=casm");
+	println!("cargo:rerun-if-changed=libcasm.a");
+
 	cc::Build::new()
 		.flag("-nostdlib")
 		.flag("-ffreestanding")
@@ -85,7 +88,7 @@ pub fn compile_c(target: &Target) -> io::Result<()> {
 		.debug(debug)
 		.opt_level(opt_level)
 		.files(files)
-		.compile("libmaestro.a");
+		.compile("libcasm.a");
 
 	Ok(())
 }

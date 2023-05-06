@@ -51,27 +51,28 @@ impl Config {
 
 	/// Sets the crate's cfg flags according to the configuration.
 	pub fn set_cfg(&self) {
-		println!(
-			"cargo:rustc-cfg=config_debug_debug=\"{}\"",
-			self.debug.debug
-		);
 		if self.debug.debug {
-			println!("cargo:rustc-cfg=config_debug_test=\"{}\"", self.debug.test);
+			println!("cargo:rustc-cfg=config_debug_debug");
+
+			if self.debug.test {
+				println!("cargo:rustc-cfg=config_debug_test");
+			}
 		}
-		println!(
-			"cargo:rustc-cfg=config_debug_storage_test=\"{}\"",
-			self.debug.storage_test
-		);
 
-		println!("cargo:rustc-cfg=config_debug_qemu=\"{}\"", self.debug.qemu);
+		if self.debug.storage_test {
+			println!("cargo:rustc-cfg=config_debug_storage_test");
+		}
 
-		println!(
-			"cargo:rustc-cfg=config_debug_malloc_magic=\"{}\"",
-			self.debug.malloc_magic
-		);
-		println!(
-			"cargo:rustc-cfg=config_debug_malloc_check=\"{}\"",
-			self.debug.malloc_check
-		);
+		if self.debug.qemu {
+			println!("cargo:rustc-cfg=config_debug_qemu");
+		}
+
+		if self.debug.malloc_magic {
+			println!("cargo:rustc-cfg=config_debug_malloc_magic");
+		}
+
+		if self.debug.malloc_check {
+			println!("cargo:rustc-cfg=config_debug_malloc_check");
+		}
 	}
 }

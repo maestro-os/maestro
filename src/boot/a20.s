@@ -2,7 +2,7 @@
 .global a20_check
 .global a20_enable
 
-.section .boot.text
+.section .boot.text, "x"
 
 /*
  * Ensures that the A20 line is enabled.

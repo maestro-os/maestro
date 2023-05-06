@@ -33,7 +33,7 @@
 .extern _init
 .extern _fini
 
-.section .boot.text
+.section .boot.text, "x"
 
 /*
  * The Multiboot2 kernel header.

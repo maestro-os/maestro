@@ -48,7 +48,7 @@
  */
 .set GDT_DESC_VIRT_PTR,	(GDT_VIRT_PTR + (gdt - gdt_start))
 
-.section .boot.text
+.section .boot.text, "x"
 
 /*
  * Switches the CPU to protected mode.
