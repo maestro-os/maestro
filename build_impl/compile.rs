@@ -34,7 +34,7 @@ pub fn compile_vdso(target: &Target) {
 	println!("cargo:rerun-if-changed={}", file.display());
 }
 
-/// Compiles the C and assembly code.
+/// Compiles the C and assembly code that are parts of the kernel's codebase.
 ///
 /// `target` is the target to compile for.
 pub fn compile_c(target: &Target) -> io::Result<()> {
