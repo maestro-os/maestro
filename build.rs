@@ -43,11 +43,11 @@ fn main() {
 			exit(1);
 		});
 
-	compile::compile_vdso(&target);
 	compile::compile_c(&target).unwrap_or_else(|e| {
 		eprintln!("Compilation failed: {}", e);
 		exit(1);
 	});
+	compile::compile_vdso(&target);
 	link_library();
 
 	// Add the linker script
