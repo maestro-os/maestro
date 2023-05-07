@@ -2,10 +2,13 @@
  * This file is an extention to the TSS Rust module.
  */
 
+.section .text
+
 .global tss_get
 .global tss_flush
 
-.section .text
+.type tss_get, @function
+.type tss_flush, @function
 
 /*
  * x86. Returns the pointer to the TSS.

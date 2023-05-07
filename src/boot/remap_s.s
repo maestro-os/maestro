@@ -1,8 +1,10 @@
 # Note: the filename is prefixed with `_s.s` to prevent conflicts with `.c` files when building object files
 
+.section .boot.text, "x"
+
 .global pse_enable
 
-.section .boot.text, "x"
+.type pse_enable, @function
 
 /*
  * Enables Page Size Extension (PSE) and paging using the given page directory.

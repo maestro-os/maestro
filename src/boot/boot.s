@@ -25,9 +25,11 @@
  */
 .set STACK_SIZE,	32768
 
-.global multiboot_entry
 .global boot_stack
 .global boot_stack_begin
+
+.global multiboot_entry
+.type multiboot_entry, @function
 
 .extern setup_gdt
 .extern _init

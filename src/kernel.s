@@ -1,11 +1,15 @@
 .global kernel_begin
+.global kernel_end
 
 .global kernel_wait
 .global kernel_loop
 .global kernel_loop_reset
 .global kernel_halt
 
-.global kernel_end
+.type kernel_wait, @function
+.type kernel_loop, @function
+.type kernel_loop_reset, @function
+.type kernel_halt, @function
 
 .section .text
 

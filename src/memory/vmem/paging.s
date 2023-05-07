@@ -9,6 +9,11 @@
 .global invlpg
 .global tlb_reload
 
+.type paging_enable, @function
+.type paging_disable, @function
+.type invlpg, @function
+.type tlb_reload, @function
+
 /*
  * (x86) Enables paging using the specified page directory.
  */

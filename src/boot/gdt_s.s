@@ -22,6 +22,9 @@
 .global setup_gdt
 .global gdt_move
 
+.type setup_gdt, @function
+.type gdt_move, @function
+
 .extern gdt_copy
 
 /*
