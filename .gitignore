@@ -16,15 +16,13 @@ target/
 
 # ISO and ELF
 iso/
-maestro
 *.iso
 
 # Tags file
 tags
 
 # Debug files
-*_out
-serial.log
+*.log
 
 # Disk files
 qemu_disk

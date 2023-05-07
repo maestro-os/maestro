@@ -4,6 +4,7 @@ mod build_impl;
 
 use build_impl::*;
 use config::Config;
+use std::env;
 use std::io::ErrorKind;
 use std::process::exit;
 use target::Target;
@@ -55,4 +56,9 @@ fn main() {
 	// Pass appropriate flags to rustc to ensure the binary is compiled correctly
 	println!("cargo:rustc-env=RUSTFLAGS=\"-Crelocation-model=static\"");
 	println!("cargo:rustc-link-arg-bins=-lcasm");
+
+	// Setup environment for `cargo run`
+	println!("cargo:rustc-env=ARCH={}", target.get_name());
+	let profile = env::var("PROFILE").unwrap();
+	println!("cargo:rustc-env=PROFILE={profile}");
 }
