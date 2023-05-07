@@ -33,13 +33,11 @@ strace = ["macros/strace"]
 lto = true
 panic = "abort"
 rustflags = [
-	"-Clink-dead-code=yes",
 	"-Cno-redzone=yes",
 ]
 
 [profile.dev]
 rustflags = [
-	"-Clink-dead-code=yes",
 	"-Cno-redzone=yes",
 
 	"-Cforce-frame-pointers=yes",
