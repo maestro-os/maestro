@@ -1,3 +1,5 @@
+# Note: the filename is prefixed with `_s.s` to prevent conflicts with `.c` files when building object files
+
 .global GDT_KERNEL_CS
 .global GDT_KERNEL_DS
 .global GDT_USER_CS

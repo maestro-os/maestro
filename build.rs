@@ -52,6 +52,7 @@ fn main() {
 		target.get_linker_script_path().display()
 	);
 
-	let rustflags = "-Clink-dead-code=yes -Cno-redzone=yes -Crelocation-model=static";
-	println!("cargo:rustc-env=RUSTFLAGS=\"{rustflags}\"");
+	// Pass appropriate flags to rustc to ensure the binary is compiled correctly
+	println!("cargo:rustc-env=RUSTFLAGS=\"-Crelocation-model=static\"");
+	println!("cargo:rustc-link-arg-bins=-lcasm");
 }
