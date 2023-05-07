@@ -22,6 +22,6 @@ spin:
 spin_unlock:
 	mov 4(%esp), %ecx
 
-	mov $0, (%ecx)
+	movl $0, (%ecx)
 
 	ret

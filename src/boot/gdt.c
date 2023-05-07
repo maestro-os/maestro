@@ -29,8 +29,7 @@
 /*
  * Structure representing a GDT entry.
  */
-__attribute__((packed))
-struct gdt_entry
+struct __attribute__((packed)) gdt_entry
 {
 	uint16_t limit_low;
 	uint16_t base_low;
@@ -43,8 +42,7 @@ struct gdt_entry
 /*
  * Structure representing the GDT descriptor.
  */
-__attribute__((packed))
-struct gdt_descriptor
+struct __attribute__((packed)) gdt_descriptor
 {
 	uint16_t size;
 	uint32_t offset;
