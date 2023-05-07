@@ -10,10 +10,10 @@ edition = "2021"
 [lib]
 name = "kernel"
 path = "src/kernel.rs"
-crate-type = ["dylib", "rlib"]
+crate-type = ["dylib", "staticlib"]
 
 [[bin]]
-name = "maestro"
+name = "kernel"
 path = "src/kernel.rs"
 
 [dependencies]
@@ -32,7 +32,6 @@ strace = ["macros/strace"]
 [profile.release]
 lto = true
 panic = "abort"
-rustflags = ["-Clink-dead-code"]
 
 [profile.dev]
-rustflags = ["-Clink-dead-code", "-Cforce-frame-pointers=yes"]
+rustflags = ["-Cforce-frame-pointers=yes"]

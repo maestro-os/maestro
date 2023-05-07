@@ -4,7 +4,7 @@
 	"disable-redzone": true,
 	"dynamic-linking": true,
 	"executables": true,
-	"features": "-mmx,-sse,-sse2,-soft-float",
+	"features": "-mmx,-sse,-sse2,+soft-float",
 	"linker": "i686-elf-ld",
 	"linker-flavor": "ld",
 	"llvm-target": "i686-unknown-none",

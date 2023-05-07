@@ -22,41 +22,23 @@ pub fn compile_vdso(target: &Target) {
 	let out_dir = PathBuf::from(format!("target/{}/{}/", target.get_name(), profile));
 	let out_dir = out_dir.canonicalize().unwrap();
 
-	// Compile as static library
-	cc::Build::new()
-		.compiler("clang")
-		.no_default_flags(true)
-		.flag("-nostdlib")
-		.flag("-ffreestanding")
-		.flag("-mno-red-zone")
-		.flag("-Wall")
-		.flag("-Wextra")
-		//.flag("-Werror")
-		.flag("-target")
-		.flag(target.get_triplet())
-		.flag("-Tvdso/linker.ld")
-		.pic(true)
-		.file(&file)
-		.out_dir(&out_dir)
-		.compile("vdso");
-
-	// The path to the static library
-	let static_path = out_dir.join("libvdso.a");
 	// The path to the shared library to be compiled
-	let shared_path = out_dir.join("vdso.so");
+	let out_path = out_dir.join("vdso.so");
 
-	// Link into a shared library
-	//
-	// A second pass for linking is required since the crate `cc` can only build static libraries
-	let status = Command::new(target.get_linker())
+	// Compile
+	let status = Command::new("clang")
 		.arg("-Tvdso/linker.ld")
 		.arg("-nostdlib")
-		.arg("-ffreestanding")
+		.arg("-Wall")
+		.arg("-Wextra")
+		.arg("-Werror")
 		.arg("-fPIC")
+		.arg("-target")
+		.arg(target.get_triplet())
 		.arg("-shared")
-		.arg(static_path)
+		.arg(file)
 		.arg("-o")
-		.arg(&shared_path)
+		.arg(&out_path)
 		.status()
 		.unwrap();
 	if !status.success() {
@@ -65,7 +47,7 @@ pub fn compile_vdso(target: &Target) {
 	}
 
 	// Pass vDSO path to the rest of the codebase
-	println!("cargo:rustc-env=VDSO_PATH={}", shared_path.display());
+	println!("cargo:rustc-env=VDSO_PATH={}", out_path.display());
 }
 
 /// Compiles the C and assembly code that are parts of the kernel's codebase.
@@ -79,9 +61,6 @@ pub fn compile_c(target: &Target) -> io::Result<()> {
 	for f in &files {
 		println!("cargo:rerun-if-changed={}", f.display());
 	}
-
-	println!("cargo:rustc-link-lib=static=casm");
-	println!("cargo:rerun-if-changed=libcasm.a");
 
 	cc::Build::new()
 		.flag("-nostdlib")

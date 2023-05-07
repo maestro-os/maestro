@@ -51,4 +51,7 @@ fn main() {
 		"cargo:rustc-link-arg=-T{}",
 		target.get_linker_script_path().display()
 	);
+
+	let rustflags = "-Clink-dead-code=yes -Cno-redzone=yes -Crelocation-model=static";
+	println!("cargo:rustc-env=RUSTFLAGS=\"{rustflags}\"");
 }
