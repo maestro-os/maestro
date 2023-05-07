@@ -38,7 +38,7 @@ impl Target {
 		let Ok(arch) = env::var("CARGO_CFG_TARGET_ARCH") else {
             return Ok(None);
         };
-		let target_path = PathBuf::from(format!("arch/{arch}/target.json"));
+		let target_path = PathBuf::from(format!("arch/{arch}/{arch}.json"));
 
 		// Read and parse target file
 		let content = fs::read_to_string(target_path)?;

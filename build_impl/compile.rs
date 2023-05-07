@@ -18,8 +18,13 @@ pub fn compile_vdso(target: &Target) {
 	println!("cargo:rerun-if-changed=vdso/linker.ld");
 	println!("cargo:rerun-if-changed={}", file.display());
 
+	let profile = env::var("PROFILE").unwrap();
+	let out_dir = PathBuf::from(format!("target/{}/{}/", target.get_name(), profile));
+	let out_dir = out_dir.canonicalize().unwrap();
+
 	// Compile as static library
 	cc::Build::new()
+		.compiler("clang")
 		.no_default_flags(true)
 		.flag("-nostdlib")
 		.flag("-ffreestanding")
@@ -27,12 +32,13 @@ pub fn compile_vdso(target: &Target) {
 		.flag("-Wall")
 		.flag("-Wextra")
 		//.flag("-Werror")
+		.flag("-target")
+		.flag(target.get_triplet())
+		.flag("-Tvdso/linker.ld")
 		.pic(true)
-		.target(target.get_triplet())
 		.file(&file)
+		.out_dir(&out_dir)
 		.compile("vdso");
-
-	let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
 	// The path to the static library
 	let static_path = out_dir.join("libvdso.a");
@@ -44,6 +50,9 @@ pub fn compile_vdso(target: &Target) {
 	// A second pass for linking is required since the crate `cc` can only build static libraries
 	let status = Command::new(target.get_linker())
 		.arg("-Tvdso/linker.ld")
+		.arg("-nostdlib")
+		.arg("-ffreestanding")
+		.arg("-fPIC")
 		.arg("-shared")
 		.arg(static_path)
 		.arg("-o")
