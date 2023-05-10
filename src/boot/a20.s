@@ -28,7 +28,7 @@ a20_check:
 	mov $0x088888, %esi
 	mov %edi, (%edi)
 	mov %esi, (%esi)
-	cmpsl
+	cmpsd
 	popa
 	jne a20_enabled
 	xor %eax, %eax
