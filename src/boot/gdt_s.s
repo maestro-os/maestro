@@ -1,5 +1,3 @@
-# Note: the filename is prefixed with `_s.s` to prevent conflicts with `.c` files when building object files
-
 .global GDT_KERNEL_CS
 .global GDT_KERNEL_DS
 .global GDT_USER_CS
@@ -23,9 +21,8 @@
 .global gdt_move
 
 .type setup_gdt, @function
+.type gdt_copy, @function
 .type gdt_move, @function
-
-.extern gdt_copy
 
 /*
  * Offsets into the GDT for each segment.
@@ -40,6 +37,10 @@
  * Physical address to the GDT.
  */
 .set GDT_PHYS_PTR,		0x800
+/*
+ * The size of the GDT in bytes.
+ */
+.set GDT_SIZE,			(gdt - gdt_start)
 /*
  * Physical address to the GDT descriptor.
  */
@@ -81,6 +82,17 @@ complete_flush:
 	mov $0, %ax
 	mov %ax, %fs
 	mov %ax, %gs
+
+	ret
+
+/*
+ * Copies the GDT to its physical address.
+ */
+gdt_copy:
+	mov $gdt_start, %esi
+	mov $GDT_PHYS_PTR, %edi
+	mov $(GDT_SIZE + 6), %ecx
+	rep movsb
 
 	ret
 
