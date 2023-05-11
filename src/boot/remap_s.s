@@ -25,7 +25,7 @@ kernel_remap:
 	push %ebx
 
 	// Zero page directory
-	xor %eax, %eax	
+	xor %eax, %eax
 	mov $remap_dir, %esi
 L1:
 	movl $0, (%esi)
@@ -35,7 +35,7 @@ L1:
 	jne L1
 
 	// Fill entries
-	xor %eax, %eax	
+	xor %eax, %eax
 	mov $(remap_dir + (768 * 4)), %esi
 L2:
 	// (i * PAGE_SIZE * 1024)
@@ -83,7 +83,7 @@ pse_enable:
 	pop %ebp
 	ret
 
-.section .boot.data, "w"
+.section .boot.data, "w", @progbits
 
 /*
  * The page directory used for kernel remapping.
