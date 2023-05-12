@@ -5,10 +5,6 @@
 
 # These options are only enabled when compiling in debug mode
 [debug]
-# If enabled, selftesting is enabled.
-#
-# This option requires debug mode to be enabled.
-test = false
 # If enabled, the kernel tests storage.
 #
 # **Warning**: this option is destructive for any data present on disks connected to the

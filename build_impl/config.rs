@@ -10,10 +10,6 @@ pub const PATH: &str = "config.toml";
 /// The debug section of the configuration file.
 #[derive(Deserialize)]
 struct ConfigDebug {
-	/// If enabled, selftesting is enabled.
-	///
-	/// This option requires debug mode to be enabled.
-	test: bool,
 	/// If enabled, the kernel tests storage.
 	///
 	/// **Warning**: this option is destructive for any data present on disks connected to the
@@ -51,10 +47,6 @@ impl Config {
 	pub fn set_cfg(&self, debug: bool) {
 		if debug {
 			println!("cargo:rustc-cfg=config_debug_debug");
-
-			if self.debug.test {
-				println!("cargo:rustc-cfg=config_debug_test");
-			}
 
 			if self.debug.storage_test {
 				println!("cargo:rustc-cfg=config_debug_storage_test");

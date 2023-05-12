@@ -4,7 +4,7 @@
 
 # Build ISO
 mkdir -p iso/boot/grub
-cp target/$ARCH/$PROFILE/kernel iso/boot/maestro
+cp $1 iso/boot/maestro
 cp grub.cfg iso/boot/grub
 grub-mkrescue -o kernel.iso iso
 

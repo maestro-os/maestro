@@ -2,16 +2,17 @@
 //! another allocator, which is too big to be used directly for allocation, so
 //! it has to be divided into chunks.
 
-use super::chunk::Chunk;
-use super::chunk::FreeChunk;
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::buddy;
-use crate::offset_of;
-use crate::util;
-use crate::util::math;
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::ptr;
+use crate::errno::Errno;
+use crate::memory::buddy;
+use crate::memory;
+use crate::offset_of;
+use crate::util::math;
+use crate::util;
+use super::chunk::Chunk;
+use super::chunk::FreeChunk;
 
 /// Structure representing a frame of memory allocated using the buddy
 /// allocator, storing memory chunks.
@@ -41,14 +42,16 @@ impl Block {
 
 		// Allocate the block
 		let ptr = buddy::alloc_kernel(block_order)? as *mut Block;
+		// Init block
+		unsafe {
+			ptr::write_volatile(ptr, Self {
+				order: block_order,
+				first_chunk: Chunk::new(),
+			});
+		}
+
 		let block = unsafe {
 			&mut *ptr
-		};
-
-		// Init block
-		*block = Self {
-			order: block_order,
-			first_chunk: Chunk::new(),
 		};
 		*block.first_chunk.as_free_chunk().unwrap() = FreeChunk::new(first_chunk_size);
 
