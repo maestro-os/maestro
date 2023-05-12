@@ -14,8 +14,6 @@ pub struct TargetFile {
 	/// The LLVM target triplet.
 	#[serde(rename = "llvm-target")]
 	llvm_target: String,
-	/// The linker to use.
-	linker: String,
 }
 
 /// Structure representing a build target.
@@ -24,9 +22,6 @@ pub struct Target {
 	name: String,
 	/// The target triplet.
 	triplet: String,
-
-	/// The linker to use.
-	linker: String,
 }
 
 impl Target {
@@ -48,8 +43,6 @@ impl Target {
 		Ok(Some(Target {
 			name: arch,
 			triplet: content.llvm_target,
-
-			linker: content.linker,
 		}))
 	}
 
@@ -66,10 +59,5 @@ impl Target {
 	/// Returns the target's triplet.
 	pub fn get_triplet(&self) -> &str {
 		&self.triplet
-	}
-
-	/// Returns the linker to use.
-	pub fn get_linker(&self) -> &str {
-		&self.linker
 	}
 }

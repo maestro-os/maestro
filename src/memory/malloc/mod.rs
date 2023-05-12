@@ -9,32 +9,26 @@
 mod block;
 mod chunk;
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::malloc::ptr::NonNull;
-use crate::util;
-use crate::util::list::ListNode;
-use crate::util::lock::IntMutex;
 use block::Block;
 use chunk::Chunk;
-use core::cmp::min;
 use core::cmp::Ordering;
+use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
-use core::ptr;
 use core::ptr::drop_in_place;
+use core::ptr;
 use core::slice;
+use crate::errno::Errno;
+use crate::errno;
+use crate::memory::malloc::ptr::NonNull;
+use crate::memory;
+use crate::util::lock::IntMutex;
+use crate::util;
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());
-
-/// Initializes the memory allocator.
-pub fn init() {
-	chunk::init_free_lists();
-}
 
 /// Allocates `n` bytes of kernel memory and returns a pointer to the beginning
 /// of the allocated chunk.
@@ -51,20 +45,19 @@ pub fn init() {
 /// leak. Writing outside of the allocated range (buffer overflow) results in an
 /// undefined behaviour.
 pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
-	let _ = MUTEX.lock();
-
 	if n == 0 {
 		return Err(errno!(EINVAL));
 	}
 
-	let chunk = chunk::get_available_chunk(n)?.get_chunk();
-	chunk.split(n);
+	let _ = MUTEX.lock();
+
+	let free_chunk = chunk::get_available_chunk(n)?;
+	free_chunk.chunk.split(n);
 
 	#[cfg(config_debug_malloc_check)]
-	chunk.check();
+	free_chunk.check();
 
-	debug_assert!(chunk.get_size() >= n);
-	assert!(!chunk.is_used());
+	let chunk = &mut free_chunk.chunk;
 	chunk.set_used(true);
 
 	let ptr = chunk.get_ptr_mut();
@@ -84,11 +77,11 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 /// If the reallocation fails, the chunk is left untouched and the function
 /// returns an error.
 pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
-	let _ = MUTEX.lock();
-
 	if n == 0 {
 		return Err(errno!(EINVAL));
 	}
+
+	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr);
 	assert!(chunk.is_used());
@@ -140,13 +133,15 @@ pub unsafe fn free(ptr: *mut c_void) {
 	chunk.check();
 
 	chunk.set_used(false);
-	ptr::write(&mut chunk.as_free_chunk().free_list, ListNode::new_single());
+	let free_chunk = chunk.as_free_chunk().unwrap();
+	free_chunk.prev = None;
+	free_chunk.next = None;
 
 	let c = chunk.coalesce();
-	if c.list.is_single() {
+	if c.is_single() {
 		drop_in_place(Block::from_first_chunk(c));
 	} else {
-		c.as_free_chunk().free_list_insert();
+		c.as_free_chunk().unwrap().free_list_insert();
 	}
 }
 

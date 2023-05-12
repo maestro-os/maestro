@@ -7,7 +7,6 @@
 pub mod boxed;
 pub mod container;
 pub mod io;
-pub mod list;
 pub mod lock;
 pub mod math;
 pub mod ptr;
