@@ -10,6 +10,8 @@ use std::process::exit;
 use target::Target;
 
 fn main() {
+	let profile = env::var("PROFILE").unwrap();
+
 	let config = Config::read().unwrap_or_else(|e| {
 		if e.kind() == ErrorKind::NotFound {
 			eprintln!("Configuration file not found");
@@ -25,7 +27,7 @@ fn main() {
 
 		exit(1);
 	});
-	config.set_cfg();
+	config.set_cfg(profile == "debug");
 
 	let target = Target::from_env()
 		.unwrap_or_else(|e| {
@@ -59,6 +61,5 @@ fn main() {
 
 	// Setup environment for `cargo run`
 	println!("cargo:rustc-env=ARCH={}", target.get_name());
-	let profile = env::var("PROFILE").unwrap();
 	println!("cargo:rustc-env=PROFILE={profile}");
 }

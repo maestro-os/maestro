@@ -3,9 +3,8 @@
 
 
 
+# These options are only enabled when compiling in debug mode
 [debug]
-# Tells whether the kernel is compiled in debug mode.
-debug = false
 # If enabled, selftesting is enabled.
 #
 # This option requires debug mode to be enabled.

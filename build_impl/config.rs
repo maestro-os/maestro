@@ -10,8 +10,6 @@ pub const PATH: &str = "config.toml";
 /// The debug section of the configuration file.
 #[derive(Deserialize)]
 struct ConfigDebug {
-	/// Tells whether the kernel is compiled in debug mode.
-	debug: bool,
 	/// If enabled, selftesting is enabled.
 	///
 	/// This option requires debug mode to be enabled.
@@ -50,29 +48,29 @@ impl Config {
 	}
 
 	/// Sets the crate's cfg flags according to the configuration.
-	pub fn set_cfg(&self) {
-		if self.debug.debug {
+	pub fn set_cfg(&self, debug: bool) {
+		if debug {
 			println!("cargo:rustc-cfg=config_debug_debug");
 
 			if self.debug.test {
 				println!("cargo:rustc-cfg=config_debug_test");
 			}
-		}
 
-		if self.debug.storage_test {
-			println!("cargo:rustc-cfg=config_debug_storage_test");
-		}
+			if self.debug.storage_test {
+				println!("cargo:rustc-cfg=config_debug_storage_test");
+			}
 
-		if self.debug.qemu {
-			println!("cargo:rustc-cfg=config_debug_qemu");
-		}
+			if self.debug.qemu {
+				println!("cargo:rustc-cfg=config_debug_qemu");
+			}
 
-		if self.debug.malloc_magic {
-			println!("cargo:rustc-cfg=config_debug_malloc_magic");
-		}
+			if self.debug.malloc_magic {
+				println!("cargo:rustc-cfg=config_debug_malloc_magic");
+			}
 
-		if self.debug.malloc_check {
-			println!("cargo:rustc-cfg=config_debug_malloc_check");
+			if self.debug.malloc_check {
+				println!("cargo:rustc-cfg=config_debug_malloc_check");
+			}
 		}
 	}
 }
