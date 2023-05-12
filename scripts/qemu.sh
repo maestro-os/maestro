@@ -13,7 +13,7 @@ grub-mkrescue -o kernel.iso iso
 # Run the kernel
 
 export QEMU_DISK=qemu_disk
-QEMU_FLAGS="-device isa-debug-exit,iobase=0xf4,iosize=0x04 $QEMU_FLAGS"
+export QEMU_FLAGS="-device isa-debug-exit,iobase=0xf4,iosize=0x04 $QEMU_FLAGS"
 
 if [ -f $QEMU_DISK ]; then
 	QEMU_FLAGS="-drive file=$QEMU_DISK,format=raw $QEMU_FLAGS"

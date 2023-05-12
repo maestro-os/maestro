@@ -35,7 +35,7 @@
 .extern _init
 .extern _fini
 
-.section .boot.text, "x"
+.section .boot.text, "ax"
 
 /*
  * The Multiboot2 kernel header.
@@ -92,7 +92,7 @@ multiboot_entry:
 
 
 
-.section .boot.stack, "w", @progbits
+.section .boot.stack, "aw", @progbits
 
 .align 8
 

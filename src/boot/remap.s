@@ -7,7 +7,7 @@
  * is ready.
  */
 
-.section .boot.text, "x"
+.section .boot.text, "ax"
 
 .global kernel_remap
 
@@ -31,12 +31,12 @@ L1:
 	movl $0, (%esi)
 	add $4, %esi
 	add $1, %eax
-	cmpl %eax, 768
+	cmp $768, %eax
 	jne L1
 
 	// Fill entries
 	xor %eax, %eax
-	mov $(remap_dir + (768 * 4)), %esi
+	mov $remap_dir, %esi
 L2:
 	// (i * PAGE_SIZE * 1024)
 	mov %eax, %ebx
@@ -45,9 +45,10 @@ L2:
 	// PAGE_SIZE | WRITE | PRESENT
 	or $(128 + 2 + 1), %ebx
 	movl %ebx, (%esi)
+	movl %ebx, (4 * 768)(%esi)
 	add $4, %esi
 	add $1, %eax
-	cmpl %eax, 256
+	cmp $256, %eax
 	jne L2
 
 	push $remap_dir
@@ -83,7 +84,7 @@ pse_enable:
 	pop %ebp
 	ret
 
-.section .boot.data, "w", @progbits
+.section .boot.data, "aw", @progbits
 
 /*
  * The page directory used for kernel remapping.

@@ -5,7 +5,7 @@
 .type a20_wait_read, @function
 .type a20_wait_write, @function
 
-.section .boot.text, "x"
+.section .boot.text, "ax"
 
 /*
  * Ensures that the A20 line is enabled.

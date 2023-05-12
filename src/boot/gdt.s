@@ -54,7 +54,7 @@
  */
 .set GDT_DESC_VIRT_PTR,	(GDT_VIRT_PTR + (gdt - gdt_start))
 
-.section .boot.text, "x"
+.section .boot.text, "ax"
 
 /*
  * Switches the CPU to protected mode.
@@ -109,7 +109,7 @@ gdt_move:
 
 
 
-.section .boot.data
+.section .boot.data, "aw"
 
 .align 8
 
