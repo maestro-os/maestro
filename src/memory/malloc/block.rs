@@ -2,7 +2,6 @@
 //! another allocator, which is too big to be used directly for allocation, so
 //! it has to be divided into chunks.
 
-use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr;
 use crate::errno::Errno;
@@ -16,7 +15,7 @@ use super::chunk::FreeChunk;
 
 /// Structure representing a frame of memory allocated using the buddy
 /// allocator, storing memory chunks.
-#[repr(align(8))]
+#[repr(C, align(8))]
 pub struct Block {
 	/// The order of the frame for the buddy allocator
 	order: buddy::FrameOrder,
@@ -63,7 +62,7 @@ impl Block {
 	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
 		let first_chunk_off = offset_of!(Block, first_chunk);
 		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
-		debug_assert!(util::is_aligned(ptr as *const c_void, memory::PAGE_SIZE));
+		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
 
 		&mut *ptr
 	}

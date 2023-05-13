@@ -12,6 +12,7 @@ use core::cmp::{max, min};
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::NonNull;
+use core::ptr;
 use crate::errno::Errno;
 use crate::util;
 use super::block::Block;
@@ -101,10 +102,10 @@ impl Chunk {
 	/// Unlinks the current chunks from the list.
 	pub fn unlink(&mut self) {
 		if let Some(prev) = self.get_prev() {
-			prev.next = None;
+			prev.next = self.next;
 		}
 		if let Some(next) = self.get_next() {
-			next.prev = None;
+			next.prev = self.prev;
 		}
 
 		self.prev = None;
@@ -234,12 +235,13 @@ impl Chunk {
 		debug_assert!(self.get_size() >= size);
 
 		let res = if let Some(next_ptr) = self.get_split_next_chunk(size) {
-			let next = unsafe { &mut *next_ptr };
-
 			let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 			let next_size = self.size - curr_new_size - size_of::<Chunk>();
 
-			*next = FreeChunk::new(next_size);
+			let next = unsafe {
+				ptr::write_volatile(next_ptr, FreeChunk::new(next_size));
+				&mut *next_ptr
+			};
 
 			#[cfg(config_debug_malloc_check)]
 			next.check();
@@ -248,9 +250,11 @@ impl Chunk {
 			next.chunk.insert_after(self);
 
 			// Update size and free list bucket
-			self.size = curr_new_size;
 			if let Some(free_chunk) = self.as_free_chunk() {
 				free_chunk.free_list_remove();
+			}
+			self.size = curr_new_size;
+			if let Some(free_chunk) = self.as_free_chunk() {
 				free_chunk.free_list_insert();
 			}
 
@@ -277,9 +281,11 @@ impl Chunk {
 				next.unlink();
 
 				// Update size and free list bucket
-				self.size += size_of::<Chunk>() + next.size;
 				if let Some(free_chunk) = self.as_free_chunk() {
 					free_chunk.free_list_remove();
+				}
+				self.size += size_of::<Chunk>() + next.size;
+				if let Some(free_chunk) = self.as_free_chunk() {
 					free_chunk.free_list_insert();
 				}
 			}
