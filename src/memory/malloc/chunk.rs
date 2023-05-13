@@ -98,6 +98,10 @@ impl Chunk {
 		debug_assert!((chunk as *const _ as usize) < (self as *const _ as usize));
 
 		self.prev = NonNull::new(chunk);
+		self.next = chunk.next;
+		if let Some(next) = self.get_next() {
+			next.prev = NonNull::new(self);
+		}
 		chunk.next = NonNull::new(self);
 	}
 
@@ -219,10 +223,10 @@ impl Chunk {
 			ALIGNEMENT,
 		);
 
-		let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
-		debug_assert!(curr_new_size >= size);
+		let new_size = (next_ptr as usize) - (self.get_ptr() as usize);
+		debug_assert!(new_size >= size);
 
-		if curr_new_size + size_of::<Chunk>() + min_data_size <= self.get_size() {
+		if new_size + size_of::<Chunk>() + min_data_size <= self.get_size() {
 			Some(next_ptr as *mut FreeChunk)
 		} else {
 			None
@@ -233,18 +237,22 @@ impl Chunk {
 	///
 	/// The function might create a new free chunk next to the current, in which case, it is
 	/// returned.
+	///
+	/// The current chunk is removed from the free list if present.
+	///
+	/// The current chunk is *not* inserted into the free list, but the next one is inserted.
 	pub fn split(&mut self, size: usize) -> Option<&'static mut FreeChunk> {
 		#[cfg(config_debug_malloc_check)]
 		self.check();
 		debug_assert!(self.get_size() >= size);
 
-		let res = if let Some(next_ptr) = self.get_split_next_chunk(size) {
-			if let Some(free_chunk) = self.as_free_chunk() {
-				free_chunk.free_list_remove();
-			}
+		if let Some(free_chunk) = self.as_free_chunk() {
+			free_chunk.free_list_remove();
+		}
 
-			let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
-			let next_size = self.size - curr_new_size - size_of::<Chunk>();
+		let res = if let Some(next_ptr) = self.get_split_next_chunk(size) {
+			let new_size = (next_ptr as usize) - (self.get_ptr() as usize);
+			let next_size = self.size - new_size - size_of::<Chunk>();
 
 			let next = unsafe {
 				ptr::write_volatile(next_ptr, FreeChunk::new(next_size));
@@ -257,11 +265,7 @@ impl Chunk {
 			next.free_list_insert();
 			next.chunk.insert_after(self);
 
-			// Update size and free list bucket
-			self.size = curr_new_size;
-			if let Some(free_chunk) = self.as_free_chunk() {
-				free_chunk.free_list_insert();
-			}
+			self.size = new_size;
 
 			Some(next)
 		} else {
@@ -277,8 +281,16 @@ impl Chunk {
 
 	/// Tries to coalesce the chunk it with adjacent chunks if they are free.
 	///
+	/// The current chunk is removed from the free list if present.
+	///
 	/// The function returns the resulting chunk.
+	///
+	/// The resulting chunk is *not* inserted into the free list.
 	pub fn coalesce(&mut self) -> &mut Chunk {
+		if let Some(free_chunk) = self.as_free_chunk() {
+			free_chunk.free_list_remove();
+		}
+
 		if let Some(next) = self.get_next() {
 			if let Some(next_free) = next.as_free_chunk() {
 				next_free.free_list_remove();
@@ -286,13 +298,7 @@ impl Chunk {
 				next.unlink();
 
 				// Update size and free list bucket
-				if let Some(free_chunk) = self.as_free_chunk() {
-					free_chunk.free_list_remove();
-				}
 				self.size += size_of::<Chunk>() + next.size;
-				if let Some(free_chunk) = self.as_free_chunk() {
-					free_chunk.free_list_insert();
-				}
 			}
 		}
 
@@ -351,6 +357,8 @@ impl Chunk {
 
 		#[cfg(config_debug_malloc_check)]
 		self.check();
+		#[cfg(config_debug_malloc_check)]
+		check_free_lists();
 
 		true
 	}
@@ -371,6 +379,8 @@ impl Chunk {
 
 		#[cfg(config_debug_malloc_check)]
 		self.check();
+		#[cfg(config_debug_malloc_check)]
+		check_free_lists();
 	}
 }
 
