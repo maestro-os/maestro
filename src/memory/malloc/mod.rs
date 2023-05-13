@@ -57,6 +57,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	#[cfg(config_debug_malloc_check)]
 	free_chunk.check();
 
+	free_chunk.free_list_remove();
 	let chunk = &mut free_chunk.chunk;
 	chunk.set_used(true);
 
@@ -139,9 +140,8 @@ pub unsafe fn free(ptr: *mut c_void) {
 
 	let c = chunk.coalesce();
 	if c.is_single() {
+		c.as_free_chunk().unwrap().free_list_remove();
 		drop_in_place(Block::from_first_chunk(c));
-	} else {
-		c.as_free_chunk().unwrap().free_list_insert();
 	}
 }
 

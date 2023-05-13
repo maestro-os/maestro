@@ -95,8 +95,10 @@ impl Chunk {
 
 	/// Inserts the current chunk after the given one.
 	pub fn insert_after(&mut self, chunk: &mut Self) {
-		chunk.prev = NonNull::new(self);
-		self.next = NonNull::new(chunk);
+		debug_assert!((chunk as *const _ as usize) < (self as *const _ as usize));
+
+		self.prev = NonNull::new(chunk);
+		chunk.next = NonNull::new(self);
 	}
 
 	/// Unlinks the current chunks from the list.
@@ -168,9 +170,10 @@ impl Chunk {
 			#[cfg(config_debug_malloc_magic)]
 			debug_assert_eq!(prev.magic, CHUNK_MAGIC);
 
+			debug_assert!((prev as *const Self as usize) < (self as *const Self as usize));
 			debug_assert!(prev.get_size() >= get_min_chunk_size());
 			debug_assert!(
-				(prev.get_const_ptr() as usize) + p.get_size() <= (self as *const Self as usize)
+				(prev.get_ptr() as usize) + prev.get_size() <= (self as *const Self as usize)
 			);
 		}
 
@@ -180,13 +183,14 @@ impl Chunk {
 			#[cfg(config_debug_malloc_magic)]
 			debug_assert_eq!(next.magic, CHUNK_MAGIC);
 
+			debug_assert!((self as *const Self as usize) < (next as *const Self as usize));
 			debug_assert!(next.get_size() >= get_min_chunk_size());
 			debug_assert!(
-				(self.get_const_ptr() as usize) + self.get_size() <= (next as *const Self as usize)
+				(self.get_ptr() as usize) + self.get_size() <= (next as *const Self as usize)
 			);
 		}
 
-		debug_assert!(util::is_aligned(self.get_const_ptr(), ALIGNEMENT));
+		debug_assert!(util::is_aligned(self.get_ptr(), ALIGNEMENT));
 	}
 
 	/// Returns a mutable reference for the given chunk as a free chunk.
@@ -235,6 +239,10 @@ impl Chunk {
 		debug_assert!(self.get_size() >= size);
 
 		let res = if let Some(next_ptr) = self.get_split_next_chunk(size) {
+			if let Some(free_chunk) = self.as_free_chunk() {
+				free_chunk.free_list_remove();
+			}
+
 			let curr_new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 			let next_size = self.size - curr_new_size - size_of::<Chunk>();
 
@@ -250,9 +258,6 @@ impl Chunk {
 			next.chunk.insert_after(self);
 
 			// Update size and free list bucket
-			if let Some(free_chunk) = self.as_free_chunk() {
-				free_chunk.free_list_remove();
-			}
 			self.size = curr_new_size;
 			if let Some(free_chunk) = self.as_free_chunk() {
 				free_chunk.free_list_insert();
@@ -273,7 +278,7 @@ impl Chunk {
 	/// Tries to coalesce the chunk it with adjacent chunks if they are free.
 	///
 	/// The function returns the resulting chunk.
-	pub fn coalesce<'s>(&'s mut self) -> &'s mut Chunk {
+	pub fn coalesce(&mut self) -> &mut Chunk {
 		if let Some(next) = self.get_next() {
 			if let Some(next_free) = next.as_free_chunk() {
 				next_free.free_list_remove();
@@ -420,10 +425,20 @@ impl FreeChunk {
 	/// Inserts the chunk into the appropriate free list.
 	pub fn free_list_insert(&mut self) {
 		#[cfg(config_debug_malloc_check)]
-		self.check();
+		debug_assert!(!self.chunk.is_used());
+		debug_assert!(self.prev.is_none());
+		debug_assert!(self.next.is_none());
 
+		// Cannot panic since `get_free_list` cannot return `None` when `splittable` is `false`
 		let free_list = get_free_list(self.chunk.size, false).unwrap();
+		debug_assert!(*free_list != NonNull::new(self));
+
 		self.next = *free_list;
+		if let Some(mut next) = self.next {
+			unsafe {
+				next.as_mut()
+			}.prev = NonNull::new(self);
+		}
 		*free_list = NonNull::new(self);
 
 		#[cfg(config_debug_malloc_check)]
@@ -432,14 +447,24 @@ impl FreeChunk {
 
 	/// Removes the chunk from its free list.
 	pub fn free_list_remove(&mut self) {
-		#[cfg(config_debug_malloc_check)]
-		self.check();
-
+		// Cannot panic since `get_free_list` cannot return `None` when `splittable` is `false`
 		let free_list = get_free_list(self.chunk.size, false).unwrap();
+
 		let is_front = free_list.map(|c| c.as_ptr() == self)
 			.unwrap_or(false);
 		if is_front {
 			*free_list = self.next;
+		}
+
+		if let Some(mut prev) = self.prev {
+			unsafe {
+				prev.as_mut()
+			}.next = self.next;
+		}
+		if let Some(mut next) = self.next {
+			unsafe {
+				next.as_mut()
+			}.prev = self.prev;
 		}
 		self.prev = None;
 		self.next = None;
@@ -473,10 +498,16 @@ fn check_free_lists() {
 	};
 
 	for free_list in free_lists {
-		free_list.foreach(|node| {
-			node.get::<FreeChunk>(crate::offset_of!(FreeChunk, free_list))
-				.check();
-		});
+		let mut node = *free_list;
+
+		while let Some(mut n) = node {
+			let n = unsafe {
+				n.as_mut()
+			};
+
+			n.check();
+			node = n.next;
+		}
 	}
 }
 

@@ -38,6 +38,8 @@ pub struct Config {
 impl Config {
 	/// Reads the configuration file.
 	pub fn read() -> io::Result<Self> {
+		println!("cargo:rerun-if-changed={}", PATH);
+
 		let config_str = fs::read_to_string(PATH)?;
 		toml::from_str(&config_str)
 			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
