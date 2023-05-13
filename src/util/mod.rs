@@ -11,14 +11,15 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
-use crate::errno::Errno;
 use core::cmp::min;
+use core::convert::Infallible;
 use core::ffi::c_int;
 use core::ffi::c_void;
-use core::fmt;
 use core::fmt::Write;
+use core::fmt;
 use core::mem::size_of;
 use core::slice;
+use crate::errno::Errno;
 
 // C functions required by LLVM
 extern "C" {
@@ -189,40 +190,24 @@ pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
 
 /// Trait allowing to perform a clone of a structure that can possibly fail (on
 /// memory allocation failure, for example).
-pub trait FailableClone {
-	/// Clones the object. If the clone fails, the function returns Err.
-	fn failable_clone(&self) -> Result<Self, Errno>
+pub trait TryClone {
+	/// The error type.
+	type Error = Errno;
+
+	/// Clones the object. If the clone fails, the function returns an error.
+	fn try_clone(&self) -> Result<Self, Self::Error>
 	where
 		Self: Sized;
 }
 
-// TODO add a derive macro for types other than primitives
-/// Implements `FailableClone` with the default implemention for the given type.
-/// The type must implement `Clone`.
-#[macro_export]
-macro_rules! failable_clone_impl {
-	($type:ty) => {
-		impl FailableClone for $type {
-			fn failable_clone(&self) -> Result<Self, crate::errno::Errno> {
-				Ok(self.clone())
-			}
-		}
-	};
+impl<T: Clone + Sized> TryClone for T {
+	type Error = Infallible;
+
+	/// Clones the object. If the clone fails, the function returns an error.
+	fn try_clone(&self) -> Result<Self, Self::Error> {
+		Ok(self.clone())
+	}
 }
-
-failable_clone_impl!(i8);
-failable_clone_impl!(u8);
-failable_clone_impl!(i16);
-failable_clone_impl!(u16);
-failable_clone_impl!(i32);
-failable_clone_impl!(u32);
-failable_clone_impl!(i64);
-failable_clone_impl!(u64);
-failable_clone_impl!(isize);
-failable_clone_impl!(usize);
-
-failable_clone_impl!(*mut c_void);
-failable_clone_impl!(*const c_void);
 
 /// Same as the Default trait, but the operation can possibly fail (on memory allocation failure,
 /// for example).

@@ -1,5 +1,6 @@
 //! The `mknod` system call allows to create a new node on a filesystem.
 
+use crate::util::TryClone;
 use crate::device::id;
 use crate::errno;
 use crate::errno::Errno;
@@ -10,7 +11,6 @@ use crate::file::FileContent;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::FailableClone;
 use macros::syscall;
 
 // TODO Check args type
@@ -41,10 +41,10 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
 
 	// The file name
-	let name = path[path.get_elements_count() - 1].failable_clone()?;
+	let name = path[path.get_elements_count() - 1].try_clone()?;
 
 	// Getting the path of the parent directory
-	let mut parent_path = path.failable_clone()?;
+	let mut parent_path = path.try_clone()?;
 	parent_path.pop();
 
 	// Getting the major and minor IDs

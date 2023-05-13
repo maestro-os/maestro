@@ -9,6 +9,7 @@
 
 pub mod version;
 
+use crate::util::TryClone;
 use crate::elf;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
@@ -23,7 +24,6 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::DisplayableStr;
-use crate::util::FailableClone;
 use core::cmp::min;
 use core::mem::size_of;
 use core::mem::transmute;
@@ -324,7 +324,7 @@ pub fn is_loaded(name: &[u8]) -> bool {
 /// Adds the given module to the modules list.
 pub fn add(module: Module) -> Result<(), Errno> {
 	let mut modules = MODULES.lock();
-	modules.insert(module.name.failable_clone()?, module)?;
+	modules.insert(module.name.try_clone()?, module)?;
 
 	Ok(())
 }

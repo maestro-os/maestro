@@ -1,19 +1,18 @@
 //! This module implements Copy-On-Write (COW) pointers.
 
-use crate::errno::Errno;
-use crate::util::FailableClone;
 use core::borrow::Borrow;
 use core::fmt;
+use crate::util::TryClone;
 
 /// Structure implementing a copy-on-write smart pointer.
-pub enum Cow<'a, T: 'a + FailableClone> {
+pub enum Cow<'a, T: 'a + TryClone> {
 	/// This variant represents a borrowed value.
 	Borrowed(&'a T),
 	/// This variant represents a value after it has been copied.
 	Owned(T),
 }
 
-impl<'a, T: 'a + FailableClone> Cow<'a, T> {
+impl<'a, T: 'a + TryClone<Error = E>, E> Cow<'a, T> {
 	/// Tells whether the object is a borrowed value.
 	pub fn is_borrowed(&self) -> bool {
 		match self {
@@ -32,17 +31,17 @@ impl<'a, T: 'a + FailableClone> Cow<'a, T> {
 	/// This function clones the value if necessary.
 	///
 	/// On fail, the function returns an error.
-	pub fn into_owned(self) -> Result<T, Errno> {
+	pub fn into_owned(self) -> Result<T, E> {
 		match self {
-			Self::Borrowed(r) => r.failable_clone(),
+			Self::Borrowed(r) => r.try_clone(),
 			Self::Owned(v) => Ok(v),
 		}
 	}
 
 	/// Returns a mutable reference to the owned data.
-	pub fn to_mut(&mut self) -> Result<&mut T, Errno> {
+	pub fn to_mut(&mut self) -> Result<&mut T, E> {
 		match self {
-			Self::Borrowed(r) => *self = Self::Owned(r.failable_clone()?),
+			Self::Borrowed(r) => *self = Self::Owned(r.try_clone()?),
 			_ => {}
 		}
 
@@ -53,25 +52,25 @@ impl<'a, T: 'a + FailableClone> Cow<'a, T> {
 	}
 }
 
-impl<'a, T: 'a + FailableClone> From<T> for Cow<'a, T> {
+impl<'a, T: 'a + TryClone> From<T> for Cow<'a, T> {
 	fn from(t: T) -> Self {
 		Self::Owned(t)
 	}
 }
 
-impl<'a, T: 'a + FailableClone> From<&'a T> for Cow<'a, T> {
+impl<'a, T: 'a + TryClone> From<&'a T> for Cow<'a, T> {
 	fn from(t: &'a T) -> Self {
 		Self::Borrowed(t)
 	}
 }
 
-impl<'a, T: 'a + FailableClone> Borrow<T> for Cow<'a, T> {
+impl<'a, T: 'a + TryClone> Borrow<T> for Cow<'a, T> {
 	fn borrow(&self) -> &T {
 		self.as_ref()
 	}
 }
 
-impl<'a, T: 'a + FailableClone> AsRef<T> for Cow<'a, T> {
+impl<'a, T: 'a + TryClone> AsRef<T> for Cow<'a, T> {
 	fn as_ref(&self) -> &T {
 		match self {
 			Self::Borrowed(r) => r,
@@ -80,7 +79,7 @@ impl<'a, T: 'a + FailableClone> AsRef<T> for Cow<'a, T> {
 	}
 }
 
-impl<'a, T: 'a + FailableClone + fmt::Display> fmt::Display for Cow<'a, T> {
+impl<'a, T: 'a + TryClone + fmt::Display> fmt::Display for Cow<'a, T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
 		self.as_ref().fmt(f)
 	}

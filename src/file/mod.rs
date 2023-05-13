@@ -15,26 +15,26 @@ pub mod path;
 pub mod util;
 pub mod vfs;
 
-use crate::device;
+use core::ffi::c_void;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::errno;
+use crate::device;
 use crate::errno::Errno;
+use crate::errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
-use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
+use crate::time;
+use crate::util::TryClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use core::ffi::c_void;
 use mountpoint::MountPoint;
 use mountpoint::MountSource;
 use open_file::OpenFile;
@@ -241,8 +241,8 @@ pub struct DirEntry {
 	pub entry_type: FileType,
 }
 
-impl FailableClone for DirEntry {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl TryClone for DirEntry {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(Self {
 			inode: self.inode,
 			entry_type: self.entry_type,
@@ -293,12 +293,12 @@ impl FileContent {
 	}
 }
 
-impl FailableClone for FileContent {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl TryClone for FileContent {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let s = match self {
 			Self::Regular => Self::Regular,
-			Self::Directory(entries) => Self::Directory(entries.failable_clone()?),
-			Self::Link(path) => Self::Link(path.failable_clone()?),
+			Self::Directory(entries) => Self::Directory(entries.try_clone()?),
+			Self::Link(path) => Self::Link(path.try_clone()?),
 			Self::Fifo => Self::Fifo,
 			Self::Socket => Self::Socket,
 
@@ -414,9 +414,9 @@ impl File {
 
 	/// Returns the absolute path of the file.
 	pub fn get_path(&self) -> Result<Path, Errno> {
-		let mut parent_path = self.parent_path.failable_clone()?;
+		let mut parent_path = self.parent_path.try_clone()?;
 		if !self.name.is_empty() {
-			parent_path.push(self.name.failable_clone()?)?;
+			parent_path.push(self.name.try_clone()?)?;
 		}
 
 		Ok(parent_path)

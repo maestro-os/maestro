@@ -1,10 +1,10 @@
 //! This module stores the Bitfield structure.
 
 use crate::errno::Errno;
+use crate::util::TryClone;
 use crate::util::bit_size_of;
 use crate::util::container::vec::Vec;
 use crate::util::math::ceil_div;
-use crate::util::FailableClone;
 
 /// A bitfield is a data structure meant to contain only boolean values.
 ///
@@ -140,10 +140,10 @@ impl Bitfield {
 	}
 }
 
-impl FailableClone for Bitfield {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl TryClone for Bitfield {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(Self {
-			data: self.data.failable_clone()?,
+			data: self.data.try_clone()?,
 			len: self.len,
 		})
 	}

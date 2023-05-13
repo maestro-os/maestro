@@ -1,6 +1,7 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
+use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -17,7 +18,6 @@ use crate::file::Uid;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -56,7 +56,7 @@ fn get_file(
 
 	if flags & open_file::O_CREAT != 0 {
 		// Getting the path of the parent directory
-		let mut parent_path = path.failable_clone()?;
+		let mut parent_path = path.try_clone()?;
 		// The file's basename
 		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
@@ -65,7 +65,7 @@ fn get_file(
 		let mut parent = parent_mutex.lock();
 
 		let file_result =
-			vfs.get_file_from_parent(&mut *parent, name.failable_clone()?, uid, gid, follow_links);
+			vfs.get_file_from_parent(&mut *parent, name.try_clone()?, uid, gid, follow_links);
 		match file_result {
 			// If the file is found, return it
 			Ok(file) => Ok(file),

@@ -6,23 +6,23 @@
 #[cfg(target_arch = "x86")]
 pub mod x86;
 
+use core::ffi::c_void;
 use crate::cpu;
 use crate::elf;
 use crate::errno::Errno;
 use crate::idt;
 use crate::memory;
 use crate::multiboot;
+use crate::util::TryClone;
 use crate::util::boxed::Box;
 use crate::util::math;
-use crate::util::FailableClone;
-use core::ffi::c_void;
 
 /// Trait representing virtual memory context handler.
 ///
 /// This trait is the interface to manipulate virtual memory on any architecture.
 ///
 /// Each architecture has its own structure implementing this trait.
-pub trait VMem: FailableClone {
+pub trait VMem: TryClone<Error = Errno> {
 	/// Translates the given virtual address `ptr` to the corresponding physical
 	/// address.
 	///
@@ -129,7 +129,7 @@ pub fn new() -> Result<Box<dyn VMem>, Errno> {
 /// Clones the virtual memory context handler `vmem`.
 pub fn clone(vmem: &Box<dyn VMem>) -> Result<Box<dyn VMem>, Errno> {
 	let vmem = unsafe { &*(vmem.as_ptr() as *const x86::X86VMem) };
-	Ok(Box::new(vmem.failable_clone()?)? as Box<dyn VMem>)
+	Ok(Box::new(vmem.try_clone()?)? as Box<dyn VMem>)
 }
 
 /// Tells whether the read-only pages protection is enabled.

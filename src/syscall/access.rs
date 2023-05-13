@@ -1,11 +1,11 @@
 //! The `access` system call allows to check access to a given file.
 
+use crate::util::TryClone;
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::FailableClone;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -75,7 +75,7 @@ pub fn do_access(
 			}
 		};
 
-		let cwd = proc.get_cwd().failable_clone()?;
+		let cwd = proc.get_cwd().try_clone()?;
 		(path, uid, gid, cwd)
 	};
 

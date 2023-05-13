@@ -1,21 +1,21 @@
 //! The `Box` structure allows to hold an object on the heap and handles its
 //! memory properly.
 
-use crate::errno::Errno;
-use crate::memory;
-use crate::memory::malloc;
-use crate::util::FailableClone;
 use core::ffi::c_void;
 use core::fmt;
 use core::marker::Unsize;
-use core::mem;
 use core::mem::size_of_val;
+use core::mem;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
-use core::ptr;
-use core::ptr::drop_in_place;
 use core::ptr::NonNull;
+use core::ptr::drop_in_place;
+use core::ptr;
+use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::memory;
+use crate::util::TryClone;
 
 /// A `Box` allows to store an object on the heap.
 ///
@@ -123,8 +123,8 @@ impl<T: ?Sized> DerefMut for Box<T> {
 	}
 }
 
-impl<T: ?Sized + Clone> FailableClone for Box<T> {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl<T: ?Sized + Clone> TryClone for Box<T> {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let obj = unsafe { &*self.ptr.as_ptr() };
 
 		Box::new(obj.clone())

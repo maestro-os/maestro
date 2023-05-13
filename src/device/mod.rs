@@ -25,6 +25,7 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
+use crate::util::TryClone;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file;
@@ -42,7 +43,6 @@ use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 use core::ffi::c_void;
 use core::fmt;
 use keyboard::KeyboardManager;
@@ -202,7 +202,7 @@ impl Device {
 	/// the filesystem.
 	pub fn create_file(dev: MutexGuard<Device, true>) -> Result<(), Errno> {
 		let file_content = dev.id.to_file_content();
-		let path = dev.path.failable_clone()?;
+		let path = dev.path.try_clone()?;
 		let mode = dev.mode;
 
 		drop(dev);

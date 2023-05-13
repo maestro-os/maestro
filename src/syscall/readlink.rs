@@ -1,5 +1,6 @@
 //! The `readlink` syscall allows to read the target of a symbolic link.
 
+use crate::util::TryClone;
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
@@ -8,7 +9,6 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util;
-use crate::util::FailableClone;
 use core::cmp::min;
 use macros::syscall;
 
@@ -42,7 +42,7 @@ pub fn readlink(
 		let file = file_mutex.lock();
 
 		match file.get_content() {
-			FileContent::Link(target) => target.failable_clone()?,
+			FileContent::Link(target) => target.try_clone()?,
 			_ => return Err(errno!(EINVAL)),
 		}
 	};

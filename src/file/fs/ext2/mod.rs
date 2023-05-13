@@ -27,6 +27,7 @@ mod block_group_descriptor;
 mod directory_entry;
 mod inode;
 
+use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs::Filesystem;
@@ -51,7 +52,6 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 use block_group_descriptor::BlockGroupDescriptor;
 use core::cmp::max;
 use core::cmp::min;
@@ -837,7 +837,7 @@ impl Filesystem for Ext2Fs {
 					};
 
 					final_entries.insert(
-						name.failable_clone()?,
+						name.try_clone()?,
 						DirEntry {
 							inode: inode as _,
 							entry_type,

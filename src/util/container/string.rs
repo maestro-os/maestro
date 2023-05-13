@@ -1,8 +1,8 @@
 //! This module implements the String structure which wraps the `str` type.
 
+use crate::util::TryClone;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
-use crate::util::FailableClone;
 use core::borrow::Borrow;
 use core::borrow::BorrowMut;
 use core::fmt;
@@ -222,10 +222,10 @@ impl Hash for String {
 	}
 }
 
-impl FailableClone for String {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl TryClone for String {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(Self {
-			data: self.data.failable_clone()?,
+			data: self.data.try_clone()?,
 		})
 	}
 }

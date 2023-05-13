@@ -19,6 +19,7 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
+use crate::util::TryClone;
 use crate::cpu;
 use crate::errno;
 use crate::errno::Errno;
@@ -47,7 +48,6 @@ use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 use core::any::Any;
 use core::ffi::c_void;
 use core::mem::size_of;
@@ -1000,8 +1000,8 @@ impl Process {
 			pgid: self.pgid,
 			tid: pid,
 
-			argv: self.argv.failable_clone()?,
-			exec_path: self.exec_path.failable_clone()?,
+			argv: self.argv.try_clone()?,
+			exec_path: self.exec_path.try_clone()?,
 
 			tty: self.tty.clone(),
 
@@ -1038,11 +1038,11 @@ impl Process {
 			user_stack: self.user_stack,
 			kernel_stack,
 
-			cwd: self.cwd.failable_clone()?,
-			chroot: self.chroot.failable_clone()?,
+			cwd: self.cwd.try_clone()?,
+			chroot: self.chroot.try_clone()?,
 			file_descriptors,
 
-			sigmask: self.sigmask.failable_clone()?,
+			sigmask: self.sigmask.try_clone()?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
 			signal_handlers,
 

@@ -1,9 +1,9 @@
 //! This module implements a binary tree container.
 
+use crate::util::TryClone;
 use crate::errno::Errno;
 use crate::memory;
 use crate::memory::malloc;
-use crate::util::FailableClone;
 use core::cmp::max;
 use core::cmp::Ordering;
 use core::fmt;
@@ -1319,11 +1319,11 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRan
 	}
 }
 
-impl<K: 'static + FailableClone + Ord, V: FailableClone> FailableClone for Map<K, V> {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl<K: 'static + TryClone<Error = Errno> + Ord, V: TryClone<Error = Errno>> TryClone for Map<K, V> {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut new = Self::new();
 		for (k, v) in self {
-			new.insert(k.failable_clone()?, v.failable_clone()?)?;
+			new.insert(k.try_clone()?, v.try_clone()?)?;
 		}
 		Ok(new)
 	}

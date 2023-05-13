@@ -1,10 +1,10 @@
 //! When booting, the kernel can take command line arguments. This module
 //! implements a parse for these arguments.
 
+use crate::util::TryClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::DisplayableStr;
-use crate::util::FailableClone;
 use crate::vga;
 use core::cmp::min;
 use core::str;
@@ -217,7 +217,7 @@ impl ArgsParser {
 						));
 					}
 
-					if let Ok(init) = tokens[i + 1].s.failable_clone() {
+					if let Ok(init) = tokens[i + 1].s.try_clone() {
 						s.init = Some(init);
 					} else {
 						return Err(ParseError::new(cmdline, "Out of memory", None));

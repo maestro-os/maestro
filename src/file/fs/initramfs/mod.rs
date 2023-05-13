@@ -3,6 +3,7 @@
 
 mod cpio;
 
+use crate::util::TryClone;
 use crate::device;
 use crate::errno;
 use crate::errno::Errno;
@@ -16,7 +17,6 @@ use crate::file::VFS;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 use cpio::CPIOParser;
 
 /// Updates the current parent used for the unpacking operation.
@@ -35,7 +35,7 @@ fn update_parent(
 	// Getting the parent
 	let result = match stored {
 		Some((path, file)) if new.begins_with(path) => {
-			let name = match new.failable_clone()?.pop() {
+			let name = match new.try_clone()?.pop() {
 				Some(name) => name,
 				None => return Ok(()),
 			};
@@ -49,7 +49,7 @@ fn update_parent(
 
 	match result {
 		Ok(file) => {
-			*stored = Some((new.failable_clone()?, file));
+			*stored = Some((new.try_clone()?, file));
 		}
 
 		// If the directory doesn't exist, create recursively

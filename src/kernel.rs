@@ -9,6 +9,7 @@
 #![no_std]
 #![no_main]
 #![feature(allow_internal_unstable)]
+#![feature(associated_type_defaults)]
 #![feature(coerce_unsized)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]

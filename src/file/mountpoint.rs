@@ -1,24 +1,24 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
-use super::fs;
-use super::fs::Filesystem;
-use super::fs::FilesystemType;
-use super::path::Path;
-use super::vfs;
-use super::FileContent;
-use crate::device;
+use core::cmp::max;
+use core::fmt;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
+use crate::device;
 use crate::errno::Errno;
+use crate::util::TryClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::DummyIO;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-use core::cmp::max;
-use core::fmt;
+use super::FileContent;
+use super::fs::Filesystem;
+use super::fs::FilesystemType;
+use super::fs;
+use super::path::Path;
+use super::vfs;
 
 /// Permits mandatory locking on files.
 const FLAG_MANDLOCK: u32 = 0b000000000001;
@@ -146,8 +146,8 @@ impl MountSource {
 	}
 }
 
-impl FailableClone for MountSource {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl TryClone for MountSource {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(match self {
 			Self::Device {
 				dev_type,
@@ -159,7 +159,7 @@ impl FailableClone for MountSource {
 				minor: *minor,
 			},
 
-			Self::NoDev(name) => Self::NoDev(name.failable_clone()?),
+			Self::NoDev(name) => Self::NoDev(name.try_clone()?),
 		})
 	}
 }
@@ -323,9 +323,9 @@ impl MountPoint {
 
 			// Filesystem doesn't exist, load it
 			None => load_fs(
-				source.failable_clone()?,
+				source.try_clone()?,
 				fs_type,
-				path.failable_clone()?,
+				path.try_clone()?,
 				readonly,
 			)?,
 		};
@@ -434,7 +434,7 @@ pub fn create(
 		source,
 		fs_type,
 		flags,
-		path.failable_clone()?,
+		path.try_clone()?,
 	)?)?;
 
 	// Insertion

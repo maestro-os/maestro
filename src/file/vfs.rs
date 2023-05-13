@@ -4,6 +4,7 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
+use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -23,7 +24,6 @@ use crate::limits;
 use crate::util::container::string::String;
 use crate::util::lock::IntMutex;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
 use core::ptr::NonNull;
 
 /// Updates the location of the file `file` according to the given mountpoint
@@ -126,7 +126,7 @@ impl VFS {
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint = mountpoint_mutex.lock();
-		let mountpath = mountpoint.get_path().failable_clone()?;
+		let mountpath = mountpoint.get_path().try_clone()?;
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
@@ -158,7 +158,7 @@ impl VFS {
 			inode = fs.get_inode(&mut *io, Some(inode), &inner_path[i])?;
 
 			// Checking permissions
-			file = fs.load_file(&mut *io, inode, inner_path[i].failable_clone()?)?;
+			file = fs.load_file(&mut *io, inode, inner_path[i].try_clone()?)?;
 			if i < inner_path.get_elements_count() - 1 && !file.can_execute(uid, gid) {
 				return Err(errno!(EACCES));
 			}
@@ -197,7 +197,7 @@ impl VFS {
 			}
 		}
 
-		let mut parent_path = path.failable_clone()?;
+		let mut parent_path = path.try_clone()?;
 		parent_path.pop();
 		file.set_parent_path(parent_path);
 
@@ -312,7 +312,7 @@ impl VFS {
 		mode: Mode,
 		content: FileContent,
 	) -> Result<SharedPtr<File>, Errno> {
-		match self.get_file_from_parent(parent, name.failable_clone()?, uid, gid, false) {
+		match self.get_file_from_parent(parent, name.try_clone()?, uid, gid, false) {
 			// If file already exist, error
 			Ok(_) => return Err(errno!(EEXIST)),
 			// If file doesn't exist, do nothing
@@ -362,7 +362,7 @@ impl VFS {
 
 		// Adding the file to the parent's entries
 		file.set_parent_path(parent.get_path()?);
-		parent.add_entry(file.get_name().failable_clone()?, file.to_dir_entry())?;
+		parent.add_entry(file.get_name().try_clone()?, file.to_dir_entry())?;
 
 		drop(fs);
 		update_location(&mut file, &mountpoint);

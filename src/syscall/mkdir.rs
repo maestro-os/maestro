@@ -1,5 +1,6 @@
 //! The mkdir system call allows to create a directory.
 
+use crate::util::TryClone;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
@@ -8,7 +9,6 @@ use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::container::hashmap::HashMap;
-use crate::util::FailableClone;
 use macros::syscall;
 
 #[syscall]
@@ -33,7 +33,7 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 	};
 
 	// Getting the path of the parent directory
-	let mut parent_path = path.failable_clone()?;
+	let mut parent_path = path.try_clone()?;
 
 	// If the path is not empty, create
 	if let Some(name) = parent_path.pop() {

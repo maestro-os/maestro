@@ -2,7 +2,6 @@
 
 use crate::memory;
 use crate::util;
-use crate::util::FailableClone;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::fmt;
@@ -103,8 +102,6 @@ impl MemGap {
 		}
 	}
 }
-
-crate::failable_clone_impl!(MemGap);
 
 impl fmt::Debug for MemGap {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

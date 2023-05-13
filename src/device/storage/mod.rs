@@ -6,6 +6,7 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
+use crate::util::TryClone;
 use crate::device;
 use crate::device::bus::pci;
 use crate::device::id;
@@ -32,7 +33,6 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
-use crate::util::FailableClone;
 use core::cmp::min;
 use core::ffi::c_uchar;
 use core::ffi::c_ulong;
@@ -310,7 +310,7 @@ impl DeviceHandle for StorageDeviceHandle {
 					self.interface.clone(),
 					self.major,
 					self.storage_id,
-					self.path_prefix.failable_clone()?,
+					self.path_prefix.try_clone()?,
 				)?;
 
 				Ok(0)
@@ -470,8 +470,7 @@ impl StorageManager {
 					let part_nbr = (i + 1) as u32;
 
 					// Adding the partition number to the path
-					let path_str =
-						(path_prefix.failable_clone()? + crate::format!("{}", part_nbr)?)?;
+					let path_str = (path_prefix.try_clone()? + crate::format!("{}", part_nbr)?)?;
 					let path = Path::from_str(path_str.as_bytes(), false)?;
 
 					// Creating the partition's device file
@@ -480,7 +479,7 @@ impl StorageManager {
 						Some(partition),
 						major,
 						storage_id,
-						path_prefix.failable_clone()?,
+						path_prefix.try_clone()?,
 					);
 					let device = Device::new(
 						DeviceID {
@@ -539,7 +538,7 @@ impl StorageManager {
 			None,
 			major,
 			storage_id,
-			prefix.failable_clone()?,
+			prefix.try_clone()?,
 		);
 		let main_device = Device::new(
 			DeviceID {

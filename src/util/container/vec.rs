@@ -1,8 +1,5 @@
 //! This module implements the Vec container.
 
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::util::FailableClone;
 use core::cmp::max;
 use core::cmp::min;
 use core::fmt;
@@ -15,8 +12,11 @@ use core::ops::IndexMut;
 use core::ops::Range;
 use core::ops::RangeFrom;
 use core::ops::RangeTo;
-use core::ptr;
 use core::ptr::drop_in_place;
+use core::ptr;
+use crate::errno::Errno;
+use crate::memory::malloc;
+use crate::util::TryClone;
 
 /// Macro allowing to create a vector with the given set of values.
 #[macro_export]
@@ -482,24 +482,18 @@ impl<T: Clone> Vec<T> {
 	}
 }
 
-impl<T> FailableClone for Vec<T>
-where
-	T: FailableClone,
-{
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl<T: TryClone<Error = Errno>> TryClone for Vec<T> {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut v = Self::with_capacity(self.len)?;
 
 		for i in 0..self.len {
-			v.push(self[i].failable_clone()?)?;
+			v.push(self[i].try_clone()?)?;
 		}
 		Ok(v)
 	}
 }
 
-impl<T> Vec<T>
-where
-	T: FailableClone,
-{
+impl<T: TryClone<Error = Errno>> Vec<T> {
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, Errno> {
 		let end = min(range.end, self.len);
@@ -509,7 +503,7 @@ where
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[start + i].failable_clone()?)?;
+			v.push(self[start + i].try_clone()?)?;
 		}
 		Ok(v)
 	}
@@ -520,7 +514,7 @@ where
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[range.start + i].failable_clone()?)?;
+			v.push(self[range.start + i].try_clone()?)?;
 		}
 		Ok(v)
 	}
@@ -531,7 +525,7 @@ where
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[i].failable_clone()?)?;
+			v.push(self[i].try_clone()?)?;
 		}
 		Ok(v)
 	}

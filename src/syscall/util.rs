@@ -1,3 +1,6 @@
+//! This module implements utility functions for system calls.
+
+use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::path::Path;
@@ -14,8 +17,6 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
-/// This module implements utility functions for system calls.
 use core::mem::size_of;
 
 /// Returns the absolute path according to the process's current working
@@ -94,7 +95,7 @@ fn build_path_from_fd(
 		// Using the given absolute path
 		Ok(path)
 	} else if dirfd == super::access::AT_FDCWD {
-		let cwd = process.get_cwd().failable_clone()?;
+		let cwd = process.get_cwd().try_clone()?;
 
 		// Using path relative to the current working directory
 		cwd.concat(&path)
