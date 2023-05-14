@@ -175,8 +175,6 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 ///
 /// Not every types are defined for every possible memory representations. Thus, some values
 /// passed as input to this function might be invalid for a given type, which is undefined.
-///
-/// The caller must ensure the sanity of the given input.
 pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
 	if size_of::<T>() <= slice.len() {
 		// Safe because the slice is large enough
@@ -231,6 +229,32 @@ impl<'a> fmt::Display for DisplayableStr<'a> {
 
 		Ok(())
 	}
+}
+
+/// Structure used to store data given the given memory alignment.
+#[repr(C)]
+pub struct Aligned<Align, Data: ?Sized> {
+	/// Alignment padding.
+	pub _align: [Align; 0],
+	/// The data to align.
+	pub data: Data,
+}
+
+/// Includes the bytes in the file at the given path and alignes them in memory with the given
+/// alignment.
+#[macro_export]
+macro_rules! include_bytes_aligned {
+	($align:ty, $path:expr) => {
+		// const block to encapsulate static
+		{
+			static ALIGNED: &crate::util::Aligned<$align, [u8]> = &crate::util::Aligned {
+				_align: [],
+				data: *include_bytes!($path),
+			};
+
+			&ALIGNED.data
+		}
+	};
 }
 
 #[cfg(test)]
