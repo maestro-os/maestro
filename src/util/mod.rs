@@ -199,22 +199,34 @@ pub trait TryClone {
 		Self: Sized;
 }
 
+/// Blanket implementation.
 impl<T: Clone + Sized> TryClone for T {
 	type Error = !;
 
-	/// Clones the object. If the clone fails, the function returns an error.
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(self.clone())
 	}
 }
 
-/// Same as the Default trait, but the operation can possibly fail (on memory allocation failure,
+/// Same as the Default trait, but the operation can fail (on memory allocation failure,
 /// for example).
-pub trait FailableDefault {
+pub trait TryDefault {
+	/// The error type.
+	type Error = !;
+
 	/// Returns the default value. On fail, the function returns Err.
-	fn failable_default() -> Result<Self, Errno>
+	fn try_default() -> Result<Self, Self::Error>
 	where
 		Self: Sized;
+}
+
+/// Blanket implementation.
+impl<T: Default + Sized> TryDefault for T {
+	type Error = !;
+
+	fn try_default() -> Result<Self, Self::Error> {
+		Ok(Self::default())
+	}
 }
 
 /// Wrapper structure allowing to implement the Display trait on the [u8] type

@@ -8,7 +8,6 @@ use crate::process::Process;
 use crate::syscall::ioctl;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use crate::util::FailableDefault;
 use core::ffi::c_void;
 
 /// The maximum size of a socket's buffers.
@@ -62,10 +61,10 @@ impl Socket {
 	}
 }
 
-impl FailableDefault for Socket {
-	fn failable_default() -> Result<Self, Errno> {
+impl Default for Socket {
+	fn default() -> Self {
 		// TODO Put correct params (unix domain)
-		Ok(Self::new(0, 0, 0))
+		Self::new(0, 0, 0)
 	}
 }
 

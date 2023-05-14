@@ -15,7 +15,7 @@ use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableDefault;
+use crate::util::TryDefault;
 use core::ffi::c_void;
 
 /// Trait representing a buffer.
@@ -99,7 +99,7 @@ pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
 /// Returns the buffer associated with the file at location `loc`.
 ///
 /// If the buffer doesn't exist, the function registers a new default buffer.
-pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
+pub fn get_or_default<B: Buffer + TryDefault + 'static>(
 	loc: &FileLocation,
 ) -> Result<SharedPtr<dyn Buffer>, Errno> {
 	let mut buffers = BUFFERS.lock();
@@ -108,7 +108,7 @@ pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
 		Some(buff) => Ok(buff),
 
 		None => {
-			let buff = SharedPtr::new(B::failable_default()?)?;
+			let buff = SharedPtr::new(B::try_default()?)?;
 			buffers.insert(loc.clone(), buff.clone())?;
 
 			Ok(buff)

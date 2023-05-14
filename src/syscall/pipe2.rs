@@ -8,7 +8,6 @@ use crate::file::open_file;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
-use crate::util::FailableDefault;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -32,7 +31,7 @@ pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno>
 	let mut fds = fds_mutex.lock();
 
 	// Create pipe
-	let loc = buffer::register(None, SharedPtr::new(PipeBuffer::failable_default()?)?)?;
+	let loc = buffer::register(None, SharedPtr::new(PipeBuffer::try_default()?)?)?;
 	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
 
 	let fd0 = fds.create_fd(loc.clone(), 0, true, false)?;

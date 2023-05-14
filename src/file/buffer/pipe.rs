@@ -14,7 +14,7 @@ use crate::util::container::vec::Vec;
 use crate::util::io;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
-use crate::util::FailableDefault;
+use crate::util::TryDefault;
 use core::ffi::c_int;
 use core::ffi::c_void;
 
@@ -45,8 +45,10 @@ impl PipeBuffer {
 	}
 }
 
-impl FailableDefault for PipeBuffer {
-	fn failable_default() -> Result<Self, Errno> {
+impl TryDefault for PipeBuffer {
+	type Error = Errno;
+
+	fn try_default() -> Result<Self, Self::Error> {
 		Ok(Self {
 			buffer: RingBuffer::new(crate::vec![0; limits::PIPE_BUF]?),
 
