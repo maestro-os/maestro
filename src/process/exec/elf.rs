@@ -1,6 +1,5 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
-use crate::util::TryClone;
 use super::vdso;
 use crate::cpu;
 use crate::elf;
@@ -31,6 +30,7 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
+use crate::util::TryClone;
 use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;

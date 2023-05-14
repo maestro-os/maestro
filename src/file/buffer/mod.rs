@@ -108,7 +108,8 @@ pub fn get_or_default<B: Buffer + TryDefault + 'static>(
 		Some(buff) => Ok(buff),
 
 		None => {
-			let buff = SharedPtr::new(B::try_default()?)?;
+			let buff: Result<_, Errno> = B::try_default().map_err(Into::into);
+			let buff = SharedPtr::new(buff?)?;
 			buffers.insert(loc.clone(), buff.clone())?;
 
 			Ok(buff)

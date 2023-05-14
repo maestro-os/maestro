@@ -1,9 +1,9 @@
 //! A hashmap is a data structure that stores key/value pairs into buckets and
 //! uses the hash of the key to quickly get the bucket storing the value.
 
-use crate::util::TryClone;
 use super::vec::Vec;
 use crate::errno::Errno;
+use crate::util::TryClone;
 use core::borrow::Borrow;
 use core::fmt;
 use core::hash::Hash;
@@ -125,8 +125,8 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	}
 }
 
-impl<K: Eq + Hash + TryClone<Error = Errno>, V: TryClone<Error = Errno>> TryClone for Bucket<K, V> {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for Bucket<K, V> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		let mut v = Vec::with_capacity(self.elements.len())?;
 		for (key, value) in self.elements.iter() {
 			v.push((key.try_clone()?, value.try_clone()?))?;
@@ -334,13 +334,8 @@ impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
 	}
 }
 
-impl<
-	K: Eq + Hash + TryClone<Error = E0>,
-	V: TryClone<Error = E1>,
-	E0: Into<Errno>,
-	E1: Into<Errno>
-> TryClone for HashMap<K, V> {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for HashMap<K, V> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			buckets_count: self.buckets_count,
 			buckets: self.buckets.try_clone()?,

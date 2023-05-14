@@ -8,6 +8,7 @@ use crate::file::open_file;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryDefault;
 use core::ffi::c_int;
 use macros::syscall;
 

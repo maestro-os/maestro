@@ -1,24 +1,24 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
-use core::cmp::max;
-use core::fmt;
+use super::fs;
+use super::fs::Filesystem;
+use super::fs::FilesystemType;
+use super::path::Path;
+use super::vfs;
+use super::FileContent;
+use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::device;
 use crate::errno::Errno;
-use crate::util::TryClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::DummyIO;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
-use super::FileContent;
-use super::fs::Filesystem;
-use super::fs::FilesystemType;
-use super::fs;
-use super::path::Path;
-use super::vfs;
+use crate::util::TryClone;
+use core::cmp::max;
+use core::fmt;
 
 /// Permits mandatory locking on files.
 const FLAG_MANDLOCK: u32 = 0b000000000001;
@@ -147,7 +147,7 @@ impl MountSource {
 }
 
 impl TryClone for MountSource {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Ok(match self {
 			Self::Device {
 				dev_type,
@@ -322,12 +322,7 @@ impl MountPoint {
 			Some(fs) => fs,
 
 			// Filesystem doesn't exist, load it
-			None => load_fs(
-				source.try_clone()?,
-				fs_type,
-				path.try_clone()?,
-				readonly,
-			)?,
+			None => load_fs(source.try_clone()?, fs_type, path.try_clone()?, readonly)?,
 		};
 
 		// TODO Increment number of references to the filesystem

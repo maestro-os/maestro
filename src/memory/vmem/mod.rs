@@ -6,23 +6,23 @@
 #[cfg(target_arch = "x86")]
 pub mod x86;
 
-use core::ffi::c_void;
 use crate::cpu;
 use crate::elf;
 use crate::errno::Errno;
 use crate::idt;
 use crate::memory;
 use crate::multiboot;
-use crate::util::TryClone;
 use crate::util::boxed::Box;
 use crate::util::math;
+use crate::util::TryClone;
+use core::ffi::c_void;
 
 /// Trait representing virtual memory context handler.
 ///
 /// This trait is the interface to manipulate virtual memory on any architecture.
 ///
 /// Each architecture has its own structure implementing this trait.
-pub trait VMem: TryClone<Error = Errno> {
+pub trait VMem: TryClone {
 	/// Translates the given virtual address `ptr` to the corresponding physical
 	/// address.
 	///

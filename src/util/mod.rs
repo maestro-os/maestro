@@ -11,14 +11,14 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use crate::errno::Errno;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_void;
-use core::fmt::Write;
 use core::fmt;
+use core::fmt::Write;
 use core::mem::size_of;
 use core::slice;
-use crate::errno::Errno;
 
 // C functions required by LLVM
 extern "C" {
@@ -190,20 +190,15 @@ pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
 /// Trait allowing to perform a clone of a structure that can possibly fail (on
 /// memory allocation failure, for example).
 pub trait TryClone {
-	/// The error type.
-	type Error = Errno;
-
 	/// Clones the object. If the clone fails, the function returns an error.
-	fn try_clone(&self) -> Result<Self, Self::Error>
+	fn try_clone(&self) -> Result<Self, Errno>
 	where
 		Self: Sized;
 }
 
 /// Blanket implementation.
 impl<T: Clone + Sized> TryClone for T {
-	type Error = !;
-
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Ok(self.clone())
 	}
 }
@@ -211,20 +206,15 @@ impl<T: Clone + Sized> TryClone for T {
 /// Same as the Default trait, but the operation can fail (on memory allocation failure,
 /// for example).
 pub trait TryDefault {
-	/// The error type.
-	type Error = !;
-
 	/// Returns the default value. On fail, the function returns Err.
-	fn try_default() -> Result<Self, Self::Error>
+	fn try_default() -> Result<Self, Errno>
 	where
 		Self: Sized;
 }
 
 /// Blanket implementation.
 impl<T: Default + Sized> TryDefault for T {
-	type Error = !;
-
-	fn try_default() -> Result<Self, Self::Error> {
+	fn try_default() -> Result<Self, Errno> {
 		Ok(Self::default())
 	}
 }

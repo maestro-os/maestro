@@ -7,16 +7,16 @@
 // TODO Modify system calls to use the IO interface on the file descriptor directly instead of the
 // open file
 
-use core::cmp::max;
 use crate::errno::Errno;
-use crate::file::FileLocation;
 use crate::file::open_file::OpenFile;
+use crate::file::FileLocation;
 use crate::limits;
-use crate::util::TryClone;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryClone;
+use core::cmp::max;
 
 /// The maximum number of file descriptors that can be open system-wide at once.
 const TOTAL_MAX_FD: usize = 4294967295;
@@ -147,7 +147,7 @@ impl FileDescriptor {
 }
 
 impl TryClone for FileDescriptor {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Self::new(
 			self.id,
 			self.flags,

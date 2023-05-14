@@ -23,17 +23,17 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a
 //! page table.
 
+use crate::cpu;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::buddy;
+use crate::memory::vmem::VMem;
+use crate::util;
+use crate::util::lock::Mutex;
+use crate::util::TryClone;
 use core::ffi::c_void;
 use core::ptr;
 use core::slice;
-use crate::cpu;
-use crate::errno::Errno;
-use crate::memory::buddy;
-use crate::memory::vmem::VMem;
-use crate::memory;
-use crate::util::TryClone;
-use crate::util::lock::Mutex;
-use crate::util;
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.
@@ -645,7 +645,7 @@ impl VMem for X86VMem {
 }
 
 impl TryClone for X86VMem {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		let s = Self {
 			page_dir: alloc_obj()?,
 		};

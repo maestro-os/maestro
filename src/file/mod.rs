@@ -15,26 +15,26 @@ pub mod path;
 pub mod util;
 pub mod vfs;
 
-use core::ffi::c_void;
+use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
+use crate::time;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
-use crate::time;
-use crate::util::TryClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryClone;
+use core::ffi::c_void;
 use mountpoint::MountPoint;
 use mountpoint::MountSource;
 use open_file::OpenFile;
@@ -242,7 +242,7 @@ pub struct DirEntry {
 }
 
 impl TryClone for DirEntry {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			inode: self.inode,
 			entry_type: self.entry_type,
@@ -294,7 +294,7 @@ impl FileContent {
 }
 
 impl TryClone for FileContent {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		let s = match self {
 			Self::Regular => Self::Regular,
 			Self::Directory(entries) => Self::Directory(entries.try_clone()?),

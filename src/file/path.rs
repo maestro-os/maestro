@@ -1,5 +1,11 @@
 //! This module handles files path.
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::limits;
+use crate::util::container::string::String;
+use crate::util::container::vec::Vec;
+use crate::util::TryClone;
 use core::cmp::min;
 use core::fmt;
 use core::hash::Hash;
@@ -9,12 +15,6 @@ use core::ops::IndexMut;
 use core::ops::Range;
 use core::ops::RangeFrom;
 use core::ops::RangeTo;
-use crate::errno::Errno;
-use crate::errno;
-use crate::limits;
-use crate::util::TryClone;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
 
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: char = '/';
@@ -180,7 +180,7 @@ impl Add for Path {
 }
 
 impl TryClone for Path {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			absolute: self.absolute,
 			parts: self.parts.try_clone()?,
