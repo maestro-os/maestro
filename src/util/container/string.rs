@@ -223,6 +223,8 @@ impl Hash for String {
 }
 
 impl TryClone for String {
+	type Error = Errno;
+
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(Self {
 			data: self.data.try_clone()?,

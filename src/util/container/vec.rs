@@ -482,18 +482,19 @@ impl<T: Clone> Vec<T> {
 	}
 }
 
-impl<T: TryClone<Error = Errno>> TryClone for Vec<T> {
+impl<T: TryClone<Error = E>, E: Into<Errno>> TryClone for Vec<T> {
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut v = Self::with_capacity(self.len)?;
 
 		for i in 0..self.len {
-			v.push(self[i].try_clone()?)?;
+			let res: Result<_, Errno> = self[i].try_clone().map_err(Into::into);
+			v.push(res?)?;
 		}
 		Ok(v)
 	}
 }
 
-impl<T: TryClone<Error = Errno>> Vec<T> {
+impl<T: TryClone<Error = E>, E: Into<Errno>> Vec<T> {
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, Errno> {
 		let end = min(range.end, self.len);
@@ -503,7 +504,8 @@ impl<T: TryClone<Error = Errno>> Vec<T> {
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[start + i].try_clone()?)?;
+			let res: Result<_, Errno> = self[start + i].try_clone().map_err(Into::into);
+			v.push(res?)?;
 		}
 		Ok(v)
 	}
@@ -514,7 +516,8 @@ impl<T: TryClone<Error = Errno>> Vec<T> {
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[range.start + i].try_clone()?)?;
+			let res: Result<_, Errno> = self[range.start + i].try_clone().map_err(Into::into);
+			v.push(res?)?;
 		}
 		Ok(v)
 	}
@@ -525,7 +528,8 @@ impl<T: TryClone<Error = Errno>> Vec<T> {
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[i].try_clone()?)?;
+			let res: Result<_, Errno> = self[i].try_clone().map_err(Into::into);
+			v.push(res?)?;
 		}
 		Ok(v)
 	}

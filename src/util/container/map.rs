@@ -1319,11 +1319,20 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRan
 	}
 }
 
-impl<K: 'static + TryClone<Error = Errno> + Ord, V: TryClone<Error = Errno>> TryClone for Map<K, V> {
+impl<
+	K: 'static + TryClone<Error = E0> + Ord,
+	V: TryClone<Error = E1>,
+	E0: Into<Errno>,
+	E1: Into<Errno>
+> TryClone for Map<K, V> {
+	type Error = Errno;
+
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut new = Self::new();
 		for (k, v) in self {
-			new.insert(k.try_clone()?, v.try_clone()?)?;
+			let k_res: Result<_, Errno> = k.try_clone().map_err(Into::into);
+			let v_res: Result<_, Errno> = v.try_clone().map_err(Into::into);
+			new.insert(k_res?, v_res?)?;
 		}
 		Ok(new)
 	}

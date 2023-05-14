@@ -1,8 +1,8 @@
 //! This module stores the errno utilities.
 
-use core::fmt;
 use core::fmt::Error;
 use core::fmt::Formatter;
+use core::fmt;
 
 /// Structure representing a location at which an errno was raised.
 #[cfg(config_debug_debug)]

@@ -125,7 +125,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	}
 }
 
-impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for Bucket<K, V> {
+impl<K: Eq + Hash + TryClone<Error = Errno>, V: TryClone<Error = Errno>> TryClone for Bucket<K, V> {
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut v = Vec::with_capacity(self.elements.len())?;
 		for (key, value) in self.elements.iter() {
@@ -334,7 +334,12 @@ impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
 	}
 }
 
-impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for HashMap<K, V> {
+impl<
+	K: Eq + Hash + TryClone<Error = E0>,
+	V: TryClone<Error = E1>,
+	E0: Into<Errno>,
+	E1: Into<Errno>
+> TryClone for HashMap<K, V> {
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(Self {
 			buckets_count: self.buckets_count,

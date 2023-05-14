@@ -14,6 +14,7 @@
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(lang_items)]
+#![feature(never_type)]
 #![feature(nonzero_ops)]
 #![feature(panic_info_message)]
 #![feature(ptr_metadata)]

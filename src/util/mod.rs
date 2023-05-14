@@ -12,7 +12,6 @@ pub mod math;
 pub mod ptr;
 
 use core::cmp::min;
-use core::convert::Infallible;
 use core::ffi::c_int;
 use core::ffi::c_void;
 use core::fmt::Write;
@@ -201,7 +200,7 @@ pub trait TryClone {
 }
 
 impl<T: Clone + Sized> TryClone for T {
-	type Error = Infallible;
+	type Error = !;
 
 	/// Clones the object. If the clone fails, the function returns an error.
 	fn try_clone(&self) -> Result<Self, Self::Error> {
