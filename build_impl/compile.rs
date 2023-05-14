@@ -1,13 +1,13 @@
 //! Some parts of the kernel are implemented in C and assembly language. Those parts are compiled
 //! by the code present in this module.
 
+use super::util;
 use crate::target::Target;
 use std::env;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use super::util;
 
 /// Compiles the vDSO.
 ///

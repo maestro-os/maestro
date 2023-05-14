@@ -8,14 +8,14 @@
 //!
 //! If a chunk is not allocated, it is stored in a free list, stored by size.
 
+use super::block::Block;
+use crate::errno::Errno;
+use crate::util;
 use core::cmp::{max, min};
 use core::ffi::c_void;
 use core::mem::size_of;
-use core::ptr::NonNull;
 use core::ptr;
-use crate::errno::Errno;
-use crate::util;
-use super::block::Block;
+use core::ptr::NonNull;
 
 /// The magic number for every chunks
 #[cfg(config_debug_malloc_magic)]
@@ -76,16 +76,12 @@ impl Chunk {
 
 	/// Returns the previous chunk.
 	pub fn get_prev<'s>(&self) -> Option<&'static mut Self> {
-		self.prev.map(|mut n| unsafe {
-			n.as_mut()
-		})
+		self.prev.map(|mut n| unsafe { n.as_mut() })
 	}
 
 	/// Returns the next chunk.
 	pub fn get_next(&self) -> Option<&'static mut Self> {
-		self.next.map(|mut n| unsafe {
-			n.as_mut()
-		})
+		self.next.map(|mut n| unsafe { n.as_mut() })
 	}
 
 	/// Tells whether the chunk is disconnected from a chunk list.
@@ -218,10 +214,7 @@ impl Chunk {
 		let min_data_size = get_min_chunk_size();
 		let size = max(size, min_data_size);
 
-		let next_ptr = util::align(
-			unsafe { self.get_ptr().add(size) },
-			ALIGNEMENT,
-		);
+		let next_ptr = util::align(unsafe { self.get_ptr().add(size) }, ALIGNEMENT);
 
 		let new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 		debug_assert!(new_size >= size);
@@ -304,7 +297,8 @@ impl Chunk {
 
 		if let Some(prev) = self.get_prev() {
 			if !prev.is_used() {
-				// Termination is guaranteed because two free chunks are always coalesced immediately
+				// Termination is guaranteed because two free chunks are always coalesced
+				// immediately
 				return prev.coalesce();
 			}
 		}
@@ -445,9 +439,7 @@ impl FreeChunk {
 
 		self.next = *free_list;
 		if let Some(mut next) = self.next {
-			unsafe {
-				next.as_mut()
-			}.prev = NonNull::new(self);
+			unsafe { next.as_mut() }.prev = NonNull::new(self);
 		}
 		*free_list = NonNull::new(self);
 
@@ -460,21 +452,16 @@ impl FreeChunk {
 		// Cannot panic since `get_free_list` cannot return `None` when `splittable` is `false`
 		let free_list = get_free_list(self.chunk.size, false).unwrap();
 
-		let is_front = free_list.map(|c| c.as_ptr() == self)
-			.unwrap_or(false);
+		let is_front = free_list.map(|c| c.as_ptr() == self).unwrap_or(false);
 		if is_front {
 			*free_list = self.next;
 		}
 
 		if let Some(mut prev) = self.prev {
-			unsafe {
-				prev.as_mut()
-			}.next = self.next;
+			unsafe { prev.as_mut() }.next = self.next;
 		}
 		if let Some(mut next) = self.next {
-			unsafe {
-				next.as_mut()
-			}.prev = self.prev;
+			unsafe { next.as_mut() }.prev = self.prev;
 		}
 		self.prev = None;
 		self.next = None;
@@ -503,17 +490,13 @@ const fn get_min_chunk_size() -> usize {
 #[cfg(config_debug_malloc_check)]
 fn check_free_lists() {
 	// Safe because the usage of the malloc API is secured by a Mutex
-	let free_lists = unsafe {
-		&mut FREE_LISTS
-	};
+	let free_lists = unsafe { &mut FREE_LISTS };
 
 	for free_list in free_lists {
 		let mut node = *free_list;
 
 		while let Some(mut n) = node {
-			let n = unsafe {
-				n.as_mut()
-			};
+			let n = unsafe { n.as_mut() };
 
 			n.check();
 			node = n.next;
@@ -527,7 +510,7 @@ fn check_free_lists() {
 /// the required size so that it can be split.
 fn get_free_list(
 	size: usize,
-	splittable: bool
+	splittable: bool,
 ) -> Option<&'static mut Option<NonNull<FreeChunk>>> {
 	#[cfg(config_debug_malloc_check)]
 	check_free_lists();
@@ -539,9 +522,7 @@ fn get_free_list(
 	i = min(i, FREE_LIST_BINS - 1);
 
 	// Safe because the usage of the malloc API is secured by a Mutex
-	let free_lists = unsafe {
-		&mut FREE_LISTS
-	};
+	let free_lists = unsafe { &mut FREE_LISTS };
 
 	if splittable {
 		i += 1;
@@ -566,9 +547,7 @@ fn get_free_list(
 pub fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno> {
 	let free_list = get_free_list(size, true);
 	let free_chunk = if let Some(f) = free_list {
-		unsafe {
-			f.unwrap().as_mut()
-		}
+		unsafe { f.unwrap().as_mut() }
 	} else {
 		let block = Block::new(size)?;
 		unsafe { &mut *(&mut block.first_chunk as *mut _ as *mut FreeChunk) }

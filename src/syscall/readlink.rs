@@ -1,6 +1,5 @@
 //! The `readlink` syscall allows to read the target of a symbolic link.
 
-use crate::util::TryClone;
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
@@ -9,6 +8,7 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util;
+use crate::util::TryClone;
 use core::cmp::min;
 use macros::syscall;
 

@@ -1,6 +1,5 @@
 //! The `mknod` system call allows to create a new node on a filesystem.
 
-use crate::util::TryClone;
 use crate::device::id;
 use crate::errno;
 use crate::errno::Errno;
@@ -11,6 +10,7 @@ use crate::file::FileContent;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::util::TryClone;
 use macros::syscall;
 
 // TODO Check args type

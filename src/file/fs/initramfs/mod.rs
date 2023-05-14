@@ -3,7 +3,6 @@
 
 mod cpio;
 
-use crate::util::TryClone;
 use crate::device;
 use crate::errno;
 use crate::errno::Errno;
@@ -17,6 +16,7 @@ use crate::file::VFS;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryClone;
 use cpio::CPIOParser;
 
 /// Updates the current parent used for the unpacking operation.

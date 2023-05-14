@@ -4,9 +4,9 @@
 //! It is a deprecated structure that still must be used in order to switch to protected mode,
 //! handle protection rings and load the Task State Segment (TSS).
 
+use crate::memory;
 use core::ffi::c_void;
 use core::fmt;
-use crate::memory;
 
 /// The address in physical memory to the beginning of the GDT.
 const PHYS_PTR: *mut c_void = 0x800 as _;

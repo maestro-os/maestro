@@ -27,7 +27,6 @@ mod block_group_descriptor;
 mod directory_entry;
 mod inode;
 
-use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs::Filesystem;
@@ -52,6 +51,7 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryClone;
 use block_group_descriptor::BlockGroupDescriptor;
 use core::cmp::max;
 use core::cmp::min;

@@ -9,23 +9,23 @@
 mod block;
 mod chunk;
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc::ptr::NonNull;
+use crate::util;
+use crate::util::lock::IntMutex;
 use block::Block;
 use chunk::Chunk;
-use core::cmp::Ordering;
 use core::cmp::min;
+use core::cmp::Ordering;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
-use core::ptr::drop_in_place;
 use core::ptr;
+use core::ptr::drop_in_place;
 use core::slice;
-use crate::errno::Errno;
-use crate::errno;
-use crate::memory::malloc::ptr::NonNull;
-use crate::memory;
-use crate::util::lock::IntMutex;
-use crate::util;
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());

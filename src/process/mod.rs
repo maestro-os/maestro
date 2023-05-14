@@ -19,7 +19,6 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
-use crate::util::TryClone;
 use crate::cpu;
 use crate::errno;
 use crate::errno::Errno;
@@ -48,6 +47,7 @@ use crate::util::lock::*;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::IntWeakPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryClone;
 use core::any::Any;
 use core::ffi::c_void;
 use core::mem::size_of;

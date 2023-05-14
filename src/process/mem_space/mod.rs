@@ -9,7 +9,6 @@ mod gap;
 mod mapping;
 pub mod ptr;
 
-use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::Gid;
@@ -30,6 +29,7 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryClone;
 use core::cmp::min;
 use core::cmp::Ordering;
 use core::ffi::c_void;

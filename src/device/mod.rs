@@ -25,7 +25,6 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
-use crate::util::TryClone;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file;
@@ -43,6 +42,7 @@ use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryClone;
 use core::ffi::c_void;
 use core::fmt;
 use keyboard::KeyboardManager;

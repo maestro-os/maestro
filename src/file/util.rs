@@ -1,6 +1,5 @@
 //! This module implements utility functions for files manipulations.
 
-use crate::util::TryClone;
 use super::path::Path;
 use super::vfs::VFS;
 use super::File;
@@ -13,6 +12,7 @@ use crate::memory;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
+use crate::util::TryClone;
 
 /// Creates the directories necessary to reach path `path`.
 ///
@@ -117,14 +117,7 @@ pub fn copy_file(
 
 		// Copy the file
 		_ => {
-			vfs.create_file(
-				new_parent,
-				new_name,
-				uid,
-				gid,
-				mode,
-				content.try_clone()?,
-			)?;
+			vfs.create_file(new_parent, new_name, uid, gid, mode, content.try_clone()?)?;
 		}
 	}
 

@@ -6,7 +6,6 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use crate::util::TryClone;
 use crate::device;
 use crate::device::bus::pci;
 use crate::device::id;
@@ -33,6 +32,7 @@ use crate::util::math;
 use crate::util::ptr::IntSharedPtr;
 use crate::util::ptr::SharedPtr;
 use crate::util::ptr::WeakPtr;
+use crate::util::TryClone;
 use core::cmp::min;
 use core::ffi::c_uchar;
 use core::ffi::c_ulong;

@@ -2,7 +2,6 @@
 
 pub mod node;
 
-use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::DummyKernFSNode;
@@ -24,6 +23,7 @@ use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
+use crate::util::TryClone;
 use node::KernFSNode;
 
 // TODO Change to `1`

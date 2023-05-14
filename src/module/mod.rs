@@ -9,7 +9,6 @@
 
 pub mod version;
 
-use crate::util::TryClone;
 use crate::elf;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
@@ -24,6 +23,7 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::DisplayableStr;
+use crate::util::TryClone;
 use core::cmp::min;
 use core::mem::size_of;
 use core::mem::transmute;

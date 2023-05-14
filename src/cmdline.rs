@@ -1,10 +1,10 @@
 //! When booting, the kernel can take command line arguments. This module
 //! implements a parse for these arguments.
 
-use crate::util::TryClone;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::DisplayableStr;
+use crate::util::TryClone;
 use crate::vga;
 use core::cmp::min;
 use core::str;

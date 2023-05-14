@@ -1,6 +1,5 @@
 //! The mount system call allows to mount a filesystem on the system.
 
-use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs;
@@ -12,6 +11,7 @@ use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::util::TryClone;
 use core::ffi::c_ulong;
 use core::ffi::c_void;
 use macros::syscall;

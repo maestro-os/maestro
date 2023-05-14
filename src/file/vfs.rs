@@ -4,7 +4,6 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use crate::util::TryClone;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -24,6 +23,7 @@ use crate::limits;
 use crate::util::container::string::String;
 use crate::util::lock::IntMutex;
 use crate::util::ptr::SharedPtr;
+use crate::util::TryClone;
 use core::ptr::NonNull;
 
 /// Updates the location of the file `file` according to the given mountpoint

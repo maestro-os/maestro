@@ -1,6 +1,5 @@
 //! The mkdir system call allows to create a directory.
 
-use crate::util::TryClone;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
@@ -9,6 +8,7 @@ use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::container::hashmap::HashMap;
+use crate::util::TryClone;
 use macros::syscall;
 
 #[syscall]
