@@ -7,6 +7,7 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
 use core::ffi::c_uint;
 use core::ffi::c_void;
+use core::mem::offset_of;
 use core::mem::size_of;
 use core::ptr;
 use macros::syscall;
@@ -84,31 +85,29 @@ pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result
 				break;
 			}
 
-			let ent = unsafe {
-				// Safe because access has been checked before
-				&mut *(&mut dirp_slice[off] as *mut _ as *mut LinuxDirent)
-			};
-			*ent = LinuxDirent {
+			let ent_ptr = &mut dirp_slice[off] as *mut _ as *mut LinuxDirent;
+			let ent = LinuxDirent {
 				d_ino: entry.inode as _,
 				d_off: (off + len) as _,
 				d_reclen: len as _,
 				d_name: [],
 			};
+			let ent_name_ptr =
+				unsafe { (ent_ptr as *mut u8).add(offset_of!(LinuxDirent, d_name)) };
 
 			unsafe {
+				// Writing entry
+				ptr::write_unaligned(ent_ptr, ent);
+
 				// Copying file name
-				ptr::copy_nonoverlapping(
-					name.as_bytes().as_ptr(),
-					ent.d_name.as_mut_ptr(),
-					name.len(),
-				);
+				ptr::copy_nonoverlapping(name.as_bytes().as_ptr(), ent_name_ptr, name.len());
 
 				// Writing padding byte
-				*ent.d_name.as_mut_ptr().add(name.len()) = 0;
+				*ent_name_ptr.add(name.len()) = 0;
 
 				// Writing entry type
 				let entry_type = entry.entry_type.to_dirent_type();
-				*ent.d_name.as_mut_ptr().add(name.len() + 1) = entry_type;
+				*ent_name_ptr.add(name.len() + 1) = entry_type;
 			}
 
 			off += len;
