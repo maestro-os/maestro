@@ -7,9 +7,9 @@ use super::chunk::FreeChunk;
 use crate::errno::Errno;
 use crate::memory;
 use crate::memory::buddy;
-use crate::offset_of;
 use crate::util;
 use crate::util::math;
+use core::mem::offset_of;
 use core::mem::size_of;
 use core::ptr;
 
