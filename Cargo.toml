@@ -6,15 +6,11 @@ version = "0.1.0"
 authors = ["llenotre <llenotre@student.42.fr>"]
 edition = "2021"
 
-# The kernel is implemented into an library in order to make it accessible from kernel modules as a dependency.
+# The kernel is implemented as a shared library in order to make it accessible from kernel modules
 [lib]
 name = "kernel"
 path = "src/kernel.rs"
 crate-type = ["dylib", "staticlib"]
-
-[[bin]]
-name = "kernel"
-path = "src/kernel.rs"
 
 [dependencies]
 macros = { path = "macros/" }
