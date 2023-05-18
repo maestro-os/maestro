@@ -10,7 +10,12 @@ edition = "2021"
 [lib]
 name = "kernel"
 path = "src/kernel.rs"
-crate-type = ["dylib", "staticlib"]
+crate-type = ["rlib"]
+
+# Export the kernel as executable
+[[bin]]
+name = "maestro"
+path = "src/bin.rs"
 
 [dependencies]
 macros = { path = "macros/" }
