@@ -10,7 +10,7 @@ edition = "2021"
 [lib]
 name = "kernel"
 path = "src/kernel.rs"
-crate-type = ["rlib"]
+crate-type = ["rlib", "dylib"]
 
 # Export the kernel as executable
 [[bin]]
