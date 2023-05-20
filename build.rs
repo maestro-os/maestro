@@ -55,6 +55,6 @@ fn main() {
 		target.get_linker_script_path().display()
 	);
 
-	// Pass appropriate flags to rustc to ensure the binary is compiled correctly
-	println!("cargo:rustc-env=RUSTFLAGS=\"-Crelocation-model=static -Clink-dead-code -Cno-redzone=yes\"");
+	// Ignore missing symbols related to soft-float being disabled
+	println!("cargo:rustc-link-arg=--unresolved-symbols=ignore-all");
 }

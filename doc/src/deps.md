@@ -8,18 +8,13 @@ The kernel needs some external components in order to work, here is the list.
 
 ### Compilation
 
-- `gcc`: A Cross-Compiler for the targeted architecture
-- `make`: Utility to build using a Makefile
-- `cargo`: Rust building utility
-- `rustc`: Rust compiler
-
-**Note**: The Nightly toolchain of Rust is required.
+- The *Nightly* Rust toolchain
 
 
 
 ### Booting
 
-- A bootloader supporting Multiboot2 (example: `GRUB2`)
+- A bootloader supporting *Multiboot2* (example: `GRUB2`)
 
 
 
@@ -34,6 +29,6 @@ The kernel needs some external components in order to work, here is the list.
 
 
 
-# Documentation
+### Documentation
 
 - `mdbook`: Documentation generator

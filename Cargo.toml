@@ -33,6 +33,16 @@ strace = ["macros/strace"]
 [profile.release]
 lto = true
 panic = "abort"
+rustflags = [
+	"-Clink-dead-code",
+	"-Cno-redzone=yes",
+]
 
 [profile.dev]
-rustflags = ["-Cforce-frame-pointers=yes"]
+rustflags = [
+	"-Clink-dead-code",
+	"-Cno-redzone=yes",
+
+	# Specific to `dev`
+	"-Cforce-frame-pointers=yes"
+]
