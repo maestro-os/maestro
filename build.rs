@@ -56,5 +56,5 @@ fn main() {
 	);
 
 	// Pass appropriate flags to rustc to ensure the binary is compiled correctly
-	println!("cargo:rustc-env=RUSTFLAGS=\"-Crelocation-model=static -Cno-redzone=yes\"");
+	println!("cargo:rustc-env=RUSTFLAGS=\"-Crelocation-model=static -Clink-dead-code -Cno-redzone=yes\"");
 }

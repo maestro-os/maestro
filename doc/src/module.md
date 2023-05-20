@@ -1,8 +1,8 @@
 # Module
 
-A kernel module allows to add a feature to the kernel without rebuild it.
+A kernel module allows to add a feature to the kernel at runtime.
 
-This chapter discribes how to write a kernel module.
+This chapter describes how to write a kernel module.
 
 
 
@@ -11,19 +11,17 @@ This chapter discribes how to write a kernel module.
 A basic kernel module contains the following files:
 
 ```
-|- Makefile
+|- rust-toolchain.toml
 |- src/
  |- mod.rs
 ```
 
-These files are located in the `module.template` directory of the kernel's sources.
+These files are located in the `mod/template/` directory of the kernel's sources.
 
-The Makefile must be modified to add the module's name in the `NAME` variable.
-
-`mod.rs` is the file that contains the main functions of the module. It has the following structure.
+`mod.rs` is the file that contains the main functions of the module. Example:
 
 ```rust
-{{#include ../../module.template/src/mod.rs}}
+{{#include ../../mod/template/src/mod.rs}}
 ```
 
 The `kernel` crate gives access to the kernel's functions.
@@ -51,6 +49,7 @@ The references to the kernel's internals and module interfaces can be found [her
 
 The kernel must be built in its directory in order to be able to build the module.
 
-To build a kernel module, first it is required to set the `KERN_SRC` environment variable to the path of the kernel's sources.
-
-Then, just run `make` and the Makefile will produce the kernel module.
+To build a kernel module:
+- cd into the root of the module directory
+- Execute the compile script located in the kernel's source, located at `mod/compile`. The script takes the name of the module as parameter. Example: `../maestro/mod/compile module_name`
+- Done!

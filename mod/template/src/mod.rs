@@ -1,6 +1,7 @@
 //! <Add documentation for your module here>
 
 #![no_std]
+#![no_main]
 
 extern crate kernel;
 
