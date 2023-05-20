@@ -17,8 +17,8 @@ rustc \
 	-C panic=abort \
 	-C prefer-dynamic \
 	--target "$KERN_SRC/arch/x86/x86.json" \
-	--extern kernel="$KERN_SRC/target/x86/debug/libkernel.so" \
-	-L "$KERN_SRC/target/x86/debug/deps" \
-	-L "$KERN_SRC/target/debug/deps" \
+	--extern kernel="$KERN_SRC/target/x86/$PROFILE/libkernel.so" \
+	-L "$KERN_SRC/target/x86/$PROFILE/deps" \
+	-L "$KERN_SRC/target/$PROFILE/deps" \
 	src/mod.rs \
 	-o "$(pwd)/$NAME.kmod"

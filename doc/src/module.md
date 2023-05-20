@@ -51,5 +51,6 @@ The kernel must be built in its directory in order to be able to build the modul
 
 To build a kernel module:
 - cd into the root of the module directory
-- Execute the compile script located in the kernel's source, located at `mod/compile`. The script takes the name of the module as parameter. Example: `../maestro/mod/compile module_name`
+- Specify the profile to compile for in the `PROFILE` environment variable. Either `debug` or `release`
+- Execute the compile script located in the kernel's source, located at `mod/compile`. The script takes the name of the module as parameter. Example: `PROFILE=debug ../maestro/mod/compile module_name`
 - Done!
