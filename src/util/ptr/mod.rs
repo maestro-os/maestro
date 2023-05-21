@@ -1,5 +1,6 @@
 //! This module contains pointer-like structures.
 
+pub mod arc;
 pub mod cow;
 
 use crate::errno::Errno;
