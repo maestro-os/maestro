@@ -1,7 +1,7 @@
 name: Check
 on: push
 jobs:
-    'Code format':
+    Format:
         runs-on: [self-hosted, linux]
         steps:
             - uses: actions/checkout@v2
