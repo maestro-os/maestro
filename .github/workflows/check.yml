@@ -1,32 +1,35 @@
 name: Check
 on: push
 jobs:
-    Format:
-        runs-on: [self-hosted, linux]
-        steps:
-            - uses: actions/checkout@v2
-            - run: cargo fmt --check
-    Debug:
-        runs-on: [self-hosted, linux]
-        steps:
-            - uses: actions/checkout@v2
-            - name: Compilation
-              run: "scripts/ci/build.sh"
-            - name: Check Multiboot2 for x86
-              run: "grub-file --is-x86-multiboot2 target/target/debug/libkernel.so"
-    Release:
-        runs-on: [self-hosted, linux]
-        steps:
-            - uses: actions/checkout@v2
-            - name: Compilation
-              run: "CARGOFLAGS='--release' scripts/ci/build.sh"
-            - name: Check Multiboot2 for x86
-              run: "grub-file --is-x86-multiboot2 target/target/release/libkernel.so"
-    Selftest:
-        runs-on: [self-hosted, linux]
-        steps:
-            - uses: actions/checkout@v2
-            - name: Compilation
-              run: "CARGOFLAGS='--test' scripts/ci/build.sh"
-            - name: Run tests
-              run: "scripts/ci/selftest.sh"
+  Format:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v2
+      - run: cargo fmt --check
+  Debug:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Compilation
+        run: "scripts/ci/build.sh"
+      - name: Check Multiboot2 for x86
+        # TODO support multiple architectures
+        run: "grub-file --is-x86-multiboot2 target/x86/debug/maestro"
+  Release:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Compilation
+        run: "CARGOFLAGS='--release' scripts/ci/build.sh"
+      - name: Check Multiboot2 for x86
+        # TODO support multiple architectures
+        run: "grub-file --is-x86-multiboot2 target/x86/release/maestro"
+  Selftest:
+    runs-on: [self-hosted, linux]
+    needs: Debug
+    steps:
+      - uses: actions/checkout@v2
+      - name: Compilation
+        run: "CARGOFLAGS='--test' scripts/ci/build.sh"
+      - name: Run tests
+        run: "scripts/ci/selftest.sh"
