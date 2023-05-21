@@ -54,7 +54,4 @@ fn main() {
 		"cargo:rustc-link-arg=-T{}",
 		target.get_linker_script_path().display()
 	);
-
-	// Ignore missing symbols related to soft-float being disabled
-	println!("cargo:rustc-link-arg=--unresolved-symbols=ignore-all");
 }

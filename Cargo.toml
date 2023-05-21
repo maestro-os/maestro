@@ -34,13 +34,11 @@ strace = ["macros/strace"]
 lto = true
 panic = "abort"
 rustflags = [
-	"-Clink-dead-code",
 	"-Cno-redzone=yes",
 ]
 
 [profile.dev]
 rustflags = [
-	"-Clink-dead-code",
 	"-Cno-redzone=yes",
 
 	# Specific to `dev`
