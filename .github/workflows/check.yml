@@ -4,7 +4,7 @@ jobs:
   Debug:
     runs-on: [self-hosted, linux]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Compilation
         run: "scripts/ci/build.sh"
       - name: Check Multiboot2 for x86
@@ -14,7 +14,7 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: Debug
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Compilation
         run: "CARGOFLAGS='--release' scripts/ci/build.sh"
       - name: Check Multiboot2 for x86
@@ -24,18 +24,18 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: Debug
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Run tests
         run: "scripts/ci/selftest.sh"
   Format:
     runs-on: [self-hosted, linux]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - run: cargo fmt --check
   Documentation:
     runs-on: [self-hosted, linux]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Build book
         run: "mdbook build doc/"
       - name: Build references

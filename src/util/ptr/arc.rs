@@ -1,18 +1,18 @@
 //! This module implements an `Arc`, similar to the one present in the Rust standard library.
 
+use crate::errno::Errno;
+use crate::memory::malloc;
 use core::borrow::Borrow;
 use core::marker::Unsize;
 use core::mem::size_of;
 use core::ops::CoerceUnsized;
 use core::ops::Deref;
 use core::ops::DispatchFromDyn;
-use core::ptr::NonNull;
-use core::ptr::drop_in_place;
 use core::ptr;
-use core::sync::atomic::AtomicUsize;
+use core::ptr::drop_in_place;
+use core::ptr::NonNull;
 use core::sync::atomic;
-use crate::errno::Errno;
-use crate::memory::malloc;
+use core::sync::atomic::AtomicUsize;
 
 // TODO check atomic orderings
 
@@ -57,7 +57,7 @@ impl<T> Arc<T> {
 					weak: AtomicUsize::new(1),
 
 					obj,
-				}
+				},
 			);
 
 			NonNull::new(inner as _).unwrap()
@@ -73,9 +73,7 @@ impl<T: ?Sized> Arc<T> {
 	/// Returns a reference to the inner object.
 	fn inner(&self) -> &ArcInner<T> {
 		// Safe because the inner object is Sync
-		unsafe {
-			self.ptr.as_ref()
-		}
+		unsafe { self.ptr.as_ref() }
 	}
 
 	/// Drops the object stored by the shared pointer.
@@ -92,7 +90,9 @@ impl<T: ?Sized> Arc<T> {
 		drop_in_place(&mut Self::get_mut_unchecked(self));
 
 		// Drop the weak reference collectively held by all strong references
-		drop(Weak { ptr: self.ptr });
+		drop(Weak {
+			ptr: self.ptr,
+		});
 	}
 
 	/// Returns a mutable reference to the inner object without any safety check.
@@ -167,9 +167,7 @@ impl<T: ?Sized> Weak<T> {
 	/// Returns a reference to the inner object.
 	fn inner(&self) -> &ArcInner<T> {
 		// Safe because the inner object is Sync
-		unsafe {
-			self.ptr.as_ref()
-		}
+		unsafe { self.ptr.as_ref() }
 	}
 
 	/// Attempts to upgrade into an `Arc`.
@@ -178,20 +176,16 @@ impl<T: ?Sized> Weak<T> {
 	pub fn upgrade(&self) -> Option<Arc<T>> {
 		self.inner()
 			.strong
-			.fetch_update(
-				atomic::Ordering::Acquire,
-				atomic::Ordering::Relaxed,
-				|n| {
-					if n == 0 {
-						return None;
-					}
-
-					Some(n + 1)
+			.fetch_update(atomic::Ordering::Acquire, atomic::Ordering::Relaxed, |n| {
+				if n == 0 {
+					return None;
 				}
-			)
+
+				Some(n + 1)
+			})
 			.ok()
 			.map(|_| Arc {
-				ptr: self.ptr
+				ptr: self.ptr,
 			})
 	}
 }
