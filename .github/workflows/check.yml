@@ -5,7 +5,7 @@ jobs:
         runs-on: [self-hosted, linux]
         steps:
             - uses: actions/checkout@v2
-              run: cargo fmt --check
+			- run: cargo fmt --check
     Debug:
         runs-on: [self-hosted, linux]
         steps:
