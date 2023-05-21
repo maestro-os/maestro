@@ -2,14 +2,28 @@
 
 set -e
 
-export QEMU_FLAGS="-serial file:serial.log"
+export QEMU_FLAGS="-nographic -serial file:serial.log -serial mon:null -device isa-debug-exit,iobase=0xf4,iosize=0x04"
 
 cp default.config.toml config.toml
 sed -i 's/^qemu = false$/qemu = true/' config.toml
 
-echo "Running selftests..."
-cargo test
+rm -f serial.log
 
+
+
+echo "Running selftests..."
+
+set +e
+cargo test --lib
+EXIT=$?
+set -e
+
+
+
+echo
 echo "Selftests output:"
 cat serial.log
-grep 'No more tests to run' -- serial.log >/dev/null 2>&1
+
+if [ "$EXIT" -ne 33 ]; then
+	exit 1
+fi
