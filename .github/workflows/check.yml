@@ -1,6 +1,11 @@
 name: Check
 on: push
 jobs:
+    'Code format':
+        runs-on: [self-hosted, linux]
+        steps:
+            - uses: actions/checkout@v2
+              run: cargo fmt --check
     Debug:
         runs-on: [self-hosted, linux]
         steps:
