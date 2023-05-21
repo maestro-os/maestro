@@ -10,15 +10,27 @@
 KERN_SRC=$(dirname $(dirname $(realpath $0)))
 NAME=$1
 
-rustc \
-	--crate-type dylib \
-	-C force-frame-pointers=yes \
-	-C no-redzone=yes \
-	-C panic=abort \
-	-C prefer-dynamic \
-	--target "$KERN_SRC/arch/x86/x86.json" \
-	--extern kernel="$KERN_SRC/target/x86/$PROFILE/libkernel.so" \
-	-L "$KERN_SRC/target/x86/$PROFILE/deps" \
-	-L "$KERN_SRC/target/$PROFILE/deps" \
-	src/mod.rs \
-	-o "$(pwd)/$NAME.kmod"
+RUSTFLAGS="--crate-type dylib
+	-C force-frame-pointers=yes
+	-C no-redzone=yes
+	-C panic=abort
+	-C prefer-dynamic
+	--target $KERN_SRC/arch/x86/x86.json
+	--extern kernel=$KERN_SRC/target/x86/$PROFILE/libkernel.so
+	-L $KERN_SRC/target/x86/$PROFILE/deps
+	-L $KERN_SRC/target/$PROFILE/deps"
+
+case $PROFILE in
+	"debug")
+		;;
+	"release")
+		RUSTFLAGS="$RUSTFLAGS -C opt-level=3"
+		;;
+
+	*)
+		echo 'Specify a valid profile with the PROFILE environment variable (either "debug" or "release")'
+		exit 1
+		;;
+esac
+
+rustc $RUSTFLAGS src/mod.rs -o "$(pwd)/$NAME.kmod"
