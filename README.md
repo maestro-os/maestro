@@ -12,12 +12,38 @@ This repository is not a full operating system in itself but only the kernel. To
 
 ## Compilation
 
-The kernel can be compiled by simply typing:
+### Configuration
+
+The configuration allows to easily specify which features have to be enabled in the kernel. This configuration is *required* to compile the kernel.
+
+A default configuration is available in the file `default.config.toml`. To use it, simply type the command:
+
+```sh
+cp default.config.toml config.toml
+```
+
+
+
+### Build
+
+After creating the configuration, the kernel can be built using the following commands:
 
 ```sh
 cargo build               # Debug mode
 cargo build --release     # Release mode
 ```
+
+The default architecture is `x86`. To specify an other architecture, add the following parameter to the build command: `--target arch/<arch>/<arch>.json`, where `<arch>` is the selected architecture.
+
+The list of available architecture can be retrieved by typing:
+
+```
+ls -1 arch/
+```
+
+
+
+### Run
 
 If QEMU is present on the system, the kernel can be run using:
 
@@ -26,7 +52,9 @@ cargo run               # Debug mode
 cargo run --release     # Release mode
 ```
 
-However, running the kernel requires a fully built system.
+Don't forget to use the `--target` parameter if necessary.
+
+However, running the kernel correctly requires a fully built operating system.
 
 
 
