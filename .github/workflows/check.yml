@@ -17,6 +17,7 @@ jobs:
         run: "grub-file --is-x86-multiboot2 target/x86/debug/maestro"
   Release:
     runs-on: [self-hosted, linux]
+    needs: Debug
     steps:
       - uses: actions/checkout@v2
       - name: Compilation
@@ -29,7 +30,5 @@ jobs:
     needs: Debug
     steps:
       - uses: actions/checkout@v2
-      - name: Compilation
-        run: "CARGOFLAGS='--test' scripts/ci/build.sh"
       - name: Run tests
         run: "scripts/ci/selftest.sh"
