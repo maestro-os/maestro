@@ -6,12 +6,11 @@
 # This allows to debug the kernel with a given running program.
 
 export QEMU_FLAGS="-s -S -d int"
-setsid scripts/qemu.sh &
+setsid cargo run &
 QEMU_PID=$!
 
-if [ -z $KERN_PATH ]; then
-	export KERN_PATH="target/$ARCH/debug/kernel"
-fi
+# TODO support multiple archs
+KERN_PATH="target/x86/debug/maestro"
 
 if ! [ -z "$AUX_ELF" ]; then
 	gdb $KERN_PATH -ex 'target remote :1234' -ex 'set confirm off' -ex 'add-symbol-file -o 0x19c000 $AUX_ELF' -ex 'set confirm on'
