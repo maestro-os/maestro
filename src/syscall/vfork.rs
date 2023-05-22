@@ -3,6 +3,7 @@
 //! program. During that time, the child process also shares the same memory
 //! space as the parent.
 
+use crate::util::ptr::arc::Arc;
 use crate::errno::Errno;
 use crate::process::scheduler;
 use crate::process::ForkOptions;
@@ -15,7 +16,7 @@ pub fn vfork() -> Result<i32, Errno> {
 		// The current process
 		let curr_mutex = Process::get_current().unwrap();
 		// A weak pointer to the new process's parent
-		let parent = curr_mutex.new_weak();
+		let parent = Arc::downgrade(&curr_mutex);
 
 		let mut curr_proc = curr_mutex.lock();
 

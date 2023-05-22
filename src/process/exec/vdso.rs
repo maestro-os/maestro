@@ -13,7 +13,7 @@ use crate::process::mem_space::MemSpace;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::ptr;
@@ -25,7 +25,7 @@ static ELF_IMAGE: &'static [u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"
 /// Informations on the vDSO ELF image.
 struct VDSO {
 	/// The list of pages on which the image is loaded.
-	pages: SharedPtr<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
+	pages: Arc<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
 	/// The length of the ELF image in bytes.
 	len: usize,
 
@@ -67,7 +67,7 @@ fn load_image() -> Result<VDSO, Errno> {
 	}
 
 	Ok(VDSO {
-		pages: SharedPtr::new(pages)?,
+		pages: Arc::new(pages)?,
 		len: ELF_IMAGE.len(),
 
 		entry_off,

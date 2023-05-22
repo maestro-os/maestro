@@ -3,6 +3,7 @@
 
 mod cpio;
 
+use crate::util::lock::Mutex;
 use crate::device;
 use crate::errno;
 use crate::errno::Errno;
@@ -15,7 +16,7 @@ use crate::file::FileType;
 use crate::file::VFS;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use cpio::CPIOParser;
 
@@ -29,7 +30,7 @@ use cpio::CPIOParser;
 fn update_parent(
 	vfs: &mut VFS,
 	new: &Path,
-	stored: &mut Option<(Path, SharedPtr<File>)>,
+	stored: &mut Option<(Path, Arc<Mutex<File>>)>,
 	retry: bool,
 ) -> Result<(), Errno> {
 	// Getting the parent
@@ -76,7 +77,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 
 	// TODO Use a stack instead?
 	// The stored parent directory
-	let mut stored_parent: Option<(Path, SharedPtr<File>)> = None;
+	let mut stored_parent: Option<(Path, Arc<Mutex<File>>)> = None;
 
 	let cpio_parser = CPIOParser::new(data);
 	for entry in cpio_parser {

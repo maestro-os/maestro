@@ -18,7 +18,8 @@ use crate::process::Process;
 use crate::syscall::ioctl;
 use crate::util::io;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::lock::IntMutex;
+use crate::util::ptr::arc::Arc;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
@@ -30,7 +31,7 @@ pub struct NullDeviceHandle {}
 impl DeviceHandle for NullDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -64,7 +65,7 @@ pub struct ZeroDeviceHandle {}
 impl DeviceHandle for ZeroDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -107,7 +108,7 @@ pub struct RandomDeviceHandle {
 impl DeviceHandle for RandomDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -166,7 +167,7 @@ pub struct URandomDeviceHandle {}
 impl DeviceHandle for URandomDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -214,7 +215,7 @@ pub struct KMsgDeviceHandle {}
 impl DeviceHandle for KMsgDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {

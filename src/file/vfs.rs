@@ -4,6 +4,7 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
+use crate::util::lock::Mutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -22,7 +23,7 @@ use crate::file::Uid;
 use crate::limits;
 use crate::util::container::string::String;
 use crate::util::lock::IntMutex;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::ptr::NonNull;
 
@@ -67,7 +68,7 @@ impl VFS {
 	pub fn get_file_by_location(
 		&mut self,
 		location: &FileLocation,
-	) -> Result<SharedPtr<File>, Errno> {
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		match location {
 			FileLocation::Filesystem {
 				inode, ..
@@ -87,7 +88,7 @@ impl VFS {
 				let mut file = fs.load_file(&mut *io, *inode, String::new())?;
 
 				update_location(&mut file, &mountpoint);
-				SharedPtr::new(file)
+				Arc::new(Mutex::new(file))
 			}
 
 			FileLocation::Virtual {
@@ -96,14 +97,14 @@ impl VFS {
 				let name = crate::format!("virtual:{}", id)?;
 				let content = FileContent::Fifo; // TODO
 
-				SharedPtr::new(File::new(
+				Arc::new(Mutex::new(File::new(
 					name,
 					0, // TODO
 					0, // TODO
 					0o666,
 					location.clone(),
 					content,
-				)?)
+				)?))
 			}
 		}
 	}
@@ -120,7 +121,7 @@ impl VFS {
 		gid: Gid,
 		follow_links: bool,
 		follows_count: usize,
-	) -> Result<SharedPtr<File>, Errno> {
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		let path = Path::root().concat(path)?;
 
 		// Getting the path's deepest mountpoint
@@ -147,7 +148,7 @@ impl VFS {
 			drop(fs);
 
 			update_location(&mut file, &mountpoint);
-			return SharedPtr::new(file);
+			return Arc::new(Mutex::new(file));
 		}
 		// Checking permissions
 		if !file.can_execute(uid, gid) {
@@ -204,7 +205,7 @@ impl VFS {
 		drop(fs);
 
 		update_location(&mut file, &mountpoint);
-		SharedPtr::new(file)
+		Arc::new(Mutex::new(file))
 	}
 
 	// TODO Add a param to choose between the mountpoint and the fs root?
@@ -224,7 +225,7 @@ impl VFS {
 		uid: Uid,
 		gid: Gid,
 		follow_links: bool,
-	) -> Result<SharedPtr<File>, Errno> {
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		self.get_file_from_path_(path, uid, gid, follow_links, 0)
 	}
 
@@ -246,7 +247,7 @@ impl VFS {
 		uid: Uid,
 		gid: Gid,
 		follow_links: bool,
-	) -> Result<SharedPtr<File>, Errno> {
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		// Checking for errors
 		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
@@ -287,7 +288,7 @@ impl VFS {
 
 		file.set_parent_path(parent.get_path()?);
 		update_location(&mut file, &mountpoint);
-		SharedPtr::new(file)
+		Arc::new(Mutex::new(file))
 	}
 
 	// TODO Use the cache
@@ -311,7 +312,7 @@ impl VFS {
 		mut gid: Gid,
 		mode: Mode,
 		content: FileContent,
-	) -> Result<SharedPtr<File>, Errno> {
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		match self.get_file_from_parent(parent, name.try_clone()?, uid, gid, false) {
 			// If file already exist, error
 			Ok(_) => return Err(errno!(EEXIST)),
@@ -366,7 +367,7 @@ impl VFS {
 
 		drop(fs);
 		update_location(&mut file, &mountpoint);
-		SharedPtr::new(file)
+		Arc::new(Mutex::new(file))
 	}
 
 	/// Creates a new hard link.

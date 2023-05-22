@@ -28,7 +28,7 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use crate::util::math;
 use crate::util::math::rational::Rational;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::arc::Arc;
 use core::cmp::max;
 use core::ffi::c_void;
 
@@ -52,9 +52,9 @@ pub struct Scheduler {
 
 	/// A binary tree containing all processes registered to the current
 	/// scheduler.
-	processes: Map<Pid, IntSharedPtr<Process>>,
+	processes: Map<Pid, Arc<IntMutex<Process>>>,
 	/// The currently running process with its PID.
-	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
+	curr_proc: Option<(Pid, Arc<IntMutex<Process>>)>,
 
 	/// The current number of running processes.
 	running_procs: usize,
@@ -67,7 +67,7 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> Result<IntSharedPtr<Self>, Errno> {
+	pub fn new(cores_count: usize) -> Result<Arc<IntMutex<Self>>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
@@ -78,7 +78,7 @@ impl Scheduler {
 		};
 		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
 
-		IntSharedPtr::new(Self {
+		Arc::new(IntMutex::new(Self {
 			tmp_stacks,
 
 			tick_callback_hook,
@@ -91,7 +91,7 @@ impl Scheduler {
 
 			priority_sum: 0,
 			priority_max: 0,
-		})
+		}))
 	}
 
 	/// Returns a pointer to the top of the tmp stack for the given core `core`.
@@ -110,21 +110,21 @@ impl Scheduler {
 	}
 
 	/// Returns an iterator on the scheduler's processes.
-	pub fn iter_process<'a>(&'a mut self) -> MapIterator<'a, Pid, IntSharedPtr<Process>> {
+	pub fn iter_process<'a>(&'a mut self) -> MapIterator<'a, Pid, Arc<IntMutex<Process>>> {
 		self.processes.iter()
 	}
 
 	/// Returns the process with PID `pid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_pid(&self, pid: Pid) -> Option<IntSharedPtr<Process>> {
+	pub fn get_by_pid(&self, pid: Pid) -> Option<Arc<IntMutex<Process>>> {
 		Some(self.processes.get(pid)?.clone())
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_tid(&self, _tid: Pid) -> Option<IntSharedPtr<Process>> {
+	pub fn get_by_tid(&self, _tid: Pid) -> Option<Arc<IntMutex<Process>>> {
 		// TODO
 		todo!();
 	}
@@ -132,7 +132,7 @@ impl Scheduler {
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn get_current_process(&mut self) -> Option<IntSharedPtr<Process>> {
+	pub fn get_current_process(&mut self) -> Option<Arc<IntMutex<Process>>> {
 		Some(self.curr_proc.as_ref().cloned()?.1)
 	}
 
@@ -155,7 +155,7 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> Result<IntSharedPtr<Process>, Errno> {
+	pub fn add_process(&mut self, process: Process) -> Result<Arc<IntMutex<Process>>, Errno> {
 		let pid = process.pid;
 		let priority = process.priority;
 
@@ -163,7 +163,7 @@ impl Scheduler {
 			self.increment_running();
 		}
 
-		let ptr = IntSharedPtr::new(process)?;
+		let ptr = Arc::new(IntMutex::new(process))?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
 
@@ -274,7 +274,7 @@ impl Scheduler {
 	/// Returns the next process to run with its PID.
 	///
 	/// If the process is changed, the quantum count of the previous process is reset.
-	fn get_next_process(&self) -> Option<(Pid, IntSharedPtr<Process>)> {
+	fn get_next_process(&self) -> Option<(Pid, Arc<IntMutex<Process>>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
 		let processes_count = self.processes.count();
@@ -288,7 +288,7 @@ impl Scheduler {
 				.map(|(pid, proc)| (*pid, proc.clone()))
 		})?;
 
-		let process_filter = |(_, proc): &(&Pid, &IntSharedPtr<Process>)| {
+		let process_filter = |(_, proc): &(&Pid, &Arc<IntMutex<Process>>)| {
 			let guard = proc.lock();
 			Self::can_run(&*guard, priority_sum, priority_max, processes_count)
 		};

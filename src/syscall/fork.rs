@@ -2,6 +2,7 @@
 //! process. Execution resumes at the same location for both processes but the
 //! return value is different to allow differentiation.
 
+use crate::util::ptr::arc::Arc;
 use crate::errno::Errno;
 use crate::process::ForkOptions;
 use crate::process::Process;
@@ -12,7 +13,7 @@ pub fn fork() -> Result<i32, Errno> {
 	// The current process
 	let curr_mutex = Process::get_current().unwrap();
 	// A weak pointer to the new process's parent
-	let parent = curr_mutex.new_weak();
+	let parent = Arc::downgrade(&curr_mutex);
 
 	let mut curr_proc = curr_mutex.lock();
 

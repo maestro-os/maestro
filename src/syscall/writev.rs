@@ -1,5 +1,6 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
+use crate::util::lock::IntMutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
@@ -11,7 +12,7 @@ use crate::process::mem_space::MemSpace;
 use crate::process::signal::Signal;
 use crate::process::Process;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::arc::Arc;
 use core::cmp::min;
 use core::ffi::c_int;
 use macros::syscall;
@@ -26,7 +27,7 @@ use macros::syscall;
 /// - `iovcnt` is the number of chunks in `iov`.
 /// - `open_file` is the file to write to.
 fn write(
-	mem_space: IntSharedPtr<MemSpace>,
+	mem_space: Arc<IntMutex<MemSpace>>,
 	iov: SyscallSlice<IOVec>,
 	iovcnt: usize,
 	open_file: &mut OpenFile,

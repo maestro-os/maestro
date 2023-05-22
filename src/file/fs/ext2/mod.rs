@@ -27,6 +27,7 @@ mod block_group_descriptor;
 mod directory_entry;
 mod inode;
 
+use crate::util::lock::Mutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs::Filesystem;
@@ -50,7 +51,7 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use block_group_descriptor::BlockGroupDescriptor;
 use core::cmp::max;
@@ -1240,7 +1241,7 @@ impl Filesystem for Ext2Fs {
 pub struct Ext2FsType {}
 
 impl FilesystemType for Ext2FsType {
-	fn get_name(&self) -> &[u8] {
+	fn get_name(&self) -> &'static [u8] {
 		b"ext2"
 	}
 
@@ -1253,10 +1254,10 @@ impl FilesystemType for Ext2FsType {
 		io: &mut dyn IO,
 		mountpath: Path,
 		readonly: bool,
-	) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
 		let superblock = Superblock::read(io)?;
 		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
 
-		Ok(SharedPtr::new(fs)? as _)
+		Ok(Arc::new(Mutex::new(fs))? as _)
 	}
 }

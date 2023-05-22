@@ -1,5 +1,6 @@
 //! The `openat` syscall allows to open a file.
 
+use crate::util::lock::Mutex;
 use super::util;
 use crate::errno::Errno;
 use crate::file;
@@ -10,7 +11,7 @@ use crate::file::FileContent;
 use crate::file::Mode;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -35,7 +36,7 @@ fn get_file(
 	pathname: SyscallString,
 	flags: i32,
 	mode: Mode,
-) -> Result<SharedPtr<File>, Errno> {
+) -> Result<Arc<Mutex<File>>, Errno> {
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 

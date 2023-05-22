@@ -1,5 +1,6 @@
 //! This module implements utility functions for system calls.
 
+use crate::util::lock::Mutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::path::Path;
@@ -15,7 +16,7 @@ use crate::process::State;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::MutexGuard;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::mem::size_of;
 
@@ -140,7 +141,7 @@ pub fn get_file_at(
 	dirfd: i32,
 	pathname: &[u8],
 	flags: i32,
-) -> Result<SharedPtr<File>, Errno> {
+) -> Result<Arc<Mutex<File>>, Errno> {
 	if pathname.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
@@ -189,7 +190,7 @@ pub fn get_parent_at_with_name(
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
-) -> Result<(SharedPtr<File>, String), Errno> {
+) -> Result<(Arc<Mutex<File>>, String), Errno> {
 	if pathname.is_empty() {
 		return Err(errno!(ENOENT));
 	}
@@ -227,7 +228,7 @@ pub fn create_file_at(
 	pathname: &[u8],
 	mode: Mode,
 	content: FileContent,
-) -> Result<SharedPtr<File>, Errno> {
+) -> Result<Arc<Mutex<File>>, Errno> {
 	let uid = process.euid;
 	let gid = process.egid;
 	let mode = mode & !process.umask;

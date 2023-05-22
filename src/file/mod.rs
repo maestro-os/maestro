@@ -15,6 +15,8 @@ pub mod path;
 pub mod util;
 pub mod vfs;
 
+use crate::util::lock::IntMutex;
+use crate::util::lock::Mutex;
 use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
@@ -31,8 +33,7 @@ use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::ffi::c_void;
 use mountpoint::MountPoint;
@@ -214,7 +215,7 @@ impl FileLocation {
 	}
 
 	/// Returns the mountpoint.
-	pub fn get_mountpoint(&self) -> Option<SharedPtr<MountPoint>> {
+	pub fn get_mountpoint(&self) -> Option<Arc<Mutex<MountPoint>>> {
 		mountpoint::from_id(self.get_mountpoint_id()?)
 	}
 
@@ -629,7 +630,7 @@ impl File {
 	/// - `argp` is a pointer to the argument.
 	pub fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -716,8 +717,8 @@ impl File {
 	fn io_op<R, F>(&self, f: F) -> Result<R, Errno>
 	where
 		F: FnOnce(
-			Option<SharedPtr<dyn IO>>,
-			Option<(SharedPtr<dyn Filesystem>, INode)>,
+			Option<Arc<Mutex<dyn IO>>>,
+			Option<(Arc<Mutex<dyn Filesystem>>, INode)>,
 		) -> Result<R, Errno>,
 	{
 		match &self.content {

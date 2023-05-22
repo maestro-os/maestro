@@ -1,6 +1,7 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
+use crate::util::lock::IntMutex;
 use crate::device;
 use crate::device::DeviceType;
 use crate::errno;
@@ -20,8 +21,7 @@ use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_void;
@@ -64,7 +64,7 @@ pub const O_SYNC: i32 = 0b00000000000100000001000000000000;
 pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 
 /// The list of currently open files.
-static OPEN_FILES: Mutex<HashMap<FileLocation, SharedPtr<OpenFile>>> = Mutex::new(HashMap::new());
+static OPEN_FILES: Mutex<HashMap<FileLocation, Arc<Mutex<OpenFile>>>> = Mutex::new(HashMap::new());
 
 // TODO Keep a different references counter for read and write.
 // And increment/decrement on open and close (using FD's flags)
@@ -92,7 +92,7 @@ impl OpenFile {
 	/// Returns the open file at the given location.
 	///
 	/// If the location doesn't exist or if the file isn't open, the function returns `None`.
-	pub fn get(location: &FileLocation) -> Option<SharedPtr<Self>> {
+	pub fn get(location: &FileLocation) -> Option<Arc<Mutex<Self>>> {
 		OPEN_FILES.lock().get(location).cloned()
 	}
 
@@ -104,7 +104,7 @@ impl OpenFile {
 	///
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
-	pub fn new(location: FileLocation, flags: i32) -> Result<SharedPtr<Self>, Errno> {
+	pub fn new(location: FileLocation, flags: i32) -> Result<Arc<Mutex<Self>>, Errno> {
 		let open_file_mutex = match Self::get(&location) {
 			Some(open_file_mutex) => {
 				{
@@ -131,14 +131,14 @@ impl OpenFile {
 			}
 
 			None => {
-				let open_file = SharedPtr::new(Self {
+				let open_file = Arc::new(Mutex::new(Self {
 					location: location.clone(),
 
 					flags,
 					curr_off: 0,
 
 					ref_count: 0,
-				})?;
+				}))?;
 
 				OPEN_FILES.lock().insert(location, open_file.clone())?;
 
@@ -159,7 +159,7 @@ impl OpenFile {
 		location: FileLocation,
 		read: bool,
 		write: bool,
-	) -> Result<SharedPtr<Self>, Errno> {
+	) -> Result<Arc<Mutex<Self>>, Errno> {
 		let open_file_mutex = Self::get(&location).ok_or_else(|| errno!(ENOENT))?;
 
 		{
@@ -218,7 +218,7 @@ impl OpenFile {
 	/// Returns the file.
 	///
 	/// The name of the file is not set since it cannot be known from this structure.
-	pub fn get_file(&self) -> Result<SharedPtr<File>, Errno> {
+	pub fn get_file(&self) -> Result<Arc<Mutex<File>>, Errno> {
 		let vfs_mutex = vfs::get();
 		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
@@ -263,7 +263,7 @@ impl OpenFile {
 	/// Performs an ioctl operation on the file.
 	pub fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {

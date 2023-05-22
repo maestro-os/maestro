@@ -28,7 +28,7 @@ use crate::util::container::map::Map;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::cmp::min;
 use core::cmp::Ordering;
@@ -66,7 +66,7 @@ pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCount
 /// Enumeration of map residences.
 ///
 /// A map residence is the location where the physical memory of a mapping is stored.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum MapResidence {
 	/// The mapping does not reside anywhere except on the main memory.
 	Normal,
@@ -75,13 +75,13 @@ pub enum MapResidence {
 	/// memory spaces.
 	Static {
 		/// The list of memory pages, in order.
-		pages: SharedPtr<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
+		pages: Arc<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
 	},
 
 	/// The mapping resides in a file.
 	File {
 		/// The location of the file.
-		file: SharedPtr<OpenFile>,
+		file: Arc<Mutex<OpenFile>>,
 		/// The offset of the mapping in the file.
 		off: u64,
 	},
@@ -89,7 +89,7 @@ pub enum MapResidence {
 	/// The mapping resides in swap space.
 	Swap {
 		/// The location of the swap space.
-		swap_file: SharedPtr<OpenFile>,
+		swap_file: Arc<Mutex<OpenFile>>,
 		/// The ID of the slot occupied by the mapping.
 		slot_id: u32,
 		/// The page offset in the slot.
@@ -158,8 +158,6 @@ impl MapResidence {
 			MapResidence::Static {
 				pages,
 			} => {
-				let pages = pages.lock();
-
 				if off < pages.len() {
 					Ok(pages[off].as_ptr() as *mut c_void)
 				} else {
@@ -192,8 +190,6 @@ impl MapResidence {
 			MapResidence::Static {
 				pages,
 			} => {
-				let pages = pages.lock();
-
 				if off >= pages.len() {
 					Self::free(ptr)
 				}

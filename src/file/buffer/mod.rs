@@ -3,6 +3,7 @@
 pub mod pipe;
 pub mod socket;
 
+use crate::util::lock::IntMutex;
 use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::file::FileLocation;
@@ -13,8 +14,7 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryDefault;
 use core::ffi::c_void;
 
@@ -54,7 +54,7 @@ pub trait Buffer: IO {
 	/// - `argp` is a pointer to the argument.
 	fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno>;
@@ -62,7 +62,7 @@ pub trait Buffer: IO {
 
 /// All the system's buffer. The key is the location of the file associated with the
 /// entry.
-static BUFFERS: Mutex<HashMap<FileLocation, SharedPtr<dyn Buffer>>> = Mutex::new(HashMap::new());
+static BUFFERS: Mutex<HashMap<FileLocation, Arc<Mutex<dyn Buffer>>>> = Mutex::new(HashMap::new());
 /// Buffer ID allocator.
 static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
@@ -91,7 +91,7 @@ where
 /// Returns the buffer associated with the file at location `loc`.
 ///
 /// If the buffer doesn't exist, the function creates it.
-pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
+pub fn get(loc: &FileLocation) -> Option<Arc<Mutex<dyn Buffer>>> {
 	let buffers = BUFFERS.lock();
 	buffers.get(loc).cloned()
 }
@@ -101,7 +101,7 @@ pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
 /// If the buffer doesn't exist, the function registers a new default buffer.
 pub fn get_or_default<B: Buffer + TryDefault + 'static>(
 	loc: &FileLocation,
-) -> Result<SharedPtr<dyn Buffer>, Errno> {
+) -> Result<Arc<Mutex<dyn Buffer>>, Errno> {
 	let mut buffers = BUFFERS.lock();
 
 	match buffers.get(loc).cloned() {
@@ -109,7 +109,7 @@ pub fn get_or_default<B: Buffer + TryDefault + 'static>(
 
 		None => {
 			let buff: Result<_, Errno> = B::try_default().map_err(Into::into);
-			let buff = SharedPtr::new(buff?)?;
+			let buff = Arc::new(Mutex::new(buff?))?;
 			buffers.insert(loc.clone(), buff.clone())?;
 
 			Ok(buff)
@@ -129,7 +129,7 @@ pub fn get_or_default<B: Buffer + TryDefault + 'static>(
 /// The function returns the location associated with the buffer.
 pub fn register(
 	loc: Option<FileLocation>,
-	buff: SharedPtr<dyn Buffer>,
+	buff: Arc<Mutex<dyn Buffer>>,
 ) -> Result<FileLocation, Errno> {
 	let loc = id_allocator_do(|id_allocator| match loc {
 		Some(loc) => {

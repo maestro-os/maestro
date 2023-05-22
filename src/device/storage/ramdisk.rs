@@ -4,6 +4,7 @@
 //! Ramdisks are lazily allocated so they do not use much memory as long as they
 //! are not used.
 
+use crate::util::lock::IntMutex;
 use super::StorageInterface;
 use crate::device;
 use crate::device::id;
@@ -19,7 +20,7 @@ use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 
@@ -137,7 +138,7 @@ impl RAMDiskHandle {
 impl DeviceHandle for RAMDiskHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {

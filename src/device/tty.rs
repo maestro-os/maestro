@@ -1,6 +1,7 @@
 //! Each TTY or pseudo-TTY has to be associated with a device file in order to
 //! communicate with it.
 
+use crate::util::lock::IntMutex;
 use crate::device::DeviceHandle;
 use crate::errno;
 use crate::errno::Errno;
@@ -18,7 +19,7 @@ use crate::tty::WinSize;
 use crate::tty::TTY;
 use crate::util::io;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 
 /// Structure representing a TTY device's handle.
@@ -38,7 +39,7 @@ impl TTYDeviceHandle {
 	}
 
 	/// Returns the current process and its associated TTY.
-	fn get_tty(&self) -> Result<(IntSharedPtr<Process>, TTYHandle), Errno> {
+	fn get_tty(&self) -> Result<(Arc<IntMutex<Process>>, TTYHandle), Errno> {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
 
@@ -102,7 +103,7 @@ impl TTYDeviceHandle {
 impl DeviceHandle for TTYDeviceHandle {
 	fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {

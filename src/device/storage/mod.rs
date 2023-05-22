@@ -6,6 +6,8 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
+use crate::util::lock::IntMutex;
+use crate::util::lock::Mutex;
 use crate::device;
 use crate::device::bus::pci;
 use crate::device::id;
@@ -29,9 +31,8 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
-use crate::util::ptr::WeakPtr;
+use crate::util::ptr::arc::Arc;
+use crate::util::ptr::arc::Weak;
 use crate::util::TryClone;
 use core::cmp::min;
 use core::ffi::c_uchar;
@@ -219,7 +220,7 @@ pub trait StorageInterface {
 /// Handle for the device file of a whole storage device or a partition.
 pub struct StorageDeviceHandle {
 	/// A reference to the storage interface.
-	interface: WeakPtr<dyn StorageInterface>,
+	interface: Weak<Mutex<dyn StorageInterface>>,
 	/// The partition associated with the handle. If `None`, the handle covers the whole device.
 	partition: Option<Partition>,
 
@@ -242,7 +243,7 @@ impl StorageDeviceHandle {
 	/// - `storage_id` is the ID of the storage device in the manager.
 	/// - `path_prefix` is the path to the file of the main device containing the partition table.
 	pub fn new(
-		interface: WeakPtr<dyn StorageInterface>,
+		interface: Weak<Mutex<dyn StorageInterface>>,
 		partition: Option<Partition>,
 		major: u32,
 		storage_id: u32,
@@ -262,7 +263,7 @@ impl StorageDeviceHandle {
 impl DeviceHandle for StorageDeviceHandle {
 	fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -270,7 +271,7 @@ impl DeviceHandle for StorageDeviceHandle {
 			ioctl::HDIO_GETGEO => {
 				// The total size of the disk
 				let size = {
-					if let Some(interface) = self.interface.get() {
+					if let Some(interface) = self.interface.upgrade() {
 						let interface = interface.lock();
 						interface.get_block_size() * interface.get_blocks_count()
 					} else {
@@ -318,7 +319,7 @@ impl DeviceHandle for StorageDeviceHandle {
 
 			ioctl::BLKSSZGET => {
 				let blk_size = {
-					if let Some(interface) = self.interface.get() {
+					if let Some(interface) = self.interface.upgrade() {
 						let interface = interface.lock();
 						interface.get_block_size()
 					} else {
@@ -356,7 +357,7 @@ impl DeviceHandle for StorageDeviceHandle {
 
 impl IO for StorageDeviceHandle {
 	fn get_size(&self) -> u64 {
-		if let Some(interface) = self.interface.get() {
+		if let Some(interface) = self.interface.upgrade() {
 			let interface = interface.lock();
 
 			let blocks_count = self
@@ -371,7 +372,7 @@ impl IO for StorageDeviceHandle {
 	}
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		if let Some(interface) = self.interface.get() {
+		if let Some(interface) = self.interface.upgrade() {
 			let mut interface = interface.lock();
 
 			// Check offset
@@ -396,7 +397,7 @@ impl IO for StorageDeviceHandle {
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
-		if let Some(interface) = self.interface.get() {
+		if let Some(interface) = self.interface.upgrade() {
 			let mut interface = interface.lock();
 
 			// Check offset
@@ -432,7 +433,7 @@ pub struct StorageManager {
 	/// The allocated device major number for storage devices.
 	major_block: MajorBlock,
 	/// The list of detected interfaces.
-	interfaces: Vec<SharedPtr<dyn StorageInterface>>,
+	interfaces: Vec<Arc<Mutex<dyn StorageInterface>>>,
 }
 
 impl StorageManager {
@@ -454,12 +455,12 @@ impl StorageManager {
 	/// - `storage_id` is the ID of the storage device in the manager.
 	/// - `path_prefix` is the path to the file of the main device containing the partition table.
 	pub fn read_partitions(
-		storage: WeakPtr<dyn StorageInterface>,
+		storage: Weak<Mutex<dyn StorageInterface>>,
 		major: u32,
 		storage_id: u32,
 		path_prefix: String,
 	) -> Result<(), Errno> {
-		if let Some(storage_mutex) = storage.get() {
+		if let Some(storage_mutex) = storage.upgrade() {
 			let mut s = storage_mutex.lock();
 
 			if let Some(partitions_table) = partition::read(&mut *s)? {
@@ -519,7 +520,7 @@ impl StorageManager {
 	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
 	/// Adds the given storage device to the manager.
-	fn add(&mut self, storage: SharedPtr<dyn StorageInterface>) -> Result<(), Errno> {
+	fn add(&mut self, storage: Arc<Mutex<dyn StorageInterface>>) -> Result<(), Errno> {
 		// The device files' major number
 		let major = self.major_block.get_major();
 		// The id of the storage interface in the manager's list
@@ -534,7 +535,7 @@ impl StorageManager {
 
 		// Creating the main device file
 		let main_handle = StorageDeviceHandle::new(
-			storage.new_weak(),
+			Arc::downgrade(&storage),
 			None,
 			major,
 			storage_id,
@@ -552,7 +553,7 @@ impl StorageManager {
 		)?;
 		device::register(main_device)?;
 
-		Self::read_partitions(storage.new_weak(), major, storage_id, prefix)?;
+		Self::read_partitions(Arc::downgrade(&storage), major, storage_id, prefix)?;
 
 		self.interfaces.push(storage)
 	}

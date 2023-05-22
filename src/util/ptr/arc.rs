@@ -1,5 +1,6 @@
 //! This module implements an `Arc`, similar to the one present in the Rust standard library.
 
+use core::fmt;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use core::borrow::Borrow;
@@ -142,6 +143,12 @@ impl<T: ?Sized> Clone for Arc<T> {
 	}
 }
 
+impl<T: fmt::Debug> fmt::Debug for Arc<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{:?}", self.inner().obj)
+	}
+}
+
 impl<T: ?Sized> Drop for Arc<T> {
 	fn drop(&mut self) {
 		let inner = self.inner();
@@ -177,16 +184,27 @@ impl<T: ?Sized> Weak<T> {
 		self.inner()
 			.strong
 			.fetch_update(atomic::Ordering::Acquire, atomic::Ordering::Relaxed, |n| {
-				if n == 0 {
-					return None;
+				if n != 0 {
+					Some(n + 1)
+				} else {
+					None
 				}
-
-				Some(n + 1)
 			})
 			.ok()
 			.map(|_| Arc {
 				ptr: self.ptr,
 			})
+	}
+}
+
+impl<T: ?Sized> Clone for Weak<T> {
+	fn clone(&self) -> Self {
+		let inner = self.inner();
+		inner.weak.fetch_add(1, atomic::Ordering::Relaxed);
+
+		Self {
+			ptr: self.ptr,
+		}
 	}
 }
 

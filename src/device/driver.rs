@@ -5,8 +5,8 @@ use crate::device::manager::PhysicalDevice;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
-use crate::util::ptr::SharedPtr;
-use crate::util::ptr::WeakPtr;
+use crate::util::ptr::arc::Arc;
+use crate::util::ptr::arc::Weak;
 
 /// Trait representing a device driver.
 pub trait Driver {
@@ -22,18 +22,18 @@ pub trait Driver {
 }
 
 /// The list of drivers.
-static DRIVERS: Mutex<Vec<SharedPtr<dyn Driver>>> = Mutex::new(Vec::new());
+static DRIVERS: Mutex<Vec<Arc<Mutex<dyn Driver>>>> = Mutex::new(Vec::new());
 
 /// Registers the given driver.
 pub fn register<D: 'static + Driver>(driver: D) -> Result<(), Errno> {
 	let mut drivers = DRIVERS.lock();
 
-	let m = SharedPtr::new(driver)?;
+	let m = Arc::new(Mutex::new(driver))?;
 	drivers.push(m)
 }
 
 /// Returns the driver with name `name`.
-pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn Driver>> {
+pub fn get_by_name(name: &str) -> Option<Weak<Mutex<dyn Driver>>> {
 	let drivers = DRIVERS.lock();
 
 	for i in 0..drivers.len() {
@@ -41,7 +41,7 @@ pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn Driver>> {
 
 		if driver.get_name() == name {
 			drop(driver);
-			return Some(drivers[i].new_weak());
+			return Some(Arc::downgrade(&drivers[i]));
 		}
 	}
 

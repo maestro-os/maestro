@@ -1,5 +1,6 @@
 //! This file implements sockets.
 
+use crate::util::lock::IntMutex;
 use super::Buffer;
 use crate::errno::Errno;
 use crate::file::buffer::BlockHandler;
@@ -7,7 +8,7 @@ use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 
 /// The maximum size of a socket's buffers.
@@ -85,7 +86,7 @@ impl Buffer for Socket {
 
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {

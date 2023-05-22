@@ -61,7 +61,7 @@ pub fn mount(
 
 		// TODO Check for loop between source and target
 
-		let fs_type = fs::get_fs(filesystemtype_slice).ok_or(errno!(ENODEV))?;
+		let fs_type = fs::get_type(filesystemtype_slice).ok_or(errno!(ENODEV))?;
 
 		(mount_source, fs_type, target_path)
 	};

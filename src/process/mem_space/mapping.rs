@@ -533,8 +533,8 @@ impl fmt::Debug for MemMapping {
 
 		write!(
 			f,
-			"MemMapping {{ begin: {:p}, end: {:p}, flags: {}, residence: {:?} }}",
-			self.begin, end, self.flags, self.residence,
+			"MemMapping {{ begin: {:p}, end: {:p}, flags: {} }}",
+			self.begin, end, self.flags,
 		)
 	}
 }

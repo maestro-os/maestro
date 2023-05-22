@@ -25,6 +25,7 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
+use crate::util::lock::IntMutex;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file;
@@ -40,8 +41,7 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::ffi::c_void;
 use core::fmt;
@@ -111,7 +111,7 @@ pub trait DeviceHandle: IO {
 	/// - `argp` is a pointer to the argument.
 	fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno>;
@@ -277,7 +277,7 @@ impl Drop for Device {
 }
 
 /// The list of registered devices.
-static DEVICES: Mutex<HashMap<DeviceID, SharedPtr<Device>>> = Mutex::new(HashMap::new());
+static DEVICES: Mutex<HashMap<DeviceID, Arc<Mutex<Device>>>> = Mutex::new(HashMap::new());
 
 /// Registers the given device.
 ///
@@ -286,7 +286,7 @@ static DEVICES: Mutex<HashMap<DeviceID, SharedPtr<Device>>> = Mutex::new(HashMap
 /// If files management is initialized, the function creates the associated device file.
 pub fn register(device: Device) -> Result<(), Errno> {
 	let id = device.id.clone();
-	let dev_mutex = SharedPtr::new(device)?;
+	let dev_mutex = Arc::new(Mutex::new(device))?;
 
 	{
 		let mut devs = DEVICES.lock();
@@ -322,7 +322,7 @@ pub fn unregister(id: &DeviceID) -> Result<(), Errno> {
 /// Returns a mutable reference to the device with the given ID.
 ///
 /// If the device doesn't exist, the function returns `None`.
-pub fn get(id: &DeviceID) -> Option<SharedPtr<Device>> {
+pub fn get(id: &DeviceID) -> Option<Arc<Mutex<Device>>> {
 	let devs = DEVICES.lock();
 	devs.get(id).cloned()
 }

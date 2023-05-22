@@ -1,6 +1,7 @@
 //! A pipe is an object that links two file descriptors together. One reading
 //! and another writing, with a buffer in between.
 
+use crate::util::lock::IntMutex;
 use super::Buffer;
 use crate::file::buffer::BlockHandler;
 use crate::file::Errno;
@@ -13,7 +14,7 @@ use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::io;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryDefault;
 use core::ffi::c_int;
 use core::ffi::c_void;
@@ -93,7 +94,7 @@ impl Buffer for PipeBuffer {
 
 	fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {

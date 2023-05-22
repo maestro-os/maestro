@@ -44,9 +44,8 @@ use crate::util::container::bitfield::Bitfield;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::IntWeakPtr;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
+use crate::util::ptr::arc::Weak;
 use crate::util::TryClone;
 use core::any::Any;
 use core::ffi::c_void;
@@ -232,7 +231,7 @@ pub struct Process {
 	quantum_count: usize,
 
 	/// A pointer to the parent process.
-	parent: Option<IntWeakPtr<Process>>,
+	parent: Option<Weak<IntMutex<Process>>>,
 	/// The list of children processes.
 	children: Vec<Pid>,
 	/// The list of processes in the process group.
@@ -252,7 +251,7 @@ pub struct Process {
 	waitable: bool,
 
 	/// The virtual memory of the process containing every mappings.
-	mem_space: Option<IntSharedPtr<MemSpace>>,
+	mem_space: Option<Arc<IntMutex<MemSpace>>>,
 	/// A pointer to the userspace stack.
 	user_stack: Option<*const c_void>,
 	/// A pointer to the kernelspace stack.
@@ -263,14 +262,14 @@ pub struct Process {
 	/// The current chroot path.
 	pub chroot: Path,
 	/// The list of open file descriptors with their respective ID.
-	file_descriptors: Option<SharedPtr<FileDescriptorTable>>,
+	file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
 	/// A bitfield storing the set of blocked signals.
 	pub sigmask: Bitfield,
 	/// A bitfield storing the set of pending signals.
 	sigpending: Bitfield,
 	/// The list of signal handlers.
-	signal_handlers: SharedPtr<[SignalHandler; signal::SIGNALS_COUNT]>,
+	signal_handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
 
 	/// TLS entries.
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
@@ -292,7 +291,7 @@ pub struct Process {
 /// The PID manager.
 static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
 /// The processes scheduler.
-static mut SCHEDULER: MaybeUninit<IntSharedPtr<Scheduler>> = MaybeUninit::uninit();
+static mut SCHEDULER: MaybeUninit<Arc<IntMutex<Scheduler>>> = MaybeUninit::uninit();
 
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
@@ -436,7 +435,7 @@ impl Process {
 	/// Returns the process with PID `pid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_pid(pid: Pid) -> Option<IntSharedPtr<Self>> {
+	pub fn get_by_pid(pid: Pid) -> Option<Arc<IntMutex<Self>>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_by_pid(pid)
 	}
@@ -444,7 +443,7 @@ impl Process {
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_tid(tid: Pid) -> Option<IntSharedPtr<Self>> {
+	pub fn get_by_tid(tid: Pid) -> Option<Arc<IntMutex<Self>>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_by_tid(tid)
 	}
@@ -452,7 +451,7 @@ impl Process {
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn get_current() -> Option<IntSharedPtr<Self>> {
+	pub fn get_current() -> Option<Arc<IntMutex<Self>>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_current_process()
 	}
@@ -494,7 +493,7 @@ impl Process {
 	/// Creates the init process and places it into the scheduler's queue.
 	///
 	/// The process is set to state `Running` by default and has user root.
-	pub fn new() -> Result<IntSharedPtr<Self>, Errno> {
+	pub fn new() -> Result<Arc<IntMutex<Self>>, Errno> {
 		// TODO Prevent calling twice
 
 		let uid = 0;
@@ -570,11 +569,11 @@ impl Process {
 
 			cwd: Path::root(),
 			chroot: Path::root(),
-			file_descriptors: Some(SharedPtr::new(file_descriptors)?),
+			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
-			signal_handlers: SharedPtr::new([SignalHandler::Default; signal::SIGNALS_COUNT])?,
+			signal_handlers: Arc::new(Mutex::new([SignalHandler::Default; signal::SIGNALS_COUNT]))?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
 
@@ -662,12 +661,12 @@ impl Process {
 
 	/// Returns the parent process's PID.
 	pub fn get_parent_pid(&self) -> Pid {
-		if let Some(parent) = &self.parent {
-			let parent = parent.get().unwrap();
-			parent.lock().pid
-		} else {
-			self.pid
-		}
+		self.parent
+			.as_ref()
+			.map(|parent| parent.upgrade())
+			.flatten()
+			.map(|parent| parent.lock().pid)
+			.unwrap_or(self.pid)
 	}
 
 	/// Returns the path to the executable file of the process.
@@ -722,7 +721,7 @@ impl Process {
 				}
 
 				if let Some(child_mutex) = Process::get_by_pid(*child_pid) {
-					child_mutex.lock().parent = Some(init_proc_mutex.new_weak());
+					child_mutex.lock().parent = Some(Arc::downgrade(&init_proc_mutex));
 					oom::wrap(|| init_proc.add_child(*child_pid));
 				}
 			}
@@ -756,10 +755,11 @@ impl Process {
 		self.termsig = sig_type;
 
 		// Wake the parent
-		if let Some(parent) = self.get_parent() {
-			let parent = parent.get().unwrap();
+		let parent = self.get_parent()
+			.map(|parent| parent.upgrade())
+			.flatten();
+		if let Some(parent) = parent {
 			let mut parent = parent.lock();
-
 			parent.kill(&Signal::SIGCHLD, false);
 			parent.wake();
 		}
@@ -772,8 +772,8 @@ impl Process {
 
 	/// Returns the process's parent if exists.
 	#[inline(always)]
-	pub fn get_parent(&self) -> Option<&IntWeakPtr<Process>> {
-		self.parent.as_ref()
+	pub fn get_parent(&self) -> Option<Weak<IntMutex<Process>>> {
+		self.parent.clone()
 	}
 
 	/// Returns a reference to the list of the process's children.
@@ -809,13 +809,13 @@ impl Process {
 	///
 	/// If the process is terminated, the function returns `None`.
 	#[inline(always)]
-	pub fn get_mem_space(&self) -> Option<IntSharedPtr<MemSpace>> {
+	pub fn get_mem_space(&self) -> Option<Arc<IntMutex<MemSpace>>> {
 		self.mem_space.clone()
 	}
 
 	/// Sets the new memory space for the process, dropping the previous if any.
 	#[inline(always)]
-	pub fn set_mem_space(&mut self, mem_space: Option<IntSharedPtr<MemSpace>>) {
+	pub fn set_mem_space(&mut self, mem_space: Option<Arc<IntMutex<MemSpace>>>) {
 		// TODO Handle multicore
 		// If the process is currently running, switch the memory space
 		if matches!(self.state, State::Running) {
@@ -846,12 +846,12 @@ impl Process {
 	}
 
 	/// Returns the file descriptor table associated with the process.
-	pub fn get_fds(&self) -> Option<SharedPtr<FileDescriptorTable>> {
+	pub fn get_fds(&self) -> Option<Arc<Mutex<FileDescriptorTable>>> {
 		self.file_descriptors.clone()
 	}
 
 	/// Sets the file descriptor table of the process.
-	pub fn set_fds(&mut self, fds: Option<SharedPtr<FileDescriptorTable>>) {
+	pub fn set_fds(&mut self, fds: Option<Arc<Mutex<FileDescriptorTable>>>) {
 		self.file_descriptors = fds;
 	}
 
@@ -935,9 +935,9 @@ impl Process {
 	/// If the process is not running, the behaviour is undefined.
 	pub fn fork(
 		&mut self,
-		parent: IntWeakPtr<Self>,
+		parent: Weak<IntMutex<Self>>,
 		fork_options: ForkOptions,
-	) -> Result<IntSharedPtr<Self>, Errno> {
+	) -> Result<Arc<IntMutex<Self>>, Errno> {
 		debug_assert!(matches!(self.get_state(), State::Running));
 
 		// FIXME PID is leaked if the following code fails
@@ -967,7 +967,7 @@ impl Process {
 				(curr_mem_space.clone(), Some(new_kernel_stack as _))
 			} else {
 				(
-					IntSharedPtr::new(curr_mem_space.lock().fork()?)?,
+					Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?,
 					self.kernel_stack,
 				)
 			}
@@ -983,7 +983,7 @@ impl Process {
 					let fds = fds.lock();
 					let new_fds = fds.duplicate(false)?;
 
-					SharedPtr::new(new_fds)
+					Arc::new(Mutex::new(new_fds))
 				})
 				.transpose()?
 		};
@@ -992,7 +992,7 @@ impl Process {
 		let signal_handlers = if fork_options.share_sighand {
 			self.signal_handlers.clone()
 		} else {
-			SharedPtr::new(self.signal_handlers.lock().clone())?
+			Arc::new(Mutex::new(self.signal_handlers.lock().clone()))?
 		};
 
 		let process = Self {
@@ -1258,9 +1258,11 @@ impl Process {
 		self.vfork_state = VForkState::None;
 
 		// Resetting the parent's vfork state if needed
-		if let Some(parent) = self.get_parent() {
-			let parent_mutex = parent.get().unwrap();
-			let mut parent = parent_mutex.lock();
+		let parent = self.get_parent()
+			.map(|parent| parent.upgrade())
+			.flatten();
+		if let Some(parent) = parent {
+			let mut parent = parent.lock();
 			parent.vfork_state = VForkState::None;
 		}
 	}

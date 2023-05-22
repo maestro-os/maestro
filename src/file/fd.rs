@@ -14,7 +14,7 @@ use crate::limits;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::cmp::max;
 
@@ -141,7 +141,7 @@ impl FileDescriptor {
 	/// Returns the open file associated with the descriptor.
 	///
 	/// If the open file doesn't exist, the function returns an error.
-	pub fn get_open_file(&self) -> Result<SharedPtr<OpenFile>, Errno> {
+	pub fn get_open_file(&self) -> Result<Arc<Mutex<OpenFile>>, Errno> {
 		OpenFile::get(&self.location).ok_or_else(|| errno!(ENOENT))
 	}
 }

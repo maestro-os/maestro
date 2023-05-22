@@ -22,7 +22,7 @@ use crate::util::container::vec::Vec;
 use crate::util::io;
 use crate::util::lock::IntMutex;
 use crate::util::lock::MutexGuard;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::ptr::arc::Arc;
 use crate::vga;
 use core::cmp::*;
 use core::mem::MaybeUninit;
@@ -124,7 +124,7 @@ pub struct TTY {
 static mut INIT_TTY: MaybeUninit<IntMutex<TTY>> = MaybeUninit::uninit();
 
 /// The list of every TTYs except the init TTY.
-static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
+static TTYS: IntMutex<Vec<Arc<IntMutex<TTY>>>> = IntMutex::new(Vec::new());
 
 /// The current TTY being displayed on screen. If `None`, the init TTY is being
 /// displayed.
@@ -139,7 +139,7 @@ pub enum TTYHandle {
 	/// Handle to the init TTY.
 	Init(&'static IntMutex<TTY>),
 	/// Handle to a normal TTY.
-	Normal(IntSharedPtr<TTY>),
+	Normal(Arc<IntMutex<TTY>>),
 }
 
 impl<'a> TTYHandle {
