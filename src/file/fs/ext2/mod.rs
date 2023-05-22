@@ -27,7 +27,6 @@ mod block_group_descriptor;
 mod directory_entry;
 mod inode;
 
-use crate::util::lock::Mutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs::Filesystem;
@@ -50,6 +49,7 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
+use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;

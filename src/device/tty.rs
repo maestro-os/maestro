@@ -1,7 +1,6 @@
 //! Each TTY or pseudo-TTY has to be associated with a device file in order to
 //! communicate with it.
 
-use crate::util::lock::IntMutex;
 use crate::device::DeviceHandle;
 use crate::errno;
 use crate::errno::Errno;
@@ -19,6 +18,7 @@ use crate::tty::WinSize;
 use crate::tty::TTY;
 use crate::util::io;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 

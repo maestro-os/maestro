@@ -25,7 +25,6 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
-use crate::util::lock::IntMutex;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::file;
@@ -39,6 +38,7 @@ use crate::syscall::ioctl;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;

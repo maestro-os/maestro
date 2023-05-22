@@ -5,7 +5,6 @@
 
 mod node;
 
-use crate::util::lock::Mutex;
 use super::kernfs::node::KernFSNode;
 use super::kernfs::KernFS;
 use super::Filesystem;
@@ -25,6 +24,7 @@ use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
+use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::mem::size_of;
 use node::TmpFSRegular;

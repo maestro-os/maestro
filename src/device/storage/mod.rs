@@ -6,8 +6,6 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
 use crate::device;
 use crate::device::bus::pci;
 use crate::device::id;
@@ -30,6 +28,8 @@ use crate::syscall::ioctl;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
+use crate::util::lock::Mutex;
 use crate::util::math;
 use crate::util::ptr::arc::Arc;
 use crate::util::ptr::arc::Weak;

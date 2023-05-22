@@ -1,9 +1,9 @@
 //! This module implements an `Arc`, similar to the one present in the Rust standard library.
 
-use core::fmt;
 use crate::errno::Errno;
 use crate::memory::malloc;
 use core::borrow::Borrow;
+use core::fmt;
 use core::marker::Unsize;
 use core::mem::size_of;
 use core::ops::CoerceUnsized;

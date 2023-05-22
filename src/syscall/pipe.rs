@@ -1,13 +1,13 @@
 //! The pipe system call allows to create a pipe.
 
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
 use crate::errno::Errno;
 use crate::file::buffer;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::open_file;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
 use crate::util::TryDefault;
 use core::ffi::c_int;
 use macros::syscall;

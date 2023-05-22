@@ -1,6 +1,5 @@
 //! This file implements sockets.
 
-use crate::util::lock::IntMutex;
 use super::Buffer;
 use crate::errno::Errno;
 use crate::file::buffer::BlockHandler;
@@ -8,6 +7,7 @@ use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 

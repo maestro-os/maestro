@@ -3,9 +3,6 @@
 pub mod elf;
 pub mod vdso;
 
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
 use crate::errno::Errno;
 use crate::file::File;
 use crate::process::mem_space::MemSpace;
@@ -16,6 +13,9 @@ use crate::process::Process;
 use crate::process::Uid;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::lock::IntMutex;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 
 /// Structure storing informations to prepare a program image to be executed.

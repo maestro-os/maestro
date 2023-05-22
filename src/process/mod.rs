@@ -573,7 +573,9 @@ impl Process {
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
-			signal_handlers: Arc::new(Mutex::new([SignalHandler::Default; signal::SIGNALS_COUNT]))?,
+			signal_handlers: Arc::new(Mutex::new(
+				[SignalHandler::Default; signal::SIGNALS_COUNT],
+			))?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
 
@@ -755,9 +757,7 @@ impl Process {
 		self.termsig = sig_type;
 
 		// Wake the parent
-		let parent = self.get_parent()
-			.map(|parent| parent.upgrade())
-			.flatten();
+		let parent = self.get_parent().map(|parent| parent.upgrade()).flatten();
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
 			parent.kill(&Signal::SIGCHLD, false);
@@ -1258,9 +1258,7 @@ impl Process {
 		self.vfork_state = VForkState::None;
 
 		// Resetting the parent's vfork state if needed
-		let parent = self.get_parent()
-			.map(|parent| parent.upgrade())
-			.flatten();
+		let parent = self.get_parent().map(|parent| parent.upgrade()).flatten();
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
 			parent.vfork_state = VForkState::None;

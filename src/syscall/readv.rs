@@ -1,6 +1,5 @@
 //! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
-use crate::util::lock::IntMutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
@@ -14,6 +13,7 @@ use crate::process::signal::Signal;
 use crate::process::Process;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
 use crate::util::ptr::arc::Arc;
 use core::cmp::min;
 use core::ffi::c_int;

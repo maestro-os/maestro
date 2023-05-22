@@ -3,7 +3,6 @@
 
 mod cpio;
 
-use crate::util::lock::Mutex;
 use crate::device;
 use crate::errno;
 use crate::errno::Errno;
@@ -16,6 +15,7 @@ use crate::file::FileType;
 use crate::file::VFS;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
+use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use cpio::CPIOParser;

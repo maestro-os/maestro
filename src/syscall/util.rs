@@ -1,6 +1,5 @@
 //! This module implements utility functions for system calls.
 
-use crate::util::lock::Mutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::path::Path;
@@ -15,6 +14,7 @@ use crate::process::Process;
 use crate::process::State;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;

@@ -3,7 +3,6 @@
 pub mod pipe;
 pub mod socket;
 
-use crate::util::lock::IntMutex;
 use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::file::FileLocation;
@@ -13,6 +12,7 @@ use crate::syscall::ioctl;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryDefault;

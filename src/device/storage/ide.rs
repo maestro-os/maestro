@@ -1,7 +1,6 @@
 //! The Integrated Drive Electronics (IDE) is a controller allowing to access
 //! storage drives.
 
-use crate::util::lock::Mutex;
 use crate::device::bar::BAR;
 use crate::device::bus::pci;
 use crate::device::storage::pata::PATAInterface;
@@ -9,6 +8,7 @@ use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
+use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 
 /// The beginning of the port range for the primary ATA bus (compatibility

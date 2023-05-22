@@ -4,7 +4,6 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use crate::util::lock::Mutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -23,6 +22,7 @@ use crate::file::Uid;
 use crate::limits;
 use crate::util::container::string::String;
 use crate::util::lock::IntMutex;
+use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::ptr::NonNull;

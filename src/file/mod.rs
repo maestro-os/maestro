@@ -15,8 +15,6 @@ pub mod path;
 pub mod util;
 pub mod vfs;
 
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
 use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
@@ -33,6 +31,8 @@ use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
+use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::ffi::c_void;

@@ -1,6 +1,5 @@
 //! The `execve` system call allows to execute a program from a file.
 
-use crate::util::lock::Mutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::path::Path;
@@ -19,6 +18,7 @@ use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
+use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::ops::Range;
 use macros::syscall;

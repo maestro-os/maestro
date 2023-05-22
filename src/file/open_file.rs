@@ -1,7 +1,6 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
-use crate::util::lock::IntMutex;
 use crate::device;
 use crate::device::DeviceType;
 use crate::errno;
@@ -20,6 +19,7 @@ use crate::time;
 use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::cmp::min;

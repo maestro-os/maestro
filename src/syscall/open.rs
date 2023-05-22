@@ -1,7 +1,6 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
-use crate::util::lock::Mutex;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -17,6 +16,7 @@ use crate::file::Mode;
 use crate::file::Uid;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::ffi::c_int;

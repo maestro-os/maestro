@@ -1,8 +1,6 @@
 //! The `socketpair` system call creates a pair of file descriptor to an unnamed
 //! socket which can be used for IPC (Inter-Process Communication).
 
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::buffer;
@@ -10,6 +8,8 @@ use crate::file::buffer::socket::Socket;
 use crate::file::open_file;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
 use core::ffi::c_int;
 use macros::syscall;
 

@@ -7,7 +7,6 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use crate::util::container::hashmap::HashMap;
 use super::path::Path;
 use super::File;
 use crate::errno;
@@ -17,6 +16,7 @@ use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;

@@ -1,6 +1,5 @@
 //! The `openat` syscall allows to open a file.
 
-use crate::util::lock::Mutex;
 use super::util;
 use crate::errno::Errno;
 use crate::file;
@@ -11,6 +10,7 @@ use crate::file::FileContent;
 use crate::file::Mode;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_int;
 use macros::syscall;
