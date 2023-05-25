@@ -73,7 +73,7 @@ impl MemGap {
 			.size
 			.get()
 			.checked_sub(off + size)
-			.and_then(|size| NonZeroUsize::new(size))
+			.and_then(NonZeroUsize::new)
 			.map(|gap_size| {
 				let addr = unsafe { self.begin.add((off + size) * memory::PAGE_SIZE) };
 

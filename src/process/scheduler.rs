@@ -110,7 +110,7 @@ impl Scheduler {
 	}
 
 	/// Returns an iterator on the scheduler's processes.
-	pub fn iter_process<'a>(&'a mut self) -> MapIterator<'a, Pid, Arc<IntMutex<Process>>> {
+	pub fn iter_process(&mut self) -> MapIterator<'_, Pid, Arc<IntMutex<Process>>> {
 		self.processes.iter()
 	}
 
@@ -290,19 +290,18 @@ impl Scheduler {
 
 		let process_filter = |(_, proc): &(&Pid, &Arc<IntMutex<Process>>)| {
 			let guard = proc.lock();
-			Self::can_run(&*guard, priority_sum, priority_max, processes_count)
+			Self::can_run(&guard, priority_sum, priority_max, processes_count)
 		};
 
 		let next_proc = self
 			.processes
 			.range((curr_pid + 1)..)
-			.filter(process_filter)
-			.next()
+			.find(process_filter)
 			.or_else(|| {
 				// If no suitable process is found, go back to the beginning to check processes
 				// located before the previous process (looping)
 
-				self.processes.iter().filter(process_filter).next()
+				self.processes.iter().find(process_filter)
 			})
 			.map(|(pid, proc)| (*pid, proc));
 
@@ -342,10 +341,7 @@ impl Scheduler {
 
 			// The current core ID
 			let core_id = 0; // TODO
-				 // Getting the temporary stack
-			let tmp_stack = sched.get_tmp_stack(core_id);
-
-			tmp_stack
+			sched.get_tmp_stack(core_id)
 		};
 
 		loop {

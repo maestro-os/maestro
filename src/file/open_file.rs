@@ -111,16 +111,17 @@ impl OpenFile {
 					let mut open_file = open_file_mutex.lock();
 
 					let read =
-						open_file.can_read() || flags & O_RDONLY != 0 || flags & O_RDWR != 0;
-					let write =
-						open_file.can_write() || flags & O_WRONLY != 0 || flags & O_RDWR != 0;
+						open_file.can_read() || flags & 0b11 == O_RDONLY || flags & 0b11 == O_RDWR;
+					let write = open_file.can_write()
+						|| flags & 0b11 == O_WRONLY
+						|| flags & 0b11 == O_RDWR;
 
 					let mut new_flags = (open_file.flags & !0b11) | (flags & !0b11);
 					if read && write {
 						new_flags |= O_RDWR;
 					} else if read {
 						new_flags |= O_RDONLY;
-					} else if read {
+					} else if write {
 						new_flags |= O_WRONLY;
 					}
 
@@ -202,7 +203,7 @@ impl OpenFile {
 		}
 
 		open_file.ref_count -= 1;
-		if open_file.ref_count <= 0 {
+		if open_file.ref_count == 0 {
 			drop(open_file);
 
 			open_files.remove(location);
@@ -377,7 +378,7 @@ impl IO for OpenFile {
 
 		let (len, eof) = file.read(self.curr_off, buf)?;
 
-		self.curr_off += len as u64;
+		self.curr_off += len;
 		Ok((len as _, eof))
 	}
 
@@ -408,7 +409,7 @@ impl IO for OpenFile {
 
 		let len = file.write(self.curr_off, buf)?;
 
-		self.curr_off += len as u64;
+		self.curr_off += len;
 		Ok(len as _)
 	}
 

@@ -201,7 +201,7 @@ impl<T> Alloc<T> {
 
 	/// Returns an immutable reference to the underlying slice.
 	pub fn as_slice(&self) -> &[T] {
-		unsafe { &*self.slice.as_ref() }
+		unsafe { self.slice.as_ref() }
 	}
 
 	/// Returns a mutable reference to the underlying slice.

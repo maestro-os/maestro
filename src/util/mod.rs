@@ -116,7 +116,7 @@ pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 }
 
 /// Returns an immutable slice to the given value.
-pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
+pub fn as_slice<T>(val: &T) -> &[u8] {
 	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of::<T>()) }
 }
 
@@ -152,7 +152,7 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 ///
 /// Not every types are defined for every possible memory representations. Thus, some values
 /// passed as input to this function might be invalid for a given type, which is undefined.
-pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
+pub unsafe fn reinterpret<T>(slice: &[u8]) -> Option<&T> {
 	if size_of::<T>() <= slice.len() {
 		// Safe because the slice is large enough
 		let val = &*(slice.as_ptr() as *const T);
@@ -224,7 +224,7 @@ macro_rules! include_bytes_aligned {
 	($align:ty, $path:expr) => {
 		// const block to encapsulate static
 		{
-			static ALIGNED: &crate::util::Aligned<$align, [u8]> = &crate::util::Aligned {
+			static ALIGNED: &$crate::util::Aligned<$align, [u8]> = &$crate::util::Aligned {
 				_align: [],
 				data: *include_bytes!($path),
 			};

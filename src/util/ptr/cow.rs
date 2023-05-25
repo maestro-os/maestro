@@ -41,9 +41,8 @@ impl<'a, T: 'a + TryClone> Cow<'a, T> {
 
 	/// Returns a mutable reference to the owned data.
 	pub fn to_mut(&mut self) -> Result<&mut T, Errno> {
-		match self {
-			Self::Borrowed(r) => *self = Self::Owned(r.try_clone()?),
-			_ => {}
+		if let Self::Borrowed(r) = self {
+			*self = Self::Owned(r.try_clone()?);
 		}
 
 		match self {
@@ -75,7 +74,7 @@ impl<'a, T: 'a + TryClone> AsRef<T> for Cow<'a, T> {
 	fn as_ref(&self) -> &T {
 		match self {
 			Self::Borrowed(r) => r,
-			Self::Owned(v) => &v,
+			Self::Owned(v) => v,
 		}
 	}
 }

@@ -12,6 +12,7 @@ use crate::process::Process;
 use core::ffi::c_int;
 use core::ffi::c_void;
 use core::mem::transmute;
+use core::ptr::null;
 use macros::syscall;
 
 #[syscall]
@@ -52,11 +53,9 @@ pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
 
 		SignalHandler::Handler(action) => {
 			if let Some(handler) = action.sa_handler {
-				let handler_ptr = unsafe { transmute::<SigHandler, *const c_void>(handler) };
-
-				handler_ptr
+				handler as *const c_void
 			} else {
-				0 as _
+				null::<c_void>()
 			}
 		}
 	};

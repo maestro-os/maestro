@@ -237,7 +237,7 @@ fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
 /// locked the mutex since unlocking changes the interrupt flag.
 #[no_mangle]
 pub unsafe extern "C" fn unlock_callbacks(id: usize) {
-	CALLBACKS.assume_init_mut()[id as usize].unlock();
+	CALLBACKS.assume_init_mut()[id].unlock();
 }
 
 /// Feeds the entropy pool using the given data.

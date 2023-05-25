@@ -85,7 +85,7 @@ pub fn openat(
 		let mut f = file.lock();
 
 		let loc = f.get_location().clone();
-		let (read, write, cloexec) = super::open::handle_flags(&mut *f, flags, uid, gid)?;
+		let (read, write, cloexec) = super::open::handle_flags(&mut f, flags, uid, gid)?;
 
 		(loc, read, write, cloexec)
 	};

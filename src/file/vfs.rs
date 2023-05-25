@@ -32,12 +32,11 @@ use core::ptr::NonNull;
 ///
 /// If the file in not located on a filesystem, the function does nothing.
 fn update_location(file: &mut File, mountpoint: &MountPoint) {
-	match file.get_location_mut() {
-		FileLocation::Filesystem {
-			mountpoint_id, ..
-		} => *mountpoint_id = Some(mountpoint.get_id()),
-
-		_ => {}
+	if let FileLocation::Filesystem {
+		mountpoint_id, ..
+	} = file.get_location_mut()
+	{
+		*mountpoint_id = Some(mountpoint.get_id());
 	}
 }
 
@@ -313,11 +312,12 @@ impl VFS {
 		mode: Mode,
 		content: FileContent,
 	) -> Result<Arc<Mutex<File>>, Errno> {
-		match self.get_file_from_parent(parent, name.try_clone()?, uid, gid, false) {
-			// If file already exist, error
-			Ok(_) => return Err(errno!(EEXIST)),
-			// If file doesn't exist, do nothing
-			Err(_) => {}
+		// If file already exist, error
+		if self
+			.get_file_from_parent(parent, name.try_clone()?, uid, gid, false)
+			.is_ok()
+		{
+			return Err(errno!(EEXIST));
 		}
 
 		// Checking for errors

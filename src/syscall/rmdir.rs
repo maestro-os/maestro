@@ -20,7 +20,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 		let mem_space_guard = mem_space.lock();
 
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(&*proc, path)?;
+		let path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, proc.euid, proc.egid)
 	};
@@ -42,7 +42,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 			_ => return Err(errno!(ENOTDIR)),
 		}
 
-		vfs.remove_file(&*file, uid, gid)?;
+		vfs.remove_file(&file, uid, gid)?;
 	}
 
 	Ok(0)

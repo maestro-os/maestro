@@ -146,7 +146,7 @@ fn check_waitable(
 
 	if i == 0 {
 		// No target
-		return Err(errno!(ECHILD));
+		Err(errno!(ECHILD))
 	} else {
 		Ok(None)
 	}
@@ -181,7 +181,7 @@ pub fn do_waitpid(
 			let mut wstatus_val = Default::default();
 			let mut rusage_val = Default::default();
 			let result =
-				check_waitable(&mut *proc, pid, &mut wstatus_val, options, &mut rusage_val)?;
+				check_waitable(&mut proc, pid, &mut wstatus_val, options, &mut rusage_val)?;
 
 			// Setting values to userspace
 			{

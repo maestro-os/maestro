@@ -161,7 +161,7 @@ pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
 	debug_assert!(pos < BUFFER_SIZE as usize);
 	unsafe {
 		vmem::write_lock_wrap(|| {
-			*get_buffer_virt().offset(pos as isize) = c;
+			*get_buffer_virt().add(pos) = c;
 		});
 	}
 }

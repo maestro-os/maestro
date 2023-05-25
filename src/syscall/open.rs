@@ -66,14 +66,14 @@ fn get_file(
 		let mut parent = parent_mutex.lock();
 
 		let file_result =
-			vfs.get_file_from_parent(&mut *parent, name.try_clone()?, uid, gid, follow_links);
+			vfs.get_file_from_parent(&mut parent, name.try_clone()?, uid, gid, follow_links);
 		match file_result {
 			// If the file is found, return it
 			Ok(file) => Ok(file),
 
 			Err(e) if e.as_int() == errno::ENOENT => {
 				// Creating the file
-				vfs.create_file(&mut *parent, name, uid, gid, mode, FileContent::Regular)
+				vfs.create_file(&mut parent, name, uid, gid, mode, FileContent::Regular)
 			}
 
 			Err(e) => Err(e),
@@ -157,7 +157,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		let mut f = file.lock();
 
 		let loc = f.get_location().clone();
-		let (read, write, cloexec) = handle_flags(&mut *f, flags, uid, gid)?;
+		let (read, write, cloexec) = handle_flags(&mut f, flags, uid, gid)?;
 
 		(loc, read, write, cloexec)
 	};
@@ -179,13 +179,9 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let fd_id = fd.get_id();
 
 	// Flushing file
-	match file.lock().sync() {
-		Err(e) => {
-			fds.close_fd(fd_id)?;
-			return Err(e);
-		}
-
-		_ => {}
+	if let Err(e) = file.lock().sync() {
+		fds.close_fd(fd_id)?;
+		return Err(e);
 	}
 
 	Ok(fd.get_id() as _)

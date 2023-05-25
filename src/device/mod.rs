@@ -225,7 +225,7 @@ impl Device {
 				let mut parent = parent_mutex.lock();
 
 				// Creating the device file
-				vfs.create_file(&mut *parent, filename, 0, 0, mode, file_content)?;
+				vfs.create_file(&mut parent, filename, 0, 0, mode, file_content)?;
 			}
 		}
 
@@ -242,7 +242,7 @@ impl Device {
 		if let Some(vfs) = vfs.as_mut() {
 			if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
 				let file = file_mutex.lock();
-				vfs.remove_file(&*file, 0, 0)?;
+				vfs.remove_file(&file, 0, 0)?;
 			}
 		}
 

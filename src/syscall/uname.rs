@@ -42,14 +42,14 @@ pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
 		machine: [0; UTSNAME_LENGTH],
 	};
 
-	util::slice_copy(&crate::NAME.as_bytes(), &mut utsname.sysname);
+	util::slice_copy(crate::NAME.as_bytes(), &mut utsname.sysname);
 
 	let hostname = crate::HOSTNAME.lock();
 	util::slice_copy(&hostname, &mut utsname.nodename);
 
-	util::slice_copy(&crate::VERSION.as_bytes(), &mut utsname.release);
+	util::slice_copy(crate::VERSION.as_bytes(), &mut utsname.release);
 	util::slice_copy(&[], &mut utsname.version);
-	util::slice_copy(&crate::ARCH.as_bytes(), &mut utsname.machine);
+	util::slice_copy(crate::ARCH.as_bytes(), &mut utsname.machine);
 
 	Ok(0)
 }

@@ -16,7 +16,7 @@ pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
 	let mem_space = mem_space_mutex.lock();
 
 	let path = Path::from_str(path.get(&mem_space)?.ok_or(errno!(EFAULT))?, true)?;
-	let path = super::util::get_absolute_path(&*proc, path)?;
+	let path = super::util::get_absolute_path(&proc, path)?;
 
 	let vfs_mutex = vfs::get();
 	let mut vfs = vfs_mutex.lock();

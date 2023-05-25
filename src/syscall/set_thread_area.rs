@@ -28,10 +28,10 @@ pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
 /// Returns an entry ID for the given process and entry number.
 ///
 /// If the id is `-1`, the function shall find a free entry.
-pub fn get_entry<'a>(
-	proc: &'a mut Process,
+pub fn get_entry(
+	proc: &mut Process,
 	entry_number: i32,
-) -> Result<(usize, &'a mut gdt::Entry), Errno> {
+) -> Result<(usize, &mut gdt::Entry), Errno> {
 	let end_entry = (TLS_BEGIN_INDEX + process::TLS_ENTRIES_COUNT) as i32;
 
 	// Checking the entry number is in bound
@@ -66,7 +66,7 @@ pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 		.ok_or(errno!(EFAULT))?;
 
 	// Getting the entry with its id
-	let (id, entry) = get_entry(&mut *proc, info.get_entry_number())?;
+	let (id, entry) = get_entry(&mut proc, info.get_entry_number())?;
 
 	// Updating the entry
 	*entry = info.to_descriptor();

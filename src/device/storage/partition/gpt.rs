@@ -23,7 +23,7 @@ const CHECKSUM_POLYNOM: u32 = 0xedb88320;
 // TODO Add GPT restoring from alternate table (requires user confirmation)
 
 /// Type representing a Globally Unique IDentifier.
-type GUID = [u8; 16];
+type Guid = [u8; 16];
 
 /// Translates the given LBA value `lba` into a positive LBA value.
 ///
@@ -52,9 +52,9 @@ fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {
 #[repr(C, packed)]
 struct GPTEntry {
 	/// The partition type's GUID.
-	partition_type: GUID,
+	partition_type: Guid,
 	/// The partition's GUID.
-	guid: GUID,
+	guid: Guid,
 	/// The starting LBA.
 	start: i64,
 	/// The ending LBA.
@@ -116,7 +116,7 @@ impl GPTEntry {
 /// Structure representing the GPT header.
 #[derive(Clone)]
 #[repr(C, packed)]
-pub struct GPT {
+pub struct Gpt {
 	/// The header's signature.
 	signature: [u8; 8],
 	/// The header's revision.
@@ -136,7 +136,7 @@ pub struct GPT {
 	/// The last usable sector.
 	last_usable: u64,
 	/// The disk's GUID.
-	disk_guid: GUID,
+	disk_guid: Guid,
 	/// The LBA of the beginning of the GUID partition entries array.
 	entries_start: i64,
 	/// The number of entries in the table.
@@ -147,7 +147,7 @@ pub struct GPT {
 	entries_checksum: u32,
 }
 
-impl GPT {
+impl Gpt {
 	/// Reads the header structure from the given storage interface `storage` at
 	/// the given LBA `lba`.
 	///
@@ -156,7 +156,7 @@ impl GPT {
 		let block_size = storage.get_block_size() as usize;
 		let blocks_count = storage.get_blocks_count();
 
-		if size_of::<GPT>() > block_size {
+		if size_of::<Gpt>() > block_size {
 			return Err(errno!(EINVAL));
 		}
 
@@ -166,7 +166,7 @@ impl GPT {
 		storage.read(buff.as_slice_mut(), lba, 1)?;
 
 		// Valid because the header's size doesn't exceeds the size of the block
-		let gpt_hdr = unsafe { &*(buff.as_ptr() as *const GPT) };
+		let gpt_hdr = unsafe { &*(buff.as_ptr() as *const Gpt) };
 		if !gpt_hdr.is_valid() {
 			return Err(errno!(EINVAL));
 		}
@@ -246,7 +246,7 @@ impl GPT {
 	}
 }
 
-impl Table for GPT {
+impl Table for Gpt {
 	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> {
 		let blocks_count = storage.get_blocks_count();
 

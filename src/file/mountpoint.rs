@@ -271,7 +271,7 @@ fn drop_fs(source: &MountSource) {
 		fs.ref_count -= 1;
 
 		// If no reference left, drop
-		if fs.ref_count <= 0 {
+		if fs.ref_count == 0 {
 			container.remove(source);
 		}
 	}
@@ -455,7 +455,7 @@ pub fn remove(path: &Path) -> Result<(), Errno> {
 	let mut path_to_id = PATH_TO_ID.lock();
 	let mut mount_points = MOUNT_POINTS.lock();
 
-	let id = path_to_id.get(path).ok_or(errno!(EINVAL))?.clone();
+	let id = *path_to_id.get(path).ok_or(errno!(EINVAL))?;
 	let _mountpoint = mount_points.get(&id).ok_or(errno!(EINVAL))?;
 
 	// TODO Check if busy (EBUSY)

@@ -20,7 +20,7 @@ pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
 	let cwd = crate::format!("{}", proc.get_cwd())?;
 
 	// Checking that the buffer is large enough
-	if (size as usize) < cwd.len() + 1 {
+	if size < cwd.len() + 1 {
 		return Err(errno!(ERANGE));
 	}
 

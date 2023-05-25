@@ -111,7 +111,7 @@ pub fn do_writev(
 			}
 		}
 
-		let result = write(mem_space, iov, iovcnt as _, &mut *open_file);
+		let result = write(mem_space, iov, iovcnt as _, &mut open_file);
 		match &result {
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {

@@ -24,7 +24,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let mem_space_guard = mem_space.lock();
 
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(&*proc, path)?;
+		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let umask = proc.umask;
 		let uid = proc.uid;
@@ -78,7 +78,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
 		let mut parent = parent_mutex.lock();
 
-		vfs.create_file(&mut *parent, name, uid, gid, mode, file_content)?;
+		vfs.create_file(&mut parent, name, uid, gid, mode, file_content)?;
 	}
 
 	Ok(0)

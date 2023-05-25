@@ -180,11 +180,7 @@ impl<T> Vec<T> {
 		unsafe {
 			// Shift
 			let ptr = data.as_ptr_mut();
-			ptr::copy(
-				ptr.offset(index as _),
-				ptr.offset((index + 1) as _),
-				self.len - index,
-			);
+			ptr::copy(ptr.add(index), ptr.add(index + 1), self.len - index);
 
 			ptr::write(&mut data[index], element);
 		}
@@ -210,11 +206,7 @@ impl<T> Vec<T> {
 
 			// Shift
 			let ptr = data.as_ptr_mut();
-			ptr::copy(
-				ptr.offset((index + 1) as _),
-				ptr.offset(index as _),
-				self.len - index - 1,
-			);
+			ptr::copy(ptr.add(index + 1), ptr.add(index), self.len - index - 1);
 
 			v
 		};
@@ -233,7 +225,7 @@ impl<T> Vec<T> {
 
 		unsafe {
 			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
-			ptr::copy_nonoverlapping(other.as_ptr(), self_ptr.offset(self.len as _), other.len());
+			ptr::copy_nonoverlapping(other.as_ptr(), self_ptr.add(self.len), other.len());
 		}
 
 		self.len += other.len();
@@ -708,7 +700,7 @@ impl<'a, T> IntoIterator for &'a Vec<T> {
 	type Item = &'a T;
 
 	fn into_iter(self) -> Self::IntoIter {
-		VecIterator::new(&self)
+		VecIterator::new(self)
 	}
 }
 

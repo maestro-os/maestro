@@ -27,7 +27,7 @@ use core::any::Any;
 /// unused.
 #[repr(C)]
 #[derive(Debug, Default)]
-struct FSID {
+struct Fsid {
 	/// Unused.
 	_val: [i32; 2],
 }
@@ -51,7 +51,7 @@ pub struct Statfs {
 	/// Free inodes in filesystem.
 	f_ffree: i64,
 	/// Filesystem ID.
-	f_fsid: FSID,
+	f_fsid: Fsid,
 	/// Maximum length of filenames.
 	f_namelen: u32,
 	/// Fragment size.

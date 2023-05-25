@@ -77,36 +77,32 @@ impl KernFS {
 	pub fn set_root(&mut self, mut root: Box<dyn KernFSNode>) -> Result<(), Errno> {
 		// Adding `.` and `..` entries if the new file is a directory
 		let mut content = root.get_content().into_owned()?;
-		match content {
-			FileContent::Directory(ref mut entries) => {
-				if entries.get(b".".as_slice()).is_none() {
-					entries.insert(
-						b".".as_slice().try_into()?,
-						DirEntry {
-							inode: ROOT_INODE,
-							entry_type: FileType::Directory,
-						},
-					)?;
+		if let FileContent::Directory(ref mut entries) = content {
+			if entries.get(b".".as_slice()).is_none() {
+				entries.insert(
+					b".".as_slice().try_into()?,
+					DirEntry {
+						inode: ROOT_INODE,
+						entry_type: FileType::Directory,
+					},
+				)?;
 
-					let new_cnt = root.get_hard_links_count() + 1;
-					root.set_hard_links_count(new_cnt);
-				}
-
-				if entries.get(b"..".as_slice()).is_none() {
-					entries.insert(
-						b"..".as_slice().try_into()?,
-						DirEntry {
-							inode: ROOT_INODE,
-							entry_type: FileType::Directory,
-						},
-					)?;
-
-					let new_cnt = root.get_hard_links_count() + 1;
-					root.set_hard_links_count(new_cnt);
-				}
+				let new_cnt = root.get_hard_links_count() + 1;
+				root.set_hard_links_count(new_cnt);
 			}
 
-			_ => {}
+			if entries.get(b"..".as_slice()).is_none() {
+				entries.insert(
+					b"..".as_slice().try_into()?,
+					DirEntry {
+						inode: ROOT_INODE,
+						entry_type: FileType::Directory,
+					},
+				)?;
+
+				let new_cnt = root.get_hard_links_count() + 1;
+				root.set_hard_links_count(new_cnt);
+			}
 		}
 		root.set_content(content);
 
@@ -209,38 +205,34 @@ impl KernFS {
 		let inode = self.add_node(Box::new(node)?)?;
 
 		// Adding `.` and `..` entries if the new file is a directory
-		match file_content {
-			FileContent::Directory(ref mut entries) => {
-				if entries.get(b".".as_slice()).is_none() {
-					entries.insert(
-						b".".as_slice().try_into()?,
-						DirEntry {
-							inode,
-							entry_type: FileType::Directory,
-						},
-					)?;
+		if let FileContent::Directory(ref mut entries) = file_content {
+			if entries.get(b".".as_slice()).is_none() {
+				entries.insert(
+					b".".as_slice().try_into()?,
+					DirEntry {
+						inode,
+						entry_type: FileType::Directory,
+					},
+				)?;
 
-					let node = self.get_node_mut(inode)?;
-					let new_cnt = node.get_hard_links_count() + 1;
-					node.set_hard_links_count(new_cnt);
-				}
-
-				if entries.get(b"..".as_slice()).is_none() {
-					entries.insert(
-						b"..".as_slice().try_into()?,
-						DirEntry {
-							inode: parent_inode,
-							entry_type: FileType::Directory,
-						},
-					)?;
-
-					let parent = self.get_node_mut(parent_inode).unwrap();
-					let new_cnt = parent.get_hard_links_count() + 1;
-					parent.set_hard_links_count(new_cnt);
-				}
+				let node = self.get_node_mut(inode)?;
+				let new_cnt = node.get_hard_links_count() + 1;
+				node.set_hard_links_count(new_cnt);
 			}
 
-			_ => {}
+			if entries.get(b"..".as_slice()).is_none() {
+				entries.insert(
+					b"..".as_slice().try_into()?,
+					DirEntry {
+						inode: parent_inode,
+						entry_type: FileType::Directory,
+					},
+				)?;
+
+				let parent = self.get_node_mut(parent_inode).unwrap();
+				let new_cnt = parent.get_hard_links_count() + 1;
+				parent.set_hard_links_count(new_cnt);
+			}
 		}
 		let node = self.get_node_mut(inode)?;
 		node.set_content(file_content);
@@ -453,20 +445,16 @@ impl Filesystem for KernFS {
 		};
 
 		let node = self.get_node(inode)?;
-		match node.get_content().as_ref() {
-			FileContent::Directory(entries) => {
-				if entries.len() > 2 {
-					return Err(errno!(ENOTEMPTY));
-				}
-
-				for (e, _) in entries.iter() {
-					if e != "." && e != ".." {
-						return Err(errno!(ENOTEMPTY));
-					}
-				}
+		if let FileContent::Directory(entries) = node.get_content().as_ref() {
+			if entries.len() > 2 {
+				return Err(errno!(ENOTEMPTY));
 			}
 
-			_ => {}
+			for (e, _) in entries.iter() {
+				if e != "." && e != ".." {
+					return Err(errno!(ENOTEMPTY));
+				}
+			}
 		}
 
 		// Removing directory entry

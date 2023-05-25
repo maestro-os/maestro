@@ -113,7 +113,7 @@ pub fn do_access(
 		}
 	}
 
-	return Ok(0);
+	Ok(0)
 }
 
 #[syscall]

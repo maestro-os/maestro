@@ -40,12 +40,12 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	};
 
 	if pid == curr_proc.pid {
-		f(&mut *curr_proc)?;
+		f(&mut curr_proc)?;
 	} else {
 		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
 		let mut target_proc = target_mutex.lock();
 
-		f(&mut *target_proc)?;
+		f(&mut target_proc)?;
 	}
 
 	Ok(())

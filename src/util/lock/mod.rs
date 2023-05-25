@@ -53,7 +53,7 @@ pub struct MutexGuard<'a, T: ?Sized, const INT: bool> {
 	mutex: &'a Mutex<T, INT>,
 }
 
-impl<'a, T: ?Sized + 'a, const INT: bool> Deref for MutexGuard<'a, T, INT> {
+impl<T: ?Sized, const INT: bool> Deref for MutexGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -61,13 +61,15 @@ impl<'a, T: ?Sized + 'a, const INT: bool> Deref for MutexGuard<'a, T, INT> {
 	}
 }
 
-impl<'a, T: ?Sized + 'a, const INT: bool> DerefMut for MutexGuard<'a, T, INT> {
+impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		unsafe { self.mutex.get_mut_payload() }
 	}
 }
 
-impl<'a, T: ?Sized, const INT: bool> Drop for MutexGuard<'a, T, INT> {
+unsafe impl<T: ?Sized + Sync, const INT: bool> Sync for MutexGuard<'_, T, INT> {}
+
+impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
 	fn drop(&mut self) {
 		unsafe {
 			self.mutex.unlock();

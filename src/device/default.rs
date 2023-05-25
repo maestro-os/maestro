@@ -145,7 +145,7 @@ impl IO for RandomDeviceHandle {
 		self.block_handler.wake_processes(io::POLLOUT);
 
 		if let Some(pool) = &mut *pool {
-			let len = pool.write(&buff);
+			let len = pool.write(buff);
 			Ok(len as _)
 		} else {
 			Err(errno!(EINVAL))
@@ -196,7 +196,7 @@ impl IO for URandomDeviceHandle {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
-			let len = pool.write(&buff);
+			let len = pool.write(buff);
 			Ok(len as _)
 		} else {
 			Err(errno!(EINVAL))

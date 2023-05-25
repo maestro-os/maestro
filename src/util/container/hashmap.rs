@@ -211,7 +211,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		let index = self.get_bucket_index(&k);
+		let index = self.get_bucket_index(k);
 
 		if index < self.buckets.len() {
 			self.buckets[index].get(k)
@@ -228,7 +228,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		let index = self.get_bucket_index(&k);
+		let index = self.get_bucket_index(k);
 
 		if index < self.buckets.len() {
 			self.buckets[index].get_mut(k)
@@ -301,7 +301,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		let mut len = 0;
 
 		for b in self.buckets.iter_mut() {
-			b.elements.retain(|(k, v): &mut (K, V)| f(&k, &mut *v));
+			b.elements.retain(|(k, v): &mut (K, V)| f(k, &mut *v));
 			len += b.elements.len();
 		}
 
@@ -415,8 +415,7 @@ impl<K: Eq + Hash + fmt::Display, V: fmt::Display> fmt::Display for HashMap<K, V
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "[")?;
 
-		let mut iter = self.iter().enumerate();
-		while let Some((i, (key, value))) = iter.next() {
+		for (i, (key, value)) in self.iter().enumerate() {
 			write!(f, "{}: {}", key, value)?;
 
 			if i + 1 < self.len() {

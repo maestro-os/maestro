@@ -196,8 +196,8 @@ impl ACPIData {
 
 			// FIXME: This is garbage due to a merge in order to make things compile.
 			// This whole function needs a rewrite
-			let lowest = 0 as *const c_void;
-			let highest = 0 as *const c_void;
+			let lowest = core::ptr::null::<c_void>();
+			let highest = core::ptr::null::<c_void>();
 
 			// Mapping the full ACPI data
 			let begin = util::down_align(lowest, memory::PAGE_SIZE);
@@ -237,7 +237,7 @@ impl ACPIData {
 			&*rsdt_ptr
 		};
 
-		let entries_len = rsdt.header.get_length() as usize - size_of::<Rsdt>();
+		let entries_len = rsdt.header.get_length() - size_of::<Rsdt>();
 		let entries_count = entries_len / size_of::<u32>();
 		let entries_ptr = (rsdt_ptr as usize + size_of::<Rsdt>()) as *const u32;
 
@@ -281,7 +281,7 @@ impl ACPIData {
 			&*rsdt_ptr
 		};
 
-		let entries_len = rsdt.header.get_length() as usize - size_of::<Rsdt>();
+		let entries_len = rsdt.header.get_length() - size_of::<Rsdt>();
 		let entries_count = entries_len / size_of::<u32>();
 		let entries_ptr = (rsdt_ptr as usize + size_of::<Rsdt>()) as *const u32;
 

@@ -20,10 +20,10 @@ use core::ptr;
 use core::ptr::NonNull;
 
 /// The ELF image of the vDSO.
-static ELF_IMAGE: &'static [u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
+static ELF_IMAGE: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
 
 /// Informations on the vDSO ELF image.
-struct VDSO {
+struct Vdso {
 	/// The list of pages on which the image is loaded.
 	pages: Arc<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
 	/// The length of the ELF image in bytes.
@@ -42,10 +42,10 @@ pub struct MappedVDSO {
 }
 
 /// The info of the vDSO. If `None`, the vDSO is not loaded yet.
-static VDSO: Mutex<Option<VDSO>> = Mutex::new(None);
+static VDSO: Mutex<Option<Vdso>> = Mutex::new(None);
 
 /// Loads the vDSO in memory and returns the image.
-fn load_image() -> Result<VDSO, Errno> {
+fn load_image() -> Result<Vdso, Errno> {
 	let parser = ELFParser::new(ELF_IMAGE)?;
 	let entry_off = parser.get_header().e_entry as _;
 
@@ -66,7 +66,7 @@ fn load_image() -> Result<VDSO, Errno> {
 		pages.push(NonNull::new(ptr as *mut [u8; memory::PAGE_SIZE]).unwrap())?;
 	}
 
-	Ok(VDSO {
+	Ok(Vdso {
 		pages: Arc::new(pages)?,
 		len: ELF_IMAGE.len(),
 

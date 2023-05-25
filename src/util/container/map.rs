@@ -556,7 +556,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	///
 	/// `key` is the key to find.
 	#[inline]
-	pub fn get<'a>(&'a self, key: K) -> Option<&'a V> {
+	pub fn get(&self, key: K) -> Option<&V> {
 		let node = self.get_node(&key)?;
 		Some(&node.value)
 	}
@@ -565,14 +565,14 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	///
 	/// `key` is the key to find.
 	#[inline]
-	pub fn get_mut<'a>(&'a mut self, key: K) -> Option<&'a mut V> {
+	pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
 		let node = self.get_mut_node(&key)?;
 		Some(&mut node.value)
 	}
 
 	/// Searches for a node in the tree using the given comparison function
 	/// `cmp` instead of the `Ord` trait.
-	pub fn cmp_get<'a, F: Fn(&K, &V) -> Ordering>(&'a self, cmp: F) -> Option<&'a V> {
+	pub fn cmp_get<F: Fn(&K, &V) -> Ordering>(&self, cmp: F) -> Option<&V> {
 		let mut node = self.get_root();
 
 		while let Some(n) = node {
@@ -590,7 +590,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 	/// Searches for a node in the tree using the given comparison function
 	/// `cmp` instead of the `Ord` trait and returns a mutable reference.
-	pub fn cmp_get_mut<'a, F: Fn(&K, &V) -> Ordering>(&'a mut self, cmp: F) -> Option<&'a mut V> {
+	pub fn cmp_get_mut<F: Fn(&K, &V) -> Ordering>(&mut self, cmp: F) -> Option<&mut V> {
 		let mut node = self.get_root_mut();
 
 		while let Some(n) = node {
@@ -704,7 +704,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// - `cmp` is the comparison function.
 	///
 	/// If the key is already used, the previous key/value pair is dropped.
-	pub fn insert<'a>(&'a mut self, key: K, val: V) -> Result<&'a mut V, Errno> {
+	pub fn insert(&mut self, key: K, val: V) -> Result<&mut V, Errno> {
 		let n = {
 			if let Some(p) = self.get_insert_node(&key) {
 				let order = key.cmp(&p.key);
@@ -1170,7 +1170,7 @@ impl<'a, K: 'static + Ord, V> IntoIterator for &'a Map<K, V> {
 	type Item = (&'a K, &'a V);
 
 	fn into_iter(self) -> Self::IntoIter {
-		MapIterator::new(&self)
+		MapIterator::new(self)
 	}
 }
 

@@ -72,7 +72,7 @@ pub trait KernFSNode: Any + IO {
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
 	/// Returns the node's content.
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent>;
+	fn get_content(&self) -> Cow<'_, FileContent>;
 
 	/// Sets the node's content.
 	fn set_content(&mut self, _content: FileContent) {}
@@ -190,7 +190,7 @@ impl KernFSNode for DummyKernFSNode {
 		self.mtime = ts;
 	}
 
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+	fn get_content(&self) -> Cow<'_, FileContent> {
 		Cow::from(&self.content)
 	}
 

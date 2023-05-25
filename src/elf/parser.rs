@@ -203,19 +203,17 @@ impl<'a> ELFParser<'a> {
 	pub fn get_section_by_name(&self, name: &str) -> Option<&ELF32SectionHeader> {
 		let shstr_off = self.get_shstr_offset();
 
-		self.iter_sections()
-			.filter(|s| {
-				let section_name_begin = shstr_off + s.sh_name as usize;
-				let section_name_end = section_name_begin + name.len();
+		self.iter_sections().find(|s| {
+			let section_name_begin = shstr_off + s.sh_name as usize;
+			let section_name_end = section_name_begin + name.len();
 
-				if section_name_end <= self.image.len() {
-					let section_name = &self.image[section_name_begin..section_name_end];
-					section_name == name.as_bytes()
-				} else {
-					false
-				}
-			})
-			.next()
+			if section_name_end <= self.image.len() {
+				let section_name = &self.image[section_name_begin..section_name_end];
+				section_name == name.as_bytes()
+			} else {
+				false
+			}
+		})
 	}
 
 	/// Returns the symbol with name `name`.
@@ -225,7 +223,7 @@ impl<'a> ELFParser<'a> {
 		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
 
 		self.iter_sections()
-			.map(|s| {
+			.flat_map(|s| {
 				self.iter_symbols(s).filter(|sym| {
 					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
 					let sym_name_end = sym_name_begin + name.len();
@@ -238,7 +236,6 @@ impl<'a> ELFParser<'a> {
 					}
 				})
 			})
-			.flatten()
 			.next()
 	}
 

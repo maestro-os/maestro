@@ -37,8 +37,7 @@ impl Target {
 
 		// Read and parse target file
 		let content = fs::read_to_string(target_path)?;
-		let content: TargetFile =
-			serde_json::from_str(&content).map_err(|e| io::Error::from(e))?;
+		let content: TargetFile = serde_json::from_str(&content).map_err(io::Error::from)?;
 
 		Ok(Some(Target {
 			name: arch,

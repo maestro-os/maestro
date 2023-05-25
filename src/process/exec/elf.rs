@@ -234,7 +234,7 @@ fn build_auxilary(
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_RANDOM,
-		AuxEntryDescValue::String(&[0 as u8; 16]),
+		AuxEntryDescValue::String(&[0; 16]),
 	))?; // TODO
 	aux.push(AuxEntryDesc::new(
 		AT_EXECFN,
@@ -311,9 +311,8 @@ impl ELFExecutor {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for a in aux {
-			match a.a_val {
-				AuxEntryDescValue::String(slice) => info_block_size += slice.len() + 1,
-				_ => {}
+			if let AuxEntryDescValue::String(slice) = a.a_val {
+				info_block_size += slice.len() + 1;
 			}
 		}
 		for e in envp {
@@ -562,7 +561,7 @@ impl ELFExecutor {
 		let phnum = ehdr.e_phnum as usize;
 
 		// The size in bytes of the phdr table
-		let phdr_size = phentsize as usize * phnum as usize;
+		let phdr_size = phentsize * phnum;
 
 		let phdr = elf
 			.iter_segments()
@@ -612,7 +611,7 @@ impl ELFExecutor {
 			};
 			let mut interp_file = interp_file_mutex.lock();
 
-			let interp_image = read_exec_file(&mut *interp_file, self.info.euid, self.info.egid)?;
+			let interp_image = read_exec_file(&mut interp_file, self.info.euid, self.info.egid)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
@@ -661,12 +660,12 @@ impl ELFExecutor {
 					for section in elf.iter_sections() {
 						for rel in elf.iter_rel(section) {
 							rel.perform(load_base as _, section, get_sym, get_sym_val)
-								.or_else(|_| Err(errno!(EINVAL)))?;
+								.map_err(|_| errno!(EINVAL))?;
 						}
 
 						for rela in elf.iter_rela(section) {
 							rela.perform(load_base as _, section, get_sym, get_sym_val)
-								.or_else(|_| Err(errno!(EINVAL)))?;
+								.map_err(|_| errno!(EINVAL))?;
 						}
 					}
 				}

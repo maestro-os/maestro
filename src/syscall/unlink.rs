@@ -18,7 +18,7 @@ pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space = mem_space_mutex.lock();
 		let path = Path::from_str(pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(&*proc, path)?;
+		let path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, proc.euid, proc.egid)
 	};
@@ -33,7 +33,7 @@ pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
 		let file_mutex = vfs.get_file_from_path(&path, uid, gid, true)?;
 		let file = file_mutex.lock();
 
-		vfs.remove_file(&*file, uid, gid)?;
+		vfs.remove_file(&file, uid, gid)?;
 	}
 
 	Ok(0)

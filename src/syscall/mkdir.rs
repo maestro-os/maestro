@@ -27,7 +27,7 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		// The path to the directory to create
 		let mut path =
 			Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		path = super::util::get_absolute_path(&*proc, path)?;
+		path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, mode, uid, gid)
 	};
@@ -48,7 +48,7 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 			let mut parent = parent_mutex.lock();
 
 			vfs.create_file(
-				&mut *parent,
+				&mut parent,
 				name,
 				uid,
 				gid,

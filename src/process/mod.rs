@@ -665,8 +665,7 @@ impl Process {
 	pub fn get_parent_pid(&self) -> Pid {
 		self.parent
 			.as_ref()
-			.map(|parent| parent.upgrade())
-			.flatten()
+			.and_then(|parent| parent.upgrade())
 			.map(|parent| parent.lock().pid)
 			.unwrap_or(self.pid)
 	}
@@ -739,9 +738,8 @@ impl Process {
 
 	/// Wakes the process if sleeping.
 	pub fn wake(&mut self) {
-		match self.state {
-			State::Sleeping => self.set_state(State::Running),
-			_ => {}
+		if self.state == State::Sleeping {
+			self.set_state(State::Running);
 		}
 	}
 
@@ -757,7 +755,7 @@ impl Process {
 		self.termsig = sig_type;
 
 		// Wake the parent
-		let parent = self.get_parent().map(|parent| parent.upgrade()).flatten();
+		let parent = self.get_parent().and_then(|parent| parent.upgrade());
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
 			parent.kill(&Signal::SIGCHLD, false);
@@ -964,7 +962,7 @@ impl Process {
 					.lock()
 					.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
-				(curr_mem_space.clone(), Some(new_kernel_stack as _))
+				(curr_mem_space, Some(new_kernel_stack as _))
 			} else {
 				(
 					Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?,
@@ -1258,7 +1256,7 @@ impl Process {
 		self.vfork_state = VForkState::None;
 
 		// Resetting the parent's vfork state if needed
-		let parent = self.get_parent().map(|parent| parent.upgrade()).flatten();
+		let parent = self.get_parent().and_then(|parent| parent.upgrade());
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
 			parent.vfork_state = VForkState::None;

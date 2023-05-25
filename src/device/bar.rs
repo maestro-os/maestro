@@ -102,7 +102,7 @@ impl BAR {
 
 				BARType::Size64 => unsafe {
 					let addr = (*address as *const u64).add(off);
-					(*addr).into()
+					*addr
 				},
 			},
 
@@ -141,7 +141,7 @@ impl BAR {
 
 				BARType::Size64 => unsafe {
 					let addr = (*address as *mut u64).add(off);
-					*addr = val.into();
+					*addr = val;
 				},
 			},
 

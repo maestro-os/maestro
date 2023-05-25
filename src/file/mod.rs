@@ -208,7 +208,7 @@ impl FileLocation {
 		match self {
 			Self::Filesystem {
 				mountpoint_id, ..
-			} => mountpoint_id.clone(),
+			} => *mountpoint_id,
 
 			_ => None,
 		}

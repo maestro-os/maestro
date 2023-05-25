@@ -75,7 +75,7 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 			let mut proc = proc_mutex.lock();
 
 			let mut open_file = open_file_mutex.lock();
-			open_file.add_waiting_process(&mut *proc, io::POLLIN | io::POLLERR)?;
+			open_file.add_waiting_process(&mut proc, io::POLLIN | io::POLLERR)?;
 		}
 		unsafe {
 			scheduler::end_tick();

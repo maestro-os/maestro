@@ -16,7 +16,7 @@ const MBR_SIGNATURE: u16 = 0xaa55;
 /// Structure representing a partition.
 #[derive(Clone)]
 #[repr(C, packed)]
-struct MBRPartition {
+struct MbrPartition {
 	/// Partition attributes.
 	attrs: u8,
 	/// CHS address of partition start.
@@ -33,7 +33,7 @@ struct MBRPartition {
 
 /// Structure representing the partition table.
 #[repr(C, packed)]
-pub struct MBRTable {
+pub struct MbrTable {
 	/// The boot code.
 	boot: [u8; 440],
 	/// The disk signature (optional).
@@ -41,12 +41,12 @@ pub struct MBRTable {
 	/// Zero.
 	zero: u16,
 	/// The list of partitions.
-	partitions: [MBRPartition; 4],
+	partitions: [MbrPartition; 4],
 	/// The partition table signature.
 	signature: u16,
 }
 
-impl Clone for MBRTable {
+impl Clone for MbrTable {
 	fn clone(&self) -> Self {
 		Self {
 			boot: self.boot.clone(),
@@ -58,7 +58,7 @@ impl Clone for MBRTable {
 	}
 }
 
-impl Table for MBRTable {
+impl Table for MbrTable {
 	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> {
 		let mut first_sector: [u8; 512] = [0; 512];
 
@@ -69,7 +69,7 @@ impl Table for MBRTable {
 
 		// Valid because taking the pointer to the buffer on the stack which has the
 		// same size as the structure
-		let mbr_table = unsafe { &*(first_sector.as_ptr() as *const MBRTable) };
+		let mbr_table = unsafe { &*(first_sector.as_ptr() as *const MbrTable) };
 		if mbr_table.signature != MBR_SIGNATURE {
 			return Ok(None);
 		}

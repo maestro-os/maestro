@@ -42,7 +42,7 @@ fn update_parent(
 			};
 
 			let mut f = file.lock();
-			vfs.get_file_from_parent(&mut *f, name, file::ROOT_UID, file::ROOT_GID, false)
+			vfs.get_file_from_parent(&mut f, name, file::ROOT_UID, file::ROOT_GID, false)
 		}
 
 		Some(_) | None => vfs.get_file_from_path(new, file::ROOT_UID, file::ROOT_GID, false),
@@ -123,7 +123,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 
 		// Creating file
 		let create_result = vfs.create_file(
-			&mut *parent,
+			&mut parent,
 			name,
 			file::ROOT_UID,
 			file::ROOT_GID,

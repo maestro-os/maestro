@@ -227,9 +227,9 @@ fn init(init_path: String) -> Result<(), Errno> {
 		argv: vec![init_path]?,
 		envp: env,
 	};
-	let program_image = exec::build_image(&mut *file, exec_info)?;
+	let program_image = exec::build_image(&mut file, exec_info)?;
 
-	exec::exec(&mut *proc, program_image)
+	exec::exec(&mut proc, program_image)
 }
 
 /// This is the main function of the Rust source code, responsible for the
@@ -287,7 +287,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// Parsing bootloader command line arguments
 	let cmdline = boot_info.cmdline.unwrap_or(b"");
-	let args_parser = cmdline::ArgsParser::parse(&cmdline);
+	let args_parser = cmdline::ArgsParser::parse(cmdline);
 	if let Err(e) = args_parser {
 		e.print();
 		halt();

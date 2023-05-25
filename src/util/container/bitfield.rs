@@ -55,8 +55,8 @@ impl Bitfield {
 
 	/// Tells whether bit `index` is set.
 	pub fn is_set(&self, index: usize) -> bool {
-		let unit = self.data[(index / bit_size_of::<u8>()) as usize];
-		(unit >> (index % bit_size_of::<u8>())) & 1 == 1
+		let unit = self.data[index / u8::BITS as usize];
+		(unit >> (index % u8::BITS as usize)) & 1 == 1
 	}
 
 	/// Sets bit `index`.
@@ -64,8 +64,8 @@ impl Bitfield {
 		debug_assert!(index < self.len);
 
 		if !self.is_set(index) {
-			let unit = &mut self.data[(index / bit_size_of::<u8>()) as usize];
-			*unit |= 1 << (index % bit_size_of::<u8>());
+			let unit = &mut self.data[index / u8::BITS as usize];
+			*unit |= 1 << (index % u8::BITS as usize);
 		}
 	}
 
@@ -74,8 +74,8 @@ impl Bitfield {
 		debug_assert!(index < self.len);
 
 		if self.is_set(index) {
-			let unit = &mut self.data[(index / bit_size_of::<u8>()) as usize];
-			*unit &= !(1 << (index % bit_size_of::<u8>()));
+			let unit = &mut self.data[index / u8::BITS as usize];
+			*unit &= !(1 << (index % u8::BITS as usize));
 		}
 	}
 
@@ -85,13 +85,7 @@ impl Bitfield {
 	///
 	/// If none is found, the function returns `None`.
 	pub fn find_clear(&self) -> Option<usize> {
-		for i in 0..self.len {
-			if !self.is_set(i) {
-				return Some(i);
-			}
-		}
-
-		None
+		(0..self.len).find(|i| !self.is_set(*i))
 	}
 
 	/// Finds a set bit.
@@ -100,13 +94,7 @@ impl Bitfield {
 	///
 	/// If none is found, the function returns `None`.
 	pub fn find_set(&self) -> Option<usize> {
-		for i in 0..self.len {
-			if self.is_set(i) {
-				return Some(i);
-			}
-		}
-
-		None
+		(0..self.len).find(|i| self.is_set(*i))
 	}
 
 	/// Clears every elements in the bitfield.

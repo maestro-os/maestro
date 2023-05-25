@@ -100,10 +100,7 @@ pub enum MapResidence {
 impl MapResidence {
 	/// Tells whether the residence is normal.
 	pub fn is_normal(&self) -> bool {
-		match self {
-			MapResidence::Normal => true,
-			_ => false,
-		}
+		matches!(self, MapResidence::Normal)
 	}
 
 	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
@@ -312,10 +309,7 @@ impl MemSpace {
 	/// - `ptr` is the pointer.
 	///
 	/// If no gap contain the pointer, the function returns `None`.
-	fn gap_by_ptr<'a>(
-		gaps: &'a Map<*const c_void, MemGap>,
-		ptr: *const c_void,
-	) -> Option<&'a MemGap> {
+	fn gap_by_ptr(gaps: &Map<*const c_void, MemGap>, ptr: *const c_void) -> Option<&MemGap> {
 		gaps.cmp_get(|key, value| {
 			let begin = *key;
 			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
@@ -964,14 +958,15 @@ impl MemSpace {
 
 impl fmt::Debug for MemSpace {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Mappings:\n")?;
+		writeln!(f, "Mappings:")?;
 		for (_, m) in self.mappings.iter() {
-			write!(f, "- {:?}\n", m)?;
+			writeln!(f, "- {:?}", m)?;
 		}
 
-		write!(f, "\nGaps:\n")?;
+		writeln!(f)?;
+		writeln!(f, "Gaps:")?;
 		for (_, g) in self.gaps.iter() {
-			write!(f, "- {:?}\n", g)?;
+			writeln!(f, "- {:?}", g)?;
 		}
 
 		Ok(())

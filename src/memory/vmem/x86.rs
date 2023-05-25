@@ -404,9 +404,9 @@ impl X86VMem {
 		let pse_end = (addr as usize).wrapping_add(1024 * memory::PAGE_SIZE);
 
 		// Ensuring no PSE block is created in kernel space
-		(pse_end as usize) < (memory::PROCESS_END as usize)
+		pse_end < (memory::PROCESS_END as usize)
 		// Ensuring the virtual address doesn't overflow
-			&& (pse_end as usize) >= (addr as usize)
+			&& pse_end >= (addr as usize)
 		// Checking the address is aligned on the PSE boundary
 			&& util::is_aligned(addr, 1024 * memory::PAGE_SIZE)
 		// Checking that there remain enough pages to make a PSE block

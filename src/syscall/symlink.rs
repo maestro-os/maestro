@@ -52,7 +52,7 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 	let mut parent = parent_mutex.lock();
 
 	vfs.create_file(
-		&mut *parent,
+		&mut parent,
 		name,
 		uid,
 		gid,

@@ -387,7 +387,7 @@ impl MemMapping {
 			self.size
 				.get()
 				.checked_sub(end)
-				.and_then(|size| NonZeroUsize::new(size))
+				.and_then(NonZeroUsize::new)
 				.map(|size| {
 					let begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
 
@@ -478,7 +478,7 @@ impl MemMapping {
 			for i in 0..self.size.get() {
 				if let Some(phys_ptr) = self.get_physical_page(i) {
 					if let Err(errno) = ref_counter.increment(phys_ptr) {
-						self.fork_fail_clean(&mut *ref_counter, i);
+						self.fork_fail_clean(&mut ref_counter, i);
 						return Err(errno);
 					}
 				}

@@ -22,7 +22,7 @@ use core::ptr::null_mut;
 #[macro_export]
 macro_rules! kernel_panic {
 	($($reason:tt)*) => {
-		crate::panic::kernel_panic_(format_args!($($reason)*), None, file!(), line!(), column!())
+		$crate::panic::kernel_panic_(format_args!($($reason)*), None, file!(), line!(), column!())
 	};
 }
 

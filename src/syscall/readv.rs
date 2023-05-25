@@ -128,7 +128,7 @@ pub fn do_readv(
 			}
 		}
 
-		let result = read(mem_space, iov, iovcnt as _, &mut *open_file);
+		let result = read(mem_space, iov, iovcnt as _, &mut open_file);
 		match &result {
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {

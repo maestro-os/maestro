@@ -88,7 +88,7 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 			let mut proc = proc_mutex.lock();
 
 			let mut open_file = open_file_mutex.lock();
-			open_file.add_waiting_process(&mut *proc, io::POLLOUT | io::POLLERR)?;
+			open_file.add_waiting_process(&mut proc, io::POLLOUT | io::POLLERR)?;
 		}
 		unsafe {
 			scheduler::end_tick();

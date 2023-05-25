@@ -18,7 +18,7 @@ impl KernFSNode for MemInfo {
 		0o444
 	}
 
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+	fn get_content(&self) -> Cow<'_, FileContent> {
 		FileContent::Regular.into()
 	}
 }

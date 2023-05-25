@@ -41,7 +41,7 @@ impl KernFSNode for Cwd {
 		}
 	}
 
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+	fn get_content(&self) -> Cow<'_, FileContent> {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
 			let proc = proc_mutex.lock();
 

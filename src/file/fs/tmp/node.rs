@@ -117,7 +117,7 @@ impl KernFSNode for TmpFSRegular {
 		self.mtime = ts;
 	}
 
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+	fn get_content(&self) -> Cow<'_, FileContent> {
 		FileContent::Regular.into()
 	}
 }
@@ -149,7 +149,7 @@ impl IO for TmpFSRegular {
 		let new_len = max(off + buff.len(), self.content.len());
 		self.content.resize(new_len)?;
 
-		self.content.as_mut_slice()[off..(off + buff.len())].copy_from_slice(&buff);
+		self.content.as_mut_slice()[off..(off + buff.len())].copy_from_slice(buff);
 
 		Ok(buff.len() as _)
 	}

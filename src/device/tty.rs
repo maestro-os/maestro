@@ -125,7 +125,7 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
-				self.check_sigttou(&mut *proc, &*tty)?;
+				self.check_sigttou(&mut proc, &tty)?;
 
 				let mem_space_guard = mem_space.lock();
 				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
@@ -149,7 +149,7 @@ impl DeviceHandle for TTYDeviceHandle {
 			}
 
 			ioctl::TIOCSPGRP => {
-				self.check_sigttou(&mut *proc, &*tty)?;
+				self.check_sigttou(&mut proc, &tty)?;
 
 				let mem_space_guard = mem_space.lock();
 				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
@@ -213,7 +213,7 @@ impl IO for TTYDeviceHandle {
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
 
-		self.check_sigttin(&mut *proc, &*tty)?;
+		self.check_sigttin(&mut proc, &tty)?;
 
 		let (len, eof) = tty.read(buff);
 		Ok((len as _, eof))
@@ -224,7 +224,7 @@ impl IO for TTYDeviceHandle {
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
 
-		self.check_sigttou(&mut *proc, &*tty)?;
+		self.check_sigttou(&mut proc, &tty)?;
 
 		tty.write(buff);
 		Ok(buff.len() as _)

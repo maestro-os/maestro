@@ -194,12 +194,12 @@ impl Module {
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel(section) {
 				unsafe { rel.perform(load_base as _, section, get_sym, get_sym_val) }
-					.or_else(|_| Err(errno!(EINVAL)))?;
+					.map_err(|_| errno!(EINVAL))?;
 			}
 
 			for rela in parser.iter_rela(section) {
 				unsafe { rela.perform(load_base as _, section, get_sym, get_sym_val) }
-					.or_else(|_| Err(errno!(EINVAL)))?;
+					.map_err(|_| errno!(EINVAL))?;
 			}
 		}
 

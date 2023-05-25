@@ -241,7 +241,7 @@ pub fn create_file_at(
 
 	let mut parent = parent_mutex.lock();
 
-	vfs.create_file(&mut *parent, name, uid, gid, mode, content)
+	vfs.create_file(&mut parent, name, uid, gid, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.

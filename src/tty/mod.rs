@@ -485,7 +485,7 @@ impl TTY {
 		let mut len = min(buff.len(), self.available_size);
 
 		if self.termios.c_lflag & termios::ICANON != 0 {
-			let eof = self.termios.c_cc[termios::VEOF as usize];
+			let eof = self.termios.c_cc[termios::VEOF];
 
 			if len > 0 && self.input_buffer[0] == eof {
 				// Shifting data
@@ -501,7 +501,7 @@ impl TTY {
 				// Making the next call EOF
 				len = eof_off;
 			}
-		} else if len < self.termios.c_cc[termios::VMIN as usize] as usize {
+		} else if len < self.termios.c_cc[termios::VMIN] as usize {
 			return (0, false);
 		}
 
@@ -590,7 +590,7 @@ impl TTY {
 			while i < self.input_size {
 				let b = self.input_buffer[i];
 
-				if b == self.termios.c_cc[termios::VEOF as usize] || b == b'\n' {
+				if b == self.termios.c_cc[termios::VEOF] || b == b'\n' {
 					// Making the input available for reading
 					self.available_size = i + 1;
 
@@ -613,18 +613,17 @@ impl TTY {
 				// Printing special control characters if enabled
 				if self.termios.c_lflag & termios::ECHO != 0
 					&& self.termios.c_lflag & termios::ECHOCTL != 0
+					&& *b >= 1 && *b < 32
 				{
-					if *b >= 1 && *b < 32 {
-						self.write(&[b'^', b + b'A']);
-					}
+					self.write(&[b'^', b + b'A']);
 				}
 
 				// TODO Handle every special characters
-				if *b == self.termios.c_cc[termios::VINTR as usize] {
+				if *b == self.termios.c_cc[termios::VINTR] {
 					self.send_signal(Signal::SIGINT);
-				} else if *b == self.termios.c_cc[termios::VQUIT as usize] {
+				} else if *b == self.termios.c_cc[termios::VQUIT] {
 					self.send_signal(Signal::SIGQUIT);
-				} else if *b == self.termios.c_cc[termios::VSUSP as usize] {
+				} else if *b == self.termios.c_cc[termios::VSUSP] {
 					self.send_signal(Signal::SIGTSTP);
 				}
 			}

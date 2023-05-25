@@ -8,8 +8,8 @@ use super::StorageInterface;
 use crate::errno::Errno;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
-use gpt::GPT;
-use mbr::MBRTable;
+use gpt::Gpt;
+use mbr::MbrTable;
 
 /// Structure representing a disk partition.
 pub struct Partition {
@@ -67,15 +67,13 @@ pub trait Table {
 /// If no partitions table is present, the function returns `None`.
 pub fn read(storage: &mut dyn StorageInterface) -> Result<Option<Box<dyn Table>>, Errno> {
 	// Trying GPT
-	match GPT::read(storage)? {
-		Some(table) => return Ok(Some(Box::new(table)?)),
-		None => {}
+	if let Some(table) = Gpt::read(storage)? {
+		return Ok(Some(Box::new(table)?));
 	}
 
 	// Trying MBR
-	match MBRTable::read(storage)? {
-		Some(table) => return Ok(Some(Box::new(table)?)),
-		None => {}
+	if let Some(table) = MbrTable::read(storage)? {
+		return Ok(Some(Box::new(table)?));
 	}
 
 	Ok(None)

@@ -75,7 +75,7 @@ impl Chunk {
 	}
 
 	/// Returns the previous chunk.
-	pub fn get_prev<'s>(&self) -> Option<&'static mut Self> {
+	pub fn get_prev(&self) -> Option<&'static mut Self> {
 		self.prev.map(|mut n| unsafe { n.as_mut() })
 	}
 
@@ -287,7 +287,6 @@ impl Chunk {
 		if let Some(next) = self.get_next() {
 			if let Some(next_free) = next.as_free_chunk() {
 				next_free.free_list_remove();
-				drop(next_free);
 				next.unlink();
 
 				// Update size and free list bucket
@@ -338,7 +337,6 @@ impl Chunk {
 
 		// Action C
 		next_free.free_list_remove();
-		drop(next_free);
 
 		// Action B
 		self.size += available_size;

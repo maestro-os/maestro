@@ -12,12 +12,8 @@ fn list_c_files_impl(dir: &Path, paths: &mut Vec<PathBuf>) -> io::Result<()> {
 		let e_type = e.file_type()?;
 
 		if e_type.is_file() {
-			let ext = e_path.extension().map(|s| s.to_str()).flatten();
-			let keep = match ext {
-				Some("c" | "s") => true,
-				_ => false,
-			};
-			if !keep {
+			let ext = e_path.extension().and_then(|s| s.to_str());
+			if !matches!(ext, Some("c" | "s")) {
 				continue;
 			}
 
