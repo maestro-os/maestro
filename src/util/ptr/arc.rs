@@ -88,7 +88,7 @@ impl<T: ?Sized> Arc<T> {
 	unsafe fn partial_drop(&mut self) {
 		// Drop the inner object since weak pointers cannot access it once no strong reference is
 		// left
-		drop_in_place(&mut Self::get_mut_unchecked(self));
+		drop_in_place(Self::get_mut_unchecked(self));
 
 		// Drop the weak reference collectively held by all strong references
 		drop(Weak {
