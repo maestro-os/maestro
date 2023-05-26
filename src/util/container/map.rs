@@ -648,7 +648,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Equilibrates the tree after insertion of node `n`.
-	fn insert_equilibrate(&mut self, n: &mut Node<K, V>) {
+	fn insert_equilibrate(n: &mut Node<K, V>) {
 		let mut node = n;
 
 		if let Some(parent) = node.get_parent_mut() {
@@ -664,7 +664,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 					uncle.color = NodeColor::Black;
 					grandparent.color = NodeColor::Red;
 
-					self.insert_equilibrate(grandparent);
+					Self::insert_equilibrate(grandparent);
 					return;
 				}
 			}
@@ -739,7 +739,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 			}
 		};
 
-		self.insert_equilibrate(n);
+		Self::insert_equilibrate(n);
 		//#[cfg(config_debug_debug)]
 		//self.check();
 		self.update_root(n);
@@ -762,7 +762,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// replacement are both black.
 	///
 	/// `node` is the node to fix.
-	fn remove_fix_double_black(&mut self, node: &mut Node<K, V>) {
+	fn remove_fix_double_black(node: &mut Node<K, V>) {
 		if let Some(parent) = node.get_parent_mut() {
 			if let Some(sibling) = node.get_sibling_mut() {
 				if sibling.is_red() {
@@ -775,7 +775,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 						parent.left_rotate();
 					}
 
-					self.remove_fix_double_black(node);
+					Self::remove_fix_double_black(node);
 				} else {
 					// `sibling` is black
 					let s_left = sibling.get_left_mut();
@@ -814,14 +814,14 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 						sibling.color = NodeColor::Red;
 
 						if parent.is_black() {
-							self.remove_fix_double_black(parent);
+							Self::remove_fix_double_black(parent);
 						} else {
 							parent.color = NodeColor::Black;
 						}
 					}
 				}
 			} else {
-				self.remove_fix_double_black(parent);
+				Self::remove_fix_double_black(parent);
 			}
 		}
 	}
@@ -865,7 +865,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				self.root = None;
 			} else {
 				if both_black {
-					self.remove_fix_double_black(node);
+					Self::remove_fix_double_black(node);
 					self.update_root(node);
 				} else if let Some(sibling) = node.get_sibling_mut() {
 					sibling.color = NodeColor::Red;
@@ -893,7 +893,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				let (_, val) = unsafe { drop_node(node) };
 
 				if both_black {
-					self.remove_fix_double_black(replacement);
+					Self::remove_fix_double_black(replacement);
 					self.update_root(replacement);
 				} else {
 					replacement.color = NodeColor::Black;
