@@ -82,10 +82,6 @@ struct MutexIn<T: ?Sized, const INT: bool> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
 
-	/// Saved callstack, used to debug deadlocks.
-	#[cfg(config_debug_deadlock_stack)]
-	saved_stack: [*mut core::ffi::c_void; 32],
-
 	/// The data associated to the mutex.
 	data: T,
 }
@@ -105,10 +101,8 @@ impl<T, const INT: bool> Mutex<T, INT> {
 		Self {
 			inner: UnsafeCell::new(MutexIn {
 				spin: Spinlock::new(),
-				data,
 
-				#[cfg(config_debug_deadlock_stack)]
-				saved_stack: [core::ptr::null_mut::<core::ffi::c_void>(); 32],
+				data,
 			}),
 		}
 	}
@@ -170,13 +164,6 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			}
 		} else {
 			inner.spin.lock();
-		}
-
-		// If enabled, save the stack to debug deadlocks
-		#[cfg(config_debug_deadlock_stack)]
-		{
-			let ebp = unsafe { crate::register_get!("ebp") as *mut _ };
-			crate::debug::get_callstack(ebp, &mut inner.saved_stack);
 		}
 
 		MutexGuard {
