@@ -20,6 +20,7 @@ use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Handle blocking writes (and thus, EINTR)
+// TODO Reimplement by taking example on `writev` (currently doesn't work with blocking files)
 
 /// Reads the given chunks from the file.
 ///

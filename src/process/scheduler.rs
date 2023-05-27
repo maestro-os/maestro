@@ -196,10 +196,10 @@ impl Scheduler {
 
 		// Enable ticking if necessary
 		if self.running_procs > 1 {
-			pic::enable_irq(0x0);
-
 			// Set ticking frequency
 			pit::set_frequency(self.get_ticking_frequency());
+			// Enable ticking
+			pic::enable_irq(0x0);
 		}
 	}
 
@@ -214,16 +214,6 @@ impl Scheduler {
 			// Set ticking frequency
 			pit::set_frequency(self.get_ticking_frequency());
 		}
-	}
-
-	// TODO Clean
-	/// Returns the average priority of a process.
-	///
-	/// Arguments:
-	/// - `priority_sum` is the sum of all processes' priorities.
-	/// - `processes_count` is the number of processes.
-	fn get_average_priority(priority_sum: usize, processes_count: usize) -> usize {
-		priority_sum / processes_count
 	}
 
 	// TODO Clean
@@ -242,7 +232,7 @@ impl Scheduler {
 	) -> usize {
 		let n = math::integer_linear_interpolation::<isize>(
 			priority as _,
-			Self::get_average_priority(priority_sum, processes_count) as _,
+			(priority_sum / processes_count) as _,
 			priority_max as _,
 			AVERAGE_PRIORITY_QUANTA as _,
 			MAX_PRIORITY_QUANTA as _,

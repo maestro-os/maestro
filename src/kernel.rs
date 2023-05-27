@@ -13,6 +13,7 @@
 #![feature(coerce_unsized)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
+#![feature(exclusive_range_pattern)]
 #![feature(lang_items)]
 #![feature(nonzero_ops)]
 #![feature(offset_of)]
