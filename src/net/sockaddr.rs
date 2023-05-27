@@ -1,8 +1,8 @@
 //! This module defines sockaddr structures used by system calls to define connection informations
 //! on sockets.
 
-use core::ffi::c_short;
 use super::Address;
+use core::ffi::c_short;
 
 /// Structure providing connection informations for sockets with IPv4.
 #[repr(C)]
@@ -70,9 +70,7 @@ impl From<SockAddrIn> for SockAddr {
 
 impl From<SockAddrIn6> for SockAddr {
 	fn from(val: SockAddrIn6) -> Self {
-		let addr = unsafe {
-			val.sin6_addr.__s6_addr
-		};
+		let addr = unsafe { val.sin6_addr.__s6_addr };
 
 		Self {
 			port: val.sin6_port as _,

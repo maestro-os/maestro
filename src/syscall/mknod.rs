@@ -10,7 +10,7 @@ use crate::file::FileContent;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 use macros::syscall;
 
 // TODO Check args type
@@ -24,7 +24,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let mem_space_guard = mem_space.lock();
 
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(&*proc, path)?;
+		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let umask = proc.umask;
 		let uid = proc.uid;
@@ -41,10 +41,10 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
 
 	// The file name
-	let name = path[path.get_elements_count() - 1].failable_clone()?;
+	let name = path[path.get_elements_count() - 1].try_clone()?;
 
 	// Getting the path of the parent directory
-	let mut parent_path = path.failable_clone()?;
+	let mut parent_path = path.try_clone()?;
 	parent_path.pop();
 
 	// Getting the major and minor IDs
@@ -78,7 +78,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
 		let mut parent = parent_mutex.lock();
 
-		vfs.create_file(&mut *parent, name, uid, gid, mode, file_content)?;
+		vfs.create_file(&mut parent, name, uid, gid, mode, file_content)?;
 	}
 
 	Ok(0)

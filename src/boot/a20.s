@@ -1,8 +1,11 @@
 .global a20_handle
-.global a20_check
-.global a20_enable
 
-.section .boot.text
+.type a20_handle, @function
+.type a20_check, @function
+.type a20_wait_read, @function
+.type a20_wait_write, @function
+
+.section .boot.text, "ax"
 
 /*
  * Ensures that the A20 line is enabled.
@@ -25,7 +28,7 @@ a20_check:
 	mov $0x088888, %esi
 	mov %edi, (%edi)
 	mov %esi, (%esi)
-	cmpsd
+	cmpsl
 	popa
 	jne a20_enabled
 	xor %eax, %eax

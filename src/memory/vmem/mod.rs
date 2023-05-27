@@ -3,7 +3,7 @@
 
 // TODO Make this file fully cross-platform
 
-#[cfg(config_general_arch = "x86")]
+#[cfg(target_arch = "x86")]
 pub mod x86;
 
 use crate::cpu;
@@ -14,7 +14,7 @@ use crate::memory;
 use crate::multiboot;
 use crate::util::boxed::Box;
 use crate::util::math;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 use core::ffi::c_void;
 
 /// Trait representing virtual memory context handler.
@@ -22,7 +22,7 @@ use core::ffi::c_void;
 /// This trait is the interface to manipulate virtual memory on any architecture.
 ///
 /// Each architecture has its own structure implementing this trait.
-pub trait VMem: FailableClone {
+pub trait VMem: TryClone {
 	/// Translates the given virtual address `ptr` to the corresponding physical
 	/// address.
 	///
@@ -31,7 +31,7 @@ pub trait VMem: FailableClone {
 
 	/// Tells whether the given pointer `ptr` is mapped or not.
 	fn is_mapped(&self, ptr: *const c_void) -> bool {
-		self.translate(ptr) != None
+		self.translate(ptr).is_some()
 	}
 
 	/// Maps the the given physical address `physaddr` to the given virtual
@@ -100,7 +100,7 @@ pub trait VMem: FailableClone {
 			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
 			let pages = math::ceil_div(section.sh_size, memory::PAGE_SIZE as _) as usize;
-			if let Err(e) = self.map_range(phys_addr, virt_addr, pages as usize, x86::FLAG_USER) {
+			if let Err(e) = self.map_range(phys_addr, virt_addr, pages, x86::FLAG_USER) {
 				res = Err(e);
 				return false;
 			}
@@ -129,7 +129,7 @@ pub fn new() -> Result<Box<dyn VMem>, Errno> {
 /// Clones the virtual memory context handler `vmem`.
 pub fn clone(vmem: &Box<dyn VMem>) -> Result<Box<dyn VMem>, Errno> {
 	let vmem = unsafe { &*(vmem.as_ptr() as *const x86::X86VMem) };
-	Ok(Box::new(vmem.failable_clone()?)? as Box<dyn VMem>)
+	Ok(Box::new(vmem.try_clone()?)? as Box<dyn VMem>)
 }
 
 /// Tells whether the read-only pages protection is enabled.

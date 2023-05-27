@@ -149,7 +149,13 @@ impl KeyboardKey {
 	/// - `alt` tells whether alt is pressed.
 	/// - `ctrl` tells whether control is pressed.
 	/// - `meta` tells whether meta is pressed.
-	pub fn get_tty_chars(&self, shift: bool, _alt: bool, ctrl: bool, _meta: bool) -> Option<&[u8]> {
+	pub fn get_tty_chars(
+		&self,
+		shift: bool,
+		_alt: bool,
+		ctrl: bool,
+		_meta: bool,
+	) -> Option<&[u8]> {
 		match self {
 			Self::KeyHome => return Some(b"\x1b[1~"),
 			Self::KeyInsert => return Some(b"\x1b[2~"),

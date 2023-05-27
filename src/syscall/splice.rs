@@ -1,14 +1,14 @@
 //! The `splice` system call splice data from one pipe to another.
 
-use core::cmp::min;
-use core::ffi::c_int;
-use core::ffi::c_uint;
 use crate::errno::Errno;
 use crate::file::FileType;
 use crate::memory::malloc;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::Process;
 use crate::util::io::IO;
+use core::cmp::min;
+use core::ffi::c_int;
+use core::ffi::c_uint;
 use macros::syscall;
 
 #[syscall]
@@ -31,10 +31,12 @@ pub fn splice(
 		let fds_mutex = proc.get_fds().unwrap();
 		let fds = fds_mutex.lock();
 
-		let input = fds.get_fd(fd_in as _)
+		let input = fds
+			.get_fd(fd_in as _)
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file()?;
-		let output = fds.get_fd(fd_out as _)
+		let output = fds
+			.get_fd(fd_out as _)
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file()?;
 
@@ -48,14 +50,8 @@ pub fn splice(
 	};
 
 	{
-		let input_type = input_mutex.lock()
-			.get_file()?
-			.lock()
-			.get_type();
-		let output_type = output_mutex.lock()
-			.get_file()?
-			.lock()
-			.get_type();
+		let input_type = input_mutex.lock().get_file()?.lock().get_type();
+		let output_type = output_mutex.lock().get_file()?.lock().get_type();
 
 		let in_is_pipe = matches!(input_type, FileType::Fifo);
 		let out_is_pipe = matches!(output_type, FileType::Fifo);
@@ -75,7 +71,8 @@ pub fn splice(
 
 	// TODO implement flags
 
-	let mut buff = unsafe { // Safe because initialized memory is never read
+	let mut buff = unsafe {
+		// Safe because initialized memory is never read
 		malloc::Alloc::<u8>::new(len)
 	}?;
 

@@ -1,15 +1,23 @@
 //! Maestro is a Unix kernel written in Rust. This reference documents
 //! interfaces for modules and the kernel's internals.
+//!
+//! # Features
+//!
+//! The crate has the following features:
+//! - `strace`: if enabled, the kernel traces system calls. This is a debug feature.
 
 #![no_std]
 #![no_main]
 #![feature(array_chunks)]
 #![feature(allow_internal_unstable)]
+#![feature(associated_type_defaults)]
 #![feature(coerce_unsized)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
+#![feature(exclusive_range_pattern)]
 #![feature(lang_items)]
 #![feature(nonzero_ops)]
+#![feature(offset_of)]
 #![feature(panic_info_message)]
 #![feature(ptr_metadata)]
 #![feature(stmt_expr_attributes)]
@@ -148,8 +156,10 @@ fn init_vmem() -> Result<(), Errno> {
 	)?;
 
 	// Mapping VGA's buffer
-	let vga_flags = vmem::x86::FLAG_CACHE_DISABLE | vmem::x86::FLAG_WRITE_THROUGH
-		| vmem::x86::FLAG_WRITE | vmem::x86::FLAG_GLOBAL;
+	let vga_flags = vmem::x86::FLAG_CACHE_DISABLE
+		| vmem::x86::FLAG_WRITE_THROUGH
+		| vmem::x86::FLAG_WRITE
+		| vmem::x86::FLAG_GLOBAL;
 	kernel_vmem.map_range(
 		vga::BUFFER_PHYS as _,
 		vga::get_buffer_virt() as _,
@@ -189,57 +199,42 @@ pub fn bind_vmem() {
 	}
 }
 
-extern "C" {
-	fn test_process();
-}
-
 /// Launches the init process.
 ///
 /// `init_path` is the path to the init program.
 fn init(init_path: String) -> Result<(), Errno> {
+	let path = Path::from_str(&init_path, true)?;
+
 	let proc_mutex = Process::new()?;
 	let mut proc = proc_mutex.lock();
 
-	if cfg!(config_debug_testprocess) {
-		// The pointer to the beginning of the test process
-		let test_begin =
-			unsafe { core::mem::transmute::<unsafe extern "C" fn(), *const c_void>(test_process) };
+	// The initial environment
+	let env: Vec<String> = vec![
+		b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
+		b"TERM=maestro".try_into()?,
+	]?;
 
-		proc.init_dummy(test_begin)
-	} else {
-		let path = Path::from_str(INIT_PATH, false)?;
+	let file_mutex = {
+		let vfs_mutex = vfs::get();
+		let mut vfs = vfs_mutex.lock();
+		let vfs = vfs.as_mut().unwrap();
 
-		// The initial environment
-		let mut env: Vec<String> = vec![
-			b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
-			b"TERM=maestro".try_into()?,
-		]?;
-		if cfg!(config_debug_rust_backtrace) {
-			env.push(b"RUST_BACKTRACE=full".try_into()?)?;
-		}
+		vfs.get_file_from_path(&path, 0, 0, true)?
+	};
+	let mut file = file_mutex.lock();
 
-		let file_mutex = {
-			let vfs_mutex = vfs::get();
-			let mut vfs = vfs_mutex.lock();
-			let vfs = vfs.as_mut().unwrap();
+	let exec_info = ExecInfo {
+		uid: proc.uid,
+		euid: proc.euid,
+		gid: proc.gid,
+		egid: proc.egid,
 
-			vfs.get_file_from_path(&path, 0, 0, true)?
-		};
-		let mut file = file_mutex.lock();
+		argv: vec![init_path]?,
+		envp: env,
+	};
+	let program_image = exec::build_image(&mut file, exec_info)?;
 
-		let exec_info = ExecInfo {
-			uid: proc.uid,
-			euid: proc.euid,
-			gid: proc.gid,
-			egid: proc.egid,
-
-			argv: vec![init_path]?,
-			envp: env,
-		};
-		let program_image = exec::build_image(&mut *file, exec_info)?;
-
-		exec::exec(&mut *proc, program_image)
-	}
+	exec::exec(&mut proc, program_image)
 }
 
 /// This is the main function of the Rust source code, responsible for the
@@ -281,7 +276,6 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		memory::memmap::print_entries();
 	}
 	memory::alloc::init();
-	memory::malloc::init();
 
 	if init_vmem().is_err() {
 		kernel_panic!("Cannot initialize kernel virtual memory!");
@@ -292,14 +286,13 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// Performing kernel self-tests
 	#[cfg(test)]
-	#[cfg(config_debug_test)]
 	kernel_selftest();
 
 	let boot_info = multiboot::get_boot_info();
 
 	// Parsing bootloader command line arguments
 	let cmdline = boot_info.cmdline.unwrap_or(b"");
-	let args_parser = cmdline::ArgsParser::parse(&cmdline);
+	let args_parser = cmdline::ArgsParser::parse(cmdline);
 	if let Err(e) = args_parser {
 		e.print();
 		halt();

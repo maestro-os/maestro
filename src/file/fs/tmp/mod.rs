@@ -24,7 +24,8 @@ use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use crate::util::ptr::SharedPtr;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
 use core::mem::size_of;
 use node::TmpFSRegular;
 
@@ -220,7 +221,7 @@ impl Filesystem for TmpFS {
 pub struct TmpFsType {}
 
 impl FilesystemType for TmpFsType {
-	fn get_name(&self) -> &[u8] {
+	fn get_name(&self) -> &'static [u8] {
 		b"tmpfs"
 	}
 
@@ -233,11 +234,11 @@ impl FilesystemType for TmpFsType {
 		_io: &mut dyn IO,
 		mountpath: Path,
 		readonly: bool,
-	) -> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(TmpFS::new(
+	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
+		Ok(Arc::new(Mutex::new(TmpFS::new(
 			DEFAULT_MAX_SIZE,
 			readonly,
 			mountpath,
-		)?)?)
+		)?))?)
 	}
 }

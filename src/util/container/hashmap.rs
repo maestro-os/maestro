@@ -3,7 +3,7 @@
 
 use super::vec::Vec;
 use crate::errno::Errno;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 use core::borrow::Borrow;
 use core::fmt;
 use core::hash::Hash;
@@ -125,11 +125,11 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	}
 }
 
-impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for Bucket<K, V> {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for Bucket<K, V> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		let mut v = Vec::with_capacity(self.elements.len())?;
 		for (key, value) in self.elements.iter() {
-			v.push((key.failable_clone()?, value.failable_clone()?))?;
+			v.push((key.try_clone()?, value.try_clone()?))?;
 		}
 
 		Ok(Self {
@@ -211,7 +211,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		let index = self.get_bucket_index(&k);
+		let index = self.get_bucket_index(k);
 
 		if index < self.buckets.len() {
 			self.buckets[index].get(k)
@@ -228,7 +228,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		let index = self.get_bucket_index(&k);
+		let index = self.get_bucket_index(k);
 
 		if index < self.buckets.len() {
 			self.buckets[index].get_mut(k)
@@ -301,7 +301,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		let mut len = 0;
 
 		for b in self.buckets.iter_mut() {
-			b.elements.retain(|(k, v): &mut (K, V)| f(&k, &mut *v));
+			b.elements.retain(|(k, v): &mut (K, V)| f(k, &mut *v));
 			len += b.elements.len();
 		}
 
@@ -334,11 +334,11 @@ impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
 	}
 }
 
-impl<K: Eq + Hash + FailableClone, V: FailableClone> FailableClone for HashMap<K, V> {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for HashMap<K, V> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			buckets_count: self.buckets_count,
-			buckets: self.buckets.failable_clone()?,
+			buckets: self.buckets.try_clone()?,
 
 			len: self.len,
 		})
@@ -394,7 +394,9 @@ impl<'a, K: Hash + Eq, V> Iterator for Iter<'a, K, V> {
 			}
 		}
 
-		let (k, v) = self.hm.buckets[self.curr_bucket].elements.index(self.curr_element);
+		let (k, v) = self.hm.buckets[self.curr_bucket]
+			.elements
+			.index(self.curr_element);
 		self.curr_element += 1;
 		Some((k, v))
 	}
@@ -413,8 +415,7 @@ impl<K: Eq + Hash + fmt::Display, V: fmt::Display> fmt::Display for HashMap<K, V
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "[")?;
 
-		let mut iter = self.iter().enumerate();
-		while let Some((i, (key, value))) = iter.next() {
+		for (i, (key, value)) in self.iter().enumerate() {
 			write!(f, "{}: {}", key, value)?;
 
 			if i + 1 < self.len() {

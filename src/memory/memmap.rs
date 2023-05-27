@@ -45,7 +45,7 @@ pub fn print_entries() {
 	crate::println!("<begin> <end> <type>");
 
 	let mut ptr = mem_info.memory_maps;
-	while (ptr as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size as usize) {
+	while (ptr as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size) {
 		let entry = unsafe { &*ptr };
 
 		if entry.is_valid() {

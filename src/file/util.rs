@@ -12,7 +12,7 @@ use crate::memory;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 
 /// Creates the directories necessary to reach path `path`.
 ///
@@ -31,14 +31,14 @@ pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 	let mut created_count = 0;
 
 	for i in 0..path.get_elements_count() {
-		let name = path[i].failable_clone()?;
+		let name = path[i].try_clone()?;
 
 		if let Ok(parent_mutex) = vfs.get_file_from_path(&p, 0, 0, true) {
 			let mut parent = parent_mutex.lock();
 
 			match vfs.create_file(
-				&mut *parent,
-				name.failable_clone()?,
+				&mut parent,
+				name.try_clone()?,
 				0,
 				0,
 				0o755,
@@ -108,23 +108,16 @@ pub fn copy_file(
 			// TODO On fail, undo
 			for (name, _) in entries.iter() {
 				let old_mutex =
-					vfs.get_file_from_parent(&mut *new, name.failable_clone()?, uid, gid, false)?;
+					vfs.get_file_from_parent(&mut new, name.try_clone()?, uid, gid, false)?;
 				let mut old = old_mutex.lock();
 
-				copy_file(vfs, &mut *old, &mut *new, name.failable_clone()?)?;
+				copy_file(vfs, &mut old, &mut new, name.try_clone()?)?;
 			}
 		}
 
 		// Copy the file
 		_ => {
-			vfs.create_file(
-				new_parent,
-				new_name,
-				uid,
-				gid,
-				mode,
-				content.failable_clone()?,
-			)?;
+			vfs.create_file(new_parent, new_name, uid, gid, mode, content.try_clone()?)?;
 		}
 	}
 
@@ -139,16 +132,16 @@ pub fn copy_file(
 /// - `uid` is the user ID used to check permissions.
 /// - `gid` is the group ID used to check permissions.
 pub fn remove_recursive(vfs: &mut VFS, file: &mut File, uid: Uid, gid: Gid) -> Result<(), Errno> {
-	let content = file.get_content().failable_clone()?;
+	let content = file.get_content().try_clone()?;
 
 	match content {
 		FileContent::Directory(entries) => {
 			for (name, _) in entries.iter() {
-				let name = name.failable_clone()?;
+				let name = name.try_clone()?;
 				let subfile_mutex = vfs.get_file_from_parent(file, name, uid, gid, false)?;
 				let mut subfile = subfile_mutex.lock();
 
-				remove_recursive(vfs, &mut *subfile, uid, gid)?;
+				remove_recursive(vfs, &mut subfile, uid, gid)?;
 			}
 		}
 

@@ -1,5 +1,10 @@
+.section .text
+
 .global spin_lock
 .global spin_unlock
+
+.type spin_lock, @function
+.type spin_unlock, @function
 
 /*
  * Locks the given spinlock. If the spinlock is already locked, the thread shall wait until it becomes available.
@@ -22,6 +27,6 @@ spin:
 spin_unlock:
 	mov 4(%esp), %ecx
 
-	mov $0, (%ecx)
+	movl $0, (%ecx)
 
 	ret

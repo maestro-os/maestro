@@ -49,9 +49,10 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
+use crate::util::lock::Mutex;
 use crate::util::math;
-use crate::util::ptr::SharedPtr;
-use crate::util::FailableClone;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
 use block_group_descriptor::BlockGroupDescriptor;
 use core::cmp::max;
 use core::cmp::min;
@@ -184,9 +185,8 @@ fn read_block<T>(
 	buff: &mut [T],
 ) -> Result<(), Errno> {
 	let blk_size = superblock.get_block_size() as u64;
-	let buffer = unsafe {
-		slice::from_raw_parts_mut(buff.as_mut_ptr() as *mut u8, size_of::<T>() * buff.len())
-	};
+	let buffer =
+		unsafe { slice::from_raw_parts_mut(buff.as_mut_ptr() as *mut u8, size_of_val(buff)) };
 	io.read(off * blk_size, buffer)?;
 
 	Ok(())
@@ -210,8 +210,7 @@ fn write_block<T>(
 	buff: &[T],
 ) -> Result<(), Errno> {
 	let blk_size = superblock.get_block_size() as u64;
-	let buffer =
-		unsafe { slice::from_raw_parts(buff.as_ptr() as *const u8, size_of::<T>() * buff.len()) };
+	let buffer = unsafe { slice::from_raw_parts(buff.as_ptr() as *const u8, size_of_val(buff)) };
 	io.write(off * blk_size, buffer)?;
 
 	Ok(())
@@ -380,7 +379,7 @@ impl Superblock {
 		if self.major_version >= 1 {
 			max(
 				self.first_non_reserved_inode,
-				inode::ROOT_DIRECTORY_INODE as u32 + 1,
+				inode::ROOT_DIRECTORY_INODE + 1,
 			)
 		} else {
 			10
@@ -420,12 +419,12 @@ impl Superblock {
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
 		let mut i = 0;
 
-		while (i * (blk_size * 8) as u32) < size {
+		while (i * (blk_size * 8)) < size {
 			let bitmap_blk_index = start + i;
 			read_block(bitmap_blk_index as _, self, io, buff.as_slice_mut())?;
 
 			if let Some(j) = Self::search_bitmap_blk(buff.as_slice()) {
-				return Ok(Some(i * (blk_size * 8) as u32 + j));
+				return Ok(Some(i * (blk_size * 8) + j));
 			}
 
 			i += 1;
@@ -447,7 +446,7 @@ impl Superblock {
 		let blk_size = self.get_block_size();
 		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
 
-		let bitmap_blk_index = start + (i / (blk_size * 8) as u32);
+		let bitmap_blk_index = start + (i / (blk_size * 8));
 		read_block(bitmap_blk_index as _, self, io, buff.as_slice_mut())?;
 
 		let bitmap_byte_index = i / 8;
@@ -837,7 +836,7 @@ impl Filesystem for Ext2Fs {
 					};
 
 					final_entries.insert(
-						name.failable_clone()?,
+						name.try_clone()?,
 						DirEntry {
 							inode: inode as _,
 							entry_type,
@@ -918,10 +917,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// Checking if the file already exists
-		if parent
-			.get_dirent(&name, &self.superblock, io)?
-			.is_some()
-		{
+		if parent.get_dirent(&name, &self.superblock, io)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
 
@@ -1041,7 +1037,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// Checking the entry doesn't exist
-		if parent.get_dirent(name, &mut self.superblock, io)?.is_some() {
+		if parent.get_dirent(name, &self.superblock, io)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
 
@@ -1055,7 +1051,7 @@ impl Filesystem for Ext2Fs {
 		match inode_.get_type() {
 			FileType::Directory => {
 				// Removing previous dirent
-				let old_parent_entry = inode_.get_dirent(b"..", &mut self.superblock, io)?;
+				let old_parent_entry = inode_.get_dirent(b"..", &self.superblock, io)?;
 				if let Some((_, old_parent_entry)) = old_parent_entry {
 					let old_parent_inode = old_parent_entry.get_inode();
 					let mut old_parent =
@@ -1243,7 +1239,7 @@ impl Filesystem for Ext2Fs {
 pub struct Ext2FsType {}
 
 impl FilesystemType for Ext2FsType {
-	fn get_name(&self) -> &[u8] {
+	fn get_name(&self) -> &'static [u8] {
 		b"ext2"
 	}
 
@@ -1256,10 +1252,10 @@ impl FilesystemType for Ext2FsType {
 		io: &mut dyn IO,
 		mountpath: Path,
 		readonly: bool,
-	) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
 		let superblock = Superblock::read(io)?;
 		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
 
-		Ok(SharedPtr::new(fs)? as _)
+		Ok(Arc::new(Mutex::new(fs))? as _)
 	}
 }

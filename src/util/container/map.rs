@@ -1,19 +1,19 @@
 //! This module implements a binary tree container.
 
-use core::cmp::Ordering;
+use crate::errno::Errno;
+use crate::memory;
+use crate::memory::malloc;
+use crate::util::TryClone;
 use core::cmp::max;
+use core::cmp::Ordering;
 use core::fmt;
-use core::mem::size_of;
 use core::mem;
+use core::mem::size_of;
 use core::ops::Bound;
 use core::ops::RangeBounds;
-use core::ptr::NonNull;
-use core::ptr::drop_in_place;
 use core::ptr;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::memory;
-use crate::util::FailableClone;
+use core::ptr::drop_in_place;
+use core::ptr::NonNull;
 
 #[cfg(config_debug_debug)]
 use crate::util::container::vec::Vec;
@@ -541,12 +541,12 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				}
 
 				None
-			},
+			}
 
 			Bound::Excluded(_key) => {
 				// TODO
 				todo!();
-			},
+			}
 
 			Bound::Unbounded => NonNull::new(Self::get_leftmost_node(node?)),
 		}
@@ -556,7 +556,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	///
 	/// `key` is the key to find.
 	#[inline]
-	pub fn get<'a>(&'a self, key: K) -> Option<&'a V> {
+	pub fn get(&self, key: K) -> Option<&V> {
 		let node = self.get_node(&key)?;
 		Some(&node.value)
 	}
@@ -565,14 +565,14 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	///
 	/// `key` is the key to find.
 	#[inline]
-	pub fn get_mut<'a>(&'a mut self, key: K) -> Option<&'a mut V> {
+	pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
 		let node = self.get_mut_node(&key)?;
 		Some(&mut node.value)
 	}
 
 	/// Searches for a node in the tree using the given comparison function
 	/// `cmp` instead of the `Ord` trait.
-	pub fn cmp_get<'a, F: Fn(&K, &V) -> Ordering>(&'a self, cmp: F) -> Option<&'a V> {
+	pub fn cmp_get<F: Fn(&K, &V) -> Ordering>(&self, cmp: F) -> Option<&V> {
 		let mut node = self.get_root();
 
 		while let Some(n) = node {
@@ -590,7 +590,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 	/// Searches for a node in the tree using the given comparison function
 	/// `cmp` instead of the `Ord` trait and returns a mutable reference.
-	pub fn cmp_get_mut<'a, F: Fn(&K, &V) -> Ordering>(&'a mut self, cmp: F) -> Option<&'a mut V> {
+	pub fn cmp_get_mut<F: Fn(&K, &V) -> Ordering>(&mut self, cmp: F) -> Option<&mut V> {
 		let mut node = self.get_root_mut();
 
 		while let Some(n) = node {
@@ -648,7 +648,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Equilibrates the tree after insertion of node `n`.
-	fn insert_equilibrate(&mut self, n: &mut Node<K, V>) {
+	fn insert_equilibrate(n: &mut Node<K, V>) {
 		let mut node = n;
 
 		if let Some(parent) = node.get_parent_mut() {
@@ -664,7 +664,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 					uncle.color = NodeColor::Black;
 					grandparent.color = NodeColor::Red;
 
-					self.insert_equilibrate(grandparent);
+					Self::insert_equilibrate(grandparent);
 					return;
 				}
 			}
@@ -704,7 +704,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// - `cmp` is the comparison function.
 	///
 	/// If the key is already used, the previous key/value pair is dropped.
-	pub fn insert<'a>(&'a mut self, key: K, val: V) -> Result<&'a mut V, Errno> {
+	pub fn insert(&mut self, key: K, val: V) -> Result<&mut V, Errno> {
 		let n = {
 			if let Some(p) = self.get_insert_node(&key) {
 				let order = key.cmp(&p.key);
@@ -739,7 +739,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 			}
 		};
 
-		self.insert_equilibrate(n);
+		Self::insert_equilibrate(n);
 		//#[cfg(config_debug_debug)]
 		//self.check();
 		self.update_root(n);
@@ -762,7 +762,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// replacement are both black.
 	///
 	/// `node` is the node to fix.
-	fn remove_fix_double_black(&mut self, node: &mut Node<K, V>) {
+	fn remove_fix_double_black(node: &mut Node<K, V>) {
 		if let Some(parent) = node.get_parent_mut() {
 			if let Some(sibling) = node.get_sibling_mut() {
 				if sibling.is_red() {
@@ -775,7 +775,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 						parent.left_rotate();
 					}
 
-					self.remove_fix_double_black(node);
+					Self::remove_fix_double_black(node);
 				} else {
 					// `sibling` is black
 					let s_left = sibling.get_left_mut();
@@ -814,14 +814,14 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 						sibling.color = NodeColor::Red;
 
 						if parent.is_black() {
-							self.remove_fix_double_black(parent);
+							Self::remove_fix_double_black(parent);
 						} else {
 							parent.color = NodeColor::Black;
 						}
 					}
 				}
 			} else {
-				self.remove_fix_double_black(parent);
+				Self::remove_fix_double_black(parent);
 			}
 		}
 	}
@@ -865,7 +865,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				self.root = None;
 			} else {
 				if both_black {
-					self.remove_fix_double_black(node);
+					Self::remove_fix_double_black(node);
 					self.update_root(node);
 				} else if let Some(sibling) = node.get_sibling_mut() {
 					sibling.color = NodeColor::Red;
@@ -893,7 +893,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				let (_, val) = unsafe { drop_node(node) };
 
 				if both_black {
-					self.remove_fix_double_black(replacement);
+					Self::remove_fix_double_black(replacement);
 					self.update_root(replacement);
 				} else {
 					replacement.color = NodeColor::Black;
@@ -1170,7 +1170,7 @@ impl<'a, K: 'static + Ord, V> IntoIterator for &'a Map<K, V> {
 	type Item = (&'a K, &'a V);
 
 	fn into_iter(self) -> Self::IntoIter {
-		MapIterator::new(&self)
+		MapIterator::new(self)
 	}
 }
 
@@ -1319,11 +1319,14 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRan
 	}
 }
 
-impl<K: 'static + FailableClone + Ord, V: FailableClone> FailableClone for Map<K, V> {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl<K: 'static + TryClone + Ord, V: TryClone> TryClone for Map<K, V> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		let mut new = Self::new();
 		for (k, v) in self {
-			new.insert(k.failable_clone()?, v.failable_clone()?)?;
+			let k_res: Result<_, Errno> = k.try_clone().map_err(Into::into);
+			let v_res: Result<_, Errno> = v.try_clone().map_err(Into::into);
+
+			new.insert(k_res?, v_res?)?;
 		}
 		Ok(new)
 	}

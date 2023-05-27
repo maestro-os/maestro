@@ -2,12 +2,15 @@
  * Context switching allows to stop the currently executed code, changing the state of the machine to another saved state.
  */
 
+.section .text
+
 .global context_switch
 .global context_switch_kernel
 
-.extern end_of_interrupt
+.type context_switch, @function
+.type context_switch_kernel, @function
 
-.section .text
+.extern end_of_interrupt
 
 /*
  * This function switches to a userspace context.

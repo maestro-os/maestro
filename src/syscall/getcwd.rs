@@ -1,10 +1,10 @@
 //! The getcwd system call allows to retrieve the current working directory of
 //! the current process.
 
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
+use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::Process;
 use crate::util;
 use macros::syscall;
 
@@ -20,7 +20,7 @@ pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
 	let cwd = crate::format!("{}", proc.get_cwd())?;
 
 	// Checking that the buffer is large enough
-	if (size as usize) < cwd.len() + 1 {
+	if size < cwd.len() + 1 {
 		return Err(errno!(ERANGE));
 	}
 

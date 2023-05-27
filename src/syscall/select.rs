@@ -1,20 +1,19 @@
 //! `select` waits for a file descriptor in the given sets to be readable,
 //! writable or for an exception to occur.
 
-use core::cmp::min;
-use core::ffi::c_int;
-use core::ffi::c_long;
-use core::mem::size_of;
 use crate::errno::Errno;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::scheduler;
+use crate::process::Process;
+use crate::time;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timeval;
-use crate::time;
-use crate::util::io::IO;
 use crate::util::io;
+use crate::util::io::IO;
+use core::cmp::min;
+use core::ffi::c_int;
+use core::ffi::c_long;
 use macros::syscall;
 
 /// The number of file descriptors in FDSet.
@@ -25,7 +24,7 @@ pub const FD_SETSIZE: usize = 1024;
 #[derive(Debug)]
 pub struct FDSet {
 	/// The set's bitfield.
-	fds_bits: [c_long; FD_SETSIZE / (8 * size_of::<c_long>())],
+	fds_bits: [c_long; FD_SETSIZE / c_long::BITS as usize],
 }
 
 impl FDSet {
@@ -36,23 +35,20 @@ impl FDSet {
 		}
 
 		// TODO Check correctness
-		self.fds_bits[(fd as usize) / (8 * size_of::<c_long>())]
-			>> (fd % ((8 * size_of::<c_long>()) as u32))
-			!= 0
+		self.fds_bits[(fd as usize) / c_long::BITS as usize] >> (fd % (c_long::BITS as u32)) != 0
 	}
 
 	/// Sets the bit for file descriptor `fd`.
 	pub fn set(&mut self, fd: u32) {
 		// TODO Check correctness
-		self.fds_bits[(fd as usize) / (8 * size_of::<c_long>())] |=
-			1 << (fd % ((8 * size_of::<c_long>()) as u32));
+		self.fds_bits[(fd as usize) / c_long::BITS as usize] |= 1 << (fd % (c_long::BITS as u32));
 	}
 
 	/// Clears the bit for file descriptor `fd`.
 	pub fn clear(&mut self, fd: u32) {
 		// TODO Check correctness
-		self.fds_bits[(fd as usize) / (8 * size_of::<c_long>())] &=
-			!(1 << (fd % ((8 * size_of::<c_long>()) as u32)));
+		self.fds_bits[(fd as usize) / c_long::BITS as usize] &=
+			!(1 << (fd % (c_long::BITS as u32)));
 	}
 }
 
@@ -83,10 +79,7 @@ pub fn do_select<T: TimeUnit>(
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		timeout
-			.get(&mem_space_guard)?
-			.map(|t| t.clone())
-			.unwrap_or_default()
+		timeout.get(&mem_space_guard)?.cloned().unwrap_or_default()
 	};
 
 	// Tells whether the syscall immediately returns
@@ -99,7 +92,7 @@ pub fn do_select<T: TimeUnit>(
 		// Set if every bitfields are set to zero
 		let mut all_zeros = true;
 
-		for fd_id in 0..min(nfds as u32, FD_SETSIZE as u32) {
+		for fd_id in 0..min(nfds, FD_SETSIZE as u32) {
 			let (mem_space, fds_mutex) = {
 				let proc_mutex = Process::get_current().unwrap();
 				let proc = proc_mutex.lock();
@@ -169,7 +162,9 @@ pub fn do_select<T: TimeUnit>(
 			// Setting results
 			let mut mem_space_guard = mem_space.lock();
 			if read && result & io::POLLIN != 0 {
-				readfds.get_mut(&mut mem_space_guard)?.map(|fds| fds.set(fd_id));
+				readfds
+					.get_mut(&mut mem_space_guard)?
+					.map(|fds| fds.set(fd_id));
 				events_count += 1;
 			} else {
 				readfds

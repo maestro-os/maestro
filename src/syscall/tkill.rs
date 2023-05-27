@@ -19,7 +19,7 @@ pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
 	let mut proc = proc_mutex.lock();
 
 	// Checking if the thread to kill is the current
-	if proc.get_tid() == tid {
+	if proc.tid == tid {
 		proc.kill(&signal, false);
 	} else {
 		// Getting the thread

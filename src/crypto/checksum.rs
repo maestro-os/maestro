@@ -39,14 +39,14 @@ pub fn compute_crc32_lookuptable(table: &mut [u32; 256], polynom: u32) {
 		if crc & 1 != 0 {
 			crc = (crc >> 1) ^ polynom;
 		} else {
-			crc = crc >> 1;
+			crc >>= 1;
 		}
 
 		for j in (0..table.len()).step_by(2 * i) {
 			table[i ^ j] = crc ^ table[j];
 		}
 
-		i = i >> 1;
+		i >>= 1;
 	}
 }
 

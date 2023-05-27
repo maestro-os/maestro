@@ -119,7 +119,7 @@ fn delay(n: u32) {
 /// An enumeration representing port offset types for ATA.
 enum PortOffset {
 	/// Port offset on general register ports.
-	ATA(u16),
+	Ata(u16),
 	/// Port offset on control register ports.
 	Control(u16),
 }
@@ -165,7 +165,7 @@ impl PATAInterface {
 	#[inline(always)]
 	fn inb(&self, port_off: PortOffset) -> u8 {
 		let (bar, off) = match &port_off {
-			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
+			PortOffset::Ata(off) => (&self.channel.ata_bar, *off),
 			PortOffset::Control(off) => (&self.channel.control_bar, *off),
 		};
 
@@ -176,7 +176,7 @@ impl PATAInterface {
 	#[inline(always)]
 	fn inw(&self, port_off: PortOffset) -> u16 {
 		let (bar, off) = match &port_off {
-			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
+			PortOffset::Ata(off) => (&self.channel.ata_bar, *off),
 			PortOffset::Control(off) => (&self.channel.control_bar, *off),
 		};
 
@@ -187,7 +187,7 @@ impl PATAInterface {
 	#[inline(always)]
 	fn outb(&self, port_off: PortOffset, value: u8) {
 		let (bar, off) = match &port_off {
-			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
+			PortOffset::Ata(off) => (&self.channel.ata_bar, *off),
 			PortOffset::Control(off) => (&self.channel.control_bar, *off),
 		};
 
@@ -198,7 +198,7 @@ impl PATAInterface {
 	#[inline(always)]
 	fn outw(&self, port_off: PortOffset, value: u16) {
 		let (bar, off) = match &port_off {
-			PortOffset::ATA(off) => (&self.channel.ata_bar, *off),
+			PortOffset::Ata(off) => (&self.channel.ata_bar, *off),
 			PortOffset::Control(off) => (&self.channel.control_bar, *off),
 		};
 
@@ -207,12 +207,12 @@ impl PATAInterface {
 
 	/// Returns the content of the error register.
 	fn get_error(&self) -> u8 {
-		self.inb(PortOffset::ATA(ERROR_REGISTER_OFFSET))
+		self.inb(PortOffset::Ata(ERROR_REGISTER_OFFSET))
 	}
 
 	/// Returns the content of the status register.
 	fn get_status(&self) -> u8 {
-		self.inb(PortOffset::ATA(STATUS_REGISTER_OFFSET))
+		self.inb(PortOffset::Ata(STATUS_REGISTER_OFFSET))
 	}
 
 	/// Tells whether the device is ready to accept a command.
@@ -246,7 +246,7 @@ impl PATAInterface {
 	///
 	/// `command` is the command.
 	fn send_command(&self, command: u8) {
-		self.outb(PortOffset::ATA(COMMAND_REGISTER_OFFSET), command);
+		self.outb(PortOffset::Ata(COMMAND_REGISTER_OFFSET), command);
 	}
 
 	/// Selects the drive.
@@ -265,7 +265,7 @@ impl PATAInterface {
 		} else {
 			SELECT_SLAVE
 		};
-		self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), value);
+		self.outb(PortOffset::Ata(DRIVE_REGISTER_OFFSET), value);
 
 		delay(420);
 	}
@@ -298,10 +298,10 @@ impl PATAInterface {
 			return Err("Drive doesn't exist");
 		}
 
-		self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), 0);
-		self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), 0);
-		self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), 0);
-		self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::Ata(SECTORS_COUNT_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::Ata(LBA_LO_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET), 0);
+		self.outb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET), 0);
 		delay(420);
 
 		self.send_command(COMMAND_IDENTIFY);
@@ -313,8 +313,8 @@ impl PATAInterface {
 		}
 		self.wait_busy();
 
-		let lba_mid = self.inb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET));
-		let lba_hi = self.inb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET));
+		let lba_mid = self.inb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET));
+		let lba_hi = self.inb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET));
 
 		if lba_mid != 0 || lba_hi != 0 {
 			return Err("Unknown device");
@@ -334,7 +334,7 @@ impl PATAInterface {
 
 		let mut data: [u16; 256] = [0; 256];
 		for d in data.iter_mut() {
-			*d = self.inw(PortOffset::ATA(DATA_REGISTER_OFFSET));
+			*d = self.inw(PortOffset::Ata(DATA_REGISTER_OFFSET));
 		}
 
 		let lba48_support = data[83] & (1 << 10) != 0;
@@ -439,7 +439,7 @@ impl StorageInterface for PATAInterface {
 				drive |= ((off >> 24) & 0x0f) as u8;
 			}
 
-			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
+			self.outb(PortOffset::Ata(DRIVE_REGISTER_OFFSET), drive);
 
 			// If LBA48, write high bytes first
 			if lba48 {
@@ -448,10 +448,10 @@ impl StorageInterface for PATAInterface {
 				let mid_lba = ((off >> 32) & 0xff) as u8;
 				let hi_lba = ((off >> 40) & 0xff) as u8;
 
-				self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count);
-				self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
-				self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
-				self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
+				self.outb(PortOffset::Ata(SECTORS_COUNT_REGISTER_OFFSET), count);
+				self.outb(PortOffset::Ata(LBA_LO_REGISTER_OFFSET), lo_lba);
+				self.outb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET), mid_lba);
+				self.outb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET), hi_lba);
 			}
 
 			let lo_lba = (off & 0xff) as u8;
@@ -459,12 +459,12 @@ impl StorageInterface for PATAInterface {
 			let hi_lba = ((off >> 16) & 0xff) as u8;
 
 			self.outb(
-				PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET),
+				PortOffset::Ata(SECTORS_COUNT_REGISTER_OFFSET),
 				(count & 0xff) as u8,
 			);
-			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
-			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
-			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
+			self.outb(PortOffset::Ata(LBA_LO_REGISTER_OFFSET), lo_lba);
+			self.outb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET), mid_lba);
+			self.outb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET), hi_lba);
 
 			if lba48 {
 				self.send_command(COMMAND_READ_SECTORS_EXT);
@@ -483,7 +483,7 @@ impl StorageInterface for PATAInterface {
 					let index = (((i + j) * 256 + k) * 2) as usize;
 					debug_assert!(index + 1 < buf.len());
 
-					let word = self.inw(PortOffset::ATA(DATA_REGISTER_OFFSET));
+					let word = self.inw(PortOffset::Ata(DATA_REGISTER_OFFSET));
 					buf[index] = (word & 0xff) as _;
 					buf[index + 1] = ((word >> 8) & 0xff) as _;
 				}
@@ -548,7 +548,7 @@ impl StorageInterface for PATAInterface {
 				drive |= ((off >> 24) & 0x0f) as u8;
 			}
 
-			self.outb(PortOffset::ATA(DRIVE_REGISTER_OFFSET), drive);
+			self.outb(PortOffset::Ata(DRIVE_REGISTER_OFFSET), drive);
 
 			// If LBA48, write high bytes first
 			if lba48 {
@@ -557,10 +557,10 @@ impl StorageInterface for PATAInterface {
 				let mid_lba = ((off >> 32) & 0xff) as u8;
 				let hi_lba = ((off >> 40) & 0xff) as u8;
 
-				self.outb(PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET), count);
-				self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
-				self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
-				self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
+				self.outb(PortOffset::Ata(SECTORS_COUNT_REGISTER_OFFSET), count);
+				self.outb(PortOffset::Ata(LBA_LO_REGISTER_OFFSET), lo_lba);
+				self.outb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET), mid_lba);
+				self.outb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET), hi_lba);
 			}
 
 			let lo_lba = (off & 0xff) as u8;
@@ -568,12 +568,12 @@ impl StorageInterface for PATAInterface {
 			let hi_lba = ((off >> 16) & 0xff) as u8;
 
 			self.outb(
-				PortOffset::ATA(SECTORS_COUNT_REGISTER_OFFSET),
+				PortOffset::Ata(SECTORS_COUNT_REGISTER_OFFSET),
 				(count & 0xff) as u8,
 			);
-			self.outb(PortOffset::ATA(LBA_LO_REGISTER_OFFSET), lo_lba);
-			self.outb(PortOffset::ATA(LBA_MID_REGISTER_OFFSET), mid_lba);
-			self.outb(PortOffset::ATA(LBA_HI_REGISTER_OFFSET), hi_lba);
+			self.outb(PortOffset::Ata(LBA_LO_REGISTER_OFFSET), lo_lba);
+			self.outb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET), mid_lba);
+			self.outb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET), hi_lba);
 
 			if lba48 {
 				self.send_command(COMMAND_WRITE_SECTORS_EXT);
@@ -593,7 +593,7 @@ impl StorageInterface for PATAInterface {
 					debug_assert!(index + 1 < buf.len());
 
 					let word = ((buf[index + 1] as u16) << 8) | (buf[index] as u16);
-					self.outw(PortOffset::ATA(DATA_REGISTER_OFFSET), word)
+					self.outw(PortOffset::Ata(DATA_REGISTER_OFFSET), word)
 				}
 			}
 

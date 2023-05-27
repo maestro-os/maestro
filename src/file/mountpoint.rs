@@ -1,24 +1,24 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
-use core::cmp::max;
-use core::fmt;
+use super::fs;
+use super::fs::Filesystem;
+use super::fs::FilesystemType;
+use super::path::Path;
+use super::vfs;
+use super::FileContent;
+use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::device;
 use crate::errno::Errno;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::DummyIO;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
-use crate::util::ptr::SharedPtr;
-use super::FileContent;
-use super::fs::Filesystem;
-use super::fs::FilesystemType;
-use super::fs;
-use super::path::Path;
-use super::vfs;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
+use core::cmp::max;
+use core::fmt;
 
 /// Permits mandatory locking on files.
 const FLAG_MANDLOCK: u32 = 0b000000000001;
@@ -93,14 +93,20 @@ impl MountSource {
 				let file = file_mutex.lock();
 
 				match file.get_content() {
-					FileContent::BlockDevice { major, minor } => Ok(Self::Device {
+					FileContent::BlockDevice {
+						major,
+						minor,
+					} => Ok(Self::Device {
 						dev_type: DeviceType::Block,
 
 						major: *major,
 						minor: *minor,
 					}),
 
-					FileContent::CharDevice { major, minor } => Ok(Self::Device {
+					FileContent::CharDevice {
+						major,
+						minor,
+					} => Ok(Self::Device {
 						dev_type: DeviceType::Char,
 
 						major: *major,
@@ -109,7 +115,7 @@ impl MountSource {
 
 					_ => Err(errno!(EINVAL)),
 				}
-			},
+			}
 
 			Err(err) if err == errno!(ENOENT) => Ok(Self::NoDev(String::try_from(string)?)),
 
@@ -118,7 +124,7 @@ impl MountSource {
 	}
 
 	/// Returns the IO interface for the mount source.
-	pub fn get_io(&self) -> Result<SharedPtr<dyn IO>, Errno> {
+	pub fn get_io(&self) -> Result<Arc<Mutex<dyn IO>>, Errno> {
 		match self {
 			Self::Device {
 				dev_type,
@@ -130,17 +136,18 @@ impl MountSource {
 					type_: *dev_type,
 					major: *major,
 					minor: *minor,
-				}).ok_or_else(|| errno!(ENODEV))?;
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
 				Ok(dev as _)
 			}
 
-			Self::NoDev(_) => Ok(SharedPtr::new(DummyIO {})? as _),
+			Self::NoDev(_) => Ok(Arc::new(Mutex::new(DummyIO {}))? as _),
 		}
 	}
 }
 
-impl FailableClone for MountSource {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl TryClone for MountSource {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Ok(match self {
 			Self::Device {
 				dev_type,
@@ -152,7 +159,7 @@ impl FailableClone for MountSource {
 				minor: *minor,
 			},
 
-			Self::NoDev(name) => Self::NoDev(name.failable_clone()?),
+			Self::NoDev(name) => Self::NoDev(name.try_clone()?),
 		})
 	}
 }
@@ -178,7 +185,7 @@ struct LoadedFS {
 	ref_count: usize,
 
 	/// The filesystem.
-	fs: SharedPtr<dyn Filesystem>,
+	fs: Arc<Mutex<dyn Filesystem>>,
 }
 
 /// The list of loaded filesystems associated with their respective sources.
@@ -196,25 +203,23 @@ static FILESYSTEMS: Mutex<HashMap<MountSource, LoadedFS>> = Mutex::new(HashMap::
 /// On success, the function returns the loaded filesystem.
 fn load_fs(
 	source: MountSource,
-	fs_type: Option<SharedPtr<dyn FilesystemType>>,
+	fs_type: Option<Arc<dyn FilesystemType>>,
 	path: Path,
 	readonly: bool,
-) -> Result<SharedPtr<dyn Filesystem>, Errno> {
+) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
 	// Getting the I/O interface
 	let io_mutex = source.get_io()?;
 	let mut io = io_mutex.lock();
 
 	// Getting the filesystem type
-	let fs_type_mutex = match fs_type {
+	let fs_type = match fs_type {
 		Some(fs_type) => fs_type,
 
 		None => match source {
-			MountSource::NoDev(ref name) => fs::get_fs(name).ok_or_else(|| errno!(ENODEV))?,
+			MountSource::NoDev(ref name) => fs::get_type(name).ok_or_else(|| errno!(ENODEV))?,
 			_ => fs::detect(&mut *io)?,
 		},
 	};
-	let fs_type = fs_type_mutex.lock();
-
 	let fs = fs_type.load_filesystem(&mut *io, path, readonly)?;
 
 	// Inserting new filesystem into filesystems list
@@ -236,7 +241,7 @@ fn load_fs(
 /// `take` tells whether the function increments the references count.
 ///
 /// If the filesystem isn't loaded, the function returns `None`.
-fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>> {
+fn get_fs_(source: &MountSource, take: bool) -> Option<Arc<Mutex<dyn Filesystem>>> {
 	let mut container = FILESYSTEMS.lock();
 
 	let fs = container.get_mut(source)?;
@@ -250,7 +255,7 @@ fn get_fs_(source: &MountSource, take: bool) -> Option<SharedPtr<dyn Filesystem>
 /// Returns the loaded filesystem with the given source `source`.
 ///
 /// If the filesystem isn't loaded, the function returns `None`.
-pub fn get_fs(source: &MountSource) -> Option<SharedPtr<dyn Filesystem>> {
+pub fn get_fs(source: &MountSource) -> Option<Arc<Mutex<dyn Filesystem>>> {
 	get_fs_(source, false)
 }
 
@@ -266,7 +271,7 @@ fn drop_fs(source: &MountSource) {
 		fs.ref_count -= 1;
 
 		// If no reference left, drop
-		if fs.ref_count <= 0 {
+		if fs.ref_count == 0 {
 			container.remove(source);
 		}
 	}
@@ -285,7 +290,7 @@ pub struct MountPoint {
 	/// The source of the mountpoint.
 	source: MountSource,
 	/// The filesystem associated with the mountpoint.
-	fs: SharedPtr<dyn Filesystem>,
+	fs: Arc<Mutex<dyn Filesystem>>,
 	/// The name of the filesystem's type.
 	fs_type_name: String,
 }
@@ -303,7 +308,7 @@ impl MountPoint {
 	fn new(
 		id: u32,
 		source: MountSource,
-		fs_type: Option<SharedPtr<dyn FilesystemType>>,
+		fs_type: Option<Arc<dyn FilesystemType>>,
 		flags: u32,
 		path: Path,
 	) -> Result<Self, Errno> {
@@ -315,12 +320,7 @@ impl MountPoint {
 			Some(fs) => fs,
 
 			// Filesystem doesn't exist, load it
-			None => load_fs(
-				source.failable_clone()?,
-				fs_type,
-				path.failable_clone()?,
-				readonly,
-			)?,
+			None => load_fs(source.try_clone()?, fs_type, path.try_clone()?, readonly)?,
 		};
 
 		// TODO Increment number of references to the filesystem
@@ -369,7 +369,7 @@ impl MountPoint {
 
 	/// Returns a mutable reference to the filesystem associated with the
 	/// mountpoint.
-	pub fn get_filesystem(&self) -> SharedPtr<dyn Filesystem> {
+	pub fn get_filesystem(&self) -> Arc<Mutex<dyn Filesystem>> {
 		self.fs.clone()
 	}
 
@@ -386,7 +386,7 @@ impl Drop for MountPoint {
 }
 
 /// The list of mountpoints with their respective ID.
-pub static MOUNT_POINTS: Mutex<HashMap<u32, SharedPtr<MountPoint>>> = Mutex::new(HashMap::new());
+pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<Mutex<MountPoint>>>> = Mutex::new(HashMap::new());
 /// A map from mountpoint paths to mountpoint IDs.
 pub static PATH_TO_ID: Mutex<HashMap<Path, u32>> = Mutex::new(HashMap::new());
 
@@ -401,10 +401,10 @@ pub static PATH_TO_ID: Mutex<HashMap<Path, u32>> = Mutex::new(HashMap::new());
 /// - `path` is the path on which the filesystem is to be mounted.
 pub fn create(
 	source: MountSource,
-	fs_type: Option<SharedPtr<dyn FilesystemType>>,
+	fs_type: Option<Arc<dyn FilesystemType>>,
 	flags: u32,
 	path: Path,
-) -> Result<SharedPtr<MountPoint>, Errno> {
+) -> Result<Arc<Mutex<MountPoint>>, Errno> {
 	// TODO clean
 	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
 	// the locks of MOUNT_POINTS
@@ -422,13 +422,13 @@ pub fn create(
 		id + 1
 	};
 
-	let mountpoint = SharedPtr::new(MountPoint::new(
+	let mountpoint = Arc::new(Mutex::new(MountPoint::new(
 		id,
 		source,
 		fs_type,
 		flags,
-		path.failable_clone()?
-	)?)?;
+		path.try_clone()?,
+	)?))?;
 
 	// Insertion
 	{
@@ -455,7 +455,7 @@ pub fn remove(path: &Path) -> Result<(), Errno> {
 	let mut path_to_id = PATH_TO_ID.lock();
 	let mut mount_points = MOUNT_POINTS.lock();
 
-	let id = path_to_id.get(path).ok_or(errno!(EINVAL))?.clone();
+	let id = *path_to_id.get(path).ok_or(errno!(EINVAL))?;
 	let _mountpoint = mount_points.get(&id).ok_or(errno!(EINVAL))?;
 
 	// TODO Check if busy (EBUSY)
@@ -472,10 +472,10 @@ pub fn remove(path: &Path) -> Result<(), Errno> {
 /// Returns the deepest mountpoint in the path `path`.
 ///
 /// If no mountpoint is in the path, the function returns `None`.
-pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
+pub fn get_deepest(path: &Path) -> Option<Arc<Mutex<MountPoint>>> {
 	let container = MOUNT_POINTS.lock();
 
-	let mut max: Option<SharedPtr<MountPoint>> = None;
+	let mut max: Option<Arc<Mutex<MountPoint>>> = None;
 	for (_, mp) in container.iter() {
 		let mp_guard = mp.lock();
 		let mount_path = mp_guard.get_path();
@@ -500,7 +500,7 @@ pub fn get_deepest(path: &Path) -> Option<SharedPtr<MountPoint>> {
 /// Returns the mountpoint with id `id`.
 ///
 /// If it doesn't exist, the function returns `None`.
-pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
+pub fn from_id(id: u32) -> Option<Arc<Mutex<MountPoint>>> {
 	let container = MOUNT_POINTS.lock();
 
 	for (mp_id, mp) in container.iter() {
@@ -515,7 +515,7 @@ pub fn from_id(id: u32) -> Option<SharedPtr<MountPoint>> {
 /// Returns the mountpoint with path `path`.
 ///
 /// If it doesn't exist, the function returns `None`.
-pub fn from_path(path: &Path) -> Option<SharedPtr<MountPoint>> {
+pub fn from_path(path: &Path) -> Option<Arc<Mutex<MountPoint>>> {
 	let container = MOUNT_POINTS.lock();
 
 	for (_, mp) in container.iter() {

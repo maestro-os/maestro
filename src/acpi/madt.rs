@@ -27,7 +27,7 @@ pub struct Madt {
 impl Madt {
 	/// Executes the given closure for each entry in the MADT.
 	pub fn foreach_entry<F: Fn(&EntryHeader)>(&self, f: F) {
-		let entries_len = self.header.get_length() as usize - ENTRIES_OFF;
+		let entries_len = self.header.get_length() - ENTRIES_OFF;
 
 		let mut i = 0;
 		while i < entries_len {

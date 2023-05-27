@@ -1,13 +1,13 @@
 //! `pselect6` is similar to `select`.
 
-use core::ffi::c_int;
+use super::select::do_select;
+use super::select::FDSet;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::time::unit::Timespec;
+use core::ffi::c_int;
 use macros::syscall;
-use super::select::FDSet;
-use super::select::do_select;
 
 #[syscall]
 pub fn pselect6(

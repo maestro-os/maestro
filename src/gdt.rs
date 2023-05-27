@@ -4,9 +4,7 @@
 //! It is a deprecated structure that still must be used in order to switch to protected mode,
 //! handle protection rings and load the Task State Segment (TSS).
 
-use crate::errno::Errno;
 use crate::memory;
-use crate::util::FailableClone;
 use core::ffi::c_void;
 use core::fmt;
 
@@ -120,12 +118,6 @@ impl Entry {
 	pub unsafe fn update_gdt(&self, off: usize) {
 		let ptr = get_segment_ptr(off);
 		*ptr = self.val;
-	}
-}
-
-impl FailableClone for Entry {
-	fn failable_clone(&self) -> Result<Self, Errno> {
-		Ok(*self)
 	}
 }
 

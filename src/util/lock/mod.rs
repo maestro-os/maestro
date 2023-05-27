@@ -19,11 +19,11 @@
 
 pub mod spinlock;
 
+use crate::idt;
+use crate::util::lock::spinlock::Spinlock;
 use core::cell::UnsafeCell;
 use core::ops::Deref;
 use core::ops::DerefMut;
-use crate::idt;
-use crate::util::lock::spinlock::Spinlock;
 
 /// Structure representing the saved state of interruptions for the current
 /// thread.
@@ -53,25 +53,23 @@ pub struct MutexGuard<'a, T: ?Sized, const INT: bool> {
 	mutex: &'a Mutex<T, INT>,
 }
 
-impl<'a, T: ?Sized + 'a, const INT: bool> Deref for MutexGuard<'a, T, INT> {
+impl<T: ?Sized, const INT: bool> Deref for MutexGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe {
-			self.mutex.get_payload()
-		}
+		unsafe { self.mutex.get_payload() }
 	}
 }
 
-impl<'a, T: ?Sized + 'a, const INT: bool> DerefMut for MutexGuard<'a, T, INT> {
+impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		unsafe {
-			self.mutex.get_mut_payload()
-		}
+		unsafe { self.mutex.get_mut_payload() }
 	}
 }
 
-impl<'a, T: ?Sized, const INT: bool> Drop for MutexGuard<'a, T, INT> {
+unsafe impl<T: ?Sized + Sync, const INT: bool> Sync for MutexGuard<'_, T, INT> {}
+
+impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
 	fn drop(&mut self) {
 		unsafe {
 			self.mutex.unlock();
@@ -83,10 +81,6 @@ impl<'a, T: ?Sized, const INT: bool> Drop for MutexGuard<'a, T, INT> {
 struct MutexIn<T: ?Sized, const INT: bool> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
-
-	/// Saved callstack, used to debug deadlocks.
-	#[cfg(config_debug_deadlock_stack)]
-	saved_stack: [*mut core::ffi::c_void; 32],
 
 	/// The data associated to the mutex.
 	data: T,
@@ -107,10 +101,8 @@ impl<T, const INT: bool> Mutex<T, INT> {
 		Self {
 			inner: UnsafeCell::new(MutexIn {
 				spin: Spinlock::new(),
-				data,
 
-				#[cfg(config_debug_deadlock_stack)]
-				saved_stack: [core::ptr::null_mut::<core::ffi::c_void>(); 32],
+				data,
 			}),
 		}
 	}
@@ -172,13 +164,6 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			}
 		} else {
 			inner.spin.lock();
-		}
-
-		// If enabled, save the stack to debug deadlocks
-		#[cfg(config_debug_deadlock_stack)]
-		{
-			let ebp = unsafe { crate::register_get!("ebp") as *mut _ };
-			crate::debug::get_callstack(ebp, &mut inner.saved_stack);
 		}
 
 		MutexGuard {

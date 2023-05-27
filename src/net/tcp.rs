@@ -1,10 +1,10 @@
 //! The Transmission Control Protocol (TCP) is a protocol transmitting sequenced, reliable,
 //! two-way, connection-based byte streams.
 
-use crate::errno::Errno;
-use crate::file::buffer::socket::Socket;
 use super::BuffList;
 use super::Layer;
+use crate::errno::Errno;
+use crate::file::buffer::socket::Socket;
 
 /// The TCP segment header.
 #[repr(C, packed)]
@@ -39,12 +39,10 @@ pub struct TCPHdr {
 pub struct TCPLayer {}
 
 impl Layer for TCPLayer {
-	fn transmit<'c, F>(
-		&self,
-		_buff: BuffList<'c>,
-		_next: F
-	) -> Result<(), Errno>
-		where F: Fn(BuffList<'c>) -> Result<(), Errno> {
+	fn transmit<'c, F>(&self, _buff: BuffList<'c>, _next: F) -> Result<(), Errno>
+	where
+		F: Fn(BuffList<'c>) -> Result<(), Errno>,
+	{
 		// TODO
 		todo!();
 	}

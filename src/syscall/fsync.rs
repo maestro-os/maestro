@@ -1,9 +1,9 @@
 //! The `fsync` system call synchronizes the state of a file to storage.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 #[syscall]

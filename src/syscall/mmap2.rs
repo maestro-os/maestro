@@ -17,5 +17,5 @@ pub fn mmap2(
 	fd: c_int,
 	offset: u64,
 ) -> Result<i32, Errno> {
-	mmap::do_mmap(addr, length, prot, flags, fd, (offset as u64) * 4096)
+	mmap::do_mmap(addr, length, prot, flags, fd, offset * 4096)
 }

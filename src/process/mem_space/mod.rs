@@ -9,35 +9,35 @@ mod gap;
 mod mapping;
 pub mod ptr;
 
-use core::cmp::Ordering;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::fmt;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::ptr::NonNull;
-use core::ptr::null;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::Gid;
 use crate::file::Uid;
 use crate::idt;
+use crate::memory;
 use crate::memory::buddy;
 use crate::memory::physical_ref_counter::PhysRefCounter;
 use crate::memory::stack;
-use crate::memory::vmem::VMem;
 use crate::memory::vmem;
-use crate::memory;
+use crate::memory::vmem::VMem;
 use crate::process::oom;
 use crate::process::open_file::OpenFile;
-use crate::util::FailableClone;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::map::Map;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
-use crate::util::ptr::SharedPtr;
-use crate::util;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
+use core::cmp::min;
+use core::cmp::Ordering;
+use core::ffi::c_void;
+use core::fmt;
+use core::mem::size_of;
+use core::num::NonZeroUsize;
+use core::ptr::null;
+use core::ptr::NonNull;
 use gap::MemGap;
 use mapping::MemMapping;
 
@@ -66,7 +66,7 @@ pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCount
 /// Enumeration of map residences.
 ///
 /// A map residence is the location where the physical memory of a mapping is stored.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum MapResidence {
 	/// The mapping does not reside anywhere except on the main memory.
 	Normal,
@@ -75,13 +75,13 @@ pub enum MapResidence {
 	/// memory spaces.
 	Static {
 		/// The list of memory pages, in order.
-		pages: SharedPtr<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
+		pages: Arc<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
 	},
 
 	/// The mapping resides in a file.
 	File {
 		/// The location of the file.
-		file: SharedPtr<OpenFile>,
+		file: Arc<Mutex<OpenFile>>,
 		/// The offset of the mapping in the file.
 		off: u64,
 	},
@@ -89,7 +89,7 @@ pub enum MapResidence {
 	/// The mapping resides in swap space.
 	Swap {
 		/// The location of the swap space.
-		swap_file: SharedPtr<OpenFile>,
+		swap_file: Arc<Mutex<OpenFile>>,
 		/// The ID of the slot occupied by the mapping.
 		slot_id: u32,
 		/// The page offset in the slot.
@@ -100,20 +100,21 @@ pub enum MapResidence {
 impl MapResidence {
 	/// Tells whether the residence is normal.
 	pub fn is_normal(&self) -> bool {
-		match self {
-			MapResidence::Normal => true,
-			_ => false,
-		}
+		matches!(self, MapResidence::Normal)
 	}
 
 	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
 	pub fn offset_add(&mut self, pages: usize) {
 		match self {
-			Self::File { off, ..  } => *off += pages as u64 * memory::PAGE_SIZE as u64,
+			Self::File {
+				off, ..
+			} => *off += pages as u64 * memory::PAGE_SIZE as u64,
 
-			Self::Swap { page_off, ..  } => *page_off += pages,
+			Self::Swap {
+				page_off, ..
+			} => *page_off += pages,
 
-			_ => {},
+			_ => {}
 		}
 	}
 
@@ -154,8 +155,6 @@ impl MapResidence {
 			MapResidence::Static {
 				pages,
 			} => {
-				let pages = pages.lock();
-
 				if off < pages.len() {
 					Ok(pages[off].as_ptr() as *mut c_void)
 				} else {
@@ -171,7 +170,9 @@ impl MapResidence {
 				todo!();
 			}
 
-			MapResidence::Swap { .. } => {
+			MapResidence::Swap {
+				..
+			} => {
 				// TODO
 				todo!();
 			}
@@ -186,8 +187,6 @@ impl MapResidence {
 			MapResidence::Static {
 				pages,
 			} => {
-				let pages = pages.lock();
-
 				if off >= pages.len() {
 					Self::free(ptr)
 				}
@@ -201,7 +200,9 @@ impl MapResidence {
 				todo!();
 			}
 
-			MapResidence::Swap { .. } => {
+			MapResidence::Swap {
+				..
+			} => {
 				// TODO
 				todo!();
 			}
@@ -308,15 +309,10 @@ impl MemSpace {
 	/// - `ptr` is the pointer.
 	///
 	/// If no gap contain the pointer, the function returns `None`.
-	fn gap_by_ptr<'a>(
-		gaps: &'a Map<*const c_void, MemGap>,
-		ptr: *const c_void,
-	) -> Option<&'a MemGap> {
+	fn gap_by_ptr(gaps: &Map<*const c_void, MemGap>, ptr: *const c_void) -> Option<&MemGap> {
 		gaps.cmp_get(|key, value| {
 			let begin = *key;
-			let end = unsafe {
-				begin.add(value.get_size().get() * memory::PAGE_SIZE)
-			};
+			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -423,15 +419,12 @@ impl MemSpace {
 			// match the address returned by the `mmap` syscall)
 			MapConstraint::Hint(addr) => {
 				// Getting the gap for the pointer
-				let mut gap = Self::gap_by_ptr(&self.gaps, addr)
-					.ok_or_else(|| errno!(ENOMEM))?;
+				let mut gap = Self::gap_by_ptr(&self.gaps, addr).ok_or_else(|| errno!(ENOMEM))?;
 
 				// The offset in the gap
 				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
 				// The end of the gap
-				let end = unsafe {
-					size.unchecked_add(off)
-				};
+				let end = unsafe { size.unchecked_add(off) };
 
 				if end > gap.get_size() {
 					// Hint cannot be satisfied. Get a gap large enough
@@ -439,9 +432,7 @@ impl MemSpace {
 						.ok_or_else(|| errno!(ENOMEM))?;
 				}
 
-				let addr = unsafe {
-					gap.get_begin().add(off * memory::PAGE_SIZE)
-				};
+				let addr = unsafe { gap.get_begin().add(off * memory::PAGE_SIZE) };
 				(Some(gap), addr)
 			}
 
@@ -520,9 +511,7 @@ impl MemSpace {
 	) -> Option<&MemMapping> {
 		mappings.cmp_get(|key, value| {
 			let begin = *key;
-			let end = unsafe {
-				begin.add(value.get_size().get() * memory::PAGE_SIZE)
-			};
+			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -544,9 +533,7 @@ impl MemSpace {
 	) -> Option<&mut MemMapping> {
 		mappings.cmp_get_mut(|key, value| {
 			let begin = *key;
-			let end = unsafe {
-				begin.add(value.get_size().get() * memory::PAGE_SIZE)
-			};
+			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
 
 			if ptr >= begin && ptr < end {
 				Ordering::Equal
@@ -592,9 +579,7 @@ impl MemSpace {
 		let mut i = 0;
 		while i < size.get() {
 			// The pointer of the page
-			let page_ptr = unsafe {
-				ptr.add(i * memory::PAGE_SIZE)
-			};
+			let page_ptr = unsafe { ptr.add(i * memory::PAGE_SIZE) };
 
 			// The mapping containing the page
 			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, page_ptr) {
@@ -777,7 +762,7 @@ impl MemSpace {
 	/// Performs the fork operation.
 	fn do_fork(&mut self) -> Result<Self, Errno> {
 		let mut mem_space = Self {
-			gaps: self.gaps.failable_clone()?,
+			gaps: self.gaps.try_clone()?,
 			gaps_size: self.gaps_size_clone()?,
 
 			mappings: Map::new(),
@@ -860,7 +845,7 @@ impl MemSpace {
 		_len: usize,
 		_prot: u8,
 		_uid: Uid,
-		_gid: Gid
+		_gid: Gid,
 	) -> Result<(), Errno> {
 		// TODO Iterate on mappings in the range:
 		//		If the mapping is shared and associated to a file, check file permissions match
@@ -905,7 +890,12 @@ impl MemSpace {
 			let pages = math::ceil_div(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 
-			self.map(MapConstraint::Fixed(begin), pages, flags, MapResidence::Normal)?;
+			self.map(
+				MapConstraint::Fixed(begin),
+				pages,
+				flags,
+				MapResidence::Normal,
+			)?;
 		} else {
 			// Free memory
 
@@ -968,14 +958,15 @@ impl MemSpace {
 
 impl fmt::Debug for MemSpace {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Mappings:\n")?;
+		writeln!(f, "Mappings:")?;
 		for (_, m) in self.mappings.iter() {
-			write!(f, "- {:?}\n", m)?;
+			writeln!(f, "- {:?}", m)?;
 		}
 
-		write!(f, "\nGaps:\n")?;
+		writeln!(f)?;
+		writeln!(f, "Gaps:")?;
 		for (_, g) in self.gaps.iter() {
-			write!(f, "- {:?}\n", g)?;
+			writeln!(f, "- {:?}", g)?;
 		}
 
 		Ok(())

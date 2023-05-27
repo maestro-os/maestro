@@ -2,7 +2,7 @@
 
 use crate::errno::Errno;
 use crate::memory::malloc;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 use core::cmp::max;
 use core::cmp::min;
 use core::fmt;
@@ -133,9 +133,7 @@ impl<T> Vec<T> {
 	/// without needing to reallocate the memory.
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
-		self.data.as_ref()
-			.map(|d| d.len())
-			.unwrap_or(0)
+		self.data.as_ref().map(|d| d.len()).unwrap_or(0)
 	}
 
 	/// Returns a slice containing the data.
@@ -182,11 +180,7 @@ impl<T> Vec<T> {
 		unsafe {
 			// Shift
 			let ptr = data.as_ptr_mut();
-			ptr::copy(
-				ptr.offset(index as _),
-				ptr.offset((index + 1) as _),
-				self.len - index,
-			);
+			ptr::copy(ptr.add(index), ptr.add(index + 1), self.len - index);
 
 			ptr::write(&mut data[index], element);
 		}
@@ -212,11 +206,7 @@ impl<T> Vec<T> {
 
 			// Shift
 			let ptr = data.as_ptr_mut();
-			ptr::copy(
-				ptr.offset((index + 1) as _),
-				ptr.offset(index as _),
-				self.len - index - 1,
-			);
+			ptr::copy(ptr.add(index + 1), ptr.add(index), self.len - index - 1);
 
 			v
 		};
@@ -235,11 +225,7 @@ impl<T> Vec<T> {
 
 		unsafe {
 			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
-			ptr::copy_nonoverlapping(
-				other.as_ptr(),
-				self_ptr.offset(self.len as _),
-				other.len()
-			);
+			ptr::copy_nonoverlapping(other.as_ptr(), self_ptr.add(self.len), other.len());
 		}
 
 		self.len += other.len();
@@ -303,9 +289,7 @@ impl<T> Vec<T> {
 		let mut new_len = 0;
 
 		while processed < len {
-			let cur = unsafe {
-				&mut *data.as_ptr_mut().add(processed)
-			};
+			let cur = unsafe { &mut *data.as_ptr_mut().add(processed) };
 			let keep = f(cur);
 			processed += 1;
 
@@ -318,7 +302,9 @@ impl<T> Vec<T> {
 				if kept_count > 0 {
 					unsafe {
 						let src = data.as_ptr().add(processed - kept_count - 1);
-						let dst = data.as_ptr_mut().add(processed - kept_count - deleted_count - 1);
+						let dst = data
+							.as_ptr_mut()
+							.add(processed - kept_count - deleted_count - 1);
 
 						ptr::copy(src, dst, kept_count);
 					}
@@ -340,7 +326,9 @@ impl<T> Vec<T> {
 		if deleted_count > 0 && kept_count > 0 {
 			unsafe {
 				let src = data.as_ptr().add(processed - kept_count);
-				let dst = data.as_ptr_mut().add(processed - kept_count - deleted_count);
+				let dst = data
+					.as_ptr_mut()
+					.add(processed - kept_count - deleted_count);
 
 				ptr::copy(src, dst, kept_count);
 			}
@@ -486,24 +474,19 @@ impl<T: Clone> Vec<T> {
 	}
 }
 
-impl<T> FailableClone for Vec<T>
-where
-	T: FailableClone,
-{
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl<T: TryClone> TryClone for Vec<T> {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		let mut v = Self::with_capacity(self.len)?;
 
 		for i in 0..self.len {
-			v.push(self[i].failable_clone()?)?;
+			let res: Result<_, Errno> = self[i].try_clone().map_err(Into::into);
+			v.push(res?)?;
 		}
 		Ok(v)
 	}
 }
 
-impl<T> Vec<T>
-where
-	T: FailableClone,
-{
+impl<T: TryClone> Vec<T> {
 	/// Clones the vector, keeping the given range.
 	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, Errno> {
 		let end = min(range.end, self.len);
@@ -513,7 +496,8 @@ where
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[start + i].failable_clone()?)?;
+			let res: Result<_, Errno> = self[start + i].try_clone().map_err(Into::into);
+			v.push(res?)?;
 		}
 		Ok(v)
 	}
@@ -524,7 +508,8 @@ where
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[range.start + i].failable_clone()?)?;
+			let res: Result<_, Errno> = self[range.start + i].try_clone().map_err(Into::into);
+			v.push(res?)?;
 		}
 		Ok(v)
 	}
@@ -535,7 +520,8 @@ where
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			v.push(self[i].failable_clone()?)?;
+			let res: Result<_, Errno> = self[i].try_clone().map_err(Into::into);
+			v.push(res?)?;
 		}
 		Ok(v)
 	}
@@ -714,7 +700,7 @@ impl<'a, T> IntoIterator for &'a Vec<T> {
 	type Item = &'a T;
 
 	fn into_iter(self) -> Self::IntoIter {
-		VecIterator::new(&self)
+		VecIterator::new(self)
 	}
 }
 

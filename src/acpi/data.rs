@@ -7,22 +7,22 @@
 //! The structure implemented in this module uses a temporary virtual memory
 //! context to get a copy of the data.
 
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr::Pointee;
-use core::ptr::copy_nonoverlapping;
-use core::ptr;
-use core::slice;
+use crate::acpi::rsdt::Rsdt;
 use crate::acpi::ACPITable;
 use crate::acpi::ACPITableHeader;
-use crate::acpi::rsdt::Rsdt;
 use crate::errno::Errno;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::vmem;
-use crate::memory;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
-use crate::util;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
+use core::ptr::copy_nonoverlapping;
+use core::ptr::Pointee;
+use core::slice;
 
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &[u8] = b"RSD PTR ";
@@ -196,8 +196,8 @@ impl ACPIData {
 
 			// FIXME: This is garbage due to a merge in order to make things compile.
 			// This whole function needs a rewrite
-			let lowest = 0 as *const c_void;
-			let highest = 0 as *const c_void;
+			let lowest = core::ptr::null::<c_void>();
+			let highest = core::ptr::null::<c_void>();
 
 			// Mapping the full ACPI data
 			let begin = util::down_align(lowest, memory::PAGE_SIZE);
@@ -237,7 +237,7 @@ impl ACPIData {
 			&*rsdt_ptr
 		};
 
-		let entries_len = rsdt.header.get_length() as usize - size_of::<Rsdt>();
+		let entries_len = rsdt.header.get_length() - size_of::<Rsdt>();
 		let entries_count = entries_len / size_of::<u32>();
 		let entries_ptr = (rsdt_ptr as usize + size_of::<Rsdt>()) as *const u32;
 
@@ -281,7 +281,7 @@ impl ACPIData {
 			&*rsdt_ptr
 		};
 
-		let entries_len = rsdt.header.get_length() as usize - size_of::<Rsdt>();
+		let entries_len = rsdt.header.get_length() - size_of::<Rsdt>();
 		let entries_count = entries_len / size_of::<u32>();
 		let entries_ptr = (rsdt_ptr as usize + size_of::<Rsdt>()) as *const u32;
 

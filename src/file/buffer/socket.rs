@@ -1,36 +1,37 @@
 //! This file implements sockets.
 
-use core::ffi::c_short;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr;
+use super::Buffer;
 use crate::errno::Errno;
+use crate::file::buffer::BlockHandler;
 use crate::file::Gid;
+use crate::file::Uid;
 use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
-use crate::file::Uid;
-use crate::file::buffer::BlockHandler;
-use crate::net::Layer;
-use crate::net::ip::IPv4Layer;
-use crate::net::ip;
-use crate::net::sockaddr::SockAddr;
-use crate::net::sockaddr::SockAddrIn6;
-use crate::net::sockaddr::SockAddrIn;
-use crate::net::tcp::TCPLayer;
-use crate::net::tcp;
 use crate::net;
-use crate::process::Process;
+use crate::net::ip;
+use crate::net::ip::IPv4Layer;
+use crate::net::sockaddr::SockAddr;
+use crate::net::sockaddr::SockAddrIn;
+use crate::net::sockaddr::SockAddrIn6;
+use crate::net::tcp;
+use crate::net::tcp::TCPLayer;
+use crate::net::Layer;
 use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util::FailableDefault;
+use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
-use crate::util;
-use super::Buffer;
+use crate::util::lock::IntMutex;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryDefault;
+use core::ffi::c_short;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
 
 /// The maximum size of a socket's buffers.
 const BUFFER_SIZE: usize = 65536;
@@ -93,8 +94,8 @@ pub enum SockType {
 	SockStream,
 	/// Datagrams.
 	SockDgram,
-	/// Sequenced, reliable, two-way connection-based data transmission path for datagrams of fixed
-	/// maximum length.
+	/// Sequenced, reliable, two-way connection-based data transmission path for datagrams of
+	/// fixed maximum length.
 	SockSeqpacket,
 	/// Raw network protocol access.
 	SockRaw,
@@ -134,7 +135,6 @@ pub enum SockState {
 	WaitingAck,
 	/// The socket is ready for I/O.
 	Ready,
-
 	// TODO Closed state?
 }
 
@@ -165,11 +165,14 @@ pub struct Socket {
 
 impl Socket {
 	/// Creates a new instance.
-	pub fn new(domain: SockDomain, type_: SockType, protocol: i32)
-		-> Result<SharedPtr<Self>, Errno> {
+	pub fn new(
+		domain: SockDomain,
+		type_: SockType,
+		protocol: i32,
+	) -> Result<Arc<Mutex<Self>>, Errno> {
 		// TODO Check domain, type and protocol
 
-		SharedPtr::new(Self {
+		Arc::new(Mutex::new(Self {
 			domain,
 			type_,
 			protocol,
@@ -181,7 +184,7 @@ impl Socket {
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 
 			block_handler: BlockHandler::new(),
-		})
+		}))
 	}
 
 	/// Returns the socket's domain.
@@ -227,7 +230,7 @@ impl Socket {
 			ptr::copy_nonoverlapping::<c_short>(
 				&sockaddr[0] as *const _ as *const _,
 				&mut sin_family,
-				1
+				1,
 			);
 		}
 
@@ -237,13 +240,15 @@ impl Socket {
 		}
 
 		let sockaddr: SockAddr = match domain {
-			SockDomain::AfInet => unsafe {
-				util::reinterpret::<SockAddrIn>(sockaddr)
-			}.unwrap().clone().into(),
+			SockDomain::AfInet => unsafe { util::reinterpret::<SockAddrIn>(sockaddr) }
+				.unwrap()
+				.clone()
+				.into(),
 
-			SockDomain::AfInet6 => unsafe {
-				util::reinterpret::<SockAddrIn6>(sockaddr)
-			}.unwrap().clone().into(),
+			SockDomain::AfInet6 => unsafe { util::reinterpret::<SockAddrIn6>(sockaddr) }
+				.unwrap()
+				.clone()
+				.into(),
 
 			_ => return Err(errno!(EPROTOTYPE)),
 		};
@@ -255,12 +260,12 @@ impl Socket {
 			SockType::SockStream => {
 				tcp::init_connection(self)?;
 				self.state = SockState::WaitingAck;
-			},
+			}
 
 			SockType::SockSeqpacket => {
 				// TODO
 				todo!();
-			},
+			}
 
 			_ => self.state = SockState::Ready,
 		}
@@ -269,8 +274,8 @@ impl Socket {
 	}
 }
 
-impl FailableDefault for Socket {
-	fn failable_default() -> Result<Self, Errno> {
+impl TryDefault for Socket {
+	fn try_default() -> Result<Self, Errno> {
 		Ok(Self {
 			domain: SockDomain::AfUnix,
 			type_: SockType::SockRaw,
@@ -304,7 +309,7 @@ impl Buffer for Socket {
 
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -314,7 +319,9 @@ impl Buffer for Socket {
 }
 
 impl IO for Socket {
-	fn get_size(&self) -> u64 { 0 }
+	fn get_size(&self) -> u64 {
+		0
+	}
 
 	/// Note: This implemention ignores the offset.
 	fn read(&mut self, _: u64, _buf: &mut [u8]) -> Result<(u64, bool), Errno> {
@@ -330,9 +337,9 @@ impl IO for Socket {
 			dom @ (SockDomain::AfInet | SockDomain::AfInet6) => {
 				let transport = match self.type_ {
 					SockType::SockStream => TCPLayer {},
-					SockType::SockDgram => todo!(), // TODO
+					SockType::SockDgram => todo!(),     // TODO
 					SockType::SockSeqpacket => todo!(), // TODO
-					SockType::SockRaw => todo!(), // TODO
+					SockType::SockRaw => todo!(),       // TODO
 				};
 
 				let network = match dom {
@@ -341,7 +348,7 @@ impl IO for Socket {
 							SockType::SockStream => ip::PROTO_TCP,
 							SockType::SockDgram => ip::PROTO_UDP,
 							SockType::SockSeqpacket => todo!(), // TODO
-							SockType::SockRaw => todo!(), // TODO
+							SockType::SockRaw => todo!(),       // TODO
 						},
 
 						src_addr: [0; 4], // TODO

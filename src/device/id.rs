@@ -93,7 +93,7 @@ static CHAR_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 /// Allocates a major number.
 ///
 /// `device_type` is the type of device for the major block to be allocated.
-/// 
+///
 /// If `major` is not `None`, the function shall allocate the specific given major
 /// number.
 ///

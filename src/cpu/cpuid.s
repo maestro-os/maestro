@@ -5,6 +5,9 @@
 .global cpuid_has_sse
 .global get_hwcap
 
+.type cpuid_has_sse, @function
+.type get_hwcap, @function
+
 .section .text
 
 cpuid_has_sse:

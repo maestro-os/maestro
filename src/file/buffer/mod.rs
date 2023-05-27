@@ -3,21 +3,21 @@
 pub mod pipe;
 pub mod socket;
 
-use core::any::Any;
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::file::FileLocation;
 use crate::file::blocking::BlockHandler;
-use crate::process::Process;
+use crate::file::FileLocation;
 use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util::FailableDefault;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryDefault;
+use core::any::Any;
+use core::ffi::c_void;
 
 /// Trait representing a buffer.
 pub trait Buffer: IO + Any {
@@ -55,7 +55,7 @@ pub trait Buffer: IO + Any {
 	/// - `argp` is a pointer to the argument.
 	fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno>;
@@ -63,8 +63,7 @@ pub trait Buffer: IO + Any {
 
 /// All the system's buffer. The key is the location of the file associated with the
 /// entry.
-static BUFFERS: Mutex<HashMap<FileLocation, SharedPtr<dyn Buffer>>>
-	= Mutex::new(HashMap::new());
+static BUFFERS: Mutex<HashMap<FileLocation, Arc<Mutex<dyn Buffer>>>> = Mutex::new(HashMap::new());
 /// Buffer ID allocator.
 static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
@@ -74,7 +73,9 @@ static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 ///
 /// If the ID allocator is not initialized, the function initializes it.
 fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
-	where F: FnOnce(&mut IDAllocator) -> Result<T, Errno> {
+where
+	F: FnOnce(&mut IDAllocator) -> Result<T, Errno>,
+{
 	let mut id_allocator = ID_ALLOCATOR.lock();
 
 	let id_allocator = match &mut *id_allocator {
@@ -82,7 +83,7 @@ fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
 		None => {
 			*id_allocator = Some(IDAllocator::new(65536)?);
 			id_allocator.as_mut().unwrap()
-		},
+		}
 	};
 
 	f(id_allocator)
@@ -91,7 +92,7 @@ fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
 /// Returns the buffer associated with the file at location `loc`.
 ///
 /// If the buffer doesn't exist, the function creates it.
-pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
+pub fn get(loc: &FileLocation) -> Option<Arc<Mutex<dyn Buffer>>> {
 	let buffers = BUFFERS.lock();
 	buffers.get(loc).cloned()
 }
@@ -99,20 +100,21 @@ pub fn get(loc: &FileLocation) -> Option<SharedPtr<dyn Buffer>> {
 /// Returns the buffer associated with the file at location `loc`.
 ///
 /// If the buffer doesn't exist, the function registers a new default buffer.
-pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
-	loc: &FileLocation
-) -> Result<SharedPtr<dyn Buffer>, Errno> {
+pub fn get_or_default<B: Buffer + TryDefault + 'static>(
+	loc: &FileLocation,
+) -> Result<Arc<Mutex<dyn Buffer>>, Errno> {
 	let mut buffers = BUFFERS.lock();
 
 	match buffers.get(loc).cloned() {
 		Some(buff) => Ok(buff),
 
 		None => {
-			let buff = SharedPtr::new(B::failable_default()?)?;
+			let buff: Result<_, Errno> = B::try_default().map_err(Into::into);
+			let buff = Arc::new(Mutex::new(buff?))?;
 			buffers.insert(loc.clone(), buff.clone())?;
 
 			Ok(buff)
-		},
+		}
 	}
 }
 
@@ -128,11 +130,14 @@ pub fn get_or_default<B: Buffer + FailableDefault + 'static>(
 /// The function returns the location associated with the buffer.
 pub fn register(
 	loc: Option<FileLocation>,
-	buff: SharedPtr<dyn Buffer>
+	buff: Arc<Mutex<dyn Buffer>>,
 ) -> Result<FileLocation, Errno> {
 	let loc = id_allocator_do(|id_allocator| match loc {
 		Some(loc) => {
-			if let FileLocation::Virtual { id } = loc {
+			if let FileLocation::Virtual {
+				id,
+			} = loc
+			{
 				id_allocator.set_used(id);
 			}
 
@@ -141,7 +146,7 @@ pub fn register(
 
 		None => Ok(FileLocation::Virtual {
 			id: id_allocator.alloc(None)?,
-		})
+		}),
 	})?;
 
 	let mut buffers = BUFFERS.lock();
@@ -158,7 +163,10 @@ pub fn release(loc: &FileLocation) {
 
 	let _ = buffers.remove(loc);
 
-	if let FileLocation::Virtual { id } = loc {
+	if let FileLocation::Virtual {
+		id,
+	} = loc
+	{
 		let _ = id_allocator_do(|id_allocator| {
 			id_allocator.free(*id);
 			Ok(())

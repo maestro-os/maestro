@@ -2,9 +2,9 @@
 //! the resource is available.
 
 use crate::errno::Errno;
-use crate::process::Process;
-use crate::process::pid::Pid;
 use crate::process;
+use crate::process::pid::Pid;
+use crate::process::Process;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io;
 
@@ -30,9 +30,8 @@ impl BlockHandler {
 	/// When the event occurs, the process will be woken up.
 	///
 	/// `mask` is the mask of poll event to wait for.
-	///
 	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
-		self.waiting_procs.insert(proc.get_pid(), mask)?;
+		self.waiting_procs.insert(proc.pid, mask)?;
 		proc.set_state(process::State::Sleeping);
 
 		Ok(())

@@ -3,21 +3,22 @@
 
 mod cpio;
 
-use cpio::CPIOParser;
 use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::VFS;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::file;
-use crate::util::FailableClone;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
-use crate::util::ptr::SharedPtr;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
+use cpio::CPIOParser;
 
 /// Updates the current parent used for the unpacking operation.
 ///
@@ -29,19 +30,19 @@ use crate::util::ptr::SharedPtr;
 fn update_parent(
 	vfs: &mut VFS,
 	new: &Path,
-	stored: &mut Option<(Path, SharedPtr<File>)>,
+	stored: &mut Option<(Path, Arc<Mutex<File>>)>,
 	retry: bool,
 ) -> Result<(), Errno> {
 	// Getting the parent
 	let result = match stored {
 		Some((path, file)) if new.begins_with(path) => {
-			let name = match new.failable_clone()?.pop() {
+			let name = match new.try_clone()?.pop() {
 				Some(name) => name,
 				None => return Ok(()),
 			};
 
 			let mut f = file.lock();
-			vfs.get_file_from_parent(&mut *f, name, file::ROOT_UID, file::ROOT_GID, false)
+			vfs.get_file_from_parent(&mut f, name, file::ROOT_UID, file::ROOT_GID, false)
 		}
 
 		Some(_) | None => vfs.get_file_from_path(new, file::ROOT_UID, file::ROOT_GID, false),
@@ -49,7 +50,7 @@ fn update_parent(
 
 	match result {
 		Ok(file) => {
-			*stored = Some((new.failable_clone()?, file));
+			*stored = Some((new.try_clone()?, file));
 		}
 
 		// If the directory doesn't exist, create recursively
@@ -76,7 +77,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 
 	// TODO Use a stack instead?
 	// The stored parent directory
-	let mut stored_parent: Option<(Path, SharedPtr<File>)> = None;
+	let mut stored_parent: Option<(Path, Arc<Mutex<File>>)> = None;
 
 	let cpio_parser = CPIOParser::new(data);
 	for entry in cpio_parser {
@@ -122,7 +123,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 
 		// Creating file
 		let create_result = vfs.create_file(
-			&mut *parent,
+			&mut parent,
 			name,
 			file::ROOT_UID,
 			file::ROOT_GID,

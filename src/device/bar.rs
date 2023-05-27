@@ -1,9 +1,9 @@
 //! The Base Address Register (BAR) is a way to communicate with a device using
 //! Direct Access Memory (DMA).
 
+use crate::io;
 use core::mem::size_of;
 use core::ptr;
-use crate::io;
 
 /// Enumeration of Memory Space BAR types.
 #[derive(Clone, Debug)]
@@ -36,7 +36,7 @@ pub enum BAR {
 
 		/// The size of the address space in bytes.
 		size: usize,
-	}
+	},
 }
 
 impl BAR {
@@ -44,13 +44,11 @@ impl BAR {
 	pub fn get_address(&self) -> *mut () {
 		match self {
 			Self::MemorySpace {
-				address,
-				..
+				address, ..
 			} => *address as _,
 
 			Self::IOSpace {
-				address,
-				..
+				address, ..
 			} => *address as _,
 		}
 	}
@@ -93,13 +91,13 @@ impl BAR {
 				BARType::Size32 => unsafe {
 					let addr = (address + off as u64) as *const u32;
 					ptr::read_volatile::<u32>(addr).into()
-				}
+				},
 
 				BARType::Size64 => unsafe {
 					let addr = (address + off as u64) as *const u64;
 					ptr::read_volatile::<u64>(addr)
-				}
-			}
+				},
+			},
 
 			Self::IOSpace {
 				address, ..
@@ -131,13 +129,13 @@ impl BAR {
 				BARType::Size32 => unsafe {
 					let addr = (address + off as u64) as *mut u32;
 					ptr::write_volatile::<u32>(addr, val as _);
-				}
+				},
 
 				BARType::Size64 => unsafe {
 					let addr = (address + off as u64) as *mut u64;
 					ptr::write_volatile::<u64>(addr, val);
-				}
-			}
+				},
+			},
 
 			Self::IOSpace {
 				address, ..

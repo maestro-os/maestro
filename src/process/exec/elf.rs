@@ -1,44 +1,44 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
-use core::cmp::max;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr::null;
-use core::ptr;
-use core::slice;
-use core::str;
+use super::vdso;
 use crate::cpu;
-use crate::elf::ELF32ProgramHeader;
+use crate::elf;
 use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
-use crate::elf;
-use crate::errno::Errno;
+use crate::elf::ELF32ProgramHeader;
 use crate::errno;
+use crate::errno::Errno;
 use crate::exec::vdso::MappedVDSO;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
-use crate::file::path::Path;
-use crate::file::vfs;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::vmem;
-use crate::memory;
+use crate::process;
 use crate::process::exec::ExecInfo;
 use crate::process::exec::Executor;
 use crate::process::exec::ProgramImage;
+use crate::process::mem_space;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
-use crate::process::mem_space;
-use crate::process;
-use crate::util::FailableClone;
+use crate::util;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::math;
-use crate::util;
-use super::vdso;
+use crate::util::TryClone;
+use core::cmp::max;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::ptr;
+use core::ptr::null;
+use core::slice;
+use core::str;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -234,7 +234,7 @@ fn build_auxilary(
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_RANDOM,
-		AuxEntryDescValue::String(&[0 as u8; 16]),
+		AuxEntryDescValue::String(&[0; 16]),
 	))?; // TODO
 	aux.push(AuxEntryDesc::new(
 		AT_EXECFN,
@@ -244,11 +244,11 @@ fn build_auxilary(
 	// vDSO
 	aux.push(AuxEntryDesc::new(
 		AT_SYSINFO,
-		AuxEntryDescValue::Number(vdso.entry.as_ptr() as _)
+		AuxEntryDescValue::Number(vdso.entry.as_ptr() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_SYSINFO_EHDR,
-		AuxEntryDescValue::Number(vdso.ptr.as_ptr() as _)
+		AuxEntryDescValue::Number(vdso.ptr.as_ptr() as _),
 	))?;
 
 	// End
@@ -311,9 +311,8 @@ impl ELFExecutor {
 		// The size of the block storing the arguments and environment
 		let mut info_block_size = 0;
 		for a in aux {
-			match a.a_val {
-				AuxEntryDescValue::String(slice) => info_block_size += slice.len() + 1,
-				_ => {}
+			if let AuxEntryDescValue::String(slice) = a.a_val {
+				info_block_size += slice.len() + 1;
 			}
 		}
 		for e in envp {
@@ -562,9 +561,10 @@ impl ELFExecutor {
 		let phnum = ehdr.e_phnum as usize;
 
 		// The size in bytes of the phdr table
-		let phdr_size = phentsize as usize * phnum as usize;
+		let phdr_size = phentsize * phnum;
 
-		let phdr = elf.iter_segments()
+		let phdr = elf
+			.iter_segments()
 			.filter(|seg| seg.p_type == elf::PT_PHDR)
 			.map(|seg| seg.p_vaddr as *mut c_void)
 			.next();
@@ -582,7 +582,7 @@ impl ELFExecutor {
 				)?;
 
 				(phdr, true)
-			},
+			}
 		};
 
 		let mut entry_point =
@@ -611,8 +611,7 @@ impl ELFExecutor {
 			};
 			let mut interp_file = interp_file_mutex.lock();
 
-			let interp_image =
-				read_exec_file(&mut *interp_file, self.info.euid, self.info.egid)?;
+			let interp_image = read_exec_file(&mut interp_file, self.info.euid, self.info.egid)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
@@ -637,11 +636,7 @@ impl ELFExecutor {
 					let image_phdr = &elf.get_image()[(ehdr.e_phoff as usize)..];
 
 					vmem::write_lock_wrap(|| {
-						ptr::copy_nonoverlapping::<u8>(
-							image_phdr.as_ptr(),
-							phdr as _,
-							phdr_size
-						);
+						ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr as _, phdr_size);
 					});
 				}
 
@@ -665,12 +660,12 @@ impl ELFExecutor {
 					for section in elf.iter_sections() {
 						for rel in elf.iter_rel(section) {
 							rel.perform(load_base as _, section, get_sym, get_sym_val)
-								.or_else(|_| Err(errno!(EINVAL)))?;
+								.map_err(|_| errno!(EINVAL))?;
 						}
 
 						for rela in elf.iter_rela(section) {
 							rela.perform(load_base as _, section, get_sym, get_sym_val)
-								.or_else(|_| Err(errno!(EINVAL)))?;
+								.map_err(|_| errno!(EINVAL))?;
 						}
 					}
 				}
@@ -754,7 +749,7 @@ impl Executor for ELFExecutor {
 			mem_space.map_stack(process::KERNEL_STACK_SIZE, process::KERNEL_STACK_FLAGS)?;
 
 		Ok(ProgramImage {
-			argv: self.info.argv.failable_clone()?,
+			argv: self.info.argv.try_clone()?,
 
 			mem_space,
 

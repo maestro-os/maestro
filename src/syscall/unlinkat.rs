@@ -33,7 +33,7 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 	let mut vfs = vfs_mutex.lock();
 	let vfs = vfs.as_mut().unwrap();
 
-	vfs.remove_file(&*file, uid, gid)?;
+	vfs.remove_file(&file, uid, gid)?;
 
 	Ok(0)
 }

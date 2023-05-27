@@ -1,18 +1,19 @@
 //! The `openat` syscall allows to open a file.
 
-use core::ffi::c_int;
+use super::util;
 use crate::errno::Errno;
+use crate::file;
+use crate::file::fd::FD_CLOEXEC;
+use crate::file::open_file;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::fd::FD_CLOEXEC;
-use crate::file::open_file;
-use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::util::ptr::SharedPtr;
+use crate::process::Process;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
+use core::ffi::c_int;
 use macros::syscall;
-use super::util;
 
 // TODO Implement all flags
 
@@ -35,7 +36,7 @@ fn get_file(
 	pathname: SyscallString,
 	flags: i32,
 	mode: Mode,
-) -> Result<SharedPtr<File>, Errno> {
+) -> Result<Arc<Mutex<File>>, Errno> {
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
@@ -84,7 +85,7 @@ pub fn openat(
 		let mut f = file.lock();
 
 		let loc = f.get_location().clone();
-		let (read, write, cloexec) = super::open::handle_flags(&mut *f, flags, uid, gid)?;
+		let (read, write, cloexec) = super::open::handle_flags(&mut f, flags, uid, gid)?;
 
 		(loc, read, write, cloexec)
 	};

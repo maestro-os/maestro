@@ -4,24 +4,25 @@
 //! Ramdisks are lazily allocated so they do not use much memory as long as they
 //! are not used.
 
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::StorageInterface;
+use crate::device;
+use crate::device::id;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::device::id;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
-use super::StorageInterface;
+use crate::util::lock::IntMutex;
+use crate::util::ptr::arc::Arc;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;
@@ -137,7 +138,7 @@ impl RAMDiskHandle {
 impl DeviceHandle for RAMDiskHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -180,7 +181,7 @@ pub fn create() -> Result<(), Errno> {
 		let dev = Device::new(
 			DeviceID {
 				type_: DeviceType::Block,
-				major: RAM_DISK_MAJOR, 
+				major: RAM_DISK_MAJOR,
 				minor: i as _,
 			},
 			path,

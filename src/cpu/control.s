@@ -10,6 +10,14 @@
 .global cr4_get
 .global cr4_set
 
+.type cr0_get, @function
+.type cr0_set, @function
+.type cr0_clear, @function
+.type cr2_get, @function
+.type cr3_get, @function
+.type cr4_get, @function
+.type cr4_set, @function
+
 /*
  * (x86) Returns the value of the %cr0 register.
  */

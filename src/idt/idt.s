@@ -4,10 +4,12 @@
 
 .include "src/process/regs/regs.s"
 
-.global idt_load
-.extern end_of_interrupt
-
 .section .text
+
+.global idt_load
+.type idt_load, @function
+
+.extern end_of_interrupt
 
 /*
  * This macro creates a function to handle an error interrupt that does **not** pass an additional
@@ -17,6 +19,7 @@
  */
 .macro ERROR_NOCODE	n
 .global error\n
+.type error\n, @function
 
 error\n:
 	push %ebp
@@ -53,6 +56,7 @@ RESTORE_REGS
  */
 .macro ERROR_CODE	n
 .global error\n
+.type error\n, @function
 
 error\n:
 	# Retrieving the error code and writing it after the stack pointer so that it can be retrieved

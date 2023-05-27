@@ -60,9 +60,9 @@ impl KernFSNode for SelfNode {
 
 	fn set_mtime(&mut self, _: Timestamp) {}
 
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+	fn get_content(&self) -> Cow<'_, FileContent> {
 		let pid = if let Some(proc_mutex) = Process::get_current() {
-			proc_mutex.lock().get_pid()
+			proc_mutex.lock().pid
 		} else {
 			0
 		};

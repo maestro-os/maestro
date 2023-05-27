@@ -354,11 +354,11 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
+			let blk_per_blk = entries_per_blk.pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
-			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
+			let byte_off = (begin as u64 * blk_size as u64) + inner_off;
 
 			let b = unsafe { read::<u32>(byte_off, io)? };
 
@@ -455,11 +455,11 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
+			let blk_per_blk = entries_per_blk.pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
-			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
+			let byte_off = (begin as u64 * blk_size as u64) + inner_off;
 
 			let mut b = unsafe { read::<u32>(byte_off, io)? };
 			if b == 0 {
@@ -615,11 +615,11 @@ impl Ext2INode {
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
 		if n > 0 {
-			let blk_per_blk = (entries_per_blk as u32).pow((n - 1) as _);
+			let blk_per_blk = entries_per_blk.pow((n - 1) as _);
 			let inner_index = off / blk_per_blk;
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
-			let byte_off = (begin as u64 * blk_size as u64) + inner_off as u64;
+			let byte_off = (begin as u64 * blk_size as u64) + inner_off;
 
 			let b = unsafe { read::<u32>(byte_off, io)? };
 
@@ -741,8 +741,8 @@ impl Ext2INode {
 		let mut i = 0;
 		let max = min(buff.len() as u64, size - off);
 		while i < max {
-			let blk_off = (off + i as u64) / blk_size as u64;
-			let blk_inner_off = ((off + i as u64) % blk_size as u64) as usize;
+			let blk_off = (off + i) / blk_size as u64;
+			let blk_inner_off = ((off + i) % blk_size as u64) as usize;
 			let len = min(max - i, (blk_size - blk_inner_off as u32) as u64);
 
 			let dst = &mut buff[(i as usize)..((i + len) as usize)];

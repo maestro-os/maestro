@@ -26,7 +26,7 @@ impl KernFSNode for OsRelease {
 		0
 	}
 
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+	fn get_content(&self) -> Cow<'_, FileContent> {
 		Cow::from(FileContent::Regular)
 	}
 }

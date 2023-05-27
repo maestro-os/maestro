@@ -1,12 +1,12 @@
 //! The ioctl syscall allows to control a device represented by a file
 //! descriptor.
 
+use crate::errno;
+use crate::errno::Errno;
+use crate::process::Process;
 use core::ffi::c_int;
 use core::ffi::c_ulong;
 use core::ffi::c_void;
-use crate::errno::Errno;
-use crate::errno;
-use crate::process::Process;
 use macros::syscall;
 
 // ioctl requests: hard drive

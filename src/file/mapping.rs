@@ -1,12 +1,12 @@
 //! A file mapping is a view of a file in memory, which can be modified, shared between processes,
 //! etc...
 
-use core::ptr::NonNull;
 use crate::errno::Errno;
 use crate::file::FileLocation;
-use crate::memory::buddy;
 use crate::memory;
+use crate::memory::buddy;
 use crate::util::container::hashmap::HashMap;
+use core::ptr::NonNull;
 
 /// Structure representing a mapped page for a file.
 struct Page {
@@ -32,11 +32,14 @@ impl MappedFile {
 	/// `off` is the offset of the page in pages count.
 	pub fn acquire_page(&mut self, off: usize) -> Result<&mut Page, Errno> {
 		if !self.pages.contains_key(&off) {
-			self.pages.insert(off, Page {
-				ptr: NonNull::new(buddy::alloc_kernel(0)? as *mut _).unwrap(),
+			self.pages.insert(
+				off,
+				Page {
+					ptr: NonNull::new(buddy::alloc_kernel(0)? as *mut _).unwrap(),
 
-				ref_count: 1,
-			})?;
+					ref_count: 1,
+				},
+			)?;
 		}
 
 		let page = self.pages.get_mut(&off).unwrap();
@@ -89,14 +92,12 @@ impl FileMappingManager {
 	pub fn get_page(
 		&mut self,
 		loc: &FileLocation,
-		off: usize
+		off: usize,
 	) -> Option<&mut [u8; memory::PAGE_SIZE]> {
 		let file = self.mapped_files.get_mut(loc)?;
 		let page = file.pages.get_mut(&off)?;
 
-		Some(unsafe {
-			page.ptr.as_mut()
-		})
+		Some(unsafe { page.ptr.as_mut() })
 	}
 
 	/// Maps the the file at the given location.
@@ -109,9 +110,10 @@ impl FileMappingManager {
 			Some(f) => f,
 
 			None => {
-				self.mapped_files.insert(loc.clone(), MappedFile::default())?;
+				self.mapped_files
+					.insert(loc.clone(), MappedFile::default())?;
 				self.mapped_files.get_mut(&loc).unwrap()
-			},
+			}
 		};
 
 		// TODO increment references count on page

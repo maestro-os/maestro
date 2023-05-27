@@ -24,26 +24,26 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
-use core::ffi::c_void;
-use core::fmt;
 use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
-use crate::file::FileContent;
-use crate::file::Mode;
+use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
-use crate::file;
-use crate::process::Process;
+use crate::file::FileContent;
+use crate::file::Mode;
 use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util::FailableClone;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
+use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
+use core::ffi::c_void;
+use core::fmt;
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 
@@ -110,7 +110,7 @@ pub trait DeviceHandle: IO {
 	/// - `argp` is a pointer to the argument.
 	fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno>;
@@ -201,7 +201,7 @@ impl Device {
 	/// the filesystem.
 	pub fn create_file(dev: MutexGuard<Device, true>) -> Result<(), Errno> {
 		let file_content = dev.id.to_file_content();
-		let path = dev.path.failable_clone()?;
+		let path = dev.path.try_clone()?;
 		let mode = dev.mode;
 
 		drop(dev);
@@ -224,7 +224,7 @@ impl Device {
 				let mut parent = parent_mutex.lock();
 
 				// Creating the device file
-				vfs.create_file(&mut *parent, filename, 0, 0, mode, file_content)?;
+				vfs.create_file(&mut parent, filename, 0, 0, mode, file_content)?;
 			}
 		}
 
@@ -241,7 +241,7 @@ impl Device {
 		if let Some(vfs) = vfs.as_mut() {
 			if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
 				let file = file_mutex.lock();
-				vfs.remove_file(&*file, 0, 0)?;
+				vfs.remove_file(&file, 0, 0)?;
 			}
 		}
 
@@ -276,7 +276,7 @@ impl Drop for Device {
 }
 
 /// The list of registered devices.
-static DEVICES: Mutex<HashMap<DeviceID, SharedPtr<Device>>> = Mutex::new(HashMap::new());
+static DEVICES: Mutex<HashMap<DeviceID, Arc<Mutex<Device>>>> = Mutex::new(HashMap::new());
 
 /// Registers the given device.
 ///
@@ -285,7 +285,7 @@ static DEVICES: Mutex<HashMap<DeviceID, SharedPtr<Device>>> = Mutex::new(HashMap
 /// If files management is initialized, the function creates the associated device file.
 pub fn register(device: Device) -> Result<(), Errno> {
 	let id = device.id.clone();
-	let dev_mutex = SharedPtr::new(device)?;
+	let dev_mutex = Arc::new(Mutex::new(device))?;
 
 	{
 		let mut devs = DEVICES.lock();
@@ -321,7 +321,7 @@ pub fn unregister(id: &DeviceID) -> Result<(), Errno> {
 /// Returns a mutable reference to the device with the given ID.
 ///
 /// If the device doesn't exist, the function returns `None`.
-pub fn get(id: &DeviceID) -> Option<SharedPtr<Device>> {
+pub fn get(id: &DeviceID) -> Option<Arc<Mutex<Device>>> {
 	let devs = DEVICES.lock();
 	devs.get(id).cloned()
 }
@@ -337,7 +337,7 @@ pub fn init() -> Result<(), Errno> {
 	bus::detect()?;
 
 	// Testing disk I/O (if enabled)
-	#[cfg(config_debug_storagetest)]
+	#[cfg(config_debug_storage_test)]
 	{
 		// Getting back the storage manager since it has been moved
 		let storage_manager = manager::get_by_name("storage").unwrap();
@@ -357,9 +357,7 @@ pub fn stage2() -> Result<(), Errno> {
 	// Unsafe access is made to avoid a deadlock
 	// This is acceptable since the container is not borrowed as mutable, both here and further
 	// into the function
-	let devices = unsafe {
-		DEVICES.get_payload()
-	};
+	let devices = unsafe { DEVICES.get_payload() };
 
 	for (_, dev_mutex) in devices.iter() {
 		let dev_guard = dev_mutex.lock();

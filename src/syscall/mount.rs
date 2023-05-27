@@ -11,7 +11,7 @@ use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 use core::ffi::c_ulong;
 use core::ffi::c_void;
 use macros::syscall;
@@ -31,7 +31,7 @@ pub fn mount(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let cwd = proc.get_chroot().failable_clone()?.concat(proc.get_cwd())?;
+		let cwd = proc.chroot.try_clone()?.concat(proc.get_cwd())?;
 
 		// Getting strings
 		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
@@ -45,7 +45,7 @@ pub fn mount(
 
 		// Getting the target file
 		let target_path = Path::from_str(target_slice, true)?;
-		let target_path = super::util::get_absolute_path(&*proc, target_path)?;
+		let target_path = super::util::get_absolute_path(&proc, target_path)?;
 		let target_mutex = {
 			let mut vfs = vfs::get().lock();
 			let vfs = vfs.as_mut().unwrap();
@@ -61,7 +61,7 @@ pub fn mount(
 
 		// TODO Check for loop between source and target
 
-		let fs_type = fs::get_fs(filesystemtype_slice).ok_or(errno!(ENODEV))?;
+		let fs_type = fs::get_type(filesystemtype_slice).ok_or(errno!(ENODEV))?;
 
 		(mount_source, fs_type, target_path)
 	};

@@ -5,6 +5,7 @@
 use crate::errno::Errno;
 use crate::process::ForkOptions;
 use crate::process::Process;
+use crate::util::ptr::arc::Arc;
 use macros::syscall;
 
 #[syscall]
@@ -12,7 +13,7 @@ pub fn fork() -> Result<i32, Errno> {
 	// The current process
 	let curr_mutex = Process::get_current().unwrap();
 	// A weak pointer to the new process's parent
-	let parent = curr_mutex.new_weak();
+	let parent = Arc::downgrade(&curr_mutex);
 
 	let mut curr_proc = curr_mutex.lock();
 
@@ -23,7 +24,7 @@ pub fn fork() -> Result<i32, Errno> {
 	let mut regs = regs.clone();
 	// Setting return value to `0`
 	regs.eax = 0;
-	new_proc.set_regs(regs);
+	new_proc.regs = regs;
 
-	Ok(new_proc.get_pid() as _)
+	Ok(new_proc.pid as _)
 }

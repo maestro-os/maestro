@@ -1,14 +1,14 @@
 //! The `socket` system call allows to create a socket.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::buffer;
 use crate::file::buffer::socket::SockDomain;
 use crate::file::buffer::socket::SockType;
 use crate::file::buffer::socket::Socket;
-use crate::file::buffer;
 use crate::file::open_file;
 use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// The implementation of the `socket` syscall.

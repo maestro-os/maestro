@@ -1,0 +1,36 @@
+#!/bin/sh
+
+# This script is compiles kernel modules.
+
+# TODO implement in Rust?
+
+# TODO usage if no argument is provided
+# TODO incremental compilation
+
+KERN_SRC=$(dirname $(dirname $(realpath $0)))
+NAME=$1
+
+RUSTFLAGS="--crate-type dylib
+	-C force-frame-pointers=yes
+	-C no-redzone=yes
+	-C panic=abort
+	-C prefer-dynamic
+	--target $KERN_SRC/arch/x86/x86.json
+	--extern kernel=$KERN_SRC/target/x86/$PROFILE/libkernel.so
+	-L $KERN_SRC/target/x86/$PROFILE/deps
+	-L $KERN_SRC/target/$PROFILE/deps"
+
+case $PROFILE in
+	"debug")
+		;;
+	"release")
+		RUSTFLAGS="$RUSTFLAGS -C opt-level=3"
+		;;
+
+	*)
+		echo 'Specify a valid profile with the PROFILE environment variable (either "debug" or "release")'
+		exit 1
+		;;
+esac
+
+rustc $RUSTFLAGS src/mod.rs -o "$(pwd)/$NAME.kmod"

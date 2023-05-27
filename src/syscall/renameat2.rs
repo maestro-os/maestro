@@ -1,12 +1,12 @@
 //! The `renameat2` allows to rename a file.
 
-use core::ffi::c_int;
 use crate::errno::Errno;
-use crate::file::FileType;
-use crate::file::vfs;
 use crate::file;
-use crate::process::Process;
+use crate::file::vfs;
+use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Flag: Don't replace new path if it exists. Return an error instead.
@@ -31,7 +31,7 @@ pub fn renameat2(
 		let uid = proc.euid;
 		let gid = proc.egid;
 
-		let mem_space = proc.get_mem_space().clone().unwrap();
+		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
 		let oldpath = oldpath
@@ -66,18 +66,18 @@ pub fn renameat2(
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs.create_link(&mut *old, &mut *new_parent, &new_name, uid, gid)?;
+		vfs.create_link(&mut old, &mut new_parent, &new_name, uid, gid)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs.remove_file(&*old, uid, gid)?;
+			vfs.remove_file(&old, uid, gid)?;
 		}
 	} else {
 		// Old and new are on different filesystems.
 
 		// TODO On fail, undo
 
-		file::util::copy_file(vfs, &mut *old, &mut *new_parent, new_name)?;
-		file::util::remove_recursive(vfs, &mut *old, uid, gid)?;
+		file::util::copy_file(vfs, &mut old, &mut new_parent, new_name)?;
+		file::util::remove_recursive(vfs, &mut old, uid, gid)?;
 	}
 
 	Ok(0)

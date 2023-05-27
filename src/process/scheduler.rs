@@ -9,28 +9,28 @@
 //! This number represents the number of ticks during which the process keeps
 //! running until switching to the next process.
 
-use core::cmp::max;
-use core::ffi::c_void;
 use crate::errno::Errno;
-use crate::event::CallbackHook;
 use crate::event;
+use crate::event::CallbackHook;
 use crate::idt::pic;
+use crate::memory;
 use crate::memory::malloc;
 use crate::memory::stack;
-use crate::memory;
-use crate::process::Process;
-use crate::process::State;
+use crate::process;
 use crate::process::pid::Pid;
 use crate::process::regs::Regs;
-use crate::process;
+use crate::process::Process;
+use crate::process::State;
 use crate::time::timer::pit;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
-use crate::util::math::rational::Rational;
 use crate::util::math;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::math::rational::Rational;
+use crate::util::ptr::arc::Arc;
+use core::cmp::max;
+use core::ffi::c_void;
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
@@ -52,9 +52,9 @@ pub struct Scheduler {
 
 	/// A binary tree containing all processes registered to the current
 	/// scheduler.
-	processes: Map<Pid, IntSharedPtr<Process>>,
+	processes: Map<Pid, Arc<IntMutex<Process>>>,
 	/// The currently running process with its PID.
-	curr_proc: Option<(Pid, IntSharedPtr<Process>)>,
+	curr_proc: Option<(Pid, Arc<IntMutex<Process>>)>,
 
 	/// The current number of running processes.
 	running_procs: usize,
@@ -67,7 +67,7 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> Result<IntSharedPtr<Self>, Errno> {
+	pub fn new(cores_count: usize) -> Result<Arc<IntMutex<Self>>, Errno> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
@@ -78,7 +78,7 @@ impl Scheduler {
 		};
 		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
 
-		IntSharedPtr::new(Self {
+		Arc::new(IntMutex::new(Self {
 			tmp_stacks,
 
 			tick_callback_hook,
@@ -91,7 +91,7 @@ impl Scheduler {
 
 			priority_sum: 0,
 			priority_max: 0,
-		})
+		}))
 	}
 
 	/// Returns a pointer to the top of the tmp stack for the given core `core`.
@@ -110,21 +110,21 @@ impl Scheduler {
 	}
 
 	/// Returns an iterator on the scheduler's processes.
-	pub fn iter_process<'a>(&'a mut self) -> MapIterator<'a, Pid, IntSharedPtr<Process>> {
+	pub fn iter_process(&mut self) -> MapIterator<'_, Pid, Arc<IntMutex<Process>>> {
 		self.processes.iter()
 	}
 
 	/// Returns the process with PID `pid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_pid(&self, pid: Pid) -> Option<IntSharedPtr<Process>> {
+	pub fn get_by_pid(&self, pid: Pid) -> Option<Arc<IntMutex<Process>>> {
 		Some(self.processes.get(pid)?.clone())
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_tid(&self, _tid: Pid) -> Option<IntSharedPtr<Process>> {
+	pub fn get_by_tid(&self, _tid: Pid) -> Option<Arc<IntMutex<Process>>> {
 		// TODO
 		todo!();
 	}
@@ -132,7 +132,7 @@ impl Scheduler {
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn get_current_process(&mut self) -> Option<IntSharedPtr<Process>> {
+	pub fn get_current_process(&mut self) -> Option<Arc<IntMutex<Process>>> {
 		Some(self.curr_proc.as_ref().cloned()?.1)
 	}
 
@@ -155,15 +155,15 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> Result<IntSharedPtr<Process>, Errno> {
-		let pid = process.get_pid();
-		let priority = process.get_priority();
+	pub fn add_process(&mut self, process: Process) -> Result<Arc<IntMutex<Process>>, Errno> {
+		let pid = process.pid;
+		let priority = process.priority;
 
 		if *process.get_state() == State::Running {
 			self.increment_running();
 		}
 
-		let ptr = IntSharedPtr::new(process)?;
+		let ptr = Arc::new(IntMutex::new(process))?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
 
@@ -179,7 +179,7 @@ impl Scheduler {
 				self.decrement_running();
 			}
 
-			let priority = proc.get_priority();
+			let priority = proc.priority;
 			self.processes.remove(&pid);
 			self.update_priority(priority, 0);
 		}
@@ -196,10 +196,10 @@ impl Scheduler {
 
 		// Enable ticking if necessary
 		if self.running_procs > 1 {
-			pic::enable_irq(0x0);
-
 			// Set ticking frequency
 			pit::set_frequency(self.get_ticking_frequency());
+			// Enable ticking
+			pic::enable_irq(0x0);
 		}
 	}
 
@@ -214,16 +214,6 @@ impl Scheduler {
 			// Set ticking frequency
 			pit::set_frequency(self.get_ticking_frequency());
 		}
-	}
-
-	// TODO Clean
-	/// Returns the average priority of a process.
-	///
-	/// Arguments:
-	/// - `priority_sum` is the sum of all processes' priorities.
-	/// - `processes_count` is the number of processes.
-	fn get_average_priority(priority_sum: usize, processes_count: usize) -> usize {
-		priority_sum / processes_count
 	}
 
 	// TODO Clean
@@ -242,7 +232,7 @@ impl Scheduler {
 	) -> usize {
 		let n = math::integer_linear_interpolation::<isize>(
 			priority as _,
-			Self::get_average_priority(priority_sum, processes_count) as _,
+			(priority_sum / processes_count) as _,
 			priority_max as _,
 			AVERAGE_PRIORITY_QUANTA as _,
 			MAX_PRIORITY_QUANTA as _,
@@ -274,7 +264,7 @@ impl Scheduler {
 	/// Returns the next process to run with its PID.
 	///
 	/// If the process is changed, the quantum count of the previous process is reset.
-	fn get_next_process(&self) -> Option<(Pid, IntSharedPtr<Process>)> {
+	fn get_next_process(&self) -> Option<(Pid, Arc<IntMutex<Process>>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
 		let processes_count = self.processes.count();
@@ -282,26 +272,26 @@ impl Scheduler {
 		// Getting the current process, or take the first process in the list if no
 		// process is running
 		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
-			self.processes.iter()
+			self.processes
+				.iter()
 				.next()
 				.map(|(pid, proc)| (*pid, proc.clone()))
 		})?;
 
-		let process_filter = |(_, proc): &(&Pid, &IntSharedPtr<Process>)| {
+		let process_filter = |(_, proc): &(&Pid, &Arc<IntMutex<Process>>)| {
 			let guard = proc.lock();
-			Self::can_run(&*guard, priority_sum, priority_max, processes_count)
+			Self::can_run(&guard, priority_sum, priority_max, processes_count)
 		};
 
-		let next_proc = self.processes.range((curr_pid + 1)..)
-			.filter(process_filter)
-			.next()
+		let next_proc = self
+			.processes
+			.range((curr_pid + 1)..)
+			.find(process_filter)
 			.or_else(|| {
 				// If no suitable process is found, go back to the beginning to check processes
 				// located before the previous process (looping)
 
-				self.processes.iter()
-					.filter(process_filter)
-					.next()
+				self.processes.iter().find(process_filter)
 			})
 			.map(|(pid, proc)| (*pid, proc));
 
@@ -335,16 +325,13 @@ impl Scheduler {
 			if let Some(curr_proc) = sched.get_current_process() {
 				let mut curr_proc = curr_proc.lock();
 
-				curr_proc.set_regs(*regs);
+				curr_proc.regs = *regs;
 				curr_proc.syscalling = ring < 3;
 			}
 
 			// The current core ID
 			let core_id = 0; // TODO
-			 // Getting the temporary stack
-			let tmp_stack = sched.get_tmp_stack(core_id);
-
-			tmp_stack
+			sched.get_tmp_stack(core_id)
 		};
 
 		loop {
@@ -364,7 +351,7 @@ impl Scheduler {
 							next_proc.prepare_switch();
 
 							let resume = matches!(next_proc.get_state(), State::Running);
-							(resume, next_proc.is_syscalling(), next_proc.regs)
+							(resume, next_proc.syscalling, next_proc.regs)
 						};
 						drop(next_proc);
 

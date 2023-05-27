@@ -8,15 +8,15 @@ pub mod osi;
 pub mod sockaddr;
 pub mod tcp;
 
-use core::cmp::Ordering;
-use core::ptr::NonNull;
-use core::ptr;
 use crate::errno::Errno;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
+use core::cmp::Ordering;
+use core::ptr;
+use core::ptr::NonNull;
 
 /// Type representing a Media Access Control (MAC) address.
 pub type MAC = [u8; 6];
@@ -131,17 +131,20 @@ impl Route {
 		let self_match = addr == &self.gateway;
 		let other_match = addr == &other.gateway;
 
-		self_match.cmp(&other_match)
+		self_match
+			.cmp(&other_match)
 			.then_with(|| {
 				// Check for matching network prefix
 
-				let self_match = self.dst
+				let self_match = self
+					.dst
 					.as_ref()
 					.map(|dst| dst.is_matching(addr))
 					// Default address
 					.unwrap_or(true);
 
-				let other_match = other.dst
+				let other_match = other
+					.dst
 					.as_ref()
 					.map(|dst| dst.is_matching(addr))
 					// Default address
@@ -157,8 +160,8 @@ impl Route {
 }
 
 /// The list of network interfaces.
-pub static INTERFACES: Mutex<HashMap<String, SharedPtr<dyn Interface>>>
-	= Mutex::new(HashMap::new());
+pub static INTERFACES: Mutex<HashMap<String, Arc<Mutex<dyn Interface>>>> =
+	Mutex::new(HashMap::new());
 /// The routing table.
 pub static ROUTING_TABLE: Mutex<Vec<Route>> = Mutex::new(Vec::new());
 
@@ -170,7 +173,7 @@ pub static ROUTING_TABLE: Mutex<Vec<Route>> = Mutex::new(Vec::new());
 pub fn register_iface<I: 'static + Interface>(name: String, iface: I) -> Result<(), Errno> {
 	let mut interfaces = INTERFACES.lock();
 
-	let i = SharedPtr::new(iface)?;
+	let i = Arc::new(Mutex::new(iface))?;
 	interfaces.insert(name, i)?;
 
 	Ok(())
@@ -185,14 +188,12 @@ pub fn unregister_iface(name: &[u8]) {
 /// Returns the network interface with the given name.
 ///
 /// If the interface doesn't exist, thhe function returns `None`.
-pub fn get_iface(name: &[u8]) -> Option<SharedPtr<dyn Interface>> {
-	INTERFACES.lock()
-		.get(name)
-		.cloned()
+pub fn get_iface(name: &[u8]) -> Option<Arc<Mutex<dyn Interface>>> {
+	INTERFACES.lock().get(name).cloned()
 }
 
 /// Returns the network interface to be used to transmit a packet to the given destination address.
-pub fn get_iface_for(addr: Address) -> Option<SharedPtr<dyn Interface>> {
+pub fn get_iface_for(addr: Address) -> Option<Arc<Mutex<dyn Interface>>> {
 	let routing_table = ROUTING_TABLE.lock();
 	let route = routing_table
 		.iter()
@@ -231,7 +232,10 @@ impl<'b> BuffList<'b> {
 	}
 
 	/// Pushes another buffer at the front of the list.
-	pub fn push_front<'o>(&mut self, mut other: BuffList<'o>) -> BuffList<'o> where 'b: 'o {
+	pub fn push_front<'o>(&mut self, mut other: BuffList<'o>) -> BuffList<'o>
+	where
+		'b: 'o,
+	{
 		other.next = NonNull::new(self);
 		other.next_len = self.b.len() + self.next_len;
 
@@ -246,9 +250,7 @@ impl<'b> BuffList<'b> {
 		let mut node = NonNull::new(self as *const _ as *mut Self);
 		let mut i = 0;
 		while let Some(mut curr) = node {
-			let curr = unsafe {
-				curr.as_mut()
-			};
+			let curr = unsafe { curr.as_mut() };
 			let buf = curr.b;
 			unsafe {
 				ptr::copy_nonoverlapping(buf.as_ptr(), &mut final_buff[i], buf.len());
@@ -273,10 +275,8 @@ pub trait Layer {
 	/// Arguments:
 	/// - `buff` is the list of buffer which composes the packet being built.
 	/// - `next` is the function called to pass the buffers list to the next layer.
-	fn transmit<'c, F>(
-		&self,
-		buff: BuffList<'c>,
-		next: F
-	) -> Result<(), Errno>
-		where Self: Sized, F: Fn(BuffList<'c>) -> Result<(), Errno>;
+	fn transmit<'c, F>(&self, buff: BuffList<'c>, next: F) -> Result<(), Errno>
+	where
+		Self: Sized,
+		F: Fn(BuffList<'c>) -> Result<(), Errno>;
 }

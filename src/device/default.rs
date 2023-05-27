@@ -1,27 +1,28 @@
 //! This module implements default devices.
 
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::id;
+use super::DeviceType;
 use crate::crypto::rand;
+use crate::device;
+use crate::device::tty::TTYDeviceHandle;
 use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceID;
-use crate::device::tty::TTYDeviceHandle;
-use crate::device;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::file::path::Path;
 use crate::logger;
-use crate::process::Process;
 use crate::process::mem_space::MemSpace;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util::io::IO;
 use crate::util::io;
-use crate::util::ptr::IntSharedPtr;
-use super::DeviceType;
-use super::id;
+use crate::util::io::IO;
+use crate::util::lock::IntMutex;
+use crate::util::ptr::arc::Arc;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::mem::ManuallyDrop;
 
 /// Structure representing a device which does nothing.
 #[derive(Default)]
@@ -30,7 +31,7 @@ pub struct NullDeviceHandle {}
 impl DeviceHandle for NullDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -64,7 +65,7 @@ pub struct ZeroDeviceHandle {}
 impl DeviceHandle for ZeroDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -107,7 +108,7 @@ pub struct RandomDeviceHandle {
 impl DeviceHandle for RandomDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -144,7 +145,7 @@ impl IO for RandomDeviceHandle {
 		self.block_handler.wake_processes(io::POLLOUT);
 
 		if let Some(pool) = &mut *pool {
-			let len = pool.write(&buff);
+			let len = pool.write(buff);
 			Ok(len as _)
 		} else {
 			Err(errno!(EINVAL))
@@ -166,7 +167,7 @@ pub struct URandomDeviceHandle {}
 impl DeviceHandle for URandomDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -195,7 +196,7 @@ impl IO for URandomDeviceHandle {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
-			let len = pool.write(&buff);
+			let len = pool.write(buff);
 			Ok(len as _)
 		} else {
 			Err(errno!(EINVAL))
@@ -214,7 +215,7 @@ pub struct KMsgDeviceHandle {}
 impl DeviceHandle for KMsgDeviceHandle {
 	fn ioctl(
 		&mut self,
-		_mem_space: IntSharedPtr<MemSpace>,
+		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
 	) -> Result<u32, Errno> {

@@ -1,10 +1,10 @@
 //! This module implements ELF relocations.
 
-use core::ptr;
 use crate::elf;
 use crate::elf::ELF32SectionHeader;
 use crate::elf::ELF32Sym;
 use core::ffi::c_void;
+use core::ptr;
 
 /// The name of the symbol pointing to the global offset table.
 const GOT_SYM: &str = "_GLOBAL_OFFSET_TABLE_";
@@ -35,15 +35,15 @@ pub trait Relocation {
 		rel_section: &ELF32SectionHeader,
 		get_sym: F0,
 		get_sym_val: F1,
-	)  -> Result<(), ()>
-		where F0: FnOnce(&str) -> Option<&'a ELF32Sym>,
-			F1: FnOnce(u32, u32) -> Option<u32> {
+	) -> Result<(), ()>
+	where
+		F0: FnOnce(&str) -> Option<&'a ELF32Sym>,
+		F1: FnOnce(u32, u32) -> Option<u32>,
+	{
 		// The offset inside of the GOT
 		let got_offset = 0; // TODO
-		// The address of the GOT
-		let got_addr = base_addr as u32 + get_sym(GOT_SYM)
-			.map(|sym| sym.st_value)
-			.unwrap_or(0);
+					// The address of the GOT
+		let got_addr = base_addr as u32 + get_sym(GOT_SYM).map(|sym| sym.st_value).unwrap_or(0);
 		// The offset of the PLT entry for the symbol.
 		let plt_offset = 0; // TODO
 

@@ -1,3 +1,5 @@
+.section .text
+
 .global memcpy
 .type memcpy, @function
 

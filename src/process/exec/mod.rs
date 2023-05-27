@@ -3,19 +3,20 @@
 pub mod elf;
 pub mod vdso;
 
-use core::ffi::c_void;
 use crate::errno::Errno;
 use crate::file::File;
-use crate::process::Gid;
-use crate::process::Process;
-use crate::process::Uid;
 use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
 use crate::process::signal::SignalHandler;
+use crate::process::Gid;
+use crate::process::Process;
+use crate::process::Uid;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::ptr::IntSharedPtr;
-use crate::util::ptr::SharedPtr;
+use crate::util::lock::IntMutex;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
+use core::ffi::c_void;
 
 /// Structure storing informations to prepare a program image to be executed.
 pub struct ExecInfo {
@@ -83,17 +84,18 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
 	// TODO Set exec path
 
 	// Duplicate file descriptor table
-	let fds = proc.get_fds()
+	let fds = proc
+		.get_fds()
 		.map(|fds_mutex| {
 			let fds = fds_mutex.lock();
 			let new_fds = fds.duplicate(true)?;
 
-			SharedPtr::new(new_fds)
+			Arc::new(Mutex::new(new_fds))
 		})
 		.transpose()?;
 
 	// Setting the new memory space to the process
-	proc.set_mem_space(Some(IntSharedPtr::new(image.mem_space)?));
+	proc.set_mem_space(Some(Arc::new(IntMutex::new(image.mem_space))?));
 
 	// Set new file descriptor table
 	proc.set_fds(fds);

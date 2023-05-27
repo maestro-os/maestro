@@ -240,7 +240,7 @@ impl fmt::Display for Errno {
 #[macro_export]
 macro_rules! errno {
 	($errno:ident) => {
-		crate::errno::Errno::new(crate::errno::$errno)
+		$crate::errno::Errno::new($crate::errno::$errno)
 	};
 }
 
@@ -251,9 +251,9 @@ macro_rules! errno {
 #[macro_export]
 macro_rules! errno {
 	($errno:ident) => {
-		crate::errno::Errno::new(
-			crate::errno::$errno,
-			crate::errno::ErrnoLocation {
+		$crate::errno::Errno::new(
+			$crate::errno::$errno,
+			$crate::errno::ErrnoLocation {
 				file: file!(),
 				line: line!(),
 				column: column!(),

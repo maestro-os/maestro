@@ -4,9 +4,10 @@
 
 .include "src/process/regs/regs.s"
 
-.global syscall
-
 .section .text
+
+.global syscall
+.type syscall, @function
 
 /*
  * The function handling system calls.

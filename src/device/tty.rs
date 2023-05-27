@@ -1,25 +1,26 @@
 //! Each TTY or pseudo-TTY has to be associated with a device file in order to
 //! communicate with it.
 
-use core::ffi::c_void;
 use crate::device::DeviceHandle;
-use crate::errno::Errno;
 use crate::errno;
-use crate::process::Process;
-use crate::process::mem_space::MemSpace;
+use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::mem_space::MemSpace;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
 use crate::process::signal::SignalHandler;
+use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::tty::TTY;
+use crate::tty::termios;
+use crate::tty::termios::Termios;
 use crate::tty::TTYHandle;
 use crate::tty::WinSize;
-use crate::tty::termios::Termios;
-use crate::tty::termios;
-use crate::util::io::IO;
+use crate::tty::TTY;
 use crate::util::io;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::io::IO;
+use crate::util::lock::IntMutex;
+use crate::util::ptr::arc::Arc;
+use core::ffi::c_void;
 
 /// Structure representing a TTY device's handle.
 pub struct TTYDeviceHandle {
@@ -38,7 +39,7 @@ impl TTYDeviceHandle {
 	}
 
 	/// Returns the current process and its associated TTY.
-	fn get_tty(&self) -> Result<(IntSharedPtr<Process>, TTYHandle), Errno> {
+	fn get_tty(&self) -> Result<(Arc<IntMutex<Process>>, TTYHandle), Errno> {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
 
@@ -58,7 +59,7 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the read operation.
 	fn check_sigttin(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
-		if proc.get_pgid() != tty.get_pgrp() {
+		if proc.pgid != tty.get_pgrp() {
 			if proc.is_signal_blocked(&Signal::SIGTTIN)
 				|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
 				|| proc.is_in_orphan_process_group()
@@ -102,7 +103,7 @@ impl TTYDeviceHandle {
 impl DeviceHandle for TTYDeviceHandle {
 	fn ioctl(
 		&mut self,
-		mem_space: IntSharedPtr<MemSpace>,
+		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
@@ -124,7 +125,7 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
-				self.check_sigttou(&mut *proc, &*tty)?;
+				self.check_sigttou(&mut proc, &tty)?;
 
 				let mem_space_guard = mem_space.lock();
 				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
@@ -148,7 +149,7 @@ impl DeviceHandle for TTYDeviceHandle {
 			}
 
 			ioctl::TIOCSPGRP => {
-				self.check_sigttou(&mut *proc, &*tty)?;
+				self.check_sigttou(&mut proc, &tty)?;
 
 				let mem_space_guard = mem_space.lock();
 				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
@@ -212,7 +213,7 @@ impl IO for TTYDeviceHandle {
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
 
-		self.check_sigttin(&mut *proc, &*tty)?;
+		self.check_sigttin(&mut proc, &tty)?;
 
 		let (len, eof) = tty.read(buff);
 		Ok((len as _, eof))
@@ -223,7 +224,7 @@ impl IO for TTYDeviceHandle {
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
 
-		self.check_sigttou(&mut *proc, &*tty)?;
+		self.check_sigttou(&mut proc, &tty)?;
 
 		tty.write(buff);
 		Ok(buff.len() as _)

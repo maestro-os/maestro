@@ -1,13 +1,13 @@
 //! This `linkat` syscall creates a new hard link to a file.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
-use crate::file::FileType;
-use crate::file::vfs;
-use crate::process::Process;
-use crate::process::mem_space::ptr::SyscallString;
-use macros::syscall;
 use super::access;
+use crate::errno::Errno;
+use crate::file::vfs;
+use crate::file::FileType;
+use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
+use core::ffi::c_int;
+use macros::syscall;
 
 #[syscall]
 pub fn linkat(
@@ -26,7 +26,7 @@ pub fn linkat(
 		let euid = proc.euid;
 		let egid = proc.egid;
 
-		let mem_space = proc.get_mem_space().clone().unwrap();
+		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
 		let oldpath = oldpath
@@ -56,7 +56,7 @@ pub fn linkat(
 	let mut vfs = vfs_mutex.lock();
 	let vfs = vfs.as_mut().unwrap();
 
-	vfs.create_link(&mut *old, &mut *new_parent, &new_name, uid, gid)?;
+	vfs.create_link(&mut old, &mut new_parent, &new_name, uid, gid)?;
 
 	Ok(0)
 }

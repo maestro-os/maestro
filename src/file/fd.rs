@@ -4,18 +4,19 @@
 //! open file description table.
 
 // TODO Maintain the system-wide open file descriptors count
-// TODO Modify system calls to use the IO interface on the file descriptor directly instead of the open file
+// TODO Modify system calls to use the IO interface on the file descriptor directly instead of the
+// open file
 
-use core::cmp::max;
 use crate::errno::Errno;
-use crate::file::FileLocation;
 use crate::file::open_file::OpenFile;
+use crate::file::FileLocation;
 use crate::limits;
-use crate::util::FailableClone;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
+use core::cmp::max;
 
 /// The maximum number of file descriptors that can be open system-wide at once.
 const TOTAL_MAX_FD: usize = 4294967295;
@@ -140,14 +141,20 @@ impl FileDescriptor {
 	/// Returns the open file associated with the descriptor.
 	///
 	/// If the open file doesn't exist, the function returns an error.
-	pub fn get_open_file(&self) -> Result<SharedPtr<OpenFile>, Errno> {
+	pub fn get_open_file(&self) -> Result<Arc<Mutex<OpenFile>>, Errno> {
 		OpenFile::get(&self.location).ok_or_else(|| errno!(ENOENT))
 	}
 }
 
-impl FailableClone for FileDescriptor {
-	fn failable_clone(&self) -> Result<Self, Errno> {
-		Self::new(self.id, self.flags, self.read, self.write, self.location.clone())
+impl TryClone for FileDescriptor {
+	fn try_clone(&self) -> Result<Self, Errno> {
+		Self::new(
+			self.id,
+			self.flags,
+			self.read,
+			self.write,
+			self.location.clone(),
+		)
 	}
 }
 
@@ -189,7 +196,6 @@ impl IO for FileDescriptor {
 
 		open_file.poll(mask)
 	}
-
 }
 
 impl Drop for FileDescriptor {
@@ -253,7 +259,8 @@ impl FileDescriptorTable {
 		write: bool,
 	) -> Result<&FileDescriptor, Errno> {
 		let id = self.get_available_fd(None)?;
-		let i = self.fds
+		let i = self
+			.fds
 			.binary_search_by(|fd| fd.get_id().cmp(&id))
 			.unwrap_err();
 
@@ -311,7 +318,7 @@ impl FileDescriptorTable {
 			flags,
 			old_fd.can_read(),
 			old_fd.can_write(),
-			old_fd.get_location().clone()
+			old_fd.get_location().clone(),
 		)?;
 
 		// Inserting the FD
@@ -339,7 +346,7 @@ impl FileDescriptorTable {
 
 		for fd in &self.fds {
 			if !cloexec || fd.get_flags() & FD_CLOEXEC == 0 {
-				fds.push(fd.failable_clone()?)?;
+				fds.push(fd.try_clone()?)?;
 			}
 		}
 

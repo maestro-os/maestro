@@ -1,19 +1,18 @@
 //! MMIO (Memory-Mapped I/O) allows to access a device's registers by mapping them on the main
 //! memory.
 
-use core::ffi::c_void;
-use crate::errno::Errno;
-use crate::process::oom;
 use super::buddy;
 use super::vmem;
+use crate::errno::Errno;
+use crate::process::oom;
+use core::ffi::c_void;
 
 /// Default flags for kernelspace in virtual memory.
 const DEFAULT_FLAGS: u32 = vmem::x86::FLAG_WRITE;
 
 /// MMIO flags in virtual memory.
-const MMIO_FLAGS: u32 = vmem::x86::FLAG_WRITE_THROUGH
-	| vmem::x86::FLAG_WRITE
-	| vmem::x86::FLAG_GLOBAL;
+const MMIO_FLAGS: u32 =
+	vmem::x86::FLAG_WRITE_THROUGH | vmem::x86::FLAG_WRITE | vmem::x86::FLAG_GLOBAL;
 
 // TODO allow usage of virtual memory that isn't linked to any physical pages
 
@@ -50,13 +49,15 @@ impl MMIO {
 		}
 
 		let mut vmem = crate::get_vmem().lock();
-		vmem.as_mut().unwrap().map_range(phys_addr, virt_addr, pages, flags)?;
+		vmem.as_mut()
+			.unwrap()
+			.map_range(phys_addr, virt_addr, pages, flags)?;
 
 		Ok(Self {
 			phys_addr,
 			virt_addr,
 
-			pages
+			pages,
 		})
 	}
 
@@ -79,7 +80,7 @@ impl MMIO {
 			self.phys_addr,
 			super::kern_to_virt(self.phys_addr),
 			self.pages,
-			DEFAULT_FLAGS
+			DEFAULT_FLAGS,
 		)?;
 
 		let order = buddy::get_order(self.pages);

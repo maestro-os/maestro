@@ -1,6 +1,7 @@
 //! A rational number is a number which can be represented as the fraction of
 //! two integers: `a / b`
 
+use crate::util::math;
 use core::cmp::Ordering;
 use core::cmp::PartialEq;
 use core::fmt;
@@ -13,7 +14,6 @@ use core::ops::MulAssign;
 use core::ops::Neg;
 use core::ops::Sub;
 use core::ops::SubAssign;
-use crate::util::math;
 
 // FIXME: Operations can overflow
 

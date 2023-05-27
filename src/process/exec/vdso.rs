@@ -1,27 +1,31 @@
 //! The vDSO (virtual dynamic shared object) is a small shared library that the kernel
 //! automatically maps into the memory space of all userspace programs.
 
-use core::cmp::min;
-use core::ffi::c_void;
-use core::ptr::NonNull;
-use core::ptr;
 use crate::elf::parser::ELFParser;
 use crate::errno::Errno;
-use crate::memory::buddy;
+use crate::include_bytes_aligned;
 use crate::memory;
+use crate::memory::buddy;
+use crate::process::mem_space;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
-use crate::process::mem_space;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::math;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
+use core::cmp::min;
+use core::ffi::c_void;
+use core::ptr;
+use core::ptr::NonNull;
 
-/// Structure storing informations on the vDSO ELF image.
-struct VDSO {
+/// The ELF image of the vDSO.
+static ELF_IMAGE: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
+
+/// Informations on the vDSO ELF image.
+struct Vdso {
 	/// The list of pages on which the image is loaded.
-	pages: SharedPtr<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
+	pages: Arc<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
 	/// The length of the ELF image in bytes.
 	len: usize,
 
@@ -38,35 +42,33 @@ pub struct MappedVDSO {
 }
 
 /// The info of the vDSO. If `None`, the vDSO is not loaded yet.
-static ELF_IMAGE: Mutex<Option<VDSO>> = Mutex::new(None);
+static VDSO: Mutex<Option<Vdso>> = Mutex::new(None);
 
-/// TODO doc
-fn load_image() -> Result<VDSO, Errno> {
-	let const_img = include_bytes!("../../../vdso.so");
-
-	let parser = ELFParser::new(const_img)?;
+/// Loads the vDSO in memory and returns the image.
+fn load_image() -> Result<Vdso, Errno> {
+	let parser = ELFParser::new(ELF_IMAGE)?;
 	let entry_off = parser.get_header().e_entry as _;
 
 	// Load image into pages
 	let mut pages = Vec::new();
-	for i in 0..math::ceil_div(const_img.len(), memory::PAGE_SIZE) {
+	for i in 0..math::ceil_div(ELF_IMAGE.len(), memory::PAGE_SIZE) {
 		// Alloc page
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
 		let virt_ptr = memory::kern_to_virt(ptr) as _;
 
 		// Copy data
 		let off = i * memory::PAGE_SIZE;
-		let len = min(memory::PAGE_SIZE, const_img.len() - off);
+		let len = min(memory::PAGE_SIZE, ELF_IMAGE.len() - off);
 		unsafe {
-			ptr::copy_nonoverlapping(const_img[off..].as_ptr() as *const c_void, virt_ptr, len);
+			ptr::copy_nonoverlapping(ELF_IMAGE[off..].as_ptr() as *const c_void, virt_ptr, len);
 		}
 
 		pages.push(NonNull::new(ptr as *mut [u8; memory::PAGE_SIZE]).unwrap())?;
 	}
 
-	Ok(VDSO {
-		pages: SharedPtr::new(pages)?,
-		len: const_img.len(),
+	Ok(Vdso {
+		pages: Arc::new(pages)?,
+		len: ELF_IMAGE.len(),
 
 		entry_off,
 	})
@@ -76,7 +78,7 @@ fn load_image() -> Result<VDSO, Errno> {
 ///
 /// The function returns the virtual pointer to the mapped vDSO.
 pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
-	let mut elf_image = ELF_IMAGE.lock();
+	let mut elf_image = VDSO.lock();
 
 	if elf_image.is_none() {
 		let img = load_image().expect("Failed to load vDSO");
@@ -91,12 +93,10 @@ pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
 		mem_space::MAPPING_FLAG_USER,
 		MapResidence::Static {
 			pages: img.pages.clone(),
-		}
+		},
 	)?;
 
-	let entry = unsafe {
-		ptr.add(img.entry_off)
-	};
+	let entry = unsafe { ptr.add(img.entry_off) };
 
 	Ok(MappedVDSO {
 		ptr: NonNull::new(ptr).unwrap(),

@@ -5,7 +5,7 @@ use crate::errno::Errno;
 use crate::limits;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 use core::cmp::min;
 use core::fmt;
 use core::hash::Hash;
@@ -157,10 +157,10 @@ impl Path {
 	/// `other`.
 	pub fn concat(&self, other: &Self) -> Result<Self, Errno> {
 		if other.is_absolute() {
-			other.failable_clone()
+			other.try_clone()
 		} else {
-			let mut self_parts = self.parts.failable_clone()?;
-			let mut other_parts = other.parts.failable_clone()?;
+			let mut self_parts = self.parts.try_clone()?;
+			let mut other_parts = other.parts.try_clone()?;
 			self_parts.append(&mut other_parts)?;
 
 			Ok(Self {
@@ -179,11 +179,11 @@ impl Add for Path {
 	}
 }
 
-impl FailableClone for Path {
-	fn failable_clone(&self) -> Result<Self, Errno> {
+impl TryClone for Path {
+	fn try_clone(&self) -> Result<Self, Errno> {
 		Ok(Self {
 			absolute: self.absolute,
-			parts: self.parts.failable_clone()?,
+			parts: self.parts.try_clone()?,
 		})
 	}
 }

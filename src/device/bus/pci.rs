@@ -10,20 +10,20 @@
 //! specify the address of the device's registers in memory, allowing
 //! communications through DMA (Direct Memory Access).
 
-use core::cmp::min;
-use core::mem::size_of;
-use crate::device::DeviceManager;
-use crate::device::bar::BAR;
 use crate::device::bar::BARType;
+use crate::device::bar::BAR;
 use crate::device::driver;
-use crate::device::manager::PhysicalDevice;
 use crate::device::manager;
+use crate::device::manager::PhysicalDevice;
+use crate::device::DeviceManager;
 use crate::errno::Errno;
 use crate::io;
-use crate::memory::mmio::MMIO;
 use crate::memory;
+use crate::memory::mmio::MMIO;
 use crate::util::container::vec::Vec;
 use crate::util::math;
+use core::cmp::min;
+use core::mem::size_of;
 
 /// The port used to specify the configuration address.
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
@@ -269,12 +269,8 @@ impl PCIDevice {
 					};
 
 					// The next BAR's value
-					let next_value = read_long(
-						self.bus,
-						self.device,
-						self.function,
-						next_bar_off as _
-					);
+					let next_value =
+						read_long(self.bus, self.device, self.function, next_bar_off as _);
 					(value & 0xfffffff0) as u64 | ((next_value as u64) << 32)
 				}
 			};
@@ -298,7 +294,7 @@ impl PCIDevice {
 
 					size,
 				},
-				Some(mmio)
+				Some(mmio),
 			)))
 		} else {
 			let address = (value & 0xfffffffc) as u64;
@@ -312,7 +308,7 @@ impl PCIDevice {
 
 					size,
 				},
-				None
+				None,
 			)))
 		}
 	}
@@ -347,8 +343,8 @@ impl PCIDevice {
 			cache_line_size: (data[3] & 0xff) as _,
 
 			info: [
-				data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12],
-				data[13], data[14], data[15],
+				data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
+				data[12], data[13], data[14], data[15],
 			],
 
 			bars: Vec::new(),
@@ -361,8 +357,10 @@ impl PCIDevice {
 			let bar = if let Some((bar, mmio)) = dev.load_bar(i)? {
 				// Skip the next BAR if necessary
 				match &bar {
-					BAR::MemorySpace { type_, ..  } if matches!(type_, BARType::Size64) => i += 1,
-					_ => {},
+					BAR::MemorySpace {
+						type_, ..
+					} if matches!(type_, BARType::Size64) => i += 1,
+					_ => {}
 				}
 
 				if let Some(mmio) = mmio {

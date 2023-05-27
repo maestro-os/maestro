@@ -7,19 +7,18 @@
 pub mod boxed;
 pub mod container;
 pub mod io;
-pub mod list;
 pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use crate::errno::Errno;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_void;
-use core::fmt::Write;
 use core::fmt;
+use core::fmt::Write;
 use core::mem::size_of;
 use core::slice;
-use crate::errno::Errno;
 
 // C functions required by LLVM
 extern "C" {
@@ -70,29 +69,6 @@ pub const fn bit_size_of<T>() -> usize {
 	size_of::<T>() * 8
 }
 
-/// Returns the offset of the given field `field` in structure `type`.
-#[macro_export]
-macro_rules! offset_of {
-	($type:ty, $field:ident) => {
-		#[allow(unused_unsafe)]
-		unsafe {
-			let ptr = core::ptr::NonNull::<core::ffi::c_void>::dangling().as_ptr();
-			(&(*(ptr as *const $type)).$field) as *const _ as usize - (ptr as usize)
-		}
-	};
-}
-
-/// Returns the structure of type `type` that contains the structure in field `field` at pointer
-/// `ptr`.
-///
-/// The type must be a pointer type.
-#[macro_export]
-macro_rules! container_of {
-	($ptr:expr, $type:ty, $field:ident) => {
-		(($ptr as *const _ as usize) - crate::offset_of!($type, $field)) as $type
-	};
-}
-
 /// Returns the value stored into the specified register.
 #[macro_export]
 macro_rules! register_get {
@@ -140,7 +116,7 @@ pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 }
 
 /// Returns an immutable slice to the given value.
-pub fn as_slice<'a, T>(val: &'a T) -> &'a [u8] {
+pub fn as_slice<T>(val: &T) -> &[u8] {
 	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of::<T>()) }
 }
 
@@ -176,9 +152,7 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 ///
 /// Not every types are defined for every possible memory representations. Thus, some values
 /// passed as input to this function might be invalid for a given type, which is undefined.
-///
-/// The caller must ensure the sanity of the given input.
-pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
+pub unsafe fn reinterpret<T>(slice: &[u8]) -> Option<&T> {
 	if size_of::<T>() <= slice.len() {
 		// Safe because the slice is large enough
 		let val = &*(slice.as_ptr() as *const T);
@@ -190,48 +164,34 @@ pub unsafe fn reinterpret<'a, T>(slice: &'a [u8]) -> Option<&'a T> {
 
 /// Trait allowing to perform a clone of a structure that can possibly fail (on
 /// memory allocation failure, for example).
-pub trait FailableClone {
-	/// Clones the object. If the clone fails, the function returns Err.
-	fn failable_clone(&self) -> Result<Self, Errno>
+pub trait TryClone {
+	/// Clones the object. If the clone fails, the function returns an error.
+	fn try_clone(&self) -> Result<Self, Errno>
 	where
 		Self: Sized;
 }
 
-// TODO add a derive macro for types other than primitives
-/// Implements `FailableClone` with the default implemention for the given type.
-/// The type must implement `Clone`.
-#[macro_export]
-macro_rules! failable_clone_impl {
-	($type:ty) => {
-		impl FailableClone for $type {
-			fn failable_clone(&self) -> Result<Self, crate::errno::Errno> {
-				Ok(self.clone())
-			}
-		}
-	};
+/// Blanket implementation.
+impl<T: Clone + Sized> TryClone for T {
+	fn try_clone(&self) -> Result<Self, Errno> {
+		Ok(self.clone())
+	}
 }
 
-failable_clone_impl!(i8);
-failable_clone_impl!(u8);
-failable_clone_impl!(i16);
-failable_clone_impl!(u16);
-failable_clone_impl!(i32);
-failable_clone_impl!(u32);
-failable_clone_impl!(i64);
-failable_clone_impl!(u64);
-failable_clone_impl!(isize);
-failable_clone_impl!(usize);
-
-failable_clone_impl!(*mut c_void);
-failable_clone_impl!(*const c_void);
-
-/// Same as the Default trait, but the operation can possibly fail (on memory allocation failure,
+/// Same as the Default trait, but the operation can fail (on memory allocation failure,
 /// for example).
-pub trait FailableDefault {
+pub trait TryDefault {
 	/// Returns the default value. On fail, the function returns Err.
-	fn failable_default() -> Result<Self, Errno>
+	fn try_default() -> Result<Self, Errno>
 	where
 		Self: Sized;
+}
+
+/// Blanket implementation.
+impl<T: Default + Sized> TryDefault for T {
+	fn try_default() -> Result<Self, Errno> {
+		Ok(Self::default())
+	}
 }
 
 /// Wrapper structure allowing to implement the Display trait on the [u8] type
@@ -246,6 +206,32 @@ impl<'a> fmt::Display for DisplayableStr<'a> {
 
 		Ok(())
 	}
+}
+
+/// Structure used to store data given the given memory alignment.
+#[repr(C)]
+pub struct Aligned<Align, Data: ?Sized> {
+	/// Alignment padding.
+	pub _align: [Align; 0],
+	/// The data to align.
+	pub data: Data,
+}
+
+/// Includes the bytes in the file at the given path and alignes them in memory with the given
+/// alignment.
+#[macro_export]
+macro_rules! include_bytes_aligned {
+	($align:ty, $path:expr) => {
+		// const block to encapsulate static
+		{
+			static ALIGNED: &$crate::util::Aligned<$align, [u8]> = &$crate::util::Aligned {
+				_align: [],
+				data: *include_bytes!($path),
+			};
+
+			&ALIGNED.data
+		}
+	};
 }
 
 #[cfg(test)]

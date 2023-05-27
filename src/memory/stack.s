@@ -1,6 +1,8 @@
+.section .text
+
 .global stack_switch_
 
-.section .text
+.type stack_switch, @function
 
 # Performs the stack switching for the given stack and closure to execute.
 stack_switch_:

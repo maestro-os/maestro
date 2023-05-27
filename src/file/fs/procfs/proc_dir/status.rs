@@ -40,7 +40,7 @@ impl KernFSNode for Status {
 		}
 	}
 
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+	fn get_content(&self) -> Cow<'_, FileContent> {
 		Cow::from(FileContent::Regular)
 	}
 }
@@ -58,7 +58,8 @@ impl IO for Status {
 		let proc_mutex = Process::get_by_pid(self.pid).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
 
-		let name = proc.argv
+		let name = proc
+			.argv
 			.iter()
 			.map(|name| unsafe { name.as_str_unchecked() })
 			.next()
@@ -70,7 +71,7 @@ impl IO for Status {
 		let state_char = state.get_char();
 		let state_name = state.as_str();
 
-		let pid = proc.get_pid();
+		let pid = proc.pid;
 		let ppid = proc.get_parent_pid();
 
 		let uid = proc.uid;

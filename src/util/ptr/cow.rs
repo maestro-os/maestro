@@ -1,19 +1,19 @@
 //! This module implements Copy-On-Write (COW) pointers.
 
 use crate::errno::Errno;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 use core::borrow::Borrow;
 use core::fmt;
 
 /// Structure implementing a copy-on-write smart pointer.
-pub enum Cow<'a, T: 'a + FailableClone> {
+pub enum Cow<'a, T: 'a + TryClone> {
 	/// This variant represents a borrowed value.
 	Borrowed(&'a T),
 	/// This variant represents a value after it has been copied.
 	Owned(T),
 }
 
-impl<'a, T: 'a + FailableClone> Cow<'a, T> {
+impl<'a, T: 'a + TryClone> Cow<'a, T> {
 	/// Tells whether the object is a borrowed value.
 	pub fn is_borrowed(&self) -> bool {
 		match self {
@@ -34,16 +34,15 @@ impl<'a, T: 'a + FailableClone> Cow<'a, T> {
 	/// On fail, the function returns an error.
 	pub fn into_owned(self) -> Result<T, Errno> {
 		match self {
-			Self::Borrowed(r) => r.failable_clone(),
+			Self::Borrowed(r) => r.try_clone(),
 			Self::Owned(v) => Ok(v),
 		}
 	}
 
 	/// Returns a mutable reference to the owned data.
 	pub fn to_mut(&mut self) -> Result<&mut T, Errno> {
-		match self {
-			Self::Borrowed(r) => *self = Self::Owned(r.failable_clone()?),
-			_ => {}
+		if let Self::Borrowed(r) = self {
+			*self = Self::Owned(r.try_clone()?);
 		}
 
 		match self {
@@ -53,34 +52,34 @@ impl<'a, T: 'a + FailableClone> Cow<'a, T> {
 	}
 }
 
-impl<'a, T: 'a + FailableClone> From<T> for Cow<'a, T> {
+impl<'a, T: 'a + TryClone> From<T> for Cow<'a, T> {
 	fn from(t: T) -> Self {
 		Self::Owned(t)
 	}
 }
 
-impl<'a, T: 'a + FailableClone> From<&'a T> for Cow<'a, T> {
+impl<'a, T: 'a + TryClone> From<&'a T> for Cow<'a, T> {
 	fn from(t: &'a T) -> Self {
 		Self::Borrowed(t)
 	}
 }
 
-impl<'a, T: 'a + FailableClone> Borrow<T> for Cow<'a, T> {
+impl<'a, T: 'a + TryClone> Borrow<T> for Cow<'a, T> {
 	fn borrow(&self) -> &T {
 		self.as_ref()
 	}
 }
 
-impl<'a, T: 'a + FailableClone> AsRef<T> for Cow<'a, T> {
+impl<'a, T: 'a + TryClone> AsRef<T> for Cow<'a, T> {
 	fn as_ref(&self) -> &T {
 		match self {
 			Self::Borrowed(r) => r,
-			Self::Owned(v) => &v,
+			Self::Owned(v) => v,
 		}
 	}
 }
 
-impl<'a, T: 'a + FailableClone + fmt::Display> fmt::Display for Cow<'a, T> {
+impl<'a, T: 'a + TryClone + fmt::Display> fmt::Display for Cow<'a, T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
 		self.as_ref().fmt(f)
 	}

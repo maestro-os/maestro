@@ -4,7 +4,6 @@ use crate::elf;
 use crate::memory;
 use crate::multiboot;
 use core::ffi::c_void;
-use core::mem::size_of;
 use core::ptr::null_mut;
 use core::str;
 
@@ -55,30 +54,30 @@ pub unsafe fn print_memory(ptr: *const c_void, n: usize) {
 	}
 }
 
-/// Fills the slice `stack` with the callstack starting at `ebp`.
+/// Fills the slice `stack` with the callstack starting at `frame`.
 ///
 /// The first element is the last called function and the last element is the first called
 /// function.
 ///
 /// When the stack ends, the function fills the rest of the slice with `None`.
-pub fn get_callstack(ebp: *mut u32, stack: &mut [*mut c_void]) {
+pub fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
 	stack.fill(null_mut::<c_void>());
 
-	let mut i = 0;
-	let mut frame = ebp;
+	for f in stack.iter_mut() {
+		if frame.is_null() {
+			break;
+		}
 
-	while !frame.is_null() && i < stack.len() {
-		let pc = unsafe { *((frame as usize + size_of::<usize>()) as *mut u32) as *mut c_void };
+		let pc = unsafe { (*frame.add(1)) as *mut c_void };
 		if pc < memory::PROCESS_END as *mut c_void {
 			break;
 		}
 
-		stack[i] = pc;
+		*f = pc;
 
 		unsafe {
-			frame = *(frame as *mut u32) as *mut u32;
+			frame = *(frame as *mut usize) as *mut usize;
 		}
-		i += 1;
 	}
 }
 

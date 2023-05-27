@@ -4,9 +4,13 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use core::ptr::NonNull;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::buffer;
+use crate::file::mapping::FileMappingManager;
+use crate::file::mountpoint;
+use crate::file::path::Path;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -15,29 +19,23 @@ use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::MountPoint;
 use crate::file::Uid;
-use crate::file::buffer;
-use crate::file::mapping::FileMappingManager;
-use crate::file::mountpoint;
-use crate::file::path::Path;
-use crate::file;
 use crate::limits;
-use crate::util::FailableClone;
 use crate::util::container::string::String;
-use crate::util::lock::IntMutex;
-use crate::util::ptr::SharedPtr;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
+use core::ptr::NonNull;
 
 /// Updates the location of the file `file` according to the given mountpoint
 /// `mountpoint`.
 ///
 /// If the file in not located on a filesystem, the function does nothing.
 fn update_location(file: &mut File, mountpoint: &MountPoint) {
-	match file.get_location_mut() {
-		FileLocation::Filesystem {
-			mountpoint_id,
-			..
-		} => *mountpoint_id = Some(mountpoint.get_id()),
-
-		_ => {},
+	if let FileLocation::Filesystem {
+		mountpoint_id, ..
+	} = file.get_location_mut()
+	{
+		*mountpoint_id = Some(mountpoint.get_id());
 	}
 }
 
@@ -47,7 +45,6 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 /// as a cache to speedup file accesses.
 pub struct VFS {
 	// TODO Add files caching
-
 	/// Structure managing file mappings.
 	file_mappings_manager: FileMappingManager,
 }
@@ -68,16 +65,14 @@ impl VFS {
 	/// If the file doesn't exist, the function returns an error.
 	pub fn get_file_by_location(
 		&mut self,
-		location: &FileLocation
-	) -> Result<SharedPtr<File>, Errno> {
+		location: &FileLocation,
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		match location {
 			FileLocation::Filesystem {
-				inode,
-				..
+				inode, ..
 			} => {
 				// Getting the mountpoint
-				let mountpoint_mutex = location.get_mountpoint()
-					.ok_or_else(|| errno!(ENOENT))?;
+				let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 				let mountpoint = mountpoint_mutex.lock();
 
 				// Getting the IO interface
@@ -91,22 +86,24 @@ impl VFS {
 				let mut file = fs.load_file(&mut *io, *inode, String::new())?;
 
 				update_location(&mut file, &mountpoint);
-				SharedPtr::new(file)
-			},
+				Arc::new(Mutex::new(file))
+			}
 
-			FileLocation::Virtual { id } => {
+			FileLocation::Virtual {
+				id,
+			} => {
 				let name = crate::format!("virtual:{}", id)?;
 				let content = FileContent::Fifo; // TODO
 
-				SharedPtr::new(File::new(
+				Arc::new(Mutex::new(File::new(
 					name,
 					0, // TODO
 					0, // TODO
 					0o666,
 					location.clone(),
-					content
-				)?)
-			},
+					content,
+				)?))
+			}
 		}
 	}
 
@@ -122,13 +119,13 @@ impl VFS {
 		gid: Gid,
 		follow_links: bool,
 		follows_count: usize,
-	) -> Result<SharedPtr<File>, Errno> {
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		let path = Path::root().concat(path)?;
 
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint = mountpoint_mutex.lock();
-		let mountpath = mountpoint.get_path().failable_clone()?;
+		let mountpath = mountpoint.get_path().try_clone()?;
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
@@ -149,7 +146,7 @@ impl VFS {
 			drop(fs);
 
 			update_location(&mut file, &mountpoint);
-			return SharedPtr::new(file);
+			return Arc::new(Mutex::new(file));
 		}
 		// Checking permissions
 		if !file.can_execute(uid, gid) {
@@ -160,7 +157,7 @@ impl VFS {
 			inode = fs.get_inode(&mut *io, Some(inode), &inner_path[i])?;
 
 			// Checking permissions
-			file = fs.load_file(&mut *io, inode, inner_path[i].failable_clone()?)?;
+			file = fs.load_file(&mut *io, inode, inner_path[i].try_clone()?)?;
 			if i < inner_path.get_elements_count() - 1 && !file.can_execute(uid, gid) {
 				return Err(errno!(EACCES));
 			}
@@ -199,14 +196,14 @@ impl VFS {
 			}
 		}
 
-		let mut parent_path = path.failable_clone()?;
+		let mut parent_path = path.try_clone()?;
 		parent_path.pop();
 		file.set_parent_path(parent_path);
 
 		drop(fs);
 
 		update_location(&mut file, &mountpoint);
-		SharedPtr::new(file)
+		Arc::new(Mutex::new(file))
 	}
 
 	// TODO Add a param to choose between the mountpoint and the fs root?
@@ -226,7 +223,7 @@ impl VFS {
 		uid: Uid,
 		gid: Gid,
 		follow_links: bool,
-	) -> Result<SharedPtr<File>, Errno> {
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		self.get_file_from_path_(path, uid, gid, follow_links, 0)
 	}
 
@@ -248,7 +245,7 @@ impl VFS {
 		uid: Uid,
 		gid: Gid,
 		follow_links: bool,
-	) -> Result<SharedPtr<File>, Errno> {
+	) -> Result<Arc<Mutex<File>>, Errno> {
 		// Checking for errors
 		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
@@ -289,7 +286,7 @@ impl VFS {
 
 		file.set_parent_path(parent.get_path()?);
 		update_location(&mut file, &mountpoint);
-		SharedPtr::new(file)
+		Arc::new(Mutex::new(file))
 	}
 
 	// TODO Use the cache
@@ -313,12 +310,13 @@ impl VFS {
 		mut gid: Gid,
 		mode: Mode,
 		content: FileContent,
-	) -> Result<SharedPtr<File>, Errno> {
-		match self.get_file_from_parent(parent, name.failable_clone()?, uid, gid, false) {
-			// If file already exist, error
-			Ok(_) => return Err(errno!(EEXIST)),
-			// If file doesn't exist, do nothing
-			Err(_) => {}
+	) -> Result<Arc<Mutex<File>>, Errno> {
+		// If file already exist, error
+		if self
+			.get_file_from_parent(parent, name.try_clone()?, uid, gid, false)
+			.is_ok()
+		{
+			return Err(errno!(EEXIST));
 		}
 
 		// Checking for errors
@@ -364,11 +362,11 @@ impl VFS {
 
 		// Adding the file to the parent's entries
 		file.set_parent_path(parent.get_path()?);
-		parent.add_entry(file.get_name().failable_clone()?, file.to_dir_entry())?;
+		parent.add_entry(file.get_name().try_clone()?, file.to_dir_entry())?;
 
 		drop(fs);
 		update_location(&mut file, &mountpoint);
-		SharedPtr::new(file)
+		Arc::new(Mutex::new(file))
 	}
 
 	/// Creates a new hard link.
@@ -489,11 +487,7 @@ impl VFS {
 	/// On success, the function returns a reference to the page.
 	///
 	/// If the file doesn't exist, the function returns an error.
-	pub fn map_file(
-		&mut self,
-		loc: FileLocation,
-		off: usize
-	) -> Result<NonNull<u8>, Errno> {
+	pub fn map_file(&mut self, loc: FileLocation, off: usize) -> Result<NonNull<u8>, Errno> {
 		// TODO if the page is being init, read from disk
 		self.file_mappings_manager.map(loc, off)?;
 
@@ -510,13 +504,13 @@ impl VFS {
 }
 
 /// The instance of the VFS.
-static VFS: IntMutex<Option<VFS>> = IntMutex::new(None);
+static VFS: Mutex<Option<VFS>> = Mutex::new(None);
 
 /// Returns a mutable reference to the VFS.
 ///
 /// If the cache is not initialized, the Option is `None`.
 ///
 /// If the function is called from a module, the VFS can be assumed to be initialized.
-pub fn get() -> &'static IntMutex<Option<VFS>> {
+pub fn get() -> &'static Mutex<Option<VFS>> {
 	&VFS
 }

@@ -28,7 +28,6 @@ impl KernFSNode for Cmdline {
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
 			proc_mutex.lock().euid
-			
 		} else {
 			0
 		}
@@ -42,7 +41,7 @@ impl KernFSNode for Cmdline {
 		}
 	}
 
-	fn get_content<'a>(&'a self) -> Cow<'a, FileContent> {
+	fn get_content(&self) -> Cow<'_, FileContent> {
 		Cow::from(FileContent::Regular)
 	}
 }

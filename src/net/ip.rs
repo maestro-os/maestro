@@ -1,11 +1,11 @@
 //! This module implements the IP protocol.
 
-use core::mem::size_of;
-use core::slice;
-use crate::crypto::checksum;
-use crate::errno::Errno;
 use super::BuffList;
 use super::Layer;
+use crate::crypto::checksum;
+use crate::errno::Errno;
+use core::mem::size_of;
+use core::slice;
 
 /// The default TTL value.
 const DEFAULT_TTL: u8 = 128;
@@ -53,9 +53,8 @@ impl IPv4Header {
 	///
 	/// If correct, the function returns `true`.
 	pub fn check_checksum(&self) -> bool {
-		let slice = unsafe {
-			slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>())
-		};
+		let slice =
+			unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>()) };
 
 		checksum::compute_rfc1071(slice) == 0
 	}
@@ -64,9 +63,8 @@ impl IPv4Header {
 	pub fn compute_checksum(&mut self) {
 		self.hdr_checksum = 0;
 
-		let slice = unsafe {
-			slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>())
-		};
+		let slice =
+			unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>()) };
 		self.hdr_checksum = checksum::compute_rfc1071(slice);
 	}
 }
@@ -102,12 +100,10 @@ pub struct IPv4Layer {
 }
 
 impl Layer for IPv4Layer {
-	fn transmit<'c, F>(
-		&self,
-		mut buff: BuffList<'c>,
-		next: F
-	) -> Result<(), Errno>
-		where F: Fn(BuffList<'c>) -> Result<(), Errno> {
+	fn transmit<'c, F>(&self, mut buff: BuffList<'c>, next: F) -> Result<(), Errno>
+	where
+		F: Fn(BuffList<'c>) -> Result<(), Errno>,
+	{
 		let hdr_len = size_of::<IPv4Header>() as u16; // TODO add options support?
 
 		let dscp = 0; // TODO
@@ -119,7 +115,7 @@ impl Layer for IPv4Layer {
 			type_of_service: (dscp << 2) | ecn,
 			total_length: hdr_len + buff.len() as u16,
 
-			identification: 0, // TODO
+			identification: 0,        // TODO
 			flags_fragment_offset: 0, // TODO
 
 			// TODO allow setting a different value
@@ -133,10 +129,7 @@ impl Layer for IPv4Layer {
 		hdr.compute_checksum();
 
 		let hdr_buff = unsafe {
-			slice::from_raw_parts::<u8>(
-				&hdr as *const _ as *const _,
-				size_of::<IPv4Header>()
-			)
+			slice::from_raw_parts::<u8>(&hdr as *const _ as *const _, size_of::<IPv4Header>())
 		};
 
 		buff.push_front(hdr_buff.into());

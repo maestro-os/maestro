@@ -1,24 +1,25 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
-use core::ffi::c_int;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file;
+use crate::file::fd::FD_CLOEXEC;
+use crate::file::open_file;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::file::fd::FD_CLOEXEC;
-use crate::file::open_file;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::file;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
-use crate::util::FailableClone;
-use crate::util::ptr::SharedPtr;
+use crate::process::Process;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
+use core::ffi::c_int;
 use macros::syscall;
 
 /// Mask of status flags to be kept by an open file description.
@@ -46,7 +47,7 @@ fn get_file(
 	mode: Mode,
 	uid: Uid,
 	gid: Gid,
-) -> Result<SharedPtr<File>, Errno> {
+) -> Result<Arc<Mutex<File>>, Errno> {
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
@@ -56,7 +57,7 @@ fn get_file(
 
 	if flags & open_file::O_CREAT != 0 {
 		// Getting the path of the parent directory
-		let mut parent_path = path.failable_clone()?;
+		let mut parent_path = path.try_clone()?;
 		// The file's basename
 		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
@@ -65,14 +66,14 @@ fn get_file(
 		let mut parent = parent_mutex.lock();
 
 		let file_result =
-			vfs.get_file_from_parent(&mut *parent, name.failable_clone()?, uid, gid, follow_links);
+			vfs.get_file_from_parent(&mut parent, name.try_clone()?, uid, gid, follow_links);
 		match file_result {
 			// If the file is found, return it
 			Ok(file) => Ok(file),
 
 			Err(e) if e.as_int() == errno::ENOENT => {
 				// Creating the file
-				vfs.create_file(&mut *parent, name, uid, gid, mode, FileContent::Regular)
+				vfs.create_file(&mut parent, name, uid, gid, mode, FileContent::Regular)
 			}
 
 			Err(e) => Err(e),
@@ -99,7 +100,7 @@ pub fn handle_flags(
 	file: &mut File,
 	flags: i32,
 	uid: Uid,
-	gid: Gid
+	gid: Gid,
 ) -> Result<(bool, bool, bool), Errno> {
 	let (read, write) = match flags & 0b11 {
 		open_file::O_RDONLY => (true, false),
@@ -156,7 +157,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		let mut f = file.lock();
 
 		let loc = f.get_location().clone();
-		let (read, write, cloexec) = handle_flags(&mut *f, flags, uid, gid)?;
+		let (read, write, cloexec) = handle_flags(&mut f, flags, uid, gid)?;
 
 		(loc, read, write, cloexec)
 	};
@@ -178,13 +179,9 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 	let fd_id = fd.get_id();
 
 	// Flushing file
-	match file.lock().sync() {
-		Err(e) => {
-			fds.close_fd(fd_id)?;
-			return Err(e);
-		}
-
-		_ => {}
+	if let Err(e) = file.lock().sync() {
+		fds.close_fd(fd_id)?;
+		return Err(e);
 	}
 
 	Ok(fd.get_id() as _)

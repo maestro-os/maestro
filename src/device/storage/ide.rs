@@ -8,7 +8,8 @@ use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
 use crate::errno::Errno;
 use crate::util::container::vec::Vec;
-use crate::util::ptr::SharedPtr;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
 
 /// The beginning of the port range for the primary ATA bus (compatibility
 /// mode).
@@ -135,10 +136,10 @@ impl Controller {
 		&self,
 		channel: Channel,
 		slave: bool,
-	) -> Result<Option<SharedPtr<dyn StorageInterface>>, Errno> {
+	) -> Result<Option<Arc<Mutex<dyn StorageInterface>>>, Errno> {
 		match PATAInterface::new(channel, slave) {
 			Ok(interface) => {
-				let interface = SharedPtr::new(interface)?;
+				let interface = Arc::new(Mutex::new(interface))?;
 
 				// Wrapping the interface into a cached interface
 				// TODO Use a constant for the sectors count
@@ -156,7 +157,7 @@ impl Controller {
 	///
 	/// If an error is returned from a call to the closure, the function returns
 	/// with the same error.
-	pub fn detect_all(&self) -> Result<Vec<SharedPtr<dyn StorageInterface>>, Errno> {
+	pub fn detect_all(&self) -> Result<Vec<Arc<Mutex<dyn StorageInterface>>>, Errno> {
 		let mut interfaces = Vec::new();
 
 		for i in 0..4 {

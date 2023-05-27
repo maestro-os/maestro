@@ -1,24 +1,26 @@
 //! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
-use core::cmp::min;
-use core::ffi::c_int;
-use crate::errno::Errno;
 use crate::errno;
-use crate::file::open_file::O_NONBLOCK;
+use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
+use crate::file::open_file::O_NONBLOCK;
 use crate::idt;
 use crate::limits;
-use crate::process::Process;
 use crate::process::iovec::IOVec;
-use crate::process::mem_space::MemSpace;
 use crate::process::mem_space::ptr::SyscallSlice;
+use crate::process::mem_space::MemSpace;
 use crate::process::signal::Signal;
+use crate::process::Process;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
-use crate::util::ptr::IntSharedPtr;
+use crate::util::lock::IntMutex;
+use crate::util::ptr::arc::Arc;
+use core::cmp::min;
+use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Handle blocking writes (and thus, EINTR)
+// TODO Reimplement by taking example on `writev` (currently doesn't work with blocking files)
 
 /// Reads the given chunks from the file.
 ///
@@ -28,7 +30,7 @@ use macros::syscall;
 /// - `iovcnt` is the number of chunks in `iov`.
 /// - `open_file` is the file to write to.
 fn read(
-	mem_space: IntSharedPtr<MemSpace>,
+	mem_space: Arc<IntMutex<MemSpace>>,
 	iov: SyscallSlice<IOVec>,
 	iovcnt: usize,
 	open_file: &mut OpenFile,
@@ -106,9 +108,7 @@ pub fn do_readv(
 		let fds_mutex = proc.get_fds().unwrap();
 		let fds = fds_mutex.lock();
 
-		let open_file_mutex = fds.get_fd(fd as _)
-			.ok_or(errno!(EBADF))?
-			.get_open_file()?;
+		let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file()?;
 		(mem_space, open_file_mutex)
 	};
 
@@ -129,7 +129,7 @@ pub fn do_readv(
 			}
 		}
 
-		let result = read(mem_space, iov, iovcnt as _, &mut *open_file);
+		let result = read(mem_space, iov, iovcnt as _, &mut open_file);
 		match &result {
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {

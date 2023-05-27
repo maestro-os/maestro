@@ -1,18 +1,18 @@
 //! The `fstat64` system call allows get the status of a file.
 
-use core::ffi::c_int;
-use core::ffi::c_long;
 use crate::errno::Errno;
 use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::Process;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timespec;
 use crate::time::unit::TimestampScale;
 use crate::util::io::IO;
+use core::ffi::c_int;
+use core::ffi::c_long;
 use macros::syscall;
 
 // TODO Check types
@@ -102,17 +102,17 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 		st_atim: Timespec::from_nano(TimestampScale::convert(
 			file.atime,
 			TimestampScale::Second,
-			TimestampScale::Nanosecond
+			TimestampScale::Nanosecond,
 		)),
 		st_mtim: Timespec::from_nano(TimestampScale::convert(
 			file.mtime,
 			TimestampScale::Second,
-			TimestampScale::Nanosecond
+			TimestampScale::Nanosecond,
 		)),
 		st_ctim: Timespec::from_nano(TimestampScale::convert(
 			file.ctime,
 			TimestampScale::Second,
-			TimestampScale::Nanosecond
+			TimestampScale::Nanosecond,
 		)),
 	};
 
@@ -123,7 +123,9 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mut mem_space_guard = mem_space.lock();
 
-		let statbuf = statbuf.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let statbuf = statbuf
+			.get_mut(&mut mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
 		*statbuf = stat;
 	}
 

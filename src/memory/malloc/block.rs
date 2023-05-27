@@ -7,11 +7,9 @@ use super::chunk::FreeChunk;
 use crate::errno::Errno;
 use crate::memory;
 use crate::memory::buddy;
-use crate::offset_of;
 use crate::util;
-use crate::util::list::ListNode;
 use crate::util::math;
-use core::ffi::c_void;
+use core::mem::offset_of;
 use core::mem::size_of;
 use core::ptr;
 
@@ -19,10 +17,9 @@ use core::ptr;
 /// allocator, storing memory chunks.
 #[repr(C, align(8))]
 pub struct Block {
-	/// The linked list storing the blocks
-	list: ListNode,
 	/// The order of the frame for the buddy allocator
 	order: buddy::FrameOrder,
+
 	/// The first chunk of the block
 	pub first_chunk: Chunk,
 }
@@ -35,28 +32,29 @@ impl Block {
 	///
 	/// The underlying chunk created by this function is **not** inserted into the free list.
 	pub fn new(min_size: usize) -> Result<&'static mut Self, Errno> {
-		let total_min_size = size_of::<Block>() + min_size;
-		let order = buddy::get_order(math::ceil_div(total_min_size, memory::PAGE_SIZE));
-		let first_chunk_size = buddy::get_frame_size(order) - size_of::<Block>();
+		let min_total_size = size_of::<Block>() + min_size;
+		let block_order = buddy::get_order(math::ceil_div(min_total_size, memory::PAGE_SIZE));
+
+		// The size of the first chunk
+		let first_chunk_size = buddy::get_frame_size(block_order) - size_of::<Block>();
 		debug_assert!(first_chunk_size >= min_size);
 
-		let ptr = buddy::alloc_kernel(order)?;
-		let block = unsafe {
-			// Safe since `ptr` is valid
-			ptr::write(
-				ptr as *mut Block,
+		// Allocate the block
+		let ptr = buddy::alloc_kernel(block_order)? as *mut Block;
+		// Init block
+		unsafe {
+			ptr::write_volatile(
+				ptr,
 				Self {
-					list: ListNode::new_single(),
-					order,
+					order: block_order,
 					first_chunk: Chunk::new(),
 				},
 			);
-			&mut *(ptr as *mut Block)
-		};
-		FreeChunk::new_first(
-			&mut block.first_chunk as *mut _ as *mut c_void,
-			first_chunk_size,
-		);
+		}
+
+		let block = unsafe { &mut *ptr };
+		*block.first_chunk.as_free_chunk().unwrap() = FreeChunk::new(first_chunk_size);
+
 		Ok(block)
 	}
 
@@ -65,7 +63,8 @@ impl Block {
 	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
 		let first_chunk_off = offset_of!(Block, first_chunk);
 		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
-		debug_assert!(util::is_aligned(ptr as *const c_void, memory::PAGE_SIZE));
+		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+
 		&mut *ptr
 	}
 

@@ -24,7 +24,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 
 		let path_str = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 
-		let new_cwd = super::util::get_absolute_path(&*proc, Path::from_str(path_str, true)?)?;
+		let new_cwd = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
 		(new_cwd, uid, gid)
 	};
 

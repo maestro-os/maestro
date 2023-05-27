@@ -1,23 +1,24 @@
-/// This module implements utility functions for system calls.
+//! This module implements utility functions for system calls.
 
-use core::mem::size_of;
-use crate::errno::Errno;
 use crate::errno;
+use crate::errno::Errno;
+use crate::file::path::Path;
+use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::process::Process;
-use crate::process::State;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::process::scheduler;
-use crate::util::FailableClone;
+use crate::process::Process;
+use crate::process::State;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
+use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
-use crate::util::ptr::SharedPtr;
+use crate::util::ptr::arc::Arc;
+use crate::util::TryClone;
+use core::mem::size_of;
 
 /// Returns the absolute path according to the process's current working
 /// directory.
@@ -33,8 +34,7 @@ pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 		path
 	};
 
-	let chroot = process.get_chroot();
-	chroot.concat(&path)
+	process.chroot.concat(&path)
 }
 
 // TODO Find a safer and cleaner solution
@@ -96,7 +96,7 @@ fn build_path_from_fd(
 		// Using the given absolute path
 		Ok(path)
 	} else if dirfd == super::access::AT_FDCWD {
-		let cwd = process.get_cwd().failable_clone()?;
+		let cwd = process.get_cwd().try_clone()?;
 
 		// Using path relative to the current working directory
 		cwd.concat(&path)
@@ -141,7 +141,7 @@ pub fn get_file_at(
 	dirfd: i32,
 	pathname: &[u8],
 	flags: i32,
-) -> Result<SharedPtr<File>, Errno> {
+) -> Result<Arc<Mutex<File>>, Errno> {
 	if pathname.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
@@ -190,7 +190,7 @@ pub fn get_parent_at_with_name(
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
-) -> Result<(SharedPtr<File>, String), Errno> {
+) -> Result<(Arc<Mutex<File>>, String), Errno> {
 	if pathname.is_empty() {
 		return Err(errno!(ENOENT));
 	}
@@ -228,13 +228,12 @@ pub fn create_file_at(
 	pathname: &[u8],
 	mode: Mode,
 	content: FileContent,
-) -> Result<SharedPtr<File>, Errno> {
+) -> Result<Arc<Mutex<File>>, Errno> {
 	let uid = process.euid;
 	let gid = process.egid;
 	let mode = mode & !process.umask;
 
-	let (parent_mutex, name) =
-		get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
+	let (parent_mutex, name) = get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
 
 	let vfs_mutex = vfs::get();
 	let mut vfs = vfs_mutex.lock();
@@ -242,7 +241,7 @@ pub fn create_file_at(
 
 	let mut parent = parent_mutex.lock();
 
-	vfs.create_file(&mut *parent, name, uid, gid, mode, content)
+	vfs.create_file(&mut parent, name, uid, gid, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.
@@ -263,7 +262,7 @@ pub fn handle_proc_state() {
 		// The process is executing a signal handler. Make the scheduler jump to it
 		State::Running => {
 			if proc.is_handling_signal() {
-				let regs = proc.get_regs().clone();
+				let regs = proc.regs.clone();
 				drop(proc);
 				drop(proc_mutex);
 
@@ -313,8 +312,8 @@ pub fn signal_check(regs: &Regs) {
 		let mut r = regs.clone();
 		// TODO Clean
 		r.eip -= 2; // TODO Handle the case where the instruction insn't two bytes long (sysenter)
-		proc.set_regs(r);
-		proc.set_syscalling(false);
+		proc.regs = r;
+		proc.syscalling = false;
 
 		// Switching to handle the signal
 		proc.prepare_switch();

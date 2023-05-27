@@ -9,24 +9,24 @@
 mod ansi;
 pub mod termios;
 
-use core::cmp::*;
-use core::mem::MaybeUninit;
-use core::ptr;
 use crate::device::serial;
 use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::memory::vmem;
-use crate::process::Process;
 use crate::process::pid::Pid;
 use crate::process::signal::Signal;
+use crate::process::Process;
 use crate::tty::termios::Termios;
+use crate::util;
 use crate::util::container::vec::Vec;
 use crate::util::io;
 use crate::util::lock::IntMutex;
 use crate::util::lock::MutexGuard;
-use crate::util::ptr::IntSharedPtr;
-use crate::util;
+use crate::util::ptr::arc::Arc;
 use crate::vga;
+use core::cmp::*;
+use core::mem::MaybeUninit;
+use core::ptr;
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -124,7 +124,7 @@ pub struct TTY {
 static mut INIT_TTY: MaybeUninit<IntMutex<TTY>> = MaybeUninit::uninit();
 
 /// The list of every TTYs except the init TTY.
-static TTYS: IntMutex<Vec<IntSharedPtr<TTY>>> = IntMutex::new(Vec::new());
+static TTYS: IntMutex<Vec<Arc<IntMutex<TTY>>>> = IntMutex::new(Vec::new());
 
 /// The current TTY being displayed on screen. If `None`, the init TTY is being
 /// displayed.
@@ -139,7 +139,7 @@ pub enum TTYHandle {
 	/// Handle to the init TTY.
 	Init(&'static IntMutex<TTY>),
 	/// Handle to a normal TTY.
-	Normal(IntSharedPtr<TTY>),
+	Normal(Arc<IntMutex<TTY>>),
 }
 
 impl<'a> TTYHandle {
@@ -485,7 +485,7 @@ impl TTY {
 		let mut len = min(buff.len(), self.available_size);
 
 		if self.termios.c_lflag & termios::ICANON != 0 {
-			let eof = self.termios.c_cc[termios::VEOF as usize];
+			let eof = self.termios.c_cc[termios::VEOF];
 
 			if len > 0 && self.input_buffer[0] == eof {
 				// Shifting data
@@ -501,7 +501,7 @@ impl TTY {
 				// Making the next call EOF
 				len = eof_off;
 			}
-		} else if len < self.termios.c_cc[termios::VMIN as usize] as usize {
+		} else if len < self.termios.c_cc[termios::VMIN] as usize {
 			return (0, false);
 		}
 
@@ -590,7 +590,7 @@ impl TTY {
 			while i < self.input_size {
 				let b = self.input_buffer[i];
 
-				if b == self.termios.c_cc[termios::VEOF as usize] || b == b'\n' {
+				if b == self.termios.c_cc[termios::VEOF] || b == b'\n' {
 					// Making the input available for reading
 					self.available_size = i + 1;
 
@@ -613,18 +613,17 @@ impl TTY {
 				// Printing special control characters if enabled
 				if self.termios.c_lflag & termios::ECHO != 0
 					&& self.termios.c_lflag & termios::ECHOCTL != 0
+					&& *b >= 1 && *b < 32
 				{
-					if *b >= 1 && *b < 32 {
-						self.write(&[b'^', b + b'A']);
-					}
+					self.write(&[b'^', b + b'A']);
 				}
 
 				// TODO Handle every special characters
-				if *b == self.termios.c_cc[termios::VINTR as usize] {
+				if *b == self.termios.c_cc[termios::VINTR] {
 					self.send_signal(Signal::SIGINT);
-				} else if *b == self.termios.c_cc[termios::VQUIT as usize] {
+				} else if *b == self.termios.c_cc[termios::VQUIT] {
 					self.send_signal(Signal::SIGQUIT);
-				} else if *b == self.termios.c_cc[termios::VSUSP as usize] {
+				} else if *b == self.termios.c_cc[termios::VSUSP] {
 					self.send_signal(Signal::SIGTSTP);
 				}
 			}

@@ -8,7 +8,7 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util;
-use crate::util::FailableClone;
+use crate::util::TryClone;
 use core::cmp::min;
 use macros::syscall;
 
@@ -26,7 +26,7 @@ pub fn readlink(
 		let mem_space_guard = mem_space.lock();
 
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(&*proc, path)?;
+		let path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, proc.euid, proc.egid)
 	};
@@ -42,7 +42,7 @@ pub fn readlink(
 		let file = file_mutex.lock();
 
 		match file.get_content() {
-			FileContent::Link(target) => target.failable_clone()?,
+			FileContent::Link(target) => target.try_clone()?,
 			_ => return Err(errno!(EINVAL)),
 		}
 	};

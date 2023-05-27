@@ -7,27 +7,27 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use core::any::Any;
-use crate::errno::Errno;
+use super::path::Path;
+use super::File;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
+use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
-use crate::util::ptr::SharedPtr;
-use super::File;
-use super::path::Path;
+use crate::util::ptr::arc::Arc;
+use core::any::Any;
 
 /// This structure is used in the f_fsid field of statfs. It is currently
 /// unused.
 #[repr(C)]
 #[derive(Debug, Default)]
-struct FSID {
+struct Fsid {
 	/// Unused.
 	_val: [i32; 2],
 }
@@ -51,7 +51,7 @@ pub struct Statfs {
 	/// Free inodes in filesystem.
 	f_ffree: i64,
 	/// Filesystem ID.
-	f_fsid: FSID,
+	f_fsid: Fsid,
 	/// Maximum length of filenames.
 	f_namelen: u32,
 	/// Fragment size.
@@ -204,7 +204,7 @@ pub trait Filesystem: Any {
 /// Trait representing a filesystem type.
 pub trait FilesystemType {
 	/// Returns the name of the filesystem.
-	fn get_name(&self) -> &[u8];
+	fn get_name(&self) -> &'static [u8];
 
 	/// Tells whether the given IO interface has the current filesystem.
 	///
@@ -222,47 +222,38 @@ pub trait FilesystemType {
 		io: &mut dyn IO,
 		mountpath: Path,
 		readonly: bool,
-	) -> Result<SharedPtr<dyn Filesystem>, Errno>;
+	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno>;
 }
 
 /// The list of filesystem types.
-static FILESYSTEMS: Mutex<Vec<SharedPtr<dyn FilesystemType>>> = Mutex::new(Vec::new());
+static FS_TYPES: Mutex<HashMap<String, Arc<dyn FilesystemType>>> = Mutex::new(HashMap::new());
 
-/// Registers a new filesystem type `fs`.
+/// Registers a new filesystem type.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
-	let mut container = FILESYSTEMS.lock();
-	container.push(SharedPtr::new(fs_type)?)
+	let name = String::try_from(fs_type.get_name())?;
+
+	let mut container = FS_TYPES.lock();
+	container.insert(name, Arc::new(fs_type)?)?;
+
+	Ok(())
 }
 
 // TODO Function to unregister a filesystem type
 
 // TODO Optimize
 /// Returns the filesystem type with name `name`.
-pub fn get_fs(name: &[u8]) -> Option<SharedPtr<dyn FilesystemType>> {
-	let container = FILESYSTEMS.lock();
-
-	for i in 0..container.len() {
-		let fs_type = container[i].lock();
-
-		if fs_type.get_name() == name {
-			drop(fs_type);
-			return Some(container[i].clone());
-		}
-	}
-
-	None
+pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
+	let container = FS_TYPES.lock();
+	container.get(name).cloned()
 }
 
 /// Detects the filesystem type on the given IO interface `io`.
-pub fn detect(io: &mut dyn IO) -> Result<SharedPtr<dyn FilesystemType>, Errno> {
-	let container = FILESYSTEMS.lock();
+pub fn detect(io: &mut dyn IO) -> Result<Arc<dyn FilesystemType>, Errno> {
+	let container = FS_TYPES.lock();
 
-	for i in 0..container.len() {
-		let fs_type = container[i].lock();
-
+	for (_, fs_type) in container.iter() {
 		if fs_type.detect(io)? {
-			drop(fs_type);
-			return Ok(container[i].clone()); // TODO Use a weak pointer?
+			return Ok(fs_type.clone()); // TODO Use a weak pointer?
 		}
 	}
 

@@ -2,19 +2,19 @@
 
 mod signal_trampoline;
 
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::mem::transmute;
-use core::slice;
-use crate::errno::Errno;
+use super::Process;
+use super::State;
 use crate::errno;
+use crate::errno::Errno;
 use crate::file::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
 use crate::time::unit::Clock;
+use core::ffi::c_void;
+use core::mem::size_of;
+use core::mem::transmute;
+use core::slice;
 use signal_trampoline::signal_trampoline;
-use super::Process;
-use super::State;
 
 /// Type representing a signal handler.
 pub type SigHandler = extern "C" fn(i32);
@@ -446,7 +446,7 @@ impl Signal {
 					)
 				};
 
-				let mut regs = process.get_regs().clone();
+				let mut regs = process.regs.clone();
 				// Setting the stack to point to the signal's data
 				regs.esp = signal_esp as _;
 				// Setting the program counter to point to the signal trampoline
@@ -456,7 +456,7 @@ impl Signal {
 				// return
 				process.signal_save(self.clone());
 				// Setting the process's registers to call the signal handler
-				process.set_regs(regs);
+				process.regs = regs;
 			}
 
 			_ => {}

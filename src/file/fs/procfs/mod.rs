@@ -29,7 +29,8 @@ use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use crate::util::ptr::SharedPtr;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
 use core::any::Any;
 use mem_info::MemInfo;
 use proc_dir::ProcDir;
@@ -74,12 +75,8 @@ impl ProcFS {
 		)?;
 
 		// Creating /proc/mounts
-		let node = DummyKernFSNode::new(
-			0o777,
-			0,
-			0,
-			FileContent::Link(b"self/mounts".try_into()?),
-		);
+		let node =
+			DummyKernFSNode::new(0o777, 0, 0, FileContent::Link(b"self/mounts".try_into()?));
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
 			b"mounts".try_into()?,
@@ -281,7 +278,7 @@ impl Filesystem for ProcFS {
 pub struct ProcFsType {}
 
 impl FilesystemType for ProcFsType {
-	fn get_name(&self) -> &[u8] {
+	fn get_name(&self) -> &'static [u8] {
 		b"procfs"
 	}
 
@@ -294,7 +291,7 @@ impl FilesystemType for ProcFsType {
 		_io: &mut dyn IO,
 		mountpath: Path,
 		readonly: bool,
-	) -> Result<SharedPtr<dyn Filesystem>, Errno> {
-		Ok(SharedPtr::new(ProcFS::new(readonly, mountpath)?)?)
+	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
+		Ok(Arc::new(Mutex::new(ProcFS::new(readonly, mountpath)?))?)
 	}
 }

@@ -1,14 +1,14 @@
 //! The device manager is the structure which links the physical devices to
 //! device files.
 
-use core::any::Any;
 use crate::device::bar::BAR;
 use crate::errno::Errno;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::lock::Mutex;
-use crate::util::ptr::SharedPtr;
-use crate::util::ptr::WeakPtr;
+use crate::util::ptr::arc::Arc;
+use crate::util::ptr::arc::Weak;
+use core::any::Any;
 
 /// Trait representing a physical device.
 pub trait PhysicalDevice {
@@ -62,8 +62,8 @@ pub trait DeviceManager: Any {
 }
 
 /// The list of device managers.
-static DEVICE_MANAGERS: Mutex<HashMap<String, SharedPtr<dyn DeviceManager>>>
-	= Mutex::new(HashMap::new());
+static DEVICE_MANAGERS: Mutex<HashMap<String, Arc<Mutex<dyn DeviceManager>>>> =
+	Mutex::new(HashMap::new());
 
 /// Registers the given device manager.
 pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {
@@ -71,17 +71,18 @@ pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Er
 
 	let name = String::try_from(manager.get_name())?;
 
-	let m = SharedPtr::new(manager)?;
+	let m = Arc::new(Mutex::new(manager))?;
 	device_managers.insert(name, m)?;
 
 	Ok(())
 }
 
 /// Returns the device manager with name `name`.
-pub fn get_by_name(name: &str) -> Option<WeakPtr<dyn DeviceManager>> {
+pub fn get_by_name(name: &str) -> Option<Weak<Mutex<dyn DeviceManager>>> {
 	let device_managers = DEVICE_MANAGERS.lock();
+	let dev = device_managers.get(name.as_bytes())?;
 
-	Some(device_managers.get(name.as_bytes())?.new_weak())
+	Some(Arc::downgrade(dev))
 }
 
 /// Function that is called when a new device is plugged in.

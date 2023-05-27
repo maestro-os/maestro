@@ -6,6 +6,7 @@
 use crate::tty;
 use crate::util::lock::IntMutex;
 use core::cmp::min;
+use core::cmp::Ordering;
 use core::fmt::Write;
 
 /// The size of the kernel logs buffer in bytes.
@@ -69,12 +70,10 @@ impl Logger {
 
 	/// Returns the number of available bytes in the buffer.
 	fn available_space(&self) -> usize {
-		if self.write_head == self.read_head {
-			self.buff.len()
-		} else if self.write_head > self.read_head {
-			self.buff.len() - (self.write_head - self.read_head)
-		} else {
-			self.read_head - self.write_head - 1
+		match self.write_head.cmp(&self.read_head) {
+			Ordering::Equal => self.buff.len(),
+			Ordering::Greater => self.buff.len() - (self.write_head - self.read_head),
+			Ordering::Less => self.read_head - self.write_head - 1,
 		}
 	}
 

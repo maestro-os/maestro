@@ -20,7 +20,9 @@
 .global setup_gdt
 .global gdt_move
 
-.extern gdt_copy
+.type setup_gdt, @function
+.type gdt_copy, @function
+.type gdt_move, @function
 
 /*
  * Offsets into the GDT for each segment.
@@ -36,6 +38,10 @@
  */
 .set GDT_PHYS_PTR,		0x800
 /*
+ * The size of the GDT in bytes.
+ */
+.set GDT_SIZE,			(gdt - gdt_start)
+/*
  * Physical address to the GDT descriptor.
  */
 .set GDT_DESC_PHYS_PTR,	(GDT_PHYS_PTR + (gdt - gdt_start))
@@ -48,7 +54,7 @@
  */
 .set GDT_DESC_VIRT_PTR,	(GDT_VIRT_PTR + (gdt - gdt_start))
 
-.section .boot.text
+.section .boot.text, "ax"
 
 /*
  * Switches the CPU to protected mode.
@@ -80,6 +86,17 @@ complete_flush:
 	ret
 
 /*
+ * Copies the GDT to its physical address.
+ */
+gdt_copy:
+	mov $gdt_start, %esi
+	mov $GDT_PHYS_PTR, %edi
+	mov $(GDT_SIZE + 6), %ecx
+	rep movsb
+
+	ret
+
+/*
  * Moves the GDT to the new virtual address after kernel relocation.
  */
 gdt_move:
@@ -92,7 +109,7 @@ gdt_move:
 
 
 
-.section .boot.data
+.section .boot.data, "aw"
 
 .align 8
 

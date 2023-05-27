@@ -1,10 +1,10 @@
 //! This module implements the local loopback.
 
-use crate::errno::Errno;
 use super::Address;
 use super::BindAddress;
 use super::Interface;
 use super::MAC;
+use crate::errno::Errno;
 
 /// Local loopback interfaces allows the system to write data to itself.
 pub struct LocalLoopback {}
@@ -30,10 +30,8 @@ impl Interface for LocalLoopback {
 			},
 			BindAddress {
 				addr: Address::IPv6([
-					0x00, 0x00, 0x00, 0x00,
-					0x00, 0x00, 0x00, 0x00,
-					0x00, 0x00, 0x00, 0x00,
-					0x00, 0x00, 0x00, 0x01
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x01,
 				]),
 				subnet_mask: 128,
 			},

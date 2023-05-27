@@ -17,7 +17,7 @@ pub struct Rsdt {
 impl Rsdt {
 	/// Iterates over every ACPI tables.
 	pub fn foreach_table<F: FnMut(*const ACPITableHeader)>(&self, mut f: F) {
-		let entries_len = self.header.get_length() as usize - size_of::<Rsdt>();
+		let entries_len = self.header.get_length() - size_of::<Rsdt>();
 		let entries_count = entries_len / 4;
 		let entries_ptr = (self as *const _ as usize + size_of::<Rsdt>()) as *const u32;
 

@@ -18,7 +18,8 @@ use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
-use crate::util::ptr::SharedPtr;
+use crate::util::lock::Mutex;
+use crate::util::ptr::arc::Arc;
 use core::ops::Range;
 use macros::syscall;
 
@@ -90,8 +91,7 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 			.skip(interp_end)
 			.filter(|(_, c)| **c != b' ' && **c != b'\t')
 			.map(|(off, _)| off..shebang_end)
-			.filter(|arg| !arg.is_empty())
-			.next();
+			.find(|arg| !arg.is_empty());
 
 		Ok(Some(Shebang {
 			buff,
@@ -109,8 +109,8 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	let mut proc = proc_mutex.lock();
 
 	// Executing the program
-	exec::exec(&mut *proc, program_image)?;
-	Ok(*proc.get_regs())
+	exec::exec(&mut proc, program_image)?;
+	Ok(proc.regs)
 }
 
 // TODO clean
@@ -125,7 +125,7 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 /// - `argv` is the arguments list.
 /// - `envp` is the environment variables list.
 fn build_image(
-	file: SharedPtr<File>,
+	file: Arc<Mutex<File>>,
 	uid: Uid,
 	euid: Uid,
 	gid: Gid,
@@ -148,7 +148,7 @@ fn build_image(
 		envp,
 	};
 
-	exec::build_image(&mut *file, exec_info)
+	exec::build_image(&mut file, exec_info)
 }
 
 #[syscall]
@@ -172,10 +172,10 @@ pub fn execve(
 				true,
 			)?
 		};
-		let path = super::util::get_absolute_path(&*proc, path)?;
+		let path = super::util::get_absolute_path(&proc, path)?;
 
-		let argv = unsafe { super::util::get_str_array(&*proc, argv)? };
-		let envp = unsafe { super::util::get_str_array(&*proc, envp)? };
+		let argv = unsafe { super::util::get_str_array(&proc, argv)? };
+		let envp = unsafe { super::util::get_str_array(&proc, envp)? };
 
 		let uid = proc.uid;
 		let gid = proc.gid;
@@ -203,7 +203,7 @@ pub fn execve(
 		}
 
 		// If the file has a shebang, process it
-		if let Some(shebang) = peek_shebang(&mut *f)? {
+		if let Some(shebang) = peek_shebang(&mut f)? {
 			// If too many interpreter recursions, abort
 			if i == INTERP_MAX {
 				return Err(errno!(ELOOP));
@@ -265,9 +265,7 @@ pub fn execve(
 	// it on success
 	let tmp_stack = {
 		let core = 0; // TODO Get current core ID
-		process::get_scheduler()
-			.lock()
-			.get_tmp_stack(core)
+		process::get_scheduler().lock().get_tmp_stack(core)
 	};
 
 	// Switching to another stack in order to avoid crashing when switching to the

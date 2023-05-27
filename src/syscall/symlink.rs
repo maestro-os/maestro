@@ -1,20 +1,17 @@
 //! The `symlink` syscall allows to create a symbolic link.
 
 use crate::errno::Errno;
-use crate::file::FileContent;
 use crate::file::path::Path;
 use crate::file::vfs;
+use crate::file::FileContent;
 use crate::limits;
-use crate::process::Process;
 use crate::process::mem_space::ptr::SyscallString;
+use crate::process::Process;
 use crate::util::container::string::String;
 use macros::syscall;
 
 #[syscall]
-pub fn symlink(
-	target: SyscallString,
-	linkpath: SyscallString,
-) -> Result<i32, Errno> {
+pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Errno> {
 	let (uid, gid, target, linkpath) = {
 		let proc_mutex = Process::get_current().unwrap();
 		let proc = proc_mutex.lock();
@@ -54,7 +51,14 @@ pub fn symlink(
 	let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
 	let mut parent = parent_mutex.lock();
 
-	vfs.create_file(&mut *parent, name, uid, gid, 0o777, FileContent::Link(target))?;
+	vfs.create_file(
+		&mut parent,
+		name,
+		uid,
+		gid,
+		0o777,
+		FileContent::Link(target),
+	)?;
 
 	Ok(0)
 }
