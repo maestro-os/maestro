@@ -1,17 +1,17 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
-use crate::file::open_file::O_NONBLOCK;
-use crate::process::scheduler;
-use crate::util::io;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
+use crate::file::open_file::O_NONBLOCK;
 use crate::limits;
 use crate::process::iovec::IOVec;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::mem_space::MemSpace;
+use crate::process::scheduler;
 use crate::process::signal::Signal;
 use crate::process::Process;
+use crate::util::io;
 use crate::util::io::IO;
 use crate::util::lock::IntMutex;
 use crate::util::ptr::arc::Arc;
