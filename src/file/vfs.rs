@@ -21,7 +21,6 @@ use crate::file::MountPoint;
 use crate::file::Uid;
 use crate::limits;
 use crate::util::container::string::String;
-use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
@@ -505,13 +504,13 @@ impl VFS {
 }
 
 /// The instance of the VFS.
-static VFS: IntMutex<Option<VFS>> = IntMutex::new(None);
+static VFS: Mutex<Option<VFS>> = Mutex::new(None);
 
 /// Returns a mutable reference to the VFS.
 ///
 /// If the cache is not initialized, the Option is `None`.
 ///
 /// If the function is called from a module, the VFS can be assumed to be initialized.
-pub fn get() -> &'static IntMutex<Option<VFS>> {
+pub fn get() -> &'static Mutex<Option<VFS>> {
 	&VFS
 }
