@@ -45,7 +45,7 @@ pub trait Relocation {
 
 		// The offset of the GOT entry for the symbol
 		let got_offset = 0u32; // TODO
-		// The offset of the PLT entry for the symbol
+					   // The offset of the PLT entry for the symbol
 		let plt_offset = 0u32; // TODO
 
 		// The value of the symbol
@@ -53,14 +53,24 @@ pub trait Relocation {
 
 		let value = match self.get_type() {
 			elf::R_386_32 => sym_val.ok_or(())?.wrapping_add(self.get_addend()),
-			elf::R_386_PC32 => sym_val.ok_or(())?.wrapping_add(self.get_addend()).wrapping_sub(self.get_offset()),
+			elf::R_386_PC32 => sym_val
+				.ok_or(())?
+				.wrapping_add(self.get_addend())
+				.wrapping_sub(self.get_offset()),
 			elf::R_386_GOT32 => got_offset.wrapping_add(self.get_addend()),
-			elf::R_386_PLT32 => plt_offset.wrapping_add(self.get_addend()).wrapping_sub(self.get_offset()),
+			elf::R_386_PLT32 => plt_offset
+				.wrapping_add(self.get_addend())
+				.wrapping_sub(self.get_offset()),
 			elf::R_386_COPY => return Ok(()),
 			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
 			elf::R_386_RELATIVE => (base_addr as u32).wrapping_add(self.get_addend()),
-			elf::R_386_GOTOFF => sym_val.ok_or(())?.wrapping_add(self.get_addend()).wrapping_sub(got_addr),
-			elf::R_386_GOTPC => got_addr.wrapping_add(self.get_addend()).wrapping_sub(self.get_offset()),
+			elf::R_386_GOTOFF => sym_val
+				.ok_or(())?
+				.wrapping_add(self.get_addend())
+				.wrapping_sub(got_addr),
+			elf::R_386_GOTPC => got_addr
+				.wrapping_add(self.get_addend())
+				.wrapping_sub(self.get_offset()),
 
 			// Ignored relocations
 			elf::R_386_IRELATIVE => return Ok(()),
