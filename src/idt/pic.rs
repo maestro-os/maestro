@@ -13,31 +13,29 @@ const SLAVE_COMMAND: u16 = 0xa0;
 /// The slave PIC's data port.
 const SLAVE_DATA: u16 = 0xa1;
 
-/// TODO doc
+/// Indicates that ICW4 will be present
 const ICW1_ICW4: u8 = 0x01;
-/// TODO doc
+/// Single (cascade) mode
 const ICW1_SINGLE: u8 = 0x02;
-/// TODO doc
+/// Call address interval 4 (8)
 const ICW1_INTERVAL4: u8 = 0x04;
-/// TODO doc
+/// Level triggered (edge) mode
 const ICW1_LEVEL: u8 = 0x08;
-/// TODO doc
+/// Initialization
 const ICW1_INIT: u8 = 0x10;
-
 /// TODO doc
 const ICW3_SLAVE_PIC: u8 = 0x04;
 /// TODO doc
 const ICW3_CASCADE: u8 = 0x02;
-
-/// TODO doc
+/// 8086/88 (MCS-80/85) mode
 const ICW4_8086: u8 = 0x01;
-/// TODO doc
+/// Auto (normal) EOI
 const ICW4_AUTO: u8 = 0x02;
-/// TODO doc
+/// Buffered mode/slave
 const ICW4_BUF_SLAVE: u8 = 0x08;
-/// TODO doc
+/// Buffered mode/master
 const ICW4_BUF_MASTER: u8 = 0x0c;
-/// TODO doc
+/// Special fully nested
 const ICW4_SFNM: u8 = 0x10;
 
 /// The end-of-interrupt command.
