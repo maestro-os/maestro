@@ -77,38 +77,5 @@ mod test {
 	}
 
 	// TODO More tests on RFC1071
-
-	// TODO
-	/*#[test_case]
-	fn crc32_0() {
-		for polynom in 0..u8::MAX {
-			let mut lookup_table = [0; 256];
-			compute_crc32_lookuptable(&mut lookup_table, polynom as _);
-			crate::println!("table: {} {:?}", polynom, lookup_table); // TODO rm
-
-			for i in 0..=u16::MAX {
-				let data = [
-					i as _,
-					(i >> 8) as _,
-					0,
-					0,
-					0,
-					0,
-				];
-				let checksum = compute_crc32(&data, &lookup_table);
-
-				let check = [
-					data[0],
-					data[1],
-					checksum as _,
-					(checksum >> 8) as _,
-					(checksum >> 16) as _,
-					(checksum >> 24) as _,
-				];
-				assert_eq!(compute_crc32(&check, &lookup_table), 0);
-			}
-		}
-	}*/
-
-	// TODO More tests on CRC32
+	// TODO Test CRC32
 }

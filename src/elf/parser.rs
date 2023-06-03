@@ -50,12 +50,12 @@ impl<'a> ELFParser<'a> {
 			return Err(errno!(EINVAL));
 		}
 
-		// TODO Check relative to current architecture
+		#[cfg(target_pointer_width = "32")]
 		if self.image[EI_CLASS] != ELFCLASS32 {
 			return Err(errno!(EINVAL));
 		}
 
-		// TODO Check relative to current architecture
+		#[cfg(target_endian = "big")]
 		if self.image[EI_DATA] != ELFDATA2LSB {
 			return Err(errno!(EINVAL));
 		}

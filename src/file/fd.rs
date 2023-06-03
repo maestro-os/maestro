@@ -3,10 +3,6 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-// TODO Maintain the system-wide open file descriptors count
-// TODO Modify system calls to use the IO interface on the file descriptor directly instead of the
-// open file
-
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::file::FileLocation;
@@ -213,6 +209,7 @@ pub struct FileDescriptorTable {
 
 impl FileDescriptorTable {
 	/// Returns the available file descriptor with the lowest ID.
+	///
 	/// If no ID is available, the function returns an error.
 	///
 	/// `min` is the minimum value for the file descriptor to be returned.

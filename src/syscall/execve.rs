@@ -113,7 +113,6 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	Ok(proc.regs)
 }
 
-// TODO clean
 /// Builds a program image.
 ///
 /// Arguments:

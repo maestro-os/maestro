@@ -238,9 +238,14 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
 	Ok(())
 }
 
-// TODO Function to unregister a filesystem type
+/// Unregisters the filesystem type with the given name.
+///
+/// If the filesystem type doesn't exist, the function does nothing.
+pub fn unregister(name: &[u8]) {
+	let mut container = FS_TYPES.lock();
+	container.remove(name);
+}
 
-// TODO Optimize
 /// Returns the filesystem type with name `name`.
 pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
 	let container = FS_TYPES.lock();
@@ -253,7 +258,7 @@ pub fn detect(io: &mut dyn IO) -> Result<Arc<dyn FilesystemType>, Errno> {
 
 	for (_, fs_type) in container.iter() {
 		if fs_type.detect(io)? {
-			return Ok(fs_type.clone()); // TODO Use a weak pointer?
+			return Ok(fs_type.clone());
 		}
 	}
 

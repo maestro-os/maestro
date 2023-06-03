@@ -17,7 +17,6 @@ pub trait Relocation {
 	/// Returns the `r_info` field of the relocation.
 	fn get_info(&self) -> u32;
 
-	// TODO Disable overflow checks
 	/// Performs the relocation.
 	///
 	/// Arguments:
@@ -40,26 +39,28 @@ pub trait Relocation {
 		F0: FnOnce(&str) -> Option<&'a ELF32Sym>,
 		F1: FnOnce(u32, u32) -> Option<u32>,
 	{
-		// The offset inside of the GOT
-		let got_offset = 0; // TODO
-					// The address of the GOT
-		let got_addr = base_addr as u32 + get_sym(GOT_SYM).map(|sym| sym.st_value).unwrap_or(0);
-		// The offset of the PLT entry for the symbol.
-		let plt_offset = 0; // TODO
+		let got_off = get_sym(GOT_SYM).map(|sym| sym.st_value).unwrap_or(0);
+		// The address of the GOT
+		let got_addr = (base_addr as u32).wrapping_add(got_off);
+
+		// The offset of the GOT entry for the symbol
+		let got_offset = 0u32; // TODO
+		// The offset of the PLT entry for the symbol
+		let plt_offset = 0u32; // TODO
 
 		// The value of the symbol
 		let sym_val = get_sym_val(rel_section.sh_link, self.get_sym());
 
 		let value = match self.get_type() {
-			elf::R_386_32 => sym_val.ok_or(())? + self.get_addend(),
-			elf::R_386_PC32 => sym_val.ok_or(())? + self.get_addend() - self.get_offset(),
-			elf::R_386_GOT32 => got_offset + self.get_addend(),
-			elf::R_386_PLT32 => plt_offset + self.get_addend() - self.get_offset(),
+			elf::R_386_32 => sym_val.ok_or(())?.wrapping_add(self.get_addend()),
+			elf::R_386_PC32 => sym_val.ok_or(())?.wrapping_add(self.get_addend()).wrapping_sub(self.get_offset()),
+			elf::R_386_GOT32 => got_offset.wrapping_add(self.get_addend()),
+			elf::R_386_PLT32 => plt_offset.wrapping_add(self.get_addend()).wrapping_sub(self.get_offset()),
 			elf::R_386_COPY => return Ok(()),
 			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
-			elf::R_386_RELATIVE => base_addr as u32 + self.get_addend(),
-			elf::R_386_GOTOFF => sym_val.ok_or(())? + self.get_addend() - got_addr,
-			elf::R_386_GOTPC => got_addr + self.get_addend() - self.get_offset(),
+			elf::R_386_RELATIVE => (base_addr as u32).wrapping_add(self.get_addend()),
+			elf::R_386_GOTOFF => sym_val.ok_or(())?.wrapping_add(self.get_addend()).wrapping_sub(got_addr),
+			elf::R_386_GOTPC => got_addr.wrapping_add(self.get_addend()).wrapping_sub(self.get_offset()),
 
 			// Ignored relocations
 			elf::R_386_IRELATIVE => return Ok(()),
@@ -67,13 +68,14 @@ pub trait Relocation {
 			_ => return Err(()),
 		};
 
-		let addr = (base_addr as u32 + self.get_offset()) as *mut u32;
+		let addr = (base_addr as u32).wrapping_add(self.get_offset()) as *mut u32;
 		// TODO Check the address is accessible
 
-		match self.get_type() {
-			elf::R_386_RELATIVE => ptr::write_volatile(addr, ptr::read_volatile(addr) + value),
-			_ => ptr::write_volatile(addr, value),
-		}
+		let value = match self.get_type() {
+			elf::R_386_RELATIVE => ptr::read_volatile(addr).wrapping_add(value),
+			_ => value,
+		};
+		ptr::write_volatile(addr, value);
 
 		Ok(())
 	}

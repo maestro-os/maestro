@@ -423,8 +423,10 @@ impl VFS {
 			parent.get_location().get_inode(),
 			name,
 			target.get_location().get_inode(),
-		)
-		// TODO Update file
+		)?;
+		target.set_hard_links_count(target.get_hard_links_count() + 1);
+
+		Ok(())
 	}
 
 	// TODO Use the cache
