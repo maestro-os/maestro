@@ -21,30 +21,30 @@ use core::cmp::max;
 use core::fmt;
 
 /// Permits mandatory locking on files.
-const FLAG_MANDLOCK: u32 = 0b000000000001;
+pub const FLAG_MANDLOCK: u32 = 0b000000000001;
 /// Do not update file (all kinds) access timestamps on the filesystem.
-const FLAG_NOATIME: u32 = 0b000000000010;
+pub const FLAG_NOATIME: u32 = 0b000000000010;
 /// Do not allows access to device files on the filesystem.
-const FLAG_NODEV: u32 = 0b000000000100;
+pub const FLAG_NODEV: u32 = 0b000000000100;
 /// Do not update directory access timestamps on the filesystem.
-const FLAG_NODIRATIME: u32 = 0b000000001000;
+pub const FLAG_NODIRATIME: u32 = 0b000000001000;
 /// Do not allow files on the filesystem to be executed.
-const FLAG_NOEXEC: u32 = 0b000000010000;
+pub const FLAG_NOEXEC: u32 = 0b000000010000;
 /// Ignore setuid and setgid flags on the filesystem.
-const FLAG_NOSUID: u32 = 0b000000100000;
+pub const FLAG_NOSUID: u32 = 0b000000100000;
 /// Mounts the filesystem in read-only.
-const FLAG_RDONLY: u32 = 0b000001000000;
+pub const FLAG_RDONLY: u32 = 0b000001000000;
 /// TODO doc
-const FLAG_REC: u32 = 0b000010000000;
+pub const FLAG_REC: u32 = 0b000010000000;
 /// Update atime only if less than or equal to mtime or ctime.
-const FLAG_RELATIME: u32 = 0b000100000000;
+pub const FLAG_RELATIME: u32 = 0b000100000000;
 /// Suppresses certain warning messages in the kernel logs.
-const FLAG_SILENT: u32 = 0b001000000000;
+pub const FLAG_SILENT: u32 = 0b001000000000;
 /// Always update the last access time when files on this filesystem are
 /// accessed. Overrides NOATIME and RELATIME.
-const FLAG_STRICTATIME: u32 = 0b010000000000;
+pub const FLAG_STRICTATIME: u32 = 0b010000000000;
 /// Makes writes on this filesystem synchronous.
-const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
+pub const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 
 // TODO When removing a mountpoint, return an error if another mountpoint is
 // present in a subdir
