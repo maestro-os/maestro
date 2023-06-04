@@ -60,6 +60,10 @@ impl TryDefault for PipeBuffer {
 }
 
 impl Buffer for PipeBuffer {
+	fn get_capacity(&self) -> usize {
+		self.buffer.get_size()
+	}
+
 	fn increment_open(&mut self, read: bool, write: bool) {
 		if read {
 			self.read_ends += 1;

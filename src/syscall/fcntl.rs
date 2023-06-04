@@ -1,6 +1,8 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
 use crate::errno::Errno;
+use crate::file::buffer;
+use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::fd::NewFDConstraint;
 use crate::file::FileContent;
 use crate::process::Process;
@@ -257,8 +259,11 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 			let file = file_mutex.lock();
 
 			match file.get_content() {
-				// TODO get real capacity from the pipe itself
-				FileContent::Fifo => Ok(crate::limits::PIPE_BUF as _),
+				FileContent::Fifo => {
+					let buf = buffer::get_or_default::<PipeBuffer>(file.get_location())?;
+					let cap = buf.lock().get_capacity();
+					Ok(cap as _)
+				}
 				_ => Ok(0),
 			}
 		}

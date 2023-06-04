@@ -47,7 +47,7 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		}
 	}
 
-	/// Returns the size of the buffer in bytes.
+	/// Returns the size of the buffer in number of elements.
 	#[inline(always)]
 	pub fn get_size(&self) -> usize {
 		self.buffer.as_ref().len()
@@ -59,7 +59,7 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		self.read_cursor == self.write_cursor
 	}
 
-	/// Returns the length in bytes of the data in the buffer.
+	/// Returns the length of the data in the buffer.
 	///
 	/// If the buffer is empty, the function returns zero.
 	pub fn get_data_len(&self) -> usize {
@@ -70,7 +70,7 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		}
 	}
 
-	/// Returns the length of the available space in bytes in the buffer.
+	/// Returns the length of the available space in the buffer.
 	#[inline(always)]
 	pub fn get_available_len(&self) -> usize {
 		self.get_size() - self.get_data_len() - 1
@@ -84,7 +84,7 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 
 	/// Reads data from the buffer and writes it in `buf`.
 	///
-	/// The function returns the number of bytes read.
+	/// The function returns the number of elements read.
 	pub fn read(&mut self, buf: &mut [T]) -> usize {
 		let cursor = self.read_cursor;
 		let len = min(buf.len(), self.get_data_len());
@@ -111,7 +111,7 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 
 	/// Writes data in `buf` to the buffer.
 	///
-	/// The function returns the number of bytes written.
+	/// The function returns the number of elements written.
 	pub fn write(&mut self, buf: &[T]) -> usize {
 		let cursor = self.write_cursor;
 		let len = min(buf.len(), self.get_available_len());
