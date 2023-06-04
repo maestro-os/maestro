@@ -1143,11 +1143,12 @@ impl Process {
 		let mut sig = None;
 
 		self.sigpending.for_each(|i, b| {
-			if let Ok(s) = Signal::from_id(i as _) {
-				if b && !(s.can_catch() && self.sigmask.is_set(i)) {
-					sig = Some(s);
-					return false;
-				}
+			let Ok(s) = Signal::try_from(i as u32) else {
+				return true;
+			};
+			if b && !(s.can_catch() && self.sigmask.is_set(i)) {
+				sig = Some(s);
+				return false;
 			}
 
 			true

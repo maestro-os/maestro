@@ -20,7 +20,7 @@ pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
 	if signum < 0 {
 		return Err(errno!(EINVAL));
 	}
-	let signal = Signal::from_id(signum as _)?;
+	let signal = Signal::try_from(signum as u32)?;
 
 	let h = match handler {
 		signal::SIG_IGN => SignalHandler::Ignore,
