@@ -36,7 +36,7 @@ jobs:
         run: "CARGOFLAGS='--features strace' scripts/ci/build.sh"
       - name: Check Multiboot2 for x86
         # TODO support multiple architectures
-        run: "grub-file --is-x86-multiboot2 target/x86/release/maestro"
+        run: "grub-file --is-x86-multiboot2 target/x86/debug/maestro"
   format:
     runs-on: [self-hosted, linux]
     steps:
