@@ -100,7 +100,8 @@ const F_SEAL_SHRINK: i32 = 2;
 const F_SEAL_WRITE: i32 = 8;
 
 /// Performs the fcntl system call.
-/// `fcntl64` tells whether this is the fcntl64 system call.
+///
+/// `fcntl64` tells whether this is the `fcntl64` system call.
 pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i32, Errno> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
@@ -256,11 +257,8 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 			let file = file_mutex.lock();
 
 			match file.get_content() {
-				FileContent::Fifo => {
-					// TODO
-					todo!();
-				}
-
+				// TODO get real capacity from the pipe itself
+				FileContent::Fifo => Ok(crate::limits::PIPE_BUF as _),
 				_ => Ok(0),
 			}
 		}
