@@ -23,7 +23,7 @@ use crate::cpu;
 use crate::errno;
 use crate::errno::Errno;
 use crate::event;
-use crate::event::{InterruptResult, InterruptResultAction};
+use crate::event::CallbackResult;
 use crate::file;
 use crate::file::fd::FileDescriptorTable;
 use crate::file::fd::NewFDConstraint;
@@ -307,7 +307,7 @@ pub fn init() -> Result<(), Errno> {
 
 	let callback = |id: u32, _code: u32, regs: &Regs, ring: u32| {
 		if ring < 3 {
-			return InterruptResult::new(true, InterruptResultAction::Panic);
+			return CallbackResult::Panic;
 		}
 
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
@@ -359,12 +359,12 @@ pub fn init() -> Result<(), Errno> {
 			}
 
 			if matches!(curr_proc.get_state(), State::Running) {
-				InterruptResult::new(false, InterruptResultAction::Resume)
+				CallbackResult::Continue
 			} else {
-				InterruptResult::new(true, InterruptResultAction::Loop)
+				CallbackResult::Idle
 			}
 		} else {
-			InterruptResult::new(true, InterruptResultAction::Panic)
+			CallbackResult::Panic
 		}
 	};
 	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
@@ -390,7 +390,7 @@ pub fn init() -> Result<(), Errno> {
 
 			if !success {
 				if ring < 3 {
-					return InterruptResult::new(true, InterruptResultAction::Panic);
+					return CallbackResult::Panic;
 				} else {
 					curr_proc.kill(&Signal::SIGSEGV, true);
 					curr_proc.signal_next();
@@ -398,27 +398,23 @@ pub fn init() -> Result<(), Errno> {
 			}
 
 			if matches!(curr_proc.get_state(), State::Running) {
-				InterruptResult::new(false, InterruptResultAction::Resume)
+				CallbackResult::Continue
 			} else {
-				InterruptResult::new(true, InterruptResultAction::Loop)
+				CallbackResult::Idle
 			}
 		} else {
-			InterruptResult::new(true, InterruptResultAction::Panic)
+			CallbackResult::Panic
 		}
 	};
 
-	let _ = ManuallyDrop::new(event::register_callback(0x00, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x03, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x06, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x0d, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(
-		0x0e,
-		u32::MAX,
-		page_fault_callback,
-	)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x10, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x11, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x13, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x00, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x03, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x06, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x0d, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x0e, page_fault_callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x10, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x11, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x13, callback)?);
 
 	Ok(())
 }

@@ -73,10 +73,12 @@ impl Scheduler {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
 		}
 
-		let callback = |_id: u32, _code: u32, regs: &Regs, ring: u32| {
-			Scheduler::tick(process::get_scheduler(), regs, ring);
-		};
-		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
+		let tick_callback_hook = event::register_callback(
+			0x20,
+			|_id: u32, _code: u32, regs: &Regs, ring: u32| {
+				Scheduler::tick(process::get_scheduler(), regs, ring);
+			}
+		)?;
 
 		Arc::new(IntMutex::new(Self {
 			tmp_stacks,
