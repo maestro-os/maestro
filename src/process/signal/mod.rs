@@ -2,9 +2,9 @@
 
 mod signal_trampoline;
 
-use crate::errno::Errno;
 use super::Process;
 use super::State;
+use crate::errno::Errno;
 use crate::file::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
@@ -278,7 +278,6 @@ impl TryFrom<u32> for Signal {
 }
 
 impl Signal {
-
 	/// Returns the signal's ID.
 	pub fn get_id(&self) -> u8 {
 		match self {

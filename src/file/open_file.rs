@@ -1,12 +1,12 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
-use crate::file::mountpoint;
 use crate::device;
 use crate::device::DeviceType;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::buffer;
+use crate::file::mountpoint;
 use crate::file::vfs;
 use crate::file::DeviceID;
 use crate::file::File;

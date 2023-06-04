@@ -1,6 +1,5 @@
 //! This interface allows to register callbacks for each interrupts.
 
-use core::ptr::NonNull;
 use crate::crypto::rand;
 use crate::crypto::rand::EntropyPool;
 use crate::errno::Errno;
@@ -14,6 +13,7 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use core::ffi::c_void;
+use core::ptr::NonNull;
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
@@ -102,7 +102,8 @@ impl Drop for CallbackHook {
 	fn drop(&mut self) {
 		// Remove the callback
 		let mut vec = CALLBACKS[self.id as usize].lock();
-		let i = vec.iter()
+		let i = vec
+			.iter()
 			.enumerate()
 			.find(|(_, c)| c.as_ptr() as *mut c_void == self.ptr.as_ptr())
 			.map(|(i, _)| i);
@@ -115,7 +116,8 @@ impl Drop for CallbackHook {
 /// The default value for `CALLBACKS`.
 const CALLBACKS_INIT: IntMutex<Vec<CallbackWrapper>> = IntMutex::new(Vec::new());
 /// List containing vectors that store callbacks for every interrupt watchdogs.
-static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] = [CALLBACKS_INIT; idt::ENTRIES_COUNT as _];
+static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] =
+	[CALLBACKS_INIT; idt::ENTRIES_COUNT as _];
 
 /// Registers the given callback and returns a reference to it.
 ///

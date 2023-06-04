@@ -1,9 +1,9 @@
 //! This module implements the Regs structure, allowing to save an execution
 //! state and to restore it.
 
-use core::arch::asm;
 use crate::errno::Errno;
 use crate::gdt;
+use core::arch::asm;
 use core::ffi::c_void;
 use core::fmt;
 
