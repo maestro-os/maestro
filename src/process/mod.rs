@@ -458,34 +458,30 @@ impl Process {
 
 	/// Registers the current process to the procfs.
 	fn register_procfs(&self) -> Result<(), Errno> {
-		// TODO Avoid allocation
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
+		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
+			return Ok(());
+		};
+		let mut fs_guard = fs.lock();
+		let fs = &mut *fs_guard as &mut dyn Any;
 
-		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
-			let mut fs_guard = fs.lock();
-			let fs = &mut *fs_guard as &mut dyn Any;
-
-			if let Some(procfs) = fs.downcast_mut::<ProcFS>() {
-				procfs.add_process(self.pid)?;
-			}
-		}
+		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
+		procfs.add_process(self.pid)?;
 
 		Ok(())
 	}
 
 	/// Unregisters the current process from the procfs.
 	fn unregister_procfs(&self) -> Result<(), Errno> {
-		// TODO Avoid allocation
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
+		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
+			return Ok(());
+		};
+		let mut fs_guard = fs.lock();
+		let fs = &mut *fs_guard as &mut dyn Any;
 
-		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
-			let mut fs_guard = fs.lock();
-			let fs = &mut *fs_guard as &mut dyn Any;
-
-			if let Some(procfs) = fs.downcast_mut::<ProcFS>() {
-				procfs.remove_process(self.pid)?;
-			}
-		}
+		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
+		procfs.remove_process(self.pid)?;
 
 		Ok(())
 	}
@@ -494,8 +490,6 @@ impl Process {
 	///
 	/// The process is set to state `Running` by default and has user root.
 	pub fn new() -> Result<Arc<IntMutex<Self>>, Errno> {
-		// TODO Prevent calling twice
-
 		let uid = 0;
 		let gid = 0;
 
@@ -706,11 +700,9 @@ impl Process {
 				kernel_panic!("Terminated init process!");
 			}
 
-			// Removing the memory space, file descriptors table and signals table to save
-			// memory TODO Handle the case where the memory space is bound
-			// TODO self.mem_space = None;
+			// Removing the memory space and file descriptors table to save memory
+			//self.mem_space = None; // TODO Handle the case where the memory space is bound
 			self.file_descriptors = None;
-			// TODO Remove signal handlers
 
 			// Attaching every child to the init process
 			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
@@ -938,12 +930,6 @@ impl Process {
 	) -> Result<Arc<IntMutex<Self>>, Errno> {
 		debug_assert!(matches!(self.get_state(), State::Running));
 
-		// FIXME PID is leaked if the following code fails
-		let pid = {
-			let mutex = unsafe { PID_MANAGER.assume_init_mut() };
-			mutex.lock().get_unique_pid()
-		}?;
-
 		// Handling vfork
 		let vfork_state = if fork_options.vfork {
 			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
@@ -992,6 +978,12 @@ impl Process {
 		} else {
 			Arc::new(Mutex::new(self.signal_handlers.lock().clone()))?
 		};
+
+		// FIXME PID is leaked if the following code fails
+		let pid = {
+			let mutex = unsafe { PID_MANAGER.assume_init_mut() };
+			mutex.lock().get_unique_pid()
+		}?;
 
 		let process = Self {
 			pid,
