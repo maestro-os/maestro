@@ -66,7 +66,7 @@ pub enum MountSource {
 	/// The mountpoint is bound to a virtual filesystem and thus isn't
 	/// associated with any device.
 	///
-	///The string value is the name of the source.
+	/// The string value is the name of the source.
 	NoDev(String),
 }
 
@@ -502,30 +502,14 @@ pub fn get_deepest(path: &Path) -> Option<Arc<Mutex<MountPoint>>> {
 /// If it doesn't exist, the function returns `None`.
 pub fn from_id(id: u32) -> Option<Arc<Mutex<MountPoint>>> {
 	let container = MOUNT_POINTS.lock();
-
-	for (mp_id, mp) in container.iter() {
-		if *mp_id == id {
-			return Some(mp.clone());
-		}
-	}
-
-	None
+	container.get(&id).cloned()
 }
 
 /// Returns the mountpoint with path `path`.
 ///
 /// If it doesn't exist, the function returns `None`.
 pub fn from_path(path: &Path) -> Option<Arc<Mutex<MountPoint>>> {
-	let container = MOUNT_POINTS.lock();
-
-	for (_, mp) in container.iter() {
-		let mp_guard = mp.lock();
-		let mountpoint_path = mp_guard.get_path();
-
-		if mountpoint_path == path {
-			return Some(mp.clone());
-		}
-	}
-
-	None
+	let container = PATH_TO_ID.lock();
+	let id = container.get(path)?;
+	from_id(*id)
 }
