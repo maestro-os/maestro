@@ -15,7 +15,6 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use core::ffi::c_void;
-use core::mem::MaybeUninit;
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
@@ -149,22 +148,10 @@ impl Drop for CallbackHook {
 	}
 }
 
+/// The default value for `CALLBACKS`.
+const CALLBACKS_INIT: IntMutex<Vec<CallbackWrapper>> = IntMutex::new(Vec::new());
 /// List containing vectors that store callbacks for every interrupt watchdogs.
-static mut CALLBACKS: MaybeUninit<[IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _]> =
-	MaybeUninit::uninit();
-
-/// Initializes the events handler.
-/// This function must be called only once when booting.
-pub fn init() {
-	let callbacks = unsafe {
-		// Safe because called only once
-		CALLBACKS.assume_init_mut()
-	};
-
-	for c in callbacks {
-		*c.lock() = Vec::new();
-	}
-}
+static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] = [CALLBACKS_INIT; idt::ENTRIES_COUNT as _];
 
 /// Registers the given callback and returns a reference to it.
 ///
@@ -182,8 +169,7 @@ where
 	debug_assert!(id < idt::ENTRIES_COUNT);
 
 	idt::wrap_disable_interrupts(|| {
-		let mutex = &unsafe { CALLBACKS.assume_init_mut() }[id];
-		let mut vec = mutex.lock();
+		let mut vec = CALLBACKS[id].lock();
 
 		let index = {
 			let r = vec.binary_search_by(|x| x.priority.cmp(&priority));
@@ -211,8 +197,7 @@ where
 
 /// Removes the callback with id `id`, priority `priority` and pointer `ptr`.
 fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
-	let mutex = &unsafe { CALLBACKS.assume_init_mut() }[id];
-	let mut vec = mutex.lock();
+	let mut vec = CALLBACKS[id].lock();
 
 	let res = vec.binary_search_by(|x| x.priority.cmp(&priority));
 	if let Ok(index) = res {
@@ -239,7 +224,7 @@ fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
 /// locked the mutex since unlocking changes the interrupt flag.
 #[no_mangle]
 pub unsafe extern "C" fn unlock_callbacks(id: usize) {
-	CALLBACKS.assume_init_mut()[id].unlock();
+	CALLBACKS[id].unlock();
 }
 
 /// Feeds the entropy pool using the given data.
@@ -258,7 +243,7 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 /// - `regs` is the state of the registers at the moment of the interrupt.
 /// - `ring` tells the ring at which the code was running.
 #[no_mangle]
-pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
+extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	// Feed entropy pool
 	{
 		let mut pool = rand::ENTROPY_POOL.lock();
@@ -272,8 +257,7 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	}
 
 	let action = {
-		let mutex = unsafe { &mut CALLBACKS.assume_init_mut()[id as usize] };
-		let mut callbacks = mutex.lock();
+		let mut callbacks = CALLBACKS[id as usize].lock();
 
 		let mut last_action = {
 			if (id as usize) < ERROR_MESSAGES.len() {

@@ -255,7 +255,6 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// Initializing IDT, PIT and events handler
 	idt::init();
 	time::timer::pit::init();
-	event::init();
 
 	// Ensuring the CPU has SSE
 	if !cpu::sse::is_present() {
