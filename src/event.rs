@@ -70,6 +70,8 @@ pub enum InterruptResultAction {
 	/// Resumes execution of the code where it was interrupted.
 	Resume,
 	/// Goes back to the kernel loop, waiting for another interruption.
+	///
+	/// **Warning**: usage of this variant before initialization of the TSS causes an undefined behaviour.
 	Loop,
 	/// Makes the kernel panic.
 	Panic,
@@ -300,7 +302,6 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 				pic::end_of_interrupt((id - 0x20) as _);
 			}
 
-			// FIXME: Use of loop action before TSS init shall result in undefined behaviour
 			unsafe {
 				crate::loop_reset(tss::get().esp0 as _);
 			}
