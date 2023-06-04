@@ -12,6 +12,7 @@ use core::mem;
 use core::mem::size_of_val;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
+use core::borrow::{Borrow, BorrowMut};
 use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::ptr::drop_in_place;
@@ -106,6 +107,18 @@ impl<T: ?Sized> AsRef<T> for Box<T> {
 impl<T: ?Sized> AsMut<T> for Box<T> {
 	fn as_mut(&mut self) -> &mut T {
 		unsafe { &mut *self.ptr.as_ptr() }
+	}
+}
+
+impl<T: ?Sized> Borrow<T> for Box<T> {
+	fn borrow(&self) -> &T {
+		self.as_ref()
+	}
+}
+
+impl<T: ?Sized> BorrowMut<T> for Box<T> {
+	fn borrow_mut(&mut self) -> &mut T {
+		self.as_mut()
 	}
 }
 

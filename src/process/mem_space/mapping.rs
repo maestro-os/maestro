@@ -107,39 +107,27 @@ impl MemMapping {
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the mapping.
-	#[inline(always)]
 	pub fn get_begin(&self) -> *const c_void {
 		self.begin
 	}
 
 	/// Returns the size of the mapping in memory pages.
-	#[inline(always)]
 	pub fn get_size(&self) -> NonZeroUsize {
 		self.size
 	}
 
 	/// Returns the mapping's flags.
-	#[inline(always)]
 	pub fn get_flags(&self) -> u8 {
 		self.flags
 	}
 
 	/// Returns a reference to the virtual memory context handler associated
 	/// with the mapping.
-	#[inline(always)]
-	pub fn get_vmem(&self) -> &'static dyn VMem {
-		unsafe { &*self.vmem.as_ptr() }
-	}
-
-	/// Returns a mutable reference to the virtual memory context handler
-	/// associated with the mapping.
-	#[inline(always)]
-	pub fn get_mut_vmem(&mut self) -> &'static mut dyn VMem {
+	pub fn get_vmem(&self) -> &mut dyn VMem {
 		unsafe { &mut *self.vmem.as_ptr() }
 	}
 
 	/// Tells whether the mapping contains the given virtual address `ptr`.
-	#[inline(always)]
 	pub fn contains_ptr(&self, ptr: *const c_void) -> bool {
 		// TODO check this is correct regarding LLVM provenances
 		ptr >= self.begin && ptr < (self.begin as usize + self.size.get() * memory::PAGE_SIZE) as _
@@ -212,7 +200,7 @@ impl MemMapping {
 	///
 	/// If a physical page is already mapped, the function does nothing.
 	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
-		let vmem = self.get_mut_vmem();
+		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
 
 		let cow_buffer = {
@@ -290,7 +278,7 @@ impl MemMapping {
 			self.flags & super::MAPPING_FLAG_NOLAZY == 0 && self.residence.is_normal();
 
 		if use_default {
-			let vmem = self.get_mut_vmem();
+			let vmem = self.get_vmem();
 			let default_page = get_default_page();
 
 			for i in 0..self.size.get() {
@@ -315,7 +303,7 @@ impl MemMapping {
 	///
 	/// If the page is shared, it is not freed but the reference counter is decreased.
 	fn free_phys_page(&mut self, offset: usize) {
-		let vmem = self.get_mut_vmem();
+		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
@@ -339,7 +327,7 @@ impl MemMapping {
 		}
 
 		// Unmapping physical pages
-		let vmem = self.get_mut_vmem();
+		let vmem = self.get_vmem();
 		oom::wrap(|| vmem.unmap_range(self.begin, self.size.get()));
 
 		Ok(())
@@ -412,7 +400,7 @@ impl MemMapping {
 		}
 
 		// Unmapping physical pages
-		let vmem = self.get_mut_vmem();
+		let vmem = self.get_vmem();
 		oom::wrap(|| vmem.unmap_range(begin_ptr, size));
 
 		(prev, gap, next)
@@ -421,7 +409,7 @@ impl MemMapping {
 	/// Updates the virtual memory context according to the mapping for the page
 	/// at offset `offset`.
 	pub fn update_vmem(&mut self, offset: usize) {
-		let vmem = self.get_mut_vmem();
+		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
@@ -469,7 +457,7 @@ impl MemMapping {
 			for i in 0..self.size.get() {
 				let virt_ptr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
 
-				new_mapping.get_mut_vmem().unmap(virt_ptr)?;
+				new_mapping.get_vmem().unmap(virt_ptr)?;
 				new_mapping.map(i)?;
 			}
 		} else {
