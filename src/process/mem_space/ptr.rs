@@ -113,7 +113,7 @@ impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 
 			Ok(None) => write!(fmt, "NULL"),
 
-			Err(_) => write!(fmt, "{:p} = (cannot read)", self.as_ptr()),
+			Err(e) => write!(fmt, "{:p} = (cannot read: {e})", self.as_ptr()),
 		}
 	}
 }
@@ -318,7 +318,7 @@ impl fmt::Debug for SyscallString {
 
 			Ok(None) => write!(fmt, "NULL"),
 
-			Err(_) => write!(fmt, "{:p} = (cannot read)", self.as_ptr()),
+			Err(e) => write!(fmt, "{:p} = (cannot read: {e})", self.as_ptr()),
 		}
 	}
 }
