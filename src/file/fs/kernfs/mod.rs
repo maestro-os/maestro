@@ -7,7 +7,6 @@ use crate::errno::Errno;
 use crate::file::fs::kernfs::node::DummyKernFSNode;
 use crate::file::fs::Filesystem;
 use crate::file::fs::Statfs;
-use crate::file::path::Path;
 use crate::file::DirEntry;
 use crate::file::File;
 use crate::file::FileContent;
@@ -40,9 +39,6 @@ pub struct KernFS {
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 
-	/// The path at which the filesystem is mounted.
-	mountpath: Path,
-
 	/// The list of nodes of the filesystem.
 	///
 	/// The index in this vector is the inode.
@@ -57,16 +53,13 @@ impl KernFS {
 	/// Arguments:
 	/// - `name` is the name of the filesystem.
 	/// - `readonly` tells whether the filesystem is readonly.
-	/// - `mountpath` is the path at which the filesystem is mounted.
-	pub fn new(name: String, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
+	pub fn new(name: String, readonly: bool) -> Result<Self, Errno> {
 		let mut nodes = Vec::new();
 		nodes.push(None)?;
 
 		Ok(Self {
 			name,
 			readonly,
-
-			mountpath,
 
 			nodes,
 			free_nodes: Vec::new(),
