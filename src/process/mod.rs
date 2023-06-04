@@ -310,100 +310,102 @@ pub fn init() -> Result<(), Errno> {
 			return CallbackResult::Panic;
 		}
 
-		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		let mut sched = sched_mutex.lock();
-
-		if let Some(curr_proc) = sched.get_current_process() {
-			let mut curr_proc = curr_proc.lock();
-
-			match id {
-				// Divide-by-zero
-				// x87 Floating-Point Exception
-				// SIMD Floating-Point Exception
-				0x00 | 0x10 | 0x13 => {
-					curr_proc.kill(&Signal::SIGFPE, true);
-					curr_proc.signal_next();
-				}
-
-				// Breakpoint
-				0x03 => {
-					curr_proc.kill(&Signal::SIGTRAP, true);
-					curr_proc.signal_next();
-				}
-
-				// Invalid Opcode
-				0x06 => {
-					curr_proc.kill(&Signal::SIGILL, true);
-					curr_proc.signal_next();
-				}
-
-				// General Protection Fault
-				0x0d => {
-					let inst_prefix = unsafe { *(regs.eip as *const u8) };
-
-					if inst_prefix == HLT_INSTRUCTION {
-						curr_proc.exit(regs.eax, false);
-					} else {
-						curr_proc.kill(&Signal::SIGSEGV, true);
-						curr_proc.signal_next();
-					}
-				}
-
-				// Alignment Check
-				0x11 => {
-					curr_proc.kill(&Signal::SIGBUS, true);
-					curr_proc.signal_next();
-				}
-
-				_ => {}
-			}
-
-			if matches!(curr_proc.get_state(), State::Running) {
-				CallbackResult::Continue
-			} else {
-				CallbackResult::Idle
-			}
-		} else {
-			CallbackResult::Panic
-		}
-	};
-	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
+		// Get process
 		let curr_proc = {
 			let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 			let mut sched = sched_mutex.lock();
 
 			sched.get_current_process()
 		};
+		let Some(curr_proc) = curr_proc else {
+			return CallbackResult::Panic;
+		};
+		let mut curr_proc = curr_proc.lock();
 
-		if let Some(curr_proc) = curr_proc {
-			let mut curr_proc = curr_proc.lock();
+		match id {
+			// Divide-by-zero
+			// x87 Floating-Point Exception
+			// SIMD Floating-Point Exception
+			0x00 | 0x10 | 0x13 => {
+				curr_proc.kill(&Signal::SIGFPE, true);
+				curr_proc.signal_next();
+			}
 
-			let accessed_ptr = unsafe { cpu::cr2_get() };
+			// Breakpoint
+			0x03 => {
+				curr_proc.kill(&Signal::SIGTRAP, true);
+				curr_proc.signal_next();
+			}
 
-			// Handling page fault
-			let success = {
-				let mem_space_mutex = curr_proc.get_mem_space().unwrap();
-				let mut mem_space = mem_space_mutex.lock();
+			// Invalid Opcode
+			0x06 => {
+				curr_proc.kill(&Signal::SIGILL, true);
+				curr_proc.signal_next();
+			}
 
-				mem_space.handle_page_fault(accessed_ptr, code)
-			};
+			// General Protection Fault
+			0x0d => {
+				let inst_prefix = unsafe { *(regs.eip as *const u8) };
 
-			if !success {
-				if ring < 3 {
-					return CallbackResult::Panic;
+				if inst_prefix == HLT_INSTRUCTION {
+					curr_proc.exit(regs.eax, false);
 				} else {
 					curr_proc.kill(&Signal::SIGSEGV, true);
 					curr_proc.signal_next();
 				}
 			}
 
-			if matches!(curr_proc.get_state(), State::Running) {
-				CallbackResult::Continue
-			} else {
-				CallbackResult::Idle
+			// Alignment Check
+			0x11 => {
+				curr_proc.kill(&Signal::SIGBUS, true);
+				curr_proc.signal_next();
 			}
+
+			_ => {}
+		}
+
+		if matches!(curr_proc.get_state(), State::Running) {
+			CallbackResult::Continue
 		} else {
-			CallbackResult::Panic
+			CallbackResult::Idle
+		}
+	};
+	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
+		let accessed_ptr = unsafe { cpu::cr2_get() };
+
+		// Get process
+		let curr_proc = {
+			let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
+			let mut sched = sched_mutex.lock();
+
+			sched.get_current_process()
+		};
+		let Some(curr_proc) = curr_proc else {
+			return CallbackResult::Panic;
+		};
+		let mut curr_proc = curr_proc.lock();
+
+		// Handle page fault
+		let success = {
+			let mem_space_mutex = curr_proc.get_mem_space().unwrap();
+			let mut mem_space = mem_space_mutex.lock();
+
+			mem_space.handle_page_fault(accessed_ptr, code)
+		};
+
+		if !success {
+			if ring < 3 {
+				return CallbackResult::Panic;
+			} else {
+				curr_proc.kill(&Signal::SIGSEGV, true);
+				curr_proc.signal_next();
+			}
+		}
+
+		if matches!(curr_proc.get_state(), State::Running) {
+			CallbackResult::Continue
+		} else {
+			CallbackResult::Idle
 		}
 	};
 
