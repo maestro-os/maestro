@@ -1,6 +1,7 @@
 //! This module implements the Regs structure, allowing to save an execution
 //! state and to restore it.
 
+use core::arch::asm;
 use crate::errno::Errno;
 use crate::gdt;
 use core::ffi::c_void;
@@ -36,7 +37,7 @@ struct FXStateWrapper([u8; 512]);
 pub extern "C" fn save_fxstate(fxstate: &mut [u8; 512]) {
 	let mut buff = FXStateWrapper([0; 512]);
 	unsafe {
-		core::arch::asm!("fxsave [eax]", in("eax") &mut buff);
+		asm!("fxsave [eax]", in("eax") &mut buff);
 	}
 
 	fxstate.copy_from_slice(&buff.0);
@@ -49,16 +50,16 @@ pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
 	buff.0.copy_from_slice(fxstate);
 
 	unsafe {
-		core::arch::asm!("fxrstor [eax]", in("eax") &buff);
+		asm!("fxrstor [eax]", in("eax") &buff);
 	}
 }
 
 /// Structure representing the list of registers for a context.
 ///
 /// The content of this structure depends on the architecture for which the kernel is compiled.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[repr(C, packed)]
-//#[cfg(config_general_arch = "x86")]
+#[cfg(target_arch = "x86")]
 pub struct Regs {
 	pub ebp: u32,
 	pub esp: u32,

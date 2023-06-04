@@ -1013,11 +1013,11 @@ impl Process {
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs: self.regs,
+			regs: self.regs.clone(),
 			syscalling: false,
 
 			handled_signal: self.handled_signal.clone(),
-			saved_regs: self.saved_regs,
+			saved_regs: self.saved_regs.clone(),
 			waitable: false,
 
 			mem_space: Some(mem_space),
@@ -1187,7 +1187,7 @@ impl Process {
 	pub fn signal_save(&mut self, sig: Signal) {
 		debug_assert!(!self.is_handling_signal());
 
-		self.saved_regs = self.regs;
+		self.saved_regs = self.regs.clone();
 		self.handled_signal = Some(sig);
 	}
 
@@ -1195,7 +1195,7 @@ impl Process {
 	pub fn signal_restore(&mut self) {
 		if self.handled_signal.is_some() {
 			self.handled_signal = None;
-			self.regs = self.saved_regs;
+			self.regs = self.saved_regs.clone();
 		}
 	}
 

@@ -327,7 +327,7 @@ impl Scheduler {
 			if let Some(curr_proc) = sched.get_current_process() {
 				let mut curr_proc = curr_proc.lock();
 
-				curr_proc.regs = *regs;
+				curr_proc.regs = regs.clone();
 				curr_proc.syscalling = ring < 3;
 			}
 
@@ -353,7 +353,7 @@ impl Scheduler {
 							next_proc.prepare_switch();
 
 							let resume = matches!(next_proc.get_state(), State::Running);
-							(resume, next_proc.syscalling, next_proc.regs)
+							(resume, next_proc.syscalling, next_proc.regs.clone())
 						};
 						drop(next_proc);
 

@@ -110,7 +110,7 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 
 	// Executing the program
 	exec::exec(&mut proc, program_image)?;
-	Ok(proc.regs)
+	Ok(proc.regs.clone())
 }
 
 /// Builds a program image.
