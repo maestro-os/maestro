@@ -11,7 +11,6 @@
 use super::MemSpace;
 use crate::errno::Errno;
 use crate::process::Process;
-use crate::util::lock::MutexGuard;
 use crate::util::DisplayableStr;
 use core::fmt;
 use core::mem::size_of;
@@ -52,9 +51,9 @@ impl<T: Sized> SyscallPtr<T> {
 	/// If the pointer is null, the function returns `None`.
 	///
 	/// If the value is not accessible, the function returns an error.
-	pub fn get<'a, const INT: bool>(
+	pub fn get<'a>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a MemSpace,
 	) -> Result<Option<&'a T>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -78,9 +77,9 @@ impl<T: Sized> SyscallPtr<T> {
 	///
 	/// If the value is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
-	pub fn get_mut<'a, const INT: bool>(
+	pub fn get_mut<'a>(
 		&self,
-		mem_space: &'a mut MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MemSpace,
 	) -> Result<Option<&'a mut T>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -157,9 +156,9 @@ impl<T: Sized> SyscallSlice<T> {
 	/// `len` is the in number of elements in the slice.
 	///
 	/// If the slice is not accessible, the function returns an error.
-	pub fn get<'a, const INT: bool>(
+	pub fn get<'a>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a MemSpace,
 		len: usize,
 	) -> Result<Option<&'a [T]>, Errno> {
 		if self.is_null() {
@@ -185,9 +184,9 @@ impl<T: Sized> SyscallSlice<T> {
 	///
 	/// If the slice is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
-	pub fn get_mut<'a, const INT: bool>(
+	pub fn get_mut<'a>(
 		&self,
-		mem_space: &'a mut MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MemSpace,
 		len: usize,
 	) -> Result<Option<&'a mut [T]>, Errno> {
 		if self.is_null() {
@@ -255,9 +254,9 @@ impl SyscallString {
 	/// Returns an immutable reference to the string.
 	///
 	/// If the string is not accessible, the function returns an error.
-	pub fn get<'a, const INT: bool>(
+	pub fn get<'a>(
 		&self,
-		mem_space: &'a MutexGuard<MemSpace, INT>,
+		mem_space: &'a MemSpace,
 	) -> Result<Option<&'a [u8]>, Errno> {
 		if self.is_null() {
 			return Ok(None);
@@ -278,9 +277,9 @@ impl SyscallString {
 	/// allocates physical pages in order to allow writing.
 	///
 	/// If the string is not accessible, the function returns an error.
-	pub fn get_mut<'a, const INT: bool>(
+	pub fn get_mut<'a>(
 		&self,
-		mem_space: &'a mut MutexGuard<MemSpace, INT>,
+		mem_space: &'a mut MemSpace,
 	) -> Result<Option<&'a mut [u8]>, Errno> {
 		if self.is_null() {
 			return Ok(None);
