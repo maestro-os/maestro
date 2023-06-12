@@ -244,6 +244,7 @@ pub struct ELF32ProgramHeader {
 
 impl ELF32ProgramHeader {
 	/// Tells whether the program header is valid.
+	///
 	/// `file_size` is the size of the file.
 	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
 		// TODO Check p_type

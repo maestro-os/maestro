@@ -56,13 +56,12 @@ impl TmpFS {
 	/// Arguments:
 	/// - `max_size` is the maximum amount of memory the filesystem can use in bytes.
 	/// - `readonly` tells whether the filesystem is readonly.
-	/// - `mountpath` is the path at which the filesystem is mounted.
-	pub fn new(max_size: usize, readonly: bool, mountpath: Path) -> Result<Self, Errno> {
+	pub fn new(max_size: usize, readonly: bool) -> Result<Self, Errno> {
 		let mut fs = Self {
 			max_size,
 			size: 0,
 
-			fs: KernFS::new(b"tmpfs".try_into()?, readonly, mountpath)?,
+			fs: KernFS::new(b"tmpfs".try_into()?, readonly)?,
 		};
 
 		// Adding the root node
@@ -232,13 +231,12 @@ impl FilesystemType for TmpFsType {
 	fn load_filesystem(
 		&self,
 		_io: &mut dyn IO,
-		mountpath: Path,
+		_mountpath: Path,
 		readonly: bool,
 	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
 		Ok(Arc::new(Mutex::new(TmpFS::new(
 			DEFAULT_MAX_SIZE,
 			readonly,
-			mountpath,
 		)?))?)
 	}
 }

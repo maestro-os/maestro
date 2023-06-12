@@ -6,6 +6,7 @@ use crate::device::DeviceType;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::buffer;
+use crate::file::mountpoint;
 use crate::file::vfs;
 use crate::file::DeviceID;
 use crate::file::File;
@@ -237,7 +238,7 @@ impl OpenFile {
 	/// File access mode (`O_RDONLY`, `O_WRONLY`, `O_RDWR`) and file creation flags
 	/// (`O_CREAT`, `O_EXCL`, `O_NOCTTY`, `O_TRUNC`) are ignored.
 	pub fn set_flags(&mut self, flags: i32) {
-		let ignored_flags = O_RDONLY | O_WRONLY | O_RDWR | O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC;
+		let ignored_flags = 0b11 | O_RDWR | O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC;
 		self.flags = (self.flags & ignored_flags) | (flags & !ignored_flags);
 	}
 
@@ -249,6 +250,16 @@ impl OpenFile {
 	/// Tells whether the open file can be written to.
 	pub fn can_write(&self) -> bool {
 		matches!(self.flags & 0b11, O_WRONLY | O_RDWR)
+	}
+
+	/// Tells whether the atime is updated on access.
+	fn is_atime_updated(&self) -> bool {
+		let Some(mp) = self.location.get_mountpoint() else {
+			return true;
+		};
+		let mp_guard = mp.lock();
+
+		mp_guard.get_flags() & mountpoint::FLAG_NOATIME != 0
 	}
 
 	/// Returns the current offset in the file.
@@ -373,8 +384,10 @@ impl IO for OpenFile {
 
 		// Updating access timestamp
 		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
-		file.atime = timestamp; // TODO Only if the mountpoint has the option enabled
-		file.sync()?; // TODO Lazy
+		if self.is_atime_updated() {
+			file.atime = timestamp;
+			file.sync()?; // TODO Lazy
+		}
 
 		let (len, eof) = file.read(self.curr_off, buf)?;
 
@@ -403,7 +416,9 @@ impl IO for OpenFile {
 
 		// Updating access timestamps
 		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
-		file.atime = timestamp; // TODO Only if the mountpoint has the option enabled
+		if self.is_atime_updated() {
+			file.atime = timestamp;
+		}
 		file.mtime = timestamp;
 		file.sync()?; // TODO Lazy
 

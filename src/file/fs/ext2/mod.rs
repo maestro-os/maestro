@@ -762,7 +762,7 @@ impl Filesystem for Ext2Fs {
 		let fragment_size = math::pow2(self.superblock.fragment_size_log + 10);
 
 		Ok(Statfs {
-			f_type: 0, // TODO
+			f_type: EXT2_SIGNATURE as _,
 			f_bsize: self.superblock.get_block_size(),
 			f_blocks: self.superblock.total_blocks as _,
 			f_bfree: self.superblock.total_unallocated_blocks as _,
@@ -770,7 +770,7 @@ impl Filesystem for Ext2Fs {
 			f_bavail: self.superblock.total_unallocated_blocks as _,
 			f_files: self.superblock.total_inodes as _,
 			f_ffree: self.superblock.total_unallocated_inodes as _,
-			f_fsid: Default::default(), // TODO
+			f_fsid: Default::default(),
 			f_namelen: MAX_NAME_LEN as _,
 			f_frsize: fragment_size,
 			f_flags: 0, // TODO

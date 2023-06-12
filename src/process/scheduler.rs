@@ -73,10 +73,10 @@ impl Scheduler {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
 		}
 
-		let callback = |_id: u32, _code: u32, regs: &Regs, ring: u32| {
-			Scheduler::tick(process::get_scheduler(), regs, ring);
-		};
-		let tick_callback_hook = event::register_callback(0x20, 0, callback)?;
+		let tick_callback_hook =
+			event::register_callback(0x20, |_id: u32, _code: u32, regs: &Regs, ring: u32| {
+				Scheduler::tick(process::get_scheduler(), regs, ring);
+			})?;
 
 		Arc::new(IntMutex::new(Self {
 			tmp_stacks,
@@ -325,7 +325,7 @@ impl Scheduler {
 			if let Some(curr_proc) = sched.get_current_process() {
 				let mut curr_proc = curr_proc.lock();
 
-				curr_proc.regs = *regs;
+				curr_proc.regs = regs.clone();
 				curr_proc.syscalling = ring < 3;
 			}
 
@@ -351,7 +351,7 @@ impl Scheduler {
 							next_proc.prepare_switch();
 
 							let resume = matches!(next_proc.get_state(), State::Running);
-							(resume, next_proc.syscalling, next_proc.regs)
+							(resume, next_proc.syscalling, next_proc.regs.clone())
 						};
 						drop(next_proc);
 

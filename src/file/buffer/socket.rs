@@ -293,6 +293,11 @@ impl TryDefault for Socket {
 }
 
 impl Buffer for Socket {
+	fn get_capacity(&self) -> usize {
+		// TODO
+		todo!();
+	}
+
 	fn increment_open(&mut self, _read: bool, _write: bool) {
 		// TODO
 		todo!();

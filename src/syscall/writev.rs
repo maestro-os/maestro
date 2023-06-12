@@ -13,8 +13,6 @@ use crate::process::signal::Signal;
 use crate::process::Process;
 use crate::util::io;
 use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::ptr::arc::Arc;
 use core::cmp::min;
 use core::ffi::c_int;
 use macros::syscall;
@@ -26,20 +24,15 @@ use macros::syscall;
 /// Arguments:
 /// - `mem_space` is the memory space of the current process.
 /// - `iov` is the set of chunks.
-/// - `iovcnt` is the number of chunks in `iov`.
 /// - `open_file` is the file to write to.
 fn write(
-	mem_space: &Arc<IntMutex<MemSpace>>,
-	iov: &SyscallSlice<IOVec>,
-	iovcnt: usize,
+	mem_space: &MemSpace,
+	iov: &[IOVec],
 	open_file: &mut OpenFile,
 ) -> Result<i32, Errno> {
-	let mem_space_guard = mem_space.lock();
-	let iov_slice = iov.get(&mem_space_guard, iovcnt)?.ok_or(errno!(EFAULT))?;
-
 	let mut total_len = 0;
 
-	for i in iov_slice {
+	for i in iov {
 		// Ignoring zero entry
 		if i.iov_len == 0 {
 			continue;
@@ -49,7 +42,7 @@ fn write(
 		let l = min(i.iov_len, i32::MAX as usize - total_len);
 		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
 
-		if let Some(slice) = ptr.get(&mem_space_guard, l)? {
+		if let Some(slice) = ptr.get(mem_space, l)? {
 			total_len += open_file.write(0, slice)? as usize;
 		}
 	}
@@ -109,6 +102,9 @@ pub fn do_writev(
 		// TODO super::util::signal_check(regs);
 
 		{
+			let mem_space_guard = mem_space.lock();
+			let iov_slice = iov.get(&mem_space_guard, iovcnt as _)?.ok_or(errno!(EFAULT))?;
+
 			let mut open_file = open_file_mutex.lock();
 			let flags = open_file.get_flags();
 
@@ -116,7 +112,7 @@ pub fn do_writev(
 			let prev_off = open_file.get_offset();
 			open_file.set_offset(start_off);
 
-			let len = match write(&mem_space, &iov, iovcnt as _, &mut open_file) {
+			let len = match write(&mem_space_guard, &iov_slice, &mut open_file) {
 				Ok(len) => len,
 
 				Err(e) => {

@@ -5,6 +5,7 @@ use crate::errno::Errno;
 use crate::memory;
 use crate::memory::malloc;
 use crate::util::TryClone;
+use core::borrow::{Borrow, BorrowMut};
 use core::ffi::c_void;
 use core::fmt;
 use core::marker::Unsize;
@@ -106,6 +107,18 @@ impl<T: ?Sized> AsRef<T> for Box<T> {
 impl<T: ?Sized> AsMut<T> for Box<T> {
 	fn as_mut(&mut self) -> &mut T {
 		unsafe { &mut *self.ptr.as_ptr() }
+	}
+}
+
+impl<T: ?Sized> Borrow<T> for Box<T> {
+	fn borrow(&self) -> &T {
+		self.as_ref()
+	}
+}
+
+impl<T: ?Sized> BorrowMut<T> for Box<T> {
+	fn borrow_mut(&mut self) -> &mut T {
+		self.as_mut()
 	}
 }
 

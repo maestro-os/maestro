@@ -4,7 +4,6 @@ mod signal_trampoline;
 
 use super::Process;
 use super::State;
-use crate::errno;
 use crate::errno::Errno;
 use crate::file::Uid;
 use crate::process::oom;
@@ -174,74 +173,74 @@ impl SignalHandler {
 	}
 }
 
-// TODO reorder
 /// Enumeration of signal types.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Signal {
+	/// Hangup.
+	SIGHUP,
+	/// Terminal interrupt.
+	SIGINT,
+	/// Terminal quit.
+	SIGQUIT,
+	/// Illigal instruction.
+	SIGILL,
+	/// Trace/breakpoint trap.
+	SIGTRAP,
 	/// Process abort.
 	SIGABRT,
-	/// Alarm clock.
-	SIGALRM,
 	/// Access to an undefined portion of a memory object.
 	SIGBUS,
+	/// Erroneous arithmetic operation.
+	SIGFPE,
+	/// Kill.
+	SIGKILL,
+	/// User-defined signal 1.
+	SIGUSR1,
+	/// Invalid memory reference.
+	SIGSEGV,
+	/// User-defined signal 2.
+	SIGUSR2,
+	/// Write on a pipe with no one to read it.
+	SIGPIPE,
+	/// Alarm clock.
+	SIGALRM,
+	/// Termination.
+	SIGTERM,
 	/// Child process terminated.
 	SIGCHLD,
 	/// Continue executing.
 	SIGCONT,
-	/// Erroneous arithmetic operation.
-	SIGFPE,
-	/// Hangup.
-	SIGHUP,
-	/// Illigal instruction.
-	SIGILL,
-	/// Terminal interrupt.
-	SIGINT,
-	/// Kill.
-	SIGKILL,
-	/// Write on a pipe with no one to read it.
-	SIGPIPE,
-	/// Terminal quit.
-	SIGQUIT,
-	/// Invalid memory reference.
-	SIGSEGV,
 	/// Stop executing.
 	SIGSTOP,
-	/// Termination.
-	SIGTERM,
 	/// Terminal stop.
 	SIGTSTP,
 	/// Background process attempting read.
 	SIGTTIN,
 	/// Background process attempting write.
 	SIGTTOU,
-	/// User-defined signal 1.
-	SIGUSR1,
-	/// User-defined signal 2.
-	SIGUSR2,
-	/// Pollable event.
-	SIGPOLL,
-	/// Profiling timer expired.
-	SIGPROF,
-	/// Bad system call.
-	SIGSYS,
-	/// Trace/breakpoint trap.
-	SIGTRAP,
 	/// High bandwidth data is available at a socket.
 	SIGURG,
-	/// Virtual timer expired.
-	SIGVTALRM,
 	/// CPU time limit exceeded.
 	SIGXCPU,
 	/// File size limit exceeded.
 	SIGXFSZ,
+	/// Virtual timer expired.
+	SIGVTALRM,
+	/// Profiling timer expired.
+	SIGPROF,
 	/// Window resize.
 	SIGWINCH,
+	/// Pollable event.
+	SIGPOLL,
+	/// Bad system call.
+	SIGSYS,
 }
 
-impl Signal {
-	/// Creates a new instance.
+impl TryFrom<u32> for Signal {
+	type Error = Errno;
+
 	/// `id` is the signal ID.
-	pub fn from_id(id: u32) -> Result<Self, Errno> {
+	fn try_from(id: u32) -> Result<Self, Self::Error> {
 		match id {
 			1 => Ok(Self::SIGHUP),
 			2 => Ok(Self::SIGINT),
@@ -276,7 +275,9 @@ impl Signal {
 			_ => Err(errno!(EINVAL)),
 		}
 	}
+}
 
+impl Signal {
 	/// Returns the signal's ID.
 	pub fn get_id(&self) -> u8 {
 		match self {
@@ -312,39 +313,38 @@ impl Signal {
 		}
 	}
 
-	// TODO reorder
 	/// Returns the default action for the signal.
 	pub fn get_default_action(&self) -> SignalAction {
 		match self {
+			Self::SIGHUP => SignalAction::Terminate,
+			Self::SIGINT => SignalAction::Terminate,
+			Self::SIGQUIT => SignalAction::Abort,
+			Self::SIGILL => SignalAction::Abort,
+			Self::SIGTRAP => SignalAction::Abort,
 			Self::SIGABRT => SignalAction::Abort,
-			Self::SIGALRM => SignalAction::Terminate,
 			Self::SIGBUS => SignalAction::Abort,
+			Self::SIGFPE => SignalAction::Abort,
+			Self::SIGKILL => SignalAction::Terminate,
+			Self::SIGUSR1 => SignalAction::Terminate,
+			Self::SIGSEGV => SignalAction::Abort,
+			Self::SIGUSR2 => SignalAction::Terminate,
+			Self::SIGPIPE => SignalAction::Terminate,
+			Self::SIGALRM => SignalAction::Terminate,
+			Self::SIGTERM => SignalAction::Terminate,
 			Self::SIGCHLD => SignalAction::Ignore,
 			Self::SIGCONT => SignalAction::Continue,
-			Self::SIGFPE => SignalAction::Abort,
-			Self::SIGHUP => SignalAction::Terminate,
-			Self::SIGILL => SignalAction::Abort,
-			Self::SIGINT => SignalAction::Terminate,
-			Self::SIGKILL => SignalAction::Terminate,
-			Self::SIGPIPE => SignalAction::Terminate,
-			Self::SIGQUIT => SignalAction::Abort,
-			Self::SIGSEGV => SignalAction::Abort,
 			Self::SIGSTOP => SignalAction::Stop,
-			Self::SIGTERM => SignalAction::Terminate,
 			Self::SIGTSTP => SignalAction::Stop,
 			Self::SIGTTIN => SignalAction::Stop,
 			Self::SIGTTOU => SignalAction::Stop,
-			Self::SIGUSR1 => SignalAction::Terminate,
-			Self::SIGUSR2 => SignalAction::Terminate,
-			Self::SIGPOLL => SignalAction::Terminate,
-			Self::SIGPROF => SignalAction::Terminate,
-			Self::SIGSYS => SignalAction::Abort,
-			Self::SIGTRAP => SignalAction::Abort,
 			Self::SIGURG => SignalAction::Ignore,
-			Self::SIGVTALRM => SignalAction::Terminate,
 			Self::SIGXCPU => SignalAction::Abort,
 			Self::SIGXFSZ => SignalAction::Abort,
+			Self::SIGVTALRM => SignalAction::Terminate,
+			Self::SIGPROF => SignalAction::Terminate,
 			Self::SIGWINCH => SignalAction::Ignore,
+			Self::SIGPOLL => SignalAction::Terminate,
+			Self::SIGSYS => SignalAction::Abort,
 		}
 	}
 

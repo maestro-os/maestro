@@ -21,6 +21,9 @@ use core::ffi::c_void;
 
 /// Trait representing a buffer.
 pub trait Buffer: IO + Any {
+	/// Returns the capacity in bytes of the buffer.
+	fn get_capacity(&self) -> usize;
+
 	/// Increments the number of open ends.
 	///
 	/// Arguments:

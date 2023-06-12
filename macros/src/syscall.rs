@@ -136,7 +136,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 						let proc_mutex = crate::process::Process::get_current().unwrap();
 						let proc = proc_mutex.lock();
 
-						proc.get_pid()
+						proc.pid
 					};
 
 					println!(
@@ -156,7 +156,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 						let proc_mutex = crate::process::Process::get_current().unwrap();
 						let proc = proc_mutex.lock();
 
-						proc.get_pid()
+						proc.pid
 					};
 
 					match ret {

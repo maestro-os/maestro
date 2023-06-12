@@ -51,12 +51,10 @@ pub struct ProcFS {
 impl ProcFS {
 	/// Creates a new instance.
 	///
-	/// Arguments:
-	/// - `readonly` tells whether the filesystem is readonly.
-	/// - `mountpath` is the path at which the filesystem is mounted.
-	pub fn new(readonly: bool, mountpath: Path) -> Result<Self, Errno> {
+	/// `readonly` tells whether the filesystem is readonly.
+	pub fn new(readonly: bool) -> Result<Self, Errno> {
 		let mut fs = Self {
-			fs: KernFS::new(b"procfs".try_into()?, readonly, mountpath)?,
+			fs: KernFS::new(b"procfs".try_into()?, readonly)?,
 
 			procs: HashMap::new(),
 		};
@@ -289,9 +287,9 @@ impl FilesystemType for ProcFsType {
 	fn load_filesystem(
 		&self,
 		_io: &mut dyn IO,
-		mountpath: Path,
+		_mountpath: Path,
 		readonly: bool,
 	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
-		Ok(Arc::new(Mutex::new(ProcFS::new(readonly, mountpath)?))?)
+		Ok(Arc::new(Mutex::new(ProcFS::new(readonly)?))?)
 	}
 }

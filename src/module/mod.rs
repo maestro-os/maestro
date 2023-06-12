@@ -90,9 +90,9 @@ impl Module {
 
 	/// Resolves an external symbol from the kernel or another module.
 	///
-	/// If the symbol doesn't exist, the function returns `None`.
-	///
 	/// `name` is the name of the symbol to look for.
+	///
+	/// If the symbol doesn't exist, the function returns `None`.
 	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
 		let boot_info = multiboot::get_boot_info();
 		// The symbol on the kernel side
@@ -132,7 +132,6 @@ impl Module {
 		Some(val)
 	}
 
-	// TODO Print a warning when a symbol cannot be resolved
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> Result<Self, Errno> {
 		let parser = ELFParser::new(image).map_err(|e| {

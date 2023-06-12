@@ -87,8 +87,6 @@ impl UserDesc {
 		entry.set_base(self.get_base_addr() as _);
 		entry.set_limit(self.get_limit() as _);
 
-		// TODO contents
-
 		let mut access_byte = 0b01110010;
 		if self.is_present() && self.is_usable() {
 			access_byte |= 1 << 7;
@@ -117,7 +115,6 @@ impl fmt::Debug for UserDesc {
 		writeln!(f, "base_addr: {:p}", self.get_base_addr() as *const c_void)?;
 		writeln!(f, "limit: {:x}", self.get_limit())?;
 		writeln!(f, "seg_32bit: {}", self.is_32bits())?;
-		// TODO writeln!(f, "contents: {}", self.)?;
 		writeln!(f, "read_exec_only: {}", !self.is_read_exec_only())?;
 		writeln!(f, "limit_in_pages: {}", self.is_limit_in_pages())?;
 		writeln!(f, "seg_not_present: {}", !self.is_present())?;

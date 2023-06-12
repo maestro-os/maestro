@@ -13,7 +13,7 @@ pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
 	if sig < 0 {
 		return Err(errno!(EINVAL));
 	}
-	let signal = Signal::from_id(sig as _)?;
+	let signal = Signal::try_from(sig as u32)?;
 
 	let proc_mutex = Process::get_current().unwrap();
 	let mut proc = proc_mutex.lock();

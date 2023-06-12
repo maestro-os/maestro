@@ -1,6 +1,4 @@
-//! This file handles interruptions, it provides an interface allowing to
-//! register callbacks for each interrupts. Each callback has a priority number
-//! and is called in descreasing order.
+//! This interface allows to register callbacks for each interrupts.
 
 use crate::crypto::rand;
 use crate::crypto::rand::EntropyPool;
@@ -15,7 +13,7 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use core::ffi::c_void;
-use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
@@ -66,165 +64,90 @@ fn get_error_message(i: u32) -> &'static str {
 }
 
 /// The action to execute after the interrupt handler has returned.
-pub enum InterruptResultAction {
-	/// Resumes execution of the code where it was interrupted.
-	Resume,
-	/// Goes back to the kernel loop, waiting for another interruption.
-	Loop,
-	/// Makes the kernel panic.
+pub enum CallbackResult {
+	/// Executes remaining callbacks for the interrupt.
+	///
+	/// If this is the last callback to be executed, the execution resumes the code that was
+	/// interrupted.
+	Continue,
+	/// Makes the current CPU core idle until the next interruption.
+	Idle,
+	/// Makes the kernel panic with a message corresponding to the interruption.
 	Panic,
 }
 
-/// Enumeration telling which action will be executed after an interrupt
-/// handler.
-pub struct InterruptResult {
-	/// Tells whether to skip execution of the next interrupt handlers (with
-	/// lower priority).
-	skip_next: bool,
-	/// The action to execute after the handler.
-	///
-	/// The last handler decides which action to execute unless the `skip_next` variable is set to
-	/// `true`.
-	action: InterruptResultAction,
-}
-
-impl InterruptResult {
-	/// Creates a new instance.
-	pub fn new(skip_next: bool, action: InterruptResultAction) -> Self {
-		Self {
-			skip_next,
-			action,
-		}
-	}
-}
-
-/// Structure wrapping a callback to insert it into a linked list.
-struct CallbackWrapper {
-	/// The priority associated with the callback. Higher value means higher
-	/// priority
-	priority: u32,
-
-	/// The callback
-	///
-	/// Arguments:
-	/// - `id` is the id of the interrupt.
-	/// - `code` is an optional code associated with the interrupt. If no code is given, the value
-	/// is `0`.
-	/// - `regs` the values of the registers when the interruption was triggered.
-	/// - `ring` tells the ring at which the code was running.
-	///
-	/// The return value tells which action to perform next.
-	callback: Box<dyn FnMut(u32, u32, &Regs, u32) -> InterruptResult>,
-}
+/// A callback to handle an interruption.
+///
+/// Arguments:
+/// - `id` is the id of the interrupt.
+/// - `code` is an optional code associated with the interrupt. If no code is given, the value
+/// is `0`.
+/// - `regs` the values of the registers when the interruption was triggered.
+/// - `ring` tells the ring at which the code was running.
+///
+/// The return value tells which action to perform next.
+type CallbackWrapper = Box<dyn FnMut(u32, u32, &Regs, u32) -> CallbackResult>;
 
 /// Structure used to detect whenever the object owning the callback is
 /// destroyed, allowing to unregister it automatically.
 #[must_use]
 pub struct CallbackHook {
 	/// The id of the interrupt the callback is bound to.
-	id: usize,
-	/// The priority of the callback.
-	priority: u32,
-
+	id: u32,
 	/// The pointer of the callback.
-	ptr: *const c_void,
-}
-
-impl CallbackHook {
-	/// Creates a new instance.
-	fn new(id: usize, priority: u32, ptr: *const c_void) -> Self {
-		Self {
-			id,
-			priority,
-			ptr,
-		}
-	}
+	ptr: NonNull<c_void>,
 }
 
 impl Drop for CallbackHook {
 	fn drop(&mut self) {
-		remove_callback(self.id, self.priority, self.ptr);
+		// Remove the callback
+		let mut vec = CALLBACKS[self.id as usize].lock();
+		let i = vec
+			.iter()
+			.enumerate()
+			.find(|(_, c)| c.as_ptr() as *mut c_void == self.ptr.as_ptr())
+			.map(|(i, _)| i);
+		if let Some(i) = i {
+			vec.remove(i);
+		}
 	}
 }
 
+/// The default value for `CALLBACKS`.
+const CALLBACKS_INIT: IntMutex<Vec<CallbackWrapper>> = IntMutex::new(Vec::new());
 /// List containing vectors that store callbacks for every interrupt watchdogs.
-static mut CALLBACKS: MaybeUninit<[IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _]> =
-	MaybeUninit::uninit();
-
-/// Initializes the events handler.
-/// This function must be called only once when booting.
-pub fn init() {
-	let callbacks = unsafe {
-		// Safe because called only once
-		CALLBACKS.assume_init_mut()
-	};
-
-	for c in callbacks {
-		*c.lock() = Vec::new();
-	}
-}
+static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] =
+	[CALLBACKS_INIT; idt::ENTRIES_COUNT as _];
 
 /// Registers the given callback and returns a reference to it.
 ///
+/// The latest registered callback is executed last. Thus, callback that are registered before can
+/// prevent next callbacks from being executed.
+///
 /// Arguments:
 /// - `id` is the id of the interrupt to watch.
-/// - `priority` is the priority for the callback. Higher value means higher priority.
 /// - `callback` is the callback to register.
 ///
 /// If the `id` is invalid or if an allocation fails, the function shall return
 /// an error.
-pub fn register_callback<T>(id: usize, priority: u32, callback: T) -> Result<CallbackHook, Errno>
+pub fn register_callback<C>(id: u32, callback: C) -> Result<CallbackHook, Errno>
 where
-	T: 'static + FnMut(u32, u32, &Regs, u32) -> InterruptResult,
+	C: 'static + FnMut(u32, u32, &Regs, u32) -> CallbackResult,
 {
-	debug_assert!(id < idt::ENTRIES_COUNT);
-
-	idt::wrap_disable_interrupts(|| {
-		let mutex = &unsafe { CALLBACKS.assume_init_mut() }[id];
-		let mut vec = mutex.lock();
-
-		let index = {
-			let r = vec.binary_search_by(|x| x.priority.cmp(&priority));
-
-			if let Err(l) = r {
-				l
-			} else {
-				r.unwrap()
-			}
-		};
-
-		let b = Box::new(callback)?;
-		let ptr = b.as_ptr();
-		vec.insert(
-			index,
-			CallbackWrapper {
-				priority,
-				callback: b,
-			},
-		)?;
-
-		Ok(CallbackHook::new(id, priority, ptr as _))
-	})
-}
-
-/// Removes the callback with id `id`, priority `priority` and pointer `ptr`.
-fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
-	let mutex = &unsafe { CALLBACKS.assume_init_mut() }[id];
-	let mut vec = mutex.lock();
-
-	let res = vec.binary_search_by(|x| x.priority.cmp(&priority));
-	if let Ok(index) = res {
-		let mut i = index;
-
-		while i < vec.len() && vec[i].priority == priority {
-			if vec[i].callback.as_ptr() as *const c_void == ptr {
-				vec.remove(i);
-				break;
-			}
-
-			i += 1;
-		}
+	if id as usize >= CALLBACKS.len() {
+		return Err(errno!(EINVAL));
 	}
+
+	let mut vec = CALLBACKS[id as usize].lock();
+
+	let b = Box::new(callback)?;
+	let ptr = b.as_ptr();
+	vec.push(b)?;
+
+	Ok(CallbackHook {
+		id,
+		ptr: NonNull::new(ptr as _).unwrap(),
+	})
 }
 
 /// Unlocks the callback vector with id `id`. This function is to be used in
@@ -237,7 +160,7 @@ fn remove_callback(id: usize, priority: u32, ptr: *const c_void) {
 /// locked the mutex since unlocking changes the interrupt flag.
 #[no_mangle]
 pub unsafe extern "C" fn unlock_callbacks(id: usize) {
-	CALLBACKS.assume_init_mut()[id].unlock();
+	CALLBACKS[id].unlock();
 }
 
 /// Feeds the entropy pool using the given data.
@@ -256,7 +179,7 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 /// - `regs` is the state of the registers at the moment of the interrupt.
 /// - `ring` tells the ring at which the code was running.
 #[no_mangle]
-pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
+extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	// Feed entropy pool
 	{
 		let mut pool = rand::ENTROPY_POOL.lock();
@@ -269,51 +192,35 @@ pub extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 		}
 	}
 
-	let action = {
-		let mutex = unsafe { &mut CALLBACKS.assume_init_mut()[id as usize] };
-		let mut callbacks = mutex.lock();
+	let mut callbacks = CALLBACKS[id as usize].lock();
 
-		let mut last_action = {
-			if (id as usize) < ERROR_MESSAGES.len() {
-				InterruptResultAction::Panic
-			} else {
-				InterruptResultAction::Resume
-			}
-		};
+	for c in callbacks.iter_mut() {
+		let result = c(id, code, regs, ring);
+		match result {
+			CallbackResult::Continue => {}
 
-		for i in 0..callbacks.len() {
-			let result = (callbacks[i].callback)(id, code, regs, ring);
-			last_action = result.action;
-			if result.skip_next {
-				break;
-			}
-		}
+			CallbackResult::Idle => {
+				// Unlock to avoid deadlocks
+				if id >= ERROR_MESSAGES.len() as u32 {
+					pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
+				}
+				drop(callbacks);
 
-		last_action
-	};
-
-	match action {
-		InterruptResultAction::Resume => {}
-
-		InterruptResultAction::Loop => {
-			if id >= 0x20 {
-				pic::end_of_interrupt((id - 0x20) as _);
+				// TODO do not use tss
+				unsafe {
+					crate::loop_reset(tss::get().esp0 as _);
+				}
 			}
 
-			// FIXME: Use of loop action before TSS init shall result in undefined behaviour
-			unsafe {
-				crate::loop_reset(tss::get().esp0 as _);
+			CallbackResult::Panic => {
+				panic::kernel_panic_(
+					format_args!("{} (code: {})", get_error_message(id), code),
+					Some(regs),
+					file!(),
+					line!(),
+					column!(),
+				);
 			}
-		}
-
-		InterruptResultAction::Panic => {
-			panic::kernel_panic_(
-				format_args!("{} (code: {})", get_error_message(id), code),
-				Some(regs),
-				file!(),
-				line!(),
-				column!(),
-			);
 		}
 	}
 }

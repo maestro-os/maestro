@@ -132,7 +132,7 @@ pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 		return Err(errno!(EINVAL));
 	}
 	let sig = if sig > 0 {
-		Some(Signal::from_id(sig as _)?)
+		Some(Signal::try_from(sig as u32)?)
 	} else {
 		None
 	};

@@ -23,7 +23,7 @@ use crate::cpu;
 use crate::errno;
 use crate::errno::Errno;
 use crate::event;
-use crate::event::{InterruptResult, InterruptResultAction};
+use crate::event::CallbackResult;
 use crate::file;
 use crate::file::fd::FileDescriptorTable;
 use crate::file::fd::NewFDConstraint;
@@ -307,118 +307,116 @@ pub fn init() -> Result<(), Errno> {
 
 	let callback = |id: u32, _code: u32, regs: &Regs, ring: u32| {
 		if ring < 3 {
-			return InterruptResult::new(true, InterruptResultAction::Panic);
+			return CallbackResult::Panic;
 		}
 
-		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		let mut sched = sched_mutex.lock();
-
-		if let Some(curr_proc) = sched.get_current_process() {
-			let mut curr_proc = curr_proc.lock();
-
-			match id {
-				// Divide-by-zero
-				// x87 Floating-Point Exception
-				// SIMD Floating-Point Exception
-				0x00 | 0x10 | 0x13 => {
-					curr_proc.kill(&Signal::SIGFPE, true);
-					curr_proc.signal_next();
-				}
-
-				// Breakpoint
-				0x03 => {
-					curr_proc.kill(&Signal::SIGTRAP, true);
-					curr_proc.signal_next();
-				}
-
-				// Invalid Opcode
-				0x06 => {
-					curr_proc.kill(&Signal::SIGILL, true);
-					curr_proc.signal_next();
-				}
-
-				// General Protection Fault
-				0x0d => {
-					let inst_prefix = unsafe { *(regs.eip as *const u8) };
-
-					if inst_prefix == HLT_INSTRUCTION {
-						curr_proc.exit(regs.eax, false);
-					} else {
-						curr_proc.kill(&Signal::SIGSEGV, true);
-						curr_proc.signal_next();
-					}
-				}
-
-				// Alignment Check
-				0x11 => {
-					curr_proc.kill(&Signal::SIGBUS, true);
-					curr_proc.signal_next();
-				}
-
-				_ => {}
-			}
-
-			if matches!(curr_proc.get_state(), State::Running) {
-				InterruptResult::new(false, InterruptResultAction::Resume)
-			} else {
-				InterruptResult::new(true, InterruptResultAction::Loop)
-			}
-		} else {
-			InterruptResult::new(true, InterruptResultAction::Panic)
-		}
-	};
-	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
+		// Get process
 		let curr_proc = {
 			let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 			let mut sched = sched_mutex.lock();
 
 			sched.get_current_process()
 		};
+		let Some(curr_proc) = curr_proc else {
+			return CallbackResult::Panic;
+		};
+		let mut curr_proc = curr_proc.lock();
 
-		if let Some(curr_proc) = curr_proc {
-			let mut curr_proc = curr_proc.lock();
+		match id {
+			// Divide-by-zero
+			// x87 Floating-Point Exception
+			// SIMD Floating-Point Exception
+			0x00 | 0x10 | 0x13 => {
+				curr_proc.kill(&Signal::SIGFPE, true);
+				curr_proc.signal_next();
+			}
 
-			let accessed_ptr = unsafe { cpu::cr2_get() };
+			// Breakpoint
+			0x03 => {
+				curr_proc.kill(&Signal::SIGTRAP, true);
+				curr_proc.signal_next();
+			}
 
-			// Handling page fault
-			let success = {
-				let mem_space_mutex = curr_proc.get_mem_space().unwrap();
-				let mut mem_space = mem_space_mutex.lock();
+			// Invalid Opcode
+			0x06 => {
+				curr_proc.kill(&Signal::SIGILL, true);
+				curr_proc.signal_next();
+			}
 
-				mem_space.handle_page_fault(accessed_ptr, code)
-			};
+			// General Protection Fault
+			0x0d => {
+				let inst_prefix = unsafe { *(regs.eip as *const u8) };
 
-			if !success {
-				if ring < 3 {
-					return InterruptResult::new(true, InterruptResultAction::Panic);
+				if inst_prefix == HLT_INSTRUCTION {
+					curr_proc.exit(regs.eax, false);
 				} else {
 					curr_proc.kill(&Signal::SIGSEGV, true);
 					curr_proc.signal_next();
 				}
 			}
 
-			if matches!(curr_proc.get_state(), State::Running) {
-				InterruptResult::new(false, InterruptResultAction::Resume)
-			} else {
-				InterruptResult::new(true, InterruptResultAction::Loop)
+			// Alignment Check
+			0x11 => {
+				curr_proc.kill(&Signal::SIGBUS, true);
+				curr_proc.signal_next();
 			}
+
+			_ => {}
+		}
+
+		if matches!(curr_proc.get_state(), State::Running) {
+			CallbackResult::Continue
 		} else {
-			InterruptResult::new(true, InterruptResultAction::Panic)
+			CallbackResult::Idle
+		}
+	};
+	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
+		let accessed_ptr = unsafe { cpu::cr2_get() };
+
+		// Get process
+		let curr_proc = {
+			let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
+			let mut sched = sched_mutex.lock();
+
+			sched.get_current_process()
+		};
+		let Some(curr_proc) = curr_proc else {
+			return CallbackResult::Panic;
+		};
+		let mut curr_proc = curr_proc.lock();
+
+		// Handle page fault
+		let success = {
+			let mem_space_mutex = curr_proc.get_mem_space().unwrap();
+			let mut mem_space = mem_space_mutex.lock();
+
+			mem_space.handle_page_fault(accessed_ptr, code)
+		};
+
+		if !success {
+			if ring < 3 {
+				return CallbackResult::Panic;
+			} else {
+				curr_proc.kill(&Signal::SIGSEGV, true);
+				curr_proc.signal_next();
+			}
+		}
+
+		if matches!(curr_proc.get_state(), State::Running) {
+			CallbackResult::Continue
+		} else {
+			CallbackResult::Idle
 		}
 	};
 
-	let _ = ManuallyDrop::new(event::register_callback(0x00, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x03, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x06, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x0d, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(
-		0x0e,
-		u32::MAX,
-		page_fault_callback,
-	)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x10, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x11, u32::MAX, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x13, u32::MAX, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x00, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x03, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x06, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x0d, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x0e, page_fault_callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x10, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x11, callback)?);
+	let _ = ManuallyDrop::new(event::register_callback(0x13, callback)?);
 
 	Ok(())
 }
@@ -458,34 +456,30 @@ impl Process {
 
 	/// Registers the current process to the procfs.
 	fn register_procfs(&self) -> Result<(), Errno> {
-		// TODO Avoid allocation
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
+		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
+			return Ok(());
+		};
+		let mut fs_guard = fs.lock();
+		let fs = &mut *fs_guard as &mut dyn Any;
 
-		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
-			let mut fs_guard = fs.lock();
-			let fs = &mut *fs_guard as &mut dyn Any;
-
-			if let Some(procfs) = fs.downcast_mut::<ProcFS>() {
-				procfs.add_process(self.pid)?;
-			}
-		}
+		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
+		procfs.add_process(self.pid)?;
 
 		Ok(())
 	}
 
 	/// Unregisters the current process from the procfs.
 	fn unregister_procfs(&self) -> Result<(), Errno> {
-		// TODO Avoid allocation
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
+		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
+			return Ok(());
+		};
+		let mut fs_guard = fs.lock();
+		let fs = &mut *fs_guard as &mut dyn Any;
 
-		if let Some(fs) = mountpoint::get_fs(&procfs_source) {
-			let mut fs_guard = fs.lock();
-			let fs = &mut *fs_guard as &mut dyn Any;
-
-			if let Some(procfs) = fs.downcast_mut::<ProcFS>() {
-				procfs.remove_process(self.pid)?;
-			}
-		}
+		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
+		procfs.remove_process(self.pid)?;
 
 		Ok(())
 	}
@@ -494,8 +488,6 @@ impl Process {
 	///
 	/// The process is set to state `Running` by default and has user root.
 	pub fn new() -> Result<Arc<IntMutex<Self>>, Errno> {
-		// TODO Prevent calling twice
-
 		let uid = 0;
 		let gid = 0;
 
@@ -706,11 +698,9 @@ impl Process {
 				kernel_panic!("Terminated init process!");
 			}
 
-			// Removing the memory space, file descriptors table and signals table to save
-			// memory TODO Handle the case where the memory space is bound
-			// TODO self.mem_space = None;
+			// Removing the memory space and file descriptors table to save memory
+			//self.mem_space = None; // TODO Handle the case where the memory space is bound
 			self.file_descriptors = None;
-			// TODO Remove signal handlers
 
 			// Attaching every child to the init process
 			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
@@ -938,12 +928,6 @@ impl Process {
 	) -> Result<Arc<IntMutex<Self>>, Errno> {
 		debug_assert!(matches!(self.get_state(), State::Running));
 
-		// FIXME PID is leaked if the following code fails
-		let pid = {
-			let mutex = unsafe { PID_MANAGER.assume_init_mut() };
-			mutex.lock().get_unique_pid()
-		}?;
-
 		// Handling vfork
 		let vfork_state = if fork_options.vfork {
 			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
@@ -993,6 +977,12 @@ impl Process {
 			Arc::new(Mutex::new(self.signal_handlers.lock().clone()))?
 		};
 
+		// FIXME PID is leaked if the following code fails
+		let pid = {
+			let mutex = unsafe { PID_MANAGER.assume_init_mut() };
+			mutex.lock().get_unique_pid()
+		}?;
+
 		let process = Self {
 			pid,
 			pgid: self.pgid,
@@ -1025,11 +1015,11 @@ impl Process {
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs: self.regs,
+			regs: self.regs.clone(),
 			syscalling: false,
 
 			handled_signal: self.handled_signal.clone(),
-			saved_regs: self.saved_regs,
+			saved_regs: self.saved_regs.clone(),
 			waitable: false,
 
 			mem_space: Some(mem_space),
@@ -1155,11 +1145,12 @@ impl Process {
 		let mut sig = None;
 
 		self.sigpending.for_each(|i, b| {
-			if let Ok(s) = Signal::from_id(i as _) {
-				if b && !(s.can_catch() && self.sigmask.is_set(i)) {
-					sig = Some(s);
-					return false;
-				}
+			let Ok(s) = Signal::try_from(i as u32) else {
+				return true;
+			};
+			if b && !(s.can_catch() && self.sigmask.is_set(i)) {
+				sig = Some(s);
+				return false;
 			}
 
 			true
@@ -1199,7 +1190,7 @@ impl Process {
 	pub fn signal_save(&mut self, sig: Signal) {
 		debug_assert!(!self.is_handling_signal());
 
-		self.saved_regs = self.regs;
+		self.saved_regs = self.regs.clone();
 		self.handled_signal = Some(sig);
 	}
 
@@ -1207,7 +1198,7 @@ impl Process {
 	pub fn signal_restore(&mut self) {
 		if self.handled_signal.is_some() {
 			self.handled_signal = None;
-			self.regs = self.saved_regs;
+			self.regs = self.saved_regs.clone();
 		}
 	}
 

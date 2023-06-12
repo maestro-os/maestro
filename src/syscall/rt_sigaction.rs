@@ -15,7 +15,7 @@ pub fn rt_sigaction(
 	act: SyscallPtr<SigAction>,
 	oldact: SyscallPtr<SigAction>,
 ) -> Result<i32, Errno> {
-	let signal = Signal::from_id(signum as _)?;
+	let signal = Signal::try_from(signum as u32)?;
 
 	let proc_mutex = Process::get_current().unwrap();
 	let mut proc = proc_mutex.lock();
