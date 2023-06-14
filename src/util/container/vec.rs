@@ -61,6 +61,15 @@ pub struct Vec<T> {
 	data: Option<malloc::Alloc<T>>,
 }
 
+impl<T> Default for Vec<T> {
+	fn default() -> Self {
+		Self {
+			len: 0,
+			data: None,
+		}
+	}
+}
+
 impl<T> Vec<T> {
 	/// Creates a new empty vector.
 	pub const fn new() -> Self {

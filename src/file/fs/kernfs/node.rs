@@ -25,7 +25,7 @@ pub trait KernFSNode: Any + IO {
 
 	/// Returns the permissions of the file.
 	fn get_mode(&self) -> Mode {
-		0o777
+		0o444
 	}
 
 	/// Sets the permissions of the file.
@@ -72,7 +72,7 @@ pub trait KernFSNode: Any + IO {
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
 	/// Returns the node's content.
-	fn get_content(&self) -> Cow<'_, FileContent>;
+	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno>;
 
 	/// Sets the node's content.
 	fn set_content(&mut self, _content: FileContent) {}
@@ -190,8 +190,8 @@ impl KernFSNode for DummyKernFSNode {
 		self.mtime = ts;
 	}
 
-	fn get_content(&self) -> Cow<'_, FileContent> {
-		Cow::from(&self.content)
+	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+		Ok(Cow::from(&self.content))
 	}
 
 	fn set_content(&mut self, content: FileContent) {

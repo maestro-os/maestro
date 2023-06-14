@@ -117,8 +117,8 @@ impl KernFSNode for TmpFSRegular {
 		self.mtime = ts;
 	}
 
-	fn get_content(&self) -> Cow<'_, FileContent> {
-		FileContent::Regular.into()
+	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+		Ok(FileContent::Regular.into())
 	}
 }
 
