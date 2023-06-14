@@ -131,7 +131,7 @@ impl ProcFS {
 
 		// Inserting the process's entry at the root of the filesystem
 		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
-		let mut content = oom::wrap(|| root.get_content().into_owned());
+		let mut content = oom::wrap(|| root.get_content()?.into_owned());
 		match &mut content {
 			FileContent::Directory(entries) => oom::wrap(|| {
 				entries.insert(
@@ -157,7 +157,7 @@ impl ProcFS {
 		if let Some(inode) = self.procs.remove(&pid) {
 			// Removing the process's entry from the root of the filesystem
 			let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
-			let mut content = oom::wrap(|| root.get_content().into_owned());
+			let mut content = oom::wrap(|| root.get_content()?.into_owned());
 			match &mut content {
 				FileContent::Directory(entries) => oom::wrap(|| {
 					entries.remove(&crate::format!("{}", pid)?);

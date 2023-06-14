@@ -41,8 +41,8 @@ impl KernFSNode for Cmdline {
 		}
 	}
 
-	fn get_content(&self) -> Cow<'_, FileContent> {
-		Cow::from(FileContent::Regular)
+	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+		Ok(Cow::from(FileContent::Regular))
 	}
 }
 

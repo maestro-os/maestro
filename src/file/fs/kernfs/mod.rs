@@ -69,7 +69,7 @@ impl KernFS {
 	/// Sets the root node of the filesystem.
 	pub fn set_root(&mut self, mut root: Box<dyn KernFSNode>) -> Result<(), Errno> {
 		// Adding `.` and `..` entries if the new file is a directory
-		let mut content = root.get_content().into_owned()?;
+		let mut content = root.get_content()?.into_owned()?;
 		if let FileContent::Directory(ref mut entries) = content {
 			if entries.get(b".".as_slice()).is_none() {
 				entries.insert(
@@ -189,7 +189,7 @@ impl KernFS {
 		let mode = node.get_mode();
 		let uid = node.get_uid();
 		let gid = node.get_gid();
-		let mut file_content = node.get_content().into_owned()?;
+		let mut file_content = node.get_content()?.into_owned()?;
 		let file_type = file_content.get_type();
 
 		// Checking the parent exists
@@ -229,11 +229,11 @@ impl KernFS {
 		}
 		let node = self.get_node_mut(inode)?;
 		node.set_content(file_content);
-		file_content = node.get_content().into_owned()?;
+		file_content = node.get_content()?.into_owned()?;
 
 		// Adding entry to parent
 		let parent = self.get_node_mut(parent_inode).unwrap();
-		let mut parent_content = parent.get_content().into_owned()?;
+		let mut parent_content = parent.get_content()?.into_owned()?;
 		let parent_entries = match &mut parent_content {
 			FileContent::Directory(parent_entries) => parent_entries,
 			_ => return Err(errno!(ENOENT)),
@@ -302,7 +302,7 @@ impl Filesystem for KernFS {
 		// Getting the parent node
 		let parent = self.get_node(parent)?;
 
-		match parent.get_content().as_ref() {
+		match parent.get_content()?.as_ref() {
 			FileContent::Directory(entries) => entries
 				.get(name)
 				.map(|dirent| dirent.inode)
@@ -320,7 +320,7 @@ impl Filesystem for KernFS {
 
 			inode,
 		};
-		let file_content = node.get_content().into_owned()?;
+		let file_content = node.get_content()?.into_owned()?;
 
 		let mut file = File::new(
 			name,
@@ -369,8 +369,9 @@ impl Filesystem for KernFS {
 
 		// Insert the new entry
 		let parent = self.get_node_mut(parent_inode)?;
-		let entry_type = parent.get_content().as_ref().get_type();
-		let mut parent_content = parent.get_content().into_owned()?;
+		let parent_content = parent.get_content()?;
+		let entry_type = parent_content.as_ref().get_type();
+		let mut parent_content = parent_content.into_owned()?;
 		match &mut parent_content {
 			FileContent::Directory(entries) => {
 				entries.insert(
@@ -428,7 +429,7 @@ impl Filesystem for KernFS {
 
 		// Getting directory entry
 		let parent = self.get_node_mut(parent_inode)?;
-		let inode = match parent.get_content().as_ref() {
+		let inode = match parent.get_content()?.as_ref() {
 			FileContent::Directory(entries) => match entries.get(name) {
 				Some(entry) => entry.inode,
 				None => return Err(errno!(ENOENT)),
@@ -438,7 +439,7 @@ impl Filesystem for KernFS {
 		};
 
 		let node = self.get_node(inode)?;
-		if let FileContent::Directory(entries) = node.get_content().as_ref() {
+		if let FileContent::Directory(entries) = node.get_content()?.as_ref() {
 			if entries.len() > 2 {
 				return Err(errno!(ENOTEMPTY));
 			}
@@ -452,7 +453,7 @@ impl Filesystem for KernFS {
 
 		// Removing directory entry
 		let parent = self.get_node_mut(parent_inode).unwrap();
-		let mut content = parent.get_content().into_owned()?;
+		let mut content = parent.get_content()?.into_owned()?;
 		match &mut content {
 			FileContent::Directory(entries) => entries.remove(name),
 			_ => unreachable!(),
@@ -460,7 +461,7 @@ impl Filesystem for KernFS {
 		parent.set_content(content);
 
 		let node = self.get_node(inode)?;
-		let is_dir = matches!(node.get_content().as_ref(), FileContent::Directory(_));
+		let is_dir = matches!(node.get_content()?.as_ref(), FileContent::Directory(_));
 
 		// If the node is a directory, decrement the number of hard links in the parent
 		// (entry `..`)

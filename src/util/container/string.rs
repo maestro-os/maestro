@@ -15,6 +15,7 @@ use core::ops::Deref;
 use core::str;
 
 /// The String structure, which wraps the `str` primitive type.
+#[derive(Default)]
 pub struct String {
 	/// A Vec containing the string's data.
 	data: Vec<u8>,

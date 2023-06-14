@@ -8,7 +8,6 @@ use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::process::oom;
 use crate::process::Process;
 use crate::time::unit::Timestamp;
 use crate::util::io::IO;
@@ -60,15 +59,16 @@ impl KernFSNode for SelfNode {
 
 	fn set_mtime(&mut self, _: Timestamp) {}
 
-	fn get_content(&self) -> Cow<'_, FileContent> {
-		let pid = if let Some(proc_mutex) = Process::get_current() {
-			proc_mutex.lock().pid
-		} else {
-			0
+	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+		let Some(mutex) = Process::get_current() else {
+			crate::kernel_panic!("no current process");
+		};
+		let pid = {
+			mutex.lock().pid
 		};
 
-		let pid_string = oom::wrap(|| crate::format!("{}", pid));
-		Cow::from(FileContent::Link(pid_string))
+		let pid_string = crate::format!("{}", pid)?;
+		Ok(FileContent::Link(pid_string).into())
 	}
 
 	fn set_content(&mut self, _: FileContent) {}

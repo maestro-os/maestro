@@ -7,10 +7,8 @@ use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::process::oom;
 use crate::process::pid::Pid;
 use crate::process::Process;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::ptr::cow::Cow;
 
@@ -41,15 +39,15 @@ impl KernFSNode for Cwd {
 		}
 	}
 
-	fn get_content(&self) -> Cow<'_, FileContent> {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			let proc = proc_mutex.lock();
-
-			let s = oom::wrap(|| crate::format!("{}", proc.get_cwd()));
-			Cow::from(FileContent::Link(s))
-		} else {
-			Cow::from(FileContent::Link(String::new()))
-		}
+	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+		let s = Process::get_by_pid(self.pid)
+			.map(|mutex| {
+				let proc = mutex.lock();
+				crate::format!("{}", proc.get_cwd())
+			})
+			.transpose()?
+			.unwrap_or_default();
+		Ok(Cow::from(FileContent::Link(s)))
 	}
 }
 

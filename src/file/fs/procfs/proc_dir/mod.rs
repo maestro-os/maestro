@@ -176,8 +176,8 @@ impl KernFSNode for ProcDir {
 		}
 	}
 
-	fn get_content(&self) -> Cow<'_, FileContent> {
-		Cow::from(&self.content)
+	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+		Ok(Cow::from(&self.content))
 	}
 }
 
