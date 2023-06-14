@@ -27,6 +27,8 @@ use core::mem::size_of;
 /// Type representing a Media Access Control (MAC) address.
 pub type MAC = [u8; 6];
 
+// TODO allow implementation of custom protocols
+
 /// An enumeration of network address types.
 #[derive(Debug, Eq, PartialEq)]
 pub enum Address {
