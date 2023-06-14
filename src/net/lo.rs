@@ -1,5 +1,6 @@
 //! This module implements the local loopback.
 
+use super::buff::BuffList;
 use super::Address;
 use super::BindAddress;
 use super::Interface;
@@ -43,7 +44,7 @@ impl Interface for LocalLoopback {
 		todo!();
 	}
 
-	fn write(&mut self, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _buff: &BuffList<'_>) -> Result<u64, Errno> {
 		// TODO Read from ring buffer
 		todo!();
 	}

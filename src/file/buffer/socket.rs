@@ -7,10 +7,6 @@ use crate::net;
 use crate::net::ip;
 use crate::net::ip::IPv4Layer;
 use crate::net::osi::Layer;
-use crate::net::sockaddr::SockAddr;
-use crate::net::sockaddr::SockAddrIn;
-use crate::net::sockaddr::SockAddrIn6;
-use crate::net::tcp;
 use crate::net::tcp::TCPLayer;
 use crate::net::SocketDesc;
 use crate::net::SocketDomain;
@@ -18,7 +14,6 @@ use crate::net::SocketType;
 use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::util;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -26,25 +21,10 @@ use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryDefault;
-use core::ffi::c_short;
 use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr;
 
 /// The maximum size of a socket's buffers.
 const BUFFER_SIZE: usize = 65536;
-
-/// Enumeration of socket states.
-#[derive(Clone, Copy, Debug)]
-pub enum SockState {
-	/// The socket has just been created.
-	Created,
-	/// The socket is waiting for acknowledgement after issuing a connection.
-	WaitingAck,
-	/// The socket is ready for I/O.
-	Ready,
-	// TODO Closed state?
-}
 
 /// Structure representing a socket.
 #[derive(Debug)]
@@ -52,12 +32,6 @@ pub struct Socket {
 	/// The socket's stack descriptor.
 	desc: SocketDesc,
 
-	/// The state of the socket.
-	state: SockState,
-	/// Informations about the socket's destination.
-	sockaddr: Option<SockAddr>,
-
-	// TODO Handle network sockets
 	/// The buffer containing received data.
 	receive_buffer: RingBuffer<u8, Vec<u8>>,
 	/// The buffer containing sent data.
@@ -70,13 +44,8 @@ pub struct Socket {
 impl Socket {
 	/// Creates a new instance.
 	pub fn new(desc: SocketDesc) -> Result<Arc<Mutex<Self>>, Errno> {
-		// TODO Check domain, type and protocol
-
 		Arc::new(Mutex::new(Self {
 			desc,
-
-			state: SockState::Created,
-			sockaddr: None,
 
 			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
@@ -90,74 +59,6 @@ impl Socket {
 	pub fn desc(&self) -> &SocketDesc {
 		&self.desc
 	}
-
-	/// Returns the current state of the socket.
-	#[inline(always)]
-	pub fn get_state(&self) -> SockState {
-		self.state
-	}
-
-	/// Connects the socket with the address specified in the structure represented by `sockaddr`.
-	///
-	/// If the structure is invalid or if the connection cannot succeed, the function returns an
-	/// error.
-	///
-	/// If the function succeeds, the caller must wait until the state of the socket turns to
-	/// `Ready`.
-	pub fn connect(&mut self, sockaddr: &[u8]) -> Result<(), Errno> {
-		// Check whether the slice is large enough to hold the structure type
-		if sockaddr.len() < size_of::<c_short>() {
-			return Err(errno!(EINVAL));
-		}
-
-		// Getting the family
-		let mut sin_family: c_short = 0;
-		unsafe {
-			ptr::copy_nonoverlapping::<c_short>(
-				&sockaddr[0] as *const _ as *const _,
-				&mut sin_family,
-				1,
-			);
-		}
-
-		let domain = SocketDomain::try_from(sin_family as u32)?;
-		if sockaddr.len() < domain.get_sockaddr_len() {
-			return Err(errno!(EINVAL));
-		}
-
-		let sockaddr: SockAddr = match domain {
-			SocketDomain::AfInet => unsafe { util::reinterpret::<SockAddrIn>(sockaddr) }
-				.unwrap()
-				.clone()
-				.into(),
-
-			SocketDomain::AfInet6 => unsafe { util::reinterpret::<SockAddrIn6>(sockaddr) }
-				.unwrap()
-				.clone()
-				.into(),
-
-			_ => return Err(errno!(EPROTOTYPE)),
-		};
-
-		self.sockaddr = Some(sockaddr);
-
-		// Opening connection if necessary
-		match self.desc.type_ {
-			SocketType::SockStream => {
-				tcp::init_connection(self)?;
-				self.state = SockState::WaitingAck;
-			}
-
-			SocketType::SockSeqpacket => {
-				// TODO
-				todo!();
-			}
-
-			_ => self.state = SockState::Ready,
-		}
-
-		Ok(())
-	}
 }
 
 impl TryDefault for Socket {
@@ -168,9 +69,6 @@ impl TryDefault for Socket {
 				type_: SocketType::SockRaw,
 				protocol: 0,
 			},
-
-			state: SockState::Created,
-			sockaddr: None,
 
 			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
@@ -254,11 +152,11 @@ impl IO for Socket {
 
 				// TODO use real dst addr
 				if let Some(iface) = net::get_iface_for(net::Address::IPv4([0; 4])) {
-					network.transmit(buf.into(), |bufs| {
-						transport.transmit(bufs, |bufs| {
-							let buff = bufs.collect()?;
+					network.transmit(buf.into(), |buf| {
+						transport.transmit(buf, |buf| {
 							let mut iface = iface.lock();
-							iface.write(&buff)?;
+							// TODO retry if not everything has been written
+							iface.write(&buf)?;
 
 							Ok(())
 						})
@@ -285,7 +183,7 @@ impl IO for Socket {
 					SocketType::SockRaw => {
 						if let Some(iface) = net::get_iface_for(net::Address::IPv4([0; 4])) {
 							let mut iface = iface.lock();
-							iface.write(buf)?;
+							iface.write(&buf.into())?;
 
 							Ok(buf.len() as _)
 						} else {

@@ -2,7 +2,6 @@
 
 use crate::errno::Errno;
 use crate::file::buffer;
-use crate::file::buffer::socket::SockState;
 use crate::file::buffer::socket::Socket;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
@@ -22,7 +21,7 @@ pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: usize) -> Result<
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let mem_space = mem_space_mutex.lock();
-	let addr_slice = addr
+	let _addr_slice = addr
 		.get(&mem_space, addrlen)?
 		.ok_or_else(|| errno!(EFAULT))?;
 
@@ -35,20 +34,10 @@ pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: usize) -> Result<
 
 	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
-	let sock = (&mut *sock as &mut dyn Any)
+	let _sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
 		.unwrap();
 
-	sock.connect(addr_slice)?;
-
-	// Waiting until the socket turns into Ready state
-	while !matches!(sock.get_state(), SockState::Ready) {
-		// Checking for pending signal
-		super::util::signal_check(regs);
-		// NOTE: If the syscall resumes, it must not re-call the `connect` function
-
-		// TODO Make the process sleep
-	}
-
-	Ok(0)
+	// TODO connect socket
+	todo!();
 }

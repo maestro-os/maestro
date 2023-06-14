@@ -1,6 +1,6 @@
 //! This module implements the IP protocol.
 
-use super::osi::BuffList;
+use super::buff::BuffList;
 use super::osi::Layer;
 use crate::crypto::checksum;
 use crate::errno::Errno;
