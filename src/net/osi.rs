@@ -19,3 +19,25 @@ pub trait Layer {
 		Self: Sized,
 		F: Fn(BuffList<'c>) -> Result<(), Errno>;
 }
+
+/*/// TODO doc
+pub struct Stack {
+	/// TODO doc
+	network: Box<dyn Layer>,
+	/// TODO doc
+	transport: Box<dyn Layer>,
+}
+
+/// The list of registered stacks.
+static STACKS: Mutex<HashMap<SocketDesc, Vec<Box<dyn Layer>>>> = Mutex::new(HashMap::new());
+
+/// Returns the stack for the given socket descriptor.
+///
+/// If no stack match, the function returns `None`.
+pub fn stack_for(desc: &SocketDesc) -> Option<Stack> {
+	// TODO
+	// - domain is layer 3 of the OSI model (network)
+	// - type determines the way the socket communicates with the userspace
+	// - protocol is the protocol to use on layer 4 (transport). If not specified, the default protocol for the domain/type pair is used
+	todo!()
+}*/
