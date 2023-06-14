@@ -3,24 +3,22 @@
 use super::Buffer;
 use crate::errno::Errno;
 use crate::file::buffer::BlockHandler;
-use crate::file::Gid;
-use crate::file::Uid;
-use crate::file::ROOT_GID;
-use crate::file::ROOT_UID;
 use crate::net;
 use crate::net::ip;
 use crate::net::ip::IPv4Layer;
+use crate::net::osi::Layer;
 use crate::net::sockaddr::SockAddr;
 use crate::net::sockaddr::SockAddrIn;
 use crate::net::sockaddr::SockAddrIn6;
 use crate::net::tcp;
 use crate::net::tcp::TCPLayer;
-use crate::net::Layer;
+use crate::net::SocketDesc;
+use crate::net::SocketDomain;
+use crate::net::SocketType;
 use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
 use crate::util;
-use crate::util::boxed::Box;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
@@ -35,96 +33,6 @@ use core::ptr;
 
 /// The maximum size of a socket's buffers.
 const BUFFER_SIZE: usize = 65536;
-
-/// Enumeration of socket domains.
-#[derive(Debug)]
-pub enum SockDomain {
-	/// Local communication.
-	AfUnix,
-	/// IPv4 Internet Protocols.
-	AfInet,
-	/// IPv6 Internet Protocols.
-	AfInet6,
-	/// Kernel user interface device.
-	AfNetlink(Box<net::netlink::Handle>),
-	/// Low level packet interface.
-	AfPacket,
-}
-
-impl TryFrom<u32> for SockDomain {
-	type Error = Errno;
-
-	fn try_from(id: u32) -> Result<Self, Self::Error> {
-		match id {
-			1 => Ok(Self::AfUnix),
-			2 => Ok(Self::AfInet),
-			10 => Ok(Self::AfInet6),
-			16 => Ok(Self::AfNetlink(Box::new(net::netlink::Handle::new()?)?)),
-			17 => Ok(Self::AfPacket),
-
-			_ => Err(errno!(EAFNOSUPPORT)),
-		}
-	}
-}
-
-impl SockDomain {
-	/// Tells whether the given user has the permission to use the socket domain.
-	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
-		match self {
-			Self::AfPacket => uid == ROOT_UID || gid == ROOT_GID,
-			_ => true,
-		}
-	}
-
-	/// Returns the size of the sockaddr structure for the domain.
-	pub fn get_sockaddr_len(&self) -> usize {
-		match self {
-			Self::AfInet => size_of::<SockAddrIn>(),
-			Self::AfInet6 => size_of::<SockAddrIn6>(),
-
-			_ => 0,
-		}
-	}
-}
-
-/// Enumeration of socket types.
-#[derive(Copy, Clone, Debug)]
-pub enum SockType {
-	/// Sequenced, reliable, two-way, connection-based byte streams.
-	SockStream,
-	/// Datagrams.
-	SockDgram,
-	/// Sequenced, reliable, two-way connection-based data transmission path for datagrams of
-	/// fixed maximum length.
-	SockSeqpacket,
-	/// Raw network protocol access.
-	SockRaw,
-}
-
-impl TryFrom<u32> for SockType {
-	type Error = Errno;
-
-	fn try_from(id: u32) -> Result<Self, Self::Error> {
-		match id {
-			1 => Ok(Self::SockStream),
-			2 => Ok(Self::SockDgram),
-			5 => Ok(Self::SockSeqpacket),
-			3 => Ok(Self::SockRaw),
-
-			_ => Err(errno!(EPROTONOSUPPORT)),
-		}
-	}
-}
-
-impl SockType {
-	/// Tells whether the given user has the permission to use the socket type.
-	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
-		match self {
-			Self::SockRaw => uid == ROOT_UID || gid == ROOT_GID,
-			_ => true,
-		}
-	}
-}
 
 /// Enumeration of socket states.
 #[derive(Clone, Copy, Debug)]
@@ -141,12 +49,8 @@ pub enum SockState {
 /// Structure representing a socket.
 #[derive(Debug)]
 pub struct Socket {
-	/// The socket's domain.
-	domain: SockDomain,
-	/// The socket's type.
-	type_: SockType,
-	/// The socket's protocol.
-	protocol: i32,
+	/// The socket's stack descriptor.
+	desc: SocketDesc,
 
 	/// The state of the socket.
 	state: SockState,
@@ -165,17 +69,11 @@ pub struct Socket {
 
 impl Socket {
 	/// Creates a new instance.
-	pub fn new(
-		domain: SockDomain,
-		type_: SockType,
-		protocol: i32,
-	) -> Result<Arc<Mutex<Self>>, Errno> {
+	pub fn new(desc: SocketDesc) -> Result<Arc<Mutex<Self>>, Errno> {
 		// TODO Check domain, type and protocol
 
 		Arc::new(Mutex::new(Self {
-			domain,
-			type_,
-			protocol,
+			desc,
 
 			state: SockState::Created,
 			sockaddr: None,
@@ -187,22 +85,10 @@ impl Socket {
 		}))
 	}
 
-	/// Returns the socket's domain.
+	/// Returns the socket's descriptor.
 	#[inline(always)]
-	pub fn get_domain(&self) -> &SockDomain {
-		&self.domain
-	}
-
-	/// Returns the socket's type.
-	#[inline(always)]
-	pub fn get_type(&self) -> &SockType {
-		&self.type_
-	}
-
-	/// Returns the socket's protocol.
-	#[inline(always)]
-	pub fn get_protocol(&self) -> i32 {
-		self.protocol
+	pub fn desc(&self) -> &SocketDesc {
+		&self.desc
 	}
 
 	/// Returns the current state of the socket.
@@ -234,18 +120,18 @@ impl Socket {
 			);
 		}
 
-		let domain = SockDomain::try_from(sin_family as u32)?;
+		let domain = SocketDomain::try_from(sin_family as u32)?;
 		if sockaddr.len() < domain.get_sockaddr_len() {
 			return Err(errno!(EINVAL));
 		}
 
 		let sockaddr: SockAddr = match domain {
-			SockDomain::AfInet => unsafe { util::reinterpret::<SockAddrIn>(sockaddr) }
+			SocketDomain::AfInet => unsafe { util::reinterpret::<SockAddrIn>(sockaddr) }
 				.unwrap()
 				.clone()
 				.into(),
 
-			SockDomain::AfInet6 => unsafe { util::reinterpret::<SockAddrIn6>(sockaddr) }
+			SocketDomain::AfInet6 => unsafe { util::reinterpret::<SockAddrIn6>(sockaddr) }
 				.unwrap()
 				.clone()
 				.into(),
@@ -256,13 +142,13 @@ impl Socket {
 		self.sockaddr = Some(sockaddr);
 
 		// Opening connection if necessary
-		match self.type_ {
-			SockType::SockStream => {
+		match self.desc.type_ {
+			SocketType::SockStream => {
 				tcp::init_connection(self)?;
 				self.state = SockState::WaitingAck;
 			}
 
-			SockType::SockSeqpacket => {
+			SocketType::SockSeqpacket => {
 				// TODO
 				todo!();
 			}
@@ -277,9 +163,11 @@ impl Socket {
 impl TryDefault for Socket {
 	fn try_default() -> Result<Self, Errno> {
 		Ok(Self {
-			domain: SockDomain::AfUnix,
-			type_: SockType::SockRaw,
-			protocol: 0,
+			desc: SocketDesc {
+				domain: SocketDomain::AfUnix,
+				type_: SocketType::SockRaw,
+				protocol: 0,
+			},
 
 			state: SockState::Created,
 			sockaddr: None,
@@ -336,31 +224,30 @@ impl IO for Socket {
 
 	/// Note: This implemention ignores the offset.
 	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
-		match &mut self.domain {
-			SockDomain::AfUnix => todo!(), // TODO
+		match &mut self.desc.domain {
+			SocketDomain::AfUnix => todo!(), // TODO
 
-			dom @ (SockDomain::AfInet | SockDomain::AfInet6) => {
-				let transport = match self.type_ {
-					SockType::SockStream => TCPLayer {},
-					SockType::SockDgram => todo!(),     // TODO
-					SockType::SockSeqpacket => todo!(), // TODO
-					SockType::SockRaw => todo!(),       // TODO
+			dom @ (SocketDomain::AfInet | SocketDomain::AfInet6) => {
+				let transport = match self.desc.type_ {
+					SocketType::SockStream => TCPLayer {},
+					SocketType::SockDgram => todo!(),     // TODO
+					SocketType::SockSeqpacket => todo!(), // TODO
+					SocketType::SockRaw => todo!(),       // TODO
 				};
 
 				let network = match dom {
-					SockDomain::AfInet => IPv4Layer {
-						protocol: match self.type_ {
-							SockType::SockStream => ip::PROTO_TCP,
-							SockType::SockDgram => ip::PROTO_UDP,
-							SockType::SockSeqpacket => todo!(), // TODO
-							SockType::SockRaw => todo!(),       // TODO
+					SocketDomain::AfInet => IPv4Layer {
+						protocol: match self.desc.type_ {
+							SocketType::SockStream => ip::PROTO_TCP,
+							SocketType::SockDgram => ip::PROTO_UDP,
+							SocketType::SockSeqpacket => todo!(), // TODO
+							SocketType::SockRaw => todo!(),       // TODO
 						},
 
-						src_addr: [0; 4], // TODO
 						dst_addr: [0; 4], // TODO
 					},
 
-					SockDomain::AfInet6 => todo!(), // TODO
+					SocketDomain::AfInet6 => todo!(), // TODO
 
 					_ => unreachable!(),
 				};
@@ -384,18 +271,18 @@ impl IO for Socket {
 				}
 			}
 
-			SockDomain::AfNetlink(n) => {
-				n.family = self.protocol;
+			SocketDomain::AfNetlink(n) => {
+				n.family = self.desc.protocol;
 
 				let len = n.write(buf)?;
 				Ok(len as u64)
 			}
 
-			SockDomain::AfPacket => {
-				match self.type_ {
-					SockType::SockDgram => todo!(), // TODO
+			SocketDomain::AfPacket => {
+				match self.desc.type_ {
+					SocketType::SockDgram => todo!(), // TODO
 
-					SockType::SockRaw => {
+					SocketType::SockRaw => {
 						if let Some(iface) = net::get_iface_for(net::Address::IPv4([0; 4])) {
 							let mut iface = iface.lock();
 							iface.write(buf)?;

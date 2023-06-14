@@ -25,11 +25,7 @@ use macros::syscall;
 /// - `mem_space` is the memory space of the current process.
 /// - `iov` is the set of chunks.
 /// - `open_file` is the file to write to.
-fn write(
-	mem_space: &MemSpace,
-	iov: &[IOVec],
-	open_file: &mut OpenFile,
-) -> Result<i32, Errno> {
+fn write(mem_space: &MemSpace, iov: &[IOVec], open_file: &mut OpenFile) -> Result<i32, Errno> {
 	let mut total_len = 0;
 
 	for i in iov {
@@ -103,7 +99,9 @@ pub fn do_writev(
 
 		{
 			let mem_space_guard = mem_space.lock();
-			let iov_slice = iov.get(&mem_space_guard, iovcnt as _)?.ok_or(errno!(EFAULT))?;
+			let iov_slice = iov
+				.get(&mem_space_guard, iovcnt as _)?
+				.ok_or(errno!(EFAULT))?;
 
 			let mut open_file = open_file_mutex.lock();
 			let flags = open_file.get_flags();

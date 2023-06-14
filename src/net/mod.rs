@@ -9,14 +9,20 @@ pub mod sockaddr;
 pub mod tcp;
 
 use crate::errno::Errno;
+use crate::file::Gid;
+use crate::file::Uid;
+use crate::file::ROOT_GID;
+use crate::file::ROOT_UID;
+use crate::net::sockaddr::SockAddrIn;
+use crate::net::sockaddr::SockAddrIn6;
+use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::cmp::Ordering;
-use core::ptr;
-use core::ptr::NonNull;
+use core::mem::size_of;
 
 /// Type representing a Media Access Control (MAC) address.
 pub type MAC = [u8; 6];
@@ -203,80 +209,103 @@ pub fn get_iface_for(addr: Address) -> Option<Arc<Mutex<dyn Interface>>> {
 	get_iface(&route.iface)
 }
 
-/// A linked-list of buffers representing a packet being built.
-pub struct BuffList<'b> {
-	/// The buffer.
-	b: &'b [u8],
-
-	/// The next buffer in the list.
-	next: Option<NonNull<BuffList<'b>>>,
-	/// The length of following buffers.
-	next_len: usize,
+/// Enumeration of socket domains.
+#[derive(Debug)]
+pub enum SocketDomain {
+	/// Local communication.
+	AfUnix,
+	/// IPv4 Internet Protocols.
+	AfInet,
+	/// IPv6 Internet Protocols.
+	AfInet6,
+	/// Kernel user interface device.
+	AfNetlink(Box<netlink::Handle>),
+	/// Low level packet interface.
+	AfPacket,
 }
 
-impl<'b> From<&'b [u8]> for BuffList<'b> {
-	fn from(b: &'b [u8]) -> Self {
-		Self {
-			b,
+impl TryFrom<u32> for SocketDomain {
+	type Error = Errno;
 
-			next: None,
-			next_len: 0,
+	fn try_from(id: u32) -> Result<Self, Self::Error> {
+		match id {
+			1 => Ok(Self::AfUnix),
+			2 => Ok(Self::AfInet),
+			10 => Ok(Self::AfInet6),
+			16 => Ok(Self::AfNetlink(Box::new(netlink::Handle::new()?)?)),
+			17 => Ok(Self::AfPacket),
+
+			_ => Err(errno!(EAFNOSUPPORT)),
 		}
 	}
 }
 
-impl<'b> BuffList<'b> {
-	/// Returns the length of the buffer, plus following buffers.
-	pub fn len(&self) -> usize {
-		self.b.len() + self.next_len
-	}
-
-	/// Pushes another buffer at the front of the list.
-	pub fn push_front<'o>(&mut self, mut other: BuffList<'o>) -> BuffList<'o>
-	where
-		'b: 'o,
-	{
-		other.next = NonNull::new(self);
-		other.next_len = self.b.len() + self.next_len;
-
-		other
-	}
-
-	/// Collects all buffers into one.
-	pub fn collect(&self) -> Result<Vec<u8>, Errno> {
-		let len = self.len();
-		let mut final_buff = crate::vec![0; len]?;
-
-		let mut node = NonNull::new(self as *const _ as *mut Self);
-		let mut i = 0;
-		while let Some(mut curr) = node {
-			let curr = unsafe { curr.as_mut() };
-			let buf = curr.b;
-			unsafe {
-				ptr::copy_nonoverlapping(buf.as_ptr(), &mut final_buff[i], buf.len());
-			}
-
-			node = curr.next;
-			i += buf.len();
+impl SocketDomain {
+	/// Tells whether the given user has the permission to use the socket domain.
+	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
+		match self {
+			Self::AfPacket => uid == ROOT_UID || gid == ROOT_GID,
+			_ => true,
 		}
+	}
 
-		Ok(final_buff)
+	/// Returns the size of the sockaddr structure for the domain.
+	pub fn get_sockaddr_len(&self) -> usize {
+		match self {
+			Self::AfInet => size_of::<SockAddrIn>(),
+			Self::AfInet6 => size_of::<SockAddrIn6>(),
+
+			_ => 0,
+		}
 	}
 }
 
-/// A network layer. Such objects can be stacked to for the network stack.
-///
-/// A layer stack acts as a pipeline, passing packets from one layer to the other.
-pub trait Layer {
-	// TODO receive
+/// Enumeration of socket types.
+#[derive(Copy, Clone, Debug)]
+pub enum SocketType {
+	/// Sequenced, reliable, two-way, connection-based byte streams.
+	SockStream,
+	/// Datagrams.
+	SockDgram,
+	/// Sequenced, reliable, two-way connection-based data transmission path for datagrams of
+	/// fixed maximum length.
+	SockSeqpacket,
+	/// Raw network protocol access.
+	SockRaw,
+}
 
-	/// Transmits data in the given buffer.
-	///
-	/// Arguments:
-	/// - `buff` is the list of buffer which composes the packet being built.
-	/// - `next` is the function called to pass the buffers list to the next layer.
-	fn transmit<'c, F>(&self, buff: BuffList<'c>, next: F) -> Result<(), Errno>
-	where
-		Self: Sized,
-		F: Fn(BuffList<'c>) -> Result<(), Errno>;
+impl TryFrom<u32> for SocketType {
+	type Error = Errno;
+
+	fn try_from(id: u32) -> Result<Self, Self::Error> {
+		match id {
+			1 => Ok(Self::SockStream),
+			2 => Ok(Self::SockDgram),
+			5 => Ok(Self::SockSeqpacket),
+			3 => Ok(Self::SockRaw),
+
+			_ => Err(errno!(EPROTONOSUPPORT)),
+		}
+	}
+}
+
+impl SocketType {
+	/// Tells whether the given user has the permission to use the socket type.
+	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
+		match self {
+			Self::SockRaw => uid == ROOT_UID || gid == ROOT_GID,
+			_ => true,
+		}
+	}
+}
+
+/// Socket network stack descriptor.
+#[derive(Debug)]
+pub struct SocketDesc {
+	/// The socket's domain.
+	pub domain: SocketDomain,
+	/// The socket's type.
+	pub type_: SocketType,
+	/// The socket's protocol.
+	pub protocol: i32,
 }

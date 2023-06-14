@@ -1,7 +1,7 @@
 //! This module implements the IP protocol.
 
-use super::BuffList;
-use super::Layer;
+use super::osi::BuffList;
+use super::osi::Layer;
 use crate::crypto::checksum;
 use crate::errno::Errno;
 use core::mem::size_of;
@@ -93,8 +93,6 @@ pub struct IPv4Layer {
 	/// The protocol ID.
 	pub protocol: u8,
 
-	/// The source IPv4.
-	pub src_addr: [u8; 4],
 	/// The destination IPv4.
 	pub dst_addr: [u8; 4],
 }
@@ -123,7 +121,7 @@ impl Layer for IPv4Layer {
 			protocol: self.protocol,
 			hdr_checksum: 0,
 
-			src_addr: self.src_addr,
+			src_addr: [0; 4], // IPADDR_ANY
 			dst_addr: self.dst_addr,
 		};
 		hdr.compute_checksum();

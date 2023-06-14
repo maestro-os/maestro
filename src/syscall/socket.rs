@@ -3,10 +3,11 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::buffer;
-use crate::file::buffer::socket::SockDomain;
-use crate::file::buffer::socket::SockType;
 use crate::file::buffer::socket::Socket;
 use crate::file::open_file;
+use crate::net::SocketDesc;
+use crate::net::SocketDomain;
+use crate::net::SocketType;
 use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
@@ -20,13 +21,18 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> Result<i32, Errn
 	let uid = proc.euid;
 	let gid = proc.egid;
 
-	let sock_domain = SockDomain::try_from(domain as u32)?;
-	let sock_type = SockType::try_from(r#type as u32)?;
+	let sock_domain = SocketDomain::try_from(domain as u32)?;
+	let sock_type = SocketType::try_from(r#type as u32)?;
 	if !sock_domain.can_use(uid, gid) || !sock_type.can_use(uid, gid) {
 		return Err(errno!(EACCES));
 	}
+	let desc = SocketDesc {
+		domain: sock_domain,
+		type_: sock_type,
+		protocol,
+	};
 
-	let sock = Socket::new(sock_domain, sock_type, protocol)?;
+	let sock = Socket::new(desc)?;
 
 	let loc = buffer::register(None, sock)?;
 	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
