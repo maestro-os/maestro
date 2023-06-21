@@ -299,7 +299,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let args_parser = args_parser.unwrap();
 	logger::init(args_parser.is_silent());
 
-	println!("Booting Maestro kernel version {}", VERSION);
+	println!("Booting Maestro kernel version {VERSION}");
 
 	// FIXME
 	//println!("Initializing ACPI...");
@@ -311,24 +311,25 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.unwrap_or_else(|e| kernel_panic!("Failed to create ramdisks! ({})", e));*/
 	println!("Initializing devices management...");
 	device::init()
-		.unwrap_or_else(|e| kernel_panic!("Failed to initialize devices management! ({})", e));
-	crypto::init().unwrap_or_else(|e| kernel_panic!("Failed to initialize cryptography! ({})", e));
+		.unwrap_or_else(|e| kernel_panic!("Failed to initialize devices management! ({e})"));
+	net::osi::init().unwrap_or_else(|e| kernel_panic!("Failed to initialize network! ({e})"));
+	crypto::init().unwrap_or_else(|e| kernel_panic!("Failed to initialize cryptography! ({e})"));
 
 	let root = args_parser.get_root_dev();
 	println!("Initializing files management...");
 	file::init(root)
-		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({})", e));
+		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({e})"));
 	if let Some(initramfs) = &boot_info.initramfs {
 		println!("Initializing initramfs...");
 		initramfs::load(initramfs)
-			.unwrap_or_else(|e| kernel_panic!("Failed to initialize initramfs! ({})", e));
+			.unwrap_or_else(|e| kernel_panic!("Failed to initialize initramfs! ({e})"));
 	}
 	device::default::create()
-		.unwrap_or_else(|e| kernel_panic!("Failed to create default devices! ({})", e));
-	device::stage2().unwrap_or_else(|e| kernel_panic!("Failed to device files! ({})", e));
+		.unwrap_or_else(|e| kernel_panic!("Failed to create default devices! ({e})"));
+	device::stage2().unwrap_or_else(|e| kernel_panic!("Failed to device files! ({e})"));
 
 	println!("Initializing processes...");
-	process::init().unwrap_or_else(|e| kernel_panic!("Failed to init processes! ({})", e));
+	process::init().unwrap_or_else(|e| kernel_panic!("Failed to init processes! ({e})"));
 
 	let init_path = args_parser
 		.get_init_path()
@@ -336,7 +337,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		.map(|s| s.as_bytes())
 		.unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
-	init(init_path).unwrap_or_else(|e| kernel_panic!("Cannot execute init process: {}", e));
+	init(init_path).unwrap_or_else(|e| kernel_panic!("Cannot execute init process: {e}"));
 
 	drop(args_parser);
 	enter_loop();

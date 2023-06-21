@@ -64,3 +64,9 @@ pub fn get_stack(desc: &SocketDesc) -> Option<Stack> {
 		transport,
 	})
 }
+
+/// Registers default domains/types/protocols.
+pub fn init() -> Result<(), Errno> {
+	// TODO register default domains/types/protocol
+	todo!();
+}
