@@ -9,7 +9,6 @@ pub mod osi;
 pub mod sockaddr;
 pub mod tcp;
 
-use buff::BuffList;
 use crate::errno::Errno;
 use crate::file::Gid;
 use crate::file::Uid;
@@ -23,6 +22,7 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
+use buff::BuffList;
 use core::cmp::Ordering;
 use core::mem::size_of;
 
@@ -245,6 +245,17 @@ impl TryFrom<u32> for SocketDomain {
 }
 
 impl SocketDomain {
+	/// Returns the associated ID.
+	pub fn get_id(&self) -> u32 {
+		match self {
+			Self::AfUnix => 1,
+			Self::AfInet => 2,
+			Self::AfInet6 => 10,
+			Self::AfNetlink(_) => 16,
+			Self::AfPacket => 17,
+		}
+	}
+
 	/// Tells whether the given user has the permission to use the socket domain.
 	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
 		match self {
@@ -258,7 +269,7 @@ impl SocketDomain {
 		match self {
 			Self::AfInet => size_of::<SockAddrIn>(),
 			Self::AfInet6 => size_of::<SockAddrIn6>(),
-
+			// TODO add others
 			_ => 0,
 		}
 	}
@@ -294,6 +305,16 @@ impl TryFrom<u32> for SocketType {
 }
 
 impl SocketType {
+	/// Returns the associated ID.
+	pub fn get_id(&self) -> u32 {
+		match self {
+			Self::SockStream => 1,
+			Self::SockDgram => 2,
+			Self::SockSeqpacket => 5,
+			Self::SockRaw => 3,
+		}
+	}
+
 	/// Tells whether the given user has the permission to use the socket type.
 	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
 		match self {
@@ -310,6 +331,6 @@ pub struct SocketDesc {
 	pub domain: SocketDomain,
 	/// The socket's type.
 	pub type_: SocketType,
-	/// The socket's protocol.
+	/// The socket's protocol. `0` means using the default protocol for the domain/type pair.
 	pub protocol: i32,
 }
