@@ -28,17 +28,17 @@ pub trait Layer {
 }
 
 /// Function used to build a layer from a given sockaddr structure.
-type LayerBuilder = fn(&[u8]) -> Result<Box<dyn Layer>, Errno>;
+pub type LayerBuilder = fn(&[u8]) -> Result<Box<dyn Layer>, Errno>;
 
 /// Container of OSI layers 3 (network)
-pub static DOMAINS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
+static DOMAINS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
 /// Container of OSI layers 4 (transport)
-pub static PROTOCOLS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
+static PROTOCOLS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
 
 /// Container of default protocols ID for domain/type pairs.
 ///
 /// If this container doesn't contain a pair, it is considered invalid.
-pub static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, SocketType), u32>> = Mutex::new(HashMap::new());
+static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, SocketType), u32>> = Mutex::new(HashMap::new());
 
 /// A stack of layers for a socket.
 pub struct Stack {

@@ -23,6 +23,9 @@ use core::ffi::c_void;
 /// The maximum size of a socket's buffers.
 const BUFFER_SIZE: usize = 65536;
 
+/// Socket option level: Socket
+const SOL_SOCKET: c_int = 1;
+
 /// Structure representing a socket.
 pub struct Socket {
 	/// The socket's stack descriptor.
