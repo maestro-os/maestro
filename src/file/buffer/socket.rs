@@ -17,6 +17,7 @@ use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryDefault;
+use core::ffi::c_int;
 use core::ffi::c_void;
 
 /// The maximum size of a socket's buffers.
@@ -34,6 +35,10 @@ pub struct Socket {
 	/// The buffer containing sent data.
 	send_buffer: RingBuffer<u8, Vec<u8>>,
 
+	/// The number of entities owning a reference to the socket. When this count reaches zero, the
+	/// socket is closed.
+	open_count: u32,
+
 	/// The socket's block handler.
 	block_handler: BlockHandler,
 }
@@ -47,6 +52,8 @@ impl Socket {
 
 			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
+
+			open_count: 0,
 
 			block_handler: BlockHandler::new(),
 		}))
@@ -62,6 +69,42 @@ impl Socket {
 	#[inline(always)]
 	pub fn stack(&self) -> Option<&osi::Stack> {
 		self.stack.as_ref()
+	}
+
+	/// Reads the given socket option.
+	///
+	/// Arguments:
+	/// - `level` is the level (protocol) at which the option is located.
+	/// - `optname` is the name of the option.
+	/// - `optval` is the value of the option.
+	///
+	/// The function returns a value to be returned by the syscall on success.
+	pub fn get_opt(
+		&self,
+		_level: c_int,
+		_optname: c_int,
+		_optval: &mut [u8],
+	) -> Result<c_int, Errno> {
+		// TODO
+		todo!()
+	}
+
+	/// Writes the given socket option.
+	///
+	/// Arguments:
+	/// - `level` is the level (protocol) at which the option is located.
+	/// - `optname` is the name of the option.
+	/// - `optval` is the value of the option.
+	///
+	/// The function returns a value to be returned by the syscall on success.
+	pub fn set_opt(
+		&mut self,
+		_level: c_int,
+		_optname: c_int,
+		_optval: &[u8],
+	) -> Result<c_int, Errno> {
+		// TODO
+		todo!()
 	}
 }
 
@@ -80,6 +123,8 @@ impl TryDefault for Socket {
 			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 
+			open_count: 0,
+
 			block_handler: BlockHandler::new(),
 		})
 	}
@@ -88,17 +133,18 @@ impl TryDefault for Socket {
 impl Buffer for Socket {
 	fn get_capacity(&self) -> usize {
 		// TODO
-		todo!();
+		todo!()
 	}
 
 	fn increment_open(&mut self, _read: bool, _write: bool) {
-		// TODO
-		todo!();
+		self.open_count += 1;
 	}
 
 	fn decrement_open(&mut self, _read: bool, _write: bool) {
-		// TODO
-		todo!();
+		self.open_count -= 1;
+		if self.open_count == 0 {
+			// TODO close the socket
+		}
 	}
 
 	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {

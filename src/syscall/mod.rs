@@ -53,6 +53,7 @@ mod getpid;
 mod getppid;
 mod getrandom;
 mod getrusage;
+mod getsockopt;
 mod gettid;
 mod getuid;
 mod getuid32;
@@ -98,6 +99,7 @@ mod setgid;
 mod setgid32;
 mod sethostname;
 mod setpgid;
+mod setsockopt;
 mod setuid;
 mod setuid32;
 mod signal;
@@ -182,6 +184,7 @@ use getpid::getpid;
 use getppid::getppid;
 use getrandom::getrandom;
 use getrusage::getrusage;
+use getsockopt::getsockopt;
 use gettid::gettid;
 use getuid::getuid;
 use getuid32::getuid32;
@@ -228,6 +231,7 @@ use setgid::setgid;
 use setgid32::setgid32;
 use sethostname::sethostname;
 use setpgid::setpgid;
+use setsockopt::setsockopt;
 use setuid::setuid;
 use setuid32::setuid32;
 use signal::signal;
@@ -621,8 +625,8 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		0x16a => Some(&connect),
 		// TODO 0x16b => Some(&listen),
 		// TODO 0x16c => Some(&accept4),
-		// TODO 0x16d => Some(&getsockopt),
-		// TODO 0x16e => Some(&setsockopt),
+		0x16d => Some(&getsockopt),
+		0x16e => Some(&setsockopt),
 		// TODO 0x16f => Some(&getsockname),
 		// TODO 0x170 => Some(&getpeername),
 		// TODO 0x171 => Some(&sendto),
