@@ -315,6 +315,11 @@ impl SocketType {
 		}
 	}
 
+	/// Tells whether the socket type is using stream communications.
+	pub fn is_stream(&self) -> bool {
+		matches!(self, Self::SockStream | Self::SockSeqpacket)
+	}
+
 	/// Tells whether the given user has the permission to use the socket type.
 	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
 		match self {

@@ -156,6 +156,19 @@ impl<K: Eq + Hash, V> Default for HashMap<K, V> {
 	}
 }
 
+impl<K: Eq + Hash, V, const N: usize> TryFrom<[(K, V); N]> for HashMap<K, V> {
+	type Error = Errno;
+
+	fn try_from(arr: [(K, V); N]) -> Result<Self, Self::Error> {
+		let mut h = HashMap::new();
+		for (key, value) in arr {
+			h.insert(key, value)?;
+		}
+
+		Ok(h)
+	}
+}
+
 impl<K: Eq + Hash, V> HashMap<K, V> {
 	/// Creates a new instance with the default number of buckets.
 	pub const fn new() -> Self {

@@ -126,12 +126,21 @@ impl IO for Socket {
 
 	/// Note: This implemention ignores the offset.
 	fn read(&mut self, _: u64, _buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+		if !self.desc.is_stream() {
+			// TODO error
+		}
+
 		// TODO
 		todo!();
 	}
 
 	/// Note: This implemention ignores the offset.
 	fn write(&mut self, _: u64, _buf: &[u8]) -> Result<u64, Errno> {
+		if !self.desc.is_stream() {
+			// TODO error only if no address has been set using `connect`
+			return Err(errno!(EDESTADDRREQ));
+		}
+
 		// TODO
 		todo!();
 	}
