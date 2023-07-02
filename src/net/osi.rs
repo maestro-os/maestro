@@ -1,5 +1,6 @@
 //! The Open Systems Interconnection (OSI) model defines the architecure of a network stack.
 
+use crate::util::ptr::arc::Weak;
 use super::buff::BuffList;
 use super::SocketDesc;
 use crate::errno::Errno;
@@ -35,14 +36,12 @@ pub static TRANSPORTS: Mutex<HashMap<u32, Arc<dyn Layer>>> = Mutex::new(HashMap:
 pub static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, u32), Arc<dyn Layer>>> =
 	Mutex::new(HashMap::new());
 
-// TODO: layers must be customizable (sockaddr info)
-
 /// A stack of layers for a socket.
 pub struct Stack {
 	/// The socket's protocol on OSI layer 3.
-	pub protocol: Arc<dyn Layer>,
+	pub protocol: Weak<dyn Layer>,
 	/// The socket's protocol on OSI layer 4.
-	pub transport: Arc<dyn Layer>,
+	pub transport: Weak<dyn Layer>,
 }
 
 /// Returns the stack for the given socket descriptor.
@@ -50,14 +49,19 @@ pub struct Stack {
 /// If the descriptor is invalid, the function returns `None`.
 pub fn get_stack(desc: &SocketDesc) -> Option<Stack> {
 	let protocol = if desc.protocol != 0 {
-		PROTOCOLS.lock().get(&(desc.protocol as _))?.clone()
+		let guard = PROTOCOLS.lock();
+		let arc = guard.get(&(desc.protocol as _))?;
+		Arc::downgrade(arc)
 	} else {
-		DEFAULT_PROTOCOLS
-			.lock()
-			.get(&(desc.domain.get_id(), desc.type_.get_id()))?
-			.clone()
+		let guard = DEFAULT_PROTOCOLS.lock();
+		let arc = guard.get(&(desc.domain.get_id(), desc.type_.get_id()))?;
+		Arc::downgrade(arc)
 	};
-	let transport = TRANSPORTS.lock().get(&desc.type_.get_id())?.clone();
+	let transport = {
+		let guard = TRANSPORTS.lock();
+		let arc = guard.get(&desc.domain.get_id())?;
+		Arc::downgrade(arc)
+	};
 
 	Some(Stack {
 		protocol,

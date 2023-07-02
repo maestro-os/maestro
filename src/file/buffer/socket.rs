@@ -1,13 +1,9 @@
 //! This file implements sockets.
 
+use crate::net::osi;
 use super::Buffer;
 use crate::errno::Errno;
 use crate::file::buffer::BlockHandler;
-use crate::net;
-use crate::net::ip;
-use crate::net::ip::IPv4Layer;
-use crate::net::osi::Layer;
-use crate::net::tcp::TCPLayer;
 use crate::net::SocketDesc;
 use crate::net::SocketDomain;
 use crate::net::SocketType;
@@ -27,10 +23,11 @@ use core::ffi::c_void;
 const BUFFER_SIZE: usize = 65536;
 
 /// Structure representing a socket.
-#[derive(Debug)]
 pub struct Socket {
 	/// The socket's stack descriptor.
 	desc: SocketDesc,
+	/// The socket's network stack corresponding to the descriptor.
+	stack: osi::Stack,
 
 	/// The buffer containing received data.
 	receive_buffer: RingBuffer<u8, Vec<u8>>,
@@ -44,8 +41,11 @@ pub struct Socket {
 impl Socket {
 	/// Creates a new instance.
 	pub fn new(desc: SocketDesc) -> Result<Arc<Mutex<Self>>, Errno> {
+		let stack = osi::get_stack(&desc).ok_or_else(|| errno!(EINVAL))?;
+
 		Arc::new(Mutex::new(Self {
 			desc,
+			stack,
 
 			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
@@ -59,16 +59,26 @@ impl Socket {
 	pub fn desc(&self) -> &SocketDesc {
 		&self.desc
 	}
+
+	/// Returns the socket's network stack.
+	#[inline(always)]
+	pub fn stack(&self) -> &osi::Stack {
+		&self.stack
+	}
 }
 
 impl TryDefault for Socket {
 	fn try_default() -> Result<Self, Errno> {
+		let desc = SocketDesc {
+			domain: SocketDomain::AfUnix,
+			type_: SocketType::SockRaw,
+			protocol: 0,
+		};
+		let stack = osi::get_stack(&desc).unwrap();
+
 		Ok(Self {
-			desc: SocketDesc {
-				domain: SocketDomain::AfUnix,
-				type_: SocketType::SockRaw,
-				protocol: 0,
-			},
+			desc,
+			stack,
 
 			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
@@ -121,81 +131,9 @@ impl IO for Socket {
 	}
 
 	/// Note: This implemention ignores the offset.
-	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
-		match &mut self.desc.domain {
-			SocketDomain::AfUnix => todo!(), // TODO
-
-			dom @ (SocketDomain::AfInet | SocketDomain::AfInet6) => {
-				let transport = match self.desc.type_ {
-					SocketType::SockStream => TCPLayer {},
-					SocketType::SockDgram => todo!(),     // TODO
-					SocketType::SockSeqpacket => todo!(), // TODO
-					SocketType::SockRaw => todo!(),       // TODO
-				};
-
-				let network = match dom {
-					SocketDomain::AfInet => IPv4Layer {
-						protocol: match self.desc.type_ {
-							SocketType::SockStream => ip::PROTO_TCP,
-							SocketType::SockDgram => ip::PROTO_UDP,
-							SocketType::SockSeqpacket => todo!(), // TODO
-							SocketType::SockRaw => todo!(),       // TODO
-						},
-
-						dst_addr: [0; 4], // TODO
-					},
-
-					SocketDomain::AfInet6 => todo!(), // TODO
-
-					_ => unreachable!(),
-				};
-
-				// TODO use real dst addr
-				if let Some(iface) = net::get_iface_for(net::Address::IPv4([0; 4])) {
-					network.transmit(buf.into(), |buf| {
-						transport.transmit(buf, |buf| {
-							let mut iface = iface.lock();
-							// TODO retry if not everything has been written
-							iface.write(&buf)?;
-
-							Ok(())
-						})
-					})?;
-
-					Ok(buf.len() as _)
-				} else {
-					// TODO error (errno to be determined)
-					todo!();
-				}
-			}
-
-			SocketDomain::AfNetlink(n) => {
-				n.family = self.desc.protocol;
-
-				let len = n.write(buf)?;
-				Ok(len as u64)
-			}
-
-			SocketDomain::AfPacket => {
-				match self.desc.type_ {
-					SocketType::SockDgram => todo!(), // TODO
-
-					SocketType::SockRaw => {
-						if let Some(iface) = net::get_iface_for(net::Address::IPv4([0; 4])) {
-							let mut iface = iface.lock();
-							iface.write(&buf.into())?;
-
-							Ok(buf.len() as _)
-						} else {
-							// TODO error (errno to be determined)
-							todo!();
-						}
-					}
-
-					_ => todo!(), // TODO invalid
-				}
-			}
-		}
+	fn write(&mut self, _: u64, _buf: &[u8]) -> Result<u64, Errno> {
+		// TODO
+		todo!();
 	}
 
 	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
