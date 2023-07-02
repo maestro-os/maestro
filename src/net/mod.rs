@@ -16,7 +16,6 @@ use crate::file::ROOT_GID;
 use crate::file::ROOT_UID;
 use crate::net::sockaddr::SockAddrIn;
 use crate::net::sockaddr::SockAddrIn6;
-use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -214,7 +213,7 @@ pub fn get_iface_for(addr: Address) -> Option<Arc<Mutex<dyn Interface>>> {
 }
 
 /// Enumeration of socket domains.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SocketDomain {
 	/// Local communication.
 	AfUnix,
@@ -223,7 +222,7 @@ pub enum SocketDomain {
 	/// IPv6 Internet Protocols.
 	AfInet6,
 	/// Kernel user interface device.
-	AfNetlink(Box<netlink::Handle>),
+	AfNetlink,
 	/// Low level packet interface.
 	AfPacket,
 }
@@ -236,7 +235,7 @@ impl TryFrom<u32> for SocketDomain {
 			1 => Ok(Self::AfUnix),
 			2 => Ok(Self::AfInet),
 			10 => Ok(Self::AfInet6),
-			16 => Ok(Self::AfNetlink(Box::new(netlink::Handle::new()?)?)),
+			16 => Ok(Self::AfNetlink),
 			17 => Ok(Self::AfPacket),
 
 			_ => Err(errno!(EAFNOSUPPORT)),
@@ -251,7 +250,7 @@ impl SocketDomain {
 			Self::AfUnix => 1,
 			Self::AfInet => 2,
 			Self::AfInet6 => 10,
-			Self::AfNetlink(_) => 16,
+			Self::AfNetlink => 16,
 			Self::AfPacket => 17,
 		}
 	}
@@ -276,7 +275,7 @@ impl SocketDomain {
 }
 
 /// Enumeration of socket types.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum SocketType {
 	/// Sequenced, reliable, two-way, connection-based byte streams.
 	SockStream,

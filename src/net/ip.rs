@@ -4,6 +4,7 @@ use super::buff::BuffList;
 use super::osi::Layer;
 use crate::crypto::checksum;
 use crate::errno::Errno;
+use crate::util::boxed::Box;
 use core::mem::size_of;
 use core::slice;
 
@@ -135,4 +136,16 @@ impl Layer for IPv4Layer {
 	}
 }
 
+/// Builds an IPv4 layer with the given `sockaddr`.
+pub fn inet_build(_sockaddr: &[u8]) -> Result<Box<dyn Layer>, Errno> {
+	// TODO
+	todo!()
+}
+
 // TODO IPv6
+
+/// Builds an IPv6 layer with the given `sockaddr`.
+pub fn inet6_build(_sockaddr: &[u8]) -> Result<Box<dyn Layer>, Errno> {
+	// TODO
+	todo!()
+}

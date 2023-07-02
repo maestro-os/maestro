@@ -1,9 +1,9 @@
 //! This file implements sockets.
 
-use crate::net::osi;
 use super::Buffer;
 use crate::errno::Errno;
 use crate::file::buffer::BlockHandler;
+use crate::net::osi;
 use crate::net::SocketDesc;
 use crate::net::SocketDomain;
 use crate::net::SocketType;
@@ -27,7 +27,7 @@ pub struct Socket {
 	/// The socket's stack descriptor.
 	desc: SocketDesc,
 	/// The socket's network stack corresponding to the descriptor.
-	stack: osi::Stack,
+	stack: Option<osi::Stack>,
 
 	/// The buffer containing received data.
 	receive_buffer: RingBuffer<u8, Vec<u8>>,
@@ -41,11 +41,9 @@ pub struct Socket {
 impl Socket {
 	/// Creates a new instance.
 	pub fn new(desc: SocketDesc) -> Result<Arc<Mutex<Self>>, Errno> {
-		let stack = osi::get_stack(&desc).ok_or_else(|| errno!(EINVAL))?;
-
 		Arc::new(Mutex::new(Self {
 			desc,
-			stack,
+			stack: None,
 
 			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
@@ -62,8 +60,8 @@ impl Socket {
 
 	/// Returns the socket's network stack.
 	#[inline(always)]
-	pub fn stack(&self) -> &osi::Stack {
-		&self.stack
+	pub fn stack(&self) -> Option<&osi::Stack> {
+		self.stack.as_ref()
 	}
 }
 
@@ -74,11 +72,10 @@ impl TryDefault for Socket {
 			type_: SocketType::SockRaw,
 			protocol: 0,
 		};
-		let stack = osi::get_stack(&desc).unwrap();
 
 		Ok(Self {
 			desc,
-			stack,
+			stack: None,
 
 			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
 			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
@@ -126,7 +123,7 @@ impl IO for Socket {
 
 	/// Note: This implemention ignores the offset.
 	fn read(&mut self, _: u64, _buf: &mut [u8]) -> Result<(u64, bool), Errno> {
-		if !self.desc.is_stream() {
+		if !self.desc.type_.is_stream() {
 			// TODO error
 		}
 
@@ -136,10 +133,10 @@ impl IO for Socket {
 
 	/// Note: This implemention ignores the offset.
 	fn write(&mut self, _: u64, _buf: &[u8]) -> Result<u64, Errno> {
-		if !self.desc.is_stream() {
-			// TODO error only if no address has been set using `connect`
+		// A destination address is required
+		let Some(_stack) = self.stack.as_ref() else {
 			return Err(errno!(EDESTADDRREQ));
-		}
+		};
 
 		// TODO
 		todo!();

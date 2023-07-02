@@ -1,14 +1,14 @@
 //! The Open Systems Interconnection (OSI) model defines the architecure of a network stack.
 
-use crate::errno::Errno;
-use crate::util::container::hashmap::HashMap;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::ptr::arc::Weak;
+use super::buff::BuffList;
+use super::ip;
 use super::SocketDesc;
 use super::SocketDomain;
 use super::SocketType;
-use super::buff::BuffList;
+use crate::errno::Errno;
+use crate::util::boxed::Box;
+use crate::util::container::hashmap::HashMap;
+use crate::util::lock::Mutex;
 
 /// An OSI layer.
 ///
@@ -27,66 +27,88 @@ pub trait Layer {
 		F: Fn(BuffList<'c>) -> Result<(), Errno>;
 }
 
-/// Container of OSI layers 3 (network)
-pub static DOMAINS: Mutex<HashMap<u32, Arc<dyn Layer>>> = Mutex::new(HashMap::new());
-/// Container of OSI layers 4 (transport)
-pub static PROTOCOLS: Mutex<HashMap<u32, Arc<dyn Layer>>> = Mutex::new(HashMap::new());
+/// Function used to build a layer from a given sockaddr structure.
+type LayerBuilder = fn(&[u8]) -> Result<Box<dyn Layer>, Errno>;
 
-/// Container of default protocols for domain/type pairs.
+/// Container of OSI layers 3 (network)
+pub static DOMAINS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
+/// Container of OSI layers 4 (transport)
+pub static PROTOCOLS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
+
+/// Container of default protocols ID for domain/type pairs.
 ///
 /// If this container doesn't contain a pair, it is considered invalid.
-pub static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, u32), Arc<dyn Layer>>> =
-	Mutex::new(HashMap::new());
+pub static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, SocketType), u32>> = Mutex::new(HashMap::new());
 
 /// A stack of layers for a socket.
 pub struct Stack {
 	/// The socket's protocol on OSI layer 3.
-	pub domain: Weak<dyn Layer>,
+	pub domain: Box<dyn Layer>,
 	/// The socket's protocol on OSI layer 4.
-	pub protocol: Weak<dyn Layer>,
+	pub protocol: Box<dyn Layer>,
 }
 
-/// Returns the stack for the given socket descriptor.
-///
-/// If the descriptor is invalid, the function returns `None`.
-pub fn get_stack(desc: &SocketDesc) -> Option<Stack> {
-	let domain = {
-		let guard = DOMAINS.lock();
-		let arc = guard.get(&desc.domain.get_id())?;
-		Arc::downgrade(arc)
-	};
-	let protocol = if desc.protocol != 0 {
-		let guard = PROTOCOLS.lock();
-		let arc = guard.get(&(desc.protocol as _))?;
-		Arc::downgrade(arc)
-	} else {
-		let guard = DEFAULT_PROTOCOLS.lock();
-		let arc = guard.get(&(desc.domain.get_id(), desc.type_.get_id()))?;
-		Arc::downgrade(arc)
-	};
+impl Stack {
+	/// Creates a new socket network stack.
+	///
+	/// Arguments:
+	/// - `desc` is the descriptor of the socket.
+	/// - `sockaddr` is the socket address structure containing informations to initialize the
+	/// stack.
+	///
+	/// If the descriptor is invalid or if the stack cannot be created, the function returns an
+	/// error.
+	pub fn new(desc: &SocketDesc, sockaddr: &[u8]) -> Result<Stack, Errno> {
+		let domain = {
+			let guard = DOMAINS.lock();
+			let builder = guard
+				.get(&desc.domain.get_id())
+				.ok_or_else(|| errno!(EINVAL))?;
+			builder(sockaddr)?
+		};
 
-	Some(Stack {
-		domain,
-		protocol,
-	})
+		let protocol: u32 = if desc.protocol != 0 {
+			desc.protocol as _
+		} else {
+			DEFAULT_PROTOCOLS
+				.lock()
+				.get(&(desc.domain.get_id(), desc.type_))
+				.ok_or_else(|| errno!(EINVAL))?
+				.clone()
+		};
+		let protocol = {
+			let guard = PROTOCOLS.lock();
+			let builder = guard.get(&protocol).ok_or_else(|| errno!(EINVAL))?;
+			builder(sockaddr)?
+		};
+
+		Ok(Stack {
+			domain,
+			protocol,
+		})
+	}
 }
 
 /// Registers default domains/types/protocols.
 pub fn init() -> Result<(), Errno> {
-	*DOMAINS.lock() = HashMap::try_from([
+	let domains = HashMap::try_from([
 		// TODO unix
-		// TODO (SocketDomain::AfInet.get_id(), Arc::new(Ipv4Layer {})),
-		// TODO (SocketDomain::AfInet6.get_id(), Arc::new(Ipv6Layer {})),
+		(
+			SocketDomain::AfInet.get_id(),
+			ip::inet_build as LayerBuilder,
+		),
+		(
+			SocketDomain::AfInet6.get_id(),
+			ip::inet6_build as LayerBuilder,
+		),
 		// TODO netlink
 		// TODO packet
 	])?;
-
-	*PROTOCOLS.lock() = HashMap::try_from([
+	let protocols = HashMap::try_from([
 		// TODO tcp
 		// TODO udp
 	])?;
-
-	*DEFAULT_PROTOCOLS.lock() = HashMap::try_from([
+	let default_protocols = HashMap::try_from([
 		// TODO unix
 
 		// ((SocketDomain::AfInet.get_id(), SocketType::SockStream.get_id()), /* TODO: ipv4/tcp */),
@@ -98,6 +120,10 @@ pub fn init() -> Result<(), Errno> {
 		// TODO netlink
 		// TODO packet
 	])?;
+
+	*DOMAINS.lock() = domains;
+	*PROTOCOLS.lock() = protocols;
+	*DEFAULT_PROTOCOLS.lock() = default_protocols;
 
 	Ok(())
 }
