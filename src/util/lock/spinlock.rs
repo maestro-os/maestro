@@ -3,10 +3,7 @@
 //!
 //! Unless for special cases, other locks should be used instead.
 
-extern "C" {
-	fn spin_lock(lock: *mut i32);
-	fn spin_unlock(lock: *mut i32);
-}
+use core::arch::asm;
 
 /// A spinlock is a lock that is used to prevent a specific piece of code from
 /// being accessed by more than one thread at a time.
@@ -38,13 +35,27 @@ impl Spinlock {
 	#[inline(always)]
 	pub fn lock(&mut self) {
 		unsafe {
-			spin_lock(&mut self.locked);
+			asm!(
+				"2:",
+				"mov {x}, 1",
+				"xchg [{lock}], {x}",
+				"test {x}, {x}",
+				"pause",
+				"jnz 2b",
+				x = out(reg) _,
+				lock = in(reg) &mut self.locked,
+			)
 		}
 	}
 
 	/// Unlocks the spinlock.
 	#[inline(always)]
 	pub unsafe fn unlock(&mut self) {
-		spin_unlock(&mut self.locked);
+		unsafe {
+			asm!(
+				"mov DWORD PTR [{lock}], 0",
+				lock = in(reg) &mut self.locked,
+			)
+		}
 	}
 }
