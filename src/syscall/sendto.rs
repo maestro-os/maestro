@@ -36,17 +36,17 @@ pub fn sendto(
 	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
 	let open_file_mutex = fd.get_open_file()?;
 	let open_file = open_file_mutex.lock();
-	let sock_mutex = buffer::get_or_default::<Socket>(open_file.get_location())?;
+	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
-	let sock = (&mut *sock as &mut dyn Any)
+	let _sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
-		.unwrap();
+		.ok_or_else(|| errno!(ENOTSOCK))?;
 
 	// Get slices
 	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-	let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
-	let addr_slice = addr
+	let mem_space_guard = mem_space.lock();
+	let _buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+	let _dest_addr_slice = dest_addr
 		.get(&mem_space_guard, addrlen as _)?
 		.ok_or(errno!(EFAULT))?;
 

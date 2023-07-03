@@ -105,6 +105,7 @@ mod setpgid;
 mod setsockopt;
 mod setuid;
 mod setuid32;
+mod shutdown;
 mod signal;
 mod sigreturn;
 mod socket;
@@ -240,6 +241,7 @@ use setpgid::setpgid;
 use setsockopt::setsockopt;
 use setuid::setuid;
 use setuid32::setuid32;
+use shutdown::shutdown;
 use signal::signal;
 use sigreturn::sigreturn;
 use socket::socket;
@@ -639,7 +641,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x172 => Some(&sendmsg),
 		// TODO 0x173 => Some(&recvfrom),
 		// TODO 0x174 => Some(&recvmsg),
-		// TODO 0x175 => Some(&shutdown),
+		0x175 => Some(&shutdown),
 		// TODO 0x176 => Some(&userfaultfd),
 		// TODO 0x177 => Some(&membarrier),
 		// TODO 0x178 => Some(&mlock2),

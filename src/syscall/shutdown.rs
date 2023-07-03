@@ -1,22 +1,24 @@
-//! The `connect` system call connects a socket to a distant host.
+//! The `shutdown` system call shuts down part of a full-duplex connection.
 
 use crate::errno::Errno;
 use crate::file::buffer;
 use crate::file::buffer::socket::Socket;
-use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
 use core::any::Any;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `connect` syscall.
+/// Shutdown receive side of the connection.
+const SHUT_RD: c_int = 0;
+/// Shutdown receive side of the connection.
+const SHUT_WR: c_int = 1;
+/// Both sides are shutdown.
+const SHUT_RDWR: c_int = 2;
+
 #[syscall]
-pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<i32, Errno> {
+pub fn shutdown(sockfd: c_int, how: c_int) -> Result<i32, Errno> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
-	}
-	if addrlen < 0 {
-		return Err(errno!(EINVAL));
 	}
 
 	let proc_mutex = Process::get_current().unwrap();
@@ -30,16 +32,20 @@ pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<
 	let open_file = open_file_mutex.lock();
 	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
-	let _sock = (&mut *sock as &mut dyn Any)
+	let sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space = mem_space_mutex.lock();
-	let _addr_slice = addr
-		.get(&mem_space, addrlen as _)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	match how {
+		SHUT_RD => sock.shutdown_receive(),
+		SHUT_WR => sock.shutdown_transmit(),
 
-	// TODO connect socket
-	todo!();
+		SHUT_RDWR => {
+			sock.shutdown_receive();
+			sock.shutdown_transmit();
+		}
+
+		_ => return Err(errno!(EINVAL)),
+	}
+	Ok(0)
 }

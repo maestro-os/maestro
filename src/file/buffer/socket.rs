@@ -36,8 +36,8 @@ pub struct Socket {
 
 	/// The buffer containing received data. If `None`, reception has been shutdown.
 	receive_buffer: Option<RingBuffer<u8, Vec<u8>>>,
-	/// The buffer containing sent data. If `None`, transmission has been shutdown.
-	send_buffer: Option<RingBuffer<u8, Vec<u8>>>,
+	/// The buffer containing data to be transmitted. If `None`, transmission has been shutdown.
+	transmit_buffer: Option<RingBuffer<u8, Vec<u8>>>,
 
 	/// The number of entities owning a reference to the socket. When this count reaches zero, the
 	/// socket is closed.
@@ -58,7 +58,7 @@ impl Socket {
 			stack: None,
 
 			receive_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
-			send_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
+			transmit_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
 
 			open_count: 0,
 
@@ -149,6 +149,16 @@ impl Socket {
 		self.sockname = Vec::from_slice(sockaddr)?;
 		Ok(())
 	}
+
+	/// Shuts down the receive side of the socket.
+	pub fn shutdown_receive(&mut self) {
+		self.receive_buffer = None;
+	}
+
+	/// Shuts down the transmit side of the socket.
+	pub fn shutdown_transmit(&mut self) {
+		self.transmit_buffer = None;
+	}
 }
 
 impl TryDefault for Socket {
@@ -164,7 +174,7 @@ impl TryDefault for Socket {
 			stack: None,
 
 			receive_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
-			send_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
+			transmit_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
 
 			open_count: 0,
 

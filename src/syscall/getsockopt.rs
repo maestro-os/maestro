@@ -31,11 +31,11 @@ pub fn getsockopt(
 	let open_file_mutex = fd.get_open_file()?;
 	let open_file = open_file_mutex.lock();
 	let loc = open_file.get_location();
-	let sock_mutex = buffer::get_or_default::<Socket>(loc)?;
+	let sock_mutex = buffer::get(loc).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
 	let sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
-		.unwrap();
+		.ok_or_else(|| errno!(ENOTSOCK))?;
 
 	// Get optval slice
 	let mem_space = proc.get_mem_space().unwrap();
