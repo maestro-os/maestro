@@ -1,4 +1,4 @@
-//! The `connect` system call connects a socket to a distant host.
+//! The `sendto` system call sends a message on a socket.
 
 use crate::errno::Errno;
 use crate::file::buffer;
@@ -9,9 +9,17 @@ use core::any::Any;
 use core::ffi::c_int;
 use macros::syscall;
 
-/// The implementation of the `connect` syscall.
+// TODO implement flags
+
 #[syscall]
-pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<i32, Errno> {
+pub fn sendto(
+	sockfd: c_int,
+	buf: SyscallSlice<u8>,
+	len: usize,
+	_flags: c_int,
+	dest_addr: SyscallSlice<u8>,
+	addrlen: isize,
+) -> Result<i32, Errno> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}
@@ -30,16 +38,18 @@ pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<
 	let open_file = open_file_mutex.lock();
 	let sock_mutex = buffer::get_or_default::<Socket>(open_file.get_location())?;
 	let mut sock = sock_mutex.lock();
-	let _sock = (&mut *sock as &mut dyn Any)
+	let sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
 		.unwrap();
 
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space = mem_space_mutex.lock();
-	let _addr_slice = addr
-		.get(&mem_space, addrlen as _)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	// Get slices
+	let mem_space = proc.get_mem_space().unwrap();
+	let mut mem_space_guard = mem_space.lock();
+	let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+	let addr_slice = addr
+		.get(&mem_space_guard, addrlen as _)?
+		.ok_or(errno!(EFAULT))?;
 
-	// TODO connect socket
-	todo!();
+	// TODO
+	todo!()
 }

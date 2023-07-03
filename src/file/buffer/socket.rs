@@ -34,10 +34,10 @@ pub struct Socket {
 	/// The socket's network stack corresponding to the descriptor.
 	stack: Option<osi::Stack>,
 
-	/// The buffer containing received data.
-	receive_buffer: RingBuffer<u8, Vec<u8>>,
-	/// The buffer containing sent data.
-	send_buffer: RingBuffer<u8, Vec<u8>>,
+	/// The buffer containing received data. If `None`, reception has been shutdown.
+	receive_buffer: Option<RingBuffer<u8, Vec<u8>>>,
+	/// The buffer containing sent data. If `None`, transmission has been shutdown.
+	send_buffer: Option<RingBuffer<u8, Vec<u8>>>,
 
 	/// The number of entities owning a reference to the socket. When this count reaches zero, the
 	/// socket is closed.
@@ -57,8 +57,8 @@ impl Socket {
 			desc,
 			stack: None,
 
-			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
-			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
+			receive_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
+			send_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
 
 			open_count: 0,
 
@@ -163,8 +163,8 @@ impl TryDefault for Socket {
 			desc,
 			stack: None,
 
-			receive_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
-			send_buffer: RingBuffer::new(crate::vec![0; BUFFER_SIZE]?),
+			receive_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
+			send_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
 
 			open_count: 0,
 

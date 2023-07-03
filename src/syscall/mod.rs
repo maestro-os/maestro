@@ -95,6 +95,7 @@ mod rmdir;
 mod rt_sigaction;
 mod rt_sigprocmask;
 mod select;
+mod sendto;
 mod set_thread_area;
 mod set_tid_address;
 mod setgid;
@@ -229,6 +230,7 @@ use rmdir::rmdir;
 use rt_sigaction::rt_sigaction;
 use rt_sigprocmask::rt_sigprocmask;
 use select::select;
+use sendto::sendto;
 use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
 use setgid::setgid;
@@ -633,7 +635,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		0x16e => Some(&setsockopt),
 		0x16f => Some(&getsockname),
 		// TODO 0x170 => Some(&getpeername),
-		// TODO 0x171 => Some(&sendto),
+		0x171 => Some(&sendto),
 		// TODO 0x172 => Some(&sendmsg),
 		// TODO 0x173 => Some(&recvfrom),
 		// TODO 0x174 => Some(&recvmsg),

@@ -34,7 +34,7 @@ pub fn bind(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<i32
 		.downcast_mut::<Socket>()
 		.unwrap();
 
-	// Get sockaddr slice
+	// Get addr slice
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
 	let addr_slice = addr
