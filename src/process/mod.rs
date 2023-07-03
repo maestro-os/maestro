@@ -38,6 +38,7 @@ use crate::file::ROOT_UID;
 use crate::gdt;
 use crate::memory;
 use crate::process::mountpoint::MountSource;
+use crate::time::timer::TimerManager;
 use crate::tty;
 use crate::tty::TTYHandle;
 use crate::util::container::bitfield::Bitfield;
@@ -249,6 +250,10 @@ pub struct Process {
 	/// Tells whether the process has information that can be retrieved by
 	/// wait/waitpid.
 	waitable: bool,
+
+	/// Structure managing the process's timers. This manager is shared between all threads of the
+	/// same process.
+	timer_manager: Arc<Mutex<TimerManager>>,
 
 	/// The virtual memory of the process containing every mappings.
 	mem_space: Option<Arc<IntMutex<MemSpace>>>,
@@ -555,6 +560,8 @@ impl Process {
 			saved_regs: Regs::default(),
 			waitable: false,
 
+			timer_manager: Arc::new(Mutex::new(TimerManager::default()))?,
+
 			mem_space: None,
 			user_stack: None,
 			kernel_stack: None,
@@ -756,6 +763,11 @@ impl Process {
 	/// Clears the waitable flag.
 	pub fn clear_waitable(&mut self) {
 		self.waitable = false;
+	}
+
+	/// Returns the process's timer manager.
+	pub fn timer_manager(&self) -> Arc<Mutex<TimerManager>> {
+		self.timer_manager.clone()
 	}
 
 	/// Returns the process's parent if exists.
@@ -1021,6 +1033,9 @@ impl Process {
 			handled_signal: self.handled_signal.clone(),
 			saved_regs: self.saved_regs.clone(),
 			waitable: false,
+
+			// TODO if creating a thread: timer_manager: self.timer_manager.clone(),
+			timer_manager: Arc::new(Mutex::new(TimerManager::default()))?,
 
 			mem_space: Some(mem_space),
 			user_stack: self.user_stack,

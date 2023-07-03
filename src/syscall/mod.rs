@@ -118,6 +118,7 @@ mod symlink;
 mod symlinkat;
 mod syncfs;
 mod time;
+mod timer_create;
 mod tkill;
 mod truncate;
 mod umask;
@@ -254,6 +255,7 @@ use symlink::symlink;
 use symlinkat::symlinkat;
 use syncfs::syncfs;
 use time::time;
+use timer_create::timer_create;
 use tkill::tkill;
 use truncate::truncate;
 use umask::umask;
@@ -528,7 +530,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x100 => Some(&epoll_wait),
 		// TODO 0x101 => Some(&remap_file_pages),
 		0x102 => Some(&set_tid_address),
-		// TODO 0x103 => Some(&timer_create),
+		0x103 => Some(&timer_create),
 		// TODO 0x104 => Some(&timer_settime),
 		// TODO 0x105 => Some(&timer_gettime),
 		// TODO 0x106 => Some(&timer_getoverrun),

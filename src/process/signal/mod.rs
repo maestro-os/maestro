@@ -9,6 +9,7 @@ use crate::file::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
 use crate::time::unit::Clock;
+use core::ffi::c_int;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::mem::transmute;
@@ -22,6 +23,15 @@ pub type SigHandler = extern "C" fn(i32);
 pub const SIG_IGN: *const c_void = 0x0 as _;
 /// The default action for the signal.
 pub const SIG_DFL: *const c_void = 0x1 as _;
+
+/// TODO doc
+pub const SIGEV_SIGNAL: c_int = 0;
+/// TODO doc
+pub const SIGEV_NONE: c_int = 1;
+/// TODO doc
+pub const SIGEV_THREAD: c_int = 2;
+/// TODO doc
+pub const SIGEV_THREAD_ID: c_int = 4;
 
 /// The size of the signal handlers table (the number of signals + 1, since
 /// indexing begins at 1 instead of 0).
@@ -44,11 +54,12 @@ pub enum SignalAction {
 
 /// Union representing a signal value.
 #[repr(C)]
-union SigVal {
+#[derive(Clone, Copy)]
+pub union SigVal {
 	/// The value as an int.
-	sigval_int: i32,
+	pub sigval_int: i32,
 	/// The value as a pointer.
-	sigval_ptr: *mut c_void,
+	pub sigval_ptr: *mut c_void,
 }
 
 /// Structure storing signal informations.
@@ -123,6 +134,24 @@ pub struct SigAction {
 	pub sa_flags: i32,
 	/// Unused.
 	pub sa_restorer: Option<extern "C" fn()>,
+}
+
+/// Structure for notification from asynchronous routines.
+#[repr(C)]
+#[derive(Clone)]
+pub struct SigEvent {
+	/// Notification method.
+	pub sigev_notify: c_int,
+	/// Notification signal.
+	pub sigev_signo: c_int,
+	/// TODO doc
+	pub sigev_value: SigVal,
+	/// Data passed with notification.
+	pub sigev_notify_function: extern "C" fn(SigVal),
+	/// Fucnction used for thread notification.
+	pub sigev_notify_attributes: *const c_void,
+	/// ID of thread to signal.
+	pub sigev_notify_thread_id: Pid,
 }
 
 /// Enumeration containing the different possibilities for signal handling.
@@ -279,7 +308,7 @@ impl TryFrom<u32> for Signal {
 
 impl Signal {
 	/// Returns the signal's ID.
-	pub fn get_id(&self) -> u8 {
+	pub const fn get_id(&self) -> u8 {
 		match self {
 			Self::SIGHUP => 1,
 			Self::SIGINT => 2,
