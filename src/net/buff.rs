@@ -37,7 +37,7 @@ impl<'b> BuffList<'b> {
 	/// The function returns the new head of the list (which is the given `front`).
 	pub fn push_front<'o>(&mut self, mut front: BuffList<'o>) -> BuffList<'o>
 	where
-		'b: 'o
+		'b: 'o,
 	{
 		front.next = NonNull::new(self);
 		front.next_len = self.b.len() + self.next_len;
