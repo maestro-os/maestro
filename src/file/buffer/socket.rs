@@ -17,6 +17,7 @@ use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryDefault;
+use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_void;
 
@@ -44,6 +45,9 @@ pub struct Socket {
 
 	/// The socket's block handler.
 	block_handler: BlockHandler,
+
+	/// The address the socket is bound to.
+	sockname: Vec<u8>,
 }
 
 impl Socket {
@@ -59,6 +63,8 @@ impl Socket {
 			open_count: 0,
 
 			block_handler: BlockHandler::new(),
+
+			sockname: Vec::new(),
 		}))
 	}
 
@@ -107,7 +113,41 @@ impl Socket {
 		_optval: &[u8],
 	) -> Result<c_int, Errno> {
 		// TODO
-		todo!()
+		Ok(0)
+	}
+
+	/// Writes the bound socket name into `sockaddr`.
+	/// If the buffer is too small, the address is truncated.
+	///
+	/// The function returns the length of the socket address.
+	pub fn read_sockname(&self, sockaddr: &mut [u8]) -> usize {
+		let len = min(sockaddr.len(), self.sockname.len());
+		sockaddr[..len].copy_from_slice(&self.sockname);
+
+		self.sockname.len()
+	}
+
+	/// Tells whether the socket is bound.
+	pub fn is_bound(&self) -> bool {
+		!self.sockname.is_empty()
+	}
+
+	/// Binds the socket to the given address.
+	///
+	/// `sockaddr` is the new socket name.
+	///
+	/// If the socket is already bound, or if the address is invalid, or if the address is already
+	/// in used, the function returns an error.
+	pub fn bind(&mut self, sockaddr: &[u8]) -> Result<(), Errno> {
+		if self.is_bound() {
+			return Err(errno!(EINVAL));
+		}
+		// TODO check if address is already in used (EADDRINUSE)
+		// TODO check the requested network interface exists (EADDRNOTAVAIL)
+		// TODO check address against stack's domain
+
+		self.sockname = Vec::from_slice(sockaddr)?;
+		Ok(())
 	}
 }
 
@@ -129,6 +169,8 @@ impl TryDefault for Socket {
 			open_count: 0,
 
 			block_handler: BlockHandler::new(),
+
+			sockname: Default::default(),
 		})
 	}
 }

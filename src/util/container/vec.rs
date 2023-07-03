@@ -454,8 +454,7 @@ impl<T: Clone> Vec<T> {
 
 	/// Creates a new vector from the given slice.
 	pub fn from_slice(slice: &[T]) -> Result<Self, Errno> {
-		let mut v = Vec::new();
-		v.increase_capacity(slice.len())?;
+		let mut v = Vec::with_capacity(slice.len())?;
 		v.len = slice.len();
 
 		for (i, elem) in slice.iter().enumerate() {

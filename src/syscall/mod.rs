@@ -9,6 +9,7 @@ mod _llseek;
 mod _newselect;
 mod access;
 mod arch_prctl;
+mod bind;
 mod r#break;
 mod brk;
 mod chdir;
@@ -53,6 +54,7 @@ mod getpid;
 mod getppid;
 mod getrandom;
 mod getrusage;
+mod getsockname;
 mod getsockopt;
 mod gettid;
 mod getuid;
@@ -141,6 +143,7 @@ use _llseek::_llseek;
 use _newselect::_newselect;
 use access::access;
 use arch_prctl::arch_prctl;
+use bind::bind;
 use brk::brk;
 use chdir::chdir;
 use chmod::chmod;
@@ -184,6 +187,7 @@ use getpid::getpid;
 use getppid::getppid;
 use getrandom::getrandom;
 use getrusage::getrusage;
+use getsockname::getsockname;
 use getsockopt::getsockopt;
 use gettid::gettid;
 use getuid::getuid;
@@ -621,13 +625,13 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x166 => Some(&execveat),
 		0x167 => Some(&socket),
 		0x168 => Some(&socketpair),
-		// TODO 0x169 => Some(&bind),
+		0x169 => Some(&bind),
 		0x16a => Some(&connect),
 		// TODO 0x16b => Some(&listen),
 		// TODO 0x16c => Some(&accept4),
 		0x16d => Some(&getsockopt),
 		0x16e => Some(&setsockopt),
-		// TODO 0x16f => Some(&getsockname),
+		0x16f => Some(&getsockname),
 		// TODO 0x170 => Some(&getpeername),
 		// TODO 0x171 => Some(&sendto),
 		// TODO 0x172 => Some(&sendmsg),
