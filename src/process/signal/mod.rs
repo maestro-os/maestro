@@ -8,7 +8,7 @@ use crate::errno::Errno;
 use crate::file::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
-use crate::time::unit::Clock;
+use crate::time::unit::ClockIdT;
 use core::ffi::c_int;
 use core::ffi::c_void;
 use core::fmt;
@@ -89,9 +89,9 @@ pub struct SigInfo {
 	/// Exit value or signal.
 	si_status: i32,
 	/// User time consumed.
-	si_utime: Clock,
+	si_utime: ClockIdT,
 	/// System time consumed.
-	si_stime: Clock,
+	si_stime: ClockIdT,
 	/// Signal value
 	si_value: SigVal,
 	/// POSIX.1b signal.

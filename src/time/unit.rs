@@ -1,7 +1,9 @@
 //! This module implements types representing timestamps.
 
 use core::cmp::Ordering;
+use core::ffi::c_int;
 use core::ffi::c_long;
+use core::ffi::c_void;
 use core::ops::Add;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
@@ -9,9 +11,10 @@ pub type Timestamp = u64;
 /// Type representing a timestamp in microseconds. Equivalent to POSIX's
 /// `suseconds_t`.
 pub type UTimestamp = u64;
-/// Type representing an elapsed number of ticks. Equivalent to POSIX's
-/// `clock_t`.
-pub type Clock = u32;
+/// Equivalent of POSIX `clockid_t`.
+pub type ClockIdT = c_int;
+/// Equivalent of POSIX `timer_t`.
+pub type TimerT = *mut c_void;
 
 /// Enumeration of available timestamp scales.
 #[derive(Debug)]
@@ -238,4 +241,14 @@ impl PartialOrd for Timespec32 {
 				.then_with(|| self.tv_nsec.cmp(&other.tv_nsec)),
 		)
 	}
+}
+
+/// Structure specifying a timer's state.
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct ITimerspec32 {
+	/// The interval between each firing of the timer.
+	pub it_interval: Timespec32,
+	/// Start value of the timer.
+	pub it_value: Timespec32,
 }

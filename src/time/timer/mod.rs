@@ -3,17 +3,13 @@
 use crate::errno::Errno;
 use crate::limits;
 use crate::process::signal::SigEvent;
+use crate::time::unit::ClockIdT;
+use crate::time::unit::ITimerspec32;
+use crate::time::unit::TimerT;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
-use core::ffi::c_int;
-use core::ffi::c_void;
 
 pub mod pit;
-
-/// Equivalent of POSIX `clockid_t`.
-pub type ClockIdT = c_int;
-/// Equivalent of POSIX `timer_t`.
-pub type TimerT = *mut c_void;
 
 // TODO make sure a timer doesn't send a signal to a thread that do not belong to the manager's
 // process
@@ -24,6 +20,9 @@ pub struct Timer {
 	clockid: ClockIdT,
 	/// Definition of the action to perform when the timer is triggered.
 	sevp: SigEvent,
+
+	/// The current state of the timer.
+	time: ITimerspec32,
 }
 
 impl Timer {
@@ -38,7 +37,24 @@ impl Timer {
 		Self {
 			clockid,
 			sevp,
+
+			time: ITimerspec32::default(),
 		}
+	}
+
+	/// Tells whether the timer is armed.
+	pub fn is_armed(&self) -> bool {
+		self.time.it_value.tv_sec != 0 || self.time.it_value.tv_nsec != 0
+	}
+
+	/// Returns the current state of the timer.
+	pub fn get_time(&self) -> ITimerspec32 {
+		self.time.clone()
+	}
+
+	/// Sets the timer's state.
+	pub fn set_time(&mut self, time: ITimerspec32) {
+		self.time = time;
 	}
 }
 
@@ -75,5 +91,12 @@ impl TimerManager {
 		}
 
 		Ok(id)
+	}
+
+	/// Returns a mutable reference to the timer with the given ID.
+	///
+	/// If the timer doesn't exist, the function returns `None`.
+	pub fn get_timer_mut(&mut self, id: TimerT) -> Option<&mut Timer> {
+		self.timers.get_mut(&(id as _))
 	}
 }
