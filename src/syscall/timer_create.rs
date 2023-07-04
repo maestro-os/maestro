@@ -43,7 +43,10 @@ pub fn timer_create(
 			sigev_notify_thread_id: proc.tid,
 		});
 
-	let id = proc.timer_manager().lock().create_timer(clockid, sevp_val);
+	let id = proc
+		.timer_manager()
+		.lock()
+		.create_timer(clockid, sevp_val)?;
 
 	// Return timer ID
 	let timerid_val = timerid

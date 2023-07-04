@@ -11,6 +11,8 @@ use crate::process::pid::Pid;
 use crate::time::unit::Clock;
 use core::ffi::c_int;
 use core::ffi::c_void;
+use core::fmt;
+use core::fmt::Debug;
 use core::mem::size_of;
 use core::mem::transmute;
 use core::slice;
@@ -60,6 +62,13 @@ pub union SigVal {
 	pub sigval_int: i32,
 	/// The value as a pointer.
 	pub sigval_ptr: *mut c_void,
+}
+
+impl Debug for SigVal {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let val = unsafe { self.sigval_ptr };
+		write!(fmt, "SigVal {{ sigval_ptr: {:p} }}", val)
+	}
 }
 
 /// Structure storing signal informations.
@@ -138,7 +147,7 @@ pub struct SigAction {
 
 /// Structure for notification from asynchronous routines.
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SigEvent {
 	/// Notification method.
 	pub sigev_notify: c_int,

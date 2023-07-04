@@ -560,7 +560,7 @@ impl Process {
 			saved_regs: Regs::default(),
 			waitable: false,
 
-			timer_manager: Arc::new(Mutex::new(TimerManager::default()))?,
+			timer_manager: Arc::new(Mutex::new(TimerManager::new()?))?,
 
 			mem_space: None,
 			user_stack: None,
@@ -1035,7 +1035,7 @@ impl Process {
 			waitable: false,
 
 			// TODO if creating a thread: timer_manager: self.timer_manager.clone(),
-			timer_manager: Arc::new(Mutex::new(TimerManager::default()))?,
+			timer_manager: Arc::new(Mutex::new(TimerManager::new()?))?,
 
 			mem_space: Some(mem_space),
 			user_stack: self.user_stack,
