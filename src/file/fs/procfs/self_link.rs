@@ -63,9 +63,7 @@ impl KernFSNode for SelfNode {
 		let Some(mutex) = Process::get_current() else {
 			crate::kernel_panic!("no current process");
 		};
-		let pid = {
-			mutex.lock().pid
-		};
+		let pid = { mutex.lock().pid };
 
 		let pid_string = crate::format!("{}", pid)?;
 		Ok(FileContent::Link(pid_string).into())
