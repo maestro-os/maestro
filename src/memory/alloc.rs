@@ -23,9 +23,6 @@ use core::ffi::c_void;
 
 /// Initializes the memory allocators.
 pub fn init() {
-	unsafe {
-		buddy::prepare();
-	}
 	let mmap_info = memmap::get_info();
 
 	// The pointer to the beginning of available memory
@@ -53,13 +50,7 @@ pub fn init() {
 	// The number of frames the kernel zone holds.
 	let kernel_zone_frames = min(available_pages, kernel_max);
 	// The kernel's zone
-	let kernel_zone = buddy::Zone::new(
-		buddy::FLAG_ZONE_TYPE_KERNEL,
-		metadata_begin,
-		kernel_zone_frames as _,
-		kernel_zone_begin,
-	);
-	buddy::set_zone_slot(buddy::FLAG_ZONE_TYPE_KERNEL as _, kernel_zone);
+	let kernel_zone = buddy::Zone::new(metadata_begin, kernel_zone_frames as _, kernel_zone_begin);
 
 	// Updating the number of available pages
 	available_pages -= kernel_zone_frames;
@@ -71,12 +62,16 @@ pub fn init() {
 	let userspace_metadata_begin =
 		unsafe { metadata_begin.add(kernel_zone_frames * buddy::get_frame_metadata_size()) };
 	let user_zone = buddy::Zone::new(
-		buddy::FLAG_ZONE_TYPE_USER,
 		userspace_metadata_begin,
 		available_pages as _,
 		userspace_zone_begin,
 	);
-	buddy::set_zone_slot(buddy::FLAG_ZONE_TYPE_USER as _, user_zone);
 
 	// TODO MMIO zone
+
+	buddy::init([
+		user_zone,
+		unsafe { core::mem::zeroed() }, // TODO MMIO
+		kernel_zone,
+	]);
 }
