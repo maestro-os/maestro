@@ -178,16 +178,19 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	}
 
 	/// Returns the number of elements in the hash map.
+	#[inline]
 	pub fn len(&self) -> usize {
 		self.len
 	}
 
 	/// Tells whether the hash map is empty.
+	#[inline]
 	pub fn is_empty(&self) -> bool {
 		self.len == 0
 	}
 
 	/// Returns the number of buckets.
+	#[inline]
 	pub fn get_buckets_count(&self) -> usize {
 		self.buckets_count
 	}
@@ -238,6 +241,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	}
 
 	/// Tells whether the hash map contains the given key `k`.
+	#[inline]
 	pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
 	where
 		K: Borrow<Q>,
@@ -247,6 +251,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	}
 
 	/// Creates an iterator of immutable references for the hash map.
+	#[inline]
 	pub fn iter(&self) -> Iter<K, V> {
 		Iter::new(self)
 	}

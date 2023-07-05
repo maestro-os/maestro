@@ -1084,21 +1084,25 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Returns an iterator for the current binary tree.
+	#[inline]
 	pub fn iter(&self) -> MapIterator<K, V> {
 		MapIterator::new(self)
 	}
 
 	/// Returns a mutable iterator for the current binary tree.
+	#[inline]
 	pub fn iter_mut(&mut self) -> MapMutIterator<K, V> {
 		MapMutIterator::new(self)
 	}
 
 	/// Returns an immutable iterator on the given range of keys.
+	#[inline]
 	pub fn range<R: RangeBounds<K>>(&self, range: R) -> MapRange<'_, K, V, R> {
 		MapRange::new(self, range)
 	}
 
 	/// Returns a mutable iterator on the given range of keys.
+	#[inline]
 	pub fn range_mut<R: RangeBounds<K>>(&mut self, range: R) -> MapMutRange<'_, K, V, R> {
 		MapMutRange::new(self, range)
 	}
@@ -1338,7 +1342,6 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 			Self::foreach_nodes(
 				unsafe { n.as_mut() },
 				&mut |n| {
-					// TODO Optimize
 					for _ in 0..n.get_node_depth() {
 						let _ = write!(f, "\t");
 					}

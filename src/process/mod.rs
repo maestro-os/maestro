@@ -1142,21 +1142,22 @@ impl Process {
 			return None;
 		}
 
-		let mut sig = None;
+		self.sigpending
+			.iter()
+			.enumerate()
+			.filter_map(|(i, b)| {
+				if !b {
+					return None;
+				}
 
-		self.sigpending.for_each(|i, b| {
-			let Ok(s) = Signal::try_from(i as u32) else {
-				return true;
-			};
-			if b && !(s.can_catch() && self.sigmask.is_set(i)) {
-				sig = Some(s);
-				return false;
-			}
-
-			true
-		});
-
-		sig
+				let s = Signal::try_from(i as u32).ok()?;
+				if !s.can_catch() || !self.sigmask.is_set(i) {
+					Some(s)
+				} else {
+					None
+				}
+			})
+			.next()
 	}
 
 	/// Makes the process handle the next signal.

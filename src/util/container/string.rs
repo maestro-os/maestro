@@ -23,19 +23,21 @@ pub struct String {
 
 impl String {
 	/// Creates a new instance of empty string.
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self {
 			data: Vec::new(),
 		}
 	}
 
 	/// Returns a slice containing the bytes representation of the string.
+	#[inline]
 	pub fn as_bytes(&self) -> &[u8] {
 		self.data.as_slice()
 	}
 
 	/// Returns a mutable slice containing the bytes representation of the
 	/// string.
+	#[inline]
 	pub fn as_mut_bytes(&mut self) -> &mut [u8] {
 		self.data.as_mut_slice()
 	}
@@ -43,6 +45,7 @@ impl String {
 	/// Returns a reference to the wrapped string.
 	///
 	/// If the string isn't a valid UTF-8 string, the function returns `None`.
+	#[inline]
 	pub fn as_str(&self) -> Option<&str> {
 		str::from_utf8(self.as_bytes()).ok()
 	}
@@ -51,11 +54,13 @@ impl String {
 	/// correct UTF-8 sequence.
 	///
 	/// If invalid, the behaviour is undefined.
+	#[inline]
 	pub unsafe fn as_str_unchecked(&self) -> &str {
 		str::from_utf8_unchecked(self.as_bytes())
 	}
 
 	/// Returns the length of the String in bytes.
+	#[inline]
 	pub fn len(&self) -> usize {
 		self.data.len()
 	}
@@ -63,39 +68,36 @@ impl String {
 	/// Returns the length of the String in characters count.
 	///
 	/// If the string isn't a valid UTF-8 string, the function returns `None`.
+	#[inline]
 	pub fn strlen(&self) -> Option<usize> {
 		Some(self.as_str()?.len())
 	}
 
 	/// Tells whether the string is empty.
+	#[inline]
 	pub fn is_empty(&self) -> bool {
 		self.data.is_empty()
 	}
 
 	/// Appends the given byte `b` to the end of the string.
+	#[inline]
 	pub fn push(&mut self, b: u8) -> Result<(), Errno> {
 		self.data.push(b)
 	}
 
-	// TODO Adapt to non-UTF-8
 	/// Appends the given char `ch` to the end of the string.
 	pub fn push_char(&mut self, ch: char) -> Result<(), Errno> {
-		match ch.len_utf8() {
-			1 => self.data.push(ch as u8)?,
+		if ch.len_utf8() == 1 {
+			return self.data.push(ch as u8);
+		}
 
-			_ => {
-				let val = ch as u32;
-
-				for i in 0..4 {
-					if let Err(e) = self.data.push(((val >> (8 * i)) & 0xff) as _) {
-						// Cancelling previous iterations
-						for _ in 0..i {
-							self.data.pop();
-						}
-
-						return Err(e);
-					}
-				}
+		let val = ch as u32;
+		for i in 0..4 {
+			let b = ((val >> (8 * i)) & 0xff) as u8;
+			if let Err(e) = self.data.push(b) {
+				// Cancelling previous iterations
+				self.data.truncate(self.data.len() - i);
+				return Err(e);
 			}
 		}
 
@@ -105,16 +107,19 @@ impl String {
 	/// Removes the last byte from the string and returns it.
 	///
 	/// If the string is empty, the function returns `None`.
+	#[inline]
 	pub fn pop(&mut self) -> Option<u8> {
 		self.data.pop()
 	}
 
-	/// Appends the string `other` to the current one.
-	pub fn append<S: AsRef<[u8]>>(&mut self, other: S) -> Result<(), Errno> {
+	/// Appends the string `other` to the current.
+	#[inline]
+	pub fn push_str<S: AsRef<[u8]>>(&mut self, other: S) -> Result<(), Errno> {
 		self.data.extend_from_slice(other.as_ref())
 	}
 
 	/// Turns the string into an empty string.
+	#[inline]
 	pub fn clear(&mut self) {
 		self.data.clear();
 	}
@@ -176,7 +181,7 @@ impl Add for String {
 	type Output = Result<Self, Errno>;
 
 	fn add(mut self, other: Self) -> Self::Output {
-		self.append(other)?;
+		self.push_str(other)?;
 		Ok(self)
 	}
 }
@@ -262,7 +267,7 @@ pub struct StringWriter {
 impl Write for StringWriter {
 	fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
 		match &mut self.final_str {
-			Some(Ok(final_str)) => match final_str.append(s.as_bytes()) {
+			Some(Ok(final_str)) => match final_str.push_str(s.as_bytes()) {
 				Err(e) => self.final_str = Some(Err(e)),
 				_ => {}
 			},
