@@ -84,9 +84,9 @@ use core::panic::PanicInfo;
 use core::ptr::null;
 
 /// The kernel's name.
-pub const NAME: &str = "maestro";
+pub const NAME: &str = env!("CARGO_PKG_NAME");
 /// Current kernel version.
-pub const VERSION: &str = "1.0";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The name of the current architecture.
 pub const ARCH: &str = "x86";

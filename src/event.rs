@@ -13,6 +13,7 @@ use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use crate::util::lock::*;
 use core::ffi::c_void;
+use core::intrinsics::unlikely;
 use core::ptr::NonNull;
 
 /// The list of interrupt error messages ordered by index of the corresponding
@@ -134,7 +135,7 @@ pub fn register_callback<C>(id: u32, callback: C) -> Result<CallbackHook, Errno>
 where
 	C: 'static + FnMut(u32, u32, &Regs, u32) -> CallbackResult,
 {
-	if id as usize >= CALLBACKS.len() {
+	if unlikely(id as usize >= CALLBACKS.len()) {
 		return Err(errno!(EINVAL));
 	}
 
