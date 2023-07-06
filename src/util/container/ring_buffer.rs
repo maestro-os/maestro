@@ -11,13 +11,11 @@
 use core::cmp::min;
 use core::marker::PhantomData;
 
-/// Structure representing a ring buffer.
+/// A ring buffer.
 ///
-/// The buffer has a limited size which must be given at initialization.
+/// The ring buffer has a static size which is given at initialization.
 ///
 /// The buffer used to store the data is specified by the generic argument `B`.
-///
-/// By default, a `Vec` is used.
 #[derive(Debug)]
 pub struct RingBuffer<T, B: AsRef<[T]> + AsMut<[T]>> {
 	/// The linear buffer.
@@ -76,7 +74,7 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		self.get_size() - self.get_data_len() - 1
 	}
 
-	/// Returns a slice representing the ring buffer's linear buffer.
+	/// Returns a slice representing the ring buffer's linear storage.
 	#[inline(always)]
 	fn get_buffer(&mut self) -> &mut [T] {
 		self.buffer.as_mut()
@@ -90,7 +88,6 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 	pub fn peek(&mut self, buf: &mut [T]) -> usize {
 		let cursor = self.read_cursor;
 		let len = min(buf.len(), self.get_data_len());
-
 		let buffer_size = self.get_size();
 		let buffer = self.get_buffer();
 
@@ -127,7 +124,6 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 	pub fn write(&mut self, buf: &[T]) -> usize {
 		let cursor = self.write_cursor;
 		let len = min(buf.len(), self.get_available_len());
-
 		let buffer_size = self.get_size();
 		let buffer = self.get_buffer();
 

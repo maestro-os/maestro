@@ -13,6 +13,7 @@ use crate::errno::Errno;
 use crate::util;
 use core::cmp::{max, min};
 use core::ffi::c_void;
+use core::intrinsics::unlikely;
 use core::mem::size_of;
 use core::ptr;
 use core::ptr::NonNull;
@@ -75,16 +76,19 @@ impl Chunk {
 	}
 
 	/// Returns the previous chunk.
+	#[inline]
 	pub fn get_prev(&self) -> Option<&'static mut Self> {
 		self.prev.map(|mut n| unsafe { n.as_mut() })
 	}
 
 	/// Returns the next chunk.
+	#[inline]
 	pub fn get_next(&self) -> Option<&'static mut Self> {
 		self.next.map(|mut n| unsafe { n.as_mut() })
 	}
 
 	/// Tells whether the chunk is disconnected from a chunk list.
+	#[inline]
 	pub fn is_single(&self) -> bool {
 		self.prev.is_none() && self.next.is_none()
 	}
@@ -529,7 +533,7 @@ fn get_free_list(
 			i += 1;
 		}
 
-		if i >= FREE_LIST_BINS {
+		if unlikely(i >= FREE_LIST_BINS) {
 			return None;
 		}
 	}

@@ -114,6 +114,7 @@ impl<T> Vec<T> {
 		}
 
 		let curr_capacity = self.capacity();
+		// multiply capacity by 1.25
 		let capacity = max(curr_capacity + (curr_capacity / 4), self.len + min);
 		self.realloc(capacity)
 	}
@@ -164,6 +165,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Triggers a panic after an invalid access to the vector.
+	#[cold]
 	fn vector_panic(&self, index: usize) -> ! {
 		panic!(
 			"index out of bounds: the len is {} but the index is {}",
@@ -426,13 +428,7 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 			return false;
 		}
 
-		for (e0, e1) in self.iter().zip(other.iter()) {
-			if e0 != e1 {
-				return false;
-			}
-		}
-
-		true
+		self.iter().zip(other.iter()).all(|(e0, e1)| e0 == e1)
 	}
 }
 
@@ -639,7 +635,6 @@ pub struct VecIterator<'a, T> {
 
 	/// The current index of the iterator starting from the beginning.
 	index_front: usize,
-
 	/// The current index of the iterator starting from the end.
 	index_back: usize,
 }

@@ -74,7 +74,7 @@ impl IO for Mounts {
 				fs_type,
 				flags
 			)?;
-			content.append(s)?;
+			content.push_str(s)?;
 		}
 
 		// Copying content to userspace buffer

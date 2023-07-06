@@ -12,6 +12,7 @@
 #![feature(allow_internal_unstable)]
 #![feature(associated_type_defaults)]
 #![feature(coerce_unsized)]
+#![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(exclusive_range_pattern)]
@@ -85,9 +86,9 @@ use core::panic::PanicInfo;
 use core::ptr::null;
 
 /// The kernel's name.
-pub const NAME: &str = "maestro";
+pub const NAME: &str = env!("CARGO_PKG_NAME");
 /// Current kernel version.
-pub const VERSION: &str = "1.0";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The name of the current architecture.
 pub const ARCH: &str = "x86";
