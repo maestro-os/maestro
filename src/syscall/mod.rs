@@ -119,6 +119,7 @@ mod symlinkat;
 mod syncfs;
 mod time;
 mod timer_create;
+mod timer_delete;
 mod timer_settime;
 mod tkill;
 mod truncate;
@@ -257,6 +258,7 @@ use symlinkat::symlinkat;
 use syncfs::syncfs;
 use time::time;
 use timer_create::timer_create;
+use timer_delete::timer_delete;
 use timer_settime::timer_settime;
 use tkill::tkill;
 use truncate::truncate;
@@ -536,7 +538,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		0x104 => Some(&timer_settime),
 		// TODO 0x105 => Some(&timer_gettime),
 		// TODO 0x106 => Some(&timer_getoverrun),
-		// TODO 0x107 => Some(&timer_delete),
+		0x107 => Some(&timer_delete),
 		// TODO 0x108 => Some(&clock_settime),
 		0x109 => Some(&clock_gettime),
 		// TODO 0x10a => Some(&clock_getres),

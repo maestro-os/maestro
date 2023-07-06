@@ -99,4 +99,14 @@ impl TimerManager {
 	pub fn get_timer_mut(&mut self, id: TimerT) -> Option<&mut Timer> {
 		self.timers.get_mut(&(id as _))
 	}
+
+	/// Deletes the timer with the given ID.
+	///
+	/// If the timer doesn't exist, the function returns an error.
+	pub fn delete_timer(&mut self, id: TimerT) -> Result<(), Errno> {
+		self.timers
+			.remove(&(id as _))
+			.ok_or_else(|| errno!(EINVAL))?;
+		Ok(())
+	}
 }
