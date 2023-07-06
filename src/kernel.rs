@@ -11,6 +11,7 @@
 #![feature(allow_internal_unstable)]
 #![feature(associated_type_defaults)]
 #![feature(coerce_unsized)]
+#![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(exclusive_range_pattern)]

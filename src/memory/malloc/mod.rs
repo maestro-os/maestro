@@ -20,6 +20,7 @@ use chunk::Chunk;
 use core::cmp::min;
 use core::cmp::Ordering;
 use core::ffi::c_void;
+use core::intrinsics::unlikely;
 use core::mem::size_of;
 use core::ops::Index;
 use core::ops::IndexMut;
@@ -45,7 +46,7 @@ static MUTEX: IntMutex<()> = IntMutex::new(());
 /// leak. Writing outside of the allocated range (buffer overflow) results in an
 /// undefined behaviour.
 pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
-	if n == 0 {
+	if unlikely(n == 0) {
 		return Err(errno!(EINVAL));
 	}
 
@@ -77,7 +78,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 /// If the reallocation fails, the chunk is left untouched and the function
 /// returns an error.
 pub unsafe fn realloc(ptr: *mut c_void, n: usize) -> Result<*mut c_void, Errno> {
-	if n == 0 {
+	if unlikely(n == 0) {
 		return Err(errno!(EINVAL));
 	}
 

@@ -16,6 +16,7 @@ use crate::util::lock::*;
 use crate::util::math;
 use core::cmp::min;
 use core::ffi::c_void;
+use core::intrinsics::likely;
 use core::mem::size_of;
 use core::mem::MaybeUninit;
 
@@ -173,34 +174,36 @@ impl Zone {
 		let zone_size = (self.pages_count as usize) * memory::PAGE_SIZE;
 
 		for (order, list) in self.free_list.iter().enumerate() {
-			if let Some(first) = *list {
-				let mut frame = first;
-				let mut is_first = true;
+			let Some(first) = *list else {
+                continue;
+            };
 
-				loop {
-					let f = unsafe { &*frame };
-					let id = f.get_id(self);
+			let mut frame = first;
+			let mut is_first = true;
 
-					#[cfg(config_debug_debug)]
-					f.check_broken(self);
-					debug_assert!(!f.is_used());
-					debug_assert_eq!(f.order, order as _);
-					debug_assert!(!is_first || f.prev == id);
+			loop {
+				let f = unsafe { &*frame };
+				let id = f.get_id(self);
 
-					let frame_ptr = f.get_ptr(self);
-					debug_assert!(frame_ptr >= self.begin);
-					unsafe {
-						let zone_end = self.begin.add(zone_size);
-						debug_assert!(frame_ptr < zone_end);
-						debug_assert!(frame_ptr.add(f.get_size()) <= zone_end);
-					}
+				#[cfg(config_debug_debug)]
+				f.check_broken(self);
+				debug_assert!(!f.is_used());
+				debug_assert_eq!(f.order, order as _);
+				debug_assert!(!is_first || f.prev == id);
 
-					if f.next == id {
-						break;
-					}
-					frame = self.get_frame(f.next);
-					is_first = false;
+				let frame_ptr = f.get_ptr(self);
+				debug_assert!(frame_ptr >= self.begin);
+				unsafe {
+					let zone_end = self.begin.add(zone_size);
+					debug_assert!(frame_ptr < zone_end);
+					debug_assert!(frame_ptr.add(f.get_size()) <= zone_end);
 				}
+
+				if f.next == id {
+					break;
+				}
+				frame = self.get_frame(f.next);
+				is_first = false;
 			}
 		}
 	}
@@ -234,6 +237,15 @@ impl Frame {
 		debug_assert!(self_off >= zone_off);
 
 		((self_off - zone_off) / size_of::<Self>()) as u32
+	}
+
+	/// Returns the identifier of the buddy frame in zone `zone`, taking in
+	/// account the frame's order.
+	///
+	/// The caller has the reponsibility to check that it is below the number of frames in the
+	/// zone.
+	fn get_buddy_id(&self, zone: &Zone) -> FrameID {
+		self.get_id(zone) ^ (1 << self.order) as u32
 	}
 
 	/// Returns the pointer to the location of the associated physical memory.
@@ -279,15 +291,6 @@ impl Frame {
 		debug_assert!(self.prev == FRAME_STATE_USED || self.prev < zone.pages_count);
 		debug_assert!(self.next == FRAME_STATE_USED || self.next < zone.pages_count);
 		debug_assert!(self.order <= MAX_ORDER);
-	}
-
-	/// Returns the identifier of the buddy frame in zone `zone`, taking in
-	/// account the frame's order.
-	///
-	/// The return value might be invalid and the caller has the reponsibility
-	/// to check that it is below the number of frames in the zone.
-	fn get_buddy_id(&self, zone: &Zone) -> FrameID {
-		self.get_id(zone) ^ (1 << self.order) as u32
 	}
 
 	/// Links the frame into zone `zone`'s free list.
@@ -376,7 +379,6 @@ impl Frame {
 			self.order -= 1;
 
 			let buddy = self.get_buddy_id(zone);
-			debug_assert!(buddy != self.get_id(zone));
 			if buddy >= zone.pages_count {
 				break;
 			}
@@ -391,7 +393,7 @@ impl Frame {
 		self.check_broken(zone);
 	}
 
-	/// Coealesces the frame in zone `zone` with free buddy blocks recursively
+	/// Coalesces the frame in zone `zone` with free buddy blocks recursively
 	/// until no buddy is available anymore.
 	///
 	/// The current frame must not be marked as used.
@@ -409,7 +411,6 @@ impl Frame {
 		while self.order < MAX_ORDER {
 			let id = self.get_id(zone);
 			let buddy = self.get_buddy_id(zone);
-			debug_assert!(buddy != self.get_id(zone));
 			if buddy >= zone.pages_count {
 				break;
 			}
@@ -455,25 +456,23 @@ pub(crate) fn init(zones: [Zone; ZONES_COUNT]) {
 }
 
 /// The size in bytes of a frame with the given order `order`.
-#[inline(always)]
+#[inline]
 pub fn get_frame_size(order: FrameOrder) -> usize {
 	memory::PAGE_SIZE << order
 }
 
 /// Returns the buddy order required to fit the given number of pages.
-#[inline(always)]
+#[inline]
 pub fn get_order(pages: usize) -> FrameOrder {
-	let mut order: FrameOrder = 0;
-
-	while (1 << order) < pages {
-		order += 1;
+	if likely(pages != 0) {
+		(u32::BITS - pages.leading_zeros()) as _
+	} else {
+		0
 	}
-
-	order
 }
 
 /// Returns the size of the metadata for one frame.
-#[inline(always)]
+#[inline]
 pub const fn get_frame_metadata_size() -> usize {
 	size_of::<Frame>()
 }
