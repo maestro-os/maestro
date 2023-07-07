@@ -625,17 +625,15 @@ impl StorageManager {
 			let interfaces_count = self.interfaces.len();
 
 			for j in 0..interfaces_count {
-				let interface = &mut self.interfaces[j];
+				let mut interface = self.interfaces[j].lock();
 
 				crate::print!(
-					"Processing iteration: {}/{}; device: {}/{}...",
+					"Processing iteration: {}/{iterations_count}; device: {}/{iterations_count}...",
 					i + 1,
-					iterations_count,
 					j + 1,
-					interfaces_count
 				);
 
-				if !Self::test_interface(interface.as_mut(), seed) {
+				if !Self::test_interface(&mut *interface, seed) {
 					return false;
 				}
 
@@ -670,10 +668,6 @@ impl StorageManager {
 }
 
 impl DeviceManager for StorageManager {
-	fn get_name(&self) -> &'static str {
-		"storage"
-	}
-
 	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// Ignoring non-storage devices
 		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {

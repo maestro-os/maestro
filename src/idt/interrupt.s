@@ -12,10 +12,3 @@ interrupt_is_enabled:
 	pop %eax
 	and $0x200, %eax
 	ret
-
-/*
- * Ends the current tick on the current CPU.
- */
-end_tick:
-	int $0x20
-	ret

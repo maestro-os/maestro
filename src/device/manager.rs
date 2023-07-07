@@ -4,11 +4,10 @@
 use crate::device::bar::BAR;
 use crate::errno::Errno;
 use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
-use crate::util::ptr::arc::Weak;
 use core::any::Any;
+use core::any::TypeId;
 
 /// Trait representing a physical device.
 pub trait PhysicalDevice {
@@ -51,9 +50,6 @@ pub trait PhysicalDevice {
 /// Trait representing a structure managing the link between physical devices
 /// and device files.
 pub trait DeviceManager: Any {
-	/// Returns the manager's name. This name must not change.
-	fn get_name(&self) -> &'static str;
-
 	/// Function called when a new device is plugged in.
 	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno>;
 
@@ -62,27 +58,24 @@ pub trait DeviceManager: Any {
 }
 
 /// The list of device managers.
-static DEVICE_MANAGERS: Mutex<HashMap<String, Arc<Mutex<dyn DeviceManager>>>> =
+static DEVICE_MANAGERS: Mutex<HashMap<TypeId, Arc<Mutex<dyn DeviceManager>>>> =
 	Mutex::new(HashMap::new());
 
 /// Registers the given device manager.
-pub fn register_manager<M: 'static + DeviceManager>(manager: M) -> Result<(), Errno> {
-	let mut device_managers = DEVICE_MANAGERS.lock();
-
-	let name = String::try_from(manager.get_name())?;
-
+pub fn register<M: DeviceManager>(manager: M) -> Result<(), Errno> {
 	let m = Arc::new(Mutex::new(manager))?;
-	device_managers.insert(name, m)?;
+
+	let mut device_managers = DEVICE_MANAGERS.lock();
+	device_managers.insert(TypeId::of::<M>(), m)?;
 
 	Ok(())
 }
 
-/// Returns the device manager with name `name`.
-pub fn get_by_name(name: &str) -> Option<Weak<Mutex<dyn DeviceManager>>> {
+/// Returns the device manager with the given type. If the manager is not registered, the function
+/// returns `None`.
+pub fn get<M: DeviceManager>() -> Option<Arc<Mutex<dyn DeviceManager>>> {
 	let device_managers = DEVICE_MANAGERS.lock();
-	let dev = device_managers.get(name.as_bytes())?;
-
-	Some(Arc::downgrade(dev))
+	device_managers.get(&TypeId::of::<M>()).cloned()
 }
 
 /// Function that is called when a new device is plugged in.

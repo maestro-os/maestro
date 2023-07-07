@@ -277,9 +277,7 @@ pub fn handle_proc_state() {
 			drop(proc);
 			drop(proc_mutex);
 
-			unsafe {
-				scheduler::end_tick();
-			}
+			scheduler::end_tick();
 		}
 
 		// The process has been killed. Stopping execution and waiting for the next tick
@@ -287,9 +285,7 @@ pub fn handle_proc_state() {
 			drop(proc);
 			drop(proc_mutex);
 
-			unsafe {
-				scheduler::end_tick();
-			}
+			scheduler::end_tick();
 		}
 	}
 }

@@ -214,9 +214,7 @@ pub fn do_waitpid(
 			proc.set_state(State::Sleeping);
 		}
 
-		unsafe {
-			scheduler::end_tick();
-		}
+		scheduler::end_tick();
 	}
 }
 

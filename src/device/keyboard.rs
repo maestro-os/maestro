@@ -605,10 +605,6 @@ impl KeyboardManager {
 }
 
 impl DeviceManager for KeyboardManager {
-	fn get_name(&self) -> &'static str {
-		"kbd"
-	}
-
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		// TODO (When plugging a keyboard, don't forget to set the LEDs state)
 		Ok(())

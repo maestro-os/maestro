@@ -141,9 +141,7 @@ pub fn do_writev(
 		}
 
 		// Make current process sleep
-		unsafe {
-			scheduler::end_tick();
-		}
+		scheduler::end_tick();
 	}
 }
 

@@ -170,6 +170,10 @@ pub struct Weak<T: ?Sized> {
 	ptr: NonNull<ArcInner<T>>,
 }
 
+impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Weak<U>> for Weak<T> {}
+
+impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Weak<U>> for Weak<T> {}
+
 impl<T: ?Sized> Weak<T> {
 	/// Returns a reference to the inner object.
 	fn inner(&self) -> &ArcInner<T> {

@@ -3,7 +3,9 @@
 //!
 //! Unless for special cases, other locks should be used instead.
 
-use core::arch::asm;
+use core::hint;
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering;
 
 /// A spinlock is a lock that is used to prevent a specific piece of code from
 /// being accessed by more than one thread at a time.
@@ -18,44 +20,28 @@ use core::arch::asm;
 /// Special attention must be aimed toward the usage of this structure since it
 /// can easily result in deadlocks if misused.
 pub struct Spinlock {
-	/// Variable telling whether the spinlock is locked or not. This variable is
-	/// 4 bytes wide to match the size of the register handling it (under x86).
-	locked: i32,
+	locked: AtomicBool,
 }
 
 impl Spinlock {
 	/// Creates a new spinlock.
 	pub const fn new() -> Self {
 		Self {
-			locked: 0,
+			locked: AtomicBool::new(false),
 		}
 	}
 
 	/// Locks the spinlock.
 	#[inline(always)]
 	pub fn lock(&mut self) {
-		unsafe {
-			asm!(
-				"2:",
-				"mov {x}, 1",
-				"xchg [{lock}], {x}",
-				"test {x}, {x}",
-				"pause",
-				"jnz 2b",
-				x = out(reg) _,
-				lock = in(reg) &mut self.locked,
-			)
+		while self.locked.swap(true, Ordering::Acquire) {
+			hint::spin_loop();
 		}
 	}
 
 	/// Unlocks the spinlock.
 	#[inline(always)]
 	pub unsafe fn unlock(&mut self) {
-		unsafe {
-			asm!(
-				"mov DWORD PTR [{lock}], 0",
-				lock = in(reg) &mut self.locked,
-			)
-		}
+		self.locked.store(false, Ordering::Release);
 	}
 }

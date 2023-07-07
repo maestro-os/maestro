@@ -67,8 +67,6 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 		}
 
 		// Make current process sleep
-		unsafe {
-			scheduler::end_tick();
-		}
+		scheduler::end_tick();
 	}
 }

@@ -329,22 +329,22 @@ pub fn get(id: &DeviceID) -> Option<Arc<Mutex<Device>>> {
 /// Initializes devices management.
 pub fn init() -> Result<(), Errno> {
 	let keyboard_manager = KeyboardManager::new();
-	manager::register_manager(keyboard_manager)?;
+	manager::register(keyboard_manager)?;
 
 	let storage_manager = StorageManager::new()?;
-	manager::register_manager(storage_manager)?;
+	manager::register(storage_manager)?;
 
 	bus::detect()?;
 
 	// Testing disk I/O (if enabled)
 	#[cfg(config_debug_storage_test)]
 	{
-		// Getting back the storage manager since it has been moved
-		let storage_manager = manager::get_by_name("storage").unwrap();
-		let storage_manager = unsafe { storage_manager.get_mut().unwrap().get_mut_payload() };
-		let storage_manager = unsafe { &mut *(storage_manager as *mut _ as *mut StorageManager) };
-
-		storage_manager.test();
+		let storage_manager_mutex = manager::get::<StorageManager>().unwrap();
+		let mut storage_manager = storage_manager_mutex.lock();
+		(&mut *storage_manager as &mut dyn core::any::Any)
+			.downcast_mut::<StorageManager>()
+			.unwrap()
+			.test();
 	}
 
 	Ok(())

@@ -29,6 +29,7 @@ use crate::util::lock::*;
 use crate::util::math;
 use crate::util::math::rational::Rational;
 use crate::util::ptr::arc::Arc;
+use core::arch::asm;
 use core::cmp::max;
 use core::ffi::c_void;
 
@@ -385,9 +386,13 @@ impl Scheduler {
 	}
 }
 
-extern "C" {
-	/// Ends the current tick on the current CPU.
-	///
-	/// The function returns at the tick assigned to the current process.
-	pub fn end_tick();
+/// Ends the current tick on the current CPU.
+///
+/// Since this function triggers an interruption, the caller must ensure that no criticl mutex is
+/// locked, that could be used in the inerruption handler. Otherwise, a deadlock could occure.
+#[inline]
+pub fn end_tick() {
+	unsafe {
+		asm!("int 0x20");
+	}
 }
