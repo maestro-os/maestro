@@ -10,7 +10,7 @@ pub fn detect() -> Result<(), Errno> {
 	// PCI
 	let mut pci_manager = pci::PCIManager::new();
 	pci_manager.scan()?;
-	manager::register_manager(pci_manager)?;
+	manager::register(pci_manager)?;
 
 	// TODO USB
 

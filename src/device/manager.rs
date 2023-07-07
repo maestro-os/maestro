@@ -54,7 +54,7 @@ static DEVICE_MANAGERS: Mutex<HashMap<TypeId, Arc<Mutex<dyn DeviceManager>>>> =
 	Mutex::new(HashMap::new());
 
 /// Registers the given device manager.
-pub fn register_manager<M: DeviceManager>(manager: M) -> Result<(), Errno> {
+pub fn register<M: DeviceManager>(manager: M) -> Result<(), Errno> {
 	let m = Arc::new(Mutex::new(manager))?;
 
 	let mut device_managers = DEVICE_MANAGERS.lock();

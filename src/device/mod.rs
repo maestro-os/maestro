@@ -330,10 +330,10 @@ pub fn get(id: &DeviceID) -> Option<Arc<Mutex<Device>>> {
 /// Initializes devices management.
 pub fn init() -> Result<(), Errno> {
 	let keyboard_manager = KeyboardManager::new();
-	manager::register_manager(keyboard_manager)?;
+	manager::register(keyboard_manager)?;
 
 	let storage_manager = StorageManager::new()?;
-	manager::register_manager(storage_manager)?;
+	manager::register(storage_manager)?;
 
 	bus::detect()?;
 
