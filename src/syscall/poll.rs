@@ -103,10 +103,8 @@ pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i3
 			}
 		}
 
-		// TODO Make process Sleeping until an event happens on a file descriptor in
+		// TODO Make process sleep until an event occurs on a file descriptor in
 		// `fds`
-		unsafe {
-			scheduler::end_tick();
-		}
+		scheduler::end_tick();
 	}
 }

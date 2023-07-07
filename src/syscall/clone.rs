@@ -127,9 +127,7 @@ pub fn clone(
 	if flags & CLONE_VFORK != 0 {
 		// Letting another process run instead of the current. Because the current
 		// process must now wait for the child process to terminate or execute a program
-		unsafe {
-			scheduler::end_tick();
-		}
+		scheduler::end_tick();
 	}
 
 	Ok(new_tid as _)

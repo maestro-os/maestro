@@ -206,9 +206,7 @@ pub fn do_select<T: TimeUnit>(
 		}
 
 		// TODO Make the process sleep?
-		unsafe {
-			scheduler::end_tick();
-		}
+		scheduler::end_tick();
 	}
 }
 

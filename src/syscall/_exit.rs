@@ -27,10 +27,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 		// process with pid `pid`
 	}
 
-	unsafe {
-		scheduler::end_tick();
-	}
-
+	scheduler::end_tick();
 	// Cannot resume since the process is now a zombie
 	unreachable!();
 }
