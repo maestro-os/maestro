@@ -460,10 +460,6 @@ impl PCIManager {
 }
 
 impl DeviceManager for PCIManager {
-	fn get_name(&self) -> &'static str {
-		"PCI"
-	}
-
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 		Ok(())
 	}
