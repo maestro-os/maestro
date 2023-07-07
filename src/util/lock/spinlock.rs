@@ -3,6 +3,7 @@
 //!
 //! Unless for special cases, other locks should be used instead.
 
+use core::hint;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 
@@ -33,7 +34,9 @@ impl Spinlock {
 	/// Locks the spinlock.
 	#[inline(always)]
 	pub fn lock(&mut self) {
-		while self.locked.swap(true, Ordering::Acquire) {}
+		while self.locked.swap(true, Ordering::Acquire) {
+			hint::spin_loop();
+		}
 	}
 
 	/// Unlocks the spinlock.
