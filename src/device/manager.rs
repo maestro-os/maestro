@@ -6,7 +6,6 @@ use crate::errno::Errno;
 use crate::util::container::hashmap::HashMap;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
-use crate::util::ptr::arc::Weak;
 use core::any::Any;
 use core::any::TypeId;
 
@@ -65,11 +64,9 @@ pub fn register<M: DeviceManager>(manager: M) -> Result<(), Errno> {
 
 /// Returns the device manager with the given type. If the manager is not registered, the function
 /// returns `None`.
-pub fn get<M: DeviceManager>() -> Option<Weak<Mutex<dyn DeviceManager>>> {
+pub fn get<M: DeviceManager>() -> Option<Arc<Mutex<dyn DeviceManager>>> {
 	let device_managers = DEVICE_MANAGERS.lock();
-	let dev = device_managers.get(&TypeId::of::<M>())?;
-
-	Some(Arc::downgrade(dev))
+	device_managers.get(&TypeId::of::<M>()).cloned()
 }
 
 /// Function that is called when a new device is plugged in.
