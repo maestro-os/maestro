@@ -13,7 +13,6 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::memory;
 use crate::memory::malloc::ptr::NonNull;
-use crate::util;
 use crate::util::lock::IntMutex;
 use block::Block;
 use chunk::Chunk;
@@ -62,7 +61,7 @@ pub unsafe fn alloc(n: usize) -> Result<*mut c_void, Errno> {
 	chunk.set_used(true);
 
 	let ptr = chunk.get_ptr_mut();
-	debug_assert!(util::is_aligned(ptr, chunk::ALIGNEMENT));
+	debug_assert!(ptr.is_aligned_to(chunk::ALIGNEMENT));
 	debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
 
 	Ok(ptr)
