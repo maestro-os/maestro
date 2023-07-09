@@ -1,11 +1,14 @@
-//! A kernel module is an executable that is loaded in kernelspace in order to
-//! handle a specific feature. The some advantages of that system is a lighter
-//! kernel with clearer code and it allows to load only the parts that are
-//! required by the current system.
+//! A kernel module is an executable file that is loaded in kernelspace in order to
+//! handle a specific feature such as device drivers.
 //!
-//! There's a distinction between a Module and a Kernel module:
-//! - Module: A Rust module, part of the structure of the code.
-//! - Kernel module: A piece of software to be loaded at runtime in kernelspace.
+//! The some advantages of that system is a lighter kernel with clearer code and it allows to only
+//! load subsystems that are currently required.
+//!
+//! There's a distinction between a **Module** and a **Kernel Module**:
+//! - **Module**: A *Rust* module, part of the structure of the code.
+//! - **Kernel Module**: A piece of software to be loaded at runtime in kernelspace.
+//!
+//! Thus, **Kernel Modules** contain **Modules**.
 
 pub mod version;
 
@@ -40,7 +43,7 @@ pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
 ///
 /// Arguments:
 /// - `name` (str) is the module's name.
-/// - `version` (Version) is the module's version.
+/// - `version` ([`version::Version`]) is the module's version.
 /// - `deps` ([&str]) is the list of the module's dependencies.
 #[macro_export]
 macro_rules! module {
@@ -294,7 +297,7 @@ impl Module {
 		&self.name
 	}
 
-	/// Returns the version of the module.
+	/// Returns the [`version::Version`] of the module.
 	pub fn get_version(&self) -> &Version {
 		&self.version
 	}
