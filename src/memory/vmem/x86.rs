@@ -28,6 +28,7 @@ use crate::errno::Errno;
 use crate::memory;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
+use crate::util;
 use crate::util::lock::Mutex;
 use crate::util::TryClone;
 use core::ffi::c_void;
