@@ -28,7 +28,6 @@ use crate::errno::Errno;
 use crate::memory;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
-use crate::util;
 use crate::util::lock::Mutex;
 use crate::util::TryClone;
 use core::ffi::c_void;
@@ -287,7 +286,7 @@ impl X86VMem {
 		}
 
 		let esp = unsafe { crate::register_get!("esp") as *const c_void };
-		let aligned_stack_page = util::down_align(esp, memory::PAGE_SIZE);
+		let aligned_stack_page = crate::util::down_align(esp, memory::PAGE_SIZE);
 		let size = {
 			if pse {
 				1024
@@ -312,7 +311,7 @@ impl X86VMem {
 		}
 
 		let esp = unsafe { crate::register_get!("esp") as *const c_void };
-		let aligned_stack_page = util::down_align(esp, memory::PAGE_SIZE);
+		let aligned_stack_page = crate::util::down_align(esp, memory::PAGE_SIZE);
 		let size = {
 			if pse {
 				1024
