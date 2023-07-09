@@ -7,7 +7,6 @@ use super::chunk::FreeChunk;
 use crate::errno::Errno;
 use crate::memory;
 use crate::memory::buddy;
-use crate::util;
 use crate::util::math;
 use core::mem::offset_of;
 use core::mem::size_of;
@@ -63,7 +62,7 @@ impl Block {
 	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
 		let first_chunk_off = offset_of!(Block, first_chunk);
 		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
-		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+		debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 
 		&mut *ptr
 	}

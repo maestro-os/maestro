@@ -1,7 +1,6 @@
 //! A gap is a region of the virtual memory which is available for allocation.
 
 use crate::memory;
-use crate::util;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::fmt;
@@ -24,7 +23,7 @@ impl MemGap {
 	/// This pointer must be page-aligned.
 	/// - `size` is the size of the gap in pages.
 	pub fn new(begin: *const c_void, size: NonZeroUsize) -> Self {
-		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
+		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));
 
 		Self {
 			begin,

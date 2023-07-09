@@ -13,7 +13,6 @@ use crate::memory::physical_ref_counter::PhysRefCounter;
 use crate::memory::vmem;
 use crate::memory::vmem::VMem;
 use crate::process::oom;
-use crate::util;
 use crate::util::io::IO;
 use crate::util::lock::*;
 use core::ffi::c_void;
@@ -93,7 +92,7 @@ impl MemMapping {
 		residence: MapResidence,
 		vmem: NonNull<dyn VMem>,
 	) -> Self {
-		debug_assert!(util::is_aligned(begin, memory::PAGE_SIZE));
+		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));
 
 		Self {
 			begin,
