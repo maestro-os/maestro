@@ -50,7 +50,14 @@ The references to the kernel's internals and module interfaces can be found [her
 The kernel must be built in its directory in order to be able to build the module.
 
 To build a kernel module:
-- cd into the root of the module directory
+- Compile the kernel in debug or release mode (`--release`), depending on which profile you want
+- cd into the root of the module's source directory
 - Specify the profile to compile for in the `PROFILE` environment variable. Either `debug` or `release`
-- Execute the compile script located in the kernel's source, located at `mod/compile`. The script takes the name of the module as parameter. Example: `PROFILE=debug ../maestro/mod/compile module_name`
-- Done!
+- Execute the compile script located in the kernel's source, located at `mod/compile`. The script takes the name of the module as parameter. Example:
+```sh
+PROFILE=debug ../maestro/mod/compile module_name
+```
+
+The module is then compiled to a file named `module_name.kmod`
+
+**NOTE**: It is important that the specified profile matches the profile used to compile the kernel, otherwise the module will not work

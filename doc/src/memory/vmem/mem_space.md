@@ -1,3 +1,0 @@
-# Memory space
-
-TODO
