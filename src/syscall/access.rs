@@ -57,7 +57,7 @@ pub fn do_access(
 	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
 
 	let (path, uid, gid, cwd) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();

@@ -9,7 +9,7 @@ use core::ffi::c_void;
 pub fn brk(regs: &Regs) -> Result<i32, Errno> {
 	let addr = regs.ebx as *mut c_void;
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();

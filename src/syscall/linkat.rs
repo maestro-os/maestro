@@ -20,7 +20,7 @@ pub fn linkat(
 	let follow_links = flags & access::AT_SYMLINK_NOFOLLOW == 0;
 
 	let (old_mutex, new_parent_mutex, new_name, uid, gid) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let euid = proc.euid;

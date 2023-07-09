@@ -54,7 +54,7 @@ pub fn get_entry(
 
 #[syscall]
 pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();

@@ -25,7 +25,7 @@ pub fn mount(
 	_data: SyscallPtr<c_void>,
 ) -> Result<i32, Errno> {
 	let (mount_source, fs_type, target_path) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();

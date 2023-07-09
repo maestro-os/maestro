@@ -9,7 +9,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();

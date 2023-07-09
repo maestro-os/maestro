@@ -13,7 +13,7 @@ use macros::syscall;
 #[syscall]
 pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	let (path, uid, gid) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -48,7 +48,7 @@ pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno
 
 	// Writing the statfs structure to userspace
 	{
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();

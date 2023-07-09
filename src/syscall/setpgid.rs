@@ -14,7 +14,7 @@ pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
 
 	// TODO Check processes SID
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
 	if pid == 0 {

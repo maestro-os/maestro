@@ -13,7 +13,7 @@ use macros::syscall;
 #[syscall]
 pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 	let (new_cwd, uid, gid) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let uid = proc.euid;
@@ -47,7 +47,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 
 	// Setting new cwd
 	{
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
 		proc.set_cwd(new_cwd)?;
 	}

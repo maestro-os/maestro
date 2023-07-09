@@ -265,7 +265,7 @@ pub fn create_file_at(
 ///
 /// If returning, the function returns the mutex lock of the current process.
 pub fn handle_proc_state() {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	match proc.get_state() {
@@ -310,7 +310,7 @@ pub fn handle_proc_state() {
 ///
 /// `regs` is the registers state passed to the current syscall.
 pub fn signal_check(regs: &Regs) {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
 	if proc.get_next_signal().is_some() {

@@ -13,7 +13,7 @@ pub fn fsync(fd: c_int) -> Result<i32, Errno> {
 	}
 
 	let file_mutex = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.get_fds().unwrap();

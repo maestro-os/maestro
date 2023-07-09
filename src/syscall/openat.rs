@@ -40,7 +40,7 @@ fn get_file(
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
@@ -75,7 +75,7 @@ pub fn openat(
 	let file = get_file(dirfd, pathname, flags, mode)?;
 
 	let (uid, gid) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		(proc.euid, proc.egid)
@@ -92,7 +92,7 @@ pub fn openat(
 
 	open_file::OpenFile::new(loc.clone(), flags)?;
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();

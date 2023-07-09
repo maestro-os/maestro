@@ -15,7 +15,7 @@ pub fn clock_gettime64(_clock_id: i32, tp: SyscallPtr<Timespec>) -> Result<i32, 
 	let curr_time = time::get_struct::<Timespec>(clk, true).ok_or(errno!(EINVAL))?;
 
 	{
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();

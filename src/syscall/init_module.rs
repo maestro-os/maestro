@@ -17,7 +17,7 @@ pub fn init_module(
 	_param_values: SyscallString,
 ) -> Result<i32, Errno> {
 	let module = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		if proc.euid != 0 {

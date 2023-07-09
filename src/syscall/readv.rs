@@ -100,7 +100,7 @@ pub fn do_readv(
 	// TODO Handle flags
 
 	let (mem_space, open_file_mutex) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -133,7 +133,7 @@ pub fn do_readv(
 		match &result {
 			// If writing to a broken pipe, kill with SIGPIPE
 			Err(e) if e.as_int() == errno::EPIPE => {
-				let proc_mutex = Process::get_current().unwrap();
+				let proc_mutex = Process::current_assert();
 				let mut proc = proc_mutex.lock();
 
 				proc.kill(&Signal::SIGPIPE, false);

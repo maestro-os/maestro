@@ -712,7 +712,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// The system call doesn't exist. Kill the process with SIGSYS
 		None => {
 			{
-				let proc_mutex = Process::get_current().unwrap();
+				let proc_mutex = Process::current_assert();
 				let mut proc = proc_mutex.lock();
 
 				if cfg!(feature = "strace") {

@@ -16,7 +16,7 @@ const RUSAGE_CHILDREN: i32 = -1;
 
 #[syscall]
 pub fn getrusage(who: c_int, usage: SyscallPtr<RUsage>) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	// TODO Check access to `usage`

@@ -174,7 +174,7 @@ pub fn do_waitpid(
 		cli!();
 
 		{
-			let proc_mutex = Process::get_current().unwrap();
+			let proc_mutex = Process::current_assert();
 			let mut proc = proc_mutex.lock();
 
 			// Check if at least one target process is waitable

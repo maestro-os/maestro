@@ -9,7 +9,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn getpgid(pid: Pid) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	if pid == 0 {

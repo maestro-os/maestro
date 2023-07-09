@@ -451,9 +451,16 @@ impl Process {
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn get_current() -> Option<Arc<IntMutex<Self>>> {
+	pub fn current() -> Option<Arc<IntMutex<Self>>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_current_process()
+	}
+
+	/// Returns the current running process.
+	///
+	/// If no process is running, the function makes the kernel panic.
+	pub fn current_assert() -> Arc<IntMutex<Self>> {
+		Self::current().expect("no running process")
 	}
 
 	/// Registers the current process to the procfs.

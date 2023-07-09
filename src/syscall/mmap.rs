@@ -82,7 +82,7 @@ pub fn do_mmap(
 	};
 
 	// Getting the current process
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let uid = proc.euid;

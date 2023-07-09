@@ -8,7 +8,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn setgid32(gid: Gid) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
 	// TODO Implement correctly
