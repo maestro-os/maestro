@@ -13,8 +13,6 @@ use macros::syscall;
 const RENAME_NOREPLACE: c_int = 1;
 /// Flag: Exchanges old and new paths atomically.
 const RENAME_EXCHANGE: c_int = 2;
-/// TODO doc
-const RENAME_WHITEOUT: c_int = 4;
 
 #[syscall]
 pub fn renameat2(

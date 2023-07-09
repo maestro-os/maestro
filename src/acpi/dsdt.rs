@@ -1,4 +1,8 @@
-//! TODO doc
+//! The DSDT (Differentiated System Description Table) provides informations about supported power
+//! events.
+//!
+//! This table contains AML code which has to be parsed and executed to retrieve the required
+//! informations.
 
 use super::ACPITable;
 use super::ACPITableHeader;

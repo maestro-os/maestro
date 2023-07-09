@@ -79,7 +79,7 @@ impl Channel {
 /// Structure representing an IDE controller.
 #[derive(Debug)]
 pub struct Controller {
-	/// TODO doc
+	/// Programming Interface Byte
 	prog_if: u8,
 
 	/// IDE controller's BARs.

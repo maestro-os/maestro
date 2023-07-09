@@ -129,12 +129,14 @@ fn build_path_from_fd(
 
 /// Returns the file for the given path `pathname`.
 ///
+/// This function is useful for system calls with the `at` prefix.
+///
 /// Arguments:
 /// - `process` is the mutex guard of the current process.
 /// - `follow_links` tells whether symbolic links may be followed.
 /// - `dirfd` is the file descriptor of the parent directory.
 /// - `pathname` is the path relative to the parent directory.
-/// - `flags` is an integer containing AT_* flags.
+/// - `flags` is an integer containing `AT_*` flags.
 pub fn get_file_at(
 	process: MutexGuard<Process, false>,
 	follow_links: bool,
@@ -184,7 +186,15 @@ pub fn get_file_at(
 	}
 }
 
-/// TODO doc
+/// Returns the parent directory of the file for the given path `pathname`.
+///
+/// This function is useful for system calls with the `at` prefix.
+///
+/// Arguments:
+/// - `process` is the mutex guard of the current process.
+/// - `follow_links` tells whether symbolic links may be followed.
+/// - `dirfd` is the file descriptor of the parent directory.
+/// - `pathname` is the path relative to the parent directory.
 pub fn get_parent_at_with_name(
 	process: MutexGuard<Process, false>,
 	follow_links: bool,

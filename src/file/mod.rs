@@ -349,7 +349,7 @@ pub struct File {
 
 	/// Timestamp of the last modification of the metadata.
 	pub ctime: Timestamp,
-	/// Timestamp of the last modification of the file.
+	/// Timestamp of the last modification of the file's content.
 	pub mtime: Timestamp,
 	/// Timestamp of the last access to the file.
 	pub atime: Timestamp,

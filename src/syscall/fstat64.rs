@@ -20,7 +20,7 @@ use macros::syscall;
 #[repr(C)]
 #[derive(Debug)]
 struct Stat {
-	/// TODO doc
+	/// ID of the device containing the file.
 	st_dev: u64,
 
 	/// Padding.
@@ -36,24 +36,24 @@ struct Stat {
 	st_uid: Uid,
 	/// File's owner GID.
 	st_gid: Gid,
-	/// TODO doc
+	/// Device ID (if device file).
 	st_rdev: u64,
 
 	/// Padding.
 	__st_rdev_padding: c_int,
 
-	/// TODO doc
+	/// Size of the file in bytes.
 	st_size: u32,
-	/// TODO doc
+	/// Size of a block on the file's storage medium.
 	st_blksize: c_long,
-	/// TODO doc
+	/// Size of the file in blocks.
 	st_blocks: u64,
 
-	/// TODO doc
+	/// Timestamp of last access.
 	st_atim: Timespec,
-	/// TODO doc
+	/// Timestamp of last modification of the content.
 	st_mtim: Timespec,
-	/// TODO doc
+	/// Timestamp of last modification of the metadata.
 	st_ctim: Timespec,
 }
 
