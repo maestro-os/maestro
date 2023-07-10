@@ -12,7 +12,6 @@ use core::mem::size_of;
 use core::ops::Bound;
 use core::ops::RangeBounds;
 use core::ptr;
-use core::ptr::drop_in_place;
 use core::ptr::NonNull;
 
 #[cfg(config_debug_debug)]
@@ -48,18 +47,23 @@ struct Node<K, V> {
 
 /// Deletes the node at the given pointer, except the key and value fields which
 /// are returned.
-unsafe fn drop_node<K, V>(node: *mut Node<K, V>) -> (K, V) {
-	let n = &mut *node;
-	drop_in_place(&mut n.parent);
-	drop_in_place(&mut n.left);
-	drop_in_place(&mut n.right);
-	drop_in_place(&mut n.color);
-	let key = ptr::read(&n.key);
-	let val = ptr::read(&n.value);
+///
+/// # Safety
+///
+/// The caller must ensure the pointer points to a valid node and must not use it after calling
+/// this function since it will be dropped.
+#[inline]
+unsafe fn drop_node<K, V>(ptr: *mut Node<K, V>) -> (K, V) {
+	let node = ptr::read(ptr);
+	malloc::free(ptr as _);
 
-	malloc::free(node as _);
+	let Node::<K, V> {
+		key,
+		value,
+		..
+	} = node;
 
-	(key, val)
+	(key, value)
 }
 
 /// Unwraps the given pointer option into a reference option.
@@ -260,29 +264,31 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// If the current node doesn't have a right child, the function does
 	/// nothing.
 	pub fn left_rotate(&mut self) {
-		if let Some(pivot) = self.get_right_mut() {
-			if let Some(parent) = self.get_parent_mut() {
-				if self.is_right_child() {
-					parent.right = NonNull::new(pivot);
-				} else {
-					parent.left = NonNull::new(pivot);
-				}
+		let Some(pivot) = self.get_right_mut() else {
+            return;
+		};
 
-				pivot.parent = NonNull::new(parent);
+		if let Some(parent) = self.get_parent_mut() {
+			if self.is_right_child() {
+				parent.right = NonNull::new(pivot);
 			} else {
-				pivot.parent = None;
+				parent.left = NonNull::new(pivot);
 			}
 
-			let left = pivot.get_left_mut();
-			pivot.left = NonNull::new(self);
-			self.parent = NonNull::new(pivot);
+			pivot.parent = NonNull::new(parent);
+		} else {
+			pivot.parent = None;
+		}
 
-			if let Some(left) = left {
-				self.right = NonNull::new(left);
-				left.parent = NonNull::new(self);
-			} else {
-				self.right = None;
-			}
+		let left = pivot.get_left_mut();
+		pivot.left = NonNull::new(self);
+		self.parent = NonNull::new(pivot);
+
+		if let Some(left) = left {
+			self.right = NonNull::new(left);
+			left.parent = NonNull::new(self);
+		} else {
+			self.right = None;
 		}
 	}
 
@@ -291,29 +297,31 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// If the current node doesn't have a left child, the function does
 	/// nothing.
 	pub fn right_rotate(&mut self) {
-		if let Some(pivot) = self.get_left_mut() {
-			if let Some(parent) = self.get_parent_mut() {
-				if self.is_left_child() {
-					parent.left = NonNull::new(pivot);
-				} else {
-					parent.right = NonNull::new(pivot);
-				}
+		let Some(pivot) = self.get_left_mut() else {
+            return;
+		};
 
-				pivot.parent = NonNull::new(parent);
+		if let Some(parent) = self.get_parent_mut() {
+			if self.is_left_child() {
+				parent.left = NonNull::new(pivot);
 			} else {
-				pivot.parent = None;
+				parent.right = NonNull::new(pivot);
 			}
 
-			let right = pivot.get_right_mut();
-			pivot.right = NonNull::new(self);
-			self.parent = NonNull::new(pivot);
+			pivot.parent = NonNull::new(parent);
+		} else {
+			pivot.parent = None;
+		}
 
-			if let Some(right) = right {
-				self.left = NonNull::new(right);
-				right.parent = NonNull::new(self);
-			} else {
-				self.left = None;
-			}
+		let right = pivot.get_right_mut();
+		pivot.right = NonNull::new(self);
+		self.parent = NonNull::new(pivot);
+
+		if let Some(right) = right {
+			self.left = NonNull::new(right);
+			right.parent = NonNull::new(self);
+		} else {
+			self.left = None;
 		}
 	}
 
@@ -422,7 +430,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 
 /// Specify the order in which the tree is traversed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TraversalType {
+pub enum TraveralOrder {
 	/// Accesses the data, then left child, then right child
 	PreOrder,
 	/// Accesses left child, then the data, then right child
@@ -943,105 +951,103 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		//self.check();
 		Some(value)
 	}
-}
 
-impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Calls the given closure for every nodes in the subtree with root `root`.
 	///
-	/// `traversal_type` defines the order in which the tree is traversed.
+	/// `traversal_order` defines the order in which the tree is traversed.
 	fn foreach_nodes<F: FnMut(&Node<K, V>)>(
 		root: &Node<K, V>,
 		f: &mut F,
-		traversal_type: TraversalType,
+		traversal_order: TraveralOrder,
 	) {
-		let (first, second) = if traversal_type == TraversalType::ReverseInOrder {
+		let (first, second) = if traversal_order == TraveralOrder::ReverseInOrder {
 			(root.right, root.left)
 		} else {
 			(root.left, root.right)
 		};
 
-		if traversal_type == TraversalType::PreOrder {
+		if traversal_order == TraveralOrder::PreOrder {
 			f(root);
 		}
 
 		if let Some(mut n) = first {
-			Self::foreach_nodes(unsafe { n.as_mut() }, f, traversal_type);
+			Self::foreach_nodes(unsafe { n.as_mut() }, f, traversal_order);
 		}
 
-		if traversal_type == TraversalType::InOrder
-			|| traversal_type == TraversalType::ReverseInOrder
+		if traversal_order == TraveralOrder::InOrder
+			|| traversal_order == TraveralOrder::ReverseInOrder
 		{
 			f(root);
 		}
 
 		if let Some(mut n) = second {
-			Self::foreach_nodes(unsafe { n.as_mut() }, f, traversal_type);
+			Self::foreach_nodes(unsafe { n.as_mut() }, f, traversal_order);
 		}
 
-		if traversal_type == TraversalType::PostOrder {
+		if traversal_order == TraveralOrder::PostOrder {
 			f(root);
 		}
 	}
 
 	/// Calls the given closure for every nodes in the subtree with root `root`.
 	///
-	/// `traversal_type` defines the order in which the tree is traversed.
+	/// `traversal_order` defines the order in which the tree is traversed.
 	fn foreach_nodes_mut<F: FnMut(&mut Node<K, V>)>(
 		root: &mut Node<K, V>,
 		f: &mut F,
-		traversal_type: TraversalType,
+		traversal_order: TraveralOrder,
 	) {
-		let (first, second) = if traversal_type == TraversalType::ReverseInOrder {
+		let (first, second) = if traversal_order == TraveralOrder::ReverseInOrder {
 			(root.right, root.left)
 		} else {
 			(root.left, root.right)
 		};
 
-		if traversal_type == TraversalType::PreOrder {
+		if traversal_order == TraveralOrder::PreOrder {
 			f(root);
 		}
 
 		if let Some(mut n) = first {
-			Self::foreach_nodes_mut(unsafe { n.as_mut() }, f, traversal_type);
+			Self::foreach_nodes_mut(unsafe { n.as_mut() }, f, traversal_order);
 		}
 
-		if traversal_type == TraversalType::InOrder
-			|| traversal_type == TraversalType::ReverseInOrder
+		if traversal_order == TraveralOrder::InOrder
+			|| traversal_order == TraveralOrder::ReverseInOrder
 		{
 			f(root);
 		}
 
 		if let Some(mut n) = second {
-			Self::foreach_nodes_mut(unsafe { n.as_mut() }, f, traversal_type);
+			Self::foreach_nodes_mut(unsafe { n.as_mut() }, f, traversal_order);
 		}
 
-		if traversal_type == TraversalType::PostOrder {
+		if traversal_order == TraveralOrder::PostOrder {
 			f(root);
 		}
 	}
 
 	/// Calls the given closure for every values.
-	pub fn foreach<F: FnMut(&K, &V)>(&self, mut f: F, traversal_type: TraversalType) {
+	pub fn foreach<F: FnMut(&K, &V)>(&self, mut f: F, traversal_order: TraveralOrder) {
 		if let Some(n) = self.root {
 			Self::foreach_nodes(
 				unsafe { n.as_ref() },
 				&mut |n: &Node<K, V>| {
 					f(&n.key, &n.value);
 				},
-				traversal_type,
+				traversal_order,
 			);
 		}
 	}
 
 	/// Calls the given closure for every values.
-	pub fn foreach_mut<F: FnMut(&K, &mut V)>(&mut self, mut f: F, traversal_type: TraversalType) {
+	pub fn foreach_mut<F: FnMut(&K, &mut V)>(&mut self, mut f: F, traversal_order: TraveralOrder) {
 		if let Some(mut n) = self.root {
 			Self::foreach_nodes_mut(
 				unsafe { n.as_mut() },
 				&mut |n: &mut Node<K, V>| {
 					f(&n.key, &mut n.value);
 				},
-				traversal_type,
+				traversal_order,
 			);
 		}
 	}
@@ -1084,7 +1090,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 						assert!(right.key >= n.key);
 					}
 				},
-				TraversalType::PreOrder,
+				TraveralOrder::PreOrder,
 			);
 		}
 	}
@@ -1156,17 +1162,16 @@ impl<'a, K: 'static + Ord, V> Iterator for MapIterator<'a, K, V> {
 			} else {
 				let mut tmp = n;
 				let mut n = n.get_parent();
+				while let Some(inner) = n {
+					if !tmp.is_right_child() {
+						break;
+					}
 
-				while n.is_some() && tmp.is_right_child() {
-					tmp = n.unwrap();
-					n = n.unwrap().get_parent();
+					tmp = inner;
+					n = tmp.get_parent();
 				}
 
-				if let Some(n) = n {
-					self.node = NonNull::new(n as *const _ as *mut _);
-				} else {
-					self.node = None;
-				}
+				self.node = n.map(|n| NonNull::new(n as *const _ as *mut _).unwrap());
 			}
 		}
 
@@ -1223,17 +1228,16 @@ impl<'a, K: 'static + Ord, V> Iterator for MapMutIterator<'a, K, V> {
 			} else {
 				let mut tmp = n;
 				let mut n = n.get_parent();
+				while let Some(inner) = n {
+					if !tmp.is_right_child() {
+						break;
+					}
 
-				while n.is_some() && tmp.is_right_child() {
-					tmp = n.unwrap();
-					n = n.unwrap().get_parent();
+					tmp = inner;
+					n = tmp.get_parent();
 				}
 
-				if let Some(n) = n {
-					self.node = NonNull::new(n as *const _ as *mut _);
-				} else {
-					self.node = None;
-				}
+				self.node = n.map(|n| NonNull::new(n as *const _ as *mut _).unwrap());
 			}
 		}
 
@@ -1359,7 +1363,7 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 					};
 					let _ = writeln!(f, "{:?} ({:?})", n.key, color);
 				},
-				TraversalType::ReverseInOrder,
+				TraveralOrder::ReverseInOrder,
 			);
 			Ok(())
 		} else {
@@ -1376,7 +1380,7 @@ impl<K: 'static + Ord, V> Drop for Map<K, V> {
 				&mut |n| unsafe {
 					drop_node(n);
 				},
-				TraversalType::PostOrder,
+				TraveralOrder::PostOrder,
 			);
 		}
 	}
@@ -1566,7 +1570,7 @@ mod test {
 			|_, _| {
 				assert!(false);
 			},
-			TraversalType::PreOrder,
+			TraveralOrder::PreOrder,
 		);
 	}
 
@@ -1582,7 +1586,7 @@ mod test {
 				assert_eq!(*key, 0);
 				passed = true;
 			},
-			TraversalType::PreOrder,
+			TraveralOrder::PreOrder,
 		);
 		assert!(passed);
 	}
