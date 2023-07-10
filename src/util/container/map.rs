@@ -647,52 +647,50 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		None
 	}
 
-	/// Equilibrates the tree after insertion of node `n`.
-	fn insert_equilibrate(n: &mut Node<K, V>) {
-		let mut node = n;
+	/// Equilibrates the tree after insertion of node `node`.
+	fn insert_equilibrate(mut node: &mut Node<K, V>) {
+		let Some(parent) = node.get_parent_mut() else {
+			node.color = NodeColor::Black;
+            return;
+        };
+		if parent.is_black() {
+			return;
+		}
 
-		if let Some(parent) = node.get_parent_mut() {
-			if parent.is_black() {
+		// The node's parent exists and is red
+		if let Some(uncle) = node.get_uncle_mut() {
+			if uncle.is_red() {
+				let grandparent = parent.get_parent_mut().unwrap();
+				parent.color = NodeColor::Black;
+				uncle.color = NodeColor::Black;
+				grandparent.color = NodeColor::Red;
+
+				Self::insert_equilibrate(grandparent);
 				return;
 			}
-
-			// The node's parent exists and is red
-			if let Some(uncle) = node.get_uncle_mut() {
-				if uncle.is_red() {
-					let grandparent = parent.get_parent_mut().unwrap();
-					parent.color = NodeColor::Black;
-					uncle.color = NodeColor::Black;
-					grandparent.color = NodeColor::Red;
-
-					Self::insert_equilibrate(grandparent);
-					return;
-				}
-			}
-
-			if node.is_triangle() {
-				if parent.is_right_child() {
-					parent.right_rotate();
-				} else {
-					parent.left_rotate();
-				}
-
-				node = parent;
-			}
-
-			let parent = node.get_parent_mut().unwrap();
-			let grandparent = parent.get_parent_mut().unwrap();
-
-			if node.is_right_child() {
-				grandparent.left_rotate();
-			} else {
-				grandparent.right_rotate();
-			}
-
-			parent.color = NodeColor::Black;
-			grandparent.color = NodeColor::Red;
-		} else {
-			node.color = NodeColor::Black;
 		}
+
+		if node.is_triangle() {
+			if parent.is_right_child() {
+				parent.right_rotate();
+			} else {
+				parent.left_rotate();
+			}
+
+			node = parent;
+		}
+
+		let parent = node.get_parent_mut().unwrap();
+		let grandparent = parent.get_parent_mut().unwrap();
+
+		if node.is_right_child() {
+			grandparent.left_rotate();
+		} else {
+			grandparent.right_rotate();
+		}
+
+		parent.color = NodeColor::Black;
+		grandparent.color = NodeColor::Red;
 	}
 
 	/// Inserts a key/value pair in the tree and returns a mutable reference to
@@ -705,8 +703,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	///
 	/// If the key is already used, the previous key/value pair is dropped.
 	pub fn insert(&mut self, key: K, val: V) -> Result<&mut V, Errno> {
-		let n = {
-			if let Some(p) = self.get_insert_node(&key) {
+		let n = match self.get_insert_node(&key) {
+			Some(p) => {
 				let order = key.cmp(&p.key);
 
 				if order == Ordering::Equal {
@@ -728,7 +726,9 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				}
 
 				n
-			} else {
+			}
+
+			None => {
 				debug_assert!(self.root.is_none());
 
 				let mut node = Node::new(key, val)?;
@@ -750,7 +750,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Returns the leftmost node in the tree.
 	fn get_leftmost_node(node: &'static mut Node<K, V>) -> &'static mut Node<K, V> {
 		let mut n = node;
-
 		while let Some(left) = n.get_left_mut() {
 			n = left;
 		}
@@ -763,65 +762,70 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	///
 	/// `node` is the node to fix.
 	fn remove_fix_double_black(node: &mut Node<K, V>) {
-		if let Some(parent) = node.get_parent_mut() {
-			if let Some(sibling) = node.get_sibling_mut() {
-				if sibling.is_red() {
-					parent.color = NodeColor::Red;
-					sibling.color = NodeColor::Black;
+		let Some(parent) = node.get_parent_mut() else {
+            return;
+		};
+		let Some(sibling) = node.get_sibling_mut() else {
+            Self::remove_fix_double_black(parent);
+            return;
+        };
 
-					if sibling.is_left_child() {
-						parent.right_rotate();
-					} else {
-						parent.left_rotate();
-					}
+		if sibling.is_red() {
+			parent.color = NodeColor::Red;
+			sibling.color = NodeColor::Black;
 
-					Self::remove_fix_double_black(node);
-				} else {
-					// `sibling` is black
-					let s_left = sibling.get_left_mut();
-					let s_right = sibling.get_right_mut();
-
-					if s_left.is_some() && s_left.as_ref().unwrap().is_red() {
-						let s_left = s_left.unwrap();
-
-						if sibling.is_left_child() {
-							s_left.color = sibling.color;
-							sibling.color = parent.color;
-							parent.right_rotate();
-						} else {
-							s_left.color = parent.color;
-							sibling.right_rotate();
-							parent.left_rotate();
-						}
-
-						parent.color = NodeColor::Black;
-					} else if s_right.is_some() && s_right.as_ref().unwrap().is_red() {
-						let s_right = s_right.unwrap();
-
-						if sibling.is_left_child() {
-							s_right.color = parent.color;
-							sibling.left_rotate();
-							parent.right_rotate();
-						} else {
-							s_right.color = sibling.color;
-							sibling.color = parent.color;
-							parent.left_rotate();
-						}
-
-						parent.color = NodeColor::Black;
-					} else {
-						// `sibling` has two black children
-						sibling.color = NodeColor::Red;
-
-						if parent.is_black() {
-							Self::remove_fix_double_black(parent);
-						} else {
-							parent.color = NodeColor::Black;
-						}
-					}
-				}
+			if sibling.is_left_child() {
+				parent.right_rotate();
 			} else {
-				Self::remove_fix_double_black(parent);
+				parent.left_rotate();
+			}
+
+			Self::remove_fix_double_black(node);
+			return;
+		}
+
+		// from here, `sibling` is black
+
+		let s_left = sibling.get_left_mut();
+		let s_right = sibling.get_right_mut();
+		match (s_left, s_right) {
+			(Some(s_left), _) if s_left.is_red() => {
+				if sibling.is_left_child() {
+					s_left.color = sibling.color;
+					sibling.color = parent.color;
+					parent.right_rotate();
+				} else {
+					s_left.color = parent.color;
+					sibling.right_rotate();
+					parent.left_rotate();
+				}
+
+				parent.color = NodeColor::Black;
+			}
+
+			(_, Some(s_right)) if s_right.is_red() => {
+				if sibling.is_left_child() {
+					s_right.color = parent.color;
+					sibling.left_rotate();
+					parent.right_rotate();
+				} else {
+					s_right.color = sibling.color;
+					sibling.color = parent.color;
+					parent.left_rotate();
+				}
+
+				parent.color = NodeColor::Black;
+			}
+
+			_ => {
+				// `sibling` has two black children
+				sibling.color = NodeColor::Red;
+
+				if parent.is_black() {
+					Self::remove_fix_double_black(parent);
+				} else {
+					parent.color = NodeColor::Black;
+				}
 			}
 		}
 	}
@@ -830,97 +834,99 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	///
 	/// The function returns the value of the removed node.
 	fn remove_node(&mut self, node: &mut Node<K, V>) -> V {
-		let replacement = {
-			let left = node.get_left_mut();
-			let right = node.get_right_mut();
-
-			if left.is_some() && right.is_some() {
-				// The node has two children
-				// The leftmost node may have a child on the right
-				Some(Self::get_leftmost_node(right.unwrap()))
-			} else if left.is_some() {
-				// The node has only one child on the left
-				left
-			} else if right.is_some() {
-				// The node has only one child on the right
-				right
-			} else {
-				// The node has no children
-				None
-			}
+		let left = node.get_left_mut();
+		let right = node.get_right_mut();
+		let replacement = match (left, right) {
+			// The node has two children
+			// The leftmost node may have a child on the right
+			(Some(_left), Some(right)) => Some(Self::get_leftmost_node(right)),
+			// The node has only one child on the left
+			(Some(left), _) => Some(left),
+			// The node has only one child on the right
+			(_, Some(right)) => Some(right),
+			// The node has no children
+			_ => None,
 		};
 
 		let both_black =
-			node.is_black() && (replacement.is_none() || replacement.as_ref().unwrap().is_black());
+			node.is_black() && replacement.as_ref().map(|r| r.is_black()).unwrap_or(true);
+		let parent = node.get_parent_mut();
 
-		if replacement.is_none() {
-			if node.get_parent_mut().is_none() {
-				// The node is root and has no children
-				unsafe {
-					debug_assert_eq!(
-						self.root.unwrap().as_mut() as *mut Node<K, V>,
-						node as *mut _
-					);
-				}
-				self.root = None;
-			} else {
-				if both_black {
-					Self::remove_fix_double_black(node);
-					self.update_root(node);
-				} else if let Some(sibling) = node.get_sibling_mut() {
-					sibling.color = NodeColor::Red;
-				}
+		let Some(replacement) = replacement else {
+            // The node has no children
 
-				node.unlink();
-			}
+            match parent {
+                Some(_parent) => {
+                    if both_black {
+                        Self::remove_fix_double_black(node);
+                        self.update_root(node);
+                    } else if let Some(sibling) = node.get_sibling_mut() {
+                        sibling.color = NodeColor::Red;
+                    }
+                }
+
+				// The node is root
+                None => {
+                    unsafe {
+                        debug_assert_eq!(
+                            self.root.unwrap().as_mut() as *mut Node<K, V>,
+                            node as *mut _
+                        );
+                    }
+
+                    self.root = None;
+                }
+            }
+
+            node.unlink();
 
 			let (_, val) = unsafe { drop_node(node) };
-			val
-		} else if node.get_left().is_none() || node.get_right().is_none() {
-			let replacement = replacement.unwrap();
+			return val;
+        };
 
-			if let Some(parent) = node.get_parent_mut() {
-				replacement.parent = None;
-				if node.is_left_child() {
-					parent.left = None;
-					parent.insert_left(replacement);
-				} else {
-					parent.right = None;
-					parent.insert_right(replacement);
-				}
-
-				node.unlink();
-				let (_, val) = unsafe { drop_node(node) };
-
-				if both_black {
-					Self::remove_fix_double_black(replacement);
-					self.update_root(replacement);
-				} else {
-					replacement.color = NodeColor::Black;
-				}
-
-				val
-			} else {
-				replacement.unlink();
-				let (key, value) = unsafe { drop_node(replacement) };
-
-				// The node is the root
-				node.left = None;
-				node.right = None;
-
-				node.key = key;
-				let mut val = value;
-				mem::swap(&mut val, &mut node.value);
-
-				val
-			}
-		} else {
-			let replacement = replacement.unwrap();
+		if node.get_left().is_some() && node.get_right().is_some() {
 			mem::swap(&mut node.key, &mut replacement.key);
 			mem::swap(&mut node.value, &mut replacement.value);
 
-			self.remove_node(replacement)
+			return self.remove_node(replacement);
 		}
+
+		let Some(parent) = parent else {
+            // The node is the root
+
+            replacement.unlink();
+            let (key, value) = unsafe { drop_node(replacement) };
+
+            node.left = None;
+            node.right = None;
+
+            node.key = key;
+            let mut val = value;
+            mem::swap(&mut val, &mut node.value);
+
+            return val;
+        };
+
+		replacement.parent = None;
+		if node.is_left_child() {
+			parent.left = None;
+			parent.insert_left(replacement);
+		} else {
+			parent.right = None;
+			parent.insert_right(replacement);
+		}
+
+		node.unlink();
+		let (_, val) = unsafe { drop_node(node) };
+
+		if both_black {
+			Self::remove_fix_double_black(replacement);
+			self.update_root(replacement);
+		} else {
+			replacement.color = NodeColor::Black;
+		}
+
+		val
 	}
 
 	/// Removes a value from the tree. If the value is present several times in

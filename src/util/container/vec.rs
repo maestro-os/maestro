@@ -422,6 +422,8 @@ impl<T> DerefMut for Vec<T> {
 	}
 }
 
+impl<T: Eq> Eq for Vec<T> {}
+
 impl<T: PartialEq> PartialEq for Vec<T> {
 	fn eq(&self, other: &Vec<T>) -> bool {
 		if self.len() != other.len() {

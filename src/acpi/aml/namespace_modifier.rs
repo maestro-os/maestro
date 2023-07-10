@@ -23,6 +23,7 @@ pub struct DefScope {
 }
 
 /// TODO doc
+#[allow(clippy::enum_variant_names)]
 #[derive(Parseable)]
 pub enum NameSpaceModifierObj {
 	DefAlias(DefAlias),
