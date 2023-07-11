@@ -5,18 +5,17 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::memory;
 use crate::process::Process;
-use crate::util;
 use crate::util::math;
 use core::ffi::c_void;
 use macros::syscall;
 
 #[syscall]
 pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
-	if !util::is_aligned(addr, memory::PAGE_SIZE) || length == 0 {
+	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let pages = math::ceil_div(length, memory::PAGE_SIZE);

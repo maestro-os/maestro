@@ -8,7 +8,6 @@ use crate::process::mem_space;
 use crate::process::mem_space::MapResidence;
 use crate::process::Process;
 use crate::syscall::mmap::mem_space::MapConstraint;
-use crate::util;
 use crate::util::math;
 use core::ffi::c_int;
 use core::ffi::c_void;
@@ -57,7 +56,7 @@ pub fn do_mmap(
 	offset: u64,
 ) -> Result<i32, Errno> {
 	// Checking alignment of `addr` and `length`
-	if !util::is_aligned(addr, memory::PAGE_SIZE) || length == 0 {
+	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
 
@@ -83,7 +82,7 @@ pub fn do_mmap(
 	};
 
 	// Getting the current process
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let uid = proc.euid;

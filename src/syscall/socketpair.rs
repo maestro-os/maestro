@@ -21,7 +21,7 @@ pub fn socketpair(
 	protocol: c_int,
 	sv: SyscallPtr<[c_int; 2]>,
 ) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let uid = proc.euid;

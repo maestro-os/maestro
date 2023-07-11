@@ -10,15 +10,16 @@ use core::ffi::c_int;
 use core::ffi::c_void;
 use macros::syscall;
 
-/// TODO doc
+/// Duplicate the file descriptor using the lowest numbered available file descriptor greater than
+/// or equal to the specified argument.
 const F_DUPFD: i32 = 0;
-/// TODO doc
+/// Return the file descriptor flags.
 const F_GETFD: i32 = 1;
-/// TODO doc
+/// Set the file descriptor flags.
 const F_SETFD: i32 = 2;
-/// TODO doc
+/// Return the file access mode and the file status flags.
 const F_GETFL: i32 = 3;
-/// TODO doc
+/// Set the file status flag.
 const F_SETFL: i32 = 4;
 /// TODO doc
 const F_GETLK: i32 = 5;
@@ -26,13 +27,15 @@ const F_GETLK: i32 = 5;
 const F_SETLK: i32 = 6;
 /// TODO doc
 const F_SETLKW: i32 = 7;
-/// TODO doc
+/// Set the process ID or process group ID that will receive `SIGIO` and `SIGURG` signals for
+/// events on the file descriptor.
 const F_SETOWN: i32 = 8;
-/// TODO doc
+/// Return the process ID or process group ID currently receiving `SIGIO` and `SIGURG` signals for
+/// events on the file descriptor.
 const F_GETOWN: i32 = 9;
-/// TODO doc
+/// Set the signal sent when input or output becomes possible to the given value.
 const F_SETSIG: i32 = 10;
-/// TODO doc
+/// Return the signal sent when input or output becomes possible.
 const F_GETSIG: i32 = 11;
 /// TODO doc
 const F_GETLK64: i32 = 12;
@@ -40,9 +43,10 @@ const F_GETLK64: i32 = 12;
 const F_SETLK64: i32 = 13;
 /// TODO doc
 const F_SETLKW64: i32 = 14;
-/// TODO doc
+/// Similar to `F_SETOWN`, except it allows to specifiy a thread ID using the `f_owner_ex`
+/// structure.
 const F_SETOWN_EX: i32 = 15;
-/// TODO doc
+/// Return the setting defined by `F_SETOWN_EX`.
 const F_GETOWN_EX: i32 = 16;
 /// TODO doc
 const F_OFD_GETLK: i32 = 36;
@@ -50,55 +54,62 @@ const F_OFD_GETLK: i32 = 36;
 const F_OFD_SETLK: i32 = 37;
 /// TODO doc
 const F_OFD_SETLKW: i32 = 38;
-/// TODO doc
+/// Set or remove a file lease.
 const F_SETLEASE: i32 = 1024;
-/// TODO doc
+/// Indicates what type of lease is associated with the file descriptor.
 const F_GETLEASE: i32 = 1025;
-/// TODO doc
+/// Provide notification when the directory referred to by the file descriptor or any of the files
+/// that it contains is changed.
 const F_NOTIFY: i32 = 1026;
-/// TODO doc
+/// Like `F_DUPFD`, but also set the close-on-exec flag for the duplicate file descritpr.
 const F_DUPFD_CLOEXEC: i32 = 1030;
-/// TODO doc
+/// Change the capacity of the pipe referred to by the file descriptor to be at least the given
+/// number of bytes.
 const F_SETPIPE_SZ: i32 = 1031;
-/// TODO doc
+/// Return the capacity of the pipe referred to bt the file descriptor.
 const F_GETPIPE_SZ: i32 = 1032;
-/// TODO doc
+/// Add the seals given in the bit-mask argument to the set of seeals of the inode referred to by
+/// the file descriptor.
 const F_ADD_SEALS: i32 = 1033;
-/// TODO doc
+/// Return the current set of seals of the inode referred to by the file descriptor.
 const F_GET_SEALS: i32 = 1034;
-/// TODO doc
+/// Return the value of the read/write hint associated with the underlying inode referred to by the
+/// file descriptor.
 const F_GET_RW_HINT: i32 = 1035;
-/// TODO doc
+/// Set the read/write hint value associated with the underlying inode referred to by the file
+/// descriptor.
 const F_SET_RW_HINT: i32 = 1036;
-/// TODO doc
+/// Return the value of the read/write hint associated with the open file description referred to
+/// by the file descriptor.
 const F_GET_FILE_RW_HINT: i32 = 1037;
-/// TODO doc
+/// Set the read/write hint value associated with the open file description referred to by the file
+/// descriptor.
 const F_SET_FILE_RW_HINT: i32 = 1038;
 
 /// TODO doc
 const F_SEAL_FUTURE_WRITE: i32 = 16;
 
-/// TODO doc
+/// Take out a read lease.
 const F_RDLCK: i32 = 0;
-/// TODO doc
+/// Take out a write lease.
 const F_WRLCK: i32 = 1;
-/// TODO doc
+/// Remove our lease from the file.
 const F_UNLCK: i32 = 2;
 
-/// TODO doc
+/// Send the signal to the process group whose ID is specified.
 const F_OWNER_PGRP: i32 = 2;
-/// TODO doc
+/// Send the signal to the process whose ID is specified.
 const F_OWNER_PID: i32 = 1;
-/// TODO doc
+/// Send the signal to the thread whose thread ID is specified.
 const F_OWNER_TID: i32 = 0;
 
-/// TODO doc
+/// If this seal is set, the size of the file in question cannot be increased.
 const F_SEAL_GROW: i32 = 4;
-/// TODO doc
+/// If this seal is set, any further call to `fcntl` with `F_ADD_SEALS` fails.
 const F_SEAL_SEAL: i32 = 1;
-/// TODO doc
+/// If this seal is set, the size of the file in question cannot be reduced.
 const F_SEAL_SHRINK: i32 = 2;
-/// TODO doc
+/// If this seal is set, you cannot modify the contents of the file.
 const F_SEAL_WRITE: i32 = 8;
 
 /// Performs the fcntl system call.
@@ -110,7 +121,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 	}
 
 	let fds_mutex = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		proc.get_fds().unwrap()

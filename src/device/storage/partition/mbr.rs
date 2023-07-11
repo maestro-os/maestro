@@ -49,7 +49,7 @@ pub struct MbrTable {
 impl Clone for MbrTable {
 	fn clone(&self) -> Self {
 		Self {
-			boot: self.boot.clone(),
+			boot: self.boot,
 			disk_signature: self.disk_signature,
 			zero: self.zero,
 			partitions: self.partitions.clone(),

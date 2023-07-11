@@ -1,10 +1,10 @@
-//! This module implements ACPI related features.
+//! The ACPI (Advanced Configuration and Power Interface) interface provides informations about the
+//! system, allowing to control components such as cooling and power.
 //!
-//! The ACPI interface provides informations about the system, allowing to
-//! control components such as cooling and powering.
-//!
-//! The first step in initialization is to read the RSDP table in order to get a
-//! pointer to the RSDT, referring to every other available tables.
+//! ACPI initialization is done through the following phases:
+//! - Read the `RSDP` table in order to get a pointer to the `RSDT`, referring to every other
+//!   available tables.
+//! - TODO
 
 use core::mem::size_of;
 use data::ACPIData;

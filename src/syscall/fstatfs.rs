@@ -15,7 +15,7 @@ pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	}
 
 	let file_mutex = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.get_fds().unwrap();
@@ -44,7 +44,7 @@ pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 
 	// Writing the statfs structure to userspace
 	{
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();

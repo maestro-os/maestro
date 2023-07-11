@@ -181,6 +181,7 @@ impl KeyboardKey {
 
 		if ctrl {
 			match self {
+				#[allow(clippy::identity_op)]
 				Self::KeyA => return Some(&[b'A' - b'A' + 1]),
 				Self::KeyB => return Some(&[b'B' - b'A' + 1]),
 				Self::KeyC => return Some(&[b'C' - b'A' + 1]),

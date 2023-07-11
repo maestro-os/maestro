@@ -77,7 +77,7 @@ impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
 	}
 }
 
-/// The inner structure of the Mutex structure.
+/// The inner structure of the `Mutex` structure.
 struct MutexIn<T: ?Sized, const INT: bool> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
@@ -208,5 +208,5 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 
 unsafe impl<T, const INT: bool> Sync for Mutex<T, INT> {}
 
-/// Type alias on Mutex representing a mutex which blocks interrupts.
+/// Type alias on `Mutex` representing a mutex which blocks interrupts.
 pub type IntMutex<T> = Mutex<T, false>;

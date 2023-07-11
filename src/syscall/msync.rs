@@ -5,7 +5,6 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::memory;
 use crate::process::Process;
-use crate::util;
 use core::ffi::c_int;
 use core::ffi::c_void;
 use macros::syscall;
@@ -20,7 +19,7 @@ const MS_INVALIDATE: i32 = 0b100;
 #[syscall]
 pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errno> {
 	// Checking address alignment
-	if !util::is_aligned(addr, memory::PAGE_SIZE) {
+	if !addr.is_aligned_to(memory::PAGE_SIZE) {
 		return Err(errno!(EINVAL));
 	}
 	// Checking for conflicts in flags
@@ -28,7 +27,7 @@ pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errn
 		return Err(errno!(EINVAL));
 	}
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	// The process's memory space

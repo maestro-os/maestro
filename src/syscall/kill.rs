@@ -17,7 +17,7 @@ use macros::syscall;
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut curr_proc = proc_mutex.lock();
 
 	let uid = curr_proc.uid;
@@ -62,7 +62,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 	let pgid = match pid {
 		0 => {
-			let curr_mutex = Process::get_current().unwrap();
+			let curr_mutex = Process::current_assert();
 			let curr_proc = curr_mutex.lock();
 
 			curr_proc.pgid
@@ -142,7 +142,7 @@ pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 	send_signal(pid, sig)?;
 
 	{
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
 
 		// POSIX requires that at least one pending signal is executed before returning

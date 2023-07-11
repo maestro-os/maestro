@@ -1,7 +1,9 @@
-//! This module handles filesystems. Every filesystems are unified by the
-//! Virtual FileSystem (VFS).
+//! This module handles files and filesystems.
 //!
-//! The root filesystem is passed to the kernel as an argument when booting.
+//! The kernel allows *mounting* several filesystems together, which are all unified into one
+//! filesystem called the VFS (Virtual FileSystem).
+//!
+//! The root filesystem is passed to the kernel as an argument on boot.
 //! Other filesystems are mounted into subdirectories.
 
 pub mod blocking;
@@ -349,7 +351,7 @@ pub struct File {
 
 	/// Timestamp of the last modification of the metadata.
 	pub ctime: Timestamp,
-	/// Timestamp of the last modification of the file.
+	/// Timestamp of the last modification of the file's content.
 	pub mtime: Timestamp,
 	/// Timestamp of the last access to the file.
 	pub atime: Timestamp,

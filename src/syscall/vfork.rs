@@ -14,7 +14,7 @@ use macros::syscall;
 pub fn vfork() -> Result<i32, Errno> {
 	let new_pid = {
 		// The current process
-		let curr_mutex = Process::get_current().unwrap();
+		let curr_mutex = Process::current_assert();
 		// A weak pointer to the new process's parent
 		let parent = Arc::downgrade(&curr_mutex);
 

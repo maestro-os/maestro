@@ -11,7 +11,7 @@ use macros::syscall;
 #[syscall]
 pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i32, Errno> {
 	let (file_mutex, uid, gid) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let uid = proc.euid;

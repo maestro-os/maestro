@@ -20,7 +20,7 @@ use core::ops::RangeTo;
 pub const PATH_SEPARATOR: char = '/';
 
 /// A structure representing a path to a file.
-#[derive(Debug, Hash)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub struct Path {
 	/// Tells whether the path is absolute or relative.
 	absolute: bool,
@@ -201,24 +201,6 @@ impl IndexMut<usize> for Path {
 	#[inline]
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		&mut self.parts[index]
-	}
-}
-
-impl Eq for Path {}
-
-impl PartialEq for Path {
-	fn eq(&self, other: &Self) -> bool {
-		if self.parts.len() != other.parts.len() {
-			return false;
-		}
-
-		for i in 0..self.parts.len() {
-			if self.parts[i] != other.parts[i] {
-				return false;
-			}
-		}
-
-		true
 	}
 }
 

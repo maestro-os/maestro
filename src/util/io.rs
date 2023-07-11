@@ -22,8 +22,6 @@ pub const POLLRDBAND: u32 = 0x80;
 pub const POLLWRNORM: u32 = 0x100;
 /// Poll event: Priority data may be written.
 pub const POLLWRBAND: u32 = 0x200;
-/// TODO doc
-pub const POLLMSG: u32 = 0x400;
 /// Poll event: Stream socket peer closed connection, or shut down writing half
 /// of connection.
 pub const POLLRDHUP: u32 = 0x2000;

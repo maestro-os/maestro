@@ -34,7 +34,7 @@ pub fn getdents64(fd: c_int, dirp: SyscallSlice<c_void>, count: usize) -> Result
 	}
 
 	let (mem_space, open_file_mutex) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();

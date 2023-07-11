@@ -191,7 +191,7 @@ impl ACPIData {
 
 					Box::from_raw(ptr as *mut ())
 				};
-				tables.insert(table.get_signature().clone(), b).unwrap();
+				tables.insert(table.get_signature(), b).unwrap();
 			});
 
 			// FIXME: This is garbage due to a merge in order to make things compile.

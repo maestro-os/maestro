@@ -172,13 +172,13 @@ pub struct Termios {
 	pub c_cflag: TCFlag,
 	/// Local modes
 	pub c_lflag: TCFlag,
-	/// TODO doc
+	/// Line discipline
 	pub c_line: CC,
 	/// Special characters
 	pub c_cc: [CC; NCCS],
-	/// TODO doc
+	/// Input baud rate
 	pub __c_ispeed: u32,
-	/// TODO doc
+	/// Output baud rate
 	pub __c_ospeed: u32,
 }
 
@@ -187,7 +187,7 @@ impl Default for Termios {
 		let mut t = Self {
 			c_iflag: ICRNL | IUCLC | IXANY | IMAXBEL,
 			c_oflag: OPOST | ONLCR,
-			c_cflag: CS8, // TODO
+			c_cflag: CS8,
 			c_lflag: ISIG | ICANON | ECHO | ECHOE | ECHOK,
 			c_line: 0,
 			c_cc: [0; NCCS],

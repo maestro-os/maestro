@@ -94,6 +94,7 @@ mod renameat2;
 mod rmdir;
 mod rt_sigaction;
 mod rt_sigprocmask;
+mod sched_yield;
 mod select;
 mod sendto;
 mod set_thread_area;
@@ -233,6 +234,7 @@ use renameat2::renameat2;
 use rmdir::rmdir;
 use rt_sigaction::rt_sigaction;
 use rt_sigprocmask::rt_sigprocmask;
+use sched_yield::sched_yield;
 use select::select;
 use sendto::sendto;
 use set_thread_area::set_thread_area;
@@ -436,7 +438,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x09b => Some(&sched_getparam),
 		// TODO 0x09c => Some(&sched_setscheduler),
 		// TODO 0x09d => Some(&sched_getscheduler),
-		// TODO 0x09e => Some(&sched_yield),
+		0x09e => Some(&sched_yield),
 		// TODO 0x09f => Some(&sched_get_priority_max),
 		// TODO 0x0a0 => Some(&sched_get_priority_min),
 		// TODO 0x0a1 => Some(&sched_rr_get_interval),
@@ -732,7 +734,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// The system call doesn't exist. Kill the process with SIGSYS
 		None => {
 			{
-				let proc_mutex = Process::get_current().unwrap();
+				let proc_mutex = Process::current_assert();
 				let mut proc = proc_mutex.lock();
 
 				if cfg!(feature = "strace") {

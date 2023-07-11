@@ -14,18 +14,18 @@ const RLIMIT_FSIZE: i32 = 1;
 /// The maximum size of the process's data segment in bytes, rounded down to the
 /// page size.
 const RLIMIT_DATA: i32 = 2;
-/// TODO doc
+/// The maximum size of the process stack, in bytes.
 const RLIMIT_STACK: i32 = 3;
 /// The maximum size of a core file the process may dump in bytes.
 const RLIMIT_CORE: i32 = 4;
-/// TODO doc
+/// A limit on the process's resident set (the numbe rof virtual pages resident in RAM).
 const RLIMIT_RSS: i32 = 5;
-/// TODO doc
+/// The limit on the number of threads for the real user ID of the calling process.
 const RLIMIT_NPROC: i32 = 6;
 /// A value one greater than the maximum number of file descriptors that can be
 /// open by the process.
 const RLIMIT_NOFILE: i32 = 7;
-/// TODO doc
+/// The maximum number of butes of memory that may be locked into RAM.
 const RLIMIT_MEMLOCK: i32 = 8;
 /// The maximum size of the memory space in bytes, rounded down to the page
 /// size.
@@ -33,15 +33,18 @@ const RLIMIT_AS: i32 = 9;
 /// The limit on the combined number of flock(2) locks and fcntl(2) leases the
 /// process may establish.
 const RLIMIT_LOCKS: i32 = 10;
-/// TODO doc
+/// The limit on the number of signals that may be queued for the real user ID of the calling
+/// process.
 const RLIMIT_SIGPENDING: i32 = 11;
-/// TODO doc
+/// The limit on the number of butes that can be allocated for POSIX message queues for the real
+/// user IF of the calling process.
 const RLIMIT_MSGQUEUE: i32 = 12;
-/// TODO doc
+/// The ceiling to which the process's nice value can be raised.
 const RLIMIT_NICE: i32 = 13;
-/// TODO doc
+/// The ceiling on the real-time priority that may be set for this process.
 const RLIMIT_RTPRIO: i32 = 14;
-/// TODO doc
+/// The limit (in microseconds) on the amount of CPU that a process scheduled under a real-time
+/// scheduling policy may consume without masking a blocking system call.
 const RLIMIT_RTTIME: i32 = 15;
 /// TODO doc
 const RLIMIT_NLIMITS: i32 = 16;
@@ -75,7 +78,7 @@ pub fn prlimit64(
 		Some(Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?)
 	};
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();

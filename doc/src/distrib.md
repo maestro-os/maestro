@@ -19,12 +19,6 @@ The init process has PID `1` and is running as the superuser (uid: `0`, gid: `0`
 
 
 
-## System calls
-
-After the init program has been lanched, every interractions between the kernel and userspace programs are done through system calls.
-
-
-
 ## Modules
 
 Not every features are implemented directly in the kernel.

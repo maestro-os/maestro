@@ -10,7 +10,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn set_tid_address(tidptr: SyscallPtr<c_int>) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();

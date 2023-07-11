@@ -129,12 +129,14 @@ fn build_path_from_fd(
 
 /// Returns the file for the given path `pathname`.
 ///
+/// This function is useful for system calls with the `at` prefix.
+///
 /// Arguments:
 /// - `process` is the mutex guard of the current process.
 /// - `follow_links` tells whether symbolic links may be followed.
 /// - `dirfd` is the file descriptor of the parent directory.
 /// - `pathname` is the path relative to the parent directory.
-/// - `flags` is an integer containing AT_* flags.
+/// - `flags` is an integer containing `AT_*` flags.
 pub fn get_file_at(
 	process: MutexGuard<Process, false>,
 	follow_links: bool,
@@ -184,7 +186,15 @@ pub fn get_file_at(
 	}
 }
 
-/// TODO doc
+/// Returns the parent directory of the file for the given path `pathname`.
+///
+/// This function is useful for system calls with the `at` prefix.
+///
+/// Arguments:
+/// - `process` is the mutex guard of the current process.
+/// - `follow_links` tells whether symbolic links may be followed.
+/// - `dirfd` is the file descriptor of the parent directory.
+/// - `pathname` is the path relative to the parent directory.
 pub fn get_parent_at_with_name(
 	process: MutexGuard<Process, false>,
 	follow_links: bool,
@@ -255,7 +265,7 @@ pub fn create_file_at(
 ///
 /// If returning, the function returns the mutex lock of the current process.
 pub fn handle_proc_state() {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	match proc.get_state() {
@@ -300,7 +310,7 @@ pub fn handle_proc_state() {
 ///
 /// `regs` is the registers state passed to the current syscall.
 pub fn signal_check(regs: &Regs) {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
 	if proc.get_next_signal().is_some() {

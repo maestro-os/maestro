@@ -135,7 +135,7 @@ pub fn handle_flags(
 pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
 	// Getting the path string
 	let (path, mode, uid, gid) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -164,7 +164,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 
 	open_file::OpenFile::new(loc.clone(), flags)?;
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.get_fds().unwrap();

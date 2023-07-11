@@ -11,7 +11,7 @@ use macros::syscall;
 #[syscall]
 pub fn fork() -> Result<i32, Errno> {
 	// The current process
-	let curr_mutex = Process::get_current().unwrap();
+	let curr_mutex = Process::current_assert();
 	// A weak pointer to the new process's parent
 	let parent = Arc::downgrade(&curr_mutex);
 

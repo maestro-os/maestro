@@ -7,7 +7,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn umask(mask: file::Mode) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
 	let prev = proc.umask;

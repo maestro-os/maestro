@@ -20,6 +20,7 @@
 #![feature(nonzero_ops)]
 #![feature(offset_of)]
 #![feature(panic_info_message)]
+#![feature(pointer_is_aligned)]
 #![feature(ptr_metadata)]
 #![feature(stmt_expr_attributes)]
 #![feature(strict_provenance)]
@@ -253,7 +254,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	// Initializing TTY
 	tty::init();
 
-	if magic != multiboot::BOOTLOADER_MAGIC || !util::is_aligned(multiboot_ptr, 8) {
+	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {
 		kernel_panic!("Bootloader non compliant with Multiboot2!");
 	}
 

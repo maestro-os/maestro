@@ -17,15 +17,16 @@ pub const AT_FDCWD: i32 = -100;
 pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 /// Perform access checks using the effective user and group IDs.
 pub const AT_EACCESS: i32 = 0x200;
-/// TODO doc
+/// Don't automount the terminal component of `pathname` if it is a directory that is an automount
+/// point.
 pub const AT_NO_AUTOMOUNT: i32 = 0x800;
-/// TODO doc
+/// If `pathname` is an empty string, operate on the file referred to by `dirfd`.
 pub const AT_EMPTY_PATH: i32 = 0x1000;
-/// TODO doc
+/// Do whatever `stat` does.
 pub const AT_STATX_SYNC_AS_STAT: i32 = 0x0000;
-/// TODO doc
+/// Force the attributes to be synchronized with the server.
 pub const AT_STATX_FORCE_SYNC: i32 = 0x2000;
-/// TODO doc
+/// Don't synchronize anything, but rather take cached informations.
 pub const AT_STATX_DONT_SYNC: i32 = 0x4000;
 
 /// Checks for existence of the file.
@@ -56,7 +57,7 @@ pub fn do_access(
 	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
 
 	let (path, uid, gid, cwd) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();

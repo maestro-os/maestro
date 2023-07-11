@@ -74,7 +74,7 @@ pub fn do_select<T: TimeUnit>(
 
 	// Getting timeout
 	let timeout = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -94,7 +94,7 @@ pub fn do_select<T: TimeUnit>(
 
 		for fd_id in 0..min(nfds, FD_SETSIZE as u32) {
 			let (mem_space, fds_mutex) = {
-				let proc_mutex = Process::get_current().unwrap();
+				let proc_mutex = Process::current_assert();
 				let proc = proc_mutex.lock();
 
 				let mem_space = proc.get_mem_space().unwrap();

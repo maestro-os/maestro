@@ -13,8 +13,6 @@ use macros::syscall;
 const RENAME_NOREPLACE: c_int = 1;
 /// Flag: Exchanges old and new paths atomically.
 const RENAME_EXCHANGE: c_int = 2;
-/// TODO doc
-const RENAME_WHITEOUT: c_int = 4;
 
 #[syscall]
 pub fn renameat2(
@@ -25,7 +23,7 @@ pub fn renameat2(
 	_flags: c_int,
 ) -> Result<i32, Errno> {
 	let (uid, gid, old_mutex, new_parent_mutex, new_name) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let uid = proc.euid;

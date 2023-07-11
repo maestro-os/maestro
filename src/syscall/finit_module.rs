@@ -19,7 +19,7 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 
 	let image = {
 		let open_file_mutex = {
-			let proc_mutex = Process::get_current().unwrap();
+			let proc_mutex = Process::current_assert();
 			let proc = proc_mutex.lock();
 
 			if proc.uid != 0 {

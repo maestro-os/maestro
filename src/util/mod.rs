@@ -29,12 +29,6 @@ extern "C" {
 	fn strlen(s: *const c_void) -> usize;
 }
 
-/// Tells if pointer `ptr` is aligned on boundary `n`.
-#[inline(always)]
-pub fn is_aligned<T>(ptr: *const T, n: usize) -> bool {
-	((ptr as usize) & (n - 1)) == 0
-}
-
 /// Aligns down a pointer.
 ///
 /// The retuned value shall be lower than `ptr` or equal if the pointer is already aligned.
@@ -56,7 +50,7 @@ pub fn up_align<T>(ptr: *const T, n: usize) -> *const T {
 /// The returned value shall be greater than `ptr` or equal if the pointer is already aligned.
 #[inline(always)]
 pub fn align<T>(ptr: *const T, n: usize) -> *const T {
-	if is_aligned(ptr, n) {
+	if ptr.is_aligned_to(n) {
 		ptr
 	} else {
 		up_align(ptr, n)
@@ -103,6 +97,7 @@ pub unsafe fn zero_object<T>(obj: &mut T) {
 pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 	let mut i = 0;
 
+	// TODO optimize
 	while i < n && *s.add(i) != b'\0' {
 		i += 1;
 	}
@@ -123,17 +118,11 @@ pub fn as_slice<T>(val: &T) -> &[u8] {
 /// Returns the length of the string representation of the number at the
 /// beginning of the given string `s`.
 pub fn nbr_len(s: &[u8]) -> usize {
-	let mut i = 0;
-
-	while i < s.len() {
-		if (s[i] < b'0') || (s[i] > b'9') {
-			break;
-		}
-
-		i += 1;
-	}
-
-	i
+	s.into_iter()
+		.enumerate()
+		.find(|(_, s)| **s < b'0' || **s > b'9')
+		.map(|(i, _)| i)
+		.unwrap_or(s.len())
 }
 
 /// Copies from slice `src` to `dst`.

@@ -40,7 +40,7 @@ impl TTYDeviceHandle {
 
 	/// Returns the current process and its associated TTY.
 	fn get_tty(&self) -> Result<(Arc<IntMutex<Process>>, TTYHandle), Errno> {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());

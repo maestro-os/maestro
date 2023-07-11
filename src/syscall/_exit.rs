@@ -14,7 +14,7 @@ use macros::syscall;
 /// - `thread_group`: if `true`, the function exits the whole process group.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	let (_pid, _tid) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
 
 		proc.exit(status, false);

@@ -279,9 +279,11 @@ pub struct Process {
 	/// TLS entries.
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 
-	/// TODO doc
+	/// If a thread is started using `clone` with the `CLONE_CHILD_SETTID` flag, set_child_tid is
+	/// set to the value passed in the ctid argument of that system call.
 	set_child_tid: Option<NonNull<i32>>,
-	/// TODO doc
+	/// If a thread is started using `clone` with the `CLONE_CHILD_CLEARTID` flag, clear_child_tid
+	/// is set to the value passed in the ctid argument of that system call.
 	clear_child_tid: Option<NonNull<i32>>,
 
 	/// The process's resources usage.
@@ -454,9 +456,16 @@ impl Process {
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn get_current() -> Option<Arc<IntMutex<Self>>> {
+	pub fn current() -> Option<Arc<IntMutex<Self>>> {
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
 		sched_mutex.lock().get_current_process()
+	}
+
+	/// Returns the current running process.
+	///
+	/// If no process is running, the function makes the kernel panic.
+	pub fn current_assert() -> Arc<IntMutex<Self>> {
+		Self::current().expect("no running process")
 	}
 
 	/// Registers the current process to the procfs.

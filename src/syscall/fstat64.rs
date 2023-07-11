@@ -20,7 +20,7 @@ use macros::syscall;
 #[repr(C)]
 #[derive(Debug)]
 struct Stat {
-	/// TODO doc
+	/// ID of the device containing the file.
 	st_dev: u64,
 
 	/// Padding.
@@ -36,24 +36,24 @@ struct Stat {
 	st_uid: Uid,
 	/// File's owner GID.
 	st_gid: Gid,
-	/// TODO doc
+	/// Device ID (if device file).
 	st_rdev: u64,
 
 	/// Padding.
 	__st_rdev_padding: c_int,
 
-	/// TODO doc
+	/// Size of the file in bytes.
 	st_size: u32,
-	/// TODO doc
+	/// Size of a block on the file's storage medium.
 	st_blksize: c_long,
-	/// TODO doc
+	/// Size of the file in blocks.
 	st_blocks: u64,
 
-	/// TODO doc
+	/// Timestamp of last access.
 	st_atim: Timespec,
-	/// TODO doc
+	/// Timestamp of last modification of the content.
 	st_mtim: Timespec,
-	/// TODO doc
+	/// Timestamp of last modification of the metadata.
 	st_ctim: Timespec,
 }
 
@@ -64,7 +64,7 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 	}
 
 	let open_file_mutex = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.get_fds().unwrap();
@@ -117,7 +117,7 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 	};
 
 	{
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();

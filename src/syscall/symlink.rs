@@ -13,7 +13,7 @@ use macros::syscall;
 #[syscall]
 pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Errno> {
 	let (uid, gid, target, linkpath) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let uid = proc.euid;

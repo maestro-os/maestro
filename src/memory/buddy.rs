@@ -11,7 +11,6 @@ use super::stats;
 use crate::errno;
 use crate::errno::Errno;
 use crate::memory;
-use crate::util;
 use crate::util::lock::*;
 use crate::util::math;
 use core::cmp::min;
@@ -514,7 +513,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 		frame.split(zone, order);
 
 		let ptr = frame.get_ptr(&zone);
-		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+		debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
 
 		frame.mark_used();
@@ -544,7 +543,7 @@ pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, Errno> {
 ///
 /// The given order must be the same as the one given to allocate the frame.
 pub fn free(ptr: *const c_void, order: FrameOrder) {
-	debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+	debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
 
 	let mut zones = ZONES.lock();

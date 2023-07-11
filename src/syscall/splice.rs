@@ -25,7 +25,7 @@ pub fn splice(
 	}
 
 	let (input_mutex, off_in, output_mutex, off_out) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.get_fds().unwrap();

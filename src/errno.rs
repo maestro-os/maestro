@@ -528,3 +528,6 @@ pub const ENOTRECOVERABLE: i32 = 131;
 pub const ERFKILL: i32 = 132;
 /// Memory page has hardware error.
 pub const EHWPOISON: i32 = 133;
+
+/// An alias to [`core::result::Result`] with [`Errno`] as error type.
+pub type EResult<T> = Result<T, Errno>;

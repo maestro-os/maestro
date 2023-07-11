@@ -28,14 +28,10 @@
 
 # Memory
 
-- [Memory](./memory/memory.md)
 - [Physical memory map](./memory/phys_mem_map.md)
-- [Allocators](./memory/alloc/main.md)
-	- [Buddy allocator](./memory/alloc/buddy.md)
-	- [malloc](./memory/alloc/malloc.md)
-- [Virtual memory](./memory/vmem/main.md)
-	- [Memory map](./memory/vmem/mem_map.md)
-	- [Memory space](./memory/vmem/mem_space.md)
+- [Allocators](./memory/alloc.md)
+- [Memory map](./memory/mem_map.md)
+- [Memory space](./memory/mem_space.md)
 
 
 
@@ -53,12 +49,10 @@
 
 # File
 
-- [Virtual FileSystem](./file/vfs.md)
-	- [Mountpoint](./file/mountpoint.md)
-	- [Filesystem](./file/fs.md)
-	- [tmpfs](./file/tmpfs.md)
-	- [procfs](./file/procfs.md)
-	- [sysfs](./file/sysfs.md)
+- [Filesystem](./file/fs.md)
+    - [tmpfs](./file/tmpfs.md)
+    - [procfs](./file/procfs.md)
+    - [sysfs](./file/sysfs.md)
 
 
 

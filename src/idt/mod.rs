@@ -1,4 +1,4 @@
-//! The Interrupt Descriptor Table (IDT) is a table under the x86 architecture
+//! The IDT (Interrupt Descriptor Table) is a table under the x86 architecture
 //! storing the list of interrupt handlers, allowing to catch and handle
 //! interruptions.
 

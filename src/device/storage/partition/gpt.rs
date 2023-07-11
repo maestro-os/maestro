@@ -32,6 +32,7 @@ type Guid = [u8; 16];
 /// If the LBA is out of bounds of the storage device, the function returns
 /// `None`.
 fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {
+	#[allow(clippy::collapsible_else_if)]
 	if lba < 0 {
 		if (-lba as u64) <= storage_size {
 			Some(storage_size - (-lba as u64))

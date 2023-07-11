@@ -397,7 +397,7 @@ impl MemSpace {
 		// Checking arguments are valid
 		match map_constraint {
 			MapConstraint::Fixed(ptr) | MapConstraint::Hint(ptr) => {
-				if !util::is_aligned(ptr, memory::PAGE_SIZE) {
+				if !ptr.is_aligned_to(memory::PAGE_SIZE) {
 					return Err(errno!(EINVAL));
 				}
 			}
@@ -568,7 +568,7 @@ impl MemSpace {
 	/// be revoked and further attempts to access it shall result in a page
 	/// fault.
 	pub fn unmap(&mut self, ptr: *const c_void, size: usize, brk: bool) -> Result<(), Errno> {
-		if !util::is_aligned(ptr, memory::PAGE_SIZE) {
+		if !ptr.is_aligned_to(memory::PAGE_SIZE) {
 			return Err(errno!(EINVAL));
 		}
 		let Some(size) = NonZeroUsize::new(size) else {
@@ -868,7 +868,7 @@ impl MemSpace {
 	///
 	/// `ptr` MUST be page-aligned.
 	pub fn set_brk_init(&mut self, ptr: *const c_void) {
-		debug_assert!(util::is_aligned(ptr, memory::PAGE_SIZE));
+		debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 
 		self.brk_init = ptr;
 		self.brk_ptr = ptr;

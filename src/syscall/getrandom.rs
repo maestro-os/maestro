@@ -28,7 +28,7 @@ pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<
 	}
 
 	// Getting current process
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();

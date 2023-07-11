@@ -28,7 +28,6 @@ use crate::errno::Errno;
 use crate::memory;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
-use crate::util;
 use crate::util::lock::Mutex;
 use crate::util::TryClone;
 use core::ffi::c_void;
@@ -287,7 +286,7 @@ impl X86VMem {
 		}
 
 		let esp = unsafe { crate::register_get!("esp") as *const c_void };
-		let aligned_stack_page = util::down_align(esp, memory::PAGE_SIZE);
+		let aligned_stack_page = crate::util::down_align(esp, memory::PAGE_SIZE);
 		let size = {
 			if pse {
 				1024
@@ -312,7 +311,7 @@ impl X86VMem {
 		}
 
 		let esp = unsafe { crate::register_get!("esp") as *const c_void };
-		let aligned_stack_page = util::down_align(esp, memory::PAGE_SIZE);
+		let aligned_stack_page = crate::util::down_align(esp, memory::PAGE_SIZE);
 		let size = {
 			if pse {
 				1024
@@ -408,7 +407,7 @@ impl X86VMem {
 		// Ensuring the virtual address doesn't overflow
 			&& pse_end >= (addr as usize)
 		// Checking the address is aligned on the PSE boundary
-			&& util::is_aligned(addr, 1024 * memory::PAGE_SIZE)
+			&& addr.is_aligned_to(1024 * memory::PAGE_SIZE)
 		// Checking that there remain enough pages to make a PSE block
 			&& pages >= 1024
 	}
@@ -416,8 +415,8 @@ impl X86VMem {
 	/// Maps the given physical address `physaddr` to the given virtual address
 	/// `virtaddr` with the given flags using blocks of 1024 pages (PSE).
 	fn map_pse(&mut self, physaddr: *const c_void, virtaddr: *const c_void, mut flags: u32) {
-		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
-		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+		debug_assert!(physaddr.is_aligned_to(memory::PAGE_SIZE));
+		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!(flags & ADDR_MASK == 0);
 
 		flags |= FLAG_PRESENT | FLAG_PAGE_SIZE;
@@ -473,8 +472,8 @@ impl VMem for X86VMem {
 		#[cfg(config_debug_debug)]
 		self.check_map(virtaddr, physaddr, false);
 
-		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
-		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+		debug_assert!(physaddr.is_aligned_to(memory::PAGE_SIZE));
+		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert_eq!(flags & ADDR_MASK, 0);
 
 		flags |= FLAG_PRESENT;
@@ -516,8 +515,8 @@ impl VMem for X86VMem {
 		pages: usize,
 		flags: u32,
 	) -> Result<(), Errno> {
-		debug_assert!(util::is_aligned(physaddr, memory::PAGE_SIZE));
-		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+		debug_assert!(physaddr.is_aligned_to(memory::PAGE_SIZE));
+		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!(
 			(virtaddr as usize / memory::PAGE_SIZE) + pages
 				<= (usize::MAX / memory::PAGE_SIZE) + 1
@@ -553,7 +552,7 @@ impl VMem for X86VMem {
 		#[cfg(config_debug_debug)]
 		self.check_unmap(virtaddr, false);
 
-		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 
 		// Locking the global mutex to avoid data races while modifying kernel space
 		// tables
@@ -583,7 +582,7 @@ impl VMem for X86VMem {
 	}
 
 	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno> {
-		debug_assert!(util::is_aligned(virtaddr, memory::PAGE_SIZE));
+		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
 
 		let mut i = 0;

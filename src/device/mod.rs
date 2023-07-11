@@ -1,4 +1,4 @@
-//! This module handles device and buses.
+//! This module handles devices and buses.
 //!
 //! A device file is an interface with a device of the system, which can be
 //! internal or external, or even virtual such as a TTY.

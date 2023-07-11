@@ -105,7 +105,7 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 
 /// Performs the execution on the current process.
 fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
 	// Executing the program
@@ -157,7 +157,7 @@ pub fn execve(
 	envp: *const *const u8,
 ) -> Result<i32, Errno> {
 	let (mut path, mut argv, envp, uid, gid, euid, egid) = {
-		let proc_mutex = Process::get_current().unwrap();
+		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let path = {
