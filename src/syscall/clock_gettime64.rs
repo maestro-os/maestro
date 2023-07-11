@@ -3,17 +3,14 @@
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
-use crate::time;
+use crate::time::clock;
 use crate::time::unit::ClockIdT;
 use crate::time::unit::Timespec;
 use macros::syscall;
 
-// TODO Check first arg type
 #[syscall]
-pub fn clock_gettime64(_clockid: ClockIdT, tp: SyscallPtr<Timespec>) -> Result<i32, Errno> {
-	// TODO Get clock according to param
-	let clk = b"TODO";
-	let curr_time = time::get_struct::<Timespec>(clk, true).ok_or(errno!(EINVAL))?;
+pub fn clock_gettime64(clockid: ClockIdT, tp: SyscallPtr<Timespec>) -> Result<i32, Errno> {
+	let curr_time = clock::current_time_struct::<Timespec>(clockid);
 
 	{
 		let proc_mutex = Process::current_assert();

@@ -4,7 +4,9 @@
 use crate::errno::Errno;
 use crate::memory;
 use crate::memory::malloc;
+use crate::util::EResult;
 use crate::util::TryClone;
+use crate::util::TryDefault;
 use core::borrow::{Borrow, BorrowMut};
 use core::ffi::c_void;
 use core::fmt;
@@ -26,6 +28,12 @@ use core::ptr::NonNull;
 pub struct Box<T: ?Sized> {
 	/// Pointer to the allocated memory
 	ptr: NonNull<T>,
+}
+
+impl<T: TryDefault> TryDefault for Box<T> {
+	fn try_default() -> EResult<Self> {
+		Self::new(T::try_default()?)
+	}
 }
 
 impl<T> Box<T> {

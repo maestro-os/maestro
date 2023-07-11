@@ -20,7 +20,7 @@ pub fn getsockname(
 		return Err(errno!(EBADF));
 	}
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	// Get socket

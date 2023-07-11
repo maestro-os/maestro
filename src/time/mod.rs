@@ -3,15 +3,18 @@
 //! The kernel stores a list of clock sources. A clock source is an object that
 //! allow to get the current timestamp.
 
+pub mod clock;
 pub mod timer;
 pub mod unit;
 
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::time::clock::CLOCK_REALTIME;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::lock::*;
-use unit::TimeUnit;
+use crate::util::TryDefault;
 use unit::Timestamp;
 use unit::TimestampScale;
 
@@ -64,77 +67,18 @@ pub fn remove_clock_source(name: &str) {
 	sources.remove(name.as_bytes());
 }
 
-/// Returns the current timestamp from the preferred clock source.
-///
-/// Arguments:
-/// - `scale` specifies the scale of the returned timestamp.
-/// - `monotonic` tells whether the returned time should be monotonic.
-///
-/// If no clock source is available, the function returns `None`.
-pub fn get(scale: TimestampScale, monotonic: bool) -> Option<Timestamp> {
-	let mut sources = CLOCK_SOURCES.lock();
-	if sources.is_empty() {
-		return None;
-	}
+/// Initializes clocks.
+pub fn init() -> EResult<()> {
+	// Initializes PIT
+	timer::pit::init();
 
-	// Getting clock source
-	let clock_src = sources.get_mut("cmos".as_bytes())?; // TODO Select the preferred source
+	// Initializes clocks
+	let mut clocks = clock::CLOCKS.lock();
+	clocks.insert(
+		CLOCK_REALTIME,
+		Box::<clock::realtime::ClockRealtime>::try_default()?,
+	)?;
+	// TODO register all
 
-	// Getting reference to last timestamp
-	let last = match scale {
-		TimestampScale::Second => &mut clock_src.last[0],
-		TimestampScale::Millisecond => &mut clock_src.last[1],
-		TimestampScale::Microsecond => &mut clock_src.last[2],
-		TimestampScale::Nanosecond => &mut clock_src.last[3],
-	};
-
-	// Getting time
-	let time = clock_src.src.get_time(scale);
-
-	// Making the clock monotonic if needed
-	let ts = if monotonic && *last > time {
-		*last
-	} else {
-		time
-	};
-	if ts > *last {
-		*last = ts;
-	}
-
-	Some(ts)
-}
-
-/// Returns the current timestamp from the given clock `clk`.
-///
-/// Arguments:
-/// - `scale` specifies the scale of the returned timestamp.
-/// - `monotonic` tells whether the returned time should be monotonic.
-///
-/// If the clock doesn't exist, the function returns `None`.
-pub fn get_struct<T: TimeUnit>(_clk: &[u8], monotonic: bool) -> Option<T> {
-	// TODO use the given clock
-	let ts = get(TimestampScale::Nanosecond, monotonic)?;
-	Some(T::from_nano(ts))
-}
-
-/// Makes the CPU wait for at least `n` milliseconds.
-pub fn mdelay(n: u32) {
-	// TODO
-	udelay(n * 1000);
-}
-
-/// Makes the CPU wait for at least `n` microseconds.
-pub fn udelay(n: u32) {
-	// TODO
-	for _ in 0..(n * 100) {
-		unsafe {
-			core::arch::asm!("nop");
-		}
-	}
-}
-
-/// Makes the CPU wait for at least `n` nanoseconds.
-pub fn ndelay(n: u32) {
-	// TODO
-	udelay(n);
+	Ok(())
 }

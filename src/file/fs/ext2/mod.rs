@@ -43,7 +43,8 @@ use crate::file::INode;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::memory::malloc;
-use crate::time;
+use crate::time::clock;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
@@ -699,7 +700,7 @@ impl Ext2Fs {
 			}
 		}
 
-		let timestamp = time::get(TimestampScale::Second, true);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
 			return Err(errno!(EINVAL));
 		}
@@ -727,9 +728,7 @@ impl Ext2Fs {
 		}
 
 		// Setting the last mount timestamp
-		if let Some(timestamp) = timestamp {
-			superblock.last_mount_timestamp = timestamp as _;
-		}
+		superblock.last_mount_timestamp = timestamp as _;
 
 		superblock.write(io)?;
 
@@ -1183,7 +1182,7 @@ impl Filesystem for Ext2Fs {
 
 		// If this is the last link, remove the inode
 		if inode_.hard_links_count <= 0 {
-			let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+			let timestamp = clock::current_time(clock::CLOCK_MONOTONIC, TimestampScale::Second);
 			inode_.dtime = timestamp as _;
 
 			inode_.free_content(&mut self.superblock, io)?;

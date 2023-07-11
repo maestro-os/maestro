@@ -258,9 +258,11 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		kernel_panic!("Bootloader non compliant with Multiboot2!");
 	}
 
-	// Initializing IDT, PIT and events handler
+	// Initializing IDT and clocks
 	idt::init();
-	time::timer::pit::init();
+	if time::init().is_err() {
+		kernel_panic!("failed to initialize time management");
+	}
 
 	// Ensuring the CPU has SSE
 	if !cpu::sse::is_present() {

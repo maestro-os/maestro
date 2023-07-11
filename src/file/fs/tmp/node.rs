@@ -6,7 +6,8 @@ use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
-use crate::time;
+use crate::time::clock;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::util::container::vec::Vec;
@@ -42,7 +43,7 @@ impl TmpFSRegular {
 	/// Creates a new instance.
 	pub fn new(mode: Mode, uid: Uid, gid: Gid) -> Self {
 		// The current timestamp
-		let ts = time::get(TimestampScale::Second, true).unwrap_or(0);
+		let ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 
 		Self {
 			hard_links_count: 1,

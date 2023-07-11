@@ -15,7 +15,7 @@ use macros::syscall;
 /// The implementation of the `socket` syscall.
 #[syscall]
 pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	let uid = proc.euid;

@@ -4,7 +4,8 @@
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
-use crate::time;
+use crate::time::clock;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimestampScale;
 use macros::syscall;
 
@@ -19,7 +20,7 @@ pub fn time(tloc: SyscallPtr<u32>) -> Result<i32, Errno> {
 	let mut mem_space_guard = mem_space.lock();
 
 	// Getting the current timestamp
-	let time = time::get(TimestampScale::Second, false).unwrap_or(0);
+	let time = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 
 	// Writing the timestamp to the given location, if not null
 	if let Some(tloc) = tloc.get_mut(&mut mem_space_guard)? {

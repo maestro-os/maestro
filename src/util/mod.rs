@@ -11,7 +11,7 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
-use crate::errno::Errno;
+use crate::errno::EResult;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_void;
@@ -155,14 +155,14 @@ pub unsafe fn reinterpret<T>(slice: &[u8]) -> Option<&T> {
 /// memory allocation failure, for example).
 pub trait TryClone {
 	/// Clones the object. If the clone fails, the function returns an error.
-	fn try_clone(&self) -> Result<Self, Errno>
+	fn try_clone(&self) -> EResult<Self>
 	where
 		Self: Sized;
 }
 
 /// Blanket implementation.
 impl<T: Clone + Sized> TryClone for T {
-	fn try_clone(&self) -> Result<Self, Errno> {
+	fn try_clone(&self) -> EResult<Self> {
 		Ok(self.clone())
 	}
 }
@@ -171,14 +171,14 @@ impl<T: Clone + Sized> TryClone for T {
 /// for example).
 pub trait TryDefault {
 	/// Returns the default value. On fail, the function returns Err.
-	fn try_default() -> Result<Self, Errno>
+	fn try_default() -> EResult<Self>
 	where
 		Self: Sized;
 }
 
 /// Blanket implementation.
 impl<T: Default + Sized> TryDefault for T {
-	fn try_default() -> Result<Self, Errno> {
+	fn try_default() -> EResult<Self> {
 		Ok(Self::default())
 	}
 }

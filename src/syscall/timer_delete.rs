@@ -7,7 +7,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn timer_delete(timerid: TimerT) -> Result<i32, Errno> {
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	proc.timer_manager().lock().delete_timer(timerid)?;

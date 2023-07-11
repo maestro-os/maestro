@@ -27,7 +27,8 @@ use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
-use crate::time;
+use crate::time::clock;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
@@ -381,7 +382,7 @@ impl File {
 		location: FileLocation,
 		content: FileContent,
 	) -> Result<Self, Errno> {
-		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 
 		Ok(Self {
 			name,
@@ -499,7 +500,7 @@ impl File {
 	pub fn set_permissions(&mut self, mode: Mode) {
 		self.mode = mode & 0o7777;
 
-		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 		self.ctime = timestamp;
 	}
 
@@ -523,7 +524,7 @@ impl File {
 	pub fn set_hard_links_count(&mut self, count: u16) {
 		self.hard_links_count = count;
 
-		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 		self.ctime = timestamp;
 	}
 
@@ -551,7 +552,7 @@ impl File {
 	pub fn set_uid(&mut self, uid: Uid) {
 		self.uid = uid;
 
-		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 		self.ctime = timestamp;
 	}
 
@@ -564,7 +565,7 @@ impl File {
 	pub fn set_gid(&mut self, gid: Gid) {
 		self.gid = gid;
 
-		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 		self.ctime = timestamp;
 	}
 

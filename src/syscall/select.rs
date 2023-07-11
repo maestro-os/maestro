@@ -6,7 +6,8 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::scheduler;
 use crate::process::Process;
-use crate::time;
+use crate::time::clock;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timeval;
 use crate::util::io;
@@ -70,7 +71,7 @@ pub fn do_select<T: TimeUnit>(
 	_sigmask: Option<SyscallSlice<u8>>,
 ) -> Result<i32, Errno> {
 	// Getting start timestamp
-	let start = time::get_struct::<T>(b"TODO", true).unwrap(); // TODO Select a clock
+	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC);
 
 	// Getting timeout
 	let timeout = {
@@ -198,8 +199,7 @@ pub fn do_select<T: TimeUnit>(
 			return Ok(events_count);
 		}
 
-		// TODO Select a clock
-		let curr = time::get_struct::<T>(b"TODO", true).unwrap();
+		let curr = clock::current_time_struct::<T>(CLOCK_MONOTONIC);
 		// On timeout, return 0
 		if curr >= end {
 			return Ok(0);

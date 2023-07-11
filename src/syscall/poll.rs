@@ -5,7 +5,8 @@ use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::scheduler;
 use crate::process::Process;
-use crate::time;
+use crate::time::clock;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::util::io;
@@ -35,12 +36,14 @@ pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i3
 	};
 
 	// The start timestamp
-	let start_ts = time::get(TimestampScale::Millisecond, true).unwrap_or(0);
+	let start_ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond);
 
 	loop {
 		// Checking whether the system call timed out
 		if let Some(timeout) = to {
-			if time::get(TimestampScale::Millisecond, true).unwrap_or(0) >= start_ts + timeout {
+			if clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)
+				>= start_ts + timeout
+			{
 				return Ok(0);
 			}
 		}

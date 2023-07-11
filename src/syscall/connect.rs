@@ -19,7 +19,7 @@ pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<
 		return Err(errno!(EINVAL));
 	}
 
-	let proc_mutex = Process::get_current().unwrap();
+	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	// Get socket

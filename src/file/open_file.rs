@@ -16,7 +16,8 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
-use crate::time;
+use crate::time::clock;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
@@ -383,7 +384,7 @@ impl IO for OpenFile {
 		}
 
 		// Updating access timestamp
-		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 		if self.is_atime_updated() {
 			file.atime = timestamp;
 			file.sync()?; // TODO Lazy
@@ -415,7 +416,7 @@ impl IO for OpenFile {
 		}
 
 		// Updating access timestamps
-		let timestamp = time::get(TimestampScale::Second, true).unwrap_or(0);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
 		if self.is_atime_updated() {
 			file.atime = timestamp;
 		}

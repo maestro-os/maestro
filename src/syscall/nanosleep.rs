@@ -4,7 +4,8 @@
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
-use crate::time;
+use crate::time::clock;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::Timespec32;
 use macros::syscall;
 
@@ -12,8 +13,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Result<i32, Errno> {
-	let clk = b"TODO"; // TODO
-	let start_time = time::get_struct::<Timespec32>(clk, true).ok_or(errno!(EINVAL))?;
+	let start_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC);
 
 	let delay = {
 		let proc_mutex = Process::current_assert();
@@ -29,8 +29,7 @@ pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Re
 
 	// Looping until time is elapsed or the process is interrupted by a signal
 	loop {
-		let curr_time = time::get_struct::<Timespec32>(clk, true).ok_or(errno!(EINVAL))?;
-
+		let curr_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC);
 		if curr_time >= start_time + delay {
 			break;
 		}
