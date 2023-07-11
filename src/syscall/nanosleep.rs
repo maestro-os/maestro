@@ -13,7 +13,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Result<i32, Errno> {
-	let start_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC);
+	let start_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
 
 	let delay = {
 		let proc_mutex = Process::current_assert();
@@ -29,7 +29,7 @@ pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Re
 
 	// Looping until time is elapsed or the process is interrupted by a signal
 	loop {
-		let curr_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC);
+		let curr_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
 		if curr_time >= start_time + delay {
 			break;
 		}

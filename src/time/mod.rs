@@ -9,12 +9,12 @@ pub mod unit;
 
 use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::clock::CLOCK_REALTIME;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::lock::*;
-use crate::util::TryDefault;
 use unit::Timestamp;
 use unit::TimestampScale;
 
@@ -39,6 +39,7 @@ struct ClockSourceWrapper {
 	last: [Timestamp; 4],
 }
 
+// TODO use array instead (IDs are contiguous)
 /// Map containing all the clock sources.
 static CLOCK_SOURCES: Mutex<HashMap<String, ClockSourceWrapper>> = Mutex::new(HashMap::new());
 
@@ -76,7 +77,11 @@ pub fn init() -> EResult<()> {
 	let mut clocks = clock::CLOCKS.lock();
 	clocks.insert(
 		CLOCK_REALTIME,
-		Box::<clock::realtime::ClockRealtime>::try_default()?,
+		Box::new(clock::realtime::ClockRealtime::new(false))?,
+	)?;
+	clocks.insert(
+		CLOCK_MONOTONIC,
+		Box::new(clock::realtime::ClockRealtime::new(true))?,
 	)?;
 	// TODO register all
 

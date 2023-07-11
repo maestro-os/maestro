@@ -10,7 +10,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn clock_gettime64(clockid: ClockIdT, tp: SyscallPtr<Timespec>) -> Result<i32, Errno> {
-	let curr_time = clock::current_time_struct::<Timespec>(clockid);
+	let curr_time = clock::current_time_struct::<Timespec>(clockid)?;
 
 	{
 		let proc_mutex = Process::current_assert();

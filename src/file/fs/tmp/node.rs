@@ -43,7 +43,7 @@ impl TmpFSRegular {
 	/// Creates a new instance.
 	pub fn new(mode: Mode, uid: Uid, gid: Gid) -> Self {
 		// The current timestamp
-		let ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+		let ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 
 		Self {
 			hard_links_count: 1,

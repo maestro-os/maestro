@@ -384,7 +384,7 @@ impl IO for OpenFile {
 		}
 
 		// Updating access timestamp
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
 			file.atime = timestamp;
 			file.sync()?; // TODO Lazy
@@ -416,7 +416,7 @@ impl IO for OpenFile {
 		}
 
 		// Updating access timestamps
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
 			file.atime = timestamp;
 		}

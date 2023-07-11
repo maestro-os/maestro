@@ -2,6 +2,7 @@
 
 pub(super) mod realtime;
 
+use crate::errno::EResult;
 use crate::time::unit::ClockIdT;
 use crate::time::unit::TimeUnit;
 use crate::time::Timestamp;
@@ -36,7 +37,7 @@ pub const CLOCK_SGI_CYCLE: ClockIdT = 10;
 pub const CLOCK_TAI: ClockIdT = 11;
 
 // TODO allow accessing clocks:
-// - without locking a Mutex (atomic exchange)
+// - without locking a Mutex (interior mutability and atomic load)
 // - through an address shared with userspace (vDSO)
 
 /// Trait representing a system clock.
@@ -46,19 +47,28 @@ pub trait Clock {
 
 	/// Returns the clock's current timestamp.
 	fn get(&self, scale: TimestampScale) -> Timestamp;
+
+	/// Updates the clock with the given delta in nanoseconds.
+	fn update(&self, delta: Timestamp);
+
+	// TODO clock adjustment
 }
 
 /// The list of system clocks.
-pub static CLOCKS: Mutex<HashMap<ClockIdT, Box<dyn Clock>>> = Mutex::new(HashMap::new());
+pub(super) static CLOCKS: Mutex<HashMap<ClockIdT, Box<dyn Clock>>> = Mutex::new(HashMap::new());
 
 /// Returns the current timestamp according to the clock with the given ID.
 ///
 /// Arguments:
 /// - `clk` is the ID of the clock to use.
 /// - `scale` is the scale of the timestamp to return.
-pub fn current_time(_clk: ClockIdT, _scale: TimestampScale) -> Timestamp {
-	// TODO
-	todo!()
+///
+/// If the clock is invalid, the function returns an error.
+pub fn current_time(clk: ClockIdT, scale: TimestampScale) -> EResult<Timestamp> {
+	let clocks = CLOCKS.lock();
+	let clock = clocks.get(&clk).ok_or_else(|| errno!(EINVAL))?;
+
+	Ok(clock.get(scale))
 }
 
 /// Returns the current timestamp according to the clock with the given ID.
@@ -66,7 +76,9 @@ pub fn current_time(_clk: ClockIdT, _scale: TimestampScale) -> Timestamp {
 /// Arguments:
 /// - `clk` is the ID of the clock to use.
 /// - `scale` is the scale of the timestamp to return.
-pub fn current_time_struct<T: TimeUnit>(clk: ClockIdT) -> T {
-	let ts = current_time(clk, TimestampScale::Nanosecond);
-	T::from_nano(ts)
+///
+/// If the clock is invalid, the function returns an error.
+pub fn current_time_struct<T: TimeUnit>(clk: ClockIdT) -> EResult<T> {
+	let ts = current_time(clk, TimestampScale::Nanosecond)?;
+	Ok(T::from_nano(ts))
 }

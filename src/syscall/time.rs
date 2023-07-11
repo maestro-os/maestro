@@ -20,7 +20,7 @@ pub fn time(tloc: SyscallPtr<u32>) -> Result<i32, Errno> {
 	let mut mem_space_guard = mem_space.lock();
 
 	// Getting the current timestamp
-	let time = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+	let time = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
 
 	// Writing the timestamp to the given location, if not null
 	if let Some(tloc) = tloc.get_mut(&mut mem_space_guard)? {

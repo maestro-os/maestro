@@ -36,14 +36,13 @@ pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i3
 	};
 
 	// The start timestamp
-	let start_ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond);
+	let start_ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)?;
 
 	loop {
 		// Checking whether the system call timed out
 		if let Some(timeout) = to {
-			if clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)
-				>= start_ts + timeout
-			{
+			let now = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)?;
+			if now >= start_ts + timeout {
 				return Ok(0);
 			}
 		}

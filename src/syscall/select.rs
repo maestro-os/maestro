@@ -71,7 +71,7 @@ pub fn do_select<T: TimeUnit>(
 	_sigmask: Option<SyscallSlice<u8>>,
 ) -> Result<i32, Errno> {
 	// Getting start timestamp
-	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC);
+	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
 
 	// Getting timeout
 	let timeout = {
@@ -199,7 +199,7 @@ pub fn do_select<T: TimeUnit>(
 			return Ok(events_count);
 		}
 
-		let curr = clock::current_time_struct::<T>(CLOCK_MONOTONIC);
+		let curr = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
 		// On timeout, return 0
 		if curr >= end {
 			return Ok(0);

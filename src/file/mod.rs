@@ -382,7 +382,7 @@ impl File {
 		location: FileLocation,
 		content: FileContent,
 	) -> Result<Self, Errno> {
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 
 		Ok(Self {
 			name,
@@ -500,7 +500,7 @@ impl File {
 	pub fn set_permissions(&mut self, mode: Mode) {
 		self.mode = mode & 0o7777;
 
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		self.ctime = timestamp;
 	}
 
@@ -524,7 +524,7 @@ impl File {
 	pub fn set_hard_links_count(&mut self, count: u16) {
 		self.hard_links_count = count;
 
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		self.ctime = timestamp;
 	}
 
@@ -552,7 +552,7 @@ impl File {
 	pub fn set_uid(&mut self, uid: Uid) {
 		self.uid = uid;
 
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		self.ctime = timestamp;
 	}
 
@@ -565,7 +565,7 @@ impl File {
 	pub fn set_gid(&mut self, gid: Gid) {
 		self.gid = gid;
 
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second);
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		self.ctime = timestamp;
 	}
 
