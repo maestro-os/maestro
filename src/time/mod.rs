@@ -4,6 +4,8 @@
 //! allow to get the current timestamp.
 
 pub mod clock;
+#[cfg(target_arch = "x86")]
+pub mod pit;
 pub mod timer;
 pub mod unit;
 
@@ -71,7 +73,8 @@ pub fn remove_clock_source(name: &str) {
 /// Initializes clocks.
 pub fn init() -> EResult<()> {
 	// Initializes PIT
-	timer::pit::init();
+	#[cfg(target_arch = "x86")]
+	pit::init();
 
 	// Initializes clocks
 	let mut clocks = clock::CLOCKS.lock();

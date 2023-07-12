@@ -3,15 +3,18 @@
 use super::Clock;
 use crate::time::Timestamp;
 use crate::time::TimestampScale;
+use core::sync::atomic;
+use core::sync::atomic::AtomicU32;
 
 /// A settable system-wide clock that measures real time.
 pub struct ClockRealtime {
 	/// Tells whether the clock is monotonic.
 	monotonic: bool,
 
+	// TODO use AtomicU64 instead, but since it is not available on 32 bits platform, create a
+	// wrapper
 	/// The current timestamp in nanoseconds.
-	//time: AtomicU64, // TODO create wrapper that replace atomic by a mutex on 32 bits platforms
-	time: Timestamp,
+	time: AtomicU32,
 }
 
 impl ClockRealtime {
@@ -20,23 +23,22 @@ impl ClockRealtime {
 		Self {
 			monotonic,
 
-			time: 0,
+			time: AtomicU32::new(0),
 		}
 	}
 }
 
 impl Clock for ClockRealtime {
-	fn is_monotonic(&self) -> bool {
-		self.monotonic
-	}
-
 	fn get(&self, scale: TimestampScale) -> Timestamp {
 		// TODO implement monotonic clock
-		TimestampScale::convert(self.time, TimestampScale::Nanosecond, scale)
+
+		let val = self.time.load(atomic::Ordering::Relaxed);
+		TimestampScale::convert(val as _, TimestampScale::Nanosecond, scale)
 	}
 
-	fn update(&self, _delta: Timestamp) {
+	fn update(&self, delta: Timestamp) {
 		// TODO implement monotonic clock
-		//self.time += delta;
+
+		self.time.fetch_add(delta as _, atomic::Ordering::Relaxed);
 	}
 }

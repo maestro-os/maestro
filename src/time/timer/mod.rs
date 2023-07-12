@@ -9,8 +9,6 @@ use crate::time::unit::TimerT;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
 
-pub mod pit;
-
 // TODO make sure a timer doesn't send a signal to a thread that do not belong to the manager's
 // process
 

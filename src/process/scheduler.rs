@@ -21,7 +21,7 @@ use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::process::State;
-use crate::time::timer::pit;
+use crate::time::pit;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;

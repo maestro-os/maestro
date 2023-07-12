@@ -42,9 +42,6 @@ pub const CLOCK_TAI: ClockIdT = 11;
 
 /// Trait representing a system clock.
 pub trait Clock {
-	/// Tells whether the clock is monotonic.
-	fn is_monotonic(&self) -> bool;
-
 	/// Returns the clock's current timestamp.
 	fn get(&self, scale: TimestampScale) -> Timestamp;
 
