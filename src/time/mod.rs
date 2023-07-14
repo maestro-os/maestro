@@ -12,29 +12,34 @@ use crate::errno::EResult;
 use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::clock::CLOCK_REALTIME;
 use crate::util::boxed::Box;
-use crate::util::container::string::String;
 use unit::Timestamp;
 use unit::TimestampScale;
 
 /// Initializes time management.
 pub fn init() -> EResult<()> {
 	// Initialize hardware clocks
-	let mut hw_clocks = hw::CLOCKS.lock();
-	#[cfg(target_arch = "x86")]
-	hw_clocks.insert(String::try_from(b"pit")?, Box::new(hw::pit::PIT::new())?)?;
-	// TODO register all
+	{
+		let mut hw_clocks = hw::CLOCKS.lock();
+		#[cfg(target_arch = "x86")]
+		{
+			hw_clocks.insert(b"pit".try_into()?, Box::new(hw::pit::PIT::new())?)?;
+			hw_clocks.insert(b"rtc".try_into()?, Box::new(hw::rtc::RTC::new())?)?;
+		}
+	}
 
 	// Initializes software clocks
-	let mut clocks = clock::CLOCKS.lock();
-	clocks.insert(
-		CLOCK_REALTIME,
-		Box::new(clock::realtime::ClockRealtime::new(false))?,
-	)?;
-	clocks.insert(
-		CLOCK_MONOTONIC,
-		Box::new(clock::realtime::ClockRealtime::new(true))?,
-	)?;
-	// TODO register all
+	{
+		let mut clocks = clock::CLOCKS.lock();
+		clocks.insert(
+			CLOCK_REALTIME,
+			Box::new(clock::realtime::ClockRealtime::new(false))?,
+		)?;
+		clocks.insert(
+			CLOCK_MONOTONIC,
+			Box::new(clock::realtime::ClockRealtime::new(true))?,
+		)?;
+		// TODO register all
+	}
 
 	Ok(())
 }

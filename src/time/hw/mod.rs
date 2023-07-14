@@ -2,6 +2,8 @@
 
 #[cfg(target_arch = "x86")]
 pub mod pit;
+#[cfg(target_arch = "x86")]
+pub mod rtc;
 
 use crate::time::unit::Timestamp;
 use crate::util::boxed::Box;
@@ -24,6 +26,9 @@ pub trait HwClock {
 
 	/// Returns the interrupt vector of the timer.
 	fn get_interrupt_vector(&self) -> u32;
+
+	/// Resets the clock to allow the next tick.
+	fn reset(&self) {}
 }
 
 /// The list of hardware clock sources.

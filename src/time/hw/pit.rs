@@ -65,8 +65,11 @@ pub struct PIT {}
 
 impl PIT {
 	/// Creates a new instance.
+	///
+	/// By default, the timer is disabled and its frequency is undefined.
 	pub fn new() -> Self {
 		let mut s = Self {};
+		s.set_enabled(false);
 
 		idt::wrap_disable_interrupts(|| unsafe {
 			io::outb(
@@ -110,5 +113,11 @@ impl HwClock for PIT {
 
 	fn get_interrupt_vector(&self) -> u32 {
 		0x20
+	}
+}
+
+impl Drop for PIT {
+	fn drop(&mut self) {
+		self.set_enabled(false);
 	}
 }
