@@ -52,7 +52,7 @@ pub trait Clock {
 }
 
 /// The list of system clocks.
-pub(super) static CLOCKS: Mutex<HashMap<ClockIdT, Box<dyn Clock>>> = Mutex::new(HashMap::new());
+pub static CLOCKS: Mutex<HashMap<ClockIdT, Box<dyn Clock>>> = Mutex::new(HashMap::new());
 
 /// Returns the current timestamp according to the clock with the given ID.
 ///

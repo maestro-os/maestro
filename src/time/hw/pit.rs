@@ -1,7 +1,9 @@
 //! This module handles the PIT (Programmable Interrupt Timer) which allows to
 //! trigger interruptions at a fixed interval.
 
+use super::HwClock;
 use crate::idt;
+use crate::idt::pic;
 use crate::io;
 use crate::util::math::rational::Rational;
 
@@ -56,39 +58,57 @@ const BCD_MODE: u8 = 0b1;
 /// The base frequency of the PIT.
 const BASE_FREQUENCY: Rational = Rational::from_integer(1193182);
 
-/// Initializes the PIT.
-pub fn init() {
-	idt::wrap_disable_interrupts(|| unsafe {
-		io::outb(
-			PIT_COMMAND,
-			SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
-		);
+// FIXME prevent having several instances at the same time
 
-		set_frequency(Rational::from_integer(1));
-	});
+/// The PIT.
+pub struct PIT {}
+
+impl PIT {
+	/// Creates a new instance.
+	pub fn new() -> Self {
+		let mut s = Self {};
+
+		idt::wrap_disable_interrupts(|| unsafe {
+			io::outb(
+				PIT_COMMAND,
+				SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
+			);
+
+			s.set_frequency(Rational::from(1));
+		});
+
+		s
+	}
 }
 
-/// Sets the PIT divider value to `count`.
-fn set_value(count: u16) {
-	idt::wrap_disable_interrupts(|| unsafe {
-		io::outb(CHANNEL_0, (count & 0xff) as u8);
-		io::outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
-	});
-}
+impl HwClock for PIT {
+	fn set_enabled(&mut self, enable: bool) {
+		if enable {
+			pic::enable_irq(0x0);
+		} else {
+			pic::disable_irq(0x0);
+		}
+	}
 
-/// Sets the current frequency of the PIT.
-pub fn set_frequency(frequency: Rational) {
-	let mut c = {
-		if frequency != From::from(0) {
+	fn set_frequency(&mut self, frequency: Rational) {
+		let mut count = if frequency != Rational::from(0) {
 			(BASE_FREQUENCY / frequency).as_integer()
 		} else {
 			0
+		};
+		count &= 0xffff;
+		if count & !0xffff != 0 {
+			count = 0;
 		}
-	};
-	c &= 0xffff;
-	if c & !0xffff != 0 {
-		c = 0;
+
+		// Update frequency divider's value
+		idt::wrap_disable_interrupts(|| unsafe {
+			io::outb(CHANNEL_0, (count & 0xff) as u8);
+			io::outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
+		});
 	}
 
-	set_value(c as u16);
+	fn get_interrupt_vector(&self) -> u32 {
+		0x20
+	}
 }

@@ -21,7 +21,7 @@ use crate::process::pid::Pid;
 use crate::process::regs::Regs;
 use crate::process::Process;
 use crate::process::State;
-use crate::time::pit;
+use crate::time;
 use crate::util::container::map::Map;
 use crate::util::container::map::MapIterator;
 use crate::util::container::vec::Vec;
@@ -74,10 +74,15 @@ impl Scheduler {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
 		}
 
-		let tick_callback_hook =
-			event::register_callback(0x20, |_id: u32, _code: u32, regs: &Regs, ring: u32| {
+		// Register tick handler
+		let mut clocks = time::hw::CLOCKS.lock();
+		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
+		let tick_callback_hook = event::register_callback(
+			pit.get_interrupt_vector(),
+			|_: u32, _: u32, regs: &Regs, ring: u32| {
 				Scheduler::tick(process::get_scheduler(), regs, ring);
-			})?;
+			},
+		)?;
 
 		Arc::new(IntMutex::new(Self {
 			tmp_stacks,
@@ -195,12 +200,12 @@ impl Scheduler {
 	pub fn increment_running(&mut self) {
 		self.running_procs += 1;
 
-		// Enable ticking if necessary
+		let mut clocks = time::hw::CLOCKS.lock();
+		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
+
 		if self.running_procs > 1 {
-			// Set ticking frequency
-			pit::set_frequency(self.get_ticking_frequency());
-			// Enable ticking
-			pic::enable_irq(0x0);
+			pit.set_frequency(self.get_ticking_frequency());
+			pit.set_enabled(true);
 		}
 	}
 
@@ -208,12 +213,13 @@ impl Scheduler {
 	pub fn decrement_running(&mut self) {
 		self.running_procs -= 1;
 
+		let mut clocks = time::hw::CLOCKS.lock();
+		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
+
 		if self.running_procs <= 1 {
-			// Disable ticking
-			pic::disable_irq(0x0);
+			pit.set_enabled(false);
 		} else {
-			// Set ticking frequency
-			pit::set_frequency(self.get_ticking_frequency());
+			pit.set_frequency(self.get_ticking_frequency());
 		}
 	}
 
