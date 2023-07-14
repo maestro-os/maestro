@@ -95,11 +95,10 @@ impl HwClock for PIT {
 
 	fn set_frequency(&mut self, frequency: Rational) {
 		let mut count = if frequency != Rational::from(0) {
-			(BASE_FREQUENCY / frequency).as_integer()
+			i64::from(BASE_FREQUENCY / frequency) as u16
 		} else {
 			0
 		};
-		count &= 0xffff;
 		if count & !0xffff != 0 {
 			count = 0;
 		}

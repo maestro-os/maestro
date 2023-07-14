@@ -18,7 +18,7 @@ use core::ops::SubAssign;
 // FIXME: Operations can overflow
 
 /// Structure implementing the representing a rational number.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct Rational {
 	/// The numerator.
 	a: i64,
@@ -35,19 +35,22 @@ impl Rational {
 		}
 	}
 
+	/// Creates an instance from a given numerator and denominator (in that order).
+	pub const fn from_frac(a: i64, b: i64) -> Self {
+		Self {
+			a,
+			b,
+		}
+	}
+
 	/// Returns the numerator of the number.
-	pub fn get_numerator(&self) -> i64 {
+	pub fn numerator(&self) -> i64 {
 		self.a
 	}
 
 	/// Returns the denominator of the number.
-	pub fn get_denominator(&self) -> i64 {
+	pub fn denominator(&self) -> i64 {
 		self.b
-	}
-
-	/// Converts the value to the nearest integer value.
-	pub fn as_integer(&self) -> i64 {
-		self.a / self.b
 	}
 
 	/// Reduces the fraction so that `a / b` becomes irreducible.
@@ -66,6 +69,12 @@ impl Rational {
 impl From<i64> for Rational {
 	fn from(n: i64) -> Self {
 		Self::from_integer(n)
+	}
+}
+
+impl From<Rational> for i64 {
+	fn from(n: Rational) -> Self {
+		n.a / n.b
 	}
 }
 
@@ -223,6 +232,12 @@ impl PartialOrd for Rational {
 }
 
 impl fmt::Display for Rational {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{}/{}", self.a, self.b)
+	}
+}
+
+impl fmt::Debug for Rational {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "{}/{}", self.a, self.b)
 	}
