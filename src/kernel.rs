@@ -292,12 +292,13 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// Parsing bootloader command line arguments
 	let cmdline = boot_info.cmdline.unwrap_or(b"");
-	let args_parser = cmdline::ArgsParser::parse(cmdline);
-	if let Err(e) = args_parser {
-		e.print();
-		halt();
-	}
-	let args_parser = args_parser.unwrap();
+	let args_parser = match cmdline::ArgsParser::parse(cmdline) {
+		Ok(p) => p,
+		Err(e) => {
+			crate::println!("{e}");
+			halt();
+		}
+	};
 	logger::init(args_parser.is_silent());
 
 	println!("Booting Maestro kernel version {VERSION}");
@@ -337,11 +338,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	println!("Initializing processes...");
 	process::init().unwrap_or_else(|e| kernel_panic!("Failed to init processes! ({e})"));
 
-	let init_path = args_parser
-		.get_init_path()
-		.as_ref()
-		.map(|s| s.as_bytes())
-		.unwrap_or(INIT_PATH);
+	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
 	init(init_path).unwrap_or_else(|e| kernel_panic!("Cannot execute init process: {e}"));
 

@@ -1,48 +1,35 @@
 //! When booting, the kernel can take command line arguments. This module
 //! implements a parse for these arguments.
 
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
 use crate::util::DisplayableStr;
-use crate::util::TryClone;
 use crate::vga;
 use core::cmp::min;
+use core::fmt;
 use core::str;
 
-/// Command line argument parser.
-///
-/// Every bytes in the command line are interpreted as ASCII characters.
-pub struct ArgsParser {
-	/// The root device major and minor numbers.
-	root: Option<(u32, u32)>,
+/// Skips spaces in slice `slice`, starting at offset `i`.
+fn skip_spaces(slice: &[u8], i: &mut usize) {
+	let mut j = *i;
 
-	/// The path to the init binary, if specified.
-	init: Option<String>,
-
-	/// Whether the kernel boots silently.
-	silent: bool,
-}
-
-/// Structure representing a token in the command line.
-struct Token {
-	/// The token's string.
-	s: String,
-	/// The offset to the beginning of the token in the command line.
-	begin: usize,
-}
-
-impl Token {
-	/// Returns the length of the token.
-	pub fn len(&self) -> usize {
-		self.s.len()
+	while j < slice.len() && (slice[j] as char).is_ascii_whitespace() {
+		j += 1;
 	}
+
+	*i = j;
+}
+
+/// Parses the number represented by the string in the given slice.
+///
+/// If the slice doesn't contain a valid number, the function returns `None`.
+fn parse_nbr(slice: &[u8]) -> Option<u32> {
+	str::from_utf8(slice).ok().and_then(|s| s.parse().ok())
 }
 
 /// Structure representing a command line parsing error.
 #[derive(Debug)]
-pub struct ParseError<'a> {
+pub struct ParseError<'s> {
 	/// The command line.
-	cmdline: &'a [u8],
+	cmdline: &'s [u8],
 	/// An error message.
 	err: &'static str,
 
@@ -50,9 +37,9 @@ pub struct ParseError<'a> {
 	token: Option<(usize, usize)>,
 }
 
-impl<'a> ParseError<'a> {
+impl<'s> ParseError<'s> {
 	/// Creates a new instance.
-	pub fn new(cmdline: &'a [u8], err: &'static str, token: Option<(usize, usize)>) -> Self {
+	pub fn new(cmdline: &'s [u8], err: &'static str, token: Option<(usize, usize)>) -> Self {
 		Self {
 			cmdline,
 			err,
@@ -60,185 +47,163 @@ impl<'a> ParseError<'a> {
 			token,
 		}
 	}
+}
 
-	/// Prints the print error.
-	pub fn print(&self) {
-		crate::println!("Error while parsing command line arguments: {}", self.err);
+impl<'s> fmt::Display for ParseError<'s> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+		write!(
+			fmt,
+			"Error while parsing command line arguments: {}",
+			self.err
+		)?;
 
-		if let Some((begin, size)) = self.token {
-			let mut i = 0;
-			while i < self.cmdline.len() {
-				let l = min(self.cmdline.len() - i, vga::WIDTH as usize - 1);
-				crate::println!("{}", DisplayableStr(&self.cmdline[i..(i + l)]));
+		let Some((begin, size)) = self.token else {
+            return Ok(());
+		};
 
-				let mut j = i;
-				while j < i + l {
-					if j == begin {
-						crate::print!("^");
-					} else if j > begin && j < begin + size {
-						crate::print!("-");
-					} else {
-						crate::print!(" ");
-					}
+		let mut i = 0;
+		while i < self.cmdline.len() {
+			let l = min(self.cmdline.len() - i, vga::WIDTH as usize - 1);
+			write!(fmt, "{}", DisplayableStr(&self.cmdline[i..(i + l)]))?;
 
-					j += 1;
+			let mut j = i;
+			while j < i + l {
+				if j == begin {
+					write!(fmt, "^")?;
+				} else if j > begin && j < begin + size {
+					write!(fmt, "-")?;
+				} else {
+					write!(fmt, " ")?;
 				}
-				crate::println!();
 
-				i += vga::WIDTH as usize - 1;
+				j += 1;
 			}
+			writeln!(fmt)?;
 
-			crate::println!();
+			i += vga::WIDTH as usize - 1;
+		}
+
+		writeln!(fmt)
+	}
+}
+
+/// Structure representing a token in the command line.
+struct Token<'s> {
+	/// The token's string.
+	s: &'s [u8],
+	/// The offset to the beginning of the token in the command line.
+	begin: usize,
+}
+
+struct TokenIterator<'s> {
+	/// The string to iterate on.
+	s: &'s [u8],
+	/// The current index on the string.
+	i: usize,
+}
+
+impl<'s> Iterator for TokenIterator<'s> {
+	type Item = Token<'s>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		skip_spaces(&self.s, &mut self.i);
+		let mut j = self.i;
+		while j < self.s.len() && !(self.s[j] as char).is_ascii_whitespace() {
+			j += 1;
+		}
+
+		if j > self.i {
+			let tok = Token {
+				s: &self.s[self.i..j],
+				begin: self.i,
+			};
+			self.i = j;
+
+			Some(tok)
+		} else {
+			None
 		}
 	}
 }
 
-impl ArgsParser {
-	/// Returns `true` if the given character `c` is a whitespace.
-	fn is_space(c: char) -> bool {
-		c == ' ' || c == '\n' || c == '\t'
-	}
+/// Command line argument parser.
+///
+/// Every bytes in the command line are interpreted as ASCII characters.
+pub struct ArgsParser<'s> {
+	/// The root device major and minor numbers.
+	root: Option<(u32, u32)>,
+	/// The path to the init binary, if specified.
+	init: Option<&'s [u8]>,
+	/// Whether the kernel boots silently.
+	silent: bool,
+}
 
-	/// Skips spaces in slice `slice`, starting at offset `i`.
-	fn skip_spaces(slice: &[u8], i: &mut usize) {
-		let mut j = *i;
-
-		while j < slice.len() && Self::is_space(slice[j] as char) {
-			j += 1;
-		}
-
-		*i = j;
-	}
-
-	/// Creates a new token starting a the given offset `i` in the given command
-	/// line `cmdline`.
-	fn new_token<'a>(cmdline: &'a [u8], i: &mut usize) -> Result<Option<Token>, ParseError<'a>> {
-		Self::skip_spaces(cmdline, i);
-		let mut j = *i;
-		while j < cmdline.len() && !Self::is_space(cmdline[j] as char) {
-			j += 1;
-		}
-
-		if j > *i {
-			if let Ok(s) = String::try_from(&cmdline[*i..j]) {
-				let tok = Token {
-					s,
-					begin: *i,
-				};
-				*i = j;
-
-				Ok(Some(tok))
-			} else {
-				Err(ParseError::new(cmdline, "Out of memory", None))
-			}
-		} else {
-			Ok(None)
-		}
-	}
-
-	/// Tokenizes the command line arguments and returns an array containing all
-	/// the tokens.
-	///
-	/// Every characters are interpreted as ASCII characters.
-	///
-	/// If a non-ASCII character is passed, the function returns an error.
-	fn tokenize(cmdline: &[u8]) -> Result<Vec<Token>, ParseError> {
-		let mut tokens = Vec::new();
-		let mut i = 0;
-
-		while i < cmdline.len() {
-			if let Some(tok) = Self::new_token(cmdline, &mut i)? {
-				if tokens.push(tok).is_err() {
-					return Err(ParseError::new(cmdline, "Out of memory", None));
-				}
-			}
-		}
-
-		Ok(tokens)
-	}
-
+impl<'s> ArgsParser<'s> {
 	/// Parses the given command line and returns a new instance.
-	pub fn parse(cmdline: &[u8]) -> Result<Self, ParseError<'_>> {
+	pub fn parse(cmdline: &'s [u8]) -> Result<Self, ParseError<'_>> {
 		let mut s = Self {
 			root: None,
-
 			init: None,
-
 			silent: false,
 		};
 
-		let tokens = Self::tokenize(cmdline)?;
-		let mut i = 0;
-		while i < tokens.len() {
-			let token_str = tokens[i].s.as_bytes();
+		let mut iter = TokenIterator {
+			s: cmdline,
+			i: 0,
+		}
+		.enumerate();
+		loop {
+			let Some((i, token)) = iter.next() else {
+                break;
+            };
 
-			match token_str {
+			match token.s {
 				b"-root" => {
-					if tokens.len() < i + 3 {
-						let begin = tokens[i].begin;
-						let size = tokens[i].len();
+					let (Some((_, major)), Some((_, minor))) = (iter.next(), iter.next()) else {
+                        return Err(ParseError::new(
+                            cmdline,
+                            "not enough arguments for `-root`",
+                            Some((token.begin, token.s.len())),
+                        ));
+                    };
+
+					let Some(major) = parse_nbr(major.s) else {
 						return Err(ParseError::new(
 							cmdline,
-							"Not enough arguments for `-root`",
-							Some((begin, size)),
-						));
-					}
-
-					let major_result = tokens[i + 1].s.as_str().unwrap().parse::<u32>();
-					let minor_result = tokens[i + 2].s.as_str().unwrap().parse::<u32>();
-
-					let Ok(major) = major_result else {
-						return Err(ParseError::new(
-							cmdline,
-							"Invalid major number",
+							"invalid major number",
 							Some((i + 1, 1)),
 						));
 					};
-					let Ok(minor) = minor_result else {
+					let Some(minor) = parse_nbr(minor.s) else {
 						return Err(ParseError::new(
 							cmdline,
-							"Invalid minor number",
+							"invalid minor number",
 							Some((i + 2, 1)),
 						));
 					};
-					i += 3;
 
 					s.root = Some((major, minor));
 				}
 
 				b"-init" => {
-					if tokens.len() < i + 2 {
-						let begin = tokens[i].begin;
-						let size = tokens[i].len();
+					let Some((_, init)) = iter.next() else {
 						return Err(ParseError::new(
 							cmdline,
-							"Not enough arguments for `-init`",
-							Some((begin, size)),
+							"not enough arguments for `-init`",
+							Some((token.begin, token.s.len())),
 						));
-					}
+                    };
 
-					if let Ok(init) = tokens[i + 1].s.try_clone() {
-						s.init = Some(init);
-					} else {
-						return Err(ParseError::new(cmdline, "Out of memory", None));
-					}
-
-					i += 2;
+					s.init = Some(init.s);
 				}
 
-				b"-silent" => {
-					s.silent = true;
-
-					i += 1;
-				}
+				b"-silent" => s.silent = true,
 
 				_ => {
-					let begin = tokens[i].begin;
-					let size = tokens[i].len();
 					return Err(ParseError::new(
 						cmdline,
-						"Invalid argument",
-						Some((begin, size)),
+						"invalid argument",
+						Some((token.begin, token.s.len())),
 					));
 				}
 			}
@@ -253,8 +218,8 @@ impl ArgsParser {
 	}
 
 	/// Returns the init binary path if specified.
-	pub fn get_init_path(&self) -> &Option<String> {
-		&self.init
+	pub fn get_init_path(&self) -> Option<&'s [u8]> {
+		self.init
 	}
 
 	/// If `true`, the kernel doesn't print logs while booting.
