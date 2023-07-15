@@ -22,6 +22,9 @@ use unit::Timestamp;
 use unit::TimestampScale;
 
 /// Atomic storage for a timestamp.
+///
+/// This wrapper is required because timestamps span 64 bits, but 32 bits architectures may not
+/// support atomic operations on 64 bits operands.
 pub struct AtomicTimestamp {
 	#[cfg(target_pointer_width = "32")]
 	inner: IntMutex<Timestamp>,
