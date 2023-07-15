@@ -15,10 +15,76 @@ use crate::errno::EResult;
 use crate::event;
 use crate::event::CallbackResult;
 use crate::util::boxed::Box;
+use crate::util::lock::IntMutex;
 use crate::util::math::rational::Rational;
 use core::mem::ManuallyDrop;
 use unit::Timestamp;
 use unit::TimestampScale;
+
+/// Atomic storage for a timestamp.
+pub struct AtomicTimestamp {
+	#[cfg(target_pointer_width = "32")]
+	inner: IntMutex<Timestamp>,
+	#[cfg(target_pointer_width = "64")]
+	inner: AtomicU64,
+}
+
+impl AtomicTimestamp {
+	pub const fn new(val: Timestamp) -> Self {
+		Self {
+			#[cfg(target_pointer_width = "32")]
+			inner: IntMutex::new(val),
+			#[cfg(target_pointer_width = "64")]
+			inner: AtomicU64::new(val),
+		}
+	}
+
+	/// Loads and returns the value.
+	pub fn load(&self) -> Timestamp {
+		#[cfg(target_pointer_width = "32")]
+		{
+			*self.inner.lock()
+		}
+
+		#[cfg(target_pointer_width = "64")]
+		{
+			self.inner.load(core::sync::atomic::Ordering::Relaxed)
+		}
+	}
+
+	/// Stores the given value and returns the previous.
+	pub fn store(&self, val: Timestamp) -> Timestamp {
+		#[cfg(target_pointer_width = "32")]
+		{
+			let mut guard = self.inner.lock();
+			let prev = *guard;
+			*guard = val;
+			prev
+		}
+
+		#[cfg(target_pointer_width = "64")]
+		{
+			self.inner.store(val, core::sync::atomic::Ordering::Relaxed)
+		}
+	}
+
+	/// Adds the given value and returns the previous.
+	pub fn fetch_add(&self, val: Timestamp) -> Timestamp {
+		#[cfg(target_pointer_width = "32")]
+		{
+			let mut guard = self.inner.lock();
+			let prev = *guard;
+			*guard = prev + val;
+			prev
+		}
+
+		#[cfg(target_pointer_width = "64")]
+		{
+			self.inner
+				.fetch_add(val, core::sync::atomic::Ordering::Relaxed)
+		}
+	}
+}
 
 /// Initializes time management.
 pub fn init() -> EResult<()> {
@@ -42,6 +108,7 @@ pub fn init() -> EResult<()> {
 		let hook = event::register_callback(rtc.get_interrupt_vector(), move |_, _, _, _| {
 			hw::rtc::RTC::reset();
 			clock::update(i64::from(freq * 1000000000) as _);
+			timer::tick();
 
 			CallbackResult::Continue
 		})?;

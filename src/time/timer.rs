@@ -108,3 +108,8 @@ impl TimerManager {
 		Ok(())
 	}
 }
+
+/// Ticks active timers and triggers them if necessary.
+pub(super) fn tick() {
+	// TODO
+}
