@@ -7,6 +7,7 @@ use crate::process::signal::SigEvent;
 use crate::process::Process;
 use crate::time::unit::ClockIdT;
 use crate::time::unit::ITimerspec32;
+use crate::time::unit::TimeUnit;
 use crate::time::unit::TimerT;
 use crate::time::unit::Timespec;
 use crate::util::container::hashmap::HashMap;
@@ -48,19 +49,7 @@ impl Timer {
 	/// Tells whether the timer is armed.
 	#[inline]
 	pub fn is_armed(&self) -> bool {
-		self.time.it_value.tv_sec != 0 || self.time.it_value.tv_nsec != 0
-	}
-
-	/// Returns the current state of the timer.
-	#[inline]
-	pub fn get_time(&self) -> ITimerspec32 {
-		self.time.clone()
-	}
-
-	/// Sets the timer's state.
-	#[inline]
-	pub fn set_time(&mut self, time: ITimerspec32) {
-		self.time = time;
+		!self.time.it_value.is_zero()
 	}
 
 	/// Tells whether the timer must be fired.
@@ -73,8 +62,21 @@ impl Timer {
 	/// Tells whether the timer is oneshot. If not, the timer repeats until manually stopped.
 	#[inline]
 	pub fn is_oneshot(&self) -> bool {
-		// TODO
-		todo!()
+		self.time.it_interval.is_zero()
+	}
+
+	/// Returns the current state of the timer.
+	#[inline]
+	pub fn get_time(&self) -> ITimerspec32 {
+		self.time.clone()
+	}
+
+	/// Sets the timer's state.
+	#[inline]
+	pub fn set_time(&mut self, time: ITimerspec32) {
+		// TODO update queue (lookup using previous value)
+
+		self.time = time;
 	}
 
 	/// Fires the timer.
@@ -149,6 +151,7 @@ impl Drop for TimerManager {
 	}
 }
 
+// FIXME: not adapted since the current contain only allows one timer per possible value
 /// The queue of timers to be fired next.
 ///
 /// - key: the timestamp at which the timer will fire next
