@@ -1,15 +1,13 @@
 //! This module implements system clocks.
 
-pub(super) mod realtime;
-
 use crate::errno::EResult;
 use crate::time::unit::ClockIdT;
 use crate::time::unit::TimeUnit;
 use crate::time::Timestamp;
 use crate::time::TimestampScale;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util::lock::Mutex;
+use core::cmp::max;
+use core::sync::atomic;
+use core::sync::atomic::AtomicU32;
 
 /// System clock ID
 pub const CLOCK_REALTIME: ClockIdT = 0;
@@ -36,23 +34,16 @@ pub const CLOCK_SGI_CYCLE: ClockIdT = 10;
 /// System clock ID
 pub const CLOCK_TAI: ClockIdT = 11;
 
-// TODO allow accessing clocks:
-// - without locking a Mutex (interior mutability and atomic load)
-// - through an address shared with userspace (vDSO)
+// TODO allow accessing clocks through an address shared with userspace (vDSO)
+// TODO for timestamps, use u64, or a structure?
 
-/// Trait representing a system clock.
-pub trait Clock {
-	/// Returns the clock's current timestamp.
-	fn get(&self, scale: TimestampScale) -> Timestamp;
-
-	/// Updates the clock with the given delta in nanoseconds.
-	fn update(&self, delta: Timestamp);
-
-	// TODO clock adjustment
-}
-
-/// The list of system clocks.
-pub static CLOCKS: Mutex<HashMap<ClockIdT, Box<dyn Clock>>> = Mutex::new(HashMap::new());
+/// The current timestamp of the real time clock, in nanoseconds.
+static REALTIME: AtomicU32 = AtomicU32::new(0);
+/// On time adjustement, this value is updated with the previous value of the real time clock so
+/// that it can be used if the clock went backwards in time.
+static MONOTONIC: AtomicU32 = AtomicU32::new(0);
+/// The time elapsed since boot time, in nanoseconds.
+static BOOTTIME: AtomicU32 = AtomicU32::new(0);
 
 /// Returns the current timestamp according to the clock with the given ID.
 ///
@@ -62,10 +53,25 @@ pub static CLOCKS: Mutex<HashMap<ClockIdT, Box<dyn Clock>>> = Mutex::new(HashMap
 ///
 /// If the clock is invalid, the function returns an error.
 pub fn current_time(clk: ClockIdT, scale: TimestampScale) -> EResult<Timestamp> {
-	let clocks = CLOCKS.lock();
-	let clock = clocks.get(&clk).ok_or_else(|| errno!(EINVAL))?;
+	// TODO implement all clocks
+	let raw_ts = match clk {
+		CLOCK_REALTIME | CLOCK_REALTIME_ALARM => REALTIME.load(atomic::Ordering::Relaxed),
+		CLOCK_MONOTONIC => {
+			let realtime = REALTIME.load(atomic::Ordering::Relaxed);
+			let monotonic = MONOTONIC.load(atomic::Ordering::Relaxed);
 
-	Ok(clock.get(scale))
+			max(realtime, monotonic)
+		}
+		CLOCK_BOOTTIME | CLOCK_BOOTTIME_ALARM => BOOTTIME.load(atomic::Ordering::Relaxed),
+
+		_ => return Err(errno!(EINVAL)),
+	};
+
+	Ok(TimestampScale::convert(
+		raw_ts as _,
+		TimestampScale::Nanosecond,
+		scale,
+	))
 }
 
 /// Returns the current timestamp according to the clock with the given ID.
