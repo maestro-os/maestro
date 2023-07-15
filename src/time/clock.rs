@@ -45,6 +45,13 @@ static MONOTONIC: AtomicU32 = AtomicU32::new(0);
 /// The time elapsed since boot time, in nanoseconds.
 static BOOTTIME: AtomicU32 = AtomicU32::new(0);
 
+/// Updates clocks with the given delta value in nanoseconds.
+pub fn update(delta: Timestamp) {
+	REALTIME.fetch_add(delta as _, atomic::Ordering::Relaxed);
+	MONOTONIC.fetch_add(delta as _, atomic::Ordering::Relaxed);
+	BOOTTIME.fetch_add(delta as _, atomic::Ordering::Relaxed);
+}
+
 /// Returns the current timestamp according to the clock with the given ID.
 ///
 /// Arguments:

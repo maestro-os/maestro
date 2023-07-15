@@ -20,6 +20,8 @@ const STATUS_C_REGISTER: u8 = 0x0c;
 // FIXME prevent having several instances at the same time
 
 /// The RTC.
+///
+/// **Note**: the RTC needs a call to `reset` to allow the next tick to be fired.
 pub struct RTC {}
 
 impl RTC {
@@ -31,6 +33,15 @@ impl RTC {
 		s.set_enabled(false);
 
 		s
+	}
+
+	/// Resets the timer to make it ready for the next tick.
+	#[inline]
+	pub fn reset() {
+		unsafe {
+			io::outb(SELECT_PORT, STATUS_C_REGISTER);
+			io::inb(VALUE_PORT);
+		}
 	}
 }
 
@@ -62,13 +73,6 @@ impl HwClock for RTC {
 
 	fn get_interrupt_vector(&self) -> u32 {
 		0x28
-	}
-
-	fn reset(&self) {
-		unsafe {
-			io::outb(SELECT_PORT, STATUS_C_REGISTER);
-			io::inb(VALUE_PORT);
-		}
 	}
 }
 
