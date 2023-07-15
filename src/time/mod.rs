@@ -40,6 +40,7 @@ impl AtomicTimestamp {
 	}
 
 	/// Loads and returns the value.
+	#[inline]
 	pub fn load(&self) -> Timestamp {
 		#[cfg(target_pointer_width = "32")]
 		{
@@ -53,6 +54,7 @@ impl AtomicTimestamp {
 	}
 
 	/// Stores the given value and returns the previous.
+	#[inline]
 	pub fn store(&self, val: Timestamp) -> Timestamp {
 		#[cfg(target_pointer_width = "32")]
 		{
@@ -69,12 +71,13 @@ impl AtomicTimestamp {
 	}
 
 	/// Adds the given value and returns the previous.
+	#[inline]
 	pub fn fetch_add(&self, val: Timestamp) -> Timestamp {
 		#[cfg(target_pointer_width = "32")]
 		{
 			let mut guard = self.inner.lock();
 			let prev = *guard;
-			*guard = prev + val;
+			*guard = prev.wrapping_add(val);
 			prev
 		}
 
@@ -107,7 +110,8 @@ pub fn init() -> EResult<()> {
 
 		let hook = event::register_callback(rtc.get_interrupt_vector(), move |_, _, _, _| {
 			hw::rtc::RTC::reset();
-			clock::update(i64::from(freq * 1000000000) as _);
+			// FIXME: the value is probably not right
+			clock::update(i64::from(freq * 1_000_000_000) as _);
 			timer::tick();
 
 			CallbackResult::Continue

@@ -17,6 +17,9 @@ pub trait HwClock {
 	/// Enables or disable the clock.
 	fn set_enabled(&mut self, enable: bool);
 	/// Sets the clock's frequency.
+	///
+	/// The actual frequency is the closest possible rounded down according to the clock's
+	/// resolution.
 	fn set_frequency(&mut self, freq: Rational);
 
 	/// Returns the value of the clock, if applicable.
