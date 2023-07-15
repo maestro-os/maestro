@@ -494,6 +494,26 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		self.get_root().map(|n| n.get_depth()).unwrap_or(0)
 	}
 
+	/// Returns an immutable reference to the leftmost node in the tree.
+	fn get_leftmost_node(node: &'static Node<K, V>) -> &'static Node<K, V> {
+		let mut n = node;
+		while let Some(left) = n.get_left() {
+			n = left;
+		}
+
+		n
+	}
+
+	/// Returns an immutable reference to the leftmost node in the tree.
+	fn get_leftmost_node_mut(node: &'static mut Node<K, V>) -> &'static mut Node<K, V> {
+		let mut n = node;
+		while let Some(left) = n.get_left_mut() {
+			n = left;
+		}
+
+		n
+	}
+
 	/// Searches for a node with the given key in the tree and returns a
 	/// reference.
 	///
@@ -556,8 +576,27 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				todo!();
 			}
 
-			Bound::Unbounded => NonNull::new(Self::get_leftmost_node(node?)),
+			Bound::Unbounded => NonNull::new(Self::get_leftmost_node_mut(node?)),
 		}
+	}
+
+	/// Returns the first key/value pair of the tree. The returned key is the minimum present in
+	/// the tree.
+	///
+	/// If the tree is empty, the function returns `None`.
+	pub fn first_key_value(&self) -> Option<(&K, &V)> {
+		let node = Self::get_leftmost_node(self.get_root()?);
+		Some((&node.key, &node.value))
+	}
+
+	/// Removes and returns the first key/value pair of the tree. The returned key is the minimum
+	/// present in the tree.
+	///
+	/// If the tree is empty, the function returns `None`.
+	pub fn pop_first(&mut self) -> Option<(K, V)> {
+		let node = Self::get_leftmost_node_mut(self.get_root_mut()?);
+		let (key, value) = self.remove_node(node);
+		Some((key, value))
 	}
 
 	/// Searches for the given key in the tree and returns a reference.
@@ -755,16 +794,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		Ok(&mut n.value)
 	}
 
-	/// Returns the leftmost node in the tree.
-	fn get_leftmost_node(node: &'static mut Node<K, V>) -> &'static mut Node<K, V> {
-		let mut n = node;
-		while let Some(left) = n.get_left_mut() {
-			n = left;
-		}
-
-		n
-	}
-
 	/// Fixes the tree after deletion in the case where the deleted node and its
 	/// replacement are both black.
 	///
@@ -841,13 +870,13 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Removes the given node `node` from the tree.
 	///
 	/// The function returns the value of the removed node.
-	fn remove_node(&mut self, node: &mut Node<K, V>) -> V {
+	fn remove_node(&mut self, node: &mut Node<K, V>) -> (K, V) {
 		let left = node.get_left_mut();
 		let right = node.get_right_mut();
 		let replacement = match (left, right) {
 			// The node has two children
 			// The leftmost node may have a child on the right
-			(Some(_left), Some(right)) => Some(Self::get_leftmost_node(right)),
+			(Some(_left), Some(right)) => Some(Self::get_leftmost_node_mut(right)),
 			// The node has only one child on the left
 			(Some(left), _) => Some(left),
 			// The node has only one child on the right
@@ -888,8 +917,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
             node.unlink();
 
-			let (_, val) = unsafe { drop_node(node) };
-			return val;
+			return unsafe { drop_node(node) };
         };
 
 		if node.get_left().is_some() && node.get_right().is_some() {
@@ -903,16 +931,16 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
             // The node is the root
 
             replacement.unlink();
-            let (key, value) = unsafe { drop_node(replacement) };
+            let (mut key, value) = unsafe { drop_node(replacement) };
 
             node.left = None;
             node.right = None;
 
-            node.key = key;
+            mem::swap(&mut key, &mut node.key);
             let mut val = value;
             mem::swap(&mut val, &mut node.value);
 
-            return val;
+            return (key, val);
         };
 
 		replacement.parent = None;
@@ -925,7 +953,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 
 		node.unlink();
-		let (_, val) = unsafe { drop_node(node) };
+		let (key, val) = unsafe { drop_node(node) };
 
 		if both_black {
 			Self::remove_fix_double_black(replacement);
@@ -934,7 +962,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 			replacement.color = NodeColor::Black;
 		}
 
-		val
+		(key, val)
 	}
 
 	/// Removes a value from the tree. If the value is present several times in
@@ -945,7 +973,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// If the key exists, the function returns the value of the removed node.
 	pub fn remove(&mut self, key: &K) -> Option<V> {
 		let node = self.get_mut_node(key)?;
-		let value = self.remove_node(node);
+		let (_, value) = self.remove_node(node);
 
 		//#[cfg(config_debug_debug)]
 		//self.check();
@@ -1140,9 +1168,9 @@ impl<'a, K: Ord, V> MapIterator<'a, K, V> {
 	fn new(tree: &'a Map<K, V>) -> Self {
 		MapIterator {
 			tree,
-			node: tree
-				.root
-				.map(|mut n| unsafe { NonNull::new(Map::get_leftmost_node(n.as_mut())).unwrap() }),
+			node: tree.root.map(|mut n| unsafe {
+				NonNull::new(Map::get_leftmost_node_mut(n.as_mut())).unwrap()
+			}),
 		}
 	}
 }
@@ -1204,7 +1232,7 @@ impl<'a, K: Ord, V> MapMutIterator<'a, K, V> {
 	fn new(tree: &'a mut Map<K, V>) -> Self {
 		let node = tree
 			.root
-			.map(|mut n| unsafe { NonNull::new(Map::get_leftmost_node(n.as_mut())).unwrap() });
+			.map(|mut n| unsafe { NonNull::new(Map::get_leftmost_node_mut(n.as_mut())).unwrap() });
 
 		MapMutIterator {
 			tree,

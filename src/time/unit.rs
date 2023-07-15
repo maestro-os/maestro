@@ -126,7 +126,7 @@ impl PartialOrd for Timeval {
 }
 
 /// Same as `Timeval`, but with nanosecond precision.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, Ord)]
 #[repr(C)]
 pub struct Timespec {
 	/// Seconds
@@ -185,7 +185,7 @@ impl PartialOrd for Timespec {
 }
 
 /// Same as `Timespec`, but with 32 bits values.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, Ord)]
 #[repr(C)]
 pub struct Timespec32 {
 	/// Seconds
