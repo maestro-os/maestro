@@ -1,15 +1,19 @@
 //! This module implements timers.
 
+use super::clock;
+use super::clock::CLOCK_REALTIME;
+use super::unit::ClockIdT;
+use super::unit::ITimerspec32;
+use super::unit::TimeUnit;
+use super::unit::TimerT;
+use super::unit::Timespec;
+use super::unit::TimestampScale;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::limits;
 use crate::process::pid::Pid;
 use crate::process::signal::SigEvent;
 use crate::process::Process;
-use crate::time::unit::ClockIdT;
-use crate::time::unit::ITimerspec32;
-use crate::time::unit::TimeUnit;
-use crate::time::unit::TimerT;
-use crate::time::unit::Timespec;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::container::map::Map;
@@ -27,6 +31,9 @@ pub struct Timer {
 
 	/// The current state of the timer.
 	time: ITimerspec32,
+
+	/// The next timestamp at which the timer will expire.
+	next: Timespec,
 }
 
 impl Timer {
@@ -35,15 +42,18 @@ impl Timer {
 	/// Arguments:
 	/// - `clockid` is the ID of the clock to use.
 	/// - `sevp` describes the event to be triggered by the clock.
-	pub fn new(clockid: ClockIdT, sevp: SigEvent) -> Self {
-		// TODO check clock is valid
+	pub fn new(clockid: ClockIdT, sevp: SigEvent) -> EResult<Self> {
+		// Check clock is valid
+		let _ = clock::current_time(clockid, TimestampScale::Nanosecond)?;
 
-		Self {
+		Ok(Self {
 			clockid,
 			sevp,
 
-			time: ITimerspec32::default(),
-		}
+			time: Default::default(),
+
+			next: Default::default(),
+		})
 	}
 
 	/// Tells whether the timer is armed.
@@ -53,10 +63,11 @@ impl Timer {
 	}
 
 	/// Tells whether the timer must be fired.
+	///
+	/// `curr` is the current timestamp.
 	#[inline]
-	pub fn is_expired(&self) -> bool {
-		// TODO
-		todo!()
+	pub fn is_expired(&self, curr: &Timespec) -> bool {
+		curr >= &self.next
 	}
 
 	/// Tells whether the timer is oneshot. If not, the timer repeats until manually stopped.
@@ -80,7 +91,9 @@ impl Timer {
 	}
 
 	/// Fires the timer.
-	pub fn fire(&mut self) {
+	///
+	/// `proc` is the process to which the timer is fired.
+	pub fn fire(&mut self, _proc: &mut Process) {
 		// TODO
 		todo!()
 	}
@@ -116,7 +129,7 @@ impl TimerManager {
 	///
 	/// On success, the function returns the ID of the newly created timer.
 	pub fn create_timer(&mut self, clockid: ClockIdT, sevp: SigEvent) -> Result<u32, Errno> {
-		let timer = Timer::new(clockid, sevp);
+		let timer = Timer::new(clockid, sevp)?;
 		let id = self.id_allocator.alloc(None)?;
 		if let Err(e) = self.timers.insert(id, timer) {
 			self.id_allocator.free(id);
@@ -159,6 +172,8 @@ static TIMERS_QUEUE: IntMutex<Map<(Timespec, Pid, TimerT), ()>> = IntMutex::new(
 
 /// Ticks active timers and triggers them if necessary.
 pub(super) fn tick() {
+	// TODO use the clock corresponding to each timer
+	let ts: Timespec = clock::current_time_struct(CLOCK_REALTIME).unwrap();
 	let mut queue = TIMERS_QUEUE.lock();
 
 	loop {
@@ -173,12 +188,10 @@ pub(super) fn tick() {
 			queue.pop_first();
             break;
         };
+		let mut proc = proc_mutex.lock();
 
 		// Get timer manager
-		let timer_manager_mutex = {
-			let proc = proc_mutex.lock();
-			proc.timer_manager()
-		};
+		let timer_manager_mutex = proc.timer_manager();
 		let mut timer_manager = timer_manager_mutex.lock();
 
 		// Get timer
@@ -188,12 +201,12 @@ pub(super) fn tick() {
             break;
         };
 
-		if !timer.is_expired() {
+		if !timer.is_expired(&ts) {
 			// If this timer has not expired, all the next timers won't be expired either
 			break;
 		}
 
-		timer.fire();
+		timer.fire(&mut proc);
 
 		if timer.is_oneshot() {
 			queue.pop_first();
