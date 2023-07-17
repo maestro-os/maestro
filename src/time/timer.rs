@@ -147,16 +147,15 @@ impl TimerManager {
 impl Drop for TimerManager {
 	fn drop(&mut self) {
 		let mut queue = TIMERS_QUEUE.lock();
-		queue.retain(|_, (pid, _)| *pid != self.pid);
+		queue.retain(|(_, pid, _), _| *pid != self.pid);
 	}
 }
 
-// FIXME: not adapted since the current contain only allows one timer per possible value
 /// The queue of timers to be fired next.
 ///
 /// - key: the timestamp at which the timer will fire next
 /// - value: a tuple with the PID of the process owning the timer and the ID of the timer
-static TIMERS_QUEUE: IntMutex<Map<Timespec, (Pid, TimerT)>> = IntMutex::new(Map::new());
+static TIMERS_QUEUE: IntMutex<Map<(Timespec, Pid, TimerT), ()>> = IntMutex::new(Map::new());
 
 /// Ticks active timers and triggers them if necessary.
 pub(super) fn tick() {
@@ -164,7 +163,7 @@ pub(super) fn tick() {
 
 	loop {
 		// Peek next timer
-		let Some((_, (pid, timer_id))) = queue.first_key_value() else {
+		let Some(((_, pid, timer_id), _)) = queue.first_key_value() else {
             break;
         };
 
