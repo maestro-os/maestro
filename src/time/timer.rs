@@ -13,6 +13,9 @@ use crate::errno::Errno;
 use crate::limits;
 use crate::process::pid::Pid;
 use crate::process::signal::SigEvent;
+use crate::process::signal::Signal;
+use crate::process::signal::SIGEV_SIGNAL;
+use crate::process::signal::SIGEV_THREAD;
 use crate::process::Process;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::id_allocator::IDAllocator;
@@ -43,8 +46,11 @@ impl Timer {
 	/// - `clockid` is the ID of the clock to use.
 	/// - `sevp` describes the event to be triggered by the clock.
 	pub fn new(clockid: ClockIdT, sevp: SigEvent) -> EResult<Self> {
-		// Check clock is valid
+		// Check arguments are valid
 		let _ = clock::current_time(clockid, TimestampScale::Nanosecond)?;
+		if !sevp.is_valid() {
+			return Err(errno!(EINVAL));
+		}
 
 		Ok(Self {
 			clockid,
@@ -93,9 +99,21 @@ impl Timer {
 	/// Fires the timer.
 	///
 	/// `proc` is the process to which the timer is fired.
-	pub fn fire(&mut self, _proc: &mut Process) {
-		// TODO
-		todo!()
+	pub fn fire(&mut self, proc: &mut Process) {
+		match self.sevp.sigev_notify {
+			SIGEV_SIGNAL => {
+				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo as u32) else {
+                    return;
+                };
+
+				// TODO on sigint_t, set si_code to SI_TIMER
+				proc.kill(&signal, false);
+			}
+
+			SIGEV_THREAD => todo!(), // TODO
+
+			_ => {}
+		}
 	}
 }
 
@@ -166,8 +184,10 @@ impl Drop for TimerManager {
 
 /// The queue of timers to be fired next.
 ///
-/// - key: the timestamp at which the timer will fire next
-/// - value: a tuple with the PID of the process owning the timer and the ID of the timer
+/// The key has the following elements:
+/// - the timestamp at which the timer will fire next
+/// - the PID of the process owning the timer
+/// - the ID of the timer
 static TIMERS_QUEUE: IntMutex<Map<(Timespec, Pid, TimerT), ()>> = IntMutex::new(Map::new());
 
 /// Ticks active timers and triggers them if necessary.

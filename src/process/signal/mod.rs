@@ -26,14 +26,12 @@ pub const SIG_IGN: *const c_void = 0x0 as _;
 /// The default action for the signal.
 pub const SIG_DFL: *const c_void = 0x1 as _;
 
-/// TODO doc
+/// Notify method: generate a signal
 pub const SIGEV_SIGNAL: c_int = 0;
-/// TODO doc
+/// Notify method: do nothing
 pub const SIGEV_NONE: c_int = 1;
-/// TODO doc
+/// Notify method: starts a function as a new thread
 pub const SIGEV_THREAD: c_int = 2;
-/// TODO doc
-pub const SIGEV_THREAD_ID: c_int = 4;
 
 /// The size of the signal handlers table (the number of signals + 1, since
 /// indexing begins at 1 instead of 0).
@@ -161,6 +159,21 @@ pub struct SigEvent {
 	pub sigev_notify_attributes: *const c_void,
 	/// ID of thread to signal.
 	pub sigev_notify_thread_id: Pid,
+}
+
+impl SigEvent {
+	/// Tells whether the structure is valid.
+	pub fn is_valid(&self) -> bool {
+		if !matches!(self.sigev_notify, SIGEV_SIGNAL | SIGEV_NONE | SIGEV_THREAD) {
+			return false;
+		}
+		if Signal::try_from(self.sigev_signo as u32).is_err() {
+			return false;
+		}
+		// TODO check sigev_notify_thread_id
+
+		true
+	}
 }
 
 /// Enumeration containing the different possibilities for signal handling.
