@@ -72,7 +72,7 @@ mod test {
 	fn rfc1071_0() {
 		for i in 0..=u16::MAX {
 			let data = [(i & 0xff) as _, (i >> 8) as _];
-			assert_eq!(compute_rfc1071(&data), !(i as u32));
+			assert_eq!(compute_rfc1071(&data), !(i as u16));
 		}
 	}
 

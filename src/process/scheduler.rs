@@ -274,7 +274,7 @@ impl Scheduler {
 	fn get_next_process(&self) -> Option<(Pid, Arc<IntMutex<Process>>)> {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
-		let processes_count = self.processes.count();
+		let processes_count = self.processes.len();
 
 		// Getting the current process, or take the first process in the list if no
 		// process is running
