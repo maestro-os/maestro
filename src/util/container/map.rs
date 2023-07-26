@@ -513,20 +513,13 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 	/// Updates the root of the tree.
 	///
-	/// `node` is a node of the tree.
-	fn update_root(&mut self, node: &mut Node<K, V>) {
-		let mut root = NonNull::new(node as *mut Node<K, V>);
-
-		loop {
-			let parent = unsafe { root.unwrap().as_mut() }.parent;
-
-			if parent.is_none() {
-				break;
-			}
-			root = parent;
+	/// `node` is a node inserted in the tree.
+	fn update_root(&mut self, mut node: &mut Node<K, V>) {
+		while let Some(n) = node.get_parent() {
+			node = n;
 		}
 
-		*self.root.get_mut() = root;
+		*self.root.get_mut() = NonNull::new(node);
 	}
 
 	/// For node insertion, returns the parent node on which it will be
@@ -637,10 +630,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				debug_assert!(self.get_root().is_none());
 
 				let mut node = Node::new(key, val)?;
-				let n = unsafe { node.as_mut() };
-				*self.root.get_mut() = Some(node);
-
-				n
+				unsafe { node.as_mut() }
 			}
 		};
 
@@ -762,12 +752,10 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 				// The node is root
                 None => {
-                    unsafe {
-                        debug_assert_eq!(
-                            self.root.get_mut().unwrap().as_mut() as *mut Node<K, V>,
-                            node as *mut _
-                        );
-                    }
+                    debug_assert_eq!(
+                        self.get_root().unwrap() as *mut Node<K, V>,
+                        node as *mut _
+                    );
 
                     *self.root.get_mut() = None;
                 }
@@ -969,7 +957,9 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 		MapIterator {
 			tree: self,
+
 			node,
+			i: 0,
 		}
 	}
 
@@ -982,7 +972,9 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 		MapMutIterator {
 			tree: self,
+
 			node,
+			i: 0,
 		}
 	}
 
@@ -994,7 +986,9 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		MapRange {
 			iter: MapIterator {
 				tree: self,
+
 				node,
+				i: 0,
 			},
 			range,
 		}
@@ -1008,7 +1002,9 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		MapMutRange {
 			iter: MapMutIterator {
 				tree: self,
+
 				node,
+				i: 0,
 			},
 			range,
 		}
@@ -1069,8 +1065,11 @@ fn next_node<K: Ord + 'static, V: 'static>(
 pub struct MapIterator<'m, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
 	tree: &'m Map<K, V>,
+
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
+	/// The number of nodes travelled so far.
+	i: usize,
 }
 
 impl<'m, K: 'static + Ord, V> Iterator for MapIterator<'m, K, V> {
@@ -1078,11 +1077,20 @@ impl<'m, K: 'static + Ord, V> Iterator for MapIterator<'m, K, V> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = unwrap_pointer(self.node)?;
-		if let Some(next) = next_node(node) {
-			self.node = NonNull::new(next);
-		}
+
+		self.node = next_node(node).and_then(|n| NonNull::new(n));
+		self.i += 1;
 
 		Some((&node.key, &node.value))
+	}
+
+	fn count(self) -> usize {
+		self.tree.len()
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.tree.len() - self.i;
+		(len, Some(len))
 	}
 }
 
@@ -1101,8 +1109,11 @@ impl<'m, K: 'static + Ord, V> IntoIterator for &'m Map<K, V> {
 pub struct MapMutIterator<'m, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
 	tree: &'m mut Map<K, V>,
+
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
+	/// The number of nodes travelled so far.
+	i: usize,
 }
 
 impl<'m, K: 'static + Ord, V> Iterator for MapMutIterator<'m, K, V> {
@@ -1110,11 +1121,20 @@ impl<'m, K: 'static + Ord, V> Iterator for MapMutIterator<'m, K, V> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = unwrap_pointer(self.node)?;
-		if let Some(next) = next_node(node) {
-			self.node = NonNull::new(next);
-		}
+
+		self.node = next_node(node).and_then(|n| NonNull::new(n));
+		self.i += 1;
 
 		Some((&node.key, &mut node.value))
+	}
+
+	fn count(self) -> usize {
+		self.tree.len()
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.tree.len() - self.i;
+		(len, Some(len))
 	}
 }
 
@@ -1446,5 +1466,57 @@ mod test {
 		assert!(b.is_empty());
 	}
 
-	// TODO test iterators (exhaustive, range and drain)
+	#[test_case]
+	fn binary_tree_iter0() {
+		let b = Map::<i32, i32>::new();
+		assert_eq!(b.iter().count(), 0);
+	}
+
+	#[test_case]
+	fn binary_tree_iter1() {
+		let mut b = Map::<i32, i32>::new();
+
+		for i in -9..10 {
+			b.insert(i, i).unwrap();
+			assert_eq!(b.len(), (i + 10) as usize);
+		}
+
+		assert_eq!(b.iter().count(), b.len());
+		assert!(b.iter().is_sorted());
+	}
+
+	/*#[test_case]
+	fn binary_tree_range0() {
+		let b = Map::<i32, i32>::new();
+		assert_eq!(b.range(..).count(), 0);
+		assert_eq!(b.range(0..).count(), 0);
+		assert_eq!(b.range(1..).count(), 0);
+		assert_eq!(b.range(1..100).count(), 0);
+		assert_eq!(b.range(..100).count(), 0);
+	}
+
+	#[test_case]
+	fn binary_tree_range1() {
+		let mut b = Map::<i32, i32>::new();
+
+		for i in -9..10 {
+			b.insert(i, i).unwrap();
+			assert_eq!(b.len(), (i + 10) as usize);
+		}
+
+		assert_eq!(b.range(..).count(), b.len());
+		assert!(b.range(..).is_sorted());
+
+		println!("{b:?}");
+		assert_eq!(b.range(0..10).count(), 10);
+		assert!(b.range(0..10).is_sorted());
+
+		assert_eq!(b.range(..10).count(), b.len());
+		assert!(b.range(..10).is_sorted());
+
+		assert_eq!(b.range(0..).count(), 10);
+		assert!(b.range(0..).is_sorted());
+	}*/
+
+	// TODO test drain iterator
 }
