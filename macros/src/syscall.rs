@@ -61,49 +61,46 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 		.collect::<Vec<_>>();
 
 	let mut args_tokens = proc_macro2::TokenStream::new();
-	args_tokens.extend(
-		args.iter()
-			.map(|(pat, ty, reg_name)| {
-				let mut ty = ty.clone();
+	args_tokens.extend(args.iter().map(|(pat, ty, reg_name)| {
+		let mut ty = ty.clone();
 
-				// TODO make a cleaner check
-				match *ty {
-					// Special cast for pointers
-					Type::Path(TypePath {
-						path: Path {
-							ref mut segments, ..
-						},
-						..
-					}) if segments
-						.first()
-						.map(|s| s.ident.to_string().starts_with("Syscall"))
-						.unwrap_or(false) =>
-					{
-						// Adding colon token to avoid compilation error
-						if let PathSegment {
-							arguments:
-								PathArguments::AngleBracketed(AngleBracketedGenericArguments {
-									ref mut colon2_token,
-									..
-								}),
+		// TODO make a cleaner check
+		match *ty {
+			// Special cast for pointers
+			Type::Path(TypePath {
+				path: Path {
+					ref mut segments, ..
+				},
+				..
+			}) if segments
+				.first()
+				.map(|s| s.ident.to_string().starts_with("Syscall"))
+				.unwrap_or(false) =>
+			{
+				// Adding colon token to avoid compilation error
+				if let PathSegment {
+					arguments:
+						PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+							ref mut colon2_token,
 							..
-						} = &mut segments[0]
-						{
-							*colon2_token = Some(Token![::](Span::call_site()));
-						}
-
-						proc_macro2::TokenStream::from(quote! {
-							let #pat = #ty::from(regs.#reg_name as usize);
-						})
-					}
-
-					// Normal, truncating cast
-					_ => proc_macro2::TokenStream::from(quote! {
-						let #pat = regs.#reg_name as #ty;
-					}),
+						}),
+					..
+				} = &mut segments[0]
+				{
+					*colon2_token = Some(Token![::](Span::call_site()));
 				}
-			})
-	);
+
+				proc_macro2::TokenStream::from(quote! {
+					let #pat = #ty::from(regs.#reg_name as usize);
+				})
+			}
+
+			// Normal, truncating cast
+			_ => proc_macro2::TokenStream::from(quote! {
+				let #pat = regs.#reg_name as #ty;
+			}),
+		}
+	}));
 
 	let ident = input.sig.ident;
 	let code = input.block;
@@ -121,11 +118,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 		}
 		strace_call_format += ")";
 
-		let strace_args = args.iter()
-			.map(|(pat, _, _)| {
-				pat
-			})
-			.collect::<Vec<_>>();
+		let strace_args = args.iter().map(|(pat, ..)| pat).collect::<Vec<_>>();
 
 		quote! {
 			pub fn #ident(regs: &crate::process::regs::Regs) -> Result<i32, Errno> {
@@ -133,7 +126,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 
 				crate::idt::wrap_disable_interrupts(|| {
 					let pid = {
-						let proc_mutex = crate::process::Process::get_current().unwrap();
+						let proc_mutex = crate::process::Process::current().unwrap();
 						let proc = proc_mutex.lock();
 
 						proc.pid
@@ -153,7 +146,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 
 				crate::idt::wrap_disable_interrupts(|| {
 					let pid = {
-						let proc_mutex = crate::process::Process::get_current().unwrap();
+						let proc_mutex = crate::process::Process::current().unwrap();
 						let proc = proc_mutex.lock();
 
 						proc.pid
