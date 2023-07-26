@@ -1243,7 +1243,7 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 					} else {
 						"black"
 					};
-					let _ = writeln!(f, "{:?} ({:?})", n.key, color);
+					let _ = writeln!(f, "{:?} ({})", n.key, color);
 				},
 				TraveralOrder::ReverseInOrder,
 			);
@@ -1485,7 +1485,7 @@ mod test {
 		assert!(b.iter().is_sorted());
 	}
 
-	/*#[test_case]
+	#[test_case]
 	fn binary_tree_range0() {
 		let b = Map::<i32, i32>::new();
 		assert_eq!(b.range(..).count(), 0);
@@ -1516,7 +1516,7 @@ mod test {
 
 		assert_eq!(b.range(0..).count(), 10);
 		assert!(b.range(0..).is_sorted());
-	}*/
+	}
 
 	// TODO test drain iterator
 }
