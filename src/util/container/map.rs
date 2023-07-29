@@ -418,6 +418,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 		match start {
 			Bound::Included(key) => {
+				// FIXME
 				while let Some(n) = node {
 					if key.cmp(&n.key) == Ordering::Greater {
 						node = n.get_right();
@@ -429,10 +430,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				None
 			}
 
-			Bound::Excluded(_key) => {
-				// TODO
-				todo!();
-			}
+			Bound::Excluded(_) => None,
 
 			Bound::Unbounded => NonNull::new(Self::get_leftmost_node(node?)),
 		}
