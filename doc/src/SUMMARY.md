@@ -1,16 +1,15 @@
 # Summary
 
 - [Introduction](./intro.md)
+- [External Documentation](./external_doc.md)
 
 
 
 # Getting started
 
-- [External Documentation](./external_doc.md)
-- [Dependencies](./deps.md)
-- [Compilation](./compilation.md)
+- [Installer](./installer.md)
+- [Build a system from scratch](./build.md)
 - [Debug](./debug.md)
-- [Distribution](./distrib.md)
 
 
 
