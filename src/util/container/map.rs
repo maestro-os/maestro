@@ -416,24 +416,31 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	fn get_start_node(&self, start: Bound<&K>) -> Option<NonNull<Node<K, V>>> {
 		let mut node = self.get_root();
 
-		match start {
-			Bound::Included(key) => {
-				// FIXME
-				while let Some(n) = node {
-					if key.cmp(&n.key) == Ordering::Greater {
-						node = n.get_right();
-					} else {
-						return NonNull::new(n);
-					}
-				}
+		let (key, exclude) = match start {
+			Bound::Unbounded => return NonNull::new(Self::get_leftmost_node(node?)),
 
-				None
+			Bound::Included(key) => (key, false),
+			Bound::Excluded(key) => (key, true),
+		};
+
+		// The last in-bound element encountered.
+		let mut last = None;
+
+		while let Some(n) = node {
+			let in_bound = match n.key.cmp(&key) {
+				Ordering::Less => false,
+				Ordering::Greater => true,
+				Ordering::Equal => !exclude,
+			};
+			if in_bound {
+				node = n.get_left();
+				last = Some(n);
+			} else {
+				node = n.get_right();
 			}
-
-			Bound::Excluded(_) => None,
-
-			Bound::Unbounded => NonNull::new(Self::get_leftmost_node(node?)),
 		}
+
+		last.and_then(|n| NonNull::new(n))
 	}
 
 	/// Returns the first key/value pair of the tree. The returned key is the minimum present in
