@@ -954,6 +954,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Returns an immutable iterator for the current binary tree.
+	///
+	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
 	pub fn iter(&self) -> MapIterator<K, V> {
 		let node = self
@@ -969,6 +971,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Returns a mutable iterator for the current binary tree.
+	///
+	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
 	pub fn iter_mut(&mut self) -> MapMutIterator<K, V> {
 		let node = self
@@ -984,6 +988,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Returns an immutable iterator on the given range of keys.
+	///
+	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
 	pub fn range<R: RangeBounds<K>>(&self, range: R) -> MapRange<'_, K, V, R> {
 		let node = self.get_start_node(range.start_bound());
@@ -1000,6 +1006,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Returns a mutable iterator on the given range of keys.
+	///
+	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
 	pub fn range_mut<R: RangeBounds<K>>(&mut self, range: R) -> MapMutRange<'_, K, V, R> {
 		let node = self.get_start_node(range.start_bound());
@@ -1016,6 +1024,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	}
 
 	/// Drains elements than match the given predicate and returns an iterator to drained elements.
+	///
+	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	pub fn drain_filter<F>(&mut self, pred: F) -> DrainFilter<'_, K, V, F>
 	where
 		F: FnMut(&K, &mut V) -> bool,
@@ -1026,12 +1036,17 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 		DrainFilter {
 			tree: self,
+
 			node,
+			i: 0,
+
 			pred,
 		}
 	}
 
 	/// Retains only the elements matching the given predicate.
+	///
+	/// This function has complexity `O(n)` in time and `O(1)` in space.
 	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut pred: F) {
 		self.drain_filter(|k, v| !pred(k, v));
 	}
@@ -1196,7 +1211,7 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRan
 	}
 }
 
-/// An iterator that traverses the tree in ascending order and removes and yields elements that
+/// An iterator that traverses the tree in ascending order and removes, then yields elements that
 /// match the associated predicate.
 pub struct DrainFilter<'m, K, V, F>
 where
@@ -1206,8 +1221,12 @@ where
 {
 	/// The tree to iterate on.
 	tree: &'m mut Map<K, V>,
+
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
+	/// The number of nodes travelled so far.
+	i: usize,
+
 	/// The predicate to check whether an element must be drained.
 	pred: F,
 }
@@ -1218,8 +1237,29 @@ impl<'m, K: Ord + 'static, V: 'static, F: FnMut(&K, &mut V) -> bool> Iterator
 	type Item = (K, V);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// TODO
-		todo!()
+		// get next matching node
+		let mut node = unwrap_pointer(self.node)?;
+		while !(self.pred)(&node.key, &mut node.value) {
+			node = next_node(node)?;
+		}
+
+		// FIXME: `remove_node` swaps values between nodes, so the node returned by `next_node`
+		// becomes invalid
+		// get next node
+		//let next = next_node(node).and_then(|n| NonNull::new(n));
+		let next = self
+			.tree
+			.get_root()
+			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
+
+		// remove the current node
+		let (k, v) = self.tree.remove_node(node);
+
+		// place cursor on next node
+		self.node = next;
+		self.i += 1;
+
+		Some((k, v))
 	}
 }
 
@@ -1512,7 +1552,6 @@ mod test {
 		assert_eq!(b.range(..).count(), b.len());
 		assert!(b.range(..).is_sorted());
 
-		println!("{b:?}");
 		assert_eq!(b.range(0..10).count(), 10);
 		assert!(b.range(0..10).is_sorted());
 
@@ -1523,5 +1562,19 @@ mod test {
 		assert!(b.range(0..).is_sorted());
 	}
 
-	// TODO test drain iterator
+	#[test_case]
+	fn binary_tree_drain0() {
+		let mut b = Map::<i32, i32>::new();
+
+		for i in -9..10 {
+			b.insert(i, i).unwrap();
+		}
+
+		let len = b.len();
+		assert!(b
+			.drain_filter(|k, v| k == v && k % 2 == 0)
+			.all(|(k, v)| k == v && k % 2 == 0));
+		assert_eq!(b.len(), len / 2 + 1);
+		assert!(b.into_iter().all(|(k, v)| k == v && k % 2 != 0));
+	}
 }
