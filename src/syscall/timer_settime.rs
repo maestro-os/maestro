@@ -40,7 +40,7 @@ pub fn timer_settime(
 		if (flags & TIMER_ABSTIME) == 0 {
 			new_value_val.it_value = new_value_val.it_value + old.it_value;
 		}
-		timer.set_time(new_value_val);
+		timer.set_time(new_value_val, proc.pid, timerid)?;
 		old
 	};
 

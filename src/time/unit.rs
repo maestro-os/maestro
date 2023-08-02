@@ -5,6 +5,7 @@ use core::ffi::c_int;
 use core::ffi::c_long;
 use core::ffi::c_void;
 use core::ops::Add;
+use core::ops::Sub;
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;
@@ -54,7 +55,9 @@ impl TimestampScale {
 }
 
 /// Trait to be implement on a structure describing a moment in time.
-pub trait TimeUnit: Sized + Clone + Default + Add<Self, Output = Self> + PartialOrd {
+pub trait TimeUnit:
+	Sized + Clone + Default + Add<Self, Output = Self> + Sub<Self, Output = Self> + PartialOrd
+{
 	/// Creates the structure from the given timestamp in nanoseconds.
 	fn from_nano(timestamp: u64) -> Self;
 	/// Returns the equivalent timestamp in nanoseconds.
@@ -105,6 +108,17 @@ impl Add<Timeval> for Timeval {
 		Self {
 			tv_sec: self.tv_sec + rhs.tv_sec,
 			tv_usec: self.tv_usec + rhs.tv_usec,
+		}
+	}
+}
+
+impl Sub<Timeval> for Timeval {
+	type Output = Self;
+
+	fn sub(self, rhs: Self) -> Self {
+		Self {
+			tv_sec: self.tv_sec - rhs.tv_sec,
+			tv_usec: self.tv_usec - rhs.tv_usec,
 		}
 	}
 }
@@ -168,6 +182,17 @@ impl Add<Timespec> for Timespec {
 	}
 }
 
+impl Sub<Timespec> for Timespec {
+	type Output = Self;
+
+	fn sub(self, rhs: Self) -> Self {
+		Self {
+			tv_sec: self.tv_sec - rhs.tv_sec,
+			tv_nsec: self.tv_nsec - rhs.tv_nsec,
+		}
+	}
+}
+
 impl PartialEq for Timespec {
 	fn eq(&self, other: &Self) -> bool {
 		self.tv_sec == other.tv_sec && self.tv_nsec == other.tv_nsec
@@ -223,6 +248,17 @@ impl Add<Timespec32> for Timespec32 {
 		Self {
 			tv_sec: self.tv_sec + rhs.tv_sec,
 			tv_nsec: self.tv_nsec + rhs.tv_nsec,
+		}
+	}
+}
+
+impl Sub<Timespec32> for Timespec32 {
+	type Output = Self;
+
+	fn sub(self, rhs: Self) -> Self {
+		Self {
+			tv_sec: self.tv_sec - rhs.tv_sec,
+			tv_nsec: self.tv_nsec - rhs.tv_nsec,
 		}
 	}
 }
