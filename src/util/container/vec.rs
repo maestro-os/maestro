@@ -8,6 +8,8 @@ use core::cmp::min;
 use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
+use core::iter::FusedIterator;
+use core::iter::TrustedLen;
 use core::ops::Deref;
 use core::ops::DerefMut;
 use core::ops::Index;
@@ -700,6 +702,16 @@ impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
 		}
 	}
 }
+
+impl<'a, T> ExactSizeIterator for VecIterator<'a, T> {
+	fn len(&self) -> usize {
+		self.vec.len()
+	}
+}
+
+impl<'a, T> FusedIterator for VecIterator<'a, T> {}
+
+unsafe impl<'a, T> TrustedLen for VecIterator<'a, T> {}
 
 impl<'a, T> IntoIterator for &'a Vec<T> {
 	type IntoIter = VecIterator<'a, T>;

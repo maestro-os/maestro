@@ -24,6 +24,7 @@
 #![feature(stmt_expr_attributes)]
 #![feature(strict_provenance)]
 #![feature(trait_upcasting)]
+#![feature(trusted_len)]
 #![feature(unsize)]
 #![deny(warnings)]
 #![allow(unused_attributes)]
