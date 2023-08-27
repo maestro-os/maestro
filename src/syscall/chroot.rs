@@ -6,6 +6,7 @@ use crate::file;
 use crate::file::path::Path;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::util::ptr::arc::Arc;
 use crate::vfs;
 use macros::syscall;
 
@@ -33,6 +34,6 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let vfs = vfs.as_mut().unwrap();
 	vfs.get_file_from_path(&path, uid, gid, true)?;
 
-	proc.chroot = path;
+	proc.chroot = Arc::new(path)?;
 	Ok(0)
 }

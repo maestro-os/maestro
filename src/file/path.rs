@@ -171,6 +171,12 @@ impl Path {
 	}
 }
 
+impl Default for Path {
+	fn default() -> Self {
+		Self::root()
+	}
+}
+
 impl Add for Path {
 	type Output = Result<Self, Errno>;
 

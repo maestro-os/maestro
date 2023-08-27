@@ -195,7 +195,7 @@ pub struct Process {
 	/// The argv of the process.
 	pub argv: Arc<Vec<String>>,
 	/// The path to the process's executable.
-	exec_path: Arc<Path>,
+	pub exec_path: Arc<Path>,
 
 	/// The process's current TTY.
 	tty: TTYHandle,
@@ -262,10 +262,10 @@ pub struct Process {
 	/// A pointer to the kernelspace stack.
 	kernel_stack: Option<*const c_void>,
 
-	/// The current working directory.
-	cwd: Path,
-	/// The current chroot path.
-	pub chroot: Path,
+	/// Current working directory
+	pub cwd: Arc<Path>,
+	/// Current root path used by the process
+	pub chroot: Arc<Path>,
 	/// The list of open file descriptors with their respective ID.
 	file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
@@ -575,8 +575,8 @@ impl Process {
 			user_stack: None,
 			kernel_stack: None,
 
-			cwd: Path::root(),
-			chroot: Path::root(),
+			cwd: Arc::new(Path::root())?,
+			chroot: Arc::new(Path::root())?,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
@@ -676,11 +676,6 @@ impl Process {
 			.and_then(|parent| parent.upgrade())
 			.map(|parent| parent.lock().pid)
 			.unwrap_or(self.pid)
-	}
-
-	/// Returns the path to the executable file of the process.
-	pub fn get_exec_path(&self) -> &Path {
-		&self.exec_path
 	}
 
 	/// Returns the TTY associated with the process.
@@ -838,22 +833,6 @@ impl Process {
 		self.mem_space = mem_space;
 	}
 
-	/// Returns a reference to the process's current working directory.
-	#[inline(always)]
-	pub fn get_cwd(&self) -> &Path {
-		&self.cwd
-	}
-
-	/// Sets the process's current working directory.
-	///
-	/// If the given path is relative, it is made absolute by concatenated with
-	/// `/`.
-	#[inline(always)]
-	pub fn set_cwd(&mut self, path: Path) -> Result<(), Errno> {
-		self.cwd = Path::root().concat(&path)?;
-		Ok(())
-	}
-
 	/// Returns the file descriptor table associated with the process.
 	pub fn get_fds(&self) -> Option<Arc<Mutex<FileDescriptorTable>>> {
 		self.file_descriptors.clone()
@@ -1009,8 +988,8 @@ impl Process {
 			pgid: self.pgid,
 			tid: pid,
 
-			argv: self.argv.try_clone()?,
-			exec_path: self.exec_path.try_clone()?,
+			argv: self.argv.clone(),
+			exec_path: self.exec_path.clone(),
 
 			tty: self.tty.clone(),
 
@@ -1050,8 +1029,8 @@ impl Process {
 			user_stack: self.user_stack,
 			kernel_stack,
 
-			cwd: self.cwd.try_clone()?,
-			chroot: self.chroot.try_clone()?,
+			cwd: self.cwd.clone(),
+			chroot: self.chroot.clone(),
 			file_descriptors,
 
 			sigmask: self.sigmask.try_clone()?,

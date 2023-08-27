@@ -8,6 +8,7 @@ use crate::file::vfs;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::util::ptr::arc::Arc;
 use macros::syscall;
 
 #[syscall]
@@ -49,7 +50,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 	{
 		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
-		proc.set_cwd(new_cwd)?;
+		proc.cwd = Arc::new(new_cwd)?;
 	}
 
 	Ok(0)

@@ -143,9 +143,15 @@ impl<T: ?Sized> Clone for Arc<T> {
 	}
 }
 
-impl<T: fmt::Debug> fmt::Debug for Arc<T> {
+impl<T: ?Sized + fmt::Display> fmt::Display for Arc<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{:?}", self.inner().obj)
+		fmt::Display::fmt(&**self, f)
+	}
+}
+
+impl<T: ?Sized + fmt::Debug> fmt::Debug for Arc<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		fmt::Debug::fmt(&**self, f)
 	}
 }
 

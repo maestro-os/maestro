@@ -17,7 +17,6 @@ use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
 use core::mem::size_of;
 
 /// Returns the absolute path according to the process's current working
@@ -28,8 +27,7 @@ use core::mem::size_of;
 /// - `path` is the path.
 pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
 	let path = if !path.is_absolute() {
-		let cwd = process.get_cwd();
-		cwd.concat(&path)?
+		process.cwd.concat(&path)?
 	} else {
 		path
 	};
@@ -96,10 +94,8 @@ fn build_path_from_fd(
 		// Using the given absolute path
 		Ok(path)
 	} else if dirfd == super::access::AT_FDCWD {
-		let cwd = process.get_cwd().try_clone()?;
-
 		// Using path relative to the current working directory
-		cwd.concat(&path)
+		process.cwd.concat(&path)
 	} else {
 		// Using path relative to the directory given by `dirfd`
 

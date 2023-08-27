@@ -43,7 +43,7 @@ impl KernFSNode for Exe {
 		let s = Process::get_by_pid(self.pid)
 			.map(|mutex| {
 				let proc = mutex.lock();
-				crate::format!("{}", proc.get_exec_path())
+				crate::format!("{}", &*proc.exec_path)
 			})
 			.transpose()?
 			.unwrap_or_default();

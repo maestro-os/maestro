@@ -5,7 +5,6 @@ use crate::file::path::Path;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::TryClone;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -76,7 +75,7 @@ pub fn do_access(
 			}
 		};
 
-		let cwd = proc.get_cwd().try_clone()?;
+		let cwd = proc.cwd.clone();
 		(path, uid, gid, cwd)
 	};
 

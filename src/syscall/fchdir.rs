@@ -5,6 +5,7 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::file::FileType;
 use crate::process::Process;
+use crate::util::ptr::arc::Arc;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -54,7 +55,7 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 		let mut proc = proc_mutex.lock();
 
 		let new_cwd = super::util::get_absolute_path(&proc, new_cwd)?;
-		proc.set_cwd(new_cwd)?;
+		proc.cwd = Arc::new(new_cwd)?;
 	}
 
 	Ok(0)

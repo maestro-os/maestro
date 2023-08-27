@@ -31,7 +31,7 @@ pub fn mount(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let cwd = proc.chroot.try_clone()?.concat(proc.get_cwd())?;
+		let cwd = proc.chroot.try_clone()?.concat(&proc.cwd)?;
 
 		// Getting strings
 		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;

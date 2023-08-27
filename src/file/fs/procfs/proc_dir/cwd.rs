@@ -43,7 +43,7 @@ impl KernFSNode for Cwd {
 		let s = Process::get_by_pid(self.pid)
 			.map(|mutex| {
 				let proc = mutex.lock();
-				crate::format!("{}", proc.get_cwd())
+				crate::format!("{}", &*proc.cwd)
 			})
 			.transpose()?
 			.unwrap_or_default();
