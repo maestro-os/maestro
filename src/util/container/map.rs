@@ -8,6 +8,8 @@ use core::cell::UnsafeCell;
 use core::cmp::Ordering;
 use core::fmt;
 use core::intrinsics::likely;
+use core::iter::FusedIterator;
+use core::iter::TrustedLen;
 use core::mem;
 use core::mem::size_of;
 use core::ops::Bound;
@@ -964,7 +966,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 		MapIterator {
 			tree: self,
-
 			node,
 			i: 0,
 		}
@@ -981,7 +982,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 
 		MapMutIterator {
 			tree: self,
-
 			node,
 			i: 0,
 		}
@@ -997,7 +997,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		MapRange {
 			iter: MapIterator {
 				tree: self,
-
 				node,
 				i: 0,
 			},
@@ -1015,7 +1014,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		MapMutRange {
 			iter: MapMutIterator {
 				tree: self,
-
 				node,
 				i: 0,
 			},
@@ -1085,7 +1083,6 @@ fn next_node<K: Ord + 'static, V: 'static>(
 pub struct MapIterator<'m, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
 	tree: &'m Map<K, V>,
-
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
 	/// The number of nodes travelled so far.
@@ -1123,13 +1120,24 @@ impl<'m, K: 'static + Ord, V> IntoIterator for &'m Map<K, V> {
 	}
 }
 
+// TODO implement DoubleEndedIterator
+
+impl<'m, K: Ord, V> ExactSizeIterator for MapIterator<'m, K, V> {
+	fn len(&self) -> usize {
+		self.tree.len()
+	}
+}
+
+impl<'m, K: Ord, V> FusedIterator for MapIterator<'m, K, V> {}
+
+unsafe impl<'m, K: Ord, V> TrustedLen for MapIterator<'m, K, V> {}
+
 /// An iterator for the `Map` structure.
 ///
 /// This iterator traverses the tree in pre order.
 pub struct MapMutIterator<'m, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
 	tree: &'m mut Map<K, V>,
-
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
 	/// The number of nodes travelled so far.
@@ -1166,6 +1174,18 @@ impl<'m, K: 'static + Ord, V> IntoIterator for &'m mut Map<K, V> {
 		self.iter_mut()
 	}
 }
+
+// TODO implement DoubleEndedIterator
+
+impl<'m, K: Ord, V> ExactSizeIterator for MapMutIterator<'m, K, V> {
+	fn len(&self) -> usize {
+		self.tree.len()
+	}
+}
+
+impl<'m, K: Ord, V> FusedIterator for MapMutIterator<'m, K, V> {}
+
+unsafe impl<'m, K: Ord, V> TrustedLen for MapMutIterator<'m, K, V> {}
 
 /// Iterator over a range of keys in a map.
 pub struct MapRange<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> {

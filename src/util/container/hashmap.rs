@@ -8,6 +8,8 @@ use core::borrow::Borrow;
 use core::fmt;
 use core::hash::Hash;
 use core::hash::Hasher;
+use core::iter::FusedIterator;
+use core::iter::TrustedLen;
 use core::mem::size_of_val;
 use core::ops::Index;
 use core::ops::IndexMut;
@@ -266,7 +268,13 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	/// Creates an iterator of immutable references for the hash map.
 	#[inline]
 	pub fn iter(&self) -> Iter<K, V> {
-		Iter::new(self)
+		Iter {
+			hm: self,
+
+			curr_bucket: 0,
+			curr_element: 0,
+			i: 0,
+		}
 	}
 
 	/// Inserts a new element into the hash map.
@@ -363,31 +371,24 @@ impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for HashMap<K, V> {
 	}
 }
 
-/// An iterator for the HashMap structure.
-pub struct Iter<'a, K: Hash + Eq, V> {
+/// Iterator for the [`HashMap`] structure.
+///
+/// This iterator doesn't guarantee any order since the HashMap itself doesn't store value in a
+/// specific order.
+pub struct Iter<'m, K: Hash + Eq, V> {
 	/// The hash map to iterate into.
-	hm: &'a HashMap<K, V>,
+	hm: &'m HashMap<K, V>,
 
 	/// The current bucket index.
 	curr_bucket: usize,
 	/// The current element index.
 	curr_element: usize,
+	/// Number of elements iterated on so far
+	i: usize,
 }
 
-impl<'a, K: Hash + Eq, V> Iter<'a, K, V> {
-	/// Creates a hash map iterator for the given reference.
-	fn new(hm: &'a HashMap<K, V>) -> Self {
-		Self {
-			hm,
-
-			curr_bucket: 0,
-			curr_element: 0,
-		}
-	}
-}
-
-impl<'a, K: Hash + Eq, V> Iterator for Iter<'a, K, V> {
-	type Item = (&'a K, &'a V);
+impl<'m, K: Hash + Eq, V> Iterator for Iter<'m, K, V> {
+	type Item = (&'m K, &'m V);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.curr_bucket >= self.hm.buckets.len() {
@@ -416,18 +417,31 @@ impl<'a, K: Hash + Eq, V> Iterator for Iter<'a, K, V> {
 			.elements
 			.index(self.curr_element);
 		self.curr_element += 1;
+		self.i += 1;
 		Some((k, v))
 	}
 
 	fn count(self) -> usize {
-		self.hm.len()
+		self.hm.len() - self.i
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len = self.hm.len();
+		let len = self.hm.len() - self.i;
 		(len, Some(len))
 	}
 }
+
+// TODO implement DoubleEndedIterator
+
+impl<'m, K: Hash + Eq, V> ExactSizeIterator for Iter<'m, K, V> {
+	fn len(&self) -> usize {
+		self.hm.len()
+	}
+}
+
+impl<'m, K: Hash + Eq, V> FusedIterator for Iter<'m, K, V> {}
+
+unsafe impl<'m, K: Hash + Eq, V> TrustedLen for Iter<'m, K, V> {}
 
 impl<K: Eq + Hash + fmt::Display, V: fmt::Display> fmt::Display for HashMap<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
