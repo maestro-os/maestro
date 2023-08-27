@@ -54,14 +54,11 @@ impl KernFS {
 	/// - `name` is the name of the filesystem.
 	/// - `readonly` tells whether the filesystem is readonly.
 	pub fn new(name: String, readonly: bool) -> Result<Self, Errno> {
-		let mut nodes = Vec::new();
-		nodes.push(None)?;
-
 		Ok(Self {
 			name,
 			readonly,
 
-			nodes,
+			nodes: crate::vec![None]?,
 			free_nodes: Vec::new(),
 		})
 	}

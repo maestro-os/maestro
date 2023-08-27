@@ -212,7 +212,6 @@ impl Device {
 		if let Some(vfs) = vfs.as_mut() {
 			// Tells whether the file already exists
 			let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
-
 			if !file_exists {
 				// Creating the directories in which the device file is located
 				let mut dir_path = path;

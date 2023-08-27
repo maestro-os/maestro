@@ -25,9 +25,9 @@ use crate::util::TryClone;
 pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 	let path = Path::root().concat(path)?;
 
-	// The path of the parent directory
+	// Path of the parent directory
 	let mut p = Path::root();
-	// The number of created directories
+	// Number of created directories
 	let mut created_count = 0;
 
 	for i in 0..path.get_elements_count() {
@@ -69,9 +69,8 @@ pub fn copy_file(
 	let uid = old.get_uid();
 	let gid = old.get_gid();
 	let mode = old.get_mode();
-	let content = old.get_content();
 
-	match content {
+	match old.get_content() {
 		// Copy the file and its content
 		FileContent::Regular => {
 			let new_mutex =
@@ -116,7 +115,7 @@ pub fn copy_file(
 		}
 
 		// Copy the file
-		_ => {
+		content => {
 			vfs.create_file(new_parent, new_name, uid, gid, mode, content.try_clone()?)?;
 		}
 	}
@@ -132,9 +131,7 @@ pub fn copy_file(
 /// - `uid` is the user ID used to check permissions.
 /// - `gid` is the group ID used to check permissions.
 pub fn remove_recursive(vfs: &mut VFS, file: &mut File, uid: Uid, gid: Gid) -> Result<(), Errno> {
-	let content = file.get_content().try_clone()?;
-
-	match content {
+	match file.get_content() {
 		FileContent::Directory(entries) => {
 			for (name, _) in entries.iter() {
 				let name = name.try_clone()?;

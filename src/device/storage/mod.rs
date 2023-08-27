@@ -459,42 +459,44 @@ impl StorageManager {
 		storage_id: u32,
 		path_prefix: String,
 	) -> Result<(), Errno> {
-		if let Some(storage_mutex) = storage.upgrade() {
-			let mut s = storage_mutex.lock();
+		let Some(storage_mutex) = storage.upgrade() else {
+            return Ok(());
+		};
+		let mut s = storage_mutex.lock();
 
-			if let Some(partitions_table) = partition::read(&mut *s)? {
-				let partitions = partitions_table.get_partitions(&mut *s)?;
+		let Some(partitions_table) = partition::read(&mut *s)? else {
+            return Ok(());
+        };
+		let partitions = partitions_table.get_partitions(&mut *s)?;
 
-				let iter = partitions.into_iter().take(MAX_PARTITIONS - 1);
-				for (i, partition) in iter.enumerate() {
-					let part_nbr = (i + 1) as u32;
+		let iter = partitions.into_iter().take(MAX_PARTITIONS - 1).enumerate();
+		for (i, partition) in iter {
+			let part_nbr = (i + 1) as u32;
 
-					// Adding the partition number to the path
-					let path_str = (path_prefix.try_clone()? + crate::format!("{}", part_nbr)?)?;
-					let path = Path::from_str(path_str.as_bytes(), false)?;
+			// Add the partition number to the path
+			let path_str = crate::format!("{path_prefix}{part_nbr}")?;
+			let path = Path::from_str(path_str.as_bytes(), false)?;
 
-					// Creating the partition's device file
-					let handle = StorageDeviceHandle::new(
-						storage.clone(),
-						Some(partition),
-						major,
-						storage_id,
-						path_prefix.try_clone()?,
-					);
-					let device = Device::new(
-						DeviceID {
-							type_: DeviceType::Block,
-							// TODO use a different major for different storage device types
-							major: STORAGE_MAJOR,
-							minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
-						},
-						path,
-						STORAGE_MODE,
-						handle,
-					)?;
-					device::register(device)?;
-				}
-			}
+			// Create the partition's device file
+			let handle = StorageDeviceHandle::new(
+				storage.clone(),
+				Some(partition),
+				major,
+				storage_id,
+				path_prefix.try_clone()?,
+			);
+			let device = Device::new(
+				DeviceID {
+					type_: DeviceType::Block,
+					// TODO use a different major for different storage device types
+					major: STORAGE_MAJOR,
+					minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
+				},
+				path,
+				STORAGE_MODE,
+				handle,
+			)?;
+			device::register(device)?;
 		}
 
 		Ok(())
@@ -525,11 +527,10 @@ impl StorageManager {
 		// The id of the storage interface in the manager's list
 		let storage_id = self.interfaces.len() as u32;
 
-		// The prefix is the path of the main device file
-		let mut prefix = String::try_from(b"/dev/sd")?;
+		// Prefix is the path of the main device file
 		// TODO Handle if out of the alphabet
-		prefix.push(b'a' + (storage_id as u8))?;
-		// The path of the main device file
+		let letter = (b'a' + (storage_id as u8)) as char;
+		let prefix = crate::format!("/dev/sd{letter}")?;
 		let main_path = Path::from_str(prefix.as_bytes(), false)?;
 
 		// Creating the main device file

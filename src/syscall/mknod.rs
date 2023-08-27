@@ -36,16 +36,13 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	if path.is_empty() {
 		return Err(errno!(EEXIST));
 	}
+	// Path of the parent directory
+	let mut parent_path = path.try_clone()?;
+	// File name
+	let name = parent_path.pop().unwrap();
 
 	let mode = mode & !umask;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
-
-	// The file name
-	let name = path[path.get_elements_count() - 1].try_clone()?;
-
-	// Getting the path of the parent directory
-	let mut parent_path = path.try_clone()?;
-	parent_path.pop();
 
 	// Getting the major and minor IDs
 	let major = id::major(dev);

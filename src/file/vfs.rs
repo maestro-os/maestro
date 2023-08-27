@@ -240,7 +240,7 @@ impl VFS {
 	/// - `follow_links` is `true`, the function follows symbolic links.
 	pub fn get_file_from_parent(
 		&mut self,
-		parent: &mut File,
+		parent: &File,
 		name: String,
 		uid: Uid,
 		gid: Gid,
