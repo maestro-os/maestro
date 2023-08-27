@@ -1,12 +1,23 @@
-# Maestro
+# Maestro ![Continuous Integration](https://github.com/llenotre/maestro/actions/workflows/check.yml/badge.svg) ![Rust Version](https://img.shields.io/badge/rust-nightly_2023--05--11-lightgrey.svg) [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 Maestro is a lightweight Unix-like kernel written in Rust.
 
-This repository is not a full operating system in itself but only the kernel. To build the an operating system with it, check the documentation.
+The goal is to provide an operating system free of bloats and able to use the safety features of the Rust language to be reliable.
+This project is still in early stage development, thus it is not stable and misses a lot of features. **Do not use it in production!**
 
-![Continuous Integration](https://github.com/llenotre/maestro/actions/workflows/check.yml/badge.svg)
-![Rust Version](https://img.shields.io/badge/rust-nightly_2023--05--11-lightgrey.svg)
-[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+To stay updated with the project, follow the [blog](https://blog.lenot.re)!
+
+
+
+## Quickstart
+
+This repository is not a full operating system in itself but only the kernel.
+
+You can either:
+- Use the [installer](https://github.com/llenotre/maestro-install) to build a full operating system from an ISO file
+- Build the OS by hand. For this, you can check the kernel's book
+
+The OS can then be run by a virtual machine such a **QEMU** or **VirtualBox**, or a physical machine.
 
 
 
@@ -35,26 +46,42 @@ cargo build --release     # Release mode
 
 The default architecture is `x86`. To specify an other architecture, add the following parameter to the build command: `--target arch/<arch>/<arch>.json`, where `<arch>` is the selected architecture.
 
-The list of available architecture can be retrieved by typing:
+The list of available architectures can be retrieved by typing the command:
 
-```
+```sh
 ls -1 arch/
 ```
 
 
 
-### Run
+## Run
 
-If QEMU is present on the system, the kernel can be run using:
+### With QEMU
+
+QEMU is the preferred virtual machine to test the kernel.
+
+To install QEMU, type the following command:
+
+Ubuntu/Debian:
+
+```sh
+apt install qemu
+```
+
+Arch Linux:
+
+```sh
+pacman -S qemu
+```
+
+A fully built operating system is required to run the system. This system must be present on a raw disk in the file `qemu_disk` at the root of the repository. The option `-drive file=qemu_disk,format=raw` is used on QEMU to reference the disk.
+
+The kernel can be run using:
 
 ```sh
 cargo run               # Debug mode
 cargo run --release     # Release mode
 ```
-
-Don't forget to use the `--target` parameter if necessary.
-
-However, running the kernel correctly requires a fully built operating system.
 
 
 
