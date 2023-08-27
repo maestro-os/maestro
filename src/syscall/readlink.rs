@@ -8,7 +8,6 @@ use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util;
-use crate::util::TryClone;
 use core::cmp::min;
 use macros::syscall;
 
@@ -18,48 +17,34 @@ pub fn readlink(
 	buf: SyscallSlice<u8>,
 	bufsiz: usize,
 ) -> Result<i32, Errno> {
-	let (path, uid, gid) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
+	let proc_mutex = Process::current_assert();
+	let proc = proc_mutex.lock();
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
+	let mem_space_mutex = proc.get_mem_space().unwrap();
+	let mut mem_space = mem_space_mutex.lock();
 
-		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(&proc, path)?;
+	// Get file's path
+	let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
+	let path = Path::from_str(path, true)?;
+	let path = super::util::get_absolute_path(&proc, path)?;
 
-		(path, proc.euid, proc.egid)
-	};
-
-	// Getting link's target
-	let target = {
+	// Get link's target
+	let file_mutex = {
 		let vfs_mutex = vfs::get();
 		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
-		// Getting file
-		let file_mutex = vfs.get_file_from_path(&path, uid, gid, false)?;
-		let file = file_mutex.lock();
-
-		match file.get_content() {
-			FileContent::Link(target) => target.try_clone()?,
-			_ => return Err(errno!(EINVAL)),
-		}
+		vfs.get_file_from_path(&path, proc.euid, proc.egid, false)
+	}?;
+	let file = file_mutex.lock();
+	let target = match file.get_content() {
+		FileContent::Link(target) => target,
+		_ => return Err(errno!(EINVAL)),
 	};
 
-	// Copying to userspace buffer
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		let buffer = buf
-			.get_mut(&mut mem_space_guard, bufsiz)?
-			.ok_or(errno!(EFAULT))?;
-		util::slice_copy(target.as_bytes(), buffer);
-	}
+	// Copy to userspace buffer
+	let buffer = buf.get_mut(&mut mem_space, bufsiz)?.ok_or(errno!(EFAULT))?;
+	util::slice_copy(target.as_bytes(), buffer);
 
 	Ok(min(bufsiz, target.len()) as _)
 }
