@@ -193,9 +193,9 @@ pub struct Process {
 	pub tid: Pid,
 
 	/// The argv of the process.
-	pub argv: Vec<String>,
+	pub argv: Arc<Vec<String>>,
 	/// The path to the process's executable.
-	exec_path: Path,
+	exec_path: Arc<Path>,
 
 	/// The process's current TTY.
 	tty: TTYHandle,
@@ -535,8 +535,8 @@ impl Process {
 			pgid: pid::INIT_PID,
 			tid: pid::INIT_PID,
 
-			argv: Vec::new(),
-			exec_path: Path::root(),
+			argv: Arc::new(Vec::new())?,
+			exec_path: Arc::new(Path::root())?,
 
 			tty: tty::get(None).unwrap(), // Initialization with the init TTY
 

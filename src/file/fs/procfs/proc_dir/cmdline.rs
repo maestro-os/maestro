@@ -61,7 +61,7 @@ impl IO for Cmdline {
 
 		// Generating content
 		let mut content = String::new();
-		for a in &proc.argv {
+		for a in proc.argv.iter() {
 			content.push_str(a)?;
 			content.push(b'\0')?;
 		}

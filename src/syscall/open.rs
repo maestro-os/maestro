@@ -56,8 +56,8 @@ fn get_file(
 	let vfs = vfs.as_mut().unwrap();
 
 	if flags & open_file::O_CREAT != 0 {
-		// Getting the path of the parent directory
-		let mut parent_path = path.try_clone()?;
+		// Get the path of the parent directory
+		let mut parent_path = path;
 		// The file's basename
 		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 

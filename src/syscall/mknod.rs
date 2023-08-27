@@ -10,7 +10,6 @@ use crate::file::FileContent;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::TryClone;
 use macros::syscall;
 
 // TODO Check args type
@@ -37,7 +36,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		return Err(errno!(EEXIST));
 	}
 	// Path of the parent directory
-	let mut parent_path = path.try_clone()?;
+	let mut parent_path = path;
 	// File name
 	let name = parent_path.pop().unwrap();
 

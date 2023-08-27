@@ -8,7 +8,6 @@ use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::container::hashmap::HashMap;
-use crate::util::TryClone;
 use macros::syscall;
 
 #[syscall]
@@ -24,16 +23,16 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		// The path to the directory to create
-		let mut path =
-			Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
+		// Path to the directory to create
+		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let mut path = Path::from_str(path, true)?;
 		path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, mode, uid, gid)
 	};
 
-	// Getting the path of the parent directory
-	let mut parent_path = path.try_clone()?;
+	// Get path of the parent directory
+	let mut parent_path = path;
 
 	// If the path is not empty, create
 	if let Some(name) = parent_path.pop() {
@@ -43,7 +42,7 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 			let mut vfs = vfs_mutex.lock();
 			let vfs = vfs.as_mut().unwrap();
 
-			// Getting parent directory
+			// Get parent directory
 			let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
 			let mut parent = parent_mutex.lock();
 

@@ -80,7 +80,7 @@ pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errn
 
 /// Executes the program image `image` on the process `proc`.
 pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
-	proc.argv = image.argv;
+	proc.argv = Arc::new(image.argv)?;
 	// TODO Set exec path
 
 	// Duplicate file descriptor table
