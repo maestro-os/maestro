@@ -125,7 +125,7 @@ impl VFS {
 		// Getting the path's deepest mountpoint
 		let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint = mountpoint_mutex.lock();
-		let mountpath = mountpoint.get_path().try_clone()?;
+		let mountpath = mountpoint.get_path();
 
 		// Getting the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
@@ -196,7 +196,7 @@ impl VFS {
 			}
 		}
 
-		let mut parent_path = path.try_clone()?;
+		let mut parent_path = path;
 		parent_path.pop();
 		file.set_parent_path(parent_path);
 

@@ -237,21 +237,12 @@ impl FileLocation {
 }
 
 /// Structure representing a directory entry.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DirEntry {
 	/// The entry's inode.
 	pub inode: INode,
 	/// The entry's type.
 	pub entry_type: FileType,
-}
-
-impl TryClone for DirEntry {
-	fn try_clone(&self) -> Result<Self, Errno> {
-		Ok(Self {
-			inode: self.inode,
-			entry_type: self.entry_type,
-		})
-	}
 }
 
 /// Enumeration of all possible file contents for each file types.
