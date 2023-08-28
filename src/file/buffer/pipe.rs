@@ -47,7 +47,7 @@ impl PipeBuffer {
 }
 
 impl TryDefault for PipeBuffer {
-	fn try_default() -> Result<Self, Errno> {
+	fn try_default() -> Result<Self, Self::Error> {
 		Ok(Self {
 			buffer: RingBuffer::new(crate::vec![0; limits::PIPE_BUF]?),
 

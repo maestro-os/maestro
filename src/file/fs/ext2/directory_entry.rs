@@ -2,11 +2,13 @@
 //! represents a subfile in a directory.
 
 use super::Superblock;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::file::FileType;
 use crate::memory::malloc;
 use crate::util::boxed::Box;
 use core::cmp::min;
+use core::num::NonZeroU16;
 use core::slice;
 
 /// Directory entry type indicator: Unknown
@@ -49,13 +51,16 @@ impl DirectoryEntry {
 	/// Creates a new free instance.
 	///
 	/// `total_size` is the size of the entry, including the name.
-	pub fn new_free(total_size: u16) -> Result<Box<Self>, Errno> {
+	pub fn new_free(total_size: NonZeroU16) -> AllocResult<Box<Self>> {
 		let slice = unsafe {
-			slice::from_raw_parts_mut(malloc::alloc(total_size as _)? as *mut u8, total_size as _)
+			slice::from_raw_parts_mut(
+				malloc::alloc(total_size.into())?.cast().as_mut(),
+				total_size.get() as _,
+			)
 		};
 
 		let mut entry = unsafe { Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self) };
-		entry.total_size = total_size;
+		entry.total_size = total_size.get();
 		Ok(entry)
 	}
 
@@ -75,26 +80,25 @@ impl DirectoryEntry {
 	pub fn new(
 		superblock: &Superblock,
 		inode: u32,
-		total_size: u16,
+		total_size: NonZeroU16,
 		file_type: FileType,
 		name: &[u8],
 	) -> Result<Box<Self>, Errno> {
-		if (total_size as usize) < (8 + name.len()) {
+		if (total_size.get() as usize) < (8 + name.len()) {
 			return Err(errno!(EINVAL));
 		}
 
 		let mut entry = Self::new_free(total_size)?;
 		entry.inode = inode;
-		entry.total_size = total_size;
 		entry.set_type(superblock, file_type);
 		entry.set_name(superblock, name);
 		Ok(entry)
 	}
 
 	/// Creates a new instance from a slice.
-	pub unsafe fn from(slice: &[u8]) -> Result<Box<Self>, Errno> {
-		let ptr = malloc::alloc(slice.len())? as *mut u8;
-		let alloc_slice = slice::from_raw_parts_mut(ptr, slice.len());
+	pub unsafe fn from(slice: &[u8]) -> AllocResult<Box<Self>> {
+		let ptr = malloc::alloc(slice.len())?.cast();
+		let alloc_slice = slice::from_raw_parts_mut(ptr.as_mut(), slice.len());
 		alloc_slice.copy_from_slice(slice);
 
 		Ok(Box::from_raw(
@@ -206,12 +210,9 @@ impl DirectoryEntry {
 	/// entry.
 	///
 	/// `new_size` is the size of the new entry.
-	pub fn split(&mut self, new_size: u16) -> Result<Box<Self>, Errno> {
-		let curr_entry_new_size = self.total_size - new_size;
-		let new_entry = DirectoryEntry::new_free(new_size)?;
-		self.total_size = curr_entry_new_size;
-
-		Ok(new_entry)
+	pub fn split(&mut self, new_size: NonZeroU16) -> AllocResult<Box<Self>> {
+		self.total_size -= new_size.get();
+		DirectoryEntry::new_free(new_size)
 	}
 
 	/// Merges the current entry with the given entry `entry`.

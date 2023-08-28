@@ -8,8 +8,8 @@
 //! size of a frame in pages.
 
 use super::stats;
-use crate::errno;
-use crate::errno::Errno;
+use crate::errno::AllocError;
+use crate::errno::AllocResult;
 use crate::memory;
 use crate::util::lock::*;
 use crate::util::math;
@@ -496,7 +496,7 @@ fn get_zone_for_pointer<'z>(
 /// The given frame shall fit the flags `flags`.
 ///
 /// If no suitable frame is found, the function returns an Err.
-pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
+pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<*mut c_void> {
 	debug_assert!(order <= MAX_ORDER);
 
 	let mut zones = ZONES.lock();
@@ -523,7 +523,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 		return Ok(ptr);
 	}
 
-	Err(errno!(ENOMEM))
+	Err(AllocError)
 }
 
 /// Calls `alloc` with order `order`.
@@ -531,7 +531,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> Result<*mut c_void, Errno> {
 /// The allocated frame is in the kernel zone.
 ///
 /// The function returns the *virtual* address, not the physical one.
-pub fn alloc_kernel(order: FrameOrder) -> Result<*mut c_void, Errno> {
+pub fn alloc_kernel(order: FrameOrder) -> AllocResult<*mut c_void> {
 	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
 	let virt_ptr = memory::kern_to_virt(ptr) as _;
 	debug_assert!(virt_ptr as *const _ >= memory::PROCESS_END);

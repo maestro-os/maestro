@@ -8,7 +8,8 @@ pub mod x86;
 
 use crate::cpu;
 use crate::elf;
-use crate::errno::Errno;
+use crate::errno::AllocError;
+use crate::errno::AllocResult;
 use crate::idt;
 use crate::memory;
 use crate::multiboot;
@@ -22,7 +23,7 @@ use core::ffi::c_void;
 /// This trait is the interface to manipulate virtual memory on any architecture.
 ///
 /// Each architecture has its own structure implementing this trait.
-pub trait VMem: TryClone {
+pub trait VMem: TryClone<Error = AllocError> {
 	/// Translates the given virtual address `ptr` to the corresponding physical
 	/// address.
 	///
@@ -43,7 +44,7 @@ pub trait VMem: TryClone {
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
 		flags: u32,
-	) -> Result<(), Errno>;
+	) -> AllocResult<()>;
 	/// Maps the given range of physical address `physaddr` to the given range
 	/// of virtual address `virtaddr`.
 	///
@@ -58,19 +59,19 @@ pub trait VMem: TryClone {
 		virtaddr: *const c_void,
 		pages: usize,
 		flags: u32,
-	) -> Result<(), Errno>;
+	) -> AllocResult<()>;
 
 	/// Unmaps the page at virtual address `virtaddr`.
 	///
 	/// This function automaticaly invalidates the page in the cache.
-	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno>;
+	fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<()>;
 	/// Unmaps the given range beginning at virtual address `virtaddr` with size
 	/// of `pages` pages.
 	///
 	/// If the operation fails, the virtual memory is left altered midway.
 	///
 	/// This function automaticaly invalidates the page(s) in the cache.
-	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno>;
+	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> AllocResult<()>;
 
 	/// Binds the virtual memory context handler.
 	fn bind(&self);
@@ -86,7 +87,7 @@ pub trait VMem: TryClone {
 	fn flush(&self);
 
 	/// Protects the kernel's read-only sections from writing.
-	fn protect_kernel(&mut self) -> Result<(), Errno> {
+	fn protect_kernel(&mut self) -> AllocResult<()> {
 		let boot_info = multiboot::get_boot_info();
 
 		let mut res = Ok(());
@@ -122,12 +123,12 @@ pub trait VMem: TryClone {
 }
 
 /// Creates a new virtual memory context handler for the current architecture.
-pub fn new() -> Result<Box<dyn VMem>, Errno> {
+pub fn new() -> AllocResult<Box<dyn VMem>> {
 	Ok(Box::new(x86::X86VMem::new()?)? as Box<dyn VMem>)
 }
 
 /// Clones the virtual memory context handler `vmem`.
-pub fn clone(vmem: &Box<dyn VMem>) -> Result<Box<dyn VMem>, Errno> {
+pub fn clone(vmem: &Box<dyn VMem>) -> AllocResult<Box<dyn VMem>> {
 	let vmem = unsafe { &*(vmem.as_ptr() as *const x86::X86VMem) };
 	Ok(Box::new(vmem.try_clone()?)? as Box<dyn VMem>)
 }

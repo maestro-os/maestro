@@ -1,18 +1,18 @@
 //! The `Box` structure allows to hold an object on the heap and handles its
 //! memory properly.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::memory;
 use crate::memory::malloc;
-use crate::util::EResult;
+use crate::util::AllocError;
 use crate::util::TryClone;
 use crate::util::TryDefault;
 use core::borrow::{Borrow, BorrowMut};
-use core::ffi::c_void;
 use core::fmt;
 use core::marker::Unsize;
 use core::mem;
 use core::mem::size_of_val;
+use core::num::NonZeroUsize;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
 use core::ops::{Deref, DerefMut};
@@ -30,9 +30,11 @@ pub struct Box<T: ?Sized> {
 	ptr: NonNull<T>,
 }
 
-impl<T: TryDefault> TryDefault for Box<T> {
-	fn try_default() -> EResult<Self> {
-		Self::new(T::try_default()?)
+impl<T: TryDefault<Error = E>, E: From<AllocError>> TryDefault for Box<T> {
+	type Error = E;
+
+	fn try_default() -> Result<Self, Self::Error> {
+		Ok(Self::new(T::try_default()?)?)
 	}
 }
 
@@ -40,24 +42,18 @@ impl<T> Box<T> {
 	/// Creates a new instance and places the given value `value` into it.
 	///
 	/// If the allocation fails, the function shall return an error.
-	pub fn new(value: T) -> Result<Box<T>, Errno> {
-		let ptr = {
-			let size = size_of_val(&value);
-
-			if size > 0 {
-				let ptr = unsafe { malloc::alloc(size)? as *mut T };
+	pub fn new(value: T) -> AllocResult<Box<T>> {
+		let size: Result<NonZeroUsize, _> = size_of_val(&value).try_into();
+		let ptr = match size {
+			Ok(size) => {
+				let ptr = unsafe { malloc::alloc(size)?.cast() };
 				unsafe {
-					ptr::copy_nonoverlapping(
-						&value as *const _ as *const u8,
-						ptr as *mut u8,
-						size,
-					);
+					ptr::write(ptr.as_mut(), value);
 				}
 
-				NonNull::new(ptr).unwrap()
-			} else {
-				NonNull::dangling()
+				ptr
 			}
+			Err(_) => NonNull::dangling(),
 		};
 
 		// Prevent double drop
@@ -73,7 +69,7 @@ impl<T> Box<T> {
 		unsafe {
 			let t = ptr::read(self.ptr.as_ptr());
 
-			malloc::free(self.ptr.as_ptr() as _);
+			malloc::free(self.ptr.cast());
 			mem::forget(self);
 
 			t
@@ -144,11 +140,12 @@ impl<T: ?Sized> DerefMut for Box<T> {
 	}
 }
 
-impl<T: ?Sized + Clone> TryClone for Box<T> {
-	fn try_clone(&self) -> Result<Self, Errno> {
-		let obj = unsafe { &*self.ptr.as_ptr() };
+impl<T: TryClone<Error = E>, E: From<AllocError>> TryClone for Box<T> {
+	type Error = E;
 
-		Box::new(obj.clone())
+	fn try_clone(&self) -> Result<Self, Self::Error> {
+		let obj = unsafe { &*self.ptr.as_ptr() };
+		Ok(Box::new(obj.try_clone()?)?)
 	}
 }
 
@@ -170,12 +167,10 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Box<T> {
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
-		let ptr = self.ptr.as_ptr();
-
-		if (ptr as *const c_void as usize) >= memory::PAGE_SIZE {
+		if (self.ptr.cast::<()>().as_ptr() as usize) >= memory::PAGE_SIZE {
 			unsafe {
-				drop_in_place(ptr);
-				malloc::free(ptr as _);
+				drop_in_place(self.ptr.as_mut());
+				malloc::free(self.ptr.cast());
 			}
 		}
 	}

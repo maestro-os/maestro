@@ -11,7 +11,7 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
-use crate::errno::EResult;
+use crate::errno::AllocError;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_void;
@@ -151,34 +151,40 @@ pub unsafe fn reinterpret<T>(slice: &[u8]) -> Option<&T> {
 	}
 }
 
-/// Trait allowing to perform a clone of a structure that can possibly fail (on
-/// memory allocation failure, for example).
+/// Same as the [`core::clone::Clone`] trait, but the operation can fail (on memory allocation
+/// failure, for example).
 pub trait TryClone {
+	/// The error type used when allocation fails.
+	type Error = AllocError;
+
 	/// Clones the object. If the clone fails, the function returns an error.
-	fn try_clone(&self) -> EResult<Self>
+	fn try_clone(&self) -> Result<Self, Self::Error>
 	where
 		Self: Sized;
 }
 
 /// Blanket implementation.
 impl<T: Clone + Sized> TryClone for T {
-	fn try_clone(&self) -> EResult<Self> {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(self.clone())
 	}
 }
 
-/// Same as the Default trait, but the operation can fail (on memory allocation failure,
-/// for example).
+/// Same as the [`core::default::Default`] trait, but the operation can fail (on memory allocation
+/// failure, for example).
 pub trait TryDefault {
+	/// The error type used when allocation fails.
+	type Error = AllocError;
+
 	/// Returns the default value. On fail, the function returns Err.
-	fn try_default() -> EResult<Self>
+	fn try_default() -> Result<Self, Self::Error>
 	where
 		Self: Sized;
 }
 
 /// Blanket implementation.
 impl<T: Default + Sized> TryDefault for T {
-	fn try_default() -> EResult<Self> {
+	fn try_default() -> Result<Self, Self::Error> {
 		Ok(Self::default())
 	}
 }

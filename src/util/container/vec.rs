@@ -1,7 +1,9 @@
 //! This module implements the Vec container.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
+use crate::errno::CollectResult;
 use crate::memory::malloc;
+use crate::util::AllocError;
 use crate::util::TryClone;
 use core::cmp::max;
 use core::cmp::min;
@@ -43,7 +45,7 @@ macro_rules! vec {
 				v.push(i)?;
 			}
 
-			Ok(v)
+			$crate::errno::AllocResult::Ok(v)
 		})()
 	}};
 }
@@ -84,7 +86,7 @@ impl<T> Vec<T> {
 	/// Reallocates the vector's data with the vector's capacity.
 	///
 	/// `capacity` is the new capacity in number of elements.
-	fn realloc(&mut self, capacity: usize) -> Result<(), Errno> {
+	fn realloc(&mut self, capacity: usize) -> AllocResult<()> {
 		if capacity == 0 {
 			self.data = None;
 			return Ok(());
@@ -110,7 +112,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Increases the capacity of so that at least `min` more elements can fit.
-	fn increase_capacity(&mut self, min: usize) -> Result<(), Errno> {
+	fn increase_capacity(&mut self, min: usize) -> AllocResult<()> {
 		if self.len + min <= self.capacity() {
 			return Ok(());
 		}
@@ -122,7 +124,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Creates a new emoty vector with the given capacity.
-	pub fn with_capacity(capacity: usize) -> Result<Self, Errno> {
+	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
 		let mut vec = Self::new();
 		vec.realloc(capacity)?;
 
@@ -181,7 +183,7 @@ impl<T> Vec<T> {
 	/// # Panics
 	///
 	/// Panics if `index > len`.
-	pub fn insert(&mut self, index: usize, element: T) -> Result<(), Errno> {
+	pub fn insert(&mut self, index: usize, element: T) -> AllocResult<()> {
 		if index > self.len() {
 			self.vector_panic(index);
 		}
@@ -229,7 +231,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Moves all the elements of `other` into `Self`, leaving `other` empty.
-	pub fn append(&mut self, other: &mut Vec<T>) -> Result<(), Errno> {
+	pub fn append(&mut self, other: &mut Vec<T>) -> AllocResult<()> {
 		if other.is_empty() {
 			return Ok(());
 		}
@@ -251,7 +253,7 @@ impl<T> Vec<T> {
 	}
 
 	/// Appends an element to the back of a collection.
-	pub fn push(&mut self, value: T) -> Result<(), Errno> {
+	pub fn push(&mut self, value: T) -> AllocResult<()> {
 		self.increase_capacity(1)?;
 		debug_assert!(self.capacity() > self.len);
 
@@ -386,7 +388,7 @@ impl<T: Default> Vec<T> {
 	/// Resizes the vector to the given length `new_len`.
 	///
 	/// If new elements have to be created, the default value is used.
-	pub fn resize(&mut self, new_len: usize) -> Result<(), Errno> {
+	pub fn resize(&mut self, new_len: usize) -> AllocResult<()> {
 		if new_len < self.len() {
 			self.truncate(new_len);
 		} else {
@@ -395,6 +397,18 @@ impl<T: Default> Vec<T> {
 		}
 
 		Ok(())
+	}
+}
+
+impl<T> FromIterator<T> for CollectResult<Vec<T>> {
+	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+		let iter = iter.into_iter();
+		let size = iter.size_hint().0;
+		let mut vec = Vec::with_capacity(size)?;
+
+		// TODO
+
+		Self(Ok(vec))
 	}
 }
 
@@ -438,7 +452,7 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 
 impl<T: Clone> Vec<T> {
 	/// Creates a new vector with `n` times `elem`.
-	pub fn from_elem(elem: T, n: usize) -> Result<Self, Errno> {
+	pub fn from_elem(elem: T, n: usize) -> AllocResult<Self> {
 		let mut v = Self::with_capacity(n)?;
 		v.len = n;
 
@@ -453,7 +467,7 @@ impl<T: Clone> Vec<T> {
 	}
 
 	/// Creates a new vector from the given slice.
-	pub fn from_slice(slice: &[T]) -> Result<Self, Errno> {
+	pub fn from_slice(slice: &[T]) -> AllocResult<Self> {
 		let mut v = Vec::with_capacity(slice.len())?;
 		v.len = slice.len();
 
@@ -468,7 +482,7 @@ impl<T: Clone> Vec<T> {
 	}
 
 	/// Extends the vector by cloning the elements from the given slice `slice`.
-	pub fn extend_from_slice(&mut self, slice: &[T]) -> Result<(), Errno> {
+	pub fn extend_from_slice(&mut self, slice: &[T]) -> AllocResult<()> {
 		if slice.is_empty() {
 			return Ok(());
 		}
@@ -482,21 +496,22 @@ impl<T: Clone> Vec<T> {
 	}
 }
 
-impl<T: TryClone> TryClone for Vec<T> {
-	fn try_clone(&self) -> Result<Self, Errno> {
+impl<T: TryClone<Error = E>, E: From<AllocError>> TryClone for Vec<T> {
+	type Error = E;
+
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut v = Self::with_capacity(self.len)?;
 
 		for i in 0..self.len {
-			let res: Result<_, Errno> = self[i].try_clone().map_err(Into::into);
-			v.push(res?)?;
+			v.push(self[i].try_clone()?)?;
 		}
 		Ok(v)
 	}
 }
 
-impl<T: TryClone> Vec<T> {
+impl<T: TryClone<Error = E>, E: From<AllocError>> Vec<T> {
 	/// Clones the vector, keeping the given range.
-	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, Errno> {
+	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, E> {
 		let end = min(range.end, self.len);
 		let start = min(range.start, range.end);
 		let len = end - start;
@@ -504,32 +519,29 @@ impl<T: TryClone> Vec<T> {
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			let res: Result<_, Errno> = self[start + i].try_clone().map_err(Into::into);
-			v.push(res?)?;
+			v.push(self[start + i].try_clone()?)?;
 		}
 		Ok(v)
 	}
 
 	/// Clones the vector, keeping the given range.
-	pub fn clone_range_from(&self, range: RangeFrom<usize>) -> Result<Self, Errno> {
+	pub fn clone_range_from(&self, range: RangeFrom<usize>) -> Result<Self, E> {
 		let len = self.len - min(self.len, range.start);
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			let res: Result<_, Errno> = self[range.start + i].try_clone().map_err(Into::into);
-			v.push(res?)?;
+			v.push(self[range.start + i].try_clone()?)?;
 		}
 		Ok(v)
 	}
 
 	/// Clones the vector, keeping the given range.
-	pub fn clone_range_to(&self, range: RangeTo<usize>) -> Result<Self, Errno> {
+	pub fn clone_range_to(&self, range: RangeTo<usize>) -> Result<Self, E> {
 		let len = min(self.len, range.end);
 		let mut v = Self::with_capacity(len)?;
 
 		for i in 0..len {
-			let res: Result<_, Errno> = self[i].try_clone().map_err(Into::into);
-			v.push(res?)?;
+			v.push(self[i].try_clone()?)?;
 		}
 		Ok(v)
 	}
@@ -833,26 +845,22 @@ mod test {
 
 	#[test_case]
 	fn vec_retain1() {
-		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
-		let mut v = v.unwrap();
+		let mut v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4].unwrap();
 		v.retain(|_| true);
 		assert_eq!(v.as_slice(), &[0, 1, 2, 3, 4]);
 
-		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
-		let mut v = v.unwrap();
+		let mut v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4].unwrap();
 		v.retain(|_| false);
 		assert_eq!(v.as_slice(), &[]);
 	}
 
 	#[test_case]
 	fn vec_retain2() {
-		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
-		let mut v = v.unwrap();
+		let mut v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4].unwrap();
 		v.retain(|i| *i % 2 == 0);
 		assert_eq!(v.as_slice(), &[0, 2, 4]);
 
-		let v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4];
-		let mut v = v.unwrap();
+		let mut v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4].unwrap();
 		v.retain(|i| *i % 2 == 1);
 		assert_eq!(v.as_slice(), &[1, 3]);
 	}

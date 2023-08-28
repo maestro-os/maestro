@@ -1,6 +1,6 @@
 //! This module implements an `Arc`, similar to the one present in the Rust standard library.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::memory::malloc;
 use core::borrow::Borrow;
 use core::fmt;
@@ -46,11 +46,11 @@ impl<T> Arc<T> {
 	/// Creates a new `Arc` for the given object.
 	///
 	/// This function allocates memory. On fail, it returns an error.
-	pub fn new(obj: T) -> Result<Self, Errno> {
+	pub fn new(obj: T) -> AllocResult<Self> {
 		let ptr = unsafe {
-			let inner = malloc::alloc(size_of::<ArcInner<T>>())?;
+			let inner = malloc::alloc(size_of::<ArcInner<T>>().try_into().unwrap())?;
 			ptr::write(
-				inner as *mut _,
+				inner.cast().as_mut(),
 				ArcInner {
 					// The initial strong reference
 					strong: AtomicUsize::new(1),
@@ -61,7 +61,7 @@ impl<T> Arc<T> {
 				},
 			);
 
-			NonNull::new(inner as _).unwrap()
+			inner.cast()
 		};
 
 		Ok(Self {
@@ -231,7 +231,7 @@ impl<T: ?Sized> Drop for Weak<T> {
 		// collectively hold a weak reference which is removed only when the strong references
 		// count reaches zero.
 		unsafe {
-			malloc::free(self.ptr.as_ptr() as _);
+			malloc::free(self.ptr.cast());
 		}
 	}
 }

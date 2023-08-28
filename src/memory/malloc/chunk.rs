@@ -9,12 +9,13 @@
 //! If a chunk is not allocated, it is stored in a free list, stored by size.
 
 use super::block::Block;
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::util;
 use core::cmp::{max, min};
 use core::ffi::c_void;
 use core::intrinsics::unlikely;
 use core::mem::size_of;
+use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
 
@@ -49,8 +50,8 @@ pub struct Chunk {
 	/// The next chunk in the block.
 	next: Option<NonNull<Self>>,
 
-	/// The chunk's flags
-	flags: u8,
+	/// Whether the chunk is in use
+	pub used: bool,
 	/// The size of the chunk's memory in bytes
 	size: usize,
 }
@@ -65,7 +66,7 @@ impl Chunk {
 			prev: None,
 			next: None,
 
-			flags: 0,
+			used: false,
 			size: 0,
 		}
 	}
@@ -116,28 +117,6 @@ impl Chunk {
 
 		self.prev = None;
 		self.next = None;
-	}
-
-	/// Tells the whether the chunk is free.
-	#[inline]
-	pub fn is_used(&self) -> bool {
-		(self.flags & CHUNK_FLAG_USED) != 0
-	}
-
-	/// Sets the chunk used or free.
-	#[inline]
-	pub fn set_used(&mut self, used: bool) {
-		#[cfg(config_debug_malloc_check)]
-		self.check();
-
-		if used {
-			self.flags |= CHUNK_FLAG_USED;
-		} else {
-			self.flags &= !CHUNK_FLAG_USED;
-		}
-
-		#[cfg(config_debug_malloc_check)]
-		self.check();
 	}
 
 	/// Returns an immutable pointer to the chunks' data.
@@ -202,7 +181,7 @@ impl Chunk {
 	/// If the chunk is used, the function returns `None`.
 	#[inline]
 	pub fn as_free_chunk(&mut self) -> Option<&mut FreeChunk> {
-		if !self.is_used() {
+		if !self.used {
 			let c = unsafe { &mut *(self as *mut Self as *mut FreeChunk) };
 			Some(c)
 		} else {
@@ -223,7 +202,7 @@ impl Chunk {
 		let new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 		debug_assert!(new_size >= size);
 
-		if new_size + size_of::<Chunk>() + min_data_size <= self.get_size() {
+		if new_size + size_of::<Chunk>() + min_data_size <= self.size {
 			Some(next_ptr as *mut FreeChunk)
 		} else {
 			None
@@ -241,7 +220,7 @@ impl Chunk {
 	pub fn split(&mut self, size: usize) -> Option<&'static mut FreeChunk> {
 		#[cfg(config_debug_malloc_check)]
 		self.check();
-		debug_assert!(self.get_size() >= size);
+		debug_assert!(self.size >= size);
 
 		if let Some(free_chunk) = self.as_free_chunk() {
 			free_chunk.free_list_remove();
@@ -271,7 +250,7 @@ impl Chunk {
 
 		#[cfg(config_debug_malloc_check)]
 		self.check();
-		debug_assert!(self.get_size() >= size);
+		debug_assert!(self.size >= size);
 
 		res
 	}
@@ -299,7 +278,7 @@ impl Chunk {
 		}
 
 		if let Some(prev) = self.get_prev() {
-			if !prev.is_used() {
+			if !prev.used {
 				// Termination is guaranteed because two free chunks are always coalesced
 				// immediately
 				return prev.coalesce();
@@ -318,7 +297,7 @@ impl Chunk {
 	///
 	/// The function might alter the free list to get the space needed.
 	pub fn grow(&mut self, delta: usize) -> bool {
-		debug_assert!(self.is_used());
+		debug_assert!(self.used);
 		debug_assert_ne!(delta, 0);
 
 		let new_size = self.size + delta;
@@ -366,9 +345,9 @@ impl Chunk {
 	/// The function might alter the free list to relinquish the space.
 	pub fn shrink(&mut self, delta: usize) {
 		debug_assert_ne!(delta, 0);
-		debug_assert!(delta < self.get_size());
+		debug_assert!(delta < self.size);
 
-		let new_size = max(self.get_size() - delta, get_min_chunk_size());
+		let new_size = max(self.size - delta, get_min_chunk_size());
 		if let Some(next) = self.split(new_size) {
 			next.chunk.coalesce();
 		}
@@ -413,7 +392,7 @@ impl FreeChunk {
 				prev: None,
 				next: None,
 
-				flags: 0,
+				used: false,
 				size,
 			},
 		}
@@ -546,8 +525,8 @@ fn get_free_list(
 ///
 /// On success, the return value MUST be used or might result in a
 /// memory leak.
-pub fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno> {
-	let free_list = get_free_list(size, true);
+pub fn get_available_chunk(size: NonZeroUsize) -> AllocResult<&'static mut FreeChunk> {
+	let free_list = get_free_list(size.get(), true);
 	let free_chunk = if let Some(f) = free_list {
 		unsafe { f.unwrap().as_mut() }
 	} else {
@@ -557,7 +536,7 @@ pub fn get_available_chunk(size: usize) -> Result<&'static mut FreeChunk, Errno>
 
 	#[cfg(config_debug_malloc_check)]
 	free_chunk.check();
-	debug_assert!(free_chunk.chunk.size >= size);
+	debug_assert!(free_chunk.chunk.size >= size.get());
 	debug_assert!(!free_chunk.chunk.is_used());
 
 	Ok(free_chunk)

@@ -1,8 +1,9 @@
 //! This module implements a binary tree container.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::memory;
 use crate::memory::malloc;
+use crate::util::AllocError;
 use crate::util::TryClone;
 use core::cell::UnsafeCell;
 use core::cmp::Ordering;
@@ -56,9 +57,9 @@ struct Node<K, V> {
 /// The caller must ensure the pointer points to a valid node and must not use it after calling
 /// this function since it will be dropped.
 #[inline]
-unsafe fn drop_node<K, V>(ptr: *mut Node<K, V>) -> (K, V) {
-	let node = ptr::read(ptr);
-	malloc::free(ptr as _);
+unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
+	let node = ptr::read(ptr.as_ref());
+	malloc::free(ptr.cast());
 
 	let Node::<K, V> {
 		key,
@@ -82,8 +83,8 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// Creates a new node with the given `value`.
 	///
 	/// The node is colored `Red` by default.
-	fn new(key: K, value: V) -> Result<NonNull<Self>, Errno> {
-		let ptr = unsafe { malloc::alloc(size_of::<Self>())? as *mut Self };
+	fn new(key: K, value: V) -> AllocResult<NonNull<Self>> {
+		let ptr = unsafe { malloc::alloc(size_of::<Self>().try_into().unwrap())?.cast() };
 		let s = Self {
 			parent: None,
 			left: None,
@@ -94,13 +95,13 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 			value,
 		};
 
-		debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
+		debug_assert!((ptr.as_ptr() as usize) >= (memory::PROCESS_END as usize));
 		unsafe {
 			// Safe because the pointer is valid
-			ptr::write(ptr, s);
+			ptr::write(ptr.as_mut(), s);
 		}
 
-		Ok(NonNull::new(ptr).unwrap())
+		Ok(ptr)
 	}
 
 	/// Tells whether the node is red.
@@ -607,7 +608,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// - `cmp` is the comparison function.
 	///
 	/// If the key is already used, the previous key/value pair is dropped.
-	pub fn insert(&mut self, key: K, val: V) -> Result<&mut V, Errno> {
+	pub fn insert(&mut self, key: K, val: V) -> AllocResult<&mut V> {
 		let n = match self.get_insert_node(&key) {
 			Some(p) => {
 				let order = key.cmp(&p.key);
@@ -771,7 +772,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
             node.unlink();
 
             self.len -= 1;
-			return unsafe { drop_node(node) };
+			return unsafe { drop_node(node.into()) };
         };
 
 		if node.get_left().is_some() && node.get_right().is_some() {
@@ -785,7 +786,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
             // The node is the root
 
             replacement.unlink();
-            let (mut key, value) = unsafe { drop_node(replacement) };
+            let (mut key, value) = unsafe { drop_node(replacement.into()) };
 
             node.left = None;
             node.right = None;
@@ -808,7 +809,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 
 		node.unlink();
-		let (key, val) = unsafe { drop_node(node) };
+		let (key, val) = unsafe { drop_node(node.into()) };
 
 		if both_black {
 			Self::remove_fix_double_black(replacement);
@@ -841,7 +842,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// `traversal_order` defines the order in which the tree is traversed.
 	fn foreach_nodes<F: FnMut(&Node<K, V>)>(
 		root: &Node<K, V>,
-		f: &mut F,
+		f: F,
 		traversal_order: TraveralOrder,
 	) {
 		let (first, second) = if traversal_order == TraveralOrder::ReverseInOrder {
@@ -878,7 +879,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// `traversal_order` defines the order in which the tree is traversed.
 	fn foreach_nodes_mut<F: FnMut(&mut Node<K, V>)>(
 		root: &mut Node<K, V>,
-		f: &mut F,
+		f: F,
 		traversal_order: TraveralOrder,
 	) {
 		let (first, second) = if traversal_order == TraveralOrder::ReverseInOrder {
@@ -1283,8 +1284,12 @@ impl<'m, K: Ord + 'static, V: 'static, F: FnMut(&K, &mut V) -> bool> Iterator
 	}
 }
 
-impl<K: 'static + TryClone + Ord, V: TryClone> TryClone for Map<K, V> {
-	fn try_clone(&self) -> Result<Self, Errno> {
+impl<K: 'static + TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> TryClone
+	for Map<K, V>
+{
+	type Error = E;
+
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut new = Self::new();
 		for (k, v) in self {
 			new.insert(k.try_clone()?, v.try_clone()?)?;
@@ -1298,17 +1303,16 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 		if let Some(root) = self.get_root() {
 			Self::foreach_nodes(
 				root,
-				&mut |n| {
+				|n| {
 					for _ in 0..n.get_node_depth() {
 						let _ = write!(f, "\t");
 					}
 
-					let color = if n.color == NodeColor::Red {
-						"red"
-					} else {
-						"black"
+					let color = match n.color {
+						NodeColor::Red => "red",
+						NodeColor::Black => "black",
 					};
-					let _ = writeln!(f, "{:?} ({})", n.key, color);
+					let _ = writeln!(f, "{:?} ({color})", n.key);
 				},
 				TraveralOrder::ReverseInOrder,
 			);
@@ -1327,8 +1331,8 @@ impl<K: 'static + Ord, V> Drop for Map<K, V> {
 
 		Self::foreach_nodes_mut(
 			root,
-			&mut |n| unsafe {
-				drop_node(n);
+			|n| unsafe {
+				drop_node(n.into());
 			},
 			TraveralOrder::PostOrder,
 		);

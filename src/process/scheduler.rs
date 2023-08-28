@@ -9,6 +9,7 @@
 //! This number represents the number of ticks during which the process keeps
 //! running until switching to the next process.
 
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::event;
 use crate::event::CallbackHook;
@@ -68,7 +69,7 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> Result<Arc<IntMutex<Self>>, Errno> {
+	pub fn new(cores_count: usize) -> AllocResult<Arc<IntMutex<Self>>> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
 			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;

@@ -1,6 +1,7 @@
 //! This module handles files path.
 
 use crate::errno;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::limits;
 use crate::util::container::string::String;
@@ -93,7 +94,8 @@ impl Path {
 			return Err(errno!(ENAMETOOLONG));
 		}
 
-		self.parts.push(filename)
+		self.parts.push(filename)?;
+		Ok(())
 	}
 
 	/// Pops the filename on top of the path.
@@ -155,7 +157,7 @@ impl Path {
 	///
 	/// If the `other` path is absolute, the resulting path exactly equals
 	/// `other`.
-	pub fn concat(&self, other: &Self) -> Result<Self, Errno> {
+	pub fn concat(&self, other: &Self) -> AllocResult<Self> {
 		if other.is_absolute() {
 			other.try_clone()
 		} else {
@@ -178,7 +180,7 @@ impl Default for Path {
 }
 
 impl Add for Path {
-	type Output = Result<Self, Errno>;
+	type Output = AllocResult<Self>;
 
 	fn add(self, other: Self) -> Self::Output {
 		self.concat(&other)
@@ -186,7 +188,7 @@ impl Add for Path {
 }
 
 impl TryClone for Path {
-	fn try_clone(&self) -> Result<Self, Errno> {
+	fn try_clone(&self) -> AllocResult<Self> {
 		Ok(Self {
 			absolute: self.absolute,
 			parts: self.parts.try_clone()?,

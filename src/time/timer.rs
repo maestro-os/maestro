@@ -7,6 +7,7 @@ use super::unit::TimeUnit;
 use super::unit::TimerT;
 use super::unit::Timespec;
 use super::unit::TimestampScale;
+use crate::errno::AllocResult;
 use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::limits;
@@ -173,7 +174,7 @@ impl Timer {
 		ts: Timespec,
 		pid: Pid,
 		timer_id: TimerT,
-	) -> EResult<()> {
+	) -> AllocResult<()> {
 		if let Some(next) = self.next {
 			queue.remove(&(next, pid, timer_id));
 		}
@@ -235,7 +236,7 @@ impl TimerManager {
 		let id = self.id_allocator.alloc(None)?;
 		if let Err(e) = self.timers.insert(id, timer) {
 			self.id_allocator.free(id);
-			return Err(e);
+			return Err(e.into());
 		}
 
 		Ok(id)

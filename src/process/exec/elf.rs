@@ -488,7 +488,7 @@ impl ELFExecutor {
 		// The length of the memory to allocate in pages
 		let pages = math::ceil_div(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
 
-		if pages > 0 {
+		if let Some(pages) = NonZeroUsize::new(pages) {
 			mem_space.map(
 				MapConstraint::Fixed(mem_begin as _),
 				pages,
@@ -707,8 +707,9 @@ impl Executor for ELFExecutor {
 		let load_info = self.load_elf(&parser, &mut mem_space, null::<c_void>(), false)?;
 
 		// The user stack
-		let user_stack =
-			mem_space.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?;
+		let user_stack = mem_space
+			.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?
+			.as_ptr();
 
 		// Map the vDSO
 		let vdso = vdso::map(&mut mem_space)?;
@@ -745,8 +746,9 @@ impl Executor for ELFExecutor {
 		}
 
 		// The kernel stack
-		let kernel_stack =
-			mem_space.map_stack(process::KERNEL_STACK_SIZE, process::KERNEL_STACK_FLAGS)?;
+		let kernel_stack = mem_space
+			.map_stack(process::KERNEL_STACK_SIZE, process::KERNEL_STACK_FLAGS)?
+			.as_ptr();
 
 		Ok(ProgramImage {
 			argv: self.info.argv.try_clone()?,

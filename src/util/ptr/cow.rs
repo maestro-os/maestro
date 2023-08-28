@@ -1,6 +1,5 @@
 //! This module implements Copy-On-Write (COW) pointers.
 
-use crate::errno::Errno;
 use crate::util::TryClone;
 use core::borrow::Borrow;
 use core::fmt;
@@ -13,7 +12,7 @@ pub enum Cow<'a, T: 'a + TryClone> {
 	Owned(T),
 }
 
-impl<'a, T: 'a + TryClone> Cow<'a, T> {
+impl<'a, T: 'a + TryClone<Error = E>, E> Cow<'a, T> {
 	/// Tells whether the object is a borrowed value.
 	pub fn is_borrowed(&self) -> bool {
 		match self {
@@ -32,7 +31,7 @@ impl<'a, T: 'a + TryClone> Cow<'a, T> {
 	/// This function clones the value if necessary.
 	///
 	/// On fail, the function returns an error.
-	pub fn into_owned(self) -> Result<T, Errno> {
+	pub fn into_owned(self) -> Result<T, E> {
 		match self {
 			Self::Borrowed(r) => r.try_clone(),
 			Self::Owned(v) => Ok(v),
@@ -40,7 +39,7 @@ impl<'a, T: 'a + TryClone> Cow<'a, T> {
 	}
 
 	/// Returns a mutable reference to the owned data.
-	pub fn to_mut(&mut self) -> Result<&mut T, Errno> {
+	pub fn to_mut(&mut self) -> Result<&mut T, E> {
 		if let Self::Borrowed(r) = self {
 			*self = Self::Owned(r.try_clone()?);
 		}

@@ -2,7 +2,7 @@
 
 use crate::crypto::rand;
 use crate::crypto::rand::EntropyPool;
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::idt;
 use crate::idt::pic;
 use crate::panic;
@@ -130,26 +130,26 @@ static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] =
 /// - `id` is the id of the interrupt to watch.
 /// - `callback` is the callback to register.
 ///
-/// If the `id` is invalid or if an allocation fails, the function shall return
-/// an error.
-pub fn register_callback<C>(id: u32, callback: C) -> Result<CallbackHook, Errno>
+/// If an allocation fails, the function shall return an error.
+///
+/// If the provided ID is invalid, the function returns `None`.
+pub fn register_callback<C>(id: u32, callback: C) -> AllocResult<Option<CallbackHook>>
 where
 	C: 'static + FnMut(u32, u32, &Regs, u32) -> CallbackResult,
 {
 	if unlikely(id as usize >= CALLBACKS.len()) {
-		return Err(errno!(EINVAL));
+		return Ok(None);
 	}
 
 	let mut vec = CALLBACKS[id as usize].lock();
-
 	let b = Box::new(callback)?;
 	let ptr = b.as_ptr();
 	vec.push(b)?;
 
-	Ok(CallbackHook {
+	Ok(Some(CallbackHook {
 		id,
 		ptr: NonNull::new(ptr as _).unwrap(),
-	})
+	}))
 }
 
 /// Unlocks the callback vector with id `id`. This function is to be used in

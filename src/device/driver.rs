@@ -2,7 +2,7 @@
 //! hardware. Such a component is often located inside of a kernel module.
 
 use crate::device::manager::PhysicalDevice;
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
@@ -26,7 +26,7 @@ pub trait Driver {
 static DRIVERS: Mutex<Vec<Arc<Mutex<dyn Driver>>>> = Mutex::new(Vec::new());
 
 /// Registers the given driver.
-pub fn register<D: 'static + Driver>(driver: D) -> Result<(), Errno> {
+pub fn register<D: 'static + Driver>(driver: D) -> AllocResult<()> {
 	let mut drivers = DRIVERS.lock();
 
 	let m = Arc::new(Mutex::new(driver))?;

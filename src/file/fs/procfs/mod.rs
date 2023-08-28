@@ -11,6 +11,7 @@ use super::kernfs::node::DummyKernFSNode;
 use super::kernfs::KernFS;
 use super::Filesystem;
 use super::FilesystemType;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::file::fs::Statfs;
 use crate::file::path::Path;
@@ -135,7 +136,7 @@ impl ProcFS {
 		match &mut content {
 			FileContent::Directory(entries) => oom::wrap(|| {
 				entries.insert(
-					crate::format!("{}", pid)?,
+					crate::format!("{pid}")?,
 					DirEntry {
 						entry_type: FileType::Directory,
 						inode,
@@ -153,16 +154,15 @@ impl ProcFS {
 	/// Removes the process with pid `pid` from the filesystem.
 	///
 	/// If the process doesn't exist, the function does nothing.
-	pub fn remove_process(&mut self, pid: Pid) -> Result<(), Errno> {
+	pub fn remove_process(&mut self, pid: Pid) -> AllocResult<()> {
 		if let Some(inode) = self.procs.remove(&pid) {
 			// Removing the process's entry from the root of the filesystem
 			let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
 			let mut content = oom::wrap(|| root.get_content()?.into_owned());
 			match &mut content {
-				FileContent::Directory(entries) => oom::wrap(|| {
-					entries.remove(&crate::format!("{}", pid)?);
-					Ok(())
-				}),
+				FileContent::Directory(entries) => {
+					entries.remove(&crate::format!("{pid}")?);
+				}
 				_ => unreachable!(),
 			}
 			root.set_content(content);

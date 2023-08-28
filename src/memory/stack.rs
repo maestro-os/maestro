@@ -1,6 +1,6 @@
 //! This module implements stack utility functions.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::memory;
 use crate::memory::malloc;
 use core::ffi::c_void;
@@ -48,7 +48,7 @@ impl<F: FnOnce() -> T, T> StackLambda<F, T> {
 /// When passing a closure to this function, the `move` keyword should be used in the case the
 /// previous stack becomes unreachable. This keyword ensures that variables are captured by value
 /// and not by reference, thus avoiding to create dangling references.
-pub unsafe fn switch<F: FnOnce() -> T, T>(stack: Option<*mut c_void>, f: F) -> Result<T, Errno> {
+pub unsafe fn switch<F: FnOnce() -> T, T>(stack: Option<*mut c_void>, f: F) -> AllocResult<T> {
 	let mut f = StackLambda {
 		f,
 		ret_val: None,

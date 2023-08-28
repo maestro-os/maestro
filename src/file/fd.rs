@@ -3,6 +3,8 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
+use crate::errno::CollectResult;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::file::FileLocation;
@@ -143,7 +145,9 @@ impl FileDescriptor {
 }
 
 impl TryClone for FileDescriptor {
-	fn try_clone(&self) -> Result<Self, Errno> {
+	type Error = Errno;
+
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Self::new(
 			self.id,
 			self.flags,
@@ -338,15 +342,17 @@ impl FileDescriptorTable {
 	///
 	/// `cloexec` specifies whether the cloexec file must be taken into account. This is the case
 	/// when executing a program.
-	pub fn duplicate(&self, cloexec: bool) -> Result<Self, Errno> {
-		let mut fds = Vec::new();
-
-		for fd in &self.fds {
-			if !cloexec || fd.get_flags() & FD_CLOEXEC == 0 {
-				fds.push(fd.try_clone()?)?;
-			}
-		}
-
+	pub fn duplicate(&self, cloexec: bool) -> EResult<Self> {
+		let fds = self
+			.fds
+			.iter()
+			.filter(|fd| {
+				// cloexec implies fd's cloexec flag must be clear
+				!cloexec || fd.get_flags() & FD_CLOEXEC == 0
+			})
+			.map(FileDescriptor::try_clone)
+			.collect::<EResult<CollectResult<Vec<_>>>>()?
+			.0?;
 		Ok(Self {
 			fds,
 		})

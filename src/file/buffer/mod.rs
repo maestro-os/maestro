@@ -3,6 +3,8 @@
 pub mod pipe;
 pub mod socket;
 
+use crate::errno::AllocError;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::file::FileLocation;
@@ -103,17 +105,16 @@ pub fn get(loc: &FileLocation) -> Option<Arc<Mutex<dyn Buffer>>> {
 /// Returns the buffer associated with the file at location `loc`.
 ///
 /// If the buffer doesn't exist, the function registers a new default buffer.
-pub fn get_or_default<B: Buffer + TryDefault + 'static>(
+pub fn get_or_default<B: Buffer + TryDefault<Error = AllocError> + 'static>(
 	loc: &FileLocation,
-) -> Result<Arc<Mutex<dyn Buffer>>, Errno> {
+) -> AllocResult<Arc<Mutex<dyn Buffer>>> {
 	let mut buffers = BUFFERS.lock();
 
 	match buffers.get(loc).cloned() {
 		Some(buff) => Ok(buff),
 
 		None => {
-			let buff: Result<_, Errno> = B::try_default().map_err(Into::into);
-			let buff = Arc::new(Mutex::new(buff?))?;
+			let buff = Arc::new(Mutex::new(B::try_default()?))?;
 			buffers.insert(loc.clone(), buff.clone())?;
 
 			Ok(buff)

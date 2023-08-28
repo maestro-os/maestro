@@ -2,7 +2,8 @@
 //! uses the hash of the key to quickly get the bucket storing the value.
 
 use super::vec::Vec;
-use crate::errno::Errno;
+use crate::errno::AllocResult;
+use crate::util::AllocError;
 use crate::util::TryClone;
 use core::borrow::Borrow;
 use core::fmt;
@@ -103,7 +104,7 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	/// Inserts a new element into the bucket.
 	///
 	/// If the key was already present, the function returns the previous value.
-	pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, Errno> {
+	pub fn insert(&mut self, k: K, v: V) -> AllocResult<Option<V>> {
 		let old = self.remove(&k);
 		self.elements.push((k, v))?;
 		Ok(old)
@@ -127,8 +128,12 @@ impl<K: Eq + Hash, V> Bucket<K, V> {
 	}
 }
 
-impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for Bucket<K, V> {
-	fn try_clone(&self) -> Result<Self, Errno> {
+impl<K: Eq + Hash + TryClone<Error = E>, V: TryClone<Error = E>, E: From<AllocError>> TryClone
+	for Bucket<K, V>
+{
+	type Error = E;
+
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut v = Vec::with_capacity(self.elements.len())?;
 		for (key, value) in self.elements.iter() {
 			v.push((key.try_clone()?, value.try_clone()?))?;
@@ -159,7 +164,7 @@ impl<K: Eq + Hash, V> Default for HashMap<K, V> {
 }
 
 impl<K: Eq + Hash, V, const N: usize> TryFrom<[(K, V); N]> for HashMap<K, V> {
-	type Error = Errno;
+	type Error = AllocError;
 
 	fn try_from(arr: [(K, V); N]) -> Result<Self, Self::Error> {
 		let mut h = HashMap::new();
@@ -280,7 +285,7 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 	/// Inserts a new element into the hash map.
 	///
 	/// If the key was already present, the function returns the previous value.
-	pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, Errno> {
+	pub fn insert(&mut self, k: K, v: V) -> AllocResult<Option<V>> {
 		let index = self.get_bucket_index(&k);
 		if index >= self.buckets.len() {
 			// Creating buckets
@@ -360,8 +365,12 @@ impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
 	}
 }
 
-impl<K: Eq + Hash + TryClone, V: TryClone> TryClone for HashMap<K, V> {
-	fn try_clone(&self) -> Result<Self, Errno> {
+impl<K: Eq + Hash + TryClone<Error = E>, V: TryClone<Error = E>, E: From<AllocError>> TryClone
+	for HashMap<K, V>
+{
+	type Error = E;
+
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(Self {
 			buckets_count: self.buckets_count,
 			buckets: self.buckets.try_clone()?,

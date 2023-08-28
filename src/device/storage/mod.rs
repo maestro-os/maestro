@@ -16,6 +16,7 @@ use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
+use crate::errno::AllocError;
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::Mode;
@@ -555,7 +556,8 @@ impl StorageManager {
 
 		Self::read_partitions(Arc::downgrade(&storage), major, storage_id, prefix)?;
 
-		self.interfaces.push(storage)
+		self.interfaces.push(storage)?;
+		Ok(())
 	}
 
 	// TODO Function to remove a device
@@ -680,7 +682,7 @@ impl DeviceManager for StorageManager {
 			oom::wrap(|| {
 				for interface in ide.detect_all()? {
 					match self.add(interface) {
-						Err(e) if e == errno!(ENOMEM) => return Err(e),
+						Err(e) if e == errno!(ENOMEM) => return Err(AllocError),
 						Err(e) => return Ok(Err(e)),
 
 						_ => {}

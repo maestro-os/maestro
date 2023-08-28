@@ -24,7 +24,7 @@
 //! page table.
 
 use crate::cpu;
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::memory;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
@@ -108,7 +108,7 @@ static mut KERNEL_TABLES: [*mut u32; 256] = [0 as _; 256];
 /// If the table is not initialized, the function initializes it.
 ///
 /// The first time this function is called, it is **not** thread safe.
-unsafe fn get_kernel_tables() -> Result<&'static [*mut u32; 256], Errno> {
+unsafe fn get_kernel_tables() -> AllocResult<&'static [*mut u32; 256]> {
 	if !KERNEL_TABLES_INIT {
 		for table in &mut KERNEL_TABLES {
 			*table = alloc_obj()?;
@@ -125,7 +125,7 @@ unsafe fn get_kernel_tables() -> Result<&'static [*mut u32; 256], Errno> {
 /// # Safety
 ///
 /// The first time this function is called, it is **not** thread safe.
-unsafe fn get_kernel_table(n: usize) -> Result<*mut u32, Errno> {
+unsafe fn get_kernel_table(n: usize) -> AllocResult<*mut u32> {
 	let tables = get_kernel_tables()?;
 	debug_assert!(n < tables.len());
 
@@ -135,7 +135,7 @@ unsafe fn get_kernel_table(n: usize) -> Result<*mut u32, Errno> {
 /// Allocates a paging object and returns its virtual address.
 ///
 /// If the allocation fails, the function returns an error.
-fn alloc_obj() -> Result<*mut u32, Errno> {
+fn alloc_obj() -> AllocResult<*mut u32> {
 	let ptr = buddy::alloc_kernel(0)? as *mut u8;
 
 	// Zero memory
@@ -203,7 +203,7 @@ mod table {
 	use super::*;
 
 	/// Creates an empty page table at index `index` of the page directory.
-	pub fn create(vmem: *mut u32, index: usize, flags: u32) -> Result<(), Errno> {
+	pub fn create(vmem: *mut u32, index: usize, flags: u32) -> AllocResult<()> {
 		debug_assert!(index < 1024);
 		debug_assert!(flags & ADDR_MASK == 0);
 		debug_assert!(flags & FLAG_PAGE_SIZE == 0);
@@ -230,7 +230,7 @@ mod table {
 	///
 	/// This function allocates a new page table and fills it so that the memory mapping keeps the
 	/// same behavior.
-	pub fn expand(vmem: *mut u32, index: usize) -> Result<(), Errno> {
+	pub fn expand(vmem: *mut u32, index: usize) -> AllocResult<()> {
 		let mut dir_entry_value = obj_get(vmem, index);
 		debug_assert!(dir_entry_value & FLAG_PRESENT != 0);
 		debug_assert!(dir_entry_value & FLAG_PAGE_SIZE != 0);
@@ -333,7 +333,7 @@ impl X86VMem {
 	/// Initializes a new page directory.
 	///
 	/// The kernel memory is mapped into the context by default.
-	pub fn new() -> Result<Self, Errno> {
+	pub fn new() -> AllocResult<Self> {
 		let vmem = Self {
 			page_dir: alloc_obj()?,
 		};
@@ -468,7 +468,7 @@ impl VMem for X86VMem {
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
 		mut flags: u32,
-	) -> Result<(), Errno> {
+	) -> AllocResult<()> {
 		#[cfg(config_debug_debug)]
 		self.check_map(virtaddr, physaddr, false);
 
@@ -514,7 +514,7 @@ impl VMem for X86VMem {
 		virtaddr: *const c_void,
 		pages: usize,
 		flags: u32,
-	) -> Result<(), Errno> {
+	) -> AllocResult<()> {
 		debug_assert!(physaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!(
@@ -548,7 +548,7 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn unmap(&mut self, virtaddr: *const c_void) -> Result<(), Errno> {
+	fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<()> {
 		#[cfg(config_debug_debug)]
 		self.check_unmap(virtaddr, false);
 
@@ -581,7 +581,7 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> Result<(), Errno> {
+	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> AllocResult<()> {
 		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
 
@@ -644,7 +644,7 @@ impl VMem for X86VMem {
 }
 
 impl TryClone for X86VMem {
-	fn try_clone(&self) -> Result<Self, Errno> {
+	fn try_clone(&self) -> AllocResult<Self> {
 		let s = Self {
 			page_dir: alloc_obj()?,
 		};

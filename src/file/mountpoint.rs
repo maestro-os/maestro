@@ -9,6 +9,7 @@ use super::FileContent;
 use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
@@ -147,7 +148,7 @@ impl MountSource {
 }
 
 impl TryClone for MountSource {
-	fn try_clone(&self) -> Result<Self, Errno> {
+	fn try_clone(&self) -> AllocResult<Self> {
 		Ok(match self {
 			Self::Device {
 				dev_type,
@@ -437,7 +438,7 @@ pub fn create(
 		mount_points.insert(id, mountpoint.clone())?;
 		if let Err(e) = path_to_id.insert(path, id) {
 			mount_points.remove(&id);
-			return Err(e);
+			return Err(e.into());
 		}
 	}
 

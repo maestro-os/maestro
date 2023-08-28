@@ -222,7 +222,7 @@ impl Gpt {
 
 			// Inserting entry
 			let entry = unsafe {
-				let ptr = malloc::alloc(buff.len())? as *mut u8;
+				let ptr = malloc::alloc(buff.len())?.as_ptr() as *mut u8;
 				let alloc_slice = slice::from_raw_parts_mut(ptr, buff.len());
 				alloc_slice.copy_from_slice(buff.as_slice());
 

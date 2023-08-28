@@ -3,7 +3,7 @@
 
 use super::buddy;
 use super::vmem;
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::process::oom;
 use core::ffi::c_void;
 
@@ -39,7 +39,7 @@ impl MMIO {
 	/// The virtual address is allocated by this function.
 	///
 	/// If not enough physical or virtual memory is available, the function returns an error.
-	pub fn new(phys_addr: *mut c_void, pages: usize, prefetchable: bool) -> Result<Self, Errno> {
+	pub fn new(phys_addr: *mut c_void, pages: usize, prefetchable: bool) -> AllocResult<Self> {
 		let order = buddy::get_order(pages);
 		let virt_addr = buddy::alloc_kernel(order)?;
 
@@ -74,7 +74,7 @@ impl MMIO {
 	/// Unmaps the MMIO chunk.
 	///
 	/// The previously allocated chunk is freed by this function.
-	pub fn unmap(&self) -> Result<(), Errno> {
+	pub fn unmap(&self) -> AllocResult<()> {
 		let mut vmem = crate::get_vmem().lock();
 		vmem.as_mut().unwrap().map_range(
 			self.phys_addr,

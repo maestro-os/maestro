@@ -144,10 +144,8 @@ pub fn do_mmap(
 
 	// The pointer on the virtual memory to the beginning of the mapping
 	let result = mem_space.map(constraint, pages, flags, residence.clone());
-
-	let result = match result {
-		Ok(ptr) => Ok(ptr),
-
+	match result {
+		Ok(ptr) => Ok(ptr as _),
 		Err(e) => {
 			if constraint != MapConstraint::None {
 				mem_space.map(MapConstraint::None, pages, flags, residence)
@@ -155,9 +153,7 @@ pub fn do_mmap(
 				Err(e)
 			}
 		}
-	};
-
-	result.map(|ptr| ptr as _)
+	}
 }
 
 // TODO Check last arg type

@@ -1,6 +1,7 @@
 //! This file implements sockets.
 
 use super::Buffer;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::file::buffer::BlockHandler;
 use crate::net::osi;
@@ -52,7 +53,7 @@ pub struct Socket {
 
 impl Socket {
 	/// Creates a new instance.
-	pub fn new(desc: SocketDesc) -> Result<Arc<Mutex<Self>>, Errno> {
+	pub fn new(desc: SocketDesc) -> AllocResult<Arc<Mutex<Self>>> {
 		Arc::new(Mutex::new(Self {
 			desc,
 			stack: None,
@@ -162,7 +163,7 @@ impl Socket {
 }
 
 impl TryDefault for Socket {
-	fn try_default() -> Result<Self, Errno> {
+	fn try_default() -> Result<Self, Self::Error> {
 		let desc = SocketDesc {
 			domain: SocketDomain::AfUnix,
 			type_: SocketType::SockRaw,

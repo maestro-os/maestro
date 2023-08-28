@@ -4,12 +4,13 @@
 
 use super::chunk::Chunk;
 use super::chunk::FreeChunk;
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::memory;
 use crate::memory::buddy;
 use crate::util::math;
 use core::mem::offset_of;
 use core::mem::size_of;
+use core::num::NonZeroUsize;
 use core::ptr;
 
 /// Structure representing a frame of memory allocated using the buddy
@@ -30,13 +31,13 @@ impl Block {
 	/// The buddy allocator must be initialized before using this function.
 	///
 	/// The underlying chunk created by this function is **not** inserted into the free list.
-	pub fn new(min_size: usize) -> Result<&'static mut Self, Errno> {
-		let min_total_size = size_of::<Block>() + min_size;
+	pub fn new(min_size: NonZeroUsize) -> AllocResult<&'static mut Self> {
+		let min_total_size = size_of::<Block>() + min_size.get();
 		let block_order = buddy::get_order(math::ceil_div(min_total_size, memory::PAGE_SIZE));
 
 		// The size of the first chunk
 		let first_chunk_size = buddy::get_frame_size(block_order) - size_of::<Block>();
-		debug_assert!(first_chunk_size >= min_size);
+		debug_assert!(first_chunk_size >= min_size.get());
 
 		// Allocate the block
 		let ptr = buddy::alloc_kernel(block_order)? as *mut Block;

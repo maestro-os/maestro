@@ -1,6 +1,6 @@
 //! This module implements statistics about memory usage.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::util::container::string::String;
 use crate::util::lock::Mutex;
 
@@ -14,7 +14,7 @@ pub struct MemInfo {
 
 impl MemInfo {
 	/// Returns the string representation of the current structure.
-	pub fn to_string(&self) -> Result<String, Errno> {
+	pub fn to_string(&self) -> AllocResult<String> {
 		crate::format!(
 			"MemTotal: {} kB
 MemFree: {} kB

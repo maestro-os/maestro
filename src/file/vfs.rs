@@ -71,22 +71,22 @@ impl VFS {
 			FileLocation::Filesystem {
 				inode, ..
 			} => {
-				// Getting the mountpoint
+				// Get the mountpoint
 				let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 				let mountpoint = mountpoint_mutex.lock();
 
-				// Getting the IO interface
+				// Get the IO interface
 				let io_mutex = mountpoint.get_source().get_io()?;
 				let mut io = io_mutex.lock();
 
-				// The filesystem
 				let fs_mutex = mountpoint.get_filesystem();
 				let mut fs = fs_mutex.lock();
 
 				let mut file = fs.load_file(&mut *io, *inode, String::new())?;
-
 				update_location(&mut file, &mountpoint);
-				Arc::new(Mutex::new(file))
+
+				let file = Arc::new(Mutex::new(file))?;
+				Ok(file)
 			}
 
 			FileLocation::Virtual {
@@ -95,14 +95,15 @@ impl VFS {
 				let name = crate::format!("virtual:{}", id)?;
 				let content = FileContent::Fifo; // TODO
 
-				Arc::new(Mutex::new(File::new(
+				let file = Arc::new(Mutex::new(File::new(
 					name,
 					0, // TODO
 					0, // TODO
 					0o666,
 					location.clone(),
 					content,
-				)?))
+				)?))?;
+				Ok(file)
 			}
 		}
 	}
@@ -146,7 +147,8 @@ impl VFS {
 			drop(fs);
 
 			update_location(&mut file, &mountpoint);
-			return Arc::new(Mutex::new(file));
+			let file = Arc::new(Mutex::new(file))?;
+			return Ok(file);
 		}
 		// Checking permissions
 		if !file.can_execute(uid, gid) {
@@ -203,7 +205,8 @@ impl VFS {
 		drop(fs);
 
 		update_location(&mut file, &mountpoint);
-		Arc::new(Mutex::new(file))
+		let file = Arc::new(Mutex::new(file))?;
+		Ok(file)
 	}
 
 	// TODO Add a param to choose between the mountpoint and the fs root?
@@ -286,7 +289,9 @@ impl VFS {
 
 		file.set_parent_path(parent.get_path()?);
 		update_location(&mut file, &mountpoint);
-		Arc::new(Mutex::new(file))
+
+		let file = Arc::new(Mutex::new(file))?;
+		Ok(file)
 	}
 
 	// TODO Use the cache
@@ -366,7 +371,8 @@ impl VFS {
 
 		drop(fs);
 		update_location(&mut file, &mountpoint);
-		Arc::new(Mutex::new(file))
+		let file = Arc::new(Mutex::new(file))?;
+		Ok(file)
 	}
 
 	/// Creates a new hard link.

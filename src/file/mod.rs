@@ -289,7 +289,7 @@ impl FileContent {
 }
 
 impl TryClone for FileContent {
-	fn try_clone(&self) -> Result<Self, Errno> {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let s = match self {
 			Self::Regular => Self::Regular,
 			Self::Directory(entries) => Self::Directory(entries.try_clone()?),

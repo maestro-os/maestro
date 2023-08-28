@@ -21,6 +21,7 @@ pub mod user_desc;
 
 use crate::cpu;
 use crate::errno;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::event;
 use crate::event::CallbackResult;
@@ -469,7 +470,7 @@ impl Process {
 	}
 
 	/// Registers the current process to the procfs.
-	fn register_procfs(&self) -> Result<(), Errno> {
+	fn register_procfs(&self) -> AllocResult<()> {
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
 		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
 			return Ok(());
@@ -484,7 +485,7 @@ impl Process {
 	}
 
 	/// Unregisters the current process from the procfs.
-	fn unregister_procfs(&self) -> Result<(), Errno> {
+	fn unregister_procfs(&self) -> AllocResult<()> {
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
 		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
 			return Ok(());
@@ -793,7 +794,7 @@ impl Process {
 	}
 
 	/// Adds the process with the given PID `pid` as child to the process.
-	pub fn add_child(&mut self, pid: Pid) -> Result<(), Errno> {
+	pub fn add_child(&mut self, pid: Pid) -> AllocResult<()> {
 		let i = match self.children.binary_search(&pid) {
 			Ok(i) => i,
 			Err(i) => i,
@@ -946,7 +947,7 @@ impl Process {
 					.lock()
 					.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
 
-				(curr_mem_space, Some(new_kernel_stack as _))
+				(curr_mem_space, Some(new_kernel_stack.as_ptr()))
 			} else {
 				(
 					Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?,
@@ -965,7 +966,7 @@ impl Process {
 					let fds = fds.lock();
 					let new_fds = fds.duplicate(false)?;
 
-					Arc::new(Mutex::new(new_fds))
+					Ok(Arc::new(Mutex::new(new_fds))?)
 				})
 				.transpose()?
 		};
@@ -1327,10 +1328,8 @@ impl Drop for Process {
 		// the same memory space with several other processes. And since, each process
 		// has its own kernel stack, not freeing it could result in a memory leak
 		oom::wrap(|| {
-			if let Some(kernel_stack) = self.kernel_stack {
-				if let Some(mutex) = &self.mem_space {
-					mutex.lock().unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
-				}
+			if let (Some(mutex), Some(kernel_stack)) = (&self.mem_space, self.kernel_stack) {
+				mutex.lock().unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
 			}
 
 			Ok(())

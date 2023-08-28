@@ -1,7 +1,7 @@
 //! This module implements randomness functions.
 
 use crate::crypto::chacha20;
-use crate::errno::Errno;
+use crate::errno::EResult;
 use crate::util::container::ring_buffer::RingBuffer;
 use crate::util::container::vec::Vec;
 use crate::util::lock::IntMutex;
@@ -30,7 +30,7 @@ pub struct EntropyPool {
 
 impl EntropyPool {
 	/// Creates a new instance.
-	pub fn new() -> Result<Self, Errno> {
+	pub fn new() -> EResult<Self> {
 		Ok(Self {
 			pending: RingBuffer::new(crate::vec![0; 56]?),
 			buff: RingBuffer::new(crate::vec![0; ENTROPY_BUFFER_SIZE]?),
@@ -144,7 +144,7 @@ impl EntropyPool {
 pub static ENTROPY_POOL: IntMutex<Option<EntropyPool>> = IntMutex::new(None);
 
 /// Initializes randomness sources.
-pub fn init() -> Result<(), Errno> {
+pub fn init() -> EResult<()> {
 	*ENTROPY_POOL.lock() = Some(EntropyPool::new()?);
 
 	Ok(())

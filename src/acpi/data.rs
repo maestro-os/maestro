@@ -182,14 +182,14 @@ impl ACPIData {
 				};
 
 				let b = unsafe {
-					let ptr = malloc::alloc(table.get_length()).unwrap();
+					let ptr = malloc::alloc(table.get_length().try_into().unwrap()).unwrap();
 					ptr::copy_nonoverlapping(
 						table as *const _ as *const _,
-						ptr,
+						ptr.as_mut(),
 						table.get_length(),
 					);
 
-					Box::from_raw(ptr as *mut ())
+					Box::from_raw(ptr.as_ptr() as *mut ())
 				};
 				tables.insert(table.get_signature(), b).unwrap();
 			});

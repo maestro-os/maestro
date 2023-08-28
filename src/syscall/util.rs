@@ -1,6 +1,7 @@
 //! This module implements utility functions for system calls.
 
 use crate::errno;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
@@ -25,7 +26,7 @@ use core::mem::size_of;
 /// Arguments:
 /// - `process` is the process.
 /// - `path` is the path.
-pub fn get_absolute_path(process: &Process, path: Path) -> Result<Path, Errno> {
+pub fn get_absolute_path(process: &Process, path: Path) -> AllocResult<Path> {
 	let path = if !path.is_absolute() {
 		process.cwd.concat(&path)?
 	} else {
@@ -95,7 +96,7 @@ fn build_path_from_fd(
 		Ok(path)
 	} else if dirfd == super::access::AT_FDCWD {
 		// Using path relative to the current working directory
-		process.cwd.concat(&path)
+		Ok(process.cwd.concat(&path)?)
 	} else {
 		// Using path relative to the directory given by `dirfd`
 
@@ -119,7 +120,7 @@ fn build_path_from_fd(
 		let file_mutex = open_file.get_file()?;
 		let file = file_mutex.lock();
 
-		file.get_path()?.concat(&path)
+		Ok(file.get_path()?.concat(&path)?)
 	}
 }
 

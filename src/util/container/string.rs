@@ -1,7 +1,8 @@
 //! This module implements the String structure which wraps the `str` type.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::util::container::vec::Vec;
+use crate::util::AllocError;
 use crate::util::TryClone;
 use core::borrow::Borrow;
 use core::borrow::BorrowMut;
@@ -81,12 +82,12 @@ impl String {
 
 	/// Appends the given byte `b` to the end of the string.
 	#[inline]
-	pub fn push(&mut self, b: u8) -> Result<(), Errno> {
+	pub fn push(&mut self, b: u8) -> AllocResult<()> {
 		self.data.push(b)
 	}
 
 	/// Appends the given char `ch` to the end of the string.
-	pub fn push_char(&mut self, ch: char) -> Result<(), Errno> {
+	pub fn push_char(&mut self, ch: char) -> AllocResult<()> {
 		if ch.len_utf8() == 1 {
 			return self.data.push(ch as u8);
 		}
@@ -114,7 +115,7 @@ impl String {
 
 	/// Appends the string `other` to the current.
 	#[inline]
-	pub fn push_str<S: AsRef<[u8]>>(&mut self, other: S) -> Result<(), Errno> {
+	pub fn push_str<S: AsRef<[u8]>>(&mut self, other: S) -> AllocResult<()> {
 		self.data.extend_from_slice(other.as_ref())
 	}
 
@@ -126,7 +127,7 @@ impl String {
 }
 
 impl TryFrom<&[u8]> for String {
-	type Error = Errno;
+	type Error = AllocError;
 
 	fn try_from(s: &[u8]) -> Result<Self, Self::Error> {
 		Ok(Self {
@@ -136,7 +137,7 @@ impl TryFrom<&[u8]> for String {
 }
 
 impl<const N: usize> TryFrom<&[u8; N]> for String {
-	type Error = Errno;
+	type Error = AllocError;
 
 	fn try_from(s: &[u8; N]) -> Result<Self, Self::Error> {
 		Self::try_from(s.as_slice())
@@ -144,7 +145,7 @@ impl<const N: usize> TryFrom<&[u8; N]> for String {
 }
 
 impl TryFrom<&str> for String {
-	type Error = Errno;
+	type Error = AllocError;
 
 	fn try_from(s: &str) -> Result<Self, Self::Error> {
 		Self::try_from(s.as_bytes())
@@ -178,7 +179,7 @@ impl BorrowMut<[u8]> for String {
 }
 
 impl Add for String {
-	type Output = Result<Self, Errno>;
+	type Output = Result<Self, AllocError>;
 
 	fn add(mut self, other: Self) -> Self::Output {
 		self.push_str(other)?;
@@ -229,7 +230,7 @@ impl Hash for String {
 }
 
 impl TryClone for String {
-	fn try_clone(&self) -> Result<Self, Errno> {
+	fn try_clone(&self) -> AllocResult<Self> {
 		Ok(Self {
 			data: self.data.try_clone()?,
 		})
@@ -261,7 +262,7 @@ impl fmt::Display for String {
 /// Writer used to turned a format into an allocated string.
 pub struct StringWriter {
 	/// The final string resulting from the formatting.
-	pub final_str: Option<Result<String, Errno>>,
+	pub final_str: Option<AllocResult<String>>,
 }
 
 impl Write for StringWriter {
@@ -281,7 +282,7 @@ impl Write for StringWriter {
 }
 
 /// This function must be used only through the `format` macro.
-pub fn _format(args: fmt::Arguments) -> Result<String, Errno> {
+pub fn _format(args: fmt::Arguments) -> AllocResult<String> {
 	let mut w = StringWriter {
 		final_str: None,
 	};

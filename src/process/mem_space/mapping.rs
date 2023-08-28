@@ -13,6 +13,7 @@ use crate::memory::physical_ref_counter::PhysRefCounter;
 use crate::memory::vmem;
 use crate::memory::vmem::VMem;
 use crate::process::oom;
+use crate::process::AllocResult;
 use crate::util::io::IO;
 use crate::util::lock::*;
 use core::ffi::c_void;
@@ -198,7 +199,7 @@ impl MemMapping {
 	/// new physical page with the same data.
 	///
 	/// If a physical page is already mapped, the function does nothing.
-	pub fn map(&mut self, offset: usize) -> Result<(), Errno> {
+	pub fn map(&mut self, offset: usize) -> AllocResult<()> {
 		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
 
@@ -272,7 +273,7 @@ impl MemMapping {
 	/// instead of the default page.
 	///
 	/// The default page is dependent on the nature of the mapping's residence.
-	pub fn map_default(&mut self) -> Result<(), Errno> {
+	pub fn map_default(&mut self) -> AllocResult<()> {
 		let use_default =
 			self.flags & super::MAPPING_FLAG_NOLAZY == 0 && self.residence.is_normal();
 
@@ -319,7 +320,7 @@ impl MemMapping {
 	/// If the physical pages the mapping points to are not shared, the function frees them.
 	///
 	/// This function doesn't flush the virtual memory context.
-	pub fn unmap(&mut self) -> Result<(), Errno> {
+	pub fn unmap(&mut self) -> AllocResult<()> {
 		// Removing physical pages
 		for i in 0..self.size.get() {
 			self.free_phys_page(i);
@@ -440,7 +441,7 @@ impl MemMapping {
 	/// function.
 	///
 	/// The function returns a mutable reference to the newly created mapping.
-	pub fn fork<'a>(&mut self, mem_space: &'a mut MemSpace) -> Result<&'a mut Self, Errno> {
+	pub fn fork<'a>(&mut self, mem_space: &'a mut MemSpace) -> AllocResult<&'a mut Self> {
 		let mut new_mapping = Self {
 			begin: self.begin,
 			size: self.size,

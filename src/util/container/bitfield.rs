@@ -1,5 +1,6 @@
 //! This module stores the Bitfield structure.
 
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::util::bit_size_of;
 use crate::util::container::vec::Vec;
@@ -119,7 +120,7 @@ impl Bitfield {
 }
 
 impl TryClone for Bitfield {
-	fn try_clone(&self) -> Result<Self, Errno> {
+	fn try_clone(&self) -> AllocResult<Self> {
 		Ok(Self {
 			data: self.data.try_clone()?,
 			len: self.len,

@@ -4,7 +4,7 @@
 //! For each page that is referenced more than once, the counter stores the
 //! number of references to that page.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::memory;
 use crate::util;
 use crate::util::container::hashmap::HashMap;
@@ -53,7 +53,7 @@ impl PhysRefCounter {
 	/// `ptr` is the physical address of the page.
 	///
 	/// If the page isn't stored into the structure, the function adds it.
-	pub fn increment(&mut self, ptr: *const c_void) -> Result<(), Errno> {
+	pub fn increment(&mut self, ptr: *const c_void) -> AllocResult<()> {
 		let ptr = util::down_align(ptr, memory::PAGE_SIZE);
 
 		if let Some(ref_count) = self.ref_counts.get_mut(&ptr) {

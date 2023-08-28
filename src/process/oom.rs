@@ -2,8 +2,7 @@
 //! memory. It kills one or more processes according to a score computed for
 //! each of them.
 
-use crate::errno;
-use crate::process::Errno;
+use crate::errno::AllocResult;
 use crate::util::lock::Mutex;
 
 /// The maximum number of times the kernel tries to kill a process to retrieve
@@ -37,15 +36,10 @@ pub fn kill() {
 /// On fail due to a lack of memory, the function runs the OOM killer, then tries again.
 ///
 /// If the OOM killer is unable to free enough memory, the kernel may panic.
-pub fn wrap<T, F: FnMut() -> Result<T, Errno>>(mut f: F) -> T {
+pub fn wrap<T, F: FnMut() -> AllocResult<T>>(mut f: F) -> T {
 	for _ in 0..MAX_TRIES {
-		match f() {
-			Ok(r) => return r,
-			Err(e) if e.as_int() != errno::ENOMEM => {
-				panic!("OOM killer received error: {}", e);
-			}
-
-			_ => {}
+		if let Ok(r) = f() {
+			return r;
 		}
 
 		kill();

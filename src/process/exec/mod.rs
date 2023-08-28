@@ -90,7 +90,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
 			let fds = fds_mutex.lock();
 			let new_fds = fds.duplicate(true)?;
 
-			Arc::new(Mutex::new(new_fds))
+			Ok(Arc::new(Mutex::new(new_fds))?)
 		})
 		.transpose()?;
 

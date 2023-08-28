@@ -10,6 +10,7 @@ mod mapping;
 pub mod ptr;
 
 use crate::errno;
+use crate::errno::AllocError;
 use crate::errno::Errno;
 use crate::file::Gid;
 use crate::file::Uid;
@@ -22,6 +23,7 @@ use crate::memory::vmem;
 use crate::memory::vmem::VMem;
 use crate::process::oom;
 use crate::process::open_file::OpenFile;
+use crate::process::AllocResult;
 use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::map::Map;
@@ -119,17 +121,16 @@ impl MapResidence {
 	}
 
 	/// TODO doc
-	fn alloc() -> Result<*const c_void, Errno> {
+	fn alloc() -> AllocResult<*const c_void> {
 		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
 
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
 
 		match ref_counter.increment(ptr) {
 			Ok(()) => Ok(ptr),
-
-			Err(errno) => {
+			Err(e) => {
 				buddy::free(ptr, 0);
-				Err(errno)
+				Err(e)
 			}
 		}
 	}
@@ -148,7 +149,7 @@ impl MapResidence {
 	///
 	/// Since the function might reuse the same page for several allocation, the page must be freed
 	/// only using the `free_page` function associated with the current instance.
-	pub fn alloc_page(&self, off: usize) -> Result<*const c_void, Errno> {
+	pub fn alloc_page(&self, off: usize) -> AllocResult<*const c_void> {
 		match self {
 			MapResidence::Normal => Self::alloc(),
 
@@ -257,7 +258,7 @@ pub struct MemSpace {
 
 impl MemSpace {
 	/// Inserts the given gap into the memory space's structures.
-	fn gap_insert(&mut self, gap: MemGap) -> Result<(), Errno> {
+	fn gap_insert(&mut self, gap: MemGap) -> AllocResult<()> {
 		let gap_ptr = gap.get_begin();
 		let g = self.gaps.insert(gap_ptr, gap)?;
 
@@ -325,7 +326,7 @@ impl MemSpace {
 	}
 
 	/// Clones the `gaps_size` field.
-	fn gaps_size_clone(&self) -> Result<Map<(NonZeroUsize, *const c_void), ()>, Errno> {
+	fn gaps_size_clone(&self) -> AllocResult<Map<(NonZeroUsize, *const c_void), ()>> {
 		let mut gaps_size = Map::new();
 		for (g, _) in &self.gaps_size {
 			gaps_size.insert(g.clone(), ())?;
@@ -337,7 +338,7 @@ impl MemSpace {
 	/// Creates a new virtual memory object.
 	///
 	/// `brk_ptr` is the initial pointer for the `brk` syscall.
-	pub fn new() -> Result<Self, Errno> {
+	pub fn new() -> AllocResult<Self> {
 		let mut s = Self {
 			gaps: Map::new(),
 			gaps_size: Map::new(),
@@ -390,10 +391,10 @@ impl MemSpace {
 	pub fn map(
 		&mut self,
 		map_constraint: MapConstraint,
-		size: usize,
+		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
-	) -> Result<*mut c_void, Errno> {
+	) -> AllocResult<NonNull<c_void>> {
 		// Checking arguments are valid
 		match map_constraint {
 			MapConstraint::Fixed(ptr) | MapConstraint::Hint(ptr) => {
@@ -404,7 +405,6 @@ impl MemSpace {
 
 			_ => {}
 		}
-		let size = NonZeroUsize::new(size).ok_or_else(|| errno!(EINVAL))?;
 
 		// Mapping informations matching mapping constraints
 		let (gap, addr) = match map_constraint {
@@ -419,7 +419,7 @@ impl MemSpace {
 			// match the address returned by the `mmap` syscall)
 			MapConstraint::Hint(addr) => {
 				// Getting the gap for the pointer
-				let mut gap = Self::gap_by_ptr(&self.gaps, addr).ok_or_else(|| errno!(ENOMEM))?;
+				let mut gap = Self::gap_by_ptr(&self.gaps, addr).ok_or_else(|| AllocError)?;
 
 				// The offset in the gap
 				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
@@ -429,7 +429,7 @@ impl MemSpace {
 				if end > gap.get_size() {
 					// Hint cannot be satisfied. Get a gap large enough
 					gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
-						.ok_or_else(|| errno!(ENOMEM))?;
+						.ok_or_else(|| AllocError)?;
 				}
 
 				let addr = unsafe { gap.get_begin().add(off * memory::PAGE_SIZE) };
@@ -437,8 +437,8 @@ impl MemSpace {
 			}
 
 			MapConstraint::None => {
-				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
-					.ok_or_else(|| errno!(ENOMEM))?;
+				let gap =
+					Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or_else(|| AllocError)?;
 				(Some(gap), gap.get_begin())
 			}
 		};
@@ -478,23 +478,23 @@ impl MemSpace {
 		}
 
 		self.vmem_usage += size.get();
-		Ok(addr as *mut _)
+		Ok(NonNull::new(addr).unwrap())
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the
 	/// memory mapping.
-	pub fn map_stack(&mut self, size: usize, flags: u8) -> Result<*mut c_void, Errno> {
+	pub fn map_stack(&mut self, size: usize, flags: u8) -> AllocResult<NonNull<c_void>> {
 		let mapping_ptr = self.map(MapConstraint::None, size, flags, MapResidence::Normal)?;
 
 		Ok(unsafe {
 			// Safe because the new pointer stays in the range of the allocated mapping
-			mapping_ptr.add(size * memory::PAGE_SIZE)
+			mapping_ptr.as_ptr().add(size * memory::PAGE_SIZE).into()
 		})
 	}
 
 	/// Same as `unmap`, except the function takes a pointer to the end of the
 	/// memory mapping.
-	pub fn unmap_stack(&mut self, ptr: *const c_void, size: usize) -> Result<(), Errno> {
+	pub fn unmap_stack(&mut self, ptr: *const c_void, size: usize) -> AllocResult<()> {
 		// Safe because the new pointer stays in the range of the allocated mapping
 		let ptr = unsafe { ptr.sub(size * memory::PAGE_SIZE) };
 
@@ -567,7 +567,7 @@ impl MemSpace {
 	/// After this function returns, the access to the mapping of memory shall
 	/// be revoked and further attempts to access it shall result in a page
 	/// fault.
-	pub fn unmap(&mut self, ptr: *const c_void, size: usize, brk: bool) -> Result<(), Errno> {
+	pub fn unmap(&mut self, ptr: *const c_void, size: usize, brk: bool) -> AllocResult<()> {
 		if !ptr.is_aligned_to(memory::PAGE_SIZE) {
 			return Err(errno!(EINVAL));
 		}
@@ -760,7 +760,7 @@ impl MemSpace {
 	}
 
 	/// Performs the fork operation.
-	fn do_fork(&mut self) -> Result<Self, Errno> {
+	fn do_fork(&mut self) -> AllocResult<Self> {
 		let mut mem_space = Self {
 			gaps: self.gaps.try_clone()?,
 			gaps_size: self.gaps_size_clone()?,
@@ -787,16 +787,8 @@ impl MemSpace {
 	}
 
 	/// Clones the current memory space for process forking.
-	pub fn fork(&mut self) -> Result<MemSpace, Errno> {
-		let mut result = Err(errno!(EINVAL));
-
-		idt::wrap_disable_interrupts(|| unsafe {
-			stack::switch(None, || {
-				result = self.do_fork();
-			})
-		})?;
-
-		result
+	pub fn fork(&mut self) -> AllocResult<MemSpace> {
+		idt::wrap_disable_interrupts(|| unsafe { stack::switch(None, || self.do_fork()) })
 	}
 
 	/// Allocates the physical pages to write on the given pointer.
@@ -806,7 +798,7 @@ impl MemSpace {
 	/// The size of the memory chunk to allocated equals `size_of::<T>() * len`.
 	///
 	/// If the mapping doesn't exist, the function returns an error.
-	pub fn alloc<T>(&mut self, virt_addr: *const T, len: usize) -> Result<(), Errno> {
+	pub fn alloc<T>(&mut self, virt_addr: *const T, len: usize) -> AllocResult<()> {
 		let mut off = 0;
 
 		while off < size_of::<T>() * len {
@@ -818,8 +810,6 @@ impl MemSpace {
 				oom::wrap(|| mapping.map(page_offset));
 
 				mapping.update_vmem(page_offset);
-			} else {
-				return Err(errno!(EINVAL));
 			}
 
 			off += util::up_align(virt_addr, memory::PAGE_SIZE) as usize - virt_addr as usize;
@@ -877,13 +867,13 @@ impl MemSpace {
 	/// Sets the pointer for the `brk` syscall.
 	///
 	/// If the memory cannot be allocated, the function returns an error.
-	pub fn set_brk_ptr(&mut self, ptr: *const c_void) -> Result<(), Errno> {
+	pub fn set_brk_ptr(&mut self, ptr: *const c_void) -> AllocResult<()> {
 		if ptr >= self.brk_ptr {
 			// Allocate memory
 
 			// Checking the pointer is valid
 			if ptr > memory::PROCESS_END {
-				return Err(errno!(ENOMEM));
+				return Err(AllocError);
 			}
 
 			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
@@ -901,7 +891,7 @@ impl MemSpace {
 
 			// Checking the pointer is valid
 			if ptr < self.brk_init {
-				return Err(errno!(ENOMEM));
+				return Err(AllocError);
 			}
 
 			let begin = util::align(ptr, memory::PAGE_SIZE);

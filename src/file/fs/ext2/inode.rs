@@ -970,7 +970,7 @@ impl Ext2INode {
 		let mut buff = malloc::Alloc::<u8>::new_default(entry.get_total_size() as _)?;
 		self.read_content(off as _, buff.as_slice_mut(), superblock, io)?;
 
-		unsafe { DirectoryEntry::from(buff.as_slice()) }
+		Ok(unsafe { DirectoryEntry::from(buff.as_slice()) }?)
 	}
 
 	/// Writes the directory entry at offset `off`.
@@ -1130,6 +1130,8 @@ impl Ext2INode {
 		if let Some(entry_off) = self.get_splittable_entry(superblock, io, entry_size)? {
 			let mut entry = self.read_dirent(superblock, io, entry_off)?;
 
+			// cannot fail because size is never zero
+			let entry_size = entry_size.try_into().unwrap();
 			let mut new_entry = entry.split(entry_size)?;
 			self.write_dirent(superblock, io, &entry, entry_off)?;
 
@@ -1143,8 +1145,9 @@ impl Ext2INode {
 				entry_off + entry.get_total_size() as u64,
 			)
 		} else {
-			let entry =
-				DirectoryEntry::new(superblock, entry_inode, blk_size as _, file_type, name)?;
+			// cannot fails because block size is never zero
+			let entry_size = (blk_size as u16).try_into().unwrap();
+			let entry = DirectoryEntry::new(superblock, entry_inode, entry_size, file_type, name)?;
 			self.write_dirent(superblock, io, &entry, self.get_size(superblock))
 		}
 	}
@@ -1252,7 +1255,7 @@ impl Ext2INode {
 		let len = self.get_size(superblock);
 
 		// If small enough, read from inode. Else, read content
-		if len <= SYMLINK_INODE_STORE_LIMIT {
+		let s = if len <= SYMLINK_INODE_STORE_LIMIT {
 			let buff = unsafe {
 				// Safe because in range
 				let ptr = addr_of!(self.direct_block_ptrs) as *const u8;
@@ -1265,7 +1268,8 @@ impl Ext2INode {
 			self.read_content(0, buff.as_slice_mut(), superblock, io)?;
 
 			String::try_from(&buff.as_slice()[..(len as usize)])
-		}
+		}?;
+		Ok(s)
 	}
 
 	/// Sets the link target of the inode.
@@ -1392,7 +1396,7 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 		let entry_result = unsafe { DirectoryEntry::from(&self.buff.as_slice()[inner_off..]) };
 		let entry = match entry_result {
 			Ok(entry) => entry,
-			Err(e) => return Some(Err(e)),
+			Err(e) => return Some(Err(e.into())),
 		};
 
 		// The total size of the entry
