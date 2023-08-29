@@ -2,6 +2,7 @@
 //! represents a subfile in a directory.
 
 use super::Superblock;
+use crate::errno::AllocError;
 use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::file::FileType;
@@ -9,6 +10,7 @@ use crate::memory::malloc;
 use crate::util::boxed::Box;
 use core::cmp::min;
 use core::num::NonZeroU16;
+use core::num::NonZeroUsize;
 use core::slice;
 
 /// Directory entry type indicator: Unknown
@@ -97,7 +99,8 @@ impl DirectoryEntry {
 
 	/// Creates a new instance from a slice.
 	pub unsafe fn from(slice: &[u8]) -> AllocResult<Box<Self>> {
-		let ptr = malloc::alloc(slice.len())?.cast();
+		let len = NonZeroUsize::new(slice.len()).ok_or_else(|| AllocError)?;
+		let ptr = malloc::alloc(len)?.cast();
 		let alloc_slice = slice::from_raw_parts_mut(ptr.as_mut(), slice.len());
 		alloc_slice.copy_from_slice(slice);
 

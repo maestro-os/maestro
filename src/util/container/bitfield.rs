@@ -1,7 +1,6 @@
 //! This module stores the Bitfield structure.
 
 use crate::errno::AllocResult;
-use crate::errno::Errno;
 use crate::util::bit_size_of;
 use crate::util::container::vec::Vec;
 use crate::util::math::ceil_div;
@@ -19,7 +18,7 @@ pub struct Bitfield {
 
 impl Bitfield {
 	/// Creates a new bitfield with the given number of bits `len`.
-	pub fn new(len: usize) -> Result<Self, Errno> {
+	pub fn new(len: usize) -> AllocResult<Self> {
 		let size = ceil_div(len, bit_size_of::<u8>());
 
 		let bitfield = Self {

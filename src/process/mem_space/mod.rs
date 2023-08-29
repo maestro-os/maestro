@@ -9,7 +9,6 @@ mod gap;
 mod mapping;
 pub mod ptr;
 
-use crate::errno;
 use crate::errno::AllocError;
 use crate::errno::Errno;
 use crate::file::Gid;
@@ -38,7 +37,7 @@ use core::ffi::c_void;
 use core::fmt;
 use core::mem::size_of;
 use core::num::NonZeroUsize;
-use core::ptr::null;
+use core::ptr::null_mut;
 use core::ptr::NonNull;
 use gap::MemGap;
 use mapping::MemMapping;
@@ -218,12 +217,12 @@ pub enum MapConstraint {
 	/// The mapping is done at a fixed address.
 	///
 	/// Previous allocations at the same place are unmapped.
-	Fixed(*const c_void),
+	Fixed(*mut c_void),
 
 	/// The mapping is done at a fixed address.
 	///
 	/// If the address range is already in use, the allocation fails.
-	Hint(*const c_void),
+	Hint(*mut c_void),
 
 	/// No constraint.
 	None,
@@ -234,23 +233,23 @@ pub struct MemSpace {
 	/// Binary tree storing the list of memory gaps, ready for new mappings.
 	///
 	/// The container is sorted by pointer to the beginning of the mapping on the virtual memory.
-	gaps: Map<*const c_void, MemGap>,
+	gaps: Map<*mut c_void, MemGap>,
 	/// Binary tree storing the list of memory gaps, sorted by size and then by
 	/// beginning address.
-	gaps_size: Map<(NonZeroUsize, *const c_void), ()>,
+	gaps_size: Map<(NonZeroUsize, *mut c_void), ()>,
 
 	/// Binary tree storing the list of memory mappings.
 	///
 	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
-	mappings: Map<*const c_void, MemMapping>,
+	mappings: Map<*mut c_void, MemMapping>,
 
 	/// The number of used virtual memory pages.
 	vmem_usage: usize,
 
 	/// The initial pointer of the `brk` system call.
-	brk_init: *const c_void,
+	brk_init: *mut c_void,
 	/// The current pointer of the `brk` system call.
-	brk_ptr: *const c_void,
+	brk_ptr: *mut c_void,
 
 	/// The virtual memory context handler.
 	vmem: Box<dyn VMem>,
@@ -275,7 +274,7 @@ impl MemSpace {
 	/// The function returns the removed gap.
 	///
 	/// If the gap didn't exist, the function returns `None`.
-	fn gap_remove(&mut self, gap_begin: *const c_void) -> Option<MemGap> {
+	fn gap_remove(&mut self, gap_begin: *mut c_void) -> Option<MemGap> {
 		let g = self.gaps.remove(&gap_begin)?;
 		self.gaps_size.remove(&(g.get_size(), gap_begin));
 
@@ -291,11 +290,11 @@ impl MemSpace {
 	///
 	/// If no gap large enough is available, the function returns `None`.
 	fn gap_get<'a>(
-		gaps: &'a Map<*const c_void, MemGap>,
-		gaps_size: &Map<(NonZeroUsize, *const c_void), ()>,
+		gaps: &'a Map<*mut c_void, MemGap>,
+		gaps_size: &Map<(NonZeroUsize, *mut c_void), ()>,
 		size: NonZeroUsize,
 	) -> Option<&'a MemGap> {
-		let ((_, ptr), _) = gaps_size.range((size, null::<c_void>())..).next()?;
+		let ((_, ptr), _) = gaps_size.range((size, null_mut::<c_void>())..).next()?;
 		let gap = gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 
@@ -310,7 +309,7 @@ impl MemSpace {
 	/// - `ptr` is the pointer.
 	///
 	/// If no gap contain the pointer, the function returns `None`.
-	fn gap_by_ptr(gaps: &Map<*const c_void, MemGap>, ptr: *const c_void) -> Option<&MemGap> {
+	fn gap_by_ptr(gaps: &Map<*mut c_void, MemGap>, ptr: *const c_void) -> Option<&MemGap> {
 		gaps.cmp_get(|key, value| {
 			let begin = *key;
 			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
@@ -326,7 +325,7 @@ impl MemSpace {
 	}
 
 	/// Clones the `gaps_size` field.
-	fn gaps_size_clone(&self) -> AllocResult<Map<(NonZeroUsize, *const c_void), ()>> {
+	fn gaps_size_clone(&self) -> AllocResult<Map<(NonZeroUsize, *mut c_void), ()>> {
 		let mut gaps_size = Map::new();
 		for (g, _) in &self.gaps_size {
 			gaps_size.insert(g.clone(), ())?;
@@ -347,8 +346,8 @@ impl MemSpace {
 
 			vmem_usage: 0,
 
-			brk_init: null::<_>(),
-			brk_ptr: null::<_>(),
+			brk_init: null_mut::<_>(),
+			brk_ptr: null_mut::<_>(),
 
 			vmem: vmem::new()?,
 		};
@@ -394,12 +393,12 @@ impl MemSpace {
 		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
-	) -> AllocResult<NonNull<c_void>> {
+	) -> AllocResult<*mut c_void> {
 		// Checking arguments are valid
 		match map_constraint {
 			MapConstraint::Fixed(ptr) | MapConstraint::Hint(ptr) => {
 				if !ptr.is_aligned_to(memory::PAGE_SIZE) {
-					return Err(errno!(EINVAL));
+					return Err(AllocError);
 				}
 			}
 
@@ -409,10 +408,10 @@ impl MemSpace {
 		// Mapping informations matching mapping constraints
 		let (gap, addr) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
-				self.unmap(addr, size.get(), false)?;
+				self.unmap(addr, size, false)?;
 				let gap = Self::gap_by_ptr(&self.gaps, addr);
 
-				(gap, addr as _)
+				(gap, addr)
 			}
 
 			// TODO check correctness (had a case where the address of the created mapping didn't
@@ -478,26 +477,24 @@ impl MemSpace {
 		}
 
 		self.vmem_usage += size.get();
-		Ok(NonNull::new(addr).unwrap())
+		Ok(addr)
 	}
 
 	/// Same as `map`, except the function returns a pointer to the end of the
 	/// memory mapping.
-	pub fn map_stack(&mut self, size: usize, flags: u8) -> AllocResult<NonNull<c_void>> {
+	pub fn map_stack(&mut self, size: NonZeroUsize, flags: u8) -> AllocResult<*mut c_void> {
 		let mapping_ptr = self.map(MapConstraint::None, size, flags, MapResidence::Normal)?;
-
 		Ok(unsafe {
 			// Safe because the new pointer stays in the range of the allocated mapping
-			mapping_ptr.as_ptr().add(size * memory::PAGE_SIZE).into()
+			mapping_ptr.add(size.get() * memory::PAGE_SIZE).into()
 		})
 	}
 
 	/// Same as `unmap`, except the function takes a pointer to the end of the
 	/// memory mapping.
-	pub fn unmap_stack(&mut self, ptr: *const c_void, size: usize) -> AllocResult<()> {
+	pub fn unmap_stack(&mut self, ptr: *const c_void, size: NonZeroUsize) -> AllocResult<()> {
 		// Safe because the new pointer stays in the range of the allocated mapping
-		let ptr = unsafe { ptr.sub(size * memory::PAGE_SIZE) };
-
+		let ptr = unsafe { ptr.sub(size.get() * memory::PAGE_SIZE) };
 		self.unmap(ptr, size, false)
 	}
 
@@ -528,7 +525,7 @@ impl MemSpace {
 	///
 	/// If no mapping contains the address, the function returns `None`.
 	fn get_mapping_mut_for_(
-		mappings: &mut Map<*const c_void, MemMapping>,
+		mappings: &mut Map<*mut c_void, MemMapping>,
 		ptr: *const c_void,
 	) -> Option<&mut MemMapping> {
 		mappings.cmp_get_mut(|key, value| {
@@ -567,13 +564,10 @@ impl MemSpace {
 	/// After this function returns, the access to the mapping of memory shall
 	/// be revoked and further attempts to access it shall result in a page
 	/// fault.
-	pub fn unmap(&mut self, ptr: *const c_void, size: usize, brk: bool) -> AllocResult<()> {
+	pub fn unmap(&mut self, ptr: *const c_void, size: NonZeroUsize, brk: bool) -> AllocResult<()> {
 		if !ptr.is_aligned_to(memory::PAGE_SIZE) {
-			return Err(errno!(EINVAL));
+			return Err(AllocError);
 		}
-		let Some(size) = NonZeroUsize::new(size) else {
-			return Ok(());
-		};
 
 		// Removing every mappings in the chunk to unmap
 		let mut i = 0;
@@ -789,6 +783,7 @@ impl MemSpace {
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> AllocResult<MemSpace> {
 		idt::wrap_disable_interrupts(|| unsafe { stack::switch(None, || self.do_fork()) })
+			.flatten()
 	}
 
 	/// Allocates the physical pages to write on the given pointer.
@@ -848,7 +843,7 @@ impl MemSpace {
 	}
 
 	/// Returns the pointer for the `brk` syscall.
-	pub fn get_brk_ptr(&self) -> *const c_void {
+	pub fn get_brk_ptr(&self) -> *mut c_void {
 		self.brk_ptr
 	}
 
@@ -857,7 +852,7 @@ impl MemSpace {
 	/// This function MUST be called *only once*, before the program starts.
 	///
 	/// `ptr` MUST be page-aligned.
-	pub fn set_brk_init(&mut self, ptr: *const c_void) {
+	pub fn set_brk_init(&mut self, ptr: *mut c_void) {
 		debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 
 		self.brk_init = ptr;
@@ -867,7 +862,7 @@ impl MemSpace {
 	/// Sets the pointer for the `brk` syscall.
 	///
 	/// If the memory cannot be allocated, the function returns an error.
-	pub fn set_brk_ptr(&mut self, ptr: *const c_void) -> AllocResult<()> {
+	pub fn set_brk_ptr(&mut self, ptr: *mut c_void) -> AllocResult<()> {
 		if ptr >= self.brk_ptr {
 			// Allocate memory
 

@@ -8,7 +8,6 @@ use super::MemSpace;
 use crate::errno::Errno;
 use crate::memory;
 use crate::memory::buddy;
-use crate::memory::malloc;
 use crate::memory::physical_ref_counter::PhysRefCounter;
 use crate::memory::vmem;
 use crate::memory::vmem::VMem;
@@ -61,7 +60,7 @@ fn get_default_page() -> *const c_void {
 #[derive(Clone)]
 pub struct MemMapping {
 	/// Pointer on the virtual memory to the beginning of the mapping
-	begin: *const c_void,
+	begin: *mut c_void,
 	/// The size of the mapping in pages.
 	size: NonZeroUsize,
 	/// The mapping's flags.
@@ -87,7 +86,7 @@ impl MemMapping {
 	/// If `None`, the mapping doesn't point to any file.
 	/// - `vmem` is the virtual memory context handler associated with the mapping.
 	pub fn new(
-		begin: *const c_void,
+		begin: *mut c_void,
 		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
@@ -107,7 +106,7 @@ impl MemMapping {
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the mapping.
-	pub fn get_begin(&self) -> *const c_void {
+	pub fn get_begin(&self) -> *mut c_void {
 		self.begin
 	}
 
@@ -205,12 +204,12 @@ impl MemMapping {
 
 		let cow_buffer = {
 			if self.is_cow(offset) {
-				let mut cow_buffer = malloc::Alloc::<u8>::new_default(memory::PAGE_SIZE)?;
+				let mut cow_buffer = crate::vec![0u8; memory::PAGE_SIZE]?;
 
 				unsafe {
 					ptr::copy_nonoverlapping(
 						virt_ptr,
-						cow_buffer.as_ptr_mut() as _,
+						cow_buffer.as_mut_slice().as_mut_ptr() as _,
 						memory::PAGE_SIZE,
 					);
 				}

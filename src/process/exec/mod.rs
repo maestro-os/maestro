@@ -47,12 +47,12 @@ pub struct ProgramImage {
 	entry_point: *const c_void,
 
 	/// A pointer to the process's user stack.
-	user_stack: *const c_void,
+	user_stack: *mut c_void,
 	/// A pointer to the initial value of the user stack pointer.
-	user_stack_begin: *const c_void,
+	user_stack_begin: *mut c_void,
 
 	/// A pointer to the process's kernel stack.
-	kernel_stack: *const c_void,
+	kernel_stack: *mut c_void,
 }
 
 /// Trait representing a program executor, whose role is to load a program and

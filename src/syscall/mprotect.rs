@@ -25,7 +25,8 @@ fn prot_to_flags(prot: i32) -> u8 {
 
 #[syscall]
 pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> Result<i32, Errno> {
-	if addr as usize % memory::PAGE_SIZE != 0 {
+	// Checking alignment of `addr` and `length`
+	if !addr.is_aligned_to(memory::PAGE_SIZE) || len == 0 {
 		return Err(errno!(EINVAL));
 	}
 

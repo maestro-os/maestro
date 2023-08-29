@@ -1,6 +1,7 @@
 //! This module handles minor/major numbers, including their allocation.
 
 use crate::device::DeviceType;
+use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::lock::Mutex;
@@ -69,7 +70,7 @@ impl MajorBlock {
 	/// number.
 	///
 	/// If the allocation fails, the function returns an `Err`.
-	pub fn alloc_minor(&mut self, minor: Option<u32>) -> Result<u32, Errno> {
+	pub fn alloc_minor(&mut self, minor: Option<u32>) -> AllocResult<u32> {
 		self.allocator.alloc(minor)
 	}
 

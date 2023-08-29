@@ -19,6 +19,7 @@ use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::copy_nonoverlapping;
 use core::ptr::Pointee;
@@ -205,11 +206,12 @@ impl ACPIData {
 			let pages = (end as usize - begin as usize) / memory::PAGE_SIZE;
 			tmp_vmem.map_range(begin, memory::PAGE_SIZE as _, pages, 0)?;
 
-			let size = pages * memory::PAGE_SIZE;
+			// FIXME: unwrap here is garbage
+			let size = NonZeroUsize::new(pages * memory::PAGE_SIZE).unwrap();
 			let mut dest = malloc::Alloc::<u8>::new_default(size)?;
 			let src = memory::PAGE_SIZE as *const u8;
 			unsafe {
-				copy_nonoverlapping(src, dest.as_ptr_mut(), size);
+				copy_nonoverlapping(src, dest.as_ptr_mut(), size.get());
 			}
 
 			(begin as usize, dest)

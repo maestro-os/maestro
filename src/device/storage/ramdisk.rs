@@ -23,6 +23,7 @@ use crate::util::lock::IntMutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
+use core::num::NonZeroU64;
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;
@@ -47,15 +48,12 @@ impl RAMDisk {
 		}
 	}
 
-	/// Tells whether the disk is allocated.
-	pub fn is_allocated(&self) -> bool {
-		self.data.is_some()
-	}
-
 	/// If not allocated, allocates the disk.
-	pub fn allocate(&mut self) -> Result<(), Errno> {
+	fn allocate(&mut self) -> Result<(), Errno> {
 		if self.data.is_none() {
-			self.data = Some(malloc::Alloc::new_default(RAM_DISK_SIZE)?);
+			self.data = Some(malloc::Alloc::new_default(
+				RAM_DISK_SIZE.try_into().unwrap(),
+			)?);
 		}
 
 		Ok(())
@@ -63,34 +61,33 @@ impl RAMDisk {
 }
 
 impl StorageInterface for RAMDisk {
-	fn get_block_size(&self) -> u64 {
-		512
+	fn get_block_size(&self) -> NonZeroU64 {
+		512.try_into().unwrap()
 	}
 
 	fn get_blocks_count(&self) -> u64 {
-		(RAM_DISK_SIZE as u64) / self.get_block_size()
+		(RAM_DISK_SIZE as u64) / self.get_block_size().get()
 	}
 
 	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
-		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
+		let block_size = self.get_block_size().get();
+		let blocks_count = self.get_blocks_count();
+		if offset > blocks_count || offset + size > blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
-		if !self.is_allocated() {
-			for b in buf {
-				*b = 0;
-			}
-		} else {
-			let block_size = self.get_block_size();
-			let off = offset * block_size;
+		let Some(data) = self.data else {
+			buf.fill(0);
+			return Ok(());
+        };
 
-			for i in 0..size {
-				for j in 0..block_size {
-					let buf_index = (i * block_size + j) as usize;
-					let disk_index = (off + buf_index as u64) as usize;
+		let off = offset * block_size;
+		for i in 0..size {
+			for j in 0..block_size {
+				let buf_index = (i * block_size + j) as usize;
+				let disk_index = (off + buf_index as u64) as usize;
 
-					buf[buf_index] = self.data.as_ref().unwrap()[disk_index];
-				}
+				buf[buf_index] = data[disk_index];
 			}
 		}
 
@@ -98,21 +95,24 @@ impl StorageInterface for RAMDisk {
 	}
 
 	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
-		if offset > self.get_blocks_count() || offset + size > self.get_blocks_count() {
+		let block_size = self.get_block_size().get();
+		let blocks_count = self.get_blocks_count();
+		if offset > blocks_count || offset + size > blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
-		self.allocate()?;
+		if self.data.is_none() {
+			self.allocate()?;
+		}
+		let data = self.data.as_ref().unwrap();
 
-		let block_size = self.get_block_size();
 		let off = offset * block_size;
-
 		for i in 0..size {
 			for j in 0..block_size {
 				let buf_index = (i * block_size + j) as usize;
 				let disk_index = (off + buf_index as u64) as usize;
 
-				self.data.as_mut().unwrap()[disk_index] = buf[buf_index];
+				data[disk_index] = buf[buf_index];
 			}
 		}
 

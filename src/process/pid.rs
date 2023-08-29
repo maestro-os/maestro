@@ -3,7 +3,7 @@
 //! Each process must have an unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.
 
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::util::container::id_allocator::IDAllocator;
 
 /// Type representing a Process ID. This ID is unique for every running
@@ -23,7 +23,7 @@ pub struct PIDManager {
 
 impl PIDManager {
 	/// Creates a new instance.
-	pub fn new() -> Result<Self, Errno> {
+	pub fn new() -> AllocResult<Self> {
 		let mut s = Self {
 			allocator: IDAllocator::new(MAX_PID as _)?,
 		};
@@ -33,7 +33,7 @@ impl PIDManager {
 
 	/// Returns a unused PID and marks it as used.
 	#[must_use = "not freeing a PID shall cause a leak"]
-	pub fn get_unique_pid(&mut self) -> Result<Pid, Errno> {
+	pub fn get_unique_pid(&mut self) -> AllocResult<Pid> {
 		match self.allocator.alloc(None) {
 			Ok(i) => {
 				debug_assert!(i <= MAX_PID as _);

@@ -72,9 +72,9 @@ pub fn do_mmap(
 	let constraint = {
 		if !addr.is_null() {
 			if flags & MAP_FIXED != 0 {
-				MapConstraint::Fixed(addr as *const c_void)
+				MapConstraint::Fixed(addr as _)
 			} else {
-				MapConstraint::Hint(addr as *const c_void)
+				MapConstraint::Hint(addr as _)
 			}
 		} else {
 			MapConstraint::None
@@ -148,9 +148,10 @@ pub fn do_mmap(
 		Ok(ptr) => Ok(ptr as _),
 		Err(e) => {
 			if constraint != MapConstraint::None {
-				mem_space.map(MapConstraint::None, pages, flags, residence)
+				let ptr = mem_space.map(MapConstraint::None, pages, flags, residence)?;
+				Ok(ptr as _)
 			} else {
-				Err(e)
+				Err(e.into())
 			}
 		}
 	}

@@ -7,6 +7,7 @@ use crate::memory;
 use crate::process::Process;
 use crate::util::math;
 use core::ffi::c_void;
+use core::num::NonZeroUsize;
 use macros::syscall;
 
 #[syscall]
@@ -35,6 +36,6 @@ pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
 	proc.get_mem_space()
 		.unwrap()
 		.lock()
-		.unmap(addr, pages, false)?;
+		.unmap(addr, NonZeroUsize::new(pages).unwrap(), false)?;
 	Ok(0)
 }

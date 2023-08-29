@@ -9,6 +9,7 @@
 mod block;
 mod chunk;
 
+use crate::errno::AllocError;
 use crate::errno::AllocResult;
 use crate::memory;
 use crate::memory::malloc::ptr::NonNull;
@@ -53,7 +54,7 @@ pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	free_chunk.check();
 
 	let chunk = &mut free_chunk.chunk;
-	chunk.set_used(true);
+	chunk.used = true;
 
 	let ptr = chunk.get_ptr_mut();
 	debug_assert!(ptr.is_aligned_to(chunk::ALIGNEMENT));
@@ -75,25 +76,24 @@ pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonN
 	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr.as_ptr());
-	assert!(chunk.is_used());
+	assert!(chunk.used);
 
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 
-	let n = n.get();
 	let chunk_size = chunk.get_size();
-	match n.cmp(&chunk_size) {
+	match n.get().cmp(&chunk_size) {
 		Ordering::Less => {
-			chunk.shrink(chunk_size - n);
+			chunk.shrink(chunk_size - n.get());
 			Ok(ptr)
 		}
 
 		Ordering::Greater => {
-			if !chunk.grow(n - chunk_size) {
-				let old_len = min(chunk.get_size(), n);
+			if !chunk.grow(n.get() - chunk_size) {
+				let old_len = min(chunk.get_size(), n.get());
 				let new_ptr = alloc(n)?;
 
-				ptr::copy_nonoverlapping(ptr, new_ptr, old_len);
+				ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut(), old_len);
 
 				free(ptr);
 
@@ -118,7 +118,7 @@ pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonN
 pub unsafe fn free(ptr: NonNull<c_void>) {
 	let _ = MUTEX.lock();
 
-	let chunk = Chunk::from_ptr(ptr);
+	let chunk = Chunk::from_ptr(ptr.as_mut());
 	assert!(chunk.used);
 
 	#[cfg(config_debug_malloc_check)]
@@ -164,9 +164,15 @@ impl<T> Alloc<T> {
 	/// Since the memory is not initialized, objects in the allocation might be
 	/// in an inconsistent state.
 	pub unsafe fn new(size: NonZeroUsize) -> AllocResult<Self> {
-		let ptr = alloc(size * size_of::<T>())?;
-		let slice =
-			NonNull::new(slice::from_raw_parts_mut::<T>(ptr.cast().as_mut(), size)).unwrap();
+		let len = size
+			.checked_mul(size_of::<T>().try_into().unwrap())
+			.ok_or_else(|| AllocError)?;
+		let ptr = alloc(len)?;
+		let slice = NonNull::new(slice::from_raw_parts_mut::<T>(
+			ptr.cast().as_mut(),
+			size.get(),
+		))
+		.unwrap();
 
 		Ok(Self {
 			slice,
@@ -179,11 +185,11 @@ impl<T> Alloc<T> {
 	///
 	/// Since the memory is zero-ed, objects in the allocation might be in an
 	/// inconsistent state.
-	pub unsafe fn new_zero(size: usize) -> AllocResult<Self> {
+	pub unsafe fn new_zero(size: NonZeroUsize) -> AllocResult<Self> {
 		let mut alloc = Self::new(size)?;
 
 		// Zero memory
-		let slice = slice::from_raw_parts_mut(alloc.as_ptr_mut() as *mut u8, size);
+		let slice = slice::from_raw_parts_mut(alloc.as_ptr_mut() as *mut u8, size.get());
 		slice.fill(0);
 
 		Ok(alloc)
@@ -227,8 +233,12 @@ impl<T> Alloc<T> {
 	/// To use this function, one must ensure that zero memory is not an
 	/// inconsistent state for the object `T`.
 	pub unsafe fn realloc_zero(&mut self, n: NonZeroUsize) -> AllocResult<()> {
-		let ptr = realloc(self.slice.cast(), n * size_of::<T>())?;
-		self.slice = NonNull::new(slice::from_raw_parts_mut::<T>(ptr.cast().as_mut(), n)).unwrap();
+		let len = n
+			.checked_mul(size_of::<T>().try_into().unwrap())
+			.ok_or_else(|| AllocError)?;
+		let ptr = realloc(self.slice.cast(), len)?;
+		self.slice =
+			NonNull::new(slice::from_raw_parts_mut::<T>(ptr.cast().as_mut(), n.get())).unwrap();
 
 		Ok(())
 	}
@@ -244,7 +254,7 @@ impl<T: Default> Alloc<T> {
 	/// If the allocation fails, the function shall return an error.
 	///
 	/// The function will fill the memory with the default value for the object T.
-	pub fn new_default(size: usize) -> AllocResult<Self> {
+	pub fn new_default(size: NonZeroUsize) -> AllocResult<Self> {
 		let mut alloc = unsafe {
 			// Safe because the memory is set right after
 			Self::new(size)?
@@ -269,11 +279,11 @@ impl<T: Default> Alloc<T> {
 	///
 	/// If elements are removed, the function `drop` is **not** called on them.
 	/// Thus, the caller must take care of dropping the elements first.
-	pub unsafe fn realloc_default(&mut self, n: usize) -> AllocResult<()> {
+	pub unsafe fn realloc_default(&mut self, n: NonZeroUsize) -> AllocResult<()> {
 		let curr_size = self.len();
 		self.realloc_zero(n)?;
 
-		for i in curr_size..n {
+		for i in curr_size..n.get() {
 			unsafe {
 				// Safe because the pointer is in the range of the slice
 				ptr::write(&mut self.as_slice_mut()[i], T::default());
@@ -291,7 +301,7 @@ impl<T: Clone> Alloc<T> {
 	/// If the allocation fails, the function shall return an error.
 	///
 	/// `val` is a value that will be cloned to fill the memory.
-	pub fn new_clonable(size: usize, val: T) -> AllocResult<Self> {
+	pub fn new_clonable(size: NonZeroUsize, val: T) -> AllocResult<Self> {
 		let mut alloc = unsafe {
 			// Safe because the memory is set right after
 			Self::new(size)?
@@ -326,7 +336,7 @@ impl<T> IndexMut<usize> for Alloc<T> {
 impl<T> Drop for Alloc<T> {
 	fn drop(&mut self) {
 		unsafe {
-			free(self.slice);
+			free(self.slice.cast());
 		}
 	}
 }

@@ -30,6 +30,7 @@ use crate::util::TryClone;
 use core::cmp::min;
 use core::mem::size_of;
 use core::mem::transmute;
+use core::num::NonZeroUsize;
 use core::ptr;
 use version::Dependency;
 use version::Version;
@@ -142,8 +143,10 @@ impl Module {
 			e
 		})?;
 
-		// Allocating memory for the module
-		let mem_size = Self::get_load_size(&parser);
+		// Allocate memory for the module
+		let Some(mem_size) = NonZeroUsize::new(Self::get_load_size(&parser)) else {
+            return Err(errno!(EINVAL));
+        };
 		let mut mem = malloc::Alloc::<u8>::new_default(mem_size)?;
 
 		// The base virtual address at which the module is loaded
@@ -286,7 +289,7 @@ impl Module {
 			deps,
 
 			mem: mem as _,
-			mem_size,
+			mem_size: mem_size.get(),
 
 			fini,
 		})

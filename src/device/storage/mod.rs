@@ -39,6 +39,8 @@ use core::ffi::c_uchar;
 use core::ffi::c_ulong;
 use core::ffi::c_ushort;
 use core::ffi::c_void;
+use core::num::NonZeroU64;
+use core::num::NonZeroUsize;
 use partition::Partition;
 
 /// The major number for storage devices.
@@ -69,7 +71,7 @@ pub trait StorageInterface {
 	/// Returns the size of the storage blocks in bytes.
 	///
 	/// This value is guaranteed to be fixed.
-	fn get_block_size(&self) -> u64;
+	fn get_block_size(&self) -> NonZeroU64;
 	/// Returns the number of storage blocks.
 	///
 	/// This value is guaranteed to be fixed.
@@ -79,7 +81,7 @@ pub trait StorageInterface {
 	///
 	/// This value is guaranteed to be fixed.
 	fn get_size(&self) -> u64 {
-		self.get_block_size() * self.get_blocks_count()
+		self.get_block_size().get() * self.get_blocks_count()
 	}
 
 	/// Reads `size` blocks from storage at block offset `offset`, writing the
@@ -99,10 +101,11 @@ pub trait StorageInterface {
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<(u64, bool), Errno> {
 		let block_size = self.get_block_size();
+		let block_size_usize = NonZeroUsize::new(block_size.get() as _).unwrap();
 		let blocks_count = self.get_blocks_count();
 
 		let blk_begin = offset / block_size;
-		let blk_end = math::ceil_div(offset + buf.len() as u64, block_size);
+		let blk_end = math::ceil_div(offset + buf.len() as u64, block_size.get());
 		if blk_begin > blocks_count || blk_end > blocks_count {
 			return Err(errno!(EINVAL));
 		}
@@ -113,14 +116,14 @@ pub trait StorageInterface {
 
 			let storage_i = offset + i as u64;
 			let block_off = storage_i / block_size;
-			let block_inner_off = (storage_i as usize) % block_size as usize;
+			let block_inner_off = (storage_i as usize) % block_size_usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
-				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size_usize)?;
 				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
-				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
+				let diff = min(remaining_bytes, block_size_usize.get() - block_inner_off);
 				for j in 0..diff {
 					debug_assert!(i + j < buf.len());
 					debug_assert!(block_inner_off + j < tmp_buf.len());
@@ -128,8 +131,8 @@ pub trait StorageInterface {
 				}
 
 				i += diff;
-			} else if (remaining_bytes as u64) < block_size {
-				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+			} else if (remaining_bytes as u64) < block_size.get() {
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size_usize)?;
 				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
 				for j in 0..remaining_bytes {
@@ -140,8 +143,8 @@ pub trait StorageInterface {
 
 				i += remaining_bytes;
 			} else {
-				let remaining_blocks = (remaining_bytes as u64) / block_size;
-				let len = (remaining_blocks * block_size) as usize;
+				let remaining_blocks = (remaining_bytes as u64) / block_size.get();
+				let len = (remaining_blocks * block_size.get()) as usize;
 				debug_assert!(i + len <= buf.len());
 				self.read(&mut buf[i..(i + len)], block_off, remaining_blocks as _)?;
 
@@ -149,7 +152,7 @@ pub trait StorageInterface {
 			}
 		}
 
-		let eof = (offset + buf.len() as u64) >= block_size * blocks_count;
+		let eof = (offset + buf.len() as u64) >= block_size.get() * blocks_count;
 		Ok((buf.len() as _, eof))
 	}
 
@@ -159,10 +162,11 @@ pub trait StorageInterface {
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
 		let block_size = self.get_block_size();
+		let block_size_usize = NonZeroUsize::new(block_size.get() as _).unwrap();
 		let blocks_count = self.get_blocks_count();
 
 		let blk_begin = offset / block_size;
-		let blk_end = math::ceil_div(offset + buf.len() as u64, block_size);
+		let blk_end = math::ceil_div(offset + buf.len() as u64, block_size.get());
 		if blk_begin > blocks_count || blk_end > blocks_count {
 			return Err(errno!(EINVAL));
 		}
@@ -173,14 +177,14 @@ pub trait StorageInterface {
 
 			let storage_i = offset + i as u64;
 			let block_off = storage_i / block_size;
-			let block_inner_off = (storage_i as usize) % block_size as usize;
+			let block_inner_off = (storage_i as usize) % block_size_usize;
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
-				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size_usize)?;
 				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
-				let diff = min(remaining_bytes, block_size as usize - block_inner_off);
+				let diff = min(remaining_bytes, block_size_usize.get() - block_inner_off);
 				for j in 0..diff {
 					debug_assert!(i + j < buf.len());
 					debug_assert!(block_inner_off + j < tmp_buf.len());
@@ -190,8 +194,8 @@ pub trait StorageInterface {
 				self.write(tmp_buf.as_slice(), block_off, 1)?;
 
 				i += diff;
-			} else if (remaining_bytes as u64) < block_size {
-				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size as _)?;
+			} else if (remaining_bytes as u64) < block_size.get() {
+				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size_usize)?;
 				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
 
 				for j in 0..remaining_bytes {
@@ -204,8 +208,8 @@ pub trait StorageInterface {
 
 				i += remaining_bytes;
 			} else {
-				let remaining_blocks = (remaining_bytes as u64) / block_size;
-				let len = (remaining_blocks * block_size) as usize;
+				let remaining_blocks = (remaining_bytes as u64) / block_size.get();
+				let len = (remaining_blocks * block_size.get()) as usize;
 				debug_assert!(i + len <= buf.len());
 				self.write(&buf[i..(i + len)], block_off, remaining_blocks as _)?;
 
@@ -273,7 +277,7 @@ impl DeviceHandle for StorageDeviceHandle {
 				let size = {
 					if let Some(interface) = self.interface.upgrade() {
 						let interface = interface.lock();
-						interface.get_block_size() * interface.get_blocks_count()
+						interface.get_block_size().get() * interface.get_blocks_count()
 					} else {
 						0
 					}
@@ -321,7 +325,7 @@ impl DeviceHandle for StorageDeviceHandle {
 				let blk_size = {
 					if let Some(interface) = self.interface.upgrade() {
 						let interface = interface.lock();
-						interface.get_block_size()
+						interface.get_block_size().get()
 					} else {
 						0
 					}
@@ -365,7 +369,7 @@ impl IO for StorageDeviceHandle {
 				.as_ref()
 				.map(|p| p.get_size())
 				.unwrap_or_else(|| interface.get_blocks_count());
-			interface.get_block_size() * blocks_count
+			interface.get_block_size().get() * blocks_count
 		} else {
 			0
 		}
@@ -378,8 +382,9 @@ impl IO for StorageDeviceHandle {
 			// Check offset
 			let (start, size) = match &self.partition {
 				Some(p) => {
-					let start = p.get_offset() * interface.get_block_size();
-					let size = p.get_size() * interface.get_block_size();
+					let block_size = interface.get_block_size().get();
+					let start = p.get_offset() * block_size;
+					let size = p.get_size() * block_size;
 
 					(start, size)
 				}
@@ -403,8 +408,9 @@ impl IO for StorageDeviceHandle {
 			// Check offset
 			let (start, size) = match &self.partition {
 				Some(p) => {
-					let start = p.get_offset() * interface.get_block_size();
-					let size = p.get_size() * interface.get_block_size();
+					let block_size = interface.get_block_size().get();
+					let start = p.get_offset() * block_size;
+					let size = p.get_size() * block_size;
 
 					(start, size)
 				}

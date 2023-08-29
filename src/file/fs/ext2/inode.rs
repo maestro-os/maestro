@@ -22,6 +22,7 @@ use crate::util::math;
 use core::cmp::max;
 use core::cmp::min;
 use core::mem::size_of;
+use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::addr_of;
 use core::ptr::copy_nonoverlapping;
@@ -626,7 +627,8 @@ impl Ext2INode {
 			let next_off = off - blk_per_blk * inner_index;
 			if self.indirections_free(n - 1, b, next_off, superblock, io)? {
 				// Reading the current block
-				let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
+				let mut buff =
+					malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
 				read_block(begin as _, superblock, io, buff.as_slice_mut())?;
 
 				// If the current block is empty, free it
@@ -736,7 +738,8 @@ impl Ext2INode {
 		}
 
 		let blk_size = superblock.get_block_size();
-		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
+		let mut blk_buff =
+			malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
 
 		let mut i = 0;
 		let max = min(buff.len() as u64, size - off);
@@ -787,7 +790,8 @@ impl Ext2INode {
 		}
 
 		let blk_size = superblock.get_block_size();
-		let mut blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
+		let mut blk_buff =
+			malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
 
 		let mut i = 0;
 		while i < buff.len() {
@@ -884,7 +888,8 @@ impl Ext2INode {
 		let entries_per_blk = blk_size as usize / size_of::<u32>();
 
 		// Reading the block
-		let mut blk_buff = malloc::Alloc::<u32>::new_default(entries_per_blk)?;
+		let mut blk_buff =
+			malloc::Alloc::<u32>::new_default(NonZeroUsize::new(entries_per_blk).unwrap())?;
 		read_block(begin as _, superblock, io, blk_buff.as_slice_mut())?;
 
 		// Free every entries recursively
@@ -967,7 +972,9 @@ impl Ext2INode {
 		self.read_content(off as _, &mut buff, superblock, io)?;
 		let entry = unsafe { DirectoryEntry::from(&buff)? };
 
-		let mut buff = malloc::Alloc::<u8>::new_default(entry.get_total_size() as _)?;
+		let mut buff = malloc::Alloc::<u8>::new_default(
+			NonZeroUsize::new(entry.get_total_size() as _).unwrap(),
+		)?;
 		self.read_content(off as _, buff.as_slice_mut(), superblock, io)?;
 
 		Ok(unsafe { DirectoryEntry::from(buff.as_slice()) }?)
@@ -1017,7 +1024,7 @@ impl Ext2INode {
 				superblock,
 				io,
 
-				buff: malloc::Alloc::<u8>::new_default(blk_size as usize)?,
+				buff: malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?,
 
 				off: 0,
 				size,
@@ -1170,7 +1177,8 @@ impl Ext2INode {
 
 		// Allocating a buffer
 		let blk_size = superblock.get_block_size();
-		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
+		let mut buff =
+			malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
 
 		// The previous free entry with its offset
 		let mut prev_free: Option<(u64, Box<DirectoryEntry>)> = None;
@@ -1264,7 +1272,8 @@ impl Ext2INode {
 
 			String::try_from(buff)
 		} else {
-			let mut buff = malloc::Alloc::<u8>::new_default(limits::SYMLINK_MAX)?;
+			let mut buff =
+				malloc::Alloc::<u8>::new_default(limits::SYMLINK_MAX.try_into().unwrap())?;
 			self.read_content(0, buff.as_slice_mut(), superblock, io)?;
 
 			String::try_from(&buff.as_slice()[..(len as usize)])

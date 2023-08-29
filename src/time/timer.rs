@@ -215,7 +215,7 @@ pub struct TimerManager {
 
 impl TimerManager {
 	/// Creates a manager.
-	pub fn new(pid: Pid) -> Result<Self, Errno> {
+	pub fn new(pid: Pid) -> AllocResult<Self> {
 		Ok(Self {
 			pid,
 

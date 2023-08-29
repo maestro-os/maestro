@@ -9,6 +9,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_uint;
+use core::num::NonZeroUsize;
 use macros::syscall;
 
 #[syscall]
@@ -68,6 +69,9 @@ pub fn splice(
 	}
 
 	let len = min(len, i32::MAX as usize);
+	let Some(len) = NonZeroUsize::new(len) else {
+        return Ok(0);
+    };
 
 	// TODO implement flags
 

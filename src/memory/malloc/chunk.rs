@@ -537,7 +537,7 @@ pub fn get_available_chunk(size: NonZeroUsize) -> AllocResult<&'static mut FreeC
 	#[cfg(config_debug_malloc_check)]
 	free_chunk.check();
 	debug_assert!(free_chunk.chunk.size >= size.get());
-	debug_assert!(!free_chunk.chunk.is_used());
+	debug_assert!(!free_chunk.chunk.used);
 
 	Ok(free_chunk)
 }

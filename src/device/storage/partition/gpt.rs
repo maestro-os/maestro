@@ -13,6 +13,7 @@ use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
 use core::mem::size_of;
+use core::num::NonZeroUsize;
 use core::slice;
 
 /// The signature in the GPT header.
@@ -154,10 +155,10 @@ impl Gpt {
 	///
 	/// If the header is invalid, the function returns an error.
 	fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: i64) -> Result<Self, Errno> {
-		let block_size = storage.get_block_size() as usize;
+		let block_size = NonZeroUsize::new(storage.get_block_size().get() as _).unwrap();
 		let blocks_count = storage.get_blocks_count();
 
-		if size_of::<Gpt>() > block_size {
+		if size_of::<Gpt>() > block_size.get() {
 			return Err(errno!(EINVAL));
 		}
 
@@ -177,17 +178,20 @@ impl Gpt {
 
 	/// Tells whether the header is valid.
 	fn is_valid(&self) -> bool {
-		// Checking signature
 		if self.signature != GPT_SIGNATURE {
 			return false;
 		}
 
 		// TODO Check current header LBA
 
+		if self.entry_size == 0 {
+			return false;
+		}
+
 		let mut lookup_table = [0; 256];
 		compute_crc32_lookuptable(&mut lookup_table, CHECKSUM_POLYNOM);
 
-		// Checking checksum
+		// Check checksum
 		let mut tmp = self.clone();
 		tmp.checksum = 0;
 		if compute_crc32(util::as_slice(&tmp), &lookup_table) != self.checksum {
@@ -209,7 +213,8 @@ impl Gpt {
 		let block_size = storage.get_block_size();
 		let blocks_count = storage.get_blocks_count();
 
-		let mut buff = malloc::Alloc::<u8>::new_default(self.entry_size as _)?;
+		let entry_size = NonZeroUsize::new(self.entry_size as _).unwrap();
+		let mut buff = malloc::Alloc::<u8>::new_default(entry_size)?;
 
 		let entries_start =
 			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
@@ -217,13 +222,14 @@ impl Gpt {
 
 		for i in 0..self.entries_number {
 			// Reading entry
-			let off = (entries_start * block_size) + (i * self.entry_size) as u64;
+			let off = (entries_start * block_size.get()) + (i as u64 * entry_size.get() as u64);
 			storage.read_bytes(buff.as_slice_mut(), off)?;
 
 			// Inserting entry
 			let entry = unsafe {
-				let ptr = malloc::alloc(buff.len())?.as_ptr() as *mut u8;
-				let alloc_slice = slice::from_raw_parts_mut(ptr, buff.len());
+				let ptr = malloc::alloc(entry_size)?;
+				let alloc_slice: &mut [u8] =
+					slice::from_raw_parts_mut(ptr.cast().as_mut(), entry_size.get());
 				alloc_slice.copy_from_slice(buff.as_slice());
 
 				Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut GPTEntry)
@@ -261,7 +267,7 @@ impl Table for Gpt {
 		let main_entries = main_hdr.get_entries(storage)?;
 		let alternate_entries = alternate_hdr.get_entries(storage)?;
 
-		// Checking entries correctness
+		// Check entries correctness
 		for (main_entry, alternate_entry) in main_entries.iter().zip(alternate_entries.iter()) {
 			if !main_entry.eq(alternate_entry, main_hdr.entry_size as _, blocks_count) {
 				return Err(errno!(EINVAL));

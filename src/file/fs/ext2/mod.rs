@@ -60,6 +60,7 @@ use core::cmp::min;
 use core::mem::size_of;
 use core::mem::size_of_val;
 use core::mem::MaybeUninit;
+use core::num::NonZeroUsize;
 use core::slice;
 use inode::Ext2INode;
 
@@ -233,7 +234,7 @@ fn zero_blocks(
 	io: &mut dyn IO,
 ) -> Result<(), Errno> {
 	let blk_size = superblock.get_block_size() as u64;
-	let blk_buff = malloc::Alloc::<u8>::new_default(blk_size as usize)?;
+	let blk_buff = malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
 	for i in off..(off + count) {
 		io.write(i * blk_size, blk_buff.as_slice())?;
 	}
@@ -417,7 +418,8 @@ impl Superblock {
 	/// - `size` is the number of entries.
 	fn search_bitmap(&self, io: &mut dyn IO, start: u32, size: u32) -> Result<Option<u32>, Errno> {
 		let blk_size = self.get_block_size();
-		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
+		let mut buff =
+			malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
 		let mut i = 0;
 
 		while (i * (blk_size * 8)) < size {
@@ -445,7 +447,8 @@ impl Superblock {
 	/// The function returns the previous value of the entry.
 	fn set_bitmap(&self, io: &mut dyn IO, start: u32, i: u32, val: bool) -> Result<bool, Errno> {
 		let blk_size = self.get_block_size();
-		let mut buff = malloc::Alloc::<u8>::new_default(blk_size as _)?;
+		let mut buff =
+			malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
 
 		let bitmap_blk_index = start + (i / (blk_size * 8));
 		read_block(bitmap_blk_index as _, self, io, buff.as_slice_mut())?;

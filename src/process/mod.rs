@@ -259,9 +259,9 @@ pub struct Process {
 	/// The virtual memory of the process containing every mappings.
 	mem_space: Option<Arc<IntMutex<MemSpace>>>,
 	/// A pointer to the userspace stack.
-	user_stack: Option<*const c_void>,
+	user_stack: Option<*mut c_void>,
 	/// A pointer to the kernelspace stack.
-	kernel_stack: Option<*const c_void>,
+	kernel_stack: Option<*mut c_void>,
 
 	/// Current working directory
 	pub cwd: Arc<Path>,
@@ -514,7 +514,7 @@ impl Process {
 			let mut vfs = vfs_mutex.lock();
 			let vfs = vfs.as_mut().unwrap();
 
-			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false).unwrap();
+			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false)?;
 			let tty_file_mutex = vfs.get_file_from_path(&tty_path, uid, gid, true)?;
 			let tty_file = tty_file_mutex.lock();
 
@@ -600,7 +600,7 @@ impl Process {
 		process.register_procfs()?;
 
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		sched_mutex.lock().add_process(process)
+		Ok(sched_mutex.lock().add_process(process)?)
 	}
 
 	/// Tells whether the process is the init process.
@@ -926,7 +926,7 @@ impl Process {
 		&mut self,
 		parent: Weak<IntMutex<Self>>,
 		fork_options: ForkOptions,
-	) -> Result<Arc<IntMutex<Self>>, Errno> {
+	) -> AllocResult<Arc<IntMutex<Self>>> {
 		debug_assert!(matches!(self.get_state(), State::Running));
 
 		// Handling vfork
@@ -945,9 +945,9 @@ impl Process {
 				// Allocating a kernel stack for the new process
 				let new_kernel_stack = curr_mem_space
 					.lock()
-					.map_stack(KERNEL_STACK_SIZE, KERNEL_STACK_FLAGS)?;
+					.map_stack(KERNEL_STACK_SIZE.try_into().unwrap(), KERNEL_STACK_FLAGS)?;
 
-				(curr_mem_space, Some(new_kernel_stack.as_ptr()))
+				(curr_mem_space, Some(new_kernel_stack))
 			} else {
 				(
 					Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?,
@@ -1329,7 +1329,9 @@ impl Drop for Process {
 		// has its own kernel stack, not freeing it could result in a memory leak
 		oom::wrap(|| {
 			if let (Some(mutex), Some(kernel_stack)) = (&self.mem_space, self.kernel_stack) {
-				mutex.lock().unmap_stack(kernel_stack, KERNEL_STACK_SIZE)?;
+				mutex
+					.lock()
+					.unmap_stack(kernel_stack, KERNEL_STACK_SIZE.try_into().unwrap())?;
 			}
 
 			Ok(())

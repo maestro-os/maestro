@@ -7,6 +7,7 @@ use crate::elf::parser::ELFParser;
 use crate::elf::relocation::Relocation;
 use crate::elf::ELF32ProgramHeader;
 use crate::errno;
+use crate::errno::AllocError;
 use crate::errno::Errno;
 use crate::exec::vdso::MappedVDSO;
 use crate::file::path::Path;
@@ -15,7 +16,6 @@ use crate::file::File;
 use crate::file::Gid;
 use crate::file::Uid;
 use crate::memory;
-use crate::memory::malloc;
 use crate::memory::vmem;
 use crate::process;
 use crate::process::exec::ExecInfo;
@@ -35,6 +35,7 @@ use core::cmp::max;
 use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::size_of;
+use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::null;
 use core::slice;
@@ -248,7 +249,7 @@ fn build_auxilary(
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_SYSINFO_EHDR,
-		AuxEntryDescValue::Number(vdso.ptr.as_ptr() as _),
+		AuxEntryDescValue::Number(vdso.ptr as _),
 	))?;
 
 	// End
@@ -264,19 +265,15 @@ fn build_auxilary(
 /// - `gid` is the Group ID of the executing user.
 ///
 /// If the file is not executable, the function returns an error.
-fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<malloc::Alloc<u8>, Errno> {
+fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<Vec<u8>, Errno> {
 	// Check that the file can be executed by the user
 	if !file.can_execute(uid, gid) {
 		return Err(errno!(ENOEXEC));
 	}
 
-	// Allocating memory for the file's content
-	let len = file.get_size();
-	let mut image = malloc::Alloc::<u8>::new_default(len as usize)?;
-
-	// Reading the file
-	file.read(0, image.as_slice_mut())?;
-
+	let len = file.get_size().try_into().map_err(|_| AllocError)?;
+	let mut image = crate::vec![0u8; len]?;
+	file.read(0, image.as_mut_slice())?;
 	Ok(image)
 }
 
@@ -351,7 +348,7 @@ impl ELFExecutor {
 	/// new bottom after the data has been written.
 	fn init_stack(
 		&self,
-		user_stack: *const c_void,
+		user_stack: *mut c_void,
 		argv: &[String],
 		envp: &[String],
 		aux: &[AuxEntryDesc],
@@ -498,7 +495,7 @@ impl ELFExecutor {
 
 			// TODO Lazy allocation
 			// Pre-allocating the pages to make them writable
-			mem_space.alloc(mem_begin as *const c_void, pages * memory::PAGE_SIZE)?;
+			mem_space.alloc(mem_begin as *const c_void, pages.get() * memory::PAGE_SIZE)?;
 		}
 
 		// The pointer to the end of the virtual memory chunk
@@ -707,9 +704,10 @@ impl Executor for ELFExecutor {
 		let load_info = self.load_elf(&parser, &mut mem_space, null::<c_void>(), false)?;
 
 		// The user stack
-		let user_stack = mem_space
-			.map_stack(process::USER_STACK_SIZE, process::USER_STACK_FLAGS)?
-			.as_ptr();
+		let user_stack = mem_space.map_stack(
+			process::USER_STACK_SIZE.try_into().unwrap(),
+			process::USER_STACK_FLAGS,
+		)?;
 
 		// Map the vDSO
 		let vdso = vdso::map(&mut mem_space)?;
@@ -745,10 +743,10 @@ impl Executor for ELFExecutor {
 			});
 		}
 
-		// The kernel stack
-		let kernel_stack = mem_space
-			.map_stack(process::KERNEL_STACK_SIZE, process::KERNEL_STACK_FLAGS)?
-			.as_ptr();
+		let kernel_stack = mem_space.map_stack(
+			process::KERNEL_STACK_SIZE.try_into().unwrap(),
+			process::KERNEL_STACK_FLAGS,
+		)?;
 
 		Ok(ProgramImage {
 			argv: self.info.argv.try_clone()?,
@@ -758,7 +756,7 @@ impl Executor for ELFExecutor {
 			entry_point: load_info.entry_point,
 
 			user_stack,
-			user_stack_begin: (user_stack as usize - total_size) as _,
+			user_stack_begin: user_stack.sub(total_size) as _,
 
 			kernel_stack,
 		})

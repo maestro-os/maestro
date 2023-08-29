@@ -29,9 +29,9 @@ pub const PAGE_SIZE: usize = 0x1000;
 pub const KERNEL_PHYS_BEGIN: *const c_void = 0x100000 as *const _;
 
 /// Pointer to the beginning of the allocatable region in the virtual memory.
-pub const ALLOC_BEGIN: *const c_void = 0x40000000 as *const _;
+pub const ALLOC_BEGIN: *mut c_void = 0x40000000 as *mut _;
 /// Pointer to the end of the virtual memory reserved to the process.
-pub const PROCESS_END: *const c_void = 0xc0000000 as *const _;
+pub const PROCESS_END: *mut c_void = 0xc0000000 as *mut _;
 
 extern "C" {
 	/// The kernel begin symbol, giving the pointer to the begin of the kernel

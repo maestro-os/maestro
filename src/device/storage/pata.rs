@@ -26,6 +26,7 @@ use crate::errno::Errno;
 use crate::io;
 use crate::util::math;
 use core::cmp::min;
+use core::num::NonZeroU64;
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;
@@ -337,17 +338,16 @@ impl PATAInterface {
 			*d = self.inw(PortOffset::Ata(DATA_REGISTER_OFFSET));
 		}
 
+		// Retrieve disk size
 		let lba48_support = data[83] & (1 << 10) != 0;
 		let lba28_size = (data[60] as u32) | ((data[61] as u32) << 16);
 		let lba48_size = (data[100] as u64)
 			| ((data[101] as u64) << 16)
 			| ((data[102] as u64) << 32)
 			| ((data[103] as u64) << 48);
-
 		if lba28_size == 0 {
 			return Err("Unsupported disk (too old)");
 		}
-
 		self.lba48 = lba48_support;
 		self.sectors_count = if lba48_support {
 			lba48_size
@@ -378,8 +378,8 @@ impl PATAInterface {
 }
 
 impl StorageInterface for PATAInterface {
-	fn get_block_size(&self) -> u64 {
-		SECTOR_SIZE
+	fn get_block_size(&self) -> NonZeroU64 {
+		SECTOR_SIZE.try_into().unwrap()
 	}
 
 	fn get_blocks_count(&self) -> u64 {
@@ -392,7 +392,7 @@ impl StorageInterface for PATAInterface {
 
 		// If the offset and size are out of bounds of the disk, return an error
 		if offset >= self.sectors_count || offset + size > self.sectors_count {
-			return Err(crate::errno!(EINVAL));
+			return Err(errno!(EINVAL));
 		}
 
 		// Tells whether to use LBA48

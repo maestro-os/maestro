@@ -16,6 +16,7 @@ use crate::util::math;
 use crate::util::ptr::arc::Arc;
 use core::cmp::min;
 use core::ffi::c_void;
+use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
 
@@ -36,7 +37,7 @@ struct Vdso {
 /// Informations about mapped vDSO.
 pub struct MappedVDSO {
 	/// The virtual address to the beginning of the vDSO.
-	pub ptr: NonNull<c_void>,
+	pub ptr: *mut c_void,
 	/// The virtual pointer to the entry point of the vDSO.
 	pub entry: NonNull<c_void>,
 }
@@ -78,28 +79,32 @@ fn load_image() -> Result<Vdso, Errno> {
 ///
 /// The function returns the virtual pointer to the mapped vDSO.
 pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
+	// TODO cleanup
 	let mut elf_image = VDSO.lock();
-
 	if elf_image.is_none() {
 		let img = load_image().expect("Failed to load vDSO");
 		*elf_image = Some(img);
 	}
 	let img = elf_image.as_ref().unwrap();
 
+	let vdso_pages = math::ceil_div(img.len, memory::PAGE_SIZE);
+	let Some(vdso_pages) = NonZeroUsize::new(vdso_pages) else {
+        crate::kernel_panic!("Invalid vDSO image");
+    };
 	// TODO ASLR
 	let ptr = mem_space.map(
 		MapConstraint::None,
-		math::ceil_div(img.len, memory::PAGE_SIZE),
+		vdso_pages,
 		mem_space::MAPPING_FLAG_USER,
 		MapResidence::Static {
 			pages: img.pages.clone(),
 		},
 	)?;
 
-	let entry = unsafe { ptr.as_ptr().add(img.entry_off).into() };
+	let entry = NonNull::new(unsafe { ptr.add(img.entry_off) }).unwrap();
 
 	Ok(MappedVDSO {
 		ptr,
-		entry: NonNull::new(entry).unwrap(),
+		entry,
 	})
 }

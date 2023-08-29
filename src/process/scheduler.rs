@@ -10,7 +10,6 @@
 //! running until switching to the next process.
 
 use crate::errno::AllocResult;
-use crate::errno::Errno;
 use crate::event;
 use crate::event::CallbackHook;
 use crate::idt::pic;
@@ -72,7 +71,9 @@ impl Scheduler {
 	pub fn new(cores_count: usize) -> AllocResult<Arc<IntMutex<Self>>> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
-			tmp_stacks.push(malloc::Alloc::new_default(TMP_STACK_SIZE)?)?;
+			tmp_stacks.push(malloc::Alloc::new_default(
+				TMP_STACK_SIZE.try_into().unwrap(),
+			)?)?;
 		}
 
 		// Register tick handler
@@ -83,7 +84,8 @@ impl Scheduler {
 			|_: u32, _: u32, regs: &Regs, ring: u32| {
 				Scheduler::tick(process::get_scheduler(), regs, ring);
 			},
-		)?;
+		)?
+		.unwrap();
 
 		Arc::new(IntMutex::new(Self {
 			tmp_stacks,
@@ -162,7 +164,7 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> Result<Arc<IntMutex<Process>>, Errno> {
+	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<IntMutex<Process>>> {
 		let pid = process.pid;
 		let priority = process.priority;
 

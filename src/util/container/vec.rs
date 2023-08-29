@@ -12,6 +12,7 @@ use core::hash::Hash;
 use core::hash::Hasher;
 use core::iter::FusedIterator;
 use core::iter::TrustedLen;
+use core::num::NonZeroUsize;
 use core::ops::Deref;
 use core::ops::DerefMut;
 use core::ops::Index;
@@ -87,10 +88,10 @@ impl<T> Vec<T> {
 	///
 	/// `capacity` is the new capacity in number of elements.
 	fn realloc(&mut self, capacity: usize) -> AllocResult<()> {
-		if capacity == 0 {
+		let Some(capacity) = NonZeroUsize::new(capacity) else {
 			self.data = None;
 			return Ok(());
-		}
+        };
 
 		if let Some(data) = &mut self.data {
 			debug_assert!(data.len() >= self.len);

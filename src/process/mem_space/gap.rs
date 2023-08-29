@@ -10,7 +10,7 @@ use core::num::NonZeroUsize;
 #[derive(Clone)]
 pub struct MemGap {
 	/// Pointer on the virtual memory to the beginning of the gap
-	begin: *const c_void,
+	begin: *mut c_void,
 	/// The size of the gap in pages.
 	size: NonZeroUsize,
 }
@@ -22,7 +22,7 @@ impl MemGap {
 	/// - `begin` is a pointer on the virtual memory to the beginning of the gap.
 	/// This pointer must be page-aligned.
 	/// - `size` is the size of the gap in pages.
-	pub fn new(begin: *const c_void, size: NonZeroUsize) -> Self {
+	pub fn new(begin: *mut c_void, size: NonZeroUsize) -> Self {
 		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));
 
 		Self {
@@ -32,12 +32,12 @@ impl MemGap {
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the gap.
-	pub fn get_begin(&self) -> *const c_void {
+	pub fn get_begin(&self) -> *mut c_void {
 		self.begin
 	}
 
 	/// Returns a pointer on the virtual memory to the end of the gap.
-	pub fn get_end(&self) -> *const c_void {
+	pub fn get_end(&self) -> *mut c_void {
 		unsafe { self.begin.add(self.size.get() * memory::PAGE_SIZE) }
 	}
 
