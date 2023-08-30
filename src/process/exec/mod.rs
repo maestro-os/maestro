@@ -3,6 +3,7 @@
 pub mod elf;
 pub mod vdso;
 
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::File;
 use crate::process::mem_space::MemSpace;
@@ -71,7 +72,7 @@ pub trait Executor {
 ///
 /// The function returns a memory space containing the program image and the
 /// pointer to the entry point.
-pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errno> {
+pub fn build_image(file: &mut File, info: ExecInfo) -> EResult<ProgramImage> {
 	// TODO Support other formats than ELF (wasm?)
 
 	let exec = elf::ELFExecutor::new(info)?;
@@ -79,14 +80,14 @@ pub fn build_image(file: &mut File, info: ExecInfo) -> Result<ProgramImage, Errn
 }
 
 /// Executes the program image `image` on the process `proc`.
-pub fn exec(proc: &mut Process, image: ProgramImage) -> Result<(), Errno> {
+pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.argv = Arc::new(image.argv)?;
 	// TODO Set exec path
 
 	// Duplicate file descriptor table
 	let fds = proc
 		.get_fds()
-		.map(|fds_mutex| {
+		.map(|fds_mutex| -> EResult<_> {
 			let fds = fds_mutex.lock();
 			let new_fds = fds.duplicate(true)?;
 

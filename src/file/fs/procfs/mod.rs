@@ -141,8 +141,7 @@ impl ProcFS {
 						entry_type: FileType::Directory,
 						inode,
 					},
-				)?;
-				Ok(())
+				)
 			}),
 			_ => unreachable!(),
 		}

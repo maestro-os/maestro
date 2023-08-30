@@ -6,7 +6,7 @@ use crate::device::bus::pci;
 use crate::device::storage::pata::PATAInterface;
 use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
-use crate::errno::Errno;
+use crate::errno::AllocResult;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
@@ -136,7 +136,7 @@ impl Controller {
 		&self,
 		channel: Channel,
 		slave: bool,
-	) -> Result<Option<Arc<Mutex<dyn StorageInterface>>>, Errno> {
+	) -> AllocResult<Option<Arc<Mutex<dyn StorageInterface>>>> {
 		match PATAInterface::new(channel, slave) {
 			Ok(interface) => {
 				let interface = Arc::new(Mutex::new(interface))?;
@@ -157,7 +157,7 @@ impl Controller {
 	///
 	/// If an error is returned from a call to the closure, the function returns
 	/// with the same error.
-	pub fn detect_all(&self) -> Result<Vec<Arc<Mutex<dyn StorageInterface>>>, Errno> {
+	pub fn detect_all(&self) -> AllocResult<Vec<Arc<Mutex<dyn StorageInterface>>>> {
 		let mut interfaces = Vec::new();
 
 		for i in 0..4 {

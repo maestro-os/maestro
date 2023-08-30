@@ -503,7 +503,7 @@ impl MemSpace {
 	///
 	/// If no mapping contains the address, the function returns `None`.
 	fn get_mapping_for_(
-		mappings: &Map<*const c_void, MemMapping>,
+		mappings: &Map<*mut c_void, MemMapping>,
 		ptr: *const c_void,
 	) -> Option<&MemMapping> {
 		mappings.cmp_get(|key, value| {
@@ -782,8 +782,7 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> AllocResult<MemSpace> {
-		idt::wrap_disable_interrupts(|| unsafe { stack::switch(None, || self.do_fork()) })
-			.flatten()
+		idt::wrap_disable_interrupts(|| unsafe { stack::switch(None, || self.do_fork()) })?
 	}
 
 	/// Allocates the physical pages to write on the given pointer.
@@ -873,10 +872,13 @@ impl MemSpace {
 
 			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
 			let pages = math::ceil_div(ptr as usize - begin as usize, memory::PAGE_SIZE);
+			let Some(pages) = NonZeroUsize::new(pages) else {
+                return Ok(());
+            };
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 
 			self.map(
-				MapConstraint::Fixed(begin),
+				MapConstraint::Fixed(begin as _),
 				pages,
 				flags,
 				MapResidence::Normal,
@@ -891,6 +893,9 @@ impl MemSpace {
 
 			let begin = util::align(ptr, memory::PAGE_SIZE);
 			let pages = math::ceil_div(begin as usize - ptr as usize, memory::PAGE_SIZE);
+			let Some(pages) = NonZeroUsize::new(pages) else {
+                return Ok(());
+            };
 
 			self.unmap(begin, pages, true)?;
 		}

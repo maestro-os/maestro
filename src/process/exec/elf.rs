@@ -25,6 +25,7 @@ use crate::process::mem_space;
 use crate::process::mem_space::MapConstraint;
 use crate::process::mem_space::MapResidence;
 use crate::process::mem_space::MemSpace;
+use crate::process::EResult;
 use crate::util;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -570,10 +571,13 @@ impl ELFExecutor {
 
 			// Not phdr segment. Load it manually
 			None => {
-				let page_size = math::ceil_div(phdr_size, memory::PAGE_SIZE);
+				let pages = math::ceil_div(phdr_size, memory::PAGE_SIZE);
+				let Some(pages) = NonZeroUsize::new(pages) else {
+                    return Err(errno!(EINVAL));
+                };
 				let phdr = mem_space.map(
 					MapConstraint::None,
-					page_size,
+					pages,
 					mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
 					MapResidence::Normal,
 				)?;
@@ -622,7 +626,7 @@ impl ELFExecutor {
 
 		// Switching to the process's vmem to write onto the virtual memory
 		unsafe {
-			vmem::switch(mem_space.get_vmem().as_ref(), move || {
+			vmem::switch(mem_space.get_vmem().as_ref(), move || -> EResult<()> {
 				// Copying segments' data
 				for seg in elf.iter_segments() {
 					Self::copy_segment(load_base, seg, elf.get_image());
@@ -733,7 +737,7 @@ impl Executor for ELFExecutor {
 
 		// The initial pointer for `brk`
 		let brk_ptr = util::align(load_info.load_end, memory::PAGE_SIZE);
-		mem_space.set_brk_init(brk_ptr);
+		mem_space.set_brk_init(brk_ptr as _);
 
 		// Switching to the process's vmem to write onto the virtual memory
 		unsafe {

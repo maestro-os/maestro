@@ -16,7 +16,8 @@ use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
-use crate::errno::AllocError;
+use crate::errno::AllocResult;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::Mode;
@@ -677,7 +678,7 @@ impl StorageManager {
 }
 
 impl DeviceManager for StorageManager {
-	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> EResult<()> {
 		// Ignoring non-storage devices
 		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {
 			return Ok(());
@@ -685,17 +686,12 @@ impl DeviceManager for StorageManager {
 
 		// Detect IDE controller
 		if let Some(ide) = ide::Controller::new(dev) {
-			oom::wrap(|| {
+			// FIXME: on fail, interfaces may be duplicated
+			oom::wrap(|| -> AllocResult<()> {
 				for interface in ide.detect_all()? {
-					match self.add(interface) {
-						Err(e) if e == errno!(ENOMEM) => return Err(AllocError),
-						Err(e) => return Ok(Err(e)),
-
-						_ => {}
-					}
+					self.add(interface)?;
 				}
-
-				Ok(Ok(()))
+				Ok(())
 			})?;
 
 			return Ok(());
@@ -706,7 +702,7 @@ impl DeviceManager for StorageManager {
 		Ok(())
 	}
 
-	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> EResult<()> {
 		// TODO remove device
 		todo!();
 	}

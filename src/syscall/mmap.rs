@@ -11,6 +11,7 @@ use crate::syscall::mmap::mem_space::MapConstraint;
 use crate::util::math;
 use core::ffi::c_int;
 use core::ffi::c_void;
+use core::num::NonZeroUsize;
 use macros::syscall;
 
 /// Data can be read.
@@ -62,9 +63,12 @@ pub fn do_mmap(
 
 	// The length in number of pages
 	let pages = math::ceil_div(length, memory::PAGE_SIZE);
+	let Some(pages) = NonZeroUsize::new(pages) else {
+        return Err(errno!(EINVAL));
+    };
 
 	// Checking for overflow
-	let end = (addr as usize).wrapping_add(pages * memory::PAGE_SIZE);
+	let end = (addr as usize).wrapping_add(pages.get() * memory::PAGE_SIZE);
 	if end < addr as usize {
 		return Err(errno!(EINVAL));
 	}

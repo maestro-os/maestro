@@ -405,11 +405,19 @@ impl<T> FromIterator<T> for CollectResult<Vec<T>> {
 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
 		let iter = iter.into_iter();
 		let size = iter.size_hint().0;
-		let mut vec = Vec::with_capacity(size)?;
 
-		// TODO
+		let res = (|| {
+			let mut vec = Vec::with_capacity(size)?;
+			vec.len = size;
 
-		Self(Ok(vec))
+			let data = vec.data.as_mut().unwrap();
+			for (i, elem) in iter.enumerate() {
+				data[i] = elem;
+			}
+
+			Ok(vec)
+		})();
+		Self(res)
 	}
 }
 

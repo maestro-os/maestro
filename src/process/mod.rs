@@ -22,6 +22,7 @@ pub mod user_desc;
 use crate::cpu;
 use crate::errno;
 use crate::errno::AllocResult;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::event;
 use crate::event::CallbackResult;
@@ -470,7 +471,7 @@ impl Process {
 	}
 
 	/// Registers the current process to the procfs.
-	fn register_procfs(&self) -> AllocResult<()> {
+	fn register_procfs(&self) -> EResult<()> {
 		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
 		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
 			return Ok(());
@@ -926,7 +927,7 @@ impl Process {
 		&mut self,
 		parent: Weak<IntMutex<Self>>,
 		fork_options: ForkOptions,
-	) -> AllocResult<Arc<IntMutex<Self>>> {
+	) -> EResult<Arc<IntMutex<Self>>> {
 		debug_assert!(matches!(self.get_state(), State::Running));
 
 		// Handling vfork
@@ -962,7 +963,7 @@ impl Process {
 		} else {
 			self.file_descriptors
 				.as_ref()
-				.map(|fds| {
+				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
 					let new_fds = fds.duplicate(false)?;
 
@@ -1054,7 +1055,7 @@ impl Process {
 		self.add_child(pid)?;
 
 		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		sched_mutex.lock().add_process(process)
+		Ok(sched_mutex.lock().add_process(process)?)
 	}
 
 	/// Returns the signal handler for the signal `sig`.
@@ -1327,7 +1328,7 @@ impl Drop for Process {
 		// Freeing the kernel stack. This is required because the process might share
 		// the same memory space with several other processes. And since, each process
 		// has its own kernel stack, not freeing it could result in a memory leak
-		oom::wrap(|| {
+		oom::wrap(|| -> AllocResult<()> {
 			if let (Some(mutex), Some(kernel_stack)) = (&self.mem_space, self.kernel_stack) {
 				mutex
 					.lock()
