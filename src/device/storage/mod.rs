@@ -16,7 +16,6 @@ use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
-use crate::errno::AllocError;
 use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::path::Path;
@@ -24,7 +23,6 @@ use crate::file::Mode;
 use crate::memory::malloc;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::MemSpace;
-use crate::process::oom;
 use crate::syscall::ioctl;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
@@ -684,22 +682,20 @@ impl DeviceManager for StorageManager {
 			return Ok(());
 		}
 
-		// Detect IDE controller
-		if let Some(ide) = ide::Controller::new(dev) {
-			for interface in ide.detect_all()? {
-				oom::wrap(|| {
-					let res = self.add(interface);
-					if res == Err(errno!(ENOMEM)) {
-						Err(AllocError)
-					} else {
-						Ok(res)
-					}
-				})?;
+		let mut register_iface = |res: EResult<_>| {
+			let res = res.and_then(|iface| self.add(iface));
+			if let Err(e) = res {
+				crate::println!("Could not register storage device: {e}");
 			}
-			return Ok(());
-		}
+		};
 
-		// TODO Handle other controller types
+		// TODO use device class as a hint
+		// TODO handle other controller types
+		if let Some(ide) = ide::Controller::new(dev) {
+			for iface in ide.detect() {
+				register_iface(iface.map_err(Into::into));
+			}
+		}
 
 		Ok(())
 	}

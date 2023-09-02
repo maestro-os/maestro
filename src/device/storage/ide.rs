@@ -7,7 +7,6 @@ use crate::device::storage::pata::PATAInterface;
 use crate::device::storage::PhysicalDevice;
 use crate::device::storage::StorageInterface;
 use crate::errno::AllocResult;
-use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 
@@ -127,48 +126,25 @@ impl Controller {
 		self.prog_if & 0b10000000 != 0
 	}
 
-	/// Detects a disk on the controller.
-	///
-	/// Arguments:
-	/// - `channel` is the channel to check.
-	/// - `slave` tells whether the disk is the slave disk.
-	pub fn detect(
-		&self,
-		channel: Channel,
-		slave: bool,
-	) -> AllocResult<Option<Arc<Mutex<dyn StorageInterface>>>> {
-		match PATAInterface::new(channel, slave) {
-			Ok(interface) => {
-				let interface = Arc::new(Mutex::new(interface))?;
-
-				// Wrapping the interface into a cached interface
-				// TODO Use a constant for the sectors count
-				//let interface = Box::new(CachedStorageInterface::new(interface, 1024)?)?;
-
-				Ok(Some(interface))
-			}
-
-			Err(_) => Ok(None),
-		}
-	}
-
 	/// Detects all disks on the controller. For each disks, the function calls
 	/// the given closure `f`.
 	///
 	/// If an error is returned from a call to the closure, the function returns
 	/// with the same error.
-	pub fn detect_all(&self) -> AllocResult<Vec<Arc<Mutex<dyn StorageInterface>>>> {
-		let mut interfaces = Vec::new();
-
-		for i in 0..4 {
-			let secondary = (i & 0b10) != 0;
-			let slave = (i & 0b01) != 0;
-
-			let pci_mode = (!secondary && self.is_primary_pci_mode())
-				|| (secondary && self.is_secondary_pci_mode());
-
-			let channel = if pci_mode {
-				if !secondary {
+	pub(super) fn detect(
+		&self,
+	) -> impl '_ + Iterator<Item = AllocResult<Arc<Mutex<dyn StorageInterface>>>> {
+		(0..4)
+			.map(|i| {
+				let secondary = (i & 0b10) != 0;
+				let slave = (i & 0b01) != 0;
+				let pci_mode = (!secondary && self.is_primary_pci_mode())
+					|| (secondary && self.is_secondary_pci_mode());
+				if !pci_mode {
+					// Compatibility mode
+					return (Channel::new_compatibility(secondary), slave);
+				}
+				let channel = if !secondary {
 					// Primary channel
 					Channel {
 						ata_bar: self.bars[0].clone().unwrap(),
@@ -180,17 +156,11 @@ impl Controller {
 						ata_bar: self.bars[2].clone().unwrap(),
 						control_bar: self.bars[3].clone().unwrap(),
 					}
-				}
-			} else {
-				// Compatibility mode
-				Channel::new_compatibility(secondary)
-			};
-
-			if let Some(disk) = self.detect(channel, slave)? {
-				interfaces.push(disk)?;
-			}
-		}
-
-		Ok(interfaces)
+				};
+				(channel, slave)
+			})
+			// TODO log errors?
+			.filter_map(|(channel, slave)| PATAInterface::new(channel, slave).ok())
+			.map(|i| Arc::new(Mutex::new(i)).map(|a| a as Arc<Mutex<dyn StorageInterface>>))
 	}
 }
