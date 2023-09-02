@@ -222,7 +222,7 @@ impl<T> Alloc<T> {
 
 	/// Changes the size of the memory allocation.
 	///
-	/// All new elements are initialized to zero.
+	/// All new elements are uninitialized.
 	///
 	/// `n` is the new size of the chunk of memory (in number of elements).
 	///
@@ -230,9 +230,9 @@ impl<T> Alloc<T> {
 	///
 	/// # Safety
 	///
-	/// To use this function, one must ensure that zero memory is not an
-	/// inconsistent state for the object `T`.
-	pub unsafe fn realloc_zero(&mut self, n: NonZeroUsize) -> AllocResult<()> {
+	/// Since the memory is not initialized, objects in the allocation might be
+	/// in an inconsistent state.
+	pub unsafe fn realloc(&mut self, n: NonZeroUsize) -> AllocResult<()> {
 		let len = n
 			.checked_mul(size_of::<T>().try_into().unwrap())
 			.ok_or_else(|| AllocError)?;
@@ -281,7 +281,7 @@ impl<T: Default> Alloc<T> {
 	/// Thus, the caller must take care of dropping the elements first.
 	pub unsafe fn realloc_default(&mut self, n: NonZeroUsize) -> AllocResult<()> {
 		let curr_size = self.len();
-		self.realloc_zero(n)?;
+		self.realloc(n)?;
 
 		for i in curr_size..n.get() {
 			unsafe {

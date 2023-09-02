@@ -99,13 +99,12 @@ impl<T> Vec<T> {
 			// Safe because the memory is rewritten when the object is placed into the
 			// vector
 			unsafe {
-				data.realloc_zero(capacity)?;
+				data.realloc(capacity)?;
 			}
 		} else {
 			// Safe because the memory is rewritten when the object is placed into the
 			// vector
-			let data_ptr = unsafe { malloc::Alloc::new_zero(capacity)? };
-
+			let data_ptr = unsafe { malloc::Alloc::new(capacity)? };
 			self.data = Some(data_ptr);
 		};
 
@@ -128,7 +127,6 @@ impl<T> Vec<T> {
 	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
 		let mut vec = Self::new();
 		vec.realloc(capacity)?;
-
 		Ok(vec)
 	}
 
@@ -409,12 +407,11 @@ impl<T> FromIterator<T> for CollectResult<Vec<T>> {
 		let res = (|| {
 			let mut vec = Vec::with_capacity(size)?;
 			vec.len = size;
-
-			let data = vec.data.as_mut().unwrap();
-			for (i, elem) in iter.enumerate() {
-				data[i] = elem;
+			if let Some(data) = vec.data.as_mut() {
+				for (i, elem) in iter.enumerate() {
+					data[i] = elem;
+				}
 			}
-
 			Ok(vec)
 		})();
 		Self(res)
