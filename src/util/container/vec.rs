@@ -401,16 +401,24 @@ impl<T: Default> Vec<T> {
 
 impl<T> FromIterator<T> for CollectResult<Vec<T>> {
 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-		let iter = iter.into_iter();
-		let size = iter.size_hint().0;
+		let mut iter = iter.into_iter().enumerate();
+		let min_size = iter.size_hint().0;
 
 		let res = (|| {
-			let mut vec = Vec::with_capacity(size)?;
-			vec.len = size;
+			let mut vec = Vec::with_capacity(min_size)?;
+			vec.len = min_size;
+			// push elements in the range of minimum size
 			if let Some(data) = vec.data.as_mut() {
-				for (i, elem) in iter.enumerate() {
+				while let Some((i, elem)) = iter.next() {
+					if i >= min_size {
+						break;
+					}
 					data[i] = elem;
 				}
+			}
+			// push remaining elements
+			for (_, elem) in iter {
+				vec.push(elem)?;
 			}
 			Ok(vec)
 		})();
@@ -625,6 +633,7 @@ impl<T> IndexMut<RangeTo<usize>> for Vec<T> {
 	}
 }
 
+// TODO can be optimized, a lot
 /// A consuming iterator for the Vec structure.
 pub struct IntoIter<T> {
 	/// The vector to iterator into.
@@ -693,7 +702,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 	}
 
 	fn count(self) -> usize {
-		self.vec.len()
+		self.size_hint().0
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
@@ -722,7 +731,7 @@ impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
 
 impl<'a, T> ExactSizeIterator for VecIterator<'a, T> {
 	fn len(&self) -> usize {
-		self.vec.len()
+		self.size_hint().0
 	}
 }
 
