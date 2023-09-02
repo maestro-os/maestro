@@ -17,16 +17,22 @@ pub fn readlink(
 	buf: SyscallSlice<u8>,
 	bufsiz: usize,
 ) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
+	// process lock has to be dropped to avoid deadlock with procfs
+	let (mem_space_mutex, path, uid, gid) = {
+		let proc_mutex = Process::current_assert();
+		let proc = proc_mutex.lock();
 
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mut mem_space = mem_space_mutex.lock();
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space = mem_space_mutex.lock();
 
-	// Get file's path
-	let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
-	let path = Path::from_str(path, true)?;
-	let path = super::util::get_absolute_path(&proc, path)?;
+		// Get file's path
+		let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
+		let path = Path::from_str(path, true)?;
+		let path = super::util::get_absolute_path(&proc, path)?;
+
+		drop(mem_space);
+		(mem_space_mutex, path, proc.euid, proc.egid)
+	};
 
 	// Get link's target
 	let file_mutex = {
@@ -34,7 +40,7 @@ pub fn readlink(
 		let mut vfs = vfs_mutex.lock();
 		let vfs = vfs.as_mut().unwrap();
 
-		vfs.get_file_from_path(&path, proc.euid, proc.egid, false)
+		vfs.get_file_from_path(&path, uid, gid, false)
 	}?;
 	let file = file_mutex.lock();
 	let target = match file.get_content() {
@@ -43,6 +49,7 @@ pub fn readlink(
 	};
 
 	// Copy to userspace buffer
+	let mut mem_space = mem_space_mutex.lock();
 	let buffer = buf.get_mut(&mut mem_space, bufsiz)?.ok_or(errno!(EFAULT))?;
 	util::slice_copy(target.as_bytes(), buffer);
 
