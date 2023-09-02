@@ -574,78 +574,76 @@ impl MemSpace {
 		while i < size.get() {
 			// The pointer of the page
 			let page_ptr = unsafe { ptr.add(i * memory::PAGE_SIZE) };
-
 			// The mapping containing the page
-			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, page_ptr) {
-				// The pointer to the beginning of the mapping
-				let mapping_ptr = mapping.get_begin();
-
-				// The offset in the mapping of the beginning of pages to unmap
-				let begin = (page_ptr as usize - mapping_ptr as usize) / memory::PAGE_SIZE;
-				// The number of pages to unmap in the mapping
-				let pages = min(size.get() - i, mapping.get_size().get() - begin);
-
-				// Removing the mapping
-				let mapping = self.mappings.remove(&mapping_ptr).unwrap();
-
-				// Newly created mappings and gap after removing parts of the previous one
-				let (prev, gap, next) = mapping.partial_unmap(begin, pages);
-
-				if let Some(p) = prev {
-					// TODO Merge with previous?
-					oom::wrap(|| {
-						let map = p.clone();
-						self.mappings.insert(map.get_begin(), map)?;
-
-						Ok(())
-					});
-				}
-
-				if !brk {
-					// Inserting gap
-					if let Some(mut gap) = gap {
-						self.vmem_usage -= gap.get_size().get();
-
-						// Merging previous gap
-						if !gap.get_begin().is_null() {
-							let prev_gap =
-								Self::gap_by_ptr(&self.gaps, unsafe { gap.get_begin().sub(1) });
-
-							if let Some(p) = prev_gap {
-								let begin = p.get_begin();
-								let p = self.gap_remove(begin).unwrap();
-
-								gap.merge(p);
-							}
-						}
-
-						// Merging next gap
-						let next_gap = Self::gap_by_ptr(&self.gaps, gap.get_end());
-						if let Some(n) = next_gap {
-							let begin = n.get_begin();
-							let n = self.gap_remove(begin).unwrap();
-
-							gap.merge(n);
-						}
-
-						oom::wrap(|| self.gap_insert(gap.clone()));
-					}
-				}
-
-				if let Some(n) = next {
-					// TODO Merge with next?
-					oom::wrap(|| {
-						let map = n.clone();
-						self.mappings.insert(map.get_begin(), map)?;
-
-						Ok(())
-					});
-				}
-
-				i += pages;
-			} else {
+			let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, page_ptr) else {
 				i += 1;
+				continue;
+			};
+			// The pointer to the beginning of the mapping
+			let mapping_ptr = mapping.get_begin();
+			// Removing the mapping
+			let mapping = self.mappings.remove(&mapping_ptr).unwrap();
+
+			// The offset in the mapping of the beginning of pages to unmap
+			let begin = (page_ptr as usize - mapping_ptr as usize) / memory::PAGE_SIZE;
+			// The number of pages to unmap in the mapping
+			let pages = min(size.get() - i, mapping.get_size().get() - begin);
+
+			// Newly created mappings and gap after removing parts of the previous one
+			let (prev, gap, next) = mapping.partial_unmap(begin, pages);
+
+			if let Some(p) = prev {
+				// TODO Merge with previous?
+				oom::wrap(|| {
+					let map = p.clone();
+					self.mappings.insert(map.get_begin(), map)?;
+
+					Ok(())
+				});
 			}
+
+			if !brk {
+				// Inserting gap
+				if let Some(mut gap) = gap {
+					self.vmem_usage -= gap.get_size().get();
+
+					// Merging previous gap
+					if !gap.get_begin().is_null() {
+						let prev_gap =
+							Self::gap_by_ptr(&self.gaps, unsafe { gap.get_begin().sub(1) });
+
+						if let Some(p) = prev_gap {
+							let begin = p.get_begin();
+							let p = self.gap_remove(begin).unwrap();
+
+							gap.merge(p);
+						}
+					}
+
+					// Merging next gap
+					let next_gap = Self::gap_by_ptr(&self.gaps, gap.get_end());
+					if let Some(n) = next_gap {
+						let begin = n.get_begin();
+						let n = self.gap_remove(begin).unwrap();
+
+						gap.merge(n);
+					}
+
+					oom::wrap(|| self.gap_insert(gap.clone()));
+				}
+			}
+
+			if let Some(n) = next {
+				// TODO Merge with next?
+				oom::wrap(|| {
+					let map = n.clone();
+					self.mappings.insert(map.get_begin(), map)?;
+
+					Ok(())
+				});
+			}
+
+			i += pages;
 		}
 
 		Ok(())
@@ -921,28 +919,27 @@ impl MemSpace {
 			return false;
 		}
 
-		if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, virt_addr) {
-			let can_write_mapping = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
-			if code & vmem::x86::PAGE_FAULT_WRITE != 0 && !can_write_mapping {
-				return false;
-			}
+		let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, virt_addr) else {
+			return false;
+		};
 
-			// TODO check exec
-
-			let userspace_mapping = mapping.get_flags() & MAPPING_FLAG_USER != 0;
-			if code & vmem::x86::PAGE_FAULT_USER != 0 && !userspace_mapping {
-				return false;
-			}
-
-			let page_offset =
-				(virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-			oom::wrap(|| mapping.map(page_offset));
-
-			mapping.update_vmem(page_offset);
-			true
-		} else {
-			false
+		let can_write_mapping = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
+		if code & vmem::x86::PAGE_FAULT_WRITE != 0 && !can_write_mapping {
+			return false;
 		}
+
+		// TODO check exec
+
+		let userspace_mapping = mapping.get_flags() & MAPPING_FLAG_USER != 0;
+		if code & vmem::x86::PAGE_FAULT_USER != 0 && !userspace_mapping {
+			return false;
+		}
+
+		let page_offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+		oom::wrap(|| mapping.map(page_offset));
+
+		mapping.update_vmem(page_offset);
+		true
 	}
 }
 
@@ -950,13 +947,13 @@ impl fmt::Debug for MemSpace {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		writeln!(f, "Mappings:")?;
 		for (_, m) in self.mappings.iter() {
-			writeln!(f, "- {:?}", m)?;
+			writeln!(f, "- {m:?}")?;
 		}
 
 		writeln!(f)?;
 		writeln!(f, "Gaps:")?;
 		for (_, g) in self.gaps.iter() {
-			writeln!(f, "- {:?}", g)?;
+			writeln!(f, "- {g:?}")?;
 		}
 
 		Ok(())

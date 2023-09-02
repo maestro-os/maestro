@@ -1,6 +1,8 @@
 //! This module implements regular file node for the tmpfs.
 
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::tmp::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
@@ -12,7 +14,6 @@ use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 use core::cmp::max;
 use core::cmp::min;
 
@@ -118,7 +119,7 @@ impl KernFSNode for TmpFSRegular {
 		self.mtime = ts;
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
 		Ok(FileContent::Regular.into())
 	}
 }

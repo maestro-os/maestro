@@ -1,8 +1,10 @@
 //! This module implements the `self` symlink, which points to the current
 //! process's directory.
 
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
@@ -11,7 +13,6 @@ use crate::file::Uid;
 use crate::process::Process;
 use crate::time::unit::Timestamp;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 
 /// The `self` symlink.
 pub struct SelfNode {}
@@ -59,17 +60,15 @@ impl KernFSNode for SelfNode {
 
 	fn set_mtime(&mut self, _: Timestamp) {}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
 		let Some(mutex) = Process::current() else {
 			crate::kernel_panic!("no current process");
 		};
 		let pid = { mutex.lock().pid };
 
-		let pid_string = crate::format!("{}", pid)?;
+		let pid_string = crate::format!("{pid}")?;
 		Ok(FileContent::Link(pid_string).into())
 	}
-
-	fn set_content(&mut self, _: FileContent) {}
 }
 
 impl IO for SelfNode {

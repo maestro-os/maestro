@@ -271,7 +271,7 @@ pub enum FileContent {
 
 impl FileContent {
 	/// Returns the file type associated with the content type.
-	pub fn get_type(&self) -> FileType {
+	pub fn as_type(&self) -> FileType {
 		match self {
 			Self::Regular => FileType::Regular,
 			Self::Directory(_) => FileType::Directory,
@@ -290,7 +290,7 @@ impl FileContent {
 
 impl TryClone for FileContent {
 	fn try_clone(&self) -> Result<Self, Self::Error> {
-		let s = match self {
+		Ok(match self {
 			Self::Regular => Self::Regular,
 			Self::Directory(entries) => Self::Directory(entries.try_clone()?),
 			Self::Link(path) => Self::Link(path.try_clone()?),
@@ -312,9 +312,7 @@ impl TryClone for FileContent {
 				major: *major,
 				minor: *minor,
 			},
-		};
-
-		Ok(s)
+		})
 	}
 }
 
@@ -426,12 +424,12 @@ impl File {
 
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> FileType {
-		self.content.get_type()
+		self.content.as_type()
 	}
 
 	/// Returns the file's mode.
 	pub fn get_mode(&self) -> Mode {
-		self.mode | self.content.get_type().to_mode()
+		self.mode | self.content.as_type().to_mode()
 	}
 
 	/// Tells if the file can be read from by the given UID and GID.

@@ -1,13 +1,14 @@
 //! The `osrelease` node returns the current release of the kernel.
 
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::Uid;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 use core::cmp::min;
 
 /// Structure representing the `osrelease` node.
@@ -26,7 +27,7 @@ impl KernFSNode for OsRelease {
 		0
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
 		Ok(FileContent::Regular.into())
 	}
 }

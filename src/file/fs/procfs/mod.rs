@@ -132,20 +132,19 @@ impl ProcFS {
 
 		// Inserting the process's entry at the root of the filesystem
 		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
-		let mut content = oom::wrap(|| root.get_content()?.into_owned());
-		match &mut content {
-			FileContent::Directory(entries) => oom::wrap(|| {
-				entries.insert(
-					crate::format!("{pid}")?,
-					DirEntry {
-						entry_type: FileType::Directory,
-						inode,
-					},
-				)
-			}),
-			_ => unreachable!(),
-		}
-		root.set_content(content);
+		let mut content = oom::wrap(|| root.get_content());
+		let FileContent::Directory(entries) = &mut *content else {
+			unreachable!();
+		};
+		oom::wrap(|| {
+			entries.insert(
+				crate::format!("{pid}")?,
+				DirEntry {
+					entry_type: FileType::Directory,
+					inode,
+				},
+			)
+		});
 
 		Ok(())
 	}
@@ -154,28 +153,26 @@ impl ProcFS {
 	///
 	/// If the process doesn't exist, the function does nothing.
 	pub fn remove_process(&mut self, pid: Pid) -> AllocResult<()> {
-		if let Some(inode) = self.procs.remove(&pid) {
-			// Removing the process's entry from the root of the filesystem
-			let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
-			let mut content = oom::wrap(|| root.get_content()?.into_owned());
-			match &mut content {
-				FileContent::Directory(entries) => {
-					entries.remove(&crate::format!("{pid}")?);
-				}
-				_ => unreachable!(),
-			}
-			root.set_content(content);
+		let Some(inode) = self.procs.remove(&pid) else {
+			return Ok(());
+		};
 
-			// Removing the node
-			if let Some(mut node) = oom::wrap(|| self.fs.remove_node(inode)) {
-				let node = node.as_mut() as &mut dyn Any;
+		// Removing the process's entry from the root of the filesystem
+		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
+		let mut content = oom::wrap(|| root.get_content()?);
+		let FileContent::Directory(entries) = &mut *content else {
+			unreachable!();
+		};
+		entries.remove(&crate::format!("{pid}")?);
 
-				if let Some(node) = node.downcast_mut::<ProcDir>() {
-					node.drop_inner(&mut self.fs);
-				}
+		// Removing the node
+		if let Some(mut node) = oom::wrap(|| self.fs.remove_node(inode)) {
+			let node = node.as_mut() as &mut dyn Any;
+
+			if let Some(node) = node.downcast_mut::<ProcDir>() {
+				node.drop_inner(&mut self.fs);
 			}
 		}
-
 		Ok(())
 	}
 }

@@ -7,7 +7,9 @@ mod mounts;
 mod stat;
 mod status;
 
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::fs::kernfs::KernFS;
 use crate::file::DirEntry;
@@ -22,7 +24,6 @@ use crate::process::Process;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 use cmdline::Cmdline;
 use cwd::Cwd;
 use exe::Exe;
@@ -176,8 +177,8 @@ impl KernFSNode for ProcDir {
 		}
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
-		Ok(Cow::from(&self.content))
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
+		Ok(KernFSContent::Owned(&mut self.content))
 	}
 }
 

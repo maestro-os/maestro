@@ -1,7 +1,9 @@
 //! This module implements the `exe` node, which is a link to the executable
 //! file of the process.
 
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
@@ -10,7 +12,6 @@ use crate::file::Uid;
 use crate::process::pid::Pid;
 use crate::process::Process;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 
 /// Struture representing the `exe` node.
 pub struct Exe {
@@ -39,15 +40,15 @@ impl KernFSNode for Exe {
 		}
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
-		let s = Process::get_by_pid(self.pid)
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
+		let content = Process::get_by_pid(self.pid)
 			.map(|mutex| {
 				let proc = mutex.lock();
 				crate::format!("{}", &*proc.exec_path)
 			})
 			.transpose()?
 			.unwrap_or_default();
-		Ok(Cow::from(FileContent::Link(s)))
+		Ok(FileContent::Link(content).into())
 	}
 }
 

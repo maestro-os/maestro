@@ -1,7 +1,9 @@
 //! This module implements a procfs node which allows to get the list of
 //! mountpoint.
 
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::mountpoint;
 use crate::file::FileContent;
@@ -12,7 +14,6 @@ use crate::process::pid::Pid;
 use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 use core::cmp::min;
 
 /// Structure representing the mounts node of the procfs.
@@ -42,7 +43,7 @@ impl KernFSNode for Mounts {
 		}
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
 		Ok(FileContent::Regular.into())
 	}
 }

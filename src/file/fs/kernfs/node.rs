@@ -1,5 +1,7 @@
 //! This module implements kernfs nodes.
 
+use crate::errno::AllocResult;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::FileContent;
@@ -11,8 +13,76 @@ use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
+use crate::util::TryClone;
 use core::any::Any;
+use core::borrow::Borrow;
+use core::borrow::BorrowMut;
+use core::ops::Deref;
+use core::ops::DerefMut;
+
+/// Content of a kernfs node.
+pub enum KernFSContent<'node> {
+	/// A content owned by the node.
+	Owned(&'node mut FileContent),
+	/// A dynamic content generated on the fly.
+	Dynamic(FileContent),
+}
+
+impl From<FileContent> for KernFSContent<'static> {
+	fn from(val: FileContent) -> Self {
+		Self::Dynamic(val)
+	}
+}
+
+impl<'node> From<&'node mut FileContent> for KernFSContent<'node> {
+	fn from(val: &'node mut FileContent) -> Self {
+		Self::Owned(val)
+	}
+}
+
+impl KernFSContent<'_> {
+	/// Returns an owned version of the content.
+	///
+	/// This function may clone the original content.
+	pub fn to_owned(self) -> AllocResult<FileContent> {
+		match self {
+			Self::Owned(c) => c.try_clone(),
+			Self::Dynamic(c) => Ok(c),
+		}
+	}
+}
+
+impl Borrow<FileContent> for KernFSContent<'_> {
+	fn borrow(&self) -> &FileContent {
+		match self {
+			Self::Owned(c) => c,
+			Self::Dynamic(c) => c,
+		}
+	}
+}
+
+impl BorrowMut<FileContent> for KernFSContent<'_> {
+	fn borrow_mut(&mut self) -> &mut FileContent {
+		match self {
+			Self::Owned(c) => c,
+			Self::Dynamic(c) => c,
+		}
+	}
+}
+
+impl<'node> Deref for KernFSContent<'node> {
+	type Target = FileContent;
+
+	fn deref(&self) -> &Self::Target {
+		self.borrow()
+	}
+}
+
+impl DerefMut for KernFSContent<'_> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		self.borrow_mut()
+	}
+}
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: Any + IO {
@@ -72,11 +142,8 @@ pub trait KernFSNode: Any + IO {
 	/// Sets the timestamp of the last modification of the file's content.
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
-	/// Returns the node's content.
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno>;
-
-	/// Sets the node's content.
-	fn set_content(&mut self, _content: FileContent) {}
+	/// Returns an immutable reference to the node's content.
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>>;
 }
 
 /// Structure representing a dummy kernfs node (with the default behaviour).
@@ -191,12 +258,8 @@ impl KernFSNode for DummyKernFSNode {
 		self.mtime = ts;
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
-		Ok(Cow::from(&self.content))
-	}
-
-	fn set_content(&mut self, content: FileContent) {
-		self.content = content;
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
+		Ok(KernFSContent::Owned(&mut self.content))
 	}
 }
 

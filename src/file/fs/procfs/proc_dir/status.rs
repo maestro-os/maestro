@@ -1,7 +1,9 @@
 //! This module implements the status file, which allows to retrieve the current
 //! status of the process.
 
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
@@ -10,7 +12,6 @@ use crate::file::Uid;
 use crate::process::pid::Pid;
 use crate::process::Process;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 use core::cmp::min;
 
 /// Structure representing the status node of the procfs.
@@ -40,7 +41,7 @@ impl KernFSNode for Status {
 		}
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
 		Ok(FileContent::Regular.into())
 	}
 }

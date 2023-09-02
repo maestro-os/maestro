@@ -687,12 +687,12 @@ impl DeviceManager for StorageManager {
 		// Detect IDE controller
 		if let Some(ide) = ide::Controller::new(dev) {
 			// FIXME: on fail, interfaces may be duplicated
-			oom::wrap(|| -> AllocResult<()> {
-				for interface in ide.detect_all()? {
+			for interface in ide.detect_all()? {
+				oom::wrap(|| -> AllocResult<()> {
 					self.add(interface)?;
-				}
-				Ok(())
-			})?;
+					Ok(())
+				});
+			}
 
 			return Ok(());
 		}

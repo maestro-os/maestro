@@ -1,7 +1,9 @@
 //! The cmdline node allows to retrieve the list of command line arguments of
 //! the process.
 
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;
@@ -11,7 +13,6 @@ use crate::process::pid::Pid;
 use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 use core::cmp::min;
 
 /// Structure representing the cmdline node of the procfs.
@@ -41,8 +42,8 @@ impl KernFSNode for Cmdline {
 		}
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
-		Ok(Cow::from(FileContent::Regular))
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
+		Ok(KernFSContent::Dynamic(FileContent::Regular))
 	}
 }
 

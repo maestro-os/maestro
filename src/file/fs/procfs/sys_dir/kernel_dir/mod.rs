@@ -3,7 +3,9 @@
 mod osrelease;
 
 use super::kernfs::KernFS;
+use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::fs::kernfs::node::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::DirEntry;
 use crate::file::FileContent;
@@ -14,7 +16,6 @@ use crate::file::Uid;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
-use crate::util::ptr::cow::Cow;
 use osrelease::OsRelease;
 
 // TODO Handle dropping
@@ -64,8 +65,8 @@ impl KernFSNode for KernelDir {
 		0
 	}
 
-	fn get_content(&self) -> Result<Cow<'_, FileContent>, Errno> {
-		Ok(Cow::from(&self.content))
+	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
+		Ok(KernFSContent::Owned(&mut self.content))
 	}
 }
 
