@@ -27,6 +27,7 @@ mod block_group_descriptor;
 mod directory_entry;
 mod inode;
 
+use core::intrinsics::unlikely;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs::Filesystem;
@@ -907,7 +908,7 @@ impl Filesystem for Ext2Fs {
 		mode: Mode,
 		content: FileContent,
 	) -> Result<File, Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 
@@ -1026,7 +1027,7 @@ impl Filesystem for Ext2Fs {
 		name: &[u8],
 		inode: INode,
 	) -> Result<(), Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 
@@ -1101,7 +1102,7 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 
@@ -1129,7 +1130,7 @@ impl Filesystem for Ext2Fs {
 		parent_inode: INode,
 		name: &[u8],
 	) -> Result<(), Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if parent_inode < 1 {
@@ -1222,7 +1223,7 @@ impl Filesystem for Ext2Fs {
 		off: u64,
 		buf: &[u8],
 	) -> Result<(), Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if inode < 1 {

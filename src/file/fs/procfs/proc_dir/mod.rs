@@ -7,6 +7,7 @@ mod mounts;
 mod stat;
 mod status;
 
+use crate::errno::AllocError;
 use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::KernFSContent;
@@ -145,7 +146,7 @@ impl ProcDir {
 		match &mut self.content {
 			FileContent::Directory(entries) => {
 				for (_, entry) in entries.iter() {
-					oom::wrap(|| fs.remove_node(entry.inode));
+					oom::wrap(|| fs.remove_node(entry.inode).map_err(|_| AllocError));
 				}
 
 				entries.clear();

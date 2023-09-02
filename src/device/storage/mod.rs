@@ -5,6 +5,7 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
+use crate::errno::AllocError;
 use crate::device;
 use crate::device::bus::pci;
 use crate::device::id;
@@ -16,7 +17,6 @@ use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
-use crate::errno::AllocResult;
 use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::path::Path;
@@ -686,14 +686,16 @@ impl DeviceManager for StorageManager {
 
 		// Detect IDE controller
 		if let Some(ide) = ide::Controller::new(dev) {
-			// FIXME: on fail, interfaces may be duplicated
 			for interface in ide.detect_all()? {
-				oom::wrap(|| -> AllocResult<()> {
-					self.add(interface)?;
-					Ok(())
-				});
+				oom::wrap(|| {
+					let res = self.add(interface);
+					if res == Err(errno!(ENOMEM)) {
+						Err(AllocError)
+					} else {
+						Ok(res)
+					}
+				})?;
 			}
-
 			return Ok(());
 		}
 

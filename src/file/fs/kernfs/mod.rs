@@ -2,6 +2,8 @@
 
 pub mod node;
 
+use crate::errno::AllocError;
+use core::intrinsics::unlikely;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::DummyKernFSNode;
@@ -68,8 +70,9 @@ impl KernFS {
 	pub fn set_root(&mut self, mut root: Box<dyn KernFSNode>) -> Result<(), Errno> {
 		// Adding `.` and `..` entries if the new file is a directory
 		let mut content = root.get_content()?;
+		let mut new_links = 0;
 		if let FileContent::Directory(ref mut entries) = &mut *content {
-			if entries.get(b".".as_slice()).is_none() {
+			if !entries.contains_key(b".".as_slice()) {
 				entries.insert(
 					b".".as_slice().try_into()?,
 					DirEntry {
@@ -77,12 +80,9 @@ impl KernFS {
 						entry_type: FileType::Directory,
 					},
 				)?;
-
-				let new_cnt = root.get_hard_links_count() + 1;
-				root.set_hard_links_count(new_cnt);
+				new_links += 1;
 			}
-
-			if entries.get(b"..".as_slice()).is_none() {
+			if !entries.contains_key(b"..".as_slice()) {
 				entries.insert(
 					b"..".as_slice().try_into()?,
 					DirEntry {
@@ -90,11 +90,11 @@ impl KernFS {
 						entry_type: FileType::Directory,
 					},
 				)?;
-
-				let new_cnt = root.get_hard_links_count() + 1;
-				root.set_hard_links_count(new_cnt);
+				new_links += 1;
 			}
 		}
+		let new_cnt = root.get_hard_links_count() + new_links;
+		root.set_hard_links_count(new_cnt);
 
 		if self.nodes.is_empty() {
 			self.nodes.push(Some(root))?;
@@ -176,23 +176,24 @@ impl KernFS {
 	pub fn add_file_inner<N: 'static + KernFSNode>(
 		&mut self,
 		parent_inode: INode,
-		node: N,
+		mut node: N,
 		name: String,
 	) -> Result<File, Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 
 		let mode = node.get_mode();
 		let uid = node.get_uid();
 		let gid = node.get_gid();
-		let mut content = node.get_content()?;
-		let file_type = content.as_type();
 
-		// Checking the parent exists
+		// Check parent exists
 		self.get_node_mut(parent_inode)?;
 
 		let inode = self.add_node(Box::new(node)?)?;
+		let node = self.get_node_mut(inode)?;
+		let mut content = node.get_content()?;
+		let file_type = content.as_type();
 
 		// Adding `.` and `..` entries if the new file is a directory
 		if let FileContent::Directory(ref mut entries) = &mut *content {
@@ -205,7 +206,6 @@ impl KernFS {
 					},
 				)?;
 
-				let node = self.get_node_mut(inode)?;
 				let new_cnt = node.get_hard_links_count() + 1;
 				node.set_hard_links_count(new_cnt);
 			}
@@ -224,7 +224,6 @@ impl KernFS {
 				parent.set_hard_links_count(new_cnt);
 			}
 		}
-		let node = self.get_node_mut(inode)?;
 
 		// Adding entry to parent
 		let parent = self.get_node_mut(parent_inode).unwrap();
@@ -292,23 +291,21 @@ impl Filesystem for KernFS {
 		parent: Option<INode>,
 		name: &[u8],
 	) -> Result<INode, Errno> {
-		let parent = parent.unwrap_or(ROOT_INODE);
-
 		// Getting the parent node
-		let parent = self.get_node(parent)?;
+		let parent = parent.unwrap_or(ROOT_INODE);
+		let parent = self.get_node_mut(parent)?;
 
-		match &mut *parent.get_content()? {
-			FileContent::Directory(entries) => entries
-				.get(name)
-				.map(|dirent| dirent.inode)
-				.ok_or_else(|| errno!(ENOENT)),
-
-			_ => Err(errno!(ENOENT)),
-		}
+		let FileContent::Directory(entries) = &mut *parent.get_content()? else {
+			return Err(errno!(ENOENT));
+		};
+		entries
+			.get(name)
+			.map(|dirent| dirent.inode)
+			.ok_or_else(|| errno!(ENOENT))
 	}
 
 	fn load_file(&mut self, _: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
-		let node = self.get_node(inode)?;
+		let node = self.get_node_mut(inode)?;
 
 		let file_location = FileLocation::Filesystem {
 			mountpoint_id: None,
@@ -355,7 +352,7 @@ impl Filesystem for KernFS {
 		name: &[u8],
 		inode: INode,
 	) -> Result<(), Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 
@@ -364,7 +361,7 @@ impl Filesystem for KernFS {
 
 		// Insert the new entry
 		let parent = self.get_node_mut(parent_inode)?;
-		let parent_content = parent.get_content()?;
+		let mut parent_content = parent.get_content()?;
 		let entry_type = parent_content.as_type();
 		let FileContent::Directory(entries) = &mut *parent_content else {
 			return Err(errno!(ENOTDIR));
@@ -386,7 +383,7 @@ impl Filesystem for KernFS {
 	}
 
 	fn update_inode(&mut self, _: &mut dyn IO, file: &File) -> Result<(), Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 
@@ -413,7 +410,7 @@ impl Filesystem for KernFS {
 		parent_inode: INode,
 		name: &[u8],
 	) -> Result<(), Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 
@@ -427,7 +424,7 @@ impl Filesystem for KernFS {
 			.get(name)
 			.ok_or_else(|| errno!(ENOENT))?
 			.inode;
-		let node = self.get_node(inode)?;
+		let node = self.get_node_mut(inode)?;
 		if let FileContent::Directory(entries) = &*node.get_content()? {
 			if entries.len() > 2 {
 				return Err(errno!(ENOTEMPTY));
@@ -439,15 +436,15 @@ impl Filesystem for KernFS {
 
 		// Removing directory entry
 		let parent = self.get_node_mut(parent_inode).unwrap();
-		let FileContent::Directory(entries) = &mut *parent.get_content()? else {
+		let content = parent.get_content()?;
+		let FileContent::Directory(entries) = &mut *content else {
 			unreachable!();
 		};
 		entries.remove(name);
 
 		// If the node is a directory, decrement the number of hard links in the parent
 		// (entry `..`)
-		let is_dir = matches!(node.get_content()?.borrow(), FileContent::Directory(_));
-		if is_dir {
+		if let FileContent::Directory(_) = node.get_content()?.borrow() {
 			let parent = self.get_node_mut(parent_inode).unwrap();
 			let links = parent.get_hard_links_count() - 1;
 			parent.set_hard_links_count(links);
@@ -458,7 +455,7 @@ impl Filesystem for KernFS {
 		let links = node.get_hard_links_count() - 1;
 		node.set_hard_links_count(links);
 		if node.get_hard_links_count() <= 0 {
-			oom::wrap(|| self.remove_node(inode));
+			oom::wrap(|| self.remove_node(inode).map_err(|_| AllocError));
 		}
 
 		Ok(())
@@ -482,7 +479,7 @@ impl Filesystem for KernFS {
 		off: u64,
 		buf: &[u8],
 	) -> Result<(), Errno> {
-		if self.readonly {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 

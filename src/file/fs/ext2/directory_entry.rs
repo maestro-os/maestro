@@ -100,7 +100,7 @@ impl DirectoryEntry {
 	/// Creates a new instance from a slice.
 	pub unsafe fn from(slice: &[u8]) -> AllocResult<Box<Self>> {
 		let len = NonZeroUsize::new(slice.len()).ok_or_else(|| AllocError)?;
-		let ptr = malloc::alloc(len)?.cast();
+		let mut ptr = malloc::alloc(len)?.cast();
 		let alloc_slice = slice::from_raw_parts_mut(ptr.as_mut(), slice.len());
 		alloc_slice.copy_from_slice(slice);
 

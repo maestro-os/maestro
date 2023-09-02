@@ -6,6 +6,7 @@ mod proc_dir;
 mod self_link;
 mod sys_dir;
 
+use crate::errno::AllocError;
 use super::kernfs;
 use super::kernfs::node::DummyKernFSNode;
 use super::kernfs::KernFS;
@@ -132,7 +133,7 @@ impl ProcFS {
 
 		// Inserting the process's entry at the root of the filesystem
 		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
-		let mut content = oom::wrap(|| root.get_content());
+		let mut content = oom::wrap(|| root.get_content().map_err(|_| AllocError));
 		let FileContent::Directory(entries) = &mut *content else {
 			unreachable!();
 		};
@@ -159,14 +160,14 @@ impl ProcFS {
 
 		// Removing the process's entry from the root of the filesystem
 		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
-		let mut content = oom::wrap(|| root.get_content()?);
+		let mut content = oom::wrap(|| root.get_content().map_err(|_| AllocError));
 		let FileContent::Directory(entries) = &mut *content else {
 			unreachable!();
 		};
 		entries.remove(&crate::format!("{pid}")?);
 
 		// Removing the node
-		if let Some(mut node) = oom::wrap(|| self.fs.remove_node(inode)) {
+		if let Some(mut node) = oom::wrap(|| self.fs.remove_node(inode).map_err(|_| AllocError)) {
 			let node = node.as_mut() as &mut dyn Any;
 
 			if let Some(node) = node.downcast_mut::<ProcDir>() {

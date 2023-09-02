@@ -747,6 +747,9 @@ impl Executor for ELFExecutor {
 			});
 		}
 
+		let user_stack_begin = unsafe {
+			user_stack.sub(total_size)
+		};
 		let kernel_stack = mem_space.map_stack(
 			process::KERNEL_STACK_SIZE.try_into().unwrap(),
 			process::KERNEL_STACK_FLAGS,
@@ -760,7 +763,7 @@ impl Executor for ELFExecutor {
 			entry_point: load_info.entry_point,
 
 			user_stack,
-			user_stack_begin: user_stack.sub(total_size) as _,
+			user_stack_begin,
 
 			kernel_stack,
 		})

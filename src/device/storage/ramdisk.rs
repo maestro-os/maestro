@@ -76,7 +76,7 @@ impl StorageInterface for RAMDisk {
 			return Err(errno!(EINVAL));
 		}
 
-		let Some(data) = self.data else {
+		let Some(data) = &self.data else {
 			buf.fill(0);
 			return Ok(());
         };
@@ -104,7 +104,7 @@ impl StorageInterface for RAMDisk {
 		if self.data.is_none() {
 			self.allocate()?;
 		}
-		let data = self.data.as_ref().unwrap();
+		let data = self.data.as_mut().unwrap();
 
 		let off = offset * block_size;
 		for i in 0..size {

@@ -84,7 +84,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	///
 	/// The node is colored `Red` by default.
 	fn new(key: K, value: V) -> AllocResult<NonNull<Self>> {
-		let ptr = unsafe { malloc::alloc(size_of::<Self>().try_into().unwrap())?.cast() };
+		let mut ptr = unsafe { malloc::alloc(size_of::<Self>().try_into().unwrap())?.cast() };
 		let s = Self {
 			parent: None,
 			left: None,
@@ -842,7 +842,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// `traversal_order` defines the order in which the tree is traversed.
 	fn foreach_nodes<F: FnMut(&Node<K, V>)>(
 		root: &Node<K, V>,
-		f: F,
+		f: &mut F,
 		traversal_order: TraveralOrder,
 	) {
 		let (first, second) = if traversal_order == TraveralOrder::ReverseInOrder {
@@ -852,7 +852,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		};
 
 		if traversal_order == TraveralOrder::PreOrder {
-			f(root);
+			(*f)(root);
 		}
 
 		if let Some(mut n) = first {
@@ -862,7 +862,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		if traversal_order == TraveralOrder::InOrder
 			|| traversal_order == TraveralOrder::ReverseInOrder
 		{
-			f(root);
+			(*f)(root);
 		}
 
 		if let Some(mut n) = second {
@@ -870,7 +870,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 
 		if traversal_order == TraveralOrder::PostOrder {
-			f(root);
+			(*f)(root);
 		}
 	}
 
@@ -879,7 +879,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// `traversal_order` defines the order in which the tree is traversed.
 	fn foreach_nodes_mut<F: FnMut(&mut Node<K, V>)>(
 		root: &mut Node<K, V>,
-		f: F,
+		f: &mut F,
 		traversal_order: TraveralOrder,
 	) {
 		let (first, second) = if traversal_order == TraveralOrder::ReverseInOrder {
@@ -1303,7 +1303,7 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 		if let Some(root) = self.get_root() {
 			Self::foreach_nodes(
 				root,
-				|n| {
+				&mut |n| {
 					for _ in 0..n.get_node_depth() {
 						let _ = write!(f, "\t");
 					}
@@ -1331,7 +1331,7 @@ impl<K: 'static + Ord, V> Drop for Map<K, V> {
 
 		Self::foreach_nodes_mut(
 			root,
-			|n| unsafe {
+			&mut |n| unsafe {
 				drop_node(n.into());
 			},
 			TraveralOrder::PostOrder,

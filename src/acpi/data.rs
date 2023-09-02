@@ -183,7 +183,7 @@ impl ACPIData {
 				};
 
 				let b = unsafe {
-					let ptr = malloc::alloc(table.get_length().try_into().unwrap()).unwrap();
+					let mut ptr = malloc::alloc(table.get_length().try_into().unwrap()).unwrap();
 					ptr::copy_nonoverlapping(
 						table as *const _ as *const _,
 						ptr.as_mut(),

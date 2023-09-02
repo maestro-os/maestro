@@ -91,7 +91,7 @@ pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonN
 		Ordering::Greater => {
 			if !chunk.grow(n.get() - chunk_size) {
 				let old_len = min(chunk.get_size(), n.get());
-				let new_ptr = alloc(n)?;
+				let mut new_ptr = alloc(n)?;
 
 				ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut(), old_len);
 
@@ -115,7 +115,7 @@ pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonN
 /// function, the behaviour is undefined.
 ///
 /// Using memory after it was freed causes an undefined behaviour.
-pub unsafe fn free(ptr: NonNull<c_void>) {
+pub unsafe fn free(mut ptr: NonNull<c_void>) {
 	let _ = MUTEX.lock();
 
 	let chunk = Chunk::from_ptr(ptr.as_mut());

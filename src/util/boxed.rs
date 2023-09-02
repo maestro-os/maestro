@@ -46,18 +46,18 @@ impl<T> Box<T> {
 		let size: Result<NonZeroUsize, _> = size_of_val(&value).try_into();
 		let ptr = match size {
 			Ok(size) => {
-				let ptr = unsafe { malloc::alloc(size)?.cast() };
+				let mut ptr = unsafe { malloc::alloc(size)?.cast() };
 				unsafe {
 					ptr::write(ptr.as_mut(), value);
 				}
-
 				ptr
 			}
-			Err(_) => NonNull::dangling(),
+			Err(_) => {
+				// Prevent double drop
+				mem::forget(value);
+				NonNull::dangling()
+			},
 		};
-
-		// Prevent double drop
-		mem::forget(value);
 
 		Ok(Self {
 			ptr,
