@@ -196,9 +196,11 @@ impl KernFS {
 		let mut content = node.get_content()?;
 		let file_type = content.as_type();
 
-		// Adding `.` and `..` entries if the new file is a directory
+		// Add `.` and `..` entries if the new file is a directory
 		if let FileContent::Directory(ref mut entries) = &mut *content {
-			if entries.get(b".".as_slice()).is_none() {
+			let missing_cur = !entries.contains_key(b".".as_slice());
+			let missing_parent = !entries.contains_key(b"..".as_slice());
+			if missing_cur {
 				entries.insert(
 					b".".as_slice().try_into()?,
 					DirEntry {
@@ -206,12 +208,8 @@ impl KernFS {
 						entry_type: FileType::Directory,
 					},
 				)?;
-
-				let new_cnt = node.get_hard_links_count() + 1;
-				node.set_hard_links_count(new_cnt);
 			}
-
-			if entries.get(b"..".as_slice()).is_none() {
+			if missing_parent {
 				entries.insert(
 					b"..".as_slice().try_into()?,
 					DirEntry {
@@ -219,12 +217,27 @@ impl KernFS {
 						entry_type: FileType::Directory,
 					},
 				)?;
+			}
 
+			// Increment after to prevent double borrow
+			if missing_cur {
+				let new_cnt = node.get_hard_links_count() + 1;
+				node.set_hard_links_count(new_cnt);
+			}
+			if missing_parent {
 				let parent = self.get_node_mut(parent_inode).unwrap();
 				let new_cnt = parent.get_hard_links_count() + 1;
 				parent.set_hard_links_count(new_cnt);
 			}
 		}
+
+		let node = self.get_node_mut(inode)?;
+		let content = oom::wrap(|| node.get_content().map_err(|_| AllocError)?.to_owned());
+		let location = FileLocation::Filesystem {
+			mountpoint_id: None,
+			inode,
+		};
+		let file = File::new(name.try_clone()?, uid, gid, mode, location, content)?;
 
 		// Adding entry to parent
 		let parent = self.get_node_mut(parent_inode).unwrap();
@@ -243,13 +256,7 @@ impl KernFS {
 			)
 		});
 
-		let location = FileLocation::Filesystem {
-			mountpoint_id: None,
-
-			inode,
-		};
-		let content = oom::wrap(|| content.to_owned());
-		File::new(name, uid, gid, mode, location, content)
+		Ok(file)
 	}
 }
 
@@ -434,10 +441,11 @@ impl Filesystem for KernFS {
 				return Err(errno!(ENOTEMPTY));
 			}
 		}
+		let is_dir = matches!(node.get_content()?.borrow(), FileContent::Directory(_));
 
 		// Removing directory entry
 		let parent = self.get_node_mut(parent_inode).unwrap();
-		let content = parent.get_content()?;
+		let mut content = parent.get_content()?;
 		let FileContent::Directory(entries) = &mut *content else {
 			unreachable!();
 		};
@@ -445,7 +453,7 @@ impl Filesystem for KernFS {
 
 		// If the node is a directory, decrement the number of hard links in the parent
 		// (entry `..`)
-		if let FileContent::Directory(_) = node.get_content()?.borrow() {
+		if is_dir {
 			let parent = self.get_node_mut(parent_inode).unwrap();
 			let links = parent.get_hard_links_count() - 1;
 			parent.set_hard_links_count(links);

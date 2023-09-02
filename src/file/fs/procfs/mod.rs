@@ -133,11 +133,11 @@ impl ProcFS {
 
 		// Inserting the process's entry at the root of the filesystem
 		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
-		let mut content = oom::wrap(|| root.get_content().map_err(|_| AllocError));
-		let FileContent::Directory(entries) = &mut *content else {
-			unreachable!();
-		};
 		oom::wrap(|| {
+			let mut content = root.get_content().map_err(|_| AllocError)?;
+			let FileContent::Directory(entries) = &mut *content else {
+				unreachable!();
+			};
 			entries.insert(
 				crate::format!("{pid}")?,
 				DirEntry {
@@ -160,11 +160,14 @@ impl ProcFS {
 
 		// Removing the process's entry from the root of the filesystem
 		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
-		let mut content = oom::wrap(|| root.get_content().map_err(|_| AllocError));
-		let FileContent::Directory(entries) = &mut *content else {
-			unreachable!();
-		};
-		entries.remove(&crate::format!("{pid}")?);
+		oom::wrap(|| {
+			let mut content = root.get_content().map_err(|_| AllocError)?;
+			let FileContent::Directory(entries) = &mut *content else {
+				unreachable!();
+			};
+			entries.remove(&crate::format!("{pid}")?);
+			Ok(())
+		});
 
 		// Removing the node
 		if let Some(mut node) = oom::wrap(|| self.fs.remove_node(inode).map_err(|_| AllocError)) {
