@@ -27,7 +27,6 @@ mod block_group_descriptor;
 mod directory_entry;
 mod inode;
 
-use core::intrinsics::unlikely;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::fs::Filesystem;
@@ -58,6 +57,7 @@ use crate::util::TryClone;
 use block_group_descriptor::BlockGroupDescriptor;
 use core::cmp::max;
 use core::cmp::min;
+use core::intrinsics::unlikely;
 use core::mem::size_of;
 use core::mem::size_of_val;
 use core::mem::MaybeUninit;

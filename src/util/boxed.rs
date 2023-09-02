@@ -56,7 +56,7 @@ impl<T> Box<T> {
 				// Prevent double drop
 				mem::forget(value);
 				NonNull::dangling()
-			},
+			}
 		};
 
 		Ok(Self {

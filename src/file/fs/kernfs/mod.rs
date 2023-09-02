@@ -1,10 +1,10 @@
 //! Kernfs implements utilities allowing to create a virtual filesystem.
 
+pub mod content;
 pub mod node;
 
-use crate::errno::AllocError;
-use core::intrinsics::unlikely;
 use crate::errno;
+use crate::errno::AllocError;
 use crate::errno::Errno;
 use crate::file::fs::kernfs::node::DummyKernFSNode;
 use crate::file::fs::Filesystem;
@@ -26,6 +26,7 @@ use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::TryClone;
 use core::borrow::Borrow;
+use core::intrinsics::unlikely;
 use node::KernFSNode;
 
 // TODO Change to `1`
@@ -176,7 +177,7 @@ impl KernFS {
 	pub fn add_file_inner<N: 'static + KernFSNode>(
 		&mut self,
 		parent_inode: INode,
-		mut node: N,
+		node: N,
 		name: String,
 	) -> Result<File, Errno> {
 		if unlikely(self.readonly) {

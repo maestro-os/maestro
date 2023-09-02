@@ -2,7 +2,7 @@
 
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file::fs::kernfs::node::KernFSContent;
+use crate::file::fs::kernfs::content::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
 use crate::file::FileContent;
 use crate::file::Gid;

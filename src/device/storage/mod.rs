@@ -5,7 +5,6 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use crate::errno::AllocError;
 use crate::device;
 use crate::device::bus::pci;
 use crate::device::id;
@@ -17,6 +16,7 @@ use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
+use crate::errno::AllocError;
 use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::path::Path;

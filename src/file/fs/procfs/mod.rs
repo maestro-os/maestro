@@ -6,12 +6,12 @@ mod proc_dir;
 mod self_link;
 mod sys_dir;
 
-use crate::errno::AllocError;
 use super::kernfs;
 use super::kernfs::node::DummyKernFSNode;
 use super::kernfs::KernFS;
 use super::Filesystem;
 use super::FilesystemType;
+use crate::errno::AllocError;
 use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::file::fs::Statfs;
