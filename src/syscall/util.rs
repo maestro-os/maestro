@@ -85,7 +85,7 @@ pub unsafe fn get_str_array(
 ///
 /// `process_guard` is the guard of the current process.
 fn build_path_from_fd(
-	process: &MutexGuard<Process, false>,
+	process: MutexGuard<Process, false>,
 	dirfd: i32,
 	pathname: &[u8],
 ) -> Result<Path, Errno> {
@@ -116,10 +116,8 @@ fn build_path_from_fd(
 		drop(process);
 
 		let open_file = open_file_mutex.lock();
-
 		let file_mutex = open_file.get_file()?;
 		let file = file_mutex.lock();
-
 		Ok(file.get_path()?.concat(&path)?)
 	}
 }
@@ -169,11 +167,7 @@ pub fn get_file_at(
 	} else {
 		let uid = process.euid;
 		let gid = process.egid;
-
-		let path = build_path_from_fd(&process, dirfd, pathname)?;
-
-		// Unlocking to avoid deadlock with procfs
-		drop(process);
+		let path = build_path_from_fd(process, dirfd, pathname)?;
 
 		let vfs_mutex = vfs::get();
 		let mut vfs = vfs_mutex.lock();
@@ -202,14 +196,10 @@ pub fn get_parent_at_with_name(
 		return Err(errno!(ENOENT));
 	}
 
-	let mut path = build_path_from_fd(&process, dirfd, pathname)?;
-	let name = path.pop().unwrap();
-
 	let uid = process.euid;
 	let gid = process.egid;
-
-	// Unlocking to avoid deadlock with procfs
-	drop(process);
+	let mut path = build_path_from_fd(process, dirfd, pathname)?;
+	let name = path.pop().unwrap();
 
 	let vfs_mutex = vfs::get();
 	let mut vfs = vfs_mutex.lock();

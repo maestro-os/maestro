@@ -7,6 +7,7 @@
 //! - `strace`: if enabled, the kernel traces system calls. This is a debug feature.
 
 #![no_std]
+#![allow(internal_features)]
 #![no_main]
 #![feature(allow_internal_unstable)]
 #![feature(array_chunks)]
@@ -16,7 +17,6 @@
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(exclusive_range_pattern)]
-#![feature(is_sorted)]
 #![feature(iterator_try_collect)]
 #![feature(lang_items)]
 #![feature(nonzero_ops)]

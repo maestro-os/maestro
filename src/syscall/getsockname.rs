@@ -53,7 +53,6 @@ pub fn getsockname(
 		.get_mut(&mut mem_space_guard, addrlen_val)?
 		.ok_or(errno!(EFAULT))?;
 	let len = sock.read_sockname(addr_slice) as _;
-	drop(addr_slice);
 
 	// Update actual length of the address
 	let addrlen_val = addrlen
