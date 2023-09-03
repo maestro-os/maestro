@@ -22,6 +22,7 @@ RUSTFLAGS="--crate-type dylib
 
 case $PROFILE in
 	"debug")
+		RUSTFLAGS="$RUSTFLAGS -C debuginfo=2"
 		;;
 	"release")
 		RUSTFLAGS="$RUSTFLAGS -C opt-level=3"

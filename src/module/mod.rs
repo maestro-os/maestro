@@ -120,7 +120,11 @@ impl Module {
 	/// - `name` is the attribute's name.
 	///
 	/// If the attribute doesn't exist, the function returns `None`.
-	fn get_module_attibute<'a, T>(mem: &'a [u8], parser: &ELFParser<'a>, name: &str) -> Option<T> {
+	fn get_module_attribute<'a, T>(
+		mem: &'a [u8],
+		parser: &ELFParser<'a>,
+		name: &str,
+	) -> Option<T> {
 		let sym = parser.get_symbol_by_name(name)?;
 
 		let off = sym.st_value as usize;
@@ -144,9 +148,8 @@ impl Module {
 		})?;
 
 		// Allocate memory for the module
-		let Some(mem_size) = NonZeroUsize::new(Self::get_load_size(&parser)) else {
-            return Err(errno!(EINVAL));
-        };
+		let mem_size =
+			NonZeroUsize::new(Self::get_load_size(&parser)).ok_or_else(|| errno!(EINVAL))?;
 		let mut mem = malloc::Alloc::<u8>::new_default(mem_size)?;
 
 		// The base virtual address at which the module is loaded
@@ -209,7 +212,7 @@ impl Module {
 		}
 
 		// Checking the magic number
-		let magic = Self::get_module_attibute::<u64>(mem.as_slice(), &parser, "MOD_MAGIC")
+		let magic = Self::get_module_attribute::<u64>(mem.as_slice(), &parser, "MOD_MAGIC")
 			.ok_or_else(|| {
 				crate::println!("Missing `MOD_MAGIC` symbol in module image");
 				errno!(EINVAL)
@@ -220,7 +223,7 @@ impl Module {
 		}
 
 		// Getting the module's name
-		let name = Self::get_module_attibute::<&'static str>(mem.as_slice(), &parser, "MOD_NAME")
+		let name = Self::get_module_attribute::<&'static str>(mem.as_slice(), &parser, "MOD_NAME")
 			.ok_or_else(|| {
 				crate::println!("Missing `MOD_NAME` symbol in module image");
 				errno!(EINVAL)
@@ -228,14 +231,15 @@ impl Module {
 		let name = String::try_from(name)?;
 
 		// Getting the module's version
-		let version = Self::get_module_attibute::<Version>(mem.as_slice(), &parser, "MOD_VERSION")
-			.ok_or_else(|| {
-				crate::println!("Missing `MOD_VERSION` symbol in module image");
-				errno!(EINVAL)
-			})?;
+		let version =
+			Self::get_module_attribute::<Version>(mem.as_slice(), &parser, "MOD_VERSION")
+				.ok_or_else(|| {
+					crate::println!("Missing `MOD_VERSION` symbol in module image");
+					errno!(EINVAL)
+				})?;
 
 		// Getting the module's dependencies
-		let deps = Self::get_module_attibute::<&'static [Dependency]>(
+		let deps = Self::get_module_attribute::<&'static [Dependency]>(
 			mem.as_slice(),
 			&parser,
 			"MOD_DEPS",
