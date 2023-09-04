@@ -91,7 +91,7 @@ impl<T> Vec<T> {
 		let Some(capacity) = NonZeroUsize::new(capacity) else {
 			self.data = None;
 			return Ok(());
-        };
+		};
 
 		if let Some(data) = &mut self.data {
 			debug_assert!(data.len() >= self.len);
@@ -644,6 +644,7 @@ impl<T> Iterator for IntoIter<T> {
 	type Item = T;
 
 	fn next(&mut self) -> Option<Self::Item> {
+		// FIXME: currently, the iterator goes from end to begin
 		self.vec.pop()
 	}
 }
