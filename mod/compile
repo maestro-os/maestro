@@ -11,11 +11,11 @@ fi
 if [ -z "$ARCH" ]; then
 	ARCH="x86"
 fi
-CARGOFLAGS="--target $KERN_SRC/arch/$ARCH/$ARCH.json"
+CARGOFLAGS="--target $KERN_SRC/arch/$ARCH/$ARCH.json $CARGOFLAGS"
 
 if [ -z "$PROFILE" ]; then
 	PROFILE="debug"
 fi
-export RUSTFLAGS="--extern kernel=$KERN_SRC/target/$ARCH/$PROFILE/libkernel.so -L $KERN_SRC/target/$ARCH/$PROFILE/deps -L $KERN_SRC/target/$PROFILE/deps"
+export RUSTFLAGS="--extern kernel=$KERN_SRC/target/$ARCH/$PROFILE/libkernel.so -L $KERN_SRC/target/$ARCH/$PROFILE/deps -L $KERN_SRC/target/$PROFILE/deps $RUSTFLAGS"
 
 cargo build $CARGOFLAGS $@

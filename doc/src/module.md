@@ -34,16 +34,36 @@ These files are located in the `mod/template/` directory of the kernel's sources
 
 The `kernel` crate gives access to the kernel's functions.
 
-The `kernel::module` macro allows to define the attributes of the module. Its arguments are:
-- The name of the module
-- The version of the module
-- The list of dependencies of the module
+The `kernel::module` macro allows to define the kernel module with its dependencies.
+
+> **NOTE**: if the `kernel::module` declaration is not present, the module will not work
 
 The following properties have to be taken into account when writing a module:
 - `init` is called once each times the module is loaded. The execution must be not block since it would freeze the system
 - `fini` can be called at all times and must free every resources allocated by the module
 
 On success, `init` returns `true`. On failure, it returns `false`.
+
+
+
+## Versioning
+
+Kernel module versioning is a small subset of the [SemVer](https://semver.org/) specification.
+
+Versions MUST have the following format: `X.Y.Z` where:
+- `X` is a positive number (including zero) representing the *major version*
+- `Y` is a positive number (including zero) representing the *minor version*
+- `Z` is a positive number (including zero) representing the *patch version*
+
+The same rules as the SemVer specification apply for those numbers.
+
+
+
+### Backus-Naur Form
+
+```
+<version> ::= <major> "." <minor> "." <patch>
+```
 
 
 

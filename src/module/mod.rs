@@ -42,24 +42,49 @@ pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
 ///
 /// This macro must be used only inside of a kernel module.
 ///
-/// Arguments:
-/// - `name` (str) is the module's name.
-/// - `version` ([`version::Version`]) is the module's version.
-/// - `deps` ([&str]) is the list of the module's dependencies.
+/// The argument is the list of dependencies ([`version::Dependency`]) of the module.
+///
+/// Example:
+/// ```rust
+/// kernel::module!([
+///     Dependency {
+///         name: "plop",
+///         version: Version::new(1, 0, 0),
+///         constraint: Ordering::Equal,
+///     }
+/// ])
+/// ```
 #[macro_export]
 macro_rules! module {
-	($name:expr, $version:expr, $deps:expr) => {
-		#[no_mangle]
-		pub static MOD_MAGIC: u64 = kernel::module::MOD_MAGIC;
+	($deps:expr) => {
+		mod module_meta {
+			use kernel::module::version::Dependency;
+			use kernel::module::version::Version;
 
-		#[no_mangle]
-		pub static MOD_NAME: &'static str = $name;
+			const fn get_version() -> Version {
+				let result = Version::parse(env!("CARGO_PKG_VERSION"));
+				let Ok(version) = result else {
+					panic!("invalid module version (see kernel's documentation for versioning specifications)");
+				};
+				version
+			}
 
-		#[no_mangle]
-		pub static MOD_VERSION: kernel::module::version::Version = $version;
+			const fn const_len<const C: usize>(_: &[Dependency; C]) -> usize {
+				C
+			}
 
-		#[no_mangle]
-		pub static MOD_DEPS: &'static [kernel::module::version::Dependency] = $deps;
+			#[no_mangle]
+			pub static MOD_MAGIC: u64 = kernel::module::MOD_MAGIC;
+
+			#[no_mangle]
+			pub static MOD_NAME: &'static str = env!("CARGO_PKG_NAME");
+
+			#[no_mangle]
+			pub static MOD_VERSION: Version = get_version();
+
+			#[no_mangle]
+			pub static MOD_DEPS: [Dependency; const_len(&$deps)] = $deps;
+		}
 	};
 }
 

@@ -30,21 +30,20 @@ impl Version {
 			patch,
 		}
 	}
+
+	/// TODO doc
+	pub const fn parse(_s: &str) -> Result<Self, ()> {
+		// TODO
+		todo!()
+	}
 }
 
 impl Ord for Version {
 	fn cmp(&self, other: &Self) -> Ordering {
-		let mut ord = self.major.cmp(&other.major);
-		if ord != Ordering::Equal {
-			return ord;
-		}
-
-		ord = self.minor.cmp(&other.minor);
-		if ord != Ordering::Equal {
-			return ord;
-		}
-
-		self.patch.cmp(&other.patch)
+		self.major
+			.cmp(&other.major)
+			.then_with(|| self.minor.cmp(&other.minor))
+			.then_with(|| self.patch.cmp(&other.patch))
 	}
 }
 
@@ -71,7 +70,6 @@ impl Display for Version {
 pub struct Dependency {
 	/// The name of the module
 	pub name: &'static str,
-
 	/// The version.
 	pub version: Version,
 	/// The constraint on the version.
