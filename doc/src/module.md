@@ -11,6 +11,8 @@ This chapter describes how to write a kernel module.
 A basic kernel module contains the following files:
 
 ```
+|- Cargo.toml
+|- Cargo.lock
 |- rust-toolchain.toml
 |- src/
  |- mod.rs
@@ -18,7 +20,13 @@ A basic kernel module contains the following files:
 
 These files are located in the `mod/template/` directory of the kernel's sources.
 
-`mod.rs` is the file that contains the main functions of the module. Example:
+`Cargo.toml`:
+
+```toml
+{{#include ../../mod/template/Cargo.toml}}
+```
+
+`mod.rs`:
 
 ```rust
 {{#include ../../mod/template/src/mod.rs}}
@@ -47,17 +55,17 @@ The references to the kernel's internals and module interfaces can be found [her
 
 ## Building
 
-The kernel must be built in its directory in order to be able to build the module.
-
-To build a kernel module:
+The prodedure to build a kernel module is the following:
 - Compile the kernel in debug or release mode (`--release`), depending on which profile you want
-- cd into the root of the module's source directory
-- Specify the profile to compile for in the `PROFILE` environment variable. Either `debug` or `release`
-- Execute the compile script located in the kernel's source, located at `mod/compile`. The script takes the name of the module as parameter. Example:
+- `cd` into the root of the module's source directory
+- Set environment variables:
+    - `PROFILE`: profile to compile for (either `debug` or `release`). Default value: `debug`
+    - `ARCH`: architecture to compile for (example: `x86`). Default value: `x86`
+- Execute the compile script located in the kernel's sources. Example:
 ```sh
-PROFILE=debug ../maestro/mod/compile module_name
+PROFILE="debug" ARCH="x86" ../maestro/mod/compile
 ```
 
-The module is then compiled to a file named `module_name.kmod`
+Then, the compiled module can be found at `target/<arch>/<profile>/lib<name>.so`
 
-**NOTE**: It is important that the specified profile matches the profile used to compile the kernel, otherwise the module will not work
+> **NOTE**: It is important that the specified profile and architecture match the compilation of the kernel, otherwise compilation will not work
