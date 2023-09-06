@@ -62,9 +62,10 @@ macro_rules! module {
 			use kernel::module::version::Version;
 
 			const fn get_version() -> Version {
-				let result = Version::parse(env!("CARGO_PKG_VERSION"));
+                let version_str = env!("CARGO_PKG_VERSION");
+				let result = Version::parse(version_str);
 				let Ok(version) = result else {
-					panic!("invalid module version (see kernel's documentation for versioning specifications)");
+					panic!("invalid module version `{version_str}` (see kernel's documentation for versioning specifications)");
 				};
 				version
 			}

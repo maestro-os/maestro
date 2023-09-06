@@ -31,10 +31,45 @@ impl Version {
 		}
 	}
 
-	/// TODO doc
-	pub const fn parse(_s: &str) -> Result<Self, ()> {
-		// TODO
-		todo!()
+	// FIXME: this function currently cannot be written cleanly since const functions are not very
+	// advanced in Rust. When improvements will be made, rewrite it
+	/// Parses a version from the given string.
+	///
+	/// If the version is invalid, the function returns an error.
+	pub const fn parse(s: &str) -> Result<Self, ()> {
+		let mut nbrs: [u16; 3] = [0; 3];
+		let mut n = 0;
+
+		let bytes = s.as_bytes();
+		let mut i = 0;
+		while i < bytes.len() {
+			if !(bytes[i] as char).is_ascii_digit() {
+				return Err(());
+			}
+
+			// Parse number
+			let mut nbr: u16 = 0;
+			while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
+				nbr *= 10;
+				nbr += (bytes[i] - b'0') as u16;
+				i += 1;
+			}
+
+			nbrs[n] = nbr;
+			n += 1;
+
+			if i >= bytes.len() || bytes[i] == b'.' {
+				i += 1;
+			} else {
+				return Err(());
+			}
+		}
+
+		Ok(Self {
+			major: nbrs[0],
+			minor: nbrs[1],
+			patch: nbrs[2],
+		})
 	}
 }
 
@@ -74,4 +109,64 @@ pub struct Dependency {
 	pub version: Version,
 	/// The constraint on the version.
 	pub constraint: Ordering,
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn version_parse() {
+		assert_eq!(Version::parse(""), Err(_));
+		assert_eq!(Version::parse("."), Err(_));
+		assert_eq!(Version::parse("0."), Err(_));
+		assert_eq!(Version::parse("0.0"), Err(_));
+		assert_eq!(Version::parse("0.0."), Err(_));
+		assert_eq!(Version::parse("0..0"), Err(_));
+		assert_eq!(Version::parse(".0.0"), Err(_));
+		assert_eq!(Version::parse("0.0.0."), Err(_));
+		assert_eq!(Version::parse("0.0.0.0"), Err(_));
+
+		assert_eq!(
+			Version::parse("0.0.0"),
+			Ok(Version {
+				major: 0,
+				minor: 0,
+				patch: 0,
+			})
+		);
+		assert_eq!(
+			Version::parse("1.0.0"),
+			Ok(Version {
+				major: 1,
+				minor: 0,
+				patch: 0,
+			})
+		);
+		assert_eq!(
+			Version::parse("0.1.0"),
+			Ok(Version {
+				major: 0,
+				minor: 1,
+				patch: 0,
+			})
+		);
+		assert_eq!(
+			Version::parse("0.0.1"),
+			Ok(Version {
+				major: 0,
+				minor: 0,
+				patch: 1,
+			})
+		);
+
+		assert_eq!(
+			Version::parse("1.2.3"),
+			Ok(Version {
+				major: 1,
+				minor: 2,
+				patch: 3,
+			})
+		);
+	}
 }

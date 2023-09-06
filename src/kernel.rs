@@ -24,6 +24,7 @@
 #![feature(panic_info_message)]
 #![feature(pointer_is_aligned)]
 #![feature(ptr_metadata)]
+#![feature(slice_index_methods)]
 #![feature(stmt_expr_attributes)]
 #![feature(strict_provenance)]
 #![feature(trait_upcasting)]
