@@ -33,15 +33,12 @@ strace = ["macros/strace"]
 [profile.release]
 panic = "abort"
 rustflags = [
-	"-Cno-redzone=yes",
 	"-Zexport-executable-symbols",
 ]
 
 [profile.dev]
 rustflags = [
-	"-Cno-redzone=yes",
 	"-Zexport-executable-symbols",
-
 	# Specific to `dev`
 	"-Cforce-frame-pointers=yes"
 ]

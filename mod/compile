@@ -2,36 +2,20 @@
 
 # This script is compiles kernel modules.
 
-# TODO implement in Rust?
+KERN_SRC=$(realpath $(dirname $0)/..)
+if [ "$(pwd)" = "$KERN_SRC" ]; then
+	>&2 echo "This script is to be used for kernel modules. Not the kernel itself"
+	exit 1
+fi
 
-# TODO usage if no argument is provided
-# TODO incremental compilation
+if [ -z "$ARCH" ]; then
+	ARCH="x86"
+fi
+CARGOFLAGS="--target $KERN_SRC/arch/$ARCH/$ARCH.json"
 
-KERN_SRC=$(dirname $(dirname $(realpath $0)))
-NAME=$1
+if [ -z "$PROFILE" ]; then
+	PROFILE="debug"
+fi
+export RUSTFLAGS="--extern kernel=$KERN_SRC/target/$ARCH/$PROFILE/libkernel.so -L $KERN_SRC/target/$ARCH/$PROFILE/deps -L $KERN_SRC/target/$PROFILE/deps"
 
-RUSTFLAGS="--crate-type dylib
-	-C force-frame-pointers=yes
-	-C no-redzone=yes
-	-C panic=abort
-	-C prefer-dynamic
-	--target $KERN_SRC/arch/x86/x86.json
-	--extern kernel=$KERN_SRC/target/x86/$PROFILE/libkernel.so
-	-L $KERN_SRC/target/x86/$PROFILE/deps
-	-L $KERN_SRC/target/$PROFILE/deps"
-
-case $PROFILE in
-	"debug")
-		RUSTFLAGS="$RUSTFLAGS -C debuginfo=2"
-		;;
-	"release")
-		RUSTFLAGS="$RUSTFLAGS -C opt-level=3"
-		;;
-
-	*)
-		echo 'Specify a valid profile with the PROFILE environment variable (either "debug" or "release")'
-		exit 1
-		;;
-esac
-
-rustc $RUSTFLAGS src/mod.rs -o "$(pwd)/$NAME.kmod"
+cargo build $CARGOFLAGS $@
