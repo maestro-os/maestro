@@ -58,18 +58,21 @@ impl Version {
 			nbrs[n] = nbr;
 			n += 1;
 
-			if i >= bytes.len() || bytes[i] == b'.' {
-				i += 1;
-			} else {
+			if i < bytes.len() && bytes[i] == b'.' && n >= nbrs.len() {
 				return Err(());
 			}
+			i += 1;
 		}
 
-		Ok(Self {
-			major: nbrs[0],
-			minor: nbrs[1],
-			patch: nbrs[2],
-		})
+		if n >= nbrs.len() {
+			Ok(Self {
+				major: nbrs[0],
+				minor: nbrs[1],
+				patch: nbrs[2],
+			})
+		} else {
+			Err(())
+		}
 	}
 }
 
@@ -117,15 +120,15 @@ mod test {
 
 	#[test_case]
 	fn version_parse() {
-		assert_eq!(Version::parse(""), Err(_));
-		assert_eq!(Version::parse("."), Err(_));
-		assert_eq!(Version::parse("0."), Err(_));
-		assert_eq!(Version::parse("0.0"), Err(_));
-		assert_eq!(Version::parse("0.0."), Err(_));
-		assert_eq!(Version::parse("0..0"), Err(_));
-		assert_eq!(Version::parse(".0.0"), Err(_));
-		assert_eq!(Version::parse("0.0.0."), Err(_));
-		assert_eq!(Version::parse("0.0.0.0"), Err(_));
+		assert!(Version::parse("").is_err());
+		assert!(Version::parse(".").is_err());
+		assert!(Version::parse("0.").is_err());
+		assert!(Version::parse("0.0").is_err());
+		assert!(Version::parse("0.0.").is_err());
+		assert!(Version::parse("0..0").is_err());
+		assert!(Version::parse(".0.0").is_err());
+		assert!(Version::parse("0.0.0.").is_err());
+		assert!(Version::parse("0.0.0.0").is_err());
 
 		assert_eq!(
 			Version::parse("0.0.0"),
