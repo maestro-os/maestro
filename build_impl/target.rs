@@ -31,8 +31,8 @@ impl Target {
 	pub fn from_env() -> io::Result<Option<Self>> {
 		// Get target file path
 		let Ok(arch) = env::var("CARGO_CFG_TARGET_ARCH") else {
-            return Ok(None);
-        };
+			return Ok(None);
+		};
 		let target_path = PathBuf::from(format!("arch/{arch}/{arch}.json"));
 
 		// Read and parse target file

@@ -487,7 +487,8 @@ impl MemMapping {
 		let MapResidence::File {
 			file,
 			off,
-		} = &self.residence else {
+		} = &self.residence
+		else {
 			return Ok(());
 		};
 

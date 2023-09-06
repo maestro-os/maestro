@@ -861,22 +861,22 @@ mod test {
 
 	#[test_case]
 	fn vec_retain1() {
-		let mut v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4].unwrap();
+		let mut v: Vec<usize> = vec![0usize, 1, 2, 3, 4].unwrap();
 		v.retain(|_| true);
 		assert_eq!(v.as_slice(), &[0, 1, 2, 3, 4]);
 
-		let mut v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4].unwrap();
+		let mut v: Vec<usize> = vec![0usize, 1, 2, 3, 4].unwrap();
 		v.retain(|_| false);
 		assert_eq!(v.as_slice(), &[]);
 	}
 
 	#[test_case]
 	fn vec_retain2() {
-		let mut v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4].unwrap();
+		let mut v: Vec<usize> = vec![0usize, 1, 2, 3, 4].unwrap();
 		v.retain(|i| *i % 2 == 0);
 		assert_eq!(v.as_slice(), &[0, 2, 4]);
 
-		let mut v: Result<Vec<usize>, Errno> = vec![0usize, 1, 2, 3, 4].unwrap();
+		let mut v: Vec<usize> = vec![0usize, 1, 2, 3, 4].unwrap();
 		v.retain(|i| *i % 2 == 1);
 		assert_eq!(v.as_slice(), &[1, 3]);
 	}

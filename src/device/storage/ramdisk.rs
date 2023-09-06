@@ -79,7 +79,7 @@ impl StorageInterface for RAMDisk {
 		let Some(data) = &self.data else {
 			buf.fill(0);
 			return Ok(());
-        };
+		};
 
 		let off = offset * block_size;
 		for i in 0..size {

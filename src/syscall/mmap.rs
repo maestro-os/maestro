@@ -64,8 +64,8 @@ pub fn do_mmap(
 	// The length in number of pages
 	let pages = math::ceil_div(length, memory::PAGE_SIZE);
 	let Some(pages) = NonZeroUsize::new(pages) else {
-        return Err(errno!(EINVAL));
-    };
+		return Err(errno!(EINVAL));
+	};
 
 	// Checking for overflow
 	let end = (addr as usize).wrapping_add(pages.get() * memory::PAGE_SIZE);

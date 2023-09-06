@@ -146,8 +146,8 @@ impl Timer {
 		match self.sevp.sigev_notify {
 			SIGEV_SIGNAL => {
 				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo as u32) else {
-                    return;
-                };
+					return;
+				};
 
 				// TODO on sigint_t, set si_code to SI_TIMER
 				proc.kill(&signal, false);
@@ -283,17 +283,17 @@ pub(super) fn tick() {
 	loop {
 		// Peek next timer
 		let Some(((_, pid, timer_id), _)) = queue.first_key_value() else {
-            break;
-        };
+			break;
+		};
 		let pid = *pid;
 		let timer_id = *timer_id;
 
 		// Get process
 		let Some(proc_mutex) = Process::get_by_pid(pid) else {
-            // invalid timer, remove
+			// invalid timer, remove
 			queue.pop_first();
-            break;
-        };
+			break;
+		};
 		let mut proc = proc_mutex.lock();
 		// Get timer manager
 		let timer_manager_mutex = proc.timer_manager();
@@ -301,10 +301,10 @@ pub(super) fn tick() {
 
 		// Get timer
 		let Some(timer) = timer_manager.get_timer_mut(timer_id) else {
-            // invalid timer, remove
+			// invalid timer, remove
 			queue.pop_first();
-            break;
-        };
+			break;
+		};
 
 		// Get current time
 		let ts = match times[timer.clockid as usize] {

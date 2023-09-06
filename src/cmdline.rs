@@ -58,7 +58,7 @@ impl<'s> fmt::Display for ParseError<'s> {
 		)?;
 
 		let Some((begin, size)) = self.token else {
-            return Ok(());
+			return Ok(());
 		};
 
 		let mut i = 0;
@@ -154,18 +154,18 @@ impl<'s> ArgsParser<'s> {
 		.enumerate();
 		loop {
 			let Some((i, token)) = iter.next() else {
-                break;
-            };
+				break;
+			};
 
 			match token.s {
 				b"-root" => {
 					let (Some((_, major)), Some((_, minor))) = (iter.next(), iter.next()) else {
-                        return Err(ParseError::new(
-                            cmdline,
-                            "not enough arguments for `-root`",
-                            Some((token.begin, token.s.len())),
-                        ));
-                    };
+						return Err(ParseError::new(
+							cmdline,
+							"not enough arguments for `-root`",
+							Some((token.begin, token.s.len())),
+						));
+					};
 
 					let Some(major) = parse_nbr(major.s) else {
 						return Err(ParseError::new(
@@ -192,7 +192,7 @@ impl<'s> ArgsParser<'s> {
 							"not enough arguments for `-init`",
 							Some((token.begin, token.s.len())),
 						));
-                    };
+					};
 
 					s.init = Some(init.s);
 				}
