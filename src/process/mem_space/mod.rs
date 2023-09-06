@@ -871,8 +871,8 @@ impl MemSpace {
 			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
 			let pages = math::ceil_div(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
-                return Ok(());
-            };
+				return Ok(());
+			};
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 
 			self.map(
@@ -892,8 +892,8 @@ impl MemSpace {
 			let begin = util::align(ptr, memory::PAGE_SIZE);
 			let pages = math::ceil_div(begin as usize - ptr as usize, memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
-                return Ok(());
-            };
+				return Ok(());
+			};
 
 			self.unmap(begin, pages, true)?;
 		}

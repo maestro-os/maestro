@@ -205,7 +205,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// nothing.
 	fn left_rotate(&mut self) {
 		let Some(pivot) = self.get_right() else {
-            return;
+			return;
 		};
 
 		if let Some(parent) = self.get_parent() {
@@ -238,7 +238,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	/// nothing.
 	fn right_rotate(&mut self) {
 		let Some(pivot) = self.get_left() else {
-            return;
+			return;
 		};
 
 		if let Some(parent) = self.get_parent() {
@@ -557,8 +557,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	fn insert_equilibrate(mut node: &mut Node<K, V>) {
 		let Some(parent) = node.get_parent() else {
 			node.color = NodeColor::Black;
-            return;
-        };
+			return;
+		};
 		if parent.is_black() {
 			return;
 		}
@@ -657,12 +657,12 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// `node` is the node to fix.
 	fn remove_fix_double_black(node: &mut Node<K, V>) {
 		let Some(parent) = node.get_parent() else {
-            return;
+			return;
 		};
 		let Some(sibling) = node.get_sibling() else {
-            Self::remove_fix_double_black(parent);
-            return;
-        };
+			Self::remove_fix_double_black(parent);
+			return;
+		};
 
 		if sibling.is_red() {
 			parent.color = NodeColor::Red;
@@ -746,34 +746,31 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		let parent = node.get_parent();
 
 		let Some(replacement) = replacement else {
-            // The node has no children
+			// The node has no children
 
-            match parent {
-                Some(_parent) => {
-                    if both_black {
-                        Self::remove_fix_double_black(node);
-                        self.update_root(node);
-                    } else if let Some(sibling) = node.get_sibling() {
-                        sibling.color = NodeColor::Red;
-                    }
-                }
+			match parent {
+				Some(_parent) => {
+					if both_black {
+						Self::remove_fix_double_black(node);
+						self.update_root(node);
+					} else if let Some(sibling) = node.get_sibling() {
+						sibling.color = NodeColor::Red;
+					}
+				}
 
 				// The node is root
-                None => {
-                    debug_assert_eq!(
-                        self.get_root().unwrap() as *mut Node<K, V>,
-                        node as *mut _
-                    );
+				None => {
+					debug_assert_eq!(self.get_root().unwrap() as *mut Node<K, V>, node as *mut _);
 
-                    *self.root.get_mut() = None;
-                }
-            }
+					*self.root.get_mut() = None;
+				}
+			}
 
-            node.unlink();
+			node.unlink();
 
-            self.len -= 1;
+			self.len -= 1;
 			return unsafe { drop_node(node.into()) };
-        };
+		};
 
 		if node.get_left().is_some() && node.get_right().is_some() {
 			mem::swap(&mut node.key, &mut replacement.key);
@@ -783,21 +780,21 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 
 		let Some(parent) = parent else {
-            // The node is the root
+			// The node is the root
 
-            replacement.unlink();
-            let (mut key, value) = unsafe { drop_node(replacement.into()) };
+			replacement.unlink();
+			let (mut key, value) = unsafe { drop_node(replacement.into()) };
 
-            node.left = None;
-            node.right = None;
+			node.left = None;
+			node.right = None;
 
-            mem::swap(&mut key, &mut node.key);
-            let mut val = value;
-            mem::swap(&mut val, &mut node.value);
+			mem::swap(&mut key, &mut node.key);
+			let mut val = value;
+			mem::swap(&mut val, &mut node.value);
 
-            self.len -= 1;
-            return (key, val);
-        };
+			self.len -= 1;
+			return (key, val);
+		};
 
 		replacement.parent = None;
 		if node.is_left_child() {
@@ -919,7 +916,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	#[cfg(config_debug_debug)]
 	pub fn check(&self) {
 		let Some(root) = self.get_root() else {
-            return;
+			return;
 		};
 
 		let mut explored_nodes = Vec::<*const c_void>::new();
@@ -1326,7 +1323,7 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 impl<K: 'static + Ord, V> Drop for Map<K, V> {
 	fn drop(&mut self) {
 		let Some(root) = self.get_root() else {
-            return;
+			return;
 		};
 
 		Self::foreach_nodes_mut(

@@ -70,8 +70,8 @@ pub fn splice(
 
 	let len = min(len, i32::MAX as usize);
 	let Some(len) = NonZeroUsize::new(len) else {
-        return Ok(0);
-    };
+		return Ok(0);
+	};
 
 	// TODO implement flags
 

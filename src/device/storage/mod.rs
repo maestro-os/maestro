@@ -466,13 +466,13 @@ impl StorageManager {
 		path_prefix: String,
 	) -> Result<(), Errno> {
 		let Some(storage_mutex) = storage.upgrade() else {
-            return Ok(());
+			return Ok(());
 		};
 		let mut s = storage_mutex.lock();
 
 		let Some(partitions_table) = partition::read(&mut *s)? else {
-            return Ok(());
-        };
+			return Ok(());
+		};
 		let partitions = partitions_table.get_partitions(&mut *s)?;
 
 		let iter = partitions.into_iter().take(MAX_PARTITIONS - 1).enumerate();

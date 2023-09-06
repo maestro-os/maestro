@@ -174,8 +174,8 @@ impl Zone {
 
 		for (order, list) in self.free_list.iter().enumerate() {
 			let Some(first) = *list else {
-                continue;
-            };
+				continue;
+			};
 
 			let mut frame = first;
 			let mut is_first = true;
@@ -506,8 +506,8 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<*mut c_void> {
 	for i in begin_zone..zones.len() {
 		let zone = &mut zones[i];
 		let Some(frame) = zone.get_available_frame(order) else {
-            continue;
-        };
+			continue;
+		};
 
 		debug_assert!(!frame.is_used());
 		frame.split(zone, order);

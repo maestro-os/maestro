@@ -573,8 +573,8 @@ impl ELFExecutor {
 			None => {
 				let pages = math::ceil_div(phdr_size, memory::PAGE_SIZE);
 				let Some(pages) = NonZeroUsize::new(pages) else {
-                    return Err(errno!(EINVAL));
-                };
+					return Err(errno!(EINVAL));
+				};
 				let phdr = mem_space.map(
 					MapConstraint::None,
 					pages,
