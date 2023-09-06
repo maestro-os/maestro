@@ -347,21 +347,15 @@ mod test {
 	use crate::memory;
 	use crate::memory::buddy;
 	use crate::util::math;
-
-	#[test_case]
-	fn alloc_free0() {
-		unsafe {
-			assert!(alloc(0).is_err());
-		}
-	}
+	use core::slice;
 
 	#[test_case]
 	fn alloc_free1() {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let ptr = alloc(1).unwrap();
-			core::slice::from_raw_parts_mut(ptr as *mut u8, 1).fill(!0);
+			let ptr = alloc(NonZeroUsize::new(1).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, 1).fill(!0);
 
 			free(ptr);
 		}
@@ -374,8 +368,8 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let ptr = alloc(8).unwrap();
-			core::slice::from_raw_parts_mut(ptr as *mut u8, 8).fill(!0);
+			let ptr = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, 8).fill(!0);
 
 			free(ptr);
 		}
@@ -388,8 +382,8 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let ptr = alloc(memory::PAGE_SIZE).unwrap();
-			core::slice::from_raw_parts_mut(ptr as *mut u8, memory::PAGE_SIZE).fill(!0);
+			let ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, memory::PAGE_SIZE).fill(!0);
 
 			free(ptr);
 		}
@@ -402,8 +396,8 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let ptr = alloc(memory::PAGE_SIZE * 10).unwrap();
-			core::slice::from_raw_parts_mut(ptr as *mut u8, memory::PAGE_SIZE * 10).fill(!0);
+			let ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE * 10).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, memory::PAGE_SIZE * 10).fill(!0);
 
 			free(ptr);
 		}
@@ -416,24 +410,24 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let mut ptrs: [*mut c_void; 1024] = [0 as _; 1024];
+			let mut ptrs: [NonNull<c_void>; 1024] = [NonNull::new(1 as _).unwrap(); 1024];
 
 			for i in 0..ptrs.len() {
 				let size = i + 1;
-				let ptr = alloc(size).unwrap();
-				core::slice::from_raw_parts_mut(ptr as *mut u8, size).fill(!0);
+				let ptr = alloc(NonZeroUsize::new(size).unwrap()).unwrap();
+				slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, size).fill(!0);
 
 				ptrs[i] = ptr;
 			}
 
 			for i in 0..ptrs.len() {
 				for j in (i + 1)..ptrs.len() {
-					assert!(ptrs[j] != ptrs[i]);
+					assert_ne!(ptrs[j], ptrs[i]);
 				}
 			}
 
-			for p in ptrs.iter() {
-				free(*p);
+			for p in ptrs {
+				free(p);
 			}
 		}
 
@@ -442,8 +436,8 @@ mod test {
 
 	fn lifo_test(i: usize) {
 		unsafe {
-			let ptr = alloc(i).unwrap();
-			core::slice::from_raw_parts_mut(ptr as *mut u8, i).fill(!0);
+			let ptr = alloc(NonZeroUsize::new(i).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, i).fill(!0);
 
 			if i > 1 {
 				lifo_test(i - 1);
@@ -467,11 +461,11 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let mut ptr = alloc(1).unwrap();
+			let mut ptr = alloc(NonZeroUsize::new(1).unwrap()).unwrap();
 
 			for i in 1..memory::PAGE_SIZE {
-				ptr = realloc(ptr, i).unwrap();
-				core::slice::from_raw_parts_mut(ptr as *mut u8, i).fill(!0);
+				ptr = realloc(ptr, NonZeroUsize::new(i).unwrap()).unwrap();
+				slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, i).fill(!0);
 			}
 
 			free(ptr);
@@ -486,11 +480,11 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let mut ptr = alloc(memory::PAGE_SIZE).unwrap();
+			let mut ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE).unwrap()).unwrap();
 
 			for i in (1..memory::PAGE_SIZE).rev() {
-				ptr = realloc(ptr, i).unwrap();
-				core::slice::from_raw_parts_mut(ptr as *mut u8, i).fill(!0);
+				ptr = realloc(ptr, NonZeroUsize::new(i).unwrap()).unwrap();
+				slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, i).fill(!0);
 			}
 
 			free(ptr);
@@ -505,14 +499,14 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let mut ptr0 = alloc(8).unwrap();
-			core::slice::from_raw_parts_mut(ptr0 as *mut u8, 8).fill(!0);
-			let mut ptr1 = alloc(8).unwrap();
-			core::slice::from_raw_parts_mut(ptr1 as *mut u8, 8).fill(!0);
+			let mut ptr0 = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr0.as_ptr() as *mut u8, 8).fill(!0);
+			let mut ptr1 = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr1.as_ptr() as *mut u8, 8).fill(!0);
 
 			for i in 0..8 {
-				ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
-				ptr1 = realloc(ptr1, math::pow2(i) + 1).unwrap();
+				ptr0 = realloc(ptr0, NonZeroUsize::new(math::pow2(i)).unwrap()).unwrap();
+				ptr1 = realloc(ptr1, NonZeroUsize::new(math::pow2(i) + 1).unwrap()).unwrap();
 			}
 
 			free(ptr1);
@@ -528,14 +522,14 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 
 		unsafe {
-			let mut ptr0 = alloc(8).unwrap();
-			core::slice::from_raw_parts_mut(ptr0 as *mut u8, 8).fill(!0);
-			let mut ptr1 = alloc(8).unwrap();
-			core::slice::from_raw_parts_mut(ptr1 as *mut u8, 8).fill(!0);
+			let mut ptr0 = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr0.as_ptr() as *mut u8, 8).fill(!0);
+			let mut ptr1 = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr1.as_ptr() as *mut u8, 8).fill(!0);
 
 			for i in (0..8).rev() {
-				ptr0 = realloc(ptr0, math::pow2(i)).unwrap();
-				ptr1 = realloc(ptr1, math::pow2(i) + 1).unwrap();
+				ptr0 = realloc(ptr0, NonZeroUsize::new(math::pow2(i)).unwrap()).unwrap();
+				ptr1 = realloc(ptr1, NonZeroUsize::new(math::pow2(i) + 1).unwrap()).unwrap();
 			}
 
 			free(ptr1);
