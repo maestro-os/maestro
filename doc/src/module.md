@@ -76,16 +76,18 @@ The references to the kernel's internals and module interfaces can be found [her
 ## Building
 
 The prodedure to build a kernel module is the following:
-- Compile the kernel in debug or release mode (`--release`), depending on which profile you want
+- Build the kernel in debug or release mode (`--release`), depending on which profile you want
 - `cd` into the root of the module's source directory
 - Set environment variables:
-    - `PROFILE`: profile to compile for (either `debug` or `release`). Default value: `debug`
-    - `ARCH`: architecture to compile for (example: `x86`). Default value: `x86`
-- Execute the compile script located in the kernel's sources. Example:
+    - `PROFILE`: profile to build for (either `debug` or `release`). Default value: `debug`
+    - `ARCH`: architecture to build for (example: `x86`). Default value: `x86`
+- Build the module
+
+Example:
 ```sh
-PROFILE="debug" ARCH="x86" ../maestro/mod/compile
+PROFILE="debug" ARCH="x86" ../maestro/mod/build
 ```
 
-Then, the compiled module can be found at `target/<arch>/<profile>/lib<name>.so`
+Then, the built module can be found at `target/<arch>/<profile>/lib<name>.so`
 
 > **NOTE**: It is important that the specified profile and architecture match the compilation of the kernel, otherwise compilation will not work

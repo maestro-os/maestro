@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# This script is compiles kernel modules.
+# This script is builds kernel modules.
 
 KERN_SRC=$(realpath $(dirname $0)/..)
 if [ "$(pwd)" = "$KERN_SRC" ]; then
