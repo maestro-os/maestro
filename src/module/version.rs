@@ -11,7 +11,7 @@ use core::fmt::Error;
 use core::fmt::Formatter;
 
 /// Structure representing a version.
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Copy, Debug, Eq)]
 pub struct Version {
 	/// The major version
 	pub major: u16,

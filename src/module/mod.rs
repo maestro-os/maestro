@@ -32,6 +32,7 @@ use core::mem::size_of;
 use core::mem::transmute;
 use core::num::NonZeroUsize;
 use core::ptr;
+use core::slice;
 use version::Dependency;
 use version::Version;
 
@@ -62,10 +63,9 @@ macro_rules! module {
 			use kernel::module::version::Version;
 
 			const fn get_version() -> Version {
-                let version_str = env!("CARGO_PKG_VERSION");
-				let result = Version::parse(version_str);
+				let result = Version::parse(env!("CARGO_PKG_VERSION"));
 				let Ok(version) = result else {
-					panic!("invalid module version `{version_str}` (see kernel's documentation for versioning specifications)");
+					panic!("invalid module version (see kernel's documentation for versioning specifications)");
 				};
 				version
 			}
@@ -146,11 +146,11 @@ impl Module {
 	/// - `name` is the attribute's name.
 	///
 	/// If the attribute doesn't exist, the function returns `None`.
-	fn get_module_attribute<'a, T>(
-		mem: &'a [u8],
-		parser: &ELFParser<'a>,
+	fn get_attribute<'mem, T>(
+		mem: &'mem [u8],
+		parser: &ELFParser<'mem>,
 		name: &str,
-	) -> Option<T> {
+	) -> Option<&'mem T> {
 		let sym = parser.get_symbol_by_name(name)?;
 
 		let off = sym.st_value as usize;
@@ -158,12 +158,33 @@ impl Module {
 			return None;
 		}
 
-		let val = unsafe {
-			let ptr = mem.as_ptr().add(off) as *const T;
-			ptr::read(ptr)
-		};
-
+		let val = unsafe { &*(&mem[off] as *const _ as *const T) };
 		Some(val)
+	}
+
+	/// Returns the array value of the given attribute of a module.
+	///
+	/// Arguments:
+	/// - `mem` is the segment of memory on which the module is loaded.
+	/// - `parser` is the module's parser.
+	/// - `name` is the attribute's name.
+	///
+	/// If the attribute doesn't exist, the function returns `None`.
+	fn get_array_attribute<'mem, T>(
+		mem: &'mem [u8],
+		parser: &ELFParser<'mem>,
+		name: &str,
+	) -> Option<&'mem [T]> {
+		let sym = parser.get_symbol_by_name(name)?;
+
+		let off = sym.st_value as usize;
+		let len = sym.st_size as usize / size_of::<T>();
+
+		let slice = unsafe {
+			let ptr = &*(&mem[off] as *const _ as *const T);
+			slice::from_raw_parts(ptr, len)
+		};
+		Some(slice)
 	}
 
 	/// Loads a kernel module from the given image.
@@ -238,45 +259,40 @@ impl Module {
 		}
 
 		// Checking the magic number
-		let magic = Self::get_module_attribute::<u64>(mem.as_slice(), &parser, "MOD_MAGIC")
-			.ok_or_else(|| {
+		let magic =
+			Self::get_attribute::<u64>(mem.as_slice(), &parser, "MOD_MAGIC").ok_or_else(|| {
 				crate::println!("Missing `MOD_MAGIC` symbol in module image");
 				errno!(EINVAL)
 			})?;
-		if magic != MOD_MAGIC {
+		if *magic != MOD_MAGIC {
 			crate::println!("Module has an invalid magic number");
 			return Err(errno!(EINVAL));
 		}
 
 		// Getting the module's name
-		let name = Self::get_module_attribute::<&'static str>(mem.as_slice(), &parser, "MOD_NAME")
+		let name = Self::get_attribute::<&'static str>(mem.as_slice(), &parser, "MOD_NAME")
 			.ok_or_else(|| {
 				crate::println!("Missing `MOD_NAME` symbol in module image");
 				errno!(EINVAL)
 			})?;
-		let name = String::try_from(name)?;
+		let name = String::try_from(*name)?;
 
 		// Getting the module's version
-		let version =
-			Self::get_module_attribute::<Version>(mem.as_slice(), &parser, "MOD_VERSION")
-				.ok_or_else(|| {
-					crate::println!("Missing `MOD_VERSION` symbol in module image");
-					errno!(EINVAL)
-				})?;
+		let version = Self::get_attribute::<Version>(mem.as_slice(), &parser, "MOD_VERSION")
+			.ok_or_else(|| {
+				crate::println!("Missing `MOD_VERSION` symbol in module image");
+				errno!(EINVAL)
+			})?;
 
 		// Getting the module's dependencies
-		let deps = Self::get_module_attribute::<&'static [Dependency]>(
-			mem.as_slice(),
-			&parser,
-			"MOD_DEPS",
-		)
-		.ok_or_else(|| {
-			crate::println!("Missing `MOD_DEPS` symbol in module image");
-			errno!(EINVAL)
-		})?;
+		let deps = Self::get_array_attribute::<Dependency>(mem.as_slice(), &parser, "MOD_DEPS")
+			.ok_or_else(|| {
+				crate::println!("Missing `MOD_DEPS` symbol in module image");
+				errno!(EINVAL)
+			})?;
 		let deps = Vec::from_slice(deps)?;
 
-		crate::println!("Loading module `{}` version {}", name, version);
+		crate::println!("Loading module `{name}` version {version}");
 
 		// TODO Check that all dependencies are loaded
 
@@ -292,7 +308,7 @@ impl Module {
 			(func)()
 		};
 		if !ok {
-			crate::println!("Failed to load module `{}`", name);
+			crate::println!("Failed to load module `{name}`");
 			return Err(errno!(EINVAL));
 		}
 
@@ -314,7 +330,7 @@ impl Module {
 
 		Ok(Self {
 			name,
-			version,
+			version: *version,
 
 			deps,
 
