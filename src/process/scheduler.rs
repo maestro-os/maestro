@@ -369,10 +369,9 @@ impl Scheduler {
 							return;
 						}
 
-						// Resuming execution
+						// Resume execution
 						event::unlock_callbacks(0x20);
 						pic::end_of_interrupt(0x0);
-
 						regs.switch(!syscalling);
 					})
 					.unwrap();
