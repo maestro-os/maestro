@@ -42,3 +42,7 @@ rustflags = [
 	# Specific to `dev`
 	"-Cforce-frame-pointers=yes"
 ]
+
+[profile.release-debug]
+inherits = "release"
+debug = true
