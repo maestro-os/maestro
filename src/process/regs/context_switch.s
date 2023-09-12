@@ -17,22 +17,22 @@
  */
 context_switch:
 	cli
-	mov %esp, %ebp
 
-	# Setting segment registers
-	mov 8(%ebp), %eax
+	# Set segment registers
+	mov 8(%esp), %eax
 	mov %ax, %ds
 	mov %ax, %es
 
-	# Restoring the fx state
-	mov 4(%ebp), %eax
+	# Restore the fx state
+	mov 4(%esp), %eax
 	add $0x30, %eax
 	push %eax
 	call restore_fxstate
 	add $4, %esp
 
-	# Setting registers, except %eax
-	mov 4(%ebp), %eax
+	# Set registers, except %eax
+	mov 4(%esp), %eax
+	mov 0x0(%eax), %ebp
 	mov 0x14(%eax), %ebx
 	mov 0x18(%eax), %ecx
 	mov 0x1c(%eax), %edx
@@ -41,16 +41,15 @@ context_switch:
 	mov 0x28(%eax), %gs
 	mov 0x2c(%eax), %fs
 
-	# Placing iret data on the stack
+	# Place iret data on the stack
 	# (Note: If set, the interrupt flag in eflags will enable the interruptions back after using `iret`)
-	push 8(%ebp) # data segment selector
+	push 8(%esp) # data segment selector
 	push 0x4(%eax) # esp
 	push 0xc(%eax) # eflags
-	push 12(%ebp) # code segment selector
+	push 24(%esp) # code segment selector
 	push 0x8(%eax) # eip
 
-	# Setting %eax
-	mov 0x0(%eax), %ebp
+	# Set %eax
 	mov 0x10(%eax), %eax
 
 	iret
@@ -61,8 +60,8 @@ context_switch:
 context_switch_kernel:
 	cli
 
-	# Restoring the fx state
-	mov 4(%ebp), %eax
+	# Restore the fx state
+	mov 4(%esp), %eax
 	add $0x30, %eax
 	push %eax
 	call restore_fxstate
@@ -70,7 +69,7 @@ context_switch_kernel:
 
 	mov 4(%esp), %eax
 
-	# Setting eflags without the interrupt flag
+	# Set eflags without the interrupt flag
 	mov 12(%eax), %ebx
 	mov $512, %ecx
 	not %ecx
@@ -78,7 +77,7 @@ context_switch_kernel:
 	push %ebx
 	popf
 
-	# Setting registers
+	# Set registers
 	mov 0x0(%eax), %ebp
 	mov 0x4(%eax), %esp
 	push 0x8(%eax) # eip
@@ -91,7 +90,7 @@ context_switch_kernel:
 	mov 0x2c(%eax), %fs
 	mov 0x10(%eax), %eax
 
-	# Setting the interrupt flag and jumping to kernel code execution
+	# Set the interrupt flag and jumping to kernel code execution
 	# (Note: These two instructions, if placed in this order are atomic on x86, meaning that an interrupt cannot happen in between)
 	sti
 	ret

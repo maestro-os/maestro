@@ -37,9 +37,10 @@ struct FXStateWrapper([u8; 512]);
 pub extern "C" fn save_fxstate(fxstate: &mut [u8; 512]) {
 	let mut buff = FXStateWrapper([0; 512]);
 	unsafe {
-		asm!("fxsave [eax]", in("eax") &mut buff);
+		asm!("fxsave [{}]", in(reg) buff.0.as_mut_ptr());
 	}
 
+	// TODO avoid copy (slow). `fxstate` itself should be aligned
 	fxstate.copy_from_slice(&buff.0);
 }
 
@@ -47,10 +48,11 @@ pub extern "C" fn save_fxstate(fxstate: &mut [u8; 512]) {
 #[no_mangle]
 pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
 	let mut buff = FXStateWrapper([0; 512]);
+	// TODO avoid copy (slow). `fxstate` itself should be aligned
 	buff.0.copy_from_slice(fxstate);
 
 	unsafe {
-		asm!("fxrstor [eax]", in("eax") &buff);
+		asm!("fxrstor [{}]", in(reg) buff.0.as_ptr());
 	}
 }
 
