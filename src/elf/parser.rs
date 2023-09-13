@@ -8,6 +8,8 @@ use crate::errno;
 use crate::errno::Errno;
 use core::mem::size_of;
 
+// TODO this file can be optimized, A LOT
+
 /// The ELF parser allows to parse an ELF image and retrieve informations on it.
 ///
 /// It is especially useful to load a kernel module or a userspace program.
@@ -220,11 +222,13 @@ impl<'a> ELFParser<'a> {
 	///
 	/// If the symbol doesn't exist, the function returns `None`.
 	pub fn get_symbol_by_name(&self, name: &str) -> Option<&ELF32Sym> {
-		let strtab_section = self.get_section_by_name(".strtab")?; // TODO Use sh_link
-
 		self.iter_sections()
-			.flat_map(|s| {
-				self.iter_symbols(s).filter(|sym| {
+			.filter_map(|section| {
+				let strtab_section = self.iter_sections().nth(section.sh_link as _)?;
+				Some((section, strtab_section))
+			})
+			.flat_map(|(section, strtab_section)| {
+				self.iter_symbols(section).filter(|sym| {
 					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
 					let sym_name_end = sym_name_begin + name.len();
 

@@ -89,6 +89,7 @@ macro_rules! module {
 	};
 }
 
+// TODO keep offsets of name, version and dependencies instead of allocating
 /// Structure representing a kernel module.
 pub struct Module {
 	/// The module's name.
@@ -292,7 +293,7 @@ impl Module {
 			})?;
 		let deps = Vec::from_slice(deps)?;
 
-		crate::println!("Loading module `{name}` version {version}");
+		crate::println!("Loading module `{name}` version `{version}`");
 
 		// TODO Check that all dependencies are loaded
 
@@ -342,7 +343,7 @@ impl Module {
 	}
 
 	/// Returns the name of the module.
-	pub fn get_name(&self) -> &String {
+	pub fn get_name(&self) -> &[u8] {
 		&self.name
 	}
 
