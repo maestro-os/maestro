@@ -5,6 +5,7 @@ use super::File;
 use super::FileContent;
 use crate::errno;
 use crate::errno::Errno;
+use crate::file::vfs;
 use crate::file::Gid;
 use crate::file::Uid;
 use crate::memory;
@@ -19,9 +20,7 @@ use crate::util::TryClone;
 /// that already existed).
 ///
 /// If relative, the path is taken from the root.
-///
-/// `vfs` is a reference to the VFS.
-pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
+pub fn create_dirs(path: &Path) -> Result<usize, Errno> {
 	let path = Path::root().concat(path)?;
 
 	// Path of the parent directory
@@ -32,10 +31,10 @@ pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 	for i in 0..path.get_elements_count() {
 		let name = path[i].try_clone()?;
 
-		if let Ok(parent_mutex) = vfs.get_file_from_path(&p, 0, 0, true) {
+		if let Ok(parent_mutex) = vfs::get_file_from_path(&p, 0, 0, true) {
 			let mut parent = parent_mutex.lock();
 
-			match vfs.create_file(
+			match vfs::create_file(
 				&mut parent,
 				name.try_clone()?,
 				0,
@@ -57,14 +56,7 @@ pub fn create_dirs(vfs: &mut VFS, path: &Path) -> Result<usize, Errno> {
 }
 
 /// Copies the file `old` into the directory `new_parent` with name `new_name`.
-///
-/// `vfs` is a reference to the VFS.
-pub fn copy_file(
-	vfs: &mut VFS,
-	old: &mut File,
-	new_parent: &mut File,
-	new_name: String,
-) -> Result<(), Errno> {
+pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> Result<(), Errno> {
 	let uid = old.get_uid();
 	let gid = old.get_gid();
 	let mode = old.get_mode();
@@ -73,7 +65,7 @@ pub fn copy_file(
 		// Copy the file and its content
 		FileContent::Regular => {
 			let new_mutex =
-				vfs.create_file(new_parent, new_name, uid, gid, mode, FileContent::Regular)?;
+				vfs::create_file(new_parent, new_name, uid, gid, mode, FileContent::Regular)?;
 			let mut new = new_mutex.lock();
 
 			// TODO On fail, remove file
@@ -93,7 +85,7 @@ pub fn copy_file(
 
 		// Copy the directory recursively
 		FileContent::Directory(entries) => {
-			let new_mutex = vfs.create_file(
+			let new_mutex = vfs::create_file(
 				new_parent,
 				new_name,
 				uid,
@@ -106,16 +98,16 @@ pub fn copy_file(
 			// TODO On fail, undo
 			for (name, _) in entries.iter() {
 				let old_mutex =
-					vfs.get_file_from_parent(&mut new, name.try_clone()?, uid, gid, false)?;
+					vfs::get_file_from_parent(&mut new, name.try_clone()?, uid, gid, false)?;
 				let mut old = old_mutex.lock();
 
-				copy_file(vfs, &mut old, &mut new, name.try_clone()?)?;
+				copy_file(&mut old, &mut new, name.try_clone()?)?;
 			}
 		}
 
 		// Copy the file
 		content => {
-			vfs.create_file(new_parent, new_name, uid, gid, mode, content.try_clone()?)?;
+			vfs::create_file(new_parent, new_name, uid, gid, mode, content.try_clone()?)?;
 		}
 	}
 
@@ -125,23 +117,22 @@ pub fn copy_file(
 /// Removes the file `file` and its subfiles recursively if it's a directory.
 ///
 /// Arguments:
-/// - `vfs` is a reference to the VFS.
 /// - `file` is the root file to remove.
 /// - `uid` is the user ID used to check permissions.
 /// - `gid` is the group ID used to check permissions.
-pub fn remove_recursive(vfs: &mut VFS, file: &mut File, uid: Uid, gid: Gid) -> Result<(), Errno> {
+pub fn remove_recursive(file: &mut File, uid: Uid, gid: Gid) -> Result<(), Errno> {
 	match file.get_content() {
 		FileContent::Directory(entries) => {
 			for (name, _) in entries.iter() {
 				let name = name.try_clone()?;
-				let subfile_mutex = vfs.get_file_from_parent(file, name, uid, gid, false)?;
+				let subfile_mutex = vfs::get_file_from_parent(file, name, uid, gid, false)?;
 				let mut subfile = subfile_mutex.lock();
 
-				remove_recursive(vfs, &mut subfile, uid, gid)?;
+				remove_recursive(&mut subfile, uid, gid)?;
 			}
 		}
 
-		_ => vfs.remove_file(file, uid, gid)?,
+		_ => vfs::remove_file(file, uid, gid)?,
 	}
 
 	Ok(())

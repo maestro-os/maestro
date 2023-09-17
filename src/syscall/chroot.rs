@@ -18,7 +18,7 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let uid = proc.euid;
 	let gid = proc.egid;
 
-	// Checking permission
+	// Check permission
 	if uid != file::ROOT_UID {
 		return Err(errno!(EPERM));
 	}
@@ -28,11 +28,8 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 	let path = Path::from_str(path, true)?;
 
-	// Checking access to file
-	let vfs_mutex = vfs::get();
-	let mut vfs = vfs_mutex.lock();
-	let vfs = vfs.as_mut().unwrap();
-	vfs.get_file_from_path(&path, uid, gid, true)?;
+	// Check access to file
+	vfs::get_file_from_path(&path, uid, gid, true)?;
 
 	proc.chroot = Arc::new(path)?;
 	Ok(0)

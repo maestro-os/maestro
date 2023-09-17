@@ -27,13 +27,7 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 		(path, proc.euid, proc.egid)
 	};
 
-	let file_mutex = {
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		let vfs = vfs.as_mut().unwrap();
-
-		vfs.get_file_from_path(&path, uid, gid, true)?
-	};
+	let file_mutex = vfs::get_file_from_path(&path, uid, gid, true)?;
 	let mut file = file_mutex.lock();
 
 	// Checking permissions

@@ -221,13 +221,7 @@ fn init(init_path: String) -> Result<(), Errno> {
 		b"TERM=maestro".try_into()?,
 	]?;
 
-	let file_mutex = {
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		let vfs = vfs.as_mut().unwrap();
-
-		vfs.get_file_from_path(&path, 0, 0, true)?
-	};
+	let file_mutex = vfs::get_file_from_path(&path, 0, 0, true)?;
 	let mut file = file_mutex.lock();
 
 	let exec_info = ExecInfo {

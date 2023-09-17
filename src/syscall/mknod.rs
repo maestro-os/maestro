@@ -43,7 +43,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	let mode = mode & !umask;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
 
-	// Getting the major and minor IDs
+	// Get the major and minor IDs
 	let major = id::major(dev);
 	let minor = id::minor(dev);
 
@@ -64,18 +64,10 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		_ => return Err(errno!(EPERM)),
 	};
 
-	// Creating the node
-	{
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		let vfs = vfs.as_mut().unwrap();
-
-		// Getting parent directory
-		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
-		let mut parent = parent_mutex.lock();
-
-		vfs.create_file(&mut parent, name, uid, gid, mode, file_content)?;
-	}
+	// Create the node
+	let parent_mutex = vfs::get_file_from_path(&parent_path, uid, gid, true)?;
+	let mut parent = parent_mutex.lock();
+	vfs::create_file(&mut parent, name, uid, gid, mode, file_content)?;
 
 	Ok(0)
 }

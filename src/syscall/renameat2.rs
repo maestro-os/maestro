@@ -52,10 +52,6 @@ pub fn renameat2(
 
 	// TODO Check permissions if sticky bit is set
 
-	let vfs = vfs::get();
-	let mut vfs = vfs.lock();
-	let vfs = vfs.as_mut().unwrap();
-
 	if new_parent.get_location().get_mountpoint_id() == old.get_location().get_mountpoint_id() {
 		// Old and new are both on the same filesystem
 
@@ -64,18 +60,18 @@ pub fn renameat2(
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs.create_link(&mut old, &mut new_parent, &new_name, uid, gid)?;
+		vfs::create_link(&mut old, &mut new_parent, &new_name, uid, gid)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs.remove_file(&old, uid, gid)?;
+			vfs::remove_file(&old, uid, gid)?;
 		}
 	} else {
 		// Old and new are on different filesystems.
 
 		// TODO On fail, undo
 
-		file::util::copy_file(vfs, &mut old, &mut new_parent, new_name)?;
-		file::util::remove_recursive(vfs, &mut old, uid, gid)?;
+		file::util::copy_file(&mut old, &mut new_parent, new_name)?;
+		file::util::remove_recursive(&mut old, uid, gid)?;
 	}
 
 	Ok(0)

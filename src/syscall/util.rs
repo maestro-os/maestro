@@ -169,11 +169,7 @@ pub fn get_file_at(
 		let gid = process.egid;
 		let path = build_path_from_fd(process, dirfd, pathname)?;
 
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		vfs.as_mut()
-			.unwrap()
-			.get_file_from_path(&path, uid, gid, follow_links)
+		vfs::get_file_from_path(&path, uid, gid, follow_links)
 	}
 }
 
@@ -201,11 +197,7 @@ pub fn get_parent_at_with_name(
 	let mut path = build_path_from_fd(process, dirfd, pathname)?;
 	let name = path.pop().unwrap();
 
-	let vfs_mutex = vfs::get();
-	let mut vfs = vfs_mutex.lock();
-	let vfs = vfs.as_mut().unwrap();
-
-	let parent_mutex = vfs.get_file_from_path(&path, uid, gid, follow_links)?;
+	let parent_mutex = vfs::get_file_from_path(&path, uid, gid, follow_links)?;
 	Ok((parent_mutex, name))
 }
 
@@ -232,13 +224,8 @@ pub fn create_file_at(
 
 	let (parent_mutex, name) = get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
 
-	let vfs_mutex = vfs::get();
-	let mut vfs = vfs_mutex.lock();
-	let vfs = vfs.as_mut().unwrap();
-
 	let mut parent = parent_mutex.lock();
-
-	vfs.create_file(&mut parent, name, uid, gid, mode, content)
+	vfs::create_file(&mut parent, name, uid, gid, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.

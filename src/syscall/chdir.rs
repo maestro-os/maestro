@@ -30,11 +30,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 	};
 
 	{
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		let vfs = vfs.as_mut().unwrap();
-
-		let dir_mutex = vfs.get_file_from_path(&new_cwd, uid, gid, true)?;
+		let dir_mutex = vfs::get_file_from_path(&new_cwd, uid, gid, true)?;
 		let dir = dir_mutex.lock();
 
 		// Checking for errors

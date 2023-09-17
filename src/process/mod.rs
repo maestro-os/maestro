@@ -511,12 +511,8 @@ impl Process {
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
 
-			let vfs_mutex = vfs::get();
-			let mut vfs = vfs_mutex.lock();
-			let vfs = vfs.as_mut().unwrap();
-
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false)?;
-			let tty_file_mutex = vfs.get_file_from_path(&tty_path, uid, gid, true)?;
+			let tty_file_mutex = vfs::get_file_from_path(&tty_path, uid, gid, true)?;
 			let tty_file = tty_file_mutex.lock();
 
 			let loc = tty_file.get_location().clone();

@@ -31,13 +31,7 @@ pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr<Statfs>) -> Res
 		(path, proc.euid, proc.egid)
 	};
 
-	let file_mutex = {
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		let vfs = vfs.as_mut().unwrap();
-
-		vfs.get_file_from_path(&path, uid, gid, true)?
-	};
+	let file_mutex = vfs::get_file_from_path(&path, uid, gid, true)?;
 	let file = file_mutex.lock();
 
 	let mountpoint_mutex = file.get_location().get_mountpoint().unwrap();

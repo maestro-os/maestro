@@ -81,14 +81,8 @@ impl MountSource {
 	pub fn from_str(string: &[u8], cwd: Path) -> Result<Self, Errno> {
 		let path = Path::from_str(string, true)?;
 		let path = cwd.concat(&path)?;
-		let result = {
-			let vfs_mutex = vfs::get();
-			let mut vfs = vfs_mutex.lock();
-			let vfs = vfs.as_mut().unwrap();
 
-			vfs.get_file_from_path(&path, 0, 0, true)
-		};
-
+		let result = vfs::get_file_from_path(&path, 0, 0, true);
 		match result {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();

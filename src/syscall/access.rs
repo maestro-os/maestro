@@ -93,9 +93,7 @@ pub fn do_access(
 			}
 		}
 
-		let mut vfs = vfs::get().lock();
-		let vfs = vfs.as_mut().unwrap();
-		vfs.get_file_from_path(&path, uid, gid, follow_symlinks)?
+		vfs::get_file_from_path(&path, uid, gid, follow_symlinks)?
 	};
 
 	{

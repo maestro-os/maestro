@@ -46,12 +46,7 @@ pub fn mount(
 		// Getting the target file
 		let target_path = Path::from_str(target_slice, true)?;
 		let target_path = super::util::get_absolute_path(&proc, target_path)?;
-		let target_mutex = {
-			let mut vfs = vfs::get().lock();
-			let vfs = vfs.as_mut().unwrap();
-
-			vfs.get_file_from_path(&target_path, proc.euid, proc.egid, true)?
-		};
+		let target_mutex = vfs::get_file_from_path(&target_path, proc.euid, proc.egid, true)?;
 		let target_file = target_mutex.lock();
 
 		// Checking the target is a directory

@@ -27,12 +27,8 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 
 	// Remove the directory
 	{
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		let vfs = vfs.as_mut().unwrap();
-
 		// Get directory
-		let file_mutex = vfs.get_file_from_path(&path, uid, gid, true)?;
+		let file_mutex = vfs::get_file_from_path(&path, uid, gid, true)?;
 		let file = file_mutex.lock();
 
 		match file.get_content() {
@@ -41,7 +37,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 			_ => return Err(errno!(ENOTDIR)),
 		}
 
-		vfs.remove_file(&file, uid, gid)?;
+		vfs::remove_file(&file, uid, gid)?;
 	}
 
 	Ok(0)

@@ -4,12 +4,12 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use crate::errno::EResult;
 use crate::errno;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::buffer;
-use crate::file::mapping::FileMappingManager;
+use crate::file::mapping;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::file::File;
@@ -48,9 +48,7 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 /// location.
 ///
 /// If the file doesn't exist, the function returns an error.
-pub fn get_file_by_location(
-	location: &FileLocation,
-) -> EResult<Arc<Mutex<File>>> {
+pub fn get_file_by_location(location: &FileLocation) -> EResult<Arc<Mutex<File>>> {
 	match location {
 		FileLocation::Filesystem {
 			inode, ..
@@ -91,11 +89,9 @@ pub fn get_file_by_location(
 	}
 }
 
-/// Internal version of `get_file_from_path_`.
-///
 /// `follows_count` is the number of links that have been followed since the
 /// beginning of the path resolution.
-fn get_file_from_path_(
+fn get_file_by_path_impl(
 	path: &Path,
 	uid: Uid,
 	gid: Gid,
@@ -168,7 +164,7 @@ fn get_file_from_path_(
 				drop(fs);
 				drop(io);
 				drop(mountpoint);
-				return self.get_file_from_path_(
+				return get_file_by_path_impl(
 					&new_path,
 					uid,
 					gid,
@@ -207,7 +203,7 @@ pub fn get_file_from_path(
 	gid: Gid,
 	follow_links: bool,
 ) -> Result<Arc<Mutex<File>>, Errno> {
-	self.get_file_from_path_(path, uid, gid, follow_links, 0)
+	get_file_by_path_impl(path, uid, gid, follow_links, 0)
 }
 
 /// Returns a reference to the file `name` located in the directory `parent`.
@@ -261,7 +257,7 @@ pub fn get_file_from_parent(
 			drop(fs);
 			drop(io);
 			drop(mountpoint);
-			return self.get_file_from_path_(&new_path, uid, gid, follow_links, 1);
+			return get_file_by_path_impl(&new_path, uid, gid, follow_links, 1);
 		}
 	}
 
@@ -293,10 +289,7 @@ pub fn create_file(
 	content: FileContent,
 ) -> Result<Arc<Mutex<File>>, Errno> {
 	// If file already exist, error
-	if self
-		.get_file_from_parent(parent, name.try_clone()?, uid, gid, false)
-		.is_ok()
-	{
+	if get_file_from_parent(parent, name.try_clone()?, uid, gid, false).is_ok() {
 		return Err(errno!(EEXIST));
 	}
 
@@ -419,14 +412,11 @@ pub fn create_link(
 /// - `gid` is the Group ID of the user removing the file.
 pub fn remove_file(file: &File, uid: Uid, gid: Gid) -> EResult<()> {
 	// The parent directory
-	let parent_mutex = self.get_file_from_path(file.get_parent_path(), uid, gid, true)?;
+	let parent_mutex = get_file_from_path(file.get_parent_path(), uid, gid, true)?;
 	let parent = parent_mutex.lock();
 
 	// Check permissions
-	if !file.can_write(uid, gid)
-		|| !parent.can_write(uid, gid)
-		|| !parent.can_execute(uid, gid)
-	{
+	if !file.can_write(uid, gid) || !parent.can_write(uid, gid) || !parent.can_execute(uid, gid) {
 		return Err(errno!(EACCES));
 	}
 
@@ -478,7 +468,7 @@ pub fn remove_file(file: &File, uid: Uid, gid: Gid) -> EResult<()> {
 /// If the file doesn't exist, the function returns an error.
 pub fn map_file(loc: FileLocation, off: usize) -> Result<NonNull<u8>, Errno> {
 	// TODO if the page is being init, read from disk
-	self.file_mappings_manager.map(loc, off)?;
+	mapping::map(loc, off)?;
 
 	todo!();
 }
@@ -488,5 +478,5 @@ pub fn map_file(loc: FileLocation, off: usize) -> Result<NonNull<u8>, Errno> {
 /// If the page is not mapped, the function does nothing.
 pub fn unmap_file(loc: &FileLocation, off: usize) {
 	// TODO sync to disk if necessary
-	self.file_mappings_manager.unmap(loc, off);
+	mapping::unmap(loc, off);
 }

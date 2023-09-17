@@ -22,12 +22,10 @@ use cpio::CPIOParser;
 /// Updates the current parent used for the unpacking operation.
 ///
 /// Arguments:
-/// - `vfs` is the VFS.
 /// - `new` is the new parent's path.
 /// - `stored` is the current parent. The tuple contains the path and the file.
 /// - `retry` tells whether the function is called as a second try.
 fn update_parent(
-	vfs: &mut VFS,
 	new: &Path,
 	stored: &mut Option<(Path, Arc<Mutex<File>>)>,
 	retry: bool,
@@ -41,27 +39,26 @@ fn update_parent(
 			};
 
 			let mut f = file.lock();
-			vfs.get_file_from_parent(&mut f, name, file::ROOT_UID, file::ROOT_GID, false)
+			vfs::get_file_from_parent(&mut f, name, file::ROOT_UID, file::ROOT_GID, false)
 		}
 
-		Some(_) | None => vfs.get_file_from_path(new, file::ROOT_UID, file::ROOT_GID, false),
+		Some(_) | None => vfs::get_file_from_path(new, file::ROOT_UID, file::ROOT_GID, false),
 	};
 
 	match result {
 		Ok(file) => {
 			*stored = Some((new.try_clone()?, file));
+			Ok(())
 		}
 
 		// If the directory doesn't exist, create recursively
 		Err(e) if !retry && e.as_int() == errno::ENOENT => {
-			file::util::create_dirs(vfs, new)?;
-			return update_parent(vfs, new, stored, true);
+			file::util::create_dirs(new)?;
+			return update_parent(new, stored, true);
 		}
 
-		Err(e) => return Err(e),
+		Err(e) => Err(e),
 	}
-
-	Ok(())
 }
 
 // TODO Implement gzip decompression?
@@ -70,10 +67,6 @@ fn update_parent(
 ///
 /// `data` is the slice of data representing the initramfs image.
 pub fn load(data: &[u8]) -> Result<(), Errno> {
-	let vfs_mutex = vfs::get();
-	let mut vfs = vfs_mutex.lock();
-	let vfs = vfs.as_mut().unwrap();
-
 	// TODO Use a stack instead?
 	// The stored parent directory
 	let mut stored_parent: Option<(Path, Arc<Mutex<File>>)> = None;
@@ -114,14 +107,14 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		};
 		// Change the parent directory if necessary
 		if update {
-			update_parent(vfs, &parent_path, &mut stored_parent, false)?;
+			update_parent(&parent_path, &mut stored_parent, false)?;
 		}
 
 		let parent_mutex = &stored_parent.as_ref().unwrap().1;
 		let mut parent = parent_mutex.lock();
 
 		// Creating file
-		let create_result = vfs.create_file(
+		let create_result = vfs::create_file(
 			&mut parent,
 			name,
 			file::ROOT_UID,

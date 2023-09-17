@@ -827,7 +827,7 @@ impl IO for File {
 pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	fs::register_defaults()?;
 
-	// Creating the root mountpoint
+	// Create the root mountpoint
 	let mount_source = match root {
 		Some((major, minor)) => MountSource::Device {
 			dev_type: DeviceType::Block,
@@ -839,9 +839,6 @@ pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
 	mountpoint::create(mount_source, None, 0, Path::root())?;
-
-	// Initializing the VFS
-	*vfs::get().lock() = Some(VFS::new());
 
 	Ok(())
 }

@@ -51,10 +51,6 @@ fn get_file(
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
-	let vfs_mutex = vfs::get();
-	let mut vfs = vfs_mutex.lock();
-	let vfs = vfs.as_mut().unwrap();
-
 	if flags & open_file::O_CREAT != 0 {
 		// Get the path of the parent directory
 		let mut parent_path = path;
@@ -62,23 +58,24 @@ fn get_file(
 		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
 		// The parent directory
-		let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
+		let parent_mutex = vfs::get_file_from_path(&parent_path, uid, gid, true)?;
 		let mut parent = parent_mutex.lock();
 
 		let file_result =
-			vfs.get_file_from_parent(&mut parent, name.try_clone()?, uid, gid, follow_links);
+			vfs::get_file_from_parent(&mut parent, name.try_clone()?, uid, gid, follow_links);
 		let file = match file_result {
 			// If the file is found, return it
 			Ok(file) => file,
 
 			// Else, create it
 			Err(e) if e.as_int() == errno::ENOENT => {
-				vfs.create_file(&mut parent, name, uid, gid, mode, FileContent::Regular)?
+				vfs::create_file(&mut parent, name, uid, gid, mode, FileContent::Regular)?
 			}
 
 			e => return e,
 		};
-		// Get file type. There cannot be a race condition since the type of a file cannot be changed
+		// Get file type. There cannot be a race condition since the type of a file cannot be
+		// changed
 		let file_type = file.lock().get_type();
 		match file_type {
 			// Cannot open symbolic links themselves
@@ -87,7 +84,7 @@ fn get_file(
 		}
 	} else {
 		// The file is the root directory
-		vfs.get_file_from_path(&path, uid, gid, follow_links)
+		vfs::get_file_from_path(&path, uid, gid, follow_links)
 	}
 }
 

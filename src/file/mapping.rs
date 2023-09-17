@@ -6,6 +6,7 @@ use crate::file::FileLocation;
 use crate::memory;
 use crate::memory::buddy;
 use crate::util::container::hashmap::HashMap;
+use crate::util::lock::Mutex;
 use core::ptr::NonNull;
 
 /// Structure representing a mapped page for a file.
@@ -66,79 +67,65 @@ impl MappedFile {
 	}
 }
 
-/// Structure managing file mappings.
-pub struct FileMappingManager {
-	/// The list of mapped files, by location.
-	mapped_files: HashMap<FileLocation, MappedFile>,
+/// The list of mapped files, by location.
+static MAPPED_FILES: Mutex<HashMap<FileLocation, MappedFile>> = Mutex::new(HashMap::new());
+
+/// Returns a reference to a mapped page.
+///
+/// Arguments:
+/// - `loc` is the location to the file.
+/// - `off` is the offset of the page.
+///
+/// If the page is not mapped, the function returns `None`.
+pub fn get_page(loc: &FileLocation, off: usize) -> Option<&mut [u8; memory::PAGE_SIZE]> {
+	let file = MAPPED_FILES.lock().get_mut(loc)?;
+	let page = file.pages.get_mut(&off)?;
+
+	Some(unsafe { page.ptr.as_mut() })
 }
 
-impl FileMappingManager {
-	/// Creates a new instance.
-	pub fn new() -> Self {
-		Self {
-			mapped_files: HashMap::new(),
-		}
-	}
-
-	/// Returns a reference to a mapped page.
-	///
-	/// Arguments:
-	/// - `loc` is the location to the file.
-	/// - `off` is the offset of the page.
-	///
-	/// If the page is not mapped, the function returns `None`.
-	pub fn get_page(
-		&mut self,
-		loc: &FileLocation,
-		off: usize,
-	) -> Option<&mut [u8; memory::PAGE_SIZE]> {
-		let file = self.mapped_files.get_mut(loc)?;
-		let page = file.pages.get_mut(&off)?;
-
-		Some(unsafe { page.ptr.as_mut() })
-	}
-
-	/// Maps the the file at the given location.
-	///
-	/// Arguments:
-	/// - `loc` is the location to the file.
-	/// - `off` is the offset of the page to map.
-	pub fn map(&mut self, loc: FileLocation, _off: usize) -> Result<(), Errno> {
-		let _mapped_file = match self.mapped_files.get_mut(&loc) {
+/// Maps the the file at the given location.
+///
+/// Arguments:
+/// - `loc` is the location to the file.
+/// - `off` is the offset of the page to map.
+pub fn map(loc: FileLocation, _off: usize) -> Result<(), Errno> {
+	let _mapped_file = {
+		let mapped_files = MAPPED_FILES.lock();
+		match mapped_files.get_mut(&loc) {
 			Some(f) => f,
-
 			None => {
-				self.mapped_files
-					.insert(loc.clone(), MappedFile::default())?;
-				self.mapped_files.get_mut(&loc).unwrap()
+				mapped_files.insert(loc.clone(), MappedFile::default())?;
+				mapped_files.get_mut(&loc).unwrap()
 			}
-		};
-
-		// TODO increment references count on page
-
-		Ok(())
-	}
-
-	/// Unmaps the file at the given location.
-	///
-	/// Arguments:
-	/// - `loc` is the location to the file.
-	/// - `off` is the offset of the page to unmap.
-	///
-	/// If the file mapping doesn't exist or the page isn't mapped, the function does nothing.
-	pub fn unmap(&mut self, loc: &FileLocation, _off: usize) {
-		let Some(mapped_file) = self.mapped_files.get_mut(loc) else {
-			return;
-		};
-
-		// TODO decrement ref count on page
-
-		// Remove mapping that are not referenced
-		// TODO mapped_file.pages.retain(|_, p| p.ref_count <= 0);
-
-		// If no mapping is left for the file, remove it
-		if mapped_file.pages.is_empty() {
-			self.mapped_files.remove(loc);
 		}
+	};
+
+	// TODO increment references count on page
+
+	Ok(())
+}
+
+/// Unmaps the file at the given location.
+///
+/// Arguments:
+/// - `loc` is the location to the file.
+/// - `off` is the offset of the page to unmap.
+///
+/// If the file mapping doesn't exist or the page isn't mapped, the function does nothing.
+pub fn unmap(loc: &FileLocation, _off: usize) {
+	let mapped_files = MAPPED_FILES.lock();
+	let Some(mapped_file) = mapped_files.get_mut(loc) else {
+		return;
+	};
+
+	// TODO decrement ref count on page
+
+	// Remove mapping that are not referenced
+	// TODO mapped_file.pages.retain(|_, p| p.ref_count <= 0);
+
+	// If no mapping is left for the file, remove it
+	if mapped_file.pages.is_empty() {
+		mapped_files.remove(loc);
 	}
 }

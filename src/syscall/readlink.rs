@@ -35,17 +35,10 @@ pub fn readlink(
 	};
 
 	// Get link's target
-	let file_mutex = {
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		let vfs = vfs.as_mut().unwrap();
-
-		vfs.get_file_from_path(&path, uid, gid, false)
-	}?;
+	let file_mutex = vfs::get_file_from_path(&path, uid, gid, false)?;
 	let file = file_mutex.lock();
-	let target = match file.get_content() {
-		FileContent::Link(target) => target,
-		_ => return Err(errno!(EINVAL)),
+	let FileContent::Link(target) = file.get_content() else {
+		return Err(errno!(EINVAL));
 	};
 
 	// Copy to userspace buffer

@@ -188,13 +188,7 @@ pub fn execve(
 	let mut i = 0;
 	while i < INTERP_MAX + 1 {
 		// The file
-		let file = {
-			let vfs_mutex = vfs::get();
-			let mut vfs = vfs_mutex.lock();
-			let vfs = vfs.as_mut().unwrap();
-
-			vfs.get_file_from_path(&path, uid, gid, true)?
-		};
+		let file = vfs::get_file_from_path(&path, uid, gid, true)?;
 		let mut f = file.lock();
 
 		if !f.can_execute(euid, egid) {
@@ -208,24 +202,24 @@ pub fn execve(
 				return Err(errno!(ELOOP));
 			}
 
-			// Adding the script to arguments
+			// Add the script to arguments
 			if argv.is_empty() {
-				argv.push(crate::format!("{}", path)?)?;
+				argv.push(crate::format!("{path}")?)?;
 			} else {
-				argv[0] = crate::format!("{}", path)?;
+				argv[0] = crate::format!("{path}")?;
 			}
 
-			// Setting interpreter to arguments
+			// Set interpreter to arguments
 			let interp = String::try_from(&shebang.buff[shebang.interp.clone()])?;
 			argv.insert(0, interp)?;
 
-			// Setting optional argument if it exists
+			// Set optional argument if it exists
 			if let Some(arg) = shebang.arg {
 				let arg = String::try_from(&shebang.buff[arg])?;
 				argv.insert(1, arg)?;
 			}
 
-			// Setting interpreter's path
+			// Set interpreter's path
 			path = Path::from_str(&shebang.buff[shebang.interp], true)?;
 
 			i += 1;
@@ -235,13 +229,7 @@ pub fn execve(
 	}
 
 	// The file
-	let file = {
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-		let vfs = vfs.as_mut().unwrap();
-
-		vfs.get_file_from_path(&path, uid, gid, true)?
-	};
+	let file = vfs::get_file_from_path(&path, uid, gid, true)?;
 
 	// Dropping path to avoid memory leak
 	drop(path);

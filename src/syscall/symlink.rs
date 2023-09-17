@@ -38,20 +38,16 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 		(uid, gid, target, linkpath)
 	};
 
-	let vfs_mutex = vfs::get();
-	let mut vfs = vfs_mutex.lock();
-	let vfs = vfs.as_mut().unwrap();
-
-	// Getting the path of the parent directory
+	// Get the path of the parent directory
 	let mut parent_path = linkpath;
 	// The file's basename
 	let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
 	// The parent directory
-	let parent_mutex = vfs.get_file_from_path(&parent_path, uid, gid, true)?;
+	let parent_mutex = vfs::get_file_from_path(&parent_path, uid, gid, true)?;
 	let mut parent = parent_mutex.lock();
 
-	vfs.create_file(
+	vfs::create_file(
 		&mut parent,
 		name,
 		uid,

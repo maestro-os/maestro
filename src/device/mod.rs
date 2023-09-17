@@ -206,22 +206,20 @@ impl Device {
 
 		drop(dev);
 
-		if let Some(vfs) = vfs.as_mut() {
-			// Tells whether the file already exists
-			let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
-			if !file_exists {
-				// Creating the directories in which the device file is located
-				let mut dir_path = path;
-				let filename = dir_path.pop().unwrap();
-				file::util::create_dirs(vfs, &dir_path)?;
+		// Tells whether the file already exists
+		let file_exists = vfs::get_file_from_path(&path, 0, 0, true).is_ok();
+		if !file_exists {
+			// Create the directories in which the device file is located
+			let mut dir_path = path;
+			let filename = dir_path.pop().unwrap();
+			file::util::create_dirs(&dir_path)?;
 
-				// Getting the parent directory
-				let parent_mutex = vfs.get_file_from_path(&dir_path, 0, 0, true)?;
-				let mut parent = parent_mutex.lock();
+			// Get the parent directory
+			let parent_mutex = vfs::get_file_from_path(&dir_path, 0, 0, true)?;
+			let mut parent = parent_mutex.lock();
 
-				// Creating the device file
-				vfs.create_file(&mut parent, filename, 0, 0, mode, file_content)?;
-			}
+			// Create the device file
+			vfs::create_file(&mut parent, filename, 0, 0, mode, file_content)?;
 		}
 
 		Ok(())
@@ -231,11 +229,9 @@ impl Device {
 	///
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
-		if let Some(vfs) = vfs.as_mut() {
-			if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
-				let file = file_mutex.lock();
-				vfs.remove_file(&file, 0, 0)?;
-			}
+		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, 0, 0, true) {
+			let file = file_mutex.lock();
+			vfs::remove_file(&file, 0, 0)?;
 		}
 
 		Ok(())
