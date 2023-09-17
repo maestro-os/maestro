@@ -136,13 +136,13 @@ unsafe fn get_kernel_table(n: usize) -> AllocResult<*mut u32> {
 ///
 /// If the allocation fails, the function returns an error.
 fn alloc_obj() -> AllocResult<*mut u32> {
-	let ptr = buddy::alloc_kernel(0)? as *mut u8;
+	let ptr = buddy::alloc_kernel(0)?.cast();
 
 	// Zero memory
-	let slice = unsafe { slice::from_raw_parts_mut(ptr, buddy::get_frame_size(0)) };
+	let slice = unsafe { slice::from_raw_parts_mut(ptr.as_mut(), buddy::get_frame_size(0)) };
 	slice.fill(0);
 
-	Ok(ptr as _)
+	Ok(ptr.as_mut())
 }
 
 /// Returns the object at index `index` of given object `obj`.

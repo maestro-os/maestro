@@ -51,11 +51,11 @@ impl MMIO {
 		let mut vmem = crate::get_vmem().lock();
 		vmem.as_mut()
 			.unwrap()
-			.map_range(phys_addr, virt_addr, pages, flags)?;
+			.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
 
 		Ok(Self {
 			phys_addr,
-			virt_addr,
+			virt_addr: virt_addr.as_ptr(),
 
 			pages,
 		})

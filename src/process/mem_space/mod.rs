@@ -120,15 +120,14 @@ impl MapResidence {
 	}
 
 	/// TODO doc
-	fn alloc() -> AllocResult<*const c_void> {
-		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
-
+	fn alloc() -> AllocResult<NonNull<c_void>> {
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
 
-		match ref_counter.increment(ptr) {
+		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
+		match ref_counter.increment(ptr.as_ptr()) {
 			Ok(()) => Ok(ptr),
 			Err(e) => {
-				buddy::free(ptr, 0);
+				buddy::free(ptr.as_ptr(), 0);
 				Err(e)
 			}
 		}
@@ -138,7 +137,6 @@ impl MapResidence {
 	fn free(ptr: *const c_void) {
 		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
 		ref_counter.decrement(ptr);
-
 		if ref_counter.can_free(ptr) {
 			buddy::free(ptr, 0);
 		}
@@ -148,7 +146,7 @@ impl MapResidence {
 	///
 	/// Since the function might reuse the same page for several allocation, the page must be freed
 	/// only using the `free_page` function associated with the current instance.
-	pub fn alloc_page(&self, off: usize) -> AllocResult<*const c_void> {
+	pub fn alloc_page(&self, off: usize) -> AllocResult<NonNull<c_void>> {
 		match self {
 			MapResidence::Normal => Self::alloc(),
 
@@ -156,7 +154,7 @@ impl MapResidence {
 				pages,
 			} => {
 				if off < pages.len() {
-					Ok(pages[off].as_ptr() as *mut c_void)
+					Ok(pages[off].cast())
 				} else {
 					Self::alloc()
 				}

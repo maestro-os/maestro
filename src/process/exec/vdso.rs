@@ -51,11 +51,12 @@ fn load_image() -> Result<Vdso, Errno> {
 	let entry_off = parser.get_header().e_entry as _;
 
 	// Load image into pages
+	// TODO collect
 	let mut pages = Vec::new();
 	for i in 0..math::ceil_div(ELF_IMAGE.len(), memory::PAGE_SIZE) {
 		// Alloc page
 		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
-		let virt_ptr = memory::kern_to_virt(ptr) as _;
+		let virt_ptr = memory::kern_to_virt(ptr.as_mut()) as _;
 
 		// Copy data
 		let off = i * memory::PAGE_SIZE;
@@ -64,7 +65,7 @@ fn load_image() -> Result<Vdso, Errno> {
 			ptr::copy_nonoverlapping(ELF_IMAGE[off..].as_ptr() as *const c_void, virt_ptr, len);
 		}
 
-		pages.push(NonNull::new(ptr as *mut [u8; memory::PAGE_SIZE]).unwrap())?;
+		pages.push(ptr.cast())?;
 	}
 
 	Ok(Vdso {

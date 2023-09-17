@@ -12,7 +12,6 @@ use core::ptr::NonNull;
 struct Page {
 	/// The pointer to the page.
 	ptr: NonNull<[u8; memory::PAGE_SIZE]>,
-
 	/// The number of references to the page.
 	ref_count: u32,
 }
@@ -35,8 +34,7 @@ impl MappedFile {
 			self.pages.insert(
 				off,
 				Page {
-					ptr: NonNull::new(buddy::alloc_kernel(0)? as *mut _).unwrap(),
-
+					ptr: buddy::alloc_kernel(0)?.cast(),
 					ref_count: 1,
 				},
 			)?;

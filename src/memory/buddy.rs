@@ -7,6 +7,7 @@
 //! The order of a frame is the `n` in the expression `pow(2, n)` that represents the
 //! size of a frame in pages.
 
+use core::ptr::NonNull;
 use super::stats;
 use crate::errno::AllocError;
 use crate::errno::AllocResult;
@@ -496,15 +497,14 @@ fn get_zone_for_pointer<'z>(
 /// The given frame shall fit the flags `flags`.
 ///
 /// If no suitable frame is found, the function returns an Err.
-pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<*mut c_void> {
+pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
 	debug_assert!(order <= MAX_ORDER);
 
 	let mut zones = ZONES.lock();
 	let zones = unsafe { zones.assume_init_mut() };
 
 	let begin_zone = (flags & ZONE_TYPE_MASK) as usize;
-	for i in begin_zone..zones.len() {
-		let zone = &mut zones[i];
+	for zone in &mut zones[begin_zone..] {
 		let Some(frame) = zone.get_available_frame(order) else {
 			continue;
 		};
@@ -520,7 +520,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<*mut c_void> {
 		zone.allocated_pages += math::pow2(order as usize);
 
 		update_stats(4 * math::pow2(order as usize) as isize);
-		return Ok(ptr);
+		return NonNull::new(ptr).ok_or(AllocError);
 	}
 
 	Err(AllocError)
@@ -531,12 +531,12 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<*mut c_void> {
 /// The allocated frame is in the kernel zone.
 ///
 /// The function returns the *virtual* address, not the physical one.
-pub fn alloc_kernel(order: FrameOrder) -> AllocResult<*mut c_void> {
+pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
-	let virt_ptr = memory::kern_to_virt(ptr) as _;
+	let virt_ptr = memory::kern_to_virt(ptr.as_ptr()) as _;
 	debug_assert!(virt_ptr as *const _ >= memory::PROCESS_END);
 
-	Ok(virt_ptr)
+	Ok(NonNull::new(virt_ptr).unwrap_unchecked())
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator.

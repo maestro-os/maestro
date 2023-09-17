@@ -26,14 +26,13 @@ use core::slice;
 ///
 /// This page is meant to be mapped in read-only and is a placeholder for pages that are accessed
 /// without being allocated nor written.
-static DEFAULT_PAGE: Mutex<Option<*const c_void>> = Mutex::new(None);
+static DEFAULT_PAGE: Mutex<Option<NonNull<c_void>>> = Mutex::new(None);
 
 /// Returns a physical pointer to the default page.
 fn get_default_page() -> *const c_void {
 	let mut default_page = DEFAULT_PAGE.lock();
-
 	match &mut *default_page {
-		Some(ptr) => *ptr,
+		Some(ptr) => ptr.as_ptr(),
 
 		// Lazy allocation
 		None => {
@@ -42,12 +41,12 @@ fn get_default_page() -> *const c_void {
 			};
 
 			// Zero page
-			let virt_ptr = memory::kern_to_virt(ptr) as *mut u8;
+			let virt_ptr = memory::kern_to_virt(ptr.as_mut()) as *mut u8;
 			let slice = unsafe { slice::from_raw_parts_mut(virt_ptr, memory::PAGE_SIZE) };
 			slice.fill(0);
 
 			*default_page = Some(ptr);
-			ptr
+			ptr.as_ptr()
 		}
 	}
 }
@@ -228,8 +227,8 @@ impl MemMapping {
 		// Map new page
 		let new_phys_ptr = self.residence.alloc_page(offset)?;
 		let flags = self.get_vmem_flags(true, offset);
-		if let Err(errno) = vmem.map(new_phys_ptr, virt_ptr, flags) {
-			self.residence.free_page(offset, new_phys_ptr);
+		if let Err(errno) = vmem.map(new_phys_ptr.as_ptr(), virt_ptr, flags) {
+			self.residence.free_page(offset, new_phys_ptr.as_ptr());
 			return Err(errno);
 		}
 

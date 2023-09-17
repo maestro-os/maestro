@@ -40,11 +40,11 @@ impl Block {
 		debug_assert!(first_chunk_size >= min_size.get());
 
 		// Allocate the block
-		let ptr = buddy::alloc_kernel(block_order)? as *mut Block;
+		let ptr = buddy::alloc_kernel(block_order)?.cast();
 		// Init block
 		unsafe {
 			ptr::write_volatile(
-				ptr,
+				ptr.as_mut(),
 				Self {
 					order: block_order,
 					first_chunk: Chunk::new(),
@@ -52,7 +52,7 @@ impl Block {
 			);
 		}
 
-		let block = unsafe { &mut *ptr };
+		let block = unsafe { ptr.as_mut() };
 		*block.first_chunk.as_free_chunk().unwrap() = FreeChunk::new(first_chunk_size);
 
 		Ok(block)
