@@ -43,7 +43,6 @@ use mountpoint::MountPoint;
 use mountpoint::MountSource;
 use open_file::OpenFile;
 use path::Path;
-use vfs::VFS;
 
 /// Type representing a user ID.
 pub type Uid = u16;

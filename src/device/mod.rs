@@ -206,9 +206,6 @@ impl Device {
 
 		drop(dev);
 
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-
 		if let Some(vfs) = vfs.as_mut() {
 			// Tells whether the file already exists
 			let file_exists = vfs.get_file_from_path(&path, 0, 0, true).is_ok();
@@ -234,9 +231,6 @@ impl Device {
 	///
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> Result<(), Errno> {
-		let vfs_mutex = vfs::get();
-		let mut vfs = vfs_mutex.lock();
-
 		if let Some(vfs) = vfs.as_mut() {
 			if let Ok(file_mutex) = vfs.get_file_from_path(&self.path, 0, 0, true) {
 				let file = file_mutex.lock();

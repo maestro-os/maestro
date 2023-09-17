@@ -1,7 +1,6 @@
 //! This module implements utility functions for files manipulations.
 
 use super::path::Path;
-use super::vfs::VFS;
 use super::File;
 use super::FileContent;
 use crate::errno;

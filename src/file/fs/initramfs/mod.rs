@@ -12,7 +12,6 @@ use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
-use crate::file::VFS;
 use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
