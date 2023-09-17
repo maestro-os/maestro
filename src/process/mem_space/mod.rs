@@ -374,7 +374,7 @@ impl MemSpace {
 	/// The function has complexity `O(log n)`.
 	///
 	/// Arguments:
-	/// - `map_constraint` is the constraint to fullfill for the allocation.
+	/// - `map_constraint` is the constraint to fulfill for the allocation.
 	/// - `size` represents the size of the mapping in number of memory pages.
 	/// - `flags` represents the flags for the mapping.
 	/// - `residence` is the residence of the mapping to be created.

@@ -18,16 +18,16 @@ pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
-	// Checking if the thread to kill is the current
+	// Check if the thread to kill is the current
 	if proc.tid == tid {
 		proc.kill(&signal, false);
 	} else {
-		// Getting the thread
+		// Get the thread
 		let thread_mutex = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
 		let mut thread = thread_mutex.lock();
 
-		// Checking permissions
-		if thread.can_kill(proc.uid) || thread.can_kill(proc.euid) {
+		// Check permissions
+		if !proc.access_profile.can_kill(&thread) {
 			return Err(errno!(EPERM));
 		}
 

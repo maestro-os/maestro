@@ -33,8 +33,7 @@ use crate::file::fs::procfs::ProcFS;
 use crate::file::mountpoint;
 use crate::file::open_file;
 use crate::file::path::Path;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
+use crate::file::perm::AccessProfile;
 use crate::file::perm::ROOT_UID;
 use crate::file::vfs;
 use crate::gdt;
@@ -202,21 +201,8 @@ pub struct Process {
 	/// The process's current TTY.
 	tty: TTYHandle,
 
-	/// The real ID of the process's user owner.
-	pub uid: Uid,
-	/// The real ID of the process's group owner.
-	pub gid: Gid,
-
-	/// The effective ID of the process's user owner.
-	pub euid: Uid,
-	/// The effective ID of the process's group owner.
-	pub egid: Gid,
-
-	/// The saved user ID of the process's owner.
-	pub suid: Uid,
-	/// The saved group ID of the process's owner.
-	pub sgid: Gid,
-
+	/// The process's access profile, containing user and group IDs.
+	pub access_profile: AccessProfile,
 	/// The process's current umask.
 	pub umask: file::Mode,
 
@@ -1286,12 +1272,6 @@ impl Process {
 		}
 	}
 
-	/// Tells whether the given user ID has the permission to kill the current
-	/// process.
-	pub fn can_kill(&self, uid: Uid) -> bool {
-		uid == ROOT_UID || uid == self.uid // TODO Also check saved user ID
-	}
-
 	/// Returns the OOM score, used by the OOM killer to determine the process
 	/// to kill in case the system runs out of memory.
 	///
@@ -1309,6 +1289,15 @@ impl Process {
 		// process, an absolute score or a bonus might be given, etc...)
 
 		score
+	}
+}
+
+impl AccessProfile {
+	/// Tells whether the agent can kill the process.
+	pub fn can_kill(&self, proc: &Process) -> bool {
+		// TODO Also check effective user ID?
+		// TODO Also check saved user ID?
+		self.get_uid() == ROOT_UID || self.get_uid() == proc.uid
 	}
 }
 

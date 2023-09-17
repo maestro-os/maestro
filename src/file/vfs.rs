@@ -12,8 +12,7 @@ use crate::file::mapping;
 use crate::file::mountpoint;
 use crate::file::path::Path;
 use crate::file::perm;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
+use crate::file::perm::AccessProfile;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -93,8 +92,7 @@ pub fn get_file_by_location(location: &FileLocation) -> EResult<Arc<Mutex<File>>
 /// beginning of the path resolution.
 fn get_file_by_path_impl(
 	path: &Path,
-	uid: Uid,
-	gid: Gid,
+	ap: &AccessProfile,
 	follow_links: bool,
 	follows_count: usize,
 ) -> Result<Arc<Mutex<File>>, Errno> {
@@ -128,7 +126,7 @@ fn get_file_by_path_impl(
 		return Ok(file);
 	}
 	// Check permissions
-	if !file.can_execute(uid, gid) {
+	if !ap.can_execute(file) {
 		return Err(errno!(EACCES));
 	}
 
@@ -137,7 +135,7 @@ fn get_file_by_path_impl(
 
 		// Check permissions
 		file = fs.load_file(&mut *io, inode, inner_path[i].try_clone()?)?;
-		if i < inner_path.get_elements_count() - 1 && !file.can_execute(uid, gid) {
+		if i < inner_path.get_elements_count() - 1 && !ap.can_execute(file) {
 			return Err(errno!(EACCES));
 		}
 
@@ -164,13 +162,7 @@ fn get_file_by_path_impl(
 				drop(fs);
 				drop(io);
 				drop(mountpoint);
-				return get_file_by_path_impl(
-					&new_path,
-					uid,
-					gid,
-					follow_links,
-					follows_count + 1,
-				);
+				return get_file_by_path_impl(&new_path, ap, follow_links, follows_count + 1);
 			}
 		}
 	}
@@ -194,16 +186,14 @@ fn get_file_by_path_impl(
 /// If the path is relative, the function starts from the root.
 ///
 /// Arguments:
-/// - `uid` is the User ID of the user creating the file
-/// - `gid` is the Group ID of the user creating the file
+/// - `ap` is the access profile to check permissions
 /// - `follow_links` is `true`, the function follows symbolic links
 pub fn get_file_from_path(
 	path: &Path,
-	uid: Uid,
-	gid: Gid,
+	ap: &AccessProfile,
 	follow_links: bool,
 ) -> Result<Arc<Mutex<File>>, Errno> {
-	get_file_by_path_impl(path, uid, gid, follow_links, 0)
+	get_file_by_path_impl(path, ap, follow_links, 0)
 }
 
 /// Returns a reference to the file `name` located in the directory `parent`.
@@ -213,21 +203,19 @@ pub fn get_file_from_path(
 /// Arguments:
 /// - `parent` is the parent directory
 /// - `name` is the name of the file
-/// - `uid` is the User ID of the user creating the file
-/// - `gid` is the Group ID of the user creating the file
+/// - `ap` is the access profile to check permissions
 /// - `follow_links` is `true`, the function follows symbolic links
 pub fn get_file_from_parent(
 	parent: &File,
 	name: String,
-	uid: Uid,
-	gid: Gid,
+	ap: &AccessProfile,
 	follow_links: bool,
 ) -> Result<Arc<Mutex<File>>, Errno> {
 	// Check for errors
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	if !parent.can_execute(uid, gid) {
+	if !ap.can_execute(parent) {
 		return Err(errno!(EACCES));
 	}
 
@@ -257,15 +245,14 @@ pub fn get_file_from_parent(
 			drop(fs);
 			drop(io);
 			drop(mountpoint);
-			return get_file_by_path_impl(&new_path, uid, gid, follow_links, 1);
+			return get_file_by_path_impl(&new_path, ap, follow_links, 1);
 		}
 	}
 
 	file.set_parent_path(parent.get_path()?);
 	update_location(&mut file, &mountpoint);
 
-	let file = Arc::new(Mutex::new(file))?;
-	Ok(file)
+	Ok(Arc::new(Mutex::new(file))?)
 }
 
 /// Creates a file, adds it to the VFS, then returns it. The file will be
@@ -275,21 +262,20 @@ pub fn get_file_from_parent(
 ///
 /// Arguments:
 /// - `name` is the name of the file
-/// - `uid` is the id of the owner user
-/// - `gid` is the id of the owner group
+/// - `ap` is access profile to check permissions. This also determines the UID and GID to be used
+/// for the created file
 /// - `mode` is the permission of the file
 /// - `content` is the content of the file. This value also determines the
 /// file type
 pub fn create_file(
 	parent: &mut File,
 	name: String,
-	uid: Uid,
-	mut gid: Gid,
+	mut ap: AccessProfile,
 	mode: Mode,
 	content: FileContent,
 ) -> Result<Arc<Mutex<File>>, Errno> {
 	// If file already exist, error
-	if get_file_from_parent(parent, name.try_clone()?, uid, gid, false).is_ok() {
+	if get_file_from_parent(parent, name.try_clone()?, ap, false).is_ok() {
 		return Err(errno!(EEXIST));
 	}
 
@@ -297,14 +283,14 @@ pub fn create_file(
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	if !parent.can_write(uid, gid) {
+	if !ap.can_write(parent) {
 		return Err(errno!(EACCES));
 	}
 
 	// If SGID is set, the newly created file shall inherit the group ID of the
 	// parent directory
 	if parent.get_mode() & perm::S_ISGID != 0 {
-		gid = parent.get_gid();
+		ap.gid = parent.get_gid();
 	}
 
 	// Get the mountpoint
@@ -330,7 +316,15 @@ pub fn create_file(
 
 	// Add the file to the filesystem
 	let parent_inode = parent.get_location().get_inode();
-	let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
+	let mut file = fs.add_file(
+		&mut *io,
+		parent_inode,
+		name,
+		ap.get_euid(),
+		ap.get_egid(),
+		mode,
+		content,
+	)?;
 
 	// Add the file to the parent's entries
 	file.set_parent_path(parent.get_path()?);
@@ -338,8 +332,7 @@ pub fn create_file(
 
 	drop(fs);
 	update_location(&mut file, &mountpoint);
-	let file = Arc::new(Mutex::new(file))?;
-	Ok(file)
+	Ok(Arc::new(Mutex::new(file))?)
 }
 
 /// Creates a new hard link.
@@ -348,20 +341,18 @@ pub fn create_file(
 /// - `target` is the target file
 /// - `parent` is the parent directory of the new link
 /// - `name` is the name of the link
-/// - `uid` is the id of the owner user
-/// - `gid` is the id of the owner group
+/// - `ap` is the access profile to check permissions
 pub fn create_link(
 	target: &mut File,
 	parent: &mut File,
 	name: &[u8],
-	uid: Uid,
-	gid: Gid,
+	ap: &AccessProfile,
 ) -> Result<(), Errno> {
 	// Check the parent file is a directory
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	if !parent.can_write(uid, gid) {
+	if !ap.can_write(parent) {
 		return Err(errno!(EACCES));
 	}
 	// Check the target and source are both on the same mountpoint
@@ -403,20 +394,18 @@ pub fn create_link(
 
 /// Removes the file `file` from the VFS.
 ///
+/// `ap` is the access profile to check permissions
+///
 /// If the file doesn't exist, the function returns an error.
 ///
 /// If the file is a non-empty directory, the function returns an error.
-///
-/// Arguments:
-/// - `uid` is the User ID of the user removing the file
-/// - `gid` is the Group ID of the user removing the file
-pub fn remove_file(file: &File, uid: Uid, gid: Gid) -> EResult<()> {
+pub fn remove_file(file: &File, ap: &AccessProfile) -> EResult<()> {
 	// The parent directory
-	let parent_mutex = get_file_from_path(file.get_parent_path(), uid, gid, true)?;
+	let parent_mutex = get_file_from_path(file.get_parent_path(), ap, true)?;
 	let parent = parent_mutex.lock();
 
 	// Check permissions
-	if !file.can_write(uid, gid) || !parent.can_write(uid, gid) || !parent.can_execute(uid, gid) {
+	if !ap.can_write(file) || !ap.can_write(parent) || !ap.can_execute(parent) {
 		return Err(errno!(EACCES));
 	}
 

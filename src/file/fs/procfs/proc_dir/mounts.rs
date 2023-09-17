@@ -29,7 +29,7 @@ impl KernFSNode for Mounts {
 
 	fn get_uid(&self) -> Uid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			proc_mutex.lock().euid
+			proc_mutex.lock().access_profile.get_euid()
 		} else {
 			0
 		}
@@ -37,7 +37,7 @@ impl KernFSNode for Mounts {
 
 	fn get_gid(&self) -> Gid {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
-			proc_mutex.lock().egid
+			proc_mutex.lock().access_profile.get_egid()
 		} else {
 			0
 		}

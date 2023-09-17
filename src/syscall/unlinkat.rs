@@ -12,12 +12,9 @@ use macros::syscall;
 
 #[syscall]
 pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i32, Errno> {
-	let (file_mutex, uid, gid) = {
+	let (file_mutex, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let uid = proc.euid;
-		let gid = proc.egid;
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -27,11 +24,11 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 
 		let file = util::get_file_at(proc, false, dirfd, pathname, flags)?;
 
-		(file, uid, gid)
+		(file, proc.access_profile)
 	};
 
 	let file = file_mutex.lock();
-	vfs::remove_file(&file, uid, gid)?;
+	vfs::remove_file(&file, &ap)?;
 
 	Ok(0)
 }

@@ -12,7 +12,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
-	let (path, uid, gid) = {
+	let (path, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -22,13 +22,13 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
-		(path, proc.euid, proc.egid)
+		(path, proc.access_profile)
 	};
 
 	// Remove the directory
 	{
 		// Get directory
-		let file_mutex = vfs::get_file_from_path(&path, uid, gid, true)?;
+		let file_mutex = vfs::get_file_from_path(&path, &ap, true)?;
 		let file = file_mutex.lock();
 
 		match file.get_content() {

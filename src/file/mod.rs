@@ -46,11 +46,12 @@ use mountpoint::MountPoint;
 use mountpoint::MountSource;
 use open_file::OpenFile;
 use path::Path;
+use perm::AccessProfile;
 
 /// Type representing an inode.
 ///
 /// An inode is a number representing a node in a filesystem. The kernel doesn't interpret this
-/// value in an ways, but it must fullfill one invariant: the value must represent a **unique**
+/// value in an ways, but it must fulfill one condition: the value must represent a **unique**
 /// node in the filesystem, and that exact node **must** be accessible using this value. and
 pub type INode = u64;
 /// Type representing a file mode, which is a pair of values representing respectively:
@@ -394,56 +395,6 @@ impl File {
 		self.mode | self.content.as_type().to_mode()
 	}
 
-	/// Tells if the file can be read from by the given UID and GID.
-	pub fn can_read(&self, uid: Uid, gid: Gid) -> bool {
-		// If root, bypass checks
-		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
-			return true;
-		}
-
-		if self.mode & perm::S_IRUSR != 0 && self.uid == uid {
-			return true;
-		}
-		if self.mode & perm::S_IRGRP != 0 && self.gid == gid {
-			return true;
-		}
-		self.mode & perm::S_IROTH != 0
-	}
-
-	/// Tells if the file can be written to by the given UID and GID.
-	pub fn can_write(&self, uid: Uid, gid: Gid) -> bool {
-		// If root, bypass checks
-		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
-			return true;
-		}
-
-		if self.mode & perm::S_IWUSR != 0 && self.uid == uid {
-			return true;
-		}
-		if self.mode & perm::S_IWGRP != 0 && self.gid == gid {
-			return true;
-		}
-		self.mode & perm::S_IWOTH != 0
-	}
-
-	/// Tells if the file can be executed by the given UID and GID.
-	pub fn can_execute(&self, uid: Uid, gid: Gid) -> bool {
-		// If root, bypass checks (unless the file is a regular file)
-		if !matches!(self.content, FileContent::Regular)
-			&& (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
-		{
-			return true;
-		}
-
-		if self.mode & perm::S_IXUSR != 0 && self.uid == uid {
-			return true;
-		}
-		if self.mode & perm::S_IXGRP != 0 && self.gid == gid {
-			return true;
-		}
-		self.mode & perm::S_IXOTH != 0
-	}
-
 	/// Returns the permissions of the file.
 	pub fn get_permissions(&self) -> Mode {
 		self.mode & 0o7777
@@ -736,6 +687,58 @@ impl File {
 				f(Some(io as _), None)
 			}
 		}
+	}
+}
+
+impl AccessProfile {
+	/// Tells whether the agent can read the file's content.
+	pub fn can_read_file_content(&self, file: &File) -> bool {
+		// If root, bypass checks
+		if self.get_euid() == perm::ROOT_UID || self.get_egid() == perm::ROOT_GID {
+			return true;
+		}
+
+		if file.mode & perm::S_IRUSR != 0 && file.uid == self.get_euid() {
+			return true;
+		}
+		if file.mode & perm::S_IRGRP != 0 && file.gid == self.get_egid() {
+			return true;
+		}
+		file.mode & perm::S_IROTH != 0
+	}
+
+	/// Tells whether the agent can write the file's content.
+	pub fn can_write_file_content(&self, file: &File) -> bool {
+		// If root, bypass checks
+		if self.get_euid() == perm::ROOT_UID || self.get_egid() == perm::ROOT_GID {
+			return true;
+		}
+
+		if file.mode & perm::S_IWUSR != 0 && file.uid == self.get_euid() {
+			return true;
+		}
+		if file.mode & perm::S_IWGRP != 0 && file.gid == self.get_egid() {
+			return true;
+		}
+		file.mode & perm::S_IWOTH != 0
+	}
+
+	/// Tells whether the agent can execute the file.
+	pub fn can_execute_file(&self, file: &File) -> bool {
+		// If root, bypass checks (unless the file is a regular file)
+		if !matches!(file.content, FileContent::Regular)
+			&& (self.get_euid() == perm::ROOT_UID || self.get_egid() == perm::ROOT_GID)
+		{
+			return true;
+		}
+
+		if file.mode & perm::S_IXUSR != 0 && file.uid == self.get_euid() {
+			return true;
+		}
+		if file.mode & perm::S_IXGRP != 0 && file.gid == self.get_egid() {
+			return true;
+		}
+		file.mode & perm::S_IXOTH != 0
 	}
 }
 

@@ -77,6 +77,7 @@ pub mod vga;
 use crate::errno::Errno;
 use crate::file::fs::initramfs;
 use crate::file::path::Path;
+use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::memory::vmem;
 use crate::memory::vmem::VMem;
@@ -221,14 +222,14 @@ fn init(init_path: String) -> Result<(), Errno> {
 		b"TERM=maestro".try_into()?,
 	]?;
 
-	let file_mutex = vfs::get_file_from_path(&path, 0, 0, true)?;
+	let file_mutex = vfs::get_file_from_path(&path, &AccessProfile::KERNEL, true)?;
 	let mut file = file_mutex.lock();
 
 	let exec_info = ExecInfo {
-		uid: proc.uid,
-		euid: proc.euid,
-		gid: proc.gid,
-		egid: proc.egid,
+		uid: proc.access_profile.get_uid(),
+		euid: proc.access_profile.get_euid(),
+		gid: proc.access_profile.get_gid(),
+		egid: proc.access_profile.get_egid(),
 
 		argv: vec![init_path]?,
 		envp: env,

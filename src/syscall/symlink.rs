@@ -12,12 +12,9 @@ use macros::syscall;
 
 #[syscall]
 pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Errno> {
-	let (uid, gid, target, linkpath) = {
+	let (target, linkpath, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let uid = proc.euid;
-		let gid = proc.egid;
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -35,7 +32,7 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 			.ok_or_else(|| errno!(EFAULT))?;
 		let linkpath = Path::from_str(linkpath, true)?;
 
-		(uid, gid, target, linkpath)
+		(target, linkpath, proc.access_profile)
 	};
 
 	// Get the path of the parent directory
@@ -44,17 +41,10 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 	let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
 	// The parent directory
-	let parent_mutex = vfs::get_file_from_path(&parent_path, uid, gid, true)?;
+	let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
 	let mut parent = parent_mutex.lock();
 
-	vfs::create_file(
-		&mut parent,
-		name,
-		uid,
-		gid,
-		0o777,
-		FileContent::Link(target),
-	)?;
+	vfs::create_file(&mut parent, name, ap, 0o777, FileContent::Link(target))?;
 
 	Ok(0)
 }

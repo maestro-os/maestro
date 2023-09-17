@@ -2,7 +2,7 @@
 
 use crate::errno;
 use crate::errno::AllocResult;
-use crate::errno::Errno;
+use crate::errno::EResult;
 use crate::file::path::Path;
 use crate::file::vfs;
 use crate::file::File;
@@ -42,10 +42,7 @@ pub fn get_absolute_path(process: &Process, path: Path) -> AllocResult<Path> {
 ///
 /// If the array or its content strings are not accessible by the process, the
 /// function returns an error.
-pub unsafe fn get_str_array(
-	process: &Process,
-	ptr: *const *const u8,
-) -> Result<Vec<String>, Errno> {
+pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8) -> EResult<Vec<String>> {
 	let mem_space = process.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 
@@ -69,6 +66,7 @@ pub unsafe fn get_str_array(
 	}
 
 	// Filling the array
+	// TODO collect
 	let mut arr = Vec::with_capacity(len)?;
 	for i in 0..len {
 		let elem = *ptr.add(i);
@@ -88,7 +86,7 @@ fn build_path_from_fd(
 	process: MutexGuard<Process, false>,
 	dirfd: i32,
 	pathname: &[u8],
-) -> Result<Path, Errno> {
+) -> EResult<Path> {
 	let path = Path::from_str(pathname, true)?;
 
 	if path.is_absolute() {
@@ -138,7 +136,7 @@ pub fn get_file_at(
 	dirfd: i32,
 	pathname: &[u8],
 	flags: i32,
-) -> Result<Arc<Mutex<File>>, Errno> {
+) -> EResult<Arc<Mutex<File>>> {
 	if pathname.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
@@ -165,11 +163,8 @@ pub fn get_file_at(
 			Err(errno!(ENOENT))
 		}
 	} else {
-		let uid = process.euid;
-		let gid = process.egid;
 		let path = build_path_from_fd(process, dirfd, pathname)?;
-
-		vfs::get_file_from_path(&path, uid, gid, follow_links)
+		vfs::get_file_from_path(&path, &process.access_profile, follow_links)
 	}
 }
 
@@ -187,17 +182,14 @@ pub fn get_parent_at_with_name(
 	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
-) -> Result<(Arc<Mutex<File>>, String), Errno> {
+) -> EResult<(Arc<Mutex<File>>, String)> {
 	if pathname.is_empty() {
 		return Err(errno!(ENOENT));
 	}
-
-	let uid = process.euid;
-	let gid = process.egid;
 	let mut path = build_path_from_fd(process, dirfd, pathname)?;
 	let name = path.pop().unwrap();
 
-	let parent_mutex = vfs::get_file_from_path(&path, uid, gid, follow_links)?;
+	let parent_mutex = vfs::get_file_from_path(&path, &process.access_profile, follow_links)?;
 	Ok((parent_mutex, name))
 }
 
@@ -217,15 +209,12 @@ pub fn create_file_at(
 	pathname: &[u8],
 	mode: Mode,
 	content: FileContent,
-) -> Result<Arc<Mutex<File>>, Errno> {
-	let uid = process.euid;
-	let gid = process.egid;
+) -> EResult<Arc<Mutex<File>>> {
 	let mode = mode & !process.umask;
-
 	let (parent_mutex, name) = get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
 
 	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name, uid, gid, mode, content)
+	vfs::create_file(&mut parent, name, process.access_profile, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.

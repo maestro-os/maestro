@@ -8,6 +8,7 @@ use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::buffer;
 use crate::file::mountpoint;
+use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::DeviceID;
 use crate::file::File;
@@ -211,7 +212,7 @@ impl OpenFile {
 			if open_file.ref_count == 1 {
 				// Use root user to bypass permission checks since they have been made before
 				// deferring
-				vfs::remove_file(file, 0, 0)?;
+				vfs::remove_file(file, &AccessProfile::KERNEL)?;
 			}
 		}
 

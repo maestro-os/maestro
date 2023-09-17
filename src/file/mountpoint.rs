@@ -11,6 +11,7 @@ use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno::AllocResult;
 use crate::errno::Errno;
+use crate::file::perm::AccessProfile;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::DummyIO;
@@ -82,7 +83,7 @@ impl MountSource {
 		let path = Path::from_str(string, true)?;
 		let path = cwd.concat(&path)?;
 
-		let result = vfs::get_file_from_path(&path, 0, 0, true);
+		let result = vfs::get_file_from_path(&path, &AccessProfile::KERNEL, true);
 		match result {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();

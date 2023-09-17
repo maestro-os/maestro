@@ -11,8 +11,7 @@ use crate::errno::AllocError;
 use crate::errno::Errno;
 use crate::exec::vdso::MappedVDSO;
 use crate::file::path::Path;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
+use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::File;
 use crate::memory;
@@ -261,14 +260,12 @@ fn build_auxilary(
 
 /// Reads the file `file`.
 ///
-/// Arguments:
-/// - `uid` is the User ID of the executing user.
-/// - `gid` is the Group ID of the executing user.
+/// `ap` is the access profile to check permissions.
 ///
 /// If the file is not executable, the function returns an error.
-fn read_exec_file(file: &mut File, uid: Uid, gid: Gid) -> Result<Vec<u8>, Errno> {
+fn read_exec_file(file: &mut File, ap: &AccessProfile) -> Result<Vec<u8>, Errno> {
 	// Check that the file can be executed by the user
-	if !file.can_execute(uid, gid) {
+	if !ap.can_execute_file(file) {
 		return Err(errno!(ENOEXEC));
 	}
 

@@ -12,7 +12,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
-	let (path, uid, gid) = {
+	let (path, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -23,10 +23,10 @@ pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno
 		let path = Path::from_str(path, true)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
-		(path, proc.euid, proc.egid)
+		(path, proc.access_profile)
 	};
 
-	let file_mutex = vfs::get_file_from_path(&path, uid, gid, true)?;
+	let file_mutex = vfs::get_file_from_path(&path, &ap, true)?;
 	let file = file_mutex.lock();
 
 	let mountpoint_mutex = file.get_location().get_mountpoint().unwrap();

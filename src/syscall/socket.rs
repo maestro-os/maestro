@@ -18,12 +18,11 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> Result<i32, Errn
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let uid = proc.euid;
-	let gid = proc.egid;
-
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
 	let sock_type = SocketType::try_from(r#type as u32)?;
-	if !sock_domain.can_use(uid, gid) || !sock_type.can_use(uid, gid) {
+	if !proc.access_profile.can_use_sock_domain(&sock_domain)
+		|| !proc.access_profile.can_use_sock_type(&sock_type)
+	{
 		return Err(errno!(EACCES));
 	}
 	let desc = SocketDesc {

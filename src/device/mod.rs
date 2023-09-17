@@ -25,9 +25,11 @@ pub mod storage;
 pub mod tty;
 
 use crate::device::manager::DeviceManager;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
+use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::FileContent;
 use crate::file::Mode;
@@ -199,7 +201,7 @@ impl Device {
 	/// The function takes a mutex guard because it needs to unlock the device
 	/// in order to create the file without a deadlock since the VFS accesses a device to write on
 	/// the filesystem.
-	pub fn create_file(dev: MutexGuard<Device, true>) -> Result<(), Errno> {
+	pub fn create_file(dev: MutexGuard<Device, true>) -> EResult<()> {
 		let file_content = dev.id.to_file_content();
 		let path = dev.path.try_clone()?;
 		let mode = dev.mode;
@@ -207,7 +209,7 @@ impl Device {
 		drop(dev);
 
 		// Tells whether the file already exists
-		let file_exists = vfs::get_file_from_path(&path, 0, 0, true).is_ok();
+		let file_exists = vfs::get_file_from_path(&path, &AccessProfile::KERNEL, true).is_ok();
 		if !file_exists {
 			// Create the directories in which the device file is located
 			let mut dir_path = path;
@@ -215,11 +217,17 @@ impl Device {
 			file::util::create_dirs(&dir_path)?;
 
 			// Get the parent directory
-			let parent_mutex = vfs::get_file_from_path(&dir_path, 0, 0, true)?;
+			let parent_mutex = vfs::get_file_from_path(&dir_path, &AccessProfile::KERNEL, true)?;
 			let mut parent = parent_mutex.lock();
 
 			// Create the device file
-			vfs::create_file(&mut parent, filename, 0, 0, mode, file_content)?;
+			vfs::create_file(
+				&mut parent,
+				filename,
+				AccessProfile::KERNEL,
+				mode,
+				file_content,
+			)?;
 		}
 
 		Ok(())
@@ -228,10 +236,10 @@ impl Device {
 	/// If exists, removes the device file.
 	///
 	/// If the file doesn't exist, the function does nothing.
-	pub fn remove_file(&mut self) -> Result<(), Errno> {
-		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, 0, 0, true) {
+	pub fn remove_file(&mut self) -> EResult<()> {
+		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, &AccessProfile::KERNEL, true) {
 			let file = file_mutex.lock();
-			vfs::remove_file(&file, 0, 0)?;
+			vfs::remove_file(&file, &AccessProfile::KERNEL)?;
 		}
 
 		Ok(())

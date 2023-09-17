@@ -8,7 +8,7 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
-use crate::file::perm;
+use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
@@ -40,10 +40,10 @@ fn update_parent(
 			};
 
 			let mut f = file.lock();
-			vfs::get_file_from_parent(&mut f, name, perm::ROOT_UID, perm::ROOT_GID, false)
+			vfs::get_file_from_parent(&mut f, name, &AccessProfile::KERNEL, false)
 		}
 
-		Some(_) | None => vfs::get_file_from_path(new, perm::ROOT_UID, perm::ROOT_GID, false),
+		Some(_) | None => vfs::get_file_from_path(new, &AccessProfile::KERNEL, false),
 	};
 
 	match result {
@@ -115,14 +115,8 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		let mut parent = parent_mutex.lock();
 
 		// Creating file
-		let create_result = vfs::create_file(
-			&mut parent,
-			name,
-			perm::ROOT_UID,
-			perm::ROOT_GID,
-			perm,
-			content,
-		);
+		let create_result =
+			vfs::create_file(&mut parent, name, AccessProfile::KERNEL, perm, content);
 		let file_mutex = match create_result {
 			Ok(file_mutex) => file_mutex,
 			Err(e) if e.as_int() == errno::EEXIST => continue,

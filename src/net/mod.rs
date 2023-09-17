@@ -10,8 +10,7 @@ pub mod sockaddr;
 pub mod tcp;
 
 use crate::errno::Errno;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
+use crate::file::perm::AccessProfile;
 use crate::file::perm::ROOT_GID;
 use crate::file::perm::ROOT_UID;
 use crate::net::sockaddr::SockAddrIn;
@@ -255,14 +254,6 @@ impl SocketDomain {
 		}
 	}
 
-	/// Tells whether the given user has the permission to use the socket domain.
-	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
-		match self {
-			Self::AfPacket => uid == ROOT_UID || gid == ROOT_GID,
-			_ => true,
-		}
-	}
-
 	/// Returns the size of the sockaddr structure for the domain.
 	pub fn get_sockaddr_len(&self) -> usize {
 		match self {
@@ -270,6 +261,16 @@ impl SocketDomain {
 			Self::AfInet6 => size_of::<SockAddrIn6>(),
 			// TODO add others
 			_ => 0,
+		}
+	}
+}
+
+impl AccessProfile {
+	/// Tells whether the agent has the permission to use the socket domain.
+	pub fn can_use_sock_domain(&self, domain: &SocketDomain) -> bool {
+		match domain {
+			Self::AfPacket => self.get_euid() == ROOT_UID || self.get_egid() == ROOT_GID,
+			_ => true,
 		}
 	}
 }
@@ -318,11 +319,13 @@ impl SocketType {
 	pub fn is_stream(&self) -> bool {
 		matches!(self, Self::SockStream | Self::SockSeqpacket)
 	}
+}
 
-	/// Tells whether the given user has the permission to use the socket type.
-	pub fn can_use(&self, uid: Uid, gid: Gid) -> bool {
+impl AccessProfile {
+	/// Tells whether the agent has the permission to use the socket type.
+	pub fn can_use_sock_type(&self, sock_type: &SocketType) -> bool {
 		match self {
-			Self::SockRaw => uid == ROOT_UID || gid == ROOT_GID,
+			Self::SockRaw => self.get_euid() == ROOT_UID || self.get_egid() == ROOT_GID,
 			_ => true,
 		}
 	}
