@@ -10,10 +10,10 @@ pub mod sockaddr;
 pub mod tcp;
 
 use crate::errno::Errno;
-use crate::file::Gid;
-use crate::file::Uid;
-use crate::file::ROOT_GID;
-use crate::file::ROOT_UID;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
+use crate::file::perm::ROOT_GID;
+use crate::file::perm::ROOT_UID;
 use crate::net::sockaddr::SockAddrIn;
 use crate::net::sockaddr::SockAddrIn6;
 use crate::util::container::hashmap::HashMap;

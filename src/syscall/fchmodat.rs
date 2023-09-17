@@ -2,7 +2,7 @@
 
 use super::util;
 use crate::errno::Errno;
-use crate::file;
+use crate::file::perm;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use core::ffi::c_int;
@@ -35,7 +35,7 @@ pub fn fchmodat(
 	let mut file = file_mutex.lock();
 
 	// Checking permissions
-	if uid != file::ROOT_UID && uid != file.get_uid() {
+	if uid != perm::ROOT_UID && uid != file.get_uid() {
 		return Err(errno!(EPERM));
 	}
 

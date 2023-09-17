@@ -8,6 +8,7 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
+use crate::file::perm;
 use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
@@ -39,10 +40,10 @@ fn update_parent(
 			};
 
 			let mut f = file.lock();
-			vfs::get_file_from_parent(&mut f, name, file::ROOT_UID, file::ROOT_GID, false)
+			vfs::get_file_from_parent(&mut f, name, perm::ROOT_UID, perm::ROOT_GID, false)
 		}
 
-		Some(_) | None => vfs::get_file_from_path(new, file::ROOT_UID, file::ROOT_GID, false),
+		Some(_) | None => vfs::get_file_from_path(new, perm::ROOT_UID, perm::ROOT_GID, false),
 	};
 
 	match result {
@@ -117,8 +118,8 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		let create_result = vfs::create_file(
 			&mut parent,
 			name,
-			file::ROOT_UID,
-			file::ROOT_GID,
+			perm::ROOT_UID,
+			perm::ROOT_GID,
 			perm,
 			content,
 		);

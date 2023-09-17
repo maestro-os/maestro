@@ -5,7 +5,7 @@ mod signal_trampoline;
 use super::Process;
 use super::State;
 use crate::errno::Errno;
-use crate::file::Uid;
+use crate::file::perm::Uid;
 use crate::process::oom;
 use crate::process::pid::Pid;
 use crate::time::unit::ClockIdT;

@@ -11,8 +11,8 @@ pub mod ptr;
 
 use crate::errno::AllocError;
 use crate::errno::Errno;
-use crate::file::Gid;
-use crate::file::Uid;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::idt;
 use crate::memory;
 use crate::memory::buddy;

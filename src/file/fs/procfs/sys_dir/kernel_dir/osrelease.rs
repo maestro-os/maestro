@@ -4,10 +4,10 @@ use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::fs::kernfs::content::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::file::FileContent;
-use crate::file::Gid;
 use crate::file::Mode;
-use crate::file::Uid;
 use crate::util::io::IO;
 use core::cmp::min;
 

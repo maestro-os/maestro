@@ -14,6 +14,7 @@ pub mod mapping;
 pub mod mountpoint;
 pub mod open_file;
 pub mod path;
+pub mod perm;
 pub mod util;
 pub mod vfs;
 
@@ -25,6 +26,8 @@ use crate::errno::Errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
 use crate::time::clock;
@@ -44,20 +47,16 @@ use mountpoint::MountSource;
 use open_file::OpenFile;
 use path::Path;
 
-/// Type representing a user ID.
-pub type Uid = u16;
-/// Type representing a group ID.
-pub type Gid = u16;
-/// Type representing a file mode.
-pub type Mode = u32;
-
 /// Type representing an inode.
+///
+/// An inode is a number representing a node in a filesystem. The kernel doesn't interpret this
+/// value in an ways, but it must fullfill one invariant: the value must represent a **unique**
+/// node in the filesystem, and that exact node **must** be accessible using this value. and
 pub type INode = u64;
-
-/// The root user ID.
-pub const ROOT_UID: Uid = 0;
-/// The root group ID.
-pub const ROOT_GID: Gid = 0;
+/// Type representing a file mode, which is a pair of values representing respectively:
+/// - UNIX type (regular, directory, etc...)
+/// - UNIX permissions (read, write, execute, etc...)
+pub type Mode = u32;
 
 /// File type: socket
 pub const S_IFSOCK: Mode = 0o140000;
@@ -73,37 +72,6 @@ pub const S_IFDIR: Mode = 0o040000;
 pub const S_IFCHR: Mode = 0o020000;
 /// File type: FIFO
 pub const S_IFIFO: Mode = 0o010000;
-
-/// User: Read, Write and Execute.
-pub const S_IRWXU: Mode = 0o0700;
-/// User: Read.
-pub const S_IRUSR: Mode = 0o0400;
-/// User: Write.
-pub const S_IWUSR: Mode = 0o0200;
-/// User: Execute.
-pub const S_IXUSR: Mode = 0o0100;
-/// Group: Read, Write and Execute.
-pub const S_IRWXG: Mode = 0o0070;
-/// Group: Read.
-pub const S_IRGRP: Mode = 0o0040;
-/// Group: Write.
-pub const S_IWGRP: Mode = 0o0020;
-/// Group: Execute.
-pub const S_IXGRP: Mode = 0o0010;
-/// Other: Read, Write and Execute.
-pub const S_IRWXO: Mode = 0o0007;
-/// Other: Read.
-pub const S_IROTH: Mode = 0o0004;
-/// Other: Write.
-pub const S_IWOTH: Mode = 0o0002;
-/// Other: Execute.
-pub const S_IXOTH: Mode = 0o0001;
-/// Setuid.
-pub const S_ISUID: Mode = 0o4000;
-/// Setgid.
-pub const S_ISGID: Mode = 0o2000;
-/// Sticky bit.
-pub const S_ISVTX: Mode = 0o1000;
 
 /// Directory entry type: Block Device
 pub const DT_BLK: u8 = 6;
@@ -429,49 +397,51 @@ impl File {
 	/// Tells if the file can be read from by the given UID and GID.
 	pub fn can_read(&self, uid: Uid, gid: Gid) -> bool {
 		// If root, bypass checks
-		if uid == ROOT_UID || gid == ROOT_GID {
+		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
 			return true;
 		}
 
-		if self.mode & S_IRUSR != 0 && self.uid == uid {
+		if self.mode & perm::S_IRUSR != 0 && self.uid == uid {
 			return true;
 		}
-		if self.mode & S_IRGRP != 0 && self.gid == gid {
+		if self.mode & perm::S_IRGRP != 0 && self.gid == gid {
 			return true;
 		}
-		self.mode & S_IROTH != 0
+		self.mode & perm::S_IROTH != 0
 	}
 
 	/// Tells if the file can be written to by the given UID and GID.
 	pub fn can_write(&self, uid: Uid, gid: Gid) -> bool {
 		// If root, bypass checks
-		if uid == ROOT_UID || gid == ROOT_GID {
+		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
 			return true;
 		}
 
-		if self.mode & S_IWUSR != 0 && self.uid == uid {
+		if self.mode & perm::S_IWUSR != 0 && self.uid == uid {
 			return true;
 		}
-		if self.mode & S_IWGRP != 0 && self.gid == gid {
+		if self.mode & perm::S_IWGRP != 0 && self.gid == gid {
 			return true;
 		}
-		self.mode & S_IWOTH != 0
+		self.mode & perm::S_IWOTH != 0
 	}
 
 	/// Tells if the file can be executed by the given UID and GID.
 	pub fn can_execute(&self, uid: Uid, gid: Gid) -> bool {
 		// If root, bypass checks (unless the file is a regular file)
-		if !matches!(self.content, FileContent::Regular) && (uid == ROOT_UID || gid == ROOT_GID) {
+		if !matches!(self.content, FileContent::Regular)
+			&& (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
+		{
 			return true;
 		}
 
-		if self.mode & S_IXUSR != 0 && self.uid == uid {
+		if self.mode & perm::S_IXUSR != 0 && self.uid == uid {
 			return true;
 		}
-		if self.mode & S_IXGRP != 0 && self.gid == gid {
+		if self.mode & perm::S_IXGRP != 0 && self.gid == gid {
 			return true;
 		}
-		self.mode & S_IXOTH != 0
+		self.mode & perm::S_IXOTH != 0
 	}
 
 	/// Returns the permissions of the file.

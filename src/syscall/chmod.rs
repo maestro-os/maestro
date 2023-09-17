@@ -1,8 +1,8 @@
 //! The `chmod` system call allows change the permissions on a file.
 
 use crate::errno::Errno;
-use crate::file;
 use crate::file::path::Path;
+use crate::file::perm;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -31,7 +31,7 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	let mut file = file_mutex.lock();
 
 	// Checking permissions
-	if uid != file::ROOT_UID && uid != file.get_uid() {
+	if uid != perm::ROOT_UID && uid != file.get_uid() {
 		return Err(errno!(EPERM));
 	}
 

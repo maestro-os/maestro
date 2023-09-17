@@ -3,11 +3,11 @@
 use super::content::KernFSContent;
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file;
+use crate::file::perm;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::file::FileContent;
-use crate::file::Gid;
 use crate::file::Mode;
-use crate::file::Uid;
 use crate::time::clock;
 use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::Timestamp;
@@ -35,7 +35,7 @@ pub trait KernFSNode: Any + IO {
 
 	/// Returns the UID of the file's owner.
 	fn get_uid(&self) -> Uid {
-		file::ROOT_UID
+		perm::ROOT_UID
 	}
 
 	/// Sets the UID of the file's owner.
@@ -43,7 +43,7 @@ pub trait KernFSNode: Any + IO {
 
 	/// Returns the GID of the file's owner.
 	fn get_gid(&self) -> Gid {
-		file::ROOT_GID
+		perm::ROOT_GID
 	}
 
 	/// Sets the GID of the file's owner.

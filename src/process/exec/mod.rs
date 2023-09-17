@@ -5,13 +5,13 @@ pub mod vdso;
 
 use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::file::File;
 use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
 use crate::process::signal::SignalHandler;
-use crate::process::Gid;
 use crate::process::Process;
-use crate::process::Uid;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::IntMutex;

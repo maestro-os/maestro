@@ -3,13 +3,13 @@
 
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file;
 use crate::file::fs::kernfs::content::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
+use crate::file::perm;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::file::FileContent;
-use crate::file::Gid;
 use crate::file::Mode;
-use crate::file::Uid;
 use crate::process::Process;
 use crate::time::unit::Timestamp;
 use crate::util::io::IO;
@@ -31,13 +31,13 @@ impl KernFSNode for SelfNode {
 	fn set_mode(&mut self, _: Mode) {}
 
 	fn get_uid(&self) -> Uid {
-		file::ROOT_UID
+		perm::ROOT_UID
 	}
 
 	fn set_uid(&mut self, _: Uid) {}
 
 	fn get_gid(&self) -> Gid {
-		file::ROOT_GID
+		perm::ROOT_GID
 	}
 
 	fn set_gid(&mut self, _: Gid) {}

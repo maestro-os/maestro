@@ -1,7 +1,7 @@
 //! The `sethostname` syscall sets the hostname of the system.
 
 use crate::errno::Errno;
-use crate::file;
+use crate::file::perm;
 use crate::limits;
 use crate::process::mem_space::ptr::SyscallSlice;
 use crate::process::Process;
@@ -18,7 +18,7 @@ pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
 	let proc = proc_mutex.lock();
 
 	// Checking permission
-	if proc.euid != file::ROOT_UID {
+	if proc.euid != perm::ROOT_UID {
 		return Err(errno!(EPERM));
 	}
 

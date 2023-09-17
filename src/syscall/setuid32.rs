@@ -1,8 +1,8 @@
 //! The `setuid32` syscall sets the UID of the process's owner.
 
 use crate::errno::Errno;
-use crate::file::Uid;
-use crate::file::ROOT_UID;
+use crate::file::perm::Uid;
+use crate::file::perm::ROOT_UID;
 use crate::process::Process;
 use macros::syscall;
 

@@ -1,10 +1,10 @@
 //! The `fstat64` system call allows get the status of a file.
 
 use crate::errno::Errno;
-use crate::file::Gid;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::file::INode;
 use crate::file::Mode;
-use crate::file::Uid;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
 use crate::time::unit::TimeUnit;

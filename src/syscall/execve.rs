@@ -3,10 +3,10 @@
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::path::Path;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::file::vfs;
 use crate::file::File;
-use crate::file::Gid;
-use crate::file::Uid;
 use crate::memory::stack;
 use crate::process;
 use crate::process::exec;

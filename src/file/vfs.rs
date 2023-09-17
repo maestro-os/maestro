@@ -7,19 +7,19 @@
 use crate::errno;
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file;
 use crate::file::buffer;
 use crate::file::mapping;
 use crate::file::mountpoint;
 use crate::file::path::Path;
+use crate::file::perm;
+use crate::file::perm::Gid;
+use crate::file::perm::Uid;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
 use crate::file::FileType;
-use crate::file::Gid;
 use crate::file::Mode;
 use crate::file::MountPoint;
-use crate::file::Uid;
 use crate::limits;
 use crate::util::container::string::String;
 use crate::util::lock::Mutex;
@@ -303,7 +303,7 @@ pub fn create_file(
 
 	// If SGID is set, the newly created file shall inherit the group ID of the
 	// parent directory
-	if parent.get_mode() & file::S_ISGID != 0 {
+	if parent.get_mode() & perm::S_ISGID != 0 {
 		gid = parent.get_gid();
 	}
 

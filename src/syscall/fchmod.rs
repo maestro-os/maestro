@@ -1,7 +1,7 @@
 //! The `fchmod` system call allows change the permissions on a file.
 
 use crate::errno::Errno;
-use crate::file;
+use crate::file::perm;
 use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
@@ -34,7 +34,7 @@ pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
 	let mut file = file_mutex.lock();
 
 	// Checking permissions
-	if uid != file::ROOT_UID && uid != file.get_uid() {
+	if uid != perm::ROOT_UID && uid != file.get_uid() {
 		return Err(errno!(EPERM));
 	}
 

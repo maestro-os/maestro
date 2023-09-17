@@ -2,8 +2,8 @@
 //! the current process.
 
 use crate::errno::Errno;
-use crate::file;
 use crate::file::path::Path;
+use crate::file::perm;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::ptr::arc::Arc;
@@ -19,7 +19,7 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let gid = proc.egid;
 
 	// Check permission
-	if uid != file::ROOT_UID {
+	if uid != perm::ROOT_UID {
 		return Err(errno!(EPERM));
 	}
 
