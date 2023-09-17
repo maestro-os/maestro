@@ -100,16 +100,16 @@ fn get_file_by_path_impl(
 ) -> Result<Arc<Mutex<File>>, Errno> {
 	let path = Path::root().concat(path)?;
 
-	// Getting the path's deepest mountpoint
+	// Get the path's deepest mountpoint
 	let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
 	let mountpoint = mountpoint_mutex.lock();
 	let mountpath = mountpoint.get_path();
 
-	// Getting the IO interface
+	// Get the IO interface
 	let io_mutex = mountpoint.get_source().get_io()?;
 	let mut io = io_mutex.lock();
 
-	// Getting the path from the start of the filesystem to the file
+	// Get the path from the start of the filesystem to the file
 	let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 	// The filesystem
@@ -127,7 +127,7 @@ fn get_file_by_path_impl(
 		let file = Arc::new(Mutex::new(file))?;
 		return Ok(file);
 	}
-	// Checking permissions
+	// Check permissions
 	if !file.can_execute(uid, gid) {
 		return Err(errno!(EACCES));
 	}
@@ -135,7 +135,7 @@ fn get_file_by_path_impl(
 	for i in 0..inner_path.get_elements_count() {
 		inode = fs.get_inode(&mut *io, Some(inode), &inner_path[i])?;
 
-		// Checking permissions
+		// Check permissions
 		file = fs.load_file(&mut *io, inode, inner_path[i].try_clone()?)?;
 		if i < inner_path.get_elements_count() - 1 && !file.can_execute(uid, gid) {
 			return Err(errno!(EACCES));
@@ -194,9 +194,9 @@ fn get_file_by_path_impl(
 /// If the path is relative, the function starts from the root.
 ///
 /// Arguments:
-/// - `uid` is the User ID of the user creating the file.
-/// - `gid` is the Group ID of the user creating the file.
-/// - `follow_links` is `true`, the function follows symbolic links.
+/// - `uid` is the User ID of the user creating the file
+/// - `gid` is the Group ID of the user creating the file
+/// - `follow_links` is `true`, the function follows symbolic links
 pub fn get_file_from_path(
 	path: &Path,
 	uid: Uid,
@@ -211,11 +211,11 @@ pub fn get_file_from_path(
 /// If the file doesn't exist, the function returns an error.
 ///
 /// Arguments:
-/// - `parent` is the parent directory.
-/// - `name` is the name of the file.
-/// - `uid` is the User ID of the user creating the file.
-/// - `gid` is the Group ID of the user creating the file.
-/// - `follow_links` is `true`, the function follows symbolic links.
+/// - `parent` is the parent directory
+/// - `name` is the name of the file
+/// - `uid` is the User ID of the user creating the file
+/// - `gid` is the Group ID of the user creating the file
+/// - `follow_links` is `true`, the function follows symbolic links
 pub fn get_file_from_parent(
 	parent: &File,
 	name: String,
@@ -223,7 +223,7 @@ pub fn get_file_from_parent(
 	gid: Gid,
 	follow_links: bool,
 ) -> Result<Arc<Mutex<File>>, Errno> {
-	// Checking for errors
+	// Check for errors
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
@@ -231,14 +231,14 @@ pub fn get_file_from_parent(
 		return Err(errno!(EACCES));
 	}
 
-	// Getting the path's deepest mountpoint
+	// Get the path's deepest mountpoint
 	let mountpoint_mutex = parent
 		.get_location()
 		.get_mountpoint()
 		.ok_or_else(|| errno!(ENOENT))?;
 	let mountpoint = mountpoint_mutex.lock();
 
-	// Getting the IO interface
+	// Get the IO interface
 	let io_mutex = mountpoint.get_source().get_io()?;
 	let mut io = io_mutex.lock();
 
@@ -274,12 +274,12 @@ pub fn get_file_from_parent(
 /// If `parent` is not a directory, the function returns an error.
 ///
 /// Arguments:
-/// - `name` is the name of the file.
-/// - `uid` is the id of the owner user.
-/// - `gid` is the id of the owner group.
-/// - `mode` is the permission of the file.
+/// - `name` is the name of the file
+/// - `uid` is the id of the owner user
+/// - `gid` is the id of the owner group
+/// - `mode` is the permission of the file
 /// - `content` is the content of the file. This value also determines the
-/// file type.
+/// file type
 pub fn create_file(
 	parent: &mut File,
 	name: String,
@@ -293,7 +293,7 @@ pub fn create_file(
 		return Err(errno!(EEXIST));
 	}
 
-	// Checking for errors
+	// Check for errors
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
@@ -307,7 +307,7 @@ pub fn create_file(
 		gid = parent.get_gid();
 	}
 
-	// Getting the mountpoint
+	// Get the mountpoint
 	let mountpoint_mutex = parent
 		.get_location()
 		.get_mountpoint()
@@ -317,11 +317,11 @@ pub fn create_file(
 		return Err(errno!(EROFS));
 	}
 
-	// Getting the IO interface
+	// Get the IO interface
 	let io_mutex = mountpoint.get_source().get_io()?;
 	let mut io = io_mutex.lock();
 
-	// Getting the filesystem
+	// Get the filesystem
 	let fs_mutex = mountpoint.get_filesystem();
 	let mut fs = fs_mutex.lock();
 	if fs.is_readonly() {
@@ -332,7 +332,7 @@ pub fn create_file(
 	let parent_inode = parent.get_location().get_inode();
 	let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
 
-	// Adding the file to the parent's entries
+	// Add the file to the parent's entries
 	file.set_parent_path(parent.get_path()?);
 	parent.add_entry(file.get_name().try_clone()?, file.as_dir_entry())?;
 
@@ -345,11 +345,11 @@ pub fn create_file(
 /// Creates a new hard link.
 ///
 /// Arguments:
-/// - `target` is the target file.
-/// - `parent` is the parent directory of the new link.
-/// - `name` is the name of the link.
-/// - `uid` is the id of the owner user.
-/// - `gid` is the id of the owner group.
+/// - `target` is the target file
+/// - `parent` is the parent directory of the new link
+/// - `name` is the name of the link
+/// - `uid` is the id of the owner user
+/// - `gid` is the id of the owner group
 pub fn create_link(
 	target: &mut File,
 	parent: &mut File,
@@ -357,19 +357,19 @@ pub fn create_link(
 	uid: Uid,
 	gid: Gid,
 ) -> Result<(), Errno> {
-	// Checking the parent file is a directory
+	// Check the parent file is a directory
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	if !parent.can_write(uid, gid) {
 		return Err(errno!(EACCES));
 	}
-	// Checking the target and source are both on the same mountpoint
+	// Check the target and source are both on the same mountpoint
 	if target.get_location().get_mountpoint_id() != parent.get_location().get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
 
-	// Getting the mountpoint
+	// Get the mountpoint
 	let mountpoint_mutex = target
 		.get_location()
 		.get_mountpoint()
@@ -379,11 +379,11 @@ pub fn create_link(
 		return Err(errno!(EROFS));
 	}
 
-	// Getting the IO interface
+	// Get the IO interface
 	let io_mutex = mountpoint.get_source().get_io()?;
 	let mut io = io_mutex.lock();
 
-	// Getting the filesystem
+	// Get the filesystem
 	let fs_mutex = mountpoint.get_filesystem();
 	let mut fs = fs_mutex.lock();
 	if fs.is_readonly() {
@@ -408,8 +408,8 @@ pub fn create_link(
 /// If the file is a non-empty directory, the function returns an error.
 ///
 /// Arguments:
-/// - `uid` is the User ID of the user removing the file.
-/// - `gid` is the Group ID of the user removing the file.
+/// - `uid` is the User ID of the user removing the file
+/// - `gid` is the Group ID of the user removing the file
 pub fn remove_file(file: &File, uid: Uid, gid: Gid) -> EResult<()> {
 	// The parent directory
 	let parent_mutex = get_file_from_path(file.get_parent_path(), uid, gid, true)?;
