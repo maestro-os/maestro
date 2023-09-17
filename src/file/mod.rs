@@ -328,7 +328,7 @@ pub struct File {
 	hard_links_count: u16,
 
 	/// The number of blocks allocated on the disk for the file.
-	blocks_count: u64,
+	pub blocks_count: u64,
 	/// The size of the file in bytes.
 	size: u64,
 
@@ -422,11 +422,6 @@ impl File {
 		self.parent_path = parent_path;
 	}
 
-	/// Returns the type of the file.
-	pub fn get_type(&self) -> FileType {
-		self.content.as_type()
-	}
-
 	/// Returns the file's mode.
 	pub fn get_mode(&self) -> Mode {
 		self.mode | self.content.as_type().to_mode()
@@ -517,16 +512,6 @@ impl File {
 		self.ctime = timestamp;
 	}
 
-	/// Returns the number of blocks allocated for the file.
-	pub fn get_blocks_count(&self) -> u64 {
-		self.blocks_count
-	}
-
-	/// Sets the number of blocks allocated for the file.
-	pub fn set_blocks_count(&mut self, blocks_count: u64) {
-		self.blocks_count = blocks_count;
-	}
-
 	/// Sets the file's size.
 	pub fn set_size(&mut self, size: u64) {
 		self.size = size;
@@ -597,7 +582,7 @@ impl File {
 	}
 
 	/// Creates a directory entry corresponding to the current file.
-	pub fn to_dir_entry(&self) -> DirEntry {
+	pub fn as_dir_entry(&self) -> DirEntry {
 		DirEntry {
 			inode: self.location.get_inode(),
 			entry_type: self.get_type(),
@@ -609,9 +594,14 @@ impl File {
 		&self.content
 	}
 
-	/// Sets the file's content, changing the file's type accordingly.
-	pub fn set_content(&mut self, content: FileContent) {
-		self.content = content;
+	/// Returns the type of the file.
+	pub fn get_type(&self) -> FileType {
+		self.content.as_type()
+	}
+
+	/// If the file is open, returns the associated instance. Else, returns `None`.
+	pub fn get_open_file(&self) -> Option<Arc<Mutex<OpenFile>>> {
+		OpenFile::get(&self.location)
 	}
 
 	/// Performs an ioctl operation on the file.
@@ -675,11 +665,6 @@ impl File {
 				dev.get_handle().ioctl(mem_space, request, argp)
 			}
 		}
-	}
-
-	/// Tells whether the file is busy.
-	pub fn is_busy(&self) -> bool {
-		OpenFile::get(&self.location).is_some()
 	}
 
 	/// Synchronizes the file with the device.

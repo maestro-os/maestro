@@ -1,6 +1,7 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
+use crate::errno::EResult;
 use crate::device;
 use crate::device::DeviceType;
 use crate::errno;
@@ -88,6 +89,10 @@ pub struct OpenFile {
 
 	/// The number of concurrent file descriptors pointing the the current file.
 	ref_count: usize,
+	/// If file removal has been deferred (to the moment no process is using it anymore), this field contains the file to remove.
+	///
+	/// This field is necessary because the same file can have several hard links. Thus its location cannot be determined from the inode itself.
+	deferred_remove: Option<File>,
 }
 
 impl OpenFile {
@@ -141,6 +146,7 @@ impl OpenFile {
 					curr_off: 0,
 
 					ref_count: 0,
+					deferred_remove: None,
 				}))?;
 
 				OPEN_FILES.lock().insert(location, open_file.clone())?;
@@ -190,13 +196,25 @@ impl OpenFile {
 	/// - `write` tells whether the file descriptor is open for writing.
 	///
 	/// If the file is not open, the function does nothing.
-	pub fn close(location: &FileLocation, read: bool, write: bool) {
+	pub fn close(location: &FileLocation, read: bool, write: bool) -> EResult<()> {
+		// Get open file
 		let mut open_files = OPEN_FILES.lock();
-
 		let Some(open_file_mutex) = open_files.get(location) else {
-			return;
+			return Ok(());
 		};
 		let mut open_file = open_file_mutex.lock();
+
+		// If remove has been deferred and this is the last reference, remove the file
+		if let Some(file) = &open_file.deferred_remove {
+			if open_file.ref_count == 1 {
+				let vfs_mutex = vfs::get();
+				let mut vfs = vfs_mutex.lock();
+				let vfs = vfs.as_mut().unwrap();
+
+				// Use root user to bypass permission checks since they have been made before deferring
+				vfs.remove_file(file, 0, 0)?;
+			}
+		}
 
 		// If the file points to a buffer, decrement the number of open ends
 		if let Some(buff_mutex) = buffer::get(&open_file.location) {
@@ -204,6 +222,7 @@ impl OpenFile {
 			buff.decrement_open(read, write);
 		}
 
+		// If no reference is left, clean up
 		open_file.ref_count -= 1;
 		if open_file.ref_count == 0 {
 			drop(open_file);
@@ -211,6 +230,8 @@ impl OpenFile {
 			open_files.remove(location);
 			buffer::release(location);
 		}
+
+		Ok(())
 	}
 
 	/// Returns the location of the open file.
@@ -362,6 +383,13 @@ impl OpenFile {
 
 		Ok(())
 	}
+
+	/// Deferes remove of the underlying file to the moment no process is using it anymore.
+	///
+	/// The file is required to determine the location of the hard link to remove.
+	pub fn defer_remove(&mut self, file: File) {
+		self.deferred_remove = Some(file);
+	}
 }
 
 impl IO for OpenFile {
@@ -434,5 +462,10 @@ impl IO for OpenFile {
 		let mut file = file_mutex.lock();
 
 		file.poll(mask)
+	}
+}
+
+impl Drop for OpenFile {
+	fn drop(&mut self) {
 	}
 }

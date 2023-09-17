@@ -1,6 +1,6 @@
-//! The `unlink` system call deletes the given file from its filesystem.
+//! The `unlink` system call deletes the given link from its filesystem.
 //!
-//! If no link remain to the inode, the function also removes the inode.
+//! If no link remain to the file, the function also removes it.
 
 use crate::errno::Errno;
 use crate::file::path::Path;
@@ -23,7 +23,7 @@ pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
 		(path, proc.euid, proc.egid)
 	};
 
-	// Removing the file
+	// Remove the file
 	{
 		let vfs_mutex = vfs::get();
 		let mut vfs = vfs_mutex.lock();

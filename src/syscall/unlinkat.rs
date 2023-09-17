@@ -1,4 +1,6 @@
 //! The `unlinkat` syscall allows to unlink a file.
+//!
+//! If no link remain to the file, the function also removes it.
 
 use super::util;
 use crate::errno::Errno;

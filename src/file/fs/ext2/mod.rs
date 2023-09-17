@@ -889,7 +889,7 @@ impl Filesystem for Ext2Fs {
 			file_content,
 		)?;
 		file.set_hard_links_count(inode_.hard_links_count as _);
-		file.set_blocks_count(inode_.used_sectors as _);
+		file.blocks_count = inode_.used_sectors as _;
 		file.set_size(inode_.get_size(&self.superblock));
 		file.ctime = inode_.ctime as _;
 		file.mtime = inode_.mtime as _;

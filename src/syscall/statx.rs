@@ -166,7 +166,7 @@ pub fn statx(
 
 		stx_ino: inode,
 		stx_size: file.get_size(),
-		stx_blocks: file.get_blocks_count(),
+		stx_blocks: file.blocks_count,
 		stx_attributes_mask: 0, // TODO
 
 		stx_atime: StatxTimestamp {

@@ -4,6 +4,7 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
+use crate::errno::EResult;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -359,15 +360,13 @@ impl VFS {
 			return Err(errno!(EROFS));
 		}
 
-		// The parent directory's inode
+		// Add the file to the filesystem
 		let parent_inode = parent.get_location().get_inode();
-
-		// Adding the file to the filesystem
 		let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
 
 		// Adding the file to the parent's entries
 		file.set_parent_path(parent.get_path()?);
-		parent.add_entry(file.get_name().try_clone()?, file.to_dir_entry())?;
+		parent.add_entry(file.get_name().try_clone()?, file.as_dir_entry())?;
 
 		drop(fs);
 		update_location(&mut file, &mountpoint);
@@ -445,22 +444,30 @@ impl VFS {
 	/// Arguments:
 	/// - `uid` is the User ID of the user removing the file.
 	/// - `gid` is the Group ID of the user removing the file.
-	pub fn remove_file(&mut self, file: &File, uid: Uid, gid: Gid) -> Result<(), Errno> {
-		if file.is_busy() {
-			return Err(errno!(EBUSY));
-		}
-
-		// The parent directory.
+	pub fn remove_file(&mut self, file: &File, uid: Uid, gid: Gid) -> EResult<()> {
+		// The parent directory
 		let parent_mutex = self.get_file_from_path(file.get_parent_path(), uid, gid, true)?;
 		let parent = parent_mutex.lock();
-		let parent_inode = parent.get_location().get_inode();
 
-		// Checking permissions
-		if !file.can_write(uid, gid) || !parent.can_write(uid, gid) {
+		// Check permissions
+		if !file.can_write(uid, gid)
+			|| !parent.can_write(uid, gid)
+			|| !parent.can_execute(uid, gid)
+		{
 			return Err(errno!(EACCES));
 		}
 
-		// Getting the mountpoint
+		// Defer remove if the file is in use
+		let last_link = file.get_hard_links_count() == 1;
+		let symlink = matches!(file.get_type(), FileType::Link);
+		if last_link && !symlink {
+			if let Some(open_file) = file.get_open_file() {
+				open_file.lock().defer_remove(file);
+				return Ok(());
+			}
+		}
+
+		// Get the mountpoint
 		let location = file.get_location();
 		let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 		let mountpoint = mountpoint_mutex.lock();
@@ -468,18 +475,19 @@ impl VFS {
 			return Err(errno!(EROFS));
 		}
 
-		// Getting the IO interface
+		// Get the IO interface
 		let io_mutex = mountpoint.get_source().get_io()?;
 		let mut io = io_mutex.lock();
 
-		// Getting the filesystem
+		// Get the filesystem
 		let fs_mutex = mountpoint.get_filesystem();
 		let mut fs = fs_mutex.lock();
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
 
-		// Removing the file
+		// Remove the file
+		let parent_inode = parent.get_location().get_inode();
 		fs.remove_file(&mut *io, parent_inode, file.get_name())?;
 
 		if file.get_hard_links_count() > 1 {

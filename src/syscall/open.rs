@@ -67,16 +67,23 @@ fn get_file(
 
 		let file_result =
 			vfs.get_file_from_parent(&mut parent, name.try_clone()?, uid, gid, follow_links);
-		match file_result {
+		let file = match file_result {
 			// If the file is found, return it
-			Ok(file) => Ok(file),
+			Ok(file) => file,
 
+			// Else, create it
 			Err(e) if e.as_int() == errno::ENOENT => {
-				// Creating the file
-				vfs.create_file(&mut parent, name, uid, gid, mode, FileContent::Regular)
+				vfs.create_file(&mut parent, name, uid, gid, mode, FileContent::Regular)?
 			}
 
-			Err(e) => Err(e),
+			e => return e,
+		};
+		// Get file type. There cannot be a race condition since the type of a file cannot be changed
+		let file_type = file.lock().get_type();
+		match file_type {
+			// Cannot open symbolic links themselves
+			FileType::Link => Err(errno!(ELOOP)),
+			_ => Ok(file),
 		}
 	} else {
 		// The file is the root directory
@@ -150,7 +157,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		(abs_path, mode, uid, gid)
 	};
 
-	// Getting the file
+	// Get the file
 	let file = get_file(path, flags, mode, uid, gid)?;
 
 	let (loc, read, write, cloexec) = {
