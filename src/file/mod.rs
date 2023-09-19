@@ -691,70 +691,123 @@ impl File {
 }
 
 impl AccessProfile {
-	/// Tells whether the agent can read the file.
-	pub fn can_read_file(&self, file: &File) -> bool {
+	fn check_read_access_impl(uid: Uid, gid: Gid, file: &File) -> bool {
 		// If root, bypass checks
-		if self.get_euid() == perm::ROOT_UID || self.get_egid() == perm::ROOT_GID {
+		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
 			return true;
 		}
 
-		if file.mode & perm::S_IRUSR != 0 && file.uid == self.get_euid() {
+		if file.mode & perm::S_IRUSR != 0 && file.uid == uid {
 			return true;
 		}
-		if file.mode & perm::S_IRGRP != 0 && file.gid == self.get_egid() {
+		if file.mode & perm::S_IRGRP != 0 && file.gid == gid {
 			return true;
 		}
 		file.mode & perm::S_IROTH != 0
 	}
 
-	/// Tells whether the agent can write the file.
-	pub fn can_write_file(&self, file: &File) -> bool {
+	/// Tells whether the agent can read the file.
+	///
+	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
+	pub fn check_read_access(&self, file: &File, effective: bool) -> bool {
+		let (uid, gid) = if effective {
+			(self.get_euid(), self.get_egid())
+		} else {
+			(self.get_uid(), self.get_gid())
+		};
+		Self::check_read_access_impl(uid, gid, file)
+	}
+
+	/// Tells whether the agent can read the file.
+	///
+	/// This function is the preferred from `check_read_access` for general cases.
+	pub fn can_read_file(&self, file: &File) -> bool {
+		self.check_read_access(file, true)
+	}
+
+	/// Tells whether the agent can list files of the directories, **not** including access to
+	/// files' contents and metadata.
+	#[inline]
+	pub fn can_list_directory(&self, file: &File) -> bool {
+		self.can_read_file(file)
+	}
+
+	fn check_write_access_impl(uid: Uid, gid: Gid, file: &File) -> bool {
 		// If root, bypass checks
-		if self.get_euid() == perm::ROOT_UID || self.get_egid() == perm::ROOT_GID {
+		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
 			return true;
 		}
 
-		if file.mode & perm::S_IWUSR != 0 && file.uid == self.get_euid() {
+		if file.mode & perm::S_IWUSR != 0 && file.uid == uid {
 			return true;
 		}
-		if file.mode & perm::S_IWGRP != 0 && file.gid == self.get_egid() {
+		if file.mode & perm::S_IWGRP != 0 && file.gid == gid {
 			return true;
 		}
 		file.mode & perm::S_IWOTH != 0
 	}
 
-	/// Tells whether the agent can execute the file.
-	pub fn can_execute_file(&self, file: &File) -> bool {
+	/// Tells whether the agent can write the file.
+	///
+	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
+	pub fn check_write_access(&self, file: &File, effective: bool) -> bool {
+		let (uid, gid) = if effective {
+			(self.get_euid(), self.get_egid())
+		} else {
+			(self.get_uid(), self.get_gid())
+		};
+		Self::check_write_access_impl(uid, gid, file)
+	}
+
+	/// Tells whether the agent can write the file.
+	pub fn can_write_file(&self, file: &File) -> bool {
+		self.check_write_access(file, true)
+	}
+
+	/// Tells whether the agent can modify entries in the directory, including creating files,
+	/// deleting files, and renaming files.
+	#[inline]
+	pub fn can_write_directory(&self, file: &File) -> bool {
+		self.can_write_file(file) && self.can_execute_file(file)
+	}
+
+	fn check_execute_access_impl(uid: Uid, gid: Gid, file: &File) -> bool {
 		// If root, bypass checks (unless the file is a regular file)
 		if !matches!(file.content, FileContent::Regular)
-			&& (self.get_euid() == perm::ROOT_UID || self.get_egid() == perm::ROOT_GID)
+			&& (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
 		{
 			return true;
 		}
 
-		if file.mode & perm::S_IXUSR != 0 && file.uid == self.get_euid() {
+		if file.mode & perm::S_IXUSR != 0 && file.uid == uid {
 			return true;
 		}
-		if file.mode & perm::S_IXGRP != 0 && file.gid == self.get_egid() {
+		if file.mode & perm::S_IXGRP != 0 && file.gid == gid {
 			return true;
 		}
 		file.mode & perm::S_IXOTH != 0
 	}
 
-	/// Tells whether the agent can list files of the directories, **not** including access to
-	/// files' contents and metadata.
-	pub fn can_list_directory(&self, file: &File) -> bool {
-		self.can_read_file(file)
+	/// Tells whether the agent can execute the file.
+	///
+	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
+	pub fn check_execute_access(&self, file: &File, effective: bool) -> bool {
+		let (uid, gid) = if effective {
+			(self.get_euid(), self.get_egid())
+		} else {
+			(self.get_uid(), self.get_gid())
+		};
+		Self::check_execute_access_impl(uid, gid, file)
 	}
 
-	/// Tells whether the agent can modify entries in the directory, including creating files,
-	/// deleting files, and renaming files.
-	pub fn can_write_directory(&self, file: &File) -> bool {
-		self.can_write_file(file) && self.can_execute_file(file)
+	/// Tells whether the agent can execute the file.
+	pub fn can_execute_file(&self, file: &File) -> bool {
+		self.check_execute_access(file, true)
 	}
 
 	/// Tells whether the agent can access files of the directory *if the name of the file is
 	/// known*.
+	#[inline]
 	pub fn can_search_directory(&self, file: &File) -> bool {
 		self.can_execute_file(file)
 	}
