@@ -32,8 +32,7 @@ pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> R
 	{
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		if proc.uid != 0 {
+		if proc.access_profile.is_privileged() {
 			return Err(errno!(EPERM));
 		}
 	}
@@ -59,9 +58,7 @@ pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> R
 			unsafe {
 				asm!("jmp $0xffff, $0");
 			}
-
-			// In case rebooting didn't work (very unlikely)
-			crate::halt();
+			unreachable!();
 		}
 
 		CMD_HALT => {

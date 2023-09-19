@@ -29,23 +29,17 @@ pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> Result<i32, Errno
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || len == 0 {
 		return Err(errno!(EINVAL));
 	}
-
 	let flags = prot_to_flags(prot);
 
-	let (uid, gid, mem_space_mutex) = {
+	let (mem_space_mutex, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let uid = proc.uid;
-		let gid = proc.gid;
-
 		let mem_space = proc.get_mem_space().unwrap();
 
-		(uid, gid, mem_space)
+		(mem_space, proc.access_profile)
 	};
-
 	let mut mem_space = mem_space_mutex.lock();
-	mem_space.set_prot(addr, len, flags, uid, gid)?;
+	mem_space.set_prot(addr, len, flags, &ap)?;
 
 	Ok(0)
 }

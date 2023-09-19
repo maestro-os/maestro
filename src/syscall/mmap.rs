@@ -56,7 +56,7 @@ pub fn do_mmap(
 	fd: i32,
 	offset: u64,
 ) -> Result<i32, Errno> {
-	// Checking alignment of `addr` and `length`
+	// Check alignment of `addr` and `length`
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
@@ -67,7 +67,7 @@ pub fn do_mmap(
 		return Err(errno!(EINVAL));
 	};
 
-	// Checking for overflow
+	// Check for overflow
 	let end = (addr as usize).wrapping_add(pages.get() * memory::PAGE_SIZE);
 	if end < addr as usize {
 		return Err(errno!(EINVAL));
@@ -85,12 +85,9 @@ pub fn do_mmap(
 		}
 	};
 
-	// Getting the current process
+	// Get the current process
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
-
-	let uid = proc.euid;
-	let gid = proc.egid;
 
 	// The file the mapping points to
 	let open_file_mutex = if fd >= 0 {
@@ -107,7 +104,7 @@ pub fn do_mmap(
 	// TODO anon flag
 
 	if let Some(open_file_mutex) = &open_file_mutex {
-		// Checking the alignment of the offset
+		// Check the alignment of the offset
 		if offset as usize % memory::PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
 		}
@@ -121,10 +118,10 @@ pub fn do_mmap(
 			return Err(errno!(EACCES));
 		}
 
-		if prot & PROT_READ != 0 && !file.can_read(uid, gid) {
+		if prot & PROT_READ != 0 && !proc.access_profile.can_read_file(&*file) {
 			return Err(errno!(EPERM));
 		}
-		if prot & PROT_WRITE != 0 && !file.can_write(uid, gid) {
+		if prot & PROT_WRITE != 0 && !proc.access_profile.can_write_file(&*file) {
 			return Err(errno!(EPERM));
 		}
 	// TODO check exec

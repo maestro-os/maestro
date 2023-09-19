@@ -21,7 +21,7 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		if proc.uid != 0 {
+		if !proc.access_profile.is_privileged() {
 			return Err(errno!(EPERM));
 		}
 

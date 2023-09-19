@@ -3,7 +3,6 @@
 
 use crate::errno::Errno;
 use crate::file::path::Path;
-use crate::file::perm;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::ptr::arc::Arc;
@@ -15,11 +14,8 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
-	let uid = proc.euid;
-	let gid = proc.egid;
-
 	// Check permission
-	if uid != perm::ROOT_UID {
+	if !proc.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
 
@@ -29,7 +25,7 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let path = Path::from_str(path, true)?;
 
 	// Check access to file
-	vfs::get_file_from_path(&path, uid, gid, true)?;
+	vfs::get_file_from_path(&path, &proc.access_profile, true)?;
 
 	proc.chroot = Arc::new(path)?;
 	Ok(0)

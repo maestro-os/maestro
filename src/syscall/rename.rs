@@ -13,12 +13,9 @@ use macros::syscall;
 
 #[syscall]
 pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
-	let (uid, gid, old_mutex, new_parent_mutex, new_name) = {
+	let (old_path, mut new_parent_path, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let uid = proc.euid;
-		let gid = proc.egid;
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -27,19 +24,20 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let old_path = Path::from_str(oldpath, true)?;
-		let old = vfs::get_file_from_path(&old_path, uid, gid, false)?;
 
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let mut new_parent_path = Path::from_str(newpath, true)?;
-		let new_name = new_parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
-		let new_parent = vfs::get_file_from_path(&new_parent_path, uid, gid, true)?;
+		let new_parent_path = Path::from_str(newpath, true)?;
 
-		(uid, gid, old, new_parent, new_name)
+		(old_path, new_parent_path, proc.access_profile)
 	};
+	let new_name = new_parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
+	let old_mutex = vfs::get_file_from_path(&old_path, &ap, false)?;
 	let mut old = old_mutex.lock();
+
+	let new_parent_mutex = vfs::get_file_from_path(&new_parent_path, &ap, true)?;
 	let mut new_parent = new_parent_mutex.lock();
 
 	// TODO Check permissions if sticky bit is set
@@ -52,10 +50,10 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs::create_link(&mut old, &mut new_parent, &new_name, uid, gid)?;
+		vfs::create_link(&mut old, &mut new_parent, &new_name, &ap)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs::remove_file(&old, uid, gid)?;
+			vfs::remove_file(&old, &ap)?;
 		}
 	} else {
 		// Old and new are on different filesystems.
@@ -63,7 +61,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		// TODO On fail, undo
 
 		file::util::copy_file(&mut old, &mut new_parent, new_name)?;
-		file::util::remove_recursive(&mut old, uid, gid)?;
+		file::util::remove_recursive(&mut old, &ap)?;
 	}
 
 	Ok(0)

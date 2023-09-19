@@ -33,23 +33,23 @@ pub fn mount(
 
 		let cwd = proc.chroot.try_clone()?.concat(&proc.cwd)?;
 
-		// Getting strings
+		// Get strings
 		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 		let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 		let filesystemtype_slice = filesystemtype
 			.get(&mem_space_guard)?
 			.ok_or(errno!(EFAULT))?;
 
-		// Getting the mount source
+		// Get the mount source
 		let mount_source = MountSource::from_str(source_slice, cwd)?;
 
-		// Getting the target file
+		// Get the target file
 		let target_path = Path::from_str(target_slice, true)?;
 		let target_path = super::util::get_absolute_path(&proc, target_path)?;
-		let target_mutex = vfs::get_file_from_path(&target_path, proc.euid, proc.egid, true)?;
+		let target_mutex = vfs::get_file_from_path(&target_path, &proc.access_profile, true)?;
 		let target_file = target_mutex.lock();
 
-		// Checking the target is a directory
+		// Check the target is a directory
 		if target_file.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
@@ -62,7 +62,7 @@ pub fn mount(
 	};
 
 	// TODO Use `data`
-	// Creating mountpoint
+	// Create mountpoint
 	mountpoint::create(mount_source, Some(fs_type), mountflags, target_path)?;
 
 	Ok(0)

@@ -19,12 +19,9 @@ pub fn linkat(
 ) -> Result<i32, Errno> {
 	let follow_links = flags & access::AT_SYMLINK_NOFOLLOW == 0;
 
-	let (old_mutex, new_parent_mutex, new_name, uid, gid) = {
+	let (old_mutex, new_parent_mutex, new_name, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let euid = proc.euid;
-		let egid = proc.egid;
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -41,7 +38,7 @@ pub fn linkat(
 		let (new_parent, new_name) =
 			super::util::get_parent_at_with_name(proc, follow_links, newdirfd, newpath)?;
 
-		(old, new_parent, new_name, euid, egid)
+		(old, new_parent, new_name, proc.access_profile)
 	};
 
 	let mut old = old_mutex.lock();
@@ -50,6 +47,6 @@ pub fn linkat(
 	}
 	let mut new_parent = new_parent_mutex.lock();
 
-	vfs::create_link(&mut old, &mut new_parent, &new_name, uid, gid)?;
+	vfs::create_link(&mut old, &mut new_parent, &new_name, &ap)?;
 	Ok(0)
 }

@@ -52,10 +52,11 @@ pub fn do_access(
 	flags: Option<i32>,
 ) -> Result<i32, Errno> {
 	let flags = flags.unwrap_or(0);
-
 	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
+	// Use effective IDs instead of real IDs
+	let eaccess = flags & AT_EACCESS != 0;
 
-	let (path, uid, gid, cwd) = {
+	let (path, cwd, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -67,46 +68,35 @@ pub fn do_access(
 			.ok_or_else(|| errno!(EINVAL))?;
 		let path = Path::from_str(pathname, true)?;
 
-		let (uid, gid) = {
-			if flags & AT_EACCESS != 0 {
-				(proc.euid, proc.egid)
-			} else {
-				(proc.uid, proc.gid)
-			}
-		};
-
 		let cwd = proc.cwd.clone();
-		(path, uid, gid, cwd)
+
+		(path, cwd, proc.access_profile)
 	};
 
-	// Getting file
-	let file = {
-		let mut path = path;
-
-		if path.is_absolute() {
-		} else if let Some(dirfd) = dirfd {
-			if dirfd == AT_FDCWD {
-				path = cwd.concat(&path)?;
-			} else {
-				// TODO Get file from fd and get its path to concat
-				todo!();
-			}
+	// Get file
+	let mut path = path;
+	if path.is_absolute() {
+		// TODO
+	} else if let Some(dirfd) = dirfd {
+		if dirfd == AT_FDCWD {
+			path = cwd.concat(&path)?;
+		} else {
+			// TODO Get file from fd and get its path to concat
+			todo!();
 		}
+	}
+	let file = vfs::get_file_from_path(&path, &ap, follow_symlinks)?;
 
-		vfs::get_file_from_path(&path, uid, gid, follow_symlinks)?
-	};
-
+	// Do access checks
 	{
 		let file = file.lock();
-
-		// Do access checks
-		if (mode & R_OK != 0) && !file.can_read(uid, gid) {
+		if (mode & R_OK != 0) && !ap.can_read_access_file(file, eaccess) {
 			return Err(errno!(EACCES));
 		}
-		if (mode & W_OK != 0) && !file.can_write(uid, gid) {
+		if (mode & W_OK != 0) && !ap.can_write_access_file(file, eaccess) {
 			return Err(errno!(EACCES));
 		}
-		if (mode & X_OK != 0) && !file.can_execute(uid, gid) {
+		if (mode & X_OK != 0) && !ap.can_execute_access_file(file, eaccess) {
 			return Err(errno!(EACCES));
 		}
 	}

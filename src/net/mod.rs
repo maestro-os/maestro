@@ -269,7 +269,7 @@ impl AccessProfile {
 	/// Tells whether the agent has the permission to use the socket domain.
 	pub fn can_use_sock_domain(&self, domain: &SocketDomain) -> bool {
 		match domain {
-			Self::AfPacket => self.get_euid() == ROOT_UID || self.get_egid() == ROOT_GID,
+			SocketDomain::AfPacket => self.get_euid() == ROOT_UID || self.get_egid() == ROOT_GID,
 			_ => true,
 		}
 	}
@@ -324,8 +324,8 @@ impl SocketType {
 impl AccessProfile {
 	/// Tells whether the agent has the permission to use the socket type.
 	pub fn can_use_sock_type(&self, sock_type: &SocketType) -> bool {
-		match self {
-			Self::SockRaw => self.get_euid() == ROOT_UID || self.get_egid() == ROOT_GID,
+		match sock_type {
+			SocketType::SockRaw => self.get_euid() == ROOT_UID || self.get_egid() == ROOT_GID,
 			_ => true,
 		}
 	}

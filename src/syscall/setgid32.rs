@@ -2,7 +2,6 @@
 
 use crate::errno::Errno;
 use crate::file::perm::Gid;
-use crate::file::perm::ROOT_GID;
 use crate::process::Process;
 use macros::syscall;
 
@@ -11,14 +10,6 @@ pub fn setgid32(gid: Gid) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
-	// TODO Implement correctly
-	if proc.gid == ROOT_GID && proc.egid == ROOT_GID {
-		proc.gid = gid;
-		proc.egid = gid;
-		proc.sgid = gid;
-
-		Ok(0)
-	} else {
-		Err(errno!(EPERM))
-	}
+	proc.access_profile.set_gid(gid)?;
+	Ok(0)
 }

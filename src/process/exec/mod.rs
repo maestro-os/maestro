@@ -5,8 +5,7 @@ pub mod vdso;
 
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
+use crate::file::perm::AccessProfile;
 use crate::file::File;
 use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
@@ -21,15 +20,8 @@ use core::ffi::c_void;
 
 /// Structure storing informations to prepare a program image to be executed.
 pub struct ExecInfo {
-	/// The process's uid.
-	pub uid: Uid,
-	/// The process's euid.
-	pub euid: Uid,
-	/// The process's gid.
-	pub gid: Gid,
-	/// The process's egid.
-	pub egid: Gid,
-
+	/// The access profile of the calling agent.
+	pub access_profile: AccessProfile,
 	/// The list of arguments.
 	pub argv: Vec<String>,
 	/// The list of environment variables.

@@ -8,6 +8,5 @@ use macros::syscall;
 pub fn getgid() -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
-
-	Ok(proc.gid as _)
+	Ok(proc.access_profile.get_gid() as _)
 }

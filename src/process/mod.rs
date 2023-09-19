@@ -490,15 +490,14 @@ impl Process {
 	///
 	/// The process is set to state `Running` by default and has user root.
 	pub fn new() -> Result<Arc<IntMutex<Self>>, Errno> {
-		let uid = 0;
-		let gid = 0;
+		let access_profile = AccessProfile::KERNEL;
 
 		// Creating the default file descriptors table
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
 
 			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false)?;
-			let tty_file_mutex = vfs::get_file_from_path(&tty_path, uid, gid, true)?;
+			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &access_profile, true)?;
 			let tty_file = tty_file_mutex.lock();
 
 			let loc = tty_file.get_location().clone();
@@ -524,15 +523,7 @@ impl Process {
 
 			tty: tty::get(None).unwrap(), // Initialization with the init TTY
 
-			uid,
-			gid,
-
-			euid: uid,
-			egid: gid,
-
-			suid: uid,
-			sgid: gid,
-
+			access_profile,
 			umask: DEFAULT_UMASK,
 
 			state: State::Running,
@@ -977,15 +968,7 @@ impl Process {
 
 			tty: self.tty.clone(),
 
-			uid: self.uid,
-			gid: self.gid,
-
-			euid: self.euid,
-			egid: self.egid,
-
-			suid: self.suid,
-			sgid: self.sgid,
-
+			access_profile: self.access_profile,
 			umask: self.umask,
 
 			state: State::Running,
@@ -1280,7 +1263,7 @@ impl Process {
 		let mut score = 0;
 
 		// If the process is owned by the superuser, give it a bonus
-		if self.uid == ROOT_UID {
+		if self.access_profile.is_privileged() {
 			score -= 100;
 		}
 
@@ -1295,9 +1278,18 @@ impl Process {
 impl AccessProfile {
 	/// Tells whether the agent can kill the process.
 	pub fn can_kill(&self, proc: &Process) -> bool {
-		// TODO Also check effective user ID?
-		// TODO Also check saved user ID?
-		self.get_uid() == ROOT_UID || self.get_uid() == proc.uid
+		let uid = self.get_uid();
+		let euid = self.get_euid();
+		// if privileged
+		if uid == ROOT_UID || euid == ROOT_UID {
+			return true;
+		}
+
+		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
+		uid == proc.access_profile.get_uid()
+			|| uid == proc.access_profile.get_suid()
+			|| euid == proc.access_profile.get_uid()
+			|| euid == proc.access_profile.get_suid()
 	}
 }
 

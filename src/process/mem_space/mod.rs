@@ -11,8 +11,7 @@ pub mod ptr;
 
 use crate::errno::AllocError;
 use crate::errno::Errno;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
+use crate::file::perm::AccessProfile;
 use crate::idt;
 use crate::memory;
 use crate::memory::buddy;
@@ -811,11 +810,10 @@ impl MemSpace {
 	/// Sets protection for the given range of memory.
 	///
 	/// Arguments:
-	/// - `addr` is the address to the beginning of the range to be set.
-	/// - `len` is the length of the range in bytes.
-	/// - `prot` is a set of mapping flags.
-	/// - `uid` is the user ID of the process's owner.
-	/// - `gid` is the group ID of the process's owner.
+	/// - `addr` is the address to the beginning of the range to be set
+	/// - `len` is the length of the range in bytes
+	/// - `prot` is a set of mapping flags
+	/// - `access_profile` is the access profile to check permissions
 	///
 	/// If a mapping to be modified is associated with a file, and the file doesn't have the
 	/// matching permissions, the function returns an error.
@@ -824,8 +822,7 @@ impl MemSpace {
 		_addr: *mut c_void,
 		_len: usize,
 		_prot: u8,
-		_uid: Uid,
-		_gid: Gid,
+		_access_profile: &AccessProfile,
 	) -> Result<(), Errno> {
 		// TODO Iterate on mappings in the range:
 		//		If the mapping is shared and associated to a file, check file permissions match

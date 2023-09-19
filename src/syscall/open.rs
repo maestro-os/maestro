@@ -7,8 +7,7 @@ use crate::file;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::open_file;
 use crate::file::path::Path;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
+use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
@@ -35,18 +34,19 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 
 /// Returns the file at the given path `path`.
 ///
-/// If the file doesn't exist and the O_CREAT flag is set, the file is created,
+/// If the file doesn't exist and the `O_CREAT` flag is set, the file is created,
 /// then the function returns it.
 /// If the flag is not set, the function returns an error with the appropriate errno.
 ///
-/// If the file is to be created, the/ function uses `mode` to set its permissions and `uid and
-/// `gid` to set the user ID and group ID.
+/// If the file is to be created, the function uses `mode` to set its permissions and the provided
+/// access profile to set the user ID and group ID.
+///
+/// The access profile is also used to check permissions.
 fn get_file(
 	path: Path,
 	flags: i32,
 	mode: Mode,
-	uid: Uid,
-	gid: Gid,
+	access_profile: &AccessProfile,
 ) -> Result<Arc<Mutex<File>>, Errno> {
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
@@ -58,19 +58,27 @@ fn get_file(
 		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
 		// The parent directory
-		let parent_mutex = vfs::get_file_from_path(&parent_path, uid, gid, true)?;
+		let parent_mutex = vfs::get_file_from_path(&parent_path, access_profile, true)?;
 		let mut parent = parent_mutex.lock();
 
-		let file_result =
-			vfs::get_file_from_parent(&mut parent, name.try_clone()?, uid, gid, follow_links);
+		let file_result = vfs::get_file_from_parent(
+			&mut parent,
+			name.try_clone()?,
+			access_profile,
+			follow_links,
+		);
 		let file = match file_result {
 			// If the file is found, return it
 			Ok(file) => file,
 
 			// Else, create it
-			Err(e) if e.as_int() == errno::ENOENT => {
-				vfs::create_file(&mut parent, name, uid, gid, mode, FileContent::Regular)?
-			}
+			Err(e) if e.as_int() == errno::ENOENT => vfs::create_file(
+				&mut parent,
+				name,
+				*access_profile,
+				mode,
+				FileContent::Regular,
+			)?,
 
 			e => return e,
 		};
@@ -84,17 +92,16 @@ fn get_file(
 		}
 	} else {
 		// The file is the root directory
-		vfs::get_file_from_path(&path, uid, gid, follow_links)
+		vfs::get_file_from_path(&path, access_profile, follow_links)
 	}
 }
 
 /// The function handles open flags.
 ///
 /// Arguments:
-/// - `file` is the file.
-/// - `flags` is the set of flags provided by userspace.
-/// - `uid` is the UID of the process openning the file.
-/// - `gid` is the GID of the process openning the file.
+/// - `file` is the file
+/// - `flags` is the set of flags provided by userspace
+/// - `access_profile` is the access profile to check permissions
 ///
 /// The following informations are returned:
 /// - Whether the file is open for reading
@@ -103,20 +110,18 @@ fn get_file(
 pub fn handle_flags(
 	file: &mut File,
 	flags: i32,
-	uid: Uid,
-	gid: Gid,
+	access_profile: &AccessProfile,
 ) -> Result<(bool, bool, bool), Errno> {
 	let (read, write) = match flags & 0b11 {
 		open_file::O_RDONLY => (true, false),
 		open_file::O_WRONLY => (false, true),
 		open_file::O_RDWR => (true, true),
-
 		_ => return Err(errno!(EINVAL)),
 	};
-	if read && !file.can_read(uid, gid) {
+	if read && !access_profile.can_read_file(file) {
 		return Err(errno!(EACCES));
 	}
-	if write && !file.can_write(uid, gid) {
+	if write && !access_profile.can_write_file(file) {
 		return Err(errno!(EACCES));
 	}
 
@@ -124,21 +129,18 @@ pub fn handle_flags(
 	if flags & open_file::O_DIRECTORY != 0 && file.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-
 	// Truncate the file if necessary
 	if flags & open_file::O_TRUNC != 0 {
 		file.set_size(0);
 	}
 
 	let cloexec = flags & open_file::O_CLOEXEC != 0;
-
 	Ok((read, write, cloexec))
 }
 
 /// Performs the open system call.
 pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
-	// Getting the path string
-	let (path, mode, uid, gid) = {
+	let (path, mode, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -148,20 +150,17 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		let abs_path = super::util::get_absolute_path(&proc, path)?;
 
 		let mode = mode & !proc.umask;
-		let uid = proc.euid;
-		let gid = proc.egid;
-
-		(abs_path, mode, uid, gid)
+		(abs_path, mode, proc.access_profile)
 	};
 
 	// Get the file
-	let file = get_file(path, flags, mode, uid, gid)?;
+	let file = get_file(path, flags, mode, &ap)?;
 
 	let (loc, read, write, cloexec) = {
 		let mut f = file.lock();
 
 		let loc = f.get_location().clone();
-		let (read, write, cloexec) = handle_flags(&mut f, flags, uid, gid)?;
+		let (read, write, cloexec) = handle_flags(&mut f, flags, &ap)?;
 
 		(loc, read, write, cloexec)
 	};

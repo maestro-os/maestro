@@ -1,5 +1,7 @@
 //! This module implements ELF program execution with respects the System V ABI.
 
+// TODO suid and sgid
+
 use super::vdso;
 use crate::cpu;
 use crate::elf;
@@ -203,19 +205,19 @@ fn build_auxilary(
 	aux.push(AuxEntryDesc::new(AT_NOTELF, AuxEntryDescValue::Number(0)))?;
 	aux.push(AuxEntryDesc::new(
 		AT_UID,
-		AuxEntryDescValue::Number(exec_info.uid as _),
+		AuxEntryDescValue::Number(exec_info.access_profile.get_uid() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_EUID,
-		AuxEntryDescValue::Number(exec_info.euid as _),
+		AuxEntryDescValue::Number(exec_info.access_profile.get_euid() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_GID,
-		AuxEntryDescValue::Number(exec_info.gid as _),
+		AuxEntryDescValue::Number(exec_info.access_profile.get_gid() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_EGID,
-		AuxEntryDescValue::Number(exec_info.egid as _),
+		AuxEntryDescValue::Number(exec_info.access_profile.get_egid() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_PLATFORM,
@@ -601,10 +603,10 @@ impl ELFExecutor {
 
 			// Getting file
 			let interp_file_mutex =
-				vfs::get_file_from_path(&interp_path, self.info.euid, self.info.egid, true)?;
+				vfs::get_file_from_path(&interp_path, &self.info.access_profile, true)?;
 			let mut interp_file = interp_file_mutex.lock();
 
-			let interp_image = read_exec_file(&mut interp_file, self.info.euid, self.info.egid)?;
+			let interp_image = read_exec_file(&mut interp_file, &self.info.access_profile)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
@@ -689,7 +691,7 @@ impl Executor for ELFExecutor {
 	// TODO Handle suid and sgid
 	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno> {
 		// The ELF file image
-		let image = read_exec_file(file, self.info.euid, self.info.egid)?;
+		let image = read_exec_file(file, &self.info.access_profile)?;
 		// Parsing the ELF file
 		let parser = ELFParser::new(image.as_slice())?;
 

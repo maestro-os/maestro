@@ -16,6 +16,7 @@ use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Implement all flags
+// TODO clean up: multiple locks to process
 
 /// Returns the file at the given path.
 ///
@@ -71,21 +72,15 @@ pub fn openat(
 	flags: c_int,
 	mode: file::Mode,
 ) -> Result<i32, Errno> {
-	// Getting the file
+	// Get the file
 	let file = get_file(dirfd, pathname, flags, mode)?;
-
-	let (uid, gid) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		(proc.euid, proc.egid)
-	};
+	let ap = Process::current_assert().lock().access_profile;
 
 	let (loc, read, write, cloexec) = {
 		let mut f = file.lock();
 
 		let loc = f.get_location().clone();
-		let (read, write, cloexec) = super::open::handle_flags(&mut f, flags, uid, gid)?;
+		let (read, write, cloexec) = super::open::handle_flags(&mut f, flags, &ap)?;
 
 		(loc, read, write, cloexec)
 	};

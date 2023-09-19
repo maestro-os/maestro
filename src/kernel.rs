@@ -226,11 +226,7 @@ fn init(init_path: String) -> Result<(), Errno> {
 	let mut file = file_mutex.lock();
 
 	let exec_info = ExecInfo {
-		uid: proc.access_profile.get_uid(),
-		euid: proc.access_profile.get_euid(),
-		gid: proc.access_profile.get_gid(),
-		egid: proc.access_profile.get_egid(),
-
+		access_profile: AccessProfile::KERNEL,
 		argv: vec![init_path]?,
 		envp: env,
 	};

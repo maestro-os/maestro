@@ -691,8 +691,8 @@ impl File {
 }
 
 impl AccessProfile {
-	/// Tells whether the agent can read the file's content.
-	pub fn can_read_file_content(&self, file: &File) -> bool {
+	/// Tells whether the agent can read the file.
+	pub fn can_read_file(&self, file: &File) -> bool {
 		// If root, bypass checks
 		if self.get_euid() == perm::ROOT_UID || self.get_egid() == perm::ROOT_GID {
 			return true;
@@ -707,8 +707,8 @@ impl AccessProfile {
 		file.mode & perm::S_IROTH != 0
 	}
 
-	/// Tells whether the agent can write the file's content.
-	pub fn can_write_file_content(&self, file: &File) -> bool {
+	/// Tells whether the agent can write the file.
+	pub fn can_write_file(&self, file: &File) -> bool {
 		// If root, bypass checks
 		if self.get_euid() == perm::ROOT_UID || self.get_egid() == perm::ROOT_GID {
 			return true;
@@ -739,6 +739,24 @@ impl AccessProfile {
 			return true;
 		}
 		file.mode & perm::S_IXOTH != 0
+	}
+
+	/// Tells whether the agent can list files of the directories, **not** including access to
+	/// files' contents and metadata.
+	pub fn can_list_directory(&self, file: &File) -> bool {
+		self.can_read_file(file)
+	}
+
+	/// Tells whether the agent can modify entries in the directory, including creating files,
+	/// deleting files, and renaming files.
+	pub fn can_write_directory(&self, file: &File) -> bool {
+		self.can_write_file(file) && self.can_execute_file(file)
+	}
+
+	/// Tells whether the agent can access files of the directory *if the name of the file is
+	/// known*.
+	pub fn can_search_directory(&self, file: &File) -> bool {
+		self.can_execute_file(file)
 	}
 }
 

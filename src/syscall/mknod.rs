@@ -15,7 +15,7 @@ use macros::syscall;
 // TODO Check args type
 #[syscall]
 pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32, Errno> {
-	let (path, umask, uid, gid) = {
+	let (path, umask, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -26,19 +26,16 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let umask = proc.umask;
-		let uid = proc.uid;
-		let gid = proc.gid;
 
-		(path, umask, uid, gid)
+		(path, umask, proc.access_profile)
 	};
 
-	if path.is_empty() {
-		return Err(errno!(EEXIST));
-	}
 	// Path of the parent directory
 	let mut parent_path = path;
 	// File name
-	let name = parent_path.pop().unwrap();
+	let Some(name) = parent_path.pop() else {
+		return Err(errno!(EEXIST));
+	};
 
 	let mode = mode & !umask;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
@@ -60,14 +57,13 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 			major,
 			minor,
 		},
-
 		_ => return Err(errno!(EPERM)),
 	};
 
 	// Create the node
-	let parent_mutex = vfs::get_file_from_path(&parent_path, uid, gid, true)?;
+	let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
 	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name, uid, gid, mode, file_content)?;
+	vfs::create_file(&mut parent, name, ap, mode, file_content)?;
 
 	Ok(0)
 }

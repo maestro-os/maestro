@@ -18,17 +18,14 @@ use macros::syscall;
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	let proc_mutex = Process::current_assert();
-	let mut curr_proc = proc_mutex.lock();
-
-	let uid = curr_proc.uid;
-	let euid = curr_proc.euid;
+	let mut proc = proc_mutex.lock();
 
 	// Closure sending the signal
 	let f = |target: &mut Process| {
 		if matches!(target.get_state(), State::Zombie) {
 			return Err(errno!(ESRCH));
 		}
-		if !target.can_kill(uid) && !target.can_kill(euid) {
+		if !proc.access_profile.can_kill(&proc) {
 			return Err(errno!(EPERM));
 		}
 
@@ -39,8 +36,8 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 		Ok(())
 	};
 
-	if pid == curr_proc.pid {
-		f(&mut curr_proc)?;
+	if pid == proc.pid {
+		f(&mut proc)?;
 	} else {
 		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
 		let mut target_proc = target_mutex.lock();
@@ -62,10 +59,10 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 	let pgid = match pid {
 		0 => {
-			let curr_mutex = Process::current_assert();
-			let curr_proc = curr_mutex.lock();
+			let proc_mutex = Process::current_assert();
+			let proc = proc_mutex.lock();
 
-			curr_proc.pgid
+			proc.pgid
 		}
 
 		i if i < 0 => -pid as Pid,

@@ -37,7 +37,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 			_ => return Err(errno!(ENOTDIR)),
 		}
 
-		vfs::remove_file(&file, uid, gid)?;
+		vfs::remove_file(&file, &ap)?;
 	}
 
 	Ok(0)

@@ -15,12 +15,9 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 		return Err(errno!(EBADF));
 	}
 
-	let (uid, gid, open_file_mutex) = {
+	let (open_file_mutex, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let uid = proc.euid;
-		let gid = proc.egid;
 
 		let fds_mutex = proc.get_fds().unwrap();
 		let fds = fds_mutex.lock();
@@ -30,21 +27,20 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 			.ok_or_else(|| errno!(EBADF))?
 			.get_open_file()?;
 
-		(uid, gid, open_file_mutex)
+		(open_file_mutex, proc.access_profile)
 	};
-
 	let open_file = open_file_mutex.lock();
 
 	let new_cwd = {
 		let file_mutex = open_file.get_file()?;
 		let file = file_mutex.lock();
 
-		// Checking for errors
-		if !file.can_read(uid, gid) {
-			return Err(errno!(EACCES));
-		}
+		// Check for errors
 		if file.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
+		}
+		if !ap.can_list_directory(&*file) {
+			return Err(errno!(EACCES));
 		}
 
 		file.get_path()

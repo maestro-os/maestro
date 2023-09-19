@@ -22,12 +22,9 @@ pub fn renameat2(
 	newpath: SyscallString,
 	_flags: c_int,
 ) -> Result<i32, Errno> {
-	let (uid, gid, old_mutex, new_parent_mutex, new_name) = {
+	let (old_mutex, new_parent_mutex, new_name, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let uid = proc.euid;
-		let gid = proc.egid;
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -44,7 +41,7 @@ pub fn renameat2(
 		let (new_parent, new_name) =
 			super::util::get_parent_at_with_name(proc, false, newdirfd, newpath)?;
 
-		(uid, gid, old, new_parent, new_name)
+		(old, new_parent, new_name, proc.access_profile)
 	};
 
 	let mut old = old_mutex.lock();
@@ -60,10 +57,10 @@ pub fn renameat2(
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs::create_link(&mut old, &mut new_parent, &new_name, uid, gid)?;
+		vfs::create_link(&mut old, &mut new_parent, &new_name, &ap)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs::remove_file(&old, uid, gid)?;
+			vfs::remove_file(&old, &ap)?;
 		}
 	} else {
 		// Old and new are on different filesystems.
@@ -71,7 +68,7 @@ pub fn renameat2(
 		// TODO On fail, undo
 
 		file::util::copy_file(&mut old, &mut new_parent, new_name)?;
-		file::util::remove_recursive(&mut old, uid, gid)?;
+		file::util::remove_recursive(&mut old, &ap)?;
 	}
 
 	Ok(0)

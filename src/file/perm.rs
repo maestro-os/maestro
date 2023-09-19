@@ -3,6 +3,7 @@
 //! This module implements management of such permissions.
 
 use super::Mode;
+use crate::errno::EResult;
 
 /// Type representing a user ID.
 pub type Uid = u16;
@@ -122,5 +123,73 @@ impl AccessProfile {
 	/// Returns the saved group ID.
 	pub fn get_sgid(&self) -> Gid {
 		self.sgid
+	}
+
+	/// Tells whether the agent is privileged (root).
+	pub fn is_privileged(&self) -> bool {
+		self.uid == ROOT_UID
+			|| self.euid == ROOT_UID
+			|| self.gid == ROOT_GID
+			|| self.egid == ROOT_GID
+	}
+
+	/// Sets the user ID in the same way the `setgid` system call does.
+	///
+	/// If the agent is not privileged enough to make the change, the function returns an error.
+	pub fn set_uid(&mut self, uid: Uid) -> EResult<()> {
+		if self.euid == ROOT_UID {
+			// privileged
+			self.uid = uid;
+			self.euid = uid;
+			self.suid = uid;
+			Ok(())
+		} else if uid == self.uid || uid == self.euid || uid == self.suid {
+			self.euid = uid;
+			Ok(())
+		} else {
+			Err(errno!(EPERM))
+		}
+	}
+
+	/// Sets the effective user ID.
+	///
+	/// If the agent is not privileged enough to make the change, the function returns an error.
+	pub fn set_euid(&self, uid: Uid) -> EResult<()> {
+		if uid == ROOT_UID || uid == self.uid || uid == self.euid || uid == self.suid {
+			self.euid = uid;
+			Ok(())
+		} else {
+			Err(errno!(EPERM))
+		}
+	}
+
+	/// Sets the group ID in the way the `setgid` system call does.
+	///
+	/// If the agent is not privileged enough to make the change, the function returns an error.
+	pub fn set_gid(&mut self, gid: Gid) -> EResult<()> {
+		if self.egid == ROOT_GID {
+			// privileged
+			self.gid = gid;
+			self.egid = gid;
+			self.sgid = gid;
+			Ok(())
+		} else if gid == self.gid || gid == self.egid || gid == self.sgid {
+			self.egid = gid;
+			Ok(())
+		} else {
+			Err(errno!(EPERM))
+		}
+	}
+
+	/// Sets the effective group ID.
+	///
+	/// If the agent is not privileged enough to make the change, the function returns an error.
+	pub fn set_egid(&self, gid: Uid) -> EResult<()> {
+		if gid == ROOT_GID || gid == self.gid || gid == self.egid || gid == self.sgid {
+			self.egid = gid;
+			Ok(())
+		} else {
+			Err(errno!(EPERM))
+		}
 	}
 }

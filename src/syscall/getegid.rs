@@ -7,6 +7,5 @@ use crate::process::Process;
 pub fn getegid(_: &Regs) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
-
-	Ok(proc.egid as _)
+	Ok(proc.access_profile.get_egid() as _)
 }

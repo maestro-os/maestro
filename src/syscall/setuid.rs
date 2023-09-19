@@ -2,10 +2,14 @@
 
 use crate::errno::Errno;
 use crate::file::perm::Uid;
+use crate::process::Process;
 use macros::syscall;
 
 #[syscall]
-pub fn setuid(_uid: Uid) -> Result<i32, Errno> {
-	// TODO
-	todo!();
+pub fn setuid(uid: Uid) -> Result<i32, Errno> {
+	let proc_mutex = Process::current_assert();
+	let mut proc = proc_mutex.lock();
+
+	proc.access_profile.set_uid(uid)?;
+	Ok(0)
 }

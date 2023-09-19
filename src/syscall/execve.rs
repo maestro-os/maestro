@@ -1,10 +1,10 @@
 //! The `execve` system call allows to execute a program from a file.
 
 use crate::errno;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::path::Path;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
+use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::File;
 use crate::memory::stack;
@@ -108,7 +108,7 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
-	// Executing the program
+	// Execute the program
 	exec::exec(&mut proc, program_image)?;
 	Ok(proc.regs.clone())
 }
@@ -117,36 +117,25 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 ///
 /// Arguments:
 /// - `file` is the executable file.
-/// - `uid` is the real user ID.
-/// - `euid` is the effective user ID.
-/// - `gid` is the real group ID.
-/// - `egid` is the effective group ID.
+/// - `access_profile` is the access profile to check permissions
 /// - `argv` is the arguments list.
 /// - `envp` is the environment variables list.
 fn build_image(
 	file: Arc<Mutex<File>>,
-	uid: Uid,
-	euid: Uid,
-	gid: Gid,
-	egid: Gid,
+	access_profile: AccessProfile,
 	argv: Vec<String>,
 	envp: Vec<String>,
-) -> Result<ProgramImage, Errno> {
+) -> EResult<ProgramImage> {
 	let mut file = file.lock();
-	if !file.can_execute(euid, egid) {
+	if !access_profile.can_execute_file(&*file) {
 		return Err(errno!(EACCES));
 	}
 
 	let exec_info = ExecInfo {
-		uid,
-		euid,
-		gid,
-		egid,
-
+		access_profile,
 		argv,
 		envp,
 	};
-
 	exec::build_image(&mut file, exec_info)
 }
 
@@ -156,7 +145,7 @@ pub fn execve(
 	argv: *const *const u8,
 	envp: *const *const u8,
 ) -> Result<i32, Errno> {
-	let (mut path, mut argv, envp, uid, gid, euid, egid) = {
+	let (mut path, mut argv, envp, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -176,22 +165,17 @@ pub fn execve(
 		let argv = unsafe { super::util::get_str_array(&proc, argv)? };
 		let envp = unsafe { super::util::get_str_array(&proc, envp)? };
 
-		let uid = proc.uid;
-		let gid = proc.gid;
-		let euid = proc.euid;
-		let egid = proc.egid;
-
-		(path, argv, envp, uid, gid, euid, egid)
+		(path, argv, envp, proc.access_profile)
 	};
 
 	// Handling shebang
 	let mut i = 0;
 	while i < INTERP_MAX + 1 {
 		// The file
-		let file = vfs::get_file_from_path(&path, uid, gid, true)?;
+		let file = vfs::get_file_from_path(&path, &ap, true)?;
 		let mut f = file.lock();
 
-		if !f.can_execute(euid, egid) {
+		if !ap.can_execute_file(&*f) {
 			return Err(errno!(EACCES));
 		}
 
@@ -229,24 +213,20 @@ pub fn execve(
 	}
 
 	// The file
-	let file = vfs::get_file_from_path(&path, uid, gid, true)?;
+	let file = vfs::get_file_from_path(&path, &ap, true)?;
 
-	// Dropping path to avoid memory leak
+	// Drop path to avoid memory leak
 	drop(path);
 
-	// Disabling interrupt to prevent stack switching while using a temporary stack,
+	// Disable interrupt to prevent stack switching while using a temporary stack,
 	// preventing this temporary stack from being used as a signal handling stack
 	cli!();
 
-	// Building the program's image
-	let program_image = unsafe {
-		stack::switch(None, move || {
-			build_image(file, uid, euid, gid, egid, argv, envp)
-		})
-		.unwrap()?
-	};
+	// Build the program's image
+	let program_image =
+		unsafe { stack::switch(None, move || build_image(file, ap, argv, envp)).unwrap()? };
 
-	// The tmp stack will not be used since the scheduler cannot be ticked when
+	// The temporary stack will not be used since the scheduler cannot be ticked when
 	// interrupts are disabled
 	// A temporary stack cannot be allocated since it wouldn't be possible to free
 	// it on success
@@ -255,16 +235,17 @@ pub fn execve(
 		process::get_scheduler().lock().get_tmp_stack(core)
 	};
 
-	// Switching to another stack in order to avoid crashing when switching to the
+	// Switch to another stack in order to avoid crashing when switching to the
 	// new memory space
 	unsafe {
-		stack::switch(Some(tmp_stack), move || -> Result<(), Errno> {
+		stack::switch(Some(tmp_stack), move || -> EResult<()> {
 			let regs = do_exec(program_image)?;
 			regs.switch(true);
 		})
+		// `unwrap` cannot fail since the stack is provided
 		.unwrap()?;
 	}
 
-	// Cannot be reached since `do_exec` won't return on success
+	// Cannot be reached since on success
 	unreachable!();
 }

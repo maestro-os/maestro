@@ -17,7 +17,7 @@ pub fn delete_module(name: SyscallString, _flags: c_uint) -> Result<i32, Errno> 
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		if proc.euid != 0 {
+		if !proc.access_profile.is_privileged() {
 			return Err(errno!(EPERM));
 		}
 
@@ -25,7 +25,6 @@ pub fn delete_module(name: SyscallString, _flags: c_uint) -> Result<i32, Errno> 
 		let mem_space_guard = mem_space.lock();
 
 		let name = name.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-
 		String::try_from(name)?
 	};
 

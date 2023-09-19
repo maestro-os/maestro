@@ -8,6 +8,5 @@ use macros::syscall;
 pub fn geteuid() -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
-
-	Ok(proc.euid as _)
+	Ok(proc.access_profile.get_euid() as _)
 }

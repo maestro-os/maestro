@@ -20,7 +20,7 @@ pub fn init_module(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		if proc.euid != 0 {
+		if !proc.access_profile.is_privileged() {
 			return Err(errno!(EPERM));
 		}
 

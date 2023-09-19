@@ -2,7 +2,6 @@
 
 use crate::errno::Errno;
 use crate::file::path::Path;
-use crate::file::perm;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -11,7 +10,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
-	let (path, uid, gid) = {
+	let (path, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -24,18 +23,19 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 		let path = Path::from_str(path, true)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
-		(path, proc.euid, proc.egid)
+		(path, proc.access_profile)
 	};
 
-	let file_mutex = vfs::get_file_from_path(&path, uid, gid, true)?;
+	let file_mutex = vfs::get_file_from_path(&path, &ap, true)?;
 	let mut file = file_mutex.lock();
 
-	// Checking permissions
-	if uid != perm::ROOT_UID && uid != file.get_uid() {
+	// Check permissions
+	if ap.can_write_file(&*file) {
 		return Err(errno!(EPERM));
 	}
 
 	file.set_permissions(mode as _);
+	// TODO lazy sync
 	file.sync()?;
 
 	Ok(0)

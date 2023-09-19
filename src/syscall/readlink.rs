@@ -18,7 +18,7 @@ pub fn readlink(
 	bufsiz: usize,
 ) -> Result<i32, Errno> {
 	// process lock has to be dropped to avoid deadlock with procfs
-	let (mem_space_mutex, path, uid, gid) = {
+	let (mem_space_mutex, path, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -31,11 +31,11 @@ pub fn readlink(
 		let path = super::util::get_absolute_path(&proc, path)?;
 
 		drop(mem_space);
-		(mem_space_mutex, path, proc.euid, proc.egid)
+		(mem_space_mutex, path, proc.access_profile)
 	};
 
 	// Get link's target
-	let file_mutex = vfs::get_file_from_path(&path, uid, gid, false)?;
+	let file_mutex = vfs::get_file_from_path(&path, &ap, false)?;
 	let file = file_mutex.lock();
 	let FileContent::Link(target) = file.get_content() else {
 		return Err(errno!(EINVAL));

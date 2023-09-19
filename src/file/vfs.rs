@@ -117,27 +117,16 @@ fn get_file_by_path_impl(
 	// The root inode
 	let mut inode = fs.get_root_inode(&mut *io)?;
 	let mut file = fs.load_file(&mut *io, inode, String::new())?;
-	// If the path is empty, return the root
-	if inner_path.is_empty() {
-		drop(fs);
-
-		update_location(&mut file, &mountpoint);
-		let file = Arc::new(Mutex::new(file))?;
-		return Ok(file);
-	}
-	// Check permissions
-	if !ap.can_execute(file) {
-		return Err(errno!(EACCES));
-	}
 
 	for i in 0..inner_path.get_elements_count() {
 		inode = fs.get_inode(&mut *io, Some(inode), &inner_path[i])?;
 
 		// Check permissions
-		file = fs.load_file(&mut *io, inode, inner_path[i].try_clone()?)?;
-		if i < inner_path.get_elements_count() - 1 && !ap.can_execute(file) {
+		if i < inner_path.get_elements_count() - 1 && !ap.can_search_directory(&file) {
 			return Err(errno!(EACCES));
 		}
+		// Get file
+		file = fs.load_file(&mut *io, inode, inner_path[i].try_clone()?)?;
 
 		// If this is not the last element, or if links are followed
 		if i < inner_path.get_elements_count() - 1 || follow_links {
@@ -215,7 +204,7 @@ pub fn get_file_from_parent(
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	if !ap.can_execute(parent) {
+	if !ap.can_search_directory(parent) {
 		return Err(errno!(EACCES));
 	}
 
@@ -275,7 +264,7 @@ pub fn create_file(
 	content: FileContent,
 ) -> Result<Arc<Mutex<File>>, Errno> {
 	// If file already exist, error
-	if get_file_from_parent(parent, name.try_clone()?, ap, false).is_ok() {
+	if get_file_from_parent(parent, name.try_clone()?, &ap, false).is_ok() {
 		return Err(errno!(EEXIST));
 	}
 
@@ -283,7 +272,7 @@ pub fn create_file(
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	if !ap.can_write(parent) {
+	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
 
@@ -352,7 +341,7 @@ pub fn create_link(
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	if !ap.can_write(parent) {
+	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
 	// Check the target and source are both on the same mountpoint
@@ -405,7 +394,7 @@ pub fn remove_file(file: &File, ap: &AccessProfile) -> EResult<()> {
 	let parent = parent_mutex.lock();
 
 	// Check permissions
-	if !ap.can_write(file) || !ap.can_write(parent) || !ap.can_execute(parent) {
+	if !ap.can_write_file(file) || !ap.can_write_directory(&*parent) {
 		return Err(errno!(EACCES));
 	}
 
