@@ -55,15 +55,14 @@ pub fn create_dirs(path: &Path) -> EResult<usize> {
 
 /// Copies the file `old` into the directory `new_parent` with name `new_name`.
 pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> EResult<()> {
-	let uid = old.get_uid();
-	let gid = old.get_gid();
+	let ap = AccessProfile::from_file(old);
 	let mode = old.get_mode();
 
 	match old.get_content() {
 		// Copy the file and its content
 		FileContent::Regular => {
 			let new_mutex =
-				vfs::create_file(new_parent, new_name, uid, gid, mode, FileContent::Regular)?;
+				vfs::create_file(new_parent, new_name, ap, mode, FileContent::Regular)?;
 			let mut new = new_mutex.lock();
 
 			// TODO On fail, remove file
@@ -86,8 +85,7 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> ERe
 			let new_mutex = vfs::create_file(
 				new_parent,
 				new_name,
-				uid,
-				gid,
+				ap,
 				mode,
 				FileContent::Directory(HashMap::new()),
 			)?;
@@ -96,7 +94,7 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> ERe
 			// TODO On fail, undo
 			for (name, _) in entries.iter() {
 				let old_mutex =
-					vfs::get_file_from_parent(&mut new, name.try_clone()?, uid, gid, false)?;
+					vfs::get_file_from_parent(&mut new, name.try_clone()?, &ap, false)?;
 				let mut old = old_mutex.lock();
 
 				copy_file(&mut old, &mut new, name.try_clone()?)?;
@@ -105,7 +103,7 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> ERe
 
 		// Copy the file
 		content => {
-			vfs::create_file(new_parent, new_name, uid, gid, mode, content.try_clone()?)?;
+			vfs::create_file(new_parent, new_name, ap, mode, content.try_clone()?)?;
 		}
 	}
 

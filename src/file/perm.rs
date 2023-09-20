@@ -4,6 +4,7 @@
 
 use super::Mode;
 use crate::errno::EResult;
+use crate::file::File;
 
 /// Type representing a user ID.
 pub type Uid = u16;
@@ -94,6 +95,25 @@ impl AccessProfile {
 		suid: 0,
 		sgid: 0,
 	};
+
+	/// Creates a profile from the given IDs.
+	pub fn new(uid: Uid, gid: Gid) -> Self {
+		Self {
+			uid,
+			gid,
+
+			euid: uid,
+			egid: gid,
+
+			suid: uid,
+			sgid: gid,
+		}
+	}
+
+	/// Extracts UID and GID from file and returns the associated profile.
+	pub fn from_file(file: &File) -> Self {
+		Self::new(file.get_uid(), file.get_gid())
+	}
 
 	/// Returns the real user ID.
 	pub fn get_uid(&self) -> Uid {

@@ -460,7 +460,3 @@ impl IO for OpenFile {
 		file.poll(mask)
 	}
 }
-
-impl Drop for OpenFile {
-	fn drop(&mut self) {}
-}
