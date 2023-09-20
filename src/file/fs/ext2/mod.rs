@@ -876,8 +876,7 @@ impl Filesystem for Ext2Fs {
 		};
 
 		let file_location = FileLocation::Filesystem {
-			mountpoint_id: None,
-
+			mountpoint_id: 0, // dummy value to be replaced
 			inode,
 		};
 		let mut file = File::new(
@@ -926,8 +925,7 @@ impl Filesystem for Ext2Fs {
 
 		let inode_index = self.superblock.get_free_inode(io)?;
 		let location = FileLocation::Filesystem {
-			mountpoint_id: None,
-
+			mountpoint_id: 0, // dummy value to be replaced
 			inode: inode_index as _,
 		};
 

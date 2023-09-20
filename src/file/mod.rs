@@ -161,7 +161,7 @@ pub enum FileLocation {
 	/// The file is located on a filesystem.
 	Filesystem {
 		/// The ID of the mountpoint of the file.
-		mountpoint_id: Option<u32>,
+		mountpoint_id: u32,
 		/// The file's inode.
 		inode: INode,
 	},
@@ -179,7 +179,7 @@ impl FileLocation {
 		match self {
 			Self::Filesystem {
 				mountpoint_id, ..
-			} => *mountpoint_id,
+			} => Some(*mountpoint_id),
 
 			_ => None,
 		}

@@ -234,7 +234,7 @@ impl KernFS {
 		let node = self.get_node_mut(inode)?;
 		let content = oom::wrap(|| node.get_content().map_err(|_| AllocError)?.to_owned());
 		let location = FileLocation::Filesystem {
-			mountpoint_id: None,
+			mountpoint_id: 0, // dummy value to be replaced
 			inode,
 		};
 		let file = File::new(name.try_clone()?, uid, gid, mode, location, content)?;
@@ -316,8 +316,7 @@ impl Filesystem for KernFS {
 		let node = self.get_node_mut(inode)?;
 
 		let file_location = FileLocation::Filesystem {
-			mountpoint_id: None,
-
+			mountpoint_id: 0, // dummy value to be replaced
 			inode,
 		};
 		let content = node.get_content()?.to_owned()?;

@@ -6,7 +6,6 @@
 
 use crate::errno;
 use crate::errno::EResult;
-use crate::errno::Errno;
 use crate::file::buffer;
 use crate::file::mapping;
 use crate::file::mountpoint;
@@ -37,7 +36,7 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 		mountpoint_id, ..
 	} = file.get_location_mut()
 	{
-		*mountpoint_id = Some(mountpoint.get_id());
+		*mountpoint_id = mountpoint.get_id();
 	}
 }
 
@@ -95,7 +94,7 @@ fn get_file_by_path_impl(
 	ap: &AccessProfile,
 	follow_links: bool,
 	follows_count: usize,
-) -> Result<Arc<Mutex<File>>, Errno> {
+) -> EResult<Arc<Mutex<File>>> {
 	let path = Path::root().concat(path)?;
 
 	// Get the path's deepest mountpoint
@@ -181,7 +180,7 @@ pub fn get_file_from_path(
 	path: &Path,
 	ap: &AccessProfile,
 	follow_links: bool,
-) -> Result<Arc<Mutex<File>>, Errno> {
+) -> EResult<Arc<Mutex<File>>> {
 	get_file_by_path_impl(path, ap, follow_links, 0)
 }
 
@@ -199,7 +198,7 @@ pub fn get_file_from_parent(
 	name: String,
 	ap: &AccessProfile,
 	follow_links: bool,
-) -> Result<Arc<Mutex<File>>, Errno> {
+) -> EResult<Arc<Mutex<File>>> {
 	// Check for errors
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
@@ -262,7 +261,7 @@ pub fn create_file(
 	mut ap: AccessProfile,
 	mode: Mode,
 	content: FileContent,
-) -> Result<Arc<Mutex<File>>, Errno> {
+) -> EResult<Arc<Mutex<File>>> {
 	// If file already exist, error
 	if get_file_from_parent(parent, name.try_clone()?, &ap, false).is_ok() {
 		return Err(errno!(EEXIST));
@@ -336,7 +335,7 @@ pub fn create_link(
 	parent: &mut File,
 	name: &[u8],
 	ap: &AccessProfile,
-) -> Result<(), Errno> {
+) -> EResult<()> {
 	// Check the parent file is a directory
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
@@ -444,7 +443,7 @@ pub fn remove_file(file: &File, ap: &AccessProfile) -> EResult<()> {
 /// On success, the function returns a reference to the page.
 ///
 /// If the file doesn't exist, the function returns an error.
-pub fn map_file(loc: FileLocation, off: usize) -> Result<NonNull<u8>, Errno> {
+pub fn map_file(loc: FileLocation, off: usize) -> EResult<NonNull<u8>> {
 	// TODO if the page is being init, read from disk
 	mapping::map(loc, off)?;
 
