@@ -8,7 +8,6 @@ use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::buffer;
 use crate::file::mountpoint;
-use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::DeviceID;
 use crate::file::File;
@@ -22,6 +21,7 @@ use crate::time::clock;
 use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimestampScale;
 use crate::util::container::hashmap::HashMap;
+use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
@@ -91,11 +91,8 @@ pub struct OpenFile {
 	/// The number of concurrent file descriptors pointing the the current file.
 	ref_count: usize,
 	/// If file removal has been deferred (to the moment no process is using it anymore), this
-	/// field contains the file to remove.
-	///
-	/// This field is necessary because the same file can have several hard links. Thus its
-	/// location cannot be determined from the inode itself.
-	deferred_remove: Option<File>,
+	/// field contains informations to locate it.
+	deferred_remove: Option<(FileLocation, String)>,
 }
 
 impl OpenFile {
@@ -208,11 +205,9 @@ impl OpenFile {
 		let mut open_file = open_file_mutex.lock();
 
 		// If remove has been deferred and this is the last reference, remove the file
-		if let Some(file) = &open_file.deferred_remove {
+		if let Some((parent_location, name)) = &open_file.deferred_remove {
 			if open_file.ref_count == 1 {
-				// Use root user to bypass permission checks since they have been made before
-				// deferring
-				vfs::remove_file(file, &AccessProfile::KERNEL)?;
+				vfs::remove_file_validated(location, parent_location, name)?;
 			}
 		}
 
@@ -382,9 +377,15 @@ impl OpenFile {
 
 	/// Deferes remove of the underlying file to the moment no process is using it anymore.
 	///
-	/// The file is required to determine the location of the hard link to remove.
-	pub fn defer_remove(&mut self, file: File) {
-		self.deferred_remove = Some(file);
+	/// Arguments:
+	/// - `parent_location` is the [`super::FileLocation`] of the parent directory
+	/// - `name` is the name of the entry to remove
+	///
+	/// The parent location and the name of the entry to remove are required instead of the file
+	/// location of the file itself because a [`super::FileLocation`] specifies the location of a
+	/// filesystem node, not a file (since several files/links can point to the same node).
+	pub fn defer_remove(&mut self, parent_location: FileLocation, name: String) {
+		self.deferred_remove = Some((parent_location, name));
 	}
 }
 

@@ -59,6 +59,7 @@ pub fn get_file_by_location(location: &FileLocation) -> EResult<Arc<Mutex<File>>
 			let io_mutex = mountpoint.get_source().get_io()?;
 			let mut io = io_mutex.lock();
 
+			// Get the filesystem
 			let fs_mutex = mountpoint.get_filesystem();
 			let mut fs = fs_mutex.lock();
 
@@ -275,11 +276,14 @@ pub fn create_file(
 		return Err(errno!(EACCES));
 	}
 
-	// If SGID is set, the newly created file shall inherit the group ID of the
-	// parent directory
-	if parent.get_mode() & perm::S_ISGID != 0 {
-		ap.gid = parent.get_gid();
-	}
+	let uid = ap.get_euid();
+	let gid = if parent.get_mode() & perm::S_ISGID != 0 {
+		// If SGID is set, the newly created file shall inherit the group ID of the
+		// parent directory
+		parent.get_gid()
+	} else {
+		ap.get_egid()
+	};
 
 	// Get the mountpoint
 	let mountpoint_mutex = parent
@@ -304,15 +308,7 @@ pub fn create_file(
 
 	// Add the file to the filesystem
 	let parent_inode = parent.get_location().get_inode();
-	let mut file = fs.add_file(
-		&mut *io,
-		parent_inode,
-		name,
-		ap.get_euid(),
-		ap.get_egid(),
-		mode,
-		content,
-	)?;
+	let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
 
 	// Add the file to the parent's entries
 	file.set_parent_path(parent.get_path()?);
@@ -402,13 +398,23 @@ pub fn remove_file(file: &File, ap: &AccessProfile) -> EResult<()> {
 	let symlink = matches!(file.get_type(), FileType::Link);
 	if last_link && !symlink {
 		if let Some(open_file) = file.get_open_file() {
-			open_file.lock().defer_remove(file);
+			open_file
+				.lock()
+				.defer_remove(parent.get_location().clone(), file.get_name().try_clone()?);
 			return Ok(());
 		}
 	}
 
+	remove_file_inner(file.get_location(), parent.get_location(), file.get_name())
+}
+
+pub(crate) fn remove_file_inner(
+	location: &FileLocation,
+	parent_location: &FileLocation,
+	name: &[u8],
+) -> EResult<()> {
+	// FIXME: what if the file and its parent are not on the same filesystem?
 	// Get the mountpoint
-	let location = file.get_location();
 	let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 	let mountpoint = mountpoint_mutex.lock();
 	if mountpoint.is_readonly() {
@@ -427,10 +433,9 @@ pub fn remove_file(file: &File, ap: &AccessProfile) -> EResult<()> {
 	}
 
 	// Remove the file
-	let parent_inode = parent.get_location().get_inode();
-	fs.remove_file(&mut *io, parent_inode, file.get_name())?;
+	fs.remove_file(&mut *io, parent_location.get_inode(), name)?;
 
-	if file.get_hard_links_count() > 1 {
+	if file.get_hard_links_count() <= 1 {
 		// If the file is a named pipe or socket, free its now unused buffer
 		buffer::release(location);
 	}

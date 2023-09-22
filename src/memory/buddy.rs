@@ -7,7 +7,6 @@
 //! The order of a frame is the `n` in the expression `pow(2, n)` that represents the
 //! size of a frame in pages.
 
-use core::ptr::NonNull;
 use super::stats;
 use crate::errno::AllocError;
 use crate::errno::AllocResult;
@@ -19,6 +18,7 @@ use core::ffi::c_void;
 use core::intrinsics::likely;
 use core::mem::size_of;
 use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 
 /// Type representing the order of a memory frame.
 pub type FrameOrder = u8;
