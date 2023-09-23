@@ -36,12 +36,14 @@ fn get_default_page() -> *const c_void {
 
 		// Lazy allocation
 		None => {
-			let Ok(ptr) = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL) else {
+			let Ok(mut ptr) = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL) else {
 				kernel_panic!("Cannot allocate default memory page!");
 			};
 
 			// Zero page
-			let virt_ptr = memory::kern_to_virt(ptr.as_mut()) as *mut u8;
+			let virt_ptr = memory::kern_to_virt(unsafe {
+				ptr.as_mut()
+			}) as *mut u8;
 			let slice = unsafe { slice::from_raw_parts_mut(virt_ptr, memory::PAGE_SIZE) };
 			slice.fill(0);
 

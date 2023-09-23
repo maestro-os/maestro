@@ -20,12 +20,14 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
+	let ap = proc.access_profile;
+
 	// Closure sending the signal
 	let f = |target: &mut Process| {
 		if matches!(target.get_state(), State::Zombie) {
 			return Err(errno!(ESRCH));
 		}
-		if !proc.access_profile.can_kill(&proc) {
+		if !ap.can_kill(target) {
 			return Err(errno!(EPERM));
 		}
 

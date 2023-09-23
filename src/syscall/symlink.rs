@@ -44,7 +44,7 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 	let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
 	let mut parent = parent_mutex.lock();
 
-	vfs::create_file(&mut parent, name, ap, 0o777, FileContent::Link(target))?;
+	vfs::create_file(&mut parent, name, &ap, 0o777, FileContent::Link(target))?;
 
 	Ok(0)
 }

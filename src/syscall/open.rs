@@ -75,7 +75,7 @@ fn get_file(
 			Err(e) if e.as_int() == errno::ENOENT => vfs::create_file(
 				&mut parent,
 				name,
-				*access_profile,
+				access_profile,
 				mode,
 				FileContent::Regular,
 			)?,

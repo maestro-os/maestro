@@ -116,7 +116,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 
 		// Creating file
 		let create_result =
-			vfs::create_file(&mut parent, name, AccessProfile::KERNEL, perm, content);
+			vfs::create_file(&mut parent, name, &AccessProfile::KERNEL, perm, content);
 		let file_mutex = match create_result {
 			Ok(file_mutex) => file_mutex,
 			Err(e) if e.as_int() == errno::EEXIST => continue,

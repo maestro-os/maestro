@@ -200,7 +200,8 @@ impl IO for FileDescriptor {
 
 impl Drop for FileDescriptor {
 	fn drop(&mut self) {
-		OpenFile::close(&self.location, self.read, self.write);
+		let _ = OpenFile::close(&self.location, self.read, self.write);
+		// TODO print error? panic?
 	}
 }
 

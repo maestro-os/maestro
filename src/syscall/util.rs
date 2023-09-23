@@ -163,8 +163,9 @@ pub fn get_file_at(
 			Err(errno!(ENOENT))
 		}
 	} else {
+		let ap = process.access_profile;
 		let path = build_path_from_fd(process, dirfd, pathname)?;
-		vfs::get_file_from_path(&path, &process.access_profile, follow_links)
+		vfs::get_file_from_path(&path, &ap, follow_links)
 	}
 }
 
@@ -183,13 +184,15 @@ pub fn get_parent_at_with_name(
 	dirfd: i32,
 	pathname: &[u8],
 ) -> EResult<(Arc<Mutex<File>>, String)> {
+	let ap = process.access_profile;
+
 	if pathname.is_empty() {
 		return Err(errno!(ENOENT));
 	}
 	let mut path = build_path_from_fd(process, dirfd, pathname)?;
 	let name = path.pop().unwrap();
 
-	let parent_mutex = vfs::get_file_from_path(&path, &process.access_profile, follow_links)?;
+	let parent_mutex = vfs::get_file_from_path(&path, &ap, follow_links)?;
 	Ok((parent_mutex, name))
 }
 
@@ -210,11 +213,13 @@ pub fn create_file_at(
 	mode: Mode,
 	content: FileContent,
 ) -> EResult<Arc<Mutex<File>>> {
+	let ap = process.access_profile;
 	let mode = mode & !process.umask;
+
 	let (parent_mutex, name) = get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
 
 	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name, process.access_profile, mode, content)
+	vfs::create_file(&mut parent, name, &ap, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.

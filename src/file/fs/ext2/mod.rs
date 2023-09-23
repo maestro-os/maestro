@@ -1127,7 +1127,7 @@ impl Filesystem for Ext2Fs {
 		io: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<(), Errno> {
+	) -> Result<u16, Errno> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -1196,7 +1196,9 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// Writing the inode
-		inode_.write(inode, &self.superblock, io)
+		inode_.write(inode, &self.superblock, io)?;
+
+		Ok(inode_.hard_links_count)
 	}
 
 	fn read_node(

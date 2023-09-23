@@ -416,7 +416,7 @@ impl Filesystem for KernFS {
 		_: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<(), Errno> {
+	) -> Result<u16, Errno> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -466,7 +466,7 @@ impl Filesystem for KernFS {
 			oom::wrap(|| self.remove_node(inode).map_err(|_| AllocError));
 		}
 
-		Ok(())
+		Ok(links)
 	}
 
 	fn read_node(

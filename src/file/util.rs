@@ -36,7 +36,7 @@ pub fn create_dirs(path: &Path) -> EResult<usize> {
 			match vfs::create_file(
 				&mut parent,
 				name.try_clone()?,
-				AccessProfile::KERNEL,
+				&AccessProfile::KERNEL,
 				0o755,
 				FileContent::Directory(HashMap::new()),
 			) {
@@ -62,7 +62,7 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> ERe
 		// Copy the file and its content
 		FileContent::Regular => {
 			let new_mutex =
-				vfs::create_file(new_parent, new_name, ap, mode, FileContent::Regular)?;
+				vfs::create_file(new_parent, new_name, &ap, mode, FileContent::Regular)?;
 			let mut new = new_mutex.lock();
 
 			// TODO On fail, remove file
@@ -85,7 +85,7 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> ERe
 			let new_mutex = vfs::create_file(
 				new_parent,
 				new_name,
-				ap,
+				&ap,
 				mode,
 				FileContent::Directory(HashMap::new()),
 			)?;
@@ -103,7 +103,7 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> ERe
 
 		// Copy the file
 		content => {
-			vfs::create_file(new_parent, new_name, ap, mode, content.try_clone()?)?;
+			vfs::create_file(new_parent, new_name, &ap, mode, content.try_clone()?)?;
 		}
 	}
 

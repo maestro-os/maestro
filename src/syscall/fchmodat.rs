@@ -19,6 +19,8 @@ pub fn fchmodat(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
+		let ap = proc.access_profile;
+
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
@@ -27,7 +29,7 @@ pub fn fchmodat(
 			.ok_or_else(|| errno!(EFAULT))?;
 		let file_mutex = util::get_file_at(proc, true, dirfd, pathname, 0)?;
 
-		(file_mutex, proc.access_profile)
+		(file_mutex, ap)
 	};
 	let mut file = file_mutex.lock();
 

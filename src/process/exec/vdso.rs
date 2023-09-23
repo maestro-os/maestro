@@ -55,8 +55,10 @@ fn load_image() -> Result<Vdso, Errno> {
 	let mut pages = Vec::new();
 	for i in 0..math::ceil_div(ELF_IMAGE.len(), memory::PAGE_SIZE) {
 		// Alloc page
-		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
-		let virt_ptr = memory::kern_to_virt(ptr.as_mut()) as _;
+		let mut ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
+		let virt_ptr = memory::kern_to_virt(unsafe {
+			ptr.as_mut()
+		}) as _;
 
 		// Copy data
 		let off = i * memory::PAGE_SIZE;

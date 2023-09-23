@@ -63,7 +63,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	// Create the node
 	let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
 	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name, ap, mode, file_content)?;
+	vfs::create_file(&mut parent, name, &ap, mode, file_content)?;
 
 	Ok(0)
 }

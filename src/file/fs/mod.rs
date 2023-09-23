@@ -157,12 +157,14 @@ pub trait Filesystem: Any {
 	/// - `io` is the IO interface.
 	/// - `parent_inode` is the parent file's inode.
 	/// - `name` is the file's name.
+	///
+	/// The function returns the number of hard links left on the inode.
 	fn remove_file(
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<(), Errno>;
+	) -> Result<u16, Errno>;
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
 	///

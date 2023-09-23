@@ -107,7 +107,7 @@ fn get_file_by_path_impl(
 	let io_mutex = mountpoint.get_source().get_io()?;
 	let mut io = io_mutex.lock();
 
-	// Get the path from the start of the filesystem to the file
+	// Get the path of the file beginning from the start of its filesystem
 	let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
 
 	// The filesystem
@@ -259,12 +259,12 @@ pub fn get_file_from_parent(
 pub fn create_file(
 	parent: &mut File,
 	name: String,
-	mut ap: AccessProfile,
+	ap: &AccessProfile,
 	mode: Mode,
 	content: FileContent,
 ) -> EResult<Arc<Mutex<File>>> {
 	// If file already exist, error
-	if get_file_from_parent(parent, name.try_clone()?, &ap, false).is_ok() {
+	if get_file_from_parent(parent, name.try_clone()?, ap, false).is_ok() {
 		return Err(errno!(EEXIST));
 	}
 
@@ -433,9 +433,8 @@ pub(crate) fn remove_file_inner(
 	}
 
 	// Remove the file
-	fs.remove_file(&mut *io, parent_location.get_inode(), name)?;
-
-	if file.get_hard_links_count() <= 1 {
+	let links_left = fs.remove_file(&mut *io, parent_location.get_inode(), name)?;
+	if links_left == 0 {
 		// If the file is a named pipe or socket, free its now unused buffer
 		buffer::release(location);
 	}

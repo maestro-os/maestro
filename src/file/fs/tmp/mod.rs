@@ -189,7 +189,7 @@ impl Filesystem for TmpFS {
 		io: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<(), Errno> {
+	) -> Result<u16, Errno> {
 		// TODO Update fs's size
 		self.fs.remove_file(io, parent_inode, name)
 	}

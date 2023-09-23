@@ -43,7 +43,7 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		vfs::create_file(
 			&mut parent,
 			name,
-			ap,
+			&ap,
 			mode,
 			FileContent::Directory(HashMap::new()),
 		)?;

@@ -174,7 +174,7 @@ impl AccessProfile {
 	/// Sets the effective user ID.
 	///
 	/// If the agent is not privileged enough to make the change, the function returns an error.
-	pub fn set_euid(&self, uid: Uid) -> EResult<()> {
+	pub fn set_euid(&mut self, uid: Uid) -> EResult<()> {
 		if uid == ROOT_UID || uid == self.uid || uid == self.euid || uid == self.suid {
 			self.euid = uid;
 			Ok(())
@@ -204,7 +204,7 @@ impl AccessProfile {
 	/// Sets the effective group ID.
 	///
 	/// If the agent is not privileged enough to make the change, the function returns an error.
-	pub fn set_egid(&self, gid: Uid) -> EResult<()> {
+	pub fn set_egid(&mut self, gid: Uid) -> EResult<()> {
 		if gid == ROOT_GID || gid == self.gid || gid == self.egid || gid == self.sgid {
 			self.egid = gid;
 			Ok(())

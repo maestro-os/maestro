@@ -247,7 +247,7 @@ impl Filesystem for ProcFS {
 		_io: &mut dyn IO,
 		_parent_inode: INode,
 		_name: &[u8],
-	) -> Result<(), Errno> {
+	) -> Result<u16, Errno> {
 		Err(errno!(EACCES))
 	}
 

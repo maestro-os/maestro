@@ -23,6 +23,8 @@ pub fn linkat(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
+		let ap = proc.access_profile;
+
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
@@ -38,7 +40,7 @@ pub fn linkat(
 		let (new_parent, new_name) =
 			super::util::get_parent_at_with_name(proc, follow_links, newdirfd, newpath)?;
 
-		(old, new_parent, new_name, proc.access_profile)
+		(old, new_parent, new_name, ap)
 	};
 
 	let mut old = old_mutex.lock();

@@ -78,7 +78,8 @@ static MAPPED_FILES: Mutex<HashMap<FileLocation, MappedFile>> = Mutex::new(HashM
 ///
 /// If the page is not mapped, the function returns `None`.
 pub fn get_page(loc: &FileLocation, off: usize) -> Option<&mut [u8; memory::PAGE_SIZE]> {
-	let file = MAPPED_FILES.lock().get_mut(loc)?;
+	let mut mapped_files = MAPPED_FILES.lock();
+	let file = mapped_files.get_mut(loc)?;
 	let page = file.pages.get_mut(&off)?;
 
 	Some(unsafe { page.ptr.as_mut() })
@@ -90,14 +91,12 @@ pub fn get_page(loc: &FileLocation, off: usize) -> Option<&mut [u8; memory::PAGE
 /// - `loc` is the location to the file.
 /// - `off` is the offset of the page to map.
 pub fn map(loc: FileLocation, _off: usize) -> Result<(), Errno> {
-	let _mapped_file = {
-		let mapped_files = MAPPED_FILES.lock();
-		match mapped_files.get_mut(&loc) {
-			Some(f) => f,
-			None => {
-				mapped_files.insert(loc.clone(), MappedFile::default())?;
-				mapped_files.get_mut(&loc).unwrap()
-			}
+	let mut mapped_files = MAPPED_FILES.lock();
+	let _mapped_file = match mapped_files.get_mut(&loc) {
+		Some(f) => f,
+		None => {
+			mapped_files.insert(loc.clone(), MappedFile::default())?;
+			mapped_files.get_mut(&loc).unwrap()
 		}
 	};
 
@@ -114,7 +113,7 @@ pub fn map(loc: FileLocation, _off: usize) -> Result<(), Errno> {
 ///
 /// If the file mapping doesn't exist or the page isn't mapped, the function does nothing.
 pub fn unmap(loc: &FileLocation, _off: usize) {
-	let mapped_files = MAPPED_FILES.lock();
+	let mut mapped_files = MAPPED_FILES.lock();
 	let Some(mapped_file) = mapped_files.get_mut(loc) else {
 		return;
 	};

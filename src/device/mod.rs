@@ -224,7 +224,7 @@ impl Device {
 			vfs::create_file(
 				&mut parent,
 				filename,
-				AccessProfile::KERNEL,
+				&AccessProfile::KERNEL,
 				mode,
 				file_content,
 			)?;

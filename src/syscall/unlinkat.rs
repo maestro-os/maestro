@@ -16,6 +16,8 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
+		let ap = proc.access_profile;
+
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 		let pathname = pathname
@@ -24,7 +26,7 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 
 		let file = util::get_file_at(proc, false, dirfd, pathname, flags)?;
 
-		(file, proc.access_profile)
+		(file, ap)
 	};
 
 	let file = file_mutex.lock();
