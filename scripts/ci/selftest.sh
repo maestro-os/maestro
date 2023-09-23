@@ -24,6 +24,4 @@ echo
 echo "Selftests output:"
 cat -e serial.log
 
-if [ "$EXIT" -ne 33 ]; then
-	exit 1
-fi
+exit $EXIT

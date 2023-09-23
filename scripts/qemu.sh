@@ -20,3 +20,8 @@ if [ -f $QEMU_DISK ]; then
 fi
 
 qemu-system-i386 -cdrom kernel.iso $QEMUFLAGS >qemu.log 2>&1
+EXIT=$?
+
+if [ "$EXIT" -ne 33 ]; then
+	exit 1
+fi

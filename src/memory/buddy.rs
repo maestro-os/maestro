@@ -600,6 +600,7 @@ pub fn allocated_pages_count() -> usize {
 mod test {
 	use super::*;
 	use core::ptr::null;
+	use core::slice;
 
 	#[test_case]
 	fn buddy0() {
@@ -607,10 +608,10 @@ mod test {
 
 		if let Ok(p) = alloc_kernel(0) {
 			let slice =
-				unsafe { core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0)) };
+				unsafe { slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0)) };
 			slice.fill(!0);
 
-			free_kernel(p, 0);
+			free_kernel(p.as_ptr(), 0);
 		} else {
 			assert!(false);
 		}
@@ -624,10 +625,10 @@ mod test {
 
 		if let Ok(p) = alloc_kernel(1) {
 			let slice =
-				unsafe { core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0)) };
+				unsafe { slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0)) };
 			slice.fill(!0);
 
-			free_kernel(p, 1);
+			free_kernel(p.as_ptr(), 1);
 		} else {
 			assert!(false);
 		}
@@ -638,13 +639,13 @@ mod test {
 	fn lifo_test(i: usize) {
 		if let Ok(p) = alloc_kernel(0) {
 			let slice =
-				unsafe { core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0)) };
+				unsafe { slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0)) };
 			slice.fill(!0);
 
 			if i > 0 {
 				lifo_test(i - 1);
 			}
-			free_kernel(p, 0);
+			free_kernel(p.as_ptr(), 0);
 		} else {
 			assert!(false);
 		}
@@ -667,7 +668,7 @@ mod test {
 
 		for i in 0..frames.len() {
 			if let Ok(p) = alloc_kernel(0) {
-				frames[i] = p;
+				frames[i] = p.as_ptr();
 			} else {
 				assert!(false);
 			}
@@ -683,11 +684,11 @@ mod test {
 	fn get_dangling(order: FrameOrder) -> *mut c_void {
 		if let Ok(p) = alloc_kernel(order) {
 			let slice =
-				unsafe { core::slice::from_raw_parts_mut(p as *mut u8, get_frame_size(0)) };
+				unsafe { slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0)) };
 			slice.fill(!0);
 
-			free_kernel(p, 0);
-			p
+			free_kernel(p.as_ptr(), 0);
+			p.as_ptr()
 		} else {
 			assert!(false);
 			null::<c_void>() as _
@@ -738,7 +739,7 @@ mod test {
 
 		let mut first = null::<TestDupNode>() as *mut TestDupNode;
 		while let Ok(p) = alloc_kernel(0) {
-			let node = p as *mut TestDupNode;
+			let node = p.as_ptr() as *mut TestDupNode;
 			unsafe {
 				(*node).next = first;
 			}
