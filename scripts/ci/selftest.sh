@@ -2,7 +2,7 @@
 
 set -e
 
-export QEMU_FLAGS="-nographic -serial none -serial file:serial.log -device isa-debug-exit,iobase=0xf4,iosize=0x04"
+export QEMUFLAGS="-nographic -serial none -serial file:serial.log -device isa-debug-exit,iobase=0xf4,iosize=0x04"
 
 cp default.config.toml config.toml
 sed -i 's/^qemu = false$/qemu = true/' config.toml

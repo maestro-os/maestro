@@ -5,7 +5,7 @@
 # The AUX_ELF environment variable allows to specify the path to an auxilary ELF file whoses symbols will be added to gdb.
 # This allows to debug the kernel with a given running program.
 
-export QEMU_FLAGS="-s -S -d int"
+export QEMUFLAGS="-s -S -d int"
 setsid cargo run &
 QEMU_PID=$!
 
