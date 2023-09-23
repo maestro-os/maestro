@@ -142,9 +142,7 @@ fn alloc_obj() -> AllocResult<*mut u32> {
 	let slice = unsafe { slice::from_raw_parts_mut(ptr.as_mut(), buddy::get_frame_size(0)) };
 	slice.fill(0);
 
-	Ok(unsafe {
-		ptr.as_mut()
-	})
+	Ok(unsafe { ptr.as_mut() })
 }
 
 /// Returns the object at index `index` of given object `obj`.

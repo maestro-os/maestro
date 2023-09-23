@@ -289,8 +289,10 @@ pub fn register(device: Device) -> Result<(), Errno> {
 		devs.insert(id, dev_mutex.clone())?;
 	}
 
-	// Create file
-	Device::create_file(dev_mutex.lock())?;
+	// Create file if files management has been initialized
+	if file::is_init() {
+		Device::create_file(dev_mutex.lock())?;
+	}
 
 	Ok(())
 }
@@ -351,6 +353,9 @@ pub fn init() -> Result<(), Errno> {
 ///
 /// This function must be used only once at boot, after files management has been initialized.
 pub fn stage2() -> Result<(), Errno> {
+	default::create()
+		.unwrap_or_else(|e| crate::kernel_panic!("Failed to create default devices! ({e})"));
+
 	// Unsafe access is made to avoid a deadlock
 	// This is acceptable since the container is not borrowed as mutable, both here and further
 	// into the function

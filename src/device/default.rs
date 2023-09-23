@@ -9,6 +9,7 @@ use crate::device::Device;
 use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::errno;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::file::path::Path;
@@ -258,7 +259,7 @@ impl IO for KMsgDeviceHandle {
 }
 
 /// Creates the default devices.
-pub fn create() -> Result<(), Errno> {
+pub(super) fn create() -> EResult<()> {
 	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
 
 	let null_path = Path::from_str(b"/dev/null", false)?;

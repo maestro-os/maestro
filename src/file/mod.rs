@@ -886,3 +886,8 @@ pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 
 	Ok(())
 }
+
+/// Tells whether files management has been initialized.
+pub fn is_init() -> bool {
+	!mountpoint::MOUNT_POINTS.lock().is_empty()
+}

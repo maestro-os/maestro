@@ -536,9 +536,7 @@ pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 	let virt_ptr = memory::kern_to_virt(ptr.as_ptr()) as _;
 	debug_assert!(virt_ptr as *const _ >= memory::PROCESS_END);
 
-	Ok(unsafe {
-		NonNull::new(virt_ptr).unwrap_unchecked()
-	})
+	Ok(unsafe { NonNull::new(virt_ptr).unwrap_unchecked() })
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator.
