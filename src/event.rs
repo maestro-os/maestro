@@ -174,18 +174,17 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 /// This function is called whenever an interruption is triggered.
 ///
 /// Arguments:
-/// - `id` is the identifier of the interrupt type.
-/// This value is architecture-dependent.
-/// - `code` is an optional code associated with the interrupt.
-/// If the interrupt type doesn't have a code, the value is `0`.
-/// - `regs` is the state of the registers at the moment of the interrupt.
-/// - `ring` tells the ring at which the code was running.
+/// - `id` is the identifier of the interrupt type
+/// This value is architecture-dependent
+/// - `code` is an optional code associated with the interrupt
+/// If the interrupt type doesn't have a code, the value is `0`
+/// - `regs` is the state of the registers at the moment of the interrupt
+/// - `ring` tells the ring at which the code was running
 #[no_mangle]
 extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	// Feed entropy pool
 	{
 		let mut pool = rand::ENTROPY_POOL.lock();
-
 		if let Some(pool) = &mut *pool {
 			feed_entropy(pool, &id);
 			feed_entropy(pool, &code);
@@ -195,7 +194,6 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 	}
 
 	let mut callbacks = CALLBACKS[id as usize].lock();
-
 	for c in callbacks.iter_mut() {
 		let result = c(id, code, regs, ring);
 		match result {
@@ -216,7 +214,7 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 
 			CallbackResult::Panic => {
 				panic::kernel_panic_(
-					format_args!("{} (code: {})", get_error_message(id), code),
+					format_args!("{} (code: {code})", get_error_message(id)),
 					Some(regs),
 					file!(),
 					line!(),

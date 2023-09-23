@@ -13,16 +13,16 @@
  * The stack frame is used as a reference to place the register values.
  */
 .macro GET_REGS n
-	# Allocating space on the stack to store the registers
+	# Allocate space on the stack to store the registers
 	sub $REGS_SIZE, %esp
 
-	# Filling segments in the structure
+	# Fill segments in the structure
 	movl $0, 0x2c(%esp)
 	mov %fs, 0x2c(%esp)
 	movl $0, 0x28(%esp)
 	mov %gs, 0x28(%esp)
 
-	# Filling registers in the structure
+	# Fill registers in the structure
 	mov %edi, 0x24(%esp)
 	mov %esi, 0x20(%esp)
 	mov %edx, 0x1c(%esp)
@@ -30,7 +30,7 @@
 	mov %ebx, 0x14(%esp)
 	mov %eax, 0x10(%esp)
 
-	# Saving the fx state
+	# Save the fx state
 	mov %esp, %eax
 	add $0x30, %eax
 	push %eax
@@ -69,18 +69,18 @@ esp_end_\n:
  * This macro restores the registers' states and frees the space allocated by the function GET_REGS.
  */
 .macro RESTORE_REGS
-	# Restoring the fx state
+	# Restore the fx state
 	mov %esp, %eax
 	add $0x30, %eax
 	push %eax
 	call restore_fxstate
 	add $4, %esp
 
-	# Restoring segments
+	# Restore segments
 	mov 0x2c(%esp), %fs
 	mov 0x28(%esp), %gs
 
-	# Restoring registers
+	# Restore registers
 	mov 0x24(%esp), %edi
 	mov 0x20(%esp), %esi
 	mov 0x1c(%esp), %edx
@@ -88,6 +88,6 @@ esp_end_\n:
 	mov 0x14(%esp), %ebx
 	mov 0x10(%esp), %eax
 
-	# Freeing the space allocated on the stack
+	# Free the space allocated on the stack
 	add $REGS_SIZE, %esp
 .endm

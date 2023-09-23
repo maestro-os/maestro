@@ -25,14 +25,14 @@ error\n:
 	push %ebp
 	mov %esp, %ebp
 
-	# Allocating space for registers and retrieving them
+	# Allocate space for registers and retrieve them
 GET_REGS \n
 
-	# Getting the ring
+	# Get the ring
 	mov 8(%ebp), %eax
 	and $0b11, %eax
 
-	# Pushing arguments to call event_handler
+	# Push arguments to call event_handler
 	push %esp # regs
 	push %eax # ring
 	push $0 # code
@@ -42,7 +42,7 @@ GET_REGS \n
 
 RESTORE_REGS
 
-	# Restoring the context
+	# Restore the context
 	mov %ebp, %esp
 	pop %ebp
 	iret
@@ -59,30 +59,30 @@ RESTORE_REGS
 .type error\n, @function
 
 error\n:
-	# Retrieving the error code and writing it after the stack pointer so that it can be retrieved
+	# Retrieve the error code and write it after the stack pointer so that it can be retrieved
 	# after the stack frame
 	push %eax
 	mov 4(%esp), %eax
 	mov %eax, -4(%esp)
 	pop %eax
 
-	# Removing the code from its previous location on the stack
+	# Remove the code from its previous location on the stack
 	add $4, %esp
 
 	push %ebp
 	mov %esp, %ebp
 
-	# Allocating space for the error code
+	# Allocate space for the error code
 	push -8(%esp)
 
-	# Allocating space for registers and retrieving them
+	# Allocate space for registers and retrieve them
 GET_REGS \n
 
-	# Getting the ring
+	# Get the ring
 	mov 8(%ebp), %eax
 	and $0b11, %eax
 
-	# Pushing arguments to call event_handler
+	# Push arguments to call event_handler
 	push %esp # regs
 	push %eax # ring
 	push (REGS_SIZE + 8)(%esp) # code
@@ -92,7 +92,7 @@ GET_REGS \n
 
 RESTORE_REGS
 
-	# Freeing the space allocated for the error code
+	# Free the space allocated for the error code
 	add $4, %esp
 
 	mov %ebp, %esp
@@ -113,14 +113,14 @@ irq\n:
 	push %ebp
 	mov %esp, %ebp
 
-	# Allocating space for registers and retrieving them
+	# Allocate space for registers and retrieve them
 GET_REGS irq_\n
 
-	# Getting the ring
+	# Get the ring
 	mov 8(%ebp), %eax
 	and $0b11, %eax
 
-	# Pushing arguments to call event_handler
+	# Push arguments to call event_handler
 	push %esp # regs
 	push %eax # ring
 	push $0 # code
@@ -134,7 +134,7 @@ GET_REGS irq_\n
 
 RESTORE_REGS
 
-	# Restoring the context
+	# Restore the context
 	mov %ebp, %esp
 	pop %ebp
 	iret
@@ -143,7 +143,7 @@ RESTORE_REGS
 
 
 /*
- * Creating the handlers for every errors.
+ * Create the handlers for every errors.
  */
 ERROR_NOCODE 0
 ERROR_NOCODE 1
@@ -179,7 +179,7 @@ ERROR_CODE 30
 ERROR_NOCODE 31
 
 /*
- * Creating the handlers for every IRQs.
+ * Create the handlers for every IRQs.
  */
 IRQ 0
 IRQ 1
