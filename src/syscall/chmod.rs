@@ -30,7 +30,7 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 	let mut file = file_mutex.lock();
 
 	// Check permissions
-	if ap.can_write_file(&*file) {
+	if !ap.can_set_file_permissions(&*file) {
 		return Err(errno!(EPERM));
 	}
 

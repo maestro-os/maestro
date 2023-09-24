@@ -811,6 +811,12 @@ impl AccessProfile {
 	pub fn can_search_directory(&self, file: &File) -> bool {
 		self.can_execute_file(file)
 	}
+
+	/// Tells whether the agent can set permissions for the given file.
+	pub fn can_set_file_permissions(&self, file: &File) -> bool {
+		let euid = self.get_euid();
+		euid == perm::ROOT_UID || euid == file.get_uid()
+	}
 }
 
 impl IO for File {
