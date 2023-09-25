@@ -8,7 +8,7 @@ use crate::file::FileContent;
 use crate::util::io::IO;
 use core::cmp::min;
 
-/// Structure representing the meminfo node.
+/// Structure representing the version node.
 pub struct Version {}
 
 impl KernFSNode for Version {
