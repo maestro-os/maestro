@@ -5,6 +5,7 @@ mod mem_info;
 mod proc_dir;
 mod self_link;
 mod sys_dir;
+mod version;
 
 use super::kernfs;
 use super::kernfs::node::DummyKernFSNode;
@@ -38,6 +39,7 @@ use mem_info::MemInfo;
 use proc_dir::ProcDir;
 use self_link::SelfNode;
 use sys_dir::SysDir;
+use version::Version;
 
 /// Structure representing the procfs.
 ///
@@ -63,7 +65,7 @@ impl ProcFS {
 
 		let mut entries = HashMap::new();
 
-		// Creating /proc/meminfo
+		// Create /proc/meminfo
 		let node = MemInfo {};
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
@@ -74,7 +76,7 @@ impl ProcFS {
 			},
 		)?;
 
-		// Creating /proc/mounts
+		// Create /proc/mounts
 		let node =
 			DummyKernFSNode::new(0o777, 0, 0, FileContent::Link(b"self/mounts".try_into()?));
 		let inode = fs.fs.add_node(Box::new(node)?)?;
@@ -86,7 +88,7 @@ impl ProcFS {
 			},
 		)?;
 
-		// Creating /proc/self
+		// Create /proc/self
 		let node = SelfNode {};
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
@@ -97,7 +99,7 @@ impl ProcFS {
 			},
 		)?;
 
-		// Creating /proc/sys
+		// Create /proc/sys
 		let node = SysDir::new(&mut fs.fs)?;
 		let inode = fs.fs.add_node(Box::new(node)?)?;
 		entries.insert(
@@ -108,11 +110,22 @@ impl ProcFS {
 			},
 		)?;
 
-		// Adding the root node
+		// Create /proc/version
+		let node = Version {};
+		let inode = fs.fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			b"version".try_into()?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Regular,
+			},
+		)?;
+
+		// Add the root node
 		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(entries));
 		fs.fs.set_root(Box::new(root_node)?)?;
 
-		// Adding existing processes
+		// Add existing processes
 		{
 			let mut scheduler = process::get_scheduler().lock();
 
@@ -126,12 +139,12 @@ impl ProcFS {
 
 	/// Adds a process with the given PID `pid` to the filesystem.
 	pub fn add_process(&mut self, pid: Pid) -> Result<(), Errno> {
-		// Creating the process's node
+		// Create the process's node
 		let proc_node = ProcDir::new(pid, &mut self.fs)?;
 		let inode = self.fs.add_node(Box::new(proc_node)?)?;
 		oom::wrap(|| self.procs.insert(pid, inode));
 
-		// Inserting the process's entry at the root of the filesystem
+		// Insert the process's entry at the root of the filesystem
 		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
 		oom::wrap(|| {
 			let mut content = root.get_content().map_err(|_| AllocError)?;
@@ -158,7 +171,7 @@ impl ProcFS {
 			return Ok(());
 		};
 
-		// Removing the process's entry from the root of the filesystem
+		// Remove the process's entry from the root of the filesystem
 		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
 		oom::wrap(|| {
 			let mut content = root.get_content().map_err(|_| AllocError)?;
@@ -169,7 +182,7 @@ impl ProcFS {
 			Ok(())
 		});
 
-		// Removing the node
+		// Remove the node
 		if let Some(mut node) = oom::wrap(|| self.fs.remove_node(inode).map_err(|_| AllocError)) {
 			let node = node.as_mut() as &mut dyn Any;
 
