@@ -60,14 +60,14 @@ pub enum NewFDConstraint {
 /// Structure representing a file descriptor.
 #[derive(Debug)]
 pub struct FileDescriptor {
-	/// The FD's id.
+	/// The FD's id
 	id: u32,
-	/// The FD's flags.
+	/// The FD's flags
 	flags: i32,
 
-	/// Tells whether the file descriptor is open for reading.
+	/// Tells whether the file descriptor is open for reading
 	read: bool,
-	/// Tells whether the file descriptor is open for writing.
+	/// Tells whether the file descriptor is open for writing
 	write: bool,
 
 	/// The location of the open file.
@@ -81,18 +81,19 @@ impl FileDescriptor {
 	/// one.
 	///
 	/// Arguments:
-	/// - `id` is the ID of the file descriptor.
-	/// - `flags` is the set of flags associated with the file descriptor.
-	/// - `read` tells whether the file descriptor is open for reading.
-	/// - `write` tells whether the file descriptor is open for writing.
-	/// - `location` is the location of the open file the file descriptor points to.
+	/// - `id` is the ID of the file descriptor
+	/// - `flags` is the set of flags associated with the file descriptor
+	/// - `read` tells whether the file descriptor is open for reading
+	/// - `write` tells whether the file descriptor is open for writing
+	/// - `location` is the location of the open file the file descriptor points to
 	pub fn new(
 		id: u32,
 		flags: i32,
 		read: bool,
 		write: bool,
 		location: FileLocation,
-	) -> Result<Self, Errno> {
+	) -> EResult<Self> {
+		#[cfg(not(test))]
 		OpenFile::open(location.clone(), read, write)?;
 
 		Ok(Self {
@@ -139,7 +140,7 @@ impl FileDescriptor {
 	/// Returns the open file associated with the descriptor.
 	///
 	/// If the open file doesn't exist, the function returns an error.
-	pub fn get_open_file(&self) -> Result<Arc<Mutex<OpenFile>>, Errno> {
+	pub fn get_open_file(&self) -> EResult<Arc<Mutex<OpenFile>>> {
 		OpenFile::get(&self.location).ok_or_else(|| errno!(ENOENT))
 	}
 }
@@ -200,6 +201,7 @@ impl IO for FileDescriptor {
 
 impl Drop for FileDescriptor {
 	fn drop(&mut self) {
+		#[cfg(not(test))]
 		let _ = OpenFile::close(&self.location, self.read, self.write);
 		// TODO print error? panic?
 	}
@@ -213,53 +215,53 @@ pub struct FileDescriptorTable {
 }
 
 impl FileDescriptorTable {
+	// TODO opti
 	/// Returns the available file descriptor with the lowest ID.
 	///
 	/// If no ID is available, the function returns an error.
 	///
 	/// `min` is the minimum value for the file descriptor to be returned.
-	fn get_available_fd(&self, min: Option<u32>) -> Result<u32, Errno> {
-		if self.fds.len() >= limits::OPEN_MAX {
-			return Err(errno!(EMFILE));
-		}
-		if self.fds.is_empty() {
-			return Ok(0);
-		}
-
-		// TODO Use binary search?
-		for (i, fd) in self.fds.iter().enumerate() {
+	fn get_available_fd(&self, min: Option<u32>) -> EResult<u32> {
+		let mut prev = 0;
+		for fd in self.fds.iter() {
+			let fd = fd.get_id();
 			if let Some(min) = min {
-				if fd.get_id() < min {
+				if fd <= min {
+					prev = fd;
 					continue;
 				}
 			}
-
-			if (i as u32) < fd.get_id() {
-				return Ok(i as u32);
+			if fd - prev > 1 {
+				return Ok(fd);
 			}
+			prev = fd;
 		}
 
 		let id = match min {
 			Some(min) => max(min, self.fds.len() as u32),
 			None => self.fds.len() as u32,
 		};
-		Ok(id)
+		if id < limits::OPEN_MAX {
+			Ok(id)
+		} else {
+			Err(errno!(EMFILE))
+		}
 	}
 
 	/// Creates a file descriptor and returns a pointer to it with its ID.
 	///
 	/// Arguments:
-	/// - `location` is the location of the file the newly created file descriptor points to.
-	/// - `flags` are the file descriptor's flags.
-	/// - `read` tells whether the file descriptor is open for reading.
-	/// - `write` tells whether the file descriptor is open for writing.
+	/// - `location` is the location of the file the newly created file descriptor points to
+	/// - `flags` are the file descriptor's flags
+	/// - `read` tells whether the file descriptor is open for reading
+	/// - `write` tells whether the file descriptor is open for writing
 	pub fn create_fd(
 		&mut self,
 		location: FileLocation,
 		flags: i32,
 		read: bool,
 		write: bool,
-	) -> Result<&FileDescriptor, Errno> {
+	) -> EResult<&FileDescriptor> {
 		let id = self.get_available_fd(None)?;
 		let i = self
 			.fds
@@ -300,21 +302,25 @@ impl FileDescriptorTable {
 		id: u32,
 		constraint: NewFDConstraint,
 		cloexec: bool,
-	) -> Result<&FileDescriptor, Errno> {
+	) -> EResult<&FileDescriptor> {
 		// The ID of the new FD
 		let new_id = match constraint {
 			NewFDConstraint::None => self.get_available_fd(None)?,
-			NewFDConstraint::Fixed(id) => id,
+			NewFDConstraint::Fixed(id) => {
+				if id >= limits::OPEN_MAX {
+					return Err(errno!(EMFILE));
+				}
+				id
+			}
 			NewFDConstraint::Min(min) => self.get_available_fd(Some(min))?,
 		};
-
 		// The flags of the new FD
 		let flags = if cloexec { FD_CLOEXEC } else { 0 };
 
 		// The old FD
 		let old_fd = self.get_fd(id).ok_or_else(|| errno!(EBADF))?;
 
-		// Creating the new FD
+		// Create the new FD
 		let new_fd = FileDescriptor::new(
 			new_id,
 			flags,
@@ -323,14 +329,14 @@ impl FileDescriptorTable {
 			old_fd.get_location().clone(),
 		)?;
 
-		// Inserting the FD
+		// Insert the FD
 		let index = self.fds.binary_search_by(|fd| fd.get_id().cmp(&new_id));
-		let index = {
-			if let Ok(i) = index {
+		let index = match index {
+			Ok(i) => {
 				self.fds[i] = new_fd;
 				i
-			} else {
-				let i = index.unwrap_err();
+			}
+			Err(i) => {
 				self.fds.insert(i, new_fd)?;
 				i
 			}
@@ -341,7 +347,7 @@ impl FileDescriptorTable {
 
 	/// Duplicates the whole file descriptors table.
 	///
-	/// `cloexec` specifies whether the cloexec file must be taken into account. This is the case
+	/// `cloexec` specifies whether the cloexec flag must be taken into account. This is the case
 	/// when executing a program.
 	pub fn duplicate(&self, cloexec: bool) -> EResult<Self> {
 		let fds = self
@@ -362,9 +368,8 @@ impl FileDescriptorTable {
 	/// Closes the file descriptor with the ID `id`.
 	///
 	/// The function returns an Err if the file descriptor doesn't exist.
-	pub fn close_fd(&mut self, id: u32) -> Result<(), Errno> {
+	pub fn close_fd(&mut self, id: u32) -> EResult<()> {
 		let result = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id));
-
 		if let Ok(index) = result {
 			self.fds.remove(index);
 			Ok(())
@@ -379,5 +384,76 @@ impl Default for FileDescriptorTable {
 		Self {
 			fds: Vec::new(),
 		}
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	/// Testing location, meaning nothing.
+	const DUMMY_LOCATION: FileLocation = FileLocation::Virtual {
+		id: 0,
+	};
+
+	#[test_case]
+	fn fd_create0() {
+		let mut fds = FileDescriptorTable::default();
+		let fd = fds
+			.create_fd(DUMMY_LOCATION, 0, true, true)
+			.unwrap()
+			.get_id();
+		assert_eq!(fd, 0);
+	}
+
+	#[test_case]
+	fn fd_create1() {
+		let mut fds = FileDescriptorTable::default();
+		let fd = fds
+			.create_fd(DUMMY_LOCATION, 0, true, true)
+			.unwrap()
+			.get_id();
+		assert_eq!(fd, 0);
+
+		let fd = fds
+			.create_fd(DUMMY_LOCATION, 0, true, true)
+			.unwrap()
+			.get_id();
+		assert_eq!(fd, 1);
+	}
+
+	#[test_case]
+	fn fd_dup() {
+		let mut fds = FileDescriptorTable::default();
+		let fd = fds
+			.create_fd(DUMMY_LOCATION, 0, true, true)
+			.unwrap()
+			.get_id();
+		assert_eq!(fd, 0);
+
+		let fd0 = fds
+			.duplicate_fd(0, NewFDConstraint::None, false)
+			.unwrap()
+			.get_id();
+		assert_ne!(fd0, 0);
+
+		let fd1 = fds
+			.duplicate_fd(0, NewFDConstraint::Fixed(16), false)
+			.unwrap()
+			.get_id();
+		assert_eq!(fd1, 16);
+
+		let fd2 = fds
+			.duplicate_fd(0, NewFDConstraint::Min(8), false)
+			.unwrap()
+			.get_id();
+		assert!(fd2 >= 8);
+
+		let fd3 = fds
+			.duplicate_fd(0, NewFDConstraint::Min(8), false)
+			.unwrap()
+			.get_id();
+		assert!(fd3 >= 8);
+		assert_ne!(fd3, fd2);
 	}
 }

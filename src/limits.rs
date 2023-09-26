@@ -33,7 +33,7 @@ pub const MQ_OPEN_MAX: usize = 8;
 pub const MQ_PRIO_MAX: usize = 32;
 /// A value one greater than the maximum value that the system may assign to a
 /// newly-created file descriptor.
-pub const OPEN_MAX: usize = 1024;
+pub const OPEN_MAX: u32 = 1024;
 /// Size in bytes of a page.
 pub const PAGESIZE: usize = memory::PAGE_SIZE;
 /// Equivalent to {PAGESIZE}. If either {PAGESIZE} or {PAGE_SIZE} is defined,
