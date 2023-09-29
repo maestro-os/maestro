@@ -1,6 +1,7 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
 use crate::errno;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::open_file::OpenFile;
 use crate::file::open_file::O_NONBLOCK;
@@ -22,10 +23,17 @@ use macros::syscall;
 /// Writes the given chunks to the file.
 ///
 /// Arguments:
-/// - `mem_space` is the memory space of the current process.
-/// - `iov` is the set of chunks.
-/// - `open_file` is the file to write to.
-fn write(mem_space: &MemSpace, iov: &[IOVec], open_file: &mut OpenFile) -> Result<i32, Errno> {
+/// - `mem_space` is the memory space of the current process
+/// - `iov` is the set of chunks
+/// - `iovcnt` is the number of chunks in `iov`
+/// - `open_file` is the file to write to
+fn write(
+	mem_space: &mut MemSpace,
+	iov: &SyscallSlice<IOVec>,
+	iovcnt: usize,
+	open_file: &mut OpenFile,
+) -> EResult<i32> {
+	let iov = iov.get(&mem_space, iovcnt)?.ok_or(errno!(EFAULT))?;
 	let mut total_len = 0;
 
 	for i in iov {
@@ -49,11 +57,11 @@ fn write(mem_space: &MemSpace, iov: &[IOVec], open_file: &mut OpenFile) -> Resul
 /// Peforms the writev operation.
 ///
 /// Arguments:
-/// - `fd` is the file descriptor.
-/// - `iov` the IO vector.
-/// - `iovcnt` the number of entries in the IO vector.
-/// - `offset` is the offset in the file.
-/// - `flags` is the set of flags.
+/// - `fd` is the file descriptor
+/// - `iov` the IO vector
+/// - `iovcnt` the number of entries in the IO vector
+/// - `offset` is the offset in the file
+/// - `flags` is the set of flags
 pub fn do_writev(
 	fd: i32,
 	iov: SyscallSlice<IOVec>,
@@ -82,11 +90,11 @@ pub fn do_writev(
 		(proc_mutex, mem_space, open_file_mutex)
 	};
 
-	let start_off = match offset {
-		Some(o @ 0..) => o as u64,
+	let (start_off, update_off) = match offset {
+		Some(o @ 0..) => (o as u64, false),
 		None | Some(-1) => {
 			let open_file = open_file_mutex.lock();
-			open_file.get_offset()
+			(open_file.get_offset(), true)
 		}
 
 		Some(..-1) => return Err(errno!(EINVAL)),
@@ -98,11 +106,6 @@ pub fn do_writev(
 		// TODO super::util::signal_check(regs);
 
 		{
-			let mem_space_guard = mem_space.lock();
-			let iov_slice = iov
-				.get(&mem_space_guard, iovcnt as _)?
-				.ok_or(errno!(EFAULT))?;
-
 			let mut open_file = open_file_mutex.lock();
 			let flags = open_file.get_flags();
 
@@ -110,9 +113,9 @@ pub fn do_writev(
 			let prev_off = open_file.get_offset();
 			open_file.set_offset(start_off);
 
-			let len = match write(&mem_space_guard, &iov_slice, &mut open_file) {
+			let mut mem_space_guard = mem_space.lock();
+			let len = match write(&mut mem_space_guard, &iov, iovcnt as _, &mut open_file) {
 				Ok(len) => len,
-
 				Err(e) => {
 					// If writing to a broken pipe, kill with SIGPIPE
 					if e.as_int() == errno::EPIPE {
@@ -125,7 +128,9 @@ pub fn do_writev(
 			};
 
 			// Restore previous offset
-			open_file.set_offset(prev_off);
+			if !update_off {
+				open_file.set_offset(prev_off);
+			}
 
 			if len > 0 {
 				return Ok(len as _);

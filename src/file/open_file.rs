@@ -106,8 +106,8 @@ impl OpenFile {
 	/// Creates a new open file description and inserts it into the open files list.
 	///
 	/// Arguments:
-	/// - `location` is the location of the file to be openned.
-	/// - `flags` is the open file's set of flags.
+	/// - `location` is the location of the file to be openned
+	/// - `flags` is the open file's set of flags
 	///
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
@@ -162,8 +162,8 @@ impl OpenFile {
 	///
 	/// Arguments:
 	/// - `location` is the location of the file.
-	/// - `read` tells whether the file descriptor is open for reading.
-	/// - `write` tells whether the file descriptor is open for writing.
+	/// - `read` tells whether the file descriptor is open for reading
+	/// - `write` tells whether the file descriptor is open for writing
 	pub fn open(
 		location: FileLocation,
 		read: bool,
@@ -192,8 +192,8 @@ impl OpenFile {
 	///
 	/// Arguments:
 	/// - `location` is the location of the file.
-	/// - `read` tells whether the file descriptor is open for reading.
-	/// - `write` tells whether the file descriptor is open for writing.
+	/// - `read` tells whether the file descriptor is open for reading
+	/// - `write` tells whether the file descriptor is open for writing
 	///
 	/// If the file is not open, the function does nothing.
 	pub fn close(location: &FileLocation, read: bool, write: bool) -> EResult<()> {
@@ -408,7 +408,7 @@ impl IO for OpenFile {
 			return Err(errno!(EISDIR));
 		}
 
-		// Updating access timestamp
+		// Update access timestamp
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
 			file.atime = timestamp;
@@ -435,12 +435,12 @@ impl IO for OpenFile {
 			return Err(errno!(EISDIR));
 		}
 
-		// Appending if enabled
+		// Append if enabled
 		if self.flags & O_APPEND != 0 {
 			self.curr_off = file.get_size();
 		}
 
-		// Updating access timestamps
+		// Update access timestamps
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
 			file.atime = timestamp;
