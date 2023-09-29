@@ -210,37 +210,40 @@ impl Drop for FileDescriptor {
 /// A table of file descriptors.
 #[derive(Debug)]
 pub struct FileDescriptorTable {
+	// TODO use a BTreeMap or BTreeSet instead?
 	/// The list of file descriptors.
 	fds: Vec<FileDescriptor>,
 }
 
 impl FileDescriptorTable {
-	// TODO opti
 	/// Returns the available file descriptor with the lowest ID.
 	///
 	/// If no ID is available, the function returns an error.
 	///
 	/// `min` is the minimum value for the file descriptor to be returned.
 	fn get_available_fd(&self, min: Option<u32>) -> EResult<u32> {
-		let mut prev = 0;
-		for fd in self.fds.iter() {
+		let min = min.unwrap_or(0);
+		if min >= limits::OPEN_MAX {
+			return Err(errno!(EMFILE));
+		}
+
+		let start = match self.fds.binary_search_by(|fd| fd.get_id().cmp(&min)) {
+			Ok(i) => i,
+			Err(_) => return Ok(min),
+		};
+
+		let mut prev = min;
+		for fd in &self.fds[start..] {
 			let fd = fd.get_id();
-			if let Some(min) = min {
-				if fd <= min {
-					prev = fd;
-					continue;
-				}
-			}
 			if fd - prev > 1 {
-				return Ok(fd);
+				return Ok(prev + 1);
 			}
 			prev = fd;
 		}
 
-		let id = match min {
-			Some(min) => max(min, self.fds.len() as u32),
-			None => self.fds.len() as u32,
-		};
+		// unwrap cannot fail because
+		let id = self.fds.last().map(|fd| fd.get_id() + 1).unwrap();
+		let id = max(id, min);
 		if id < limits::OPEN_MAX {
 			Ok(id)
 		} else {
