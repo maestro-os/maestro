@@ -40,10 +40,10 @@ pub fn _llseek(
 		(mem_space, open_file_mutex)
 	};
 
-	// Getting file
+	// Get file
 	let mut open_file = open_file_mutex.lock();
 
-	// Computing the offset
+	// Compute the offset
 	let off = ((offset_high as u64) << 32) | (offset_low as u64);
 	let off = match whence {
 		SEEK_SET => off,
@@ -61,13 +61,13 @@ pub fn _llseek(
 
 	{
 		let mut mem_space_guard = mem_space.lock();
-		// Writing the result to the userspace
+		// Write the result to the userspace
 		if let Some(result) = result.get_mut(&mut mem_space_guard)? {
 			*result = off;
 		}
 	}
 
-	// Setting the offset
+	// Set the offset
 	open_file.set_offset(off);
 
 	Ok(0)

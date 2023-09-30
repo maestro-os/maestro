@@ -537,10 +537,6 @@ impl File {
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
 		match &self.content {
-			FileContent::Regular => Err(errno!(EINVAL)),
-			FileContent::Directory(_entries) => Err(errno!(EINVAL)),
-			FileContent::Link(_target) => Err(errno!(EINVAL)),
-
 			FileContent::Fifo => {
 				let buff_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
 				let mut buff = buff_mutex.lock();
@@ -584,6 +580,8 @@ impl File {
 				let mut dev = dev_mutex.lock();
 				dev.get_handle().ioctl(mem_space, request, argp)
 			}
+
+			_ => Err(errno!(ENOTTY)),
 		}
 	}
 
