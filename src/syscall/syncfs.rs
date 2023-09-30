@@ -20,7 +20,7 @@ pub fn syncfs(fd: c_int) -> Result<i32, Errno> {
 		let fds = fds_mutex.lock();
 
 		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-		fd.get_open_file()?
+		fd.get_open_file()
 	};
 
 	let open_file = open_file_mutex.lock();

@@ -20,7 +20,6 @@ use crate::syscall::ioctl;
 use crate::time::clock;
 use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimestampScale;
-use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::lock::IntMutex;
@@ -67,122 +66,50 @@ pub const O_SYNC: i32 = 0b00000000000100000001000000000000;
 /// If the file already exists, truncate it to length zero.
 pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 
-/// The list of currently open files.
-static OPEN_FILES: Mutex<HashMap<FileLocation, Arc<Mutex<OpenFile>>>> = Mutex::new(HashMap::new());
-
-// TODO Keep a different references counter for read and write.
-// And increment/decrement on open and close (using FD's flags)
-
 /// An open file description.
 ///
 /// This structure is pointed to by file descriptors and point to files.
 /// They exist to ensure several file descriptors can share the same open file.
 #[derive(Debug)]
 pub struct OpenFile {
-	/// The location of the file.
+	/// The location of the file the description points to.
 	location: FileLocation,
-
 	/// The open file description's flags.
 	flags: i32,
+
 	/// The current offset in the file.
 	/// If pointing to a directory, this is the offset in directory entries.
 	curr_off: u64,
-
-	/// The number of concurrent file descriptors pointing the the current file.
-	ref_count: usize,
 	/// If file removal has been deferred (to the moment no process is using it anymore), this
 	/// field contains informations to locate it.
 	deferred_remove: Option<(FileLocation, String)>,
 }
 
 impl OpenFile {
-	/// Returns the open file at the given location.
-	///
-	/// If the location doesn't exist or if the file isn't open, the function returns `None`.
-	pub fn get(location: &FileLocation) -> Option<Arc<Mutex<Self>>> {
-		OPEN_FILES.lock().get(location).cloned()
-	}
-
 	/// Creates a new open file description and inserts it into the open files list.
 	///
 	/// Arguments:
-	/// - `location` is the location of the file to be openned
+	/// - `location` is the location of the file to be opened
 	/// - `flags` is the open file's set of flags
 	///
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
-	pub fn new(location: FileLocation, flags: i32) -> Result<Arc<Mutex<Self>>, Errno> {
-		let open_file_mutex = match Self::get(&location) {
-			Some(open_file_mutex) => {
-				{
-					let mut open_file = open_file_mutex.lock();
+	pub fn new(location: FileLocation, flags: i32) -> EResult<Self> {
+		let s = Self {
+			location,
+			flags,
 
-					let read =
-						open_file.can_read() || flags & 0b11 == O_RDONLY || flags & 0b11 == O_RDWR;
-					let write = open_file.can_write()
-						|| flags & 0b11 == O_WRONLY
-						|| flags & 0b11 == O_RDWR;
-
-					let mut new_flags = (open_file.flags & !0b11) | (flags & !0b11);
-					if read && write {
-						new_flags |= O_RDWR;
-					} else if read {
-						new_flags |= O_RDONLY;
-					} else if write {
-						new_flags |= O_WRONLY;
-					}
-
-					open_file.flags = new_flags;
-				}
-
-				open_file_mutex
-			}
-
-			None => {
-				let open_file = Arc::new(Mutex::new(Self {
-					location: location.clone(),
-
-					flags,
-					curr_off: 0,
-
-					ref_count: 0,
-					deferred_remove: None,
-				}))?;
-
-				OPEN_FILES.lock().insert(location, open_file.clone())?;
-
-				open_file
-			}
+			curr_off: 0,
+			deferred_remove: None,
 		};
 
-		Ok(open_file_mutex)
-	}
-
-	/// Increments the number of references to the file with the given location.
-	///
-	/// Arguments:
-	/// - `location` is the location of the file.
-	/// - `read` tells whether the file descriptor is open for reading
-	/// - `write` tells whether the file descriptor is open for writing
-	pub fn open(
-		location: FileLocation,
-		read: bool,
-		write: bool,
-	) -> Result<Arc<Mutex<Self>>, Errno> {
-		let open_file_mutex = Self::get(&location).ok_or_else(|| errno!(ENOENT))?;
-
-		{
-			let mut open_file = open_file_mutex.lock();
-			open_file.ref_count += 1;
-
-			// If the file points to a buffer, increment the number of open ends
-			if let Some(buff_mutex) = buffer::get(&open_file.location) {
-				let mut buff = buff_mutex.lock();
-				buff.increment_open(read, write);
-			}
+		// If the file points to a buffer, increment the number of open ends
+		if let Some(buff_mutex) = buffer::get(&location) {
+			let mut buff = buff_mutex.lock();
+			buff.increment_open(s.can_read(), s.can_write());
 		}
 
-		Ok(open_file_mutex)
+		Ok(s)
 	}
 
 	/// Decrements the reference counter of the open file for the given location.
@@ -196,34 +123,18 @@ impl OpenFile {
 	/// - `write` tells whether the file descriptor is open for writing
 	///
 	/// If the file is not open, the function does nothing.
-	pub fn close(location: &FileLocation, read: bool, write: bool) -> EResult<()> {
-		// Get open file
-		let mut open_files = OPEN_FILES.lock();
-		let Some(open_file_mutex) = open_files.get(location) else {
-			return Ok(());
-		};
-		let mut open_file = open_file_mutex.lock();
-
+	pub fn close(self) -> EResult<()> {
 		// If remove has been deferred and this is the last reference, remove the file
-		if let Some((parent_location, name)) = &open_file.deferred_remove {
-			if open_file.ref_count == 1 {
-				vfs::remove_file_inner(location, parent_location, name)?;
+		if let Some((parent_location, name)) = &self.deferred_remove {
+			if self.ref_count == 1 {
+				vfs::remove_file_inner(self.location, parent_location, name)?;
 			}
 		}
 
 		// If the file points to a buffer, decrement the number of open ends
-		if let Some(buff_mutex) = buffer::get(&open_file.location) {
+		if let Some(buff_mutex) = buffer::get(&self.location) {
 			let mut buff = buff_mutex.lock();
-			buff.decrement_open(read, write);
-		}
-
-		// If no reference is left, clean up
-		open_file.ref_count -= 1;
-		if open_file.ref_count == 0 {
-			drop(open_file);
-
-			open_files.remove(location);
-			buffer::release(location);
+			buff.decrement_open(self.can_read(), self.can_write());
 		}
 
 		Ok(())
@@ -265,7 +176,7 @@ impl OpenFile {
 		matches!(self.flags & 0b11, O_WRONLY | O_RDWR)
 	}
 
-	/// Tells whether the atime is updated on access.
+	/// Tells whether the access time (`atime`) must be updated on access.
 	fn is_atime_updated(&self) -> bool {
 		let Some(mp) = self.location.get_mountpoint() else {
 			return true;

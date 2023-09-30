@@ -1,12 +1,12 @@
 //! The `utimensat` system call allows to change the timestamps of a file.
 
+use crate::time::unit::TimeUnit;
 use super::access::AT_FDCWD;
 use super::util;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::time::unit::TimeUnit;
 use crate::time::unit::Timespec;
 use core::ffi::c_int;
 use macros::syscall;
@@ -38,7 +38,7 @@ pub fn utimensat(
 					.lock()
 					.get_fd(dirfd as _)
 					.ok_or(errno!(EBADF))?
-					.get_open_file()?
+					.get_open_file()
 					.lock()
 					.get_file()?
 			}

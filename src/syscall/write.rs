@@ -1,6 +1,7 @@
 //! This module implements the `write` system call, which allows to write data
 //! to a file.
 
+use crate::util::io::IO;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::O_NONBLOCK;
@@ -9,7 +10,6 @@ use crate::process::scheduler;
 use crate::process::Process;
 use crate::syscall::Signal;
 use crate::util::io;
-use crate::util::io::IO;
 use core::cmp::min;
 use core::ffi::c_int;
 use macros::syscall;
@@ -35,7 +35,7 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 
 		let fds_mutex = proc.get_fds().unwrap();
 		let fds = fds_mutex.lock();
-		let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file()?;
+		let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file();
 
 		drop(proc);
 		(proc_mutex, mem_space, open_file_mutex)

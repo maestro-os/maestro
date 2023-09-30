@@ -68,6 +68,16 @@ impl<T> Arc<T> {
 			ptr,
 		})
 	}
+
+	/// Returns the inner value of the `Arc` if the this is the last reference to it.
+	pub fn into_inner(this: Self) -> Option<T> {
+		let inner = this.inner();
+		if inner.strong.load(atomic::Ordering::Relaxed) == 1 {
+			Some(inner.obj)
+		} else {
+			None
+		}
+	}
 }
 
 impl<T: ?Sized> Arc<T> {

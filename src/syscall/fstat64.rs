@@ -72,7 +72,7 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 
 		fds.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()?
+			.get_open_file()
 	};
 	let open_file = open_file_mutex.lock();
 

@@ -28,7 +28,7 @@ pub fn shutdown(sockfd: c_int, how: c_int) -> Result<i32, Errno> {
 	let fds_mutex = proc.get_fds().unwrap();
 	let fds = fds_mutex.lock();
 	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
-	let open_file_mutex = fd.get_open_file()?;
+	let open_file_mutex = fd.get_open_file();
 	let open_file = open_file_mutex.lock();
 	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();

@@ -1,6 +1,7 @@
 //! `select` waits for a file descriptor in the given sets to be readable,
 //! writable or for an exception to occur.
 
+use crate::util::io::IO;
 use crate::errno::Errno;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallSlice;
@@ -11,7 +12,6 @@ use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimeUnit;
 use crate::time::unit::Timeval;
 use crate::util::io;
-use crate::util::io::IO;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_long;
@@ -155,7 +155,7 @@ pub fn do_select<T: TimeUnit>(
 				mask |= io::POLLPRI;
 			}
 
-			let open_file_mutex = fd.get_open_file()?;
+			let open_file_mutex = fd.get_open_file();
 			let mut open_file = open_file_mutex.lock();
 
 			let result = open_file.poll(mask)?;

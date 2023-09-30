@@ -42,7 +42,7 @@ pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result
 		let open_file_mutex = fds
 			.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()?;
+			.get_open_file();
 
 		(mem_space, open_file_mutex)
 	};

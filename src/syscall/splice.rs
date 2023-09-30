@@ -1,11 +1,11 @@
 //! The `splice` system call splice data from one pipe to another.
 
+use crate::util::io::IO;
 use crate::errno::Errno;
 use crate::file::FileType;
 use crate::memory::malloc;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
-use crate::util::io::IO;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_uint;
@@ -35,11 +35,11 @@ pub fn splice(
 		let input = fds
 			.get_fd(fd_in as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()?;
+			.get_open_file();
 		let output = fds
 			.get_fd(fd_out as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()?;
+			.get_open_file();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();

@@ -108,7 +108,7 @@ fn build_path_from_fd(
 		let open_file_mutex = fds
 			.get_fd(dirfd as _)
 			.ok_or(errno!(EBADF))?
-			.get_open_file()?;
+			.get_open_file();
 
 		// Unlocking to avoid deadlock with procfs
 		drop(process);
@@ -151,7 +151,7 @@ pub fn get_file_at(
 			let open_file_mutex = fds
 				.get_fd(dirfd as _)
 				.ok_or(errno!(EBADF))?
-				.get_open_file()?;
+				.get_open_file();
 
 			// Unlocking to avoid deadlock with procfs
 			drop(process);

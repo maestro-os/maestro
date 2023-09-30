@@ -44,7 +44,6 @@ use crate::util::TryClone;
 use core::ffi::c_void;
 use mountpoint::MountPoint;
 use mountpoint::MountSource;
-use open_file::OpenFile;
 use path::Path;
 use perm::AccessProfile;
 
@@ -517,11 +516,6 @@ impl File {
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> FileType {
 		self.content.as_type()
-	}
-
-	/// If the file is open, returns the associated instance. Else, returns `None`.
-	pub fn get_open_file(&self) -> Option<Arc<Mutex<OpenFile>>> {
-		OpenFile::get(&self.location)
 	}
 
 	/// Performs an ioctl operation on the file.

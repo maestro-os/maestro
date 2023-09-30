@@ -1,5 +1,6 @@
 //! The `mmap` system call allows the process to allocate memory.
 
+use crate::file::fd::FileDescriptor;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::FileType;
@@ -95,8 +96,7 @@ pub fn do_mmap(
 		let fds = fds_mutex.lock();
 
 		fds.get_fd(fd as _)
-			.map(|fd| fd.get_open_file())
-			.transpose()?
+			.map(FileDescriptor::get_open_file)
 	} else {
 		None
 	};
