@@ -1,5 +1,6 @@
 //! The `openat` syscall allows to open a file.
 
+use crate::file::open_file::OpenFile;
 use super::util;
 use crate::errno::Errno;
 use crate::file;
@@ -85,8 +86,6 @@ pub fn openat(
 		(loc, read, write, cloexec)
 	};
 
-	open_file::OpenFile::new(loc.clone(), flags)?;
-
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
@@ -98,6 +97,7 @@ pub fn openat(
 		fd_flags |= FD_CLOEXEC;
 	}
 
-	let fd = fds.create_fd(loc, fd_flags, read, write)?;
+	let open_file = OpenFile::new(loc.clone(), flags)?;
+	let fd = fds.create_fd(fd_flags, open_file)?;
 	Ok(fd.get_id() as _)
 }

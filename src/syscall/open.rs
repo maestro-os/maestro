@@ -1,6 +1,7 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
+use crate::file::open_file::OpenFile;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
@@ -165,8 +166,6 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		(loc, read, write, cloexec)
 	};
 
-	open_file::OpenFile::new(loc.clone(), flags)?;
-
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
@@ -178,7 +177,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		fd_flags |= FD_CLOEXEC;
 	}
 
-	let fd = fds.create_fd(loc, fd_flags, read, write)?;
+	let open_file = OpenFile::new(loc, flags)?;
+	let fd = fds.create_fd(fd_flags, open_file)?;
 	let fd_id = fd.get_id();
 
 	// Flushing file

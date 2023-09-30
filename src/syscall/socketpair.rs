@@ -1,6 +1,7 @@
 //! The `socketpair` system call creates a pair of file descriptor to an unnamed
 //! socket which can be used for IPC (Inter-Process Communication).
 
+use crate::file::open_file::OpenFile;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::buffer;
@@ -42,17 +43,17 @@ pub fn socketpair(
 	};
 
 	let sock = Socket::new(desc)?;
-
 	let loc = buffer::register(None, sock)?;
-	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
 
 	let fds_mutex = proc.get_fds().unwrap();
 	let mut fds = fds_mutex.lock();
 
-	let fd0 = fds.create_fd(loc.clone(), 0, true, true)?;
+	let open_file0 = OpenFile::new(loc.clone(), open_file::O_RDONLY)?;
+	let fd0 = fds.create_fd(0, open_file0)?;
 	sv_slice[0] = fd0.get_id() as _;
 
-	let fd1 = fds.create_fd(loc, 0, true, true)?;
+	let open_file1 = OpenFile::new(loc, open_file::O_WRONLY)?;
+	let fd1 = fds.create_fd(0, open_file1)?;
 	sv_slice[1] = fd1.get_id() as _;
 
 	Ok(0)

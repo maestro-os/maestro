@@ -1,5 +1,6 @@
 //! The pipe system call allows to create a pipe.
 
+use crate::file::open_file::OpenFile;
 use crate::errno::Errno;
 use crate::file::buffer;
 use crate::file::buffer::pipe::PipeBuffer;
@@ -23,17 +24,17 @@ pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
 		.get_mut(&mut mem_space_guard)?
 		.ok_or(errno!(EFAULT))?;
 
+	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
+
 	let fds_mutex = proc.get_fds().unwrap();
 	let mut fds = fds_mutex.lock();
 
-	// Create pipe
-	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
-	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
-
-	let fd0 = fds.create_fd(loc.clone(), 0, true, false)?;
+	let open_file0 = OpenFile::new(loc.clone(), open_file::O_RDONLY)?;
+	let fd0 = fds.create_fd(0, open_file0)?;
 	pipefd_slice[0] = fd0.get_id() as _;
 
-	let fd1 = fds.create_fd(loc, 0, false, true)?;
+	let open_file1 = OpenFile::new(loc, open_file::O_WRONLY)?;
+	let fd1 = fds.create_fd(0, open_file1)?;
 	pipefd_slice[1] = fd1.get_id() as _;
 
 	Ok(0)

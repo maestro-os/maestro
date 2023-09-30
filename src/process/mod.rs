@@ -19,6 +19,7 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
+use crate::process::open_file::OpenFile;
 use crate::cpu;
 use crate::errno;
 use crate::errno::AllocResult;
@@ -502,9 +503,8 @@ impl Process {
 
 			let loc = tty_file.get_location().clone();
 
-			open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
-
-			let stdin_fd = fds_table.create_fd(loc, 0, true, true)?;
+			let open_file = OpenFile::new(loc.clone(), open_file::O_RDWR)?;
+			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 
 			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;

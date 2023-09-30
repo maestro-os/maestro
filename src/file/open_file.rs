@@ -127,7 +127,7 @@ impl OpenFile {
 		// If remove has been deferred and this is the last reference, remove the file
 		if let Some((parent_location, name)) = &self.deferred_remove {
 			if self.ref_count == 1 {
-				vfs::remove_file_inner(self.location, parent_location, name)?;
+				vfs::remove_file_inner(&self.location, parent_location, name)?;
 			}
 		}
 
