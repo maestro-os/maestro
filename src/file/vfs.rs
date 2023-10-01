@@ -408,7 +408,7 @@ pub fn remove_file(file: &File, ap: &AccessProfile) -> EResult<()> {
 	remove_file_inner(file.get_location(), parent.get_location(), file.get_name())
 }
 
-pub(crate) fn remove_file_inner(
+pub(super) fn remove_file_inner(
 	location: &FileLocation,
 	parent_location: &FileLocation,
 	name: &[u8],

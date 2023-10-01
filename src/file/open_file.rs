@@ -80,9 +80,6 @@ pub struct OpenFile {
 	/// The current offset in the file.
 	/// If pointing to a directory, this is the offset in directory entries.
 	curr_off: u64,
-	/// If file removal has been deferred (to the moment no process is using it anymore), this
-	/// field contains informations to locate it.
-	deferred_remove: Option<(FileLocation, String)>,
 }
 
 impl OpenFile {
@@ -100,7 +97,6 @@ impl OpenFile {
 			flags,
 
 			curr_off: 0,
-			deferred_remove: None,
 		};
 
 		// If the file points to a buffer, increment the number of open ends

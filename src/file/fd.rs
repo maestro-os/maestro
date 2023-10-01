@@ -128,7 +128,7 @@ impl FileDescriptor {
 	/// If the file descriptor is the last reference to the underlying open file description, the
 	/// function also closes it.
 	///
-	/// If file removal has been defered, and this is the last reference to it, and remove fails,
+	/// If file removal has been deferred, and this is the last reference to it, and remove fails,
 	/// then the function returns an error.
 	pub fn close(self) -> EResult<()> {
 		let Some(file) = Arc::into_inner(self.open_file) else {

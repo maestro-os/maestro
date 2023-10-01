@@ -317,6 +317,12 @@ pub struct File {
 	location: FileLocation,
 	/// The content of the file.
 	content: FileContent,
+
+	/// The number of times the file is currently open.
+	open_count: usize,
+	/// Tells whether remove has been deferred for the file. If `true`, then the file will be
+	/// removed when `open_count` reaches zero.
+	deferred_remove: bool,
 }
 
 impl File {
