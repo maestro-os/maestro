@@ -25,7 +25,7 @@ pub fn syncfs(fd: c_int) -> Result<i32, Errno> {
 
 	let open_file = open_file_mutex.lock();
 
-	let file_mutex = open_file.get_file()?;
+	let file_mutex = open_file.get_file();
 	let file = file_mutex.lock();
 
 	let location = file.get_location();

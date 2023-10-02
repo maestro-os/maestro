@@ -19,7 +19,6 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
-use crate::process::open_file::OpenFile;
 use crate::cpu;
 use crate::errno;
 use crate::errno::AllocResult;
@@ -40,6 +39,7 @@ use crate::file::vfs;
 use crate::gdt;
 use crate::memory;
 use crate::process::mountpoint::MountSource;
+use crate::process::open_file::OpenFile;
 use crate::time::timer::TimerManager;
 use crate::tty;
 use crate::tty::TTYHandle;
@@ -501,9 +501,10 @@ impl Process {
 			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &access_profile, true)?;
 			let tty_file = tty_file_mutex.lock();
 
-			let loc = tty_file.get_location().clone();
+			let loc = tty_file.get_location();
+			let file = vfs::get_file_by_location(loc)?;
 
-			let open_file = OpenFile::new(loc.clone(), open_file::O_RDWR)?;
+			let open_file = OpenFile::new(file, open_file::O_RDWR);
 			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 

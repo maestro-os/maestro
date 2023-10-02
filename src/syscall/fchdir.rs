@@ -32,8 +32,7 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 	let open_file = open_file_mutex.lock();
 
 	let new_cwd = {
-		let file_mutex = open_file.get_file()?;
-		let file = file_mutex.lock();
+		let file = open_file.get_file().lock();
 
 		// Check for errors
 		if file.get_type() != FileType::Directory {

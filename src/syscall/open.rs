@@ -1,12 +1,12 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
-use crate::file::open_file::OpenFile;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::open_file;
+use crate::file::open_file::OpenFile;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
@@ -177,7 +177,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		fd_flags |= FD_CLOEXEC;
 	}
 
-	let open_file = OpenFile::new(loc, flags)?;
+	let open_file = OpenFile::new(loc, flags);
 	let fd = fds.create_fd(fd_flags, open_file)?;
 	let fd_id = fd.get_id();
 

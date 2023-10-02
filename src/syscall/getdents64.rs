@@ -63,7 +63,7 @@ pub fn getdents64(fd: c_int, dirp: SyscallSlice<c_void>, count: usize) -> Result
 	let start = open_file.get_offset();
 
 	{
-		let file_mutex = open_file.get_file()?;
+		let file_mutex = open_file.get_file();
 		let file = file_mutex.lock();
 
 		let entries = match file.get_content() {

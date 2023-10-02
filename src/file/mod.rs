@@ -318,10 +318,8 @@ pub struct File {
 	/// The content of the file.
 	content: FileContent,
 
-	/// The number of times the file is currently open.
-	open_count: usize,
 	/// Tells whether remove has been deferred for the file. If `true`, then the file will be
-	/// removed when `open_count` reaches zero.
+	/// removed when the file is no longer used.
 	deferred_remove: bool,
 }
 
@@ -365,6 +363,8 @@ impl File {
 
 			location,
 			content,
+
+			deferred_remove: false,
 		})
 	}
 
@@ -417,11 +417,6 @@ impl File {
 	/// stored.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location
-	}
-
-	/// Returns a mutable reference to the location at which the file is stored.
-	pub fn get_location_mut(&mut self) -> &mut FileLocation {
-		&mut self.location
 	}
 
 	/// Returns the number of hard links.

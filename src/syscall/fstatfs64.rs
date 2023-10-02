@@ -28,7 +28,7 @@ pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, 
 		let open_file_mutex = fd.get_open_file();
 		let open_file = open_file_mutex.lock();
 
-		open_file.get_file()?
+		open_file.get_file()
 	};
 
 	let file = file_mutex.lock();

@@ -70,9 +70,11 @@ pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 ///
 /// This structure is pointed to by file descriptors and point to files.
 /// They exist to ensure several file descriptors can share the same open file.
-#[derive(Debug)]
 pub struct OpenFile {
-	/// The location of the file the description points to.
+	/// The open file.
+	file: Arc<Mutex<File>>,
+	/// The file's location. This field is necessary to avoid locking the file's mutex each time
+	/// the location is required.
 	location: FileLocation,
 	/// The open file description's flags.
 	flags: i32,
@@ -86,13 +88,15 @@ impl OpenFile {
 	/// Creates a new open file description and inserts it into the open files list.
 	///
 	/// Arguments:
-	/// - `location` is the location of the file to be opened
+	/// - `file` is the open file
 	/// - `flags` is the open file's set of flags
 	///
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
-	pub fn new(location: FileLocation, flags: i32) -> EResult<Self> {
+	pub fn new(file: Arc<Mutex<File>>, flags: i32) -> Self {
+		let location = file.lock().get_location().clone();
 		let s = Self {
+			file,
 			location,
 			flags,
 
@@ -105,7 +109,7 @@ impl OpenFile {
 			buff.increment_open(s.can_read(), s.can_write());
 		}
 
-		Ok(s)
+		s
 	}
 
 	/// Decrements the reference counter of the open file for the given location.
@@ -136,16 +140,16 @@ impl OpenFile {
 		Ok(())
 	}
 
-	/// Returns the location of the open file.
-	pub fn get_location(&self) -> &FileLocation {
-		&self.location
-	}
-
 	/// Returns the file.
 	///
 	/// The name of the file is not set since it cannot be known from this structure.
-	pub fn get_file(&self) -> Result<Arc<Mutex<File>>, Errno> {
-		vfs::get_file_by_location(&self.location)
+	pub fn get_file(&self) -> &Mutex<File> {
+		&self.file
+	}
+
+	/// Returns the location of the file.
+	pub fn get_location(&self) -> &FileLocation {
+		&self.location
 	}
 
 	/// Returns the file flags.
@@ -199,9 +203,7 @@ impl OpenFile {
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
-		let file_mutex = self.get_file()?;
-		let mut file = file_mutex.lock();
-
+		let mut file = self.file.lock();
 		match file.get_content() {
 			FileContent::Regular => match request.get_old_format() {
 				ioctl::FIONREAD => {
@@ -233,9 +235,7 @@ impl OpenFile {
 	///
 	/// If the file cannot block, the function does nothing.
 	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
-		let file_mutex = self.get_file()?;
-		let file = file_mutex.lock();
-
+		let file = self.file.lock();
 		match file.get_content() {
 			FileContent::Fifo | FileContent::Socket => {
 				if let Some(buff_mutex) = buffer::get(self.get_location()) {
@@ -298,7 +298,7 @@ impl OpenFile {
 
 impl IO for OpenFile {
 	fn get_size(&self) -> u64 {
-		self.get_file().map(|f| f.lock().get_size()).unwrap_or(0)
+		self.file.lock().get_size()
 	}
 
 	/// Note: on this specific implementation, the offset is ignored since
@@ -308,9 +308,7 @@ impl IO for OpenFile {
 			return Err(errno!(EINVAL));
 		}
 
-		let file_mutex = self.get_file()?;
-		let mut file = file_mutex.lock();
-
+		let mut file = self.file.lock();
 		if matches!(file.get_content(), FileContent::Directory(_)) {
 			return Err(errno!(EISDIR));
 		}
@@ -335,9 +333,7 @@ impl IO for OpenFile {
 			return Err(errno!(EINVAL));
 		}
 
-		let file_mutex = self.get_file()?;
-		let mut file = file_mutex.lock();
-
+		let mut file = self.file.lock();
 		if matches!(file.get_content(), FileContent::Directory(_)) {
 			return Err(errno!(EISDIR));
 		}
@@ -362,9 +358,6 @@ impl IO for OpenFile {
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
-		let file_mutex = self.get_file()?;
-		let mut file = file_mutex.lock();
-
-		file.poll(mask)
+		self.file.lock().poll(mask)
 	}
 }

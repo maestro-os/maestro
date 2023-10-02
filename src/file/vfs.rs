@@ -34,7 +34,7 @@ use core::ptr::NonNull;
 fn update_location(file: &mut File, mountpoint: &MountPoint) {
 	if let FileLocation::Filesystem {
 		mountpoint_id, ..
-	} = file.get_location_mut()
+	} = &mut file.location
 	{
 		*mountpoint_id = mountpoint.get_id();
 	}

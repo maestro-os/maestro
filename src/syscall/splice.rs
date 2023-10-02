@@ -1,11 +1,11 @@
 //! The `splice` system call splice data from one pipe to another.
 
-use crate::util::io::IO;
 use crate::errno::Errno;
 use crate::file::FileType;
 use crate::memory::malloc;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::Process;
+use crate::util::io::IO;
 use core::cmp::min;
 use core::ffi::c_int;
 use core::ffi::c_uint;
@@ -51,8 +51,8 @@ pub fn splice(
 	};
 
 	{
-		let input_type = input_mutex.lock().get_file()?.lock().get_type();
-		let output_type = output_mutex.lock().get_file()?.lock().get_type();
+		let input_type = input_mutex.lock().get_file().lock().get_type();
+		let output_type = output_mutex.lock().get_file().lock().get_type();
 
 		let in_is_pipe = matches!(input_type, FileType::Fifo);
 		let out_is_pipe = matches!(output_type, FileType::Fifo);
@@ -82,15 +82,11 @@ pub fn splice(
 
 	let len = {
 		let mut input = input_mutex.lock();
-
 		let prev_off = input.get_offset();
-
 		let (len, _) = input.read(off_in.unwrap_or(0), buff.as_slice_mut())?;
-
 		if off_in.is_some() {
 			input.set_offset(prev_off);
 		}
-
 		len
 	};
 

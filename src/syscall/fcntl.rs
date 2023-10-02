@@ -266,7 +266,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 			let open_file_mutex = fd.get_open_file();
 			let open_file = open_file_mutex.lock();
 
-			let file_mutex = open_file.get_file()?;
+			let file_mutex = open_file.get_file();
 			let file = file_mutex.lock();
 
 			match file.get_content() {
