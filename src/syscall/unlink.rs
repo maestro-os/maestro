@@ -25,8 +25,8 @@ pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
 
 	// Remove the file
 	let file_mutex = vfs::get_file_from_path(&path, &ap, true)?;
-	let file = file_mutex.lock();
-	vfs::remove_file(&file, &ap)?;
+	let mut file = file_mutex.lock();
+	vfs::remove_file(&mut file, &ap)?;
 
 	Ok(0)
 }

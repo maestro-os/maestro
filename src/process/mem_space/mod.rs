@@ -60,7 +60,7 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 /// The physical pages reference counter.
 pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
 
-// TODO update the number of reference to the open file when necessary
+// TODO when reaching the last reference to the open file, close it on unmap
 
 // TODO Disallow clone and use a special function + Drop to increment/decrement reference counters
 /// Enumeration of map residences.

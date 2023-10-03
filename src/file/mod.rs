@@ -22,6 +22,7 @@ use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
@@ -215,7 +216,7 @@ pub struct DirEntry {
 /// Enumeration of all possible file contents for each file types.
 #[derive(Debug)]
 pub enum FileContent {
-	/// The file is a regular file. No data.
+	/// The file is a regular file.
 	Regular,
 	/// The file is a directory.
 	///
@@ -680,6 +681,20 @@ impl File {
 				f(Some(io as _), None)
 			}
 		}
+	}
+
+	/// Defers removal of the file, meaning the file will be removed when closed.
+	pub fn defer_remove(&mut self) {
+		self.deferred_remove = true;
+	}
+
+	/// Closes the file, removing it if removal has been deferred.
+	pub fn close(mut self) -> EResult<()> {
+		if !self.deferred_remove {
+			return Ok(());
+		}
+
+		vfs::remove_file(&mut self, &AccessProfile::KERNEL)
 	}
 }
 

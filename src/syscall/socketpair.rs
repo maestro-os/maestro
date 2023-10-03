@@ -7,6 +7,7 @@ use crate::file::buffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::open_file;
 use crate::file::open_file::OpenFile;
+use crate::file::vfs;
 use crate::net::SocketDesc;
 use crate::net::SocketDomain;
 use crate::net::SocketType;
@@ -44,15 +45,15 @@ pub fn socketpair(
 
 	let sock = Socket::new(desc)?;
 	let loc = buffer::register(None, sock)?;
+	let file = vfs::get_file_by_location(&loc)?;
+
+	let open_file0 = OpenFile::new(file.clone(), open_file::O_RDONLY);
+	let open_file1 = OpenFile::new(file, open_file::O_WRONLY);
 
 	let fds_mutex = proc.get_fds().unwrap();
 	let mut fds = fds_mutex.lock();
-
-	let open_file0 = OpenFile::new(loc.clone(), open_file::O_RDONLY);
 	let fd0 = fds.create_fd(0, open_file0)?;
 	sv_slice[0] = fd0.get_id() as _;
-
-	let open_file1 = OpenFile::new(loc, open_file::O_WRONLY);
 	let fd1 = fds.create_fd(0, open_file1)?;
 	sv_slice[1] = fd1.get_id() as _;
 

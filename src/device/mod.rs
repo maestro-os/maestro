@@ -239,7 +239,7 @@ impl Device {
 	pub fn remove_file(&mut self) -> EResult<()> {
 		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, &AccessProfile::KERNEL, true) {
 			let file = file_mutex.lock();
-			vfs::remove_file(&file, &AccessProfile::KERNEL)?;
+			vfs::remove_file(&mut file, &AccessProfile::KERNEL)?;
 		}
 
 		Ok(())

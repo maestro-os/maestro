@@ -8,7 +8,6 @@ use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::buffer;
 use crate::file::mountpoint;
-use crate::file::vfs;
 use crate::file::DeviceID;
 use crate::file::File;
 use crate::file::FileContent;
@@ -20,7 +19,6 @@ use crate::syscall::ioctl;
 use crate::time::clock;
 use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimestampScale;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
@@ -124,11 +122,9 @@ impl OpenFile {
 	///
 	/// If the file is not open, the function does nothing.
 	pub fn close(self) -> EResult<()> {
-		// If remove has been deferred and this is the last reference, remove the file
-		if let Some((parent_location, name)) = &self.deferred_remove {
-			if self.ref_count == 1 {
-				vfs::remove_file_inner(&self.location, parent_location, name)?;
-			}
+		// Close file if this is the last reference to it
+		if let Some(file) = Arc::into_inner(self.file) {
+			file.into_inner().close()?;
 		}
 
 		// If the file points to a buffer, decrement the number of open ends
@@ -280,19 +276,6 @@ impl OpenFile {
 		}
 
 		Ok(())
-	}
-
-	/// Deferes remove of the underlying file to the moment no process is using it anymore.
-	///
-	/// Arguments:
-	/// - `parent_location` is the [`super::FileLocation`] of the parent directory
-	/// - `name` is the name of the entry to remove
-	///
-	/// The parent location and the name of the entry to remove are required instead of the file
-	/// location of the file itself because a [`super::FileLocation`] specifies the location of a
-	/// filesystem node, not a file (since several files/links can point to the same node).
-	pub fn defer_remove(&mut self, parent_location: FileLocation, name: String) {
-		self.deferred_remove = Some((parent_location, name));
 	}
 }
 

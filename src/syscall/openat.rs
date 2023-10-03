@@ -73,31 +73,27 @@ pub fn openat(
 	flags: c_int,
 	mode: file::Mode,
 ) -> Result<i32, Errno> {
-	// Get the file
-	let file = get_file(dirfd, pathname, flags, mode)?;
-	let ap = Process::current_assert().lock().access_profile;
-
-	let (loc, read, write, cloexec) = {
-		let mut f = file.lock();
-
-		let loc = f.get_location().clone();
-		let (read, write, cloexec) = super::open::handle_flags(&mut f, flags, &ap)?;
-
-		(loc, read, write, cloexec)
-	};
-
 	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
+	let ap = proc_mutex.lock().access_profile;
 
-	let fds_mutex = proc.get_fds().unwrap();
-	let mut fds = fds_mutex.lock();
+	// Get the file
+	let file_mutex = get_file(dirfd, pathname, flags, mode)?;
+	let file = file_mutex.lock();
+
+	// Handle flags
+	super::open::handle_flags(&mut file, flags, &ap)?;
+	drop(file);
+
+	let open_file = OpenFile::new(file_mutex, flags);
 
 	let mut fd_flags = 0;
-	if cloexec {
+	if flags & open_file::O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-
-	let open_file = OpenFile::new(loc.clone(), flags);
+	let proc = proc_mutex.lock();
+	let fds_mutex = proc.get_fds().unwrap();
+	let mut fds = fds_mutex.lock();
 	let fd = fds.create_fd(fd_flags, open_file)?;
+
 	Ok(fd.get_id() as _)
 }

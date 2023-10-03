@@ -53,7 +53,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		vfs::create_link(&mut old, &mut new_parent, &new_name, &ap)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs::remove_file(&old, &ap)?;
+			vfs::remove_file(&mut old, &ap)?;
 		}
 	} else {
 		// Old and new are on different filesystems.

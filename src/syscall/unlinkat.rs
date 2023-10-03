@@ -29,8 +29,8 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 		(file, ap)
 	};
 
-	let file = file_mutex.lock();
-	vfs::remove_file(&file, &ap)?;
+	let mut file = file_mutex.lock();
+	vfs::remove_file(&mut file, &ap)?;
 
 	Ok(0)
 }

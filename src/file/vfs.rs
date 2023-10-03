@@ -383,10 +383,11 @@ pub fn create_link(
 /// If the file doesn't exist, the function returns an error.
 ///
 /// If the file is a non-empty directory, the function returns an error.
-pub fn remove_file(file: &File, ap: &AccessProfile) -> EResult<()> {
+pub fn remove_file(file: &mut File, ap: &AccessProfile) -> EResult<()> {
 	// The parent directory
 	let parent_mutex = get_file_from_path(file.get_parent_path(), ap, true)?;
 	let parent = parent_mutex.lock();
+	let parent_location = parent.get_location();
 
 	// Check permissions
 	if !ap.can_write_file(file) || !ap.can_write_directory(&*parent) {
@@ -397,22 +398,13 @@ pub fn remove_file(file: &File, ap: &AccessProfile) -> EResult<()> {
 	let last_link = file.get_hard_links_count() == 1;
 	let symlink = matches!(file.get_type(), FileType::Link);
 	if last_link && !symlink {
-		if let Some(open_file) = file.get_open_file() {
-			open_file
-				.lock()
-				.defer_remove(parent.get_location().clone(), file.get_name().try_clone()?);
-			return Ok(());
-		}
+		file.defer_remove();
+		return Ok(());
 	}
 
-	remove_file_inner(file.get_location(), parent.get_location(), file.get_name())
-}
+	let location = file.get_location();
+	let name = file.get_name();
 
-pub(super) fn remove_file_inner(
-	location: &FileLocation,
-	parent_location: &FileLocation,
-	name: &[u8],
-) -> EResult<()> {
 	// FIXME: what if the file and its parent are not on the same filesystem?
 	// Get the mountpoint
 	let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;

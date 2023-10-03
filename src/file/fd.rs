@@ -77,11 +77,7 @@ impl FileDescriptor {
 	/// - `id` is the ID of the file descriptor
 	/// - `flags` is the set of flags associated with the file descriptor
 	/// - `location` is the location of the open file the file descriptor points to
-	pub fn new(
-		id: u32,
-		flags: i32,
-		open_file: OpenFile,
-	) -> EResult<Self> {
+	pub fn new(id: u32, flags: i32, open_file: OpenFile) -> EResult<Self> {
 		let open_file = Arc::new(Mutex::new(open_file))?;
 		Ok(Self {
 			id,
@@ -131,6 +127,7 @@ impl FileDescriptor {
 	/// If file removal has been deferred, and this is the last reference to it, and remove fails,
 	/// then the function returns an error.
 	pub fn close(self) -> EResult<()> {
+		// Close file if this is the last reference to it
 		let Some(file) = Arc::into_inner(self.open_file) else {
 			return Ok(());
 		};
@@ -204,11 +201,7 @@ impl FileDescriptorTable {
 	/// Arguments:
 	/// - `flags` are the file descriptor's flags
 	/// - `open_file` is the file associated with the file descriptor
-	pub fn create_fd(
-		&mut self,
-		flags: i32,
-		open_file: OpenFile,
-	) -> EResult<&FileDescriptor> {
+	pub fn create_fd(&mut self, flags: i32, open_file: OpenFile) -> EResult<&FileDescriptor> {
 		let id = self.get_available_fd(None)?;
 		let i = self
 			.fds
@@ -313,9 +306,7 @@ impl FileDescriptorTable {
 		let result = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id));
 		if let Ok(index) = result {
 			let fd = self.fds.remove(index);
-			// TODO
-
-			Ok(())
+			fd.close()
 		} else {
 			Err(errno!(EBADF))
 		}
