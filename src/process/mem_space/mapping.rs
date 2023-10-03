@@ -5,7 +5,6 @@
 use super::gap::MemGap;
 use super::MapResidence;
 use super::MemSpace;
-use crate::errno::Errno;
 use crate::memory;
 use crate::memory::buddy;
 use crate::memory::physical_ref_counter::PhysRefCounter;
@@ -13,6 +12,7 @@ use crate::memory::vmem;
 use crate::memory::vmem::VMem;
 use crate::process::oom;
 use crate::process::AllocResult;
+use crate::process::EResult;
 use crate::util::io::IO;
 use crate::util::lock::*;
 use core::ffi::c_void;
@@ -479,7 +479,7 @@ impl MemMapping {
 	/// Synchronizes the data on the memory mapping back to the filesystem.
 	///
 	/// The function does nothing if the mapping is not shared or not associated with a file.
-	pub fn fs_sync(&mut self) -> Result<(), Errno> {
+	pub fn fs_sync(&mut self) -> EResult<()> {
 		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
 			return Ok(());
 		}

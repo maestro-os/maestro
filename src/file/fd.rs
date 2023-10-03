@@ -103,8 +103,6 @@ impl FileDescriptor {
 	}
 
 	/// Returns the open file associated with the descriptor.
-	///
-	/// If the open file doesn't exist, the function returns an error.
 	pub fn get_open_file(&self) -> &Mutex<OpenFile> {
 		&self.open_file
 	}
@@ -254,14 +252,14 @@ impl FileDescriptorTable {
 			}
 			NewFDConstraint::Min(min) => self.get_available_fd(Some(min))?,
 		};
-		// The flags of the new FD
-		let flags = if cloexec { FD_CLOEXEC } else { 0 };
 
 		// The old FD
 		let old_fd = self.get_fd(id).ok_or_else(|| errno!(EBADF))?;
 
 		// Create the new FD
-		let new_fd = old_fd.duplicate(new_id);
+		let mut new_fd = old_fd.duplicate(new_id);
+		let flags = if cloexec { FD_CLOEXEC } else { 0 };
+		new_fd.set_flags(flags);
 
 		// Insert the FD
 		let index = self.fds.binary_search_by(|fd| fd.get_id().cmp(&new_id));

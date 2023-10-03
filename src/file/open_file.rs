@@ -64,6 +64,8 @@ pub const O_SYNC: i32 = 0b00000000000100000001000000000000;
 /// If the file already exists, truncate it to length zero.
 pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 
+// TODO move buffer handling to `FileContent`?
+
 /// An open file description.
 ///
 /// This structure is pointed to by file descriptors and point to files.
@@ -95,7 +97,7 @@ impl OpenFile {
 		let location = file.lock().get_location().clone();
 		let s = Self {
 			file,
-			location,
+			location: location.clone(),
 			flags,
 
 			curr_off: 0,
@@ -122,6 +124,9 @@ impl OpenFile {
 	///
 	/// If the file is not open, the function does nothing.
 	pub fn close(self) -> EResult<()> {
+		let read = self.can_read();
+		let write = self.can_write();
+
 		// Close file if this is the last reference to it
 		if let Some(file) = Arc::into_inner(self.file) {
 			file.into_inner().close()?;
@@ -130,7 +135,7 @@ impl OpenFile {
 		// If the file points to a buffer, decrement the number of open ends
 		if let Some(buff_mutex) = buffer::get(&self.location) {
 			let mut buff = buff_mutex.lock();
-			buff.decrement_open(self.can_read(), self.can_write());
+			buff.decrement_open(read, write);
 		}
 
 		Ok(())
