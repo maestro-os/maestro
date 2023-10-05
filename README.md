@@ -3,7 +3,8 @@
 Maestro is a lightweight Unix-like kernel written in Rust.
 
 The goal is to provide an operating system free of bloats and able to use the safety features of the Rust language to be reliable.
-This project is still in early stage development, thus it is not stable and misses a lot of features. **Do not use it in production!**
+
+> This project is still in early stage development, thus it is not stable and misses a lot of features. **Do not use it in production!**
 
 To stay updated with the project, follow the [blog](https://blog.lenot.re)!
 
