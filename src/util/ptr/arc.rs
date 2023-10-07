@@ -32,8 +32,9 @@ pub struct ArcInner<T: ?Sized> {
 impl<T: ?Sized> ArcInner<T> {
 	/// Creates an instance.
 	///
-	/// `ptr` is a pointer to the data to place in the `Arc`. This is used as a helper for memory allocation
-	/// `init` is the function to initialize the object to place in the `Arc`
+	/// - `ptr` is a pointer to the data to place in the `Arc`. This is used as a helper for memory
+	/// allocation
+	/// - `init` is the function to initialize the object to place in the `Arc`
 	unsafe fn new<I: FnOnce(&mut T)>(ptr: *const T, init: I) -> AllocResult<NonNull<Self>> {
 		let size = Layout::new::<ArcInner<()>>()
 			.extend(Layout::for_value(&*ptr))
@@ -76,18 +77,20 @@ impl<T: ?Sized> TryFrom<Box<T>> for Arc<T> {
 	type Error = AllocError;
 
 	fn try_from(obj: Box<T>) -> AllocResult<Self> {
-		let inner = unsafe { ArcInner::new(obj.as_ptr(), |o: &mut T| {
-			// Copy data
-			ptr::copy_nonoverlapping(
-				obj.as_ref() as *const _ as *const u8,
-				o as *mut _ as *mut u8,
-				size_of_val(obj.as_ref()),
-			);
+		let inner = unsafe {
+			ArcInner::new(obj.as_ptr(), |o: &mut T| {
+				// Copy data
+				ptr::copy_nonoverlapping(
+					obj.as_ref() as *const _ as *const u8,
+					o as *mut _ as *mut u8,
+					size_of_val(obj.as_ref()),
+				);
 
-			// Prevent double drop
-			let raw = Box::into_raw(obj);
-			Box::from_raw(raw as *mut ManuallyDrop<T>);
-		})? };
+				// Prevent double drop
+				let raw = Box::into_raw(obj);
+				Box::from_raw(raw as *mut ManuallyDrop<T>);
+			})?
+		};
 
 		Ok(Self {
 			inner,
@@ -110,9 +113,7 @@ impl<T> Arc<T> {
 	pub fn into_inner(this: Self) -> Option<T> {
 		let inner = this.inner();
 		if inner.strong.load(atomic::Ordering::Relaxed) == 1 {
-			let obj = unsafe {
-				ptr::read(&inner.obj)
-			};
+			let obj = unsafe { ptr::read(&inner.obj) };
 
 			// Avoid double free
 			unsafe {
