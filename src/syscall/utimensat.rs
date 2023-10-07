@@ -39,12 +39,11 @@ pub fn utimensat(
 		file.sync()
 	};
 
-	let file_mutex = match pathname.get(&mem_space_guard)? {
+	match pathname.get(&mem_space_guard)? {
 		Some(pathname) => {
 			let file_mutex = util::get_file_at(proc, true, dirfd, pathname, flags)?;
 			set(&file_mutex)?;
 		}
-
 		None if dirfd != AT_FDCWD => {
 			if dirfd < 0 {
 				return Err(errno!(EBADF));
@@ -61,9 +60,7 @@ pub fn utimensat(
 				.get_file();
 			set(file_mutex)?;
 		}
-
 		_ => return Err(errno!(EFAULT)),
-	};
-
+	}
 	Ok(0)
 }

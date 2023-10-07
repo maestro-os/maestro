@@ -150,14 +150,14 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 
 	// Get file
 	let file_mutex = get_file(path, flags, mode, &ap)?;
-	let file = file_mutex.lock();
+	let mut file = file_mutex.lock();
 
 	// Handle flags
 	handle_flags(&mut file, flags, &ap)?;
 	drop(file);
 
 	// Create open file description
-	let open_file = OpenFile::new(file_mutex, flags);
+	let open_file = OpenFile::new(file_mutex.clone(), flags);
 
 	// Create FD
 	let mut fd_flags = 0;
@@ -170,6 +170,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 
 	// TODO remove?
 	// Flush file
+	let file = file_mutex.lock();
 	if let Err(e) = file.sync() {
 		fds.close_fd(fd_id)?;
 		return Err(e);

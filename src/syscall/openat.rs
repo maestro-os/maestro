@@ -78,7 +78,7 @@ pub fn openat(
 
 	// Get the file
 	let file_mutex = get_file(dirfd, pathname, flags, mode)?;
-	let file = file_mutex.lock();
+	let mut file = file_mutex.lock();
 
 	// Handle flags
 	super::open::handle_flags(&mut file, flags, &ap)?;
