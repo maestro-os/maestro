@@ -12,6 +12,7 @@ pub mod ptr;
 use crate::errno::AllocError;
 use crate::errno::Errno;
 use crate::file::perm::AccessProfile;
+use crate::file::FileLocation;
 use crate::idt;
 use crate::memory;
 use crate::memory::buddy;
@@ -81,7 +82,7 @@ pub enum MapResidence {
 	/// The mapping resides in a file.
 	File {
 		/// The location of the file.
-		file: Arc<Mutex<OpenFile>>,
+		location: FileLocation,
 		/// The offset of the mapping in the file.
 		off: u64,
 	},
@@ -160,7 +161,7 @@ impl MapResidence {
 			}
 
 			MapResidence::File {
-				file: _,
+				location: _,
 				off: _,
 			} => {
 				// TODO get physical page for this offset
@@ -190,7 +191,7 @@ impl MapResidence {
 			}
 
 			MapResidence::File {
-				file: _,
+				location: _,
 				off: _,
 			} => {
 				// TODO

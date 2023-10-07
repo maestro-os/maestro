@@ -1,7 +1,6 @@
 //! This module implements the `write` system call, which allows to write data
 //! to a file.
 
-use crate::util::io::IO;
 use crate::errno;
 use crate::errno::Errno;
 use crate::file::open_file::O_NONBLOCK;
@@ -10,6 +9,7 @@ use crate::process::scheduler;
 use crate::process::Process;
 use crate::syscall::Signal;
 use crate::util::io;
+use crate::util::io::IO;
 use core::cmp::min;
 use core::ffi::c_int;
 use macros::syscall;

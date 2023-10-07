@@ -2,7 +2,6 @@
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::file::fd::FileDescriptor;
 use crate::file::FileType;
 use crate::memory;
 use crate::process::mem_space;
@@ -91,49 +90,50 @@ pub fn do_mmap(
 	let proc = proc_mutex.lock();
 
 	// The file the mapping points to
-	let open_file_mutex = if fd >= 0 {
-		let fds_mutex = proc.get_fds().unwrap();
-		let fds = fds_mutex.lock();
+	let file_mutex = if fd >= 0 {
+		// Check the alignment of the offset
+		if offset as usize % memory::PAGE_SIZE != 0 {
+			return Err(errno!(EINVAL));
+		}
 
-		fds.get_fd(fd as _).map(FileDescriptor::get_open_file)
+		proc.get_fds()
+			.unwrap()
+			.lock()
+			.get_fd(fd as _)
+			.map(|fd| fd.get_open_file().lock().get_file())
 	} else {
 		None
 	};
 
 	// TODO anon flag
 
-	if let Some(open_file_mutex) = &open_file_mutex {
-		// Check the alignment of the offset
-		if offset as usize % memory::PAGE_SIZE != 0 {
-			return Err(errno!(EINVAL));
+	// Get residence
+	let residence = match file_mutex {
+		Some(file_mutex) => {
+			let file = file_mutex.lock();
+			// Check the file is suitable
+			if !matches!(file.get_type(), FileType::Regular) {
+				return Err(errno!(EACCES));
+			}
+			if prot & PROT_READ != 0 && !proc.access_profile.can_read_file(&*file) {
+				return Err(errno!(EPERM));
+			}
+			if prot & PROT_WRITE != 0 && !proc.access_profile.can_write_file(&*file) {
+				return Err(errno!(EPERM));
+			}
+			if prot & PROT_EXEC != 0 && !proc.access_profile.can_execute_file(&*file) {
+				return Err(errno!(EPERM));
+			}
+
+			MapResidence::File {
+				location: file.get_location().clone(),
+				off: offset,
+			}
 		}
-
-		let open_file = open_file_mutex.lock();
-
-		let file_mutex = open_file.get_file();
-		let file = file_mutex.lock();
-
-		if !matches!(file.get_type(), FileType::Regular) {
-			return Err(errno!(EACCES));
+		None => {
+			// TODO If the mapping requires a fd, return an error
+			MapResidence::Normal
 		}
-
-		if prot & PROT_READ != 0 && !proc.access_profile.can_read_file(&*file) {
-			return Err(errno!(EPERM));
-		}
-		if prot & PROT_WRITE != 0 && !proc.access_profile.can_write_file(&*file) {
-			return Err(errno!(EPERM));
-		}
-	// TODO check exec
-	} else {
-		// TODO If the mapping requires a fd, return an error
-	}
-	let residence = match open_file_mutex {
-		Some(file) => MapResidence::File {
-			file,
-			off: offset,
-		},
-
-		None => MapResidence::Normal,
 	};
 
 	// The process's memory space

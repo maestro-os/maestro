@@ -321,9 +321,9 @@ impl Default for FileDescriptorTable {
 
 #[cfg(test)]
 mod test {
+	use super::*;
 	use crate::file::{File, FileContent, FileLocation};
 	use crate::util::container::string::String;
-	use super::*;
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {
@@ -331,43 +331,32 @@ mod test {
 			id: 0,
 		};
 
-		let file = File::new(String::new(), 0, 0, 0, DUMMY_LOCATION, FileContent::Regular).unwrap();
+		let file =
+			File::new(String::new(), 0, 0, 0, DUMMY_LOCATION, FileContent::Regular).unwrap();
 		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), 0)
 	}
 
 	#[test_case]
 	fn fd_create0() {
 		let mut fds = FileDescriptorTable::default();
-		let fd = fds
-			.create_fd(0, dummy_open_file())
-			.unwrap()
-			.get_id();
+		let fd = fds.create_fd(0, dummy_open_file()).unwrap().get_id();
 		assert_eq!(fd, 0);
 	}
 
 	#[test_case]
 	fn fd_create1() {
 		let mut fds = FileDescriptorTable::default();
-		let fd = fds
-			.create_fd(0, dummy_open_file())
-			.unwrap()
-			.get_id();
+		let fd = fds.create_fd(0, dummy_open_file()).unwrap().get_id();
 		assert_eq!(fd, 0);
 
-		let fd = fds
-			.create_fd(0, dummy_open_file())
-			.unwrap()
-			.get_id();
+		let fd = fds.create_fd(0, dummy_open_file()).unwrap().get_id();
 		assert_eq!(fd, 1);
 	}
 
 	#[test_case]
 	fn fd_dup() {
 		let mut fds = FileDescriptorTable::default();
-		let fd = fds
-			.create_fd(0, dummy_open_file())
-			.unwrap()
-			.get_id();
+		let fd = fds.create_fd(0, dummy_open_file()).unwrap().get_id();
 		assert_eq!(fd, 0);
 
 		let fd0 = fds

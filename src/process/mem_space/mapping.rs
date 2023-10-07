@@ -5,6 +5,7 @@
 use super::gap::MemGap;
 use super::MapResidence;
 use super::MemSpace;
+use crate::file::vfs;
 use crate::memory;
 use crate::memory::buddy;
 use crate::memory::physical_ref_counter::PhysRefCounter;
@@ -478,22 +479,32 @@ impl MemMapping {
 
 	/// Synchronizes the data on the memory mapping back to the filesystem.
 	///
-	/// The function does nothing if the mapping is not shared or not associated with a file.
+	/// The function does nothing if:
+	/// - The mapping is not shared
+	/// - The mapping is not associated with a file
+	/// - The associated file has been removed or cannot be accessed
+	///
+	/// If the mapping is lock, the function returns [`crate::errno::EBUSY`].
 	pub fn fs_sync(&mut self) -> EResult<()> {
 		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
 			return Ok(());
 		}
+		// TODO if locked, EBUSY
+
 		let MapResidence::File {
-			file,
+			location,
 			off,
 		} = &self.residence
 		else {
 			return Ok(());
 		};
+		let Ok(file_mutex) = vfs::get_file_by_location(location) else {
+			return Ok(());
+		};
 
 		unsafe {
-			vmem::switch(self.get_vmem(), || {
-				let mut file = file.lock();
+			vmem::switch(self.get_vmem(), move || {
+				let mut file = file_mutex.lock();
 
 				// TODO Make use of dirty flag if present on the current architecure to update
 				// only pages that have been modified
