@@ -11,7 +11,7 @@ use core::borrow::{Borrow, BorrowMut};
 use core::fmt;
 use core::marker::Unsize;
 use core::mem;
-use core::mem::size_of_val;
+use core::mem::{size_of_val, ManuallyDrop};
 use core::num::NonZeroUsize;
 use core::ops::CoerceUnsized;
 use core::ops::DispatchFromDyn;
@@ -89,6 +89,11 @@ impl<T: ?Sized> Box<T> {
 		Self {
 			ptr: NonNull::new(ptr).unwrap(),
 		}
+	}
+
+	/// Returns the raw pointer inside of the `Box`.
+	pub unsafe fn into_raw(b: Box<T>) -> *mut T {
+		ManuallyDrop::new(b).as_mut_ptr()
 	}
 
 	/// Returns a pointer to the data wrapped into the `Box`.

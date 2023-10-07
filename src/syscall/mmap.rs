@@ -100,7 +100,7 @@ pub fn do_mmap(
 			.unwrap()
 			.lock()
 			.get_fd(fd as _)
-			.map(|fd| fd.get_open_file().lock().get_file())
+			.map(|fd| fd.get_open_file().lock().get_file_arc())
 	} else {
 		None
 	};

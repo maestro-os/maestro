@@ -148,6 +148,11 @@ impl OpenFile {
 		&self.file
 	}
 
+	/// Returns the file, wrapped into an [`Arc`].
+	pub fn get_file_arc(&self) -> Arc<Mutex<File>> {
+		self.file.clone()
+	}
+
 	/// Returns the location of the file.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location

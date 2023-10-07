@@ -151,7 +151,7 @@ pub fn get_file_at(
 			drop(process);
 
 			let open_file = open_file_mutex.lock();
-			open_file.get_file()
+			Ok(open_file.get_file_arc())
 		} else {
 			Err(errno!(ENOENT))
 		}

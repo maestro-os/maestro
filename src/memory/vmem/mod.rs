@@ -23,6 +23,8 @@ use core::ffi::c_void;
 /// This trait is the interface to manipulate virtual memory on any architecture.
 ///
 /// Each architecture has its own structure implementing this trait.
+///
+/// Virtual memory contexts use interior mutability.
 pub trait VMem: TryClone<Error = AllocError> {
 	/// Translates the given virtual address `ptr` to the corresponding physical
 	/// address.
@@ -39,12 +41,8 @@ pub trait VMem: TryClone<Error = AllocError> {
 	/// address `virtaddr` with the given flags.
 	///
 	/// This function automaticaly invalidates the page in the cache.
-	fn map(
-		&mut self,
-		physaddr: *const c_void,
-		virtaddr: *const c_void,
-		flags: u32,
-	) -> AllocResult<()>;
+	fn map(&self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
+		-> AllocResult<()>;
 	/// Maps the given range of physical address `physaddr` to the given range
 	/// of virtual address `virtaddr`.
 	///
@@ -54,7 +52,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 	///
 	/// This function automaticaly invalidates the page(s) in the cache.
 	fn map_range(
-		&mut self,
+		&self,
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
 		pages: usize,
@@ -64,14 +62,14 @@ pub trait VMem: TryClone<Error = AllocError> {
 	/// Unmaps the page at virtual address `virtaddr`.
 	///
 	/// This function automaticaly invalidates the page in the cache.
-	fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<()>;
+	fn unmap(&self, virtaddr: *const c_void) -> AllocResult<()>;
 	/// Unmaps the given range beginning at virtual address `virtaddr` with size
 	/// of `pages` pages.
 	///
 	/// If the operation fails, the virtual memory is left altered midway.
 	///
 	/// This function automaticaly invalidates the page(s) in the cache.
-	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> AllocResult<()>;
+	fn unmap_range(&self, virtaddr: *const c_void, pages: usize) -> AllocResult<()>;
 
 	/// Binds the virtual memory context handler.
 	fn bind(&self);
@@ -87,7 +85,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 	fn flush(&self);
 
 	/// Protects the kernel's read-only sections from writing.
-	fn protect_kernel(&mut self) -> AllocResult<()> {
+	fn protect_kernel(&self) -> AllocResult<()> {
 		let boot_info = multiboot::get_boot_info();
 
 		let mut res = Ok(());
@@ -109,7 +107,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 			true
 		};
 
-		// Protecting kernel code from writing
+		// Protect kernel code from writing
 		elf::foreach_sections(
 			memory::kern_to_virt(boot_info.elf_sections),
 			boot_info.elf_num as usize,
@@ -128,13 +126,13 @@ pub fn new() -> AllocResult<Box<dyn VMem>> {
 }
 
 /// Clones the virtual memory context handler `vmem`.
-pub fn clone(vmem: &Box<dyn VMem>) -> AllocResult<Box<dyn VMem>> {
-	let vmem = unsafe { &*(vmem.as_ptr() as *const x86::X86VMem) };
+pub fn try_clone(vmem: &dyn VMem) -> AllocResult<Box<dyn VMem>> {
+	let vmem = unsafe { &*(vmem as *const dyn VMem as *const x86::X86VMem) };
 	Ok(Box::new(vmem.try_clone()?)? as Box<dyn VMem>)
 }
 
 /// Tells whether the read-only pages protection is enabled.
-pub fn is_write_lock() -> bool {
+pub fn is_write_locked() -> bool {
 	unsafe { (cpu::cr0_get() & (1 << 16)) != 0 }
 }
 
@@ -167,7 +165,7 @@ pub unsafe fn set_write_lock(lock: bool) {
 ///
 /// Writing on read-only data is undefined.
 pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
-	let lock = is_write_lock();
+	let lock = is_write_locked();
 	set_write_lock(false);
 	let result = f();
 	set_write_lock(lock);
@@ -243,7 +241,7 @@ mod test {
 
 	#[test_case]
 	fn vmem_map0() {
-		let mut vmem = new().unwrap();
+		let vmem = new().unwrap();
 		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 
 		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
@@ -259,7 +257,7 @@ mod test {
 
 	#[test_case]
 	fn vmem_map1() {
-		let mut vmem = new().unwrap();
+		let vmem = new().unwrap();
 		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 		vmem.map(0x200000 as _, 0x100000 as _, 0).unwrap();
 
@@ -279,7 +277,7 @@ mod test {
 
 	#[test_case]
 	fn vmem_unmap0() {
-		let mut vmem = new().unwrap();
+		let vmem = new().unwrap();
 		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 		vmem.unmap(0x100000 as _).unwrap();
 

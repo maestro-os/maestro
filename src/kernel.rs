@@ -31,6 +31,7 @@
 #![feature(trait_upcasting)]
 #![feature(trusted_len)]
 #![feature(unsize)]
+#![feature(set_ptr_value)]
 #![deny(warnings)]
 #![allow(unused_attributes)]
 #![allow(dead_code)]
@@ -148,7 +149,7 @@ static KERNEL_VMEM: Mutex<Option<Box<dyn VMem>>> = Mutex::new(None);
 
 /// Initializes the kernel's virtual memory context.
 fn init_vmem() -> Result<(), Errno> {
-	let mut kernel_vmem = vmem::new()?;
+	let kernel_vmem = vmem::new()?;
 
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
 	// the kernel for interrupts

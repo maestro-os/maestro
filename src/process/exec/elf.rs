@@ -618,10 +618,10 @@ impl ELFExecutor {
 			entry_point = load_info.entry_point;
 		}
 
-		// Switching to the process's vmem to write onto the virtual memory
+		// Switch to the process's vmem to write onto the virtual memory
 		unsafe {
-			vmem::switch(mem_space.get_vmem().as_ref(), move || -> EResult<()> {
-				// Copying segments' data
+			vmem::switch(&**mem_space.get_vmem(), move || -> EResult<()> {
+				// Copy segments' data
 				for seg in elf.iter_segments() {
 					Self::copy_segment(load_base, seg, elf.get_image());
 				}
@@ -635,7 +635,7 @@ impl ELFExecutor {
 					});
 				}
 
-				// Performing relocations if no interpreter is present
+				// Perform relocations if no interpreter is present
 				if !interp && interp_path.is_none() {
 					// Closure returning a symbol from its name
 					let get_sym = |name: &str| elf.get_symbol_by_name(name);
@@ -735,7 +735,7 @@ impl Executor for ELFExecutor {
 
 		// Switching to the process's vmem to write onto the virtual memory
 		unsafe {
-			vmem::switch(mem_space.get_vmem().as_ref(), move || {
+			vmem::switch(&**mem_space.get_vmem(), move || {
 				// Initializing the userspace stack
 				self.init_stack(user_stack, &self.info.argv, &self.info.envp, &aux);
 			});

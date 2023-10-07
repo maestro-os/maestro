@@ -322,6 +322,8 @@ pub struct File {
 	/// Tells whether remove has been deferred for the file. If `true`, then the file will be
 	/// removed when the file is no longer used.
 	deferred_remove: bool,
+	/// Tells whether the file has been removed.
+	removed: bool,
 }
 
 impl File {
@@ -366,6 +368,7 @@ impl File {
 			content,
 
 			deferred_remove: false,
+			removed: false,
 		})
 	}
 
@@ -693,8 +696,20 @@ impl File {
 		if !self.deferred_remove {
 			return Ok(());
 		}
+		vfs::remove_file(&mut self, &AccessProfile::KERNEL)?;
+		self.removed = true;
+		Ok(())
+	}
+}
 
-		vfs::remove_file(&mut self, &AccessProfile::KERNEL)
+impl Drop for File {
+	/// This function is used in case removal of the file has been deferred, but `close` has not
+	/// been called.
+	fn drop(&mut self) {
+		if !self.deferred_remove || self.removed {
+			return;
+		}
+		let _ = vfs::remove_file(self, &AccessProfile::KERNEL);
 	}
 }
 

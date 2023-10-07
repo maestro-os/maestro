@@ -1,19 +1,21 @@
 //! This module implements an `Arc`, similar to the one present in the Rust standard library.
 
-use crate::errno::AllocResult;
+use crate::errno::{AllocError, AllocResult};
 use crate::memory::malloc;
+use crate::util::boxed::Box;
+use core::alloc::Layout;
 use core::borrow::Borrow;
-use core::fmt;
+use core::intrinsics::size_of_val;
 use core::marker::Unsize;
-use core::mem::size_of;
+use core::mem::ManuallyDrop;
 use core::ops::CoerceUnsized;
 use core::ops::Deref;
 use core::ops::DispatchFromDyn;
-use core::ptr;
 use core::ptr::drop_in_place;
 use core::ptr::NonNull;
 use core::sync::atomic;
 use core::sync::atomic::AtomicUsize;
+use core::{fmt, mem, ptr};
 
 // TODO check atomic orderings
 
@@ -23,15 +25,43 @@ pub struct ArcInner<T: ?Sized> {
 	strong: AtomicUsize,
 	/// Weak references counter.
 	weak: AtomicUsize,
-
 	/// The object the `Arc` points to.
 	obj: T,
+}
+
+impl<T: ?Sized> ArcInner<T> {
+	/// Creates an instance.
+	///
+	/// `ptr` is a pointer to the data to place in the `Arc`. This is used as a helper for memory allocation
+	/// `init` is the function to initialize the object to place in the `Arc`
+	unsafe fn new<I: FnOnce(&mut T)>(ptr: *const T, init: I) -> AllocResult<NonNull<Self>> {
+		let size = Layout::new::<ArcInner<()>>()
+			.extend(Layout::for_value(&*ptr))
+			.unwrap()
+			.0
+			.pad_to_align()
+			.size()
+			.try_into()
+			.unwrap();
+		// Allocate and make usable
+		let inner = malloc::alloc(size)?;
+		let ptr = inner.as_ptr().with_metadata_of(ptr as *const Self);
+		let mut inner = NonNull::new_unchecked(ptr);
+
+		// The initial strong reference
+		inner.as_mut().strong = AtomicUsize::new(1);
+		// Every strong references collectively hold a weak reference
+		inner.as_mut().weak = AtomicUsize::new(1);
+		init(&mut inner.as_mut().obj);
+
+		Ok(inner)
+	}
 }
 
 /// A thread-safe reference-counting pointer. `Arc` stands for 'Atomically Reference Counted'.
 pub struct Arc<T: ?Sized> {
 	/// Pointer to shared object.
-	ptr: NonNull<ArcInner<T>>,
+	inner: NonNull<ArcInner<T>>,
 }
 
 unsafe impl<T: ?Sized + Sync + Send> Send for Arc<T> {}
@@ -42,30 +72,37 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Arc<U>> for Arc<T> {}
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Arc<U>> for Arc<T> {}
 
+impl<T: ?Sized> TryFrom<Box<T>> for Arc<T> {
+	type Error = AllocError;
+
+	fn try_from(obj: Box<T>) -> AllocResult<Self> {
+		let inner = unsafe { ArcInner::new(obj.as_ptr(), |o: &mut T| {
+			// Copy data
+			ptr::copy_nonoverlapping(
+				obj.as_ref() as *const _ as *const u8,
+				o as *mut _ as *mut u8,
+				size_of_val(obj.as_ref()),
+			);
+
+			// Prevent double drop
+			let raw = Box::into_raw(obj);
+			Box::from_raw(raw as *mut ManuallyDrop<T>);
+		})? };
+
+		Ok(Self {
+			inner,
+		})
+	}
+}
+
 impl<T> Arc<T> {
 	/// Creates a new `Arc` for the given object.
 	///
 	/// This function allocates memory. On fail, it returns an error.
 	pub fn new(obj: T) -> AllocResult<Self> {
-		let ptr = unsafe {
-			let inner = malloc::alloc(size_of::<ArcInner<T>>().try_into().unwrap())?;
-			ptr::write(
-				inner.cast().as_mut(),
-				ArcInner {
-					// The initial strong reference
-					strong: AtomicUsize::new(1),
-					// Every strong references collectively hold a weak reference
-					weak: AtomicUsize::new(1),
-
-					obj,
-				},
-			);
-
-			inner.cast()
-		};
-
+		let inner = unsafe { ArcInner::new(&obj, |o: &mut T| *o = obj)? };
 		Ok(Self {
-			ptr,
+			inner,
 		})
 	}
 
@@ -73,7 +110,17 @@ impl<T> Arc<T> {
 	pub fn into_inner(this: Self) -> Option<T> {
 		let inner = this.inner();
 		if inner.strong.load(atomic::Ordering::Relaxed) == 1 {
-			Some(inner.obj)
+			let obj = unsafe {
+				ptr::read(&inner.obj)
+			};
+
+			// Avoid double free
+			unsafe {
+				malloc::free(this.inner.cast());
+			}
+			mem::forget(this);
+
+			Some(obj)
 		} else {
 			None
 		}
@@ -84,7 +131,7 @@ impl<T: ?Sized> Arc<T> {
 	/// Returns a reference to the inner object.
 	fn inner(&self) -> &ArcInner<T> {
 		// Safe because the inner object is Sync
-		unsafe { self.ptr.as_ref() }
+		unsafe { self.inner.as_ref() }
 	}
 
 	/// Drops the object stored by the shared pointer.
@@ -102,13 +149,18 @@ impl<T: ?Sized> Arc<T> {
 
 		// Drop the weak reference collectively held by all strong references
 		drop(Weak {
-			ptr: self.ptr,
+			inner: self.inner,
 		});
+	}
+
+	/// Returns a pointer to the inner object.
+	pub fn as_ptr(&self) -> *const T {
+		&self.inner().obj
 	}
 
 	/// Returns a mutable reference to the inner object without any safety check.
 	pub unsafe fn get_mut_unchecked(this: &mut Arc<T>) -> &mut T {
-		&mut (*this.ptr.as_ptr()).obj
+		&mut (*this.inner.as_ptr()).obj
 	}
 
 	/// Creates a new weak pointer to this allocation.
@@ -117,7 +169,7 @@ impl<T: ?Sized> Arc<T> {
 		inner.weak.fetch_add(1, atomic::Ordering::Relaxed);
 
 		Weak {
-			ptr: this.ptr,
+			inner: this.inner,
 		}
 	}
 }
@@ -148,7 +200,7 @@ impl<T: ?Sized> Clone for Arc<T> {
 		inner.strong.fetch_add(1, atomic::Ordering::Relaxed);
 
 		Self {
-			ptr: self.ptr,
+			inner: self.inner,
 		}
 	}
 }
@@ -183,7 +235,7 @@ impl<T: ?Sized> Drop for Arc<T> {
 /// `Weak` is a version of `Arc` that holds a non-owning reference to the managed allocation.
 pub struct Weak<T: ?Sized> {
 	/// Pointer to the shared object.
-	ptr: NonNull<ArcInner<T>>,
+	inner: NonNull<ArcInner<T>>,
 }
 
 impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Weak<U>> for Weak<T> {}
@@ -194,7 +246,7 @@ impl<T: ?Sized> Weak<T> {
 	/// Returns a reference to the inner object.
 	fn inner(&self) -> &ArcInner<T> {
 		// Safe because the inner object is Sync
-		unsafe { self.ptr.as_ref() }
+		unsafe { self.inner.as_ref() }
 	}
 
 	/// Attempts to upgrade into an `Arc`.
@@ -212,7 +264,7 @@ impl<T: ?Sized> Weak<T> {
 			})
 			.ok()
 			.map(|_| Arc {
-				ptr: self.ptr,
+				inner: self.inner,
 			})
 	}
 }
@@ -223,7 +275,7 @@ impl<T: ?Sized> Clone for Weak<T> {
 		inner.weak.fetch_add(1, atomic::Ordering::Relaxed);
 
 		Self {
-			ptr: self.ptr,
+			inner: self.inner,
 		}
 	}
 }
@@ -241,7 +293,7 @@ impl<T: ?Sized> Drop for Weak<T> {
 		// collectively hold a weak reference which is removed only when the strong references
 		// count reaches zero.
 		unsafe {
-			malloc::free(self.ptr.cast());
+			malloc::free(self.inner.cast());
 		}
 	}
 }
