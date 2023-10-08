@@ -22,7 +22,7 @@ pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
 
 		let open_file_mutex = fd.get_open_file();
 		let open_file = open_file_mutex.lock();
-		let file_mutex = open_file.get_file();
+		let file_mutex = open_file.get_file().clone();
 
 		(file_mutex, proc.access_profile)
 	};

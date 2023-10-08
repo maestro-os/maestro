@@ -103,7 +103,7 @@ impl FileDescriptor {
 	}
 
 	/// Returns the open file associated with the descriptor.
-	pub fn get_open_file(&self) -> &Mutex<OpenFile> {
+	pub fn get_open_file(&self) -> &Arc<Mutex<OpenFile>> {
 		&self.open_file
 	}
 

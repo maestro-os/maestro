@@ -18,7 +18,7 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 
 		let ap = proc.access_profile;
 
-		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 		let pathname = pathname
 			.get(&mem_space_guard)?

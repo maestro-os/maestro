@@ -58,7 +58,7 @@ pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mut mem_space_guard = mem_space.lock();
 
 	// A reference to the user_desc structure

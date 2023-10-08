@@ -45,7 +45,7 @@ fn get_file(
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mem_space_guard = mem_space.lock();
 
 	let pathname = pathname

@@ -124,7 +124,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		proc.get_fds().unwrap()
+		proc.get_fds().unwrap().clone()
 	};
 	let mut fds = fds_mutex.lock();
 

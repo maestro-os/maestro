@@ -25,7 +25,8 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 		let open_file_mutex = fds
 			.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file();
+			.get_open_file()
+			.clone();
 
 		(open_file_mutex, proc.access_profile)
 	};

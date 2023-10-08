@@ -144,13 +144,8 @@ impl OpenFile {
 	/// Returns the file.
 	///
 	/// The name of the file is not set since it cannot be known from this structure.
-	pub fn get_file(&self) -> &Mutex<File> {
+	pub fn get_file(&self) -> &Arc<Mutex<File>> {
 		&self.file
-	}
-
-	/// Returns the file, wrapped into an [`Arc`].
-	pub fn get_file_arc(&self) -> Arc<Mutex<File>> {
-		self.file.clone()
 	}
 
 	/// Returns the location of the file.

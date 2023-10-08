@@ -34,7 +34,7 @@ pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> Result<i32, Errno
 	let (mem_space_mutex, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap().clone();
 
 		(mem_space, proc.access_profile)
 	};

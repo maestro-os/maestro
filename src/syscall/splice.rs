@@ -35,11 +35,13 @@ pub fn splice(
 		let input = fds
 			.get_fd(fd_in as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file();
+			.get_open_file()
+			.clone();
 		let output = fds
 			.get_fd(fd_out as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file();
+			.get_open_file()
+			.clone();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();

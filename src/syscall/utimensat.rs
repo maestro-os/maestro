@@ -23,7 +23,7 @@ pub fn utimensat(
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mem_space_guard = mem_space.lock();
 
 	let times_val = times.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
@@ -49,16 +49,17 @@ pub fn utimensat(
 				return Err(errno!(EBADF));
 			}
 
-			let file_mutex = proc
+			let fds = proc
 				.get_fds()
 				.unwrap()
-				.lock()
+				.lock();
+			let fd = fds
 				.get_fd(dirfd as _)
-				.ok_or(errno!(EBADF))?
+				.ok_or(errno!(EBADF))?;
+			let open_file = fd
 				.get_open_file()
-				.lock()
-				.get_file();
-			set(file_mutex)?;
+				.lock();
+			set(open_file.get_file())?;
 		}
 		_ => return Err(errno!(EFAULT)),
 	}

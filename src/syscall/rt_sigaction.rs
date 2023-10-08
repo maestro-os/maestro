@@ -20,7 +20,7 @@ pub fn rt_sigaction(
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mut mem_space_guard = mem_space.lock();
 
 	// Save the old structure

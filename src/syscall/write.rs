@@ -31,11 +31,11 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap().clone();
 
-		let fds_mutex = proc.get_fds().unwrap();
+		let fds_mutex = proc.get_fds().unwrap().clone();
 		let fds = fds_mutex.lock();
-		let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file();
+		let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file().clone();
 
 		drop(proc);
 		(proc_mutex, mem_space, open_file_mutex)

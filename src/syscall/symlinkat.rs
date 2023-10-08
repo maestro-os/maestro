@@ -19,7 +19,7 @@ pub fn symlinkat(
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
+	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mem_space_guard = mem_space.lock();
 
 	let target_slice = target
@@ -29,11 +29,12 @@ pub fn symlinkat(
 		return Err(errno!(ENAMETOOLONG));
 	}
 	let target = String::try_from(target_slice)?;
+	let file_content = FileContent::Link(target);
 
 	let linkpath = linkpath
 		.get(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let file_content = FileContent::Link(target);
+
 	util::create_file_at(proc, true, newdirfd, linkpath, 0, file_content)?;
 
 	Ok(0)

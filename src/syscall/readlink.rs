@@ -22,7 +22,7 @@ pub fn readlink(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space_mutex = proc.get_mem_space().unwrap().clone();
 		let mem_space = mem_space_mutex.lock();
 
 		// Get file's path

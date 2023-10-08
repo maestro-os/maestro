@@ -28,7 +28,7 @@ pub fn renameat2(
 
 		let ap = proc.access_profile;
 
-		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 
 		let oldpath = oldpath

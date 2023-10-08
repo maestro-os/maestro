@@ -789,8 +789,8 @@ impl Process {
 	///
 	/// If the process is terminated, the function returns `None`.
 	#[inline(always)]
-	pub fn get_mem_space(&self) -> Option<Arc<IntMutex<MemSpace>>> {
-		self.mem_space.clone()
+	pub fn get_mem_space(&self) -> Option<&Arc<IntMutex<MemSpace>>> {
+		self.mem_space.as_ref()
 	}
 
 	/// Sets the new memory space for the process, dropping the previous if any.
@@ -810,8 +810,8 @@ impl Process {
 	}
 
 	/// Returns the file descriptor table associated with the process.
-	pub fn get_fds(&self) -> Option<Arc<Mutex<FileDescriptorTable>>> {
-		self.file_descriptors.clone()
+	pub fn get_fds(&self) -> Option<&Arc<Mutex<FileDescriptorTable>>> {
+		self.file_descriptors.as_ref()
 	}
 
 	/// Sets the file descriptor table of the process.
@@ -922,7 +922,7 @@ impl Process {
 					.lock()
 					.map_stack(KERNEL_STACK_SIZE.try_into().unwrap(), KERNEL_STACK_FLAGS)?;
 
-				(curr_mem_space, Some(new_kernel_stack))
+				(curr_mem_space.clone(), Some(new_kernel_stack))
 			} else {
 				(
 					Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?,
@@ -1024,6 +1024,7 @@ impl Process {
 		Ok(sched_mutex.lock().add_process(process)?)
 	}
 
+	// TODO return a &Arc instead of locking
 	/// Returns the signal handler for the signal `sig`.
 	#[inline(always)]
 	pub fn get_signal_handler(&self, sig: &Signal) -> SignalHandler {
