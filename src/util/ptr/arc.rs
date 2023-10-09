@@ -32,6 +32,7 @@ pub struct ArcInner<T: ?Sized> {
 impl<T: ?Sized> ArcInner<T> {
 	/// Creates an instance.
 	///
+	/// Arguments:
 	/// - `ptr` is a pointer to the data to place in the `Arc`. This is used as a helper for memory
 	/// allocation
 	/// - `init` is the function to initialize the object to place in the `Arc`
@@ -49,11 +50,13 @@ impl<T: ?Sized> ArcInner<T> {
 		let ptr = inner.as_ptr().with_metadata_of(ptr as *const Self);
 		let mut inner = NonNull::new_unchecked(ptr);
 
+		// Initialize
+		let i = inner.as_mut();
 		// The initial strong reference
-		inner.as_mut().strong = AtomicUsize::new(1);
+		i.strong = AtomicUsize::new(1);
 		// Every strong references collectively hold a weak reference
-		inner.as_mut().weak = AtomicUsize::new(1);
-		init(&mut inner.as_mut().obj);
+		i.weak = AtomicUsize::new(1);
+		init(&mut i.obj);
 
 		Ok(inner)
 	}

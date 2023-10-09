@@ -32,7 +32,11 @@ pub fn _llseek(
 		let fds_mutex = proc.get_fds().unwrap().clone();
 		let fds = fds_mutex.lock();
 
-		let open_file_mutex = fds.get_fd(fd).ok_or_else(|| errno!(EBADF))?.get_open_file().clone();
+		let open_file_mutex = fds
+			.get_fd(fd)
+			.ok_or_else(|| errno!(EBADF))?
+			.get_open_file()
+			.clone();
 
 		(mem_space, open_file_mutex)
 	};

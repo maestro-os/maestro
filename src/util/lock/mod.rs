@@ -209,7 +209,10 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 impl<T, const INT: bool> Mutex<T, INT> {
 	/// Consumes the mutex and returns the inner value.
 	pub fn into_inner(self) -> T {
-		self.lock();
+		// Make sure no one is using the resource
+		let inner = unsafe { &mut *self.inner.get() };
+		inner.spin.lock();
+
 		self.inner.into_inner().data
 	}
 }

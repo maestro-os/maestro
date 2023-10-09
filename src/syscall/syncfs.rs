@@ -19,7 +19,10 @@ pub fn syncfs(fd: c_int) -> Result<i32, Errno> {
 		let fds_mutex = proc.get_fds().unwrap();
 		let fds = fds_mutex.lock();
 
-		fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?.get_open_file().clone()
+		fds.get_fd(fd as _)
+			.ok_or_else(|| errno!(EBADF))?
+			.get_open_file()
+			.clone()
 	};
 
 	let open_file = open_file_mutex.lock();

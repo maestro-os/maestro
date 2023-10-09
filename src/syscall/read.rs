@@ -33,7 +33,11 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 
 		let fds_mutex = proc.get_fds().unwrap().clone();
 		let fds = fds_mutex.lock();
-		let open_file_mutex = fds.get_fd(fd as _).ok_or(errno!(EBADF))?.get_open_file().clone();
+		let open_file_mutex = fds
+			.get_fd(fd as _)
+			.ok_or(errno!(EBADF))?
+			.get_open_file()
+			.clone();
 
 		drop(proc);
 		(proc_mutex, mem_space, open_file_mutex)

@@ -103,7 +103,11 @@ fn build_path_from_fd(
 		}
 		let fds_mutex = process.get_fds().unwrap();
 		let fds = fds_mutex.lock();
-		let open_file_mutex = fds.get_fd(dirfd as _).ok_or(errno!(EBADF))?.get_open_file().clone();
+		let open_file_mutex = fds
+			.get_fd(dirfd as _)
+			.ok_or(errno!(EBADF))?
+			.get_open_file()
+			.clone();
 		drop(fds);
 
 		// Unlock to avoid deadlock with procfs
@@ -142,7 +146,11 @@ pub fn get_file_at(
 			}
 			let fds_mutex = process.get_fds().unwrap();
 			let fds = fds_mutex.lock();
-			let open_file_mutex = fds.get_fd(dirfd as _).ok_or(errno!(EBADF))?.get_open_file().clone();
+			let open_file_mutex = fds
+				.get_fd(dirfd as _)
+				.ok_or(errno!(EBADF))?
+				.get_open_file()
+				.clone();
 			drop(fds);
 
 			// Unlocking to avoid deadlock with procfs
