@@ -47,8 +47,8 @@ impl<T: ?Sized> ArcInner<T> {
 			.unwrap();
 		// Allocate and make usable
 		let inner = malloc::alloc(size)?;
-		let ptr = inner.as_ptr().with_metadata_of(ptr as *const Self);
-		let mut inner = NonNull::new_unchecked(ptr);
+		let inner = inner.as_ptr().with_metadata_of(ptr as *const Self);
+		let mut inner = NonNull::new_unchecked(inner);
 
 		// Initialize
 		let i = inner.as_mut();
@@ -106,7 +106,7 @@ impl<T> Arc<T> {
 	///
 	/// This function allocates memory. On fail, it returns an error.
 	pub fn new(obj: T) -> AllocResult<Self> {
-		let inner = unsafe { ArcInner::new(&obj, |o: &mut T| *o = obj)? };
+		let inner = unsafe { ArcInner::new(&obj, |o: &mut T| ptr::write(o, obj))? };
 		Ok(Self {
 			inner,
 		})
