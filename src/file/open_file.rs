@@ -220,7 +220,7 @@ impl OpenFile {
 					Ok(0)
 				}
 
-				_ => Err(errno!(EINVAL)),
+				_ => Err(errno!(ENOTTY)),
 			},
 
 			_ => file.ioctl(mem_space, request, argp),

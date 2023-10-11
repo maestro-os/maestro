@@ -18,6 +18,7 @@ pub mod perm;
 pub mod util;
 pub mod vfs;
 
+use core::cmp::max;
 use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
@@ -852,7 +853,6 @@ impl IO for File {
 			let Some(io_mutex) = io else {
 				return Ok((0, true));
 			};
-
 			let mut io = io_mutex.lock();
 
 			if let Some((fs_mutex, inode)) = fs {
@@ -865,11 +865,10 @@ impl IO for File {
 	}
 
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
-		self.io_op(|io, fs| {
+		let len = self.io_op(|io, fs| {
 			let Some(io_mutex) = io else {
 				return Ok(0);
 			};
-
 			let mut io = io_mutex.lock();
 
 			if let Some((fs_mutex, inode)) = fs {
@@ -879,7 +878,10 @@ impl IO for File {
 			} else {
 				io.write(off, buff)
 			}
-		})
+		})?;
+		// Update file's size
+		self.size = max(off + len, self.size);
+		Ok(len)
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {

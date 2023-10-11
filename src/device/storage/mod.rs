@@ -353,7 +353,7 @@ impl DeviceHandle for StorageDeviceHandle {
 				Ok(0)
 			}
 
-			_ => Err(errno!(EINVAL)),
+			_ => Err(errno!(ENOTTY)),
 		}
 	}
 }

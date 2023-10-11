@@ -112,7 +112,7 @@ impl Buffer for PipeBuffer {
 				*count_ref = self.get_available_len() as _;
 			}
 
-			_ => return Err(errno!(EINVAL)),
+			_ => return Err(errno!(ENOTTY)),
 		}
 
 		Ok(0)
