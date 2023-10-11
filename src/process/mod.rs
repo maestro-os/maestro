@@ -904,7 +904,7 @@ impl Process {
 	) -> EResult<Arc<IntMutex<Self>>> {
 		debug_assert!(matches!(self.get_state(), State::Running));
 
-		// Handling vfork
+		// Handle vfork
 		let vfork_state = if fork_options.vfork {
 			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
 			VForkState::Executing
@@ -912,7 +912,7 @@ impl Process {
 			VForkState::None
 		};
 
-		// Cloning memory space
+		// Clone memory space
 		let (mem_space, kernel_stack) = {
 			let curr_mem_space = self.get_mem_space().unwrap();
 
@@ -931,7 +931,7 @@ impl Process {
 			}
 		};
 
-		// Cloning file descriptors
+		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
 			self.file_descriptors.clone()
 		} else {
@@ -946,7 +946,7 @@ impl Process {
 				.transpose()?
 		};
 
-		// Cloning signal handlers
+		// Clone signal handlers
 		let signal_handlers = if fork_options.share_sighand {
 			self.signal_handlers.clone()
 		} else {
