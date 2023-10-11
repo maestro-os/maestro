@@ -270,7 +270,7 @@ impl Filesystem for ProcFS {
 		inode: INode,
 		off: u64,
 		buf: &mut [u8],
-	) -> Result<(u64, bool), Errno> {
+	) -> Result<u64, Errno> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 

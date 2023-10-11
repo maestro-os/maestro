@@ -1207,7 +1207,7 @@ impl Filesystem for Ext2Fs {
 		inode: INode,
 		off: u64,
 		buf: &mut [u8],
-	) -> Result<(u64, bool), Errno> {
+	) -> Result<u64, Errno> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}

@@ -857,7 +857,9 @@ impl IO for File {
 
 			if let Some((fs_mutex, inode)) = fs {
 				let mut fs = fs_mutex.lock();
-				fs.read_node(&mut *io, inode, off, buff)
+				let len = fs.read_node(&mut *io, inode, off, buff)?;
+				let eof = off + len >= self.size;
+				Ok((len, eof))
 			} else {
 				io.read(off, buff)
 			}
