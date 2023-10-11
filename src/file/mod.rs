@@ -18,7 +18,6 @@ pub mod perm;
 pub mod util;
 pub mod vfs;
 
-use core::cmp::max;
 use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
@@ -43,6 +42,7 @@ use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
+use core::cmp::max;
 use core::ffi::c_void;
 use mountpoint::MountPoint;
 use mountpoint::MountSource;
