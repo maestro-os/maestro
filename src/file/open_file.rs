@@ -71,8 +71,8 @@ pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 /// This structure is pointed to by file descriptors and point to files.
 /// They exist to ensure several file descriptors can share the same open file.
 pub struct OpenFile {
-	/// The open file.
-	file: Arc<Mutex<File>>,
+	/// The open file. This is an option to allow easier dropping implementation.
+	file: Option<Arc<Mutex<File>>>,
 	/// The file's location. This field is necessary to avoid locking the file's mutex each time
 	/// the location is required.
 	location: FileLocation,
@@ -96,7 +96,7 @@ impl OpenFile {
 	pub fn new(file: Arc<Mutex<File>>, flags: i32) -> Self {
 		let location = file.lock().get_location().clone();
 		let s = Self {
-			file,
+			file: Some(file),
 			location: location.clone(),
 			flags,
 
@@ -123,29 +123,19 @@ impl OpenFile {
 	/// - `write` tells whether the file descriptor is open for writing
 	///
 	/// If the file is not open, the function does nothing.
-	pub fn close(self) -> EResult<()> {
-		let read = self.can_read();
-		let write = self.can_write();
-
+	pub fn close(mut self) -> EResult<()> {
 		// Close file if this is the last reference to it
-		if let Some(file) = Arc::into_inner(self.file) {
-			file.into_inner().close()?;
-		}
-
-		// If the file points to a buffer, decrement the number of open ends
-		if let Some(buff_mutex) = buffer::get(&self.location) {
-			let mut buff = buff_mutex.lock();
-			buff.decrement_open(read, write);
-		}
-
-		Ok(())
+		let Some(file) = self.file.take().and_then(Arc::into_inner) else {
+			return Ok(());
+		};
+		file.into_inner().close()
 	}
 
 	/// Returns the file.
 	///
 	/// The name of the file is not set since it cannot be known from this structure.
 	pub fn get_file(&self) -> &Arc<Mutex<File>> {
-		&self.file
+		self.file.as_ref().unwrap()
 	}
 
 	/// Returns the location of the file.
@@ -204,7 +194,7 @@ impl OpenFile {
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> Result<u32, Errno> {
-		let mut file = self.file.lock();
+		let mut file = self.get_file().lock();
 		match file.get_content() {
 			FileContent::Regular => match request.get_old_format() {
 				ioctl::FIONREAD => {
@@ -236,7 +226,7 @@ impl OpenFile {
 	///
 	/// If the file cannot block, the function does nothing.
 	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
-		let file = self.file.lock();
+		let file = self.get_file().lock();
 		match file.get_content() {
 			FileContent::Fifo | FileContent::Socket => {
 				if let Some(buff_mutex) = buffer::get(self.get_location()) {
@@ -286,7 +276,7 @@ impl OpenFile {
 
 impl IO for OpenFile {
 	fn get_size(&self) -> u64 {
-		self.file.lock().get_size()
+		self.get_file().lock().get_size()
 	}
 
 	/// Note: on this specific implementation, the offset is ignored since
@@ -296,7 +286,7 @@ impl IO for OpenFile {
 			return Err(errno!(EINVAL));
 		}
 
-		let mut file = self.file.lock();
+		let mut file = self.file.as_ref().unwrap().lock();
 		if matches!(file.get_content(), FileContent::Directory(_)) {
 			return Err(errno!(EISDIR));
 		}
@@ -321,7 +311,7 @@ impl IO for OpenFile {
 			return Err(errno!(EINVAL));
 		}
 
-		let mut file = self.file.lock();
+		let mut file = self.file.as_ref().unwrap().lock();
 		if matches!(file.get_content(), FileContent::Directory(_)) {
 			return Err(errno!(EISDIR));
 		}
@@ -346,6 +336,16 @@ impl IO for OpenFile {
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
-		self.file.lock().poll(mask)
+		self.get_file().lock().poll(mask)
+	}
+}
+
+impl Drop for OpenFile {
+	fn drop(&mut self) {
+		// If the file points to a buffer, decrement the number of open ends
+		if let Some(buff_mutex) = buffer::get(&self.location) {
+			let mut buff = buff_mutex.lock();
+			buff.decrement_open(self.can_read(), self.can_write());
+		}
 	}
 }
