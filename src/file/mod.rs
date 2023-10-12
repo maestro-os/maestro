@@ -22,6 +22,7 @@ use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
@@ -41,10 +42,10 @@ use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
+use core::cmp::max;
 use core::ffi::c_void;
 use mountpoint::MountPoint;
 use mountpoint::MountSource;
-use open_file::OpenFile;
 use path::Path;
 use perm::AccessProfile;
 
@@ -216,7 +217,7 @@ pub struct DirEntry {
 /// Enumeration of all possible file contents for each file types.
 #[derive(Debug)]
 pub enum FileContent {
-	/// The file is a regular file. No data.
+	/// The file is a regular file.
 	Regular,
 	/// The file is a directory.
 	///
@@ -318,6 +319,12 @@ pub struct File {
 	location: FileLocation,
 	/// The content of the file.
 	content: FileContent,
+
+	/// Tells whether remove has been deferred for the file. If `true`, then the file will be
+	/// removed when the file is no longer used.
+	deferred_remove: bool,
+	/// Tells whether the file has been removed.
+	removed: bool,
 }
 
 impl File {
@@ -360,6 +367,9 @@ impl File {
 
 			location,
 			content,
+
+			deferred_remove: false,
+			removed: false,
 		})
 	}
 
@@ -412,11 +422,6 @@ impl File {
 	/// stored.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location
-	}
-
-	/// Returns a mutable reference to the location at which the file is stored.
-	pub fn get_location_mut(&mut self) -> &mut FileLocation {
-		&mut self.location
 	}
 
 	/// Returns the number of hard links.
@@ -517,11 +522,6 @@ impl File {
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> FileType {
 		self.content.as_type()
-	}
-
-	/// If the file is open, returns the associated instance. Else, returns `None`.
-	pub fn get_open_file(&self) -> Option<Arc<Mutex<OpenFile>>> {
-		OpenFile::get(&self.location)
 	}
 
 	/// Performs an ioctl operation on the file.
@@ -686,6 +686,32 @@ impl File {
 			}
 		}
 	}
+
+	/// Defers removal of the file, meaning the file will be removed when closed.
+	pub fn defer_remove(&mut self) {
+		self.deferred_remove = true;
+	}
+
+	/// Closes the file, removing it if removal has been deferred.
+	pub fn close(mut self) -> EResult<()> {
+		if !self.deferred_remove {
+			return Ok(());
+		}
+		vfs::remove_file(&mut self, &AccessProfile::KERNEL)?;
+		self.removed = true;
+		Ok(())
+	}
+}
+
+impl Drop for File {
+	/// This function is used in case removal of the file has been deferred, but `close` has not
+	/// been called.
+	fn drop(&mut self) {
+		if !self.deferred_remove || self.removed {
+			return;
+		}
+		let _ = vfs::remove_file(self, &AccessProfile::KERNEL);
+	}
 }
 
 impl AccessProfile {
@@ -827,12 +853,13 @@ impl IO for File {
 			let Some(io_mutex) = io else {
 				return Ok((0, true));
 			};
-
 			let mut io = io_mutex.lock();
 
 			if let Some((fs_mutex, inode)) = fs {
 				let mut fs = fs_mutex.lock();
-				fs.read_node(&mut *io, inode, off, buff)
+				let len = fs.read_node(&mut *io, inode, off, buff)?;
+				let eof = off + len >= self.size;
+				Ok((len, eof))
 			} else {
 				io.read(off, buff)
 			}
@@ -840,11 +867,10 @@ impl IO for File {
 	}
 
 	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
-		self.io_op(|io, fs| {
+		let len = self.io_op(|io, fs| {
 			let Some(io_mutex) = io else {
 				return Ok(0);
 			};
-
 			let mut io = io_mutex.lock();
 
 			if let Some((fs_mutex, inode)) = fs {
@@ -854,7 +880,10 @@ impl IO for File {
 			} else {
 				io.write(off, buff)
 			}
-		})
+		})?;
+		// Update file's size
+		self.size = max(off + len, self.size);
+		Ok(len)
 	}
 
 	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {

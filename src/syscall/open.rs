@@ -2,10 +2,12 @@
 //! descriptor.
 
 use crate::errno;
+use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::open_file;
+use crate::file::open_file::OpenFile;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
@@ -47,7 +49,7 @@ fn get_file(
 	flags: i32,
 	mode: Mode,
 	access_profile: &AccessProfile,
-) -> Result<Arc<Mutex<File>>, Errno> {
+) -> EResult<Arc<Mutex<File>>> {
 	// Tells whether to follow symbolic links on the last component of the path.
 	let follow_links = flags & open_file::O_NOFOLLOW == 0;
 
@@ -96,22 +98,14 @@ fn get_file(
 	}
 }
 
-/// The function handles open flags.
+/// The function checks the system call's flags and performs the action associated with some of
+/// them.
 ///
 /// Arguments:
 /// - `file` is the file
 /// - `flags` is the set of flags provided by userspace
 /// - `access_profile` is the access profile to check permissions
-///
-/// The following informations are returned:
-/// - Whether the file is open for reading
-/// - Whether the file is open for writing
-/// - Whether the file descriptor is open with close-on-exec.
-pub fn handle_flags(
-	file: &mut File,
-	flags: i32,
-	access_profile: &AccessProfile,
-) -> Result<(bool, bool, bool), Errno> {
+pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile) -> EResult<()> {
 	let (read, write) = match flags & 0b11 {
 		open_file::O_RDONLY => (true, false),
 		open_file::O_WRONLY => (false, true),
@@ -134,14 +128,13 @@ pub fn handle_flags(
 		file.set_size(0);
 	}
 
-	let cloexec = flags & open_file::O_CLOEXEC != 0;
-	Ok((read, write, cloexec))
+	Ok(())
 }
 
 /// Performs the open system call.
-pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i32, Errno> {
-	let (path, mode, ap) = {
-		let proc_mutex = Process::current_assert();
+pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i32> {
+	let proc_mutex = Process::current_assert();
+	let (path, mode, ap, fds_mutex) = {
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -150,44 +143,40 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> Result<i3
 		let abs_path = super::util::get_absolute_path(&proc, path)?;
 
 		let mode = mode & !proc.umask;
-		(abs_path, mode, proc.access_profile)
+
+		let fds_mutex = proc.get_fds().unwrap().clone();
+		(abs_path, mode, proc.access_profile, fds_mutex)
 	};
 
-	// Get the file
-	let file = get_file(path, flags, mode, &ap)?;
+	// Get file
+	let file_mutex = get_file(path, flags, mode, &ap)?;
+	let mut file = file_mutex.lock();
 
-	let (loc, read, write, cloexec) = {
-		let mut f = file.lock();
+	// Handle flags
+	handle_flags(&mut file, flags, &ap)?;
+	drop(file);
 
-		let loc = f.get_location().clone();
-		let (read, write, cloexec) = handle_flags(&mut f, flags, &ap)?;
+	// Create open file description
+	let open_file = OpenFile::new(file_mutex.clone(), flags);
 
-		(loc, read, write, cloexec)
-	};
-
-	open_file::OpenFile::new(loc.clone(), flags)?;
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let fds_mutex = proc.get_fds().unwrap();
-	let mut fds = fds_mutex.lock();
-
+	// Create FD
 	let mut fd_flags = 0;
-	if cloexec {
+	if flags & open_file::O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-
-	let fd = fds.create_fd(loc, fd_flags, read, write)?;
+	let mut fds = fds_mutex.lock();
+	let fd = fds.create_fd(fd_flags, open_file)?;
 	let fd_id = fd.get_id();
 
-	// Flushing file
-	if let Err(e) = file.lock().sync() {
+	// TODO remove?
+	// Flush file
+	let file = file_mutex.lock();
+	if let Err(e) = file.sync() {
 		fds.close_fd(fd_id)?;
 		return Err(e);
 	}
 
-	Ok(fd.get_id() as _)
+	Ok(fd_id as _)
 }
 
 #[syscall]

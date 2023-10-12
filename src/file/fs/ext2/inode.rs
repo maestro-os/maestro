@@ -731,7 +731,7 @@ impl Ext2INode {
 		buff: &mut [u8],
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> Result<(u64, bool), Errno> {
+	) -> Result<u64, Errno> {
 		let size = self.get_size(superblock);
 		if off > size {
 			return Err(errno!(EINVAL));
@@ -762,10 +762,7 @@ impl Ext2INode {
 
 			i += len;
 		}
-
-		let len = min(i, max);
-		let eof = off + len >= size;
-		Ok((len, eof))
+		Ok(min(i, max))
 	}
 
 	/// Writes the content of the inode.

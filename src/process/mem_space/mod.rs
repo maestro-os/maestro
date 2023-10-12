@@ -12,6 +12,7 @@ pub mod ptr;
 use crate::errno::AllocError;
 use crate::errno::Errno;
 use crate::file::perm::AccessProfile;
+use crate::file::FileLocation;
 use crate::idt;
 use crate::memory;
 use crate::memory::buddy;
@@ -23,7 +24,6 @@ use crate::process::oom;
 use crate::process::open_file::OpenFile;
 use crate::process::AllocResult;
 use crate::util;
-use crate::util::boxed::Box;
 use crate::util::container::map::Map;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
@@ -60,7 +60,7 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
 /// The physical pages reference counter.
 pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
 
-// TODO update the number of reference to the open file when necessary
+// TODO when reaching the last reference to the open file, close it on unmap
 
 // TODO Disallow clone and use a special function + Drop to increment/decrement reference counters
 /// Enumeration of map residences.
@@ -81,7 +81,7 @@ pub enum MapResidence {
 	/// The mapping resides in a file.
 	File {
 		/// The location of the file.
-		file: Arc<Mutex<OpenFile>>,
+		location: FileLocation,
 		/// The offset of the mapping in the file.
 		off: u64,
 	},
@@ -160,7 +160,7 @@ impl MapResidence {
 			}
 
 			MapResidence::File {
-				file: _,
+				location: _,
 				off: _,
 			} => {
 				// TODO get physical page for this offset
@@ -190,7 +190,7 @@ impl MapResidence {
 			}
 
 			MapResidence::File {
-				file: _,
+				location: _,
 				off: _,
 			} => {
 				// TODO
@@ -249,7 +249,7 @@ pub struct MemSpace {
 	brk_ptr: *mut c_void,
 
 	/// The virtual memory context handler.
-	vmem: Box<dyn VMem>,
+	vmem: Arc<dyn VMem>,
 }
 
 impl MemSpace {
@@ -346,7 +346,7 @@ impl MemSpace {
 			brk_init: null_mut::<_>(),
 			brk_ptr: null_mut::<_>(),
 
-			vmem: vmem::new()?,
+			vmem: Arc::try_from(vmem::new()?)?,
 		};
 
 		// Create the default gap of memory which is present at the beginning
@@ -357,9 +357,9 @@ impl MemSpace {
 		Ok(s)
 	}
 
-	/// Returns a mutable reference to the vvirtual memory context.
-	pub fn get_vmem(&mut self) -> &mut Box<dyn VMem> {
-		&mut self.vmem
+	/// Returns a mutable reference to the virtual memory context.
+	pub fn get_vmem(&self) -> &Arc<dyn VMem> {
+		&self.vmem
 	}
 
 	/// Returns the number of virtual memory pages in the memory space.
@@ -440,13 +440,7 @@ impl MemSpace {
 		};
 
 		// Creating the mapping
-		let mapping = MemMapping::new(
-			addr,
-			size,
-			flags,
-			residence,
-			NonNull::new(self.vmem.as_mut_ptr()).unwrap(),
-		);
+		let mapping = MemMapping::new(addr, size, flags, residence, self.vmem.clone());
 		let m = self.mappings.insert(addr, mapping)?;
 
 		// Mapping default pages
@@ -761,7 +755,7 @@ impl MemSpace {
 			brk_init: self.brk_init,
 			brk_ptr: self.brk_ptr,
 
-			vmem: vmem::clone(&self.vmem)?,
+			vmem: Arc::try_from(vmem::try_clone(&*self.vmem)?)?,
 		};
 		for (_, m) in self.mappings.iter_mut() {
 			let new_mapping = m.fork(&mut mem_space)?;

@@ -25,7 +25,7 @@ pub fn bind(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<i32
 	let fds_mutex = proc.get_fds().unwrap();
 	let fds = fds_mutex.lock();
 	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
-	let open_file_mutex = fd.get_open_file()?;
+	let open_file_mutex = fd.get_open_file();
 	let open_file = open_file_mutex.lock();
 	let loc = open_file.get_location();
 	let sock_mutex = buffer::get(loc).ok_or_else(|| errno!(ENOENT))?;

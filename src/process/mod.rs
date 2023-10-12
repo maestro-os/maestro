@@ -39,6 +39,7 @@ use crate::file::vfs;
 use crate::gdt;
 use crate::memory;
 use crate::process::mountpoint::MountSource;
+use crate::process::open_file::OpenFile;
 use crate::time::timer::TimerManager;
 use crate::tty;
 use crate::tty::TTYHandle;
@@ -500,11 +501,11 @@ impl Process {
 			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &access_profile, true)?;
 			let tty_file = tty_file_mutex.lock();
 
-			let loc = tty_file.get_location().clone();
+			let loc = tty_file.get_location();
+			let file = vfs::get_file_by_location(loc)?;
 
-			open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
-
-			let stdin_fd = fds_table.create_fd(loc, 0, true, true)?;
+			let open_file = OpenFile::new(file, open_file::O_RDWR);
+			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 
 			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
@@ -788,8 +789,8 @@ impl Process {
 	///
 	/// If the process is terminated, the function returns `None`.
 	#[inline(always)]
-	pub fn get_mem_space(&self) -> Option<Arc<IntMutex<MemSpace>>> {
-		self.mem_space.clone()
+	pub fn get_mem_space(&self) -> Option<&Arc<IntMutex<MemSpace>>> {
+		self.mem_space.as_ref()
 	}
 
 	/// Sets the new memory space for the process, dropping the previous if any.
@@ -809,8 +810,8 @@ impl Process {
 	}
 
 	/// Returns the file descriptor table associated with the process.
-	pub fn get_fds(&self) -> Option<Arc<Mutex<FileDescriptorTable>>> {
-		self.file_descriptors.clone()
+	pub fn get_fds(&self) -> Option<&Arc<Mutex<FileDescriptorTable>>> {
+		self.file_descriptors.as_ref()
 	}
 
 	/// Sets the file descriptor table of the process.
@@ -903,7 +904,7 @@ impl Process {
 	) -> EResult<Arc<IntMutex<Self>>> {
 		debug_assert!(matches!(self.get_state(), State::Running));
 
-		// Handling vfork
+		// Handle vfork
 		let vfork_state = if fork_options.vfork {
 			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
 			VForkState::Executing
@@ -911,7 +912,7 @@ impl Process {
 			VForkState::None
 		};
 
-		// Cloning memory space
+		// Clone memory space
 		let (mem_space, kernel_stack) = {
 			let curr_mem_space = self.get_mem_space().unwrap();
 
@@ -921,7 +922,7 @@ impl Process {
 					.lock()
 					.map_stack(KERNEL_STACK_SIZE.try_into().unwrap(), KERNEL_STACK_FLAGS)?;
 
-				(curr_mem_space, Some(new_kernel_stack))
+				(curr_mem_space.clone(), Some(new_kernel_stack))
 			} else {
 				(
 					Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?,
@@ -930,7 +931,7 @@ impl Process {
 			}
 		};
 
-		// Cloning file descriptors
+		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
 			self.file_descriptors.clone()
 		} else {
@@ -945,7 +946,7 @@ impl Process {
 				.transpose()?
 		};
 
-		// Cloning signal handlers
+		// Clone signal handlers
 		let signal_handlers = if fork_options.share_sighand {
 			self.signal_handlers.clone()
 		} else {
@@ -1023,6 +1024,7 @@ impl Process {
 		Ok(sched_mutex.lock().add_process(process)?)
 	}
 
+	// TODO return a &Arc instead of locking
 	/// Returns the signal handler for the signal `sig`.
 	#[inline(always)]
 	pub fn get_signal_handler(&self, sig: &Signal) -> SignalHandler {

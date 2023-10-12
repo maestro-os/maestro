@@ -475,9 +475,9 @@ impl Filesystem for KernFS {
 		inode: INode,
 		off: u64,
 		buf: &mut [u8],
-	) -> Result<(u64, bool), Errno> {
+	) -> Result<u64, Errno> {
 		let node = self.get_node_mut(inode)?;
-		node.read(off, buf)
+		Ok(node.read(off, buf)?.0)
 	}
 
 	fn write_node(

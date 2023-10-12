@@ -98,8 +98,8 @@ pub fn do_select<T: TimeUnit>(
 				let proc_mutex = Process::current_assert();
 				let proc = proc_mutex.lock();
 
-				let mem_space = proc.get_mem_space().unwrap();
-				let fds_mutex = proc.get_fds().unwrap();
+				let mem_space = proc.get_mem_space().unwrap().clone();
+				let fds_mutex = proc.get_fds().unwrap().clone();
 
 				(mem_space, fds_mutex)
 			};
@@ -155,7 +155,7 @@ pub fn do_select<T: TimeUnit>(
 				mask |= io::POLLPRI;
 			}
 
-			let open_file_mutex = fd.get_open_file()?;
+			let open_file_mutex = fd.get_open_file();
 			let mut open_file = open_file_mutex.lock();
 
 			let result = open_file.poll(mask)?;

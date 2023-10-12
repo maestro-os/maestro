@@ -28,7 +28,7 @@ pub fn renameat2(
 
 		let ap = proc.access_profile;
 
-		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 
 		let oldpath = oldpath
@@ -62,7 +62,7 @@ pub fn renameat2(
 		vfs::create_link(&mut old, &mut new_parent, &new_name, &ap)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs::remove_file(&old, &ap)?;
+			vfs::remove_file(&mut old, &ap)?;
 		}
 	} else {
 		// Old and new are on different filesystems.

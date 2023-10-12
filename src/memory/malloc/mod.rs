@@ -60,7 +60,7 @@ pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	debug_assert!(ptr.is_aligned_to(chunk::ALIGNEMENT));
 	debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
 
-	Ok(NonNull::new(ptr).unwrap())
+	NonNull::new(ptr).ok_or(AllocError)
 }
 
 /// Changes the size of the memory previously allocated with `alloc`. `ptr` is

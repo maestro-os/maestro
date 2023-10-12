@@ -5,7 +5,7 @@
 use super::gap::MemGap;
 use super::MapResidence;
 use super::MemSpace;
-use crate::errno::Errno;
+use crate::file::vfs;
 use crate::memory;
 use crate::memory::buddy;
 use crate::memory::physical_ref_counter::PhysRefCounter;
@@ -13,8 +13,10 @@ use crate::memory::vmem;
 use crate::memory::vmem::VMem;
 use crate::process::oom;
 use crate::process::AllocResult;
+use crate::process::EResult;
 use crate::util::io::IO;
 use crate::util::lock::*;
+use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 use core::fmt;
 use core::num::NonZeroUsize;
@@ -69,7 +71,7 @@ pub struct MemMapping {
 	residence: MapResidence,
 
 	/// Pointer to the virtual memory context handler.
-	vmem: NonNull<dyn VMem>, // TODO replace by a safer shared container
+	vmem: Arc<dyn VMem>,
 }
 
 impl MemMapping {
@@ -89,7 +91,7 @@ impl MemMapping {
 		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
-		vmem: NonNull<dyn VMem>,
+		vmem: Arc<dyn VMem>,
 	) -> Self {
 		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));
 
@@ -121,8 +123,8 @@ impl MemMapping {
 
 	/// Returns a reference to the virtual memory context handler associated
 	/// with the mapping.
-	pub fn get_vmem(&self) -> &mut dyn VMem {
-		unsafe { &mut *self.vmem.as_ptr() }
+	pub fn get_vmem(&self) -> &Arc<dyn VMem> {
+		&self.vmem
 	}
 
 	/// Tells whether the mapping contains the given virtual address `ptr`.
@@ -140,10 +142,8 @@ impl MemMapping {
 			return None;
 		}
 
-		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-
-		let phys_ptr = vmem.translate(virt_ptr)?;
+		let phys_ptr = self.vmem.translate(virt_ptr)?;
 		if phys_ptr != get_default_page() {
 			Some(phys_ptr)
 		} else {
@@ -198,7 +198,6 @@ impl MemMapping {
 	///
 	/// If a physical page is already mapped, the function does nothing.
 	pub fn map(&mut self, offset: usize) -> AllocResult<()> {
-		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
 
 		let cow_buffer = {
@@ -227,7 +226,7 @@ impl MemMapping {
 		// Map new page
 		let new_phys_ptr = self.residence.alloc_page(offset)?;
 		let flags = self.get_vmem_flags(true, offset);
-		if let Err(errno) = vmem.map(new_phys_ptr.as_ptr(), virt_ptr, flags) {
+		if let Err(errno) = self.vmem.map(new_phys_ptr.as_ptr(), virt_ptr, flags) {
 			self.residence.free_page(offset, new_phys_ptr.as_ptr());
 			return Err(errno);
 		}
@@ -241,7 +240,7 @@ impl MemMapping {
 		if self.residence.is_normal() {
 			unsafe {
 				// FIXME: switching vmem at each call to `map` is suboptimal (try to batch)
-				vmem::switch(vmem, move || {
+				vmem::switch(&*self.vmem, move || {
 					vmem::write_lock_wrap(|| {
 						if let Some(buffer) = cow_buffer {
 							ptr::copy_nonoverlapping(
@@ -276,14 +275,11 @@ impl MemMapping {
 			self.flags & super::MAPPING_FLAG_NOLAZY == 0 && self.residence.is_normal();
 
 		if use_default {
-			let vmem = self.get_vmem();
 			let default_page = get_default_page();
-
 			for i in 0..self.size.get() {
 				let virt_ptr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
 				let flags = self.get_vmem_flags(false, i);
-
-				vmem.map(default_page, virt_ptr, flags)?;
+				self.vmem.map(default_page, virt_ptr, flags)?;
 			}
 		} else {
 			for i in 0..self.size.get() {
@@ -301,14 +297,12 @@ impl MemMapping {
 	///
 	/// If the page is shared, it is not freed but the reference counter is decreased.
 	fn free_phys_page(&mut self, offset: usize) {
-		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 
-		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
+		if let Some(phys_ptr) = self.vmem.translate(virt_ptr) {
 			if phys_ptr == get_default_page() {
 				return;
 			}
-
 			self.residence.free_page(offset, phys_ptr);
 		}
 	}
@@ -325,8 +319,7 @@ impl MemMapping {
 		}
 
 		// Unmapping physical pages
-		let vmem = self.get_vmem();
-		oom::wrap(|| vmem.unmap_range(self.begin, self.size.get()));
+		oom::wrap(|| self.vmem.unmap_range(self.begin, self.size.get()));
 
 		Ok(())
 	}
@@ -361,7 +354,7 @@ impl MemMapping {
 
 			residence: self.residence.clone(),
 
-			vmem: self.vmem,
+			vmem: self.vmem.clone(),
 		});
 
 		let gap = NonZeroUsize::new(size).map(|size| MemGap::new(begin_ptr, size));
@@ -387,7 +380,7 @@ impl MemMapping {
 
 						residence,
 
-						vmem: self.vmem,
+						vmem: self.vmem.clone(),
 					}
 				})
 		};
@@ -398,8 +391,7 @@ impl MemMapping {
 		}
 
 		// Unmapping physical pages
-		let vmem = self.get_vmem();
-		oom::wrap(|| vmem.unmap_range(begin_ptr, size));
+		oom::wrap(|| self.vmem.unmap_range(begin_ptr, size));
 
 		(prev, gap, next)
 	}
@@ -407,14 +399,13 @@ impl MemMapping {
 	/// Updates the virtual memory context according to the mapping for the page
 	/// at offset `offset`.
 	pub fn update_vmem(&mut self, offset: usize) {
-		let vmem = self.get_vmem();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 
-		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
+		if let Some(phys_ptr) = self.vmem.translate(virt_ptr) {
 			let allocated = phys_ptr != get_default_page();
 			let flags = self.get_vmem_flags(allocated, offset);
 			// Cannot fail because the page for the vmem structure is already mapped
-			vmem.map(phys_ptr, virt_ptr, flags).unwrap();
+			self.vmem.map(phys_ptr, virt_ptr, flags).unwrap();
 		}
 	}
 
@@ -447,7 +438,7 @@ impl MemMapping {
 
 			residence: self.residence.clone(),
 
-			vmem: NonNull::new(mem_space.get_vmem().as_mut()).unwrap(),
+			vmem: mem_space.vmem.clone(),
 		};
 		let nolazy = (new_mapping.get_flags() & super::MAPPING_FLAG_NOLAZY) != 0;
 
@@ -455,7 +446,7 @@ impl MemMapping {
 			for i in 0..self.size.get() {
 				let virt_ptr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
 
-				new_mapping.get_vmem().unmap(virt_ptr)?;
+				new_mapping.vmem.unmap(virt_ptr)?;
 				new_mapping.map(i)?;
 			}
 		} else {
@@ -478,22 +469,32 @@ impl MemMapping {
 
 	/// Synchronizes the data on the memory mapping back to the filesystem.
 	///
-	/// The function does nothing if the mapping is not shared or not associated with a file.
-	pub fn fs_sync(&mut self) -> Result<(), Errno> {
+	/// The function does nothing if:
+	/// - The mapping is not shared
+	/// - The mapping is not associated with a file
+	/// - The associated file has been removed or cannot be accessed
+	///
+	/// If the mapping is lock, the function returns [`crate::errno::EBUSY`].
+	pub fn fs_sync(&self) -> EResult<()> {
 		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
 			return Ok(());
 		}
+		// TODO if locked, EBUSY
+
 		let MapResidence::File {
-			file,
+			location,
 			off,
 		} = &self.residence
 		else {
 			return Ok(());
 		};
+		let Ok(file_mutex) = vfs::get_file_by_location(location) else {
+			return Ok(());
+		};
 
 		unsafe {
-			vmem::switch(self.get_vmem(), || {
-				let mut file = file.lock();
+			vmem::switch(&*self.vmem, || {
+				let mut file = file_mutex.lock();
 
 				// TODO Make use of dirty flag if present on the current architecure to update
 				// only pages that have been modified

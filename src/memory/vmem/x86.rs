@@ -414,7 +414,7 @@ impl X86VMem {
 
 	/// Maps the given physical address `physaddr` to the given virtual address
 	/// `virtaddr` with the given flags using blocks of 1024 pages (PSE).
-	fn map_pse(&mut self, physaddr: *const c_void, virtaddr: *const c_void, mut flags: u32) {
+	fn map_pse(&self, physaddr: *const c_void, virtaddr: *const c_void, mut flags: u32) {
 		debug_assert!(physaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!(flags & ADDR_MASK == 0);
@@ -434,7 +434,7 @@ impl X86VMem {
 	}
 
 	/// Unmaps the large block (PSE) at the given virtual address `virtaddr`.
-	fn unmap_pse(&mut self, virtaddr: *const c_void) {
+	fn unmap_pse(&self, virtaddr: *const c_void) {
 		let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 		let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 		if dir_entry_value & FLAG_PRESENT == 0 || dir_entry_value & FLAG_PAGE_SIZE == 0 {
@@ -464,7 +464,7 @@ impl VMem for X86VMem {
 	}
 
 	fn map(
-		&mut self,
+		&self,
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
 		mut flags: u32,
@@ -509,7 +509,7 @@ impl VMem for X86VMem {
 	}
 
 	fn map_range(
-		&mut self,
+		&self,
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
 		pages: usize,
@@ -548,7 +548,7 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<()> {
+	fn unmap(&self, virtaddr: *const c_void) -> AllocResult<()> {
 		#[cfg(config_debug_debug)]
 		self.check_unmap(virtaddr, false);
 
@@ -581,7 +581,7 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> AllocResult<()> {
+	fn unmap_range(&self, virtaddr: *const c_void, pages: usize) -> AllocResult<()> {
 		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
 

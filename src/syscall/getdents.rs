@@ -34,15 +34,16 @@ pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap().clone();
 
-		let fds_mutex = proc.get_fds().unwrap();
+		let fds_mutex = proc.get_fds().unwrap().clone();
 		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds
 			.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()?;
+			.get_open_file()
+			.clone();
 
 		(mem_space, open_file_mutex)
 	};
@@ -60,7 +61,7 @@ pub fn getdents(fd: c_uint, dirp: SyscallSlice<c_void>, count: c_uint) -> Result
 	let start = open_file.get_offset();
 
 	{
-		let file_mutex = open_file.get_file()?;
+		let file_mutex = open_file.get_file();
 		let file = file_mutex.lock();
 
 		let entries = match file.get_content() {

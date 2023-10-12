@@ -23,10 +23,10 @@ pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 
 		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 
-		let open_file_mutex = fd.get_open_file()?;
+		let open_file_mutex = fd.get_open_file();
 		let open_file = open_file_mutex.lock();
 
-		open_file.get_file()?
+		open_file.get_file().clone()
 	};
 
 	let file = file_mutex.lock();

@@ -175,16 +175,14 @@ pub trait Filesystem: Any {
 	/// - `buf` is the buffer in which the data is the be written. The length of the buffer is the
 	/// number of bytes to read.
 	///
-	/// The function returns a tuple containing:
-	/// - The number of bytes read.
-	/// - Whether the End Of File (EOF) has been reached.
+	/// The function returns the number of bytes read.
 	fn read_node(
 		&mut self,
 		io: &mut dyn IO,
 		inode: INode,
 		off: u64,
 		buf: &mut [u8],
-	) -> Result<(u64, bool), Errno>;
+	) -> Result<u64, Errno>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
 	///

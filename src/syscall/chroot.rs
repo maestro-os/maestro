@@ -13,20 +13,21 @@ use macros::syscall;
 pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
-
 	// Check permission
 	if !proc.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-	let path = Path::from_str(path, true)?;
+	let path = {
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
+		let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		Path::from_str(path, true)?
+	};
 
 	// Check access to file
 	vfs::get_file_from_path(&path, &proc.access_profile, true)?;
-
 	proc.chroot = Arc::new(path)?;
+
 	Ok(0)
 }

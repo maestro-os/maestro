@@ -5,6 +5,8 @@ use crate::errno::Errno;
 use crate::file::buffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::open_file;
+use crate::file::open_file::OpenFile;
+use crate::file::vfs;
 use crate::net::SocketDesc;
 use crate::net::SocketDomain;
 use crate::net::SocketType;
@@ -33,13 +35,15 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> Result<i32, Errn
 
 	let sock = Socket::new(desc)?;
 
+	// Get file
 	let loc = buffer::register(None, sock)?;
-	open_file::OpenFile::new(loc.clone(), open_file::O_RDWR)?;
+	let file = vfs::get_file_by_location(&loc)?;
+
+	let open_file = OpenFile::new(file, open_file::O_RDWR);
 
 	let fds_mutex = proc.get_fds().unwrap();
 	let mut fds = fds_mutex.lock();
-
-	let sock_fd = fds.create_fd(loc, 0, true, true)?;
+	let sock_fd = fds.create_fd(0, open_file)?;
 
 	Ok(sock_fd.get_id() as _)
 }

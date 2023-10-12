@@ -30,7 +30,8 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 
 		fds.get_fd(fd as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()?
+			.get_open_file()
+			.clone()
 	};
 	let image = {
 		let mut open_file = open_file_mutex.lock();

@@ -35,11 +35,13 @@ pub fn splice(
 		let input = fds
 			.get_fd(fd_in as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()?;
+			.get_open_file()
+			.clone();
 		let output = fds
 			.get_fd(fd_out as _)
 			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()?;
+			.get_open_file()
+			.clone();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -51,8 +53,8 @@ pub fn splice(
 	};
 
 	{
-		let input_type = input_mutex.lock().get_file()?.lock().get_type();
-		let output_type = output_mutex.lock().get_file()?.lock().get_type();
+		let input_type = input_mutex.lock().get_file().lock().get_type();
+		let output_type = output_mutex.lock().get_file().lock().get_type();
 
 		let in_is_pipe = matches!(input_type, FileType::Fifo);
 		let out_is_pipe = matches!(output_type, FileType::Fifo);
@@ -82,15 +84,11 @@ pub fn splice(
 
 	let len = {
 		let mut input = input_mutex.lock();
-
 		let prev_off = input.get_offset();
-
 		let (len, _) = input.read(off_in.unwrap_or(0), buff.as_slice_mut())?;
-
 		if off_in.is_some() {
 			input.set_offset(prev_off);
 		}
-
 		len
 	};
 

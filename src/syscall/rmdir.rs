@@ -29,7 +29,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 	{
 		// Get directory
 		let file_mutex = vfs::get_file_from_path(&path, &ap, true)?;
-		let file = file_mutex.lock();
+		let mut file = file_mutex.lock();
 
 		match file.get_content() {
 			FileContent::Directory(entries) if entries.len() > 2 => return Err(errno!(ENOTEMPTY)),
@@ -37,7 +37,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 			_ => return Err(errno!(ENOTDIR)),
 		}
 
-		vfs::remove_file(&file, &ap)?;
+		vfs::remove_file(&mut file, &ap)?;
 	}
 
 	Ok(0)

@@ -101,20 +101,20 @@ fn build_path_from_fd(
 		if dirfd < 0 {
 			return Err(errno!(EBADF));
 		}
-
 		let fds_mutex = process.get_fds().unwrap();
 		let fds = fds_mutex.lock();
-
 		let open_file_mutex = fds
 			.get_fd(dirfd as _)
 			.ok_or(errno!(EBADF))?
-			.get_open_file()?;
+			.get_open_file()
+			.clone();
+		drop(fds);
 
-		// Unlocking to avoid deadlock with procfs
+		// Unlock to avoid deadlock with procfs
 		drop(process);
 
 		let open_file = open_file_mutex.lock();
-		let file_mutex = open_file.get_file()?;
+		let file_mutex = open_file.get_file();
 		let file = file_mutex.lock();
 		Ok(file.get_path()?.concat(&path)?)
 	}
@@ -144,21 +144,20 @@ pub fn get_file_at(
 			if dirfd < 0 {
 				return Err(errno!(EBADF));
 			}
-
 			let fds_mutex = process.get_fds().unwrap();
 			let fds = fds_mutex.lock();
-
 			let open_file_mutex = fds
 				.get_fd(dirfd as _)
 				.ok_or(errno!(EBADF))?
-				.get_open_file()?;
+				.get_open_file()
+				.clone();
+			drop(fds);
 
 			// Unlocking to avoid deadlock with procfs
 			drop(process);
 
 			let open_file = open_file_mutex.lock();
-
-			open_file.get_file()
+			Ok(open_file.get_file().clone())
 		} else {
 			Err(errno!(ENOENT))
 		}

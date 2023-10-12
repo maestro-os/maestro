@@ -25,7 +25,7 @@ pub fn linkat(
 
 		let ap = proc.access_profile;
 
-		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 
 		let oldpath = oldpath
@@ -44,7 +44,7 @@ pub fn linkat(
 	};
 
 	let mut old = old_mutex.lock();
-	if old.get_type() == FileType::Directory {
+	if matches!(old.get_type(), FileType::Directory) {
 		return Err(errno!(EISDIR));
 	}
 	let mut new_parent = new_parent_mutex.lock();
