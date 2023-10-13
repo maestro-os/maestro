@@ -95,6 +95,11 @@ impl<'tty> ANSIBufferView<'tty> {
 		self.tty
 	}
 
+	/// Returns an immutable reference to the underlying buffer view.
+	pub fn buffer(&self) -> &[u8] {
+		&self.tty.ansi_buffer.buf[..self.tty.ansi_buffer.cursor]
+	}
+
 	/// Tells whether the view is empty.
 	fn is_empty(&self) -> bool {
 		self.tty.ansi_buffer.buf[self.cursor..].is_empty()
@@ -109,21 +114,21 @@ impl<'tty> ANSIBufferView<'tty> {
 	///
 	/// If not enough data remains, the function returns `None`.
 	fn next_char(&mut self) -> Option<u8> {
-		let c = self.tty.ansi_buffer.buf.get(self.cursor)?;
+		let c = *self.buffer().get(self.cursor)?;
 		self.cursor += 1;
-		Some(*c)
+		Some(c)
 	}
 
 	/// Consumes the next number of the view.
 	///
 	/// If not enough data remains or if the number is invalid, the function returns `None`.
-	fn next_nbr(&mut self) -> Option<u16> {
-		let nbr_len = util::nbr_len(&self.tty.ansi_buffer.buf[self.cursor..]);
+	fn next_nbr(&mut self) -> Option<u32> {
+		let nbr_len = util::nbr_len(&self.buffer()[self.cursor..]);
 		// FIXME: doesn't work on invalid UTF-8. use a custom parsing function
-		let Ok(nbr) = str::from_utf8(&self.tty.ansi_buffer.buf[self.cursor..(self.cursor + nbr_len)]) else {
+		let Ok(nbr) = str::from_utf8(&self.buffer()[self.cursor..(self.cursor + nbr_len)]) else {
 			return None;
 		};
-		let n = str::parse::<u16>(nbr).ok()?;
+		let n = str::parse::<u32>(nbr).ok()?;
 		self.cursor += nbr_len;
 		Some(n)
 	}
@@ -190,7 +195,7 @@ fn move_cursor(tty: &mut TTY, d: u8, n: Option<u16>) -> ANSIState {
 /// Handles an Select Graphics Renderition (SGR) command.
 ///
 /// `command` is the id of the command. If `None`, the default is used (`0`).
-fn parse_sgr(tty: &mut TTY, command: Option<u16>) -> ANSIState {
+fn parse_sgr(tty: &mut TTY, command: Option<u32>) -> ANSIState {
 	match command.unwrap_or(0) {
 		0 => {
 			tty.reset_attrs();
@@ -272,11 +277,11 @@ fn parse_csi(view: &mut ANSIBufferView) -> (ANSIState, usize) {
 	};
 	let status = match cmd {
 		b'?' => match (view.next_nbr(), view.next_char()) {
-			(Some(25), Some(b'h')) => {
+			(Some(7 | 25), Some(b'h')) => {
 				view.tty().set_cursor_visible(true);
 				ANSIState::Valid
 			},
-			(Some(25), Some(b'l')) => {
+			(Some(7 | 25), Some(b'l')) => {
 				view.tty().set_cursor_visible(true);
 				ANSIState::Valid
 			},
