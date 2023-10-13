@@ -1,4 +1,4 @@
-//! This modules implements the ANSI escape codes for the TTY interface.
+//! ANSI escape sequences allow to control the terminal by specifying commands in standard output of the terminal.
 
 use super::TTY;
 use crate::util;
@@ -15,22 +15,19 @@ const CSI_CHAR: u8 = b'[';
 pub const BUFFER_SIZE: usize = 16;
 
 /// Enumeration of possible states of the ANSI parser.
-pub enum ANSIState {
-	/// The sequence is valid, has been executed and the buffer has been
-	/// cleared.
+pub(super) enum ANSIState {
+	/// The sequence is valid has been executed and has been pruned from the buffer.
 	Valid,
-	/// The buffer is waiting for more characters.
+	/// The sequence is incomplete. Waiting for more data.
 	Incomplete,
-	/// The sequence is invalid, the content of the buffer has been printed has
-	/// normal characters and the buffer has been cleared.
+	/// The sequence is invalid, it has been printed as normal characters and has been pruned from the buffer.
 	Invalid,
 }
 
-/// Buffer storing the current ANSI escape code being handled.
-/// The buffer acts as a FIFO.
-pub struct ANSIBuffer {
+/// A FIFO buffer for ANSI escape sequences.
+pub(super) struct ANSIBuffer {
 	/// The buffer.
-	buffer: [u8; BUFFER_SIZE],
+	buf: [u8; BUFFER_SIZE],
 	/// The position of the cursor in the buffer.
 	cursor: usize,
 }
@@ -39,7 +36,7 @@ impl ANSIBuffer {
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {
-			buffer: [0; BUFFER_SIZE],
+			buf: [0; BUFFER_SIZE],
 			cursor: 0,
 		}
 	}
@@ -62,19 +59,73 @@ impl ANSIBuffer {
 	/// The function returns the number of characters that have been pushed.
 	pub fn push_back(&mut self, buffer: &[u8]) -> usize {
 		let len = min(buffer.len(), BUFFER_SIZE - self.cursor);
-		#[allow(clippy::needless_range_loop)]
-		for i in 0..len {
-			self.buffer[self.cursor + i] = buffer[i];
-		}
-
+		self.buf[self.cursor..(self.cursor + len)].copy_from_slice(&buffer[..len]);
 		self.cursor += len;
 		len
 	}
 
 	/// Removes the first `n` characters from the buffer.
 	pub fn pop_front(&mut self, n: usize) {
-		self.buffer.rotate_left(n);
+		self.buf.rotate_left(n);
 		self.cursor -= n;
+	}
+}
+
+/// A view on an [`ANSIBuffer`], used to parse sequences.
+///
+/// Consuming data on the view doesn't affect the underlying buffer. Only the view itself.
+struct ANSIBufferView<'tty> {
+	/// The TTY.
+	tty: &'tty mut TTY,
+	/// The current offset of the view in the buffer.
+	cursor: usize,
+}
+
+impl<'tty> ANSIBufferView<'tty> {
+	/// Creates a view the buffer of the given TTY.
+	fn new(tty: &'tty mut TTY) -> Self {
+		Self {
+			tty,
+			cursor: 0,
+		}
+	}
+
+	/// Returns the associated TTY.
+	pub fn tty(&mut self) -> &mut TTY {
+		self.tty
+	}
+
+	/// Tells whether the view is empty.
+	fn is_empty(&self) -> bool {
+		self.tty.ansi_buffer.buf[self.cursor..].is_empty()
+	}
+
+	/// Returns the number of consumed characters.
+	fn consumed_count(&self) -> usize {
+		self.cursor
+	}
+
+	/// Consumes the next single character of the view.
+	///
+	/// If not enough data remains, the function returns `None`.
+	fn next_char(&mut self) -> Option<u8> {
+		let c = self.tty.ansi_buffer.buf.get(self.cursor)?;
+		self.cursor += 1;
+		Some(*c)
+	}
+
+	/// Consumes the next number of the view.
+	///
+	/// If not enough data remains or if the number is invalid, the function returns `None`.
+	fn next_nbr(&mut self) -> Option<u16> {
+		let nbr_len = util::nbr_len(&self.tty.ansi_buffer.buf[self.cursor..]);
+		// FIXME: doesn't work on invalid UTF-8. use a custom parsing function
+		let Ok(nbr) = str::from_utf8(&self.tty.ansi_buffer.buf[self.cursor..(self.cursor + nbr_len)]) else {
+			return None;
+		};
+		let n = str::parse::<u16>(nbr).ok()?;
+		self.cursor += nbr_len;
+		Some(n)
 	}
 }
 
@@ -104,41 +155,34 @@ fn get_vga_color(id: u8) -> vga::Color {
 	}
 }
 
-/// Moves the cursor on TTY `tty` in the given direction `d`.
+/// Moves the cursor on TTY `tty`.
 ///
-/// `n` is the number of cells to travel. If `None`, the default is used (`1`).
-fn move_cursor(tty: &mut TTY, d: char, n: Option<i16>) -> ANSIState {
-	let n = n.unwrap_or(1);
-
+/// Arguments:
+/// - `d` is the direction character.
+/// - `n` is the number of cells to travel. If `None`, the default is used (`1`).
+fn move_cursor(tty: &mut TTY, d: u8, n: Option<u16>) -> ANSIState {
+	let n = n.unwrap_or(1) as i16;
 	match d {
-		'A' => {
+		b'A' => {
 			if tty.cursor_y > n {
 				tty.cursor_y -= n;
 			}
-
 			ANSIState::Valid
 		}
-
-		'B' => {
+		b'B' => {
 			tty.cursor_y = min(tty.cursor_y + n, vga::HEIGHT);
-
 			ANSIState::Valid
 		}
-
-		'C' => {
+		b'C' => {
 			tty.cursor_x = min(tty.cursor_x + n, vga::WIDTH);
-
 			ANSIState::Valid
 		}
-
-		'D' => {
+		b'D' => {
 			if tty.cursor_x > n {
 				tty.cursor_x -= n;
 			}
-
 			ANSIState::Valid
 		}
-
 		_ => ANSIState::Invalid,
 	}
 }
@@ -146,31 +190,24 @@ fn move_cursor(tty: &mut TTY, d: char, n: Option<i16>) -> ANSIState {
 /// Handles an Select Graphics Renderition (SGR) command.
 ///
 /// `command` is the id of the command. If `None`, the default is used (`0`).
-fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
-	let command = command.unwrap_or(0);
-
-	match command {
+fn parse_sgr(tty: &mut TTY, command: Option<u16>) -> ANSIState {
+	match command.unwrap_or(0) {
 		0 => {
 			tty.reset_attrs();
-
 			ANSIState::Valid
 		}
-
 		1 => ANSIState::Valid, // TODO Bold
 		2 => ANSIState::Valid, // TODO Faint
 		3 => ANSIState::Valid, // TODO Italic
 		4 => ANSIState::Valid, // TODO Underline
-
 		5 | 6 => {
 			tty.set_blinking(true);
 			ANSIState::Valid
 		}
-
 		7 => {
 			tty.swap_colors();
 			ANSIState::Valid
 		}
-
 		8 => ANSIState::Valid,
 		9 => ANSIState::Valid,  // TODO Crossed-out
 		10 => ANSIState::Valid, // TODO Primary font
@@ -187,121 +224,103 @@ fn parse_sgr(tty: &mut TTY, command: Option<i16>) -> ANSIState {
 		22 => ANSIState::Valid, // TODO Normal intensity
 		23 => ANSIState::Valid, // TODO Not italic
 		24 => ANSIState::Valid, // TODO Not underlined
-
 		25 => {
 			tty.set_blinking(false);
 			ANSIState::Valid
 		}
-
 		26 => ANSIState::Valid,
 		27 => ANSIState::Valid, // TODO Not reversed
 		28 => ANSIState::Valid,
 		29 => ANSIState::Valid, // TODO Not crossed-out
-
-		30..=37 | 90..=97 => {
-			tty.set_fgcolor(get_vga_color(command as _));
+		c @ (30..=37 | 90..=97) => {
+			tty.set_fgcolor(get_vga_color(c as _));
 			ANSIState::Valid
 		}
-
 		38 => {
 			// TODO Set fg color
 			ANSIState::Valid
 		}
-
 		39 => {
 			tty.reset_fgcolor();
 			ANSIState::Valid
 		}
-
-		40..=47 | 100..=107 => {
-			tty.set_bgcolor(get_vga_color(command as _));
+		c @ (40..=47 | 100..=107) => {
+			tty.set_bgcolor(get_vga_color(c as _));
 			ANSIState::Valid
 		}
-
 		48 => {
 			// TODO Set bg color
 			ANSIState::Valid
 		}
-
 		49 => {
 			tty.reset_bgcolor();
 			ANSIState::Valid
 		}
-
 		50..=107 => ANSIState::Valid,
-
 		_ => ANSIState::Invalid,
 	}
 }
 
-/// Parses the CSI sequence in the given TTY's buffer.
+/// Parses the CSI sequence in the given buffer view.
 ///
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
-fn parse_csi(tty: &mut TTY) -> (ANSIState, usize) {
-	let nbr_len = util::nbr_len(&tty.ansi_buffer.buffer[2..]);
-	if tty.ansi_buffer.len() <= 2 + nbr_len {
+fn parse_csi(view: &mut ANSIBufferView) -> (ANSIState, usize) {
+	let nbr = view.next_nbr();
+	let Some(cmd) = view.next_char() else {
 		return (ANSIState::Incomplete, 0);
-	}
-
-	let nbr_str = str::from_utf8(&tty.ansi_buffer.buffer[2..(2 + nbr_len)]);
-	if nbr_str.is_err() {
-		return (ANSIState::Invalid, 0);
-	}
-
-	let nbr = str::parse::<i16>(nbr_str.unwrap()).ok();
-
-	let final_byte = tty.ansi_buffer.buffer[2 + nbr_len];
-	let status = match final_byte as char {
-		'A' | 'B' | 'C' | 'D' => move_cursor(tty, final_byte as char, nbr),
-
-		'E' => {
-			tty.newline(nbr.unwrap_or(1) as _);
+	};
+	let status = match cmd {
+		b'?' => match (view.next_nbr(), view.next_char()) {
+			(Some(25), Some(b'h')) => {
+				view.tty().set_cursor_visible(true);
+				ANSIState::Valid
+			},
+			(Some(25), Some(b'l')) => {
+				view.tty().set_cursor_visible(true);
+				ANSIState::Valid
+			},
+			_ => ANSIState::Invalid,
+		},
+		b'A'..=b'D' => move_cursor(view.tty(), cmd, nbr.map(|i| i as _)),
+		b'E' => {
+			view.tty().newline(nbr.unwrap_or(1) as _);
 			ANSIState::Valid
 		}
-
-		'F' => {
+		b'F' => {
 			// TODO Previous line
 			ANSIState::Valid
 		}
-
-		'G' => {
-			tty.cursor_y = nbr.unwrap_or(1).clamp(0, vga::WIDTH);
+		b'G' => {
+			view.tty().cursor_y = nbr.map(|i| i as i16).unwrap_or(1).clamp(0, vga::WIDTH);
 			ANSIState::Valid
 		}
-
-		'H' => {
+		b'H' => {
 			// TODO Set cursor position
 			ANSIState::Valid
 		}
-
-		'J' => {
+		b'J' => {
 			// TODO Erase in display
 			ANSIState::Valid
 		}
-
-		'K' => {
+		b'K' => {
 			// TODO Erase in line
 			ANSIState::Valid
 		}
-
-		'S' => {
+		b'S' => {
 			// TODO Scroll up
 			ANSIState::Valid
 		}
-
-		'T' => {
+		b'T' => {
 			// TODO Scroll down
 			ANSIState::Valid
 		}
-
-		'm' => parse_sgr(tty, nbr),
-
+		b'm' => parse_sgr(view.tty(), nbr),
 		_ => ANSIState::Invalid,
 	};
 
-	tty.update();
-	(status, 2 + nbr_len + 1)
+	view.tty().update();
+	(status, view.consumed_count())
 }
 
 /// Parses the sequence in the given TTY's buffer.
@@ -309,62 +328,48 @@ fn parse_csi(tty: &mut TTY) -> (ANSIState, usize) {
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
 fn parse(tty: &mut TTY) -> (ANSIState, usize) {
-	if tty.ansi_buffer.len() < 2 {
-		return (ANSIState::Incomplete, 0);
+	let mut view = ANSIBufferView::new(tty);
+	if view.next_char() != Some(ESCAPE_CHAR) {
+		return (ANSIState::Invalid, view.consumed_count());
 	}
+	let Some(prefix) = view.next_char() else { return (ANSIState::Invalid, 0); };
 
-	if tty.ansi_buffer.buffer[0] != ESCAPE_CHAR {
-		return (ANSIState::Invalid, 0);
-	}
-
-	match tty.ansi_buffer.buffer[1] {
-		CSI_CHAR => parse_csi(tty),
+	match prefix {
+		CSI_CHAR => parse_csi(&mut view),
 		// TODO
-		_ => (ANSIState::Invalid, 0),
+		_ => (ANSIState::Invalid, view.consumed_count()),
 	}
 }
 
-/// Handles an ANSI escape code stored into buffer `buffer` on the TTY `tty`.
+/// Handles an ANSI escape sequences stored into the buffer `buffer` on the TTY `tty`.
 ///
 /// If the buffer doesn't begin with the ANSI escape character, the behaviour is
 /// undefined.
 ///
 /// The function returns the number of bytes consumed by the function.
 pub fn handle(tty: &mut TTY, buffer: &[u8]) -> usize {
-	if tty.ansi_buffer.is_empty() || buffer[0] != ESCAPE_CHAR as _ {
+	if tty.ansi_buffer.is_empty() && buffer[0] != ESCAPE_CHAR as _ {
 		return 0;
 	}
 
 	let n = tty.ansi_buffer.push_back(buffer);
-
 	while !tty.ansi_buffer.is_empty() {
 		let (state, len) = parse(tty);
-
 		match state {
 			ANSIState::Valid => {
 				tty.ansi_buffer.pop_front(len);
 				tty.update();
 			}
-
 			ANSIState::Incomplete => break,
-
 			ANSIState::Invalid => {
-				let mut i = 0;
-				while i < tty.ansi_buffer.buffer.len() {
-					let c = tty.ansi_buffer.buffer[i];
-					if c == ESCAPE_CHAR {
-						break;
-					}
-
-					tty.putchar(c);
-					i += 1;
+				// using an index to avoid double-borrow issues
+				for i in 0..len {
+					tty.putchar(tty.ansi_buffer.buf[i]);
 				}
-
-				tty.ansi_buffer.pop_front(i);
+				tty.ansi_buffer.pop_front(len);
 				tty.update();
 			}
 		}
 	}
-
 	n
 }

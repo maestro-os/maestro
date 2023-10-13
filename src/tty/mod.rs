@@ -82,10 +82,14 @@ fn get_tab_size(cursor_x: vga::Pos) -> usize {
 pub struct TTY {
 	/// The id of the TTY. If `None`, the TTY is the init TTY.
 	id: Option<usize>,
+
 	/// The X position of the cursor in the history
 	cursor_x: vga::Pos,
 	/// The Y position of the cursor in the history
 	cursor_y: vga::Pos,
+	/// Tells whether the cursor is currently visible on screen.
+	cursor_visible: bool,
+
 	/// The Y position of the screen in the history
 	screen_y: vga::Pos,
 
@@ -209,6 +213,8 @@ impl TTY {
 		self.id = id;
 		self.cursor_x = 0;
 		self.cursor_y = 0;
+		self.cursor_visible = true;
+
 		self.screen_y = 0;
 
 		self.current_color = vga::DEFAULT_COLOR;
@@ -259,12 +265,18 @@ impl TTY {
 
 	/// Shows the TTY on screen.
 	pub fn show(&mut self) {
-		// Updating cursor
-		vga::move_cursor(self.cursor_x, self.cursor_y - self.screen_y);
-		vga::enable_cursor();
-
-		// Updating text
+		self.set_cursor_visible(self.cursor_visible);
 		self.update();
+	}
+
+	/// Hides or shows the cursor on screen.
+	pub fn set_cursor_visible(&mut self, visible: bool) {
+		self.cursor_visible = visible;
+		if visible {
+			vga::enable_cursor();
+		} else {
+			vga::disable_cursor();
+		}
 	}
 
 	/// Reinitializes TTY's current attributes.
@@ -304,7 +316,7 @@ impl TTY {
 
 	/// Sets the blinking state of the text for TTY.
 	///
-	/// `true` means blinking text, `false` means not blinking.
+	/// If set to `true`, new text will blink. If set to `false`, new text will not blink.
 	pub fn set_blinking(&mut self, blinking: bool) {
 		if blinking {
 			self.current_color |= 0x80;
@@ -449,10 +461,8 @@ impl TTY {
 		let mut i = 0;
 		while i < buffer.len() {
 			let c = buffer[i];
-
 			if c == ansi::ESCAPE_CHAR {
 				let j = ansi::handle(self, &buffer[i..buffer.len()]);
-
 				if j > 0 {
 					i += j;
 					continue;
