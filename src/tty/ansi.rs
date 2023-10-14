@@ -4,7 +4,7 @@
 use super::TTY;
 use crate::util;
 use crate::vga;
-use core::cmp::min;
+use core::cmp::{max, min};
 use core::str;
 
 /// The character used to initialize ANSI escape sequences.
@@ -236,27 +236,27 @@ fn get_vga_color_from_id(id: u8) -> vga::Color {
 /// Arguments:
 /// - `d` is the direction character.
 /// - `n` is the number of cells to travel. If `None`, the default is used (`1`).
-fn move_cursor(tty: &mut TTY, d: u8, n: Option<u16>) -> ANSIState {
-	let n = n.unwrap_or(1) as i16;
+fn move_cursor(tty: &mut TTY, d: u8, n: Option<u32>) -> ANSIState {
+	let n = n.unwrap_or(1).clamp(0, i16::MAX as _) as i16;
 	match d {
 		b'A' => {
-			if tty.cursor_y > n {
-				tty.cursor_y -= n;
-			}
+			let n = tty.cursor_y.checked_sub(n).unwrap_or(0);
+			tty.cursor_y = max(n, 0);
 			ANSIState::Valid
 		}
 		b'B' => {
-			tty.cursor_y = min(tty.cursor_y + n, vga::HEIGHT);
+			let n = tty.cursor_y.checked_add(n).unwrap_or(vga::HEIGHT - 1);
+			tty.cursor_y = min(n, vga::HEIGHT - 1);
 			ANSIState::Valid
 		}
 		b'C' => {
-			tty.cursor_x = min(tty.cursor_x + n, vga::WIDTH);
+			let n = tty.cursor_x.checked_add(n).unwrap_or(vga::WIDTH - 1);
+			tty.cursor_x = min(n, vga::WIDTH - 1);
 			ANSIState::Valid
 		}
 		b'D' => {
-			if tty.cursor_x > n {
-				tty.cursor_x -= n;
-			}
+			let n = tty.cursor_x.checked_sub(n).unwrap_or(0);
+			tty.cursor_x = max(n, 0);
 			ANSIState::Valid
 		}
 		_ => ANSIState::Invalid,
@@ -390,11 +390,12 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 			ANSIState::Valid
 		}
 		(&[nbr], b'G') => {
-			view.tty().cursor_y = nbr.map(|i| i as _).unwrap_or(1).clamp(0, vga::WIDTH);
+			view.tty().cursor_y = nbr.map(|i| i as _).unwrap_or(1).clamp(1, vga::WIDTH + 1) - 1;
 			ANSIState::Valid
 		}
-		(&[_row, _column], b'H') => {
-			// TODO Set cursor position
+		(&[row, column], b'H') => {
+			view.tty().cursor_x = column.map(|i| i as _).unwrap_or(1).clamp(1, vga::WIDTH + 1) - 1;
+			view.tty().cursor_y = row.map(|i| i as _).unwrap_or(1).clamp(1, vga::HEIGHT + 1) - 1;
 			ANSIState::Valid
 		}
 		(&[_nbr], b'J') => {
