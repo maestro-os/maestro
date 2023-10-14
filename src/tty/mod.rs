@@ -472,7 +472,6 @@ impl TTY {
 			self.putchar(c);
 			i += 1;
 		}
-
 		self.update();
 	}
 

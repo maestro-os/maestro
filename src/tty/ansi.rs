@@ -1,4 +1,5 @@
-//! ANSI escape sequences allow to control the terminal by specifying commands in standard output of the terminal.
+//! ANSI escape sequences allow to control the terminal by specifying commands in standard output
+//! of the terminal.
 
 use super::TTY;
 use crate::util;
@@ -12,7 +13,9 @@ pub const ESCAPE_CHAR: u8 = 0x1b;
 const CSI_CHAR: u8 = b'[';
 
 /// The size of the buffer used to parse ANSI escape codes.
-pub const BUFFER_SIZE: usize = 16;
+pub const BUFFER_SIZE: usize = 128;
+/// The maximum number of elements in a sequence.
+pub const SEQ_MAX: usize = 5;
 
 /// Enumeration of possible states of the ANSI parser.
 pub(super) enum ANSIState {
@@ -20,7 +23,8 @@ pub(super) enum ANSIState {
 	Valid,
 	/// The sequence is incomplete. Waiting for more data.
 	Incomplete,
-	/// The sequence is invalid, it has been printed as normal characters and has been pruned from the buffer.
+	/// The sequence is invalid, it has been printed as normal characters and has been pruned from
+	/// the buffer.
 	Invalid,
 }
 
@@ -69,6 +73,11 @@ impl ANSIBuffer {
 		self.buf.rotate_left(n);
 		self.cursor -= n;
 	}
+
+	/// Clears the buffer.
+	pub fn clear(&mut self) {
+		self.cursor = 0;
+	}
 }
 
 /// A view on an [`ANSIBuffer`], used to parse sequences.
@@ -102,7 +111,7 @@ impl<'tty> ANSIBufferView<'tty> {
 
 	/// Tells whether the view is empty.
 	fn is_empty(&self) -> bool {
-		self.tty.ansi_buffer.buf[self.cursor..].is_empty()
+		self.buffer()[self.cursor..].is_empty()
 	}
 
 	/// Returns the number of consumed characters.
@@ -110,21 +119,30 @@ impl<'tty> ANSIBufferView<'tty> {
 		self.cursor
 	}
 
-	/// Consumes the next single character of the view.
+	/// Peeks the next single character.
+	///
+	/// If not enough data remains, the function returns `None`.
+	fn peek_char(&mut self) -> Option<u8> {
+		self.buffer().get(self.cursor).cloned()
+	}
+
+	/// Consumes the next single character.
 	///
 	/// If not enough data remains, the function returns `None`.
 	fn next_char(&mut self) -> Option<u8> {
-		let c = *self.buffer().get(self.cursor)?;
+		let c = self.peek_char()?;
 		self.cursor += 1;
 		Some(c)
 	}
 
-	/// Consumes the next number of the view.
+	/// Consumes the next number.
+	///
+	/// A successful return doesn't necessarily means the number is complete. The buffer might be
+	/// incomplete and need more data.
 	///
 	/// If not enough data remains or if the number is invalid, the function returns `None`.
 	fn next_nbr(&mut self) -> Option<u32> {
 		let nbr_len = util::nbr_len(&self.buffer()[self.cursor..]);
-		// FIXME: doesn't work on invalid UTF-8. use a custom parsing function
 		let Ok(nbr) = str::from_utf8(&self.buffer()[self.cursor..(self.cursor + nbr_len)]) else {
 			return None;
 		};
@@ -132,13 +150,42 @@ impl<'tty> ANSIBufferView<'tty> {
 		self.cursor += nbr_len;
 		Some(n)
 	}
+
+	/// Consumes the next sequence of `;`-separated numbers.
+	///
+	/// The function takes a buffer to write the sequence on. If the buffer is not large enough to
+	/// fit the whole sequence, it is truncated.
+	fn next_nbr_sequence<'b>(&mut self, buf: &'b mut [Option<u32>]) -> &'b [Option<u32>] {
+		let mut i = 0;
+		for b in buf.iter_mut() {
+			*b = self.next_nbr();
+			i += 1;
+
+			if self.peek_char() != Some(b';') {
+				break;
+			}
+			self.cursor += 1;
+		}
+
+		// skip remaining numbers of the sequence
+		loop {
+			if self.next_nbr().is_some() {
+				continue;
+			}
+			if self.peek_char() == Some(b';') {
+				self.cursor += 1;
+				continue;
+			}
+			break;
+		}
+
+		&buf[..i]
+	}
 }
 
-/// Converts ANSI color `id` to VGA color.
-///
-/// If the given color is invalid, the behaviour is undefined.
-fn get_vga_color(id: u8) -> vga::Color {
-	match id {
+/// Returns the VGA color associated with the given command.
+fn get_vga_color_from_cmd(cmd: u8) -> vga::Color {
+	match cmd {
 		30 | 40 => vga::COLOR_BLACK,
 		31 | 41 => vga::COLOR_RED,
 		32 | 42 => vga::COLOR_GREEN,
@@ -155,6 +202,30 @@ fn get_vga_color(id: u8) -> vga::Color {
 		95 | 105 => vga::COLOR_LIGHT_MAGENTA,
 		96 | 106 => vga::COLOR_LIGHT_CYAN,
 		97 | 107 => vga::COLOR_WHITE,
+
+		_ => vga::COLOR_BLACK,
+	}
+}
+
+/// Returns the VGA color associated with the given ID.
+fn get_vga_color_from_id(id: u8) -> vga::Color {
+	match id {
+		0 => vga::COLOR_BLACK,
+		1 => vga::COLOR_RED,
+		2 => vga::COLOR_GREEN,
+		3 => vga::COLOR_BROWN,
+		4 => vga::COLOR_BLUE,
+		5 => vga::COLOR_MAGENTA,
+		6 => vga::COLOR_CYAN,
+		7 => vga::COLOR_LIGHT_GREY,
+		8 => vga::COLOR_DARK_GREY,
+		9 => vga::COLOR_LIGHT_RED,
+		10 => vga::COLOR_LIGHT_GREEN,
+		11 => vga::COLOR_YELLOW,
+		12 => vga::COLOR_LIGHT_BLUE,
+		13 => vga::COLOR_LIGHT_MAGENTA,
+		14 => vga::COLOR_LIGHT_CYAN,
+		15 => vga::COLOR_WHITE,
 
 		_ => vga::COLOR_BLACK,
 	}
@@ -194,9 +265,9 @@ fn move_cursor(tty: &mut TTY, d: u8, n: Option<u16>) -> ANSIState {
 
 /// Handles an Select Graphics Renderition (SGR) command.
 ///
-/// `command` is the id of the command. If `None`, the default is used (`0`).
-fn parse_sgr(tty: &mut TTY, command: Option<u32>) -> ANSIState {
-	match command.unwrap_or(0) {
+/// `seq` is the id of the numbers describing the command.
+fn parse_sgr(tty: &mut TTY, seq: &[Option<u32>]) -> ANSIState {
+	match seq.first().cloned().flatten().unwrap_or(0) {
 		0 => {
 			tty.reset_attrs();
 			ANSIState::Valid
@@ -238,25 +309,45 @@ fn parse_sgr(tty: &mut TTY, command: Option<u32>) -> ANSIState {
 		28 => ANSIState::Valid,
 		29 => ANSIState::Valid, // TODO Not crossed-out
 		c @ (30..=37 | 90..=97) => {
-			tty.set_fgcolor(get_vga_color(c as _));
+			tty.set_fgcolor(get_vga_color_from_cmd(c as _));
 			ANSIState::Valid
 		}
-		38 => {
-			// TODO Set fg color
-			ANSIState::Valid
-		}
+		38 => match seq.get(1).cloned().flatten() {
+			Some(2) => {
+				// TODO with VGA, use closest color
+				ANSIState::Invalid
+			}
+			Some(5) => {
+				let Some(nbr) = seq.get(2).cloned().flatten() else {
+					return ANSIState::Invalid;
+				};
+				tty.set_fgcolor(get_vga_color_from_id(nbr as _));
+				ANSIState::Valid
+			}
+			_ => ANSIState::Invalid,
+		},
 		39 => {
 			tty.reset_fgcolor();
 			ANSIState::Valid
 		}
 		c @ (40..=47 | 100..=107) => {
-			tty.set_bgcolor(get_vga_color(c as _));
+			tty.set_bgcolor(get_vga_color_from_cmd(c as _));
 			ANSIState::Valid
 		}
-		48 => {
-			// TODO Set bg color
-			ANSIState::Valid
-		}
+		48 => match seq.get(1).cloned().flatten() {
+			Some(2) => {
+				// TODO with VGA, use closest color
+				ANSIState::Invalid
+			}
+			Some(5) => {
+				let Some(nbr) = seq.get(2).cloned().flatten() else {
+					return ANSIState::Invalid;
+				};
+				tty.set_bgcolor(get_vga_color_from_id(nbr as _));
+				ANSIState::Valid
+			}
+			_ => ANSIState::Invalid,
+		},
 		49 => {
 			tty.reset_bgcolor();
 			ANSIState::Valid
@@ -270,79 +361,81 @@ fn parse_sgr(tty: &mut TTY, command: Option<u32>) -> ANSIState {
 ///
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
-fn parse_csi(view: &mut ANSIBufferView) -> (ANSIState, usize) {
-	let nbr = view.next_nbr();
+fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
+	let mut seq_buf: [Option<u32>; SEQ_MAX] = [None; SEQ_MAX];
+	let seq = view.next_nbr_sequence(seq_buf.as_mut_slice());
 	let Some(cmd) = view.next_char() else {
-		return (ANSIState::Incomplete, 0);
+		return ANSIState::Incomplete;
 	};
-	let status = match cmd {
-		b'?' => match (view.next_nbr(), view.next_char()) {
+
+	let status = match (seq, cmd) {
+		(_, b'?') => match (view.next_nbr(), view.next_char()) {
 			(Some(7 | 25), Some(b'h')) => {
 				view.tty().set_cursor_visible(true);
 				ANSIState::Valid
-			},
+			}
 			(Some(7 | 25), Some(b'l')) => {
-				view.tty().set_cursor_visible(true);
+				view.tty().set_cursor_visible(false);
 				ANSIState::Valid
-			},
+			}
 			_ => ANSIState::Invalid,
 		},
-		b'A'..=b'D' => move_cursor(view.tty(), cmd, nbr.map(|i| i as _)),
-		b'E' => {
+		(&[nbr], b'A'..=b'D') => move_cursor(view.tty(), cmd, nbr.map(|i| i as _)),
+		(&[nbr], b'E') => {
 			view.tty().newline(nbr.unwrap_or(1) as _);
 			ANSIState::Valid
 		}
-		b'F' => {
+		(&[_nbr], b'F') => {
 			// TODO Previous line
 			ANSIState::Valid
 		}
-		b'G' => {
-			view.tty().cursor_y = nbr.map(|i| i as i16).unwrap_or(1).clamp(0, vga::WIDTH);
+		(&[nbr], b'G') => {
+			view.tty().cursor_y = nbr.map(|i| i as _).unwrap_or(1).clamp(0, vga::WIDTH);
 			ANSIState::Valid
 		}
-		b'H' => {
+		(&[_row, _column], b'H') => {
 			// TODO Set cursor position
 			ANSIState::Valid
 		}
-		b'J' => {
+		(&[_nbr], b'J') => {
 			// TODO Erase in display
 			ANSIState::Valid
 		}
-		b'K' => {
+		(&[_nbr], b'K') => {
 			// TODO Erase in line
 			ANSIState::Valid
 		}
-		b'S' => {
+		(&[_nbr], b'S') => {
 			// TODO Scroll up
 			ANSIState::Valid
 		}
-		b'T' => {
+		(&[_nbr], b'T') => {
 			// TODO Scroll down
 			ANSIState::Valid
 		}
-		b'm' => parse_sgr(view.tty(), nbr),
+		(seq, b'm') => parse_sgr(view.tty(), seq),
 		_ => ANSIState::Invalid,
 	};
-
 	view.tty().update();
-	(status, view.consumed_count())
+	status
 }
 
-/// Parses the sequence in the given TTY's buffer.
+/// Parses the sequence in the given buffer.
 ///
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
-fn parse(tty: &mut TTY) -> (ANSIState, usize) {
-	let mut view = ANSIBufferView::new(tty);
+fn parse(view: &mut ANSIBufferView) -> ANSIState {
 	if view.next_char() != Some(ESCAPE_CHAR) {
-		return (ANSIState::Invalid, view.consumed_count());
+		return ANSIState::Invalid;
 	}
-	let Some(prefix) = view.next_char() else { return (ANSIState::Invalid, 0); };
+	let Some(prefix) = view.next_char() else {
+		return ANSIState::Incomplete;
+	};
 
 	match prefix {
-		CSI_CHAR => parse_csi(&mut view),
+		CSI_CHAR => parse_csi(view),
 		// TODO
-		_ => (ANSIState::Invalid, view.consumed_count()),
+		_ => ANSIState::Invalid,
 	}
 }
 
@@ -353,28 +446,32 @@ fn parse(tty: &mut TTY) -> (ANSIState, usize) {
 ///
 /// The function returns the number of bytes consumed by the function.
 pub fn handle(tty: &mut TTY, buffer: &[u8]) -> usize {
-	if tty.ansi_buffer.is_empty() && buffer[0] != ESCAPE_CHAR as _ {
-		return 0;
-	}
-
-	let n = tty.ansi_buffer.push_back(buffer);
+	tty.ansi_buffer.push_back(buffer);
+	let mut n = 0;
 	while !tty.ansi_buffer.is_empty() {
-		let (state, len) = parse(tty);
+		let mut view = ANSIBufferView::new(tty);
+		if view.peek_char() != Some(ESCAPE_CHAR) {
+			tty.ansi_buffer.clear();
+			break;
+		}
+
+		let state = parse(&mut view);
+		let len = view.consumed_count();
 		match state {
-			ANSIState::Valid => {
-				tty.ansi_buffer.pop_front(len);
-				tty.update();
-			}
+			ANSIState::Valid => {}
 			ANSIState::Incomplete => break,
 			ANSIState::Invalid => {
 				// using an index to avoid double-borrow issues
 				for i in 0..len {
 					tty.putchar(tty.ansi_buffer.buf[i]);
 				}
-				tty.ansi_buffer.pop_front(len);
-				tty.update();
 			}
 		}
+		tty.ansi_buffer.pop_front(len);
+		n += len;
 	}
+	tty.update();
 	n
 }
+
+// TODO unit tests
