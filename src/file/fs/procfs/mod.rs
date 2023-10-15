@@ -5,6 +5,7 @@ mod mem_info;
 mod proc_dir;
 mod self_link;
 mod sys_dir;
+mod uptime;
 mod version;
 
 use super::kernfs;
@@ -39,6 +40,7 @@ use mem_info::MemInfo;
 use proc_dir::ProcDir;
 use self_link::SelfNode;
 use sys_dir::SysDir;
+use uptime::Uptime;
 use version::Version;
 
 /// Structure representing the procfs.
@@ -47,7 +49,6 @@ use version::Version;
 pub struct ProcFS {
 	/// The kernfs.
 	fs: KernFS,
-
 	/// The list of registered processes with their directory's inode.
 	procs: HashMap<Pid, INode>,
 }
@@ -59,7 +60,6 @@ impl ProcFS {
 	pub fn new(readonly: bool) -> Result<Self, Errno> {
 		let mut fs = Self {
 			fs: KernFS::new(b"procfs".try_into()?, readonly)?,
-
 			procs: HashMap::new(),
 		};
 
@@ -110,6 +110,17 @@ impl ProcFS {
 			},
 		)?;
 
+		// Create /proc/uptime
+		let node = Uptime {};
+		let inode = fs.fs.add_node(Box::new(node)?)?;
+		entries.insert(
+			b"uptime".try_into()?,
+			DirEntry {
+				inode,
+				entry_type: FileType::Regular,
+			},
+		)?;
+
 		// Create /proc/version
 		let node = Version {};
 		let inode = fs.fs.add_node(Box::new(node)?)?;
@@ -128,7 +139,6 @@ impl ProcFS {
 		// Add existing processes
 		{
 			let mut scheduler = process::get_scheduler().lock();
-
 			for (pid, _) in scheduler.iter_process() {
 				fs.add_process(*pid)?;
 			}

@@ -36,7 +36,6 @@ use status::Status;
 pub struct ProcDir {
 	/// The PID of the process.
 	pid: Pid,
-
 	/// The content of the directory. This will always be a Directory variant.
 	content: FileContent,
 }
@@ -51,7 +50,7 @@ impl ProcDir {
 		// TODO Add every nodes
 		// TODO On fail, remove previously inserted nodes
 
-		// Creating /proc/<pid>/cmdline
+		// Create /proc/<pid>/cmdline
 		let node = Cmdline {
 			pid,
 		};
@@ -64,7 +63,7 @@ impl ProcDir {
 			},
 		)?;
 
-		// Creating /proc/<pid>/cwd
+		// Create /proc/<pid>/cwd
 		let node = Cwd {
 			pid,
 		};
@@ -77,7 +76,7 @@ impl ProcDir {
 			},
 		)?;
 
-		// Creating /proc/<pid>/exe
+		// Create /proc/<pid>/exe
 		let node = Exe {
 			pid,
 		};
@@ -90,7 +89,7 @@ impl ProcDir {
 			},
 		)?;
 
-		// Creating /proc/<pid>/mounts
+		// Create /proc/<pid>/mounts
 		let node = Mounts {
 			pid,
 		};
@@ -103,7 +102,7 @@ impl ProcDir {
 			},
 		)?;
 
-		// Creating /proc/<pid>/stat
+		// Create /proc/<pid>/stat
 		let node = Stat {
 			pid,
 		};
@@ -116,7 +115,7 @@ impl ProcDir {
 			},
 		)?;
 
-		// Creating /proc/<pid>/status
+		// Create /proc/<pid>/status
 		let node = Status {
 			pid,
 		};
@@ -131,7 +130,6 @@ impl ProcDir {
 
 		Ok(Self {
 			pid,
-
 			content: FileContent::Directory(entries),
 		})
 	}
