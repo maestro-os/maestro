@@ -1,22 +1,10 @@
-//! When booting, the kernel can take command line arguments. This module
-//! implements a parse for these arguments.
+//! Boot-time kernel command line arguments parsing.
 
 use crate::util::DisplayableStr;
 use crate::vga;
 use core::cmp::min;
 use core::fmt;
 use core::str;
-
-/// Skips spaces in slice `slice`, starting at offset `i`.
-fn skip_spaces(slice: &[u8], i: &mut usize) {
-	let mut j = *i;
-
-	while j < slice.len() && (slice[j] as char).is_ascii_whitespace() {
-		j += 1;
-	}
-
-	*i = j;
-}
 
 /// Parses the number represented by the string in the given slice.
 ///
@@ -37,20 +25,8 @@ pub struct ParseError<'s> {
 	token: Option<(usize, usize)>,
 }
 
-impl<'s> ParseError<'s> {
-	/// Creates a new instance.
-	pub fn new(cmdline: &'s [u8], err: &'static str, token: Option<(usize, usize)>) -> Self {
-		Self {
-			cmdline,
-			err,
-
-			token,
-		}
-	}
-}
-
 impl<'s> fmt::Display for ParseError<'s> {
-	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(
 			fmt,
 			"Error while parsing command line arguments: {}",
@@ -75,7 +51,6 @@ impl<'s> fmt::Display for ParseError<'s> {
 				} else {
 					write!(fmt, " ")?;
 				}
-
 				j += 1;
 			}
 			writeln!(fmt)?;
@@ -87,7 +62,7 @@ impl<'s> fmt::Display for ParseError<'s> {
 	}
 }
 
-/// Structure representing a token in the command line.
+/// A token in the command line.
 struct Token<'s> {
 	/// The token's string.
 	s: &'s [u8],
@@ -95,34 +70,38 @@ struct Token<'s> {
 	begin: usize,
 }
 
+/// Iterator on tokens.
 struct TokenIterator<'s> {
 	/// The string to iterate on.
 	s: &'s [u8],
 	/// The current index on the string.
-	i: usize,
+	cursor: usize,
 }
 
 impl<'s> Iterator for TokenIterator<'s> {
 	type Item = Token<'s>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		skip_spaces(&self.s, &mut self.i);
-		let mut j = self.i;
-		while j < self.s.len() && !(self.s[j] as char).is_ascii_whitespace() {
-			j += 1;
-		}
+		// Find beginning of token (skip spaces)
+		self.cursor += self.s[self.cursor..]
+			.iter()
+			.enumerate()
+			.find(|(_, c)| !(**c as char).is_ascii_whitespace())
+			.map(|(i, _)| i)?;
+		// Find end of token (skip non-spaces)
+		let length = self.s[self.cursor..]
+			.iter()
+			.enumerate()
+			.find(|(_, c)| (**c as char).is_ascii_whitespace())
+			.map(|(i, _)| i)
+			.unwrap_or(self.s.len() - self.cursor);
 
-		if j > self.i {
-			let tok = Token {
-				s: &self.s[self.i..j],
-				begin: self.i,
-			};
-			self.i = j;
-
-			Some(tok)
-		} else {
-			None
-		}
+		let tok = Token {
+			s: &self.s[self.cursor..(self.cursor + length)],
+			begin: self.cursor,
+		};
+		self.cursor += length;
+		Some(tok)
 	}
 }
 
@@ -149,7 +128,7 @@ impl<'s> ArgsParser<'s> {
 
 		let mut iter = TokenIterator {
 			s: cmdline,
-			i: 0,
+			cursor: 0,
 		}
 		.enumerate();
 		loop {
@@ -160,51 +139,49 @@ impl<'s> ArgsParser<'s> {
 			match token.s {
 				b"-root" => {
 					let (Some((_, major)), Some((_, minor))) = (iter.next(), iter.next()) else {
-						return Err(ParseError::new(
+						return Err(ParseError {
 							cmdline,
-							"not enough arguments for `-root`",
-							Some((token.begin, token.s.len())),
-						));
+							err: "not enough arguments for `-root`",
+							token: Some((token.begin, token.s.len())),
+						});
 					};
 
 					let Some(major) = parse_nbr(major.s) else {
-						return Err(ParseError::new(
+						return Err(ParseError {
 							cmdline,
-							"invalid major number",
-							Some((i + 1, 1)),
-						));
+							err: "invalid major number",
+							token: Some((i + 1, 1)),
+						});
 					};
 					let Some(minor) = parse_nbr(minor.s) else {
-						return Err(ParseError::new(
+						return Err(ParseError {
 							cmdline,
-							"invalid minor number",
-							Some((i + 2, 1)),
-						));
+							err: "invalid minor number",
+							token: Some((i + 2, 1)),
+						});
 					};
-
 					s.root = Some((major, minor));
 				}
 
 				b"-init" => {
 					let Some((_, init)) = iter.next() else {
-						return Err(ParseError::new(
+						return Err(ParseError {
 							cmdline,
-							"not enough arguments for `-init`",
-							Some((token.begin, token.s.len())),
-						));
+							err: "not enough arguments for `-init`",
+							token: Some((token.begin, token.s.len())),
+						});
 					};
-
 					s.init = Some(init.s);
 				}
 
 				b"-silent" => s.silent = true,
 
 				_ => {
-					return Err(ParseError::new(
+					return Err(ParseError {
 						cmdline,
-						"invalid argument",
-						Some((token.begin, token.s.len())),
-					));
+						err: "invalid argument",
+						token: Some((token.begin, token.s.len())),
+					});
 				}
 			}
 		}

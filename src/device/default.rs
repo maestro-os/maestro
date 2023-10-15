@@ -13,7 +13,7 @@ use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
 use crate::file::path::Path;
-use crate::logger;
+use crate::logger::LOGGER;
 use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
@@ -227,8 +227,7 @@ impl DeviceHandle for KMsgDeviceHandle {
 
 impl IO for KMsgDeviceHandle {
 	fn get_size(&self) -> u64 {
-		let logger = logger::get().lock();
-		logger.get_size() as _
+		LOGGER.lock().get_size() as _
 	}
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
@@ -236,8 +235,7 @@ impl IO for KMsgDeviceHandle {
 			return Err(errno!(EINVAL));
 		}
 
-		let logger = logger::get().lock();
-
+		let logger = LOGGER.lock();
 		let size = logger.get_size();
 		let content = logger.get_content();
 

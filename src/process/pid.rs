@@ -1,4 +1,4 @@
-//! This module handles process PIDs.
+//! PIDs handling.
 //!
 //! Each process must have an unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.

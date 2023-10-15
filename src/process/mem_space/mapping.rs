@@ -1,5 +1,6 @@
-//! A memory mapping is a region of virtual memory that a process can access. It
-//! may be mapped at the process's creation or by the process itself using
+//! A memory mapping is a region of virtual memory that a process can access.
+//!
+//! Mappings may be created at the process's creation or by the process itself using
 //! system calls.
 
 use super::gap::MemGap;

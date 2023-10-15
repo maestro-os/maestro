@@ -1,4 +1,4 @@
-//! This module contains the system limits.
+//! POSIX limits
 
 use crate::memory;
 

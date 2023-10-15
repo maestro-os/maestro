@@ -1,11 +1,12 @@
-//! This module handles selftesting of the kernel.
+//! Selftesting are unit tests or integration tests that run on the kernel itself.
 //!
-//! A selftest can be either a unit test or an integration test.
+//! # Issues
 //!
-//! The kernel uses the serial communication interface to transmit the results
-//! of the selftests to another machine.
+//! Since the kernel cannot reset itself between each test, this method of testing might not be
+//! entirely trustable because a test might corrupt the environment for the next tests, which might
+//! make them pass even though they should not. Even if this scenario is unlikely, this remains a
+//! concern since the kernel has to be as reliable as possible.
 
-//use crate::device::serial;
 use core::any::type_name;
 
 /// Boolean value telling whether selftesting is running.

@@ -1,4 +1,4 @@
-//! This module implements process signals.
+//! POSIX signals implementation.
 
 mod signal_trampoline;
 

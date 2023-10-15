@@ -1,7 +1,6 @@
-//! This module stores the errno utilities.
+//! Errors handling.
 
 use core::fmt;
-use core::fmt::Error;
 use core::fmt::Formatter;
 
 /// Structure representing a location at which an errno was raised.
@@ -18,7 +17,7 @@ pub struct ErrnoLocation {
 
 #[cfg(config_debug_debug)]
 impl fmt::Display for ErrnoLocation {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
 			"file: {} line: {} col: {}",
@@ -27,7 +26,7 @@ impl fmt::Display for ErrnoLocation {
 	}
 }
 
-/// Structure representing an Unix errno.
+/// An Unix errno.
 #[derive(Clone, Copy, Debug)]
 pub struct Errno {
 	/// The errno number.
@@ -222,14 +221,14 @@ impl PartialEq for Errno {
 
 #[cfg(not(config_debug_debug))]
 impl fmt::Display for Errno {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "errno: {}: {}", self.errno, self.strerror())
 	}
 }
 
 #[cfg(config_debug_debug)]
 impl fmt::Display for Errno {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
 			"errno: {}: {} (at: {})",

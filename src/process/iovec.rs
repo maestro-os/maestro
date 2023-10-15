@@ -1,4 +1,6 @@
-//! This module implements the IOVec structure.
+//! I/O vectors allow passing several buffers at once to a system call.
+//!
+//! This feature allows reducing the overhead linked to context switches.
 
 use core::ffi::c_void;
 
@@ -11,3 +13,5 @@ pub struct IOVec {
 	/// Number of bytes to transfer.
 	pub iov_len: usize,
 }
+
+// TODO add a function to turn into an entry into a SyscallSlice?

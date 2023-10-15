@@ -1,6 +1,6 @@
-//! This module implements SSE-related features.
+//! SSE-related features.
 
-/// Tells whether the CPU has SSE.
+/// Tells whether the CPU supports SSE.
 pub fn is_present() -> bool {
 	unsafe { super::cpuid_has_sse() }
 }

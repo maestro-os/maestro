@@ -1,8 +1,7 @@
-//! This module contains utilities used everywhere in the kernel.
+//! Utilities used everywhere in the kernel and modules.
 //!
-//! Data structures and containers are considered being two different things:
-//! - Data structures do not require memory allocations
-//! - Containers require memory allocations
+//! Some features in this module, especially containers are not usable before memory allocation is
+//! initialized.
 
 pub mod boxed;
 pub mod container;

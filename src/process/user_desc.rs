@@ -1,11 +1,11 @@
-//! This module implements the `user_desc` structure, which is used in userspace
-//! to specify the value for a descriptor, either a local or global descriptor.
+//! The `user_desc` structure, is used in userspace to specify the value for either a local or
+//! global descriptor.
 
 use crate::gdt;
 use core::ffi::c_void;
 use core::fmt;
 
-/// The size of the user_desc structure in bytes.
+/// The size of the `user_desc` structure in bytes.
 pub const USER_DESC_SIZE: usize = 16;
 
 /// The `user_desc` structure.

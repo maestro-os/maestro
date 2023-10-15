@@ -1,4 +1,4 @@
-//! This module handles files and filesystems.
+//! Files implementation.
 //!
 //! The kernel allows *mounting* several filesystems together, which are all unified into one
 //! filesystem called the VFS (Virtual FileSystem).

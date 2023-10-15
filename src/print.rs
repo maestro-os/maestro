@@ -1,18 +1,20 @@
-//! This file handles macros `print` and `println`.
+//! Implementation of printing/logging macros.
 //!
-//! Unlink the standard print operations, these are used to log kernel informations.
+//! Unlike the print macros from Rust's standard library, these are used to log informations
+//! instead of only printing.
 //!
-//! They can be silenced at boot using the `-silent` command line argument but they will be kept in
-//! the logger anyways.
+//! Printing can be silenced at boot using the `-silent` command line argument, but logs remain in
+//! memory.
 
-use crate::logger;
+use crate::logger::LOGGER;
 use core::fmt;
 
-/// Prints the specified message on the current TTY.
+/// Prints/logs the given message.
 ///
-/// This function is meant to be used through `print!` and `println!` macros only.
+/// This function is meant to be used through [`print!`] and [`println!`] macros only.
+#[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
-	let mut logger = logger::get().lock();
+	let mut logger = LOGGER.lock();
 	fmt::write(&mut *logger, args).ok();
 }
 
@@ -25,7 +27,7 @@ macro_rules! print {
 	}};
 }
 
-/// Same as `print!`, except it appends a newline at the end.
+/// Same as [`crate::print!`], except it appends a newline at the end.
 #[allow_internal_unstable(print_internals, format_args_nl)]
 #[macro_export]
 macro_rules! println {

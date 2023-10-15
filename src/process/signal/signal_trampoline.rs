@@ -1,11 +1,11 @@
-//! This file implements the signal handler trampoline.
+//! A signal handler trampoline is the function that handles returning from a signal handler.
 //!
 //! The trampoline is using the same stack as the normal process execution.
 //!
-//! However, the System V ABI defines a region of the stack located after the
-//! allocated portion which is called the red zone. This region must not be
+//! However, the **System V ABI** defines a region of the stack located after the
+//! allocated portion which is called the **redzone**. This region must not be
 //! clobbered, thus the kernel adds an offset on the stack corresponding to the
-//! size of the red zone.
+//! size of the redzone.
 //!
 //! When the signal handler returns, the process returns directly to execution.
 

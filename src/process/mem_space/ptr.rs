@@ -1,12 +1,13 @@
+//! Userspace memory access check wrappers.
+//!
 //! When a pointer is passed to the kernel through a system call, the kernel is
 //! required to check the process is allowed to access it to ensure safety.
 //!
-//! This module implements objets that wrap pointers in order to check they are
-//! accessible.
-//!
-//! Those structure are especially useful in the cases where several processes
+//! Structures in this module are especially useful in cases where several processes
 //! share the same memory space, making it possible to revoke the access to the
 //! pointer while it is being used.
+//!
+//! Those structures are also usable as system call arguments.
 
 use super::MemSpace;
 use crate::errno::Errno;

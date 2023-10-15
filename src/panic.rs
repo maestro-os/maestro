@@ -1,4 +1,4 @@
-//! This file handles kernel panics.
+//! This module implements kernel panics handling.
 //!
 //! A kernel panic occurs when an error is raised that the kernel cannot recover
 //! from. This is an undesirable state which requires to reboot the host

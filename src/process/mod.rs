@@ -135,7 +135,7 @@ impl State {
 /// Type representing an exit status.
 type ExitStatus = u8;
 
-/// Structure representing options to be passed to the fork function.
+/// Process forking parameters.
 #[derive(Debug)]
 pub struct ForkOptions {
 	/// If `true`, the parent and child processes both share the same address
@@ -148,8 +148,13 @@ pub struct ForkOptions {
 	/// handlers table.
 	pub share_sighand: bool,
 
-	/// If `true`, the parent is stopped until the child process exits or executes
+	/// If `true`, the parent is paused until the child process exits or executes
 	/// a program.
+	///
+	/// Underneath, this option makes the parent and child use the same memory space.
+	///
+	/// This is useful in order to avoid an unnecessary clone of the memory space in case the
+	/// child process executes a program or exits quickly.
 	pub vfork: bool,
 }
 

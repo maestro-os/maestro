@@ -1,5 +1,5 @@
-//! This module implements the MemSpace structure which is responsible for
-//! handling the memory mapping of execution contexts.
+//! A memory space is a virtual memory handler for a process. It handles virtual and physical
+//! memory allocations for the process, as well as linkage between them.
 //!
 //! The memory space contains two types of structures:
 //! - Mapping: A chunk of virtual memory that is allocated

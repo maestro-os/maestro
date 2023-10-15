@@ -1,4 +1,10 @@
-//! This module implements program execution.
+//! Program execution routines.
+//!
+//! Program execution is done in several stages:
+//! - Read the program
+//! - Parse the program
+//! - Build the memory image according to the program
+//! - Replace the process's memory with the newly created image to run it
 
 pub mod elf;
 pub mod vdso;
@@ -18,7 +24,7 @@ use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 
-/// Structure storing informations to prepare a program image to be executed.
+/// Informations to prepare a program image to be executed.
 pub struct ExecInfo {
 	/// The access profile of the calling agent.
 	pub access_profile: AccessProfile,
@@ -28,7 +34,7 @@ pub struct ExecInfo {
 	pub envp: Vec<String>,
 }
 
-/// Structure representing the loaded image of a program.
+/// A built program image.
 pub struct ProgramImage {
 	/// The argv of the program.
 	argv: Vec<String>,
@@ -48,8 +54,7 @@ pub struct ProgramImage {
 	kernel_stack: *mut c_void,
 }
 
-/// Trait representing a program executor, whose role is to load a program and
-/// to preprare it for execution.
+/// A program executor, whose role is to load a program and to preprare it for execution.
 pub trait Executor {
 	/// Builds a program image.
 	/// `file` is the program's file.
@@ -59,8 +64,8 @@ pub trait Executor {
 /// Builds a program image from the given executable file.
 ///
 /// Arguments:
-/// - `file` is the program's file.
-/// - `info` is the set execution informations for the program.
+/// - `file` is the program's file
+/// - `info` is the set execution informations for the program
 ///
 /// The function returns a memory space containing the program image and the
 /// pointer to the entry point.
@@ -76,33 +81,31 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.argv = Arc::new(image.argv)?;
 	// TODO Set exec path
 
-	// Duplicate file descriptor table
+	// Duplicate the file descriptor table
 	let fds = proc
 		.get_fds()
 		.map(|fds_mutex| -> EResult<_> {
 			let fds = fds_mutex.lock();
 			let new_fds = fds.duplicate(true)?;
-
 			Ok(Arc::new(Mutex::new(new_fds))?)
 		})
 		.transpose()?;
 
-	// Setting the new memory space to the process
+	// Set the new memory space to the process
 	proc.set_mem_space(Some(Arc::new(IntMutex::new(image.mem_space))?));
 
 	// Set new file descriptor table
 	proc.set_fds(fds);
 
-	// Setting the process's stacks
+	// Set the process's stacks
 	proc.user_stack = Some(image.user_stack);
 	proc.kernel_stack = Some(image.kernel_stack);
 	proc.update_tss();
 
-	// Resetting signals
+	// Reset signals
 	proc.sigmask.clear_all();
 	{
 		let mut handlers = proc.signal_handlers.lock();
-
 		for i in 0..handlers.len() {
 			handlers[i] = SignalHandler::Default;
 		}
@@ -111,7 +114,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.reset_vfork();
 	proc.clear_tls_entries();
 
-	// Setting the proc's registers
+	// Set the process's registers
 	let regs = Regs {
 		esp: image.user_stack_begin as _,
 		eip: image.entry_point as _,

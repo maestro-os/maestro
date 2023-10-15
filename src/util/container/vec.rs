@@ -23,7 +23,7 @@ use core::ops::RangeTo;
 use core::ptr;
 use core::ptr::drop_in_place;
 
-/// Macro allowing to create a vector with the given set of values.
+/// Creates a [`Vec`] with the given size or set of values.
 #[macro_export]
 macro_rules! vec {
 	// Creating an empty vec

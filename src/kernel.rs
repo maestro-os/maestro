@@ -80,6 +80,7 @@ use crate::file::fs::initramfs;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
+use crate::logger::LOGGER;
 use crate::memory::vmem;
 use crate::memory::vmem::VMem;
 use crate::process::exec;
@@ -129,7 +130,7 @@ pub fn enter_loop() -> ! {
 	}
 }
 
-/// Resets the stack to the given value, then calls `enter_loop`.
+/// Resets the stack to the given value, then calls [`enter_loop`].
 ///
 /// The function is unsafe because the pointer passed in parameter might be
 /// invalid.
@@ -292,11 +293,11 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let args_parser = match cmdline::ArgsParser::parse(cmdline) {
 		Ok(p) => p,
 		Err(e) => {
-			crate::println!("{e}");
+			println!("{e}");
 			halt();
 		}
 	};
-	logger::init(args_parser.is_silent());
+	LOGGER.lock().silent = args_parser.is_silent();
 
 	println!("Booting Maestro kernel version {VERSION}");
 

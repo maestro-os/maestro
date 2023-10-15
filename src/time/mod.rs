@@ -1,4 +1,4 @@
-//! This module implements time management.
+//! Time management implementation.
 //!
 //! A clock is an object that gives the current time. A distinction has to be made between:
 //! - Hardware Clocks, which are physical components (from the point of view of the kernel) which

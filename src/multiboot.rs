@@ -1,5 +1,5 @@
 //! The Multiboot standard specifies an interface to load and boot the kernel
-//! image. It provides critical informations such as the memory mapping and the
+//! image. It provides essential informations such as the memory mapping and the
 //! ELF structure of the kernel.
 
 use crate::memory;
@@ -397,6 +397,7 @@ pub struct BootInfo {
 	pub elf_sections: *const c_void,
 
 	/// Slice of data representing an initramfs image.
+	///
 	/// If `None`, no initramfs is loaded.
 	pub initramfs: Option<&'static [u8]>,
 }
@@ -425,10 +426,8 @@ pub fn get_boot_info() -> &'static BootInfo {
 	unsafe { &BOOT_INFO }
 }
 
-/// Returns the size in bytes of Multiboot tags pointed by `ptr`.
+/// Returns the size in bytes of Multiboot tags pointed to by `ptr`.
 pub fn get_tags_size(ptr: *const c_void) -> usize {
-	debug_assert!(!ptr.is_null());
-
 	unsafe {
 		let mut tag = ptr.offset(8) as *const Tag;
 		while (*tag).type_ != TAG_TYPE_END {

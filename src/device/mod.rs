@@ -1,4 +1,4 @@
-//! This module handles devices and buses.
+//! Devices, buses and peripherals implementation.
 //!
 //! A device file is an interface with a device of the system, which can be
 //! internal or external, or even virtual such as a TTY.
@@ -7,7 +7,7 @@
 //! system first needs to initialize devices. However, at that stage, device files cannot be
 //! created.
 //!
-//! Thus, devices are initialized in two stages:
+//! Thus, devices are initialized in stages:
 //! - **stage 1**: files management is not yet initialized, which means device files are not
 //! created when devices are registered
 //! - **stage 2**: files management is initialized, device files can be created. When switching to

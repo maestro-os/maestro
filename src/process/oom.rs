@@ -1,6 +1,10 @@
-//! The OOM killer is a procedure which is invoked when the kernel runs out of
-//! memory. It kills one or more processes according to a score computed for
+//! OOM killing is a procedure which is invoked when the kernel runs out of
+//! memory.
+//!
+//! The OOM killer terminates one or more processes according to a score computed for
 //! each of them.
+//!
+//! This is an emergency procedure which is not supposed to be used under normal conditions.
 
 use crate::errno::AllocResult;
 use crate::util::lock::Mutex;

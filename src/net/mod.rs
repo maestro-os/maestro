@@ -1,4 +1,4 @@
-//! This module implements the network stack.
+//! Network stack implementation.
 
 pub mod buff;
 pub mod icmp;

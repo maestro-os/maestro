@@ -1,5 +1,4 @@
-//! This module implements the Regs structure, allowing to save an execution
-//! state and to restore it.
+//! Implementation of registers handling for each architecture.
 
 use crate::errno::Errno;
 use crate::gdt;

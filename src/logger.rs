@@ -1,35 +1,27 @@
-//! This modules handles kernel logging.
+//! Kernel logging
 //!
-//! If the logger is silent, it will not print the logs on the screen but it
-//! will keep it in memory anyways.
+//! If the logger is set as silent, logs will not show up on screen, but will be kept in memory
+//! anyways.
 
 use crate::tty;
 use crate::util::lock::IntMutex;
 use core::cmp::min;
 use core::cmp::Ordering;
+use core::fmt;
 use core::fmt::Write;
 
 /// The size of the kernel logs buffer in bytes.
 const LOGS_SIZE: usize = 1048576;
 
 /// The kernel's logger.
-static LOGGER: IntMutex<Logger> = IntMutex::new(Logger::new());
-
-/// Initializes logging.
-/// `silent` tells whether the logger is silent.
-pub fn init(silent: bool) {
-	LOGGER.lock().set_silent(silent);
-}
-
-/// Returns a mutable reference to the logger's Mutex.
-pub fn get() -> &'static IntMutex<Logger> {
-	&LOGGER
-}
+pub static LOGGER: IntMutex<Logger> = IntMutex::new(Logger::new());
 
 /// Kernel logger, used to print/store kernel logs.
+///
+/// Internally, the logger uses a ring buffer for storage.
 pub struct Logger {
 	/// Tells whether the logger is silent.
-	silent: bool,
+	pub silent: bool,
 
 	/// The buffer storing the kernel logs.
 	buff: [u8; LOGS_SIZE],
@@ -49,18 +41,6 @@ impl Logger {
 			read_head: 0,
 			write_head: 0,
 		}
-	}
-
-	/// Tells whether the logger is silent.
-	#[inline]
-	pub fn is_silent(&self) -> bool {
-		self.silent
-	}
-
-	/// Sets the logger as silent or not.
-	#[inline]
-	pub fn set_silent(&mut self, silent: bool) {
-		self.silent = silent;
 	}
 
 	/// Returns the number of bytes used in the buffer.
@@ -116,7 +96,6 @@ impl Logger {
 			if off >= self.write_head || self.buff[off] == b'\n' {
 				break;
 			}
-
 			i += 1;
 		}
 
@@ -125,12 +104,14 @@ impl Logger {
 }
 
 impl Write for Logger {
-	fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-		if !self.is_silent() {
-			tty::get(None).unwrap().lock().write(s.as_bytes());
-		}
+	fn write_str(&mut self, s: &str) -> fmt::Result {
 		self.push(s.as_bytes());
-
+		if !self.silent {
+			let Some(tty) = tty::get(None) else {
+				return Ok(());
+			};
+			tty.lock().write(s.as_bytes());
+		}
 		Ok(())
 	}
 }

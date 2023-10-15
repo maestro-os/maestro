@@ -1,12 +1,12 @@
-//! This module implements cryptographic tools.
+//! Cryptographic algorithms and tools.
 
 pub mod chacha20;
 pub mod checksum;
 pub mod rand;
 
-use crate::errno::Errno;
+use crate::errno::EResult;
 
 /// Initializes cryptographic features.
-pub fn init() -> Result<(), Errno> {
+pub fn init() -> EResult<()> {
 	rand::init()
 }

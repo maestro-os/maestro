@@ -1,4 +1,4 @@
-//! This module implements CPU-specific features.
+//! CPU-specific features.
 
 pub mod sse;
 

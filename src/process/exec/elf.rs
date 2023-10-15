@@ -1,4 +1,4 @@
-//! This module implements ELF program execution with respects the System V ABI.
+//! Implementation of ELF programs execution with respect to the **System V ABI**.
 
 // TODO suid and sgid
 
