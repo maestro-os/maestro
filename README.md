@@ -1,6 +1,6 @@
-<center>
+<p align="center">
     <img src="https://raw.githubusercontent.com/llenotre/maestro-lnf/master/logo.svg" alt="logo" width="50%" />
-</center>
+</p>
 
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge&logo=book)](./LICENSE)
 ![Rust version](https://img.shields.io/badge/rust-nightly_2023--05--11-lightgrey.svg?style=for-the-badge&logo=rust)
