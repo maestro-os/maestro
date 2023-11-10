@@ -3,9 +3,11 @@
 </p>
 
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge&logo=book)](./LICENSE)
-![Rust version](https://img.shields.io/badge/rust-nightly_2023--05--11-lightgrey.svg?style=for-the-badge&logo=rust)
+![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fllenotre%2Fmaestro%2Fmaster%2FCargo.toml&query=%24.package.version&style=for-the-badge&label=version)
+![Rust toolchain](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fllenotre%2Fmaestro%2Fmaster%2Frust-toolchain.toml&query=%24.toolchain.channel&style=for-the-badge&logo=rust&label=rust%20toolchain&color=%23444)
 ![Continuous integration](https://img.shields.io/github/actions/workflow/status/llenotre/maestro/check.yml?style=for-the-badge&logo=github)
-[![Discord](https://img.shields.io/discord/971452040821760080?style=for-the-badge&logo=discord)](https://discord.gg/4JMBN3YPAk)
+![Stars](https://img.shields.io/github/stars/llenotre/maestro?style=for-the-badge&color=yellow)
+[![Discord](https://img.shields.io/discord/971452040821760080?style=for-the-badge&logo=discord&color=%235865f2)](https://discord.gg/4JMBN3YPAk)
 
 # About
 
