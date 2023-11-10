@@ -13,12 +13,36 @@
 
 Maestro is a lightweight Unix-like kernel written in Rust.
 
-The goal is to provide an operating system free of bloats and able to use the safety features of the Rust language to be reliable.
+The goal is to provide a lightweight operating system able to use the safety features of the Rust language to be reliable.
 
 > This project is still in early stage development, thus it is highly unstable and misses a lot of features. **Do not use it in production!**
 
 To stay updated with the project, follow the [blog](https://blog.lenot.re)!
 
+
+
+# Features
+
+The following features are currently implemented (non-exhaustive):
+- Terminal with [VGA text mode](https://en.wikipedia.org/wiki/VGA_text_mode) and [PS/2](https://en.wikipedia.org/wiki/PS/2_port) keyboard (with forward compatibility with USB handled by the motherboard's firmware)
+    - Partial support of [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code)
+- Memory allocation/virtual memory
+    - [Buddy allocator](https://en.wikipedia.org/wiki/Buddy_memory_allocation)
+    - Internal memory allocator, with similarities with **dlmalloc**'s implementation, working on top of the buddy allocator
+- Processes and [scheduler](https://en.wikipedia.org/wiki/Scheduling_(computing)) ([round-robin](https://en.wikipedia.org/wiki/Round-robin_scheduling))
+    - POSIX signals
+- [PCI](https://en.wikipedia.org/wiki/Peripheral_Component_Interconnect) devices enumeration
+- Files:
+    - Mountpoints
+    - [IDE/PATA](https://en.wikipedia.org/wiki/Parallel_ATA) driver
+    - Filesystem ([ext2](https://en.wikipedia.org/wiki/Extended_file_system) only for now)
+    - Disk partitions ([MBR](https://en.wikipedia.org/wiki/Master_boot_record) and [GPT](https://en.wikipedia.org/wiki/GUID_Partition_Table))
+    - Virtual filesystems (`/tmp` and `/proc`)
+    - initramfs
+- Time/Clock ([RTC](https://en.wikipedia.org/wiki/Real-time_clock))
+- Linux system calls (roughly 30% are currently implemented)
+- Kernel modules
+- [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) programs
 
 
 # Quickstart
