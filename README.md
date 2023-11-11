@@ -22,6 +22,10 @@ The goal is to provide a lightweight operating system able to use the safety fea
 
 To stay updated with the project, follow the [blog](https://blog.lenot.re)!
 
+<p align="center">
+  <img src="https://blog.lenot.re/assets/article/neofetch.png" alt="neofetch" width="100%" />
+</p>
+
 
 
 # Features
@@ -46,6 +50,7 @@ The following features are currently implemented (non-exhaustive):
 - Linux system calls (roughly 30% are currently implemented)
 - Kernel modules
 - [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) programs
+
 
 
 # Quickstart
