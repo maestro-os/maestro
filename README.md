@@ -26,6 +26,8 @@ To stay updated with the project, follow the [blog](https://blog.lenot.re)!
   <img src="https://blog.lenot.re/assets/article/neofetch.png" alt="neofetch" width="100%" />
 </p>
 
+[Neofetch](https://github.com/dylanaraps/neofetch) and bash running on the OS.
+
 
 
 # Features
