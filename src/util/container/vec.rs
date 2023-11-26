@@ -670,8 +670,8 @@ impl<T> Drop for IntoIter<T> {
 }
 
 impl<T> IntoIterator for Vec<T> {
-	type Item = T;
 	type IntoIter = IntoIter<T>;
+	type Item = T;
 
 	fn into_iter(self) -> Self::IntoIter {
 		IntoIter {
@@ -760,8 +760,8 @@ impl<'a, T> FusedIterator for VecIterator<'a, T> {}
 unsafe impl<'a, T> TrustedLen for VecIterator<'a, T> {}
 
 impl<'a, T> IntoIterator for &'a Vec<T> {
-	type Item = &'a T;
 	type IntoIter = VecIterator<'a, T>;
+	type Item = &'a T;
 
 	fn into_iter(self) -> Self::IntoIter {
 		VecIterator::new(self)
