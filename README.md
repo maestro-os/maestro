@@ -12,6 +12,8 @@
 ![Stars](https://img.shields.io/github/stars/llenotre/maestro?style=for-the-badge&color=yellow)
 [![Discord](https://img.shields.io/discord/971452040821760080?style=for-the-badge&logo=discord&color=%235865f2)](https://discord.gg/4JMBN3YPAk)
 
+
+
 # About
 
 Maestro is a lightweight Unix-like kernel written in Rust.
@@ -21,6 +23,12 @@ The goal is to provide a lightweight operating system able to use the safety fea
 > This project is still in early stage development, thus it is highly unstable and misses a lot of features. **Do not use it in production!**
 
 To stay updated with the project, follow the [blog](https://blog.lenot.re)!
+
+<p align="center">
+  <img src="https://blog.lenot.re/assets/article/neofetch.png" alt="neofetch" width="100%" />
+</p>
+
+[Neofetch](https://github.com/dylanaraps/neofetch) and bash running on the OS.
 
 
 
