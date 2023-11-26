@@ -12,6 +12,7 @@ use core::hash::Hash;
 use core::hash::Hasher;
 use core::iter::FusedIterator;
 use core::iter::TrustedLen;
+use core::mem::ManuallyDrop;
 use core::num::NonZeroUsize;
 use core::ops::Deref;
 use core::ops::DerefMut;
@@ -636,25 +637,46 @@ impl<T> IndexMut<RangeTo<usize>> for Vec<T> {
 /// A consuming iterator for the Vec structure.
 pub struct IntoIter<T> {
 	/// The vector to iterator into.
-	vec: Vec<T>,
+	vec: ManuallyDrop<Vec<T>>,
+	/// The current offset in the vector.
+	cur: usize,
 }
 
 impl<T> Iterator for IntoIter<T> {
 	type Item = T;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// FIXME: currently, the iterator goes from end to begin
-		self.vec.pop()
+		if self.cur < self.vec.len() {
+			let e = unsafe { ptr::read(&self.vec[self.cur]) };
+			self.cur += 1;
+			Some(e)
+		} else {
+			None
+		}
+	}
+}
+
+impl<T> Drop for IntoIter<T> {
+	fn drop(&mut self) {
+		// Drop remaining elements
+		for e in &mut self.vec.as_mut_slice()[self.cur..] {
+			unsafe {
+				drop_in_place(e);
+			}
+		}
+		// Free vector's memory
+		self.vec.data = None;
 	}
 }
 
 impl<T> IntoIterator for Vec<T> {
-	type IntoIter = IntoIter<T>;
 	type Item = T;
+	type IntoIter = IntoIter<T>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		IntoIter {
-			vec: self,
+			vec: ManuallyDrop::new(self),
+			cur: 0,
 		}
 	}
 }
