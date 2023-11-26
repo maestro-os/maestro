@@ -37,7 +37,7 @@ fn write(
 	let mut total_len = 0;
 
 	for i in iov {
-		// Ignoring zero entry
+		// Ignore zero entry
 		if i.iov_len == 0 {
 			continue;
 		}
@@ -47,6 +47,7 @@ fn write(
 		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
 
 		if let Some(slice) = ptr.get(mem_space, l)? {
+			// The offset is ignored
 			total_len += open_file.write(0, slice)? as usize;
 		}
 	}

@@ -377,7 +377,6 @@ impl<T> Vec<T> {
 				drop_in_place(e);
 			}
 		}
-
 		self.len = 0;
 		self.data = None;
 	}
@@ -695,20 +694,19 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 		if self.index_front < self.vec.len() {
 			let e = &self.vec[self.index_front];
 			self.index_front += 1;
-
 			Some(e)
 		} else {
 			None
 		}
 	}
 
-	fn count(self) -> usize {
-		self.size_hint().0
-	}
-
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let remaining = self.vec.len() - self.index_front - self.index_back;
 		(remaining, Some(remaining))
+	}
+
+	fn count(self) -> usize {
+		self.size_hint().0
 	}
 }
 
@@ -722,7 +720,6 @@ impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
 		if self.index_back < self.vec.len() {
 			let e = &self.vec[self.vec.len() - self.index_back - 1];
 			self.index_back += 1;
-
 			Some(e)
 		} else {
 			None
@@ -741,8 +738,8 @@ impl<'a, T> FusedIterator for VecIterator<'a, T> {}
 unsafe impl<'a, T> TrustedLen for VecIterator<'a, T> {}
 
 impl<'a, T> IntoIterator for &'a Vec<T> {
-	type IntoIter = VecIterator<'a, T>;
 	type Item = &'a T;
+	type IntoIter = VecIterator<'a, T>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		VecIterator::new(self)
@@ -759,17 +756,7 @@ impl<T: Hash> Hash for Vec<T> {
 
 impl<T: fmt::Debug> fmt::Debug for Vec<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "[")?;
-
-		for (i, e) in self.iter().enumerate() {
-			if i + 1 < self.len() {
-				write!(f, "{:?}, ", e)?;
-			} else {
-				write!(f, "{:?}", e)?;
-			}
-		}
-
-		write!(f, "]")
+		fmt::Debug::fmt(&**self, f)
 	}
 }
 

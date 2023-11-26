@@ -77,14 +77,11 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		let hdr = entry.get_hdr();
 
 		let mut parent_path = Path::from_str(entry.get_filename(), false)?;
-		let name = match parent_path.pop() {
-			Some(name) => name,
-			None => continue,
+		let Some(name) = parent_path.pop() else {
+			continue;
 		};
 
 		let file_type = hdr.get_type();
-		let perm = hdr.get_perms();
-
 		let content = match file_type {
 			FileType::Regular => FileContent::Regular,
 			FileType::Directory => FileContent::Directory(HashMap::new()),
@@ -101,12 +98,11 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 			},
 		};
 
-		// Telling whether the parent directory must be changed
+		// Change the parent directory if necessary
 		let update = match &stored_parent {
 			Some((path, _)) => path != &parent_path,
 			None => true,
 		};
-		// Change the parent directory if necessary
 		if update {
 			update_parent(&parent_path, &mut stored_parent, false)?;
 		}
@@ -114,26 +110,27 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		let parent_mutex = &stored_parent.as_ref().unwrap().1;
 		let mut parent = parent_mutex.lock();
 
-		// Creating file
-		let create_result =
-			vfs::create_file(&mut parent, name, &AccessProfile::KERNEL, perm, content);
+		// Create file
+		let create_result = vfs::create_file(
+			&mut parent,
+			name,
+			&AccessProfile::KERNEL,
+			hdr.get_perms(),
+			content,
+		);
 		let file_mutex = match create_result {
 			Ok(file_mutex) => file_mutex,
 			Err(e) if e.as_int() == errno::EEXIST => continue,
 			Err(e) => return Err(e),
 		};
-
 		let mut file = file_mutex.lock();
-
 		file.set_uid(hdr.c_uid);
 		file.set_gid(hdr.c_gid);
-
-		// Writing content if the file is a regular file
+		// Write content if the file is a regular file
 		if file_type == FileType::Regular {
 			let content = entry.get_content();
 			file.write(0, content)?;
 		}
-
 		file.sync()?;
 	}
 

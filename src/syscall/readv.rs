@@ -54,6 +54,7 @@ fn read(
 		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
 
 		if let Some(slice) = ptr.get_mut(mem_space, l)? {
+			// The offset is ignored
 			let (len, eof) = open_file.read(0, slice)?;
 			total_len += len as usize;
 			if eof {
