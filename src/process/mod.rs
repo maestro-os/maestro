@@ -1239,17 +1239,19 @@ impl Process {
 	/// `signaled` tells whether the process has been terminated by a signal. If
 	/// `true`, `status` is interpreted as the signal number.
 	pub fn exit(&mut self, status: u32, signaled: bool) {
-		if signaled {
+		let sig = if signaled {
 			self.exit_status = 0;
-			self.termsig = (status & 0xff) as ExitStatus;
+			self.termsig = status as ExitStatus;
+			self.termsig
 		} else {
-			self.exit_status = (status & 0xff) as ExitStatus;
+			self.exit_status = status as ExitStatus;
 			self.termsig = 0;
-		}
+			0
+		};
 
 		self.set_state(State::Zombie);
 		self.reset_vfork();
-		self.set_waitable(0); // TODO Check parameter
+		self.set_waitable(sig);
 	}
 
 	/// Returns the number of virtual memory pages used by the process.
