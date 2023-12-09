@@ -91,7 +91,6 @@ use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
 use core::ffi::c_void;
-use core::panic::PanicInfo;
 use core::ptr::null;
 
 /// The kernel's name.
@@ -253,7 +252,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	tty::init();
 
 	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {
-		kernel_panic!("Bootloader non compliant with Multiboot2!");
+		panic!("Bootloader non compliant with Multiboot2!");
 	}
 
 	// Initializing IDT
@@ -261,7 +260,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	// Ensuring the CPU has SSE
 	if !cpu::sse::is_present() {
-		kernel_panic!("SSE support is required to run this kernel :(");
+		panic!("SSE support is required to run this kernel :(");
 	}
 	cpu::sse::enable();
 
@@ -276,7 +275,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	memory::alloc::init();
 
 	if init_vmem().is_err() {
-		kernel_panic!("Cannot initialize kernel virtual memory!");
+		panic!("Cannot initialize kernel virtual memory!");
 	}
 
 	// From here, the kernel considers that memory management has been fully
@@ -307,7 +306,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 
 	println!("Initializing time management...");
 	if time::init().is_err() {
-		kernel_panic!("failed to initialize time management");
+		panic!("failed to initialize time management");
 	}
 
 	// FIXME
@@ -315,55 +314,27 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	device::storage::ramdisk::create()
 		.unwrap_or_else(|e| kernel_panic!("Failed to create ramdisks! ({})", e));*/
 	println!("Initializing devices management...");
-	device::init()
-		.unwrap_or_else(|e| kernel_panic!("Failed to initialize devices management! ({e})"));
-	net::osi::init().unwrap_or_else(|e| kernel_panic!("Failed to initialize network! ({e})"));
-	crypto::init().unwrap_or_else(|e| kernel_panic!("Failed to initialize cryptography! ({e})"));
+	device::init().unwrap_or_else(|e| panic!("Failed to initialize devices management! ({e})"));
+	net::osi::init().unwrap_or_else(|e| panic!("Failed to initialize network! ({e})"));
+	crypto::init().unwrap_or_else(|e| panic!("Failed to initialize cryptography! ({e})"));
 
 	let root = args_parser.get_root_dev();
 	println!("Initializing files management...");
-	file::init(root)
-		.unwrap_or_else(|e| kernel_panic!("Failed to initialize files management! ({e})"));
+	file::init(root).unwrap_or_else(|e| panic!("Failed to initialize files management! ({e})"));
 	if let Some(initramfs) = &boot_info.initramfs {
 		println!("Initializing initramfs...");
 		initramfs::load(initramfs)
-			.unwrap_or_else(|e| kernel_panic!("Failed to initialize initramfs! ({e})"));
+			.unwrap_or_else(|e| panic!("Failed to initialize initramfs! ({e})"));
 	}
-	device::stage2().unwrap_or_else(|e| kernel_panic!("Failed to create device files! ({e})"));
+	device::stage2().unwrap_or_else(|e| panic!("Failed to create device files! ({e})"));
 
 	println!("Initializing processes...");
-	process::init().unwrap_or_else(|e| kernel_panic!("Failed to init processes! ({e})"));
+	process::init().unwrap_or_else(|e| panic!("Failed to init processes! ({e})"));
 
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
-	init(init_path).unwrap_or_else(|e| kernel_panic!("Cannot execute init process: {e}"));
+	init(init_path).unwrap_or_else(|e| panic!("Cannot execute init process: {e}"));
 
 	drop(args_parser);
 	enter_loop();
 }
-
-/// Called on Rust panic.
-#[panic_handler]
-fn panic(panic_info: &PanicInfo) -> ! {
-	#[cfg(test)]
-	if selftest::is_running() {
-		println!("FAILED\n");
-		println!("Error: {panic_info}\n");
-
-		#[cfg(config_debug_qemu)]
-		selftest::qemu::exit(selftest::qemu::FAILURE);
-		#[cfg(not(config_debug_qemu))]
-		halt();
-	}
-
-	if let Some(s) = panic_info.message() {
-		panic::rust_panic(s);
-	} else {
-		crate::kernel_panic!("Rust panic (no payload)");
-	}
-}
-
-/// Function that is required to be implemented by the Rust compiler and is used
-/// only when panicking.
-#[lang = "eh_personality"]
-fn eh_personality() {}

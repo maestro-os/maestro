@@ -61,8 +61,8 @@ impl KernFSNode for SelfNode {
 	fn set_mtime(&mut self, _: Timestamp) {}
 
 	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		let Some(mutex) = Process::current() else {
-			crate::kernel_panic!("no current process");
+		let Some(mutex) = Process::current_assert() else {
+			panic!("no current process");
 		};
 		let pid = { mutex.lock().pid };
 

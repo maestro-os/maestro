@@ -29,7 +29,7 @@ pub fn set_killer_enabled(enable: bool) {
 /// Runs the OOM killer.
 pub fn kill() {
 	if !is_killer_enabled() {
-		kernel_panic!("Out of memory");
+		panic!("Out of memory");
 	}
 
 	// TODO Get the process with the highest OOM score (ignore init process)
@@ -50,5 +50,5 @@ pub fn wrap<T, F: FnMut() -> AllocResult<T>>(mut f: F) -> T {
 		// TODO Check if current process has been killed
 	}
 
-	crate::kernel_panic!("OOM killer is unable to free up space for new allocations!");
+	panic!("OOM killer is unable to free up space for new allocations!");
 }
