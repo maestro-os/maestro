@@ -34,16 +34,16 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		crate::print!("Reason: {msg}");
 	}
 	if let Some(loc) = panic_info.location() {
-		crate::println!(" ({loc})");
+		crate::println!(" (location: {loc})");
 	} else {
 		crate::println!();
 	}
 	crate::println!(
-		"If you believe this is a bug on the kernel side, please feel free to report it.\n"
+		"If you believe this is a bug on the kernel side, please feel free to report it."
 	);
 
 	let cr2 = unsafe { cpu::cr2_get() };
-	crate::println!("cr2: {:p}\n", cr2);
+	crate::println!("cr2: {cr2:p}\n");
 
 	#[cfg(config_debug_debug)]
 	{
@@ -51,7 +51,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		use core::ffi::c_void;
 		use core::ptr::null_mut;
 
-		crate::println!("\n--- Callstack ---");
+		crate::println!("--- Callstack ---");
 		let ebp = unsafe { crate::register_get!("ebp") as *mut _ };
 		let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
 		debug::get_callstack(ebp, &mut callstack);

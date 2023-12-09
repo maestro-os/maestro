@@ -211,7 +211,7 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 				}
 			}
 
-			CallbackResult::Panic => panic!("{} ()", get_error_message(id)),
+			CallbackResult::Panic => panic!("{}, code: {code:x}", get_error_message(id)),
 		}
 	}
 }
