@@ -56,7 +56,7 @@ pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> R
 
 			// Triggering a triple fault, causing the system to reboot
 			unsafe {
-				asm!("jmp $0xffff, $0");
+				asm!("jmp 0xffff, 0");
 			}
 			unreachable!();
 		}
