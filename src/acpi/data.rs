@@ -134,12 +134,11 @@ impl ACPIData {
 	/// If the data is invalid, the function makes the kernel panic.
 	pub fn read() -> Result<Option<Self>, Errno> {
 		let rsdp = unsafe { find_rsdp() };
-		if rsdp.is_none() {
+		let Some(rsdp) = rsdp else {
 			return Ok(None);
-		}
-		let rsdp = rsdp.unwrap();
+		};
 		if !rsdp.check() {
-			crate::kernel_panic!("Invalid ACPI pointer!");
+			panic!("Invalid ACPI pointer!");
 		}
 
 		// Temporary vmem used to read the data, since it cannot be located anywhere on the
@@ -161,7 +160,7 @@ impl ACPIData {
 			};
 
 			if !rsdt.header.check::<Rsdt>() {
-				crate::kernel_panic!("Invalid ACPI structure!");
+				panic!("Invalid ACPI structure!");
 			}
 
 			// Getting every ACPI tables
@@ -173,7 +172,7 @@ impl ACPIData {
 					.map_range(table_map_begin as _, (memory::PAGE_SIZE * 3) as _, 2, 0)
 					.is_err()
 				{
-					crate::kernel_panic!("Unexpected error when reading ACPI data");
+					panic!("Unexpected error when reading ACPI data");
 				}
 
 				let table_offset = table_ptr as usize - table_map_begin as usize;
@@ -258,7 +257,7 @@ impl ACPIData {
 					&*table_ptr
 				};
 				if !table.get_header().check::<T>() {
-					crate::kernel_panic!("Invalid ACPI structure!");
+					panic!("Invalid ACPI structure!");
 				}
 
 				return Some(table);
@@ -304,7 +303,7 @@ impl ACPIData {
 				};
 
 				if !table.get_header().check::<T>() {
-					crate::kernel_panic!("Invalid ACPI structure!");
+					panic!("Invalid ACPI structure!");
 				}
 
 				return Some(table);

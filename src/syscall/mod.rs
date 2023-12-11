@@ -14,6 +14,8 @@ mod r#break;
 mod brk;
 mod chdir;
 mod chmod;
+mod chown;
+mod chown32;
 mod chroot;
 mod clock_gettime;
 mod clock_gettime64;
@@ -62,6 +64,7 @@ mod getuid32;
 mod init_module;
 pub mod ioctl;
 mod kill;
+mod lchown;
 mod link;
 mod linkat;
 mod madvise;
@@ -153,6 +156,8 @@ use bind::bind;
 use brk::brk;
 use chdir::chdir;
 use chmod::chmod;
+use chown::chown;
+use chown32::chown32;
 use chroot::chroot;
 use clock_gettime::clock_gettime;
 use clock_gettime64::clock_gettime64;
@@ -201,6 +206,7 @@ use getuid32::getuid32;
 use init_module::init_module;
 use ioctl::ioctl;
 use kill::kill;
+use lchown::lchown;
 use link::link;
 use linkat::linkat;
 use madvise::madvise;
@@ -298,7 +304,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		0x00d => Some(&time),
 		0x00e => Some(&mknod),
 		0x00f => Some(&chmod),
-		// TODO 0x010 => Some(&lchown),
+		0x010 => Some(&lchown),
 		0x011 => Some(&r#break),
 		// TODO 0x012 => Some(&oldstat),
 		// TODO 0x013 => Some(&lseek),
@@ -462,7 +468,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x0b3 => Some(&rt_sigsuspend),
 		// TODO 0x0b4 => Some(&pread64),
 		// TODO 0x0b5 => Some(&pwrite64),
-		// TODO 0x0b6 => Some(&chown),
+		0x0b6 => Some(&chown),
 		0x0b7 => Some(&getcwd),
 		// TODO 0x0b8 => Some(&capget),
 		// TODO 0x0b9 => Some(&capset),
@@ -492,7 +498,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x0d1 => Some(&getresuid32),
 		// TODO 0x0d2 => Some(&setresgid32),
 		// TODO 0x0d3 => Some(&getresgid32),
-		// TODO 0x0d4 => Some(&chown32),
+		0x0d4 => Some(&chown32),
 		0x0d5 => Some(&setuid32),
 		0x0d6 => Some(&setgid32),
 		// TODO 0x0d7 => Some(&setfsuid32),

@@ -109,7 +109,7 @@ pub fn is_century_register_present() -> bool {
 pub fn init() {
 	// Reading ACPI data
 	let data = ACPIData::read().unwrap_or_else(|_| {
-		crate::kernel_panic!("Invalid ACPI data!");
+		panic!("Invalid ACPI data!");
 	});
 
 	if let Some(data) = data {

@@ -952,7 +952,7 @@ impl fmt::Debug for MemSpace {
 impl Drop for MemSpace {
 	fn drop(&mut self) {
 		if self.is_bound() {
-			kernel_panic!("Dropping a memory space while bound to it");
+			panic!("Dropping a memory space while bound to it");
 		}
 
 		// Unmapping everything to free up physical memory

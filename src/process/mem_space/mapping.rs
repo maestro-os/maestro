@@ -40,7 +40,7 @@ fn get_default_page() -> *const c_void {
 		// Lazy allocation
 		None => {
 			let Ok(mut ptr) = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL) else {
-				kernel_panic!("Cannot allocate default memory page!");
+				panic!("Cannot allocate default memory page!");
 			};
 
 			// Zero page

@@ -696,7 +696,7 @@ impl Drop for X86VMem {
 	/// If the page directory is being used, the kernel shall panic.
 	fn drop(&mut self) {
 		if self.is_bound() {
-			crate::kernel_panic!("Dropping virtual memory context handler while in use!");
+			panic!("Dropping virtual memory context handler while in use!");
 		}
 
 		for i in 0..768 {

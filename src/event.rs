@@ -5,7 +5,6 @@ use crate::crypto::rand::EntropyPool;
 use crate::errno::AllocResult;
 use crate::idt;
 use crate::idt::pic;
-use crate::panic;
 use crate::process::regs::Regs;
 use crate::process::tss;
 use crate::util;
@@ -212,15 +211,7 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 				}
 			}
 
-			CallbackResult::Panic => {
-				panic::kernel_panic_(
-					format_args!("{} (code: {code})", get_error_message(id)),
-					Some(regs),
-					file!(),
-					line!(),
-					column!(),
-				);
-			}
+			CallbackResult::Panic => panic!("{}, code: {code:x}", get_error_message(id)),
 		}
 	}
 }

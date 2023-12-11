@@ -90,7 +90,7 @@ pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
 
 	let vdso_pages = math::ceil_div(img.len, memory::PAGE_SIZE);
 	let Some(vdso_pages) = NonZeroUsize::new(vdso_pages) else {
-		crate::kernel_panic!("Invalid vDSO image");
+		panic!("Invalid vDSO image");
 	};
 	// TODO ASLR
 	let ptr = mem_space.map(

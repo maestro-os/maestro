@@ -100,7 +100,7 @@ impl Fadt {
 			};
 
 			if !dsdt.get_header().check::<Dsdt>() {
-				crate::kernel_panic!("Invalid ACPI structure!");
+				panic!("Invalid ACPI structure!");
 			}
 
 			Some(dsdt)
