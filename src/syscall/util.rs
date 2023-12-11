@@ -139,7 +139,7 @@ pub fn get_file_at(
 	flags: i32,
 ) -> EResult<Arc<Mutex<File>>> {
 	let follow_links = if follow_links_default {
-		flags & super::access::AT_SYMLINK_NOFOLLOW != 0
+		flags & super::access::AT_SYMLINK_NOFOLLOW == 0
 	} else {
 		flags & super::access::AT_SYMLINK_FOLLOW != 0
 	};
@@ -193,7 +193,7 @@ pub fn get_parent_at_with_name(
 	flags: i32,
 ) -> EResult<(Arc<Mutex<File>>, String)> {
 	let follow_links = if follow_links_default {
-		flags & super::access::AT_SYMLINK_NOFOLLOW != 0
+		flags & super::access::AT_SYMLINK_NOFOLLOW == 0
 	} else {
 		flags & super::access::AT_SYMLINK_FOLLOW != 0
 	};
