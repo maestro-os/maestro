@@ -55,14 +55,15 @@ fn get_file(
 	if flags & open_file::O_CREAT != 0 {
 		util::create_file_at(
 			proc,
-			follow_links,
 			dirfd,
 			pathname,
 			mode,
 			FileContent::Regular,
+			follow_links,
+			0,
 		)
 	} else {
-		util::get_file_at(proc, true, dirfd, pathname, 0)
+		util::get_file_at(proc, dirfd, pathname, follow_links, 0)
 	}
 }
 

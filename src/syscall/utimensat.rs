@@ -41,7 +41,7 @@ pub fn utimensat(
 
 	match pathname.get(&mem_space_guard)? {
 		Some(pathname) => {
-			let file_mutex = util::get_file_at(proc, true, dirfd, pathname, flags)?;
+			let file_mutex = util::get_file_at(proc, dirfd, pathname, true, flags)?;
 			set(&file_mutex)?;
 		}
 		None if dirfd != AT_FDCWD => {

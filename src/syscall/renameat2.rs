@@ -34,14 +34,14 @@ pub fn renameat2(
 		let oldpath = oldpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let old = super::util::get_file_at(proc, false, olddirfd, oldpath, 0)?;
+		let old = super::util::get_file_at(proc, olddirfd, oldpath, false, 0)?;
 
 		let proc = proc_mutex.lock();
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let (new_parent, new_name) =
-			super::util::get_parent_at_with_name(proc, false, newdirfd, newpath)?;
+			super::util::get_parent_at_with_name(proc, newdirfd, newpath, false, 0)?;
 
 		(old, new_parent, new_name, ap)
 	};

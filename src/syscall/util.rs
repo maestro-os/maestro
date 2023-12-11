@@ -27,12 +27,12 @@ use core::mem::size_of;
 /// - `process` is the process.
 /// - `path` is the path.
 pub fn get_absolute_path(process: &Process, path: Path) -> AllocResult<Path> {
+	// TODO use chain + collect to allocate once
 	let path = if !path.is_absolute() {
 		process.cwd.concat(&path)?
 	} else {
 		path
 	};
-
 	process.chroot.concat(&path)
 }
 
@@ -126,17 +126,23 @@ fn build_path_from_fd(
 ///
 /// Arguments:
 /// - `process` is the mutex guard of the current process.
-/// - `follow_links` tells whether symbolic links may be followed.
 /// - `dirfd` is the file descriptor of the parent directory.
 /// - `pathname` is the path relative to the parent directory.
+/// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
+///   about it.
 /// - `flags` is an integer containing `AT_*` flags.
 pub fn get_file_at(
 	process: MutexGuard<Process, false>,
-	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
+	follow_links_default: bool,
 	flags: i32,
 ) -> EResult<Arc<Mutex<File>>> {
+	let follow_links = if follow_links_default {
+		flags & super::access::AT_SYMLINK_NOFOLLOW != 0
+	} else {
+		flags & super::access::AT_SYMLINK_FOLLOW != 0
+	};
 	if pathname.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
@@ -174,15 +180,23 @@ pub fn get_file_at(
 ///
 /// Arguments:
 /// - `process` is the mutex guard of the current process.
-/// - `follow_links` tells whether symbolic links may be followed.
 /// - `dirfd` is the file descriptor of the parent directory.
 /// - `pathname` is the path relative to the parent directory.
+/// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
+///   about it.
+/// - `flags` is an integer containing `AT_*` flags.
 pub fn get_parent_at_with_name(
 	process: MutexGuard<Process, false>,
-	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
+	follow_links_default: bool,
+	flags: i32,
 ) -> EResult<(Arc<Mutex<File>>, String)> {
+	let follow_links = if follow_links_default {
+		flags & super::access::AT_SYMLINK_NOFOLLOW != 0
+	} else {
+		flags & super::access::AT_SYMLINK_FOLLOW != 0
+	};
 	let ap = process.access_profile;
 
 	if pathname.is_empty() {
@@ -199,23 +213,27 @@ pub fn get_parent_at_with_name(
 ///
 /// Arguments:
 /// - `process` is the mutex guard of the current process.
-/// - `follow_links` tells whether symbolic links may be followed.
 /// - `dirfd` is the file descriptor of the parent directory.
 /// - `pathname` is the path relative to the parent directory.
 /// - `mode` is the permissions of the newly created file.
 /// - `content` is the content of the newly created file.
+/// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
+///   about it.
+/// - `flags` is an integer containing `AT_*` flags.
 pub fn create_file_at(
 	process: MutexGuard<Process, false>,
-	follow_links: bool,
 	dirfd: i32,
 	pathname: &[u8],
 	mode: Mode,
 	content: FileContent,
+	follow_links_default: bool,
+	flags: i32,
 ) -> EResult<Arc<Mutex<File>>> {
 	let ap = process.access_profile;
 	let mode = mode & !process.umask;
 
-	let (parent_mutex, name) = get_parent_at_with_name(process, follow_links, dirfd, pathname)?;
+	let (parent_mutex, name) =
+		get_parent_at_with_name(process, dirfd, pathname, follow_links_default, flags)?;
 
 	let mut parent = parent_mutex.lock();
 	vfs::create_file(&mut parent, name, &ap, mode, content)

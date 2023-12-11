@@ -16,6 +16,8 @@ pub const AT_FDCWD: i32 = -100;
 pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 /// Perform access checks using the effective user and group IDs.
 pub const AT_EACCESS: i32 = 0x200;
+/// If pathname is a symbolic link, dereference it.
+pub const AT_SYMLINK_FOLLOW: i32 = 0x400;
 /// Don't automount the terminal component of `pathname` if it is a directory that is an automount
 /// point.
 pub const AT_NO_AUTOMOUNT: i32 = 0x800;

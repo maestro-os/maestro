@@ -94,9 +94,6 @@ pub fn statx(
 
 	// TODO Implement all flags
 
-	// Whether symbolic links are to be followed
-	let follow_links = flags & super::access::AT_SYMLINK_NOFOLLOW == 0;
-
 	// Getting the file
 	let file_mutex = {
 		let proc_mutex = Process::current_assert();
@@ -108,7 +105,7 @@ pub fn statx(
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		util::get_file_at(proc, follow_links, dirfd, pathname, flags)?
+		util::get_file_at(proc, dirfd, pathname, true, flags)?
 	};
 	let file = file_mutex.lock();
 

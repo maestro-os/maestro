@@ -13,7 +13,7 @@ pub fn fchmodat(
 	dirfd: c_int,
 	pathname: SyscallString,
 	mode: i32,
-	_flags: c_int,
+	flags: c_int,
 ) -> Result<i32, Errno> {
 	let (file_mutex, ap) = {
 		let proc_mutex = Process::current_assert();
@@ -27,7 +27,7 @@ pub fn fchmodat(
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let file_mutex = util::get_file_at(proc, true, dirfd, pathname, 0)?;
+		let file_mutex = util::get_file_at(proc, dirfd, pathname, true, flags)?;
 
 		(file_mutex, ap)
 	};

@@ -35,7 +35,7 @@ pub fn symlinkat(
 		.get(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
 
-	util::create_file_at(proc, true, newdirfd, linkpath, 0, file_content)?;
+	util::create_file_at(proc, newdirfd, linkpath, 0, file_content, true, 0)?;
 
 	Ok(0)
 }
