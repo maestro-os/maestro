@@ -9,7 +9,6 @@ use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::user_desc::UserDesc;
 use crate::process::Process;
 use core::mem::size_of;
-use core::ptr;
 use macros::syscall;
 
 /// The index of the first entry for TLS segments in the GDT.
@@ -66,13 +65,11 @@ pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 		.get_mut(&mut mem_space_guard)?
 		.ok_or(errno!(EFAULT))?;
 
-	// Getting the entry with its id
+	// Get the entry with its id
 	let (id, entry) = get_entry(&mut proc, info.get_entry_number())?;
 
 	// Update the entry
-	unsafe {
-		ptr::write_volatile(entry, info.to_descriptor());
-	}
+	*entry = info.to_descriptor();
 	proc.update_tls(id);
 	gdt::flush();
 

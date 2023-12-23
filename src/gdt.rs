@@ -120,14 +120,13 @@ impl Entry {
 	}
 }
 
-impl fmt::Display for Entry {
+impl fmt::Debug for Entry {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		writeln!(f, "Descriptor Table Entry:")?;
-		writeln!(f, "base: {:x}", self.get_base())?;
-		writeln!(f, "limit: {:x}", self.get_limit())?;
-		writeln!(f, "access byte: {:x}", self.get_access_byte())?;
-		writeln!(f, "flags: {:x}", self.get_flags())?;
-		writeln!(f, "present: {}", self.is_present())
+		write!(f, "base: {:x}, ", self.get_base())?;
+		write!(f, "limit: {:x}, ", self.get_limit())?;
+		write!(f, "access byte: {:x}, ", self.get_access_byte())?;
+		write!(f, "flags: {:x}, ", self.get_flags())?;
+		write!(f, "present: {}", self.is_present())
 	}
 }
 
