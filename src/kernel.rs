@@ -6,6 +6,7 @@
 //! The crate has the following features:
 //! - `strace`: if enabled, the kernel traces system calls. This is a debug feature.
 
+#![feature(asm_const)]
 #![no_std]
 #![allow(internal_features)]
 #![no_main]
@@ -51,6 +52,7 @@ pub mod elf;
 pub mod errno;
 pub mod event;
 pub mod file;
+#[cfg(target_arch = "x86")]
 pub mod gdt;
 #[macro_use]
 pub mod idt;

@@ -16,6 +16,7 @@ pub mod regs;
 pub mod rusage;
 pub mod scheduler;
 pub mod signal;
+#[cfg(target_arch = "x86")]
 pub mod tss;
 pub mod user_desc;
 
@@ -65,6 +66,8 @@ use scheduler::Scheduler;
 use signal::Signal;
 use signal::SignalAction;
 use signal::SignalHandler;
+#[cfg(target_arch = "x86")]
+use tss::TSS;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -297,8 +300,7 @@ static mut SCHEDULER: MaybeUninit<Arc<IntMutex<Scheduler>>> = MaybeUninit::unini
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
 pub fn init() -> Result<(), Errno> {
-	tss::init();
-	tss::flush();
+	TSS::init();
 
 	let cores_count = 1; // TODO
 	unsafe {
@@ -826,18 +828,19 @@ impl Process {
 
 	/// Updates the TSS on the current core for the process.
 	pub fn update_tss(&self) {
-		// Filling the TSS
-		let tss = tss::get();
-		tss.ss0 = gdt::KERNEL_DS as _;
-		tss.ss = gdt::USER_DS as _;
-
-		// Setting the kernel stack pointer
+		// Compute the kernel stack pointer
 		let mut kernel_stack_ptr = self.kernel_stack.unwrap() as usize;
 		if self.is_handling_signal() {
-			// Preventing overlapping of stacks
+			// Prevent overlapping of stacks
 			kernel_stack_ptr -= (KERNEL_STACK_SIZE / 2) * memory::PAGE_SIZE;
 		}
-		tss.esp0 = kernel_stack_ptr as _;
+
+		// Fill the TSS
+		unsafe {
+			TSS.0.esp0 = kernel_stack_ptr as _;
+			TSS.0.ss0 = gdt::KERNEL_DS as _;
+			TSS.0.ss = gdt::USER_DS as _;
+		}
 	}
 
 	/// Prepares for context switching to the process.
@@ -859,18 +862,18 @@ impl Process {
 			}
 		}
 
-		// Updates the TSS for the process
+		// Update the TSS for the process
 		self.update_tss();
-
-		// Binding the memory space
-		self.get_mem_space().unwrap().lock().bind();
-
-		// Updating TLS entries in the GDT
+		// Update TLS entries in the GDT
 		for i in 0..TLS_ENTRIES_COUNT {
 			self.update_tls(i);
 		}
+		gdt::flush();
 
-		// Incrementing the number of ticks the process had
+		// Bind the memory space
+		self.get_mem_space().unwrap().lock().bind();
+
+		// Increment the number of ticks the process had
 		self.quantum_count += 1;
 	}
 
@@ -1195,6 +1198,8 @@ impl Process {
 	/// Updates the `n`th TLS entry in the GDT.
 	///
 	/// If `n` is out of bounds, the function does nothing.
+	///
+	/// This function doesn't flush the GDT's cache. Thus it is the caller's responsibility.
 	pub fn update_tls(&self, n: usize) {
 		if n < TLS_ENTRIES_COUNT {
 			unsafe {

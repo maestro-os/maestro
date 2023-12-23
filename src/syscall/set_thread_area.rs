@@ -74,6 +74,7 @@ pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
 		ptr::write_volatile(entry, info.to_descriptor());
 	}
 	proc.update_tls(id);
+	gdt::flush();
 
 	// If the entry is allocated, tell the userspace its ID
 	let entry_number = info.get_entry_number();

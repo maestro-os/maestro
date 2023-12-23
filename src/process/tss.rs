@@ -8,11 +8,12 @@
 //! instruction `ltr`.
 
 use crate::gdt;
+use core::arch::asm;
 use core::mem::size_of;
 
 /// The TSS structure.
 #[repr(C, packed)]
-pub struct TSSEntry {
+pub struct TSS {
 	pub prev_tss: u32,
 	pub esp0: u32,
 	pub ss0: u32,
@@ -42,39 +43,76 @@ pub struct TSSEntry {
 	pub iomap_base: u16,
 }
 
-extern "C" {
-	fn tss_get() -> *mut TSSEntry;
-	fn tss_flush();
-}
+impl TSS {
+	/// Creates a new zeroed instance.
+	const fn new() -> Self {
+		Self {
+			prev_tss: 0,
+			esp0: 0,
+			ss0: 0,
+			esp1: 0,
+			ss1: 0,
+			esp2: 0,
+			ss2: 0,
+			cr3: 0,
+			eip: 0,
+			eflags: 0,
+			eax: 0,
+			ecx: 0,
+			edx: 0,
+			ebx: 0,
+			esp: 0,
+			ebp: 0,
+			esi: 0,
+			edi: 0,
+			es: 0,
+			cs: 0,
+			ss: 0,
+			ds: 0,
+			fs: 0,
+			gs: 0,
+			ldt: 0,
+			trap: 0,
+			iomap_base: 0,
+		}
+	}
 
-/// x86. Initializes the TSS.
-pub fn init() {
-	let tss_ptr = gdt::get_segment_ptr(gdt::TSS_OFFSET);
+	/// Initializes the TSS.
+	pub fn init() {
+		let limit = size_of::<Self>() as u64;
+		let base = unsafe { &TSS as *const _ as u64 };
+		let flags = 0b0100000010001001_u64;
+		let tss_value = (limit & 0xffff)
+			| ((base & 0xffffff) << 16)
+			| (flags << 40)
+			| (((limit >> 16) & 0x0f) << 48)
+			| (((base >> 24) & 0xff) << 56);
 
-	let limit = size_of::<TSSEntry>() as u64;
-	let base = unsafe { tss_get() as u64 };
-	let flags = 0b0100000010001001_u64;
-	let tss_value = (limit & 0xffff)
-		| ((base & 0xffffff) << 16)
-		| (flags << 40)
-		| (((limit >> 16) & 0x0f) << 48)
-		| (((base >> 24) & 0xff) << 56);
+		let gdt_entry = gdt::Entry(tss_value);
+		unsafe {
+			gdt_entry.update_gdt(gdt::TSS_OFFSET);
+		}
+		Self::flush();
+	}
 
-	unsafe {
-		*tss_ptr = tss_value;
+	/// Updates the TSS into the GDT.
+	#[inline(always)]
+	pub fn flush() {
+		unsafe {
+			asm!(
+				"mov ax, {off}",
+				"ltr ax",
+				off = const gdt::TSS_OFFSET
+			);
+		}
+		gdt::flush();
 	}
 }
 
-/// x86. Updates the TSS into the GDT.
-#[inline(always)]
-pub fn flush() {
-	unsafe {
-		tss_flush();
-	}
-}
+/// Wrapper for memory alignment.
+#[repr(align(4096))]
+pub struct TSSWrap(pub TSS);
 
-/// Returns a reference to the TSS structure.
-#[inline(always)]
-pub fn get() -> &'static mut TSSEntry {
-	unsafe { &mut *tss_get() }
-}
+/// The Task State Segment.
+#[no_mangle]
+pub static mut TSS: TSSWrap = TSSWrap(TSS::new());

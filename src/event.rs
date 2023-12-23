@@ -6,7 +6,7 @@ use crate::errno::AllocResult;
 use crate::idt;
 use crate::idt::pic;
 use crate::process::regs::Regs;
-use crate::process::tss;
+use crate::process::tss::TSS;
 use crate::util;
 use crate::util::boxed::Box;
 use crate::util::container::vec::Vec;
@@ -205,9 +205,8 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 				}
 				drop(callbacks);
 
-				// TODO do not use tss
 				unsafe {
-					crate::loop_reset(tss::get().esp0 as _);
+					crate::loop_reset(TSS.0.esp0 as _);
 				}
 			}
 
