@@ -86,9 +86,8 @@ multiboot_entry:
 	push %ebx
 	push %eax
 	call kernel_main
-	add $12, %esp
-
-	call kernel_halt
+	# `kernel_main` cannot return
+	ud2
 
 
 

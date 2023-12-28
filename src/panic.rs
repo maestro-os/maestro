@@ -4,7 +4,7 @@
 //! from. This is an undesirable state which requires to reboot the host
 //! machine.
 
-use crate::{cpu, halt, logger};
+use crate::{cpu, logger, power};
 use core::panic::PanicInfo;
 
 /// Called on Rust panic.
@@ -58,7 +58,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		debug::print_callstack(&callstack);
 	}
 
-	halt();
+	power::halt();
 }
 
 // TODO check whether this can be removed since the kernel uses panic=abort

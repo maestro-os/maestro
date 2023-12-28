@@ -65,6 +65,7 @@ pub mod multiboot;
 pub mod net;
 #[macro_use]
 pub mod panic;
+pub mod power;
 #[macro_use]
 pub mod print;
 pub mod process;
@@ -92,6 +93,7 @@ use crate::util::boxed::Box;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::lock::Mutex;
+use core::arch::asm;
 use core::ffi::c_void;
 use core::ptr::null;
 
@@ -110,24 +112,22 @@ const INIT_PATH: &[u8] = b"/sbin/init";
 pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
 extern "C" {
-	fn kernel_wait();
-	fn kernel_loop() -> !;
 	fn kernel_loop_reset(stack: *mut c_void) -> !;
-	fn kernel_halt() -> !;
 }
 
 /// Makes the kernel wait for an interrupt, then returns.
-/// This function enables interrupts.
+/// This function enables interruptions.
+#[inline(always)]
 pub fn wait() {
 	unsafe {
-		kernel_wait();
+		asm!("sti", "hlt");
 	}
 }
 
 /// Enters the kernel loop and processes every interrupts indefinitely.
 pub fn enter_loop() -> ! {
-	unsafe {
-		kernel_loop();
+	loop {
+		wait();
 	}
 }
 
@@ -137,13 +137,6 @@ pub fn enter_loop() -> ! {
 /// invalid.
 pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
 	kernel_loop_reset(stack);
-}
-
-/// Halts the kernel until reboot.
-pub fn halt() -> ! {
-	unsafe {
-		kernel_halt();
-	}
 }
 
 /// Field storing the kernel's virtual memory context.
@@ -295,7 +288,7 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 		Ok(p) => p,
 		Err(e) => {
 			println!("{e}");
-			halt();
+			power::halt();
 		}
 	};
 	LOGGER.lock().silent = args_parser.is_silent();

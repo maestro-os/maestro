@@ -3,7 +3,6 @@
 use crate::errno::Errno;
 use crate::gdt;
 use core::arch::asm;
-use core::ffi::c_void;
 use core::fmt;
 
 /// The default value of the eflags register.
@@ -149,26 +148,23 @@ impl Default for Regs {
 //#[cfg(config_general_arch = "x86")]
 impl fmt::Display for Regs {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let fs = self.fs;
-		let gs = self.gs;
-
 		write!(
 			f,
-			"ebp: {:p} esp: {:p} eip: {:p} eflags: {:p} eax: {:p}
-ebx: {:p} ecx: {:p} edx: {:p} esi: {:p} edi: {:p}
-gs: 0x{:x} fs: 0x{:x}",
-			self.ebp as *const c_void,
-			self.esp as *const c_void,
-			self.eip as *const c_void,
-			self.eflags as *const c_void,
-			self.eax as *const c_void,
-			self.ebx as *const c_void,
-			self.ecx as *const c_void,
-			self.edx as *const c_void,
-			self.esi as *const c_void,
-			self.edi as *const c_void,
-			gs,
-			fs
+			"ebp: {:08x} esp: {:08x} eip: {:08x} eax: {:08x} ebx: {:08x}
+ecx: {:08x} edx: {:08x} esi: {:08x} edi: {:08x} eflags: {:08x}
+gs: {:02x} fs: {:02x}",
+			self.ebp as usize,
+			self.esp as usize,
+			self.eip as usize,
+			self.eax as usize,
+			self.ebx as usize,
+			self.ecx as usize,
+			self.edx as usize,
+			self.esi as usize,
+			self.edi as usize,
+			self.eflags as usize,
+			self.gs as usize,
+			self.fs as usize
 		)
 	}
 }

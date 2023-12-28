@@ -1,7 +1,5 @@
 //! Implementation of ELF programs execution with respect to the **System V ABI**.
 
-// TODO suid and sgid
-
 use super::vdso;
 use crate::cpu;
 use crate::elf;
@@ -710,7 +708,7 @@ impl Executor for ELFExecutor {
 		// Map the vDSO
 		let vdso = vdso::map(&mut mem_space)?;
 
-		// The auxilary vector
+		// The auxiliary vector
 		let aux = build_auxilary(&self.info, &load_info, &vdso)?;
 
 		// The size in bytes of the initial data on the stack

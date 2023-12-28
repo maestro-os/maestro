@@ -1,10 +1,9 @@
 //! The `reboot` system call allows the superuser to power off, reboot, halt or
 //! suspend the system.
 
-use crate::errno;
+use crate::{errno, power};
 use crate::errno::Errno;
 use crate::process::Process;
-use core::arch::asm;
 use core::ffi::c_int;
 use core::ffi::c_void;
 use macros::syscall;
@@ -40,40 +39,20 @@ pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> R
 	match cmd as u32 {
 		CMD_POWEROFF => {
 			crate::println!("Power down...");
-
-			// TODO Use ACPI to power off the system
-
-			// In case power down didn't work (very unlikely)
-			crate::halt();
+			power::shutdown();
 		}
-
 		CMD_REBOOT => {
 			crate::println!("Rebooting...");
-
-			// TODO Use ACPI reset to ensure everything reboots
-
-			// TODO Pulse the keyboard controller's reset pin
-
-			// Triggering a triple fault, causing the system to reboot
-			unsafe {
-				asm!("jmp 0xffff, 0");
-			}
-			unreachable!();
+			power::reboot();
 		}
-
 		CMD_HALT => {
 			crate::println!("Halting...");
-
-			// TODO Send a signal to all other cores to stop them
-			crate::halt();
+			power::halt();
 		}
-
 		CMD_SUSPEND => {
 			// TODO Use ACPI to suspend the system
-
-			Ok(0)
+			todo!()
 		}
-
 		_ => Err(errno!(EINVAL)),
 	}
 }
