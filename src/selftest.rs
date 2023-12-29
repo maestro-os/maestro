@@ -8,6 +8,7 @@
 //! concern since the kernel has to be as reliable as possible.
 
 use core::any::type_name;
+use crate::power;
 
 /// Boolean value telling whether selftesting is running.
 static mut RUNNING: bool = false;
@@ -80,7 +81,7 @@ pub fn runner(tests: &[&dyn Testable]) {
 	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::SUCCESS);
 	#[cfg(not(config_debug_qemu))]
-	crate::halt();
+	power::halt();
 }
 
 /// Tells whether selftesting is running.
