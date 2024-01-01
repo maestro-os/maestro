@@ -143,16 +143,6 @@ impl OpenFile {
 	///
 	/// If the file is not open, the function does nothing.
 	pub fn close(mut self) -> EResult<()> {
-		// Update the open file counter
-		{
-			let mut open_files = OPEN_FILES.lock();
-			if let Some(count) = open_files.get_mut(&self.location) {
-				*count -= 1;
-				if *count == 0 {
-					open_files.remove(&self.location);
-				}
-			}
-		}
 		// Close file if this is the last reference to it
 		let Some(file) = self.file.take().and_then(Arc::into_inner) else {
 			return Ok(());
@@ -375,6 +365,16 @@ impl Drop for OpenFile {
 		if let Some(buff_mutex) = buffer::get(&self.location) {
 			let mut buff = buff_mutex.lock();
 			buff.decrement_open(self.can_read(), self.can_write());
+		}
+		// Update the open file counter
+		{
+			let mut open_files = OPEN_FILES.lock();
+			if let Some(count) = open_files.get_mut(&self.location) {
+				*count -= 1;
+				if *count == 0 {
+					open_files.remove(&self.location);
+				}
+			}
 		}
 	}
 }
