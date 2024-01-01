@@ -7,8 +7,8 @@
 //! make them pass even though they should not. Even if this scenario is unlikely, this remains a
 //! concern since the kernel has to be as reliable as possible.
 
-use core::any::type_name;
 use crate::power;
+use core::any::type_name;
 
 /// Boolean value telling whether selftesting is running.
 static mut RUNNING: bool = false;
