@@ -19,6 +19,7 @@ use crate::syscall::ioctl;
 use crate::time::clock;
 use crate::time::clock::CLOCK_MONOTONIC;
 use crate::time::unit::TimestampScale;
+use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
@@ -66,6 +67,9 @@ pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 
 // TODO move buffer handling to `FileContent`?
 
+/// Counts the number of time each file is open.
+static OPEN_FILES: Mutex<HashMap<FileLocation, usize>> = Mutex::new(HashMap::new());
+
 /// An open file description.
 ///
 /// This structure is pointed to by file descriptors and point to files.
@@ -93,7 +97,7 @@ impl OpenFile {
 	///
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
-	pub fn new(file: Arc<Mutex<File>>, flags: i32) -> Self {
+	pub fn new(file: Arc<Mutex<File>>, flags: i32) -> EResult<Self> {
 		let location = file.lock().get_location().clone();
 		let s = Self {
 			file: Some(file),
@@ -103,13 +107,28 @@ impl OpenFile {
 			curr_off: 0,
 		};
 
+		// Update the open file counter
+		{
+			let mut open_files = OPEN_FILES.lock();
+			if let Some(count) = open_files.get_mut(&location) {
+				*count += 1;
+			} else {
+				open_files.insert(location.clone(), 1)?;
+			}
+		}
+
 		// If the file points to a buffer, increment the number of open ends
 		if let Some(buff_mutex) = buffer::get(&location) {
 			let mut buff = buff_mutex.lock();
 			buff.increment_open(s.can_read(), s.can_write());
 		}
 
-		s
+		Ok(s)
+	}
+
+	/// Tells whether the file at the given location is open.
+	pub fn is_open(loc: &FileLocation) -> bool {
+		OPEN_FILES.lock().contains_key(loc)
 	}
 
 	/// Decrements the reference counter of the open file for the given location.
@@ -124,6 +143,16 @@ impl OpenFile {
 	///
 	/// If the file is not open, the function does nothing.
 	pub fn close(mut self) -> EResult<()> {
+		// Update the open file counter
+		{
+			let mut open_files = OPEN_FILES.lock();
+			if let Some(count) = open_files.get_mut(&self.location) {
+				*count -= 1;
+				if *count == 0 {
+					open_files.remove(&self.location);
+				}
+			}
+		}
 		// Close file if this is the last reference to it
 		let Some(file) = self.file.take().and_then(Arc::into_inner) else {
 			return Ok(());

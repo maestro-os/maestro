@@ -333,7 +333,7 @@ mod test {
 
 		let file =
 			File::new(String::new(), 0, 0, 0, DUMMY_LOCATION, FileContent::Regular).unwrap();
-		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), 0)
+		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), 0).unwrap()
 	}
 
 	#[test_case]

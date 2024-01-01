@@ -9,6 +9,7 @@ use crate::errno::EResult;
 use crate::file::buffer;
 use crate::file::mapping;
 use crate::file::mountpoint;
+use crate::file::open_file::OpenFile;
 use crate::file::path::Path;
 use crate::file::perm;
 use crate::file::perm::AccessProfile;
@@ -397,7 +398,7 @@ pub fn remove_file(file: &mut File, ap: &AccessProfile) -> EResult<()> {
 	// Defer remove if the file is in use
 	let last_link = file.get_hard_links_count() == 1;
 	let symlink = matches!(file.get_type(), FileType::Link);
-	if last_link && !symlink {
+	if last_link && !symlink && OpenFile::is_open(&file.location) {
 		file.defer_remove();
 		return Ok(());
 	}

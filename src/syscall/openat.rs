@@ -85,7 +85,7 @@ pub fn openat(
 	super::open::handle_flags(&mut file, flags, &ap)?;
 	drop(file);
 
-	let open_file = OpenFile::new(file_mutex, flags);
+	let open_file = OpenFile::new(file_mutex, flags)?;
 
 	let mut fd_flags = 0;
 	if flags & open_file::O_CLOEXEC != 0 {

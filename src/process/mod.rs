@@ -511,7 +511,7 @@ impl Process {
 			let loc = tty_file.get_location();
 			let file = vfs::get_file_by_location(loc)?;
 
-			let open_file = OpenFile::new(file, open_file::O_RDWR);
+			let open_file = OpenFile::new(file, open_file::O_RDWR)?;
 			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 

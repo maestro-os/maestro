@@ -157,7 +157,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 	drop(file);
 
 	// Create open file description
-	let open_file = OpenFile::new(file_mutex.clone(), flags);
+	let open_file = OpenFile::new(file_mutex.clone(), flags)?;
 
 	// Create FD
 	let mut fd_flags = 0;

@@ -39,7 +39,7 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> Result<i32, Errn
 	let loc = buffer::register(None, sock)?;
 	let file = vfs::get_file_by_location(&loc)?;
 
-	let open_file = OpenFile::new(file, open_file::O_RDWR);
+	let open_file = OpenFile::new(file, open_file::O_RDWR)?;
 
 	let fds_mutex = proc.get_fds().unwrap();
 	let mut fds = fds_mutex.lock();
