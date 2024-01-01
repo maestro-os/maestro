@@ -16,7 +16,7 @@ static mut RUNNING: bool = false;
 /// This module contains utilities to manipulate QEMU for testing.
 #[cfg(config_debug_qemu)]
 pub mod qemu {
-	use crate::{io, power};
+	use crate::io;
 
 	/// The port used to trigger QEMU emulator exit with the given exit code.
 	const EXIT_PORT: u16 = 0xf4;
@@ -27,11 +27,10 @@ pub mod qemu {
 	pub const FAILURE: u32 = 0x11;
 
 	/// Exits QEMU with the given status.
-	pub fn exit(status: u32) -> ! {
+	pub fn exit(status: u32) {
 		unsafe {
 			io::outl(EXIT_PORT, status);
 		}
-		power::halt();
 	}
 }
 
@@ -80,7 +79,6 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::SUCCESS);
-	#[cfg(not(config_debug_qemu))]
 	power::halt();
 }
 
