@@ -1,11 +1,32 @@
 # Kernel
 
+## Dependencies
+
+Building the kernel requires the following dependencies:
+
+- A i386 toolchain (espicially `i386-elf-ld`)
+- `grub`, to create the bootable disk image
+- `libisoburn`, needed to create the iso
+- `mtools`
+- `qemu` to run it in QEMU (`cargo run`)
+
+
+
+## Configuration
+
+> This section is optional. By default, the kernel will use the configuration in `default.build-config.toml`
+
+Before building, one can optionally configure the kernel by copying `default.build-config.toml` into `build-config.toml`:
+
+```sh
+cp default.build-config.toml build-config.toml
+```
+
+The configuration specifies features to be enabled/disabled in the kernel.
+
+
+
 ## Build
-
-The configuration file located at `build-config.toml` allows to specify which features have to be enabled in the kernel.
-
-A default configuration is available in the file `default.build-config.toml`.
-If `build-config.toml` does not exist, the default configuration is used instead.
 
 The kernel can be built using the following commands:
 
