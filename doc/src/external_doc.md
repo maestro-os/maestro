@@ -5,7 +5,7 @@ This page lists the external documentation that is used for the developement of 
 
 # Hardware technical references
 
-- [Intel® 64 and IA-32 Architectures Software Developes Manual](https://software.intel.com/content/dam/develop/public/us/en/documents/325462-sdm-vol-1-2abcd-3abcd.pdf)
+- [Intel® 64 and IA-32 Architectures Software Developes Manual](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)
 - [UEFI specification documents](https://uefi.org/uefi)
 - [PCI Local Bus Specification](https://www.ics.uci.edu/~harris/ics216/pci/PCI_22.pdf)
 
