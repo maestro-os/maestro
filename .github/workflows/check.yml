@@ -2,7 +2,7 @@ name: Check
 on: push
 jobs:
   debug:
-    runs-on: [self-hosted, linux]
+    runs-on: [ self-hosted, linux ]
     steps:
       - uses: actions/checkout@v3
       - name: Compilation
@@ -11,7 +11,7 @@ jobs:
         # TODO support multiple architectures
         run: "grub-file --is-x86-multiboot2 target/x86/debug/maestro"
   release:
-    runs-on: [self-hosted, linux]
+    runs-on: [ self-hosted, linux ]
     needs: debug
     steps:
       - uses: actions/checkout@v3
@@ -21,14 +21,14 @@ jobs:
         # TODO support multiple architectures
         run: "grub-file --is-x86-multiboot2 target/x86/release/maestro"
   selftest:
-    runs-on: [self-hosted, linux]
+    runs-on: [ self-hosted, linux ]
     needs: debug
     steps:
       - uses: actions/checkout@v3
       - name: Run tests
         run: "scripts/ci/selftest.sh"
   strace:
-    runs-on: [self-hosted, linux]
+    runs-on: [ self-hosted, linux ]
     needs: debug
     steps:
       - uses: actions/checkout@v3
@@ -38,12 +38,12 @@ jobs:
         # TODO support multiple architectures
         run: "grub-file --is-x86-multiboot2 target/x86/debug/maestro"
   format:
-    runs-on: [self-hosted, linux]
+    runs-on: [ self-hosted, linux ]
     steps:
       - uses: actions/checkout@v3
       - run: cargo fmt --check
   documentation:
-    runs-on: [self-hosted, linux]
+    runs-on: [ self-hosted, linux ]
     steps:
       - uses: actions/checkout@v3
       - name: Build book
