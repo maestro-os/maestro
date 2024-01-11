@@ -34,15 +34,13 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	#[cfg(test)]
 	{
 		use crate::selftest;
-
 		if selftest::is_running() {
 			crate::println!("FAILED\n");
 			crate::println!("Error: {panic_info}\n");
 
 			#[cfg(config_debug_qemu)]
 			selftest::qemu::exit(selftest::qemu::FAILURE);
-			#[cfg(not(config_debug_qemu))]
-			halt();
+			power::halt();
 		}
 	}
 

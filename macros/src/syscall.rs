@@ -22,6 +22,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use proc_macro2::Span;
 use quote::quote;
+use std::iter;
 use syn::parse_macro_input;
 use syn::AngleBracketedGenericArguments;
 use syn::FnArg;
@@ -44,7 +45,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 
 	// Check signature is valid
 	if input.sig.constness.is_some() {
-		panic!("a system call handler cannot be const");
+		panic!("a system call handler cannot be `const`");
 	}
 	if !input.sig.generics.params.is_empty() {
 		panic!("a system call cannot have generic arguments");
@@ -66,90 +67,73 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 		.enumerate()
 		.map(|(i, arg)| match arg {
 			FnArg::Typed(typed) => {
-				let pat = typed.pat.clone();
-				let ty = typed.ty.clone();
-
+				let pat = &typed.pat;
+				let ty = &typed.ty;
 				let reg_name = Ident::new(REGS[i], Span::call_site());
-
 				(pat, ty, reg_name)
 			}
-
 			FnArg::Receiver(_) => panic!("a system call handler cannot have a `self` argument"),
 		})
 		.collect::<Vec<_>>();
 
-	let mut args_tokens = proc_macro2::TokenStream::new();
-	args_tokens.extend(args.iter().map(|(pat, ty, reg_name)| {
-		let mut ty = ty.clone();
-
-		// TODO make a cleaner check
-		match *ty {
-			// Special cast for pointers
-			Type::Path(TypePath {
-				path: Path {
-					ref mut segments, ..
-				},
-				..
-			}) if segments
-				.first()
-				.map(|s| s.ident.to_string().starts_with("Syscall"))
-				.unwrap_or(false) =>
-			{
-				// Adding colon token to avoid compilation error
-				if let PathSegment {
-					arguments:
-						PathArguments::AngleBracketed(AngleBracketedGenericArguments {
-							ref mut colon2_token,
-							..
-						}),
+	let args_tokens: proc_macro2::TokenStream = args
+		.iter()
+		.map(|(pat, ty, reg_name)| {
+			let mut ty = (*ty).clone();
+			match ty.as_mut() {
+				// Special cast for userspace pointers
+				Type::Path(TypePath {
+					path: Path {
+						ref mut segments, ..
+					},
 					..
-				} = &mut segments[0]
+				}) if segments
+					.first()
+					.map(|s| s.ident.to_string().starts_with("Syscall"))
+					.unwrap_or(false) =>
 				{
-					*colon2_token = Some(Token![::](Span::call_site()));
+					// Add colon token to avoid compilation error
+					if let PathSegment {
+						arguments:
+							PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+								ref mut colon2_token,
+								..
+							}),
+						..
+					} = &mut segments[0]
+					{
+						*colon2_token = Some(Token![::](Span::call_site()));
+					}
+					proc_macro2::TokenStream::from(quote! {
+						let #pat = #ty::from(regs.#reg_name as usize);
+					})
 				}
-
-				proc_macro2::TokenStream::from(quote! {
-					let #pat = #ty::from(regs.#reg_name as usize);
-				})
+				// Normal argument
+				ty => proc_macro2::TokenStream::from(quote! {
+					let #pat = regs.#reg_name as #ty;
+				}),
 			}
-
-			// Normal, truncating cast
-			_ => proc_macro2::TokenStream::from(quote! {
-				let #pat = regs.#reg_name as #ty;
-			}),
-		}
-	}));
+		})
+		.collect();
 
 	let ident = input.sig.ident;
 	let code = input.block;
 
 	let toks = if cfg!(feature = "strace") {
 		let args_count = input.sig.inputs.len();
-
-		let mut strace_call_format = String::from("[strace PID: {}] {}(");
-		for i in 0..args_count {
-			if i + 1 < args_count {
-				strace_call_format += "{:?}, ";
-			} else {
-				strace_call_format += "{:?}";
-			}
-		}
-		strace_call_format += ")";
-
+		let strace_call_format: String = iter::once("[strace PID: {}] {}(")
+			.chain((0..args_count).map(|_| "{:?}").intersperse(", "))
+			.chain(iter::once(")"))
+			.collect();
 		let strace_args = args.iter().map(|(pat, ..)| pat).collect::<Vec<_>>();
 
 		quote! {
 			pub fn #ident(regs: &crate::process::regs::Regs) -> Result<i32, Errno> {
 				#args_tokens
-
 				crate::idt::wrap_disable_interrupts(|| {
 					let pid = {
-						let proc_mutex = crate::process::Process::current().unwrap();
-						let proc = proc_mutex.lock();
-
-						proc.pid
+						crate::process::Process::current_assert().lock().pid
 					};
-
 					println!(
 						#strace_call_format,
 						pid,
@@ -157,34 +141,18 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 						#(#strace_args),*
 					);
 				});
-
 				let ret = (|| {
 					#code
 				})();
-
 				crate::idt::wrap_disable_interrupts(|| {
 					let pid = {
-						let proc_mutex = crate::process::Process::current().unwrap();
-						let proc = proc_mutex.lock();
-
-						proc.pid
+						crate::process::Process::current_assert().lock().pid
 					};
-
 					match ret {
-						Ok(val) => println!(
-							"[strace PID: {}] -> Ok(0x{:x})",
-							pid,
-							val
-						),
-
-						Err(errno) => println!(
-							"[strace PID: {}] -> Err({})",
-							pid,
-							errno
-						),
+						Ok(val) => println!("[strace PID: {pid}] -> Ok(0x{val:x})"),
+						Err(errno) => println!("[strace PID: {pid}] -> Err({errno})"),
 					}
 				});
-
 				ret
 			}
 		}
@@ -192,11 +160,9 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 		quote! {
 			pub fn #ident(regs: &crate::process::regs::Regs) -> Result<i32, Errno> {
 				#args_tokens
-
 				#code
 			}
 		}
 	};
-
 	TokenStream::from(toks)
 }

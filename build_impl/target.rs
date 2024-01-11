@@ -24,7 +24,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-/// Structure representing the content of the target JSON file.
+/// The content of the target JSON file.
 ///
 /// This structure contains only the fields that are of interest.
 #[derive(Deserialize)]
@@ -34,47 +34,35 @@ pub struct TargetFile {
 	llvm_target: String,
 }
 
-/// Structure representing a build target.
+/// A build target.
 pub struct Target {
 	/// The name of the target.
-	name: String,
+	pub name: String,
 	/// The target triplet.
-	triplet: String,
+	pub triplet: String,
 }
 
 impl Target {
 	/// Returns the selected triplet according to environment variables.
 	///
 	/// If no target has been provided, the function returns `None`.
-	pub fn from_env() -> io::Result<Option<Self>> {
+	pub fn from_env() -> io::Result<Self> {
 		// Get target file path
-		let Ok(arch) = env::var("CARGO_CFG_TARGET_ARCH") else {
-			return Ok(None);
-		};
-		let target_path = PathBuf::from(format!("arch/{arch}/{arch}.json"));
+		// Unwrapping is safe because a default target is specified in `.cargo/config.toml`
+		let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
 		// Read and parse target file
+		let target_path = PathBuf::from(format!("arch/{arch}/{arch}.json"));
 		let content = fs::read_to_string(target_path)?;
 		let content: TargetFile = serde_json::from_str(&content).map_err(io::Error::from)?;
-
-		Ok(Some(Target {
+		Ok(Self {
 			name: arch,
 			triplet: content.llvm_target,
-		}))
-	}
-
-	/// Returns the name of the target.
-	pub fn get_name(&self) -> &str {
-		&self.name
+		})
 	}
 
 	/// Returns the path to the linker script of the target.
 	pub fn get_linker_script_path(&self) -> PathBuf {
 		PathBuf::from(format!("arch/{}/linker.ld", self.name))
-	}
-
-	/// Returns the target's triplet.
-	pub fn get_triplet(&self) -> &str {
-		&self.triplet
 	}
 }

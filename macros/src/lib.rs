@@ -18,6 +18,7 @@
 
 //! This crate implements derive macros for the Maestro kernel.
 
+#![feature(iter_intersperse)]
 #![deny(warnings)]
 
 extern crate proc_macro;
