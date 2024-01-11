@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 cp default.config.toml config.toml
 

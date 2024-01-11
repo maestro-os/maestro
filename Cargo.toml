@@ -33,16 +33,11 @@ strace = ["macros/strace"]
 [profile.release]
 panic = "abort"
 rustflags = [
-	"-Zexport-executable-symbols",
+	"-Zexport-executable-symbols"
 ]
 
 [profile.dev]
 rustflags = [
 	"-Zexport-executable-symbols",
-	# Specific to `dev`
 	"-Cforce-frame-pointers=yes"
 ]
-
-[profile.release-debug]
-inherits = "release"
-debug = true
