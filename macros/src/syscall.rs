@@ -35,7 +35,7 @@ use syn::Type;
 use syn::TypePath;
 
 /// The list of register for each argument, in order.
-const REGS: [&'static str; 6] = ["ebx", "ecx", "edx", "esi", "edi", "ebp"];
+const REGS: [&str; 6] = ["ebx", "ecx", "edx", "esi", "edi", "ebp"];
 
 // TODO Add support for mutable arguments
 
@@ -104,14 +104,14 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 					{
 						*colon2_token = Some(Token![::](Span::call_site()));
 					}
-					proc_macro2::TokenStream::from(quote! {
+					quote! {
 						let #pat = #ty::from(regs.#reg_name as usize);
-					})
+					}
 				}
 				// Normal argument
-				ty => proc_macro2::TokenStream::from(quote! {
+				ty => quote! {
 					let #pat = regs.#reg_name as #ty;
-				}),
+				},
 			}
 		})
 		.collect();
