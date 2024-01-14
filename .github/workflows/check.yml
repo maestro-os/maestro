@@ -6,56 +6,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Compilation
-        run: "scripts/ci/build.sh"
+        run: scripts/ci/build.sh
       - name: Check Multiboot2 for x86
-        # TODO support multiple architectures
-        run: "grub-file --is-x86-multiboot2 target/x86/debug/maestro"
+        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   release:
     runs-on: [self-hosted, linux]
     needs: debug
     steps:
       - uses: actions/checkout@v4
       - name: Compilation
-        run: "CARGOFLAGS='--release' scripts/ci/build.sh"
+        env:
+          CARGOFLAGS: --release
+        run: scripts/ci/build.sh
       - name: Check Multiboot2 for x86
-        # TODO support multiple architectures
-        run: "grub-file --is-x86-multiboot2 target/x86/release/maestro"
+        run: grub-file --is-x86-multiboot2 target/x86/release/maestro
   selftest:
     runs-on: [self-hosted, linux]
     needs: debug
     steps:
       - uses: actions/checkout@v4
       - name: Run tests
-        run: "scripts/ci/selftest.sh"
+        run: scripts/ci/selftest.sh
   strace:
     runs-on: [self-hosted, linux]
     needs: debug
     steps:
       - uses: actions/checkout@v4
       - name: Compilation
-        run: "CARGOFLAGS='--features strace' scripts/ci/build.sh"
+        env:
+          CARGOFLAGS: --features strace
+        run: scripts/ci/build.sh
       - name: Check Multiboot2 for x86
-        # TODO support multiple architectures
-        run: "grub-file --is-x86-multiboot2 target/x86/debug/maestro"
+        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   format:
     runs-on: [self-hosted, linux]
     steps:
-      - uses: actions/checkout@v4
-      - run: cargo fmt --check
+      - name: Macros
+        working-directory: ./macros
+        run: cargo fmt --check
+      - name: Kernel
+        run: cargo fmt --check
   documentation:
     runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
       - name: Build book
-        run: "mdbook build doc/"
+        run: mdbook build doc/
       - name: Build references
-        run: "scripts/ci/doc.sh"
+        run: scripts/ci/doc.sh
   clippy:
     runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
       - name: Macros
         working-directory: ./macros
-        run: "cargo clippy --all-targets --all-features"
+        run: cargo clippy --all-targets --all-features
       - name: Kernel
-        run: "cargo clippy --all-targets --all-features"
+        run: cargo clippy --all-targets --all-features
