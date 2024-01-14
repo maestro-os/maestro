@@ -98,7 +98,8 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 		})
 		.collect();
 
-	let ident = input.sig.ident; let code = input.block;
+	let ident = input.sig.ident;
+	let code = input.block;
 
 	let toks = if cfg!(feature = "strace") {
 		let args_count = input.sig.inputs.len();

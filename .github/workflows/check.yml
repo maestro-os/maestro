@@ -58,6 +58,8 @@ jobs:
     runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare
+        run: cp default.config.toml config.toml
       - name: Macros
         working-directory: ./macros
         run: cargo clippy --all-targets --all-features
