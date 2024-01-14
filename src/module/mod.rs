@@ -219,7 +219,7 @@ impl Module {
 		let mut mem = malloc::Alloc::<u8>::new_default(mem_size)?;
 
 		// The base virtual address at which the module is loaded
-		let load_base = unsafe { mem.as_ptr() as u32 };
+		let load_base = mem.as_ptr();
 
 		// Copying the module's image
 		parser
@@ -261,7 +261,7 @@ impl Module {
 
 				Some(other_sym.st_value)
 			} else {
-				Some(load_base + sym.st_value)
+				Some(load_base as u32 + sym.st_value)
 			}
 		};
 
@@ -323,7 +323,6 @@ impl Module {
 		let ok = unsafe {
 			let ptr = mem.as_ptr().add(init.st_value as usize);
 			let func: extern "C" fn() -> bool = transmute(ptr);
-
 			(func)()
 		};
 		if !ok {
@@ -332,20 +331,11 @@ impl Module {
 		}
 
 		// Retrieving destructor function
-		let fini = {
-			if let Some(fini) = parser.get_symbol_by_name("fini") {
-				let fini = unsafe {
-					let ptr = mem.as_ptr().add(fini.st_value as usize);
-					let func: extern "C" fn() = transmute(ptr);
-
-					func
-				};
-
-				Some(fini)
-			} else {
-				None
-			}
-		};
+		let fini = parser.get_symbol_by_name("fini").map(|fini| unsafe {
+			let ptr = mem.as_ptr().add(fini.st_value as usize);
+			let func: extern "C" fn() = transmute(ptr);
+			func
+		});
 
 		Ok(Self {
 			name,

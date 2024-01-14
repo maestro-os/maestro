@@ -77,7 +77,7 @@ impl BindAddress {
 					let a = u32::from_ne_bytes(*a);
 					let b = u32::from_ne_bytes(*b);
 
-					let order = 32 - mask.checked_sub(i * 32).unwrap_or(0);
+					let order = 32 - mask.saturating_sub(i * 32);
 					let mask = !((1 << order) - 1);
 
 					(a & mask) == (b & mask)
@@ -87,7 +87,6 @@ impl BindAddress {
 		match (&self.addr, addr) {
 			(Address::IPv4(a), Address::IPv4(b)) => check(a, b, self.subnet_mask as _),
 			(Address::IPv6(a), Address::IPv6(b)) => check(a, b, self.subnet_mask as _),
-
 			_ => false,
 		}
 	}
@@ -224,8 +223,7 @@ pub fn get_iface_for(addr: Address) -> Option<Arc<Mutex<dyn Interface>>> {
 	let route = routing_table
 		.iter()
 		.filter(|route| route.is_matching(&addr))
-		.max_by(|a, b| a.cmp_for(&b, &addr))?;
-
+		.max_by(|a, b| a.cmp_for(b, &addr))?;
 	get_iface(&route.iface)
 }
 

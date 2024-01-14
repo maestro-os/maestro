@@ -1063,7 +1063,7 @@ impl Filesystem for Ext2Fs {
 		// The inode
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		// Checking the maximum number of links is not exceeded
-		if inode_.hard_links_count >= u16::MAX {
+		if inode_.hard_links_count == u16::MAX {
 			return Err(errno!(EMFILE));
 		}
 
@@ -1201,7 +1201,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// If this is the last link, remove the inode
-		if inode_.hard_links_count <= 0 {
+		if inode_.hard_links_count == 0 {
 			let timestamp = clock::current_time(clock::CLOCK_MONOTONIC, TimestampScale::Second)?;
 			inode_.dtime = timestamp as _;
 

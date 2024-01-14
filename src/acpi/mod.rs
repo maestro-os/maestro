@@ -137,10 +137,9 @@ pub fn init() {
 		}
 
 		// Get the DSDT
-		let dsdt = data.get_table_unsized::<Dsdt>().or_else(|| {
-			data.get_table_sized::<Fadt>()
-				.and_then(Fadt::get_dsdt)
-		});
+		let dsdt = data
+			.get_table_unsized::<Dsdt>()
+			.or_else(|| data.get_table_sized::<Fadt>().and_then(Fadt::get_dsdt));
 		if let Some(dsdt) = dsdt {
 			// Parse AML code
 			let aml = dsdt.get_aml();

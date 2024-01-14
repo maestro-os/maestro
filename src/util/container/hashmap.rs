@@ -382,7 +382,7 @@ impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
 }
 
 impl<K: Eq + Hash, V> FromIterator<(K, V)> for CollectResult<HashMap<K, V>> {
-	fn from_iter<T: IntoIterator<Item=(K, V)>>(iter: T) -> Self {
+	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
 		let res = (|| {
 			let mut map = HashMap::new();
 			for (k, v) in iter {

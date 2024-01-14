@@ -57,10 +57,9 @@ fn update_parent(
 				None => return Ok(()),
 			};
 
-			let mut f = file.lock();
-			vfs::get_file_from_parent(&mut f, name, &AccessProfile::KERNEL, false)
+			let f = file.lock();
+			vfs::get_file_from_parent(&f, name, &AccessProfile::KERNEL, false)
 		}
-
 		Some(_) | None => vfs::get_file_from_path(new, &AccessProfile::KERNEL, false),
 	};
 
@@ -69,13 +68,11 @@ fn update_parent(
 			*stored = Some((new.try_clone()?, file));
 			Ok(())
 		}
-
 		// If the directory doesn't exist, create recursively
 		Err(e) if !retry && e.as_int() == errno::ENOENT => {
 			file::util::create_dirs(new)?;
-			return update_parent(new, stored, true);
+			update_parent(new, stored, true)
 		}
-
 		Err(e) => Err(e),
 	}
 }

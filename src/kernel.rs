@@ -249,18 +249,9 @@ fn init(init_path: String) -> Result<(), Errno> {
 	exec::exec(&mut proc, program_image)
 }
 
-/// This is the main function of the Rust source code, responsible for the
-/// initialization of the kernel.
-///
-/// When calling this function, the CPU must be in Protected Mode with the GDT loaded with space
-/// for the Task State Segment.
-///
-/// Arguments:
-/// - `magic` is the magic number passed by Multiboot.
-/// - `multiboot_ptr` is the pointer to the Multiboot booting informations
-/// structure.
-#[no_mangle]
-pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
+/// An inner function is required to ensure everything in scope is dropped before calling
+/// [`enter_loop`].
+fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initializing TTY
 	tty::init();
 
@@ -347,7 +338,20 @@ pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
 	init(init_path).unwrap_or_else(|e| panic!("Cannot execute init process: {e}"));
+}
 
-	drop(args_parser);
+/// This is the main function of the Rust source code, responsible for the
+/// initialization of the kernel.
+///
+/// When calling this function, the CPU must be in Protected Mode with the GDT loaded with space
+/// for the Task State Segment.
+///
+/// Arguments:
+/// - `magic` is the magic number passed by Multiboot.
+/// - `multiboot_ptr` is the pointer to the Multiboot booting informations
+/// structure.
+#[no_mangle]
+pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
+	kernel_main_inner(magic, multiboot_ptr);
 	enter_loop();
 }

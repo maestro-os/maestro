@@ -439,7 +439,7 @@ static mut BOOT_INFO: BootInfo = BootInfo {
 	initramfs: None,
 };
 
-/// Returns the boot informations provided by Multiboot.
+/// Returns boot information provided by Multiboot.
 pub fn get_boot_info() -> &'static BootInfo {
 	unsafe { &BOOT_INFO }
 }
@@ -456,7 +456,7 @@ pub fn get_tags_size(ptr: *const c_void) -> usize {
 	}
 }
 
-/// Reads the given `tag` and fills the boot informations structure accordingly.
+/// Reads the given `tag` and fills boot information structure accordingly.
 fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 	let type_ = unsafe { (*tag).type_ };
 

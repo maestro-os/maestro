@@ -68,10 +68,12 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		use core::ptr::null_mut;
 
 		crate::println!("--- Callstack ---");
-		let ebp = unsafe { crate::register_get!("ebp") as *mut _ };
-		let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
-		debug::get_callstack(ebp, &mut callstack);
-		debug::print_callstack(&callstack);
+		unsafe {
+			let ebp = crate::register_get!("ebp") as *mut _;
+			let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
+			debug::get_callstack(ebp, &mut callstack);
+			debug::print_callstack(&callstack);
+		}
 	}
 
 	power::halt();

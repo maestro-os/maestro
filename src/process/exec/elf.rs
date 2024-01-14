@@ -511,7 +511,7 @@ impl ELFExecutor {
 
 			// TODO Lazy allocation
 			// Pre-allocating the pages to make them writable
-			mem_space.alloc(mem_begin as *const c_void, pages.get() * memory::PAGE_SIZE)?;
+			mem_space.alloc(mem_begin, pages.get() * memory::PAGE_SIZE)?;
 		}
 
 		// The pointer to the end of the virtual memory chunk

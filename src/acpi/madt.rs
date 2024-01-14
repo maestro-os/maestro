@@ -81,7 +81,8 @@ impl<'m> Iterator for EntriesIterator<'m> {
 	fn next(&mut self) -> Option<Self::Item> {
 		let entries_len = self.madt.header.length as usize - ENTRIES_OFF;
 		if self.cursor < entries_len {
-			let ptr = (self as *const _ as usize + ENTRIES_OFF + self.cursor) as *const EntryHeader;
+			let ptr =
+				(self as *const _ as usize + ENTRIES_OFF + self.cursor) as *const EntryHeader;
 			let entry = unsafe { &*ptr };
 			self.cursor += entry.length as usize;
 			Some(entry)

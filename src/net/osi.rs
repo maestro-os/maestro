@@ -88,11 +88,10 @@ impl Stack {
 		let protocol: u32 = if desc.protocol != 0 {
 			desc.protocol as _
 		} else {
-			DEFAULT_PROTOCOLS
+			*DEFAULT_PROTOCOLS
 				.lock()
 				.get(&(desc.domain.get_id(), desc.type_))
 				.ok_or_else(|| errno!(EINVAL))?
-				.clone()
 		};
 		let protocol = {
 			let guard = PROTOCOLS.lock();

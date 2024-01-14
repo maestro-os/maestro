@@ -137,12 +137,11 @@ pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorB
 ///
 /// **WARNING**: This function shouldn't be called directly, but only from the
 /// `MajorBlock` itself.
-fn free_major(block: &mut MajorBlock) {
+fn free_major(block: &MajorBlock) {
 	let mut major_allocator = match block.get_device_type() {
 		DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
 		DeviceType::Char => CHAR_MAJOR_ALLOCATOR.lock(),
 	};
-
 	major_allocator.as_mut().unwrap().free(block.get_major());
 }
 

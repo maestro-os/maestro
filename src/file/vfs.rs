@@ -347,7 +347,7 @@ pub fn create_file(
 /// - `ap` is the access profile to check permissions
 pub fn create_link(
 	target: &mut File,
-	parent: &mut File,
+	parent: &File,
 	name: &[u8],
 	ap: &AccessProfile,
 ) -> EResult<()> {
@@ -409,7 +409,7 @@ pub fn remove_file(file: &mut File, ap: &AccessProfile) -> EResult<()> {
 	let parent_location = parent.get_location();
 
 	// Check permissions
-	if !ap.can_write_file(file) || !ap.can_write_directory(&*parent) {
+	if !ap.can_write_file(file) || !ap.can_write_directory(&parent) {
 		return Err(errno!(EACCES));
 	}
 

@@ -498,14 +498,10 @@ pub const fn get_frame_metadata_size() -> usize {
 /// Returns a mutable reference to the zone that contains the given pointer `ptr`.
 ///
 /// `zones` is the list of zones.
-fn get_zone_for_pointer<'z>(
-	zones: &'z mut [Zone; ZONES_COUNT],
-	ptr: *const c_void,
-) -> Option<&'z mut Zone> {
+fn get_zone_for_pointer(zones: &mut [Zone; ZONES_COUNT], ptr: *const c_void) -> Option<&mut Zone> {
 	zones
 		.iter_mut()
-		.filter(|z| ptr >= z.begin && (ptr as usize) < (z.begin as usize) + z.get_size())
-		.next()
+		.find(|z| ptr >= z.begin && (ptr as usize) < (z.begin as usize) + z.get_size())
 }
 
 /// Allocates a frame of memory using the buddy allocator.
@@ -530,7 +526,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
 		debug_assert!(!frame.is_used());
 		frame.split(zone, order);
 
-		let ptr = frame.get_ptr(&zone);
+		let ptr = frame.get_ptr(zone);
 		debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
 
@@ -575,7 +571,7 @@ pub fn free(ptr: *const c_void, order: FrameOrder) {
 	let frame = zone.get_frame(frame_id);
 	unsafe {
 		debug_assert!((*frame).is_used());
-		(*frame).mark_free(&zone);
+		(*frame).mark_free(zone);
 		(*frame).coalesce(zone);
 	}
 
