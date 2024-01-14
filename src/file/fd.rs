@@ -48,6 +48,7 @@ static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 /// nothing and returns an error with the appropriate errno.
 fn increment_total() -> EResult<()> {
 	let mut total_fd = TOTAL_FD.lock();
+	#[allow(clippy::absurd_extreme_comparisons)]
 	if *total_fd >= TOTAL_MAX_FD {
 		return Err(errno!(ENFILE));
 	}

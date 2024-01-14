@@ -81,12 +81,8 @@ fn get_file(
 		let parent_mutex = vfs::get_file_from_path(&parent_path, access_profile, true)?;
 		let mut parent = parent_mutex.lock();
 
-		let file_result = vfs::get_file_from_parent(
-			&parent,
-			name.try_clone()?,
-			access_profile,
-			follow_links,
-		);
+		let file_result =
+			vfs::get_file_from_parent(&parent, name.try_clone()?, access_profile, follow_links);
 		let file = match file_result {
 			// If the file is found, return it
 			Ok(file) => file,

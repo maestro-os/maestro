@@ -489,6 +489,7 @@ impl MemSpace {
 
 	/// Same as `unmap`, except the function takes a pointer to the end of the
 	/// memory mapping.
+	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn unmap_stack(&mut self, ptr: *const c_void, size: NonZeroUsize) -> AllocResult<()> {
 		// Safe because the new pointer stays in the range of the allocated mapping
 		let ptr = unsafe { ptr.sub(size.get() * memory::PAGE_SIZE) };
@@ -561,6 +562,7 @@ impl MemSpace {
 	/// After this function returns, the access to the mapping of memory shall
 	/// be revoked and further attempts to access it shall result in a page
 	/// fault.
+	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn unmap(&mut self, ptr: *const c_void, size: NonZeroUsize, brk: bool) -> AllocResult<()> {
 		if !ptr.is_aligned_to(memory::PAGE_SIZE) {
 			return Err(AllocError);
@@ -692,6 +694,7 @@ impl MemSpace {
 	/// the pointer `ptr`.
 	///
 	/// If the memory cannot be accessed, the function returns `None`.
+	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
 		// TODO Allow reading kernelspace data that is available to userspace
 

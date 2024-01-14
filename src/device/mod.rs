@@ -43,8 +43,8 @@ pub mod storage;
 pub mod tty;
 
 use crate::device::manager::DeviceManager;
-use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::errno::{AllocResult, CollectResult, EResult};
 use crate::file;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
@@ -56,10 +56,10 @@ use crate::process::Process;
 use crate::syscall::ioctl;
 use crate::util::boxed::Box;
 use crate::util::container::hashmap::HashMap;
+use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
-use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
 use core::ffi::c_void;
@@ -212,42 +212,42 @@ impl Device {
 		self.handle.as_mut()
 	}
 
-	/// Creates the device file associated with the structure.
+	/// Creates a device file.
+	///
+	/// Arguments:
+	/// - `id` is the ID of the device.
+	/// - `path` is the path of the device file.
+	/// - `mode` is the permissions of the device file.
 	///
 	/// If the file already exist, the function does nothing.
 	///
 	/// The function takes a mutex guard because it needs to unlock the device
 	/// in order to create the file without a deadlock since the VFS accesses a device to write on
 	/// the filesystem.
-	pub fn create_file(dev: MutexGuard<Device, true>) -> EResult<()> {
-		let file_content = dev.id.to_file_content();
-		let path = dev.path.try_clone()?;
-		let mode = dev.mode;
-
-		drop(dev);
-
+	pub fn create_file(id: &DeviceID, path: &Path, mode: Mode) -> EResult<()> {
 		// Tells whether the file already exists
-		let file_exists = vfs::get_file_from_path(&path, &AccessProfile::KERNEL, true).is_ok();
-		if !file_exists {
-			// Create the directories in which the device file is located
-			let mut dir_path = path;
-			let filename = dir_path.pop().unwrap();
-			file::util::create_dirs(&dir_path)?;
-
-			// Get the parent directory
-			let parent_mutex = vfs::get_file_from_path(&dir_path, &AccessProfile::KERNEL, true)?;
-			let mut parent = parent_mutex.lock();
-
-			// Create the device file
-			vfs::create_file(
-				&mut parent,
-				filename,
-				&AccessProfile::KERNEL,
-				mode,
-				file_content,
-			)?;
+		let file_exists = vfs::get_file_from_path(path, &AccessProfile::KERNEL, true).is_ok();
+		if file_exists {
+			return Ok(());
 		}
+		// Create the directories in which the device file is located
+		// TODO use path slice to avoid cloning
+		let mut dir_path = path.try_clone()?;
+		let filename = dir_path.pop().unwrap();
+		file::util::create_dirs(&dir_path)?;
 
+		// Get the parent directory
+		let parent_mutex = vfs::get_file_from_path(&dir_path, &AccessProfile::KERNEL, true)?;
+		let mut parent = parent_mutex.lock();
+
+		// Create the device file
+		vfs::create_file(
+			&mut parent,
+			filename,
+			&AccessProfile::KERNEL,
+			mode,
+			id.to_file_content(),
+		)?;
 		Ok(())
 	}
 
@@ -259,7 +259,6 @@ impl Device {
 			let mut file = file_mutex.lock();
 			vfs::remove_file(&mut file, &AccessProfile::KERNEL)?;
 		}
-
 		Ok(())
 	}
 }
@@ -300,16 +299,19 @@ static DEVICES: Mutex<HashMap<DeviceID, Arc<Mutex<Device>>>> = Mutex::new(HashMa
 /// If files management is initialized, the function creates the associated device file.
 pub fn register(device: Device) -> Result<(), Errno> {
 	let id = device.id.clone();
-	let dev_mutex = Arc::new(Mutex::new(device))?;
+	let path = device.get_path().try_clone()?;
+	let mode = device.get_mode();
 
+	// Insert
 	{
+		let dev_mutex = Arc::new(Mutex::new(device))?;
 		let mut devs = DEVICES.lock();
-		devs.insert(id, dev_mutex.clone())?;
+		devs.insert(id.clone(), dev_mutex.clone())?;
 	}
 
 	// Create file if files management has been initialized
 	if file::is_init() {
-		Device::create_file(dev_mutex.lock())?;
+		Device::create_file(&id, &path, mode)?;
 	}
 
 	Ok(())
@@ -344,7 +346,7 @@ pub fn get(id: &DeviceID) -> Option<Arc<Mutex<Device>>> {
 }
 
 /// Initializes devices management.
-pub fn init() -> Result<(), Errno> {
+pub(crate) fn init() -> Result<(), Errno> {
 	let keyboard_manager = KeyboardManager::new();
 	manager::register(keyboard_manager)?;
 
@@ -370,17 +372,23 @@ pub fn init() -> Result<(), Errno> {
 /// Switches to stage 2, creating device files of devices that are already registered.
 ///
 /// This function must be used only once at boot, after files management has been initialized.
-pub fn stage2() -> Result<(), Errno> {
+pub(crate) fn stage2() -> EResult<()> {
 	default::create().unwrap_or_else(|e| panic!("Failed to create default devices! ({e})"));
 
-	// Unsafe access is made to avoid a deadlock
-	// This is acceptable since the container is not borrowed as mutable, both here and further
-	// into the function
-	let devices = unsafe { DEVICES.get_payload() };
-
-	for (_, dev_mutex) in devices.iter() {
-		let dev_guard = dev_mutex.lock();
-		Device::create_file(dev_guard)?;
+	// Collecting all data to create device files is necessary to avoid a deadlock, because disk
+	// accesses require locking the filesystem's device
+	let devs_info = {
+		let devs = DEVICES.lock();
+		devs.iter()
+			.map(|(id, dev)| {
+				let dev = dev.lock();
+				Ok((id.clone(), dev.path.try_clone()?, dev.mode))
+			})
+			.collect::<AllocResult<CollectResult<Vec<_>>>>()?
+			.0?
+	};
+	for (id, path, mode) in devs_info {
+		Device::create_file(&id, &path, mode)?;
 	}
 
 	Ok(())

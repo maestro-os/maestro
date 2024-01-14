@@ -102,8 +102,8 @@ impl<T: ?Sized> Box<T> {
 	///
 	/// # Safety
 	///
-	/// The given pointer must be valid and must point to an address to a region of memory allocated
-	/// with the memory allocator since `Box` will use the allocator to free it.
+	/// The given pointer must be valid and must point to an address to a region of memory
+	/// allocated with the memory allocator since `Box` will use the allocator to free it.
 	pub unsafe fn from_raw(ptr: *mut T) -> Self {
 		Self {
 			ptr: NonNull::new(ptr).unwrap(),

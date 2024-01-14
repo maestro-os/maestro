@@ -54,8 +54,10 @@ static MUTEX: IntMutex<()> = IntMutex::new(());
 /// If the allocation fails, the function returns an error.
 ///
 /// The allocated memory is **not** initialized, meaning it may contain garbage, or even
-/// sensitive informations.
+/// sensitive information.
 /// It is the caller's responsibility to ensure the chunk of memory is correctly initialized.
+///
+/// The allocated chunk of memory can be resized using [`realloc`] and freed using [`free`].
 ///
 /// # Safety
 ///
@@ -81,15 +83,24 @@ pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	NonNull::new(ptr).ok_or(AllocError)
 }
 
-/// Changes the size of the memory previously allocated with `alloc`. `ptr` is
-/// the pointer to the chunk of memory.
+/// Changes the size of the memory previously allocated with [`alloc`].
+///
+/// Arguments:
+/// - `ptr` is the pointer to the chunk of memory.
+/// - `n` is the new size of the chunk of memory.
 ///
 /// The allocated memory is **not** initialized.
 ///
-/// `n` is the new size of the chunk of memory.
-///
 /// If the reallocation fails, the chunk is left untouched and the function
 /// returns an error.
+///
+/// # Safety
+///
+/// The provided pointer must be the beginning of a valid chunk of memory allocated with [`alloc`],
+/// that has not been freed yet.
+///
+/// If the chunk of memory has been shrunk, accessing previously available memory causes an
+/// undefined behavior.
 pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	let _ = MUTEX.lock();
 
@@ -125,11 +136,11 @@ pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonN
 	}
 }
 
-/// Frees the memory at the pointer `ptr` previously allocated with `alloc`.
+/// Frees the memory at the pointer `ptr` previously allocated with [`alloc`].
 ///
 /// # Safety
 ///
-/// If `ptr` doesn't point to a valid chunk of memory allocated with the `alloc`
+/// If `ptr` doesn't point to a valid chunk of memory allocated with the [`alloc`]
 /// function, the behaviour is undefined.
 ///
 /// Using memory after it was freed causes an undefined behaviour.

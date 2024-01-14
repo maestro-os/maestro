@@ -75,13 +75,13 @@ impl<T: ?Sized, const INT: bool> Deref for MutexGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe { self.mutex.get_payload() }
+		unsafe { &(*self.mutex.inner.get()).data }
 	}
 }
 
 impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		unsafe { self.mutex.get_mut_payload() }
+		unsafe { &mut (*self.mutex.inner.get()).data }
 	}
 }
 
@@ -127,26 +127,6 @@ impl<T, const INT: bool> Mutex<T, INT> {
 }
 
 impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
-	/// Returns an immutable reference to the payload.
-	///
-	/// # Safety
-	///
-	/// When using this function one, must be careful that another thread cannot access the
-	/// resource simultaneously, which would result in an undefined behaviour.
-	pub unsafe fn get_payload(&self) -> &T {
-		&(*self.inner.get()).data
-	}
-
-	/// Returns a mutable reference to the payload.
-	///
-	/// # Safety
-	///
-	/// When using this function one, must be careful that another thread cannot access the
-	/// resource simultaneously, which would result in an undefined behaviour.
-	pub unsafe fn get_mut_payload(&self) -> &mut T {
-		&mut (*self.inner.get()).data
-	}
-
 	/// Locks the mutex.
 	///
 	/// If the mutex is already locked, the thread shall wait until it becomes available.

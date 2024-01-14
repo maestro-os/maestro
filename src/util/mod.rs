@@ -112,8 +112,16 @@ pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 }
 
 /// Returns a slice representing a C string beginning at the given pointer.
+///
+/// # Safety
+///
+/// The caller must ensure the pointer has a valid C string. An invalid C string causes an
+/// undefined behavior.
+///
+/// The returned slice remains valid only as long as the pointer does.
 pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
-	slice::from_raw_parts(ptr, strlen(ptr as *const _))
+	let len = strlen(ptr as *const _);
+	slice::from_raw_parts(ptr, len)
 }
 
 /// Returns an immutable slice to the given value.
