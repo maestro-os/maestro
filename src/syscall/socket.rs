@@ -59,7 +59,7 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> Result<i32, Errn
 
 	let open_file = OpenFile::new(file, open_file::O_RDWR)?;
 
-	let fds_mutex = proc.get_fds().unwrap();
+	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
 	let sock_fd = fds.create_fd(0, open_file)?;
 

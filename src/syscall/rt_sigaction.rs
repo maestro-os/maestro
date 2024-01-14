@@ -36,7 +36,7 @@ pub fn rt_sigaction(
 	let signal = Signal::try_from(signum as u32)?;
 
 	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
+	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mut mem_space_guard = mem_space.lock();

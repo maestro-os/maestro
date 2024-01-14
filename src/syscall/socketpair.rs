@@ -68,7 +68,7 @@ pub fn socketpair(
 	let open_file0 = OpenFile::new(file.clone(), open_file::O_RDONLY)?;
 	let open_file1 = OpenFile::new(file, open_file::O_WRONLY)?;
 
-	let fds_mutex = proc.get_fds().unwrap();
+	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
 	let fd0 = fds.create_fd(0, open_file0)?;
 	sv_slice[0] = fd0.get_id() as _;

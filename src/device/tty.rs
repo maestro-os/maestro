@@ -77,17 +77,16 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the read operation.
 	fn check_sigttin(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
-		if proc.pgid != tty.get_pgrp() {
-			if proc.is_signal_blocked(&Signal::SIGTTIN)
-				|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
-				|| proc.is_in_orphan_process_group()
-			{
-				return Err(errno!(EIO));
-			}
-
-			proc.kill_group(Signal::SIGTTIN, false);
+		if proc.pgid == tty.get_pgrp() {
+			return Ok(());
 		}
-
+		if proc.is_signal_blocked(&Signal::SIGTTIN)
+			|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
+			|| proc.is_in_orphan_process_group()
+		{
+			return Err(errno!(EIO));
+		}
+		proc.kill_group(Signal::SIGTTIN, false);
 		Ok(())
 	}
 
@@ -101,19 +100,18 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the write operation.
 	fn check_sigttou(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
-		if tty.get_termios().c_lflag & termios::TOSTOP != 0 {
-			if proc.is_signal_blocked(&Signal::SIGTTIN)
-				|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
-			{
-				return Ok(());
-			}
-			if proc.is_in_orphan_process_group() {
-				return Err(errno!(EIO));
-			}
-
-			proc.kill_group(Signal::SIGTTOU, false);
+		if tty.get_termios().c_lflag & termios::TOSTOP == 0 {
+			return Ok(());
 		}
-
+		if proc.is_signal_blocked(&Signal::SIGTTIN)
+			|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
+		{
+			return Ok(());
+		}
+		if proc.is_in_orphan_process_group() {
+			return Err(errno!(EIO));
+		}
+		proc.kill_group(Signal::SIGTTOU, false);
 		Ok(())
 	}
 }

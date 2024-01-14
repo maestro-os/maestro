@@ -133,7 +133,7 @@ pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Er
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 
-		let fds_mutex = proc.get_fds().unwrap().clone();
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds

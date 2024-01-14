@@ -36,7 +36,7 @@ pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let fds_mutex = proc.get_fds().unwrap();
+		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 		let fds = fds_mutex.lock();
 
 		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;

@@ -34,7 +34,7 @@ pub fn dup2(oldfd: c_int, newfd: c_int) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let fds_mutex = proc.get_fds().unwrap();
+	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
 
 	let newfd = fds.duplicate_fd(oldfd as _, NewFDConstraint::Fixed(newfd as _), false)?;

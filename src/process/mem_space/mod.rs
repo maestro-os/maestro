@@ -423,7 +423,7 @@ impl MemSpace {
 			// match the address returned by the `mmap` syscall)
 			MapConstraint::Hint(addr) => {
 				// Getting the gap for the pointer
-				let mut gap = Self::gap_by_ptr(&self.gaps, addr).ok_or_else(|| AllocError)?;
+				let mut gap = Self::gap_by_ptr(&self.gaps, addr).ok_or(AllocError)?;
 
 				// The offset in the gap
 				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
@@ -432,8 +432,7 @@ impl MemSpace {
 
 				if end > gap.get_size() {
 					// Hint cannot be satisfied. Get a gap large enough
-					gap = Self::gap_get(&self.gaps, &self.gaps_size, size)
-						.ok_or_else(|| AllocError)?;
+					gap = Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or(AllocError)?;
 				}
 
 				let addr = unsafe { gap.get_begin().add(off * memory::PAGE_SIZE) };
@@ -441,8 +440,7 @@ impl MemSpace {
 			}
 
 			MapConstraint::None => {
-				let gap =
-					Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or_else(|| AllocError)?;
+				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or(AllocError)?;
 				(Some(gap), gap.get_begin())
 			}
 		};
@@ -485,7 +483,7 @@ impl MemSpace {
 		let mapping_ptr = self.map(MapConstraint::None, size, flags, MapResidence::Normal)?;
 		Ok(unsafe {
 			// Safe because the new pointer stays in the range of the allocated mapping
-			mapping_ptr.add(size.get() * memory::PAGE_SIZE).into()
+			mapping_ptr.add(size.get() * memory::PAGE_SIZE)
 		})
 	}
 

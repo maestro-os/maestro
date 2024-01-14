@@ -114,7 +114,8 @@ pub fn do_mmap(
 			return Err(errno!(EINVAL));
 		}
 
-		proc.get_fds()
+		proc.file_descriptors
+			.as_ref()
 			.unwrap()
 			.lock()
 			.get_fd(fd as _)

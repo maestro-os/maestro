@@ -43,7 +43,7 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 			return Err(errno!(EPERM));
 		}
 
-		let fds_mutex = proc.get_fds().unwrap();
+		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 		let fds = fds_mutex.lock();
 
 		fds.get_fd(fd as _)

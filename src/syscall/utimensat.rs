@@ -67,7 +67,7 @@ pub fn utimensat(
 				return Err(errno!(EBADF));
 			}
 
-			let fds = proc.get_fds().unwrap().lock();
+			let fds = proc.file_descriptors.as_ref().unwrap().lock();
 			let fd = fds.get_fd(dirfd as _).ok_or(errno!(EBADF))?;
 			let open_file = fd.get_open_file().lock();
 			set(open_file.get_file())?;

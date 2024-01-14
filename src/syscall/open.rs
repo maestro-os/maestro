@@ -162,7 +162,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 
 		let mode = mode & !proc.umask;
 
-		let fds_mutex = proc.get_fds().unwrap().clone();
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		(abs_path, mode, proc.access_profile, fds_mutex)
 	};
 

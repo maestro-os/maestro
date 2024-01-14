@@ -101,7 +101,8 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 
 	// Duplicate the file descriptor table
 	let fds = proc
-		.get_fds()
+		.file_descriptors
+		.as_ref()
 		.map(|fds_mutex| -> EResult<_> {
 			let fds = fds_mutex.lock();
 			let new_fds = fds.duplicate(true)?;
@@ -113,7 +114,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.set_mem_space(Some(Arc::new(IntMutex::new(image.mem_space))?));
 
 	// Set new file descriptor table
-	proc.set_fds(fds);
+	proc.file_descriptors = fds;
 
 	// Set the process's stacks
 	proc.user_stack = Some(image.user_stack);
