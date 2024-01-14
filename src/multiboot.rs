@@ -467,8 +467,8 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 		TAG_TYPE_MODULE => {
 			let data = unsafe {
 				let t: &TagModule = reinterpret_tag(tag);
-				let begin = memory::kern_to_virt((*t).mod_start as *const u8);
-				let end = memory::kern_to_virt((*t).mod_end as *const u8);
+				let begin = memory::kern_to_virt(t.mod_start as *const u8);
+				let end = memory::kern_to_virt(t.mod_end as *const u8);
 				slice::from_raw_parts::<u8>(begin, end as usize - begin as usize)
 			};
 			boot_info.initramfs = (!data.is_empty()).then_some(data);
@@ -500,6 +500,10 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 }
 
 /// Returns the size in bytes of Multiboot tags pointed to by `ptr`.
+///
+/// # Safety
+///
+/// The caller must ensure the given pointer is valid and points to Multiboot tags.
 pub unsafe fn get_tags_size(ptr: *const c_void) -> usize {
 	let mut tag = ptr.offset(8) as *const Tag;
 	while (*tag).type_ != TAG_TYPE_END {
@@ -510,12 +514,11 @@ pub unsafe fn get_tags_size(ptr: *const c_void) -> usize {
 }
 
 /// Reads the multiboot tags from the given `ptr` and fills the boot
-/// informations structure.
+/// information structure.
 ///
 /// # Safety
 ///
-/// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is
-/// undefined.
+/// The caller must ensure the given pointer is valid and points to Multiboot tags.
 pub unsafe fn read_tags(ptr: *const c_void) {
 	let mut tag = ptr.offset(8) as *const Tag;
 	while (*tag).type_ != TAG_TYPE_END {

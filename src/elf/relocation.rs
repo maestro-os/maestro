@@ -90,7 +90,7 @@ pub trait Relocation {
 				.wrapping_add(self.get_addend())
 				.wrapping_sub(self.get_offset()),
 
-			// Ignored relocations
+			// Ignored
 			elf::R_386_IRELATIVE => return Ok(()),
 
 			_ => return Err(()),

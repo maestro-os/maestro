@@ -54,9 +54,9 @@ pub fn bind(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<i32
 
 	// Get addr slice
 	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
+	let mem_space_guard = mem_space.lock();
 	let addr_slice = addr
-		.get(&mut mem_space_guard, addrlen as _)?
+		.get(&mem_space_guard, addrlen as _)?
 		.ok_or(errno!(EFAULT))?;
 
 	sock.bind(addr_slice)?;

@@ -34,7 +34,7 @@ use crate::device::driver;
 use crate::device::manager;
 use crate::device::manager::PhysicalDevice;
 use crate::device::DeviceManager;
-use crate::errno::Errno;
+use crate::errno::{CollectResult, EResult, Errno};
 use crate::io;
 use crate::memory;
 use crate::memory::mmio::MMIO;
@@ -104,9 +104,9 @@ fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
 		| 0x80000000;
 
 	unsafe {
-		// Setting the address
+		// Set the address
 		io::outl(CONFIG_ADDRESS_PORT, addr);
-		// Reading the value
+		// Read the value
 		io::inl(CONFIG_DATA_PORT)
 	}
 }
@@ -122,9 +122,9 @@ fn write_long(bus: u8, device: u8, func: u8, reg_off: u8, value: u32) {
 		| 0x80000000;
 
 	unsafe {
-		// Setting the address
+		// Set the address
 		io::outl(CONFIG_ADDRESS_PORT, addr);
-		// Writing the value
+		// Write the value
 		io::outl(CONFIG_DATA_PORT, value);
 	}
 }
@@ -139,7 +139,6 @@ fn write_long(bus: u8, device: u8, func: u8, reg_off: u8, value: u32) {
 /// - `buf` is the data buffer to write to.
 fn read_data(bus: u8, device: u8, func: u8, off: usize, buf: &mut [u32]) {
 	let end = min(off + buf.len(), 0x12);
-
 	for (buf_off, reg_off) in (off..end).enumerate() {
 		buf[buf_off] = read_long(bus, device, func, reg_off as _);
 	}
@@ -155,7 +154,6 @@ fn read_data(bus: u8, device: u8, func: u8, off: usize, buf: &mut [u32]) {
 /// - `buf` is the data buffer to read from.
 fn write_data(bus: u8, device: u8, func: u8, off: usize, buf: &[u32]) {
 	let end = min(off + buf.len(), 16);
-
 	for (buf_off, reg_off) in (off..end).enumerate() {
 		write_long(bus, device, func, reg_off as _, buf[buf_off]);
 	}
@@ -338,7 +336,7 @@ impl PCIDevice {
 	/// - `device` is the device number on the bus.
 	/// - `function` is the function number on the device.
 	/// - `data` is the data returned by the PCI.
-	fn new(bus: u8, device: u8, function: u8, data: &[u32; 16]) -> Result<Self, Errno> {
+	fn new(bus: u8, device: u8, function: u8, data: &[u32; 16]) -> EResult<Self> {
 		let mut dev = Self {
 			bus,
 			device,
@@ -461,7 +459,6 @@ impl PhysicalDevice for PCIDevice {
 
 	fn get_interrupt_line(&self) -> Option<u8> {
 		let n = (self.info[11] & 0xff) as u8;
-
 		if n != 0xff {
 			Some(n)
 		} else {
@@ -471,7 +468,6 @@ impl PhysicalDevice for PCIDevice {
 
 	fn get_interrupt_pin(&self) -> Option<u8> {
 		let n = ((self.info[11] >> 8) & 0xff) as u8;
-
 		if n != 0 {
 			Some(n)
 		} else {
@@ -490,6 +486,7 @@ pub struct PCIManager {
 
 impl PCIManager {
 	/// Creates a new instance.
+	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		Self {
 			devices: Vec::new(),
@@ -499,59 +496,63 @@ impl PCIManager {
 	/// Scans for PCI devices and registers them on the manager.
 	///
 	/// If the PCI has already been scanned, this function does nothing.
-	pub fn scan(&mut self) -> Result<(), Errno> {
+	pub fn scan(&mut self) -> EResult<()> {
 		// Avoid calling `on_plug` twice for the same devices
 		if !self.devices.is_empty() {
 			return Ok(());
 		}
 
-		for bus in 0..=255 {
-			for device in 0..32 {
-				let vendor_id = read_long(bus, device, 0, 0) & 0xffff;
-				// If the device doesn't exist, ignore
-				if vendor_id == 0xffff {
-					continue;
-				}
-
-				// Reading device's PCI data
+		// Iterate buses
+		self.devices = (0..=255u8)
+			// Iterate devices on bus
+			.flat_map(|bus| (0..32u8).map(move |device| (bus, device)))
+			// If the device doesn't exist, ignore
+			.filter(|(bus, device)| {
+				let vendor_id = read_long(*bus, *device, 0, 0) & 0xffff;
+				vendor_id != 0xffff
+			})
+			// Read device's PCI data
+			.flat_map(|(bus, device)| {
+				// Read device's PCI data
 				let mut data: [u32; 16] = [0; 16];
 				read_data(bus, device, 0, 0, &mut data);
 
 				let header_type = ((data[3] >> 16) & 0xff) as u8;
-				let max_functions_count = {
+				let max_func_count = {
 					if header_type & 0x80 != 0 {
 						// Multi-function device
-						8
+						8u8
 					} else {
 						// Single-function device
-						1
+						1u8
 					}
 				};
 
-				// Iterating on every functions of the device
-				for func in 0..max_functions_count {
-					let vendor_id = read_long(bus, device, func, 0) & 0xffff;
-					// If the function doesn't exist, ignore
-					if vendor_id == 0xffff {
-						continue;
-					}
+				(0..max_func_count).map(move |func| (bus, device, func))
+			})
+			// If the function doesn't exist, ignore
+			.filter(|(bus, device, func)| {
+				let vendor_id = read_long(*bus, *device, *func, 0) & 0xffff;
+				vendor_id != 0xffff
+			})
+			// Iterate functions
+			.map(|(bus, device, func)| {
+				// Read function's PCI data
+				let mut data: [u32; 16] = [0; 16];
+				read_data(bus, device, func, 0, &mut data);
 
-					// Reading function's PCI data
-					read_data(bus, device, func, 0, &mut data);
+				// Enable Memory space and I/O space for BARs
+				data[1] |= 0b11;
+				write_long(bus, device, func, 0x1, data[1]);
 
-					// Enabling Memory space and I/O space for BARs
-					data[1] |= 0b11;
-					write_long(bus, device, func, 0x1, data[1]);
-
-					// Registering the device
-					let dev = PCIDevice::new(bus, device, func, &data)?;
-					driver::on_plug(&dev);
-					manager::on_plug(&dev)?;
-					self.devices.push(dev)?;
-				}
-			}
-		}
-
+				// Register the device
+				let dev = PCIDevice::new(bus, device, func, &data)?;
+				driver::on_plug(&dev);
+				manager::on_plug(&dev)?;
+				Ok(dev)
+			})
+			.collect::<EResult<CollectResult<_>>>()?
+			.0?;
 		Ok(())
 	}
 
@@ -565,11 +566,11 @@ impl PCIManager {
 }
 
 impl DeviceManager for PCIManager {
-	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> EResult<()> {
 		Ok(())
 	}
 
-	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> EResult<()> {
 		Ok(())
 	}
 }

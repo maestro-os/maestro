@@ -51,10 +51,9 @@ pub fn rt_sigprocmask(
 
 	let oldset_slice = oldset.get_mut(&mut mem_space_guard, sigsetsize as _)?;
 	if let Some(oldset) = oldset_slice {
-		// Saving the old set
-		for i in 0..min(oldset.len(), curr.len()) {
-			oldset[i] = curr[i];
-		}
+		// Save old set
+		let len = min(oldset.len(), curr.len());
+		oldset[..len].copy_from_slice(&curr[..len]);
 	}
 
 	let set_slice = set.get(&mem_space_guard, sigsetsize as _)?;
@@ -74,9 +73,8 @@ pub fn rt_sigprocmask(
 			}
 
 			SIG_SETMASK => {
-				for i in 0..min(set.len(), curr.len()) {
-					curr[i] = set[i];
-				}
+				let len = min(set.len(), curr.len());
+				curr[..len].copy_from_slice(&set[..len]);
 			}
 
 			_ => return Err(errno!(EINVAL)),

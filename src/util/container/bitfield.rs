@@ -48,6 +48,7 @@ impl Bitfield {
 
 	/// Returns the number of bit in the bitfield.
 	#[inline]
+	#[allow(clippy::len_without_is_empty)]
 	pub fn len(&self) -> usize {
 		self.len
 	}

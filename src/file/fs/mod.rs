@@ -132,6 +132,7 @@ pub trait Filesystem: Any {
 	/// file type.
 	///
 	/// On success, the function returns the newly created file.
+	#[allow(clippy::too_many_arguments)]
 	fn add_file(
 		&mut self,
 		io: &mut dyn IO,

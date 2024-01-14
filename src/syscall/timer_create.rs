@@ -27,8 +27,6 @@ use crate::process::signal::SIGEV_SIGNAL;
 use crate::process::Process;
 use crate::time::unit::ClockIdT;
 use crate::time::unit::TimerT;
-use core::mem::transmute;
-use core::ptr::null;
 use macros::syscall;
 
 #[syscall]
@@ -56,8 +54,8 @@ pub fn timer_create(
 			sigev_value: SigVal {
 				sigval_ptr: timerid_val,
 			},
-			sigev_notify_function: unsafe { transmute(null::<()>()) },
-			sigev_notify_attributes: null::<_>(),
+			sigev_notify_function: None,
+			sigev_notify_attributes: None,
 			sigev_notify_thread_id: proc.tid,
 		});
 

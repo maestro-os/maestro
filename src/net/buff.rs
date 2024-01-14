@@ -46,6 +46,7 @@ impl<'b> From<&'b [u8]> for BuffList<'b> {
 
 impl<'b> BuffList<'b> {
 	/// Returns the length of the buffer, plus following buffers.
+	#[allow(clippy::len_without_is_empty)]
 	pub fn len(&self) -> usize {
 		self.b.len() + self.next_len
 	}

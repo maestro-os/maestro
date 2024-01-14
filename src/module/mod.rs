@@ -82,7 +82,7 @@ macro_rules! module {
 
 			const fn get_version() -> Version {
 				let result = Version::parse(env!("CARGO_PKG_VERSION"));
-				let Ok(version) = result else {
+				let Some(version) = result else {
 					panic!("invalid module version (see kernel's documentation for versioning specifications)");
 				};
 				version

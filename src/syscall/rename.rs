@@ -68,7 +68,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs::create_link(&mut old, &mut new_parent, &new_name, &ap)?;
+		vfs::create_link(&mut old, &new_parent, &new_name, &ap)?;
 
 		if old.get_type() != FileType::Directory {
 			vfs::remove_file(&mut old, &ap)?;

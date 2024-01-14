@@ -45,7 +45,7 @@ pub fn do_chown(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space = mem_space.lock();
 
-		let path = pathname.get(&*mem_space)?.ok_or_else(|| errno!(EFAULT))?;
+		let path = pathname.get(&mem_space)?.ok_or_else(|| errno!(EFAULT))?;
 		(Path::from_str(path, true)?, proc.access_profile)
 	};
 

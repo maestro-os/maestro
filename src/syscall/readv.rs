@@ -53,7 +53,7 @@ fn read(
 	open_file: &mut OpenFile,
 ) -> EResult<i32> {
 	let iov = {
-		let iov_slice = iov.get(&mem_space, iovcnt)?.ok_or(errno!(EFAULT))?;
+		let iov_slice = iov.get(mem_space, iovcnt)?.ok_or(errno!(EFAULT))?;
 		let mut iov = Vec::new();
 		iov.extend_from_slice(iov_slice)?;
 		iov

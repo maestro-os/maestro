@@ -695,7 +695,7 @@ impl StorageManager {
 
 impl DeviceManager for StorageManager {
 	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> EResult<()> {
-		// Ignoring non-storage devices
+		// Ignore non-storage devices
 		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {
 			return Ok(());
 		}

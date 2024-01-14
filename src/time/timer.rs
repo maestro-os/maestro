@@ -295,7 +295,7 @@ static TIMERS_QUEUE: IntMutex<Map<(Timespec, Pid, TimerT), ()>> = IntMutex::new(
 
 /// Ticks active timers and triggers them if necessary.
 pub(super) fn tick() {
-	let mut times: [Option<Timespec>; 12] = [None; 12];
+	let mut times: [Option<Timespec>; 12] = Default::default();
 	let mut queue = TIMERS_QUEUE.lock();
 
 	loop {

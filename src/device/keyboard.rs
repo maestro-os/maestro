@@ -153,8 +153,6 @@ pub enum KeyboardKey {
 
 	KeyPrintScreen,
 	KeyPause,
-
-	KeyUnknown,
 }
 
 impl KeyboardKey {
@@ -199,8 +197,7 @@ impl KeyboardKey {
 
 		if ctrl {
 			match self {
-				#[allow(clippy::identity_op)]
-				Self::KeyA => return Some(&[b'A' - b'A' + 1]),
+				Self::KeyA => return Some(&[/*b'A' - b'A' + */1]),
 				Self::KeyB => return Some(&[b'B' - b'A' + 1]),
 				Self::KeyC => return Some(&[b'C' - b'A' + 1]),
 				Self::KeyD => return Some(&[b'D' - b'A' + 1]),
@@ -434,7 +431,7 @@ pub enum KeyboardLED {
 	// TODO Add the japanese keyboard Kana mode
 }
 
-/// Structure representing a key that can enabled, such as caps lock.
+/// A key that can enabled, such as caps lock.
 ///
 /// Such a key is usually associated with an LED on the keyboard.
 pub struct EnableKey {
@@ -447,6 +444,7 @@ pub struct EnableKey {
 
 impl EnableKey {
 	/// Creates a new instance.
+	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		Self {
 			state: false,
@@ -520,6 +518,7 @@ pub struct KeyboardManager {
 
 impl KeyboardManager {
 	/// Creates a new instance.
+	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		let s = Self {
 			ctrl: false,

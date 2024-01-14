@@ -57,9 +57,9 @@ pub fn setsockopt(
 
 	// Get optval slice
 	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
+	let mem_space_guard = mem_space.lock();
 	let optval_slice = optval
-		.get(&mut mem_space_guard, optlen)?
+		.get(&mem_space_guard, optlen)?
 		.ok_or(errno!(EFAULT))?;
 
 	sock.set_opt(level, optname, optval_slice)
