@@ -2,7 +2,7 @@
 //! uses the hash of the key to quickly get the bucket storing the value.
 
 use super::vec::Vec;
-use crate::errno::AllocResult;
+use crate::errno::{AllocResult, CollectResult};
 use crate::util::AllocError;
 use crate::util::TryClone;
 use core::borrow::Borrow;
@@ -37,15 +37,15 @@ impl XORHasher {
 }
 
 impl Hasher for XORHasher {
+	fn finish(&self) -> u64 {
+		self.value
+	}
+
 	fn write(&mut self, bytes: &[u8]) {
 		for b in bytes {
 			self.value ^= (*b as u64) << (self.off * 8);
 			self.off = (self.off + 1) % size_of_val(&self.value) as u8;
 		}
-	}
-
-	fn finish(&self) -> u64 {
-		self.value
 	}
 }
 
@@ -235,7 +235,6 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		Q: Hash + Eq,
 	{
 		let index = self.get_bucket_index(k);
-
 		if index < self.buckets.len() {
 			self.buckets[index].get(k)
 		} else {
@@ -252,7 +251,6 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		Q: Hash + Eq,
 	{
 		let index = self.get_bucket_index(k);
-
 		if index < self.buckets.len() {
 			self.buckets[index].get_mut(k)
 		} else {
@@ -365,6 +363,19 @@ impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
 	}
 }
 
+impl<K: Eq + Hash, V> FromIterator<(K, V)> for CollectResult<HashMap<K, V>> {
+	fn from_iter<T: IntoIterator<Item=(K, V)>>(iter: T) -> Self {
+		let res = (|| {
+			let mut map = HashMap::new();
+			for (k, v) in iter {
+				map.insert(k, v)?;
+			}
+			Ok(map)
+		})();
+		Self(res)
+	}
+}
+
 impl<K: Eq + Hash + TryClone<Error = E>, V: TryClone<Error = E>, E: From<AllocError>> TryClone
 	for HashMap<K, V>
 {
@@ -430,13 +441,13 @@ impl<'m, K: Hash + Eq, V> Iterator for Iter<'m, K, V> {
 		Some((k, v))
 	}
 
-	fn count(self) -> usize {
-		self.hm.len() - self.i
-	}
-
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.hm.len() - self.i;
 		(len, Some(len))
+	}
+
+	fn count(self) -> usize {
+		self.hm.len() - self.i
 	}
 }
 
