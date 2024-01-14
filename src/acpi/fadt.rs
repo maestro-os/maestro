@@ -130,6 +130,6 @@ impl Fadt {
 
 impl ACPITable for Fadt {
 	fn get_expected_signature() -> &'static [u8; 4] {
-		&[b'F', b'A', b'C', b'P']
+		b"FACP"
 	}
 }
