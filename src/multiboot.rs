@@ -1,5 +1,5 @@
 //! The Multiboot standard specifies an interface to load and boot the kernel
-//! image. It provides essential informations such as the memory mapping and the
+//! image. It provides essential information such as the memory mapping and the
 //! ELF structure of the kernel.
 
 use crate::memory;
@@ -356,7 +356,6 @@ impl MmapEntry {
 			MEMORY_ACPI_RECLAIMABLE => "ACPI",
 			MEMORY_NVS => "Hibernate",
 			MEMORY_BADRAM => "Bad RAM",
-
 			_ => "Reserved",
 		}
 	}
@@ -369,7 +368,7 @@ impl Tag {
 	}
 }
 
-/// Structure representing the informations given to the kernel at boot time.
+/// Kernel boot information provided by Multiboot, structured and filtered.
 pub struct BootInfo {
 	/// The command line used to boot the kernel.
 	pub cmdline: Option<&'static [u8]>,
@@ -423,91 +422,73 @@ static mut BOOT_INFO: BootInfo = BootInfo {
 
 /// Returns boot information provided by Multiboot.
 pub fn get_boot_info() -> &'static BootInfo {
+	// Safe, since the variable is written only once, at boot
 	unsafe { &BOOT_INFO }
 }
 
-/// Returns the size in bytes of Multiboot tags pointed to by `ptr`.
-pub fn get_tags_size(ptr: *const c_void) -> usize {
-	unsafe {
-		let mut tag = ptr.offset(8) as *const Tag;
-		while (*tag).type_ != TAG_TYPE_END {
-			tag = (*tag).next();
-		}
-		tag = (*tag).next();
-		(tag as usize) - (ptr as usize)
-	}
+/// Reinterprets a tag with the given type.
+unsafe fn reinterpret_tag<T>(tag: &Tag) -> &'static T {
+	&*(tag as *const _ as *const T)
 }
 
 /// Reads the given `tag` and fills boot information structure accordingly.
-fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
-	let type_ = unsafe { (*tag).type_ };
+fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
+	match tag.type_ {
+		TAG_TYPE_CMDLINE => unsafe {
+			let t: &TagString = reinterpret_tag(tag);
+			let ptr = memory::kern_to_virt(t.string.as_ptr());
+			boot_info.cmdline = Some(util::str_from_ptr(ptr));
+		},
 
-	match type_ {
-		TAG_TYPE_CMDLINE => {
-			let t = tag as *const TagString;
-
-			unsafe {
-				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const u8);
-				boot_info.cmdline = Some(util::str_from_ptr(ptr));
-			}
-		}
-
-		TAG_TYPE_BOOT_LOADER_NAME => {
-			let t = tag as *const TagString;
-
-			unsafe {
-				let ptr = memory::kern_to_virt(&(*t).string as *const _ as *const u8);
-				boot_info.loader_name = Some(util::str_from_ptr(ptr));
-			}
-		}
+		TAG_TYPE_BOOT_LOADER_NAME => unsafe {
+			let t: &TagString = reinterpret_tag(tag);
+			let ptr = memory::kern_to_virt(t.string.as_ptr());
+			boot_info.loader_name = Some(util::str_from_ptr(ptr));
+		},
 
 		TAG_TYPE_MODULE => {
-			let t = tag as *const TagModule;
-
-			let (begin, end) = unsafe {
+			let data = unsafe {
+				let t: &TagModule = reinterpret_tag(tag);
 				let begin = memory::kern_to_virt((*t).mod_start as *const u8);
 				let end = memory::kern_to_virt((*t).mod_end as *const u8);
-
-				(begin, end)
+				slice::from_raw_parts::<u8>(begin, end as usize - begin as usize)
 			};
-			let size = end as usize - begin as usize;
-			let data = unsafe { slice::from_raw_parts::<u8>(begin, size) };
-
-			if size > 0 {
-				boot_info.initramfs = Some(data);
-			}
+			boot_info.initramfs = (!data.is_empty()).then_some(data);
 		}
 
 		TAG_TYPE_BASIC_MEMINFO => {
-			let t = unsafe { &*(tag as *const TagBasicMeminfo) };
-
+			let t: &TagBasicMeminfo = unsafe { reinterpret_tag(tag) };
 			boot_info.mem_lower = t.mem_lower;
 			boot_info.mem_upper = t.mem_upper;
 		}
 
 		TAG_TYPE_MMAP => {
-			let t = tag as *const TagMmap;
-
-			unsafe {
-				boot_info.memory_maps_size = (*t).size as usize;
-				boot_info.memory_maps_entry_size = (*t).entry_size as usize;
-				boot_info.memory_maps = &(*t).entries as *const _;
-			}
+			let t: &TagMmap = unsafe { reinterpret_tag(tag) };
+			boot_info.memory_maps_size = t.size as usize;
+			boot_info.memory_maps_entry_size = t.entry_size as usize;
+			boot_info.memory_maps = t.entries.as_ptr();
 		}
 
 		TAG_TYPE_ELF_SECTIONS => {
-			let t = tag as *const TagELFSections;
-
-			unsafe {
-				boot_info.elf_num = (*t).num;
-				boot_info.elf_entsize = (*t).entsize;
-				boot_info.elf_shndx = (*t).shndx;
-				boot_info.elf_sections = (*t).sections.as_ptr() as _;
-			}
+			let t: &TagELFSections = unsafe { reinterpret_tag(tag) };
+			boot_info.elf_num = t.num;
+			boot_info.elf_entsize = t.entsize;
+			boot_info.elf_shndx = t.shndx;
+			boot_info.elf_sections = t.sections.as_ptr() as _;
 		}
 
 		_ => {}
 	}
+}
+
+/// Returns the size in bytes of Multiboot tags pointed to by `ptr`.
+pub unsafe fn get_tags_size(ptr: *const c_void) -> usize {
+	let mut tag = ptr.offset(8) as *const Tag;
+	while (*tag).type_ != TAG_TYPE_END {
+		tag = (*tag).next();
+	}
+	tag = (*tag).next();
+	tag as usize - ptr as usize
 }
 
 /// Reads the multiboot tags from the given `ptr` and fills the boot
@@ -517,12 +498,10 @@ fn handle_tag(boot_info: &mut BootInfo, tag: *const Tag) {
 ///
 /// If the pointer `ptr` doesn't point to valid Multiboot tags, the behaviour is
 /// undefined.
-pub fn read_tags(ptr: *const c_void) {
-	unsafe {
-		let mut tag = (ptr.offset(8)) as *const Tag;
-		while (*tag).type_ != TAG_TYPE_END {
-			handle_tag(&mut BOOT_INFO, tag);
-			tag = (*tag).next();
-		}
+pub unsafe fn read_tags(ptr: *const c_void) {
+	let mut tag = ptr.offset(8) as *const Tag;
+	while (*tag).type_ != TAG_TYPE_END {
+		handle_tag(&mut BOOT_INFO, &*tag);
+		tag = (*tag).next();
 	}
 }

@@ -1,5 +1,7 @@
 //! SSE-related features.
 
+use crate::{register_get, register_set};
+
 /// Tells whether the CPU supports SSE.
 pub fn is_present() -> bool {
 	unsafe { super::cpuid_has_sse() }
@@ -8,11 +10,12 @@ pub fn is_present() -> bool {
 /// Enables SSE.
 pub fn enable() {
 	unsafe {
-		super::cr0_clear(0b100); // Enable x87 FPU
-		super::cr0_set(0b10);
+		// Enable x87 FPU
+		let cr0 = (register_get!("cr0") & !0b100) | 0b10;
+		register_set!("cr0", cr0);
 
 		// Enable FXSAVE and FXRSTOR (thus, enabling SSE) and SSE exceptions
-		let cr4 = super::cr4_get() | 0b11000000000;
-		super::cr4_set(cr4);
+		let cr4 = register_get!("cr4") | 0b11000000000;
+		register_set!("cr4", cr4);
 	}
 }

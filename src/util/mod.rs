@@ -62,17 +62,6 @@ pub const fn bit_size_of<T>() -> usize {
 	size_of::<T>() * 8
 }
 
-/// Returns the value stored into the specified register.
-#[macro_export]
-macro_rules! register_get {
-	($reg:expr) => {{
-		let mut val: u32;
-		core::arch::asm!(concat!("mov {}, ", $reg), out(reg) val);
-
-		val
-	}};
-}
-
 /// Zeroes the given object.
 ///
 /// # Safety

@@ -4,7 +4,7 @@
 //! from. This is an undesirable state which requires to reboot the host
 //! machine.
 
-use crate::{cpu, logger, power};
+use crate::{logger, power, register_get};
 use core::panic::PanicInfo;
 
 /// Called on Rust panic.
@@ -40,7 +40,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		"If you believe this is a bug on the kernel side, please feel free to report it."
 	);
 
-	let cr2 = unsafe { cpu::cr2_get() };
+	let cr2 = unsafe { register_get!("cr2") } as *const ();
 	crate::println!("cr2: {cr2:p}\n");
 
 	#[cfg(config_debug_debug)]

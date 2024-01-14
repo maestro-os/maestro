@@ -6,7 +6,6 @@
 #[cfg(target_arch = "x86")]
 pub mod x86;
 
-use crate::cpu;
 use crate::elf;
 use crate::errno::AllocError;
 use crate::errno::AllocResult;
@@ -16,6 +15,7 @@ use crate::multiboot;
 use crate::util::boxed::Box;
 use crate::util::math;
 use crate::util::TryClone;
+use crate::{register_get, register_set};
 use core::ffi::c_void;
 
 /// Trait representing virtual memory context handler.
@@ -133,7 +133,7 @@ pub fn try_clone(vmem: &dyn VMem) -> AllocResult<Box<dyn VMem>> {
 
 /// Tells whether the read-only pages protection is enabled.
 pub fn is_write_locked() -> bool {
-	unsafe { (cpu::cr0_get() & (1 << 16)) != 0 }
+	unsafe { (register_get!("cr0") & (1 << 16)) != 0 }
 }
 
 /// Sets whether the kernel can write to read-only pages.
@@ -145,11 +145,13 @@ pub fn is_write_locked() -> bool {
 ///
 /// Writing on read-only data is undefined.
 pub unsafe fn set_write_lock(lock: bool) {
+	let mut val = register_get!("cr0");
 	if lock {
-		cpu::cr0_set(1 << 16);
+		val |= 1 << 16;
 	} else {
-		cpu::cr0_clear(1 << 16);
+		val &= !(1 << 16);
 	}
+	register_set!("cr0", val);
 }
 
 /// Executes the closure given as parameter.
@@ -169,7 +171,6 @@ pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
 	set_write_lock(false);
 	let result = f();
 	set_write_lock(lock);
-
 	result
 }
 
@@ -199,14 +200,14 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
 		if vmem.is_bound() {
 			f()
 		} else {
-			// Getting the current vmem
-			let cr3 = cpu::cr3_get();
-			// Binding the temporary vmem
+			// Get current vmem
+			let cr3 = register_get!("cr3");
+			// Bind temporary vmem
 			vmem.bind();
 
 			let result = f();
 
-			// Restoring the previous vmem
+			// Restore previous vmem
 			x86::paging_enable(cr3 as _);
 
 			result
