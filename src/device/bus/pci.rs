@@ -356,17 +356,16 @@ impl PCIDevice {
 		while i < dev.get_max_bars_count() {
 			let bar = if let Some((bar, mmio)) = dev.load_bar(i)? {
 				// Skip the next BAR if necessary
-				match &bar {
-					BAR::MemorySpace {
-						type_, ..
-					} if matches!(type_, BARType::Size64) => i += 1,
-					_ => {}
+				if let BAR::MemorySpace {
+					type_: BARType::Size64,
+					..
+				} = &bar
+				{
+					i += 1;
 				}
-
 				if let Some(mmio) = mmio {
 					dev.mmios.push(mmio)?;
 				}
-
 				Some(bar)
 			} else {
 				None

@@ -40,6 +40,11 @@ impl Spinlock {
 	}
 
 	/// Unlocks the spinlock.
+	///
+	/// # Safety
+	///
+	/// The caller must ensure the resource protected by the spinlock is not in use before calling
+	/// this function. Otherwise, data races might happen.
 	#[inline(always)]
 	pub unsafe fn unlock(&mut self) {
 		self.locked.store(false, Ordering::Release);

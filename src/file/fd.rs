@@ -15,7 +15,7 @@ use crate::util::ptr::arc::Arc;
 use core::cmp::max;
 
 /// The maximum number of file descriptors that can be open system-wide at once.
-const TOTAL_MAX_FD: usize = 4294967295;
+const TOTAL_MAX_FD: usize = u32::MAX as usize;
 
 /// File descriptor flag: If set, the file descriptor is closed on successful
 /// call to `execve`.

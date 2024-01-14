@@ -462,7 +462,7 @@ impl Filesystem for KernFS {
 		let node = self.get_node_mut(inode)?;
 		let links = node.get_hard_links_count() - 1;
 		node.set_hard_links_count(links);
-		if node.get_hard_links_count() <= 0 {
+		if node.get_hard_links_count() == 0 {
 			oom::wrap(|| self.remove_node(inode).map_err(|_| AllocError));
 		}
 

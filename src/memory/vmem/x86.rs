@@ -85,7 +85,7 @@ extern "C" {
 	/// Executes the `invlpg` instruction for the address `addr`.
 	fn invlpg(addr: *const c_void);
 	/// Reloads the TLB (Translation Lookaside Buffer).
-	pub fn tlb_reload();
+	fn tlb_reload();
 }
 
 /// When editing a virtual memory context, the kernel might edit pages in kernel

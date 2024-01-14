@@ -140,7 +140,7 @@ impl PartialOrd for Timeval {
 }
 
 /// Same as `Timeval`, but with nanosecond precision.
-#[derive(Clone, Copy, Debug, Default, Eq, Ord)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[repr(C)]
 pub struct Timespec {
 	/// Seconds
@@ -193,24 +193,22 @@ impl Sub<Timespec> for Timespec {
 	}
 }
 
-impl PartialEq for Timespec {
-	fn eq(&self, other: &Self) -> bool {
-		self.tv_sec == other.tv_sec && self.tv_nsec == other.tv_nsec
+impl Ord for Timespec {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.tv_sec
+			.cmp(&other.tv_sec)
+			.then_with(|| self.tv_nsec.cmp(&other.tv_nsec))
 	}
 }
 
 impl PartialOrd for Timespec {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(
-			self.tv_sec
-				.cmp(&other.tv_sec)
-				.then_with(|| self.tv_nsec.cmp(&other.tv_nsec)),
-		)
+		Some(self.cmp(other))
 	}
 }
 
 /// Same as `Timespec`, but with 32 bits values.
-#[derive(Clone, Copy, Debug, Default, Eq, Ord)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[repr(C)]
 pub struct Timespec32 {
 	/// Seconds
@@ -263,19 +261,17 @@ impl Sub<Timespec32> for Timespec32 {
 	}
 }
 
-impl PartialEq for Timespec32 {
-	fn eq(&self, other: &Self) -> bool {
-		self.tv_sec == other.tv_sec && self.tv_nsec == other.tv_nsec
+impl Ord for Timespec32 {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.tv_sec
+			.cmp(&other.tv_sec)
+			.then_with(|| self.tv_nsec.cmp(&other.tv_nsec))
 	}
 }
 
 impl PartialOrd for Timespec32 {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(
-			self.tv_sec
-				.cmp(&other.tv_sec)
-				.then_with(|| self.tv_nsec.cmp(&other.tv_nsec)),
-		)
+		Some(self.cmp(other))
 	}
 }
 

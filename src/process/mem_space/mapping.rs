@@ -246,7 +246,7 @@ impl MemMapping {
 						if let Some(buffer) = cow_buffer {
 							ptr::copy_nonoverlapping(
 								buffer.as_ptr() as *const c_void,
-								virt_ptr as *mut c_void,
+								virt_ptr,
 								memory::PAGE_SIZE,
 							);
 						} else {

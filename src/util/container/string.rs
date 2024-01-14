@@ -268,15 +268,14 @@ pub struct StringWriter {
 impl Write for StringWriter {
 	fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
 		match &mut self.final_str {
-			Some(Ok(final_str)) => match final_str.push_str(s.as_bytes()) {
-				Err(e) => self.final_str = Some(Err(e)),
-				_ => {}
-			},
-
+			Some(Ok(final_str)) => {
+				if let Err(e) = final_str.push_str(s.as_bytes()) {
+					self.final_str = Some(Err(e))
+				}
+			}
 			None => self.final_str = Some(String::try_from(s)),
 			_ => {}
 		}
-
 		Ok(())
 	}
 }

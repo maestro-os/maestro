@@ -409,7 +409,7 @@ impl<T> FromIterator<T> for CollectResult<Vec<T>> {
 			vec.len = min_size;
 			// push elements in the range of minimum size
 			if let Some(data) = vec.data.as_mut() {
-				while let Some((i, elem)) = iter.next() {
+				for (i, elem) in iter.by_ref() {
 					if i >= min_size {
 						break;
 					}

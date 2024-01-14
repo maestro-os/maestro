@@ -53,9 +53,8 @@ impl Rsdp {
 		}
 
 		// Check checksum
-		let slice = unsafe {
-			slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>())
-		};
+		let slice =
+			unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>()) };
 		slice.iter().fold(0u8, |a, b| a.wrapping_add(*b)) == 0
 	}
 }
@@ -145,7 +144,8 @@ impl ACPIData {
 			}
 
 			// Get every ACPI tables
-			let _tables = rsdt.tables()
+			let _tables = rsdt
+				.tables()
 				.map(|table| {
 					let table_ptr = table as *const ACPITableHeader;
 					// Map the table to read its length
@@ -281,7 +281,8 @@ impl ACPIData {
 
 			if header.signature == *T::get_expected_signature() {
 				let table = unsafe {
-					let table_ptr = ptr::from_raw_parts::<T>(header_ptr as *const (), header.length as usize);
+					let table_ptr =
+						ptr::from_raw_parts::<T>(header_ptr as *const (), header.length as usize);
 					&*table_ptr
 				};
 

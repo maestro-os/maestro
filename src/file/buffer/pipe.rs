@@ -156,7 +156,7 @@ impl IO for PipeBuffer {
 		if mask & io::POLLOUT != 0 && self.get_available_len() > 0 {
 			result |= io::POLLOUT;
 		}
-		if mask & io::POLLPRI != 0 && self.read_ends <= 0 {
+		if mask & io::POLLPRI != 0 && self.read_ends == 0 {
 			result |= io::POLLPRI;
 		}
 

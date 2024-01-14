@@ -166,7 +166,7 @@ impl<T> Alloc<T> {
 	pub unsafe fn new(size: NonZeroUsize) -> AllocResult<Self> {
 		let len = size
 			.checked_mul(size_of::<T>().try_into().unwrap())
-			.ok_or_else(|| AllocError)?;
+			.ok_or(AllocError)?;
 		let ptr = alloc(len)?;
 		let slice = NonNull::new(slice::from_raw_parts_mut::<T>(
 			ptr.cast().as_mut(),
@@ -206,12 +206,12 @@ impl<T> Alloc<T> {
 	}
 
 	/// Returns the allocation as pointer.
-	pub unsafe fn as_ptr(&self) -> *const T {
+	pub fn as_ptr(&self) -> *const T {
 		self.as_slice().as_ptr() as _
 	}
 
 	/// Returns the allocation as mutable pointer.
-	pub unsafe fn as_ptr_mut(&mut self) -> *mut T {
+	pub fn as_ptr_mut(&mut self) -> *mut T {
 		self.as_slice_mut().as_mut_ptr() as _
 	}
 

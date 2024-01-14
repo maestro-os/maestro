@@ -94,15 +94,11 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		// The length of the first read, before going back to the beginning of the
 		// buffer
 		let l0 = min(cursor + len, buffer_size) - cursor;
-		for i in 0..l0 {
-			buf[i] = buffer[cursor + i];
-		}
+		buf[..l0].copy_from_slice(&buffer[cursor..(cursor + l0)]);
 
 		// The length of the second read, from the beginning of the buffer
 		let l1 = len - l0;
-		for i in 0..l1 {
-			buf[l0 + i] = buffer[i];
-		}
+		buf[l0..(l0 + l1)].copy_from_slice(&buffer[..l1]);
 
 		len
 	}
@@ -130,15 +126,11 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		// The length of the first read, before going back to the beginning of the
 		// buffer
 		let l0 = min(cursor + len, buffer_size) - cursor;
-		for i in 0..l0 {
-			buffer[cursor + i] = buf[i];
-		}
+		buffer[cursor..(cursor + l0)].copy_from_slice(&buf[..l0]);
 
 		// The length of the second read, from the beginning of the buffer
 		let l1 = len - l0;
-		for i in 0..l1 {
-			buffer[i] = buf[l0 + i];
-		}
+		buffer[..l1].copy_from_slice(&buf[l0..(l0 + l1)]);
 
 		self.write_cursor = (self.write_cursor + len) % buffer_size;
 		len

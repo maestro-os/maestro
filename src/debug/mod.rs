@@ -13,22 +13,23 @@ use core::ptr::null_mut;
 /// function.
 ///
 /// When the stack ends, the function fills the rest of the slice with `None`.
-pub fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
+///
+/// # Safety
+///
+/// The caller must ensure the `frame` parameter points ta a valid stack frame.
+pub unsafe fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
 	stack.fill(null_mut::<c_void>());
 	for f in stack.iter_mut() {
 		if frame.is_null() {
 			break;
 		}
 
-		let pc = unsafe { (*frame.add(1)) as *mut c_void };
-		if pc < memory::PROCESS_END as *mut c_void {
+		let pc = (*frame.add(1)) as *mut c_void;
+		if pc < memory::PROCESS_END {
 			break;
 		}
 		*f = pc;
-
-		unsafe {
-			frame = *frame as *mut usize;
-		}
+		frame = *frame as *mut usize;
 	}
 }
 

@@ -321,16 +321,6 @@ impl MemSpace {
 		})
 	}
 
-	/// Clones the `gaps_size` field.
-	fn gaps_size_clone(&self) -> AllocResult<Map<(NonZeroUsize, *mut c_void), ()>> {
-		let mut gaps_size = Map::new();
-		for (g, _) in &self.gaps_size {
-			gaps_size.insert(g.clone(), ())?;
-		}
-
-		Ok(gaps_size)
-	}
-
 	/// Creates a new virtual memory object.
 	///
 	/// `brk_ptr` is the initial pointer for the `brk` syscall.
@@ -746,7 +736,7 @@ impl MemSpace {
 	fn do_fork(&mut self) -> AllocResult<Self> {
 		let mut mem_space = Self {
 			gaps: self.gaps.try_clone()?,
-			gaps_size: self.gaps_size_clone()?,
+			gaps_size: self.gaps_size.try_clone()?,
 
 			mappings: Map::new(),
 

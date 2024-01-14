@@ -93,8 +93,7 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> ERe
 
 			// TODO On fail, undo
 			for (name, _) in entries.iter() {
-				let old_mutex =
-					vfs::get_file_from_parent(&mut new, name.try_clone()?, &ap, false)?;
+				let old_mutex = vfs::get_file_from_parent(&new, name.try_clone()?, &ap, false)?;
 				let mut old = old_mutex.lock();
 
 				copy_file(&mut old, &mut new, name.try_clone()?)?;
