@@ -2,7 +2,7 @@
 //! device files.
 
 use crate::device::bar::BAR;
-use crate::errno::{EResult};
+use crate::errno::EResult;
 use crate::util::container::hashmap::HashMap;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;

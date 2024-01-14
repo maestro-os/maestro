@@ -1051,9 +1051,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 /// Returns the next node in an iterator for the given node.
 ///
 /// This is an inner function for node iterators.
-fn next_node<K: Ord + 'static, V: 'static>(
-	node: &Node<K, V>,
-) -> Option<&'static mut Node<K, V>> {
+fn next_node<K: Ord + 'static, V: 'static>(node: &Node<K, V>) -> Option<&'static mut Node<K, V>> {
 	if let Some(mut node) = node.get_right() {
 		while let Some(n) = node.get_left() {
 			node = n;

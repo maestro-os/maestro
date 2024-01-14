@@ -1,7 +1,7 @@
 //! SSE-related features.
 
-use crate::{register_get, register_set};
 use crate::cpu::get_hwcap;
+use crate::{register_get, register_set};
 
 /// Tells whether the CPU supports SSE.
 pub fn is_present() -> bool {

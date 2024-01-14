@@ -163,6 +163,10 @@ impl<T: ?Sized> Arc<T> {
 	}
 
 	/// Returns a mutable reference to the inner object without any safety check.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure concurrency rules are respected.
 	pub unsafe fn get_mut_unchecked(this: &mut Arc<T>) -> &mut T {
 		&mut (*this.inner.as_ptr()).obj
 	}

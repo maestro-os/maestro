@@ -133,8 +133,9 @@ pub fn enter_loop() -> ! {
 
 /// Resets the stack to the given value, then calls [`enter_loop`].
 ///
-/// The function is unsafe because the pointer passed in parameter might be
-/// invalid.
+/// # Safety
+///
+/// The callee must ensure the given stack is usable.
 pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
 	kernel_loop_reset(stack);
 }
@@ -254,9 +255,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	// Initialize memory management
 	memory::memmap::init(multiboot_ptr);
-	if cfg!(config_debug_debug) {
-		memory::memmap::print_entries();
-	}
+	#[cfg(config_debug_debug)]
+	memory::memmap::print_entries();
 	memory::alloc::init();
 	init_vmem().unwrap_or_else(|e| panic!("Cannot initialize kernel virtual memory! ({e})"));
 

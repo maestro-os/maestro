@@ -48,8 +48,7 @@ impl FDSet {
 	/// Clears the bit for file descriptor `fd`.
 	pub fn clear(&mut self, fd: u32) {
 		// TODO Check correctness
-		self.fds_bits[(fd as usize) / c_long::BITS as usize] &=
-			!(1 << (fd % c_long::BITS));
+		self.fds_bits[(fd as usize) / c_long::BITS as usize] &= !(1 << (fd % c_long::BITS));
 	}
 }
 

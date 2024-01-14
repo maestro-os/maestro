@@ -22,7 +22,7 @@
 use super::StorageInterface;
 use crate::device::storage::ide;
 use crate::errno;
-use crate::errno::{EResult};
+use crate::errno::EResult;
 use crate::io;
 use crate::util::math;
 use core::cmp::min;

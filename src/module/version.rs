@@ -120,19 +120,19 @@ mod test {
 
 	#[test_case]
 	fn version_parse() {
-		assert!(Version::parse("").is_err());
-		assert!(Version::parse(".").is_err());
-		assert!(Version::parse("0.").is_err());
-		assert!(Version::parse("0.0").is_err());
-		assert!(Version::parse("0.0.").is_err());
-		assert!(Version::parse("0..0").is_err());
-		assert!(Version::parse(".0.0").is_err());
-		assert!(Version::parse("0.0.0.").is_err());
-		assert!(Version::parse("0.0.0.0").is_err());
+		assert_eq!(Version::parse(""), None);
+		assert_eq!(Version::parse("."), None);
+		assert_eq!(Version::parse("0."), None);
+		assert_eq!(Version::parse("0.0"), None);
+		assert_eq!(Version::parse("0.0."), None);
+		assert_eq!(Version::parse("0..0"), None);
+		assert_eq!(Version::parse(".0.0"), None);
+		assert_eq!(Version::parse("0.0.0."), None);
+		assert_eq!(Version::parse("0.0.0.0"), None);
 
 		assert_eq!(
 			Version::parse("0.0.0"),
-			Ok(Version {
+			Some(Version {
 				major: 0,
 				minor: 0,
 				patch: 0,
@@ -140,7 +140,7 @@ mod test {
 		);
 		assert_eq!(
 			Version::parse("1.0.0"),
-			Ok(Version {
+			Some(Version {
 				major: 1,
 				minor: 0,
 				patch: 0,
@@ -148,7 +148,7 @@ mod test {
 		);
 		assert_eq!(
 			Version::parse("0.1.0"),
-			Ok(Version {
+			Some(Version {
 				major: 0,
 				minor: 1,
 				patch: 0,
@@ -156,7 +156,7 @@ mod test {
 		);
 		assert_eq!(
 			Version::parse("0.0.1"),
-			Ok(Version {
+			Some(Version {
 				major: 0,
 				minor: 0,
 				patch: 1,
@@ -165,7 +165,7 @@ mod test {
 
 		assert_eq!(
 			Version::parse("1.2.3"),
-			Ok(Version {
+			Some(Version {
 				major: 1,
 				minor: 2,
 				patch: 3,

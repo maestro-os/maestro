@@ -179,7 +179,7 @@ impl KeyboardKey {
 
 		if ctrl {
 			match self {
-				Self::KeyA => return Some(&[/*b'A' - b'A' + */1]),
+				Self::KeyA => return Some(&[/* b'A' - b'A' + */ 1]),
 				Self::KeyB => return Some(&[b'B' - b'A' + 1]),
 				Self::KeyC => return Some(&[b'C' - b'A' + 1]),
 				Self::KeyD => return Some(&[b'D' - b'A' + 1]),
