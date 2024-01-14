@@ -25,25 +25,18 @@ pub struct Madt {
 }
 
 impl Madt {
-	/// Executes the given closure for each entry in the MADT.
-	pub fn foreach_entry<F: Fn(&EntryHeader)>(&self, f: F) {
-		let entries_len = self.header.get_length() - ENTRIES_OFF;
-
-		let mut i = 0;
-		while i < entries_len {
-			let entry =
-				unsafe { &*((self as *const _ as usize + ENTRIES_OFF + i) as *const EntryHeader) };
-
-			f(entry);
-
-			i += entry.get_length() as usize;
+	/// Returns an iterator over each entry of the MADT.
+	pub fn entries(&self) -> EntriesIterator {
+		EntriesIterator {
+			madt: self,
+			cursor: 0,
 		}
 	}
 }
 
 impl ACPITable for Madt {
 	fn get_expected_signature() -> &'static [u8; 4] {
-		&[b'A', b'P', b'I', b'C']
+		b"APIC"
 	}
 }
 
@@ -52,19 +45,30 @@ impl ACPITable for Madt {
 #[derive(Debug)]
 pub struct EntryHeader {
 	/// The entry type.
-	entry_type: u8,
+	pub entry_type: u8,
 	/// The entry length.
-	length: u8,
+	pub length: u8,
 }
 
-impl EntryHeader {
-	/// Returns the type of the entry.
-	pub fn get_type(&self) -> u8 {
-		self.entry_type
-	}
+/// Iterator over MADT entries.
+pub struct EntriesIterator<'m> {
+	madt: &'m Madt,
+	/// Cursor.
+	cursor: usize,
+}
 
-	/// Returns the length of the entry.
-	pub fn get_length(&self) -> u8 {
-		self.length
+impl<'m> Iterator for EntriesIterator<'m> {
+	type Item = &'m EntryHeader;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let entries_len = self.madt.header.length as usize - ENTRIES_OFF;
+		if self.cursor < entries_len {
+			let ptr = (self as *const _ as usize + ENTRIES_OFF + self.cursor) as *const EntryHeader;
+			let entry = unsafe { &*ptr };
+			self.cursor += entry.length as usize;
+			Some(entry)
+		} else {
+			None
+		}
 	}
 }

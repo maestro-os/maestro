@@ -10,7 +10,7 @@
 use crate::acpi::rsdt::Rsdt;
 use crate::acpi::ACPITable;
 use crate::acpi::ACPITableHeader;
-use crate::errno::Errno;
+use crate::errno::{AllocResult, CollectResult, Errno};
 use crate::memory;
 use crate::memory::malloc;
 use crate::memory::vmem;
@@ -27,15 +27,6 @@ use core::slice;
 
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &[u8] = b"RSD PTR ";
-
-/// Returns the scan range in which is located the RSDP signature.
-#[inline(always)]
-fn get_scan_range() -> (*const c_void, *const c_void) {
-	let begin = (memory::PROCESS_END as usize + 0xe0000) as *const c_void;
-	let end = (memory::PROCESS_END as usize + 0xfffff) as *const c_void;
-
-	(begin, end)
-}
 
 /// The Root System Description Pointer (RSDP) is a structure storing a pointer
 /// to the other structures used by ACPI.
@@ -61,17 +52,11 @@ impl Rsdp {
 			return false;
 		}
 
-		let mut sum: u8 = 0;
-
-		for i in 0..size_of::<Self>() {
-			let byte = unsafe {
-				// Safe since every bytes of `self` are readable.
-				*(self as *const Self as *const u8).add(i)
-			};
-			sum = sum.wrapping_add(byte);
-		}
-
-		sum == 0
+		// Check checksum
+		let slice = unsafe {
+			slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>())
+		};
+		slice.iter().fold(0u8, |a, b| a.wrapping_add(*b)) == 0
 	}
 }
 
@@ -96,19 +81,17 @@ struct Rsdp2 {
 
 /// Finds the RSDP and returns a reference to it.
 unsafe fn find_rsdp() -> Option<&'static mut Rsdp> {
-	let (begin, end) = get_scan_range();
-	let mut ptr = begin;
+	let begin = (memory::PROCESS_END as usize + 0xe0000) as *const c_void;
+	let end = (memory::PROCESS_END as usize + 0xfffff) as *const c_void;
 
+	let mut ptr = begin;
 	while ptr < end {
 		let signature_slice = slice::from_raw_parts(ptr as *const u8, RSDP_SIGNATURE.len());
-
 		if signature_slice == RSDP_SIGNATURE {
 			return Some(&mut *(ptr as *mut Rsdp));
 		}
-
 		ptr = ptr.add(16);
 	}
-
 	None
 }
 
@@ -146,8 +129,7 @@ impl ACPIData {
 		let tmp_vmem = vmem::new()?;
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
 		let rsdt_map_begin = util::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
-		crate::println!("being: {:p}", rsdt_map_begin); // TODO rm
-												// Mapping the RSDT to make it readable
+		// Map the RSDT to make it readable
 		tmp_vmem.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
 
 		tmp_vmem.bind();
@@ -158,48 +140,50 @@ impl ACPIData {
 				// Safe because the pointer has been mapped before
 				&*rsdt_ptr
 			};
-
 			if !rsdt.header.check::<Rsdt>() {
 				panic!("Invalid ACPI structure!");
 			}
 
-			// Getting every ACPI tables
-			let mut tables = HashMap::new();
-			rsdt.foreach_table(|table_ptr| {
-				// Mapping the table to read its length
-				let table_map_begin = util::down_align(table_ptr, memory::PAGE_SIZE);
-				if tmp_vmem
-					.map_range(table_map_begin as _, (memory::PAGE_SIZE * 3) as _, 2, 0)
-					.is_err()
-				{
-					panic!("Unexpected error when reading ACPI data");
-				}
+			// Get every ACPI tables
+			let _tables = rsdt.tables()
+				.map(|table| {
+					let table_ptr = table as *const ACPITableHeader;
+					// Map the table to read its length
+					let table_map_begin = util::down_align(table_ptr, memory::PAGE_SIZE);
+					if tmp_vmem
+						.map_range(table_map_begin as _, (memory::PAGE_SIZE * 3) as _, 2, 0)
+						.is_err()
+					{
+						panic!("Unexpected error when reading ACPI data");
+					}
 
-				let table_offset = table_ptr as usize - table_map_begin as usize;
-				let table = unsafe {
-					// Safe because the pointer has been mapped before
-					&*(((memory::PAGE_SIZE * 3) + table_offset) as *const ACPITableHeader)
-				};
+					let table_offset = table_ptr as usize - table_map_begin as usize;
+					let table = unsafe {
+						// Safe because the pointer has been mapped before
+						&*(((memory::PAGE_SIZE * 3) + table_offset) as *const ACPITableHeader)
+					};
 
-				let b = unsafe {
-					let mut ptr = malloc::alloc(table.get_length().try_into().unwrap()).unwrap();
-					ptr::copy_nonoverlapping(
-						table as *const _ as *const _,
-						ptr.as_mut(),
-						table.get_length(),
-					);
-
-					Box::from_raw(ptr.as_ptr() as *mut ())
-				};
-				tables.insert(table.get_signature(), b).unwrap();
-			});
+					let b = unsafe {
+						let len = (table.length as usize).try_into().unwrap();
+						let mut ptr = malloc::alloc(len)?;
+						copy_nonoverlapping(
+							table as *const _ as *const _,
+							ptr.as_mut(),
+							table.length as usize,
+						);
+						Box::from_raw(ptr.as_ptr() as *mut ())
+					};
+					Ok((table.signature, b))
+				})
+				.collect::<AllocResult<CollectResult<HashMap<_, _>>>>()?
+				.0?;
 
 			// FIXME: This is garbage due to a merge in order to make things compile.
 			// This whole function needs a rewrite
-			let lowest = core::ptr::null::<c_void>();
-			let highest = core::ptr::null::<c_void>();
+			let lowest = ptr::null::<c_void>();
+			let highest = ptr::null::<c_void>();
 
-			// Mapping the full ACPI data
+			// Map all ACPI data
 			let begin = util::down_align(lowest, memory::PAGE_SIZE);
 			let end = util::align(highest, memory::PAGE_SIZE);
 			let pages = (end as usize - begin as usize) / memory::PAGE_SIZE;
@@ -238,7 +222,7 @@ impl ACPIData {
 			&*rsdt_ptr
 		};
 
-		let entries_len = rsdt.header.get_length() - size_of::<Rsdt>();
+		let entries_len = rsdt.header.length as usize - size_of::<Rsdt>();
 		let entries_count = entries_len / size_of::<u32>();
 		let entries_ptr = (rsdt_ptr as usize + size_of::<Rsdt>()) as *const u32;
 
@@ -251,7 +235,7 @@ impl ACPIData {
 			};
 			let header = unsafe { &*header_ptr };
 
-			if *header.get_signature() == *T::get_expected_signature() {
+			if header.signature == *T::get_expected_signature() {
 				let table = unsafe {
 					let table_ptr = header_ptr as *const T;
 					&*table_ptr
@@ -282,7 +266,7 @@ impl ACPIData {
 			&*rsdt_ptr
 		};
 
-		let entries_len = rsdt.header.get_length() - size_of::<Rsdt>();
+		let entries_len = rsdt.header.length as usize - size_of::<Rsdt>();
 		let entries_count = entries_len / size_of::<u32>();
 		let entries_ptr = (rsdt_ptr as usize + size_of::<Rsdt>()) as *const u32;
 
@@ -295,10 +279,9 @@ impl ACPIData {
 			};
 			let header = unsafe { &*header_ptr };
 
-			if *header.get_signature() == *T::get_expected_signature() {
-				let len = header.get_length();
+			if header.signature == *T::get_expected_signature() {
 				let table = unsafe {
-					let table_ptr = ptr::from_raw_parts::<T>(header_ptr as *const (), len);
+					let table_ptr = ptr::from_raw_parts::<T>(header_ptr as *const (), header.length as usize);
 					&*table_ptr
 				};
 

@@ -31,6 +31,6 @@ impl Dsdt {
 
 impl ACPITable for Dsdt {
 	fn get_expected_signature() -> &'static [u8; 4] {
-		&[b'D', b'S', b'D', b'T']
+		b"DSDT"
 	}
 }

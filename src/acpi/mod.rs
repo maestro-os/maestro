@@ -24,9 +24,9 @@ mod rsdt;
 #[derive(Debug)]
 pub struct ACPITableHeader {
 	/// The signature of the structure.
-	signature: [u8; 4],
+	pub signature: [u8; 4],
 	/// The length of the structure.
-	length: u32,
+	pub length: u32,
 	/// The revision number of the structure.
 	revision: u8,
 	/// The checksum to check against all the structure's bytes.
@@ -44,25 +44,13 @@ pub struct ACPITableHeader {
 }
 
 impl ACPITableHeader {
-	/// Returns the name of the table.
-	#[inline(always)]
-	pub fn get_signature(&self) -> &[u8; 4] {
-		&self.signature
-	}
-
-	/// Returns the length of the table.
-	#[inline(always)]
-	pub fn get_length(&self) -> usize {
-		self.length as _
-	}
-
 	/// Checks that the table is valid.
 	pub fn check<T: ACPITable + ?Sized>(&self) -> bool {
 		if self.signature != *T::get_expected_signature() {
 			return false;
 		}
 
-		let length = self.get_length();
+		let length = self.length as usize;
 		if length < size_of::<Self>() {
 			return false;
 		}
@@ -107,24 +95,22 @@ pub fn is_century_register_present() -> bool {
 ///
 /// This function must be called only once, at boot.
 pub fn init() {
-	// Reading ACPI data
+	// Read ACPI data
 	let data = ACPIData::read().unwrap_or_else(|_| {
 		panic!("Invalid ACPI data!");
 	});
 
 	if let Some(data) = data {
 		if let Some(madt) = data.get_table_sized::<Madt>() {
-			// Registering CPU cores
-			madt.foreach_entry(|e: &madt::EntryHeader| match e.get_type() {
-				0 => {
+			// Register CPU cores
+			for e in madt.entries() {
+				if e.entry_type == 0 {
 					// TODO Register a new CPU
 				}
-
-				_ => {}
-			});
+			}
 		}
 
-		// Setting the century register value
+		// Set the century register value
 		unsafe {
 			// Safe because the value is only set once
 			CENTURY_REGISTER = data
@@ -132,13 +118,13 @@ pub fn init() {
 				.map_or(false, |fadt| fadt.century != 0);
 		}
 
-		// Getting the DSDT
+		// Get the DSDT
 		let dsdt = data.get_table_unsized::<Dsdt>().or_else(|| {
 			data.get_table_sized::<Fadt>()
-				.and_then(|fadt| fadt.get_dsdt())
+				.and_then(Fadt::get_dsdt)
 		});
 		if let Some(dsdt) = dsdt {
-			// Parsing AML code
+			// Parse AML code
 			let aml = dsdt.get_aml();
 			let _ast = aml::parse(aml);
 
