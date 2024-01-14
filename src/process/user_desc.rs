@@ -107,11 +107,7 @@ impl UserDesc {
 impl fmt::Debug for UserDesc {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "entry_number: {}, ", self.get_entry_number())?;
-		write!(
-			f,
-			"base_addr: {:p}, ",
-			self.get_base_addr() as *const c_void
-		)?;
+		write!(f, "base_addr: {:p}, ", self.get_base_addr())?;
 		write!(f, "limit: {:x}, ", self.get_limit())?;
 		write!(f, "seg_32bit: {}, ", self.is_32bits())?;
 		write!(f, "read_exec_only: {}, ", self.is_read_exec_only())?;

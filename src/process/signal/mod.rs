@@ -177,11 +177,12 @@ impl SigEvent {
 }
 
 /// Enumeration containing the different possibilities for signal handling.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum SignalHandler {
 	/// Ignores the signal.
 	Ignore,
 	/// Executes the default action.
+	#[default]
 	Default,
 	/// A custom action defined with a call to signal.
 	Handler(SigAction),
@@ -491,22 +492,18 @@ impl Signal {
 				// Padding (return pointer)
 				signal_data[0] = 0;
 
-				let signal_trampoline = unsafe {
-					transmute::<extern "C" fn(*const c_void, i32) -> !, *const c_void>(
-						signal_trampoline,
-					)
-				};
+				let signal_trampoline = signal_trampoline as *const c_void;
 
 				let mut regs = process.regs.clone();
-				// Setting the stack to point to the signal's data
+				// Set the stack to point to the signal's data
 				regs.esp = signal_esp as _;
-				// Setting the program counter to point to the signal trampoline
+				// Set the program counter to point to the signal trampoline
 				regs.eip = signal_trampoline as _;
 
-				// Saves the current state of the process to be restored when the handler will
+				// Save the current state of the process to be restored when the handler will
 				// return
 				process.signal_save(self.clone());
-				// Setting the process's registers to call the signal handler
+				// Set the process's registers to call the signal handler
 				process.regs = regs;
 			}
 

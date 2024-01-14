@@ -27,7 +27,7 @@ pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno>
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
-		let fds_mutex = proc.get_fds().unwrap().clone();
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		(mem_space, fds_mutex)
 	};
 

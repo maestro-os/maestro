@@ -101,7 +101,7 @@ fn build_path_from_fd(
 		if dirfd < 0 {
 			return Err(errno!(EBADF));
 		}
-		let fds_mutex = process.get_fds().unwrap();
+		let fds_mutex = process.file_descriptors.as_ref().unwrap();
 		let fds = fds_mutex.lock();
 		let open_file_mutex = fds
 			.get_fd(dirfd as _)
@@ -150,7 +150,7 @@ pub fn get_file_at(
 			if dirfd < 0 {
 				return Err(errno!(EBADF));
 			}
-			let fds_mutex = process.get_fds().unwrap();
+			let fds_mutex = process.file_descriptors.as_ref().unwrap();
 			let fds = fds_mutex.lock();
 			let open_file_mutex = fds
 				.get_fd(dirfd as _)

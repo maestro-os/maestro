@@ -139,7 +139,7 @@ impl State {
 type ExitStatus = u8;
 
 /// Process forking parameters.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ForkOptions {
 	/// If `true`, the parent and child processes both share the same address
 	/// space.
@@ -159,18 +159,6 @@ pub struct ForkOptions {
 	/// This is useful in order to avoid an unnecessary clone of the memory space in case the
 	/// child process executes a program or exits quickly.
 	pub vfork: bool,
-}
-
-impl Default for ForkOptions {
-	fn default() -> Self {
-		Self {
-			share_memory: false,
-			share_fd: false,
-			share_sighand: false,
-
-			vfork: false,
-		}
-	}
 }
 
 /// The vfork operation is similar to the fork operation except the parent
@@ -264,14 +252,14 @@ pub struct Process {
 	/// Current root path used by the process
 	pub chroot: Arc<Path>,
 	/// The list of open file descriptors with their respective ID.
-	file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
+	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
 	/// A bitfield storing the set of blocked signals.
 	pub sigmask: Bitfield,
 	/// A bitfield storing the set of pending signals.
 	sigpending: Bitfield,
 	/// The list of signal handlers.
-	signal_handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
+	pub signal_handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
 
 	/// TLS entries.
 	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
@@ -563,9 +551,7 @@ impl Process {
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
-			signal_handlers: Arc::new(Mutex::new(
-				[SignalHandler::Default; signal::SIGNALS_COUNT],
-			))?,
+			signal_handlers: Arc::new(Mutex::new(Default::default()))?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
 
@@ -815,16 +801,6 @@ impl Process {
 		self.mem_space = mem_space;
 	}
 
-	/// Returns the file descriptor table associated with the process.
-	pub fn get_fds(&self) -> Option<&Arc<Mutex<FileDescriptorTable>>> {
-		self.file_descriptors.as_ref()
-	}
-
-	/// Sets the file descriptor table of the process.
-	pub fn set_fds(&mut self, fds: Option<Arc<Mutex<FileDescriptorTable>>>) {
-		self.file_descriptors = fds;
-	}
-
 	/// Updates the TSS on the current core for the process.
 	pub fn update_tss(&self) {
 		// Compute the kernel stack pointer
@@ -1031,19 +1007,6 @@ impl Process {
 		Ok(sched_mutex.lock().add_process(process)?)
 	}
 
-	// TODO return a &Arc instead of locking
-	/// Returns the signal handler for the signal `sig`.
-	#[inline(always)]
-	pub fn get_signal_handler(&self, sig: &Signal) -> SignalHandler {
-		self.signal_handlers.lock()[sig.get_id() as usize]
-	}
-
-	/// Sets the signal handler `handler` for the signal `sig`.
-	#[inline(always)]
-	pub fn set_signal_handler(&mut self, sig: &Signal, handler: SignalHandler) {
-		self.signal_handlers.lock()[sig.get_id() as usize] = handler;
-	}
-
 	/// Tells whether the process is handling a signal.
 	#[inline(always)]
 	pub fn is_handling_signal(&self) -> bool {
@@ -1098,6 +1061,16 @@ impl Process {
 	/// Tells whether the given signal is blocked by the process.
 	pub fn is_signal_blocked(&self, sig: &Signal) -> bool {
 		self.sigmask.is_set(sig.get_id() as _)
+	}
+
+	/// Returns the handler for the given signal.
+	pub fn get_signal_handler(&self, sig: &Signal) -> SignalHandler {
+		self.signal_handlers.lock()[sig.get_id() as usize].clone()
+	}
+
+	/// Sets the handler for the given signal.
+	pub fn set_signal_handler(&self, sig: &Signal, handler: SignalHandler) {
+		self.signal_handlers.lock()[sig.get_id() as usize] = handler;
 	}
 
 	/// Returns an immutable reference to the process's pending signals mask.

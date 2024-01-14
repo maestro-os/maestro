@@ -106,7 +106,7 @@ pub fn as_slice<T>(val: &T) -> &[u8] {
 /// Returns the length of the string representation of the number at the
 /// beginning of the given string `s`.
 pub fn nbr_len(s: &[u8]) -> usize {
-	s.into_iter()
+	s.iter()
 		.enumerate()
 		.find(|(_, s)| **s < b'0' || **s > b'9')
 		.map(|(i, _)| i)

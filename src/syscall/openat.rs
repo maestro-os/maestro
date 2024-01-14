@@ -2,7 +2,6 @@
 
 use super::util;
 use crate::errno::Errno;
-use crate::file;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::open_file;
 use crate::file::open_file::OpenFile;
@@ -72,7 +71,7 @@ pub fn openat(
 	dirfd: c_int,
 	pathname: SyscallString,
 	flags: c_int,
-	mode: file::Mode,
+	mode: Mode,
 ) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let ap = proc_mutex.lock().access_profile;
@@ -92,7 +91,7 @@ pub fn openat(
 		fd_flags |= FD_CLOEXEC;
 	}
 	let proc = proc_mutex.lock();
-	let fds_mutex = proc.get_fds().unwrap();
+	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
 	let fd = fds.create_fd(fd_flags, open_file)?;
 

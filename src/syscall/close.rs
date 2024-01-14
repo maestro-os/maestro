@@ -15,7 +15,7 @@ pub fn close(fd: c_int) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let fds_mutex = proc.get_fds().unwrap();
+	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
 
 	fds.close_fd(fd as _)?;

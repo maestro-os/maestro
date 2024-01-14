@@ -29,7 +29,7 @@ pub fn _llseek(
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 
-		let fds_mutex = proc.get_fds().unwrap().clone();
+		let fds_mutex = proc.file_descriptors.as_ref().unwrap().clone();
 		let fds = fds_mutex.lock();
 
 		let open_file_mutex = fds

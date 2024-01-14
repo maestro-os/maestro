@@ -99,7 +99,7 @@ pub fn do_select<T: TimeUnit>(
 				let proc = proc_mutex.lock();
 
 				let mem_space = proc.get_mem_space().unwrap().clone();
-				let fds_mutex = proc.get_fds().unwrap().clone();
+				let fds_mutex = proc.file_descriptors.clone().unwrap();
 
 				(mem_space, fds_mutex)
 			};
@@ -160,7 +160,7 @@ pub fn do_select<T: TimeUnit>(
 
 			let result = open_file.poll(mask)?;
 
-			// Setting results
+			// Set results
 			let mut mem_space_guard = mem_space.lock();
 			if read && result & io::POLLIN != 0 {
 				readfds

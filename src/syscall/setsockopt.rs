@@ -25,7 +25,7 @@ pub fn setsockopt(
 	let proc = proc_mutex.lock();
 
 	// Get socket
-	let fds_mutex = proc.get_fds().unwrap();
+	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let fds = fds_mutex.lock();
 	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
 	let open_file_mutex = fd.get_open_file();

@@ -83,7 +83,7 @@ pub fn do_writev(
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 
-		let fds_mutex = proc.get_fds().unwrap().clone();
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
 		let open_file_mutex = fds
 			.get_fd(fd as _)
