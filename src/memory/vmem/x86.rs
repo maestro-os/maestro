@@ -41,13 +41,14 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a
 //! page table.
 
-use crate::cpu;
 use crate::errno::AllocResult;
 use crate::memory;
 use crate::memory::buddy;
 use crate::memory::vmem::VMem;
+use crate::register_get;
 use crate::util::lock::Mutex;
 use crate::util::TryClone;
+use core::arch::asm;
 use core::ffi::c_void;
 use core::ptr;
 use core::slice;
@@ -97,13 +98,6 @@ pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 extern "C" {
 	/// Enables paging with the given page directory.
 	pub fn paging_enable(directory: *const u32);
-	/// Disables paging.
-	pub fn paging_disable();
-
-	/// Executes the `invlpg` instruction for the address `addr`.
-	fn invlpg(addr: *const c_void);
-	/// Reloads the TLB (Translation Lookaside Buffer).
-	fn tlb_reload();
 }
 
 /// When editing a virtual memory context, the kernel might edit pages in kernel
@@ -639,24 +633,30 @@ impl VMem for X86VMem {
 	}
 
 	fn is_bound(&self) -> bool {
-		unsafe { cpu::cr3_get() == memory::kern_to_phys(self.page_dir as _) as _ }
+		unsafe { register_get!("cr3") == memory::kern_to_phys(self.page_dir as _) as _ }
 	}
 
+	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	fn invalidate_page(&self, addr: *const c_void) {
 		// TODO Also invalidate on other CPU core (TLB shootdown)
-
 		unsafe {
-			invlpg(addr);
+			asm!("invlpg [{addr}]", addr = in(reg) addr);
 		}
 	}
 
 	fn flush(&self) {
-		// TODO Also invalidate on other CPU core (TLB shootdown)
+		if !self.is_bound() {
+			return;
+		}
 
-		if self.is_bound() {
-			unsafe {
-				tlb_reload();
-			}
+		// TODO Also invalidate on other CPU core (TLB shootdown)
+		// Flush TLB
+		unsafe {
+			asm!(
+				"mov {tmp}, cr3",
+				"mov cr3, {tmp}",
+				tmp = out(reg) _
+			);
 		}
 	}
 }

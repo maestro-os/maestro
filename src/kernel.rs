@@ -252,47 +252,43 @@ fn init(init_path: String) -> Result<(), Errno> {
 /// An inner function is required to ensure everything in scope is dropped before calling
 /// [`enter_loop`].
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
-	// Initializing TTY
+	// Initialize TTY
 	tty::init();
-
-	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {
-		panic!("Bootloader non compliant with Multiboot2!");
-	}
-
-	// Initializing IDT
-	idt::init();
-
-	// Ensuring the CPU has SSE
+	// Ensure the CPU has SSE
 	if !cpu::sse::is_present() {
 		panic!("SSE support is required to run this kernel :(");
 	}
 	cpu::sse::enable();
+	// Initialize IDT
+	idt::init();
 
-	// Reading multiboot informations
-	multiboot::read_tags(multiboot_ptr);
+	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {
+		panic!("Bootloader non compliant with Multiboot2!");
+	}
+	// Read multiboot information
+	unsafe {
+		multiboot::read_tags(multiboot_ptr);
+	}
 
-	// Initializing memory allocation
+	// Initialize memory management
 	memory::memmap::init(multiboot_ptr);
 	if cfg!(config_debug_debug) {
 		memory::memmap::print_entries();
 	}
 	memory::alloc::init();
+	init_vmem().unwrap_or_else(|e| panic!("Cannot initialize kernel virtual memory! ({e})"));
 
-	if init_vmem().is_err() {
-		panic!("Cannot initialize kernel virtual memory!");
-	}
-
-	// From here, the kernel considers that memory management has been fully
+	// From now on, the kernel considers that memory management has been fully
 	// initialized
 
-	// Performing kernel self-tests
+	// Perform kernel self-tests
 	#[cfg(test)]
 	kernel_selftest();
 
 	let boot_info = multiboot::get_boot_info();
 
-	// Parsing bootloader command line arguments
-	let cmdline = boot_info.cmdline.unwrap_or(b"");
+	// Parse bootloader command line arguments
+	let cmdline = boot_info.cmdline.unwrap_or_default();
 	let args_parser = match cmdline::ArgsParser::parse(cmdline) {
 		Ok(p) => p,
 		Err(e) => {
@@ -309,9 +305,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	//acpi::init();
 
 	println!("Initializing time management...");
-	if time::init().is_err() {
-		panic!("failed to initialize time management");
-	}
+	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));
 
 	// FIXME
 	/*println!("Initializing ramdisks...");
@@ -325,7 +319,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	let root = args_parser.get_root_dev();
 	println!("Initializing files management...");
 	file::init(root).unwrap_or_else(|e| panic!("Failed to initialize files management! ({e})"));
-	if let Some(initramfs) = &boot_info.initramfs {
+	if let Some(initramfs) = boot_info.initramfs {
 		println!("Initializing initramfs...");
 		initramfs::load(initramfs)
 			.unwrap_or_else(|e| panic!("Failed to initialize initramfs! ({e})"));
@@ -348,7 +342,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 ///
 /// Arguments:
 /// - `magic` is the magic number passed by Multiboot.
-/// - `multiboot_ptr` is the pointer to the Multiboot booting informations
+/// - `multiboot_ptr` is the pointer to the Multiboot booting information
 /// structure.
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {

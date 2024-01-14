@@ -38,7 +38,6 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
-use crate::cpu;
 use crate::errno;
 use crate::errno::AllocResult;
 use crate::errno::EResult;
@@ -59,6 +58,7 @@ use crate::gdt;
 use crate::memory;
 use crate::process::mountpoint::MountSource;
 use crate::process::open_file::OpenFile;
+use crate::register_get;
 use crate::time::timer::TimerManager;
 use crate::tty;
 use crate::tty::TTYHandle;
@@ -392,7 +392,7 @@ pub fn init() -> Result<(), Errno> {
 		}
 	};
 	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
-		let accessed_ptr = unsafe { cpu::cr2_get() };
+		let accessed_ptr = unsafe { register_get!("cr2") } as *const c_void;
 
 		// Get process
 		let curr_proc = {
@@ -410,7 +410,6 @@ pub fn init() -> Result<(), Errno> {
 		let success = {
 			let mem_space_mutex = curr_proc.get_mem_space().unwrap();
 			let mut mem_space = mem_space_mutex.lock();
-
 			mem_space.handle_page_fault(accessed_ptr, code)
 		};
 

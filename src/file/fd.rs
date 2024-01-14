@@ -46,14 +46,12 @@ static TOTAL_FD: Mutex<usize> = Mutex::new(0);
 ///
 /// If the maximum amount of file descriptors is reached, the function does
 /// nothing and returns an error with the appropriate errno.
-fn increment_total() -> Result<(), Errno> {
+fn increment_total() -> EResult<()> {
 	let mut total_fd = TOTAL_FD.lock();
-
 	if *total_fd >= TOTAL_MAX_FD {
 		return Err(errno!(ENFILE));
 	}
 	*total_fd += 1;
-
 	Ok(())
 }
 

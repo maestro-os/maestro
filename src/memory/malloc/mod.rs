@@ -234,6 +234,7 @@ impl<T> Alloc<T> {
 	}
 
 	/// Returns the size of the allocation in number of elements.
+	#[allow(clippy::len_without_is_empty)]
 	pub fn len(&self) -> usize {
 		self.slice.len()
 	}
@@ -251,9 +252,8 @@ impl<T> Alloc<T> {
 	/// Since the memory is not initialized, objects in the allocation might be
 	/// in an inconsistent state.
 	pub unsafe fn realloc(&mut self, n: NonZeroUsize) -> AllocResult<()> {
-		let len = n
-			.checked_mul(size_of::<T>().try_into().unwrap())
-			.ok_or_else(|| AllocError)?;
+		let elem_size = size_of::<T>().try_into().map_err(|_| AllocError)?;
+		let len = n.checked_mul(elem_size).ok_or(AllocError)?;
 		let ptr = realloc(self.slice.cast(), len)?;
 		self.slice =
 			NonNull::new(slice::from_raw_parts_mut::<T>(ptr.cast().as_mut(), n.get())).unwrap();

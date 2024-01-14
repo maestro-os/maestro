@@ -16,20 +16,19 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module handles the memory informations, which stores global
-//! informations on the system memory by retrieving them from the boot
-//! informations. These data are meant to be used by the memory allocators.
+//! This module handles the memory information, which stores global
+//! information on the system memory by retrieving them from the boot
+//! information. These data are meant to be used by the memory allocators.
 
 use super::stats;
 use crate::elf;
-use crate::memory;
 use crate::memory::*;
 use crate::multiboot;
 use crate::util;
 use core::cmp::*;
 use core::mem::MaybeUninit;
 
-/// Structure storing informations relative to the main memory.
+/// Structure storing information relative to the main memory.
 #[derive(Debug)]
 pub struct MemoryInfo {
 	/// Size of the Multiboot2 memory map
@@ -49,13 +48,14 @@ pub struct MemoryInfo {
 /// Variable containing the memory mapping.
 static mut MEM_INFO: MaybeUninit<MemoryInfo> = MaybeUninit::uninit();
 
-/// Returns the structure storing memory mapping informations.
+/// Returns the structure storing memory mapping information.
 pub fn get_info() -> &'static MemoryInfo {
 	unsafe { MEM_INFO.assume_init_mut() }
 }
 
 /// Prints the physical memory mapping.
-pub fn print_entries() {
+#[cfg(config_debug_debug)]
+pub(crate) fn print_entries() {
 	let mem_info = get_info();
 	debug_assert!(!mem_info.memory_maps.is_null());
 
@@ -70,8 +70,7 @@ pub fn print_entries() {
 			let begin = entry.addr;
 			let end = begin + entry.len;
 			let type_ = entry.get_type_string();
-
-			crate::println!("- 0x{:x} 0x{:x} {}", begin, end, type_);
+			crate::println!("- {begin:08x} {end:08x} {type_}");
 		}
 
 		ptr = ((ptr as usize) + mem_info.memory_maps_entry_size) as *const _;
@@ -84,9 +83,9 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 	let boot_info = multiboot::get_boot_info();
 
 	// The end of the kernel code
-	let mut begin = memory::get_kernel_end();
+	let mut begin = get_kernel_end();
 
-	let multiboot_tags_size = multiboot::get_tags_size(multiboot_ptr);
+	let multiboot_tags_size = unsafe { multiboot::get_tags_size(multiboot_ptr) };
 	// The end of multiboot tags
 	let multiboot_tags_end = ((multiboot_ptr as usize) + multiboot_tags_size) as *const _;
 	begin = max(begin, multiboot_tags_end);
@@ -107,23 +106,23 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 
 	// The end of the loaded initramfs, if any
 	if let Some(initramfs) = boot_info.initramfs {
-		let initramfs_begin = memory::kern_to_phys(initramfs.as_ptr() as _);
+		let initramfs_begin = kern_to_phys(initramfs.as_ptr() as _);
 		let initramfs_end = ((initramfs_begin as usize) + initramfs.len()) as *const c_void;
 
 		begin = max(begin, initramfs_end);
 	}
 
 	// Page-align
-	begin = util::align(begin, memory::PAGE_SIZE);
+	begin = util::align(begin, PAGE_SIZE);
 
 	// TODO Handle 64-bits systems
 	let pages = min((1000 + boot_info.mem_upper) / 4, 1024 * 1024) as usize
-		- ((begin as usize) / memory::PAGE_SIZE);
+		- ((begin as usize) / PAGE_SIZE);
 	(begin, pages)
 }
 
-/// Fills the memory mapping structure according to Multiboot's informations.
-pub fn init(multiboot_ptr: *const c_void) {
+/// Fills the memory mapping structure according to Multiboot's information.
+pub(crate) fn init(multiboot_ptr: *const c_void) {
 	let boot_info = multiboot::get_boot_info();
 	let mem_info = unsafe { MEM_INFO.assume_init_mut() };
 
