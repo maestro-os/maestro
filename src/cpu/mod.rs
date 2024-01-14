@@ -1,5 +1,7 @@
 //! CPU-specific features.
 
+use core::arch::asm;
+
 pub mod sse;
 
 /// Returns the value stored into the specified register.
@@ -20,10 +22,15 @@ macro_rules! register_set {
 	}};
 }
 
-extern "C" {
-	/// Tells whether the CPU has SSE.
-	fn cpuid_has_sse() -> bool;
-
-	/// Returns HWCAP bitmask for ELF.
-	pub fn get_hwcap() -> u32;
+/// Returns HWCAP bitmask for ELF.
+pub fn get_hwcap() -> u32 {
+	let mut hwcap: u32;
+	unsafe {
+		asm!(
+			"cpuid",
+			in("eax") 1,
+			lateout("edx") hwcap
+		);
+	}
+	hwcap
 }

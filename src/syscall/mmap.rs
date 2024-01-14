@@ -116,13 +116,13 @@ pub fn do_mmap(
 			if !matches!(file.get_type(), FileType::Regular) {
 				return Err(errno!(EACCES));
 			}
-			if prot & PROT_READ != 0 && !proc.access_profile.can_read_file(&*file) {
+			if prot & PROT_READ != 0 && !proc.access_profile.can_read_file(&file) {
 				return Err(errno!(EPERM));
 			}
-			if prot & PROT_WRITE != 0 && !proc.access_profile.can_write_file(&*file) {
+			if prot & PROT_WRITE != 0 && !proc.access_profile.can_write_file(&file) {
 				return Err(errno!(EPERM));
 			}
-			if prot & PROT_EXEC != 0 && !proc.access_profile.can_execute_file(&*file) {
+			if prot & PROT_EXEC != 0 && !proc.access_profile.can_execute_file(&file) {
 				return Err(errno!(EPERM));
 			}
 

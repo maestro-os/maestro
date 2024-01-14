@@ -54,7 +54,9 @@ impl String {
 	/// Same as `as_str` except the function doesn't check the string is a
 	/// correct UTF-8 sequence.
 	///
-	/// If invalid, the behaviour is undefined.
+	/// # Safety
+	///
+	/// If the string is not a valid in UTF-8 encoding, the behavior is undefined.
 	#[inline]
 	pub unsafe fn as_str_unchecked(&self) -> &str {
 		str::from_utf8_unchecked(self.as_bytes())

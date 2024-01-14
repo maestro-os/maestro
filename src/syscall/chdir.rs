@@ -34,7 +34,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 		if dir.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-		if !ap.can_list_directory(&*dir) {
+		if !ap.can_list_directory(&dir) {
 			return Err(errno!(EACCES));
 		}
 	}

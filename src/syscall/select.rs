@@ -36,20 +36,20 @@ impl FDSet {
 		}
 
 		// TODO Check correctness
-		self.fds_bits[(fd as usize) / c_long::BITS as usize] >> (fd % (c_long::BITS as u32)) != 0
+		self.fds_bits[(fd as usize) / c_long::BITS as usize] >> (fd % c_long::BITS) != 0
 	}
 
 	/// Sets the bit for file descriptor `fd`.
 	pub fn set(&mut self, fd: u32) {
 		// TODO Check correctness
-		self.fds_bits[(fd as usize) / c_long::BITS as usize] |= 1 << (fd % (c_long::BITS as u32));
+		self.fds_bits[(fd as usize) / c_long::BITS as usize] |= 1 << (fd % c_long::BITS);
 	}
 
 	/// Clears the bit for file descriptor `fd`.
 	pub fn clear(&mut self, fd: u32) {
 		// TODO Check correctness
 		self.fds_bits[(fd as usize) / c_long::BITS as usize] &=
-			!(1 << (fd % (c_long::BITS as u32)));
+			!(1 << (fd % c_long::BITS));
 	}
 }
 
@@ -162,39 +162,33 @@ pub fn do_select<T: TimeUnit>(
 
 			// Set results
 			let mut mem_space_guard = mem_space.lock();
-			if read && result & io::POLLIN != 0 {
-				readfds
-					.get_mut(&mut mem_space_guard)?
-					.map(|fds| fds.set(fd_id));
-				events_count += 1;
-			} else {
-				readfds
-					.get_mut(&mut mem_space_guard)?
-					.map(|fds| fds.clear(fd_id));
+			if let Some(fds) = readfds.get_mut(&mut mem_space_guard)? {
+				if read && result & io::POLLIN != 0 {
+					fds.set(fd_id);
+					events_count += 1;
+				} else {
+					fds.clear(fd_id);
+				}
 			}
-			if write && result & io::POLLOUT != 0 {
-				writefds
-					.get_mut(&mut mem_space_guard)?
-					.map(|fds| fds.set(fd_id));
-				events_count += 1;
-			} else {
-				writefds
-					.get_mut(&mut mem_space_guard)?
-					.map(|fds| fds.clear(fd_id));
+			if let Some(fds) = writefds.get_mut(&mut mem_space_guard)? {
+				if write && result & io::POLLOUT != 0 {
+					fds.set(fd_id);
+					events_count += 1;
+				} else {
+					fds.clear(fd_id);
+				}
 			}
-			if except && result & io::POLLPRI != 0 {
-				exceptfds
-					.get_mut(&mut mem_space_guard)?
-					.map(|fds| fds.set(fd_id));
-				events_count += 1;
-			} else {
-				exceptfds
-					.get_mut(&mut mem_space_guard)?
-					.map(|fds| fds.clear(fd_id));
+			if let Some(fds) = exceptfds.get_mut(&mut mem_space_guard)? {
+				if except && result & io::POLLPRI != 0 {
+					fds.set(fd_id);
+					events_count += 1;
+				} else {
+					fds.clear(fd_id);
+				}
 			}
 		}
 
-		// If one or more events occured, return
+		// If one or more events occurred, return
 		if all_zeros || polling || events_count > 0 {
 			return Ok(events_count);
 		}

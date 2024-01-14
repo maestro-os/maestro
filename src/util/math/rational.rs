@@ -186,6 +186,7 @@ impl Div<i64> for Rational {
 	fn div(self, other: i64) -> Self {
 		let mut s = Self {
 			a: self.a,
+			#[allow(clippy::suspicious_arithmetic_impl)]
 			b: self.b * other,
 		};
 		s.reduce();

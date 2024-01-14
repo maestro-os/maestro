@@ -29,7 +29,7 @@ pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
 	let mut file = file_mutex.lock();
 
 	// Check permissions
-	if !ap.can_set_file_permissions(&*file) {
+	if !ap.can_set_file_permissions(&file) {
 		return Err(errno!(EPERM));
 	}
 

@@ -13,7 +13,7 @@
 //! Before using a drive, the kernel has to:
 //! - Reset the ATA controller
 //! - Select the drive (with the dedicated command)
-//! - Identify it to retrieve informations, such as whether the drives support LBA48
+//! - Identify it to retrieve information, such as whether the drives support LBA48
 //!
 //! TODO
 
@@ -22,7 +22,7 @@
 use super::StorageInterface;
 use crate::device::storage::ide;
 use crate::errno;
-use crate::errno::Errno;
+use crate::errno::{EResult};
 use crate::io;
 use crate::util::math;
 use core::cmp::min;
@@ -105,7 +105,7 @@ const SECTOR_SIZE: u64 = 512;
 
 /// Applies a delay. `n` determines the amount to wait.
 ///
-/// This function is a dirty hack and the actual delay is approximative but
+/// This function is a dirty hack and the actual delay is approximate but
 /// **should** be sufficient.
 fn delay(n: u32) {
 	let n = math::ceil_div(n, 30) * 1000;
@@ -165,44 +165,40 @@ impl PATAInterface {
 	/// Reads a byte from the register at offset `port_off`.
 	#[inline(always)]
 	fn inb(&self, port_off: PortOffset) -> u8 {
-		let (bar, off) = match &port_off {
-			PortOffset::Ata(off) => (&self.channel.ata_bar, *off),
-			PortOffset::Control(off) => (&self.channel.control_bar, *off),
+		let (bar, off) = match port_off {
+			PortOffset::Ata(off) => (&self.channel.ata_bar, off),
+			PortOffset::Control(off) => (&self.channel.control_bar, off),
 		};
-
 		bar.read::<u8>(off as _) as _
 	}
 
 	/// Reads a word from the register at offset `port_off`.
 	#[inline(always)]
 	fn inw(&self, port_off: PortOffset) -> u16 {
-		let (bar, off) = match &port_off {
-			PortOffset::Ata(off) => (&self.channel.ata_bar, *off),
-			PortOffset::Control(off) => (&self.channel.control_bar, *off),
+		let (bar, off) = match port_off {
+			PortOffset::Ata(off) => (&self.channel.ata_bar, off),
+			PortOffset::Control(off) => (&self.channel.control_bar, off),
 		};
-
 		bar.read::<u16>(off as _) as _
 	}
 
 	/// Writes a byte into the register at offset `port_off`.
 	#[inline(always)]
 	fn outb(&self, port_off: PortOffset, value: u8) {
-		let (bar, off) = match &port_off {
-			PortOffset::Ata(off) => (&self.channel.ata_bar, *off),
-			PortOffset::Control(off) => (&self.channel.control_bar, *off),
+		let (bar, off) = match port_off {
+			PortOffset::Ata(off) => (&self.channel.ata_bar, off),
+			PortOffset::Control(off) => (&self.channel.control_bar, off),
 		};
-
 		bar.write::<u8>(off as _, value as _) as _
 	}
 
 	/// Writes a word into the register at offset `port_off`.
 	#[inline(always)]
 	fn outw(&self, port_off: PortOffset, value: u16) {
-		let (bar, off) = match &port_off {
-			PortOffset::Ata(off) => (&self.channel.ata_bar, *off),
-			PortOffset::Control(off) => (&self.channel.control_bar, *off),
+		let (bar, off) = match port_off {
+			PortOffset::Ata(off) => (&self.channel.ata_bar, off),
+			PortOffset::Control(off) => (&self.channel.control_bar, off),
 		};
-
 		bar.write::<u16>(off as _, value as _) as _
 	}
 
@@ -237,7 +233,6 @@ impl PATAInterface {
 		if self.is_floating() {
 			return;
 		}
-
 		while self.get_status() & STATUS_BSY != 0 {}
 	}
 
@@ -323,11 +318,9 @@ impl PATAInterface {
 
 		loop {
 			let status = self.get_status();
-
 			if status & STATUS_ERR != 0 {
 				return Err("Error while identifying the device");
 			}
-
 			if status & STATUS_DRQ != 0 {
 				break;
 			}
@@ -362,14 +355,12 @@ impl PATAInterface {
 	/// Waits for the drive to be ready for IO operation.
 	///
 	/// The device is assumed to be selected.
-	fn wait_io(&self) -> Result<(), Errno> {
+	fn wait_io(&self) -> EResult<()> {
 		loop {
 			let status = self.get_status();
-
 			if (status & STATUS_BSY == 0) && (status & STATUS_DRQ != 0) {
 				return Ok(());
 			}
-
 			if (status & STATUS_ERR != 0) || (status & STATUS_DF != 0) {
 				return Err(crate::errno!(EIO));
 			}
@@ -387,7 +378,7 @@ impl StorageInterface for PATAInterface {
 	}
 
 	// TODO clean
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> EResult<()> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
 		// If the offset and size are out of bounds of the disk, return an error
@@ -496,7 +487,7 @@ impl StorageInterface for PATAInterface {
 	}
 
 	// TODO clean
-	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> EResult<()> {
 		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
 
 		// If the offset and size are out of bounds of the disk, return an error

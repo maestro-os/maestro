@@ -22,9 +22,7 @@ pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Re
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		req.get(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?
-			.clone()
+		*req.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?
 	};
 
 	// Looping until time is elapsed or the process is interrupted by a signal

@@ -35,8 +35,8 @@ impl Version {
 	// advanced in Rust. When improvements will be made, rewrite it
 	/// Parses a version from the given string.
 	///
-	/// If the version is invalid, the function returns an error.
-	pub const fn parse(s: &str) -> Result<Self, ()> {
+	/// If the version is invalid, the function returns `None`.
+	pub const fn parse(s: &str) -> Option<Self> {
 		let mut nbrs: [u16; 3] = [0; 3];
 		let mut n = 0;
 
@@ -44,7 +44,7 @@ impl Version {
 		let mut i = 0;
 		while i < bytes.len() {
 			if !(bytes[i] as char).is_ascii_digit() {
-				return Err(());
+				return None;
 			}
 
 			// Parse number
@@ -59,19 +59,19 @@ impl Version {
 			n += 1;
 
 			if i < bytes.len() && bytes[i] == b'.' && n >= nbrs.len() {
-				return Err(());
+				return None;
 			}
 			i += 1;
 		}
 
 		if n >= nbrs.len() {
-			Ok(Self {
+			Some(Self {
 				major: nbrs[0],
 				minor: nbrs[1],
 				patch: nbrs[2],
 			})
 		} else {
-			Err(())
+			None
 		}
 	}
 }

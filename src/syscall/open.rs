@@ -64,7 +64,7 @@ fn get_file(
 		let mut parent = parent_mutex.lock();
 
 		let file_result = vfs::get_file_from_parent(
-			&mut parent,
+			&parent,
 			name.try_clone()?,
 			access_profile,
 			follow_links,

@@ -15,6 +15,7 @@ use core::fmt;
 use core::fmt::Debug;
 use core::mem::size_of;
 use core::mem::transmute;
+use core::ptr::NonNull;
 use core::slice;
 use signal_trampoline::signal_trampoline;
 
@@ -154,9 +155,9 @@ pub struct SigEvent {
 	/// TODO doc
 	pub sigev_value: SigVal,
 	/// Data passed with notification.
-	pub sigev_notify_function: extern "C" fn(SigVal),
+	pub sigev_notify_function: Option<NonNull<extern "C" fn(SigVal)>>,
 	/// Fucnction used for thread notification.
-	pub sigev_notify_attributes: *const c_void,
+	pub sigev_notify_attributes: Option<NonNull<c_void>>,
 	/// ID of thread to signal.
 	pub sigev_notify_thread_id: Pid,
 }

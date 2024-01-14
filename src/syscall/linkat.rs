@@ -44,8 +44,8 @@ pub fn linkat(
 	if matches!(old.get_type(), FileType::Directory) {
 		return Err(errno!(EISDIR));
 	}
-	let mut new_parent = new_parent_mutex.lock();
+	let new_parent = new_parent_mutex.lock();
 
-	vfs::create_link(&mut old, &mut new_parent, &new_name, &ap)?;
+	vfs::create_link(&mut old, &new_parent, &new_name, &ap)?;
 	Ok(0)
 }

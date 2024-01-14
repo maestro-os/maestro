@@ -222,7 +222,7 @@ fn build_auxilary(
 		AuxEntryDescValue::String(crate::NAME.as_bytes()),
 	))?;
 
-	let hwcap = unsafe { cpu::get_hwcap() };
+	let hwcap = cpu::get_hwcap();
 	aux.push(AuxEntryDesc::new(
 		AT_HWCAP,
 		AuxEntryDescValue::Number(hwcap as _),

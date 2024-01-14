@@ -28,12 +28,12 @@ use macros::syscall;
 /// - `iovcnt` is the number of chunks in `iov`
 /// - `open_file` is the file to write to
 fn write(
-	mem_space: &mut MemSpace,
+	mem_space: &MemSpace,
 	iov: &SyscallSlice<IOVec>,
 	iovcnt: usize,
 	open_file: &mut OpenFile,
 ) -> EResult<i32> {
-	let iov = iov.get(&mem_space, iovcnt)?.ok_or(errno!(EFAULT))?;
+	let iov = iov.get(mem_space, iovcnt)?.ok_or(errno!(EFAULT))?;
 	let mut total_len = 0;
 
 	for i in iov {
@@ -118,8 +118,8 @@ pub fn do_writev(
 			let prev_off = open_file.get_offset();
 			open_file.set_offset(start_off);
 
-			let mut mem_space_guard = mem_space.lock();
-			let len = match write(&mut mem_space_guard, &iov, iovcnt as _, &mut open_file) {
+			let mem_space_guard = mem_space.lock();
+			let len = match write(&mem_space_guard, &iov, iovcnt as _, &mut open_file) {
 				Ok(len) => len,
 				Err(e) => {
 					// If writing to a broken pipe, kill with SIGPIPE

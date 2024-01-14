@@ -1,10 +1,11 @@
 //! SSE-related features.
 
 use crate::{register_get, register_set};
+use crate::cpu::get_hwcap;
 
 /// Tells whether the CPU supports SSE.
 pub fn is_present() -> bool {
-	unsafe { super::cpuid_has_sse() }
+	get_hwcap() & (1 << 25) != 0
 }
 
 /// Enables SSE.

@@ -127,7 +127,7 @@ fn build_image(
 	envp: Vec<String>,
 ) -> EResult<ProgramImage> {
 	let mut file = file.lock();
-	if !access_profile.can_execute_file(&*file) {
+	if !access_profile.can_execute_file(&file) {
 		return Err(errno!(EACCES));
 	}
 
@@ -175,7 +175,7 @@ pub fn execve(
 		let file = vfs::get_file_from_path(&path, &ap, true)?;
 		let mut f = file.lock();
 
-		if !ap.can_execute_file(&*f) {
+		if !ap.can_execute_file(&f) {
 			return Err(errno!(EACCES));
 		}
 

@@ -2,7 +2,7 @@
 //! device files.
 
 use crate::device::bar::BAR;
-use crate::errno::Errno;
+use crate::errno::{EResult};
 use crate::util::container::hashmap::HashMap;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
@@ -51,10 +51,10 @@ pub trait PhysicalDevice {
 /// and device files.
 pub trait DeviceManager: Any {
 	/// Function called when a new device is plugged in.
-	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno>;
+	fn on_plug(&mut self, dev: &dyn PhysicalDevice) -> EResult<()>;
 
 	/// Function called when a device is plugged out.
-	fn on_unplug(&mut self, dev: &dyn PhysicalDevice) -> Result<(), Errno>;
+	fn on_unplug(&mut self, dev: &dyn PhysicalDevice) -> EResult<()>;
 }
 
 /// The list of device managers.
@@ -62,7 +62,7 @@ static DEVICE_MANAGERS: Mutex<HashMap<TypeId, Arc<Mutex<dyn DeviceManager>>>> =
 	Mutex::new(HashMap::new());
 
 /// Registers the given device manager.
-pub fn register<M: DeviceManager>(manager: M) -> Result<(), Errno> {
+pub fn register<M: DeviceManager>(manager: M) -> EResult<()> {
 	let m = Arc::new(Mutex::new(manager))?;
 
 	let mut device_managers = DEVICE_MANAGERS.lock();
@@ -81,7 +81,7 @@ pub fn get<M: DeviceManager>() -> Option<Arc<Mutex<dyn DeviceManager>>> {
 /// Function that is called when a new device is plugged in.
 ///
 /// `dev` is the device that has been plugged in.
-pub fn on_plug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+pub fn on_plug(dev: &dyn PhysicalDevice) -> EResult<()> {
 	let device_managers = DEVICE_MANAGERS.lock();
 
 	for (_, m) in device_managers.iter() {
@@ -95,7 +95,7 @@ pub fn on_plug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
 /// Function that is called when a device is plugged out.
 ///
 /// `dev` is the device that has been plugged out.
-pub fn on_unplug(dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+pub fn on_unplug(dev: &dyn PhysicalDevice) -> EResult<()> {
 	let device_managers = DEVICE_MANAGERS.lock();
 
 	for (_, m) in device_managers.iter() {

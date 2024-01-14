@@ -67,6 +67,7 @@ impl PIT {
 	/// Creates a new instance.
 	///
 	/// By default, the timer is disabled and its frequency is undefined.
+	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		let mut s = Self {};
 		s.set_enabled(false);
@@ -99,7 +100,7 @@ impl HwClock for PIT {
 		} else {
 			0
 		};
-		if count & !0xffff != 0 {
+		if count == 0xffff {
 			count = 0;
 		}
 

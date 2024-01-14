@@ -382,7 +382,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// Returns a reference to the root node.
 	#[inline]
 	fn get_root(&self) -> Option<&'static mut Node<K, V>> {
-		unsafe { Some((&mut *self.root.get()).as_mut()?.as_mut()) }
+		unsafe { Some((*self.root.get()).as_mut()?.as_mut()) }
 	}
 
 	/// Returns an reference to the leftmost node in the tree.
@@ -430,7 +430,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		let mut last = None;
 
 		while let Some(n) = node {
-			let in_bound = match n.key.cmp(&key) {
+			let in_bound = match n.key.cmp(key) {
 				Ordering::Less => false,
 				Ordering::Greater => true,
 				Ordering::Equal => !exclude,
@@ -1052,7 +1052,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 ///
 /// This is an inner function for node iterators.
 fn next_node<K: Ord + 'static, V: 'static>(
-	node: &mut Node<K, V>,
+	node: &Node<K, V>,
 ) -> Option<&'static mut Node<K, V>> {
 	if let Some(mut node) = node.get_right() {
 		while let Some(n) = node.get_left() {

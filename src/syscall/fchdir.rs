@@ -39,7 +39,7 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 		if file.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-		if !ap.can_list_directory(&*file) {
+		if !ap.can_list_directory(&file) {
 			return Err(errno!(EACCES));
 		}
 

@@ -82,9 +82,10 @@ impl<T: ?Sized> Box<T> {
 	///
 	/// The newly created `Box` takes the ownership of the pointer.
 	///
-	/// The given pointer must be an address to a region of memory allocated
-	/// with the memory allocator since its the allocator that the `Box` will use
-	/// to free it.
+	/// # Safety
+	///
+	/// The given pointer must be valid and must point to an address to a region of memory allocated
+	/// with the memory allocator since `Box` will use the allocator to free it.
 	pub unsafe fn from_raw(ptr: *mut T) -> Self {
 		Self {
 			ptr: NonNull::new(ptr).unwrap(),
@@ -92,6 +93,10 @@ impl<T: ?Sized> Box<T> {
 	}
 
 	/// Returns the raw pointer inside of the `Box`.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure the memory is freed.
 	pub unsafe fn into_raw(b: Box<T>) -> *mut T {
 		ManuallyDrop::new(b).as_mut_ptr()
 	}
