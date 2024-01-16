@@ -39,7 +39,6 @@ use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::null;
 use core::slice;
-use core::str;
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;
@@ -636,13 +635,12 @@ impl ELFExecutor {
 				// Perform relocations if no interpreter is present
 				if !interp && interp_path.is_none() {
 					// Closure returning a symbol from its name
-					let get_sym = |name: &str| elf.get_symbol_by_name(name);
+					let get_sym = |name: &[u8]| elf.get_symbol_by_name(name);
 
 					// Closure returning the value for a given symbol
 					let get_sym_val = |sym_section: u32, sym: u32| {
 						let section = elf.iter_sections().nth(sym_section as usize)?;
 						let sym = elf.iter_symbols(section).nth(sym as usize)?;
-
 						if sym.is_defined() {
 							Some(load_base as u32 + sym.st_value)
 						} else {
@@ -655,7 +653,6 @@ impl ELFExecutor {
 							rel.perform(load_base as _, section, get_sym, get_sym_val)
 								.map_err(|_| errno!(EINVAL))?;
 						}
-
 						for rela in elf.iter_rela(section) {
 							rela.perform(load_base as _, section, get_sym, get_sym_val)
 								.map_err(|_| errno!(EINVAL))?;

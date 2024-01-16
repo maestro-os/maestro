@@ -167,6 +167,7 @@ impl<T: ?Sized> Arc<T> {
 	/// # Safety
 	///
 	/// It is the caller's responsibility to ensure concurrency rules are respected.
+	#[allow(clippy::needless_pass_by_ref_mut)]
 	pub unsafe fn get_mut_unchecked(this: &mut Arc<T>) -> &mut T {
 		&mut (*this.inner.as_ptr()).obj
 	}

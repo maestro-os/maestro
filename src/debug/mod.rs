@@ -2,7 +2,6 @@
 
 use crate::elf;
 use crate::memory;
-use crate::multiboot;
 use crate::util::DisplayableStr;
 use core::ffi::c_void;
 use core::ptr::null_mut;
@@ -23,7 +22,6 @@ pub unsafe fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
 		if frame.is_null() {
 			break;
 		}
-
 		let pc = (*frame.add(1)) as *mut c_void;
 		if pc < memory::PROCESS_END {
 			break;
@@ -39,25 +37,15 @@ pub unsafe fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
 ///
 /// If the callstack is empty, the function just prints `Empty`.
 pub fn print_callstack(stack: &[*mut c_void]) {
-	if stack.is_empty() || stack[0].is_null() {
+	if !matches!(stack.first(), Some(p) if !p.is_null()) {
 		crate::println!("Empty");
 		return;
 	}
-
-	let boot_info = multiboot::get_boot_info();
 	for (i, pc) in stack.iter().enumerate() {
 		if pc.is_null() {
 			break;
 		}
-
-		let name = elf::get_function_name(
-			memory::kern_to_virt(boot_info.elf_sections),
-			boot_info.elf_num as usize,
-			boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize,
-			*pc,
-		)
-		.unwrap_or(b"???");
+		let name = elf::kernel::get_function_name(*pc).unwrap_or(b"???");
 		crate::println!("{i}: {pc:p} -> {}", DisplayableStr(name));
 	}
 }

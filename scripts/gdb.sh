@@ -10,7 +10,7 @@ export QEMUFLAGS="-s -S -d int"
 setsid cargo run &
 QEMU_PID=$!
 
-if [ -z "$ARCH" ]; do
+if [ -z "$ARCH" ]; then
   ARCH="x86"
 fi
 KERN_PATH="target/$ARCH/debug/maestro"

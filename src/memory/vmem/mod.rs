@@ -11,7 +11,6 @@ use crate::errno::AllocError;
 use crate::errno::AllocResult;
 use crate::idt;
 use crate::memory;
-use crate::multiboot;
 use crate::util::boxed::Box;
 use crate::util::math;
 use crate::util::TryClone;
@@ -86,37 +85,16 @@ pub trait VMem: TryClone<Error = AllocError> {
 
 	/// Protects the kernel's read-only sections from writing.
 	fn protect_kernel(&self) -> AllocResult<()> {
-		let boot_info = multiboot::get_boot_info();
-
-		let mut res = Ok(());
-		let f = |section: &elf::ELF32SectionHeader, _name: &[u8]| {
-			if section.sh_flags & elf::SHF_WRITE != 0
-				|| section.sh_addralign as usize != memory::PAGE_SIZE
-			{
-				return true;
-			}
-
+		let iter = elf::kernel::sections().filter(|s| {
+			s.sh_flags & elf::SHF_WRITE == 0 && s.sh_addralign as usize == memory::PAGE_SIZE
+		});
+		for section in iter {
 			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
 			let pages = math::ceil_div(section.sh_size, memory::PAGE_SIZE as _) as usize;
-			if let Err(e) = self.map_range(phys_addr, virt_addr, pages, x86::FLAG_USER) {
-				res = Err(e);
-				return false;
-			}
-
-			true
-		};
-
-		// Protect kernel code from writing
-		elf::foreach_sections(
-			memory::kern_to_virt(boot_info.elf_sections),
-			boot_info.elf_num as usize,
-			boot_info.elf_shndx as usize,
-			boot_info.elf_entsize as usize,
-			f,
-		);
-
-		res
+			self.map_range(phys_addr, virt_addr, pages, x86::FLAG_USER)?;
+		}
+		Ok(())
 	}
 }
 

@@ -5,16 +5,14 @@
 //! itself.
 
 pub mod iter;
+pub mod kernel;
 pub mod parser;
 pub mod relocation;
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::memory;
 use crate::process::mem_space;
 use crate::util;
-use core::cmp::max;
-use core::ffi::c_void;
 
 /// The number of identification bytes in the ELF header.
 pub const EI_NIDENT: usize = 16;
@@ -173,7 +171,7 @@ pub const R_386_GOTPC: u8 = 10;
 /// Relocation type.
 pub const R_386_IRELATIVE: u8 = 42;
 
-/// Structure representing an ELF header.
+/// A 32 bits ELF header.
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ELFHeader {
@@ -261,7 +259,7 @@ impl ELF32ProgramHeader {
 	}
 
 	/// Returns the flags to map the current segment into a process's memory
-	/// space. This function should be used only for userspace programs.
+	/// space.
 	pub fn get_mem_space_flags(&self) -> u8 {
 		let mut flags = mem_space::MAPPING_FLAG_USER;
 
@@ -276,7 +274,7 @@ impl ELF32ProgramHeader {
 	}
 }
 
-/// Structure representing an ELF section header.
+/// A 32 bits ELF section header.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32SectionHeader {
@@ -306,6 +304,7 @@ pub struct ELF32SectionHeader {
 
 impl ELF32SectionHeader {
 	/// Tells whether the section header is valid.
+	///
 	/// `file_size` is the size of the file.
 	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
 		// TODO Check sh_name
@@ -322,7 +321,7 @@ impl ELF32SectionHeader {
 	}
 }
 
-/// Structure representing an ELF symbol in memory.
+/// A 32 bits ELF symbol in memory.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Sym {
@@ -345,230 +344,4 @@ impl ELF32Sym {
 	pub fn is_defined(&self) -> bool {
 		self.st_shndx != 0
 	}
-}
-
-/// Returns a reference to the kernel section with name `name`.
-///
-/// Arguments:
-/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// - `sections_count` is the number of sections in the kernel.
-/// - `shndx` is the index of the section containing section names.
-/// - `entsize` is the size of section entries.
-/// - `name` is the name of the required section.
-///
-/// If the section is not found, returns `None`.
-pub fn get_section(
-	sections: *const c_void,
-	sections_count: usize,
-	shndx: usize,
-	entsize: usize,
-	name: &[u8],
-) -> Option<&ELF32SectionHeader> {
-	debug_assert!(!sections.is_null());
-	let names_section = unsafe { &*(sections.add(shndx * entsize) as *const ELF32SectionHeader) };
-
-	for i in 0..sections_count {
-		let hdr = unsafe { &*(sections.add(i * entsize) as *const ELF32SectionHeader) };
-		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as *const u8);
-		let n = unsafe { util::str_from_ptr(ptr) };
-
-		if n == name {
-			return Some(hdr);
-		}
-	}
-
-	None
-}
-
-/// Iterates over the given kernel section headers list `sections`, calling the
-/// given closure `f` for every elements with a reference and the name of the
-/// section.
-///
-/// Arguments:
-/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// - `sections_count` is the number of sections in the kernel.
-/// - `shndx` is the index of the section containing section names.
-/// - `entsize` is the size of section entries.
-/// - `f` is the closure to be called for each sections.
-pub fn foreach_sections<F>(
-	sections: *const c_void,
-	sections_count: usize,
-	shndx: usize,
-	entsize: usize,
-	mut f: F,
-) where
-	F: FnMut(&ELF32SectionHeader, &[u8]) -> bool,
-{
-	let names_section = unsafe { &*(sections.add(shndx * entsize) as *const ELF32SectionHeader) };
-
-	for i in 0..sections_count {
-		let hdr_offset = i * entsize;
-		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
-		let ptr = memory::kern_to_virt((names_section.sh_addr + hdr.sh_name) as *const u8);
-		let n = unsafe { util::str_from_ptr(ptr) };
-
-		if !f(hdr, n) {
-			break;
-		}
-	}
-}
-
-/// Returns the size of the kernel ELF sections' content.
-///
-/// Arguments:
-/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// - `sections_count` is the number of sections in the kernel.
-/// - `entsize` is the size of section entries.
-pub fn get_sections_end(
-	sections: *const c_void,
-	sections_count: usize,
-	entsize: usize,
-) -> *const c_void {
-	let mut end = 0;
-
-	for i in 0..sections_count {
-		let hdr_offset = i * entsize;
-		let hdr = unsafe { &*(sections.add(hdr_offset) as *const ELF32SectionHeader) };
-
-		let addr =
-			unsafe { memory::kern_to_phys(hdr.sh_addr as *const c_void).add(hdr.sh_size as _) };
-		end = max(end, addr as usize);
-	}
-
-	end as _
-}
-
-/// Returns the name of the kernel symbol at the given offset.
-///
-/// Arguments:
-/// - `strtab_section` is a reference to the `.strtab` section, containing symbol names.
-/// - `offset` is the offset of the symbol in the section.
-///
-/// If the offset is invalid or outside of the section, the behaviour is undefined.
-pub fn get_symbol_name(strtab_section: &ELF32SectionHeader, offset: u32) -> &'static [u8] {
-	debug_assert!(offset < strtab_section.sh_size);
-
-	unsafe {
-		util::str_from_ptr(memory::kern_to_virt(
-			(strtab_section.sh_addr + offset) as *const u8,
-		))
-	}
-}
-
-/// Returns the name of the kernel function for the given instruction pointer.
-///
-/// Arguments:
-/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// - `sections_count` is the number of sections in the kernel.
-/// - `shndx` is the index of the section containing section names.
-/// - `entsize` is the size of section entries.
-/// - `inst` is the pointer to the instruction on the virtual memory.
-///
-/// If the name cannot be retrieved, the function returns `None`.
-pub fn get_function_name(
-	sections: *const c_void,
-	sections_count: usize,
-	shndx: usize,
-	entsize: usize,
-	inst: *const c_void,
-) -> Option<&'static [u8]> {
-	let strtab_section = get_section(
-		sections,
-		sections_count,
-		shndx,
-		entsize,
-		".strtab".as_bytes(),
-	)?;
-	let mut func_name: Option<&'static [u8]> = None;
-
-	foreach_sections(
-		sections,
-		sections_count,
-		shndx,
-		entsize,
-		|hdr: &ELF32SectionHeader, _name: &[u8]| {
-			if hdr.sh_type != SHT_SYMTAB {
-				return true;
-			}
-
-			let ptr = memory::kern_to_virt(hdr.sh_addr as *const u8);
-			debug_assert!(hdr.sh_entsize > 0);
-
-			let mut i: usize = 0;
-			while i < hdr.sh_size as usize {
-				let sym = unsafe { &*(ptr.add(i) as *const ELF32Sym) };
-
-				let value = sym.st_value as usize;
-				let size = sym.st_size as usize;
-				if (inst as usize) >= value && (inst as usize) < (value + size) {
-					if sym.st_name != 0 {
-						func_name = Some(get_symbol_name(strtab_section, sym.st_name));
-					}
-
-					return false;
-				}
-
-				i += hdr.sh_entsize as usize;
-			}
-
-			true
-		},
-	);
-
-	func_name
-}
-
-/// Returns the kernel symbol with the name `name`.
-///
-/// Arguments:
-/// - `sections` is a pointer to the ELF sections of the kernel in the virtual memory.
-/// - `sections_count` is the number of sections in the kernel.
-/// - `shndx` is the index of the section containing section names.
-/// - `entsize` is the size of section entries.
-/// - `name` is the name of the symbol to get.
-///
-/// If the symbol doesn't exist, the function returns `None`.
-pub fn get_kernel_symbol(
-	sections: *const c_void,
-	sections_count: usize,
-	shndx: usize,
-	entsize: usize,
-	name: &[u8],
-) -> Option<&'static ELF32Sym> {
-	let strtab_section = get_section(sections, sections_count, shndx, entsize, b".strtab")?;
-	let mut symbol: Option<&'static ELF32Sym> = None;
-
-	foreach_sections(
-		sections,
-		sections_count,
-		shndx,
-		entsize,
-		|hdr: &ELF32SectionHeader, _name: &[u8]| {
-			if hdr.sh_type != SHT_SYMTAB {
-				return true;
-			}
-
-			let ptr = memory::kern_to_virt(hdr.sh_addr as *const u8);
-			debug_assert!(hdr.sh_entsize > 0);
-
-			let mut i: usize = 0;
-			while i < hdr.sh_size as usize {
-				let sym = unsafe { &*(ptr.add(i) as *const ELF32Sym) };
-
-				if sym.st_name != 0 {
-					let sym_name = get_symbol_name(strtab_section, sym.st_name);
-					if sym_name == name {
-						symbol = Some(sym);
-						return false;
-					}
-				}
-
-				i += hdr.sh_entsize as usize;
-			}
-
-			true
-		},
-	);
-
-	symbol
 }
