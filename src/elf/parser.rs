@@ -239,7 +239,7 @@ impl<'a> ELFParser<'a> {
 	/// Returns the symbol with name `name`.
 	///
 	/// If the symbol doesn't exist, the function returns `None`.
-	pub fn get_symbol_by_name(&self, name: &str) -> Option<&ELF32Sym> {
+	pub fn get_symbol_by_name(&self, name: &[u8]) -> Option<&ELF32Sym> {
 		self.iter_sections()
 			.filter_map(|section| {
 				let strtab_section = self.iter_sections().nth(section.sh_link as _)?;
@@ -249,10 +249,9 @@ impl<'a> ELFParser<'a> {
 				self.iter_symbols(section).filter(|sym| {
 					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
 					let sym_name_end = sym_name_begin + name.len();
-
 					if sym_name_end <= self.image.len() {
 						let sym_name = &self.image[sym_name_begin..sym_name_end];
-						sym_name == name.as_bytes()
+						sym_name == name
 					} else {
 						false
 					}

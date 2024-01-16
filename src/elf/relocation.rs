@@ -25,7 +25,10 @@ use core::ffi::c_void;
 use core::ptr;
 
 /// The name of the symbol pointing to the global offset table.
-const GOT_SYM: &str = "_GLOBAL_OFFSET_TABLE_";
+const GOT_SYM: &[u8] = b"_GLOBAL_OFFSET_TABLE_";
+
+/// ELF relocation error.
+pub struct RelocationError;
 
 /// Trait implemented for relocation objects.
 pub trait Relocation {
@@ -46,15 +49,19 @@ pub trait Relocation {
 	///     - The index of the symbol in the section.
 	///
 	/// If the relocation cannot be performed, the function returns an error.
+	///
+	/// # Safety
+	///
+	/// TODO
 	unsafe fn perform<'a, F0, F1>(
 		&self,
 		base_addr: *const c_void,
 		rel_section: &ELF32SectionHeader,
 		get_sym: F0,
 		get_sym_val: F1,
-	) -> Result<(), ()>
+	) -> Result<(), RelocationError>
 	where
-		F0: FnOnce(&str) -> Option<&'a ELF32Sym>,
+		F0: FnOnce(&[u8]) -> Option<&'a ELF32Sym>,
 		F1: FnOnce(u32, u32) -> Option<u32>,
 	{
 		let got_off = get_sym(GOT_SYM).map(|sym| sym.st_value).unwrap_or(0);
@@ -70,9 +77,11 @@ pub trait Relocation {
 		let sym_val = get_sym_val(rel_section.sh_link, self.get_sym());
 
 		let value = match self.get_type() {
-			elf::R_386_32 => sym_val.ok_or(())?.wrapping_add(self.get_addend()),
+			elf::R_386_32 => sym_val
+				.ok_or(RelocationError)?
+				.wrapping_add(self.get_addend()),
 			elf::R_386_PC32 => sym_val
-				.ok_or(())?
+				.ok_or(RelocationError)?
 				.wrapping_add(self.get_addend())
 				.wrapping_sub(self.get_offset()),
 			elf::R_386_GOT32 => got_offset.wrapping_add(self.get_addend()),
@@ -83,7 +92,7 @@ pub trait Relocation {
 			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
 			elf::R_386_RELATIVE => (base_addr as u32).wrapping_add(self.get_addend()),
 			elf::R_386_GOTOFF => sym_val
-				.ok_or(())?
+				.ok_or(RelocationError)?
 				.wrapping_add(self.get_addend())
 				.wrapping_sub(got_addr),
 			elf::R_386_GOTPC => got_addr
@@ -93,7 +102,7 @@ pub trait Relocation {
 			// Ignored
 			elf::R_386_IRELATIVE => return Ok(()),
 
-			_ => return Err(()),
+			_ => return Err(RelocationError),
 		};
 
 		let addr = (base_addr as u32).wrapping_add(self.get_offset()) as *mut u32;
@@ -122,7 +131,7 @@ pub trait Relocation {
 	fn get_addend(&self) -> u32;
 }
 
-/// Structure representing an ELF relocation.
+/// A 32 bits ELF relocation.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Rel {
@@ -146,7 +155,7 @@ impl Relocation for ELF32Rel {
 	}
 }
 
-/// Structure representing an ELF relocation with an addend.
+/// A 32 bits ELF relocation with an addend.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Rela {

@@ -20,13 +20,15 @@
 //! information on the system memory by retrieving them from the boot
 //! information. These data are meant to be used by the memory allocators.
 
-use super::stats;
-use crate::elf;
-use crate::memory::*;
+use super::*;
+use crate::elf::kernel::sections;
 use crate::multiboot;
 use crate::util;
 use core::cmp::*;
+use core::ffi::c_void;
+use core::iter;
 use core::mem::MaybeUninit;
+use core::ptr::null;
 
 /// Structure storing information relative to the main memory.
 #[derive(Debug)]
@@ -77,6 +79,24 @@ pub(crate) fn print_entries() {
 	}
 }
 
+/// Computes and returns the physical address to the end of the kernel's ELF sections' content.
+fn sections_end() -> *const c_void {
+	let boot_info = multiboot::get_boot_info();
+	// The end of ELF sections list
+	let sections_list_end = (boot_info.elf_sections as usize
+		+ boot_info.elf_num as usize * boot_info.elf_entsize as usize)
+		as *const c_void;
+	sections()
+		// Get end of sections' content
+		.map(|hdr| {
+			let ptr = (hdr.sh_addr as usize + hdr.sh_size as usize) as *const c_void;
+			kern_to_phys(ptr)
+		})
+		.chain(iter::once(sections_list_end))
+		.max()
+		.unwrap_or(null())
+}
+
 /// Returns the pointer to the beginning of the main physical allocatable memory
 /// and its size in number of pages.
 fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
@@ -90,25 +110,13 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 	let multiboot_tags_end = ((multiboot_ptr as usize) + multiboot_tags_size) as *const _;
 	begin = max(begin, multiboot_tags_end);
 
-	// The end of ELF sections list
-	let elf_sections_end = (boot_info.elf_sections as usize
-		+ boot_info.elf_num as usize * boot_info.elf_entsize as usize)
-		as *const c_void;
-	begin = max(begin, elf_sections_end);
-
-	// The end of the ELF sections' content
-	let elf_end = elf::get_sections_end(
-		boot_info.elf_sections,
-		boot_info.elf_num as _,
-		boot_info.elf_entsize as _,
-	);
-	begin = max(begin, elf_end);
+	// The end of the ELF sections
+	begin = max(begin, sections_end());
 
 	// The end of the loaded initramfs, if any
 	if let Some(initramfs) = boot_info.initramfs {
 		let initramfs_begin = kern_to_phys(initramfs.as_ptr() as _);
 		let initramfs_end = ((initramfs_begin as usize) + initramfs.len()) as *const c_void;
-
 		begin = max(begin, initramfs_end);
 	}
 
@@ -134,7 +142,7 @@ pub(crate) fn init(multiboot_ptr: *const c_void) {
 	mem_info.phys_main_begin = main_begin;
 	mem_info.phys_main_pages = main_pages;
 
-	// Setting memory stats
+	// Set memory stats
 	let mut mem_info = stats::MEM_INFO.lock();
 	mem_info.mem_total = min(boot_info.mem_upper, 4194304) as _; // TODO Handle 64-bits systems
 	mem_info.mem_free = main_pages * 4;
