@@ -6,11 +6,11 @@ use syn::{AttrStyle, Attribute, Meta, MetaList, Path};
 /// Tells whether the list of attributes contains `repr(C)`.
 pub fn has_repr_c(attrs: &[Attribute]) -> bool {
 	attrs
-		.into_iter()
+		.iter()
 		.filter_map(|attr| {
-            if !matches!(attr.style, AttrStyle::Outer) {
-                return None;
-            }
+			if !matches!(attr.style, AttrStyle::Outer) {
+				return None;
+			}
 			let Path {
 				leading_colon: None,
 				segments,
@@ -31,7 +31,8 @@ pub fn has_repr_c(attrs: &[Attribute]) -> bool {
 			}
 			let Meta::List(MetaList {
 				ref tokens, ..
-			}) = attr.meta else {
+			}) = attr.meta
+			else {
 				return None;
 			};
 			Some(tokens.clone())
