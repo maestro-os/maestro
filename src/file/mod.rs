@@ -901,7 +901,7 @@ impl IO for File {
 /// Initializes files management.
 ///
 /// `root` is the set of major and minor numbers of the root device. If `None`, a tmpfs is used.
-pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
+pub(crate) fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	fs::register_defaults()?;
 
 	// Create the root mountpoint
@@ -921,6 +921,6 @@ pub fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 }
 
 /// Tells whether files management has been initialized.
-pub fn is_init() -> bool {
+pub(crate) fn is_init() -> bool {
 	!mountpoint::MOUNT_POINTS.lock().is_empty()
 }

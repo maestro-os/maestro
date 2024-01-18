@@ -1,7 +1,7 @@
 //! Boot-time kernel command line arguments parsing.
 
+use crate::tty::vga;
 use crate::util::DisplayableStr;
-use crate::vga;
 use core::cmp::min;
 use core::fmt;
 use core::str;

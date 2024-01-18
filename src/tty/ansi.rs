@@ -2,8 +2,8 @@
 //! of the terminal.
 
 use super::TTY;
+use crate::tty::vga;
 use crate::util;
-use crate::vga;
 use core::cmp::{max, min};
 use core::str;
 

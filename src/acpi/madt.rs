@@ -35,9 +35,7 @@ impl Madt {
 }
 
 impl ACPITable for Madt {
-	fn get_expected_signature() -> &'static [u8; 4] {
-		b"APIC"
-	}
+	const SIGNATURE: &'static [u8; 4] = b"APIC";
 }
 
 /// Represents an MADT entry header.

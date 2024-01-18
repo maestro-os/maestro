@@ -160,7 +160,7 @@ fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptD
 /// This function must be called only once at kernel initialization.
 ///
 /// When returning, maskable interrupts are disabled by default.
-pub fn init() {
+pub(crate) fn init() {
 	cli!();
 	pic::init(0x20, 0x28);
 

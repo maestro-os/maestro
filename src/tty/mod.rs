@@ -8,6 +8,7 @@
 
 mod ansi;
 pub mod termios;
+pub mod vga;
 
 use crate::device::serial;
 use crate::errno::Errno;
@@ -23,7 +24,6 @@ use crate::util::io;
 use crate::util::lock::IntMutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;
-use crate::vga;
 use core::cmp::*;
 use core::intrinsics::size_of;
 use core::mem::MaybeUninit;
@@ -184,7 +184,7 @@ pub fn current() -> Option<TTYHandle> {
 }
 
 /// Initializes the init TTY.
-pub fn init() {
+pub(crate) fn init() {
 	let init_tty_mutex = get(None).unwrap();
 	let mut init_tty = init_tty_mutex.lock();
 

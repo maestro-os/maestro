@@ -75,8 +75,6 @@ pub mod time;
 pub mod tty;
 #[macro_use]
 pub mod util;
-#[macro_use]
-pub mod vga;
 
 use crate::errno::Errno;
 use crate::file::fs::initramfs;
@@ -96,6 +94,7 @@ use crate::util::lock::Mutex;
 use core::arch::asm;
 use core::ffi::c_void;
 use core::ptr::null;
+use tty::vga;
 
 /// The kernel's name.
 pub const NAME: &str = env!("CARGO_PKG_NAME");

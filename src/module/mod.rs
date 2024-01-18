@@ -352,7 +352,6 @@ pub fn is_loaded(name: &[u8]) -> bool {
 pub fn add(module: Module) -> Result<(), Errno> {
 	let mut modules = MODULES.lock();
 	modules.insert(module.name.try_clone()?, module)?;
-
 	Ok(())
 }
 

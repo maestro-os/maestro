@@ -715,7 +715,7 @@ impl Drop for X86VMem {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::vga;
+	use crate::tty::vga;
 
 	#[test_case]
 	fn vmem_x86_vga_text_access() {

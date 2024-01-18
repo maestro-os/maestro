@@ -7,6 +7,6 @@ pub mod rand;
 use crate::errno::EResult;
 
 /// Initializes cryptographic features.
-pub fn init() -> EResult<()> {
+pub(crate) fn init() -> EResult<()> {
 	rand::init()
 }

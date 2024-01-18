@@ -89,7 +89,7 @@ impl Stack {
 }
 
 /// Registers default domains/types/protocols.
-pub fn init() -> Result<(), Errno> {
+pub(crate) fn init() -> Result<(), Errno> {
 	let domains = HashMap::try_from([
 		// TODO unix
 		(

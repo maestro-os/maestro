@@ -111,7 +111,5 @@ impl Fadt {
 }
 
 impl ACPITable for Fadt {
-	fn get_expected_signature() -> &'static [u8; 4] {
-		b"FACP"
-	}
+	const SIGNATURE: &'static [u8; 4] = b"FACP";
 }
