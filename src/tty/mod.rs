@@ -25,8 +25,9 @@ use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;
 use crate::vga;
 use core::cmp::*;
+use core::intrinsics::size_of;
 use core::mem::MaybeUninit;
-use core::ptr;
+use core::{ptr, slice};
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -208,7 +209,11 @@ impl TTY {
 	///
 	/// `id` is the ID of the TTY.
 	pub fn init(&mut self, id: Option<usize>) {
-		unsafe { util::zero_object(self) }
+		// FIXME: this function is full of garbage
+		unsafe {
+			let slice = slice::from_raw_parts_mut(self as *mut _ as *mut u8, size_of::<Self>());
+			slice.fill(0);
+		}
 
 		self.id = id;
 		self.cursor_x = 0;

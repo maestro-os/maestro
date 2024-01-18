@@ -197,7 +197,7 @@ impl Chunk {
 		let min_data_size = get_min_chunk_size();
 		let size = max(size, min_data_size);
 
-		let next_ptr = util::align(unsafe { self.get_ptr().add(size) }, ALIGNEMENT);
+		let next_ptr = unsafe { util::align(self.get_ptr().add(size), ALIGNEMENT) };
 
 		let new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 		debug_assert!(new_size >= size);

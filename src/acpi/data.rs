@@ -185,7 +185,7 @@ impl ACPIData {
 
 			// Map all ACPI data
 			let begin = util::down_align(lowest, memory::PAGE_SIZE);
-			let end = util::align(highest, memory::PAGE_SIZE);
+			let end = unsafe { util::align(highest, memory::PAGE_SIZE) };
 			let pages = (end as usize - begin as usize) / memory::PAGE_SIZE;
 			tmp_vmem.map_range(begin, memory::PAGE_SIZE as _, pages, 0)?;
 

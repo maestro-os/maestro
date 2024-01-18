@@ -194,7 +194,7 @@ impl Gpt {
 		// Check checksum
 		let mut tmp = self.clone();
 		tmp.checksum = 0;
-		if compute_crc32(util::as_slice(&tmp), &lookup_table) != self.checksum {
+		if compute_crc32(util::bytes::as_bytes(&tmp), &lookup_table) != self.checksum {
 			return false;
 		}
 
