@@ -48,7 +48,5 @@ impl Dsdt {
 }
 
 impl ACPITable for Dsdt {
-	fn get_expected_signature() -> &'static [u8; 4] {
-		b"DSDT"
-	}
+	const SIGNATURE: &'static [u8; 4] = b"DSDT";
 }

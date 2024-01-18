@@ -253,7 +253,7 @@ impl ACPIData {
 			};
 			let header = unsafe { &*header_ptr };
 
-			if header.signature == *T::get_expected_signature() {
+			if header.signature == *T::SIGNATURE {
 				let table = unsafe {
 					let table_ptr = header_ptr as *const T;
 					&*table_ptr
@@ -297,7 +297,7 @@ impl ACPIData {
 			};
 			let header = unsafe { &*header_ptr };
 
-			if header.signature == *T::get_expected_signature() {
+			if header.signature == *T::SIGNATURE {
 				let table = unsafe {
 					let table_ptr =
 						ptr::from_raw_parts::<T>(header_ptr as *const (), header.length as usize);

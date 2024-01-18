@@ -162,8 +162,7 @@ impl EntropyPool {
 pub static ENTROPY_POOL: IntMutex<Option<EntropyPool>> = IntMutex::new(None);
 
 /// Initializes randomness sources.
-pub fn init() -> EResult<()> {
+pub(super) fn init() -> EResult<()> {
 	*ENTROPY_POOL.lock() = Some(EntropyPool::new()?);
-
 	Ok(())
 }

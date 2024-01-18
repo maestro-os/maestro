@@ -40,7 +40,7 @@ use core::cmp::min;
 use core::ffi::c_void;
 
 /// Initializes the memory allocators.
-pub fn init() {
+pub(crate) fn init() {
 	let mmap_info = memmap::get_info();
 
 	// The pointer to the beginning of available memory

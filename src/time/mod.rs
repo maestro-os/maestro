@@ -111,7 +111,7 @@ impl AtomicTimestamp {
 }
 
 /// Initializes time management.
-pub fn init() -> EResult<()> {
+pub(crate) fn init() -> EResult<()> {
 	// Initialize hardware clocks
 	let mut hw_clocks = hw::CLOCKS.lock();
 	#[cfg(target_arch = "x86")]

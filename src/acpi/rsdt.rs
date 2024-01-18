@@ -48,7 +48,5 @@ impl Rsdt {
 }
 
 impl ACPITable for Rsdt {
-	fn get_expected_signature() -> &'static [u8; 4] {
-		b"RSDT"
-	}
+	const SIGNATURE: &'static [u8; 4] = b"RSDT";
 }

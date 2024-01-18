@@ -305,7 +305,7 @@ static mut SCHEDULER: MaybeUninit<Arc<IntMutex<Scheduler>>> = MaybeUninit::unini
 
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
-pub fn init() -> Result<(), Errno> {
+pub(crate) fn init() -> Result<(), Errno> {
 	TSS::init();
 
 	let cores_count = 1; // TODO

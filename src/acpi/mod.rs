@@ -64,7 +64,7 @@ pub struct ACPITableHeader {
 impl ACPITableHeader {
 	/// Checks that the table is valid.
 	pub fn check<T: ACPITable + ?Sized>(&self) -> bool {
-		if self.signature != *T::get_expected_signature() {
+		if self.signature != *T::SIGNATURE {
 			return false;
 		}
 
@@ -89,8 +89,8 @@ impl ACPITableHeader {
 
 /// Trait representing an ACPI table.
 pub trait ACPITable {
-	/// Returns the expected signature for the structure.
-	fn get_expected_signature() -> &'static [u8; 4];
+	/// The expected signature for the structure.
+	const SIGNATURE: &'static [u8; 4];
 
 	/// Returns a reference to the table's header.
 	fn get_header(&self) -> &ACPITableHeader {
@@ -112,7 +112,7 @@ pub fn is_century_register_present() -> bool {
 /// Initializes ACPI.
 ///
 /// This function must be called only once, at boot.
-pub fn init() {
+pub(crate) fn init() {
 	// Read ACPI data
 	let data = ACPIData::read().unwrap_or_else(|_| {
 		panic!("Invalid ACPI data!");
