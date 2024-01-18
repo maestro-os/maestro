@@ -47,7 +47,9 @@ pub fn get_hwcap() -> u32 {
 		asm!(
 			"cpuid",
 			in("eax") 1,
-			lateout("edx") hwcap
+			out("ebx") _,
+			out("ecx") _,
+			lateout("edx") hwcap,
 		);
 	}
 	hwcap

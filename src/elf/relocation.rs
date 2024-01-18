@@ -19,10 +19,11 @@
 //! This module implements ELF relocations.
 
 use crate::elf;
-use crate::elf::ELF32SectionHeader;
 use crate::elf::ELF32Sym;
+use crate::elf::{ELF32SectionHeader, SHT_REL, SHT_RELA};
 use core::ffi::c_void;
 use core::ptr;
+use macros::AnyRepr;
 
 /// The name of the symbol pointing to the global offset table.
 const GOT_SYM: &[u8] = b"_GLOBAL_OFFSET_TABLE_";
@@ -32,6 +33,9 @@ pub struct RelocationError;
 
 /// Trait implemented for relocation objects.
 pub trait Relocation {
+	/// The required section type for the relocation type.
+	const REQUIRED_SECTION_TYPE: u32;
+
 	/// Returns the `r_offset` field of the relocation.
 	fn get_offset(&self) -> u32;
 
@@ -132,7 +136,7 @@ pub trait Relocation {
 }
 
 /// A 32 bits ELF relocation.
-#[derive(Clone, Copy, Debug)]
+#[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Rel {
 	/// The location of the relocation action.
@@ -142,6 +146,8 @@ pub struct ELF32Rel {
 }
 
 impl Relocation for ELF32Rel {
+	const REQUIRED_SECTION_TYPE: u32 = SHT_REL;
+
 	fn get_offset(&self) -> u32 {
 		self.r_offset
 	}
@@ -156,7 +162,7 @@ impl Relocation for ELF32Rel {
 }
 
 /// A 32 bits ELF relocation with an addend.
-#[derive(Clone, Copy, Debug)]
+#[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Rela {
 	/// The location of the relocation action.
@@ -168,6 +174,8 @@ pub struct ELF32Rela {
 }
 
 impl Relocation for ELF32Rela {
+	const REQUIRED_SECTION_TYPE: u32 = SHT_RELA;
+
 	fn get_offset(&self) -> u32 {
 		self.r_offset
 	}

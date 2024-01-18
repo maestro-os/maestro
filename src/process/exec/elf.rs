@@ -22,7 +22,7 @@ use super::vdso;
 use crate::cpu;
 use crate::elf;
 use crate::elf::parser::ELFParser;
-use crate::elf::relocation::Relocation;
+use crate::elf::relocation::{ELF32Rel, ELF32Rela, Relocation};
 use crate::elf::ELF32ProgramHeader;
 use crate::errno;
 use crate::errno::AllocError;
@@ -667,11 +667,11 @@ impl ELFExecutor {
 					};
 
 					for section in elf.iter_sections() {
-						for rel in elf.iter_rel(section) {
+						for rel in elf.iter_rel::<ELF32Rel>(section) {
 							rel.perform(load_base as _, section, get_sym, get_sym_val)
 								.map_err(|_| errno!(EINVAL))?;
 						}
-						for rela in elf.iter_rela(section) {
+						for rela in elf.iter_rel::<ELF32Rela>(section) {
 							rela.perform(load_base as _, section, get_sym, get_sym_val)
 								.map_err(|_| errno!(EINVAL))?;
 						}
@@ -743,7 +743,7 @@ impl Executor for ELFExecutor {
 		}
 
 		// The initial pointer for `brk`
-		let brk_ptr = util::align(load_info.load_end, memory::PAGE_SIZE);
+		let brk_ptr = unsafe { util::align(load_info.load_end, memory::PAGE_SIZE) };
 		mem_space.set_brk_init(brk_ptr as _);
 
 		// Switching to the process's vmem to write onto the virtual memory

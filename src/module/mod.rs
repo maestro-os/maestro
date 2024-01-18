@@ -32,7 +32,7 @@ pub mod version;
 
 use crate::elf;
 use crate::elf::parser::ELFParser;
-use crate::elf::relocation::Relocation;
+use crate::elf::relocation::{ELF32Rel, ELF32Rela, Relocation};
 use crate::elf::ELF32Sym;
 use crate::errno;
 use crate::errno::Errno;
@@ -251,11 +251,11 @@ impl Module {
 		};
 
 		for section in parser.iter_sections() {
-			for rel in parser.iter_rel(section) {
+			for rel in parser.iter_rel::<ELF32Rel>(section) {
 				unsafe { rel.perform(load_base as _, section, get_sym, get_sym_val) }
 					.map_err(|_| errno!(EINVAL))?;
 			}
-			for rela in parser.iter_rela(section) {
+			for rela in parser.iter_rel::<ELF32Rela>(section) {
 				unsafe { rela.perform(load_base as _, section, get_sym, get_sym_val) }
 					.map_err(|_| errno!(EINVAL))?;
 			}

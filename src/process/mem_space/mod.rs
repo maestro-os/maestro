@@ -792,21 +792,16 @@ impl MemSpace {
 	/// If the mapping doesn't exist, the function returns an error.
 	pub fn alloc<T>(&mut self, virt_addr: *const T, len: usize) -> AllocResult<()> {
 		let mut off = 0;
-
 		while off < size_of::<T>() * len {
-			let virt_addr = (virt_addr as usize + off) as *const c_void;
-
+			let virt_addr = unsafe { (virt_addr as *const c_void).add(off) };
 			if let Some(mapping) = Self::get_mapping_mut_for_(&mut self.mappings, virt_addr) {
 				let page_offset =
 					(virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 				oom::wrap(|| mapping.map(page_offset));
-
 				mapping.update_vmem(page_offset);
 			}
-
-			off += util::up_align(virt_addr, memory::PAGE_SIZE) as usize - virt_addr as usize;
+			off += memory::PAGE_SIZE;
 		}
-
 		Ok(())
 	}
 
@@ -857,6 +852,7 @@ impl MemSpace {
 	/// Sets the pointer for the `brk` syscall.
 	///
 	/// If the memory cannot be allocated, the function returns an error.
+	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn set_brk_ptr(&mut self, ptr: *mut c_void) -> AllocResult<()> {
 		if ptr >= self.brk_ptr {
 			// Allocate memory
@@ -866,7 +862,7 @@ impl MemSpace {
 				return Err(AllocError);
 			}
 
-			let begin = util::align(self.brk_ptr, memory::PAGE_SIZE);
+			let begin = unsafe { util::align(self.brk_ptr, memory::PAGE_SIZE) };
 			let pages = math::ceil_div(ptr as usize - begin as usize, memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
@@ -887,7 +883,7 @@ impl MemSpace {
 				return Err(AllocError);
 			}
 
-			let begin = util::align(ptr, memory::PAGE_SIZE);
+			let begin = unsafe { util::align(ptr, memory::PAGE_SIZE) };
 			let pages = math::ceil_div(begin as usize - ptr as usize, memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());

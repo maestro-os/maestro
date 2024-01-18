@@ -22,6 +22,7 @@
 //! initialized.
 
 pub mod boxed;
+pub mod bytes;
 pub mod container;
 pub mod io;
 pub mod lock;
@@ -48,67 +49,29 @@ extern "C" {
 
 /// Aligns down a pointer.
 ///
-/// The retuned value shall be lower than `ptr` or equal if the pointer is already aligned.
+/// The returned value shall be lower than `ptr` or equal if the pointer is already aligned.
 #[inline(always)]
 pub fn down_align<T>(ptr: *const T, n: usize) -> *const T {
 	((ptr as usize) & !(n - 1)) as *const T
 }
 
-/// Aligns up a pointer.
-///
-/// The returned value shall be greater than `ptr`.
-#[inline(always)]
-pub fn up_align<T>(ptr: *const T, n: usize) -> *const T {
-	((down_align(ptr, n) as usize) + n) as *const T
-}
-
 /// Aligns a pointer.
 ///
 /// The returned value shall be greater than `ptr` or equal if the pointer is already aligned.
+///
+/// # Safety
+///
+/// There is no guarantee the returned pointer will point to a valid region of memory nor a valid
+/// object.
 #[inline(always)]
-pub fn align<T>(ptr: *const T, n: usize) -> *const T {
-	if ptr.is_aligned_to(n) {
-		ptr
-	} else {
-		up_align(ptr, n)
-	}
+pub unsafe fn align<T>(ptr: *const T, align: usize) -> *const T {
+	(ptr as *const c_void).add(ptr.align_offset(align)) as _
 }
 
 /// Returns the of a type in bits.
 #[inline(always)]
 pub const fn bit_size_of<T>() -> usize {
 	size_of::<T>() * 8
-}
-
-/// Zeroes the given object.
-///
-/// # Safety
-///
-/// The caller must ensure an object with type `T` represented with only zeros is valid.
-/// If not, the behaviour is undefined.
-pub unsafe fn zero_object<T>(obj: &mut T) {
-	let ptr = obj as *mut T as *mut u8;
-	let size = size_of::<T>();
-
-	let slice = slice::from_raw_parts_mut(ptr, size);
-	slice.fill(0);
-}
-
-/// Returns the length of the C-style string pointed to by `s`, but limited to the first `n` bytes.
-///
-/// # Safety
-///
-/// The caller must ensure the pointer points to a valid chunk of memory, ending with at least one
-/// 0 byte.
-pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
-	let mut i = 0;
-
-	// TODO optimize
-	while i < n && *s.add(i) != b'\0' {
-		i += 1;
-	}
-
-	i
 }
 
 /// Returns a slice representing a C string beginning at the given pointer.
@@ -122,11 +85,6 @@ pub unsafe fn strnlen(s: *const u8, n: usize) -> usize {
 pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
 	let len = strlen(ptr as *const _);
 	slice::from_raw_parts(ptr, len)
-}
-
-/// Returns an immutable slice to the given value.
-pub fn as_slice<T>(val: &T) -> &[u8] {
-	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of::<T>()) }
 }
 
 /// Returns the length of the string representation of the number at the
@@ -145,24 +103,6 @@ pub fn nbr_len(s: &[u8]) -> usize {
 pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
-}
-
-/// Reinterprets the given slice of bytes as another type.
-///
-/// If the type is too large in size to fit in the slice, the function returns `None`.
-///
-/// # Safety
-///
-/// Not every types are defined for every possible memory representations. Thus, some values
-/// passed as input to this function might be invalid for a given type, which is undefined.
-pub unsafe fn reinterpret<T>(slice: &[u8]) -> Option<&T> {
-	if size_of::<T>() <= slice.len() {
-		// Safe because the slice is large enough
-		let val = &*(slice.as_ptr() as *const T);
-		Some(val)
-	} else {
-		None
-	}
 }
 
 /// Same as the [`core::clone::Clone`] trait, but the operation can fail (on memory allocation

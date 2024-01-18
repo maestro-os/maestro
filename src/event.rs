@@ -184,7 +184,7 @@ pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 
 /// Feeds the entropy pool using the given data.
 fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
-	let buff = util::as_slice(val);
+	let buff = util::bytes::as_bytes(val);
 	pool.write(buff);
 }
 

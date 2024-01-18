@@ -49,7 +49,8 @@ pub fn init() {
 	let mut available_pages = mmap_info.phys_main_pages;
 
 	// The pointer to the beginning of the buddy allocator's metadata
-	let metadata_begin = util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void;
+	let metadata_begin =
+		unsafe { util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void };
 	// The size of the buddy allocator's metadata
 	let metadata_size = available_pages * buddy::get_frame_metadata_size();
 	// The end of the buddy allocator's metadata
@@ -61,7 +62,8 @@ pub fn init() {
 	available_pages -= math::ceil_div(metadata_size, memory::PAGE_SIZE);
 
 	// The beginning of the kernel's zone
-	let kernel_zone_begin = util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void;
+	let kernel_zone_begin =
+		unsafe { util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void };
 	// The maximum number of pages the kernel zone can hold.
 	let kernel_max =
 		(memory::get_kernelspace_size() - phys_metadata_end as usize) / memory::PAGE_SIZE;

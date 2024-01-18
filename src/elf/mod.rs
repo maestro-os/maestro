@@ -22,7 +22,6 @@
 //! This module implements a parser allowing to handle this format, including the kernel image
 //! itself.
 
-pub mod iter;
 pub mod kernel;
 pub mod parser;
 pub mod relocation;
@@ -30,7 +29,7 @@ pub mod relocation;
 use crate::errno;
 use crate::errno::Errno;
 use crate::process::mem_space;
-use crate::util;
+use macros::AnyRepr;
 
 /// The number of identification bytes in the ELF header.
 pub const EI_NIDENT: usize = 16;
@@ -190,7 +189,7 @@ pub const R_386_GOTPC: u8 = 10;
 pub const R_386_IRELATIVE: u8 = 42;
 
 /// A 32 bits ELF header.
-#[derive(Clone, Debug)]
+#[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ELFHeader {
 	/// Identification bytes.
@@ -224,20 +223,8 @@ pub struct ELF32ELFHeader {
 	pub e_shstrndx: u16,
 }
 
-impl ELF32ELFHeader {
-	/// Returns the size of one entry in the program header table.
-	pub fn get_phentsize(&self) -> u16 {
-		self.e_phentsize
-	}
-
-	/// Returns the number of entries in the program header table.
-	pub fn get_phnum(&self) -> u16 {
-		self.e_phnum
-	}
-}
-
 /// Structure representing an ELF program header.
-#[derive(Clone, Debug)]
+#[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ProgramHeader {
 	/// Tells what kind of segment this header describes.
@@ -264,11 +251,9 @@ impl ELF32ProgramHeader {
 	/// `file_size` is the size of the file.
 	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
 		// TODO Check p_type
-
 		if (self.p_offset + self.p_filesz) as usize > file_size {
 			return Err(errno!(EINVAL));
 		}
-
 		if self.p_align != 0 && !self.p_align.is_power_of_two() {
 			return Err(errno!(EINVAL));
 		}
@@ -280,20 +265,18 @@ impl ELF32ProgramHeader {
 	/// space.
 	pub fn get_mem_space_flags(&self) -> u8 {
 		let mut flags = mem_space::MAPPING_FLAG_USER;
-
 		if self.p_flags & PF_X != 0 {
 			flags |= mem_space::MAPPING_FLAG_EXEC;
 		}
 		if self.p_flags & PF_W != 0 {
 			flags |= mem_space::MAPPING_FLAG_WRITE;
 		}
-
 		flags
 	}
 }
 
 /// A 32 bits ELF section header.
-#[derive(Clone, Copy, Debug)]
+#[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32SectionHeader {
 	/// Index in the string table section specifying the name of the section.
@@ -326,24 +309,21 @@ impl ELF32SectionHeader {
 	/// `file_size` is the size of the file.
 	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
 		// TODO Check sh_name
-
 		if self.sh_type & SHT_NOBITS == 0 && (self.sh_offset + self.sh_size) as usize > file_size {
 			return Err(errno!(EINVAL));
 		}
-
 		if self.sh_addralign != 0 && !self.sh_addralign.is_power_of_two() {
 			return Err(errno!(EINVAL));
 		}
-
 		Ok(())
 	}
 }
 
 /// A 32 bits ELF symbol in memory.
-#[derive(Clone, Copy, Debug)]
+#[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Sym {
-	/// Index in the string table section specifying the name of the symbol.
+	/// Offset in the string table section specifying the name of the symbol.
 	pub st_name: u32,
 	/// The value of the symbol.
 	pub st_value: u32,
