@@ -6,15 +6,15 @@ use super::*;
 use crate::elf::kernel::sections;
 use crate::multiboot;
 use crate::util;
+use crate::util::lock::once::OnceInit;
 use core::cmp::*;
 use core::ffi::c_void;
 use core::iter;
-use core::mem::MaybeUninit;
 use core::ptr::null;
 
-/// Structure storing information relative to the main memory.
+/// Physical memory map information.
 #[derive(Debug)]
-pub struct MemoryInfo {
+pub struct PhysMapInfo {
 	/// Size of the Multiboot2 memory map
 	pub memory_maps_size: usize,
 	/// Size of an entry in the Multiboot2 memory map
@@ -29,35 +29,46 @@ pub struct MemoryInfo {
 	pub phys_main_pages: usize,
 }
 
-/// Variable containing the memory mapping.
-static mut MEM_INFO: MaybeUninit<MemoryInfo> = MaybeUninit::uninit();
+impl Default for PhysMapInfo {
+	fn default() -> Self {
+		Self {
+			memory_maps_size: 0,
+			memory_maps_entry_size: 0,
+			memory_maps: null(),
 
-/// Returns the structure storing memory mapping information.
-pub fn get_info() -> &'static MemoryInfo {
-	unsafe { MEM_INFO.assume_init_mut() }
+			phys_main_begin: null(),
+			phys_main_pages: 0,
+		}
+	}
+}
+
+/// Physical memory map information.
+static MAP: OnceInit<PhysMapInfo> = unsafe { OnceInit::new() };
+
+/// Returns the structure storing physical memory mapping information.
+pub fn get_info() -> &'static PhysMapInfo {
+	MAP.get()
 }
 
 /// Prints the physical memory mapping.
 #[cfg(config_debug_debug)]
 pub(crate) fn print_entries() {
-	let mem_info = get_info();
-	debug_assert!(!mem_info.memory_maps.is_null());
+	let phys_map = get_info();
+	debug_assert!(!phys_map.memory_maps.is_null());
 
 	crate::println!("--- Memory mapping ---");
 	crate::println!("<begin> <end> <type>");
 
-	let mut ptr = mem_info.memory_maps;
-	while (ptr as usize) < (mem_info.memory_maps as usize) + (mem_info.memory_maps_size) {
+	let mut ptr = phys_map.memory_maps;
+	while (ptr as usize) < (phys_map.memory_maps as usize) + (phys_map.memory_maps_size) {
 		let entry = unsafe { &*ptr };
-
 		if entry.is_valid() {
 			let begin = entry.addr;
 			let end = begin + entry.len;
 			let type_ = entry.get_type_string();
 			crate::println!("- {begin:08x} {end:08x} {type_}");
 		}
-
-		ptr = ((ptr as usize) + mem_info.memory_maps_entry_size) as *const _;
+		ptr = ((ptr as usize) + phys_map.memory_maps_entry_size) as *const _;
 	}
 }
 
@@ -114,18 +125,21 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 /// Fills the memory mapping structure according to Multiboot's information.
 pub(crate) fn init(multiboot_ptr: *const c_void) {
 	let boot_info = multiboot::get_boot_info();
-	let mem_info = unsafe { MEM_INFO.assume_init_mut() };
-
-	mem_info.memory_maps_size = boot_info.memory_maps_size;
-	mem_info.memory_maps_entry_size = boot_info.memory_maps_entry_size;
-	mem_info.memory_maps = boot_info.memory_maps;
-
+	// Set memory information
 	let (main_begin, main_pages) = get_phys_main(multiboot_ptr);
-	mem_info.phys_main_begin = main_begin;
-	mem_info.phys_main_pages = main_pages;
+	let phys_map = PhysMapInfo {
+		memory_maps_size: boot_info.memory_maps_size,
+		memory_maps_entry_size: boot_info.memory_maps_entry_size,
+		memory_maps: boot_info.memory_maps,
 
-	// Set memory stats
-	let mut mem_info = stats::MEM_INFO.lock();
-	mem_info.mem_total = min(boot_info.mem_upper, 4194304) as _; // TODO Handle 64-bits systems
-	mem_info.mem_free = main_pages * 4;
+		phys_main_begin: main_begin,
+		phys_main_pages: main_pages,
+	};
+	unsafe {
+		MAP.init(phys_map);
+	}
+	// Update memory stats
+	let mut stats = stats::MEM_INFO.lock();
+	stats.mem_total = min(boot_info.mem_upper, 4194304) as _; // TODO Handle 64-bits systems
+	stats.mem_free = main_pages * 4;
 }

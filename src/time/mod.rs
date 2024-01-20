@@ -26,18 +26,18 @@ use unit::TimestampScale;
 /// This wrapper is required because timestamps span 64 bits, but 32 bits architectures may not
 /// support atomic operations on 64 bits operands.
 pub struct AtomicTimestamp {
-	#[cfg(target_pointer_width = "32")]
+	#[cfg(not(target_has_atomic = "64"))]
 	inner: IntMutex<Timestamp>,
-	#[cfg(target_pointer_width = "64")]
+	#[cfg(target_has_atomic = "64")]
 	inner: AtomicU64,
 }
 
 impl AtomicTimestamp {
 	pub const fn new(val: Timestamp) -> Self {
 		Self {
-			#[cfg(target_pointer_width = "32")]
+			#[cfg(not(target_has_atomic = "64"))]
 			inner: IntMutex::new(val),
-			#[cfg(target_pointer_width = "64")]
+			#[cfg(target_has_atomic = "64")]
 			inner: AtomicU64::new(val),
 		}
 	}
@@ -45,12 +45,11 @@ impl AtomicTimestamp {
 	/// Loads and returns the value.
 	#[inline]
 	pub fn load(&self) -> Timestamp {
-		#[cfg(target_pointer_width = "32")]
+		#[cfg(not(target_has_atomic = "64"))]
 		{
 			*self.inner.lock()
 		}
-
-		#[cfg(target_pointer_width = "64")]
+		#[cfg(target_has_atomic = "64")]
 		{
 			self.inner.load(core::sync::atomic::Ordering::Relaxed)
 		}
@@ -59,15 +58,14 @@ impl AtomicTimestamp {
 	/// Stores the given value and returns the previous.
 	#[inline]
 	pub fn store(&self, val: Timestamp) -> Timestamp {
-		#[cfg(target_pointer_width = "32")]
+		#[cfg(not(target_has_atomic = "64"))]
 		{
 			let mut guard = self.inner.lock();
 			let prev = *guard;
 			*guard = val;
 			prev
 		}
-
-		#[cfg(target_pointer_width = "64")]
+		#[cfg(target_has_atomic = "64")]
 		{
 			self.inner.store(val, core::sync::atomic::Ordering::Relaxed)
 		}
@@ -76,15 +74,14 @@ impl AtomicTimestamp {
 	/// Adds the given value and returns the previous.
 	#[inline]
 	pub fn fetch_add(&self, val: Timestamp) -> Timestamp {
-		#[cfg(target_pointer_width = "32")]
+		#[cfg(not(target_has_atomic = "64"))]
 		{
 			let mut guard = self.inner.lock();
 			let prev = *guard;
 			*guard = prev.wrapping_add(val);
 			prev
 		}
-
-		#[cfg(target_pointer_width = "64")]
+		#[cfg(target_has_atomic = "64")]
 		{
 			self.inner
 				.fetch_add(val, core::sync::atomic::Ordering::Relaxed)

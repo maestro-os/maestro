@@ -32,6 +32,7 @@
 #![feature(strict_provenance)]
 #![feature(trusted_len)]
 #![feature(unsize)]
+#![feature(once_cell_try)]
 #![deny(warnings)]
 #![allow(unused_attributes)]
 #![allow(dead_code)]
@@ -75,7 +76,7 @@ pub mod tty;
 #[macro_use]
 pub mod util;
 
-use crate::errno::Errno;
+use crate::errno::EResult;
 use crate::file::fs::initramfs;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
@@ -142,7 +143,7 @@ pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
 static KERNEL_VMEM: Mutex<Option<Box<dyn VMem>>> = Mutex::new(None);
 
 /// Initializes the kernel's virtual memory context.
-fn init_vmem() -> Result<(), Errno> {
+fn init_vmem() -> EResult<()> {
 	let kernel_vmem = vmem::new()?;
 
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
@@ -159,7 +160,6 @@ fn init_vmem() -> Result<(), Errno> {
 			vmem::x86::FLAG_WRITE,
 		)?;
 	}
-
 	// Map VGA's buffer
 	let vga_flags = vmem::x86::FLAG_CACHE_DISABLE
 		| vmem::x86::FLAG_WRITE_THROUGH
@@ -173,14 +173,13 @@ fn init_vmem() -> Result<(), Errno> {
 			vga_flags,
 		)?;
 	}
-
-	// Making the kernel image read-only
+	// Make the kernel image read-only
 	kernel_vmem.protect_kernel()?;
 
-	// Assigning to the global variable
+	// Assign to the global variable
 	*KERNEL_VMEM.lock() = Some(kernel_vmem);
 
-	// Binding the kernel virtual memory context
+	// Bind the kernel virtual memory context
 	bind_vmem();
 	Ok(())
 }
@@ -188,11 +187,6 @@ fn init_vmem() -> Result<(), Errno> {
 /// Returns the kernel's virtual memory context.
 pub fn get_vmem() -> &'static Mutex<Option<Box<dyn VMem>>> {
 	&KERNEL_VMEM
-}
-
-/// Tells whether memory management has been fully initialized.
-pub fn is_memory_init() -> bool {
-	get_vmem().lock().is_some()
 }
 
 /// Binds the kernel's virtual memory context.
@@ -210,7 +204,7 @@ pub fn bind_vmem() {
 /// Launches the init process.
 ///
 /// `init_path` is the path to the init program.
-fn init(init_path: String) -> Result<(), Errno> {
+fn init(init_path: String) -> EResult<()> {
 	let path = Path::from_str(&init_path, true)?;
 
 	let proc_mutex = Process::new()?;
@@ -248,10 +242,10 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize IDT
 	idt::init();
 
+	// Read multiboot information
 	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {
 		panic!("Bootloader non compliant with Multiboot2!");
 	}
-	// Read multiboot information
 	unsafe {
 		multiboot::read_tags(multiboot_ptr);
 	}

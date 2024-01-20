@@ -1,10 +1,10 @@
-//! This module implements statistics about memory usage.
+//! Statistics about memory usage.
 
-use crate::errno::AllocResult;
-use crate::util::container::string::String;
 use crate::util::lock::Mutex;
+use core::fmt;
+use core::fmt::{Display, Formatter};
 
-/// This structure stores memory usage informations. Each field is in KiB.
+/// Stores memory usage information. Each field is in KiB.
 pub struct MemInfo {
 	/// The total amount of memory on the system.
 	pub mem_total: usize,
@@ -12,20 +12,18 @@ pub struct MemInfo {
 	pub mem_free: usize,
 }
 
-impl MemInfo {
-	/// Returns the string representation of the current structure.
-	pub fn to_string(&self) -> AllocResult<String> {
-		crate::format!(
+impl Display for MemInfo {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		writeln!(
+			f,
 			"MemTotal: {} kB
-MemFree: {} kB
-",
-			self.mem_total,
-			self.mem_free,
+MemFree: {} kB",
+			self.mem_total, self.mem_free,
 		)
 	}
 }
 
-/// The global variable storing memory usage informations.
+/// Memory usage statistics.
 pub static MEM_INFO: Mutex<MemInfo> = Mutex::new(MemInfo {
 	mem_total: 0,
 	mem_free: 0,

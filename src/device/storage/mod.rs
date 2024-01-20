@@ -1,4 +1,4 @@
-//! This module implements storage drivers.
+//! Storage management implementation.
 
 pub mod ide;
 pub mod partition;
@@ -17,7 +17,6 @@ use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
 use crate::errno::EResult;
-use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::Mode;
 use crate::memory::malloc;
@@ -87,18 +86,18 @@ pub trait StorageInterface {
 	/// data to `buf`.
 	///
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno>;
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> EResult<()>;
 	/// Writes `size` blocks to storage at block offset `offset`, reading the
 	/// data from `buf`.
 	///
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno>;
+	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> EResult<()>;
 
 	// Unit testing is done through ramdisk testing
 	/// Reads bytes from storage at offset `offset`, writing the data to `buf`.
 	///
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> Result<(u64, bool), Errno> {
+	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> EResult<(u64, bool)> {
 		let block_size = self.get_block_size();
 		let block_size_usize = NonZeroUsize::new(block_size.get() as _).unwrap();
 		let blocks_count = self.get_blocks_count();
@@ -159,7 +158,7 @@ pub trait StorageInterface {
 	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
 	///
 	/// If the offset and size are out of bounds, the function returns an error.
-	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> Result<u64, Errno> {
+	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> EResult<u64> {
 		let block_size = self.get_block_size();
 		let block_size_usize = NonZeroUsize::new(block_size.get() as _).unwrap();
 		let blocks_count = self.get_blocks_count();
@@ -269,7 +268,7 @@ impl DeviceHandle for StorageDeviceHandle {
 		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::HDIO_GETGEO => {
 				// The total size of the disk
@@ -374,7 +373,7 @@ impl IO for StorageDeviceHandle {
 		}
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		if let Some(interface) = self.interface.upgrade() {
 			let mut interface = interface.lock();
 
@@ -400,7 +399,7 @@ impl IO for StorageDeviceHandle {
 		}
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
 		if let Some(interface) = self.interface.upgrade() {
 			let mut interface = interface.lock();
 
@@ -426,7 +425,7 @@ impl IO for StorageDeviceHandle {
 		}
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(0)
 	}
 }
@@ -443,7 +442,7 @@ pub struct StorageManager {
 
 impl StorageManager {
 	/// Creates a new instance.
-	pub fn new() -> Result<Self, Errno> {
+	pub fn new() -> EResult<Self> {
 		Ok(Self {
 			major_block: id::alloc_major(DeviceType::Block, Some(STORAGE_MAJOR))?,
 			interfaces: Vec::new(),
@@ -464,7 +463,7 @@ impl StorageManager {
 		major: u32,
 		storage_id: u32,
 		path_prefix: String,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		let Some(storage_mutex) = storage.upgrade() else {
 			return Ok(());
 		};
@@ -511,7 +510,7 @@ impl StorageManager {
 	/// Clears device files for every partitions.
 	///
 	/// `major` is the major number of the devices to be removed.
-	pub fn clear_partitions(major: u32) -> Result<(), Errno> {
+	pub fn clear_partitions(major: u32) -> EResult<()> {
 		for i in 1..MAX_PARTITIONS {
 			device::unregister(&DeviceID {
 				type_: DeviceType::Block,
@@ -527,7 +526,7 @@ impl StorageManager {
 	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
 	/// Adds the given storage device to the manager.
-	fn add(&mut self, storage: Arc<Mutex<dyn StorageInterface>>) -> Result<(), Errno> {
+	fn add(&mut self, storage: Arc<Mutex<dyn StorageInterface>>) -> EResult<()> {
 		// The device files' major number
 		let major = self.major_block.get_major();
 		// The id of the storage interface in the manager's list

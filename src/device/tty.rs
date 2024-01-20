@@ -3,7 +3,7 @@
 
 use crate::device::DeviceHandle;
 use crate::errno;
-use crate::errno::Errno;
+use crate::errno::EResult;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::MemSpace;
 use crate::process::pid::Pid;
@@ -22,7 +22,7 @@ use crate::util::lock::IntMutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
 
-/// Structure representing a TTY device's handle.
+/// A TTY device's handle.
 pub struct TTYDeviceHandle {
 	/// The device's TTY. If `None`, using the current process's TTY.
 	tty: Option<TTYHandle>,
@@ -39,7 +39,7 @@ impl TTYDeviceHandle {
 	}
 
 	/// Returns the current process and its associated TTY.
-	fn get_tty(&self) -> Result<(Arc<IntMutex<Process>>, TTYHandle), Errno> {
+	fn get_tty(&self) -> EResult<(Arc<IntMutex<Process>>, TTYHandle)> {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -58,7 +58,7 @@ impl TTYDeviceHandle {
 	/// - `tty` is the TTY.
 	///
 	/// This function must be called before performing the read operation.
-	fn check_sigttin(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
+	fn check_sigttin(&self, proc: &mut Process, tty: &TTY) -> EResult<()> {
 		if proc.pgid == tty.get_pgrp() {
 			return Ok(());
 		}
@@ -81,7 +81,7 @@ impl TTYDeviceHandle {
 	/// - `tty` is the TTY.
 	///
 	/// This function must be called before performing the write operation.
-	fn check_sigttou(&self, proc: &mut Process, tty: &TTY) -> Result<(), Errno> {
+	fn check_sigttou(&self, proc: &mut Process, tty: &TTY) -> EResult<()> {
 		if tty.get_termios().c_lflag & termios::TOSTOP == 0 {
 			return Ok(());
 		}
@@ -104,7 +104,7 @@ impl DeviceHandle for TTYDeviceHandle {
 		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
@@ -177,7 +177,7 @@ impl DeviceHandle for TTYDeviceHandle {
 					.get(&mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
 
-				// Dropping to avoid deadlock since `set_winsize` sends the SIGWINCH signal
+				// Drop to avoid deadlock since `set_winsize` sends the SIGWINCH signal
 				drop(proc);
 				tty.set_winsize(winsize.clone());
 
@@ -188,10 +188,9 @@ impl DeviceHandle for TTYDeviceHandle {
 		}
 	}
 
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());
 		let mut tty = tty_mutex.lock();
-
 		tty.add_waiting_process(proc, mask)
 	}
 }
@@ -206,7 +205,7 @@ impl IO for TTYDeviceHandle {
 		}
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
@@ -217,7 +216,7 @@ impl IO for TTYDeviceHandle {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
@@ -228,7 +227,7 @@ impl IO for TTYDeviceHandle {
 		Ok(buff.len() as _)
 	}
 
-	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, mask: u32) -> EResult<u32> {
 		let (_, tty_mutex) = self.get_tty()?;
 		let tty = tty_mutex.lock();
 

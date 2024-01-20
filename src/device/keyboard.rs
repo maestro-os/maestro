@@ -1,11 +1,11 @@
-//! This module implements the keyboard device manager.
+//! Implementation of the keyboard device manager.
 
 use crate::device::manager::DeviceManager;
 use crate::device::manager::PhysicalDevice;
 use crate::errno::Errno;
 use crate::tty;
 
-/// Enumation of keyboard keys.
+/// Enumeration of keyboard keys.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum KeyboardKey {
 	KeyEsc,
@@ -173,7 +173,6 @@ impl KeyboardKey {
 			Self::KeyF10 => return Some(b"\x1b[21~"),
 			Self::KeyF11 => return Some(b"\x1b[23~"),
 			Self::KeyF12 => return Some(b"\x1b[24~"),
-
 			_ => {}
 		}
 
@@ -416,24 +415,18 @@ pub enum KeyboardLED {
 /// A key that can enabled, such as caps lock.
 ///
 /// Such a key is usually associated with an LED on the keyboard.
+#[derive(Default)]
 pub struct EnableKey {
 	/// The key's state.
 	state: bool,
 	/// Tells whether to ignore the next pressed actions until a release action
 	/// is received.
+	///
+	/// This allow to ignore repetitions.
 	ignore: bool,
 }
 
 impl EnableKey {
-	/// Creates a new instance.
-	#[allow(clippy::new_without_default)]
-	pub fn new() -> Self {
-		Self {
-			state: false,
-			ignore: false,
-		}
-	}
-
 	/// Handles a keyboard input.
 	///
 	/// `kbd_manager` is the keyboard manager.
@@ -445,16 +438,13 @@ impl EnableKey {
 				if !self.ignore {
 					self.state = !self.state;
 					self.ignore = true;
-
 					return true;
 				}
 			}
-
 			KeyboardAction::Released => {
 				self.ignore = false;
 			}
 		}
-
 		false
 	}
 
@@ -464,7 +454,7 @@ impl EnableKey {
 	}
 }
 
-/// Trait representing a keyboard.
+/// Trait representing a physical keyboard.
 pub trait Keyboard {
 	/// Sets the state of the given LED.
 	///
@@ -474,8 +464,7 @@ pub trait Keyboard {
 	fn set_led(&mut self, led: KeyboardLED, enabled: bool);
 }
 
-/// Structure managing keyboard devices.
-/// The manager has the name `kbd`.
+/// The keyboard manager structure.
 pub struct KeyboardManager {
 	/// The ctrl key state.
 	ctrl: bool,
@@ -510,9 +499,9 @@ impl KeyboardManager {
 			right_alt: false,
 			right_ctrl: false,
 
-			number_lock: EnableKey::new(),
-			caps_lock: EnableKey::new(),
-			scroll_lock: EnableKey::new(),
+			number_lock: EnableKey::default(),
+			caps_lock: EnableKey::default(),
+			scroll_lock: EnableKey::default(),
 		};
 		s.init_device_files();
 		s
@@ -523,7 +512,7 @@ impl KeyboardManager {
 		// TODO Create /dev/input/event* files
 	}
 
-	/// Destroyes devices files.
+	/// Destroys devices files.
 	fn fini_device_files(&self) {
 		// TODO Remove /dev/input/event* files
 	}
@@ -556,8 +545,8 @@ impl KeyboardManager {
 
 		if action == KeyboardAction::Pressed {
 			if self.ctrl && self.alt {
-				// TODO TTYs must be allocated first
-				// Switching TTY
+				// FIXME: TTYs must be allocated first
+				// Switch TTY
 				let id = match key {
 					KeyboardKey::KeyF1 => Some(0),
 					KeyboardKey::KeyF2 => Some(1),
@@ -568,23 +557,22 @@ impl KeyboardManager {
 					KeyboardKey::KeyF7 => Some(6),
 					KeyboardKey::KeyF8 => Some(7),
 					KeyboardKey::KeyF9 => Some(8),
-
 					_ => None,
 				};
 				tty::switch(id);
 			}
-
-			// Getting the tty
+			// Get tty
 			if let Some(tty_mutex) = tty::current() {
 				let mut tty = tty_mutex.lock();
 
 				let ctrl = self.ctrl || self.right_ctrl;
 				let alt = self.alt || self.right_alt;
 				let shift = (self.left_shift || self.right_shift) != self.caps_lock.is_enabled();
+				// TODO
+				let meta = false;
 
-				// Writing on TTY
-				// TODO Meta
-				if let Some(tty_chars) = key.get_tty_chars(shift, alt, ctrl, false) {
+				// Write on TTY
+				if let Some(tty_chars) = key.get_tty_chars(shift, alt, ctrl, meta) {
 					tty.input(tty_chars);
 				}
 			}
@@ -598,9 +586,6 @@ impl KeyboardManager {
 	/// - `enabled` tells whether the LED is lit.
 	pub fn set_led(&mut self, _led: KeyboardLED, _enabled: bool) {
 		// TODO Iterate on keyboards
-		/*if let Some(ps2) = &mut self.ps2_keyboard {
-			ps2.set_led(led, enabled);
-		}*/
 	}
 }
 
