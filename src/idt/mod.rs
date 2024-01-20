@@ -22,10 +22,11 @@
 
 pub mod pic;
 
+use core::arch::asm;
 use crate::util;
 use core::ffi::c_void;
 use core::mem::size_of;
-use core::mem::MaybeUninit;
+use core::ptr::addr_of;
 
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
@@ -76,7 +77,7 @@ macro_rules! hlt {
 	};
 }
 
-/// Structure representing the IDT.
+/// An IDT header.
 #[repr(C, packed)]
 struct InterruptDescriptorTable {
 	/// The size of the IDT in bytes, minus 1.
@@ -85,8 +86,9 @@ struct InterruptDescriptorTable {
 	offset: u32,
 }
 
-/// Structure representing an IDT entry.
-#[repr(C)]
+/// An IDT entry.
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
 struct InterruptDescriptor {
 	/// Bits 0..15 of the address to the handler for the interrupt.
 	offset: u16,
@@ -94,15 +96,41 @@ struct InterruptDescriptor {
 	selector: u16,
 	/// Must be set to zero.
 	zero: u8,
-	/// Interrupt flags.
-	type_attr: u8,
+	/// Interrupt handler flags.
+	flags: u8,
 	/// Bits 16..31 of the address to the handler for the interrupt.
 	offset_2: u16,
 }
 
-extern "C" {
-	fn idt_load(idt: *const c_void);
-	fn interrupt_is_enabled() -> i32;
+impl InterruptDescriptor {
+	/// Returns a placeholder entry.
+	///
+	/// This function is necessary because the `const_trait_impl` feature is currently unstable, preventing to use `Default`.
+	const fn placeholder() -> Self {
+		Self {
+			offset: 0,
+			selector: 0,
+			zero: 0,
+			flags: 0,
+			offset_2: 0,
+		}
+	}
+
+	/// Creates an IDT entry.
+	///
+	/// Arguments:
+	/// - `address` is the address of the handler.
+	/// - `selector` is the segment selector to be used to handle the interrupt.
+	/// - `flags` is the set of flags for the entry (see Intel documentation).
+	fn new(address: *const c_void, selector: u16, flags: u8) -> Self {
+		Self {
+			offset: ((address as u32) & 0xffff) as u16,
+			selector,
+			zero: 0,
+			flags,
+			offset_2: (((address as u32) & 0xffff0000) >> util::bit_size_of::<u16>()) as u16,
+		}
+	}
 }
 
 extern "C" {
@@ -160,98 +188,24 @@ extern "C" {
 }
 
 /// The list of IDT entries.
-static mut ID: MaybeUninit<[InterruptDescriptor; ENTRIES_COUNT]> = MaybeUninit::uninit();
+static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] = [InterruptDescriptor::placeholder(); ENTRIES_COUNT];
 
-/// Creates an IDT entry.
-fn create_id(address: *const c_void, selector: u16, type_attr: u8) -> InterruptDescriptor {
-	InterruptDescriptor {
-		offset: ((address as u32) & 0xffff) as u16,
-		selector,
-		zero: 0,
-		type_attr,
-		offset_2: (((address as u32) & 0xffff0000) >> util::bit_size_of::<u16>()) as u16,
-	}
-}
-
-/// Initializes the IDT.
-///
-/// This function must be called only once at kernel initialization.
-///
-/// When returning, maskable interrupts are disabled by default.
-pub(crate) fn init() {
-	cli!();
-	pic::init(0x20, 0x28);
-
-	// Access to global variable. Safe because the function is supposed to be called
-	// only once
-	unsafe {
-		let id = ID.assume_init_mut();
-
-		id[0x00] = create_id(error0 as _, 0x8, 0x8e);
-		id[0x01] = create_id(error1 as _, 0x8, 0x8e);
-		id[0x02] = create_id(error2 as _, 0x8, 0x8e);
-		id[0x03] = create_id(error3 as _, 0x8, 0x8e);
-		id[0x04] = create_id(error4 as _, 0x8, 0x8e);
-		id[0x05] = create_id(error5 as _, 0x8, 0x8e);
-		id[0x06] = create_id(error6 as _, 0x8, 0x8e);
-		id[0x07] = create_id(error7 as _, 0x8, 0x8e);
-		id[0x08] = create_id(error8 as _, 0x8, 0x8e);
-		id[0x09] = create_id(error9 as _, 0x8, 0x8e);
-		id[0x0a] = create_id(error10 as _, 0x8, 0x8e);
-		id[0x0b] = create_id(error11 as _, 0x8, 0x8e);
-		id[0x0c] = create_id(error12 as _, 0x8, 0x8e);
-		id[0x0d] = create_id(error13 as _, 0x8, 0x8e);
-		id[0x0e] = create_id(error14 as _, 0x8, 0x8e);
-		id[0x0f] = create_id(error15 as _, 0x8, 0x8e);
-		id[0x10] = create_id(error16 as _, 0x8, 0x8e);
-		id[0x11] = create_id(error17 as _, 0x8, 0x8e);
-		id[0x12] = create_id(error18 as _, 0x8, 0x8e);
-		id[0x13] = create_id(error19 as _, 0x8, 0x8e);
-		id[0x14] = create_id(error20 as _, 0x8, 0x8e);
-		id[0x15] = create_id(error21 as _, 0x8, 0x8e);
-		id[0x16] = create_id(error22 as _, 0x8, 0x8e);
-		id[0x17] = create_id(error23 as _, 0x8, 0x8e);
-		id[0x18] = create_id(error24 as _, 0x8, 0x8e);
-		id[0x19] = create_id(error25 as _, 0x8, 0x8e);
-		id[0x1a] = create_id(error26 as _, 0x8, 0x8e);
-		id[0x1b] = create_id(error27 as _, 0x8, 0x8e);
-		id[0x1c] = create_id(error28 as _, 0x8, 0x8e);
-		id[0x1d] = create_id(error29 as _, 0x8, 0x8e);
-		id[0x1e] = create_id(error30 as _, 0x8, 0x8e);
-		id[0x1f] = create_id(error31 as _, 0x8, 0x8e);
-
-		id[0x20] = create_id(irq0 as _, 0x8, 0x8e);
-		id[0x21] = create_id(irq1 as _, 0x8, 0x8e);
-		id[0x22] = create_id(irq2 as _, 0x8, 0x8e);
-		id[0x23] = create_id(irq3 as _, 0x8, 0x8e);
-		id[0x24] = create_id(irq4 as _, 0x8, 0x8e);
-		id[0x25] = create_id(irq5 as _, 0x8, 0x8e);
-		id[0x26] = create_id(irq6 as _, 0x8, 0x8e);
-		id[0x27] = create_id(irq7 as _, 0x8, 0x8e);
-		id[0x28] = create_id(irq8 as _, 0x8, 0x8e);
-		id[0x29] = create_id(irq9 as _, 0x8, 0x8e);
-		id[0x2a] = create_id(irq10 as _, 0x8, 0x8e);
-		id[0x2b] = create_id(irq11 as _, 0x8, 0x8e);
-		id[0x2c] = create_id(irq12 as _, 0x8, 0x8e);
-		id[0x2d] = create_id(irq13 as _, 0x8, 0x8e);
-		id[0x2e] = create_id(irq14 as _, 0x8, 0x8e);
-		id[0x2f] = create_id(irq15 as _, 0x8, 0x8e);
-
-		id[SYSCALL_ENTRY] = create_id(syscall as _, 0x8, 0xee);
-	}
-
-	let idt = InterruptDescriptorTable {
-		size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
-		offset: unsafe { ID.assume_init_ref().as_ptr() as u32 },
-	};
-	unsafe {
-		idt_load(&idt as *const _ as *const _);
-	}
+/// Loads the given Interrupt Descriptor Table.
+unsafe fn idt_load(idt: *const InterruptDescriptorTable) {
+	asm!("lidt [{idt}]", idt = in(reg) idt);
 }
 
 /// Tells whether interruptions are enabled.
 pub fn is_interrupt_enabled() -> bool {
-	unsafe { interrupt_is_enabled() != 0 }
+	let mut flags: u32;
+	unsafe {
+		asm!(
+			"pushfd",
+			"pop {flags}",
+			flags = out(reg) flags,
+		)
+	}
+	flags & 0x200 != 0
 }
 
 /// Executes the given function `f` with maskable interruptions disabled.
@@ -275,4 +229,81 @@ pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 	}
 
 	result
+}
+
+/// Initializes the IDT.
+///
+/// This function must be called only once at kernel initialization.
+///
+/// When returning, maskable interrupts are disabled by default.
+pub(crate) fn init() {
+	cli!();
+	pic::init(0x20, 0x28);
+
+	// Fill entries table
+	let mut entries: [InterruptDescriptor; ENTRIES_COUNT] = [InterruptDescriptor::placeholder(); ENTRIES_COUNT];
+	// Errors
+	entries[0x00] = InterruptDescriptor::new(error0 as _, 0x8, 0x8e);
+	entries[0x01] = InterruptDescriptor::new(error1 as _, 0x8, 0x8e);
+	entries[0x02] = InterruptDescriptor::new(error2 as _, 0x8, 0x8e);
+	entries[0x03] = InterruptDescriptor::new(error3 as _, 0x8, 0x8e);
+	entries[0x04] = InterruptDescriptor::new(error4 as _, 0x8, 0x8e);
+	entries[0x05] = InterruptDescriptor::new(error5 as _, 0x8, 0x8e);
+	entries[0x06] = InterruptDescriptor::new(error6 as _, 0x8, 0x8e);
+	entries[0x07] = InterruptDescriptor::new(error7 as _, 0x8, 0x8e);
+	entries[0x08] = InterruptDescriptor::new(error8 as _, 0x8, 0x8e);
+	entries[0x09] = InterruptDescriptor::new(error9 as _, 0x8, 0x8e);
+	entries[0x0a] = InterruptDescriptor::new(error10 as _, 0x8, 0x8e);
+	entries[0x0b] = InterruptDescriptor::new(error11 as _, 0x8, 0x8e);
+	entries[0x0c] = InterruptDescriptor::new(error12 as _, 0x8, 0x8e);
+	entries[0x0d] = InterruptDescriptor::new(error13 as _, 0x8, 0x8e);
+	entries[0x0e] = InterruptDescriptor::new(error14 as _, 0x8, 0x8e);
+	entries[0x0f] = InterruptDescriptor::new(error15 as _, 0x8, 0x8e);
+	entries[0x10] = InterruptDescriptor::new(error16 as _, 0x8, 0x8e);
+	entries[0x11] = InterruptDescriptor::new(error17 as _, 0x8, 0x8e);
+	entries[0x12] = InterruptDescriptor::new(error18 as _, 0x8, 0x8e);
+	entries[0x13] = InterruptDescriptor::new(error19 as _, 0x8, 0x8e);
+	entries[0x14] = InterruptDescriptor::new(error20 as _, 0x8, 0x8e);
+	entries[0x15] = InterruptDescriptor::new(error21 as _, 0x8, 0x8e);
+	entries[0x16] = InterruptDescriptor::new(error22 as _, 0x8, 0x8e);
+	entries[0x17] = InterruptDescriptor::new(error23 as _, 0x8, 0x8e);
+	entries[0x18] = InterruptDescriptor::new(error24 as _, 0x8, 0x8e);
+	entries[0x19] = InterruptDescriptor::new(error25 as _, 0x8, 0x8e);
+	entries[0x1a] = InterruptDescriptor::new(error26 as _, 0x8, 0x8e);
+	entries[0x1b] = InterruptDescriptor::new(error27 as _, 0x8, 0x8e);
+	entries[0x1c] = InterruptDescriptor::new(error28 as _, 0x8, 0x8e);
+	entries[0x1d] = InterruptDescriptor::new(error29 as _, 0x8, 0x8e);
+	entries[0x1e] = InterruptDescriptor::new(error30 as _, 0x8, 0x8e);
+	entries[0x1f] = InterruptDescriptor::new(error31 as _, 0x8, 0x8e);
+	// PIC interruptions
+	entries[0x20] = InterruptDescriptor::new(irq0 as _, 0x8, 0x8e);
+	entries[0x21] = InterruptDescriptor::new(irq1 as _, 0x8, 0x8e);
+	entries[0x22] = InterruptDescriptor::new(irq2 as _, 0x8, 0x8e);
+	entries[0x23] = InterruptDescriptor::new(irq3 as _, 0x8, 0x8e);
+	entries[0x24] = InterruptDescriptor::new(irq4 as _, 0x8, 0x8e);
+	entries[0x25] = InterruptDescriptor::new(irq5 as _, 0x8, 0x8e);
+	entries[0x26] = InterruptDescriptor::new(irq6 as _, 0x8, 0x8e);
+	entries[0x27] = InterruptDescriptor::new(irq7 as _, 0x8, 0x8e);
+	entries[0x28] = InterruptDescriptor::new(irq8 as _, 0x8, 0x8e);
+	entries[0x29] = InterruptDescriptor::new(irq9 as _, 0x8, 0x8e);
+	entries[0x2a] = InterruptDescriptor::new(irq10 as _, 0x8, 0x8e);
+	entries[0x2b] = InterruptDescriptor::new(irq11 as _, 0x8, 0x8e);
+	entries[0x2c] = InterruptDescriptor::new(irq12 as _, 0x8, 0x8e);
+	entries[0x2d] = InterruptDescriptor::new(irq13 as _, 0x8, 0x8e);
+	entries[0x2e] = InterruptDescriptor::new(irq14 as _, 0x8, 0x8e);
+	entries[0x2f] = InterruptDescriptor::new(irq15 as _, 0x8, 0x8e);
+	// System calls
+	entries[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall as _, 0x8, 0xee);
+
+	// Safe because the current function is called only once at boot
+	unsafe {
+		IDT_ENTRIES = entries;
+	}
+	let idt = InterruptDescriptorTable {
+		size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
+		offset: unsafe { IDT_ENTRIES.as_ptr() } as _,
+	};
+	unsafe {
+		idt_load(addr_of!(idt));
+	}
 }
