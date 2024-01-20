@@ -235,7 +235,7 @@ mod test {
 	#[test_case]
 	fn vmem_basic0() {
 		let vmem = new().unwrap();
-		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
+		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			assert_eq!(vmem.translate(i as _), None);
 		}
 	}
@@ -255,9 +255,11 @@ mod test {
 	#[test_case]
 	fn vmem_map0() {
 		let vmem = new().unwrap();
-		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+		unsafe {
+			vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+		}
 
-		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
+		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			if i >= 0x100000 && i < 0x101000 {
 				let result = vmem.translate(i as _);
 				assert!(result.is_some());
@@ -271,10 +273,12 @@ mod test {
 	#[test_case]
 	fn vmem_map1() {
 		let vmem = new().unwrap();
-		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
-		vmem.map(0x200000 as _, 0x100000 as _, 0).unwrap();
+		unsafe {
+			vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+			vmem.map(0x200000 as _, 0x100000 as _, 0).unwrap();
+		}
 
-		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
+		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			if i >= 0x100000 && i < 0x101000 {
 				let result = vmem.translate(i as _);
 				assert!(result.is_some());
@@ -291,10 +295,12 @@ mod test {
 	#[test_case]
 	fn vmem_unmap0() {
 		let vmem = new().unwrap();
-		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
-		vmem.unmap(0x100000 as _).unwrap();
+		unsafe {
+			vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+			vmem.unmap(0x100000 as _).unwrap();
+		}
 
-		for i in ((0 as usize)..(0xc0000000 as usize)).step_by(memory::PAGE_SIZE) {
+		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			assert_eq!(vmem.translate(i as _), None);
 		}
 	}
