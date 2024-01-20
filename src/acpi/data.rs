@@ -129,9 +129,11 @@ impl ACPIData {
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
 		let rsdt_map_begin = util::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
 		// Map the RSDT to make it readable
-		tmp_vmem.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
+		unsafe {
+			tmp_vmem.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
+			tmp_vmem.bind();
+		}
 
-		tmp_vmem.bind();
 		let (off, data) = {
 			let rsdt_ptr = (memory::PAGE_SIZE + (rsdt_phys_ptr as usize - rsdt_map_begin as usize))
 				as *const Rsdt;
@@ -150,11 +152,16 @@ impl ACPIData {
 					let table_ptr = table as *const ACPITableHeader;
 					// Map the table to read its length
 					let table_map_begin = util::down_align(table_ptr, memory::PAGE_SIZE);
-					if tmp_vmem
-						.map_range(table_map_begin as _, (memory::PAGE_SIZE * 3) as _, 2, 0)
-						.is_err()
-					{
-						panic!("Unexpected error when reading ACPI data");
+					let res = unsafe {
+						tmp_vmem.map_range(
+							table_map_begin as _,
+							(memory::PAGE_SIZE * 3) as _,
+							2,
+							0,
+						)
+					};
+					if res.is_err() {
+						panic!("Memory allocation failure when reading ACPI data");
 					}
 
 					let table_offset = table_ptr as usize - table_map_begin as usize;
@@ -187,7 +194,9 @@ impl ACPIData {
 			let begin = util::down_align(lowest, memory::PAGE_SIZE);
 			let end = unsafe { util::align(highest, memory::PAGE_SIZE) };
 			let pages = (end as usize - begin as usize) / memory::PAGE_SIZE;
-			tmp_vmem.map_range(begin, memory::PAGE_SIZE as _, pages, 0)?;
+			unsafe {
+				tmp_vmem.map_range(begin, memory::PAGE_SIZE as _, pages, 0)?;
+			}
 
 			// FIXME: unwrap here is garbage
 			let size = NonZeroUsize::new(pages * memory::PAGE_SIZE).unwrap();

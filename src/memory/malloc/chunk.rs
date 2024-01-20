@@ -17,7 +17,7 @@ use core::intrinsics::unlikely;
 use core::mem::size_of;
 use core::num::NonZeroUsize;
 use core::ptr;
-use core::ptr::NonNull;
+use core::ptr::{addr_of_mut, NonNull};
 
 /// The magic number for every chunks
 #[cfg(config_debug_malloc_magic)]
@@ -458,7 +458,6 @@ static mut FREE_LISTS: [Option<NonNull<FreeChunk>>; FREE_LIST_BINS] = [None; FRE
 /// Returns the minimum data size for a chunk.
 const fn get_min_chunk_size() -> usize {
 	let len = size_of::<FreeChunk>() - size_of::<Chunk>();
-
 	// Required because `max` is not `const`
 	if len > FREE_CHUNK_MIN {
 		len
@@ -503,7 +502,8 @@ fn get_free_list(
 	i = min(i, FREE_LIST_BINS - 1);
 
 	// Safe because the usage of the malloc API is secured by a Mutex
-	let free_lists = unsafe { &mut FREE_LISTS };
+	// FIXME: this is dirty
+	let free_lists = unsafe { &mut *addr_of_mut!(FREE_LISTS) };
 
 	if splittable {
 		i += 1;

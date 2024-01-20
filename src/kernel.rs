@@ -29,7 +29,6 @@
 #![feature(slice_index_methods)]
 #![feature(stmt_expr_attributes)]
 #![feature(strict_provenance)]
-#![feature(trait_upcasting)]
 #![feature(trusted_len)]
 #![feature(unsize)]
 #![feature(set_ptr_value)]
@@ -151,25 +150,29 @@ fn init_vmem() -> Result<(), Errno> {
 
 	// TODO Enable GLOBAL in cr4
 
-	// Mapping the kernelspace
-	kernel_vmem.map_range(
-		null::<c_void>(),
-		memory::PROCESS_END,
-		memory::get_kernelspace_size() / memory::PAGE_SIZE,
-		vmem::x86::FLAG_WRITE,
-	)?;
+	// Map kernelspace
+	unsafe {
+		kernel_vmem.map_range(
+			null::<c_void>(),
+			memory::PROCESS_END,
+			memory::get_kernelspace_size() / memory::PAGE_SIZE,
+			vmem::x86::FLAG_WRITE,
+		)?;
+	}
 
-	// Mapping VGA's buffer
+	// Map VGA's buffer
 	let vga_flags = vmem::x86::FLAG_CACHE_DISABLE
 		| vmem::x86::FLAG_WRITE_THROUGH
 		| vmem::x86::FLAG_WRITE
 		| vmem::x86::FLAG_GLOBAL;
-	kernel_vmem.map_range(
-		vga::BUFFER_PHYS as _,
-		vga::get_buffer_virt() as _,
-		1,
-		vga_flags,
-	)?;
+	unsafe {
+		kernel_vmem.map_range(
+			vga::BUFFER_PHYS as _,
+			vga::get_buffer_virt() as _,
+			1,
+			vga_flags,
+		)?;
+	}
 
 	// Making the kernel image read-only
 	kernel_vmem.protect_kernel()?;
@@ -197,9 +200,10 @@ pub fn is_memory_init() -> bool {
 /// If the kernel vmem is not initialized, the function does nothing.
 pub fn bind_vmem() {
 	let guard = KERNEL_VMEM.lock();
-
 	if let Some(vmem) = guard.as_ref() {
-		vmem.bind();
+		unsafe {
+			vmem.bind();
+		}
 	}
 }
 

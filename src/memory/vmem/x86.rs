@@ -77,11 +77,24 @@ pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
 /// fetch.
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
-extern "C" {
-	/// Enables paging with the given page directory.
-	pub fn paging_enable(directory: *const u32);
+/// Enables paging with the given page directory.
+///
+/// # Safety
+///
+/// This function is highly unsafe. The caller must ensure the
+pub unsafe fn enable_paging(directory: *const u32) {
+	asm!(
+		"mov cr3, {dir}",
+		"mov {tmp}, cr0",
+		"or {tmp}, 0x80010000",
+		"mov cr0, {tmp}",
+		dir = in(reg) directory,
+		tmp = out(reg) _,
+	)
 }
 
+// FIXME: do not use a global lock if kernel pages are not affected by an operation (which is the
+// case most (all?) of the time)
 /// When editing a virtual memory context, the kernel might edit pages in kernel
 /// space.
 ///
@@ -92,25 +105,22 @@ extern "C" {
 /// space mappings.
 static GLOBAL_MUTEX: Mutex<()> = Mutex::new(());
 
-/// Tells whether the kernel tables are initialized.
-static mut KERNEL_TABLES_INIT: bool = false;
-/// Array storing kernel space paging tables.
-static mut KERNEL_TABLES: [*mut u32; 256] = [0 as _; 256];
-
 /// Returns the array of kernel space paging tables.
 ///
 /// If the table is not initialized, the function initializes it.
 ///
 /// The first time this function is called, it is **not** thread safe.
-unsafe fn get_kernel_tables() -> AllocResult<&'static [*mut u32; 256]> {
-	if !KERNEL_TABLES_INIT {
-		for table in &mut KERNEL_TABLES {
+fn get_kernel_tables() -> AllocResult<&'static Mutex<[*mut u32; 256]>> {
+	/// Array storing kernel space paging tables.
+	static KERNEL_TABLES: Mutex<[*mut u32; 256]> = Mutex::new([0 as _; 256]);
+
+	let mut tables = KERNEL_TABLES.lock();
+	// If not initialized, init
+	if tables[0].is_null() {
+		for table in &mut *tables {
 			*table = alloc_obj()?;
 		}
-
-		KERNEL_TABLES_INIT = true;
 	}
-
 	Ok(&KERNEL_TABLES)
 }
 
@@ -120,9 +130,8 @@ unsafe fn get_kernel_tables() -> AllocResult<&'static [*mut u32; 256]> {
 ///
 /// The first time this function is called, it is **not** thread safe.
 unsafe fn get_kernel_table(n: usize) -> AllocResult<*mut u32> {
-	let tables = get_kernel_tables()?;
+	let tables = get_kernel_tables()?.lock();
 	debug_assert!(n < tables.len());
-
 	Ok(memory::kern_to_phys(tables[n] as _) as _)
 }
 
@@ -457,7 +466,7 @@ impl VMem for X86VMem {
 		}
 	}
 
-	fn map(
+	unsafe fn map(
 		&self,
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
@@ -472,7 +481,7 @@ impl VMem for X86VMem {
 
 		flags |= FLAG_PRESENT;
 
-		// Locking the global mutex to avoid data races while modifying kernel space
+		// Lock the global mutex to avoid data races while modifying kernel space
 		// tables
 		let _ = GLOBAL_MUTEX.lock();
 
@@ -486,7 +495,7 @@ impl VMem for X86VMem {
 		dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 
 		if dir_entry_index < 768 {
-			// Setting the table's flags
+			// Set the table's flags
 			dir_entry_value |= flags;
 			obj_set(self.page_dir, dir_entry_index, dir_entry_value);
 		}
@@ -496,13 +505,13 @@ impl VMem for X86VMem {
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
 		obj_set(table, table_entry_index, (physaddr as u32) | flags);
 
-		// Invalidating the page
+		// Invalidate the page
 		self.invalidate_page(virtaddr);
 
 		Ok(())
 	}
 
-	fn map_range(
+	unsafe fn map_range(
 		&self,
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
@@ -530,7 +539,7 @@ impl VMem for X86VMem {
 				self.map_pse(next_physaddr, next_virtaddr, flags);
 				i += 1024;
 
-				// Invalidating the pages
+				// Invalidate the pages
 				self.invalidate_page(next_virtaddr); // TODO Check if invalidating the whole
 				                     // table
 			} else {
@@ -542,13 +551,13 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn unmap(&self, virtaddr: *const c_void) -> AllocResult<()> {
+	unsafe fn unmap(&self, virtaddr: *const c_void) -> AllocResult<()> {
 		#[cfg(config_debug_debug)]
 		self.check_unmap(virtaddr, false);
 
 		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 
-		// Locking the global mutex to avoid data races while modifying kernel space
+		// Lock the global mutex to avoid data races while modifying kernel space
 		// tables
 		let _ = GLOBAL_MUTEX.lock();
 
@@ -564,10 +573,10 @@ impl VMem for X86VMem {
 		let table_entry_index = Self::get_addr_element_index(virtaddr, 0);
 		obj_set(table, table_entry_index, 0);
 
-		// Invalidating the page
+		// Invalidate the page
 		self.invalidate_page(virtaddr);
 
-		// Removing the table if it is empty and if not a kernel space table
+		// Remove the table if it is empty and if not a kernel space table
 		if table::is_empty(self.page_dir, dir_entry_index) && dir_entry_index < 768 {
 			table::delete(self.page_dir, dir_entry_index);
 		}
@@ -575,7 +584,7 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn unmap_range(&self, virtaddr: *const c_void, pages: usize) -> AllocResult<()> {
+	unsafe fn unmap_range(&self, virtaddr: *const c_void, pages: usize) -> AllocResult<()> {
 		debug_assert!(virtaddr.is_aligned_to(memory::PAGE_SIZE));
 		debug_assert!((virtaddr as usize) + (pages * memory::PAGE_SIZE) >= (virtaddr as usize));
 
@@ -584,7 +593,7 @@ impl VMem for X86VMem {
 			let off = i * memory::PAGE_SIZE;
 			let next_virtaddr = ((virtaddr as usize) + off) as *const c_void;
 
-			// Checking whether the page is mapped in PSE
+			// Check whether the page is mapped in PSE
 			let dir_entry_index = Self::get_addr_element_index(virtaddr, 1);
 			let dir_entry_value = obj_get(self.page_dir, dir_entry_index);
 			let is_pse =
@@ -594,7 +603,7 @@ impl VMem for X86VMem {
 				self.unmap_pse(next_virtaddr);
 				i += 1024;
 
-				// Invalidating the pages
+				// Invalidate the pages
 				self.invalidate_page(next_virtaddr); // TODO Check if invalidating the whole
 				                     // table
 			} else {
@@ -606,10 +615,10 @@ impl VMem for X86VMem {
 		Ok(())
 	}
 
-	fn bind(&self) {
+	unsafe fn bind(&self) {
 		if !self.is_bound() {
 			unsafe {
-				paging_enable(memory::kern_to_phys(self.page_dir as _) as _);
+				enable_paging(memory::kern_to_phys(self.page_dir as _) as _);
 			}
 		}
 	}

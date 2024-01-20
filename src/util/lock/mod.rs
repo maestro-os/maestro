@@ -11,12 +11,13 @@
 //! only way to get concurrency issues. Another factor to take into account is
 //! that fact that an interruption may be triggered at any moment while
 //! executing the code unless disabled. For this reason, mutexes in the kernel
-//! are equiped with an option allowing to disable interrupts while being
+//! are equipped with an option allowing to disable interrupts while being
 //! locked.
 //!
 //! If an exception is raised while a mutex that disables interruptions is
 //! acquired, the behaviour is undefined.
 
+pub mod once;
 pub mod spinlock;
 
 use crate::idt;
@@ -81,7 +82,6 @@ impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
 struct MutexIn<T: ?Sized, const INT: bool> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
-
 	/// The data associated to the mutex.
 	data: T,
 }
@@ -101,10 +101,15 @@ impl<T, const INT: bool> Mutex<T, INT> {
 		Self {
 			inner: UnsafeCell::new(MutexIn {
 				spin: Spinlock::new(),
-
 				data,
 			}),
 		}
+	}
+}
+
+impl<T: Default, const INT: bool> Default for Mutex<T, INT> {
+	fn default() -> Self {
+		Self::new(Default::default())
 	}
 }
 
@@ -127,13 +132,13 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			// Here is assumed that no interruption will change eflags' INT. Which could
 			// cause a race condition
 
-			// Disabling interrupts before locking to ensure no interrupt will occure while
+			// Disable interrupts before locking to ensure no interrupt will occure while
 			// locking
 			crate::cli!();
 
 			inner.spin.lock();
 
-			// Updating the current thread's state
+			// Update the current thread's state
 			// Safe because interrupts are disabled and the value can be accessed only by
 			// the current core
 			unsafe {
@@ -163,7 +168,7 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		let inner = &mut (*self.inner.get());
 
 		if !INT {
-			// Updating references count
+			// Update references count
 			INT_DISABLE_REFS.ref_count -= 1;
 			let state = if INT_DISABLE_REFS.ref_count == 0 {
 				INT_DISABLE_REFS.enabled
@@ -174,7 +179,7 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			// The state to restore
 			inner.spin.unlock();
 
-			// Restoring interrupts state after unlocking
+			// Restore interrupts state after unlocking
 			if state {
 				crate::sti!();
 			} else {

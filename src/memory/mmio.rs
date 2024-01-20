@@ -39,6 +39,7 @@ impl MMIO {
 	/// The virtual address is allocated by this function.
 	///
 	/// If not enough physical or virtual memory is available, the function returns an error.
+	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn new(phys_addr: *mut c_void, pages: usize, prefetchable: bool) -> AllocResult<Self> {
 		let order = buddy::get_order(pages);
 		let virt_addr = buddy::alloc_kernel(order)?;
@@ -49,9 +50,11 @@ impl MMIO {
 		}
 
 		let mut vmem = crate::get_vmem().lock();
-		vmem.as_mut()
-			.unwrap()
-			.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
+		unsafe {
+			vmem.as_mut()
+				.unwrap()
+				.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
+		}
 
 		Ok(Self {
 			phys_addr,
@@ -76,12 +79,14 @@ impl MMIO {
 	/// The previously allocated chunk is freed by this function.
 	pub fn unmap(&self) -> AllocResult<()> {
 		let mut vmem = crate::get_vmem().lock();
-		vmem.as_mut().unwrap().map_range(
-			self.phys_addr,
-			super::kern_to_virt(self.phys_addr),
-			self.pages,
-			DEFAULT_FLAGS,
-		)?;
+		unsafe {
+			vmem.as_mut().unwrap().map_range(
+				self.phys_addr,
+				super::kern_to_virt(self.phys_addr),
+				self.pages,
+				DEFAULT_FLAGS,
+			)?;
+		}
 
 		let order = buddy::get_order(self.pages);
 		buddy::free_kernel(self.phys_addr, order);

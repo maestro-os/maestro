@@ -39,9 +39,18 @@ pub trait VMem: TryClone<Error = AllocError> {
 	/// Maps the the given physical address `physaddr` to the given virtual
 	/// address `virtaddr` with the given flags.
 	///
-	/// This function automaticaly invalidates the page in the cache.
-	fn map(&self, physaddr: *const c_void, virtaddr: *const c_void, flags: u32)
-		-> AllocResult<()>;
+	/// This function automatically invalidates the page in the cache.
+	///
+	/// # Safety
+	///
+	/// If the context is bound, the caller must ensure that regions of memory to be used by the
+	/// execution context are left valid.
+	unsafe fn map(
+		&self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		flags: u32,
+	) -> AllocResult<()>;
 	/// Maps the given range of physical address `physaddr` to the given range
 	/// of virtual address `virtaddr`.
 	///
@@ -49,8 +58,13 @@ pub trait VMem: TryClone<Error = AllocError> {
 	///
 	/// If the operation fails, the virtual memory is left altered midway.
 	///
-	/// This function automaticaly invalidates the page(s) in the cache.
-	fn map_range(
+	/// This function automatically invalidates the page(s) in the cache.
+	///
+	/// # Safety
+	///
+	/// If the context is bound, the caller must ensure that regions of memory to be used by the
+	/// execution context are left valid.
+	unsafe fn map_range(
 		&self,
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
@@ -60,27 +74,45 @@ pub trait VMem: TryClone<Error = AllocError> {
 
 	/// Unmaps the page at virtual address `virtaddr`.
 	///
-	/// This function automaticaly invalidates the page in the cache.
-	fn unmap(&self, virtaddr: *const c_void) -> AllocResult<()>;
+	/// This function automatically invalidates the page in the cache.
+	///
+	/// # Safety
+	///
+	/// If the context is bound, the caller must ensure that regions of memory to be used by the
+	/// execution context are left valid.
+	unsafe fn unmap(&self, virtaddr: *const c_void) -> AllocResult<()>;
 	/// Unmaps the given range beginning at virtual address `virtaddr` with size
 	/// of `pages` pages.
 	///
 	/// If the operation fails, the virtual memory is left altered midway.
 	///
-	/// This function automaticaly invalidates the page(s) in the cache.
-	fn unmap_range(&self, virtaddr: *const c_void, pages: usize) -> AllocResult<()>;
+	/// This function automatically invalidates the page(s) in the cache.
+	///
+	/// # Safety
+	///
+	/// If the context is bound, the caller must ensure that regions of memory to be used by the
+	/// execution context are left valid.
+	unsafe fn unmap_range(&self, virtaddr: *const c_void, pages: usize) -> AllocResult<()>;
 
 	/// Binds the virtual memory context handler.
-	fn bind(&self);
+	///
+	/// # Safety
+	///
+	/// This function totally breaks Rust's safety guarantee.
+	/// The caller must ensure the stack, code and data the code might access are still accessible
+	/// in the memory context.
+	unsafe fn bind(&self);
 	/// Tells whether the handler is bound or not.
 	fn is_bound(&self) -> bool;
 
-	/// Invalides the page at address `addr`.
+	/// Invalidates the page at address `addr` from the CPU's cache.
 	fn invalidate_page(&self, addr: *const c_void);
 	/// Flushes the modifications of the context if bound.
 	///
 	/// This function should be called after applying modifications to the context for them to be
 	/// taken into account.
+	///
+	/// This is an expensive operation for the CPU cache and should be used as few as possible.
 	fn flush(&self);
 
 	/// Protects the kernel's read-only sections from writing.
@@ -92,7 +124,9 @@ pub trait VMem: TryClone<Error = AllocError> {
 			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
 			let pages = math::ceil_div(section.sh_size, memory::PAGE_SIZE as _) as usize;
-			self.map_range(phys_addr, virt_addr, pages, x86::FLAG_USER)?;
+			unsafe {
+				self.map_range(phys_addr, virt_addr, pages, x86::FLAG_USER)?;
+			}
 		}
 		Ok(())
 	}
@@ -121,7 +155,7 @@ pub fn is_write_locked() -> bool {
 /// This function disables memory protection on the kernel side, which makes
 /// read-only data writable.
 ///
-/// Writing on read-only data is undefined.
+/// Writing on read-only regions of memory has an undefined behavior.
 pub unsafe fn set_write_lock(lock: bool) {
 	let mut val = register_get!("cr0");
 	if lock {
@@ -143,7 +177,7 @@ pub unsafe fn set_write_lock(lock: bool) {
 /// This function disables memory protection on the kernel side, which makes
 /// read-only data writable.
 ///
-/// Writing on read-only data is undefined.
+/// Writing on read-only regions of memory has an undefined behavior.
 pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
 	let lock = is_write_locked();
 	set_write_lock(false);
@@ -186,7 +220,7 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
 			let result = f();
 
 			// Restore previous vmem
-			x86::paging_enable(cr3 as _);
+			x86::enable_paging(cr3 as _);
 
 			result
 		}

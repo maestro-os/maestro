@@ -459,9 +459,7 @@ impl TTY {
 	/// Writes string `buffer` to TTY.
 	pub fn write(&mut self, buffer: &[u8]) {
 		// TODO Add a compilation and/or runtime option for this
-		if let Some(serial) = serial::get(serial::COM1) {
-			serial.lock().write(buffer);
-		}
+		serial::PORTS[0].lock().write(buffer);
 
 		let mut i = 0;
 		while i < buffer.len() {
