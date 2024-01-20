@@ -6,9 +6,6 @@
 
 .section .text
 
-.global idt_load
-.type idt_load, @function
-
 .extern end_of_interrupt
 
 /*
@@ -197,13 +194,3 @@ IRQ 12
 IRQ 13
 IRQ 14
 IRQ 15
-
-
-
-/*
- * This function takes the IDT given as argument and loads it.
- */
-idt_load:
-	mov 4(%esp), %edx
-	lidt (%edx)
-	ret
