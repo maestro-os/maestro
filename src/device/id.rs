@@ -20,9 +20,9 @@
 
 use crate::device::DeviceType;
 use crate::errno::AllocResult;
-use crate::errno::Errno;
 use crate::util::container::id_allocator::IDAllocator;
 use crate::util::lock::Mutex;
+use core::cell::OnceCell;
 
 /// The number of major numbers.
 const MAJOR_COUNT: u32 = 256;
@@ -40,17 +40,15 @@ pub fn minor(dev: u64) -> u32 {
 }
 
 /// Returns a device number from a major/minor pair.
-pub fn makedev(major: u32, minor: u32) -> u64 {
+pub const fn makedev(major: u32, minor: u32) -> u64 {
 	(((minor & 0xff) as u64)
 		| (((major & 0xfff) as u64) << 8)
 		| (((minor & !0xff) as u64) << 12)
 		| (((major & !0xfff) as u64) << 32)) as _
 }
 
-/// Structure representing a block of minor numbers.
-///
-/// The structure is associated with a unique major number, and it can allocate every minor numbers
-/// with it.
+/// A block of minor numbers associated with a unique major number, and it can allocate every minor
+/// numbers with it.
 pub struct MajorBlock {
 	/// The device type.
 	device_type: DeviceType,
@@ -63,7 +61,7 @@ pub struct MajorBlock {
 
 impl MajorBlock {
 	/// Creates a new instance with the given major number `major`.
-	fn new(device_type: DeviceType, major: u32) -> Result<Self, Errno> {
+	fn new(device_type: DeviceType, major: u32) -> AllocResult<Self> {
 		Ok(Self {
 			device_type,
 			major,
@@ -100,14 +98,20 @@ impl MajorBlock {
 
 impl Drop for MajorBlock {
 	fn drop(&mut self) {
-		free_major(self);
+		let mut major_allocator = match self.device_type {
+			DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
+			DeviceType::Char => CHAR_MAJOR_ALLOCATOR.lock(),
+		};
+		if let Some(major_allocator) = major_allocator.get_mut() {
+			major_allocator.free(self.major);
+		}
 	}
 }
 
 /// The major numbers allocator.
-static BLOCK_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
+static BLOCK_MAJOR_ALLOCATOR: Mutex<OnceCell<IDAllocator>> = Mutex::new(OnceCell::new());
 /// The major numbers allocator.
-static CHAR_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
+static CHAR_MAJOR_ALLOCATOR: Mutex<OnceCell<IDAllocator>> = Mutex::new(OnceCell::new());
 
 /// Allocates a major number.
 ///
@@ -117,32 +121,16 @@ static CHAR_MAJOR_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 /// number.
 ///
 /// If the allocation fails, the function returns an `Err`.
-pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> Result<MajorBlock, Errno> {
+pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> AllocResult<MajorBlock> {
 	let mut major_allocator = match device_type {
 		DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
 		DeviceType::Char => CHAR_MAJOR_ALLOCATOR.lock(),
 	};
-
-	if major_allocator.is_none() {
-		*major_allocator = Some(IDAllocator::new(MAJOR_COUNT)?);
-	}
-	let major_allocator = major_allocator.as_mut().unwrap();
-
+	major_allocator.get_or_try_init(|| IDAllocator::new(MAJOR_COUNT))?;
+	// FIXME: remove unwrap (wait until `get_mut_or_try_init` or equivalent is available)
+	let major_allocator = major_allocator.get_mut().unwrap();
 	let major = major_allocator.alloc(major)?;
-	let block = MajorBlock::new(device_type, major)?;
-	Ok(block)
-}
-
-/// Frees the given major block `block`.
-///
-/// **WARNING**: This function shouldn't be called directly, but only from the
-/// `MajorBlock` itself.
-fn free_major(block: &MajorBlock) {
-	let mut major_allocator = match block.get_device_type() {
-		DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
-		DeviceType::Char => CHAR_MAJOR_ALLOCATOR.lock(),
-	};
-	major_allocator.as_mut().unwrap().free(block.get_major());
+	MajorBlock::new(device_type, major)
 }
 
 #[cfg(test)]

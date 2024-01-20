@@ -47,11 +47,11 @@ impl IO for MemInfo {
 			return Ok((0, false));
 		}
 
-		// Generating content
+		// Generate content
 		let mem_info = memory::stats::MEM_INFO.lock();
-		let content = mem_info.to_string()?;
+		let content = crate::format!("{}", *mem_info)?;
 
-		// Copying content to userspace buffer
+		// Copy content to userspace buffer
 		let content_bytes = content.as_bytes();
 		let len = min((content_bytes.len() as u64 - offset) as usize, buff.len());
 		buff[..len].copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);

@@ -43,7 +43,7 @@ use core::cmp::min;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 
-/// Structure representing a device which does nothing.
+/// Device which does nothing.
 #[derive(Default)]
 pub struct NullDeviceHandle {}
 
@@ -77,7 +77,7 @@ impl IO for NullDeviceHandle {
 	}
 }
 
-/// Structure representing a device gives null bytes.
+/// Device returning only null bytes.
 #[derive(Default)]
 pub struct ZeroDeviceHandle {}
 
@@ -115,7 +115,7 @@ impl IO for ZeroDeviceHandle {
 	}
 }
 
-/// The random device allows to get random bytes.
+/// Device allows to get random bytes.
 ///
 /// This device will block reading until enough entropy is available.
 #[derive(Default)]
@@ -176,7 +176,7 @@ impl IO for RandomDeviceHandle {
 	}
 }
 
-/// This device works exactly like the random device, except it doesn't block.
+/// This device works exactly like [`RandomDeviceHandle`], except it doesn't block.
 ///
 /// If not enough entropy is available, the output might not have a sufficient
 /// quality.
@@ -227,7 +227,7 @@ impl IO for URandomDeviceHandle {
 	}
 }
 
-/// Structure representing the kernel logs.
+/// Device allowing to read or write kernel logs.
 #[derive(Default)]
 pub struct KMsgDeviceHandle {}
 

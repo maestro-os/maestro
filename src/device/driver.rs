@@ -45,9 +45,8 @@ static DRIVERS: Mutex<Vec<Arc<Mutex<dyn Driver>>>> = Mutex::new(Vec::new());
 
 /// Registers the given driver.
 pub fn register<D: 'static + Driver>(driver: D) -> AllocResult<()> {
-	let mut drivers = DRIVERS.lock();
-
 	let m = Arc::new(Mutex::new(driver))?;
+	let mut drivers = DRIVERS.lock();
 	drivers.push(m)
 }
 
@@ -60,16 +59,13 @@ pub fn unregister(_name: &str) {
 /// Returns the driver with name `name`.
 pub fn get_by_name(name: &str) -> Option<Weak<Mutex<dyn Driver>>> {
 	let drivers = DRIVERS.lock();
-
-	for i in 0..drivers.len() {
-		let driver = drivers[i].lock();
-
+	for driver_mutex in drivers.iter() {
+		let driver = driver_mutex.lock();
 		if driver.get_name() == name {
 			drop(driver);
-			return Some(Arc::downgrade(&drivers[i]));
+			return Some(Arc::downgrade(driver_mutex));
 		}
 	}
-
 	None
 }
 
@@ -78,10 +74,9 @@ pub fn get_by_name(name: &str) -> Option<Weak<Mutex<dyn Driver>>> {
 /// `dev` is the device that has been plugged in.
 pub fn on_plug(dev: &dyn PhysicalDevice) {
 	let drivers = DRIVERS.lock();
-
-	for i in 0..drivers.len() {
-		let manager = drivers[i].lock();
-		manager.on_plug(dev);
+	for driver_mutex in drivers.iter() {
+		let driver = driver_mutex.lock();
+		driver.on_plug(dev);
 	}
 }
 
@@ -90,9 +85,8 @@ pub fn on_plug(dev: &dyn PhysicalDevice) {
 /// `dev` is the device that has been plugged out.
 pub fn on_unplug(dev: &dyn PhysicalDevice) {
 	let drivers = DRIVERS.lock();
-
-	for i in 0..drivers.len() {
-		let manager = drivers[i].lock();
-		manager.on_unplug(dev);
+	for driver_mutex in drivers.iter() {
+		let driver = driver_mutex.lock();
+		driver.on_unplug(dev);
 	}
 }

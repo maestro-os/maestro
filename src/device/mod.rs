@@ -110,7 +110,6 @@ impl DeviceID {
 				major: self.major,
 				minor: self.minor,
 			},
-
 			DeviceType::Char => FileContent::CharDevice {
 				major: self.major,
 				minor: self.minor,

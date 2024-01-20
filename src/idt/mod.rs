@@ -22,8 +22,8 @@
 
 pub mod pic;
 
-use core::arch::asm;
 use crate::util;
+use core::arch::asm;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::addr_of;
@@ -105,7 +105,8 @@ struct InterruptDescriptor {
 impl InterruptDescriptor {
 	/// Returns a placeholder entry.
 	///
-	/// This function is necessary because the `const_trait_impl` feature is currently unstable, preventing to use `Default`.
+	/// This function is necessary because the `const_trait_impl` feature is currently unstable,
+	/// preventing to use `Default`.
 	const fn placeholder() -> Self {
 		Self {
 			offset: 0,
@@ -188,7 +189,8 @@ extern "C" {
 }
 
 /// The list of IDT entries.
-static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] = [InterruptDescriptor::placeholder(); ENTRIES_COUNT];
+static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] =
+	[InterruptDescriptor::placeholder(); ENTRIES_COUNT];
 
 /// Loads the given Interrupt Descriptor Table.
 unsafe fn idt_load(idt: *const InterruptDescriptorTable) {
@@ -196,6 +198,7 @@ unsafe fn idt_load(idt: *const InterruptDescriptorTable) {
 }
 
 /// Tells whether interruptions are enabled.
+#[inline]
 pub fn is_interrupt_enabled() -> bool {
 	let mut flags: u32;
 	unsafe {
@@ -241,7 +244,8 @@ pub(crate) fn init() {
 	pic::init(0x20, 0x28);
 
 	// Fill entries table
-	let mut entries: [InterruptDescriptor; ENTRIES_COUNT] = [InterruptDescriptor::placeholder(); ENTRIES_COUNT];
+	let mut entries: [InterruptDescriptor; ENTRIES_COUNT] =
+		[InterruptDescriptor::placeholder(); ENTRIES_COUNT];
 	// Errors
 	entries[0x00] = InterruptDescriptor::new(error0 as _, 0x8, 0x8e);
 	entries[0x01] = InterruptDescriptor::new(error1 as _, 0x8, 0x8e);

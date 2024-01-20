@@ -84,15 +84,13 @@ pub trait Table {
 ///
 /// If no partitions table is present, the function returns `None`.
 pub fn read(storage: &mut dyn StorageInterface) -> Result<Option<Box<dyn Table>>, Errno> {
-	// Trying GPT
+	// Try GPT
 	if let Some(table) = Gpt::read(storage)? {
 		return Ok(Some(Box::new(table)?));
 	}
-
-	// Trying MBR
+	// Try MBR
 	if let Some(table) = MbrTable::read(storage)? {
 		return Ok(Some(Box::new(table)?));
 	}
-
 	Ok(None)
 }

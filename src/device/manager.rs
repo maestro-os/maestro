@@ -82,10 +82,8 @@ static DEVICE_MANAGERS: Mutex<HashMap<TypeId, Arc<Mutex<dyn DeviceManager>>>> =
 /// Registers the given device manager.
 pub fn register<M: DeviceManager>(manager: M) -> EResult<()> {
 	let m = Arc::new(Mutex::new(manager))?;
-
 	let mut device_managers = DEVICE_MANAGERS.lock();
 	device_managers.insert(TypeId::of::<M>(), m)?;
-
 	Ok(())
 }
 
@@ -101,12 +99,10 @@ pub fn get<M: DeviceManager>() -> Option<Arc<Mutex<dyn DeviceManager>>> {
 /// `dev` is the device that has been plugged in.
 pub fn on_plug(dev: &dyn PhysicalDevice) -> EResult<()> {
 	let device_managers = DEVICE_MANAGERS.lock();
-
 	for (_, m) in device_managers.iter() {
 		let mut manager = m.lock();
 		manager.on_plug(dev)?;
 	}
-
 	Ok(())
 }
 
@@ -115,11 +111,9 @@ pub fn on_plug(dev: &dyn PhysicalDevice) -> EResult<()> {
 /// `dev` is the device that has been plugged out.
 pub fn on_unplug(dev: &dyn PhysicalDevice) -> EResult<()> {
 	let device_managers = DEVICE_MANAGERS.lock();
-
 	for (_, m) in device_managers.iter() {
 		let mut manager = m.lock();
 		manager.on_unplug(dev)?;
 	}
-
 	Ok(())
 }

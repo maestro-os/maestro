@@ -64,7 +64,6 @@ impl BAR {
 			Self::MemorySpace {
 				address, ..
 			} => *address as _,
-
 			Self::IOSpace {
 				address, ..
 			} => *address as _,
@@ -77,7 +76,6 @@ impl BAR {
 			Self::MemorySpace {
 				size, ..
 			} => *size,
-
 			Self::IOSpace {
 				size, ..
 			} => *size,
@@ -90,7 +88,6 @@ impl BAR {
 			Self::MemorySpace {
 				prefetchable, ..
 			} => *prefetchable,
-
 			Self::IOSpace {
 				..
 			} => false,
@@ -110,25 +107,19 @@ impl BAR {
 					let addr = (address + off as u64) as *const u32;
 					ptr::read_volatile::<u32>(addr).into()
 				},
-
 				BARType::Size64 => unsafe {
 					let addr = (address + off as u64) as *const u64;
 					ptr::read_volatile::<u64>(addr)
 				},
 			},
-
 			Self::IOSpace {
 				address, ..
 			} => {
 				let off = (*address + off as u64) as u16;
-
 				match size_of::<T>() {
 					1 => unsafe { io::inb(off).into() },
-
 					2 => unsafe { io::inw(off).into() },
-
 					4 => unsafe { io::inl(off).into() },
-
 					_ => 0u32.into(),
 				}
 			}
@@ -148,25 +139,19 @@ impl BAR {
 					let addr = (address + off as u64) as *mut u32;
 					ptr::write_volatile::<u32>(addr, val as _);
 				},
-
 				BARType::Size64 => unsafe {
 					let addr = (address + off as u64) as *mut u64;
 					ptr::write_volatile::<u64>(addr, val);
 				},
 			},
-
 			Self::IOSpace {
 				address, ..
 			} => {
 				let off = (*address + off as u64) as u16;
-
 				match size_of::<T>() {
 					1 => unsafe { io::outb(off, val as _) },
-
 					2 => unsafe { io::outw(off, val as _) },
-
 					4 => unsafe { io::outl(off, val as _) },
-
 					_ => {}
 				}
 			}

@@ -22,7 +22,7 @@
 //! can be allocated by the buddy allocator
 //!
 //! The following zones exist:
-//! - Kernel: Memory to be allocated by the kernel, shared accross processes. This zone requires
+//! - Kernel: Memory to be allocated by the kernel, shared across processes. This zone requires
 //! that every frames of virtual memory are associated with a unique physical
 //! frame.
 //! - MMIO: Memory used for Memory Mapped I/O. This zones requires only virtual memory, thus it
@@ -41,12 +41,11 @@ use core::ffi::c_void;
 
 /// Initializes the memory allocators.
 pub(crate) fn init() {
-	let mmap_info = memmap::get_info();
-
+	let phys_map = memmap::get_info();
 	// The pointer to the beginning of available memory
-	let virt_alloc_begin = memory::kern_to_virt(mmap_info.phys_main_begin);
+	let virt_alloc_begin = memory::kern_to_virt(phys_map.phys_main_begin);
 	// The number of available physical memory pages
-	let mut available_pages = mmap_info.phys_main_pages;
+	let mut available_pages = phys_map.phys_main_pages;
 
 	// The pointer to the beginning of the buddy allocator's metadata
 	let metadata_begin =
