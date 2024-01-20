@@ -743,7 +743,9 @@ impl MemSpace {
 
 	/// Binds the CPU to this memory space.
 	pub fn bind(&self) {
-		self.vmem.bind();
+		unsafe {
+			self.vmem.bind();
+		}
 	}
 
 	/// Tells whether the memory space is bound.

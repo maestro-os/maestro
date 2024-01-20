@@ -28,6 +28,7 @@
 use crate::gdt;
 use core::arch::asm;
 use core::mem::size_of;
+use core::ptr::addr_of;
 
 /// The TSS structure.
 #[repr(C, packed)]
@@ -98,7 +99,7 @@ impl TSS {
 	/// Initializes the TSS.
 	pub fn init() {
 		let limit = size_of::<Self>() as u64;
-		let base = unsafe { &TSS as *const _ as u64 };
+		let base = unsafe { addr_of!(TSS) as u64 };
 		let flags = 0b0100000010001001_u64;
 		let tss_value = (limit & 0xffff)
 			| ((base & 0xffffff) << 16)

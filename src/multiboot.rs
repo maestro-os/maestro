@@ -22,6 +22,7 @@
 
 use crate::memory;
 use crate::util;
+use crate::util::lock::once::OnceInit;
 use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use core::ptr::null;
@@ -419,29 +420,31 @@ pub struct BootInfo {
 	pub initramfs: Option<&'static [u8]>,
 }
 
-/// The field storing the informations given to the kernel at boot time.
-static mut BOOT_INFO: BootInfo = BootInfo {
-	cmdline: None,
-	loader_name: None,
+impl Default for BootInfo {
+	fn default() -> Self {
+		Self {
+			cmdline: None,
+			loader_name: None,
+			mem_lower: 0,
+			mem_upper: 0,
+			memory_maps_size: 0,
+			memory_maps_entry_size: 0,
+			memory_maps: null(),
+			elf_num: 0,
+			elf_entsize: 0,
+			elf_shndx: 0,
+			elf_sections: null(),
+			initramfs: None,
+		}
+	}
+}
 
-	mem_lower: 0,
-	mem_upper: 0,
-	memory_maps_size: 0,
-	memory_maps_entry_size: 0,
-	memory_maps: null(),
-
-	elf_num: 0,
-	elf_entsize: 0,
-	elf_shndx: 0,
-	elf_sections: null(),
-
-	initramfs: None,
-};
+/// The field storing the information given to the kernel at boot time.
+static BOOT_INFO: OnceInit<BootInfo> = unsafe { OnceInit::new() };
 
 /// Returns boot information provided by Multiboot.
 pub fn get_boot_info() -> &'static BootInfo {
-	// Safe, since the variable is written only once, at boot
-	unsafe { &BOOT_INFO }
+	BOOT_INFO.get()
 }
 
 /// Reinterprets a tag with the given type.
@@ -520,9 +523,11 @@ pub(crate) unsafe fn get_tags_size(ptr: *const c_void) -> usize {
 ///
 /// The caller must ensure the given pointer is valid and points to Multiboot tags.
 pub(crate) unsafe fn read_tags(ptr: *const c_void) {
+	let mut boot_info = BootInfo::default();
 	let mut tag = ptr.offset(8) as *const Tag;
 	while (*tag).type_ != TAG_TYPE_END {
-		handle_tag(&mut BOOT_INFO, &*tag);
+		handle_tag(&mut boot_info, &*tag);
 		tag = (*tag).next();
 	}
+	BOOT_INFO.init(boot_info);
 }

@@ -119,10 +119,7 @@ pub fn do_writev(
 			let open_file = open_file_mutex.lock();
 			(open_file.get_offset(), true)
 		}
-
 		Some(..-1) => return Err(errno!(EINVAL)),
-		// Required because of compiler bug
-		Some(_) => unreachable!(),
 	};
 
 	loop {

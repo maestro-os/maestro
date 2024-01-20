@@ -92,16 +92,16 @@ const LINE_STATUS_IE: u8 = 0b10000000;
 /// The UART's frequency.
 const UART_FREQUENCY: u32 = 115200; // TODO Replace by a rational number?
 
-// TODO Add feature to avoid multiple instances on one port
-
-/// Structure representing a serial communication port.
+/// A serial communication port.
 pub struct Serial {
 	/// The offset of the port's I/O registers.
 	regs_off: u16,
+	/// Tells whether the port is active (if not need, probing to check).
+	active: bool,
 }
 
 impl Serial {
-	/// Tests whether the given port exists.
+	/// Tests whether the current serial port exists.
 	fn probe(&mut self) -> bool {
 		unsafe {
 			io::outb(self.regs_off + INTERRUPT_REG_OFF, 0x00);
@@ -125,25 +125,22 @@ impl Serial {
 	/// Creates a new instance for the specified port.
 	///
 	/// If the port doesn't exist, the function returns `None`.
-	fn from_port(port: u16) -> Option<Serial> {
-		let mut s = Self {
+	const fn from_port(port: u16) -> Serial {
+		Self {
 			regs_off: port,
-		};
-
-		if s.probe() {
-			Some(s)
-		} else {
-			None
+			active: false,
 		}
 	}
 
+	// TODO make pub? (must check the port is active before, without causing a stack overflow)
 	/// Sets the port's baud rate.
 	///
 	/// If the baud rate is not supported, the function approximates it to the nearest supported
 	/// value.
-	pub fn set_baud_rate(&mut self, baud: u32) {
+	///
+	/// If the port does not exist, the function does nothing.
+	fn set_baud_rate(&mut self, baud: u32) {
 		let div = (UART_FREQUENCY / baud) as u16;
-
 		unsafe {
 			let line_ctrl = io::inb(self.regs_off + LINE_CTRL_REG_OFF);
 			io::outb(self.regs_off + LINE_CTRL_REG_OFF, line_ctrl | DLAB);
@@ -155,18 +152,26 @@ impl Serial {
 		}
 	}
 
+	// TODO read
+
 	/// Tells whether the transmission buffer is empty.
 	fn is_transmit_empty(&self) -> bool {
 		(unsafe { io::inb(self.regs_off + LINE_STATUS_REG_OFF) } & LINE_STATUS_THRE) != 0
 	}
 
-	// TODO read
-
 	/// Writes the given buffer to the port's output.
+	///
+	/// If the port does not exist, the function does nothing.
 	pub fn write(&mut self, buff: &[u8]) {
+		if !self.active {
+			self.active = self.probe();
+		}
+		if !self.active {
+			return;
+		}
+
 		for b in buff {
 			while !self.is_transmit_empty() {}
-
 			unsafe {
 				io::outb(self.regs_off + DATA_REG_OFF, *b);
 			}
@@ -175,33 +180,9 @@ impl Serial {
 }
 
 /// The list of serial ports.
-static mut PORTS: [Option<Mutex<Serial>>; 4] = [None, None, None, None];
-
-/// Returns an instance to an object allowing to use the given serial
-/// communication port.
-///
-/// If the port is not initialized, the function tries to do it.
-///
-/// If the port doesn't exist, the function returns `None`.
-pub fn get(port: u16) -> Option<&'static mut Mutex<Serial>> {
-	let i = match port {
-		COM1 => 0,
-		COM2 => 1,
-		COM3 => 2,
-		COM4 => 3,
-
-		_ => return None,
-	};
-
-	let ports = unsafe {
-		// Safe because using Mutex
-		&mut PORTS
-	};
-	if ports[i].is_none() {
-		if let Some(s) = Serial::from_port(port) {
-			ports[i] = Some(Mutex::new(s));
-		}
-	}
-
-	ports[i].as_mut()
-}
+pub static PORTS: [Mutex<Serial>; 4] = [
+	Mutex::new(Serial::from_port(COM1)),
+	Mutex::new(Serial::from_port(COM2)),
+	Mutex::new(Serial::from_port(COM3)),
+	Mutex::new(Serial::from_port(COM4)),
+];
