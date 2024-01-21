@@ -120,10 +120,10 @@ pub fn statx(
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 
-		let pathname = pathname
+		let path = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		util::get_file_at(proc, dirfd, pathname, true, flags)?
+		util::get_file_at(proc, dirfd, path, true, flags)?
 	};
 	let file = file_mutex.lock();
 

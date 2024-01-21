@@ -21,7 +21,7 @@
 use crate::errno;
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::{Path, PathBuf};
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::File;
@@ -171,14 +171,12 @@ pub fn execve(
 			let mem_space = proc.get_mem_space().unwrap();
 			let mem_space_guard = mem_space.lock();
 
-			Path::from_str(
-				pathname
-					.get(&mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?,
-				true,
-			)?
+			let path = pathname
+				.get(&mem_space_guard)?
+				.ok_or_else(|| errno!(EFAULT))?;
+			let path = Path::new(path)?;
+			super::util::get_absolute_path(&proc, path)?
 		};
-		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let argv = unsafe { super::util::get_str_array(&proc, argv)? };
 		let envp = unsafe { super::util::get_str_array(&proc, envp)? };
@@ -212,7 +210,7 @@ pub fn execve(
 			}
 
 			// Set interpreter to arguments
-			let interp = String::try_from(&shebang.buff[shebang.interp.clone()])?;
+			let interp = String::try_from(&shebang.buff[shebang.interp])?;
 			argv.insert(0, interp)?;
 
 			// Set optional argument if it exists
@@ -222,7 +220,7 @@ pub fn execve(
 			}
 
 			// Set interpreter's path
-			path = Path::from_str(&shebang.buff[shebang.interp], true)?;
+			path = PathBuf::try_from(&shebang.buff[shebang.interp])?;
 
 			i += 1;
 		} else {

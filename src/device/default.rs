@@ -30,7 +30,7 @@ use crate::errno;
 use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::blocking::BlockHandler;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::logger::LOGGER;
 use crate::process::mem_space::MemSpace;
 use crate::process::Process;
@@ -278,7 +278,7 @@ impl IO for KMsgDeviceHandle {
 pub(super) fn create() -> EResult<()> {
 	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
 
-	let null_path = Path::from_str(b"/dev/null", false)?;
+	let null_path = PathBuf::try_from(b"/dev/null")?;
 	let null_device = Device::new(
 		DeviceID {
 			type_: DeviceType::Char,
@@ -291,7 +291,7 @@ pub(super) fn create() -> EResult<()> {
 	)?;
 	device::register(null_device)?;
 
-	let zero_path = Path::from_str(b"/dev/zero", false)?;
+	let zero_path = PathBuf::try_from(b"/dev/zero")?;
 	let zero_device = Device::new(
 		DeviceID {
 			type_: DeviceType::Char,
@@ -304,7 +304,7 @@ pub(super) fn create() -> EResult<()> {
 	)?;
 	device::register(zero_device)?;
 
-	let random_path = Path::from_str(b"/dev/random", false)?;
+	let random_path = PathBuf::try_from(b"/dev/random")?;
 	let random_device = Device::new(
 		DeviceID {
 			type_: DeviceType::Char,
@@ -317,7 +317,7 @@ pub(super) fn create() -> EResult<()> {
 	)?;
 	device::register(random_device)?;
 
-	let urandom_path = Path::from_str(b"/dev/urandom", false)?;
+	let urandom_path = PathBuf::try_from(b"/dev/urandom")?;
 	let urandom_device = Device::new(
 		DeviceID {
 			type_: DeviceType::Char,
@@ -330,7 +330,7 @@ pub(super) fn create() -> EResult<()> {
 	)?;
 	device::register(urandom_device)?;
 
-	let kmsg_path = Path::from_str(b"/dev/kmsg", false)?;
+	let kmsg_path = PathBuf::try_from(b"/dev/kmsg")?;
 	let kmsg_device = Device::new(
 		DeviceID {
 			type_: DeviceType::Char,
@@ -345,7 +345,7 @@ pub(super) fn create() -> EResult<()> {
 
 	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
 
-	let current_tty_path = Path::from_str(b"/dev/tty", false)?;
+	let current_tty_path = PathBuf::try_from(b"/dev/tty")?;
 	let current_tty_device = Device::new(
 		DeviceID {
 			type_: DeviceType::Char,

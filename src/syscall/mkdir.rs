@@ -41,15 +41,15 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 
 		// Path to the directory to create
 		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = Path::from_str(path, true)?;
+		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, mode, proc.access_profile)
 	};
 
 	// Get path of the parent directory and name of the directory to create
-	let mut parent_path = path;
-	let name = parent_path.pop();
+	let mut parent_path = path.parent().unwrap_or(Path::root());
+	let name = parent_path.file_name();
 
 	// If the path is not empty, create
 	if let Some(name) = name {
@@ -60,7 +60,7 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		// Create the directory
 		vfs::create_file(
 			&mut parent,
-			name,
+			name.try_into()?,
 			&ap,
 			mode,
 			FileContent::Directory(HashMap::new()),

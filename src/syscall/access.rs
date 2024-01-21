@@ -19,10 +19,9 @@
 //! The `access` system call allows to check access to a given file.
 
 use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::syscall::util;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -76,7 +75,7 @@ pub fn do_access(
 	// Use effective IDs instead of real IDs
 	let eaccess = flags & AT_EACCESS != 0;
 
-	let (path, cwd, ap) = {
+	let (file, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -86,26 +85,17 @@ pub fn do_access(
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EINVAL))?;
-		let path = Path::from_str(pathname, true)?;
 
-		let cwd = proc.cwd.clone();
+		let file = util::get_file_at(
+			proc,
+			dirfd.unwrap_or(AT_FDCWD),
+			pathname,
+			follow_symlinks,
+			flags,
+		)?;
 
-		(path, cwd, proc.access_profile)
+		(file, proc.access_profile)
 	};
-
-	// Get file
-	let mut path = path;
-	if path.is_absolute() {
-		// TODO
-	} else if let Some(dirfd) = dirfd {
-		if dirfd == AT_FDCWD {
-			path = cwd.concat(&path)?;
-		} else {
-			// TODO Get file from fd and get its path to concat
-			todo!();
-		}
-	}
-	let file = vfs::get_file_from_path(&path, &ap, follow_symlinks)?;
 
 	// Do access checks
 	{

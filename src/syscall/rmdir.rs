@@ -37,7 +37,8 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
+		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, proc.access_profile)

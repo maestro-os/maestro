@@ -35,7 +35,7 @@ use crate::errno::AllocError;
 use crate::errno::AllocResult;
 use crate::errno::Errno;
 use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
 use crate::file::DirEntry;
@@ -328,7 +328,7 @@ impl FilesystemType for ProcFsType {
 	fn load_filesystem(
 		&self,
 		_io: &mut dyn IO,
-		_mountpath: Path,
+		_mountpath: PathBuf,
 		readonly: bool,
 	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
 		Ok(Arc::new(Mutex::new(ProcFS::new(readonly)?))?)

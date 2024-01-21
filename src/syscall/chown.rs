@@ -20,7 +20,7 @@
 
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -45,8 +45,10 @@ pub fn do_chown(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space = mem_space.lock();
 
-		let path = pathname.get(&mem_space)?.ok_or_else(|| errno!(EFAULT))?;
-		(Path::from_str(path, true)?, proc.access_profile)
+		let path = pathname.get(&*mem_space)?.ok_or_else(|| errno!(EFAULT))?;
+		let path = PathBuf::try_from(path)?;
+
+		(path, proc.access_profile)
 	};
 
 	let file_mutex = vfs::get_file_from_path(&path, &ap, follow_links)?;

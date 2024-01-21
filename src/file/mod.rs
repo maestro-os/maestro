@@ -45,6 +45,7 @@ use crate::errno::Errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
+use crate::file::path::PathBuf;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
 use crate::process::mem_space::MemSpace;
@@ -309,7 +310,7 @@ pub struct File {
 	/// The name of the file.
 	name: String,
 	/// The path of the file's parent.
-	parent_path: Path,
+	parent_path: PathBuf,
 
 	/// The number of hard links associated with the file.
 	hard_links_count: u16,
@@ -368,7 +369,7 @@ impl File {
 
 		Ok(Self {
 			name,
-			parent_path: Path::root(),
+			parent_path: PathBuf::root(),
 
 			hard_links_count: 1,
 
@@ -402,19 +403,18 @@ impl File {
 	}
 
 	/// Returns the absolute path of the file.
-	pub fn get_path(&self) -> Result<Path, Errno> {
+	pub fn get_path(&self) -> EResult<PathBuf> {
 		let mut parent_path = self.parent_path.try_clone()?;
 		if !self.name.is_empty() {
-			parent_path.push(self.name.try_clone()?)?;
+			parent_path.join(Path::new(&self.name)?)?;
 		}
-
 		Ok(parent_path)
 	}
 
 	/// Sets the file's parent path.
 	///
 	/// If the path isn't absolute, the behaviour is undefined.
-	pub fn set_parent_path(&mut self, parent_path: Path) {
+	pub fn set_parent_path(&mut self, parent_path: PathBuf) {
 		self.parent_path = parent_path;
 	}
 
@@ -933,7 +933,7 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	mountpoint::create(mount_source, None, 0, Path::root())?;
+	mountpoint::create(mount_source, None, 0, PathBuf::root())?;
 
 	Ok(())
 }

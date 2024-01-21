@@ -40,7 +40,8 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
+		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let umask = proc.umask;
@@ -49,9 +50,9 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	};
 
 	// Path of the parent directory
-	let mut parent_path = path;
+	let parent_path = path.parent().unwrap_or(Path::root());
 	// File name
-	let Some(name) = parent_path.pop() else {
+	let Some(name) = path.file_name() else {
 		return Err(errno!(EEXIST));
 	};
 
@@ -81,7 +82,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	// Create the node
 	let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
 	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name, &ap, mode, file_content)?;
+	vfs::create_file(&mut parent, name.try_into()?, &ap, mode, file_content)?;
 
 	Ok(0)
 }

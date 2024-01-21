@@ -48,21 +48,27 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 		let linkpath = linkpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let linkpath = Path::from_str(linkpath, true)?;
+		let linkpath = Path::new(linkpath)?;
 
 		(target, linkpath, proc.access_profile)
 	};
 
 	// Get the path of the parent directory
-	let mut parent_path = linkpath;
+	let parent_path = linkpath.parent().unwrap_or(Path::root());
 	// The file's basename
-	let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
+	let name = linkpath.file_name().ok_or_else(|| errno!(ENOENT))?;
 
 	// The parent directory
-	let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
+	let parent_mutex = vfs::get_file_from_path(parent_path, &ap, true)?;
 	let mut parent = parent_mutex.lock();
 
-	vfs::create_file(&mut parent, name, &ap, 0o777, FileContent::Link(target))?;
+	vfs::create_file(
+		&mut parent,
+		name.try_into()?,
+		&ap,
+		0o777,
+		FileContent::Link(target),
+	)?;
 
 	Ok(0)
 }

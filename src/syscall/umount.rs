@@ -32,13 +32,10 @@ pub fn umount(target: SyscallString) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	// Getting a slice to the string
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 	let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-
-	// Getting the mountpoint
-	let target_path = Path::from_str(target_slice, true)?;
+	let target_path = Path::new(target_slice)?;
 	mountpoint::remove(&target_path)?;
 
 	Ok(0)

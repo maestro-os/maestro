@@ -20,11 +20,12 @@
 
 use crate::errno::Errno;
 use crate::file;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::util::container::string::String;
 use macros::syscall;
 
 // TODO implementation probably can be merged with `renameat2`
@@ -41,16 +42,16 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		let oldpath = oldpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let old_path = Path::from_str(oldpath, true)?;
+		let old_path = PathBuf::try_from(oldpath)?;
 
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let new_parent_path = Path::from_str(newpath, true)?;
+		let new_parent_path = PathBuf::try_from(newpath)?;
 
 		(old_path, new_parent_path, proc.access_profile)
 	};
-	let new_name = new_parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
+	let new_name = new_parent_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 
 	let old_mutex = vfs::get_file_from_path(&old_path, &ap, false)?;
 	let mut old = old_mutex.lock();
@@ -60,7 +61,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 
 	// TODO Check permissions if sticky bit is set
 
-	if new_parent.get_location().get_mountpoint_id() == old.get_location().get_mountpoint_id() {
+	if new_parent.get_location() == old.get_location() {
 		// Old and new are both on the same filesystem
 
 		// TODO On fail, undo
@@ -78,7 +79,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 
 		// TODO On fail, undo
 
-		file::util::copy_file(&mut old, &mut new_parent, new_name)?;
+		file::util::copy_file(&mut old, &mut new_parent, String::try_from(new_name)?)?;
 		file::util::remove_recursive(&mut old, &ap)?;
 	}
 

@@ -29,7 +29,6 @@ use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::TryClone;
 use core::ffi::c_ulong;
 use core::ffi::c_void;
 use macros::syscall;
@@ -42,14 +41,12 @@ pub fn mount(
 	mountflags: c_ulong,
 	_data: SyscallPtr<c_void>,
 ) -> Result<i32, Errno> {
-	let (mount_source, fs_type, target_path) = {
+	let (mount_source, target_path, fs_type) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-
-		let cwd = proc.chroot.try_clone()?.concat(&proc.cwd)?;
 
 		// Get strings
 		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
@@ -59,10 +56,10 @@ pub fn mount(
 			.ok_or(errno!(EFAULT))?;
 
 		// Get the mount source
-		let mount_source = MountSource::from_str(source_slice, cwd)?;
+		let mount_source = MountSource::from_str(source_slice)?;
 
 		// Get the target file
-		let target_path = Path::from_str(target_slice, true)?;
+		let target_path = Path::new(target_slice)?;
 		let target_path = super::util::get_absolute_path(&proc, target_path)?;
 		let target_mutex = vfs::get_file_from_path(&target_path, &proc.access_profile, true)?;
 		let target_file = target_mutex.lock();
@@ -76,7 +73,7 @@ pub fn mount(
 
 		let fs_type = fs::get_type(filesystemtype_slice).ok_or(errno!(ENODEV))?;
 
-		(mount_source, fs_type, target_path)
+		(mount_source, target_path, fs_type)
 	};
 
 	// TODO Use `data`

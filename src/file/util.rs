@@ -18,57 +18,45 @@
 
 //! This module implements utility functions for files manipulations.
 
-use super::path::Path;
+use super::path::{Component, Path, PathBuf};
 use super::File;
 use super::FileContent;
-use crate::errno;
 use crate::errno::EResult;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
-use crate::memory;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::TryClone;
+use crate::{errno, memory};
 
 /// Creates the directories necessary to reach path `path`.
 ///
-/// On success, the function returns the number of created directories (without the directories
-/// that already existed).
-///
 /// If relative, the path is taken from the root.
-pub fn create_dirs(path: &Path) -> EResult<usize> {
-	let path = Path::root().concat(path)?;
-
+pub fn create_dirs(path: &Path) -> EResult<()> {
 	// Path of the parent directory
-	let mut p = Path::root();
-	// Number of created directories
-	let mut created_count = 0;
-
-	for i in 0..path.get_elements_count() {
-		let name = path[i].try_clone()?;
-
+	let mut p = PathBuf::root();
+	for comp in path.components() {
+		let Component::Normal(name) = &comp else {
+			continue;
+		};
 		if let Ok(parent_mutex) = vfs::get_file_from_path(&p, &AccessProfile::KERNEL, true) {
 			let mut parent = parent_mutex.lock();
-
-			match vfs::create_file(
+			let res = vfs::create_file(
 				&mut parent,
-				name.try_clone()?,
+				String::try_from(*name)?,
 				&AccessProfile::KERNEL,
 				0o755,
 				FileContent::Directory(HashMap::new()),
-			) {
-				Ok(_) => created_count += 1,
+			);
+			match res {
 				Err(e) if e.as_int() != errno::EEXIST => return Err(e),
-
 				_ => {}
 			}
 		}
-
-		p.push(name)?;
+		p.join(comp)?;
 	}
-
-	Ok(created_count)
+	Ok(())
 }
 
 /// Copies the file `old` into the directory `new_parent` with name `new_name`.

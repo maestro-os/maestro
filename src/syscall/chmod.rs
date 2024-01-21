@@ -38,7 +38,7 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 		let path = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let path = Path::from_str(path, true)?;
+		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, proc.access_profile)

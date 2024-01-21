@@ -41,7 +41,6 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-
 		let file = util::get_file_at(proc, dirfd, pathname, false, flags)?;
 
 		(file, ap)
