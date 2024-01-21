@@ -17,7 +17,8 @@ pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space = mem_space_mutex.lock();
-		let path = Path::from_str(pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?, true)?;
+		let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
+		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
 		(path, proc.access_profile)

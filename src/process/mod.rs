@@ -32,7 +32,7 @@ use crate::file::fd::NewFDConstraint;
 use crate::file::fs::procfs::ProcFS;
 use crate::file::mountpoint;
 use crate::file::open_file;
-use crate::file::path::Path;
+use crate::file::path::{Path, PathBuf};
 use crate::file::perm::AccessProfile;
 use crate::file::perm::ROOT_UID;
 use crate::file::vfs;
@@ -193,7 +193,7 @@ pub struct Process {
 	/// The argv of the process.
 	pub argv: Arc<Vec<String>>,
 	/// The path to the process's executable.
-	pub exec_path: Arc<Path>,
+	pub exec_path: Arc<PathBuf>,
 
 	/// The process's current TTY.
 	tty: TTYHandle,
@@ -248,9 +248,9 @@ pub struct Process {
 	kernel_stack: Option<*mut c_void>,
 
 	/// Current working directory
-	pub cwd: Arc<Path>,
+	pub cwd: Arc<PathBuf>,
 	/// Current root path used by the process
-	pub chroot: Arc<Path>,
+	pub chroot: Arc<PathBuf>,
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
@@ -487,11 +487,11 @@ impl Process {
 	pub fn new() -> Result<Arc<IntMutex<Self>>, Errno> {
 		let access_profile = AccessProfile::KERNEL;
 
-		// Creating the default file descriptors table
+		// Create the default file descriptors table
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
 
-			let tty_path = Path::from_str(TTY_DEVICE_PATH.as_bytes(), false)?;
+			let tty_path = Path::new(TTY_DEVICE_PATH.as_bytes())?;
 			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &access_profile, true)?;
 			let tty_file = tty_file_mutex.lock();
 
@@ -514,7 +514,7 @@ impl Process {
 			tid: pid::INIT_PID,
 
 			argv: Arc::new(Vec::new())?,
-			exec_path: Arc::new(Path::root())?,
+			exec_path: Arc::new(PathBuf::root())?,
 
 			tty: tty::get(None).unwrap(), // Initialization with the init TTY
 
@@ -545,8 +545,8 @@ impl Process {
 			user_stack: None,
 			kernel_stack: None,
 
-			cwd: Arc::new(Path::root())?,
-			chroot: Arc::new(Path::root())?,
+			cwd: Arc::new(PathBuf::root())?,
+			chroot: Arc::new(PathBuf::root())?,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,

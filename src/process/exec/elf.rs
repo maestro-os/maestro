@@ -596,9 +596,8 @@ impl ELFExecutor {
 				return Err(errno!(EINVAL));
 			}
 
-			let interp_path = Path::from_str(interp_path, true)?;
-
-			// Getting file
+			// Get file
+			let interp_path = Path::new(interp_path)?;
 			let interp_file_mutex =
 				vfs::get_file_from_path(&interp_path, &self.info.access_profile, true)?;
 			let mut interp_file = interp_file_mutex.lock();

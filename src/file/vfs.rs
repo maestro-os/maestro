@@ -97,8 +97,6 @@ fn get_file_by_path_impl(
 	follow_links: bool,
 	follows_count: usize,
 ) -> EResult<Arc<Mutex<File>>> {
-	let path = Path::root().concat(path)?;
-
 	// Get the path's deepest mountpoint
 	let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
 	let mountpoint = mountpoint_mutex.lock();
@@ -109,7 +107,7 @@ fn get_file_by_path_impl(
 	let mut io = io_mutex.lock();
 
 	// Get the path of the file beginning from the start of its filesystem
-	let inner_path = path.range_from(mountpoint.get_path().get_elements_count()..)?;
+	let inner_path = path.strip_prefix(mountpoint.get_path()).unwrap();
 
 	// The filesystem
 	let fs_mutex = mountpoint.get_filesystem();
@@ -140,14 +138,13 @@ fn get_file_by_path_impl(
 				let mut prefix = inner_path.range_to(..i)?;
 				prefix.set_absolute(false);
 
-				let link_path = Path::from_str(link_path.as_bytes(), false)?;
+				let link_path = Path::new(link_path.as_bytes())?;
 
 				let mut suffix = inner_path.range_from((i + 1)..)?;
 				suffix.set_absolute(false);
 
-				let parent_path = mountpath.concat(&prefix)?;
-				let new_path = parent_path.concat(&link_path)?;
-				let new_path = new_path.concat(&suffix)?;
+				// TODO optimize
+				let new_path = mountpath.join(&prefix)?.join(link_path)?.join(&suffix)?;
 
 				drop(fs);
 				drop(io);
@@ -157,9 +154,8 @@ fn get_file_by_path_impl(
 		}
 	}
 
-	let mut parent_path = path;
-	parent_path.pop();
-	file.set_parent_path(parent_path);
+	let parent_path = path.parent().unwrap_or(Path::root());
+	file.set_parent_path(parent_path.to_path_buf()?);
 
 	drop(fs);
 
@@ -229,8 +225,8 @@ pub fn get_file_from_parent(
 
 	if follow_links {
 		if let FileContent::Link(link_path) = file.get_content() {
-			let link_path = Path::from_str(link_path.as_bytes(), false)?;
-			let new_path = parent.get_path()?.concat(&link_path)?;
+			let link_path = Path::new(link_path.as_bytes())?;
+			let new_path = parent.get_path()?.join(&link_path)?;
 
 			drop(fs);
 			drop(io);

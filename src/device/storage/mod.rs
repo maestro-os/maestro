@@ -17,13 +17,12 @@ use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
 use crate::errno::EResult;
-use crate::file::path::Path;
+use crate::file::path::{Path, PathBuf};
 use crate::file::Mode;
 use crate::memory::malloc;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
-use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
 use crate::util::io::IO;
 use crate::util::lock::IntMutex;
@@ -231,7 +230,7 @@ pub struct StorageDeviceHandle {
 	/// The ID of the storage device in the manager.
 	storage_id: u32,
 	/// The path to the file of the main device containing the partition table.
-	path_prefix: String,
+	path_prefix: PathBuf,
 }
 
 impl StorageDeviceHandle {
@@ -249,7 +248,7 @@ impl StorageDeviceHandle {
 		partition: Option<Partition>,
 		major: u32,
 		storage_id: u32,
-		path_prefix: String,
+		path_prefix: PathBuf,
 	) -> Self {
 		Self {
 			interface,
@@ -313,7 +312,7 @@ impl DeviceHandle for StorageDeviceHandle {
 					self.interface.clone(),
 					self.major,
 					self.storage_id,
-					self.path_prefix.try_clone()?,
+					&self.path_prefix,
 				)?;
 
 				Ok(0)
@@ -462,7 +461,7 @@ impl StorageManager {
 		storage: Weak<Mutex<dyn StorageInterface>>,
 		major: u32,
 		storage_id: u32,
-		path_prefix: String,
+		path_prefix: &Path,
 	) -> EResult<()> {
 		let Some(storage_mutex) = storage.upgrade() else {
 			return Ok(());
@@ -477,10 +476,7 @@ impl StorageManager {
 		let iter = partitions.into_iter().take(MAX_PARTITIONS - 1).enumerate();
 		for (i, partition) in iter {
 			let part_nbr = (i + 1) as u32;
-
-			// Add the partition number to the path
-			let path_str = crate::format!("{path_prefix}{part_nbr}")?;
-			let path = Path::from_str(path_str.as_bytes(), false)?;
+			let path = PathBuf::try_from(crate::format!("{path_prefix}{part_nbr}")?)?;
 
 			// Create the partition's device file
 			let handle = StorageDeviceHandle::new(
@@ -488,7 +484,7 @@ impl StorageManager {
 				Some(partition),
 				major,
 				storage_id,
-				path_prefix.try_clone()?,
+				path_prefix.to_path_buf()?,
 			);
 			let device = Device::new(
 				DeviceID {
@@ -535,16 +531,15 @@ impl StorageManager {
 		// Prefix is the path of the main device file
 		// TODO Handle if out of the alphabet
 		let letter = (b'a' + (storage_id as u8)) as char;
-		let prefix = crate::format!("/dev/sd{letter}")?;
-		let main_path = Path::from_str(prefix.as_bytes(), false)?;
+		let main_path = PathBuf::try_from(crate::format!("/dev/sd{letter}")?)?;
 
-		// Creating the main device file
+		// Create the main device file
 		let main_handle = StorageDeviceHandle::new(
 			Arc::downgrade(&storage),
 			None,
 			major,
 			storage_id,
-			prefix.try_clone()?,
+			main_path.try_clone()?,
 		);
 		let main_device = Device::new(
 			DeviceID {
@@ -558,7 +553,7 @@ impl StorageManager {
 		)?;
 		device::register(main_device)?;
 
-		Self::read_partitions(Arc::downgrade(&storage), major, storage_id, prefix)?;
+		Self::read_partitions(Arc::downgrade(&storage), major, storage_id, &main_path)?;
 
 		self.interfaces.push(storage)?;
 		Ok(())

@@ -1,9 +1,9 @@
 //! This module implements utility functions for system calls.
 
 use crate::errno;
-use crate::errno::AllocResult;
 use crate::errno::EResult;
-use crate::file::path::Path;
+use crate::errno::{AllocResult, CollectResult};
+use crate::file::path::{Path, PathBuf};
 use crate::file::vfs;
 use crate::file::File;
 use crate::file::FileContent;
@@ -26,14 +26,14 @@ use core::mem::size_of;
 /// Arguments:
 /// - `process` is the process.
 /// - `path` is the path.
-pub fn get_absolute_path(process: &Process, path: Path) -> AllocResult<Path> {
-	// TODO use chain + collect to allocate once
-	let path = if !path.is_absolute() {
-		process.cwd.concat(&path)?
-	} else {
-		path
-	};
-	process.chroot.concat(&path)
+pub fn get_absolute_path(process: &Process, path: &Path) -> AllocResult<PathBuf> {
+	process
+		.chroot
+		.components()
+		.chain(process.cwd.components())
+		.chain(path.components())
+		.collect::<CollectResult<PathBuf>>()
+		.0
 }
 
 // TODO Find a safer and cleaner solution
@@ -79,24 +79,22 @@ pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8) -> EResult
 }
 
 /// Builds a path with the given directory file descriptor `dirfd` as a base,
-/// concatenated with the given pathname `pathname`.
+/// concatenated with the given `path`.
 ///
 /// `process_guard` is the guard of the current process.
 fn build_path_from_fd(
 	process: MutexGuard<Process, false>,
 	dirfd: i32,
-	pathname: &[u8],
-) -> EResult<Path> {
-	let path = Path::from_str(pathname, true)?;
-
+	path: &Path,
+) -> EResult<PathBuf> {
 	if path.is_absolute() {
-		// Using the given absolute path
-		Ok(path)
+		// Use the given absolute path
+		Ok(path.to_path_buf()?)
 	} else if dirfd == super::access::AT_FDCWD {
-		// Using path relative to the current working directory
-		Ok(process.cwd.concat(&path)?)
+		// Use path relative to the current working directory
+		Ok(process.cwd.join(path)?)
 	} else {
-		// Using path relative to the directory given by `dirfd`
+		// Use path relative to the directory given by `dirfd`
 
 		if dirfd < 0 {
 			return Err(errno!(EBADF));
@@ -116,25 +114,25 @@ fn build_path_from_fd(
 		let open_file = open_file_mutex.lock();
 		let file_mutex = open_file.get_file();
 		let file = file_mutex.lock();
-		Ok(file.get_path()?.concat(&path)?)
+		Ok(file.get_path()?.join(&path)?)
 	}
 }
 
-/// Returns the file for the given path `pathname`.
+/// Returns the file for the given path `path`.
 ///
 /// This function is useful for system calls with the `at` prefix.
 ///
 /// Arguments:
 /// - `process` is the mutex guard of the current process.
 /// - `dirfd` is the file descriptor of the parent directory.
-/// - `pathname` is the path relative to the parent directory.
+/// - `path` is the path relative to the parent directory.
 /// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
 ///   about it.
 /// - `flags` is an integer containing `AT_*` flags.
 pub fn get_file_at(
 	process: MutexGuard<Process, false>,
 	dirfd: i32,
-	pathname: &[u8],
+	path: &[u8],
 	follow_links_default: bool,
 	flags: i32,
 ) -> EResult<Arc<Mutex<File>>> {
@@ -143,7 +141,7 @@ pub fn get_file_at(
 	} else {
 		flags & super::access::AT_SYMLINK_FOLLOW != 0
 	};
-	if pathname.is_empty() {
+	if path.is_empty() {
 		if flags & super::access::AT_EMPTY_PATH != 0 {
 			// Using `dirfd` as the file descriptor to the file
 
@@ -169,26 +167,27 @@ pub fn get_file_at(
 		}
 	} else {
 		let ap = process.access_profile;
-		let path = build_path_from_fd(process, dirfd, pathname)?;
+		let path = Path::new(path)?;
+		let path = build_path_from_fd(process, dirfd, path)?;
 		vfs::get_file_from_path(&path, &ap, follow_links)
 	}
 }
 
-/// Returns the parent directory of the file for the given path `pathname`.
+/// Returns the parent directory of the file for the given path `path`.
 ///
 /// This function is useful for system calls with the `at` prefix.
 ///
 /// Arguments:
 /// - `process` is the mutex guard of the current process.
 /// - `dirfd` is the file descriptor of the parent directory.
-/// - `pathname` is the path relative to the parent directory.
+/// - `path` is the path relative to the parent directory.
 /// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
 ///   about it.
 /// - `flags` is an integer containing `AT_*` flags.
 pub fn get_parent_at_with_name(
 	process: MutexGuard<Process, false>,
 	dirfd: i32,
-	pathname: &[u8],
+	path: &[u8],
 	follow_links_default: bool,
 	flags: i32,
 ) -> EResult<(Arc<Mutex<File>>, String)> {
@@ -199,22 +198,23 @@ pub fn get_parent_at_with_name(
 	};
 	let ap = process.access_profile;
 
-	if pathname.is_empty() {
+	if path.is_empty() {
 		return Err(errno!(ENOENT));
 	}
-	let mut path = build_path_from_fd(process, dirfd, pathname)?;
-	let name = path.pop().unwrap();
+	let path = Path::new(path)?;
+	let mut path = build_path_from_fd(process, dirfd, path)?;
+	let name = path.file_name().unwrap().try_into()?;
 
 	let parent_mutex = vfs::get_file_from_path(&path, &ap, follow_links)?;
 	Ok((parent_mutex, name))
 }
 
-/// Creates the given file `file` at the given pathname `pathname`.
+/// Creates the given file `file` at the given `path`.
 ///
 /// Arguments:
 /// - `process` is the mutex guard of the current process.
 /// - `dirfd` is the file descriptor of the parent directory.
-/// - `pathname` is the path relative to the parent directory.
+/// - `path` is the path relative to the parent directory.
 /// - `mode` is the permissions of the newly created file.
 /// - `content` is the content of the newly created file.
 /// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
@@ -223,7 +223,7 @@ pub fn get_parent_at_with_name(
 pub fn create_file_at(
 	process: MutexGuard<Process, false>,
 	dirfd: i32,
-	pathname: &[u8],
+	path: &[u8],
 	mode: Mode,
 	content: FileContent,
 	follow_links_default: bool,
@@ -233,7 +233,7 @@ pub fn create_file_at(
 	let mode = mode & !process.umask;
 
 	let (parent_mutex, name) =
-		get_parent_at_with_name(process, dirfd, pathname, follow_links_default, flags)?;
+		get_parent_at_with_name(process, dirfd, path, follow_links_default, flags)?;
 
 	let mut parent = parent_mutex.lock();
 	vfs::create_file(&mut parent, name, &ap, mode, content)

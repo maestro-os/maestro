@@ -20,8 +20,9 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path_str = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		let new_cwd = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
+		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let path = Path::new(path)?;
+		let new_cwd = super::util::get_absolute_path(&proc, path)?;
 
 		(new_cwd, proc.access_profile)
 	};

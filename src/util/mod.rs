@@ -125,17 +125,22 @@ impl<T: Default + Sized> TryDefault for T {
 	}
 }
 
-/// Wrapper structure allowing to implement the Display trait on the [u8] type
+/// Wrapper structure allowing to implement the [`core::fmt::Display`] trait on the [u8] type
 /// to display it as a string.
 pub struct DisplayableStr<'a>(pub &'a [u8]);
 
 impl<'a> fmt::Display for DisplayableStr<'a> {
-	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		for b in self.0 {
 			fmt.write_char(*b as char)?;
 		}
-
 		Ok(())
+	}
+}
+
+impl<'a> fmt::Debug for DisplayableStr<'a> {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		fmt::Debug::fmt(self, fmt)
 	}
 }
 

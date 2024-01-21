@@ -19,7 +19,6 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -45,7 +44,7 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 ///
 /// The access profile is also used to check permissions.
 fn get_file(
-	path: Path,
+	path: &Path,
 	flags: i32,
 	mode: Mode,
 	access_profile: &AccessProfile,
@@ -55,16 +54,16 @@ fn get_file(
 
 	if flags & open_file::O_CREAT != 0 {
 		// Get the path of the parent directory
-		let mut parent_path = path;
+		let parent_path = path.parent().unwrap_or(Path::root());
 		// The file's basename
-		let name = parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
+		let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
 
 		// The parent directory
 		let parent_mutex = vfs::get_file_from_path(&parent_path, access_profile, true)?;
 		let mut parent = parent_mutex.lock();
 
 		let file_result =
-			vfs::get_file_from_parent(&parent, name.try_clone()?, access_profile, follow_links);
+			vfs::get_file_from_parent(&parent, name.try_into()?, access_profile, follow_links);
 		let file = match file_result {
 			// If the file is found, return it
 			Ok(file) => file,
@@ -72,7 +71,7 @@ fn get_file(
 			// Else, create it
 			Err(e) if e.as_int() == errno::ENOENT => vfs::create_file(
 				&mut parent,
-				name,
+				name.try_into()?,
 				access_profile,
 				mode,
 				FileContent::Regular,
@@ -135,7 +134,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
+		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = Path::new(path)?;
 		let abs_path = super::util::get_absolute_path(&proc, path)?;
 
 		let mode = mode & !proc.umask;
@@ -145,7 +145,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 	};
 
 	// Get file
-	let file_mutex = get_file(path, flags, mode, &ap)?;
+	let file_mutex = get_file(&path, flags, mode, &ap)?;
 	let mut file = file_mutex.lock();
 
 	// Handle flags

@@ -205,8 +205,6 @@ pub fn bind_vmem() {
 ///
 /// `init_path` is the path to the init program.
 fn init(init_path: String) -> EResult<()> {
-	let path = Path::from_str(&init_path, true)?;
-
 	let proc_mutex = Process::new()?;
 	let mut proc = proc_mutex.lock();
 
@@ -216,7 +214,8 @@ fn init(init_path: String) -> EResult<()> {
 		b"TERM=maestro".try_into()?,
 	]?;
 
-	let file_mutex = vfs::get_file_from_path(&path, &AccessProfile::KERNEL, true)?;
+	let path = Path::new(&init_path)?;
+	let file_mutex = vfs::get_file_from_path(path, &AccessProfile::KERNEL, true)?;
 	let mut file = file_mutex.lock();
 
 	let exec_info = ExecInfo {

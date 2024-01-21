@@ -32,7 +32,7 @@ use crate::errno::Errno;
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
 use crate::file::DirEntry;
@@ -652,12 +652,10 @@ impl Superblock {
 
 /// Structure representing a instance of the ext2 filesystem.
 struct Ext2Fs {
-	/// The path at which the filesystem is mounted.
-	mountpath: Path,
-
 	/// The filesystem's superblock.
 	superblock: Superblock,
-
+	/// The path at which the filesystem is mounted.
+	mountpath: PathBuf,
 	/// Tells whether the filesystem is mounted in read-only.
 	readonly: bool,
 }
@@ -675,7 +673,7 @@ impl Ext2Fs {
 	fn new(
 		mut superblock: Superblock,
 		io: &mut dyn IO,
-		mountpath: Path,
+		mountpath: PathBuf,
 		readonly: bool,
 	) -> Result<Self, Errno> {
 		if !superblock.is_valid() {
@@ -714,33 +712,19 @@ impl Ext2Fs {
 		}*/
 
 		superblock.mount_count_since_fsck += 1;
-
-		// Setting the last mount path
-		{
-			let mountpath_str = crate::format!("{}", mountpath)?;
-			let mountpath_bytes = mountpath_str.as_bytes();
-
-			let mut i = 0;
-			while i < min(mountpath_bytes.len(), superblock.last_mount_path.len()) {
-				superblock.last_mount_path[i] = mountpath_bytes[i];
-				i += 1;
-			}
-			while i < superblock.last_mount_path.len() {
-				superblock.last_mount_path[i] = 0;
-				i += 1;
-			}
-		}
-
-		// Setting the last mount timestamp
+		// Set the last mount path
+		let mountpath_bytes = mountpath.as_bytes();
+		let len = min(mountpath_bytes.len(), superblock.last_mount_path.len());
+		superblock.last_mount_path[..len].copy_from_slice(&mountpath_bytes[..len]);
+		superblock.last_mount_path[len..].fill(0);
+		// Set the last mount timestamp
 		superblock.last_mount_timestamp = timestamp as _;
-
 		superblock.write(io)?;
 
 		Ok(Self {
-			mountpath,
-
 			superblock,
 
+			mountpath,
 			readonly,
 		})
 	}
@@ -1253,12 +1237,11 @@ impl FilesystemType for Ext2FsType {
 	fn load_filesystem(
 		&self,
 		io: &mut dyn IO,
-		mountpath: Path,
+		mountpath: PathBuf,
 		readonly: bool,
 	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
 		let superblock = Superblock::read(io)?;
 		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
-
 		Ok(Arc::new(Mutex::new(fs))? as _)
 	}
 }

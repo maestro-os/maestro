@@ -5,7 +5,7 @@ mod cpio;
 
 use crate::device;
 use crate::errno;
-use crate::errno::Errno;
+use crate::errno::{EResult, Errno};
 use crate::file;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
@@ -17,9 +17,9 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
 use cpio::CPIOParser;
 
+// TODO clean this function
 /// Updates the current parent used for the unpacking operation.
 ///
 /// Arguments:
@@ -28,26 +28,26 @@ use cpio::CPIOParser;
 /// - `retry` tells whether the function is called as a second try.
 fn update_parent(
 	new: &Path,
-	stored: &mut Option<(Path, Arc<Mutex<File>>)>,
+	stored: &mut Option<(&Path, Arc<Mutex<File>>)>,
 	retry: bool,
-) -> Result<(), Errno> {
-	// Getting the parent
+) -> EResult<()> {
+	// Get the parent
 	let result = match stored {
-		Some((path, file)) if new.begins_with(path) => {
-			let name = match new.try_clone()?.pop() {
+		Some((path, file)) if new.starts_with(path) => {
+			let name = match new.file_name() {
 				Some(name) => name,
 				None => return Ok(()),
 			};
 
 			let f = file.lock();
-			vfs::get_file_from_parent(&f, name, &AccessProfile::KERNEL, false)
+			vfs::get_file_from_parent(&f, name.try_into()?, &AccessProfile::KERNEL, false)
 		}
 		Some(_) | None => vfs::get_file_from_path(new, &AccessProfile::KERNEL, false),
 	};
 
 	match result {
 		Ok(file) => {
-			*stored = Some((new.try_clone()?, file));
+			*stored = Some((new, file));
 			Ok(())
 		}
 		// If the directory doesn't exist, create recursively
@@ -67,14 +67,14 @@ fn update_parent(
 pub fn load(data: &[u8]) -> Result<(), Errno> {
 	// TODO Use a stack instead?
 	// The stored parent directory
-	let mut stored_parent: Option<(Path, Arc<Mutex<File>>)> = None;
+	let mut stored_parent: Option<(&Path, Arc<Mutex<File>>)> = None;
 
 	let cpio_parser = CPIOParser::new(data);
 	for entry in cpio_parser {
 		let hdr = entry.get_hdr();
 
-		let mut parent_path = Path::from_str(entry.get_filename(), false)?;
-		let Some(name) = parent_path.pop() else {
+		let mut parent_path = Path::new(entry.get_filename())?;
+		let Some(name) = parent_path.file_name() else {
 			continue;
 		};
 
@@ -110,7 +110,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		// Create file
 		let create_result = vfs::create_file(
 			&mut parent,
-			name,
+			name.try_into()?,
 			&AccessProfile::KERNEL,
 			hdr.get_perms(),
 			content,

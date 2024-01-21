@@ -34,7 +34,6 @@ pub fn symlinkat(
 	let linkpath = linkpath
 		.get(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-
 	util::create_file_at(proc, newdirfd, linkpath, 0, file_content, true, 0)?;
 
 	Ok(0)

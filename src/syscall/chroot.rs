@@ -2,7 +2,7 @@
 //! the current process.
 
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::util::ptr::arc::Arc;
@@ -22,7 +22,7 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 		let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		Path::from_str(path, true)?
+		PathBuf::try_from(path)?
 	};
 
 	// Check access to file

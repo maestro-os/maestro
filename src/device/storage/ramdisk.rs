@@ -12,12 +12,11 @@ use crate::device::DeviceHandle;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno;
-use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::errno::{EResult, Errno};
+use crate::file::path::PathBuf;
 use crate::memory::malloc;
 use crate::process::mem_space::MemSpace;
 use crate::syscall::ioctl;
-use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::lock::IntMutex;
 use crate::util::ptr::arc::Arc;
@@ -166,18 +165,12 @@ impl IO for RAMDiskHandle {
 }
 
 /// Creates every ramdisk instances.
-pub fn create() -> Result<(), Errno> {
+pub(crate) fn create() -> EResult<()> {
 	// TODO Undo all on fail?
 	let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Block, Some(RAM_DISK_MAJOR))?);
 
 	for i in 0..RAM_DISK_COUNT {
-		let mut name = String::try_from(b"ram")?;
-		name.push_str(crate::format!("{i}")?)?;
-
-		let mut path = Path::root();
-		path.push(String::try_from(b"dev")?)?;
-		path.push(name)?;
-
+		let path = PathBuf::try_from(crate::format!("/dev/ram{i}")?)?;
 		let dev = Device::new(
 			DeviceID {
 				type_: DeviceType::Block,

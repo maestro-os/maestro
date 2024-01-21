@@ -27,7 +27,7 @@ pub fn readlink(
 
 		// Get file's path
 		let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
-		let path = Path::from_str(path, true)?;
+		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
 		drop(mem_space);

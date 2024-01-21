@@ -7,10 +7,10 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use super::path::Path;
+use super::path::PathBuf;
 use super::File;
 use crate::errno;
-use crate::errno::Errno;
+use crate::errno::EResult;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
 use crate::file::FileContent;
@@ -71,10 +71,10 @@ pub trait Filesystem: Any {
 	fn must_cache(&self) -> bool;
 
 	/// Returns statistics about the filesystem.
-	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno>;
+	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs>;
 
 	/// Returns the root inode of the filesystem.
-	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno>;
+	fn get_root_inode(&self, io: &mut dyn IO) -> EResult<INode>;
 
 	/// Returns the inode of the file with name `name`, located in the directory
 	/// with inode `parent`.
@@ -86,12 +86,8 @@ pub trait Filesystem: Any {
 	/// - `name` is the name of the file.
 	///
 	/// If the parent is not a directory, the function returns an error.
-	fn get_inode(
-		&mut self,
-		io: &mut dyn IO,
-		parent: Option<INode>,
-		name: &[u8],
-	) -> Result<INode, Errno>;
+	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &[u8])
+		-> EResult<INode>;
 
 	/// Loads the file at inode `inode`.
 	///
@@ -99,7 +95,7 @@ pub trait Filesystem: Any {
 	/// - `io` is the IO interface.
 	/// - `inode` is the file's inode.
 	/// - `name` is the file's name.
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno>;
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> EResult<File>;
 
 	/// Adds a file to the filesystem at inode `inode`.
 	///
@@ -124,7 +120,7 @@ pub trait Filesystem: Any {
 		gid: Gid,
 		mode: Mode,
 		content: FileContent,
-	) -> Result<File, Errno>;
+	) -> EResult<File>;
 
 	/// Adds a hard link to the filesystem.
 	///
@@ -142,14 +138,14 @@ pub trait Filesystem: Any {
 		parent_inode: INode,
 		name: &[u8],
 		inode: INode,
-	) -> Result<(), Errno>;
+	) -> EResult<()>;
 
 	/// Updates the given inode.
 	///
 	/// Arguments:
 	/// - `io` is the IO interface.
 	/// - `file` the file structure containing the new values for the inode.
-	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno>;
+	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> EResult<()>;
 
 	/// Removes a file from the filesystem. If the links count of the inode
 	/// reaches zero, the inode is also removed.
@@ -160,12 +156,7 @@ pub trait Filesystem: Any {
 	/// - `name` is the file's name.
 	///
 	/// The function returns the number of hard links left on the inode.
-	fn remove_file(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-	) -> Result<u16, Errno>;
+	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &[u8]) -> EResult<u16>;
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
 	///
@@ -183,7 +174,7 @@ pub trait Filesystem: Any {
 		inode: INode,
 		off: u64,
 		buf: &mut [u8],
-	) -> Result<u64, Errno>;
+	) -> EResult<u64>;
 
 	/// Writes to the given inode `inode` from the buffer `buf`.
 	///
@@ -193,13 +184,7 @@ pub trait Filesystem: Any {
 	/// - `off` is the offset at which the data will be written in the node.
 	/// - `buf` is the buffer in which the data is the be written. The length of the buffer is the
 	/// number of bytes to read.
-	fn write_node(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-		buf: &[u8],
-	) -> Result<(), Errno>;
+	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()>;
 }
 
 /// Trait representing a filesystem type.
@@ -210,7 +195,7 @@ pub trait FilesystemType {
 	/// Tells whether the given IO interface has the current filesystem.
 	///
 	/// `io` is the IO interface.
-	fn detect(&self, io: &mut dyn IO) -> Result<bool, Errno>;
+	fn detect(&self, io: &mut dyn IO) -> EResult<bool>;
 
 	/// Creates a new instance of the filesystem to mount it.
 	///
@@ -221,16 +206,16 @@ pub trait FilesystemType {
 	fn load_filesystem(
 		&self,
 		io: &mut dyn IO,
-		mountpath: Path,
+		mountpath: PathBuf,
 		readonly: bool,
-	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno>;
+	) -> EResult<Arc<Mutex<dyn Filesystem>>>;
 }
 
 /// The list of filesystem types.
 static FS_TYPES: Mutex<HashMap<String, Arc<dyn FilesystemType>>> = Mutex::new(HashMap::new());
 
 /// Registers a new filesystem type.
-pub fn register<T: 'static + FilesystemType>(fs_type: T) -> Result<(), Errno> {
+pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
 	let name = String::try_from(fs_type.get_name())?;
 
 	let mut container = FS_TYPES.lock();
@@ -254,7 +239,7 @@ pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
 }
 
 /// Detects the filesystem type on the given IO interface `io`.
-pub fn detect(io: &mut dyn IO) -> Result<Arc<dyn FilesystemType>, Errno> {
+pub fn detect(io: &mut dyn IO) -> EResult<Arc<dyn FilesystemType>> {
 	let container = FS_TYPES.lock();
 
 	for (_, fs_type) in container.iter() {
@@ -269,7 +254,7 @@ pub fn detect(io: &mut dyn IO) -> Result<Arc<dyn FilesystemType>, Errno> {
 /// Registers the filesystems that are implemented inside of the kernel itself.
 ///
 /// This function must be called only once, at initialization.
-pub fn register_defaults() -> Result<(), Errno> {
+pub fn register_defaults() -> EResult<()> {
 	register(ext2::Ext2FsType {})?;
 	register(tmp::TmpFsType {})?;
 	register(procfs::ProcFsType {})?;
