@@ -28,7 +28,7 @@ use crate::file::buffer;
 use crate::file::mapping;
 use crate::file::mountpoint;
 use crate::file::open_file::OpenFile;
-use crate::file::path::Path;
+use crate::file::path::{Component, Path};
 use crate::file::perm;
 use crate::file::perm::AccessProfile;
 use crate::file::File;
@@ -45,6 +45,144 @@ use crate::util::TryClone;
 use core::ptr::NonNull;
 
 // TODO implement and use cache
+
+/// The start position for a path resolution operation.
+///
+/// **Note**: if the path to resolve is absolute, this data is ignored.
+pub enum ResolutionStart<'s> {
+	/// Start resolution from the given path. This is usually the current working directory of the
+	/// process.
+	Path(&'s Path),
+	/// Start resolution from the given location. This is usually the `fd` argument in `*at`-style
+	/// system calls.
+	///
+	/// This variant overrides the root location.
+	Location(FileLocation),
+}
+
+/// Settings for a path resolution operation.
+pub struct ResolutionSettings<'s> {
+	/// The location of the root directory for the operation.
+	pub root: FileLocation,
+	/// The beginning position of the path resolution.
+	pub start: ResolutionStart<'s>,
+
+	/// The access profile to use for resolution.
+	pub access_profile: &'s AccessProfile,
+
+	/// If `true`, the path is resolved for creation, meaning the operation will not fail if the
+	/// file does not exist.
+	pub create: bool,
+	/// If `true`, path resolution follows symbolic links.
+	pub follow_links: bool,
+	/// If `true`, path resolution enters other mountpoints than the one it started with.
+	pub follow_mountpoints: bool,
+}
+
+/// The resolute of the path resolution operation.
+pub enum ResolvedPath<'s> {
+	/// The file has been found.
+	Found(Arc<Mutex<File>>),
+	/// The file can be created.
+	///
+	/// This variant can be returned only if the `create` field is set to `true` in
+	/// [`ResolutionSettings`].
+	Creatable {
+		/// The location of the parent directory in which the file is to be created.
+		parent_location: FileLocation,
+		/// The name of the file to be created.
+		name: &'s [u8],
+	},
+}
+
+/// Resolves the given `path` with the given `settings`.
+///
+/// The following conditions can cause errors:
+/// - If the path is empty, the function returns [`errno::ENOMEM`].
+/// - If a component of the path cannot be accessed with the provided access profile, the function
+///   returns [`errno::EACCES`].
+/// - If a component of the path (excluding the last) is not a directory nor a symbolic link, the
+///   function returns [`errno::ENOTDIR`].
+/// - If a component of the path (excluding the last) is a symbolic link and following them is
+///   disabled, the function returns [`errno::ENOTDIR`].
+/// - If the resolution of the path requires more symbolic link indirections than
+///   [`limits::SYMLOOP_MAX`], the function returns [`errno::ELOOP`].
+fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<ResolvedPath<'p>> {
+	// Required by POSIX
+	if path.is_empty() {
+		return Err(errno!(ENOENT));
+	}
+
+	// Get start file
+	let start = if path.is_absolute() {
+		&settings.root
+	} else {
+		match &settings.start {
+			ResolutionStart::Path(path) => {
+				// TODO chain paths?
+				todo!()
+			}
+			ResolutionStart::Location(loc) => loc,
+		}
+	};
+	let mut file_mutex = get_file_by_location(start)?;
+
+	// Iterate on components
+	let iter = path.components();
+	for comp in iter {
+		let name = match comp {
+			Component::ParentDir => b"..",
+			Component::Normal(name) => name,
+			// Ignore
+			Component::RootDir | Component::CurDir => continue,
+		};
+		let file = file_mutex.lock();
+		match file.get_content() {
+			FileContent::Directory(entries) => {
+				// Check permission
+				if !settings.access_profile.can_search_directory(&file) {
+					return Err(errno!(EACCES));
+				}
+				let Some(entry) = entries.get(name) else {
+					// If this is the last component
+					let is_last = iter.peek().is_none();
+					// If the last component does not exist and the file may be created
+					let res = if is_last && settings.create {
+						Ok(ResolvedPath::Creatable {
+							parent_location: file.location.clone(),
+							name,
+						})
+					} else {
+						Err(errno!(ENOENT))
+					};
+					return res;
+				};
+				let mountpoint_id = file
+					.location
+					.get_mountpoint_id()
+					.ok_or_else(|| errno!(ENOENT))?;
+				// The location on the current filesystem
+				let loc = FileLocation::Filesystem {
+					mountpoint_id,
+					inode: entry.inode,
+				};
+				// TODO get mountpoint by FileLocation
+				// TODO if the mountpoint is different than the previous and mountpoint traversal
+				// is disabled, return an error TODO change loc according to the mountpoint if
+				// different
+				file_mutex = get_file_by_location(&loc)?;
+			}
+			// Follow link, if enabled
+			FileContent::Link(link_path) if settings.follow_links => {
+				// TODO resolve link
+				todo!()
+			}
+			_ => return Err(errno!(ENOTDIR)),
+		}
+	}
+
+	Ok(ResolvedPath::Found(file_mutex))
+}
 
 /// Updates the location of the file `file` according to the given mountpoint
 /// `mountpoint`.

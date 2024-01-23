@@ -200,7 +200,6 @@ impl FileLocation {
 			Self::Filesystem {
 				mountpoint_id, ..
 			} => Some(*mountpoint_id),
-
 			_ => None,
 		}
 	}
@@ -216,7 +215,6 @@ impl FileLocation {
 			Self::Filesystem {
 				inode, ..
 			} => *inode,
-
 			Self::Virtual {
 				id,
 			} => *id as _,
@@ -244,7 +242,7 @@ pub enum FileContent {
 	/// is the entry itself.
 	Directory(HashMap<String, DirEntry>),
 	/// The file is a link. The data is the link's target.
-	Link(String),
+	Link(PathBuf),
 	/// The file is a FIFO.
 	Fifo,
 	/// The file is a socket.

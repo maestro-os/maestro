@@ -170,9 +170,14 @@ impl Path {
 		unsafe { &*(s.as_ref() as *const [u8] as *const Self) }
 	}
 
+	/// Tells whether the path is empty.
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
+
 	/// Tells whether the path is absolute.
 	pub fn is_absolute(&self) -> bool {
-		matches!(self.0.first(), None | Some(&PATH_SEPARATOR))
+		self.0.first().cloned() == Some(PATH_SEPARATOR)
 	}
 
 	/// Returns slice of the bytes representation of the path.
