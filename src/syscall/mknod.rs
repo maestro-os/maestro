@@ -6,6 +6,7 @@ use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
@@ -15,7 +16,7 @@ use macros::syscall;
 // TODO Check args type
 #[syscall]
 pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32, Errno> {
-	let (path, umask, ap) = {
+	let (path, umask, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -28,7 +29,8 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 
 		let umask = proc.umask;
 
-		(path, umask, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, true);
+		(path, umask, rs)
 	};
 
 	// Path of the parent directory
@@ -62,9 +64,15 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	};
 
 	// Create the node
-	let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
+	let parent_mutex = vfs::get_file_from_path(&parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name.try_into()?, &ap, mode, file_content)?;
+	vfs::create_file(
+		&mut parent,
+		name.try_into()?,
+		&rs.access_profile,
+		mode,
+		file_content,
+	)?;
 
 	Ok(0)
 }

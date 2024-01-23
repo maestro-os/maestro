@@ -10,7 +10,7 @@ use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
 use crate::errno::{AllocResult, EResult};
-use crate::file::perm::AccessProfile;
+use crate::file::vfs::ResolutionSettings;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::DummyIO;
@@ -76,7 +76,7 @@ impl MountSource {
 	/// absolute path.
 	pub fn from_str(string: &[u8]) -> EResult<Self> {
 		let path = Path::new(string)?;
-		let result = vfs::get_file_from_path(&path, &AccessProfile::KERNEL, true);
+		let result = vfs::get_file_from_path(&path, &ResolutionSettings::default());
 		match result {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();

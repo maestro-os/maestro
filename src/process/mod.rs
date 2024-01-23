@@ -30,12 +30,13 @@ use crate::file;
 use crate::file::fd::FileDescriptorTable;
 use crate::file::fd::NewFDConstraint;
 use crate::file::fs::procfs::ProcFS;
-use crate::file::mountpoint;
 use crate::file::open_file;
 use crate::file::path::{Path, PathBuf};
 use crate::file::perm::AccessProfile;
 use crate::file::perm::ROOT_UID;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
+use crate::file::{mountpoint, FileLocation};
 use crate::gdt;
 use crate::memory;
 use crate::process::mountpoint::MountSource;
@@ -250,7 +251,7 @@ pub struct Process {
 	/// Current working directory
 	pub cwd: Arc<PathBuf>,
 	/// Current root path used by the process
-	pub chroot: Arc<PathBuf>,
+	pub chroot: FileLocation,
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
@@ -492,11 +493,14 @@ impl Process {
 			let mut fds_table = FileDescriptorTable::default();
 
 			let tty_path = Path::new(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &access_profile, true)?;
+			let tty_file_mutex = vfs::get_file_from_path(
+				&tty_path,
+				&ResolutionSettings::simple(&access_profile, true),
+			)?;
 			let tty_file = tty_file_mutex.lock();
 
 			let loc = tty_file.get_location();
-			let file = vfs::get_file_by_location(loc)?;
+			let file = vfs::get_file_from_location(loc)?;
 
 			let open_file = OpenFile::new(file, open_file::O_RDWR)?;
 			let stdin_fd = fds_table.create_fd(0, open_file)?;
@@ -546,7 +550,7 @@ impl Process {
 			kernel_stack: None,
 
 			cwd: Arc::new(PathBuf::root())?,
-			chroot: Arc::new(PathBuf::root())?,
+			chroot: FileLocation::root(),
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,

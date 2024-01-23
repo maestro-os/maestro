@@ -4,6 +4,7 @@ use crate::errno::Errno;
 use crate::file;
 use crate::file::path::PathBuf;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -14,7 +15,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
-	let (old_path, mut new_parent_path, ap) = {
+	let (old_path, mut new_parent_path, mut rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -31,14 +32,16 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 			.ok_or_else(|| errno!(EFAULT))?;
 		let new_parent_path = PathBuf::try_from(newpath)?;
 
-		(old_path, new_parent_path, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, false);
+		(old_path, new_parent_path, rs)
 	};
 	let new_name = new_parent_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 
-	let old_mutex = vfs::get_file_from_path(&old_path, &ap, false)?;
+	let old_mutex = vfs::get_file_from_path(&old_path, &rs)?;
 	let mut old = old_mutex.lock();
 
-	let new_parent_mutex = vfs::get_file_from_path(&new_parent_path, &ap, true)?;
+	rs.follow_links = true;
+	let new_parent_mutex = vfs::get_file_from_path(&new_parent_path, &rs)?;
 	let mut new_parent = new_parent_mutex.lock();
 
 	// TODO Check permissions if sticky bit is set
@@ -51,10 +54,10 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs::create_link(&mut old, &new_parent, &new_name, &ap)?;
+		vfs::create_link(&mut old, &new_parent, &new_name, &rs.access_profile)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs::remove_file(&mut old, &ap)?;
+			vfs::remove_file(&mut old, &rs.access_profile)?;
 		}
 	} else {
 		// Old and new are on different filesystems.
@@ -62,7 +65,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		// TODO On fail, undo
 
 		file::util::copy_file(&mut old, &mut new_parent, String::try_from(new_name)?)?;
-		file::util::remove_recursive(&mut old, &ap)?;
+		file::util::remove_recursive(&mut old, &rs.access_profile)?;
 	}
 
 	Ok(0)

@@ -4,6 +4,7 @@ use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::path::PathBuf;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use core::ffi::c_int;
@@ -20,7 +21,7 @@ pub fn do_chown(
 		return Err(errno!(EINVAL));
 	}
 
-	let (path, ap) = {
+	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -30,13 +31,14 @@ pub fn do_chown(
 		let path = pathname.get(&*mem_space)?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
-		(path, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, follow_links);
+		(path, rs)
 	};
 
-	let file_mutex = vfs::get_file_from_path(&path, &ap, follow_links)?;
+	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
 	// TODO allow changing group to any group whose owner is member
-	if !ap.is_privileged() {
+	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
 	if owner != -1 {

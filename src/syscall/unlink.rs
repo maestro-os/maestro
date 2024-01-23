@@ -5,13 +5,14 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
 
 #[syscall]
 pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
-	let (path, ap) = {
+	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -21,13 +22,14 @@ pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
 		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
-		(path, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, true);
+		(path, rs)
 	};
 
 	// Remove the file
-	let file_mutex = vfs::get_file_from_path(&path, &ap, true)?;
+	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
-	vfs::remove_file(&mut file, &ap)?;
+	vfs::remove_file(&mut file, &rs.access_profile)?;
 
 	Ok(0)
 }

@@ -19,7 +19,7 @@ use crate::file::FileLocation;
 use crate::file::FileType;
 use crate::file::Mode;
 use crate::file::MountPoint;
-use crate::limits;
+use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
@@ -42,9 +42,18 @@ pub enum ResolutionStart<'s> {
 	Location(FileLocation),
 }
 
+impl<'s> Default for ResolutionStart<'s> {
+	/// Start from the root path.
+	fn default() -> Self {
+		Self::Path(Path::root())
+	}
+}
+
 /// Settings for a path resolution operation.
 pub struct ResolutionSettings<'s> {
 	/// The location of the root directory for the operation.
+	///
+	/// Contrary to the `start` field, resolution *cannot* access a parent of this path.
 	pub root: FileLocation,
 	/// The beginning position of the path resolution.
 	pub start: ResolutionStart<'s>,
@@ -59,8 +68,58 @@ pub struct ResolutionSettings<'s> {
 	pub follow_links: bool,
 }
 
+impl<'s> Default for ResolutionSettings<'s> {
+	/// Returns the default settings **for kernel access**.
+	///
+	/// The resolution starts from the root of the VFS, and symbolic links are followed.
+	fn default() -> Self {
+		Self {
+			root: FileLocation::root(),
+			start: ResolutionStart::default(),
+
+			access_profile: &AccessProfile::KERNEL,
+
+			create: false,
+			follow_links: true,
+		}
+	}
+}
+
+impl<'s> ResolutionSettings<'s> {
+	/// Kernel access, without following symbolic links.
+	pub const fn kernel_nofollow() -> Self {
+		Self {
+			follow_links: false,
+			..Default::default()
+		}
+	}
+
+	/// Returns simple settings, specifying only the `access_profile` and whether symbolic links
+	/// should be followed.
+	pub const fn simple(access_profile: &'s AccessProfile, follow_links: bool) -> Self {
+		Self {
+			access_profile,
+			follow_links,
+			..Default::default()
+		}
+	}
+
+	/// Returns the default for the given process.
+	///
+	/// `follow_links` tells whether symbolic links are followed.
+	pub fn for_process(proc: &'s Process, follow_links: bool) -> Self {
+		Self {
+			root: proc.chroot.clone(),
+			start: ResolutionStart::Path(&proc.cwd),
+			access_profile: &proc.access_profile,
+			follow_links,
+			..Default::default()
+		}
+	}
+}
+
 /// The resolute of the path resolution operation.
-pub enum ResolvedPath<'s> {
+pub enum Resolved<'s> {
 	/// The file has been found.
 	Found(Arc<Mutex<File>>),
 	/// The file can be created.
@@ -68,11 +127,33 @@ pub enum ResolvedPath<'s> {
 	/// This variant can be returned only if the `create` field is set to `true` in
 	/// [`ResolutionSettings`].
 	Creatable {
-		/// The location of the parent directory in which the file is to be created.
-		parent_location: FileLocation,
+		/// The parent directory in which the file is to be created.
+		parent: Arc<Mutex<File>>,
 		/// The name of the file to be created.
 		name: &'s [u8],
 	},
+}
+
+/// Like [`get_file_from_path`], but returns `None` is the file does not exist.
+pub fn get_file_from_path_opt(
+	path: &Path,
+	resolution_settings: &ResolutionSettings,
+) -> EResult<Option<Arc<Mutex<File>>>> {
+	let file = match resolve_path(path, resolution_settings)? {
+		Resolved::Found(file) => Some(file),
+		_ => None,
+	};
+	Ok(file)
+}
+
+/// Returns the file at the given `path`.
+///
+/// If the file does not exist, the function returns [`ENOENT`].
+pub fn get_file_from_path(
+	path: &Path,
+	resolution_settings: &ResolutionSettings,
+) -> EResult<Arc<Mutex<File>>> {
+	get_file_from_path_opt(path, resolution_settings)?.ok_or_else(|| errno!(ENOENT))
 }
 
 /// Resolves the given `path` with the given `settings`.
@@ -87,7 +168,7 @@ pub enum ResolvedPath<'s> {
 ///   disabled, the function returns [`errno::ENOTDIR`].
 /// - If the resolution of the path requires more symbolic link indirections than
 ///   [`limits::SYMLOOP_MAX`], the function returns [`errno::ELOOP`].
-fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<ResolvedPath<'p>> {
+pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Resolved<'p>> {
 	// Required by POSIX
 	if path.is_empty() {
 		return Err(errno!(ENOENT));
@@ -105,11 +186,11 @@ fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Re
 			ResolutionStart::Location(loc) => loc,
 		}
 	};
-	let mut file_mutex = get_file_by_location(start)?;
+	let mut file_mutex = get_file_from_location(start)?;
 
 	// Iterate on components
-	let iter = path.components();
-	for comp in iter {
+	let mut iter = path.components().peekable();
+	for comp in &mut iter {
 		let name = match comp {
 			Component::ParentDir => b"..",
 			Component::Normal(name) => name,
@@ -128,8 +209,8 @@ fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Re
 					let is_last = iter.peek().is_none();
 					// If the last component does not exist and the file may be created
 					let res = if is_last && settings.create {
-						Ok(ResolvedPath::Creatable {
-							parent_location: file.location.clone(),
+						Ok(Resolved::Creatable {
+							parent: file_mutex,
 							name,
 						})
 					} else {
@@ -150,7 +231,7 @@ fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Re
 				if let Some(mountpoint) = mountpoint::from_location(&loc) {
 					loc = mountpoint.lock().get_target_location().clone();
 				}
-				file_mutex = get_file_by_location(&loc)?;
+				file_mutex = get_file_from_location(&loc)?;
 			}
 			// Follow link, if enabled
 			FileContent::Link(link_path) if settings.follow_links => {
@@ -161,7 +242,7 @@ fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Re
 		}
 	}
 
-	Ok(ResolvedPath::Found(file_mutex))
+	Ok(Resolved::Found(file_mutex))
 }
 
 /// Updates the location of the file `file` according to the given mountpoint
@@ -183,7 +264,7 @@ fn update_location(file: &mut File, mountpoint: &MountPoint) {
 /// location.
 ///
 /// If the file doesn't exist, the function returns an error.
-pub fn get_file_by_location(location: &FileLocation) -> EResult<Arc<Mutex<File>>> {
+pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File>>> {
 	match location {
 		FileLocation::Filesystem {
 			inode, ..
@@ -223,158 +304,6 @@ pub fn get_file_by_location(location: &FileLocation) -> EResult<Arc<Mutex<File>>
 			Ok(file)
 		}
 	}
-}
-
-/// `follows_count` is the number of links that have been followed since the
-/// beginning of the path resolution.
-fn get_file_by_path_impl(
-	path: &Path,
-	ap: &AccessProfile,
-	follow_links: bool,
-	follows_count: usize,
-) -> EResult<Arc<Mutex<File>>> {
-	// Get the path's deepest mountpoint
-	let mountpoint_mutex = mountpoint::get_deepest(&path).ok_or_else(|| errno!(ENOENT))?;
-	let mountpoint = mountpoint_mutex.lock();
-	let mountpath = mountpoint.get_path();
-
-	// Get the IO interface
-	let io_mutex = mountpoint.get_source().get_io()?;
-	let mut io = io_mutex.lock();
-
-	// Get the path of the file beginning from the start of its filesystem
-	let inner_path = path.strip_prefix(mountpoint.get_path()).unwrap();
-
-	// The filesystem
-	let fs_mutex = mountpoint.get_filesystem();
-	let mut fs = fs_mutex.lock();
-
-	// The root inode
-	let mut inode = fs.get_root_inode(&mut *io)?;
-	let mut file = fs.load_file(&mut *io, inode, String::new())?;
-
-	for i in 0..inner_path.get_elements_count() {
-		inode = fs.get_inode(&mut *io, Some(inode), &inner_path[i])?;
-
-		// Check permissions
-		if i < inner_path.get_elements_count() - 1 && !ap.can_search_directory(&file) {
-			return Err(errno!(EACCES));
-		}
-		// Get file
-		file = fs.load_file(&mut *io, inode, inner_path[i].try_clone()?)?;
-
-		// If this is not the last element, or if links are followed
-		if i < inner_path.get_elements_count() - 1 || follow_links {
-			// If symbolic link, resolve it
-			if let FileContent::Link(link_path) = file.get_content() {
-				if follows_count > limits::SYMLOOP_MAX {
-					return Err(errno!(ELOOP));
-				}
-
-				let mut prefix = inner_path.range_to(..i)?;
-				prefix.set_absolute(false);
-
-				let link_path = Path::new(link_path.as_bytes())?;
-
-				let mut suffix = inner_path.range_from((i + 1)..)?;
-				suffix.set_absolute(false);
-
-				// TODO optimize
-				let new_path = mountpath.join(&prefix)?.join(link_path)?.join(&suffix)?;
-
-				drop(fs);
-				drop(io);
-				drop(mountpoint);
-				return get_file_by_path_impl(&new_path, ap, follow_links, follows_count + 1);
-			}
-		}
-	}
-
-	let parent_path = path.parent().unwrap_or(Path::root());
-	file.set_parent_path(parent_path.to_path_buf()?);
-
-	drop(fs);
-
-	update_location(&mut file, &mountpoint);
-	let file = Arc::new(Mutex::new(file))?;
-	Ok(file)
-}
-
-// TODO Add a param to choose between the mountpoint and the fs root?
-/// Returns a reference to the file at path `path`.
-///
-/// If the file doesn't exist, the function returns an error.
-///
-/// If the path is relative, the function starts from the root.
-///
-/// Arguments:
-/// - `ap` is the access profile to check permissions
-/// - `follow_links` is `true`, the function follows symbolic links
-pub fn get_file_from_path(
-	path: &Path,
-	ap: &AccessProfile,
-	follow_links: bool,
-) -> EResult<Arc<Mutex<File>>> {
-	get_file_by_path_impl(path, ap, follow_links, 0)
-}
-
-/// Returns a reference to the file `name` located in the directory `parent`.
-///
-/// If the file doesn't exist, the function returns an error.
-///
-/// Arguments:
-/// - `parent` is the parent directory
-/// - `name` is the name of the file
-/// - `ap` is the access profile to check permissions
-/// - `follow_links` is `true`, the function follows symbolic links
-pub fn get_file_from_parent(
-	parent: &File,
-	name: String,
-	ap: &AccessProfile,
-	follow_links: bool,
-) -> EResult<Arc<Mutex<File>>> {
-	// Check for errors
-	if parent.get_type() != FileType::Directory {
-		return Err(errno!(ENOTDIR));
-	}
-	if !ap.can_search_directory(parent) {
-		return Err(errno!(EACCES));
-	}
-
-	// Get the path's deepest mountpoint
-	let mountpoint_mutex = parent
-		.get_location()
-		.get_mountpoint()
-		.ok_or_else(|| errno!(ENOENT))?;
-	let mountpoint = mountpoint_mutex.lock();
-
-	// Get the IO interface
-	let io_mutex = mountpoint.get_source().get_io()?;
-	let mut io = io_mutex.lock();
-
-	// The filesystem
-	let fs_mutex = mountpoint.get_filesystem();
-	let mut fs = fs_mutex.lock();
-
-	let inode = fs.get_inode(&mut *io, Some(parent.get_location().get_inode()), &name)?;
-	let mut file = fs.load_file(&mut *io, inode, name)?;
-
-	if follow_links {
-		if let FileContent::Link(link_path) = file.get_content() {
-			let link_path = Path::new(link_path.as_bytes())?;
-			let new_path = parent.get_path()?.join(&link_path)?;
-
-			drop(fs);
-			drop(io);
-			drop(mountpoint);
-			return get_file_by_path_impl(&new_path, ap, follow_links, 1);
-		}
-	}
-
-	file.set_parent_path(parent.get_path()?);
-	update_location(&mut file, &mountpoint);
-
-	Ok(Arc::new(Mutex::new(file))?)
 }
 
 /// Creates a file, adds it to the VFS, then returns it. The file will be

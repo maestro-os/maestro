@@ -6,6 +6,7 @@ use crate::errno::Errno;
 use crate::file::path::{Path, PathBuf};
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
 use crate::memory::stack;
 use crate::process;
@@ -145,7 +146,7 @@ pub fn execve(
 	argv: *const *const u8,
 	envp: *const *const u8,
 ) -> Result<i32, Errno> {
-	let (mut path, mut argv, envp, ap) = {
+	let (mut path, mut argv, envp, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -163,17 +164,18 @@ pub fn execve(
 		let argv = unsafe { super::util::get_str_array(&proc, argv)? };
 		let envp = unsafe { super::util::get_str_array(&proc, envp)? };
 
-		(path, argv, envp, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, true);
+		(path, argv, envp, rs)
 	};
 
 	// Handling shebang
 	let mut i = 0;
 	while i < INTERP_MAX + 1 {
 		// The file
-		let file = vfs::get_file_from_path(&path, &ap, true)?;
+		let file = vfs::get_file_from_path(&path, &rs)?;
 		let mut f = file.lock();
 
-		if !ap.can_execute_file(&f) {
+		if !rs.access_profile.can_execute_file(&f) {
 			return Err(errno!(EACCES));
 		}
 
@@ -211,7 +213,7 @@ pub fn execve(
 	}
 
 	// The file
-	let file = vfs::get_file_from_path(&path, &ap, true)?;
+	let file = vfs::get_file_from_path(&path, &rs)?;
 
 	// Drop path to avoid memory leak
 	drop(path);
@@ -221,8 +223,12 @@ pub fn execve(
 	cli!();
 
 	// Build the program's image
-	let program_image =
-		unsafe { stack::switch(None, move || build_image(file, ap, argv, envp)).unwrap()? };
+	let program_image = unsafe {
+		stack::switch(None, move || {
+			build_image(file, *rs.access_profile, argv, envp)
+		})
+		.unwrap()?
+	};
 
 	// The temporary stack will not be used since the scheduler cannot be ticked when
 	// interrupts are disabled

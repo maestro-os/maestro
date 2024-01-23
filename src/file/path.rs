@@ -152,6 +152,11 @@ impl Path {
 		unsafe { &*(s.as_ref() as *const [u8] as *const Self) }
 	}
 
+	/// Returns the length of the path in bytes.
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
 	/// Tells whether the path is empty.
 	pub fn is_empty(&self) -> bool {
 		self.0.is_empty()

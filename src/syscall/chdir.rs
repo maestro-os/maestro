@@ -5,6 +5,7 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -28,7 +29,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 	};
 
 	{
-		let dir_mutex = vfs::get_file_from_path(&new_cwd, &ap, true)?;
+		let dir_mutex = vfs::get_file_from_path(&new_cwd, &ResolutionSettings::simple(&ap, true))?;
 		let dir = dir_mutex.lock();
 
 		// Check for errors
