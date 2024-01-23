@@ -18,16 +18,15 @@
 
 //! A mount point is a directory in which a filesystem is mounted.
 
-use super::fs;
 use super::fs::Filesystem;
 use super::fs::FilesystemType;
 use super::path::{Path, PathBuf};
 use super::vfs;
 use super::FileContent;
+use super::{fs, FileLocation};
 use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
-use crate::errno::Errno;
 use crate::errno::{AllocResult, EResult};
 use crate::file::perm::AccessProfile;
 use crate::util::container::hashmap::HashMap;
@@ -37,7 +36,6 @@ use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
-use core::cmp::max;
 use core::fmt;
 
 /// Permits mandatory locking on files.
@@ -76,7 +74,6 @@ pub enum MountSource {
 	Device {
 		/// The device type.
 		dev_type: DeviceType,
-
 		/// The major number.
 		major: u32,
 		/// The minor number.
@@ -107,7 +104,6 @@ impl MountSource {
 						minor,
 					} => Ok(Self::Device {
 						dev_type: DeviceType::Block,
-
 						major: *major,
 						minor: *minor,
 					}),
@@ -117,7 +113,6 @@ impl MountSource {
 						minor,
 					} => Ok(Self::Device {
 						dev_type: DeviceType::Char,
-
 						major: *major,
 						minor: *minor,
 					}),
@@ -131,11 +126,10 @@ impl MountSource {
 	}
 
 	/// Returns the IO interface for the mount source.
-	pub fn get_io(&self) -> Result<Arc<Mutex<dyn IO>>, Errno> {
+	pub fn get_io(&self) -> EResult<Arc<Mutex<dyn IO>>> {
 		match self {
 			Self::Device {
 				dev_type,
-
 				major,
 				minor,
 			} => {
@@ -176,12 +170,11 @@ impl fmt::Display for MountSource {
 		match self {
 			Self::Device {
 				dev_type,
-
 				major,
 				minor,
-			} => write!(fmt, "{}.{}.{}", dev_type, major, minor),
+			} => write!(fmt, "dev({dev_type}:{major}:{minor})"),
 
-			Self::NoDev(name) => write!(fmt, "{}", name),
+			Self::NoDev(name) => write!(fmt, "{name}"),
 		}
 	}
 }
@@ -213,12 +206,12 @@ fn load_fs(
 	fs_type: Option<Arc<dyn FilesystemType>>,
 	path: PathBuf,
 	readonly: bool,
-) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
-	// Getting the I/O interface
+) -> EResult<Arc<Mutex<dyn Filesystem>>> {
+	// Get the I/O interface
 	let io_mutex = source.get_io()?;
 	let mut io = io_mutex.lock();
 
-	// Getting the filesystem type
+	// Get the filesystem type
 	let fs_type = match fs_type {
 		Some(fs_type) => fs_type,
 		None => match source {
@@ -244,17 +237,16 @@ fn load_fs(
 
 /// Returns the loaded filesystem with the given source `source`.
 ///
-/// `take` tells whether the function increments the references count.
+/// `acquire` tells whether the function increments the references count.
 ///
 /// If the filesystem isn't loaded, the function returns `None`.
-fn get_fs_(source: &MountSource, take: bool) -> Option<Arc<Mutex<dyn Filesystem>>> {
+fn get_fs_impl(source: &MountSource, acquire: bool) -> Option<Arc<Mutex<dyn Filesystem>>> {
 	let mut container = FILESYSTEMS.lock();
-
 	let fs = container.get_mut(source)?;
-	if take {
+	// Increment the number of references if required
+	if acquire {
 		fs.ref_count += 1;
 	}
-
 	Some(fs.fs.clone())
 }
 
@@ -262,36 +254,15 @@ fn get_fs_(source: &MountSource, take: bool) -> Option<Arc<Mutex<dyn Filesystem>
 ///
 /// If the filesystem isn't loaded, the function returns `None`.
 pub fn get_fs(source: &MountSource) -> Option<Arc<Mutex<dyn Filesystem>>> {
-	get_fs_(source, false)
-}
-
-/// Drops a reference to the filesystem with the given source `source`.
-///
-/// If no reference on the filesystem is left, the function unloads it.
-///
-/// If the filesystem doesn't exist, the function does nothing.
-fn drop_fs(source: &MountSource) {
-	let mut container = FILESYSTEMS.lock();
-
-	if let Some(fs) = container.get_mut(source) {
-		fs.ref_count -= 1;
-
-		// If no reference left, drop
-		if fs.ref_count == 0 {
-			container.remove(source);
-		}
-	}
+	get_fs_impl(source, false)
 }
 
 /// A mount point, allowing to attach a filesystem to a directory on the VFS.
 pub struct MountPoint {
 	/// The ID of the mountpoint.
 	id: u32,
-
 	/// Mount flags.
 	flags: u32,
-	/// The path to the mount directory.
-	path: PathBuf,
 
 	/// The source of the mountpoint.
 	source: MountSource,
@@ -299,6 +270,11 @@ pub struct MountPoint {
 	fs: Arc<Mutex<dyn Filesystem>>,
 	/// The name of the filesystem's type.
 	fs_type_name: String,
+
+	/// The path to the mount directory.
+	target_path: PathBuf,
+	/// The location of the mount directory on the parent filesystem.
+	target_location: FileLocation,
 }
 
 impl MountPoint {
@@ -308,42 +284,44 @@ impl MountPoint {
 	/// - `id` is the ID of the mountpoint.
 	/// - `source` is the source of the mountpoint.
 	/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it
-	/// automaticaly.
+	/// automatically.
 	/// - `flags` are the mount flags.
-	/// - `path` is the path on which the filesystem is to be mounted.
+	/// - `target_path` is the path to the mount directory.
+	/// - `target_location` is the location of the mount directory on the parent filesystem.
 	fn new(
 		id: u32,
 		source: MountSource,
 		fs_type: Option<Arc<dyn FilesystemType>>,
 		flags: u32,
-		path: PathBuf,
-	) -> Result<Self, Errno> {
-		// Tells whether the filesystem will be mounted in read-only
+		target_path: PathBuf,
+		target_location: FileLocation,
+	) -> EResult<Self> {
+		// Tells whether the filesystem will be mounted as read-only
 		let readonly = flags & FLAG_RDONLY != 0;
 
-		let fs_mutex = match get_fs_(&source, true) {
+		let fs = match get_fs_impl(&source, true) {
 			// Filesystem exists, do nothing
 			Some(fs) => fs,
 			// Filesystem doesn't exist, load it
-			None => load_fs(source.try_clone()?, fs_type, path.try_clone()?, readonly)?,
+			None => load_fs(
+				source.try_clone()?,
+				fs_type,
+				target_path.try_clone()?,
+				readonly,
+			)?,
 		};
-
-		// TODO Increment number of references to the filesystem
-
-		let fs_type_name = {
-			let fs = fs_mutex.lock();
-			String::try_from(fs.get_name())?
-		};
+		let fs_type_name = String::try_from(fs.lock().get_name())?;
 
 		Ok(Self {
 			id,
-
 			flags,
-			path,
 
 			source,
-			fs: fs_mutex,
+			fs,
 			fs_type_name,
+
+			target_path,
+			target_location,
 		})
 	}
 
@@ -357,14 +335,9 @@ impl MountPoint {
 		self.flags
 	}
 
-	/// Tells whether the mountpoint's is mounted in read-only.
+	/// Tells whether the mountpoint's is mounted as read-only.
 	pub fn is_readonly(&self) -> bool {
 		self.flags & FLAG_RDONLY != 0
-	}
-
-	/// Returns a reference to the path where the filesystem is mounted.
-	pub fn get_path(&self) -> &Path {
-		&self.path
 	}
 
 	/// Returns the source of the mountpoint.
@@ -372,8 +345,7 @@ impl MountPoint {
 		&self.source
 	}
 
-	/// Returns a mutable reference to the filesystem associated with the
-	/// mountpoint.
+	/// Returns the filesystem associated with the mountpoint.
 	pub fn get_filesystem(&self) -> Arc<Mutex<dyn Filesystem>> {
 		self.fs.clone()
 	}
@@ -382,49 +354,74 @@ impl MountPoint {
 	pub fn get_filesystem_type(&self) -> &String {
 		&self.fs_type_name
 	}
+
+	/// Returns a reference to the path where the filesystem is mounted.
+	pub fn get_target_path(&self) -> &Path {
+		&self.target_path
+	}
+
+	/// Returns a reference to the location of the mount directory on the parent filesystem.
+	pub fn get_target_location(&self) -> &FileLocation {
+		&self.target_location
+	}
 }
 
 impl Drop for MountPoint {
 	fn drop(&mut self) {
-		drop_fs(&self.source);
+		// Decrement the number of references to the filesystem
+		let mut container = FILESYSTEMS.lock();
+		if let Some(fs) = container.get_mut(&self.source) {
+			fs.ref_count -= 1;
+			// If no reference left, drop
+			if fs.ref_count == 0 {
+				container.remove(&self.source);
+			}
+		}
 	}
 }
 
 /// The list of mountpoints with their respective ID.
 pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<Mutex<MountPoint>>>> = Mutex::new(HashMap::new());
-/// A map from mountpoint paths to mountpoint IDs.
-pub static PATH_TO_ID: Mutex<HashMap<PathBuf, u32>> = Mutex::new(HashMap::new());
+/// A map from mount locations to mountpoint IDs.
+pub static LOC_TO_ID: Mutex<HashMap<FileLocation, u32>> = Mutex::new(HashMap::new());
 
 /// Creates a new mountpoint.
 ///
-/// If a mountpoint is already present at the same path, the function fails.
+/// If a mountpoint is already present at the same path, the function fails with [`EINVAL`].
 ///
 /// Arguments:
 /// - `source` is the source of the mountpoint.
 /// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automatically.
 /// - `flags` are the mount flags.
-/// - `path` is the path on which the filesystem is to be mounted.
+/// - `target_path` is the path on which the filesystem is to be mounted.
+/// - `target_location` is the location on which the filesystem is to be mounted on the parent
+///   filesystem.
 pub fn create(
 	source: MountSource,
 	fs_type: Option<Arc<dyn FilesystemType>>,
 	flags: u32,
-	path: PathBuf,
+	target_path: PathBuf,
+	target_location: FileLocation,
 ) -> EResult<Arc<Mutex<MountPoint>>> {
 	// TODO clean
 	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
 	// the locks of MOUNT_POINTS
-	let mut path_to_id = PATH_TO_ID.lock();
+	let mut path_to_id = LOC_TO_ID.lock();
+	// If a mountpoint is already present at this location, error
+	if path_to_id.get(&target_location).is_some() {
+		return Err(errno!(EINVAL));
+	}
 
-	// TODO clean
+	// TODO improve
 	// ID allocation
 	let id = {
-		let mut id = 0;
-
-		for (i, _) in MOUNT_POINTS.lock().iter() {
-			id = max(*i, id);
-		}
-
-		id + 1
+		MOUNT_POINTS
+			.lock()
+			.iter()
+			.map(|(i, _)| *i)
+			.max()
+			.unwrap_or(0)
+			+ 1
 	};
 
 	let mountpoint = Arc::new(Mutex::new(MountPoint::new(
@@ -432,14 +429,15 @@ pub fn create(
 		source,
 		fs_type,
 		flags,
-		path.try_clone()?,
+		target_path,
+		target_location.clone(),
 	)?))?;
 
 	// Insertion
 	{
 		let mut mount_points = MOUNT_POINTS.lock();
 		mount_points.insert(id, mountpoint.clone())?;
-		if let Err(e) = path_to_id.insert(path, id) {
+		if let Err(e) = path_to_id.insert(target_location, id) {
 			mount_points.remove(&id);
 			return Err(e.into());
 		}
@@ -448,18 +446,18 @@ pub fn create(
 	Ok(mountpoint)
 }
 
-/// Removes the mountpoint at the given path `path`.
+/// Removes the mountpoint at the given `target_location`.
 ///
 /// Data is synchronized to the associated storage device, if any, before removing the mountpoint.
 ///
-/// If the mountpoint doesn't exist, the function returns `EINVAL`.
+/// If the mountpoint doesn't exist, the function returns [`EINVAL`].
 ///
-/// If the mountpoint is busy, the function returns `EBUSY`.
-pub fn remove(path: &Path) -> EResult<()> {
-	let mut path_to_id = PATH_TO_ID.lock();
+/// If the mountpoint is busy, the function returns [`EBUSY`].
+pub fn remove(target_location: &FileLocation) -> EResult<()> {
+	let mut loc_to_id = LOC_TO_ID.lock();
 	let mut mount_points = MOUNT_POINTS.lock();
 
-	let id = *path_to_id.get(path).ok_or(errno!(EINVAL))?;
+	let id = *loc_to_id.get(target_location).ok_or(errno!(EINVAL))?;
 	let _mountpoint = mount_points.get(&id).ok_or(errno!(EINVAL))?;
 
 	// TODO Check if busy (EBUSY)
@@ -467,34 +465,10 @@ pub fn remove(path: &Path) -> EResult<()> {
 
 	// TODO sync fs
 
-	path_to_id.remove(path);
+	loc_to_id.remove(target_location);
 	mount_points.remove(&id);
 
 	Ok(())
-}
-
-// TODO cleanup
-/// Returns the deepest mountpoint in the path `path`.
-///
-/// If no mountpoint is in the path, the function returns `None`.
-pub fn get_deepest(path: &Path) -> Option<Arc<Mutex<MountPoint>>> {
-	let container = MOUNT_POINTS.lock();
-	let mut max: Option<Arc<Mutex<MountPoint>>> = None;
-	for (_, mp) in container.iter() {
-		let mp_guard = mp.lock();
-		let mount_path = mp_guard.get_path();
-		if let Some(max) = max.as_mut() {
-			let max = max.lock();
-			let max_path = max.get_path();
-			if max_path.components().count() >= mount_path.components().count() {
-				continue;
-			}
-		}
-		if path.starts_with(mount_path) {
-			max = Some(mp.clone());
-		}
-	}
-	max
 }
 
 /// Returns the mountpoint with id `id`.
@@ -505,11 +479,11 @@ pub fn from_id(id: u32) -> Option<Arc<Mutex<MountPoint>>> {
 	container.get(&id).cloned()
 }
 
-/// Returns the mountpoint with path `path`.
+/// Returns the mountpoint that is mounted at the given `target_location`.
 ///
 /// If it doesn't exist, the function returns `None`.
-pub fn from_path(path: &Path) -> Option<Arc<Mutex<MountPoint>>> {
-	let container = PATH_TO_ID.lock();
-	let id = container.get(path)?;
+pub fn from_location(target_location: &FileLocation) -> Option<Arc<Mutex<MountPoint>>> {
+	let container = LOC_TO_ID.lock();
+	let id = container.get(target_location)?;
 	from_id(*id)
 }

@@ -30,6 +30,7 @@ use crate::file::Mode;
 use crate::process::pid::Pid;
 use crate::process::Process;
 use crate::util::io::IO;
+use crate::util::TryClone;
 
 /// Struture representing the `exe` node.
 pub struct Exe {
@@ -62,7 +63,7 @@ impl KernFSNode for Exe {
 		let content = Process::get_by_pid(self.pid)
 			.map(|mutex| {
 				let proc = mutex.lock();
-				crate::format!("{}", &*proc.exec_path)
+				(&*proc.exec_path).try_clone()
 			})
 			.transpose()?
 			.unwrap_or_default();

@@ -852,7 +852,9 @@ impl Filesystem for Ext2Fs {
 				FileContent::Directory(final_entries)
 			}
 
-			FileType::Link => FileContent::Link(inode_.get_link(&self.superblock, io)?),
+			FileType::Link => {
+				FileContent::Link(inode_.get_link(&self.superblock, io)?.try_into()?)
+			}
 
 			FileType::Fifo => FileContent::Fifo,
 

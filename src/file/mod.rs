@@ -194,6 +194,14 @@ pub enum FileLocation {
 }
 
 impl FileLocation {
+	/// Returns the location of the VFS's root.
+	pub const fn root() -> Self {
+		Self::Filesystem {
+			mountpoint_id: 0,
+			inode: 0,
+		}
+	}
+
 	/// Returns the ID of the mountpoint.
 	pub fn get_mountpoint_id(&self) -> Option<u32> {
 		match self {
@@ -924,14 +932,12 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	let mount_source = match root {
 		Some((major, minor)) => MountSource::Device {
 			dev_type: DeviceType::Block,
-
 			major,
 			minor,
 		},
-
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	mountpoint::create(mount_source, None, 0, PathBuf::root())?;
+	mountpoint::create(mount_source, None, 0, PathBuf::root(), FileLocation::root())?;
 
 	Ok(())
 }
