@@ -12,6 +12,7 @@ use crate::file::Mode;
 use crate::process::pid::Pid;
 use crate::process::Process;
 use crate::util::io::IO;
+use crate::util::TryClone;
 
 /// Struture representing the `cwd` node.
 pub struct Cwd {
@@ -44,7 +45,7 @@ impl KernFSNode for Cwd {
 		let content = Process::get_by_pid(self.pid)
 			.map(|mutex| {
 				let proc = mutex.lock();
-				crate::format!("{}", &*proc.cwd)
+				(&*proc.cwd).try_clone()
 			})
 			.transpose()?
 			.unwrap_or_default();

@@ -57,8 +57,6 @@ pub struct ResolutionSettings<'s> {
 	pub create: bool,
 	/// If `true`, path resolution follows symbolic links.
 	pub follow_links: bool,
-	/// If `true`, path resolution enters other mountpoints than the one it started with.
-	pub follow_mountpoints: bool,
 }
 
 /// The resolute of the path resolution operation.
@@ -144,14 +142,14 @@ fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Re
 					.get_mountpoint_id()
 					.ok_or_else(|| errno!(ENOENT))?;
 				// The location on the current filesystem
-				let loc = FileLocation::Filesystem {
+				let mut loc = FileLocation::Filesystem {
 					mountpoint_id,
 					inode: entry.inode,
 				};
-				// TODO get mountpoint by FileLocation
-				// TODO if the mountpoint is different than the previous and mountpoint traversal
-				// is disabled, return an error TODO change loc according to the mountpoint if
-				// different
+				// Update location if on a different mountpoint
+				if let Some(mountpoint) = mountpoint::from_location(&loc) {
+					loc = mountpoint.lock().get_target_location().clone();
+				}
 				file_mutex = get_file_by_location(&loc)?;
 			}
 			// Follow link, if enabled
