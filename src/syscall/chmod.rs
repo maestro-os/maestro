@@ -21,6 +21,7 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use core::ffi::c_int;
@@ -28,7 +29,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
-	let (path, ap) = {
+	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -41,14 +42,15 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
-		(path, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, true);
+		(path, rs)
 	};
 
-	let file_mutex = vfs::get_file_from_path(&path, &ap, true)?;
+	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
 
 	// Check permissions
-	if !ap.can_set_file_permissions(&file) {
+	if !rs.access_profile.can_set_file_permissions(&file) {
 		return Err(errno!(EPERM));
 	}
 

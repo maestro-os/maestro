@@ -29,6 +29,7 @@ use crate::file::open_file::OpenFile;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
@@ -51,64 +52,39 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 
 // TODO Implement all flags
 
-/// Returns the file at the given path `path`.
+/// Resolves the given `path` and returns the file.
 ///
-/// If the file doesn't exist and the `O_CREAT` flag is set, the file is created,
-/// then the function returns it.
-/// If the flag is not set, the function returns an error with the appropriate errno.
+/// If enabled, the file is create.
 ///
-/// If the file is to be created, the function uses `mode` to set its permissions and the provided
+/// If the file is created, the function uses `mode` to set its permissions and the provided
 /// access profile to set the user ID and group ID.
-///
-/// The access profile is also used to check permissions.
-fn get_file(
-	path: &Path,
-	flags: i32,
-	mode: Mode,
-	access_profile: &AccessProfile,
-) -> EResult<Arc<Mutex<File>>> {
-	// Tells whether to follow symbolic links on the last component of the path.
-	let follow_links = flags & open_file::O_NOFOLLOW == 0;
-
-	if flags & open_file::O_CREAT != 0 {
-		// Get the path of the parent directory
-		let parent_path = path.parent().unwrap_or(Path::root());
-		// The file's basename
-		let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
-
-		// The parent directory
-		let parent_mutex = vfs::get_file_from_path(&parent_path, access_profile, true)?;
-		let mut parent = parent_mutex.lock();
-
-		let file_result =
-			vfs::get_file_from_parent(&parent, name.try_into()?, access_profile, follow_links);
-		let file = match file_result {
-			// If the file is found, return it
-			Ok(file) => file,
-
-			// Else, create it
-			Err(e) if e.as_int() == errno::ENOENT => vfs::create_file(
+fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mutex<File>>> {
+	let resolved = vfs::resolve_path(path, rs)?;
+	let file = match resolved {
+		Resolved::Found(file) => file,
+		Resolved::Creatable {
+			parent,
+			name,
+		} => {
+			let mut parent = parent.lock();
+			let name = name.try_into()?;
+			vfs::create_file(
 				&mut parent,
-				name.try_into()?,
-				access_profile,
+				name,
+				&rs.access_profile,
 				mode,
 				FileContent::Regular,
-			)?,
-
-			e => return e,
-		};
-		// Get file type. There cannot be a race condition since the type of a file cannot be
-		// changed
-		let file_type = file.lock().get_type();
-		match file_type {
-			// Cannot open symbolic links themselves
-			FileType::Link => Err(errno!(ELOOP)),
-			_ => Ok(file),
+			)?
 		}
-	} else {
-		// The file is the root directory
-		vfs::get_file_from_path(&path, access_profile, follow_links)
+	};
+	// Get file type. There cannot be a race condition since the type of a file cannot be
+	// changed
+	let file_type = file.lock().get_type();
+	// Cannot open symbolic links themselves
+	if file_type == FileType::Link {
+		return Err(errno!(ELOOP));
 	}
+	Ok(file)
 }
 
 /// The function checks the system call's flags and performs the action associated with some of
@@ -147,7 +123,7 @@ pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile)
 /// Performs the open system call.
 pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i32> {
 	let proc_mutex = Process::current_assert();
-	let (path, mode, ap, fds_mutex) = {
+	let (path, rs, mode, fds_mutex) = {
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
@@ -156,19 +132,24 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 		let path = Path::new(path)?;
 		let abs_path = super::util::get_absolute_path(&proc, path)?;
 
+		let follow_links = flags & open_file::O_NOFOLLOW == 0;
+		let create = flags & open_file::O_CREAT != 0;
+		let mut rs = ResolutionSettings::for_process(&proc, follow_links);
+		rs.create = create;
+
 		let mode = mode & !proc.umask;
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		(abs_path, mode, proc.access_profile, fds_mutex)
+
+		(abs_path, rs, mode, fds_mutex)
 	};
 
 	// Get file
-	let file_mutex = get_file(&path, flags, mode, &ap)?;
-	let mut file = file_mutex.lock();
-
-	// Handle flags
-	handle_flags(&mut file, flags, &ap)?;
-	drop(file);
+	let file_mutex = get_file(&path, &rs, mode)?;
+	{
+		let mut file = file_mutex.lock();
+		handle_flags(&mut file, flags, &rs.access_profile)?;
+	}
 
 	// Create open file description
 	let open_file = OpenFile::new(file_mutex.clone(), flags)?;

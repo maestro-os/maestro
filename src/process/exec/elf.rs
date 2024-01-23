@@ -31,6 +31,7 @@ use crate::exec::vdso::MappedVDSO;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
 use crate::memory;
 use crate::memory::vmem;
@@ -616,8 +617,10 @@ impl ELFExecutor {
 
 			// Get file
 			let interp_path = Path::new(interp_path)?;
-			let interp_file_mutex =
-				vfs::get_file_from_path(&interp_path, &self.info.access_profile, true)?;
+			let interp_file_mutex = vfs::get_file_from_path(
+				&interp_path,
+				&ResolutionSettings::simple(&self.info.access_profile, true),
+			)?;
 			let mut interp_file = interp_file_mutex.lock();
 
 			let interp_image = read_exec_file(&mut interp_file, &self.info.access_profile)?;

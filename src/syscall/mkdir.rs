@@ -22,6 +22,7 @@ use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -30,7 +31,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
-	let (path, mode, ap) = {
+	let (path, mode, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -44,7 +45,8 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
-		(path, mode, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, true);
+		(path, mode, rs)
 	};
 
 	// Get path of the parent directory and name of the directory to create
@@ -54,14 +56,14 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 	// If the path is not empty, create
 	if let Some(name) = name {
 		// Get parent directory
-		let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
+		let parent_mutex = vfs::get_file_from_path(&parent_path, &rs)?;
 		let mut parent = parent_mutex.lock();
 
 		// Create the directory
 		vfs::create_file(
 			&mut parent,
 			name.try_into()?,
-			&ap,
+			&rs.access_profile,
 			mode,
 			FileContent::Directory(HashMap::new()),
 		)?;

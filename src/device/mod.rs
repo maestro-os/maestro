@@ -48,9 +48,10 @@ use crate::errno::{AllocResult, CollectResult, EResult};
 use crate::file;
 use crate::file::path::{Path, PathBuf};
 use crate::file::perm::AccessProfile;
-use crate::file::vfs;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::{vfs, FileLocation};
 use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
@@ -225,37 +226,49 @@ impl Device {
 	/// in order to create the file without a deadlock since the VFS accesses a device to write on
 	/// the filesystem.
 	pub fn create_file(id: &DeviceID, path: &Path, mode: Mode) -> EResult<()> {
-		// If the file already exists, do nothing
-		let exists = vfs::get_file_from_path(&path, &AccessProfile::KERNEL, true).is_ok();
-		if exists {
-			return Ok(());
-		}
+		// Create the parent directory in which the device file is located
+		let parent_path = path.parent().unwrap_or(Path::root());
+		file::util::create_dirs(parent_path)?;
 
-		// Create the directories in which the device file is located
-		let dir_path = path.parent().unwrap_or(Path::root());
-		file::util::create_dirs(dir_path)?;
-		let filename = path.file_name().unwrap().try_into()?;
-
-		// Get the parent directory
-		let parent_mutex = vfs::get_file_from_path(&dir_path, &AccessProfile::KERNEL, true)?;
-		let mut parent = parent_mutex.lock();
-
-		// Create the device file
-		vfs::create_file(
-			&mut parent,
-			filename,
-			&AccessProfile::KERNEL,
-			mode,
-			id.to_file_content(),
+		// Resolve path
+		let resolved = vfs::resolve_path(
+			&path,
+			&ResolutionSettings {
+				root: FileLocation::root(),
+				start: Default::default(),
+				access_profile: &AccessProfile::KERNEL,
+				create: true,
+				follow_links: true,
+			},
 		)?;
-		Ok(())
+		match resolved {
+			Resolved::Creatable {
+				parent,
+				name,
+			} => {
+				let mut parent = parent.lock();
+				let name = name.try_into()?;
+				// Create the device file
+				vfs::create_file(
+					&mut parent,
+					name,
+					&AccessProfile::KERNEL,
+					mode,
+					id.to_file_content(),
+				)?;
+				Ok(())
+			}
+			// The file exists, do nothing
+			Resolved::Found(_) => Ok(()),
+		}
 	}
 
 	/// If exists, removes the device file.
 	///
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> EResult<()> {
-		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, &AccessProfile::KERNEL, true) {
+		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, &ResolutionSettings::default())
+		{
 			let mut file = file_mutex.lock();
 			vfs::remove_file(&mut file, &AccessProfile::KERNEL)?;
 		}

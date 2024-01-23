@@ -23,6 +23,7 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -30,9 +31,11 @@ use macros::syscall;
 
 #[syscall]
 pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
-	let (path, ap) = {
+	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
+
+		let rs = ResolutionSettings::for_process(&proc, true);
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
@@ -41,13 +44,13 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 		let path = Path::new(path)?;
 		let path = super::util::get_absolute_path(&proc, path)?;
 
-		(path, proc.access_profile)
+		(path, rs)
 	};
 
 	// Remove the directory
 	{
 		// Get directory
-		let file_mutex = vfs::get_file_from_path(&path, &ap, true)?;
+		let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 		let mut file = file_mutex.lock();
 
 		match file.get_content() {
@@ -56,7 +59,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 			_ => return Err(errno!(ENOTDIR)),
 		}
 
-		vfs::remove_file(&mut file, &ap)?;
+		vfs::remove_file(&mut file, &rs.access_profile)?;
 	}
 
 	Ok(0)

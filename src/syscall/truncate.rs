@@ -21,6 +21,7 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
@@ -30,6 +31,8 @@ pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
+	let rs = ResolutionSettings::for_process(&proc, true);
+
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let mem_space = mem_space_mutex.lock();
 
@@ -37,7 +40,7 @@ pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
 	let path = Path::new(path)?;
 	let path = super::util::get_absolute_path(&proc, path)?;
 
-	let file_mutex = vfs::get_file_from_path(&path, &proc.access_profile, true)?;
+	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
 	file.set_size(length as _);
 

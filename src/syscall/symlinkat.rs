@@ -20,11 +20,11 @@
 
 use super::util;
 use crate::errno::Errno;
+use crate::file::path::PathBuf;
 use crate::file::FileContent;
 use crate::limits;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::container::string::String;
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -46,7 +46,7 @@ pub fn symlinkat(
 	if target_slice.len() > limits::SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
-	let target = String::try_from(target_slice)?;
+	let target = PathBuf::try_from(target_slice)?;
 	let file_content = FileContent::Link(target);
 
 	let linkpath = linkpath

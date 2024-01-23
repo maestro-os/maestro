@@ -46,9 +46,8 @@ use core::mem::size_of;
 /// - `path` is the path.
 pub fn get_absolute_path(process: &Process, path: &Path) -> AllocResult<PathBuf> {
 	process
-		.chroot
+		.cwd
 		.components()
-		.chain(process.cwd.components())
 		.chain(path.components())
 		.collect::<CollectResult<PathBuf>>()
 		.0
