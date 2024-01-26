@@ -29,7 +29,6 @@ pub mod vdso;
 
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file::perm::AccessProfile;
 use crate::file::File;
 use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
@@ -41,11 +40,12 @@ use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
+use crate::file::vfs::ResolutionSettings;
 
-/// Informations to prepare a program image to be executed.
-pub struct ExecInfo {
-	/// The access profile of the calling agent.
-	pub access_profile: AccessProfile,
+/// Information to prepare a program image to be executed.
+pub struct ExecInfo<'s> {
+	/// Path resolution settings.
+	pub path_resolution: &'s ResolutionSettings<'s>,
 	/// The list of arguments.
 	pub argv: Vec<String>,
 	/// The list of environment variables.

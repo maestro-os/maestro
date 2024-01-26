@@ -29,6 +29,7 @@ use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::TryClone;
 use crate::{errno, memory};
+use crate::file::vfs::{ResolutionSettings};
 
 /// Creates the directories necessary to reach path `path`.
 ///
@@ -40,7 +41,7 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 		let Component::Normal(name) = &comp else {
 			continue;
 		};
-		if let Ok(parent_mutex) = vfs::get_file_from_path(&p, &AccessProfile::KERNEL, true) {
+		if let Ok(parent_mutex) = vfs::get_file_from_path(&p, &ResolutionSettings::kernel_follow()) {
 			let mut parent = parent_mutex.lock();
 			let res = vfs::create_file(
 				&mut parent,
@@ -60,15 +61,16 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 }
 
 /// Copies the file `old` into the directory `new_parent` with name `new_name`.
-pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> EResult<()> {
-	let ap = AccessProfile::from_file(old);
+///
+/// `rs` is the settings for path resolution.
+pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String, rs: &ResolutionSettings) -> EResult<()> {
 	let mode = old.get_mode();
 
 	match old.get_content() {
 		// Copy the file and its content
 		FileContent::Regular => {
 			let new_mutex =
-				vfs::create_file(new_parent, new_name, &ap, mode, FileContent::Regular)?;
+				vfs::create_file(new_parent, new_name, &rs.access_profile, mode, FileContent::Regular)?;
 			let mut new = new_mutex.lock();
 
 			// TODO On fail, remove file
@@ -91,48 +93,56 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String) -> ERe
 			let new_mutex = vfs::create_file(
 				new_parent,
 				new_name,
-				&ap,
+				&rs.access_profile,
 				mode,
 				FileContent::Directory(HashMap::new()),
 			)?;
 			let mut new = new_mutex.lock();
+			let rs = ResolutionSettings {
+				start: new.get_location().clone(),
+				..rs.clone()
+			};
 
 			// TODO On fail, undo
 			for (name, _) in entries.iter() {
-				let old_mutex = vfs::get_file_from_parent(&new, name.try_clone()?, &ap, false)?;
+				let old_mutex = vfs::get_file_from_path(Path::new(name)?, &rs)?;
 				let mut old = old_mutex.lock();
 
-				copy_file(&mut old, &mut new, name.try_clone()?)?;
+				copy_file(&mut old, &mut new, name.try_clone()?, &rs)?;
 			}
 		}
 
 		// Copy the file
 		content => {
-			vfs::create_file(new_parent, new_name, &ap, mode, content.try_clone()?)?;
+			vfs::create_file(new_parent, new_name, &rs.access_profile, mode, content.try_clone()?)?;
 		}
 	}
 
 	Ok(())
 }
 
-/// Removes the file `file` and its subfiles recursively if it's a directory.
+/// Removes the given `file` and if it's a directory, its subfiles recursively.
 ///
 /// Arguments:
 /// - `file` is the root file to remove
-/// - `access_profile` is the access profile, to check permissions
-pub fn remove_recursive(file: &mut File, access_profile: &AccessProfile) -> EResult<()> {
+/// - `rs` is the settings for path resolution.
+pub fn remove_recursive(file: &mut File, rs: &ResolutionSettings) -> EResult<()> {
 	match file.get_content() {
 		FileContent::Directory(entries) => {
+			let rs = ResolutionSettings {
+				start: file.get_location().clone(),
+				..rs.clone()
+			};
 			for (name, _) in entries.iter() {
-				let name = name.try_clone()?;
-				let subfile_mutex = vfs::get_file_from_parent(file, name, access_profile, false)?;
+				let name = Path::new(name)?;
+				let subfile_mutex = vfs::get_file_from_path(name, &rs)?;
 				let mut subfile = subfile_mutex.lock();
 
-				remove_recursive(&mut subfile, access_profile)?;
+				remove_recursive(&mut subfile, &rs)?;
 			}
 		}
 
-		_ => vfs::remove_file(file, access_profile)?,
+		_ => vfs::remove_file(file, &rs.access_profile)?,
 	}
 
 	Ok(())

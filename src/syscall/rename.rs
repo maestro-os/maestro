@@ -58,8 +58,10 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 	let old_mutex = vfs::get_file_from_path(&old_path, &rs)?;
 	let mut old = old_mutex.lock();
 
-	rs.follow_links = true;
-	let new_parent_mutex = vfs::get_file_from_path(&new_parent_path, &rs)?;
+	let new_parent_mutex = vfs::get_file_from_path(&new_parent_path, &ResolutionSettings {
+		follow_links: true,
+		..rs
+	})?;
 	let mut new_parent = new_parent_mutex.lock();
 
 	// TODO Check permissions if sticky bit is set
@@ -82,8 +84,8 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 
 		// TODO On fail, undo
 
-		file::util::copy_file(&mut old, &mut new_parent, String::try_from(new_name)?)?;
-		file::util::remove_recursive(&mut old, &rs.access_profile)?;
+		file::util::copy_file(&mut old, &mut new_parent, String::try_from(new_name)?, &rs)?;
+		file::util::remove_recursive(&mut old, &rs)?;
 	}
 
 	Ok(0)

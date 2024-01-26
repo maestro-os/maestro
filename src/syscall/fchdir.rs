@@ -50,7 +50,7 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 	};
 	let open_file = open_file_mutex.lock();
 
-	let new_cwd = {
+	let (path, location) = {
 		let file = open_file.get_file().lock();
 
 		// Check for errors
@@ -61,15 +61,15 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 			return Err(errno!(EACCES));
 		}
 
-		file.get_path()
-	}?;
+		(file.get_path()?.to_path_buf()?, file.get_location().clone())
+	};
 
 	{
 		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
 
-		let new_cwd = super::util::get_absolute_path(&proc, &new_cwd)?;
-		proc.cwd = Arc::new(new_cwd)?;
+		let path = super::util::get_absolute_path(&proc, &path)?;
+		proc.cwd = Arc::new((path, location))?;
 	}
 
 	Ok(0)

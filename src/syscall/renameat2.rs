@@ -26,6 +26,7 @@ use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
+use crate::file::vfs::ResolutionSettings;
 
 /// Flag: Don't replace new path if it exists. Return an error instead.
 const RENAME_NOREPLACE: c_int = 1;
@@ -40,7 +41,7 @@ pub fn renameat2(
 	newpath: SyscallString,
 	_flags: c_int,
 ) -> Result<i32, Errno> {
-	let (old_mutex, new_parent_mutex, new_name, ap) = {
+	let (old_mutex, new_parent_mutex, new_name, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -61,7 +62,8 @@ pub fn renameat2(
 		let (new_parent, new_name) =
 			super::util::get_parent_at_with_name(proc, newdirfd, newpath, false, 0)?;
 
-		(old, new_parent, new_name, ap)
+		let rs = ResolutionSettings::for_process(&proc, false);
+		(old, new_parent, new_name, rs)
 	};
 
 	let mut old = old_mutex.lock();
@@ -77,18 +79,18 @@ pub fn renameat2(
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs::create_link(&mut old, &new_parent, &new_name, &ap)?;
+		vfs::create_link(&mut old, &new_parent, &new_name, &rs.access_profile)?;
 
 		if old.get_type() != FileType::Directory {
-			vfs::remove_file(&mut old, &ap)?;
+			vfs::remove_file(&mut old, &rs.access_profile)?;
 		}
 	} else {
 		// Old and new are on different filesystems.
 
 		// TODO On fail, undo
 
-		file::util::copy_file(&mut old, &mut new_parent, new_name)?;
-		file::util::remove_recursive(&mut old, &ap)?;
+		file::util::copy_file(&mut old, &mut new_parent, new_name, &rs)?;
+		file::util::remove_recursive(&mut old, &rs)?;
 	}
 
 	Ok(0)
