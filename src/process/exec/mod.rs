@@ -11,6 +11,7 @@ pub mod vdso;
 
 use crate::errno::EResult;
 use crate::errno::Errno;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
 use crate::process::mem_space::MemSpace;
 use crate::process::regs::Regs;
@@ -22,7 +23,6 @@ use crate::util::lock::IntMutex;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_void;
-use crate::file::vfs::ResolutionSettings;
 
 /// Information to prepare a program image to be executed.
 pub struct ExecInfo<'s> {

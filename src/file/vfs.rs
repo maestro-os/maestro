@@ -4,7 +4,6 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use crate::{errno, limits};
 use crate::errno::EResult;
 use crate::file::buffer;
 use crate::file::mapping;
@@ -24,6 +23,7 @@ use crate::util::container::string::String;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
+use crate::{errno, limits};
 use core::ptr::NonNull;
 
 // TODO implement and use cache
@@ -346,7 +346,8 @@ pub fn create_file(
 /// - `name` is the name of the link
 /// - `ap` is the access profile to check permissions
 ///
-/// If the number of links to the file is larger than [`limits::LINK_MAX`], the function returns an error.
+/// If the number of links to the file is larger than [`limits::LINK_MAX`], the function returns an
+/// error.
 pub fn create_link(
 	target: &mut File,
 	parent: &File,

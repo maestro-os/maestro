@@ -222,12 +222,8 @@ pub fn execve(
 	cli!();
 
 	// Build the program's image
-	let program_image = unsafe {
-		stack::switch(None, move || {
-			build_image(file, &rs, argv, envp)
-		})
-		.unwrap()?
-	};
+	let program_image =
+		unsafe { stack::switch(None, move || build_image(file, &rs, argv, envp)).unwrap()? };
 
 	// The temporary stack will not be used since the scheduler cannot be ticked when
 	// interrupts are disabled

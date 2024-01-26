@@ -10,7 +10,7 @@ use crate::file;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
-use crate::file::vfs::{ResolutionSettings};
+use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;

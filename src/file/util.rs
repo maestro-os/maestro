@@ -6,12 +6,12 @@ use super::FileContent;
 use crate::errno::EResult;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::util::container::hashmap::HashMap;
 use crate::util::container::string::String;
 use crate::util::io::IO;
 use crate::util::TryClone;
 use crate::{errno, memory};
-use crate::file::vfs::{ResolutionSettings};
 
 /// Creates the directories necessary to reach path `path`.
 ///
@@ -23,7 +23,8 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 		let Component::Normal(name) = &comp else {
 			continue;
 		};
-		if let Ok(parent_mutex) = vfs::get_file_from_path(&p, &ResolutionSettings::kernel_follow()) {
+		if let Ok(parent_mutex) = vfs::get_file_from_path(&p, &ResolutionSettings::kernel_follow())
+		{
 			let mut parent = parent_mutex.lock();
 			let res = vfs::create_file(
 				&mut parent,
@@ -45,14 +46,24 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 /// Copies the file `old` into the directory `new_parent` with name `new_name`.
 ///
 /// `rs` is the settings for path resolution.
-pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String, rs: &ResolutionSettings) -> EResult<()> {
+pub fn copy_file(
+	old: &mut File,
+	new_parent: &mut File,
+	new_name: String,
+	rs: &ResolutionSettings,
+) -> EResult<()> {
 	let mode = old.get_mode();
 
 	match old.get_content() {
 		// Copy the file and its content
 		FileContent::Regular => {
-			let new_mutex =
-				vfs::create_file(new_parent, new_name, &rs.access_profile, mode, FileContent::Regular)?;
+			let new_mutex = vfs::create_file(
+				new_parent,
+				new_name,
+				&rs.access_profile,
+				mode,
+				FileContent::Regular,
+			)?;
 			let mut new = new_mutex.lock();
 
 			// TODO On fail, remove file
@@ -96,7 +107,13 @@ pub fn copy_file(old: &mut File, new_parent: &mut File, new_name: String, rs: &R
 
 		// Copy the file
 		content => {
-			vfs::create_file(new_parent, new_name, &rs.access_profile, mode, content.try_clone()?)?;
+			vfs::create_file(
+				new_parent,
+				new_name,
+				&rs.access_profile,
+				mode,
+				content.try_clone()?,
+			)?;
 		}
 	}
 

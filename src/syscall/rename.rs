@@ -40,10 +40,13 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 	let old_mutex = vfs::get_file_from_path(&old_path, &rs)?;
 	let mut old = old_mutex.lock();
 
-	let new_parent_mutex = vfs::get_file_from_path(&new_parent_path, &ResolutionSettings {
-		follow_links: true,
-		..rs
-	})?;
+	let new_parent_mutex = vfs::get_file_from_path(
+		&new_parent_path,
+		&ResolutionSettings {
+			follow_links: true,
+			..rs
+		},
+	)?;
 	let mut new_parent = new_parent_mutex.lock();
 
 	// TODO Check permissions if sticky bit is set
