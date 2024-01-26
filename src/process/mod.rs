@@ -513,10 +513,7 @@ impl Process {
 			let mut fds_table = FileDescriptorTable::default();
 
 			let tty_path = Path::new(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_file_mutex = vfs::get_file_from_path(
-				&tty_path,
-				&rs,
-			)?;
+			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &rs)?;
 			let tty_file = tty_file_mutex.lock();
 
 			let loc = tty_file.get_location();

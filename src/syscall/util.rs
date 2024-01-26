@@ -23,6 +23,7 @@ use crate::errno::EResult;
 use crate::errno::{AllocResult, CollectResult};
 use crate::file::path::{Path, PathBuf};
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
@@ -37,7 +38,6 @@ use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;
 use core::mem::size_of;
-use crate::file::vfs::ResolutionSettings;
 
 /// Returns the absolute path according to the process's current working
 /// directory.

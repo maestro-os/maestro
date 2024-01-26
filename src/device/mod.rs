@@ -48,10 +48,10 @@ use crate::errno::{AllocResult, CollectResult, EResult};
 use crate::file;
 use crate::file::path::{Path, PathBuf};
 use crate::file::perm::AccessProfile;
+use crate::file::vfs;
 use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::{vfs};
 use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
@@ -264,7 +264,8 @@ impl Device {
 	///
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> EResult<()> {
-		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
+		if let Ok(file_mutex) =
+			vfs::get_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
 		{
 			let mut file = file_mutex.lock();
 			vfs::remove_file(&mut file, &AccessProfile::KERNEL)?;

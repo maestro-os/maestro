@@ -21,12 +21,12 @@
 use crate::errno::Errno;
 use crate::file;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
-use crate::file::vfs::ResolutionSettings;
 
 /// Flag: Don't replace new path if it exists. Return an error instead.
 const RENAME_NOREPLACE: c_int = 1;
