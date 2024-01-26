@@ -4,7 +4,7 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use crate::errno;
+use crate::{errno, limits};
 use crate::errno::EResult;
 use crate::file::buffer;
 use crate::file::mapping;
@@ -28,35 +28,15 @@ use core::ptr::NonNull;
 
 // TODO implement and use cache
 
-/// The start position for a path resolution operation.
-///
-/// **Note**: if the path to resolve is absolute, this data is ignored.
-pub enum ResolutionStart<'s> {
-	/// Start resolution from the given path. This is usually the current working directory of the
-	/// process.
-	Path(&'s Path),
-	/// Start resolution from the given location. This is usually the `fd` argument in `*at`-style
-	/// system calls.
-	///
-	/// This variant overrides the root location.
-	Location(FileLocation),
-}
-
-impl<'s> Default for ResolutionStart<'s> {
-	/// Start from the root path.
-	fn default() -> Self {
-		Self::Path(Path::root())
-	}
-}
-
 /// Settings for a path resolution operation.
+#[derive(Clone)]
 pub struct ResolutionSettings<'s> {
 	/// The location of the root directory for the operation.
 	///
 	/// Contrary to the `start` field, resolution *cannot* access a parent of this path.
 	pub root: FileLocation,
 	/// The beginning position of the path resolution.
-	pub start: ResolutionStart<'s>,
+	pub start: FileLocation,
 
 	/// The access profile to use for resolution.
 	pub access_profile: &'s AccessProfile,
@@ -68,14 +48,12 @@ pub struct ResolutionSettings<'s> {
 	pub follow_links: bool,
 }
 
-impl<'s> Default for ResolutionSettings<'s> {
-	/// Returns the default settings **for kernel access**.
-	///
-	/// The resolution starts from the root of the VFS, and symbolic links are followed.
-	fn default() -> Self {
+impl<'s> ResolutionSettings<'s> {
+	/// Kernel access, following symbolic links.
+	pub const fn kernel_follow() -> Self {
 		Self {
 			root: FileLocation::root(),
-			start: ResolutionStart::default(),
+			start: FileLocation::root(),
 
 			access_profile: &AccessProfile::KERNEL,
 
@@ -83,24 +61,12 @@ impl<'s> Default for ResolutionSettings<'s> {
 			follow_links: true,
 		}
 	}
-}
 
-impl<'s> ResolutionSettings<'s> {
 	/// Kernel access, without following symbolic links.
 	pub const fn kernel_nofollow() -> Self {
 		Self {
 			follow_links: false,
-			..Default::default()
-		}
-	}
-
-	/// Returns simple settings, specifying only the `access_profile` and whether symbolic links
-	/// should be followed.
-	pub const fn simple(access_profile: &'s AccessProfile, follow_links: bool) -> Self {
-		Self {
-			access_profile,
-			follow_links,
-			..Default::default()
+			..Self::kernel_follow()
 		}
 	}
 
@@ -110,10 +76,12 @@ impl<'s> ResolutionSettings<'s> {
 	pub fn for_process(proc: &'s Process, follow_links: bool) -> Self {
 		Self {
 			root: proc.chroot.clone(),
-			start: ResolutionStart::Path(&proc.cwd),
+			start: proc.cwd.1.clone(),
+
 			access_profile: &proc.access_profile,
+
+			create: false,
 			follow_links,
-			..Default::default()
 		}
 	}
 }
@@ -178,26 +146,20 @@ pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResul
 	let start = if path.is_absolute() {
 		&settings.root
 	} else {
-		match &settings.start {
-			ResolutionStart::Path(path) => {
-				// TODO chain paths?
-				todo!()
-			}
-			ResolutionStart::Location(loc) => loc,
-		}
+		&settings.start
 	};
 	let mut file_mutex = get_file_from_location(start)?;
 
 	// Iterate on components
 	let mut iter = path.components().peekable();
 	for comp in &mut iter {
+		let file = file_mutex.lock();
 		let name = match comp {
-			Component::ParentDir => b"..",
+			Component::ParentDir if file.get_location() != &settings.root => b"..",
 			Component::Normal(name) => name,
 			// Ignore
-			Component::RootDir | Component::CurDir => continue,
+			_ => continue,
 		};
-		let file = file_mutex.lock();
 		match file.get_content() {
 			FileContent::Directory(entries) => {
 				// Check permission
@@ -291,7 +253,7 @@ pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File
 			id,
 		} => {
 			let name = crate::format!("virtual:{id}")?;
-			let content = FileContent::Fifo; // TODO
+			let content = FileContent::Fifo; // TODO support sockets
 
 			let file = Arc::new(Mutex::new(File::new(
 				name,
@@ -325,27 +287,13 @@ pub fn create_file(
 	mode: Mode,
 	content: FileContent,
 ) -> EResult<Arc<Mutex<File>>> {
-	// If file already exist, error
-	if get_file_from_parent(parent, name.try_clone()?, ap, false).is_ok() {
-		return Err(errno!(EEXIST));
-	}
-
-	// Check for errors
+	// Validation
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
-
-	let uid = ap.get_euid();
-	let gid = if parent.get_mode() & perm::S_ISGID != 0 {
-		// If SGID is set, the newly created file shall inherit the group ID of the
-		// parent directory
-		parent.get_gid()
-	} else {
-		ap.get_egid()
-	};
 
 	// Get the mountpoint
 	let mountpoint_mutex = parent
@@ -368,6 +316,15 @@ pub fn create_file(
 		return Err(errno!(EROFS));
 	}
 
+	let uid = ap.get_euid();
+	let gid = if parent.get_mode() & perm::S_ISGID != 0 {
+		// If SGID is set, the newly created file shall inherit the group ID of the
+		// parent directory
+		parent.get_gid()
+	} else {
+		ap.get_egid()
+	};
+
 	// Add the file to the filesystem
 	let parent_inode = parent.get_location().get_inode();
 	let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
@@ -381,34 +338,40 @@ pub fn create_file(
 	Ok(Arc::new(Mutex::new(file))?)
 }
 
-/// Creates a new hard link.
+/// Creates a new hard link to the given target file.
 ///
 /// Arguments:
 /// - `target` is the target file
-/// - `parent` is the parent directory of the new link
+/// - `parent` is the parent directory where the new link will be created
 /// - `name` is the name of the link
 /// - `ap` is the access profile to check permissions
+///
+/// If the number of links to the file is larger than [`limits::LINK_MAX`], the function returns an error.
 pub fn create_link(
 	target: &mut File,
 	parent: &File,
 	name: &[u8],
 	ap: &AccessProfile,
 ) -> EResult<()> {
-	// Check the parent file is a directory
+	let target_location = target.get_location();
+	let parent_location = parent.get_location();
+	// Validation
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
+	if target.get_type() == FileType::Directory {
+		return Err(errno!(EPERM));
+	}
 	// Check the target and source are both on the same mountpoint
-	if target.get_location().get_mountpoint_id() != parent.get_location().get_mountpoint_id() {
+	if target_location.get_mountpoint_id() != parent_location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
 
 	// Get the mountpoint
-	let mountpoint_mutex = target
-		.get_location()
+	let mountpoint_mutex = target_location
 		.get_mountpoint()
 		.ok_or_else(|| errno!(ENOENT))?;
 	let mountpoint = mountpoint_mutex.lock();
@@ -429,9 +392,9 @@ pub fn create_link(
 
 	fs.add_link(
 		&mut *io,
-		parent.get_location().get_inode(),
+		parent_location.get_inode(),
 		name,
-		target.get_location().get_inode(),
+		target_location.get_inode(),
 	)?;
 	target.set_hard_links_count(target.get_hard_links_count() + 1);
 
@@ -458,7 +421,7 @@ pub fn remove_file(file: &mut File, ap: &AccessProfile) -> EResult<()> {
 
 	// Defer remove if the file is in use
 	let last_link = file.get_hard_links_count() == 1;
-	let symlink = matches!(file.get_type(), FileType::Link);
+	let symlink = file.get_type() == FileType::Link;
 	if last_link && !symlink && OpenFile::is_open(&file.location) {
 		file.defer_remove();
 		return Ok(());

@@ -17,7 +17,7 @@ pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let cwd = crate::format!("{}", proc.cwd)?;
+	let cwd = crate::format!("{}", proc.cwd.0)?;
 
 	// Checking that the buffer is large enough
 	if size < cwd.len() + 1 {

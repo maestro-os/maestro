@@ -45,7 +45,7 @@ impl KernFSNode for Cwd {
 		let content = Process::get_by_pid(self.pid)
 			.map(|mutex| {
 				let proc = mutex.lock();
-				(&*proc.cwd).try_clone()
+				proc.cwd.0.try_clone()
 			})
 			.transpose()?
 			.unwrap_or_default();

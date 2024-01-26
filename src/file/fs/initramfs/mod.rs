@@ -10,7 +10,7 @@ use crate::file;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
+use crate::file::vfs::{ResolutionSettings};
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
@@ -34,14 +34,18 @@ fn update_parent(
 ) -> EResult<()> {
 	// Get the parent
 	let result = match stored {
-		Some((path, file)) if new.starts_with(path) => {
+		Some((path, parent)) if new.starts_with(path) => {
 			let Some(name) = new.file_name() else {
 				return Ok(());
 			};
-			let name = name.try_into()?;
+			let name = Path::new(name)?;
 
-			let f = file.lock();
-			vfs::get_file_from_parent(&f, name, &ResolutionSettings::kernel_nofollow())
+			let parent = parent.lock();
+			let rs = ResolutionSettings {
+				start: parent.get_location().clone(),
+				..ResolutionSettings::kernel_nofollow()
+			};
+			vfs::get_file_from_path(name, &rs)
 		}
 		Some(_) | None => vfs::get_file_from_path(new, &ResolutionSettings::kernel_nofollow()),
 	};

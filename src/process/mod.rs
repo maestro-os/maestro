@@ -249,7 +249,9 @@ pub struct Process {
 	kernel_stack: Option<*mut c_void>,
 
 	/// Current working directory
-	pub cwd: Arc<PathBuf>,
+	///
+	/// The field contains both the path and location of the directory.
+	pub cwd: Arc<(PathBuf, FileLocation)>,
 	/// Current root path used by the process
 	pub chroot: FileLocation,
 	/// The list of open file descriptors with their respective ID.
@@ -486,7 +488,7 @@ impl Process {
 	///
 	/// The process is set to state `Running` by default and has user root.
 	pub fn new() -> Result<Arc<IntMutex<Self>>, Errno> {
-		let access_profile = AccessProfile::KERNEL;
+		let rs = ResolutionSettings::kernel_follow();
 
 		// Create the default file descriptors table
 		let file_descriptors = {
@@ -495,7 +497,7 @@ impl Process {
 			let tty_path = Path::new(TTY_DEVICE_PATH.as_bytes())?;
 			let tty_file_mutex = vfs::get_file_from_path(
 				&tty_path,
-				&ResolutionSettings::simple(&access_profile, true),
+				&rs,
 			)?;
 			let tty_file = tty_file_mutex.lock();
 
@@ -522,7 +524,7 @@ impl Process {
 
 			tty: tty::get(None).unwrap(), // Initialization with the init TTY
 
-			access_profile,
+			access_profile: rs.access_profile.clone(),
 			umask: DEFAULT_UMASK,
 
 			state: State::Running,
@@ -549,7 +551,7 @@ impl Process {
 			user_stack: None,
 			kernel_stack: None,
 
-			cwd: Arc::new(PathBuf::root())?,
+			cwd: Arc::new((PathBuf::root(), FileLocation::root()))?,
 			chroot: FileLocation::root(),
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 

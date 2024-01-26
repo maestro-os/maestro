@@ -33,7 +33,7 @@ use crate::file::perm::AccessProfile;
 use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::FileContent;
 use crate::file::Mode;
-use crate::file::{vfs, FileLocation};
+use crate::file::{vfs};
 use crate::process::mem_space::MemSpace;
 use crate::process::Process;
 use crate::syscall::ioctl;
@@ -216,11 +216,8 @@ impl Device {
 		let resolved = vfs::resolve_path(
 			&path,
 			&ResolutionSettings {
-				root: FileLocation::root(),
-				start: Default::default(),
-				access_profile: &AccessProfile::KERNEL,
 				create: true,
-				follow_links: true,
+				..ResolutionSettings::kernel_follow()
 			},
 		)?;
 		match resolved {
@@ -249,7 +246,7 @@ impl Device {
 	///
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> EResult<()> {
-		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, &ResolutionSettings::default())
+		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
 		{
 			let mut file = file_mutex.lock();
 			vfs::remove_file(&mut file, &AccessProfile::KERNEL)?;

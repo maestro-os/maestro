@@ -19,6 +19,7 @@ use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;
 use core::mem::size_of;
+use crate::file::vfs::ResolutionSettings;
 
 /// Returns the absolute path according to the process's current working
 /// directory.
@@ -29,6 +30,7 @@ use core::mem::size_of;
 pub fn get_absolute_path(process: &Process, path: &Path) -> AllocResult<PathBuf> {
 	process
 		.cwd
+		.0
 		.components()
 		.chain(path.components())
 		.collect::<CollectResult<PathBuf>>()
@@ -91,7 +93,7 @@ fn build_path_from_fd(
 		Ok(path.to_path_buf()?)
 	} else if dirfd == super::access::AT_FDCWD {
 		// Use path relative to the current working directory
-		Ok(process.cwd.join(path)?)
+		Ok(process.cwd.0.join(path)?)
 	} else {
 		// Use path relative to the directory given by `dirfd`
 
@@ -165,10 +167,10 @@ pub fn get_file_at(
 			Err(errno!(ENOENT))
 		}
 	} else {
-		let ap = process.access_profile;
+		let rs = ResolutionSettings::for_process(&process, follow_links);
 		let path = Path::new(path)?;
 		let path = build_path_from_fd(process, dirfd, path)?;
-		vfs::get_file_from_path(&path, &ap, follow_links)
+		vfs::get_file_from_path(&path, &rs)
 	}
 }
 
@@ -195,7 +197,7 @@ pub fn get_parent_at_with_name(
 	} else {
 		flags & super::access::AT_SYMLINK_FOLLOW != 0
 	};
-	let ap = process.access_profile;
+	let rs = ResolutionSettings::for_process(&process, follow_links);
 
 	if path.is_empty() {
 		return Err(errno!(ENOENT));
@@ -204,7 +206,7 @@ pub fn get_parent_at_with_name(
 	let mut path = build_path_from_fd(process, dirfd, path)?;
 	let name = path.file_name().unwrap().try_into()?;
 
-	let parent_mutex = vfs::get_file_from_path(&path, &ap, follow_links)?;
+	let parent_mutex = vfs::get_file_from_path(&path, &rs)?;
 	Ok((parent_mutex, name))
 }
 

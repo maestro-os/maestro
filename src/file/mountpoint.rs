@@ -76,7 +76,7 @@ impl MountSource {
 	/// absolute path.
 	pub fn from_str(string: &[u8]) -> EResult<Self> {
 		let path = Path::new(string)?;
-		let result = vfs::get_file_from_path(&path, &ResolutionSettings::default());
+		let result = vfs::get_file_from_path(&path, &ResolutionSettings::kernel_follow());
 		match result {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();

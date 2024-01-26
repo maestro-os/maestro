@@ -4,7 +4,6 @@ use crate::errno;
 use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::path::{Path, PathBuf};
-use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
@@ -117,23 +116,23 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 /// Builds a program image.
 ///
 /// Arguments:
-/// - `file` is the executable file.
-/// - `access_profile` is the access profile to check permissions
-/// - `argv` is the arguments list.
-/// - `envp` is the environment variables list.
+/// - `file` is the executable file
+/// - `path_resolution` is settings for path resolution
+/// - `argv` is the arguments list
+/// - `envp` is the environment variables list
 fn build_image(
 	file: Arc<Mutex<File>>,
-	access_profile: AccessProfile,
+	path_resolution: &ResolutionSettings,
 	argv: Vec<String>,
 	envp: Vec<String>,
 ) -> EResult<ProgramImage> {
 	let mut file = file.lock();
-	if !access_profile.can_execute_file(&file) {
+	if !path_resolution.access_profile.can_execute_file(&file) {
 		return Err(errno!(EACCES));
 	}
 
 	let exec_info = ExecInfo {
-		access_profile,
+		path_resolution,
 		argv,
 		envp,
 	};
@@ -225,7 +224,7 @@ pub fn execve(
 	// Build the program's image
 	let program_image = unsafe {
 		stack::switch(None, move || {
-			build_image(file, *rs.access_profile, argv, envp)
+			build_image(file, &rs, argv, envp)
 		})
 		.unwrap()?
 	};
