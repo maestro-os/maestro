@@ -741,7 +741,7 @@ impl Filesystem for Ext2Fs {
 		self.readonly
 	}
 
-	fn must_cache(&self) -> bool {
+	fn use_cache(&self) -> bool {
 		true
 	}
 

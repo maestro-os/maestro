@@ -43,7 +43,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 	let new_parent_mutex = vfs::get_file_from_path(
 		&new_parent_path,
 		&ResolutionSettings {
-			follow_links: true,
+			follow_link: true,
 			..rs
 		},
 	)?;

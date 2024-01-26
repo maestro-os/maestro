@@ -269,7 +269,7 @@ impl Filesystem for KernFS {
 		self.readonly
 	}
 
-	fn must_cache(&self) -> bool {
+	fn use_cache(&self) -> bool {
 		false
 	}
 
