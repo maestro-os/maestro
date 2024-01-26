@@ -82,12 +82,10 @@ pub struct Statfs {
 pub trait Filesystem: Any {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
-
 	/// Tells whether the filesystem is mounted in read-only.
 	fn is_readonly(&self) -> bool;
-	/// Tells the kernel whether it must cache files.
-	fn must_cache(&self) -> bool;
-
+	/// Tells the kernel can cache the filesystem's files in memory.
+	fn use_cache(&self) -> bool;
 	/// Returns statistics about the filesystem.
 	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs>;
 

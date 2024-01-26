@@ -138,8 +138,8 @@ impl Filesystem for TmpFS {
 		self.fs.is_readonly()
 	}
 
-	fn must_cache(&self) -> bool {
-		self.fs.must_cache()
+	fn use_cache(&self) -> bool {
+		self.fs.use_cache()
 	}
 
 	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
