@@ -51,6 +51,7 @@
 #![feature(trusted_len)]
 #![feature(unsize)]
 #![feature(once_cell_try)]
+#![feature(iter_intersperse)]
 #![deny(warnings)]
 #![allow(unused_attributes)]
 #![allow(dead_code)]

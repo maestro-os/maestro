@@ -22,21 +22,21 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
+use super::fs::Filesystem;
+use super::mapping;
+use super::mountpoint;
+use super::open_file::OpenFile;
+use super::path::{Component, Path};
+use super::perm;
+use super::perm::{AccessProfile, S_ISVTX};
+use super::File;
+use super::FileContent;
+use super::FileLocation;
+use super::FileType;
+use super::Mode;
+use super::MountPoint;
+use super::{buffer, DeferredRemove, INode};
 use crate::errno::EResult;
-use crate::file::fs::Filesystem;
-use crate::file::mapping;
-use crate::file::mountpoint;
-use crate::file::open_file::OpenFile;
-use crate::file::path::{Component, Path};
-use crate::file::perm;
-use crate::file::perm::{AccessProfile, S_ISVTX};
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::FileLocation;
-use crate::file::FileType;
-use crate::file::Mode;
-use crate::file::MountPoint;
-use crate::file::{buffer, DeferredRemove, INode};
 use crate::process::Process;
 use crate::util::container::string::String;
 use crate::util::io::IO;
@@ -537,13 +537,16 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 	})
 }
 
-/// TODO doc
+/// Helper function to remove a file from a given `path`.
 pub fn remove_file_from_path(
 	path: &Path,
 	resolution_settings: &ResolutionSettings,
 ) -> EResult<()> {
-	// TODO
-	todo!()
+	let file_name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
+	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
+	let parent = get_file_from_path(parent, resolution_settings)?;
+	let parent = parent.lock();
+	remove_file(&mut *parent, file_name, &resolution_settings.access_profile)
 }
 
 /// Maps the page at offset `off` in the file at location `loc`.

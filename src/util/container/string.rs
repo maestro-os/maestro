@@ -18,7 +18,7 @@
 
 //! This module implements the String structure which wraps the `str` type.
 
-use crate::errno::AllocResult;
+use crate::errno::{AllocResult, CollectResult};
 use crate::util::container::vec::Vec;
 use crate::util::AllocError;
 use crate::util::TryClone;
@@ -146,6 +146,14 @@ impl String {
 	}
 }
 
+impl From<Vec<u8>> for String {
+	fn from(data: Vec<u8>) -> Self {
+		Self {
+			data,
+		}
+	}
+}
+
 impl TryFrom<&[u8]> for String {
 	type Error = AllocError;
 
@@ -254,6 +262,16 @@ impl TryClone for String {
 		Ok(Self {
 			data: self.data.try_clone()?,
 		})
+	}
+}
+
+impl FromIterator<u8> for CollectResult<String> {
+	fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
+		Self(
+			CollectResult::<Vec<u8>>::from_iter(iter)
+				.0
+				.map(String::from),
+		)
 	}
 }
 
