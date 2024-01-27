@@ -23,6 +23,11 @@ impl PathBuf {
 	pub fn root() -> Self {
 		Self(String::default())
 	}
+
+	/// Creates a `PathBuf` without checking the length of the given [`String`].
+	pub fn from_unchecked(s: String) -> Self {
+		Self(s)
+	}
 }
 
 impl TryFrom<String> for PathBuf {
@@ -105,8 +110,24 @@ impl Deref for PathBuf {
 
 impl<'p> FromIterator<Component<'p>> for CollectResult<PathBuf> {
 	fn from_iter<T: IntoIterator<Item = Component<'p>>>(iter: T) -> Self {
-		// TODO
-		todo!()
+		Self(
+			iter.into_iter()
+				.map(|c| {
+					match c {
+						// The `/` is already inserted by `intersperse`
+						Component::RootDir => &[],
+						c => {
+							let s: &[u8] = c.as_ref();
+							s
+						}
+					}
+				})
+				.intersperse(b"/")
+				.flat_map(|s| s.into_iter().cloned())
+				.collect::<CollectResult<String>>()
+				.0
+				.map(PathBuf::from_unchecked),
+		)
 	}
 }
 
@@ -221,8 +242,12 @@ impl Path {
 	///
 	/// This function returns `None` only if it terminates with root.
 	pub fn parent(&self) -> Option<&Path> {
-		// TODO
-		todo!()
+		let mut comps = self.components();
+		let last = comps.next_back();
+		last.and_then(|p| match p {
+			Component::RootDir => None,
+			_ => Some(comps.as_path()),
+		})
 	}
 
 	/// Tells whether the path starts with the given `base`.
@@ -274,6 +299,20 @@ pub enum Component<'p> {
 	Normal(&'p [u8]),
 }
 
+impl<'s> From<&'s [u8]> for Component<'s> {
+	/// Returns the component corresponding to the given string representation.
+	///
+	/// The given string should not contain the `/` character, thus it cannot produce a `RootDir`
+	/// variant.
+	fn from(name: &'s [u8]) -> Self {
+		match name {
+			b"." => Self::CurDir,
+			b".." => Self::ParentDir,
+			name => Self::Normal(name),
+		}
+	}
+}
+
 impl<'p> AsRef<[u8]> for Component<'p> {
 	fn as_ref(&self) -> &[u8] {
 		match self {
@@ -319,38 +358,64 @@ impl<'p> Components<'p> {
 	fn is_finished(&self) -> bool {
 		self.front >= self.back
 	}
+
+	/// Returns a slice to the inner representation of the remaining data in the iterator.
+	pub fn as_slice(&self) -> &[u8] {
+		&self.path.as_bytes()[self.front..self.back]
+	}
+
+	/// Returns a path representing the remaining data in the iterator.
+	pub fn as_path(&self) -> &Path {
+		Path::new_unchecked(self.as_slice())
+	}
+
+	fn next_impl(&mut self, backwards: bool) -> Option<Component<'p>> {
+		// Select the cursor according to the direction
+		let cursor = if !backwards {
+			&mut self.front
+		} else {
+			&mut self.back
+		};
+		// Get length of the next component
+		let comp_len = loop {
+			// Assert the fuse invariant
+			if self.is_finished() {
+				return None;
+			}
+			let slice = self.as_slice();
+			let comp_len = if !backwards {
+				slice.iter().position(|c| *c == PATH_SEPARATOR)
+			} else {
+				slice.iter().rev().position(|c| *c == PATH_SEPARATOR)
+			}
+			.unwrap_or(slice.len());
+			if comp_len > 0 {
+				break comp_len;
+			}
+			*cursor += 1;
+			// If beginning with a separator, return root
+			if *cursor == 1 {
+				return Some(Component::RootDir);
+			}
+		};
+		// Return component
+		let comp_slice = &self.as_slice()[..comp_len];
+		*cursor += comp_len;
+		Some(Component::from(comp_slice))
+	}
 }
 
 impl<'p> Iterator for Components<'p> {
 	type Item = Component<'p>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// Assert the fuse invariant
-		if self.is_finished() {
-			return None;
-		}
-		let slice = &self.path.0[self.front..self.back];
-
-		if self.front == 0 && slice.first().cloned() == Some(PATH_SEPARATOR) {
-			self.front += 1;
-			return Some(Component::RootDir);
-		}
-
-		// TODO
-		todo!()
+		self.next_impl(false)
 	}
 }
 
 impl<'p> DoubleEndedIterator for Components<'p> {
 	fn next_back(&mut self) -> Option<Self::Item> {
-		// Assert the fuse invariant
-		if self.is_finished() {
-			return None;
-		}
-		let slice = &self.path.0[self.front..self.back];
-
-		// TODO
-		todo!()
+		self.next_impl(true)
 	}
 }
 
