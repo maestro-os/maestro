@@ -21,7 +21,7 @@
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::file::FileType;
@@ -40,7 +40,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 		let mem_space_guard = mem_space.lock();
 
 		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		let path = Path::new(path)?;
+		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 		(path, rs)

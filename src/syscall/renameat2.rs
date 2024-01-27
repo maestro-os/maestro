@@ -45,8 +45,6 @@ pub fn renameat2(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let ap = proc.access_profile;
-
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 
@@ -67,6 +65,11 @@ pub fn renameat2(
 	};
 
 	let mut old = old_mutex.lock();
+	// Cannot rename mountpoint
+	if old.is_mountpoint() {
+		return Err(errno!(EBUSY));
+	}
+
 	let mut new_parent = new_parent_mutex.lock();
 
 	// TODO Check permissions if sticky bit is set

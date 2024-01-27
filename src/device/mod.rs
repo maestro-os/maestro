@@ -264,13 +264,7 @@ impl Device {
 	///
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> EResult<()> {
-		if let Ok(file_mutex) =
-			vfs::get_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
-		{
-			let mut file = file_mutex.lock();
-			vfs::remove_file(&mut file, &AccessProfile::KERNEL)?;
-		}
-		Ok(())
+		vfs::remove_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
 	}
 }
 

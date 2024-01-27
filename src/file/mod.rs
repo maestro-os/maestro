@@ -310,6 +310,15 @@ impl TryClone for FileContent {
 	}
 }
 
+/// Information to remove a file when all its handles are closed.
+#[derive(Debug)]
+pub struct DeferredRemove {
+	/// The location of the parent directory.
+	pub parent: FileLocation,
+	/// The name of the entry to remove.
+	pub name: String,
+}
+
 /// Structure representing a file.
 #[derive(Debug)]
 pub struct File {
@@ -345,11 +354,10 @@ pub struct File {
 	/// The content of the file.
 	content: FileContent,
 
-	/// Tells whether remove has been deferred for the file. If `true`, then the file will be
-	/// removed when the file is no longer used.
-	deferred_remove: bool,
-	/// Tells whether the file has been removed.
-	removed: bool,
+	/// If not `None`, the file will be removed when the last handle to it is closed.
+	///
+	/// This field contains all the information necessary to remove it.
+	deferred_remove: Option<DeferredRemove>,
 }
 
 impl File {
@@ -393,8 +401,7 @@ impl File {
 			location,
 			content,
 
-			deferred_remove: false,
-			removed: false,
+			deferred_remove: None,
 		})
 	}
 
@@ -446,6 +453,16 @@ impl File {
 	/// stored.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location
+	}
+
+	/// Returns the mountpoint located at this file, if any.
+	pub fn as_mountpoint(&self) -> Option<Arc<Mutex<MountPoint>>> {
+		mountpoint::from_location(&self.location)
+	}
+
+	/// Tells whether there is a mountpoint on the file.
+	pub fn is_mountpoint(&self) -> bool {
+		self.as_mountpoint().is_some()
 	}
 
 	/// Returns the number of hard links.
@@ -712,28 +729,24 @@ impl File {
 	}
 
 	/// Defers removal of the file, meaning the file will be removed when closed.
-	pub fn defer_remove(&mut self) {
-		self.deferred_remove = true;
+	pub fn defer_remove(&mut self, info: DeferredRemove) {
+		self.deferred_remove = Some(info);
 	}
 
 	/// Closes the file, removing it if removal has been deferred.
 	pub fn close(mut self) -> EResult<()> {
-		if self.deferred_remove {
-			vfs::remove_file(&mut self, &AccessProfile::KERNEL)?;
-			self.removed = true;
+		if let Some(deferred_remove) = self.deferred_remove.take() {
+			// No need to check permissions since they already have been checked before deferring
+			vfs::remove_file_unchecked(&deferred_remove.parent, &deferred_remove.name)?;
 		}
 		Ok(())
 	}
 }
 
 impl Drop for File {
-	/// This function is used in case removal of the file has been deferred, but `close` has not
-	/// been called.
 	fn drop(&mut self) {
-		if !self.deferred_remove || self.removed {
-			return;
-		}
-		let _ = vfs::remove_file(self, &AccessProfile::KERNEL);
+		// TODO: kernel log on error?
+		let _ = self.close();
 	}
 }
 

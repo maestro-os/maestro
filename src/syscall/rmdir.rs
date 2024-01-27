@@ -53,12 +53,13 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 		let mut file = file_mutex.lock();
 
 		match file.get_content() {
+			// The 2 entries in question are `.` and `..`
 			FileContent::Directory(entries) if entries.len() > 2 => return Err(errno!(ENOTEMPTY)),
 			FileContent::Directory(_) => {}
 			_ => return Err(errno!(ENOTDIR)),
 		}
 
-		vfs::remove_file(&mut file, &rs.access_profile)?;
+		vfs::remove_file_from_path(path, &rs)?;
 	}
 
 	Ok(0)

@@ -23,7 +23,7 @@
 //! calling the filesystems' functions directly.
 
 use crate::errno::EResult;
-use crate::file::buffer;
+use crate::file::fs::Filesystem;
 use crate::file::mapping;
 use crate::file::mountpoint;
 use crate::file::open_file::OpenFile;
@@ -36,8 +36,10 @@ use crate::file::FileLocation;
 use crate::file::FileType;
 use crate::file::Mode;
 use crate::file::MountPoint;
+use crate::file::{buffer, DeferredRemove, INode};
 use crate::process::Process;
 use crate::util::container::string::String;
+use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use crate::util::TryClone;
@@ -45,6 +47,36 @@ use crate::{errno, limits};
 use core::ptr::NonNull;
 
 // TODO implement and use cache
+
+/// Helper function for filesystem I/O. Provides mountpoint, I/O interface and filesystem handle
+/// for the given location.
+///
+/// If `write` is set to `true`, the function checks the filesystem is not mounted in read-only. If
+/// mounted in read-only, the function returns [`errno::EROFS`].
+fn op<F, R>(loc: &FileLocation, write: bool, f: F) -> EResult<R>
+where
+	F: FnOnce(&MountPoint, &mut dyn IO, &mut dyn Filesystem) -> EResult<R>,
+{
+	// Get the mountpoint
+	let mp_mutex = loc.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
+	let mp = mp_mutex.lock();
+	if write && mp.is_readonly() {
+		return Err(errno!(EROFS));
+	}
+
+	// Get the IO interface
+	let io_mutex = mp.get_source().get_io()?;
+	let mut io = io_mutex.lock();
+
+	// Get the filesystem
+	let fs_mutex = mp.get_filesystem();
+	let mut fs = fs_mutex.lock();
+	if write && fs.is_readonly() {
+		return Err(errno!(EROFS));
+	}
+
+	f(&mp, &mut *io, &mut *fs)
+}
 
 /// Returns the file corresponding to the given location `location`.
 ///
@@ -58,19 +90,19 @@ pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File
 			inode, ..
 		} => {
 			// Get the mountpoint
-			let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
-			let mountpoint = mountpoint_mutex.lock();
+			let mp_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
+			let mp = mp_mutex.lock();
 
 			// Get the IO interface
-			let io_mutex = mountpoint.get_source().get_io()?;
+			let io_mutex = mp.get_source().get_io()?;
 			let mut io = io_mutex.lock();
 
 			// Get the filesystem
-			let fs_mutex = mountpoint.get_filesystem();
+			let fs_mutex = mp.get_filesystem();
 			let mut fs = fs_mutex.lock();
 
 			let mut file = fs.load_file(&mut *io, *inode, String::new())?;
-			update_location(&mut file, &mountpoint);
+			update_location(&mut file, &mp);
 
 			Ok(Arc::new(Mutex::new(file))?)
 		}
@@ -225,8 +257,8 @@ fn resolve_path_impl<'p>(
 					inode: entry.inode,
 				};
 				// Update location if on a different filesystem
-				if let Some(mountpoint) = mountpoint::from_location(&loc) {
-					let mp = mountpoint.lock();
+				if let Some(mp) = mountpoint::from_location(&loc) {
+					let mp = mp.lock();
 					let mut io = mp.get_source().get_io()?.lock();
 					let fs = mp.get_filesystem().lock();
 					loc = FileLocation::Filesystem {
@@ -287,12 +319,12 @@ pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResul
 /// `mountpoint`.
 ///
 /// If the file in not located on a filesystem, the function does nothing.
-fn update_location(file: &mut File, mountpoint: &MountPoint) {
+fn update_location(file: &mut File, mp: &MountPoint) {
 	if let FileLocation::Filesystem {
 		mountpoint_id, ..
 	} = &mut file.location
 	{
-		*mountpoint_id = mountpoint.get_id();
+		*mountpoint_id = mp.get_id();
 	}
 }
 
@@ -351,27 +383,7 @@ pub fn create_file(
 		return Err(errno!(EACCES));
 	}
 
-	// Get the mountpoint
-	let mountpoint_mutex = parent
-		.location
-		.get_mountpoint()
-		.ok_or_else(|| errno!(ENOENT))?;
-	let mountpoint = mountpoint_mutex.lock();
-	if mountpoint.is_readonly() {
-		return Err(errno!(EROFS));
-	}
-
-	// Get the IO interface
-	let io_mutex = mountpoint.get_source().get_io()?;
-	let mut io = io_mutex.lock();
-
-	// Get the filesystem
-	let fs_mutex = mountpoint.get_filesystem();
-	let mut fs = fs_mutex.lock();
-	if fs.is_readonly() {
-		return Err(errno!(EROFS));
-	}
-
+	let parent_inode = parent.location.get_inode();
 	let uid = ap.get_euid();
 	let gid = if parent.get_mode() & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
@@ -381,16 +393,15 @@ pub fn create_file(
 		ap.get_egid()
 	};
 
-	// Add the file to the filesystem
-	let parent_inode = parent.location.get_inode();
-	let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
-
+	let mut file = op(&parent.location, true, |mp, io, fs| {
+		let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
+		update_location(&mut file, &mp);
+		Ok(file)
+	})?;
 	// Add the file to the parent's entries
 	file.set_parent_path(parent.get_path()?);
 	parent.add_entry(file.get_name().try_clone()?, file.as_dir_entry())?;
 
-	drop(fs);
-	update_location(&mut file, &mountpoint);
 	Ok(Arc::new(Mutex::new(file))?)
 }
 
@@ -434,36 +445,44 @@ pub fn create_link(
 		return Err(errno!(EACCES));
 	}
 
-	// Get the mountpoint
-	let mountpoint_mutex = target
-		.location
-		.get_mountpoint()
-		.ok_or_else(|| errno!(ENOENT))?;
-	let mountpoint = mountpoint_mutex.lock();
-	if mountpoint.is_readonly() {
-		return Err(errno!(EROFS));
+	op(&target.location, true, |mp, io, fs| {
+		fs.add_link(
+			&mut *io,
+			parent.location.get_inode(),
+			name,
+			target.location.get_inode(),
+		)?;
+		target.set_hard_links_count(target.get_hard_links_count() + 1);
+		Ok(())
+	})
+}
+
+fn remove_file_impl(
+	mp: &MountPoint,
+	io: &mut dyn IO,
+	fs: &mut dyn Filesystem,
+	parent_inode: INode,
+	name: &[u8],
+) -> EResult<()> {
+	let (links_left, inode) = fs.remove_file(&mut *io, parent_inode, name)?;
+	if links_left == 0 {
+		// If the file is a named pipe or socket, free its now unused buffer
+		let loc = FileLocation::Filesystem {
+			mountpoint_id: mp.get_id(),
+			inode,
+		};
+		buffer::release(&loc);
 	}
-
-	// Get the IO interface
-	let io_mutex = mountpoint.get_source().get_io()?;
-	let mut io = io_mutex.lock();
-
-	// Get the filesystem
-	let fs_mutex = mountpoint.get_filesystem();
-	let mut fs = fs_mutex.lock();
-	if fs.is_readonly() {
-		return Err(errno!(EROFS));
-	}
-
-	fs.add_link(
-		&mut *io,
-		parent.location.get_inode(),
-		name,
-		target.location.get_inode(),
-	)?;
-	target.set_hard_links_count(target.get_hard_links_count() + 1);
-
 	Ok(())
+}
+
+/// Removes a file without checking permissions.
+///
+/// This is useful for deferred remove since permissions have already been checked before.
+pub fn remove_file_unchecked(parent: &FileLocation, name: &[u8]) -> EResult<()> {
+	op(parent, true, |mp, io, fs| {
+		remove_file_impl(mp, io, fs, parent.get_inode(), name)
+	})
 }
 
 /// Removes a file.
@@ -487,56 +506,44 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 		return Err(errno!(EACCES));
 	}
 
-	// Get the mountpoint
-	let mountpoint_mutex = parent
-		.location
-		.get_mountpoint()
-		.ok_or_else(|| errno!(ENOENT))?;
-	let mountpoint = mountpoint_mutex.lock();
-	if mountpoint.is_readonly() {
-		return Err(errno!(EROFS));
-	}
+	op(parent.get_location(), true, |mp, io, fs| {
+		// Get the file
+		let mut file = fs.load_file(&mut *io, parent.location.get_inode(), name.try_into()?)?;
 
-	// Get the IO interface
-	let io_mutex = mountpoint.get_source().get_io()?;
-	let mut io = io_mutex.lock();
+		// Check permission
+		let has_sticky_bit = parent.mode & S_ISVTX != 0;
+		if has_sticky_bit && ap.get_euid() != file.get_uid() && ap.get_euid() != parent.get_uid() {
+			return Err(errno!(EACCES));
+		}
+		// If the file to remove is a mountpoint, error
+		if file.is_mountpoint() {
+			return Err(errno!(EBUSY));
+		}
 
-	// Get the filesystem
-	let fs_mutex = mountpoint.get_filesystem();
-	let mut fs = fs_mutex.lock();
-	if fs.is_readonly() {
-		return Err(errno!(EROFS));
-	}
+		// Defer remove if the file is in use
+		let last_link = file.get_hard_links_count() == 1;
+		let symlink = file.get_type() == FileType::Link;
+		let defer = last_link && !symlink && OpenFile::is_open(&file.location);
 
-	// Get the file
-	let mut file = fs.load_file(&mut *io, parent.location.get_inode(), name.try_into()?)?;
+		if defer {
+			file.defer_remove(DeferredRemove {
+				parent: parent.location.clone(),
+				name: name.try_into()?,
+			});
+		} else {
+			remove_file_impl(mp, io, fs, parent.location.get_inode(), name)?;
+		}
+		Ok(())
+	})
+}
 
-	// Check permission
-	let has_sticky_bit = parent.mode & S_ISVTX != 0;
-	if has_sticky_bit && ap.get_euid() != file.get_uid() && ap.get_euid() != parent.get_uid() {
-		return Err(errno!(EACCES));
-	}
-	// If the file to remove is a mountpoint, error
-	if mountpoint::from_location(file.get_location()).is_some() {
-		return Err(errno!(EBUSY));
-	}
-
-	// Defer remove if the file is in use
-	let last_link = file.get_hard_links_count() == 1;
-	let symlink = file.get_type() == FileType::Link;
-	if last_link && !symlink && OpenFile::is_open(&file.location) {
-		file.defer_remove();
-		return Ok(());
-	}
-
-	// Remove the file
-	let links_left = fs.remove_file(&mut *io, parent.location.get_inode(), name)?;
-	if links_left == 0 {
-		// If the file is a named pipe or socket, free its now unused buffer
-		buffer::release(&file.location);
-	}
-
-	Ok(())
+/// TODO doc
+pub fn remove_file_from_path(
+	path: &Path,
+	resolution_settings: &ResolutionSettings,
+) -> EResult<()> {
+	// TODO
+	todo!()
 }
 
 /// Maps the page at offset `off` in the file at location `loc`.

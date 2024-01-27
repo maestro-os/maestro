@@ -171,8 +171,13 @@ pub trait Filesystem: Any {
 	/// - `parent_inode` is the parent file's inode.
 	/// - `name` is the file's name.
 	///
-	/// The function returns the number of hard links left on the inode.
-	fn remove_file(&mut self, io: &mut dyn IO, parent_inode: INode, name: &[u8]) -> EResult<u16>;
+	/// The function returns the number of hard links left on the inode and the inode's ID.
+	fn remove_file(
+		&mut self,
+		io: &mut dyn IO,
+		parent_inode: INode,
+		name: &[u8],
+	) -> EResult<(u16, INode)>;
 
 	/// Reads from the given inode `inode` into the buffer `buf`.
 	///
@@ -180,7 +185,7 @@ pub trait Filesystem: Any {
 	/// - `io` is the IO interface.
 	/// - `inode` is the file's inode.
 	/// - `off` is the offset from which the data will be read from the node.
-	/// - `buf` is the buffer in which the data is the be written. The length of the buffer is the
+	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
 	/// number of bytes to read.
 	///
 	/// The function returns the number of bytes read.
@@ -198,8 +203,8 @@ pub trait Filesystem: Any {
 	/// - `io` is the IO interface.
 	/// - `inode` is the file's inode.
 	/// - `off` is the offset at which the data will be written in the node.
-	/// - `buf` is the buffer in which the data is the be written. The length of the buffer is the
-	/// number of bytes to read.
+	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
+	/// number of bytes to write.
 	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()>;
 }
 

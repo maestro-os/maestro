@@ -30,23 +30,18 @@ use macros::syscall;
 
 #[syscall]
 pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {
-	let (path, rs) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
+	let proc_mutex = Process::current_assert();
+	let proc = proc_mutex.lock();
 
-		let mem_space_mutex = proc.get_mem_space().unwrap();
-		let mem_space = mem_space_mutex.lock();
-		let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
-		let path = Path::new(path)?;
+	let mem_space_mutex = proc.get_mem_space().unwrap();
+	let mem_space = mem_space_mutex.lock();
+	let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
+	let path = Path::new(path)?;
 
-		let rs = ResolutionSettings::for_process(&proc, true);
-		(path, rs)
-	};
+	let rs = ResolutionSettings::for_process(&proc, true);
 
 	// Remove the file
-	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-	let mut file = file_mutex.lock();
-	vfs::remove_file(&mut file, &rs.access_profile)?;
+	vfs::remove_file_from_path(path, &rs)?;
 
 	Ok(0)
 }

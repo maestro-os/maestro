@@ -31,9 +31,9 @@ use super::kernfs::node::DummyKernFSNode;
 use super::kernfs::KernFS;
 use super::Filesystem;
 use super::FilesystemType;
-use crate::errno::AllocError;
 use crate::errno::AllocResult;
 use crate::errno::Errno;
+use crate::errno::{AllocError, EResult};
 use crate::file::fs::Statfs;
 use crate::file::path::PathBuf;
 use crate::file::perm::Gid;
@@ -288,7 +288,7 @@ impl Filesystem for ProcFS {
 		_io: &mut dyn IO,
 		_parent_inode: INode,
 		_name: &[u8],
-	) -> Result<u16, Errno> {
+	) -> EResult<(u16, INode)> {
 		Err(errno!(EACCES))
 	}
 
