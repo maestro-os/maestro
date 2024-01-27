@@ -1,33 +1,14 @@
 //! The `access` system call allows to check access to a given file.
 
 use crate::errno::Errno;
+use crate::file::path::Path;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::syscall::util;
+use crate::syscall::util::at;
+use crate::syscall::util::at::{AT_EACCESS, AT_FDCWD, AT_SYMLINK_NOFOLLOW};
 use core::ffi::c_int;
 use macros::syscall;
-
-/// Special value, telling to take the path relative to the current working
-/// directory.
-pub const AT_FDCWD: i32 = -100;
-/// If pathname is a symbolic link, do not dereference it: instead return
-/// information about the link itself.
-pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
-/// Perform access checks using the effective user and group IDs.
-pub const AT_EACCESS: i32 = 0x200;
-/// If pathname is a symbolic link, dereference it.
-pub const AT_SYMLINK_FOLLOW: i32 = 0x400;
-/// Don't automount the terminal component of `pathname` if it is a directory that is an automount
-/// point.
-pub const AT_NO_AUTOMOUNT: i32 = 0x800;
-/// If `pathname` is an empty string, operate on the file referred to by `dirfd`.
-pub const AT_EMPTY_PATH: i32 = 0x1000;
-/// Do whatever `stat` does.
-pub const AT_STATX_SYNC_AS_STAT: i32 = 0x0000;
-/// Force the attributes to be synchronized with the server.
-pub const AT_STATX_FORCE_SYNC: i32 = 0x2000;
-/// Don't synchronize anything, but rather take cached informations.
-pub const AT_STATX_DONT_SYNC: i32 = 0x4000;
 
 /// Checks for existence of the file.
 const F_OK: i32 = 0;
@@ -61,20 +42,23 @@ pub fn do_access(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
+		let rs = ResolutionSettings::for_process(&*proc, true);
+
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space_mutex.lock();
+
+		let fds = proc.file_descriptors.unwrap().lock();
 
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EINVAL))?;
+		let path = Path::new(pathname)?;
 
-		let file = util::get_file_at(
-			proc,
-			dirfd.unwrap_or(AT_FDCWD),
-			pathname,
-			follow_symlinks,
-			flags,
-		)?;
+		let Resolved::Found(file) =
+			at::get_file(&fds, rs, dirfd.unwrap_or(AT_FDCWD), path, flags)?
+		else {
+			return Err(errno!(ENOENT));
+		};
 
 		(file, proc.access_profile)
 	};

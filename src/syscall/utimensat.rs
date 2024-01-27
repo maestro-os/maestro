@@ -1,6 +1,5 @@
 //! The `utimensat` system call allows to change the timestamps of a file.
 
-use super::access::AT_FDCWD;
 use super::util;
 use crate::errno::Errno;
 use crate::file::File;

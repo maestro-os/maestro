@@ -1,8 +1,10 @@
 //! The statx system call returns the extended status of a file.
 
-use super::util;
+use super::util::at;
 use crate::errno::Errno;
 use crate::file::mountpoint::MountSource;
+use crate::file::path::PathBuf;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::FileContent;
 use crate::process::mem_space::ptr::SyscallPtr;
 use crate::process::mem_space::ptr::SyscallString;
@@ -94,18 +96,30 @@ pub fn statx(
 
 	// TODO Implement all flags
 
-	// Getting the file
-	let file_mutex = {
+	// Get the file
+	let (fds_mutex, path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
+
+		let rs = ResolutionSettings::for_process(&*proc, true);
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
+
 		let path = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		util::get_file_at(proc, dirfd, path, true, flags)?
+		let path = PathBuf::try_from(path)?;
+
+		(fds_mutex, path, rs)
+	};
+
+	let fds = fds_mutex.lock();
+
+	let Resolved::Found(file_mutex) = at::get_file(&fds, rs, dirfd, &path, flags)? else {
+		return Err(errno!(ENOENT));
 	};
 	let file = file_mutex.lock();
 
@@ -131,14 +145,12 @@ pub fn statx(
 			// the mountpoint and locking vfs requires disabling interrupts
 			crate::idt::wrap_disable_interrupts(|| {
 				let mountpoint = mountpoint_mutex.lock();
-
 				match mountpoint.get_source() {
 					MountSource::Device {
 						major,
 						minor,
 						..
 					} => (*major, *minor),
-
 					_ => (0, 0),
 				}
 			})

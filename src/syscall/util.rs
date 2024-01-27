@@ -2,12 +2,6 @@
 
 use crate::errno;
 use crate::errno::EResult;
-use crate::file::path::{Path, PathBuf};
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::Mode;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::regs::Regs;
 use crate::process::scheduler;
@@ -15,9 +9,6 @@ use crate::process::Process;
 use crate::process::State;
 use crate::util::container::string::String;
 use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
-use crate::util::lock::MutexGuard;
-use crate::util::ptr::arc::Arc;
 use core::mem::size_of;
 
 // TODO Find a safer and cleaner solution
@@ -60,167 +51,6 @@ pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8) -> EResult
 	}
 
 	Ok(arr)
-}
-
-/// Builds a path with the given directory file descriptor `dirfd` as a base,
-/// concatenated with the given `path`.
-///
-/// `process_guard` is the guard of the current process.
-fn build_path_from_fd(
-	process: MutexGuard<Process, false>,
-	dirfd: i32,
-	path: &Path,
-) -> EResult<PathBuf> {
-	if path.is_absolute() {
-		// Use the given absolute path
-		Ok(path.to_path_buf()?)
-	} else if dirfd == super::access::AT_FDCWD {
-		// Use path relative to the current working directory
-		Ok(process.cwd.0.join(path)?)
-	} else {
-		// Use path relative to the directory given by `dirfd`
-
-		if dirfd < 0 {
-			return Err(errno!(EBADF));
-		}
-		let fds_mutex = process.file_descriptors.as_ref().unwrap();
-		let fds = fds_mutex.lock();
-		let open_file_mutex = fds
-			.get_fd(dirfd as _)
-			.ok_or(errno!(EBADF))?
-			.get_open_file()
-			.clone();
-		drop(fds);
-
-		// Unlock to avoid deadlock with procfs
-		drop(process);
-
-		let open_file = open_file_mutex.lock();
-		let file_mutex = open_file.get_file();
-		let file = file_mutex.lock();
-		Ok(file.get_path()?.join(&path)?)
-	}
-}
-
-/// Returns the file for the given path `path`.
-///
-/// This function is useful for system calls with the `at` prefix.
-///
-/// Arguments:
-/// - `process` is the mutex guard of the current process.
-/// - `dirfd` is the file descriptor of the parent directory.
-/// - `path` is the path relative to the parent directory.
-/// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
-///   about it.
-/// - `flags` is an integer containing `AT_*` flags.
-pub fn get_file_at(
-	process: MutexGuard<Process, false>,
-	dirfd: i32,
-	path: &[u8],
-	follow_links_default: bool,
-	flags: i32,
-) -> EResult<Arc<Mutex<File>>> {
-	let follow_links = if follow_links_default {
-		flags & super::access::AT_SYMLINK_NOFOLLOW == 0
-	} else {
-		flags & super::access::AT_SYMLINK_FOLLOW != 0
-	};
-	if path.is_empty() {
-		if flags & super::access::AT_EMPTY_PATH != 0 {
-			// Using `dirfd` as the file descriptor to the file
-
-			if dirfd < 0 {
-				return Err(errno!(EBADF));
-			}
-			let fds_mutex = process.file_descriptors.as_ref().unwrap();
-			let fds = fds_mutex.lock();
-			let open_file_mutex = fds
-				.get_fd(dirfd as _)
-				.ok_or(errno!(EBADF))?
-				.get_open_file()
-				.clone();
-			drop(fds);
-
-			// Unlocking to avoid deadlock with procfs
-			drop(process);
-
-			let open_file = open_file_mutex.lock();
-			Ok(open_file.get_file().clone())
-		} else {
-			Err(errno!(ENOENT))
-		}
-	} else {
-		let rs = ResolutionSettings::for_process(&process, follow_links);
-		let path = Path::new(path)?;
-		let path = build_path_from_fd(process, dirfd, path)?;
-		vfs::get_file_from_path(&path, &rs)
-	}
-}
-
-/// Returns the parent directory of the file for the given path `path`.
-///
-/// This function is useful for system calls with the `at` prefix.
-///
-/// Arguments:
-/// - `process` is the mutex guard of the current process.
-/// - `dirfd` is the file descriptor of the parent directory.
-/// - `path` is the path relative to the parent directory.
-/// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
-///   about it.
-/// - `flags` is an integer containing `AT_*` flags.
-pub fn get_parent_at_with_name(
-	process: MutexGuard<Process, false>,
-	dirfd: i32,
-	path: &[u8],
-	follow_links_default: bool,
-	flags: i32,
-) -> EResult<(Arc<Mutex<File>>, String)> {
-	let follow_links = if follow_links_default {
-		flags & super::access::AT_SYMLINK_NOFOLLOW == 0
-	} else {
-		flags & super::access::AT_SYMLINK_FOLLOW != 0
-	};
-	let rs = ResolutionSettings::for_process(&process, follow_links);
-
-	if path.is_empty() {
-		return Err(errno!(ENOENT));
-	}
-	let path = Path::new(path)?;
-	let mut path = build_path_from_fd(process, dirfd, path)?;
-	let name = path.file_name().unwrap().try_into()?;
-
-	let parent_mutex = vfs::get_file_from_path(&path, &rs)?;
-	Ok((parent_mutex, name))
-}
-
-/// Creates the given file `file` at the given `path`.
-///
-/// Arguments:
-/// - `process` is the mutex guard of the current process.
-/// - `dirfd` is the file descriptor of the parent directory.
-/// - `path` is the path relative to the parent directory.
-/// - `mode` is the permissions of the newly created file.
-/// - `content` is the content of the newly created file.
-/// - `follow_links_default` tells whether symbolic links may be followed if no flag is specified
-///   about it.
-/// - `flags` is an integer containing `AT_*` flags.
-pub fn create_file_at(
-	process: MutexGuard<Process, false>,
-	dirfd: i32,
-	path: &[u8],
-	mode: Mode,
-	content: FileContent,
-	follow_links_default: bool,
-	flags: i32,
-) -> EResult<Arc<Mutex<File>>> {
-	let ap = process.access_profile;
-	let mode = mode & !process.umask;
-
-	let (parent_mutex, name) =
-		get_parent_at_with_name(process, dirfd, path, follow_links_default, flags)?;
-
-	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name, &ap, mode, content)
 }
 
 /// Updates the execution flow of the current process according to its state.
@@ -297,5 +127,102 @@ pub fn signal_check(regs: &Regs) {
 		drop(proc_mutex);
 
 		handle_proc_state();
+	}
+}
+
+/// `*at` system calls allow to perform operations on files without having to redo the whole
+/// path-resolution each time.
+///
+/// This module implements utility functions for those system calls.
+pub mod at {
+	use crate::errno::EResult;
+	use crate::file::fd::FileDescriptorTable;
+	use crate::file::path::Path;
+	use crate::file::vfs::{ResolutionSettings, Resolved};
+	use crate::file::{vfs, FileLocation};
+	use core::ffi::c_int;
+
+	/// Special value to be used as file descriptor, telling to take the path relative to the
+	/// current working directory.
+	pub const AT_FDCWD: c_int = -100;
+
+	/// Flag: If pathname is a symbolic link, do not dereference it: instead return
+	/// information about the link itself.
+	pub const AT_SYMLINK_NOFOLLOW: c_int = 0x100;
+	/// Flag: Perform access checks using the effective user and group IDs.
+	pub const AT_EACCESS: c_int = 0x200;
+	/// Flag: If pathname is a symbolic link, dereference it.
+	pub const AT_SYMLINK_FOLLOW: c_int = 0x400;
+	/// Flag: Don't automount the terminal component of `pathname` if it is a directory that is an
+	/// automount point.
+	pub const AT_NO_AUTOMOUNT: c_int = 0x800;
+	/// Flag: If `pathname` is an empty string, operate on the file referred to by `dirfd`.
+	pub const AT_EMPTY_PATH: c_int = 0x1000;
+	/// Flag: Do whatever `stat` does.
+	pub const AT_STATX_SYNC_AS_STAT: c_int = 0x0000;
+	/// Flag: Force the attributes to be synchronized with the server.
+	pub const AT_STATX_FORCE_SYNC: c_int = 0x2000;
+	/// Flag: Don't synchronize anything, but rather take cached information.
+	pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
+
+	/// Returns the location of the file pointed to by the given file descriptor.
+	///
+	/// Arguments:
+	/// - `fds` is the file descriptors table
+	/// - `fd` is the file descriptor
+	///
+	/// If the given file descriptor is invalid, the function returns [`errno::EBADF`].
+	fn fd_to_loc(fds: &FileDescriptorTable, fd: c_int) -> EResult<FileLocation> {
+		if fd < 0 {
+			return Err(errno!(EBADF));
+		}
+		let open_file_mutex = fds
+			.get_fd(fd as _)
+			.ok_or(errno!(EBADF))?
+			.get_open_file()
+			.clone();
+		let open_file = open_file_mutex.lock();
+		Ok(open_file.get_location().clone())
+	}
+
+	/// Returns the file for the given path `path`.
+	///
+	/// Arguments:
+	/// - `fds` is the file descriptors table to use
+	/// - `rs` is the path resolution settings to use
+	/// - `dirfd` is the file descriptor of the parent directory
+	/// - `path` is the path relative to the parent directory
+	/// - `flags` is the set of `AT_*` flags
+	///
+	/// **Note**: the `start` field of [`ResolutionSettings`] is used as the current working
+	/// directory.
+	pub fn get_file<'p>(
+		fds: &FileDescriptorTable,
+		mut rs: ResolutionSettings,
+		dirfd: c_int,
+		path: &'p Path,
+		flags: c_int,
+	) -> EResult<Resolved<'p>> {
+		// Prepare resolution settings
+		let follow_links = if rs.follow_link {
+			flags & AT_SYMLINK_NOFOLLOW == 0
+		} else {
+			flags & AT_SYMLINK_FOLLOW != 0
+		};
+		rs.follow_link = follow_links;
+		// If not starting from current directory, get location
+		if dirfd != AT_FDCWD {
+			rs.start = fd_to_loc(fds, dirfd)?;
+		}
+		if path.is_empty() {
+			// Validation
+			if flags & AT_EMPTY_PATH == 0 {
+				return Err(errno!(ENOENT));
+			}
+			let file = vfs::get_file_from_location(&rs.start)?;
+			Ok(Resolved::Found(file))
+		} else {
+			vfs::resolve_path(path, &rs)
+		}
 	}
 }
