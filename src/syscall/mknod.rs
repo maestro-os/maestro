@@ -43,7 +43,6 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 
 		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 		let path = Path::new(path)?;
-		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let umask = proc.umask;
 

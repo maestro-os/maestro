@@ -718,11 +718,10 @@ impl File {
 
 	/// Closes the file, removing it if removal has been deferred.
 	pub fn close(mut self) -> EResult<()> {
-		if !self.deferred_remove {
-			return Ok(());
+		if self.deferred_remove {
+			vfs::remove_file(&mut self, &AccessProfile::KERNEL)?;
+			self.removed = true;
 		}
-		vfs::remove_file(&mut self, &AccessProfile::KERNEL)?;
-		self.removed = true;
 		Ok(())
 	}
 }

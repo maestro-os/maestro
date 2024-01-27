@@ -20,7 +20,6 @@
 
 use crate::errno;
 use crate::errno::EResult;
-use crate::errno::{AllocResult, CollectResult};
 use crate::file::path::{Path, PathBuf};
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
@@ -38,22 +37,6 @@ use crate::util::lock::Mutex;
 use crate::util::lock::MutexGuard;
 use crate::util::ptr::arc::Arc;
 use core::mem::size_of;
-
-/// Returns the absolute path according to the process's current working
-/// directory.
-///
-/// Arguments:
-/// - `process` is the process.
-/// - `path` is the path.
-pub fn get_absolute_path(process: &Process, path: &Path) -> AllocResult<PathBuf> {
-	process
-		.cwd
-		.0
-		.components()
-		.chain(path.components())
-		.collect::<CollectResult<PathBuf>>()
-		.0
-}
 
 // TODO Find a safer and cleaner solution
 /// Checks that the given array of strings at pointer `ptr` is accessible to
@@ -264,7 +247,7 @@ pub fn create_file_at(
 /// resume. In which case, the current function handles the execution flow
 /// accordingly.
 ///
-/// The functions locks the mutex of the current process. Thus, the caller must
+/// The function locks the mutex of the current process. Thus, the caller must
 /// ensure the mutex isn't already locked to prevent a deadlock.
 ///
 /// If returning, the function returns the mutex lock of the current process.
@@ -309,7 +292,7 @@ pub fn handle_proc_state() {
 /// If interrupted, the function doesn't return and the control flow jumps
 /// directly to handling the signal.
 ///
-/// The functions locks the mutex of the current process. Thus, the caller must
+/// The function locks the mutex of the current process. Thus, the caller must
 /// ensure the mutex isn't already locked to prevent a deadlock.
 ///
 /// `regs` is the registers state passed to the current syscall.
@@ -321,7 +304,7 @@ pub fn signal_check(regs: &Regs) {
 		// Returning the system call early to resume it later
 		let mut r = regs.clone();
 		// TODO Clean
-		r.eip -= 2; // TODO Handle the case where the instruction insn't two bytes long (sysenter)
+		r.eip -= 2; // TODO Handle the case where the instruction isn't two bytes long (sysenter)
 		proc.regs = r;
 		proc.syscalling = false;
 

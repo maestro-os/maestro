@@ -26,7 +26,7 @@ use crate::file;
 use crate::file::fd::FD_CLOEXEC;
 use crate::file::open_file;
 use crate::file::open_file::OpenFile;
-use crate::file::path::Path;
+use crate::file::path::{Path, PathBuf};
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
 use crate::file::vfs::{ResolutionSettings, Resolved};
@@ -129,8 +129,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = Path::new(path)?;
-		let abs_path = super::util::get_absolute_path(&proc, path)?;
+		let path = PathBuf::try_from(path)?;
 
 		let follow_links = flags & open_file::O_NOFOLLOW == 0;
 		let create = flags & open_file::O_CREAT != 0;
@@ -141,7 +140,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
-		(abs_path, rs, mode, fds_mutex)
+		(path, rs, mode, fds_mutex)
 	};
 
 	// Get file

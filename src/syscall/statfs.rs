@@ -39,7 +39,6 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 
 		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
 		let path = Path::new(path)?;
-		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, false);
 		(path, rs)
