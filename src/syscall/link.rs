@@ -17,14 +17,12 @@ pub fn link(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno
 	let oldpath_str = oldpath
 		.get(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let old_path = Path::new(oldpath_str)?;
-	let _old_path = super::util::get_absolute_path(&proc, old_path)?;
+	let _old_path = Path::new(oldpath_str)?;
 
 	let newpath_str = newpath
 		.get(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let new_path = Path::new(newpath_str)?;
-	let _new_path = super::util::get_absolute_path(&proc, new_path)?;
+	let _new_path = Path::new(newpath_str)?;
 
 	// TODO Get file at `old_path`
 	// TODO Create the link to the file

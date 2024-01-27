@@ -61,7 +61,7 @@ pub fn renameat2(
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs::create_link(&mut old, &new_parent, &new_name, &rs.access_profile)?;
+		vfs::create_link(&new_parent, &new_name, &mut old, &rs.access_profile)?;
 
 		if old.get_type() != FileType::Directory {
 			vfs::remove_file(&mut old, &rs.access_profile)?;

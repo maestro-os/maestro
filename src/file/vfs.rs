@@ -11,7 +11,7 @@ use crate::file::mountpoint;
 use crate::file::open_file::OpenFile;
 use crate::file::path::{Component, Path};
 use crate::file::perm;
-use crate::file::perm::AccessProfile;
+use crate::file::perm::{AccessProfile, S_ISVTX};
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileLocation;
@@ -174,7 +174,7 @@ fn resolve_path_impl<'p>(
 		let file = file_mutex.lock();
 		// Get the name of the next entry
 		let name = match comp {
-			Component::ParentDir if file.get_location() != &settings.root => b"..",
+			Component::ParentDir if file.location != settings.root => b"..",
 			Component::Normal(name) => name,
 			// Ignore
 			_ => continue,
@@ -227,7 +227,7 @@ fn resolve_path_impl<'p>(
 				// Resolve link
 				let rs = ResolutionSettings {
 					root: settings.root.clone(),
-					start: file.get_location().clone(),
+					start: file.location.clone(),
 					access_profile: &settings.access_profile,
 					create: false,
 					follow_link: true,
@@ -300,18 +300,24 @@ pub fn get_file_from_path(
 	get_file_from_path_opt(path, resolution_settings)?.ok_or_else(|| errno!(ENOENT))
 }
 
-/// Creates a file, adds it to the VFS, then returns it. The file will be
-/// located into the directory `parent`.
-///
-/// If `parent` is not a directory, the function returns an error.
+/// Creates a file, adds it to the VFS, then returns it.
 ///
 /// Arguments:
-/// - `name` is the name of the file
+/// - `parent` is the parent directory of the file to be created
+/// - `name` is the name of the file to be created
 /// - `ap` is access profile to check permissions. This also determines the UID and GID to be used
 /// for the created file
-/// - `mode` is the permission of the file
-/// - `content` is the content of the file. This value also determines the
-/// file type
+/// - `mode` is the permissions of the file
+/// - `content` is the content of the file. This value also determines the file type
+///
+/// The following errors can be returned:
+/// - The filesystem is read-only: [`errno::EROFS`]
+/// - I/O failed: [`errno::EIO`]
+/// - Permissions to create the file are not fulfilled for the given `ap`: [`errno::EACCES`]
+/// - `parent` is not a directory: [`errno::ENOTDIR`]
+/// - The file already exists: [`errno::EEXIST`]
+///
+/// Other errors can be returned depending on the underlying filesystem.
 pub fn create_file(
 	parent: &mut File,
 	name: String,
@@ -329,7 +335,7 @@ pub fn create_file(
 
 	// Get the mountpoint
 	let mountpoint_mutex = parent
-		.get_location()
+		.location
 		.get_mountpoint()
 		.ok_or_else(|| errno!(ENOENT))?;
 	let mountpoint = mountpoint_mutex.lock();
@@ -358,7 +364,7 @@ pub fn create_file(
 	};
 
 	// Add the file to the filesystem
-	let parent_inode = parent.get_location().get_inode();
+	let parent_inode = parent.location.get_inode();
 	let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
 
 	// Add the file to the parent's entries
@@ -373,38 +379,46 @@ pub fn create_file(
 /// Creates a new hard link to the given target file.
 ///
 /// Arguments:
-/// - `target` is the target file
 /// - `parent` is the parent directory where the new link will be created
 /// - `name` is the name of the link
+/// - `target` is the target file
 /// - `ap` is the access profile to check permissions
 ///
-/// If the number of links to the file is larger than [`limits::LINK_MAX`], the function returns an
-/// error.
+/// The following errors can be returned:
+/// - The filesystem is read-only: [`errno::EROFS`]
+/// - I/O failed: [`errno::EIO`]
+/// - Permissions to create the link are not fulfilled for the given `ap`: [`errno::EACCES`]
+/// - The number of links to the file is larger than [`limits::LINK_MAX`]: [`errno::EMLINK`]
+/// - `target` is a directory: [`errno::EPERM`]
+///
+/// Other errors can be returned depending on the underlying filesystem.
 pub fn create_link(
-	target: &mut File,
 	parent: &File,
 	name: &[u8],
+	target: &mut File,
 	ap: &AccessProfile,
 ) -> EResult<()> {
-	let target_location = target.get_location();
-	let parent_location = parent.get_location();
 	// Validation
 	if parent.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	if !ap.can_write_directory(parent) {
-		return Err(errno!(EACCES));
-	}
 	if target.get_type() == FileType::Directory {
 		return Err(errno!(EPERM));
 	}
+	if target.get_hard_links_count() >= limits::LINK_MAX as u16 {
+		return Err(errno!(EMLINK));
+	}
 	// Check the target and source are both on the same mountpoint
-	if target_location.get_mountpoint_id() != parent_location.get_mountpoint_id() {
+	if parent.location.get_mountpoint_id() != target.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
+	}
+	if !ap.can_write_directory(parent) {
+		return Err(errno!(EACCES));
 	}
 
 	// Get the mountpoint
-	let mountpoint_mutex = target_location
+	let mountpoint_mutex = target
+		.location
 		.get_mountpoint()
 		.ok_or_else(|| errno!(ENOENT))?;
 	let mountpoint = mountpoint_mutex.lock();
@@ -425,47 +439,41 @@ pub fn create_link(
 
 	fs.add_link(
 		&mut *io,
-		parent_location.get_inode(),
+		parent.location.get_inode(),
 		name,
-		target_location.get_inode(),
+		target.location.get_inode(),
 	)?;
 	target.set_hard_links_count(target.get_hard_links_count() + 1);
 
 	Ok(())
 }
 
-/// Removes the file `file` from the VFS.
+/// Removes a file.
 ///
-/// `ap` is the access profile to check permissions
+/// Arguments:
+/// - `parent` is the parent directory of the file to remove
+/// - `name` is the name of the file to remove
+/// - `ap` is the access profile to check permissions
 ///
-/// If the file doesn't exist, the function returns an error.
+/// The following errors can be returned:
+/// - The filesystem is read-only: [`errno::EROFS`]
+/// - I/O failed: [`errno::EIO`]
+/// - The file doesn't exist: [`errno::ENOENT`]
+/// - Permissions to remove the file are not fulfilled for the given `ap`: [`errno::EACCES`]
+/// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
-/// If the file is a non-empty directory, the function returns an error.
-pub fn remove_file(file: &mut File, ap: &AccessProfile) -> EResult<()> {
-	// The parent directory
-	let parent_mutex = get_file_from_path(file.get_parent_path(), ap, true)?;
-	let parent = parent_mutex.lock();
-	let parent_location = parent.get_location();
-
-	// Check permissions
-	if !ap.can_write_file(file) || !ap.can_write_directory(&parent) {
+/// Other errors can be returned depending on the underlying filesystem.
+pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResult<()> {
+	// Check permission
+	if !ap.can_write_directory(&parent) {
 		return Err(errno!(EACCES));
 	}
 
-	// Defer remove if the file is in use
-	let last_link = file.get_hard_links_count() == 1;
-	let symlink = file.get_type() == FileType::Link;
-	if last_link && !symlink && OpenFile::is_open(&file.location) {
-		file.defer_remove();
-		return Ok(());
-	}
-
-	let location = file.get_location();
-	let name = file.get_name();
-
-	// FIXME: what if the file and its parent are not on the same filesystem?
 	// Get the mountpoint
-	let mountpoint_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
+	let mountpoint_mutex = parent
+		.location
+		.get_mountpoint()
+		.ok_or_else(|| errno!(ENOENT))?;
 	let mountpoint = mountpoint_mutex.lock();
 	if mountpoint.is_readonly() {
 		return Err(errno!(EROFS));
@@ -482,11 +490,32 @@ pub fn remove_file(file: &mut File, ap: &AccessProfile) -> EResult<()> {
 		return Err(errno!(EROFS));
 	}
 
+	// Get the file
+	let mut file = fs.load_file(&mut *io, parent.location.get_inode(), name.try_into()?)?;
+
+	// Check permission
+	let has_sticky_bit = parent.mode & S_ISVTX != 0;
+	if has_sticky_bit && ap.get_euid() != file.get_uid() && ap.get_euid() != parent.get_uid() {
+		return Err(errno!(EACCES));
+	}
+	// If the file to remove is a mountpoint, error
+	if mountpoint::from_location(file.get_location()).is_some() {
+		return Err(errno!(EBUSY));
+	}
+
+	// Defer remove if the file is in use
+	let last_link = file.get_hard_links_count() == 1;
+	let symlink = file.get_type() == FileType::Link;
+	if last_link && !symlink && OpenFile::is_open(&file.location) {
+		file.defer_remove();
+		return Ok(());
+	}
+
 	// Remove the file
-	let links_left = fs.remove_file(&mut *io, parent_location.get_inode(), name)?;
+	let links_left = fs.remove_file(&mut *io, parent.location.get_inode(), name)?;
 	if links_left == 0 {
 		// If the file is a named pipe or socket, free its now unused buffer
-		buffer::release(location);
+		buffer::release(&file.location);
 	}
 
 	Ok(())

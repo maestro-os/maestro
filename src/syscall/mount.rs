@@ -50,7 +50,6 @@ pub fn mount(
 
 		// Get the target directory
 		let target_path = Path::new(target_slice)?;
-		let target_path = super::util::get_absolute_path(&proc, target_path)?;
 		let target_file_mutex = vfs::get_file_from_path(&target_path, &rs)?;
 		let target_file = target_file_mutex.lock();
 

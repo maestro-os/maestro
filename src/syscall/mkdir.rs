@@ -25,7 +25,6 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		// Path to the directory to create
 		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 		let path = Path::new(path)?;
-		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 		(path, mode, rs)

@@ -3,7 +3,7 @@
 use crate::errno;
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file::path::{Path, PathBuf};
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
@@ -156,8 +156,7 @@ pub fn execve(
 			let path = pathname
 				.get(&mem_space_guard)?
 				.ok_or_else(|| errno!(EFAULT))?;
-			let path = Path::new(path)?;
-			super::util::get_absolute_path(&proc, path)?
+			PathBuf::try_from(path)?
 		};
 
 		let argv = unsafe { super::util::get_str_array(&proc, argv)? };

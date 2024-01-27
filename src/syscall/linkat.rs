@@ -46,6 +46,6 @@ pub fn linkat(
 	}
 	let new_parent = new_parent_mutex.lock();
 
-	vfs::create_link(&mut old, &new_parent, &new_name, &ap)?;
+	vfs::create_link(&new_parent, &new_name, &mut old, &ap)?;
 	Ok(0)
 }

@@ -46,13 +46,9 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 		(file.get_path()?.to_path_buf()?, file.get_location().clone())
 	};
 
-	{
-		let proc_mutex = Process::current_assert();
-		let mut proc = proc_mutex.lock();
-
-		let path = super::util::get_absolute_path(&proc, &path)?;
-		proc.cwd = Arc::new((path, location))?;
-	}
+	let proc_mutex = Process::current_assert();
+	let mut proc = proc_mutex.lock();
+	proc.cwd = Arc::new((path, location))?;
 
 	Ok(0)
 }
