@@ -24,7 +24,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 			#[cfg(config_debug_qemu)]
 			selftest::qemu::exit(selftest::qemu::FAILURE);
 			#[cfg(not(config_debug_qemu))]
-			halt();
+			power::halt();
 		}
 	}
 
