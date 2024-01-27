@@ -18,10 +18,12 @@
 
 //! The `renameat2` allows to rename a file.
 
+use super::util::at;
 use crate::errno::Errno;
 use crate::file;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -33,6 +35,8 @@ const RENAME_NOREPLACE: c_int = 1;
 /// Flag: Exchanges old and new paths atomically.
 const RENAME_EXCHANGE: c_int = 2;
 
+// TODO implement flags
+
 #[syscall]
 pub fn renameat2(
 	olddirfd: c_int,
@@ -41,36 +45,50 @@ pub fn renameat2(
 	newpath: SyscallString,
 	_flags: c_int,
 ) -> Result<i32, Errno> {
-	let (old_mutex, new_parent_mutex, new_name, rs) = {
+	let (fds_mutex, oldpath, newpath, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
+
+		let rs = ResolutionSettings::for_process(&*proc, false);
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
+
 		let oldpath = oldpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let old = super::util::get_file_at(proc, olddirfd, oldpath, false, 0)?;
+		let oldpath = PathBuf::try_from(oldpath)?;
 
-		let proc = proc_mutex.lock();
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let (new_parent, new_name) =
-			super::util::get_parent_at_with_name(proc, newdirfd, newpath, false, 0)?;
+		let newpath = PathBuf::try_from(newpath)?;
 
-		let rs = ResolutionSettings::for_process(&proc, false);
-		(old, new_parent, new_name, rs)
+		(fds_mutex, oldpath, newpath, rs)
 	};
 
+	let fds = fds_mutex.lock();
+
+	let Resolved::Found(old_mutex) = at::get_file(&fds, rs, olddirfd, &oldpath, 0)? else {
+		return Err(errno!(ENOENT));
+	};
 	let mut old = old_mutex.lock();
 	// Cannot rename mountpoint
 	if old.is_mountpoint() {
 		return Err(errno!(EBUSY));
 	}
 
-	let mut new_parent = new_parent_mutex.lock();
+	// TODO RENAME_NOREPLACE
+	let Resolved::Creatable {
+		parent: new_parent,
+		name: new_name,
+	} = at::get_file(&fds, rs, newdirfd, &newpath, 0)?
+	else {
+		return Err(errno!(EEXIST));
+	};
+	let mut new_parent = new_parent.lock();
 
 	// TODO Check permissions if sticky bit is set
 

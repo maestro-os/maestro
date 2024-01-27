@@ -18,24 +18,27 @@
 
 //! The `openat` syscall allows to open a file.
 
-use super::util;
-use crate::errno::Errno;
-use crate::file::fd::FD_CLOEXEC;
-use crate::file::open_file;
+use crate::errno::{EResult, Errno};
+use crate::file::fd::{FileDescriptorTable, FD_CLOEXEC};
 use crate::file::open_file::OpenFile;
+use crate::file::path::Path;
+use crate::file::path::PathBuf;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::Mode;
+use crate::file::{open_file, vfs};
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::syscall::util::at;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::ffi::c_int;
 use macros::syscall;
 
 // TODO Implement all flags
-// TODO clean up: multiple locks to process
 
+// TODO rewrite doc
 /// Returns the file at the given path.
 ///
 /// Arguments:
@@ -51,36 +54,32 @@ use macros::syscall;
 ///
 /// If the file is to be created, the function uses `mode` to set its permissions.
 fn get_file(
-	dirfd: i32,
-	pathname: SyscallString,
-	flags: i32,
+	fds: &FileDescriptorTable,
+	dirfd: c_int,
+	path: &Path,
+	flags: c_int,
+	rs: ResolutionSettings,
 	mode: Mode,
-) -> Result<Arc<Mutex<File>>, Errno> {
-	// Tells whether to follow symbolic links on the last component of the path.
-	let follow_links = flags & open_file::O_NOFOLLOW == 0;
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mem_space_guard = mem_space.lock();
-
-	let pathname = pathname
-		.get(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-
-	if flags & open_file::O_CREAT != 0 {
-		util::create_file_at(
-			proc,
-			dirfd,
-			pathname,
-			mode,
-			FileContent::Regular,
-			follow_links,
-			0,
-		)
-	} else {
-		util::get_file_at(proc, dirfd, pathname, follow_links, 0)
+) -> EResult<Arc<Mutex<File>>> {
+	let create = flags & open_file::O_CREAT != 0;
+	let resolved = at::get_file(fds, rs, dirfd, path, flags)?;
+	match resolved {
+		Resolved::Found(file) => Ok(file),
+		Resolved::Creatable {
+			parent,
+			name,
+		} if create => {
+			let parent = parent.lock();
+			let name = name.try_into()?;
+			vfs::create_file(
+				&mut *parent,
+				name,
+				&rs.access_profile,
+				mode,
+				FileContent::Regular,
+			)
+		}
+		_ => Err(errno!(ENOENT)),
 	}
 }
 
@@ -91,27 +90,46 @@ pub fn openat(
 	flags: c_int,
 	mode: Mode,
 ) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let ap = proc_mutex.lock().access_profile;
+	let (rs, path, fds_mutex) = {
+		let proc_mutex = Process::current_assert();
+		let proc = proc_mutex.lock();
 
-	// Get the file
-	let file_mutex = get_file(dirfd, pathname, flags, mode)?;
-	let mut file = file_mutex.lock();
+		let follow_link = flags & open_file::O_NOFOLLOW == 0;
+		let rs = ResolutionSettings::for_process(&*proc, follow_link);
 
-	// Handle flags
-	super::open::handle_flags(&mut file, flags, &ap)?;
-	drop(file);
+		let mem_space = proc.get_mem_space().unwrap().clone();
+		let mem_space_guard = mem_space.lock();
+
+		let pathname = pathname
+			.get(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
+		let path = PathBuf::try_from(pathname)?;
+
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
+
+		(rs, path, fds_mutex)
+	};
+
+	let mut fds = fds_mutex.lock();
+
+	// Get file
+	let file_mutex = get_file(&fds, dirfd, &path, flags, rs, mode)?;
+	{
+		let mut file = file_mutex.lock();
+		super::open::handle_flags(&mut file, flags, &rs.access_profile)?;
+	}
 
 	let open_file = OpenFile::new(file_mutex, flags)?;
 
+	// Create FD
 	let mut fd_flags = 0;
 	if flags & open_file::O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-	let proc = proc_mutex.lock();
-	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-	let mut fds = fds_mutex.lock();
 	let fd = fds.create_fd(fd_flags, open_file)?;
+	let fd_id = fd.get_id();
 
-	Ok(fd.get_id() as _)
+	// TODO flush file? (see `open` syscall)
+
+	Ok(fd_id as _)
 }
