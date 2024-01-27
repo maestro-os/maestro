@@ -15,7 +15,7 @@ use macros::syscall;
 
 #[syscall]
 pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
-	let (old_path, mut new_parent_path, mut rs) = {
+	let (old_path, mut new_path, mut rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -30,16 +30,20 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let new_parent_path = PathBuf::try_from(newpath)?;
+		let new_path = PathBuf::try_from(newpath)?;
 
 		let rs = ResolutionSettings::for_process(&proc, false);
-		(old_path, new_parent_path, rs)
+		(old_path, new_path, rs)
 	};
-	let new_name = new_parent_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 
 	let old_mutex = vfs::get_file_from_path(&old_path, &rs)?;
 	let mut old = old_mutex.lock();
+	// Cannot rename mountpoint
+	if old.is_mountpoint() {
+		return Err(errno!(EBUSY));
+	}
 
+	let new_parent_path = new_path.parent().ok_or_else(|| errno!(ENOENT))?;
 	let new_parent_mutex = vfs::get_file_from_path(
 		&new_parent_path,
 		&ResolutionSettings {
@@ -48,6 +52,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		},
 	)?;
 	let mut new_parent = new_parent_mutex.lock();
+	let new_name = new_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 
 	// TODO Check permissions if sticky bit is set
 

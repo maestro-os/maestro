@@ -4,8 +4,8 @@ pub mod content;
 pub mod node;
 
 use crate::errno;
-use crate::errno::AllocError;
 use crate::errno::Errno;
+use crate::errno::{AllocError, EResult};
 use crate::file::fs::kernfs::node::DummyKernFSNode;
 use crate::file::fs::Filesystem;
 use crate::file::fs::Statfs;
@@ -416,7 +416,7 @@ impl Filesystem for KernFS {
 		_: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<u16, Errno> {
+	) -> EResult<(u16, INode)> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -466,7 +466,7 @@ impl Filesystem for KernFS {
 			oom::wrap(|| self.remove_node(inode).map_err(|_| AllocError));
 		}
 
-		Ok(links)
+		Ok((links, inode))
 	}
 
 	fn read_node(

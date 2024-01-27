@@ -28,7 +28,7 @@ mod directory_entry;
 mod inode;
 
 use crate::errno;
-use crate::errno::Errno;
+use crate::errno::{EResult, Errno};
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs::Statfs;
@@ -1113,7 +1113,7 @@ impl Filesystem for Ext2Fs {
 		io: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<u16, Errno> {
+	) -> EResult<(u16, INode)> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -1184,7 +1184,7 @@ impl Filesystem for Ext2Fs {
 		// Writing the inode
 		inode_.write(inode, &self.superblock, io)?;
 
-		Ok(inode_.hard_links_count)
+		Ok((inode_.hard_links_count, inode as _))
 	}
 
 	fn read_node(
