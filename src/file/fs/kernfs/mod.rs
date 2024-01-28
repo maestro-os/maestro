@@ -36,7 +36,8 @@ pub const ROOT_INODE: INode = 0;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
-/// Structure representing a kernel file system.
+/// A kernel file system.
+#[derive(Debug)]
 pub struct KernFS {
 	/// The name of the filesystem.
 	name: String,

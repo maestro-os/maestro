@@ -17,6 +17,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 
 /// Structure representing the mounts node of the procfs.
+#[derive(Debug)]
 pub struct Mounts {
 	/// The PID of the process.
 	pub pid: Pid,

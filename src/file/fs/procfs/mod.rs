@@ -43,9 +43,10 @@ use sys_dir::SysDir;
 use uptime::Uptime;
 use version::Version;
 
-/// Structure representing the procfs.
+/// A procfs.
 ///
 /// On the inside, the procfs works using a kernfs.
+#[derive(Debug)]
 pub struct ProcFS {
 	/// The kernfs.
 	fs: KernFS,

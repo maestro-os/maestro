@@ -14,7 +14,8 @@ use crate::process::Process;
 use crate::util::io::IO;
 use crate::util::TryClone;
 
-/// Struture representing the `exe` node.
+/// Structure representing the `exe` node.
+#[derive(Debug)]
 pub struct Exe {
 	/// The PID of the process.
 	pub pid: Pid,

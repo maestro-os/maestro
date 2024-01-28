@@ -245,6 +245,7 @@ fn zero_blocks(
 
 /// The ext2 superblock structure.
 #[repr(C, packed)]
+#[derive(Debug)]
 pub struct Superblock {
 	/// Total number of inodes in the filesystem.
 	total_inodes: u32,
@@ -650,7 +651,8 @@ impl Superblock {
 	}
 }
 
-/// Structure representing a instance of the ext2 filesystem.
+/// An instance of the ext2 filesystem.
+#[derive(Debug)]
 struct Ext2Fs {
 	/// The filesystem's superblock.
 	superblock: Superblock,

@@ -22,6 +22,7 @@ use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
 use core::any::Any;
+use core::fmt::Debug;
 
 /// This structure is used in the f_fsid field of statfs. It is currently
 /// unused.
@@ -61,7 +62,7 @@ pub struct Statfs {
 }
 
 /// Trait representing a filesystem.
-pub trait Filesystem: Any {
+pub trait Filesystem: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
 	/// Tells whether the filesystem is mounted in read-only.

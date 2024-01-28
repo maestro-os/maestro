@@ -10,6 +10,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 
 /// The uptime node.
+#[derive(Debug)]
 pub struct Uptime {}
 
 impl KernFSNode for Uptime {

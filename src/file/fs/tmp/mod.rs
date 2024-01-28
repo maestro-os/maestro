@@ -38,9 +38,10 @@ fn get_used_size<N: KernFSNode>(node: &N) -> usize {
 	size_of::<N>() + node.get_size() as usize
 }
 
-/// Structure representing the temporary file system.
+/// A temporary file system.
 ///
 /// On the inside, the tmpfs works using a kernfs.
+#[derive(Debug)]
 pub struct TmpFS {
 	/// The maximum amount of memory in bytes the filesystem can use.
 	max_size: usize,

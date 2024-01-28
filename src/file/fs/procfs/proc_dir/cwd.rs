@@ -14,7 +14,8 @@ use crate::process::Process;
 use crate::util::io::IO;
 use crate::util::TryClone;
 
-/// Struture representing the `cwd` node.
+/// Structure representing the `cwd` node.
+#[derive(Debug)]
 pub struct Cwd {
 	/// The PID of the process.
 	pub pid: Pid,

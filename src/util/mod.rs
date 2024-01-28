@@ -140,7 +140,7 @@ impl<'a> fmt::Display for DisplayableStr<'a> {
 
 impl<'a> fmt::Debug for DisplayableStr<'a> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-		fmt::Display::fmt(self, fmt)
+		write!(fmt, "\"{self}\"")
 	}
 }
 
