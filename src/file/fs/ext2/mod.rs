@@ -765,6 +765,10 @@ impl Filesystem for Ext2Fs {
 		true
 	}
 
+	fn get_root_inode(&self) -> INode {
+		inode::ROOT_DIRECTORY_INODE as _
+	}
+
 	fn get_stat(&self, _io: &mut dyn IO) -> Result<Statfs, Errno> {
 		let fragment_size = math::pow2(self.superblock.fragment_size_log + 10);
 
@@ -782,10 +786,6 @@ impl Filesystem for Ext2Fs {
 			f_frsize: fragment_size,
 			f_flags: 0, // TODO
 		})
-	}
-
-	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {
-		Ok(inode::ROOT_DIRECTORY_INODE as _)
 	}
 
 	fn get_inode(

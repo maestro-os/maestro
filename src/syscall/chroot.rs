@@ -22,7 +22,7 @@
 use crate::errno::Errno;
 use crate::file::path::Path;
 use crate::file::vfs::ResolutionSettings;
-use crate::file::{FileLocation, FileType};
+use crate::file::{mountpoint, FileType};
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::vfs;
@@ -38,7 +38,7 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 	}
 
 	let rs = ResolutionSettings {
-		root: FileLocation::root(),
+		root: mountpoint::root_location(),
 		..ResolutionSettings::for_process(&proc, true)
 	};
 

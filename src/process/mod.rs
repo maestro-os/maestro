@@ -528,6 +528,7 @@ impl Process {
 
 			fds_table
 		};
+		let root_loc = mountpoint::root_location();
 
 		let process = Self {
 			pid: pid::INIT_PID,
@@ -566,8 +567,8 @@ impl Process {
 			user_stack: None,
 			kernel_stack: None,
 
-			cwd: Arc::new((PathBuf::root(), FileLocation::root()))?,
-			chroot: FileLocation::root(),
+			cwd: Arc::new((PathBuf::root(), root_loc.clone()))?,
+			chroot: root_loc,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,

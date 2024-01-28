@@ -143,12 +143,12 @@ impl Filesystem for TmpFS {
 		self.fs.use_cache()
 	}
 
-	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
-		self.fs.get_stat(io)
+	fn get_root_inode(&self) -> INode {
+		self.fs.get_root_inode()
 	}
 
-	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno> {
-		self.fs.get_root_inode(io)
+	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
+		self.fs.get_stat(io)
 	}
 
 	fn get_inode(

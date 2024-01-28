@@ -194,8 +194,8 @@ pub enum FileLocation {
 }
 
 impl FileLocation {
-	/// Returns the location of the VFS's root.
-	pub const fn root() -> Self {
+	/// Dummy location, to be used by the root mountpoint.
+	pub const fn dummy() -> Self {
 		Self::Filesystem {
 			mountpoint_id: 0,
 			inode: 0,
@@ -949,8 +949,13 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 		},
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	let mp_id = mountpoint::create(mount_source, None, 0, PathBuf::root(), FileLocation::root())?;
-	assert_eq!(mp_id, FileLocation::root().get_mountpoint_id().unwrap());
+	mountpoint::create(
+		mount_source,
+		None,
+		0,
+		PathBuf::root(),
+		FileLocation::dummy(),
+	)?;
 
 	Ok(())
 }
