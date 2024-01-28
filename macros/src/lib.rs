@@ -12,8 +12,7 @@ mod util;
 use crate::util::has_repr_c;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::parse_macro_input;
-use syn::DeriveInput;
+use syn::{parse_macro_input, DeriveInput};
 
 /// Implements `AnyRepr`, making necessary safety checks.
 #[proc_macro_derive(AnyRepr)]

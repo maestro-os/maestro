@@ -1,20 +1,13 @@
 //! This module implements the macro used to declare a system call.
 
 use proc_macro::TokenStream;
-use proc_macro2::Ident;
-use proc_macro2::Span;
+use proc_macro2::{Ident, Span};
 use quote::quote;
 use std::iter;
-use syn::parse_macro_input;
-use syn::AngleBracketedGenericArguments;
-use syn::FnArg;
-use syn::ItemFn;
-use syn::Path;
-use syn::PathArguments;
-use syn::PathSegment;
-use syn::Token;
-use syn::Type;
-use syn::TypePath;
+use syn::{
+	parse_macro_input, AngleBracketedGenericArguments, FnArg, ItemFn, Path, PathArguments,
+	PathSegment, Token, Type, TypePath,
+};
 
 /// The list of register for each argument, in order.
 const REGS: [&str; 6] = ["ebx", "ecx", "edx", "esi", "edi", "ebp"];
