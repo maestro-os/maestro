@@ -347,7 +347,7 @@ pub fn get_file_from_path_opt(
 
 /// Returns the file at the given `path`.
 ///
-/// If the file does not exist, the function returns [`ENOENT`].
+/// If the file does not exist, the function returns [`errno::ENOENT`].
 pub fn get_file_from_path(
 	path: &Path,
 	resolution_settings: &ResolutionSettings,
