@@ -9,6 +9,7 @@ use super::{fs, FileLocation};
 use crate::device;
 use crate::device::DeviceID;
 use crate::device::DeviceType;
+use crate::errno;
 use crate::errno::{AllocResult, EResult};
 use crate::file::vfs::ResolutionSettings;
 use crate::util::container::hashmap::HashMap;
@@ -369,7 +370,7 @@ pub static LOC_TO_ID: Mutex<HashMap<FileLocation, u32>> = Mutex::new(HashMap::ne
 
 /// Creates a new mountpoint.
 ///
-/// If a mountpoint is already present at the same path, the function fails with [`EINVAL`].
+/// If a mountpoint is already present at the same path, the function fails with [`errno::EINVAL`].
 ///
 /// Arguments:
 /// - `source` is the source of the mountpoint.
@@ -432,9 +433,9 @@ pub fn create(
 ///
 /// Data is synchronized to the associated storage device, if any, before removing the mountpoint.
 ///
-/// If the mountpoint doesn't exist, the function returns [`EINVAL`].
+/// If the mountpoint doesn't exist, the function returns [`errno::EINVAL`].
 ///
-/// If the mountpoint is busy, the function returns [`EBUSY`].
+/// If the mountpoint is busy, the function returns [`errno::EBUSY`].
 pub fn remove(target_location: &FileLocation) -> EResult<()> {
 	let mut loc_to_id = LOC_TO_ID.lock();
 	let mut mount_points = MOUNT_POINTS.lock();
