@@ -1,19 +1,19 @@
 //! This module implements the `self` symlink, which points to the current
 //! process's directory.
 
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::fs::kernfs::content::KernFSContent;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file::path::PathBuf;
-use crate::file::perm;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::FileContent;
-use crate::file::Mode;
-use crate::process::Process;
-use crate::time::unit::Timestamp;
-use crate::util::io::IO;
+use crate::{
+	errno::{EResult, Errno},
+	file::{
+		fs::kernfs::{content::KernFSContent, node::KernFSNode},
+		path::PathBuf,
+		perm,
+		perm::{Gid, Uid},
+		FileContent, Mode,
+	},
+	process::Process,
+	time::unit::Timestamp,
+	util::io::IO,
+};
 
 /// The `self` symlink.
 #[derive(Debug)]

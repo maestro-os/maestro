@@ -9,19 +9,16 @@
 pub mod elf;
 pub mod vdso;
 
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::File;
-use crate::process::mem_space::MemSpace;
-use crate::process::regs::Regs;
-use crate::process::signal::SignalHandler;
-use crate::process::Process;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	errno::{EResult, Errno},
+	file::{vfs::ResolutionSettings, File},
+	process::{mem_space::MemSpace, regs::Regs, signal::SignalHandler, Process},
+	util::{
+		container::{string::String, vec::Vec},
+		lock::{IntMutex, Mutex},
+		ptr::arc::Arc,
+	},
+};
 use core::ffi::c_void;
 
 /// Information to prepare a program image to be executed.

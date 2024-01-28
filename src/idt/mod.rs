@@ -5,10 +5,7 @@
 pub mod pic;
 
 use crate::util;
-use core::arch::asm;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::ptr::addr_of;
+use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
 
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;

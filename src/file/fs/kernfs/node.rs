@@ -1,20 +1,21 @@
 //! This module implements kernfs nodes.
 
 use super::content::KernFSContent;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::perm;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::FileContent;
-use crate::file::Mode;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::Timestamp;
-use crate::time::unit::TimestampScale;
-use crate::util::io::IO;
-use core::any::Any;
-use core::fmt::Debug;
+use crate::{
+	errno::{EResult, Errno},
+	file::{
+		perm,
+		perm::{Gid, Uid},
+		FileContent, Mode,
+	},
+	time::{
+		clock,
+		clock::CLOCK_MONOTONIC,
+		unit::{Timestamp, TimestampScale},
+	},
+	util::io::IO,
+};
+use core::{any::Any, fmt::Debug};
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: Any + Debug + IO {

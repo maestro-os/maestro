@@ -1,13 +1,12 @@
 //! The `umount` system call allows to unmount a filesystem previously mounted
 //! with `mount`.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::{mountpoint, vfs};
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
+use crate::{
+	errno,
+	errno::Errno,
+	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings},
+	process::{mem_space::ptr::SyscallString, Process},
+};
 use macros::syscall;
 
 #[syscall]

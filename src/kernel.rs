@@ -8,7 +8,6 @@
 
 #![feature(asm_const)]
 #![no_std]
-#![allow(internal_features)]
 #![no_main]
 #![feature(allow_internal_unstable)]
 #![feature(array_chunks)]
@@ -35,10 +34,11 @@
 #![feature(once_cell_try)]
 #![feature(iter_intersperse)]
 #![deny(warnings)]
-#![allow(unused_attributes)]
+#![allow(clippy::tabs_in_doc_comments)]
 #![allow(dead_code)]
+#![allow(internal_features)]
+#![allow(unused_attributes)]
 #![allow(unused_macros)]
-#![allow(incomplete_features)]
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
@@ -77,24 +77,19 @@ pub mod tty;
 #[macro_use]
 pub mod util;
 
-use crate::errno::EResult;
-use crate::file::fs::initramfs;
-use crate::file::path::Path;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::logger::LOGGER;
-use crate::memory::vmem;
-use crate::memory::vmem::VMem;
-use crate::process::exec;
-use crate::process::exec::ExecInfo;
-use crate::process::Process;
-use crate::util::boxed::Box;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
-use core::arch::asm;
-use core::ffi::c_void;
-use core::ptr::null;
+use crate::{
+	errno::EResult,
+	file::{fs::initramfs, path::Path, vfs, vfs::ResolutionSettings},
+	logger::LOGGER,
+	memory::{vmem, vmem::VMem},
+	process::{exec, exec::ExecInfo, Process},
+	util::{
+		boxed::Box,
+		container::{string::String, vec::Vec},
+		lock::Mutex,
+	},
+};
+use core::{arch::asm, ffi::c_void, ptr::null};
 use tty::vga;
 
 /// The kernel's name.

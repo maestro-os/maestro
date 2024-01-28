@@ -1,10 +1,7 @@
 //! `_newselect` is similar to `select`.
 
-use super::select::do_select;
-use super::select::FDSet;
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::time::unit::Timeval;
+use super::select::{do_select, FDSet};
+use crate::{errno::Errno, process::mem_space::ptr::SyscallPtr, time::unit::Timeval};
 use core::ffi::c_int;
 use macros::syscall;
 

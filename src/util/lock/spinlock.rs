@@ -3,9 +3,10 @@
 //!
 //! Unless for special cases, other locks should be used instead.
 
-use core::hint;
-use core::sync::atomic::AtomicBool;
-use core::sync::atomic::Ordering;
+use core::{
+	hint,
+	sync::atomic::{AtomicBool, Ordering},
+};
 
 /// A spinlock is a lock that is used to prevent a specific piece of code from
 /// being accessed by more than one thread at a time.

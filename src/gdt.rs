@@ -5,10 +5,7 @@
 //! handle protection rings and load the Task State Segment (TSS).
 
 use crate::memory;
-use core::arch::asm;
-use core::ffi::c_void;
-use core::fmt;
-use core::ptr;
+use core::{arch::asm, ffi::c_void, fmt, ptr};
 
 /// The address in physical memory to the beginning of the GDT.
 const PHYS_PTR: *mut c_void = 0x800 as _;

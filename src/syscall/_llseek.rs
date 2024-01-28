@@ -1,11 +1,11 @@
 //! The `_llseek` system call repositions the offset of a file descriptor.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::util::io::IO;
-use core::ffi::c_uint;
-use core::ffi::c_ulong;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, Process},
+	util::io::IO,
+};
+use core::ffi::{c_uint, c_ulong};
 use macros::syscall;
 
 /// Sets the offset from the given value.

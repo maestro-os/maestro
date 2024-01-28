@@ -13,13 +13,13 @@
 //! correspond with the physical memory, thus it can be located outside of the
 //! kernelspace.
 
-use crate::memory;
-use crate::memory::buddy;
-use crate::memory::memmap;
-use crate::util;
-use crate::util::math;
-use core::cmp::min;
-use core::ffi::c_void;
+use crate::{
+	memory,
+	memory::{buddy, memmap},
+	util,
+	util::math,
+};
+use core::{cmp::min, ffi::c_void};
 
 /// Initializes the memory allocators.
 pub(crate) fn init() {

@@ -27,42 +27,34 @@ mod block_group_descriptor;
 mod directory_entry;
 mod inode;
 
-use crate::errno;
-use crate::errno::{EResult, Errno};
-use crate::file::fs::Filesystem;
-use crate::file::fs::FilesystemType;
-use crate::file::fs::Statfs;
-use crate::file::path::PathBuf;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::DirEntry;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::FileLocation;
-use crate::file::FileType;
-use crate::file::INode;
-use crate::file::Mode;
-use crate::memory::malloc;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::TimestampScale;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::math;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
+use crate::{
+	errno,
+	errno::{EResult, Errno},
+	file::{
+		fs::{Filesystem, FilesystemType, Statfs},
+		path::PathBuf,
+		perm::{Gid, Uid},
+		DirEntry, File, FileContent, FileLocation, FileType, INode, Mode,
+	},
+	memory::malloc,
+	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
+	util::{
+		container::{hashmap::HashMap, string::String, vec::Vec},
+		io::IO,
+		lock::Mutex,
+		math,
+		ptr::arc::Arc,
+		TryClone,
+	},
+};
 use block_group_descriptor::BlockGroupDescriptor;
-use core::cmp::max;
-use core::cmp::min;
-use core::intrinsics::unlikely;
-use core::mem::size_of;
-use core::mem::size_of_val;
-use core::mem::MaybeUninit;
-use core::num::NonZeroUsize;
-use core::slice;
+use core::{
+	cmp::{max, min},
+	intrinsics::unlikely,
+	mem::{size_of, size_of_val, MaybeUninit},
+	num::NonZeroUsize,
+	slice,
+};
 use inode::Ext2INode;
 
 // TODO Take into account user's UID/GID when allocating block/inode to handle

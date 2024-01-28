@@ -8,8 +8,7 @@
 //! When a cursor reaches the end of the linear buffer, it goes back to the
 //! beginning. This is why it's called a "ring".
 
-use core::cmp::min;
-use core::marker::PhantomData;
+use core::{cmp::min, marker::PhantomData};
 
 /// A ring buffer.
 ///

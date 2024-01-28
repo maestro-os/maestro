@@ -1,14 +1,14 @@
 //! The `statfs` system call returns information about a mounted file system.
 
-use crate::errno;
-use crate::errno::{EResult, Errno};
-use crate::file::fs::Statfs;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
+use crate::{
+	errno,
+	errno::{EResult, Errno},
+	file::{fs::Statfs, path::PathBuf, vfs, vfs::ResolutionSettings},
+	process::{
+		mem_space::ptr::{SyscallPtr, SyscallString},
+		Process,
+	},
+};
 use macros::syscall;
 
 pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult<i32> {

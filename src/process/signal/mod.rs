@@ -2,21 +2,21 @@
 
 mod signal_trampoline;
 
-use super::Process;
-use super::State;
-use crate::errno::Errno;
-use crate::file::perm::Uid;
-use crate::process::oom;
-use crate::process::pid::Pid;
-use crate::time::unit::ClockIdT;
-use core::ffi::c_int;
-use core::ffi::c_void;
-use core::fmt;
-use core::fmt::Debug;
-use core::mem::size_of;
-use core::mem::transmute;
-use core::ptr::NonNull;
-use core::slice;
+use super::{Process, State};
+use crate::{
+	errno::Errno,
+	file::perm::Uid,
+	process::{oom, pid::Pid},
+	time::unit::ClockIdT,
+};
+use core::{
+	ffi::{c_int, c_void},
+	fmt,
+	fmt::Debug,
+	mem::{size_of, transmute},
+	ptr::NonNull,
+	slice,
+};
 use signal_trampoline::signal_trampoline;
 
 /// Type representing a signal handler.

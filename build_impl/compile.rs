@@ -3,11 +3,11 @@
 
 use super::util;
 use crate::target::Target;
-use std::io;
-use std::path::Path;
-use std::path::PathBuf;
-use std::process::exit;
-use std::process::Command;
+use std::{
+	io,
+	path::{Path, PathBuf},
+	process::{exit, Command},
+};
 
 /// Compiles the vDSO.
 pub fn compile_vdso(target: &Target, profile: &str) -> io::Result<()> {

@@ -1,8 +1,7 @@
 //! This file implements the configuration file for compilation.
 
 use serde::Deserialize;
-use std::fs;
-use std::io;
+use std::{fs, io};
 
 /// The path to the configuration file.
 pub const PATH: &str = "config.toml";

@@ -1,18 +1,13 @@
 //! The `socketpair` system call creates a pair of file descriptor to an unnamed
 //! socket which can be used for IPC (Inter-Process Communication).
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::buffer;
-use crate::file::buffer::socket::Socket;
-use crate::file::open_file;
-use crate::file::open_file::OpenFile;
-use crate::file::vfs;
-use crate::net::SocketDesc;
-use crate::net::SocketDomain;
-use crate::net::SocketType;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
+use crate::{
+	errno,
+	errno::Errno,
+	file::{buffer, buffer::socket::Socket, open_file, open_file::OpenFile, vfs},
+	net::{SocketDesc, SocketDomain, SocketType},
+	process::{mem_space::ptr::SyscallPtr, Process},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

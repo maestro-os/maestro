@@ -1,7 +1,6 @@
 //! Once-initialized objects.
 
-use core::cell::UnsafeCell;
-use core::mem::MaybeUninit;
+use core::{cell::UnsafeCell, mem::MaybeUninit};
 
 /// An object that is meant to be initialized once at boot, then accessed in read-only.
 ///

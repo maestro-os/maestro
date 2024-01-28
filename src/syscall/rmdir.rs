@@ -2,13 +2,11 @@
 //!
 //! If no link remain to the directory, the function also removes it.
 
-use crate::errno::Errno;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::FileContent;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
+use crate::{
+	errno::Errno,
+	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileContent},
+	process::{mem_space::ptr::SyscallString, Process},
+};
 use macros::syscall;
 
 #[syscall]

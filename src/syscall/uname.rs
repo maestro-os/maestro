@@ -1,9 +1,10 @@
 //! The uname syscall is used to retrieve informations about the system.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::util;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, Process},
+	util,
+};
 use macros::syscall;
 
 /// The length of a field of the utsname structure.

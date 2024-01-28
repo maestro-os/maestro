@@ -1,21 +1,23 @@
 //! This module implements an `Arc`, similar to the one present in the Rust standard library.
 
-use crate::errno::{AllocError, AllocResult};
-use crate::memory::malloc;
-use crate::util::boxed::Box;
-use core::alloc::Layout;
-use core::borrow::Borrow;
-use core::intrinsics::size_of_val;
-use core::marker::Unsize;
-use core::mem::ManuallyDrop;
-use core::ops::CoerceUnsized;
-use core::ops::Deref;
-use core::ops::DispatchFromDyn;
-use core::ptr::drop_in_place;
-use core::ptr::NonNull;
-use core::sync::atomic;
-use core::sync::atomic::AtomicUsize;
-use core::{fmt, mem, ptr};
+use crate::{
+	errno::{AllocError, AllocResult},
+	memory::malloc,
+	util::boxed::Box,
+};
+use core::{
+	alloc::Layout,
+	borrow::Borrow,
+	fmt,
+	intrinsics::size_of_val,
+	marker::Unsize,
+	mem,
+	mem::ManuallyDrop,
+	ops::{CoerceUnsized, Deref, DispatchFromDyn},
+	ptr,
+	ptr::{drop_in_place, NonNull},
+	sync::{atomic, atomic::AtomicUsize},
+};
 
 // TODO check atomic orderings
 

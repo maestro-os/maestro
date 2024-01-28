@@ -1,20 +1,17 @@
 //! The GUID Partition Table (GPT) is a standard partitions table format. It is
 //! a successor of MBR.
 
-use super::Partition;
-use super::Table;
-use crate::crypto::checksum::compute_crc32;
-use crate::crypto::checksum::compute_crc32_lookuptable;
-use crate::device::storage::StorageInterface;
-use crate::errno;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::util;
-use crate::util::boxed::Box;
-use crate::util::container::vec::Vec;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::slice;
+use super::{Partition, Table};
+use crate::{
+	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
+	device::storage::StorageInterface,
+	errno,
+	errno::Errno,
+	memory::malloc,
+	util,
+	util::{boxed::Box, container::vec::Vec},
+};
+use core::{mem::size_of, num::NonZeroUsize, slice};
 
 /// The signature in the GPT header.
 const GPT_SIGNATURE: &[u8] = b"EFI PART";

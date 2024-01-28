@@ -10,20 +10,19 @@
 //! specify the address of the device's registers in memory, allowing
 //! communications through DMA (Direct Memory Access).
 
-use crate::device::bar::BARType;
-use crate::device::bar::BAR;
-use crate::device::driver;
-use crate::device::manager;
-use crate::device::manager::PhysicalDevice;
-use crate::device::DeviceManager;
-use crate::errno::{CollectResult, EResult, Errno};
-use crate::io;
-use crate::memory;
-use crate::memory::mmio::MMIO;
-use crate::util::container::vec::Vec;
-use crate::util::math;
-use core::cmp::min;
-use core::mem::size_of;
+use crate::{
+	device::{
+		bar::{BARType, BAR},
+		driver, manager,
+		manager::PhysicalDevice,
+		DeviceManager,
+	},
+	errno::{CollectResult, EResult, Errno},
+	io, memory,
+	memory::mmio::MMIO,
+	util::{container::vec::Vec, math},
+};
+use core::{cmp::min, mem::size_of};
 
 /// The port used to specify the configuration address.
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;

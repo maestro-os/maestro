@@ -1,13 +1,8 @@
 //! The `munmap` system call allows the process to free memory that was
 //! allocated with `mmap`.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::memory;
-use crate::process::Process;
-use crate::util::math;
-use core::ffi::c_void;
-use core::num::NonZeroUsize;
+use crate::{errno, errno::Errno, memory, process::Process, util::math};
+use core::{ffi::c_void, num::NonZeroUsize};
 use macros::syscall;
 
 #[syscall]

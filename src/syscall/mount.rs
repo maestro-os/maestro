@@ -1,19 +1,18 @@
 //! The mount system call allows to mount a filesystem on the system.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::fs;
-use crate::file::mountpoint;
-use crate::file::mountpoint::MountSource;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::FileType;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use core::ffi::c_ulong;
-use core::ffi::c_void;
+use crate::{
+	errno,
+	errno::Errno,
+	file::{
+		fs, mountpoint, mountpoint::MountSource, path::PathBuf, vfs, vfs::ResolutionSettings,
+		FileType,
+	},
+	process::{
+		mem_space::ptr::{SyscallPtr, SyscallString},
+		Process,
+	},
+};
+use core::ffi::{c_ulong, c_void};
 use macros::syscall;
 
 #[syscall]

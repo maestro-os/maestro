@@ -5,24 +5,18 @@
 //! are not used.
 
 use super::StorageInterface;
-use crate::device;
-use crate::device::id;
-use crate::device::Device;
-use crate::device::DeviceHandle;
-use crate::device::DeviceID;
-use crate::device::DeviceType;
-use crate::errno;
-use crate::errno::{EResult, Errno};
-use crate::file::path::PathBuf;
-use crate::memory::malloc;
-use crate::process::mem_space::MemSpace;
-use crate::syscall::ioctl;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::ptr::arc::Arc;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
-use core::num::NonZeroU64;
+use crate::{
+	device,
+	device::{id, Device, DeviceHandle, DeviceID, DeviceType},
+	errno,
+	errno::{EResult, Errno},
+	file::path::PathBuf,
+	memory::malloc,
+	process::mem_space::MemSpace,
+	syscall::ioctl,
+	util::{io::IO, lock::IntMutex, ptr::arc::Arc},
+};
+use core::{ffi::c_void, mem::ManuallyDrop, num::NonZeroU64};
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;

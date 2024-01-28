@@ -1,24 +1,25 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
-use super::fs::Filesystem;
-use super::fs::FilesystemType;
-use super::path::{Path, PathBuf};
-use super::vfs;
-use super::FileContent;
-use super::{fs, FileLocation};
-use crate::device;
-use crate::device::DeviceID;
-use crate::device::DeviceType;
-use crate::errno;
-use crate::errno::{AllocResult, EResult};
-use crate::file::vfs::ResolutionSettings;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::io::DummyIO;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
+use super::{
+	fs,
+	fs::{Filesystem, FilesystemType},
+	path::{Path, PathBuf},
+	vfs, FileContent, FileLocation,
+};
+use crate::{
+	device,
+	device::{DeviceID, DeviceType},
+	errno,
+	errno::{AllocResult, EResult},
+	file::vfs::ResolutionSettings,
+	util::{
+		container::{hashmap::HashMap, string::String},
+		io::{DummyIO, IO},
+		lock::Mutex,
+		ptr::arc::Arc,
+		TryClone,
+	},
+};
 use core::fmt;
 
 /// Permits mandatory locking on files.

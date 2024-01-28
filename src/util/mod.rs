@@ -12,13 +12,14 @@ pub mod math;
 pub mod ptr;
 
 use crate::errno::AllocError;
-use core::cmp::min;
-use core::ffi::c_int;
-use core::ffi::c_void;
-use core::fmt;
-use core::fmt::Write;
-use core::mem::size_of;
-use core::slice;
+use core::{
+	cmp::min,
+	ffi::{c_int, c_void},
+	fmt,
+	fmt::Write,
+	mem::size_of,
+	slice,
+};
 
 // C functions required by LLVM
 extern "C" {

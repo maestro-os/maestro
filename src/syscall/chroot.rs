@@ -1,13 +1,12 @@
 //! The `chroot` system call allows to virtually redefine the system's root for
 //! the current process.
 
-use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::{mountpoint, FileType};
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::vfs;
+use crate::{
+	errno::Errno,
+	file::{mountpoint, path::Path, vfs::ResolutionSettings, FileType},
+	process::{mem_space::ptr::SyscallString, Process},
+	vfs,
+};
 use macros::syscall;
 
 #[syscall]

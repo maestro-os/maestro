@@ -1,8 +1,6 @@
 //! The `close` system call closes the given file descriptor.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::process::Process;
+use crate::{errno, errno::Errno, process::Process};
 use core::ffi::c_int;
 use macros::syscall;
 

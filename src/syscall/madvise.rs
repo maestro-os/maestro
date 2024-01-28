@@ -2,8 +2,7 @@
 //! memory in order to allow optimizations.
 
 use crate::errno::Errno;
-use core::ffi::c_int;
-use core::ffi::c_void;
+use core::ffi::{c_int, c_void};
 use macros::syscall;
 
 #[syscall]

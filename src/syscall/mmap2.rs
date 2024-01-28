@@ -3,8 +3,7 @@
 
 use super::mmap;
 use crate::errno::Errno;
-use core::ffi::c_int;
-use core::ffi::c_void;
+use core::ffi::{c_int, c_void};
 use macros::syscall;
 
 // TODO Check last argument type

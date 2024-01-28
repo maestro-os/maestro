@@ -2,18 +2,18 @@
 //! uses the hash of the key to quickly get the bucket storing the value.
 
 use super::vec::Vec;
-use crate::errno::{AllocResult, CollectResult};
-use crate::util::AllocError;
-use crate::util::TryClone;
-use core::borrow::Borrow;
-use core::fmt;
-use core::hash::Hash;
-use core::hash::Hasher;
-use core::iter::FusedIterator;
-use core::iter::TrustedLen;
-use core::mem::size_of_val;
-use core::ops::Index;
-use core::ops::IndexMut;
+use crate::{
+	errno::{AllocResult, CollectResult},
+	util::{AllocError, TryClone},
+};
+use core::{
+	borrow::Borrow,
+	fmt,
+	hash::{Hash, Hasher},
+	iter::{FusedIterator, TrustedLen},
+	mem::size_of_val,
+	ops::{Index, IndexMut},
+};
 
 /// The default number of buckets in a hashmap.
 const DEFAULT_BUCKETS_COUNT: usize = 64;

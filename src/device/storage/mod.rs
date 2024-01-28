@@ -5,39 +5,38 @@ pub mod partition;
 pub mod pata;
 pub mod ramdisk;
 
-use crate::device;
-use crate::device::bus::pci;
-use crate::device::id;
-use crate::device::id::MajorBlock;
-use crate::device::manager::DeviceManager;
-use crate::device::manager::PhysicalDevice;
-use crate::device::Device;
-use crate::device::DeviceHandle;
-use crate::device::DeviceID;
-use crate::device::DeviceType;
-use crate::errno;
-use crate::errno::EResult;
-use crate::file::path::{Path, PathBuf};
-use crate::file::Mode;
-use crate::memory::malloc;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::MemSpace;
-use crate::syscall::ioctl;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
-use crate::util::math;
-use crate::util::ptr::arc::Arc;
-use crate::util::ptr::arc::Weak;
-use crate::util::TryClone;
-use core::cmp::min;
-use core::ffi::c_uchar;
-use core::ffi::c_ulong;
-use core::ffi::c_ushort;
-use core::ffi::c_void;
-use core::num::NonZeroU64;
-use core::num::NonZeroUsize;
+use crate::{
+	device,
+	device::{
+		bus::pci,
+		id,
+		id::MajorBlock,
+		manager::{DeviceManager, PhysicalDevice},
+		Device, DeviceHandle, DeviceID, DeviceType,
+	},
+	errno,
+	errno::EResult,
+	file::{
+		path::{Path, PathBuf},
+		Mode,
+	},
+	memory::malloc,
+	process::mem_space::{ptr::SyscallPtr, MemSpace},
+	syscall::ioctl,
+	util::{
+		container::vec::Vec,
+		io::IO,
+		lock::{IntMutex, Mutex},
+		math,
+		ptr::arc::{Arc, Weak},
+		TryClone,
+	},
+};
+use core::{
+	cmp::min,
+	ffi::{c_uchar, c_ulong, c_ushort, c_void},
+	num::{NonZeroU64, NonZeroUsize},
+};
 use partition::Partition;
 
 /// The major number for storage devices.

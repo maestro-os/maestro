@@ -9,15 +9,16 @@
 //! If a chunk is not allocated, it is stored in a free list, stored by size.
 
 use super::block::Block;
-use crate::errno::AllocResult;
-use crate::util;
-use core::cmp::{max, min};
-use core::ffi::c_void;
-use core::intrinsics::unlikely;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::ptr;
-use core::ptr::{addr_of_mut, NonNull};
+use crate::{errno::AllocResult, util};
+use core::{
+	cmp::{max, min},
+	ffi::c_void,
+	intrinsics::unlikely,
+	mem::size_of,
+	num::NonZeroUsize,
+	ptr,
+	ptr::{addr_of_mut, NonNull},
+};
 
 /// The magic number for every chunks
 #[cfg(config_debug_malloc_magic)]

@@ -1,11 +1,13 @@
 //! This module implements system clocks.
 
 use super::AtomicTimestamp;
-use crate::errno::EResult;
-use crate::time::unit::ClockIdT;
-use crate::time::unit::TimeUnit;
-use crate::time::Timestamp;
-use crate::time::TimestampScale;
+use crate::{
+	errno::EResult,
+	time::{
+		unit::{ClockIdT, TimeUnit},
+		Timestamp, TimestampScale,
+	},
+};
 use core::cmp::max;
 
 /// System clock ID

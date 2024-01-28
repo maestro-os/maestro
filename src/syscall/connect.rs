@@ -1,12 +1,11 @@
 //! The `connect` system call connects a socket to a distant host.
 
-use crate::errno::Errno;
-use crate::file::buffer;
-use crate::file::buffer::socket::Socket;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::Process;
-use core::any::Any;
-use core::ffi::c_int;
+use crate::{
+	errno::Errno,
+	file::{buffer, buffer::socket::Socket},
+	process::{mem_space::ptr::SyscallSlice, Process},
+};
+use core::{any::Any, ffi::c_int};
 use macros::syscall;
 
 /// The implementation of the `connect` syscall.

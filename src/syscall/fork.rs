@@ -2,10 +2,11 @@
 //! process. Execution resumes at the same location for both processes but the
 //! return value is different to allow differentiation.
 
-use crate::errno::Errno;
-use crate::process::ForkOptions;
-use crate::process::Process;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	errno::Errno,
+	process::{ForkOptions, Process},
+	util::ptr::arc::Arc,
+};
 use macros::syscall;
 
 #[syscall]

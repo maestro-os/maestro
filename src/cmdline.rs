@@ -1,10 +1,7 @@
 //! Boot-time kernel command line arguments parsing.
 
-use crate::tty::vga;
-use crate::util::DisplayableStr;
-use core::cmp::min;
-use core::fmt;
-use core::str;
+use crate::{tty::vga, util::DisplayableStr};
+use core::{cmp::min, fmt, str};
 
 /// Parses the number represented by the string in the given slice.
 ///

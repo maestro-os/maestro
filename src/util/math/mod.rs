@@ -5,13 +5,7 @@
 
 pub mod rational;
 
-use core::ops::Add;
-use core::ops::Div;
-use core::ops::Mul;
-use core::ops::Neg;
-use core::ops::Rem;
-use core::ops::Shl;
-use core::ops::Sub;
+use core::ops::{Add, Div, Mul, Neg, Rem, Shl, Sub};
 
 /// Computes `ceil(n0 / n1)` without using floating point numbers.
 #[inline(always)]

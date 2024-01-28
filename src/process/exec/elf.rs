@@ -1,44 +1,42 @@
 //! Implementation of ELF programs execution with respect to the **System V ABI**.
 
 use super::vdso;
-use crate::cpu;
-use crate::elf;
-use crate::elf::parser::ELFParser;
-use crate::elf::relocation::{ELF32Rel, ELF32Rela, Relocation};
-use crate::elf::ELF32ProgramHeader;
-use crate::errno;
-use crate::errno::AllocError;
-use crate::errno::Errno;
-use crate::exec::vdso::MappedVDSO;
-use crate::file::path::Path;
-use crate::file::perm::AccessProfile;
-use crate::file::vfs;
-use crate::file::File;
-use crate::memory;
-use crate::memory::vmem;
-use crate::process;
-use crate::process::exec::ExecInfo;
-use crate::process::exec::Executor;
-use crate::process::exec::ProgramImage;
-use crate::process::mem_space;
-use crate::process::mem_space::MapConstraint;
-use crate::process::mem_space::MapResidence;
-use crate::process::mem_space::MemSpace;
-use crate::process::EResult;
-use crate::util;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::math;
-use crate::util::TryClone;
-use core::cmp::max;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::ptr;
-use core::ptr::null;
-use core::slice;
+use crate::{
+	cpu, elf,
+	elf::{
+		parser::ELFParser,
+		relocation::{ELF32Rel, ELF32Rela, Relocation},
+		ELF32ProgramHeader,
+	},
+	errno,
+	errno::{AllocError, Errno},
+	exec::vdso::MappedVDSO,
+	file::{path::Path, perm::AccessProfile, vfs, File},
+	memory,
+	memory::vmem,
+	process,
+	process::{
+		exec::{ExecInfo, Executor, ProgramImage},
+		mem_space,
+		mem_space::{MapConstraint, MapResidence, MemSpace},
+		EResult,
+	},
+	util,
+	util::{
+		container::{string::String, vec::Vec},
+		io::IO,
+		math, TryClone,
+	},
+};
+use core::{
+	cmp::{max, min},
+	ffi::c_void,
+	mem::size_of,
+	num::NonZeroUsize,
+	ptr,
+	ptr::null,
+	slice,
+};
 
 /// Used to define the end of the entries list.
 const AT_NULL: i32 = 0;

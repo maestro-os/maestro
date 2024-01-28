@@ -1,7 +1,6 @@
 //! Errors handling.
 
-use core::fmt;
-use core::fmt::Formatter;
+use core::{fmt, fmt::Formatter};
 
 /// Structure representing a location at which an errno was raised.
 #[cfg(config_debug_debug)]
@@ -556,11 +555,11 @@ pub type AllocResult<T> = Result<T, AllocError>;
 /// Example for a container called `Container`:
 /// ```rust
 /// impl<T> FromIterator<T> for CollectResult<Container<T>> {
-///     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-///         // here, collect from the iterator and create the container
-///         // if the memory allocation failed, the function can return an `Err` instead
-///         Self(Ok(..))
-///     }
+/// 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+/// 		// here, collect from the iterator and create the container
+/// 		// if the memory allocation failed, the function can return an `Err` instead
+/// 		Self(Ok(..))
+/// 	}
 /// }
 /// ```
 pub struct CollectResult<C>(pub AllocResult<C>);

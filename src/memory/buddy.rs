@@ -8,17 +8,18 @@
 //! size of a frame in pages.
 
 use super::stats;
-use crate::errno::AllocError;
-use crate::errno::AllocResult;
-use crate::memory;
-use crate::util::lock::*;
-use crate::util::math;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::intrinsics::likely;
-use core::mem::size_of;
-use core::mem::MaybeUninit;
-use core::ptr::NonNull;
+use crate::{
+	errno::{AllocError, AllocResult},
+	memory,
+	util::{lock::*, math},
+};
+use core::{
+	cmp::min,
+	ffi::c_void,
+	intrinsics::likely,
+	mem::{size_of, MaybeUninit},
+	ptr::NonNull,
+};
 
 /// Type representing the order of a memory frame.
 pub type FrameOrder = u8;
@@ -595,8 +596,7 @@ pub fn allocated_pages_count() -> usize {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core::ptr::null;
-	use core::slice;
+	use core::{ptr::null, slice};
 
 	#[test_case]
 	fn buddy0() {

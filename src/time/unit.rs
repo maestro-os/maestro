@@ -1,11 +1,10 @@
 //! This module implements types representing timestamps.
 
-use core::cmp::Ordering;
-use core::ffi::c_int;
-use core::ffi::c_long;
-use core::ffi::c_void;
-use core::ops::Add;
-use core::ops::Sub;
+use core::{
+	cmp::Ordering,
+	ffi::{c_int, c_long, c_void},
+	ops::{Add, Sub},
+};
 
 /// Type representing a timestamp in seconds. Equivalent to POSIX's `time_t`.
 pub type Timestamp = u64;

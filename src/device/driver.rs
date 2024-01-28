@@ -1,12 +1,15 @@
 //! A driver is a piece of software allowing to use a specific piece of
 //! hardware. Such a component is often located inside of a kernel module.
 
-use crate::device::manager::PhysicalDevice;
-use crate::errno::AllocResult;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::ptr::arc::Weak;
+use crate::{
+	device::manager::PhysicalDevice,
+	errno::AllocResult,
+	util::{
+		container::vec::Vec,
+		lock::Mutex,
+		ptr::arc::{Arc, Weak},
+	},
+};
 
 /// Trait representing a device driver.
 pub trait Driver {

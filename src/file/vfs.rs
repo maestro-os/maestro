@@ -4,28 +4,23 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' functions directly.
 
-use super::fs::Filesystem;
-use super::mapping;
-use super::mountpoint;
-use super::open_file::OpenFile;
-use super::path::{Component, Path};
-use super::perm;
-use super::perm::{AccessProfile, S_ISVTX};
-use super::File;
-use super::FileContent;
-use super::FileLocation;
-use super::FileType;
-use super::Mode;
-use super::MountPoint;
-use super::{buffer, DeferredRemove, INode};
-use crate::errno::EResult;
-use crate::process::Process;
-use crate::util::container::string::String;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
-use crate::{errno, limits};
+use super::{
+	buffer,
+	fs::Filesystem,
+	mapping, mountpoint,
+	open_file::OpenFile,
+	path::{Component, Path},
+	perm,
+	perm::{AccessProfile, S_ISVTX},
+	DeferredRemove, File, FileContent, FileLocation, FileType, INode, Mode, MountPoint,
+};
+use crate::{
+	errno,
+	errno::EResult,
+	limits,
+	process::Process,
+	util::{container::string::String, io::IO, lock::Mutex, ptr::arc::Arc, TryClone},
+};
 use core::ptr::NonNull;
 
 // TODO implement and use cache

@@ -11,15 +11,14 @@ pub mod hw;
 pub mod timer;
 pub mod unit;
 
-use crate::errno::EResult;
-use crate::event;
-use crate::event::CallbackResult;
-use crate::util::boxed::Box;
-use crate::util::lock::IntMutex;
-use crate::util::math::rational::Rational;
+use crate::{
+	errno::EResult,
+	event,
+	event::CallbackResult,
+	util::{boxed::Box, lock::IntMutex, math::rational::Rational},
+};
 use core::mem::ManuallyDrop;
-use unit::Timestamp;
-use unit::TimestampScale;
+use unit::{Timestamp, TimestampScale};
 
 /// Atomic storage for a timestamp.
 ///

@@ -1,17 +1,12 @@
 //! The pipe2 system call allows to create a pipe with given flags.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::buffer;
-use crate::file::buffer::pipe::PipeBuffer;
-use crate::file::open_file;
-use crate::file::open_file::OpenFile;
-use crate::file::vfs;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryDefault;
+use crate::{
+	errno,
+	errno::Errno,
+	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
+	process::{mem_space::ptr::SyscallPtr, Process},
+	util::{lock::Mutex, ptr::arc::Arc, TryDefault},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

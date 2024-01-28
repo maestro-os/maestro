@@ -1,13 +1,16 @@
 //! The `symlink` syscall allows to create a symbolic link.
 
-use crate::errno::Errno;
-use crate::file::path::{Path, PathBuf};
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::FileContent;
-use crate::limits;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
+use crate::{
+	errno::Errno,
+	file::{
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+		FileContent,
+	},
+	limits,
+	process::{mem_space::ptr::SyscallString, Process},
+};
 use macros::syscall;
 
 #[syscall]

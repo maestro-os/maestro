@@ -1,15 +1,17 @@
 //! The `splice` system call splice data from one pipe to another.
 
-use crate::errno::Errno;
-use crate::file::FileType;
-use crate::memory::malloc;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::util::io::IO;
-use core::cmp::min;
-use core::ffi::c_int;
-use core::ffi::c_uint;
-use core::num::NonZeroUsize;
+use crate::{
+	errno::Errno,
+	file::FileType,
+	memory::malloc,
+	process::{mem_space::ptr::SyscallPtr, Process},
+	util::io::IO,
+};
+use core::{
+	cmp::min,
+	ffi::{c_int, c_uint},
+	num::NonZeroUsize,
+};
 use macros::syscall;
 
 #[syscall]

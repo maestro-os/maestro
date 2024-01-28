@@ -1,11 +1,11 @@
 //! The `shutdown` system call shuts down part of a full-duplex connection.
 
-use crate::errno::Errno;
-use crate::file::buffer;
-use crate::file::buffer::socket::Socket;
-use crate::process::Process;
-use core::any::Any;
-use core::ffi::c_int;
+use crate::{
+	errno::Errno,
+	file::{buffer, buffer::socket::Socket},
+	process::Process,
+};
+use core::{any::Any, ffi::c_int};
 use macros::syscall;
 
 /// Shutdown receive side of the connection.

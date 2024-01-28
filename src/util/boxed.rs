@@ -1,24 +1,23 @@
 //! The `Box` structure allows to hold an object on the heap and handles its
 //! memory properly.
 
-use crate::errno::AllocResult;
-use crate::memory;
-use crate::memory::malloc;
-use crate::util::AllocError;
-use crate::util::TryClone;
-use crate::util::TryDefault;
-use core::borrow::{Borrow, BorrowMut};
-use core::fmt;
-use core::marker::Unsize;
-use core::mem;
-use core::mem::{size_of_val, ManuallyDrop};
-use core::num::NonZeroUsize;
-use core::ops::CoerceUnsized;
-use core::ops::DispatchFromDyn;
-use core::ops::{Deref, DerefMut};
-use core::ptr;
-use core::ptr::drop_in_place;
-use core::ptr::NonNull;
+use crate::{
+	errno::AllocResult,
+	memory,
+	memory::malloc,
+	util::{AllocError, TryClone, TryDefault},
+};
+use core::{
+	borrow::{Borrow, BorrowMut},
+	fmt,
+	marker::Unsize,
+	mem,
+	mem::{size_of_val, ManuallyDrop},
+	num::NonZeroUsize,
+	ops::{CoerceUnsized, Deref, DerefMut, DispatchFromDyn},
+	ptr,
+	ptr::{drop_in_place, NonNull},
+};
 
 /// A `Box` allows to store an object on the heap.
 ///

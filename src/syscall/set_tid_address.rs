@@ -1,11 +1,11 @@
 //! The `set_tid_address` system call sets the `clear_child_tid` attribute with
 //! the given pointer.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use core::ffi::c_int;
-use core::ptr::NonNull;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, Process},
+};
+use core::{ffi::c_int, ptr::NonNull};
 use macros::syscall;
 
 #[syscall]

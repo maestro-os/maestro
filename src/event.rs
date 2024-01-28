@@ -1,19 +1,15 @@
 //! This interface allows to register callbacks for each interrupts.
 
-use crate::crypto::rand;
-use crate::crypto::rand::EntropyPool;
-use crate::errno::AllocResult;
-use crate::idt;
-use crate::idt::pic;
-use crate::process::regs::Regs;
-use crate::process::tss::TSS;
-use crate::util;
-use crate::util::boxed::Box;
-use crate::util::container::vec::Vec;
-use crate::util::lock::*;
-use core::ffi::c_void;
-use core::intrinsics::unlikely;
-use core::ptr::NonNull;
+use crate::{
+	crypto::{rand, rand::EntropyPool},
+	errno::AllocResult,
+	idt,
+	idt::pic,
+	process::{regs::Regs, tss::TSS},
+	util,
+	util::{boxed::Box, container::vec::Vec, lock::*},
+};
+use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.

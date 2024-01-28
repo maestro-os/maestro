@@ -1,21 +1,20 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
-use crate::errno;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::open_file::OpenFile;
-use crate::file::open_file::O_NONBLOCK;
-use crate::limits;
-use crate::process::iovec::IOVec;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::mem_space::MemSpace;
-use crate::process::scheduler;
-use crate::process::signal::Signal;
-use crate::process::Process;
-use crate::util::io;
-use crate::util::io::IO;
-use core::cmp::min;
-use core::ffi::c_int;
+use crate::{
+	errno,
+	errno::{EResult, Errno},
+	file::open_file::{OpenFile, O_NONBLOCK},
+	limits,
+	process::{
+		iovec::IOVec,
+		mem_space::{ptr::SyscallSlice, MemSpace},
+		scheduler,
+		signal::Signal,
+		Process,
+	},
+	util::{io, io::IO},
+};
+use core::{cmp::min, ffi::c_int};
 use macros::syscall;
 
 // TODO Handle blocking writes (and thus, EINTR)

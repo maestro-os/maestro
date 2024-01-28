@@ -2,10 +2,11 @@
 //! of the terminal.
 
 use super::TTY;
-use crate::tty::vga;
-use crate::util;
-use core::cmp::{max, min};
-use core::str;
+use crate::{tty::vga, util};
+use core::{
+	cmp::{max, min},
+	str,
+};
 
 /// The character used to initialize ANSI escape sequences.
 pub const ESCAPE_CHAR: u8 = 0x1b;

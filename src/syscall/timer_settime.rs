@@ -1,10 +1,10 @@
 //! The `timer_settime` system call creates a per-process timer.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::time::unit::ITimerspec32;
-use crate::time::unit::TimerT;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, Process},
+	time::unit::{ITimerspec32, TimerT},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

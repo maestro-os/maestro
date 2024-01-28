@@ -1,20 +1,23 @@
 //! `select` waits for a file descriptor in the given sets to be readable,
 //! writable or for an exception to occur.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::scheduler;
-use crate::process::Process;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::TimeUnit;
-use crate::time::unit::Timeval;
-use crate::util::io;
-use crate::util::io::IO;
-use core::cmp::min;
-use core::ffi::c_int;
-use core::ffi::c_long;
+use crate::{
+	errno::Errno,
+	process::{
+		mem_space::ptr::{SyscallPtr, SyscallSlice},
+		scheduler, Process,
+	},
+	time::{
+		clock,
+		clock::CLOCK_MONOTONIC,
+		unit::{TimeUnit, Timeval},
+	},
+	util::{io, io::IO},
+};
+use core::{
+	cmp::min,
+	ffi::{c_int, c_long},
+};
 use macros::syscall;
 
 /// The number of file descriptors in FDSet.

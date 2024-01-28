@@ -9,9 +9,7 @@
 //!
 //! When the signal handler returns, the process returns directly to execution.
 
-use core::arch::asm;
-use core::ffi::c_void;
-use core::mem::transmute;
+use core::{arch::asm, ffi::c_void, mem::transmute};
 
 /// The signal handler trampoline.
 ///

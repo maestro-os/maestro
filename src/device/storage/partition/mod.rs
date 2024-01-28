@@ -5,9 +5,10 @@ mod gpt;
 mod mbr;
 
 use super::StorageInterface;
-use crate::errno::Errno;
-use crate::util::boxed::Box;
-use crate::util::container::vec::Vec;
+use crate::{
+	errno::Errno,
+	util::{boxed::Box, container::vec::Vec},
+};
 use gpt::Gpt;
 use mbr::MbrTable;
 

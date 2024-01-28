@@ -1,8 +1,7 @@
 //! The `sched_yield` system call ends the current tick of the current process and returns the
 //! control back to the scheduler.
 
-use crate::errno::Errno;
-use crate::process::scheduler;
+use crate::{errno::Errno, process::scheduler};
 use macros::syscall;
 
 #[syscall]

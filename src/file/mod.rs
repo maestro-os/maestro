@@ -18,35 +18,34 @@ pub mod perm;
 pub mod util;
 pub mod vfs;
 
-use crate::device;
-use crate::device::DeviceID;
-use crate::device::DeviceType;
-use crate::errno;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::buffer::pipe::PipeBuffer;
-use crate::file::buffer::socket::Socket;
-use crate::file::fs::Filesystem;
-use crate::file::path::PathBuf;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::process::mem_space::MemSpace;
-use crate::syscall::ioctl;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::Timestamp;
-use crate::time::unit::TimestampScale;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
-use core::cmp::max;
-use core::ffi::c_void;
-use mountpoint::MountPoint;
-use mountpoint::MountSource;
+use crate::{
+	device,
+	device::{DeviceID, DeviceType},
+	errno,
+	errno::{EResult, Errno},
+	file::{
+		buffer::{pipe::PipeBuffer, socket::Socket},
+		fs::Filesystem,
+		path::PathBuf,
+		perm::{Gid, Uid},
+	},
+	process::mem_space::MemSpace,
+	syscall::ioctl,
+	time::{
+		clock,
+		clock::CLOCK_MONOTONIC,
+		unit::{Timestamp, TimestampScale},
+	},
+	util::{
+		container::{hashmap::HashMap, string::String},
+		io::IO,
+		lock::{IntMutex, Mutex},
+		ptr::arc::Arc,
+		TryClone,
+	},
+};
+use core::{cmp::max, ffi::c_void};
+use mountpoint::{MountPoint, MountSource};
 use path::Path;
 use perm::AccessProfile;
 

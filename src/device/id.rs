@@ -1,9 +1,10 @@
 //! This module handles minor/major numbers, including their allocation.
 
-use crate::device::DeviceType;
-use crate::errno::AllocResult;
-use crate::util::container::id_allocator::IDAllocator;
-use crate::util::lock::Mutex;
+use crate::{
+	device::DeviceType,
+	errno::AllocResult,
+	util::{container::id_allocator::IDAllocator, lock::Mutex},
+};
 use core::cell::OnceCell;
 
 /// The number of major numbers.

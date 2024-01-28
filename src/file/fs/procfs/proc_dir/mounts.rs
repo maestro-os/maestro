@@ -1,19 +1,17 @@
 //! This module implements a procfs node which allows to get the list of
 //! mountpoint.
 
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::fs::kernfs::content::KernFSContent;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file::mountpoint;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::FileContent;
-use crate::file::Mode;
-use crate::process::pid::Pid;
-use crate::process::Process;
-use crate::util::container::string::String;
-use crate::util::io::IO;
+use crate::{
+	errno::{EResult, Errno},
+	file::{
+		fs::kernfs::{content::KernFSContent, node::KernFSNode},
+		mountpoint,
+		perm::{Gid, Uid},
+		FileContent, Mode,
+	},
+	process::{pid::Pid, Process},
+	util::{container::string::String, io::IO},
+};
 use core::cmp::min;
 
 /// Structure representing the mounts node of the procfs.

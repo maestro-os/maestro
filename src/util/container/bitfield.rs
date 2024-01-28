@@ -1,10 +1,9 @@
 //! This module stores the Bitfield structure.
 
-use crate::errno::AllocResult;
-use crate::util::bit_size_of;
-use crate::util::container::vec::Vec;
-use crate::util::math::ceil_div;
-use crate::util::TryClone;
+use crate::{
+	errno::AllocResult,
+	util::{bit_size_of, container::vec::Vec, math::ceil_div, TryClone},
+};
 
 /// A bitfield is a data structure meant to contain only boolean values.
 ///

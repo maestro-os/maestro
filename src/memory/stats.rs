@@ -1,8 +1,10 @@
 //! Statistics about memory usage.
 
 use crate::util::lock::Mutex;
-use core::fmt;
-use core::fmt::{Display, Formatter};
+use core::{
+	fmt,
+	fmt::{Display, Formatter},
+};
 
 /// Stores memory usage information. Each field is in KiB.
 pub struct MemInfo {

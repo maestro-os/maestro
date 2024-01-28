@@ -1,7 +1,6 @@
 //! Utility functions for byte representations of types.
 
-use core::mem::size_of;
-use core::slice;
+use core::{mem::size_of, slice};
 
 /// Marker trait for a type valid for any bit representation.
 ///

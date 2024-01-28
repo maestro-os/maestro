@@ -2,8 +2,7 @@
 
 pub mod pci;
 
-use crate::device::manager;
-use crate::errno::Errno;
+use crate::{device::manager, errno::Errno};
 
 /// Detects internal buses and registers them.
 pub fn detect() -> Result<(), Errno> {

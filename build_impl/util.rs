@@ -1,9 +1,9 @@
 //! This module implements utility functions.
 
-use std::fs;
-use std::io;
-use std::path::Path;
-use std::path::PathBuf;
+use std::{
+	fs, io,
+	path::{Path, PathBuf},
+};
 
 fn list_c_files_impl(dir: &Path, paths: &mut Vec<PathBuf>) -> io::Result<()> {
 	for e in fs::read_dir(dir)? {

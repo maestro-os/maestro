@@ -8,9 +8,7 @@
 //! instruction `ltr`.
 
 use crate::gdt;
-use core::arch::asm;
-use core::mem::size_of;
-use core::ptr::addr_of;
+use core::{arch::asm, mem::size_of, ptr::addr_of};
 
 /// The TSS structure.
 #[repr(C, packed)]

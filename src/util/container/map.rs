@@ -1,27 +1,27 @@
 //! This module implements a binary tree container.
 
-use crate::errno::AllocResult;
-use crate::memory;
-use crate::memory::malloc;
-use crate::util::AllocError;
-use crate::util::TryClone;
-use core::cell::UnsafeCell;
-use core::cmp::Ordering;
-use core::fmt;
-use core::intrinsics::likely;
-use core::iter::FusedIterator;
-use core::iter::TrustedLen;
-use core::mem;
-use core::mem::size_of;
-use core::ops::Bound;
-use core::ops::RangeBounds;
-use core::ptr;
-use core::ptr::NonNull;
-
 #[cfg(config_debug_debug)]
 use crate::util::container::vec::Vec;
+use crate::{
+	errno::AllocResult,
+	memory,
+	memory::malloc,
+	util::{AllocError, TryClone},
+};
 #[cfg(config_debug_debug)]
 use core::ffi::c_void;
+use core::{
+	cell::UnsafeCell,
+	cmp::Ordering,
+	fmt,
+	intrinsics::likely,
+	iter::{FusedIterator, TrustedLen},
+	mem,
+	mem::size_of,
+	ops::{Bound, RangeBounds},
+	ptr,
+	ptr::NonNull,
+};
 
 // FIXME abusive use of `'static` lifetime results in UBs
 

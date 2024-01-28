@@ -1,10 +1,8 @@
 //! MMIO (Memory-Mapped I/O) allows to access a device's registers by mapping them on the main
 //! memory.
 
-use super::buddy;
-use super::vmem;
-use crate::errno::AllocResult;
-use crate::process::oom;
+use super::{buddy, vmem};
+use crate::{errno::AllocResult, process::oom};
 use core::ffi::c_void;
 
 /// Default flags for kernelspace in virtual memory.

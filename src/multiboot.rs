@@ -2,13 +2,8 @@
 //! image. It provides essential information such as the memory mapping and the
 //! ELF structure of the kernel.
 
-use crate::memory;
-use crate::util;
-use crate::util::lock::once::OnceInit;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
-use core::ptr::null;
-use core::slice;
+use crate::{memory, util, util::lock::once::OnceInit};
+use core::{ffi::c_void, mem::ManuallyDrop, ptr::null, slice};
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;

@@ -2,9 +2,7 @@
 //!
 //! The kernel only support binary CPIO, not ASCII.
 
-use crate::file;
-use crate::file::FileType;
-use crate::util;
+use crate::{file, file::FileType, util};
 use core::mem::size_of;
 use macros::AnyRepr;
 

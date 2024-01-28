@@ -1,9 +1,9 @@
 //! The `prlimit64` syscall returns the limit for a given resource.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::pid::Pid;
-use crate::process::Process;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, pid::Pid, Process},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

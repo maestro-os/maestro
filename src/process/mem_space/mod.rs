@@ -9,35 +9,29 @@ mod gap;
 mod mapping;
 pub mod ptr;
 
-use crate::errno::AllocError;
-use crate::errno::Errno;
-use crate::file::perm::AccessProfile;
-use crate::file::FileLocation;
-use crate::idt;
-use crate::memory;
-use crate::memory::buddy;
-use crate::memory::physical_ref_counter::PhysRefCounter;
-use crate::memory::stack;
-use crate::memory::vmem;
-use crate::memory::vmem::VMem;
-use crate::process::oom;
-use crate::process::open_file::OpenFile;
-use crate::process::AllocResult;
-use crate::util;
-use crate::util::container::map::Map;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
-use crate::util::math;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
-use core::cmp::min;
-use core::cmp::Ordering;
-use core::ffi::c_void;
-use core::fmt;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::ptr::null_mut;
-use core::ptr::NonNull;
+use crate::{
+	errno::{AllocError, Errno},
+	file::{perm::AccessProfile, FileLocation},
+	idt, memory,
+	memory::{buddy, physical_ref_counter::PhysRefCounter, stack, vmem, vmem::VMem},
+	process::{oom, open_file::OpenFile, AllocResult},
+	util,
+	util::{
+		container::{map::Map, vec::Vec},
+		lock::Mutex,
+		math,
+		ptr::arc::Arc,
+		TryClone,
+	},
+};
+use core::{
+	cmp::{min, Ordering},
+	ffi::c_void,
+	fmt,
+	mem::size_of,
+	num::NonZeroUsize,
+	ptr::{null_mut, NonNull},
+};
 use gap::MemGap;
 use mapping::MemMapping;
 

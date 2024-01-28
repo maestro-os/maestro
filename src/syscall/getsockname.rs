@@ -1,13 +1,14 @@
 //! The `getsockname` system call returns the socket address bound to a socket.
 
-use crate::errno::Errno;
-use crate::file::buffer;
-use crate::file::buffer::socket::Socket;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::Process;
-use core::any::Any;
-use core::ffi::c_int;
+use crate::{
+	errno::Errno,
+	file::{buffer, buffer::socket::Socket},
+	process::{
+		mem_space::ptr::{SyscallPtr, SyscallSlice},
+		Process,
+	},
+};
+use core::{any::Any, ffi::c_int};
 use macros::syscall;
 
 #[syscall]

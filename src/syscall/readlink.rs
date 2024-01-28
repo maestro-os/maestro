@@ -1,14 +1,14 @@
 //! The `readlink` syscall allows to read the target of a symbolic link.
 
-use crate::errno::Errno;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::FileContent;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::util;
+use crate::{
+	errno::Errno,
+	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileContent},
+	process::{
+		mem_space::ptr::{SyscallSlice, SyscallString},
+		Process,
+	},
+	util,
+};
 use core::cmp::min;
 use macros::syscall;
 

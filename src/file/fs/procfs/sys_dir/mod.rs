@@ -2,21 +2,16 @@
 
 mod kernel_dir;
 
-use super::kernfs;
-use super::kernfs::KernFS;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::fs::kernfs::content::KernFSContent;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::DirEntry;
-use crate::file::FileContent;
-use crate::file::FileType;
-use crate::file::Mode;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util::io::IO;
+use super::{kernfs, kernfs::KernFS};
+use crate::{
+	errno::{EResult, Errno},
+	file::{
+		fs::kernfs::{content::KernFSContent, node::KernFSNode},
+		perm::{Gid, Uid},
+		DirEntry, FileContent, FileType, Mode,
+	},
+	util::{boxed::Box, container::hashmap::HashMap, io::IO},
+};
 use kernel_dir::KernelDir;
 
 // TODO Handle dropping

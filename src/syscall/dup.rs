@@ -1,8 +1,6 @@
 //! The `dup` syscall allows to duplicate a file descriptor.
 
-use crate::errno::Errno;
-use crate::file::fd::NewFDConstraint;
-use crate::process::Process;
+use crate::{errno::Errno, file::fd::NewFDConstraint, process::Process};
 use core::ffi::c_int;
 use macros::syscall;
 

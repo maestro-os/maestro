@@ -1,12 +1,17 @@
 //! The `access` system call allows to check access to a given file.
 
-use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::file::vfs::{ResolutionSettings, Resolved};
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::syscall::util::at;
-use crate::syscall::util::at::{AT_EACCESS, AT_FDCWD};
+use crate::{
+	errno::Errno,
+	file::{
+		path::Path,
+		vfs::{ResolutionSettings, Resolved},
+	},
+	process::{mem_space::ptr::SyscallString, Process},
+	syscall::util::{
+		at,
+		at::{AT_EACCESS, AT_FDCWD},
+	},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

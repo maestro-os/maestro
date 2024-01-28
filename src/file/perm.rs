@@ -3,8 +3,7 @@
 //! This module implements management of such permissions.
 
 use super::Mode;
-use crate::errno::EResult;
-use crate::file::File;
+use crate::{errno::EResult, file::File};
 
 /// Type representing a user ID.
 pub type Uid = u16;
@@ -55,10 +54,10 @@ pub const S_ISVTX: Mode = 0o1000;
 /// Example:
 /// ```rust
 /// impl AccessProfile {
-///     pub fn can_use(&self, obj: &Obj) -> bool {
-///         // your implementation
-///         // ...
-///     }
+/// 	pub fn can_use(&self, obj: &Obj) -> bool {
+/// 		// your implementation
+/// 		// ...
+/// 	}
 /// }
 /// ```
 ///

@@ -7,24 +7,16 @@ mod mounts;
 mod stat;
 mod status;
 
-use crate::errno::AllocError;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::fs::kernfs::content::KernFSContent;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file::fs::kernfs::KernFS;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::DirEntry;
-use crate::file::FileContent;
-use crate::file::FileType;
-use crate::file::Mode;
-use crate::process::oom;
-use crate::process::pid::Pid;
-use crate::process::Process;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util::io::IO;
+use crate::{
+	errno::{AllocError, EResult, Errno},
+	file::{
+		fs::kernfs::{content::KernFSContent, node::KernFSNode, KernFS},
+		perm::{Gid, Uid},
+		DirEntry, FileContent, FileType, Mode,
+	},
+	process::{oom, pid::Pid, Process},
+	util::{boxed::Box, container::hashmap::HashMap, io::IO},
+};
 use cmdline::Cmdline;
 use cwd::Cwd;
 use exe::Exe;

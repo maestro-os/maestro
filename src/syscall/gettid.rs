@@ -1,7 +1,6 @@
 //! The `gettid` system call returns the thread ID of the current process.
 
-use crate::errno::Errno;
-use crate::process::Process;
+use crate::{errno::Errno, process::Process};
 use macros::syscall;
 
 #[syscall]

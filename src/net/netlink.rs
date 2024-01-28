@@ -1,8 +1,9 @@
 //! `netlink` is an interface between the kernel and userspace.
 
-use crate::errno::Errno;
-use crate::util::container::ring_buffer::RingBuffer;
-use crate::util::container::vec::Vec;
+use crate::{
+	errno::Errno,
+	util::container::{ring_buffer::RingBuffer, vec::Vec},
+};
 use core::mem::size_of;
 
 /// Netlink message header.

@@ -1,11 +1,7 @@
 //! This module implements stack utility functions.
 
-use crate::errno::AllocResult;
-use crate::memory;
-use crate::memory::malloc;
-use core::ffi::c_void;
-use core::mem;
-use core::ptr;
+use crate::{errno::AllocResult, memory, memory::malloc};
+use core::{ffi::c_void, mem, ptr};
 
 /// The size of a temporary stack in bytes.
 const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;

@@ -1,9 +1,10 @@
 //! Implementation of the keyboard device manager.
 
-use crate::device::manager::DeviceManager;
-use crate::device::manager::PhysicalDevice;
-use crate::errno::Errno;
-use crate::tty;
+use crate::{
+	device::manager::{DeviceManager, PhysicalDevice},
+	errno::Errno,
+	tty,
+};
 
 /// Enumeration of keyboard keys.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -1,15 +1,17 @@
 //! The mkdir system call allows to create a directory.
 
-use crate::errno::Errno;
-use crate::file;
-use crate::file::path::Path;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::FileContent;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::util::container::hashmap::HashMap;
+use crate::{
+	errno::Errno,
+	file,
+	file::{
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+		FileContent,
+	},
+	process::{mem_space::ptr::SyscallString, Process},
+	util::container::hashmap::HashMap,
+};
 use macros::syscall;
 
 #[syscall]

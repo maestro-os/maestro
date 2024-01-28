@@ -1,10 +1,11 @@
 //! The `fstatfs` system call returns information about a mounted file system.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::fs::Statfs;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
+use crate::{
+	errno,
+	errno::Errno,
+	file::fs::Statfs,
+	process::{mem_space::ptr::SyscallPtr, Process},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

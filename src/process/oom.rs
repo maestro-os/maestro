@@ -6,8 +6,7 @@
 //!
 //! This is an emergency procedure which is not supposed to be used under normal conditions.
 
-use crate::errno::AllocResult;
-use crate::util::lock::Mutex;
+use crate::{errno::AllocResult, util::lock::Mutex};
 
 /// The maximum number of times the kernel tries to kill a process to retrieve
 /// memory.

@@ -3,21 +3,15 @@
 
 mod cpio;
 
-use crate::device;
-use crate::errno;
-use crate::errno::{EResult, Errno};
-use crate::file;
-use crate::file::path::Path;
-use crate::file::perm::AccessProfile;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::FileType;
-use crate::util::container::hashmap::HashMap;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	device, errno,
+	errno::{EResult, Errno},
+	file,
+	file::{
+		path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileContent, FileType,
+	},
+	util::{container::hashmap::HashMap, io::IO, lock::Mutex, ptr::arc::Arc},
+};
 use cpio::CPIOParser;
 
 // TODO clean this function

@@ -1,8 +1,12 @@
 blank_lines_upper_bound = 1
 comment_width = 99
 condense_wildcard_suffixes = true
+format_code_in_doc_comments = true
+group_imports = "One"
 hard_tabs = true
 hex_literal_case = "Lower"
+imports_granularity = "Crate"
+imports_indent = "Block"
 max_width = 99
 newline_style = "Unix"
 reorder_impl_items = true

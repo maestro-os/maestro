@@ -6,15 +6,12 @@
 #[cfg(target_arch = "x86")]
 pub mod x86;
 
-use crate::elf;
-use crate::errno::AllocError;
-use crate::errno::AllocResult;
-use crate::idt;
-use crate::memory;
-use crate::util::boxed::Box;
-use crate::util::math;
-use crate::util::TryClone;
-use crate::{register_get, register_set};
+use crate::{
+	elf,
+	errno::{AllocError, AllocResult},
+	idt, memory, register_get, register_set,
+	util::{boxed::Box, math, TryClone},
+};
 use core::ffi::c_void;
 
 /// Trait representing virtual memory context handler.

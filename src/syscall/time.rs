@@ -1,12 +1,11 @@
 //! The `time` syscall allows to retrieve the number of seconds elapsed since
 //! the UNIX Epoch.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::TimestampScale;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, Process},
+	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
+};
 use macros::syscall;
 
 // TODO Watch for timestamp overflow

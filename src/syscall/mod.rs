@@ -141,12 +141,11 @@ mod waitpid;
 mod write;
 mod writev;
 
-use crate::errno::Errno;
-use crate::process::regs::Regs;
-use crate::process::signal::Signal;
-use crate::process::Process;
-
 //use wait::wait;
+use crate::{
+	errno::Errno,
+	process::{regs::Regs, signal::Signal, Process},
+};
 use _exit::_exit;
 use _llseek::_llseek;
 use _newselect::_newselect;

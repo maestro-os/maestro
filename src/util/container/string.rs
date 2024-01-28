@@ -1,19 +1,17 @@
 //! This module implements the String structure which wraps the `str` type.
 
-use crate::errno::{AllocResult, CollectResult};
-use crate::util::container::vec::Vec;
-use crate::util::AllocError;
-use crate::util::TryClone;
-use core::borrow::Borrow;
-use core::borrow::BorrowMut;
-use core::fmt;
-use core::fmt::Debug;
-use core::fmt::Write;
-use core::hash::Hash;
-use core::hash::Hasher;
-use core::ops::Add;
-use core::ops::Deref;
-use core::str;
+use crate::{
+	errno::{AllocResult, CollectResult},
+	util::{container::vec::Vec, AllocError, TryClone},
+};
+use core::{
+	borrow::{Borrow, BorrowMut},
+	fmt,
+	fmt::{Debug, Write},
+	hash::{Hash, Hasher},
+	ops::{Add, Deref},
+	str,
+};
 
 /// The String structure, which wraps the `str` primitive type.
 #[derive(Default)]

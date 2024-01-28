@@ -4,11 +4,8 @@
 //! The partition table is located on the first sector of the boot disk,
 //! alongside with the boot code.
 
-use super::Partition;
-use super::Table;
-use crate::device::storage::StorageInterface;
-use crate::errno::Errno;
-use crate::util::container::vec::Vec;
+use super::{Partition, Table};
+use crate::{device::storage::StorageInterface, errno::Errno, util::container::vec::Vec};
 
 /// The signature of the MBR partition table.
 const MBR_SIGNATURE: u16 = 0xaa55;
