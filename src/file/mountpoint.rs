@@ -388,7 +388,7 @@ pub fn create(
 	flags: u32,
 	target_path: PathBuf,
 	target_location: FileLocation,
-) -> EResult<u32> {
+) -> EResult<Arc<Mutex<MountPoint>>> {
 	// TODO clean
 	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
 	// the locks of MOUNT_POINTS
@@ -428,7 +428,7 @@ pub fn create(
 		}
 	}
 
-	Ok(id)
+	Ok(mountpoint)
 }
 
 /// Removes the mountpoint at the given `target_location`.
@@ -471,4 +471,20 @@ pub fn from_location(target_location: &FileLocation) -> Option<Arc<Mutex<MountPo
 	let container = LOC_TO_ID.lock();
 	let id = container.get(target_location)?;
 	from_id(*id)
+}
+
+/// Returns the location to start path resolution from.
+///
+/// If no the root mountpoint does not exist, the function panics.
+pub fn root_location() -> FileLocation {
+	// TODO cache?
+	let Some(root_mp_mutex) = from_id(0) else {
+		panic!("No root mountpoint!");
+	};
+	let root_mp = root_mp_mutex.lock();
+	let root_inode = root_mp.get_filesystem().lock().get_root_inode();
+	FileLocation::Filesystem {
+		mountpoint_id: root_mp.get_id(),
+		inode: root_inode,
+	}
 }

@@ -131,10 +131,10 @@ pub struct ResolutionSettings {
 
 impl ResolutionSettings {
 	/// Kernel access, following symbolic links.
-	pub const fn kernel_follow() -> Self {
+	pub fn kernel_follow() -> Self {
 		Self {
-			root: FileLocation::root(),
-			start: FileLocation::root(),
+			root: mountpoint::root_location(),
+			start: mountpoint::root_location(),
 
 			access_profile: AccessProfile::KERNEL,
 
@@ -144,7 +144,7 @@ impl ResolutionSettings {
 	}
 
 	/// Kernel access, without following symbolic links.
-	pub const fn kernel_nofollow() -> Self {
+	pub fn kernel_nofollow() -> Self {
 		Self {
 			follow_link: false,
 			..Self::kernel_follow()
@@ -242,13 +242,11 @@ fn resolve_path_impl<'p>(
 				// Update location if on a different filesystem
 				if let Some(mp) = mountpoint::from_location(&loc) {
 					let mp = mp.lock();
-					let io_mutex = mp.get_source().get_io()?;
-					let mut io = io_mutex.lock();
 					let fs_mutex = mp.get_filesystem();
 					let fs = fs_mutex.lock();
 					loc = FileLocation::Filesystem {
 						mountpoint_id: mp.get_id(),
-						inode: fs.get_root_inode(&mut *io)?,
+						inode: fs.get_root_inode(),
 					};
 				}
 				get_file_from_location(&loc)?

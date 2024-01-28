@@ -69,11 +69,10 @@ pub trait Filesystem: Any + Debug {
 	fn is_readonly(&self) -> bool;
 	/// Tells the kernel can cache the filesystem's files in memory.
 	fn use_cache(&self) -> bool;
+	/// Returns the root inode of the filesystem.
+	fn get_root_inode(&self) -> INode;
 	/// Returns statistics about the filesystem.
 	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs>;
-
-	/// Returns the root inode of the filesystem.
-	fn get_root_inode(&self, io: &mut dyn IO) -> EResult<INode>;
 
 	/// Returns the inode of the file with name `name`, located in the directory
 	/// with inode `parent`.

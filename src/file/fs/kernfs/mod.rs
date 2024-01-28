@@ -274,6 +274,10 @@ impl Filesystem for KernFS {
 		false
 	}
 
+	fn get_root_inode(&self) -> INode {
+		ROOT_INODE
+	}
+
 	fn get_stat(&self, _io: &mut dyn IO) -> Result<Statfs, Errno> {
 		Ok(Statfs {
 			f_type: 0, // TODO
@@ -288,10 +292,6 @@ impl Filesystem for KernFS {
 			f_frsize: 0,
 			f_flags: 0,
 		})
-	}
-
-	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {
-		Ok(ROOT_INODE)
 	}
 
 	fn get_inode(
