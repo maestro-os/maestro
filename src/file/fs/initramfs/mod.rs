@@ -27,14 +27,14 @@ use cpio::CPIOParser;
 /// - `new` is the new parent's path.
 /// - `stored` is the current parent. The tuple contains the path and the file.
 /// - `retry` tells whether the function is called as a second try.
-fn update_parent(
-	new: &Path,
-	stored: &mut Option<(&Path, Arc<Mutex<File>>)>,
+fn update_parent<'p>(
+	new: &'p Path,
+	stored: &mut Option<(&'p Path, Arc<Mutex<File>>)>,
 	retry: bool,
 ) -> EResult<()> {
 	// Get the parent
 	let result = match stored {
-		Some((path, parent)) if new.starts_with(path) => {
+		Some((path, parent)) if new.starts_with(&path) => {
 			let Some(name) = new.file_name() else {
 				return Ok(());
 			};
@@ -78,7 +78,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 	for entry in cpio_parser {
 		let hdr = entry.get_hdr();
 
-		let mut parent_path = Path::new(entry.get_filename())?;
+		let parent_path = Path::new(entry.get_filename())?;
 		let Some(name) = parent_path.file_name() else {
 			continue;
 		};
@@ -106,7 +106,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 			None => true,
 		};
 		if update {
-			update_parent(&parent_path, &mut stored_parent, false)?;
+			update_parent(parent_path, &mut stored_parent, false)?;
 		}
 
 		let parent_mutex = &stored_parent.as_ref().unwrap().1;

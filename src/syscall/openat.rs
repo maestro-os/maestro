@@ -44,17 +44,17 @@ fn get_file(
 	mode: Mode,
 ) -> EResult<Arc<Mutex<File>>> {
 	let create = flags & open_file::O_CREAT != 0;
-	let resolved = at::get_file(fds, rs, dirfd, path, flags)?;
+	let resolved = at::get_file(fds, rs.clone(), dirfd, path, flags)?;
 	match resolved {
 		Resolved::Found(file) => Ok(file),
 		Resolved::Creatable {
 			parent,
 			name,
 		} if create => {
-			let parent = parent.lock();
+			let mut parent = parent.lock();
 			let name = name.try_into()?;
 			vfs::create_file(
-				&mut *parent,
+				&mut parent,
 				name,
 				&rs.access_profile,
 				mode,
@@ -77,7 +77,7 @@ pub fn openat(
 		let proc = proc_mutex.lock();
 
 		let follow_link = flags & open_file::O_NOFOLLOW == 0;
-		let rs = ResolutionSettings::for_process(&*proc, follow_link);
+		let rs = ResolutionSettings::for_process(&proc, follow_link);
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
@@ -95,7 +95,7 @@ pub fn openat(
 	let mut fds = fds_mutex.lock();
 
 	// Get file
-	let file_mutex = get_file(&fds, dirfd, &path, flags, rs, mode)?;
+	let file_mutex = get_file(&fds, dirfd, &path, flags, rs.clone(), mode)?;
 	{
 		let mut file = file_mutex.lock();
 		super::open::handle_flags(&mut file, flags, &rs.access_profile)?;

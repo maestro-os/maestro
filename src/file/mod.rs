@@ -401,7 +401,7 @@ impl File {
 	pub fn get_path(&self) -> EResult<PathBuf> {
 		let mut parent_path = self.parent_path.try_clone()?;
 		if !self.name.is_empty() {
-			parent_path.join(Path::new(&self.name)?)?;
+			parent_path = parent_path.join(Path::new(&self.name)?)?;
 		}
 		Ok(parent_path)
 	}
@@ -716,7 +716,7 @@ impl File {
 	}
 
 	/// Closes the file, removing it if removal has been deferred.
-	pub fn close(mut self) -> EResult<()> {
+	pub fn close(&mut self) -> EResult<()> {
 		if let Some(deferred_remove) = self.deferred_remove.take() {
 			// No need to check permissions since they already have been checked before deferring
 			vfs::remove_file_unchecked(&deferred_remove.parent, &deferred_remove.name)?;

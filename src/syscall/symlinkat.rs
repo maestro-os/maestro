@@ -21,7 +21,7 @@ pub fn symlinkat(
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let rs = ResolutionSettings::for_process(&*proc, true);
+	let rs = ResolutionSettings::for_process(&proc, true);
 
 	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mem_space_guard = mem_space.lock();
@@ -44,7 +44,7 @@ pub fn symlinkat(
 	let linkpath = Path::new(linkpath)?;
 
 	// Create link
-	let resolved = at::get_file(&*fds, rs, newdirfd, linkpath, 0)?;
+	let resolved = at::get_file(&fds, rs.clone(), newdirfd, linkpath, 0)?;
 	match resolved {
 		Resolved::Creatable {
 			parent,

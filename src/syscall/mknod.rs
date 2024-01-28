@@ -5,6 +5,7 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::file::FileContent;
@@ -24,7 +25,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let mem_space_guard = mem_space.lock();
 
 		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = Path::new(path)?;
+		let path = PathBuf::try_from(path)?;
 
 		let umask = proc.umask;
 
@@ -63,7 +64,7 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	};
 
 	// Create the node
-	let parent_mutex = vfs::get_file_from_path(&parent_path, &rs)?;
+	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
 	vfs::create_file(
 		&mut parent,

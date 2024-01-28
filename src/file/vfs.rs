@@ -110,7 +110,7 @@ pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File
 
 /// Settings for a path resolution operation.
 #[derive(Clone)]
-pub struct ResolutionSettings<'s> {
+pub struct ResolutionSettings {
 	/// The location of the root directory for the operation.
 	///
 	/// Contrary to the `start` field, resolution *cannot* access a parent of this path.
@@ -119,7 +119,7 @@ pub struct ResolutionSettings<'s> {
 	pub start: FileLocation,
 
 	/// The access profile to use for resolution.
-	pub access_profile: &'s AccessProfile,
+	pub access_profile: AccessProfile,
 
 	/// If `true`, the path is resolved for creation, meaning the operation will not fail if the
 	/// file does not exist.
@@ -129,14 +129,14 @@ pub struct ResolutionSettings<'s> {
 	pub follow_link: bool,
 }
 
-impl<'s> ResolutionSettings<'s> {
+impl ResolutionSettings {
 	/// Kernel access, following symbolic links.
 	pub const fn kernel_follow() -> Self {
 		Self {
 			root: FileLocation::root(),
 			start: FileLocation::root(),
 
-			access_profile: &AccessProfile::KERNEL,
+			access_profile: AccessProfile::KERNEL,
 
 			create: false,
 			follow_link: true,
@@ -154,12 +154,12 @@ impl<'s> ResolutionSettings<'s> {
 	/// Returns the default for the given process.
 	///
 	/// `follow_links` tells whether symbolic links are followed.
-	pub fn for_process(proc: &'s Process, follow_links: bool) -> Self {
+	pub fn for_process(proc: &Process, follow_links: bool) -> Self {
 		Self {
 			root: proc.chroot.clone(),
 			start: proc.cwd.1.clone(),
 
-			access_profile: &proc.access_profile,
+			access_profile: proc.access_profile,
 
 			create: false,
 			follow_link: follow_links,
@@ -200,7 +200,7 @@ fn resolve_path_impl<'p>(
 	let mut file_mutex = get_file_from_location(start)?;
 	// Iterate on components
 	let mut iter = path.components().peekable();
-	for comp in &mut iter {
+	while let Some(comp) = iter.next() {
 		// If this is the last component
 		let is_last = iter.peek().is_none();
 		let file = file_mutex.lock();
@@ -211,7 +211,7 @@ fn resolve_path_impl<'p>(
 			// Ignore
 			_ => continue,
 		};
-		match file.get_content() {
+		let next_file = match file.get_content() {
 			FileContent::Directory(entries) => {
 				// Check permission
 				if !settings.access_profile.can_search_directory(&file) {
@@ -220,6 +220,7 @@ fn resolve_path_impl<'p>(
 				let Some(entry) = entries.get(name) else {
 					// If the last component does not exist and if the file may be created
 					let res = if is_last && settings.create {
+						drop(file);
 						Ok(Resolved::Creatable {
 							parent: file_mutex,
 							name,
@@ -241,14 +242,16 @@ fn resolve_path_impl<'p>(
 				// Update location if on a different filesystem
 				if let Some(mp) = mountpoint::from_location(&loc) {
 					let mp = mp.lock();
-					let mut io = mp.get_source().get_io()?.lock();
-					let fs = mp.get_filesystem().lock();
+					let io_mutex = mp.get_source().get_io()?;
+					let mut io = io_mutex.lock();
+					let fs_mutex = mp.get_filesystem();
+					let fs = fs_mutex.lock();
 					loc = FileLocation::Filesystem {
 						mountpoint_id: mp.get_id(),
 						inode: fs.get_root_inode(&mut *io)?,
 					};
 				}
-				file_mutex = get_file_from_location(&loc)?;
+				get_file_from_location(&loc)?
 			}
 			// Follow link, if enabled
 			FileContent::Link(link_path) if !is_last || settings.follow_link => {
@@ -260,19 +263,21 @@ fn resolve_path_impl<'p>(
 				let rs = ResolutionSettings {
 					root: settings.root.clone(),
 					start: file.location.clone(),
-					access_profile: &settings.access_profile,
+					access_profile: settings.access_profile,
 					create: false,
 					follow_link: true,
 				};
 				let resolved = resolve_path_impl(link_path, &rs, symlink_rec + 1)?;
-				let Resolved::Found(f) = resolved else {
+				let Resolved::Found(next_file) = resolved else {
 					// Because `create` is set to `false`
 					unreachable!();
 				};
-				file_mutex = f;
+				next_file
 			}
 			_ => return Err(errno!(ENOTDIR)),
-		}
+		};
+		drop(file);
+		file_mutex = next_file;
 	}
 	Ok(Resolved::Found(file_mutex))
 }
@@ -377,7 +382,7 @@ pub fn create_file(
 
 	let mut file = op(&parent.location, true, |mp, io, fs| {
 		let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
-		update_location(&mut file, &mp);
+		update_location(&mut file, mp);
 		Ok(file)
 	})?;
 	// Add the file to the parent's entries
@@ -427,16 +432,16 @@ pub fn create_link(
 		return Err(errno!(EACCES));
 	}
 
-	op(&target.location, true, |mp, io, fs| {
+	op(&target.location, true, |_mp, io, fs| {
 		fs.add_link(
 			&mut *io,
 			parent.location.get_inode(),
 			name,
 			target.location.get_inode(),
-		)?;
-		target.set_hard_links_count(target.get_hard_links_count() + 1);
-		Ok(())
-	})
+		)
+	})?;
+	target.set_hard_links_count(target.get_hard_links_count() + 1);
+	Ok(())
 }
 
 fn remove_file_impl(
@@ -484,7 +489,7 @@ pub fn remove_file_unchecked(parent: &FileLocation, name: &[u8]) -> EResult<()> 
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResult<()> {
 	// Check permission
-	if !ap.can_write_directory(&parent) {
+	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
 
@@ -527,8 +532,8 @@ pub fn remove_file_from_path(
 	let file_name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
 	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	let parent = get_file_from_path(parent, resolution_settings)?;
-	let parent = parent.lock();
-	remove_file(&mut *parent, file_name, &resolution_settings.access_profile)
+	let mut parent = parent.lock();
+	remove_file(&mut parent, file_name, &resolution_settings.access_profile)
 }
 
 /// Maps the page at offset `off` in the file at location `loc`.

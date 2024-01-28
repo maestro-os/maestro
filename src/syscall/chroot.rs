@@ -19,8 +19,10 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 		return Err(errno!(EPERM));
 	}
 
-	let rs = ResolutionSettings::for_process(&proc, true);
-	rs.root = FileLocation::root();
+	let rs = ResolutionSettings {
+		root: FileLocation::root(),
+		..ResolutionSettings::for_process(&proc, true)
+	};
 
 	// Get file
 	let file = {
@@ -30,7 +32,7 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 		let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
 		let path = Path::new(path)?;
 
-		vfs::get_file_from_path(&path, &rs)?
+		vfs::get_file_from_path(path, &rs)?
 	};
 	let file = file.lock();
 	if file.get_type() != FileType::Directory {

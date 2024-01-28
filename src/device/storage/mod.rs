@@ -547,7 +547,7 @@ impl StorageManager {
 				major,
 				minor: storage_id * MAX_PARTITIONS as u32,
 			},
-			main_path,
+			main_path.try_clone()?,
 			STORAGE_MODE,
 			main_handle,
 		)?;

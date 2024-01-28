@@ -257,6 +257,16 @@ impl FromIterator<u8> for CollectResult<String> {
 	}
 }
 
+impl<'c> FromIterator<&'c u8> for CollectResult<String> {
+	fn from_iter<T: IntoIterator<Item = &'c u8>>(iter: T) -> Self {
+		Self(
+			CollectResult::<Vec<u8>>::from_iter(iter)
+				.0
+				.map(String::from),
+		)
+	}
+}
+
 // TODO Iterators
 
 impl Debug for String {

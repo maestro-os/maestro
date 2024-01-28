@@ -1,7 +1,7 @@
 //! The `readlink` syscall allows to read the target of a symbolic link.
 
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::file::FileContent;
@@ -28,7 +28,7 @@ pub fn readlink(
 
 		// Get file's path
 		let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
-		let path = Path::new(path)?;
+		let path = PathBuf::try_from(path)?;
 
 		drop(mem_space);
 

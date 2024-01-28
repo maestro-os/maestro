@@ -21,7 +21,7 @@ pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
 	let path = path.get(&mem_space)?.ok_or(errno!(EFAULT))?;
 	let path = Path::new(path)?;
 
-	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
+	let file_mutex = vfs::get_file_from_path(path, &rs)?;
 	let mut file = file_mutex.lock();
 	file.set_size(length as _);
 

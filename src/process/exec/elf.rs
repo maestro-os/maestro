@@ -286,7 +286,7 @@ impl<'s> ELFExecutor<'s> {
 	/// Arguments:
 	/// - `uid` is the User ID of the executing user.
 	/// - `gid` is the Group ID of the executing user.
-	pub fn new(info: ExecInfo) -> Result<Self, Errno> {
+	pub fn new(info: ExecInfo<'s>) -> EResult<Self> {
 		Ok(Self {
 			info,
 		})
@@ -599,7 +599,7 @@ impl<'s> ELFExecutor<'s> {
 			// Get file
 			let interp_path = Path::new(interp_path)?;
 			let interp_file_mutex =
-				vfs::get_file_from_path(&interp_path, &self.info.path_resolution)?;
+				vfs::get_file_from_path(interp_path, self.info.path_resolution)?;
 			let mut interp_file = interp_file_mutex.lock();
 
 			let interp_image =

@@ -101,7 +101,7 @@ pub fn statx(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let rs = ResolutionSettings::for_process(&*proc, true);
+		let rs = ResolutionSettings::for_process(&proc, true);
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();

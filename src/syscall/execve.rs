@@ -192,7 +192,7 @@ pub fn execve(
 			}
 
 			// Set interpreter to arguments
-			let interp = String::try_from(&shebang.buff[shebang.interp])?;
+			let interp = String::try_from(&shebang.buff[shebang.interp.clone()])?;
 			argv.insert(0, interp)?;
 
 			// Set optional argument if it exists

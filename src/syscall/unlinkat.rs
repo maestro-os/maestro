@@ -18,7 +18,7 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let rs = ResolutionSettings::for_process(&*proc, false);
+		let rs = ResolutionSettings::for_process(&proc, false);
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
@@ -34,14 +34,11 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 	};
 
 	let fds = fds_mutex.lock();
-
-	let parent_path = path.parent().ok_or_else(|| errno!(ENOENT))?;
-	let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
-
-	let resolved = at::get_file(&fds, rs, dirfd, &path, flags)?;
+	let resolved = at::get_file(&fds, rs.clone(), dirfd, &path, flags)?;
 	match resolved {
 		Resolved::Found(parent_mutex) => {
 			let mut parent = parent_mutex.lock();
+			let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
 			vfs::remove_file(&mut parent, name, &rs.access_profile)?;
 		}
 		_ => return Err(errno!(ENOENT)),
