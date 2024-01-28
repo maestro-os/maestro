@@ -16,6 +16,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 
 /// Structure representing the cmdline node of the procfs.
+#[derive(Debug)]
 pub struct Cmdline {
 	/// The PID of the process.
 	pub pid: Pid,

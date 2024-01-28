@@ -2,33 +2,13 @@
 
 use crate::errno::Errno;
 use crate::file::path::Path;
-use crate::file::vfs;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
+use crate::syscall::util::at;
+use crate::syscall::util::at::{AT_EACCESS, AT_FDCWD};
 use core::ffi::c_int;
 use macros::syscall;
-
-/// Special value, telling to take the path relative to the current working
-/// directory.
-pub const AT_FDCWD: i32 = -100;
-/// If pathname is a symbolic link, do not dereference it: instead return
-/// information about the link itself.
-pub const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
-/// Perform access checks using the effective user and group IDs.
-pub const AT_EACCESS: i32 = 0x200;
-/// If pathname is a symbolic link, dereference it.
-pub const AT_SYMLINK_FOLLOW: i32 = 0x400;
-/// Don't automount the terminal component of `pathname` if it is a directory that is an automount
-/// point.
-pub const AT_NO_AUTOMOUNT: i32 = 0x800;
-/// If `pathname` is an empty string, operate on the file referred to by `dirfd`.
-pub const AT_EMPTY_PATH: i32 = 0x1000;
-/// Do whatever `stat` does.
-pub const AT_STATX_SYNC_AS_STAT: i32 = 0x0000;
-/// Force the attributes to be synchronized with the server.
-pub const AT_STATX_FORCE_SYNC: i32 = 0x2000;
-/// Don't synchronize anything, but rather take cached informations.
-pub const AT_STATX_DONT_SYNC: i32 = 0x4000;
 
 /// Checks for existence of the file.
 const F_OK: i32 = 0;
@@ -54,40 +34,33 @@ pub fn do_access(
 	flags: Option<i32>,
 ) -> Result<i32, Errno> {
 	let flags = flags.unwrap_or(0);
-	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
 	// Use effective IDs instead of real IDs
 	let eaccess = flags & AT_EACCESS != 0;
 
-	let (path, cwd, ap) = {
+	let (file, ap) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
+
+		let rs = ResolutionSettings::for_process(&proc, true);
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space_mutex.lock();
 
+		let fds = proc.file_descriptors.as_ref().unwrap().lock();
+
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EINVAL))?;
-		let path = Path::from_str(pathname, true)?;
+		let path = Path::new(pathname)?;
 
-		let cwd = proc.cwd.clone();
+		let Resolved::Found(file) =
+			at::get_file(&fds, rs, dirfd.unwrap_or(AT_FDCWD), path, flags)?
+		else {
+			return Err(errno!(ENOENT));
+		};
 
-		(path, cwd, proc.access_profile)
+		(file, proc.access_profile)
 	};
-
-	// Get file
-	let mut path = path;
-	if path.is_absolute() {
-		// TODO
-	} else if let Some(dirfd) = dirfd {
-		if dirfd == AT_FDCWD {
-			path = cwd.concat(&path)?;
-		} else {
-			// TODO Get file from fd and get its path to concat
-			todo!();
-		}
-	}
-	let file = vfs::get_file_from_path(&path, &ap, follow_symlinks)?;
 
 	// Do access checks
 	{

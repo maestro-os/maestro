@@ -1,7 +1,10 @@
 //! This `linkat` syscall creates a new hard link to a file.
 
+use super::util::at;
 use crate::errno::Errno;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -16,36 +19,51 @@ pub fn linkat(
 	newpath: SyscallString,
 	flags: c_int,
 ) -> Result<i32, Errno> {
-	let (old_mutex, new_parent_mutex, new_name, ap) = {
+	let (fds_mutex, oldpath, newpath, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let ap = proc.access_profile;
+		let rs = ResolutionSettings::for_process(&proc, false);
 
-		let mem_space = proc.get_mem_space().unwrap().clone();
+		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
+
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
 		let oldpath = oldpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let old = super::util::get_file_at(proc, olddirfd, oldpath, false, flags)?;
+		let oldpath = PathBuf::try_from(oldpath)?;
 
-		let proc = proc_mutex.lock();
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let (new_parent, new_name) =
-			super::util::get_parent_at_with_name(proc, newdirfd, newpath, false, flags)?;
+		let newpath = PathBuf::try_from(newpath)?;
 
-		(old, new_parent, new_name, ap)
+		(fds_mutex, oldpath, newpath, rs)
 	};
 
+	let fds = fds_mutex.lock();
+
+	let Resolved::Found(old_mutex) = at::get_file(&fds, rs.clone(), olddirfd, &oldpath, flags)?
+	else {
+		return Err(errno!(ENOENT));
+	};
 	let mut old = old_mutex.lock();
 	if matches!(old.get_type(), FileType::Directory) {
 		return Err(errno!(EISDIR));
 	}
-	let new_parent = new_parent_mutex.lock();
 
-	vfs::create_link(&mut old, &new_parent, &new_name, &ap)?;
+	let Resolved::Creatable {
+		parent: new_parent,
+		name: new_name,
+	} = at::get_file(&fds, rs.clone(), newdirfd, &newpath, 0)?
+	else {
+		return Err(errno!(EEXIST));
+	};
+	let new_parent = new_parent.lock();
+
+	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
+
 	Ok(0)
 }

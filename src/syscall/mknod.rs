@@ -5,7 +5,9 @@ use crate::errno;
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileContent;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
@@ -15,25 +17,26 @@ use macros::syscall;
 // TODO Check args type
 #[syscall]
 pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32, Errno> {
-	let (path, umask, ap) = {
+	let (path, umask, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = Path::from_str(pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?, true)?;
-		let path = super::util::get_absolute_path(&proc, path)?;
+		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = PathBuf::try_from(path)?;
 
 		let umask = proc.umask;
 
-		(path, umask, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, true);
+		(path, umask, rs)
 	};
 
 	// Path of the parent directory
-	let mut parent_path = path;
+	let parent_path = path.parent().unwrap_or(Path::root());
 	// File name
-	let Some(name) = parent_path.pop() else {
+	let Some(name) = path.file_name() else {
 		return Err(errno!(EEXIST));
 	};
 
@@ -61,9 +64,15 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	};
 
 	// Create the node
-	let parent_mutex = vfs::get_file_from_path(&parent_path, &ap, true)?;
+	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name, &ap, mode, file_content)?;
+	vfs::create_file(
+		&mut parent,
+		name.try_into()?,
+		&rs.access_profile,
+		mode,
+		file_content,
+	)?;
 
 	Ok(0)
 }

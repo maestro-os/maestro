@@ -1,7 +1,9 @@
 //! The `fchmodat` system call allows change the permissions on a file.
 
-use super::util;
+use super::util::at;
 use crate::errno::Errno;
+use crate::file::path::PathBuf;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use core::ffi::c_int;
@@ -15,26 +17,34 @@ pub fn fchmodat(
 	mode: i32,
 	flags: c_int,
 ) -> Result<i32, Errno> {
-	let (file_mutex, ap) = {
+	let (fds_mutex, path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let ap = proc.access_profile;
+		let rs = ResolutionSettings::for_process(&proc, true);
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
 
+		let fds_mutex = proc.file_descriptors.clone().unwrap();
+
 		let pathname = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let file_mutex = util::get_file_at(proc, dirfd, pathname, true, flags)?;
+		let path = PathBuf::try_from(pathname)?;
 
-		(file_mutex, ap)
+		(fds_mutex, path, rs)
+	};
+
+	let fds = fds_mutex.lock();
+
+	let Resolved::Found(file_mutex) = at::get_file(&fds, rs.clone(), dirfd, &path, flags)? else {
+		return Err(errno!(ENOENT));
 	};
 	let mut file = file_mutex.lock();
 
-	// Check permissions
-	if !ap.can_set_file_permissions(&file) {
+	// Check permission
+	if !rs.access_profile.can_set_file_permissions(&file) {
 		return Err(errno!(EPERM));
 	}
 

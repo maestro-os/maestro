@@ -5,6 +5,7 @@ use crate::errno::EResult;
 use crate::errno::Errno;
 use crate::file::fs::kernfs::content::KernFSContent;
 use crate::file::fs::kernfs::node::KernFSNode;
+use crate::file::path::PathBuf;
 use crate::file::perm;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
@@ -15,6 +16,7 @@ use crate::time::unit::Timestamp;
 use crate::util::io::IO;
 
 /// The `self` symlink.
+#[derive(Debug)]
 pub struct SelfNode {}
 
 impl KernFSNode for SelfNode {
@@ -62,8 +64,8 @@ impl KernFSNode for SelfNode {
 
 	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
 		let pid = Process::current_assert().lock().pid;
-		let pid_string = crate::format!("{pid}")?;
-		Ok(FileContent::Link(pid_string).into())
+		let pid = PathBuf::try_from(crate::format!("{pid}")?)?;
+		Ok(FileContent::Link(pid).into())
 	}
 }
 

@@ -5,11 +5,12 @@ mod cpio;
 
 use crate::device;
 use crate::errno;
-use crate::errno::Errno;
+use crate::errno::{EResult, Errno};
 use crate::file;
 use crate::file::path::Path;
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
 use crate::file::FileContent;
 use crate::file::FileType;
@@ -17,37 +18,41 @@ use crate::util::container::hashmap::HashMap;
 use crate::util::io::IO;
 use crate::util::lock::Mutex;
 use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
 use cpio::CPIOParser;
 
+// TODO clean this function
 /// Updates the current parent used for the unpacking operation.
 ///
 /// Arguments:
 /// - `new` is the new parent's path.
 /// - `stored` is the current parent. The tuple contains the path and the file.
 /// - `retry` tells whether the function is called as a second try.
-fn update_parent(
-	new: &Path,
-	stored: &mut Option<(Path, Arc<Mutex<File>>)>,
+fn update_parent<'p>(
+	new: &'p Path,
+	stored: &mut Option<(&'p Path, Arc<Mutex<File>>)>,
 	retry: bool,
-) -> Result<(), Errno> {
-	// Getting the parent
+) -> EResult<()> {
+	// Get the parent
 	let result = match stored {
-		Some((path, file)) if new.begins_with(path) => {
-			let name = match new.try_clone()?.pop() {
-				Some(name) => name,
-				None => return Ok(()),
+		Some((path, parent)) if new.starts_with(&path) => {
+			let Some(name) = new.file_name() else {
+				return Ok(());
 			};
+			let name = Path::new(name)?;
 
-			let f = file.lock();
-			vfs::get_file_from_parent(&f, name, &AccessProfile::KERNEL, false)
+			let parent = parent.lock();
+			let rs = ResolutionSettings {
+				start: parent.get_location().clone(),
+				..ResolutionSettings::kernel_nofollow()
+			};
+			vfs::get_file_from_path(name, &rs)
 		}
-		Some(_) | None => vfs::get_file_from_path(new, &AccessProfile::KERNEL, false),
+		Some(_) | None => vfs::get_file_from_path(new, &ResolutionSettings::kernel_nofollow()),
 	};
 
 	match result {
 		Ok(file) => {
-			*stored = Some((new.try_clone()?, file));
+			*stored = Some((new, file));
 			Ok(())
 		}
 		// If the directory doesn't exist, create recursively
@@ -67,14 +72,14 @@ fn update_parent(
 pub fn load(data: &[u8]) -> Result<(), Errno> {
 	// TODO Use a stack instead?
 	// The stored parent directory
-	let mut stored_parent: Option<(Path, Arc<Mutex<File>>)> = None;
+	let mut stored_parent: Option<(&Path, Arc<Mutex<File>>)> = None;
 
 	let cpio_parser = CPIOParser::new(data);
 	for entry in cpio_parser {
 		let hdr = entry.get_hdr();
 
-		let mut parent_path = Path::from_str(entry.get_filename(), false)?;
-		let Some(name) = parent_path.pop() else {
+		let parent_path = Path::new(entry.get_filename())?;
+		let Some(name) = parent_path.file_name() else {
 			continue;
 		};
 
@@ -101,7 +106,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 			None => true,
 		};
 		if update {
-			update_parent(&parent_path, &mut stored_parent, false)?;
+			update_parent(parent_path, &mut stored_parent, false)?;
 		}
 
 		let parent_mutex = &stored_parent.as_ref().unwrap().1;
@@ -110,7 +115,7 @@ pub fn load(data: &[u8]) -> Result<(), Errno> {
 		// Create file
 		let create_result = vfs::create_file(
 			&mut parent,
-			name,
+			name.try_into()?,
 			&AccessProfile::KERNEL,
 			hdr.get_perms(),
 			content,

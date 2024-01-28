@@ -28,11 +28,11 @@ mod directory_entry;
 mod inode;
 
 use crate::errno;
-use crate::errno::Errno;
+use crate::errno::{EResult, Errno};
 use crate::file::fs::Filesystem;
 use crate::file::fs::FilesystemType;
 use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
 use crate::file::DirEntry;
@@ -245,6 +245,7 @@ fn zero_blocks(
 
 /// The ext2 superblock structure.
 #[repr(C, packed)]
+#[derive(Debug)]
 pub struct Superblock {
 	/// Total number of inodes in the filesystem.
 	total_inodes: u32,
@@ -650,14 +651,13 @@ impl Superblock {
 	}
 }
 
-/// Structure representing a instance of the ext2 filesystem.
+/// An instance of the ext2 filesystem.
+#[derive(Debug)]
 struct Ext2Fs {
-	/// The path at which the filesystem is mounted.
-	mountpath: Path,
-
 	/// The filesystem's superblock.
 	superblock: Superblock,
-
+	/// The path at which the filesystem is mounted.
+	mountpath: PathBuf,
 	/// Tells whether the filesystem is mounted in read-only.
 	readonly: bool,
 }
@@ -675,7 +675,7 @@ impl Ext2Fs {
 	fn new(
 		mut superblock: Superblock,
 		io: &mut dyn IO,
-		mountpath: Path,
+		mountpath: PathBuf,
 		readonly: bool,
 	) -> Result<Self, Errno> {
 		if !superblock.is_valid() {
@@ -714,33 +714,19 @@ impl Ext2Fs {
 		}*/
 
 		superblock.mount_count_since_fsck += 1;
-
-		// Setting the last mount path
-		{
-			let mountpath_str = crate::format!("{}", mountpath)?;
-			let mountpath_bytes = mountpath_str.as_bytes();
-
-			let mut i = 0;
-			while i < min(mountpath_bytes.len(), superblock.last_mount_path.len()) {
-				superblock.last_mount_path[i] = mountpath_bytes[i];
-				i += 1;
-			}
-			while i < superblock.last_mount_path.len() {
-				superblock.last_mount_path[i] = 0;
-				i += 1;
-			}
-		}
-
-		// Setting the last mount timestamp
+		// Set the last mount path
+		let mountpath_bytes = mountpath.as_bytes();
+		let len = min(mountpath_bytes.len(), superblock.last_mount_path.len());
+		superblock.last_mount_path[..len].copy_from_slice(&mountpath_bytes[..len]);
+		superblock.last_mount_path[len..].fill(0);
+		// Set the last mount timestamp
 		superblock.last_mount_timestamp = timestamp as _;
-
 		superblock.write(io)?;
 
 		Ok(Self {
-			mountpath,
-
 			superblock,
 
+			mountpath,
 			readonly,
 		})
 	}
@@ -757,8 +743,12 @@ impl Filesystem for Ext2Fs {
 		self.readonly
 	}
 
-	fn must_cache(&self) -> bool {
+	fn use_cache(&self) -> bool {
 		true
+	}
+
+	fn get_root_inode(&self) -> INode {
+		inode::ROOT_DIRECTORY_INODE as _
 	}
 
 	fn get_stat(&self, _io: &mut dyn IO) -> Result<Statfs, Errno> {
@@ -778,10 +768,6 @@ impl Filesystem for Ext2Fs {
 			f_frsize: fragment_size,
 			f_flags: 0, // TODO
 		})
-	}
-
-	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {
-		Ok(inode::ROOT_DIRECTORY_INODE as _)
 	}
 
 	fn get_inode(
@@ -850,7 +836,9 @@ impl Filesystem for Ext2Fs {
 				FileContent::Directory(final_entries)
 			}
 
-			FileType::Link => FileContent::Link(inode_.get_link(&self.superblock, io)?),
+			FileType::Link => {
+				FileContent::Link(inode_.get_link(&self.superblock, io)?.try_into()?)
+			}
 
 			FileType::Fifo => FileContent::Fifo,
 
@@ -1127,7 +1115,7 @@ impl Filesystem for Ext2Fs {
 		io: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<u16, Errno> {
+	) -> EResult<(u16, INode)> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -1198,7 +1186,7 @@ impl Filesystem for Ext2Fs {
 		// Writing the inode
 		inode_.write(inode, &self.superblock, io)?;
 
-		Ok(inode_.hard_links_count)
+		Ok((inode_.hard_links_count, inode as _))
 	}
 
 	fn read_node(
@@ -1253,12 +1241,11 @@ impl FilesystemType for Ext2FsType {
 	fn load_filesystem(
 		&self,
 		io: &mut dyn IO,
-		mountpath: Path,
+		mountpath: PathBuf,
 		readonly: bool,
 	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
 		let superblock = Superblock::read(io)?;
 		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
-
 		Ok(Arc::new(Mutex::new(fs))? as _)
 	}
 }

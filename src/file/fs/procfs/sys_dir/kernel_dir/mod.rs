@@ -20,6 +20,7 @@ use osrelease::OsRelease;
 
 // TODO Handle dropping
 /// Structure representing the `kernel` directory.
+#[derive(Debug)]
 pub struct KernelDir {
 	/// The content of the directory. This will always be a Directory variant.
 	content: FileContent,

@@ -13,11 +13,11 @@ use super::kernfs::node::DummyKernFSNode;
 use super::kernfs::KernFS;
 use super::Filesystem;
 use super::FilesystemType;
-use crate::errno::AllocError;
 use crate::errno::AllocResult;
 use crate::errno::Errno;
+use crate::errno::{AllocError, EResult};
 use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
 use crate::file::DirEntry;
@@ -43,9 +43,10 @@ use sys_dir::SysDir;
 use uptime::Uptime;
 use version::Version;
 
-/// Structure representing the procfs.
+/// A procfs.
 ///
 /// On the inside, the procfs works using a kernfs.
+#[derive(Debug)]
 pub struct ProcFS {
 	/// The kernfs.
 	fs: KernFS,
@@ -213,16 +214,16 @@ impl Filesystem for ProcFS {
 		self.fs.is_readonly()
 	}
 
-	fn must_cache(&self) -> bool {
-		self.fs.must_cache()
+	fn use_cache(&self) -> bool {
+		self.fs.use_cache()
+	}
+
+	fn get_root_inode(&self) -> INode {
+		self.fs.get_root_inode()
 	}
 
 	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
 		self.fs.get_stat(io)
-	}
-
-	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno> {
-		self.fs.get_root_inode(io)
 	}
 
 	fn get_inode(
@@ -270,7 +271,7 @@ impl Filesystem for ProcFS {
 		_io: &mut dyn IO,
 		_parent_inode: INode,
 		_name: &[u8],
-	) -> Result<u16, Errno> {
+	) -> EResult<(u16, INode)> {
 		Err(errno!(EACCES))
 	}
 
@@ -310,7 +311,7 @@ impl FilesystemType for ProcFsType {
 	fn load_filesystem(
 		&self,
 		_io: &mut dyn IO,
-		_mountpath: Path,
+		_mountpath: PathBuf,
 		readonly: bool,
 	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
 		Ok(Arc::new(Mutex::new(ProcFS::new(readonly)?))?)

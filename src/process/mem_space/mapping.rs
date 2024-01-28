@@ -496,7 +496,7 @@ impl MemMapping {
 		else {
 			return Ok(());
 		};
-		let Ok(file_mutex) = vfs::get_file_by_location(location) else {
+		let Ok(file_mutex) = vfs::get_file_from_location(location) else {
 			return Ok(());
 		};
 

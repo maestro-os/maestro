@@ -27,6 +27,7 @@ use crate::errno::Errno;
 use crate::file::buffer::pipe::PipeBuffer;
 use crate::file::buffer::socket::Socket;
 use crate::file::fs::Filesystem;
+use crate::file::path::PathBuf;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
 use crate::process::mem_space::MemSpace;
@@ -175,18 +176,25 @@ pub enum FileLocation {
 }
 
 impl FileLocation {
+	/// Dummy location, to be used by the root mountpoint.
+	pub const fn dummy() -> Self {
+		Self::Filesystem {
+			mountpoint_id: 0,
+			inode: 0,
+		}
+	}
+
 	/// Returns the ID of the mountpoint.
 	pub fn get_mountpoint_id(&self) -> Option<u32> {
 		match self {
 			Self::Filesystem {
 				mountpoint_id, ..
 			} => Some(*mountpoint_id),
-
 			_ => None,
 		}
 	}
 
-	/// Returns the mountpoint.
+	/// Returns the mountpoint on which the file is located.
 	pub fn get_mountpoint(&self) -> Option<Arc<Mutex<MountPoint>>> {
 		mountpoint::from_id(self.get_mountpoint_id()?)
 	}
@@ -197,7 +205,6 @@ impl FileLocation {
 			Self::Filesystem {
 				inode, ..
 			} => *inode,
-
 			Self::Virtual {
 				id,
 			} => *id as _,
@@ -225,7 +232,7 @@ pub enum FileContent {
 	/// is the entry itself.
 	Directory(HashMap<String, DirEntry>),
 	/// The file is a link. The data is the link's target.
-	Link(String),
+	Link(PathBuf),
 	/// The file is a FIFO.
 	Fifo,
 	/// The file is a socket.
@@ -285,13 +292,22 @@ impl TryClone for FileContent {
 	}
 }
 
+/// Information to remove a file when all its handles are closed.
+#[derive(Debug)]
+pub struct DeferredRemove {
+	/// The location of the parent directory.
+	pub parent: FileLocation,
+	/// The name of the entry to remove.
+	pub name: String,
+}
+
 /// Structure representing a file.
 #[derive(Debug)]
 pub struct File {
 	/// The name of the file.
 	name: String,
 	/// The path of the file's parent.
-	parent_path: Path,
+	parent_path: PathBuf,
 
 	/// The number of hard links associated with the file.
 	hard_links_count: u16,
@@ -320,11 +336,10 @@ pub struct File {
 	/// The content of the file.
 	content: FileContent,
 
-	/// Tells whether remove has been deferred for the file. If `true`, then the file will be
-	/// removed when the file is no longer used.
-	deferred_remove: bool,
-	/// Tells whether the file has been removed.
-	removed: bool,
+	/// If not `None`, the file will be removed when the last handle to it is closed.
+	///
+	/// This field contains all the information necessary to remove it.
+	deferred_remove: Option<DeferredRemove>,
 }
 
 impl File {
@@ -350,7 +365,7 @@ impl File {
 
 		Ok(Self {
 			name,
-			parent_path: Path::root(),
+			parent_path: PathBuf::root(),
 
 			hard_links_count: 1,
 
@@ -368,8 +383,7 @@ impl File {
 			location,
 			content,
 
-			deferred_remove: false,
-			removed: false,
+			deferred_remove: None,
 		})
 	}
 
@@ -384,19 +398,18 @@ impl File {
 	}
 
 	/// Returns the absolute path of the file.
-	pub fn get_path(&self) -> Result<Path, Errno> {
+	pub fn get_path(&self) -> EResult<PathBuf> {
 		let mut parent_path = self.parent_path.try_clone()?;
 		if !self.name.is_empty() {
-			parent_path.push(self.name.try_clone()?)?;
+			parent_path = parent_path.join(Path::new(&self.name)?)?;
 		}
-
 		Ok(parent_path)
 	}
 
 	/// Sets the file's parent path.
 	///
 	/// If the path isn't absolute, the behaviour is undefined.
-	pub fn set_parent_path(&mut self, parent_path: Path) {
+	pub fn set_parent_path(&mut self, parent_path: PathBuf) {
 		self.parent_path = parent_path;
 	}
 
@@ -422,6 +435,16 @@ impl File {
 	/// stored.
 	pub fn get_location(&self) -> &FileLocation {
 		&self.location
+	}
+
+	/// Returns the mountpoint located at this file, if any.
+	pub fn as_mountpoint(&self) -> Option<Arc<Mutex<MountPoint>>> {
+		mountpoint::from_location(&self.location)
+	}
+
+	/// Tells whether there is a mountpoint on the file.
+	pub fn is_mountpoint(&self) -> bool {
+		self.as_mountpoint().is_some()
 	}
 
 	/// Returns the number of hard links.
@@ -688,29 +711,24 @@ impl File {
 	}
 
 	/// Defers removal of the file, meaning the file will be removed when closed.
-	pub fn defer_remove(&mut self) {
-		self.deferred_remove = true;
+	pub fn defer_remove(&mut self, info: DeferredRemove) {
+		self.deferred_remove = Some(info);
 	}
 
 	/// Closes the file, removing it if removal has been deferred.
-	pub fn close(mut self) -> EResult<()> {
-		if !self.deferred_remove {
-			return Ok(());
+	pub fn close(&mut self) -> EResult<()> {
+		if let Some(deferred_remove) = self.deferred_remove.take() {
+			// No need to check permissions since they already have been checked before deferring
+			vfs::remove_file_unchecked(&deferred_remove.parent, &deferred_remove.name)?;
 		}
-		vfs::remove_file(&mut self, &AccessProfile::KERNEL)?;
-		self.removed = true;
 		Ok(())
 	}
 }
 
 impl Drop for File {
-	/// This function is used in case removal of the file has been deferred, but `close` has not
-	/// been called.
 	fn drop(&mut self) {
-		if !self.deferred_remove || self.removed {
-			return;
-		}
-		let _ = vfs::remove_file(self, &AccessProfile::KERNEL);
+		// TODO: kernel log on error?
+		let _ = self.close();
 	}
 }
 
@@ -908,14 +926,18 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 	let mount_source = match root {
 		Some((major, minor)) => MountSource::Device {
 			dev_type: DeviceType::Block,
-
 			major,
 			minor,
 		},
-
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	mountpoint::create(mount_source, None, 0, Path::root())?;
+	mountpoint::create(
+		mount_source,
+		None,
+		0,
+		PathBuf::root(),
+		FileLocation::dummy(),
+	)?;
 
 	Ok(())
 }

@@ -28,9 +28,10 @@ use crate::device::manager::DeviceManager;
 use crate::errno::Errno;
 use crate::errno::{AllocResult, CollectResult, EResult};
 use crate::file;
-use crate::file::path::Path;
+use crate::file::path::{Path, PathBuf};
 use crate::file::perm::AccessProfile;
 use crate::file::vfs;
+use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::FileContent;
 use crate::file::Mode;
 use crate::process::mem_space::MemSpace;
@@ -137,7 +138,7 @@ pub struct Device {
 	id: DeviceID,
 
 	/// The path to the device file.
-	path: Path,
+	path: PathBuf,
 	/// The file's mode.
 	mode: Mode,
 
@@ -146,6 +147,7 @@ pub struct Device {
 }
 
 impl Device {
+	// TODO accept both `&'static Path` and `PathBuf`?
 	/// Creates a new instance.
 	///
 	/// Arguments:
@@ -155,7 +157,7 @@ impl Device {
 	/// - `handle` is the handle for I/O operations.
 	pub fn new<H: 'static + DeviceHandle>(
 		id: DeviceID,
-		path: Path,
+		path: PathBuf,
 		mode: Mode,
 		handle: H,
 	) -> Result<Self, Errno> {
@@ -206,41 +208,45 @@ impl Device {
 	/// in order to create the file without a deadlock since the VFS accesses a device to write on
 	/// the filesystem.
 	pub fn create_file(id: &DeviceID, path: &Path, mode: Mode) -> EResult<()> {
-		// Tells whether the file already exists
-		let file_exists = vfs::get_file_from_path(path, &AccessProfile::KERNEL, true).is_ok();
-		if file_exists {
-			return Ok(());
-		}
-		// Create the directories in which the device file is located
-		// TODO use path slice to avoid cloning
-		let mut dir_path = path.try_clone()?;
-		let filename = dir_path.pop().unwrap();
-		file::util::create_dirs(&dir_path)?;
+		// Create the parent directory in which the device file is located
+		let parent_path = path.parent().unwrap_or(Path::root());
+		file::util::create_dirs(parent_path)?;
 
-		// Get the parent directory
-		let parent_mutex = vfs::get_file_from_path(&dir_path, &AccessProfile::KERNEL, true)?;
-		let mut parent = parent_mutex.lock();
-
-		// Create the device file
-		vfs::create_file(
-			&mut parent,
-			filename,
-			&AccessProfile::KERNEL,
-			mode,
-			id.to_file_content(),
+		// Resolve path
+		let resolved = vfs::resolve_path(
+			path,
+			&ResolutionSettings {
+				create: true,
+				..ResolutionSettings::kernel_follow()
+			},
 		)?;
-		Ok(())
+		match resolved {
+			Resolved::Creatable {
+				parent,
+				name,
+			} => {
+				let mut parent = parent.lock();
+				let name = name.try_into()?;
+				// Create the device file
+				vfs::create_file(
+					&mut parent,
+					name,
+					&AccessProfile::KERNEL,
+					mode,
+					id.to_file_content(),
+				)?;
+				Ok(())
+			}
+			// The file exists, do nothing
+			Resolved::Found(_) => Ok(()),
+		}
 	}
 
 	/// If exists, removes the device file.
 	///
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> EResult<()> {
-		if let Ok(file_mutex) = vfs::get_file_from_path(&self.path, &AccessProfile::KERNEL, true) {
-			let mut file = file_mutex.lock();
-			vfs::remove_file(&mut file, &AccessProfile::KERNEL)?;
-		}
-		Ok(())
+		vfs::remove_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
 	}
 }
 
@@ -280,7 +286,7 @@ static DEVICES: Mutex<HashMap<DeviceID, Arc<Mutex<Device>>>> = Mutex::new(HashMa
 /// If files management is initialized, the function creates the associated device file.
 pub fn register(device: Device) -> Result<(), Errno> {
 	let id = device.id.clone();
-	let path = device.get_path().try_clone()?;
+	let path = device.get_path().to_path_buf()?;
 	let mode = device.get_mode();
 
 	// Insert

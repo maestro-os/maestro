@@ -33,6 +33,7 @@
 #![feature(trusted_len)]
 #![feature(unsize)]
 #![feature(once_cell_try)]
+#![feature(iter_intersperse)]
 #![deny(warnings)]
 #![allow(unused_attributes)]
 #![allow(dead_code)]
@@ -79,8 +80,8 @@ pub mod util;
 use crate::errno::EResult;
 use crate::file::fs::initramfs;
 use crate::file::path::Path;
-use crate::file::perm::AccessProfile;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::logger::LOGGER;
 use crate::memory::vmem;
 use crate::memory::vmem::VMem;
@@ -205,27 +206,27 @@ pub fn bind_vmem() {
 ///
 /// `init_path` is the path to the init program.
 fn init(init_path: String) -> EResult<()> {
-	let path = Path::from_str(&init_path, true)?;
-
-	let proc_mutex = Process::new()?;
-	let mut proc = proc_mutex.lock();
-
 	// The initial environment
 	let env: Vec<String> = vec![
 		b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
 		b"TERM=maestro".try_into()?,
 	]?;
 
-	let file_mutex = vfs::get_file_from_path(&path, &AccessProfile::KERNEL, true)?;
+	let rs = ResolutionSettings::kernel_follow();
+
+	let path = Path::new(&init_path)?;
+	let file_mutex = vfs::get_file_from_path(path, &rs)?;
 	let mut file = file_mutex.lock();
 
 	let exec_info = ExecInfo {
-		access_profile: AccessProfile::KERNEL,
+		path_resolution: &rs,
 		argv: vec![init_path]?,
 		envp: env,
 	};
 	let program_image = exec::build_image(&mut file, exec_info)?;
 
+	let proc_mutex = Process::new()?;
+	let mut proc = proc_mutex.lock();
 	exec::exec(&mut proc, program_image)
 }
 

@@ -17,6 +17,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 
 /// Structure representing the mounts node of the procfs.
+#[derive(Debug)]
 pub struct Mounts {
 	/// The PID of the process.
 	pub pid: Pid,
@@ -69,11 +70,9 @@ impl IO for Mounts {
 			let flags = "TODO"; // TODO
 
 			let s = crate::format!(
-				"{} {} {} {} 0 0\n",
-				mp.get_source(),
-				mp.get_path(),
-				fs_type,
-				flags
+				"{source} {target} {fs_type} {flags} 0 0\n",
+				source = mp.get_source(),
+				target = mp.get_target_path(),
 			)?;
 			content.push_str(s)?;
 		}

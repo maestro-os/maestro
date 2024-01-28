@@ -1,19 +1,21 @@
 //! The `rename` system call renames a file.
 
 use crate::errno::Errno;
-use crate::file;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use macros::syscall;
 
 // TODO implementation probably can be merged with `renameat2`
+// TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
+// etc...)
 
 #[syscall]
 pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
-	let (old_path, mut new_parent_path, ap) = {
+	let (old_path, new_path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -23,45 +25,53 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 		let oldpath = oldpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let old_path = Path::from_str(oldpath, true)?;
+		let old_path = PathBuf::try_from(oldpath)?;
 
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let new_parent_path = Path::from_str(newpath, true)?;
+		let new_path = PathBuf::try_from(newpath)?;
 
-		(old_path, new_parent_path, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, false);
+		(old_path, new_path, rs)
 	};
-	let new_name = new_parent_path.pop().ok_or_else(|| errno!(ENOENT))?;
 
-	let old_mutex = vfs::get_file_from_path(&old_path, &ap, false)?;
+	let old_parent_path = old_path.parent().ok_or_else(|| errno!(ENOTDIR))?;
+	let old_name = old_path.file_name().ok_or_else(|| errno!(ENOENT))?;
+
+	let old_parent_mutex = vfs::get_file_from_path(old_parent_path, &rs)?;
+	let mut old_parent = old_parent_mutex.lock();
+
+	let old_mutex = vfs::get_file_from_path(&old_path, &rs)?;
 	let mut old = old_mutex.lock();
+	// Cannot rename mountpoint
+	if old.is_mountpoint() {
+		return Err(errno!(EBUSY));
+	}
 
-	let new_parent_mutex = vfs::get_file_from_path(&new_parent_path, &ap, true)?;
-	let mut new_parent = new_parent_mutex.lock();
+	let new_parent_path = new_path.parent().ok_or_else(|| errno!(ENOTDIR))?;
+	let new_parent_mutex = vfs::get_file_from_path(
+		new_parent_path,
+		&ResolutionSettings {
+			follow_link: true,
+			..rs
+		},
+	)?;
+	let new_parent = new_parent_mutex.lock();
+	let new_name = new_path.file_name().ok_or_else(|| errno!(ENOENT))?;
+
+	// If source and destination are on different mountpoints, error
+	if new_parent.get_location().get_mountpoint_id() != old.get_location().get_mountpoint_id() {
+		return Err(errno!(EXDEV));
+	}
 
 	// TODO Check permissions if sticky bit is set
 
-	if new_parent.get_location().get_mountpoint_id() == old.get_location().get_mountpoint_id() {
-		// Old and new are both on the same filesystem
+	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
 
+	if old.get_type() != FileType::Directory {
 		// TODO On fail, undo
-
-		// Create link at new location
-		// The `..` entry is already updated by the file system since having the same
-		// directory in several locations is not allowed
-		vfs::create_link(&mut old, &new_parent, &new_name, &ap)?;
-
-		if old.get_type() != FileType::Directory {
-			vfs::remove_file(&mut old, &ap)?;
-		}
-	} else {
-		// Old and new are on different filesystems.
-
-		// TODO On fail, undo
-
-		file::util::copy_file(&mut old, &mut new_parent, new_name)?;
-		file::util::remove_recursive(&mut old, &ap)?;
+		vfs::remove_file(&mut old_parent, old_name, &rs.access_profile)?;
 	}
 
 	Ok(0)

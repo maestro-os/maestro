@@ -202,19 +202,19 @@ fn build_auxilary(
 	aux.push(AuxEntryDesc::new(AT_NOTELF, AuxEntryDescValue::Number(0)))?;
 	aux.push(AuxEntryDesc::new(
 		AT_UID,
-		AuxEntryDescValue::Number(exec_info.access_profile.get_uid() as _),
+		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.get_uid() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_EUID,
-		AuxEntryDescValue::Number(exec_info.access_profile.get_euid() as _),
+		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.get_euid() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_GID,
-		AuxEntryDescValue::Number(exec_info.access_profile.get_gid() as _),
+		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.get_gid() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_EGID,
-		AuxEntryDescValue::Number(exec_info.access_profile.get_egid() as _),
+		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.get_egid() as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_PLATFORM,
@@ -275,18 +275,18 @@ fn read_exec_file(file: &mut File, ap: &AccessProfile) -> Result<Vec<u8>, Errno>
 }
 
 /// The program executor for ELF files.
-pub struct ELFExecutor {
-	/// Execution informations.
-	info: ExecInfo,
+pub struct ELFExecutor<'s> {
+	/// Execution information.
+	info: ExecInfo<'s>,
 }
 
-impl ELFExecutor {
+impl<'s> ELFExecutor<'s> {
 	/// Creates a new instance to execute the given program.
 	///
 	/// Arguments:
 	/// - `uid` is the User ID of the executing user.
 	/// - `gid` is the Group ID of the executing user.
-	pub fn new(info: ExecInfo) -> Result<Self, Errno> {
+	pub fn new(info: ExecInfo<'s>) -> EResult<Self> {
 		Ok(Self {
 			info,
 		})
@@ -596,14 +596,14 @@ impl ELFExecutor {
 				return Err(errno!(EINVAL));
 			}
 
-			let interp_path = Path::from_str(interp_path, true)?;
-
-			// Getting file
+			// Get file
+			let interp_path = Path::new(interp_path)?;
 			let interp_file_mutex =
-				vfs::get_file_from_path(&interp_path, &self.info.access_profile, true)?;
+				vfs::get_file_from_path(interp_path, self.info.path_resolution)?;
 			let mut interp_file = interp_file_mutex.lock();
 
-			let interp_image = read_exec_file(&mut interp_file, &self.info.access_profile)?;
+			let interp_image =
+				read_exec_file(&mut interp_file, &self.info.path_resolution.access_profile)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
@@ -680,13 +680,13 @@ impl ELFExecutor {
 	}
 }
 
-impl Executor for ELFExecutor {
+impl<'s> Executor for ELFExecutor<'s> {
 	// TODO Ensure there is no way to write in kernel space (check segments position
 	// and relocations)
 	// TODO Handle suid and sgid
 	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno> {
 		// The ELF file image
-		let image = read_exec_file(file, &self.info.access_profile)?;
+		let image = read_exec_file(file, &self.info.path_resolution.access_profile)?;
 		// Parsing the ELF file
 		let parser = ELFParser::new(image.as_slice())?;
 

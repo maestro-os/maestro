@@ -3,8 +3,9 @@
 
 use crate::errno;
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::FileType;
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
@@ -13,37 +14,40 @@ use macros::syscall;
 
 #[syscall]
 pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
-	let (new_cwd, ap) = {
+	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path_str = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		let new_cwd = super::util::get_absolute_path(&proc, Path::from_str(path_str, true)?)?;
+		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let path = PathBuf::try_from(path)?;
 
-		(new_cwd, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, true);
+		(path, rs)
 	};
 
-	{
-		let dir_mutex = vfs::get_file_from_path(&new_cwd, &ap, true)?;
+	let location = {
+		let dir_mutex = vfs::get_file_from_path(&path, &rs)?;
 		let dir = dir_mutex.lock();
 
 		// Check for errors
 		if dir.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-		if !ap.can_list_directory(&dir) {
+		if !rs.access_profile.can_list_directory(&dir) {
 			return Err(errno!(EACCES));
 		}
-	}
+
+		dir.get_location().clone()
+	};
 
 	// Set new cwd
 	{
 		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
-		proc.cwd = Arc::new(new_cwd)?;
+		proc.cwd = Arc::new((path, location))?;
 	}
 
 	Ok(0)

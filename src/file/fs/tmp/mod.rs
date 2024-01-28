@@ -10,9 +10,10 @@ use super::kernfs::KernFS;
 use super::Filesystem;
 use super::FilesystemType;
 use crate::errno;
+use crate::errno::EResult;
 use crate::file::fs::kernfs::node::DummyKernFSNode;
 use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::perm::Gid;
 use crate::file::perm::Uid;
 use crate::file::Errno;
@@ -37,9 +38,10 @@ fn get_used_size<N: KernFSNode>(node: &N) -> usize {
 	size_of::<N>() + node.get_size() as usize
 }
 
-/// Structure representing the temporary file system.
+/// A temporary file system.
 ///
 /// On the inside, the tmpfs works using a kernfs.
+#[derive(Debug)]
 pub struct TmpFS {
 	/// The maximum amount of memory in bytes the filesystem can use.
 	max_size: usize,
@@ -119,16 +121,16 @@ impl Filesystem for TmpFS {
 		self.fs.is_readonly()
 	}
 
-	fn must_cache(&self) -> bool {
-		self.fs.must_cache()
+	fn use_cache(&self) -> bool {
+		self.fs.use_cache()
+	}
+
+	fn get_root_inode(&self) -> INode {
+		self.fs.get_root_inode()
 	}
 
 	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
 		self.fs.get_stat(io)
-	}
-
-	fn get_root_inode(&self, io: &mut dyn IO) -> Result<INode, Errno> {
-		self.fs.get_root_inode(io)
 	}
 
 	fn get_inode(
@@ -189,7 +191,7 @@ impl Filesystem for TmpFS {
 		io: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<u16, Errno> {
+	) -> EResult<(u16, INode)> {
 		// TODO Update fs's size
 		self.fs.remove_file(io, parent_inode, name)
 	}
@@ -224,16 +226,16 @@ impl FilesystemType for TmpFsType {
 		b"tmpfs"
 	}
 
-	fn detect(&self, _io: &mut dyn IO) -> Result<bool, Errno> {
+	fn detect(&self, _io: &mut dyn IO) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
 		_io: &mut dyn IO,
-		_mountpath: Path,
+		_mountpath: PathBuf,
 		readonly: bool,
-	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
+	) -> EResult<Arc<Mutex<dyn Filesystem>>> {
 		Ok(Arc::new(Mutex::new(TmpFS::new(
 			DEFAULT_MAX_SIZE,
 			readonly,

@@ -23,6 +23,8 @@ pub mod spinlock;
 use crate::idt;
 use crate::util::lock::spinlock::Spinlock;
 use core::cell::UnsafeCell;
+use core::fmt;
+use core::fmt::Formatter;
 use core::ops::Deref;
 use core::ops::DerefMut;
 
@@ -203,6 +205,13 @@ impl<T, const INT: bool> Mutex<T, INT> {
 }
 
 unsafe impl<T, const INT: bool> Sync for Mutex<T, INT> {}
+
+impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for Mutex<T, INT> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let guard = self.lock();
+		fmt::Debug::fmt(&*guard, f)
+	}
+}
 
 /// Type alias on `Mutex` representing a mutex which blocks interrupts.
 pub type IntMutex<T> = Mutex<T, false>;

@@ -4,8 +4,8 @@ pub mod content;
 pub mod node;
 
 use crate::errno;
-use crate::errno::AllocError;
 use crate::errno::Errno;
+use crate::errno::{AllocError, EResult};
 use crate::file::fs::kernfs::node::DummyKernFSNode;
 use crate::file::fs::Filesystem;
 use crate::file::fs::Statfs;
@@ -36,7 +36,8 @@ pub const ROOT_INODE: INode = 0;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
-/// Structure representing a kernel file system.
+/// A kernel file system.
+#[derive(Debug)]
 pub struct KernFS {
 	/// The name of the filesystem.
 	name: String,
@@ -269,8 +270,12 @@ impl Filesystem for KernFS {
 		self.readonly
 	}
 
-	fn must_cache(&self) -> bool {
+	fn use_cache(&self) -> bool {
 		false
+	}
+
+	fn get_root_inode(&self) -> INode {
+		ROOT_INODE
 	}
 
 	fn get_stat(&self, _io: &mut dyn IO) -> Result<Statfs, Errno> {
@@ -287,10 +292,6 @@ impl Filesystem for KernFS {
 			f_frsize: 0,
 			f_flags: 0,
 		})
-	}
-
-	fn get_root_inode(&self, _io: &mut dyn IO) -> Result<INode, Errno> {
-		Ok(ROOT_INODE)
 	}
 
 	fn get_inode(
@@ -416,7 +417,7 @@ impl Filesystem for KernFS {
 		_: &mut dyn IO,
 		parent_inode: INode,
 		name: &[u8],
-	) -> Result<u16, Errno> {
+	) -> EResult<(u16, INode)> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -466,7 +467,7 @@ impl Filesystem for KernFS {
 			oom::wrap(|| self.remove_node(inode).map_err(|_| AllocError));
 		}
 
-		Ok(links)
+		Ok((links, inode))
 	}
 
 	fn read_node(

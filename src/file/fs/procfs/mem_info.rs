@@ -11,6 +11,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 
 /// Structure representing the meminfo node.
+#[derive(Debug)]
 pub struct MemInfo {}
 
 impl KernFSNode for MemInfo {

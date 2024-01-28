@@ -3,9 +3,10 @@
 
 use crate::errno::Errno;
 use crate::file::path::Path;
+use crate::file::vfs::ResolutionSettings;
+use crate::file::{mountpoint, FileType};
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
-use crate::util::ptr::arc::Arc;
 use crate::vfs;
 use macros::syscall;
 
@@ -18,16 +19,27 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 		return Err(errno!(EPERM));
 	}
 
-	let path = {
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-		let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		Path::from_str(path, true)?
+	let rs = ResolutionSettings {
+		root: mountpoint::root_location(),
+		..ResolutionSettings::for_process(&proc, true)
 	};
 
-	// Check access to file
-	vfs::get_file_from_path(&path, &proc.access_profile, true)?;
-	proc.chroot = Arc::new(path)?;
+	// Get file
+	let file = {
+		let mem_space = proc.get_mem_space().unwrap();
+		let mem_space_guard = mem_space.lock();
+
+		let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = Path::new(path)?;
+
+		vfs::get_file_from_path(path, &rs)?
+	};
+	let file = file.lock();
+	if file.get_type() != FileType::Directory {
+		return Err(errno!(ENOTDIR));
+	}
+
+	proc.chroot = file.get_location().clone();
 
 	Ok(0)
 }

@@ -3,9 +3,9 @@
 use crate::errno;
 use crate::errno::EResult;
 use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::file::perm::AccessProfile;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
+use crate::file::vfs::ResolutionSettings;
 use crate::file::File;
 use crate::memory::stack;
 use crate::process;
@@ -116,23 +116,23 @@ fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
 /// Builds a program image.
 ///
 /// Arguments:
-/// - `file` is the executable file.
-/// - `access_profile` is the access profile to check permissions
-/// - `argv` is the arguments list.
-/// - `envp` is the environment variables list.
+/// - `file` is the executable file
+/// - `path_resolution` is settings for path resolution
+/// - `argv` is the arguments list
+/// - `envp` is the environment variables list
 fn build_image(
 	file: Arc<Mutex<File>>,
-	access_profile: AccessProfile,
+	path_resolution: &ResolutionSettings,
 	argv: Vec<String>,
 	envp: Vec<String>,
 ) -> EResult<ProgramImage> {
 	let mut file = file.lock();
-	if !access_profile.can_execute_file(&file) {
+	if !path_resolution.access_profile.can_execute_file(&file) {
 		return Err(errno!(EACCES));
 	}
 
 	let exec_info = ExecInfo {
-		access_profile,
+		path_resolution,
 		argv,
 		envp,
 	};
@@ -145,7 +145,7 @@ pub fn execve(
 	argv: *const *const u8,
 	envp: *const *const u8,
 ) -> Result<i32, Errno> {
-	let (mut path, mut argv, envp, ap) = {
+	let (mut path, mut argv, envp, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
@@ -153,29 +153,27 @@ pub fn execve(
 			let mem_space = proc.get_mem_space().unwrap();
 			let mem_space_guard = mem_space.lock();
 
-			Path::from_str(
-				pathname
-					.get(&mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?,
-				true,
-			)?
+			let path = pathname
+				.get(&mem_space_guard)?
+				.ok_or_else(|| errno!(EFAULT))?;
+			PathBuf::try_from(path)?
 		};
-		let path = super::util::get_absolute_path(&proc, path)?;
 
 		let argv = unsafe { super::util::get_str_array(&proc, argv)? };
 		let envp = unsafe { super::util::get_str_array(&proc, envp)? };
 
-		(path, argv, envp, proc.access_profile)
+		let rs = ResolutionSettings::for_process(&proc, true);
+		(path, argv, envp, rs)
 	};
 
 	// Handling shebang
 	let mut i = 0;
 	while i < INTERP_MAX + 1 {
 		// The file
-		let file = vfs::get_file_from_path(&path, &ap, true)?;
+		let file = vfs::get_file_from_path(&path, &rs)?;
 		let mut f = file.lock();
 
-		if !ap.can_execute_file(&f) {
+		if !rs.access_profile.can_execute_file(&f) {
 			return Err(errno!(EACCES));
 		}
 
@@ -204,7 +202,7 @@ pub fn execve(
 			}
 
 			// Set interpreter's path
-			path = Path::from_str(&shebang.buff[shebang.interp], true)?;
+			path = PathBuf::try_from(&shebang.buff[shebang.interp])?;
 
 			i += 1;
 		} else {
@@ -213,7 +211,7 @@ pub fn execve(
 	}
 
 	// The file
-	let file = vfs::get_file_from_path(&path, &ap, true)?;
+	let file = vfs::get_file_from_path(&path, &rs)?;
 
 	// Drop path to avoid memory leak
 	drop(path);
@@ -224,7 +222,7 @@ pub fn execve(
 
 	// Build the program's image
 	let program_image =
-		unsafe { stack::switch(None, move || build_image(file, ap, argv, envp)).unwrap()? };
+		unsafe { stack::switch(None, move || build_image(file, &rs, argv, envp)).unwrap()? };
 
 	// The temporary stack will not be used since the scheduler cannot be ticked when
 	// interrupts are disabled
