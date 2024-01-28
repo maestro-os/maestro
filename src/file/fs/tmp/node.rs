@@ -36,6 +36,7 @@ use core::cmp::max;
 use core::cmp::min;
 
 /// Structure representing a regular file node in the tmpfs.
+#[derive(Debug)]
 pub struct TmpFSRegular {
 	/// The number of hard links to the node.
 	hard_links_count: u16,

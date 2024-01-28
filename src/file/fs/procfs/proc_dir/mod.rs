@@ -51,6 +51,7 @@ use stat::Stat;
 use status::Status;
 
 /// Structure representing the directory of a process.
+#[derive(Debug)]
 pub struct ProcDir {
 	/// The PID of the process.
 	pid: Pid,

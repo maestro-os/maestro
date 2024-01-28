@@ -32,9 +32,10 @@ use crate::time::unit::Timestamp;
 use crate::time::unit::TimestampScale;
 use crate::util::io::IO;
 use core::any::Any;
+use core::fmt::Debug;
 
 /// Trait representing a node in a kernfs.
-pub trait KernFSNode: Any + IO {
+pub trait KernFSNode: Any + Debug + IO {
 	/// Returns the number of hard links to the node.
 	fn get_hard_links_count(&self) -> u16 {
 		1
@@ -100,6 +101,7 @@ pub trait KernFSNode: Any + IO {
 /// This node doesn't implement regular files' content handling.
 ///
 /// Calling `read` or `write` on this structure does nothing.
+#[derive(Debug)]
 pub struct DummyKernFSNode {
 	/// The number of hard links to the node.
 	hard_links_count: u16,

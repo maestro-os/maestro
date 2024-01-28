@@ -212,7 +212,7 @@ impl FileLocation {
 		}
 	}
 
-	/// Returns the mountpoint.
+	/// Returns the mountpoint on which the file is located.
 	pub fn get_mountpoint(&self) -> Option<Arc<Mutex<MountPoint>>> {
 		mountpoint::from_id(self.get_mountpoint_id()?)
 	}
@@ -949,7 +949,8 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
 		},
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	mountpoint::create(mount_source, None, 0, PathBuf::root(), FileLocation::root())?;
+	let mp_id = mountpoint::create(mount_source, None, 0, PathBuf::root(), FileLocation::root())?;
+	assert_eq!(mp_id, FileLocation::root().get_mountpoint_id().unwrap());
 
 	Ok(())
 }

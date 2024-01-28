@@ -33,6 +33,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 
 /// Structure representing the status node of the procfs.
+#[derive(Debug)]
 pub struct Status {
 	/// The PID of the process.
 	pub pid: Pid,

@@ -27,6 +27,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 
 /// Structure representing the version node.
+#[derive(Debug)]
 pub struct Version {}
 
 impl KernFSNode for Version {

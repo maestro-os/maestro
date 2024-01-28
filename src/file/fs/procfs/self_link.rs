@@ -34,6 +34,7 @@ use crate::time::unit::Timestamp;
 use crate::util::io::IO;
 
 /// The `self` symlink.
+#[derive(Debug)]
 pub struct SelfNode {}
 
 impl KernFSNode for SelfNode {

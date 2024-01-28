@@ -71,7 +71,6 @@ impl Hasher for XORHasher {
 ///
 /// Since hashing function have collisions, several elements can have the same
 /// hash.
-#[derive(Debug)]
 struct Bucket<K: Eq + Hash, V> {
 	/// The vector storing the key/value pairs.
 	elements: Vec<(K, V)>,
@@ -164,7 +163,6 @@ impl<K: Eq + Hash + TryClone<Error = E>, V: TryClone<Error = E>, E: From<AllocEr
 }
 
 /// Structure representing a hashmap.
-#[derive(Debug)]
 pub struct HashMap<K: Eq + Hash, V> {
 	/// The number of buckets in the hashmap.
 	buckets_count: usize,
@@ -481,18 +479,15 @@ impl<'m, K: Hash + Eq, V> FusedIterator for Iter<'m, K, V> {}
 
 unsafe impl<'m, K: Hash + Eq, V> TrustedLen for Iter<'m, K, V> {}
 
-impl<K: Eq + Hash + fmt::Display, V: fmt::Display> fmt::Display for HashMap<K, V> {
+impl<K: Eq + Hash + fmt::Debug, V: fmt::Debug> fmt::Debug for HashMap<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "[")?;
-
 		for (i, (key, value)) in self.iter().enumerate() {
-			write!(f, "{}: {}", key, value)?;
-
+			write!(f, "{key:?}: {value:?}")?;
 			if i + 1 < self.len() {
 				write!(f, ", ")?;
 			}
 		}
-
 		write!(f, "]")
 	}
 }

@@ -39,6 +39,7 @@ use kernel_dir::KernelDir;
 
 // TODO Handle dropping
 /// Structure representing the `sys` directory.
+#[derive(Debug)]
 pub struct SysDir {
 	/// The content of the directory. This will always be a Directory variant.
 	content: FileContent,

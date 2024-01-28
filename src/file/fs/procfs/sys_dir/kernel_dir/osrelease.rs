@@ -30,6 +30,7 @@ use crate::util::io::IO;
 use core::cmp::min;
 
 /// Structure representing the `osrelease` node.
+#[derive(Debug)]
 pub struct OsRelease {}
 
 impl KernFSNode for OsRelease {

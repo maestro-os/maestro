@@ -68,8 +68,8 @@ pub const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 // TODO When removing a mountpoint, return an error if another mountpoint is
 // present in a subdir
 
-/// Enumeration of mount sources.
-#[derive(Eq, Hash, PartialEq)]
+/// Value specifying the device from which a filesystem is mounted.
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub enum MountSource {
 	/// The mountpoint is mounted from a device.
 	Device {
@@ -259,6 +259,7 @@ pub fn get_fs(source: &MountSource) -> Option<Arc<Mutex<dyn Filesystem>>> {
 }
 
 /// A mount point, allowing to attach a filesystem to a directory on the VFS.
+#[derive(Debug)]
 pub struct MountPoint {
 	/// The ID of the mountpoint.
 	id: u32,
@@ -397,13 +398,15 @@ pub static LOC_TO_ID: Mutex<HashMap<FileLocation, u32>> = Mutex::new(HashMap::ne
 /// - `target_path` is the path on which the filesystem is to be mounted.
 /// - `target_location` is the location on which the filesystem is to be mounted on the parent
 ///   filesystem.
+///
+/// The function returns the ID of the newly created mountpoint.
 pub fn create(
 	source: MountSource,
 	fs_type: Option<Arc<dyn FilesystemType>>,
 	flags: u32,
 	target_path: PathBuf,
 	target_location: FileLocation,
-) -> EResult<Arc<Mutex<MountPoint>>> {
+) -> EResult<u32> {
 	// TODO clean
 	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
 	// the locks of MOUNT_POINTS
@@ -419,10 +422,9 @@ pub fn create(
 		MOUNT_POINTS
 			.lock()
 			.iter()
-			.map(|(i, _)| *i)
+			.map(|(i, _)| *i + 1)
 			.max()
 			.unwrap_or(0)
-			+ 1
 	};
 
 	let mountpoint = Arc::new(Mutex::new(MountPoint::new(
@@ -444,7 +446,7 @@ pub fn create(
 		}
 	}
 
-	Ok(mountpoint)
+	Ok(id)
 }
 
 /// Removes the mountpoint at the given `target_location`.
