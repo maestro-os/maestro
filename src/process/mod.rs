@@ -38,53 +38,47 @@ pub mod signal;
 pub mod tss;
 pub mod user_desc;
 
-use crate::errno;
-use crate::errno::AllocResult;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::event;
-use crate::event::CallbackResult;
-use crate::file;
-use crate::file::fd::FileDescriptorTable;
-use crate::file::fd::NewFDConstraint;
-use crate::file::fs::procfs::ProcFS;
-use crate::file::open_file;
-use crate::file::path::{Path, PathBuf};
-use crate::file::perm::AccessProfile;
-use crate::file::perm::ROOT_UID;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::{mountpoint, FileLocation};
-use crate::gdt;
-use crate::memory;
-use crate::process::mountpoint::MountSource;
-use crate::process::open_file::OpenFile;
-use crate::register_get;
-use crate::time::timer::TimerManager;
-use crate::tty;
-use crate::tty::TTYHandle;
-use crate::util::container::bitfield::Bitfield;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::lock::*;
-use crate::util::ptr::arc::Arc;
-use crate::util::ptr::arc::Weak;
-use crate::util::TryClone;
-use core::any::Any;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::mem::ManuallyDrop;
-use core::mem::MaybeUninit;
-use core::ptr::NonNull;
+use crate::{
+	errno,
+	errno::{AllocResult, EResult, Errno},
+	event,
+	event::CallbackResult,
+	file,
+	file::{
+		fd::{FileDescriptorTable, NewFDConstraint},
+		fs::procfs::ProcFS,
+		mountpoint, open_file,
+		path::{Path, PathBuf},
+		perm::{AccessProfile, ROOT_UID},
+		vfs,
+		vfs::ResolutionSettings,
+		FileLocation,
+	},
+	gdt, memory,
+	process::{mountpoint::MountSource, open_file::OpenFile},
+	register_get,
+	time::timer::TimerManager,
+	tty,
+	tty::TTYHandle,
+	util::{
+		container::{bitfield::Bitfield, string::String, vec::Vec},
+		lock::*,
+		ptr::arc::{Arc, Weak},
+		TryClone,
+	},
+};
+use core::{
+	any::Any,
+	ffi::c_void,
+	mem::{size_of, ManuallyDrop, MaybeUninit},
+	ptr::NonNull,
+};
 use mem_space::MemSpace;
-use pid::PIDManager;
-use pid::Pid;
+use pid::{PIDManager, Pid};
 use regs::Regs;
 use rusage::RUsage;
 use scheduler::Scheduler;
-use signal::Signal;
-use signal::SignalAction;
-use signal::SignalHandler;
+use signal::{Signal, SignalAction, SignalHandler};
 #[cfg(target_arch = "x86")]
 use tss::TSS;
 

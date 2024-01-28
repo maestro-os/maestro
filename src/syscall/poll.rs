@@ -19,15 +19,16 @@
 //! The `poll` system call allows to wait for events on a given set of file
 //! descriptors.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::scheduler;
-use crate::process::Process;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::Timestamp;
-use crate::time::unit::TimestampScale;
-use crate::util::io;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallSlice, scheduler, Process},
+	time::{
+		clock,
+		clock::CLOCK_MONOTONIC,
+		unit::{Timestamp, TimestampScale},
+	},
+	util::io,
+};
 use core::ffi::c_int;
 use macros::syscall;
 

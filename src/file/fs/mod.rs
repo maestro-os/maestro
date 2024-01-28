@@ -25,22 +25,22 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use super::path::PathBuf;
-use super::File;
-use crate::errno;
-use crate::errno::EResult;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::FileContent;
-use crate::file::INode;
-use crate::file::Mode;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use core::any::Any;
-use core::fmt::Debug;
+use super::{path::PathBuf, File};
+use crate::{
+	errno,
+	errno::EResult,
+	file::{
+		perm::{Gid, Uid},
+		FileContent, INode, Mode,
+	},
+	util::{
+		container::{hashmap::HashMap, string::String},
+		io::IO,
+		lock::Mutex,
+		ptr::arc::Arc,
+	},
+};
+use core::{any::Any, fmt::Debug};
 
 /// This structure is used in the f_fsid field of statfs. It is currently
 /// unused.

@@ -19,10 +19,7 @@
 //! TODO doc
 
 use serde::Deserialize;
-use std::env;
-use std::fs;
-use std::io;
-use std::path::PathBuf;
+use std::{env, fs, io, path::PathBuf};
 
 /// The content of the target JSON file.
 ///

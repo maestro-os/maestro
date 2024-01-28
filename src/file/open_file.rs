@@ -19,32 +19,29 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
-use crate::device;
-use crate::device::DeviceType;
-use crate::errno;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::buffer;
-use crate::file::mountpoint;
-use crate::file::DeviceID;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::FileLocation;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::MemSpace;
-use crate::process::Process;
-use crate::syscall::ioctl;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::TimestampScale;
-use crate::util::container::hashmap::HashMap;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use core::cmp::min;
-use core::ffi::c_int;
-use core::ffi::c_void;
+use crate::{
+	device,
+	device::DeviceType,
+	errno,
+	errno::{EResult, Errno},
+	file::{buffer, mountpoint, DeviceID, File, FileContent, FileLocation},
+	process::{
+		mem_space::{ptr::SyscallPtr, MemSpace},
+		Process,
+	},
+	syscall::ioctl,
+	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
+	util::{
+		container::hashmap::HashMap,
+		io::IO,
+		lock::{IntMutex, Mutex},
+		ptr::arc::Arc,
+	},
+};
+use core::{
+	cmp::min,
+	ffi::{c_int, c_void},
+};
 
 /// Read only.
 pub const O_RDONLY: i32 = 0b00000000000000000000000000000000;

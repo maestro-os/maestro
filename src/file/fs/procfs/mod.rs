@@ -26,33 +26,29 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::kernfs;
-use super::kernfs::node::DummyKernFSNode;
-use super::kernfs::KernFS;
-use super::Filesystem;
-use super::FilesystemType;
-use crate::errno::AllocResult;
-use crate::errno::Errno;
-use crate::errno::{AllocError, EResult};
-use crate::file::fs::Statfs;
-use crate::file::path::PathBuf;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::DirEntry;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::FileType;
-use crate::file::INode;
-use crate::file::Mode;
-use crate::process;
-use crate::process::oom;
-use crate::process::pid::Pid;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use super::{
+	kernfs,
+	kernfs::{node::DummyKernFSNode, KernFS},
+	Filesystem, FilesystemType,
+};
+use crate::{
+	errno::{AllocError, AllocResult, EResult, Errno},
+	file::{
+		fs::Statfs,
+		path::PathBuf,
+		perm::{Gid, Uid},
+		DirEntry, File, FileContent, FileType, INode, Mode,
+	},
+	process,
+	process::{oom, pid::Pid},
+	util::{
+		boxed::Box,
+		container::{hashmap::HashMap, string::String},
+		io::IO,
+		lock::Mutex,
+		ptr::arc::Arc,
+	},
+};
 use core::any::Any;
 use mem_info::MemInfo;
 use proc_dir::ProcDir;

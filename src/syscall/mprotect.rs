@@ -19,12 +19,12 @@
 //! The `mprotect` system call allows to set permissions for the given range of memory.
 
 use super::mmap;
-use crate::errno::Errno;
-use crate::memory;
-use crate::process::mem_space;
-use crate::process::Process;
-use core::ffi::c_int;
-use core::ffi::c_void;
+use crate::{
+	errno::Errno,
+	memory,
+	process::{mem_space, Process},
+};
+use core::ffi::{c_int, c_void};
 use macros::syscall;
 
 /// Converts the given `prot` to mapping flags.

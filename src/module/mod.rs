@@ -30,27 +30,29 @@
 
 pub mod version;
 
-use crate::elf;
-use crate::elf::parser::ELFParser;
-use crate::elf::relocation::{ELF32Rel, ELF32Rela, Relocation};
-use crate::elf::ELF32Sym;
-use crate::errno;
-use crate::errno::Errno;
-use crate::memory::malloc;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
-use crate::util::DisplayableStr;
-use crate::util::TryClone;
-use core::cmp::min;
-use core::mem::size_of;
-use core::mem::transmute;
-use core::num::NonZeroUsize;
-use core::ptr;
-use core::slice;
-use version::Dependency;
-use version::Version;
+use crate::{
+	elf,
+	elf::{
+		parser::ELFParser,
+		relocation::{ELF32Rel, ELF32Rela, Relocation},
+		ELF32Sym,
+	},
+	errno,
+	errno::Errno,
+	memory::malloc,
+	util::{
+		container::{hashmap::HashMap, string::String, vec::Vec},
+		lock::Mutex,
+		DisplayableStr, TryClone,
+	},
+};
+use core::{
+	cmp::min,
+	mem::{size_of, transmute},
+	num::NonZeroUsize,
+	ptr, slice,
+};
+use version::{Dependency, Version};
 
 /// The magic number that must be present inside of a module.
 pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
@@ -63,13 +65,11 @@ pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
 ///
 /// Example:
 /// ```rust
-/// kernel::module!([
-///     Dependency {
-///         name: "plop",
-///         version: Version::new(1, 0, 0),
-///         constraint: Ordering::Equal,
-///     }
-/// ])
+/// kernel::module!([Dependency {
+/// 	name: "plop",
+/// 	version: Version::new(1, 0, 0),
+/// 	constraint: Ordering::Equal,
+/// }])
 /// ```
 #[macro_export]
 macro_rules! module {

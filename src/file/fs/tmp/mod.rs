@@ -23,28 +23,27 @@
 
 mod node;
 
-use super::kernfs::node::KernFSNode;
-use super::kernfs::KernFS;
-use super::Filesystem;
-use super::FilesystemType;
-use crate::errno;
-use crate::errno::EResult;
-use crate::file::fs::kernfs::node::DummyKernFSNode;
-use crate::file::fs::Statfs;
-use crate::file::path::PathBuf;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::Errno;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::INode;
-use crate::file::Mode;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use super::{
+	kernfs::{node::KernFSNode, KernFS},
+	Filesystem, FilesystemType,
+};
+use crate::{
+	errno,
+	errno::EResult,
+	file::{
+		fs::{kernfs::node::DummyKernFSNode, Statfs},
+		path::PathBuf,
+		perm::{Gid, Uid},
+		Errno, File, FileContent, INode, Mode,
+	},
+	util::{
+		boxed::Box,
+		container::{hashmap::HashMap, string::String},
+		io::IO,
+		lock::Mutex,
+		ptr::arc::Arc,
+	},
+};
 use core::mem::size_of;
 use node::TmpFSRegular;
 

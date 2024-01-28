@@ -27,29 +27,28 @@
 //! This number represents the number of ticks during which the process keeps
 //! running until switching to the next process.
 
-use crate::errno::AllocResult;
-use crate::event;
-use crate::event::CallbackHook;
-use crate::idt::pic;
-use crate::memory;
-use crate::memory::malloc;
-use crate::memory::stack;
-use crate::process;
-use crate::process::pid::Pid;
-use crate::process::regs::Regs;
-use crate::process::Process;
-use crate::process::State;
-use crate::time;
-use crate::util::container::map::Map;
-use crate::util::container::map::MapIterator;
-use crate::util::container::vec::Vec;
-use crate::util::lock::*;
-use crate::util::math;
-use crate::util::math::rational::Rational;
-use crate::util::ptr::arc::Arc;
-use core::arch::asm;
-use core::cmp::max;
-use core::ffi::c_void;
+use crate::{
+	errno::AllocResult,
+	event,
+	event::CallbackHook,
+	idt::pic,
+	memory,
+	memory::{malloc, stack},
+	process,
+	process::{pid::Pid, regs::Regs, Process, State},
+	time,
+	util::{
+		container::{
+			map::{Map, MapIterator},
+			vec::Vec,
+		},
+		lock::*,
+		math,
+		math::rational::Rational,
+		ptr::arc::Arc,
+	},
+};
+use core::{arch::asm, cmp::max, ffi::c_void};
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;

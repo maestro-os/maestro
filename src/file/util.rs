@@ -18,15 +18,16 @@
 
 //! This module implements utility functions for files manipulations.
 
-use super::path::{Component, Path, PathBuf};
-use super::FileContent;
-use crate::errno;
-use crate::errno::EResult;
-use crate::file::perm::AccessProfile;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
+use super::{
+	path::{Component, Path, PathBuf},
+	FileContent,
+};
+use crate::{
+	errno,
+	errno::EResult,
+	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings},
+	util::container::{hashmap::HashMap, string::String},
+};
 
 /// Creates the directories necessary to reach path `path`.
 ///

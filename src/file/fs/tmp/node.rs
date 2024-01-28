@@ -18,22 +18,21 @@
 
 //! This module implements regular file node for the tmpfs.
 
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::fs::kernfs::content::KernFSContent;
-use crate::file::fs::tmp::KernFSNode;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::FileContent;
-use crate::file::Mode;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::Timestamp;
-use crate::time::unit::TimestampScale;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use core::cmp::max;
-use core::cmp::min;
+use crate::{
+	errno::{EResult, Errno},
+	file::{
+		fs::{kernfs::content::KernFSContent, tmp::KernFSNode},
+		perm::{Gid, Uid},
+		FileContent, Mode,
+	},
+	time::{
+		clock,
+		clock::CLOCK_MONOTONIC,
+		unit::{Timestamp, TimestampScale},
+	},
+	util::{container::vec::Vec, io::IO},
+};
+use core::cmp::{max, min};
 
 /// Structure representing a regular file node in the tmpfs.
 #[derive(Debug)]

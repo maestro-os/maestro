@@ -18,18 +18,19 @@
 
 //! The `mmap` system call allows the process to allocate memory.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::FileType;
-use crate::memory;
-use crate::process::mem_space;
-use crate::process::mem_space::MapResidence;
-use crate::process::Process;
-use crate::syscall::mmap::mem_space::MapConstraint;
-use crate::util::math;
-use core::ffi::c_int;
-use core::ffi::c_void;
-use core::num::NonZeroUsize;
+use crate::{
+	errno,
+	errno::Errno,
+	file::FileType,
+	memory,
+	process::{mem_space, mem_space::MapResidence, Process},
+	syscall::mmap::mem_space::MapConstraint,
+	util::math,
+};
+use core::{
+	ffi::{c_int, c_void},
+	num::NonZeroUsize,
+};
 use macros::syscall;
 
 /// Data can be read.

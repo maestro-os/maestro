@@ -18,29 +18,25 @@
 
 //! This module implements timers.
 
-use super::clock;
-use super::unit::ClockIdT;
-use super::unit::ITimerspec32;
-use super::unit::TimeUnit;
-use super::unit::TimerT;
-use super::unit::Timespec;
-use super::unit::TimestampScale;
-use crate::errno::AllocResult;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::limits;
-use crate::process::oom;
-use crate::process::pid::Pid;
-use crate::process::signal::SigEvent;
-use crate::process::signal::Signal;
-use crate::process::signal::SIGEV_SIGNAL;
-use crate::process::signal::SIGEV_THREAD;
-use crate::process::Process;
-use crate::time::unit::Timespec32;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::id_allocator::IDAllocator;
-use crate::util::container::map::Map;
-use crate::util::lock::IntMutex;
+use super::{
+	clock,
+	unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, TimestampScale},
+};
+use crate::{
+	errno::{AllocResult, EResult, Errno},
+	limits,
+	process::{
+		oom,
+		pid::Pid,
+		signal::{SigEvent, Signal, SIGEV_SIGNAL, SIGEV_THREAD},
+		Process,
+	},
+	time::unit::Timespec32,
+	util::{
+		container::{hashmap::HashMap, id_allocator::IDAllocator, map::Map},
+		lock::IntMutex,
+	},
+};
 
 // TODO make sure a timer doesn't send a signal to a thread that do not belong to the manager's
 // process

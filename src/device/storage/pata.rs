@@ -38,13 +38,8 @@
 // TODO Add support for third and fourth bus
 
 use super::StorageInterface;
-use crate::device::storage::ide;
-use crate::errno;
-use crate::errno::EResult;
-use crate::io;
-use crate::util::math;
-use core::cmp::min;
-use core::num::NonZeroU64;
+use crate::{device::storage::ide, errno, errno::EResult, io, util::math};
+use core::{cmp::min, num::NonZeroU64};
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;

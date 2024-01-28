@@ -18,29 +18,22 @@
 
 //! This module implements the Vec container.
 
-use crate::errno::AllocResult;
-use crate::errno::CollectResult;
-use crate::memory::malloc;
-use crate::util::AllocError;
-use crate::util::TryClone;
-use core::cmp::max;
-use core::cmp::min;
-use core::fmt;
-use core::hash::Hash;
-use core::hash::Hasher;
-use core::iter::FusedIterator;
-use core::iter::TrustedLen;
-use core::mem::ManuallyDrop;
-use core::num::NonZeroUsize;
-use core::ops::Deref;
-use core::ops::DerefMut;
-use core::ops::Index;
-use core::ops::IndexMut;
-use core::ops::Range;
-use core::ops::RangeFrom;
-use core::ops::RangeTo;
-use core::ptr;
-use core::ptr::drop_in_place;
+use crate::{
+	errno::{AllocResult, CollectResult},
+	memory::malloc,
+	util::{AllocError, TryClone},
+};
+use core::{
+	cmp::{max, min},
+	fmt,
+	hash::{Hash, Hasher},
+	iter::{FusedIterator, TrustedLen},
+	mem::ManuallyDrop,
+	num::NonZeroUsize,
+	ops::{Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeTo},
+	ptr,
+	ptr::drop_in_place,
+};
 
 /// Creates a [`Vec`] with the given size or set of values.
 #[macro_export]

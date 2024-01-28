@@ -38,13 +38,13 @@
 pub mod once;
 pub mod spinlock;
 
-use crate::idt;
-use crate::util::lock::spinlock::Spinlock;
-use core::cell::UnsafeCell;
-use core::fmt;
-use core::fmt::Formatter;
-use core::ops::Deref;
-use core::ops::DerefMut;
+use crate::{idt, util::lock::spinlock::Spinlock};
+use core::{
+	cell::UnsafeCell,
+	fmt,
+	fmt::Formatter,
+	ops::{Deref, DerefMut},
+};
 
 /// Structure representing the saved state of interruptions for the current
 /// thread.

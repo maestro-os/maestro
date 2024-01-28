@@ -20,13 +20,12 @@
 //! to a process.
 
 use super::util;
-use crate::errno;
-use crate::errno::Errno;
-use crate::process;
-use crate::process::pid::Pid;
-use crate::process::signal::Signal;
-use crate::process::Process;
-use crate::process::State;
+use crate::{
+	errno,
+	errno::Errno,
+	process,
+	process::{pid::Pid, signal::Signal, Process, State},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

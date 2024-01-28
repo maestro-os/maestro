@@ -19,26 +19,24 @@
 //! This file implements sockets.
 
 use super::Buffer;
-use crate::errno::AllocResult;
-use crate::errno::Errno;
-use crate::file::buffer::BlockHandler;
-use crate::net::osi;
-use crate::net::SocketDesc;
-use crate::net::SocketDomain;
-use crate::net::SocketType;
-use crate::process::mem_space::MemSpace;
-use crate::process::Process;
-use crate::syscall::ioctl;
-use crate::util::container::ring_buffer::RingBuffer;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryDefault;
-use core::cmp::min;
-use core::ffi::c_int;
-use core::ffi::c_void;
+use crate::{
+	errno::{AllocResult, Errno},
+	file::buffer::BlockHandler,
+	net::{osi, SocketDesc, SocketDomain, SocketType},
+	process::{mem_space::MemSpace, Process},
+	syscall::ioctl,
+	util::{
+		container::{ring_buffer::RingBuffer, vec::Vec},
+		io::IO,
+		lock::{IntMutex, Mutex},
+		ptr::arc::Arc,
+		TryDefault,
+	},
+};
+use core::{
+	cmp::min,
+	ffi::{c_int, c_void},
+};
 
 /// The maximum size of a socket's buffers.
 const BUFFER_SIZE: usize = 65536;

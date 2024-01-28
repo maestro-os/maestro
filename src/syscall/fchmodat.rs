@@ -19,11 +19,14 @@
 //! The `fchmodat` system call allows change the permissions on a file.
 
 use super::util::at;
-use crate::errno::Errno;
-use crate::file::path::PathBuf;
-use crate::file::vfs::{ResolutionSettings, Resolved};
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
+use crate::{
+	errno::Errno,
+	file::{
+		path::PathBuf,
+		vfs::{ResolutionSettings, Resolved},
+	},
+	process::{mem_space::ptr::SyscallString, Process},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

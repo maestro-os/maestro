@@ -20,8 +20,7 @@
 //! Direct Access Memory (DMA).
 
 use crate::io;
-use core::mem::size_of;
-use core::ptr;
+use core::{mem::size_of, ptr};
 
 /// Enumeration of Memory Space BAR types.
 #[derive(Clone, Debug)]

@@ -18,12 +18,15 @@
 
 //! The `rt_sigaction` system call sets the action for a signal.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::signal::SigAction;
-use crate::process::signal::SignalHandler;
-use crate::process::Process;
-use crate::syscall::Signal;
+use crate::{
+	errno::Errno,
+	process::{
+		mem_space::ptr::SyscallPtr,
+		signal::{SigAction, SignalHandler},
+		Process,
+	},
+	syscall::Signal,
+};
 use core::ffi::c_int;
 use macros::syscall;
 

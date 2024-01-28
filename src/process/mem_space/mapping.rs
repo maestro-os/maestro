@@ -21,27 +21,15 @@
 //! Mappings may be created at the process's creation or by the process itself using
 //! system calls.
 
-use super::gap::MemGap;
-use super::MapResidence;
-use super::MemSpace;
-use crate::file::vfs;
-use crate::memory;
-use crate::memory::buddy;
-use crate::memory::physical_ref_counter::PhysRefCounter;
-use crate::memory::vmem;
-use crate::memory::vmem::VMem;
-use crate::process::oom;
-use crate::process::AllocResult;
-use crate::process::EResult;
-use crate::util::io::IO;
-use crate::util::lock::*;
-use crate::util::ptr::arc::Arc;
-use core::ffi::c_void;
-use core::fmt;
-use core::num::NonZeroUsize;
-use core::ptr;
-use core::ptr::NonNull;
-use core::slice;
+use super::{gap::MemGap, MapResidence, MemSpace};
+use crate::{
+	file::vfs,
+	memory,
+	memory::{buddy, physical_ref_counter::PhysRefCounter, vmem, vmem::VMem},
+	process::{oom, AllocResult, EResult},
+	util::{io::IO, lock::*, ptr::arc::Arc},
+};
+use core::{ffi::c_void, fmt, num::NonZeroUsize, ptr, ptr::NonNull, slice};
 
 /// A pointer to the default physical page of memory.
 ///

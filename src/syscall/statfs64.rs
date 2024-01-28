@@ -19,10 +19,11 @@
 //! The `statfs64` system call returns information about a mounted file system.
 
 use super::statfs::do_statfs;
-use crate::errno::Errno;
-use crate::file::fs::Statfs;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallString;
+use crate::{
+	errno::Errno,
+	file::fs::Statfs,
+	process::mem_space::ptr::{SyscallPtr, SyscallString},
+};
 use macros::syscall;
 
 // TODO Check args types

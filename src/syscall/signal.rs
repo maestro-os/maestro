@@ -19,18 +19,20 @@
 //! The `signal` syscall allows to specify a pointer to a function to be called
 //! when a specific signal is received by the current process.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::process::signal;
-use crate::process::signal::SigAction;
-use crate::process::signal::SigHandler;
-use crate::process::signal::Signal;
-use crate::process::signal::SignalHandler;
-use crate::process::Process;
-use core::ffi::c_int;
-use core::ffi::c_void;
-use core::mem::transmute;
-use core::ptr::null;
+use crate::{
+	errno,
+	errno::Errno,
+	process::{
+		signal,
+		signal::{SigAction, SigHandler, Signal, SignalHandler},
+		Process,
+	},
+};
+use core::{
+	ffi::{c_int, c_void},
+	mem::transmute,
+	ptr::null,
+};
 use macros::syscall;
 
 #[syscall]

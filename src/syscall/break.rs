@@ -18,8 +18,7 @@
 
 //! The `break` system call is not implemented.
 
-use crate::errno;
-use crate::errno::Errno;
+use crate::{errno, errno::Errno};
 use macros::syscall;
 
 #[syscall]

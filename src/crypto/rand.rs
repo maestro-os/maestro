@@ -18,11 +18,14 @@
 
 //! This module implements randomness functions.
 
-use crate::crypto::chacha20;
-use crate::errno::EResult;
-use crate::util::container::ring_buffer::RingBuffer;
-use crate::util::container::vec::Vec;
-use crate::util::lock::IntMutex;
+use crate::{
+	crypto::chacha20,
+	errno::EResult,
+	util::{
+		container::{ring_buffer::RingBuffer, vec::Vec},
+		lock::IntMutex,
+	},
+};
 
 /// The size of the entropy buffer in bytes.
 const ENTROPY_BUFFER_SIZE: usize = 32768;

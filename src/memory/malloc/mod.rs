@@ -27,23 +27,24 @@
 mod block;
 mod chunk;
 
-use crate::errno::AllocError;
-use crate::errno::AllocResult;
-use crate::memory;
-use crate::memory::malloc::ptr::NonNull;
-use crate::util::lock::IntMutex;
+use crate::{
+	errno::{AllocError, AllocResult},
+	memory,
+	memory::malloc::ptr::NonNull,
+	util::lock::IntMutex,
+};
 use block::Block;
 use chunk::Chunk;
-use core::cmp::min;
-use core::cmp::Ordering;
-use core::ffi::c_void;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::ops::Index;
-use core::ops::IndexMut;
-use core::ptr;
-use core::ptr::drop_in_place;
-use core::slice;
+use core::{
+	cmp::{min, Ordering},
+	ffi::c_void,
+	mem::size_of,
+	num::NonZeroUsize,
+	ops::{Index, IndexMut},
+	ptr,
+	ptr::drop_in_place,
+	slice,
+};
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());
@@ -373,9 +374,7 @@ impl<T> Drop for Alloc<T> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::memory;
-	use crate::memory::buddy;
-	use crate::util::math;
+	use crate::{memory, memory::buddy, util::math};
 	use core::slice;
 
 	#[test_case]

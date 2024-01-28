@@ -18,12 +18,14 @@
 
 //! The `clock_gettime` syscall returns the current time of the given clock.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::time::clock;
-use crate::time::unit::ClockIdT;
-use crate::time::unit::Timespec;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, Process},
+	time::{
+		clock,
+		unit::{ClockIdT, Timespec},
+	},
+};
 use macros::syscall;
 
 #[syscall]

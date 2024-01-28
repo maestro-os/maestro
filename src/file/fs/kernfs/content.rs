@@ -23,13 +23,11 @@
 //! On the fly generation is useful in special cases. For example, when the content changes
 //! depending on the process calling the kernfs.
 
-use crate::errno::AllocResult;
-use crate::file::FileContent;
-use crate::util::TryClone;
-use core::borrow::Borrow;
-use core::borrow::BorrowMut;
-use core::ops::Deref;
-use core::ops::DerefMut;
+use crate::{errno::AllocResult, file::FileContent, util::TryClone};
+use core::{
+	borrow::{Borrow, BorrowMut},
+	ops::{Deref, DerefMut},
+};
 
 /// Content of a kernfs node.
 pub enum KernFSContent<'node> {

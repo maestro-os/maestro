@@ -18,11 +18,7 @@
 
 //! This module implements the local loopback.
 
-use super::buff::BuffList;
-use super::Address;
-use super::BindAddress;
-use super::Interface;
-use super::MAC;
+use super::{buff::BuffList, Address, BindAddress, Interface, MAC};
 use crate::errno::Errno;
 
 /// Local loopback interfaces allows the system to write data to itself.

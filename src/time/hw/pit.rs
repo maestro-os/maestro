@@ -20,10 +20,7 @@
 //! trigger interruptions at a fixed interval.
 
 use super::HwClock;
-use crate::idt;
-use crate::idt::pic;
-use crate::io;
-use crate::util::math::rational::Rational;
+use crate::{idt, idt::pic, io, util::math::rational::Rational};
 
 /// PIT channel number 0.
 const CHANNEL_0: u16 = 0x40;

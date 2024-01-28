@@ -27,20 +27,18 @@ pub mod osi;
 pub mod sockaddr;
 pub mod tcp;
 
-use crate::errno::Errno;
-use crate::file::perm::AccessProfile;
-use crate::file::perm::ROOT_GID;
-use crate::file::perm::ROOT_UID;
-use crate::net::sockaddr::SockAddrIn;
-use crate::net::sockaddr::SockAddrIn6;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	errno::Errno,
+	file::perm::{AccessProfile, ROOT_GID, ROOT_UID},
+	net::sockaddr::{SockAddrIn, SockAddrIn6},
+	util::{
+		container::{hashmap::HashMap, string::String, vec::Vec},
+		lock::Mutex,
+		ptr::arc::Arc,
+	},
+};
 use buff::BuffList;
-use core::cmp::Ordering;
-use core::mem::size_of;
+use core::{cmp::Ordering, mem::size_of};
 
 /// Type representing a Media Access Control (MAC) address.
 pub type MAC = [u8; 6];

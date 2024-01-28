@@ -19,13 +19,12 @@
 //! This module implements the `set_thread_area` system call, which allows to
 //! set a TLS area.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::gdt;
-use crate::process;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::user_desc::UserDesc;
-use crate::process::Process;
+use crate::{
+	errno,
+	errno::Errno,
+	gdt, process,
+	process::{mem_space::ptr::SyscallPtr, user_desc::UserDesc, Process},
+};
 use core::mem::size_of;
 use macros::syscall;
 

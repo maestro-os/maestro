@@ -21,14 +21,8 @@
 //! information. These data are meant to be used by the memory allocators.
 
 use super::*;
-use crate::elf::kernel::sections;
-use crate::multiboot;
-use crate::util;
-use crate::util::lock::once::OnceInit;
-use core::cmp::*;
-use core::ffi::c_void;
-use core::iter;
-use core::ptr::null;
+use crate::{elf::kernel::sections, multiboot, util, util::lock::once::OnceInit};
+use core::{cmp::*, ffi::c_void, iter, ptr::null};
 
 /// Physical memory map information.
 #[derive(Debug)]

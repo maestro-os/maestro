@@ -21,15 +21,12 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-use crate::errno::CollectResult;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::open_file::OpenFile;
-use crate::limits;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	errno::{CollectResult, EResult, Errno},
+	file::open_file::OpenFile,
+	limits,
+	util::{container::vec::Vec, io::IO, lock::Mutex, ptr::arc::Arc},
+};
 use core::cmp::max;
 
 /// The maximum number of file descriptors that can be open system-wide at once.
@@ -339,8 +336,10 @@ impl Default for FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{File, FileContent, FileLocation};
-	use crate::util::container::string::String;
+	use crate::{
+		file::{File, FileContent, FileLocation},
+		util::container::string::String,
+	};
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {

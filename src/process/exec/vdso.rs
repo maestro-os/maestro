@@ -19,24 +19,18 @@
 //! The vDSO (virtual dynamic shared object) is a small shared library that the kernel
 //! automatically maps into the memory space of all userspace programs.
 
-use crate::elf::parser::ELFParser;
-use crate::errno::Errno;
-use crate::include_bytes_aligned;
-use crate::memory;
-use crate::memory::buddy;
-use crate::process::mem_space;
-use crate::process::mem_space::MapConstraint;
-use crate::process::mem_space::MapResidence;
-use crate::process::mem_space::MemSpace;
-use crate::util::container::vec::Vec;
-use crate::util::lock::Mutex;
-use crate::util::math;
-use crate::util::ptr::arc::Arc;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::num::NonZeroUsize;
-use core::ptr;
-use core::ptr::NonNull;
+use crate::{
+	elf::parser::ELFParser,
+	errno::Errno,
+	include_bytes_aligned, memory,
+	memory::buddy,
+	process::{
+		mem_space,
+		mem_space::{MapConstraint, MapResidence, MemSpace},
+	},
+	util::{container::vec::Vec, lock::Mutex, math, ptr::arc::Arc},
+};
+use core::{cmp::min, ffi::c_void, num::NonZeroUsize, ptr, ptr::NonNull};
 
 /// The ELF image of the vDSO.
 static ELF_IMAGE: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));

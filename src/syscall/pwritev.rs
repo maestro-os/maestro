@@ -18,9 +18,10 @@
 
 //! The `pwritev` system call allows to write sparse data on a file descriptor.
 
-use crate::errno::Errno;
-use crate::process::iovec::IOVec;
-use crate::process::mem_space::ptr::SyscallSlice;
+use crate::{
+	errno::Errno,
+	process::{iovec::IOVec, mem_space::ptr::SyscallSlice},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

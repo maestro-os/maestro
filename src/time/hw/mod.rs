@@ -23,12 +23,15 @@ pub mod pit;
 #[cfg(target_arch = "x86")]
 pub mod rtc;
 
-use crate::time::unit::Timestamp;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::string::String;
-use crate::util::lock::Mutex;
-use crate::util::math::rational::Rational;
+use crate::{
+	time::unit::Timestamp,
+	util::{
+		boxed::Box,
+		container::{hashmap::HashMap, string::String},
+		lock::Mutex,
+		math::rational::Rational,
+	},
+};
 
 /// Trait representing a hardware clock.
 pub trait HwClock {

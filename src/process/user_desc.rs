@@ -20,8 +20,7 @@
 //! global descriptor.
 
 use crate::gdt;
-use core::ffi::c_void;
-use core::fmt;
+use core::{ffi::c_void, fmt};
 
 /// The size of the `user_desc` structure in bytes.
 pub const USER_DESC_SIZE: usize = 16;

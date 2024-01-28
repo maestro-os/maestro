@@ -18,26 +18,26 @@
 
 //! The `execve` system call allows to execute a program from a file.
 
-use crate::errno;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::File;
-use crate::memory::stack;
-use crate::process;
-use crate::process::exec;
-use crate::process::exec::ExecInfo;
-use crate::process::exec::ProgramImage;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
-use crate::process::Process;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	errno,
+	errno::{EResult, Errno},
+	file::{path::PathBuf, vfs, vfs::ResolutionSettings, File},
+	memory::stack,
+	process,
+	process::{
+		exec,
+		exec::{ExecInfo, ProgramImage},
+		mem_space::ptr::SyscallString,
+		regs::Regs,
+		Process,
+	},
+	util::{
+		container::{string::String, vec::Vec},
+		io::IO,
+		lock::Mutex,
+		ptr::arc::Arc,
+	},
+};
 use core::ops::Range;
 use macros::syscall;
 

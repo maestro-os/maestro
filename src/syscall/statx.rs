@@ -19,17 +19,21 @@
 //! The statx system call returns the extended status of a file.
 
 use super::util::at;
-use crate::errno::Errno;
-use crate::file::mountpoint::MountSource;
-use crate::file::path::PathBuf;
-use crate::file::vfs::{ResolutionSettings, Resolved};
-use crate::file::FileContent;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::util::io::IO;
-use core::ffi::c_int;
-use core::ffi::c_uint;
+use crate::{
+	errno::Errno,
+	file::{
+		mountpoint::MountSource,
+		path::PathBuf,
+		vfs::{ResolutionSettings, Resolved},
+		FileContent,
+	},
+	process::{
+		mem_space::ptr::{SyscallPtr, SyscallString},
+		Process,
+	},
+	util::io::IO,
+};
+use core::ffi::{c_int, c_uint};
 use macros::syscall;
 
 /// Structure representing a timestamp with the statx syscall.

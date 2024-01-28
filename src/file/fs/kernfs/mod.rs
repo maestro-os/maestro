@@ -21,30 +21,24 @@
 pub mod content;
 pub mod node;
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::errno::{AllocError, EResult};
-use crate::file::fs::kernfs::node::DummyKernFSNode;
-use crate::file::fs::Filesystem;
-use crate::file::fs::Statfs;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::DirEntry;
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::FileLocation;
-use crate::file::FileType;
-use crate::file::INode;
-use crate::file::Mode;
-use crate::memory;
-use crate::process::oom;
-use crate::util::boxed::Box;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::TryClone;
-use core::borrow::Borrow;
-use core::intrinsics::unlikely;
+use crate::{
+	errno,
+	errno::{AllocError, EResult, Errno},
+	file::{
+		fs::{kernfs::node::DummyKernFSNode, Filesystem, Statfs},
+		perm::{Gid, Uid},
+		DirEntry, File, FileContent, FileLocation, FileType, INode, Mode,
+	},
+	memory,
+	process::oom,
+	util::{
+		boxed::Box,
+		container::{string::String, vec::Vec},
+		io::IO,
+		TryClone,
+	},
+};
+use core::{borrow::Borrow, intrinsics::unlikely};
 use node::KernFSNode;
 
 // TODO Change to `1`

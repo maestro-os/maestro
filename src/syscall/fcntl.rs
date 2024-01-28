@@ -18,14 +18,12 @@
 
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
-use crate::errno::Errno;
-use crate::file::buffer;
-use crate::file::buffer::pipe::PipeBuffer;
-use crate::file::fd::NewFDConstraint;
-use crate::file::FileContent;
-use crate::process::Process;
-use core::ffi::c_int;
-use core::ffi::c_void;
+use crate::{
+	errno::Errno,
+	file::{buffer, buffer::pipe::PipeBuffer, fd::NewFDConstraint, FileContent},
+	process::Process,
+};
+use core::ffi::{c_int, c_void};
 use macros::syscall;
 
 /// Duplicate the file descriptor using the lowest numbered available file descriptor greater than

@@ -23,10 +23,10 @@
 //! - Minor: Version including new features
 //! - Patch: Version including bug fixes and optimizations
 
-use core::cmp::Ordering;
-use core::fmt::Display;
-use core::fmt::Error;
-use core::fmt::Formatter;
+use core::{
+	cmp::Ordering,
+	fmt::{Display, Error, Formatter},
+};
 
 /// Structure representing a version.
 #[derive(Clone, Copy, Debug, Eq)]

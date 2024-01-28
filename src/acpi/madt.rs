@@ -18,8 +18,7 @@
 
 //! This modules handles ACPI's Multiple APIC Description Table (MADT).
 
-use super::ACPITable;
-use super::ACPITableHeader;
+use super::{ACPITable, ACPITableHeader};
 
 /// The offset of the entries in the MADT.
 const ENTRIES_OFF: usize = 0x2c;

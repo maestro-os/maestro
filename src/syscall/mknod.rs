@@ -18,18 +18,19 @@
 
 //! The `mknod` system call allows to create a new node on a filesystem.
 
-use crate::device::id;
-use crate::errno;
-use crate::errno::Errno;
-use crate::file;
-use crate::file::path::Path;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::FileContent;
-use crate::file::FileType;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
+use crate::{
+	device::id,
+	errno,
+	errno::Errno,
+	file,
+	file::{
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+		FileContent, FileType,
+	},
+	process::{mem_space::ptr::SyscallString, Process},
+};
 use macros::syscall;
 
 // TODO Check args type

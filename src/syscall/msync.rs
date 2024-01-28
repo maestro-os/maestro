@@ -19,12 +19,8 @@
 //! The msync system call synchronizes a memory mapping with its file on the
 //! disk.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::memory;
-use crate::process::Process;
-use core::ffi::c_int;
-use core::ffi::c_void;
+use crate::{errno, errno::Errno, memory, process::Process};
+use core::ffi::{c_int, c_void};
 use macros::syscall;
 
 /// Schedules a synchronization and returns directly.

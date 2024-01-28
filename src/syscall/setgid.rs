@@ -18,9 +18,7 @@
 
 //! The `setgid` syscall sets the GID of the process's owner.
 
-use crate::errno::Errno;
-use crate::file::perm::Gid;
-use crate::process::Process;
+use crate::{errno::Errno, file::perm::Gid, process::Process};
 use macros::syscall;
 
 #[syscall]

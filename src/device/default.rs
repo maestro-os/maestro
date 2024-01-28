@@ -18,30 +18,20 @@
 
 //! This module implements default devices.
 
-use super::id;
-use super::DeviceType;
-use crate::crypto::rand;
-use crate::device;
-use crate::device::tty::TTYDeviceHandle;
-use crate::device::Device;
-use crate::device::DeviceHandle;
-use crate::device::DeviceID;
-use crate::errno;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::blocking::BlockHandler;
-use crate::file::path::PathBuf;
-use crate::logger::LOGGER;
-use crate::process::mem_space::MemSpace;
-use crate::process::Process;
-use crate::syscall::ioctl;
-use crate::util::io;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::ptr::arc::Arc;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::mem::ManuallyDrop;
+use super::{id, DeviceType};
+use crate::{
+	crypto::rand,
+	device,
+	device::{tty::TTYDeviceHandle, Device, DeviceHandle, DeviceID},
+	errno,
+	errno::{EResult, Errno},
+	file::{blocking::BlockHandler, path::PathBuf},
+	logger::LOGGER,
+	process::{mem_space::MemSpace, Process},
+	syscall::ioctl,
+	util::{io, io::IO, lock::IntMutex, ptr::arc::Arc},
+};
+use core::{cmp::min, ffi::c_void, mem::ManuallyDrop};
 
 /// Device which does nothing.
 #[derive(Default)]

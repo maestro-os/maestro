@@ -23,9 +23,7 @@
 //!
 //! Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
-use crate::io;
-use crate::memory;
-use crate::memory::vmem;
+use crate::{io, memory, memory::vmem};
 
 /// Type representing a VGA text mode character.
 pub type Char = u16;

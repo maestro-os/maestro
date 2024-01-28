@@ -18,15 +18,15 @@
 
 //! The `timer_create` system call creates a per-process timer.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::signal::SigEvent;
-use crate::process::signal::SigVal;
-use crate::process::signal::Signal;
-use crate::process::signal::SIGEV_SIGNAL;
-use crate::process::Process;
-use crate::time::unit::ClockIdT;
-use crate::time::unit::TimerT;
+use crate::{
+	errno::Errno,
+	process::{
+		mem_space::ptr::SyscallPtr,
+		signal::{SigEvent, SigVal, Signal, SIGEV_SIGNAL},
+		Process,
+	},
+	time::unit::{ClockIdT, TimerT},
+};
 use macros::syscall;
 
 #[syscall]

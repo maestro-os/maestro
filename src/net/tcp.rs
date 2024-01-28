@@ -19,10 +19,8 @@
 //! The Transmission Control Protocol (TCP) is a protocol transmitting sequenced, reliable,
 //! two-way, connection-based byte streams.
 
-use super::buff::BuffList;
-use super::osi::Layer;
-use crate::errno::Errno;
-use crate::file::buffer::socket::Socket;
+use super::{buff::BuffList, osi::Layer};
+use crate::{errno::Errno, file::buffer::socket::Socket};
 
 /// The TCP segment header.
 #[repr(C, packed)]

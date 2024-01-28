@@ -19,15 +19,13 @@
 //! The chdir system call allows to change the current working directory of the
 //! current process.
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::ResolutionSettings;
-use crate::file::FileType;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	errno,
+	errno::Errno,
+	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
+	process::{mem_space::ptr::SyscallString, Process},
+	util::ptr::arc::Arc,
+};
 use macros::syscall;
 
 #[syscall]

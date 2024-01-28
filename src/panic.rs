@@ -64,8 +64,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	#[cfg(config_debug_debug)]
 	{
 		use crate::debug;
-		use core::ffi::c_void;
-		use core::ptr::null_mut;
+		use core::{ffi::c_void, ptr::null_mut};
 
 		crate::println!("--- Callstack ---");
 		unsafe {

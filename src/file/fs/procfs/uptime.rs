@@ -18,13 +18,14 @@
 
 //! The uptime node returns the amount of time elapsed since the system started up.
 
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::fs::kernfs::content::KernFSContent;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file::FileContent;
-use crate::file::Mode;
-use crate::util::io::IO;
+use crate::{
+	errno::{EResult, Errno},
+	file::{
+		fs::kernfs::{content::KernFSContent, node::KernFSNode},
+		FileContent, Mode,
+	},
+	util::io::IO,
+};
 use core::cmp::min;
 
 /// The uptime node.

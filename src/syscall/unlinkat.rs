@@ -21,12 +21,15 @@
 //! If no link remain to the file, the function also removes it.
 
 use super::util::at;
-use crate::errno::Errno;
-use crate::file::path::PathBuf;
-use crate::file::vfs;
-use crate::file::vfs::{ResolutionSettings, Resolved};
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
+use crate::{
+	errno::Errno,
+	file::{
+		path::PathBuf,
+		vfs,
+		vfs::{ResolutionSettings, Resolved},
+	},
+	process::{mem_space::ptr::SyscallString, Process},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

@@ -19,9 +19,10 @@
 //! This module implements an identifier allocator, allowing to allocate and
 //! free indexes in range `0..=max`, where `max` is given.
 
-use crate::errno::AllocError;
-use crate::errno::AllocResult;
-use crate::util::container::bitfield::Bitfield;
+use crate::{
+	errno::{AllocError, AllocResult},
+	util::container::bitfield::Bitfield,
+};
 
 /// Structure representing an identifier allocator.
 pub struct IDAllocator {

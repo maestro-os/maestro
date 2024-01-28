@@ -21,23 +21,20 @@
 pub mod pipe;
 pub mod socket;
 
-use crate::errno::AllocError;
-use crate::errno::AllocResult;
-use crate::errno::Errno;
-use crate::file::blocking::BlockHandler;
-use crate::file::FileLocation;
-use crate::process::mem_space::MemSpace;
-use crate::process::Process;
-use crate::syscall::ioctl;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::id_allocator::IDAllocator;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryDefault;
-use core::any::Any;
-use core::ffi::c_void;
+use crate::{
+	errno::{AllocError, AllocResult, Errno},
+	file::{blocking::BlockHandler, FileLocation},
+	process::{mem_space::MemSpace, Process},
+	syscall::ioctl,
+	util::{
+		container::{hashmap::HashMap, id_allocator::IDAllocator},
+		io::IO,
+		lock::{IntMutex, Mutex},
+		ptr::arc::Arc,
+		TryDefault,
+	},
+};
+use core::{any::Any, ffi::c_void};
 
 /// Trait representing a buffer.
 pub trait Buffer: IO + Any {

@@ -20,16 +20,17 @@
 //! represents a subfile in a directory.
 
 use super::Superblock;
-use crate::errno::AllocError;
-use crate::errno::AllocResult;
-use crate::errno::Errno;
-use crate::file::FileType;
-use crate::memory::malloc;
-use crate::util::boxed::Box;
-use core::cmp::min;
-use core::num::NonZeroU16;
-use core::num::NonZeroUsize;
-use core::slice;
+use crate::{
+	errno::{AllocError, AllocResult, Errno},
+	file::FileType,
+	memory::malloc,
+	util::boxed::Box,
+};
+use core::{
+	cmp::min,
+	num::{NonZeroU16, NonZeroUsize},
+	slice,
+};
 
 /// Directory entry type indicator: Unknown
 const TYPE_INDICATOR_UNKNOWN: u8 = 0;

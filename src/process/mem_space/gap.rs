@@ -19,10 +19,7 @@
 //! A gap is a region of the virtual memory which is available for allocation.
 
 use crate::memory;
-use core::cmp::min;
-use core::ffi::c_void;
-use core::fmt;
-use core::num::NonZeroUsize;
+use core::{cmp::min, ffi::c_void, fmt, num::NonZeroUsize};
 
 /// A gap in the memory space that can use for new mappings.
 #[derive(Clone)]

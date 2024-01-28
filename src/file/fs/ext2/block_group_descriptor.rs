@@ -20,11 +20,8 @@
 //! Table which represents a block group, which is a subdivision of the
 //! filesystem.
 
-use super::read;
-use super::write;
-use super::Superblock;
-use crate::errno::Errno;
-use crate::util::io::IO;
+use super::{read, write, Superblock};
+use crate::{errno::Errno, util::io::IO};
 use core::mem::size_of;
 
 /// Structure representing a block group descriptor to be stored into the Block

@@ -19,14 +19,18 @@
 //! The `utimensat` system call allows to change the timestamps of a file.
 
 use super::util::at;
-use crate::errno::Errno;
-use crate::file::path::Path;
-use crate::file::vfs::{ResolutionSettings, Resolved};
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::time::unit::TimeUnit;
-use crate::time::unit::Timespec;
+use crate::{
+	errno::Errno,
+	file::{
+		path::Path,
+		vfs::{ResolutionSettings, Resolved},
+	},
+	process::{
+		mem_space::ptr::{SyscallPtr, SyscallString},
+		Process,
+	},
+	time::unit::{TimeUnit, Timespec},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

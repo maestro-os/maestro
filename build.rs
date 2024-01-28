@@ -5,9 +5,7 @@ mod build_impl;
 
 use build_impl::*;
 use config::Config;
-use std::env;
-use std::io::ErrorKind;
-use std::process::exit;
+use std::{env, io::ErrorKind, process::exit};
 use target::Target;
 
 fn main() {

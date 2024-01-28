@@ -18,9 +18,7 @@
 
 //! The `umask` syscall is used to set the process's file creation mask.
 
-use crate::errno::Errno;
-use crate::file;
-use crate::process::Process;
+use crate::{errno::Errno, file, process::Process};
 use macros::syscall;
 
 #[syscall]

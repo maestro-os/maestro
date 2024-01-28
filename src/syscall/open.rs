@@ -19,25 +19,23 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
-use crate::errno;
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file;
-use crate::file::fd::FD_CLOEXEC;
-use crate::file::open_file;
-use crate::file::open_file::OpenFile;
-use crate::file::path::{Path, PathBuf};
-use crate::file::perm::AccessProfile;
-use crate::file::vfs;
-use crate::file::vfs::{ResolutionSettings, Resolved};
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::FileType;
-use crate::file::Mode;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	errno,
+	errno::{EResult, Errno},
+	file,
+	file::{
+		fd::FD_CLOEXEC,
+		open_file,
+		open_file::OpenFile,
+		path::{Path, PathBuf},
+		perm::AccessProfile,
+		vfs,
+		vfs::{ResolutionSettings, Resolved},
+		File, FileContent, FileType, Mode,
+	},
+	process::{mem_space::ptr::SyscallString, Process},
+	util::{lock::Mutex, ptr::arc::Arc},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

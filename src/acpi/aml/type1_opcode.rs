@@ -18,8 +18,7 @@
 
 //! TODO doc
 
-use super::AMLParseable;
-use super::Error;
+use super::{AMLParseable, Error};
 use macros::Parseable;
 
 /// TODO doc

@@ -18,8 +18,7 @@
 
 //! The `geteuid` syscall returns the effective UID of the process's owner.
 
-use crate::errno::Errno;
-use crate::process::Process;
+use crate::{errno::Errno, process::Process};
 use macros::syscall;
 
 #[syscall]

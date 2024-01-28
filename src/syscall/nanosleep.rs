@@ -19,12 +19,11 @@
 //! The `nanosleep` system call allows to make the current process sleep for a
 //! given delay.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::time::clock;
-use crate::time::clock::CLOCK_MONOTONIC;
-use crate::time::unit::Timespec32;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, Process},
+	time::{clock, clock::CLOCK_MONOTONIC, unit::Timespec32},
+};
 use macros::syscall;
 
 // TODO Handle signal interruption (EINTR)

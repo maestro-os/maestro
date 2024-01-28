@@ -19,12 +19,12 @@
 //! When a resource is blocking, a process trying to use it must be put in `Sleeping` state until
 //! the resource is available.
 
-use crate::errno::Errno;
-use crate::process;
-use crate::process::pid::Pid;
-use crate::process::Process;
-use crate::util::container::hashmap::HashMap;
-use crate::util::io;
+use crate::{
+	errno::Errno,
+	process,
+	process::{pid::Pid, Process},
+	util::{container::hashmap::HashMap, io},
+};
 
 /// Handler allowing to make a process sleep when waiting on a resource, then resume its execution
 /// when the resource is available.

@@ -20,15 +20,12 @@
 
 pub mod at;
 
-use crate::errno;
-use crate::errno::EResult;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::regs::Regs;
-use crate::process::scheduler;
-use crate::process::Process;
-use crate::process::State;
-use crate::util::container::string::String;
-use crate::util::container::vec::Vec;
+use crate::{
+	errno,
+	errno::EResult,
+	process::{mem_space::ptr::SyscallString, regs::Regs, scheduler, Process, State},
+	util::container::{string::String, vec::Vec},
+};
 use core::mem::size_of;
 
 // TODO Find a safer and cleaner solution

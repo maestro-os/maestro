@@ -18,11 +18,11 @@
 
 //! This module implements ELF relocations.
 
-use crate::elf;
-use crate::elf::ELF32Sym;
-use crate::elf::{ELF32SectionHeader, SHT_REL, SHT_RELA};
-use core::ffi::c_void;
-use core::ptr;
+use crate::{
+	elf,
+	elf::{ELF32SectionHeader, ELF32Sym, SHT_REL, SHT_RELA},
+};
+use core::{ffi::c_void, ptr};
 use macros::AnyRepr;
 
 /// The name of the symbol pointing to the global offset table.

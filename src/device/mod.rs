@@ -42,29 +42,29 @@ pub mod serial;
 pub mod storage;
 pub mod tty;
 
-use crate::device::manager::DeviceManager;
-use crate::errno::Errno;
-use crate::errno::{AllocResult, CollectResult, EResult};
-use crate::file;
-use crate::file::path::{Path, PathBuf};
-use crate::file::perm::AccessProfile;
-use crate::file::vfs;
-use crate::file::vfs::{ResolutionSettings, Resolved};
-use crate::file::FileContent;
-use crate::file::Mode;
-use crate::process::mem_space::MemSpace;
-use crate::process::Process;
-use crate::syscall::ioctl;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util::container::vec::Vec;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use crate::util::TryClone;
-use core::ffi::c_void;
-use core::fmt;
+use crate::{
+	device::manager::DeviceManager,
+	errno::{AllocResult, CollectResult, EResult, Errno},
+	file,
+	file::{
+		path::{Path, PathBuf},
+		perm::AccessProfile,
+		vfs,
+		vfs::{ResolutionSettings, Resolved},
+		FileContent, Mode,
+	},
+	process::{mem_space::MemSpace, Process},
+	syscall::ioctl,
+	util::{
+		boxed::Box,
+		container::{hashmap::HashMap, vec::Vec},
+		io::IO,
+		lock::{IntMutex, Mutex},
+		ptr::arc::Arc,
+		TryClone,
+	},
+};
+use core::{ffi::c_void, fmt};
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 

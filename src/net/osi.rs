@@ -18,15 +18,11 @@
 
 //! The Open Systems Interconnection (OSI) model defines the architecure of a network stack.
 
-use super::buff::BuffList;
-use super::ip;
-use super::SocketDesc;
-use super::SocketDomain;
-use super::SocketType;
-use crate::errno::Errno;
-use crate::util::boxed::Box;
-use crate::util::container::hashmap::HashMap;
-use crate::util::lock::Mutex;
+use super::{buff::BuffList, ip, SocketDesc, SocketDomain, SocketType};
+use crate::{
+	errno::Errno,
+	util::{boxed::Box, container::hashmap::HashMap, lock::Mutex},
+};
 
 /// An OSI layer.
 ///

@@ -18,33 +18,27 @@
 
 //! An inode represents a file in the filesystem.
 
-use super::block_group_descriptor::BlockGroupDescriptor;
-use super::directory_entry::DirectoryEntry;
-use super::read;
-use super::read_block;
-use super::write;
-use super::write_block;
-use super::zero_blocks;
-use super::Superblock;
-use crate::errno;
-use crate::errno::Errno;
-use crate::file;
-use crate::file::FileType;
-use crate::file::Mode;
-use crate::limits;
-use crate::memory::malloc;
-use crate::util::boxed::Box;
-use crate::util::container::string::String;
-use crate::util::io::IO;
-use crate::util::math;
-use core::cmp::max;
-use core::cmp::min;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::ptr;
-use core::ptr::addr_of;
-use core::ptr::copy_nonoverlapping;
-use core::slice;
+use super::{
+	block_group_descriptor::BlockGroupDescriptor, directory_entry::DirectoryEntry, read,
+	read_block, write, write_block, zero_blocks, Superblock,
+};
+use crate::{
+	errno,
+	errno::Errno,
+	file,
+	file::{FileType, Mode},
+	limits,
+	memory::malloc,
+	util::{boxed::Box, container::string::String, io::IO, math},
+};
+use core::{
+	cmp::{max, min},
+	mem::size_of,
+	num::NonZeroUsize,
+	ptr,
+	ptr::{addr_of, copy_nonoverlapping},
+	slice,
+};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: u8 = 12;

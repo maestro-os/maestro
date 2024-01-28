@@ -18,12 +18,14 @@
 
 //! `clock_gettime64` is like `clock_gettime` but using 64 bits.
 
-use crate::errno::Errno;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::time::clock;
-use crate::time::unit::ClockIdT;
-use crate::time::unit::Timespec;
+use crate::{
+	errno::Errno,
+	process::{mem_space::ptr::SyscallPtr, Process},
+	time::{
+		clock,
+		unit::{ClockIdT, Timespec},
+	},
+};
 use macros::syscall;
 
 #[syscall]

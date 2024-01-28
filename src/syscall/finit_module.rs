@@ -18,14 +18,14 @@
 
 //! The `finit_module` system call allows to load a module on the kernel.
 
-use crate::errno;
-use crate::errno::AllocError;
-use crate::errno::Errno;
-use crate::module;
-use crate::module::Module;
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::util::io::IO;
+use crate::{
+	errno,
+	errno::{AllocError, Errno},
+	module,
+	module::Module,
+	process::{mem_space::ptr::SyscallString, Process},
+	util::io::IO,
+};
 use core::ffi::c_int;
 use macros::syscall;
 

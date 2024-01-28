@@ -19,25 +19,20 @@
 //! Each TTY or pseudo-TTY has to be associated with a device file in order to
 //! communicate with it.
 
-use crate::device::DeviceHandle;
-use crate::errno;
-use crate::errno::EResult;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::mem_space::MemSpace;
-use crate::process::pid::Pid;
-use crate::process::signal::Signal;
-use crate::process::signal::SignalHandler;
-use crate::process::Process;
-use crate::syscall::ioctl;
-use crate::tty::termios;
-use crate::tty::termios::Termios;
-use crate::tty::TTYHandle;
-use crate::tty::WinSize;
-use crate::tty::TTY;
-use crate::util::io;
-use crate::util::io::IO;
-use crate::util::lock::IntMutex;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	device::DeviceHandle,
+	errno,
+	errno::EResult,
+	process::{
+		mem_space::{ptr::SyscallPtr, MemSpace},
+		pid::Pid,
+		signal::{Signal, SignalHandler},
+		Process,
+	},
+	syscall::ioctl,
+	tty::{termios, termios::Termios, TTYHandle, WinSize, TTY},
+	util::{io, io::IO, lock::IntMutex, ptr::arc::Arc},
+};
 use core::ffi::c_void;
 
 /// A TTY device's handle.

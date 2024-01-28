@@ -19,13 +19,15 @@
 //! This module implements the meminfo node, allowing to retrieve informations
 //! about memory usage of the system.
 
-use crate::errno::EResult;
-use crate::errno::Errno;
-use crate::file::fs::kernfs::content::KernFSContent;
-use crate::file::fs::kernfs::node::KernFSNode;
-use crate::file::FileContent;
-use crate::memory;
-use crate::util::io::IO;
+use crate::{
+	errno::{EResult, Errno},
+	file::{
+		fs::kernfs::{content::KernFSContent, node::KernFSNode},
+		FileContent,
+	},
+	memory,
+	util::io::IO,
+};
 use core::cmp::min;
 
 /// Structure representing the meminfo node.

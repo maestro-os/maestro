@@ -18,10 +18,8 @@
 
 //! Implementation of registers handling for each architecture.
 
-use crate::errno::Errno;
-use crate::gdt;
-use core::arch::asm;
-use core::fmt;
+use crate::{errno::Errno, gdt};
+use core::{arch::asm, fmt};
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;

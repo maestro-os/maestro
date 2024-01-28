@@ -22,10 +22,8 @@
 //! This table contains AML code which has to be parsed and executed to retrieve the required
 //! informations.
 
-use super::ACPITable;
-use super::ACPITableHeader;
-use core::mem::size_of;
-use core::slice;
+use super::{ACPITable, ACPITableHeader};
+use core::{mem::size_of, slice};
 
 /// The Differentiated System Description Table.
 #[repr(C)]

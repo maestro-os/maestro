@@ -18,21 +18,21 @@
 
 //! The `openat` syscall allows to open a file.
 
-use crate::errno::{EResult, Errno};
-use crate::file::fd::{FileDescriptorTable, FD_CLOEXEC};
-use crate::file::open_file::OpenFile;
-use crate::file::path::Path;
-use crate::file::path::PathBuf;
-use crate::file::vfs::{ResolutionSettings, Resolved};
-use crate::file::File;
-use crate::file::FileContent;
-use crate::file::Mode;
-use crate::file::{open_file, vfs};
-use crate::process::mem_space::ptr::SyscallString;
-use crate::process::Process;
-use crate::syscall::util::at;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
+use crate::{
+	errno::{EResult, Errno},
+	file::{
+		fd::{FileDescriptorTable, FD_CLOEXEC},
+		open_file,
+		open_file::OpenFile,
+		path::{Path, PathBuf},
+		vfs,
+		vfs::{ResolutionSettings, Resolved},
+		File, FileContent, Mode,
+	},
+	process::{mem_space::ptr::SyscallString, Process},
+	syscall::util::at,
+	util::{lock::Mutex, ptr::arc::Arc},
+};
 use core::ffi::c_int;
 use macros::syscall;
 

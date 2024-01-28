@@ -26,9 +26,7 @@ pub mod kernel;
 pub mod parser;
 pub mod relocation;
 
-use crate::errno;
-use crate::errno::Errno;
-use crate::process::mem_space;
+use crate::{errno, errno::Errno, process::mem_space};
 use macros::AnyRepr;
 
 /// The number of identification bytes in the ELF header.

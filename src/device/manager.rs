@@ -19,13 +19,12 @@
 //! The device manager is the structure which links the physical devices to
 //! device files.
 
-use crate::device::bar::BAR;
-use crate::errno::EResult;
-use crate::util::container::hashmap::HashMap;
-use crate::util::lock::Mutex;
-use crate::util::ptr::arc::Arc;
-use core::any::Any;
-use core::any::TypeId;
+use crate::{
+	device::bar::BAR,
+	errno::EResult,
+	util::{container::hashmap::HashMap, lock::Mutex, ptr::arc::Arc},
+};
+use core::any::{Any, TypeId};
 
 /// Trait representing a physical device.
 pub trait PhysicalDevice {

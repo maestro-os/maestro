@@ -28,24 +28,22 @@ mod ansi;
 pub mod termios;
 pub mod vga;
 
-use crate::device::serial;
-use crate::errno::Errno;
-use crate::file::blocking::BlockHandler;
-use crate::memory::vmem;
-use crate::process::pid::Pid;
-use crate::process::signal::Signal;
-use crate::process::Process;
-use crate::tty::termios::Termios;
-use crate::util;
-use crate::util::container::vec::Vec;
-use crate::util::io;
-use crate::util::lock::IntMutex;
-use crate::util::lock::MutexGuard;
-use crate::util::ptr::arc::Arc;
-use core::cmp::*;
-use core::intrinsics::size_of;
-use core::mem::MaybeUninit;
-use core::{ptr, slice};
+use crate::{
+	device::serial,
+	errno::Errno,
+	file::blocking::BlockHandler,
+	memory::vmem,
+	process::{pid::Pid, signal::Signal, Process},
+	tty::termios::Termios,
+	util,
+	util::{
+		container::vec::Vec,
+		io,
+		lock::{IntMutex, MutexGuard},
+		ptr::arc::Arc,
+	},
+};
+use core::{cmp::*, intrinsics::size_of, mem::MaybeUninit, ptr, slice};
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;

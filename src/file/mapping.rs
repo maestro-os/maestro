@@ -19,12 +19,13 @@
 //! A file mapping is a view of a file in memory, which can be modified, shared between processes,
 //! etc...
 
-use crate::errno::Errno;
-use crate::file::FileLocation;
-use crate::memory;
-use crate::memory::buddy;
-use crate::util::container::hashmap::HashMap;
-use crate::util::lock::Mutex;
+use crate::{
+	errno::Errno,
+	file::FileLocation,
+	memory,
+	memory::buddy,
+	util::{container::hashmap::HashMap, lock::Mutex},
+};
 use core::ptr::NonNull;
 
 /// Structure representing a mapped page for a file.

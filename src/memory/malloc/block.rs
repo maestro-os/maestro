@@ -20,16 +20,13 @@
 //! another allocator, which is too big to be used directly for allocation, so
 //! it has to be divided into chunks.
 
-use super::chunk::Chunk;
-use super::chunk::FreeChunk;
-use crate::errno::AllocResult;
-use crate::memory;
-use crate::memory::buddy;
-use crate::util::math;
-use core::mem::offset_of;
-use core::mem::size_of;
-use core::num::NonZeroUsize;
-use core::ptr;
+use super::chunk::{Chunk, FreeChunk};
+use crate::{errno::AllocResult, memory, memory::buddy, util::math};
+use core::{
+	mem::{offset_of, size_of},
+	num::NonZeroUsize,
+	ptr,
+};
 
 /// Structure representing a frame of memory allocated using the buddy
 /// allocator, storing memory chunks.

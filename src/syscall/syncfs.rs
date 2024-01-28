@@ -19,8 +19,7 @@
 //! The `syncfs` system call allows to synchronize the filesystem containing the
 //! file pointed by the given file descriptor.
 
-use crate::errno::Errno;
-use crate::process::Process;
+use crate::{errno::Errno, process::Process};
 use core::ffi::c_int;
 use macros::syscall;
 

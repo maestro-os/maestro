@@ -18,19 +18,17 @@
 
 //! The `fstat64` system call allows get the status of a file.
 
-use crate::errno::Errno;
-use crate::file::perm::Gid;
-use crate::file::perm::Uid;
-use crate::file::INode;
-use crate::file::Mode;
-use crate::process::mem_space::ptr::SyscallPtr;
-use crate::process::Process;
-use crate::time::unit::TimeUnit;
-use crate::time::unit::Timespec;
-use crate::time::unit::TimestampScale;
-use crate::util::io::IO;
-use core::ffi::c_int;
-use core::ffi::c_long;
+use crate::{
+	errno::Errno,
+	file::{
+		perm::{Gid, Uid},
+		INode, Mode,
+	},
+	process::{mem_space::ptr::SyscallPtr, Process},
+	time::unit::{TimeUnit, Timespec, TimestampScale},
+	util::io::IO,
+};
+use core::ffi::{c_int, c_long};
 use macros::syscall;
 
 // TODO Check types

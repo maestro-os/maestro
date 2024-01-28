@@ -20,18 +20,11 @@
 //! two integers: `a / b`
 
 use crate::util::math;
-use core::cmp::Ordering;
-use core::cmp::PartialEq;
-use core::fmt;
-use core::ops::Add;
-use core::ops::AddAssign;
-use core::ops::Div;
-use core::ops::DivAssign;
-use core::ops::Mul;
-use core::ops::MulAssign;
-use core::ops::Neg;
-use core::ops::Sub;
-use core::ops::SubAssign;
+use core::{
+	cmp::{Ordering, PartialEq},
+	fmt,
+	ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
 
 // FIXME: Operations can overflow
 

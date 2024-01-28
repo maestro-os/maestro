@@ -19,9 +19,10 @@
 //! The `brk` system call allows to displace the end of the data segment of the
 //! process, thus allowing memory allocations.
 
-use crate::errno::Errno;
-use crate::process::regs::Regs;
-use crate::process::Process;
+use crate::{
+	errno::Errno,
+	process::{regs::Regs, Process},
+};
 use core::ffi::c_void;
 
 pub fn brk(regs: &Regs) -> Result<i32, Errno> {

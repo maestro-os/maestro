@@ -19,14 +19,16 @@
 //! The `getdents` system call allows to get the list of entries in a given
 //! directory.
 
-use crate::errno::{EResult, Errno};
-use crate::file::{FileContent, FileType, INode};
-use crate::process::mem_space::ptr::SyscallSlice;
-use crate::process::Process;
-use core::ffi::c_uint;
-use core::mem::offset_of;
-use core::mem::size_of;
-use core::ptr;
+use crate::{
+	errno::{EResult, Errno},
+	file::{FileContent, FileType, INode},
+	process::{mem_space::ptr::SyscallSlice, Process},
+};
+use core::{
+	ffi::c_uint,
+	mem::{offset_of, size_of},
+	ptr,
+};
 use macros::syscall;
 
 /// A directory entry as returned by the `getdents*` system calls.

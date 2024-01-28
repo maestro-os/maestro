@@ -20,12 +20,16 @@
 //! directory.
 
 use super::getdents::{do_getdents, Dirent};
-use crate::errno::Errno;
-use crate::file::{FileType, INode};
-use crate::process::mem_space::ptr::SyscallSlice;
-use core::ffi::c_int;
-use core::mem::{offset_of, size_of};
-use core::ptr;
+use crate::{
+	errno::Errno,
+	file::{FileType, INode},
+	process::mem_space::ptr::SyscallSlice,
+};
+use core::{
+	ffi::c_int,
+	mem::{offset_of, size_of},
+	ptr,
+};
 use macros::syscall;
 
 /// Structure representing a Linux directory entry with 64 bits offsets.

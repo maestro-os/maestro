@@ -19,11 +19,12 @@
 //! This module implements the ELF parser.
 
 use super::*;
-use crate::elf::relocation::Relocation;
-use crate::errno;
-use crate::errno::{EResult, Errno};
-use crate::util::bytes;
-use crate::util::bytes::AnyRepr;
+use crate::{
+	elf::relocation::Relocation,
+	errno,
+	errno::{EResult, Errno},
+	util::{bytes, bytes::AnyRepr},
+};
 use core::mem::size_of;
 
 /// Returns an iterator over ELF elements.
