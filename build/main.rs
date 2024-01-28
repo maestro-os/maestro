@@ -1,11 +1,13 @@
 //! The build script reads the configuration file, compiles required libraries and prepares for the
 //! compilation of the kernel.
 
-mod build_impl;
+pub mod compile;
+pub mod config;
+pub mod target;
+pub mod util;
 
-use build_impl::*;
 use config::Config;
-use std::{env, io::ErrorKind, process::exit};
+use std::{env, process::exit};
 use target::Target;
 
 fn main() {
@@ -14,17 +16,7 @@ fn main() {
 	let opt_level: u32 = env::var("OPT_LEVEL").unwrap().parse().unwrap();
 
 	let config = Config::read().unwrap_or_else(|e| {
-		if e.kind() == ErrorKind::NotFound {
-			eprintln!("Configuration file not found");
-			eprintln!();
-			eprintln!(
-				"Please make sure the configuration file at `{}` exists`",
-				config::PATH
-			);
-			eprintln!("An example configuration file can be found in `default.config.toml`");
-		} else {
-			eprintln!("Cannot read configuration file: {e}");
-		}
+		eprintln!("Failed to read build configuration file: {e}");
 		exit(1);
 	});
 	config.set_cfg(debug);

@@ -1,5 +1,5 @@
 # Configuration file
-config.toml
+build-config.toml
 
 # Compiled object files
 *.o

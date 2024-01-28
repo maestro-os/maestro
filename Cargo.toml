@@ -5,6 +5,7 @@ name = "maestro"
 version = "0.1.0"
 authors = ["llenotre <llenotre@student.42.fr>"]
 edition = "2021"
+build = "build/main.rs"
 
 # The kernel is implemented as a shared library in order to make it accessible from kernel modules
 [lib]
