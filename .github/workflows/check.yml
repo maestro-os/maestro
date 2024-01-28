@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Prepare
-        run: cp default.config.toml config.toml
+        run: cp default.build-config.toml build-config.toml
       - name: Macros
         working-directory: ./macros
         run: cargo clippy --all-features

@@ -21,9 +21,6 @@
 use serde::Deserialize;
 use std::{fs, io};
 
-/// The path to the configuration file.
-pub const PATH: &str = "config.toml";
-
 /// The debug section of the configuration file.
 #[derive(Deserialize)]
 struct ConfigDebug {
@@ -55,8 +52,18 @@ pub struct Config {
 impl Config {
 	/// Reads the configuration file.
 	pub fn read() -> io::Result<Self> {
-		println!("cargo:rerun-if-changed={PATH}");
-		let config_str = fs::read_to_string(PATH)?;
+		const FILE_DEFAULT: &str = "default.build-config.toml";
+		const FILE: &str = "build-config.toml";
+
+		println!("cargo:rerun-if-changed={FILE_DEFAULT}");
+		println!("cargo:rerun-if-changed={FILE}");
+
+		let config_str = match fs::read_to_string(FILE) {
+			Ok(s) => s,
+			// Fallback to default configuration file
+			Err(e) if e.kind() == io::ErrorKind::NotFound => fs::read_to_string(FILE_DEFAULT)?,
+			Err(e) => return Err(e),
+		};
 		toml::from_str(&config_str)
 			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
 	}

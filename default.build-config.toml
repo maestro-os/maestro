@@ -1,5 +1,5 @@
 # This is the default configuration for the kernel compilation.
-# To setup a configuration, copy this file under the name `config.toml`, then modify it
+# To setup a configuration, copy this file under the name `build-config.toml`, then modify it
 
 
 

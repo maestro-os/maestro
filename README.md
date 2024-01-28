@@ -71,15 +71,12 @@ The OS can then be run by a virtual machine such a **QEMU** or **VirtualBox**, o
 
 ## Build
 
-The configuration allows to easily specify which features have to be enabled in the kernel. This configuration is *required* to compile the kernel.
+The configuration file located at `build-config.toml` allows to specify which features have to be enabled in the kernel.
 
-A default configuration is available in the file `default.config.toml`. To use it, simply type the command:
+A default configuration is available in the file `default.build-config.toml`.
+If `build-config.toml` does not exist, the default configuration is used instead.
 
-```sh
-cp default.config.toml config.toml
-```
-
-After configuration, the kernel can be built using the following commands:
+The kernel can be built using the following commands:
 
 ```sh
 cargo build               # Debug mode
