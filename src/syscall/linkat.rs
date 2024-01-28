@@ -20,7 +20,7 @@
 
 use super::util::at;
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::file::FileType;
@@ -41,9 +41,9 @@ pub fn linkat(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let rs = ResolutionSettings::for_process(&*proc, false);
+		let rs = ResolutionSettings::for_process(&proc, false);
 
-		let mem_space = proc.get_mem_space().unwrap().clone();
+		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
@@ -51,20 +51,20 @@ pub fn linkat(
 		let oldpath = oldpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let oldpath = Path::new(oldpath)?;
+		let oldpath = PathBuf::try_from(oldpath)?;
 
-		let proc = proc_mutex.lock();
 		let newpath = newpath
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let newpath = Path::new(newpath)?;
+		let newpath = PathBuf::try_from(newpath)?;
 
 		(fds_mutex, oldpath, newpath, rs)
 	};
 
 	let fds = fds_mutex.lock();
 
-	let Resolved::Found(old_mutex) = at::get_file(&fds, rs, olddirfd, oldpath, flags)? else {
+	let Resolved::Found(old_mutex) = at::get_file(&fds, rs.clone(), olddirfd, &oldpath, flags)?
+	else {
 		return Err(errno!(ENOENT));
 	};
 	let mut old = old_mutex.lock();
@@ -75,13 +75,13 @@ pub fn linkat(
 	let Resolved::Creatable {
 		parent: new_parent,
 		name: new_name,
-	} = at::get_file(&fds, rs, newdirfd, newpath, 0)?
+	} = at::get_file(&fds, rs.clone(), newdirfd, &newpath, 0)?
 	else {
 		return Err(errno!(EEXIST));
 	};
 	let new_parent = new_parent.lock();
 
-	vfs::create_link(&new_parent, &new_name, &mut old, &rs.access_profile)?;
+	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
 
 	Ok(0)
 }

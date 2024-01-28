@@ -63,7 +63,7 @@ impl KernFSNode for Exe {
 		let content = Process::get_by_pid(self.pid)
 			.map(|mutex| {
 				let proc = mutex.lock();
-				(&*proc.exec_path).try_clone()
+				(*proc.exec_path).try_clone()
 			})
 			.transpose()?
 			.unwrap_or_default();

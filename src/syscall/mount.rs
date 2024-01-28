@@ -64,7 +64,7 @@ pub fn mount(
 			.ok_or(errno!(EFAULT))?;
 
 		// Get the mount source
-		let mount_source = MountSource::from_str(source_slice)?;
+		let mount_source = MountSource::new(source_slice)?;
 
 		// Get the target directory
 		let target_path = PathBuf::try_from(target_slice)?;

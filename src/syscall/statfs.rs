@@ -21,7 +21,7 @@
 use crate::errno;
 use crate::errno::{EResult, Errno};
 use crate::file::fs::Statfs;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::process::mem_space::ptr::SyscallPtr;
@@ -38,7 +38,7 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 		let mem_space_guard = mem_space.lock();
 
 		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		let path = Path::new(path)?;
+		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, false);
 		(path, rs)

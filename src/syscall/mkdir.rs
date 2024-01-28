@@ -21,6 +21,7 @@
 use crate::errno::Errno;
 use crate::file;
 use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::file::FileContent;
@@ -42,20 +43,17 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 
 		// Path to the directory to create
 		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = Path::new(path)?;
+		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 		(path, mode, rs)
 	};
 
-	// Get path of the parent directory and name of the directory to create
-	let mut parent_path = path.parent().unwrap_or(Path::root());
-	let name = parent_path.file_name();
-
 	// If the path is not empty, create
-	if let Some(name) = name {
+	if let Some(name) = path.file_name() {
 		// Get parent directory
-		let parent_mutex = vfs::get_file_from_path(&parent_path, &rs)?;
+		let parent_path = path.parent().unwrap_or(Path::root());
+		let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 		let mut parent = parent_mutex.lock();
 
 		// Create the directory

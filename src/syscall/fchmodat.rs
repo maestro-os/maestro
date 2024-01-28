@@ -39,7 +39,7 @@ pub fn fchmodat(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let rs = ResolutionSettings::for_process(&*proc, true);
+		let rs = ResolutionSettings::for_process(&proc, true);
 
 		let mem_space = proc.get_mem_space().unwrap().clone();
 		let mem_space_guard = mem_space.lock();
@@ -56,7 +56,7 @@ pub fn fchmodat(
 
 	let fds = fds_mutex.lock();
 
-	let Resolved::Found(file_mutex) = at::get_file(&fds, rs, dirfd, &path, flags)? else {
+	let Resolved::Found(file_mutex) = at::get_file(&fds, rs.clone(), dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
 	let mut file = file_mutex.lock();

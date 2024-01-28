@@ -444,6 +444,12 @@ impl<T> FromIterator<T> for CollectResult<Vec<T>> {
 	}
 }
 
+impl<'a, T: 'a + Clone> FromIterator<&'a T> for CollectResult<Vec<T>> {
+	fn from_iter<I: IntoIterator<Item = &'a T>>(iter: I) -> Self {
+		CollectResult::<Vec<T>>::from_iter(iter.into_iter().cloned())
+	}
+}
+
 impl<T> AsRef<[T]> for Vec<T> {
 	fn as_ref(&self) -> &[T] {
 		self.as_slice()

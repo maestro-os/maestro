@@ -24,7 +24,7 @@ use crate::file::vfs::{ResolutionSettings, Resolved};
 use crate::process::mem_space::ptr::SyscallString;
 use crate::process::Process;
 use crate::syscall::util::at;
-use crate::syscall::util::at::{AT_EACCESS, AT_FDCWD, AT_SYMLINK_NOFOLLOW};
+use crate::syscall::util::at::{AT_EACCESS, AT_FDCWD};
 use core::ffi::c_int;
 use macros::syscall;
 
@@ -52,7 +52,6 @@ pub fn do_access(
 	flags: Option<i32>,
 ) -> Result<i32, Errno> {
 	let flags = flags.unwrap_or(0);
-	let follow_symlinks = flags & AT_SYMLINK_NOFOLLOW == 0;
 	// Use effective IDs instead of real IDs
 	let eaccess = flags & AT_EACCESS != 0;
 
@@ -60,12 +59,12 @@ pub fn do_access(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let rs = ResolutionSettings::for_process(&*proc, true);
+		let rs = ResolutionSettings::for_process(&proc, true);
 
 		let mem_space_mutex = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space_mutex.lock();
 
-		let fds = proc.file_descriptors.unwrap().lock();
+		let fds = proc.file_descriptors.as_ref().unwrap().lock();
 
 		let pathname = pathname
 			.get(&mem_space_guard)?

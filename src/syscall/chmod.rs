@@ -19,7 +19,7 @@
 //! The `chmod` system call allows change the permissions on a file.
 
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::process::mem_space::ptr::SyscallString;
@@ -39,7 +39,7 @@ pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
 		let path = pathname
 			.get(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
-		let path = Path::new(path)?;
+		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 		(path, rs)

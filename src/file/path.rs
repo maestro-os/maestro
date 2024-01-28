@@ -43,7 +43,7 @@ impl PathBuf {
 	}
 
 	/// Creates a `PathBuf` without checking the length of the given [`String`].
-	pub fn from_unchecked(s: String) -> Self {
+	pub fn new_unchecked(s: String) -> Self {
 		Self(s)
 	}
 }
@@ -128,24 +128,16 @@ impl Deref for PathBuf {
 
 impl<'p> FromIterator<Component<'p>> for CollectResult<PathBuf> {
 	fn from_iter<T: IntoIterator<Item = Component<'p>>>(iter: T) -> Self {
-		Self(
-			iter.into_iter()
-				.map(|c| {
-					match c {
-						// The `/` is already inserted by `intersperse`
-						Component::RootDir => &[],
-						c => {
-							let s: &[u8] = c.as_ref();
-							s
-						}
-					}
-				})
-				.intersperse(b"/")
-				.flat_map(|s| s.into_iter().cloned())
-				.collect::<CollectResult<String>>()
-				.0
-				.map(PathBuf::from_unchecked),
-		)
+		let iter = iter.into_iter();
+		// TODO use `collect`
+		let res = (|| {
+			let mut path = String::new();
+			for c in iter {
+				path.push_str(c)?;
+			}
+			Ok(PathBuf::new_unchecked(path))
+		})();
+		Self(res)
 	}
 }
 
@@ -262,7 +254,7 @@ impl Path {
 	pub fn parent(&self) -> Option<&Path> {
 		let mut comps = self.components();
 		let last = comps.next_back();
-		last.and_then(|p| match p {
+		last.and_then(move |p| match p {
 			Component::RootDir => None,
 			_ => Some(comps.as_path()),
 		})
@@ -305,7 +297,7 @@ impl fmt::Debug for Path {
 }
 
 /// A component of a path.
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Component<'p> {
 	/// The root directory (heading `/`).
 	RootDir,
@@ -378,22 +370,16 @@ impl<'p> Components<'p> {
 	}
 
 	/// Returns a slice to the inner representation of the remaining data in the iterator.
-	pub fn as_slice(&self) -> &[u8] {
+	pub fn as_slice(&self) -> &'p [u8] {
 		&self.path.as_bytes()[self.front..self.back]
 	}
 
 	/// Returns a path representing the remaining data in the iterator.
-	pub fn as_path(&self) -> &Path {
+	pub fn as_path(&self) -> &'p Path {
 		Path::new_unchecked(self.as_slice())
 	}
 
 	fn next_impl(&mut self, backwards: bool) -> Option<Component<'p>> {
-		// Select the cursor according to the direction
-		let cursor = if !backwards {
-			&mut self.front
-		} else {
-			&mut self.back
-		};
 		// Get length of the next component
 		let comp_len = loop {
 			// Assert the fuse invariant
@@ -401,6 +387,7 @@ impl<'p> Components<'p> {
 				return None;
 			}
 			let slice = self.as_slice();
+			// Get offset to the next separator
 			let comp_len = if !backwards {
 				slice.iter().position(|c| *c == PATH_SEPARATOR)
 			} else {
@@ -410,15 +397,26 @@ impl<'p> Components<'p> {
 			if comp_len > 0 {
 				break comp_len;
 			}
-			*cursor += 1;
+			// The current character is a separator
+			let new_val = if !backwards {
+				self.front += 1;
+				self.front
+			} else {
+				self.back -= 1;
+				self.back
+			};
 			// If beginning with a separator, return root
-			if *cursor == 1 {
+			if new_val == 1 {
 				return Some(Component::RootDir);
 			}
 		};
 		// Return component
 		let comp_slice = &self.as_slice()[..comp_len];
-		*cursor += comp_len;
+		if !backwards {
+			self.front += comp_len;
+		} else {
+			self.back -= comp_len;
+		}
 		Some(Component::from(comp_slice))
 	}
 }
@@ -475,14 +473,14 @@ mod test {
 		let mut iter = path.components();
 		assert_eq!(iter.next(), Some(Component::RootDir));
 		assert_eq!(iter.next(), Some(Component::Normal(b"etc")));
-		assert_eq!(iter.next(), Some(Component::Normal(b"password")));
+		assert_eq!(iter.next(), Some(Component::Normal(b"passwd")));
 		assert_eq!(iter.next(), None);
 
 		// Relative
 		let path = Path::new(b"etc/passwd").unwrap();
 		let mut iter = path.components();
 		assert_eq!(iter.next(), Some(Component::Normal(b"etc")));
-		assert_eq!(iter.next(), Some(Component::Normal(b"password")));
+		assert_eq!(iter.next(), Some(Component::Normal(b"passwd")));
 		assert_eq!(iter.next(), None);
 
 		// Relative with `.` and `..`
@@ -492,7 +490,7 @@ mod test {
 		assert_eq!(iter.next(), Some(Component::CurDir));
 		assert_eq!(iter.next(), Some(Component::ParentDir));
 		assert_eq!(iter.next(), Some(Component::Normal(b"etc")));
-		assert_eq!(iter.next(), Some(Component::Normal(b"password")));
+		assert_eq!(iter.next(), Some(Component::Normal(b"passwd")));
 		assert_eq!(iter.next(), None);
 	}
 
@@ -501,7 +499,7 @@ mod test {
 		// Absolute
 		let path = Path::new(b"/etc/passwd").unwrap();
 		let mut iter = path.components();
-		assert_eq!(iter.next_back(), Some(Component::Normal(b"password")));
+		assert_eq!(iter.next_back(), Some(Component::Normal(b"passwd")));
 		assert_eq!(iter.next_back(), Some(Component::Normal(b"etc")));
 		assert_eq!(iter.next_back(), Some(Component::RootDir));
 		assert_eq!(iter.next_back(), None);
@@ -509,14 +507,14 @@ mod test {
 		// Relative
 		let path = Path::new(b"etc/passwd").unwrap();
 		let mut iter = path.components();
-		assert_eq!(iter.next_back(), Some(Component::Normal(b"password")));
+		assert_eq!(iter.next_back(), Some(Component::Normal(b"passwd")));
 		assert_eq!(iter.next_back(), Some(Component::Normal(b"etc")));
 		assert_eq!(iter.next_back(), None);
 
 		// Relative with `.` and `..`
 		let path = Path::new(b"etc/./../etc/passwd").unwrap();
 		let mut iter = path.components();
-		assert_eq!(iter.next(), Some(Component::Normal(b"password")));
+		assert_eq!(iter.next(), Some(Component::Normal(b"passwd")));
 		assert_eq!(iter.next(), Some(Component::Normal(b"etc")));
 		assert_eq!(iter.next(), Some(Component::ParentDir));
 		assert_eq!(iter.next(), Some(Component::CurDir));

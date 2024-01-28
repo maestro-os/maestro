@@ -92,9 +92,9 @@ impl MountSource {
 	///
 	/// The string `string` might be either a kernfs name, a relative path or an
 	/// absolute path.
-	pub fn from_str(string: &[u8]) -> EResult<Self> {
+	pub fn new(string: &[u8]) -> EResult<Self> {
 		let path = Path::new(string)?;
-		let result = vfs::get_file_from_path(&path, &ResolutionSettings::kernel_follow());
+		let result = vfs::get_file_from_path(path, &ResolutionSettings::kernel_follow());
 		match result {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();

@@ -232,7 +232,7 @@ impl Device {
 
 		// Resolve path
 		let resolved = vfs::resolve_path(
-			&path,
+			path,
 			&ResolutionSettings {
 				create: true,
 				..ResolutionSettings::kernel_follow()
@@ -304,7 +304,7 @@ static DEVICES: Mutex<HashMap<DeviceID, Arc<Mutex<Device>>>> = Mutex::new(HashMa
 /// If files management is initialized, the function creates the associated device file.
 pub fn register(device: Device) -> Result<(), Errno> {
 	let id = device.id.clone();
-	let path = device.get_path().try_clone()?;
+	let path = device.get_path().to_path_buf()?;
 	let mode = device.get_mode();
 
 	// Insert

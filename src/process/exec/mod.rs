@@ -45,7 +45,7 @@ use core::ffi::c_void;
 /// Information to prepare a program image to be executed.
 pub struct ExecInfo<'s> {
 	/// Path resolution settings.
-	pub path_resolution: &'s ResolutionSettings<'s>,
+	pub path_resolution: &'s ResolutionSettings,
 	/// The list of arguments.
 	pub argv: Vec<String>,
 	/// The list of environment variables.

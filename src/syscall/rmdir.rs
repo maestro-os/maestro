@@ -21,7 +21,7 @@
 //! If no link remain to the directory, the function also removes it.
 
 use crate::errno::Errno;
-use crate::file::path::Path;
+use crate::file::path::PathBuf;
 use crate::file::vfs;
 use crate::file::vfs::ResolutionSettings;
 use crate::file::FileContent;
@@ -41,7 +41,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 		let mem_space_guard = mem_space.lock();
 
 		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = Path::new(path)?;
+		let path = PathBuf::try_from(path)?;
 
 		(path, rs)
 	};
@@ -50,16 +50,16 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 	{
 		// Get directory
 		let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-		let mut file = file_mutex.lock();
-
+		let file = file_mutex.lock();
+		// Validation
 		match file.get_content() {
 			// The 2 entries in question are `.` and `..`
 			FileContent::Directory(entries) if entries.len() > 2 => return Err(errno!(ENOTEMPTY)),
 			FileContent::Directory(_) => {}
 			_ => return Err(errno!(ENOTDIR)),
 		}
-
-		vfs::remove_file_from_path(path, &rs)?;
+		// Remove
+		vfs::remove_file_from_path(&path, &rs)?;
 	}
 
 	Ok(0)
