@@ -57,6 +57,10 @@ pub fn linkat(
 		return Err(errno!(EISDIR));
 	}
 
+	let rs = ResolutionSettings {
+		create: true,
+		..rs
+	};
 	let Resolved::Creatable {
 		parent: new_parent,
 		name: new_name,
