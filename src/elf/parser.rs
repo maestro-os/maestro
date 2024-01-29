@@ -4,7 +4,7 @@ use super::*;
 use crate::{
 	elf::relocation::Relocation,
 	errno,
-	errno::{EResult, Errno},
+	errno::EResult,
 	util::{bytes, bytes::AnyRepr},
 };
 use core::mem::size_of;
@@ -63,7 +63,7 @@ impl<'a> ELFParser<'a> {
 
 	// TODO Support 64 bit
 	/// Tells whether the ELF image is valid.
-	fn check_image(&self) -> Result<(), Errno> {
+	fn check_image(&self) -> EResult<()> {
 		if self.0.len() < EI_NIDENT {
 			return Err(errno!(EINVAL));
 		}
