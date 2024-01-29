@@ -82,7 +82,7 @@ pub const S_ISVTX: Mode = 0o1000;
 /// Fields of this structure are not directly accessible because mishandling them is prone to
 /// cause privilege escalations. Instead, they should be modified only through the structure's
 /// functions.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct AccessProfile {
 	/// Real ID of user.
 	uid: Uid,

@@ -122,7 +122,7 @@ pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File
 }
 
 /// Settings for a path resolution operation.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ResolutionSettings {
 	/// The location of the root directory for the operation.
 	///
@@ -181,6 +181,7 @@ impl ResolutionSettings {
 }
 
 /// The resolute of the path resolution operation.
+#[derive(Debug)]
 pub enum Resolved<'s> {
 	/// The file has been found.
 	Found(Arc<Mutex<File>>),

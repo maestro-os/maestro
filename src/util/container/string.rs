@@ -285,23 +285,18 @@ impl<'c> FromIterator<&'c u8> for CollectResult<String> {
 
 // TODO Iterators
 
-impl Debug for String {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		for b in self.as_bytes() {
-			f.write_char(*b as char)?;
-		}
-
-		Ok(())
-	}
-}
-
 impl fmt::Display for String {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		for b in self.as_bytes() {
 			f.write_char(*b as char)?;
 		}
-
 		Ok(())
+	}
+}
+
+impl Debug for String {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "\"{self}\"")
 	}
 }
 
