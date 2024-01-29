@@ -11,6 +11,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{mem_space::ptr::SyscallString, Process},
+	syscall::util::at::AT_EMPTY_PATH,
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -37,7 +38,9 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 	};
 
 	let fds = fds_mutex.lock();
-	let resolved = at::get_file(&fds, rs.clone(), dirfd, &path, flags)?;
+	let parent_path = path.parent().ok_or_else(|| errno!(ENOENT))?;
+	// AT_EMPTY_PATH is required in case the path has only one component
+	let resolved = at::get_file(&fds, rs.clone(), dirfd, parent_path, flags | AT_EMPTY_PATH)?;
 	match resolved {
 		Resolved::Found(parent_mutex) => {
 			let mut parent = parent_mutex.lock();
