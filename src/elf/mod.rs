@@ -26,7 +26,7 @@ pub mod kernel;
 pub mod parser;
 pub mod relocation;
 
-use crate::{errno, errno::Errno, process::mem_space};
+use crate::{errno, errno::EResult, process::mem_space};
 use macros::AnyRepr;
 
 /// The number of identification bytes in the ELF header.
@@ -247,7 +247,7 @@ impl ELF32ProgramHeader {
 	/// Tells whether the program header is valid.
 	///
 	/// `file_size` is the size of the file.
-	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
+	fn is_valid(&self, file_size: usize) -> EResult<()> {
 		// TODO Check p_type
 		if (self.p_offset + self.p_filesz) as usize > file_size {
 			return Err(errno!(EINVAL));
@@ -305,7 +305,7 @@ impl ELF32SectionHeader {
 	/// Tells whether the section header is valid.
 	///
 	/// `file_size` is the size of the file.
-	fn is_valid(&self, file_size: usize) -> Result<(), Errno> {
+	fn is_valid(&self, file_size: usize) -> EResult<()> {
 		// TODO Check sh_name
 		if self.sh_type & SHT_NOBITS == 0 && (self.sh_offset + self.sh_size) as usize > file_size {
 			return Err(errno!(EINVAL));
@@ -340,4 +340,16 @@ impl ELF32Sym {
 	pub fn is_defined(&self) -> bool {
 		self.st_shndx != 0
 	}
+}
+
+/// The hash function for an ELF hash table.
+pub fn hash(name: &[u8]) -> u32 {
+	name.iter().fold(0, |res, c| {
+		let mut res = (res << 4) + *c as u32;
+		let tmp = res & 0xf0000000;
+		if tmp != 0 {
+			res ^= tmp >> 24;
+		}
+		res & !tmp
+	})
 }

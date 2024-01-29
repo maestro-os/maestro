@@ -35,7 +35,7 @@ pub fn get_section_name(section: &ELF32SectionHeader) -> Option<&'static [u8]> {
 	// `unwrap` cannot fail because the ELF will always have this section
 	let names_section = get_section_by_offset(boot_info.elf_shndx).unwrap();
 	let ptr = memory::kern_to_virt((names_section.sh_addr + section.sh_name) as *const u8);
-	// TODO check ptr is in bound
+	// The string is in bound, otherwise the kernel's ELF is invalid
 	Some(unsafe { util::str_from_ptr(ptr) })
 }
 
@@ -68,7 +68,7 @@ pub fn symbols() -> impl Iterator<Item = &'static ELF32Sym> {
 pub fn get_symbol_name(symbol: &ELF32Sym) -> Option<&'static [u8]> {
 	let strtab_section = get_section_by_name(b".strtab")?;
 	let ptr = memory::kern_to_virt((strtab_section.sh_addr + symbol.st_name) as *const u8);
-	// TODO check ptr is in bound
+	// The string is in bound, otherwise the kernel's ELF is invalid
 	Some(unsafe { util::str_from_ptr(ptr) })
 }
 
@@ -93,5 +93,6 @@ pub fn get_function_name(inst: *const c_void) -> Option<&'static [u8]> {
 ///
 /// If the symbol doesn't exist, the function returns `None`.
 pub fn get_symbol_by_name(name: &[u8]) -> Option<&'static ELF32Sym> {
+	// TODO use hashmap
 	symbols().find(|s| get_symbol_name(s) == Some(name))
 }

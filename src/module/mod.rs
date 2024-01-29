@@ -38,7 +38,7 @@ use crate::{
 		ELF32Sym,
 	},
 	errno,
-	errno::Errno,
+	errno::EResult,
 	memory::malloc,
 	util::{
 		container::{hashmap::HashMap, string::String, vec::Vec},
@@ -50,7 +50,7 @@ use core::{
 	cmp::min,
 	mem::{size_of, transmute},
 	num::NonZeroUsize,
-	ptr, slice,
+	slice,
 };
 use version::{Dependency, Version};
 
@@ -61,7 +61,7 @@ pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
 ///
 /// This macro must be used only inside of a kernel module.
 ///
-/// The argument is the list of dependencies ([`version::Dependency`]) of the module.
+/// The argument is the list of dependencies ([`Dependency`]) of the module.
 ///
 /// Example:
 /// ```rust
@@ -193,7 +193,7 @@ impl Module {
 	}
 
 	/// Loads a kernel module from the given image.
-	pub fn load(image: &[u8]) -> Result<Self, Errno> {
+	pub fn load(image: &[u8]) -> EResult<Self> {
 		let parser = ELFParser::new(image).map_err(|e| {
 			crate::println!("Invalid ELF file as loaded module");
 			e
@@ -213,15 +213,10 @@ impl Module {
 			.filter(|seg| seg.p_type != elf::PT_NULL)
 			.for_each(|seg| {
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;
-
-				unsafe {
-					// Safe because the module ELF image is valid
-					ptr::copy_nonoverlapping(
-						&image[seg.p_offset as usize],
-						&mut mem.as_slice_mut()[seg.p_vaddr as usize],
-						len,
-					);
-				}
+				let mem_begin = seg.p_vaddr as usize;
+				let image_begin = seg.p_offset as usize;
+				mem.as_slice_mut()[mem_begin..(mem_begin + len)]
+					.copy_from_slice(&image[image_begin..(image_begin + len)]);
 			});
 
 		// Closure returning a symbol from its name
@@ -340,7 +335,7 @@ impl Module {
 		&self.name
 	}
 
-	/// Returns the [`version::Version`] of the module.
+	/// Returns the [`Version`] of the module.
 	pub fn get_version(&self) -> &Version {
 		&self.version
 	}
@@ -367,7 +362,7 @@ pub fn is_loaded(name: &[u8]) -> bool {
 }
 
 /// Adds the given module to the modules list.
-pub fn add(module: Module) -> Result<(), Errno> {
+pub fn add(module: Module) -> EResult<()> {
 	let mut modules = MODULES.lock();
 	modules.insert(module.name.try_clone()?, module)?;
 	Ok(())

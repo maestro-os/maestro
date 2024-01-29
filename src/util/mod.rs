@@ -106,7 +106,7 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 	dst[..len].copy_from_slice(&src[..len]);
 }
 
-/// Same as the [`core::clone::Clone`] trait, but the operation can fail (on memory allocation
+/// Same as the [`Clone`] trait, but the operation can fail (on memory allocation
 /// failure, for example).
 pub trait TryClone {
 	/// The error type used when allocation fails.
@@ -125,7 +125,7 @@ impl<T: Clone + Sized> TryClone for T {
 	}
 }
 
-/// Same as the [`core::default::Default`] trait, but the operation can fail (on memory allocation
+/// Same as the [`Default`] trait, but the operation can fail (on memory allocation
 /// failure, for example).
 pub trait TryDefault {
 	/// The error type used when allocation fails.
@@ -144,7 +144,7 @@ impl<T: Default + Sized> TryDefault for T {
 	}
 }
 
-/// Wrapper structure allowing to implement the [`core::fmt::Display`] trait on the [u8] type
+/// Wrapper structure allowing to implement the [`fmt::Display`] trait on the [u8] type
 /// to display it as a string.
 pub struct DisplayableStr<'a>(pub &'a [u8]);
 
@@ -172,7 +172,7 @@ pub struct Aligned<Align, Data: ?Sized> {
 	pub data: Data,
 }
 
-/// Includes the bytes in the file at the given path and alignes them in memory with the given
+/// Includes the bytes in the file at the given path and aligns them in memory with the given
 /// alignment.
 #[macro_export]
 macro_rules! include_bytes_aligned {
