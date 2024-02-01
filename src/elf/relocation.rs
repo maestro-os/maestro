@@ -29,38 +29,37 @@ pub trait Relocation {
 	/// Arguments:
 	/// - `base_addr` is the base address at which the ELF is loaded.
 	/// - `rel_section` is the section containing the relocation.
-	/// - `get_sym` is a closure returning a symbol from its name.
-	/// - `get_sym_val` is a closure returning the value of a symbol. Arguments are:
+	/// - `get_sym` is a closure returning the a symbol. Arguments are:
 	///     - The index of the section containing the symbol.
 	///     - The index of the symbol in the section.
+	/// - `got` is the Global Offset Table's symbol (named after [`GOT_SYM`]).
 	///
 	/// If the relocation cannot be performed, the function returns an error.
 	///
 	/// # Safety
 	///
 	/// TODO
-	unsafe fn perform<'a, F0, F1>(
+	unsafe fn perform<F>(
 		&self,
 		base_addr: *const c_void,
 		rel_section: &ELF32SectionHeader,
-		get_sym: F0,
-		get_sym_val: F1,
+		get_sym: F,
+		got: Option<&ELF32Sym>,
 	) -> Result<(), RelocationError>
 	where
-		F0: FnOnce(&[u8]) -> Option<&'a ELF32Sym>,
-		F1: FnOnce(u32, u32) -> Option<u32>,
+		F: FnOnce(u32, u32) -> Option<u32>,
 	{
-		let got_off = get_sym(GOT_SYM).map(|sym| sym.st_value).unwrap_or(0);
+		let got_off = got.map(|sym| sym.st_value).unwrap_or(0);
 		// The address of the GOT
 		let got_addr = (base_addr as u32).wrapping_add(got_off);
 
-		// The offset of the GOT entry for the symbol
+		// The offset in the GOT entry for the symbol
 		let got_offset = 0u32; // TODO
-					   // The offset of the PLT entry for the symbol
+					   // The offset in the PLT entry for the symbol
 		let plt_offset = 0u32; // TODO
 
 		// The value of the symbol
-		let sym_val = get_sym_val(rel_section.sh_link, self.get_sym());
+		let sym_val = get_sym(rel_section.sh_link, self.get_sym());
 
 		let value = match self.get_type() {
 			elf::R_386_32 => sym_val

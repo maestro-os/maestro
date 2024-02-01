@@ -16,7 +16,7 @@ use crate::{
 	elf,
 	elf::{
 		parser::ELFParser,
-		relocation::{ELF32Rel, ELF32Rela, Relocation},
+		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
 		ELF32Sym,
 	},
 	errno,
@@ -201,19 +201,16 @@ impl Module {
 					.copy_from_slice(&image[image_begin..(image_begin + len)]);
 			});
 
-		// Closure returning a symbol from its name
-		let get_sym = |name: &[u8]| parser.get_symbol_by_name(name);
-
-		// Closure returning the value of the given symbol
-		let get_sym_val = |sym_section: u32, sym: u32| {
-			let section = parser.iter_sections().nth(sym_section as usize)?;
-			let sym = parser.iter_symbols(section).nth(sym as usize)?;
+		// Closure returning a symbol
+		let get_sym = |sym_section: u32, sym: u32| {
+			let section = parser.get_section_by_index(sym_section as _)?;
+			let sym = parser.get_symbol_by_index(section, sym as _)?;
 
 			if !sym.is_defined() {
-				let strtab = parser.iter_sections().nth(section.sh_link as usize)?;
+				let strtab = parser.get_section_by_index(section.sh_link as _)?;
 				let name = parser.get_symbol_name(strtab, sym)?;
 
-				// Look inside of the kernel image or other modules
+				// Look inside the kernel image or other modules
 				let Some(other_sym) = Self::resolve_symbol(name) else {
 					crate::println!(
 						"Symbol `{}` not found in kernel or other loaded modules",
@@ -227,13 +224,14 @@ impl Module {
 			}
 		};
 
+		let got_sym = parser.get_symbol_by_name(GOT_SYM);
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel::<ELF32Rel>(section) {
-				unsafe { rel.perform(load_base as _, section, get_sym, get_sym_val) }
+				unsafe { rel.perform(load_base as _, section, get_sym, got_sym) }
 					.map_err(|_| errno!(EINVAL))?;
 			}
 			for rela in parser.iter_rel::<ELF32Rela>(section) {
-				unsafe { rela.perform(load_base as _, section, get_sym, get_sym_val) }
+				unsafe { rela.perform(load_base as _, section, get_sym, got_sym) }
 					.map_err(|_| errno!(EINVAL))?;
 			}
 		}

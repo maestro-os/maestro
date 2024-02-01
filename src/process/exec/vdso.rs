@@ -42,7 +42,7 @@ static VDSO: Mutex<Option<Vdso>> = Mutex::new(None);
 /// Loads the vDSO in memory and returns the image.
 fn load_image() -> Result<Vdso, Errno> {
 	let parser = ELFParser::new(ELF_IMAGE)?;
-	let entry_off = parser.get_header().e_entry as _;
+	let entry_off = parser.hdr().e_entry as _;
 
 	// Load image into pages
 	// TODO collect
