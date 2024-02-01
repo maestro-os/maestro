@@ -1,8 +1,17 @@
 //! Functions to explore the kernel's ELF structures.
 
 use super::{ELF32SectionHeader, ELF32Sym, SHT_SYMTAB};
-use crate::{memory, multiboot, util};
+use crate::{
+	errno::{AllocResult, CollectResult},
+	memory, multiboot, util,
+	util::{container::hashmap::HashMap, lock::once::OnceInit},
+};
 use core::ffi::c_void;
+
+/// A reference to the strtab.
+static STRTAB: OnceInit<&'static ELF32SectionHeader> = unsafe { OnceInit::new() };
+/// Name-to-symbol map for the kernel.
+static SYMBOLS: OnceInit<HashMap<&'static [u8], ELF32Sym>> = unsafe { OnceInit::new() };
 
 /// Returns an iterator over the kernel's ELF sections.
 pub fn sections() -> impl Iterator<Item = &'static ELF32SectionHeader> {
@@ -66,8 +75,7 @@ pub fn symbols() -> impl Iterator<Item = &'static ELF32Sym> {
 ///
 /// If the name of the symbol could not be found, the function returns `None`.
 pub fn get_symbol_name(symbol: &ELF32Sym) -> Option<&'static [u8]> {
-	let strtab_section = get_section_by_name(b".strtab")?;
-	let ptr = memory::kern_to_virt((strtab_section.sh_addr + symbol.st_name) as *const u8);
+	let ptr = memory::kern_to_virt((STRTAB.get().sh_addr + symbol.st_name) as *const u8);
 	// The string is in bound, otherwise the kernel's ELF is invalid
 	Some(unsafe { util::str_from_ptr(ptr) })
 }
@@ -93,6 +101,28 @@ pub fn get_function_name(inst: *const c_void) -> Option<&'static [u8]> {
 ///
 /// If the symbol doesn't exist, the function returns `None`.
 pub fn get_symbol_by_name(name: &[u8]) -> Option<&'static ELF32Sym> {
-	// TODO use hashmap
-	symbols().find(|s| get_symbol_name(s) == Some(name))
+	SYMBOLS.get().get(name)
+}
+
+/// Fills the kernel symbols map.
+pub(crate) fn init() -> AllocResult<()> {
+	// `.strtab` MUST be present
+	// STRTAB must be initialized first because it is used to build the symbol map
+	let strtab = get_section_by_name(b".strtab").unwrap();
+	unsafe {
+		STRTAB.init(strtab);
+	}
+	// Build the symbol map
+	let map = symbols()
+		.cloned()
+		.filter_map(|sym| {
+			let name = get_symbol_name(&sym)?;
+			Some((name, sym))
+		})
+		.collect::<CollectResult<_>>()
+		.0?;
+	unsafe {
+		SYMBOLS.init(map);
+	}
+	Ok(())
 }
