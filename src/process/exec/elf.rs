@@ -23,7 +23,7 @@ use crate::{
 	cpu, elf,
 	elf::{
 		parser::ELFParser,
-		relocation::{ELF32Rel, ELF32Rela, Relocation},
+		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
 		ELF32ProgramHeader,
 	},
 	errno,
@@ -566,7 +566,7 @@ impl<'s> ELFExecutor<'s> {
 			}
 		}
 
-		let ehdr = elf.get_header();
+		let ehdr = elf.hdr();
 		let phentsize = ehdr.e_phentsize as usize;
 		let phnum = ehdr.e_phnum as usize;
 
@@ -598,8 +598,7 @@ impl<'s> ELFExecutor<'s> {
 			}
 		};
 
-		let mut entry_point =
-			(load_base as usize + elf.get_header().e_entry as usize) as *const c_void;
+		let mut entry_point = (load_base as usize + elf.hdr().e_entry as usize) as *const c_void;
 
 		let mut interp_load_base = None;
 		let mut interp_entry = None;
@@ -626,7 +625,7 @@ impl<'s> ELFExecutor<'s> {
 
 			interp_load_base = Some(i_load_base as _);
 			interp_entry =
-				Some((load_base as usize + elf.get_header().e_entry as usize) as *const c_void);
+				Some((load_base as usize + elf.hdr().e_entry as usize) as *const c_void);
 			load_end = load_info.load_end;
 			entry_point = load_info.entry_point;
 		}
@@ -650,13 +649,10 @@ impl<'s> ELFExecutor<'s> {
 
 				// Perform relocations if no interpreter is present
 				if !interp && interp_path.is_none() {
-					// Closure returning a symbol from its name
-					let get_sym = |name: &[u8]| elf.get_symbol_by_name(name);
-
 					// Closure returning the value for a given symbol
-					let get_sym_val = |sym_section: u32, sym: u32| {
-						let section = elf.iter_sections().nth(sym_section as usize)?;
-						let sym = elf.iter_symbols(section).nth(sym as usize)?;
+					let get_sym = |sym_section: u32, sym: u32| {
+						let section = elf.get_section_by_index(sym_section as _)?;
+						let sym = elf.get_symbol_by_index(section, sym as _)?;
 						if sym.is_defined() {
 							Some(load_base as u32 + sym.st_value)
 						} else {
@@ -664,13 +660,14 @@ impl<'s> ELFExecutor<'s> {
 						}
 					};
 
+					let got_sym = elf.get_symbol_by_name(GOT_SYM);
 					for section in elf.iter_sections() {
 						for rel in elf.iter_rel::<ELF32Rel>(section) {
-							rel.perform(load_base as _, section, get_sym, get_sym_val)
+							rel.perform(load_base as _, section, get_sym, got_sym)
 								.map_err(|_| errno!(EINVAL))?;
 						}
 						for rela in elf.iter_rel::<ELF32Rela>(section) {
-							rela.perform(load_base as _, section, get_sym, get_sym_val)
+							rela.perform(load_base as _, section, get_sym, got_sym)
 								.map_err(|_| errno!(EINVAL))?;
 						}
 					}

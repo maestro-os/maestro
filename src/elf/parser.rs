@@ -59,7 +59,7 @@ pub struct ELFParser<'a>(&'a [u8]);
 
 impl<'a> ELFParser<'a> {
 	/// Returns the image's header.
-	pub fn get_header(&self) -> &ELF32ELFHeader {
+	pub fn hdr(&self) -> &ELF32ELFHeader {
 		// Safe because the image is already checked to be large enough on parser instantiation
 		bytes::from_bytes(self.0).unwrap()
 	}
@@ -88,7 +88,7 @@ impl<'a> ELFParser<'a> {
 		if self.0.len() < size_of::<ELF32ELFHeader>() {
 			return Err(errno!(EINVAL));
 		}
-		let ehdr = self.get_header();
+		let ehdr = self.hdr();
 
 		// TODO Check e_machine
 		// TODO Check e_version
@@ -135,7 +135,7 @@ impl<'a> ELFParser<'a> {
 	///
 	/// If a section is out of bounds, the iterator returns an error.
 	fn try_iter_segments(&self) -> impl Iterator<Item = EResult<&ELF32ProgramHeader>> {
-		let ehdr = self.get_header();
+		let ehdr = self.hdr();
 		let table = &self.0[ehdr.e_phoff as usize..];
 		iter(table, ehdr.e_phnum as usize, ehdr.e_phentsize as usize)
 	}
@@ -149,7 +149,7 @@ impl<'a> ELFParser<'a> {
 	///
 	/// If a section is out of bounds, the iterator returns an error.
 	fn try_iter_sections(&self) -> impl Iterator<Item = EResult<&ELF32SectionHeader>> {
-		let ehdr = self.get_header();
+		let ehdr = self.hdr();
 		let table = &self.0[ehdr.e_shoff as usize..];
 		iter(table, ehdr.e_shnum as usize, ehdr.e_shentsize as usize)
 	}
@@ -163,8 +163,13 @@ impl<'a> ELFParser<'a> {
 	///
 	/// If the section does not exist, the function returns `None`.
 	pub fn get_section_by_index(&self, i: usize) -> Option<&ELF32SectionHeader> {
-		// TODO optimize
-		self.iter_sections().nth(i)
+		// Bound check
+		if i < self.hdr().e_shnum as usize {
+			let off = self.hdr().e_shoff as usize + i * self.hdr().e_shentsize as usize;
+			bytes::from_bytes(&self.0[off..])
+		} else {
+			None
+		}
 	}
 
 	/// Returns an iterator on the relocations of the given section.
@@ -230,8 +235,10 @@ impl<'a> ELFParser<'a> {
 	///
 	/// If the symbol does not exist, the function returns `None`.
 	pub fn get_symbol_by_index(&self, symtab: &ELF32SectionHeader, i: usize) -> Option<&ELF32Sym> {
-		// TODO optimize
-		self.iter_symbols(symtab).nth(i)
+		let begin = symtab.sh_offset as usize;
+		let off = begin + i * symtab.sh_entsize as usize;
+		let end = begin + symtab.sh_size as usize;
+		bytes::from_bytes(&self.0[off..end])
 	}
 
 	/// Returns the symbol with name `name`.
