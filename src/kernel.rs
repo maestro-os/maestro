@@ -51,6 +51,7 @@
 #![feature(unsize)]
 #![feature(once_cell_try)]
 #![feature(iter_intersperse)]
+#![feature(iter_array_chunks)]
 #![deny(warnings)]
 #![allow(clippy::tabs_in_doc_comments)]
 #![allow(dead_code)]
@@ -311,7 +312,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Initializing devices management...");
 	device::init().unwrap_or_else(|e| panic!("Failed to initialize devices management! ({e})"));
 	net::osi::init().unwrap_or_else(|e| panic!("Failed to initialize network! ({e})"));
-	crypto::init().unwrap_or_else(|e| panic!("Failed to initialize cryptography! ({e})"));
+	crypto::init()
+		.unwrap_or_else(|_| panic!("Failed to initialize cryptography! (out of memory)"));
 
 	let root = args_parser.get_root_dev();
 	println!("Initializing files management...");

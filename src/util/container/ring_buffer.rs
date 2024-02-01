@@ -74,6 +74,12 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		self.read_cursor == self.write_cursor
 	}
 
+	/// Tells whether the ring is full.
+	#[inline(always)]
+	pub fn is_full(&self) -> bool {
+		self.get_available_len() == 0
+	}
+
 	/// Returns the length of the data in the buffer.
 	///
 	/// If the buffer is empty, the function returns zero.
