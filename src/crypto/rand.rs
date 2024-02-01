@@ -2,7 +2,7 @@
 
 use crate::{
 	crypto::chacha20,
-	errno::EResult,
+	errno::AllocResult,
 	util::{
 		container::{ring_buffer::RingBuffer, vec::Vec},
 		lock::IntMutex,
@@ -33,7 +33,7 @@ pub struct EntropyPool {
 
 impl EntropyPool {
 	/// Creates a new instance.
-	pub fn new() -> EResult<Self> {
+	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
 			pending: RingBuffer::new(crate::vec![0; 56]?),
 			buff: RingBuffer::new(crate::vec![0; ENTROPY_BUFFER_SIZE]?),
@@ -57,33 +57,55 @@ impl EntropyPool {
 	/// `bypass_threshold` is set to `true`. In which case, randomness is not guaranteed.
 	pub fn read(&mut self, buff: &mut [u8], bypass_threshold: bool) -> usize {
 		let available = self.buff.get_data_len();
-
 		if available < ENTROPY_THRESHOLD {
+			// TODO first, encode some bytes from `pending`, then use them (if available)
 			if !bypass_threshold {
 				return 0;
 			}
-
+			// Use a PRNG to create fake entropy
 			let mut seed = self.pseudo_seed;
 			for b in buff.iter_mut() {
 				seed = 6364136223846793005u64.wrapping_mul(seed).wrapping_add(1);
 				*b = (seed & 0xff) as _;
 			}
 			self.pseudo_seed = seed;
-
 			buff.len()
 		} else {
 			self.buff.read(buff)
 		}
 	}
 
-	/// Upddates the seed for the pseudorandom generator.
-	fn update_seed(&mut self, buff: &[u8; 8]) {
-		let mut seed = 0;
-		for (i, b) in buff.iter().enumerate() {
-			seed |= (*b as u64) << (i * 8);
-		}
+	/// Encodes data to fill the entropy buffer.
+	///
+	/// The function returns the number of consumed bytes from the given buffer.
+	fn encode(&mut self, buff: &[u8]) -> usize {
+		let mut off = 0;
+		let mut encode_buff: [u8; 64] = [0; 64];
+		while off < buff.len() && buff.len() - off >= self.pending.get_size() {
+			// Add data
+			encode_buff[0..48].copy_from_slice(&buff[off..(off + 48)]);
+			off += 48;
+			// Add counter to buffer
+			encode_buff[48..56].copy_from_slice(&self.counter.to_ne_bytes());
+			// Add nonce
+			encode_buff[56..].copy_from_slice(&buff[off..(off + 8)]);
+			off += 8;
 
-		self.pseudo_seed = seed;
+			// Encode with ChaCha20
+			chacha20::block(&mut encode_buff);
+			// Update pseudo seed
+			let mut seed: [u8; 8] = [0; 8];
+			seed.copy_from_slice(&encode_buff[..8]);
+			self.pseudo_seed = u64::from_ne_bytes(seed);
+
+			// Write
+			let l = self.buff.write(&encode_buff[8..]);
+			if l == 0 {
+				break;
+			}
+			self.counter += 1;
+		}
+		off
 	}
 
 	/// Writes entropy to the pool.
@@ -91,55 +113,18 @@ impl EntropyPool {
 	/// The function returns the number of bytes written.
 	pub fn write(&mut self, buff: &[u8]) -> usize {
 		let mut off = 0;
-		let mut total = 0;
-
-		let mut input: [u8; 64] = [0; 64];
-		let mut output: [u8; 64] = [0; 64];
-
-		// Encode with ChaCha20
-		while off < buff.len() && buff.len() - off >= self.pending.get_size() {
-			// Add data
-			input[0..48].copy_from_slice(&buff[off..(off + 48)]);
-			off += 48;
-
-			// Add counter to buffer
-			for i in 0..8 {
-				input[48 + i] = ((self.counter >> (i * 8)) & 0xff) as _;
-			}
-			off += 8;
-
-			// Add nonce
-			input[56..].copy_from_slice(&buff[off..(off + 8)]);
-			off += 8;
-
-			// Encode
-			chacha20::block(&input, &mut output);
-
-			// Update pseudo seed
-			let mut seed_in: [u8; 8] = [0; 8];
-			seed_in.copy_from_slice(&input[0..8]);
-			self.update_seed(&seed_in);
-
-			let l = self.buff.write(&output);
-			if l == 0 {
-				break;
-			}
-
-			total += l;
-			self.counter += 1;
+		if !self.buff.is_full() {
+			off = self.encode(buff);
 		}
-
 		// Put remaining bytes into pending buffer
 		while off < buff.len() {
 			let l = self.pending.write(&buff[off..]);
 			if l == 0 {
 				break;
 			}
-
-			total += l;
+			off += l;
 		}
-
-		total
+		buff.len() - off
 	}
 }
 
@@ -147,7 +132,7 @@ impl EntropyPool {
 pub static ENTROPY_POOL: IntMutex<Option<EntropyPool>> = IntMutex::new(None);
 
 /// Initializes randomness sources.
-pub(super) fn init() -> EResult<()> {
+pub(super) fn init() -> AllocResult<()> {
 	*ENTROPY_POOL.lock() = Some(EntropyPool::new()?);
 	Ok(())
 }

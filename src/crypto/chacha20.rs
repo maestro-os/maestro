@@ -31,15 +31,11 @@ macro_rules! quarter_round {
 }
 
 /// Computes a ChaCha20 block.
-///
-/// Arguments:
-/// - `input` is the input block.
-/// - `output` is the output block.
-pub fn block(input: &[u8; 64], output: &mut [u8; 64]) {
+pub fn block(inout: &mut [u8; 64]) {
 	let mut buff: [u32; 16] = [0; 16];
 
 	unsafe {
-		ptr::copy_nonoverlapping(input.as_ptr(), buff.as_mut_ptr() as *mut u8, 64);
+		ptr::copy_nonoverlapping(inout.as_ptr(), buff.as_mut_ptr() as *mut u8, 64);
 	}
 
 	for _ in (0..20).step_by(2) {
@@ -57,7 +53,7 @@ pub fn block(input: &[u8; 64], output: &mut [u8; 64]) {
 	}
 
 	unsafe {
-		ptr::copy_nonoverlapping(buff.as_ptr() as *mut u8, output.as_mut_ptr(), 64);
+		ptr::copy_nonoverlapping(buff.as_ptr() as *mut u8, inout.as_mut_ptr(), 64);
 	}
 }
 
