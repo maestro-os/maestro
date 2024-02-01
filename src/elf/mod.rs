@@ -121,9 +121,9 @@ pub const SHT_STRTAB: u32 = 0x00000003;
 pub const SHT_RELA: u32 = 0x00000004;
 /// The section holds a symbol hash table.
 pub const SHT_HASH: u32 = 0x00000005;
-/// The section holds informations for dynamic linking.
+/// The section holds information for dynamic linking.
 pub const SHT_DYNAMIC: u32 = 0x00000006;
-/// The section holds informations that marks the file in some way.
+/// The section holds information that marks the file in some way.
 pub const SHT_NOTE: u32 = 0x00000007;
 /// The section is empty but contains information in its offset.
 pub const SHT_NOBITS: u32 = 0x00000008;
@@ -145,6 +145,9 @@ pub const SHF_TLS: u32 = 0x400;
 /// All bits included in this mask are reserved for processor-specific
 /// semantics.
 pub const SHF_MASKPROC: u32 = 0xf0000000;
+
+/// Undefined symbol index.
+pub const STN_UNDEF: usize = 0;
 
 /// The symbol's type is not specified.
 pub const STT_NOTYPE: u8 = 0;
@@ -291,7 +294,7 @@ pub struct ELF32SectionHeader {
 	pub sh_size: u32,
 	/// Section header table index link.
 	pub sh_link: u32,
-	/// Extra-informations whose interpretation depends on the section type.
+	/// Extra-information whose interpretation depends on the section type.
 	pub sh_info: u32,
 	/// Alignment constraints of the section in memory. `0` or `1` means that
 	/// the section doesn't require specific alignment.
@@ -343,13 +346,11 @@ impl ELF32Sym {
 }
 
 /// The hash function for an ELF hash table.
-pub fn hash(name: &[u8]) -> u32 {
-	name.iter().fold(0, |res, c| {
-		let mut res = (res << 4) + *c as u32;
-		let tmp = res & 0xf0000000;
-		if tmp != 0 {
-			res ^= tmp >> 24;
-		}
-		res & !tmp
-	})
+pub fn hash_sym_name(name: &[u8]) -> u32 {
+	let res = name.iter().fold(0u32, |mut res, c| {
+		res = res.wrapping_mul(16) + *c as u32;
+		res ^= res >> 24 & 0xf0;
+		res
+	});
+	res & 0xfffffff
 }
