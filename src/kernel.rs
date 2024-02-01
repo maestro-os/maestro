@@ -274,6 +274,10 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// From now on, the kernel considers that memory management has been fully
 	// initialized
 
+	// Init kernel symbols map
+	elf::kernel::init()
+		.unwrap_or_else(|_| panic!("Cannot initialize kernel symbols map! (out of memory)"));
+
 	// Perform kernel self-tests
 	#[cfg(test)]
 	kernel_selftest();
