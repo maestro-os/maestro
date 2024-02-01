@@ -36,7 +36,7 @@ fn iter<T: AnyRepr>(
 
 /// The ELF parser allows to parse an ELF image and retrieve information on it.
 ///
-/// It is especially useful to load a kernel module or a userspace program.
+/// It is especially useful to load a kernel module or userspace program.
 pub struct ELFParser<'a>(&'a [u8]);
 
 impl<'a> ELFParser<'a> {
@@ -44,21 +44,6 @@ impl<'a> ELFParser<'a> {
 	pub fn get_header(&self) -> &ELF32ELFHeader {
 		// Safe because the image is already checked to be large enough on parser instantiation
 		bytes::from_bytes(self.0).unwrap()
-	}
-
-	/// Returns the offset the content of the section containing section names.
-	pub fn get_shstr_offset(&self) -> usize {
-		let ehdr = self.get_header();
-		let shoff = ehdr.e_shoff;
-		let shentsize = ehdr.e_shentsize;
-
-		// The offset of the section containing section names
-		let shstr_off = (shoff + shentsize as u32 * ehdr.e_shstrndx as u32) as usize;
-
-		// Will not fail because the image is already checked to be large enough at parser
-		// instantiation
-		let shstr = bytes::from_bytes::<ELF32SectionHeader>(&self.0[shstr_off..]).unwrap();
-		shstr.sh_offset as usize
 	}
 
 	// TODO Support 64 bit
@@ -156,6 +141,14 @@ impl<'a> ELFParser<'a> {
 		self.try_iter_sections().filter_map(Result::ok)
 	}
 
+	/// Returns the section with the given index.
+	///
+	/// If the section does not exist, the function returns `None`.
+	pub fn get_section_by_index(&self, i: usize) -> Option<&ELF32SectionHeader> {
+		// TODO optimize
+		self.iter_sections().nth(i)
+	}
+
 	/// Returns an iterator on the relocations of the given section.
 	///
 	/// If the section does not have the correct type, the function returns an empty iterator.
@@ -213,48 +206,45 @@ impl<'a> ELFParser<'a> {
 		self.try_iter_symbols(section).filter_map(Result::ok)
 	}
 
-	/// Returns the section with name `name`.
+	/// Returns the symbol with index `i`.
 	///
-	/// If the section doesn't exist, the function returns `None`.
-	pub fn get_section_by_name(&self, name: &str) -> Option<&ELF32SectionHeader> {
-		let shstr_off = self.get_shstr_offset();
-
-		self.iter_sections().find(|s| {
-			let section_name_begin = shstr_off + s.sh_name as usize;
-			let section_name_end = section_name_begin + name.len();
-
-			if section_name_end <= self.0.len() {
-				let section_name = &self.0[section_name_begin..section_name_end];
-				section_name == name.as_bytes()
-			} else {
-				false
-			}
-		})
+	/// `symtab` is the symbol table to look into.
+	///
+	/// If the symbol does not exist, the function returns `None`.
+	pub fn get_symbol_by_index(&self, symtab: &ELF32SectionHeader, i: usize) -> Option<&ELF32Sym> {
+		// TODO optimize
+		self.iter_symbols(symtab).nth(i)
 	}
 
 	/// Returns the symbol with name `name`.
 	///
-	/// If the symbol doesn't exist, the function returns `None`.
+	/// If the symbol does not exist, the function returns `None`.
 	pub fn get_symbol_by_name(&self, name: &[u8]) -> Option<&ELF32Sym> {
-		// TODO use hashmap
-		self.iter_sections()
-			.filter_map(|section| {
-				let strtab_section = self.iter_sections().nth(section.sh_link as _)?;
-				Some((section, strtab_section))
-			})
-			.flat_map(|(section, strtab_section)| {
-				self.iter_symbols(section).filter(|sym| {
-					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
-					let sym_name_end = sym_name_begin + name.len();
-					if sym_name_end <= self.0.len() {
-						let sym_name = &self.0[sym_name_begin..sym_name_end];
-						sym_name == name
-					} else {
-						false
-					}
+		if self.has_hash() {
+			// Fast path: get symbol from hash table
+			self.hash_find(name)
+		} else {
+			// Slow path: iterate
+			self.iter_sections()
+				.filter_map(|section| {
+					let strtab_section = self.get_section_by_index(section.sh_link as _)?;
+					Some((section, strtab_section))
 				})
-			})
-			.next()
+				.flat_map(|(section, strtab_section)| {
+					self.iter_symbols(section).filter(|sym| {
+						let sym_name_begin =
+							strtab_section.sh_offset as usize + sym.st_name as usize;
+						let sym_name_end = sym_name_begin + name.len();
+						if sym_name_end <= self.0.len() {
+							let sym_name = &self.0[sym_name_begin..sym_name_end];
+							sym_name == name
+						} else {
+							false
+						}
+					})
+				})
+				.next()
+		}
 	}
 
 	/// Returns the name of the symbol `sym` using the string table section `strtab`.
@@ -289,5 +279,57 @@ impl<'a> ELFParser<'a> {
 		// Exclude trailing `\0` if present
 		let end = path.iter().position(|c| *c == b'\0').unwrap_or(path.len());
 		Some(&path[..end])
+	}
+
+	/// Returns the section containing the hash table.
+	///
+	/// If the section does not exist, the function returns `None`.
+	fn get_hash_section(&self) -> Option<&ELF32SectionHeader> {
+		self.iter_sections().find(|s| s.sh_type == SHT_HASH)
+	}
+
+	/// Tells whether the ELF has a hash table.
+	pub fn has_hash(&self) -> bool {
+		self.get_hash_section().is_some()
+	}
+
+	/// Finds a symbol with the given name in the hash table.
+	///
+	/// If the ELF does not have a hash table, if the table is invalid, or if the symbol could not
+	/// be found, the function returns `None`.
+	pub fn hash_find(&self, name: &[u8]) -> Option<&ELF32Sym> {
+		// TODO implement SHT_GNU_HASH
+		// TODO if not present, fallback to this:
+		// Get required sections
+		let hashtab = self.get_hash_section()?;
+		let symtab = self.get_section_by_index(hashtab.sh_link as _)?;
+		let strtab = self.get_section_by_index(symtab.sh_link as _)?;
+		// Get slice over hash table
+		let begin = hashtab.sh_offset as usize;
+		let end = begin + hashtab.sh_size as usize;
+		let slice = &self.0[begin..end];
+		// Closure to get a word from the slice
+		let get = |off: usize| {
+			let last = *slice.get(off * 4 + 3)?;
+			let arr = [slice[off * 4], slice[off * 4 + 1], slice[off * 4 + 2], last];
+			Some(u32::from_ne_bytes(arr))
+		};
+		let nbucket = get(0)? as usize;
+		let nchain = get(1)? as usize;
+		let hash = hash_sym_name(name) as usize;
+		// Iterate, with upper bound for security
+		let mut i = get(2 + hash % nbucket)? as usize;
+		let mut iter = 0;
+		while i != STN_UNDEF && iter < nchain + 1 {
+			let sym = self.get_symbol_by_index(symtab, i)?;
+			// If the name matches, return the symbol
+			if self.get_symbol_name(strtab, sym) == Some(name) {
+				return Some(sym);
+			}
+			// Get next in chain
+			i = get(2 + nbucket + i)? as usize;
+			iter += 1;
+		}
+		None
 	}
 }

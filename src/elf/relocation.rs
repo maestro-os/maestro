@@ -8,7 +8,7 @@ use core::{ffi::c_void, ptr};
 use macros::AnyRepr;
 
 /// The name of the symbol pointing to the global offset table.
-const GOT_SYM: &[u8] = b"_GLOBAL_OFFSET_TABLE_";
+pub const GOT_SYM: &[u8] = b"_GLOBAL_OFFSET_TABLE_";
 
 /// ELF relocation error.
 pub struct RelocationError;
