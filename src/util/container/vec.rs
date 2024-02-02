@@ -24,7 +24,7 @@ use crate::{
 	util::{AllocError, TryClone},
 };
 use core::{
-	cmp::{max, min},
+	cmp::max,
 	fmt,
 	hash::{Hash, Hasher},
 	iter::{FusedIterator, TrustedLen},
@@ -38,26 +38,24 @@ use core::{
 /// Creates a [`Vec`] with the given size or set of values.
 #[macro_export]
 macro_rules! vec {
-	// Creating an empty vec
+	// Create an empty vec
 	() => {
 		$crate::util::container::vec::Vec::new()
 	};
 
-	// Creating a vec filled with `n` times `elem`
+	// Create a vec filled with `n` times `elem`
 	($elem:expr; $n:expr) => (
 		$crate::util::container::vec::Vec::from_elem($elem, $n)
 	);
 
-	// Creating a vec from the given slice
+	// Create a vec from the given array
 	($($x:expr), + $(,) ?) => {{
-		let slice = [$($x),+];
-
+		let array = [$($x),+];
 		(|| {
-			let mut v = $crate::util::container::vec::Vec::with_capacity(slice.len())?;
-			for i in slice {
+			let mut v = $crate::util::container::vec::Vec::with_capacity(array.len())?;
+			for i in array {
 				v.push(i)?;
 			}
-
 			$crate::errno::AllocResult::Ok(v)
 		})()
 	}};
@@ -179,12 +177,12 @@ impl<T> Vec<T> {
 		}
 	}
 
-	/// Triggers a panic after an invalid access to the vector.
+	/// Triggers a panic after invalid access to the vector.
 	#[cold]
 	fn vector_panic(&self, index: usize) -> ! {
 		panic!(
-			"index out of bounds: the len is {} but the index is {}",
-			self.len, index
+			"index out of bounds: the len is {len} but the index is {index}",
+			len = self.len
 		);
 	}
 
@@ -473,11 +471,7 @@ impl<T: Eq> Eq for Vec<T> {}
 
 impl<T: PartialEq> PartialEq for Vec<T> {
 	fn eq(&self, other: &Vec<T>) -> bool {
-		if self.len() != other.len() {
-			return false;
-		}
-
-		self.iter().zip(other.iter()).all(|(e0, e1)| e0 == e1)
+		PartialEq::eq(&**self, &**other)
 	}
 }
 
@@ -486,14 +480,13 @@ impl<T: Clone> Vec<T> {
 	pub fn from_elem(elem: T, n: usize) -> AllocResult<Self> {
 		let mut v = Self::with_capacity(n)?;
 		v.len = n;
-
 		for i in 0..n {
+			// Safe because in range
 			unsafe {
-				// Safe because in range
+				// This is necessary to avoid dropping
 				ptr::write(&mut v[i], elem.clone());
 			}
 		}
-
 		Ok(v)
 	}
 
@@ -501,14 +494,13 @@ impl<T: Clone> Vec<T> {
 	pub fn from_slice(slice: &[T]) -> AllocResult<Self> {
 		let mut v = Vec::with_capacity(slice.len())?;
 		v.len = slice.len();
-
 		for (i, elem) in slice.iter().enumerate() {
+			// Safe because in range
 			unsafe {
-				// Safe because in range
+				// This is necessary to avoid dropping
 				ptr::write(&mut v[i], elem.clone());
 			}
 		}
-
 		Ok(v)
 	}
 
@@ -517,12 +509,16 @@ impl<T: Clone> Vec<T> {
 		if slice.is_empty() {
 			return Ok(());
 		}
-
 		self.increase_capacity(slice.len())?;
-		for e in slice {
-			self.push(e.clone())?;
+		let begin = self.len;
+		self.len += slice.len();
+		for (i, elem) in slice.iter().enumerate() {
+			// Safe because in range
+			unsafe {
+				// This is necessary to avoid dropping
+				ptr::write(&mut self[begin + i], elem.clone());
+			}
 		}
-
 		Ok(())
 	}
 }
@@ -532,47 +528,13 @@ impl<T: TryClone<Error = E>, E: From<AllocError>> TryClone for Vec<T> {
 
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		let mut v = Self::with_capacity(self.len)?;
-
+		v.len = self.len;
 		for i in 0..self.len {
-			v.push(self[i].try_clone()?)?;
-		}
-		Ok(v)
-	}
-}
-
-impl<T: TryClone<Error = E>, E: From<AllocError>> Vec<T> {
-	/// Clones the vector, keeping the given range.
-	pub fn clone_range(&self, range: Range<usize>) -> Result<Self, E> {
-		let end = min(range.end, self.len);
-		let start = min(range.start, range.end);
-		let len = end - start;
-
-		let mut v = Self::with_capacity(len)?;
-
-		for i in 0..len {
-			v.push(self[start + i].try_clone()?)?;
-		}
-		Ok(v)
-	}
-
-	/// Clones the vector, keeping the given range.
-	pub fn clone_range_from(&self, range: RangeFrom<usize>) -> Result<Self, E> {
-		let len = self.len - min(self.len, range.start);
-		let mut v = Self::with_capacity(len)?;
-
-		for i in 0..len {
-			v.push(self[range.start + i].try_clone()?)?;
-		}
-		Ok(v)
-	}
-
-	/// Clones the vector, keeping the given range.
-	pub fn clone_range_to(&self, range: RangeTo<usize>) -> Result<Self, E> {
-		let len = min(self.len, range.end);
-		let mut v = Self::with_capacity(len)?;
-
-		for i in 0..len {
-			v.push(self[i].try_clone()?)?;
+			// Safe because in range
+			unsafe {
+				// This is necessary to avoid dropping
+				ptr::write(&mut v[i], self[i].try_clone()?);
+			}
 		}
 		Ok(v)
 	}
@@ -583,22 +545,14 @@ impl<T> Index<usize> for Vec<T> {
 
 	#[inline]
 	fn index(&self, index: usize) -> &Self::Output {
-		if index >= self.len() {
-			self.vector_panic(index);
-		}
-
-		&self.data.as_ref().unwrap()[index]
+		Index::index(&**self, index)
 	}
 }
 
 impl<T> IndexMut<usize> for Vec<T> {
 	#[inline]
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		if index >= self.len() {
-			self.vector_panic(index);
-		}
-
-		&mut self.data.as_mut().unwrap()[index]
+		IndexMut::index_mut(&mut **self, index)
 	}
 }
 
@@ -650,7 +604,6 @@ impl<T> IndexMut<RangeTo<usize>> for Vec<T> {
 	}
 }
 
-// TODO can be optimized, a lot
 /// A consuming iterator for the Vec structure.
 pub struct IntoIter<T> {
 	/// The vector to iterator into.
@@ -957,6 +910,4 @@ mod test {
 	}
 
 	// TODO Test resize
-
-	// TODO Test range functions
 }

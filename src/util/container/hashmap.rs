@@ -187,7 +187,6 @@ impl<K: Eq + Hash, V, const N: usize> TryFrom<[(K, V); N]> for HashMap<K, V> {
 		for (key, value) in arr {
 			h.insert(key, value)?;
 		}
-
 		Ok(h)
 	}
 }
