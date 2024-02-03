@@ -10,12 +10,12 @@ use core::{
 	borrow::Borrow,
 	fmt,
 	hash::{Hash, Hasher},
-	intrinsics::unlikely,
+	intrinsics::{likely, unlikely},
 	iter::{FusedIterator, TrustedLen},
 	marker::PhantomData,
 	mem,
 	mem::{size_of, size_of_val, MaybeUninit},
-	ops::{Index, IndexMut},
+	ops::{BitAnd, Index, IndexMut},
 	simd::{cmp::SimdPartialEq, u8x16},
 };
 
@@ -89,14 +89,6 @@ fn get_slot_offset<K, V>(group: usize, index: usize) -> usize {
 #[inline]
 fn get_slot_position(off: usize) -> (usize, usize) {
 	(off / GROUP_SIZE, off % GROUP_SIZE)
-}
-
-/// Returns an iterator of elements matching the given `h2` in `group`.
-#[inline]
-fn group_match(group: u8x16, h2: u8) -> impl Iterator<Item = usize> {
-	let mask = u8x16::splat(h2);
-	let matching = group.simd_eq(mask);
-	(0usize..16).filter(move |i| matching.test(*i))
 }
 
 /// Returns the first empty element of the given `group`.
@@ -233,7 +225,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 
 	/// Returns the slot corresponding the given key and its hash.
 	///
-	/// Return typle:
+	/// Return tuple:
 	/// - The offset of the slot in the data buffer
 	/// - Whether the slot is occupied
 	fn find_slot<Q: ?Sized>(&self, key: &Q, hash: u64) -> Option<(usize, bool)>
@@ -242,16 +234,22 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Eq,
 	{
 		let groups_count = self.capacity() / GROUP_SIZE;
+		if groups_count == 0 {
+			return None;
+		}
 		let start_group = (h1(hash) % groups_count as u64) as usize;
 		let mut group = start_group;
+		let find_mask = u8x16::splat(h2(hash));
 		loop {
 			// Find key in group
 			let ctrl = self.get_ctrl(group);
-			for i in group_match(ctrl, h2(hash)) {
+			let matching = ctrl.simd_eq(find_mask);
+			let iter = (0usize..GROUP_SIZE).filter(move |i| matching.test(*i));
+			for i in iter {
 				let slot_off = get_slot_offset::<K, V>(group, i);
 				let slot = get_slot!(self, slot_off);
 				let slot_key = unsafe { slot.key.assume_init_ref() };
-				if slot_key.borrow() == key {
+				if likely(slot_key.borrow() == key) {
 					return Some((slot_off, true));
 				}
 			}
@@ -307,13 +305,19 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns a mutable reference to the value with the given `key`.
 	///
 	/// If the key isn't present, the function return `None`.
-	pub fn get_mut<Q: ?Sized>(&mut self, _key: &Q) -> Option<&mut V>
+	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		// TODO
-		todo!()
+		let hash = hash::<_, H>(key);
+		let (slot_off, occupied) = self.find_slot(key, hash)?;
+		let slot = get_slot!(self, slot_off, mut);
+		if occupied {
+			Some(unsafe { slot.value.assume_init_mut() })
+		} else {
+			None
+		}
 	}
 
 	/// Tells whether the hash map contains the given `key`.
@@ -415,9 +419,27 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	}
 
 	/// Retains only the elements for which the given predicate returns `true`.
-	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut _f: F) {
-		// TODO
-		todo!()
+	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut f: F) {
+		let groups_count = self.capacity() / GROUP_SIZE;
+		let mask = u8x16::splat(0x80);
+		for group in 0..groups_count {
+			// Check whether there are elements in the group
+			let ctrl = self.get_ctrl(group);
+			let matching = ctrl.bitand(mask).simd_ne(mask);
+			let iter = (0..GROUP_SIZE).filter(move |i| matching.test(*i));
+			// Iterate on slots in group
+			for i in iter {
+				let off = get_slot_offset::<K, V>(group, i);
+				let slot = get_slot!(self, off, mut);
+				let (key, value) =
+					unsafe { (slot.key.assume_init_ref(), slot.value.assume_init_mut()) };
+				let keep = f(key, value);
+				if !keep {
+					// TODO use CTRL_EMPTY if relevant
+					self.set_ctrl(group, i, CTRL_DELETED);
+				}
+			}
+		}
 	}
 
 	/// Drops all elements in the hash map.
