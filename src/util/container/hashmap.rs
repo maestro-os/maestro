@@ -10,30 +10,28 @@ use core::{
 	borrow::Borrow,
 	fmt,
 	hash::{Hash, Hasher},
+	intrinsics::{likely, size_of},
 	iter::{FusedIterator, TrustedLen},
-	mem::size_of_val,
+	marker::PhantomData,
+	mem::{size_of_val, MaybeUninit},
 	ops::{Index, IndexMut},
+	simd::{cmp::SimdPartialEq, u8x16},
 };
 
-/// The default number of buckets in a hashmap.
-const DEFAULT_BUCKETS_COUNT: usize = 64;
+/// Indicates a vacant entry in the map. This is a sentinel value for the lookup operation.
+const CTRL_EMPTY: u8 = 0x80;
+/// Indicates a deleted entry in the map.
+const CTRL_DELETED: u8 = 0xfe;
+/// The size of a group of entries.
+const GROUP_SIZE: usize = 16;
 
 /// Bitwise XOR hasher.
+#[derive(Default)]
 struct XORHasher {
 	/// The currently stored value.
 	value: u64,
 	/// The offset byte at which the next XOR operation shall be performed.
 	off: u8,
-}
-
-impl XORHasher {
-	/// Creates a new instance.
-	pub fn new() -> Self {
-		Self {
-			value: 0,
-			off: 0,
-		}
-	}
 }
 
 impl Hasher for XORHasher {
@@ -49,110 +47,79 @@ impl Hasher for XORHasher {
 	}
 }
 
-/// A bucket is a list storing elements that match a given hash range.
+/// Returns the slot part of the hash.
+#[inline]
+fn h1(hash: u64) -> u64 {
+	hash >> 7
+}
+
+/// Returns the control part of the hash.
+#[inline]
+fn h2(hash: u64) -> u8 {
+	(hash & 0x7f) as _
+}
+
+/// Returns an iterator of elements matching the given `h2` in `group`.
+#[inline]
+fn group_match(group: &[u8], h2: u8) -> impl Iterator<Item = usize> {
+	let group = u8x16::from_slice(group);
+	let mask = u8x16::splat(h2);
+	let matching = group.simd_eq(mask);
+	(0usize..16).filter(move |i| matching.test(*i))
+}
+
+/// Returns the first empty element of the given `group`.
+#[inline]
+fn group_match_empty(group: &[u8]) -> Option<usize> {
+	let group = u8x16::from_slice(group);
+	let mask = u8x16::splat(CTRL_EMPTY);
+	let matching = group.simd_eq(mask);
+	matching.first_set()
+}
+
+/// Internal representation of an entry.
+struct Slot<K, V> {
+	/// The key stored in the slot.
+	key: MaybeUninit<K>,
+	/// The value stored in the slot.
+	value: MaybeUninit<V>,
+}
+
+/// TODO doc
+pub struct OccupiedEntry<'h, K, V> {
+	inner: &'h mut Slot<K, V>,
+}
+
+/// TODO doc
+pub struct VacantEntry<'h, K, V> {
+	/// The inner slot.
+	///
+	/// If `None`, the hash map requires resizing for the insertion.
+	inner: Option<&'h mut Slot<K, V>>,
+}
+
+/// An entry in a hash map.
+pub enum Entry<'h, K: Eq + Hash, V> {
+	Occupied(OccupiedEntry<'h, K, V>),
+	Vacant(VacantEntry<'h, K, V>),
+}
+
+/// The implementation of the hash map.
 ///
-/// Since hashing function have collisions, several elements can have the same
-/// hash.
-struct Bucket<K: Eq + Hash, V> {
-	/// The vector storing the key/value pairs.
-	elements: Vec<(K, V)>,
-}
-
-impl<K: Eq + Hash, V> Bucket<K, V> {
-	/// Creates a new instance.
-	fn new() -> Self {
-		Self {
-			elements: Vec::new(),
-		}
-	}
-
-	/// Returns an immutable reference to the value with the given key `k`.
+/// Underneath, it is an implementation of the [SwissTable](https://abseil.io/about/design/swisstables).
+pub struct HashMap<K: Eq + Hash, V, H: Default + Hasher = XORHasher> {
+	/// The map's data.
 	///
-	/// If the key isn't present, the function return `None`.
-	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq,
-	{
-		for i in 0..self.elements.len() {
-			if self.elements[i].0.borrow() == k {
-				return Some(&self.elements[i].1);
-			}
-		}
-
-		None
-	}
-
-	/// Returns a mutable reference to the value with the given key `k`.
-	///
-	/// If the key isn't present, the function return `None`.
-	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq,
-	{
-		for i in 0..self.elements.len() {
-			if self.elements[i].0.borrow() == k {
-				return Some(&mut self.elements[i].1);
-			}
-		}
-
-		None
-	}
-
-	/// Inserts a new element into the bucket.
-	///
-	/// If the key was already present, the function returns the previous value.
-	pub fn insert(&mut self, k: K, v: V) -> AllocResult<Option<V>> {
-		let old = self.remove(&k);
-		self.elements.push((k, v))?;
-		Ok(old)
-	}
-
-	/// Removes an element from the bucket.
-	///
-	/// If the key was present, the function returns the value.
-	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq,
-	{
-		for i in 0..self.elements.len() {
-			if self.elements[i].0.borrow() == k {
-				return Some(self.elements.remove(i).1);
-			}
-		}
-
-		None
-	}
-}
-
-impl<K: Eq + Hash + TryClone<Error = E>, V: TryClone<Error = E>, E: From<AllocError>> TryClone
-	for Bucket<K, V>
-{
-	type Error = E;
-
-	fn try_clone(&self) -> Result<Self, Self::Error> {
-		let mut v = Vec::with_capacity(self.elements.len())?;
-		for (key, value) in self.elements.iter() {
-			v.push((key.try_clone()?, value.try_clone()?))?;
-		}
-
-		Ok(Self {
-			elements: v,
-		})
-	}
-}
-
-/// Structure representing a hashmap.
-pub struct HashMap<K: Eq + Hash, V> {
-	/// The number of buckets in the hashmap.
-	buckets_count: usize,
-	/// The vector containing buckets.
-	buckets: Vec<Bucket<K, V>>,
-
-	/// The number of elements in the container.
+	/// This vector is split in two parts:
+	/// - Slots table: actual stored data
+	/// - Control block: allowing for fast lookup into the table
+	data: Vec<u8>,
+	/// The number of elements in the map.
 	len: usize,
+
+	_key: PhantomData<K>,
+	_val: PhantomData<V>,
+	_hasher: PhantomData<H>,
 }
 
 impl<K: Eq + Hash, V> Default for HashMap<K, V> {
@@ -165,33 +132,34 @@ impl<K: Eq + Hash, V, const N: usize> TryFrom<[(K, V); N]> for HashMap<K, V> {
 	type Error = AllocError;
 
 	fn try_from(arr: [(K, V); N]) -> Result<Self, Self::Error> {
-		let mut h = HashMap::new();
-		for (key, value) in arr {
-			h.insert(key, value)?;
-		}
-		Ok(h)
+		arr.into_iter().collect::<CollectResult<_>>().0
 	}
 }
 
-impl<K: Eq + Hash, V> HashMap<K, V> {
-	/// Creates a new instance with the default number of buckets.
+impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
+	/// Creates a new empty instance.
 	pub const fn new() -> Self {
 		Self {
-			buckets_count: DEFAULT_BUCKETS_COUNT,
-			buckets: Vec::new(),
-
+			data: Vec::new(),
 			len: 0,
+
+			_key: PhantomData,
+			_val: PhantomData,
+			_hasher: PhantomData,
 		}
 	}
 
-	/// Creates a new instance with the given number of buckets.
-	pub const fn with_buckets(buckets_count: usize) -> Self {
-		Self {
-			buckets_count,
-			buckets: Vec::new(),
+	/// Creates a new instance with the given capacity in number of elements.
+	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
+		let len = capacity * (size_of::<Slot<K, V>>() + 1);
+		Ok(Self {
+			data: Vec::with_capacity(len)?,
+			len,
 
-			len: 0,
-		}
+			_key: PhantomData,
+			_val: PhantomData,
+			_hasher: PhantomData,
+		})
 	}
 
 	/// Returns the number of elements in the hash map.
@@ -206,56 +174,100 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 		self.len == 0
 	}
 
-	/// Returns the number of buckets.
+	/// Returns the number of elements the map can hold without reallocating.
 	#[inline]
-	pub fn get_buckets_count(&self) -> usize {
-		self.buckets_count
+	pub fn capacity(&self) -> usize {
+		// `+ 1` for the control byte
+		self.data.len() / (size_of::<Slot<K, V>>() + 1)
 	}
 
-	/// Returns the bucket index for the key `k`.
-	fn get_bucket_index<Q: ?Sized>(&self, k: &Q) -> usize
-	where
-		K: Borrow<Q>,
-		Q: Hash,
-	{
-		let mut hasher = XORHasher::new();
-		k.hash(&mut hasher);
-		(hasher.finish() % (self.buckets_count as u64)) as usize
+	/// Returns the slot for the given `group` and index `i` and the group.
+	#[inline]
+	fn get_slot(&mut self, group: usize, i: usize) -> &mut Slot<K, V> {
+		let off = (group * GROUP_SIZE + i) * size_of::<Slot<K, V>>();
+		unsafe { &mut *(&mut self.data[off] as *mut _ as *mut Slot<K, V>) }
 	}
 
-	/// Returns an immutable reference to the value with the given key `k`.
-	///
-	/// If the key isn't present, the function return `None`.
-	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq,
-	{
-		let index = self.get_bucket_index(k);
-		if index < self.buckets.len() {
-			self.buckets[index].get(k)
-		} else {
-			None
-		}
+	/// Returns the control block for the given `group`.
+	#[inline]
+	fn get_ctrl(&mut self, group: usize) -> &mut [u8] {
+		let ctrl_start = self.capacity() * size_of::<Slot<K, V>>();
+		// TODO add padding for alignment?
+		let off = ctrl_start + group * GROUP_SIZE;
+		&mut self.data[off..(off + GROUP_SIZE)]
 	}
 
-	/// Returns a mutable reference to the value with the given key `k`.
-	///
-	/// If the key isn't present, the function return `None`.
-	pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
+	/// Returns the entry for the given key.
+	pub fn entry<Q: ?Sized>(&mut self, key: &Q) -> Entry<'_, K, V>
 	where
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		let index = self.get_bucket_index(k);
-		if index < self.buckets.len() {
-			self.buckets[index].get_mut(k)
-		} else {
-			None
+		// Hash key
+		let mut hasher = H::default();
+		key.hash(&mut hasher);
+		let hash = hasher.finish();
+		// Search groups
+		let groups_count = self.capacity() / GROUP_SIZE;
+		let mut group = (h1(hash) % groups_count as u64) as usize;
+		while group < groups_count {
+			// Find key in group
+			let ctrl = self.get_ctrl(group);
+			for i in group_match(ctrl, h2(hash)) {
+				let slot = self.get_slot(group, i);
+				let slot_key = unsafe { slot.key.assume_init_ref() }.borrow();
+				if likely(slot_key == key) {
+					return Entry::Occupied(OccupiedEntry {
+						inner: slot,
+					});
+				}
+			}
+			// Check for an empty slot
+			if let Some(i) = group_match_empty(ctrl) {
+				#[cold]
+				{
+					let slot = self.get_slot(group, i);
+					return Entry::Vacant(VacantEntry {
+						inner: Some(slot),
+					});
+				}
+			}
+			group += 1;
 		}
+		// No space available for insertion
+		// TODO re-run search to find a deleted entry?
+		Entry::Vacant(VacantEntry {
+			inner: None,
+		})
 	}
 
-	/// Tells whether the hash map contains the given key `k`.
+	/// Returns an immutable reference to the value with the given `key`.
+	///
+	/// If the key isn't present, the function return `None`.
+	pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
+		// TODO
+		todo!()
+	}
+
+	/// Returns a mutable reference to the value with the given `key`.
+	///
+	/// If the key isn't present, the function return `None`.
+	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut V>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq,
+	{
+		let Entry::Occupied(entry) = self.entry(key) else {
+			return None;
+		};
+		Some(unsafe { entry.inner.value.assume_init_mut() })
+	}
+
+	/// Tells whether the hash map contains the given `key`.
 	#[inline]
 	pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
 	where
@@ -267,84 +279,46 @@ impl<K: Eq + Hash, V> HashMap<K, V> {
 
 	/// Creates an iterator of immutable references for the hash map.
 	#[inline]
-	pub fn iter(&self) -> Iter<K, V> {
+	pub fn iter(&self) -> Iter<K, V, H> {
 		Iter {
 			hm: self,
-
-			curr_bucket: 0,
-			curr_element: 0,
-			i: 0,
 		}
 	}
 
 	/// Inserts a new element into the hash map.
 	///
 	/// If the key was already present, the function returns the previous value.
-	pub fn insert(&mut self, k: K, v: V) -> AllocResult<Option<V>> {
-		let index = self.get_bucket_index(&k);
-		if index >= self.buckets.len() {
-			// Creating buckets
-			let begin = self.buckets.len();
-			for i in begin..=index {
-				self.buckets.insert(i, Bucket::new())?;
-			}
-		}
-
-		let result = self.buckets[index].insert(k, v)?;
-
-		if result.is_none() {
-			self.len += 1;
-		}
-
-		Ok(result)
+	pub fn insert(&mut self, key: K, value: V) -> AllocResult<Option<V>> {
+		// TODO
+		todo!()
 	}
 
 	/// Removes an element from the hash map.
 	///
 	/// If the key was present, the function returns the previous value.
-	pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
+	pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		let index = self.get_bucket_index(k);
-
-		if index < self.buckets.len() {
-			let result = self.buckets[index].remove(k);
-
-			if result.is_some() {
-				self.len -= 1;
-			}
-
-			result
-		} else {
-			None
-		}
+		// TODO
+		todo!()
 	}
 
 	/// Retains only the elements for which the given predicate returns `true`.
 	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut f: F) {
-		let mut len = 0;
-
-		for b in self.buckets.iter_mut() {
-			b.elements.retain(|(k, v): &mut (K, V)| f(k, &mut *v));
-			len += b.elements.len();
-		}
-
-		self.len = len;
+		// TODO
+		todo!()
 	}
 
 	/// Drops all elements in the hash map.
 	pub fn clear(&mut self) {
-		for i in 0..self.buckets.len() {
-			self.buckets[i].elements.clear();
-		}
-
+		self.data.clear();
 		self.len = 0;
 	}
 }
 
-impl<K: Eq + Hash, V> Index<K> for HashMap<K, V> {
+impl<K: Eq + Hash, V, H: Default + Hasher> Index<K> for HashMap<K, V, H> {
 	type Output = V;
 
 	#[inline]
@@ -353,19 +327,23 @@ impl<K: Eq + Hash, V> Index<K> for HashMap<K, V> {
 	}
 }
 
-impl<K: Eq + Hash, V> IndexMut<K> for HashMap<K, V> {
+impl<K: Eq + Hash, V, H: Default + Hasher> IndexMut<K> for HashMap<K, V, H> {
 	#[inline]
 	fn index_mut(&mut self, k: K) -> &mut Self::Output {
 		self.get_mut(&k).expect("no entry found for key")
 	}
 }
 
-impl<K: Eq + Hash, V> FromIterator<(K, V)> for CollectResult<HashMap<K, V>> {
+impl<K: Eq + Hash, V, H: Default + Hasher> FromIterator<(K, V)>
+	for CollectResult<HashMap<K, V, H>>
+{
 	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
 		let res = (|| {
-			let mut map = HashMap::new();
-			for (k, v) in iter {
-				map.insert(k, v)?;
+			let iter = iter.into_iter();
+			let capacity = iter.size_hint().0;
+			let mut map = HashMap::with_capacity(capacity)?;
+			for (key, value) in iter {
+				map.insert(key, value)?;
 			}
 			Ok(map)
 		})();
@@ -373,17 +351,23 @@ impl<K: Eq + Hash, V> FromIterator<(K, V)> for CollectResult<HashMap<K, V>> {
 	}
 }
 
-impl<K: Eq + Hash + TryClone<Error = E>, V: TryClone<Error = E>, E: From<AllocError>> TryClone
-	for HashMap<K, V>
+impl<
+		K: Eq + Hash + TryClone<Error = E>,
+		V: TryClone<Error = E>,
+		H: Default + Hasher,
+		E: From<AllocError>,
+	> TryClone for HashMap<K, V, H>
 {
 	type Error = E;
 
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(Self {
-			buckets_count: self.buckets_count,
-			buckets: self.buckets.try_clone()?,
-
+			data: self.data.try_clone()?,
 			len: self.len,
+
+			_key: PhantomData,
+			_val: PhantomData,
+			_hasher: PhantomData,
 		})
 	}
 }
@@ -392,75 +376,46 @@ impl<K: Eq + Hash + TryClone<Error = E>, V: TryClone<Error = E>, E: From<AllocEr
 ///
 /// This iterator doesn't guarantee any order since the HashMap itself doesn't store value in a
 /// specific order.
-pub struct Iter<'m, K: Hash + Eq, V> {
+pub struct Iter<'m, K: Hash + Eq, V, H: Default + Hasher> {
 	/// The hash map to iterate into.
-	hm: &'m HashMap<K, V>,
-
-	/// The current bucket index.
-	curr_bucket: usize,
-	/// The current element index.
-	curr_element: usize,
-	/// Number of elements iterated on so far
-	i: usize,
+	hm: &'m HashMap<K, V, H>,
+	// TODO
 }
 
-impl<'m, K: Hash + Eq, V> Iterator for Iter<'m, K, V> {
+impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 	type Item = (&'m K, &'m V);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.curr_bucket >= self.hm.buckets.len() {
-			return None;
-		}
-
-		// If the last element has been reached, getting the next non-empty bucket
-		if self.curr_element >= self.hm.buckets[self.curr_bucket].elements.len() {
-			self.curr_element = 0;
-			self.curr_bucket += 1;
-
-			for i in self.curr_bucket..self.hm.buckets.len() {
-				if !self.hm.buckets[i].elements.is_empty() {
-					break;
-				}
-
-				self.curr_bucket += 1;
-			}
-
-			if self.curr_bucket >= self.hm.buckets.len() {
-				return None;
-			}
-		}
-
-		let (k, v) = self.hm.buckets[self.curr_bucket]
-			.elements
-			.index(self.curr_element);
-		self.curr_element += 1;
-		self.i += 1;
-		Some((k, v))
+		// TODO
+		todo!()
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len = self.hm.len() - self.i;
-		(len, Some(len))
+		// TODO
+		todo!()
 	}
 
 	fn count(self) -> usize {
-		self.hm.len() - self.i
+		// TODO
+		todo!()
 	}
 }
 
 // TODO implement DoubleEndedIterator
 
-impl<'m, K: Hash + Eq, V> ExactSizeIterator for Iter<'m, K, V> {
+impl<'m, K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for Iter<'m, K, V, H> {
 	fn len(&self) -> usize {
 		self.hm.len()
 	}
 }
 
-impl<'m, K: Hash + Eq, V> FusedIterator for Iter<'m, K, V> {}
+impl<'m, K: Hash + Eq, V, H: Default + Hasher> FusedIterator for Iter<'m, K, V, H> {}
 
-unsafe impl<'m, K: Hash + Eq, V> TrustedLen for Iter<'m, K, V> {}
+unsafe impl<'m, K: Hash + Eq, V, H: Default + Hasher> TrustedLen for Iter<'m, K, V, H> {}
 
-impl<K: Eq + Hash + fmt::Debug, V: fmt::Debug> fmt::Debug for HashMap<K, V> {
+impl<K: Eq + Hash + fmt::Debug, V: fmt::Debug, H: Default + Hasher> fmt::Debug
+	for HashMap<K, V, H>
+{
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "[")?;
 		for (i, (key, value)) in self.iter().enumerate() {

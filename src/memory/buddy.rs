@@ -1,7 +1,7 @@
 //! This module contains the buddy allocator which allows to allocate `2^^n`
 //! pages large frames of memory.
 //!
-//! This allocator works by dividing frames of memory in two until the a frame
+//! This allocator works by dividing frames of memory in two until a frame
 //! of the required size is available.
 //!
 //! The order of a frame is the `n` in the expression `pow(2, n)` that represents the
@@ -163,7 +163,7 @@ impl Zone {
 	///
 	/// Checks the correctness of the free list for the zone.
 	///
-	/// Every frames in the free list must have an order equal to the order of the bucket it's
+	/// Every frame in the free list must have an order equal to the order of the bucket it's
 	/// inserted in and must be free.
 	///
 	/// If a frame is the first of a list, it must not have a previous element.
