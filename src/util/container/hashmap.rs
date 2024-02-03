@@ -48,13 +48,11 @@ const GROUP_SIZE: usize = 16;
 ///
 /// **Note**: This macro is a workaround to avoid borrow-checker issues.
 macro_rules! get_slot {
-	($self:ident, $group:ident, $index:ident) => {{
-		let off = ($group * GROUP_SIZE + $index) * size_of::<Slot<K, V>>();
-		unsafe { &*(&$self.data[off] as *const _ as *const Slot<K, V>) }
+	($self:ident, $off:expr) => {{
+		unsafe { &*(&$self.data[$off] as *const _ as *const Slot<K, V>) }
 	}};
-	($self:ident, $group:ident, $index:ident, mut) => {{
-		let off = ($group * GROUP_SIZE + $index) * size_of::<Slot<K, V>>();
-		unsafe { &mut *(&mut $self.data[off] as *mut _ as *mut Slot<K, V>) }
+	($self:ident, $off:expr, mut) => {{
+		unsafe { &mut *(&mut $self.data[$off] as *mut _ as *mut Slot<K, V>) }
 	}};
 }
 
@@ -97,6 +95,18 @@ fn h1(hash: u64) -> u64 {
 #[inline]
 fn h2(hash: u64) -> u8 {
 	(hash & 0x7f) as _
+}
+
+/// Returns the offset to a slot for the given `group` and in-group-index `index`.
+#[inline]
+fn get_slot_offset<K, V>(group: usize, index: usize) -> usize {
+	(group * GROUP_SIZE + index) * size_of::<Slot<K, V>>()
+}
+
+/// Returns the group and in-group-index for the slot at the given offset.
+#[inline]
+fn get_slot_position(off: usize) -> (usize, usize) {
+	(off / GROUP_SIZE, off % GROUP_SIZE)
 }
 
 /// Returns an iterator of elements matching the given `h2` in `group`.
@@ -221,13 +231,6 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		self.data.len() / (size_of::<Slot<K, V>>() + 1)
 	}
 
-	/// Returns the group and index-in-group for the given slot.
-	#[inline]
-	fn get_slot_position(&self, slot: &Slot<K, V>) -> (usize, usize) {
-		let off = self.data.as_ptr() as usize - slot as *const _ as usize;
-		(off / GROUP_SIZE, off % GROUP_SIZE)
-	}
-
 	/// Returns the control block for the given `group`.
 	#[inline]
 	fn get_ctrl(&self, group: usize) -> u8x16 {
@@ -246,8 +249,12 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		self.data[off] = h2;
 	}
 
-	/// Returns an immutable reference to the slot corresponding the given key and its hash.
-	fn find_slot<Q: ?Sized>(&self, key: &Q, hash: u64) -> Option<(&Slot<K, V>, bool)>
+	/// Returns the slot corresponding the given key and its hash.
+	///
+	/// Return typle:
+	/// - The offset of the slot in the data buffer
+	/// - Whether the slot is occupied
+	fn find_slot<Q: ?Sized>(&self, key: &Q, hash: u64) -> Option<(usize, bool)>
 	where
 		K: Borrow<Q>,
 		Q: Eq,
@@ -259,48 +266,17 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			// Find key in group
 			let ctrl = self.get_ctrl(group);
 			for i in group_match(ctrl, h2(hash)) {
-				let slot = get_slot!(self, group, i);
+				let slot_off = get_slot_offset::<K, V>(group, i);
+				let slot = get_slot!(self, slot_off);
 				let slot_key = unsafe { slot.key.assume_init_ref() };
 				if slot_key.borrow() == key {
-					return Some((slot, true));
+					return Some((slot_off, true));
 				}
 			}
 			// Check for an empty slot
 			if let Some(i) = group_match_empty(ctrl) {
 				#[cold]
-				return Some((get_slot!(self, group, i), false));
-			}
-			group = (group + 1) % groups_count;
-			// If coming back to the first group
-			if unlikely(group == start_group) {
-				return None;
-			}
-		}
-	}
-
-	/// Returns a mutable reference to the slot corresponding the given key and its hash.
-	fn find_slot_mut<Q: ?Sized>(&mut self, key: &Q, hash: u64) -> Option<(&mut Slot<K, V>, bool)>
-	where
-		K: Borrow<Q>,
-		Q: Eq,
-	{
-		let groups_count = self.capacity() / GROUP_SIZE;
-		let start_group = (h1(hash) % groups_count as u64) as usize;
-		let mut group = start_group;
-		loop {
-			// Find key in group
-			let ctrl = self.get_ctrl(group);
-			for i in group_match(ctrl, h2(hash)) {
-				let slot = get_slot!(self, group, i, mut);
-				let slot_key = unsafe { slot.key.assume_init_ref() };
-				if slot_key.borrow() == key {
-					return Some((slot, true));
-				}
-			}
-			// Check for an empty slot
-			if let Some(i) = group_match_empty(ctrl) {
-				#[cold]
-				return Some((get_slot!(self, group, i, mut), false));
+				return Some((get_slot_offset::<K, V>(group, i), false));
 			}
 			group = (group + 1) % groups_count;
 			// If coming back to the first group
@@ -313,13 +289,13 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns the entry for the given key.
 	pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
 		let hash = hash::<_, H>(&key);
-		match self.find_slot_mut(&key, hash) {
-			Some((slot, true)) => Entry::Occupied(OccupiedEntry {
-				inner: slot,
+		match self.find_slot(&key, hash) {
+			Some((slot_off, true)) => Entry::Occupied(OccupiedEntry {
+				inner: get_slot!(self, slot_off, mut),
 			}),
-			Some((slot, false)) => Entry::Vacant(VacantEntry {
+			Some((slot_off, false)) => Entry::Vacant(VacantEntry {
 				key,
-				inner: Some(slot),
+				inner: Some(get_slot!(self, slot_off, mut)),
 			}),
 			None => Entry::Vacant(VacantEntry {
 				key,
@@ -337,7 +313,8 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(key);
-		let (slot, occupied) = self.find_slot(key, hash)?;
+		let (slot_off, occupied) = self.find_slot(key, hash)?;
+		let slot = get_slot!(self, slot_off);
 		if occupied {
 			Some(unsafe { slot.value.assume_init_ref() })
 		} else {
@@ -392,9 +369,10 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, key: K, value: V) -> AllocResult<Option<V>> {
 		let hash = hash::<_, H>(&key);
-		match self.find_slot_mut(&key, hash) {
+		match self.find_slot(&key, hash) {
 			// The entry already exists
-			Some((slot, true)) => {
+			Some((slot_off, true)) => {
+				let slot = get_slot!(self, slot_off, mut);
 				// No need to replace the key because `key == old.key` and the transitivity
 				// property holds, so future comparisons will be consistent
 				Ok(Some(mem::replace(
@@ -403,12 +381,13 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 				)))
 			}
 			// The entry does not exist but a slot was found
-			Some((slot, false)) => {
-				let (group, index) = self.get_slot_position(slot);
+			Some((slot_off, false)) => {
+				self.len += 1;
+				let (group, index) = get_slot_position(slot_off);
 				self.set_ctrl(group, index, h2(hash));
+				let slot = get_slot!(self, slot_off, mut);
 				slot.key.write(key);
 				slot.value.write(value);
-				self.len += 1;
 				Ok(None)
 			}
 			// The entry does not exist and no slot was found
@@ -432,10 +411,10 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(&key);
-		let (slot, occupied) = self.find_slot(key, hash)?;
+		let (slot_off, occupied) = self.find_slot(key, hash)?;
 		if occupied {
 			self.len -= 1;
-			let (group, index) = self.get_slot_position(slot);
+			let (group, index) = get_slot_position(slot_off);
 			// Update control byte
 			let ctrl = self.get_ctrl(group);
 			let new = group_match_empty(ctrl)
@@ -443,6 +422,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 				.unwrap_or(CTRL_DELETED);
 			self.set_ctrl(group, index, new);
 			// Return previous value
+			let slot = get_slot!(self, slot_off, mut);
 			unsafe {
 				slot.key.assume_init_drop();
 				Some(slot.value.assume_init_read())
