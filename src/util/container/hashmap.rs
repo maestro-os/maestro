@@ -568,43 +568,57 @@ mod test {
 	use super::*;
 
 	#[test_case]
-	fn hash_map0() {
-		let mut hash_map = HashMap::<u32, u32>::new();
+	fn hashmap0() {
+		let mut hm = HashMap::<u32, u32>::new();
+		assert_eq!(hm.len(), 0);
 
-		assert_eq!(hash_map.len(), 0);
+		hm.insert(0, 0).unwrap();
+		assert_eq!(hm.len(), 1);
 
-		hash_map.insert(0, 0).unwrap();
+		assert_eq!(*hm.get(&0).unwrap(), 0);
+		assert_eq!(hm[0], 0);
 
-		assert_eq!(hash_map.len(), 1);
-		assert_eq!(*hash_map.get(&0).unwrap(), 0);
-		assert_eq!(hash_map[0], 0);
-
-		assert_eq!(hash_map.remove(&0).unwrap(), 0);
-
-		assert_eq!(hash_map.len(), 0);
+		assert_eq!(hm.remove(&0).unwrap(), 0);
+		assert_eq!(hm.len(), 0);
 	}
 
 	#[test_case]
-	fn hash_map1() {
-		let mut hash_map = HashMap::<u32, u32>::new();
+	fn hashmap1() {
+		let mut hm = HashMap::<u32, u32>::new();
 
 		for i in 0..100 {
-			assert_eq!(hash_map.len(), i);
+			assert_eq!(hm.len(), i);
 
-			hash_map.insert(i as _, 0).unwrap();
+			hm.insert(i as _, 0).unwrap();
+			assert_eq!(hm.len(), i + 1);
 
-			assert_eq!(hash_map.len(), i + 1);
-			assert_eq!(*hash_map.get(&(i as _)).unwrap(), 0);
-			assert_eq!(hash_map[i as _], 0);
+			assert_eq!(*hm.get(&(i as _)).unwrap(), 0);
+			assert_eq!(hm[i as _], 0);
 		}
 
 		for i in (0..100).rev() {
-			assert_eq!(hash_map.len(), i + 1);
-			assert_eq!(hash_map.remove(&(i as _)).unwrap(), 0);
-			assert_eq!(hash_map.len(), i);
+			assert_eq!(hm.len(), i + 1);
+			assert_eq!(hm.remove(&(i as _)).unwrap(), 0);
+			assert_eq!(hm.len(), i);
 		}
 	}
 
-	// TODO test iterators
-	// TODO test retain
+	#[test_case]
+	fn hashmap_retain() {
+		let mut hm = (0..1000)
+			.map(|i| (i, i))
+			.collect::<CollectResult<HashMap<u32, u32>>>()
+			.0
+			.unwrap();
+		assert_eq!(hm.len(), 1000);
+		let mut next = 0;
+		hm.retain(|i, j| {
+			assert_eq!(*i, *j);
+			assert_eq!(*i, next);
+			next += 1;
+			i % 2 == 0
+		});
+		assert_eq!(hm.len(), 500);
+		hm.iter().for_each(|(i, _)| assert_eq!(i % 2, 0));
+	}
 }
