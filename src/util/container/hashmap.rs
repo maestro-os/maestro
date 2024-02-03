@@ -32,6 +32,10 @@ const GROUP_SIZE: usize = 16;
 macro_rules! get_slot {
 	($self:ident, $group:ident, $index:ident) => {{
 		let off = ($group * GROUP_SIZE + $index) * size_of::<Slot<K, V>>();
+		unsafe { &*(&$self.data[off] as *const _ as *const Slot<K, V>) }
+	}};
+	($self:ident, $group:ident, $index:ident, mut) => {{
+		let off = ($group * GROUP_SIZE + $index) * size_of::<Slot<K, V>>();
 		unsafe { &mut *(&mut $self.data[off] as *mut _ as *mut Slot<K, V>) }
 	}};
 }
@@ -56,6 +60,13 @@ impl Hasher for XORHasher {
 			self.off = (self.off + 1) % size_of_val(&self.value) as u8;
 		}
 	}
+}
+
+/// Returns the hash for the given key.
+fn hash<K: ?Sized + Hash, H: Default + Hasher>(key: &K) -> u64 {
+	let mut hasher = H::default();
+	key.hash(&mut hasher);
+	hasher.finish()
 }
 
 /// Returns the slot part of the hash.
@@ -192,6 +203,13 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		self.data.len() / (size_of::<Slot<K, V>>() + 1)
 	}
 
+	/// Returns the group and index-in-group for the given slot.
+	#[inline]
+	fn get_slot_position(&self, slot: &Slot<K, V>) -> (usize, usize) {
+		let off = self.data.as_ptr() as usize - slot as *const _ as usize;
+		(off / GROUP_SIZE, off % GROUP_SIZE)
+	}
+
 	/// Returns the control block for the given `group`.
 	#[inline]
 	fn get_ctrl(&self, group: usize) -> u8x16 {
@@ -201,54 +219,112 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		u8x16::from_slice(&self.data[off..(off + GROUP_SIZE)])
 	}
 
-	/// Returns the entry for the given key.
-	pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
-		// Hash key
-		let mut hasher = H::default();
-		key.hash(&mut hasher);
-		let hash = hasher.finish();
-		// Search groups
+	/// Sets the control bytes for a slot.
+	#[inline]
+	fn set_ctrl(&mut self, group: usize, index: usize, h2: u8) {
+		let ctrl_start = self.capacity() * size_of::<Slot<K, V>>();
+		// TODO add padding for alignment?
+		let off = ctrl_start + group * GROUP_SIZE + index;
+		self.data[off] = h2;
+	}
+
+	/// Returns an immutable reference to the slot corresponding the given key and its hash.
+	fn find_slot<Q: ?Sized>(&self, key: &Q, hash: u64) -> Option<(&Slot<K, V>, bool)>
+	where
+		K: Borrow<Q>,
+		Q: Eq,
+	{
 		let groups_count = self.capacity() / GROUP_SIZE;
 		let start_group = (h1(hash) % groups_count as u64) as usize;
 		let mut group = start_group;
-		let inner = loop {
+		loop {
 			// Find key in group
 			let ctrl = self.get_ctrl(group);
 			for i in group_match(ctrl, h2(hash)) {
 				let slot = get_slot!(self, group, i);
 				let slot_key = unsafe { slot.key.assume_init_ref() };
-				if slot_key == &key {
-					return Entry::Occupied(OccupiedEntry {
-						inner: slot,
-					});
+				if slot_key.borrow() == key {
+					return Some((slot, true));
 				}
 			}
 			// Check for an empty slot
 			if let Some(i) = group_match_empty(ctrl) {
 				#[cold]
-				break Some(get_slot!(self, group, i));
+				return Some((get_slot!(self, group, i), false));
 			}
 			group = (group + 1) % groups_count;
+			// If coming back to the first group
 			if unlikely(group == start_group) {
-				break None;
+				return None;
 			}
-		};
-		Entry::Vacant(VacantEntry {
-			key,
-			inner,
-		})
+		}
+	}
+
+	/// Returns a mutable reference to the slot corresponding the given key and its hash.
+	fn find_slot_mut<Q: ?Sized>(&mut self, key: &Q, hash: u64) -> Option<(&mut Slot<K, V>, bool)>
+	where
+		K: Borrow<Q>,
+		Q: Eq,
+	{
+		let groups_count = self.capacity() / GROUP_SIZE;
+		let start_group = (h1(hash) % groups_count as u64) as usize;
+		let mut group = start_group;
+		loop {
+			// Find key in group
+			let ctrl = self.get_ctrl(group);
+			for i in group_match(ctrl, h2(hash)) {
+				let slot = get_slot!(self, group, i, mut);
+				let slot_key = unsafe { slot.key.assume_init_ref() };
+				if slot_key.borrow() == key {
+					return Some((slot, true));
+				}
+			}
+			// Check for an empty slot
+			if let Some(i) = group_match_empty(ctrl) {
+				#[cold]
+				return Some((get_slot!(self, group, i, mut), false));
+			}
+			group = (group + 1) % groups_count;
+			// If coming back to the first group
+			if unlikely(group == start_group) {
+				return None;
+			}
+		}
+	}
+
+	/// Returns the entry for the given key.
+	pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
+		let hash = hash::<_, H>(&key);
+		match self.find_slot_mut(&key, hash) {
+			Some((slot, true)) => Entry::Occupied(OccupiedEntry {
+				inner: slot,
+			}),
+			Some((slot, false)) => Entry::Vacant(VacantEntry {
+				key,
+				inner: Some(slot),
+			}),
+			None => Entry::Vacant(VacantEntry {
+				key,
+				inner: None,
+			}),
+		}
 	}
 
 	/// Returns an immutable reference to the value with the given `key`.
 	///
 	/// If the key isn't present, the function return `None`.
-	pub fn get<Q: ?Sized>(&self, _key: &Q) -> Option<&V>
+	pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		// TODO
-		todo!()
+		let hash = hash::<_, H>(key);
+		let (slot, occupied) = self.find_slot(key, hash)?;
+		if occupied {
+			Some(unsafe { slot.value.assume_init_ref() })
+		} else {
+			None
+		}
 	}
 
 	/// Returns a mutable reference to the value with the given `key`.
@@ -278,10 +354,14 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	pub fn iter(&self) -> Iter<K, V, H> {
 		Iter {
 			hm: self,
+
+			group: 0,
+			cursor: 0,
 		}
 	}
 
-	/// Tries to reserve memory for at least `additional` more elements.
+	/// Tries to reserve memory for at least `additional` more elements. The function might reserve
+	/// more memory than necessary to avoid frequent re-allocations.
 	///
 	/// If the hash map already has enough capacity, the function does nothing.
 	pub fn reserve(&mut self, _additional: usize) -> AllocResult<()> {
@@ -293,36 +373,33 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	///
 	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, key: K, value: V) -> AllocResult<Option<V>> {
-		let entry = self.entry(key);
-		match entry {
+		let hash = hash::<_, H>(&key);
+		match self.find_slot_mut(&key, hash) {
 			// The entry already exists
-			Entry::Occupied(old) => {
+			Some((slot, true)) => {
 				// No need to replace the key because `key == old.key` and the transitivity
 				// property holds, so future comparisons will be consistent
 				Ok(Some(mem::replace(
-					unsafe { old.inner.value.assume_init_mut() },
+					unsafe { slot.value.assume_init_mut() },
 					value,
 				)))
 			}
 			// The entry does not exist but a slot was found
-			Entry::Vacant(VacantEntry {
-				key,
-				inner: Some(Slot {
-					key: k,
-					value: v,
-				}),
-			}) => {
-				// TODO update ctrl block
-				k.write(key);
-				v.write(value);
+			Some((slot, false)) => {
+				let (group, index) = self.get_slot_position(slot);
+				self.set_ctrl(group, index, h2(hash));
+				slot.key.write(key);
+				slot.value.write(value);
+				self.len += 1;
 				Ok(None)
 			}
 			// The entry does not exist and no slot was found
-			Entry::Vacant(VacantEntry {
-				key: _,
-				inner: None,
-			}) => {
-				// TODO
+			None => {
+				// Allocate space, then retry
+				self.reserve(1)?;
+				// The insertion cannot fail because the container is guaranteed to have space for
+				// the new object
+				self.insert(key, value).unwrap();
 				Ok(None)
 			}
 		}
@@ -331,13 +408,30 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Removes an element from the hash map.
 	///
 	/// If the key was present, the function returns the previous value.
-	pub fn remove<Q: ?Sized>(&mut self, _key: &Q) -> Option<V>
+	pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		// TODO
-		todo!()
+		let hash = hash::<_, H>(&key);
+		let (slot, occupied) = self.find_slot(key, hash)?;
+		if occupied {
+			self.len -= 1;
+			let (group, index) = self.get_slot_position(slot);
+			// Update control byte
+			let ctrl = self.get_ctrl(group);
+			let new = group_match_empty(ctrl)
+				.map(|_| CTRL_EMPTY)
+				.unwrap_or(CTRL_DELETED);
+			self.set_ctrl(group, index, new);
+			// Return previous value
+			unsafe {
+				slot.key.assume_init_drop();
+				Some(slot.value.assume_init_read())
+			}
+		} else {
+			None
+		}
 	}
 
 	/// Retains only the elements for which the given predicate returns `true`.
@@ -414,7 +508,11 @@ impl<
 pub struct Iter<'m, K: Hash + Eq, V, H: Default + Hasher> {
 	/// The hash map to iterate into.
 	hm: &'m HashMap<K, V, H>,
-	// TODO
+
+	/// The current group to iterate on.
+	group: usize,
+	/// The cursor in the group.
+	cursor: usize,
 }
 
 impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
@@ -440,7 +538,7 @@ impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 
 impl<'m, K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for Iter<'m, K, V, H> {
 	fn len(&self) -> usize {
-		self.hm.len()
+		self.size_hint().0
 	}
 }
 
@@ -504,4 +602,7 @@ mod test {
 			assert_eq!(hash_map.len(), i);
 		}
 	}
+
+	// TODO test iterators
+	// TODO test retain
 }
