@@ -28,11 +28,11 @@ use core::{
 	borrow::Borrow,
 	fmt,
 	hash::{Hash, Hasher},
-	intrinsics::{likely, size_of, unlikely},
+	intrinsics::unlikely,
 	iter::{FusedIterator, TrustedLen},
 	marker::PhantomData,
 	mem,
-	mem::{size_of_val, MaybeUninit},
+	mem::{size_of, size_of_val, MaybeUninit},
 	ops::{Index, IndexMut},
 	simd::{cmp::SimdPartialEq, u8x16},
 };
@@ -44,9 +44,19 @@ const CTRL_DELETED: u8 = 0xfe;
 /// The size of a group of entries.
 const GROUP_SIZE: usize = 16;
 
+/// Macro to get a mutable reference to a slot from the given `group` and `index`.
+///
+/// **Note**: This macro is a workaround to avoid borrow-checker issues.
+macro_rules! get_slot {
+	($self:ident, $group:ident, $index:ident) => {{
+		let off = ($group * GROUP_SIZE + $index) * size_of::<Slot<K, V>>();
+		unsafe { &mut *(&mut $self.data[off] as *mut _ as *mut Slot<K, V>) }
+	}};
+}
+
 /// Bitwise XOR hasher.
 #[derive(Default)]
-struct XORHasher {
+pub struct XORHasher {
 	/// The currently stored value.
 	value: u64,
 	/// The offset byte at which the next XOR operation shall be performed.
@@ -109,6 +119,8 @@ pub struct OccupiedEntry<'h, K, V> {
 
 /// TODO doc
 pub struct VacantEntry<'h, K, V> {
+	/// The key to insert.
+	key: K,
 	/// The inner slot.
 	///
 	/// If `None`, the hash map requires resizing for the insertion.
@@ -198,13 +210,6 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		self.data.len() / (size_of::<Slot<K, V>>() + 1)
 	}
 
-	/// Returns the slot for the given `group` and index `i` and the group.
-	#[inline]
-	fn get_slot(&mut self, group: usize, i: usize) -> &mut Slot<K, V> {
-		let off = (group * GROUP_SIZE + i) * size_of::<Slot<K, V>>();
-		unsafe { &mut *(&mut self.data[off] as *mut _ as *mut Slot<K, V>) }
-	}
-
 	/// Returns the control block for the given `group`.
 	#[inline]
 	fn get_ctrl(&self, group: usize) -> u8x16 {
@@ -215,11 +220,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	}
 
 	/// Returns the entry for the given key.
-	pub fn entry<Q: ?Sized>(&mut self, key: &Q) -> Entry<'_, K, V>
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq,
-	{
+	pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
 		// Hash key
 		let mut hasher = H::default();
 		key.hash(&mut hasher);
@@ -228,13 +229,13 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		let groups_count = self.capacity() / GROUP_SIZE;
 		let start_group = (h1(hash) % groups_count as u64) as usize;
 		let mut group = start_group;
-		loop {
+		let inner = loop {
 			// Find key in group
 			let ctrl = self.get_ctrl(group);
 			for i in group_match(ctrl, h2(hash)) {
-				let slot = self.get_slot(group, i);
-				let slot_key = unsafe { slot.key.assume_init_ref() }.borrow();
-				if likely(slot_key == key) {
+				let slot = get_slot!(self, group, i);
+				let slot_key = unsafe { slot.key.assume_init_ref() };
+				if slot_key == &key {
 					return Entry::Occupied(OccupiedEntry {
 						inner: slot,
 					});
@@ -243,20 +244,16 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			// Check for an empty slot
 			if let Some(i) = group_match_empty(ctrl) {
 				#[cold]
-				{
-					let slot = self.get_slot(group, i);
-					return Entry::Vacant(VacantEntry {
-						inner: Some(slot),
-					});
-				}
+				break Some(get_slot!(self, group, i));
 			}
 			group = (group + 1) % groups_count;
 			if unlikely(group == start_group) {
-				break;
+				break None;
 			}
-		}
+		};
 		Entry::Vacant(VacantEntry {
-			inner: None,
+			key,
+			inner,
 		})
 	}
 
@@ -275,15 +272,13 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns a mutable reference to the value with the given `key`.
 	///
 	/// If the key isn't present, the function return `None`.
-	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut V>
+	pub fn get_mut<Q: ?Sized>(&mut self, _key: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,
 		Q: Hash + Eq,
 	{
-		let Entry::Occupied(entry) = self.entry(key) else {
-			return None;
-		};
-		Some(unsafe { entry.inner.value.assume_init_mut() })
+		// TODO
+		todo!()
 	}
 
 	/// Tells whether the hash map contains the given `key`.
@@ -316,7 +311,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	///
 	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, key: K, value: V) -> AllocResult<Option<V>> {
-		let entry = self.entry(&key);
+		let entry = self.entry(key);
 		match entry {
 			// The entry already exists
 			Entry::Occupied(old) => {
@@ -329,18 +324,20 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			}
 			// The entry does not exist but a slot was found
 			Entry::Vacant(VacantEntry {
-				// TODO update ctrl block
+				key,
 				inner: Some(Slot {
 					key: k,
 					value: v,
 				}),
 			}) => {
+				// TODO update ctrl block
 				k.write(key);
 				v.write(value);
 				Ok(None)
 			}
 			// The entry does not exist and no slot was found
 			Entry::Vacant(VacantEntry {
+				key: _,
 				inner: None,
 			}) => {
 				// TODO
