@@ -28,9 +28,10 @@ use core::{
 	borrow::Borrow,
 	fmt,
 	hash::{Hash, Hasher},
-	intrinsics::{likely, size_of},
+	intrinsics::{likely, size_of, unlikely},
 	iter::{FusedIterator, TrustedLen},
 	marker::PhantomData,
+	mem,
 	mem::{size_of_val, MaybeUninit},
 	ops::{Index, IndexMut},
 	simd::{cmp::SimdPartialEq, u8x16},
@@ -79,8 +80,7 @@ fn h2(hash: u64) -> u8 {
 
 /// Returns an iterator of elements matching the given `h2` in `group`.
 #[inline]
-fn group_match(group: &[u8], h2: u8) -> impl Iterator<Item = usize> {
-	let group = u8x16::from_slice(group);
+fn group_match(group: u8x16, h2: u8) -> impl Iterator<Item = usize> {
 	let mask = u8x16::splat(h2);
 	let matching = group.simd_eq(mask);
 	(0usize..16).filter(move |i| matching.test(*i))
@@ -88,8 +88,7 @@ fn group_match(group: &[u8], h2: u8) -> impl Iterator<Item = usize> {
 
 /// Returns the first empty element of the given `group`.
 #[inline]
-fn group_match_empty(group: &[u8]) -> Option<usize> {
-	let group = u8x16::from_slice(group);
+fn group_match_empty(group: u8x16) -> Option<usize> {
 	let mask = u8x16::splat(CTRL_EMPTY);
 	let matching = group.simd_eq(mask);
 	matching.first_set()
@@ -208,11 +207,11 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 
 	/// Returns the control block for the given `group`.
 	#[inline]
-	fn get_ctrl(&mut self, group: usize) -> &mut [u8] {
+	fn get_ctrl(&self, group: usize) -> u8x16 {
 		let ctrl_start = self.capacity() * size_of::<Slot<K, V>>();
 		// TODO add padding for alignment?
 		let off = ctrl_start + group * GROUP_SIZE;
-		&mut self.data[off..(off + GROUP_SIZE)]
+		u8x16::from_slice(&self.data[off..(off + GROUP_SIZE)])
 	}
 
 	/// Returns the entry for the given key.
@@ -227,8 +226,9 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		let hash = hasher.finish();
 		// Search groups
 		let groups_count = self.capacity() / GROUP_SIZE;
-		let mut group = (h1(hash) % groups_count as u64) as usize;
-		while group < groups_count {
+		let start_group = (h1(hash) % groups_count as u64) as usize;
+		let mut group = start_group;
+		loop {
 			// Find key in group
 			let ctrl = self.get_ctrl(group);
 			for i in group_match(ctrl, h2(hash)) {
@@ -250,10 +250,11 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 					});
 				}
 			}
-			group += 1;
+			group = (group + 1) % groups_count;
+			if unlikely(group == start_group) {
+				break;
+			}
 		}
-		// No space available for insertion
-		// TODO re-run search to find a deleted entry?
 		Entry::Vacant(VacantEntry {
 			inner: None,
 		})
@@ -262,7 +263,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns an immutable reference to the value with the given `key`.
 	///
 	/// If the key isn't present, the function return `None`.
-	pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>
+	pub fn get<Q: ?Sized>(&self, _key: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
 		Q: Hash + Eq,
@@ -303,18 +304,55 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		}
 	}
 
+	/// Tries to reserve memory for at least `additional` more elements.
+	///
+	/// If the hash map already has enough capacity, the function does nothing.
+	pub fn reserve(&mut self, _additional: usize) -> AllocResult<()> {
+		// TODO
+		todo!()
+	}
+
 	/// Inserts a new element into the hash map.
 	///
 	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, key: K, value: V) -> AllocResult<Option<V>> {
-		// TODO
-		todo!()
+		let entry = self.entry(&key);
+		match entry {
+			// The entry already exists
+			Entry::Occupied(old) => {
+				// No need to replace the key because `key == old.key` and the transitivity
+				// property holds, so future comparisons will be consistent
+				Ok(Some(mem::replace(
+					unsafe { old.inner.value.assume_init_mut() },
+					value,
+				)))
+			}
+			// The entry does not exist but a slot was found
+			Entry::Vacant(VacantEntry {
+				// TODO update ctrl block
+				inner: Some(Slot {
+					key: k,
+					value: v,
+				}),
+			}) => {
+				k.write(key);
+				v.write(value);
+				Ok(None)
+			}
+			// The entry does not exist and no slot was found
+			Entry::Vacant(VacantEntry {
+				inner: None,
+			}) => {
+				// TODO
+				Ok(None)
+			}
+		}
 	}
 
 	/// Removes an element from the hash map.
 	///
 	/// If the key was present, the function returns the previous value.
-	pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Option<V>
+	pub fn remove<Q: ?Sized>(&mut self, _key: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,
 		Q: Hash + Eq,
@@ -324,7 +362,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	}
 
 	/// Retains only the elements for which the given predicate returns `true`.
-	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut f: F) {
+	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut _f: F) {
 		// TODO
 		todo!()
 	}
