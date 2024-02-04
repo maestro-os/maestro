@@ -486,6 +486,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 				if !keep {
 					// TODO use CTRL_EMPTY if relevant
 					set_ctrl::<K, V>(&mut self.data, group, i, CTRL_DELETED);
+					self.len -= 1;
 				}
 			}
 		}
@@ -669,7 +670,6 @@ mod test {
 
 			hm.insert(i as _, i as _).unwrap();
 			assert_eq!(hm.len(), i + 1);
-			crate::println!("{hm:?} capa: {}", hm.capacity());
 
 			assert_eq!(*hm.get(&(i as _)).unwrap(), i as _);
 			assert_eq!(hm[i as _], i as _);
