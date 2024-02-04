@@ -23,6 +23,7 @@ use super::vec::Vec;
 use crate::{
 	errno::{AllocResult, CollectResult},
 	util::{AllocError, TryClone},
+	vec,
 };
 use core::{
 	borrow::Borrow,
@@ -34,6 +35,7 @@ use core::{
 	mem,
 	mem::{size_of, size_of_val, MaybeUninit},
 	ops::{BitAnd, Index, IndexMut},
+	ptr,
 	simd::{cmp::SimdPartialEq, u8x16},
 };
 
@@ -48,11 +50,11 @@ const GROUP_SIZE: usize = 16;
 ///
 /// **Note**: This macro is a workaround to avoid borrow-checker issues.
 macro_rules! get_slot {
-	($self:ident, $off:expr) => {{
-		unsafe { &*(&$self.data[$off] as *const _ as *const Slot<K, V>) }
+	($data:expr, $off:expr) => {{
+		unsafe { &*(&($data)[$off] as *const _ as *const Slot<K, V>) }
 	}};
-	($self:ident, $off:expr, mut) => {{
-		unsafe { &mut *(&mut $self.data[$off] as *mut _ as *mut Slot<K, V>) }
+	($data:expr, $off:expr, mut) => {{
+		unsafe { &mut *(&mut ($data)[$off] as *mut _ as *mut Slot<K, V>) }
 	}};
 }
 
@@ -105,7 +107,8 @@ fn get_slot_offset<K, V>(group: usize, index: usize) -> usize {
 
 /// Returns the group and in-group-index for the slot at the given offset.
 #[inline]
-fn get_slot_position(off: usize) -> (usize, usize) {
+fn get_slot_position<K, V>(off: usize) -> (usize, usize) {
+	let off = off / size_of::<Slot<K, V>>();
 	(off / GROUP_SIZE, off % GROUP_SIZE)
 }
 
@@ -226,8 +229,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns the control block for the given `group`.
 	#[inline]
 	fn get_ctrl(&self, group: usize) -> u8x16 {
-		let ctrl_start = self.capacity() * size_of::<Slot<K, V>>();
-		// TODO add padding for alignment?
+		let ctrl_start = (self.capacity() * size_of::<Slot<K, V>>()).next_multiple_of(GROUP_SIZE);
 		let off = ctrl_start + group * GROUP_SIZE;
 		u8x16::from_slice(&self.data[off..(off + GROUP_SIZE)])
 	}
@@ -235,8 +237,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Sets the control bytes for a slot.
 	#[inline]
 	fn set_ctrl(&mut self, group: usize, index: usize, h2: u8) {
-		let ctrl_start = self.capacity() * size_of::<Slot<K, V>>();
-		// TODO add padding for alignment?
+		let ctrl_start = (self.capacity() * size_of::<Slot<K, V>>()).next_multiple_of(GROUP_SIZE);
 		let off = ctrl_start + group * GROUP_SIZE + index;
 		self.data[off] = h2;
 	}
@@ -265,7 +266,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			let iter = (0usize..GROUP_SIZE).filter(move |i| matching.test(*i));
 			for i in iter {
 				let slot_off = get_slot_offset::<K, V>(group, i);
-				let slot = get_slot!(self, slot_off);
+				let slot = get_slot!(self.data, slot_off);
 				let slot_key = unsafe { slot.key.assume_init_ref() };
 				if likely(slot_key.borrow() == key) {
 					return Some((slot_off, true));
@@ -289,11 +290,11 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		let hash = hash::<_, H>(&key);
 		match self.find_slot(&key, hash) {
 			Some((slot_off, true)) => Entry::Occupied(OccupiedEntry {
-				inner: get_slot!(self, slot_off, mut),
+				inner: get_slot!(self.data, slot_off, mut),
 			}),
 			Some((slot_off, false)) => Entry::Vacant(VacantEntry {
 				key,
-				inner: Some(get_slot!(self, slot_off, mut)),
+				inner: Some(get_slot!(self.data, slot_off, mut)),
 			}),
 			None => Entry::Vacant(VacantEntry {
 				key,
@@ -312,7 +313,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	{
 		let hash = hash::<_, H>(key);
 		let (slot_off, occupied) = self.find_slot(key, hash)?;
-		let slot = get_slot!(self, slot_off);
+		let slot = get_slot!(self.data, slot_off);
 		if occupied {
 			Some(unsafe { slot.value.assume_init_ref() })
 		} else {
@@ -330,7 +331,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	{
 		let hash = hash::<_, H>(key);
 		let (slot_off, occupied) = self.find_slot(key, hash)?;
-		let slot = get_slot!(self, slot_off, mut);
+		let slot = get_slot!(self.data, slot_off, mut);
 		if occupied {
 			Some(unsafe { slot.value.assume_init_mut() })
 		} else {
@@ -356,6 +357,8 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 
 			group: 0,
 			cursor: 0,
+
+			count: 0,
 		}
 	}
 
@@ -363,9 +366,35 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// more memory than necessary to avoid frequent re-allocations.
 	///
 	/// If the hash map already has enough capacity, the function does nothing.
-	pub fn reserve(&mut self, _additional: usize) -> AllocResult<()> {
-		// TODO
-		todo!()
+	pub fn reserve(&mut self, additional: usize) -> AllocResult<()> {
+		// Compute new capacity
+		let new_capacity = (self.len + additional).next_multiple_of(GROUP_SIZE);
+		if self.capacity() >= new_capacity {
+			return Ok(());
+		}
+		// Create new vector
+		let new_ctrl_off = (new_capacity * size_of::<Slot<K, V>>()).next_multiple_of(16);
+		let new_size = new_ctrl_off + new_capacity;
+		let mut data = vec![0u8; new_size]?;
+		data[new_ctrl_off..].fill(CTRL_EMPTY);
+		// Rehash
+		for (k, v) in self.iter() {
+			// Get slot for key
+			let hash = hash::<_, H>(k);
+			// Should not fail since the correct amount of slots has been allocated
+			// FIXME: must be done on `data`, not `self.data`
+			let (slot_off, occupied) = self.find_slot(k, hash).unwrap();
+			assert!(!occupied);
+			let slot = get_slot!(data, slot_off, mut);
+			// Insert new values
+			unsafe {
+				slot.key.write(ptr::read(k));
+				slot.value.write(ptr::read(v));
+			}
+		}
+		// Replace, freeing the previous buffer without dropping thanks to `MaybeUninit`
+		self.data = data;
+		Ok(())
 	}
 
 	/// Inserts a new element into the hash map.
@@ -376,7 +405,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		match self.find_slot(&key, hash) {
 			// The entry already exists
 			Some((slot_off, true)) => {
-				let slot = get_slot!(self, slot_off, mut);
+				let slot = get_slot!(self.data, slot_off, mut);
 				// No need to replace the key because `key == old.key` and the transitivity
 				// property holds, so future comparisons will be consistent
 				Ok(Some(mem::replace(
@@ -387,9 +416,9 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			// The entry does not exist but a slot was found
 			Some((slot_off, false)) => {
 				self.len += 1;
-				let (group, index) = get_slot_position(slot_off);
+				let (group, index) = get_slot_position::<K, V>(slot_off);
 				self.set_ctrl(group, index, h2(hash));
-				let slot = get_slot!(self, slot_off, mut);
+				let slot = get_slot!(self.data, slot_off, mut);
 				slot.key.write(key);
 				slot.value.write(value);
 				Ok(None)
@@ -418,7 +447,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		let (slot_off, occupied) = self.find_slot(key, hash)?;
 		if occupied {
 			self.len -= 1;
-			let (group, index) = get_slot_position(slot_off);
+			let (group, index) = get_slot_position::<K, V>(slot_off);
 			// Update control byte
 			let ctrl = self.get_ctrl(group);
 			let new = group_match_empty(ctrl)
@@ -426,7 +455,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 				.unwrap_or(CTRL_DELETED);
 			self.set_ctrl(group, index, new);
 			// Return previous value
-			let slot = get_slot!(self, slot_off, mut);
+			let slot = get_slot!(self.data, slot_off, mut);
 			unsafe {
 				slot.key.assume_init_drop();
 				Some(slot.value.assume_init_read())
@@ -448,7 +477,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			// Iterate on slots in group
 			for i in iter {
 				let off = get_slot_offset::<K, V>(group, i);
-				let slot = get_slot!(self, off, mut);
+				let slot = get_slot!(self.data, off, mut);
 				let (key, value) =
 					unsafe { (slot.key.assume_init_ref(), slot.value.assume_init_mut()) };
 				let keep = f(key, value);
@@ -462,6 +491,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 
 	/// Drops all elements in the hash map.
 	pub fn clear(&mut self) {
+		// TODO drop all keys and values
 		self.data.clear();
 		self.len = 0;
 	}
@@ -533,24 +563,52 @@ pub struct Iter<'m, K: Hash + Eq, V, H: Default + Hasher> {
 	group: usize,
 	/// The cursor in the group.
 	cursor: usize,
+
+	/// The number of elements iterated on so far.
+	count: usize,
 }
 
 impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 	type Item = (&'m K, &'m V);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// TODO
-		todo!()
+		let capacity = self.hm.capacity();
+		// If no element remain, stop
+		if self.group * GROUP_SIZE + self.cursor >= capacity {
+			return None;
+		}
+		// Find next group with an element in it
+		// TODO do not run each time
+		let cursor = loop {
+			let ctrl = self.hm.get_ctrl(self.group);
+			let mask = u8x16::splat(0x80);
+			let matching = ctrl.bitand(mask).simd_ne(mask);
+			let cursor = (self.cursor..GROUP_SIZE).find(move |i| matching.test(*i));
+			if let Some(cursor) = cursor {
+				break cursor;
+			}
+			self.cursor = 0;
+			self.group += 1;
+			// If no group remain
+			if self.group >= capacity / GROUP_SIZE {
+				return None;
+			}
+		};
+		let off = get_slot_offset::<K, V>(self.group, cursor);
+		let slot = get_slot!(self.hm.data, off);
+		let (key, value) = unsafe { (slot.key.assume_init_ref(), slot.value.assume_init_ref()) };
+		self.cursor += 1;
+		self.count += 1;
+		Some((key, value))
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		// TODO
-		todo!()
+		let remaining = self.hm.len - self.count;
+		(remaining, Some(remaining))
 	}
 
 	fn count(self) -> usize {
-		// TODO
-		todo!()
+		self.hm.len - self.count
 	}
 }
 
