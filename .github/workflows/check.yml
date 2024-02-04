@@ -1,5 +1,5 @@
 name: Check
-on: [push, pull_request]
+on: [push]
 jobs:
   debug:
     runs-on: [self-hosted, linux]
