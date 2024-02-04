@@ -500,10 +500,10 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			let (group, index) = get_slot_position::<K, V>(slot_off);
 			// Update control byte
 			let ctrl = get_ctrl::<K, V>(&self.data, group);
-			let new = group_match_unused(ctrl, false)
+			let ctrl = group_match_unused(ctrl, false)
 				.map(|_| CTRL_EMPTY)
 				.unwrap_or(CTRL_DELETED);
-			set_ctrl::<K, V>(&mut self.data, group, index, new);
+			set_ctrl::<K, V>(&mut self.data, group, index, ctrl);
 			// Return previous value
 			let slot = get_slot!(self.data, slot_off, mut);
 			unsafe {
@@ -532,6 +532,10 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 				if !keep {
 					// TODO use CTRL_EMPTY if relevant
 					set_ctrl::<K, V>(&mut self.data, group, i, CTRL_DELETED);
+					unsafe {
+						slot.key.assume_init_drop();
+						slot.value.assume_init_drop();
+					}
 					self.len -= 1;
 				}
 			}
@@ -540,7 +544,8 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 
 	/// Drops all elements in the hash map.
 	pub fn clear(&mut self) {
-		// TODO drop all keys and values
+		// Drop everything
+		self.retain(|_, _| false);
 		self.data.clear();
 		self.len = 0;
 	}
@@ -589,14 +594,17 @@ impl<
 	type Error = E;
 
 	fn try_clone(&self) -> Result<Self, Self::Error> {
-		Ok(Self {
-			data: self.data.try_clone()?,
-			len: self.len,
+		Ok(self
+			.iter()
+			.map(|(e, v)| Ok((e.try_clone()?, v.try_clone()?)))
+			.collect::<Result<CollectResult<Self>, Self::Error>>()?
+			.0?)
+	}
+}
 
-			_key: PhantomData,
-			_val: PhantomData,
-			_hasher: PhantomData,
-		})
+impl<K: Eq + Hash, V, H: Default + Hasher> Drop for HashMap<K, V, H> {
+	fn drop(&mut self) {
+		self.clear();
 	}
 }
 
