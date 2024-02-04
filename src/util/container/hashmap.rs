@@ -36,7 +36,7 @@ use core::{
 	mem::{size_of, size_of_val, MaybeUninit},
 	ops::{BitAnd, Index, IndexMut},
 	ptr,
-	simd::{cmp::SimdPartialEq, u8x16},
+	simd::{cmp::SimdPartialEq, u8x16, Mask},
 };
 
 /// Indicates a vacant entry in the map. This is a sentinel value for the lookup operation.
@@ -83,7 +83,7 @@ impl Hasher for XORHasher {
 /// Initializes a new data buffer with the given capacity.
 fn init_data<K, V>(capacity: usize) -> AllocResult<Vec<u8>> {
 	let capacity = capacity.next_multiple_of(GROUP_SIZE);
-	let new_ctrl_off = (capacity * size_of::<Slot<K, V>>()).next_multiple_of(16);
+	let new_ctrl_off = (capacity * size_of::<Slot<K, V>>()).next_multiple_of(GROUP_SIZE);
 	let new_size = new_ctrl_off + capacity;
 	let mut data = vec![0u8; new_size]?;
 	data[new_ctrl_off..].fill(CTRL_EMPTY);
@@ -146,20 +146,53 @@ fn get_slot_position<K, V>(off: usize) -> (usize, usize) {
 	(off / GROUP_SIZE, off % GROUP_SIZE)
 }
 
-/// Returns the first empty element of the given `group`.
+/// Returns an iterator over the indexes of the elements that match `byte` in `group`.
 #[inline]
-fn group_match_empty(group: u8x16) -> Option<usize> {
-	let mask = u8x16::splat(CTRL_EMPTY);
+fn group_match_byte(group: u8x16, byte: u8) -> impl Iterator<Item = usize> {
+	let mask = u8x16::splat(byte);
 	let matching = group.simd_eq(mask);
+	(0usize..GROUP_SIZE).filter(move |i| unsafe { matching.test_unchecked(*i) })
+}
+
+/// Returns the first empty element of the given `group`.
+///
+/// If `deleted` is set to `true`, the function also takes deleted entries into account.
+#[inline]
+fn group_match_unused(group: u8x16, deleted: bool) -> Option<usize> {
+	let matching = if deleted {
+		// Check for high bit set
+		let mask = u8x16::splat(0x80);
+		group.bitand(mask).simd_eq(mask)
+	} else {
+		let mask = u8x16::splat(CTRL_EMPTY);
+		group.simd_eq(mask)
+	};
 	matching.first_set()
+}
+
+/// Returns an iterator over the indexes of the slots that are used in `group`.
+///
+/// The function ignores all used slots before `start`.
+#[inline]
+fn group_match_used(group: u8x16) -> impl Iterator<Item = usize> {
+	let mask = u8x16::splat(0x80);
+	let matching = group.bitand(mask).simd_ne(mask);
+	(0..GROUP_SIZE).filter(move |i| unsafe { matching.test_unchecked(*i) })
 }
 
 /// Returns the slot corresponding the given key and its hash.
 ///
+/// `deleted` tells whether the function might return deleted entries.
+///
 /// Return tuple:
 /// - The offset of the slot in the data buffer
 /// - Whether the slot is occupied
-fn find_slot<K, V, Q: ?Sized>(data: &[u8], key: &Q, hash: u64) -> Option<(usize, bool)>
+fn find_slot<K, V, Q: ?Sized>(
+	data: &[u8],
+	key: &Q,
+	hash: u64,
+	deleted: bool,
+) -> Option<(usize, bool)>
 where
 	K: Borrow<Q>,
 	Q: Eq,
@@ -170,13 +203,11 @@ where
 	}
 	let start_group = (h1(hash) % groups_count as u64) as usize;
 	let mut group = start_group;
-	let find_mask = u8x16::splat(h2(hash));
+	let h2 = h2(hash);
 	loop {
 		// Find key in group
 		let ctrl = get_ctrl::<K, V>(data, group);
-		let matching = ctrl.simd_eq(find_mask);
-		let iter = (0usize..GROUP_SIZE).filter(move |i| matching.test(*i));
-		for i in iter {
+		for i in group_match_byte(ctrl, h2) {
 			let slot_off = get_slot_offset::<K, V>(group, i);
 			let slot = get_slot!(data, slot_off);
 			let slot_key = unsafe { slot.key.assume_init_ref() };
@@ -185,7 +216,7 @@ where
 			}
 		}
 		// Check for an empty slot
-		if let Some(i) = group_match_empty(ctrl) {
+		if let Some(i) = group_match_unused(ctrl, deleted) {
 			#[cold]
 			return Some((get_slot_offset::<K, V>(group, i), false));
 		}
@@ -305,7 +336,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns the entry for the given key.
 	pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
 		let hash = hash::<_, H>(&key);
-		match find_slot::<K, V, _>(&self.data, &key, hash) {
+		match find_slot::<K, V, _>(&self.data, &key, hash, true) {
 			Some((slot_off, true)) => Entry::Occupied(OccupiedEntry {
 				inner: get_slot!(self.data, slot_off, mut),
 			}),
@@ -329,7 +360,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(key);
-		let (slot_off, occupied) = find_slot::<K, V, Q>(&self.data, key, hash)?;
+		let (slot_off, occupied) = find_slot::<K, V, Q>(&self.data, key, hash, false)?;
 		let slot = get_slot!(self.data, slot_off);
 		if occupied {
 			Some(unsafe { slot.value.assume_init_ref() })
@@ -347,7 +378,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(key);
-		let (slot_off, occupied) = find_slot::<K, V, Q>(&self.data, key, hash)?;
+		let (slot_off, occupied) = find_slot::<K, V, Q>(&self.data, key, hash, false)?;
 		let slot = get_slot!(self.data, slot_off, mut);
 		if occupied {
 			Some(unsafe { slot.value.assume_init_mut() })
@@ -373,6 +404,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			hm: self,
 
 			group: 0,
+			group_used: Mask::default(),
 			cursor: 0,
 
 			count: 0,
@@ -396,7 +428,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			// Get slot for key
 			let hash = hash::<_, H>(k);
 			// Should not fail since the correct amount of slots has been allocated
-			let (slot_off, occupied) = find_slot::<K, V, _>(&data, k, hash).unwrap();
+			let (slot_off, occupied) = find_slot::<K, V, _>(&data, k, hash, true).unwrap();
 			assert!(!occupied);
 			// Update control block
 			let (group, index) = get_slot_position::<K, V>(slot_off);
@@ -418,7 +450,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, key: K, value: V) -> AllocResult<Option<V>> {
 		let hash = hash::<_, H>(&key);
-		match find_slot::<K, V, _>(&self.data, &key, hash) {
+		match find_slot::<K, V, _>(&self.data, &key, hash, true) {
 			// The entry already exists
 			Some((slot_off, true)) => {
 				let slot = get_slot!(self.data, slot_off, mut);
@@ -462,13 +494,13 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(&key);
-		let (slot_off, occupied) = find_slot::<K, V, _>(&self.data, key, hash)?;
+		let (slot_off, occupied) = find_slot::<K, V, _>(&self.data, key, hash, false)?;
 		if occupied {
 			self.len -= 1;
 			let (group, index) = get_slot_position::<K, V>(slot_off);
 			// Update control byte
 			let ctrl = get_ctrl::<K, V>(&self.data, group);
-			let new = group_match_empty(ctrl)
+			let new = group_match_unused(ctrl, false)
 				.map(|_| CTRL_EMPTY)
 				.unwrap_or(CTRL_DELETED);
 			set_ctrl::<K, V>(&mut self.data, group, index, new);
@@ -487,14 +519,11 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Retains only the elements for which the given predicate returns `true`.
 	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut f: F) {
 		let groups_count = self.capacity() / GROUP_SIZE;
-		let mask = u8x16::splat(0x80);
 		for group in 0..groups_count {
 			// Check whether there are elements in the group
 			let ctrl = get_ctrl::<K, V>(&self.data, group);
-			let matching = ctrl.bitand(mask).simd_ne(mask);
-			let iter = (0..GROUP_SIZE).filter(move |i| matching.test(*i));
 			// Iterate on slots in group
-			for i in iter {
+			for i in group_match_used(ctrl) {
 				let off = get_slot_offset::<K, V>(group, i);
 				let slot = get_slot!(self.data, off, mut);
 				let (key, value) =
@@ -581,6 +610,8 @@ pub struct Iter<'m, K: Hash + Eq, V, H: Default + Hasher> {
 
 	/// The current group to iterate on.
 	group: usize,
+	/// The current group's control block.
+	group_used: Mask<i8, GROUP_SIZE>,
 	/// The cursor in the group.
 	cursor: usize,
 
@@ -598,15 +629,18 @@ impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 			return None;
 		}
 		// Find next group with an element in it
-		// TODO do not run each time
 		let cursor = loop {
-			let ctrl = get_ctrl::<K, V>(&self.hm.data, self.group);
-			let mask = u8x16::splat(0x80);
-			let matching = ctrl.bitand(mask).simd_ne(mask);
-			let cursor = (self.cursor..GROUP_SIZE).find(move |i| matching.test(*i));
-			if let Some(cursor) = cursor {
+			// If at beginning of group, search for used elements
+			if self.cursor == 0 {
+				let ctrl = get_ctrl::<K, V>(&self.hm.data, self.group);
+				let mask = u8x16::splat(0x80);
+				self.group_used = ctrl.bitand(mask).simd_ne(mask);
+			}
+			if let Some(cursor) = self.group_used.first_set() {
+				self.group_used.set(cursor, false);
 				break cursor;
 			}
+			// No element has been found, go to next group
 			self.group += 1;
 			self.cursor = 0;
 			// If no group remain
@@ -614,11 +648,13 @@ impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 				return None;
 			}
 		};
+		// Step cursor
+		self.cursor = cursor + 1;
+		self.count += 1;
+		// Return element
 		let off = get_slot_offset::<K, V>(self.group, cursor);
 		let slot = get_slot!(self.hm.data, off);
 		let (key, value) = unsafe { (slot.key.assume_init_ref(), slot.value.assume_init_ref()) };
-		self.cursor = cursor + 1;
-		self.count += 1;
 		Some((key, value))
 	}
 
