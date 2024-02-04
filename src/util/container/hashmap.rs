@@ -64,6 +64,7 @@ impl Hasher for XORHasher {
 
 /// Initializes a new data buffer with the given capacity.
 fn init_data<K, V>(capacity: usize) -> AllocResult<Vec<u8>> {
+	let capacity = capacity.next_multiple_of(GROUP_SIZE);
 	let new_ctrl_off = (capacity * size_of::<Slot<K, V>>()).next_multiple_of(16);
 	let new_size = new_ctrl_off + capacity;
 	let mut data = vec![0u8; new_size]?;
@@ -366,9 +367,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// If the hash map already has enough capacity, the function does nothing.
 	pub fn reserve(&mut self, additional: usize) -> AllocResult<()> {
 		// Compute new capacity
-		let new_capacity = (self.len + additional)
-			.next_power_of_two()
-			.next_multiple_of(GROUP_SIZE);
+		let new_capacity = (self.len + additional).next_power_of_two();
 		if self.capacity() >= new_capacity {
 			return Ok(());
 		}
