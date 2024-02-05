@@ -146,12 +146,31 @@ fn get_slot_position<K, V>(off: usize) -> (usize, usize) {
 	(off / GROUP_SIZE, off % GROUP_SIZE)
 }
 
+/// Iterator over set bits of the inner bitmask.
+struct BitmaskIter(u16);
+
+impl Iterator for BitmaskIter {
+	type Item = usize;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let off = self.0.trailing_zeros();
+		if off < 16 {
+			self.0 &= !(1 << off);
+			Some(off as _)
+		} else {
+			None
+		}
+	}
+}
+
+impl FusedIterator for BitmaskIter {}
+
 /// Returns an iterator over the indexes of the elements that match `byte` in `group`.
 #[inline]
 fn group_match_byte(group: u8x16, byte: u8) -> impl Iterator<Item = usize> {
 	let mask = u8x16::splat(byte);
 	let matching = group.simd_eq(mask);
-	(0usize..GROUP_SIZE).filter(move |i| unsafe { matching.test_unchecked(*i) })
+	BitmaskIter(matching.to_bitmask() as u16)
 }
 
 /// Returns the first empty element of the given `group`.
@@ -177,7 +196,7 @@ fn group_match_unused(group: u8x16, deleted: bool) -> Option<usize> {
 fn group_match_used(group: u8x16) -> impl Iterator<Item = usize> {
 	let mask = u8x16::splat(0x80);
 	let matching = group.bitand(mask).simd_ne(mask);
-	(0..GROUP_SIZE).filter(move |i| unsafe { matching.test_unchecked(*i) })
+	BitmaskIter(matching.to_bitmask() as u16)
 }
 
 /// Returns the slot corresponding the given key and its hash.
