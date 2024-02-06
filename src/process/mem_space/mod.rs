@@ -19,7 +19,6 @@ use crate::{
 	util::{
 		container::{map::Map, vec::Vec},
 		lock::Mutex,
-		math,
 		ptr::arc::Arc,
 		TryClone,
 	},
@@ -844,7 +843,7 @@ impl MemSpace {
 			}
 
 			let begin = unsafe { util::align(self.brk_ptr, memory::PAGE_SIZE) };
-			let pages = math::ceil_div(ptr as usize - begin as usize, memory::PAGE_SIZE);
+			let pages = (ptr as usize - begin as usize).div_ceil(memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};
@@ -865,7 +864,7 @@ impl MemSpace {
 			}
 
 			let begin = unsafe { util::align(ptr, memory::PAGE_SIZE) };
-			let pages = math::ceil_div(begin as usize - ptr as usize, memory::PAGE_SIZE);
+			let pages = (begin as usize - ptr as usize).div_ceil(memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};

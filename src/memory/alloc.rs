@@ -17,7 +17,6 @@ use crate::{
 	memory,
 	memory::{buddy, memmap},
 	util,
-	util::math,
 };
 use core::{cmp::min, ffi::c_void};
 
@@ -40,7 +39,7 @@ pub(crate) fn init() {
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 
 	// Updating the number of available pages
-	available_pages -= math::ceil_div(metadata_size, memory::PAGE_SIZE);
+	available_pages -= metadata_size.div_ceil(memory::PAGE_SIZE);
 
 	// The beginning of the kernel's zone
 	let kernel_zone_begin =
