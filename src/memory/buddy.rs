@@ -135,7 +135,7 @@ impl Zone {
 	fn get_available_frame(&mut self, order: FrameOrder) -> Option<NonNull<Frame>> {
 		let mut frame = self.free_list[(order as usize)..]
 			.iter_mut()
-			.filter_map(|f| f.clone())
+			.filter_map(|f| *f)
 			.next()?;
 		let f = unsafe { frame.as_mut() };
 		debug_assert!(!f.is_used());
@@ -477,11 +477,17 @@ fn get_zone_for_pointer(zones: &mut [Zone; ZONES_COUNT], ptr: *const c_void) -> 
 
 /// Allocates a frame of memory using the buddy allocator.
 ///
-/// `order` is the order of the frame to be allocated.
+/// Arguments:
+/// - `order` is the order of the frame to be allocated
+/// - `flags` for the allocation
 ///
-/// The given frame shall fit the flags `flags`.
+/// If no suitable frame is found, the function returns an error.
 ///
-/// If no suitable frame is found, the function returns an Err.
+/// On success, the function returns a *physical* pointer to the allocated memory.
+///
+/// # Safety
+///
+/// It is the caller's responsibility to ensure the memory is accessed correctly.
 pub unsafe fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
 	if order > MAX_ORDER {
 		return Err(AllocError);
@@ -512,6 +518,10 @@ pub unsafe fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_vo
 /// Calls [`alloc`] with order `order`, allocating in the kernel zone.
 ///
 /// The function returns the *virtual* address, not the physical one.
+///
+/// # Safety
+///
+/// See [`alloc`]
 pub unsafe fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
 	let virt_ptr = memory::kern_to_virt(ptr.as_ptr()) as _;
@@ -520,7 +530,17 @@ pub unsafe fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 
 /// Frees the given memory frame that was allocated using the buddy allocator.
 ///
-/// The given order must be the same as the one given to allocate the frame.
+/// Arguments:
+/// - `ptr` is the *virtual* address to the beginning of the frame
+/// - `order` is the order of the frame
+///
+/// The given order must be the same as the one given to [`alloc`].
+///
+/// # Safety
+///
+/// If the `ptr` or `order` are invalid, the behaviour is undefined.
+///
+/// Using the memory referenced by the pointer after freeing results in an undefined behaviour.
 pub unsafe fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
@@ -543,8 +563,13 @@ pub unsafe fn free(ptr: *const c_void, order: FrameOrder) {
 
 /// Frees the given memory frame.
 ///
-/// `ptr` is the *virtual* address to the beginning of the frame and `order` is the order of the
-/// frame.
+/// Arguments:
+/// - `ptr` is the *virtual* address to the beginning of the frame
+/// - `order` is the order of the frame
+///
+/// # Safety
+///
+/// See [`free`]
 pub unsafe fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 	free(memory::kern_to_phys(ptr), order);
 }
