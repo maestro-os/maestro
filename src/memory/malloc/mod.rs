@@ -60,7 +60,7 @@ pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	chunk.used = true;
 	// Return pointer
 	let ptr = chunk.get_ptr_mut();
-	debug_assert!(ptr.is_aligned_to(chunk::ALIGNEMENT));
+	debug_assert!(ptr.is_aligned_to(chunk::ALIGNMENT));
 	debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
 	NonNull::new(ptr).ok_or(AllocError)
 }
