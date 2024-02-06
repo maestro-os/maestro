@@ -709,9 +709,9 @@ mod test {
 				let mut node = p.cast::<TestDupNode>();
 				let n = node.as_mut();
 				n.next = first;
-				assert!(!has_cycle(node));
 				first = Some(node);
 			}
+			assert!(!has_cycle(first.unwrap()));
 			while let Some(mut node) = first {
 				let n = node.as_mut();
 				let next = n.next;
