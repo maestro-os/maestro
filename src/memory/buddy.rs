@@ -16,10 +16,9 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module contains the buddy allocator which allows to allocate `2^^n`
-//! pages large frames of memory.
+//! The buddy allocator allows to allocate blocks of `2^^n` pages of memory.
 //!
-//! This allocator works by dividing frames of memory in two until the a frame
+//! This allocator works by dividing frames of memory in two recursively until a frame
 //! of the required size is available.
 //!
 //! The order of a frame is the `n` in the expression `pow(2, n)` that represents the
@@ -35,15 +34,16 @@ use core::{
 	cmp::min,
 	ffi::c_void,
 	intrinsics::likely,
-	mem::{size_of, MaybeUninit},
-	ptr::NonNull,
+	mem::size_of,
+	ptr::{null_mut, NonNull},
+	slice,
 };
 
-/// Type representing the order of a memory frame.
+/// The order of a memory frame.
 pub type FrameOrder = u8;
-/// Type representing buddy allocator flags.
+/// Buddy allocator flags.
 pub type Flags = i32;
-/// Type representing the identifier of a frame.
+/// The identifier of a frame.
 type FrameID = u32;
 
 /// The maximum order of a buddy allocated frame.
@@ -65,49 +65,56 @@ pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b10;
 /// Value indicating that the frame is used.
 pub const FRAME_STATE_USED: FrameID = !0_u32;
 
-/// Structure representing an allocatable zone of memory.
-#[derive(Debug)]
+/// An allocatable zone of memory, initialized at boot.
 pub(crate) struct Zone {
 	/// A pointer to the beginning of the metadata of the zone
-	metadata_begin: *mut c_void,
+	metadata_begin: *mut Frame,
 	/// A pointer to the beginning of the allocatable memory of the zone
 	begin: *mut c_void,
-	/// The size of the zone in bytes
+	/// The size of the zone in pages
 	pages_count: FrameID,
-
 	/// The number of allocated pages in the zone
 	allocated_pages: usize,
+	/// The free list containing linked lists to free frames. Each linked list contain frames of
+	/// the order corresponding to the element in this array
+	free_list: [Option<NonNull<Frame>>; (MAX_ORDER + 1) as usize],
+}
 
-	/// The free list containing linked lists to free frames
-	free_list: [Option<*mut Frame>; (MAX_ORDER + 1) as usize],
+impl Zone {
+	/// Returns a value for use as a placeholder until boot-time initialization has been performed.
+	const fn placeholder() -> Self {
+		Self {
+			metadata_begin: null_mut(),
+			begin: null_mut(),
+			pages_count: 0,
+			allocated_pages: 0,
+			free_list: [None; (MAX_ORDER + 1) as usize],
+		}
+	}
 }
 
 impl Zone {
 	/// Fills the free list during initialization according to the number of
 	/// available pages.
 	fn fill_free_list(&mut self) {
+		let frames = self.frames();
 		let mut frame: FrameID = 0;
 		let mut order = MAX_ORDER;
-
 		while frame < self.pages_count as FrameID {
+			// Check the order fits in remaining pages
 			let p = math::pow2(order as FrameID) as FrameID;
 			if frame + p > self.pages_count {
-				if order == 0 {
-					break;
-				}
 				order -= 1;
 				continue;
 			}
-
-			let f = unsafe { &mut *self.get_frame(frame) };
+			// Init frame
+			let f = &mut frames[frame as usize];
 			f.mark_free(self);
 			f.order = order;
 			f.link(self);
-
+			// Jump to next offset
 			frame += p;
 		}
-
-		debug_assert!(frame >= self.pages_count);
 		#[cfg(config_debug_debug)]
 		self.check_free_list();
 	}
@@ -125,13 +132,11 @@ impl Zone {
 		begin: *mut c_void,
 	) -> Zone {
 		let mut z = Zone {
-			metadata_begin,
+			metadata_begin: metadata_begin as _,
 			begin,
 			pages_count,
-
 			allocated_pages: 0,
-
-			free_list: [None; (MAX_ORDER + 1) as usize],
+			free_list: Default::default(),
 		};
 		z.fill_free_list();
 		z
@@ -145,21 +150,16 @@ impl Zone {
 
 	/// Returns an available frame owned by this zone, with an order of at least
 	/// `order`.
-	fn get_available_frame(&self, order: FrameOrder) -> Option<&'static mut Frame> {
-		self.free_list[(order as usize)..]
-			.iter()
-			.filter_map(|f| *f)
-			.map(|f| {
-				let f = unsafe { &mut *f };
-				debug_assert!(!f.is_used());
-				debug_assert!((f.get_ptr(self) as usize) >= (self.begin as usize));
-				debug_assert!(
-					(f.get_ptr(self) as usize) < (self.begin as usize) + self.get_size()
-				);
-
-				f
-			})
-			.next()
+	fn get_available_frame(&mut self, order: FrameOrder) -> Option<NonNull<Frame>> {
+		let mut frame = self.free_list[(order as usize)..]
+			.iter_mut()
+			.filter_map(|f| f.clone())
+			.next()?;
+		let f = unsafe { frame.as_mut() };
+		debug_assert!(!f.is_used());
+		debug_assert!((f.memory_ptr(self) as usize) >= (self.begin as usize));
+		debug_assert!((f.memory_ptr(self) as usize) < (self.begin as usize) + self.get_size());
+		Some(frame)
 	}
 
 	/// Returns the identifier for the frame at the given pointer `ptr`.
@@ -169,19 +169,15 @@ impl Zone {
 		(((ptr as usize) - (self.begin as usize)) / memory::PAGE_SIZE) as _
 	}
 
-	/// Returns a mutable reference to the frame with the given identifier `id`.
-	///
-	/// The given identifier **must** be in the range of the zone.
-	fn get_frame(&self, id: FrameID) -> *mut Frame {
-		debug_assert!(id < self.pages_count);
-		((self.metadata_begin as usize) + (id as usize * size_of::<Frame>())) as _
+	/// Returns a mutable slice over the metadata of the zone's frames.
+	#[inline]
+	fn frames(&self) -> &'static mut [Frame] {
+		unsafe { slice::from_raw_parts_mut(self.metadata_begin, self.pages_count as usize) }
 	}
 
-	/// Debug function.
-	///
 	/// Checks the correctness of the free list for the zone.
 	///
-	/// Every frames in the free list must have an order equal to the order of the bucket it's
+	/// Every frame in the free list must have an order equal to the order of the bucket it's
 	/// inserted in and must be free.
 	///
 	/// If a frame is the first of a list, it must not have a previous element.
@@ -191,49 +187,46 @@ impl Zone {
 	#[cfg(config_debug_debug)]
 	fn check_free_list(&self) {
 		let zone_size = (self.pages_count as usize) * memory::PAGE_SIZE;
-
+		let frames = self.frames();
 		for (order, list) in self.free_list.iter().enumerate() {
-			let Some(first) = *list else {
+			let Some(mut first) = *list else {
 				continue;
 			};
-
-			let mut frame = first;
+			let mut frame = unsafe { first.as_mut() };
 			let mut is_first = true;
-
+			// Iterate on linked list
 			loop {
-				let f = unsafe { &*frame };
-				let id = f.get_id(self);
-
+				let id = frame.get_id(self);
 				#[cfg(config_debug_debug)]
-				f.check_broken(self);
-				debug_assert!(!f.is_used());
-				debug_assert_eq!(f.order, order as _);
-				debug_assert!(!is_first || f.prev == id);
+				frame.check_broken(self);
+				debug_assert!(!frame.is_used());
+				debug_assert_eq!(frame.order, order as _);
+				debug_assert!(!is_first || frame.prev == id);
 
-				let frame_ptr = f.get_ptr(self);
+				let frame_ptr = frame.memory_ptr(self);
 				debug_assert!(frame_ptr >= self.begin);
 				unsafe {
 					let zone_end = self.begin.add(zone_size);
 					debug_assert!(frame_ptr < zone_end);
-					debug_assert!(frame_ptr.add(f.get_size()) <= zone_end);
+					debug_assert!(frame_ptr.add(frame.get_size()) <= zone_end);
 				}
 
-				if f.next == id {
+				if frame.next == id {
 					break;
 				}
-				frame = self.get_frame(f.next);
+				frame = &mut frames[frame.next as usize];
 				is_first = false;
 			}
 		}
 	}
 }
 
-/// Structure representing the metadata for a frame of physical memory.
+/// The metadata for a frame of physical memory.
 ///
 /// The structure has an internal linked list for the free list.
 /// This linked list doesn't store pointers but frame identifiers to save memory.
 ///
-/// If either `prev` or `next` has value `FRAME_STATE_USED`, the frame is marked as used.
+/// If either `prev` or `next` has value [`FRAME_STATE_USED`], the frame is marked as used.
 ///
 /// If a frame points to itself, it means that no more elements are present in
 /// the list.
@@ -261,26 +254,23 @@ impl Frame {
 	/// Returns the identifier of the buddy frame in zone `zone`, taking in
 	/// account the frame's order.
 	///
-	/// The caller has the reponsibility to check that it is below the number of frames in the
+	/// The caller has the responsibility to check that it is below the number of frames in the
 	/// zone.
+	#[inline]
 	fn get_buddy_id(&self, zone: &Zone) -> FrameID {
 		self.get_id(zone) ^ (1 << self.order) as u32
 	}
 
 	/// Returns the pointer to the location of the associated physical memory.
-	fn get_ptr(&self, zone: &Zone) -> *mut c_void {
+	fn memory_ptr(&self, zone: &Zone) -> *mut c_void {
 		let off = self.get_id(zone) as usize * memory::PAGE_SIZE;
 		(zone.begin as usize + off) as _
 	}
 
 	/// Tells whether the frame is used or not.
+	#[inline]
 	fn is_used(&self) -> bool {
 		(self.prev == FRAME_STATE_USED) || (self.next == FRAME_STATE_USED)
-	}
-
-	/// Returns the size of the frame in pages.
-	fn get_pages(&self) -> usize {
-		math::pow2(self.order as usize)
 	}
 
 	/// Returns the size of the frame in bytes.
@@ -290,12 +280,14 @@ impl Frame {
 	}
 
 	/// Marks the frame as used. The frame must not be linked to any free list.
+	#[inline]
 	fn mark_used(&mut self) {
 		self.prev = FRAME_STATE_USED;
 		self.next = FRAME_STATE_USED;
 	}
 
 	/// Marks the frame as free. The frame must not be linked to any free list.
+	#[inline]
 	fn mark_free(&mut self, zone: &Zone) {
 		let id = self.get_id(zone);
 		self.prev = id;
@@ -322,15 +314,15 @@ impl Frame {
 
 		let id = self.get_id(zone);
 		self.prev = id;
-		self.next = if let Some(n) = zone.free_list[self.order as usize] {
-			let next = unsafe { &mut *n };
+		self.next = if let Some(mut next) = zone.free_list[self.order as usize] {
+			let next = unsafe { next.as_mut() };
 			debug_assert!(!next.is_used());
 			next.prev = id;
 			next.get_id(zone)
 		} else {
 			id
 		};
-		zone.free_list[self.order as usize] = Some(self);
+		zone.free_list[self.order as usize] = NonNull::new(self);
 
 		#[cfg(config_debug_debug)]
 		self.check_broken(zone);
@@ -347,30 +339,25 @@ impl Frame {
 		#[cfg(config_debug_debug)]
 		zone.check_free_list();
 
+		let frames = zone.frames();
 		let id = self.get_id(zone);
 		let has_prev = self.prev != id;
 		let has_next = self.next != id;
 
-		if zone.free_list[self.order as usize] == Some(self) {
-			zone.free_list[self.order as usize] = if has_next {
-				Some(zone.get_frame(self.next))
+		let first = &mut zone.free_list[self.order as usize];
+		if first.map(NonNull::as_ptr) == Some(self) {
+			*first = if has_next {
+				NonNull::new(&mut frames[self.next as usize])
 			} else {
 				None
 			};
 		}
 
 		if has_prev {
-			let prev = zone.get_frame(self.prev);
-			unsafe {
-				(*prev).next = if has_next { self.next } else { self.prev };
-			}
+			frames[self.prev as usize].next = if has_next { self.next } else { self.prev };
 		}
-
 		if has_next {
-			let next = zone.get_frame(self.next);
-			unsafe {
-				(*next).prev = if has_prev { self.prev } else { self.next };
-			}
+			frames[self.next as usize].prev = if has_prev { self.prev } else { self.next };
 		}
 
 		#[cfg(config_debug_debug)]
@@ -393,16 +380,18 @@ impl Frame {
 		debug_assert!(order <= MAX_ORDER);
 		debug_assert!(self.order >= order);
 
+		let frames = zone.frames();
+
 		self.unlink(zone);
 		while self.order > order {
 			self.order -= 1;
-
+			// Get buddy ID
 			let buddy = self.get_buddy_id(zone);
 			if buddy >= zone.pages_count {
 				break;
 			}
-
-			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
+			// Update buddy
+			let buddy_frame = &mut frames[buddy as usize];
 			buddy_frame.mark_free(zone);
 			buddy_frame.order = self.order;
 			buddy_frame.link(zone);
@@ -427,25 +416,27 @@ impl Frame {
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());
 
+		let frames = zone.frames();
+
 		while self.order < MAX_ORDER {
 			let id = self.get_id(zone);
+			// Get buddy ID
 			let buddy = self.get_buddy_id(zone);
 			if buddy >= zone.pages_count {
 				break;
 			}
-
+			// Check if coalesce is possible
 			let new_pages_count = math::pow2((self.order + 1) as usize) as FrameID;
 			if min(id, buddy) + new_pages_count > zone.pages_count {
 				break;
 			}
-
-			let buddy_frame = unsafe { &mut *zone.get_frame(buddy) };
+			let buddy_frame = &mut frames[buddy as usize];
 			#[cfg(config_debug_debug)]
 			buddy_frame.check_broken(zone);
 			if buddy_frame.order != self.order || buddy_frame.is_used() {
 				break;
 			}
-
+			// Update buddy
 			buddy_frame.unlink(zone);
 			if id < buddy {
 				self.order += 1;
@@ -465,14 +456,11 @@ impl Frame {
 }
 
 /// The array of buddy allocator zones.
-static ZONES: IntMutex<MaybeUninit<[Zone; ZONES_COUNT]>> = IntMutex::new(MaybeUninit::uninit());
-
-/// Initializes the buddy allocator with the given list of zones.
-///
-/// If this function is *not* called before using the buddy allocator, the behaviour is undefined.
-pub(crate) fn init(zones: [Zone; ZONES_COUNT]) {
-	ZONES.lock().write(zones);
-}
+pub(crate) static ZONES: IntMutex<[Zone; ZONES_COUNT]> = IntMutex::new([
+	Zone::placeholder(),
+	Zone::placeholder(),
+	Zone::placeholder(),
+]);
 
 /// The size in bytes of a frame with the given order `order`.
 #[inline]
@@ -512,102 +500,76 @@ fn get_zone_for_pointer(zones: &mut [Zone; ZONES_COUNT], ptr: *const c_void) -> 
 /// The given frame shall fit the flags `flags`.
 ///
 /// If no suitable frame is found, the function returns an Err.
-pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
-	debug_assert!(order <= MAX_ORDER);
-
-	let mut zones = ZONES.lock();
-	let zones = unsafe { zones.assume_init_mut() };
-
-	let begin_zone = (flags & ZONE_TYPE_MASK) as usize;
-	for zone in &mut zones[begin_zone..] {
-		let Some(frame) = zone.get_available_frame(order) else {
-			continue;
-		};
-
-		debug_assert!(!frame.is_used());
-		frame.split(zone, order);
-
-		let ptr = frame.get_ptr(zone);
-		debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
-		debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
-
-		frame.mark_used();
-		zone.allocated_pages += math::pow2(order as usize);
-
-		update_stats(4 * math::pow2(order as usize) as isize);
-		return NonNull::new(ptr).ok_or(AllocError);
+pub unsafe fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
+	if order > MAX_ORDER {
+		return Err(AllocError);
 	}
-
-	Err(AllocError)
+	// Select a zone and frame to allocate on
+	let mut zones = ZONES.lock();
+	let begin_zone = (flags & ZONE_TYPE_MASK) as usize;
+	let (mut frame, zone) = zones[begin_zone..]
+		.iter_mut()
+		.filter_map(|z| Some((z.get_available_frame(order)?, z)))
+		.next()
+		.ok_or(AllocError)?;
+	let frame = unsafe { frame.as_mut() };
+	// Do the actual allocation
+	debug_assert!(!frame.is_used());
+	frame.split(zone, order);
+	let ptr = frame.memory_ptr(zone);
+	debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
+	debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
+	frame.mark_used();
+	// Statistics
+	let pages_count = math::pow2(order as usize);
+	zone.allocated_pages += pages_count;
+	stats::MEM_INFO.lock().mem_free -= pages_count * 4;
+	NonNull::new(ptr).ok_or(AllocError)
 }
 
-/// Calls `alloc` with order `order`.
-///
-/// The allocated frame is in the kernel zone.
+/// Calls [`alloc`] with order `order`, allocating in the kernel zone.
 ///
 /// The function returns the *virtual* address, not the physical one.
-pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
+pub unsafe fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
 	let virt_ptr = memory::kern_to_virt(ptr.as_ptr()) as _;
-	debug_assert!(virt_ptr as *const _ >= memory::PROCESS_END);
-
 	NonNull::new(virt_ptr).ok_or(AllocError)
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator.
 ///
 /// The given order must be the same as the one given to allocate the frame.
-pub fn free(ptr: *const c_void, order: FrameOrder) {
+pub unsafe fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
-
+	// Get zone
 	let mut zones = ZONES.lock();
-	let zones = unsafe { zones.assume_init_mut() };
-
-	let zone = get_zone_for_pointer(zones, ptr).unwrap();
-
+	let zone = get_zone_for_pointer(&mut zones, ptr).unwrap();
+	let frames = zone.frames();
+	// Perform free
 	let frame_id = zone.get_frame_id_from_ptr(ptr);
 	debug_assert!(frame_id < zone.pages_count);
-
-	let frame = zone.get_frame(frame_id);
-	unsafe {
-		debug_assert!((*frame).is_used());
-		(*frame).mark_free(zone);
-		(*frame).coalesce(zone);
-	}
-
-	zone.allocated_pages -= math::pow2(order as usize);
-	update_stats(-4 * math::pow2(order as usize) as isize);
+	let frame = &mut frames[frame_id as usize];
+	debug_assert!(frame.is_used());
+	frame.mark_free(zone);
+	frame.coalesce(zone);
+	// Statistics
+	let pages_count = math::pow2(order as usize);
+	zone.allocated_pages -= pages_count;
+	stats::MEM_INFO.lock().mem_free += pages_count * 4;
 }
 
 /// Frees the given memory frame.
 ///
 /// `ptr` is the *virtual* address to the beginning of the frame and `order` is the order of the
 /// frame.
-pub fn free_kernel(ptr: *const c_void, order: FrameOrder) {
+pub unsafe fn free_kernel(ptr: *const c_void, order: FrameOrder) {
 	free(memory::kern_to_phys(ptr), order);
-}
-
-/// Updates stats on memory usage.
-///
-/// `n` is the delta of allocated chunks:
-/// - Positive value: The number of newly allocated chunks
-/// - Negative value: The absolute value is a the number of newly freed chunks
-pub fn update_stats(n: isize) {
-	let mut mem_info = stats::MEM_INFO.lock();
-
-	if n >= 0 {
-		mem_info.mem_free -= n as usize;
-	} else {
-		mem_info.mem_free += -n as usize;
-	}
 }
 
 /// Returns the total number of pages allocated by the buddy allocator.
 pub fn allocated_pages_count() -> usize {
 	let zones = ZONES.lock();
-	let zones = unsafe { zones.assume_init_ref() };
-
 	zones.iter().map(|z| z.allocated_pages).sum()
 }
 
@@ -619,154 +581,119 @@ mod test {
 	#[test_case]
 	fn buddy0() {
 		let alloc_pages = allocated_pages_count();
-
-		if let Ok(p) = alloc_kernel(0) {
-			let slice =
-				unsafe { slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0)) };
+		unsafe {
+			let p = alloc_kernel(0).unwrap();
+			let slice = slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0));
 			slice.fill(!0);
-
 			free_kernel(p.as_ptr(), 0);
-		} else {
-			assert!(false);
 		}
-
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	#[test_case]
 	fn buddy1() {
 		let alloc_pages = allocated_pages_count();
-
-		if let Ok(p) = alloc_kernel(1) {
-			let slice =
-				unsafe { slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0)) };
+		unsafe {
+			let p = alloc_kernel(1).unwrap();
+			let slice = slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0));
 			slice.fill(!0);
-
 			free_kernel(p.as_ptr(), 1);
-		} else {
-			assert!(false);
 		}
-
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	fn lifo_test(i: usize) {
-		if let Ok(p) = alloc_kernel(0) {
-			let slice =
-				unsafe { slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0)) };
+		unsafe {
+			let p = alloc_kernel(0).unwrap();
+			let slice = slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0));
 			slice.fill(!0);
-
 			if i > 0 {
 				lifo_test(i - 1);
 			}
 			free_kernel(p.as_ptr(), 0);
-		} else {
-			assert!(false);
 		}
 	}
 
 	#[test_case]
 	fn buddy_lifo() {
 		let alloc_pages = allocated_pages_count();
-
 		lifo_test(100);
-
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	#[test_case]
 	fn buddy_fifo() {
 		let alloc_pages = allocated_pages_count();
-
-		let mut frames: [*const c_void; 100] = [null::<c_void>(); 100];
-
-		for i in 0..frames.len() {
-			if let Ok(p) = alloc_kernel(0) {
+		unsafe {
+			let mut frames: [*const c_void; 100] = [null::<c_void>(); 100];
+			for i in 0..frames.len() {
+				let p = alloc_kernel(0).unwrap();
 				frames[i] = p.as_ptr();
-			} else {
-				assert!(false);
+			}
+			for frame in frames {
+				free_kernel(frame, 0);
 			}
 		}
-
-		for frame in frames.iter() {
-			free_kernel(*frame, 0);
-		}
-
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	fn get_dangling(order: FrameOrder) -> *mut c_void {
-		if let Ok(p) = alloc_kernel(order) {
-			let slice =
-				unsafe { slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0)) };
+		unsafe {
+			let p = alloc_kernel(order).unwrap();
+			let slice = slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0));
 			slice.fill(!0);
-
 			free_kernel(p.as_ptr(), 0);
 			p.as_ptr()
-		} else {
-			assert!(false);
-			null::<c_void>() as _
 		}
 	}
 
 	#[test_case]
 	fn buddy_free() {
 		let alloc_pages = allocated_pages_count();
-
 		let first = get_dangling(0);
 		for _ in 0..100 {
 			assert_eq!(get_dangling(0), first);
 		}
-
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
 	struct TestDupNode {
-		next: *mut TestDupNode,
+		next: Option<NonNull<TestDupNode>>,
 	}
 
-	fn has_cycle(begin: *const TestDupNode) -> bool {
-		if begin != null::<TestDupNode>() as _ {
-			return false;
-		}
-
-		let mut tortoise = begin;
-		let mut hoare = unsafe { (*begin).next };
-		while (tortoise != null::<TestDupNode>() as _)
-			&& (hoare != null::<TestDupNode>() as _)
-			&& (tortoise != hoare)
-		{
-			tortoise = unsafe { (*tortoise).next };
-
-			if unsafe { (*hoare).next } != null::<TestDupNode>() as _ {
-				return false;
+	unsafe fn has_cycle(mut begin: NonNull<TestDupNode>) -> bool {
+		let mut tortoise = Some(begin);
+		let mut hoare = begin.as_mut().next;
+		while let (Some(mut t), Some(mut h)) = (tortoise, hoare) {
+			if t.as_ptr() == h.as_ptr() {
+				return true;
 			}
-			hoare = unsafe { (*(*hoare).next).next };
+			tortoise = t.as_mut().next;
+			hoare = h.as_mut().next.map(|mut h| h.as_mut().next).flatten();
 		}
-		tortoise == hoare
+		false
 	}
 
 	/// Testing whether the allocator returns pages that are already allocated
 	#[test_case]
 	fn buddy_full_duplicate() {
 		let alloc_pages = allocated_pages_count();
-
-		let mut first = null::<TestDupNode>() as *mut TestDupNode;
-		while let Ok(p) = alloc_kernel(0) {
-			let node = p.as_ptr() as *mut TestDupNode;
-			unsafe {
-				(*node).next = first;
+		unsafe {
+			let mut first: Option<NonNull<TestDupNode>> = None;
+			while let Ok(p) = alloc_kernel(0) {
+				let mut node = p.cast::<TestDupNode>();
+				let n = node.as_mut();
+				n.next = first;
+				assert!(!has_cycle(node));
+				first = Some(node);
 			}
-			first = node;
-			assert!(!has_cycle(first));
+			while let Some(mut node) = first {
+				let n = node.as_mut();
+				let next = n.next;
+				free_kernel(n as *const _ as *const _, 0);
+				first = next;
+			}
 		}
-
-		while first != null::<TestDupNode>() as _ {
-			let next = unsafe { (*first).next };
-			free_kernel(first as _, 0);
-			first = next;
-		}
-
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 }

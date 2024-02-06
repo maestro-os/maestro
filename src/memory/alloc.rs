@@ -88,9 +88,9 @@ pub(crate) fn init() {
 
 	// TODO MMIO zone
 
-	buddy::init([
+	*buddy::ZONES.lock() = [
 		user_zone,
 		unsafe { core::mem::zeroed() }, // TODO MMIO
 		kernel_zone,
-	]);
+	];
 }

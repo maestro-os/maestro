@@ -58,7 +58,7 @@ impl MMIO {
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn new(phys_addr: *mut c_void, pages: usize, prefetchable: bool) -> AllocResult<Self> {
 		let order = buddy::get_order(pages);
-		let virt_addr = buddy::alloc_kernel(order)?;
+		let virt_addr = unsafe { buddy::alloc_kernel(order)? };
 
 		let mut flags = MMIO_FLAGS;
 		if !prefetchable {
@@ -95,6 +95,7 @@ impl MMIO {
 	/// The previously allocated chunk is freed by this function.
 	pub fn unmap(&self) -> AllocResult<()> {
 		let mut vmem = crate::get_vmem().lock();
+		let order = buddy::get_order(self.pages);
 		unsafe {
 			vmem.as_mut().unwrap().map_range(
 				self.phys_addr,
@@ -102,11 +103,8 @@ impl MMIO {
 				self.pages,
 				DEFAULT_FLAGS,
 			)?;
+			buddy::free_kernel(self.phys_addr, order);
 		}
-
-		let order = buddy::get_order(self.pages);
-		buddy::free_kernel(self.phys_addr, order);
-
 		Ok(())
 	}
 }

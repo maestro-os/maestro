@@ -54,7 +54,7 @@ impl MappedFile {
 			self.pages.insert(
 				off,
 				Page {
-					ptr: buddy::alloc_kernel(0)?.cast(),
+					ptr: unsafe { buddy::alloc_kernel(0)?.cast() },
 					ref_count: 1,
 				},
 			)?;
