@@ -29,7 +29,7 @@ use crate::{
 	file::{FileType, Mode},
 	limits,
 	memory::malloc,
-	util::{boxed::Box, container::string::String, io::IO, math},
+	util::{boxed::Box, container::string::String, io::IO},
 };
 use core::{
 	cmp::{max, min},
@@ -301,16 +301,14 @@ impl Ext2INode {
 	///
 	/// `blk_size` is the size of a block.
 	fn increment_used_sectors(&mut self, blk_size: u32) {
-		self.used_sectors += math::ceil_div(blk_size, SECTOR_SIZE);
+		self.used_sectors += blk_size.div_ceil(SECTOR_SIZE);
 	}
 
 	/// Decrements the number of used sectors of one block.
 	///
 	/// `blk_size` is the size of a block.
 	fn decrement_used_sectors(&mut self, blk_size: u32) {
-		if self.used_sectors > 0 {
-			self.used_sectors -= math::ceil_div(blk_size, SECTOR_SIZE);
-		}
+		self.used_sectors -= blk_size.div_ceil(SECTOR_SIZE);
 	}
 
 	/// Turns a block offset into an `Option`.
@@ -865,9 +863,9 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 
 		// The index of the beginning block to free
-		let begin = math::ceil_div(size, blk_size as _) as u32;
+		let begin = size.div_ceil(blk_size as _) as u32;
 		// The index of the end block to free
-		let end = math::ceil_div(old_size, blk_size as _) as u32;
+		let end = old_size.div_ceil(blk_size as _) as u32;
 		for i in begin..end {
 			// TODO Optimize
 			self.free_content_block(i, superblock, io)?;
@@ -880,7 +878,7 @@ impl Ext2INode {
 	///
 	/// Arguments:
 	/// - `begin` is the beginning block.
-	/// - `n` is the number of indicrections.
+	/// - `n` is the number of indirections.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
 	fn indirect_free_all(
@@ -1243,9 +1241,9 @@ impl Ext2INode {
 		// If the last content blocks can be freed, free them
 		if let Some((last_free_off, _)) = prev_free {
 			// The first content block that can be freed
-			let first_free_blk = math::ceil_div(last_free_off, blk_size as u64) as u32;
+			let first_free_blk = last_free_off.div_ceil(blk_size as u64) as u32;
 			// The number of content blocks in the inode
-			let blk_count = math::ceil_div(self.get_size(superblock), blk_size as u64) as u32;
+			let blk_count = self.get_size(superblock).div_ceil(blk_size as u64) as u32;
 
 			for i in first_free_blk..blk_count {
 				self.free_content_block(i, superblock, io)?;

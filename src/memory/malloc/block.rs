@@ -21,20 +21,18 @@
 //! it has to be divided into chunks.
 
 use super::chunk::{Chunk, FreeChunk};
-use crate::{errno::AllocResult, memory, memory::buddy, util::math};
+use crate::{errno::AllocResult, memory, memory::buddy};
 use core::{
 	mem::{offset_of, size_of},
 	num::NonZeroUsize,
 	ptr,
 };
 
-/// Structure representing a frame of memory allocated using the buddy
-/// allocator, storing memory chunks.
+/// A frame of memory allocated using the buddy allocator, storing memory chunks.
 #[repr(C, align(8))]
 pub struct Block {
 	/// The order of the frame for the buddy allocator
 	order: buddy::FrameOrder,
-
 	/// The first chunk of the block
 	pub first_chunk: Chunk,
 }
@@ -48,12 +46,10 @@ impl Block {
 	/// The underlying chunk created by this function is **not** inserted into the free list.
 	pub fn new(min_size: NonZeroUsize) -> AllocResult<&'static mut Self> {
 		let min_total_size = size_of::<Block>() + min_size.get();
-		let block_order = buddy::get_order(math::ceil_div(min_total_size, memory::PAGE_SIZE));
-
+		let block_order = buddy::get_order(min_total_size.div_ceil(memory::PAGE_SIZE));
 		// The size of the first chunk
 		let first_chunk_size = buddy::get_frame_size(block_order) - size_of::<Block>();
 		debug_assert!(first_chunk_size >= min_size.get());
-
 		// Allocate the block
 		let block = unsafe {
 			let mut ptr = buddy::alloc_kernel(block_order)?.cast();
@@ -76,14 +72,7 @@ impl Block {
 		let first_chunk_off = offset_of!(Block, first_chunk);
 		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
 		debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
-
 		&mut *ptr
-	}
-
-	/// Returns the total size of the block in bytes.
-	#[inline]
-	fn get_total_size(&self) -> usize {
-		buddy::get_frame_size(self.order)
 	}
 }
 

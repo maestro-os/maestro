@@ -25,7 +25,6 @@ use crate::{
 	memory,
 	process::{mem_space, mem_space::MapResidence, Process},
 	syscall::mmap::mem_space::MapConstraint,
-	util::math,
 };
 use core::{
 	ffi::{c_int, c_void},
@@ -81,7 +80,7 @@ pub fn do_mmap(
 	}
 
 	// The length in number of pages
-	let pages = math::ceil_div(length, memory::PAGE_SIZE);
+	let pages = length.div_ceil(memory::PAGE_SIZE);
 	let Some(pages) = NonZeroUsize::new(pages) else {
 		return Err(errno!(EINVAL));
 	};

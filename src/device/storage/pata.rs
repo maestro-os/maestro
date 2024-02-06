@@ -38,7 +38,7 @@
 // TODO Add support for third and fourth bus
 
 use super::StorageInterface;
-use crate::{device::storage::ide, errno, errno::EResult, io, util::math};
+use crate::{device::storage::ide, errno, errno::EResult, io};
 use core::{cmp::min, num::NonZeroU64};
 
 /// Offset to the data register.
@@ -121,8 +121,7 @@ const SECTOR_SIZE: u64 = 512;
 /// This function is a dirty hack and the actual delay is approximate but
 /// **should** be sufficient.
 fn delay(n: u32) {
-	let n = math::ceil_div(n, 30) * 1000;
-
+	let n = n.div_ceil(30) * 1000;
 	for _ in 0..n {
 		unsafe {
 			io::inb(STATUS_REGISTER_OFFSET);

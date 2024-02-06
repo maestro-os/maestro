@@ -36,7 +36,7 @@ use crate::{
 use block::Block;
 use chunk::Chunk;
 use core::{
-	cmp::{min, Ordering},
+	cmp::Ordering,
 	ffi::c_void,
 	mem::size_of,
 	num::NonZeroUsize,
@@ -62,25 +62,24 @@ static MUTEX: IntMutex<()> = IntMutex::new(());
 ///
 /// # Safety
 ///
-/// Allocated pointer must always be freed. Failure to do so results in a memory
-/// leak. Writing outside of the allocated range (buffer overflow) results in an
-/// undefined behaviour.
+/// Allocated pointers must always be freed. Failure to do so results in a memory
+/// leak.
+///
+/// Writing outside the allocated range (buffer overflow) is an undefined behaviour.
 pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	let _ = MUTEX.lock();
-
+	// Get free chunk
 	let free_chunk = chunk::get_available_chunk(n)?;
 	free_chunk.chunk.split(n.get());
-
 	#[cfg(config_debug_malloc_check)]
 	free_chunk.check();
-
+	// Mark chunk as used
 	let chunk = &mut free_chunk.chunk;
 	chunk.used = true;
-
+	// Return pointer
 	let ptr = chunk.get_ptr_mut();
 	debug_assert!(ptr.is_aligned_to(chunk::ALIGNEMENT));
 	debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
-
 	NonNull::new(ptr).ok_or(AllocError)
 }
 
@@ -104,35 +103,28 @@ pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 /// undefined behavior.
 pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	let _ = MUTEX.lock();
-
+	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_ptr());
 	assert!(chunk.used);
-
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
-
 	let chunk_size = chunk.get_size();
 	match n.get().cmp(&chunk_size) {
 		Ordering::Less => {
 			chunk.shrink(chunk_size - n.get());
 			Ok(ptr)
 		}
-
 		Ordering::Greater => {
 			if !chunk.grow(n.get() - chunk_size) {
-				let old_len = min(chunk.get_size(), n.get());
+				// Allocate new chunk and copy to it
 				let mut new_ptr = alloc(n)?;
-
-				ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut(), old_len);
-
+				ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut(), chunk_size);
 				free(ptr);
-
 				Ok(new_ptr)
 			} else {
 				Ok(ptr)
 			}
 		}
-
 		Ordering::Equal => Ok(ptr),
 	}
 }
@@ -147,22 +139,20 @@ pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonN
 /// Using memory after it was freed causes an undefined behaviour.
 pub unsafe fn free(mut ptr: NonNull<c_void>) {
 	let _ = MUTEX.lock();
-
+	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_mut());
 	assert!(chunk.used);
-
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
-
+	// Mark as free
 	chunk.used = false;
 	let free_chunk = chunk.as_free_chunk().unwrap();
 	free_chunk.prev = None;
 	free_chunk.next = None;
-
+	// Merge with adjacent chunks
 	let chunk = chunk.coalesce();
 	if chunk.is_single() {
 		chunk.as_free_chunk().unwrap().free_list_remove();
-
 		let block = Block::from_first_chunk(chunk);
 		drop_in_place(block);
 	}

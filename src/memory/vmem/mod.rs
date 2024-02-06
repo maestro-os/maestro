@@ -28,7 +28,7 @@ use crate::{
 	elf,
 	errno::{AllocError, AllocResult},
 	idt, memory, register_get, register_set,
-	util::{boxed::Box, math, TryClone},
+	util::{boxed::Box, TryClone},
 };
 use core::ffi::c_void;
 
@@ -138,7 +138,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 		for section in iter {
 			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
-			let pages = math::ceil_div(section.sh_size, memory::PAGE_SIZE as _) as usize;
+			let pages = section.sh_size.div_ceil(memory::PAGE_SIZE as _) as usize;
 			unsafe {
 				self.map_range(phys_addr, virt_addr, pages, x86::FLAG_USER)?;
 			}

@@ -28,14 +28,14 @@ use crate::{
 		mem_space,
 		mem_space::{MapConstraint, MapResidence, MemSpace},
 	},
-	util::{container::vec::Vec, lock::Mutex, math, ptr::arc::Arc},
+	util::{container::vec::Vec, lock::Mutex, ptr::arc::Arc},
 };
 use core::{cmp::min, ffi::c_void, num::NonZeroUsize, ptr, ptr::NonNull};
 
 /// The ELF image of the vDSO.
 static ELF_IMAGE: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
 
-/// Informations on the vDSO ELF image.
+/// Information on the vDSO ELF image.
 struct Vdso {
 	/// The list of pages on which the image is loaded.
 	pages: Arc<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
@@ -63,9 +63,10 @@ fn load_image() -> Result<Vdso, Errno> {
 	let entry_off = parser.hdr().e_entry as _;
 
 	// Load image into pages
+	let pages_count = ELF_IMAGE.len().div_ceil(memory::PAGE_SIZE);
 	// TODO collect
 	let mut pages = Vec::new();
-	for i in 0..math::ceil_div(ELF_IMAGE.len(), memory::PAGE_SIZE) {
+	for i in 0..pages_count {
 		let off = i * memory::PAGE_SIZE;
 		let len = min(memory::PAGE_SIZE, ELF_IMAGE.len() - off);
 		let ptr = unsafe {
@@ -99,7 +100,7 @@ pub fn map(mem_space: &mut MemSpace) -> Result<MappedVDSO, Errno> {
 	}
 	let img = elf_image.as_ref().unwrap();
 
-	let vdso_pages = math::ceil_div(img.len, memory::PAGE_SIZE);
+	let vdso_pages = img.len.div_ceil(memory::PAGE_SIZE);
 	let Some(vdso_pages) = NonZeroUsize::new(vdso_pages) else {
 		panic!("Invalid vDSO image");
 	};

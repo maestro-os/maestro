@@ -19,7 +19,7 @@
 //! The `munmap` system call allows the process to free memory that was
 //! allocated with `mmap`.
 
-use crate::{errno, errno::Errno, memory, process::Process, util::math};
+use crate::{errno, errno::Errno, memory, process::Process};
 use core::{ffi::c_void, num::NonZeroUsize};
 use macros::syscall;
 
@@ -32,7 +32,7 @@ pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let pages = math::ceil_div(length, memory::PAGE_SIZE);
+	let pages = length.div_ceil(memory::PAGE_SIZE);
 	let length = pages * memory::PAGE_SIZE;
 
 	// Checking for overflow

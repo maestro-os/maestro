@@ -38,7 +38,7 @@ use crate::{
 	errno::{CollectResult, EResult, Errno},
 	io, memory,
 	memory::mmio::MMIO,
-	util::{container::vec::Vec, math},
+	util::container::vec::Vec,
 };
 use core::{cmp::min, mem::size_of};
 
@@ -296,7 +296,7 @@ impl PCIDevice {
 			let prefetchable = value & 0b1000 != 0;
 
 			// Create MMIO
-			let pages = math::ceil_div(size, memory::PAGE_SIZE);
+			let pages = size.div_ceil(memory::PAGE_SIZE);
 			let mut mmio = MMIO::new(address as _, pages, prefetchable)?;
 			address = mmio.as_mut_ptr() as _;
 
