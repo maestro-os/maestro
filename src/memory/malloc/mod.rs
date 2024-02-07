@@ -370,85 +370,67 @@ mod test {
 	#[test_case]
 	fn alloc_free1() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let ptr = alloc(NonZeroUsize::new(1).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, 1).fill(!0);
-
 			free(ptr);
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free1() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let ptr = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, 8).fill(!0);
-
 			free(ptr);
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free2() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, memory::PAGE_SIZE).fill(!0);
-
 			free(ptr);
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free3() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE * 10).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, memory::PAGE_SIZE * 10).fill(!0);
-
 			free(ptr);
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
 	#[test_case]
 	fn alloc_free_fifo() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let mut ptrs: [NonNull<c_void>; 1024] = [NonNull::new(1 as _).unwrap(); 1024];
-
-			for i in 0..ptrs.len() {
+			for (i, p) in ptrs.iter_mut().enumerate() {
 				let size = i + 1;
 				let ptr = alloc(NonZeroUsize::new(size).unwrap()).unwrap();
 				slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, size).fill(!0);
-
-				ptrs[i] = ptr;
+				*p = ptr;
 			}
-
 			for i in 0..ptrs.len() {
 				for j in (i + 1)..ptrs.len() {
 					assert_ne!(ptrs[j], ptrs[i]);
 				}
 			}
-
 			for p in ptrs {
 				free(p);
 			}
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
@@ -456,7 +438,6 @@ mod test {
 		unsafe {
 			let ptr = alloc(NonZeroUsize::new(i).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, i).fill(!0);
-
 			if i > 1 {
 				lifo_test(i - 1);
 			}
@@ -467,9 +448,7 @@ mod test {
 	#[test_case]
 	fn alloc_free_lifo() {
 		let usage = buddy::allocated_pages_count();
-
 		lifo_test(100);
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
@@ -477,18 +456,14 @@ mod test {
 	#[test_case]
 	fn realloc0() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let mut ptr = alloc(NonZeroUsize::new(1).unwrap()).unwrap();
-
 			for i in 1..memory::PAGE_SIZE {
 				ptr = realloc(ptr, NonZeroUsize::new(i).unwrap()).unwrap();
 				slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, i).fill(!0);
 			}
-
 			free(ptr);
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
@@ -496,18 +471,14 @@ mod test {
 	#[test_case]
 	fn realloc1() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let mut ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE).unwrap()).unwrap();
-
 			for i in (1..memory::PAGE_SIZE).rev() {
 				ptr = realloc(ptr, NonZeroUsize::new(i).unwrap()).unwrap();
 				slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, i).fill(!0);
 			}
-
 			free(ptr);
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
@@ -515,22 +486,18 @@ mod test {
 	#[test_case]
 	fn realloc2() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let mut ptr0 = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr0.as_ptr() as *mut u8, 8).fill(!0);
 			let mut ptr1 = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr1.as_ptr() as *mut u8, 8).fill(!0);
-
 			for i in 0..8 {
 				ptr0 = realloc(ptr0, NonZeroUsize::new(math::pow2(i)).unwrap()).unwrap();
 				ptr1 = realloc(ptr1, NonZeroUsize::new(math::pow2(i) + 1).unwrap()).unwrap();
 			}
-
 			free(ptr1);
 			free(ptr0);
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 
@@ -538,22 +505,18 @@ mod test {
 	#[test_case]
 	fn realloc3() {
 		let usage = buddy::allocated_pages_count();
-
 		unsafe {
 			let mut ptr0 = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr0.as_ptr() as *mut u8, 8).fill(!0);
 			let mut ptr1 = alloc(NonZeroUsize::new(8).unwrap()).unwrap();
 			slice::from_raw_parts_mut(ptr1.as_ptr() as *mut u8, 8).fill(!0);
-
 			for i in (0..8).rev() {
 				ptr0 = realloc(ptr0, NonZeroUsize::new(math::pow2(i)).unwrap()).unwrap();
 				ptr1 = realloc(ptr1, NonZeroUsize::new(math::pow2(i) + 1).unwrap()).unwrap();
 			}
-
 			free(ptr1);
 			free(ptr0);
 		}
-
 		assert_eq!(usage, buddy::allocated_pages_count());
 	}
 }
