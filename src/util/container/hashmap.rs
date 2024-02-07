@@ -237,12 +237,12 @@ struct Slot<K, V> {
 	value: MaybeUninit<V>,
 }
 
-/// TODO doc
+/// Occupied entry in the hashmap.
 pub struct OccupiedEntry<'h, K, V> {
 	inner: &'h mut Slot<K, V>,
 }
 
-/// TODO doc
+/// Vacant entry in the hashmap.
 pub struct VacantEntry<'h, K, V> {
 	/// The key to insert.
 	key: K,
@@ -501,10 +501,10 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			let (group, index) = get_slot_position::<K, V>(slot_off);
 			// Update control byte
 			let ctrl = get_ctrl::<K, V>(&self.data, group);
-			let ctrl = group_match_unused(ctrl, false)
+			let h2 = group_match_unused(ctrl, false)
 				.map(|_| CTRL_EMPTY)
 				.unwrap_or(CTRL_DELETED);
-			set_ctrl::<K, V>(&mut self.data, group, index, ctrl);
+			set_ctrl::<K, V>(&mut self.data, group, index, h2);
 			// Return previous value
 			let slot = get_slot!(self.data, slot_off, mut);
 			unsafe {
@@ -521,24 +521,40 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut f: F) {
 		let groups_count = self.capacity() / GROUP_SIZE;
 		for group in 0..groups_count {
+			// Mask for values to be removed in the group
+			let mut remove_mask: u16 = 0;
+			let mut remove_count = 0;
 			// Check whether there are elements in the group
 			let ctrl = get_ctrl::<K, V>(&self.data, group);
+			// The value to set in the group on remove
+			let h2 = group_match_unused(ctrl, false)
+				.map(|_| CTRL_EMPTY)
+				.unwrap_or(CTRL_DELETED);
 			// Iterate on slots in group
 			for i in group_match_used(ctrl) {
-				let off = get_slot_offset::<K, V>(group, i);
-				let slot = get_slot!(self.data, off, mut);
+				let slot_off = get_slot_offset::<K, V>(group, i);
+				let slot = get_slot!(self.data, slot_off, mut);
 				let (key, value) =
 					unsafe { (slot.key.assume_init_ref(), slot.value.assume_init_mut()) };
 				let keep = f(key, value);
 				if !keep {
-					// TODO use CTRL_EMPTY if relevant
-					set_ctrl::<K, V>(&mut self.data, group, i, CTRL_DELETED);
+					remove_mask |= 1 << i;
+					remove_count += 1;
 					unsafe {
 						slot.key.assume_init_drop();
 						slot.value.assume_init_drop();
 					}
-					self.len -= 1;
 				}
+			}
+			// Update control block
+			if remove_count > 0 {
+				for i in 0..GROUP_SIZE {
+					let set = remove_mask & (1 << i) != 0;
+					if set {
+						set_ctrl::<K, V>(&mut self.data, group, i, h2);
+					}
+				}
+				self.len -= remove_count;
 			}
 		}
 	}
@@ -729,14 +745,14 @@ mod test {
 
 		for i in 0..100 {
 			assert_eq!(hm.len(), i);
-
 			hm.insert(i as _, i as _).unwrap();
 			assert_eq!(hm.len(), i + 1);
-
+		}
+		for i in 0..100 {
 			assert_eq!(*hm.get(&(i as _)).unwrap(), i as _);
 			assert_eq!(hm[i as _], i as _);
 		}
-
+		assert_eq!(hm.get(&100), None);
 		for i in (0..100).rev() {
 			assert_eq!(hm.len(), i + 1);
 			assert_eq!(hm.remove(&(i as _)).unwrap(), i as _);
