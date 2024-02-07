@@ -1,23 +1,21 @@
 //! This file handles memory allocators initialization for the kernel.
 //!
-//! The physical memory is divided into zones. Each zones contains frames that
+//! The physical memory is divided into zones. Each zones contain frames that
 //! can be allocated by the buddy allocator
 //!
 //! The following zones exist:
 //! - Kernel: Memory to be allocated by the kernel, shared across processes. This zone requires
-//! that every frames of virtual memory are associated with a unique physical
+//! that every frame of virtual memory are associated with a unique physical
 //! frame.
 //! - MMIO: Memory used for Memory Mapped I/O. This zones requires only virtual memory, thus it
 //! overlaps with the user zone which allocates the physical memory.
-//! - User: Memory used for userspace mappings. This zone doesn't requires virtual memory to
-//! correspond with the physical memory, thus it can be located outside of the
-//! kernelspace.
+//! - User: Memory used for userspace mappings. This zone doesn't require virtual memory to
+//! correspond with the physical memory, thus it can be located outside the kernelspace.
 
 use crate::{
 	memory,
 	memory::{buddy, memmap},
 	util,
-	util::math,
 };
 use core::{cmp::min, ffi::c_void};
 
@@ -40,7 +38,7 @@ pub(crate) fn init() {
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 
 	// Updating the number of available pages
-	available_pages -= math::ceil_div(metadata_size, memory::PAGE_SIZE);
+	available_pages -= metadata_size.div_ceil(memory::PAGE_SIZE);
 
 	// The beginning of the kernel's zone
 	let kernel_zone_begin =
@@ -70,9 +68,9 @@ pub(crate) fn init() {
 
 	// TODO MMIO zone
 
-	buddy::init([
+	*buddy::ZONES.lock() = [
 		user_zone,
 		unsafe { core::mem::zeroed() }, // TODO MMIO
 		kernel_zone,
-	]);
+	];
 }

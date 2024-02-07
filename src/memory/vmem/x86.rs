@@ -136,12 +136,13 @@ unsafe fn get_kernel_table(n: usize) -> AllocResult<*mut u32> {
 ///
 /// If the allocation fails, the function returns an error.
 fn alloc_obj() -> AllocResult<*mut u32> {
-	let mut ptr = buddy::alloc_kernel(0)?.cast::<u8>();
-
-	// Zero memory
-	let slice = unsafe { slice::from_raw_parts_mut(ptr.as_mut(), buddy::get_frame_size(0)) };
-	slice.fill(0);
-
+	let ptr = unsafe {
+		let mut ptr = buddy::alloc_kernel(0)?.cast::<u8>();
+		// Zero memory
+		let slice = slice::from_raw_parts_mut(ptr.as_mut(), buddy::get_frame_size(0));
+		slice.fill(0);
+		ptr
+	};
 	Ok(ptr.as_ptr() as _)
 }
 
@@ -187,7 +188,7 @@ fn obj_get_mut_ptr(obj: *mut u32, index: usize) -> *mut u32 {
 /// Frees paging object `obj`. The pointer to the object must be a virtual
 /// address.
 fn free_obj(obj: *mut u32) {
-	buddy::free_kernel(obj as _, 0)
+	unsafe { buddy::free_kernel(obj as _, 0) }
 }
 
 /// The structure representing virtual memory context handler for the x86
@@ -727,7 +728,8 @@ mod test {
 	fn vmem_x86_vga_text_access() {
 		let vmem = X86VMem::new().unwrap();
 		for i in 0..(80 * 25 * 2) {
-			assert!(vmem.translate(((vga::get_buffer_virt() as usize) + i) as _) != None);
+			vmem.translate(((vga::get_buffer_virt() as usize) + i) as _)
+				.unwrap();
 		}
 	}
 }

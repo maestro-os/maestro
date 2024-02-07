@@ -19,7 +19,6 @@ use crate::{
 	util::{
 		container::{map::Map, vec::Vec},
 		lock::Mutex,
-		math,
 		ptr::arc::Arc,
 		TryClone,
 	},
@@ -114,13 +113,14 @@ impl MapResidence {
 
 	/// TODO doc
 	fn alloc() -> AllocResult<NonNull<c_void>> {
-		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
-
+		let ptr = unsafe { buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)? };
 		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
 		match ref_counter.increment(ptr.as_ptr()) {
 			Ok(()) => Ok(ptr),
 			Err(e) => {
-				buddy::free(ptr.as_ptr(), 0);
+				unsafe {
+					buddy::free(ptr.as_ptr(), 0);
+				}
 				Err(e)
 			}
 		}
@@ -131,7 +131,9 @@ impl MapResidence {
 		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
 		ref_counter.decrement(ptr);
 		if ref_counter.can_free(ptr) {
-			buddy::free(ptr, 0);
+			unsafe {
+				buddy::free(ptr, 0);
+			}
 		}
 	}
 
@@ -841,7 +843,7 @@ impl MemSpace {
 			}
 
 			let begin = unsafe { util::align(self.brk_ptr, memory::PAGE_SIZE) };
-			let pages = math::ceil_div(ptr as usize - begin as usize, memory::PAGE_SIZE);
+			let pages = (ptr as usize - begin as usize).div_ceil(memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};
@@ -862,7 +864,7 @@ impl MemSpace {
 			}
 
 			let begin = unsafe { util::align(ptr, memory::PAGE_SIZE) };
-			let pages = math::ceil_div(begin as usize - ptr as usize, memory::PAGE_SIZE);
+			let pages = (begin as usize - ptr as usize).div_ceil(memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};

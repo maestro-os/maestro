@@ -180,8 +180,8 @@ mod test {
 		let mut dest: [usize; 100] = [0; 100];
 		let mut src: [usize; 100] = [0; 100];
 
-		for i in 0..100 {
-			src[i] = i;
+		for (i, b) in src.iter_mut().enumerate() {
+			*b = i;
 		}
 		unsafe {
 			memcpy(
@@ -190,8 +190,8 @@ mod test {
 				100 * size_of::<usize>(),
 			);
 		}
-		for i in 0..100 {
-			debug_assert_eq!(dest[i], i);
+		for (i, b) in dest.iter().enumerate() {
+			debug_assert_eq!(*b, i);
 		}
 	}
 
@@ -200,8 +200,8 @@ mod test {
 		let mut dest: [usize; 100] = [0; 100];
 		let mut src: [usize; 100] = [0; 100];
 
-		for i in 10..90 {
-			src[i] = i;
+		for (i, b) in src[10..90].iter_mut().enumerate() {
+			*b = i;
 		}
 		unsafe {
 			memcpy(
@@ -210,14 +210,14 @@ mod test {
 				100 * size_of::<usize>(),
 			);
 		}
-		for i in 0..10 {
-			debug_assert_eq!(dest[i], 0);
+		for b in &dest[0..10] {
+			debug_assert_eq!(*b, 0);
 		}
-		for i in 10..90 {
-			debug_assert_eq!(dest[i], i);
+		for (i, b) in dest[10..90].iter().enumerate() {
+			debug_assert_eq!(*b, i);
 		}
-		for i in 90..100 {
-			debug_assert_eq!(dest[i], 0);
+		for b in &dest[90..100] {
+			debug_assert_eq!(*b, 0);
 		}
 	}
 

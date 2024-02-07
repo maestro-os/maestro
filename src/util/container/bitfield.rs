@@ -2,7 +2,7 @@
 
 use crate::{
 	errno::AllocResult,
-	util::{bit_size_of, container::vec::Vec, math::ceil_div, TryClone},
+	util::{bit_size_of, container::vec::Vec, TryClone},
 };
 
 /// A bitfield is a data structure meant to contain only boolean values.
@@ -18,8 +18,7 @@ pub struct Bitfield {
 impl Bitfield {
 	/// Creates a new bitfield with the given number of bits `len`.
 	pub fn new(len: usize) -> AllocResult<Self> {
-		let size = ceil_div(len, bit_size_of::<u8>());
-
+		let size = len.div_ceil(bit_size_of::<u8>());
 		let bitfield = Self {
 			data: crate::vec![0; size]?,
 			len,
@@ -49,7 +48,7 @@ impl Bitfield {
 	/// Returns the size of the memory region of the bitfield in bytes.
 	#[inline]
 	pub fn mem_size(&self) -> usize {
-		ceil_div(self.len, bit_size_of::<u8>())
+		self.len.div_ceil(bit_size_of::<u8>())
 	}
 
 	/// Tells whether bit `index` is set.

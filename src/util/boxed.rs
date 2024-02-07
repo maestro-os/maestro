@@ -191,7 +191,7 @@ mod test {
 
 	#[test_case]
 	fn box0() {
-		let b = Box::new(42 as usize);
+		let b = Box::new(42);
 		debug_assert_eq!(*b.unwrap(), 42);
 	}
 }

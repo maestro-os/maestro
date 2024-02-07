@@ -25,7 +25,7 @@ use crate::{
 	util::{
 		container::{string::String, vec::Vec},
 		io::IO,
-		math, TryClone,
+		TryClone,
 	},
 };
 use core::{
@@ -478,7 +478,7 @@ impl<'s> ELFExecutor<'s> {
 		// The pointer to the beginning of the segment in memory
 		let mem_begin = unsafe { load_base.add(seg.p_vaddr as usize - pad) };
 		// The length of the memory to allocate in pages
-		let pages = math::ceil_div(pad + seg.p_memsz as usize, memory::PAGE_SIZE);
+		let pages = (pad + seg.p_memsz as usize).div_ceil(memory::PAGE_SIZE);
 
 		if let Some(pages) = NonZeroUsize::new(pages) {
 			mem_space.map(
@@ -565,7 +565,7 @@ impl<'s> ELFExecutor<'s> {
 
 			// Not phdr segment. Load it manually
 			None => {
-				let pages = math::ceil_div(phdr_size, memory::PAGE_SIZE);
+				let pages = phdr_size.div_ceil(memory::PAGE_SIZE);
 				let Some(pages) = NonZeroUsize::new(pages) else {
 					return Err(errno!(EINVAL));
 				};
@@ -708,7 +708,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 		// Pre-allocating pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
-			let pages_count = math::ceil_div(total_size, memory::PAGE_SIZE);
+			let pages_count = total_size.div_ceil(memory::PAGE_SIZE);
 			// Checking that the data doesn't exceed the stack's size
 			if pages_count >= process::USER_STACK_SIZE {
 				return Err(errno!(ENOMEM));

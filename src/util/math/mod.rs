@@ -7,19 +7,6 @@ pub mod rational;
 
 use core::ops::{Add, Div, Mul, Neg, Rem, Shl, Sub};
 
-/// Computes `ceil(n0 / n1)` without using floating point numbers.
-#[inline(always)]
-pub fn ceil_div<T>(n0: T, n1: T) -> T
-where
-	T: From<u8> + Copy + Add<Output = T> + Div<Output = T> + Rem<Output = T> + PartialEq,
-{
-	if (n0 % n1) != T::from(0) {
-		(n0 / n1) + T::from(1)
-	} else {
-		n0 / n1
-	}
-}
-
 /// Computes `pow(2, n)` where `n` is unsigned.
 ///
 /// The behaviour is undefined for n < 0.
