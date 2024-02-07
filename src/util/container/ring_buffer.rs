@@ -173,25 +173,19 @@ mod test {
 	#[test_case]
 	fn ring_buffer2() {
 		let mut rb = RingBuffer::new([0u8; 10]);
-		let mut buf: [u8; 10] = [0; 10];
-		for i in 0..buf.len() {
-			buf[i] = 42;
-		}
 
+		let mut buf: [u8; 10] = [42; 10];
 		assert_eq!(rb.write(&buf), 9);
 		assert_eq!(rb.get_data_len(), 9);
 		assert_eq!(rb.get_available_len(), 0);
 
-		for i in 0..buf.len() {
-			buf[i] = 0;
-		}
-
+		buf.fill(0);
 		assert_eq!(rb.read(&mut buf), 9);
 		assert_eq!(rb.get_data_len(), 0);
 		assert_eq!(rb.get_available_len(), 9);
 
-		for i in 0..9 {
-			assert_eq!(buf[i], 42);
+		for b in buf.iter().take(9) {
+			assert_eq!(*b, 42);
 		}
 	}
 

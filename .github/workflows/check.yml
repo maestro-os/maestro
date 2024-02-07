@@ -63,6 +63,6 @@ jobs:
         run: cp default.build-config.toml build-config.toml
       - name: Macros
         working-directory: ./macros
-        run: cargo clippy --all-features
+        run: cargo clippy --all-features --tests
       - name: Kernel
-        run: cargo clippy --all-features
+        run: cargo clippy --all-features --tests

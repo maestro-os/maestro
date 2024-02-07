@@ -633,9 +633,9 @@ mod test {
 		let alloc_pages = allocated_pages_count();
 		unsafe {
 			let mut frames: [*const c_void; 100] = [null::<c_void>(); 100];
-			for i in 0..frames.len() {
+			for frame in &mut frames {
 				let p = alloc_kernel(0).unwrap();
-				frames[i] = p.as_ptr();
+				*frame = p.as_ptr();
 			}
 			for frame in frames {
 				free_kernel(frame, 0);
@@ -676,7 +676,7 @@ mod test {
 				return true;
 			}
 			tortoise = t.as_mut().next;
-			hoare = h.as_mut().next.map(|mut h| h.as_mut().next).flatten();
+			hoare = h.as_mut().next.and_then(|mut h| h.as_mut().next);
 		}
 		false
 	}

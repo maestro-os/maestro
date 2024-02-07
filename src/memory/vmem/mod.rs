@@ -257,7 +257,7 @@ mod test {
 		}
 
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
-			if i >= 0x100000 && i < 0x101000 {
+			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
 				assert!(result.is_some());
 				assert_eq!(result.unwrap(), i as _);
@@ -276,7 +276,7 @@ mod test {
 		}
 
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
-			if i >= 0x100000 && i < 0x101000 {
+			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
 				assert!(result.is_some());
 				assert_eq!(result.unwrap(), (0x100000 + i) as _);
