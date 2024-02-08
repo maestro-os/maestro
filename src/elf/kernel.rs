@@ -59,16 +59,15 @@ pub fn get_section_by_name(name: &[u8]) -> Option<&'static ELF32SectionHeader> {
 
 /// Returns an iterator over the kernel's ELF symbols.
 pub fn symbols() -> impl Iterator<Item = &'static ELF32Sym> {
-	sections()
-		.filter(|section| section.sh_type == SHT_SYMTAB)
-		.flat_map(|section| {
-			let begin = memory::kern_to_virt(section.sh_addr as *const u8);
-			let symbols_count = (section.sh_size / section.sh_entsize) as usize;
-			(0..symbols_count).map(move |i| {
-				let off = i * section.sh_entsize as usize;
-				unsafe { &*(begin.add(off) as *const ELF32Sym) }
-			})
-		})
+	let symtab = sections()
+		.find(|section| section.sh_type == SHT_SYMTAB)
+		.unwrap();
+	let begin = memory::kern_to_virt(symtab.sh_addr as *const u8);
+	let symbols_count = (symtab.sh_size / symtab.sh_entsize) as usize;
+	(0..symbols_count).map(move |i| {
+		let off = i * symtab.sh_entsize as usize;
+		unsafe { &*(begin.add(off) as *const ELF32Sym) }
+	})
 }
 
 /// Returns the name of the given kernel ELF symbol.
@@ -115,9 +114,9 @@ pub(crate) fn init() -> AllocResult<()> {
 	// Build the symbol map
 	let map = symbols()
 		.cloned()
-		.filter_map(|sym| {
-			let name = get_symbol_name(&sym)?;
-			Some((name, sym))
+		.map(|sym| {
+			let name = get_symbol_name(&sym).unwrap_or(b"");
+			(name, sym)
 		})
 		.collect::<CollectResult<_>>()
 		.0?;
