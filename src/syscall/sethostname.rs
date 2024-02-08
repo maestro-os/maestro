@@ -22,6 +22,7 @@ use crate::{
 	errno::Errno,
 	limits,
 	process::{mem_space::ptr::SyscallSlice, Process},
+	util::container::vec::Vec,
 };
 use macros::syscall;
 
@@ -45,8 +46,7 @@ pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
 	let name_slice = name.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
 
 	let mut hostname = crate::HOSTNAME.lock();
-	hostname.resize(len)?;
-	hostname.as_mut_slice().copy_from_slice(name_slice);
+	*hostname = Vec::from_slice(name_slice)?;
 
 	Ok(0)
 }
