@@ -149,7 +149,7 @@ impl IO for TmpFSRegular {
 
 		let off = offset as usize;
 		let new_len = max(off + buff.len(), self.content.len());
-		self.content.resize(new_len)?;
+		self.content.resize(new_len, 0)?;
 
 		self.content.as_mut_slice()[off..(off + buff.len())].copy_from_slice(buff);
 

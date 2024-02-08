@@ -2,7 +2,7 @@
 
 use crate::{
 	errno::{AllocResult, CollectResult},
-	memory::malloc,
+	memory::{malloc, malloc::Alloc},
 	util::{AllocError, TryClone},
 };
 use core::{
@@ -14,7 +14,6 @@ use core::{
 	num::NonZeroUsize,
 	ops::{Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeTo},
 	ptr,
-	ptr::drop_in_place,
 };
 
 /// Creates a [`Vec`] with the given size or set of values.
@@ -24,12 +23,12 @@ macro_rules! vec {
 	() => {
 		$crate::util::container::vec::Vec::new()
 	};
-
 	// Create a vec filled with `n` times `elem`
-	($elem:expr; $n:expr) => (
-		$crate::util::container::vec::Vec::from_elem($elem, $n)
-	);
-
+	($elem:expr; $n:expr) => {{
+		let mut v = $crate::util::container::vec::Vec::new();
+		v.resize($n, $elem)?;
+		$crate::errno::AllocResult::Ok(v)
+	}};
 	// Create a vec from the given array
 	($($x:expr), + $(,) ?) => {{
 		let array = [$($x),+];
@@ -84,10 +83,8 @@ impl<T> Vec<T> {
 			self.data = None;
 			return Ok(());
 		};
-
 		if let Some(data) = &mut self.data {
 			debug_assert!(data.len() >= self.len);
-
 			// Safe because the memory is rewritten when the object is placed into the
 			// vector
 			unsafe {
@@ -99,7 +96,6 @@ impl<T> Vec<T> {
 			let data_ptr = unsafe { malloc::Alloc::new(capacity)? };
 			self.data = Some(data_ptr);
 		};
-
 		Ok(())
 	}
 
@@ -108,21 +104,20 @@ impl<T> Vec<T> {
 		if self.len + min <= self.capacity() {
 			return Ok(());
 		}
-
 		let curr_capacity = self.capacity();
 		// multiply capacity by 1.25
 		let capacity = max(curr_capacity + (curr_capacity / 4), self.len + min);
 		self.realloc(capacity)
 	}
 
-	/// Creates a new emoty vector with the given capacity.
+	/// Creates a new empty vector with the given capacity.
 	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
 		let mut vec = Self::new();
 		vec.realloc(capacity)?;
 		Ok(vec)
 	}
 
-	/// Returns the number of elements inside of the vector.
+	/// Returns the number of elements inside the vector.
 	#[inline(always)]
 	pub fn len(&self) -> usize {
 		self.len
@@ -138,7 +133,7 @@ impl<T> Vec<T> {
 	/// without needing to reallocate the memory.
 	#[inline(always)]
 	pub fn capacity(&self) -> usize {
-		self.data.as_ref().map(|d| d.len()).unwrap_or(0)
+		self.data.as_ref().map(Alloc::len).unwrap_or(0)
 	}
 
 	/// Returns a slice containing the data.
@@ -178,19 +173,14 @@ impl<T> Vec<T> {
 		if index > self.len() {
 			self.vector_panic(index);
 		}
-
 		self.increase_capacity(1)?;
-		debug_assert!(self.capacity() > self.len);
-
 		let data = self.data.as_mut().unwrap();
 		unsafe {
 			// Shift
 			let ptr = data.as_ptr_mut();
 			ptr::copy(ptr.add(index), ptr.add(index + 1), self.len - index);
-
 			ptr::write(&mut data[index], element);
 		}
-
 		self.len += 1;
 		Ok(())
 	}
@@ -205,18 +195,14 @@ impl<T> Vec<T> {
 		if index >= self.len() {
 			self.vector_panic(index);
 		}
-
 		let data = self.data.as_mut().unwrap();
 		let v = unsafe {
 			let v = ptr::read(&data[index]);
-
 			// Shift
 			let ptr = data.as_ptr_mut();
 			ptr::copy(ptr.add(index + 1), ptr.add(index), self.len - index - 1);
-
 			v
 		};
-
 		self.len -= 1;
 		v
 	}
@@ -226,20 +212,15 @@ impl<T> Vec<T> {
 		if other.is_empty() {
 			return Ok(());
 		}
-
 		self.increase_capacity(other.len())?;
-
 		unsafe {
 			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
 			ptr::copy_nonoverlapping(other.as_ptr(), self_ptr.add(self.len), other.len());
 		}
-
 		self.len += other.len();
-
-		// Clearing other without dropping its elements
+		// Clear other without dropping its elements
 		other.len = 0;
 		other.data = None;
-
 		Ok(())
 	}
 
@@ -247,11 +228,9 @@ impl<T> Vec<T> {
 	pub fn push(&mut self, value: T) -> AllocResult<()> {
 		self.increase_capacity(1)?;
 		debug_assert!(self.capacity() > self.len);
-
 		unsafe {
 			ptr::write(&mut self.data.as_mut().unwrap()[self.len], value);
 		}
-
 		self.len += 1;
 		Ok(())
 	}
@@ -274,89 +253,67 @@ impl<T> Vec<T> {
 
 	/// Retains only the elements for which the given closure returns `true`.
 	///
-	/// The function visit each elements exactly once, in order.
+	/// The function visit each element exactly once, in order.
 	pub fn retain<F: FnMut(&mut T) -> bool>(&mut self, mut f: F) {
 		let len = self.len();
 		let Some(data) = self.data.as_mut() else {
 			return;
 		};
-
 		// The function looks for sequences of delete-keep groups, then shifts elements
 		//
 		// For example, for the following array:
 		// [Keep, Delete, Delete, Keep, Keep, Delete]
 		//
 		// The sequence starts at element `1` and ends at element `4` (included)
-
-		let mut processed = 0;
-		let mut deleted_count = 0;
-		let mut kept_count = 0;
-
+		let mut deleted = 0;
+		let mut kept = 0;
 		let mut new_len = 0;
-
-		while processed < len {
-			let cur = unsafe { &mut *data.as_ptr_mut().add(processed) };
-			let keep = f(cur);
-			processed += 1;
-
-			if !keep {
-				unsafe {
-					ptr::drop_in_place(cur);
-				}
-
-				// If reaching the end of a delete-keep sequence, shift elements
-				if kept_count > 0 {
-					unsafe {
-						let src = data.as_ptr().add(processed - kept_count - 1);
-						let dst = data
-							.as_ptr_mut()
-							.add(processed - kept_count - deleted_count - 1);
-
-						ptr::copy(src, dst, kept_count);
+		for i in 0..=len {
+			let keep = data.as_slice_mut()[..len]
+				.get_mut(i)
+				.map(|e| {
+					let keep = f(e);
+					if !keep {
+						unsafe {
+							ptr::drop_in_place(e);
+						}
 					}
-
-					kept_count = 0;
+					keep
+				})
+				.unwrap_or(false);
+			// If reaching the end of a delete-keep sequence, shift elements
+			if kept > 0 && deleted > 0 && !keep {
+				unsafe {
+					let src = data.as_ptr().add(i - kept);
+					let dst = data.as_ptr_mut().add(i - kept - deleted);
+					ptr::copy(src, dst, kept);
 				}
-
-				deleted_count += 1;
+				kept = 0;
+			}
+			if !keep {
+				deleted += 1;
 			} else {
-				if deleted_count > 0 {
-					kept_count += 1;
+				if deleted > 0 {
+					kept += 1;
 				}
-
 				new_len += 1;
 			}
 		}
-
-		// If a sequence remains after the end, shift it
-		if deleted_count > 0 && kept_count > 0 {
-			unsafe {
-				let src = data.as_ptr().add(processed - kept_count);
-				let dst = data
-					.as_ptr_mut()
-					.add(processed - kept_count - deleted_count);
-
-				ptr::copy(src, dst, kept_count);
-			}
-		}
-
 		self.len = new_len;
 	}
 
 	/// Truncates the vector to the given new len `len`.
 	///
-	/// If `len` is greater than the current length, the function has no effect.
+	/// If `len` is greater than or equal to the current length, the function has no effect.
 	pub fn truncate(&mut self, len: usize) {
 		if len < self.len() {
 			for e in &mut self.as_mut_slice()[len..] {
 				unsafe {
-					drop_in_place(e);
+					ptr::drop_in_place(e);
 				}
 			}
-
 			self.len = len;
 		}
-
 		if len == 0 {
 			self.data = None;
 		}
@@ -366,27 +323,11 @@ impl<T> Vec<T> {
 	pub fn clear(&mut self) {
 		for e in self.as_mut_slice() {
 			unsafe {
-				drop_in_place(e);
+				ptr::drop_in_place(e);
 			}
 		}
 		self.len = 0;
 		self.data = None;
-	}
-}
-
-impl<T: Default> Vec<T> {
-	/// Resizes the vector to the given length `new_len`.
-	///
-	/// If new elements have to be created, the default value is used.
-	pub fn resize(&mut self, new_len: usize) -> AllocResult<()> {
-		if new_len < self.len() {
-			self.truncate(new_len);
-		} else {
-			self.increase_capacity(new_len - self.len)?;
-			self.len = new_len;
-		}
-
-		Ok(())
 	}
 }
 
@@ -458,18 +399,28 @@ impl<T: PartialEq> PartialEq for Vec<T> {
 }
 
 impl<T: Clone> Vec<T> {
-	/// Creates a new vector with `n` times `elem`.
-	pub fn from_elem(elem: T, n: usize) -> AllocResult<Self> {
-		let mut v = Self::with_capacity(n)?;
-		v.len = n;
-		for i in 0..n {
-			// Safe because in range
-			unsafe {
-				// This is necessary to avoid dropping
-				ptr::write(&mut v[i], elem.clone());
+	/// Resizes the vector to the given length `new_len` with the `value` used for all the new
+	/// elements.
+	///
+	/// If the new length is lower than the current, the size of the vector is truncated.
+	///
+	/// If new elements have to be created, the default value is used.
+	pub fn resize(&mut self, new_len: usize, value: T) -> AllocResult<()> {
+		if new_len < self.len() {
+			self.truncate(new_len);
+		} else {
+			self.increase_capacity(new_len - self.len)?;
+			let old_len = self.len;
+			self.len = new_len;
+			for e in &mut self.as_mut_slice()[old_len..new_len] {
+				// Safe because in range
+				unsafe {
+					// This is necessary to avoid dropping
+					ptr::write(e, value.clone());
+				}
 			}
 		}
-		Ok(v)
+		Ok(())
 	}
 
 	/// Creates a new vector from the given slice.
@@ -613,7 +564,7 @@ impl<T> Drop for IntoIter<T> {
 		// Drop remaining elements
 		for e in &mut self.vec.as_mut_slice()[self.cur..] {
 			unsafe {
-				drop_in_place(e);
+				ptr::drop_in_place(e);
 			}
 		}
 		// Free vector's memory
@@ -690,7 +641,6 @@ impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
 		if self.index_front + self.index_back >= self.vec.len() {
 			return None;
 		}
-
 		if self.index_back < self.vec.len() {
 			let e = &self.vec[self.vec.len() - self.index_back - 1];
 			self.index_back += 1;
@@ -722,8 +672,8 @@ impl<'a, T> IntoIterator for &'a Vec<T> {
 
 impl<T: Hash> Hash for Vec<T> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		for i in 0..self.len() {
-			self[i].hash(state);
+		for e in self {
+			e.hash(state);
 		}
 	}
 }
