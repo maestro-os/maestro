@@ -4,7 +4,7 @@
 //! An unsafe interface is provided, inspired from the C language's
 //! malloc interface.
 //!
-//! The module also provides the structure `Alloc` which safely manages a memory allocation.
+//! The module also provides the structure [`Alloc`] which safely manages a memory allocation.
 
 mod block;
 mod chunk;
@@ -151,13 +151,14 @@ pub struct Alloc<T> {
 }
 
 impl<T> Alloc<T> {
+	// TODO safe version for types accepting any byte representation?
 	/// Allocates `size` element in the kernel memory and returns a structure
 	/// wrapping a slice allowing to access it.
 	///
 	/// If the allocation fails, the function shall return an error.
 	///
 	/// The allocated memory is **not** initialized, meaning it may contain garbage, or even
-	/// sensitive informations.
+	/// sensitive information.
 	///
 	/// It is the caller's responsibility to ensure the chunk of memory is correctly initialized.
 	///
@@ -166,16 +167,14 @@ impl<T> Alloc<T> {
 	/// Since the memory is not initialized, objects in the allocation might be
 	/// in an inconsistent state.
 	pub unsafe fn new(size: NonZeroUsize) -> AllocResult<Self> {
-		let len = size
-			.checked_mul(size_of::<T>().try_into().unwrap())
-			.ok_or(AllocError)?;
+		let unit_size = size_of::<T>().try_into().map_err(|_| AllocError)?;
+		let len = size.checked_mul(unit_size).ok_or(AllocError)?;
 		let ptr = alloc(len)?;
 		let slice = NonNull::new(slice::from_raw_parts_mut::<T>(
 			ptr.cast().as_mut(),
 			size.get(),
 		))
 		.unwrap();
-
 		Ok(Self {
 			slice,
 		})
@@ -189,11 +188,9 @@ impl<T> Alloc<T> {
 	/// inconsistent state.
 	pub unsafe fn new_zero(size: NonZeroUsize) -> AllocResult<Self> {
 		let mut alloc = Self::new(size)?;
-
 		// Zero memory
 		let slice = slice::from_raw_parts_mut(alloc.as_ptr_mut() as *mut u8, size.get());
 		slice.fill(0);
-
 		Ok(alloc)
 	}
 
@@ -236,12 +233,11 @@ impl<T> Alloc<T> {
 	/// Since the memory is not initialized, objects in the allocation might be
 	/// in an inconsistent state.
 	pub unsafe fn realloc(&mut self, n: NonZeroUsize) -> AllocResult<()> {
-		let elem_size = size_of::<T>().try_into().map_err(|_| AllocError)?;
-		let len = n.checked_mul(elem_size).ok_or(AllocError)?;
+		let unit_size = size_of::<T>().try_into().map_err(|_| AllocError)?;
+		let len = n.checked_mul(unit_size).ok_or(AllocError)?;
 		let ptr = realloc(self.slice.cast(), len)?;
 		self.slice =
 			NonNull::new(slice::from_raw_parts_mut::<T>(ptr.cast().as_mut(), n.get())).unwrap();
-
 		Ok(())
 	}
 
@@ -257,17 +253,15 @@ impl<T: Default> Alloc<T> {
 	///
 	/// The function will fill the memory with the default value for the object T.
 	pub fn new_default(size: NonZeroUsize) -> AllocResult<Self> {
-		let mut alloc = unsafe {
-			// Safe because the memory is set right after
-			Self::new(size)?
-		};
+		// Safe because the memory is set right after
+		let mut alloc = unsafe { Self::new(size)? };
 		for i in alloc.as_slice_mut().iter_mut() {
+			// Safe because the pointer is in the range of the slice
 			unsafe {
-				// Safe because the pointer is in the range of the slice
+				// Necessary to avoid dropping
 				ptr::write(i, T::default());
 			}
 		}
-
 		Ok(alloc)
 	}
 
@@ -284,14 +278,13 @@ impl<T: Default> Alloc<T> {
 	pub unsafe fn realloc_default(&mut self, n: NonZeroUsize) -> AllocResult<()> {
 		let curr_size = self.len();
 		self.realloc(n)?;
-
 		for i in curr_size..n.get() {
+			// Safe because the pointer is in the range of the slice
 			unsafe {
-				// Safe because the pointer is in the range of the slice
+				// Necessary to avoid dropping
 				ptr::write(&mut self.as_slice_mut()[i], T::default());
 			}
 		}
-
 		Ok(())
 	}
 }
@@ -304,17 +297,15 @@ impl<T: Clone> Alloc<T> {
 	///
 	/// `val` is a value that will be cloned to fill the memory.
 	pub fn new_clonable(size: NonZeroUsize, val: T) -> AllocResult<Self> {
-		let mut alloc = unsafe {
-			// Safe because the memory is set right after
-			Self::new(size)?
-		};
+		// Safe because the memory is set right after
+		let mut alloc = unsafe { Self::new(size)? };
 		for i in alloc.as_slice_mut().iter_mut() {
+			// Safe because the pointer is in the range of the slice
 			unsafe {
-				// Safe because the pointer is in the range of the slice
+				// Necessary to avoid dropping
 				ptr::write(i, val.clone());
 			}
 		}
-
 		Ok(alloc)
 	}
 }
