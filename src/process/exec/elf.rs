@@ -705,7 +705,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
-		// Pre-allocae pages on the user stack to write the initial data
+		// Pre-allocate pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
 			let pages_count = total_size.div_ceil(memory::PAGE_SIZE);

@@ -32,7 +32,9 @@ pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errn
 
 	let mut i = 0;
 	while i < length {
-		let mapping = mem_space.get_mapping_mut_for(addr).ok_or(errno!(ENOMEM))?;
+		let mapping = mem_space
+			.get_mapping_mut_for_ptr(addr)
+			.ok_or(errno!(ENOMEM))?;
 		mapping.fs_sync()?; // TODO Use flags
 
 		i += mapping.get_size().get() * memory::PAGE_SIZE;

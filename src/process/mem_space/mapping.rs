@@ -3,7 +3,7 @@
 //! Mappings may be created at the process's creation or by the process itself using
 //! system calls.
 
-use super::{gap::MemGap, MapResidence, MemSpace};
+use super::{gap::MemGap, MapResidence};
 use crate::{
 	file::vfs,
 	memory,
@@ -395,22 +395,23 @@ impl MemMapping {
 		}
 	}
 
-	/// Clones the mapping for the fork operation. The other mapping is sharing
-	/// the same physical memory for Copy-On-Write.
+	// TODO remplace by a `try_clone`?
+	/// Clones the mapping for the fork operation. The new mapping is sharing
+	/// the same physical memory, for Copy-On-Write.
 	///
-	/// `container` is the container in which the new mapping is to be inserted.
+	/// `vmem` is the virtual memory context for the new mapping
 	///
 	/// The virtual memory context has to be updated after calling this
 	/// function.
 	///
-	/// The function returns a mutable reference to the newly created mapping.
-	pub fn fork<'a>(&mut self, mem_space: &'a mut MemSpace) -> AllocResult<&'a mut Self> {
+	/// The function returns then newly created mapping.
+	pub(super) fn fork<'a>(&mut self, vmem: Arc<Mutex<Box<dyn VMem>>>) -> AllocResult<Self> {
 		let mut new_mapping = Self {
 			begin: self.begin,
 			size: self.size,
 			flags: self.flags,
 
-			vmem: mem_space.vmem.clone(),
+			vmem,
 			residence: self.residence.clone(),
 		};
 		let mut vmem = self.vmem.lock();
@@ -434,9 +435,7 @@ impl MemMapping {
 				}
 			}
 		}
-		mem_space
-			.mappings
-			.insert(new_mapping.get_begin(), new_mapping)
+		Ok(new_mapping)
 	}
 
 	/// Synchronizes the data on the memory mapping back to the filesystem.

@@ -204,7 +204,7 @@ impl MapResidence {
 }
 
 // TODO Add a variant for ASLR
-/// Enumeration of constraints for memory mapping.
+/// Enumeration of constraints for the selection of the virtual address for a memory mapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MapConstraint {
 	/// The mapping is done at a fixed address.
@@ -228,8 +228,12 @@ impl MapConstraint {
 	}
 }
 
-/// Structure representing the virtual memory space of a context.
-pub struct MemSpace {
+/// The set of mapped regions and free gaps of a memory space.
+///
+/// Separation is necessary to allow rollback-able transactions in case an operation fails.
+/// This is done by creating a fresh instance, then merging when fallible operations succeed.
+#[derive(Default)]
+struct MemSpaceState {
 	/// Binary tree storing the list of memory gaps, ready for new mappings.
 	///
 	/// The container is sorted by pointer to the beginning of the mapping on the virtual memory.
@@ -241,81 +245,56 @@ pub struct MemSpace {
 	///
 	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
 	mappings: Map<*mut c_void, MemMapping>,
-
-	/// The number of used virtual memory pages.
-	vmem_usage: usize,
-
-	/// The initial pointer of the `brk` system call.
-	brk_init: *mut c_void,
-	/// The current pointer of the `brk` system call.
-	brk_ptr: *mut c_void,
-
-	/// The virtual memory context handler.
-	vmem: Arc<Mutex<Box<dyn VMem>>>,
 }
 
-impl MemSpace {
-	/// Inserts the given gap into the memory space's structures.
-	fn gap_insert(&mut self, gap: MemGap) -> AllocResult<()> {
+impl MemSpaceState {
+	/// Inserts the given gap into the state.
+	fn insert_gap(&mut self, gap: MemGap) -> AllocResult<()> {
 		let gap_ptr = gap.get_begin();
 		let g = self.gaps.insert(gap_ptr, gap)?;
-
 		if let Err(e) = self.gaps_size.insert((g.get_size(), gap_ptr), ()) {
 			self.gaps.remove(&gap_ptr);
 			return Err(e);
 		}
-
 		Ok(())
 	}
 
-	/// Removes the given gap from the memory space's structures.
+	/// Removes the gap beginning at the given address from the state.
 	///
 	/// The function returns the removed gap.
 	///
 	/// If the gap didn't exist, the function returns `None`.
-	fn gap_remove(&mut self, gap_begin: *mut c_void) -> Option<MemGap> {
+	fn remove_gap(&mut self, gap_begin: *mut c_void) -> Option<MemGap> {
 		let g = self.gaps.remove(&gap_begin)?;
 		self.gaps_size.remove(&(g.get_size(), gap_begin));
-
 		Some(g)
 	}
 
 	/// Returns a reference to a gap with at least size `size`.
 	///
-	/// Arguments:
-	/// - `gaps` is the binary tree storing gaps, sorted by pointer to their respective beginnings.
-	/// - `gaps_size` is the binary tree storing pointers to gaps, sorted by gap sizes.
-	/// - `size` is the minimum size of the gap.
+	/// `size` is the minimum size of the gap to be returned.
 	///
 	/// If no gap large enough is available, the function returns `None`.
-	fn gap_get<'a>(
-		gaps: &'a Map<*mut c_void, MemGap>,
-		gaps_size: &Map<(NonZeroUsize, *mut c_void), ()>,
-		size: NonZeroUsize,
-	) -> Option<&'a MemGap> {
-		let ((_, ptr), _) = gaps_size.range((size, null_mut::<c_void>())..).next()?;
-		let gap = gaps.get(*ptr).unwrap();
+	fn get_gap<'a>(&self, size: NonZeroUsize) -> Option<&'a MemGap> {
+		let ((_, ptr), _) = self
+			.gaps_size
+			.range((size, null_mut::<c_void>())..)
+			.next()?;
+		let gap = self.gaps.get(*ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
-
 		Some(gap)
 	}
 
-	/// Returns a reference to the gap containing the pointer `ptr`.
-	///
-	/// Arguments:
-	/// - `gaps` is the binary tree storing gaps, sorted by pointer to their
-	/// respective beginnings.
-	/// - `ptr` is the pointer.
+	/// Returns a reference to the gap containing the given virtual address `ptr`.
 	///
 	/// If no gap contain the pointer, the function returns `None`.
-	fn gap_by_ptr(gaps: &Map<*mut c_void, MemGap>, ptr: *const c_void) -> Option<&MemGap> {
-		gaps.cmp_get(|key, value| {
-			let begin = *key;
-			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
-
-			if ptr >= begin && ptr < end {
+	fn get_gap_for_ptr(&self, ptr: *const c_void) -> Option<&MemGap> {
+		self.gaps.cmp_get(|key, value| {
+			let begin = *key as usize;
+			let end = begin + (value.get_size().get() * memory::PAGE_SIZE);
+			if (ptr as usize) >= begin && (ptr as usize) < end {
 				Ordering::Equal
-			} else if ptr < begin {
+			} else if (ptr as usize) < begin {
 				Ordering::Less
 			} else {
 				Ordering::Greater
@@ -323,14 +302,75 @@ impl MemSpace {
 		})
 	}
 
-	/// Creates a new virtual memory object.
+	/// Returns an immutable reference to the memory mapping containing the given virtual
+	/// address `ptr`.
 	///
-	/// `brk_ptr` is the initial pointer for the `brk` syscall.
+	/// If no mapping contains the address, the function returns `None`.
+	fn get_mapping_for_ptr(&self, ptr: *const c_void) -> Option<&MemMapping> {
+		self.mappings.cmp_get(|key, value| {
+			let begin = *key as usize;
+			let end = begin + (value.get_size().get() * memory::PAGE_SIZE);
+			if (ptr as usize) >= begin && (ptr as usize) < end {
+				Ordering::Equal
+			} else if (ptr as usize) < begin {
+				Ordering::Less
+			} else {
+				Ordering::Greater
+			}
+		})
+	}
+
+	/// Returns a mutable reference to the memory mapping containing the given
+	/// virtual address `ptr`.
+	///
+	/// If no mapping contains the address, the function returns `None`.
+	fn get_mapping_mut_for_ptr(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
+		self.mappings.cmp_get_mut(|key, value| {
+			let begin = *key as usize;
+			let end = begin + (value.get_size().get() * memory::PAGE_SIZE);
+			if (ptr as usize) >= begin && (ptr as usize) < end {
+				Ordering::Equal
+			} else if (ptr as usize) < begin {
+				Ordering::Less
+			} else {
+				Ordering::Greater
+			}
+		})
+	}
+
+	/// Merges the current state with another.
+	///
+	/// When performing a "transaction" (making several insertions atomically), this is used for
+	/// committing.
+	pub fn merge(&mut self, mut other: Self) {
+		self.gaps.append(&mut other.gaps);
+		self.gaps_size.append(&mut other.gaps_size);
+		self.mappings.append(&mut other.mappings);
+	}
+}
+
+/// A virtual memory space.
+pub struct MemSpace {
+	/// The state of the memory space's mapped regions and free gaps.
+	state: MemSpaceState,
+
+	/// The number of used virtual memory pages.
+	vmem_usage: usize,
+
+	/// The initial pointer of the `[s]brk` system calls.
+	brk_init: *mut c_void,
+	/// The current pointer of the `[s]brk` system calls.
+	brk_ptr: *mut c_void,
+
+	/// The virtual memory context handler.
+	vmem: Arc<Mutex<Box<dyn VMem>>>,
+}
+
+impl MemSpace {
+	/// Creates a new virtual memory object.
 	pub fn new() -> AllocResult<Self> {
 		let mut s = Self {
-			gaps: Map::new(),
-			gaps_size: Map::new(),
-			mappings: Map::new(),
+			state: Default::default(),
 
 			vmem_usage: 0,
 
@@ -341,11 +381,9 @@ impl MemSpace {
 		};
 		// Create the default gap of memory which is present at the beginning
 		let begin = memory::ALLOC_BEGIN;
-		let size =
-			NonZeroUsize::new((memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE)
-				.unwrap();
-		let gap = MemGap::new(begin, size).unwrap();
-		s.gap_insert(gap)?;
+		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
+		let gap = MemGap::new(begin, NonZeroUsize::new(size).unwrap());
+		s.state.insert_gap(gap)?;
 		Ok(s)
 	}
 
@@ -359,7 +397,6 @@ impl MemSpace {
 		self.vmem_usage
 	}
 
-	// TODO Fix potential invalid state on fail
 	/// Maps a chunk of memory.
 	///
 	/// The function has complexity `O(log n)`.
@@ -371,7 +408,7 @@ impl MemSpace {
 	/// - `residence` is the residence of the mapping to be created.
 	///
 	/// The underlying physical memory is not allocated directly but only when an attempt to write
-	/// the memory is detected, unless MAPPING_FLAG_NOLAZY is specified as a flag.
+	/// the memory is detected, unless [`MAPPING_FLAG_NOLAZY`] is specified as a flag.
 	///
 	/// On success, the function returns a pointer to the newly mapped virtual memory.
 	///
@@ -386,17 +423,17 @@ impl MemSpace {
 		if !map_constraint.is_valid() {
 			return Err(AllocError);
 		}
-		// Get gap suitable for the given constraints
+		// Get gap suitable for the given constraint
 		let (gap, off) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
 				// FIXME: not the right place to unmap. preferably, do it after
 				self.unmap(addr, size, false)?;
-				let gap = Self::gap_by_ptr(&self.gaps, addr).unwrap();
+				let gap = self.state.get_gap_for_ptr(addr).unwrap();
 				(gap, 0)
 			}
 			MapConstraint::Hint(addr) => {
 				// Get the gap for the pointer
-				let gap = Self::gap_by_ptr(&self.gaps, addr).ok_or(AllocError)?;
+				let gap = self.state.get_gap_for_ptr(addr).ok_or(AllocError)?;
 				// The offset in the gap, in pages
 				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
 				// Check whether the mapping fits in the gap
@@ -408,93 +445,46 @@ impl MemSpace {
 					(gap, off)
 				} else {
 					// Hint cannot be satisfied. Get a gap large enough
-					let gap =
-						Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or(AllocError)?;
+					let gap = self.state.get_gap(size).ok_or(AllocError)?;
 					(gap, 0)
 				}
 			}
 			MapConstraint::None => {
-				let gap = Self::gap_get(&self.gaps, &self.gaps_size, size).ok_or(AllocError)?;
+				let gap = self.state.get_gap(size).ok_or(AllocError)?;
 				(gap, 0)
 			}
 		};
 		let addr = unsafe { gap.get_begin().add(off * memory::PAGE_SIZE) };
-		// Split the old gap to fit the mapping
+		// Buffer state to perform fallible operations as a single block, to avoid entering an
+		// inconsistent state on failure
+		let mut buffer_state = MemSpaceState::default();
+		// Split the old gap to fit the mapping, and insert new gaps
 		let (left_gap, right_gap) = gap.consume(off, size.get());
-		// TODO remove gap from collection? (if this is not done before)
-		// Insert the new gaps
 		if let Some(new_gap) = left_gap {
-			oom::wrap(|| self.gap_insert(new_gap.clone()));
+			buffer_state.insert_gap(new_gap)?;
 		}
 		if let Some(new_gap) = right_gap {
-			oom::wrap(|| self.gap_insert(new_gap.clone()));
+			buffer_state.insert_gap(new_gap)?;
 		}
 		// Create the mapping
 		let mapping = MemMapping::new(addr, size, flags, self.vmem.clone(), residence);
 		// TODO use `entry` API (`insert` is supposed to return the previous value)
-		// FIXME: gaps remain altered in case of failure
-		let m = self.mappings.insert(addr, mapping)?;
-		// Map default pages
-		if let Err(e) = m.map_default() {
-			// FIXME previous `unmap` and gaps modifications are not undone here
-			self.mappings.remove(&addr);
-			return Err(e.into());
-		}
+		let m = buffer_state.mappings.insert(addr, mapping)?;
+		m.map_default()?;
+		// Commit transaction
+		self.state.remove_gap(gap.get_begin());
+		self.state.merge(buffer_state);
 		// Statistics
 		self.vmem_usage += size.get();
 		Ok(addr)
-	}
-
-	/// Returns a reference to the memory mapping containing the given virtual
-	/// address `ptr` from mappings container `mappings`.
-	///
-	/// If no mapping contains the address, the function returns `None`.
-	fn get_mapping_for_impl(
-		mappings: &Map<*mut c_void, MemMapping>,
-		ptr: *const c_void,
-	) -> Option<&MemMapping> {
-		mappings.cmp_get(|key, value| {
-			let begin = *key;
-			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
-
-			if ptr >= begin && ptr < end {
-				Ordering::Equal
-			} else if ptr < begin {
-				Ordering::Less
-			} else {
-				Ordering::Greater
-			}
-		})
-	}
-
-	/// Returns a mutable reference to the memory mapping containing the given
-	/// virtual address `ptr` from mappings container `mappings`.
-	///
-	/// If no mapping contains the address, the function returns `None`.
-	fn get_mapping_mut_for_impl(
-		mappings: &mut Map<*mut c_void, MemMapping>,
-		ptr: *const c_void,
-	) -> Option<&mut MemMapping> {
-		mappings.cmp_get_mut(|key, value| {
-			let begin = *key;
-			let end = unsafe { begin.add(value.get_size().get() * memory::PAGE_SIZE) };
-
-			if ptr >= begin && ptr < end {
-				Ordering::Equal
-			} else if ptr < begin {
-				Ordering::Less
-			} else {
-				Ordering::Greater
-			}
-		})
 	}
 
 	/// Returns a mutable reference to the memory mapping containing the given
 	/// virtual address `ptr`.
 	///
 	/// If no mapping contains the address, the function returns `None`.
-	pub fn get_mapping_mut_for(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
-		Self::get_mapping_mut_for_impl(&mut self.mappings, ptr)
+	pub fn get_mapping_mut_for_ptr(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
+		self.state.get_mapping_mut_for_ptr(ptr)
 	}
 
 	// TODO Optimize (currently O(n log n))
@@ -517,20 +507,19 @@ impl MemSpace {
 			return Err(AllocError);
 		}
 
-		// Removing every mappings in the chunk to unmap
+		// Remove every mappings in the chunk to unmap
 		let mut i = 0;
 		while i < size.get() {
 			// The pointer of the page
 			let page_ptr = unsafe { ptr.add(i * memory::PAGE_SIZE) };
 			// The mapping containing the page
-			let Some(mapping) = Self::get_mapping_mut_for_impl(&mut self.mappings, page_ptr)
-			else {
+			let Some(mapping) = self.state.get_mapping_mut_for_ptr(page_ptr) else {
 				i += 1;
 				continue;
 			};
 			// The pointer to the beginning of the mapping
 			let mapping_ptr = mapping.get_begin();
-			// Removing the mapping
+			// Remove the mapping
 			let mapping = self.mappings.remove(&mapping_ptr).unwrap();
 
 			// The offset in the mapping of the beginning of pages to unmap
@@ -542,11 +531,9 @@ impl MemSpace {
 			let (prev, gap, next) = mapping.partial_unmap(begin, pages);
 
 			if let Some(p) = prev {
-				// TODO Merge with previous?
 				oom::wrap(|| {
 					let map = p.clone();
 					self.mappings.insert(map.get_begin(), map)?;
-
 					Ok(())
 				});
 			}
@@ -569,12 +556,11 @@ impl MemSpace {
 						}
 					}
 
-					// Merging next gap
+					// Merge next gap
 					let next_gap = Self::gap_by_ptr(&self.gaps, gap.get_end());
 					if let Some(n) = next_gap {
 						let begin = n.get_begin();
 						let n = self.gap_remove(begin).unwrap();
-
 						gap.merge(n);
 					}
 
@@ -583,11 +569,9 @@ impl MemSpace {
 			}
 
 			if let Some(n) = next {
-				// TODO Merge with next?
 				oom::wrap(|| {
 					let map = n.clone();
 					self.mappings.insert(map.get_begin(), map)?;
-
 					Ok(())
 				});
 			}
@@ -719,9 +703,11 @@ impl MemSpace {
 			Arc::try_from(Mutex::new(vmem::try_clone(&**vmem)?))?
 		};
 		let mut mem_space = Self {
-			gaps: self.gaps.try_clone()?,
-			gaps_size: self.gaps_size.try_clone()?,
-			mappings: Map::new(),
+			state: MemSpaceState {
+				gaps: self.state.gaps.try_clone()?,
+				gaps_size: self.state.gaps_size.try_clone()?,
+				mappings: Map::new(),
+			},
 
 			vmem_usage: self.vmem_usage,
 
@@ -730,12 +716,17 @@ impl MemSpace {
 
 			vmem,
 		};
-		for (_, m) in self.mappings.iter_mut() {
-			let new_mapping = m.fork(&mut mem_space)?;
+		for (_, m) in self.state.mappings.iter_mut() {
+			let mut new_mapping = m.fork(mem_space.vmem.clone())?;
 			for i in 0..new_mapping.get_size().get() {
 				m.update_vmem(i);
 				new_mapping.update_vmem(i);
 			}
+			// FIXME: on fail, the mapping(s) are not dropped properly (see doc of MemMapping)
+			mem_space
+				.state
+				.mappings
+				.insert(new_mapping.get_ptr(), new_mapping)?;
 		}
 		Ok(mem_space)
 	}
@@ -756,7 +747,7 @@ impl MemSpace {
 		let mut off = 0;
 		while off < size_of::<T>() * len {
 			let virt_addr = unsafe { (virt_addr as *const c_void).add(off) };
-			if let Some(mapping) = Self::get_mapping_mut_for_impl(&mut self.mappings, virt_addr) {
+			if let Some(mapping) = self.state.get_mapping_mut_for_ptr(virt_addr) {
 				let page_offset =
 					(virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 				oom::wrap(|| mapping.map(page_offset));
@@ -833,7 +824,7 @@ impl MemSpace {
 				MapResidence::Normal,
 			)?;
 		} else {
-			// Checking the pointer is valid
+			// Check the pointer is valid
 			if ptr < self.brk_init {
 				return Err(AllocError);
 			}
@@ -865,26 +856,22 @@ impl MemSpace {
 		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
 			return false;
 		}
-
-		let Some(mapping) = Self::get_mapping_mut_for_impl(&mut self.mappings, virt_addr) else {
+		let Some(mapping) = self.get_mapping_mut_for_ptr(virt_addr) else {
 			return false;
 		};
-
+		// Check permissions
 		let can_write_mapping = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
 		if code & vmem::x86::PAGE_FAULT_WRITE != 0 && !can_write_mapping {
 			return false;
 		}
-
 		// TODO check exec
-
 		let userspace_mapping = mapping.get_flags() & MAPPING_FLAG_USER != 0;
 		if code & vmem::x86::PAGE_FAULT_USER != 0 && !userspace_mapping {
 			return false;
 		}
-
+		// Map the accessed page
 		let page_offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 		oom::wrap(|| mapping.map(page_offset));
-
 		mapping.update_vmem(page_offset);
 		true
 	}
@@ -892,18 +879,23 @@ impl MemSpace {
 
 impl fmt::Debug for MemSpace {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		writeln!(f, "Mappings:")?;
-		for (_, m) in self.mappings.iter() {
-			writeln!(f, "- {m:?}")?;
+		write!(f, "{{mappings: [")?;
+		for (i, (_, m)) in self.state.mappings.iter().enumerate() {
+			if i + 1 < self.state.mappings.len() {
+				write!(f, "{m:?}, ")?;
+			} else {
+				write!(f, "{m:?}")?;
+			}
 		}
-
-		writeln!(f)?;
-		writeln!(f, "Gaps:")?;
-		for (_, g) in self.gaps.iter() {
-			writeln!(f, "- {g:?}")?;
+		write!(f, "], gaps: [")?;
+		for (i, (_, g)) in self.state.gaps.iter().enumerate() {
+			if i + 1 < self.state.gaps.len() {
+				write!(f, "{g:?}, ")?;
+			} else {
+				write!(f, "{g:?}")?;
+			}
 		}
-
-		Ok(())
+		write!(f, "]}}")
 	}
 }
 
@@ -911,11 +903,6 @@ impl Drop for MemSpace {
 	fn drop(&mut self) {
 		if self.is_bound() {
 			panic!("Dropping a memory space while bound to it");
-		}
-
-		// Unmapping everything to free up physical memory
-		for (_, m) in self.mappings.iter_mut() {
-			oom::wrap(|| m.unmap());
 		}
 	}
 }

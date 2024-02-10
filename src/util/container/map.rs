@@ -1040,6 +1040,15 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		}
 	}
 
+	/// Moves all elements from `other` into `self`, leaving `other` empty.
+	///
+	/// If a key from `other` is already present in `self`, the respective value from `self` will
+	/// be overwritten with the respective value from `other`.
+	pub fn append(&mut self, other: &mut Self) {
+		// TODO
+		todo!()
+	}
+
 	/// Retains only the elements matching the given predicate.
 	///
 	/// This function has complexity `O(n)` in time and `O(1)` in space.
