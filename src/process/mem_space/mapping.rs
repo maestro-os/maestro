@@ -279,7 +279,7 @@ impl MemMapping {
 	///
 	/// If the page is shared, it is not freed but the reference counter is decreased.
 	fn free_phys_page(&mut self, offset: usize) {
-		let mut vmem = self.vmem.lock();
+		let vmem = self.vmem.lock();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			if phys_ptr == get_default_page() {
@@ -405,7 +405,7 @@ impl MemMapping {
 	/// function.
 	///
 	/// The function returns then newly created mapping.
-	pub(super) fn fork<'a>(&mut self, vmem: Arc<Mutex<Box<dyn VMem>>>) -> AllocResult<Self> {
+	pub(super) fn fork(&mut self, vmem: Arc<Mutex<Box<dyn VMem>>>) -> AllocResult<Self> {
 		let mut new_mapping = Self {
 			begin: self.begin,
 			size: self.size,

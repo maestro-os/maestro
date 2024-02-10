@@ -275,7 +275,7 @@ impl MemSpaceState {
 	/// `size` is the minimum size of the gap to be returned.
 	///
 	/// If no gap large enough is available, the function returns `None`.
-	fn get_gap<'a>(&self, size: NonZeroUsize) -> Option<&'a MemGap> {
+	fn get_gap(&self, size: NonZeroUsize) -> Option<&MemGap> {
 		let ((_, ptr), _) = self
 			.gaps_size
 			.range((size, null_mut::<c_void>())..)
@@ -377,7 +377,7 @@ impl MemSpace {
 			brk_init: null_mut::<_>(),
 			brk_ptr: null_mut::<_>(),
 
-			vmem: Arc::try_from(Mutex::new(vmem::new()?))?,
+			vmem: Arc::new(Mutex::new(vmem::new()?))?,
 		};
 		// Create the default gap of memory which is present at the beginning
 		let begin = memory::ALLOC_BEGIN;
@@ -506,79 +506,67 @@ impl MemSpace {
 		if !ptr.is_aligned_to(memory::PAGE_SIZE) {
 			return Err(AllocError);
 		}
-
+		let mut buffer_state = MemSpaceState::default();
+		let mut vmem_usage = self.vmem_usage;
 		// Remove every mappings in the chunk to unmap
 		let mut i = 0;
 		while i < size.get() {
-			// The pointer of the page
+			// The current page's beginning
 			let page_ptr = unsafe { ptr.add(i * memory::PAGE_SIZE) };
 			// The mapping containing the page
 			let Some(mapping) = self.state.get_mapping_mut_for_ptr(page_ptr) else {
+				// TODO jump to new mapping directly
 				i += 1;
 				continue;
 			};
 			// The pointer to the beginning of the mapping
 			let mapping_ptr = mapping.get_begin();
-			// Remove the mapping
-			let mapping = self.mappings.remove(&mapping_ptr).unwrap();
-
-			// The offset in the mapping of the beginning of pages to unmap
+			// TODO do later, perform all insertions before
+			let mapping = self.state.mappings.remove(&mapping_ptr).unwrap();
+			// The offset in the mapping to the beginning of pages to unmap
 			let begin = (page_ptr as usize - mapping_ptr as usize) / memory::PAGE_SIZE;
 			// The number of pages to unmap in the mapping
 			let pages = min(size.get() - i, mapping.get_size().get() - begin);
-
 			// Newly created mappings and gap after removing parts of the previous one
 			let (prev, gap, next) = mapping.partial_unmap(begin, pages);
-
+			// Insert new mappings
 			if let Some(p) = prev {
-				oom::wrap(|| {
-					let map = p.clone();
-					self.mappings.insert(map.get_begin(), map)?;
-					Ok(())
-				});
+				buffer_state.mappings.insert(p.get_begin(), p)?;
 			}
-
+			if let Some(n) = next {
+				buffer_state.mappings.insert(n.get_begin(), n)?;
+			}
 			if !brk {
 				// Insert gap
 				if let Some(mut gap) = gap {
-					self.vmem_usage -= gap.get_size().get();
-
+					vmem_usage -= gap.get_size().get();
 					// Merge previous gap
 					if !gap.get_begin().is_null() {
-						let prev_gap =
-							Self::gap_by_ptr(&self.gaps, unsafe { gap.get_begin().sub(1) });
-
+						let prev_gap_ptr = unsafe { gap.get_begin().sub(1) };
+						let prev_gap = self.state.get_gap_for_ptr(prev_gap_ptr);
 						if let Some(p) = prev_gap {
 							let begin = p.get_begin();
-							let p = self.gap_remove(begin).unwrap();
-
-							gap.merge(p);
+							// TODO perform all insertions before
+							let p = self.state.remove_gap(begin).unwrap();
+							gap = gap.merge(p);
 						}
 					}
-
 					// Merge next gap
-					let next_gap = Self::gap_by_ptr(&self.gaps, gap.get_end());
+					let next_gap = self.state.get_gap_for_ptr(gap.get_end());
 					if let Some(n) = next_gap {
 						let begin = n.get_begin();
-						let n = self.gap_remove(begin).unwrap();
-						gap.merge(n);
+						// TODO perform all insertions before
+						let n = self.state.remove_gap(begin).unwrap();
+						gap = gap.merge(n);
 					}
-
-					oom::wrap(|| self.gap_insert(gap.clone()));
+					buffer_state.insert_gap(gap)?;
 				}
 			}
-
-			if let Some(n) = next {
-				oom::wrap(|| {
-					let map = n.clone();
-					self.mappings.insert(map.get_begin(), map)?;
-					Ok(())
-				});
-			}
-
 			i += pages;
 		}
-
+		// TODO perform remove
+		// TODO merge buffer state
+		self.vmem_usage = vmem_usage;
 		Ok(())
 	}
 
@@ -614,7 +602,7 @@ impl MemSpace {
 		while i < size {
 			// The beginning of the current page
 			let p = (ptr as usize + i) as _;
-			let Some(mapping) = Self::get_mapping_for_impl(&self.mappings, p) else {
+			let Some(mapping) = self.state.get_mapping_for_ptr(p) else {
 				return false;
 			};
 			// Check mapping's flags
@@ -652,10 +640,7 @@ impl MemSpace {
 				'outer: loop {
 					// Safe because not dereferenced before checking if accessible
 					let curr_ptr = ptr.add(i);
-					let Some(mapping) = Self::get_mapping_for_impl(&self.mappings, curr_ptr as _)
-					else {
-						return None;
-					};
+					let mapping = self.state.get_mapping_for_ptr(curr_ptr as _)?;
 					// Check mapping flags
 					let flags = mapping.get_flags();
 					if write && (flags & MAPPING_FLAG_WRITE == 0) {
@@ -700,7 +685,7 @@ impl MemSpace {
 	fn do_fork(&mut self) -> AllocResult<Self> {
 		let vmem = {
 			let vmem = self.vmem.lock();
-			Arc::try_from(Mutex::new(vmem::try_clone(&**vmem)?))?
+			Arc::new(Mutex::new(vmem::try_clone(&**vmem)?))?
 		};
 		let mut mem_space = Self {
 			state: MemSpaceState {
@@ -726,7 +711,7 @@ impl MemSpace {
 			mem_space
 				.state
 				.mappings
-				.insert(new_mapping.get_ptr(), new_mapping)?;
+				.insert(new_mapping.get_begin(), new_mapping)?;
 		}
 		Ok(mem_space)
 	}

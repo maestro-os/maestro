@@ -186,9 +186,9 @@ mod table {
 		let entry = parent[index];
 		let base_addr = (entry & ADDR_MASK) as usize;
 		let (table, _) = unsafe { unwrap_entry(entry) };
-		for i in 0..ENTRIES_PER_TABLE {
+		for (i, e) in table[0..ENTRIES_PER_TABLE].iter_mut().enumerate() {
 			let addr = (base_addr + (i * memory::PAGE_SIZE)) as *const c_void;
-			table[i] = to_entry(addr, flags);
+			*e = to_entry(addr, flags);
 		}
 		Ok(())
 	}

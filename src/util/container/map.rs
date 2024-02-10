@@ -1044,7 +1044,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	///
 	/// If a key from `other` is already present in `self`, the respective value from `self` will
 	/// be overwritten with the respective value from `other`.
-	pub fn append(&mut self, other: &mut Self) {
+	pub fn append(&mut self, _other: &mut Self) {
 		// TODO
 		todo!()
 	}
