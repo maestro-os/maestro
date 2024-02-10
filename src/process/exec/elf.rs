@@ -614,7 +614,8 @@ impl<'s> ELFExecutor<'s> {
 
 		// Switch to the process's vmem to write onto the virtual memory
 		unsafe {
-			vmem::switch(&**mem_space.get_vmem(), move || -> EResult<()> {
+			let vmem = mem_space.get_vmem().lock();
+			vmem::switch(&**vmem, move || -> EResult<()> {
 				// Copy segments' data
 				for seg in elf.iter_segments() {
 					Self::copy_segment(load_base, seg, elf.get_image());
@@ -623,7 +624,6 @@ impl<'s> ELFExecutor<'s> {
 				// Copy phdr's data if necessary
 				if phdr_needs_copy {
 					let image_phdr = &elf.get_image()[(ehdr.e_phoff as usize)..];
-
 					vmem::write_lock_wrap(|| {
 						ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr as _, phdr_size);
 					});
@@ -705,7 +705,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 
 		// The size in bytes of the initial data on the stack
 		let total_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
-		// Pre-allocating pages on the user stack to write the initial data
+		// Pre-allocae pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
 			let pages_count = total_size.div_ceil(memory::PAGE_SIZE);
@@ -714,7 +714,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 				return Err(errno!(ENOMEM));
 			}
 
-			// Allocating the pages on the stack to write the initial data
+			// Allocate the pages on the stack to write the initial data
 			let stack_len = pages_count * memory::PAGE_SIZE;
 			mem_space.alloc((user_stack as usize - stack_len) as *const u8, stack_len)?;
 		}
@@ -723,9 +723,10 @@ impl<'s> Executor for ELFExecutor<'s> {
 		let brk_ptr = unsafe { util::align(load_info.load_end, memory::PAGE_SIZE) };
 		mem_space.set_brk_init(brk_ptr as _);
 
-		// Switching to the process's vmem to write onto the virtual memory
+		// Switch to the process's vmem to write onto the virtual memory
 		unsafe {
-			vmem::switch(&**mem_space.get_vmem(), move || {
+			let vmem = mem_space.get_vmem().lock();
+			vmem::switch(&**vmem, move || {
 				// Initializing the userspace stack
 				self.init_stack(user_stack, &self.info.argv, &self.info.envp, &aux);
 			});

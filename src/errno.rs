@@ -2,7 +2,33 @@
 
 use core::{fmt, fmt::Formatter};
 
-/// Structure representing a location at which an errno was raised.
+/// Allocation error
+#[derive(Debug)]
+pub struct AllocError;
+/// An alias to [`Result`] with [`AllocError`] as error type.
+pub type AllocResult<T> = Result<T, AllocError>;
+
+/// Wrapper for allocation result for the [`Iterator::collect`] function.
+///
+/// In the standard library of Rust, the `collect` function can return a [`Result`],
+/// but only for errors originating for iterator elements itself.
+///
+/// However, if we need to catch memory allocation failures originating from allocations for the
+/// container itself, we need a special type to do that. This is where `CollectResult` comes in.
+///
+/// Example for a container called `Container`:
+/// ```rust
+/// impl<T> FromIterator<T> for CollectResult<Container<T>> {
+/// 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+/// 		// here, collect from the iterator and create the container
+/// 		// if the memory allocation failed, the function can return an `Err` instead
+/// 		Self(Ok(..))
+/// 	}
+/// }
+/// ```
+pub struct CollectResult<C>(pub AllocResult<C>);
+
+/// A location at which an errno was raised.
 #[cfg(config_debug_debug)]
 #[derive(Clone, Copy, Debug)]
 pub struct ErrnoLocation {
@@ -38,7 +64,7 @@ pub struct Errno {
 
 impl From<AllocError> for Errno {
 	fn from(_: AllocError) -> Self {
-		// FIXME on debug, location informations are invalid
+		// FIXME on debug, location information are invalid
 		crate::errno!(ENOMEM)
 	}
 }
@@ -534,32 +560,5 @@ pub const ERFKILL: i32 = 132;
 /// Memory page has hardware error.
 pub const EHWPOISON: i32 = 133;
 
-/// An alias to [`core::result::Result`] with [`Errno`] as error type.
+/// An alias to [`Result`] with [`Errno`] as error type.
 pub type EResult<T> = Result<T, Errno>;
-
-/// Allocation error
-#[derive(Debug)]
-pub struct AllocError;
-
-/// An alias to [`core::result::Result`] with [`AllocError`] as error type.
-pub type AllocResult<T> = Result<T, AllocError>;
-
-/// Wrapper for allocation result for the [`core::iter::Iterator::collect`] function.
-///
-/// In the standard library of Rust, the `collect` function can return a [`core::result::Result`],
-/// but only for errors originating for iterator elements itself.
-///
-/// However, if we need to catch memory allocation failures originating from allocations for the
-/// container itself, we need a special type to do that. This is where `CollectResult` comes in.
-///
-/// Example for a container called `Container`:
-/// ```rust
-/// impl<T> FromIterator<T> for CollectResult<Container<T>> {
-/// 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-/// 		// here, collect from the iterator and create the container
-/// 		// if the memory allocation failed, the function can return an `Err` instead
-/// 		Self(Ok(..))
-/// 	}
-/// }
-/// ```
-pub struct CollectResult<C>(pub AllocResult<C>);

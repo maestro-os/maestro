@@ -6,10 +6,10 @@ use core::{cmp::min, ffi::c_void, fmt, num::NonZeroUsize};
 /// A gap in the memory space that can use for new mappings.
 #[derive(Clone)]
 pub struct MemGap {
-	/// Pointer on the virtual memory to the beginning of the gap
-	begin: *mut c_void,
+	/// Address on the virtual memory to the beginning of the gap
+	pub(super) begin: *mut c_void,
 	/// The size of the gap in pages.
-	size: NonZeroUsize,
+	pub(super) size: NonZeroUsize,
 }
 
 impl MemGap {
@@ -21,7 +21,6 @@ impl MemGap {
 	/// - `size` is the size of the gap in pages.
 	pub fn new(begin: *mut c_void, size: NonZeroUsize) -> Self {
 		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));
-
 		Self {
 			begin,
 			size,
@@ -46,56 +45,44 @@ impl MemGap {
 	/// Creates new gaps to replace the current one after mapping memory onto
 	/// it.
 	///
-	/// After calling this function, the callee shall removed the current
-	/// gap from its container and insert the new ones in it.
-	///
 	/// Arguments:
-	/// - `off` is the offset of the part to consume.
-	/// - `size` is the size of the part to consume.
+	/// - `off` is the offset of the part to consume
+	/// - `size` is the size of the part to consume
 	///
 	/// The function returns a new gap. If the gap is fully consumed, the
 	/// function returns `(None, None)`.
 	pub fn consume(&self, off: usize, size: usize) -> (Option<Self>, Option<Self>) {
 		// The new gap located before the mapping
-		let left = NonZeroUsize::new(off).map(|off| {
-			let addr = self.begin;
-			let size = min(off, self.size);
-
-			Self::new(addr, size)
+		let left = NonZeroUsize::new(off).map(|off| Self {
+			begin: self.begin,
+			size: min(off, self.size),
 		});
-
 		// The new gap located after the mapping
 		let right = self
 			.size
 			.get()
 			.checked_sub(off + size)
 			.and_then(NonZeroUsize::new)
-			.map(|gap_size| {
-				let addr = unsafe { self.begin.add((off + size) * memory::PAGE_SIZE) };
-
-				Self::new(addr, gap_size)
+			.map(|gap_size| Self {
+				begin: unsafe { self.begin.add((off + size) * memory::PAGE_SIZE) },
+				size: gap_size,
 			});
-
 		(left, right)
 	}
 
 	/// Merges the given gap `other` with the current gap.
 	///
 	/// If the gaps are not adjacent, the function does nothing.
-	pub fn merge(&mut self, other: Self) {
-		if self.get_begin() == other.get_end() {
+	pub fn merge(mut self, other: Self) -> Self {
+		if self.begin == other.get_end() {
 			// If `other` is before
 			self.begin = other.begin;
-
-			unsafe {
-				self.size = self.size.unchecked_add(other.size.get());
-			}
-		} else if self.get_end() == other.get_begin() {
+			self.size = self.size.saturating_add(other.size.get());
+		} else if self.get_end() == other.begin {
 			// If `other` is after
-			unsafe {
-				self.size = self.size.unchecked_add(other.size.get());
-			}
+			self.size = self.size.saturating_add(other.size.get());
 		}
+		self
 	}
 }
 
