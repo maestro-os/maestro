@@ -57,7 +57,7 @@ pub struct MemMapping {
 	residence: MapResidence,
 
 	/// Pointer to the virtual memory context handler.
-	vmem: Arc<dyn VMem>,
+	vmem: Arc<Mutex<dyn VMem>>,
 }
 
 impl MemMapping {
@@ -77,7 +77,7 @@ impl MemMapping {
 		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
-		vmem: Arc<dyn VMem>,
+		vmem: Arc<Mutex<dyn VMem>>,
 	) -> Self {
 		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));
 
@@ -109,7 +109,7 @@ impl MemMapping {
 
 	/// Returns a reference to the virtual memory context handler associated
 	/// with the mapping.
-	pub fn get_vmem(&self) -> &Arc<dyn VMem> {
+	pub fn get_vmem(&self) -> &Arc<Mutex<dyn VMem>> {
 		&self.vmem
 	}
 
@@ -123,7 +123,7 @@ impl MemMapping {
 	/// mapping at page offset `offset`.
 	///
 	/// If no page is associated, the function returns `None`.
-	pub fn get_physical_page(&self, offset: usize) -> Option<*const c_void> {
+	fn get_physical_page(&self, offset: usize) -> Option<*const c_void> {
 		if offset >= self.size.get() {
 			return None;
 		}
@@ -140,12 +140,11 @@ impl MemMapping {
 	/// Tells whether the page at offset `offset` in the mapping is shared with another mapping on
 	/// the system or not.
 	pub fn is_shared(&self, offset: usize) -> bool {
-		if let Some(phys_ptr) = self.get_physical_page(offset) {
-			let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-			ref_counter.is_shared(phys_ptr)
-		} else {
-			false
-		}
+		let Some(phys_ptr) = self.get_physical_page(offset) else {
+			return false;
+		};
+		let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
+		ref_counter.is_shared(phys_ptr)
 	}
 
 	/// Tells whether the page at offset `offset` is waiting for Copy-On-Write.

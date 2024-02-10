@@ -83,16 +83,14 @@ use crate::{
 	errno::EResult,
 	file::{fs::initramfs, path::Path, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
-	memory::{vmem, vmem::VMem},
+	memory::vmem,
 	process::{exec, exec::ExecInfo, Process},
 	util::{
-		boxed::Box,
 		container::{string::String, vec::Vec},
 		lock::Mutex,
 	},
 };
-use core::{arch::asm, ffi::c_void, ptr::null};
-use tty::vga;
+use core::{arch::asm, ffi::c_void};
 
 /// The kernel's name.
 pub const NAME: &str = env!("CARGO_PKG_NAME");
@@ -135,68 +133,6 @@ pub fn enter_loop() -> ! {
 /// The callee must ensure the given stack is usable.
 pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
 	kernel_loop_reset(stack);
-}
-
-/// Field storing the kernel's virtual memory context.
-static KERNEL_VMEM: Mutex<Option<Box<dyn VMem>>> = Mutex::new(None);
-
-/// Initializes the kernel's virtual memory context.
-fn init_vmem() -> EResult<()> {
-	let kernel_vmem = vmem::new()?;
-
-	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
-	// the kernel for interrupts
-
-	// TODO Enable GLOBAL in cr4
-
-	// Map kernelspace
-	unsafe {
-		kernel_vmem.map_range(
-			null::<c_void>(),
-			memory::PROCESS_END,
-			memory::get_kernelspace_size() / memory::PAGE_SIZE,
-			vmem::x86::FLAG_WRITE,
-		)?;
-	}
-	// Map VGA's buffer
-	let vga_flags = vmem::x86::FLAG_CACHE_DISABLE
-		| vmem::x86::FLAG_WRITE_THROUGH
-		| vmem::x86::FLAG_WRITE
-		| vmem::x86::FLAG_GLOBAL;
-	unsafe {
-		kernel_vmem.map_range(
-			vga::BUFFER_PHYS as _,
-			vga::get_buffer_virt() as _,
-			1,
-			vga_flags,
-		)?;
-	}
-	// Make the kernel image read-only
-	kernel_vmem.protect_kernel()?;
-
-	// Assign to the global variable
-	*KERNEL_VMEM.lock() = Some(kernel_vmem);
-
-	// Bind the kernel virtual memory context
-	bind_vmem();
-	Ok(())
-}
-
-/// Returns the kernel's virtual memory context.
-pub fn get_vmem() -> &'static Mutex<Option<Box<dyn VMem>>> {
-	&KERNEL_VMEM
-}
-
-/// Binds the kernel's virtual memory context.
-///
-/// If the kernel vmem is not initialized, the function does nothing.
-pub fn bind_vmem() {
-	let guard = KERNEL_VMEM.lock();
-	if let Some(vmem) = guard.as_ref() {
-		unsafe {
-			vmem.bind();
-		}
-	}
 }
 
 /// Launches the init process.
@@ -253,7 +189,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	#[cfg(config_debug_debug)]
 	memory::memmap::print_entries();
 	memory::alloc::init();
-	init_vmem().unwrap_or_else(|e| panic!("Cannot initialize kernel virtual memory! ({e})"));
+	vmem::init()
+		.unwrap_or_else(|_| panic!("Cannot initialize kernel virtual memory! (out of memory)"));
 
 	// From now on, the kernel considers that memory management has been fully
 	// initialized

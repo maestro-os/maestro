@@ -47,10 +47,9 @@ impl MMIO {
 			flags |= vmem::x86::FLAG_CACHE_DISABLE;
 		}
 
-		let mut vmem = crate::get_vmem().lock();
+		let mut vmem = vmem::kernel().lock();
 		unsafe {
 			vmem.as_mut()
-				.unwrap()
 				.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
 		}
 
@@ -76,10 +75,10 @@ impl MMIO {
 	///
 	/// The previously allocated chunk is freed by this function.
 	pub fn unmap(&self) -> AllocResult<()> {
-		let mut vmem = crate::get_vmem().lock();
+		let mut vmem = vmem::kernel().lock();
 		let order = buddy::get_order(self.pages);
 		unsafe {
-			vmem.as_mut().unwrap().map_range(
+			vmem.as_mut().map_range(
 				self.phys_addr,
 				super::kern_to_virt(self.phys_addr),
 				self.pages,

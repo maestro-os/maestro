@@ -245,7 +245,7 @@ pub struct MemSpace {
 	brk_ptr: *mut c_void,
 
 	/// The virtual memory context handler.
-	vmem: Arc<dyn VMem>,
+	vmem: Arc<Mutex<dyn VMem>>,
 }
 
 impl MemSpace {
@@ -388,7 +388,7 @@ impl MemSpace {
 			_ => {}
 		}
 
-		// Mapping informations matching mapping constraints
+		// Mapping information matching mapping constraints
 		let (gap, addr) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
 				self.unmap(addr, size, false)?;

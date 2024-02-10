@@ -10,17 +10,20 @@ use crate::{
 	elf,
 	errno::{AllocError, AllocResult},
 	idt, memory, register_get, register_set,
-	util::{boxed::Box, TryClone},
+	tty::vga,
+	util::{
+		boxed::Box,
+		lock::{once::OnceInit, Mutex},
+		TryClone,
+	},
 };
-use core::ffi::c_void;
+use core::{ffi::c_void, ptr::null};
 
 /// Trait representing virtual memory context handler.
 ///
 /// This trait is the interface to manipulate virtual memory on any architecture.
 ///
 /// Each architecture has its own structure implementing this trait.
-///
-/// Virtual memory contexts use interior mutability.
 pub trait VMem: TryClone<Error = AllocError> {
 	/// Translates the given virtual address `ptr` to the corresponding physical
 	/// address.
@@ -43,7 +46,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 	/// If the context is bound, the caller must ensure that regions of memory to be used by the
 	/// execution context are left valid.
 	unsafe fn map(
-		&self,
+		&mut self,
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
 		flags: u32,
@@ -62,7 +65,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 	/// If the context is bound, the caller must ensure that regions of memory to be used by the
 	/// execution context are left valid.
 	unsafe fn map_range(
-		&self,
+		&mut self,
 		physaddr: *const c_void,
 		virtaddr: *const c_void,
 		pages: usize,
@@ -77,7 +80,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 	///
 	/// If the context is bound, the caller must ensure that regions of memory to be used by the
 	/// execution context are left valid.
-	unsafe fn unmap(&self, virtaddr: *const c_void) -> AllocResult<()>;
+	unsafe fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<()>;
 	/// Unmaps the given range beginning at virtual address `virtaddr` with size
 	/// of `pages` pages.
 	///
@@ -89,7 +92,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 	///
 	/// If the context is bound, the caller must ensure that regions of memory to be used by the
 	/// execution context are left valid.
-	unsafe fn unmap_range(&self, virtaddr: *const c_void, pages: usize) -> AllocResult<()>;
+	unsafe fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> AllocResult<()>;
 
 	/// Binds the virtual memory context handler.
 	///
@@ -111,22 +114,6 @@ pub trait VMem: TryClone<Error = AllocError> {
 	///
 	/// This is an expensive operation for the CPU cache and should be used as few as possible.
 	fn flush(&self);
-
-	/// Protects the kernel's read-only sections from writing.
-	fn protect_kernel(&self) -> AllocResult<()> {
-		let iter = elf::kernel::sections().filter(|s| {
-			s.sh_flags & elf::SHF_WRITE == 0 && s.sh_addralign as usize == memory::PAGE_SIZE
-		});
-		for section in iter {
-			let phys_addr = memory::kern_to_phys(section.sh_addr as _);
-			let virt_addr = memory::kern_to_virt(section.sh_addr as _);
-			let pages = section.sh_size.div_ceil(memory::PAGE_SIZE as _) as usize;
-			unsafe {
-				self.map_range(phys_addr, virt_addr, pages, x86::FLAG_USER)?;
-			}
-		}
-		Ok(())
-	}
 }
 
 /// Creates a new virtual memory context handler for the current architecture.
@@ -222,6 +209,63 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &dyn VMem, f: F) -> T {
 			result
 		}
 	})
+}
+
+/// The kernel's virtual memory context.
+static KERNEL_VMEM: OnceInit<Mutex<Box<dyn VMem>>> = unsafe { OnceInit::new() };
+
+/// Returns a reference to the kernel's virtual memory context.
+pub fn kernel() -> &'static Mutex<Box<dyn VMem>> {
+	KERNEL_VMEM.get()
+}
+
+/// Initializes virtual memory management.
+pub(crate) fn init() -> AllocResult<()> {
+	// Architecture-specific init
+	#[cfg(target_arch = "x86")]
+	{
+		x86::init()?;
+	}
+	// Kernel context init
+	let mut kernel_vmem = new()?;
+	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
+	// the kernel for interrupts
+	// Map kernel
+	unsafe {
+		kernel_vmem.map_range(
+			null::<c_void>(),
+			memory::PROCESS_END,
+			memory::get_kernelspace_size() / memory::PAGE_SIZE,
+			x86::FLAG_WRITE | x86::FLAG_GLOBAL,
+		)?;
+	}
+	// Make the kernel's code read-only
+	let iter = elf::kernel::sections().filter(|s| {
+		s.sh_flags & elf::SHF_WRITE == 0 && s.sh_addralign as usize == memory::PAGE_SIZE
+	});
+	for section in iter {
+		let phys_addr = memory::kern_to_phys(section.sh_addr as _);
+		let virt_addr = memory::kern_to_virt(section.sh_addr as _);
+		let pages = section.sh_size.div_ceil(memory::PAGE_SIZE as _) as usize;
+		unsafe {
+			kernel_vmem.map_range(phys_addr, virt_addr, pages, x86::FLAG_GLOBAL)?;
+		}
+	}
+	// Map VGA buffer
+	unsafe {
+		kernel_vmem.map_range(
+			vga::BUFFER_PHYS as _,
+			vga::get_buffer_virt() as _,
+			1,
+			x86::FLAG_CACHE_DISABLE | x86::FLAG_WRITE_THROUGH | x86::FLAG_WRITE | x86::FLAG_GLOBAL,
+		)?;
+	}
+	// Bind the kernel virtual memory context
+	unsafe {
+		kernel_vmem.bind();
+		KERNEL_VMEM.init(Mutex::new(kernel_vmem));
+	}
+	Ok(())
 }
 
 #[cfg(test)]

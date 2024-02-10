@@ -124,7 +124,7 @@ impl ACPIData {
 
 		// Temporary vmem used to read the data, since it cannot be located anywhere on the
 		// physical memory.
-		let tmp_vmem = vmem::new()?;
+		let mut tmp_vmem = vmem::new()?;
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
 		let rsdt_map_begin = util::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
 		// Map the RSDT to make it readable
@@ -207,7 +207,9 @@ impl ACPIData {
 
 			(begin as usize, dest)
 		};
-		crate::bind_vmem();
+		unsafe {
+			vmem::kernel().lock().bind();
+		}
 
 		Ok(Some(Self {
 			off,
