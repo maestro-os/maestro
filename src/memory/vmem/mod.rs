@@ -295,11 +295,10 @@ mod test {
 
 	#[test_case]
 	fn vmem_map0() {
-		let vmem = new().unwrap();
+		let mut vmem = new().unwrap();
 		unsafe {
 			vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 		}
-
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
@@ -313,12 +312,11 @@ mod test {
 
 	#[test_case]
 	fn vmem_map1() {
-		let vmem = new().unwrap();
+		let mut vmem = new().unwrap();
 		unsafe {
 			vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 			vmem.map(0x200000 as _, 0x100000 as _, 0).unwrap();
 		}
-
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
@@ -335,12 +333,11 @@ mod test {
 
 	#[test_case]
 	fn vmem_unmap0() {
-		let vmem = new().unwrap();
+		let mut vmem = new().unwrap();
 		unsafe {
 			vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 			vmem.unmap(0x100000 as _).unwrap();
 		}
-
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			assert_eq!(vmem.translate(i as _), None);
 		}

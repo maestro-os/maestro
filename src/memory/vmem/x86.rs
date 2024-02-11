@@ -368,7 +368,7 @@ impl VMem for X86VMem {
 		self.check_map(virtaddr, physaddr, false);
 		// Sanitize
 		let physaddr = down_align(physaddr, memory::PAGE_SIZE);
-		let virtaddr = down_align(physaddr, memory::PAGE_SIZE);
+		let virtaddr = down_align(virtaddr, memory::PAGE_SIZE);
 		let flags = (flags & FLAGS_MASK) | FLAG_PRESENT;
 		// Handle first level
 		let index = Self::get_addr_element_index(virtaddr, 1);
