@@ -57,11 +57,11 @@ impl IO for Mounts {
 			return Ok((0, false));
 		}
 
-		// Generating content
+		// Generate content
 		let mut content = String::new();
-		let container = mountpoint::MOUNT_POINTS.lock();
+		let mountpoints = mountpoint::MOUNT_POINTS.lock();
 
-		for (_, mp_mutex) in container.iter() {
+		for (_, mp_mutex) in mountpoints.iter() {
 			let mp = mp_mutex.lock();
 
 			let fs_type = mp.get_filesystem_type();

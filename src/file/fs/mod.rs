@@ -220,10 +220,8 @@ static FS_TYPES: Mutex<HashMap<String, Arc<dyn FilesystemType>>> = Mutex::new(Ha
 /// Registers a new filesystem type.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
 	let name = String::try_from(fs_type.get_name())?;
-
-	let mut container = FS_TYPES.lock();
-	container.insert(name, Arc::new(fs_type)?)?;
-
+	let mut fs_types = FS_TYPES.lock();
+	fs_types.insert(name, Arc::new(fs_type)?)?;
 	Ok(())
 }
 
@@ -231,26 +229,24 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
 ///
 /// If the filesystem type doesn't exist, the function does nothing.
 pub fn unregister(name: &[u8]) {
-	let mut container = FS_TYPES.lock();
-	container.remove(name);
+	let mut fs_types = FS_TYPES.lock();
+	fs_types.remove(name);
 }
 
 /// Returns the filesystem type with name `name`.
 pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
-	let container = FS_TYPES.lock();
-	container.get(name).cloned()
+	let fs_types = FS_TYPES.lock();
+	fs_types.get(name).cloned()
 }
 
 /// Detects the filesystem type on the given IO interface `io`.
 pub fn detect(io: &mut dyn IO) -> EResult<Arc<dyn FilesystemType>> {
-	let container = FS_TYPES.lock();
-
-	for (_, fs_type) in container.iter() {
+	let fs_types = FS_TYPES.lock();
+	for (_, fs_type) in fs_types.iter() {
 		if fs_type.detect(io)? {
 			return Ok(fs_type.clone());
 		}
 	}
-
 	Err(errno!(ENODEV))
 }
 

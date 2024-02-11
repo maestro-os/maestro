@@ -16,9 +16,9 @@ pub type AllocResult<T> = Result<T, AllocError>;
 /// However, if we need to catch memory allocation failures originating from allocations for the
 /// collections itself, we need a special type to do that. This is where `CollectResult` comes in.
 ///
-/// Example for a collections called `Container`:
+/// Example for a collections called `Foo`:
 /// ```rust
-/// impl<T> FromIterator<T> for CollectResult<Container<T>> {
+/// impl<T> FromIterator<T> for CollectResult<Foo<T>> {
 /// 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
 /// 		// here, collect from the iterator and create the collections
 /// 		// if the memory allocation failed, the function can return an `Err` instead

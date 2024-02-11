@@ -206,8 +206,8 @@ fn load_fs(
 	let fs = fs_type.load_filesystem(&mut *io, path, readonly)?;
 
 	// Insert new filesystem into filesystems list
-	let mut container = FILESYSTEMS.lock();
-	container.insert(
+	let mut filesystems = FILESYSTEMS.lock();
+	filesystems.insert(
 		source,
 		LoadedFS {
 			ref_count: 1,
@@ -225,8 +225,8 @@ fn load_fs(
 ///
 /// If the filesystem isn't loaded, the function returns `None`.
 fn get_fs_impl(source: &MountSource, acquire: bool) -> Option<Arc<Mutex<dyn Filesystem>>> {
-	let mut container = FILESYSTEMS.lock();
-	let fs = container.get_mut(source)?;
+	let mut filesystems = FILESYSTEMS.lock();
+	let fs = filesystems.get_mut(source)?;
 	// Increment the number of references if required
 	if acquire {
 		fs.ref_count += 1;
@@ -354,12 +354,12 @@ impl MountPoint {
 impl Drop for MountPoint {
 	fn drop(&mut self) {
 		// Decrement the number of references to the filesystem
-		let mut container = FILESYSTEMS.lock();
-		if let Some(fs) = container.get_mut(&self.source) {
+		let mut filesystems = FILESYSTEMS.lock();
+		if let Some(fs) = filesystems.get_mut(&self.source) {
 			fs.ref_count -= 1;
 			// If no reference left, drop
 			if fs.ref_count == 0 {
-				container.remove(&self.source);
+				filesystems.remove(&self.source);
 			}
 		}
 	}
@@ -461,16 +461,15 @@ pub fn remove(target_location: &FileLocation) -> EResult<()> {
 ///
 /// If it doesn't exist, the function returns `None`.
 pub fn from_id(id: u32) -> Option<Arc<Mutex<MountPoint>>> {
-	let container = MOUNT_POINTS.lock();
-	container.get(&id).cloned()
+	MOUNT_POINTS.lock().get(&id).cloned()
 }
 
 /// Returns the mountpoint that is mounted at the given `target_location`.
 ///
 /// If it doesn't exist, the function returns `None`.
 pub fn from_location(target_location: &FileLocation) -> Option<Arc<Mutex<MountPoint>>> {
-	let container = LOC_TO_ID.lock();
-	let id = container.get(target_location)?;
+	let loc_to_id = LOC_TO_ID.lock();
+	let id = loc_to_id.get(target_location)?;
 	from_id(*id)
 }
 

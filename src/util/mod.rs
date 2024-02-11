@@ -1,7 +1,7 @@
 //! Utilities used everywhere in the kernel and modules.
 //!
-//! Some features in this module, especially containers are not usable before memory allocation is
-//! initialized.
+//! Some features in this module, especially *collections* are **not** usable before memory
+//! allocation is initialized.
 
 pub mod boxed;
 pub mod bytes;

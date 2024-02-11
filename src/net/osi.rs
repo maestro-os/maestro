@@ -26,14 +26,14 @@ pub trait Layer {
 /// Function used to build a layer from a given sockaddr structure.
 pub type LayerBuilder = fn(&[u8]) -> Result<Box<dyn Layer>, Errno>;
 
-/// Container of OSI layers 3 (network)
+/// Collection of OSI layers 3 (network)
 static DOMAINS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
-/// Container of OSI layers 4 (transport)
+/// Collection of OSI layers 4 (transport)
 static PROTOCOLS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
 
-/// Container of default protocols ID for domain/type pairs.
+/// Collection of default protocols ID for domain/type pairs.
 ///
-/// If this collections doesn't contain a pair, it is considered invalid.
+/// If this collection doesn't contain a pair, it is considered invalid.
 static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, SocketType), u32>> = Mutex::new(HashMap::new());
 
 /// A stack of layers for a socket.
