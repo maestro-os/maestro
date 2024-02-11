@@ -1,12 +1,11 @@
 //! Implementation of the [`BTreeMap`] object.
 //!
-//! See (Rust's documentation)[https://doc.rust-lang.org/std/collections/struct.BTreeMap.html] for details.
+//! See [Rust's documentation](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html) for details.
 
 #[cfg(config_debug_debug)]
 use crate::util::collections::vec::Vec;
 use crate::{
 	errno::AllocResult,
-	memory,
 	memory::malloc,
 	util::{AllocError, TryClone},
 };
@@ -796,13 +795,13 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		Self::foreach_node(
 			root,
 			&mut |n: &Node<K, V>| {
-				assert!(n as *const _ as usize >= memory::PROCESS_END as usize);
+				assert!(n as *const _ as usize >= crate::memory::PROCESS_END as usize);
 				for e in explored_nodes.iter() {
 					assert_ne!(*e, n as *const _ as *const c_void);
 				}
 				explored_nodes.push(n as *const _ as *const c_void).unwrap();
 				if let Some(left) = n.get_left() {
-					assert!(left as *const _ as usize >= memory::PROCESS_END as usize);
+					assert!(left as *const _ as usize >= crate::memory::PROCESS_END as usize);
 					assert!(ptr::eq(
 						left.get_parent().unwrap() as *const _,
 						n as *const _
@@ -810,7 +809,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 					assert!(left.key <= n.key);
 				}
 				if let Some(right) = n.get_right() {
-					assert!(right as *const _ as usize >= memory::PROCESS_END as usize);
+					assert!(right as *const _ as usize >= crate::memory::PROCESS_END as usize);
 					assert!(ptr::eq(
 						right.get_parent().unwrap() as *const _,
 						n as *const _
@@ -918,6 +917,21 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// This function has complexity `O(n)` in time and `O(1)` in space.
 	pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut pred: F) {
 		self.drain_filter(|k, v| !pred(k, v));
+	}
+
+	/// Removes all elements.
+	pub fn clear(&mut self) {
+		let Some(root) = self.get_root() else {
+			return;
+		};
+		Self::foreach_node_mut(
+			root,
+			&mut |n| unsafe {
+				drop_node(n.into());
+			},
+			TraversalOrder::PostOrder,
+		);
+		self.len = 0;
 	}
 }
 
@@ -1170,17 +1184,7 @@ impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
 
 impl<K: Ord, V> Drop for BTreeMap<K, V> {
 	fn drop(&mut self) {
-		let Some(root) = self.get_root() else {
-			return;
-		};
-
-		Self::foreach_node_mut(
-			root,
-			&mut |n| unsafe {
-				drop_node(n.into());
-			},
-			TraversalOrder::PostOrder,
-		);
+		self.clear();
 	}
 }
 
