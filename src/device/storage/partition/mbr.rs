@@ -5,7 +5,7 @@
 //! alongside with the boot code.
 
 use super::{Partition, Table};
-use crate::{device::storage::StorageInterface, errno::Errno, util::container::vec::Vec};
+use crate::{device::storage::StorageInterface, errno::Errno, util::collections::vec::Vec};
 
 /// The signature of the MBR partition table.
 const MBR_SIGNATURE: u16 = 0xaa55;

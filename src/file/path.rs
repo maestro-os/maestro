@@ -4,7 +4,7 @@ use crate::{
 	errno,
 	errno::{AllocError, AllocResult, CollectResult, EResult, Errno},
 	limits,
-	util::{container::string::String, DisplayableStr, TryClone},
+	util::{collections::string::String, DisplayableStr, TryClone},
 };
 use core::{borrow::Borrow, fmt, fmt::Formatter, hash::Hash, iter::FusedIterator, ops::Deref};
 

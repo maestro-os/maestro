@@ -86,7 +86,7 @@ use crate::{
 	memory::vmem,
 	process::{exec, exec::ExecInfo, Process},
 	util::{
-		container::{string::String, vec::Vec},
+		collections::{string::String, vec::Vec},
 		lock::Mutex,
 	},
 };

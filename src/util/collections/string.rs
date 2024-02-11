@@ -2,7 +2,7 @@
 
 use crate::{
 	errno::{AllocResult, CollectResult},
-	util::{container::vec::Vec, AllocError, TryClone},
+	util::{collections::vec::Vec, AllocError, TryClone},
 };
 use core::{
 	borrow::{Borrow, BorrowMut},
@@ -317,7 +317,7 @@ pub fn _format(args: fmt::Arguments) -> AllocResult<String> {
 #[macro_export]
 macro_rules! format {
 	($($arg:tt)*) => {{
-		$crate::util::container::string::_format(format_args!($($arg)*))
+		$crate::util::collections::string::_format(format_args!($($arg)*))
 	}};
 }
 

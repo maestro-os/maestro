@@ -2,7 +2,7 @@
 
 use crate::{
 	errno::Errno,
-	util::container::{ring_buffer::RingBuffer, vec::Vec},
+	util::collections::{ring_buffer::RingBuffer, vec::Vec},
 };
 use core::mem::size_of;
 

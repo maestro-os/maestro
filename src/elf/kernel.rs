@@ -4,7 +4,7 @@ use super::{ELF32SectionHeader, ELF32Sym, SHT_SYMTAB};
 use crate::{
 	errno::{AllocResult, CollectResult},
 	memory, multiboot, util,
-	util::{container::hashmap::HashMap, lock::once::OnceInit},
+	util::{collections::hashmap::HashMap, lock::once::OnceInit},
 };
 use core::ffi::c_void;
 

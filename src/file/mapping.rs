@@ -6,7 +6,7 @@ use crate::{
 	file::FileLocation,
 	memory,
 	memory::buddy,
-	util::{container::hashmap::HashMap, lock::Mutex},
+	util::{collections::hashmap::HashMap, lock::Mutex},
 };
 use core::ptr::NonNull;
 

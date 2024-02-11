@@ -20,7 +20,7 @@ use crate::{
 	},
 	util::{
 		boxed::Box,
-		container::{hashmap::HashMap, string::String},
+		collections::{hashmap::HashMap, string::String},
 		io::IO,
 		lock::Mutex,
 		ptr::arc::Arc,

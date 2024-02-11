@@ -14,7 +14,7 @@ use crate::{
 	file::perm::{AccessProfile, ROOT_GID, ROOT_UID},
 	net::sockaddr::{SockAddrIn, SockAddrIn6},
 	util::{
-		container::{hashmap::HashMap, string::String, vec::Vec},
+		collections::{hashmap::HashMap, string::String, vec::Vec},
 		lock::Mutex,
 		ptr::arc::Arc,
 	},

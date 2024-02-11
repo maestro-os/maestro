@@ -15,7 +15,7 @@ use crate::{
 	process::oom,
 	util::{
 		boxed::Box,
-		container::{string::String, vec::Vec},
+		collections::{string::String, vec::Vec},
 		io::IO,
 		TryClone,
 	},

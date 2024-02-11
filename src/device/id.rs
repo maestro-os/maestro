@@ -3,7 +3,7 @@
 use crate::{
 	device::DeviceType,
 	errno::AllocResult,
-	util::{container::id_allocator::IDAllocator, lock::Mutex},
+	util::{collections::id_allocator::IDAllocator, lock::Mutex},
 };
 use core::cell::OnceCell;
 

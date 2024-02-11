@@ -16,7 +16,7 @@ use crate::{
 		FileContent, INode, Mode,
 	},
 	util::{
-		container::{hashmap::HashMap, string::String},
+		collections::{hashmap::HashMap, string::String},
 		io::IO,
 		lock::Mutex,
 		ptr::arc::Arc,

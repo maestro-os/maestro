@@ -3,7 +3,7 @@
 
 use crate::{
 	errno::{AllocError, AllocResult},
-	util::container::bitfield::Bitfield,
+	util::collections::bitfield::Bitfield,
 };
 
 /// Structure representing an identifier allocator.

@@ -5,7 +5,7 @@
 
 pub mod boxed;
 pub mod bytes;
-pub mod container;
+pub mod collections;
 pub mod io;
 pub mod lock;
 pub mod math;

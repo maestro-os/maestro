@@ -6,7 +6,7 @@ use crate::{
 	errno,
 	errno::EResult,
 	process::{mem_space::ptr::SyscallString, regs::Regs, scheduler, Process, State},
-	util::container::{string::String, vec::Vec},
+	util::collections::{string::String, vec::Vec},
 };
 use core::mem::size_of;
 

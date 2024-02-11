@@ -144,8 +144,8 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 	/// Clears the buffer.
 	#[inline(always)]
 	pub fn clear(&mut self) {
-		// FIXME: Elements in the container must be dropped here. However, using another container
-		// for storage might result in double dropping
+		// FIXME: Elements in the collections must be dropped here. However, using another
+		// collections for storage might result in double dropping
 
 		self.read_cursor = 0;
 		self.write_cursor = 0;

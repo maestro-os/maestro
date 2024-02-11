@@ -10,7 +10,7 @@ use crate::{
 	file::{
 		path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileContent, FileType,
 	},
-	util::{container::hashmap::HashMap, io::IO, lock::Mutex, ptr::arc::Arc},
+	util::{collections::hashmap::HashMap, io::IO, lock::Mutex, ptr::arc::Arc},
 };
 use cpio::CPIOParser;
 

@@ -24,7 +24,7 @@ use crate::{
 	process::mem_space::{ptr::SyscallPtr, MemSpace},
 	syscall::ioctl,
 	util::{
-		container::vec::Vec,
+		collections::vec::Vec,
 		io::IO,
 		lock::{IntMutex, Mutex},
 		ptr::arc::{Arc, Weak},

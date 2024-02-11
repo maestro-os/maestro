@@ -19,7 +19,7 @@ use crate::{
 	tty::termios::Termios,
 	util,
 	util::{
-		container::vec::Vec,
+		collections::vec::Vec,
 		io,
 		lock::{IntMutex, MutexGuard},
 		ptr::arc::Arc,

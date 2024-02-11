@@ -39,7 +39,7 @@ use crate::{
 	syscall::ioctl,
 	util::{
 		boxed::Box,
-		container::{hashmap::HashMap, vec::Vec},
+		collections::{hashmap::HashMap, vec::Vec},
 		io::IO,
 		lock::{IntMutex, Mutex},
 		ptr::arc::Arc,

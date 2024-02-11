@@ -478,8 +478,8 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			None => {
 				// Allocate space, then retry
 				self.reserve(1)?;
-				// The insertion cannot fail because the container is guaranteed to have space for
-				// the new object
+				// The insertion cannot fail because the collections is guaranteed to have space
+				// for the new object
 				self.insert(key, value).unwrap();
 				Ok(None)
 			}

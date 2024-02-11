@@ -20,8 +20,8 @@ use crate::{
 	process::{pid::Pid, regs::Regs, Process, State},
 	time,
 	util::{
-		container::{
-			map::{Map, MapIterator},
+		collections::{
+			btreemap::{BTreeMap, MapIterator},
 			vec::Vec,
 		},
 		lock::*,
@@ -52,7 +52,7 @@ pub struct Scheduler {
 
 	/// A binary tree containing all processes registered to the current
 	/// scheduler.
-	processes: Map<Pid, Arc<IntMutex<Process>>>,
+	processes: BTreeMap<Pid, Arc<IntMutex<Process>>>,
 	/// The currently running process with its PID.
 	curr_proc: Option<(Pid, Arc<IntMutex<Process>>)>,
 
@@ -92,7 +92,7 @@ impl Scheduler {
 			tick_callback_hook,
 			total_ticks: 0,
 
-			processes: Map::new(),
+			processes: BTreeMap::new(),
 			curr_proc: None,
 
 			running_procs: 0,

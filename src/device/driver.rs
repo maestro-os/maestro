@@ -5,7 +5,7 @@ use crate::{
 	device::manager::PhysicalDevice,
 	errno::AllocResult,
 	util::{
-		container::vec::Vec,
+		collections::vec::Vec,
 		lock::Mutex,
 		ptr::arc::{Arc, Weak},
 	},

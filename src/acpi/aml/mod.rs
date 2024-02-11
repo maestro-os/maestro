@@ -7,7 +7,7 @@ mod term_obj;
 mod type1_opcode;
 mod type2_opcode;
 
-use crate::util::container::string::String;
+use crate::util::collections::string::String;
 use core::ops::Range;
 use macros::Parseable;
 use term_obj::TermList;

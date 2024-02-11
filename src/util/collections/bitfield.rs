@@ -2,7 +2,7 @@
 
 use crate::{
 	errno::AllocResult,
-	util::{bit_size_of, container::vec::Vec, TryClone},
+	util::{bit_size_of, collections::vec::Vec, TryClone},
 };
 
 /// A bitfield is a data structure meant to contain only boolean values.

@@ -19,7 +19,7 @@ use crate::{
 	errno::EResult,
 	limits,
 	process::Process,
-	util::{container::string::String, io::IO, lock::Mutex, ptr::arc::Arc, TryClone},
+	util::{collections::string::String, io::IO, lock::Mutex, ptr::arc::Arc, TryClone},
 };
 use core::ptr::NonNull;
 

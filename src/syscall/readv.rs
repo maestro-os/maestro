@@ -10,7 +10,7 @@ use crate::{
 		mem_space::{ptr::SyscallSlice, MemSpace},
 		scheduler, Process,
 	},
-	util::{container::vec::Vec, io, io::IO},
+	util::{collections::vec::Vec, io, io::IO},
 };
 use core::{cmp::min, ffi::c_int};
 use macros::syscall;

@@ -12,7 +12,7 @@ use crate::{
 		clock::CLOCK_MONOTONIC,
 		unit::{Timestamp, TimestampScale},
 	},
-	util::{container::vec::Vec, io::IO},
+	util::{collections::vec::Vec, io::IO},
 };
 use core::cmp::{max, min};
 

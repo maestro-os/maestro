@@ -15,7 +15,7 @@ use crate::{
 		DirEntry, FileContent, FileType, Mode,
 	},
 	process::{oom, pid::Pid, Process},
-	util::{boxed::Box, container::hashmap::HashMap, io::IO},
+	util::{boxed::Box, collections::hashmap::HashMap, io::IO},
 };
 use cmdline::Cmdline;
 use cwd::Cwd;

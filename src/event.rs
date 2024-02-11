@@ -7,7 +7,7 @@ use crate::{
 	idt::pic,
 	process::{regs::Regs, tss::TSS},
 	util,
-	util::{boxed::Box, container::vec::Vec, lock::*},
+	util::{boxed::Box, collections::vec::Vec, lock::*},
 };
 use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
 

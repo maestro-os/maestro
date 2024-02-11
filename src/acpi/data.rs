@@ -13,7 +13,7 @@ use crate::{
 	memory,
 	memory::{malloc, vmem},
 	util,
-	util::{boxed::Box, container::hashmap::HashMap},
+	util::{boxed::Box, collections::hashmap::HashMap},
 };
 use core::{
 	ffi::c_void,

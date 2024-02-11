@@ -11,7 +11,7 @@ use crate::{
 	},
 	syscall::ioctl,
 	util::{
-		container::{ring_buffer::RingBuffer, vec::Vec},
+		collections::{ring_buffer::RingBuffer, vec::Vec},
 		io,
 		io::IO,
 		lock::IntMutex,

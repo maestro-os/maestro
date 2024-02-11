@@ -20,7 +20,7 @@ use crate::{
 	errno::{CollectResult, EResult, Errno},
 	io, memory,
 	memory::mmio::MMIO,
-	util::container::vec::Vec,
+	util::collections::vec::Vec,
 };
 use core::{cmp::min, mem::size_of};
 

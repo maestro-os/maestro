@@ -14,7 +14,7 @@ use crate::{
 		Process,
 	},
 	util::{
-		container::{string::String, vec::Vec},
+		collections::{string::String, vec::Vec},
 		io::IO,
 		lock::Mutex,
 		ptr::arc::Arc,

@@ -4,7 +4,7 @@ use crate::{
 	crypto::chacha20,
 	errno::AllocResult,
 	util::{
-		container::{ring_buffer::RingBuffer, vec::Vec},
+		collections::{ring_buffer::RingBuffer, vec::Vec},
 		lock::IntMutex,
 	},
 };

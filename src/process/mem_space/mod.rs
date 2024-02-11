@@ -18,7 +18,7 @@ use crate::{
 	util,
 	util::{
 		boxed::Box,
-		container::{hashmap::HashMap, map::Map, vec::Vec},
+		collections::{btreemap::BTreeMap, hashmap::HashMap, vec::Vec},
 		lock::Mutex,
 		ptr::arc::Arc,
 		TryClone,
@@ -248,15 +248,16 @@ impl MapConstraint {
 struct MemSpaceState {
 	/// Binary tree storing the list of memory gaps, ready for new mappings.
 	///
-	/// The container is sorted by pointer to the beginning of the mapping on the virtual memory.
-	gaps: Map<*mut c_void, MemGap>,
+	/// The collections is sorted by pointer to the beginning of the mapping on the virtual
+	/// memory.
+	gaps: BTreeMap<*mut c_void, MemGap>,
 	/// Binary tree storing the list of memory gaps, sorted by size and then by
 	/// beginning address.
-	gaps_size: Map<(NonZeroUsize, *mut c_void), ()>,
+	gaps_size: BTreeMap<(NonZeroUsize, *mut c_void), ()>,
 	/// Binary tree storing the list of memory mappings.
 	///
 	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
-	mappings: Map<*mut c_void, MemMapping>,
+	mappings: BTreeMap<*mut c_void, MemMapping>,
 }
 
 impl MemSpaceState {
@@ -742,7 +743,7 @@ impl MemSpace {
 			state: MemSpaceState {
 				gaps: self.state.gaps.try_clone()?,
 				gaps_size: self.state.gaps_size.try_clone()?,
-				mappings: Map::new(),
+				mappings: BTreeMap::new(),
 			},
 
 			vmem_usage: self.vmem_usage,

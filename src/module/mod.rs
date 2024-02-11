@@ -23,7 +23,7 @@ use crate::{
 	errno::EResult,
 	memory::malloc,
 	util::{
-		container::{hashmap::HashMap, string::String, vec::Vec},
+		collections::{hashmap::HashMap, string::String, vec::Vec},
 		lock::Mutex,
 		DisplayableStr, TryClone,
 	},

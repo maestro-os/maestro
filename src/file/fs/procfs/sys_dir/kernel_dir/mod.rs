@@ -10,7 +10,7 @@ use crate::{
 		perm::{Gid, Uid},
 		DirEntry, FileContent, FileType, Mode,
 	},
-	util::{boxed::Box, container::hashmap::HashMap, io::IO},
+	util::{boxed::Box, collections::hashmap::HashMap, io::IO},
 };
 use osrelease::OsRelease;
 

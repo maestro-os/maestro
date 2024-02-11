@@ -9,7 +9,7 @@ use crate::{
 	time::unit::Timestamp,
 	util::{
 		boxed::Box,
-		container::{hashmap::HashMap, string::String},
+		collections::{hashmap::HashMap, string::String},
 		lock::Mutex,
 		math::rational::Rational,
 	},

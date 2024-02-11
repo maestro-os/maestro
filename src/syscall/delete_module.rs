@@ -5,7 +5,7 @@ use crate::{
 	errno::Errno,
 	module,
 	process::{mem_space::ptr::SyscallString, Process},
-	util::container::string::String,
+	util::collections::string::String,
 };
 use core::ffi::c_uint;
 use macros::syscall;

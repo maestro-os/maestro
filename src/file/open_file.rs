@@ -14,7 +14,7 @@ use crate::{
 	syscall::ioctl,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 	util::{
-		container::hashmap::HashMap,
+		collections::hashmap::HashMap,
 		io::IO,
 		lock::{IntMutex, Mutex},
 		ptr::arc::Arc,

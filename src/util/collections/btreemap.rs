@@ -1,7 +1,7 @@
-//! This module implements the binary tree container.
+//! Implementation of the [`BTreeMap`] object. See (Rust's documentation)[https://doc.rust-lang.org/std/collections/struct.BTreeMap.html#method.new] for details.
 
 #[cfg(config_debug_debug)]
-use crate::util::container::vec::Vec;
+use crate::util::collections::vec::Vec;
 use crate::{
 	errno::AllocResult,
 	memory,
@@ -306,7 +306,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	}
 }
 
-/// Specify the order in which the tree is to be traversed.
+/// Specifies the order in which the tree is to be traversed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TraversalOrder {
 	/// Accesses the data, then left child, then right child
@@ -319,22 +319,21 @@ pub enum TraversalOrder {
 	PostOrder,
 }
 
-/// A binary tree is a structure which allows, when properly balanced, to
-/// performs actions (insertion, removal, searching) in `O(log n)` complexity.
-pub struct Map<K: 'static + Ord, V: 'static> {
+/// The implementation of the [`BTreeMap`] object.
+pub struct BTreeMap<K: 'static + Ord, V: 'static> {
 	/// The root node of the binary tree.
 	root: UnsafeCell<Option<NonNull<Node<K, V>>>>,
 	/// The current number of elements in the tree.
 	len: usize,
 }
 
-impl<K: 'static + Ord, V: 'static> Default for Map<K, V> {
+impl<K: 'static + Ord, V: 'static> Default for BTreeMap<K, V> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<K: 'static + Ord, V: 'static> Map<K, V> {
+impl<K: 'static + Ord, V: 'static> BTreeMap<K, V> {
 	/// Creates a new binary tree.
 	pub const fn new() -> Self {
 		Self {
@@ -855,7 +854,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	pub fn iter(&self) -> MapIterator<K, V> {
 		let node = self
 			.get_root()
-			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
+			.map(|n| NonNull::new(BTreeMap::get_leftmost_node(n)).unwrap());
 		MapIterator {
 			tree: self,
 			node,
@@ -870,7 +869,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	pub fn iter_mut(&mut self) -> MapMutIterator<K, V> {
 		let node = self
 			.get_root()
-			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
+			.map(|n| NonNull::new(BTreeMap::get_leftmost_node(n)).unwrap());
 		MapMutIterator {
 			tree: self,
 			node,
@@ -919,7 +918,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	{
 		let node = self
 			.get_root()
-			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
+			.map(|n| NonNull::new(BTreeMap::get_leftmost_node(n)).unwrap());
 		DrainFilter {
 			tree: self,
 
@@ -973,7 +972,7 @@ fn next_node<K: Ord + 'static, V: 'static>(node: &Node<K, V>) -> Option<&'static
 /// An iterator for the Map structure. This iterator traverses the tree in pre-order.
 pub struct MapIterator<'m, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
-	tree: &'m Map<K, V>,
+	tree: &'m BTreeMap<K, V>,
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
 	/// The number of nodes travelled so far.
@@ -1000,7 +999,7 @@ impl<'m, K: 'static + Ord, V> Iterator for MapIterator<'m, K, V> {
 	}
 }
 
-impl<'m, K: 'static + Ord, V> IntoIterator for &'m Map<K, V> {
+impl<'m, K: 'static + Ord, V> IntoIterator for &'m BTreeMap<K, V> {
 	type IntoIter = MapIterator<'m, K, V>;
 	type Item = (&'m K, &'m V);
 
@@ -1026,7 +1025,7 @@ unsafe impl<'m, K: Ord, V> TrustedLen for MapIterator<'m, K, V> {}
 /// This iterator traverses the tree in pre-order.
 pub struct MapMutIterator<'m, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
-	tree: &'m mut Map<K, V>,
+	tree: &'m mut BTreeMap<K, V>,
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
 	/// The number of nodes travelled so far.
@@ -1053,7 +1052,7 @@ impl<'m, K: 'static + Ord, V> Iterator for MapMutIterator<'m, K, V> {
 	}
 }
 
-impl<'m, K: 'static + Ord, V> IntoIterator for &'m mut Map<K, V> {
+impl<'m, K: 'static + Ord, V> IntoIterator for &'m mut BTreeMap<K, V> {
 	type IntoIter = MapMutIterator<'m, K, V>;
 	type Item = (&'m K, &'m mut V);
 
@@ -1125,7 +1124,7 @@ where
 	F: FnMut(&K, &mut V) -> bool,
 {
 	/// The tree to iterate on.
-	tree: &'m mut Map<K, V>,
+	tree: &'m mut BTreeMap<K, V>,
 
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
@@ -1154,7 +1153,7 @@ impl<'m, K: Ord + 'static, V: 'static, F: FnMut(&K, &mut V) -> bool> Iterator
 		let next = self
 			.tree
 			.get_root()
-			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
+			.map(|n| NonNull::new(BTreeMap::get_leftmost_node(n)).unwrap());
 		// remove the current node
 		let (k, v) = self.tree.remove_node(node);
 		// place cursor on next node
@@ -1165,7 +1164,7 @@ impl<'m, K: Ord + 'static, V: 'static, F: FnMut(&K, &mut V) -> bool> Iterator
 }
 
 impl<K: 'static + TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> TryClone
-	for Map<K, V>
+	for BTreeMap<K, V>
 {
 	type Error = E;
 
@@ -1178,7 +1177,7 @@ impl<K: 'static + TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<All
 	}
 }
 
-impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
+impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let Some(root) = self.get_root() else {
 			return write!(f, "<Empty tree>");
@@ -1200,7 +1199,7 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 	}
 }
 
-impl<K: 'static + Ord, V> Drop for Map<K, V> {
+impl<K: 'static + Ord, V> Drop for BTreeMap<K, V> {
 	fn drop(&mut self) {
 		let Some(root) = self.get_root() else {
 			return;
@@ -1222,14 +1221,14 @@ mod test {
 
 	#[test_case]
 	fn binary_tree0() {
-		let b = Map::<i32, ()>::new();
+		let b = BTreeMap::<i32, ()>::new();
 		assert!(b.get(0).is_none());
 		assert_eq!(b.len(), 0);
 	}
 
 	#[test_case]
 	fn binary_tree_insert0() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		b.insert(0, 0).unwrap();
 		assert_eq!(*b.get(0).unwrap(), 0);
@@ -1238,7 +1237,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_insert1() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in 0..10 {
 			b.insert(i, i).unwrap();
@@ -1252,7 +1251,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_insert2() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
@@ -1266,7 +1265,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_insert3() {
-		let mut b = Map::<u32, u32>::new();
+		let mut b = BTreeMap::<u32, u32>::new();
 
 		let mut val = 0;
 		for i in 0..100 {
@@ -1284,7 +1283,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove0() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
@@ -1313,7 +1312,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove1() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
@@ -1335,7 +1334,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove2() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in (-9..10).rev() {
 			b.insert(i, i).unwrap();
@@ -1356,7 +1355,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove3() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in (-9..10).rev() {
 			b.insert(i, i).unwrap();
@@ -1373,7 +1372,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove4() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
@@ -1385,7 +1384,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_remove5() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
@@ -1414,13 +1413,13 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_iter0() {
-		let b = Map::<i32, i32>::new();
+		let b = BTreeMap::<i32, i32>::new();
 		assert_eq!(b.iter().count(), 0);
 	}
 
 	#[test_case]
 	fn binary_tree_iter1() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
@@ -1433,7 +1432,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_range0() {
-		let b = Map::<i32, i32>::new();
+		let b = BTreeMap::<i32, i32>::new();
 		assert_eq!(b.range(..).count(), 0);
 		assert_eq!(b.range(0..).count(), 0);
 		assert_eq!(b.range(1..).count(), 0);
@@ -1443,7 +1442,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_range1() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
@@ -1465,7 +1464,7 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_drain0() {
-		let mut b = Map::<i32, i32>::new();
+		let mut b = BTreeMap::<i32, i32>::new();
 
 		for i in -9..10 {
 			b.insert(i, i).unwrap();

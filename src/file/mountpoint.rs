@@ -13,7 +13,7 @@ use crate::{
 	errno::{AllocResult, EResult},
 	file::vfs::ResolutionSettings,
 	util::{
-		container::{hashmap::HashMap, string::String},
+		collections::{hashmap::HashMap, string::String},
 		io::{DummyIO, IO},
 		lock::Mutex,
 		ptr::arc::Arc,

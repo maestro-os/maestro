@@ -10,7 +10,7 @@ use crate::{
 		FileContent,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
-	util::container::hashmap::HashMap,
+	util::collections::hashmap::HashMap,
 };
 use macros::syscall;
 

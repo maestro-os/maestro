@@ -43,7 +43,7 @@ use crate::{
 	tty,
 	tty::TTYHandle,
 	util::{
-		container::{bitfield::Bitfield, string::String, vec::Vec},
+		collections::{bitfield::Bitfield, string::String, vec::Vec},
 		lock::*,
 		ptr::arc::{Arc, Weak},
 		TryClone,

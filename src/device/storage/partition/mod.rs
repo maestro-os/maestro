@@ -7,7 +7,7 @@ mod mbr;
 use super::StorageInterface;
 use crate::{
 	errno::Errno,
-	util::{boxed::Box, container::vec::Vec},
+	util::{boxed::Box, collections::vec::Vec},
 };
 use gpt::Gpt;
 use mbr::MbrTable;

@@ -39,7 +39,7 @@ use crate::{
 	memory::malloc,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 	util::{
-		container::{hashmap::HashMap, string::String, vec::Vec},
+		collections::{hashmap::HashMap, string::String, vec::Vec},
 		io::IO,
 		lock::Mutex,
 		math,

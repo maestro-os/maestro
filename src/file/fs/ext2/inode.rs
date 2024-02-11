@@ -11,7 +11,7 @@ use crate::{
 	file::{FileType, Mode},
 	limits,
 	memory::malloc,
-	util::{boxed::Box, container::string::String, io::IO},
+	util::{boxed::Box, collections::string::String, io::IO},
 };
 use core::{
 	cmp::{max, min},

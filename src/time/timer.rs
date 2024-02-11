@@ -15,7 +15,7 @@ use crate::{
 	},
 	time::unit::Timespec32,
 	util::{
-		container::{hashmap::HashMap, id_allocator::IDAllocator, map::Map},
+		collections::{btreemap::BTreeMap, hashmap::HashMap, id_allocator::IDAllocator},
 		lock::IntMutex,
 	},
 };
@@ -166,7 +166,7 @@ impl Timer {
 	/// On allocation error, the function returns an error.
 	fn reset(
 		&mut self,
-		queue: &mut Map<(Timespec, Pid, TimerT), ()>,
+		queue: &mut BTreeMap<(Timespec, Pid, TimerT), ()>,
 		ts: Timespec,
 		pid: Pid,
 		timer_id: TimerT,
@@ -269,7 +269,8 @@ impl Drop for TimerManager {
 /// - the timestamp at which the timer will fire next
 /// - the PID of the process owning the timer
 /// - the ID of the timer
-static TIMERS_QUEUE: IntMutex<Map<(Timespec, Pid, TimerT), ()>> = IntMutex::new(Map::new());
+static TIMERS_QUEUE: IntMutex<BTreeMap<(Timespec, Pid, TimerT), ()>> =
+	IntMutex::new(BTreeMap::new());
 
 /// Ticks active timers and triggers them if necessary.
 pub(super) fn tick() {

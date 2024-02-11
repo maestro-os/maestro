@@ -10,7 +10,7 @@ use crate::{
 		mem_space,
 		mem_space::{MapConstraint, MapResidence, MemSpace},
 	},
-	util::{container::vec::Vec, lock::Mutex, ptr::arc::Arc},
+	util::{collections::vec::Vec, lock::Mutex, ptr::arc::Arc},
 };
 use core::{cmp::min, ffi::c_void, num::NonZeroUsize, ptr, ptr::NonNull};
 

@@ -37,7 +37,7 @@ use crate::{
 		unit::{Timestamp, TimestampScale},
 	},
 	util::{
-		container::{hashmap::HashMap, string::String},
+		collections::{hashmap::HashMap, string::String},
 		io::IO,
 		lock::{IntMutex, Mutex},
 		ptr::arc::Arc,

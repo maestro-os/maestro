@@ -3,7 +3,7 @@
 use super::{buff::BuffList, ip, SocketDesc, SocketDomain, SocketType};
 use crate::{
 	errno::Errno,
-	util::{boxed::Box, container::hashmap::HashMap, lock::Mutex},
+	util::{boxed::Box, collections::hashmap::HashMap, lock::Mutex},
 };
 
 /// An OSI layer.
@@ -33,7 +33,7 @@ static PROTOCOLS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new())
 
 /// Container of default protocols ID for domain/type pairs.
 ///
-/// If this container doesn't contain a pair, it is considered invalid.
+/// If this collections doesn't contain a pair, it is considered invalid.
 static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, SocketType), u32>> = Mutex::new(HashMap::new());
 
 /// A stack of layers for a socket.

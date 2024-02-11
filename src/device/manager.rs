@@ -4,7 +4,7 @@
 use crate::{
 	device::bar::BAR,
 	errno::EResult,
-	util::{container::hashmap::HashMap, lock::Mutex, ptr::arc::Arc},
+	util::{collections::hashmap::HashMap, lock::Mutex, ptr::arc::Arc},
 };
 use core::any::{Any, TypeId};
 

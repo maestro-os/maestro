@@ -7,7 +7,7 @@ use crate::{
 	errno::{CollectResult, EResult, Errno},
 	file::open_file::OpenFile,
 	limits,
-	util::{container::vec::Vec, io::IO, lock::Mutex, ptr::arc::Arc},
+	util::{collections::vec::Vec, io::IO, lock::Mutex, ptr::arc::Arc},
 };
 use core::cmp::max;
 
@@ -320,7 +320,7 @@ mod test {
 	use super::*;
 	use crate::{
 		file::{File, FileContent, FileLocation},
-		util::container::string::String,
+		util::collections::string::String,
 	};
 
 	/// Creates a dummy open file for testing purpose.

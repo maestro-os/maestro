@@ -4,7 +4,7 @@
 //! For each page that is referenced more than once, the counter stores the
 //! number of references to that page.
 
-use crate::{errno::AllocResult, memory, util, util::container::hashmap::HashMap};
+use crate::{errno::AllocResult, memory, util, util::collections::hashmap::HashMap};
 use core::ffi::c_void;
 
 /// Structure representing the reference counter for all physical pages.

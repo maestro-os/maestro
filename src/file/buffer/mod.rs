@@ -9,7 +9,7 @@ use crate::{
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
 	util::{
-		container::{hashmap::HashMap, id_allocator::IDAllocator},
+		collections::{hashmap::HashMap, id_allocator::IDAllocator},
 		io::IO,
 		lock::{IntMutex, Mutex},
 		ptr::arc::Arc,

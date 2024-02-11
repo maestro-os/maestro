@@ -4,7 +4,7 @@ use crate::{
 	errno::Errno,
 	limits,
 	process::{mem_space::ptr::SyscallSlice, Process},
-	util::container::vec::Vec,
+	util::collections::vec::Vec,
 };
 use macros::syscall;
 

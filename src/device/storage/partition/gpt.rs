@@ -9,7 +9,7 @@ use crate::{
 	errno::Errno,
 	memory::malloc,
 	util,
-	util::{boxed::Box, container::vec::Vec},
+	util::{boxed::Box, collections::vec::Vec},
 };
 use core::{mem::size_of, num::NonZeroUsize, slice};
 

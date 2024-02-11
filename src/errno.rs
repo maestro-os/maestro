@@ -14,13 +14,13 @@ pub type AllocResult<T> = Result<T, AllocError>;
 /// but only for errors originating for iterator elements itself.
 ///
 /// However, if we need to catch memory allocation failures originating from allocations for the
-/// container itself, we need a special type to do that. This is where `CollectResult` comes in.
+/// collections itself, we need a special type to do that. This is where `CollectResult` comes in.
 ///
-/// Example for a container called `Container`:
+/// Example for a collections called `Container`:
 /// ```rust
 /// impl<T> FromIterator<T> for CollectResult<Container<T>> {
 /// 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-/// 		// here, collect from the iterator and create the container
+/// 		// here, collect from the iterator and create the collections
 /// 		// if the memory allocation failed, the function can return an `Err` instead
 /// 		Self(Ok(..))
 /// 	}

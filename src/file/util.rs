@@ -8,7 +8,7 @@ use crate::{
 	errno,
 	errno::EResult,
 	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings},
-	util::container::{hashmap::HashMap, string::String},
+	util::collections::{hashmap::HashMap, string::String},
 };
 
 /// Creates the directories necessary to reach path `path`.

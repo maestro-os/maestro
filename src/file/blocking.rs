@@ -5,7 +5,7 @@ use crate::{
 	errno::Errno,
 	process,
 	process::{pid::Pid, Process},
-	util::{container::hashmap::HashMap, io},
+	util::{collections::hashmap::HashMap, io},
 };
 
 /// Handler allowing to make a process sleep when waiting on a resource, then resume its execution

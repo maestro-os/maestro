@@ -14,7 +14,7 @@ use crate::{
 	file::{vfs::ResolutionSettings, File},
 	process::{mem_space::MemSpace, regs::Regs, signal::SignalHandler, Process},
 	util::{
-		container::{string::String, vec::Vec},
+		collections::{string::String, vec::Vec},
 		lock::{IntMutex, Mutex},
 		ptr::arc::Arc,
 	},

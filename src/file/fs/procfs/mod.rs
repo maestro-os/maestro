@@ -25,7 +25,7 @@ use crate::{
 	process::{oom, pid::Pid},
 	util::{
 		boxed::Box,
-		container::{hashmap::HashMap, string::String},
+		collections::{hashmap::HashMap, string::String},
 		io::IO,
 		lock::Mutex,
 		ptr::arc::Arc,

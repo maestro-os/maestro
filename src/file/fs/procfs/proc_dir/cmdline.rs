@@ -9,7 +9,7 @@ use crate::{
 		FileContent, Mode,
 	},
 	process::{pid::Pid, Process},
-	util::{container::string::String, io::IO},
+	util::{collections::string::String, io::IO},
 };
 use core::cmp::min;
 

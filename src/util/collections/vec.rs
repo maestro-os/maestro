@@ -1,4 +1,4 @@
-//! This module implements the Vec container.
+//! This module implements the Vec collections.
 
 use crate::{
 	errno::{AllocResult, CollectResult},
@@ -21,11 +21,11 @@ use core::{
 macro_rules! vec {
 	// Create an empty vec
 	() => {
-		$crate::util::container::vec::Vec::new()
+		$crate::util::collections::vec::Vec::new()
 	};
 	// Create a vec filled with `n` times `elem`
 	($elem:expr; $n:expr) => {{
-		let mut v = $crate::util::container::vec::Vec::new();
+		let mut v = $crate::util::collections::vec::Vec::new();
 		v.resize($n, $elem)?;
 		$crate::errno::AllocResult::Ok(v)
 	}};
@@ -33,7 +33,7 @@ macro_rules! vec {
 	($($x:expr), + $(,) ?) => {{
 		let array = [$($x),+];
 		(|| {
-			let mut v = $crate::util::container::vec::Vec::with_capacity(array.len())?;
+			let mut v = $crate::util::collections::vec::Vec::with_capacity(array.len())?;
 			for i in array {
 				v.push(i)?;
 			}
@@ -42,7 +42,7 @@ macro_rules! vec {
 	}};
 }
 
-/// A vector container is a dynamically-resizable array of elements.
+/// A vector collections is a dynamically-resizable array of elements.
 ///
 /// When resizing a vector, the elements can be moved, thus the callee should
 /// not rely on pointers to elements inside a vector.
