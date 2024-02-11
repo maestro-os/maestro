@@ -73,7 +73,7 @@ impl MemGap {
 	/// Merges the given gap `other` with the current gap.
 	///
 	/// If the gaps are not adjacent, the function does nothing.
-	pub fn merge(mut self, other: Self) -> Self {
+	pub fn merge(&mut self, other: &Self) {
 		if self.begin == other.get_end() {
 			// If `other` is before
 			self.begin = other.begin;
@@ -82,7 +82,6 @@ impl MemGap {
 			// If `other` is after
 			self.size = self.size.saturating_add(other.size.get());
 		}
-		self
 	}
 }
 
