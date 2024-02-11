@@ -1,4 +1,6 @@
-//! Implementation of the [`BTreeMap`] object. See (Rust's documentation)[https://doc.rust-lang.org/std/collections/struct.BTreeMap.html#method.new] for details.
+//! Implementation of the [`BTreeMap`] object.
+//!
+//! See (Rust's documentation)[https://doc.rust-lang.org/std/collections/struct.BTreeMap.html] for details.
 
 #[cfg(config_debug_debug)]
 use crate::util::collections::vec::Vec;
@@ -18,6 +20,7 @@ use core::{
 	iter::{FusedIterator, TrustedLen},
 	mem,
 	mem::size_of,
+	num::NonZeroUsize,
 	ops::{Bound, RangeBounds},
 	ptr,
 	ptr::NonNull,
@@ -47,7 +50,7 @@ struct Node<K, V> {
 	value: V,
 }
 
-/// Deletes the node at the given pointer, except the key and value fields which
+/// Drops the node at the given pointer, except the key and value fields which
 /// are returned.
 ///
 /// # Safety
@@ -56,6 +59,7 @@ struct Node<K, V> {
 /// this function since it will be dropped.
 #[inline]
 unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
+	// TODO use `NonNull::read` when stabilized
 	let node = ptr::read(ptr.as_ref());
 	malloc::free(ptr.cast());
 	let Node::<K, V> {
@@ -69,18 +73,14 @@ unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
 /// Unwraps the given pointer option into a reference option.
 #[inline]
 fn unwrap_pointer<'a, K, V>(ptr: Option<NonNull<Node<K, V>>>) -> Option<&'a mut Node<K, V>> {
-	ptr.map(|mut p| unsafe {
-		debug_assert!(p.as_ptr() as usize >= memory::PROCESS_END as usize);
-		p.as_mut()
-	})
+	ptr.map(|mut p| unsafe { p.as_mut() })
 }
 
 impl<K: Ord, V> Node<K, V> {
 	/// Creates a new node with the given `value`.
 	///
-	/// The node is colored `Red` by default.
+	/// The node is colored [`NodeColor::Red`] by default.
 	fn new(key: K, value: V) -> AllocResult<NonNull<Self>> {
-		let mut ptr = unsafe { malloc::alloc(size_of::<Self>().try_into().unwrap())?.cast() };
 		let s = Self {
 			parent: None,
 			left: None,
@@ -90,14 +90,12 @@ impl<K: Ord, V> Node<K, V> {
 			key,
 			value,
 		};
-
-		debug_assert!((ptr.as_ptr() as usize) >= (memory::PROCESS_END as usize));
 		unsafe {
-			// Safe because the pointer is valid
+			let size = NonZeroUsize::new_unchecked(size_of::<Self>());
+			let mut ptr = malloc::alloc(size)?.cast();
 			ptr::write(ptr.as_mut(), s);
+			Ok(ptr)
 		}
-
-		Ok(ptr)
 	}
 
 	/// Tells whether the node is red.
@@ -133,23 +131,19 @@ impl<K: Ord, V> Node<K, V> {
 	/// Tells whether the node is a left child.
 	#[inline]
 	fn is_left_child(&self) -> bool {
-		if let Some(parent) = self.get_parent() {
-			if let Some(n) = parent.get_left() {
-				return ptr::eq(n as *const _, self as *const _);
-			}
-		}
-		false
+		self.get_parent()
+			.and_then(|parent| parent.get_left())
+			.map(|cur| ptr::eq(cur as *const _, self as *const _))
+			.unwrap_or(false)
 	}
 
 	/// Tells whether the node is a right child.
 	#[inline]
 	fn is_right_child(&self) -> bool {
-		if let Some(parent) = self.get_parent() {
-			if let Some(n) = parent.get_right() {
-				return ptr::eq(n as *const _, self as *const _);
-			}
-		}
-		false
+		self.get_parent()
+			.and_then(|parent| parent.get_right())
+			.map(|cur| ptr::eq(cur as *const _, self as *const _))
+			.unwrap_or(false)
 	}
 
 	/// Returns a reference to the sibling node.
@@ -186,23 +180,19 @@ impl<K: Ord, V> Node<K, V> {
 		let Some(pivot) = self.get_right() else {
 			return;
 		};
-
 		if let Some(parent) = self.get_parent() {
 			if self.is_right_child() {
 				parent.right = NonNull::new(pivot);
 			} else {
 				parent.left = NonNull::new(pivot);
 			}
-
 			pivot.parent = NonNull::new(parent);
 		} else {
 			pivot.parent = None;
 		}
-
 		let left = pivot.get_left();
 		pivot.left = NonNull::new(self);
 		self.parent = NonNull::new(pivot);
-
 		if let Some(left) = left {
 			self.right = NonNull::new(left);
 			left.parent = NonNull::new(self);
@@ -219,23 +209,19 @@ impl<K: Ord, V> Node<K, V> {
 		let Some(pivot) = self.get_left() else {
 			return;
 		};
-
 		if let Some(parent) = self.get_parent() {
 			if self.is_left_child() {
 				parent.left = NonNull::new(pivot);
 			} else {
 				parent.right = NonNull::new(pivot);
 			}
-
 			pivot.parent = NonNull::new(parent);
 		} else {
 			pivot.parent = None;
 		}
-
 		let right = pivot.get_right();
 		pivot.right = NonNull::new(self);
 		self.parent = NonNull::new(pivot);
-
 		if let Some(right) = right {
 			self.left = NonNull::new(right);
 			right.parent = NonNull::new(self);
@@ -246,24 +232,18 @@ impl<K: Ord, V> Node<K, V> {
 
 	/// Inserts the given node `node` to left of the current node.
 	///
-	/// If the node already has a left child, the behaviour is undefined.
+	/// If the node already has a left child, the old node is leaked.
 	#[inline]
 	fn insert_left(&mut self, node: &mut Node<K, V>) {
-		debug_assert!(self.left.is_none());
-		debug_assert!(node.parent.is_none());
-
 		self.left = NonNull::new(node);
 		node.parent = NonNull::new(self);
 	}
 
 	/// Inserts the given node `node` to right of the current node.
 	///
-	/// If the node already has a right child, the behaviour is undefined.
+	/// If the node already has a right child, the old node is leaked.
 	#[inline]
 	fn insert_right(&mut self, node: &mut Node<K, V>) {
-		debug_assert!(self.right.is_none());
-		debug_assert!(node.parent.is_none());
-
 		self.right = NonNull::new(node);
 		node.parent = NonNull::new(self);
 	}
@@ -359,7 +339,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	}
 
 	/// Returns a reference to the leftmost node in the tree.
-	fn get_leftmost_node<'a>(node: &'a mut Node<K, V>) -> &'a mut Node<K, V> {
+	fn get_leftmost_node(node: &mut Node<K, V>) -> &mut Node<K, V> {
 		let mut n = node;
 		while let Some(left) = n.get_left() {
 			n = left;
@@ -372,16 +352,15 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	///
 	/// `key` is the key to find.
 	fn get_node<'a>(&self, key: &K) -> Option<&'a mut Node<K, V>> {
-		let mut node = self.get_root();
-		while let Some(n) = node {
-			let ord = key.cmp(&n.key);
+		let mut node = self.get_root()?;
+		loop {
+			let ord = key.cmp(&node.key);
 			match ord {
-				Ordering::Less => node = n.get_left(),
-				Ordering::Greater => node = n.get_right(),
-				Ordering::Equal => return Some(n),
+				Ordering::Less => node = node.get_left()?,
+				Ordering::Greater => node = node.get_right()?,
+				Ordering::Equal => break Some(node),
 			}
 		}
-		None
 	}
 
 	/// Returns the start node for a range iterator starting at `start`.
@@ -450,31 +429,29 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Searches for a node in the tree using the given comparison function
 	/// `cmp` instead of the `Ord` trait.
 	pub fn cmp_get<F: Fn(&K, &V) -> Ordering>(&self, cmp: F) -> Option<&V> {
-		let mut node = self.get_root();
-		while let Some(n) = node {
-			let ord = cmp(&n.key, &n.value);
+		let mut node = self.get_root()?;
+		loop {
+			let ord = cmp(&node.key, &node.value);
 			match ord {
-				Ordering::Less => node = n.get_left(),
-				Ordering::Greater => node = n.get_right(),
-				Ordering::Equal => return Some(&n.value),
+				Ordering::Less => node = node.get_left()?,
+				Ordering::Greater => node = node.get_right()?,
+				Ordering::Equal => break Some(&node.value),
 			}
 		}
-		None
 	}
 
 	/// Searches for a node in the tree using the given comparison function
 	/// `cmp` instead of the `Ord` trait and returns a mutable reference.
 	pub fn cmp_get_mut<F: Fn(&K, &V) -> Ordering>(&mut self, cmp: F) -> Option<&mut V> {
-		let mut node = self.get_root();
-		while let Some(n) = node {
-			let ord = cmp(&n.key, &n.value);
+		let mut node = self.get_root()?;
+		loop {
+			let ord = cmp(&node.key, &node.value);
 			match ord {
-				Ordering::Less => node = n.get_left(),
-				Ordering::Greater => node = n.get_right(),
-				Ordering::Equal => return Some(&mut n.value),
+				Ordering::Less => node = node.get_left()?,
+				Ordering::Greater => node = node.get_right()?,
+				Ordering::Equal => break Some(&mut node.value),
 			}
 		}
-		None
 	}
 
 	/// Updates the root of the tree.
@@ -967,7 +944,7 @@ fn next_node<'a, K: Ord, V>(node: &Node<K, V>) -> Option<&'a mut Node<K, V>> {
 	}
 }
 
-/// An iterator for the Map structure. This iterator traverses the tree in pre-order.
+/// Immutable reference iterator for [`BTreeMap`]. This iterator traverses the tree in pre-order.
 pub struct MapIterator<'m, K: Ord, V> {
 	/// The binary tree to iterate into.
 	tree: &'m BTreeMap<K, V>,
@@ -1018,9 +995,7 @@ impl<'m, K: Ord, V> FusedIterator for MapIterator<'m, K, V> {}
 
 unsafe impl<'m, K: Ord, V> TrustedLen for MapIterator<'m, K, V> {}
 
-/// An iterator for the `Map` structure.
-///
-/// This iterator traverses the tree in pre-order.
+/// Mutable reference iterator for [`BTreeMap`]. This iterator traverses the tree in pre-order.
 pub struct MapMutIterator<'m, K: Ord, V> {
 	/// The binary tree to iterate into.
 	tree: &'m mut BTreeMap<K, V>,
@@ -1071,7 +1046,7 @@ impl<'m, K: Ord, V> FusedIterator for MapMutIterator<'m, K, V> {}
 
 unsafe impl<'m, K: Ord, V> TrustedLen for MapMutIterator<'m, K, V> {}
 
-/// Iterator over a range of keys in a map.
+/// Same as [`MapIterator`], but restrained to a predefined range.
 pub struct MapRange<'m, K: Ord, V, R: RangeBounds<K>> {
 	/// Inner iterator.
 	iter: MapIterator<'m, K, V>,
@@ -1092,7 +1067,7 @@ impl<'m, K: Ord, V, R: RangeBounds<K>> Iterator for MapRange<'m, K, V, R> {
 	}
 }
 
-/// Iterator over a range of keys in a map (mutably).
+/// Same as [`MapMutIterator`], but restrained to a predefined range.
 pub struct MapMutRange<'m, K: Ord, V, R: RangeBounds<K>> {
 	/// Inner iterator.
 	iter: MapMutIterator<'m, K, V>,
@@ -1113,8 +1088,8 @@ impl<'m, K: Ord, V, R: RangeBounds<K>> Iterator for MapMutRange<'m, K, V, R> {
 	}
 }
 
-/// An iterator that traverses the tree in ascending order and removes, then yields elements that
-/// match the associated predicate.
+/// An iterator that traverses a [`BTreeMap`] in ascending order and removes, then yields elements
+/// that match the associated predicate.
 pub struct DrainFilter<'m, K: Ord, V, F>
 where
 	F: FnMut(&K, &mut V) -> bool,
