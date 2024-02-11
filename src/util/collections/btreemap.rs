@@ -23,8 +23,6 @@ use core::{
 	ptr::NonNull,
 };
 
-// FIXME abusive use of `'static` lifetime results in UBs
-
 /// The color of a binary tree node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeColor {
@@ -70,14 +68,14 @@ unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
 
 /// Unwraps the given pointer option into a reference option.
 #[inline]
-fn unwrap_pointer<K, V>(ptr: Option<NonNull<Node<K, V>>>) -> Option<&'static mut Node<K, V>> {
+fn unwrap_pointer<'a, K, V>(ptr: Option<NonNull<Node<K, V>>>) -> Option<&'a mut Node<K, V>> {
 	ptr.map(|mut p| unsafe {
 		debug_assert!(p.as_ptr() as usize >= memory::PROCESS_END as usize);
 		p.as_mut()
 	})
 }
 
-impl<K: 'static + Ord, V: 'static> Node<K, V> {
+impl<K: Ord, V> Node<K, V> {
 	/// Creates a new node with the given `value`.
 	///
 	/// The node is colored `Red` by default.
@@ -116,19 +114,19 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 
 	/// Returns a reference to the parent child node.
 	#[inline]
-	fn get_parent(&self) -> Option<&'static mut Self> {
+	fn get_parent<'a>(&self) -> Option<&'a mut Self> {
 		unwrap_pointer(self.parent)
 	}
 
 	/// Returns a mutable reference to the parent child node.
 	#[inline]
-	fn get_left(&self) -> Option<&'static mut Self> {
+	fn get_left<'a>(&self) -> Option<&'a mut Self> {
 		unwrap_pointer(self.left)
 	}
 
 	/// Returns a reference to the left child node.
 	#[inline]
-	fn get_right(&self) -> Option<&'static mut Self> {
+	fn get_right<'a>(&self) -> Option<&'a mut Self> {
 		unwrap_pointer(self.right)
 	}
 
@@ -156,7 +154,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 
 	/// Returns a reference to the sibling node.
 	#[inline]
-	fn get_sibling(&self) -> Option<&'static mut Self> {
+	fn get_sibling<'a>(&self) -> Option<&'a mut Self> {
 		let parent = self.get_parent()?;
 		if self.is_left_child() {
 			parent.get_right()
@@ -167,7 +165,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 
 	/// Returns a reference to the uncle node.
 	#[inline]
-	fn get_uncle(&self) -> Option<&'static mut Self> {
+	fn get_uncle<'a>(&self) -> Option<&'a mut Self> {
 		self.get_parent()?.get_sibling()
 	}
 
@@ -320,20 +318,20 @@ pub enum TraversalOrder {
 }
 
 /// The implementation of the [`BTreeMap`] object.
-pub struct BTreeMap<K: 'static + Ord, V: 'static> {
+pub struct BTreeMap<K: Ord, V> {
 	/// The root node of the binary tree.
 	root: UnsafeCell<Option<NonNull<Node<K, V>>>>,
 	/// The current number of elements in the tree.
 	len: usize,
 }
 
-impl<K: 'static + Ord, V: 'static> Default for BTreeMap<K, V> {
+impl<K: Ord, V> Default for BTreeMap<K, V> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<K: 'static + Ord, V: 'static> BTreeMap<K, V> {
+impl<K: Ord, V> BTreeMap<K, V> {
 	/// Creates a new binary tree.
 	pub const fn new() -> Self {
 		Self {
@@ -356,12 +354,12 @@ impl<K: 'static + Ord, V: 'static> BTreeMap<K, V> {
 
 	/// Returns a reference to the root node.
 	#[inline]
-	fn get_root(&self) -> Option<&'static mut Node<K, V>> {
+	fn get_root<'a>(&self) -> Option<&'a mut Node<K, V>> {
 		unsafe { Some((*self.root.get()).as_mut()?.as_mut()) }
 	}
 
 	/// Returns a reference to the leftmost node in the tree.
-	fn get_leftmost_node(node: &'static mut Node<K, V>) -> &'static mut Node<K, V> {
+	fn get_leftmost_node<'a>(node: &'a mut Node<K, V>) -> &'a mut Node<K, V> {
 		let mut n = node;
 		while let Some(left) = n.get_left() {
 			n = left;
@@ -373,7 +371,7 @@ impl<K: 'static + Ord, V: 'static> BTreeMap<K, V> {
 	/// reference.
 	///
 	/// `key` is the key to find.
-	fn get_node(&self, key: &K) -> Option<&'static mut Node<K, V>> {
+	fn get_node<'a>(&self, key: &K) -> Option<&'a mut Node<K, V>> {
 		let mut node = self.get_root();
 		while let Some(n) = node {
 			let ord = key.cmp(&n.key);
@@ -491,7 +489,7 @@ impl<K: 'static + Ord, V: 'static> BTreeMap<K, V> {
 
 	/// For node insertion, returns the parent node on which it will be
 	/// inserted.
-	fn get_insert_node(&mut self, key: &K) -> Option<&'static mut Node<K, V>> {
+	fn get_insert_node<'a>(&mut self, key: &K) -> Option<&'a mut Node<K, V>> {
 		let mut node = self.get_root()?;
 		loop {
 			let ord = key.cmp(&node.key);
@@ -949,7 +947,7 @@ impl<K: 'static + Ord, V: 'static> BTreeMap<K, V> {
 /// Returns the next node in an iterator for the given node.
 ///
 /// This is an inner function for node iterators.
-fn next_node<K: Ord + 'static, V: 'static>(node: &Node<K, V>) -> Option<&'static mut Node<K, V>> {
+fn next_node<'a, K: Ord, V>(node: &Node<K, V>) -> Option<&'a mut Node<K, V>> {
 	if let Some(mut node) = node.get_right() {
 		while let Some(n) = node.get_left() {
 			node = n;
@@ -970,7 +968,7 @@ fn next_node<K: Ord + 'static, V: 'static>(node: &Node<K, V>) -> Option<&'static
 }
 
 /// An iterator for the Map structure. This iterator traverses the tree in pre-order.
-pub struct MapIterator<'m, K: 'static + Ord, V: 'static> {
+pub struct MapIterator<'m, K: Ord, V> {
 	/// The binary tree to iterate into.
 	tree: &'m BTreeMap<K, V>,
 	/// The current node of the iterator.
@@ -979,7 +977,7 @@ pub struct MapIterator<'m, K: 'static + Ord, V: 'static> {
 	i: usize,
 }
 
-impl<'m, K: 'static + Ord, V> Iterator for MapIterator<'m, K, V> {
+impl<'m, K: Ord, V> Iterator for MapIterator<'m, K, V> {
 	type Item = (&'m K, &'m V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -999,7 +997,7 @@ impl<'m, K: 'static + Ord, V> Iterator for MapIterator<'m, K, V> {
 	}
 }
 
-impl<'m, K: 'static + Ord, V> IntoIterator for &'m BTreeMap<K, V> {
+impl<'m, K: Ord, V> IntoIterator for &'m BTreeMap<K, V> {
 	type IntoIter = MapIterator<'m, K, V>;
 	type Item = (&'m K, &'m V);
 
@@ -1023,7 +1021,7 @@ unsafe impl<'m, K: Ord, V> TrustedLen for MapIterator<'m, K, V> {}
 /// An iterator for the `Map` structure.
 ///
 /// This iterator traverses the tree in pre-order.
-pub struct MapMutIterator<'m, K: 'static + Ord, V: 'static> {
+pub struct MapMutIterator<'m, K: Ord, V> {
 	/// The binary tree to iterate into.
 	tree: &'m mut BTreeMap<K, V>,
 	/// The current node of the iterator.
@@ -1032,7 +1030,7 @@ pub struct MapMutIterator<'m, K: 'static + Ord, V: 'static> {
 	i: usize,
 }
 
-impl<'m, K: 'static + Ord, V> Iterator for MapMutIterator<'m, K, V> {
+impl<'m, K: Ord, V> Iterator for MapMutIterator<'m, K, V> {
 	type Item = (&'m K, &'m mut V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1052,7 +1050,7 @@ impl<'m, K: 'static + Ord, V> Iterator for MapMutIterator<'m, K, V> {
 	}
 }
 
-impl<'m, K: 'static + Ord, V> IntoIterator for &'m mut BTreeMap<K, V> {
+impl<'m, K: Ord, V> IntoIterator for &'m mut BTreeMap<K, V> {
 	type IntoIter = MapMutIterator<'m, K, V>;
 	type Item = (&'m K, &'m mut V);
 
@@ -1074,14 +1072,14 @@ impl<'m, K: Ord, V> FusedIterator for MapMutIterator<'m, K, V> {}
 unsafe impl<'m, K: Ord, V> TrustedLen for MapMutIterator<'m, K, V> {}
 
 /// Iterator over a range of keys in a map.
-pub struct MapRange<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> {
+pub struct MapRange<'m, K: Ord, V, R: RangeBounds<K>> {
 	/// Inner iterator.
 	iter: MapIterator<'m, K, V>,
 	/// The range to iterate on.
 	range: R,
 }
 
-impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapRange<'m, K, V, R> {
+impl<'m, K: Ord, V, R: RangeBounds<K>> Iterator for MapRange<'m, K, V, R> {
 	type Item = (&'m K, &'m V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1095,14 +1093,14 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapRange<
 }
 
 /// Iterator over a range of keys in a map (mutably).
-pub struct MapMutRange<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> {
+pub struct MapMutRange<'m, K: Ord, V, R: RangeBounds<K>> {
 	/// Inner iterator.
 	iter: MapMutIterator<'m, K, V>,
 	/// The range to iterate on.
 	range: R,
 }
 
-impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRange<'m, K, V, R> {
+impl<'m, K: Ord, V, R: RangeBounds<K>> Iterator for MapMutRange<'m, K, V, R> {
 	type Item = (&'m K, &'m mut V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1117,10 +1115,8 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRan
 
 /// An iterator that traverses the tree in ascending order and removes, then yields elements that
 /// match the associated predicate.
-pub struct DrainFilter<'m, K, V, F>
+pub struct DrainFilter<'m, K: Ord, V, F>
 where
-	K: Ord + 'static,
-	V: 'static,
 	F: FnMut(&K, &mut V) -> bool,
 {
 	/// The tree to iterate on.
@@ -1135,9 +1131,7 @@ where
 	pred: F,
 }
 
-impl<'m, K: Ord + 'static, V: 'static, F: FnMut(&K, &mut V) -> bool> Iterator
-	for DrainFilter<'m, K, V, F>
-{
+impl<'m, K: Ord, V, F: FnMut(&K, &mut V) -> bool> Iterator for DrainFilter<'m, K, V, F> {
 	type Item = (K, V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1163,7 +1157,7 @@ impl<'m, K: Ord + 'static, V: 'static, F: FnMut(&K, &mut V) -> bool> Iterator
 	}
 }
 
-impl<K: 'static + TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> TryClone
+impl<K: TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> TryClone
 	for BTreeMap<K, V>
 {
 	type Error = E;
@@ -1177,7 +1171,7 @@ impl<K: 'static + TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<All
 	}
 }
 
-impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
+impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let Some(root) = self.get_root() else {
 			return write!(f, "<Empty tree>");
@@ -1199,7 +1193,7 @@ impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
 	}
 }
 
-impl<K: 'static + Ord, V> Drop for BTreeMap<K, V> {
+impl<K: Ord, V> Drop for BTreeMap<K, V> {
 	fn drop(&mut self) {
 		let Some(root) = self.get_root() else {
 			return;
