@@ -28,18 +28,27 @@ impl MemGap {
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the gap.
+	#[inline]
 	pub fn get_begin(&self) -> *mut c_void {
 		self.begin
 	}
 
 	/// Returns a pointer on the virtual memory to the end of the gap.
+	#[inline]
 	pub fn get_end(&self) -> *mut c_void {
 		unsafe { self.begin.add(self.size.get() * memory::PAGE_SIZE) }
 	}
 
 	/// Returns the size of the gap in memory pages.
+	#[inline]
 	pub fn get_size(&self) -> NonZeroUsize {
 		self.size
+	}
+
+	/// Returns the offset in pages to the given address in the gap.
+	#[inline]
+	pub fn get_page_offset_for(&self, addr: *const c_void) -> usize {
+		(addr as usize - self.begin as usize) / memory::PAGE_SIZE
 	}
 
 	/// Creates new gaps to replace the current one after mapping memory onto

@@ -209,12 +209,16 @@ impl MapResidence {
 pub enum MapConstraint {
 	/// The mapping is done at a fixed address.
 	///
-	/// Previous allocations at the same place are unmapped.
+	/// Previous allocation(s) in the range of the allocation are unmapped.
+	///
+	/// The allocation is allowed to take place outside ranges that are normally allowed, but not
+	/// in kernelspace.
 	Fixed(*mut c_void),
 
-	/// The mapping is done at a fixed address.
+	/// Providing a hint for the address to use. The allocator will try to use the address if
+	/// available.
 	///
-	/// If the address range is already in use, the allocation fails.
+	/// If not available, the constraint is ignored and another address is selected.
 	Hint(*mut c_void),
 
 	/// No constraint.
@@ -224,7 +228,15 @@ pub enum MapConstraint {
 impl MapConstraint {
 	/// Tells whether the constraint is valid.
 	pub fn is_valid(&self) -> bool {
-		matches!(self, MapConstraint::Fixed(addr) | MapConstraint::Hint(addr) if addr.is_aligned_to(memory::PAGE_SIZE))
+		match self {
+			// Checking the address is within userspace is required because Fixed allocation can
+			// take place *outside of gaps* but *not inside the kernelspace*
+			MapConstraint::Fixed(addr) => {
+				*addr <= memory::PROCESS_END && addr.is_aligned_to(memory::PAGE_SIZE)
+			}
+			MapConstraint::Hint(addr) => addr.is_aligned_to(memory::PAGE_SIZE),
+			_ => true,
+		}
 	}
 }
 
@@ -451,22 +463,23 @@ impl MemSpace {
 		}
 		let mut transaction = MemSpaceTransaction::default();
 		let mut vmem_usage = self.vmem_usage;
-		// TODO remove duplicate code in match
 		// Get gap suitable for the given constraint
 		let (gap, off) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
 				vmem_usage -= self.unmap_impl(&mut transaction, addr, size, false)?;
-				// Use the gap that was newly created by unmapping
-				let gap = transaction.buffer_state.get_gap_for_ptr(addr).unwrap();
-				// The offset in the gap, in pages
-				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
+				// Create a fictive gap. This is required because fixed allocations may be used
+				// outside allowed gaps
+				let gap = MemGap {
+					begin: addr,
+					size,
+				};
+				let off = gap.get_page_offset_for(addr);
 				(gap, off)
 			}
 			MapConstraint::Hint(addr) => {
 				// Get the gap for the pointer
-				let gap = self.state.get_gap_for_ptr(addr).ok_or(AllocError)?;
-				// The offset in the gap, in pages
-				let off = (addr as usize - gap.get_begin() as usize) / memory::PAGE_SIZE;
+				let gap = self.state.get_gap_for_ptr(addr).ok_or(AllocError)?.clone();
+				let off = gap.get_page_offset_for(addr);
 				// Check whether the mapping fits in the gap
 				let fit = off
 					.checked_add(size.get())
@@ -476,12 +489,12 @@ impl MemSpace {
 					(gap, off)
 				} else {
 					// Hint cannot be satisfied. Get a gap large enough
-					let gap = self.state.get_gap(size).ok_or(AllocError)?;
+					let gap = self.state.get_gap(size).ok_or(AllocError)?.clone();
 					(gap, 0)
 				}
 			}
 			MapConstraint::None => {
-				let gap = self.state.get_gap(size).ok_or(AllocError)?;
+				let gap = self.state.get_gap(size).ok_or(AllocError)?.clone();
 				(gap, 0)
 			}
 		};
@@ -525,7 +538,7 @@ impl MemSpace {
 		brk: bool,
 	) -> AllocResult<usize> {
 		let mut freed = 0;
-		// Remove every mappings in the chunk to unmap
+		// Remove every mapping in the chunk to unmap
 		let mut i = 0;
 		while i < size.get() {
 			// The current page's beginning

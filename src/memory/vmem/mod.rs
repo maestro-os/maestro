@@ -36,7 +36,7 @@ pub trait VMem: TryClone<Error = AllocError> {
 		self.translate(ptr).is_some()
 	}
 
-	/// Maps the the given physical address `physaddr` to the given virtual
+	/// Maps the given physical address `physaddr` to the given virtual
 	/// address `virtaddr` with the given flags.
 	///
 	/// This function automatically invalidates the page in the cache.

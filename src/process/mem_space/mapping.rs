@@ -11,7 +11,7 @@ use crate::{
 	process::{oom, AllocResult, EResult},
 	util::{boxed::Box, io::IO, lock::*, ptr::arc::Arc},
 };
-use core::{ffi::c_void, fmt, num::NonZeroUsize, ptr, ptr::NonNull, slice};
+use core::{ffi::c_void, fmt, num::NonZeroUsize, ops::Range, ptr, ptr::NonNull, slice};
 
 /// Returns a physical pointer to the default page.
 fn get_default_page() -> *const c_void {
@@ -39,10 +39,6 @@ fn get_default_page() -> *const c_void {
 }
 
 /// A mapping in a memory space.
-///
-/// **Warning**: When dropped, mappings do not unmap themselves. It is the
-/// caller's responsibility to call `unmap` or `partial_unmap` before dropping a
-/// mapping. Failure to do so may result in a memory leak.
 #[derive(Clone)]
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
@@ -267,7 +263,9 @@ impl MemMapping {
 		} else {
 			for i in 0..self.size.get() {
 				if let Err(errno) = self.map(i) {
-					self.unmap()?;
+					// Cannot fail because `map` is not using the PAGE_SIZE flag, so unmapping
+					// won't allocate. FIXME: should not rely on this kind of implementation detail
+					let _ = self.unmap(0..(i + 1));
 					return Err(errno);
 				}
 			}
@@ -294,14 +292,19 @@ impl MemMapping {
 	/// If the physical pages the mapping points to are not shared, the function frees them.
 	///
 	/// This function doesn't flush the virtual memory context.
-	pub fn unmap(&mut self) -> AllocResult<()> {
+	pub fn unmap(&mut self, pages_range: Range<usize>) -> AllocResult<()> {
 		// Remove physical pages
-		for i in 0..self.size.get() {
+		for i in pages_range.clone() {
 			self.free_phys_page(i);
 		}
+		let begin_ptr = unsafe { self.begin.add(pages_range.start * memory::PAGE_SIZE) };
 		// Unmap physical pages
 		let mut vmem = self.vmem.lock();
-		oom::wrap(|| unsafe { vmem.unmap_range(self.begin, self.size.get()) });
+		// FIXME: potential deadly loop? the previous calls to `free_phys_page` are freeing
+		// physical pages, which *should* be enough to execute the line below, but this is not
+		// something we should rely on. there is also no guarantee that nobody is going to use the
+		// then-freed memory in between
+		oom::wrap(|| unsafe { vmem.unmap_range(begin_ptr, pages_range.end - pages_range.start) });
 		Ok(())
 	}
 
@@ -321,7 +324,7 @@ impl MemMapping {
 	///
 	/// The function doesn't flush the virtual memory context.
 	pub fn partial_unmap(
-		mut self,
+		&self,
 		begin: usize,
 		size: usize,
 	) -> (Option<Self>, Option<MemGap>, Option<Self>) {
@@ -358,13 +361,6 @@ impl MemMapping {
 					residence,
 				}
 			});
-		// Free pages that will be replaced by the gap
-		for i in begin..(begin + size) {
-			self.free_phys_page(i);
-		}
-		// Unmap physical pages
-		let mut vmem = self.vmem.lock();
-		oom::wrap(|| unsafe { vmem.unmap_range(begin_ptr, size) });
 		(prev, gap, next)
 	}
 
@@ -395,7 +391,7 @@ impl MemMapping {
 		}
 	}
 
-	// TODO remplace by a `try_clone`?
+	// TODO replace by a `try_clone`?
 	/// Clones the mapping for the fork operation. The new mapping is sharing
 	/// the same physical memory, for Copy-On-Write.
 	///
@@ -492,5 +488,11 @@ impl fmt::Debug for MemMapping {
 			"MemMapping {{ begin: {:p}, end: {:p}, flags: {} }}",
 			self.begin, end, self.flags,
 		)
+	}
+}
+
+impl Drop for MemMapping {
+	fn drop(&mut self) {
+		let _ = self.unmap(0..self.size.get());
 	}
 }
