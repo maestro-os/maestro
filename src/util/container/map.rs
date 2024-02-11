@@ -1,4 +1,4 @@
-//! This module implements a binary tree container.
+//! This module implements the binary tree container.
 
 #[cfg(config_debug_debug)]
 use crate::util::container::vec::Vec;
@@ -60,13 +60,11 @@ struct Node<K, V> {
 unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
 	let node = ptr::read(ptr.as_ref());
 	malloc::free(ptr.cast());
-
 	let Node::<K, V> {
 		key,
 		value,
 		..
 	} = node;
-
 	(key, value)
 }
 
@@ -122,12 +120,6 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 		unwrap_pointer(self.parent)
 	}
 
-	/// Returns a reference to the grandparent node.
-	#[inline]
-	fn get_grandparent(&self) -> Option<&'static mut Self> {
-		self.get_parent()?.get_parent()
-	}
-
 	/// Returns a mutable reference to the parent child node.
 	#[inline]
 	fn get_left(&self) -> Option<&'static mut Self> {
@@ -148,7 +140,6 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 				return ptr::eq(n as *const _, self as *const _);
 			}
 		}
-
 		false
 	}
 
@@ -160,7 +151,6 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 				return ptr::eq(n as *const _, self as *const _);
 			}
 		}
-
 		false
 	}
 
@@ -168,7 +158,6 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 	#[inline]
 	fn get_sibling(&self) -> Option<&'static mut Self> {
 		let parent = self.get_parent()?;
-
 		if self.is_left_child() {
 			parent.get_right()
 		} else {
@@ -188,15 +177,7 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 		if let Some(parent) = self.get_parent() {
 			return self.is_left_child() != parent.is_left_child();
 		}
-
 		false
-	}
-
-	/// Tells whether the node has at least one red child.
-	#[inline]
-	fn has_red_child(&self) -> bool {
-		self.get_left().map_or(false, |n| n.is_red())
-			|| self.get_right().map_or(false, |n| n.is_red())
 	}
 
 	/// Applies a left tree rotation with the current node as root.
@@ -304,35 +285,30 @@ impl<K: 'static + Ord, V: 'static> Node<K, V> {
 			} else if self.is_right_child() {
 				parent.right = None;
 			}
-
 			self.parent = None;
 		}
-
 		if let Some(left) = self.get_left() {
 			if let Some(p) = left.parent {
 				if ptr::eq(p.as_ptr(), self as _) {
 					left.parent = None;
 				}
 			}
-
 			self.left = None;
 		}
-
 		if let Some(right) = self.get_right() {
 			if let Some(p) = right.parent {
 				if ptr::eq(p.as_ptr(), self as _) {
 					right.parent = None;
 				}
 			}
-
 			self.right = None;
 		}
 	}
 }
 
-/// Specify the order in which the tree is traversed.
+/// Specify the order in which the tree is to be traversed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TraveralOrder {
+pub enum TraversalOrder {
 	/// Accesses the data, then left child, then right child
 	PreOrder,
 	/// Accesses left child, then the data, then right child
@@ -385,13 +361,12 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		unsafe { Some((*self.root.get()).as_mut()?.as_mut()) }
 	}
 
-	/// Returns an reference to the leftmost node in the tree.
+	/// Returns a reference to the leftmost node in the tree.
 	fn get_leftmost_node(node: &'static mut Node<K, V>) -> &'static mut Node<K, V> {
 		let mut n = node;
 		while let Some(left) = n.get_left() {
 			n = left;
 		}
-
 		n
 	}
 
@@ -401,34 +376,27 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// `key` is the key to find.
 	fn get_node(&self, key: &K) -> Option<&'static mut Node<K, V>> {
 		let mut node = self.get_root();
-
 		while let Some(n) = node {
 			let ord = key.cmp(&n.key);
-
 			match ord {
 				Ordering::Less => node = n.get_left(),
 				Ordering::Greater => node = n.get_right(),
 				Ordering::Equal => return Some(n),
 			}
 		}
-
 		None
 	}
 
 	/// Returns the start node for a range iterator starting at `start`.
 	fn get_start_node(&self, start: Bound<&K>) -> Option<NonNull<Node<K, V>>> {
 		let mut node = self.get_root();
-
 		let (key, exclude) = match start {
 			Bound::Unbounded => return NonNull::new(Self::get_leftmost_node(node?)),
-
 			Bound::Included(key) => (key, false),
 			Bound::Excluded(key) => (key, true),
 		};
-
 		// The last in-bound element encountered.
 		let mut last = None;
-
 		while let Some(n) = node {
 			let in_bound = match n.key.cmp(key) {
 				Ordering::Less => false,
@@ -442,11 +410,10 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				node = n.get_right();
 			}
 		}
-
 		last.and_then(|n| NonNull::new(n))
 	}
 
-	/// Returns the first key/value pair of the tree. The returned key is the minimum present in
+	/// Returns the first key/value pair in tree. The returned key is the minimum present in
 	/// the tree.
 	///
 	/// If the tree is empty, the function returns `None`.
@@ -455,7 +422,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		Some((&node.key, &node.value))
 	}
 
-	/// Removes and returns the first key/value pair of the tree. The returned key is the minimum
+	/// Removes and returns the first key/value pair in tree. The returned key is the minimum
 	/// present in the tree.
 	///
 	/// If the tree is empty, the function returns `None`.
@@ -487,17 +454,14 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// `cmp` instead of the `Ord` trait.
 	pub fn cmp_get<F: Fn(&K, &V) -> Ordering>(&self, cmp: F) -> Option<&V> {
 		let mut node = self.get_root();
-
 		while let Some(n) = node {
 			let ord = cmp(&n.key, &n.value);
-
 			match ord {
 				Ordering::Less => node = n.get_left(),
 				Ordering::Greater => node = n.get_right(),
 				Ordering::Equal => return Some(&n.value),
 			}
 		}
-
 		None
 	}
 
@@ -505,17 +469,14 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	/// `cmp` instead of the `Ord` trait and returns a mutable reference.
 	pub fn cmp_get_mut<F: Fn(&K, &V) -> Ordering>(&mut self, cmp: F) -> Option<&mut V> {
 		let mut node = self.get_root();
-
 		while let Some(n) = node {
 			let ord = cmp(&n.key, &n.value);
-
 			match ord {
 				Ordering::Less => node = n.get_left(),
 				Ordering::Greater => node = n.get_right(),
 				Ordering::Equal => return Some(&mut n.value),
 			}
 		}
-
 		None
 	}
 
@@ -526,35 +487,30 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		while let Some(n) = node.get_parent() {
 			node = n;
 		}
-
 		*self.root.get_mut() = NonNull::new(node);
 	}
 
 	/// For node insertion, returns the parent node on which it will be
 	/// inserted.
 	fn get_insert_node(&mut self, key: &K) -> Option<&'static mut Node<K, V>> {
-		let mut node = self.get_root();
-
-		while let Some(n) = node {
-			let ord = key.cmp(&n.key);
-
+		let mut node = self.get_root()?;
+		loop {
+			let ord = key.cmp(&node.key);
 			let next = match ord {
-				Ordering::Less => n.get_left(),
-				Ordering::Greater => n.get_right(),
-				Ordering::Equal => return Some(n),
+				Ordering::Less => node.get_left(),
+				Ordering::Greater => node.get_right(),
+				Ordering::Equal => break Some(node),
 			};
-
-			if next.is_none() {
-				return Some(n);
+			if let Some(next) = next {
+				node = next;
+			} else {
+				break Some(node);
 			}
-			node = next;
 		}
-
-		None
 	}
 
-	/// Equilibrates the tree after insertion of node `node`.
-	fn insert_equilibrate(mut node: &mut Node<K, V>) {
+	/// Balances the tree after insertion of node `node`.
+	fn insert_balance(mut node: &mut Node<K, V>) {
 		let Some(parent) = node.get_parent() else {
 			node.color = NodeColor::Black;
 			return;
@@ -562,7 +518,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		if parent.is_black() {
 			return;
 		}
-
 		// The node's parent exists and is red
 		if let Some(uncle) = node.get_uncle() {
 			if uncle.is_red() {
@@ -570,31 +525,25 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 				parent.color = NodeColor::Black;
 				uncle.color = NodeColor::Black;
 				grandparent.color = NodeColor::Red;
-
-				Self::insert_equilibrate(grandparent);
+				Self::insert_balance(grandparent);
 				return;
 			}
 		}
-
 		if node.is_triangle() {
 			if parent.is_right_child() {
 				parent.right_rotate();
 			} else {
 				parent.left_rotate();
 			}
-
 			node = parent;
 		}
-
 		let parent = node.get_parent().unwrap();
 		let grandparent = parent.get_parent().unwrap();
-
 		if node.is_right_child() {
 			grandparent.left_rotate();
 		} else {
 			grandparent.right_rotate();
 		}
-
 		parent.color = NodeColor::Black;
 		grandparent.color = NodeColor::Red;
 	}
@@ -612,42 +561,32 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		let n = match self.get_insert_node(&key) {
 			Some(p) => {
 				let order = key.cmp(&p.key);
-
 				if order == Ordering::Equal {
-					// Dropping old key/value pair and replacing with the new ones
+					// Drop old key/value pair and replacing with the new ones
 					p.key = key;
 					p.value = val;
-
 					return Ok(&mut p.value);
 				}
-
 				let mut node = Node::new(key, val)?;
 				let n = unsafe { node.as_mut() };
-
 				match order {
 					Ordering::Less => p.insert_left(n),
 					Ordering::Greater => p.insert_right(n),
-
 					_ => unreachable!(),
 				}
-
 				n
 			}
-
 			None => {
 				debug_assert!(self.get_root().is_none());
-
 				let mut node = Node::new(key, val)?;
 				unsafe { node.as_mut() }
 			}
 		};
-
-		Self::insert_equilibrate(n);
+		Self::insert_balance(n);
+		self.update_root(n);
+		self.len += 1;
 		//#[cfg(config_debug_debug)]
 		//self.check();
-		self.update_root(n);
-
-		self.len += 1;
 		Ok(&mut n.value)
 	}
 
@@ -663,23 +602,18 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 			Self::remove_fix_double_black(parent);
 			return;
 		};
-
 		if sibling.is_red() {
 			parent.color = NodeColor::Red;
 			sibling.color = NodeColor::Black;
-
 			if sibling.is_left_child() {
 				parent.right_rotate();
 			} else {
 				parent.left_rotate();
 			}
-
 			Self::remove_fix_double_black(node);
 			return;
 		}
-
 		// from here, `sibling` is black
-
 		let s_left = sibling.get_left();
 		let s_right = sibling.get_right();
 		match (s_left, s_right) {
@@ -693,10 +627,8 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 					sibling.right_rotate();
 					parent.left_rotate();
 				}
-
 				parent.color = NodeColor::Black;
 			}
-
 			(_, Some(s_right)) if s_right.is_red() => {
 				if sibling.is_left_child() {
 					s_right.color = parent.color;
@@ -707,14 +639,11 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 					sibling.color = parent.color;
 					parent.left_rotate();
 				}
-
 				parent.color = NodeColor::Black;
 			}
-
 			_ => {
 				// `sibling` has two black children
 				sibling.color = NodeColor::Red;
-
 				if parent.is_black() {
 					Self::remove_fix_double_black(parent);
 				} else {
@@ -741,13 +670,10 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 			// The node has no children
 			_ => None,
 		};
-
 		let both_black = node.is_black() && replacement.as_ref().map_or(true, |r| r.is_black());
 		let parent = node.get_parent();
-
 		let Some(replacement) = replacement else {
 			// The node has no children
-
 			match parent {
 				Some(_parent) => {
 					if both_black {
@@ -757,45 +683,33 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 						sibling.color = NodeColor::Red;
 					}
 				}
-
 				// The node is root
 				None => {
 					debug_assert_eq!(self.get_root().unwrap() as *mut Node<K, V>, node as *mut _);
-
 					*self.root.get_mut() = None;
 				}
 			}
-
 			node.unlink();
-
 			self.len -= 1;
 			return unsafe { drop_node(node.into()) };
 		};
-
 		if node.get_left().is_some() && node.get_right().is_some() {
 			mem::swap(&mut node.key, &mut replacement.key);
 			mem::swap(&mut node.value, &mut replacement.value);
-
 			return self.remove_node(replacement);
 		}
-
 		let Some(parent) = parent else {
 			// The node is the root
-
 			replacement.unlink();
 			let (mut key, value) = unsafe { drop_node(replacement.into()) };
-
 			node.left = None;
 			node.right = None;
-
 			mem::swap(&mut key, &mut node.key);
 			let mut val = value;
 			mem::swap(&mut val, &mut node.value);
-
 			self.len -= 1;
 			return (key, val);
 		};
-
 		replacement.parent = None;
 		if node.is_left_child() {
 			parent.left = None;
@@ -804,17 +718,14 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 			parent.right = None;
 			parent.insert_right(replacement);
 		}
-
 		node.unlink();
 		let (key, val) = unsafe { drop_node(node.into()) };
-
 		if both_black {
 			Self::remove_fix_double_black(replacement);
 			self.update_root(replacement);
 		} else {
 			replacement.color = NodeColor::Black;
 		}
-
 		self.len -= 1;
 		(key, val)
 	}
@@ -828,82 +739,71 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	pub fn remove(&mut self, key: &K) -> Option<V> {
 		let node = self.get_node(key)?;
 		let (_, value) = self.remove_node(node);
-
 		//#[cfg(config_debug_debug)]
 		//self.check();
 		Some(value)
 	}
 
-	/// Calls the given closure for every nodes in the subtree with root `root`.
+	/// Calls the given closure for every node in the subtree with root `root`.
 	///
 	/// `traversal_order` defines the order in which the tree is traversed.
-	fn foreach_nodes<F: FnMut(&Node<K, V>)>(
+	fn foreach_node<F: FnMut(&Node<K, V>)>(
 		root: &Node<K, V>,
 		f: &mut F,
-		traversal_order: TraveralOrder,
+		traversal_order: TraversalOrder,
 	) {
-		let (first, second) = if traversal_order == TraveralOrder::ReverseInOrder {
+		let (first, second) = if traversal_order == TraversalOrder::ReverseInOrder {
 			(root.right, root.left)
 		} else {
 			(root.left, root.right)
 		};
-
-		if traversal_order == TraveralOrder::PreOrder {
+		if traversal_order == TraversalOrder::PreOrder {
 			(*f)(root);
 		}
-
 		if let Some(mut n) = first {
-			Self::foreach_nodes(unsafe { n.as_mut() }, f, traversal_order);
+			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
 		}
-
-		if traversal_order == TraveralOrder::InOrder
-			|| traversal_order == TraveralOrder::ReverseInOrder
+		if traversal_order == TraversalOrder::InOrder
+			|| traversal_order == TraversalOrder::ReverseInOrder
 		{
 			(*f)(root);
 		}
-
 		if let Some(mut n) = second {
-			Self::foreach_nodes(unsafe { n.as_mut() }, f, traversal_order);
+			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
 		}
-
-		if traversal_order == TraveralOrder::PostOrder {
+		if traversal_order == TraversalOrder::PostOrder {
 			(*f)(root);
 		}
 	}
 
-	/// Calls the given closure for every nodes in the subtree with root `root`.
+	/// Calls the given closure for every node in the subtree with root `root`.
 	///
 	/// `traversal_order` defines the order in which the tree is traversed.
-	fn foreach_nodes_mut<F: FnMut(&mut Node<K, V>)>(
+	fn foreach_node_mut<F: FnMut(&mut Node<K, V>)>(
 		root: &mut Node<K, V>,
 		f: &mut F,
-		traversal_order: TraveralOrder,
+		traversal_order: TraversalOrder,
 	) {
-		let (first, second) = if traversal_order == TraveralOrder::ReverseInOrder {
+		let (first, second) = if traversal_order == TraversalOrder::ReverseInOrder {
 			(root.right, root.left)
 		} else {
 			(root.left, root.right)
 		};
-
-		if traversal_order == TraveralOrder::PreOrder {
+		if traversal_order == TraversalOrder::PreOrder {
 			f(root);
 		}
-
 		if let Some(mut n) = first {
-			Self::foreach_nodes_mut(unsafe { n.as_mut() }, f, traversal_order);
+			Self::foreach_node_mut(unsafe { n.as_mut() }, f, traversal_order);
 		}
-
-		if traversal_order == TraveralOrder::InOrder
-			|| traversal_order == TraveralOrder::ReverseInOrder
+		if traversal_order == TraversalOrder::InOrder
+			|| traversal_order == TraversalOrder::ReverseInOrder
 		{
 			f(root);
 		}
-
 		if let Some(mut n) = second {
-			Self::foreach_nodes_mut(unsafe { n.as_mut() }, f, traversal_order);
+			Self::foreach_node_mut(unsafe { n.as_mut() }, f, traversal_order);
 		}
-
-		if traversal_order == TraveralOrder::PostOrder {
+		if traversal_order == TraversalOrder::PostOrder {
 			f(root);
 		}
 	}
@@ -918,19 +818,15 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		let Some(root) = self.get_root() else {
 			return;
 		};
-
 		let mut explored_nodes = Vec::<*const c_void>::new();
-
-		Self::foreach_nodes(
+		Self::foreach_node(
 			root,
 			&mut |n: &Node<K, V>| {
 				assert!(n as *const _ as usize >= memory::PROCESS_END as usize);
-
 				for e in explored_nodes.iter() {
 					assert_ne!(*e, n as *const _ as *const c_void);
 				}
 				explored_nodes.push(n as *const _ as *const c_void).unwrap();
-
 				if let Some(left) = n.get_left() {
 					assert!(left as *const _ as usize >= memory::PROCESS_END as usize);
 					assert!(ptr::eq(
@@ -939,7 +835,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 					));
 					assert!(left.key <= n.key);
 				}
-
 				if let Some(right) = n.get_right() {
 					assert!(right as *const _ as usize >= memory::PROCESS_END as usize);
 					assert!(ptr::eq(
@@ -949,7 +844,7 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 					assert!(right.key >= n.key);
 				}
 			},
-			TraveralOrder::PreOrder,
+			TraversalOrder::PreOrder,
 		);
 	}
 
@@ -961,7 +856,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		let node = self
 			.get_root()
 			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
-
 		MapIterator {
 			tree: self,
 			node,
@@ -977,7 +871,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		let node = self
 			.get_root()
 			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
-
 		MapMutIterator {
 			tree: self,
 			node,
@@ -991,7 +884,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	#[inline]
 	pub fn range<R: RangeBounds<K>>(&self, range: R) -> MapRange<'_, K, V, R> {
 		let node = self.get_start_node(range.start_bound());
-
 		MapRange {
 			iter: MapIterator {
 				tree: self,
@@ -1008,7 +900,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 	#[inline]
 	pub fn range_mut<R: RangeBounds<K>>(&mut self, range: R) -> MapMutRange<'_, K, V, R> {
 		let node = self.get_start_node(range.start_bound());
-
 		MapMutRange {
 			iter: MapMutIterator {
 				tree: self,
@@ -1029,7 +920,6 @@ impl<K: 'static + Ord, V: 'static> Map<K, V> {
 		let node = self
 			.get_root()
 			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
-
 		DrainFilter {
 			tree: self,
 
@@ -1065,7 +955,6 @@ fn next_node<K: Ord + 'static, V: 'static>(node: &Node<K, V>) -> Option<&'static
 		while let Some(n) = node.get_left() {
 			node = n;
 		}
-
 		Some(node)
 	} else {
 		let mut node = node;
@@ -1074,17 +963,14 @@ fn next_node<K: Ord + 'static, V: 'static>(node: &Node<K, V>) -> Option<&'static
 			if !node.is_right_child() {
 				return Some(p);
 			}
-
 			node = p;
 			parent = node.get_parent();
 		}
-
 		None
 	}
 }
 
-/// An iterator for the Map structure. This iterator traverses the tree in pre
-/// order.
+/// An iterator for the Map structure. This iterator traverses the tree in pre-order.
 pub struct MapIterator<'m, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
 	tree: &'m Map<K, V>,
@@ -1099,20 +985,18 @@ impl<'m, K: 'static + Ord, V> Iterator for MapIterator<'m, K, V> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = unwrap_pointer(self.node)?;
-
 		self.node = next_node(node).and_then(|n| NonNull::new(n));
 		self.i += 1;
-
 		Some((&node.key, &node.value))
-	}
-
-	fn count(self) -> usize {
-		self.tree.len()
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.tree.len() - self.i;
 		(len, Some(len))
+	}
+
+	fn count(self) -> usize {
+		self.tree.len()
 	}
 }
 
@@ -1139,7 +1023,7 @@ unsafe impl<'m, K: Ord, V> TrustedLen for MapIterator<'m, K, V> {}
 
 /// An iterator for the `Map` structure.
 ///
-/// This iterator traverses the tree in pre order.
+/// This iterator traverses the tree in pre-order.
 pub struct MapMutIterator<'m, K: 'static + Ord, V: 'static> {
 	/// The binary tree to iterate into.
 	tree: &'m mut Map<K, V>,
@@ -1154,20 +1038,18 @@ impl<'m, K: 'static + Ord, V> Iterator for MapMutIterator<'m, K, V> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = unwrap_pointer(self.node)?;
-
 		self.node = next_node(node).and_then(|n| NonNull::new(n));
 		self.i += 1;
-
 		Some((&node.key, &mut node.value))
-	}
-
-	fn count(self) -> usize {
-		self.tree.len()
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.tree.len() - self.i;
 		(len, Some(len))
+	}
+
+	fn count(self) -> usize {
+		self.tree.len()
 	}
 }
 
@@ -1205,7 +1087,6 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapRange<
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let (key, value) = self.iter.next()?;
-
 		if likely(self.range.contains(key)) {
 			Some((key, value))
 		} else {
@@ -1227,7 +1108,6 @@ impl<'m, K: 'static + Ord, V: 'static, R: RangeBounds<K>> Iterator for MapMutRan
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let (key, value) = self.iter.next()?;
-
 		if likely(self.range.contains(key)) {
 			Some((key, value))
 		} else {
@@ -1267,7 +1147,6 @@ impl<'m, K: Ord + 'static, V: 'static, F: FnMut(&K, &mut V) -> bool> Iterator
 		while !(self.pred)(&node.key, &mut node.value) {
 			node = next_node(node)?;
 		}
-
 		// FIXME: `remove_node` swaps values between nodes, so the node returned by `next_node`
 		// becomes invalid
 		// get next node
@@ -1276,14 +1155,11 @@ impl<'m, K: Ord + 'static, V: 'static, F: FnMut(&K, &mut V) -> bool> Iterator
 			.tree
 			.get_root()
 			.map(|n| NonNull::new(Map::get_leftmost_node(n)).unwrap());
-
 		// remove the current node
 		let (k, v) = self.tree.remove_node(node);
-
 		// place cursor on next node
 		self.node = next;
 		self.i += 1;
-
 		Some((k, v))
 	}
 }
@@ -1304,26 +1180,23 @@ impl<K: 'static + TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<All
 
 impl<K: 'static + Ord + fmt::Debug, V> fmt::Debug for Map<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		if let Some(root) = self.get_root() {
-			Self::foreach_nodes(
-				root,
-				&mut |n| {
-					for _ in 0..n.get_node_depth() {
-						let _ = write!(f, "\t");
-					}
-
-					let color = match n.color {
-						NodeColor::Red => "red",
-						NodeColor::Black => "black",
-					};
-					let _ = writeln!(f, "{:?} ({color})", n.key);
-				},
-				TraveralOrder::ReverseInOrder,
-			);
-			Ok(())
-		} else {
-			write!(f, "<Empty tree>")
-		}
+		let Some(root) = self.get_root() else {
+			return write!(f, "<Empty tree>");
+		};
+		Self::foreach_node(
+			root,
+			&mut |n| {
+				// Tabs
+				let _ = write!(f, "{:\t^1$}", "", n.get_node_depth());
+				let color = match n.color {
+					NodeColor::Red => "red",
+					NodeColor::Black => "black",
+				};
+				let _ = writeln!(f, "{key:?} ({color})", key = n.key);
+			},
+			TraversalOrder::ReverseInOrder,
+		);
+		Ok(())
 	}
 }
 
@@ -1333,12 +1206,12 @@ impl<K: 'static + Ord, V> Drop for Map<K, V> {
 			return;
 		};
 
-		Self::foreach_nodes_mut(
+		Self::foreach_node_mut(
 			root,
 			&mut |n| unsafe {
 				drop_node(n.into());
 			},
-			TraveralOrder::PostOrder,
+			TraversalOrder::PostOrder,
 		);
 	}
 }
