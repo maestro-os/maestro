@@ -25,6 +25,8 @@ use core::{
 	ptr::NonNull,
 };
 
+// TODO refactor to use a B-tree instead of a simple Red-Black tree with a single element per node
+
 /// The color of a binary tree node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeColor {
@@ -901,15 +903,6 @@ impl<K: Ord, V> BTreeMap<K, V> {
 
 			pred,
 		}
-	}
-
-	/// Moves all elements from `other` into `self`, leaving `other` empty.
-	///
-	/// If a key from `other` is already present in `self`, the respective value from `self` will
-	/// be overwritten with the respective value from `other`.
-	pub fn append(&mut self, _other: &mut Self) {
-		// TODO
-		todo!()
 	}
 
 	/// Retains only the elements matching the given predicate.
