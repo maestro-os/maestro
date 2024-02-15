@@ -5,7 +5,7 @@
 #[cfg(config_debug_debug)]
 use crate::util::collections::vec::Vec;
 use crate::{
-	errno::AllocResult,
+	errno::{AllocResult, CollectResult},
 	memory::malloc,
 	util::{AllocError, TryClone},
 };
@@ -630,7 +630,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 
 	/// Removes the given node `node` from the tree.
 	///
-	/// The function returns the value of the removed node.
+	/// The function returns the key and value of the removed node.
 	fn remove_node(&mut self, node: &mut Node<K, V>) -> (K, V) {
 		let left = node.get_left();
 		let right = node.get_right();
@@ -948,6 +948,20 @@ fn next_node<'a, K: Ord, V>(node: &Node<K, V>) -> Option<&'a mut Node<K, V>> {
 			parent = node.get_parent();
 		}
 		None
+	}
+}
+
+impl<K: Ord, V> FromIterator<(K, V)> for CollectResult<BTreeMap<K, V>> {
+	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+		let iter = iter.into_iter();
+		let res = (|| {
+			let mut map = BTreeMap::new();
+			for (k, v) in iter {
+				map.insert(k, v)?;
+			}
+			Ok(map)
+		})();
+		Self(res)
 	}
 }
 
