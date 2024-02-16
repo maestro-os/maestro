@@ -18,7 +18,7 @@ use core::{ffi::c_void, mem, num::NonZeroUsize};
 /// The `complement` vector stores the complement of modifications to be used by [`rollback`].
 ///
 /// **Warning**: on memory allocation failure, `to` is left altered mid-way.
-fn union<'a, K, V>(
+fn union<K, V>(
 	from: BTreeMap<K, V>,
 	to: &mut BTreeMap<K, V>,
 	complement: &mut Vec<(K, Option<V>)>,

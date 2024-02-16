@@ -1053,7 +1053,7 @@ fn flatten<K, V>(mut node: &mut Node<K, V>) {
 	loop {
 		if let Some(left) = node.get_left() {
 			flatten(left);
-			let mut right = mem::replace(&mut node.left, None);
+			let mut right = node.left.take();
 			mem::swap(&mut right, &mut node.right);
 			let mut tmp = left;
 			while let Some(t) = tmp.get_right() {
