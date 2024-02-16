@@ -8,6 +8,7 @@
 mod gap;
 mod mapping;
 pub mod ptr;
+mod transaction;
 
 use crate::{
 	errno::{AllocError, Errno},
@@ -18,7 +19,10 @@ use crate::{
 	util,
 	util::{
 		boxed::Box,
-		collections::{btreemap::BTreeMap, hashmap::HashMap, vec::Vec},
+		collections::{
+			btreemap::{BTreeMap, Entry},
+			vec::Vec,
+		},
 		lock::Mutex,
 		ptr::arc::Arc,
 		TryClone,
@@ -34,6 +38,7 @@ use core::{
 };
 use gap::MemGap;
 use mapping::MemMapping;
+use transaction::MemSpaceTransaction;
 
 /// Flag telling that a memory mapping can be written to.
 pub const MAPPING_FLAG_WRITE: u8 = 0b00001;
@@ -264,8 +269,10 @@ impl MemSpaceState {
 	/// Inserts the given gap into the state.
 	fn insert_gap(&mut self, gap: MemGap) -> AllocResult<()> {
 		let gap_ptr = gap.get_begin();
-		let g = self.gaps.insert(gap_ptr, gap)?;
-		if let Err(e) = self.gaps_size.insert((g.get_size(), gap_ptr), ()) {
+		let gap_size = gap.get_size();
+		self.gaps.insert(gap_ptr, gap)?;
+		if let Err(e) = self.gaps_size.insert((gap_size, gap_ptr), ()) {
+			// On allocation error, rollback
 			self.gaps.remove(&gap_ptr);
 			return Err(e);
 		}
@@ -293,7 +300,7 @@ impl MemSpaceState {
 			.gaps_size
 			.range((size, null_mut::<c_void>())..)
 			.next()?;
-		let gap = self.gaps.get(*ptr).unwrap();
+		let gap = self.gaps.get(ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 		Some(gap)
 	}
@@ -349,42 +356,6 @@ impl MemSpaceState {
 				Ordering::Greater
 			}
 		})
-	}
-}
-
-/// A transaction to be performed on a memory space.
-///
-/// Since mapping or unmapping memory required separate insert and remove operations, and insert
-/// operations can fail, it is necessary to ensure every operations are performed, or rollback to
-/// avoid inconsistent states.
-///
-/// To do this, this transaction structure stores actions to be made, then is able to perform them
-/// all on commit without a failure because all the necessary allocations have already been done.
-#[derive(Default)]
-struct MemSpaceTransaction {
-	/// Buffer used to store insertions.
-	buffer_state: MemSpaceState,
-	/// The list of mappings to remove.
-	remove_mappings: HashMap<*const c_void, ()>,
-	/// The list of gaps to remove.
-	remove_gaps: HashMap<*const c_void, ()>,
-}
-
-impl MemSpaceTransaction {
-	/// Commits the transaction on the given state.
-	fn commit(mut self, on: &mut MemSpaceState) {
-		// TODO use into_iter instead
-		// Removals
-		for (m, _) in self.remove_mappings.iter() {
-			on.mappings.remove(&(*m as *mut c_void));
-		}
-		for (g, _) in self.remove_gaps.iter() {
-			on.remove_gap(*g as _);
-		}
-		// Insertions
-		on.gaps.append(&mut self.buffer_state.gaps);
-		on.gaps_size.append(&mut self.buffer_state.gaps_size);
-		on.mappings.append(&mut self.buffer_state.mappings);
 	}
 }
 
@@ -512,10 +483,14 @@ impl MemSpace {
 		// Create the mapping
 		let mapping = MemMapping::new(addr, size, flags, self.vmem.clone(), residence);
 		vmem_usage += size.get();
-		// TODO use `entry` API (`insert` is supposed to return the previous value)
-		let m = transaction.buffer_state.mappings.insert(addr, mapping)?;
+		let m = match transaction.buffer_state.mappings.entry(addr) {
+			Entry::Vacant(e) => e.insert(mapping)?,
+			// Occupied means the state is inconsistent
+			Entry::Occupied(_) => unreachable!(),
+		};
 		m.map_default()?;
-		transaction.commit(&mut self.state);
+		// Commit
+		transaction.commit(&mut self.state)?;
 		self.vmem_usage = vmem_usage;
 		Ok(addr)
 	}
@@ -552,7 +527,7 @@ impl MemSpace {
 			};
 			// The pointer to the beginning of the mapping
 			let mapping_ptr = mapping.get_begin();
-			transaction.remove_mappings.insert(mapping_ptr, ())?;
+			transaction.remove_mappings.push(mapping_ptr)?;
 			// The offset in the mapping to the beginning of pages to unmap
 			let begin = (page_ptr as usize - mapping_ptr as usize) / memory::PAGE_SIZE;
 			// The number of pages to unmap in the mapping
@@ -582,13 +557,13 @@ impl MemSpace {
 					})
 					.flatten();
 				if let Some(p) = prev_gap {
-					transaction.remove_gaps.insert(p.get_begin(), ())?;
+					transaction.remove_gaps.push(p.get_begin())?;
 					gap.merge(p);
 				}
 				// Merge next gap
 				let next_gap = self.state.get_gap_for_ptr(gap.get_end());
 				if let Some(n) = next_gap {
-					transaction.remove_gaps.insert(n.get_begin(), ())?;
+					transaction.remove_gaps.push(n.get_begin())?;
 					gap.merge(n);
 				}
 				transaction.buffer_state.insert_gap(gap)?;
@@ -617,8 +592,9 @@ impl MemSpace {
 			return Err(AllocError);
 		}
 		let mut transaction = MemSpaceTransaction::default();
-		self.vmem_usage -= self.unmap_impl(&mut transaction, ptr, size, brk)?;
-		transaction.commit(&mut self.state);
+		let removed_count = self.unmap_impl(&mut transaction, ptr, size, brk)?;
+		transaction.commit(&mut self.state)?;
+		self.vmem_usage -= removed_count;
 		Ok(())
 	}
 

@@ -12,6 +12,7 @@ use crate::{
 #[cfg(config_debug_debug)]
 use core::ffi::c_void;
 use core::{
+	borrow::Borrow,
 	cell::UnsafeCell,
 	cmp::Ordering,
 	fmt,
@@ -25,7 +26,10 @@ use core::{
 	ptr::NonNull,
 };
 
-// TODO refactor to use a B-tree instead of a simple Red-Black tree with a single element per node
+// TODO refactor to use an actual B-tree instead of a simple Red-Black tree with a single element
+// per node
+
+// TODO implement DoubleEndedIterator for all iterators
 
 /// The color of a binary tree node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -77,7 +81,7 @@ fn unwrap_pointer<'a, K, V>(ptr: Option<NonNull<Node<K, V>>>) -> Option<&'a mut 
 	ptr.map(|mut p| unsafe { p.as_mut() })
 }
 
-impl<K: Ord, V> Node<K, V> {
+impl<K, V> Node<K, V> {
 	/// Creates a new node with the given `value`.
 	///
 	/// The node is colored [`NodeColor::Red`] by default.
@@ -285,6 +289,181 @@ impl<K: Ord, V> Node<K, V> {
 	}
 }
 
+/// Searches for a node with the given key in the tree and returns a
+/// reference.
+///
+/// `key` is the key to find.
+fn get_node<K: Ord, V>(
+	mut node: &mut Node<K, V>,
+	cmp: impl Fn(&K) -> Ordering,
+) -> Result<&mut Node<K, V>, &mut Node<K, V>> {
+	loop {
+		let next = match cmp(&node.key) {
+			Ordering::Less => node.get_left(),
+			Ordering::Greater => node.get_right(),
+			Ordering::Equal => break Ok(node),
+		};
+		let Some(next) = next else {
+			// The node cannot be found, return the node on which it would be inserted
+			break Err(node);
+		};
+		node = next;
+	}
+}
+
+/// Returns a reference to the leftmost node in the tree.
+fn get_leftmost_node<K, V>(node: &mut Node<K, V>) -> &mut Node<K, V> {
+	let mut n = node;
+	while let Some(left) = n.get_left() {
+		n = left;
+	}
+	n
+}
+
+/// Returns the start node for a range iterator starting at `start`.
+fn get_start_node<K: Ord, V>(
+	mut node: &mut Node<K, V>,
+	start: Bound<&K>,
+) -> Option<NonNull<Node<K, V>>> {
+	let (key, exclude) = match start {
+		Bound::Unbounded => return NonNull::new(get_leftmost_node(node)),
+		Bound::Included(key) => (key, false),
+		Bound::Excluded(key) => (key, true),
+	};
+	// The last in-bound element encountered.
+	let mut last = None;
+	loop {
+		let in_bound = match node.key.cmp(key) {
+			Ordering::Less => false,
+			Ordering::Greater => true,
+			Ordering::Equal => !exclude,
+		};
+		let next = if in_bound {
+			let next = node.get_left();
+			last = Some(node);
+			next
+		} else {
+			node.get_right()
+		};
+		let Some(next) = next else {
+			break;
+		};
+		node = next;
+	}
+	last.map(NonNull::from)
+}
+
+/// Balances the tree after insertion of node `node`.
+fn insert_balance<K, V>(mut node: &mut Node<K, V>) {
+	let Some(parent) = node.get_parent() else {
+		node.color = NodeColor::Black;
+		return;
+	};
+	if parent.is_black() {
+		return;
+	}
+	// The node's parent exists and is red
+	if let Some(uncle) = node.get_uncle() {
+		if uncle.is_red() {
+			let grandparent = parent.get_parent().unwrap();
+			parent.color = NodeColor::Black;
+			uncle.color = NodeColor::Black;
+			grandparent.color = NodeColor::Red;
+			insert_balance(grandparent);
+			return;
+		}
+	}
+	if node.is_triangle() {
+		if parent.is_right_child() {
+			parent.right_rotate();
+		} else {
+			parent.left_rotate();
+		}
+		node = parent;
+	}
+	let parent = node.get_parent().unwrap();
+	let grandparent = parent.get_parent().unwrap();
+	if node.is_right_child() {
+		grandparent.left_rotate();
+	} else {
+		grandparent.right_rotate();
+	}
+	parent.color = NodeColor::Black;
+	grandparent.color = NodeColor::Red;
+}
+
+/// An entry with a used key.
+pub struct OccupiedEntry<'t, K: Ord, V> {
+	/// The tree in which the entry is located.
+	tree: &'t mut BTreeMap<K, V>,
+	/// The entry's node.
+	node: &'t mut Node<K, V>,
+}
+
+impl<'t, K: Ord, V> OccupiedEntry<'t, K, V> {
+	/// Returns an immutable reference to the key.
+	pub fn key(&self) -> &K {
+		&self.node.key
+	}
+
+	/// Returns an immutable reference to the value.
+	pub fn get(&self) -> &V {
+		&self.node.value
+	}
+
+	/// Returns a mutable reference to the value.
+	pub fn get_mut(&mut self) -> &mut V {
+		&mut self.node.value
+	}
+
+	/// Sets the value to `value` and returns the previous value.
+	pub fn insert(&mut self, value: V) -> V {
+		mem::replace(self.get_mut(), value)
+	}
+}
+
+/// An entry with an unused key.
+pub struct VacantEntry<'t, K: Ord, V> {
+	/// The tree in which the entry is located.
+	tree: &'t mut BTreeMap<K, V>,
+	/// The key to use for insertion.
+	key: K,
+	/// The parent of the node to be created for insertion.
+	///
+	/// If `None`, the node is inserted at the root of the tree.
+	parent: Option<&'t mut Node<K, V>>,
+}
+
+impl<'t, K: Ord, V> VacantEntry<'t, K, V> {
+	/// Inserts the given `value` and returns a reference to it.
+	pub fn insert(self, value: V) -> AllocResult<&'t mut V> {
+		let mut node = Node::new(self.key, value)?;
+		let n = unsafe { node.as_mut() };
+		match self.parent {
+			Some(parent) => {
+				match n.key.cmp(&parent.key) {
+					Ordering::Less => parent.insert_left(n),
+					Ordering::Greater => parent.insert_right(n),
+					// If equal, the key is already used and `self` should not exist
+					_ => unreachable!(),
+				}
+				insert_balance(n);
+				self.tree.update_root(n);
+			}
+			// The tree is empty. Insert as root
+			None => *self.tree.root.get_mut() = Some(node),
+		}
+		self.tree.len += 1;
+		Ok(&mut n.value)
+	}
+}
+
+/// An entry in a [`BTreeMap`].
+pub enum Entry<'t, K: Ord, V> {
+	Occupied(OccupiedEntry<'t, K, V>),
+	Vacant(VacantEntry<'t, K, V>),
+}
+
 /// Specifies the order in which the tree is to be traversed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TraversalOrder {
@@ -298,7 +477,7 @@ pub enum TraversalOrder {
 	PostOrder,
 }
 
-/// The implementation of the [`BTreeMap`] object.
+/// The implementation of the B-tree map.
 pub struct BTreeMap<K: Ord, V> {
 	/// The root node of the binary tree.
 	root: UnsafeCell<Option<NonNull<Node<K, V>>>>,
@@ -313,7 +492,7 @@ impl<K: Ord, V> Default for BTreeMap<K, V> {
 }
 
 impl<K: Ord, V> BTreeMap<K, V> {
-	/// Creates a new binary tree.
+	/// Creates a new empty binary tree.
 	pub const fn new() -> Self {
 		Self {
 			root: UnsafeCell::new(None),
@@ -339,63 +518,12 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		unsafe { Some((*self.root.get()).as_mut()?.as_mut()) }
 	}
 
-	/// Returns a reference to the leftmost node in the tree.
-	fn get_leftmost_node(node: &mut Node<K, V>) -> &mut Node<K, V> {
-		let mut n = node;
-		while let Some(left) = n.get_left() {
-			n = left;
-		}
-		n
-	}
-
-	/// Searches for a node with the given key in the tree and returns a
-	/// reference.
-	///
-	/// `key` is the key to find.
-	fn get_node<'a>(&self, key: &K) -> Option<&'a mut Node<K, V>> {
-		let mut node = self.get_root()?;
-		loop {
-			let ord = key.cmp(&node.key);
-			match ord {
-				Ordering::Less => node = node.get_left()?,
-				Ordering::Greater => node = node.get_right()?,
-				Ordering::Equal => break Some(node),
-			}
-		}
-	}
-
-	/// Returns the start node for a range iterator starting at `start`.
-	fn get_start_node(&self, start: Bound<&K>) -> Option<NonNull<Node<K, V>>> {
-		let mut node = self.get_root();
-		let (key, exclude) = match start {
-			Bound::Unbounded => return NonNull::new(Self::get_leftmost_node(node?)),
-			Bound::Included(key) => (key, false),
-			Bound::Excluded(key) => (key, true),
-		};
-		// The last in-bound element encountered.
-		let mut last = None;
-		while let Some(n) = node {
-			let in_bound = match n.key.cmp(key) {
-				Ordering::Less => false,
-				Ordering::Greater => true,
-				Ordering::Equal => !exclude,
-			};
-			if in_bound {
-				node = n.get_left();
-				last = Some(n);
-			} else {
-				node = n.get_right();
-			}
-		}
-		last.and_then(|n| NonNull::new(n))
-	}
-
 	/// Returns the first key/value pair in tree. The returned key is the minimum present in
 	/// the tree.
 	///
 	/// If the tree is empty, the function returns `None`.
 	pub fn first_key_value(&self) -> Option<(&K, &V)> {
-		let node = Self::get_leftmost_node(self.get_root()?);
+		let node = get_leftmost_node(self.get_root()?);
 		Some((&node.key, &node.value))
 	}
 
@@ -404,17 +532,44 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	///
 	/// If the tree is empty, the function returns `None`.
 	pub fn pop_first(&mut self) -> Option<(K, V)> {
-		let node = Self::get_leftmost_node(self.get_root()?);
+		let node = get_leftmost_node(self.get_root()?);
 		let (key, value) = self.remove_node(node);
 		Some((key, value))
+	}
+
+	/// Returns the entry corresponding to the given key.
+	pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
+		let Some(root) = self.get_root() else {
+			return Entry::Vacant(VacantEntry {
+				tree: self,
+				key,
+				parent: None,
+			});
+		};
+		match get_node(root, |k| key.cmp(k.borrow())) {
+			Ok(node) => Entry::Occupied(OccupiedEntry {
+				tree: self,
+				node,
+			}),
+			Err(parent) => Entry::Vacant(VacantEntry {
+				tree: self,
+				key,
+				parent: Some(parent),
+			}),
+		}
 	}
 
 	/// Searches for the given key in the tree and returns a reference.
 	///
 	/// `key` is the key to find.
 	#[inline]
-	pub fn get(&self, key: K) -> Option<&V> {
-		let node = self.get_node(&key)?;
+	pub fn get<Q>(&self, key: &Q) -> Option<&V>
+	where
+		K: Borrow<Q> + Ord,
+		Q: Ord + ?Sized,
+	{
+		let root = self.get_root()?;
+		let node = get_node(root, |k| key.cmp(k.borrow())).ok()?;
 		Some(&node.value)
 	}
 
@@ -422,13 +577,24 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	///
 	/// `key` is the key to find.
 	#[inline]
-	pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
-		let node = self.get_node(&key)?;
+	pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+	where
+		K: Borrow<Q> + Ord,
+		Q: Ord + ?Sized,
+	{
+		let root = self.get_root()?;
+		let node = get_node(root, |k| key.cmp(k.borrow())).ok()?;
 		Some(&mut node.value)
 	}
 
+	/// Tells whether the collection contains an entry with the given key.
+	#[inline]
+	pub fn contains_key(&self, k: &K) -> bool {
+		self.get(k).is_some()
+	}
+
 	/// Searches for a node in the tree using the given comparison function
-	/// `cmp` instead of the `Ord` trait.
+	/// `cmp` instead of the [`Ord`] trait.
 	pub fn cmp_get<F: Fn(&K, &V) -> Ordering>(&self, cmp: F) -> Option<&V> {
 		let mut node = self.get_root()?;
 		loop {
@@ -442,7 +608,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	}
 
 	/// Searches for a node in the tree using the given comparison function
-	/// `cmp` instead of the `Ord` trait and returns a mutable reference.
+	/// `cmp` instead of the [`Ord`] trait and returns a mutable reference.
 	pub fn cmp_get_mut<F: Fn(&K, &V) -> Ordering>(&mut self, cmp: F) -> Option<&mut V> {
 		let mut node = self.get_root()?;
 		loop {
@@ -465,104 +631,17 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		*self.root.get_mut() = NonNull::new(node);
 	}
 
-	/// For node insertion, returns the parent node on which it will be
-	/// inserted.
-	fn get_insert_node<'a>(&mut self, key: &K) -> Option<&'a mut Node<K, V>> {
-		let mut node = self.get_root()?;
-		loop {
-			let ord = key.cmp(&node.key);
-			let next = match ord {
-				Ordering::Less => node.get_left(),
-				Ordering::Greater => node.get_right(),
-				Ordering::Equal => break Some(node),
-			};
-			if let Some(next) = next {
-				node = next;
-			} else {
-				break Some(node);
-			}
-		}
-	}
-
-	/// Balances the tree after insertion of node `node`.
-	fn insert_balance(mut node: &mut Node<K, V>) {
-		let Some(parent) = node.get_parent() else {
-			node.color = NodeColor::Black;
-			return;
-		};
-		if parent.is_black() {
-			return;
-		}
-		// The node's parent exists and is red
-		if let Some(uncle) = node.get_uncle() {
-			if uncle.is_red() {
-				let grandparent = parent.get_parent().unwrap();
-				parent.color = NodeColor::Black;
-				uncle.color = NodeColor::Black;
-				grandparent.color = NodeColor::Red;
-				Self::insert_balance(grandparent);
-				return;
-			}
-		}
-		if node.is_triangle() {
-			if parent.is_right_child() {
-				parent.right_rotate();
-			} else {
-				parent.left_rotate();
-			}
-			node = parent;
-		}
-		let parent = node.get_parent().unwrap();
-		let grandparent = parent.get_parent().unwrap();
-		if node.is_right_child() {
-			grandparent.left_rotate();
-		} else {
-			grandparent.right_rotate();
-		}
-		parent.color = NodeColor::Black;
-		grandparent.color = NodeColor::Red;
-	}
-
-	/// Inserts a key/value pair in the tree and returns a mutable reference to
-	/// the value.
+	/// Inserts a key/value pair in the tree.
 	///
-	/// Arguments:
-	/// - `key` is the key to insert.
-	/// - `val` is the value to insert.
-	/// - `cmp` is the comparison function.
-	///
-	/// If the key is already used, the previous key/value pair is dropped.
-	pub fn insert(&mut self, key: K, val: V) -> AllocResult<&mut V> {
-		let n = match self.get_insert_node(&key) {
-			Some(p) => {
-				let order = key.cmp(&p.key);
-				if order == Ordering::Equal {
-					// Drop old key/value pair and replacing with the new ones
-					p.key = key;
-					p.value = val;
-					return Ok(&mut p.value);
-				}
-				let mut node = Node::new(key, val)?;
-				let n = unsafe { node.as_mut() };
-				match order {
-					Ordering::Less => p.insert_left(n),
-					Ordering::Greater => p.insert_right(n),
-					_ => unreachable!(),
-				}
-				n
+	/// If the key is already used, the function returns the previous value.
+	pub fn insert(&mut self, key: K, val: V) -> AllocResult<Option<V>> {
+		match self.entry(key) {
+			Entry::Occupied(mut e) => Ok(Some(e.insert(val))),
+			Entry::Vacant(e) => {
+				e.insert(val)?;
+				Ok(None)
 			}
-			None => {
-				debug_assert!(self.get_root().is_none());
-				let mut node = Node::new(key, val)?;
-				unsafe { node.as_mut() }
-			}
-		};
-		Self::insert_balance(n);
-		self.update_root(n);
-		self.len += 1;
-		//#[cfg(config_debug_debug)]
-		//self.check();
-		Ok(&mut n.value)
+		}
 	}
 
 	/// Fixes the tree after deletion in the case where the deleted node and its
@@ -637,7 +716,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		let replacement = match (left, right) {
 			// The node has two children
 			// The leftmost node may have a child on the right
-			(Some(_left), Some(right)) => Some(Self::get_leftmost_node(right)),
+			(Some(_left), Some(right)) => Some(get_leftmost_node(right)),
 			// The node has only one child on the left
 			(Some(left), _) => Some(left),
 			// The node has only one child on the right
@@ -711,8 +790,13 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// `key` is the key to select the node to remove.
 	///
 	/// If the key exists, the function returns the value of the removed node.
-	pub fn remove(&mut self, key: &K) -> Option<V> {
-		let node = self.get_node(key)?;
+	pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+	where
+		K: Borrow<Q>,
+		Q: Ord + ?Sized,
+	{
+		let root = self.get_root()?;
+		let node = get_node(root, |k| key.cmp(k.borrow())).ok()?;
 		let (_, value) = self.remove_node(node);
 		//#[cfg(config_debug_debug)]
 		//self.check();
@@ -828,9 +912,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
 	pub fn iter(&self) -> MapIterator<K, V> {
-		let node = self
-			.get_root()
-			.map(|n| NonNull::new(BTreeMap::get_leftmost_node(n)).unwrap());
+		let node = self.get_root().map(|n| NonNull::from(get_leftmost_node(n)));
 		MapIterator {
 			tree: self,
 			node,
@@ -843,9 +925,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
 	pub fn iter_mut(&mut self) -> MapMutIterator<K, V> {
-		let node = self
-			.get_root()
-			.map(|n| NonNull::new(BTreeMap::get_leftmost_node(n)).unwrap());
+		let node = self.get_root().map(|n| NonNull::from(get_leftmost_node(n)));
 		MapMutIterator {
 			tree: self,
 			node,
@@ -858,7 +938,9 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
 	pub fn range<R: RangeBounds<K>>(&self, range: R) -> MapRange<'_, K, V, R> {
-		let node = self.get_start_node(range.start_bound());
+		let node = self
+			.get_root()
+			.and_then(|root| get_start_node(root, range.start_bound()));
 		MapRange {
 			iter: MapIterator {
 				tree: self,
@@ -874,7 +956,9 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
 	pub fn range_mut<R: RangeBounds<K>>(&mut self, range: R) -> MapMutRange<'_, K, V, R> {
-		let node = self.get_start_node(range.start_bound());
+		let node = self
+			.get_root()
+			.and_then(|root| get_start_node(root, range.start_bound()));
 		MapMutRange {
 			iter: MapMutIterator {
 				tree: self,
@@ -892,9 +976,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	where
 		F: FnMut(&K, &mut V) -> bool,
 	{
-		let node = self
-			.get_root()
-			.map(|n| NonNull::new(BTreeMap::get_leftmost_node(n)).unwrap());
+		let node = self.get_root().map(|n| NonNull::from(get_leftmost_node(n)));
 		DrainFilter {
 			tree: self,
 
@@ -924,6 +1006,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 			},
 			TraversalOrder::PostOrder,
 		);
+		*self.root.get_mut() = None;
 		self.len = 0;
 	}
 }
@@ -931,7 +1014,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 /// Returns the next node in an iterator for the given node.
 ///
 /// This is an inner function for node iterators.
-fn next_node<'a, K: Ord, V>(node: &Node<K, V>) -> Option<&'a mut Node<K, V>> {
+fn next_node<'a, K, V>(node: &Node<K, V>) -> Option<&'a mut Node<K, V>> {
 	if let Some(mut node) = node.get_right() {
 		while let Some(n) = node.get_left() {
 			node = n;
@@ -965,9 +1048,79 @@ impl<K: Ord, V> FromIterator<(K, V)> for CollectResult<BTreeMap<K, V>> {
 	}
 }
 
+/// Turns the given tree into a linked list.
+fn flatten<K, V>(mut node: &mut Node<K, V>) {
+	loop {
+		if let Some(left) = node.get_left() {
+			flatten(left);
+			let mut right = mem::replace(&mut node.left, None);
+			mem::swap(&mut right, &mut node.right);
+			let mut tmp = left;
+			while let Some(t) = tmp.get_right() {
+				tmp = t;
+			}
+			tmp.right = right;
+		}
+		let Some(next) = node.get_right() else {
+			break;
+		};
+		node = next;
+	}
+}
+
+impl<K: Ord, V> IntoIterator for BTreeMap<K, V> {
+	type IntoIter = MapIntoIter<K, V>;
+	type Item = (K, V);
+
+	fn into_iter(self) -> Self::IntoIter {
+		// Turn the tree into a linked list
+		if let Some(root) = self.get_root() {
+			flatten(root);
+		}
+		MapIntoIter {
+			tree: self,
+			i: 0,
+		}
+	}
+}
+
+/// Consuming iterator over a [`BTreeMap`].
+pub struct MapIntoIter<K: Ord, V> {
+	/// The tree.
+	tree: BTreeMap<K, V>,
+	/// The number of elements consumed so far.
+	i: usize,
+}
+
+impl<K: Ord, V> Iterator for MapIntoIter<K, V> {
+	type Item = (K, V);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// Just iterating since the tree has been transformed into a linked list
+		let node = self.tree.get_root()?;
+		*self.tree.root.get_mut() = node.right;
+		Some(unsafe { drop_node(NonNull::from(node)) })
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.tree.len() - self.i;
+		(len, Some(len))
+	}
+
+	fn count(self) -> usize {
+		self.size_hint().0
+	}
+}
+
+impl<K: Ord, V> ExactSizeIterator for MapIntoIter<K, V> {}
+
+impl<K: Ord, V> FusedIterator for MapIntoIter<K, V> {}
+
+unsafe impl<K: Ord, V> TrustedLen for MapIntoIter<K, V> {}
+
 /// Immutable reference iterator for [`BTreeMap`]. This iterator traverses the tree in pre-order.
 pub struct MapIterator<'m, K: Ord, V> {
-	/// The binary tree to iterate into.
+	/// The tree to iterate on.
 	tree: &'m BTreeMap<K, V>,
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
@@ -980,7 +1133,7 @@ impl<'m, K: Ord, V> Iterator for MapIterator<'m, K, V> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = unwrap_pointer(self.node)?;
-		self.node = next_node(node).and_then(|n| NonNull::new(n));
+		self.node = next_node(node).map(NonNull::from);
 		self.i += 1;
 		Some((&node.key, &node.value))
 	}
@@ -991,7 +1144,7 @@ impl<'m, K: Ord, V> Iterator for MapIterator<'m, K, V> {
 	}
 
 	fn count(self) -> usize {
-		self.tree.len()
+		self.size_hint().0
 	}
 }
 
@@ -1004,13 +1157,7 @@ impl<'m, K: Ord, V> IntoIterator for &'m BTreeMap<K, V> {
 	}
 }
 
-// TODO implement DoubleEndedIterator
-
-impl<'m, K: Ord, V> ExactSizeIterator for MapIterator<'m, K, V> {
-	fn len(&self) -> usize {
-		self.tree.len()
-	}
-}
+impl<'m, K: Ord, V> ExactSizeIterator for MapIterator<'m, K, V> {}
 
 impl<'m, K: Ord, V> FusedIterator for MapIterator<'m, K, V> {}
 
@@ -1018,7 +1165,7 @@ unsafe impl<'m, K: Ord, V> TrustedLen for MapIterator<'m, K, V> {}
 
 /// Mutable reference iterator for [`BTreeMap`]. This iterator traverses the tree in pre-order.
 pub struct MapMutIterator<'m, K: Ord, V> {
-	/// The binary tree to iterate into.
+	/// The tree to iterate on.
 	tree: &'m mut BTreeMap<K, V>,
 	/// The current node of the iterator.
 	node: Option<NonNull<Node<K, V>>>,
@@ -1031,7 +1178,7 @@ impl<'m, K: Ord, V> Iterator for MapMutIterator<'m, K, V> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let node = unwrap_pointer(self.node)?;
-		self.node = next_node(node).and_then(|n| NonNull::new(n));
+		self.node = next_node(node).map(NonNull::from);
 		self.i += 1;
 		Some((&node.key, &mut node.value))
 	}
@@ -1042,7 +1189,7 @@ impl<'m, K: Ord, V> Iterator for MapMutIterator<'m, K, V> {
 	}
 
 	fn count(self) -> usize {
-		self.tree.len()
+		self.size_hint().0
 	}
 }
 
@@ -1055,13 +1202,7 @@ impl<'m, K: Ord, V> IntoIterator for &'m mut BTreeMap<K, V> {
 	}
 }
 
-// TODO implement DoubleEndedIterator
-
-impl<'m, K: Ord, V> ExactSizeIterator for MapMutIterator<'m, K, V> {
-	fn len(&self) -> usize {
-		self.tree.len()
-	}
-}
+impl<'m, K: Ord, V> ExactSizeIterator for MapMutIterator<'m, K, V> {}
 
 impl<'m, K: Ord, V> FusedIterator for MapMutIterator<'m, K, V> {}
 
@@ -1139,11 +1280,11 @@ impl<'m, K: Ord, V, F: FnMut(&K, &mut V) -> bool> Iterator for DrainFilter<'m, K
 		// FIXME: `remove_node` swaps values between nodes, so the node returned by `next_node`
 		// becomes invalid
 		// get next node
-		//let next = next_node(node).and_then(|n| NonNull::new(n));
+		//let next = next_node(node).map(NonNull::new);
 		let next = self
 			.tree
 			.get_root()
-			.map(|n| NonNull::new(BTreeMap::get_leftmost_node(n)).unwrap());
+			.map(|n| NonNull::from(get_leftmost_node(n)));
 		// remove the current node
 		let (k, v) = self.tree.remove_node(node);
 		// place cursor on next node
@@ -1202,193 +1343,173 @@ mod test {
 	#[test_case]
 	fn binary_tree0() {
 		let b = BTreeMap::<i32, ()>::new();
-		assert!(b.get(0).is_none());
+		assert!(b.get(&0).is_none());
 		assert_eq!(b.len(), 0);
 	}
 
 	#[test_case]
 	fn binary_tree_insert0() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		b.insert(0, 0).unwrap();
-		assert_eq!(*b.get(0).unwrap(), 0);
+		assert_eq!(*b.get(&0).unwrap(), 0);
 		assert_eq!(b.len(), 1);
 	}
 
 	#[test_case]
 	fn binary_tree_insert1() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in 0..10 {
 			b.insert(i, i).unwrap();
 			assert_eq!(b.len(), (i + 1) as usize);
 		}
-
 		for i in 0..10 {
-			assert_eq!(*b.get(i).unwrap(), i);
+			assert_eq!(*b.get(&i).unwrap(), i);
 		}
 	}
 
 	#[test_case]
 	fn binary_tree_insert2() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
 			assert_eq!(b.len(), (i + 10) as usize);
 		}
-
 		for i in -9..10 {
-			assert_eq!(*b.get(i).unwrap(), i);
+			assert_eq!(*b.get(&i).unwrap(), i);
 		}
 	}
 
 	#[test_case]
 	fn binary_tree_insert3() {
 		let mut b = BTreeMap::<u32, u32>::new();
-
 		let mut val = 0;
 		for i in 0..100 {
 			val = crate::util::math::pseudo_rand(val, 1664525, 1013904223, 0x100);
 			b.insert(val, val).unwrap();
 			assert_eq!(b.len(), (i + 1) as usize);
 		}
-
 		val = 0;
 		for _ in 0..100 {
 			val = crate::util::math::pseudo_rand(val, 1664525, 1013904223, 0x100);
-			assert_eq!(*b.get(val).unwrap(), val);
+			assert_eq!(*b.get(&val).unwrap(), val);
 		}
 	}
 
 	#[test_case]
 	fn binary_tree_remove0() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
 			assert_eq!(b.len(), (i + 10) as usize);
 		}
-
 		let mut count = b.len();
 		for i in -9..10 {
 			for i in i..10 {
-				assert_eq!(*b.get(i).unwrap(), i);
+				assert_eq!(*b.get(&i).unwrap(), i);
 			}
-
 			b.remove(&i);
-
-			assert!(b.get(i).is_none());
+			assert!(b.get(&i).is_none());
 			for i in (i + 1)..10 {
-				assert_eq!(*b.get(i).unwrap(), i);
+				assert_eq!(*b.get(&i).unwrap(), i);
 			}
-
 			count -= 1;
 			assert_eq!(b.len(), count);
 		}
-
 		assert!(b.is_empty());
 	}
 
 	#[test_case]
 	fn binary_tree_remove1() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
 			assert_eq!(b.len(), (i + 10) as usize);
 		}
-
 		let mut count = b.len();
 		for i in (-9..10).rev() {
-			assert_eq!(*b.get(i).unwrap(), i);
+			assert_eq!(*b.get(&i).unwrap(), i);
 			b.remove(&i);
-			assert!(b.get(i).is_none());
+			assert!(b.get(&i).is_none());
 
 			count -= 1;
 			assert_eq!(b.len(), count);
 		}
-
 		assert!(b.is_empty());
 	}
 
 	#[test_case]
 	fn binary_tree_remove2() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in (-9..10).rev() {
 			b.insert(i, i).unwrap();
 		}
-
 		let mut count = b.len();
 		for i in (-9..10).rev() {
-			assert_eq!(*b.get(i).unwrap(), i);
+			assert_eq!(*b.get(&i).unwrap(), i);
 			b.remove(&i);
-			assert!(b.get(i).is_none());
-
+			assert!(b.get(&i).is_none());
 			count -= 1;
 			assert_eq!(b.len(), count);
 		}
-
 		assert!(b.is_empty());
 	}
 
 	#[test_case]
 	fn binary_tree_remove3() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in (-9..10).rev() {
 			b.insert(i, i).unwrap();
 		}
-
 		for i in -9..10 {
-			assert_eq!(*b.get(i).unwrap(), i);
+			assert_eq!(*b.get(&i).unwrap(), i);
 			assert_eq!(b.remove(&i).unwrap(), i);
-			assert!(b.get(i).is_none());
+			assert!(b.get(&i).is_none());
 		}
-
 		assert!(b.is_empty());
 	}
 
 	#[test_case]
 	fn binary_tree_remove4() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
 			assert_eq!(b.remove(&i).unwrap(), i);
 		}
-
 		assert!(b.is_empty());
 	}
 
 	#[test_case]
 	fn binary_tree_remove5() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
 		}
-
 		for i in -9..10 {
 			if i % 2 == 0 {
-				assert_eq!(*b.get(i).unwrap(), i);
+				assert_eq!(*b.get(&i).unwrap(), i);
 				assert_eq!(b.remove(&i).unwrap(), i);
-				assert!(b.get(i).is_none());
+				assert!(b.get(&i).is_none());
 			}
 		}
-
 		assert!(!b.is_empty());
-
 		for i in -9..10 {
 			if i % 2 != 0 {
-				assert_eq!(*b.get(i).unwrap(), i);
+				assert_eq!(*b.get(&i).unwrap(), i);
 				assert_eq!(b.remove(&i).unwrap(), i);
-				assert!(b.get(i).is_none());
+				assert!(b.get(&i).is_none());
 			}
 		}
-
 		assert!(b.is_empty());
+	}
+
+	#[test_case]
+	fn binary_tree_collect_intoiter0() {
+		let b = (0..1000).map(|i| (i, i)).collect::<CollectResult<BTreeMap<_, _>>>().0.unwrap();
+		assert_eq!(b.len(), 1000);
+		for (a, (b, c)) in b.into_iter().enumerate() {
+			assert_eq!(a, b);
+			assert_eq!(b, c);
+		}
 	}
 
 	#[test_case]
@@ -1400,12 +1521,10 @@ mod test {
 	#[test_case]
 	fn binary_tree_iter1() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
 			assert_eq!(b.len(), (i + 10) as usize);
 		}
-
 		assert_eq!(b.iter().count(), b.len());
 		assert!(b.iter().is_sorted());
 	}
@@ -1423,21 +1542,16 @@ mod test {
 	#[test_case]
 	fn binary_tree_range1() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
 			assert_eq!(b.len(), (i + 10) as usize);
 		}
-
 		assert_eq!(b.range(..).count(), b.len());
 		assert!(b.range(..).is_sorted());
-
 		assert_eq!(b.range(0..10).count(), 10);
 		assert!(b.range(0..10).is_sorted());
-
 		assert_eq!(b.range(..10).count(), b.len());
 		assert!(b.range(..10).is_sorted());
-
 		assert_eq!(b.range(0..).count(), 10);
 		assert!(b.range(0..).is_sorted());
 	}
@@ -1445,11 +1559,9 @@ mod test {
 	#[test_case]
 	fn binary_tree_drain0() {
 		let mut b = BTreeMap::<i32, i32>::new();
-
 		for i in -9..10 {
 			b.insert(i, i).unwrap();
 		}
-
 		let len = b.len();
 		assert!(b
 			.drain_filter(|k, v| k == v && k % 2 == 0)

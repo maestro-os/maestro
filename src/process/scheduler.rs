@@ -126,7 +126,7 @@ impl Scheduler {
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(&self, pid: Pid) -> Option<Arc<IntMutex<Process>>> {
-		Some(self.processes.get(pid)?.clone())
+		Some(self.processes.get(&pid)?.clone())
 	}
 
 	/// Returns the process with TID `tid`.
