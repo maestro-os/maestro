@@ -1504,7 +1504,11 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_collect_intoiter0() {
-		let b = (0..1000).map(|i| (i, i)).collect::<CollectResult<BTreeMap<_, _>>>().0.unwrap();
+		let b = (0..1000)
+			.map(|i| (i, i))
+			.collect::<CollectResult<BTreeMap<_, _>>>()
+			.0
+			.unwrap();
 		assert_eq!(b.len(), 1000);
 		for (a, (b, c)) in b.into_iter().enumerate() {
 			assert_eq!(a, b);
