@@ -339,24 +339,6 @@ impl MemSpaceState {
 			}
 		})
 	}
-
-	/// Returns a mutable reference to the memory mapping containing the given
-	/// virtual address `ptr`.
-	///
-	/// If no mapping contains the address, the function returns `None`.
-	fn get_mapping_mut_for_ptr(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
-		self.mappings.cmp_get_mut(|key, value| {
-			let begin = *key as usize;
-			let end = begin + (value.get_size().get() * memory::PAGE_SIZE);
-			if (ptr as usize) >= begin && (ptr as usize) < end {
-				Ordering::Equal
-			} else if (ptr as usize) < begin {
-				Ordering::Less
-			} else {
-				Ordering::Greater
-			}
-		})
-	}
 }
 
 /// A virtual memory space.
@@ -372,7 +354,7 @@ pub struct MemSpace {
 	/// The current pointer of the `[s]brk` system calls.
 	brk_ptr: *mut c_void,
 
-	/// The virtual memory context handler.
+	/// Architecture-specific virtual memory context handler.
 	vmem: Arc<Mutex<Box<dyn VMem>>>,
 }
 
@@ -498,8 +480,8 @@ impl MemSpace {
 	/// virtual address `ptr`.
 	///
 	/// If no mapping contains the address, the function returns `None`.
-	pub fn get_mapping_mut_for_ptr(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
-		self.state.get_mapping_mut_for_ptr(ptr)
+	pub fn get_mapping_for_ptr(&mut self, ptr: *const c_void) -> Option<&MemMapping> {
+		self.state.get_mapping_for_ptr(ptr)
 	}
 
 	// TODO Optimize (currently O(n log n))
@@ -520,7 +502,7 @@ impl MemSpace {
 			// The current page's beginning
 			let page_ptr = unsafe { ptr.add(i * memory::PAGE_SIZE) };
 			// The mapping containing the page
-			let Some(mapping) = self.state.get_mapping_mut_for_ptr(page_ptr) else {
+			let Some(mapping) = self.state.get_mapping_for_ptr(page_ptr) else {
 				// TODO jump to next mapping directly using binary tree
 				i += 1;
 				continue;
@@ -534,7 +516,7 @@ impl MemSpace {
 			let pages = min(size.get() - i, mapping.get_size().get() - begin);
 			i += pages;
 			// Newly created mappings and gap after removing parts of the previous one
-			let (prev, gap, next) = mapping.partial_unmap(begin, pages);
+			let (prev, gap, next) = mapping.split(begin, pages);
 			// Insert new mappings
 			if let Some(p) = prev {
 				transaction.buffer_state.mappings.insert(p.get_begin(), p)?;
@@ -730,7 +712,7 @@ impl MemSpace {
 			vmem,
 		};
 		for (_, m) in self.state.mappings.iter_mut() {
-			let mut new_mapping = m.fork(mem_space.vmem.clone())?;
+			let new_mapping = m.fork(mem_space.vmem.clone())?;
 			for i in 0..new_mapping.get_size().get() {
 				m.update_vmem(i);
 				new_mapping.update_vmem(i);
@@ -759,7 +741,7 @@ impl MemSpace {
 		let mut off = 0;
 		while off < size_of::<T>() * len {
 			let virt_addr = unsafe { (virt_addr as *const c_void).add(off) };
-			if let Some(mapping) = self.state.get_mapping_mut_for_ptr(virt_addr) {
+			if let Some(mapping) = self.state.get_mapping_for_ptr(virt_addr) {
 				let page_offset =
 					(virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 				oom::wrap(|| mapping.map(page_offset));
@@ -868,7 +850,7 @@ impl MemSpace {
 		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
 			return false;
 		}
-		let Some(mapping) = self.get_mapping_mut_for_ptr(virtaddr) else {
+		let Some(mapping) = self.state.get_mapping_for_ptr(virtaddr) else {
 			return false;
 		};
 		// Check permissions

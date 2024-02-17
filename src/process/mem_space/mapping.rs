@@ -174,7 +174,7 @@ impl MemMapping {
 	/// new physical page with the same data.
 	///
 	/// If a physical page is already mapped, the function does nothing.
-	pub fn map(&mut self, offset: usize) -> AllocResult<()> {
+	pub fn map(&self, offset: usize) -> AllocResult<()> {
 		let mut vmem = self.vmem.lock();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
 
@@ -247,7 +247,7 @@ impl MemMapping {
 	/// instead of the default page.
 	///
 	/// The default page is dependent on the nature of the mapping's residence.
-	pub fn map_default(&mut self) -> AllocResult<()> {
+	pub fn map_default(&self) -> AllocResult<()> {
 		let use_default =
 			self.flags & super::MAPPING_FLAG_NOLAZY == 0 && self.residence.is_normal();
 		if use_default {
@@ -276,7 +276,7 @@ impl MemMapping {
 	/// Frees the physical page at offset `offset` of the mapping.
 	///
 	/// If the page is shared, it is not freed but the reference counter is decreased.
-	fn free_phys_page(&mut self, offset: usize) {
+	fn free_phys_page(&self, offset: usize) {
 		let vmem = self.vmem.lock();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
@@ -292,7 +292,7 @@ impl MemMapping {
 	/// If the physical pages the mapping points to are not shared, the function frees them.
 	///
 	/// This function doesn't flush the virtual memory context.
-	pub fn unmap(&mut self, pages_range: Range<usize>) -> AllocResult<()> {
+	pub fn unmap(&self, pages_range: Range<usize>) -> AllocResult<()> {
 		// Remove physical pages
 		for i in pages_range.clone() {
 			self.free_phys_page(i);
@@ -308,7 +308,7 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Partially unmaps the current mapping, creating up to two new mappings and one gap.
+	/// Splits the current mapping, creating up to two new mappings and one gap.
 	///
 	/// Arguments:
 	/// - `begin` is the index of the first page to be unmapped.
@@ -318,12 +318,10 @@ impl MemMapping {
 	///
 	/// The newly created mappings correspond to the remaining pages.
 	///
-	/// The newly created gap is in place of the unmapped portion.
+	/// The newly created gap corresponds to the unmapped portion.
 	///
 	/// If the mapping is completely unmapped, the function returns no new mappings.
-	///
-	/// The function doesn't flush the virtual memory context.
-	pub fn partial_unmap(
+	pub fn split(
 		&self,
 		begin: usize,
 		size: usize,
@@ -366,7 +364,7 @@ impl MemMapping {
 
 	/// Updates the virtual memory context according to the mapping for the page
 	/// at offset `offset`.
-	pub fn update_vmem(&mut self, offset: usize) {
+	pub fn update_vmem(&self, offset: usize) {
 		let mut vmem = self.vmem.lock();
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
@@ -391,7 +389,6 @@ impl MemMapping {
 		}
 	}
 
-	// TODO replace by a `try_clone`?
 	/// Clones the mapping for the fork operation. The new mapping is sharing
 	/// the same physical memory, for Copy-On-Write.
 	///
@@ -401,8 +398,8 @@ impl MemMapping {
 	/// function.
 	///
 	/// The function returns then newly created mapping.
-	pub(super) fn fork(&mut self, vmem: Arc<Mutex<Box<dyn VMem>>>) -> AllocResult<Self> {
-		let mut new_mapping = Self {
+	pub(super) fn fork(&self, vmem: Arc<Mutex<Box<dyn VMem>>>) -> AllocResult<Self> {
+		let new_mapping = Self {
 			begin: self.begin,
 			size: self.size,
 			flags: self.flags,
@@ -411,11 +408,11 @@ impl MemMapping {
 			residence: self.residence.clone(),
 		};
 		let mut vmem = self.vmem.lock();
-		let nolazy = (new_mapping.get_flags() & super::MAPPING_FLAG_NOLAZY) != 0;
+		let nolazy = new_mapping.flags & super::MAPPING_FLAG_NOLAZY != 0;
 		if nolazy {
 			for i in 0..self.size.get() {
-				let virt_ptr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
 				unsafe {
+					let virt_ptr = self.begin.add(i * memory::PAGE_SIZE);
 					vmem.unmap(virt_ptr)?;
 				}
 				new_mapping.map(i)?;
@@ -423,11 +420,12 @@ impl MemMapping {
 		} else {
 			let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
 			for i in 0..self.size.get() {
-				if let Some(phys_ptr) = self.get_physical_page(i, &**vmem) {
-					if let Err(errno) = ref_counter.increment(phys_ptr) {
-						self.fork_fail_clean(&mut ref_counter, i, &**vmem);
-						return Err(errno);
-					}
+				let Some(phys_ptr) = self.get_physical_page(i, &**vmem) else {
+					continue;
+				};
+				if let Err(errno) = ref_counter.increment(phys_ptr) {
+					self.fork_fail_clean(&mut ref_counter, i, &**vmem);
+					return Err(errno);
 				}
 			}
 		}
@@ -493,6 +491,6 @@ impl fmt::Debug for MemMapping {
 
 impl Drop for MemMapping {
 	fn drop(&mut self) {
-		let _ = self.unmap(0..self.size.get());
+		oom::wrap(|| self.unmap(0..self.size.get()));
 	}
 }
