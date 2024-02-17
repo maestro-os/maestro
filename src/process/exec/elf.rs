@@ -614,8 +614,7 @@ impl<'s> ELFExecutor<'s> {
 
 		// Switch to the process's vmem to write onto the virtual memory
 		unsafe {
-			let vmem = mem_space.get_vmem().lock();
-			vmem::switch(&**vmem, move || -> EResult<()> {
+			vmem::switch(mem_space.get_vmem(), move || -> EResult<()> {
 				// Copy segments' data
 				for seg in elf.iter_segments() {
 					Self::copy_segment(load_base, seg, elf.get_image());
@@ -725,8 +724,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 
 		// Switch to the process's vmem to write onto the virtual memory
 		unsafe {
-			let vmem = mem_space.get_vmem().lock();
-			vmem::switch(&**vmem, move || {
+			vmem::switch(mem_space.get_vmem(), move || {
 				// Initializing the userspace stack
 				self.init_stack(user_stack, &self.info.argv, &self.info.envp, &aux);
 			});

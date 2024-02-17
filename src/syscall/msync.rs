@@ -14,28 +14,28 @@ const MS_INVALIDATE: i32 = 0b100;
 
 #[syscall]
 pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errno> {
-	// Checking address alignment
+	// Check address alignment
 	if !addr.is_aligned_to(memory::PAGE_SIZE) {
 		return Err(errno!(EINVAL));
 	}
-	// Checking for conflicts in flags
+	// Check for conflicts in flags
 	if flags & MS_ASYNC != 0 && flags & MS_SYNC != 0 {
 		return Err(errno!(EINVAL));
 	}
+	let pages = length.div_ceil(memory::PAGE_SIZE);
 
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	// The process's memory space
 	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space = mem_space.lock();
+	let mem_space = mem_space.lock();
 
 	let mut i = 0;
-	while i < length {
+	while i < pages {
 		let mapping = mem_space.get_mapping_for_ptr(addr).ok_or(errno!(ENOMEM))?;
-		mapping.fs_sync()?; // TODO Use flags
-
-		i += mapping.get_size().get() * memory::PAGE_SIZE;
+		mapping.fs_sync(mem_space.get_vmem())?; // TODO Use flags
+		i += mapping.get_size().get();
 	}
 
 	Ok(0)

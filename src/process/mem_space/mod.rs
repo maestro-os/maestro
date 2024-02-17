@@ -355,7 +355,7 @@ pub struct MemSpace {
 	brk_ptr: *mut c_void,
 
 	/// Architecture-specific virtual memory context handler.
-	vmem: Arc<Mutex<Box<dyn VMem>>>,
+	vmem: Box<dyn VMem>,
 }
 
 impl MemSpace {
@@ -369,7 +369,7 @@ impl MemSpace {
 			brk_init: null_mut::<_>(),
 			brk_ptr: null_mut::<_>(),
 
-			vmem: Arc::new(Mutex::new(vmem::new()?))?,
+			vmem: vmem::new()?,
 		};
 		// Create the default gap of memory which is present at the beginning
 		let begin = memory::ALLOC_BEGIN;
@@ -379,12 +379,14 @@ impl MemSpace {
 		Ok(s)
 	}
 
-	/// Returns a mutable reference to the virtual memory context.
-	pub fn get_vmem(&self) -> &Arc<Mutex<Box<dyn VMem>>> {
-		&self.vmem
+	/// Returns an immutable reference to the virtual memory context.
+	#[inline]
+	pub fn get_vmem(&self) -> &dyn VMem {
+		&*self.vmem
 	}
 
 	/// Returns the number of virtual memory pages in the memory space.
+	#[inline]
 	pub fn get_vmem_usage(&self) -> usize {
 		self.vmem_usage
 	}
@@ -462,25 +464,26 @@ impl MemSpace {
 			transaction.buffer_state.insert_gap(new_gap)?;
 		}
 		// Create the mapping
-		let mapping = MemMapping::new(addr, size, flags, self.vmem.clone(), residence);
+		let mapping = MemMapping::new(addr, size, flags, residence);
 		vmem_usage += size.get();
 		let m = match transaction.buffer_state.mappings.entry(addr) {
 			Entry::Vacant(e) => e.insert(mapping)?,
 			// Occupied means the state is inconsistent
 			Entry::Occupied(_) => unreachable!(),
 		};
-		m.map_default()?;
+		// FIXME: on failure, this must be undone
+		m.map_default(&mut *self.vmem)?;
 		// Commit
 		transaction.commit(&mut self.state)?;
 		self.vmem_usage = vmem_usage;
 		Ok(addr)
 	}
 
-	/// Returns a mutable reference to the memory mapping containing the given
+	/// Returns an immutable reference to the memory mapping containing the given
 	/// virtual address `ptr`.
 	///
 	/// If no mapping contains the address, the function returns `None`.
-	pub fn get_mapping_for_ptr(&mut self, ptr: *const c_void) -> Option<&MemMapping> {
+	pub fn get_mapping_for_ptr(&self, ptr: *const c_void) -> Option<&MemMapping> {
 		self.state.get_mapping_for_ptr(ptr)
 	}
 
@@ -643,9 +646,8 @@ impl MemSpace {
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
 		// TODO Allow reading kernelspace data that is available to userspace?
-		let vmem = self.vmem.lock();
 		unsafe {
-			vmem::switch(&**vmem, move || {
+			vmem::switch(&*self.vmem, move || {
 				let mut i = 0;
 				'outer: loop {
 					// Safe because not dereferenced before checking if accessible
@@ -682,21 +684,18 @@ impl MemSpace {
 	/// Binds the memory space to the current core.
 	pub fn bind(&self) {
 		unsafe {
-			self.vmem.lock().bind();
+			self.vmem.bind();
 		}
 	}
 
 	/// Tells whether the memory space is bound.
 	pub fn is_bound(&self) -> bool {
-		self.vmem.lock().is_bound()
+		self.vmem.is_bound()
 	}
 
 	/// Performs the fork operation.
 	fn do_fork(&mut self) -> AllocResult<Self> {
-		let vmem = {
-			let vmem = self.vmem.lock();
-			Arc::new(Mutex::new(vmem::try_clone(&**vmem)?))?
-		};
+		let vmem = vmem::try_clone(&*self.vmem)?;
 		let mut mem_space = Self {
 			state: MemSpaceState {
 				gaps: self.state.gaps.try_clone()?,
@@ -712,10 +711,10 @@ impl MemSpace {
 			vmem,
 		};
 		for (_, m) in self.state.mappings.iter_mut() {
-			let new_mapping = m.fork(mem_space.vmem.clone())?;
+			let new_mapping = m.fork(&mut *mem_space.vmem)?;
 			for i in 0..new_mapping.get_size().get() {
-				m.update_vmem(i);
-				new_mapping.update_vmem(i);
+				m.update_vmem(i, &mut *mem_space.vmem);
+				new_mapping.update_vmem(i, &mut *mem_space.vmem);
 			}
 			mem_space
 				.state
@@ -732,20 +731,20 @@ impl MemSpace {
 
 	/// Allocates the physical pages to write on the given pointer.
 	///
-	/// `virt_addr` is the address to allocate.
+	/// `virtaddr` is the address to allocate.
 	///
 	/// The size of the memory chunk to allocated equals `size_of::<T>() * len`.
 	///
 	/// If the mapping doesn't exist, the function returns an error.
-	pub fn alloc<T>(&mut self, virt_addr: *const T, len: usize) -> AllocResult<()> {
+	pub fn alloc<T>(&mut self, virtaddr: *const T, len: usize) -> AllocResult<()> {
 		let mut off = 0;
 		while off < size_of::<T>() * len {
-			let virt_addr = unsafe { (virt_addr as *const c_void).add(off) };
-			if let Some(mapping) = self.state.get_mapping_for_ptr(virt_addr) {
+			let virtaddr = unsafe { (virtaddr as *const c_void).add(off) };
+			if let Some(mapping) = self.state.get_mapping_for_ptr(virtaddr) {
 				let page_offset =
-					(virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-				oom::wrap(|| mapping.map(page_offset));
-				mapping.update_vmem(page_offset);
+					(virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+				oom::wrap(|| mapping.map(page_offset, &mut *self.vmem));
+				mapping.update_vmem(page_offset, &mut *self.vmem);
 			}
 			off += memory::PAGE_SIZE;
 		}
@@ -865,8 +864,8 @@ impl MemSpace {
 		}
 		// Map the accessed page
 		let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-		oom::wrap(|| mapping.map(page_offset));
-		mapping.update_vmem(page_offset);
+		oom::wrap(|| mapping.map(page_offset, &mut *self.vmem));
+		mapping.update_vmem(page_offset, &mut *self.vmem);
 		true
 	}
 }
