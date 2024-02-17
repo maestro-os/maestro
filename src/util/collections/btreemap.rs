@@ -362,6 +362,11 @@ fn insert_balance<K, V>(mut node: &mut Node<K, V>) {
 	if parent.is_black() {
 		return;
 	}
+	if parent.get_parent().is_none() {
+		// The parent is the root and is red
+		parent.color = NodeColor::Black;
+		return;
+	}
 	// The node's parent exists and is red
 	if let Some(uncle) = node.get_uncle() {
 		if uncle.is_red() {
@@ -1073,38 +1078,52 @@ impl<K: Ord, V> IntoIterator for BTreeMap<K, V> {
 	type Item = (K, V);
 
 	fn into_iter(self) -> Self::IntoIter {
-		// Turn the tree into a linked list
-		if let Some(root) = self.get_root() {
-			flatten(root);
-		}
+		// Get start node
+		let node = self.get_root().map(|n| NonNull::from(get_leftmost_node(n)));
+		let remaining = self.len;
+		// Avoid dropping twice
+		mem::forget(self);
 		MapIntoIter {
-			tree: self,
-			i: 0,
+			node,
+			remaining,
 		}
 	}
 }
 
 /// Consuming iterator over a [`BTreeMap`].
-pub struct MapIntoIter<K: Ord, V> {
-	/// The tree.
-	tree: BTreeMap<K, V>,
-	/// The number of elements consumed so far.
-	i: usize,
+pub struct MapIntoIter<K, V> {
+	/// The current node.
+	node: Option<NonNull<Node<K, V>>>,
+	/// The number of remaining elements.
+	remaining: usize,
 }
 
 impl<K: Ord, V> Iterator for MapIntoIter<K, V> {
 	type Item = (K, V);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// Just iterating since the tree has been transformed into a linked list
-		let node = self.tree.get_root()?;
-		*self.tree.root.get_mut() = node.right;
-		Some(unsafe { drop_node(NonNull::from(node)) })
+		let mut node = self.node?;
+		let n = unsafe { node.as_mut() };
+		if let Some(parent) = n.get_parent() {
+			// The current node is not root.
+			// The left side can be ignored since it has been handled in previous iterations
+			if let Some(right) = n.get_right() {
+				parent.insert_left(right);
+				self.node = NonNull::new(get_leftmost_node(right));
+			} else {
+				self.node = n.parent;
+			}
+		} else {
+			// The current node is root. Go to the lowest element of the right subtree
+			self.node = n.get_right().map(|n| NonNull::from(get_leftmost_node(n)));
+		}
+		n.unlink();
+		self.remaining -= 1;
+		Some(unsafe { drop_node(node) })
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len = self.tree.len() - self.i;
-		(len, Some(len))
+		(self.remaining, Some(self.remaining))
 	}
 
 	fn count(self) -> usize {
@@ -1503,17 +1522,20 @@ mod test {
 	}
 
 	#[test_case]
-	fn binary_tree_collect_intoiter0() {
+	fn binary_tree_intoiter() {
 		let b = (0..1000)
 			.map(|i| (i, i))
 			.collect::<CollectResult<BTreeMap<_, _>>>()
 			.0
 			.unwrap();
 		assert_eq!(b.len(), 1000);
+		let mut count = 0;
 		for (a, (b, c)) in b.into_iter().enumerate() {
 			assert_eq!(a, b);
 			assert_eq!(b, c);
+			count += 1;
 		}
+		assert_eq!(count, 1000);
 	}
 
 	#[test_case]
@@ -1524,11 +1546,11 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_iter1() {
-		let mut b = BTreeMap::<i32, i32>::new();
-		for i in -9..10 {
-			b.insert(i, i).unwrap();
-			assert_eq!(b.len(), (i + 10) as usize);
-		}
+		let b = (-9..10)
+			.map(|i| (i, i))
+			.collect::<CollectResult<BTreeMap<_, _>>>()
+			.0
+			.unwrap();
 		assert_eq!(b.iter().count(), b.len());
 		assert!(b.iter().is_sorted());
 	}
@@ -1545,11 +1567,11 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_range1() {
-		let mut b = BTreeMap::<i32, i32>::new();
-		for i in -9..10 {
-			b.insert(i, i).unwrap();
-			assert_eq!(b.len(), (i + 10) as usize);
-		}
+		let b = (-9..10)
+			.map(|i| (i, i))
+			.collect::<CollectResult<BTreeMap<_, _>>>()
+			.0
+			.unwrap();
 		assert_eq!(b.range(..).count(), b.len());
 		assert!(b.range(..).is_sorted());
 		assert_eq!(b.range(0..10).count(), 10);
@@ -1562,10 +1584,11 @@ mod test {
 
 	#[test_case]
 	fn binary_tree_drain0() {
-		let mut b = BTreeMap::<i32, i32>::new();
-		for i in -9..10 {
-			b.insert(i, i).unwrap();
-		}
+		let mut b = (-9..10)
+			.map(|i| (i, i))
+			.collect::<CollectResult<BTreeMap<_, _>>>()
+			.0
+			.unwrap();
 		let len = b.len();
 		assert!(b
 			.drain_filter(|k, v| k == v && k % 2 == 0)
