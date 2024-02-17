@@ -2,13 +2,10 @@
 
 use super::{gap::MemGap, mapping::MemMapping, MemSpaceState};
 use crate::{
-	errno::{AllocError, AllocResult},
-	util::{
-		collections::{
-			btreemap::{BTreeMap, Entry},
-			vec::Vec,
-		},
-		TryClone,
+	errno::AllocResult,
+	util::collections::{
+		btreemap::{BTreeMap, Entry},
+		vec::Vec,
 	},
 };
 use core::{ffi::c_void, mem, num::NonZeroUsize};
@@ -18,15 +15,11 @@ use core::{ffi::c_void, mem, num::NonZeroUsize};
 /// The `complement` vector stores the complement of modifications to be used by [`rollback`].
 ///
 /// **Warning**: on memory allocation failure, `to` is left altered mid-way.
-fn union<K, V>(
+fn union<K: Clone + Ord, V>(
 	from: BTreeMap<K, V>,
 	to: &mut BTreeMap<K, V>,
 	complement: &mut Vec<(K, Option<V>)>,
-) -> AllocResult<()>
-where
-	K: Clone + Ord,
-	V: TryClone<Error = AllocError>,
-{
+) -> AllocResult<()> {
 	for (key, value) in from {
 		// Insert new value and get previous
 		let old = match to.entry(key.clone()) {

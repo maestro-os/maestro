@@ -253,7 +253,7 @@ impl MapConstraint {
 struct MemSpaceState {
 	/// Binary tree storing the list of memory gaps, ready for new mappings.
 	///
-	/// The collections is sorted by pointer to the beginning of the mapping on the virtual
+	/// The collection is sorted by pointer to the beginning of the mapping on the virtual
 	/// memory.
 	gaps: BTreeMap<*mut c_void, MemGap>,
 	/// Binary tree storing the list of memory gaps, sorted by size and then by
@@ -445,8 +445,7 @@ impl MemSpace {
 					begin: addr,
 					size,
 				};
-				let off = gap.get_page_offset_for(addr);
-				(gap, off)
+				(gap, 0)
 			}
 			MapConstraint::Hint(addr) => {
 				// Get the gap for the pointer
@@ -503,6 +502,7 @@ impl MemSpace {
 		self.state.get_mapping_mut_for_ptr(ptr)
 	}
 
+	// TODO Optimize (currently O(n log n))
 	/// Implementation for `unmap`.
 	///
 	/// The function returns the number of pages freed.
@@ -542,7 +542,8 @@ impl MemSpace {
 			if let Some(n) = next {
 				transaction.buffer_state.mappings.insert(n.get_begin(), n)?;
 			}
-			// TODO document why this is necessary
+			// Do not create gaps if unmapping for `*brk` system calls as this space is reserved by
+			// it and must not be reused by `mmap`
 			if brk {
 				continue;
 			}
@@ -572,7 +573,6 @@ impl MemSpace {
 		Ok(freed)
 	}
 
-	// TODO Optimize (currently O(n log n))
 	/// Unmaps the given mapping of memory.
 	///
 	/// Arguments:
@@ -735,7 +735,6 @@ impl MemSpace {
 				m.update_vmem(i);
 				new_mapping.update_vmem(i);
 			}
-			// FIXME: on fail, the mapping(s) are not dropped properly (see doc of MemMapping)
 			mem_space
 				.state
 				.mappings
@@ -819,7 +818,7 @@ impl MemSpace {
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn set_brk_ptr(&mut self, ptr: *mut c_void) -> AllocResult<()> {
 		if ptr >= self.brk_ptr {
-			// Checking the pointer is valid
+			// Check the pointer is valid
 			if ptr > memory::PROCESS_END {
 				return Err(AllocError);
 			}
@@ -858,18 +857,18 @@ impl MemSpace {
 	/// This function determines whether the process should continue or not.
 	///
 	/// If continuing, the function must resolve the issue before returning.
-	/// A typical situation where is function is usefull is for Copy-On-Write allocations.
+	/// A typical situation where is function is useful is for Copy-On-Write allocations.
 	///
 	/// Arguments:
-	/// - `virt_addr` is the virtual address of the wrong memory access that caused the fault.
+	/// - `virtaddr` is the virtual address of the wrong memory access that caused the fault.
 	/// - `code` is the error code given along with the error.
 	///
 	/// If the process should continue, the function returns `true`, else `false`.
-	pub fn handle_page_fault(&mut self, virt_addr: *const c_void, code: u32) -> bool {
+	pub fn handle_page_fault(&mut self, virtaddr: *const c_void, code: u32) -> bool {
 		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
 			return false;
 		}
-		let Some(mapping) = self.get_mapping_mut_for_ptr(virt_addr) else {
+		let Some(mapping) = self.get_mapping_mut_for_ptr(virtaddr) else {
 			return false;
 		};
 		// Check permissions
@@ -883,7 +882,7 @@ impl MemSpace {
 			return false;
 		}
 		// Map the accessed page
-		let page_offset = (virt_addr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+		let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 		oom::wrap(|| mapping.map(page_offset));
 		mapping.update_vmem(page_offset);
 		true
@@ -912,10 +911,30 @@ impl fmt::Debug for MemSpace {
 	}
 }
 
-impl Drop for MemSpace {
-	fn drop(&mut self) {
-		if self.is_bound() {
-			panic!("Dropping a memory space while bound to it");
-		}
+#[cfg(test)]
+mod test {
+	use super::*;
+	use core::ptr::null;
+
+	#[test_case]
+	fn test0() {
+		let mut mem_space = MemSpace::new().unwrap();
+		let addr = 0x1000 as _;
+		let size = NonZeroUsize::new(1).unwrap();
+		let res = mem_space
+			.map(
+				MapConstraint::Fixed(addr),
+				size,
+				MAPPING_FLAG_WRITE | MAPPING_FLAG_USER,
+				MapResidence::Normal,
+			)
+			.unwrap();
+		assert_eq!(res, addr);
+		assert!(!mem_space.can_access(null(), memory::PAGE_SIZE, true, true));
+		assert!(!mem_space.can_access(null(), memory::PAGE_SIZE + 1, true, true));
+		assert!(mem_space.can_access(addr as _, memory::PAGE_SIZE, true, true));
+		assert!(!mem_space.can_access(addr as _, memory::PAGE_SIZE + 1, true, true));
+		mem_space.unmap(addr, size, false).unwrap();
+		assert!(!mem_space.can_access(addr as _, memory::PAGE_SIZE, true, true));
 	}
 }

@@ -254,10 +254,10 @@ impl MemMapping {
 			let mut vmem = self.vmem.lock();
 			let default_page = get_default_page();
 			for i in 0..self.size.get() {
-				let virt_ptr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
+				let virtaddr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
 				let flags = self.get_vmem_flags(false, i, &**vmem);
 				unsafe {
-					vmem.map(default_page, virt_ptr, flags)?;
+					vmem.map(default_page, virtaddr, flags)?;
 				}
 			}
 		} else {
@@ -329,7 +329,7 @@ impl MemMapping {
 		size: usize,
 	) -> (Option<Self>, Option<MemGap>, Option<Self>) {
 		let begin_ptr = unsafe { self.begin.add(begin * memory::PAGE_SIZE) };
-		let prev = NonZeroUsize::new(begin).map(|begin| Self {
+		let prev = NonZeroUsize::new(begin).map(|begin| MemMapping {
 			begin: self.begin,
 			size: begin,
 			flags: self.flags,
