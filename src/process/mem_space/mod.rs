@@ -423,6 +423,8 @@ impl MemSpace {
 		let (gap, off) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
 				vmem_usage -= self.unmap_impl(&mut transaction, addr, size, false)?;
+				// FIXME: unmapping might create gaps which need to be removed, or else it will be
+				// possible to clobber the mapping to be created in the current operation
 				// Create a fictive gap. This is required because fixed allocations may be used
 				// outside allowed gaps
 				let gap = MemGap {
@@ -889,6 +891,20 @@ impl fmt::Debug for MemSpace {
 			}
 		}
 		write!(f, "]}}")
+	}
+}
+
+impl Drop for MemSpace {
+	fn drop(&mut self) {
+		// Unmapping virtual pages is done by dropping `self.vmem`
+		// Unmap all physical pages
+		for (_, mapping) in &mut self.state.mappings {
+			for off in 0..mapping.get_size().get() {
+				unsafe {
+					mapping.free_phys_page(off, &*self.vmem);
+				}
+			}
+		}
 	}
 }
 

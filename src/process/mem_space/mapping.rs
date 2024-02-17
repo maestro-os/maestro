@@ -259,7 +259,11 @@ impl MemMapping {
 	/// Frees the physical page stored in `vmem` at the offset `offset` of the mapping.
 	///
 	/// If the page is shared, it is not freed but the reference counter is decreased.
-	fn free_phys_page(&self, offset: usize, vmem: &mut dyn VMem) {
+	///
+	/// # Safety
+	///
+	/// Accessing a mapping whose physical pages have been freed has an undefined behaviour.
+	pub(super) unsafe fn free_phys_page(&self, offset: usize, vmem: &dyn VMem) {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			if phys_ptr == get_default_page() {
@@ -282,17 +286,16 @@ impl MemMapping {
 	pub fn unmap(&self, pages_range: Range<usize>, vmem: &mut dyn VMem) -> EResult<()> {
 		// Synchronize to disk
 		self.fs_sync(vmem)?;
+		let begin_ptr = unsafe { self.begin.add(pages_range.start * memory::PAGE_SIZE) };
+		// Unmap virtual pages
+		oom::wrap(|| unsafe { vmem.unmap_range(begin_ptr, pages_range.end - pages_range.start) });
 		// Remove physical pages
 		for i in pages_range.clone() {
-			self.free_phys_page(i, vmem);
+			// Safety: virtual pages have been unmapped just before
+			unsafe {
+				self.free_phys_page(i, vmem);
+			}
 		}
-		let begin_ptr = unsafe { self.begin.add(pages_range.start * memory::PAGE_SIZE) };
-		// Unmap physical pages
-		// FIXME: potential deadly loop? the previous calls to `free_phys_page` are freeing
-		// physical pages, which *should* be enough to execute the line below, but this is not
-		// something we should rely on. there is also no guarantee that nobody is going to use the
-		// then-freed memory in between
-		oom::wrap(|| unsafe { vmem.unmap_range(begin_ptr, pages_range.end - pages_range.start) });
 		Ok(())
 	}
 
