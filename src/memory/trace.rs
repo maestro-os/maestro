@@ -3,7 +3,7 @@
 use crate::{debug, device::serial, register_get};
 use core::{ffi::c_void, ptr::null_mut};
 
-/// Writes a memory tracing sample to the **COM4** serial port.
+/// Writes a memory tracing sample to the **COM2** serial port.
 ///
 /// Arguments:
 /// - `allocator` is the name of the allocator.
@@ -17,8 +17,8 @@ pub fn sample(allocator: &str, op: u8, ptr: *const c_void, size: usize) {
 		let esp = register_get!("esp");
 		debug::get_callstack(esp as _, &mut callstack);
 	}
-	// COM4
-	let mut serial = serial::PORTS[3].lock();
+	// COM2
+	let mut serial = serial::PORTS[1].lock();
 	// Write name of allocator
 	serial.write(&(allocator.len() as u64).to_le_bytes());
 	serial.write(allocator.as_bytes());
