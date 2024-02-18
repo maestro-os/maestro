@@ -45,6 +45,7 @@ use core::{
 	ptr::drop_in_place,
 	slice,
 };
+use macros::instrument_allocator;
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());
@@ -66,6 +67,7 @@ static MUTEX: IntMutex<()> = IntMutex::new(());
 /// leak.
 ///
 /// Writing outside the allocated range (buffer overflow) is an undefined behaviour.
+#[instrument_allocator(name = malloc, op = alloc, size = n)]
 pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	let _ = MUTEX.lock();
 	// Get free chunk
@@ -101,6 +103,7 @@ pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 ///
 /// If the chunk of memory has been shrunk, accessing previously available memory causes an
 /// undefined behavior.
+#[instrument_allocator(name = malloc, op = realloc, ptr = ptr, size = n)]
 pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 	let _ = MUTEX.lock();
 	// Get chunk
@@ -137,6 +140,7 @@ pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonN
 /// function, the behaviour is undefined.
 ///
 /// Using memory after it was freed causes an undefined behaviour.
+#[instrument_allocator(name = malloc, op = free, ptr = ptr)]
 pub unsafe fn free(mut ptr: NonNull<c_void>) {
 	let _ = MUTEX.lock();
 	// Get chunk
