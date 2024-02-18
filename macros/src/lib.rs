@@ -5,6 +5,7 @@
 
 extern crate proc_macro;
 
+mod allocator;
 mod aml;
 mod syscall;
 mod util;
@@ -30,12 +31,21 @@ pub fn any_repr(input: TokenStream) -> TokenStream {
 	TokenStream::from(toks)
 }
 
+/// Instrumentation macro for memory allocators.
+///
+/// This macro allows to trace memory allocations/reallocations/frees in order to determine which
+/// portion of the codebase consume the most memory, and to help finding memory leaks.
+#[proc_macro_attribute]
+pub fn instrument_allocator(metadata: TokenStream, input: TokenStream) -> TokenStream {
+	allocator::instrument_allocator(metadata, input)
+}
+
 /// Definition of a derive macro used to turn a structure into a parsable object for the AML
 /// bytecode.
 ///
 /// TODO further document
 #[proc_macro_derive(Parseable)]
-pub fn derive_aml_parseable(input: TokenStream) -> TokenStream {
+pub fn aml_parseable(input: TokenStream) -> TokenStream {
 	aml::derive_parseable(input)
 }
 

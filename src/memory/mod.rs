@@ -17,6 +17,8 @@ pub mod physical_ref_counter;
 pub mod stack;
 pub mod stats;
 pub mod vmem;
+#[cfg(feature = "memtrace")]
+mod trace;
 
 use core::ffi::c_void;
 
