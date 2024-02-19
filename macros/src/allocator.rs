@@ -86,6 +86,9 @@ pub fn instrument_allocator(metadata: TokenStream, input: TokenStream) -> TokenS
 		panic!("an allocator function cannot be `const`");
 	}
 	let name = metadata.name;
+	if name.as_bytes().len() > u8::MAX as usize {
+		panic!("an allocator name cannot exceed {} bytes", u8::MAX);
+	}
 	let sample_code = match metadata.op {
 		MetadataOp::Alloc {
 			size_field,
