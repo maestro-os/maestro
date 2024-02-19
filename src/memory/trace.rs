@@ -14,13 +14,13 @@ pub fn sample(allocator: &str, op: u8, ptr: *const c_void, size: usize) {
 	// Dump callstack
 	let mut callstack: [*mut c_void; 64] = [null_mut(); 64];
 	unsafe {
-		let esp = register_get!("esp");
-		debug::get_callstack(esp as _, &mut callstack);
+		let ebp = register_get!("ebp");
+		debug::get_callstack(ebp as _, &mut callstack);
 	}
 	// COM2
 	let mut serial = serial::PORTS[1].lock();
 	// Write name of allocator
-	serial.write(&(allocator.len() as u64).to_le_bytes());
+	serial.write(&[allocator.len() as u8]);
 	serial.write(allocator.as_bytes());
 	// Write op
 	serial.write(&[op]);
