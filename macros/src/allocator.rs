@@ -1,10 +1,9 @@
 //! Implementation of the memory allocation instrumentation macro.
 
-use syn::PatIdent;
 use proc_macro::TokenStream;
-use proc_macro2::{TokenTree};
+use proc_macro2::TokenTree;
 use quote::{quote, ToTokens};
-use syn::{parse_macro_input, FnArg, Ident, ItemFn, Type, Pat};
+use syn::{parse::Parser, parse_macro_input, Block, FnArg, Ident, ItemFn, Pat, PatIdent, Type};
 
 #[derive(Default)]
 struct RawMetadata {
@@ -118,7 +117,9 @@ pub fn instrument_allocator(metadata: TokenStream, input: TokenStream) -> TokenS
 					FnArg::Typed(p) => Some(p),
 					_ => None,
 				})
-				.find(|p| matches!(&*p.pat, Pat::Ident(PatIdent { ident, .. }) if *ident == ptr_field))
+				.find(
+					|p| matches!(&*p.pat, Pat::Ident(PatIdent { ident, .. }) if *ident == ptr_field),
+				)
 				.map(|p| !matches!(&*p.ty, Type::Ptr(_)))
 				.unwrap_or(false);
 			if ptr_nonnull {
@@ -136,38 +137,42 @@ pub fn instrument_allocator(metadata: TokenStream, input: TokenStream) -> TokenS
 		});
 	let size_field = metadata
 		.size_field
-		.map(|size_field| {
-			match metadata.size_scale {
-				Scale::Linear => quote! {
-					#size_field.into()
-				},
-				Scale::Log2 => quote! {
-					1usize << #size_field
-				},
-			}
+		.map(|size_field| match metadata.size_scale {
+			Scale::Linear => quote! {
+				#size_field.into()
+			},
+			Scale::Log2 => quote! {
+				1usize << #size_field
+			},
 		})
 		.unwrap_or(quote! {
 			0
 		});
-	let sample_code = match metadata.op {
-		MetadataOp::Alloc => quote! {
-			crate::memory::trace::sample(#name, 0, #ptr_field, #size_field);
-		},
+	let stmts = input.block.stmts;
+	let stmts = match metadata.op {
+		MetadataOp::Alloc => {
+			quote! {
+				let ptr = {
+					#(#stmts)*
+				};
+				#[cfg(feature = "memtrace")]
+				if let Ok(ptr) = ptr {
+					crate::memory::trace::sample(#name, 0, ptr.as_ptr(), #size_field);
+				}
+				ptr
+			}
+		}
 		MetadataOp::Realloc => quote! {
+			#[cfg(feature = "memtrace")]
 			crate::memory::trace::sample(#name, 1, #ptr_field, #size_field);
+			#(#stmts)*
 		},
 		MetadataOp::Free => quote! {
+			#[cfg(feature = "memtrace")]
 			crate::memory::trace::sample(#name, 2, #ptr_field, #size_field);
+			#(#stmts)*
 		},
 	};
-	let sample_code = syn::parse(
-		quote! {
-			#[cfg(feature = "memtrace")]
-			#sample_code
-		}
-		.into(),
-	)
-	.unwrap();
-	input.block.stmts.insert(0, sample_code);
+	input.block.stmts = Block::parse_within.parse(stmts.into()).unwrap();
 	input.into_token_stream().into()
 }
