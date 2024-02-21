@@ -1,9 +1,10 @@
 //! Implementation of the memory allocation instrumentation macro.
 
+use syn::PatIdent;
 use proc_macro::TokenStream;
-use proc_macro2::TokenTree;
+use proc_macro2::{TokenTree};
 use quote::{quote, ToTokens};
-use syn::{parse_macro_input, Ident, ItemFn};
+use syn::{parse_macro_input, FnArg, Ident, ItemFn, Type, Pat};
 
 #[derive(Default)]
 struct RawMetadata {
@@ -11,25 +12,26 @@ struct RawMetadata {
 	op: Option<String>,
 	ptr_field: Option<Ident>,
 	size_field: Option<Ident>,
+	size_scale: Option<String>,
 }
 
 enum MetadataOp {
-	Alloc {
-		size_field: Ident,
-	},
-	Realloc {
-		ptr_field: Ident,
-		size_field: Ident,
-	},
-	Free {
-		ptr_field: Ident,
-		size_field: Option<Ident>,
-	},
+	Alloc,
+	Realloc,
+	Free,
+}
+
+enum Scale {
+	Linear,
+	Log2,
 }
 
 struct Metadata {
 	name: String,
 	op: MetadataOp,
+	ptr_field: Option<Ident>,
+	size_field: Option<Ident>,
+	size_scale: Scale,
 }
 
 fn parse_metadata(metadata: proc_macro2::TokenStream) -> Metadata {
@@ -53,27 +55,42 @@ fn parse_metadata(metadata: proc_macro2::TokenStream) -> Metadata {
 			"op" => metadata.op = Some(value.to_string()),
 			"ptr" => metadata.ptr_field = Some(value.clone()),
 			"size" => metadata.size_field = Some(value.clone()),
+			"scale" => metadata.size_scale = Some(value.to_string()),
 			_ => panic!("syntax error"),
 		}
 	}
 	let op = metadata.op.expect("missing `op`");
+	let ptr_field;
+	let size_field;
 	let op = match op.as_str() {
-		"alloc" => MetadataOp::Alloc {
-			size_field: metadata.size_field.expect("missing `size`"),
-		},
-		"realloc" => MetadataOp::Realloc {
-			ptr_field: metadata.ptr_field.expect("missing `ptr`"),
-			size_field: metadata.size_field.expect("missing `size`"),
-		},
-		"free" => MetadataOp::Free {
-			ptr_field: metadata.ptr_field.expect("missing `ptr`"),
-			size_field: metadata.size_field,
-		},
+		"alloc" => {
+			ptr_field = None;
+			size_field = Some(metadata.size_field.expect("missing `size`"));
+			MetadataOp::Alloc
+		}
+		"realloc" => {
+			ptr_field = Some(metadata.ptr_field.expect("missing `ptr`"));
+			size_field = Some(metadata.size_field.expect("missing `size`"));
+			MetadataOp::Realloc
+		}
+		"free" => {
+			ptr_field = Some(metadata.ptr_field.expect("missing `ptr`"));
+			size_field = metadata.size_field;
+			MetadataOp::Free
+		}
 		n => panic!("invalid operation `{n}`"),
+	};
+	let size_scale = match metadata.size_scale.as_deref() {
+		Some("linear") | None => Scale::Linear,
+		Some("log2") => Scale::Log2,
+		_ => panic!("invalid scale"),
 	};
 	Metadata {
 		name: metadata.name.expect("missing `name`"),
 		op,
+		ptr_field,
+		size_field,
+		size_scale,
 	}
 }
 
@@ -89,29 +106,58 @@ pub fn instrument_allocator(metadata: TokenStream, input: TokenStream) -> TokenS
 	if name.as_bytes().len() > u8::MAX as usize {
 		panic!("an allocator name cannot exceed {} bytes", u8::MAX);
 	}
+	// Generate sampling code
+	let ptr_field = metadata
+		.ptr_field
+		.map(|ptr_field| {
+			let ptr_nonnull = input
+				.sig
+				.inputs
+				.iter()
+				.filter_map(|arg| match arg {
+					FnArg::Typed(p) => Some(p),
+					_ => None,
+				})
+				.find(|p| matches!(&*p.pat, Pat::Ident(PatIdent { ident, .. }) if *ident == ptr_field))
+				.map(|p| !matches!(&*p.ty, Type::Ptr(_)))
+				.unwrap_or(false);
+			if ptr_nonnull {
+				quote! {
+					#ptr_field.as_ptr()
+				}
+			} else {
+				quote! {
+					#ptr_field
+				}
+			}
+		})
+		.unwrap_or(quote! {
+			core::ptr::null()
+		});
+	let size_field = metadata
+		.size_field
+		.map(|size_field| {
+			match metadata.size_scale {
+				Scale::Linear => quote! {
+					#size_field.into()
+				},
+				Scale::Log2 => quote! {
+					1usize << #size_field
+				},
+			}
+		})
+		.unwrap_or(quote! {
+			0
+		});
 	let sample_code = match metadata.op {
-		MetadataOp::Alloc {
-			size_field,
-		} => quote! {
-			crate::memory::trace::sample(#name, 0, core::ptr::null(), #size_field.into());
+		MetadataOp::Alloc => quote! {
+			crate::memory::trace::sample(#name, 0, #ptr_field, #size_field);
 		},
-		MetadataOp::Realloc {
-			ptr_field,
-			size_field,
-		} => quote! {
-			crate::memory::trace::sample(#name, 1, #ptr_field.as_ptr(), #size_field.into());
+		MetadataOp::Realloc => quote! {
+			crate::memory::trace::sample(#name, 1, #ptr_field, #size_field);
 		},
-		MetadataOp::Free {
-			ptr_field,
-			size_field: Some(size_field),
-		} => quote! {
-			crate::memory::trace::sample(#name, 2, #ptr_field.as_ptr(), #size_field.into());
-		},
-		MetadataOp::Free {
-			ptr_field,
-			size_field: None,
-		} => quote! {
-			crate::memory::trace::sample(#name, 2, #ptr_field.as_ptr(), 0);
+		MetadataOp::Free => quote! {
+			crate::memory::trace::sample(#name, 2, #ptr_field, #size_field);
 		},
 	};
 	let sample_code = syn::parse(
