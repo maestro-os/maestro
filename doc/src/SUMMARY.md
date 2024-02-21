@@ -31,6 +31,7 @@
 - [Allocators](./memory/alloc.md)
 - [Memory map](./memory/mem_map.md)
 - [Memory space](./memory/mem_space.md)
+- [Tracing](./memory/tracing.md)
 
 
 
