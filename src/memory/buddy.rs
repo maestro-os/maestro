@@ -20,6 +20,7 @@ use core::{
 	ptr::{null_mut, NonNull},
 	slice,
 };
+use macros::instrument_allocator;
 
 /// The order of a memory frame.
 pub type FrameOrder = u8;
@@ -488,6 +489,7 @@ fn get_zone_for_pointer(zones: &mut [Zone; ZONES_COUNT], ptr: *const c_void) -> 
 /// # Safety
 ///
 /// It is the caller's responsibility to ensure the memory is accessed correctly.
+#[instrument_allocator(name = buddy, op = alloc, size = order, scale = log2)]
 pub unsafe fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
 	if order > MAX_ORDER {
 		return Err(AllocError);
@@ -541,6 +543,7 @@ pub unsafe fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 /// If the `ptr` or `order` are invalid, the behaviour is undefined.
 ///
 /// Using the memory referenced by the pointer after freeing results in an undefined behaviour.
+#[instrument_allocator(name = buddy, op = free, ptr = ptr, size = order, scale = log2)]
 pub unsafe fn free(ptr: *const c_void, order: FrameOrder) {
 	debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
