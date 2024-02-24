@@ -472,10 +472,7 @@ impl MemSpace {
 			// Occupied means the state is inconsistent
 			Entry::Occupied(_) => unreachable!(),
 		};
-		// FIXME: on failure, this must be undone
-		m.map_default(&mut self.vmem)?;
-		// Commit
-		transaction.commit(&mut self.state)?;
+		transaction.commit(self)?;
 		self.vmem_usage = vmem_usage;
 		Ok(addr)
 	}
@@ -579,7 +576,7 @@ impl MemSpace {
 		}
 		let mut transaction = MemSpaceTransaction::default();
 		let removed_count = self.unmap_impl(&mut transaction, ptr, size, brk)?;
-		transaction.commit(&mut self.state)?;
+		transaction.commit(self)?;
 		self.vmem_usage -= removed_count;
 		Ok(())
 	}
@@ -741,7 +738,7 @@ impl MemSpace {
 			if let Some(mapping) = self.state.get_mapping_for_ptr(virtaddr) {
 				let page_offset =
 					(virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-				oom::wrap(|| mapping.map(page_offset, &mut self.vmem));
+				oom::wrap(|| mapping.alloc(page_offset, &mut self.vmem));
 				mapping.update_vmem(page_offset, &mut self.vmem);
 			}
 			off += memory::PAGE_SIZE;
@@ -862,7 +859,7 @@ impl MemSpace {
 		}
 		// Map the accessed page
 		let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-		oom::wrap(|| mapping.map(page_offset, &mut self.vmem));
+		oom::wrap(|| mapping.alloc(page_offset, &mut self.vmem));
 		mapping.update_vmem(page_offset, &mut self.vmem);
 		true
 	}

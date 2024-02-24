@@ -18,6 +18,7 @@ use crate::{
 };
 use core::{
 	ffi::c_void,
+	ptr,
 	ptr::{null, NonNull},
 };
 
@@ -92,126 +93,12 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 		x86::translate(self.inner(), ptr)
 	}
 
-	#[cfg(target_arch = "x86")]
-	fn map_impl(
-		&mut self,
-		physaddr: *const c_void,
-		virtaddr: *const c_void,
-		flags: u32,
-	) -> AllocResult<x86::Rollback> {
-		unsafe { x86::map(self.inner_mut(), physaddr, virtaddr, flags) }
-	}
-
-	/// Maps a single page of virtual memory at `virtaddr` to a single page of physical memory at
-	/// `physaddr`.
-	///
-	/// `flags` is the set of flags to use for the mapping, which are architecture-dependent.
-	///
-	/// The modifications may not be flushed to the cache. It is the caller's responsibility to
-	/// ensure they are.
-	#[inline]
-	pub fn map(
-		&mut self,
-		physaddr: *const c_void,
-		virtaddr: *const c_void,
-		flags: u32,
-	) -> AllocResult<Rollback<KERNEL>> {
-		// If kernelspace modification is disabled, error if mapping onto kernelspace
-		if !KERNEL && is_kernelspace(virtaddr, 1) {
-			return Err(AllocError);
+	/// Begins a transaction.
+	pub fn transaction(&mut self) -> VMemTransaction<'_, KERNEL> {
+		VMemTransaction {
+			vmem: self,
+			rollback: vec![],
 		}
-		self.map_impl(physaddr, virtaddr, flags).map(Rollback::Unit)
-	}
-
-	/// Like [`Self::map`] but on a range of several pages.
-	pub fn map_range(
-		&mut self,
-		physaddr: *const c_void,
-		virtaddr: *const c_void,
-		pages: usize,
-		flags: u32,
-	) -> AllocResult<Rollback<KERNEL>> {
-		if pages == 0 {
-			// No op
-			return Ok(Rollback::Range(vec![]));
-		}
-		if pages == 1 {
-			return self.map(physaddr, virtaddr, flags);
-		}
-		// If kernelspace modification is disabled, error if mapping onto kernelspace
-		if !KERNEL && is_kernelspace(virtaddr, pages) {
-			return Err(AllocError);
-		}
-		// Map each page
-		let mut rollback = Vec::with_capacity(pages)?;
-		for i in 0..pages {
-			let physaddr = (physaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
-			let virtaddr = (virtaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
-			let res = self.map_impl(physaddr, virtaddr, flags);
-			let r = match res {
-				Ok(r) => r,
-				Err(e) => {
-					// Failure, early rollback
-					drop(Rollback::<KERNEL>::Range(rollback));
-					return Err(e);
-				}
-			};
-			rollback.push(r).unwrap();
-		}
-		Ok(Rollback::Range(rollback))
-	}
-
-	#[cfg(target_arch = "x86")]
-	fn unmap_impl(&mut self, virtaddr: *const c_void) -> AllocResult<x86::Rollback> {
-		unsafe { x86::unmap(self.inner_mut(), virtaddr) }
-	}
-
-	/// Unmaps a single page of virtual memory at `virtaddr`.
-	///
-	/// The modifications may not be flushed to the cache. It is the caller's responsibility to
-	/// ensure they are.
-	#[inline]
-	pub fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<Rollback<KERNEL>> {
-		// If kernelspace modification is disabled, error if unmapping onto kernelspace
-		if !KERNEL && is_kernelspace(virtaddr, 1) {
-			return Err(AllocError);
-		}
-		self.unmap_impl(virtaddr).map(Rollback::Unit)
-	}
-
-	/// Like [`Self::unmap`] but on a range of several pages.
-	pub fn unmap_range(
-		&mut self,
-		virtaddr: *const c_void,
-		pages: usize,
-	) -> AllocResult<Rollback<KERNEL>> {
-		if pages == 0 {
-			// No op
-			return Ok(Rollback::Range(vec![]));
-		}
-		if pages == 1 {
-			return self.unmap(virtaddr);
-		}
-		// If kernelspace modification is disabled, error if unmapping onto kernelspace
-		if !KERNEL && is_kernelspace(virtaddr, pages) {
-			return Err(AllocError);
-		}
-		// Map each page
-		let mut rollback = Vec::with_capacity(pages)?;
-		for i in 0..pages {
-			let virtaddr = (virtaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
-			let res = self.unmap_impl(virtaddr);
-			let r = match res {
-				Ok(r) => r,
-				Err(e) => {
-					// Failure, early rollback
-					drop(Rollback::<KERNEL>::Range(rollback));
-					return Err(e);
-				}
-			};
-			rollback.push(r).unwrap();
-		}
-		Ok(Rollback::Range(rollback))
 	}
 
 	/// Binds the virtual memory context to the current CPU.
@@ -253,29 +140,146 @@ impl<const KERNEL: bool> Drop for VMem<KERNEL> {
 	}
 }
 
-/// Handle allowing to roll back an operation on a virtual memory context.
-pub enum Rollback<const KERNEL: bool> {
-	/// A single page to rollback. This is useful to avoid a memory allocation.
-	Unit(#[cfg(target_arch = "x86")] x86::Rollback),
-	/// A range of pages to rollback.
-	Range(#[cfg(target_arch = "x86")] Vec<x86::Rollback>),
+/// Handle allowing to roll back operations on a virtual memory context.
+///
+/// Dropping the transaction without committing rollbacks all modifications.
+pub struct VMemTransaction<'v, const KERNEL: bool> {
+	/// The virtual memory context on which the transaction applies.
+	pub vmem: &'v mut VMem<KERNEL>,
+	/// The vector of handles to roll back the whole transaction.
+	#[cfg(target_arch = "x86")]
+	rollback: Vec<x86::Rollback>,
 }
 
-impl<const KERNEL: bool> Rollback<KERNEL> {
-	/// Rollbacks the associated operation to restore the previous state of the virtual memory
-	/// context.
+impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
+	#[cfg(target_arch = "x86")]
+	fn map_impl(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		flags: u32,
+	) -> AllocResult<x86::Rollback> {
+		unsafe { x86::map(self.vmem.inner_mut(), physaddr, virtaddr, flags) }
+	}
+
+	/// Maps a single page of virtual memory at `virtaddr` to a single page of physical memory at
+	/// `physaddr`.
 	///
-	/// If the provided context is not the one corresponding to the one that produced `self`, the
-	/// context might be left in an inconsistent state.
-	pub fn rollback(self, vmem: &mut VMem<KERNEL>) {
-		match self {
-			Rollback::Unit(r) => r.rollback(vmem.inner_mut()),
-			Rollback::Range(units) => {
-				// Rollback in reverse order
-				for r in units.into_iter().rev() {
-					r.rollback(vmem.inner_mut());
-				}
-			}
+	/// `flags` is the set of flags to use for the mapping, which are architecture-dependent.
+	///
+	/// The modifications may not be flushed to the cache. It is the caller's responsibility to
+	/// ensure they are.
+	#[inline]
+	pub fn map(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		flags: u32,
+	) -> AllocResult<()> {
+		// If kernelspace modification is disabled, error if mapping onto kernelspace
+		if !KERNEL && is_kernelspace(virtaddr, 1) {
+			return Err(AllocError);
+		}
+		let r = self.map_impl(physaddr, virtaddr, flags)?;
+		self.rollback.push(r)
+	}
+
+	/// Like [`Self::map`] but on a range of several pages.
+	pub fn map_range(
+		&mut self,
+		physaddr: *const c_void,
+		virtaddr: *const c_void,
+		pages: usize,
+		flags: u32,
+	) -> AllocResult<()> {
+		if pages == 0 {
+			// No op
+			return Ok(());
+		}
+		if pages == 1 {
+			return self.map(physaddr, virtaddr, flags);
+		}
+		// If kernelspace modification is disabled, error if mapping onto kernelspace
+		if !KERNEL && is_kernelspace(virtaddr, pages) {
+			return Err(AllocError);
+		}
+		// Map each page
+		for i in 0..pages {
+			let physaddr = (physaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
+			let virtaddr = (virtaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
+			let r = self.map_impl(physaddr, virtaddr, flags)?;
+			self.rollback.push(r)?;
+		}
+		Ok(())
+	}
+
+	#[cfg(target_arch = "x86")]
+	fn unmap_impl(&mut self, virtaddr: *const c_void) -> AllocResult<x86::Rollback> {
+		unsafe { x86::unmap(self.vmem.inner_mut(), virtaddr) }
+	}
+
+	/// Unmaps a single page of virtual memory at `virtaddr`.
+	///
+	/// The modifications may not be flushed to the cache. It is the caller's responsibility to
+	/// ensure they are.
+	#[inline]
+	pub fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<()> {
+		// If kernelspace modification is disabled, error if unmapping onto kernelspace
+		if !KERNEL && is_kernelspace(virtaddr, 1) {
+			return Err(AllocError);
+		}
+		let r = self.unmap_impl(virtaddr)?;
+		self.rollback.push(r)
+	}
+
+	/// Like [`Self::unmap`] but on a range of several pages.
+	pub fn unmap_range(&mut self, virtaddr: *const c_void, pages: usize) -> AllocResult<()> {
+		if pages == 0 {
+			// No op
+			return Ok(());
+		}
+		if pages == 1 {
+			return self.unmap(virtaddr);
+		}
+		// If kernelspace modification is disabled, error if unmapping onto kernelspace
+		if !KERNEL && is_kernelspace(virtaddr, pages) {
+			return Err(AllocError);
+		}
+		// Map each page
+		for i in 0..pages {
+			let virtaddr = (virtaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
+			let r = self.unmap_impl(virtaddr)?;
+			self.rollback.push(r)?;
+		}
+		Ok(())
+	}
+
+	/// Appends `other` to `self`.
+	///
+	/// If the virtual memory contexts of both transactions don't match, the operation fails.
+	///
+	/// On success, `other` is emptied and merged with `self`.
+	///
+	/// On failure, both `self` and `other` are left untouched.
+	pub fn append(&mut self, other: &mut Self) -> AllocResult<()> {
+		if ptr::eq(self.vmem, other.vmem) {
+			self.rollback.append(&mut other.rollback)
+		} else {
+			Err(AllocError)
+		}
+	}
+
+	/// Validates the transaction.
+	pub fn commit(mut self) {
+		self.rollback.clear();
+	}
+}
+
+impl<const KERNEL: bool> Drop for VMemTransaction<'_, KERNEL> {
+	fn drop(&mut self) {
+		// Rollback in reverse order
+		for r in self.rollback.into_iter().rev() {
+			r.rollback(self.vmem.inner_mut());
 		}
 	}
 }
@@ -392,10 +396,11 @@ pub(crate) fn init() -> AllocResult<()> {
 	}
 	// Kernel context init
 	let mut kernel_vmem = unsafe { VMem::new_kernel()? };
+	let mut transaction = kernel_vmem.transaction();
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
 	// the kernel for interrupts
 	// Map kernel
-	kernel_vmem.map_range(
+	transaction.map_range(
 		null::<c_void>(),
 		memory::PROCESS_END,
 		memory::get_kernelspace_size() / memory::PAGE_SIZE,
@@ -409,18 +414,19 @@ pub(crate) fn init() -> AllocResult<()> {
 		let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 		let virt_addr = memory::kern_to_virt(section.sh_addr as _);
 		let pages = section.sh_size.div_ceil(memory::PAGE_SIZE as _) as usize;
-		kernel_vmem.map_range(phys_addr, virt_addr, pages, x86::FLAG_GLOBAL)?;
+		transaction.map_range(phys_addr, virt_addr, pages, x86::FLAG_GLOBAL)?;
 	}
 	// Map VGA buffer
 	#[cfg(target_arch = "x86")]
 	{
-		kernel_vmem.map_range(
+		transaction.map_range(
 			vga::BUFFER_PHYS as _,
 			vga::get_buffer_virt() as _,
 			1,
 			x86::FLAG_CACHE_DISABLE | x86::FLAG_WRITE_THROUGH | x86::FLAG_WRITE | x86::FLAG_GLOBAL,
 		)?;
 	}
+	transaction.commit();
 	kernel_vmem.bind();
 	unsafe {
 		KERNEL_VMEM.init(Mutex::new(kernel_vmem));

@@ -48,7 +48,9 @@ impl MMIO {
 		}
 
 		let mut vmem = vmem::kernel().lock();
-		vmem.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
+		let mut transaction = vmem.transaction();
+		transaction.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
+		transaction.commit();
 
 		Ok(Self {
 			phys_addr,
@@ -73,14 +75,16 @@ impl MMIO {
 	/// The previously allocated chunk is freed by this function.
 	pub fn unmap(&self) -> AllocResult<()> {
 		let mut vmem = vmem::kernel().lock();
+		let mut transaction = vmem.transaction();
+		transaction.map_range(
+			self.phys_addr,
+			super::kern_to_virt(self.phys_addr),
+			self.pages,
+			DEFAULT_FLAGS,
+		)?;
+		transaction.commit();
 		let order = buddy::get_order(self.pages);
 		unsafe {
-			vmem.map_range(
-				self.phys_addr,
-				super::kern_to_virt(self.phys_addr),
-				self.pages,
-				DEFAULT_FLAGS,
-			)?;
 			buddy::free_kernel(self.phys_addr, order);
 		}
 		Ok(())
