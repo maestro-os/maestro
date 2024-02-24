@@ -216,7 +216,8 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 	pub fn bind(&self) {
 		unsafe {
 			#[cfg(target_arch = "x86")]
-			x86::bind(self.page_dir.cast().as_ptr());
+			let virtaddr = self.page_dir.cast().as_ptr();
+			x86::bind(memory::kern_to_phys(virtaddr));
 		}
 	}
 
