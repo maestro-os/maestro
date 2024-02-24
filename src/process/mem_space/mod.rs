@@ -117,7 +117,7 @@ impl MapResidence {
 
 	/// TODO doc
 	fn alloc() -> AllocResult<NonNull<c_void>> {
-		let ptr = unsafe { buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)? };
+		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
 		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
 		match ref_counter.increment(ptr.as_ptr()) {
 			Ok(()) => Ok(ptr),
@@ -684,9 +684,7 @@ impl MemSpace {
 
 	/// Binds the memory space to the current core.
 	pub fn bind(&self) {
-		unsafe {
-			self.vmem.bind();
-		}
+		self.vmem.bind();
 	}
 
 	/// Tells whether the memory space is bound.

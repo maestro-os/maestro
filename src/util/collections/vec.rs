@@ -1,4 +1,4 @@
-//! This module implements the Vec collections.
+//! A dynamically-resizable array of elements.
 
 use crate::{
 	errno::{AllocResult, CollectResult},
@@ -13,7 +13,7 @@ use core::{
 	mem::ManuallyDrop,
 	num::NonZeroUsize,
 	ops::{Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeTo},
-	ptr,
+	ptr, slice,
 };
 
 /// Creates a [`Vec`] with the given size or set of values.
@@ -42,14 +42,13 @@ macro_rules! vec {
 	}};
 }
 
-/// A vector collections is a dynamically-resizable array of elements.
+/// A vector collection is a dynamically-resizable array of elements.
 ///
-/// When resizing a vector, the elements can be moved, thus the callee should
+/// When resizing a vector, the elements may be moved, thus the callee should
 /// not rely on pointers to elements inside a vector.
 ///
-/// The implementation of vectors for the kernel cannot follow the
-/// implementation of Rust's standard Vec because it must not panic when a
-/// memory allocation fails.
+/// The implementation of vectors for the kernel cannot follow the implementation of Rust's
+/// standard `Vec` because it must provide a way to recover from memory allocation failures.
 pub struct Vec<T> {
 	/// The number of elements present in the vector
 	len: usize,
@@ -244,11 +243,6 @@ impl<T> Vec<T> {
 		} else {
 			None
 		}
-	}
-
-	/// Creates an immutable iterator.
-	pub fn iter(&self) -> VecIterator<'_, T> {
-		VecIterator::new(self)
 	}
 
 	/// Retains only the elements for which the given closure returns `true`.
@@ -537,136 +531,35 @@ impl<T> IndexMut<RangeTo<usize>> for Vec<T> {
 	}
 }
 
-/// A consuming iterator for the Vec structure.
-pub struct IntoIter<T> {
-	/// The vector to iterator into.
-	vec: ManuallyDrop<Vec<T>>,
-	/// The current offset in the vector.
-	cur: usize,
-}
-
-impl<T> Iterator for IntoIter<T> {
-	type Item = T;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		if self.cur < self.vec.len() {
-			let e = unsafe { ptr::read(&self.vec[self.cur]) };
-			self.cur += 1;
-			Some(e)
-		} else {
-			None
-		}
-	}
-}
-
-impl<T> Drop for IntoIter<T> {
-	fn drop(&mut self) {
-		// Drop remaining elements
-		for e in &mut self.vec.as_mut_slice()[self.cur..] {
-			unsafe {
-				ptr::drop_in_place(e);
-			}
-		}
-		// Free vector's memory
-		self.vec.data = None;
-	}
-}
-
 impl<T> IntoIterator for Vec<T> {
 	type IntoIter = IntoIter<T>;
 	type Item = T;
 
 	fn into_iter(self) -> Self::IntoIter {
+		let end = self.len();
 		IntoIter {
 			vec: ManuallyDrop::new(self),
-			cur: 0,
+			start: 0,
+			end,
 		}
 	}
 }
-
-/// An iterator for the Vec structure.
-pub struct VecIterator<'a, T> {
-	/// The vector to iterate into.
-	vec: &'a Vec<T>,
-
-	/// The current index of the iterator starting from the beginning.
-	index_front: usize,
-	/// The current index of the iterator starting from the end.
-	index_back: usize,
-}
-
-impl<'a, T> VecIterator<'a, T> {
-	/// Creates a vector iterator for the given reference.
-	fn new(vec: &'a Vec<T>) -> Self {
-		VecIterator {
-			vec,
-
-			index_front: 0,
-			index_back: 0,
-		}
-	}
-}
-
-impl<'a, T> Iterator for VecIterator<'a, T> {
-	type Item = &'a T;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		// If both ends of the iterator are meeting, stop
-		if self.index_front + self.index_back >= self.vec.len() {
-			return None;
-		}
-
-		if self.index_front < self.vec.len() {
-			let e = &self.vec[self.index_front];
-			self.index_front += 1;
-			Some(e)
-		} else {
-			None
-		}
-	}
-
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		let remaining = self.vec.len() - self.index_front - self.index_back;
-		(remaining, Some(remaining))
-	}
-
-	fn count(self) -> usize {
-		self.size_hint().0
-	}
-}
-
-impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
-	fn next_back(&mut self) -> Option<Self::Item> {
-		// If both ends of the iterator are meeting, stop
-		if self.index_front + self.index_back >= self.vec.len() {
-			return None;
-		}
-		if self.index_back < self.vec.len() {
-			let e = &self.vec[self.vec.len() - self.index_back - 1];
-			self.index_back += 1;
-			Some(e)
-		} else {
-			None
-		}
-	}
-}
-
-impl<'a, T> ExactSizeIterator for VecIterator<'a, T> {
-	fn len(&self) -> usize {
-		self.size_hint().0
-	}
-}
-
-impl<'a, T> FusedIterator for VecIterator<'a, T> {}
-
-unsafe impl<'a, T> TrustedLen for VecIterator<'a, T> {}
 
 impl<'a, T> IntoIterator for &'a Vec<T> {
-	type IntoIter = VecIterator<'a, T>;
+	type IntoIter = slice::Iter<'a, T>;
 	type Item = &'a T;
 
 	fn into_iter(self) -> Self::IntoIter {
-		VecIterator::new(self)
+		self.as_slice().iter()
+	}
+}
+
+impl<'a, T> IntoIterator for &'a mut Vec<T> {
+	type IntoIter = slice::IterMut<'a, T>;
+	type Item = &'a mut T;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.as_mut_slice().iter_mut()
 	}
 }
 
@@ -687,6 +580,72 @@ impl<T: fmt::Debug> fmt::Debug for Vec<T> {
 impl<T> Drop for Vec<T> {
 	fn drop(&mut self) {
 		self.clear();
+	}
+}
+
+/// A consuming iterator over [`Vec`].
+pub struct IntoIter<T> {
+	/// The vector to iterate onto.
+	vec: ManuallyDrop<Vec<T>>,
+	/// The current start offset in the vector.
+	start: usize,
+	/// The current end offset in the vector.
+	end: usize,
+}
+
+impl<T> Iterator for IntoIter<T> {
+	type Item = T;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// Fuse invariant
+		if self.start >= self.end {
+			return None;
+		}
+		// Read one element and return it
+		let e = unsafe { ptr::read(&self.vec[self.start]) };
+		self.start += 1;
+		Some(e)
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.end - self.start;
+		(len, Some(len))
+	}
+
+	fn count(self) -> usize {
+		self.size_hint().0
+	}
+}
+
+impl<T> DoubleEndedIterator for IntoIter<T> {
+	fn next_back(&mut self) -> Option<Self::Item> {
+		// Fuse invariant
+		if self.start >= self.end {
+			return None;
+		}
+		// Read one element and return it
+		let e = unsafe { ptr::read(&self.vec[self.start]) };
+		self.end -= 1;
+		Some(e)
+	}
+}
+
+impl<T> ExactSizeIterator for IntoIter<T> {}
+
+impl<T> FusedIterator for IntoIter<T> {}
+
+unsafe impl<T> TrustedLen for IntoIter<T> {}
+
+impl<T> Drop for IntoIter<T> {
+	fn drop(&mut self) {
+		// Drop remaining elements
+		for e in &mut self.vec.as_mut_slice()[self.start..] {
+			unsafe {
+				ptr::drop_in_place(e);
+			}
+		}
+		// Free vector's memory
+		self.vec.data = None;
 	}
 }
 

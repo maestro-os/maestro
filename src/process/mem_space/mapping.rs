@@ -186,7 +186,7 @@ impl MemMapping {
 		// Map new page
 		let new_phys_ptr = self.residence.alloc_page(offset)?;
 		let flags = self.get_vmem_flags(true, offset, vmem);
-		let res = unsafe { vmem.map(new_phys_ptr.as_ptr(), virt_ptr, flags) };
+		let res = vmem.map(new_phys_ptr.as_ptr(), virt_ptr, flags);
 		if let Err(e) = res {
 			self.residence.free_page(offset, new_phys_ptr.as_ptr());
 			return Err(e);
@@ -239,9 +239,7 @@ impl MemMapping {
 			for i in 0..self.size.get() {
 				let virtaddr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
 				let flags = self.get_vmem_flags(false, i, vmem);
-				unsafe {
-					vmem.map(default_page, virtaddr, flags)?;
-				}
+				vmem.map(default_page, virtaddr, flags)?;
 			}
 		} else {
 			for i in 0..self.size.get() {
@@ -288,7 +286,7 @@ impl MemMapping {
 		self.fs_sync(vmem)?;
 		let begin_ptr = unsafe { self.begin.add(pages_range.start * memory::PAGE_SIZE) };
 		// Unmap virtual pages
-		oom::wrap(|| unsafe { vmem.unmap_range(begin_ptr, pages_range.end - pages_range.start) });
+		oom::wrap(|| vmem.unmap_range(begin_ptr, pages_range.end - pages_range.start));
 		// Remove physical pages
 		for i in pages_range.clone() {
 			// Safety: virtual pages have been unmapped just before
@@ -356,9 +354,7 @@ impl MemMapping {
 			let allocated = phys_ptr != get_default_page();
 			let flags = self.get_vmem_flags(allocated, offset, vmem);
 			// Cannot fail because the page for the vmem structure is already mapped
-			unsafe {
-				vmem.map(phys_ptr, virt_ptr, flags).unwrap();
-			}
+			vmem.map(phys_ptr, virt_ptr, flags).unwrap();
 		}
 	}
 

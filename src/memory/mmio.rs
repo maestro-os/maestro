@@ -40,7 +40,7 @@ impl MMIO {
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn new(phys_addr: *mut c_void, pages: usize, prefetchable: bool) -> AllocResult<Self> {
 		let order = buddy::get_order(pages);
-		let virt_addr = unsafe { buddy::alloc_kernel(order)? };
+		let virt_addr = buddy::alloc_kernel(order)?;
 
 		let mut flags = MMIO_FLAGS;
 		if !prefetchable {
@@ -48,9 +48,7 @@ impl MMIO {
 		}
 
 		let mut vmem = vmem::kernel().lock();
-		unsafe {
-			vmem.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
-		}
+		vmem.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
 
 		Ok(Self {
 			phys_addr,

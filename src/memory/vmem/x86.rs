@@ -237,7 +237,7 @@ pub(super) fn translate(page_dir: &Table, ptr: *const c_void) -> Option<*const c
 }
 
 /// Inner version of [`super::Rollback`] for x86.
-pub(super) struct Rollback {
+pub struct Rollback {
 	/// The virtual address of the affected page.
 	virtaddr: *const c_void,
 	/// Previous entry in the page table, unless the [`FLAG_PAGE_SIZE`] flag is set, in which case
