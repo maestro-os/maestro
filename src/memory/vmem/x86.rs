@@ -309,9 +309,9 @@ pub(super) unsafe fn map(
 	let flags = (flags & FLAGS_MASK) | FLAG_PRESENT;
 	// First level
 	let index = get_addr_element_index(virtaddr, 1);
+	let mut previous_entry = page_dir[index];
 	// If using PSE, set entry and stop
 	if flags & FLAG_PAGE_SIZE != 0 {
-		let previous_entry = page_dir[index];
 		page_dir[index] = to_entry(physaddr, flags);
 		let table = (previous_entry & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT)
 			.then(|| unsafe { unwrap_entry(previous_entry).0 });
@@ -321,7 +321,6 @@ pub(super) unsafe fn map(
 			table,
 		});
 	}
-	let mut previous_entry = page_dir[index];
 	let mut expanded = false;
 	if previous_entry & FLAG_PRESENT == 0 {
 		// No table is present, allocate one

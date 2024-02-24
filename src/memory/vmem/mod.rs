@@ -6,7 +6,7 @@ pub mod x86;
 
 use crate::{
 	elf,
-	errno::AllocResult,
+	errno::{AllocError, AllocResult},
 	idt, memory, register_get, register_set,
 	tty::vga,
 	util::{
@@ -20,6 +20,18 @@ use core::{
 	ffi::c_void,
 	ptr::{null, NonNull},
 };
+
+/// Tells whether the given range of memory overlaps with the kernelspace.
+///
+/// Arguments:
+/// - `virtaddr` is the start of the range.
+/// - `pages` is the size of the range in pages.
+fn is_kernelspace<T>(virtaddr: *const T, pages: usize) -> bool {
+	let Some(end) = (virtaddr as usize).checked_add(pages * memory::PAGE_SIZE) else {
+		return true;
+	};
+	end > memory::PROCESS_END as usize
+}
 
 /// A virtual memory context.
 ///
@@ -94,6 +106,8 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 	/// `physaddr`.
 	///
 	/// `flags` is the set of flags to use for the mapping, which are architecture-dependent.
+	///
+	/// The modifications may not be flushed to the cache. It is the caller's responsibility to ensure they are.
 	#[inline]
 	pub fn map(
 		&mut self,
@@ -101,10 +115,14 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 		virtaddr: *const c_void,
 		flags: u32,
 	) -> AllocResult<Rollback<KERNEL>> {
+		// If kernelspace modification is disabled, error if mapping onto kernelspace
+		if !KERNEL && is_kernelspace(virtaddr, 1) {
+			return Err(AllocError);
+		}
 		self.map_impl(physaddr, virtaddr, flags).map(Rollback::Unit)
 	}
 
-	/// Maps a range of pages.
+	/// Like [`map`] but on a range of several pages.
 	pub fn map_range(
 		&mut self,
 		physaddr: *const c_void,
@@ -118,6 +136,10 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 		}
 		if pages == 1 {
 			return self.map(physaddr, virtaddr, flags);
+		}
+		// If kernelspace modification is disabled, error if mapping onto kernelspace
+		if !KERNEL && is_kernelspace(virtaddr, pages) {
+			return Err(AllocError);
 		}
 		// Map each page
 		let mut rollback = Vec::with_capacity(pages)?;
@@ -144,12 +166,18 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 	}
 
 	/// Unmaps a single page of virtual memory at `virtaddr`.
+	///
+	/// The modifications may not be flushed to the cache. It is the caller's responsibility to ensure they are.
 	#[inline]
 	pub fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<Rollback<KERNEL>> {
+		// If kernelspace modification is disabled, error if unmapping onto kernelspace
+		if !KERNEL && is_kernelspace(virtaddr, 1) {
+			return Err(AllocError);
+		}
 		self.unmap_impl(virtaddr).map(Rollback::Unit)
 	}
 
-	/// Unmaps a range of pages.
+	/// Like [`unmap`] but on a range of several pages.
 	pub fn unmap_range(
 		&mut self,
 		virtaddr: *const c_void,
@@ -161,6 +189,10 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 		}
 		if pages == 1 {
 			return self.unmap(virtaddr);
+		}
+		// If kernelspace modification is disabled, error if unmapping onto kernelspace
+		if !KERNEL && is_kernelspace(virtaddr, pages) {
+			return Err(AllocError);
 		}
 		// Map each page
 		let mut rollback = Vec::with_capacity(pages)?;
