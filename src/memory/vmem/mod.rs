@@ -107,7 +107,8 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 	///
 	/// `flags` is the set of flags to use for the mapping, which are architecture-dependent.
 	///
-	/// The modifications may not be flushed to the cache. It is the caller's responsibility to ensure they are.
+	/// The modifications may not be flushed to the cache. It is the caller's responsibility to
+	/// ensure they are.
 	#[inline]
 	pub fn map(
 		&mut self,
@@ -122,7 +123,7 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 		self.map_impl(physaddr, virtaddr, flags).map(Rollback::Unit)
 	}
 
-	/// Like [`map`] but on a range of several pages.
+	/// Like [`Self::map`] but on a range of several pages.
 	pub fn map_range(
 		&mut self,
 		physaddr: *const c_void,
@@ -167,7 +168,8 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 
 	/// Unmaps a single page of virtual memory at `virtaddr`.
 	///
-	/// The modifications may not be flushed to the cache. It is the caller's responsibility to ensure they are.
+	/// The modifications may not be flushed to the cache. It is the caller's responsibility to
+	/// ensure they are.
 	#[inline]
 	pub fn unmap(&mut self, virtaddr: *const c_void) -> AllocResult<Rollback<KERNEL>> {
 		// If kernelspace modification is disabled, error if unmapping onto kernelspace
@@ -177,7 +179,7 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 		self.unmap_impl(virtaddr).map(Rollback::Unit)
 	}
 
-	/// Like [`unmap`] but on a range of several pages.
+	/// Like [`Self::unmap`] but on a range of several pages.
 	pub fn unmap_range(
 		&mut self,
 		virtaddr: *const c_void,
