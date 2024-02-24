@@ -103,7 +103,7 @@ impl MemMapping {
 	/// mapping at page offset `offset`.
 	///
 	/// If no page is associated, the function returns `None`.
-	fn get_physical_page(&self, offset: usize, vmem: &dyn VMem) -> Option<*const c_void> {
+	fn get_physical_page(&self, offset: usize, vmem: &VMem) -> Option<*const c_void> {
 		if offset >= self.size.get() {
 			return None;
 		}
@@ -119,7 +119,7 @@ impl MemMapping {
 
 	/// Tells whether the page at offset `offset` in the mapping is shared with another mapping on
 	/// the system or not.
-	fn is_shared(&self, offset: usize, vmem: &dyn VMem) -> bool {
+	fn is_shared(&self, offset: usize, vmem: &VMem) -> bool {
 		let Some(phys_ptr) = self.get_physical_page(offset, vmem) else {
 			return false;
 		};
@@ -128,7 +128,7 @@ impl MemMapping {
 	}
 
 	/// Tells whether the page at offset `offset` is waiting for Copy-On-Write.
-	fn is_cow(&self, offset: usize, vmem: &dyn VMem) -> bool {
+	fn is_cow(&self, offset: usize, vmem: &VMem) -> bool {
 		self.flags & super::MAPPING_FLAG_SHARED == 0
 			&& self.residence.is_normal()
 			&& self.is_shared(offset, vmem)
@@ -139,7 +139,7 @@ impl MemMapping {
 	/// Arguments:
 	/// - `allocated` tells whether the page has been physically allocated.
 	/// - `offset` is the offset of the page in the mapping.
-	fn get_vmem_flags(&self, allocated: bool, offset: usize, vmem: &dyn VMem) -> u32 {
+	fn get_vmem_flags(&self, allocated: bool, offset: usize, vmem: &VMem) -> u32 {
 		let mut flags = 0;
 		if self.flags & super::MAPPING_FLAG_WRITE != 0 && allocated && !self.is_cow(offset, vmem) {
 			#[cfg(target_arch = "x86")]
@@ -160,7 +160,7 @@ impl MemMapping {
 	/// new physical page with the same data.
 	///
 	/// If a physical page is already mapped, the function does nothing.
-	pub fn map(&self, offset: usize, vmem: &mut dyn VMem) -> AllocResult<()> {
+	pub fn map(&self, offset: usize, vmem: &mut VMem) -> AllocResult<()> {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
 		let cow_buffer = {
 			if self.is_cow(offset, vmem) {
@@ -231,7 +231,7 @@ impl MemMapping {
 	/// instead of the default page.
 	///
 	/// The default page is dependent on the nature of the mapping's residence.
-	pub fn map_default(&self, vmem: &mut dyn VMem) -> AllocResult<()> {
+	pub fn map_default(&self, vmem: &mut VMem) -> AllocResult<()> {
 		let use_default =
 			self.flags & super::MAPPING_FLAG_NOLAZY == 0 && self.residence.is_normal();
 		if use_default {
@@ -263,7 +263,7 @@ impl MemMapping {
 	/// # Safety
 	///
 	/// Accessing a mapping whose physical pages have been freed has an undefined behaviour.
-	pub(super) unsafe fn free_phys_page(&self, offset: usize, vmem: &dyn VMem) {
+	pub(super) unsafe fn free_phys_page(&self, offset: usize, vmem: &VMem) {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			if phys_ptr == get_default_page() {
@@ -283,7 +283,7 @@ impl MemMapping {
 	/// If the associated physical pages are not shared, the function frees them.
 	///
 	/// This function doesn't flush the virtual memory context.
-	pub fn unmap(&self, pages_range: Range<usize>, vmem: &mut dyn VMem) -> EResult<()> {
+	pub fn unmap(&self, pages_range: Range<usize>, vmem: &mut VMem) -> EResult<()> {
 		// Synchronize to disk
 		self.fs_sync(vmem)?;
 		let begin_ptr = unsafe { self.begin.add(pages_range.start * memory::PAGE_SIZE) };
@@ -350,7 +350,7 @@ impl MemMapping {
 	}
 
 	/// Updates `vmem` according to the mapping for the page at offset `offset`.
-	pub fn update_vmem(&self, offset: usize, vmem: &mut dyn VMem) {
+	pub fn update_vmem(&self, offset: usize, vmem: &mut VMem) {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
 		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
 			let allocated = phys_ptr != get_default_page();
@@ -366,7 +366,7 @@ impl MemMapping {
 	/// allocated.
 	///
 	/// `n` is the number of pages to free from the beginning.
-	fn fork_fail_clean(&self, ref_counter: &mut PhysRefCounter, n: usize, vmem: &dyn VMem) {
+	fn fork_fail_clean(&self, ref_counter: &mut PhysRefCounter, n: usize, vmem: &VMem) {
 		for i in 0..n {
 			if let Some(phys_ptr) = self.get_physical_page(i, vmem) {
 				ref_counter.decrement(phys_ptr);
@@ -383,7 +383,7 @@ impl MemMapping {
 	/// function.
 	///
 	/// The function returns then newly created mapping.
-	pub(super) fn fork(&self, vmem: &mut dyn VMem) -> AllocResult<Self> {
+	pub(super) fn fork(&self, vmem: &mut VMem) -> AllocResult<Self> {
 		let new_mapping = Self {
 			begin: self.begin,
 			size: self.size,
@@ -424,7 +424,7 @@ impl MemMapping {
 	/// - The associated file has been removed or cannot be accessed
 	///
 	/// If the mapping is lock, the function returns [`crate::errno::EBUSY`].
-	pub fn fs_sync(&self, vmem: &dyn VMem) -> EResult<()> {
+	pub fn fs_sync(&self, vmem: &VMem) -> EResult<()> {
 		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
 			return Ok(());
 		}

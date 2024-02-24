@@ -49,8 +49,7 @@ impl MMIO {
 
 		let mut vmem = vmem::kernel().lock();
 		unsafe {
-			vmem.as_mut()
-				.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
+			vmem.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
 		}
 
 		Ok(Self {
@@ -78,7 +77,7 @@ impl MMIO {
 		let mut vmem = vmem::kernel().lock();
 		let order = buddy::get_order(self.pages);
 		unsafe {
-			vmem.as_mut().map_range(
+			vmem.map_range(
 				self.phys_addr,
 				super::kern_to_virt(self.phys_addr),
 				self.pages,

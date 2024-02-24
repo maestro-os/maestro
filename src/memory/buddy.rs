@@ -485,12 +485,8 @@ fn get_zone_for_pointer(zones: &mut [Zone; ZONES_COUNT], ptr: *const c_void) -> 
 /// If no suitable frame is found, the function returns an error.
 ///
 /// On success, the function returns a *physical* pointer to the allocated memory.
-///
-/// # Safety
-///
-/// It is the caller's responsibility to ensure the memory is accessed correctly.
 #[instrument_allocator(name = buddy, op = alloc, size = order, scale = log2)]
-pub unsafe fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
+pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
 	if order > MAX_ORDER {
 		return Err(AllocError);
 	}
@@ -520,11 +516,7 @@ pub unsafe fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_vo
 /// Calls [`alloc`] with order `order`, allocating in the kernel zone.
 ///
 /// The function returns the *virtual* address, not the physical one.
-///
-/// # Safety
-///
-/// See [`alloc`]
-pub unsafe fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
+pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
 	let virt_ptr = memory::kern_to_virt(ptr.as_ptr()) as _;
 	NonNull::new(virt_ptr).ok_or(AllocError)

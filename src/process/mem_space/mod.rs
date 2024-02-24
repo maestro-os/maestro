@@ -18,7 +18,6 @@ use crate::{
 	process::{oom, open_file::OpenFile, AllocResult},
 	util,
 	util::{
-		boxed::Box,
 		collections::{
 			btreemap::{BTreeMap, Entry},
 			vec::Vec,
@@ -355,7 +354,7 @@ pub struct MemSpace {
 	brk_ptr: *mut c_void,
 
 	/// Architecture-specific virtual memory context handler.
-	vmem: Box<dyn VMem>,
+	vmem: VMem,
 }
 
 impl MemSpace {
@@ -369,7 +368,7 @@ impl MemSpace {
 			brk_init: null_mut::<_>(),
 			brk_ptr: null_mut::<_>(),
 
-			vmem: vmem::new()?,
+			vmem: VMem::new()?,
 		};
 		// Create the default gap of memory which is present at the beginning
 		let begin = memory::ALLOC_BEGIN;
@@ -381,8 +380,8 @@ impl MemSpace {
 
 	/// Returns an immutable reference to the virtual memory context.
 	#[inline]
-	pub fn get_vmem(&self) -> &dyn VMem {
-		&*self.vmem
+	pub fn get_vmem(&self) -> &VMem {
+		&self.vmem
 	}
 
 	/// Returns the number of virtual memory pages in the memory space.
@@ -474,7 +473,7 @@ impl MemSpace {
 			Entry::Occupied(_) => unreachable!(),
 		};
 		// FIXME: on failure, this must be undone
-		m.map_default(&mut *self.vmem)?;
+		m.map_default(&mut self.vmem)?;
 		// Commit
 		transaction.commit(&mut self.state)?;
 		self.vmem_usage = vmem_usage;
@@ -649,7 +648,7 @@ impl MemSpace {
 	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
 		// TODO Allow reading kernelspace data that is available to userspace?
 		unsafe {
-			vmem::switch(&*self.vmem, move || {
+			vmem::switch(&self.vmem, move || {
 				let mut i = 0;
 				'outer: loop {
 					// Safe because not dereferenced before checking if accessible
@@ -697,7 +696,6 @@ impl MemSpace {
 
 	/// Performs the fork operation.
 	fn do_fork(&mut self) -> AllocResult<Self> {
-		let vmem = vmem::try_clone(&*self.vmem)?;
 		let mut mem_space = Self {
 			state: MemSpaceState {
 				gaps: self.state.gaps.try_clone()?,
@@ -710,13 +708,13 @@ impl MemSpace {
 			brk_init: self.brk_init,
 			brk_ptr: self.brk_ptr,
 
-			vmem,
+			vmem: self.vmem.try_clone()?,
 		};
 		for (_, m) in self.state.mappings.iter_mut() {
-			let new_mapping = m.fork(&mut *mem_space.vmem)?;
+			let new_mapping = m.fork(&mut mem_space.vmem)?;
 			for i in 0..new_mapping.get_size().get() {
-				m.update_vmem(i, &mut *mem_space.vmem);
-				new_mapping.update_vmem(i, &mut *mem_space.vmem);
+				m.update_vmem(i, &mut mem_space.vmem);
+				new_mapping.update_vmem(i, &mut mem_space.vmem);
 			}
 			mem_space
 				.state
@@ -745,8 +743,8 @@ impl MemSpace {
 			if let Some(mapping) = self.state.get_mapping_for_ptr(virtaddr) {
 				let page_offset =
 					(virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-				oom::wrap(|| mapping.map(page_offset, &mut *self.vmem));
-				mapping.update_vmem(page_offset, &mut *self.vmem);
+				oom::wrap(|| mapping.map(page_offset, &mut self.vmem));
+				mapping.update_vmem(page_offset, &mut self.vmem);
 			}
 			off += memory::PAGE_SIZE;
 		}
@@ -866,8 +864,8 @@ impl MemSpace {
 		}
 		// Map the accessed page
 		let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-		oom::wrap(|| mapping.map(page_offset, &mut *self.vmem));
-		mapping.update_vmem(page_offset, &mut *self.vmem);
+		oom::wrap(|| mapping.map(page_offset, &mut self.vmem));
+		mapping.update_vmem(page_offset, &mut self.vmem);
 		true
 	}
 }
@@ -901,7 +899,7 @@ impl Drop for MemSpace {
 		for (_, mapping) in &mut self.state.mappings {
 			for off in 0..mapping.get_size().get() {
 				unsafe {
-					mapping.free_phys_page(off, &*self.vmem);
+					mapping.free_phys_page(off, &self.vmem);
 				}
 			}
 		}

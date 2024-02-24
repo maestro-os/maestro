@@ -11,7 +11,7 @@ use crate::{
 	acpi::{rsdt::Rsdt, ACPITable, ACPITableHeader},
 	errno::{AllocResult, CollectResult, Errno},
 	memory,
-	memory::{malloc, vmem},
+	memory::{malloc, vmem, vmem::VMem},
 	util,
 	util::{boxed::Box, collections::hashmap::HashMap},
 };
@@ -124,7 +124,7 @@ impl ACPIData {
 
 		// Temporary vmem used to read the data, since it cannot be located anywhere on the
 		// physical memory.
-		let mut tmp_vmem = vmem::new()?;
+		let mut tmp_vmem = VMem::new()?;
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
 		let rsdt_map_begin = util::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
 		// Map the RSDT to make it readable
