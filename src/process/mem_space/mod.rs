@@ -29,7 +29,7 @@ use core::{
 	ffi::c_void,
 	fmt,
 	num::NonZeroUsize,
-	ptr::{null_mut, NonNull},
+	ptr::{null, null_mut, NonNull},
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -215,14 +215,14 @@ struct MemSpaceState {
 	///
 	/// The collection is sorted by pointer to the beginning of the mapping on the virtual
 	/// memory.
-	gaps: BTreeMap<*mut c_void, MemGap>,
+	gaps: BTreeMap<*const c_void, MemGap>,
 	/// Binary tree storing the list of memory gaps, sorted by size and then by
 	/// beginning address.
-	gaps_size: BTreeMap<(NonZeroUsize, *mut c_void), ()>,
+	gaps_size: BTreeMap<(NonZeroUsize, *const c_void), ()>,
 	/// Binary tree storing the list of memory mappings.
 	///
 	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
-	mappings: BTreeMap<*mut c_void, MemMapping>,
+	mappings: BTreeMap<*const c_void, MemMapping>,
 }
 
 impl MemSpaceState {
@@ -244,7 +244,7 @@ impl MemSpaceState {
 	/// The function returns the removed gap.
 	///
 	/// If the gap didn't exist, the function returns `None`.
-	fn remove_gap(&mut self, gap_begin: *mut c_void) -> Option<MemGap> {
+	fn remove_gap(&mut self, gap_begin: *const c_void) -> Option<MemGap> {
 		let g = self.gaps.remove(&gap_begin)?;
 		self.gaps_size.remove(&(g.get_size(), gap_begin));
 		Some(g)
@@ -256,10 +256,7 @@ impl MemSpaceState {
 	///
 	/// If no gap large enough is available, the function returns `None`.
 	fn get_gap(&self, size: NonZeroUsize) -> Option<&MemGap> {
-		let ((_, ptr), _) = self
-			.gaps_size
-			.range((size, null_mut::<c_void>())..)
-			.next()?;
+		let ((_, ptr), _) = self.gaps_size.range((size, null::<c_void>())..).next()?;
 		let gap = self.gaps.get(ptr).unwrap();
 		debug_assert!(gap.get_size() >= size);
 		Some(gap)
@@ -298,6 +295,58 @@ impl MemSpaceState {
 				Ordering::Greater
 			}
 		})
+	}
+}
+
+/// Removes gaps in `on` in the given range, using `transaction`.
+///
+/// `start` is the start address of the range and `size` is the size of the range in pages.
+fn remove_gaps_in_range(
+	on: &MemSpaceState,
+	transaction: &mut MemSpaceTransaction,
+	start: *const c_void,
+	size: usize,
+) -> AllocResult<()> {
+	// Start the search at the gap containing the start address
+	let search_start = on
+		.get_gap_for_ptr(start)
+		.map(MemGap::get_begin)
+		// No gap contain the start address, start at the next one
+		.unwrap_or(start);
+	// Bound the search to the end of the range
+	let end = (start as usize + size * memory::PAGE_SIZE) as *const c_void;
+	let gaps = on.gaps.range(search_start..end);
+	// Iterate on gaps and collect new gaps
+	let mut removed_gaps = Vec::new();
+	let mut new_gaps = BTreeMap::new();
+	for (gap_begin, gap) in gaps {
+		let gap_begin = *gap_begin;
+		let gap_end = gap.get_end();
+		// Compute range to remove
+		let start = (start as usize).clamp(gap_begin as usize, gap_end as usize);
+		let end = (end as usize).clamp(gap_begin as usize, gap_end as usize);
+		// Rounding is not a problem because all values are multiples of the page size
+		let size = (end - start) / memory::PAGE_SIZE;
+		// Consume the gap and store new gaps
+		let (prev, next) = gap.consume(start, size);
+		removed_gaps.push(gap_begin)?;
+		if let Some(g) = prev {
+			new_gaps.insert(g.get_begin(), g)?;
+		}
+		if let Some(g) = next {
+			new_gaps.insert(g.get_begin(), g)?;
+		}
+	}
+	// Merge collections. On failure, rollback
+	let previous_len = transaction.remove_gaps.len();
+	transaction.remove_gaps.append(&mut removed_gaps)?;
+	match transaction::union(new_gaps, &mut transaction.buffer_state.gaps) {
+		Ok(_) => Ok(()),
+		Err(_) => {
+			// Rollback
+			transaction.remove_gaps.truncate(previous_len);
+			Err(AllocError)
+		}
 	}
 }
 
@@ -382,9 +431,9 @@ impl MemSpace {
 		// Get gap suitable for the given constraint
 		let (gap, off) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
-				vmem_usage -= self.unmap_impl(&mut transaction, addr, size, false)?;
-				// FIXME: unmapping might create gaps which need to be removed, or else it will be
-				// possible to clobber the mapping to be created in the current operation
+				vmem_usage -= self.unmap_impl(&mut transaction, addr, size, true)?;
+				// Remove gaps that are present where the mapping is to be placed
+				remove_gaps_in_range(&self.state, &mut transaction, addr, size.get())?;
 				// Create a fictive gap. This is required because fixed allocations may be used
 				// outside allowed gaps
 				let gap = MemGap {
@@ -418,7 +467,7 @@ impl MemSpace {
 		let addr = (gap.get_begin() as usize + (off * memory::PAGE_SIZE)) as *mut c_void;
 		// Split the old gap to fit the mapping, and insert new gaps
 		let (left_gap, right_gap) = gap.consume(off, size.get());
-		self.state.remove_gap(gap.get_begin());
+		transaction.remove_gaps.push(gap.get_begin())?;
 		if let Some(new_gap) = left_gap {
 			transaction.buffer_state.insert_gap(new_gap)?;
 		}
@@ -445,13 +494,15 @@ impl MemSpace {
 	// TODO Optimize (currently O(n log n))
 	/// Implementation for `unmap`.
 	///
+	/// If `nogap` is `true`, the function does not create any gap.
+	///
 	/// The function returns the number of pages freed.
 	fn unmap_impl(
 		&mut self,
 		transaction: &mut MemSpaceTransaction,
 		ptr: *const c_void,
 		size: NonZeroUsize,
-		brk: bool,
+		nogap: bool,
 	) -> AllocResult<usize> {
 		let mut freed = 0;
 		// Remove every mapping in the chunk to unmap
@@ -482,9 +533,7 @@ impl MemSpace {
 			if let Some(n) = next {
 				transaction.buffer_state.mappings.insert(n.get_begin(), n)?;
 			}
-			// Do not create gaps if unmapping for `*brk` system calls as this space is reserved by
-			// it and must not be reused by `mmap`
-			if brk {
+			if nogap {
 				continue;
 			}
 			// Insert gap
@@ -532,6 +581,8 @@ impl MemSpace {
 			return Err(AllocError);
 		}
 		let mut transaction = MemSpaceTransaction::default();
+		// Do not create gaps if unmapping for `*brk` system calls as this space is reserved by
+		// it and must not be reused by `mmap`
 		let removed_count = self.unmap_impl(&mut transaction, ptr, size, brk)?;
 		transaction.commit(self)?;
 		self.vmem_usage -= removed_count;

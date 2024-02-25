@@ -11,12 +11,25 @@ use crate::{
 };
 use core::{ffi::c_void, mem, num::NonZeroUsize};
 
-/// Clones and inserts all elements of `from` to `to`.
+/// Applies the difference in `complement` to rollback a [`union`] operation.
 ///
-/// The `complement` vector stores the complement of modifications to be used by [`rollback`].
-///
-/// **Warning**: on memory allocation failure, `to` is left altered mid-way.
-fn union<K: Clone + Ord, V>(
+/// If the complement does not correspond to `on`, the function might panic.
+pub fn rollback_union<K: Ord, V>(on: &mut BTreeMap<K, V>, complement: Vec<(K, Option<V>)>) {
+	for (key, value) in complement {
+		// Apply diff
+		match value {
+			// Insertion cannot fail since `on` is guaranteed to already contain the key
+			Some(value) => {
+				on.insert(key, value).unwrap();
+			}
+			None => {
+				on.remove(&key);
+			}
+		}
+	}
+}
+
+fn union_impl<K: Clone + Ord, V>(
 	from: BTreeMap<K, V>,
 	to: &mut BTreeMap<K, V>,
 	complement: &mut Vec<(K, Option<V>)>,
@@ -36,20 +49,19 @@ fn union<K: Clone + Ord, V>(
 	Ok(())
 }
 
-/// Applies the difference in `complement` to rollback a [`union`] operation.
+/// Clones and inserts all elements of `from` to `to`.
 ///
-/// If the complement does not correspond to `on`, the function might panic.
-fn rollback_union<K: Ord, V>(on: &mut BTreeMap<K, V>, complement: Vec<(K, Option<V>)>) {
-	for (key, value) in complement {
-		// Apply diff
-		match value {
-			// Insertion cannot fail since `on` is guaranteed to already contain the key
-			Some(value) => {
-				on.insert(key, value).unwrap();
-			}
-			None => {
-				on.remove(&key);
-			}
+/// The function returns the complement to be used to roll back the union with [`rollback`].
+pub fn union<K: Clone + Ord, V>(
+	from: BTreeMap<K, V>,
+	to: &mut BTreeMap<K, V>,
+) -> AllocResult<Vec<(K, Option<V>)>> {
+	let mut complement = Vec::with_capacity(from.len())?;
+	match union_impl(from, to, &mut complement) {
+		Ok(_) => Ok(complement),
+		Err(_) => {
+			rollback_union(to, complement);
+			Err(AllocError)
 		}
 	}
 }
@@ -74,9 +86,9 @@ pub struct MemSpaceTransaction {
 /// This structure is used in the implementation of [`MemSpaceTransaction`].
 #[derive(Default)]
 struct RollbackData {
-	gaps_complement: Vec<(*mut c_void, Option<MemGap>)>,
-	gaps_size_complement: Vec<((NonZeroUsize, *mut c_void), Option<()>)>,
-	mappings_complement: Vec<(*mut c_void, Option<MemMapping>)>,
+	gaps_complement: Vec<(*const c_void, Option<MemGap>)>,
+	gaps_size_complement: Vec<((NonZeroUsize, *const c_void), Option<()>)>,
+	mappings_complement: Vec<(*const c_void, Option<MemMapping>)>,
 }
 
 impl MemSpaceTransaction {
@@ -107,19 +119,11 @@ impl MemSpaceTransaction {
 		}
 		// Update memory space structures
 		let gaps = mem::take(&mut self.buffer_state.gaps);
-		union(gaps, &mut on.state.gaps, &mut rollback_data.gaps_complement)?;
+		rollback_data.gaps_complement = union(gaps, &mut on.state.gaps)?;
 		let gaps_size = mem::take(&mut self.buffer_state.gaps_size);
-		union(
-			gaps_size,
-			&mut on.state.gaps_size,
-			&mut rollback_data.gaps_size_complement,
-		)?;
+		rollback_data.gaps_size_complement = union(gaps_size, &mut on.state.gaps_size)?;
 		let mappings = mem::take(&mut self.buffer_state.mappings);
-		union(
-			mappings,
-			&mut on.state.mappings,
-			&mut rollback_data.mappings_complement,
-		)?;
+		rollback_data.mappings_complement = union(mappings, &mut on.state.mappings)?;
 		// Here, all fallible operations have been performed successfully
 		vmem_transaction.commit();
 		// Removals can be performed after because removals that overlap with insertions have been
