@@ -8,14 +8,14 @@ use crate::{
 	file::vfs,
 	memory,
 	memory::{
-		physical_ref_counter::PhysRefCounter,
 		vmem,
 		vmem::{VMem, VMemTransaction},
 	},
 	process::{AllocResult, EResult},
-	util::io::IO,
+	util::{collections::vec::Vec, io::IO, ptr::arc::Arc, TryClone},
+	vec,
 };
-use core::{ffi::c_void, fmt, num::NonZeroUsize, ops::Range, ptr, slice};
+use core::{ffi::c_void, fmt, mem, num::NonZeroUsize, ops::Range, ptr, ptr::NonNull, slice};
 
 /// Returns a physical pointer to the default page.
 ///
@@ -30,7 +30,6 @@ fn get_default_page() -> *const c_void {
 }
 
 /// A mapping in a memory space.
-#[derive(Clone)]
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
 	begin: *mut c_void,
@@ -40,6 +39,9 @@ pub struct MemMapping {
 	flags: u8,
 	/// The residence of the mapping.
 	residence: MapResidence,
+
+	/// The list of allocated physical pages. Each page may be shared with other mappings.
+	phys_pages: Vec<Option<Arc<NonNull<[u8; memory::PAGE_SIZE]>>>>,
 }
 
 impl MemMapping {
@@ -59,14 +61,18 @@ impl MemMapping {
 		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
-	) -> Self {
+	) -> AllocResult<Self> {
 		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));
-		Self {
+		let mut phys_pages = Vec::new();
+		phys_pages.resize(size.get(), None)?;
+		Ok(Self {
 			begin,
 			size,
 			flags,
 			residence,
-		}
+
+			phys_pages,
+		})
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the mapping.
@@ -84,39 +90,20 @@ impl MemMapping {
 		self.flags
 	}
 
-	/// Returns a pointer to the physical page of memory associated with the
-	/// mapping at page offset `offset`.
-	///
-	/// If no page is associated, the function returns `None`.
-	fn get_physical_page(&self, offset: usize, vmem: &VMem) -> Option<*const c_void> {
-		if offset >= self.size.get() {
-			return None;
-		}
-
-		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		let phys_ptr = vmem.translate(virt_ptr)?;
-		if phys_ptr != get_default_page() {
-			Some(phys_ptr)
-		} else {
-			None
-		}
-	}
-
 	/// Tells whether the page at offset `offset` in the mapping is shared with another mapping on
 	/// the system or not.
-	fn is_shared(&self, offset: usize, vmem: &VMem) -> bool {
-		let Some(phys_ptr) = self.get_physical_page(offset, vmem) else {
-			return false;
-		};
-		let ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-		ref_counter.is_shared(phys_ptr)
+	fn is_shared(&self, offset: usize) -> bool {
+		self.phys_pages[offset]
+			.as_ref()
+			.map(|a| Arc::strong_count(a) > 1)
+			.unwrap_or(false)
 	}
 
 	/// Tells whether the page at offset `offset` is waiting for Copy-On-Write.
-	fn is_cow(&self, offset: usize, vmem: &VMem) -> bool {
+	fn is_cow(&self, offset: usize) -> bool {
 		self.flags & super::MAPPING_FLAG_SHARED == 0
 			&& self.residence.is_normal()
-			&& self.is_shared(offset, vmem)
+			&& self.is_shared(offset)
 	}
 
 	/// Returns the flags for the virtual memory context for the given virtual page offset.
@@ -124,9 +111,9 @@ impl MemMapping {
 	/// Arguments:
 	/// - `allocated` tells whether the page has been physically allocated.
 	/// - `offset` is the offset of the page in the mapping.
-	fn get_vmem_flags(&self, allocated: bool, offset: usize, vmem: &VMem) -> u32 {
+	fn get_vmem_flags(&self, allocated: bool, offset: usize) -> u32 {
 		let mut flags = 0;
-		if self.flags & super::MAPPING_FLAG_WRITE != 0 && allocated && !self.is_cow(offset, vmem) {
+		if self.flags & super::MAPPING_FLAG_WRITE != 0 && allocated && !self.is_cow(offset) {
 			#[cfg(target_arch = "x86")]
 			flags |= vmem::x86::FLAG_WRITE;
 		}
@@ -139,18 +126,19 @@ impl MemMapping {
 
 	/// Allocates physical pages dedicated to the mapping at offset `offset`.
 	///
-	/// `vmem` is the affected virtual memory context.
+	/// `vmem_transaction` is the transaction in which the mapping is done.
 	///
 	/// If data is already present on the mapping at this offset, the function copies it to the
 	/// newly allocated page.
-	///
-	/// On success, the function returns the transaction.
-	pub fn alloc(&self, offset: usize, vmem: &mut VMem) -> AllocResult<VMemTransaction<false>> {
-		let mut transaction = vmem.transaction();
+	pub fn alloc(
+		&self,
+		offset: usize,
+		vmem_transaction: &mut VMemTransaction<false>,
+	) -> AllocResult<()> {
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
 		let cow_buffer = {
-			if self.is_cow(offset, vmem) {
-				let mut cow_buffer = crate::vec![0u8; memory::PAGE_SIZE]?;
+			if self.is_cow(offset) {
+				let mut cow_buffer = vec![0u8; memory::PAGE_SIZE]?;
 				unsafe {
 					ptr::copy_nonoverlapping(
 						virt_ptr,
@@ -164,30 +152,34 @@ impl MemMapping {
 			}
 		};
 
-		let prev_phys_ptr = self.get_physical_page(offset, vmem);
+		let prev_phys_ptr = self.phys_pages[offset].clone();
 		if self.residence.is_normal() && cow_buffer.is_none() && prev_phys_ptr.is_some() {
-			return Ok(transaction);
+			return Ok(());
 		}
 
 		// Map new page
 		let new_phys_ptr = self.residence.alloc_page(offset)?;
-		let flags = self.get_vmem_flags(true, offset, vmem);
-		let res = transaction.map(new_phys_ptr.as_ptr(), virt_ptr, flags);
+		let flags = self.get_vmem_flags(true, offset);
+		let res = vmem_transaction.map(new_phys_ptr.cast().as_ptr(), virt_ptr, flags);
 		if let Err(e) = res {
-			self.residence.free_page(offset, new_phys_ptr.as_ptr());
+			unsafe {
+				self.residence.free_page(offset, new_phys_ptr);
+			}
 			return Err(e);
 		}
 
 		// Free previous page
-		if let Some(prev_phys_ptr) = prev_phys_ptr {
-			self.residence.free_page(offset, prev_phys_ptr);
+		if let Some(prev_phys_ptr) = prev_phys_ptr.and_then(Arc::into_inner) {
+			unsafe {
+				self.residence.free_page(offset, prev_phys_ptr);
+			}
 		}
 
 		// Copy data if necessary
 		if self.residence.is_normal() {
 			unsafe {
 				// FIXME: switching vmem at each call to `map` is suboptimal (try to batch)
-				vmem::switch(vmem, move || {
+				vmem::switch(vmem_transaction.vmem, move || {
 					vmem::write_lock_wrap(|| {
 						if let Some(buffer) = cow_buffer {
 							ptr::copy_nonoverlapping(
@@ -208,50 +200,32 @@ impl MemMapping {
 			}
 		}
 
-		Ok(transaction)
+		Ok(())
 	}
 
-	/// Maps the mapping to `vmem` with the default page.
+	/// Maps the mapping with the default page.
+	///
+	/// `vmem_transaction` is the transaction in which the mapping is done.
 	///
 	/// If the mapping is marked as no-lazy, the function allocates physical memory and maps it
 	/// instead of the default page.
-	///
-	/// On success, the function returns the transaction.
-	pub fn map_default(&self, vmem: &mut VMem) -> AllocResult<VMemTransaction<false>> {
-		let mut transaction = vmem.transaction();
-		let lazy = self.flags & super::MAPPING_FLAG_NOLAZY == 0;
-		let use_default = lazy && self.residence.is_normal();
+	pub fn map_default(&self, vmem_transaction: &mut VMemTransaction<false>) -> AllocResult<()> {
 		let size = self.size.get();
-		if use_default {
+		if self.residence.is_normal() {
+			// Use default page
 			let default_page = get_default_page();
 			for i in 0..size {
-				let virtaddr = unsafe { self.begin.add(i * memory::PAGE_SIZE) };
-				let flags = self.get_vmem_flags(false, i, vmem);
-				transaction.map(default_page, virtaddr, flags)?;
+				let virtaddr = (self.begin as usize + (i * memory::PAGE_SIZE)) as *const c_void;
+				let flags = self.get_vmem_flags(false, i);
+				vmem_transaction.map(default_page, virtaddr, flags)?;
 			}
 		} else {
+			// Allocate directly
 			for i in 0..size {
-				self.alloc(i, transaction.vmem)?;
+				self.alloc(i, vmem_transaction)?;
 			}
 		}
-		Ok(transaction)
-	}
-
-	/// Frees the physical page stored in `vmem` at the offset `offset` of the mapping.
-	///
-	/// If the page is shared, it is not freed but the reference counter is decreased.
-	///
-	/// # Safety
-	///
-	/// Accessing a mapping whose physical pages have been freed has an undefined behaviour.
-	pub(super) unsafe fn free_phys_page(&self, offset: usize, vmem: &VMem) {
-		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
-			if phys_ptr == get_default_page() {
-				return;
-			}
-			self.residence.free_page(offset, phys_ptr);
-		}
+		Ok(())
 	}
 
 	/// Splits the current mapping, creating up to two new mappings and one gap.
@@ -271,14 +245,20 @@ impl MemMapping {
 		&self,
 		begin: usize,
 		size: usize,
-	) -> (Option<Self>, Option<MemGap>, Option<Self>) {
+	) -> AllocResult<(Option<Self>, Option<MemGap>, Option<Self>)> {
 		let begin_ptr = unsafe { self.begin.add(begin * memory::PAGE_SIZE) };
-		let prev = NonZeroUsize::new(begin).map(|begin| MemMapping {
-			begin: self.begin,
-			size: begin,
-			flags: self.flags,
-			residence: self.residence.clone(),
-		});
+		let prev = NonZeroUsize::new(begin)
+			.map(|size| {
+				Ok(MemMapping {
+					begin: self.begin,
+					size,
+					flags: self.flags,
+					residence: self.residence.clone(),
+
+					phys_pages: Vec::from_slice(&self.phys_pages[..size.get()])?,
+				})
+			})
+			.transpose()?;
 		let gap = NonZeroUsize::new(size).map(|size| MemGap {
 			begin: begin_ptr,
 			size,
@@ -294,77 +274,17 @@ impl MemMapping {
 				let begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
 				let mut residence = self.residence.clone();
 				residence.offset_add(end);
-				Self {
+				Ok(Self {
 					begin,
 					size,
 					flags: self.flags,
 					residence,
-				}
-			});
-		(prev, gap, next)
-	}
 
-	/// Updates `vmem` according to the mapping for the page at offset `offset`.
-	pub fn update_vmem(&self, offset: usize, vmem: &mut VMem) {
-		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *const c_void;
-		if let Some(phys_ptr) = vmem.translate(virt_ptr) {
-			let allocated = phys_ptr != get_default_page();
-			let flags = self.get_vmem_flags(allocated, offset, vmem);
-			// Cannot fail because the page for the vmem structure is already mapped
-			vmem.map(phys_ptr, virt_ptr, flags).unwrap();
-		}
-	}
-
-	/// After a fork operation failed, frees the pages that were already
-	/// allocated.
-	///
-	/// `n` is the number of pages to free from the beginning.
-	fn fork_fail_clean(&self, ref_counter: &mut PhysRefCounter, n: usize, vmem: &VMem) {
-		for i in 0..n {
-			if let Some(phys_ptr) = self.get_physical_page(i, vmem) {
-				ref_counter.decrement(phys_ptr);
-			}
-		}
-	}
-
-	/// Clones the mapping for the fork operation. The new mapping is sharing
-	/// the same physical memory, for Copy-On-Write.
-	///
-	/// `vmem` is the virtual memory context for the new mapping
-	///
-	/// The virtual memory context has to be updated after calling this
-	/// function.
-	///
-	/// The function returns then newly created mapping.
-	pub(super) fn fork(&self, vmem: &mut VMem) -> AllocResult<Self> {
-		let new_mapping = Self {
-			begin: self.begin,
-			size: self.size,
-			flags: self.flags,
-			residence: self.residence.clone(),
-		};
-		let nolazy = new_mapping.flags & super::MAPPING_FLAG_NOLAZY != 0;
-		if nolazy {
-			for i in 0..self.size.get() {
-				unsafe {
-					let virtaddr = self.begin.add(i * memory::PAGE_SIZE);
-					vmem.unmap(virtaddr)?;
-				}
-				new_mapping.alloc(i, vmem)?;
-			}
-		} else {
-			let mut ref_counter = super::PHYSICAL_REF_COUNTER.lock();
-			for i in 0..self.size.get() {
-				let Some(phys_ptr) = self.get_physical_page(i, vmem) else {
-					continue;
-				};
-				if let Err(errno) = ref_counter.increment(phys_ptr) {
-					self.fork_fail_clean(&mut ref_counter, i, vmem);
-					return Err(errno);
-				}
-			}
-		}
-		Ok(new_mapping)
+					phys_pages: Vec::from_slice(&self.phys_pages[end..])?,
+				})
+			})
+			.transpose()?;
+		Ok((prev, gap, next))
 	}
 
 	/// Synchronizes the data on the memory mapping back to the filesystem.
@@ -413,14 +333,12 @@ impl MemMapping {
 		}
 	}
 
-	/// Unmaps the mapping from `vmem`.
+	/// Unmaps the mapping using the given `vmem_transaction`.
 	///
 	/// `range` is the range of pages affect by the unmap. Pages outside of this range are left
 	/// untouched.
 	///
 	/// If applicable, the function synchronizes the data on the pages to be unmapped to the disk.
-	///
-	/// If the associated physical pages are not shared, the function frees them.
 	///
 	/// This function doesn't flush the virtual memory context.
 	///
@@ -428,25 +346,26 @@ impl MemMapping {
 	pub fn unmap(
 		&self,
 		pages_range: Range<usize>,
-		vmem: &mut VMem,
-	) -> EResult<VMemTransaction<false>> {
-		// Synchronize to disk
-		self.fs_sync(vmem)?;
-		let begin_ptr = unsafe { self.begin.add(pages_range.start * memory::PAGE_SIZE) };
-		// Unmap virtual pages
-		let mut transaction = vmem.transaction();
-		transaction.unmap_range(begin_ptr, pages_range.end - pages_range.start)?;
-		// Remove physical pages
-		// FIXME: do not free here as the mappings might be reused on rollback
-		// TODO: instead, store pointers to physical pages in the mapping itself and free when
-		// dropping the mapping
-		for i in pages_range {
-			// Safety: virtual pages have been unmapped just before
-			unsafe {
-				self.free_phys_page(i, vmem);
-			}
-		}
-		Ok(transaction)
+		vmem_transaction: &mut VMemTransaction<false>,
+	) -> EResult<()> {
+		self.fs_sync(vmem_transaction.vmem)?;
+		let begin = unsafe { self.begin.add(pages_range.start * memory::PAGE_SIZE) };
+		let len = pages_range.end - pages_range.start;
+		vmem_transaction.unmap_range(begin, len)?;
+		Ok(())
+	}
+}
+
+impl TryClone for MemMapping {
+	fn try_clone(&self) -> AllocResult<Self> {
+		Ok(Self {
+			begin: self.begin,
+			size: self.size,
+			flags: self.flags,
+			residence: self.residence.clone(),
+
+			phys_pages: self.phys_pages.try_clone()?,
+		})
 	}
 }
 
@@ -458,5 +377,19 @@ impl fmt::Debug for MemMapping {
 			"MemMapping {{ begin: {:p}, end: {:p}, flags: {} }}",
 			self.begin, end, self.flags,
 		)
+	}
+}
+
+impl Drop for MemMapping {
+	fn drop(&mut self) {
+		// Free physical pages that are not shared with other mappings
+		let phys_pages = mem::take(&mut self.phys_pages);
+		phys_pages
+			.into_iter()
+			.enumerate()
+			.filter_map(|(i, p)| Some((i, Arc::into_inner(p?)?)))
+			.for_each(|(i, p)| unsafe {
+				self.residence.free_page(i, p);
+			});
 	}
 }

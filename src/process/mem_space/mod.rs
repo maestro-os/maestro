@@ -11,17 +11,14 @@ pub mod ptr;
 mod transaction;
 
 use crate::{
-	errno::{AllocError, Errno},
+	errno::{AllocError, CollectResult, Errno},
 	file::{perm::AccessProfile, FileLocation},
-	idt, memory,
-	memory::{buddy, physical_ref_counter::PhysRefCounter, stack, vmem, vmem::VMem},
-	process::{oom, open_file::OpenFile, AllocResult},
+	memory,
+	memory::{buddy, vmem, vmem::VMem},
+	process::{open_file::OpenFile, AllocResult},
 	util,
 	util::{
-		collections::{
-			btreemap::{BTreeMap, Entry},
-			vec::Vec,
-		},
+		collections::{btreemap::BTreeMap, vec::Vec},
 		lock::Mutex,
 		ptr::arc::Arc,
 		TryClone,
@@ -31,7 +28,6 @@ use core::{
 	cmp::{min, Ordering},
 	ffi::c_void,
 	fmt,
-	mem::size_of,
 	num::NonZeroUsize,
 	ptr::{null_mut, NonNull},
 };
@@ -45,18 +41,15 @@ pub const MAPPING_FLAG_WRITE: u8 = 0b00001;
 pub const MAPPING_FLAG_EXEC: u8 = 0b00010;
 /// Flag telling that a memory mapping is accessible from userspace.
 pub const MAPPING_FLAG_USER: u8 = 0b00100;
-/// Flag telling that a memory mapping must allocate its physical memory right
-/// away and not when the process tries to write to it.
-pub const MAPPING_FLAG_NOLAZY: u8 = 0b01000;
 /// Flag telling that a memory mapping has its physical memory shared with one
 /// or more other mappings.
 ///
 /// If the mapping is associated with a file, modifications made to the mapping are update to the
 /// file.
-pub const MAPPING_FLAG_SHARED: u8 = 0b10000;
+pub const MAPPING_FLAG_SHARED: u8 = 0b1000;
 
-/// The physical pages reference counter.
-pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCounter::new());
+/// Type representing a memory page.
+type Page = [u8; memory::PAGE_SIZE];
 
 // TODO when reaching the last reference to the open file, close it on unmap
 
@@ -67,14 +60,12 @@ pub static PHYSICAL_REF_COUNTER: Mutex<PhysRefCounter> = Mutex::new(PhysRefCount
 pub enum MapResidence {
 	/// The mapping does not reside anywhere except on the main memory.
 	Normal,
-
 	/// The mapping points to a static location, which may or may not be shared between several
 	/// memory spaces.
 	Static {
 		/// The list of memory pages, in order.
-		pages: Arc<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
+		pages: Arc<Vec<NonNull<Page>>>,
 	},
-
 	/// The mapping resides in a file.
 	File {
 		/// The location of the file.
@@ -82,7 +73,6 @@ pub enum MapResidence {
 		/// The offset of the mapping in the file.
 		off: u64,
 	},
-
 	/// The mapping resides in swap space.
 	Swap {
 		/// The location of the swap space.
@@ -106,38 +96,10 @@ impl MapResidence {
 			Self::File {
 				off, ..
 			} => *off += pages as u64 * memory::PAGE_SIZE as u64,
-
 			Self::Swap {
 				page_off, ..
 			} => *page_off += pages,
-
 			_ => {}
-		}
-	}
-
-	/// TODO doc
-	fn alloc() -> AllocResult<NonNull<c_void>> {
-		let ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
-		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
-		match ref_counter.increment(ptr.as_ptr()) {
-			Ok(()) => Ok(ptr),
-			Err(e) => {
-				unsafe {
-					buddy::free(ptr.as_ptr(), 0);
-				}
-				Err(e)
-			}
-		}
-	}
-
-	/// TODO doc
-	fn free(ptr: *const c_void) {
-		let mut ref_counter = PHYSICAL_REF_COUNTER.lock();
-		ref_counter.decrement(ptr);
-		if ref_counter.can_free(ptr) {
-			unsafe {
-				buddy::free(ptr, 0);
-			}
 		}
 	}
 
@@ -145,20 +107,18 @@ impl MapResidence {
 	///
 	/// Since the function might reuse the same page for several allocation, the page must be freed
 	/// only using the `free_page` function associated with the current instance.
-	pub fn alloc_page(&self, off: usize) -> AllocResult<NonNull<c_void>> {
+	pub fn alloc_page(&self, off: usize) -> AllocResult<NonNull<Page>> {
 		match self {
-			MapResidence::Normal => Self::alloc(),
-
+			MapResidence::Normal => buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER).map(NonNull::cast),
 			MapResidence::Static {
 				pages,
 			} => {
 				if off < pages.len() {
 					Ok(pages[off].cast())
 				} else {
-					Self::alloc()
+					buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER).map(NonNull::cast)
 				}
 			}
-
 			MapResidence::File {
 				location: _,
 				off: _,
@@ -166,7 +126,6 @@ impl MapResidence {
 				// TODO get physical page for this offset
 				todo!();
 			}
-
 			MapResidence::Swap {
 				..
 			} => {
@@ -177,18 +136,21 @@ impl MapResidence {
 	}
 
 	/// Frees the page allocated with `alloc_page`.
-	pub fn free_page(&self, off: usize, ptr: *const c_void) {
+	///
+	/// # Safety
+	///
+	/// Accessing the page at `ptr` after calling this function is undefined.
+	pub unsafe fn free_page(&self, off: usize, ptr: NonNull<Page>) {
+		let ptr = ptr.cast().as_ptr();
 		match self {
-			MapResidence::Normal => Self::free(ptr),
-
+			MapResidence::Normal => buddy::free(ptr, 0),
 			MapResidence::Static {
 				pages,
 			} => {
 				if off >= pages.len() {
-					Self::free(ptr)
+					buddy::free(ptr, 0)
 				}
 			}
-
 			MapResidence::File {
 				location: _,
 				off: _,
@@ -196,7 +158,6 @@ impl MapResidence {
 				// TODO
 				todo!();
 			}
-
 			MapResidence::Swap {
 				..
 			} => {
@@ -454,7 +415,7 @@ impl MemSpace {
 				(gap, 0)
 			}
 		};
-		let addr = unsafe { gap.get_begin().add(off * memory::PAGE_SIZE) };
+		let addr = (gap.get_begin() as usize + (off * memory::PAGE_SIZE)) as *mut c_void;
 		// Split the old gap to fit the mapping, and insert new gaps
 		let (left_gap, right_gap) = gap.consume(off, size.get());
 		self.state.remove_gap(gap.get_begin());
@@ -465,13 +426,9 @@ impl MemSpace {
 			transaction.buffer_state.insert_gap(new_gap)?;
 		}
 		// Create the mapping
-		let mapping = MemMapping::new(addr, size, flags, residence);
+		let m = MemMapping::new(addr, size, flags, residence)?;
+		transaction.buffer_state.mappings.insert(m.get_begin(), m)?;
 		vmem_usage += size.get();
-		let m = match transaction.buffer_state.mappings.entry(addr) {
-			Entry::Vacant(e) => e.insert(mapping)?,
-			// Occupied means the state is inconsistent
-			Entry::Occupied(_) => unreachable!(),
-		};
 		transaction.commit(self)?;
 		self.vmem_usage = vmem_usage;
 		Ok(addr)
@@ -501,7 +458,7 @@ impl MemSpace {
 		let mut i = 0;
 		while i < size.get() {
 			// The current page's beginning
-			let page_ptr = unsafe { ptr.add(i * memory::PAGE_SIZE) };
+			let page_ptr = (ptr as usize + (i * memory::PAGE_SIZE)) as *const c_void;
 			// The mapping containing the page
 			let Some(mapping) = self.state.get_mapping_for_ptr(page_ptr) else {
 				// TODO jump to next mapping directly using binary tree
@@ -517,7 +474,7 @@ impl MemSpace {
 			let pages = min(size.get() - i, mapping.get_size().get() - begin);
 			i += pages;
 			// Newly created mappings and gap after removing parts of the previous one
-			let (prev, gap, next) = mapping.split(begin, pages);
+			let (prev, gap, next) = mapping.split(begin, pages)?;
 			// Insert new mappings
 			if let Some(p) = prev {
 				transaction.buffer_state.mappings.insert(p.get_begin(), p)?;
@@ -689,13 +646,23 @@ impl MemSpace {
 		self.vmem.is_bound()
 	}
 
-	/// Performs the fork operation.
-	fn do_fork(&mut self) -> AllocResult<Self> {
-		let mut mem_space = Self {
+	/// Clones the current memory space for process forking.
+	pub fn fork(&mut self) -> AllocResult<MemSpace> {
+		let gaps = self.state.gaps.try_clone()?;
+		let gaps_size = self.state.gaps_size.try_clone()?;
+		let mappings = self
+			.state
+			.mappings
+			.iter_mut()
+			.map(|(p, m)| Ok((*p, m.try_clone()?)))
+			.collect::<AllocResult<CollectResult<_>>>()?
+			.0?;
+		let vmem = self.vmem.try_clone()?;
+		Ok(Self {
 			state: MemSpaceState {
-				gaps: self.state.gaps.try_clone()?,
-				gaps_size: self.state.gaps_size.try_clone()?,
-				mappings: BTreeMap::new(),
+				gaps,
+				gaps_size,
+				mappings,
 			},
 
 			vmem_usage: self.vmem_usage,
@@ -703,46 +670,32 @@ impl MemSpace {
 			brk_init: self.brk_init,
 			brk_ptr: self.brk_ptr,
 
-			vmem: self.vmem.try_clone()?,
-		};
-		for (_, m) in self.state.mappings.iter_mut() {
-			let new_mapping = m.fork(&mut mem_space.vmem)?;
-			for i in 0..new_mapping.get_size().get() {
-				m.update_vmem(i, &mut mem_space.vmem);
-				new_mapping.update_vmem(i, &mut mem_space.vmem);
-			}
-			mem_space
-				.state
-				.mappings
-				.insert(new_mapping.get_begin(), new_mapping)?;
-		}
-		Ok(mem_space)
+			vmem,
+		})
 	}
 
-	/// Clones the current memory space for process forking.
-	pub fn fork(&mut self) -> AllocResult<MemSpace> {
-		idt::wrap_disable_interrupts(|| unsafe { stack::switch(None, || self.do_fork()) })?
-	}
-
-	/// Allocates the physical pages to write on the given pointer.
+	/// Allocates the physical pages on the given range.
 	///
-	/// `virtaddr` is the address to allocate.
+	/// Arguments:
+	/// - `virtaddr` is the virtual address to beginning of the range to allocate.
+	/// - `len` is the size of the range in bytes.
 	///
 	/// The size of the memory chunk to allocated equals `size_of::<T>() * len`.
 	///
 	/// If the mapping doesn't exist, the function returns an error.
-	pub fn alloc<T>(&mut self, virtaddr: *const T, len: usize) -> AllocResult<()> {
+	pub fn alloc(&mut self, virtaddr: *const c_void, len: usize) -> AllocResult<()> {
+		let mut transaction = self.vmem.transaction();
 		let mut off = 0;
-		while off < size_of::<T>() * len {
-			let virtaddr = unsafe { (virtaddr as *const c_void).add(off) };
+		while off < len {
+			let virtaddr = (virtaddr as usize + off) as *const c_void;
 			if let Some(mapping) = self.state.get_mapping_for_ptr(virtaddr) {
 				let page_offset =
 					(virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-				oom::wrap(|| mapping.alloc(page_offset, &mut self.vmem));
-				mapping.update_vmem(page_offset, &mut self.vmem);
+				mapping.alloc(page_offset, &mut transaction)?;
 			}
 			off += memory::PAGE_SIZE;
 		}
+		transaction.commit();
 		Ok(())
 	}
 
@@ -859,8 +812,12 @@ impl MemSpace {
 		}
 		// Map the accessed page
 		let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
-		oom::wrap(|| mapping.alloc(page_offset, &mut self.vmem));
-		mapping.update_vmem(page_offset, &mut self.vmem);
+		let mut transaction = self.vmem.transaction();
+		// TODO use OOM killer
+		mapping
+			.alloc(page_offset, &mut transaction)
+			.expect("Out of memory!");
+		transaction.commit();
 		true
 	}
 }
@@ -884,20 +841,6 @@ impl fmt::Debug for MemSpace {
 			}
 		}
 		write!(f, "]}}")
-	}
-}
-
-impl Drop for MemSpace {
-	fn drop(&mut self) {
-		// Unmapping virtual pages is done by dropping `self.vmem`
-		// Unmap all physical pages
-		for (_, mapping) in &mut self.state.mappings {
-			for off in 0..mapping.get_size().get() {
-				unsafe {
-					mapping.free_phys_page(off, &self.vmem);
-				}
-			}
-		}
 	}
 }
 

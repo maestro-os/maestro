@@ -16,7 +16,7 @@ use core::{
 	ops::{CoerceUnsized, Deref, DispatchFromDyn},
 	ptr,
 	ptr::{drop_in_place, NonNull},
-	sync::{atomic, atomic::AtomicUsize},
+	sync::atomic::{AtomicUsize, Ordering},
 };
 
 // TODO check atomic orderings
@@ -114,22 +114,19 @@ impl<T> Arc<T> {
 		})
 	}
 
-	/// Returns the inner value of the `Arc` if the this is the last reference to it.
+	/// Returns the inner value of the `Arc` if this is the last reference to it.
 	pub fn into_inner(this: Self) -> Option<T> {
 		let inner = this.inner();
-		if inner.strong.load(atomic::Ordering::Relaxed) == 1 {
-			let obj = unsafe { ptr::read(&inner.obj) };
-
-			// Avoid double free
-			unsafe {
-				malloc::free(this.inner.cast());
-			}
-			mem::forget(this);
-
-			Some(obj)
-		} else {
-			None
+		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
+			return None;
 		}
+		let obj = unsafe { ptr::read(&inner.obj) };
+		// Avoid double free
+		unsafe {
+			malloc::free(this.inner.cast());
+		}
+		mem::forget(this);
+		Some(obj)
 	}
 }
 
@@ -174,10 +171,22 @@ impl<T: ?Sized> Arc<T> {
 		&mut (*this.inner.as_ptr()).obj
 	}
 
+	/// Returns the number of strong pointers to the allocation.
+	#[inline]
+	pub fn strong_count(this: &Self) -> usize {
+		this.inner().strong.load(Ordering::Relaxed)
+	}
+
+	/// Returns the number of weak pointers to the allocation.
+	#[inline]
+	pub fn weak_count(this: &Self) -> usize {
+		this.inner().weak.load(Ordering::Relaxed)
+	}
+
 	/// Creates a new weak pointer to this allocation.
 	pub fn downgrade(this: &Arc<T>) -> Weak<T> {
 		let inner = this.inner();
-		inner.weak.fetch_add(1, atomic::Ordering::Relaxed);
+		inner.weak.fetch_add(1, Ordering::Relaxed);
 
 		Weak {
 			inner: this.inner,
@@ -208,7 +217,7 @@ impl<T: ?Sized> Deref for Arc<T> {
 impl<T: ?Sized> Clone for Arc<T> {
 	fn clone(&self) -> Self {
 		let inner = self.inner();
-		inner.strong.fetch_add(1, atomic::Ordering::Relaxed);
+		inner.strong.fetch_add(1, Ordering::Relaxed);
 
 		Self {
 			inner: self.inner,
@@ -231,7 +240,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Arc<T> {
 impl<T: ?Sized> Drop for Arc<T> {
 	fn drop(&mut self) {
 		let inner = self.inner();
-		if inner.strong.fetch_sub(1, atomic::Ordering::Relaxed) != 1 {
+		if inner.strong.fetch_sub(1, Ordering::Relaxed) != 1 {
 			return;
 		}
 
@@ -266,7 +275,7 @@ impl<T: ?Sized> Weak<T> {
 	pub fn upgrade(&self) -> Option<Arc<T>> {
 		self.inner()
 			.strong
-			.fetch_update(atomic::Ordering::Acquire, atomic::Ordering::Relaxed, |n| {
+			.fetch_update(Ordering::Acquire, Ordering::Relaxed, |n| {
 				if n != 0 {
 					Some(n + 1)
 				} else {
@@ -283,7 +292,7 @@ impl<T: ?Sized> Weak<T> {
 impl<T: ?Sized> Clone for Weak<T> {
 	fn clone(&self) -> Self {
 		let inner = self.inner();
-		inner.weak.fetch_add(1, atomic::Ordering::Relaxed);
+		inner.weak.fetch_add(1, Ordering::Relaxed);
 
 		Self {
 			inner: self.inner,
@@ -294,7 +303,7 @@ impl<T: ?Sized> Clone for Weak<T> {
 impl<T: ?Sized> Drop for Weak<T> {
 	fn drop(&mut self) {
 		let inner = self.inner();
-		if inner.weak.fetch_sub(1, atomic::Ordering::Relaxed) != 1 {
+		if inner.weak.fetch_sub(1, Ordering::Relaxed) != 1 {
 			return;
 		}
 

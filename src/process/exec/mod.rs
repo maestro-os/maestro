@@ -46,9 +46,6 @@ pub struct ProgramImage {
 	user_stack: *mut c_void,
 	/// A pointer to the initial value of the user stack pointer.
 	user_stack_begin: *mut c_void,
-
-	/// A pointer to the process's kernel stack.
-	kernel_stack: *mut c_void,
 }
 
 /// A program executor, whose role is to load a program and to preprare it for execution.
@@ -95,9 +92,8 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	// Set new file descriptor table
 	proc.file_descriptors = fds;
 
-	// Set the process's stacks
+	// Set the process's stack
 	proc.user_stack = Some(image.user_stack);
-	proc.kernel_stack = Some(image.kernel_stack);
 	proc.update_tss();
 
 	// Reset signals

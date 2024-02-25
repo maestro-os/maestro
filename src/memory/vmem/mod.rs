@@ -18,7 +18,7 @@ use crate::{
 };
 use core::{
 	ffi::c_void,
-	ptr,
+	mem,
 	ptr::{null, NonNull},
 };
 
@@ -143,6 +143,7 @@ impl<const KERNEL: bool> Drop for VMem<KERNEL> {
 /// Handle allowing to roll back operations on a virtual memory context.
 ///
 /// Dropping the transaction without committing rollbacks all modifications.
+#[must_use = "A vmem transaction has to be committed or explicitly ignored"]
 pub struct VMemTransaction<'v, const KERNEL: bool> {
 	/// The virtual memory context on which the transaction applies.
 	pub vmem: &'v mut VMem<KERNEL>,
@@ -254,21 +255,6 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		Ok(())
 	}
 
-	/// Appends `other` to `self`.
-	///
-	/// If the virtual memory contexts of both transactions don't match, the operation fails.
-	///
-	/// On success, `other` is emptied and merged with `self`.
-	///
-	/// On failure, both `self` and `other` are left untouched.
-	pub fn append(&mut self, other: &mut Self) -> AllocResult<()> {
-		if ptr::eq(self.vmem, other.vmem) {
-			self.rollback.append(&mut other.rollback)
-		} else {
-			Err(AllocError)
-		}
-	}
-
 	/// Validates the transaction.
 	pub fn commit(mut self) {
 		self.rollback.clear();
@@ -277,10 +263,12 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 
 impl<const KERNEL: bool> Drop for VMemTransaction<'_, KERNEL> {
 	fn drop(&mut self) {
+		let rollback = mem::take(&mut self.rollback);
 		// Rollback in reverse order
-		for r in self.rollback.into_iter().rev() {
-			r.rollback(self.vmem.inner_mut());
-		}
+		rollback
+			.into_iter()
+			.rev()
+			.for_each(|r| r.rollback(self.vmem.inner_mut()));
 	}
 }
 
@@ -462,7 +450,9 @@ mod test {
 	#[test_case]
 	fn vmem_map0() {
 		let mut vmem = VMem::new().unwrap();
-		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+		let mut transaction = vmem.transaction();
+		transaction.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+		transaction.commit();
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
@@ -477,8 +467,10 @@ mod test {
 	#[test_case]
 	fn vmem_map1() {
 		let mut vmem = VMem::new().unwrap();
-		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
-		vmem.map(0x200000 as _, 0x100000 as _, 0).unwrap();
+		let mut transaction = vmem.transaction();
+		transaction.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+		transaction.map(0x200000 as _, 0x100000 as _, 0).unwrap();
+		transaction.commit();
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
@@ -493,8 +485,10 @@ mod test {
 	#[test_case]
 	fn vmem_unmap0() {
 		let mut vmem = VMem::new().unwrap();
-		vmem.map(0x100000 as _, 0x100000 as _, 0).unwrap();
-		vmem.unmap(0x100000 as _).unwrap();
+		let mut transaction = vmem.transaction();
+		transaction.map(0x100000 as _, 0x100000 as _, 0).unwrap();
+		transaction.unmap(0x100000 as _).unwrap();
+		transaction.commit();
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			assert_eq!(vmem.translate(i as _), None);
 		}

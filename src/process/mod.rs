@@ -37,6 +37,7 @@ use crate::{
 		FileLocation,
 	},
 	gdt, memory,
+	memory::{buddy, buddy::FrameOrder},
 	process::{mountpoint::MountSource, open_file::OpenFile},
 	register_get,
 	time::timer::TimerManager,
@@ -45,6 +46,7 @@ use crate::{
 	util::{
 		collections::{bitfield::Bitfield, string::String, vec::Vec},
 		lock::*,
+		math,
 		ptr::arc::{Arc, Weak},
 		TryClone,
 	},
@@ -78,9 +80,7 @@ const USER_STACK_SIZE: usize = 2048;
 /// The flags for the userspace stack mapping.
 const USER_STACK_FLAGS: u8 = mem_space::MAPPING_FLAG_WRITE | mem_space::MAPPING_FLAG_USER;
 /// The size of the kernelspace stack of a process in number of pages.
-const KERNEL_STACK_SIZE: usize = 64;
-/// The flags for the kernelspace stack mapping.
-const KERNEL_STACK_FLAGS: u8 = mem_space::MAPPING_FLAG_WRITE | mem_space::MAPPING_FLAG_NOLAZY;
+const KERNEL_STACK_ORDER: FrameOrder = 2;
 
 /// The file descriptor number of the standard input stream.
 const STDIN_FILENO: u32 = 0;
@@ -240,7 +240,7 @@ pub struct Process {
 	/// A pointer to the userspace stack.
 	user_stack: Option<*mut c_void>,
 	/// A pointer to the kernelspace stack.
-	kernel_stack: Option<*mut c_void>,
+	kernel_stack: NonNull<c_void>,
 
 	/// Current working directory
 	///
@@ -360,26 +360,20 @@ pub(crate) fn init() -> Result<(), Errno> {
 	};
 	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
 		let accessed_ptr = unsafe { register_get!("cr2") } as *const c_void;
-
 		// Get process
-		let curr_proc = {
-			let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-			let mut sched = sched_mutex.lock();
-
-			sched.get_current_process()
-		};
+		let curr_proc = Process::current();
 		let Some(curr_proc) = curr_proc else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
-
 		// Handle page fault
 		let success = {
-			let mem_space_mutex = curr_proc.get_mem_space().unwrap();
+			let Some(mem_space_mutex) = curr_proc.get_mem_space() else {
+				return CallbackResult::Panic;
+			};
 			let mut mem_space = mem_space_mutex.lock();
 			mem_space.handle_page_fault(accessed_ptr, code)
 		};
-
 		if !success {
 			if ring < 3 {
 				return CallbackResult::Panic;
@@ -388,7 +382,6 @@ pub(crate) fn init() -> Result<(), Errno> {
 				curr_proc.signal_next();
 			}
 		}
-
 		if matches!(curr_proc.get_state(), State::Running) {
 			CallbackResult::Continue
 		} else {
@@ -541,7 +534,7 @@ impl Process {
 
 			mem_space: None,
 			user_stack: None,
-			kernel_stack: None,
+			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
 			cwd: Arc::new((PathBuf::root(), root_loc.clone()))?,
 			chroot: root_loc,
@@ -801,16 +794,11 @@ impl Process {
 
 	/// Updates the TSS on the current core for the process.
 	pub fn update_tss(&self) {
-		// Compute the kernel stack pointer
-		let mut kernel_stack_ptr = self.kernel_stack.unwrap() as usize;
-		if self.is_handling_signal() {
-			// Prevent overlapping of stacks
-			kernel_stack_ptr -= (KERNEL_STACK_SIZE / 2) * memory::PAGE_SIZE;
-		}
-
+		let kernel_stack_begin = self.kernel_stack.as_ptr() as usize
+			- math::pow2::<usize>(KERNEL_STACK_ORDER as usize) * memory::PAGE_SIZE;
 		// Fill the TSS
 		unsafe {
-			TSS.0.esp0 = kernel_stack_ptr as _;
+			TSS.0.esp0 = kernel_stack_begin as _;
 			TSS.0.ss0 = gdt::KERNEL_DS as _;
 			TSS.0.ss = gdt::USER_DS as _;
 		}
@@ -894,21 +882,12 @@ impl Process {
 		};
 
 		// Clone memory space
-		let (mem_space, kernel_stack) = {
+		let mem_space = {
 			let curr_mem_space = self.get_mem_space().unwrap();
-
 			if fork_options.share_memory || fork_options.vfork {
-				// Allocating a kernel stack for the new process
-				let new_kernel_stack = curr_mem_space
-					.lock()
-					.map_stack(KERNEL_STACK_SIZE.try_into().unwrap(), KERNEL_STACK_FLAGS)?;
-
-				(curr_mem_space.clone(), Some(new_kernel_stack))
+				curr_mem_space.clone()
 			} else {
-				(
-					Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?,
-					self.kernel_stack,
-				)
+				Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?
 			}
 		};
 
@@ -921,7 +900,6 @@ impl Process {
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
 					let new_fds = fds.duplicate(false)?;
-
 					Ok(Arc::new(Mutex::new(new_fds))?)
 				})
 				.transpose()?
@@ -976,7 +954,7 @@ impl Process {
 
 			mem_space: Some(mem_space),
 			user_stack: self.user_stack,
-			kernel_stack,
+			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
 			cwd: self.cwd.clone(),
 			chroot: self.chroot.clone(),
@@ -1282,24 +1260,13 @@ impl Drop for Process {
 		if self.is_init() {
 			panic!("Terminated init process!");
 		}
-
 		// Unregister the process from the procfs
 		oom::wrap(|| self.unregister_procfs());
-
-		// Freeing the kernel stack. This is required because the process might share
-		// the same memory space with several other processes. And since, each process
-		// has its own kernel stack, not freeing it could result in a memory leak
-		oom::wrap(|| -> AllocResult<()> {
-			if let (Some(mutex), Some(kernel_stack)) = (&self.mem_space, self.kernel_stack) {
-				mutex
-					.lock()
-					.unmap_stack(kernel_stack, KERNEL_STACK_SIZE.try_into().unwrap())?;
-			}
-
-			Ok(())
-		});
-
-		// Freeing the PID
+		// Free kernel stack
+		unsafe {
+			buddy::free_kernel(self.kernel_stack.as_ptr(), KERNEL_STACK_ORDER);
+		}
+		// Free the PID
 		let mut pid_manager = unsafe { PID_MANAGER.assume_init_mut() }.lock();
 		pid_manager.release_pid(self.pid);
 	}

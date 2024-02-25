@@ -487,9 +487,7 @@ impl<'s> ELFExecutor<'s> {
 				seg.get_mem_space_flags(),
 				MapResidence::Normal,
 			)?;
-
-			// TODO Lazy allocation
-			// Pre-allocating the pages to make them writable
+			// Pre-allocate the pages to make them writable
 			mem_space.alloc(mem_begin, pages.get() * memory::PAGE_SIZE)?;
 		}
 
@@ -572,7 +570,7 @@ impl<'s> ELFExecutor<'s> {
 				let phdr = mem_space.map(
 					MapConstraint::None,
 					pages,
-					mem_space::MAPPING_FLAG_USER | mem_space::MAPPING_FLAG_NOLAZY,
+					mem_space::MAPPING_FLAG_USER,
 					MapResidence::Normal,
 				)?;
 
@@ -701,21 +699,20 @@ impl<'s> Executor for ELFExecutor<'s> {
 
 		// The auxiliary vector
 		let aux = build_auxilary(&self.info, &load_info, &vdso)?;
-
 		// The size in bytes of the initial data on the stack
-		let total_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
+		let init_stack_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
 		// Pre-allocate pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
-			let pages_count = total_size.div_ceil(memory::PAGE_SIZE);
-			// Checking that the data doesn't exceed the stack's size
+			let pages_count = init_stack_size.div_ceil(memory::PAGE_SIZE);
+			// Check the data doesn't exceed the stack's size
 			if pages_count >= process::USER_STACK_SIZE {
 				return Err(errno!(ENOMEM));
 			}
-
 			// Allocate the pages on the stack to write the initial data
-			let stack_len = pages_count * memory::PAGE_SIZE;
-			mem_space.alloc((user_stack as usize - stack_len) as *const u8, stack_len)?;
+			let len = pages_count * memory::PAGE_SIZE;
+			let begin = (user_stack as usize - len) as *const c_void;
+			mem_space.alloc(begin, len)?;
 		}
 
 		// The initial pointer for `brk`
@@ -730,11 +727,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 			});
 		}
 
-		let user_stack_begin = unsafe { user_stack.sub(total_size) };
-		let kernel_stack = mem_space.map_stack(
-			process::KERNEL_STACK_SIZE.try_into().unwrap(),
-			process::KERNEL_STACK_FLAGS,
-		)?;
+		let user_stack_begin = unsafe { user_stack.sub(init_stack_size) };
 
 		Ok(ProgramImage {
 			argv: self.info.argv.try_clone()?,
@@ -745,8 +738,6 @@ impl<'s> Executor for ELFExecutor<'s> {
 
 			user_stack,
 			user_stack_begin,
-
-			kernel_stack,
 		})
 	}
 }

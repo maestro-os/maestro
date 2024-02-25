@@ -488,14 +488,14 @@ impl<T> Index<Range<usize>> for Vec<T> {
 
 	#[inline]
 	fn index(&self, range: Range<usize>) -> &Self::Output {
-		&self.as_slice()[range]
+		Index::index(&**self, range)
 	}
 }
 
 impl<T> IndexMut<Range<usize>> for Vec<T> {
 	#[inline]
 	fn index_mut(&mut self, range: Range<usize>) -> &mut Self::Output {
-		&mut self.as_mut_slice()[range]
+		IndexMut::index_mut(&mut **self, range)
 	}
 }
 
@@ -504,14 +504,14 @@ impl<T> Index<RangeFrom<usize>> for Vec<T> {
 
 	#[inline]
 	fn index(&self, range: RangeFrom<usize>) -> &Self::Output {
-		&self.as_slice()[range]
+		Index::index(&**self, range)
 	}
 }
 
 impl<T> IndexMut<RangeFrom<usize>> for Vec<T> {
 	#[inline]
 	fn index_mut(&mut self, range: RangeFrom<usize>) -> &mut Self::Output {
-		&mut self.as_mut_slice()[range]
+		IndexMut::index_mut(&mut **self, range)
 	}
 }
 
@@ -520,14 +520,14 @@ impl<T> Index<RangeTo<usize>> for Vec<T> {
 
 	#[inline]
 	fn index(&self, range: RangeTo<usize>) -> &Self::Output {
-		&self.as_slice()[range]
+		Index::index(&**self, range)
 	}
 }
 
 impl<T> IndexMut<RangeTo<usize>> for Vec<T> {
 	#[inline]
 	fn index_mut(&mut self, range: RangeTo<usize>) -> &mut Self::Output {
-		&mut self.as_mut_slice()[range]
+		IndexMut::index_mut(&mut **self, range)
 	}
 }
 

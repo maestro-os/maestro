@@ -99,24 +99,22 @@ impl MemSpaceTransaction {
 			.filter_map(|m| self.buffer_state.mappings.get(&(m as _)));
 		for m in iter {
 			let size = m.get_size().get();
-			let mut t = m.unmap(0..size, vmem_transaction.vmem)?;
-			vmem_transaction.append(&mut t)?;
+			m.unmap(0..size, &mut vmem_transaction)?;
 		}
 		// Map on virtual memory context
-		for (_, m) in self.buffer_state.mappings {
-			let mut t = m.map_default(vmem_transaction.vmem)?;
-			vmem_transaction.append(&mut t)?;
+		for (_, m) in self.buffer_state.mappings.iter() {
+			m.map_default(&mut vmem_transaction)?;
 		}
 		// Update memory space structures
-		let gaps = mem::replace(&mut self.buffer_state.gaps, BTreeMap::new());
+		let gaps = mem::take(&mut self.buffer_state.gaps);
 		union(gaps, &mut on.state.gaps, &mut rollback_data.gaps_complement)?;
-		let gaps_size = mem::replace(&mut self.buffer_state.gaps_size, BTreeMap::new());
+		let gaps_size = mem::take(&mut self.buffer_state.gaps_size);
 		union(
 			gaps_size,
 			&mut on.state.gaps_size,
 			&mut rollback_data.gaps_size_complement,
 		)?;
-		let mappings = mem::replace(&mut self.buffer_state.mappings, BTreeMap::new());
+		let mappings = mem::take(&mut self.buffer_state.mappings);
 		union(
 			mappings,
 			&mut on.state.mappings,
@@ -148,11 +146,12 @@ impl MemSpaceTransaction {
 		let res = self.commit_impl(on, &mut rollback_data);
 		// On allocation failure, rollback
 		// Other kind of errors may appear but have to be ignored, such as I/O error on disk
-		if matches!(res, Err(e) if e.as_int() != errno::ENOMEM) {
-			Ok(())
-		} else {
-			Self::rollback(on, rollback_data);
-			Err(AllocError)
+		match res {
+			Err(e) if e.as_int() == errno::ENOMEM => {
+				Self::rollback(on, rollback_data);
+				Err(AllocError)
+			}
+			_ => Ok(()),
 		}
 	}
 }

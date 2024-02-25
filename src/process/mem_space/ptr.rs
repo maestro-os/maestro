@@ -77,9 +77,6 @@ impl<T: Sized> SyscallPtr<T> {
 		}
 
 		if mem_space.can_access(self.ptr as _, size_of::<T>(), true, true) {
-			// Allocating physical pages if necessary
-			mem_space.alloc(self.ptr, 1)?;
-
 			Ok(Some(unsafe {
 				// Safe because access is checked before
 				&mut *self.ptr
@@ -182,9 +179,6 @@ impl<T: Sized> SyscallSlice<T> {
 
 		let size = size_of::<T>() * len;
 		if mem_space.can_access(self.ptr as _, size, true, true) {
-			// Allocating physical pages if necessary
-			mem_space.alloc(self.ptr as *const u8, len)?;
-
 			Ok(Some(unsafe {
 				// Safe because access is checked before
 				slice::from_raw_parts_mut(self.ptr, len)
@@ -269,10 +263,6 @@ impl SyscallString {
 		let len = mem_space
 			.can_access_string(self.ptr, true, true)
 			.ok_or_else(|| errno!(EFAULT))?;
-
-		// Allocating physical pages if necessary
-		mem_space.alloc(self.ptr as *const u8, len)?;
-
 		Ok(Some(unsafe {
 			// Safe because access is checked before
 			slice::from_raw_parts_mut(self.ptr, len)

@@ -3,12 +3,7 @@
 mod signal_trampoline;
 
 use super::{Process, State};
-use crate::{
-	errno::Errno,
-	file::perm::Uid,
-	process::{oom, pid::Pid},
-	time::unit::ClockIdT,
-};
+use crate::{errno::Errno, file::perm::Uid, process::pid::Pid, time::unit::ClockIdT};
 use core::{
 	ffi::{c_int, c_void},
 	fmt,
@@ -477,13 +472,7 @@ impl Signal {
 				let signal_esp = (stack as usize) - signal_data_size;
 
 				// FIXME Don't write data out of the stack
-				oom::wrap(|| {
-					let mem_space = process.get_mem_space().unwrap();
-					let mut mem_space = mem_space.lock();
-
-					mem_space.bind();
-					mem_space.alloc(signal_esp as *mut u32, 3)
-				});
+				process.get_mem_space().unwrap().lock().bind();
 				let signal_data = unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 3) };
 
 				// The signal number
