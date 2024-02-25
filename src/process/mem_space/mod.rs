@@ -362,7 +362,7 @@ impl MemSpace {
 	/// - `residence` is the residence of the mapping to be created.
 	///
 	/// The underlying physical memory is not allocated directly but only when an attempt to write
-	/// the memory is detected, unless [`MAPPING_FLAG_NOLAZY`] is specified as a flag.
+	/// the memory is detected.
 	///
 	/// On success, the function returns a pointer to the newly mapped virtual memory.
 	///
