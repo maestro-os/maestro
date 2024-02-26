@@ -185,7 +185,7 @@ impl Chunk {
 			);
 		}
 
-		debug_assert!(util::is_aligned(self.get_ptr(), ALIGNMENT));
+		debug_assert!(self.get_ptr().is_aligned_to(ALIGNMENT));
 	}
 
 	/// Returns a mutable reference for the given chunk as a free chunk.
@@ -391,14 +391,14 @@ impl FreeChunk {
 	/// This function uses assertions and thus is useful only in debug mode.
 	#[cfg(config_debug_malloc_check)]
 	pub fn check(&self) {
-		assert!(!self.chunk.is_used());
+		assert!(!self.chunk.used);
 		self.chunk.check();
 	}
 
 	/// Inserts the chunk into the appropriate free list.
 	pub fn free_list_insert(&mut self) {
 		#[cfg(config_debug_malloc_check)]
-		debug_assert!(!self.chunk.is_used());
+		debug_assert!(!self.chunk.used);
 		debug_assert!(self.prev.is_none());
 		debug_assert!(self.next.is_none());
 
@@ -458,7 +458,8 @@ const fn get_min_chunk_size() -> usize {
 #[cfg(config_debug_malloc_check)]
 fn check_free_lists() {
 	// Safe because the usage of the malloc API is secured by a Mutex
-	let free_lists = unsafe { &mut FREE_LISTS };
+	// FIXME: this is dirty
+	let free_lists = unsafe { &mut *addr_of_mut!(FREE_LISTS) };
 	for free_list in free_lists {
 		let mut node = *free_list;
 		while let Some(mut n) = node {
