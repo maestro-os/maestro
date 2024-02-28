@@ -54,7 +54,7 @@ use crate::{
 		vfs::ResolutionSettings,
 		FileLocation,
 	},
-	gdt, memory,
+	gdt,
 	memory::{buddy, buddy::FrameOrder},
 	process::{mountpoint::MountSource, open_file::OpenFile},
 	register_get,
@@ -64,7 +64,6 @@ use crate::{
 	util::{
 		collections::{bitfield::Bitfield, string::String, vec::Vec},
 		lock::*,
-		math,
 		ptr::arc::{Arc, Weak},
 		TryClone,
 	},
@@ -812,8 +811,8 @@ impl Process {
 
 	/// Updates the TSS on the current core for the process.
 	pub fn update_tss(&self) {
-		let kernel_stack_begin = self.kernel_stack.as_ptr() as usize
-			- math::pow2::<usize>(KERNEL_STACK_ORDER as usize) * memory::PAGE_SIZE;
+		let kernel_stack_begin =
+			self.kernel_stack.as_ptr() as usize + buddy::get_frame_size(KERNEL_STACK_ORDER);
 		// Fill the TSS
 		unsafe {
 			TSS.0.esp0 = kernel_stack_begin as _;

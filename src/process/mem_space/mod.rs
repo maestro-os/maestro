@@ -611,10 +611,7 @@ impl MemSpace {
 	/// memory mapping.
 	pub fn map_stack(&mut self, size: NonZeroUsize, flags: u8) -> AllocResult<*mut c_void> {
 		let mapping_ptr = self.map(MapConstraint::None, size, flags, MapResidence::Normal)?;
-		Ok(unsafe {
-			// Safe because the new pointer stays in the range of the allocated mapping
-			mapping_ptr.add(size.get() * memory::PAGE_SIZE)
-		})
+		Ok((mapping_ptr as usize + (size.get() * memory::PAGE_SIZE)) as _)
 	}
 
 	/// Same as `unmap`, except the function takes a pointer to the end of the
@@ -622,7 +619,7 @@ impl MemSpace {
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn unmap_stack(&mut self, ptr: *const c_void, size: NonZeroUsize) -> AllocResult<()> {
 		// Safe because the new pointer stays in the range of the allocated mapping
-		let ptr = unsafe { ptr.sub(size.get() * memory::PAGE_SIZE) };
+		let ptr = (ptr as usize - (size.get() * memory::PAGE_SIZE)) as _;
 		self.unmap(ptr, size, false)
 	}
 
