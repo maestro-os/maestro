@@ -16,7 +16,8 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements an `Arc`, similar to the one present in the Rust standard library.
+//! Implementation of [`Arc`] and [`Weak`], similar to the ones present in the Rust standard
+//! library.
 
 use crate::{
 	errno::{AllocError, AllocResult},
@@ -36,8 +37,6 @@ use core::{
 	ptr::{drop_in_place, NonNull},
 	sync::atomic::{AtomicUsize, Ordering},
 };
-
-// TODO check atomic orderings
 
 /// Inner structure shared between arcs pointing to the same object.
 pub struct ArcInner<T: ?Sized> {
@@ -69,7 +68,6 @@ impl<T: ?Sized> ArcInner<T> {
 		let inner = malloc::alloc(size)?;
 		let inner = inner.as_ptr().with_metadata_of(ptr as *const Self);
 		let mut inner = NonNull::new_unchecked(inner);
-
 		// Initialize
 		let i = inner.as_mut();
 		// The initial strong reference
@@ -77,7 +75,6 @@ impl<T: ?Sized> ArcInner<T> {
 		// Every strong references collectively hold a weak reference
 		i.weak = AtomicUsize::new(1);
 		init(&mut i.obj);
-
 		Ok(inner)
 	}
 }
@@ -108,7 +105,6 @@ impl<T: ?Sized> TryFrom<Box<T>> for Arc<T> {
 					o as *mut _ as *mut u8,
 					size_of_val(obj.as_ref()),
 				);
-
 				// Prevent double drop
 				let raw = Box::into_raw(obj);
 				Box::from_raw(raw as *mut ManuallyDrop<T>);
@@ -138,11 +134,12 @@ impl<T> Arc<T> {
 		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
 			return None;
 		}
-		let obj = unsafe { ptr::read(&inner.obj) };
-		// Avoid double free
-		unsafe {
+		let obj = unsafe {
+			let obj = ptr::read(&inner.obj);
 			malloc::free(this.inner.cast());
-		}
+			obj
+		};
+		// Avoid double free
 		mem::forget(this);
 		Some(obj)
 	}
@@ -167,8 +164,7 @@ impl<T: ?Sized> Arc<T> {
 		// Drop the inner object since weak pointers cannot access it once no strong reference is
 		// left
 		drop_in_place(Self::get_mut_unchecked(self));
-
-		// Drop the weak reference collectively held by all strong references
+		// Drop the weak reference that is collectively held by all strong references
 		drop(Weak {
 			inner: self.inner,
 		});
@@ -198,14 +194,15 @@ impl<T: ?Sized> Arc<T> {
 	/// Returns the number of weak pointers to the allocation.
 	#[inline]
 	pub fn weak_count(this: &Self) -> usize {
-		this.inner().weak.load(Ordering::Relaxed)
+		let weak = this.inner().weak.load(Ordering::Relaxed);
+		// Subtract reference that is collectively held by strong references
+		weak - 1
 	}
 
 	/// Creates a new weak pointer to this allocation.
 	pub fn downgrade(this: &Arc<T>) -> Weak<T> {
 		let inner = this.inner();
 		inner.weak.fetch_add(1, Ordering::Relaxed);
-
 		Weak {
 			inner: this.inner,
 		}
@@ -235,8 +232,10 @@ impl<T: ?Sized> Deref for Arc<T> {
 impl<T: ?Sized> Clone for Arc<T> {
 	fn clone(&self) -> Self {
 		let inner = self.inner();
-		inner.strong.fetch_add(1, Ordering::Relaxed);
-
+		let old_count = inner.strong.fetch_add(1, Ordering::Relaxed);
+		if old_count == usize::MAX {
+			panic!("Arc reference count overflow");
+		}
 		Self {
 			inner: self.inner,
 		}
@@ -258,10 +257,9 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Arc<T> {
 impl<T: ?Sized> Drop for Arc<T> {
 	fn drop(&mut self) {
 		let inner = self.inner();
-		if inner.strong.fetch_sub(1, Ordering::Relaxed) != 1 {
+		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
 			return;
 		}
-
 		// Safe because this function cannot be called twice because no other `Arc` is left to
 		// drop.
 		unsafe {
@@ -294,11 +292,7 @@ impl<T: ?Sized> Weak<T> {
 		self.inner()
 			.strong
 			.fetch_update(Ordering::Acquire, Ordering::Relaxed, |n| {
-				if n != 0 {
-					Some(n + 1)
-				} else {
-					None
-				}
+				(n != 0).then_some(n + 1)
 			})
 			.ok()
 			.map(|_| Arc {
@@ -310,8 +304,10 @@ impl<T: ?Sized> Weak<T> {
 impl<T: ?Sized> Clone for Weak<T> {
 	fn clone(&self) -> Self {
 		let inner = self.inner();
-		inner.weak.fetch_add(1, Ordering::Relaxed);
-
+		let old_count = inner.weak.fetch_add(1, Ordering::Relaxed);
+		if old_count == usize::MAX {
+			panic!("Weak reference count overflow");
+		}
 		Self {
 			inner: self.inner,
 		}
@@ -321,10 +317,9 @@ impl<T: ?Sized> Clone for Weak<T> {
 impl<T: ?Sized> Drop for Weak<T> {
 	fn drop(&mut self) {
 		let inner = self.inner();
-		if inner.weak.fetch_sub(1, Ordering::Relaxed) != 1 {
+		if inner.weak.fetch_sub(1, Ordering::Release) != 1 {
 			return;
 		}
-
 		// Free the inner structure since it cannot be referenced anywhere else
 		//
 		// At this point, we can be sure the inner object has been dropped since strong references
