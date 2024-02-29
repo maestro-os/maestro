@@ -52,48 +52,10 @@ pub const ALLOC_BEGIN: *mut c_void = 0x40000000 as *mut _;
 /// Pointer to the end of the virtual memory reserved to the process.
 pub const PROCESS_END: *mut c_void = 0xc0000000 as *mut _;
 
-extern "C" {
-	/// The kernel begin symbol, giving the pointer to the begin of the kernel
-	/// image in the virtual memory.
-	///
-	/// This memory location should never be accessed using this symbol.
-	static kernel_begin: c_void;
-	/// The kernel end symbol, giving the pointer to the end of the kernel image
-	/// in the virtual memory.
-	///
-	/// This memory location should never be accessed using this symbol.
-	static kernel_end: c_void;
-}
-
-/// Returns a pointer to the beginning of the kernel in the virtual address
-/// space.
-#[inline(always)]
-pub fn get_kernel_virtual_begin() -> *const c_void {
-	unsafe { &kernel_begin as *const _ }
-}
-
 /// The size of the kernelspace memory in bytes.
 #[inline(always)]
 pub fn get_kernelspace_size() -> usize {
 	usize::MAX - PROCESS_END as usize + 1
-}
-
-/// Returns the size of the kernel image in bytes.
-#[inline(always)]
-pub fn get_kernel_size() -> usize {
-	unsafe { (&kernel_end as *const _ as usize) - (&kernel_begin as *const _ as usize) }
-}
-
-/// Returns the end of the kernel image in the physical memory.
-#[inline(always)]
-pub fn get_kernel_end() -> *const c_void {
-	unsafe { ((&kernel_end as *const c_void as usize) - (PROCESS_END as usize)) as _ }
-}
-
-/// Returns the end of the kernel image in the virtual memory.
-#[inline(always)]
-pub fn get_kernel_virtual_end() -> *const c_void {
-	unsafe { (&kernel_end as *const _ as usize) as _ }
 }
 
 /// Converts a kernel physical address to a virtual address.

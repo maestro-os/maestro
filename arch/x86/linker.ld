@@ -59,8 +59,6 @@ SECTIONS
 
 	.text BLOCK(4K) : AT (ADDR (.text) - 0xc0000000) ALIGN(4K)
 	{
-        /* Symbol at the beginning of the kernel image */
-		kernel_begin = .;
 		*(.text*)
 	}
 
@@ -84,7 +82,5 @@ SECTIONS
 	.data BLOCK(4K) : AT (ADDR (.data) - 0xc0000000) ALIGN(4K)
 	{
 		*(.data*)
-        /* Symbol at the end of the kernel image */
-		kernel_end = .;
 	}
 }

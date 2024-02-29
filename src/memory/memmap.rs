@@ -106,28 +106,25 @@ fn sections_end() -> *const c_void {
 /// and its size in number of pages.
 fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 	let boot_info = multiboot::get_boot_info();
-
-	// The end of the kernel code
-	let mut begin = get_kernel_end();
-
+	// Get end of multiboot tags
 	let multiboot_tags_size = unsafe { multiboot::get_tags_size(multiboot_ptr) };
-	// The end of multiboot tags
 	let multiboot_tags_end = ((multiboot_ptr as usize) + multiboot_tags_size) as *const _;
-	begin = max(begin, multiboot_tags_end);
-
-	// The end of the ELF sections
-	begin = max(begin, sections_end());
-
-	// The end of the loaded initramfs, if any
-	if let Some(initramfs) = boot_info.initramfs {
-		let initramfs_begin = kern_to_phys(initramfs.as_ptr() as _);
-		let initramfs_end = ((initramfs_begin as usize) + initramfs.len()) as *const c_void;
-		begin = max(begin, initramfs_end);
-	}
-
-	// Page-align
+	// Get end of the ELF sections
+	let sections_end = sections_end();
+	// Get end of the loaded initramfs
+	let initramfs_end = boot_info
+		.initramfs
+		.map(|initramfs| {
+			let initramfs_begin = kern_to_phys(initramfs.as_ptr() as _);
+			(initramfs_begin as usize + initramfs.len()) as *const c_void
+		})
+		.unwrap_or(null());
+	// Compute the physical address of the beginning of allocatable memory
+	let mut begin = [multiboot_tags_end, sections_end, initramfs_end]
+		.into_iter()
+		.max()
+		.unwrap();
 	begin = unsafe { util::align(begin, PAGE_SIZE) };
-
 	// TODO Handle 64-bits systems
 	let pages = min((1000 + boot_info.mem_upper) / 4, 1024 * 1024) as usize
 		- ((begin as usize) / PAGE_SIZE);
