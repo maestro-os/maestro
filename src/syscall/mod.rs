@@ -299,6 +299,9 @@ use waitpid::waitpid;
 use write::write;
 use writev::writev;
 
+/// The ID of the `sigreturn` system call, for use by the signal trampoline.
+pub const SIGRETURN_ID: u32 = 0x077;
+
 type SyscallHandler = &'static dyn Fn(&Regs) -> Result<i32, Errno>;
 
 /// Returns the system call associated with the given ID `id`.
@@ -424,7 +427,7 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 		// TODO 0x074 => Some(&sysinfo),
 		// TODO 0x075 => Some(&ipc),
 		0x076 => Some(&fsync),
-		0x077 => Some(&sigreturn),
+		SIGRETURN_ID => Some(&sigreturn),
 		0x078 => Some(&clone),
 		// TODO 0x079 => Some(&setdomainname),
 		0x07a => Some(&uname),

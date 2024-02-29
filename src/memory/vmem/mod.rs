@@ -417,10 +417,17 @@ pub(crate) fn init() -> AllocResult<()> {
 		s.sh_flags & elf::SHF_WRITE == 0 && s.sh_addralign as usize == memory::PAGE_SIZE
 	});
 	for section in iter {
+		// Make signal trampoline accessible to userspace
+		let user = elf::kernel::get_section_name(section) == Some(b".signal");
+		let mut flags = x86::FLAG_GLOBAL;
+		if user {
+			flags |= x86::FLAG_USER;
+		}
+		// Map
 		let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 		let virt_addr = memory::kern_to_virt(section.sh_addr as _);
 		let pages = section.sh_size.div_ceil(memory::PAGE_SIZE as _) as usize;
-		transaction.map_range(phys_addr, virt_addr, pages, x86::FLAG_GLOBAL)?;
+		transaction.map_range(phys_addr, virt_addr, pages, flags)?;
 	}
 	// Map VGA buffer
 	#[cfg(target_arch = "x86")]

@@ -27,7 +27,8 @@
 //!
 //! When the signal handler returns, the process returns directly to execution.
 
-use core::{arch::asm, ffi::c_void, mem::transmute};
+use crate::syscall::SIGRETURN_ID;
+use core::arch::asm;
 
 /// The signal handler trampoline.
 ///
@@ -41,17 +42,14 @@ use core::{arch::asm, ffi::c_void, mem::transmute};
 /// - `handler` is a pointer to the handler function for the signal.
 /// - `sig` is the signal number.
 #[no_mangle]
-pub extern "C" fn signal_trampoline(handler: *const c_void, sig: i32) -> ! {
-	// Calling the signal handler
-	unsafe {
-		let handler = transmute::<*const c_void, unsafe extern "C" fn(i32)>(handler);
-		handler(sig);
-	}
-
-	// Calling `sigreturn` to end signal handling.
-	unsafe {
-		asm!("mov eax, 0x077\nint 0x80");
-	}
-
-	unreachable!();
+#[link_section = ".signal"]
+pub unsafe extern "C" fn signal_trampoline(handler: unsafe extern "C" fn(i32), sig: i32) -> ! {
+	// Call the signal handler
+	handler(sig);
+	// Call `sigreturn` to end signal handling
+	asm!(
+		"int 0x80",
+		in("eax") SIGRETURN_ID,
+		options(noreturn),
+	)
 }
