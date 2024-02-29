@@ -30,7 +30,6 @@ use core::{
 	fmt,
 	intrinsics::size_of_val,
 	marker::Unsize,
-	mem,
 	mem::ManuallyDrop,
 	ops::{CoerceUnsized, Deref, DispatchFromDyn},
 	ptr,
@@ -130,17 +129,18 @@ impl<T> Arc<T> {
 
 	/// Returns the inner value of the `Arc` if this is the last reference to it.
 	pub fn into_inner(this: Self) -> Option<T> {
+		// Avoid double free
+		let this = ManuallyDrop::new(this);
 		let inner = this.inner();
 		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
 			return None;
 		}
-		let obj = unsafe {
-			let obj = ptr::read(&inner.obj);
-			malloc::free(this.inner.cast());
-			obj
-		};
-		// Avoid double free
-		mem::forget(this);
+		// If no other reference is left, get the inner value and free
+		let obj = unsafe { ptr::read(&inner.obj) };
+		// Drop the weak reference that is collectively held by all strong references
+		drop(Weak {
+			inner: this.inner,
+		});
 		Some(obj)
 	}
 }
