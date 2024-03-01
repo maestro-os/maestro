@@ -20,11 +20,6 @@
 //!
 //! The trampoline is using the same stack as the normal process execution.
 //!
-//! However, the **System V ABI** defines a region of the stack located after the
-//! allocated portion which is called the **redzone**. This region must not be
-//! clobbered, thus the kernel adds an offset on the stack corresponding to the
-//! size of the redzone.
-//!
 //! When the signal handler returns, the process returns directly to execution.
 
 use crate::syscall::SIGRETURN_ID;
@@ -42,7 +37,7 @@ use core::arch::asm;
 /// - `handler` is a pointer to the handler function for the signal.
 /// - `sig` is the signal number.
 #[no_mangle]
-#[link_section = ".signal"]
+#[link_section = ".user"]
 pub unsafe extern "C" fn signal_trampoline(handler: unsafe extern "C" fn(i32), sig: i32) -> ! {
 	// Call the signal handler
 	handler(sig);

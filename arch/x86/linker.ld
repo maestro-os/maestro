@@ -67,10 +67,10 @@ SECTIONS
 		*(.rodata*)
 	}
 
-    /* The signal trampoline is in a separate section to make it readable to the userspace */
-	.signal BLOCK(4K) : AT (ADDR (.signal) - 0xc0000000) ALIGN(4K)
+    /* Accessible to the userspace (readonly) */
+	.user BLOCK(4K) : AT (ADDR (.user) - 0xc0000000) ALIGN(4K)
 	{
-	    *(.signal*)
+	    *(.user*)
 	}
 
 	.bss BLOCK(4K) : AT (ADDR (.bss) - 0xc0000000) ALIGN(4K)

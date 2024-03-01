@@ -417,9 +417,9 @@ pub(crate) fn init() -> AllocResult<()> {
 		s.sh_flags & elf::SHF_WRITE == 0 && s.sh_addralign as usize == memory::PAGE_SIZE
 	});
 	for section in iter {
-		// Make signal trampoline accessible to userspace
-		let user = elf::kernel::get_section_name(section) == Some(b".signal");
 		let mut flags = x86::FLAG_GLOBAL;
+		// If the section is accessible to userspace, set flag
+		let user = elf::kernel::get_section_name(section) == Some(b".user");
 		if user {
 			flags |= x86::FLAG_USER;
 		}

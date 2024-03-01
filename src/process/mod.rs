@@ -110,6 +110,12 @@ const STDERR_FILENO: u32 = 2;
 pub const TLS_ENTRIES_COUNT: usize = 3;
 
 /// The size of the redzone in userspace, in bytes.
+///
+/// The redzone, defined by the System V ABI, is a zone of memory located right after the top of
+/// the stack which can be used by the process.
+///
+/// When handling a signal, the kernel must make sure not to clobber this zone, thus an offset is
+/// added.
 const REDZONE_SIZE: usize = 128;
 
 /// An enumeration containing possible states for a process.
