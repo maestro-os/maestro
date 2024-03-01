@@ -305,6 +305,43 @@ impl MemMapping {
 		Ok((prev, gap, next))
 	}
 
+	/// Forks the mappings.
+	///
+	/// `vmem_transactions` is a set of two transactions to update.
+	///
+	/// Both transactions are remapped so that the mapping is present on both and is made read-only
+	/// for Copy-On-Write.
+	pub fn fork(
+		&mut self,
+		mut vmem_transactions: [&mut VMemTransaction<false>; 2],
+	) -> AllocResult<Self> {
+		// Clone physical pages references to make them shared
+		let phys_pages = self.phys_pages.try_clone()?;
+		// Init Copy-On-Write by marking mappings as read-only
+		let default_page = get_default_page();
+		for (i, phys_page) in phys_pages.iter().enumerate() {
+			let physaddr = phys_page
+				.as_ref()
+				.map(|p| p.cast().as_ptr() as *const c_void);
+			let allocated = physaddr.is_some();
+			let physaddr = physaddr.unwrap_or(default_page);
+			let virtaddr = (self.begin as usize + i * memory::PAGE_SIZE) as *const c_void;
+			let flags = self.get_vmem_flags(allocated, i);
+			// Apply to all given vmem
+			for t in &mut vmem_transactions {
+				t.map(physaddr, virtaddr, flags)?;
+			}
+		}
+		Ok(Self {
+			begin: self.begin,
+			size: self.size,
+			flags: self.flags,
+			residence: self.residence.clone(),
+
+			phys_pages,
+		})
+	}
+
 	/// Synchronizes the data on the memory mapping back to the filesystem.
 	///
 	/// `vmem` is the virtual memory context to read from.
@@ -371,19 +408,6 @@ impl MemMapping {
 		let len = pages_range.end - pages_range.start;
 		vmem_transaction.unmap_range(begin, len)?;
 		Ok(())
-	}
-}
-
-impl TryClone for MemMapping {
-	fn try_clone(&self) -> AllocResult<Self> {
-		Ok(Self {
-			begin: self.begin,
-			size: self.size,
-			flags: self.flags,
-			residence: self.residence.clone(),
-
-			phys_pages: self.phys_pages.try_clone()?,
-		})
 	}
 }
 

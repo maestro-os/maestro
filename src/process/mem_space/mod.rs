@@ -714,16 +714,26 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&mut self) -> AllocResult<MemSpace> {
+		// Clone gaps
 		let gaps = self.state.gaps.try_clone()?;
 		let gaps_size = self.state.gaps_size.try_clone()?;
+		// Clone vmem and mappings and update them for COW
+		let mut new_vmem = VMem::new()?;
+		let mut vmem_transaction = self.vmem.transaction();
+		let mut new_vmem_transaction = new_vmem.transaction();
 		let mappings = self
 			.state
 			.mappings
 			.iter_mut()
-			.map(|(p, m)| Ok((*p, m.try_clone()?)))
+			.map(|(p, m)| {
+				let new_mapping = m.fork([&mut vmem_transaction, &mut new_vmem_transaction])?;
+				Ok((*p, new_mapping))
+			})
 			.collect::<AllocResult<CollectResult<_>>>()?
 			.0?;
-		let vmem = self.vmem.try_clone()?;
+		// No fallible operation left, commit
+		new_vmem_transaction.commit();
+		vmem_transaction.commit();
 		Ok(Self {
 			state: MemSpaceState {
 				gaps,
@@ -736,7 +746,7 @@ impl MemSpace {
 			brk_init: self.brk_init,
 			brk_ptr: self.brk_ptr,
 
-			vmem,
+			vmem: new_vmem,
 		})
 	}
 
