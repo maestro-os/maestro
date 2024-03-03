@@ -12,16 +12,17 @@ use core::ptr::NonNull;
 /// Type representing a memory page.
 pub type Page = [u8; memory::PAGE_SIZE];
 
-/// Returns a physical pointer to the default zeroed page.
+/// Returns a physical address to the default zeroed page.
 ///
 /// This page is meant to be mapped in read-only and is a placeholder for pages that are
 /// accessed without being allocated nor written.
 #[inline]
-pub fn zeroed_page() -> *const Page {
+fn zeroed_page() -> NonNull<Page> {
 	#[repr(align(4096))]
 	struct DefaultPage(Page);
 	static DEFAULT_PAGE: DefaultPage = DefaultPage([0; memory::PAGE_SIZE]);
-	memory::kern_to_phys(DEFAULT_PAGE.0.as_ptr() as _)
+	let ptr = memory::kern_to_phys(DEFAULT_PAGE.0.as_ptr() as _) as *mut _;
+	NonNull::new(ptr).unwrap()
 }
 
 /// Wrapper for an allocated physical page of memory.
@@ -95,6 +96,16 @@ impl MapResidence {
 	/// Tells whether the residence is normal.
 	pub fn is_normal(&self) -> bool {
 		matches!(self, MapResidence::Normal)
+	}
+
+	/// Returns the default page for the mapping, if applicable.
+	///
+	/// If no default page exist, pages should be allocated directly.
+	pub fn get_default_page(&self) -> Option<NonNull<Page>> {
+		match self {
+			MapResidence::Normal => Some(zeroed_page()),
+			_ => None,
+		}
 	}
 
 	/// Adds a value of `pages` pages to the offset of the residence, if applicable.

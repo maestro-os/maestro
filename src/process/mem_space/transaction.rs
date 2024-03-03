@@ -133,7 +133,7 @@ impl MemSpaceTransaction {
 		}
 		// Map on virtual memory context
 		for (_, m) in self.buffer_state.mappings.iter_mut() {
-			m.map_default(&mut vmem_transaction)?;
+			m.apply_to(&mut vmem_transaction)?;
 		}
 		// Update memory space structures
 		let gaps = mem::take(&mut self.buffer_state.gaps);

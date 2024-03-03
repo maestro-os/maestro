@@ -27,13 +27,13 @@ use crate::{
 	process::{
 		mem_space,
 		mem_space::{
-			residence::{MapResidence, ResidencePage},
+			residence::{MapResidence, Page, ResidencePage},
 			MapConstraint, MemSpace,
 		},
 	},
 	util::{collections::vec::Vec, lock::Mutex, ptr::arc::Arc},
 };
-use core::{cmp::min, ffi::c_void, num::NonZeroUsize, ptr, ptr::NonNull};
+use core::{cmp::min, ffi::c_void, num::NonZeroUsize, ptr::NonNull};
 
 /// The ELF image of the vDSO.
 static ELF_IMAGE: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
@@ -71,17 +71,14 @@ fn load_image() -> EResult<Vdso> {
 			let off = i * memory::PAGE_SIZE;
 			let len = min(memory::PAGE_SIZE, ELF_IMAGE.len() - off);
 			// Alloc page
-			let mut page = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
+			let page = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?.cast();
+			let virtaddr = memory::kern_to_virt(page.as_ptr()) as *mut Page;
+			let virtaddr = unsafe { &mut *virtaddr };
 			// Copy data
-			unsafe {
-				let virt_ptr = memory::kern_to_virt(page.as_mut()) as _;
-				ptr::copy_nonoverlapping(
-					ELF_IMAGE[off..].as_ptr() as *const c_void,
-					virt_ptr,
-					len,
-				);
-			}
-			Arc::new(ResidencePage::new(page.cast()))
+			let src = &ELF_IMAGE[off..(off + len)];
+			virtaddr[..src.len()].copy_from_slice(src);
+			virtaddr[src.len()..].fill(0);
+			Arc::new(ResidencePage::new(page))
 		})
 		.collect::<AllocResult<CollectResult<_>>>()?
 		.0?;

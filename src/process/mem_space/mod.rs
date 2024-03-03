@@ -34,7 +34,7 @@ use crate::{
 	file::perm::AccessProfile,
 	memory,
 	memory::{vmem, vmem::VMem},
-	process::AllocResult,
+	process::{mem_space::residence::Page, AllocResult},
 	util,
 	util::{
 		collections::{btreemap::BTreeMap, vec::Vec},
@@ -66,6 +66,10 @@ pub const MAPPING_FLAG_USER: u8 = 0b00100;
 /// file.
 pub const MAPPING_FLAG_SHARED: u8 = 0b1000;
 
+/// The virtual address of the buffer used to map pages for copy.
+/// TODO use PROCESS_END instead of hardcoding value
+const COPY_BUFFER: *const Page = (0xc0000000 - memory::PAGE_SIZE) as _;
+
 // TODO Add a variant for ASLR
 /// Enumeration of constraints for the selection of the virtual address for a memory mapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -92,10 +96,10 @@ impl MapConstraint {
 	/// Tells whether the constraint is valid.
 	pub fn is_valid(&self) -> bool {
 		match self {
-			// Checking the address is within userspace is required because Fixed allocation can
+			// Checking the address is within userspace is required because `Fixed` allocations can
 			// take place *outside of gaps* but *not inside the kernelspace*
 			MapConstraint::Fixed(addr) => {
-				*addr <= memory::PROCESS_END && addr.is_aligned_to(memory::PAGE_SIZE)
+				*addr < COPY_BUFFER as _ && addr.is_aligned_to(memory::PAGE_SIZE)
 			}
 			MapConstraint::Hint(addr) => addr.is_aligned_to(memory::PAGE_SIZE),
 			_ => true,
@@ -289,7 +293,7 @@ impl MemSpace {
 		};
 		// Create the default gap of memory which is present at the beginning
 		let begin = memory::ALLOC_BEGIN;
-		let size = (memory::PROCESS_END as usize - begin as usize) / memory::PAGE_SIZE;
+		let size = (COPY_BUFFER as usize - begin as usize) / memory::PAGE_SIZE;
 		let gap = MemGap::new(begin, NonZeroUsize::new(size).unwrap());
 		s.state.insert_gap(gap)?;
 		Ok(s)
@@ -615,7 +619,9 @@ impl MemSpace {
 			.mappings
 			.iter_mut()
 			.map(|(p, m)| {
-				let new_mapping = m.fork([&mut vmem_transaction, &mut new_vmem_transaction])?;
+				let new_mapping = m.try_clone()?;
+				m.apply_to(&mut vmem_transaction)?;
+				m.apply_to(&mut new_vmem_transaction)?;
 				Ok((*p, new_mapping))
 			})
 			.collect::<AllocResult<CollectResult<_>>>()?
@@ -648,6 +654,9 @@ impl MemSpace {
 	/// The size of the memory chunk to allocated equals `size_of::<T>() * len`.
 	///
 	/// If the mapping doesn't exist, the function returns an error.
+	///
+	/// On error, allocations that have been made are not freed as it does not affect the behaviour
+	/// from the user's point of view.
 	pub fn alloc(&mut self, virtaddr: *const c_void, len: usize) -> AllocResult<()> {
 		let mut transaction = self.vmem.transaction();
 		let mut off = 0;
@@ -713,7 +722,7 @@ impl MemSpace {
 	pub fn set_brk_ptr(&mut self, ptr: *mut c_void) -> AllocResult<()> {
 		if ptr >= self.brk_ptr {
 			// Check the pointer is valid
-			if ptr > memory::PROCESS_END {
+			if ptr > COPY_BUFFER as _ {
 				return Err(AllocError);
 			}
 			// Allocate memory
