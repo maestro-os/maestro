@@ -23,7 +23,7 @@ use crate::{
 	errno::Errno,
 	file::FileType,
 	memory,
-	process::{mem_space, mem_space::MapResidence, Process},
+	process::{mem_space, mem_space::residence::MapResidence, Process},
 	syscall::mmap::mem_space::MapConstraint,
 };
 use core::{

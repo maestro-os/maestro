@@ -21,31 +21,26 @@
 //! Mappings may be created at the process's creation or by the process itself using
 //! system calls.
 
-use super::{gap::MemGap, MapResidence};
+use super::gap::MemGap;
 use crate::{
+	errno::AllocError,
 	file::vfs,
 	memory,
 	memory::{
 		vmem,
 		vmem::{VMem, VMemTransaction},
 	},
-	process::{AllocResult, EResult},
+	process::{
+		mem_space::{
+			residence,
+			residence::{MapResidence, ResidencePage},
+		},
+		AllocResult, EResult,
+	},
 	util::{collections::vec::Vec, io::IO, ptr::arc::Arc, TryClone},
 	vec,
 };
-use core::{ffi::c_void, fmt, mem, num::NonZeroUsize, ops::Range, ptr, ptr::NonNull, slice};
-
-/// Returns a physical pointer to the default page.
-///
-/// This page is meant to be mapped in read-only and is a placeholder for pages that are
-/// accessed without being allocated nor written.
-#[inline]
-fn get_default_page() -> *const c_void {
-	#[repr(align(4096))]
-	struct DefaultPage([u8; memory::PAGE_SIZE]);
-	static DEFAULT_PAGE: DefaultPage = DefaultPage([0; memory::PAGE_SIZE]);
-	memory::kern_to_phys(DEFAULT_PAGE.0.as_ptr() as _)
-}
+use core::{ffi::c_void, fmt, num::NonZeroUsize, ops::Range, ptr, slice};
 
 /// A mapping in a memory space.
 pub struct MemMapping {
@@ -59,7 +54,7 @@ pub struct MemMapping {
 	residence: MapResidence,
 
 	/// The list of allocated physical pages. Each page may be shared with other mappings.
-	phys_pages: Vec<Option<Arc<NonNull<[u8; memory::PAGE_SIZE]>>>>,
+	phys_pages: Vec<Option<Arc<ResidencePage>>>,
 }
 
 impl MemMapping {
@@ -149,10 +144,14 @@ impl MemMapping {
 	/// If data is already present on the mapping at this offset, the function copies it to the
 	/// newly allocated page.
 	pub fn alloc(
-		&self,
+		&mut self,
 		offset: usize,
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> AllocResult<()> {
+		// Validation
+		if offset >= self.size.get() {
+			return Err(AllocError);
+		}
 		let virt_ptr = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut c_void;
 		let cow_buffer = {
 			if self.is_cow(offset) {
@@ -174,25 +173,15 @@ impl MemMapping {
 		if self.residence.is_normal() && cow_buffer.is_none() && prev_phys_ptr.is_some() {
 			return Ok(());
 		}
-
 		// Map new page
-		let new_phys_ptr = self.residence.alloc_page(offset)?;
+		let new_phys_ptr = self.residence.acquire_page(offset)?;
+		let ptr = unsafe { (*new_phys_ptr).as_ptr() };
 		let flags = self.get_vmem_flags(true, offset);
-		let res = vmem_transaction.map(new_phys_ptr.cast().as_ptr(), virt_ptr, flags);
-		if let Err(e) = res {
-			unsafe {
-				self.residence.free_page(offset, new_phys_ptr);
-			}
-			return Err(e);
-		}
-
-		// Free previous page
-		if let Some(prev_phys_ptr) = prev_phys_ptr.and_then(Arc::into_inner) {
-			unsafe {
-				self.residence.free_page(offset, prev_phys_ptr);
-			}
-		}
-
+		vmem_transaction.map(ptr as _, virt_ptr, flags)?;
+		// Update the associated page, freeing the previous one if necessary
+		// This operation does not need to be reversible in the transaction as leaving the
+		// allocated page does not affect the behaviour seen by the user
+		self.phys_pages[offset] = Some(new_phys_ptr);
 		// Copy data if necessary
 		if self.residence.is_normal() {
 			unsafe {
@@ -227,15 +216,18 @@ impl MemMapping {
 	///
 	/// If the mapping is marked as no-lazy, the function allocates physical memory and maps it
 	/// instead of the default page.
-	pub fn map_default(&self, vmem_transaction: &mut VMemTransaction<false>) -> AllocResult<()> {
+	pub fn map_default(
+		&mut self,
+		vmem_transaction: &mut VMemTransaction<false>,
+	) -> AllocResult<()> {
 		let size = self.size.get();
 		if self.residence.is_normal() {
 			// Use default page
-			let default_page = get_default_page();
+			let default_page = residence::zeroed_page();
 			for i in 0..size {
 				let virtaddr = (self.begin as usize + (i * memory::PAGE_SIZE)) as *const c_void;
 				let flags = self.get_vmem_flags(false, i);
-				vmem_transaction.map(default_page, virtaddr, flags)?;
+				vmem_transaction.map(default_page as _, virtaddr, flags)?;
 			}
 		} else {
 			// Allocate directly
@@ -318,18 +310,16 @@ impl MemMapping {
 		// Clone physical pages references to make them shared
 		let phys_pages = self.phys_pages.try_clone()?;
 		// Init Copy-On-Write by marking mappings as read-only
-		let default_page = get_default_page();
+		let default_page = residence::zeroed_page();
 		for (i, phys_page) in phys_pages.iter().enumerate() {
-			let physaddr = phys_page
-				.as_ref()
-				.map(|p| p.cast().as_ptr() as *const c_void);
+			let physaddr = phys_page.as_ref().map(|p| unsafe { (**p).as_ptr() });
 			let allocated = physaddr.is_some();
-			let physaddr = physaddr.unwrap_or(default_page);
-			let virtaddr = (self.begin as usize + i * memory::PAGE_SIZE) as *const c_void;
+			let physaddr = physaddr.unwrap_or(default_page as _);
+			let virtaddr = (self.begin as usize + i * memory::PAGE_SIZE) as _;
 			let flags = self.get_vmem_flags(allocated, i);
 			// Apply to all given vmem
 			for t in &mut vmem_transactions {
-				t.map(physaddr, virtaddr, flags)?;
+				t.map(physaddr as _, virtaddr, flags)?;
 			}
 		}
 		Ok(Self {
@@ -419,19 +409,5 @@ impl fmt::Debug for MemMapping {
 			"MemMapping {{ begin: {:p}, end: {:p}, flags: {} }}",
 			self.begin, end, self.flags,
 		)
-	}
-}
-
-impl Drop for MemMapping {
-	fn drop(&mut self) {
-		// Free physical pages that are not shared with other mappings
-		let phys_pages = mem::take(&mut self.phys_pages);
-		phys_pages
-			.into_iter()
-			.enumerate()
-			.filter_map(|(i, p)| Some((i, Arc::into_inner(p?)?)))
-			.for_each(|(i, p)| unsafe {
-				self.residence.free_page(i, p);
-			});
 	}
 }

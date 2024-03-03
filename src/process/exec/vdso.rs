@@ -26,7 +26,10 @@ use crate::{
 	memory::buddy,
 	process::{
 		mem_space,
-		mem_space::{MapConstraint, MapResidence, MemSpace},
+		mem_space::{
+			residence::{MapResidence, ResidencePage},
+			MapConstraint, MemSpace,
+		},
 	},
 	util::{collections::vec::Vec, lock::Mutex, ptr::arc::Arc},
 };
@@ -38,7 +41,7 @@ static ELF_IMAGE: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
 /// Information on the vDSO ELF image.
 struct Vdso {
 	/// The list of pages on which the image is loaded.
-	pages: Arc<Vec<NonNull<[u8; memory::PAGE_SIZE]>>>,
+	pages: Arc<Vec<Arc<ResidencePage>>>,
 	/// The length of the ELF image in bytes.
 	len: usize,
 
@@ -67,20 +70,18 @@ fn load_image() -> EResult<Vdso> {
 		.map(|i| {
 			let off = i * memory::PAGE_SIZE;
 			let len = min(memory::PAGE_SIZE, ELF_IMAGE.len() - off);
+			// Alloc page
+			let mut page = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
+			// Copy data
 			unsafe {
-				// Alloc page
-				// FIXME: free previously allocated pages on failure? In practice, this is not an
-				// issue as the system panics on failure
-				let mut ptr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
-				let virt_ptr = memory::kern_to_virt(ptr.as_mut()) as _;
-				// Copy data
+				let virt_ptr = memory::kern_to_virt(page.as_mut()) as _;
 				ptr::copy_nonoverlapping(
 					ELF_IMAGE[off..].as_ptr() as *const c_void,
 					virt_ptr,
 					len,
 				);
-				Ok(ptr.cast())
 			}
+			Arc::new(ResidencePage::new(page.cast()))
 		})
 		.collect::<AllocResult<CollectResult<_>>>()?
 		.0?;
@@ -111,7 +112,8 @@ pub fn map(mem_space: &mut MemSpace) -> EResult<MappedVDSO> {
 			pages: img.pages.clone(),
 		},
 	)?;
-	let entry = NonNull::new(unsafe { ptr.add(img.entry_off) }).unwrap();
+	let entry_ptr = (ptr as usize + img.entry_off) as *mut c_void;
+	let entry = NonNull::new(entry_ptr).unwrap();
 	Ok(MappedVDSO {
 		ptr,
 		entry,

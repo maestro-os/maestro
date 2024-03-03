@@ -132,7 +132,7 @@ impl MemSpaceTransaction {
 			m.unmap(0..size, &mut vmem_transaction)?;
 		}
 		// Map on virtual memory context
-		for (_, m) in self.buffer_state.mappings.iter() {
+		for (_, m) in self.buffer_state.mappings.iter_mut() {
 			m.map_default(&mut vmem_transaction)?;
 		}
 		// Update memory space structures

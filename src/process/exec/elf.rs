@@ -36,7 +36,7 @@ use crate::{
 	process::{
 		exec::{ExecInfo, Executor, ProgramImage},
 		mem_space,
-		mem_space::{MapConstraint, MapResidence, MemSpace},
+		mem_space::{residence::MapResidence, MapConstraint, MemSpace},
 		EResult,
 	},
 	util,

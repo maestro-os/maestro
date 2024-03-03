@@ -26,19 +26,18 @@
 mod gap;
 mod mapping;
 pub mod ptr;
+pub mod residence;
 mod transaction;
 
 use crate::{
 	errno::{AllocError, CollectResult, Errno},
-	file::{perm::AccessProfile, FileLocation},
+	file::perm::AccessProfile,
 	memory,
-	memory::{buddy, vmem, vmem::VMem},
-	process::{open_file::OpenFile, AllocResult},
+	memory::{vmem, vmem::VMem},
+	process::AllocResult,
 	util,
 	util::{
 		collections::{btreemap::BTreeMap, vec::Vec},
-		lock::Mutex,
-		ptr::arc::Arc,
 		TryClone,
 	},
 };
@@ -47,10 +46,11 @@ use core::{
 	ffi::c_void,
 	fmt,
 	num::NonZeroUsize,
-	ptr::{null, null_mut, NonNull},
+	ptr::{null, null_mut},
 };
 use gap::MemGap;
 use mapping::MemMapping;
+use residence::MapResidence;
 use transaction::MemSpaceTransaction;
 
 /// Flag telling that a memory mapping can be written to.
@@ -65,126 +65,6 @@ pub const MAPPING_FLAG_USER: u8 = 0b00100;
 /// If the mapping is associated with a file, modifications made to the mapping are update to the
 /// file.
 pub const MAPPING_FLAG_SHARED: u8 = 0b1000;
-
-/// Type representing a memory page.
-type Page = [u8; memory::PAGE_SIZE];
-
-// TODO when reaching the last reference to the open file, close it on unmap
-
-// TODO Disallow clone and use a special function + Drop to increment/decrement reference counters
-/// A map residence is the location to which the data on the physical memory of a mapping is to be
-/// synchronized.
-#[derive(Clone)]
-pub enum MapResidence {
-	/// The mapping does not reside anywhere except on the main memory.
-	Normal,
-	/// The mapping points to a static location, which may or may not be shared between several
-	/// memory spaces.
-	Static {
-		/// The list of memory pages, in order.
-		pages: Arc<Vec<NonNull<Page>>>,
-	},
-	/// The mapping resides in a file.
-	File {
-		/// The location of the file.
-		location: FileLocation,
-		/// The offset of the mapping in the file.
-		off: u64,
-	},
-	/// The mapping resides in swap space.
-	Swap {
-		/// The location of the swap space.
-		swap_file: Arc<Mutex<OpenFile>>,
-		/// The ID of the slot occupied by the mapping.
-		slot_id: u32,
-		/// The page offset in the slot.
-		page_off: usize,
-	},
-}
-
-impl MapResidence {
-	/// Tells whether the residence is normal.
-	pub fn is_normal(&self) -> bool {
-		matches!(self, MapResidence::Normal)
-	}
-
-	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
-	pub fn offset_add(&mut self, pages: usize) {
-		match self {
-			Self::File {
-				off, ..
-			} => *off += pages as u64 * memory::PAGE_SIZE as u64,
-			Self::Swap {
-				page_off, ..
-			} => *page_off += pages,
-			_ => {}
-		}
-	}
-
-	/// Allocates a physical page for the given offset.
-	///
-	/// Since the function might reuse the same page for several allocation, the page must be freed
-	/// only using the `free_page` function associated with the current instance.
-	pub fn alloc_page(&self, off: usize) -> AllocResult<NonNull<Page>> {
-		match self {
-			MapResidence::Normal => buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER).map(NonNull::cast),
-			MapResidence::Static {
-				pages,
-			} => {
-				if off < pages.len() {
-					Ok(pages[off].cast())
-				} else {
-					buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER).map(NonNull::cast)
-				}
-			}
-			MapResidence::File {
-				location: _,
-				off: _,
-			} => {
-				// TODO get physical page for this offset
-				todo!();
-			}
-			MapResidence::Swap {
-				..
-			} => {
-				// TODO
-				todo!();
-			}
-		}
-	}
-
-	/// Frees the page allocated with `alloc_page`.
-	///
-	/// # Safety
-	///
-	/// Accessing the page at `ptr` after calling this function is undefined.
-	pub unsafe fn free_page(&self, off: usize, ptr: NonNull<Page>) {
-		let ptr = ptr.cast().as_ptr();
-		match self {
-			MapResidence::Normal => buddy::free(ptr, 0),
-			MapResidence::Static {
-				pages,
-			} => {
-				if off >= pages.len() {
-					buddy::free(ptr, 0)
-				}
-			}
-			MapResidence::File {
-				location: _,
-				off: _,
-			} => {
-				// TODO
-				todo!();
-			}
-			MapResidence::Swap {
-				..
-			} => {
-				// TODO
-				todo!();
-			}
-		}
-	}
-}
 
 // TODO Add a variant for ASLR
 /// Enumeration of constraints for the selection of the virtual address for a memory mapping.
@@ -280,21 +160,30 @@ impl MemSpaceState {
 		Some(gap)
 	}
 
+	/// Comparison function to search for the object containing `ptr`.
+	///
+	/// Arguments:
+	/// - `begin` is the beginning of the object to compare for
+	/// - `size` is the size of the object in pages
+	fn ptr_search(begin: *const c_void, size: usize, ptr: *const c_void) -> Ordering {
+		let begin = begin as usize;
+		let end = begin + size * memory::PAGE_SIZE;
+		let ptr = ptr as usize;
+		if ptr >= begin && ptr < end {
+			Ordering::Equal
+		} else if ptr < begin {
+			Ordering::Less
+		} else {
+			Ordering::Greater
+		}
+	}
+
 	/// Returns a reference to the gap containing the given virtual address `ptr`.
 	///
 	/// If no gap contain the pointer, the function returns `None`.
 	fn get_gap_for_ptr(&self, ptr: *const c_void) -> Option<&MemGap> {
-		self.gaps.cmp_get(|key, value| {
-			let begin = *key as usize;
-			let end = begin + (value.get_size().get() * memory::PAGE_SIZE);
-			if (ptr as usize) >= begin && (ptr as usize) < end {
-				Ordering::Equal
-			} else if (ptr as usize) < begin {
-				Ordering::Less
-			} else {
-				Ordering::Greater
-			}
-		})
+		self.gaps
+			.cmp_get(|key, value| Self::ptr_search(*key, value.get_size().get(), ptr))
 	}
 
 	/// Returns an immutable reference to the memory mapping containing the given virtual
@@ -302,17 +191,17 @@ impl MemSpaceState {
 	///
 	/// If no mapping contains the address, the function returns `None`.
 	fn get_mapping_for_ptr(&self, ptr: *const c_void) -> Option<&MemMapping> {
-		self.mappings.cmp_get(|key, value| {
-			let begin = *key as usize;
-			let end = begin + (value.get_size().get() * memory::PAGE_SIZE);
-			if (ptr as usize) >= begin && (ptr as usize) < end {
-				Ordering::Equal
-			} else if (ptr as usize) < begin {
-				Ordering::Less
-			} else {
-				Ordering::Greater
-			}
-		})
+		self.mappings
+			.cmp_get(|key, value| Self::ptr_search(*key, value.get_size().get(), ptr))
+	}
+
+	/// Returns a mutable reference to the memory mapping containing the given virtual
+	/// address `ptr`.
+	///
+	/// If no mapping contains the address, the function returns `None`.
+	fn get_mut_mapping_for_ptr(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
+		self.mappings
+			.cmp_get_mut(|key, value| Self::ptr_search(*key, value.get_size().get(), ptr))
 	}
 }
 
@@ -764,7 +653,7 @@ impl MemSpace {
 		let mut off = 0;
 		while off < len {
 			let virtaddr = (virtaddr as usize + off) as *const c_void;
-			if let Some(mapping) = self.state.get_mapping_for_ptr(virtaddr) {
+			if let Some(mapping) = self.state.get_mut_mapping_for_ptr(virtaddr) {
 				let page_offset =
 					(virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
 				mapping.alloc(page_offset, &mut transaction)?;
@@ -873,17 +762,19 @@ impl MemSpace {
 		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
 			return false;
 		}
-		let Some(mapping) = self.state.get_mapping_for_ptr(virtaddr) else {
+		let Some(mapping) = self.state.get_mut_mapping_for_ptr(virtaddr) else {
 			return false;
 		};
 		// Check permissions
-		let can_write_mapping = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
-		if code & vmem::x86::PAGE_FAULT_WRITE != 0 && !can_write_mapping {
+		let code_write = code & vmem::x86::PAGE_FAULT_WRITE != 0;
+		let mapping_write = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
+		if code_write && !mapping_write {
 			return false;
 		}
 		// TODO check exec
-		let userspace_mapping = mapping.get_flags() & MAPPING_FLAG_USER != 0;
-		if code & vmem::x86::PAGE_FAULT_USER != 0 && !userspace_mapping {
+		let code_userspace = code & vmem::x86::PAGE_FAULT_USER != 0;
+		let mapping_userspace = mapping.get_flags() & MAPPING_FLAG_USER != 0;
+		if code_userspace && !mapping_userspace {
 			return false;
 		}
 		// Map the accessed page
