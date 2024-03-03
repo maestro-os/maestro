@@ -71,7 +71,7 @@ pub enum MapResidence {
 		///
 		/// The outer [`Arc`] is here to allow cloning [`MapResidence`] without a memory
 		/// allocation. The inner [`Arc`] is here to conveniently match with the return type of
-		/// [`acquire_page`].
+		/// [`Self::acquire_page`].
 		pages: Arc<Vec<Arc<ResidencePage>>>,
 	},
 	/// The mapping resides in a file.
