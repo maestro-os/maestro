@@ -102,26 +102,28 @@ impl MemMapping {
 		self.flags
 	}
 
-	/// Tells whether the page at offset `offset` is waiting for Copy-On-Write.
-	fn is_cow(&self, offset: usize) -> bool {
-		if self.flags & super::MAPPING_FLAG_SHARED != 0 {
+	/// Tells whether the given `page` is in COW mode.
+	///
+	/// An offset is in COW mode if the mapping is not shared, and the number of references to the
+	/// page at this offset is higher than `1`.
+	///
+	/// `flags` is the set of flags of the mapping.
+	fn is_cow(phys_page: &Arc<ResidencePage>, flags: u8) -> bool {
+		if flags & super::MAPPING_FLAG_SHARED != 0 {
 			return false;
 		}
 		// Check if currently shared
-		self.phys_pages[offset]
-			.as_ref()
-			.map(|a| Arc::strong_count(a) > 1)
-			.unwrap_or(false)
+		Arc::strong_count(phys_page) > 1
 	}
 
-	/// Returns the flags for the virtual memory context for the given virtual page offset.
+	/// Returns the virtual memory context flags for the given `page`.
 	///
-	/// Arguments:
-	/// - `allocated` tells whether the page has been physically allocated.
-	/// - `offset` is the offset of the page in the mapping.
-	fn get_vmem_flags(&self, allocated: bool, offset: usize) -> u32 {
+	/// If `page` is `None`, usage of the default page is assumed.
+	fn get_vmem_flags(&self, phys_page: Option<&Arc<ResidencePage>>) -> u32 {
 		let mut flags = 0;
-		if self.flags & super::MAPPING_FLAG_WRITE != 0 && allocated && !self.is_cow(offset) {
+		if self.flags & super::MAPPING_FLAG_WRITE != 0
+			&& matches!(phys_page, Some(p) if !Self::is_cow(p, self.flags))
+		{
 			#[cfg(target_arch = "x86")]
 			flags |= vmem::x86::FLAG_WRITE;
 		}
@@ -132,42 +134,71 @@ impl MemMapping {
 		flags
 	}
 
-	/// Forces allocation of a physical page for the given offset in the mapping.
+	/// Updates the mapping at the given `offset`.
+	fn update_offset(
+		&self,
+		offset: usize,
+		phys_page: &Arc<ResidencePage>,
+		vmem_transaction: &mut VMemTransaction<false>,
+	) -> AllocResult<()> {
+		let physaddr = unsafe { (**phys_page).as_ptr() };
+		let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
+		let flags = self.get_vmem_flags(Some(phys_page));
+		vmem_transaction.map(physaddr as _, virtaddr, flags)
+		// TODO invalidate cache for this page
+	}
+
+	/// If the offset `offset` is pending for an allocation, forces an allocation of a physical
+	/// page for that offset.
 	///
-	/// The function also applies the mapping of the page to the given `vmem_transaction`.
+	/// An offset in a mapping is pending for an allocation if any of the following is true:
+	/// - no physical page has been assigned to it other than the default (`page` is `None`)
+	/// - the offset is in Copy-On-Write mode
+	///
+	/// The function also applies the mapping of the page to the given `vmem_transaction`
+	/// (regardless of whether the page was effectively in COW mode).
 	pub(super) fn alloc(
 		&mut self,
 		offset: usize,
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> AllocResult<()> {
-		// Allocate new page
-		let next = self.residence.acquire_page(offset)?;
-		let next_physaddr = unsafe { (*next).as_ptr() };
-		// Replace the previous page, which is kept until the function returns to prevent dropping
-		// before copy
-		let page = self
+		// Get old page
+		let old = self
 			.phys_pages
 			// Bound check
-			.get_mut(offset)
+			.get(offset)
 			.ok_or(AllocError)?;
-		let prev = page.replace(next);
-		// Tells whether a copy is necessary
-		let copy = prev.is_some();
-		// Map previous page for copy
-		if let Some(prev) = &prev {
-			let physaddr = unsafe { (**prev).as_ptr() as _ };
-			vmem_transaction.map(physaddr, COPY_BUFFER as _, 0)?;
+		match old {
+			// If not pending for an allocation: map and stop here
+			Some(p) if !Self::is_cow(p, self.flags) => {
+				return self.update_offset(offset, p, vmem_transaction);
+			}
+			_ => {}
 		}
-		// Map next page for copy or zeroing
-		let next_virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
-		let flags = self.get_vmem_flags(true, offset);
-		vmem_transaction.map(next_physaddr as _, next_virtaddr, flags)?;
-		// Copy or zero page only for normal residences
-		if !self.residence.is_normal() {
+		// Allocate and map new page
+		let new = self.residence.acquire_page(offset)?;
+		self.update_offset(offset, &new, vmem_transaction)?;
+		// Get old page as mutable
+		let old = &mut self.phys_pages[offset];
+		// Tells whether a copy or zero is necessary
+		let copy_or_zero = self.residence.is_normal();
+		if copy_or_zero {
+			if let Some(old) = &old {
+				// Map old page for copy
+				let physaddr = unsafe { (**old).as_ptr() as _ };
+				vmem_transaction.map(physaddr, COPY_BUFFER as _, 0)?;
+			}
+		}
+		// Tells whether a copy is necessary
+		let copy = old.is_some();
+		// No fallible operation left, store the new page
+		*old = Some(new);
+		if !copy_or_zero {
 			return Ok(());
 		}
 		unsafe {
-			let dest = &mut *(next_virtaddr as *mut Page);
+			let dest = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut Page;
+			let dest = &mut *dest;
 			// Switching to make sure the right vmem is bound, but this should already be the case
 			// so consider this has no cost
 			vmem::switch(vmem_transaction.vmem, || {
@@ -191,12 +222,14 @@ impl MemMapping {
 		let default_page = self.residence.get_default_page();
 		if let Some(default_page) = default_page {
 			for (i, phys_page) in self.phys_pages.iter().enumerate() {
-				let physaddr = phys_page.as_ref().map(|p| unsafe { (**p).as_ptr() });
-				let allocated = physaddr.is_some();
-				let physaddr = physaddr.unwrap_or(default_page.as_ptr() as _);
+				let physaddr = phys_page
+					.as_ref()
+					.map(|p| unsafe { (**p).as_ptr() })
+					.unwrap_or(default_page.as_ptr() as _);
 				let virtaddr = (self.begin as usize + i * memory::PAGE_SIZE) as _;
-				let flags = self.get_vmem_flags(allocated, i);
+				let flags = self.get_vmem_flags(phys_page.as_ref());
 				vmem_transaction.map(physaddr as _, virtaddr, flags)?;
+				// TODO invalidate cache for this page
 			}
 		} else {
 			for i in 0..self.size.get() {
