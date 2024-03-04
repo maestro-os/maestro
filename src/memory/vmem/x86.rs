@@ -199,15 +199,13 @@ pub(super) fn alloc() -> AllocResult<NonNull<Table>> {
 	let mut page_dir = alloc_table()?;
 	// Init kernel entries
 	let kernel_tables = KERNEL_TABLES.lock();
-	{
-		let page_dir = unsafe { page_dir.as_mut() };
-		page_dir[USERSPACE_TABLES..]
-			.iter_mut()
-			.zip(kernel_tables.iter())
-			.for_each(|(dst, src)| {
-				*dst = to_entry(*src, KERNEL_FLAGS);
-			});
-	}
+	let pd = unsafe { page_dir.as_mut() };
+	pd[USERSPACE_TABLES..]
+		.iter_mut()
+		.zip(kernel_tables.iter())
+		.for_each(|(dst, src)| {
+			*dst = to_entry(*src, KERNEL_FLAGS);
+		});
 	Ok(page_dir)
 }
 

@@ -52,17 +52,17 @@ fn union_impl<K: Clone + Ord, V>(
 	to: &mut BTreeMap<K, V>,
 	complement: &mut Vec<(K, Option<V>)>,
 ) -> AllocResult<()> {
-	for (key, value) in from {
+	for (key, new) in from {
 		// Insert new value and get previous
 		let old = match to.entry(key.clone()) {
-			Entry::Occupied(mut e) => Some(e.insert(value)),
+			Entry::Occupied(mut e) => Some(e.insert(new)),
 			Entry::Vacant(e) => {
-				e.insert(value)?;
+				e.insert(new)?;
 				None
 			}
 		};
 		// Keep previous value in complement vector
-		complement.push((key.clone(), old))?;
+		complement.push((key, old))?;
 	}
 	Ok(())
 }

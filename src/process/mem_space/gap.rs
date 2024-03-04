@@ -91,7 +91,7 @@ impl MemGap {
 			.checked_sub(off + size)
 			.and_then(NonZeroUsize::new)
 			.map(|gap_size| Self {
-				begin: unsafe { self.begin.add((off + size) * memory::PAGE_SIZE) },
+				begin: (self.begin as usize + (off + size) * memory::PAGE_SIZE) as _,
 				size: gap_size,
 			});
 		(left, right)

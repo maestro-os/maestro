@@ -224,7 +224,7 @@ impl MemMapping {
 		begin: usize,
 		size: usize,
 	) -> AllocResult<(Option<Self>, Option<MemGap>, Option<Self>)> {
-		let begin_ptr = unsafe { self.begin.add(begin * memory::PAGE_SIZE) };
+		let begin_ptr = (self.begin as usize + begin * memory::PAGE_SIZE) as _;
 		let prev = NonZeroUsize::new(begin)
 			.map(|size| {
 				Ok(MemMapping {
@@ -249,7 +249,7 @@ impl MemMapping {
 			.checked_sub(end)
 			.and_then(NonZeroUsize::new)
 			.map(|size| {
-				let begin = unsafe { self.begin.add(end * memory::PAGE_SIZE) };
+				let begin = (self.begin as usize + end * memory::PAGE_SIZE) as _;
 				let mut residence = self.residence.clone();
 				residence.offset_add(end);
 				Ok(Self {
@@ -327,7 +327,7 @@ impl MemMapping {
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> EResult<()> {
 		self.fs_sync(vmem_transaction.vmem)?;
-		let begin = unsafe { self.begin.add(pages_range.start * memory::PAGE_SIZE) };
+		let begin = (self.begin as usize + pages_range.start * memory::PAGE_SIZE) as _;
 		let len = pages_range.end - pages_range.start;
 		vmem_transaction.unmap_range(begin, len)?;
 		Ok(())
@@ -349,7 +349,7 @@ impl TryClone for MemMapping {
 
 impl fmt::Debug for MemMapping {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let end = unsafe { self.begin.add(self.size.get() * memory::PAGE_SIZE) };
+		let end = (self.begin as usize + self.size.get() * memory::PAGE_SIZE) as *const c_void;
 		write!(
 			f,
 			"MemMapping {{ begin: {:p}, end: {:p}, flags: {} }}",
