@@ -260,20 +260,78 @@ pub struct OccupiedEntry<'h, K, V> {
 	inner: &'h mut Slot<K, V>,
 }
 
+impl<'h, K: Eq + Hash, V> OccupiedEntry<'h, K, V> {
+	/// Returns a mutable reference to the value.
+	pub fn get_mut(&mut self) -> &mut V {
+		unsafe { self.inner.value.assume_init_mut() }
+	}
+
+	/// Converts the [`OccupiedEntry`] into a mutable reference to the value in the entry with a
+	/// lifetime bound to the map itself.
+	pub fn into_mut(self) -> &'h mut V {
+		unsafe { self.inner.value.assume_init_mut() }
+	}
+
+	/// Sets the value of the entry, and returns the entry’s old value.
+	pub fn insert(&mut self, value: V) -> V {
+		mem::replace(unsafe { self.inner.value.assume_init_mut() }, value)
+	}
+}
+
 /// Vacant entry in the hashmap.
-pub struct VacantEntry<'h, K, V> {
+pub struct VacantEntry<'h, K: Eq + Hash, V, H: Default + Hasher> {
+	/// The hashmap containing the entry.
+	hm: &'h mut HashMap<K, V, H>,
 	/// The key to insert.
 	key: K,
-	/// The inner slot.
+	/// The offset of the inner slot.
 	///
 	/// If `None`, the hash map requires resizing for the insertion.
-	inner: Option<&'h mut Slot<K, V>>,
+	slot_off: Option<usize>,
+}
+
+impl<'h, K: Eq + Hash, V, H: Default + Hasher> VacantEntry<'h, K, V, H> {
+	/// Sets the value of the entry and returns a mutable reference to it.
+	pub fn insert(self, value: V) -> AllocResult<&'h mut V> {
+		let hash = hash::<_, H>(&self.key);
+		let slot_off = match self.slot_off {
+			Some(slot_off) => slot_off,
+			None => {
+				// Allocate space, then retry
+				self.hm.reserve(1)?;
+				// The insertion cannot fail because the collections is guaranteed to have space
+				// for the new object
+				find_slot::<K, V, _>(&self.hm.data, &self.key, hash, true)
+					.unwrap()
+					.0
+			}
+		};
+		self.hm.len += 1;
+		// Update control block
+		let (group, index) = get_slot_position::<K, V>(slot_off);
+		set_ctrl::<K, V>(&mut self.hm.data, group, index, h2(hash));
+		// Insert key/value
+		let slot = get_slot!(self.hm.data, slot_off, mut);
+		slot.key.write(self.key);
+		Ok(slot.value.write(value))
+	}
 }
 
 /// An entry in a hash map.
-pub enum Entry<'h, K: Eq + Hash, V> {
+pub enum Entry<'h, K: Eq + Hash, V, H: Default + Hasher> {
 	Occupied(OccupiedEntry<'h, K, V>),
-	Vacant(VacantEntry<'h, K, V>),
+	Vacant(VacantEntry<'h, K, V, H>),
+}
+
+impl<'h, K: Eq + Hash, V, H: Default + Hasher> Entry<'h, K, V, H> {
+	/// Ensures a value is in the entry by inserting the default if empty, and returns a mutable
+	/// reference to the value in the entry.
+	pub fn or_insert(self, default: V) -> AllocResult<&'h mut V> {
+		match self {
+			Entry::Occupied(e) => Ok(e.into_mut()),
+			Entry::Vacant(e) => e.insert(default),
+		}
+	}
 }
 
 /// The implementation of the hash map.
@@ -353,19 +411,21 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	}
 
 	/// Returns the entry for the given key.
-	pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
+	pub fn entry(&mut self, key: K) -> Entry<'_, K, V, H> {
 		let hash = hash::<_, H>(&key);
 		match find_slot::<K, V, _>(&self.data, &key, hash, true) {
 			Some((slot_off, true)) => Entry::Occupied(OccupiedEntry {
 				inner: get_slot!(self.data, slot_off, mut),
 			}),
 			Some((slot_off, false)) => Entry::Vacant(VacantEntry {
+				hm: self,
 				key,
-				inner: Some(get_slot!(self.data, slot_off, mut)),
+				slot_off: Some(slot_off),
 			}),
 			None => Entry::Vacant(VacantEntry {
+				hm: self,
 				key,
-				inner: None,
+				slot_off: None,
 			}),
 		}
 	}
@@ -421,12 +481,13 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	pub fn iter(&self) -> Iter<K, V, H> {
 		Iter {
 			hm: self,
+			inner: IterInner {
+				group: 0,
+				group_used: Mask::default(),
+				cursor: 0,
 
-			group: 0,
-			group_used: Mask::default(),
-			cursor: 0,
-
-			count: 0,
+				count: 0,
+			},
 		}
 	}
 
@@ -468,37 +529,11 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	///
 	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, key: K, value: V) -> AllocResult<Option<V>> {
-		let hash = hash::<_, H>(&key);
-		match find_slot::<K, V, _>(&self.data, &key, hash, true) {
-			// The entry already exists
-			Some((slot_off, true)) => {
-				let slot = get_slot!(self.data, slot_off, mut);
-				// No need to replace the key because `key == old.key` and the transitivity
-				// property holds, so future comparisons will be consistent
-				Ok(Some(mem::replace(
-					unsafe { slot.value.assume_init_mut() },
-					value,
-				)))
-			}
-			// The entry does not exist but a slot was found
-			Some((slot_off, false)) => {
-				self.len += 1;
-				// Update control block
-				let (group, index) = get_slot_position::<K, V>(slot_off);
-				set_ctrl::<K, V>(&mut self.data, group, index, h2(hash));
-				// Insert key/value
-				let slot = get_slot!(self.data, slot_off, mut);
-				slot.key.write(key);
-				slot.value.write(value);
-				Ok(None)
-			}
-			// The entry does not exist and no slot was found
-			None => {
-				// Allocate space, then retry
-				self.reserve(1)?;
-				// The insertion cannot fail because the collections is guaranteed to have space
-				// for the new object
-				self.insert(key, value).unwrap();
+		let entry = self.entry(key);
+		match entry {
+			Entry::Occupied(mut e) => Ok(Some(e.insert(value))),
+			Entry::Vacant(e) => {
+				e.insert(value)?;
 				Ok(None)
 			}
 		}
@@ -619,6 +654,39 @@ impl<K: Eq + Hash, V, H: Default + Hasher> FromIterator<(K, V)>
 	}
 }
 
+impl<K: Eq + Hash, V, H: Default + Hasher> IntoIterator for HashMap<K, V, H> {
+	type IntoIter = IntoIter<K, V, H>;
+	type Item = (K, V);
+
+	fn into_iter(self) -> Self::IntoIter {
+		IntoIter {
+			hm: self,
+			inner: IterInner {
+				group: 0,
+				group_used: Mask::default(),
+				cursor: 0,
+
+				count: 0,
+			},
+		}
+	}
+}
+
+impl<K: Eq + Hash + fmt::Debug, V: fmt::Debug, H: Default + Hasher> fmt::Debug
+	for HashMap<K, V, H>
+{
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "[")?;
+		for (i, (key, value)) in self.iter().enumerate() {
+			write!(f, "{key:?}: {value:?}")?;
+			if i + 1 < self.len() {
+				write!(f, ", ")?;
+			}
+		}
+		write!(f, "]")
+	}
+}
+
 impl<
 		K: Eq + Hash + TryClone<Error = E>,
 		V: TryClone<Error = E>,
@@ -643,14 +711,8 @@ impl<K: Eq + Hash, V, H: Default + Hasher> Drop for HashMap<K, V, H> {
 	}
 }
 
-/// Iterator for the [`HashMap`] structure.
-///
-/// This iterator doesn't guarantee any order since the HashMap itself doesn't store value in a
-/// specific order.
-pub struct Iter<'m, K: Hash + Eq, V, H: Default + Hasher> {
-	/// The hash map to iterate into.
-	hm: &'m HashMap<K, V, H>,
-
+/// Iterators logic.
+struct IterInner {
 	/// The current group to iterate on.
 	group: usize,
 	/// The current group's control block.
@@ -662,11 +724,16 @@ pub struct Iter<'m, K: Hash + Eq, V, H: Default + Hasher> {
 	count: usize,
 }
 
-impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
-	type Item = (&'m K, &'m V);
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let capacity = self.hm.capacity();
+impl IterInner {
+	/// Returns a tuple with the ID of the group and the cursor in that group, representing
+	/// position of the next element to iterate on.
+	///
+	/// If no element is left, the function returns `None`.
+	fn next_pos<K: Eq + Hash, V, H: Default + Hasher>(
+		&mut self,
+		hm: &HashMap<K, V, H>,
+	) -> Option<(usize, usize)> {
+		let capacity = hm.capacity();
 		// If no element remain, stop
 		if self.group * GROUP_SIZE + self.cursor >= capacity {
 			return None;
@@ -675,7 +742,7 @@ impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 		let cursor = loop {
 			// If at beginning of group, search for used elements
 			if self.cursor == 0 {
-				let ctrl = get_ctrl::<K, V>(&self.hm.data, self.group);
+				let ctrl = get_ctrl::<K, V>(&hm.data, self.group);
 				let mask = u8x16::splat(0x80);
 				self.group_used = ctrl.bitand(mask).simd_ne(mask);
 			}
@@ -694,49 +761,90 @@ impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 		// Step cursor
 		self.cursor = cursor + 1;
 		self.count += 1;
-		// Return element
-		let off = get_slot_offset::<K, V>(self.group, cursor);
+		Some((self.group, self.cursor))
+	}
+}
+
+/// Consuming iterator over the [`HashMap`] structure.
+pub struct IntoIter<K: Eq + Hash, V, H: Default + Hasher> {
+	/// The hash map.
+	hm: HashMap<K, V, H>,
+	/// Iterator logic.
+	inner: IterInner,
+}
+
+impl<K: Hash + Eq, V, H: Default + Hasher> Iterator for IntoIter<K, V, H> {
+	type Item = (K, V);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let (group, cursor) = self.inner.next_pos(&self.hm)?;
+		let off = get_slot_offset::<K, V>(group, cursor);
+		let slot = get_slot!(self.hm.data, off);
+		let (key, value) = unsafe { (slot.key.assume_init_read(), slot.value.assume_init_read()) };
+		Some((key, value))
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let remaining = self.hm.len - self.inner.count;
+		(remaining, Some(remaining))
+	}
+
+	fn count(self) -> usize {
+		self.size_hint().0
+	}
+}
+impl<K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for IntoIter<K, V, H> {}
+
+impl<K: Hash + Eq, V, H: Default + Hasher> FusedIterator for IntoIter<K, V, H> {}
+
+unsafe impl<K: Hash + Eq, V, H: Default + Hasher> TrustedLen for IntoIter<K, V, H> {}
+
+impl<K: Hash + Eq, V, H: Default + Hasher> Drop for IntoIter<K, V, H> {
+	fn drop(&mut self) {
+		// Drop remaining elements
+		for _ in self.by_ref() {}
+		// Prevent double drop
+		self.hm.data.clear();
+	}
+}
+
+/// Iterator of immutable references over the [`HashMap`] structure.
+///
+/// This iterator doesn't guarantee any order since the HashMap itself doesn't store value in a
+/// specific order.
+pub struct Iter<'m, K: Hash + Eq, V, H: Default + Hasher> {
+	/// The hash map to iterate into.
+	hm: &'m HashMap<K, V, H>,
+	/// Iterator logic.
+	inner: IterInner,
+}
+
+impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
+	type Item = (&'m K, &'m V);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let (group, cursor) = self.inner.next_pos(self.hm)?;
+		let off = get_slot_offset::<K, V>(group, cursor);
 		let slot = get_slot!(self.hm.data, off);
 		let (key, value) = unsafe { (slot.key.assume_init_ref(), slot.value.assume_init_ref()) };
 		Some((key, value))
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		let remaining = self.hm.len - self.count;
+		let remaining = self.hm.len - self.inner.count;
 		(remaining, Some(remaining))
 	}
 
 	fn count(self) -> usize {
-		self.hm.len - self.count
-	}
-}
-
-// TODO implement DoubleEndedIterator
-
-impl<'m, K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for Iter<'m, K, V, H> {
-	fn len(&self) -> usize {
 		self.size_hint().0
 	}
 }
 
+impl<'m, K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for Iter<'m, K, V, H> {}
+
 impl<'m, K: Hash + Eq, V, H: Default + Hasher> FusedIterator for Iter<'m, K, V, H> {}
 
 unsafe impl<'m, K: Hash + Eq, V, H: Default + Hasher> TrustedLen for Iter<'m, K, V, H> {}
-
-impl<K: Eq + Hash + fmt::Debug, V: fmt::Debug, H: Default + Hasher> fmt::Debug
-	for HashMap<K, V, H>
-{
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "[")?;
-		for (i, (key, value)) in self.iter().enumerate() {
-			write!(f, "{key:?}: {value:?}")?;
-			if i + 1 < self.len() {
-				write!(f, ", ")?;
-			}
-		}
-		write!(f, "]")
-	}
-}
 
 #[cfg(test)]
 mod test {

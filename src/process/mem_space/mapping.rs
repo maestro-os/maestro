@@ -44,7 +44,7 @@ use core::{ffi::c_void, fmt, num::NonZeroUsize, ops::Range, slice};
 /// A mapping in a memory space.
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
-	begin: *mut c_void,
+	begin: *const c_void,
 	/// The size of the mapping in pages.
 	size: NonZeroUsize,
 	/// The mapping's flags.
@@ -88,7 +88,7 @@ impl MemMapping {
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the mapping.
-	pub fn get_begin(&self) -> *mut c_void {
+	pub fn get_begin(&self) -> *const c_void {
 		self.begin
 	}
 

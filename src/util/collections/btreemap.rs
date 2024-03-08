@@ -439,6 +439,12 @@ impl<'t, K: Ord, V> OccupiedEntry<'t, K, V> {
 		&mut self.node.value
 	}
 
+	/// Converts the [`OccupiedEntry`] into a mutable reference to the value in the entry with a
+	/// lifetime bound to the map itself.
+	pub fn into_mut(self) -> &'t mut V {
+		&mut self.node.value
+	}
+
 	/// Sets the value to `value` and returns the previous value.
 	pub fn insert(&mut self, value: V) -> V {
 		mem::replace(self.get_mut(), value)

@@ -18,70 +18,71 @@
 
 //! Implementation of memory space transactions to modify [`MemSpaceState`] atomically.
 
-use super::{gap::MemGap, mapping::MemMapping, MemSpace, MemSpaceState};
+use super::{gap::MemGap, mapping::MemMapping, MemSpaceState};
 use crate::{
 	errno,
-	errno::{AllocError, AllocResult, EResult},
+	errno::{AllocError, AllocResult},
+	memory::vmem::{VMem, VMemTransaction},
 	util::collections::{
 		btreemap::{BTreeMap, Entry},
-		vec::Vec,
+		hashmap::HashMap,
 	},
 };
-use core::{ffi::c_void, mem, num::NonZeroUsize};
+use core::{ffi::c_void, hash::Hash, mem, num::NonZeroUsize};
 
-/// Applies the difference in `complement` to rollback a [`union`] operation.
+/// Applies the difference in `complement` to rollback operations.
 ///
 /// If the complement does not correspond to `on`, the function might panic.
-pub fn rollback_union<K: Ord, V>(on: &mut BTreeMap<K, V>, complement: Vec<(K, Option<V>)>) {
+pub fn rollback<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, complement: HashMap<K, Option<V>>) {
 	for (key, value) in complement {
-		// Apply diff
-		match value {
-			// Insertion cannot fail since `on` is guaranteed to already contain the key
-			Some(value) => {
-				on.insert(key, value).unwrap();
-			}
-			None => {
-				on.remove(&key);
-			}
+		rollback_impl(on, key, value);
+	}
+}
+
+fn rollback_impl<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, key: K, value: Option<V>) {
+	match value {
+		// Insertion cannot fail since `on` is guaranteed to already contain the key
+		Some(value) => {
+			on.insert(key, value).unwrap();
+		}
+		None => {
+			on.remove(&key);
 		}
 	}
 }
 
-fn union_impl<K: Clone + Ord, V>(
-	from: BTreeMap<K, V>,
-	to: &mut BTreeMap<K, V>,
-	complement: &mut Vec<(K, Option<V>)>,
+/// Insert an element in the [`BTreeMap`] `on`, together with rollback data.
+///
+/// `complement` is the complement used for rollback. The function inserts an element
+///
+/// The `discard` list is also updated to avoid discarding an element that would be restored by the
+/// complement.
+fn insert<K: Clone + Ord + Hash, V>(
+	key: K,
+	value: V,
+	on: &mut BTreeMap<K, V>,
+	complement: &mut HashMap<K, Option<V>>,
+	discard: Option<&mut HashMap<K, ()>>,
 ) -> AllocResult<()> {
-	for (key, new) in from {
-		// Insert new value and get previous
-		let old = match to.entry(key.clone()) {
-			Entry::Occupied(mut e) => Some(e.insert(new)),
-			Entry::Vacant(e) => {
-				e.insert(new)?;
-				None
-			}
-		};
-		// Keep previous value in complement vector
-		complement.push((key, old))?;
+	// Insert new value and get previous
+	let old = match on.entry(key.clone()) {
+		Entry::Occupied(mut e) => Some(e.insert(value)),
+		Entry::Vacant(_) => None,
+	};
+	// Update complement
+	// Insert `None` to reserve memory without dropping `old` on failure
+	let Ok(val) = complement.entry(key.clone()).or_insert(None) else {
+		// Memory allocation failure: rollback `on` for this element
+		rollback_impl(on, key, old);
+		return Err(AllocError);
+	};
+	// Write the actual complement value
+	*val = old;
+	// Do not discard an element that is to be restored by the complement
+	if let Some(discard) = discard {
+		discard.remove(&key);
 	}
 	Ok(())
-}
-
-/// Clones and inserts all elements of `from` to `to`.
-///
-/// The function returns the complement to be used to roll back the union with [`rollback`].
-pub fn union<K: Clone + Ord, V>(
-	from: BTreeMap<K, V>,
-	to: &mut BTreeMap<K, V>,
-) -> AllocResult<Vec<(K, Option<V>)>> {
-	let mut complement = Vec::with_capacity(from.len())?;
-	match union_impl(from, to, &mut complement) {
-		Ok(_) => Ok(complement),
-		Err(_) => {
-			rollback_union(to, complement);
-			Err(AllocError)
-		}
-	}
 }
 
 /// A transaction to be performed on a memory space.
@@ -89,91 +90,146 @@ pub fn union<K: Clone + Ord, V>(
 /// Since mapping or unmapping memory required separate insert and remove operations, and insert
 /// operations can fail, it is necessary to ensure every operation are performed, or rollback to
 /// avoid inconsistent states.
-#[derive(Default)]
-pub struct MemSpaceTransaction {
-	/// Buffer used to store insertions.
-	pub buffer_state: MemSpaceState,
-	/// The list of mappings to remove, by address.
-	pub remove_mappings: Vec<*const c_void>,
-	/// The list of gaps to remove, by address.
-	pub remove_gaps: Vec<*const c_void>,
+#[must_use = "A transaction must be committed, or its result is discarded"]
+pub(super) struct MemSpaceTransaction<'m, 'v> {
+	/// The memory space on which the transaction applies.
+	pub mem_space_state: &'m mut MemSpaceState,
+	/// The virtual memory transaction on which this transaction applies.
+	vmem_transaction: VMemTransaction<'v, false>,
+
+	/// The complement used to restore `gaps` on rollback.
+	gaps_complement: HashMap<*const c_void, Option<MemGap>>,
+	/// The complement used to restore `gaps_size` on rollback.
+	gaps_size_complement: HashMap<(NonZeroUsize, *const c_void), Option<()>>,
+	/// The complement used to restore `mappings` on rollback.
+	mappings_complement: HashMap<*const c_void, Option<MemMapping>>,
+
+	/// The list of gaps that must be discarded on commit.
+	gaps_discard: HashMap<(NonZeroUsize, *const c_void), ()>,
+	/// The list of mappings that must be discarded on commit.
+	mappings_discard: HashMap<*const c_void, ()>,
+
+	/// The new value for the `vmem_usage` field.
+	vmem_usage: usize,
 }
 
-/// Data used for transaction rollback.
-///
-/// This structure is used in the implementation of [`MemSpaceTransaction`].
-#[derive(Default)]
-struct RollbackData {
-	gaps_complement: Vec<(*const c_void, Option<MemGap>)>,
-	gaps_size_complement: Vec<((NonZeroUsize, *const c_void), Option<()>)>,
-	mappings_complement: Vec<(*const c_void, Option<MemMapping>)>,
-}
+impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
+	/// Begins a new transaction for the given memory space.
+	pub fn new(mem_space_state: &'m mut MemSpaceState, vmem: &'v mut VMem<false>) -> Self {
+		let vmem_usage = mem_space_state.vmem_usage;
+		Self {
+			mem_space_state,
+			vmem_transaction: vmem.transaction(),
 
-impl MemSpaceTransaction {
-	/// Rollbacks modifications made by [`commit_impl`].
-	#[cold]
-	fn rollback(on: &mut MemSpace, rollback_data: RollbackData) {
-		rollback_union(&mut on.state.gaps, rollback_data.gaps_complement);
-		rollback_union(&mut on.state.gaps_size, rollback_data.gaps_size_complement);
-		rollback_union(&mut on.state.mappings, rollback_data.mappings_complement);
+			gaps_complement: Default::default(),
+			gaps_size_complement: Default::default(),
+			mappings_complement: Default::default(),
+
+			gaps_discard: Default::default(),
+			mappings_discard: Default::default(),
+
+			vmem_usage,
+		}
 	}
 
-	fn commit_impl(&mut self, on: &mut MemSpace, rollback_data: &mut RollbackData) -> EResult<()> {
-		// Apply changes on the virtual memory context
-		let mut vmem_transaction = on.vmem.transaction();
-		// Unmap on virtual memory context
-		let iter = self
-			.remove_mappings
-			.iter()
-			.cloned()
-			.filter_map(|m| self.buffer_state.mappings.get(&(m as _)));
-		for m in iter {
-			let size = m.get_size().get();
-			m.unmap(0..size, &mut vmem_transaction)?;
-		}
-		// Map on virtual memory context
-		for (_, m) in self.buffer_state.mappings.iter_mut() {
-			m.apply_to(&mut vmem_transaction)?;
-		}
-		// Update memory space structures
-		let gaps = mem::take(&mut self.buffer_state.gaps);
-		rollback_data.gaps_complement = union(gaps, &mut on.state.gaps)?;
-		let gaps_size = mem::take(&mut self.buffer_state.gaps_size);
-		rollback_data.gaps_size_complement = union(gaps_size, &mut on.state.gaps_size)?;
-		let mappings = mem::take(&mut self.buffer_state.mappings);
-		rollback_data.mappings_complement = union(mappings, &mut on.state.mappings)?;
-		// Here, all fallible operations have been performed successfully
-		vmem_transaction.commit();
-		// Removals can be performed after because removals that overlap with insertions have been
-		// removed. This reduces the complexity of the rollback operation since removals cannot
-		// fail
-		for m in self.remove_mappings.iter().cloned() {
-			on.state.mappings.remove(&(m as _));
-		}
-		for g in self.remove_gaps.iter().cloned() {
-			on.state.remove_gap(g as _);
+	/// Inserts the given gap into the state.
+	///
+	/// On failure, the transaction is dropped and rollbacked.
+	pub fn insert_gap(&mut self, gap: MemGap) -> AllocResult<()> {
+		let gap_ptr = gap.get_begin();
+		let gap_size = gap.get_size();
+		insert(
+			gap_ptr,
+			gap,
+			&mut self.mem_space_state.gaps,
+			&mut self.gaps_complement,
+			None,
+		)?;
+		insert(
+			(gap_size, gap_ptr),
+			(),
+			&mut self.mem_space_state.gaps_size,
+			&mut self.gaps_size_complement,
+			Some(&mut self.gaps_discard),
+		)?;
+		Ok(())
+	}
+
+	/// Removes the gap beginning at the given address from the state.
+	///
+	/// On failure, the transaction is dropped and rollbacked.
+	pub fn remove_gap(&mut self, gap_begin: *const c_void) -> AllocResult<()> {
+		if let Some(gap) = self.mem_space_state.gaps.get(&gap_begin) {
+			self.gaps_discard.insert((gap.get_size(), gap_begin), ())?;
 		}
 		Ok(())
 	}
 
-	/// Commits the transaction on the given state.
-	pub fn commit(mut self, on: &mut MemSpace) -> AllocResult<()> {
-		// Filter out remove orders that are overlapping with insert orders
-		self.remove_mappings
-			.retain(|m| !self.buffer_state.mappings.contains_key(&(*m as _)));
-		self.remove_gaps
-			.retain(|g| !self.buffer_state.gaps.contains_key(&(*g as _)));
-		// Commit
-		let mut rollback_data = RollbackData::default();
-		let res = self.commit_impl(on, &mut rollback_data);
-		// On allocation failure, rollback
-		// Other kind of errors may appear but have to be ignored, such as I/O error on disk
-		match res {
-			Err(e) if e.as_int() == errno::ENOMEM => {
-				Self::rollback(on, rollback_data);
-				Err(AllocError)
+	/// Inserts the given mapping into the state.
+	///
+	/// On failure, the transaction is dropped and rollbacked.
+	pub fn insert_mapping(&mut self, mut mapping: MemMapping) -> AllocResult<()> {
+		let size = mapping.get_size().get();
+		mapping.apply_to(&mut self.vmem_transaction)?;
+		insert(
+			mapping.get_begin(),
+			mapping,
+			&mut self.mem_space_state.mappings,
+			&mut self.mappings_complement,
+			Some(&mut self.mappings_discard),
+		)?;
+		self.vmem_usage += size;
+		Ok(())
+	}
+
+	/// Removes the mapping beginning at the given address from the state.
+	///
+	/// On failure, the transaction is dropped and rollbacked.
+	pub fn remove_mapping(&mut self, mapping_begin: *const c_void) -> AllocResult<()> {
+		if let Some(mapping) = self.mem_space_state.mappings.get(&mapping_begin) {
+			self.mappings_discard.insert(mapping_begin, ())?;
+			let size = mapping.get_size().get();
+			// Apply to vmem
+			let res = mapping.unmap(0..size, &mut self.vmem_transaction);
+			// Ignore disk I/O errors
+			if matches!(res, Err(e) if e.as_int() == errno::ENOMEM) {
+				return Err(AllocError);
 			}
-			_ => Ok(()),
+			// Update usage
+			self.vmem_usage -= size;
 		}
+		Ok(())
+	}
+
+	/// Commits the transaction.
+	pub fn commit(&mut self) {
+		// Cancel rollback
+		self.gaps_complement.clear();
+		self.gaps_size_complement.clear();
+		self.mappings_complement.clear();
+		// Discard gaps
+		for (key @ (_, ptr), _) in self.gaps_discard.iter() {
+			self.mem_space_state.gaps.remove(ptr);
+			self.mem_space_state.gaps_size.remove(key);
+		}
+		// Discard mappings
+		for (ptr, _) in self.mappings_discard.iter() {
+			self.mem_space_state.mappings.remove(ptr);
+		}
+		// Update vmem
+		self.mem_space_state.vmem_usage = self.vmem_usage;
+		self.vmem_transaction.commit();
+	}
+}
+
+impl<'m, 'v> Drop for MemSpaceTransaction<'m, 'v> {
+	fn drop(&mut self) {
+		// If the transaction was not committed, rollback
+		let gaps_complement = mem::take(&mut self.gaps_complement);
+		rollback(&mut self.mem_space_state.gaps, gaps_complement);
+		let gaps_size_complement = mem::take(&mut self.gaps_size_complement);
+		rollback(&mut self.mem_space_state.gaps_size, gaps_size_complement);
+		let mappings_complement = mem::take(&mut self.mappings_complement);
+		rollback(&mut self.mem_space_state.mappings, mappings_complement);
 	}
 }

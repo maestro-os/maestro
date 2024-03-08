@@ -149,6 +149,7 @@ impl ACPIData {
 		let mut transaction = tmp_vmem.transaction();
 		transaction.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
 		transaction.commit();
+		drop(transaction);
 		tmp_vmem.bind();
 
 		let (off, data) = {

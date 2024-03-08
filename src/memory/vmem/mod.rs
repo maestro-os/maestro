@@ -274,7 +274,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 	}
 
 	/// Validates the transaction.
-	pub fn commit(mut self) {
+	pub fn commit(&mut self) {
 		self.rollback.clear();
 	}
 }
@@ -440,6 +440,7 @@ pub(crate) fn init() -> AllocResult<()> {
 		)?;
 	}
 	transaction.commit();
+	drop(transaction);
 	kernel_vmem.bind();
 	unsafe {
 		KERNEL_VMEM.init(Mutex::new(kernel_vmem));
@@ -478,6 +479,7 @@ mod test {
 		let mut transaction = vmem.transaction();
 		transaction.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 		transaction.commit();
+		drop(transaction);
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
@@ -496,6 +498,7 @@ mod test {
 		transaction.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 		transaction.map(0x200000 as _, 0x100000 as _, 0).unwrap();
 		transaction.commit();
+		drop(transaction);
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
@@ -514,6 +517,7 @@ mod test {
 		transaction.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 		transaction.unmap(0x100000 as _).unwrap();
 		transaction.commit();
+		drop(transaction);
 		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
 			assert_eq!(vmem.translate(i as _), None);
 		}
