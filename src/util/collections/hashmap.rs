@@ -272,7 +272,7 @@ impl<'h, K: Eq + Hash, V> OccupiedEntry<'h, K, V> {
 		unsafe { self.inner.value.assume_init_mut() }
 	}
 
-	/// Sets the value of the entry, and returns the entry’s old value.
+	/// Sets the value of the entry, and returns the entry's old value.
 	pub fn insert(&mut self, value: V) -> V {
 		mem::replace(unsafe { self.inner.value.assume_init_mut() }, value)
 	}
@@ -284,6 +284,8 @@ pub struct VacantEntry<'h, K: Eq + Hash, V, H: Default + Hasher> {
 	hm: &'h mut HashMap<K, V, H>,
 	/// The key to insert.
 	key: K,
+	/// The hash of the key.
+	hash: u64,
 	/// The offset of the inner slot.
 	///
 	/// If `None`, the hash map requires resizing for the insertion.
@@ -293,15 +295,14 @@ pub struct VacantEntry<'h, K: Eq + Hash, V, H: Default + Hasher> {
 impl<'h, K: Eq + Hash, V, H: Default + Hasher> VacantEntry<'h, K, V, H> {
 	/// Sets the value of the entry and returns a mutable reference to it.
 	pub fn insert(self, value: V) -> AllocResult<&'h mut V> {
-		let hash = hash::<_, H>(&self.key);
 		let slot_off = match self.slot_off {
 			Some(slot_off) => slot_off,
 			None => {
-				// Allocate space, then retry
+				// Allocate space for the new object
 				self.hm.reserve(1)?;
-				// The insertion cannot fail because the collections is guaranteed to have space
-				// for the new object
-				find_slot::<K, V, _>(&self.hm.data, &self.key, hash, true)
+				// Cannot fail because the collection is guaranteed to have space for the new
+				// object
+				find_slot::<K, V, _>(&self.hm.data, &self.key, self.hash, true)
 					.unwrap()
 					.0
 			}
@@ -309,7 +310,7 @@ impl<'h, K: Eq + Hash, V, H: Default + Hasher> VacantEntry<'h, K, V, H> {
 		self.hm.len += 1;
 		// Update control block
 		let (group, index) = get_slot_position::<K, V>(slot_off);
-		set_ctrl::<K, V>(&mut self.hm.data, group, index, h2(hash));
+		set_ctrl::<K, V>(&mut self.hm.data, group, index, h2(self.hash));
 		// Insert key/value
 		let slot = get_slot!(self.hm.data, slot_off, mut);
 		slot.key.write(self.key);
@@ -420,11 +421,13 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			Some((slot_off, false)) => Entry::Vacant(VacantEntry {
 				hm: self,
 				key,
+				hash,
 				slot_off: Some(slot_off),
 			}),
 			None => Entry::Vacant(VacantEntry {
 				hm: self,
 				key,
+				hash,
 				slot_off: None,
 			}),
 		}
@@ -761,7 +764,7 @@ impl IterInner {
 		// Step cursor
 		self.cursor = cursor + 1;
 		self.count += 1;
-		Some((self.group, self.cursor))
+		Some((self.group, cursor))
 	}
 }
 
