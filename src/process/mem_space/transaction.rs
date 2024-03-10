@@ -23,10 +23,7 @@ use crate::{
 	errno,
 	errno::{AllocError, AllocResult},
 	memory::vmem::{VMem, VMemTransaction},
-	util::collections::{
-		btreemap::{BTreeMap, Entry},
-		hashmap::HashMap,
-	},
+	util::collections::{btreemap::BTreeMap, hashmap::HashMap},
 };
 use core::{ffi::c_void, hash::Hash, mem, num::NonZeroUsize};
 
@@ -65,11 +62,7 @@ fn insert<K: Clone + Ord + Hash, V>(
 	discard: Option<&mut HashMap<K, ()>>,
 ) -> AllocResult<()> {
 	// Insert new value and get previous
-	let old = match on.entry(key.clone()) {
-		Entry::Occupied(mut e) => Some(e.insert(value)),
-		Entry::Vacant(_) => None,
-	};
-	// Update complement
+	let old = on.insert(key.clone(), value)?;
 	// Insert `None` to reserve memory without dropping `old` on failure
 	let Ok(val) = complement.entry(key.clone()).or_insert(None) else {
 		// Memory allocation failure: rollback `on` for this element
