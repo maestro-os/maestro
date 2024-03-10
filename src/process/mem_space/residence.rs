@@ -46,6 +46,7 @@ fn zeroed_page() -> NonNull<Page> {
 /// Wrapper for an allocated physical page of memory.
 ///
 /// On drop, the page is freed.
+#[derive(Debug)]
 pub struct ResidencePage(NonNull<Page>);
 
 impl ResidencePage {
@@ -61,7 +62,7 @@ impl ResidencePage {
 	/// # Safety
 	///
 	/// Using the pointed to by the given pointer is undefined.
-	pub unsafe fn as_ptr(&self) -> *const Page {
+	pub unsafe fn ptr(&self) -> *const Page {
 		self.0.as_ptr()
 	}
 }
@@ -78,7 +79,7 @@ impl Drop for ResidencePage {
 // TODO Disallow clone and use a special function + Drop to increment/decrement reference counters
 /// A map residence is the source of the data on a physical page used by a mapping. It is also the
 /// location to which the data is to be synchronized when modified.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum MapResidence {
 	/// The mapping does not reside anywhere except on the main memory.
 	Normal,
@@ -116,7 +117,7 @@ impl MapResidence {
 		matches!(self, MapResidence::Normal)
 	}
 
-	/// Returns the default page for the mapping, if applicable.
+	/// Returns the default physical page for the mapping, if applicable.
 	///
 	/// If no default page exist, pages should be allocated directly.
 	pub fn get_default_page(&self) -> Option<NonNull<Page>> {
@@ -150,7 +151,7 @@ impl MapResidence {
 		match self {
 			MapResidence::Normal => {
 				let page = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?.cast();
-				Arc::new(ResidencePage(page))
+				Arc::new(ResidencePage::new(page))
 			}
 			MapResidence::Static {
 				pages,

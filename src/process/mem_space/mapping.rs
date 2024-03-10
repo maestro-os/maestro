@@ -39,9 +39,10 @@ use crate::{
 	},
 	util::{collections::vec::Vec, io::IO, ptr::arc::Arc, TryClone},
 };
-use core::{ffi::c_void, fmt, num::NonZeroUsize, ops::Range, slice};
+use core::{ffi::c_void, mem, num::NonZeroUsize, ops::Range, slice};
 
 /// A mapping in a memory space.
+#[derive(Debug)]
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
 	begin: *const c_void,
@@ -69,7 +70,7 @@ impl MemMapping {
 	///   mapping doesn't point to any file.
 	/// - `residence` is the residence for the mapping.
 	pub fn new(
-		begin: *mut c_void,
+		begin: *const c_void,
 		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
@@ -141,7 +142,7 @@ impl MemMapping {
 		phys_page: &Arc<ResidencePage>,
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> AllocResult<()> {
-		let physaddr = unsafe { (**phys_page).as_ptr() };
+		let physaddr = unsafe { phys_page.ptr() };
 		let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
 		let flags = self.get_vmem_flags(Some(phys_page));
 		vmem_transaction.map(physaddr as _, virtaddr, flags)
@@ -177,22 +178,23 @@ impl MemMapping {
 		}
 		// Allocate and map new page
 		let new = self.residence.acquire_page(offset)?;
-		self.update_offset(offset, &new, vmem_transaction)?;
-		// Get old page as mutable
-		let old = &mut self.phys_pages[offset];
 		// Tells whether a copy or zero is necessary
 		let copy_or_zero = self.residence.is_normal();
 		if copy_or_zero {
-			if let Some(old) = &old {
+			if let Some(old) = &self.phys_pages[offset] {
 				// Map old page for copy
-				let physaddr = unsafe { (**old).as_ptr() as _ };
+				let physaddr = unsafe { old.ptr() as _ };
 				vmem_transaction.map(physaddr, COPY_BUFFER as _, 0)?;
 			}
 		}
 		// Tells whether a copy is necessary
 		let copy = old.is_some();
+		// Update offset last to make sure the new page is not freed after map on memory allocation
+		// failure
+		self.update_offset(offset, &new, vmem_transaction)?;
 		// No fallible operation left, store the new page
-		*old = Some(new);
+		// Keep the old page until the end of the function to ensure copying the page is valid
+		let old = mem::replace(&mut self.phys_pages[offset], Some(new));
 		if !copy_or_zero {
 			return Ok(());
 		}
@@ -214,6 +216,7 @@ impl MemMapping {
 				});
 			});
 		}
+		drop(old);
 		Ok(())
 	}
 
@@ -221,12 +224,12 @@ impl MemMapping {
 	pub fn apply_to(&mut self, vmem_transaction: &mut VMemTransaction<false>) -> AllocResult<()> {
 		let default_page = self.residence.get_default_page();
 		if let Some(default_page) = default_page {
-			for (i, phys_page) in self.phys_pages.iter().enumerate() {
+			for (offset, phys_page) in self.phys_pages.iter().enumerate() {
 				let physaddr = phys_page
 					.as_ref()
-					.map(|p| unsafe { (**p).as_ptr() })
+					.map(|p| unsafe { p.ptr() })
 					.unwrap_or(default_page.as_ptr() as _);
-				let virtaddr = (self.begin as usize + i * memory::PAGE_SIZE) as _;
+				let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
 				let flags = self.get_vmem_flags(phys_page.as_ref());
 				vmem_transaction.map(physaddr as _, virtaddr, flags)?;
 				// TODO invalidate cache for this page
@@ -257,7 +260,6 @@ impl MemMapping {
 		begin: usize,
 		size: usize,
 	) -> AllocResult<(Option<Self>, Option<MemGap>, Option<Self>)> {
-		let begin_ptr = (self.begin as usize + begin * memory::PAGE_SIZE) as _;
 		let prev = NonZeroUsize::new(begin)
 			.map(|size| {
 				Ok(MemMapping {
@@ -271,7 +273,7 @@ impl MemMapping {
 			})
 			.transpose()?;
 		let gap = NonZeroUsize::new(size).map(|size| MemGap {
-			begin: begin_ptr,
+			begin: (self.begin as usize + begin * memory::PAGE_SIZE) as _,
 			size,
 		});
 		// The gap's end
@@ -282,11 +284,10 @@ impl MemMapping {
 			.checked_sub(end)
 			.and_then(NonZeroUsize::new)
 			.map(|size| {
-				let begin = (self.begin as usize + end * memory::PAGE_SIZE) as _;
 				let mut residence = self.residence.clone();
 				residence.offset_add(end);
 				Ok(Self {
-					begin,
+					begin: (self.begin as usize + end * memory::PAGE_SIZE) as _,
 					size,
 					flags: self.flags,
 					residence,
@@ -377,16 +378,5 @@ impl TryClone for MemMapping {
 
 			phys_pages: self.phys_pages.try_clone()?,
 		})
-	}
-}
-
-impl fmt::Debug for MemMapping {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let end = (self.begin as usize + self.size.get() * memory::PAGE_SIZE) as *const c_void;
-		write!(
-			f,
-			"MemMapping {{ begin: {:p}, end: {:p}, flags: {} }}",
-			self.begin, end, self.flags,
-		)
 	}
 }

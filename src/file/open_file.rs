@@ -89,6 +89,7 @@ static OPEN_FILES: Mutex<HashMap<FileLocation, usize>> = Mutex::new(HashMap::new
 ///
 /// This structure is pointed to by file descriptors and point to files.
 /// They exist to ensure several file descriptors can share the same open file.
+#[derive(Debug)]
 pub struct OpenFile {
 	/// The open file. This is an option to allow easier dropping implementation.
 	file: Option<Arc<Mutex<File>>>,

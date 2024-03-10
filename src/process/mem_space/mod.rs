@@ -129,11 +129,12 @@ fn remove_gaps_in_range(
 		.mem_space_state
 		.gaps
 		.range(search_start..end)
-		.map(|(a, b)| (*a, b.clone()))
+		.map(|(_, b)| b.clone())
 		.collect::<CollectResult<Vec<_>>>()
 		.0?;
 	// Iterate on gaps and apply modifications
-	for (gap_begin, gap) in gaps {
+	for gap in gaps {
+		let gap_begin = gap.get_begin();
 		let gap_end = gap.get_end();
 		// Compute range to remove
 		let start = (start as usize).clamp(gap_begin as usize, gap_end as usize);
@@ -335,29 +336,27 @@ impl MemSpace {
 				(gap, 0)
 			}
 			MapConstraint::Hint(addr) => {
-				// Get the gap for the pointer
-				let gap = transaction
+				transaction
 					.mem_space_state
+					// Get the gap for the pointer
 					.get_gap_for_ptr(addr)
-					.ok_or(AllocError)?
-					.clone();
-				let off = gap.get_page_offset_for(addr);
-				// Check whether the mapping fits in the gap
-				let fit = off
-					.checked_add(size.get())
-					.map(|end| end <= gap.get_size().get())
-					.unwrap_or(false);
-				if fit {
-					(gap, off)
-				} else {
+					.map(|gap| gap)
+					.and_then(|gap| {
+						// Offset in the gap
+						let off = gap.get_page_offset_for(addr);
+						// Check whether the mapping fits in the gap
+						let Some(end) = off.checked_add(size.get()) else {
+							return None;
+						};
+						(end <= gap.get_size().get()).then_some((gap.clone(), off))
+					})
 					// Hint cannot be satisfied. Get a gap large enough
-					let gap = transaction
-						.mem_space_state
-						.get_gap(size)
-						.ok_or(AllocError)?
-						.clone();
-					(gap, 0)
-				}
+					.or_else(|| {
+						let gap = transaction.mem_space_state.get_gap(size)?;
+						Some((gap.clone(), 0))
+					})
+					.ok_or(AllocError)?
+					.clone()
 			}
 			MapConstraint::None => {
 				let gap = transaction
@@ -385,7 +384,6 @@ impl MemSpace {
 		Ok(addr)
 	}
 
-	// TODO Optimize (currently O(n log n))
 	/// Implementation for `unmap`.
 	///
 	/// If `nogap` is `true`, the function does not create any gap.
@@ -401,24 +399,24 @@ impl MemSpace {
 		let mut i = 0;
 		while i < size.get() {
 			// The current page's beginning
-			let page_ptr = (ptr as usize + (i * memory::PAGE_SIZE)) as *const c_void;
+			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const c_void;
 			// The mapping containing the page
 			let Some(mapping) = transaction.mem_space_state.get_mapping_for_ptr(page_ptr) else {
-				// TODO jump to next mapping directly using binary tree
+				// TODO jump to next mapping directly using binary tree (currently O(n log n))
 				i += 1;
 				continue;
 			};
 			// The pointer to the beginning of the mapping
-			let mapping_ptr = mapping.get_begin();
+			let mapping_begin = mapping.get_begin();
 			// The offset in the mapping to the beginning of pages to unmap
-			let begin = (page_ptr as usize - mapping_ptr as usize) / memory::PAGE_SIZE;
+			let begin = (page_ptr as usize - mapping_begin as usize) / memory::PAGE_SIZE;
 			// The number of pages to unmap in the mapping
 			let pages = min(size.get() - i, mapping.get_size().get() - begin);
 			i += pages;
 			// Newly created mappings and gap after removing parts of the previous one
 			let (prev, gap, next) = mapping.split(begin, pages)?;
 			// Remove the old mapping and insert new ones
-			transaction.remove_mapping(mapping_ptr)?;
+			transaction.remove_mapping(mapping_begin)?;
 			if let Some(m) = prev {
 				transaction.insert_mapping(m)?;
 			}
