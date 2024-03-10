@@ -59,7 +59,7 @@ fn insert<K: Clone + Ord + Hash, V>(
 	value: V,
 	on: &mut BTreeMap<K, V>,
 	complement: &mut HashMap<K, Option<V>>,
-	discard: Option<&mut HashMap<K, ()>>,
+	discard: &mut HashMap<K, ()>,
 ) -> AllocResult<()> {
 	// Insert new value and get previous
 	let old = on.insert(key.clone(), value)?;
@@ -72,9 +72,7 @@ fn insert<K: Clone + Ord + Hash, V>(
 	// Write the actual complement value
 	*val = old;
 	// Do not discard an element that is to be restored by the complement
-	if let Some(discard) = discard {
-		discard.remove(&key);
-	}
+	discard.remove(&key);
 	Ok(())
 }
 
@@ -98,7 +96,7 @@ pub(super) struct MemSpaceTransaction<'m, 'v> {
 	mappings_complement: HashMap<*const c_void, Option<MemMapping>>,
 
 	/// The list of gaps that must be discarded on commit.
-	gaps_discard: HashMap<(NonZeroUsize, *const c_void), ()>,
+	gaps_discard: HashMap<*const c_void, ()>,
 	/// The list of mappings that must be discarded on commit.
 	mappings_discard: HashMap<*const c_void, ()>,
 
@@ -129,21 +127,12 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	///
 	/// On failure, the transaction is dropped and rollbacked.
 	pub fn insert_gap(&mut self, gap: MemGap) -> AllocResult<()> {
-		let gap_ptr = gap.get_begin();
-		let gap_size = gap.get_size();
 		insert(
-			gap_ptr,
+			gap.get_begin(),
 			gap,
 			&mut self.mem_space_state.gaps,
 			&mut self.gaps_complement,
-			None,
-		)?;
-		insert(
-			(gap_size, gap_ptr),
-			(),
-			&mut self.mem_space_state.gaps_size,
-			&mut self.gaps_size_complement,
-			Some(&mut self.gaps_discard),
+			&mut self.gaps_discard,
 		)?;
 		Ok(())
 	}
@@ -153,7 +142,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	/// On failure, the transaction is dropped and rollbacked.
 	pub fn remove_gap(&mut self, gap_begin: *const c_void) -> AllocResult<()> {
 		if let Some(gap) = self.mem_space_state.gaps.get(&gap_begin) {
-			self.gaps_discard.insert((gap.get_size(), gap_begin), ())?;
+			self.gaps_discard.insert(gap.get_begin(), ())?;
 		}
 		Ok(())
 	}
@@ -169,7 +158,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 			mapping,
 			&mut self.mem_space_state.mappings,
 			&mut self.mappings_complement,
-			Some(&mut self.mappings_discard),
+			&mut self.mappings_discard,
 		)?;
 		self.vmem_usage += size;
 		Ok(())
@@ -201,9 +190,8 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 		self.gaps_size_complement.clear();
 		self.mappings_complement.clear();
 		// Discard gaps
-		for (key @ (_, ptr), _) in self.gaps_discard.iter() {
+		for (ptr, _) in self.gaps_discard.iter() {
 			self.mem_space_state.gaps.remove(ptr);
-			self.mem_space_state.gaps_size.remove(key);
 		}
 		// Discard mappings
 		for (ptr, _) in self.mappings_discard.iter() {
@@ -220,8 +208,6 @@ impl<'m, 'v> Drop for MemSpaceTransaction<'m, 'v> {
 		// If the transaction was not committed, rollback
 		let gaps_complement = mem::take(&mut self.gaps_complement);
 		rollback(&mut self.mem_space_state.gaps, gaps_complement);
-		let gaps_size_complement = mem::take(&mut self.gaps_size_complement);
-		rollback(&mut self.mem_space_state.gaps_size, gaps_size_complement);
 		let mappings_complement = mem::take(&mut self.mappings_complement);
 		rollback(&mut self.mem_space_state.mappings, mappings_complement);
 	}

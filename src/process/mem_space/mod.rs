@@ -46,7 +46,7 @@ use core::{
 	ffi::c_void,
 	fmt,
 	num::NonZeroUsize,
-	ptr::{null, null_mut},
+	ptr::null_mut,
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -160,11 +160,6 @@ struct MemSpaceState {
 	/// The collection is sorted by pointer to the beginning of the mapping on the virtual
 	/// memory.
 	gaps: BTreeMap<*const c_void, MemGap>,
-	/// Binary tree storing the list of memory gaps, sorted by size and then by
-	/// beginning address.
-	///
-	/// The address must be present in the key because several gaps may have the same size.
-	gaps_size: BTreeMap<(NonZeroUsize, *const c_void), ()>,
 	/// Binary tree storing the list of memory mappings.
 	///
 	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
@@ -183,7 +178,6 @@ impl Default for MemSpaceState {
 	fn default() -> Self {
 		Self {
 			gaps: Default::default(),
-			gaps_size: Default::default(),
 			mappings: Default::default(),
 
 			vmem_usage: 0,
@@ -201,10 +195,10 @@ impl MemSpaceState {
 	///
 	/// If no gap large enough is available, the function returns `None`.
 	fn get_gap(&self, size: NonZeroUsize) -> Option<&MemGap> {
-		let ((_, ptr), _) = self.gaps_size.range((size, null::<c_void>())..).next()?;
-		let gap = self.gaps.get(ptr).unwrap();
-		debug_assert!(gap.get_size() >= size);
-		Some(gap)
+		self.gaps
+			.iter()
+			.map(|(_, g)| g)
+			.find(|g| g.get_size() >= size)
 	}
 
 	/// Comparison function to search for the object containing `ptr`.
@@ -598,7 +592,6 @@ impl MemSpace {
 	pub fn fork(&mut self) -> AllocResult<MemSpace> {
 		// Clone gaps
 		let gaps = self.state.gaps.try_clone()?;
-		let gaps_size = self.state.gaps_size.try_clone()?;
 		// Clone vmem and mappings and update them for COW
 		let mut new_vmem = VMem::new()?;
 		let mut vmem_transaction = self.vmem.transaction();
@@ -623,7 +616,6 @@ impl MemSpace {
 		Ok(Self {
 			state: MemSpaceState {
 				gaps,
-				gaps_size,
 				mappings,
 
 				vmem_usage: self.state.vmem_usage,
