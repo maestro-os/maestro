@@ -117,14 +117,12 @@ impl MemMapping {
 		Arc::strong_count(phys_page) > 1
 	}
 
-	/// Returns the virtual memory context flags for the given `page`.
+	/// Returns virtual memory context flags.
 	///
-	/// If `page` is `None`, usage of the default page is assumed.
-	fn get_vmem_flags(&self, phys_page: Option<&Arc<ResidencePage>>) -> u32 {
+	/// If `write` is `false, write is disabled even if enabled on the mapping.
+	fn get_vmem_flags(&self, write: bool) -> u32 {
 		let mut flags = 0;
-		if self.flags & super::MAPPING_FLAG_WRITE != 0
-			&& matches!(phys_page, Some(p) if !Self::is_cow(p, self.flags))
-		{
+		if write && self.flags & super::MAPPING_FLAG_WRITE != 0 {
 			#[cfg(target_arch = "x86")]
 			flags |= vmem::x86::FLAG_WRITE;
 		}
@@ -144,7 +142,7 @@ impl MemMapping {
 	) -> AllocResult<()> {
 		let physaddr = unsafe { phys_page.ptr() };
 		let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
-		let flags = self.get_vmem_flags(Some(phys_page));
+		let flags = self.get_vmem_flags(true);
 		vmem_transaction.map(physaddr as _, virtaddr, flags)
 		// TODO invalidate cache for this page
 	}
@@ -225,12 +223,16 @@ impl MemMapping {
 		let default_page = self.residence.get_default_page();
 		if let Some(default_page) = default_page {
 			for (offset, phys_page) in self.phys_pages.iter().enumerate() {
-				let physaddr = phys_page
+				let (physaddr, write) = phys_page
 					.as_ref()
-					.map(|p| unsafe { p.ptr() })
-					.unwrap_or(default_page.as_ptr() as _);
+					.map(|p| {
+						let ptr = unsafe { p.ptr() };
+						let write = !Self::is_cow(p, self.flags);
+						(ptr, write)
+					})
+					.unwrap_or((default_page.as_ptr() as _, false));
 				let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
-				let flags = self.get_vmem_flags(phys_page.as_ref());
+				let flags = self.get_vmem_flags(write);
 				vmem_transaction.map(physaddr as _, virtaddr, flags)?;
 				// TODO invalidate cache for this page
 			}

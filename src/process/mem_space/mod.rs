@@ -340,14 +340,11 @@ impl MemSpace {
 					.mem_space_state
 					// Get the gap for the pointer
 					.get_gap_for_ptr(addr)
-					.map(|gap| gap)
 					.and_then(|gap| {
 						// Offset in the gap
 						let off = gap.get_page_offset_for(addr);
 						// Check whether the mapping fits in the gap
-						let Some(end) = off.checked_add(size.get()) else {
-							return None;
-						};
+						let end = off.checked_add(size.get())?;
 						(end <= gap.get_size().get()).then_some((gap.clone(), off))
 					})
 					// Hint cannot be satisfied. Get a gap large enough
@@ -598,18 +595,18 @@ impl MemSpace {
 			.state
 			.mappings
 			.iter_mut()
-			.map(|(p, m)| {
-				let new_mapping = m.try_clone()?;
-				m.apply_to(&mut vmem_transaction)?;
-				m.apply_to(&mut new_vmem_transaction)?;
+			.map(|(p, mapping)| {
+				let mut new_mapping = mapping.try_clone()?;
+				mapping.apply_to(&mut vmem_transaction)?;
+				new_mapping.apply_to(&mut new_vmem_transaction)?;
 				Ok((*p, new_mapping))
 			})
 			.collect::<AllocResult<CollectResult<_>>>()?
 			.0?;
 		// No fallible operation left, commit
 		new_vmem_transaction.commit();
-		drop(new_vmem_transaction);
 		vmem_transaction.commit();
+		drop(new_vmem_transaction);
 		drop(vmem_transaction);
 		Ok(Self {
 			state: MemSpaceState {
