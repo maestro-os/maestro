@@ -44,7 +44,7 @@ use crate::{
 use core::{
 	cmp::{min, Ordering},
 	ffi::c_void,
-	fmt,
+	fmt, mem,
 	num::NonZeroUsize,
 	ptr::null_mut,
 };
@@ -792,6 +792,17 @@ impl fmt::Debug for MemSpace {
 			}
 		}
 		write!(f, "]}}")
+	}
+}
+
+impl Drop for MemSpace {
+	fn drop(&mut self) {
+		// Synchronize all mappings to disk
+		let mappings = mem::take(&mut self.state.mappings);
+		for (_, m) in mappings {
+			// Ignore I/O errors
+			let _ = m.fs_sync(&self.vmem);
+		}
 	}
 }
 
