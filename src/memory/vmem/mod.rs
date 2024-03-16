@@ -210,6 +210,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 			return Err(AllocError);
 		}
 		// Map each page
+		self.rollback.reserve(pages)?;
 		for i in 0..pages {
 			let physaddr = (physaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
 			let virtaddr = (virtaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
@@ -252,6 +253,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 			return Err(AllocError);
 		}
 		// Map each page
+		self.rollback.reserve(pages)?;
 		for i in 0..pages {
 			let virtaddr = (virtaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
 			let r = self.unmap_impl(virtaddr)?;

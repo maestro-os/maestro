@@ -110,20 +110,20 @@ impl<T> Vec<T> {
 		} else {
 			// Safe because the memory is rewritten when the object is placed into the
 			// vector
-			let data_ptr = unsafe { malloc::Alloc::new(capacity)? };
+			let data_ptr = unsafe { Alloc::new(capacity)? };
 			self.data = Some(data_ptr);
 		};
 		Ok(())
 	}
 
-	/// Increases the capacity of so that at least `min` more elements can fit.
-	fn increase_capacity(&mut self, min: usize) -> AllocResult<()> {
-		if self.len + min <= self.capacity() {
+	/// Reserves capacity for at least `additional` more element to be inserted.
+	pub fn reserve(&mut self, additional: usize) -> AllocResult<()> {
+		if self.len + additional <= self.capacity() {
 			return Ok(());
 		}
 		let curr_capacity = self.capacity();
 		// multiply capacity by 1.25
-		let capacity = max(curr_capacity + (curr_capacity / 4), self.len + min);
+		let capacity = max(curr_capacity + (curr_capacity / 4), self.len + additional);
 		self.realloc(capacity)
 	}
 
@@ -190,7 +190,7 @@ impl<T> Vec<T> {
 		if index > self.len() {
 			self.vector_panic(index);
 		}
-		self.increase_capacity(1)?;
+		self.reserve(1)?;
 		let data = self.data.as_mut().unwrap();
 		unsafe {
 			// Shift
@@ -229,7 +229,7 @@ impl<T> Vec<T> {
 		if other.is_empty() {
 			return Ok(());
 		}
-		self.increase_capacity(other.len())?;
+		self.reserve(other.len())?;
 		unsafe {
 			let self_ptr = self.data.as_mut().unwrap().as_ptr_mut();
 			ptr::copy_nonoverlapping(other.as_ptr(), self_ptr.add(self.len), other.len());
@@ -243,8 +243,7 @@ impl<T> Vec<T> {
 
 	/// Appends an element to the back of a collection.
 	pub fn push(&mut self, value: T) -> AllocResult<()> {
-		self.increase_capacity(1)?;
-		debug_assert!(self.capacity() > self.len);
+		self.reserve(1)?;
 		unsafe {
 			ptr::write(&mut self.data.as_mut().unwrap()[self.len], value);
 		}
@@ -421,7 +420,7 @@ impl<T: Clone> Vec<T> {
 		if new_len < self.len() {
 			self.truncate(new_len);
 		} else {
-			self.increase_capacity(new_len - self.len)?;
+			self.reserve(new_len - self.len)?;
 			let old_len = self.len;
 			self.len = new_len;
 			for e in &mut self.as_mut_slice()[old_len..new_len] {
@@ -454,7 +453,7 @@ impl<T: Clone> Vec<T> {
 		if slice.is_empty() {
 			return Ok(());
 		}
-		self.increase_capacity(slice.len())?;
+		self.reserve(slice.len())?;
 		let begin = self.len;
 		self.len += slice.len();
 		for (i, elem) in slice.iter().enumerate() {
@@ -732,6 +731,24 @@ mod test {
 			debug_assert_eq!(v[0], i);
 			v.pop();
 			debug_assert_eq!(v.len(), 0);
+		}
+	}
+
+	#[test_case]
+	fn vec_iter() {
+		const COUNT: usize = 1000;
+		let v = (0..COUNT).collect::<CollectResult<Vec<_>>>().0.unwrap();
+		let iter = v.into_iter();
+		assert_eq!(iter.size_hint().0, COUNT);
+		for i in iter.zip(0..COUNT) {
+			assert_eq!(i, i);
+		}
+		// Reverse order
+		let v = (0..COUNT).collect::<CollectResult<Vec<_>>>().0.unwrap();
+		let iter = v.into_iter();
+		assert_eq!(iter.size_hint().0, COUNT);
+		for i in iter.rev().zip((0..COUNT).rev()) {
+			assert_eq!(i, i);
 		}
 	}
 
