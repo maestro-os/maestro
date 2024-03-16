@@ -25,9 +25,9 @@ use core::{cmp::min, ffi::c_void, fmt, num::NonZeroUsize};
 #[derive(Clone)]
 pub struct MemGap {
 	/// Address on the virtual memory to the beginning of the gap
-	pub(super) begin: *const c_void,
+	begin: *const c_void,
 	/// The size of the gap in pages.
-	pub(super) size: NonZeroUsize,
+	size: NonZeroUsize,
 }
 
 impl MemGap {

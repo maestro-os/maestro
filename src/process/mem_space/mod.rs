@@ -32,7 +32,7 @@ mod transaction;
 use crate::{
 	errno::{AllocError, CollectResult, Errno},
 	file::perm::AccessProfile,
-	memory,
+	idt, memory,
 	memory::{vmem, vmem::VMem},
 	process::{mem_space::residence::Page, AllocResult},
 	util,
@@ -329,10 +329,7 @@ impl MemSpace {
 				remove_gaps_in_range(&mut transaction, addr, size.get())?;
 				// Create a fictive gap. This is required because fixed allocations may be used
 				// outside allowed gaps
-				let gap = MemGap {
-					begin: addr,
-					size,
-				};
+				let gap = MemGap::new(addr, size);
 				(gap, 0)
 			}
 			MapConstraint::Hint(addr) => {

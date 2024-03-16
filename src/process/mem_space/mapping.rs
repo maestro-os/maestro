@@ -274,9 +274,9 @@ impl MemMapping {
 				})
 			})
 			.transpose()?;
-		let gap = NonZeroUsize::new(size).map(|size| MemGap {
-			begin: (self.begin as usize + begin * memory::PAGE_SIZE) as _,
-			size,
+		let gap = NonZeroUsize::new(size).map(|size| {
+			let begin = (self.begin as usize + begin * memory::PAGE_SIZE) as _;
+			MemGap::new(begin, size)
 		});
 		// The gap's end
 		let end = begin + size;
