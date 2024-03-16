@@ -402,13 +402,14 @@ pub(crate) fn init() -> AllocResult<()> {
 		x86::FLAG_WRITE | x86::FLAG_GLOBAL,
 	)?;
 	// Make the kernel's code read-only
-	let iter = elf::kernel::sections().filter(|s| {
-		s.sh_flags & elf::SHF_WRITE == 0 && s.sh_addralign as usize == memory::PAGE_SIZE
-	});
+	let iter = elf::kernel::sections().filter(|s| s.sh_addralign as usize == memory::PAGE_SIZE);
 	for section in iter {
-		let mut flags = x86::FLAG_GLOBAL;
-		// If the section is accessible to userspace, set flag
+		let write = section.sh_flags & elf::SHF_WRITE != 0;
 		let user = elf::kernel::get_section_name(section) == Some(b".user");
+		let mut flags = x86::FLAG_GLOBAL;
+		if write {
+			flags |= x86::FLAG_WRITE;
+		}
 		if user {
 			flags |= x86::FLAG_USER;
 		}
