@@ -156,7 +156,7 @@ impl<K, V> Node<K, V> {
 	fn is_left_child(&self) -> bool {
 		self.get_parent()
 			.and_then(|parent| parent.get_left())
-			.map(|cur| ptr::eq(cur as *const _, self as *const _))
+			.map(|cur| ptr::eq(cur as *const Self, self as *const Self))
 			.unwrap_or(false)
 	}
 
@@ -165,7 +165,7 @@ impl<K, V> Node<K, V> {
 	fn is_right_child(&self) -> bool {
 		self.get_parent()
 			.and_then(|parent| parent.get_right())
-			.map(|cur| ptr::eq(cur as *const _, self as *const _))
+			.map(|cur| ptr::eq(cur as *const Self, self as *const Self))
 			.unwrap_or(false)
 	}
 
@@ -307,10 +307,10 @@ impl<K, V> Node<K, V> {
 	}
 }
 
-/// Searches for a node with the given key in the tree and returns a
-/// reference.
+/// Searches for a node in the tree with `node` as root and returns a
+/// reference to it.
 ///
-/// `key` is the key to find.
+/// `cmp` is the comparison function to use for the search.
 fn get_node<K: Ord, V>(
 	mut node: &mut Node<K, V>,
 	cmp: impl Fn(&K) -> Ordering,
@@ -483,6 +483,8 @@ impl<'t, K: Ord, V> VacantEntry<'t, K, V> {
 			None => *self.tree.root.get_mut() = Some(node),
 		}
 		self.tree.len += 1;
+		#[cfg(config_debug_debug)]
+		self.tree.check();
 		Ok(&mut n.value)
 	}
 }
@@ -671,8 +673,6 @@ impl<K: Ord, V> BTreeMap<K, V> {
 				Ok(None)
 			}
 		};
-		#[cfg(config_debug_debug)]
-		self.check();
 		r
 	}
 
@@ -1607,6 +1607,39 @@ mod test {
 		assert!(b.range(..10).is_sorted());
 		assert_eq!(b.range(0..).count(), 10);
 		assert!(b.range(0..).is_sorted());
+	}
+
+	#[test_case]
+	fn binary_tree_range2() {
+		let b = [0, 8, 3, 17, 4]
+			.into_iter()
+			.map(|i| (i, i))
+			.collect::<CollectResult<BTreeMap<_, _>>>()
+			.0
+			.unwrap();
+		assert_eq!(b.range(..).count(), b.len());
+		assert!(b.range(..).is_sorted());
+		let foo = b
+			.range(1..=4)
+			.map(|(i, _)| *i)
+			.collect::<CollectResult<Vec<_>>>()
+			.0
+			.unwrap();
+		assert_eq!(foo.as_slice(), [3, 4]);
+		let foo = b
+			.range(-3..=4)
+			.map(|(i, _)| *i)
+			.collect::<CollectResult<Vec<_>>>()
+			.0
+			.unwrap();
+		assert_eq!(foo.as_slice(), [0, 3, 4]);
+		let foo = b
+			.range(-3..)
+			.map(|(i, _)| *i)
+			.collect::<CollectResult<Vec<_>>>()
+			.0
+			.unwrap();
+		assert_eq!(foo.as_slice(), [0, 3, 4, 8, 17]);
 	}
 
 	#[test_case]

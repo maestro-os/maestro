@@ -32,7 +32,7 @@ mod transaction;
 use crate::{
 	errno::{AllocError, CollectResult, Errno},
 	file::perm::AccessProfile,
-	idt, memory,
+	memory,
 	memory::{vmem, vmem::VMem},
 	process::{mem_space::residence::Page, AllocResult},
 	util,
