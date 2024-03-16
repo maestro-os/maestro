@@ -30,7 +30,6 @@ use crate::{
 	util::{
 		collections::vec::Vec,
 		lock::{once::OnceInit, Mutex},
-		TryClone,
 	},
 	vec,
 };
@@ -131,18 +130,6 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 	/// Tells whether the context is bound to the current CPU.
 	pub fn is_bound(&self) -> bool {
 		x86::is_bound(self.page_dir)
-	}
-}
-
-impl TryClone for VMem {
-	fn try_clone(&self) -> AllocResult<Self> {
-		#[cfg(target_arch = "x86")]
-		{
-			let page_dir = x86::try_clone(self.inner())?;
-			Ok(Self {
-				page_dir,
-			})
-		}
 	}
 }
 

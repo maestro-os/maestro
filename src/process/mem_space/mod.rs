@@ -628,8 +628,6 @@ impl MemSpace {
 	/// - `virtaddr` is the virtual address to beginning of the range to allocate.
 	/// - `len` is the size of the range in bytes.
 	///
-	/// The size of the memory chunk to allocated equals `size_of::<T>() * len`.
-	///
 	/// If the mapping doesn't exist, the function returns an error.
 	///
 	/// On error, allocations that have been made are not freed as it does not affect the behaviour

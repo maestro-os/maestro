@@ -176,10 +176,10 @@ mod table {
 		let new_table = alloc_table()?;
 		let base_addr = new_table.as_ptr() as usize;
 		let table = unsafe { unwrap_entry(entry).0.as_mut() };
-		for (i, e) in table[0..ENTRIES_PER_TABLE].iter_mut().enumerate() {
-			let addr = (base_addr + (i * memory::PAGE_SIZE)) as *const c_void;
+		table.iter_mut().enumerate().for_each(|(i, e)| {
+			let addr = (base_addr + i * memory::PAGE_SIZE) as *const c_void;
 			*e = to_entry(addr, flags);
-		}
+		});
 		Ok(())
 	}
 
@@ -265,13 +265,14 @@ pub(super) struct Rollback {
 
 impl Rollback {
 	/// Rollbacks the operation on `page_dir`.
+	#[cold]
 	pub(super) fn rollback(mut self, page_dir: &mut Table) {
 		let index = get_addr_element_index(self.virtaddr, 1);
 		// Replace the table for the previous one
 		if let Some(table) = self.table.take() {
 			let flags = self.previous_entry & FLAGS_MASK & !FLAG_PAGE_SIZE;
 			page_dir[index] = to_entry(table.as_ptr(), flags);
-			// No need to care about the previous table has the algorithms will never replace an
+			// No need to care about the previous table as the algorithms will never replace an
 			// already present table
 		}
 		// If the table is PSE, simply replace the entry and stop here
@@ -293,6 +294,7 @@ impl Rollback {
 		if table[index] & FLAG_PRESENT == 0 && table::is_empty(table) {
 			// The table will be freed when dropping `self`
 			self.table = Some(table_ptr);
+			page_dir[index] = 0;
 		}
 	}
 }
@@ -324,11 +326,11 @@ pub(super) unsafe fn map(
 	let virtaddr = down_align(virtaddr, memory::PAGE_SIZE);
 	let flags = (flags & FLAGS_MASK) | FLAG_PRESENT;
 	// First level
-	let index = get_addr_element_index(virtaddr, 1);
-	let mut previous_entry = page_dir[index];
+	let pd_index = get_addr_element_index(virtaddr, 1);
+	let mut previous_entry = page_dir[pd_index];
 	// If using PSE, set entry and stop
 	if flags & FLAG_PAGE_SIZE != 0 {
-		page_dir[index] = to_entry(physaddr, flags);
+		page_dir[pd_index] = to_entry(physaddr, flags);
 		let table = (previous_entry & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT)
 			.then(|| unsafe { unwrap_entry(previous_entry).0 });
 		return Ok(Rollback {
@@ -341,21 +343,21 @@ pub(super) unsafe fn map(
 	if previous_entry & FLAG_PRESENT == 0 {
 		// No table is present, allocate one
 		let table = alloc_table()?;
-		page_dir[index] = to_entry(table.as_ptr(), flags);
+		page_dir[pd_index] = to_entry(table.as_ptr(), flags);
 	} else if previous_entry & FLAG_PAGE_SIZE != 0 {
 		// A PSE entry is present, need to expand it for the mapping
-		table::expand(page_dir, index)?;
+		table::expand(page_dir, pd_index)?;
 		expanded = true;
 	}
 	// Set the table's flags
-	page_dir[index] |= flags;
+	page_dir[pd_index] |= flags;
 	// Second level
-	let table = unsafe { unwrap_entry(page_dir[index]).0.as_mut() };
-	let index = get_addr_element_index(virtaddr, 0);
+	let table = unsafe { unwrap_entry(page_dir[pd_index]).0.as_mut() };
+	let table_index = get_addr_element_index(virtaddr, 0);
 	if !expanded {
-		previous_entry = table[index];
+		previous_entry = table[table_index];
 	}
-	table[index] = to_entry(physaddr, flags);
+	table[table_index] = to_entry(physaddr, flags);
 	Ok(Rollback {
 		virtaddr,
 		previous_entry,
@@ -464,52 +466,18 @@ pub(super) fn flush_current() {
 	}
 }
 
-/// Clones the given page directory.
-pub(super) fn try_clone(src: &Table) -> AllocResult<NonNull<Table>> {
-	let mut page_dir_ptr = alloc_table()?;
-	let page_dir = unsafe { page_dir_ptr.as_mut() };
-	// Copy user tables
-	for (dest, src) in page_dir.iter_mut().zip(src[..USERSPACE_TABLES].iter()) {
-		let (mut src_table_ptr, src_flags) = unsafe { unwrap_entry(*src) };
-		if src_flags & FLAG_PRESENT == 0 {
-			continue;
-		}
-		if src_flags & FLAG_PAGE_SIZE == 0 {
-			let mut dest_table_ptr = alloc_table().inspect_err(|_| {
-				// On fail, undo previous allocations
-				unsafe {
-					free(page_dir_ptr);
-				}
-			})?;
-			let dest_table = unsafe { dest_table_ptr.as_mut() };
-			let src_table = unsafe { src_table_ptr.as_mut() };
-			*dest_table = *src_table;
-			*dest = to_entry(dest_table_ptr.as_ptr(), src_flags);
-		} else {
-			*dest = *src;
-		}
-	}
-	// Copy kernel tables
-	let kernel_tables = KERNEL_TABLES.lock();
-	page_dir[USERSPACE_TABLES..]
-		.iter_mut()
-		.zip(kernel_tables.iter())
-		.for_each(|(dest, src)| *dest = to_entry(src, KERNEL_FLAGS));
-	Ok(page_dir_ptr)
-}
-
 /// Destroys the given page directory, including its children elements.
 ///
 /// # Safety
 ///
 /// It is assumed the context is not being used.
 ///
-/// Subsequent accesses to `page_dir` are undefined.
+/// Subsequent uses of `page_dir` are undefined.
 pub(super) unsafe fn free(mut page_dir: NonNull<Table>) {
 	let pd = unsafe { page_dir.as_mut() };
 	for entry in &pd[..USERSPACE_TABLES] {
 		let (table, flags) = unwrap_entry(*entry);
-		if flags & FLAG_PRESENT != 0 && flags & FLAG_PAGE_SIZE == 0 {
+		if flags & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT {
 			free_table(table);
 		}
 	}

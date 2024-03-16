@@ -30,12 +30,14 @@ use core::{ffi::c_void, hash::Hash, mem, num::NonZeroUsize};
 /// Applies the difference in `complement` to rollback operations.
 ///
 /// If the complement does not correspond to `on`, the function might panic.
+#[cold]
 pub fn rollback<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, complement: HashMap<K, Option<V>>) {
 	for (key, value) in complement {
 		rollback_impl(on, key, value);
 	}
 }
 
+#[cold]
 fn rollback_impl<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, key: K, value: Option<V>) {
 	match value {
 		// Insertion cannot fail since `on` is guaranteed to already contain the key

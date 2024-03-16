@@ -642,9 +642,8 @@ impl<T> DoubleEndedIterator for IntoIter<T> {
 			return None;
 		}
 		// Read one element and return it
-		let e = unsafe { ptr::read(&self.vec[self.start]) };
 		self.end -= 1;
-		Some(e)
+		Some(unsafe { ptr::read(&self.vec[self.end]) })
 	}
 }
 
@@ -657,7 +656,7 @@ unsafe impl<T> TrustedLen for IntoIter<T> {}
 impl<T> Drop for IntoIter<T> {
 	fn drop(&mut self) {
 		// Drop remaining elements
-		for e in &mut self.vec.as_mut_slice()[self.start..] {
+		for e in &mut self.vec.as_mut_slice()[self.start..self.end] {
 			unsafe {
 				ptr::drop_in_place(e);
 			}
