@@ -740,15 +740,15 @@ mod test {
 		let v = (0..COUNT).collect::<CollectResult<Vec<_>>>().0.unwrap();
 		let iter = v.into_iter();
 		assert_eq!(iter.size_hint().0, COUNT);
-		for i in iter.zip(0..COUNT) {
-			assert_eq!(i, i);
+		for (i, j) in iter.zip(0..COUNT) {
+			assert_eq!(i, j);
 		}
 		// Reverse order
 		let v = (0..COUNT).collect::<CollectResult<Vec<_>>>().0.unwrap();
 		let iter = v.into_iter();
 		assert_eq!(iter.size_hint().0, COUNT);
-		for i in iter.rev().zip((0..COUNT).rev()) {
-			assert_eq!(i, i);
+		for (i, j) in iter.rev().zip((0..COUNT).rev()) {
+			assert_eq!(i, j);
 		}
 	}
 
