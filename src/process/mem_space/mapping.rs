@@ -39,7 +39,7 @@ use crate::{
 	},
 	util::{collections::vec::Vec, io::IO, ptr::arc::Arc, TryClone},
 };
-use core::{ffi::c_void, mem, num::NonZeroUsize, ops::Range, slice};
+use core::{ffi::c_void, num::NonZeroUsize, ops::Range, slice};
 
 /// A mapping in a memory space.
 #[derive(Debug)]
@@ -133,20 +133,6 @@ impl MemMapping {
 		flags
 	}
 
-	/// Updates the mapping at the given `offset`.
-	fn update_offset(
-		&self,
-		offset: usize,
-		phys_page: &Arc<ResidencePage>,
-		vmem_transaction: &mut VMemTransaction<false>,
-	) -> AllocResult<()> {
-		let physaddr = unsafe { phys_page.ptr() };
-		let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
-		let flags = self.get_vmem_flags(true);
-		vmem_transaction.map(physaddr as _, virtaddr, flags)
-		// TODO invalidate cache for this page
-	}
-
 	/// If the offset `offset` is pending for an allocation, forces an allocation of a physical
 	/// page for that offset.
 	///
@@ -161,6 +147,7 @@ impl MemMapping {
 		offset: usize,
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> AllocResult<()> {
+		let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
 		// Get old page
 		let old = self
 			.phys_pages
@@ -170,36 +157,39 @@ impl MemMapping {
 		match old {
 			// If not pending for an allocation: map and stop here
 			Some(p) if !Self::is_cow(p, self.flags) => {
-				return self.update_offset(offset, p, vmem_transaction);
+				let physaddr = unsafe { p.ptr() };
+				let flags = self.get_vmem_flags(true);
+				return vmem_transaction.map(physaddr as _, virtaddr, flags);
 			}
 			_ => {}
 		}
 		// Allocate and map new page
 		let new = self.residence.acquire_page(offset)?;
-		// Tells whether a copy or zero is necessary
-		let copy_or_zero = self.residence.is_normal();
-		if copy_or_zero {
+		// Tells initializing the new page is necessary
+		let init = self.residence.is_normal();
+		if init {
 			if let Some(old) = &self.phys_pages[offset] {
 				// Map old page for copy
 				let physaddr = unsafe { old.ptr() as _ };
 				vmem_transaction.map(physaddr, COPY_BUFFER as _, 0)?;
 			}
 		}
-		// Tells whether a copy is necessary
+		// Tells whether a copy from the old page is necessary
 		let copy = old.is_some();
-		// Update offset last to make sure the new page is not freed after map on memory allocation
-		// failure
-		self.update_offset(offset, &new, vmem_transaction)?;
-		// No fallible operation left, store the new page
-		// Keep the old page until the end of the function to ensure copying the page is valid
-		let old = mem::replace(&mut self.phys_pages[offset], Some(new));
-		if !copy_or_zero {
+		// Map new page
+		let new_physaddr = unsafe { new.ptr() as _ };
+		// If the page has to be initialized, do not allow writing during initialization to avoid
+		// concurrency issues
+		let flags = self.get_vmem_flags(!init);
+		vmem_transaction.map(new_physaddr, virtaddr, flags)?;
+		if !init {
 			return Ok(());
 		}
+		// Initialize the new page
 		unsafe {
 			let dest = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut Page;
 			let dest = &mut *dest;
-			// Switching to make sure the right vmem is bound, but this should already be the case
+			// Switch to make sure the right vmem is bound, but this should already be the case
 			// so consider this has no cost
 			vmem::switch(vmem_transaction.vmem, || {
 				vmem::write_lock_wrap(|| {
@@ -214,7 +204,12 @@ impl MemMapping {
 				});
 			});
 		}
-		drop(old);
+		// Store the new page and drop the old
+		self.phys_pages[offset] = Some(new);
+		// Make the new page writable if necessary. Does not fail since the page has already been
+		// mapped
+		let flags = self.get_vmem_flags(true);
+		vmem_transaction.map(new_physaddr, virtaddr, flags).unwrap();
 		Ok(())
 	}
 
