@@ -23,10 +23,14 @@ use super::{Partition, Table};
 use crate::{
 	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
 	device::storage::StorageInterface,
-	memory::malloc,
 };
 use core::{mem::size_of, slice};
-use utils::{boxed::Box, collections::vec::Vec, errno, errno::EResult, vec};
+use utils::{
+	collections::vec::Vec,
+	errno,
+	errno::{CollectResult, EResult},
+	vec,
+};
 
 /// The signature in the GPT header.
 const GPT_SIGNATURE: &[u8] = b"EFI PART";
@@ -77,6 +81,19 @@ struct GPTEntry {
 	attributes: u64,
 	/// The partition's name.
 	name: [u16; 36],
+}
+
+impl Default for GPTEntry {
+	fn default() -> Self {
+		Self {
+			partition_type: [0; 16],
+			guid: [0; 16],
+			start: 0,
+			end: 0,
+			attributes: 0,
+			name: [0; 36],
+		}
+	}
 }
 
 impl GPTEntry {
@@ -218,46 +235,43 @@ impl Gpt {
 	/// Returns the list of entries in the table.
 	///
 	/// `storage` is the storage device interface.
-	fn get_entries(&self, storage: &mut dyn StorageInterface) -> EResult<Vec<Box<GPTEntry>>> {
+	fn get_entries(&self, storage: &mut dyn StorageInterface) -> EResult<Vec<GPTEntry>> {
 		let block_size = storage.get_block_size();
 		let blocks_count = storage.get_blocks_count();
-
-		let entry_size = self.entry_size as _;
-		let mut buff = vec![0; entry_size]?;
-
 		let entries_start =
 			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		let mut entries = Vec::new();
-
-		for i in 0..self.entries_number {
-			// Reading entry
-			let off = (entries_start * block_size.get()) + (i as u64 * entry_size as u64);
-			storage.read_bytes(buff.as_mut_slice(), off)?;
-
-			// Inserting entry
-			let entry = unsafe {
-				let ptr = malloc::alloc(entry_size.try_into().unwrap())?;
-				let alloc_slice: &mut [u8] =
-					slice::from_raw_parts_mut(ptr.cast().as_mut(), entry_size);
-				alloc_slice.copy_from_slice(buff.as_slice());
-
-				Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut GPTEntry)
-			};
-
-			if !entry.is_used() {
-				continue;
-			}
-
-			// Checking entry correctness
-			let start = translate_lba(entry.start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-			let end = translate_lba(entry.end, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-			if end < start {
-				return Err(errno!(EINVAL));
-			}
-
-			entries.push(entry)?;
-		}
-
+		let entries = (0..self.entries_number)
+			// Read entry
+			.map(|i| {
+				let off = (entries_start * block_size.get()) + (i as u64 * self.entry_size as u64);
+				let mut entry = GPTEntry::default();
+				let slice: &mut [u8] = unsafe {
+					slice::from_raw_parts_mut(
+						&mut entry as *mut _ as *mut _,
+						size_of::<GPTEntry>(),
+					)
+				};
+				storage.read_bytes(slice, off)?;
+				Ok(entry)
+			})
+			// Ignore empty entries
+			.filter_map(|entry: EResult<GPTEntry>| {
+				entry.map(|e| e.is_used().then_some(e)).transpose()
+			})
+			.map(|entry| {
+				let entry = entry?;
+				// Check entry correctness
+				let start =
+					translate_lba(entry.start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+				let end = translate_lba(entry.end, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+				if start < end {
+					Ok(entry)
+				} else {
+					Err(errno!(EINVAL))
+				}
+			})
+			.collect::<EResult<CollectResult<_>>>()?
+			.0?;
 		Ok(entries)
 	}
 }

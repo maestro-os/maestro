@@ -1270,7 +1270,7 @@ impl Ext2INode {
 
 			String::try_from(buff)
 		} else {
-			let mut buff = vec![0; limits::SYMLINK_MAX.try_into().unwrap()]?;
+			let mut buff = vec![0; limits::SYMLINK_MAX]?;
 			self.read_content(0, buff.as_mut_slice(), superblock, io)?;
 
 			String::try_from(&buff.as_slice()[..(len as usize)])

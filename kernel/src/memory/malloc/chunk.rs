@@ -29,7 +29,6 @@
 use super::block::Block;
 use core::{
 	cmp::{max, min},
-	ffi::c_void,
 	mem::size_of,
 	num::NonZeroUsize,
 	ptr,
@@ -85,7 +84,7 @@ impl Chunk {
 	}
 
 	/// Returns the chunk corresponding to the given data pointer.
-	pub unsafe fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
+	pub unsafe fn from_ptr(ptr: *mut u8) -> &'static mut Self {
 		&mut *(((ptr as usize) - size_of::<Self>()) as *mut Self)
 	}
 
@@ -133,14 +132,14 @@ impl Chunk {
 
 	/// Returns an immutable pointer to the chunks' data.
 	#[inline]
-	pub fn get_ptr(&self) -> *const c_void {
-		unsafe { (self as *const Self as *const c_void).add(size_of::<Self>()) }
+	pub fn get_ptr(&self) -> *const u8 {
+		unsafe { (self as *const Self as *const u8).add(size_of::<Self>()) }
 	}
 
 	/// Returns a mutable pointer to the chunks' data.
 	#[inline]
-	pub fn get_ptr_mut(&mut self) -> *mut c_void {
-		unsafe { (self as *mut Self as *mut c_void).add(size_of::<Self>()) }
+	pub fn get_ptr_mut(&mut self) -> *mut u8 {
+		unsafe { (self as *mut Self as *mut u8).add(size_of::<Self>()) }
 	}
 
 	/// Returns the size of the chunk.

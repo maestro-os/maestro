@@ -21,8 +21,9 @@
 
 use super::Superblock;
 use crate::{file::FileType, memory::malloc};
+use alloc::alloc::Global;
 use core::{
-	alloc::AllocError,
+	alloc::{AllocError, Allocator, Layout},
 	cmp::min,
 	num::{NonZeroU16, NonZeroUsize},
 	slice,
@@ -74,14 +75,9 @@ impl DirectoryEntry {
 	///
 	/// `total_size` is the size of the entry, including the name.
 	pub fn new_free(total_size: NonZeroU16) -> AllocResult<Box<Self>> {
-		let slice = unsafe {
-			slice::from_raw_parts_mut(
-				malloc::alloc(total_size.into())?.cast().as_mut(),
-				total_size.get() as _,
-			)
-		};
-
-		let mut entry = unsafe { Box::from_raw(slice as *mut [u8] as *mut [()] as *mut Self) };
+		let layout = Layout::from_size_align(total_size.get() as _, 8).unwrap();
+		let slice = Global.allocate(layout)?;
+		let mut entry = unsafe { Box::from_raw(slice.as_ptr() as *mut Self) };
 		entry.total_size = total_size.get();
 		Ok(entry)
 	}

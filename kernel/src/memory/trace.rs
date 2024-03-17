@@ -28,7 +28,7 @@ use core::{ffi::c_void, ptr::null_mut};
 /// - `op` is the operation number.
 /// - `ptr` is the affected pointer.
 /// - `size` is the new size of the allocation. The unit is dependent on the allocator.
-pub fn sample(allocator: &str, op: u8, ptr: *const c_void, size: usize) {
+pub fn sample(allocator: &str, op: u8, ptr: *const u8, size: usize) {
 	// Dump callstack
 	let mut callstack: [*mut c_void; 64] = [null_mut(); 64];
 	unsafe {

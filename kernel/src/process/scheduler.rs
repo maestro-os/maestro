@@ -90,7 +90,7 @@ impl Scheduler {
 	pub fn new(cores_count: usize) -> AllocResult<Arc<IntMutex<Self>>> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
-			tmp_stacks.push(vec![0; TMP_STACK_SIZE.try_into().unwrap()]?)?;
+			tmp_stacks.push(vec![0; TMP_STACK_SIZE]?)?;
 		}
 
 		// Register tick handler

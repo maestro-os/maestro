@@ -63,6 +63,8 @@
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
+extern crate alloc;
+
 pub mod acpi;
 pub mod cmdline;
 pub mod cpu;

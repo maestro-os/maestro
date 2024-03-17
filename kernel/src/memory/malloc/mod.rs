@@ -31,7 +31,11 @@ use crate::{memory, memory::malloc::ptr::NonNull};
 use block::Block;
 use chunk::Chunk;
 use core::{
-	alloc::AllocError, cmp::Ordering, ffi::c_void, num::NonZeroUsize, ptr, ptr::drop_in_place,
+	alloc::{AllocError, GlobalAlloc, Layout},
+	cmp::Ordering,
+	num::NonZeroUsize,
+	ptr,
+	ptr::{drop_in_place, null_mut},
 };
 use macros::instrument_allocator;
 use utils::{errno::AllocResult, lock::IntMutex};
@@ -57,7 +61,7 @@ static MUTEX: IntMutex<()> = IntMutex::new(());
 ///
 /// Writing outside the allocated range (buffer overflow) is an undefined behaviour.
 #[instrument_allocator(name = malloc, op = alloc, size = n)]
-pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
+pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	let _ = MUTEX.lock();
 	// Get free chunk
 	let free_chunk = chunk::get_available_chunk(n)?;
@@ -93,7 +97,7 @@ pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
 /// If the chunk of memory has been shrunk, accessing previously available memory causes an
 /// undefined behavior.
 #[instrument_allocator(name = malloc, op = realloc, ptr = ptr, size = n)]
-pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonNull<c_void>> {
+pub unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	let _ = MUTEX.lock();
 	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_ptr());
@@ -130,7 +134,7 @@ pub unsafe fn realloc(ptr: NonNull<c_void>, n: NonZeroUsize) -> AllocResult<NonN
 ///
 /// Using memory after it was freed causes an undefined behaviour.
 #[instrument_allocator(name = malloc, op = free, ptr = ptr)]
-pub unsafe fn free(mut ptr: NonNull<c_void>) {
+pub unsafe fn free(mut ptr: NonNull<u8>) {
 	let _ = MUTEX.lock();
 	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_mut());
@@ -151,11 +155,49 @@ pub unsafe fn free(mut ptr: NonNull<c_void>) {
 	}
 }
 
+/// The global allocator for the kernel.
+struct Malloc;
+
+unsafe impl GlobalAlloc for Malloc {
+	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+		let Some(size) = NonZeroUsize::new(layout.size()) else {
+			return null_mut();
+		};
+		alloc(size).map(|p| p.as_ptr()).unwrap_or(null_mut())
+	}
+
+	unsafe fn dealloc(&self, ptr: *mut u8, _: Layout) {
+		let Some(ptr) = NonNull::new(ptr) else {
+			return;
+		};
+		free(ptr);
+	}
+
+	unsafe fn realloc(&self, ptr: *mut u8, _: Layout, new_size: usize) -> *mut u8 {
+		let Some(ptr) = NonNull::new(ptr) else {
+			return null_mut();
+		};
+		match NonZeroUsize::new(new_size) {
+			Some(new_size) => realloc(ptr, new_size)
+				.map(|p| p.as_ptr())
+				.unwrap_or(null_mut()),
+			None => {
+				free(ptr);
+				null_mut()
+			}
+		}
+	}
+}
+
+#[global_allocator]
+static ALLOCATOR: Malloc = Malloc;
+
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::{memory, memory::buddy, util::math};
+	use crate::{memory, memory::buddy};
 	use core::slice;
+	use utils::math;
 
 	#[test_case]
 	fn alloc_free1() {

@@ -28,21 +28,9 @@
 use crate::{
 	acpi::{rsdt::Rsdt, ACPITable, ACPITableHeader},
 	memory,
-	memory::{malloc, vmem, vmem::VMem},
 };
-use core::{
-	ffi::c_void,
-	mem::size_of,
-	ptr,
-	ptr::{copy_nonoverlapping, Pointee},
-	slice,
-};
-use utils::{
-	boxed::Box,
-	collections::{hashmap::HashMap, vec::Vec},
-	errno::{AllocResult, CollectResult, EResult},
-	vec,
-};
+use core::{ffi::c_void, mem::size_of, ptr, ptr::Pointee, slice};
+use utils::{collections::vec::Vec, errno::EResult};
 
 /// The signature of the RSDP structure.
 const RSDP_SIGNATURE: &[u8] = b"RSD PTR ";
@@ -141,100 +129,8 @@ impl ACPIData {
 		if !rsdp.check() {
 			panic!("Invalid ACPI pointer!");
 		}
-
-		// Temporary vmem used to read the data, since it cannot be located anywhere on the
-		// physical memory.
-		let mut tmp_vmem = VMem::new()?;
-		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
-		let rsdt_map_begin = utils::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
-		// Map the RSDT to make it readable
-		let mut transaction = tmp_vmem.transaction();
-		transaction.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
-		transaction.commit();
-		drop(transaction);
-		tmp_vmem.bind();
-
-		let (off, data) = {
-			let rsdt_ptr = (memory::PAGE_SIZE + (rsdt_phys_ptr as usize - rsdt_map_begin as usize))
-				as *const Rsdt;
-			let rsdt = unsafe {
-				// Safe because the pointer has been mapped before
-				&*rsdt_ptr
-			};
-			if !rsdt.header.check::<Rsdt>() {
-				panic!("Invalid ACPI structure!");
-			}
-
-			// Get every ACPI tables
-			let _tables = rsdt
-				.tables()
-				.map(|table| {
-					let table_ptr = table as *const ACPITableHeader;
-					// Map the table to read its length
-					let table_map_begin = utils::down_align(table_ptr, memory::PAGE_SIZE);
-					let mut transaction = tmp_vmem.transaction();
-					let res = transaction.map_range(
-						table_map_begin as _,
-						(memory::PAGE_SIZE * 3) as _,
-						2,
-						0,
-					);
-					transaction.commit();
-					if res.is_err() {
-						panic!("Memory allocation failure when reading ACPI data");
-					}
-
-					let table_offset = table_ptr as usize - table_map_begin as usize;
-					let table = unsafe {
-						// Safe because the pointer has been mapped before
-						&*(((memory::PAGE_SIZE * 3) + table_offset) as *const ACPITableHeader)
-					};
-
-					let b = unsafe {
-						let len = (table.length as usize).try_into().unwrap();
-						let mut ptr = malloc::alloc(len)?;
-						copy_nonoverlapping(
-							table as *const _ as *const _,
-							ptr.as_mut(),
-							table.length as usize,
-						);
-						Box::from_raw(ptr.as_ptr() as *mut ())
-					};
-					Ok((table.signature, b))
-				})
-				.collect::<AllocResult<CollectResult<HashMap<_, _>>>>()?
-				.0?;
-
-			// FIXME: This is garbage due to a merge in order to make things compile.
-			// This whole function needs a rewrite
-			let lowest = ptr::null::<c_void>();
-			let highest = ptr::null::<c_void>();
-
-			// Map all ACPI data
-			let begin = utils::down_align(lowest, memory::PAGE_SIZE);
-			let end = unsafe { utils::align(highest, memory::PAGE_SIZE) };
-			let pages = (end as usize - begin as usize) / memory::PAGE_SIZE;
-			let mut transaction = tmp_vmem.transaction();
-			transaction.map_range(begin, memory::PAGE_SIZE as _, pages, 0)?;
-			transaction.commit();
-
-			let size = pages * memory::PAGE_SIZE;
-			let mut dest = vec![0; size]?;
-			let src = memory::PAGE_SIZE as *const u8;
-			unsafe {
-				copy_nonoverlapping(src, dest.as_mut_ptr(), size);
-			}
-
-			(begin as usize, dest)
-		};
-		vmem::kernel().lock().bind();
-
-		Ok(Some(Self {
-			off,
-			rsdt: rsdt_phys_ptr as _,
-
-			data,
-		}))
+		// TODO read structures
+		Ok(None)
 	}
 
 	// TODO Minimize duplicate code between get_table_*

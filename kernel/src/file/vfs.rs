@@ -232,6 +232,7 @@ fn resolve_path_impl<'p>(
 				let Some(entry) = entries.get(name) else {
 					// If the last component does not exist and if the file may be created
 					let res = if is_last && settings.create {
+						drop(file);
 						Ok(Resolved::Creatable {
 							parent: file_mutex,
 							name,
