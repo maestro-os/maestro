@@ -46,7 +46,7 @@ jobs:
         working-directory: ./macros
         run: cargo fmt --check
       - name: Utils
-        working-directory: ./util
+        working-directory: ./utils
         run: cargo fmt --check
       - name: Kernel
         run: cargo fmt --check
@@ -68,7 +68,7 @@ jobs:
         working-directory: ./macros
         run: cargo clippy --all-features --tests
       - name: Utils
-        working-directory: ./util
+        working-directory: ./utils
         run: cargo clippy --all-features --tests
       - name: Kernel
         run: cargo clippy --all-features --tests
