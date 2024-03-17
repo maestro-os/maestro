@@ -18,7 +18,7 @@
 
 //! Cryptographic algorithms and tools.
 
-use crate::errno::AllocResult;
+use utils::errno::AllocResult;
 
 pub mod chacha20;
 pub mod checksum;

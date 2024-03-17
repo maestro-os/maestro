@@ -32,14 +32,12 @@ use super::{
 	perm::{AccessProfile, S_ISVTX},
 	DeferredRemove, File, FileContent, FileLocation, FileType, INode, Mode, MountPoint,
 };
-use crate::{
-	errno,
-	errno::EResult,
-	limits,
-	process::Process,
-	util::{collections::string::String, io::IO, lock::Mutex, ptr::arc::Arc, TryClone},
-};
+use crate::{limits, process::Process};
 use core::ptr::NonNull;
+use utils::{
+	collections::string::String, errno, errno::EResult, format, io::IO, lock::Mutex,
+	ptr::arc::Arc, TryClone,
+};
 
 // TODO implement and use cache
 
@@ -105,7 +103,7 @@ pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File
 		FileLocation::Virtual {
 			id,
 		} => {
-			let name = crate::format!("virtual:{id}")?;
+			let name = format!("virtual:{id}")?;
 			let content = FileContent::Fifo; // TODO support sockets
 
 			let file = Arc::new(Mutex::new(File::new(
@@ -234,7 +232,6 @@ fn resolve_path_impl<'p>(
 				let Some(entry) = entries.get(name) else {
 					// If the last component does not exist and if the file may be created
 					let res = if is_last && settings.create {
-						drop(file);
 						Ok(Resolved::Creatable {
 							parent: file_mutex,
 							name,

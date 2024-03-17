@@ -21,7 +21,6 @@
 
 use super::getdents::{do_getdents, Dirent};
 use crate::{
-	errno::Errno,
 	file::{FileType, INode},
 	process::mem_space::ptr::SyscallSlice,
 };
@@ -31,6 +30,7 @@ use core::{
 	ptr,
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// Structure representing a Linux directory entry with 64 bits offsets.
 #[repr(C)]

@@ -21,11 +21,11 @@
 //! If no link remain to the directory, the function also removes it.
 
 use crate::{
-	errno::Errno,
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileContent},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {

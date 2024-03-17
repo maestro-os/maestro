@@ -19,8 +19,6 @@
 //! The mount system call allows to mount a filesystem on the system.
 
 use crate::{
-	errno,
-	errno::Errno,
 	file::{
 		fs, mountpoint, mountpoint::MountSource, path::PathBuf, vfs, vfs::ResolutionSettings,
 		FileType,
@@ -32,6 +30,7 @@ use crate::{
 };
 use core::ffi::{c_ulong, c_void};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn mount(

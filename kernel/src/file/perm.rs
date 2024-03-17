@@ -21,7 +21,8 @@
 //! This module implements management of such permissions.
 
 use super::Mode;
-use crate::{errno::EResult, file::File};
+use crate::file::File;
+use utils::{errno, errno::EResult};
 
 /// Type representing a user ID.
 pub type Uid = u16;

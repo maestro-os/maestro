@@ -20,17 +20,16 @@
 //! descriptors.
 
 use crate::{
-	errno::Errno,
 	process::{mem_space::ptr::SyscallSlice, scheduler, Process},
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,
 		unit::{Timestamp, TimestampScale},
 	},
-	util::io,
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno, io};
 
 /// Structure representing a file descriptor passed to the `poll` system call.
 #[repr(C)]

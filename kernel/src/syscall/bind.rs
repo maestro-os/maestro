@@ -19,15 +19,15 @@
 //! The `bind` system call binds a name to a socket.
 
 use crate::{
-	errno::Errno,
 	file::{buffer, buffer::socket::Socket},
 	process::{mem_space::ptr::SyscallSlice, Process},
 };
 use core::{any::Any, ffi::c_int};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
-pub fn bind(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<i32, Errno> {
+pub fn bind(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> EResult<i32> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}

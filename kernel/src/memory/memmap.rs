@@ -21,8 +21,9 @@
 //! information. These data are meant to be used by the memory allocators.
 
 use super::*;
-use crate::{elf::kernel::sections, multiboot, util, util::lock::once::OnceInit};
+use crate::{elf::kernel::sections, multiboot};
 use core::{cmp::*, ffi::c_void, iter, ptr::null};
+use utils::lock::once::OnceInit;
 
 /// Physical memory map information.
 #[derive(Debug)]
@@ -124,7 +125,7 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 		.into_iter()
 		.max()
 		.unwrap();
-	begin = unsafe { util::align(begin, PAGE_SIZE) };
+	begin = unsafe { utils::align(begin, PAGE_SIZE) };
 	// TODO Handle 64-bits systems
 	let pages = min((1000 + boot_info.mem_upper) / 4, 1024 * 1024) as usize
 		- ((begin as usize) / PAGE_SIZE);

@@ -19,9 +19,10 @@
 //! The `munmap` system call allows the process to free memory that was
 //! allocated with `mmap`.
 
-use crate::{errno, errno::Errno, memory, process::Process};
+use crate::{memory, process::Process};
 use core::{ffi::c_void, num::NonZeroUsize};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {

@@ -20,7 +20,8 @@
 //! two-way, connection-based byte streams.
 
 use super::{buff::BuffList, osi::Layer};
-use crate::{errno::Errno, file::buffer::socket::Socket};
+use crate::file::buffer::socket::Socket;
+use utils::errno::EResult;
 
 /// The TCP segment header.
 #[repr(C, packed)]
@@ -55,9 +56,9 @@ pub struct TCPHdr {
 pub struct TCPLayer {}
 
 impl Layer for TCPLayer {
-	fn transmit<'c, F>(&self, _buff: BuffList<'c>, _next: F) -> Result<(), Errno>
+	fn transmit<'c, F>(&self, _buff: BuffList<'c>, _next: F) -> EResult<()>
 	where
-		F: Fn(BuffList<'c>) -> Result<(), Errno>,
+		F: Fn(BuffList<'c>) -> EResult<()>,
 	{
 		// TODO
 		todo!();
@@ -65,7 +66,7 @@ impl Layer for TCPLayer {
 }
 
 /// Initiates a TCP connection on the given socket `sock`.
-pub fn init_connection(_sock: &mut Socket) -> Result<(), Errno> {
+pub fn init_connection(_sock: &mut Socket) -> EResult<()> {
 	// TODO
 	todo!();
 }

@@ -20,7 +20,6 @@
 //! writable or for an exception to occur.
 
 use crate::{
-	errno::Errno,
 	process::{
 		mem_space::ptr::{SyscallPtr, SyscallSlice},
 		scheduler, Process,
@@ -30,13 +29,18 @@ use crate::{
 		clock::CLOCK_MONOTONIC,
 		unit::{TimeUnit, Timeval},
 	},
-	util::{io, io::IO},
 };
 use core::{
 	cmp::min,
 	ffi::{c_int, c_long},
 };
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io,
+	io::IO,
+};
 
 /// The number of file descriptors in FDSet.
 pub const FD_SETSIZE: usize = 1024;
@@ -89,7 +93,7 @@ pub fn do_select<T: TimeUnit>(
 	exceptfds: SyscallPtr<FDSet>,
 	timeout: SyscallPtr<T>,
 	_sigmask: Option<SyscallSlice<u8>>,
-) -> Result<i32, Errno> {
+) -> EResult<i32> {
 	// Getting start timestamp
 	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
 

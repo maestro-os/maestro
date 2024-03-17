@@ -19,13 +19,12 @@
 //! The pipe system call allows to create a pipe.
 
 use crate::{
-	errno::Errno,
 	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
 	process::{mem_space::ptr::SyscallPtr, Process},
-	util::{lock::Mutex, ptr::arc::Arc, TryDefault},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno, lock::Mutex, ptr::arc::Arc, TryDefault};
 
 #[syscall]
 pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {

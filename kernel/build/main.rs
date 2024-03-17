@@ -12,6 +12,7 @@ use target::Target;
 
 fn main() {
 	let profile = env::var("PROFILE").unwrap();
+	let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 	let debug = profile == "debug";
 	let opt_level: u32 = env::var("OPT_LEVEL").unwrap().parse().unwrap();
 
@@ -21,7 +22,7 @@ fn main() {
 	});
 	config.set_cfg(debug);
 
-	let target = Target::from_env().unwrap_or_else(|e| {
+	let target = Target::from_env(&manifest_dir).unwrap_or_else(|e| {
 		eprintln!("Cannot retrieve target: {e}");
 		exit(1);
 	});
@@ -30,7 +31,7 @@ fn main() {
 		eprintln!("Compilation failed: {e}");
 		exit(1);
 	});
-	compile::compile_vdso(&target, &profile).unwrap_or_else(|e| {
+	compile::compile_vdso(&target, &profile, &manifest_dir).unwrap_or_else(|e| {
 		eprintln!("vDSO compilation failed: {e}");
 		exit(1);
 	});

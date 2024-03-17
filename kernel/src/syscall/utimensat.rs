@@ -20,7 +20,6 @@
 
 use super::util::at;
 use crate::{
-	errno::Errno,
 	file::{
 		path::Path,
 		vfs::{ResolutionSettings, Resolved},
@@ -33,6 +32,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn utimensat(

@@ -18,13 +18,10 @@
 
 //! The rt_sigprocmask system call allows to change the blocked signal mask.
 
-use crate::{
-	errno,
-	errno::Errno,
-	process::{mem_space::ptr::SyscallSlice, Process},
-};
+use crate::process::{mem_space::ptr::SyscallSlice, Process};
 use core::{cmp::min, ffi::c_int};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// Performs the union of the given mask with the current mask.
 const SIG_BLOCK: i32 = 0;

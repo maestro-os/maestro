@@ -160,10 +160,7 @@ mod write;
 mod writev;
 
 //use wait::wait;
-use crate::{
-	errno::Errno,
-	process::{regs::Regs, signal::Signal, Process},
-};
+use crate::process::{regs::Regs, signal::Signal, Process};
 use _exit::_exit;
 use _llseek::_llseek;
 use _newselect::_newselect;
@@ -292,6 +289,7 @@ use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use unlinkat::unlinkat;
+use utils::errno::EResult;
 use utimensat::utimensat;
 use vfork::vfork;
 use wait4::wait4;
@@ -302,7 +300,7 @@ use writev::writev;
 /// The ID of the `sigreturn` system call, for use by the signal trampoline.
 pub const SIGRETURN_ID: u32 = 0x077;
 
-type SyscallHandler = &'static dyn Fn(&Regs) -> Result<i32, Errno>;
+type SyscallHandler = &'static dyn Fn(&Regs) -> EResult<i32>;
 
 /// Returns the system call associated with the given ID `id`.
 ///

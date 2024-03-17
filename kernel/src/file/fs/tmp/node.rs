@@ -19,7 +19,6 @@
 //! This module implements regular file node for the tmpfs.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		fs::{kernfs::content::KernFSContent, tmp::KernFSNode},
 		perm::{Gid, Uid},
@@ -30,9 +29,9 @@ use crate::{
 		clock::CLOCK_MONOTONIC,
 		unit::{Timestamp, TimestampScale},
 	},
-	util::{collections::vec::Vec, io::IO},
 };
 use core::cmp::{max, min};
+use utils::{collections::vec::Vec, errno, errno::EResult, io::IO};
 
 /// Structure representing a regular file node in the tmpfs.
 #[derive(Debug)]
@@ -147,7 +146,7 @@ impl IO for TmpFSRegular {
 		self.content.len() as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		if offset > self.content.len() as u64 {
 			return Err(errno!(EINVAL));
 		}
@@ -160,7 +159,7 @@ impl IO for TmpFSRegular {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
 		if offset > self.content.len() as u64 {
 			return Err(errno!(EINVAL));
 		}
@@ -174,7 +173,7 @@ impl IO for TmpFSRegular {
 		Ok(buff.len() as _)
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

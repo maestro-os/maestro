@@ -27,19 +27,21 @@
 
 use crate::{
 	acpi::{rsdt::Rsdt, ACPITable, ACPITableHeader},
-	errno::{AllocResult, CollectResult, Errno},
 	memory,
 	memory::{malloc, vmem, vmem::VMem},
-	util,
-	util::{boxed::Box, collections::hashmap::HashMap},
 };
 use core::{
 	ffi::c_void,
 	mem::size_of,
-	num::NonZeroUsize,
 	ptr,
 	ptr::{copy_nonoverlapping, Pointee},
 	slice,
+};
+use utils::{
+	boxed::Box,
+	collections::{hashmap::HashMap, vec::Vec},
+	errno::{AllocResult, CollectResult, EResult},
+	vec,
 };
 
 /// The signature of the RSDP structure.
@@ -120,7 +122,7 @@ pub struct ACPIData {
 	rsdt: *const Rsdt,
 
 	/// The buffer containing the ACPI data.
-	data: malloc::Alloc<u8>,
+	data: Vec<u8>,
 }
 
 impl ACPIData {
@@ -131,7 +133,7 @@ impl ACPIData {
 	/// If no ACPI data is found, the function returns `None`.
 	///
 	/// If the data is invalid, the function makes the kernel panic.
-	pub fn read() -> Result<Option<Self>, Errno> {
+	pub fn read() -> EResult<Option<Self>> {
 		let rsdp = unsafe { find_rsdp() };
 		let Some(rsdp) = rsdp else {
 			return Ok(None);
@@ -144,7 +146,7 @@ impl ACPIData {
 		// physical memory.
 		let mut tmp_vmem = VMem::new()?;
 		let rsdt_phys_ptr = rsdp.rsdt_address as *const c_void;
-		let rsdt_map_begin = util::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
+		let rsdt_map_begin = utils::down_align(rsdt_phys_ptr, memory::PAGE_SIZE);
 		// Map the RSDT to make it readable
 		let mut transaction = tmp_vmem.transaction();
 		transaction.map_range(rsdt_map_begin, memory::PAGE_SIZE as _, 2, 0)?;
@@ -169,7 +171,7 @@ impl ACPIData {
 				.map(|table| {
 					let table_ptr = table as *const ACPITableHeader;
 					// Map the table to read its length
-					let table_map_begin = util::down_align(table_ptr, memory::PAGE_SIZE);
+					let table_map_begin = utils::down_align(table_ptr, memory::PAGE_SIZE);
 					let mut transaction = tmp_vmem.transaction();
 					let res = transaction.map_range(
 						table_map_begin as _,
@@ -209,19 +211,18 @@ impl ACPIData {
 			let highest = ptr::null::<c_void>();
 
 			// Map all ACPI data
-			let begin = util::down_align(lowest, memory::PAGE_SIZE);
-			let end = unsafe { util::align(highest, memory::PAGE_SIZE) };
+			let begin = utils::down_align(lowest, memory::PAGE_SIZE);
+			let end = unsafe { utils::align(highest, memory::PAGE_SIZE) };
 			let pages = (end as usize - begin as usize) / memory::PAGE_SIZE;
 			let mut transaction = tmp_vmem.transaction();
 			transaction.map_range(begin, memory::PAGE_SIZE as _, pages, 0)?;
 			transaction.commit();
 
-			// FIXME: unwrap here is garbage
-			let size = NonZeroUsize::new(pages * memory::PAGE_SIZE).unwrap();
-			let mut dest = malloc::Alloc::<u8>::new_default(size)?;
+			let size = pages * memory::PAGE_SIZE;
+			let mut dest = vec![0; size]?;
 			let src = memory::PAGE_SIZE as *const u8;
 			unsafe {
-				copy_nonoverlapping(src, dest.as_ptr_mut(), size.get());
+				copy_nonoverlapping(src, dest.as_mut_ptr(), size);
 			}
 
 			(begin as usize, dest)

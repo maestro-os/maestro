@@ -19,12 +19,12 @@
 //! The `chmod` system call allows change the permissions on a file.
 
 use crate::{
-	errno::Errno,
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {

@@ -18,12 +18,13 @@
 
 //! The `close` system call closes the given file descriptor.
 
-use crate::{errno, errno::Errno, process::Process};
+use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
-pub fn close(fd: c_int) -> Result<i32, Errno> {
+pub fn close(fd: c_int) -> Result<i32> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

@@ -19,13 +19,12 @@
 //! A map residence provides information about how to populate a memory mapping.
 
 use crate::{
-	errno::{AllocError, AllocResult},
 	file::{open_file::OpenFile, FileLocation},
 	memory,
 	memory::buddy,
-	util::{collections::vec::Vec, lock::Mutex, ptr::arc::Arc},
 };
-use core::ptr::NonNull;
+use core::{alloc::AllocError, ptr::NonNull};
+use utils::{collections::vec::Vec, errno::AllocResult, lock::Mutex, ptr::arc::Arc};
 
 /// Type representing a memory page.
 pub type Page = [u8; memory::PAGE_SIZE];

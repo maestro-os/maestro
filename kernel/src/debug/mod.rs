@@ -18,8 +18,9 @@
 
 //! Debugging tools for the kernel.
 
-use crate::{elf, memory, util::DisplayableStr};
+use crate::{elf, memory};
 use core::{ffi::c_void, ptr::null_mut};
+use utils::DisplayableStr;
 
 /// Fills the slice `stack` with the callstack starting at `frame`.
 ///

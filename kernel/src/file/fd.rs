@@ -21,13 +21,16 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-use crate::{
-	errno::{CollectResult, EResult, Errno},
-	file::open_file::OpenFile,
-	limits,
-	util::{collections::vec::Vec, io::IO, lock::Mutex, ptr::arc::Arc},
-};
+use crate::{file::open_file::OpenFile, limits};
 use core::cmp::max;
+use utils::{
+	collections::vec::Vec,
+	errno,
+	errno::{CollectResult, EResult},
+	io::IO,
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 /// The maximum number of file descriptors that can be open system-wide at once.
 const TOTAL_MAX_FD: usize = u32::MAX as usize;
@@ -152,15 +155,15 @@ impl IO for FileDescriptor {
 		self.open_file.lock().get_size()
 	}
 
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
 		self.open_file.lock().read(off, buf)
 	}
 
-	fn write(&mut self, off: u64, buf: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<u64> {
 		self.open_file.lock().write(off, buf)
 	}
 
-	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, mask: u32) -> EResult<u32> {
 		self.open_file.lock().poll(mask)
 	}
 }
@@ -336,10 +339,8 @@ impl Default for FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::{
-		file::{File, FileContent, FileLocation},
-		util::collections::string::String,
-	};
+	use crate::file::{File, FileContent, FileLocation};
+	use utils::{collections::string::String, lock::Mutex, ptr::arc::Arc};
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {

@@ -20,14 +20,13 @@
 //! socket which can be used for IPC (Inter-Process Communication).
 
 use crate::{
-	errno,
-	errno::Errno,
 	file::{buffer, buffer::socket::Socket, open_file, open_file::OpenFile, vfs},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::{mem_space::ptr::SyscallPtr, Process},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn socketpair(

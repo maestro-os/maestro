@@ -20,7 +20,6 @@
 //! process's directory.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode},
 		path::PathBuf,
@@ -30,8 +29,8 @@ use crate::{
 	},
 	process::Process,
 	time::unit::Timestamp,
-	util::io::IO,
 };
+use utils::{errno, errno::EResult, format, io::IO};
 
 /// The `self` symlink.
 #[derive(Debug)]
@@ -82,7 +81,7 @@ impl KernFSNode for SelfNode {
 
 	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
 		let pid = Process::current_assert().lock().pid;
-		let pid = PathBuf::try_from(crate::format!("{pid}")?)?;
+		let pid = PathBuf::try_from(format!("{pid}")?)?;
 		Ok(FileContent::Link(pid).into())
 	}
 }
@@ -92,15 +91,15 @@ impl IO for SelfNode {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
 		Err(errno!(EINVAL))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Err(errno!(EINVAL))
 	}
 }

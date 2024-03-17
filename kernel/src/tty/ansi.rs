@@ -20,7 +20,7 @@
 //! of the terminal.
 
 use super::TTY;
-use crate::{tty::vga, util};
+use crate::tty::vga;
 use core::{
 	cmp::{max, min},
 	str,
@@ -161,7 +161,7 @@ impl<'tty> ANSIBufferView<'tty> {
 	///
 	/// If not enough data remains or if the number is invalid, the function returns `None`.
 	fn next_nbr(&mut self) -> Option<u32> {
-		let nbr_len = util::nbr_len(&self.buffer()[self.cursor..]);
+		let nbr_len = utils::nbr_len(&self.buffer()[self.cursor..]);
 		let Ok(nbr) = str::from_utf8(&self.buffer()[self.cursor..(self.cursor + nbr_len)]) else {
 			return None;
 		};

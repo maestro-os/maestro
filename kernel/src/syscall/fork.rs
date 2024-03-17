@@ -20,12 +20,9 @@
 //! process. Execution resumes at the same location for both processes but the
 //! return value is different to allow differentiation.
 
-use crate::{
-	errno::Errno,
-	process::{ForkOptions, Process},
-	util::ptr::arc::Arc,
-};
+use crate::process::{ForkOptions, Process};
 use macros::syscall;
+use utils::{errno::Errno, ptr::arc::Arc};
 
 #[syscall]
 pub fn fork() -> Result<i32, Errno> {

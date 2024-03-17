@@ -18,11 +18,12 @@
 
 //! `netlink` is an interface between the kernel and userspace.
 
-use crate::{
-	errno::Errno,
-	util::collections::{ring_buffer::RingBuffer, vec::Vec},
-};
 use core::mem::size_of;
+use utils::{
+	collections::{ring_buffer::RingBuffer, vec::Vec},
+	errno::EResult,
+	vec,
+};
 
 /// Netlink message header.
 #[repr(C)]
@@ -53,12 +54,12 @@ pub struct Handle {
 
 impl Handle {
 	/// Creates a new handle.
-	pub fn new() -> Result<Self, Errno> {
+	pub fn new() -> EResult<Self> {
 		Ok(Self {
 			family: 0,
 
-			read_buff: RingBuffer::new(crate::vec![0; 16384]?),
-			write_buff: RingBuffer::new(crate::vec![0; 16384]?),
+			read_buff: RingBuffer::new(vec![0; 16384]?),
+			write_buff: RingBuffer::new(vec![0; 16384]?),
 		})
 	}
 }
@@ -67,7 +68,7 @@ impl Handle {
 	/// Reads data from the I/O and writes it into `buff`.
 	///
 	/// The function returns the number of bytes read.
-	pub fn read(&mut self, buff: &mut [u8]) -> Result<(usize, bool), Errno> {
+	pub fn read(&mut self, buff: &mut [u8]) -> EResult<(usize, bool)> {
 		let len = self.read_buff.read(buff);
 		Ok((len, false))
 	}
@@ -75,7 +76,7 @@ impl Handle {
 	/// Reads data from `buff` and writes it into the I/O.
 	///
 	/// The function returns the number of bytes written.
-	pub fn write(&mut self, buff: &[u8]) -> Result<usize, Errno> {
+	pub fn write(&mut self, buff: &[u8]) -> EResult<usize> {
 		let len = self.write_buff.write(buff);
 
 		// Read message header
@@ -95,7 +96,7 @@ impl Handle {
 	/// `mask` is a mask containing the mask of operations to check for.
 	///
 	/// The function returns the mask with available events set.
-	pub fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	pub fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

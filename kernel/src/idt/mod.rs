@@ -22,8 +22,8 @@
 
 pub mod pic;
 
-use crate::util;
 use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
+use utils::interrupt::{cli, is_interrupt_enabled, sti};
 
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
@@ -93,7 +93,7 @@ impl InterruptDescriptor {
 			selector,
 			zero: 0,
 			flags,
-			offset_2: (((address as u32) & 0xffff0000) >> util::bit_size_of::<u16>()) as u16,
+			offset_2: (((address as u32) & 0xffff0000) >> utils::bit_size_of::<u16>()) as u16,
 		}
 	}
 }
@@ -171,14 +171,14 @@ pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 	// Here is assumed that no interruption will change eflags. Which could cause a
 	// race condition
 
-	crate::cli!();
+	cli();
 
 	let result = f();
 
 	if int {
-		crate::sti!();
+		sti();
 	} else {
-		crate::cli!();
+		cli();
 	}
 
 	result
@@ -190,7 +190,7 @@ pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 ///
 /// When returning, maskable interrupts are disabled by default.
 pub(crate) fn init() {
-	cli!();
+	cli();
 	pic::init(0x20, 0x28);
 
 	// Fill entries table

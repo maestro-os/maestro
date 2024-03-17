@@ -19,12 +19,15 @@
 //! The `chown` system call changes the owner of a file.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Performs the `chown` syscall.
 pub fn do_chown(

@@ -20,12 +20,12 @@
 //! the current process.
 
 use crate::{
-	errno::Errno,
 	file::{mountpoint, path::Path, vfs::ResolutionSettings, FileType},
 	process::{mem_space::ptr::SyscallString, Process},
 	vfs,
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn chroot(path: SyscallString) -> Result<i32, Errno> {

@@ -24,7 +24,7 @@ use crate::{
 };
 use core::{any::Any, ffi::c_int};
 use macros::syscall;
-use util::errno;
+use utils::{errno, errno::Errno};
 
 /// The implementation of the `connect` syscall.
 #[syscall]

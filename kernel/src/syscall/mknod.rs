@@ -20,8 +20,6 @@
 
 use crate::{
 	device::id,
-	errno,
-	errno::Errno,
 	file,
 	file::{
 		path::{Path, PathBuf},
@@ -32,6 +30,7 @@ use crate::{
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 // TODO Check args type
 #[syscall]

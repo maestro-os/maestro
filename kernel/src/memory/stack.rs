@@ -18,8 +18,9 @@
 
 //! This module implements stack utility functions.
 
-use crate::{errno::AllocResult, memory, memory::malloc};
+use crate::memory;
 use core::{ffi::c_void, mem, ptr};
+use utils::{errno::AllocResult, vec};
 
 /// The size of a temporary stack in bytes.
 const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
@@ -72,7 +73,7 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(stack: Option<*mut c_void>, f: F) -> A
 	if let Some(stack) = stack {
 		stack_switch_(stack, &mut f as *mut _ as _, func as *const _);
 	} else {
-		let stack = malloc::Alloc::<u8>::new_default(TMP_STACK_SIZE.try_into().unwrap())?;
+		let stack = vec![0; TMP_STACK_SIZE.try_into().unwrap()]?;
 		let stack_top = (stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE);
 
 		stack_switch_(stack_top, &mut f as *mut _ as _, func as *const _);

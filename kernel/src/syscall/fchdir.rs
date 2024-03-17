@@ -19,9 +19,10 @@
 //! The fchdir system call allows to change the current working directory of the
 //! current process.
 
-use crate::{errno, errno::Errno, file::FileType, process::Process, util::ptr::arc::Arc};
+use crate::{file::FileType, process::Process};
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno, ptr::arc::Arc};
 
 #[syscall]
 pub fn fchdir(fd: c_int) -> Result<i32, Errno> {

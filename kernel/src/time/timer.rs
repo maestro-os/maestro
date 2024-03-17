@@ -23,7 +23,6 @@ use super::{
 	unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, TimestampScale},
 };
 use crate::{
-	errno::{AllocResult, EResult, Errno},
 	limits,
 	process::{
 		oom,
@@ -32,10 +31,12 @@ use crate::{
 		Process,
 	},
 	time::unit::Timespec32,
-	util::{
-		collections::{btreemap::BTreeMap, hashmap::HashMap, id_allocator::IDAllocator},
-		lock::IntMutex,
-	},
+};
+use utils::{
+	collections::{btreemap::BTreeMap, hashmap::HashMap, id_allocator::IDAllocator},
+	errno,
+	errno::{AllocResult, EResult},
+	lock::IntMutex,
 };
 
 // TODO make sure a timer doesn't send a signal to a thread that do not belong to the manager's
@@ -245,7 +246,7 @@ impl TimerManager {
 	/// - `sevp` describes the event to be triggered by the clock.
 	///
 	/// On success, the function returns the ID of the newly created timer.
-	pub fn create_timer(&mut self, clockid: ClockIdT, sevp: SigEvent) -> Result<u32, Errno> {
+	pub fn create_timer(&mut self, clockid: ClockIdT, sevp: SigEvent) -> EResult<u32> {
 		let timer = Timer::new(clockid, sevp)?;
 		let id = self.id_allocator.alloc(None)?;
 		if let Err(e) = self.timers.insert(id, timer) {
@@ -266,7 +267,7 @@ impl TimerManager {
 	/// Deletes the timer with the given ID.
 	///
 	/// If the timer doesn't exist, the function returns an error.
-	pub fn delete_timer(&mut self, id: TimerT) -> Result<(), Errno> {
+	pub fn delete_timer(&mut self, id: TimerT) -> EResult<()> {
 		self.timers
 			.remove(&(id as _))
 			.ok_or_else(|| errno!(EINVAL))?;

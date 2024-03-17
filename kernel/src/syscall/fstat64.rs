@@ -19,17 +19,16 @@
 //! The `fstat64` system call allows get the status of a file.
 
 use crate::{
-	errno::Errno,
 	file::{
 		perm::{Gid, Uid},
 		INode, Mode,
 	},
 	process::{mem_space::ptr::SyscallPtr, Process},
 	time::unit::{TimeUnit, Timespec, TimestampScale},
-	util::io::IO,
 };
 use core::ffi::{c_int, c_long};
 use macros::syscall;
+use utils::{errno, errno::Errno, io::IO};
 
 // TODO Check types
 /// Structure containing the informations of a file.

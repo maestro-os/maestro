@@ -23,15 +23,13 @@ use crate::{
 	crypto::rand,
 	device,
 	device::{tty::TTYDeviceHandle, Device, DeviceHandle, DeviceID},
-	errno,
-	errno::{EResult, Errno},
 	file::{blocking::BlockHandler, path::PathBuf},
 	logger::LOGGER,
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
-	util::{io, io::IO, lock::IntMutex, ptr::arc::Arc},
 };
 use core::{cmp::min, ffi::c_void, mem::ManuallyDrop};
+use utils::{errno, errno::EResult, io, io::IO, lock::IntMutex, ptr::arc::Arc};
 
 /// Device which does nothing.
 #[derive(Default)]
@@ -43,7 +41,7 @@ impl DeviceHandle for NullDeviceHandle {
 		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -54,15 +52,15 @@ impl IO for NullDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
 		Ok((0, true))
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
 		Ok(buff.len() as _)
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
@@ -77,7 +75,7 @@ impl DeviceHandle for ZeroDeviceHandle {
 		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -88,7 +86,7 @@ impl IO for ZeroDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		for b in buff.iter_mut() {
 			*b = 0;
 		}
@@ -96,11 +94,11 @@ impl IO for ZeroDeviceHandle {
 		Ok((buff.len() as _, false))
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
 		Ok(buff.len() as _)
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
@@ -120,12 +118,12 @@ impl DeviceHandle for RandomDeviceHandle {
 		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
 
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		self.block_handler.add_waiting_process(proc, mask)
 	}
 }
@@ -135,7 +133,7 @@ impl IO for RandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		self.block_handler.wake_processes(io::POLLIN);
@@ -148,7 +146,7 @@ impl IO for RandomDeviceHandle {
 		}
 	}
 
-	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _: u64, buff: &[u8]) -> EResult<u64> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		self.block_handler.wake_processes(io::POLLOUT);
@@ -161,7 +159,7 @@ impl IO for RandomDeviceHandle {
 		}
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
@@ -179,7 +177,7 @@ impl DeviceHandle for URandomDeviceHandle {
 		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -190,7 +188,7 @@ impl IO for URandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
@@ -201,7 +199,7 @@ impl IO for URandomDeviceHandle {
 		}
 	}
 
-	fn write(&mut self, _: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _: u64, buff: &[u8]) -> EResult<u64> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
@@ -212,7 +210,7 @@ impl IO for URandomDeviceHandle {
 		}
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
@@ -227,7 +225,7 @@ impl DeviceHandle for KMsgDeviceHandle {
 		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -238,7 +236,7 @@ impl IO for KMsgDeviceHandle {
 		LOGGER.lock().get_size() as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		if offset > (usize::MAX as u64) {
 			return Err(errno!(EINVAL));
 		}
@@ -254,12 +252,12 @@ impl IO for KMsgDeviceHandle {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		// TODO
 		todo!();
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(io::POLLIN | io::POLLOUT)
 	}
 }

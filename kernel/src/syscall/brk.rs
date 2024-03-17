@@ -19,15 +19,13 @@
 //! The `brk` system call allows to displace the end of the data segment of the
 //! process, thus allowing memory allocations.
 
-use crate::{
-	errno::Errno,
-	process::{regs::Regs, Process},
-};
+use crate::process::Process;
 use core::ffi::c_void;
+use macros::syscall;
+use utils::errno::Errno;
 
-pub fn brk(regs: &Regs) -> Result<i32, Errno> {
-	let addr = regs.ebx as *mut c_void;
-
+#[syscall]
+pub fn brk(addr: *mut c_void) -> EResult<i32> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

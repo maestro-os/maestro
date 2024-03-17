@@ -26,21 +26,19 @@ pub mod procfs;
 pub mod tmp;
 
 use super::{path::PathBuf, File};
-use crate::{
-	errno,
-	errno::EResult,
-	file::{
-		perm::{Gid, Uid},
-		FileContent, INode, Mode,
-	},
-	util::{
-		collections::{hashmap::HashMap, string::String},
-		io::IO,
-		lock::Mutex,
-		ptr::arc::Arc,
-	},
+use crate::file::{
+	perm::{Gid, Uid},
+	FileContent, INode, Mode,
 };
 use core::{any::Any, fmt::Debug};
+use utils::{
+	collections::{hashmap::HashMap, string::String},
+	errno,
+	errno::EResult,
+	io::IO,
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 /// This structure is used in the f_fsid field of statfs. It is currently
 /// unused.

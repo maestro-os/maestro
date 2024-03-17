@@ -19,12 +19,9 @@
 //! This module implements the `setpgid` system call, which allows to set the
 //! process group ID of a process.
 
-use crate::{
-	errno,
-	errno::Errno,
-	process::{pid::Pid, Process},
-};
+use crate::process::{pid::Pid, Process};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {

@@ -26,15 +26,20 @@ use super::StorageInterface;
 use crate::{
 	device,
 	device::{id, Device, DeviceHandle, DeviceID, DeviceType},
-	errno,
-	errno::{EResult, Errno},
 	file::path::PathBuf,
-	memory::malloc,
 	process::mem_space::MemSpace,
 	syscall::ioctl,
-	util::{io::IO, lock::IntMutex, ptr::arc::Arc},
 };
 use core::{ffi::c_void, mem::ManuallyDrop, num::NonZeroU64};
+use utils::{
+	collections::vec::Vec,
+	errno,
+	errno::{AllocResult, EResult},
+	format,
+	io::IO,
+	lock::IntMutex,
+	ptr::arc::Arc,
+};
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;
@@ -48,26 +53,20 @@ const RAM_DISK_SIZE: usize = 4 * 1024 * 1024;
 /// Structure representing a ram disk.
 struct RAMDisk {
 	/// The ram's data.
-	data: Option<malloc::Alloc<u8>>,
+	data: Vec<u8>,
 }
 
 impl RAMDisk {
 	/// Creates a new ramdisk.
 	pub fn new() -> Self {
 		Self {
-			data: None,
+			data: Vec::new(),
 		}
 	}
 
 	/// If not allocated, allocates the disk.
-	fn allocate(&mut self) -> Result<(), Errno> {
-		if self.data.is_none() {
-			self.data = Some(malloc::Alloc::new_default(
-				RAM_DISK_SIZE.try_into().unwrap(),
-			)?);
-		}
-
-		Ok(())
+	fn allocate(&mut self) -> AllocResult<()> {
+		self.data.resize(RAM_DISK_SIZE, 0)
 	}
 }
 
@@ -80,17 +79,12 @@ impl StorageInterface for RAMDisk {
 		(RAM_DISK_SIZE as u64) / self.get_block_size().get()
 	}
 
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> EResult<()> {
 		let block_size = self.get_block_size().get();
 		let blocks_count = self.get_blocks_count();
 		if offset > blocks_count || offset + size > blocks_count {
 			return Err(errno!(EINVAL));
 		}
-
-		let Some(data) = &self.data else {
-			buf.fill(0);
-			return Ok(());
-		};
 
 		let off = offset * block_size;
 		for i in 0..size {
@@ -98,24 +92,21 @@ impl StorageInterface for RAMDisk {
 				let buf_index = (i * block_size + j) as usize;
 				let disk_index = (off + buf_index as u64) as usize;
 
-				buf[buf_index] = data[disk_index];
+				buf[buf_index] = self.data[disk_index];
 			}
 		}
 
 		Ok(())
 	}
 
-	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> Result<(), Errno> {
+	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> EResult<()> {
 		let block_size = self.get_block_size().get();
 		let blocks_count = self.get_blocks_count();
 		if offset > blocks_count || offset + size > blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
-		if self.data.is_none() {
-			self.allocate()?;
-		}
-		let data = self.data.as_mut().unwrap();
+		self.allocate()?;
 
 		let off = offset * block_size;
 		for i in 0..size {
@@ -123,7 +114,7 @@ impl StorageInterface for RAMDisk {
 				let buf_index = (i * block_size + j) as usize;
 				let disk_index = (off + buf_index as u64) as usize;
 
-				data[disk_index] = buf[buf_index];
+				self.data[disk_index] = buf[buf_index];
 			}
 		}
 
@@ -152,7 +143,7 @@ impl DeviceHandle for RAMDiskHandle {
 		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -163,15 +154,15 @@ impl IO for RAMDiskHandle {
 		RAM_DISK_SIZE as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		self.disk.read_bytes(buff, offset)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
 		self.disk.write_bytes(buff, offset)
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(0)
 	}
 }
@@ -182,7 +173,7 @@ pub(crate) fn create() -> EResult<()> {
 	let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Block, Some(RAM_DISK_MAJOR))?);
 
 	for i in 0..RAM_DISK_COUNT {
-		let path = PathBuf::try_from(crate::format!("/dev/ram{i}")?)?;
+		let path = PathBuf::try_from(format!("/dev/ram{i}")?)?;
 		let dev = Device::new(
 			DeviceID {
 				type_: DeviceType::Block,

@@ -19,12 +19,11 @@
 //! The `sethostname` syscall sets the hostname of the system.
 
 use crate::{
-	errno::Errno,
 	limits,
 	process::{mem_space::ptr::SyscallSlice, Process},
-	util::collections::vec::Vec,
 };
 use macros::syscall;
+use utils::{collections::vec::Vec, errno, errno::Errno};
 
 #[syscall]
 pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {

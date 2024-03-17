@@ -19,16 +19,15 @@
 //! The `readlink` syscall allows to read the target of a symbolic link.
 
 use crate::{
-	errno::Errno,
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileContent},
 	process::{
 		mem_space::ptr::{SyscallSlice, SyscallString},
 		Process,
 	},
-	util,
 };
 use core::cmp::min;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn readlink(
@@ -64,7 +63,7 @@ pub fn readlink(
 	// Copy to userspace buffer
 	let mut mem_space = mem_space_mutex.lock();
 	let buffer = buf.get_mut(&mut mem_space, bufsiz)?.ok_or(errno!(EFAULT))?;
-	util::slice_copy(target.as_bytes(), buffer);
+	utils::slice_copy(target.as_bytes(), buffer);
 
 	Ok(min(bufsiz, target.len()) as _)
 }

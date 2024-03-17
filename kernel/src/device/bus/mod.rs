@@ -20,10 +20,11 @@
 
 pub mod pci;
 
-use crate::{device::manager, errno::Errno};
+use crate::device::manager;
+use utils::errno::EResult;
 
 /// Detects internal buses and registers them.
-pub fn detect() -> Result<(), Errno> {
+pub fn detect() -> EResult<()> {
 	// PCI
 	let mut pci_manager = pci::PCIManager::new();
 	pci_manager.scan()?;

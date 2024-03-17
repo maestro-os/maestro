@@ -20,19 +20,21 @@
 //! set a TLS area.
 
 use crate::{
-	errno,
-	errno::Errno,
 	gdt, process,
 	process::{mem_space::ptr::SyscallPtr, user_desc::UserDesc, Process},
 };
 use core::mem::size_of;
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// The index of the first entry for TLS segments in the GDT.
 const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
 
 /// Returns the ID of a free TLS entry for the given process.
-pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
+pub fn get_free_entry(process: &mut Process) -> EResult<usize> {
 	for (i, e) in process.get_tls_entries().iter().enumerate() {
 		if !e.is_present() {
 			return Ok(i);
@@ -45,10 +47,7 @@ pub fn get_free_entry(process: &mut Process) -> Result<usize, Errno> {
 /// Returns an entry ID for the given process and entry number.
 ///
 /// If the id is `-1`, the function shall find a free entry.
-pub fn get_entry(
-	proc: &mut Process,
-	entry_number: i32,
-) -> Result<(usize, &mut gdt::Entry), Errno> {
+pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut gdt::Entry)> {
 	let end_entry = (TLS_BEGIN_INDEX + process::TLS_ENTRIES_COUNT) as i32;
 
 	// Checking the entry number is in bound

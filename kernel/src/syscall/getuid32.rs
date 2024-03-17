@@ -18,8 +18,9 @@
 
 //! The `getuid32` syscall returns the UID of the process's owner.
 
-use crate::{errno::Errno, process::Process};
+use crate::process::Process;
 use macros::syscall;
+use utils::errno::Errno;
 
 #[syscall]
 pub fn getuid32() -> Result<i32, Errno> {

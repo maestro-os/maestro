@@ -19,7 +19,8 @@
 //! The Real Time Clock (RTC) is the clock used by the CMOS to maintain system time.
 
 use super::HwClock;
-use crate::{idt, io, util::math::rational::Rational};
+use crate::{idt, io};
+use utils::math::rational::Rational;
 
 /// The ID of the port used to select the CMOS register to read.
 const SELECT_PORT: u16 = 0x70;

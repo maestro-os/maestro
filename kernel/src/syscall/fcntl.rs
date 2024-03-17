@@ -19,12 +19,15 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
 use crate::{
-	errno::Errno,
 	file::{buffer, buffer::pipe::PipeBuffer, fd::NewFDConstraint, FileContent},
 	process::Process,
 };
 use core::ffi::{c_int, c_void};
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Duplicate the file descriptor using the lowest numbered available file descriptor greater than
 /// or equal to the specified argument.
@@ -131,7 +134,7 @@ const F_SEAL_WRITE: i32 = 8;
 /// Performs the fcntl system call.
 ///
 /// `fcntl64` tells whether this is the `fcntl64` system call.
-pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i32, Errno> {
+pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<i32> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
@@ -329,6 +332,6 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> Result<i
 }
 
 #[syscall]
-pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> Result<i32, Errno> {
+pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> EResult<i32> {
 	do_fcntl(fd, cmd, arg, false)
 }

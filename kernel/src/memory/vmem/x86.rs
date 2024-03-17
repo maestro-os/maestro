@@ -41,18 +41,13 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a
 //! page table.
 
-use crate::{
-	errno::AllocResult,
-	memory,
-	memory::buddy,
-	register_get, register_set,
-	util::{down_align, lock::Mutex},
-};
+use crate::{memory, memory::buddy, register_get, register_set};
 use core::{
 	arch::asm,
 	ffi::c_void,
 	ptr::{null_mut, NonNull},
 };
+use utils::{down_align, errno::AllocResult, lock::Mutex};
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.

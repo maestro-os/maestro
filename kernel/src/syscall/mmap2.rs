@@ -20,9 +20,9 @@
 //! in pages.
 
 use super::mmap;
-use crate::errno::Errno;
 use core::ffi::{c_int, c_void};
 use macros::syscall;
+use utils::errno::Errno;
 
 // TODO Check last argument type
 #[syscall]

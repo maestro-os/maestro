@@ -20,7 +20,6 @@
 
 use super::util::at;
 use crate::{
-	errno::Errno,
 	file::{
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
@@ -29,6 +28,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 // TODO Check args type
 #[syscall]

@@ -19,14 +19,9 @@
 //! A file mapping is a view of a file in memory, which can be modified, shared between processes,
 //! etc...
 
-use crate::{
-	errno::Errno,
-	file::FileLocation,
-	memory,
-	memory::buddy,
-	util::{collections::hashmap::HashMap, lock::Mutex},
-};
+use crate::{file::FileLocation, memory, memory::buddy};
 use core::ptr::NonNull;
+use utils::{collections::hashmap::HashMap, errno::EResult, lock::Mutex};
 
 /// Structure representing a mapped page for a file.
 struct Page {
@@ -49,7 +44,7 @@ impl MappedFile {
 	/// If the page is not mapped, the function maps it.
 	///
 	/// `off` is the offset of the page in pages count.
-	pub fn acquire_page(&mut self, off: usize) -> Result<&mut Page, Errno> {
+	pub fn acquire_page(&mut self, off: usize) -> EResult<&mut Page> {
 		if !self.pages.contains_key(&off) {
 			self.pages.insert(
 				off,
@@ -109,7 +104,7 @@ pub fn get_page(loc: &FileLocation, off: usize) -> Option<&mut [u8; memory::PAGE
 /// Arguments:
 /// - `loc` is the location to the file.
 /// - `off` is the offset of the page to map.
-pub fn map(loc: FileLocation, _off: usize) -> Result<(), Errno> {
+pub fn map(loc: FileLocation, _off: usize) -> EResult<()> {
 	let mut mapped_files = MAPPED_FILES.lock();
 	let _mapped_file = match mapped_files.get_mut(&loc) {
 		Some(f) => f,

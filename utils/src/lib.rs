@@ -208,11 +208,10 @@ macro_rules! include_bytes_aligned {
 	($align:ty, $path:expr) => {
 		// const block to encapsulate static
 		{
-			static ALIGNED: &$crate::util::Aligned<$align, [u8]> = &$crate::util::Aligned {
+			static ALIGNED: &$crate::Aligned<$align, [u8]> = &$crate::Aligned {
 				_align: [],
 				data: *include_bytes!($path),
 			};
-
 			&ALIGNED.data
 		}
 	};

@@ -23,23 +23,25 @@
 
 use super::gap::MemGap;
 use crate::{
-	errno::AllocError,
 	file::vfs,
 	memory,
 	memory::{
 		vmem,
 		vmem::{VMem, VMemTransaction},
 	},
-	process::{
-		mem_space::{
-			residence::{MapResidence, Page, ResidencePage},
-			COPY_BUFFER,
-		},
-		AllocResult, EResult,
+	process::mem_space::{
+		residence::{MapResidence, Page, ResidencePage},
+		COPY_BUFFER,
 	},
-	util::{collections::vec::Vec, io::IO, ptr::arc::Arc, TryClone},
 };
-use core::{ffi::c_void, num::NonZeroUsize, ops::Range, slice};
+use core::{alloc::AllocError, ffi::c_void, num::NonZeroUsize, ops::Range, slice};
+use utils::{
+	collections::vec::Vec,
+	errno::{AllocResult, EResult},
+	io::IO,
+	ptr::arc::Arc,
+	TryClone,
+};
 
 /// A mapping in a memory space.
 #[derive(Debug)]

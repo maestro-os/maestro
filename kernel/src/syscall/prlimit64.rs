@@ -18,12 +18,10 @@
 
 //! The `prlimit64` syscall returns the limit for a given resource.
 
-use crate::{
-	errno::Errno,
-	process::{mem_space::ptr::SyscallPtr, pid::Pid, Process},
-};
+use crate::process::{mem_space::ptr::SyscallPtr, pid::Pid, Process};
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// The amount of seconds of CPU time the process can consume.
 const RLIMIT_CPU: i32 = 0;

@@ -19,8 +19,6 @@
 //! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
 use crate::{
-	errno,
-	errno::{EResult, Errno},
 	file::open_file::{OpenFile, O_NONBLOCK},
 	limits,
 	process::{
@@ -28,10 +26,16 @@ use crate::{
 		mem_space::{ptr::SyscallSlice, MemSpace},
 		scheduler, Process,
 	},
-	util::{collections::vec::Vec, io, io::IO},
 };
 use core::{cmp::min, ffi::c_int};
 use macros::syscall;
+use utils::{
+	collections::vec::Vec,
+	errno,
+	errno::{EResult, Errno},
+	io,
+	io::IO,
+};
 
 // TODO Handle blocking writes (and thus, EINTR)
 // TODO Reimplement by taking example on `writev` (currently doesn't work with blocking files)
@@ -95,7 +99,7 @@ pub fn do_readv(
 	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-) -> Result<i32, Errno> {
+) -> EResult<i32> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

@@ -19,8 +19,6 @@
 //! The `init_module` system call allows to load a module on the kernel.
 
 use crate::{
-	errno,
-	errno::Errno,
 	module,
 	module::Module,
 	process::{
@@ -30,6 +28,7 @@ use crate::{
 };
 use core::ffi::c_ulong;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn init_module(

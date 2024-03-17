@@ -19,10 +19,7 @@
 //! The Open Systems Interconnection (OSI) model defines the architecure of a network stack.
 
 use super::{buff::BuffList, ip, SocketDesc, SocketDomain, SocketType};
-use crate::{
-	errno::Errno,
-	util::{boxed::Box, collections::hashmap::HashMap, lock::Mutex},
-};
+use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult, lock::Mutex};
 
 /// An OSI layer.
 ///
@@ -35,14 +32,14 @@ pub trait Layer {
 	/// Arguments:
 	/// - `buff` is the list of buffer which composes the packet being built.
 	/// - `next` is the function called to pass the buffers list to the next layer.
-	fn transmit<'c, F>(&self, buff: BuffList<'c>, next: F) -> Result<(), Errno>
+	fn transmit<'c, F>(&self, buff: BuffList<'c>, next: F) -> EResult<()>
 	where
 		Self: Sized,
-		F: Fn(BuffList<'c>) -> Result<(), Errno>;
+		F: Fn(BuffList<'c>) -> EResult<()>;
 }
 
 /// Function used to build a layer from a given sockaddr structure.
-pub type LayerBuilder = fn(&[u8]) -> Result<Box<dyn Layer>, Errno>;
+pub type LayerBuilder = fn(&[u8]) -> EResult<Box<dyn Layer>>;
 
 /// Collection of OSI layers 3 (network)
 static DOMAINS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
@@ -72,7 +69,7 @@ impl Stack {
 	///
 	/// If the descriptor is invalid or if the stack cannot be created, the function returns an
 	/// error.
-	pub fn new(desc: &SocketDesc, sockaddr: &[u8]) -> Result<Stack, Errno> {
+	pub fn new(desc: &SocketDesc, sockaddr: &[u8]) -> EResult<Stack> {
 		let domain = {
 			let guard = DOMAINS.lock();
 			let builder = guard
@@ -103,7 +100,7 @@ impl Stack {
 }
 
 /// Registers default domains/types/protocols.
-pub(crate) fn init() -> Result<(), Errno> {
+pub(crate) fn init() -> EResult<()> {
 	let domains = HashMap::try_from([
 		// TODO unix
 		(

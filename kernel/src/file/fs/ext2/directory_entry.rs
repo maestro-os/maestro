@@ -20,16 +20,17 @@
 //! represents a subfile in a directory.
 
 use super::Superblock;
-use crate::{
-	errno::{AllocError, AllocResult, Errno},
-	file::FileType,
-	memory::malloc,
-	util::boxed::Box,
-};
+use crate::{file::FileType, memory::malloc};
 use core::{
+	alloc::AllocError,
 	cmp::min,
 	num::{NonZeroU16, NonZeroUsize},
 	slice,
+};
+use utils::{
+	boxed::Box,
+	errno,
+	errno::{AllocResult, EResult},
 };
 
 /// Directory entry type indicator: Unknown
@@ -104,7 +105,7 @@ impl DirectoryEntry {
 		total_size: NonZeroU16,
 		file_type: FileType,
 		name: &[u8],
-	) -> Result<Box<Self>, Errno> {
+	) -> EResult<Box<Self>> {
 		if (total_size.get() as usize) < (8 + name.len()) {
 			return Err(errno!(EINVAL));
 		}

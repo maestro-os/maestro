@@ -18,10 +18,10 @@
 
 //! The `break` system call is not implemented.
 
-use crate::{errno, errno::Errno};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
-pub fn r#break() -> Result<i32, Errno> {
+pub fn r#break() -> EResult<i32> {
 	Err(errno!(ENOSYS))
 }

@@ -20,7 +20,6 @@
 
 use super::util::at;
 use crate::{
-	errno::Errno,
 	file::{
 		mountpoint::MountSource,
 		path::PathBuf,
@@ -31,10 +30,10 @@ use crate::{
 		mem_space::ptr::{SyscallPtr, SyscallString},
 		Process,
 	},
-	util::io::IO,
 };
 use core::ffi::{c_int, c_uint};
 use macros::syscall;
+use utils::{errno, errno::Errno, io::IO};
 
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]

@@ -20,11 +20,11 @@
 
 use super::statfs::do_statfs;
 use crate::{
-	errno::Errno,
 	file::fs::Statfs,
 	process::mem_space::ptr::{SyscallPtr, SyscallString},
 };
 use macros::syscall;
+use utils::errno::Errno;
 
 // TODO Check args types
 #[syscall]

@@ -18,13 +18,10 @@
 
 //! The tkill system call allows to send a signal to a specific thread.
 
-use crate::{
-	errno,
-	errno::Errno,
-	process::{pid::Pid, signal::Signal, Process},
-};
+use crate::process::{pid::Pid, signal::Signal, Process};
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {

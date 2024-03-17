@@ -19,13 +19,13 @@
 //! Implementation of memory space transactions to modify [`MemSpaceState`] atomically.
 
 use super::{gap::MemGap, mapping::MemMapping, MemSpaceState};
-use crate::{
+use crate::memory::vmem::{VMem, VMemTransaction};
+use core::{alloc::AllocError, ffi::c_void, hash::Hash, mem, num::NonZeroUsize};
+use utils::{
+	collections::{btreemap::BTreeMap, hashmap::HashMap},
 	errno,
-	errno::{AllocError, AllocResult},
-	memory::vmem::{VMem, VMemTransaction},
-	util::collections::{btreemap::BTreeMap, hashmap::HashMap},
+	errno::AllocResult,
 };
-use core::{ffi::c_void, hash::Hash, mem, num::NonZeroUsize};
 
 /// Applies the difference in `complement` to rollback operations.
 ///

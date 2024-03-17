@@ -24,11 +24,12 @@
 
 use crate::{logger, power, register_get};
 use core::panic::PanicInfo;
+use utils::interrupt::cli;
 
 /// Called on Rust panic.
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
-	crate::cli!();
+	cli();
 	logger::LOGGER.lock().silent = false;
 
 	#[cfg(test)]

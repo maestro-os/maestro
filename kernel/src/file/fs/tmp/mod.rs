@@ -27,25 +27,23 @@ use super::{
 	kernfs::{node::KernFSNode, KernFS},
 	Filesystem, FilesystemType,
 };
-use crate::{
-	errno,
-	errno::EResult,
-	file::{
-		fs::{kernfs::node::DummyKernFSNode, Statfs},
-		path::PathBuf,
-		perm::{Gid, Uid},
-		Errno, File, FileContent, INode, Mode,
-	},
-	util::{
-		boxed::Box,
-		collections::{hashmap::HashMap, string::String},
-		io::IO,
-		lock::Mutex,
-		ptr::arc::Arc,
-	},
+use crate::file::{
+	fs::{kernfs::node::DummyKernFSNode, Statfs},
+	path::PathBuf,
+	perm::{Gid, Uid},
+	File, FileContent, INode, Mode,
 };
 use core::mem::size_of;
 use node::TmpFSRegular;
+use utils::{
+	boxed::Box,
+	collections::{hashmap::HashMap, string::String},
+	errno,
+	errno::EResult,
+	io::IO,
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
@@ -75,7 +73,7 @@ impl TmpFS {
 	/// Arguments:
 	/// - `max_size` is the maximum amount of memory the filesystem can use in bytes.
 	/// - `readonly` tells whether the filesystem is readonly.
-	pub fn new(max_size: usize, readonly: bool) -> Result<Self, Errno> {
+	pub fn new(max_size: usize, readonly: bool) -> EResult<Self> {
 		let mut fs = Self {
 			max_size,
 			size: 0,
@@ -102,11 +100,7 @@ impl TmpFS {
 	///
 	/// If the new total size is too large, `f` is not executed and the
 	/// function returns an error.
-	fn update_size<F: FnOnce(&mut Self) -> Result<(), Errno>>(
-		&mut self,
-		s: isize,
-		f: F,
-	) -> Result<(), Errno> {
+	fn update_size<F: FnOnce(&mut Self) -> EResult<()>>(&mut self, s: isize, f: F) -> EResult<()> {
 		if s < 0 {
 			f(self)?;
 
@@ -146,7 +140,7 @@ impl Filesystem for TmpFS {
 		self.fs.get_root_inode()
 	}
 
-	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
+	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs> {
 		self.fs.get_stat(io)
 	}
 
@@ -155,11 +149,11 @@ impl Filesystem for TmpFS {
 		io: &mut dyn IO,
 		parent: Option<INode>,
 		name: &[u8],
-	) -> Result<INode, Errno> {
+	) -> EResult<INode> {
 		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> EResult<File> {
 		self.fs.load_file(io, inode, name)
 	}
 
@@ -172,7 +166,7 @@ impl Filesystem for TmpFS {
 		gid: Gid,
 		mode: Mode,
 		content: FileContent,
-	) -> Result<File, Errno> {
+	) -> EResult<File> {
 		// TODO Update fs's size
 
 		match content {
@@ -193,12 +187,12 @@ impl Filesystem for TmpFS {
 		parent_inode: INode,
 		name: &[u8],
 		inode: INode,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		// TODO Update fs's size
 		self.fs.add_link(io, parent_inode, name, inode)
 	}
 
-	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> Result<(), Errno> {
+	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> EResult<()> {
 		// TODO Update fs's size
 		self.fs.update_inode(io, file)
 	}
@@ -219,17 +213,11 @@ impl Filesystem for TmpFS {
 		inode: INode,
 		off: u64,
 		buf: &mut [u8],
-	) -> Result<u64, Errno> {
+	) -> EResult<u64> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-		buf: &[u8],
-	) -> Result<(), Errno> {
+	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
 		// TODO Update fs's size
 		self.fs.write_node(io, inode, off, buf)
 	}

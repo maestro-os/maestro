@@ -20,16 +20,15 @@
 //! status of the process.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode},
 		perm::{Gid, Uid},
 		FileContent, Mode,
 	},
 	process::{pid::Pid, Process},
-	util::io::IO,
 };
 use core::cmp::min;
+use utils::{errno, errno::EResult, format, io::IO};
 
 /// Structure representing the stat node of the procfs.
 #[derive(Debug)]
@@ -69,7 +68,7 @@ impl IO for Stat {
 		0
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		if buff.is_empty() {
 			return Ok((0, false));
 		}
@@ -109,7 +108,7 @@ impl IO for Stat {
 
 		// TODO Fill every fields with process's data
 		// Generating content
-		let content = crate::format!(
+		let content = format!(
 			"{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
 0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
 TODO TODO TODO TODO {esp} {eip} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
@@ -125,11 +124,11 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO"
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

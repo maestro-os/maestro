@@ -19,18 +19,15 @@
 //! The `splice` system call splice data from one pipe to another.
 
 use crate::{
-	errno::Errno,
 	file::FileType,
-	memory::malloc,
 	process::{mem_space::ptr::SyscallPtr, Process},
-	util::io::IO,
 };
 use core::{
 	cmp::min,
 	ffi::{c_int, c_uint},
-	num::NonZeroUsize,
 };
 use macros::syscall;
+use utils::{errno, errno::Errno, io::IO, vec};
 
 #[syscall]
 pub fn splice(
@@ -91,21 +88,15 @@ pub fn splice(
 	}
 
 	let len = min(len, i32::MAX as usize);
-	let Some(len) = NonZeroUsize::new(len) else {
-		return Ok(0);
-	};
 
 	// TODO implement flags
 
-	let mut buff = unsafe {
-		// Safe because initialized memory is never read
-		malloc::Alloc::<u8>::new(len)
-	}?;
+	let mut buff = vec![0u8; len]?;
 
 	let len = {
 		let mut input = input_mutex.lock();
 		let prev_off = input.get_offset();
-		let (len, _) = input.read(off_in.unwrap_or(0), buff.as_slice_mut())?;
+		let (len, _) = input.read(off_in.unwrap_or(0), buff.as_mut_slice())?;
 		if off_in.is_some() {
 			input.set_offset(prev_off);
 		}

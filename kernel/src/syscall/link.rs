@@ -19,11 +19,11 @@
 //! The link system call allows to create a directory.
 
 use crate::{
-	errno::Errno,
 	file::path::Path,
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn link(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {

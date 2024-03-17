@@ -19,11 +19,11 @@
 //! The `rename` system call renames a file.
 
 use crate::{
-	errno::Errno,
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 // TODO implementation probably can be merged with `renameat2`
 // TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,

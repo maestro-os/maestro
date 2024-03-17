@@ -20,15 +20,14 @@
 //! about memory usage of the system.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode},
 		FileContent,
 	},
 	memory,
-	util::io::IO,
 };
 use core::cmp::min;
+use utils::{errno, errno::EResult, format, io::IO};
 
 /// Structure representing the meminfo node.
 #[derive(Debug)]
@@ -45,14 +44,14 @@ impl IO for MemInfo {
 		0
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		if buff.is_empty() {
 			return Ok((0, false));
 		}
 
 		// Generate content
 		let mem_info = memory::stats::MEM_INFO.lock();
-		let content = crate::format!("{}", *mem_info)?;
+		let content = format!("{}", *mem_info)?;
 
 		// Copy content to userspace buffer
 		let content_bytes = content.as_bytes();
@@ -63,11 +62,11 @@ impl IO for MemInfo {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

@@ -20,6 +20,7 @@
 
 use crate::io;
 use core::arch::asm;
+use utils::interrupt::cli;
 
 /// Halts the kernel until reboot.
 pub fn halt() -> ! {
@@ -39,7 +40,7 @@ pub fn shutdown() -> ! {
 
 /// Reboots the system.
 pub fn reboot() -> ! {
-	cli!();
+	cli();
 
 	// First try: ACPI
 	// TODO Use ACPI reset to ensure everything reboots

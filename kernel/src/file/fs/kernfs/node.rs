@@ -20,7 +20,6 @@
 
 use super::content::KernFSContent;
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		perm,
 		perm::{Gid, Uid},
@@ -31,9 +30,9 @@ use crate::{
 		clock::CLOCK_MONOTONIC,
 		unit::{Timestamp, TimestampScale},
 	},
-	util::io::IO,
 };
 use core::{any::Any, fmt::Debug};
+use utils::{errno::EResult, io::IO};
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: Any + Debug + IO {
@@ -220,15 +219,15 @@ impl IO for DummyKernFSNode {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
 		Ok((0, true))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Ok(0)
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(0)
 	}
 }

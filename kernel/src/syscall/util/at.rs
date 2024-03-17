@@ -21,17 +21,15 @@
 //!
 //! This module implements utility functions for those system calls.
 
-use crate::{
-	errno::EResult,
-	file::{
-		fd::FileDescriptorTable,
-		path::Path,
-		vfs,
-		vfs::{ResolutionSettings, Resolved},
-		FileLocation,
-	},
+use crate::file::{
+	fd::FileDescriptorTable,
+	path::Path,
+	vfs,
+	vfs::{ResolutionSettings, Resolved},
+	FileLocation,
 };
 use core::ffi::c_int;
+use utils::{errno, errno::EResult};
 
 /// Special value to be used as file descriptor, telling to take the path relative to the
 /// current working directory.

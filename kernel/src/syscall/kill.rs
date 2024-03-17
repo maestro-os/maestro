@@ -21,19 +21,22 @@
 
 use super::util;
 use crate::{
-	errno,
-	errno::Errno,
 	process,
 	process::{pid::Pid, signal::Signal, Process, State},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	interrupt::cli,
+};
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
 ///
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
-fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
+fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
@@ -75,7 +78,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> Result<(), Errno> {
 ///
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
-fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
+fn try_kill_group(pid: i32, sig: &Option<Signal>) -> EResult<()> {
 	let pgid = match pid {
 		0 => {
 			let proc_mutex = Process::current_assert();
@@ -113,7 +116,7 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> Result<(), Errno> {
 /// Sends the signal `sig` to the processes according to the given value `pid`.
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
-fn send_signal(pid: i32, sig: Option<Signal>) -> Result<(), Errno> {
+fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	if pid > 0 {
 		// Kill the process with the given PID
 		try_kill(pid as _, &sig)
@@ -153,7 +156,7 @@ pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 		None
 	};
 
-	cli!();
+	cli();
 
 	send_signal(pid, sig)?;
 

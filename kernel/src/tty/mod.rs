@@ -30,20 +30,19 @@ pub mod vga;
 
 use crate::{
 	device::serial,
-	errno::Errno,
 	file::blocking::BlockHandler,
 	memory::vmem,
 	process::{pid::Pid, signal::Signal, Process},
 	tty::termios::Termios,
-	util,
-	util::{
-		collections::vec::Vec,
-		io,
-		lock::{IntMutex, MutexGuard},
-		ptr::arc::Arc,
-	},
 };
 use core::{cmp::*, intrinsics::size_of, mem::MaybeUninit, ptr, slice};
+use utils::{
+	collections::vec::Vec,
+	errno::EResult,
+	io,
+	lock::{IntMutex, MutexGuard},
+	ptr::arc::Arc,
+};
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -573,7 +572,7 @@ impl TTY {
 		// Writing to the input buffer
 		// TODO Put in a different function
 		{
-			util::slice_copy(input, &mut self.input_buffer[self.input_size..]);
+			utils::slice_copy(input, &mut self.input_buffer[self.input_size..]);
 			let new_bytes = &mut self.input_buffer[self.input_size..(self.input_size + len)];
 			self.input_size += len;
 
@@ -755,7 +754,7 @@ impl TTY {
 	/// When the event occurs, the process will be woken up.
 	///
 	/// `mask` is the mask of poll event to wait for.
-	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		self.block_handler.add_waiting_process(proc, mask)
 	}
 }

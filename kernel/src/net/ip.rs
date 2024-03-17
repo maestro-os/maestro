@@ -19,8 +19,9 @@
 //! This module implements the IP protocol.
 
 use super::{buff::BuffList, osi::Layer};
-use crate::{crypto::checksum, errno::Errno, util::boxed::Box};
+use crate::crypto::checksum;
 use core::{mem::size_of, slice};
+use utils::{boxed::Box, errno::EResult};
 
 /// The default TTL value.
 const DEFAULT_TTL: u8 = 128;
@@ -113,9 +114,9 @@ pub struct IPv4Layer {
 }
 
 impl Layer for IPv4Layer {
-	fn transmit<'c, F>(&self, mut buff: BuffList<'c>, next: F) -> Result<(), Errno>
+	fn transmit<'c, F>(&self, mut buff: BuffList<'c>, next: F) -> EResult<()>
 	where
-		F: Fn(BuffList<'c>) -> Result<(), Errno>,
+		F: Fn(BuffList<'c>) -> EResult<()>,
 	{
 		let hdr_len = size_of::<IPv4Header>() as u16; // TODO add options support?
 
@@ -151,7 +152,7 @@ impl Layer for IPv4Layer {
 }
 
 /// Builds an IPv4 layer with the given `sockaddr`.
-pub fn inet_build(_sockaddr: &[u8]) -> Result<Box<dyn Layer>, Errno> {
+pub fn inet_build(_sockaddr: &[u8]) -> EResult<Box<dyn Layer>> {
 	// TODO
 	todo!()
 }
@@ -159,7 +160,7 @@ pub fn inet_build(_sockaddr: &[u8]) -> Result<Box<dyn Layer>, Errno> {
 // TODO IPv6
 
 /// Builds an IPv6 layer with the given `sockaddr`.
-pub fn inet6_build(_sockaddr: &[u8]) -> Result<Box<dyn Layer>, Errno> {
+pub fn inet6_build(_sockaddr: &[u8]) -> EResult<Box<dyn Layer>> {
 	// TODO
 	todo!()
 }

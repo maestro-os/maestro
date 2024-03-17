@@ -18,8 +18,9 @@
 
 //! Boot-time kernel command line arguments parsing.
 
-use crate::{tty::vga, util::DisplayableStr};
+use crate::tty::vga;
 use core::{cmp::min, fmt, str};
+use utils::DisplayableStr;
 
 /// Parses the number represented by the string in the given slice.
 ///

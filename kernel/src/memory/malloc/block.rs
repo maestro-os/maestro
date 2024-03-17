@@ -21,12 +21,13 @@
 //! it has to be divided into chunks.
 
 use super::chunk::{Chunk, FreeChunk};
-use crate::{errno::AllocResult, memory, memory::buddy};
+use crate::{memory, memory::buddy};
 use core::{
 	mem::{offset_of, size_of},
 	num::NonZeroUsize,
 	ptr,
 };
+use utils::errno::AllocResult;
 
 /// A frame of memory allocated using the buddy allocator, storing memory chunks.
 #[repr(C, align(8))]

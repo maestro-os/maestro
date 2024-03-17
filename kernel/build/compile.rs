@@ -28,13 +28,16 @@ use std::{
 };
 
 /// Compiles the vDSO.
-pub fn compile_vdso(target: &Target, profile: &str) -> io::Result<()> {
+pub fn compile_vdso(target: &Target, profile: &str, manifest_dir: &str) -> io::Result<()> {
 	let file = PathBuf::from(format!("vdso/{}.s", target.name));
 
 	println!("cargo:rerun-if-changed=vdso/linker.ld");
 	println!("cargo:rerun-if-changed={}", file.display());
 
-	let out_dir = PathBuf::from(format!("../target/{}/{}/", target.name, profile));
+	let out_dir = PathBuf::from(format!(
+		"{manifest_dir}/../target/{}/{}/",
+		target.name, profile
+	));
 	let out_dir = out_dir.canonicalize()?;
 
 	// The path to the shared library to be compiled

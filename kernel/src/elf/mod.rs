@@ -26,8 +26,9 @@ pub mod kernel;
 pub mod parser;
 pub mod relocation;
 
-use crate::{errno, errno::EResult, process::mem_space};
+use crate::process::mem_space;
 use macros::AnyRepr;
+use utils::{errno, errno::EResult};
 
 /// The number of identification bytes in the ELF header.
 pub const EI_NIDENT: usize = 16;

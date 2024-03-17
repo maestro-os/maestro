@@ -19,7 +19,6 @@
 //! The `clock_gettime` syscall returns the current time of the given clock.
 
 use crate::{
-	errno::Errno,
 	process::{mem_space::ptr::SyscallPtr, Process},
 	time::{
 		clock,
@@ -27,6 +26,7 @@ use crate::{
 	},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn clock_gettime(clockid: ClockIdT, tp: SyscallPtr<Timespec>) -> Result<i32, Errno> {

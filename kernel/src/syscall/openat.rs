@@ -19,7 +19,6 @@
 //! The `openat` syscall allows to open a file.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		fd::{FileDescriptorTable, FD_CLOEXEC},
 		open_file,
@@ -31,10 +30,15 @@ use crate::{
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 	syscall::util::at,
-	util::{lock::Mutex, ptr::arc::Arc},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 // TODO Implement all flags
 

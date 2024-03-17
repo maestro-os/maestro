@@ -22,19 +22,19 @@ pub mod pipe;
 pub mod socket;
 
 use crate::{
-	errno::{AllocError, AllocResult, Errno},
 	file::{blocking::BlockHandler, FileLocation},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
-	util::{
-		collections::{hashmap::HashMap, id_allocator::IDAllocator},
-		io::IO,
-		lock::{IntMutex, Mutex},
-		ptr::arc::Arc,
-		TryDefault,
-	},
 };
-use core::{any::Any, ffi::c_void};
+use core::{alloc::AllocError, any::Any, ffi::c_void};
+use utils::{
+	collections::{hashmap::HashMap, id_allocator::IDAllocator},
+	errno::{AllocResult, EResult},
+	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+	TryDefault,
+};
 
 /// Trait representing a buffer.
 pub trait Buffer: IO + Any {
@@ -63,7 +63,7 @@ pub trait Buffer: IO + Any {
 	/// `mask` is the mask of poll event to wait for.
 	///
 	/// If the buffer cannot block, the function does nothing.
-	fn add_waiting_process(&mut self, _proc: &mut Process, _mask: u32) -> Result<(), Errno> {
+	fn add_waiting_process(&mut self, _proc: &mut Process, _mask: u32) -> EResult<()> {
 		Ok(())
 	}
 
@@ -78,7 +78,7 @@ pub trait Buffer: IO + Any {
 		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
-	) -> Result<u32, Errno>;
+	) -> EResult<u32>;
 }
 
 /// All the system's buffer. The key is the location of the file associated with the
@@ -92,9 +92,9 @@ static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 /// This function allows to access the ID allocator without bothering about its mutex.
 ///
 /// If the ID allocator is not initialized, the function initializes it.
-fn id_allocator_do<T, F>(f: F) -> Result<T, Errno>
+fn id_allocator_do<T, F>(f: F) -> EResult<T>
 where
-	F: FnOnce(&mut IDAllocator) -> Result<T, Errno>,
+	F: FnOnce(&mut IDAllocator) -> EResult<T>,
 {
 	let mut id_allocator = ID_ALLOCATOR.lock();
 
@@ -147,10 +147,7 @@ pub fn get_or_default<B: Buffer + TryDefault<Error = AllocError> + 'static>(
 /// - `buff` is the buffer to be registered.
 ///
 /// The function returns the location associated with the buffer.
-pub fn register(
-	loc: Option<FileLocation>,
-	buff: Arc<Mutex<dyn Buffer>>,
-) -> Result<FileLocation, Errno> {
+pub fn register(loc: Option<FileLocation>, buff: Arc<Mutex<dyn Buffer>>) -> EResult<FileLocation> {
 	let loc = id_allocator_do(|id_allocator| match loc {
 		Some(loc) => {
 			if let FileLocation::Virtual {

@@ -23,21 +23,23 @@ use super::{
 	read_block, write, write_block, zero_blocks, Superblock,
 };
 use crate::{
-	errno,
-	errno::Errno,
-	file,
 	file::{FileType, Mode},
 	limits,
-	memory::malloc,
-	util::{boxed::Box, collections::string::String, io::IO},
 };
 use core::{
 	cmp::{max, min},
 	mem::size_of,
-	num::NonZeroUsize,
 	ptr,
 	ptr::{addr_of, copy_nonoverlapping},
 	slice,
+};
+use utils::{
+	boxed::Box,
+	collections::{string::String, vec::Vec},
+	errno,
+	errno::EResult,
+	io::IO,
+	vec,
 };
 
 /// The maximum number of direct blocks for each inodes.
@@ -185,7 +187,7 @@ impl Ext2INode {
 	/// - `i` is the inode's index (starting at `1`).
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<u64, Errno> {
+	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<u64> {
 		// Checking the inode is correct
 		if i == 0 {
 			return Err(errno!(EINVAL));
@@ -233,7 +235,7 @@ impl Ext2INode {
 	/// - `i` is the inode's index (starting at `1`).
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<Self, Errno> {
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<Self> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
 
 		unsafe { read::<Self>(off, io) }
@@ -257,12 +259,12 @@ impl Ext2INode {
 	}
 
 	/// Returns the permissions of the file.
-	pub fn get_permissions(&self) -> file::Mode {
-		self.mode as file::Mode & 0x0fff
+	pub fn get_permissions(&self) -> Mode {
+		self.mode as Mode & 0x0fff
 	}
 
 	/// Sets the permissions of the file.
-	pub fn set_permissions(&mut self, perm: file::Mode) {
+	pub fn set_permissions(&mut self, perm: Mode) {
 		self.mode = (self.mode & !0o7777) | (perm & 0o7777) as u16;
 	}
 
@@ -356,7 +358,7 @@ impl Ext2INode {
 		off: u32,
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> Result<Option<u32>, Errno> {
+	) -> EResult<Option<u32>> {
 		if begin >= superblock.total_blocks {
 			return Err(errno!(EUCLEAN));
 		}
@@ -395,7 +397,7 @@ impl Ext2INode {
 		i: u32,
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> Result<Option<u32>, Errno> {
+	) -> EResult<Option<u32>> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -457,7 +459,7 @@ impl Ext2INode {
 		off: u32,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		if begin >= superblock.total_blocks {
 			return Err(errno!(EUCLEAN));
 		}
@@ -507,7 +509,7 @@ impl Ext2INode {
 		i: u32,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -617,7 +619,7 @@ impl Ext2INode {
 		off: u32,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
-	) -> Result<bool, Errno> {
+	) -> EResult<bool> {
 		if begin >= superblock.total_blocks {
 			return Err(errno!(EUCLEAN));
 		}
@@ -637,9 +639,8 @@ impl Ext2INode {
 			let next_off = off - blk_per_blk * inner_index;
 			if self.indirections_free(n - 1, b, next_off, superblock, io)? {
 				// Reading the current block
-				let mut buff =
-					malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
-				read_block(begin as _, superblock, io, buff.as_slice_mut())?;
+				let mut buff = vec![0; blk_size as _]?;
+				read_block(begin as _, superblock, io, buff.as_mut_slice())?;
 
 				// If the current block is empty, free it
 				if Self::is_blk_empty(buff.as_slice()) {
@@ -669,7 +670,7 @@ impl Ext2INode {
 		i: u32,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
 
@@ -741,15 +742,14 @@ impl Ext2INode {
 		buff: &mut [u8],
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> Result<u64, Errno> {
+	) -> EResult<u64> {
 		let size = self.get_size(superblock);
 		if off > size {
 			return Err(errno!(EINVAL));
 		}
 
 		let blk_size = superblock.get_block_size();
-		let mut blk_buff =
-			malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
+		let mut blk_buff = vec![0u8; blk_size as _]?;
 
 		let mut i = 0;
 		let max = min(buff.len() as u64, size - off);
@@ -761,7 +761,7 @@ impl Ext2INode {
 			let dst = &mut buff[(i as usize)..((i + len) as usize)];
 
 			if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
-				read_block(blk_off as _, superblock, io, blk_buff.as_slice_mut())?;
+				read_block(blk_off as _, superblock, io, blk_buff.as_mut_slice())?;
 
 				let src = &blk_buff.as_slice()[blk_inner_off..(blk_inner_off + len as usize)];
 				dst.copy_from_slice(src);
@@ -790,15 +790,14 @@ impl Ext2INode {
 		buff: &[u8],
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		let curr_size = self.get_size(superblock);
 		if off > curr_size {
 			return Err(errno!(EINVAL));
 		}
 
 		let blk_size = superblock.get_block_size();
-		let mut blk_buff =
-			malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
+		let mut blk_buff = vec![0u8; blk_size as _]?;
 
 		let mut i = 0;
 		while i < buff.len() {
@@ -807,10 +806,10 @@ impl Ext2INode {
 			let blk_off = {
 				if let Some(blk_off) = self.get_content_block_off(blk_off as _, superblock, io)? {
 					// Reading block
-					read_block(blk_off as _, superblock, io, blk_buff.as_slice_mut())?;
+					read_block(blk_off as _, superblock, io, blk_buff.as_mut_slice())?;
 					blk_off
 				} else {
-					blk_buff.as_slice_mut().fill(0);
+					blk_buff.as_mut_slice().fill(0);
 					self.alloc_content_block(blk_off as u32, superblock, io)?
 				}
 			};
@@ -821,12 +820,12 @@ impl Ext2INode {
 				// Safe because staying in range
 				copy_nonoverlapping(
 					&buff[i] as *const u8,
-					&mut blk_buff.as_slice_mut()[blk_inner_off] as *mut u8,
+					&mut blk_buff.as_mut_slice()[blk_inner_off] as *mut u8,
 					len,
 				);
 			}
 			// Writing block
-			write_block(blk_off as _, superblock, io, blk_buff.as_slice_mut())?;
+			write_block(blk_off as _, superblock, io, blk_buff.as_mut_slice())?;
 
 			i += len;
 		}
@@ -850,7 +849,7 @@ impl Ext2INode {
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 		size: u64,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		let old_size = self.get_size(superblock);
 		if size >= old_size {
 			return Ok(());
@@ -886,7 +885,7 @@ impl Ext2INode {
 		n: usize,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		if begin >= superblock.total_blocks {
 			return Err(errno!(EUCLEAN));
 		}
@@ -895,9 +894,8 @@ impl Ext2INode {
 		let entries_per_blk = blk_size as usize / size_of::<u32>();
 
 		// Reading the block
-		let mut blk_buff =
-			malloc::Alloc::<u32>::new_default(NonZeroUsize::new(entries_per_blk).unwrap())?;
-		read_block(begin as _, superblock, io, blk_buff.as_slice_mut())?;
+		let mut blk_buff = vec![0; entries_per_blk]?;
+		read_block(begin as _, superblock, io, blk_buff.as_mut_slice())?;
 
 		// Free every entries recursively
 		if n > 0 {
@@ -919,11 +917,7 @@ impl Ext2INode {
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn free_content(
-		&mut self,
-		superblock: &mut Superblock,
-		io: &mut dyn IO,
-	) -> Result<(), Errno> {
+	pub fn free_content(&mut self, superblock: &mut Superblock, io: &mut dyn IO) -> EResult<()> {
 		if matches!(self.get_type(), FileType::Link) {
 			let len = self.get_size(superblock);
 			if len <= SYMLINK_INODE_STORE_LIMIT {
@@ -974,15 +968,13 @@ impl Ext2INode {
 		superblock: &Superblock,
 		io: &mut dyn IO,
 		off: u64,
-	) -> Result<Box<DirectoryEntry>, Errno> {
+	) -> EResult<Box<DirectoryEntry>> {
 		let mut buff: [u8; 8] = [0; 8];
 		self.read_content(off as _, &mut buff, superblock, io)?;
 		let entry = unsafe { DirectoryEntry::from(&buff)? };
 
-		let mut buff = malloc::Alloc::<u8>::new_default(
-			NonZeroUsize::new(entry.get_total_size() as _).unwrap(),
-		)?;
-		self.read_content(off as _, buff.as_slice_mut(), superblock, io)?;
+		let mut buff = vec![0; entry.get_total_size() as _]?;
+		self.read_content(off as _, buff.as_mut_slice(), superblock, io)?;
 
 		Ok(unsafe { DirectoryEntry::from(buff.as_slice()) }?)
 	}
@@ -1001,7 +993,7 @@ impl Ext2INode {
 		io: &mut dyn IO,
 		entry: &DirectoryEntry,
 		off: u64,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		let buff = unsafe {
 			slice::from_raw_parts(entry as *const _ as *const u8, entry.get_total_size() as _)
 		};
@@ -1021,7 +1013,7 @@ impl Ext2INode {
 		&'n self,
 		superblock: &'s Superblock,
 		io: &'i mut dyn IO,
-	) -> Result<Option<DirentIterator<'n, 's, 'i>>, Errno> {
+	) -> EResult<Option<DirentIterator<'n, 's, 'i>>> {
 		if self.get_type() == FileType::Directory {
 			let blk_size = superblock.get_block_size();
 			let size = self.get_size(superblock);
@@ -1031,7 +1023,7 @@ impl Ext2INode {
 				superblock,
 				io,
 
-				buff: malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?,
+				buff: vec![0; blk_size as _]?,
 
 				off: 0,
 				size,
@@ -1056,7 +1048,7 @@ impl Ext2INode {
 		name: &[u8],
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> Result<Option<(u64, Box<DirectoryEntry>)>, Errno> {
+	) -> EResult<Option<(u64, Box<DirectoryEntry>)>> {
 		// TODO If the binary tree feature is enabled, use it
 		if let Some(iter) = self.iter_dirent(superblock, io)? {
 			for res in iter {
@@ -1089,7 +1081,7 @@ impl Ext2INode {
 		superblock: &Superblock,
 		io: &mut dyn IO,
 		min_size: u16,
-	) -> Result<Option<u64>, Errno> {
+	) -> EResult<Option<u64>> {
 		if let Some(iter) = self.iter_dirent(superblock, io)? {
 			for res in iter {
 				let (off, e) = res?;
@@ -1123,7 +1115,7 @@ impl Ext2INode {
 		entry_inode: u32,
 		name: &[u8],
 		file_type: FileType,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		// If the name is too long, error
 		if name.len() > super::MAX_NAME_LEN {
 			return Err(errno!(ENAMETOOLONG));
@@ -1179,13 +1171,12 @@ impl Ext2INode {
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 		name: S,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 
 		// Allocating a buffer
 		let blk_size = superblock.get_block_size();
-		let mut buff =
-			malloc::Alloc::<u8>::new_default(NonZeroUsize::new(blk_size as _).unwrap())?;
+		let mut buff = vec![0; blk_size as _]?;
 
 		// The previous free entry with its offset
 		let mut prev_free: Option<(u64, Box<DirectoryEntry>)> = None;
@@ -1194,7 +1185,7 @@ impl Ext2INode {
 		let mut i = 0;
 		while i < size {
 			let len = min((size - i) as usize, blk_size as usize);
-			self.read_content(i, &mut buff.as_slice_mut()[..len], superblock, io)?;
+			self.read_content(i, &mut buff.as_mut_slice()[..len], superblock, io)?;
 
 			let mut j = 0;
 			while j < len {
@@ -1261,7 +1252,7 @@ impl Ext2INode {
 	/// - `io` is the I/O interface.
 	///
 	/// The function returns a string containing the target.
-	pub fn get_link(&self, superblock: &Superblock, io: &mut dyn IO) -> Result<String, Errno> {
+	pub fn get_link(&self, superblock: &Superblock, io: &mut dyn IO) -> EResult<String> {
 		if !matches!(self.get_type(), FileType::Link) {
 			return Err(errno!(EINVAL));
 		}
@@ -1279,9 +1270,8 @@ impl Ext2INode {
 
 			String::try_from(buff)
 		} else {
-			let mut buff =
-				malloc::Alloc::<u8>::new_default(limits::SYMLINK_MAX.try_into().unwrap())?;
-			self.read_content(0, buff.as_slice_mut(), superblock, io)?;
+			let mut buff = vec![0; limits::SYMLINK_MAX.try_into().unwrap()]?;
+			self.read_content(0, buff.as_mut_slice(), superblock, io)?;
 
 			String::try_from(&buff.as_slice()[..(len as usize)])
 		}?;
@@ -1298,7 +1288,7 @@ impl Ext2INode {
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 		target: &[u8],
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		if !matches!(self.get_type(), FileType::Link) {
 			return Err(errno!(EINVAL));
 		}
@@ -1352,7 +1342,7 @@ impl Ext2INode {
 	}
 
 	/// Writes the inode on the device.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<(), Errno> {
+	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<()> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
 		write(self, off, io)
 	}
@@ -1371,7 +1361,7 @@ pub struct DirentIterator<'n, 's, 'i> {
 	io: &'i mut dyn IO,
 
 	/// Block buffer.
-	buff: malloc::Alloc<u8>,
+	buff: Vec<u8>,
 
 	/// The current offset.
 	off: u64,
@@ -1380,9 +1370,9 @@ pub struct DirentIterator<'n, 's, 'i> {
 }
 
 impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
-	type Item = Result<(u64, Box<DirectoryEntry>), Errno>;
+	type Item = EResult<(u64, Box<DirectoryEntry>)>;
 
-	fn next(&mut self) -> Option<Result<(u64, Box<DirectoryEntry>), Errno>> {
+	fn next(&mut self) -> Option<EResult<(u64, Box<DirectoryEntry>)>> {
 		let blk_size = self.superblock.get_block_size() as u64;
 
 		// If the list is exhausted, stop
@@ -1397,7 +1387,7 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 		if self.off == 0 {
 			if let Err(e) = self.node.read_content(
 				self.off,
-				&mut self.buff.as_slice_mut()[..len],
+				&mut self.buff.as_mut_slice()[..len],
 				self.superblock,
 				self.io,
 			) {
@@ -1428,7 +1418,7 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 		if self.off / blk_size > prev_off / blk_size {
 			if let Err(e) = self.node.read_content(
 				self.off,
-				&mut self.buff.as_slice_mut()[..len],
+				&mut self.buff.as_mut_slice()[..len],
 				self.superblock,
 				self.io,
 			) {

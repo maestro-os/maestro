@@ -22,11 +22,11 @@ use super::{
 	path::{Component, Path, PathBuf},
 	FileContent,
 };
-use crate::{
+use crate::file::{perm::AccessProfile, vfs, vfs::ResolutionSettings};
+use utils::{
+	collections::{hashmap::HashMap, string::String},
 	errno,
 	errno::EResult,
-	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings},
-	util::collections::{hashmap::HashMap, string::String},
 };
 
 /// Creates the directories necessary to reach path `path`.

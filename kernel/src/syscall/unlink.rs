@@ -21,11 +21,11 @@
 //! If no link remain to the file, the function also removes it.
 
 use crate::{
-	errno::Errno,
 	file::{path::Path, vfs, vfs::ResolutionSettings},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn unlink(pathname: SyscallString) -> Result<i32, Errno> {

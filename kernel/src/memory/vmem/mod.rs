@@ -22,21 +22,18 @@
 #[cfg(target_arch = "x86")]
 pub mod x86;
 
-use crate::{
-	elf,
-	errno::{AllocError, AllocResult},
-	idt, memory, register_get, register_set,
-	tty::vga,
-	util::{
-		collections::vec::Vec,
-		lock::{once::OnceInit, Mutex},
-	},
-	vec,
-};
+use crate::{elf, idt, memory, register_get, register_set, tty::vga};
 use core::{
+	alloc::AllocError,
 	ffi::c_void,
 	mem,
 	ptr::{null, NonNull},
+};
+use utils::{
+	collections::vec::Vec,
+	errno::AllocResult,
+	lock::{once::OnceInit, Mutex},
+	vec,
 };
 
 /// Tells whether the given range of memory overlaps with the kernelspace.

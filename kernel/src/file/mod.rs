@@ -39,8 +39,6 @@ pub mod vfs;
 use crate::{
 	device,
 	device::{DeviceID, DeviceType},
-	errno,
-	errno::{EResult, Errno},
 	file::{
 		buffer::{pipe::PipeBuffer, socket::Socket},
 		fs::Filesystem,
@@ -54,18 +52,20 @@ use crate::{
 		clock::CLOCK_MONOTONIC,
 		unit::{Timestamp, TimestampScale},
 	},
-	util::{
-		collections::{hashmap::HashMap, string::String},
-		io::IO,
-		lock::{IntMutex, Mutex},
-		ptr::arc::Arc,
-		TryClone,
-	},
 };
 use core::{cmp::max, ffi::c_void};
 use mountpoint::{MountPoint, MountSource};
 use path::Path;
 use perm::AccessProfile;
+use utils::{
+	collections::{hashmap::HashMap, string::String},
+	errno,
+	errno::EResult,
+	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+	TryClone,
+};
 
 /// Type representing an inode.
 ///
@@ -377,7 +377,7 @@ impl File {
 		mode: Mode,
 		location: FileLocation,
 		content: FileContent,
-	) -> Result<Self, Errno> {
+	) -> EResult<Self> {
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 
 		Ok(Self {
@@ -511,7 +511,7 @@ impl File {
 	/// Tells whether the directory is empty or not.
 	///
 	/// If the current file isn't a directory, the function returns an error.
-	pub fn is_empty_directory(&self) -> Result<bool, Errno> {
+	pub fn is_empty_directory(&self) -> EResult<bool> {
 		if let FileContent::Directory(entries) = &self.content {
 			Ok(entries.is_empty())
 		} else {
@@ -525,7 +525,7 @@ impl File {
 	/// - `name` is the name of the entry.
 	///
 	/// If the current file isn't a directory, the function returns an error.
-	pub fn add_entry(&mut self, name: String, entry: DirEntry) -> Result<(), Errno> {
+	pub fn add_entry(&mut self, name: String, entry: DirEntry) -> EResult<()> {
 		if let FileContent::Directory(entries) = &mut self.content {
 			entries.insert(name, entry)?;
 			Ok(())
@@ -537,7 +537,7 @@ impl File {
 	/// Removes the file with name `name` from the current file's entries.
 	///
 	/// If the current file isn't a directory, the function returns an error.
-	pub fn remove_entry(&mut self, name: &String) -> Result<(), Errno> {
+	pub fn remove_entry(&mut self, name: &String) -> EResult<()> {
 		if let FileContent::Directory(entries) = &mut self.content {
 			entries.remove(name);
 			Ok(())
@@ -575,7 +575,7 @@ impl File {
 		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		match &self.content {
 			FileContent::Fifo => {
 				let buff_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
@@ -628,7 +628,7 @@ impl File {
 	/// Synchronizes the file with the device.
 	///
 	/// If no device is associated with the file, the function does nothing.
-	pub fn sync(&self) -> Result<(), Errno> {
+	pub fn sync(&self) -> EResult<()> {
 		if let Some(mountpoint_mutex) = self.location.get_mountpoint() {
 			let mountpoint = mountpoint_mutex.lock();
 
@@ -649,12 +649,12 @@ impl File {
 	/// For the current file, the function takes a closure which provides the following arguments:
 	/// - The I/O interface to write the file, if any.
 	/// - The filesystem of the file, if any.
-	fn io_op<R, F>(&self, f: F) -> Result<R, Errno>
+	fn io_op<R, F>(&self, f: F) -> EResult<R>
 	where
 		F: FnOnce(
 			Option<Arc<Mutex<dyn IO>>>,
 			Option<(Arc<Mutex<dyn Filesystem>>, INode)>,
-		) -> Result<R, Errno>,
+		) -> EResult<R>,
 	{
 		match &self.content {
 			FileContent::Regular => match self.location {
@@ -883,7 +883,7 @@ impl IO for File {
 		self.size
 	}
 
-	fn read(&mut self, off: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		self.io_op(|io, fs| {
 			let Some(io_mutex) = io else {
 				return Ok((0, true));
@@ -901,7 +901,7 @@ impl IO for File {
 		})
 	}
 
-	fn write(&mut self, off: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, off: u64, buff: &[u8]) -> EResult<u64> {
 		let len = self.io_op(|io, fs| {
 			let Some(io_mutex) = io else {
 				return Ok(0);
@@ -921,7 +921,7 @@ impl IO for File {
 		Ok(len)
 	}
 
-	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, mask: u32) -> EResult<u32> {
 		self.io_op(|io, _| {
 			let Some(io_mutex) = io else {
 				return Ok(0);
@@ -936,7 +936,7 @@ impl IO for File {
 /// Initializes files management.
 ///
 /// `root` is the set of major and minor numbers of the root device. If `None`, a tmpfs is used.
-pub(crate) fn init(root: Option<(u32, u32)>) -> Result<(), Errno> {
+pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 	fs::register_defaults()?;
 
 	// Create the root mountpoint

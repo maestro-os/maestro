@@ -19,8 +19,6 @@
 //! The `execve` system call allows to execute a program from a file.
 
 use crate::{
-	errno,
-	errno::{EResult, Errno},
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, File},
 	memory::stack,
 	process,
@@ -31,15 +29,19 @@ use crate::{
 		regs::Regs,
 		Process,
 	},
-	util::{
-		collections::{string::String, vec::Vec},
-		io::IO,
-		lock::Mutex,
-		ptr::arc::Arc,
-	},
 };
 use core::ops::Range;
 use macros::syscall;
+use utils::{
+	collections::{string::String, vec::Vec},
+	errno,
+	errno::{EResult, Errno},
+	format,
+	interrupt::cli,
+	io::IO,
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 /// The maximum length of the shebang.
 const SHEBANG_MAX: usize = 257;
@@ -73,7 +75,7 @@ struct Shebang {
 ///
 /// If the string is longer than the interpreter's name, the remaining characters shall be used as
 /// an argument.
-fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
+fn peek_shebang(file: &mut File) -> EResult<Option<Shebang>> {
 	let mut buff: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
 
 	let (size, _) = file.read(0, &mut buff)?;
@@ -122,7 +124,7 @@ fn peek_shebang(file: &mut File) -> Result<Option<Shebang>, Errno> {
 }
 
 /// Performs the execution on the current process.
-fn do_exec(program_image: ProgramImage) -> Result<Regs, Errno> {
+fn do_exec(program_image: ProgramImage) -> EResult<Regs> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
@@ -204,9 +206,9 @@ pub fn execve(
 
 			// Add the script to arguments
 			if argv.is_empty() {
-				argv.push(crate::format!("{path}")?)?;
+				argv.push(format!("{path}")?)?;
 			} else {
-				argv[0] = crate::format!("{path}")?;
+				argv[0] = format!("{path}")?;
 			}
 
 			// Set interpreter to arguments
@@ -236,7 +238,7 @@ pub fn execve(
 
 	// Disable interrupt to prevent stack switching while using a temporary stack,
 	// preventing this temporary stack from being used as a signal handling stack
-	cli!();
+	cli();
 
 	// Build the program's image
 	let program_image =

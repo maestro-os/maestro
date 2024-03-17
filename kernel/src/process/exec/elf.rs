@@ -26,8 +26,6 @@ use crate::{
 		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
 		ELF32ProgramHeader,
 	},
-	errno,
-	errno::{AllocError, Errno},
 	exec::vdso::MappedVDSO,
 	file::{path::Path, perm::AccessProfile, vfs, File},
 	memory,
@@ -37,16 +35,10 @@ use crate::{
 		exec::{ExecInfo, Executor, ProgramImage},
 		mem_space,
 		mem_space::{residence::MapResidence, MapConstraint, MemSpace},
-		EResult,
-	},
-	util,
-	util::{
-		collections::{string::String, vec::Vec},
-		io::IO,
-		TryClone,
 	},
 };
 use core::{
+	alloc::AllocError,
 	cmp::{max, min},
 	ffi::c_void,
 	mem::size_of,
@@ -54,6 +46,13 @@ use core::{
 	ptr,
 	ptr::null,
 	slice,
+};
+use utils::{
+	collections::{string::String, vec::Vec},
+	errno,
+	errno::EResult,
+	io::IO,
+	vec, TryClone,
 };
 
 /// Used to define the end of the entries list.
@@ -180,7 +179,7 @@ fn build_auxilary(
 	exec_info: &ExecInfo,
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
-) -> Result<Vec<AuxEntryDesc>, Errno> {
+) -> EResult<Vec<AuxEntryDesc>> {
 	let mut aux = Vec::new();
 
 	aux.push(AuxEntryDesc::new(
@@ -278,14 +277,14 @@ fn build_auxilary(
 /// `ap` is the access profile to check permissions.
 ///
 /// If the file is not executable, the function returns an error.
-fn read_exec_file(file: &mut File, ap: &AccessProfile) -> Result<Vec<u8>, Errno> {
+fn read_exec_file(file: &mut File, ap: &AccessProfile) -> EResult<Vec<u8>> {
 	// Check that the file can be executed by the user
 	if !ap.can_execute_file(file) {
 		return Err(errno!(ENOEXEC));
 	}
 
 	let len = file.get_size().try_into().map_err(|_| AllocError)?;
-	let mut image = crate::vec![0u8; len]?;
+	let mut image = vec![0u8; len]?;
 	file.read(0, image.as_mut_slice())?;
 	Ok(image)
 }
@@ -480,7 +479,7 @@ impl<'s> ELFExecutor<'s> {
 		load_base: *const c_void,
 		mem_space: &mut MemSpace,
 		seg: &ELF32ProgramHeader,
-	) -> Result<Option<*const c_void>, Errno> {
+	) -> EResult<Option<*const c_void>> {
 		// Loading only loadable segments
 		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
 			return Ok(None);
@@ -555,7 +554,7 @@ impl<'s> ELFExecutor<'s> {
 		mem_space: &mut MemSpace,
 		load_base: *const c_void,
 		interp: bool,
-	) -> Result<ELFLoadInfo, Errno> {
+	) -> EResult<ELFLoadInfo> {
 		// Allocating memory for segments
 		let mut load_end = load_base;
 		for seg in elf.iter_segments() {
@@ -694,7 +693,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 	// TODO Ensure there is no way to write in kernel space (check segments position
 	// and relocations)
 	// TODO Handle suid and sgid
-	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno> {
+	fn build_image(&self, file: &mut File) -> EResult<ProgramImage> {
 		// The ELF file image
 		let image = read_exec_file(file, &self.info.path_resolution.access_profile)?;
 		// Parsing the ELF file
@@ -734,7 +733,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 		}
 
 		// The initial pointer for `brk`
-		let brk_ptr = unsafe { util::align(load_info.load_end, memory::PAGE_SIZE) };
+		let brk_ptr = unsafe { utils::align(load_info.load_end, memory::PAGE_SIZE) };
 		mem_space.set_brk_init(brk_ptr as _);
 
 		// Switch to the process's vmem to write onto the virtual memory

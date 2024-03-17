@@ -20,7 +20,6 @@
 
 use super::util::at;
 use crate::{
-	errno::Errno,
 	file::{
 		path::{Path, PathBuf},
 		vfs,
@@ -32,6 +31,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn symlinkat(

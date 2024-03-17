@@ -19,12 +19,10 @@
 //! The _exit syscall allows to terminate the current process with the given
 //! status code.
 
-use crate::{
-	errno::Errno,
-	process::{scheduler, Process},
-};
+use crate::process::{scheduler, Process};
 use core::ffi::c_int;
 use macros::syscall;
+use utils::errno::Errno;
 
 /// Exits the current process.
 ///
@@ -52,6 +50,6 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 }
 
 #[syscall]
-pub fn _exit(status: c_int) -> Result<i32, Errno> {
+pub fn _exit(status: c_int) -> EResult<i32> {
 	do_exit(status as _, false);
 }

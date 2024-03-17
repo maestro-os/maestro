@@ -21,7 +21,7 @@
 //! Each process must have an unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.
 
-use crate::{errno::AllocResult, util::collections::id_allocator::IDAllocator};
+use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
 
 /// Type representing a Process ID. This ID is unique for every running
 /// processes.

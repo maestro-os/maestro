@@ -19,7 +19,6 @@
 //! The `access` system call allows to check access to a given file.
 
 use crate::{
-	errno::Errno,
 	file::{
 		path::Path,
 		vfs::{ResolutionSettings, Resolved},
@@ -32,6 +31,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// Checks for existence of the file.
 const F_OK: i32 = 0;

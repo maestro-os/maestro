@@ -27,25 +27,14 @@
 mod block;
 mod chunk;
 
-use crate::{
-	errno::{AllocError, AllocResult},
-	memory,
-	memory::malloc::ptr::NonNull,
-	util::lock::IntMutex,
-};
+use crate::{memory, memory::malloc::ptr::NonNull};
 use block::Block;
 use chunk::Chunk;
 use core::{
-	cmp::Ordering,
-	ffi::c_void,
-	mem::size_of,
-	num::NonZeroUsize,
-	ops::{Index, IndexMut},
-	ptr,
-	ptr::drop_in_place,
-	slice,
+	alloc::AllocError, cmp::Ordering, ffi::c_void, num::NonZeroUsize, ptr, ptr::drop_in_place,
 };
 use macros::instrument_allocator;
+use utils::{errno::AllocResult, lock::IntMutex};
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());

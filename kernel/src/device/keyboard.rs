@@ -20,9 +20,9 @@
 
 use crate::{
 	device::manager::{DeviceManager, PhysicalDevice},
-	errno::Errno,
 	tty,
 };
+use utils::errno::EResult;
 
 /// Enumeration of keyboard keys.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -609,12 +609,12 @@ impl KeyboardManager {
 }
 
 impl DeviceManager for KeyboardManager {
-	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> EResult<()> {
 		// TODO (When plugging a keyboard, don't forget to set the LEDs state)
 		Ok(())
 	}
 
-	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> Result<(), Errno> {
+	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> EResult<()> {
 		// TODO
 		Ok(())
 	}

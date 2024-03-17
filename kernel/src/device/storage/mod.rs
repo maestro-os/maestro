@@ -32,29 +32,29 @@ use crate::{
 		manager::{DeviceManager, PhysicalDevice},
 		Device, DeviceHandle, DeviceID, DeviceType,
 	},
-	errno,
-	errno::EResult,
 	file::{
 		path::{Path, PathBuf},
 		Mode,
 	},
-	memory::malloc,
 	process::mem_space::{ptr::SyscallPtr, MemSpace},
 	syscall::ioctl,
-	util::{
-		collections::vec::Vec,
-		io::IO,
-		lock::{IntMutex, Mutex},
-		ptr::arc::{Arc, Weak},
-		TryClone,
-	},
 };
 use core::{
 	cmp::min,
 	ffi::{c_uchar, c_ulong, c_ushort, c_void},
-	num::{NonZeroU64, NonZeroUsize},
+	num::NonZeroU64,
 };
 use partition::Partition;
+use utils::{
+	collections::vec::Vec,
+	errno,
+	errno::EResult,
+	format,
+	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::{Arc, Weak},
+	vec, TryClone,
+};
 
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;
@@ -114,7 +114,7 @@ pub trait StorageInterface {
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> EResult<(u64, bool)> {
 		let block_size = self.get_block_size();
-		let block_size_usize = NonZeroUsize::new(block_size.get() as _).unwrap();
+		let block_size_usize = block_size.get() as usize;
 		let blocks_count = self.get_blocks_count();
 
 		let blk_begin = offset / block_size;
@@ -133,10 +133,10 @@ pub trait StorageInterface {
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
-				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size_usize)?;
-				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
+				let mut tmp_buf = vec![0; block_size_usize]?;
+				self.read(tmp_buf.as_mut_slice(), block_off, 1)?;
 
-				let diff = min(remaining_bytes, block_size_usize.get() - block_inner_off);
+				let diff = min(remaining_bytes, block_size_usize - block_inner_off);
 				for j in 0..diff {
 					debug_assert!(i + j < buf.len());
 					debug_assert!(block_inner_off + j < tmp_buf.len());
@@ -145,8 +145,8 @@ pub trait StorageInterface {
 
 				i += diff;
 			} else if (remaining_bytes as u64) < block_size.get() {
-				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size_usize)?;
-				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
+				let mut tmp_buf = vec![0; block_size_usize]?;
+				self.read(tmp_buf.as_mut_slice(), block_off, 1)?;
 
 				for j in 0..remaining_bytes {
 					debug_assert!(i + j < buf.len());
@@ -175,7 +175,7 @@ pub trait StorageInterface {
 	/// If the offset and size are out of bounds, the function returns an error.
 	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> EResult<u64> {
 		let block_size = self.get_block_size();
-		let block_size_usize = NonZeroUsize::new(block_size.get() as _).unwrap();
+		let block_size_usize = block_size.get() as usize;
 		let blocks_count = self.get_blocks_count();
 
 		let blk_begin = offset / block_size;
@@ -194,10 +194,10 @@ pub trait StorageInterface {
 			let block_aligned = block_inner_off == 0;
 
 			if !block_aligned {
-				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size_usize)?;
-				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
+				let mut tmp_buf = vec![0; block_size_usize]?;
+				self.read(tmp_buf.as_mut_slice(), block_off, 1)?;
 
-				let diff = min(remaining_bytes, block_size_usize.get() - block_inner_off);
+				let diff = min(remaining_bytes, block_size_usize - block_inner_off);
 				for j in 0..diff {
 					debug_assert!(i + j < buf.len());
 					debug_assert!(block_inner_off + j < tmp_buf.len());
@@ -208,8 +208,8 @@ pub trait StorageInterface {
 
 				i += diff;
 			} else if (remaining_bytes as u64) < block_size.get() {
-				let mut tmp_buf = malloc::Alloc::<u8>::new_default(block_size_usize)?;
-				self.read(tmp_buf.as_slice_mut(), block_off, 1)?;
+				let mut tmp_buf = vec![0; block_size_usize]?;
+				self.read(tmp_buf.as_mut_slice(), block_off, 1)?;
 
 				for j in 0..remaining_bytes {
 					debug_assert!(i + j < buf.len());
@@ -492,7 +492,7 @@ impl StorageManager {
 		let iter = partitions.into_iter().take(MAX_PARTITIONS - 1).enumerate();
 		for (i, partition) in iter {
 			let part_nbr = (i + 1) as u32;
-			let path = PathBuf::try_from(crate::format!("{path_prefix}{part_nbr}")?)?;
+			let path = PathBuf::try_from(format!("{path_prefix}{part_nbr}")?)?;
 
 			// Create the partition's device file
 			let handle = StorageDeviceHandle::new(
@@ -547,7 +547,7 @@ impl StorageManager {
 		// Prefix is the path of the main device file
 		// TODO Handle if out of the alphabet
 		let letter = (b'a' + (storage_id as u8)) as char;
-		let main_path = PathBuf::try_from(crate::format!("/dev/sd{letter}")?)?;
+		let main_path = PathBuf::try_from(format!("/dev/sd{letter}")?)?;
 
 		// Create the main device file
 		let main_handle = StorageDeviceHandle::new(

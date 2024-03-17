@@ -19,7 +19,6 @@
 //! The `symlink` syscall allows to create a symbolic link.
 
 use crate::{
-	errno::Errno,
 	file::{
 		path::{Path, PathBuf},
 		vfs,
@@ -30,6 +29,7 @@ use crate::{
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Errno> {

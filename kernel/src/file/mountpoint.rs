@@ -27,18 +27,18 @@ use super::{
 use crate::{
 	device,
 	device::{DeviceID, DeviceType},
-	errno,
-	errno::{AllocResult, EResult},
 	file::vfs::ResolutionSettings,
-	util::{
-		collections::{hashmap::HashMap, string::String},
-		io::{DummyIO, IO},
-		lock::Mutex,
-		ptr::arc::Arc,
-		TryClone,
-	},
 };
 use core::fmt;
+use utils::{
+	collections::{hashmap::HashMap, string::String},
+	errno,
+	errno::{AllocResult, EResult},
+	io::{DummyIO, IO},
+	lock::Mutex,
+	ptr::arc::Arc,
+	TryClone,
+};
 
 /// Permits mandatory locking on files.
 pub const FLAG_MANDLOCK: u32 = 0b000000000001;

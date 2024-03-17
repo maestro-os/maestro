@@ -28,27 +28,29 @@
 //! running until switching to the next process.
 
 use crate::{
-	errno::AllocResult,
 	event,
 	event::CallbackHook,
 	idt::pic,
 	memory,
-	memory::{malloc, stack},
+	memory::stack,
 	process,
 	process::{pid::Pid, regs::Regs, Process, State},
 	time,
-	util::{
-		collections::{
-			btreemap::{BTreeMap, MapIterator},
-			vec::Vec,
-		},
-		lock::*,
-		math,
-		math::rational::Rational,
-		ptr::arc::Arc,
-	},
 };
 use core::{arch::asm, cmp::max, ffi::c_void};
+use utils::{
+	collections::{
+		btreemap::{BTreeMap, MapIterator},
+		vec::Vec,
+	},
+	errno::AllocResult,
+	interrupt::cli,
+	lock::IntMutex,
+	math,
+	math::rational::Rational,
+	ptr::arc::Arc,
+	vec,
+};
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
@@ -60,7 +62,7 @@ const MAX_PRIORITY_QUANTA: usize = 30;
 /// The structure representing the process scheduler.
 pub struct Scheduler {
 	/// A vector containing the temporary stacks for each CPU cores.
-	tmp_stacks: Vec<malloc::Alloc<u8>>,
+	tmp_stacks: Vec<Vec<u8>>,
 
 	/// The ticking callback hook, called at a regular interval to make the
 	/// scheduler work.
@@ -88,9 +90,7 @@ impl Scheduler {
 	pub fn new(cores_count: usize) -> AllocResult<Arc<IntMutex<Self>>> {
 		let mut tmp_stacks = Vec::new();
 		for _ in 0..cores_count {
-			tmp_stacks.push(malloc::Alloc::new_default(
-				TMP_STACK_SIZE.try_into().unwrap(),
-			)?)?;
+			tmp_stacks.push(vec![0; TMP_STACK_SIZE.try_into().unwrap()]?)?;
 		}
 
 		// Register tick handler
@@ -124,7 +124,7 @@ impl Scheduler {
 	pub fn get_tmp_stack(&mut self, core: u32) -> *mut c_void {
 		unsafe {
 			self.tmp_stacks[core as usize]
-				.as_ptr_mut()
+				.as_mut_ptr()
 				.add(TMP_STACK_SIZE) as *mut _
 		}
 	}
@@ -342,7 +342,7 @@ impl Scheduler {
 	/// - `ring` is the ring of the paused context.
 	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
 		// Disabling interrupts to avoid getting one right after unlocking mutexes
-		cli!();
+		cli();
 
 		let tmp_stack = {
 			let mut sched = sched_mutex.lock();

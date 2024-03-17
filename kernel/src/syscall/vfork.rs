@@ -21,12 +21,9 @@
 //! program. During that time, the child process also shares the same memory
 //! space as the parent.
 
-use crate::{
-	errno::Errno,
-	process::{scheduler, ForkOptions, Process},
-	util::ptr::arc::Arc,
-};
+use crate::process::{scheduler, ForkOptions, Process};
 use macros::syscall;
+use utils::{errno::Errno, ptr::arc::Arc};
 
 #[syscall]
 pub fn vfork() -> Result<i32, Errno> {

@@ -25,10 +25,10 @@ mod term_obj;
 mod type1_opcode;
 mod type2_opcode;
 
-use crate::util::collections::string::String;
 use core::ops::Range;
 use macros::Parseable;
 use term_obj::TermList;
+use utils::collections::string::String;
 
 const ZERO_OP: u8 = 0x00;
 const ONE_OP: u8 = 0x01;

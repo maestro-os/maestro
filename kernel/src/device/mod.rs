@@ -44,7 +44,6 @@ pub mod tty;
 
 use crate::{
 	device::manager::DeviceManager,
-	errno::{AllocResult, CollectResult, EResult, Errno},
 	file,
 	file::{
 		path::{Path, PathBuf},
@@ -55,18 +54,19 @@ use crate::{
 	},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
-	util::{
-		boxed::Box,
-		collections::{hashmap::HashMap, vec::Vec},
-		io::IO,
-		lock::{IntMutex, Mutex},
-		ptr::arc::Arc,
-		TryClone,
-	},
 };
 use core::{ffi::c_void, fmt};
 use keyboard::KeyboardManager;
 use storage::StorageManager;
+use utils::{
+	boxed::Box,
+	collections::{hashmap::HashMap, vec::Vec},
+	errno::{AllocResult, CollectResult, EResult},
+	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+	TryClone,
+};
 
 /// Enumeration representing the type of the device.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -133,7 +133,7 @@ pub trait DeviceHandle: IO {
 		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
-	) -> Result<u32, Errno>;
+	) -> EResult<u32>;
 
 	/// Adds the given process to the list of processes waiting on the device.
 	///
@@ -143,7 +143,7 @@ pub trait DeviceHandle: IO {
 	/// `mask` is the mask of poll event to wait for.
 	///
 	/// If the device cannot block, the function does nothing.
-	fn add_waiting_process(&mut self, _proc: &mut Process, _mask: u32) -> Result<(), Errno> {
+	fn add_waiting_process(&mut self, _proc: &mut Process, _mask: u32) -> EResult<()> {
 		Ok(())
 	}
 }
@@ -178,7 +178,7 @@ impl Device {
 		path: PathBuf,
 		mode: Mode,
 		handle: H,
-	) -> Result<Self, Errno> {
+	) -> EResult<Self> {
 		Ok(Self {
 			id,
 
@@ -273,15 +273,15 @@ impl IO for Device {
 		self.handle.get_size()
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		self.handle.read(offset, buff)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
 		self.handle.write(offset, buff)
 	}
 
-	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, mask: u32) -> EResult<u32> {
 		self.handle.poll(mask)
 	}
 }
@@ -302,7 +302,7 @@ static DEVICES: Mutex<HashMap<DeviceID, Arc<Mutex<Device>>>> = Mutex::new(HashMa
 /// If the device ID is already used, the function fails.
 ///
 /// If files management is initialized, the function creates the associated device file.
-pub fn register(device: Device) -> Result<(), Errno> {
+pub fn register(device: Device) -> EResult<()> {
 	let id = device.id.clone();
 	let path = device.get_path().to_path_buf()?;
 	let mode = device.get_mode();
@@ -327,7 +327,7 @@ pub fn register(device: Device) -> Result<(), Errno> {
 /// If the device doesn't exist, the function does nothing.
 ///
 /// If files management is initialized, the function removes the associated device file.
-pub fn unregister(id: &DeviceID) -> Result<(), Errno> {
+pub fn unregister(id: &DeviceID) -> EResult<()> {
 	let dev_mutex = {
 		let mut devs = DEVICES.lock();
 		devs.remove(id)
@@ -351,7 +351,7 @@ pub fn get(id: &DeviceID) -> Option<Arc<Mutex<Device>>> {
 }
 
 /// Initializes devices management.
-pub(crate) fn init() -> Result<(), Errno> {
+pub(crate) fn init() -> EResult<()> {
 	let keyboard_manager = KeyboardManager::new();
 	manager::register(keyboard_manager)?;
 

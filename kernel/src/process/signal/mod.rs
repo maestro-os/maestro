@@ -21,7 +21,7 @@
 mod signal_trampoline;
 
 use super::{oom, Process, State};
-use crate::{errno::Errno, file::perm::Uid, process::pid::Pid, time::unit::ClockIdT};
+use crate::{file::perm::Uid, process::pid::Pid, time::unit::ClockIdT};
 use core::{
 	ffi::{c_int, c_void},
 	fmt,
@@ -31,6 +31,7 @@ use core::{
 	slice,
 };
 use signal_trampoline::signal_trampoline;
+use utils::{errno, errno::Errno};
 
 /// Type representing a signal handler.
 pub type SigHandler = extern "C" fn(i32);

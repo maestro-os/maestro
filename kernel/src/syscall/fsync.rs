@@ -18,9 +18,10 @@
 
 //! The `fsync` system call synchronizes the state of a file to storage.
 
-use crate::{errno, errno::Errno, process::Process};
+use crate::process::Process;
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn fsync(fd: c_int) -> Result<i32, Errno> {

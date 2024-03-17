@@ -23,13 +23,10 @@ use super::{Partition, Table};
 use crate::{
 	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
 	device::storage::StorageInterface,
-	errno,
-	errno::Errno,
 	memory::malloc,
-	util,
-	util::{boxed::Box, collections::vec::Vec},
 };
-use core::{mem::size_of, num::NonZeroUsize, slice};
+use core::{mem::size_of, slice};
+use utils::{boxed::Box, collections::vec::Vec, errno, errno::EResult, vec};
 
 /// The signature in the GPT header.
 const GPT_SIGNATURE: &[u8] = b"EFI PART";
@@ -169,18 +166,18 @@ impl Gpt {
 	/// the given LBA `lba`.
 	///
 	/// If the header is invalid, the function returns an error.
-	fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: i64) -> Result<Self, Errno> {
-		let block_size = NonZeroUsize::new(storage.get_block_size().get() as _).unwrap();
+	fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: i64) -> EResult<Self> {
+		let block_size = storage.get_block_size().get() as _;
 		let blocks_count = storage.get_blocks_count();
 
-		if size_of::<Gpt>() > block_size.get() {
+		if size_of::<Gpt>() > block_size {
 			return Err(errno!(EINVAL));
 		}
 
 		// Reading the first block
-		let mut buff = malloc::Alloc::<u8>::new_default(block_size)?;
+		let mut buff = vec![0; block_size]?;
 		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		storage.read(buff.as_slice_mut(), lba, 1)?;
+		storage.read(buff.as_mut_slice(), lba, 1)?;
 
 		// Valid because the header's size doesn't exceeds the size of the block
 		let gpt_hdr = unsafe { &*(buff.as_ptr() as *const Gpt) };
@@ -209,7 +206,7 @@ impl Gpt {
 		// Check checksum
 		let mut tmp = self.clone();
 		tmp.checksum = 0;
-		if compute_crc32(util::bytes::as_bytes(&tmp), &lookup_table) != self.checksum {
+		if compute_crc32(utils::bytes::as_bytes(&tmp), &lookup_table) != self.checksum {
 			return false;
 		}
 
@@ -221,15 +218,12 @@ impl Gpt {
 	/// Returns the list of entries in the table.
 	///
 	/// `storage` is the storage device interface.
-	fn get_entries(
-		&self,
-		storage: &mut dyn StorageInterface,
-	) -> Result<Vec<Box<GPTEntry>>, Errno> {
+	fn get_entries(&self, storage: &mut dyn StorageInterface) -> EResult<Vec<Box<GPTEntry>>> {
 		let block_size = storage.get_block_size();
 		let blocks_count = storage.get_blocks_count();
 
-		let entry_size = NonZeroUsize::new(self.entry_size as _).unwrap();
-		let mut buff = malloc::Alloc::<u8>::new_default(entry_size)?;
+		let entry_size = self.entry_size as _;
+		let mut buff = vec![0; entry_size]?;
 
 		let entries_start =
 			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
@@ -237,14 +231,14 @@ impl Gpt {
 
 		for i in 0..self.entries_number {
 			// Reading entry
-			let off = (entries_start * block_size.get()) + (i as u64 * entry_size.get() as u64);
-			storage.read_bytes(buff.as_slice_mut(), off)?;
+			let off = (entries_start * block_size.get()) + (i as u64 * entry_size as u64);
+			storage.read_bytes(buff.as_mut_slice(), off)?;
 
 			// Inserting entry
 			let entry = unsafe {
-				let ptr = malloc::alloc(entry_size)?;
+				let ptr = malloc::alloc(entry_size.try_into().unwrap())?;
 				let alloc_slice: &mut [u8] =
-					slice::from_raw_parts_mut(ptr.cast().as_mut(), entry_size.get());
+					slice::from_raw_parts_mut(ptr.cast().as_mut(), entry_size);
 				alloc_slice.copy_from_slice(buff.as_slice());
 
 				Box::from_raw(alloc_slice as *mut [u8] as *mut [()] as *mut GPTEntry)
@@ -269,7 +263,7 @@ impl Gpt {
 }
 
 impl Table for Gpt {
-	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> {
+	fn read(storage: &mut dyn StorageInterface) -> EResult<Option<Self>> {
 		let blocks_count = storage.get_blocks_count();
 
 		let main_hdr = match Self::read_hdr_struct(storage, 1) {
@@ -296,7 +290,7 @@ impl Table for Gpt {
 		"GPT"
 	}
 
-	fn get_partitions(&self, storage: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
+	fn get_partitions(&self, storage: &mut dyn StorageInterface) -> EResult<Vec<Partition>> {
 		let blocks_count = storage.get_blocks_count();
 		let mut partitions = Vec::new();
 

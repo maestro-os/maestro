@@ -19,12 +19,13 @@
 //! Functions to explore the kernel's ELF structures.
 
 use super::{ELF32SectionHeader, ELF32Sym, SHT_SYMTAB};
-use crate::{
-	errno::{AllocResult, CollectResult},
-	memory, multiboot, util,
-	util::{collections::hashmap::HashMap, lock::once::OnceInit},
-};
+use crate::{memory, multiboot};
 use core::ffi::c_void;
+use utils::{
+	collections::hashmap::HashMap,
+	errno::{AllocResult, CollectResult},
+	lock::once::OnceInit,
+};
 
 /// A reference to the strtab.
 static STRTAB: OnceInit<&'static ELF32SectionHeader> = unsafe { OnceInit::new() };
@@ -63,7 +64,7 @@ pub fn get_section_name(section: &ELF32SectionHeader) -> Option<&'static [u8]> {
 	let names_section = get_section_by_offset(boot_info.elf_shndx).unwrap();
 	let ptr = memory::kern_to_virt((names_section.sh_addr + section.sh_name) as *const u8);
 	// The string is in bound, otherwise the kernel's ELF is invalid
-	Some(unsafe { util::str_from_ptr(ptr) })
+	Some(unsafe { utils::str_from_ptr(ptr) })
 }
 
 /// Returns a reference to the kernel section with name `name`.
@@ -94,7 +95,7 @@ pub fn symbols() -> impl Iterator<Item = &'static ELF32Sym> {
 pub fn get_symbol_name(symbol: &ELF32Sym) -> Option<&'static [u8]> {
 	let ptr = memory::kern_to_virt((STRTAB.get().sh_addr + symbol.st_name) as *const u8);
 	// The string is in bound, otherwise the kernel's ELF is invalid
-	Some(unsafe { util::str_from_ptr(ptr) })
+	Some(unsafe { utils::str_from_ptr(ptr) })
 }
 
 /// Returns the name of the kernel function for the given instruction pointer.

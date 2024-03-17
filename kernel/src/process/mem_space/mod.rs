@@ -30,18 +30,13 @@ pub mod residence;
 mod transaction;
 
 use crate::{
-	errno::{AllocError, CollectResult, Errno},
 	file::perm::AccessProfile,
 	memory,
 	memory::{vmem, vmem::VMem},
-	process::{mem_space::residence::Page, AllocResult},
-	util,
-	util::{
-		collections::{btreemap::BTreeMap, vec::Vec},
-		TryClone,
-	},
+	process::mem_space::residence::Page,
 };
 use core::{
+	alloc::AllocError,
 	cmp::{min, Ordering},
 	ffi::c_void,
 	fmt, mem,
@@ -52,6 +47,11 @@ use gap::MemGap;
 use mapping::MemMapping;
 use residence::MapResidence;
 use transaction::MemSpaceTransaction;
+use utils::{
+	collections::{btreemap::BTreeMap, vec::Vec},
+	errno::{AllocResult, CollectResult, EResult},
+	TryClone,
+};
 
 /// Flag telling that a memory mapping can be written to.
 pub const MAPPING_FLAG_WRITE: u8 = 0b00001;
@@ -551,7 +551,7 @@ impl MemSpace {
 						return None;
 					}
 					// The beginning of the current page
-					let page_begin = util::down_align(curr_ptr as _, memory::PAGE_SIZE);
+					let page_begin = utils::down_align(curr_ptr as _, memory::PAGE_SIZE);
 					// The offset of the current pointer in its page
 					let inner_off = curr_ptr as usize - page_begin as usize;
 					let check_size = memory::PAGE_SIZE - inner_off;
@@ -661,7 +661,7 @@ impl MemSpace {
 		_len: usize,
 		_prot: u8,
 		_access_profile: &AccessProfile,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		// TODO Iterate on mappings in the range:
 		//		If the mapping is shared and associated to a file, check file permissions match
 		// `prot` (only write)
@@ -698,7 +698,7 @@ impl MemSpace {
 				return Err(AllocError);
 			}
 			// Allocate memory
-			let begin = unsafe { util::align(self.state.brk_ptr, memory::PAGE_SIZE) };
+			let begin = unsafe { utils::align(self.state.brk_ptr, memory::PAGE_SIZE) };
 			let pages = (ptr as usize - begin as usize).div_ceil(memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
@@ -716,7 +716,7 @@ impl MemSpace {
 				return Err(AllocError);
 			}
 			// Free memory
-			let begin = unsafe { util::align(ptr, memory::PAGE_SIZE) };
+			let begin = unsafe { utils::align(ptr, memory::PAGE_SIZE) };
 			let pages = (begin as usize - ptr as usize).div_ceil(memory::PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());

@@ -45,6 +45,9 @@ jobs:
       - name: Macros
         working-directory: ./macros
         run: cargo fmt --check
+      - name: Utils
+        working-directory: ./util
+        run: cargo fmt --check
       - name: Kernel
         run: cargo fmt --check
   documentation:
@@ -64,5 +67,14 @@ jobs:
       - name: Macros
         working-directory: ./macros
         run: cargo clippy --all-features --tests
+      - name: Utils
+        working-directory: ./util
+        run: cargo clippy --all-features --tests
       - name: Kernel
         run: cargo clippy --all-features --tests
+  miri:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - working-directory: ./utils
+        run: cargo miri test

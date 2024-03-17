@@ -33,7 +33,6 @@
 use crate::{
 	memory,
 	memory::{buddy, memmap},
-	util,
 };
 use core::{cmp::min, ffi::c_void};
 
@@ -47,7 +46,7 @@ pub(crate) fn init() {
 
 	// The pointer to the beginning of the buddy allocator's metadata
 	let metadata_begin =
-		unsafe { util::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void };
+		unsafe { utils::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void };
 	// The size of the buddy allocator's metadata
 	let metadata_size = available_pages * buddy::get_frame_metadata_size();
 	// The end of the buddy allocator's metadata
@@ -60,7 +59,7 @@ pub(crate) fn init() {
 
 	// The beginning of the kernel's zone
 	let kernel_zone_begin =
-		unsafe { util::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void };
+		unsafe { utils::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void };
 	// The maximum number of pages the kernel zone can hold.
 	let kernel_max =
 		(memory::get_kernelspace_size() - phys_metadata_end as usize) / memory::PAGE_SIZE;

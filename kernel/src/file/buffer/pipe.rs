@@ -21,23 +21,25 @@
 
 use super::Buffer;
 use crate::{
-	file::{buffer::BlockHandler, Errno},
+	file::buffer::BlockHandler,
 	limits,
 	process::{
 		mem_space::{ptr::SyscallPtr, MemSpace},
 		Process,
 	},
 	syscall::ioctl,
-	util::{
-		collections::{ring_buffer::RingBuffer, vec::Vec},
-		io,
-		io::IO,
-		lock::IntMutex,
-		ptr::arc::Arc,
-		TryDefault,
-	},
 };
 use core::ffi::{c_int, c_void};
+use utils::{
+	collections::{ring_buffer::RingBuffer, vec::Vec},
+	errno,
+	errno::EResult,
+	io,
+	io::IO,
+	lock::IntMutex,
+	ptr::arc::Arc,
+	vec, TryDefault,
+};
 
 /// Structure representing a buffer buffer.
 #[derive(Debug)]
@@ -69,7 +71,7 @@ impl PipeBuffer {
 impl TryDefault for PipeBuffer {
 	fn try_default() -> Result<Self, Self::Error> {
 		Ok(Self {
-			buffer: RingBuffer::new(crate::vec![0; limits::PIPE_BUF]?),
+			buffer: RingBuffer::new(vec![0; limits::PIPE_BUF]?),
 
 			read_ends: 0,
 			write_ends: 0,
@@ -112,7 +114,7 @@ impl Buffer for PipeBuffer {
 		}
 	}
 
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		self.block_handler.add_waiting_process(proc, mask)
 	}
 
@@ -121,7 +123,7 @@ impl Buffer for PipeBuffer {
 		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
 				let mut mem_space_guard = mem_space.lock();
@@ -145,7 +147,7 @@ impl IO for PipeBuffer {
 	}
 
 	/// Note: This implemention ignores the offset.
-	fn read(&mut self, _: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
 		let len = self.buffer.read(buf);
 		let eof = self.write_ends == 0 && self.get_data_len() == 0;
 
@@ -155,7 +157,7 @@ impl IO for PipeBuffer {
 	}
 
 	/// Note: This implemention ignores the offset.
-	fn write(&mut self, _: u64, buf: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _: u64, buf: &[u8]) -> EResult<u64> {
 		if self.read_ends > 0 {
 			let len = self.buffer.write(buf);
 
@@ -167,7 +169,7 @@ impl IO for PipeBuffer {
 		}
 	}
 
-	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, mask: u32) -> EResult<u32> {
 		let mut result = 0;
 
 		if mask & io::POLLIN != 0 && self.get_data_len() > 0 {

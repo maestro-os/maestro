@@ -20,11 +20,11 @@
 //! the UNIX Epoch.
 
 use crate::{
-	errno::Errno,
 	process::{mem_space::ptr::SyscallPtr, Process},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use macros::syscall;
+use utils::errno::Errno;
 
 // TODO Watch for timestamp overflow
 

@@ -26,6 +26,7 @@
 
 #![no_std]
 #![no_main]
+#![feature(allocator_api)]
 #![feature(allow_internal_unstable)]
 #![feature(array_chunks)]
 #![feature(asm_const)]
@@ -93,20 +94,21 @@ pub mod syscall;
 pub mod time;
 pub mod tty;
 #[macro_use]
-pub use util;
+pub use utils;
 
 use crate::{
-	errno::EResult,
 	file::{fs::initramfs, path::Path, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
 	memory::vmem,
 	process::{exec, exec::ExecInfo, Process},
-	util::{
-		collections::{string::String, vec::Vec},
-		lock::Mutex,
-	},
 };
 use core::{arch::asm, ffi::c_void};
+use utils::{
+	collections::{string::String, vec::Vec},
+	errno::EResult,
+	lock::Mutex,
+	vec,
+};
 
 /// The kernel's name.
 pub const NAME: &str = env!("CARGO_PKG_NAME");

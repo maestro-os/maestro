@@ -18,12 +18,10 @@
 
 //! The `getegid` syscall returns the effective GID of the process's owner.
 
-use crate::{
-	errno::Errno,
-	process::{regs::Regs, Process},
-};
+use crate::process::{regs::Regs, Process};
+use utils::errno::EResult;
 
-pub fn getegid(_: &Regs) -> Result<i32, Errno> {
+pub fn getegid(_: &Regs) -> EResult<i32> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 	Ok(proc.access_profile.get_egid() as _)

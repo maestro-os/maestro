@@ -22,8 +22,6 @@
 use crate::{
 	device,
 	device::DeviceType,
-	errno,
-	errno::{EResult, Errno},
 	file::{buffer, mountpoint, DeviceID, File, FileContent, FileLocation},
 	process::{
 		mem_space::{ptr::SyscallPtr, MemSpace},
@@ -31,16 +29,18 @@ use crate::{
 	},
 	syscall::ioctl,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
-	util::{
-		collections::hashmap::HashMap,
-		io::IO,
-		lock::{IntMutex, Mutex},
-		ptr::arc::Arc,
-	},
 };
 use core::{
 	cmp::min,
 	ffi::{c_int, c_void},
+};
+use utils::{
+	collections::hashmap::HashMap,
+	errno,
+	errno::EResult,
+	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
 };
 
 /// Read only.
@@ -228,7 +228,7 @@ impl OpenFile {
 		mem_space: Arc<IntMutex<MemSpace>>,
 		request: ioctl::Request,
 		argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		let mut file = self.get_file().lock();
 		match file.get_content() {
 			FileContent::Regular => match request.get_old_format() {
@@ -260,7 +260,7 @@ impl OpenFile {
 	/// `mask` is the mask of poll event to wait for.
 	///
 	/// If the file cannot block, the function does nothing.
-	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		let file = self.get_file().lock();
 		match file.get_content() {
 			FileContent::Fifo | FileContent::Socket => {
@@ -316,7 +316,7 @@ impl IO for OpenFile {
 
 	/// Note: on this specific implementation, the offset is ignored since
 	/// `set_offset` has to be used to define it.
-	fn read(&mut self, _off: u64, buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _off: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
 		if !self.can_read() {
 			return Err(errno!(EINVAL));
 		}
@@ -341,7 +341,7 @@ impl IO for OpenFile {
 
 	/// Note: on this specific implementation, the offset is ignored since
 	/// `set_offset` has to be used to define it.
-	fn write(&mut self, _off: u64, buf: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<u64> {
 		if !self.can_write() {
 			return Err(errno!(EINVAL));
 		}
@@ -370,7 +370,7 @@ impl IO for OpenFile {
 		Ok(len as _)
 	}
 
-	fn poll(&mut self, mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, mask: u32) -> EResult<u32> {
 		self.get_file().lock().poll(mask)
 	}
 }

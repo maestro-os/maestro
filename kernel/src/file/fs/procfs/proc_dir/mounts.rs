@@ -20,7 +20,6 @@
 //! mountpoint.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode},
 		mountpoint,
@@ -28,9 +27,9 @@ use crate::{
 		FileContent, Mode,
 	},
 	process::{pid::Pid, Process},
-	util::{collections::string::String, io::IO},
 };
 use core::cmp::min;
+use utils::{collections::string::String, errno, errno::EResult, format, io::IO};
 
 /// Structure representing the mounts node of the procfs.
 #[derive(Debug)]
@@ -70,7 +69,7 @@ impl IO for Mounts {
 		0
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		if buff.is_empty() {
 			return Ok((0, false));
 		}
@@ -85,7 +84,7 @@ impl IO for Mounts {
 			let fs_type = mp.get_filesystem_type();
 			let flags = "TODO"; // TODO
 
-			let s = crate::format!(
+			let s = format!(
 				"{source} {target} {fs_type} {flags} 0 0\n",
 				source = mp.get_source(),
 				target = mp.get_target_path(),
@@ -102,11 +101,11 @@ impl IO for Mounts {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

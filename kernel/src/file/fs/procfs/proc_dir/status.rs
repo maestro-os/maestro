@@ -20,16 +20,15 @@
 //! status of the process.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode},
 		perm::{Gid, Uid},
 		FileContent, Mode,
 	},
 	process::{pid::Pid, Process},
-	util::io::IO,
 };
 use core::cmp::min;
+use utils::{errno, errno::EResult, format, io::IO};
 
 /// Structure representing the status node of the procfs.
 #[derive(Debug)]
@@ -69,7 +68,7 @@ impl IO for Status {
 		0
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		if buff.is_empty() {
 			return Ok((0, false));
 		}
@@ -87,7 +86,7 @@ impl IO for Status {
 
 		// TODO Fill every fields with process's data
 		// Generating content
-		let content = crate::format!(
+		let content = format!(
 			"Name: {name}
 Umask: {umask:4o}
 State: {state_char} ({state_name})
@@ -170,11 +169,11 @@ nonvoluntary_ctxt_switches: 0
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

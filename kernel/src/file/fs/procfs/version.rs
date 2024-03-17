@@ -18,15 +18,12 @@
 
 //! The `/proc/version` file returns the version of the kernel.
 
-use crate::{
-	errno::{EResult, Errno},
-	file::{
-		fs::kernfs::{content::KernFSContent, node::KernFSNode},
-		FileContent,
-	},
-	util::io::IO,
+use crate::file::{
+	fs::kernfs::{content::KernFSContent, node::KernFSNode},
+	FileContent,
 };
 use core::cmp::min;
+use utils::{errno, errno::EResult, format, io::IO};
 
 /// Structure representing the version node.
 #[derive(Debug)]
@@ -43,9 +40,9 @@ impl IO for Version {
 		0
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		// TODO const format
-		let version = crate::format!("{} version {}\n", crate::NAME, crate::VERSION)?;
+		let version = format!("{} version {}\n", crate::NAME, crate::VERSION)?;
 		let version_bytes = version.as_bytes();
 
 		// Copy content to userspace buffer
@@ -56,11 +53,11 @@ impl IO for Version {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

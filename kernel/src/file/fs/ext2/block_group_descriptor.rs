@@ -21,8 +21,8 @@
 //! filesystem.
 
 use super::{read, write, Superblock};
-use crate::{errno::Errno, util::io::IO};
 use core::mem::size_of;
+use utils::{errno::EResult, io::IO};
 
 /// Structure representing a block group descriptor to be stored into the Block
 /// Group Descriptor Table (BGDT).
@@ -52,7 +52,7 @@ impl BlockGroupDescriptor {
 	/// - `i` the id of the group descriptor to write.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<Self, Errno> {
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<Self> {
 		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
 		unsafe { read::<Self>(off, io) }
@@ -64,7 +64,7 @@ impl BlockGroupDescriptor {
 	/// - `i` the id of the group descriptor to write.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO) -> Result<(), Errno> {
+	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<()> {
 		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
 		write(self, off, io)

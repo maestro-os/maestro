@@ -32,7 +32,6 @@ use super::{
 	Filesystem, FilesystemType,
 };
 use crate::{
-	errno::{AllocError, AllocResult, EResult, Errno},
 	file::{
 		fs::Statfs,
 		path::PathBuf,
@@ -41,20 +40,23 @@ use crate::{
 	},
 	process,
 	process::{oom, pid::Pid},
-	util::{
-		boxed::Box,
-		collections::{hashmap::HashMap, string::String},
-		io::IO,
-		lock::Mutex,
-		ptr::arc::Arc,
-	},
 };
-use core::any::Any;
+use core::{alloc::AllocError, any::Any};
 use mem_info::MemInfo;
 use proc_dir::ProcDir;
 use self_link::SelfNode;
 use sys_dir::SysDir;
 use uptime::Uptime;
+use utils::{
+	boxed::Box,
+	collections::{hashmap::HashMap, string::String},
+	errno,
+	errno::{AllocResult, EResult},
+	format,
+	io::IO,
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 use version::Version;
 
 /// A procfs.
@@ -72,7 +74,7 @@ impl ProcFS {
 	/// Creates a new instance.
 	///
 	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new(readonly: bool) -> Result<Self, Errno> {
+	pub fn new(readonly: bool) -> EResult<Self> {
 		let mut fs = Self {
 			fs: KernFS::new(b"procfs".try_into()?, readonly)?,
 			procs: HashMap::new(),
@@ -163,7 +165,7 @@ impl ProcFS {
 	}
 
 	/// Adds a process with the given PID `pid` to the filesystem.
-	pub fn add_process(&mut self, pid: Pid) -> Result<(), Errno> {
+	pub fn add_process(&mut self, pid: Pid) -> EResult<()> {
 		// Create the process's node
 		let proc_node = ProcDir::new(pid, &mut self.fs)?;
 		let inode = self.fs.add_node(Box::new(proc_node)?)?;
@@ -177,7 +179,7 @@ impl ProcFS {
 				unreachable!();
 			};
 			entries.insert(
-				crate::format!("{pid}")?,
+				format!("{pid}")?,
 				DirEntry {
 					entry_type: FileType::Directory,
 					inode,
@@ -203,7 +205,7 @@ impl ProcFS {
 			let FileContent::Directory(entries) = &mut *content else {
 				unreachable!();
 			};
-			entries.remove(&crate::format!("{pid}")?);
+			entries.remove(&format!("{pid}")?);
 			Ok(())
 		});
 
@@ -236,7 +238,7 @@ impl Filesystem for ProcFS {
 		self.fs.get_root_inode()
 	}
 
-	fn get_stat(&self, io: &mut dyn IO) -> Result<Statfs, Errno> {
+	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs> {
 		self.fs.get_stat(io)
 	}
 
@@ -245,11 +247,11 @@ impl Filesystem for ProcFS {
 		io: &mut dyn IO,
 		parent: Option<INode>,
 		name: &[u8],
-	) -> Result<INode, Errno> {
+	) -> EResult<INode> {
 		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> Result<File, Errno> {
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> EResult<File> {
 		self.fs.load_file(io, inode, name)
 	}
 
@@ -262,7 +264,7 @@ impl Filesystem for ProcFS {
 		_gid: Gid,
 		_mode: Mode,
 		_content: FileContent,
-	) -> Result<File, Errno> {
+	) -> EResult<File> {
 		Err(errno!(EACCES))
 	}
 
@@ -272,11 +274,11 @@ impl Filesystem for ProcFS {
 		_parent_inode: INode,
 		_name: &[u8],
 		_inode: INode,
-	) -> Result<(), Errno> {
+	) -> EResult<()> {
 		Err(errno!(EACCES))
 	}
 
-	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> Result<(), Errno> {
+	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> EResult<()> {
 		Ok(())
 	}
 
@@ -295,17 +297,11 @@ impl Filesystem for ProcFS {
 		inode: INode,
 		off: u64,
 		buf: &mut [u8],
-	) -> Result<u64, Errno> {
+	) -> EResult<u64> {
 		self.fs.read_node(io, inode, off, buf)
 	}
 
-	fn write_node(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-		buf: &[u8],
-	) -> Result<(), Errno> {
+	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
 		self.fs.write_node(io, inode, off, buf)
 	}
 }
@@ -318,7 +314,7 @@ impl FilesystemType for ProcFsType {
 		b"procfs"
 	}
 
-	fn detect(&self, _io: &mut dyn IO) -> Result<bool, Errno> {
+	fn detect(&self, _io: &mut dyn IO) -> EResult<bool> {
 		Ok(false)
 	}
 
@@ -327,7 +323,7 @@ impl FilesystemType for ProcFsType {
 		_io: &mut dyn IO,
 		_mountpath: PathBuf,
 		readonly: bool,
-	) -> Result<Arc<Mutex<dyn Filesystem>>, Errno> {
+	) -> EResult<Arc<Mutex<dyn Filesystem>>> {
 		Ok(Arc::new(Mutex::new(ProcFS::new(readonly)?))?)
 	}
 }

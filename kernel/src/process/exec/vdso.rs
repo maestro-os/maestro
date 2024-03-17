@@ -21,8 +21,7 @@
 
 use crate::{
 	elf::parser::ELFParser,
-	errno::{AllocResult, CollectResult, EResult},
-	include_bytes_aligned, memory,
+	memory,
 	memory::buddy,
 	process::{
 		mem_space,
@@ -31,9 +30,15 @@ use crate::{
 			MapConstraint, MemSpace,
 		},
 	},
-	util::{collections::vec::Vec, lock::Mutex, ptr::arc::Arc},
 };
 use core::{cmp::min, ffi::c_void, num::NonZeroUsize, ptr::NonNull};
+use utils::{
+	collections::vec::Vec,
+	errno::{AllocResult, CollectResult, EResult},
+	include_bytes_aligned,
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 /// The ELF image of the vDSO.
 static ELF_IMAGE: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));

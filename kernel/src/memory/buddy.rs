@@ -25,12 +25,9 @@
 //! size of a frame in pages.
 
 use super::stats;
-use crate::{
-	errno::{AllocError, AllocResult},
-	memory,
-	util::{lock::*, math},
-};
+use crate::memory;
 use core::{
+	alloc::AllocError,
 	cmp::min,
 	ffi::c_void,
 	intrinsics::likely,
@@ -39,6 +36,7 @@ use core::{
 	slice,
 };
 use macros::instrument_allocator;
+use utils::{errno::AllocResult, lock::IntMutex, math};
 
 /// The order of a memory frame.
 pub type FrameOrder = u8;

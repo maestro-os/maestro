@@ -18,15 +18,12 @@
 
 //! The uptime node returns the amount of time elapsed since the system started up.
 
-use crate::{
-	errno::{EResult, Errno},
-	file::{
-		fs::kernfs::{content::KernFSContent, node::KernFSNode},
-		FileContent, Mode,
-	},
-	util::io::IO,
+use crate::file::{
+	fs::kernfs::{content::KernFSContent, node::KernFSNode},
+	FileContent, Mode,
 };
 use core::cmp::min;
+use utils::{errno, errno::EResult, format, io::IO};
 
 /// The uptime node.
 #[derive(Debug)]
@@ -47,9 +44,9 @@ impl IO for Uptime {
 		0
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		// TODO
-		let content = crate::format!("0.00 0.00\n")?;
+		let content = format!("0.00 0.00\n")?;
 		let content_bytes = content.as_bytes();
 
 		// Copy content to userspace buffer
@@ -60,11 +57,11 @@ impl IO for Uptime {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

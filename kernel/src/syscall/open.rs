@@ -20,9 +20,6 @@
 //! descriptor.
 
 use crate::{
-	errno,
-	errno::{EResult, Errno},
-	file,
 	file::{
 		fd::FD_CLOEXEC,
 		open_file,
@@ -34,10 +31,15 @@ use crate::{
 		File, FileContent, FileType, Mode,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
-	util::{lock::Mutex, ptr::arc::Arc},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 /// Mask of status flags to be kept by an open file description.
 pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
@@ -119,7 +121,7 @@ pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile)
 }
 
 /// Performs the open system call.
-pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i32> {
+pub fn open_(pathname: SyscallString, flags: i32, mode: Mode) -> EResult<i32> {
 	let proc_mutex = Process::current_assert();
 	let (path, rs, mode, fds_mutex) = {
 		let proc = proc_mutex.lock();
@@ -172,6 +174,6 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<i
 }
 
 #[syscall]
-pub fn open(pathname: SyscallString, flags: c_int, mode: file::Mode) -> Result<i32, Errno> {
+pub fn open(pathname: SyscallString, flags: c_int, mode: Mode) -> Result<i32, Errno> {
 	open_(pathname, flags, mode)
 }

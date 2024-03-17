@@ -19,7 +19,7 @@
 //! This module implements the local loopback.
 
 use super::{buff::BuffList, Address, BindAddress, Interface, MAC};
-use crate::errno::Errno;
+use utils::errno::EResult;
 
 /// Local loopback interfaces allows the system to write data to itself.
 pub struct LocalLoopback {}
@@ -53,12 +53,12 @@ impl Interface for LocalLoopback {
 		]
 	}
 
-	fn read(&mut self, _buff: &mut [u8]) -> Result<u64, Errno> {
+	fn read(&mut self, _buff: &mut [u8]) -> EResult<u64> {
 		// TODO Write to ring buffer
 		todo!();
 	}
 
-	fn write(&mut self, _buff: &BuffList<'_>) -> Result<u64, Errno> {
+	fn write(&mut self, _buff: &BuffList<'_>) -> EResult<u64> {
 		// TODO Read from ring buffer
 		todo!();
 	}

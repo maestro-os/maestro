@@ -18,8 +18,9 @@
 
 //! The `timer_delete` system call deletes a per-process timer.
 
-use crate::{errno::Errno, process::Process, time::unit::TimerT};
+use crate::{process::Process, time::unit::TimerT};
 use macros::syscall;
+use utils::errno::Errno;
 
 #[syscall]
 pub fn timer_delete(timerid: TimerT) -> Result<i32, Errno> {

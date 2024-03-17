@@ -19,13 +19,10 @@
 //! The `getrusage` system call returns the system usage for the current
 //! process.
 
-use crate::{
-	errno,
-	errno::Errno,
-	process::{mem_space::ptr::SyscallPtr, rusage::RUsage, Process},
-};
+use crate::process::{mem_space::ptr::SyscallPtr, rusage::RUsage, Process};
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// Returns the resource usage of the current process.
 const RUSAGE_SELF: i32 = 0;

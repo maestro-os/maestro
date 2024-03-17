@@ -20,11 +20,11 @@
 //! given delay.
 
 use crate::{
-	errno::Errno,
 	process::{mem_space::ptr::SyscallPtr, Process},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::Timespec32},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 // TODO Handle signal interruption (EINTR)
 

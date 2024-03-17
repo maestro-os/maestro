@@ -19,11 +19,11 @@
 //! The truncate syscall allows to truncate a file.
 
 use crate::{
-	errno::Errno,
 	file::{path::Path, vfs, vfs::ResolutionSettings},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {

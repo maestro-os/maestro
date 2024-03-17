@@ -18,13 +18,10 @@
 
 //! The `_llseek` system call repositions the offset of a file descriptor.
 
-use crate::{
-	errno::Errno,
-	process::{mem_space::ptr::SyscallPtr, Process},
-	util::io::IO,
-};
+use crate::process::{mem_space::ptr::SyscallPtr, Process};
 use core::ffi::{c_uint, c_ulong};
 use macros::syscall;
+use utils::{errno, errno::Errno, io::IO};
 
 /// Sets the offset from the given value.
 const SEEK_SET: u32 = 0;

@@ -26,21 +26,21 @@ mod stat;
 mod status;
 
 use crate::{
-	errno::{AllocError, EResult, Errno},
 	file::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode, KernFS},
 		perm::{Gid, Uid},
 		DirEntry, FileContent, FileType, Mode,
 	},
 	process::{oom, pid::Pid, Process},
-	util::{boxed::Box, collections::hashmap::HashMap, io::IO},
 };
 use cmdline::Cmdline;
+use core::alloc::AllocError;
 use cwd::Cwd;
 use exe::Exe;
 use mounts::Mounts;
 use stat::Stat;
 use status::Status;
+use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult, io::IO};
 
 /// Structure representing the directory of a process.
 #[derive(Debug)]
@@ -55,7 +55,7 @@ impl ProcDir {
 	/// Creates a new instance for the process with the given PID `pid`.
 	///
 	/// The function adds every nodes to the given kernfs `fs`.
-	pub fn new(pid: Pid, fs: &mut KernFS) -> Result<Self, Errno> {
+	pub fn new(pid: Pid, fs: &mut KernFS) -> EResult<Self> {
 		let mut entries = HashMap::new();
 
 		// TODO Add every nodes
@@ -197,15 +197,15 @@ impl IO for ProcDir {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
 		Err(errno!(EINVAL))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Err(errno!(EINVAL))
 	}
 }

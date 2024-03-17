@@ -19,13 +19,12 @@
 //! The `fstatfs64` system call returns information about a mounted file system.
 
 use crate::{
-	errno,
-	errno::Errno,
 	file::fs::Statfs,
 	process::{mem_space::ptr::SyscallPtr, Process},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {

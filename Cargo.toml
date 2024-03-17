@@ -4,7 +4,7 @@ resolver = "2"
 members = [
     "kernel",
     "macros",
-    "util"
+    "utils"
 ]
 
 [profile.release]

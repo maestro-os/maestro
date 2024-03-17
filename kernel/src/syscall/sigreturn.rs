@@ -22,12 +22,13 @@
 //! The system call restores the previous state of the process
 //! to allow normal execution.
 
-use crate::{errno::Errno, process::Process};
+use crate::process::Process;
 use macros::syscall;
+use utils::{errno::Errno, interrupt::cli};
 
 #[syscall]
-pub fn sigreturn() -> Result<i32, Errno> {
-	cli!();
+pub fn sigreturn() -> EResult<i32> {
+	cli();
 
 	let regs = {
 		let proc_mutex = Process::current_assert();

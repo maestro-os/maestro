@@ -18,7 +18,7 @@ path = "src/bin.rs"
 
 [dependencies]
 macros = { path = "../macros" }
-util = { path = "../util" }
+utils = { path = "../utils" }
 
 [build-dependencies]
 cc = { version = "1.0.83", features = ["parallel"] }

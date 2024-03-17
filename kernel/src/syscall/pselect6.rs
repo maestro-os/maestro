@@ -20,12 +20,12 @@
 
 use super::select::{do_select, FDSet};
 use crate::{
-	errno::Errno,
 	process::mem_space::ptr::{SyscallPtr, SyscallSlice},
 	time::unit::Timespec,
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::errno::Errno;
 
 #[syscall]
 pub fn pselect6(

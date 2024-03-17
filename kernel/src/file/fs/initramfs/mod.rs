@@ -22,15 +22,15 @@
 mod cpio;
 
 use crate::{
-	device, errno,
-	errno::{EResult, Errno},
-	file,
+	device, file,
 	file::{
 		path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileContent, FileType,
 	},
-	util::{collections::hashmap::HashMap, io::IO, lock::Mutex, ptr::arc::Arc},
 };
 use cpio::CPIOParser;
+use utils::{
+	collections::hashmap::HashMap, errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc,
+};
 
 // TODO clean this function
 /// Updates the current parent used for the unpacking operation.
@@ -81,7 +81,7 @@ fn update_parent<'p>(
 /// Loads the initramsfs at the root of the VFS.
 ///
 /// `data` is the slice of data representing the initramfs image.
-pub fn load(data: &[u8]) -> Result<(), Errno> {
+pub fn load(data: &[u8]) -> EResult<()> {
 	// TODO Use a stack instead?
 	// The stored parent directory
 	let mut stored_parent: Option<(&Path, Arc<Mutex<File>>)> = None;

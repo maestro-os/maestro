@@ -20,8 +20,9 @@
 //! image. It provides essential information such as the memory mapping and the
 //! ELF structure of the kernel.
 
-use crate::{memory, util, util::lock::once::OnceInit};
+use crate::memory;
 use core::{ffi::c_void, mem::ManuallyDrop, ptr::null, slice};
+use utils::lock::once::OnceInit;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
 pub const TAG_ALIGN: usize = 8;
@@ -453,13 +454,13 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 		TAG_TYPE_CMDLINE => unsafe {
 			let t: &TagString = reinterpret_tag(tag);
 			let ptr = memory::kern_to_virt(t.string.as_ptr());
-			boot_info.cmdline = Some(util::str_from_ptr(ptr));
+			boot_info.cmdline = Some(utils::str_from_ptr(ptr));
 		},
 
 		TAG_TYPE_BOOT_LOADER_NAME => unsafe {
 			let t: &TagString = reinterpret_tag(tag);
 			let ptr = memory::kern_to_virt(t.string.as_ptr());
-			boot_info.loader_name = Some(util::str_from_ptr(ptr));
+			boot_info.loader_name = Some(utils::str_from_ptr(ptr));
 		},
 
 		TAG_TYPE_MODULE => {

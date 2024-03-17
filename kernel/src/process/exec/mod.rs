@@ -28,16 +28,16 @@ pub mod elf;
 pub mod vdso;
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{vfs::ResolutionSettings, File},
 	process::{mem_space::MemSpace, regs::Regs, signal::SignalHandler, Process},
-	util::{
-		collections::{string::String, vec::Vec},
-		lock::{IntMutex, Mutex},
-		ptr::arc::Arc,
-	},
 };
 use core::ffi::c_void;
+use utils::{
+	collections::{string::String, vec::Vec},
+	errno::EResult,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+};
 
 /// Information to prepare a program image to be executed.
 pub struct ExecInfo<'s> {
@@ -70,7 +70,7 @@ pub struct ProgramImage {
 pub trait Executor {
 	/// Builds a program image.
 	/// `file` is the program's file.
-	fn build_image(&self, file: &mut File) -> Result<ProgramImage, Errno>;
+	fn build_image(&self, file: &mut File) -> EResult<ProgramImage>;
 }
 
 /// Builds a program image from the given executable file.

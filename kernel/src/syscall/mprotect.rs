@@ -20,12 +20,12 @@
 
 use super::mmap;
 use crate::{
-	errno::Errno,
 	memory,
 	process::{mem_space, Process},
 };
 use core::ffi::{c_int, c_void};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// Converts the given `prot` to mapping flags.
 fn prot_to_flags(prot: i32) -> u8 {

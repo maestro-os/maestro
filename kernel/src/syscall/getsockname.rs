@@ -19,7 +19,6 @@
 //! The `getsockname` system call returns the socket address bound to a socket.
 
 use crate::{
-	errno::Errno,
 	file::{buffer, buffer::socket::Socket},
 	process::{
 		mem_space::ptr::{SyscallPtr, SyscallSlice},
@@ -28,6 +27,7 @@ use crate::{
 };
 use core::{any::Any, ffi::c_int};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn getsockname(

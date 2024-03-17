@@ -20,12 +20,11 @@
 //! with `mount`.
 
 use crate::{
-	errno,
-	errno::Errno,
 	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn umount(target: SyscallString) -> Result<i32, Errno> {

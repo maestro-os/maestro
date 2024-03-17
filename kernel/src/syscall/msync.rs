@@ -19,9 +19,10 @@
 //! The msync system call synchronizes a memory mapping with its file on the
 //! disk.
 
-use crate::{errno, errno::Errno, memory, process::Process};
+use crate::{memory, process::Process};
 use core::ffi::{c_int, c_void};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// Schedules a synchronization and returns directly.
 const MS_ASYNC: i32 = 0b001;

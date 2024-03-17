@@ -20,14 +20,12 @@
 
 use crate::{
 	crypto::{rand, rand::EntropyPool},
-	errno::AllocResult,
 	idt,
 	idt::pic,
 	process::{regs::Regs, tss::TSS},
-	util,
-	util::{boxed::Box, collections::vec::Vec, lock::*},
 };
 use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
+use utils::{boxed::Box, collections::vec::Vec, errno::AllocResult, lock::IntMutex};
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
@@ -180,7 +178,7 @@ pub unsafe extern "C" fn unlock_callbacks(id: usize) {
 
 /// Feeds the entropy pool using the given data.
 fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
-	let buff = util::bytes::as_bytes(val);
+	let buff = utils::bytes::as_bytes(val);
 	pool.write(buff);
 }
 

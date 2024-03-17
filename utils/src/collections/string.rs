@@ -336,7 +336,7 @@ pub fn _format(args: fmt::Arguments) -> AllocResult<String> {
 #[macro_export]
 macro_rules! format {
 	($($arg:tt)*) => {{
-		$crate::util::collections::string::_format(format_args!($($arg)*))
+		$crate::collections::string::_format(format_args!($($arg)*))
 	}};
 }
 

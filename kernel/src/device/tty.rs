@@ -21,8 +21,6 @@
 
 use crate::{
 	device::DeviceHandle,
-	errno,
-	errno::EResult,
 	process::{
 		mem_space::{ptr::SyscallPtr, MemSpace},
 		pid::Pid,
@@ -31,9 +29,9 @@ use crate::{
 	},
 	syscall::ioctl,
 	tty::{termios, termios::Termios, TTYHandle, WinSize, TTY},
-	util::{io, io::IO, lock::IntMutex, ptr::arc::Arc},
 };
 use core::ffi::c_void;
+use utils::{errno, errno::EResult, io, io::IO, lock::IntMutex, ptr::arc::Arc};
 
 /// A TTY device's handle.
 pub struct TTYDeviceHandle {

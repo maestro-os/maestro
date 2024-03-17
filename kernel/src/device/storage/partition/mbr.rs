@@ -23,7 +23,8 @@
 //! alongside with the boot code.
 
 use super::{Partition, Table};
-use crate::{device::storage::StorageInterface, errno::Errno, util::collections::vec::Vec};
+use crate::device::storage::StorageInterface;
+use utils::{collections::vec::Vec, errno::EResult};
 
 /// The signature of the MBR partition table.
 const MBR_SIGNATURE: u16 = 0xaa55;
@@ -74,7 +75,7 @@ impl Clone for MbrTable {
 }
 
 impl Table for MbrTable {
-	fn read(storage: &mut dyn StorageInterface) -> Result<Option<Self>, Errno> {
+	fn read(storage: &mut dyn StorageInterface) -> EResult<Option<Self>> {
 		let mut first_sector: [u8; 512] = [0; 512];
 
 		if first_sector.len() as u64 > storage.get_size() {
@@ -96,7 +97,7 @@ impl Table for MbrTable {
 		"MBR"
 	}
 
-	fn get_partitions(&self, _: &mut dyn StorageInterface) -> Result<Vec<Partition>, Errno> {
+	fn get_partitions(&self, _: &mut dyn StorageInterface) -> EResult<Vec<Partition>> {
 		let mut partitions = Vec::<Partition>::new();
 
 		for mbr_partition in self.partitions.iter() {

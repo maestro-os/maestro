@@ -19,8 +19,6 @@
 //! The `statfs` system call returns information about a mounted file system.
 
 use crate::{
-	errno,
-	errno::{EResult, Errno},
 	file::{fs::Statfs, path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::{
 		mem_space::ptr::{SyscallPtr, SyscallString},
@@ -28,6 +26,10 @@ use crate::{
 	},
 };
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult<i32> {
 	let (path, rs) = {

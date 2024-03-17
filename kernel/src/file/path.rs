@@ -18,13 +18,17 @@
 
 //! This module implements structure to represent file paths.
 
-use crate::{
-	errno,
-	errno::{AllocError, AllocResult, CollectResult, EResult, Errno},
-	limits,
-	util::{collections::string::String, DisplayableStr, TryClone},
+use crate::limits;
+use core::{
+	alloc::AllocError, borrow::Borrow, fmt, fmt::Formatter, hash::Hash, iter::FusedIterator,
+	ops::Deref,
 };
-use core::{borrow::Borrow, fmt, fmt::Formatter, hash::Hash, iter::FusedIterator, ops::Deref};
+use utils::{
+	collections::string::String,
+	errno,
+	errno::{AllocResult, CollectResult, EResult, Errno},
+	DisplayableStr, TryClone,
+};
 
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: u8 = b'/';

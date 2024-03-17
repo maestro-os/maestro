@@ -19,12 +19,10 @@
 //! The `wait4` system call waits for a process to change state.
 
 use super::waitpid;
-use crate::{
-	errno::Errno,
-	process::{mem_space::ptr::SyscallPtr, rusage::RUsage},
-};
+use crate::process::{mem_space::ptr::SyscallPtr, rusage::RUsage};
 use core::ffi::c_int;
 use macros::syscall;
+use utils::errno::Errno;
 
 #[syscall]
 pub fn wait4(

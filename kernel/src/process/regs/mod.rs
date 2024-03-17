@@ -18,8 +18,9 @@
 
 //! Implementation of registers handling for each architecture.
 
-use crate::{errno::Errno, gdt};
+use crate::gdt;
 use core::{arch::asm, fmt};
+use utils::errno::EResult;
 
 /// The default value of the eflags register.
 const DEFAULT_EFLAGS: u32 = 0x1202;
@@ -97,7 +98,7 @@ pub struct Regs {
 
 impl Regs {
 	/// Sets the return value of a system call.
-	pub fn set_syscall_return(&mut self, value: Result<i32, Errno>) {
+	pub fn set_syscall_return(&mut self, value: EResult<i32>) {
 		let retval = match value {
 			Ok(val) => val as _,
 			Err(e) => (-e.as_int()) as _,

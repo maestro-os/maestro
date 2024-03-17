@@ -18,7 +18,7 @@
 
 //! This module implements the Input/Output interface trait.
 
-use crate::errno::Errno;
+use crate::errno::{EResult, Errno};
 
 /// Poll event: There is data to read.
 pub const POLLIN: u32 = 0x1;
@@ -57,21 +57,21 @@ pub trait IO {
 	/// - The number of bytes read.
 	/// - Whether the function reached the end of the input stream. In the context of a file, a
 	/// value of `true` is equivalent to the End Of File (EOF).
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno>;
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)>;
 
 	/// Reads data from `buff` and writes it into the I/O.
 	///
 	/// `offset` is the offset in the I/O to the beginning of the data to write.
 	///
 	/// The function returns the number of bytes written.
-	fn write(&mut self, offset: u64, buff: &[u8]) -> Result<u64, Errno>;
+	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64>;
 
 	/// Tells whether the specified events are available on the I/O interface.
 	///
 	/// `mask` is a mask containing the mask of operations to check for.
 	///
 	/// The function returns the mask with available events set.
-	fn poll(&mut self, mask: u32) -> Result<u32, Errno>;
+	fn poll(&mut self, mask: u32) -> EResult<u32>;
 }
 
 /// Structure representing a dummy I/O interface.

@@ -20,13 +20,11 @@
 //! current process.
 
 use crate::{
-	errno,
-	errno::Errno,
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
 	process::{mem_space::ptr::SyscallString, Process},
-	util::ptr::arc::Arc,
 };
 use macros::syscall;
+use utils::{errno, errno::Errno, ptr::arc::Arc};
 
 #[syscall]
 pub fn chdir(path: SyscallString) -> Result<i32, Errno> {

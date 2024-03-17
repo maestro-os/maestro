@@ -20,11 +20,10 @@
 //! the resource is available.
 
 use crate::{
-	errno::Errno,
 	process,
 	process::{pid::Pid, Process},
-	util::{collections::hashmap::HashMap, io},
 };
+use utils::{collections::hashmap::HashMap, errno::EResult, io};
 
 /// Handler allowing to make a process sleep when waiting on a resource, then resume its execution
 /// when the resource is available.
@@ -48,7 +47,7 @@ impl BlockHandler {
 	/// When the event occurs, the process will be woken up.
 	///
 	/// `mask` is the mask of poll event to wait for.
-	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		self.waiting_procs.insert(proc.pid, mask)?;
 		proc.set_state(process::State::Sleeping);
 

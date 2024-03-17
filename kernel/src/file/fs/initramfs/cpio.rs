@@ -20,9 +20,10 @@
 //!
 //! The kernel only support binary CPIO, not ASCII.
 
-use crate::{file, file::FileType, util};
+use crate::{file, file::FileType};
 use core::mem::size_of;
 use macros::AnyRepr;
+use utils::bytes;
 
 /// Entry type: FIFO
 pub const TYPE_FIFO: u16 = 0x1000;
@@ -108,7 +109,7 @@ impl<'a> CPIOEntry<'a> {
 	/// Returns a reference to the header of the entry.
 	pub fn get_hdr(&self) -> &'a CPIOHeader {
 		// Will not fail because the structure is in range of the slice
-		util::bytes::from_bytes::<CPIOHeader>(self.data).unwrap()
+		bytes::from_bytes::<CPIOHeader>(self.data).unwrap()
 	}
 
 	/// Returns a reference storing the filename.
@@ -175,7 +176,7 @@ impl<'a> Iterator for CPIOParser<'a> {
 		}
 
 		// Will not fail because the structure is in range of the slice
-		let hdr = util::bytes::from_bytes::<CPIOHeader>(&self.data[off..]).unwrap();
+		let hdr = bytes::from_bytes::<CPIOHeader>(&self.data[off..]).unwrap();
 
 		// TODO: If invalid, check 0o707070. If valid, then data needs conversion (endianess)
 		// Check magic

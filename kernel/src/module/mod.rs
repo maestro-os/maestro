@@ -37,20 +37,18 @@ use crate::{
 		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
 		ELF32Sym,
 	},
-	errno,
-	errno::EResult,
-	memory::malloc,
-	util::{
-		collections::{hashmap::HashMap, string::String, vec::Vec},
-		lock::Mutex,
-		DisplayableStr, TryClone,
-	},
 };
 use core::{
 	cmp::min,
 	mem::{size_of, transmute},
-	num::NonZeroUsize,
 	slice,
+};
+use utils::{
+	collections::{hashmap::HashMap, string::String, vec::Vec},
+	errno,
+	errno::EResult,
+	lock::Mutex,
+	vec, DisplayableStr, TryClone,
 };
 use version::{Dependency, Version};
 
@@ -117,7 +115,7 @@ pub struct Module {
 	deps: Vec<Dependency>,
 
 	/// The module's memory.
-	mem: malloc::Alloc<u8>,
+	mem: Vec<u8>,
 	/// The size of the module's memory.
 	mem_size: usize,
 
@@ -200,9 +198,8 @@ impl Module {
 		})?;
 
 		// Allocate memory for the module
-		let mem_size =
-			NonZeroUsize::new(Self::get_load_size(&parser)).ok_or_else(|| errno!(EINVAL))?;
-		let mut mem = malloc::Alloc::<u8>::new_default(mem_size)?;
+		let mem_size = Self::get_load_size(&parser);
+		let mut mem = vec![0; mem_size]?;
 
 		// The base virtual address at which the module is loaded
 		let load_base = mem.as_ptr();
@@ -215,7 +212,7 @@ impl Module {
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;
 				let mem_begin = seg.p_vaddr as usize;
 				let image_begin = seg.p_offset as usize;
-				mem.as_slice_mut()[mem_begin..(mem_begin + len)]
+				mem.as_mut_slice()[mem_begin..(mem_begin + len)]
 					.copy_from_slice(&image[image_begin..(image_begin + len)]);
 			});
 
@@ -322,7 +319,7 @@ impl Module {
 			deps,
 
 			mem: mem as _,
-			mem_size: mem_size.get(),
+			mem_size,
 
 			fini,
 		})

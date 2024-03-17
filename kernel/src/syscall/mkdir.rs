@@ -19,7 +19,6 @@
 //! The mkdir system call allows to create a directory.
 
 use crate::{
-	errno::Errno,
 	file,
 	file::{
 		path::{Path, PathBuf},
@@ -28,9 +27,9 @@ use crate::{
 		FileContent,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
-	util::collections::hashmap::HashMap,
 };
 use macros::syscall;
+use utils::{collections::hashmap::HashMap, errno, errno::Errno};
 
 #[syscall]
 pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {

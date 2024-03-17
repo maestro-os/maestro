@@ -19,8 +19,6 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
 use crate::{
-	errno,
-	errno::{EResult, Errno},
 	file::open_file::{OpenFile, O_NONBLOCK},
 	limits,
 	process::{
@@ -30,10 +28,15 @@ use crate::{
 		signal::Signal,
 		Process,
 	},
-	util::{io, io::IO},
 };
 use core::{cmp::min, ffi::c_int};
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io,
+	io::IO,
+};
 
 // TODO Handle blocking writes (and thus, EINTR)
 
@@ -86,7 +89,7 @@ pub fn do_writev(
 	iovcnt: i32,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-) -> Result<i32, Errno> {
+) -> EResult<i32> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
@@ -170,6 +173,6 @@ pub fn do_writev(
 }
 
 #[syscall]
-pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> Result<i32, Errno> {
+pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> EResult<i32> {
 	do_writev(fd, iov, iovcnt, None, None)
 }

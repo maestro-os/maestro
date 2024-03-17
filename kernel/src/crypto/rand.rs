@@ -18,13 +18,12 @@
 
 //! This module implements randomness functions.
 
-use crate::{
-	crypto::chacha20,
+use crate::crypto::chacha20;
+use utils::{
+	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno::AllocResult,
-	util::{
-		collections::{ring_buffer::RingBuffer, vec::Vec},
-		lock::IntMutex,
-	},
+	lock::IntMutex,
+	vec,
 };
 
 /// The size of the entropy buffer in bytes.
@@ -53,8 +52,8 @@ impl EntropyPool {
 	/// Creates a new instance.
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
-			pending: RingBuffer::new(crate::vec![0; 56]?),
-			buff: RingBuffer::new(crate::vec![0; ENTROPY_BUFFER_SIZE]?),
+			pending: RingBuffer::new(vec![0; 56]?),
+			buff: RingBuffer::new(vec![0; ENTROPY_BUFFER_SIZE]?),
 
 			counter: 0,
 

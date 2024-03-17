@@ -19,12 +19,9 @@
 //! This module implements the `getpgid` system call, which allows to get the
 //! process group ID of a process.
 
-use crate::{
-	errno,
-	errno::Errno,
-	process::{pid::Pid, Process},
-};
+use crate::process::{pid::Pid, Process};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn getpgid(pid: Pid) -> Result<i32, Errno> {

@@ -27,7 +27,6 @@
 //! If a chunk is not allocated, it is stored in a free list, stored by size.
 
 use super::block::Block;
-use crate::{errno::AllocResult, util};
 use core::{
 	cmp::{max, min},
 	ffi::c_void,
@@ -36,6 +35,7 @@ use core::{
 	ptr,
 	ptr::{addr_of_mut, NonNull},
 };
+use utils::errno::AllocResult;
 
 /// The magic number for every chunks
 #[cfg(config_debug_malloc_magic)]
@@ -210,7 +210,7 @@ impl Chunk {
 		self.check();
 		let min_data_size = get_min_chunk_size();
 		let size = max(size, min_data_size);
-		let next_ptr = unsafe { util::align(self.get_ptr().add(size), ALIGNMENT) };
+		let next_ptr = unsafe { utils::align(self.get_ptr().add(size), ALIGNMENT) };
 		let new_size = (next_ptr as usize) - (self.get_ptr() as usize);
 		debug_assert!(new_size >= size);
 		if new_size + size_of::<Chunk>() + min_data_size <= self.size {

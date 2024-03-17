@@ -19,15 +19,13 @@
 //! The `finit_module` system call allows to load a module on the kernel.
 
 use crate::{
-	errno,
-	errno::{AllocError, Errno},
 	module,
 	module::Module,
 	process::{mem_space::ptr::SyscallString, Process},
-	util::io::IO,
 };
-use core::ffi::c_int;
+use core::{alloc::AllocError, ffi::c_int};
 use macros::syscall;
+use utils::{errno, errno::Errno, io::IO, vec};
 
 #[syscall]
 pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> Result<i32, Errno> {
@@ -54,7 +52,7 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 	let image = {
 		let mut open_file = open_file_mutex.lock();
 		let len = open_file.get_size().try_into().map_err(|_| AllocError)?;
-		let mut image = crate::vec![0u8; len]?;
+		let mut image = vec![0u8; len]?;
 		open_file.read(0, image.as_mut_slice())?;
 		image
 	};

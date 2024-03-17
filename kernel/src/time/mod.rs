@@ -29,14 +29,10 @@ pub mod hw;
 pub mod timer;
 pub mod unit;
 
-use crate::{
-	errno::EResult,
-	event,
-	event::CallbackResult,
-	util::{boxed::Box, lock::IntMutex, math::rational::Rational},
-};
+use crate::{event, event::CallbackResult};
 use core::mem::ManuallyDrop;
 use unit::{Timestamp, TimestampScale};
+use utils::{boxed::Box, errno::EResult, lock::IntMutex, math::rational::Rational};
 
 /// Atomic storage for a timestamp.
 ///

@@ -25,13 +25,12 @@ impl Target {
 	/// Returns the selected triplet according to environment variables.
 	///
 	/// If no target has been provided, the function returns `None`.
-	pub fn from_env() -> io::Result<Self> {
+	pub fn from_env(manifest_dir: &str) -> io::Result<Self> {
 		// Get target file path
 		// Unwrapping is safe because a default target is specified in `.cargo/config.toml`
 		let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-
 		// Read and parse target file
-		let target_path = PathBuf::from(format!("../arch/{arch}/{arch}.json"));
+		let target_path = PathBuf::from(format!("{manifest_dir}/../arch/{arch}/{arch}.json"));
 		let content = fs::read_to_string(target_path)?;
 		let content: TargetFile = serde_json::from_str(&content).map_err(io::Error::from)?;
 		Ok(Self {

@@ -38,8 +38,9 @@
 // TODO Add support for third and fourth bus
 
 use super::StorageInterface;
-use crate::{device::storage::ide, errno, errno::EResult, io};
+use crate::{device::storage::ide, io};
 use core::{cmp::min, num::NonZeroU64};
+use utils::{errno, errno::EResult};
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;
@@ -374,7 +375,7 @@ impl PATAInterface {
 				return Ok(());
 			}
 			if (status & STATUS_ERR != 0) || (status & STATUS_DF != 0) {
-				return Err(crate::errno!(EIO));
+				return Err(errno!(EIO));
 			}
 		}
 	}
@@ -504,7 +505,7 @@ impl StorageInterface for PATAInterface {
 
 		// If the offset and size are out of bounds of the disk, return an error
 		if offset >= self.sectors_count || offset + size > self.sectors_count {
-			return Err(crate::errno!(EINVAL));
+			return Err(errno!(EINVAL));
 		}
 
 		// Tells whether to use LBA48

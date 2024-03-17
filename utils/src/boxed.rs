@@ -185,11 +185,12 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Box<T> {
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
 		let ptr = self.ptr.cast::<()>().as_ptr();
-		let layout = Layout::for_value(&*self);
 		// If the pointer is not dangling
 		if (ptr as usize) >= 4096 {
 			unsafe {
-				drop_in_place(self.ptr.as_mut());
+				let inner = self.ptr.as_mut();
+				let layout = Layout::for_value(inner);
+				drop_in_place(inner);
 				Global.deallocate(self.ptr.cast(), layout);
 			}
 		}

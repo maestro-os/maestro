@@ -19,7 +19,6 @@
 //! The `timer_create` system call creates a per-process timer.
 
 use crate::{
-	errno::Errno,
 	process::{
 		mem_space::ptr::SyscallPtr,
 		signal::{SigEvent, SigVal, Signal, SIGEV_SIGNAL},
@@ -28,6 +27,7 @@ use crate::{
 	time::unit::{ClockIdT, TimerT},
 };
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn timer_create(

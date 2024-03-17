@@ -20,16 +20,15 @@
 //! the process.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode},
 		perm::{Gid, Uid},
 		FileContent, Mode,
 	},
 	process::{pid::Pid, Process},
-	util::{collections::string::String, io::IO},
 };
 use core::cmp::min;
+use utils::{collections::string::String, errno, errno::EResult, io::IO};
 
 /// Structure representing the cmdline node of the procfs.
 #[derive(Debug)]
@@ -69,7 +68,7 @@ impl IO for Cmdline {
 		0
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		if buff.is_empty() {
 			return Ok((0, false));
 		}
@@ -93,11 +92,11 @@ impl IO for Cmdline {
 		Ok((len as _, eof))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
 		Err(errno!(EINVAL))
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

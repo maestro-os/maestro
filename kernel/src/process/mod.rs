@@ -39,8 +39,6 @@ pub mod tss;
 pub mod user_desc;
 
 use crate::{
-	errno,
-	errno::{AllocResult, EResult, Errno},
 	event,
 	event::CallbackResult,
 	file,
@@ -61,12 +59,6 @@ use crate::{
 	time::timer::TimerManager,
 	tty,
 	tty::TTYHandle,
-	util::{
-		collections::{bitfield::Bitfield, string::String, vec::Vec},
-		lock::*,
-		ptr::arc::{Arc, Weak},
-		TryClone,
-	},
 };
 use core::{
 	any::Any,
@@ -82,6 +74,14 @@ use scheduler::Scheduler;
 use signal::{Signal, SignalAction, SignalHandler};
 #[cfg(target_arch = "x86")]
 use tss::TSS;
+use utils::{
+	collections::{bitfield::Bitfield, string::String, vec::Vec},
+	errno,
+	errno::{AllocResult, EResult},
+	lock::{IntMutex, Mutex},
+	ptr::arc::{Arc, Weak},
+	TryClone,
+};
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -307,7 +307,7 @@ static mut SCHEDULER: MaybeUninit<Arc<IntMutex<Scheduler>>> = MaybeUninit::unini
 
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
-pub(crate) fn init() -> Result<(), Errno> {
+pub(crate) fn init() -> EResult<()> {
 	TSS::init();
 
 	let cores_count = 1; // TODO
@@ -497,7 +497,7 @@ impl Process {
 	/// Creates the init process and places it into the scheduler's queue.
 	///
 	/// The process is set to state `Running` by default and has user root.
-	pub fn new() -> Result<Arc<IntMutex<Self>>, Errno> {
+	pub fn new() -> EResult<Arc<IntMutex<Self>>> {
 		let rs = ResolutionSettings::kernel_follow();
 
 		// Create the default file descriptors table
@@ -597,7 +597,7 @@ impl Process {
 	}
 
 	/// Sets the process's group ID to the given value `pgid`.
-	pub fn set_pgid(&mut self, pgid: Pid) -> Result<(), Errno> {
+	pub fn set_pgid(&mut self, pgid: Pid) -> EResult<()> {
 		let old_pgid = self.pgid;
 		let new_pgid = if pgid == 0 { self.pid } else { pgid };
 
@@ -776,11 +776,7 @@ impl Process {
 
 	/// Adds the process with the given PID `pid` as child to the process.
 	pub fn add_child(&mut self, pid: Pid) -> AllocResult<()> {
-		let i = match self.children.binary_search(&pid) {
-			Ok(i) => i,
-			Err(i) => i,
-		};
-
+		let i = self.children.binary_search(&pid).unwrap_or_else(|i| i);
 		self.children.insert(i, pid)
 	}
 

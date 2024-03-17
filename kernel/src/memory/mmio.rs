@@ -20,8 +20,9 @@
 //! memory.
 
 use super::{buddy, vmem};
-use crate::{errno::AllocResult, process::oom};
+use crate::process::oom;
 use core::ffi::c_void;
+use utils::errno::AllocResult;
 
 /// Default flags for kernelspace in virtual memory.
 const DEFAULT_FLAGS: u32 = vmem::x86::FLAG_WRITE;

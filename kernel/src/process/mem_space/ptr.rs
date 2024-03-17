@@ -28,13 +28,14 @@
 //! Those structures are also usable as system call arguments.
 
 use super::MemSpace;
-use crate::{errno::EResult, process::Process, util::DisplayableStr};
+use crate::process::Process;
 use core::{
 	fmt,
 	mem::size_of,
 	ptr::{null, null_mut, NonNull},
 	slice,
 };
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// Wrapper for a pointer.
 pub struct SyscallPtr<T: Sized>(Option<NonNull<T>>);

@@ -20,13 +20,13 @@
 
 pub mod at;
 
-use crate::{
+use crate::process::{mem_space::ptr::SyscallString, regs::Regs, scheduler, Process, State};
+use core::mem::size_of;
+use utils::{
+	collections::{string::String, vec::Vec},
 	errno,
 	errno::EResult,
-	process::{mem_space::ptr::SyscallString, regs::Regs, scheduler, Process, State},
-	util::collections::{string::String, vec::Vec},
 };
-use core::mem::size_of;
 
 // TODO Find a safer and cleaner solution
 /// Checks that the given array of strings at pointer `ptr` is accessible to

@@ -19,8 +19,6 @@
 //! The `mmap` system call allows the process to allocate memory.
 
 use crate::{
-	errno,
-	errno::Errno,
 	file::FileType,
 	memory,
 	process::{mem_space, mem_space::residence::MapResidence, Process},
@@ -31,6 +29,10 @@ use core::{
 	num::NonZeroUsize,
 };
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Data can be read.
 pub const PROT_READ: i32 = 0b001;
@@ -73,7 +75,7 @@ pub fn do_mmap(
 	flags: i32,
 	fd: i32,
 	offset: u64,
-) -> Result<i32, Errno> {
+) -> EResult<i32> {
 	// Check alignment of `addr` and `length`
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));

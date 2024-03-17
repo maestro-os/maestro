@@ -20,7 +20,6 @@
 //! directory.
 
 use crate::{
-	errno::{EResult, Errno},
 	file::{FileContent, FileType, INode},
 	process::{mem_space::ptr::SyscallSlice, Process},
 };
@@ -30,6 +29,10 @@ use core::{
 	ptr,
 };
 use macros::syscall;
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// A directory entry as returned by the `getdents*` system calls.
 pub trait Dirent: Sized {

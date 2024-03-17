@@ -20,22 +20,23 @@
 
 use super::Buffer;
 use crate::{
-	errno::{AllocResult, Errno},
 	file::buffer::BlockHandler,
 	net::{osi, SocketDesc, SocketDomain, SocketType},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
-	util::{
-		collections::{ring_buffer::RingBuffer, vec::Vec},
-		io::IO,
-		lock::{IntMutex, Mutex},
-		ptr::arc::Arc,
-		TryDefault,
-	},
 };
 use core::{
 	cmp::min,
 	ffi::{c_int, c_void},
+};
+use utils::{
+	collections::{ring_buffer::RingBuffer, vec::Vec},
+	errno,
+	errno::{AllocResult, EResult},
+	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+	vec, TryDefault,
 };
 
 /// The maximum size of a socket's buffers.
@@ -74,8 +75,8 @@ impl Socket {
 			desc,
 			stack: None,
 
-			receive_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
-			transmit_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
+			receive_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
+			transmit_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
 
 			open_count: 0,
 
@@ -105,12 +106,7 @@ impl Socket {
 	/// - `optval` is the value of the option.
 	///
 	/// The function returns a value to be returned by the syscall on success.
-	pub fn get_opt(
-		&self,
-		_level: c_int,
-		_optname: c_int,
-		_optval: &mut [u8],
-	) -> Result<c_int, Errno> {
+	pub fn get_opt(&self, _level: c_int, _optname: c_int, _optval: &mut [u8]) -> EResult<c_int> {
 		// TODO
 		todo!()
 	}
@@ -123,12 +119,7 @@ impl Socket {
 	/// - `optval` is the value of the option.
 	///
 	/// The function returns a value to be returned by the syscall on success.
-	pub fn set_opt(
-		&mut self,
-		_level: c_int,
-		_optname: c_int,
-		_optval: &[u8],
-	) -> Result<c_int, Errno> {
+	pub fn set_opt(&mut self, _level: c_int, _optname: c_int, _optval: &[u8]) -> EResult<c_int> {
 		// TODO
 		Ok(0)
 	}
@@ -155,7 +146,7 @@ impl Socket {
 	///
 	/// If the socket is already bound, or if the address is invalid, or if the address is already
 	/// in used, the function returns an error.
-	pub fn bind(&mut self, sockaddr: &[u8]) -> Result<(), Errno> {
+	pub fn bind(&mut self, sockaddr: &[u8]) -> EResult<()> {
 		if self.is_bound() {
 			return Err(errno!(EINVAL));
 		}
@@ -190,8 +181,8 @@ impl TryDefault for Socket {
 			desc,
 			stack: None,
 
-			receive_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
-			transmit_buffer: Some(RingBuffer::new(crate::vec![0; BUFFER_SIZE]?)),
+			receive_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
+			transmit_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
 
 			open_count: 0,
 
@@ -219,7 +210,7 @@ impl Buffer for Socket {
 		}
 	}
 
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> Result<(), Errno> {
+	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		self.block_handler.add_waiting_process(proc, mask)
 	}
 
@@ -228,7 +219,7 @@ impl Buffer for Socket {
 		_mem_space: Arc<IntMutex<MemSpace>>,
 		_request: ioctl::Request,
 		_argp: *const c_void,
-	) -> Result<u32, Errno> {
+	) -> EResult<u32> {
 		// TODO
 		todo!();
 	}
@@ -240,7 +231,7 @@ impl IO for Socket {
 	}
 
 	/// Note: This implemention ignores the offset.
-	fn read(&mut self, _: u64, _buf: &mut [u8]) -> Result<(u64, bool), Errno> {
+	fn read(&mut self, _: u64, _buf: &mut [u8]) -> EResult<(u64, bool)> {
 		if !self.desc.type_.is_stream() {
 			// TODO error
 		}
@@ -250,7 +241,7 @@ impl IO for Socket {
 	}
 
 	/// Note: This implemention ignores the offset.
-	fn write(&mut self, _: u64, _buf: &[u8]) -> Result<u64, Errno> {
+	fn write(&mut self, _: u64, _buf: &[u8]) -> EResult<u64> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {
 			return Err(errno!(EDESTADDRREQ));
@@ -260,7 +251,7 @@ impl IO for Socket {
 		todo!();
 	}
 
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
+	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

@@ -19,12 +19,12 @@
 //! The `shutdown` system call shuts down part of a full-duplex connection.
 
 use crate::{
-	errno::Errno,
 	file::{buffer, buffer::socket::Socket},
 	process::Process,
 };
 use core::{any::Any, ffi::c_int};
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// Shutdown receive side of the connection.
 const SHUT_RD: c_int = 0;

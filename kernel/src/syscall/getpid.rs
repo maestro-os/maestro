@@ -18,8 +18,9 @@
 
 //! The `getpid` system call returns the PID of the current process.
 
-use crate::{errno::Errno, process::Process};
+use crate::process::Process;
 use macros::syscall;
+use utils::errno::Errno;
 
 #[syscall]
 pub fn getpid() -> Result<i32, Errno> {

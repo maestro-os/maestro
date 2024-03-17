@@ -35,12 +35,14 @@ use crate::{
 		manager::PhysicalDevice,
 		DeviceManager,
 	},
-	errno::{CollectResult, EResult, Errno},
 	io, memory,
 	memory::mmio::MMIO,
-	util::collections::vec::Vec,
 };
 use core::{cmp::min, mem::size_of};
+use utils::{
+	collections::vec::Vec,
+	errno::{CollectResult, EResult},
+};
 
 /// The port used to specify the configuration address.
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
@@ -256,7 +258,7 @@ impl PCIDevice {
 	/// to make the BAR accessible.
 	///
 	/// Dropping the MMIO makes using the associated BAR an undefined behaviour.
-	fn load_bar(&self, n: u8) -> Result<Option<(BAR, Option<MMIO>)>, Errno> {
+	fn load_bar(&self, n: u8) -> EResult<Option<(BAR, Option<MMIO>)>> {
 		let Some(bar_off) = self.get_bar_reg_off(n) else {
 			return Ok(None);
 		};

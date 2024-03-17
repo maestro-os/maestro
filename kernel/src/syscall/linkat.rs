@@ -20,7 +20,6 @@
 
 use super::util::at;
 use crate::{
-	errno::Errno,
 	file::{
 		path::PathBuf,
 		vfs,
@@ -31,6 +30,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn linkat(

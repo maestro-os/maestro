@@ -19,12 +19,12 @@
 //! The `timer_settime` system call creates a per-process timer.
 
 use crate::{
-	errno::Errno,
 	process::{mem_space::ptr::SyscallPtr, Process},
 	time::unit::{ITimerspec32, TimerT},
 };
 use core::ffi::c_int;
 use macros::syscall;
+use utils::{errno, errno::Errno};
 
 /// If set, the specified time is *not* relative to the timer's current counter.
 const TIMER_ABSTIME: c_int = 1;
