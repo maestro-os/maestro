@@ -1,9 +1,0 @@
-[unstable]
-build-std = ["core"]
-
-[target.x86]
-runner = "scripts/qemu.sh"
-
-[build]
-# Set default target
-target = "arch/x86/x86.json"
