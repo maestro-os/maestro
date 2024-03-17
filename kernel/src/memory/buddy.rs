@@ -529,7 +529,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
 	NonNull::new(ptr).ok_or(AllocError)
 }
 
-/// Calls [`alloc`] with order `order`, allocating in the kernel zone.
+/// Calls [`alloc()`] with order `order`, allocating in the kernel zone.
 ///
 /// The function returns the *virtual* address, not the physical one.
 pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
@@ -544,7 +544,7 @@ pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 /// - `ptr` is the *virtual* address to the beginning of the frame
 /// - `order` is the order of the frame
 ///
-/// The given order must be the same as the one given to [`alloc`].
+/// The given order must be the same as the one given to [`alloc()`].
 ///
 /// # Safety
 ///

@@ -16,13 +16,9 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the memory allocation utility for kernelside
-//! operations.
+//! This module implements the global memory allocator for kernelside operations.
 //!
-//! An unsafe interface is provided, inspired from the C language's
-//! malloc interface.
-//!
-//! The module also provides the structure [`Alloc`] which safely manages a memory allocation.
+//! The allocator is accessible through [`alloc::alloc::Global`].
 
 mod block;
 mod chunk;
@@ -43,25 +39,8 @@ use utils::{errno::AllocResult, lock::IntMutex};
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());
 
-/// Allocates `n` bytes of kernel memory and returns a pointer to the beginning
-/// of the allocated chunk.
-///
-/// If the allocation fails, the function returns an error.
-///
-/// The allocated memory is **not** initialized, meaning it may contain garbage, or even
-/// sensitive information.
-/// It is the caller's responsibility to ensure the chunk of memory is correctly initialized.
-///
-/// The allocated chunk of memory can be resized using [`realloc`] and freed using [`free`].
-///
-/// # Safety
-///
-/// Allocated pointers must always be freed. Failure to do so results in a memory
-/// leak.
-///
-/// Writing outside the allocated range (buffer overflow) is an undefined behaviour.
 #[instrument_allocator(name = malloc, op = alloc, size = n)]
-pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
+unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	let _ = MUTEX.lock();
 	// Get free chunk
 	let free_chunk = chunk::get_available_chunk(n)?;
@@ -78,26 +57,8 @@ pub unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	NonNull::new(ptr).ok_or(AllocError)
 }
 
-/// Changes the size of the memory previously allocated with [`alloc`].
-///
-/// Arguments:
-/// - `ptr` is the pointer to the chunk of memory.
-/// - `n` is the new size of the chunk of memory.
-///
-/// The allocated memory is **not** initialized.
-///
-/// If the reallocation fails, the chunk is left untouched and the function
-/// returns an error.
-///
-/// # Safety
-///
-/// The provided pointer must be the beginning of a valid chunk of memory allocated with [`alloc`],
-/// that has not been freed yet.
-///
-/// If the chunk of memory has been shrunk, accessing previously available memory causes an
-/// undefined behavior.
 #[instrument_allocator(name = malloc, op = realloc, ptr = ptr, size = n)]
-pub unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
+unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	let _ = MUTEX.lock();
 	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_ptr());
@@ -125,16 +86,8 @@ pub unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<
 	}
 }
 
-/// Frees the memory at the pointer `ptr` previously allocated with [`alloc`].
-///
-/// # Safety
-///
-/// If `ptr` doesn't point to a valid chunk of memory allocated with the [`alloc`]
-/// function, the behaviour is undefined.
-///
-/// Using memory after it was freed causes an undefined behaviour.
 #[instrument_allocator(name = malloc, op = free, ptr = ptr)]
-pub unsafe fn free(mut ptr: NonNull<u8>) {
+unsafe fn free(mut ptr: NonNull<u8>) {
 	let _ = MUTEX.lock();
 	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_mut());
