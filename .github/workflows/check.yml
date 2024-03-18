@@ -6,7 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Compilation
-        run: scripts/ci/build.sh
+        run: ci/build.sh
       - name: Check Multiboot2 for x86
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   release:
@@ -17,7 +17,7 @@ jobs:
       - name: Compilation
         env:
           CARGOFLAGS: --release
-        run: scripts/ci/build.sh
+        run: ci/build.sh
       - name: Check Multiboot2 for x86
         run: grub-file --is-x86-multiboot2 target/x86/release/maestro
   selftest:
@@ -25,8 +25,12 @@ jobs:
     needs: debug
     steps:
       - uses: actions/checkout@v4
-      - name: Run tests
-        run: scripts/ci/selftest.sh
+      - name: Run utils tests
+        working-directory: ./utils
+        run: cargo test
+        timeout-minutes: 10
+      - name: Run kernel tests
+        run: ci/selftest.sh
         timeout-minutes: 10
   strace:
     runs-on: [self-hosted, linux]
@@ -36,7 +40,7 @@ jobs:
       - name: Compilation
         env:
           CARGOFLAGS: --features strace
-        run: scripts/ci/build.sh
+        run: ci/build.sh
       - name: Check Multiboot2 for x86
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   format:
@@ -57,7 +61,7 @@ jobs:
       - name: Build book
         run: mdbook build doc/
       - name: Build references
-        run: scripts/ci/doc.sh
+        run: ci/doc.sh
   clippy:
     runs-on: [self-hosted, linux]
     steps:
@@ -78,3 +82,4 @@ jobs:
       - uses: actions/checkout@v4
       - working-directory: ./utils
         run: cargo miri test
+        timeout-minutes: 10

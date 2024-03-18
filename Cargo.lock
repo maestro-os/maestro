@@ -3,6 +3,14 @@
 version = 3
 
 [[package]]
+name = "build-utils"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -68,10 +76,10 @@ dependencies = [
 name = "maestro"
 version = "0.1.0"
 dependencies = [
+ "build-utils",
  "cc",
  "macros",
  "serde",
- "serde_json",
  "toml",
  "utils",
 ]
@@ -200,6 +208,10 @@ checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 [[package]]
 name = "utils"
 version = "0.1.0"
+dependencies = [
+ "build-utils",
+ "cc",
+]
 
 [[package]]
 name = "winnow"

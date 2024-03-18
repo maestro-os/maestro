@@ -12,11 +12,6 @@ build-config.toml
 
 # Rust compilation files
 target/
-*.rlib
-
-# ISO and ELF
-iso/
-*.iso
 
 # Tags file
 tags

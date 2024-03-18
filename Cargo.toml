@@ -2,6 +2,7 @@ cargo-features = ["profile-rustflags"]
 [workspace]
 resolver = "2"
 members = [
+	"build-utils",
     "kernel",
     "macros",
     "utils"

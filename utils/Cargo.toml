@@ -5,6 +5,10 @@ edition = "2021"
 
 [dependencies]
 
+[build-dependencies]
+build-utils = { path = "../build-utils" }
+cc = { version = "1.0.83", features = ["parallel"] }
+
 [features]
 default = []
 std = []

@@ -21,9 +21,9 @@ macros = { path = "../macros" }
 utils = { path = "../utils" }
 
 [build-dependencies]
+build-utils = { path = "../build-utils" }
 cc = { version = "1.0.83", features = ["parallel"] }
 serde = { version = "*", features = ["derive"] }
-serde_json = "1.0.111"
 toml = "0.8.8"
 
 [features]

@@ -3,39 +3,32 @@
 
 pub mod compile;
 pub mod config;
-pub mod target;
-pub mod util;
 
+use build_utils::{target::Target, Env};
 use config::Config;
-use std::{env, process::exit};
-use target::Target;
+use std::process::exit;
 
 fn main() {
-	let profile = env::var("PROFILE").unwrap();
-	let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-	let debug = profile == "debug";
-	let opt_level: u32 = env::var("OPT_LEVEL").unwrap().parse().unwrap();
-
+	// Read config
+	let env = Env::get();
+	let target = Target::from_env(&env).unwrap_or_else(|e| {
+		eprintln!("Cannot retrieve target: {e}");
+		exit(1);
+	});
 	let config = Config::read().unwrap_or_else(|e| {
 		eprintln!("Failed to read build configuration file: {e}");
 		exit(1);
 	});
-	config.set_cfg(debug);
-
-	let target = Target::from_env(&manifest_dir).unwrap_or_else(|e| {
-		eprintln!("Cannot retrieve target: {e}");
-		exit(1);
-	});
-
-	compile::compile_c(&target, debug, opt_level).unwrap_or_else(|e| {
+	config.set_cfg(env.is_debug());
+	// Compile
+	compile::compile_c(&env, &target).unwrap_or_else(|e| {
 		eprintln!("Compilation failed: {e}");
 		exit(1);
 	});
-	compile::compile_vdso(&target, &profile, &manifest_dir).unwrap_or_else(|e| {
+	compile::compile_vdso(&env, &target).unwrap_or_else(|e| {
 		eprintln!("vDSO compilation failed: {e}");
 		exit(1);
 	});
-
 	// Add the linker script
 	println!(
 		"cargo:rerun-if-changed={}",

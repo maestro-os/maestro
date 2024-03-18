@@ -200,7 +200,7 @@ mod test {
 	fn alloc_free_fifo() {
 		let usage = buddy::allocated_pages_count();
 		unsafe {
-			let mut ptrs: [NonNull<c_void>; 1024] = [NonNull::new(1 as _).unwrap(); 1024];
+			let mut ptrs: [NonNull<u8>; 1024] = [NonNull::new(1 as _).unwrap(); 1024];
 			for (i, p) in ptrs.iter_mut().enumerate() {
 				let size = i + 1;
 				let ptr = alloc(NonZeroUsize::new(size).unwrap()).unwrap();
