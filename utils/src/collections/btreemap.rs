@@ -657,14 +657,13 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	///
 	/// If the key is already used, the function returns the previous value.
 	pub fn insert(&mut self, key: K, val: V) -> AllocResult<Option<V>> {
-		let r = match self.entry(key) {
+		match self.entry(key) {
 			Entry::Occupied(mut e) => Ok(Some(e.insert(val))),
 			Entry::Vacant(e) => {
 				e.insert(val)?;
 				Ok(None)
 			}
-		};
-		r
+		}
 	}
 
 	/// Fixes the tree after deletion in the case where the deleted node and its

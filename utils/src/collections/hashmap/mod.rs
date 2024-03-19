@@ -19,44 +19,27 @@
 //! A hashmap is a data structure that stores key/value pairs into buckets and
 //! uses the hash of the key to quickly get the bucket storing the value.
 
-use super::vec::Vec;
+mod raw;
+
 use crate::{
+	collections::hashmap::raw::{RawTable, CTRL_DELETED, CTRL_EMPTY, GROUP_SIZE},
 	errno::{AllocResult, CollectResult},
-	vec, TryClone,
+	TryClone,
 };
 use core::{
 	alloc::AllocError,
 	borrow::Borrow,
 	fmt,
 	hash::{Hash, Hasher},
-	intrinsics::{likely, unlikely},
 	iter::{FusedIterator, TrustedLen},
 	marker::PhantomData,
 	mem,
-	mem::{size_of, size_of_val, MaybeUninit},
+	mem::size_of_val,
 	ops::{BitAnd, Index, IndexMut},
 	ptr,
 	simd::{cmp::SimdPartialEq, u8x16, Mask},
 };
-
-/// Indicates a vacant entry in the map. This is a sentinel value for the lookup operation.
-const CTRL_EMPTY: u8 = 0x80;
-/// Indicates a deleted entry in the map.
-const CTRL_DELETED: u8 = 0xfe;
-/// The size of a group of entries.
-const GROUP_SIZE: usize = 16;
-
-/// Macro to get a mutable reference to a slot from the given `group` and `index`.
-///
-/// **Note**: This macro is a workaround to avoid borrow-checker issues.
-macro_rules! get_slot {
-	($data:expr, $off:expr) => {{
-		unsafe { &*(&($data)[$off] as *const _ as *const Slot<K, V>) }
-	}};
-	($data:expr, $off:expr, mut) => {{
-		unsafe { &mut *(&mut ($data)[$off] as *mut _ as *mut Slot<K, V>) }
-	}};
-}
+use raw::Slot;
 
 /// Bitwise XOR hasher.
 #[derive(Default)]
@@ -80,179 +63,11 @@ impl Hasher for XORHasher {
 	}
 }
 
-/// Initializes a new data buffer with the given capacity.
-fn init_data<K, V>(capacity: usize) -> AllocResult<Vec<u8>> {
-	let capacity = capacity.next_multiple_of(GROUP_SIZE);
-	let new_ctrl_off = (capacity * size_of::<Slot<K, V>>()).next_multiple_of(GROUP_SIZE);
-	let new_size = new_ctrl_off + capacity;
-	let mut data = vec![0u8; new_size]?;
-	data[new_ctrl_off..].fill(CTRL_EMPTY);
-	Ok(data)
-}
-
-#[inline]
-fn capacity_impl<K, V>(data: &[u8]) -> usize {
-	// `+ 1` for the control byte
-	data.len() / (size_of::<Slot<K, V>>() + 1)
-}
-
-/// Returns the control block for the given `group`.
-#[inline]
-fn get_ctrl<K, V>(data: &[u8], group: usize) -> u8x16 {
-	let ctrl_start =
-		(capacity_impl::<K, V>(data) * size_of::<Slot<K, V>>()).next_multiple_of(GROUP_SIZE);
-	let off = ctrl_start + group * GROUP_SIZE;
-	u8x16::from_slice(&data[off..(off + GROUP_SIZE)])
-}
-
-/// Sets the control bytes for a slot.
-#[inline]
-fn set_ctrl<K, V>(data: &mut [u8], group: usize, index: usize, h2: u8) {
-	let ctrl_start =
-		(capacity_impl::<K, V>(data) * size_of::<Slot<K, V>>()).next_multiple_of(GROUP_SIZE);
-	let off = ctrl_start + group * GROUP_SIZE + index;
-	data[off] = h2;
-}
-
 /// Returns the hash for the given key.
-fn hash<K: ?Sized + Hash, H: Default + Hasher>(key: &K) -> u64 {
+pub fn hash<K: ?Sized + Hash, H: Default + Hasher>(key: &K) -> u64 {
 	let mut hasher = H::default();
 	key.hash(&mut hasher);
 	hasher.finish()
-}
-
-/// Returns the slot part of the hash.
-#[inline]
-fn h1(hash: u64) -> u64 {
-	hash >> 7
-}
-
-/// Returns the control part of the hash.
-#[inline]
-fn h2(hash: u64) -> u8 {
-	(hash & 0x7f) as _
-}
-
-/// Returns the offset to a slot for the given `group` and in-group-index `index`.
-#[inline]
-fn get_slot_offset<K, V>(group: usize, index: usize) -> usize {
-	(group * GROUP_SIZE + index) * size_of::<Slot<K, V>>()
-}
-
-/// Returns the group and in-group-index for the slot at the given offset.
-#[inline]
-fn get_slot_position<K, V>(off: usize) -> (usize, usize) {
-	let off = off / size_of::<Slot<K, V>>();
-	(off / GROUP_SIZE, off % GROUP_SIZE)
-}
-
-/// Iterator over set bits of the inner bitmask.
-struct BitmaskIter(u16);
-
-impl Iterator for BitmaskIter {
-	type Item = usize;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let off = self.0.trailing_zeros();
-		if off < 16 {
-			self.0 &= !(1 << off);
-			Some(off as _)
-		} else {
-			None
-		}
-	}
-}
-
-impl FusedIterator for BitmaskIter {}
-
-/// Returns an iterator over the indexes of the elements that match `byte` in `group`.
-#[inline]
-fn group_match_byte(group: u8x16, byte: u8) -> impl Iterator<Item = usize> {
-	let mask = u8x16::splat(byte);
-	let matching = group.simd_eq(mask);
-	BitmaskIter(matching.to_bitmask() as u16)
-}
-
-/// Returns the first empty element of the given `group`.
-///
-/// If `deleted` is set to `true`, the function also takes deleted entries into account.
-#[inline]
-fn group_match_unused(group: u8x16, deleted: bool) -> Option<usize> {
-	let matching = if deleted {
-		// Check for high bit set
-		let mask = u8x16::splat(0x80);
-		group.bitand(mask).simd_eq(mask)
-	} else {
-		let mask = u8x16::splat(CTRL_EMPTY);
-		group.simd_eq(mask)
-	};
-	matching.first_set()
-}
-
-/// Returns an iterator over the indexes of the slots that are used in `group`.
-///
-/// The function ignores all used slots before `start`.
-#[inline]
-fn group_match_used(group: u8x16) -> impl Iterator<Item = usize> {
-	let mask = u8x16::splat(0x80);
-	let matching = group.bitand(mask).simd_ne(mask);
-	BitmaskIter(matching.to_bitmask() as u16)
-}
-
-/// Returns the slot corresponding the given key and its hash.
-///
-/// `deleted` tells whether the function might return deleted entries.
-///
-/// Return tuple:
-/// - The offset of the slot in the data buffer
-/// - Whether the slot is occupied
-fn find_slot<K, V, Q: ?Sized>(
-	data: &[u8],
-	key: &Q,
-	hash: u64,
-	deleted: bool,
-) -> Option<(usize, bool)>
-where
-	K: Borrow<Q>,
-	Q: Eq,
-{
-	let groups_count = capacity_impl::<K, V>(data) / GROUP_SIZE;
-	if groups_count == 0 {
-		return None;
-	}
-	let start_group = (h1(hash) % groups_count as u64) as usize;
-	let mut group = start_group;
-	let h2 = h2(hash);
-	loop {
-		// Find key in group
-		let ctrl = get_ctrl::<K, V>(data, group);
-		for i in group_match_byte(ctrl, h2) {
-			let slot_off = get_slot_offset::<K, V>(group, i);
-			let slot = get_slot!(data, slot_off);
-			let slot_key = unsafe { slot.key.assume_init_ref() };
-			if likely(slot_key.borrow() == key) {
-				return Some((slot_off, true));
-			}
-		}
-		// Check for an empty slot
-		if let Some(i) = group_match_unused(ctrl, deleted) {
-			// TODO mark this line as cold (the #[cold] attribute works only on functions)
-			return Some((get_slot_offset::<K, V>(group, i), false));
-		}
-		group = (group + 1) % groups_count;
-		// If coming back to the first group
-		if unlikely(group == start_group) {
-			return None;
-		}
-	}
-}
-
-/// Internal representation of an entry.
-struct Slot<K, V> {
-	/// The key stored in the slot.
-	key: MaybeUninit<K>,
-	/// The value stored in the slot.
-	value: MaybeUninit<V>,
 }
 
 /// Occupied entry in the hashmap.
@@ -302,19 +117,22 @@ impl<'h, K: Eq + Hash, V, H: Default + Hasher> VacantEntry<'h, K, V, H> {
 				self.hm.reserve(1)?;
 				// Cannot fail because the collection is guaranteed to have space for the new
 				// object
-				find_slot::<K, V, _>(&self.hm.data, &self.key, self.hash, true)
+				self.hm
+					.inner
+					.find_slot(&self.key, self.hash, true)
 					.unwrap()
 					.0
 			}
 		};
 		self.hm.len += 1;
 		// Update control block
-		let (group, index) = get_slot_position::<K, V>(slot_off);
-		set_ctrl::<K, V>(&mut self.hm.data, group, index, h2(self.hash));
+		let (group, index) = raw::get_slot_position::<K, V>(slot_off);
+		self.hm.inner.set_ctrl(group, index, raw::h2(self.hash));
 		// Insert key/value
-		let slot = get_slot!(self.hm.data, slot_off, mut);
+		let slot = self.hm.inner.get_slot_mut(slot_off);
 		slot.key.write(self.key);
-		Ok(slot.value.write(value))
+		let val = slot.value.write(value);
+		Ok(val)
 	}
 }
 
@@ -339,17 +157,10 @@ impl<'h, K: Eq + Hash, V, H: Default + Hasher> Entry<'h, K, V, H> {
 ///
 /// Underneath, it is an implementation of the [SwissTable](https://abseil.io/about/design/swisstables).
 pub struct HashMap<K: Eq + Hash, V, H: Default + Hasher = XORHasher> {
-	/// The map's data.
-	///
-	/// This vector is split in two parts:
-	/// - Slots table: actual stored data
-	/// - Control block: allowing for fast lookup into the table
-	data: Vec<u8>,
+	/// The inner table.
+	inner: RawTable<K, V>,
 	/// The number of elements in the map.
 	len: usize,
-
-	_key: PhantomData<K>,
-	_val: PhantomData<V>,
 	_hasher: PhantomData<H>,
 }
 
@@ -371,24 +182,17 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Creates a new empty instance.
 	pub const fn new() -> Self {
 		Self {
-			data: Vec::new(),
+			inner: RawTable::new(),
 			len: 0,
-
-			_key: PhantomData,
-			_val: PhantomData,
 			_hasher: PhantomData,
 		}
 	}
 
 	/// Creates a new instance with the given capacity in number of elements.
 	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
-		let data = init_data::<K, V>(capacity)?;
 		Ok(Self {
-			data,
+			inner: RawTable::with_capacity(capacity)?,
 			len: 0,
-
-			_key: PhantomData,
-			_val: PhantomData,
 			_hasher: PhantomData,
 		})
 	}
@@ -408,15 +212,15 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns the number of elements the map can hold without reallocating.
 	#[inline]
 	pub fn capacity(&self) -> usize {
-		capacity_impl::<K, V>(&self.data)
+		self.inner.capacity()
 	}
 
 	/// Returns the entry for the given key.
 	pub fn entry(&mut self, key: K) -> Entry<'_, K, V, H> {
 		let hash = hash::<_, H>(&key);
-		match find_slot::<K, V, _>(&self.data, &key, hash, true) {
+		match self.inner.find_slot(&key, hash, true) {
 			Some((slot_off, true)) => Entry::Occupied(OccupiedEntry {
-				inner: get_slot!(self.data, slot_off, mut),
+				inner: self.inner.get_slot_mut(slot_off),
 			}),
 			Some((slot_off, false)) => Entry::Vacant(VacantEntry {
 				hm: self,
@@ -442,9 +246,9 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(key);
-		let (slot_off, occupied) = find_slot::<K, V, Q>(&self.data, key, hash, false)?;
-		let slot = get_slot!(self.data, slot_off);
+		let (slot_off, occupied) = self.inner.find_slot(key, hash, false)?;
 		if occupied {
+			let slot = self.inner.get_slot(slot_off);
 			Some(unsafe { slot.value.assume_init_ref() })
 		} else {
 			None
@@ -460,9 +264,9 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(key);
-		let (slot_off, occupied) = find_slot::<K, V, Q>(&self.data, key, hash, false)?;
-		let slot = get_slot!(self.data, slot_off, mut);
+		let (slot_off, occupied) = self.inner.find_slot(key, hash, false)?;
 		if occupied {
+			let slot = self.inner.get_slot_mut(slot_off);
 			Some(unsafe { slot.value.assume_init_mut() })
 		} else {
 			None
@@ -505,26 +309,26 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			return Ok(());
 		}
 		// Create new vector
-		let mut data = init_data::<K, V>(new_capacity)?;
+		let mut new_table = RawTable::with_capacity(new_capacity)?;
 		// Rehash
 		for (k, v) in self.iter() {
 			// Get slot for key
 			let hash = hash::<_, H>(k);
 			// Should not fail since the correct amount of slots has been allocated
-			let (slot_off, occupied) = find_slot::<K, V, _>(&data, k, hash, true).unwrap();
+			let (slot_off, occupied) = new_table.find_slot(k, hash, true).unwrap();
 			assert!(!occupied);
 			// Update control block
-			let (group, index) = get_slot_position::<K, V>(slot_off);
-			set_ctrl::<K, V>(&mut data, group, index, h2(hash));
-			let slot = get_slot!(data, slot_off, mut);
+			let (group, index) = raw::get_slot_position::<K, V>(slot_off);
+			new_table.set_ctrl(group, index, raw::h2(hash));
+			let slot = new_table.get_slot_mut(slot_off);
 			// Insert key/value
 			unsafe {
 				slot.key.write(ptr::read(k));
 				slot.value.write(ptr::read(v));
 			}
 		}
-		// Replace, freeing the previous buffer without dropping thanks to `MaybeUninit`
-		self.data = data;
+		// Replace, freeing the previous buffer without dropping elements thanks to `MaybeUninit`
+		self.inner = new_table;
 		Ok(())
 	}
 
@@ -551,18 +355,18 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(&key);
-		let (slot_off, occupied) = find_slot::<K, V, _>(&self.data, key, hash, false)?;
+		let (slot_off, occupied) = self.inner.find_slot(key, hash, false)?;
 		if occupied {
 			self.len -= 1;
-			let (group, index) = get_slot_position::<K, V>(slot_off);
+			let (group, index) = raw::get_slot_position::<K, V>(slot_off);
 			// Update control byte
-			let ctrl = get_ctrl::<K, V>(&self.data, group);
-			let h2 = group_match_unused(ctrl, false)
+			let ctrl = self.inner.get_ctrl(group);
+			let h2 = raw::group_match_unused(ctrl, false)
 				.map(|_| CTRL_EMPTY)
 				.unwrap_or(CTRL_DELETED);
-			set_ctrl::<K, V>(&mut self.data, group, index, h2);
+			self.inner.set_ctrl(group, index, h2);
 			// Return previous value
-			let slot = get_slot!(self.data, slot_off, mut);
+			let slot = self.inner.get_slot_mut(slot_off);
 			unsafe {
 				slot.key.assume_init_drop();
 				Some(slot.value.assume_init_read())
@@ -581,15 +385,15 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			let mut remove_mask: u16 = 0;
 			let mut remove_count = 0;
 			// Check whether there are elements in the group
-			let ctrl = get_ctrl::<K, V>(&self.data, group);
+			let ctrl = self.inner.get_ctrl(group);
 			// The value to set in the group on remove
-			let h2 = group_match_unused(ctrl, false)
+			let h2 = raw::group_match_unused(ctrl, false)
 				.map(|_| CTRL_EMPTY)
 				.unwrap_or(CTRL_DELETED);
 			// Iterate on slots in group
-			for i in group_match_used(ctrl) {
-				let slot_off = get_slot_offset::<K, V>(group, i);
-				let slot = get_slot!(self.data, slot_off, mut);
+			for i in raw::group_match_used(ctrl) {
+				let slot_off = raw::get_slot_offset::<K, V>(group, i);
+				let slot = self.inner.get_slot_mut(slot_off);
 				let (key, value) =
 					unsafe { (slot.key.assume_init_ref(), slot.value.assume_init_mut()) };
 				let keep = f(key, value);
@@ -607,7 +411,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 				for i in 0..GROUP_SIZE {
 					let set = remove_mask & (1 << i) != 0;
 					if set {
-						set_ctrl::<K, V>(&mut self.data, group, i, h2);
+						self.inner.set_ctrl(group, i, h2);
 					}
 				}
 				self.len -= remove_count;
@@ -619,7 +423,6 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	pub fn clear(&mut self) {
 		// Drop everything
 		self.retain(|_, _| false);
-		self.data.clear();
 		self.len = 0;
 	}
 }
@@ -745,7 +548,7 @@ impl IterInner {
 		let cursor = loop {
 			// If at beginning of group, search for used elements
 			if self.cursor == 0 {
-				let ctrl = get_ctrl::<K, V>(&hm.data, self.group);
+				let ctrl = hm.inner.get_ctrl(self.group);
 				let mask = u8x16::splat(0x80);
 				self.group_used = ctrl.bitand(mask).simd_ne(mask);
 			}
@@ -781,8 +584,8 @@ impl<K: Hash + Eq, V, H: Default + Hasher> Iterator for IntoIter<K, V, H> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let (group, cursor) = self.inner.next_pos(&self.hm)?;
-		let off = get_slot_offset::<K, V>(group, cursor);
-		let slot = get_slot!(self.hm.data, off);
+		let off = raw::get_slot_offset::<K, V>(group, cursor);
+		let slot = self.hm.inner.get_slot(off);
 		let (key, value) = unsafe { (slot.key.assume_init_read(), slot.value.assume_init_read()) };
 		Some((key, value))
 	}
@@ -806,8 +609,8 @@ impl<K: Hash + Eq, V, H: Default + Hasher> Drop for IntoIter<K, V, H> {
 	fn drop(&mut self) {
 		// Drop remaining elements
 		for _ in self.by_ref() {}
-		// Prevent double drop
-		self.hm.data.clear();
+		// Prevent double drop when dropping the hashmap
+		mem::take(&mut self.hm.inner);
 	}
 }
 
@@ -827,8 +630,8 @@ impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let (group, cursor) = self.inner.next_pos(self.hm)?;
-		let off = get_slot_offset::<K, V>(group, cursor);
-		let slot = get_slot!(self.hm.data, off);
+		let off = raw::get_slot_offset::<K, V>(group, cursor);
+		let slot = self.hm.inner.get_slot(off);
 		let (key, value) = unsafe { (slot.key.assume_init_ref(), slot.value.assume_init_ref()) };
 		Some((key, value))
 	}
