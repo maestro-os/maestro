@@ -36,6 +36,6 @@ impl<'s> Target<'s> {
 
 	/// Returns the path to the linker script of the target.
 	pub fn get_linker_script_path(&self) -> PathBuf {
-		PathBuf::from(format!("../arch/{}/linker.ld", self.name))
+		PathBuf::from(format!("arch/{}/linker.ld", self.name))
 	}
 }

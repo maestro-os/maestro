@@ -19,10 +19,7 @@
 //! Some parts of the kernel are implemented in C and assembly language. Those parts are compiled
 //! by the code present in this module.
 
-use crate::{
-	target::Target,
-	util::{list_c_files, Env},
-};
+use crate::{target::Target, util::list_c_files, Env};
 use std::{
 	io,
 	path::{Path, PathBuf},
