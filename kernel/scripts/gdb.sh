@@ -13,7 +13,7 @@ QEMU_PID=$!
 if [ -z "$ARCH" ]; then
   ARCH="x86"
 fi
-KERN_PATH="../target/$ARCH/debug/maestro"
+KERN_PATH="target/$ARCH/debug/maestro"
 
 if ! [ -z "$AUX_ELF" ]; then
 	gdb $KERN_PATH -ex 'target remote :1234' -ex 'set confirm off' -ex 'add-symbol-file -o $AUX_ELF' -ex 'set confirm on'

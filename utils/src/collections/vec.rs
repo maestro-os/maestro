@@ -54,11 +54,19 @@ impl<T> RawVec<T> {
 	}
 
 	fn as_slice(&self) -> &[T] {
-		unsafe { slice::from_raw_parts(self.data.as_ptr(), self.capacity) }
+		if self.capacity > 0 {
+			unsafe { slice::from_raw_parts(self.data.as_ptr(), self.capacity) }
+		} else {
+			&[]
+		}
 	}
 
 	fn as_mut_slice(&mut self) -> &mut [T] {
-		unsafe { slice::from_raw_parts_mut(self.data.as_mut(), self.capacity) }
+		if self.capacity > 0 {
+			unsafe { slice::from_raw_parts_mut(self.data.as_ptr(), self.capacity) }
+		} else {
+			&mut []
+		}
 	}
 
 	/// Reallocates the vector's data with the given new `capacity`.
