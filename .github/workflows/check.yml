@@ -75,8 +75,6 @@ jobs:
     runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare
-        run: cp default.build-config.toml build-config.toml
       - name: Macros
         working-directory: ./macros
         run: cargo clippy --all-features --tests
@@ -85,7 +83,9 @@ jobs:
         run: cargo clippy --all-features --tests
       - name: Kernel
         working-directory: ./kernel
-        run: cargo clippy --all-features --tests
+        run: |
+          cp default.build-config.toml build-config.toml
+          cargo clippy --all-features --tests
   miri:
     runs-on: [self-hosted, linux]
     steps:
