@@ -40,7 +40,7 @@ The `kernel::module` macro allows to define the kernel module with its dependenc
 
 The following properties have to be taken into account when writing a module:
 - `init` is called once each times the module is loaded. The execution must be not block since it would freeze the system
-- `fini` can be called at all times and must free every resources allocated by the module
+- `fini` can be called at all times and must free every resource allocated by the module
 
 On success, `init` returns `true`. On failure, it returns `false`.
 
@@ -75,7 +75,7 @@ The references to the kernel's internals and module interfaces can be found [her
 
 ## Building
 
-The prodedure to build a kernel module is the following:
+The procedure to build a kernel module is the following:
 - Build the kernel in debug or release mode (`--release`), depending on which profile you want
 - `cd` into the root of the module's source directory
 - Set environment variables:

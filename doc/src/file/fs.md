@@ -9,12 +9,12 @@ The following filesystems are natively supported:
 
 ## kernfs
 
-A **kernfs** is a special kind of filesystem that do not store any information on any storage device. Its purpose is to provide a file interface to easily transmit informations to the userspace.
+A **kernfs** is a special kind of filesystem that do not store any information on any storage device. Its purpose is to provide a file interface to easily transmit information to the userspace.
 
 Native kernfs kinds include:
 - [tmpfs](tmpfs.md): storage for temporary files on RAM
-- [procfs](procfs.md): provides informations about processes
-- [sysfs](sysfs.md): provides informations about the system
+- [procfs](procfs.md): provides information about processes
+- [sysfs](sysfs.md): provides information about the system
 
 ## Virtual FileSystem
 

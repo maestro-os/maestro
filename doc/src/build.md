@@ -19,6 +19,12 @@ Make sure legacy boot is enabled in your BIOS, or the kernel will not show anyth
 
 ## Kernel compilation
 
+First `cd` into the kernel's crate with:
+
+```sh
+cd kernel/
+```
+
 ## Configuration
 
 The configuration file located at `build-config.toml` allows to specify which features have to be enabled in the kernel.
