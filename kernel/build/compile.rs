@@ -19,7 +19,10 @@
 //! Some parts of the kernel are implemented in C and assembly language. Those parts are compiled
 //! by the code present in this module.
 
-use build_utils::{list_c_files, target::Target, Env};
+use crate::{
+	target::Target,
+	util::{list_c_files, Env},
+};
 use std::{
 	io,
 	path::{Path, PathBuf},
@@ -33,7 +36,7 @@ pub fn compile_vdso(env: &Env, target: &Target) -> io::Result<()> {
 	println!("cargo:rerun-if-changed={}", file.display());
 	// The path to the shared library to be compiled
 	let out_path = env
-		.workspace_root
+		.manifest_dir
 		.join(format!("target/{}/{}", target.name, env.profile))
 		.join("vdso.so");
 	// Compile
@@ -79,6 +82,7 @@ pub fn compile_c(env: &Env, target: &Target) -> io::Result<()> {
 		.debug(env.is_debug())
 		.opt_level(env.opt_level)
 		.files(files)
-		.compile("libcasm.a");
+		.compile("casm");
+	println!("cargo:rustc-link-arg=-lcasm");
 	Ok(())
 }

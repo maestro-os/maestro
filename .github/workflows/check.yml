@@ -6,8 +6,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Compilation
+        working-directory: ./kernel
         run: ci/build.sh
       - name: Check Multiboot2 for x86
+        working-directory: ./kernel
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   release:
     runs-on: [self-hosted, linux]
@@ -15,10 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Compilation
+        working-directory: ./kernel
         env:
           CARGOFLAGS: --release
         run: ci/build.sh
       - name: Check Multiboot2 for x86
+        working-directory: ./kernel
         run: grub-file --is-x86-multiboot2 target/x86/release/maestro
   selftest:
     runs-on: [self-hosted, linux]
@@ -30,6 +34,7 @@ jobs:
         run: cargo test
         timeout-minutes: 10
       - name: Run kernel tests
+        working-directory: ./kernel
         run: ci/selftest.sh
         timeout-minutes: 10
   strace:
@@ -38,10 +43,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Compilation
+        working-directory: ./kernel
         env:
           CARGOFLAGS: --features strace
         run: ci/build.sh
       - name: Check Multiboot2 for x86
+        working-directory: ./kernel
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   format:
     runs-on: [self-hosted, linux]
@@ -53,6 +60,7 @@ jobs:
         working-directory: ./utils
         run: cargo fmt --check
       - name: Kernel
+        working-directory: ./kernel
         run: cargo fmt --check
   documentation:
     runs-on: [self-hosted, linux]
@@ -61,6 +69,7 @@ jobs:
       - name: Build book
         run: mdbook build doc/
       - name: Build references
+        working-directory: ./kernel
         run: ci/doc.sh
   clippy:
     runs-on: [self-hosted, linux]
@@ -75,11 +84,13 @@ jobs:
         working-directory: ./utils
         run: cargo clippy --all-features --tests
       - name: Kernel
+        working-directory: ./kernel
         run: cargo clippy --all-features --tests
   miri:
     runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
-      - working-directory: ./utils
+      - name: Utils
+        working-directory: ./utils
         run: cargo miri test
         timeout-minutes: 10

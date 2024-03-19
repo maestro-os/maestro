@@ -1,6 +1,4 @@
-//! Utility features for build scripts
-
-pub mod target;
+//! Build script utilities
 
 use std::{
 	env,
@@ -12,7 +10,7 @@ use std::{
 /// The environment passed to the build script.
 pub struct Env {
 	/// The path to the root of the workspace.
-	pub workspace_root: PathBuf,
+	pub manifest_dir: PathBuf,
 	/// The name of the profile used to compile the crate.
 	pub profile: String,
 	/// The optimization level, between `0` and `3` included.
@@ -26,15 +24,14 @@ pub struct Env {
 impl Env {
 	/// Reads the current environment.
 	pub fn get() -> Self {
-		let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-		let workspace_root = PathBuf::from(manifest_dir).parent().unwrap().to_path_buf();
+		let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 		let profile = env::var("PROFILE").unwrap();
 		let opt_level = env::var("OPT_LEVEL").unwrap().parse().unwrap();
 		// Unwrapping is safe because a default target is specified in `.cargo/config.toml`
 		let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-		let target_path = workspace_root.join(format!("arch/{arch}/{arch}.json"));
+		let target_path = manifest_dir.join(format!("../arch/{arch}/{arch}.json"));
 		Self {
-			workspace_root,
+			manifest_dir,
 			profile,
 			opt_level,
 			arch,

@@ -3,10 +3,13 @@
 
 pub mod compile;
 pub mod config;
+pub mod target;
+pub mod util;
 
-use build_utils::{target::Target, Env};
+use crate::util::Env;
 use config::Config;
 use std::process::exit;
+use target::Target;
 
 fn main() {
 	// Read config

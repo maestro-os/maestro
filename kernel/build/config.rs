@@ -52,8 +52,8 @@ pub struct Config {
 impl Config {
 	/// Reads the configuration file.
 	pub fn read() -> io::Result<Self> {
-		const FILE_DEFAULT: &str = "../default.build-config.toml";
-		const FILE: &str = "../build-config.toml";
+		const FILE_DEFAULT: &str = "default.build-config.toml";
+		const FILE: &str = "build-config.toml";
 
 		println!("cargo:rerun-if-changed={FILE_DEFAULT}");
 		println!("cargo:rerun-if-changed={FILE}");
