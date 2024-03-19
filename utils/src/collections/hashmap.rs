@@ -236,7 +236,7 @@ where
 		}
 		// Check for an empty slot
 		if let Some(i) = group_match_unused(ctrl, deleted) {
-			#[cold]
+			// TODO mark this line as cold (the #[cold] attribute works only on functions)
 			return Some((get_slot_offset::<K, V>(group, i), false));
 		}
 		group = (group + 1) % groups_count;

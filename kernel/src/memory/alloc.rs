@@ -50,7 +50,7 @@ pub(crate) fn init() {
 	// The size of the buddy allocator's metadata
 	let metadata_size = available_pages * buddy::get_frame_metadata_size();
 	// The end of the buddy allocator's metadata
-	let metadata_end = unsafe { metadata_begin.add(metadata_size) };
+	let metadata_end = (metadata_begin as usize + metadata_size) as *mut c_void;
 	// The physical address of the end of the buddy allocator's metadata
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 
@@ -73,10 +73,11 @@ pub(crate) fn init() {
 
 	// The beginning of the userspace's zone
 	let userspace_zone_begin =
-		unsafe { kernel_zone_begin.add(kernel_zone_frames * memory::PAGE_SIZE) };
+		(kernel_zone_begin as usize + kernel_zone_frames * memory::PAGE_SIZE) as *mut c_void;
 	// The beginning of the userspace zone's metadata
-	let userspace_metadata_begin =
-		unsafe { metadata_begin.add(kernel_zone_frames * buddy::get_frame_metadata_size()) };
+	let userspace_metadata_begin = (metadata_begin as usize
+		+ kernel_zone_frames * buddy::get_frame_metadata_size())
+		as *mut c_void;
 	let user_zone = buddy::Zone::new(
 		userspace_metadata_begin,
 		available_pages as _,
