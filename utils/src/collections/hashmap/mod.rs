@@ -117,11 +117,12 @@ impl<'h, K: Eq + Hash, V, H: Default + Hasher> VacantEntry<'h, K, V, H> {
 				self.hm.reserve(1)?;
 				// Cannot fail because the collection is guaranteed to have space for the new
 				// object
-				self.hm
+				let (slot_off, occupied) = self.hm
 					.inner
 					.find_slot(&self.key, self.hash, true)
-					.unwrap()
-					.0
+					.unwrap();
+				debug_assert!(!occupied);
+				slot_off
 			}
 		};
 		self.hm.len += 1;
@@ -131,8 +132,7 @@ impl<'h, K: Eq + Hash, V, H: Default + Hasher> VacantEntry<'h, K, V, H> {
 		// Insert key/value
 		let slot = self.hm.inner.get_slot_mut(slot_off);
 		slot.key.write(self.key);
-		let val = slot.value.write(value);
-		Ok(val)
+		Ok(slot.value.write(value))
 	}
 }
 
@@ -316,7 +316,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 			let hash = hash::<_, H>(k);
 			// Should not fail since the correct amount of slots has been allocated
 			let (slot_off, occupied) = new_table.find_slot(k, hash, true).unwrap();
-			assert!(!occupied);
+			debug_assert!(!occupied);
 			// Update control block
 			let (group, index) = raw::get_slot_position::<K, V>(slot_off);
 			new_table.set_ctrl(group, index, raw::h2(hash));
@@ -336,8 +336,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	///
 	/// If the key was already present, the function returns the previous value.
 	pub fn insert(&mut self, key: K, value: V) -> AllocResult<Option<V>> {
-		let entry = self.entry(key);
-		match entry {
+		match self.entry(key) {
 			Entry::Occupied(mut e) => Ok(Some(e.insert(value))),
 			Entry::Vacant(e) => {
 				e.insert(value)?;

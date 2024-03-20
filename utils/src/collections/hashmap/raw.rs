@@ -1,3 +1,21 @@
+/*
+ * Copyright 2024 Luc Lenôtre
+ *
+ * This file is part of Maestro.
+ *
+ * Maestro is free software: you can redistribute it and/or modify it under the
+ * terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version.
+ *
+ * Maestro is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+ * A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * Maestro. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 //! Inner table implementation for hashmaps.
 
 use crate::errno::AllocResult;
@@ -28,13 +46,12 @@ const ALIGN: usize = 8;
 /// For the given capacity, returns the size of the buffer and the offset of control blocks, both
 /// in bytes.
 fn buff_size<K, V>(capacity: usize) -> (usize, usize) {
-	let capacity = capacity.next_multiple_of(GROUP_SIZE);
 	let ctrl_off = (capacity * size_of::<Slot<K, V>>()).next_multiple_of(GROUP_SIZE);
 	let size = ctrl_off + capacity;
 	(size, ctrl_off)
 }
 
-/// Initializes a new data buffer with the given capacity.
+/// Initializes a new data buffer with the given minimum capacity and returns it along with its actual capacity.
 pub fn init_data<K, V>(capacity: usize) -> AllocResult<NonNull<u8>> {
 	let (size, ctrl_off) = buff_size::<K, V>(capacity);
 	unsafe {
@@ -162,6 +179,7 @@ impl<K, V> RawTable<K, V> {
 
 	/// Creates an instance with the given capacity in number of elements.
 	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
+		let capacity = capacity.next_multiple_of(GROUP_SIZE);
 		Ok(Self {
 			data: init_data::<K, V>(capacity)?,
 			capacity,
@@ -179,14 +197,22 @@ impl<K, V> RawTable<K, V> {
 
 	/// Returns an immutable slice to the inner data.
 	fn as_slice(&self) -> &[u8] {
-		let size = buff_size::<K, V>(self.capacity).0;
-		unsafe { slice::from_raw_parts(self.data.as_ref(), size) }
+		if self.capacity > 0 {
+			let size = buff_size::<K, V>(self.capacity).0;
+			unsafe { slice::from_raw_parts(self.data.as_ref(), size) }
+		} else {
+			&[]
+		}
 	}
 
 	/// Returns a mutable slice to the inner data.
 	fn as_mut_slice(&mut self) -> &mut [u8] {
-		let size = buff_size::<K, V>(self.capacity).0;
-		unsafe { slice::from_raw_parts_mut(self.data.as_mut(), size) }
+		if self.capacity > 0 {
+			let size = buff_size::<K, V>(self.capacity).0;
+			unsafe { slice::from_raw_parts_mut(self.data.as_mut(), size) }
+		} else {
+			&mut []
+		}
 	}
 
 	/// Returns an immutable reference to the slot at the given offset in bytes.
@@ -230,7 +256,7 @@ impl<K, V> RawTable<K, V> {
 		K: Borrow<Q>,
 		Q: Eq,
 	{
-		let groups_count = self.capacity / GROUP_SIZE;
+		let groups_count = self.capacity.div_ceil(GROUP_SIZE);
 		if groups_count == 0 {
 			return None;
 		}
