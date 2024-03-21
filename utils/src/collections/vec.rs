@@ -307,18 +307,20 @@ impl<T> Vec<T> {
 	/// The function visit each element exactly once, in order.
 	pub fn retain<F: FnMut(&mut T) -> bool>(&mut self, mut f: F) {
 		let len = self.len();
-		// The function looks for sequences of delete-keep groups, then shifts elements
-		//
-		// For example, for the following array:
-		// [Keep, Delete, Delete, Keep, Keep, Delete]
-		//
-		// The sequence starts at element `1` and ends at element `4` (included)
+		/*
+		 * The function looks for sequences of delete-keep groups, then shifts elements
+		 *
+		 * For example, for the following array:
+		 * [Keep, Delete, Delete, Keep, Keep, Delete]
+		 *
+		 * The sequence starts at element `1` and ends at element `4` (included)
+		 */
 		let mut deleted = 0;
 		let mut kept = 0;
 		let mut new_len = 0;
 		for i in 0..=len {
-			let keep = self
-				.as_mut_slice()
+			let slice = self.as_mut_slice();
+			let keep = slice
 				.get_mut(i)
 				.map(|e| {
 					let keep = f(e);
@@ -332,13 +334,17 @@ impl<T> Vec<T> {
 				.unwrap_or(false);
 			// If reaching the end of a delete-keep sequence, shift elements
 			if kept > 0 && deleted > 0 && !keep {
+				/*
+				 * SAFETY:
+				 * - elements to be clobbered have already been dropped by `drop_in_place`
+				 *   before
+				 * - both `src` and `dst` are guaranteed to stay in bound as `i >= kept +
+				 *   deleted` is always `true`
+				 */
 				unsafe {
-					let src = self.inner.as_slice().as_ptr().add(i - kept);
-					let dst = self
-						.inner
-						.as_mut_slice()
-						.as_mut_ptr()
-						.add(i - kept - deleted);
+					let ptr = slice.as_mut_ptr();
+					let src = ptr.add(i - kept);
+					let dst = ptr.add(i - kept - deleted);
 					ptr::copy(src, dst, kept);
 				}
 				kept = 0;
