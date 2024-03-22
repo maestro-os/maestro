@@ -117,10 +117,8 @@ impl<'h, K: Eq + Hash, V, H: Default + Hasher> VacantEntry<'h, K, V, H> {
 				self.hm.reserve(1)?;
 				// Cannot fail because the collection is guaranteed to have space for the new
 				// object
-				let (slot_off, occupied) = self.hm
-					.inner
-					.find_slot(&self.key, self.hash, true)
-					.unwrap();
+				let (slot_off, occupied) =
+					self.hm.inner.find_slot(&self.key, self.hash, true).unwrap();
 				debug_assert!(!occupied);
 				slot_off
 			}

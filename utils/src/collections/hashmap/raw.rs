@@ -30,7 +30,6 @@ use core::{
 	ops::BitAnd,
 	ptr::NonNull,
 	simd::{cmp::SimdPartialEq, u8x16},
-	slice,
 };
 
 /// Indicates a vacant entry in the map. This is a sentinel value for the lookup operation.
@@ -51,7 +50,8 @@ fn buff_size<K, V>(capacity: usize) -> (usize, usize) {
 	(size, ctrl_off)
 }
 
-/// Initializes a new data buffer with the given minimum capacity and returns it along with its actual capacity.
+/// Initializes a new data buffer with the given minimum capacity and returns it along with its
+/// actual capacity.
 pub fn init_data<K, V>(capacity: usize) -> AllocResult<NonNull<u8>> {
 	let (size, ctrl_off) = buff_size::<K, V>(capacity);
 	unsafe {
@@ -199,7 +199,7 @@ impl<K, V> RawTable<K, V> {
 	fn as_slice(&self) -> &[u8] {
 		if self.capacity > 0 {
 			let size = buff_size::<K, V>(self.capacity).0;
-			unsafe { slice::from_raw_parts(self.data.as_ref(), size) }
+			unsafe { NonNull::slice_from_raw_parts(self.data, size).as_ref() }
 		} else {
 			&[]
 		}
@@ -209,7 +209,7 @@ impl<K, V> RawTable<K, V> {
 	fn as_mut_slice(&mut self) -> &mut [u8] {
 		if self.capacity > 0 {
 			let size = buff_size::<K, V>(self.capacity).0;
-			unsafe { slice::from_raw_parts_mut(self.data.as_mut(), size) }
+			unsafe { NonNull::slice_from_raw_parts(self.data, size).as_mut() }
 		} else {
 			&mut []
 		}

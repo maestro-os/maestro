@@ -92,5 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Utils
         working-directory: ./utils
+        env:
+          MIRIFLAGS=-Zmiri-disable-stacked-borrows
         run: cargo miri test
         timeout-minutes: 10

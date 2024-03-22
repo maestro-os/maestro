@@ -55,7 +55,7 @@ impl<T> RawVec<T> {
 
 	fn as_slice(&self) -> &[T] {
 		if self.capacity > 0 {
-			unsafe { slice::from_raw_parts(self.data.as_ptr(), self.capacity) }
+			unsafe { NonNull::slice_from_raw_parts(self.data, self.capacity).as_ref() }
 		} else {
 			&[]
 		}
@@ -63,7 +63,7 @@ impl<T> RawVec<T> {
 
 	fn as_mut_slice(&mut self) -> &mut [T] {
 		if self.capacity > 0 {
-			unsafe { slice::from_raw_parts_mut(self.data.as_ptr(), self.capacity) }
+			unsafe { NonNull::slice_from_raw_parts(self.data, self.capacity).as_mut() }
 		} else {
 			&mut []
 		}

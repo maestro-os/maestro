@@ -77,8 +77,7 @@ struct Node<K, V> {
 /// this function since it will be dropped.
 #[inline]
 unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
-	// TODO use `NonNull::read` when stabilized
-	let node = ptr::read(ptr.as_ref());
+	let node = ptr.read();
 	Global.deallocate(ptr.cast(), Layout::new::<Node<K, V>>());
 	let Node::<K, V> {
 		key,
@@ -1033,6 +1032,48 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	}
 }
 
+impl<K: TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> TryClone
+	for BTreeMap<K, V>
+{
+	type Error = E;
+
+	fn try_clone(&self) -> Result<Self, Self::Error> {
+		Ok(self
+			.iter()
+			.map(|(key, value)| Ok((key.try_clone()?, value.try_clone()?)))
+			.collect::<Result<CollectResult<Self>, Self::Error>>()?
+			.0?)
+	}
+}
+
+impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let Some(root) = self.get_root() else {
+			return write!(f, "<Empty tree>");
+		};
+		Self::foreach_node(
+			root,
+			&mut |n| {
+				// Tabs
+				let _ = write!(f, "{:\t^1$}", "", n.get_node_depth());
+				let color = match n.color {
+					NodeColor::Red => "red",
+					NodeColor::Black => "black",
+				};
+				let _ = writeln!(f, "{key:?} ({color})", key = n.key);
+			},
+			TraversalOrder::ReverseInOrder,
+		);
+		Ok(())
+	}
+}
+
+impl<K: Ord, V> Drop for BTreeMap<K, V> {
+	fn drop(&mut self) {
+		self.clear();
+	}
+}
+
 /// Returns the next node in an iterator for the given node.
 ///
 /// This is an inner function for node iterators.
@@ -1307,48 +1348,6 @@ impl<'m, K: Ord, V, F: FnMut(&K, &mut V) -> bool> Iterator for DrainFilter<'m, K
 		self.node = next;
 		self.i += 1;
 		Some((k, v))
-	}
-}
-
-impl<K: TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> TryClone
-	for BTreeMap<K, V>
-{
-	type Error = E;
-
-	fn try_clone(&self) -> Result<Self, Self::Error> {
-		let mut new = Self::new();
-		for (k, v) in self {
-			new.insert(k.try_clone()?, v.try_clone()?)?;
-		}
-		Ok(new)
-	}
-}
-
-impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let Some(root) = self.get_root() else {
-			return write!(f, "<Empty tree>");
-		};
-		Self::foreach_node(
-			root,
-			&mut |n| {
-				// Tabs
-				let _ = write!(f, "{:\t^1$}", "", n.get_node_depth());
-				let color = match n.color {
-					NodeColor::Red => "red",
-					NodeColor::Black => "black",
-				};
-				let _ = writeln!(f, "{key:?} ({color})", key = n.key);
-			},
-			TraversalOrder::ReverseInOrder,
-		);
-		Ok(())
-	}
-}
-
-impl<K: Ord, V> Drop for BTreeMap<K, V> {
-	fn drop(&mut self) {
-		self.clear();
 	}
 }
 
