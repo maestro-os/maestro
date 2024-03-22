@@ -44,7 +44,7 @@ pub fn any_repr(input: TokenStream) -> TokenStream {
 	}
 
 	let toks = quote! {
-		unsafe impl crate::util::bytes::AnyRepr for #ident {}
+		unsafe impl utils::bytes::AnyRepr for #ident {}
 	};
 	TokenStream::from(toks)
 }

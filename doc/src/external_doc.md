@@ -1,6 +1,6 @@
 # External Documentation
 
-This page lists the external documentation that is used for the developement of the kernel.
+This page lists the external documentation that is used for the development of the kernel.
 
 
 # Hardware technical references

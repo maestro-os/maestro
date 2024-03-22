@@ -1,0 +1,23 @@
+# Configuration file
+build-config.toml
+
+# Compiled files
+*.o
+*.a
+*.so
+iso/
+*.iso
+
+# Random garbage
+*.gch
+*.swp
+
+# Rust compilation files
+target/
+
+# Debug files
+*.log
+
+# Disk files
+qemu_disk
+mnt/

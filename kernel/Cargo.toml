@@ -1,0 +1,46 @@
+cargo-features = ["profile-rustflags"]
+
+[package]
+name = "maestro"
+version = "0.1.0"
+authors = ["llenotre <llenotre@student.42.fr>"]
+edition = "2021"
+build = "build/main.rs"
+
+# The kernel is implemented as a shared library in order to make it accessible from kernel modules
+[lib]
+name = "kernel"
+path = "src/kernel.rs"
+crate-type = ["rlib", "dylib"]
+
+# Export the kernel as executable
+[[bin]]
+name = "maestro"
+path = "src/bin.rs"
+
+[dependencies]
+macros = { path = "../macros" }
+utils = { path = "../utils" }
+
+[build-dependencies]
+cc = { version = "1.0.83", features = ["parallel"] }
+serde = { version = "*", features = ["derive"] }
+serde_json = "1.0.114"
+toml = "0.8.8"
+
+[features]
+default = []
+memtrace = []
+strace = ["macros/strace"]
+
+[profile.release]
+panic = "abort"
+rustflags = [
+    "-Zexport-executable-symbols"
+]
+
+[profile.dev]
+rustflags = [
+    "-Zexport-executable-symbols",
+    "-Cforce-frame-pointers=yes"
+]
