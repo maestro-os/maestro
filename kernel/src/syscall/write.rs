@@ -60,7 +60,7 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 	};
 
 	loop {
-		super::util::signal_check(regs);
+		super::util::handle_signal();
 
 		{
 			let mem_space_guard = mem_space.lock();
@@ -71,14 +71,12 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 			let flags = open_file.get_flags();
 			let len = match open_file.write(0, buf_slice) {
 				Ok(len) => len,
-
 				Err(e) => {
 					// If writing to a broken pipe, kill with SIGPIPE
 					if e.as_int() == errno::EPIPE {
 						let mut proc = proc.lock();
-						proc.kill(&Signal::SIGPIPE, false);
+						proc.kill_now(&Signal::SIGPIPE);
 					}
-
 					return Err(e);
 				}
 			};

@@ -73,13 +73,17 @@ impl TTYDeviceHandle {
 		if proc.pgid == tty.get_pgrp() {
 			return Ok(());
 		}
+		// Hold the signal handlers table to avoid a race condition
+		let signal_handlers = proc.signal_handlers.clone();
+		let signal_handlers = signal_handlers.lock();
+		let handler = &signal_handlers[Signal::SIGTTIN.get_id() as usize];
 		if proc.is_signal_blocked(&Signal::SIGTTIN)
-			|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
+			|| matches!(handler, SignalHandler::Ignore)
 			|| proc.is_in_orphan_process_group()
 		{
 			return Err(errno!(EIO));
 		}
-		proc.kill_group(Signal::SIGTTIN, false);
+		proc.kill_group(Signal::SIGTTIN);
 		Ok(())
 	}
 
@@ -96,15 +100,17 @@ impl TTYDeviceHandle {
 		if tty.get_termios().c_lflag & termios::TOSTOP == 0 {
 			return Ok(());
 		}
-		if proc.is_signal_blocked(&Signal::SIGTTIN)
-			|| proc.get_signal_handler(&Signal::SIGTTIN) == SignalHandler::Ignore
-		{
+		// Hold the signal handlers table to avoid a race condition
+		let signal_handlers = proc.signal_handlers.clone();
+		let signal_handlers = signal_handlers.lock();
+		let handler = &signal_handlers[Signal::SIGTTOU.get_id() as usize];
+		if proc.is_signal_blocked(&Signal::SIGTTOU) || matches!(handler, SignalHandler::Ignore) {
 			return Ok(());
 		}
 		if proc.is_in_orphan_process_group() {
 			return Err(errno!(EIO));
 		}
-		proc.kill_group(Signal::SIGTTOU, false);
+		proc.kill_group(Signal::SIGTTOU);
 		Ok(())
 	}
 }

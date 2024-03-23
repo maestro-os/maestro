@@ -20,10 +20,7 @@
 
 use crate::{
 	process,
-	process::{
-		mem_space::ptr::SyscallPtr, pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process,
-		State,
-	},
+	process::{mem_space::ptr::SyscallPtr, pid::Pid, rusage::RUsage, scheduler, Process, State},
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -181,7 +178,6 @@ fn check_waitable(
 /// - `options` are flags passed with the syscall.
 /// - `rusage` is the pointer to the resource usage structure.
 pub fn do_waitpid(
-	regs: &Regs,
 	pid: i32,
 	wstatus: SyscallPtr<i32>,
 	options: i32,
@@ -189,7 +185,7 @@ pub fn do_waitpid(
 ) -> EResult<i32> {
 	// Sleeping until a target process is waitable
 	loop {
-		super::util::signal_check(regs);
+		super::util::handle_signal();
 
 		cli();
 
@@ -240,5 +236,5 @@ pub fn do_waitpid(
 
 #[syscall]
 pub fn waitpid(pid: c_int, wstatus: SyscallPtr<c_int>, options: c_int) -> Result<i32, Errno> {
-	do_waitpid(regs, pid, wstatus, options | WEXITED, None)
+	do_waitpid(pid, wstatus, options | WEXITED, None)
 }

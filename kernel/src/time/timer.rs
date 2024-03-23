@@ -163,13 +163,10 @@ impl Timer {
 				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo as u32) else {
 					return;
 				};
-
 				// TODO on sigint_t, set si_code to SI_TIMER
-				proc.kill(&signal, false);
+				proc.kill(&signal);
 			}
-
 			SIGEV_THREAD => todo!(), // TODO
-
 			_ => {}
 		}
 	}

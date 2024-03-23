@@ -39,9 +39,7 @@ use utils::{
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
-
 	let ap = proc.access_profile;
-
 	// Closure sending the signal
 	let f = |target: &mut Process| {
 		if matches!(target.get_state(), State::Zombie) {
@@ -50,30 +48,25 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
 		if !ap.can_kill(target) {
 			return Err(errno!(EPERM));
 		}
-
 		if let Some(sig) = sig {
-			target.kill(sig, false);
+			target.kill(sig);
 		}
-
 		Ok(())
 	};
-
 	if pid == proc.pid {
 		f(&mut proc)?;
 	} else {
 		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
 		let mut target_proc = target_mutex.lock();
-
 		f(&mut target_proc)?;
 	}
-
 	Ok(())
 }
 
 /// Tries to kill a process group.
 ///
 /// Arguments:
-/// - `pid` is the a value that determine which process(es) to kill.
+/// - `pid` is the value that determine which process(es) to kill.
 /// - `sig` is the signal to send.
 ///
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
@@ -83,33 +76,25 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> EResult<()> {
 		0 => {
 			let proc_mutex = Process::current_assert();
 			let proc = proc_mutex.lock();
-
 			proc.pgid
 		}
-
 		i if i < 0 => -pid as Pid,
 		_ => pid as Pid,
 	};
-
-	// Killing process group
+	// Kill process group
 	{
 		let proc_mutex = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
 		let proc = proc_mutex.lock();
-
 		let group = proc.get_group_processes();
-
 		for pid in group {
 			if *pid == pgid {
 				continue;
 			}
-
 			try_kill(*pid as _, sig)?;
 		}
 	}
-
-	// Killing process group owner
+	// Kill process group owner
 	try_kill(pgid, sig)?;
-
 	Ok(())
 }
 
@@ -126,16 +111,13 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	} else if pid == -1 {
 		// Kill all processes for which the current process has the permission
 		let mut sched = process::get_scheduler().lock();
-
 		for (pid, _) in sched.iter_process() {
 			if *pid == process::pid::INIT_PID {
 				continue;
 			}
-
 			// TODO Check permission
 			try_kill(*pid, &sig)?;
 		}
-
 		Ok(())
 	} else if pid < -1 {
 		// Kill the given process group
@@ -147,6 +129,7 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 
 #[syscall]
 pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
+	// Validation
 	if sig < 0 {
 		return Err(errno!(EINVAL));
 	}
@@ -155,28 +138,21 @@ pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 	} else {
 		None
 	};
-
+	// TODO check if necessary
 	cli();
-
 	send_signal(pid, sig)?;
-
+	// Setting the return value of the system call so that it is correct even if a signal is
+	// executed before returning
 	{
 		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
-
-		// POSIX requires that at least one pending signal is executed before returning
-		if proc.has_signal_pending() {
-			// Setting the return value of the system call to `0` after executing a signal
-			let mut return_regs = regs.clone();
-			return_regs.eax = 0;
-			proc.regs = return_regs;
-
-			// Set the process to execute the signal action
-			proc.signal_next();
-		}
+		let mut return_regs = proc.regs.clone();
+		return_regs.set_syscall_return(Ok(0));
+		proc.regs = return_regs;
 	}
-
-	util::handle_proc_state();
-
+	// If the current process has been killed, the system call must execute the signal before
+	// returning FIXME: this must be done only if no other thread has the signal unblocked or
+	// listening to the signal
+	util::handle_signal();
 	Ok(0)
 }

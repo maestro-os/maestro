@@ -21,60 +21,48 @@
 
 use crate::process::{
 	signal,
-	signal::{SigAction, SigHandler, Signal, SignalHandler},
+	signal::{SigAction, Signal, SignalHandler, SA_RESTART},
 	Process,
 };
 use core::{
 	ffi::{c_int, c_void},
+	mem,
 	mem::transmute,
 	ptr::null,
 };
 use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::errno::Errno;
 
 #[syscall]
 pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
-	if signum < 0 {
-		return Err(errno!(EINVAL));
-	}
+	// Validation
 	let signal = Signal::try_from(signum as u32)?;
-
-	let h = match handler {
+	// Conversion
+	let new_handler = match handler {
 		signal::SIG_IGN => SignalHandler::Ignore,
 		signal::SIG_DFL => SignalHandler::Default,
-		_ => {
-			let handler_fn = unsafe { transmute::<*const c_void, SigHandler>(handler) };
-
-			SignalHandler::Handler(SigAction {
-				sa_handler: Some(handler_fn),
-				sa_sigaction: None,
-				sa_mask: 0,
-				sa_flags: 0,
-				sa_restorer: None,
-			})
-		}
+		_ => SignalHandler::Handler(SigAction {
+			sa_handler: Some(unsafe { transmute(handler) }),
+			sa_sigaction: None,
+			sa_mask: 0,
+			sa_flags: SA_RESTART,
+		}),
 	};
-
+	// Set new handler and get old
 	let old_handler = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let old_handler = proc.get_signal_handler(&signal);
-		proc.set_signal_handler(&signal, h);
-		old_handler
+		let mut signal_handlers = proc.signal_handlers.lock();
+		mem::replace(&mut signal_handlers[signal.get_id() as usize], new_handler)
 	};
-
-	let old_handler_ptr = match old_handler {
+	// Convert to pointer and return
+	let ptr = match old_handler {
 		SignalHandler::Ignore => signal::SIG_IGN,
 		SignalHandler::Default => signal::SIG_DFL,
-
-		SignalHandler::Handler(action) => {
-			if let Some(handler) = action.sa_handler {
-				handler as *const c_void
-			} else {
-				null::<c_void>()
-			}
-		}
+		SignalHandler::Handler(action) => action
+			.sa_handler
+			.map(|ptr| ptr as *const c_void)
+			.unwrap_or(null()),
 	};
-	Ok(old_handler_ptr as _)
+	Ok(ptr as _)
 }

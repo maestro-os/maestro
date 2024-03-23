@@ -714,10 +714,9 @@ impl TTY {
 		if self.pgrp == 0 {
 			return;
 		}
-
 		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
 			let mut proc = proc_mutex.lock();
-			proc.kill_group(sig, false);
+			proc.kill_group(sig);
 		}
 	}
 

@@ -26,5 +26,5 @@ use utils::errno::Errno;
 
 #[syscall]
 pub fn wait(wstatus: SyscallPtr<c_int>) -> Result<i32, Errno> {
-	waitpid::do_waitpid(regs, -1, wstatus, waitpid::WEXITED, None)
+	waitpid::do_waitpid(-1, wstatus, waitpid::WEXITED, None)
 }

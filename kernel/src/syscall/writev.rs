@@ -142,9 +142,8 @@ pub fn do_writev(
 					// If writing to a broken pipe, kill with SIGPIPE
 					if e.as_int() == errno::EPIPE {
 						let mut proc = proc.lock();
-						proc.kill(&Signal::SIGPIPE, false);
+						proc.kill_now(&Signal::SIGPIPE);
 					}
-
 					return Err(e);
 				}
 			};
