@@ -155,6 +155,7 @@ fn remove_gaps_in_range(
 }
 
 /// Inner state of the memory space, to use as a model for the virtual memory context.
+#[derive(Debug)]
 struct MemSpaceState {
 	/// Binary tree storing the list of memory gaps, ready for new mappings.
 	///
@@ -772,23 +773,7 @@ impl MemSpace {
 
 impl fmt::Debug for MemSpace {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{{mappings: [")?;
-		for (i, (_, m)) in self.state.mappings.iter().enumerate() {
-			if i + 1 < self.state.mappings.len() {
-				write!(f, "{m:?}, ")?;
-			} else {
-				write!(f, "{m:?}")?;
-			}
-		}
-		write!(f, "], gaps: [")?;
-		for (i, (_, g)) in self.state.gaps.iter().enumerate() {
-			if i + 1 < self.state.gaps.len() {
-				write!(f, "{g:?}, ")?;
-			} else {
-				write!(f, "{g:?}")?;
-			}
-		}
-		write!(f, "]}}")
+		fmt::Debug::fmt(&self.state, f)
 	}
 }
 

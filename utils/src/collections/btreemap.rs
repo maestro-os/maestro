@@ -264,12 +264,13 @@ impl<K, V> Node<K, V> {
 		node.parent = NonNull::new(self);
 	}
 
+	/*
 	/// Returns the depth of the node in the tree.
 	///
 	/// This function has `O(log n)` complexity.
 	fn get_node_depth(&self) -> usize {
 		self.get_parent().map_or(0, |n| n.get_node_depth() + 1)
-	}
+	}*/
 
 	/// Unlinks the node from its tree.
 	fn unlink(&mut self) {
@@ -824,6 +825,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		Some(value)
 	}
 
+	/*
 	/// Calls the given closure for every node in the subtree with root `root`.
 	///
 	/// `traversal_order` defines the order in which the tree is traversed.
@@ -854,7 +856,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		if traversal_order == TraversalOrder::PostOrder {
 			(*f)(root);
 		}
-	}
+	}*/
 
 	/// Calls the given closure for every node in the subtree with root `root`.
 	///
@@ -1046,7 +1048,8 @@ impl<K: TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> 
 	}
 }
 
-impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
+// TODO make a separate structure which borrows the tree for this implementation?
+/*impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let Some(root) = self.get_root() else {
 			return write!(f, "<Empty tree>");
@@ -1064,6 +1067,14 @@ impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
 			},
 			TraversalOrder::ReverseInOrder,
 		);
+		Ok(())
+	}
+}*/
+
+impl<K: Ord + fmt::Debug, V: fmt::Debug> fmt::Debug for BTreeMap<K, V> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "BTreeMap ")?;
+		f.debug_map().entries(self.iter()).finish()?;
 		Ok(())
 	}
 }
