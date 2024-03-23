@@ -1003,7 +1003,7 @@ impl Process {
 		self.sigpending.set(sig.get_id() as _);
 	}
 
-	/// Same as [`kill`], except the signal prepared for execution directly.
+	/// Same as [`Self::kill`], except the signal prepared for execution directly.
 	///
 	/// This is useful for cases where the execution of the program **MUST NOT** resume before
 	/// handling the signal (such as hardware faults).
