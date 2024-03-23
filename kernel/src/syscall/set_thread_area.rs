@@ -35,36 +35,29 @@ const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
 
 /// Returns the ID of a free TLS entry for the given process.
 pub fn get_free_entry(process: &mut Process) -> EResult<usize> {
-	for (i, e) in process.get_tls_entries().iter().enumerate() {
-		if !e.is_present() {
-			return Ok(i);
-		}
-	}
-
-	Err(errno!(ESRCH))
+	process
+		.get_tls_entries()
+		.iter()
+		.enumerate()
+		.find(|(_, e)| !e.is_present())
+		.map(|(i, _)| i)
+		.ok_or(errno!(ESRCH))
 }
 
 /// Returns an entry ID for the given process and entry number.
 ///
 /// If the id is `-1`, the function shall find a free entry.
 pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut gdt::Entry)> {
-	let end_entry = (TLS_BEGIN_INDEX + process::TLS_ENTRIES_COUNT) as i32;
-
-	// Checking the entry number is in bound
-	if entry_number != -1 && entry_number < TLS_BEGIN_INDEX as i32 || entry_number > end_entry {
-		return Err(errno!(EINVAL));
-	}
-
-	// The entry's ID
-	let id = {
-		if entry_number == -1 {
-			// Allocating an entry
-			get_free_entry(proc)?
-		} else {
-			entry_number as usize
-		}
+	const BEGIN_ENTRY: i32 = TLS_BEGIN_INDEX as i32;
+	const END_ENTRY: i32 = BEGIN_ENTRY + process::TLS_ENTRIES_COUNT as i32;
+	let id = match entry_number {
+		// Allocate an entry
+		-1 => get_free_entry(proc)?,
+		// Valid entry index
+		BEGIN_ENTRY..END_ENTRY => (entry_number - BEGIN_ENTRY) as usize,
+		// Out of bounds
+		_ => return Err(errno!(EINVAL)),
 	};
-
 	Ok((id, &mut proc.get_tls_entries()[id]))
 }
 

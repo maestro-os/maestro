@@ -232,14 +232,8 @@ impl SignalHandler {
 		if matches!(process_state, State::Zombie) {
 			return;
 		}
-		let handler = if !signal.can_catch() {
-			SignalHandler::Default
-		} else {
-			process.signal_handlers.lock()[signal.get_id() as usize].clone()
-		};
-		match handler {
-			SignalHandler::Ignore => {}
-			SignalHandler::Default => {
+		match self {
+			Self::Default => {
 				// Signals on the init process can be executed only if the process has set a
 				// signal handler
 				if signal.can_catch() && process.is_init() {
@@ -264,10 +258,14 @@ impl SignalHandler {
 					}
 				}
 			}
-			SignalHandler::Handler(action) if !process.is_handling_signal() => {
-				// The signal handler stack
+			Self::Handler(action) if !process.is_handling_signal() => {
+				// If the signal cannot be caught, execute the default action instead
+				if !signal.can_catch() {
+					Self::Default.prepare_execution(process, signal, syscall);
+					return;
+				}
+				// Prepare the signal handler stack
 				let stack = process.get_signal_stack();
-				// Prepare stack
 				let signal_data_size = size_of::<[usize; 3]>();
 				let signal_esp = (stack as usize) - signal_data_size;
 				// FIXME Don't write data out of the stack
@@ -279,6 +277,7 @@ impl SignalHandler {
 				}
 				let signal_data =
 					unsafe { slice::from_raw_parts_mut(signal_esp as *mut usize, 3) };
+				// TODO handle SA_SIGINFO
 				// The signal number
 				signal_data[2] = signal.get_id() as _;
 				// The pointer to the signal handler
