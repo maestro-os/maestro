@@ -17,5 +17,5 @@ to run unit tests in userspace.
 Tests can also be run with [Miri](https://github.com/rust-lang/miri) using:
 
 ```sh
-cargo miri
+cargo miri test
 ```
