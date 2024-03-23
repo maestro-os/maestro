@@ -153,6 +153,6 @@ pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
 	// If the current process has been killed, the system call must execute the signal before
 	// returning FIXME: this must be done only if no other thread has the signal unblocked or
 	// listening to the signal
-	util::handle_signal();
+	util::handle_signal(regs);
 	Ok(0)
 }

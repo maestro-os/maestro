@@ -233,37 +233,8 @@ impl SignalHandler {
 			return;
 		}
 		match self {
-			Self::Default => {
-				// Signals on the init process can be executed only if the process has set a
-				// signal handler
-				if signal.can_catch() && process.is_init() {
-					return;
-				}
-				match signal.get_default_action() {
-					SignalAction::Terminate | SignalAction::Abort => {
-						process.exit(signal.get_id() as _, true);
-					}
-					SignalAction::Ignore => {}
-					SignalAction::Stop => {
-						if matches!(process_state, State::Running) {
-							process.set_state(State::Stopped);
-						}
-						process.set_waitable(signal.get_id());
-					}
-					SignalAction::Continue => {
-						if matches!(process_state, State::Stopped) {
-							process.set_state(State::Running);
-						}
-						process.set_waitable(signal.get_id());
-					}
-				}
-			}
-			Self::Handler(action) if !process.is_handling_signal() => {
-				// If the signal cannot be caught, execute the default action instead
-				if !signal.can_catch() {
-					Self::Default.prepare_execution(process, signal, syscall);
-					return;
-				}
+			Self::Ignore => {}
+			Self::Handler(action) if !process.is_handling_signal() && signal.can_catch() => {
 				// Prepare the signal handler stack
 				let stack = process.get_signal_stack();
 				let signal_data_size = size_of::<[usize; 3]>();
@@ -291,13 +262,39 @@ impl SignalHandler {
 					// FIXME: not all system calls can return this
 					return_regs.set_syscall_return(Err(errno!(EINTR)));
 				}
+				debug_assert!((return_regs.eip as usize) < crate::memory::PROCESS_END as usize);
 				process.signal_save(signal.clone(), return_regs);
 				// Prepare registers for the handler
 				let signal_trampoline = signal_trampoline as *const c_void;
 				process.regs.esp = signal_esp as _;
 				process.regs.eip = signal_trampoline as _;
 			}
-			_ => {}
+			// Execute default action
+			_ => {
+				// Signals on the init process can be executed only if the process has set a
+				// signal handler
+				if signal.can_catch() && process.is_init() {
+					return;
+				}
+				match signal.get_default_action() {
+					SignalAction::Terminate | SignalAction::Abort => {
+						process.exit(signal.get_id() as _, true);
+					}
+					SignalAction::Ignore => {}
+					SignalAction::Stop => {
+						if matches!(process_state, State::Running) {
+							process.set_state(State::Stopped);
+						}
+						process.set_waitable(signal.get_id());
+					}
+					SignalAction::Continue => {
+						if matches!(process_state, State::Stopped) {
+							process.set_state(State::Running);
+						}
+						process.set_waitable(signal.get_id());
+					}
+				}
+			}
 		}
 	}
 }

@@ -60,7 +60,7 @@ pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errn
 	};
 
 	loop {
-		super::util::handle_signal();
+		super::util::handle_signal(regs);
 
 		{
 			let mem_space_guard = mem_space.lock();

@@ -32,8 +32,8 @@ pub fn wait4(
 	rusage: SyscallPtr<RUsage>,
 ) -> Result<i32, Errno> {
 	if rusage.is_null() {
-		waitpid::do_waitpid(pid, wstatus, options | waitpid::WEXITED, None)
+		waitpid::do_waitpid(regs, pid, wstatus, options | waitpid::WEXITED, None)
 	} else {
-		waitpid::do_waitpid(pid, wstatus, options | waitpid::WEXITED, Some(rusage))
+		waitpid::do_waitpid(regs, pid, wstatus, options | waitpid::WEXITED, Some(rusage))
 	}
 }
