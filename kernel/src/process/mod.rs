@@ -710,7 +710,7 @@ impl Process {
 		self.waitable
 	}
 
-	/// Sets the process waitable with the given signal type `type_`.
+	/// Sets the process waitable with the given signal type.
 	pub fn set_waitable(&mut self, sig_type: u8) {
 		self.waitable = true;
 		self.termsig = sig_type;
@@ -718,7 +718,7 @@ impl Process {
 		let parent = self.get_parent().as_ref().and_then(Weak::upgrade);
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
-			parent.kill_now(&Signal::SIGCHLD);
+			parent.kill(&Signal::SIGCHLD);
 			parent.wake();
 		}
 	}
