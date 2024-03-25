@@ -256,9 +256,9 @@ impl SignalHandler {
 				// Padding (return pointer)
 				signal_data[0] = 0;
 				// Prepare `sigreturn` registers
-				let restart = action.sa_flags & SA_RESTART != 0;
 				let mut return_regs = process.regs.clone();
-				if syscall && !restart {
+				// TODO implement syscall restart (SA_RESTART)
+				if syscall {
 					// FIXME: not all system calls can return this
 					return_regs.set_syscall_return(Err(errno!(EINTR)));
 				}
