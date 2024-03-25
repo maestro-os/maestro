@@ -162,7 +162,9 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		virtaddr: *const c_void,
 		flags: u32,
 	) -> AllocResult<x86::Rollback> {
-		unsafe { x86::map(self.vmem.inner_mut(), physaddr, virtaddr, flags) }
+		let res = unsafe { x86::map(self.vmem.inner_mut(), physaddr, virtaddr, flags) };
+		invalidate_page_current(virtaddr);
+		res
 	}
 
 	/// Maps a single page of virtual memory at `virtaddr` to a single page of physical memory at
@@ -219,7 +221,9 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 
 	#[cfg(target_arch = "x86")]
 	fn unmap_impl(&mut self, virtaddr: *const c_void) -> AllocResult<x86::Rollback> {
-		unsafe { x86::unmap(self.vmem.inner_mut(), virtaddr) }
+		let res = unsafe { x86::unmap(self.vmem.inner_mut(), virtaddr) };
+		invalidate_page_current(virtaddr);
+		res
 	}
 
 	/// Unmaps a single page of virtual memory at `virtaddr`.
