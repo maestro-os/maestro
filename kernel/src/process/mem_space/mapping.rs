@@ -196,7 +196,7 @@ impl MemMapping {
 				vmem::write_lock_wrap(|| {
 					let dest = &mut *dest;
 					if copy {
-						dest.copy_from_slice(&mut *COPY_BUFFER);
+						dest.copy_from_slice(&*COPY_BUFFER);
 					} else {
 						dest.fill(0);
 					}
