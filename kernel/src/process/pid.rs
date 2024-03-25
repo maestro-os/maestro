@@ -18,7 +18,7 @@
 
 //! PIDs handling.
 //!
-//! Each process must have an unique PID, thus they have to be allocated.
+//! Each process must have a unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.
 
 use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
@@ -33,32 +33,20 @@ const MAX_PID: Pid = 32768;
 pub const INIT_PID: Pid = 1;
 
 /// A structure handling PID allocations.
-pub struct PIDManager {
-	/// The PID allocator.
-	allocator: IDAllocator,
-}
+pub struct PIDManager(IDAllocator);
 
 impl PIDManager {
 	/// Creates a new instance.
 	pub fn new() -> AllocResult<Self> {
-		let mut s = Self {
-			allocator: IDAllocator::new(MAX_PID as _)?,
-		};
-		s.allocator.set_used((INIT_PID - 1) as _);
-		Ok(s)
+		let mut allocator = IDAllocator::new(MAX_PID as _)?;
+		allocator.set_used((INIT_PID - 1) as _);
+		Ok(Self(allocator))
 	}
 
-	/// Returns a unused PID and marks it as used.
+	/// Returns an unused PID and marks it as used.
 	#[must_use = "not freeing a PID shall cause a leak"]
 	pub fn get_unique_pid(&mut self) -> AllocResult<Pid> {
-		match self.allocator.alloc(None) {
-			Ok(i) => {
-				debug_assert!(i <= MAX_PID as _);
-
-				Ok((i + 1) as _)
-			}
-			Err(e) => Err(e),
-		}
+		self.0.alloc(None).map(|i| (i + 1) as _)
 	}
 
 	/// Releases the given PID `pid` to make it available for other processes.
@@ -67,7 +55,6 @@ impl PIDManager {
 	pub fn release_pid(&mut self, pid: Pid) {
 		debug_assert!(pid >= 1);
 		debug_assert!(pid <= MAX_PID as _);
-
-		self.allocator.free((pid - 1) as _)
+		self.0.free((pid - 1) as _)
 	}
 }

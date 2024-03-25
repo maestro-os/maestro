@@ -137,11 +137,13 @@ impl Entry {
 
 impl fmt::Debug for Entry {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "base: {:x}, ", self.get_base())?;
-		write!(f, "limit: {:x}, ", self.get_limit())?;
-		write!(f, "access byte: {:x}, ", self.get_access_byte())?;
-		write!(f, "flags: {:x}, ", self.get_flags())?;
-		write!(f, "present: {}", self.is_present())
+		f.debug_struct("Entry")
+			.field("base", &self.get_base())
+			.field("limit", &self.get_limit())
+			.field("access_byte", &self.get_access_byte())
+			.field("flags", &self.get_flags())
+			.field("present", &self.is_present())
+			.finish()
 	}
 }
 

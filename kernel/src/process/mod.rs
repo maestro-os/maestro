@@ -23,7 +23,7 @@
 //! a scheduler.
 
 // TODO Do not reallocate a PID of used as a pgid
-// TODO When a process receives a signal, log it if the `strace` feature is enabled
+// TODO When a process receives a signal or exits, log it if the `strace` feature is enabled
 
 pub mod exec;
 pub mod iovec;
@@ -63,7 +63,7 @@ use crate::{
 use core::{
 	any::Any,
 	ffi::c_void,
-	mem::{size_of, ManuallyDrop, MaybeUninit},
+	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
 };
 use mem_space::MemSpace;
@@ -78,7 +78,7 @@ use utils::{
 	collections::{bitfield::Bitfield, string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	lock::{IntMutex, Mutex},
+	lock::{once::OnceInit, IntMutex, Mutex},
 	ptr::arc::{Arc, Weak},
 	TryClone,
 };
@@ -301,38 +301,34 @@ pub struct Process {
 }
 
 /// The PID manager.
-static mut PID_MANAGER: MaybeUninit<Mutex<PIDManager>> = MaybeUninit::uninit();
+static PID_MANAGER: OnceInit<Mutex<PIDManager>> = unsafe { OnceInit::new() };
 /// The processes scheduler.
-static mut SCHEDULER: MaybeUninit<Arc<IntMutex<Scheduler>>> = MaybeUninit::uninit();
+static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
 
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
 pub(crate) fn init() -> EResult<()> {
 	TSS::init();
-
+	// Init schedulers
 	let cores_count = 1; // TODO
 	unsafe {
-		PID_MANAGER.write(Mutex::new(PIDManager::new()?));
-		SCHEDULER.write(Scheduler::new(cores_count)?);
+		PID_MANAGER.init(Mutex::new(PIDManager::new()?));
+		SCHEDULER.init(Mutex::new(Scheduler::new(cores_count)?));
 	}
-
+	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, regs: &Regs, ring: u32| {
 		if ring < 3 {
 			return CallbackResult::Panic;
 		}
-
 		// Get process
 		let curr_proc = {
-			let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-			let mut sched = sched_mutex.lock();
-
+			let mut sched = SCHEDULER.get().lock();
 			sched.get_current_process()
 		};
 		let Some(curr_proc) = curr_proc else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
-
 		match id {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
@@ -355,7 +351,6 @@ pub(crate) fn init() -> EResult<()> {
 			0x11 => curr_proc.kill_now(&Signal::SIGBUS),
 			_ => {}
 		}
-
 		if matches!(curr_proc.get_state(), State::Running) {
 			CallbackResult::Continue
 		} else {
@@ -391,7 +386,6 @@ pub(crate) fn init() -> EResult<()> {
 			CallbackResult::Idle
 		}
 	};
-
 	let _ = ManuallyDrop::new(event::register_callback(0x00, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x03, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x06, callback)?);
@@ -400,16 +394,13 @@ pub(crate) fn init() -> EResult<()> {
 	let _ = ManuallyDrop::new(event::register_callback(0x10, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x11, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x13, callback)?);
-
 	Ok(())
 }
 
 /// Returns a mutable reference to the scheduler's `Mutex`.
+#[inline]
 pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
-	unsafe {
-		// Safe because using Mutex
-		SCHEDULER.assume_init_ref()
-	}
+	SCHEDULER.get()
 }
 
 impl Process {
@@ -417,24 +408,21 @@ impl Process {
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<Arc<IntMutex<Self>>> {
-		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		sched_mutex.lock().get_by_pid(pid)
+		get_scheduler().lock().get_by_pid(pid)
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(tid: Pid) -> Option<Arc<IntMutex<Self>>> {
-		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		sched_mutex.lock().get_by_tid(tid)
+		get_scheduler().lock().get_by_tid(tid)
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
 	pub fn current() -> Option<Arc<IntMutex<Self>>> {
-		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		sched_mutex.lock().get_current_process()
+		get_scheduler().lock().get_current_process()
 	}
 
 	/// Returns the current running process.
@@ -452,10 +440,8 @@ impl Process {
 		};
 		let mut fs_guard = fs.lock();
 		let fs = &mut *fs_guard as &mut dyn Any;
-
 		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
 		procfs.add_process(self.pid)?;
-
 		Ok(())
 	}
 
@@ -467,10 +453,8 @@ impl Process {
 		};
 		let mut fs_guard = fs.lock();
 		let fs = &mut *fs_guard as &mut dyn Any;
-
 		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
 		procfs.remove_process(self.pid)?;
-
 		Ok(())
 	}
 
@@ -479,29 +463,22 @@ impl Process {
 	/// The process is set to state [`State::Running`] by default and has user root.
 	pub fn new() -> EResult<Arc<IntMutex<Self>>> {
 		let rs = ResolutionSettings::kernel_follow();
-
 		// Create the default file descriptors table
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
-
 			let tty_path = Path::new(TTY_DEVICE_PATH.as_bytes())?;
 			let tty_file_mutex = vfs::get_file_from_path(tty_path, &rs)?;
 			let tty_file = tty_file_mutex.lock();
-
 			let loc = tty_file.get_location();
 			let file = vfs::get_file_from_location(loc)?;
-
 			let open_file = OpenFile::new(file, open_file::O_RDWR)?;
 			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
-
 			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
 			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), false)?;
-
 			fds_table
 		};
 		let root_loc = mountpoint::root_location();
-
 		let process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
@@ -557,11 +534,8 @@ impl Process {
 			exit_status: 0,
 			termsig: 0,
 		};
-
 		process.register_procfs()?;
-
-		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		Ok(sched_mutex.lock().add_process(process)?)
+		Ok(get_scheduler().lock().add_process(process)?)
 	}
 
 	/// Tells whether the process is the init process.
@@ -866,7 +840,6 @@ impl Process {
 		fork_options: ForkOptions,
 	) -> EResult<Arc<IntMutex<Self>>> {
 		debug_assert!(matches!(self.get_state(), State::Running));
-
 		// Handle vfork
 		let vfork_state = if fork_options.vfork {
 			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
@@ -874,7 +847,6 @@ impl Process {
 		} else {
 			VForkState::None
 		};
-
 		// Clone memory space
 		let mem_space = {
 			let curr_mem_space = self.get_mem_space().unwrap();
@@ -884,7 +856,6 @@ impl Process {
 				Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?
 			}
 		};
-
 		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
 			self.file_descriptors.clone()
@@ -898,20 +869,14 @@ impl Process {
 				})
 				.transpose()?
 		};
-
 		// Clone signal handlers
 		let signal_handlers = if fork_options.share_sighand {
 			self.signal_handlers.clone()
 		} else {
 			Arc::new(Mutex::new(self.signal_handlers.lock().clone()))?
 		};
-
 		// FIXME PID is leaked if the following code fails
-		let pid = {
-			let mutex = unsafe { PID_MANAGER.assume_init_mut() };
-			mutex.lock().get_unique_pid()
-		}?;
-
+		let pid = PID_MANAGER.get().lock().get_unique_pid()?;
 		let process = Self {
 			pid,
 			pgid: self.pgid,
@@ -968,13 +933,9 @@ impl Process {
 			exit_status: self.exit_status,
 			termsig: 0,
 		};
-
 		process.register_procfs()?;
-
 		self.add_child(pid)?;
-
-		let sched_mutex = unsafe { SCHEDULER.assume_init_mut() };
-		Ok(sched_mutex.lock().add_process(process)?)
+		Ok(get_scheduler().lock().add_process(process)?)
 	}
 
 	/// Tells whether the process is handling a signal.
@@ -1215,7 +1176,6 @@ impl Drop for Process {
 			buddy::free_kernel(self.kernel_stack.as_ptr(), KERNEL_STACK_ORDER);
 		}
 		// Free the PID
-		let mut pid_manager = unsafe { PID_MANAGER.assume_init_mut() }.lock();
-		pid_manager.release_pid(self.pid);
+		PID_MANAGER.get().lock().release_pid(self.pid);
 	}
 }

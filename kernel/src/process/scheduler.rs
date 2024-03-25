@@ -17,12 +17,10 @@
  */
 
 //! The role of the process scheduler is to interrupt the currently running
-//! process periodicaly to switch to another process that is in running state.
-//!
-//! The interruption is fired by the PIT on IDT0.
+//! process periodically to switch to another process that is in running state.
 //!
 //! A scheduler cycle is a period during which the scheduler iterates through
-//! every processes. The scheduler works by assigning a number of quantum for
+//! each process. The scheduler works by assigning a number of quantum for
 //! each process, based on the number of running processes and their priority.
 //! This number represents the number of ticks during which the process keeps
 //! running until switching to the next process.
@@ -43,7 +41,7 @@ use utils::{
 		btreemap::{BTreeMap, MapIterator},
 		vec::Vec,
 	},
-	errno::AllocResult,
+	errno::{AllocResult, CollectResult},
 	interrupt::cli,
 	lock::IntMutex,
 	math,
@@ -67,7 +65,7 @@ pub struct Scheduler {
 	/// The ticking callback hook, called at a regular interval to make the
 	/// scheduler work.
 	tick_callback_hook: CallbackHook,
-	/// The total number of ticks since the instanciation of the scheduler.
+	/// The total number of ticks since the instantiation of the scheduler.
 	total_ticks: u64,
 
 	/// A binary tree containing all processes registered to the current
@@ -87,13 +85,13 @@ pub struct Scheduler {
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub fn new(cores_count: usize) -> AllocResult<Arc<IntMutex<Self>>> {
-		let mut tmp_stacks = Vec::new();
-		for _ in 0..cores_count {
-			tmp_stacks.push(vec![0; TMP_STACK_SIZE]?)?;
-		}
-
-		// Register tick handler
+	pub(super) fn new(cores_count: usize) -> AllocResult<Self> {
+		// Allocate context switching stacks for each core
+		let tmp_stacks = (0..cores_count)
+			.map(|_| vec![0; TMP_STACK_SIZE])
+			.collect::<AllocResult<CollectResult<_>>>()?
+			.0?;
+		// Register tick callback
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
 		let tick_callback_hook = event::register_callback(
@@ -103,8 +101,7 @@ impl Scheduler {
 			},
 		)?
 		.unwrap();
-
-		Arc::new(IntMutex::new(Self {
+		Ok(Self {
 			tmp_stacks,
 
 			tick_callback_hook,
@@ -117,7 +114,7 @@ impl Scheduler {
 
 			priority_sum: 0,
 			priority_max: 0,
-		}))
+		})
 	}
 
 	/// Returns a pointer to the top of the tmp stack for the given kernel `kernel`.
@@ -169,7 +166,7 @@ impl Scheduler {
 	/// - `new` is the new priority of the process.
 	///
 	/// The function doesn't need to know the process which has been updated
-	/// since it updates global informations.
+	/// since it updates global information.
 	pub fn update_priority(&mut self, old: usize, new: usize) {
 		self.priority_sum = self.priority_sum - old + new;
 
@@ -410,8 +407,8 @@ impl Scheduler {
 
 /// Ends the current tick on the current CPU.
 ///
-/// Since this function triggers an interruption, the caller must ensure that no criticl mutex is
-/// locked, that could be used in the inerruption handler. Otherwise, a deadlock could occure.
+/// Since this function triggers an interruption, the caller must ensure that no critical mutex is
+/// locked, that could be used in the interruption handler. Otherwise, a deadlock could occur.
 #[inline]
 pub fn end_tick() {
 	unsafe {
