@@ -159,6 +159,7 @@ impl<T: ?Sized> Arc<T> {
 	///
 	/// This function must not be called twice since it would result in a double free.
 	unsafe fn partial_drop(&mut self) {
+		debug_assert_eq!(Arc::strong_count(self), 0);
 		// Drop the inner object since weak pointers cannot access it once no strong reference is
 		// left
 		drop_in_place(Self::get_mut_unchecked(self));

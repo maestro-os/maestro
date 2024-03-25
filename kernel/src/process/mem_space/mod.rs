@@ -68,7 +68,7 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b1000;
 
 /// The virtual address of the buffer used to map pages for copy.
 /// TODO use PROCESS_END instead of hardcoding value
-const COPY_BUFFER: *const Page = (0xc0000000 - memory::PAGE_SIZE) as _;
+const COPY_BUFFER: *mut Page = (0xc0000000 - memory::PAGE_SIZE) as _;
 
 // TODO Add a variant for ASLR
 /// Enumeration of constraints for the selection of the virtual address for a memory mapping.

@@ -169,15 +169,15 @@ impl MemMapping {
 		let new = self.residence.acquire_page(offset)?;
 		// Tells initializing the new page is necessary
 		let init = self.residence.is_normal();
+		// Tells whether a copy from the old page is necessary
+		let copy = old.is_some();
 		if init {
-			if let Some(old) = &self.phys_pages[offset] {
+			if let Some(old) = &old {
 				// Map old page for copy
 				let physaddr = unsafe { old.ptr() as _ };
 				vmem_transaction.map(physaddr, COPY_BUFFER as _, 0)?;
 			}
 		}
-		// Tells whether a copy from the old page is necessary
-		let copy = old.is_some();
 		// Map new page
 		let new_physaddr = unsafe { new.ptr() as _ };
 		// If the page has to be initialized, do not allow writing during initialization to avoid
@@ -190,17 +190,14 @@ impl MemMapping {
 		// Initialize the new page
 		unsafe {
 			let dest = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut Page;
-			let dest = &mut *dest;
 			// Switch to make sure the right vmem is bound, but this should already be the case
 			// so consider this has no cost
-			vmem::switch(vmem_transaction.vmem, || {
+			vmem::switch(vmem_transaction.vmem, move || {
 				vmem::write_lock_wrap(|| {
+					let dest = &mut *dest;
 					if copy {
-						// Copy
-						let src = &mut *(COPY_BUFFER as *mut Page);
-						dest.copy_from_slice(src);
+						dest.copy_from_slice(&mut *COPY_BUFFER);
 					} else {
-						// Zero page
 						dest.fill(0);
 					}
 				});
