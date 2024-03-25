@@ -189,7 +189,7 @@ pub fn do_waitpid(
 ) -> EResult<i32> {
 	// Sleeping until a target process is waitable
 	loop {
-		super::util::signal_check(regs);
+		super::util::handle_signal(regs);
 
 		cli();
 

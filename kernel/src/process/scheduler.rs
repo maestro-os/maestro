@@ -374,18 +374,15 @@ impl Scheduler {
 					stack::switch(Some(tmp_stack), move || {
 						let (resume, syscalling, regs) = {
 							let mut next_proc = next_proc.1.lock();
-
 							next_proc.prepare_switch();
-
 							let resume = matches!(next_proc.get_state(), State::Running);
 							(resume, next_proc.syscalling, next_proc.regs.clone())
 						};
 						drop(next_proc);
-
+						// If the process has been killed by a signal, abort resuming
 						if !resume {
 							return;
 						}
-
 						// Resume execution
 						event::unlock_callbacks(0x20);
 						pic::end_of_interrupt(0x0);

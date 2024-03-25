@@ -1140,7 +1140,7 @@ impl<K: Ord, V> IntoIterator for BTreeMap<K, V> {
 }
 
 /// Consuming iterator over a [`BTreeMap`].
-pub struct MapIntoIter<K, V> {
+pub struct MapIntoIter<K: Ord, V> {
 	/// The current node.
 	node: Option<NonNull<Node<K, V>>>,
 	/// The number of remaining elements.
@@ -1185,6 +1185,13 @@ impl<K: Ord, V> ExactSizeIterator for MapIntoIter<K, V> {}
 impl<K: Ord, V> FusedIterator for MapIntoIter<K, V> {}
 
 unsafe impl<K: Ord, V> TrustedLen for MapIntoIter<K, V> {}
+
+impl<K: Ord, V> Drop for MapIntoIter<K, V> {
+	fn drop(&mut self) {
+		// Drop remaining elements
+		for _ in self.by_ref() {}
+	}
+}
 
 /// Immutable reference iterator for [`BTreeMap`]. This iterator traverses the tree in pre-order.
 pub struct MapIterator<'m, K: Ord, V> {

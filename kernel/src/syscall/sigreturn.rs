@@ -29,17 +29,14 @@ use utils::{errno::Errno, interrupt::cli};
 #[syscall]
 pub fn sigreturn() -> EResult<i32> {
 	cli();
-
 	let regs = {
 		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
-
 		// Restores the state of the process before the signal handler
 		proc.signal_restore();
-
 		proc.regs.clone()
 	};
-
+	// Resume execution
 	unsafe {
 		regs.switch(true);
 	}

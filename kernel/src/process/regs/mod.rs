@@ -116,11 +116,9 @@ impl Regs {
 	pub unsafe fn switch(&self, user: bool) -> ! {
 		let eip = self.eip;
 		debug_assert_ne!(eip, 0);
-
 		if user {
 			let user_data_selector = gdt::USER_DS | 3;
 			let user_code_selector = gdt::USER_CS | 3;
-
 			context_switch(self, user_data_selector as _, user_code_selector as _);
 		} else {
 			context_switch_kernel(self);

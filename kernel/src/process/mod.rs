@@ -198,7 +198,7 @@ enum VForkState {
 	Executing,
 }
 
-/// The Process Control Block (PCB). This structure stores all the informations
+/// The **Process Control Block** (PCB). This structure stores all the information
 /// about a process.
 pub struct Process {
 	/// The ID of the process.
@@ -243,13 +243,13 @@ pub struct Process {
 
 	/// The last saved registers state.
 	pub regs: Regs,
-	/// Tells whether the process was syscalling or not.
+	/// Tells whether the process was executing a system call.
 	pub syscalling: bool,
 
 	/// Tells whether the process is handling a signal.
 	handled_signal: Option<Signal>,
-	/// The saved state of registers, used when handling a signal.
-	saved_regs: Regs,
+	/// Registers state to be restored by `sigreturn`.
+	sigreturn_regs: Regs,
 	/// Tells whether the process has information that can be retrieved by
 	/// wait/waitpid.
 	waitable: bool,
@@ -337,41 +337,22 @@ pub(crate) fn init() -> EResult<()> {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
 			// SIMD Floating-Point Exception
-			0x00 | 0x10 | 0x13 => {
-				curr_proc.kill(&Signal::SIGFPE, true);
-				curr_proc.signal_next();
-			}
-
+			0x00 | 0x10 | 0x13 => curr_proc.kill_now(&Signal::SIGFPE),
 			// Breakpoint
-			0x03 => {
-				curr_proc.kill(&Signal::SIGTRAP, true);
-				curr_proc.signal_next();
-			}
-
+			0x03 => curr_proc.kill_now(&Signal::SIGTRAP),
 			// Invalid Opcode
-			0x06 => {
-				curr_proc.kill(&Signal::SIGILL, true);
-				curr_proc.signal_next();
-			}
-
+			0x06 => curr_proc.kill_now(&Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
 				let inst_prefix = unsafe { *(regs.eip as *const u8) };
-
 				if inst_prefix == HLT_INSTRUCTION {
 					curr_proc.exit(regs.eax, false);
 				} else {
-					curr_proc.kill(&Signal::SIGSEGV, true);
-					curr_proc.signal_next();
+					curr_proc.kill_now(&Signal::SIGSEGV);
 				}
 			}
-
 			// Alignment Check
-			0x11 => {
-				curr_proc.kill(&Signal::SIGBUS, true);
-				curr_proc.signal_next();
-			}
-
+			0x11 => curr_proc.kill_now(&Signal::SIGBUS),
 			_ => {}
 		}
 
@@ -401,8 +382,7 @@ pub(crate) fn init() -> EResult<()> {
 			if ring < 3 {
 				return CallbackResult::Panic;
 			} else {
-				curr_proc.kill(&Signal::SIGSEGV, true);
-				curr_proc.signal_next();
+				curr_proc.kill_now(&Signal::SIGSEGV);
 			}
 		}
 		if matches!(curr_proc.get_state(), State::Running) {
@@ -496,7 +476,7 @@ impl Process {
 
 	/// Creates the init process and places it into the scheduler's queue.
 	///
-	/// The process is set to state `Running` by default and has user root.
+	/// The process is set to state [`State::Running`] by default and has user root.
 	pub fn new() -> EResult<Arc<IntMutex<Self>>> {
 		let rs = ResolutionSettings::kernel_follow();
 
@@ -550,7 +530,7 @@ impl Process {
 			syscalling: false,
 
 			handled_signal: None,
-			saved_regs: Regs::default(),
+			sigreturn_regs: Regs::default(),
 			waitable: false,
 
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
@@ -596,7 +576,7 @@ impl Process {
 		self.pgid != 0 && self.pgid != self.pid
 	}
 
-	/// Sets the process's group ID to the given value `pgid`.
+	/// Sets the process's group ID to the given value `pgid`, updating the associated group.
 	pub fn set_pgid(&mut self, pgid: Pid) -> EResult<()> {
 		let old_pgid = self.pgid;
 		let new_pgid = if pgid == 0 { self.pid } else { pgid };
@@ -635,10 +615,9 @@ impl Process {
 		Ok(())
 	}
 
-	/// Returns a reference to the list of PIDs of processes in the current
-	/// process's group.
+	/// Returns an immutable slice to the PIDs of the process in the group of the current process.
 	#[inline(always)]
-	pub fn get_group_processes(&self) -> &Vec<Pid> {
+	pub fn get_group_processes(&self) -> &[Pid] {
 		&self.process_group
 	}
 
@@ -647,7 +626,6 @@ impl Process {
 		if !self.is_in_group() {
 			return false;
 		}
-
 		Process::get_by_pid(self.pgid).is_none()
 	}
 
@@ -655,7 +633,7 @@ impl Process {
 	pub fn get_parent_pid(&self) -> Pid {
 		self.parent
 			.as_ref()
-			.and_then(|parent| parent.upgrade())
+			.and_then(Weak::upgrade)
 			.map(|parent| parent.lock().pid)
 			.unwrap_or(self.pid)
 	}
@@ -719,29 +697,28 @@ impl Process {
 		matches!(self.get_state(), State::Running) && self.vfork_state != VForkState::Waiting
 	}
 
-	/// Wakes the process if sleeping.
+	/// Wakes up the process if in [`State::Sleeping`] state.
 	pub fn wake(&mut self) {
 		if self.state == State::Sleeping {
 			self.set_state(State::Running);
 		}
 	}
 
-	/// Tells whether the current process has informations to be retrieved by
+	/// Tells whether the current process has information to be retrieved by
 	/// the `waitpid` system call.
 	pub fn is_waitable(&self) -> bool {
 		self.waitable
 	}
 
-	/// Sets the process waitable with the given signal type `type_`.
+	/// Sets the process waitable with the given signal type.
 	pub fn set_waitable(&mut self, sig_type: u8) {
 		self.waitable = true;
 		self.termsig = sig_type;
-
 		// Wake the parent
-		let parent = self.get_parent().and_then(|parent| parent.upgrade());
+		let parent = self.get_parent().as_ref().and_then(Weak::upgrade);
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
-			parent.kill(&Signal::SIGCHLD, false);
+			parent.kill(&Signal::SIGCHLD);
 			parent.wake();
 		}
 	}
@@ -756,22 +733,18 @@ impl Process {
 		self.timer_manager.clone()
 	}
 
-	/// Returns the process's parent if exists.
+	/// Returns the process's parent.
+	///
+	/// If the process is the init process, the function returns `None`.
 	#[inline(always)]
 	pub fn get_parent(&self) -> Option<Weak<IntMutex<Process>>> {
 		self.parent.clone()
 	}
 
-	/// Returns a reference to the list of the process's children.
+	/// Returns an immutable slice of the PIDs of the process's children.
 	#[inline(always)]
-	pub fn get_children(&self) -> &Vec<Pid> {
+	pub fn get_children(&self) -> &[Pid] {
 		&self.children
-	}
-
-	/// Tells whether the process has a child with the given pid.
-	#[inline(always)]
-	pub fn has_child(&self, pid: Pid) -> bool {
-		self.children.binary_search(&pid).is_ok()
 	}
 
 	/// Adds the process with the given PID `pid` as child to the process.
@@ -831,17 +804,21 @@ impl Process {
 		if !matches!(self.state, State::Running) {
 			return;
 		}
-
 		// If the process is not in a syscall and a signal is pending on the process,
 		// execute it
 		if !self.syscalling {
-			self.signal_next();
-
-			if !matches!(self.state, State::Running) {
-				return;
+			if let Some(sig) = self.get_next_signal() {
+				// Prepare signal for execution
+				let signal_handlers = self.signal_handlers.clone();
+				let signal_handlers = signal_handlers.lock();
+				let sig_handler = &signal_handlers[sig.get_id() as usize];
+				sig_handler.prepare_execution(&mut *self, &sig, false);
+				// If the process has been killed by the signal, abort switching
+				if !matches!(self.state, State::Running) {
+					return;
+				}
 			}
 		}
-
 		// Update the TSS for the process
 		self.update_tss();
 		// Update TLS entries in the GDT
@@ -849,10 +826,8 @@ impl Process {
 			self.update_tls(i);
 		}
 		gdt::flush();
-
 		// Bind the memory space
 		self.get_mem_space().unwrap().lock().bind();
-
 		// Increment the number of ticks the process had
 		self.quantum_count += 1;
 	}
@@ -965,7 +940,7 @@ impl Process {
 			syscalling: false,
 
 			handled_signal: self.handled_signal.clone(),
-			saved_regs: self.saved_regs.clone(),
+			sigreturn_regs: self.sigreturn_regs.clone(),
 			waitable: false,
 
 			// TODO if creating a thread: timer_manager: self.timer_manager.clone(),
@@ -1012,45 +987,44 @@ impl Process {
 	///
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
-	///
-	/// If `no_handler` is `true` and if the process is already handling a signal,
-	/// the function executes the default action of the signal regardless the
-	/// user-specified action.
-	pub fn kill(&mut self, sig: &Signal, no_handler: bool) {
+	pub fn kill(&mut self, sig: &Signal) {
+		// Ignore blocked signals
 		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
 			return;
 		}
-
-		self.rusage.ru_nsignals += 1;
-
+		// Statistics
+		self.rusage.ru_nsignals = self.rusage.ru_nsignals.saturating_add(1);
 		if matches!(self.get_state(), State::Stopped)
 			&& sig.get_default_action() == SignalAction::Continue
 		{
 			self.set_state(State::Running);
 		}
-
-		let no_handler = self.is_handling_signal() && no_handler;
-		if !sig.can_catch() || no_handler {
-			sig.execute_action(self, no_handler);
-		} else {
-			self.sigpending.set(sig.get_id() as _);
-		}
+		// Set the signal as pending
+		self.sigpending.set(sig.get_id() as _);
 	}
 
-	/// Kills every processes in the process group.
+	/// Same as [`Self::kill`], except the signal prepared for execution directly.
 	///
-	/// Arguments are the same as `kill`.
-	pub fn kill_group(&mut self, sig: Signal, no_handler: bool) {
+	/// This is useful for cases where the execution of the program **MUST NOT** resume before
+	/// handling the signal (such as hardware faults).
+	pub fn kill_now(&mut self, sig: &Signal) {
+		self.kill(sig);
+		let signal_handlers = self.signal_handlers.clone();
+		let signal_handlers = signal_handlers.lock();
+		signal_handlers[sig.get_id() as usize].prepare_execution(self, sig, false);
+	}
+
+	/// Kills every process in the process group.
+	pub fn kill_group(&mut self, sig: Signal) {
 		for pid in self.process_group.iter() {
 			if *pid != self.pid {
 				if let Some(proc_mutex) = Process::get_by_pid(*pid) {
 					let mut proc = proc_mutex.lock();
-					proc.kill(&sig, no_handler);
+					proc.kill(&sig);
 				}
 			}
 		}
-
-		self.kill(&sig, no_handler);
+		self.kill(&sig);
 	}
 
 	/// Tells whether the given signal is blocked by the process.
@@ -1058,37 +1032,10 @@ impl Process {
 		self.sigmask.is_set(sig.get_id() as _)
 	}
 
-	/// Returns the handler for the given signal.
-	pub fn get_signal_handler(&self, sig: &Signal) -> SignalHandler {
-		self.signal_handlers.lock()[sig.get_id() as usize].clone()
-	}
-
-	/// Sets the handler for the given signal.
-	pub fn set_signal_handler(&self, sig: &Signal, handler: SignalHandler) {
-		self.signal_handlers.lock()[sig.get_id() as usize] = handler;
-	}
-
-	/// Returns an immutable reference to the process's pending signals mask.
-	#[inline(always)]
-	pub fn get_pending_signals(&self) -> &[u8] {
-		self.sigpending.as_slice()
-	}
-
-	/// Tells whether the process has a signal pending.
-	#[inline(always)]
-	pub fn has_signal_pending(&self) -> bool {
-		self.sigpending.find_set().is_some()
-	}
-
-	/// Returns the ID of the next signal to be executed.
+	/// Returns the ID of the next signal to be handled.
 	///
-	/// If no signal is pending or is the process is already handling a signal,
-	/// the function returns `None`.
+	/// If no signal is pending, the function returns `None`.
 	pub fn get_next_signal(&self) -> Option<Signal> {
-		if self.is_handling_signal() {
-			return None;
-		}
-
 		self.sigpending
 			.iter()
 			.enumerate()
@@ -1096,7 +1043,6 @@ impl Process {
 				if !b {
 					return None;
 				}
-
 				let s = Signal::try_from(i as u32).ok()?;
 				if !s.can_catch() || !self.sigmask.is_set(i) {
 					Some(s)
@@ -1107,27 +1053,11 @@ impl Process {
 			.next()
 	}
 
-	/// Makes the process handle the next signal.
-	///
-	/// If no signal is pending or is the process is already handling a signal,
-	/// the function does nothing.
-	pub fn signal_next(&mut self) {
-		if let Some(sig) = self.get_next_signal() {
-			sig.execute_action(self, false);
-		}
-	}
-
 	/// Returns the pointer to use as a stack when executing a signal handler.
 	pub fn get_signal_stack(&self) -> *const c_void {
-		// TODO Handle alternate stacks
+		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
+		// SA_ONSTACK)
 		(self.regs.esp as usize - REDZONE_SIZE) as _
-	}
-
-	/// Clear the signal from the list of pending signals.
-	///
-	/// If the signal is already cleared, the function does nothing.
-	pub fn signal_clear(&mut self, sig: Signal) {
-		self.sigpending.clear(sig.get_id() as _);
 	}
 
 	/// Saves the process's state to handle a signal.
@@ -1135,18 +1065,17 @@ impl Process {
 	/// `sig` is the signal.
 	///
 	/// If the process is already handling a signal, the behaviour is undefined.
-	pub fn signal_save(&mut self, sig: Signal) {
+	pub fn signal_save(&mut self, sig: Signal, sigreturn_regs: Regs) {
 		debug_assert!(!self.is_handling_signal());
-
-		self.saved_regs = self.regs.clone();
 		self.handled_signal = Some(sig);
+		self.sigreturn_regs = sigreturn_regs;
 	}
 
 	/// Restores the process's state after handling a signal.
 	pub fn signal_restore(&mut self) {
-		if self.handled_signal.is_some() {
-			self.handled_signal = None;
-			self.regs = self.saved_regs.clone();
+		if let Some(sig) = self.handled_signal.take() {
+			self.regs = self.sigreturn_regs.clone();
+			self.sigpending.clear(sig.get_id() as _);
 		}
 	}
 

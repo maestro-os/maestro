@@ -58,7 +58,7 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 	};
 
 	loop {
-		super::util::signal_check(regs);
+		super::util::handle_signal(regs);
 
 		{
 			let mut mem_space_guard = mem_space.lock();

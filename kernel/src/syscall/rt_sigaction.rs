@@ -36,24 +36,22 @@ pub fn rt_sigaction(
 	act: SyscallPtr<SigAction>,
 	oldact: SyscallPtr<SigAction>,
 ) -> Result<i32, Errno> {
+	// Validation
 	let signal = Signal::try_from(signum as u32)?;
-
+	// Get process
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
-
 	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mut mem_space_guard = mem_space.lock();
-
+	let mut signal_handlers = proc.signal_handlers.lock();
 	// Save the old structure
 	if let Some(oldact) = oldact.get_mut(&mut mem_space_guard)? {
-		let action = proc.get_signal_handler(&signal).get_action();
+		let action = signal_handlers[signal.get_id() as usize].get_action();
 		*oldact = action;
 	}
-
 	// Set the new structure
 	if let Some(act) = act.get(&mem_space_guard)? {
-		proc.set_signal_handler(&signal, SignalHandler::Handler(*act));
+		signal_handlers[signal.get_id() as usize] = SignalHandler::Handler(*act);
 	}
-
 	Ok(0)
 }

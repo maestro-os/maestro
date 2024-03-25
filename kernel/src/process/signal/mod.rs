@@ -33,13 +33,16 @@ use core::{
 use signal_trampoline::signal_trampoline;
 use utils::{errno, errno::Errno};
 
-/// Type representing a signal handler.
-pub type SigHandler = extern "C" fn(i32);
-
 /// Ignoring the signal.
 pub const SIG_IGN: *const c_void = 0x0 as _;
 /// The default action for the signal.
 pub const SIG_DFL: *const c_void = 0x1 as _;
+
+// TODO implement all flags
+/// `SigAction` flag: If set, use `sa_sigaction` instead of `sa_handler`.
+pub const SA_SIGINFO: i32 = 0x00000004;
+/// `SigAction` flag: If set, the system call must restart after being interrupted by a signal.
+pub const SA_RESTART: i32 = 0x10000000;
 
 /// Notify method: generate a signal
 pub const SIGEV_SIGNAL: c_int = 0;
@@ -78,13 +81,13 @@ pub union SigVal {
 }
 
 impl Debug for SigVal {
-	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let val = unsafe { self.sigval_ptr };
-		write!(fmt, "SigVal {{ sigval_ptr: {:p} }}", val)
+		f.debug_struct("SigVal").field("sigval", &val).finish()
 	}
 }
 
-/// Structure storing signal informations.
+/// Signal information.
 #[repr(C)]
 pub struct SigInfo {
 	/// Signal number.
@@ -141,24 +144,22 @@ pub struct SigInfo {
 /// Type representing a signal mask.
 pub type SigSet = u32;
 
-/// Structure storing an action to be executed when a signal is received.
+/// An action to be executed when a signal is received.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SigAction {
 	/// The action associated with the signal.
-	pub sa_handler: Option<SigHandler>,
-	/// Used instead of `sa_handler` if SA_SIGINFO is specified in `sa_flags`.
+	pub sa_handler: Option<extern "C" fn(i32)>,
+	/// Used instead of `sa_handler` if [`SA_SIGINFO`] is specified in `sa_flags`.
 	pub sa_sigaction: Option<extern "C" fn(i32, *mut SigInfo, *mut c_void)>,
 	/// A mask of signals that should be masked while executing the signal
 	/// handler.
 	pub sa_mask: SigSet,
 	/// A set of flags which modifies the behaviour of the signal.
 	pub sa_flags: i32,
-	/// Unused.
-	pub sa_restorer: Option<extern "C" fn()>,
 }
 
-/// Structure for notification from asynchronous routines.
+/// Notification from asynchronous routines.
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct SigEvent {
@@ -168,9 +169,9 @@ pub struct SigEvent {
 	pub sigev_signo: c_int,
 	/// TODO doc
 	pub sigev_value: SigVal,
-	/// Data passed with notification.
+	/// Function used for thread notification.
 	pub sigev_notify_function: Option<NonNull<extern "C" fn(SigVal)>>,
-	/// Fucnction used for thread notification.
+	/// Data passed with notification.
 	pub sigev_notify_attributes: Option<NonNull<c_void>>,
 	/// ID of thread to signal.
 	pub sigev_notify_thread_id: Pid,
@@ -204,38 +205,96 @@ pub enum SignalHandler {
 }
 
 impl SignalHandler {
-	/// Returns an instance of SigAction associated with the handler.
+	/// Returns an instance of [`SigAction`] associated with the handler.
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
 				sa_handler: unsafe { transmute::<_, _>(SIG_IGN) },
-				sa_sigaction: #[allow(invalid_value)]
-				unsafe {
-					core::mem::zeroed()
-				},
+				sa_sigaction: None,
 				sa_mask: 0,
 				sa_flags: 0,
-				sa_restorer: #[allow(invalid_value)]
-				unsafe {
-					core::mem::zeroed()
-				},
 			},
-
 			Self::Default => SigAction {
 				sa_handler: unsafe { transmute::<_, _>(SIG_DFL) },
-				sa_sigaction: #[allow(invalid_value)]
-				unsafe {
-					core::mem::zeroed()
-				},
+				sa_sigaction: None,
 				sa_mask: 0,
 				sa_flags: 0,
-				sa_restorer: #[allow(invalid_value)]
-				unsafe {
-					core::mem::zeroed()
-				},
 			},
-
 			Self::Handler(action) => *action,
+		}
+	}
+
+	/// Prepare the given `process` for the execution of the given `signal`.
+	///
+	/// If `syscall` is set, the signal is executed when the current system call returns.
+	pub fn prepare_execution(&self, process: &mut Process, signal: &Signal, syscall: bool) {
+		let process_state = process.get_state();
+		if matches!(process_state, State::Zombie) {
+			return;
+		}
+		match self {
+			Self::Ignore => {}
+			Self::Handler(action) if !process.is_handling_signal() && signal.can_catch() => {
+				// Prepare the signal handler stack
+				let stack = process.get_signal_stack();
+				let signal_data_size = size_of::<[usize; 3]>();
+				let signal_esp = (stack as usize) - signal_data_size;
+				// FIXME Don't write data out of the stack
+				{
+					let mem_space = process.get_mem_space().unwrap();
+					let mut mem_space = mem_space.lock();
+					mem_space.bind();
+					oom::wrap(|| mem_space.alloc(signal_esp as _, signal_data_size));
+				}
+				let signal_data =
+					unsafe { slice::from_raw_parts_mut(signal_esp as *mut usize, 3) };
+				// TODO handle SA_SIGINFO
+				// The signal number
+				signal_data[2] = signal.get_id() as _;
+				// The pointer to the signal handler
+				signal_data[1] = action.sa_handler.map(|f| f as usize).unwrap_or(0);
+				// Padding (return pointer)
+				signal_data[0] = 0;
+				// Prepare `sigreturn` registers
+				let mut return_regs = process.regs.clone();
+				// TODO implement syscall restart (SA_RESTART)
+				if syscall {
+					// FIXME: not all system calls can return this
+					return_regs.set_syscall_return(Err(errno!(EINTR)));
+				}
+				debug_assert!((return_regs.eip as usize) < crate::memory::PROCESS_END as usize);
+				process.signal_save(signal.clone(), return_regs);
+				// Prepare registers for the handler
+				let signal_trampoline = signal_trampoline as *const c_void;
+				process.regs.esp = signal_esp as _;
+				process.regs.eip = signal_trampoline as _;
+			}
+			// Execute default action
+			_ => {
+				// Signals on the init process can be executed only if the process has set a
+				// signal handler
+				if signal.can_catch() && process.is_init() {
+					return;
+				}
+				match signal.get_default_action() {
+					SignalAction::Terminate | SignalAction::Abort => {
+						process.exit(signal.get_id() as _, true);
+					}
+					SignalAction::Ignore => {}
+					SignalAction::Stop => {
+						if matches!(process_state, State::Running) {
+							process.set_state(State::Stopped);
+						}
+						process.set_waitable(signal.get_id());
+					}
+					SignalAction::Continue => {
+						if matches!(process_state, State::Stopped) {
+							process.set_state(State::Running);
+						}
+						process.set_waitable(signal.get_id());
+					}
+				}
+			}
 		}
 	}
 }
@@ -249,7 +308,7 @@ pub enum Signal {
 	SIGINT,
 	/// Terminal quit.
 	SIGQUIT,
-	/// Illigal instruction.
+	/// Illegal instruction.
 	SIGILL,
 	/// Trace/breakpoint trap.
 	SIGTRAP,
@@ -281,9 +340,9 @@ pub enum Signal {
 	SIGSTOP,
 	/// Terminal stop.
 	SIGTSTP,
-	/// Background process attempting read.
+	/// Background process attempting to read.
 	SIGTTIN,
-	/// Background process attempting write.
+	/// Background process attempting to write.
 	SIGTTOU,
 	/// High bandwidth data is available at a socket.
 	SIGURG,
@@ -338,7 +397,6 @@ impl TryFrom<u32> for Signal {
 			28 => Ok(Self::SIGWINCH),
 			29 => Ok(Self::SIGPOLL),
 			31 => Ok(Self::SIGSYS),
-
 			_ => Err(errno!(EINVAL)),
 		}
 	}
@@ -421,107 +479,5 @@ impl Signal {
 			self,
 			Self::SIGKILL | Self::SIGSEGV | Self::SIGSTOP | Self::SIGSYS
 		)
-	}
-
-	/// Executes the action associated with the signal for process `process`.
-	///
-	/// If the process is not the current process, the behaviour is undefined.
-	///
-	/// If `no_handler` is `true`, the function executes the default action of the
-	/// signal regardless the user-specified action.
-	pub fn execute_action(&self, process: &mut Process, no_handler: bool) {
-		process.signal_clear(self.clone());
-
-		let process_state = process.get_state();
-		if matches!(process_state, State::Zombie) {
-			return;
-		}
-
-		let handler = if !self.can_catch() || no_handler {
-			SignalHandler::Default
-		} else {
-			process.get_signal_handler(self)
-		};
-
-		match handler {
-			SignalHandler::Ignore => {}
-			SignalHandler::Default => {
-				// Signals on the init process can be executed only if the process has set a
-				// signal handler
-				if self.can_catch() && process.is_init() {
-					return;
-				}
-
-				let action = self.get_default_action();
-				match action {
-					SignalAction::Terminate | SignalAction::Abort => {
-						process.exit(self.get_id() as _, true);
-					}
-
-					SignalAction::Ignore => {}
-
-					SignalAction::Stop => {
-						// TODO Handle semaphores
-						if matches!(process_state, State::Running) {
-							process.set_state(State::Stopped);
-						}
-
-						process.set_waitable(self.get_id());
-					}
-
-					SignalAction::Continue => {
-						// TODO Handle semaphores
-						if matches!(process_state, State::Stopped) {
-							process.set_state(State::Running);
-						}
-
-						process.set_waitable(self.get_id());
-					}
-				}
-			}
-
-			// TODO Handle sa_sigaction, sa_flags and sa_mask
-			SignalHandler::Handler(action) if !process.is_handling_signal() => {
-				// TODO Handle the case where an alternate stack is specified (only if the
-				// action has the flag)
-				// The signal handler stack
-				let stack = process.get_signal_stack();
-
-				let signal_data_size = size_of::<[u32; 3]>();
-				let signal_esp = (stack as usize) - signal_data_size;
-
-				// FIXME Don't write data out of the stack
-				{
-					let mem_space = process.get_mem_space().unwrap();
-					let mut mem_space = mem_space.lock();
-					mem_space.bind();
-					oom::wrap(|| mem_space.alloc(signal_esp as _, signal_data_size));
-				}
-				let signal_data = unsafe { slice::from_raw_parts_mut(signal_esp as *mut u32, 3) };
-
-				// The signal number
-				signal_data[2] = self.get_id() as _;
-				// The pointer to the signal handler
-				signal_data[1] = action.sa_handler.map(|f| f as usize).unwrap_or(0) as _;
-				// Padding (return pointer)
-				signal_data[0] = 0;
-
-				let signal_trampoline = signal_trampoline as *const c_void;
-
-				let mut regs = process.regs.clone();
-				// Set the stack to point to the signal's data
-				regs.esp = signal_esp as _;
-				// Set the program counter to point to the signal trampoline
-				regs.eip = signal_trampoline as _;
-
-				// Save the current state of the process to be restored when the handler will
-				// return
-				process.signal_save(self.clone());
-				// Set the process's registers to call the signal handler
-				process.regs = regs;
-			}
-
-			_ => {}
-		}
 	}
 }
