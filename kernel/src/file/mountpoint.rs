@@ -22,7 +22,7 @@ use super::{
 	fs,
 	fs::{Filesystem, FilesystemType},
 	path::{Path, PathBuf},
-	vfs, FileContent, FileLocation,
+	vfs, FileLocation, FileType,
 };
 use crate::{
 	device,
@@ -101,24 +101,16 @@ impl MountSource {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();
 				match file.get_content() {
-					FileContent::BlockDevice {
-						major,
-						minor,
-					} => Ok(Self::Device {
+					FileType::BlockDevice => Ok(Self::Device {
 						dev_type: DeviceType::Block,
-						major: *major,
-						minor: *minor,
+						major: file.dev_major,
+						minor: file.dev_minor,
 					}),
-
-					FileContent::CharDevice {
-						major,
-						minor,
-					} => Ok(Self::Device {
+					FileType::CharDevice => Ok(Self::Device {
 						dev_type: DeviceType::Char,
-						major: *major,
-						minor: *minor,
+						major: file.dev_major,
+						minor: file.dev_minor,
 					}),
-
 					_ => Err(errno!(EINVAL)),
 				}
 			}

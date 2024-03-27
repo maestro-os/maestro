@@ -24,7 +24,7 @@ use super::kernfs::KernFS;
 use crate::file::{
 	fs::kernfs::{content::KernFSContent, node::KernFSNode},
 	perm::{Gid, Uid},
-	DirEntry, FileContent, FileType, Mode,
+	DirEntry, FileType, Mode,
 };
 use osrelease::OsRelease;
 use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult, io::IO};

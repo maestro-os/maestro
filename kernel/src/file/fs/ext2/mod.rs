@@ -49,8 +49,7 @@ use crate::{
 	file::{
 		fs::{Filesystem, FilesystemType, Statfs},
 		path::PathBuf,
-		perm::{Gid, Uid},
-		DirEntry, File, FileContent, FileLocation, FileType, INode, Mode,
+		File, FileLocation, FileType, INode,
 	},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
@@ -62,16 +61,7 @@ use core::{
 	slice,
 };
 use inode::Ext2INode;
-use utils::{
-	collections::{hashmap::HashMap, string::String, vec::Vec},
-	errno,
-	errno::EResult,
-	io::IO,
-	lock::Mutex,
-	math,
-	ptr::arc::Arc,
-	vec, TryClone,
-};
+use utils::{errno, errno::EResult, io::IO, lock::Mutex, math, ptr::arc::Arc, vec};
 
 // TODO Take into account user's UID/GID when allocating block/inode to handle
 // reserved blocks/inodes
@@ -768,103 +758,30 @@ impl Filesystem for Ext2Fs {
 		name: &[u8],
 	) -> EResult<INode> {
 		let parent_inode = parent.unwrap_or(inode::ROOT_DIRECTORY_INODE as _);
-
-		// Getting the parent inode
+		// Get the parent inode
 		let parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
 		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-
-		// Getting the entry with the given name
-		if let Some((_, entry)) = parent.get_dirent(name, &self.superblock, io)? {
-			Ok(entry.get_inode() as _)
-		} else {
-			Err(errno!(ENOENT))
-		}
+		// Get the entry with the given name
+		let Some((_, entry)) = parent.get_dirent(name, &self.superblock, io)? else {
+			return Err(errno!(ENOENT));
+		};
+		Ok(entry.get_inode() as _)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> EResult<File> {
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
 		let inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		let file_type = inode_.get_type();
-
-		let file_content = match file_type {
-			FileType::Regular => FileContent::Regular,
-
-			FileType::Directory => {
-				let mut entries = Vec::new();
-
-				for res in inode_.iter_dirent(&self.superblock, io)?.unwrap() {
-					let (_, entry) = res?;
-					if entry.is_free() {
-						continue;
-					}
-
-					entries.push((
-						entry.get_inode(),
-						entry.get_type(&self.superblock),
-						String::try_from(entry.get_name(&self.superblock))?,
-					))?;
-				}
-
-				// Creating entries with types
-				let mut final_entries = HashMap::new();
-
-				for (inode, entry_type, name) in entries {
-					let entry_type = match entry_type {
-						Some(entry_type) => entry_type,
-						None => Ext2INode::read(inode, &self.superblock, io)?.get_type(),
-					};
-
-					final_entries.insert(
-						name.try_clone()?,
-						DirEntry {
-							inode: inode as _,
-							entry_type,
-						},
-					)?;
-				}
-
-				FileContent::Directory(final_entries)
-			}
-
-			FileType::Link => {
-				FileContent::Link(inode_.get_link(&self.superblock, io)?.try_into()?)
-			}
-
-			FileType::Fifo => FileContent::Fifo,
-
-			FileType::Socket => FileContent::Socket,
-
-			FileType::BlockDevice => {
-				let (major, minor) = inode_.get_device();
-
-				FileContent::BlockDevice {
-					major: major as _,
-					minor: minor as _,
-				}
-			}
-
-			FileType::CharDevice => {
-				let (major, minor) = inode_.get_device();
-
-				FileContent::CharDevice {
-					major: major as _,
-					minor: minor as _,
-				}
-			}
-		};
-
-		let file_location = FileLocation::Filesystem {
-			mountpoint_id: 0, // dummy value to be replaced
-			inode,
-		};
 		let mut file = File::new(
-			name,
+			FileLocation::Filesystem {
+				mountpoint_id: 0, // dummy value to be replaced
+				inode,
+			},
 			inode_.uid,
 			inode_.gid,
+			file_type,
 			inode_.get_permissions(),
-			file_location,
-			file_content,
 		)?;
 		file.set_hard_links_count(inode_.hard_links_count as _);
 		file.blocks_count = inode_.used_sectors as _;
@@ -872,7 +789,6 @@ impl Filesystem for Ext2Fs {
 		file.ctime = inode_.ctime as _;
 		file.mtime = inode_.mtime as _;
 		file.atime = inode_.atime as _;
-
 		Ok(file)
 	}
 
@@ -880,46 +796,34 @@ impl Filesystem for Ext2Fs {
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: String,
-		uid: Uid,
-		gid: Gid,
-		mode: Mode,
-		content: FileContent,
+		name: &[u8],
+		mut node: File,
 	) -> EResult<File> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-
+		// Get parent directory
 		let mut parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
-
-		// Checking the parent file is a directory
+		// Check the parent is a directory
 		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-
-		// Checking if the file already exists
+		// Check whether the file already exists
 		if parent.get_dirent(&name, &self.superblock, io)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
-
+		// Get a free inode ID
 		let inode_index = self.superblock.get_free_inode(io)?;
-		let location = FileLocation::Filesystem {
-			mountpoint_id: 0, // dummy value to be replaced
-			inode: inode_index as _,
-		};
-
-		// The file
-		let mut file = File::new(name, uid, gid, mode, location, content)?;
-
+		// Create inode
 		let mut inode = Ext2INode {
-			mode: Ext2INode::get_file_mode(file.get_type(), mode),
-			uid,
+			mode: node.get_mode(),
+			uid: node.uid,
 			size_low: 0,
-			ctime: file.ctime as _,
-			mtime: file.mtime as _,
-			atime: file.atime as _,
+			ctime: node.ctime as _,
+			mtime: node.mtime as _,
+			atime: node.atime as _,
 			dtime: 0,
-			gid,
+			gid: node.gid,
 			hard_links_count: 1,
 			used_sectors: 0,
 			flags: 0,
@@ -934,10 +838,10 @@ impl Filesystem for Ext2Fs {
 			fragment_addr: 0,
 			os_specific_1: [0; 12],
 		};
-
-		match file.get_content() {
-			FileContent::Directory(_) => {
-				// Adding `.` and `..` entries
+		// Update inode with content
+		match node.get_type() {
+			FileType::Directory => {
+				// Add `.` and `..` entries
 				inode.add_dirent(
 					&mut self.superblock,
 					io,
@@ -946,8 +850,7 @@ impl Filesystem for Ext2Fs {
 					FileType::Directory,
 				)?;
 				inode.hard_links_count += 1;
-				file.set_hard_links_count(inode.hard_links_count);
-
+				node.set_hard_links_count(inode.hard_links_count);
 				inode.add_dirent(
 					&mut self.superblock,
 					io,
@@ -957,44 +860,28 @@ impl Filesystem for Ext2Fs {
 				)?;
 				parent.hard_links_count += 1;
 			}
-
-			FileContent::Link(target) => {
-				inode.set_link(&mut self.superblock, io, target.as_bytes())?
-			}
-
-			FileContent::BlockDevice {
-				major,
-				minor,
-			}
-			| FileContent::CharDevice {
-				major,
-				minor,
-			} => {
-				if *major > (u8::MAX as u32) || *minor > (u8::MAX as u32) {
+			FileType::BlockDevice | FileType::CharDevice => {
+				if node.dev_major > (u8::MAX as u32) || node.dev_minor > (u8::MAX as u32) {
 					return Err(errno!(ENODEV));
 				}
-
-				inode.set_device(*major as u8, *minor as u8);
+				inode.set_device(node.dev_major as u8, node.dev_minor as u8);
 			}
-
 			_ => {}
 		}
-
+		let is_dir = node.get_type() == FileType::Directory;
+		// Write node
 		inode.write(inode_index, &self.superblock, io)?;
-		let dir = file.get_type() == FileType::Directory;
-		self.superblock.mark_inode_used(io, inode_index, dir)?;
+		self.superblock.mark_inode_used(io, inode_index, is_dir)?;
 		self.superblock.write(io)?;
-
-		parent.add_dirent(
-			&mut self.superblock,
-			io,
-			inode_index,
-			file.get_name(),
-			file.get_type(),
-		)?;
+		// Write parent
+		parent.add_dirent(&mut self.superblock, io, inode_index, name, node.get_type())?;
 		parent.write(parent_inode as _, &self.superblock, io)?;
-
-		Ok(file)
+		// Update location
+		node.location = FileLocation::Filesystem {
+			mountpoint_id: 0, // dummy value to be replaced
+			inode: inode_index as _,
+		};
+		Ok(node)
 	}
 
 	fn add_link(

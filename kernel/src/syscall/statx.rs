@@ -24,7 +24,6 @@ use crate::{
 		mountpoint::MountSource,
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
-		FileContent,
 	},
 	process::{
 		mem_space::ptr::{SyscallPtr, SyscallString},
@@ -111,12 +110,11 @@ pub fn statx(
 	_mask: c_uint,
 	statxbuff: SyscallPtr<Statx>,
 ) -> Result<i32, Errno> {
+	// Validation
 	if pathname.is_null() || statxbuff.is_null() {
 		return Err(errno!(EINVAL));
 	}
-
 	// TODO Implement all flags
-
 	// Get the file
 	let (fds_mutex, path, rs) = {
 		let proc_mutex = Process::current_assert();
@@ -136,30 +134,13 @@ pub fn statx(
 
 		(fds_mutex, path, rs)
 	};
-
 	let fds = fds_mutex.lock();
-
 	let Resolved::Found(file_mutex) = at::get_file(&fds, rs, dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
 	let file = file_mutex.lock();
-
 	// TODO Use mask?
-
-	// If the file is a device, get the major and minor numbers
-	let (stx_rdev_major, stx_rdev_minor) = match file.get_content() {
-		FileContent::BlockDevice {
-			major,
-			minor,
-		}
-		| FileContent::CharDevice {
-			major,
-			minor,
-		} => (*major, *minor),
-		_ => (0, 0),
-	};
-
-	// Getting the major and minor numbers of the device of the file's filesystem
+	// Get the major and minor numbers of the device of the file's filesystem
 	let (stx_dev_major, stx_dev_minor) = {
 		if let Some(mountpoint_mutex) = file.get_location().get_mountpoint() {
 			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using
@@ -179,10 +160,8 @@ pub fn statx(
 			(0, 0)
 		}
 	};
-
 	let inode = file.get_location().get_inode();
-
-	// Filling the structure
+	// Fill the structure
 	let statx_val = Statx {
 		stx_mask: !0,      // TODO
 		stx_blksize: 512,  // TODO
@@ -220,8 +199,8 @@ pub fn statx(
 			__reserved: 0,
 		},
 
-		stx_rdev_major,
-		stx_rdev_minor,
+		stx_rdev_major: file.dev_major,
+		stx_rdev_minor: file.dev_minor,
 		stx_dev_major,
 		stx_dev_minor,
 
@@ -229,19 +208,14 @@ pub fn statx(
 
 		__padding1: [0; 13],
 	};
-
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		let statx = statxbuff
-			.get_mut(&mut mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
-		*statx = statx_val;
-	}
-
+	// Write structure
+	let proc_mutex = Process::current_assert();
+	let proc = proc_mutex.lock();
+	let mem_space = proc.get_mem_space().unwrap();
+	let mut mem_space_guard = mem_space.lock();
+	let statx = statxbuff
+		.get_mut(&mut mem_space_guard)?
+		.ok_or(errno!(EFAULT))?;
+	*statx = statx_val;
 	Ok(0)
 }

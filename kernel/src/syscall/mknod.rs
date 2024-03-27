@@ -25,7 +25,7 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
-		FileContent, FileType,
+		File, FileType,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 };
@@ -50,47 +50,30 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let rs = ResolutionSettings::for_process(&proc, true);
 		(path, umask, rs)
 	};
-
 	// Path of the parent directory
 	let parent_path = path.parent().unwrap_or(Path::root());
 	// File name
 	let Some(name) = path.file_name() else {
 		return Err(errno!(EEXIST));
 	};
-
+	// Information to create the file
 	let mode = mode & !umask;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
-
-	// Get the major and minor IDs
+	let uid = rs.access_profile.get_euid();
+	let gid = rs.access_profile.get_egid();
 	let major = id::major(dev);
 	let minor = id::minor(dev);
-
-	// The file's content
-	let file_content = match file_type {
-		FileType::Regular => FileContent::Regular,
-		FileType::Fifo => FileContent::Fifo,
-		FileType::Socket => FileContent::Socket,
-		FileType::BlockDevice => FileContent::BlockDevice {
-			major,
-			minor,
-		},
-		FileType::CharDevice => FileContent::CharDevice {
-			major,
-			minor,
-		},
+	// Create file
+	let mut file = File::new(uid, gid, file_type, mode);
+	match file_type {
+		FileType::BlockDevice | FileType::CharDevice => {
+			file.dev_major = major;
+			file.dev_minor = minor;
+		}
 		_ => return Err(errno!(EPERM)),
-	};
-
-	// Create the node
+	}
 	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
-	vfs::create_file(
-		&mut parent,
-		name.try_into()?,
-		&rs.access_profile,
-		mode,
-		file_content,
-	)?;
-
+	vfs::create_file(&mut parent, name.try_into()?, &rs.access_profile, file)?;
 	Ok(0)
 }

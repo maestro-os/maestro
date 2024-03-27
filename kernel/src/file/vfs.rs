@@ -30,14 +30,11 @@ use super::{
 	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	DeferredRemove, File, FileContent, FileLocation, FileType, INode, Mode, MountPoint,
+	DeferredRemove, File, FileLocation, FileType, INode, MountPoint,
 };
 use crate::{limits, process::Process};
-use core::ptr::NonNull;
-use utils::{
-	collections::string::String, errno, errno::EResult, format, io::IO, lock::Mutex,
-	ptr::arc::Arc, TryClone,
-};
+use core::{intrinsics::unlikely, ptr::NonNull};
+use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc, TryClone};
 
 // TODO implement and use cache
 
@@ -53,21 +50,18 @@ where
 	// Get the mountpoint
 	let mp_mutex = loc.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 	let mp = mp_mutex.lock();
-	if write && mp.is_readonly() {
+	if write && unlikely(mp.is_readonly()) {
 		return Err(errno!(EROFS));
 	}
-
 	// Get the IO interface
 	let io_mutex = mp.get_source().get_io()?;
 	let mut io = io_mutex.lock();
-
 	// Get the filesystem
 	let fs_mutex = mp.get_filesystem();
 	let mut fs = fs_mutex.lock();
-	if write && fs.is_readonly() {
+	if write && unlikely(fs.is_readonly()) {
 		return Err(errno!(EROFS));
 	}
-
 	f(&mp, &mut *io, &mut *fs)
 }
 
@@ -82,37 +76,28 @@ pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File
 		FileLocation::Filesystem {
 			inode, ..
 		} => {
-			// Get the mountpoint
+			// Get mountpoint
 			let mp_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 			let mp = mp_mutex.lock();
-
-			// Get the IO interface
+			// Get I/O
 			let io_mutex = mp.get_source().get_io()?;
 			let mut io = io_mutex.lock();
-
 			// Get the filesystem
 			let fs_mutex = mp.get_filesystem();
 			let mut fs = fs_mutex.lock();
-
-			let mut file = fs.load_file(&mut *io, *inode, String::new())?;
+			// Get file
+			let mut file = fs.load_file(&mut *io, *inode)?;
 			update_location(&mut file, &mp);
-
 			Ok(Arc::new(Mutex::new(file))?)
 		}
-
 		FileLocation::Virtual {
 			id,
 		} => {
-			let name = format!("virtual:{id}")?;
-			let content = FileContent::Fifo; // TODO support sockets
-
 			let file = Arc::new(Mutex::new(File::new(
-				name,
 				0, // TODO
 				0, // TODO
+				FileType::Fifo,
 				0o666,
-				location.clone(),
-				content,
 			)?))?;
 			Ok(file)
 		}
@@ -354,8 +339,7 @@ pub fn get_file_from_path(
 /// - `name` is the name of the file to be created
 /// - `ap` is access profile to check permissions. This also determines the UID and GID to be used
 /// for the created file
-/// - `mode` is the permissions of the file
-/// - `content` is the content of the file. This value also determines the file type
+/// - `file` is the file to add to the filesystem
 ///
 /// The following errors can be returned:
 /// - The filesystem is read-only: [`errno::EROFS`]
@@ -367,10 +351,9 @@ pub fn get_file_from_path(
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn create_file(
 	parent: &mut File,
-	name: String,
+	name: &[u8],
 	ap: &AccessProfile,
-	mode: Mode,
-	content: FileContent,
+	mut file: File,
 ) -> EResult<Arc<Mutex<File>>> {
 	// Validation
 	if parent.get_type() != FileType::Directory {
@@ -379,26 +362,24 @@ pub fn create_file(
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
-
 	let parent_inode = parent.location.get_inode();
-	let uid = ap.get_euid();
-	let gid = if parent.get_mode() & perm::S_ISGID != 0 {
+	// Set UID/GID
+	file.uid = ap.get_euid();
+	file.gid = if parent.get_mode() & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
 		// parent directory
 		parent.get_gid()
 	} else {
 		ap.get_egid()
 	};
-
 	let mut file = op(&parent.location, true, |mp, io, fs| {
-		let mut file = fs.add_file(&mut *io, parent_inode, name, uid, gid, mode, content)?;
-		update_location(&mut file, mp);
-		Ok(file)
+		let mut n = fs.add_file(&mut *io, parent_inode, name, file)?;
+		update_location(&mut n, mp);
+		Ok(n)
 	})?;
 	// Add the file to the parent's entries
 	file.set_parent_path(parent.get_path()?);
 	parent.add_entry(file.get_name().try_clone()?, file.as_dir_entry())?;
-
 	Ok(Arc::new(Mutex::new(file))?)
 }
 
@@ -434,14 +415,13 @@ pub fn create_link(
 	if target.get_hard_links_count() >= limits::LINK_MAX as u16 {
 		return Err(errno!(EMLINK));
 	}
+	if !ap.can_write_directory(parent) {
+		return Err(errno!(EACCES));
+	}
 	// Check the target and source are both on the same mountpoint
 	if parent.location.get_mountpoint_id() != target.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
-	if !ap.can_write_directory(parent) {
-		return Err(errno!(EACCES));
-	}
-
 	op(&target.location, true, |_mp, io, fs| {
 		fs.add_link(
 			&mut *io,
@@ -502,11 +482,9 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
-
 	op(parent.get_location(), true, |mp, io, fs| {
 		// Get the file
-		let mut file = fs.load_file(&mut *io, parent.location.get_inode(), name.try_into()?)?;
-
+		let mut file = fs.load_file(&mut *io, parent.location.get_inode(), name)?;
 		// Check permission
 		let has_sticky_bit = parent.mode & S_ISVTX != 0;
 		if has_sticky_bit && ap.get_euid() != file.get_uid() && ap.get_euid() != parent.get_uid() {
@@ -516,12 +494,10 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 		if file.is_mountpoint() {
 			return Err(errno!(EBUSY));
 		}
-
 		// Defer remove if the file is in use
 		let last_link = file.get_hard_links_count() == 1;
 		let symlink = file.get_type() == FileType::Link;
 		let defer = last_link && !symlink && OpenFile::is_open(&file.location);
-
 		if defer {
 			file.defer_remove(DeferredRemove {
 				parent: parent.location.clone(),

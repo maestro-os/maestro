@@ -25,7 +25,7 @@ use crate::{
 		path::PathBuf,
 		perm,
 		perm::{Gid, Uid},
-		FileContent, Mode,
+		Mode,
 	},
 	process::Process,
 	time::unit::Timestamp,

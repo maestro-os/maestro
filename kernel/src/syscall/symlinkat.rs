@@ -24,7 +24,6 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileContent,
 	},
 	limits,
 	process::{mem_space::ptr::SyscallString, Process},

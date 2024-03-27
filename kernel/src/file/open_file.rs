@@ -22,7 +22,7 @@
 use crate::{
 	device,
 	device::DeviceType,
-	file::{buffer, mountpoint, DeviceID, File, FileContent, FileLocation},
+	file::{buffer, mountpoint, DeviceID, File, FileLocation, FileType},
 	process::{
 		mem_space::{ptr::SyscallPtr, MemSpace},
 		Process,
@@ -230,24 +230,20 @@ impl OpenFile {
 		argp: *const c_void,
 	) -> EResult<u32> {
 		let mut file = self.get_file().lock();
-		match file.get_content() {
-			FileContent::Regular => match request.get_old_format() {
+		match file.get_type() {
+			FileType::Regular => match request.get_old_format() {
 				ioctl::FIONREAD => {
 					let mut mem_space_guard = mem_space.lock();
 					let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
 					let count_ref = count_ptr
 						.get_mut(&mut mem_space_guard)?
 						.ok_or_else(|| errno!(EFAULT))?;
-
 					let size = file.get_size();
 					*count_ref = (size - min(size, self.curr_off)) as _;
-
 					Ok(0)
 				}
-
 				_ => Err(errno!(ENOTTY)),
 			},
-
 			_ => file.ioctl(mem_space, request, argp),
 		}
 	}
@@ -262,49 +258,37 @@ impl OpenFile {
 	/// If the file cannot block, the function does nothing.
 	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		let file = self.get_file().lock();
-		match file.get_content() {
-			FileContent::Fifo | FileContent::Socket => {
+		match file.get_type() {
+			FileType::Fifo | FileType::Socket => {
 				if let Some(buff_mutex) = buffer::get(self.get_location()) {
 					let mut buff = buff_mutex.lock();
 					return buff.add_waiting_process(proc, mask);
 				}
 			}
-
-			FileContent::BlockDevice {
-				major,
-				minor,
-			} => {
+			FileType::BlockDevice => {
 				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Block,
-					major: *major,
-					minor: *minor,
+					major: file.dev_major,
+					minor: file.dev_minor,
 				});
-
 				if let Some(dev_mutex) = dev_mutex {
 					let mut dev = dev_mutex.lock();
 					return dev.get_handle().add_waiting_process(proc, mask);
 				}
 			}
-
-			FileContent::CharDevice {
-				major,
-				minor,
-			} => {
+			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Char,
-					major: *major,
-					minor: *minor,
+					major: file.dev_major,
+					minor: file.dev_minor,
 				});
-
 				if let Some(dev_mutex) = dev_mutex {
 					let mut dev = dev_mutex.lock();
 					return dev.get_handle().add_waiting_process(proc, mask);
 				}
 			}
-
 			_ => {}
 		}
-
 		Ok(())
 	}
 }
@@ -317,24 +301,23 @@ impl IO for OpenFile {
 	/// Note: on this specific implementation, the offset is ignored since
 	/// `set_offset` has to be used to define it.
 	fn read(&mut self, _off: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
+		// Validation
 		if !self.can_read() {
 			return Err(errno!(EINVAL));
 		}
-
+		// Get file
 		let mut file = self.file.as_ref().unwrap().lock();
-		if matches!(file.get_content(), FileContent::Directory(_)) {
+		if file.get_type() == FileType::Directory {
 			return Err(errno!(EISDIR));
 		}
-
 		// Update access timestamp
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
 			file.atime = timestamp;
 			file.sync()?; // TODO Lazy
 		}
-
+		// Read
 		let (len, eof) = file.read(self.curr_off, buf)?;
-
 		self.curr_off += len;
 		Ok((len as _, eof))
 	}
@@ -342,20 +325,19 @@ impl IO for OpenFile {
 	/// Note: on this specific implementation, the offset is ignored since
 	/// `set_offset` has to be used to define it.
 	fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<u64> {
+		// Validation
 		if !self.can_write() {
 			return Err(errno!(EINVAL));
 		}
-
+		// Get file
 		let mut file = self.file.as_ref().unwrap().lock();
-		if matches!(file.get_content(), FileContent::Directory(_)) {
+		if file.get_file() == FileType::Directory {
 			return Err(errno!(EISDIR));
 		}
-
 		// Append if enabled
 		if self.flags & O_APPEND != 0 {
 			self.curr_off = file.get_size();
 		}
-
 		// Update access timestamps
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
@@ -363,9 +345,8 @@ impl IO for OpenFile {
 		}
 		file.mtime = timestamp;
 		file.sync()?; // TODO Lazy
-
+			  // Write
 		let len = file.write(self.curr_off, buf)?;
-
 		self.curr_off += len;
 		Ok(len as _)
 	}

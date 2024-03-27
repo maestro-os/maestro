@@ -23,9 +23,7 @@ mod cpio;
 
 use crate::{
 	device, file,
-	file::{
-		path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileContent, FileType,
-	},
+	file::{path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType},
 };
 use cpio::CPIOParser;
 use utils::{

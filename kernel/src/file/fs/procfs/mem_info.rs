@@ -20,10 +20,7 @@
 //! about memory usage of the system.
 
 use crate::{
-	file::{
-		fs::kernfs::{content::KernFSContent, node::KernFSNode},
-		FileContent,
-	},
+	file::fs::kernfs::{content::KernFSContent, node::KernFSNode},
 	memory,
 };
 use core::cmp::min;

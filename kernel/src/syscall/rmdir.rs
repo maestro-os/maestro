@@ -21,7 +21,7 @@
 //! If no link remain to the directory, the function also removes it.
 
 use crate::{
-	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileContent},
+	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;

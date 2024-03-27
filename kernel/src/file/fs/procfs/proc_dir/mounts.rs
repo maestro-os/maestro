@@ -24,7 +24,7 @@ use crate::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode},
 		mountpoint,
 		perm::{Gid, Uid},
-		FileContent, Mode,
+		Mode,
 	},
 	process::{pid::Pid, Process},
 };
