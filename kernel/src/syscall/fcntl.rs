@@ -19,7 +19,7 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
 use crate::{
-	file::{buffer, buffer::pipe::PipeBuffer, fd::NewFDConstraint, FileContent},
+	file::{buffer, buffer::pipe::PipeBuffer, fd::NewFDConstraint, FileType},
 	process::Process,
 };
 use core::ffi::{c_int, c_void};
@@ -150,183 +150,144 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<
 		F_DUPFD => Ok(fds
 			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?
 			.get_id() as _),
-
 		F_GETFD => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			Ok(fd.get_flags())
 		}
-
 		F_SETFD => {
 			let fd = fds.get_fd_mut(fd as _).ok_or_else(|| errno!(EBADF))?;
 			fd.set_flags(arg as _);
 			Ok(0)
 		}
-
 		F_GETFL => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			let open_file_mutex = fd.get_open_file();
 			let open_file = open_file_mutex.lock();
-
 			Ok(open_file.get_flags())
 		}
-
 		F_SETFL => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			let open_file_mutex = fd.get_open_file();
 			let mut open_file = open_file_mutex.lock();
-
 			open_file.set_flags(arg as _);
 			Ok(0)
 		}
-
 		F_GETLK => {
 			// TODO
 			todo!();
 		}
-
 		F_SETLK => {
 			// TODO
 			todo!();
 		}
-
 		F_SETLKW => {
 			// TODO
 			todo!();
 		}
-
 		F_SETOWN => {
 			// TODO
 			todo!();
 		}
-
 		F_GETOWN => {
 			// TODO
 			todo!();
 		}
-
 		F_SETSIG => {
 			// TODO
 			todo!();
 		}
-
 		F_GETSIG => {
 			// TODO
 			todo!();
 		}
-
 		F_GETLK64 => {
 			// TODO
 			todo!();
 		}
-
 		F_SETLK64 => {
 			// TODO
 			todo!();
 		}
-
 		F_SETLKW64 => {
 			// TODO
 			todo!();
 		}
-
 		F_SETOWN_EX => {
 			// TODO
 			todo!();
 		}
-
 		F_GETOWN_EX => {
 			// TODO
 			todo!();
 		}
-
 		F_OFD_GETLK => {
 			// TODO
 			todo!();
 		}
-
 		F_OFD_SETLK => {
 			// TODO
 			todo!();
 		}
-
 		F_OFD_SETLKW => {
 			// TODO
 			todo!();
 		}
-
 		F_SETLEASE => {
 			// TODO
 			todo!();
 		}
-
 		F_GETLEASE => {
 			// TODO
 			todo!();
 		}
-
 		F_NOTIFY => {
 			// TODO
 			todo!();
 		}
-
 		F_DUPFD_CLOEXEC => Ok(fds
 			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), true)?
 			.get_id() as _),
-
 		F_SETPIPE_SZ => {
 			// TODO
 			todo!();
 		}
-
 		F_GETPIPE_SZ => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-
 			let open_file_mutex = fd.get_open_file();
 			let open_file = open_file_mutex.lock();
-
 			let file_mutex = open_file.get_file();
 			let file = file_mutex.lock();
-
 			match file.get_content() {
-				FileContent::Fifo => {
-					let buf = buffer::get_or_default::<PipeBuffer>(file.get_location())?;
-					let cap = buf.lock().get_capacity();
-					Ok(cap as _)
-				}
+				FileType::Fifo => Ok(buffer::get_or_default::<PipeBuffer>(file.get_location())?
+					.lock()
+					.get_capacity() as _),
 				_ => Ok(0),
 			}
 		}
-
 		F_ADD_SEALS => {
 			// TODO
 			todo!();
 		}
-
 		F_GET_SEALS => {
 			// TODO
 			todo!();
 		}
-
 		F_GET_RW_HINT => {
 			// TODO
 			todo!();
 		}
-
 		F_SET_RW_HINT => {
 			// TODO
 			todo!();
 		}
-
 		F_GET_FILE_RW_HINT => {
 			// TODO
 			todo!();
 		}
-
 		F_SET_FILE_RW_HINT => {
 			// TODO
 			todo!();
 		}
-
 		_ => Err(errno!(EINVAL)),
 	}
 }

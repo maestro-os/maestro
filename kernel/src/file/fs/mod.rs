@@ -26,10 +26,7 @@ pub mod procfs;
 pub mod tmp;
 
 use super::{path::PathBuf, File};
-use crate::file::{
-	perm::{Gid, Uid},
-	FileContent, INode, Mode,
-};
+use crate::file::INode;
 use core::{any::Any, fmt::Debug};
 use utils::{
 	collections::{hashmap::HashMap, string::String},
@@ -103,37 +100,28 @@ pub trait Filesystem: Any + Debug {
 	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &[u8])
 		-> EResult<INode>;
 
-	/// Loads the file at inode `inode`.
+	/// Loads the node at inode `inode`.
 	///
 	/// Arguments:
 	/// - `io` is the IO interface.
-	/// - `inode` is the file's inode.
-	/// - `name` is the file's name.
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> EResult<File>;
+	/// - `inode` is the node's ID.
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File>;
 
-	/// Adds a file to the filesystem at inode `inode`.
+	/// Adds a file to the filesystem.
 	///
 	/// Arguments:
 	/// - `io` is the IO interface.
 	/// - `parent_inode` is the parent file's inode.
 	/// - `name` is the name of the file.
-	/// - `uid` is the id of the owner user.
-	/// - `gid` is the id of the owner group.
-	/// - `mode` is the permission of the file.
-	/// - `content` is the content of the file. This value also determines the
-	/// file type.
+	/// - `node` is the node to add.
 	///
-	/// On success, the function returns the newly created file.
-	#[allow(clippy::too_many_arguments)]
+	/// On success, the function returns the updated `node`.
 	fn add_file(
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: String,
-		uid: Uid,
-		gid: Gid,
-		mode: Mode,
-		content: FileContent,
+		name: &[u8],
+		node: File,
 	) -> EResult<File>;
 
 	/// Adds a hard link to the filesystem.
@@ -154,7 +142,7 @@ pub trait Filesystem: Any + Debug {
 		inode: INode,
 	) -> EResult<()>;
 
-	/// Updates the given inode.
+	/// Updates the given node.
 	///
 	/// Arguments:
 	/// - `io` is the IO interface.
@@ -162,14 +150,14 @@ pub trait Filesystem: Any + Debug {
 	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> EResult<()>;
 
 	/// Removes a file from the filesystem. If the links count of the inode
-	/// reaches zero, the inode is also removed.
+	/// reaches zero, the node is also removed.
 	///
 	/// Arguments:
 	/// - `io` is the IO interface.
 	/// - `parent_inode` is the parent file's inode.
 	/// - `name` is the file's name.
 	///
-	/// The function returns the number of hard links left on the inode and the inode's ID.
+	/// The function returns the number of hard links left on the node and the node's ID.
 	fn remove_file(
 		&mut self,
 		io: &mut dyn IO,
@@ -177,14 +165,18 @@ pub trait Filesystem: Any + Debug {
 		name: &[u8],
 	) -> EResult<(u16, INode)>;
 
-	/// Reads from the given inode `inode` into the buffer `buf`.
+	/// Reads from the node with ID `inode` into the buffer `buf`.
 	///
 	/// Arguments:
 	/// - `io` is the IO interface.
 	/// - `inode` is the file's inode.
-	/// - `off` is the offset from which the data will be read from the node.
+	/// - `off` is the offset from which the data will be read from the node's data.
 	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
 	/// number of bytes to read.
+	///
+	/// This function is relevant for the following file types:
+	/// - `Regular`: Reads the content of the file
+	/// - `Link`: Reads the path the link points to
 	///
 	/// The function returns the number of bytes read.
 	fn read_node(
@@ -200,9 +192,13 @@ pub trait Filesystem: Any + Debug {
 	/// Arguments:
 	/// - `io` is the IO interface.
 	/// - `inode` is the file's inode.
-	/// - `off` is the offset at which the data will be written in the node.
+	/// - `off` is the offset at which the data will be written in the node's data.
 	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
 	/// number of bytes to write.
+	///
+	/// This function is relevant for the following file types:
+	/// - `Regular`: Writes the content of the file
+	/// - `Link`: Writes the path the link points to. The path is truncated to `off` before writing
 	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()>;
 }
 
@@ -266,7 +262,7 @@ pub fn detect(io: &mut dyn IO) -> EResult<Arc<dyn FilesystemType>> {
 	Err(errno!(ENODEV))
 }
 
-/// Registers the filesystems that are implemented inside of the kernel itself.
+/// Registers the filesystems that are implemented inside the kernel itself.
 ///
 /// This function must be called only once, at initialization.
 pub fn register_defaults() -> EResult<()> {
@@ -274,6 +270,5 @@ pub fn register_defaults() -> EResult<()> {
 	register(tmp::TmpFsType {})?;
 	register(procfs::ProcFsType {})?;
 	// TODO sysfs
-
 	Ok(())
 }

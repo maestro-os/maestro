@@ -29,7 +29,7 @@ use crate::{
 	file::{
 		fs::kernfs::{content::KernFSContent, node::KernFSNode, KernFS},
 		perm::{Gid, Uid},
-		DirEntry, FileContent, FileType, Mode,
+		DirEntry, FileType, Mode,
 	},
 	process::{oom, pid::Pid, Process},
 };

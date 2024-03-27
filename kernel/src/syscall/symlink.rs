@@ -23,7 +23,6 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
-		FileContent,
 	},
 	limits,
 	process::{mem_space::ptr::SyscallString, Process},

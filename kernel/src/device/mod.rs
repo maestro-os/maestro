@@ -50,7 +50,7 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileContent, Mode,
+		Mode,
 	},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
@@ -102,20 +102,6 @@ impl DeviceID {
 	/// Returns the device number.
 	pub fn get_device_number(&self) -> u64 {
 		id::makedev(self.major, self.minor)
-	}
-
-	/// Returns the file content associated with the current ID.
-	pub fn to_file_content(&self) -> FileContent {
-		match self.type_ {
-			DeviceType::Block => FileContent::BlockDevice {
-				major: self.major,
-				minor: self.minor,
-			},
-			DeviceType::Char => FileContent::CharDevice {
-				major: self.major,
-				minor: self.minor,
-			},
-		}
 	}
 }
 

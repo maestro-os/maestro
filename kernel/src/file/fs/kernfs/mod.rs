@@ -25,7 +25,7 @@ use crate::{
 	file::{
 		fs::{kernfs::node::DummyKernFSNode, Filesystem, Statfs},
 		perm::{Gid, Uid},
-		DirEntry, File, FileContent, FileLocation, FileType, INode, Mode,
+		DirEntry, File, FileLocation, FileType, INode, Mode,
 	},
 	memory,
 	process::oom,

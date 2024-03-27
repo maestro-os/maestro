@@ -36,7 +36,7 @@ use crate::{
 		fs::Statfs,
 		path::PathBuf,
 		perm::{Gid, Uid},
-		DirEntry, File, FileContent, FileType, INode, Mode,
+		DirEntry, File, FileType, INode, Mode,
 	},
 	process,
 	process::{oom, pid::Pid},

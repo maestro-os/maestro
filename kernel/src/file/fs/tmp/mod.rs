@@ -31,7 +31,7 @@ use crate::file::{
 	fs::{kernfs::node::DummyKernFSNode, Statfs},
 	path::PathBuf,
 	perm::{Gid, Uid},
-	File, FileContent, INode, Mode,
+	File, INode, Mode,
 };
 use core::mem::size_of;
 use node::TmpFSRegular;
@@ -177,7 +177,7 @@ impl Filesystem for TmpFS {
 
 			_ => self
 				.fs
-				.add_file(io, parent_inode, name, uid, gid, mode, content),
+				.add_node(io, parent_inode, name, uid, gid, mode, content),
 		}
 	}
 

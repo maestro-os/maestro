@@ -18,10 +18,7 @@
 
 //! The `/proc/version` file returns the version of the kernel.
 
-use crate::file::{
-	fs::kernfs::{content::KernFSContent, node::KernFSNode},
-	FileContent,
-};
+use crate::file::fs::kernfs::{content::KernFSContent, node::KernFSNode};
 use core::cmp::min;
 use utils::{errno, errno::EResult, format, io::IO};
 

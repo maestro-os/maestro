@@ -20,7 +20,7 @@
 
 use crate::file::{
 	fs::kernfs::{content::KernFSContent, node::KernFSNode},
-	FileContent, Mode,
+	Mode,
 };
 use core::cmp::min;
 use utils::{errno, errno::EResult, format, io::IO};

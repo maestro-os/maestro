@@ -55,27 +55,26 @@ use crate::{
 };
 use core::{cmp::max, ffi::c_void};
 use mountpoint::{MountPoint, MountSource};
-use path::Path;
 use perm::AccessProfile;
 use utils::{
-	collections::{hashmap::HashMap, string::String},
+	collections::string::String,
 	errno,
 	errno::EResult,
 	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
-	TryClone,
 };
 
-/// Type representing an inode.
+/// A filesystem node ID.
 ///
 /// An inode is a number representing a node in a filesystem. The kernel doesn't interpret this
-/// value in an ways, but it must fulfill one condition: the value must represent a **unique**
-/// node in the filesystem, and that exact node **must** be accessible using this value. and
+/// value in any ways, but it must fulfill one condition: the value must represent a **unique**
+/// node in the filesystem, and that exact node **must** be accessible using this value.
 pub type INode = u64;
-/// Type representing a file mode, which is a pair of values representing respectively:
-/// - UNIX type (regular, directory, etc...)
-/// - UNIX permissions (read, write, execute, etc...)
+/// A file mode, which is a pair of values representing respectively:
+/// - UNIX permissions (read, write, execute, etc...), represented by the 12 least significant
+///   bits.
+/// - UNIX type (regular, directory, etc...), represented by the remaining bits.
 pub type Mode = u32;
 
 /// File type: socket
@@ -229,84 +228,15 @@ impl FileLocation {
 	}
 }
 
-/// Structure representing a directory entry.
+/// An entry in a directory, independent of the filesystem type.
 #[derive(Clone, Debug)]
 pub struct DirEntry {
 	/// The entry's inode.
 	pub inode: INode,
 	/// The entry's type.
 	pub entry_type: FileType,
-}
-
-/// Enumeration of all possible file contents for each file types.
-#[derive(Debug)]
-pub enum FileContent {
-	/// The file is a regular file.
-	Regular,
-	/// The file is a directory.
-	///
-	/// The hashmap contains the list of entries. The key is the name of the entry and the value
-	/// is the entry itself.
-	Directory(HashMap<String, DirEntry>),
-	/// The file is a link. The data is the link's target.
-	Link(PathBuf),
-	/// The file is a FIFO.
-	Fifo,
-	/// The file is a socket.
-	Socket,
-
-	/// The file is a block device.
-	BlockDevice { major: u32, minor: u32 },
-
-	/// The file is a char device.
-	CharDevice { major: u32, minor: u32 },
-}
-
-impl FileContent {
-	/// Returns the file type associated with the content type.
-	pub fn as_type(&self) -> FileType {
-		match self {
-			Self::Regular => FileType::Regular,
-			Self::Directory(_) => FileType::Directory,
-			Self::Link(_) => FileType::Link,
-			Self::Fifo => FileType::Fifo,
-			Self::Socket => FileType::Socket,
-			Self::BlockDevice {
-				..
-			} => FileType::BlockDevice,
-			Self::CharDevice {
-				..
-			} => FileType::CharDevice,
-		}
-	}
-}
-
-impl TryClone for FileContent {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
-		Ok(match self {
-			Self::Regular => Self::Regular,
-			Self::Directory(entries) => Self::Directory(entries.try_clone()?),
-			Self::Link(path) => Self::Link(path.try_clone()?),
-			Self::Fifo => Self::Fifo,
-			Self::Socket => Self::Socket,
-
-			Self::BlockDevice {
-				major,
-				minor,
-			} => Self::BlockDevice {
-				major: *major,
-				minor: *minor,
-			},
-
-			Self::CharDevice {
-				major,
-				minor,
-			} => Self::CharDevice {
-				major: *major,
-				minor: *minor,
-			},
-		})
-	}
+	/// The name of the entry.
+	pub name: String,
 }
 
 /// Information to remove a file when all its handles are closed.
@@ -318,19 +248,19 @@ pub struct DeferredRemove {
 	pub name: String,
 }
 
-/// Structure representing a file.
+/// A file on a filesystem.
+///
+/// This structure does not store the file's name as it may be different depending on the hard link
+/// used to access it.
 #[derive(Debug)]
 pub struct File {
-	/// The name of the file.
-	name: String,
-	/// The path of the file's parent.
-	parent_path: PathBuf,
-
-	/// The number of hard links associated with the file.
+	/// The location the file is stored on.
+	pub location: FileLocation,
+	/// The number of hard links associated with the node.
 	hard_links_count: u16,
 
 	/// The number of blocks allocated on the disk for the file.
-	pub blocks_count: u64,
+	blocks_count: u64,
 	/// The size of the file in bytes.
 	size: u64,
 
@@ -338,6 +268,8 @@ pub struct File {
 	uid: Uid,
 	/// The ID of the owner group.
 	gid: Gid,
+	/// The type of the file.
+	file_type: FileType,
 	/// The mode of the file.
 	mode: Mode,
 
@@ -348,10 +280,10 @@ pub struct File {
 	/// Timestamp of the last access to the file.
 	pub atime: Timestamp,
 
-	/// The location the file is stored on.
-	location: FileLocation,
-	/// The content of the file.
-	content: FileContent,
+	/// If the file is a device file, this is the major number.
+	pub dev_major: u32,
+	/// If the file is a device file, this is the minor number.
+	pub dev_minor: u32,
 
 	/// If not `None`, the file will be removed when the last handle to it is closed.
 	///
@@ -363,27 +295,19 @@ impl File {
 	/// Creates a new instance.
 	///
 	/// Arguments:
-	/// - `name` is the name of the file.
 	/// - `uid` is the id of the owner user.
 	/// - `gid` is the id of the owner group.
-	/// - `mode` is the permission of the file.
-	/// - `location` is the location of the file.
-	/// - `content` is the content of the file. This value also determines the
-	/// file type.
-	fn new(
-		name: String,
-		uid: Uid,
-		gid: Gid,
-		mode: Mode,
-		location: FileLocation,
-		content: FileContent,
-	) -> EResult<Self> {
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-
-		Ok(Self {
-			name,
-			parent_path: PathBuf::root(),
-
+	/// - `perms` is the permission of the file.
+	/// - `file_type` is the type of the file.
+	///
+	/// The created file has the following data zeroed:
+	/// - The file's location.
+	/// - Size and blocks count
+	/// - All timestamps
+	/// - Device major/minor
+	pub fn new(uid: Uid, gid: Gid, file_type: FileType, perms: Mode) -> Self {
+		Self {
+			location: FileLocation::dummy(),
 			hard_links_count: 1,
 
 			blocks_count: 0,
@@ -391,67 +315,19 @@ impl File {
 
 			uid,
 			gid,
-			mode,
 
-			ctime: timestamp,
-			mtime: timestamp,
-			atime: timestamp,
+			file_type,
+			mode: perms,
 
-			location,
-			content,
+			ctime: 0,
+			mtime: 0,
+			atime: 0,
+
+			dev_major: 0,
+			dev_minor: 0,
 
 			deferred_remove: None,
-		})
-	}
-
-	/// Returns the name of the file.
-	pub fn get_name(&self) -> &String {
-		&self.name
-	}
-
-	/// Returns the absolute path of the file's parent.
-	pub fn get_parent_path(&self) -> &Path {
-		&self.parent_path
-	}
-
-	/// Returns the absolute path of the file.
-	pub fn get_path(&self) -> EResult<PathBuf> {
-		let mut parent_path = self.parent_path.try_clone()?;
-		if !self.name.is_empty() {
-			parent_path = parent_path.join(Path::new(&self.name)?)?;
 		}
-		Ok(parent_path)
-	}
-
-	/// Sets the file's parent path.
-	///
-	/// If the path isn't absolute, the behaviour is undefined.
-	pub fn set_parent_path(&mut self, parent_path: PathBuf) {
-		self.parent_path = parent_path;
-	}
-
-	/// Returns the file's mode.
-	pub fn get_mode(&self) -> Mode {
-		self.mode | self.content.as_type().to_mode()
-	}
-
-	/// Returns the permissions of the file.
-	pub fn get_permissions(&self) -> Mode {
-		self.mode & 0o7777
-	}
-
-	/// Sets the permissions of the file.
-	pub fn set_permissions(&mut self, mode: Mode) {
-		self.mode = mode & 0o7777;
-
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-		self.ctime = timestamp;
-	}
-
-	/// Returns an immutable reference to the location at which the file is
-	/// stored.
-	pub fn get_location(&self) -> &FileLocation {
-		&self.location
 	}
 
 	/// Returns the mountpoint located at this file, if any.
@@ -469,10 +345,9 @@ impl File {
 		self.hard_links_count
 	}
 
-	/// Sets the number of hard links.
+	/// Sets the number of hard links, updating `ctime` with the current timestamp.
 	pub fn set_hard_links_count(&mut self, count: u16) {
 		self.hard_links_count = count;
-
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		self.ctime = timestamp;
 	}
@@ -487,10 +362,9 @@ impl File {
 		self.uid
 	}
 
-	/// Sets the owner user ID.
+	/// Sets the owner user ID, updating `ctime` with the current timestamp.
 	pub fn set_uid(&mut self, uid: Uid) {
 		self.uid = uid;
-
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		self.ctime = timestamp;
 	}
@@ -500,68 +374,33 @@ impl File {
 		self.gid
 	}
 
-	/// Sets the owner group ID.
+	/// Sets the owner group ID, updating `ctime` with the current timestamp.
 	pub fn set_gid(&mut self, gid: Gid) {
 		self.gid = gid;
-
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		self.ctime = timestamp;
 	}
 
-	/// Tells whether the directory is empty or not.
-	///
-	/// If the current file isn't a directory, the function returns an error.
-	pub fn is_empty_directory(&self) -> EResult<bool> {
-		if let FileContent::Directory(entries) = &self.content {
-			Ok(entries.is_empty())
-		} else {
-			Err(errno!(ENOTDIR))
-		}
-	}
-
-	/// Adds the directory entry `entry` to the current directory's entries.
-	///
-	/// Arguments:
-	/// - `name` is the name of the entry.
-	///
-	/// If the current file isn't a directory, the function returns an error.
-	pub fn add_entry(&mut self, name: String, entry: DirEntry) -> EResult<()> {
-		if let FileContent::Directory(entries) = &mut self.content {
-			entries.insert(name, entry)?;
-			Ok(())
-		} else {
-			Err(errno!(ENOTDIR))
-		}
-	}
-
-	/// Removes the file with name `name` from the current file's entries.
-	///
-	/// If the current file isn't a directory, the function returns an error.
-	pub fn remove_entry(&mut self, name: &String) -> EResult<()> {
-		if let FileContent::Directory(entries) = &mut self.content {
-			entries.remove(name);
-			Ok(())
-		} else {
-			Err(errno!(ENOTDIR))
-		}
-	}
-
-	/// Creates a directory entry corresponding to the current file.
-	pub fn as_dir_entry(&self) -> DirEntry {
-		DirEntry {
-			inode: self.location.get_inode(),
-			entry_type: self.get_type(),
-		}
-	}
-
-	/// Returns the file's content.
-	pub fn get_content(&self) -> &FileContent {
-		&self.content
-	}
-
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> FileType {
-		self.content.as_type()
+		self.file_type
+	}
+
+	/// Returns the file's mode.
+	pub fn get_mode(&self) -> Mode {
+		self.mode | self.file_type.to_mode()
+	}
+
+	/// Returns the permissions of the file.
+	pub fn get_permissions(&self) -> Mode {
+		self.mode & 0o7777
+	}
+
+	/// Sets the permissions of the file, updating `ctime` with the current timestamp.
+	pub fn set_permissions(&mut self, mode: Mode) {
+		self.mode = mode & 0o7777;
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
+		self.ctime = timestamp;
 	}
 
 	/// Performs an ioctl operation on the file.
@@ -576,51 +415,37 @@ impl File {
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> EResult<u32> {
-		match &self.content {
-			FileContent::Fifo => {
+		match self.file_type {
+			FileType::Fifo => {
 				let buff_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
 				let mut buff = buff_mutex.lock();
-
 				buff.ioctl(mem_space, request, argp)
 			}
-
-			FileContent::Socket => {
+			FileType::Socket => {
 				let buff_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
 				let mut buff = buff_mutex.lock();
-
 				buff.ioctl(mem_space, request, argp)
 			}
-
-			FileContent::BlockDevice {
-				major,
-				minor,
-			} => {
+			FileType::BlockDevice => {
 				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Block,
-					major: *major,
-					minor: *minor,
+					major: self.dev_major,
+					minor: self.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
-
 				let mut dev = dev_mutex.lock();
 				dev.get_handle().ioctl(mem_space, request, argp)
 			}
-
-			FileContent::CharDevice {
-				major,
-				minor,
-			} => {
+			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
 					type_: DeviceType::Char,
-					major: *major,
-					minor: *minor,
+					major: self.dev_major,
+					minor: self.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
-
 				let mut dev = dev_mutex.lock();
 				dev.get_handle().ioctl(mem_space, request, argp)
 			}
-
 			_ => Err(errno!(ENOTTY)),
 		}
 	}
@@ -629,19 +454,19 @@ impl File {
 	///
 	/// If no device is associated with the file, the function does nothing.
 	pub fn sync(&self) -> EResult<()> {
-		if let Some(mountpoint_mutex) = self.location.get_mountpoint() {
-			let mountpoint = mountpoint_mutex.lock();
-
-			let io_mutex = mountpoint.get_source().get_io()?;
-			let mut io = io_mutex.lock();
-
-			let fs_mutex = mountpoint.get_filesystem();
-			let mut fs = fs_mutex.lock();
-
-			fs.update_inode(&mut *io, self)
-		} else {
-			Ok(())
-		}
+		// Get mountpoint
+		let Some(mountpoint_mutex) = self.location.get_mountpoint() else {
+			return Ok(());
+		};
+		let mountpoint = mountpoint_mutex.lock();
+		// Get I/O interface
+		let io_mutex = mountpoint.get_source().get_io()?;
+		let mut io = io_mutex.lock();
+		// Get filesystem
+		let fs_mutex = mountpoint.get_filesystem();
+		let mut fs = fs_mutex.lock();
+		// Update
+		fs.update_inode(&mut *io, self)
 	}
 
 	/// Wrapper for I/O operations on files.
@@ -656,8 +481,8 @@ impl File {
 			Option<(Arc<Mutex<dyn Filesystem>>, INode)>,
 		) -> EResult<R>,
 	{
-		match &self.content {
-			FileContent::Regular => match self.location {
+		match self.file_type {
+			FileType::Regular => match self.location {
 				FileLocation::Filesystem {
 					inode, ..
 				} => {
@@ -665,16 +490,12 @@ impl File {
 						let mountpoint_mutex =
 							self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 						let mountpoint = mountpoint_mutex.lock();
-
 						let io = mountpoint.get_source().get_io()?;
 						let fs = mountpoint.get_filesystem();
-
 						(io, fs)
 					};
-
 					f(Some(io), Some((fs, inode)))
 				}
-
 				FileLocation::Virtual {
 					..
 				} => {
@@ -682,46 +503,32 @@ impl File {
 					f(io, None)
 				}
 			},
-
-			FileContent::Directory(_) => Err(errno!(EISDIR)),
-
-			FileContent::Link(_) => Err(errno!(EINVAL)),
-
-			FileContent::Fifo => {
+			FileType::Directory => Err(errno!(EISDIR)),
+			FileType::Link => Err(errno!(EINVAL)),
+			FileType::Fifo => {
 				let io = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
 				f(Some(io as _), None)
 			}
-
-			FileContent::Socket => {
+			FileType::Socket => {
 				let io = buffer::get_or_default::<Socket>(self.get_location())?;
 				f(Some(io as _), None)
 			}
-
-			FileContent::BlockDevice {
-				major,
-				minor,
-			} => {
+			FileType::BlockDevice => {
 				let io = device::get(&DeviceID {
 					type_: DeviceType::Block,
-					major: *major,
-					minor: *minor,
+					major: self.dev_major,
+					minor: self.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
-
 				f(Some(io as _), None)
 			}
-
-			FileContent::CharDevice {
-				major,
-				minor,
-			} => {
+			FileType::CharDevice => {
 				let io = device::get(&DeviceID {
 					type_: DeviceType::Char,
-					major: *major,
-					minor: *minor,
+					major: self.dev_major,
+					minor: self.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
-
 				f(Some(io as _), None)
 			}
 		}
@@ -755,7 +562,7 @@ impl AccessProfile {
 		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
 			return true;
 		}
-
+		// Check permissions
 		if file.mode & perm::S_IRUSR != 0 && file.uid == uid {
 			return true;
 		}
@@ -796,7 +603,7 @@ impl AccessProfile {
 		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
 			return true;
 		}
-
+		// Check permissions
 		if file.mode & perm::S_IWUSR != 0 && file.uid == uid {
 			return true;
 		}
@@ -832,12 +639,11 @@ impl AccessProfile {
 
 	fn check_execute_access_impl(uid: Uid, gid: Gid, file: &File) -> bool {
 		// If root, bypass checks (unless the file is a regular file)
-		if !matches!(file.content, FileContent::Regular)
-			&& (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
+		if file.file_type != FileType::Regular && (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
 		{
 			return true;
 		}
-
+		// Check permissions
 		if file.mode & perm::S_IXUSR != 0 && file.uid == uid {
 			return true;
 		}
@@ -889,7 +695,6 @@ impl IO for File {
 				return Ok((0, true));
 			};
 			let mut io = io_mutex.lock();
-
 			if let Some((fs_mutex, inode)) = fs {
 				let mut fs = fs_mutex.lock();
 				let len = fs.read_node(&mut *io, inode, off, buff)?;
@@ -907,7 +712,6 @@ impl IO for File {
 				return Ok(0);
 			};
 			let mut io = io_mutex.lock();
-
 			if let Some((fs_mutex, inode)) = fs {
 				let mut fs = fs_mutex.lock();
 				fs.write_node(&mut *io, inode, off, buff)?;
@@ -926,7 +730,6 @@ impl IO for File {
 			let Some(io_mutex) = io else {
 				return Ok(0);
 			};
-
 			let mut io = io_mutex.lock();
 			io.poll(mask)
 		})
@@ -938,7 +741,6 @@ impl IO for File {
 /// `root` is the set of major and minor numbers of the root device. If `None`, a tmpfs is used.
 pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 	fs::register_defaults()?;
-
 	// Create the root mountpoint
 	let mount_source = match root {
 		Some((major, minor)) => MountSource::Device {
@@ -955,7 +757,6 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 		PathBuf::root(),
 		FileLocation::dummy(),
 	)?;
-
 	Ok(())
 }
 

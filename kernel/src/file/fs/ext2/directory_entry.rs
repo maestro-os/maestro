@@ -59,9 +59,9 @@ const TYPE_INDICATOR_SYMLINK: u8 = 7;
 #[repr(C, packed)]
 pub struct DirectoryEntry {
 	/// The inode associated with the entry.
-	inode: u32,
+	pub(super) inode: u32,
 	/// The total size of the entry.
-	total_size: u16,
+	pub(super) total_size: u16,
 	/// Name length least-significant bits.
 	name_length_lo: u8,
 	/// Name length most-significant bits or type indicator (if enabled).
@@ -122,23 +122,6 @@ impl DirectoryEntry {
 		Ok(Box::from_raw(
 			alloc_slice as *mut [u8] as *mut [()] as *mut Self,
 		))
-	}
-
-	/// Returns the entry's inode.
-	pub fn get_inode(&self) -> u32 {
-		self.inode
-	}
-
-	/// Sets the entry's inode.
-	///
-	/// If `inode` is zero, the entry is set free.
-	pub fn set_inode(&mut self, inode: u32) {
-		self.inode = inode;
-	}
-
-	/// Returns the total size of the entry.
-	pub fn get_total_size(&self) -> u16 {
-		self.total_size
 	}
 
 	/// Returns the length the entry's name.

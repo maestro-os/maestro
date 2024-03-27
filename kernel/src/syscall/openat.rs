@@ -26,7 +26,7 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileContent, Mode,
+		File, Mode,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 	syscall::util::at,

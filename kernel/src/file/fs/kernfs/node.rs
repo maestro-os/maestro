@@ -23,7 +23,7 @@ use crate::{
 	file::{
 		perm,
 		perm::{Gid, Uid},
-		FileContent, Mode,
+		Mode,
 	},
 	time::{
 		clock,

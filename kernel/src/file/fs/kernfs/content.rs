@@ -23,7 +23,6 @@
 //! On the fly generation is useful in special cases. For example, when the content changes
 //! depending on the process calling the kernfs.
 
-use crate::file::FileContent;
 use core::{
 	borrow::{Borrow, BorrowMut},
 	ops::{Deref, DerefMut},

@@ -22,7 +22,7 @@ use crate::{
 	file::{
 		fs::{kernfs::content::KernFSContent, tmp::KernFSNode},
 		perm::{Gid, Uid},
-		FileContent, Mode,
+		Mode,
 	},
 	time::{
 		clock,

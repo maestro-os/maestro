@@ -1033,7 +1033,7 @@ impl Ext2INode {
 		}
 	}
 
-	/// Returns the directory entry with the given name `name`.
+	/// Returns the directory entry with the given name `name`, along with the offset of the entry.
 	///
 	/// Arguments:
 	/// - `name` is the name of the entry.

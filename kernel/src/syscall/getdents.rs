@@ -20,7 +20,7 @@
 //! directory.
 
 use crate::{
-	file::{FileContent, FileType, INode},
+	file::{FileType, INode},
 	process::{mem_space::ptr::SyscallSlice, Process},
 };
 use core::{

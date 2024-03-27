@@ -28,7 +28,7 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileContent, FileType, Mode,
+		File, FileType, Mode,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 };
