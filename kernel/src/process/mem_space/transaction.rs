@@ -31,7 +31,7 @@ use utils::{
 ///
 /// If the complement does not correspond to `on`, the function might panic.
 #[cold]
-pub fn rollback<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, complement: HashMap<K, Option<V>>) {
+fn rollback<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, complement: HashMap<K, Option<V>>) {
 	for (key, value) in complement {
 		rollback_impl(on, key, value);
 	}
@@ -52,10 +52,10 @@ fn rollback_impl<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, key: K, value: Optio
 
 /// Insert an element in the [`BTreeMap`] `on`, together with rollback data.
 ///
-/// `complement` is the complement used for rollback. The function inserts an element
+/// `complement` is the complement used for rollback.
 ///
-/// The `discard` list is also updated to avoid discarding an element that would be restored by the
-/// complement.
+/// The `discard` list is also updated to avoid discarding an element that is being replaced by the
+/// insertion.
 fn insert<K: Clone + Ord + Hash, V>(
 	key: K,
 	value: V,
@@ -127,7 +127,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 
 	/// Inserts the given gap into the state.
 	///
-	/// On failure, the transaction is dropped and rollbacked.
+	/// On failure, the transaction is dropped and rolled back.
 	pub fn insert_gap(&mut self, gap: MemGap) -> AllocResult<()> {
 		insert(
 			gap.get_begin(),
@@ -141,7 +141,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 
 	/// Removes the gap beginning at the given address from the state.
 	///
-	/// On failure, the transaction is dropped and rollbacked.
+	/// On failure, the transaction is dropped and rolled back.
 	pub fn remove_gap(&mut self, gap_begin: *const c_void) -> AllocResult<()> {
 		if let Some(gap) = self.mem_space_state.gaps.get(&gap_begin) {
 			self.gaps_discard.insert(gap.get_begin(), ())?;
@@ -151,7 +151,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 
 	/// Inserts the given mapping into the state.
 	///
-	/// On failure, the transaction is dropped and rollbacked.
+	/// On failure, the transaction is dropped and rolled back.
 	pub fn insert_mapping(&mut self, mut mapping: MemMapping) -> AllocResult<()> {
 		let size = mapping.get_size().get();
 		mapping.apply_to(&mut self.vmem_transaction)?;
@@ -168,7 +168,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 
 	/// Removes the mapping beginning at the given address from the state.
 	///
-	/// On failure, the transaction is dropped and rollbacked.
+	/// On failure, the transaction is dropped and rolled back.
 	pub fn remove_mapping(&mut self, mapping_begin: *const c_void) -> AllocResult<()> {
 		if let Some(mapping) = self.mem_space_state.mappings.get(&mapping_begin) {
 			self.mappings_discard.insert(mapping_begin, ())?;
