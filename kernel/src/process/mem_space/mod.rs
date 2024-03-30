@@ -270,7 +270,6 @@ impl MemSpace {
 		let mut transaction = MemSpaceTransaction::new(&mut s.state, &mut s.vmem);
 		transaction.insert_gap(gap)?;
 		transaction.commit();
-		drop(transaction);
 		Ok(s)
 	}
 

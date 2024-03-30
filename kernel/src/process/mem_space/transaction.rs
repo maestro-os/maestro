@@ -30,7 +30,6 @@ use utils::{
 /// Applies the difference in `complement` to rollback operations.
 ///
 /// If the complement does not correspond to `on`, the function might panic.
-#[cold]
 fn rollback<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, complement: HashMap<K, Option<V>>) {
 	for (key, value) in complement {
 		rollback_impl(on, key, value);
@@ -179,7 +178,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	}
 
 	/// Commits the transaction.
-	pub fn commit(&mut self) {
+	pub fn commit(mut self) {
 		// Cancel rollback
 		self.gaps_complement.clear();
 		self.mappings_complement.clear();
