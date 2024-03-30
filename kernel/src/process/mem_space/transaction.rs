@@ -20,7 +20,7 @@
 
 use super::{gap::MemGap, mapping::MemMapping, MemSpaceState};
 use crate::memory::vmem::{VMem, VMemTransaction};
-use core::{alloc::AllocError, ffi::c_void, hash::Hash, mem, num::NonZeroUsize};
+use core::{alloc::AllocError, ffi::c_void, hash::Hash, mem};
 use utils::{
 	collections::{btreemap::BTreeMap, hashmap::HashMap},
 	errno,
@@ -39,15 +39,11 @@ fn rollback<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, complement: HashMap<K, Op
 
 #[cold]
 fn rollback_impl<K: Ord + Hash, V>(on: &mut BTreeMap<K, V>, key: K, value: Option<V>) {
-	match value {
+	let _ = match value {
 		// Insertion cannot fail since `on` is guaranteed to already contain the key
-		Some(value) => {
-			on.insert(key, value).unwrap();
-		}
-		None => {
-			on.remove(&key);
-		}
-	}
+		Some(value) => on.insert(key, value).unwrap(),
+		None => on.remove(&key),
+	};
 }
 
 /// Insert an element in the [`BTreeMap`] `on`, together with rollback data.
@@ -92,8 +88,6 @@ pub(super) struct MemSpaceTransaction<'m, 'v> {
 
 	/// The complement used to restore `gaps` on rollback.
 	gaps_complement: HashMap<*const c_void, Option<MemGap>>,
-	/// The complement used to restore `gaps_size` on rollback.
-	gaps_size_complement: HashMap<(NonZeroUsize, *const c_void), Option<()>>,
 	/// The complement used to restore `mappings` on rollback.
 	mappings_complement: HashMap<*const c_void, Option<MemMapping>>,
 
@@ -115,7 +109,6 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 			vmem_transaction: vmem.transaction(),
 
 			gaps_complement: Default::default(),
-			gaps_size_complement: Default::default(),
 			mappings_complement: Default::default(),
 
 			gaps_discard: Default::default(),
@@ -189,7 +182,6 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	pub fn commit(&mut self) {
 		// Cancel rollback
 		self.gaps_complement.clear();
-		self.gaps_size_complement.clear();
 		self.mappings_complement.clear();
 		// Discard gaps
 		for (ptr, _) in self.gaps_discard.iter() {
