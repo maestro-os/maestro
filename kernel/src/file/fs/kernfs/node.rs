@@ -92,21 +92,39 @@ pub trait KernFSNode: Any + Debug + IO {
 
 	/// Returns the directory entry with the given `name`.
 	///
+	/// The second returned value is the offset to the next entry.
+	///
 	/// If entry does not exist, the function return `None`.
 	///
 	/// If the node is not a directory, the function does nothing.
-	fn entry_by_name<'n>(&self, _name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
+	fn entry_by_name<'n>(&self, _name: &'n [u8]) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		Ok(None)
 	}
 	/// Returns the directory entry at the given offset `off`. The first entry is always located at
 	/// offset `0`.
 	///
+	/// The second returned value is the offset to the next entry.
+	///
 	/// If not entry is left, the function return `None`.
 	///
 	/// If the node is not a directory, the function return `None`.
-	fn next_entry(&self, _off: u64) -> EResult<Option<DirEntry<'static>>> {
+	fn next_entry(&self, _off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		Ok(None)
 	}
+	/// If the current node is a directory, tells whether it is empty.
+	///
+	/// If the node is not a directory, the function return `true`.
+	fn is_directory_empty(&self) -> EResult<bool> {
+		let mut prev = 0;
+		while let Some((entry, off)) = self.next_entry(prev)? {
+			if entry.name != b"." && entry.name != b".." {
+				return Ok(false);
+			}
+			prev = off;
+		}
+		Ok(true)
+	}
+
 	/// Adds the `entry` to the directory.
 	///
 	/// It is the caller's responsibility to ensure there is no two entry with the same name.

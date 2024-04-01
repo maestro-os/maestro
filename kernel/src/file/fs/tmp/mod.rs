@@ -171,7 +171,7 @@ impl Filesystem for TmpFS {
 		match content {
 			FileContent::Regular => {
 				let node = TmpFSRegular::new(mode, uid, gid);
-				self.fs.add_file_inner(parent_inode, node, name)
+				self.fs.add_file_impl(parent_inode, node, name)
 			}
 
 			_ => self
