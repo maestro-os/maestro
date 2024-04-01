@@ -77,7 +77,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 	let new_name = new_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 
 	// If source and destination are on different mountpoints, error
-	if new_parent.get_location().get_mountpoint_id() != old.get_location().get_mountpoint_id() {
+	if new_parent.location.get_mountpoint_id() != old.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
 

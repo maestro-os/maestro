@@ -67,7 +67,6 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mut
 			name,
 		} => {
 			let mut parent = parent.lock();
-			let name = name.try_into()?;
 			vfs::create_file(
 				&mut parent,
 				name,

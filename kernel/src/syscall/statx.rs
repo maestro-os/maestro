@@ -142,7 +142,7 @@ pub fn statx(
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
 	let (stx_dev_major, stx_dev_minor) = {
-		if let Some(mountpoint_mutex) = file.get_location().get_mountpoint() {
+		if let Some(mountpoint_mutex) = file.location.get_mountpoint() {
 			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using
 			// the mountpoint and locking vfs requires disabling interrupts
 			crate::idt::wrap_disable_interrupts(|| {
@@ -160,7 +160,7 @@ pub fn statx(
 			(0, 0)
 		}
 	};
-	let inode = file.get_location().get_inode();
+	let inode = file.location.get_inode();
 	// Fill the structure
 	let statx_val = Statx {
 		stx_mask: !0,      // TODO

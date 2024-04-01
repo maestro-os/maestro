@@ -27,7 +27,7 @@ use crate::{
 	time::unit::Timestamp,
 };
 use core::{any::Any, fmt::Debug};
-use utils::{errno::EResult, io::IO};
+use utils::{errno, errno::EResult, io::IO};
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: Any + Debug + IO {
@@ -117,7 +117,7 @@ pub trait KernFSNode: Any + Debug + IO {
 	fn is_directory_empty(&self) -> EResult<bool> {
 		let mut prev = 0;
 		while let Some((entry, off)) = self.next_entry(prev)? {
-			if entry.name != b"." && entry.name != b".." {
+			if entry.name.as_ref() != b"." && entry.name.as_ref() != b".." {
 				return Ok(false);
 			}
 			prev = off;
@@ -131,7 +131,7 @@ pub trait KernFSNode: Any + Debug + IO {
 	///
 	/// If the node is not a directory, the function does nothing.
 	fn add_entry(&mut self, _entry: DirEntry<'_>) -> EResult<()> {
-		Ok(())
+		Err(errno!(EPERM))
 	}
 	/// Removes the directory entry at the given offset `off`.
 	///
@@ -139,9 +139,7 @@ pub trait KernFSNode: Any + Debug + IO {
 	fn remove_entry(&mut self, _off: u64) {}
 }
 
-/// A dummy kernfs node (with the default behaviour).
-///
-/// This node does not implement regular files' content handling.
+/// A dummy kernfs node (with the default behaviour for each file type).
 ///
 /// Calling `read` or `write` on this structure does nothing.
 #[derive(Debug)]

@@ -99,5 +99,3 @@ impl<'a, B: 'a + ?Sized + TryToOwned + fmt::Debug> fmt::Debug for Cow<'a, B> {
 		fmt::Debug::fmt(self.as_ref(), f)
 	}
 }
-
-// TODO Implement comparison and arithmetic

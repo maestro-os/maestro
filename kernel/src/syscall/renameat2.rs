@@ -101,7 +101,7 @@ pub fn renameat2(
 	let new_parent = new_parent.lock();
 
 	// If source and destination are on different mountpoints, error
-	if new_parent.get_location().get_mountpoint_id() != old.get_location().get_mountpoint_id() {
+	if new_parent.location.get_mountpoint_id() != old.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
 

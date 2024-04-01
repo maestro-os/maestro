@@ -51,7 +51,7 @@ pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, 
 
 	let file = file_mutex.lock();
 
-	let mountpoint_mutex = file.get_location().get_mountpoint().unwrap();
+	let mountpoint_mutex = file.location.get_mountpoint().unwrap();
 	let mountpoint = mountpoint_mutex.lock();
 
 	let io_mutex = mountpoint.get_source().get_io()?;

@@ -42,7 +42,7 @@ use stat::Stat;
 use status::Status;
 use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult, io::IO};
 
-/// Structure representing the directory of a process.
+/// The directory of a process.
 #[derive(Debug)]
 pub struct ProcDir {
 	/// The PID of the process.

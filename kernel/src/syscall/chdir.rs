@@ -54,7 +54,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 			return Err(errno!(EACCES));
 		}
 
-		dir.get_location().clone()
+		dir.location.clone()
 	};
 
 	// Set new cwd

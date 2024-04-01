@@ -114,7 +114,7 @@ impl OpenFile {
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
 	pub fn new(file: Arc<Mutex<File>>, flags: i32) -> EResult<Self> {
-		let location = file.lock().get_location().clone();
+		let location = file.lock().location.clone();
 		let s = Self {
 			file: Some(file),
 			location: location.clone(),
@@ -331,7 +331,7 @@ impl IO for OpenFile {
 		}
 		// Get file
 		let mut file = self.file.as_ref().unwrap().lock();
-		if file.get_file() == FileType::Directory {
+		if file.get_type() == FileType::Directory {
 			return Err(errno!(EISDIR));
 		}
 		// Append if enabled

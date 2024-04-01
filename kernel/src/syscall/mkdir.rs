@@ -59,7 +59,7 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		// Create the directory
 		vfs::create_file(
 			&mut parent,
-			name.try_into()?,
+			name,
 			&rs.access_profile,
 			mode,
 			FileContent::Directory(HashMap::new()),

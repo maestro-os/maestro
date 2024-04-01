@@ -775,7 +775,7 @@ impl Filesystem for Ext2Fs {
 		let Some((_, entry)) = parent.get_dirent(name, &self.superblock, io)? else {
 			return Err(errno!(ENOENT));
 		};
-		Ok(entry.get_inode() as _)
+		Ok(entry.inode as _)
 	}
 
 	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
@@ -790,7 +790,7 @@ impl Filesystem for Ext2Fs {
 			inode_.gid,
 			file_type,
 			inode_.get_permissions(),
-		)?;
+		);
 		file.set_hard_links_count(inode_.hard_links_count as _);
 		file.blocks_count = inode_.used_sectors as _;
 		file.set_size(inode_.get_size(&self.superblock));
@@ -928,18 +928,15 @@ impl Filesystem for Ext2Fs {
 				// Removing previous dirent
 				let old_parent_entry = inode_.get_dirent(b"..", &self.superblock, io)?;
 				if let Some((_, old_parent_entry)) = old_parent_entry {
-					let old_parent_inode = old_parent_entry.get_inode();
 					let mut old_parent =
-						Ext2INode::read(old_parent_inode as _, &self.superblock, io)?;
+						Ext2INode::read(old_parent_entry.inode as _, &self.superblock, io)?;
 					// TODO Write a function to remove by inode instead of name
 					if let Some(iter) = old_parent.iter_dirent(&self.superblock, io)? {
 						for res in iter {
 							let (_, e) = res?;
-
-							if e.get_inode() == inode as _ {
+							if e.inode == inode as _ {
 								let ent_name = e.get_name(&self.superblock);
 								old_parent.remove_dirent(&mut self.superblock, io, ent_name)?;
-
 								break;
 							}
 						}
@@ -948,7 +945,7 @@ impl Filesystem for Ext2Fs {
 
 				// Updating the `..` entry
 				if let Some((off, mut entry)) = inode_.get_dirent(b"..", &self.superblock, io)? {
-					entry.set_inode(parent_inode as _);
+					entry.inode = parent_inode as _;
 					inode_.write_dirent(&mut self.superblock, io, &entry, off)?;
 				}
 			}
@@ -979,7 +976,7 @@ impl Filesystem for Ext2Fs {
 		}
 
 		// The inode number
-		let inode = file.get_location().get_inode();
+		let inode = file.location.get_inode();
 		// The inode
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 
@@ -1026,7 +1023,7 @@ impl Filesystem for Ext2Fs {
 			.get_dirent(name, &self.superblock, io)?
 			.map(|(_, ent)| ent)
 			.ok_or_else(|| errno!(ENOENT))?
-			.get_inode();
+			.inode;
 		// The inode
 		let mut inode_ = Ext2INode::read(inode, &self.superblock, io)?;
 

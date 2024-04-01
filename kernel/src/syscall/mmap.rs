@@ -147,7 +147,7 @@ pub fn do_mmap(
 			}
 
 			MapResidence::File {
-				location: file.get_location().clone(),
+				location: file.location.clone(),
 				off: offset,
 			}
 		}

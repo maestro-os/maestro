@@ -51,7 +51,7 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 		let file = file_mutex.lock();
 
 		// Unwrapping will not fail since the file is accessed from path
-		let mountpoint_mutex = file.get_location().get_mountpoint().unwrap();
+		let mountpoint_mutex = file.location.get_mountpoint().unwrap();
 		let mountpoint = mountpoint_mutex.lock();
 
 		let io_mutex = mountpoint.get_source().get_io()?;

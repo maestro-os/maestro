@@ -48,7 +48,7 @@ pub fn umount(target: SyscallString) -> Result<i32, Errno> {
 	let target_dir = target_dir.lock();
 
 	// Remove mountpoint
-	mountpoint::remove(target_dir.get_location())?;
+	mountpoint::remove(&target_dir.location)?;
 
 	Ok(0)
 }

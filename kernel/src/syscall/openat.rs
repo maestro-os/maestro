@@ -74,7 +74,6 @@ fn get_file(
 			name,
 		} if create => {
 			let mut parent = parent.lock();
-			let name = name.try_into()?;
 			vfs::create_file(
 				&mut parent,
 				name,

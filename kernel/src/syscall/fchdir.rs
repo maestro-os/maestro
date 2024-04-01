@@ -58,7 +58,7 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 			return Err(errno!(EACCES));
 		}
 
-		(file.get_path()?.to_path_buf()?, file.get_location().clone())
+		(file.get_path()?.to_path_buf()?, file.location.clone())
 	};
 
 	let proc_mutex = Process::current_assert();

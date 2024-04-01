@@ -71,7 +71,6 @@ pub fn symlinkat(
 			name,
 		} => {
 			let mut parent = parent.lock();
-			let name = name.try_into()?;
 			vfs::create_file(&mut parent, name, &rs.access_profile, 0, file_content)?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),

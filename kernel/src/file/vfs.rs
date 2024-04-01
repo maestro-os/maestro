@@ -34,7 +34,7 @@ use super::{
 };
 use crate::{limits, process::Process};
 use core::{intrinsics::unlikely, ptr::NonNull};
-use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc, TryClone};
+use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
 
 // TODO implement and use cache
 
@@ -98,7 +98,7 @@ pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File
 				0, // TODO
 				FileType::Fifo,
 				0o666,
-			)?))?;
+			)))?;
 			Ok(file)
 		}
 	}
@@ -372,14 +372,11 @@ pub fn create_file(
 	} else {
 		ap.get_egid()
 	};
-	let mut file = op(&parent.location, true, |mp, io, fs| {
+	let file = op(&parent.location, true, |mp, io, fs| {
 		let mut n = fs.add_file(&mut *io, parent_inode, name, file)?;
 		update_location(&mut n, mp);
 		Ok(n)
 	})?;
-	// Add the file to the parent's entries
-	file.set_parent_path(parent.get_path()?);
-	parent.add_entry(file.get_name().try_clone()?, file.as_dir_entry())?;
 	Ok(Arc::new(Mutex::new(file))?)
 }
 
@@ -484,7 +481,7 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 	}
 	op(parent.get_location(), true, |mp, io, fs| {
 		// Get the file
-		let mut file = fs.load_file(&mut *io, parent.location.get_inode(), name)?;
+		let mut file = fs.load_file(&mut *io, parent.location.get_inode())?;
 		// Check permission
 		let has_sticky_bit = parent.mode & S_ISVTX != 0;
 		if has_sticky_bit && ap.get_euid() != file.get_uid() && ap.get_euid() != parent.get_uid() {

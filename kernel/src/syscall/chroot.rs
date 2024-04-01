@@ -56,7 +56,7 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 		return Err(errno!(ENOTDIR));
 	}
 
-	proc.chroot = file.get_location().clone();
+	proc.chroot = file.location.clone();
 
 	Ok(0)
 }

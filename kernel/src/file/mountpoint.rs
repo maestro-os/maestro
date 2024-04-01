@@ -100,7 +100,7 @@ impl MountSource {
 		match result {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();
-				match file.get_content() {
+				match file.get_type() {
 					FileType::BlockDevice => Ok(Self::Device {
 						dev_type: DeviceType::Block,
 						major: file.dev_major,

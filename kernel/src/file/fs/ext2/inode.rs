@@ -972,7 +972,7 @@ impl Ext2INode {
 		self.read_content(off as _, &mut buff, superblock, io)?;
 		let entry = unsafe { DirectoryEntry::from(&buff)? };
 
-		let mut buff = vec![0; entry.get_total_size() as _]?;
+		let mut buff = vec![0; entry.total_size as _]?;
 		self.read_content(off as _, buff.as_mut_slice(), superblock, io)?;
 
 		Ok(unsafe { DirectoryEntry::from(buff.as_slice()) }?)
@@ -994,7 +994,7 @@ impl Ext2INode {
 		off: u64,
 	) -> EResult<()> {
 		let buff = unsafe {
-			slice::from_raw_parts(entry as *const _ as *const u8, entry.get_total_size() as _)
+			slice::from_raw_parts(entry as *const _ as *const u8, entry.total_size as _)
 		};
 
 		self.write_content(off, buff, superblock, io)?;
@@ -1140,14 +1140,14 @@ impl Ext2INode {
 			let mut new_entry = entry.split(entry_size)?;
 			self.write_dirent(superblock, io, &entry, entry_off)?;
 
-			new_entry.set_inode(entry_inode);
+			new_entry.inode = entry_inode;
 			new_entry.set_name(superblock, name);
 			new_entry.set_type(superblock, file_type);
 			self.write_dirent(
 				superblock,
 				io,
 				&new_entry,
-				entry_off + entry.get_total_size() as u64,
+				entry_off + entry.total_size as u64,
 			)
 		} else {
 			// cannot fails because block size is never zero
@@ -1192,7 +1192,7 @@ impl Ext2INode {
 				// size of a block
 				let mut entry = unsafe { DirectoryEntry::from(&buff.as_slice()[j..len])? };
 				// The total size of the entry
-				let total_size = entry.get_total_size() as usize;
+				let total_size = entry.total_size as usize;
 				// Preventing infinite loop from corrupted filesystem
 				if total_size == 0 {
 					break;
@@ -1204,7 +1204,7 @@ impl Ext2INode {
 				if !entry.is_free() {
 					if entry.get_name(superblock) == name.as_ref() {
 						// The entry has name `name`, free it
-						entry.set_inode(0);
+						entry.inode = 0;
 						self.write_dirent(superblock, io, &entry, off)?;
 
 						if let Some((prev_free_off, prev_free)) = &mut prev_free {
@@ -1405,7 +1405,7 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 		};
 
 		// The total size of the entry
-		let total_size = entry.get_total_size() as usize;
+		let total_size = entry.total_size as usize;
 		if total_size < 8 {
 			return Some(Err(errno!(EUCLEAN)));
 		}

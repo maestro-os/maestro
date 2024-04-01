@@ -68,7 +68,7 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 
 	vfs::create_file(
 		&mut parent,
-		name.try_into()?,
+		name,
 		&rs.access_profile,
 		0o777,
 		FileContent::Link(target),

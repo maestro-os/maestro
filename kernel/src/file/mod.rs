@@ -423,12 +423,12 @@ impl File {
 	) -> EResult<u32> {
 		match self.file_type {
 			FileType::Fifo => {
-				let buff_mutex = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				let buff_mutex = buffer::get_or_default::<PipeBuffer>(&self.location)?;
 				let mut buff = buff_mutex.lock();
 				buff.ioctl(mem_space, request, argp)
 			}
 			FileType::Socket => {
-				let buff_mutex = buffer::get_or_default::<Socket>(self.get_location())?;
+				let buff_mutex = buffer::get_or_default::<Socket>(&self.location)?;
 				let mut buff = buff_mutex.lock();
 				buff.ioctl(mem_space, request, argp)
 			}
@@ -512,11 +512,11 @@ impl File {
 			FileType::Directory => Err(errno!(EISDIR)),
 			FileType::Link => Err(errno!(EINVAL)),
 			FileType::Fifo => {
-				let io = buffer::get_or_default::<PipeBuffer>(self.get_location())?;
+				let io = buffer::get_or_default::<PipeBuffer>(&self.location)?;
 				f(Some(io as _), None)
 			}
 			FileType::Socket => {
-				let io = buffer::get_or_default::<Socket>(self.get_location())?;
+				let io = buffer::get_or_default::<Socket>(&self.location)?;
 				f(Some(io as _), None)
 			}
 			FileType::BlockDevice => {

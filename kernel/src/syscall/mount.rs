@@ -78,7 +78,7 @@ pub fn mount(
 	if target_file.get_type() != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	let target_location = target_file.get_location().clone();
+	let target_location = target_file.location.clone();
 
 	// TODO Use `data`
 	// Create mountpoint

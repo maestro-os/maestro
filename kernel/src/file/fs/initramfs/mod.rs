@@ -52,7 +52,7 @@ fn update_parent<'p>(
 
 			let parent = parent.lock();
 			let rs = ResolutionSettings {
-				start: parent.get_location().clone(),
+				start: parent.location.clone(),
 				..ResolutionSettings::kernel_nofollow()
 			};
 			vfs::get_file_from_path(name, &rs)

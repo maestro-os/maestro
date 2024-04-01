@@ -32,10 +32,7 @@ use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult, io
 // TODO Handle dropping
 /// Structure representing the `kernel` directory.
 #[derive(Debug)]
-pub struct KernelDir {
-	/// The content of the directory. This will always be a Directory variant.
-	content: FileContent,
-}
+pub struct KernelDir;
 
 impl KernelDir {
 	/// Creates a new instance.
