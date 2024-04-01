@@ -53,10 +53,11 @@ pub fn readlink(
 	};
 	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
+	// Validation
 	if file.get_type() != FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	// Copy to userspace buffer
+	// Read link
 	let mut mem_space = mem_space_mutex.lock();
 	let buffer = buf.get_mut(&mut mem_space, bufsiz)?.ok_or(errno!(EFAULT))?;
 	let (len, _) = file.read(0, buffer)?;

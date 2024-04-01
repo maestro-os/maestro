@@ -200,7 +200,7 @@ fn resolve_path_impl<'p>(
 	while let Some(comp) = iter.next() {
 		// If this is the last component
 		let is_last = iter.peek().is_none();
-		let file = file_mutex.lock();
+		let mut file = file_mutex.lock();
 		// Get the name of the next entry
 		let name = match comp {
 			Component::ParentDir if file.location != settings.root => b"..",
@@ -208,13 +208,13 @@ fn resolve_path_impl<'p>(
 			// Ignore
 			_ => continue,
 		};
-		let next_file = match file.get_content() {
-			FileContent::Directory(entries) => {
+		let next_file = match file.get_type() {
+			FileType::Directory => {
 				// Check permission
 				if !settings.access_profile.can_search_directory(&file) {
 					return Err(errno!(EACCES));
 				}
-				let Some(entry) = entries.get(name) else {
+				let Some(entry) = file.dir_entry_by_name(name)? else {
 					// If the last component does not exist and if the file may be created
 					let res = if is_last && settings.create {
 						drop(file);
@@ -249,11 +249,13 @@ fn resolve_path_impl<'p>(
 				get_file_from_location(&loc)?
 			}
 			// Follow link, if enabled
-			FileContent::Link(link_path) if !is_last || settings.follow_link => {
+			FileType::Link if !is_last || settings.follow_link => {
 				// If too many recursions occur, error
 				if symlink_rec + 1 > limits::SYMLOOP_MAX {
 					return Err(errno!(ELOOP));
 				}
+				// Read link
+				let link_path = file.read_link()?;
 				// Resolve link
 				let rs = ResolutionSettings {
 					root: settings.root.clone(),
@@ -262,7 +264,7 @@ fn resolve_path_impl<'p>(
 					create: false,
 					follow_link: true,
 				};
-				let resolved = resolve_path_impl(link_path, &rs, symlink_rec + 1)?;
+				let resolved = resolve_path_impl(&link_path, &rs, symlink_rec + 1)?;
 				let Resolved::Found(next_file) = resolved else {
 					// Because `create` is set to `false`
 					unreachable!();
@@ -479,7 +481,7 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
-	op(parent.get_location(), true, |mp, io, fs| {
+	op(&parent.location, true, |mp, io, fs| {
 		// Get the file
 		let mut file = fs.load_file(&mut *io, parent.location.get_inode())?;
 		// Check permission

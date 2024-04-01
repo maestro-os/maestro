@@ -63,6 +63,7 @@ use utils::{
 	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::{arc::Arc, cow::Cow},
+	vec,
 };
 
 /// A filesystem node ID.
@@ -414,6 +415,20 @@ impl File {
 		self.ctime = timestamp;
 	}
 
+	/// Returns the directory entry with the given `name`.
+	///
+	/// If the file is not a directory, the function returns `None`.
+	pub fn dir_entry_by_name<'n>(&self, name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
+		self.io_op(|io, fs| {
+			let (Some(io_mutex), Some((fs_mutex, inode))) = (io, fs) else {
+				return Ok(None);
+			};
+			let mut io = io_mutex.lock();
+			let mut fs = fs_mutex.lock();
+			fs.entry_by_name(&mut *io, inode, name)
+		})
+	}
+
 	/// Returns an iterator over the directory's entries.
 	///
 	/// `start` is the starting offset of the iterator.
@@ -424,6 +439,18 @@ impl File {
 			dir: self,
 			cursor: start,
 		}
+	}
+
+	/// Reads the symbolic link.
+	///
+	/// If the file is not a symbolic link, the function returns [`errno::EINVAL`].
+	pub fn read_link(&mut self) -> EResult<PathBuf> {
+		if self.file_type != FileType::Link {
+			return Err(errno!(EINVAL));
+		}
+		let mut link_path = vec![0; self.size as usize]?;
+		self.read(0, &mut link_path)?;
+		Ok(PathBuf::new_unchecked(String::from(link_path)))
 	}
 
 	/// Performs an ioctl operation on the file.

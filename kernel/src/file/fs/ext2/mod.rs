@@ -824,7 +824,7 @@ impl Filesystem for Ext2Fs {
 		let inode_index = self.superblock.get_free_inode(io)?;
 		// Create inode
 		let mut inode = Ext2INode {
-			mode: node.get_mode(),
+			mode: node.get_mode() as _,
 			uid: node.uid,
 			size_low: 0,
 			ctime: node.ctime as _,
