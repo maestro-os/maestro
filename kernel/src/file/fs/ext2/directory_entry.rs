@@ -169,7 +169,6 @@ impl DirectoryEntry {
 				TYPE_INDICATOR_FIFO => Some(FileType::Fifo),
 				TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
 				TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
-
 				_ => None,
 			}
 		} else {

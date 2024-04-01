@@ -19,22 +19,13 @@
 //! This module implements the meminfo node, allowing to retrieve informations
 //! about memory usage of the system.
 
-use crate::{
-	file::fs::kernfs::{content::KernFSContent, node::KernFSNode},
-	memory,
-};
+use crate::memory;
 use core::cmp::min;
 use utils::{errno, errno::EResult, format, io::IO};
 
 /// Structure representing the meminfo node.
 #[derive(Debug)]
 pub struct MemInfo {}
-
-impl KernFSNode for MemInfo {
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		Ok(KernFSContent::Dynamic(FileContent::Regular))
-	}
-}
 
 impl IO for MemInfo {
 	fn get_size(&self) -> u64 {

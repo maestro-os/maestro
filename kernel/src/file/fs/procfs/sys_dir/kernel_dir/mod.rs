@@ -22,7 +22,7 @@ mod osrelease;
 
 use super::kernfs::KernFS;
 use crate::file::{
-	fs::kernfs::{content::KernFSContent, node::KernFSNode},
+	fs::kernfs::node::KernFSNode,
 	perm::{Gid, Uid},
 	DirEntry, FileType, Mode,
 };
@@ -40,7 +40,7 @@ pub struct KernelDir {
 impl KernelDir {
 	/// Creates a new instance.
 	///
-	/// The function adds every nodes to the given kernfs `fs`.
+	/// The function adds every node to the given kernfs `fs`.
 	pub fn new(fs: &mut KernFS) -> EResult<Self> {
 		let mut entries = HashMap::new();
 

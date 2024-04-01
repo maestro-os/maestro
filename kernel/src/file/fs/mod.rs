@@ -25,7 +25,7 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use super::{path::PathBuf, File};
+use super::{path::PathBuf, DirEntry, File};
 use crate::file::INode;
 use core::{any::Any, fmt::Debug};
 use utils::{
@@ -200,6 +200,30 @@ pub trait Filesystem: Any + Debug {
 	/// - `Regular`: Writes the content of the file
 	/// - `Link`: Writes the path the link points to. The path is truncated to `off` before writing
 	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()>;
+
+	/// Returns the directory entry with the given `name` in the given `inode`.
+	///
+	/// If the inode is not a directory, the function returns [`EISDIR`].
+	fn entry_by_name<'n>(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>>;
+	/// Returns the directory entry at the given offset `off`. The first entry is always located at
+	/// offset `0`.
+	///
+	/// The second returned value is the offset to the next entry.
+	///
+	/// If no entry is left, the function returns `None`.
+	///
+	/// If the inode is not a directory, the function returns [`EISDIR`].
+	fn next_entry(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>>;
 }
 
 /// Trait representing a filesystem type.

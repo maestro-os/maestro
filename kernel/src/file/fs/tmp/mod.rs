@@ -165,7 +165,6 @@ impl Filesystem for TmpFS {
 		uid: Uid,
 		gid: Gid,
 		mode: Mode,
-		content: FileContent,
 	) -> EResult<File> {
 		// TODO Update fs's size
 

@@ -19,18 +19,21 @@
 //! The `osrelease` node returns the current release of the kernel.
 
 use crate::file::{
-	fs::kernfs::{content::KernFSContent, node::KernFSNode},
+	fs::kernfs::node::{content_chunks, KernFSNode},
 	perm::{Gid, Uid},
-	Mode,
+	FileType, Mode,
 };
-use core::cmp::min;
-use utils::{errno, errno::EResult, format, io::IO};
+use utils::{errno, errno::EResult, io::IO};
 
 /// Structure representing the `osrelease` node.
 #[derive(Debug)]
 pub struct OsRelease {}
 
 impl KernFSNode for OsRelease {
+	fn get_file_type(&self) -> FileType {
+		FileType::Regular
+	}
+
 	fn get_mode(&self) -> Mode {
 		0o444
 	}
@@ -42,10 +45,6 @@ impl KernFSNode for OsRelease {
 	fn get_gid(&self) -> Gid {
 		0
 	}
-
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		Ok(FileContent::Regular.into())
-	}
 }
 
 impl IO for OsRelease {
@@ -54,20 +53,11 @@ impl IO for OsRelease {
 	}
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		if buff.is_empty() {
-			return Ok((0, false));
-		}
-
-		// Generating content
-		let content = format!("{}\n", crate::VERSION)?;
-
-		// Copying content to userspace buffer
-		let content_bytes = content.as_bytes();
-		let len = min((content_bytes.len() as u64 - offset) as usize, buff.len());
-		buff[..len].copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);
-
-		let eof = (offset + len as u64) >= content_bytes.len() as u64;
-		Ok((len as _, eof))
+		content_chunks(
+			offset,
+			buff,
+			[crate::VERSION, "\n"].into_iter().map(|s| Ok(s.as_bytes())),
+		)
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {

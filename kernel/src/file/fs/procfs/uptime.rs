@@ -19,23 +19,23 @@
 //! The uptime node returns the amount of time elapsed since the system started up.
 
 use crate::file::{
-	fs::kernfs::{content::KernFSContent, node::KernFSNode},
-	Mode,
+	fs::kernfs::node::{content_chunks, KernFSNode},
+	FileType, Mode,
 };
-use core::cmp::min;
-use utils::{errno, errno::EResult, format, io::IO};
+use core::iter;
+use utils::{errno, errno::EResult, io::IO};
 
 /// The uptime node.
 #[derive(Debug)]
 pub struct Uptime {}
 
 impl KernFSNode for Uptime {
-	fn get_mode(&self) -> Mode {
-		0o444
+	fn get_file_type(&self) -> FileType {
+		FileType::Regular
 	}
 
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		Ok(KernFSContent::Dynamic(FileContent::Regular))
+	fn get_mode(&self) -> Mode {
+		0o444
 	}
 }
 
@@ -46,15 +46,7 @@ impl IO for Uptime {
 
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		// TODO
-		let content = format!("0.00 0.00\n")?;
-		let content_bytes = content.as_bytes();
-
-		// Copy content to userspace buffer
-		let len = min((content_bytes.len() as u64 - offset) as usize, buff.len());
-		buff[..len].copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);
-
-		let eof = (offset + len as u64) >= content_bytes.len() as u64;
-		Ok((len as _, eof))
+		content_chunks(offset, buff, iter::once(Ok("0.00 0.00\n".as_bytes())))
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {

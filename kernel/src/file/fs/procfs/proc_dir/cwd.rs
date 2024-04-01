@@ -21,13 +21,14 @@
 
 use crate::{
 	file::{
-		fs::kernfs::{content::KernFSContent, node::KernFSNode},
+		fs::kernfs::node::{content_chunks, KernFSNode},
 		perm::{Gid, Uid},
-		Mode,
+		FileType, Mode,
 	},
 	process::{pid::Pid, Process},
 };
-use utils::{errno, errno::EResult, io::IO, TryClone};
+use core::iter;
+use utils::{errno, errno::EResult, io::IO};
 
 /// Structure representing the `cwd` node.
 #[derive(Debug)]
@@ -39,6 +40,10 @@ pub struct Cwd {
 impl KernFSNode for Cwd {
 	fn get_mode(&self) -> Mode {
 		0o777
+	}
+
+	fn get_file_type(&self) -> FileType {
+		FileType::Link
 	}
 
 	fn get_uid(&self) -> Uid {
@@ -56,17 +61,6 @@ impl KernFSNode for Cwd {
 			0
 		}
 	}
-
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		let content = Process::get_by_pid(self.pid)
-			.map(|mutex| {
-				let proc = mutex.lock();
-				proc.cwd.0.try_clone()
-			})
-			.transpose()?
-			.unwrap_or_default();
-		Ok(KernFSContent::Dynamic(FileContent::Link(content)))
-	}
 }
 
 impl IO for Cwd {
@@ -74,8 +68,12 @@ impl IO for Cwd {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
-		Err(errno!(EINVAL))
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+		let Some(proc) = Process::get_by_pid(self.pid) else {
+			return content_chunks(offset, buff, iter::empty());
+		};
+		let proc = proc.lock();
+		content_chunks(offset, buff, iter::once(Ok(proc.cwd.0.as_bytes())))
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {

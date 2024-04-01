@@ -18,18 +18,13 @@
 
 //! This module implements kernfs nodes.
 
-use super::content::KernFSContent;
 use crate::{
 	file::{
 		perm,
 		perm::{Gid, Uid},
-		Mode,
+		DirEntry, FileType, Mode,
 	},
-	time::{
-		clock,
-		clock::CLOCK_MONOTONIC,
-		unit::{Timestamp, TimestampScale},
-	},
+	time::unit::Timestamp,
 };
 use core::{any::Any, fmt::Debug};
 use utils::{errno::EResult, io::IO};
@@ -43,6 +38,9 @@ pub trait KernFSNode: Any + Debug + IO {
 
 	/// Sets the number of hard links to the node.
 	fn set_hard_links_count(&mut self, _hard_links_count: u16) {}
+
+	/// Returns the type of the file.
+	fn get_file_type(&self) -> FileType;
 
 	/// Returns the permissions of the file.
 	fn get_mode(&self) -> Mode {
@@ -92,13 +90,40 @@ pub trait KernFSNode: Any + Debug + IO {
 	/// Sets the timestamp of the last modification of the file's content.
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
-	/// Returns an immutable reference to the node's content.
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>>;
+	/// Returns the directory entry with the given `name`.
+	///
+	/// If entry does not exist, the function return `None`.
+	///
+	/// If the node is not a directory, the function does nothing.
+	fn entry_by_name<'n>(&self, _name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
+		Ok(None)
+	}
+	/// Returns the directory entry at the given offset `off`. The first entry is always located at
+	/// offset `0`.
+	///
+	/// If not entry is left, the function return `None`.
+	///
+	/// If the node is not a directory, the function return `None`.
+	fn next_entry(&self, _off: u64) -> EResult<Option<DirEntry<'static>>> {
+		Ok(None)
+	}
+	/// Adds the `entry` to the directory.
+	///
+	/// It is the caller's responsibility to ensure there is no two entry with the same name.
+	///
+	/// If the node is not a directory, the function does nothing.
+	fn add_entry(&mut self, _entry: DirEntry<'_>) -> EResult<()> {
+		Ok(())
+	}
+	/// Removes the directory entry at the given offset `off`.
+	///
+	/// If the node is not a directory, the function does nothing.
+	fn remove_entry(&mut self, _off: u64) {}
 }
 
-/// Structure representing a dummy kernfs node (with the default behaviour).
+/// A dummy kernfs node (with the default behaviour).
 ///
-/// This node doesn't implement regular files' content handling.
+/// This node does not implement regular files' content handling.
 ///
 /// Calling `read` or `write` on this structure does nothing.
 #[derive(Debug)]
@@ -106,12 +131,14 @@ pub struct DummyKernFSNode {
 	/// The number of hard links to the node.
 	hard_links_count: u16,
 
-	/// The directory's permissions.
-	mode: Mode,
 	/// The directory's owner user ID.
 	uid: Uid,
 	/// The directory's owner group ID.
 	gid: Gid,
+	/// The type of the file.
+	file_type: FileType,
+	/// The directory's permissions.
+	perms: Mode,
 
 	/// Timestamp of the last modification of the metadata.
 	ctime: Timestamp,
@@ -119,35 +146,30 @@ pub struct DummyKernFSNode {
 	mtime: Timestamp,
 	/// Timestamp of the last access to the file.
 	atime: Timestamp,
-
-	/// The node's content.
-	content: FileContent,
 }
 
 impl DummyKernFSNode {
 	/// Creates a new node.
 	///
 	/// Arguments:
-	/// - `mode` is the node's mode.
-	/// - `uid` is the node owner's user ID.
-	/// - `gid` is the node owner's group ID.
-	/// - `content` is the node's content.
-	pub fn new(mode: Mode, uid: Uid, gid: Gid, content: FileContent) -> Self {
-		// The current timestamp
-		let ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-
+	/// - `uid` is the node owner's user ID
+	/// - `gid` is the node owner's group ID
+	/// - `file_type` is the type of the node
+	/// - `perms` is the node's permissions
+	///
+	/// Timestamps are zeroed by default.
+	pub fn new(uid: Uid, gid: Gid, file_type: FileType, perms: Mode) -> Self {
 		Self {
 			hard_links_count: 1,
 
-			mode,
 			uid,
 			gid,
+			file_type,
+			perms,
 
-			ctime: ts,
-			mtime: ts,
-			atime: ts,
-
-			content,
+			ctime: 0,
+			mtime: 0,
+			atime: 0,
 		}
 	}
 }
@@ -161,12 +183,16 @@ impl KernFSNode for DummyKernFSNode {
 		self.hard_links_count = hard_links_count;
 	}
 
+	fn get_file_type(&self) -> FileType {
+		self.file_type
+	}
+
 	fn get_mode(&self) -> Mode {
-		self.mode
+		self.perms
 	}
 
 	fn set_mode(&mut self, mode: Mode) {
-		self.mode = mode;
+		self.perms = mode;
 	}
 
 	fn get_uid(&self) -> Uid {
@@ -208,10 +234,6 @@ impl KernFSNode for DummyKernFSNode {
 	fn set_mtime(&mut self, ts: Timestamp) {
 		self.mtime = ts;
 	}
-
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		Ok(KernFSContent::Owned(&mut self.content))
-	}
 }
 
 impl IO for DummyKernFSNode {
@@ -229,5 +251,72 @@ impl IO for DummyKernFSNode {
 
 	fn poll(&mut self, _mask: u32) -> EResult<u32> {
 		Ok(0)
+	}
+}
+
+/// Implementation of the [`IO::read`] function for a node that is built dynamically from a
+/// sequence of strings taken from `iter`.
+///
+/// `off` and `buff` are the arguments from [`IO::read`].
+///
+/// If the iterator returns an error element, the function stops and returns the error.
+pub fn content_chunks<'s, I: Iterator<Item = EResult<&'s [u8]>>>(
+	off: u64,
+	buff: &mut [u8],
+	iter: I,
+) -> EResult<(u64, bool)> {
+	let mut node_cursor = 0;
+	let mut buff_cursor = 0;
+	for chunk in iter {
+		let chunk = chunk?;
+		// If at least a part of the chunk is in range, copy
+		if node_cursor + chunk.len() as u64 >= off {
+			// Begin and size of the range in the chunk to copy
+			let begin = off.saturating_sub(node_cursor) as usize;
+			let size = chunk.len().saturating_sub(begin);
+			buff[buff_cursor..(buff_cursor + size)].copy_from_slice(&chunk[begin..(begin + size)]);
+			buff_cursor += size;
+			// If the end of the output buffer is reached, break
+			if buff_cursor >= buff.len() {
+				break;
+			}
+		}
+		node_cursor += chunk.len() as u64;
+	}
+	let eof = buff_cursor >= buff.len();
+	Ok((node_cursor, eof))
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test_case]
+	fn content_chunks() {
+		let chunks = ["abc", "def", "ghi"];
+		// Simple test
+		let mut out = [0u8; 9];
+		let (len, eof) = super::content_chunks(0, &mut out, chunks.iter().map(Ok)).unwrap();
+		assert_eq!(out.as_slice(), b"abcdefghi");
+		assert_eq!(len, 9);
+		assert!(eof);
+		// End
+		let mut out = [0u8; 9];
+		let (len, eof) = super::content_chunks(9, &mut out, chunks.iter().map(Ok)).unwrap();
+		assert_eq!(out, [0u8; 9]);
+		assert_eq!(len, 0);
+		assert!(eof);
+		// Start from second chunk
+		let mut out = [0u8; 9];
+		let (len, eof) = super::content_chunks(3, &mut out, chunks.iter().map(Ok)).unwrap();
+		assert_eq!(out.as_slice(), b"defghi\0\0\0");
+		assert_eq!(len, 6);
+		assert!(eof);
+		// Start from middle of chunk
+		let mut out = [0u8; 9];
+		let (len, eof) = super::content_chunks(4, &mut out, chunks.iter().map(Ok)).unwrap();
+		assert_eq!(out.as_slice(), b"efghi\0\0\0\0");
+		assert_eq!(len, 5);
+		assert!(eof);
 	}
 }

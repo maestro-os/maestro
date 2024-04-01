@@ -27,7 +27,7 @@ mod status;
 
 use crate::{
 	file::{
-		fs::kernfs::{content::KernFSContent, node::KernFSNode, KernFS},
+		fs::kernfs::{node::KernFSNode, KernFS},
 		perm::{Gid, Uid},
 		DirEntry, FileType, Mode,
 	},
@@ -185,10 +185,6 @@ impl KernFSNode for ProcDir {
 		} else {
 			0
 		}
-	}
-
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		Ok(KernFSContent::Owned(&mut self.content))
 	}
 }
 

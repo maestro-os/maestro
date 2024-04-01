@@ -20,9 +20,9 @@
 
 use crate::{
 	file::{
-		fs::{kernfs::content::KernFSContent, tmp::KernFSNode},
+		fs::tmp::KernFSNode,
 		perm::{Gid, Uid},
-		Mode,
+		FileType, Mode,
 	},
 	time::{
 		clock,
@@ -62,7 +62,6 @@ impl TmpFSRegular {
 	pub fn new(mode: Mode, uid: Uid, gid: Gid) -> Self {
 		// The current timestamp
 		let ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-
 		Self {
 			hard_links_count: 1,
 
@@ -80,6 +79,10 @@ impl TmpFSRegular {
 }
 
 impl KernFSNode for TmpFSRegular {
+	fn get_file_type(&self) -> FileType {
+		FileType::Regular
+	}
+
 	fn get_hard_links_count(&self) -> u16 {
 		self.hard_links_count
 	}
@@ -134,10 +137,6 @@ impl KernFSNode for TmpFSRegular {
 
 	fn set_mtime(&mut self, ts: Timestamp) {
 		self.mtime = ts;
-	}
-
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		Ok(FileContent::Regular.into())
 	}
 }
 

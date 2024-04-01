@@ -21,10 +21,10 @@
 
 use crate::{
 	file::{
-		fs::kernfs::{content::KernFSContent, node::KernFSNode},
+		fs::kernfs::node::KernFSNode,
 		mountpoint,
 		perm::{Gid, Uid},
-		Mode,
+		FileType, Mode,
 	},
 	process::{pid::Pid, Process},
 };
@@ -39,6 +39,10 @@ pub struct Mounts {
 }
 
 impl KernFSNode for Mounts {
+	fn get_file_type(&self) -> FileType {
+		FileType::Regular
+	}
+
 	fn get_mode(&self) -> Mode {
 		0o444
 	}
@@ -57,10 +61,6 @@ impl KernFSNode for Mounts {
 		} else {
 			0
 		}
-	}
-
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		Ok(FileContent::Regular.into())
 	}
 }
 

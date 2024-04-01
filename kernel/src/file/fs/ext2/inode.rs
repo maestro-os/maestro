@@ -237,7 +237,6 @@ impl Ext2INode {
 	/// - `io` is the I/O interface.
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<Self> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
-
 		unsafe { read::<Self>(off, io) }
 	}
 

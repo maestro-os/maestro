@@ -49,7 +49,7 @@ use crate::{
 	file::{
 		fs::{Filesystem, FilesystemType, Statfs},
 		path::PathBuf,
-		File, FileLocation, FileType, INode,
+		DirEntry, File, FileLocation, FileType, INode,
 	},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
@@ -61,7 +61,15 @@ use core::{
 	slice,
 };
 use inode::Ext2INode;
-use utils::{errno, errno::EResult, io::IO, lock::Mutex, math, ptr::arc::Arc, vec};
+use utils::{
+	errno,
+	errno::EResult,
+	io::IO,
+	lock::Mutex,
+	math,
+	ptr::{arc::Arc, cow::Cow},
+	vec,
+};
 
 // TODO Take into account user's UID/GID when allocating block/inode to handle
 // reserved blocks/inodes
@@ -1077,7 +1085,6 @@ impl Filesystem for Ext2Fs {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-
 		let inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		inode_.read_content(off, buf, &self.superblock, io)
 	}
@@ -1089,12 +1096,42 @@ impl Filesystem for Ext2Fs {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-
 		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
 		inode_.write_content(off, buf, &mut self.superblock, io)?;
 		inode_.write(inode as _, &self.superblock, io)?;
-
 		self.superblock.write(io)
+	}
+
+	fn entry_by_name<'n>(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
+		let Some((_, entry)) = inode_.get_dirent(name, &self.superblock, io)? else {
+			return Ok(None);
+		};
+		let entry_type = match entry.get_type(&self.superblock) {
+			Some(t) => t,
+			// The type is not hinted in the entry itself. Need to get it from the inode
+			None => Ext2INode::read(entry.inode, &self.superblock, io)?.get_type(),
+		};
+		Ok(Some(DirEntry {
+			inode: entry.inode as _,
+			entry_type,
+			name: Cow::Borrowed(name),
+		}))
+	}
+
+	fn next_entry(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		// TODO
+		todo!()
 	}
 }
 

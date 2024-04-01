@@ -251,8 +251,8 @@ impl Filesystem for ProcFS {
 		self.fs.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> EResult<File> {
-		self.fs.load_file(io, inode, name)
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
+		self.fs.load_file(io, inode)
 	}
 
 	fn add_file(
@@ -263,7 +263,6 @@ impl Filesystem for ProcFS {
 		_uid: Uid,
 		_gid: Gid,
 		_mode: Mode,
-		_content: FileContent,
 	) -> EResult<File> {
 		Err(errno!(EACCES))
 	}

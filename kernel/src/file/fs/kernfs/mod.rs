@@ -16,21 +16,23 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Kernfs implements utilities allowing to create a virtual filesystem.
+//! A kernfs (kernel filesystem) is a virtual filesystem aiming at containing special files with
+//! custom behaviours.
+//!
+//! This is often used to implement special filesystems that are used to ease communication between
+//! the userspace and kernelspace.
 
-pub mod content;
 pub mod node;
 
 use crate::{
 	file::{
 		fs::{kernfs::node::DummyKernFSNode, Filesystem, Statfs},
-		perm::{Gid, Uid},
-		DirEntry, File, FileLocation, FileType, INode, Mode,
+		DirEntry, File, FileLocation, FileType, INode,
 	},
 	memory,
 	process::oom,
 };
-use core::{alloc::AllocError, borrow::Borrow, intrinsics::unlikely};
+use core::{alloc::AllocError, intrinsics::unlikely};
 use node::KernFSNode;
 use utils::{
 	boxed::Box,
@@ -38,6 +40,7 @@ use utils::{
 	errno,
 	errno::EResult,
 	io::IO,
+	ptr::cow::Cow,
 	vec, TryClone,
 };
 
@@ -82,65 +85,56 @@ impl KernFS {
 
 	/// Sets the root node of the filesystem.
 	pub fn set_root(&mut self, mut root: Box<dyn KernFSNode>) -> EResult<()> {
-		// Adding `.` and `..` entries if the new file is a directory
-		let mut content = root.get_content()?;
+		// Add `.` and `..` entries if the root is a directory
 		let mut new_links = 0;
-		if let FileContent::Directory(ref mut entries) = &mut *content {
-			if !entries.contains_key(b".".as_slice()) {
-				entries.insert(
-					b".".as_slice().try_into()?,
-					DirEntry {
-						inode: ROOT_INODE,
-						entry_type: FileType::Directory,
-					},
-				)?;
+		if root.get_file_type() == FileType::Directory {
+			if root.entry_by_name(b".")?.is_none() {
+				root.add_entry(DirEntry {
+					inode: ROOT_INODE,
+					entry_type: FileType::Directory,
+					name: Cow::Borrowed(b"."),
+				})?;
 				new_links += 1;
 			}
-			if !entries.contains_key(b"..".as_slice()) {
-				entries.insert(
-					b"..".as_slice().try_into()?,
-					DirEntry {
-						inode: ROOT_INODE,
-						entry_type: FileType::Directory,
-					},
-				)?;
+			if root.entry_by_name(b"..")?.is_none() {
+				root.add_entry(DirEntry {
+					inode: ROOT_INODE,
+					entry_type: FileType::Directory,
+					name: Cow::Borrowed(b".."),
+				})?;
 				new_links += 1;
 			}
 		}
+		// Update links count
 		let new_cnt = root.get_hard_links_count() + new_links;
 		root.set_hard_links_count(new_cnt);
-
+		// Insert
 		if self.nodes.is_empty() {
 			self.nodes.push(Some(root))?;
 		} else {
 			self.nodes[ROOT_INODE as usize] = Some(root);
 		}
-
 		Ok(())
 	}
 
 	/// Returns an immutable reference to the node with inode `inode`.
 	///
-	/// If the node doesn't exist, the function returns an error.
+	/// If the node does not exist, the function returns an error.
 	pub fn get_node(&self, inode: INode) -> EResult<&Box<dyn KernFSNode>> {
-		if inode as usize >= self.nodes.len() {
-			return Err(errno!(ENOENT));
-		}
-
-		self.nodes[inode as usize]
+		self.nodes
+			.get(inode as usize)
+			.ok_or_else(|| errno!(ENOENT))?
 			.as_ref()
 			.ok_or_else(|| errno!(ENOENT))
 	}
 
 	/// Returns a mutable reference to the node with inode `inode`.
 	///
-	/// If the node doesn't exist, the function returns an error.
+	/// If the node does not exist, the function returns an error.
 	pub fn get_node_mut(&mut self, inode: INode) -> EResult<&mut Box<dyn KernFSNode>> {
-		if inode as usize >= self.nodes.len() {
-			return Err(errno!(ENOENT));
-		}
-
-		self.nodes[inode as usize]
+		self.nodes
+			.get_mut(inode as usize)
+			.ok_or_else(|| errno!(ENOENT))?
 			.as_mut()
 			.ok_or_else(|| errno!(ENOENT))
 	}
@@ -149,35 +143,32 @@ impl KernFS {
 	///
 	/// The function returns the allocated inode.
 	pub fn add_node(&mut self, node: Box<dyn KernFSNode>) -> EResult<INode> {
-		if let Some(free_node) = self.free_nodes.pop() {
-			// Using an existing slot
-			self.nodes[free_node as usize] = Some(node);
-
-			Ok(free_node)
+		if let Some(inode) = self.free_nodes.pop() {
+			// Use an existing slot
+			self.nodes[inode as usize] = Some(node);
+			Ok(inode)
 		} else {
-			// Allocating a new node slot
+			// Allocate a new node slot
 			let inode = self.nodes.len();
 			self.nodes.push(Some(node))?;
-
 			Ok(inode as _)
 		}
 	}
 
 	/// Removes the node with inode `inode`.
 	///
-	/// If the node is a non-empty directory, its content is **NOT** removed.
+	/// If the node is a non-empty directory, its content is **NOT** removed. It is the caller's
+	/// responsibility to ensure no file is left allocated without a reference to it. Failure to do
+	/// so results in a memory leak.
 	///
 	/// If the node doesn't exist, the function does nothing.
 	pub fn remove_node(&mut self, inode: INode) -> EResult<Option<Box<dyn KernFSNode>>> {
-		if (inode as usize) < self.nodes.len() {
-			let node = self.nodes.remove(inode as _);
-			self.nodes.insert(inode as _, None)?;
-			self.free_nodes.push(inode)?;
-
-			return Ok(node);
-		}
-
-		Ok(None)
+		let Some(slot) = self.nodes.get_mut(inode as usize) else {
+			return Ok(None);
+		};
+		let node = slot.take();
+		self.free_nodes.push(inode)?;
+		Ok(node)
 	}
 
 	// TODO Clean
@@ -312,10 +303,9 @@ impl Filesystem for KernFS {
 		parent: Option<INode>,
 		name: &[u8],
 	) -> EResult<INode> {
-		// Getting the parent node
+		// Get the parent node
 		let parent = parent.unwrap_or(ROOT_INODE);
 		let parent = self.get_node_mut(parent)?;
-
 		let FileContent::Directory(entries) = &mut *parent.get_content()? else {
 			return Err(errno!(ENOENT));
 		};
@@ -325,29 +315,23 @@ impl Filesystem for KernFS {
 			.ok_or_else(|| errno!(ENOENT))
 	}
 
-	fn load_file(&mut self, _: &mut dyn IO, inode: INode, name: String) -> EResult<File> {
+	fn load_file(&mut self, _: &mut dyn IO, inode: INode) -> EResult<File> {
 		let node = self.get_node_mut(inode)?;
-
-		let file_location = FileLocation::Filesystem {
-			mountpoint_id: 0, // dummy value to be replaced
-			inode,
-		};
-		let content = node.get_content()?.to_owned()?;
-
 		let mut file = File::new(
-			name,
+			FileLocation::Filesystem {
+				mountpoint_id: 0, // dummy value to be replaced
+				inode,
+			},
 			node.get_uid(),
 			node.get_gid(),
+			node.get_file_type(),
 			node.get_mode(),
-			file_location,
-			content,
-		)?;
+		);
 		file.set_hard_links_count(node.get_hard_links_count());
 		file.set_size(node.get_size());
 		file.ctime = node.get_ctime();
 		file.mtime = node.get_mtime();
 		file.atime = node.get_atime();
-
 		Ok(file)
 	}
 
@@ -355,14 +339,14 @@ impl Filesystem for KernFS {
 		&mut self,
 		_: &mut dyn IO,
 		parent_inode: INode,
-		name: String,
-		uid: Uid,
-		gid: Gid,
-		mode: Mode,
-		content: FileContent,
+		name: &[u8],
+		file: File,
 	) -> EResult<File> {
-		let node = DummyKernFSNode::new(mode, uid, gid, content);
-		self.add_file_inner(parent_inode, node, name)
+		let mut node = DummyKernFSNode::new(file.uid, file.gid, file.file_type, file.mode);
+		node.set_atime(file.atime);
+		node.set_ctime(file.ctime);
+		node.set_mtime(file.mtime);
+		self.add_file_inner(parent_inode, node, name.try_into()?)
 	}
 
 	fn add_link(
@@ -375,7 +359,6 @@ impl Filesystem for KernFS {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-
 		// Checking the node exists
 		self.get_node(inode)?;
 
@@ -391,14 +374,13 @@ impl Filesystem for KernFS {
 			DirEntry {
 				inode,
 				entry_type,
+				name,
 			},
 		)?;
-
 		// Incrementing the number of links
 		let node = self.get_node_mut(inode)?;
 		let links = node.get_hard_links_count() + 1;
 		node.set_hard_links_count(links);
-
 		Ok(())
 	}
 
@@ -406,21 +388,17 @@ impl Filesystem for KernFS {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-
-		// Getting node
+		// Get node
 		let node = self.get_node_mut(file.get_location().get_inode())?;
-
-		// Changing file size if it has been truncated
+		// Change file size if it has been truncated
 		// TODO node.truncate(file.get_size())?;
-
-		// Updating file attributes
+		// Update file attributes
 		node.set_uid(file.get_uid());
 		node.set_gid(file.get_gid());
 		node.set_mode(file.get_mode());
 		node.set_ctime(file.ctime);
 		node.set_mtime(file.mtime);
 		node.set_atime(file.atime);
-
 		Ok(())
 	}
 
@@ -433,13 +411,11 @@ impl Filesystem for KernFS {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-
-		// Getting directory entry
+		// Get directory entry
 		let parent = self.get_node_mut(parent_inode)?;
-		let FileContent::Directory(parent_entries) = &*parent.get_content()? else {
+		if parent.get_file_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
-		};
-
+		}
 		let inode = parent_entries
 			.get(name)
 			.ok_or_else(|| errno!(ENOENT))?
@@ -497,9 +473,28 @@ impl Filesystem for KernFS {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-
 		let node = self.get_node_mut(inode)?;
 		node.write(off, buf)?;
 		Ok(())
+	}
+
+	fn entry_by_name<'n>(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		// TODO
+		todo!()
+	}
+
+	fn next_entry(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		// TODO
+		todo!()
 	}
 }

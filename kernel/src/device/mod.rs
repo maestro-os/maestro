@@ -230,7 +230,6 @@ impl Device {
 				name,
 			} => {
 				let mut parent = parent.lock();
-				let name = name.try_into()?;
 				// Create the device file
 				vfs::create_file(
 					&mut parent,

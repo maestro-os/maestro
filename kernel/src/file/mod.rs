@@ -62,7 +62,7 @@ use utils::{
 	errno::EResult,
 	io::IO,
 	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
+	ptr::{arc::Arc, cow::Cow},
 };
 
 /// A filesystem node ID.
@@ -229,14 +229,14 @@ impl FileLocation {
 }
 
 /// An entry in a directory, independent of the filesystem type.
-#[derive(Clone, Debug)]
-pub struct DirEntry {
+#[derive(Debug)]
+pub struct DirEntry<'name> {
 	/// The entry's inode.
 	pub inode: INode,
 	/// The entry's type.
 	pub entry_type: FileType,
 	/// The name of the entry.
-	pub name: String,
+	pub name: Cow<'name, [u8]>,
 }
 
 /// Information to remove a file when all its handles are closed.
@@ -295,19 +295,25 @@ impl File {
 	/// Creates a new instance.
 	///
 	/// Arguments:
-	/// - `uid` is the id of the owner user.
-	/// - `gid` is the id of the owner group.
-	/// - `perms` is the permission of the file.
-	/// - `file_type` is the type of the file.
+	/// - `location` is the location of the file
+	/// - `uid` is the id of the owner user
+	/// - `gid` is the id of the owner group
+	/// - `file_type` is the type of the file
+	/// - `perms` is the permission of the file
 	///
 	/// The created file has the following data zeroed:
-	/// - The file's location.
 	/// - Size and blocks count
 	/// - All timestamps
 	/// - Device major/minor
-	pub fn new(uid: Uid, gid: Gid, file_type: FileType, perms: Mode) -> Self {
+	pub fn new(
+		location: FileLocation,
+		uid: Uid,
+		gid: Gid,
+		file_type: FileType,
+		perms: Mode,
+	) -> Self {
 		Self {
-			location: FileLocation::dummy(),
+			location,
 			hard_links_count: 1,
 
 			blocks_count: 0,

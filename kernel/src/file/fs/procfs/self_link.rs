@@ -21,15 +21,15 @@
 
 use crate::{
 	file::{
-		fs::kernfs::{content::KernFSContent, node::KernFSNode},
-		path::PathBuf,
+		fs::kernfs::node::{content_chunks, KernFSNode},
 		perm,
 		perm::{Gid, Uid},
-		Mode,
+		FileType, Mode,
 	},
 	process::Process,
 	time::unit::Timestamp,
 };
+use core::iter;
 use utils::{errno, errno::EResult, format, io::IO};
 
 /// The `self` symlink.
@@ -39,6 +39,10 @@ pub struct SelfNode {}
 impl KernFSNode for SelfNode {
 	fn get_hard_links_count(&self) -> u16 {
 		1
+	}
+
+	fn get_file_type(&self) -> FileType {
+		FileType::Link
 	}
 
 	fn set_hard_links_count(&mut self, _: u16) {}
@@ -78,12 +82,6 @@ impl KernFSNode for SelfNode {
 	}
 
 	fn set_mtime(&mut self, _: Timestamp) {}
-
-	fn get_content(&mut self) -> EResult<KernFSContent<'_>> {
-		let pid = Process::current_assert().lock().pid;
-		let pid = PathBuf::try_from(format!("{pid}")?)?;
-		Ok(FileContent::Link(pid).into())
-	}
 }
 
 impl IO for SelfNode {
@@ -91,8 +89,10 @@ impl IO for SelfNode {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
-		Err(errno!(EINVAL))
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+		let pid = Process::current_assert().lock().pid;
+		let pid = format!("{pid}")?;
+		content_chunks(offset, buff, iter::once(Ok(pid.as_bytes())))
 	}
 
 	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
