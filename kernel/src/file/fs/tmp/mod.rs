@@ -21,8 +21,6 @@
 //! The files are stored on the kernel's memory and thus are removed when the
 //! filesystem is unmounted.
 
-mod node;
-
 use super::{
 	kernfs::{node::KernFSNode, KernFS},
 	Filesystem, FilesystemType,
@@ -30,20 +28,10 @@ use super::{
 use crate::file::{
 	fs::{kernfs::node::DummyKernFSNode, Statfs},
 	path::PathBuf,
-	perm::{Gid, Uid},
-	File, INode, Mode,
+	DirEntry, File, FileType, INode,
 };
-use core::mem::size_of;
-use node::TmpFSRegular;
-use utils::{
-	boxed::Box,
-	collections::{hashmap::HashMap, string::String},
-	errno,
-	errno::EResult,
-	io::IO,
-	lock::Mutex,
-	ptr::arc::Arc,
-};
+use core::{intrinsics::unlikely, mem::size_of};
+use utils::{boxed::Box, errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
 
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
@@ -62,9 +50,10 @@ pub struct TmpFS {
 	max_size: usize,
 	/// The currently used amount of memory in bytes.
 	size: usize,
-
-	/// The kernfs.
-	fs: KernFS,
+	/// Tells whether the filesystem is readonly.
+	readonly: bool,
+	/// The inner kernfs.
+	inner: KernFS<false>,
 }
 
 impl TmpFS {
@@ -77,17 +66,15 @@ impl TmpFS {
 		let mut fs = Self {
 			max_size,
 			size: 0,
-
-			fs: KernFS::new(b"tmpfs".try_into()?, readonly)?,
+			readonly,
+			inner: KernFS::<false>::new()?,
 		};
-
-		// Adding the root node
-		let root_node = DummyKernFSNode::new(0o777, 0, 0, FileContent::Directory(HashMap::new()));
+		// Add the root node
+		let root_node = DummyKernFSNode::new(0, 0, FileType::Directory, 0o777);
 		fs.update_size(get_used_size(&root_node) as _, |fs| {
-			fs.fs.set_root(Box::new(root_node)?)?;
+			fs.inner.set_root(Box::new(root_node)?)?;
 			Ok(())
 		})?;
-
 		Ok(fs)
 	}
 
@@ -125,23 +112,23 @@ impl TmpFS {
 
 impl Filesystem for TmpFS {
 	fn get_name(&self) -> &[u8] {
-		self.fs.get_name()
+		b"tmpfs"
 	}
 
 	fn is_readonly(&self) -> bool {
-		self.fs.is_readonly()
+		self.readonly
 	}
 
 	fn use_cache(&self) -> bool {
-		self.fs.use_cache()
+		self.inner.use_cache()
 	}
 
 	fn get_root_inode(&self) -> INode {
-		self.fs.get_root_inode()
+		self.inner.get_root_inode()
 	}
 
 	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs> {
-		self.fs.get_stat(io)
+		self.inner.get_stat(io)
 	}
 
 	fn get_inode(
@@ -150,34 +137,25 @@ impl Filesystem for TmpFS {
 		parent: Option<INode>,
 		name: &[u8],
 	) -> EResult<INode> {
-		self.fs.get_inode(io, parent, name)
+		self.inner.get_inode(io, parent, name)
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode, name: String) -> EResult<File> {
-		self.fs.load_file(io, inode, name)
+	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
+		self.inner.load_file(io, inode)
 	}
 
 	fn add_file(
 		&mut self,
 		io: &mut dyn IO,
 		parent_inode: INode,
-		name: String,
-		uid: Uid,
-		gid: Gid,
-		mode: Mode,
+		name: &[u8],
+		node: File,
 	) -> EResult<File> {
-		// TODO Update fs's size
-
-		match content {
-			FileContent::Regular => {
-				let node = TmpFSRegular::new(mode, uid, gid);
-				self.fs.add_file_impl(parent_inode, node, name)
-			}
-
-			_ => self
-				.fs
-				.add_node(io, parent_inode, name, uid, gid, mode, content),
+		if unlikely(self.readonly) {
+			return Err(errno!(EROFS));
 		}
+		// TODO Update fs's size
+		self.inner.add_file(io, parent_inode, name, node)
 	}
 
 	fn add_link(
@@ -187,13 +165,19 @@ impl Filesystem for TmpFS {
 		name: &[u8],
 		inode: INode,
 	) -> EResult<()> {
+		if unlikely(self.readonly) {
+			return Err(errno!(EROFS));
+		}
 		// TODO Update fs's size
-		self.fs.add_link(io, parent_inode, name, inode)
+		self.inner.add_link(io, parent_inode, name, inode)
 	}
 
 	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> EResult<()> {
+		if unlikely(self.readonly) {
+			return Err(errno!(EROFS));
+		}
 		// TODO Update fs's size
-		self.fs.update_inode(io, file)
+		self.inner.update_inode(io, file)
 	}
 
 	fn remove_file(
@@ -202,8 +186,11 @@ impl Filesystem for TmpFS {
 		parent_inode: INode,
 		name: &[u8],
 	) -> EResult<(u16, INode)> {
+		if unlikely(self.readonly) {
+			return Err(errno!(EROFS));
+		}
 		// TODO Update fs's size
-		self.fs.remove_file(io, parent_inode, name)
+		self.inner.remove_file(io, parent_inode, name)
 	}
 
 	fn read_node(
@@ -213,16 +200,37 @@ impl Filesystem for TmpFS {
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {
-		self.fs.read_node(io, inode, off, buf)
+		self.inner.read_node(io, inode, off, buf)
 	}
 
 	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
+		if unlikely(self.readonly) {
+			return Err(errno!(EROFS));
+		}
 		// TODO Update fs's size
-		self.fs.write_node(io, inode, off, buf)
+		self.inner.write_node(io, inode, off, buf)
+	}
+
+	fn entry_by_name<'n>(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		self.inner.entry_by_name(io, inode, name)
+	}
+
+	fn next_entry(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		self.next_entry(io, inode, off)
 	}
 }
 
-/// Structure representing the tmpfs file system type.
+/// The tmpfs filesystem type.
 pub struct TmpFsType {}
 
 impl FilesystemType for TmpFsType {

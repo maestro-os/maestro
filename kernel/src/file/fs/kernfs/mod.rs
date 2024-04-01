@@ -31,19 +31,10 @@ use crate::{
 	},
 	memory,
 };
-use core::{
-	cmp::{max, min},
-	intrinsics::unlikely,
-};
+use core::cmp::{max, min};
 use node::KernFSNode;
 use utils::{
-	boxed::Box,
-	collections::{string::String, vec::Vec},
-	errno,
-	errno::EResult,
-	io::IO,
-	ptr::cow::Cow,
-	vec,
+	boxed::Box, collections::vec::Vec, errno, errno::EResult, io::IO, ptr::cow::Cow, vec,
 };
 
 /// The index of the root inode.
@@ -112,28 +103,20 @@ fn load_file_impl(inode: INode, node: &dyn KernFSNode) -> File {
 }
 
 /// A kernel file system.
+///
+/// `READ_ONLY` tells whether the filesystem is read-only.
 #[derive(Debug)]
-pub struct KernFS {
-	/// The name of the filesystem.
-	name: String,
-	/// Tells whether the filesystem is readonly.
-	readonly: bool,
+pub struct KernFS<const READ_ONLY: bool> {
 	/// The list of nodes of the filesystem.
 	///
 	/// The index in this vector is the inode.
 	nodes: Vec<Option<Box<dyn KernFSNode>>>,
 }
 
-impl KernFS {
+impl<const READ_ONLY: bool> KernFS<READ_ONLY> {
 	/// Creates a new instance.
-	///
-	/// Arguments:
-	/// - `name` is the name of the filesystem.
-	/// - `readonly` tells whether the filesystem is readonly.
-	pub fn new(name: String, readonly: bool) -> EResult<Self> {
+	pub fn new() -> EResult<Self> {
 		Ok(Self {
-			name,
-			readonly,
 			nodes: vec![None]?,
 		})
 	}
@@ -246,15 +229,12 @@ impl KernFS {
 	/// - `name` is the name of the new file.
 	///
 	/// On success, the function returns the inode of the newly inserted file.
-	pub fn add_file_impl<N: 'static + KernFSNode>(
+	fn add_file_impl<N: 'static + KernFSNode>(
 		&mut self,
 		parent_inode: INode,
 		node: N,
 		name: &[u8],
 	) -> EResult<INode> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
 		// Insert node and get a reference to it along with its parent
 		let inode = self.add_node(Box::new(node)?)?;
 		let (parent, node) = match self.get_node_pair_mut(parent_inode, inode) {
@@ -290,13 +270,13 @@ impl KernFS {
 	}
 }
 
-impl Filesystem for KernFS {
+impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 	fn get_name(&self) -> &[u8] {
-		self.name.as_bytes()
+		&[]
 	}
 
 	fn is_readonly(&self) -> bool {
-		self.readonly
+		READ_ONLY
 	}
 
 	fn use_cache(&self) -> bool {
@@ -348,6 +328,9 @@ impl Filesystem for KernFS {
 		name: &[u8],
 		file: File,
 	) -> EResult<File> {
+		if READ_ONLY {
+			return Err(errno!(EROFS));
+		}
 		let mut node = DummyKernFSNode::new(file.uid, file.gid, file.file_type, file.mode);
 		node.set_atime(file.atime);
 		node.set_ctime(file.ctime);
@@ -365,7 +348,7 @@ impl Filesystem for KernFS {
 		name: &[u8],
 		inode: INode,
 	) -> EResult<()> {
-		if unlikely(self.readonly) {
+		if READ_ONLY {
 			return Err(errno!(EROFS));
 		}
 		let (parent, node) = self.get_node_pair_mut(parent_inode, inode)?;
@@ -383,7 +366,7 @@ impl Filesystem for KernFS {
 	}
 
 	fn update_inode(&mut self, _: &mut dyn IO, file: &File) -> EResult<()> {
-		if unlikely(self.readonly) {
+		if READ_ONLY {
 			return Err(errno!(EROFS));
 		}
 		let node = self.get_node_mut(file.location.get_inode())?;
@@ -402,7 +385,7 @@ impl Filesystem for KernFS {
 		parent_inode: INode,
 		name: &[u8],
 	) -> EResult<(u16, INode)> {
-		if unlikely(self.readonly) {
+		if READ_ONLY {
 			return Err(errno!(EROFS));
 		}
 		// Get directory
@@ -446,7 +429,7 @@ impl Filesystem for KernFS {
 	}
 
 	fn write_node(&mut self, _: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
-		if unlikely(self.readonly) {
+		if READ_ONLY {
 			return Err(errno!(EROFS));
 		}
 		let node = self.get_node_mut(inode)?;

@@ -48,6 +48,8 @@ struct LinuxDirent64 {
 }
 
 impl Dirent for LinuxDirent64 {
+	const INODE_MAX: u64 = u64::MAX;
+
 	fn required_length(name: &[u8]) -> usize {
 		(size_of::<Self>() + name.len() + 1)
 			// Padding for alignment

@@ -36,6 +36,9 @@ use utils::{
 
 /// A directory entry as returned by the `getdents*` system calls.
 pub trait Dirent: Sized {
+	/// The maximum value fitting in the structure for the inode.
+	const INODE_MAX: u64;
+
 	/// Returns the number of bytes required for an entry with the given name.
 	///
 	/// This function must return a number that ensures the entry is aligned in memory (a multiple
@@ -80,23 +83,19 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 
 	let mut open_file = open_file_mutex.lock();
 	let start = open_file.get_offset();
-
 	let mut off = 0;
 	let mut entries_count = 0;
-
 	{
 		let file_mutex = open_file.get_file();
 		let file = file_mutex.lock();
-
-		let FileContent::Directory(entries) = file.get_content() else {
-			return Err(errno!(ENOTDIR));
-		};
-		// TODO skip entries whose inode cannot fit in struct
-		let entries = entries.iter().skip(start as _);
-
 		// Iterate over entries and fill the buffer
-		for (name, entry) in entries {
-			let len = E::required_length(name);
+		for entry in file.iter_dir_entries(start) {
+			let entry = entry?;
+			// Skip entries whose inode cannot fit in the structure
+			if entry.inode > E::INODE_MAX {
+				continue;
+			}
+			let len = E::required_length(entry.name.as_ref());
 			// If the buffer is not large enough, return an error
 			if off == 0 && len > count {
 				return Err(errno!(EINVAL));
@@ -105,19 +104,22 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 			if off + len > count {
 				break;
 			}
-
-			E::write(dirp_slice, off, entry.inode, entry.entry_type, name);
-
+			E::write(
+				dirp_slice,
+				off,
+				entry.inode,
+				entry.entry_type,
+				entry.name.as_ref(),
+			);
 			off += len;
 			entries_count += 1;
 		}
 	}
-
 	open_file.set_offset(start + entries_count);
 	Ok(off as _)
 }
 
-/// Structure representing a Linux directory entry.
+/// A Linux directory entry.
 #[repr(C)]
 struct LinuxDirent {
 	/// Inode number.
@@ -134,6 +136,8 @@ struct LinuxDirent {
 }
 
 impl Dirent for LinuxDirent {
+	const INODE_MAX: u64 = u32::MAX as _;
+
 	fn required_length(name: &[u8]) -> usize {
 		(size_of::<Self>() + name.len() + 2)
 			// Padding for alignment

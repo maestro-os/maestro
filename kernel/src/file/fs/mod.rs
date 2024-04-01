@@ -157,6 +157,9 @@ pub trait Filesystem: Any + Debug {
 	/// - `parent_inode` is the parent file's inode.
 	/// - `name` is the file's name.
 	///
+	/// If the file to be removed is a non-empty directory, the function returns
+	/// [`errno::ENOTEMPTY`].
+	///
 	/// The function returns the number of hard links left on the node and the node's ID.
 	fn remove_file(
 		&mut self,

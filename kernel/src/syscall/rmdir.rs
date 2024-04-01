@@ -21,7 +21,7 @@
 //! If no link remain to the directory, the function also removes it.
 
 use crate::{
-	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
+	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
@@ -50,11 +50,8 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 		let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 		let file = file_mutex.lock();
 		// Validation
-		match file.get_content() {
-			// The 2 entries in question are `.` and `..`
-			FileContent::Directory(entries) if entries.len() > 2 => return Err(errno!(ENOTEMPTY)),
-			FileContent::Directory(_) => {}
-			_ => return Err(errno!(ENOTDIR)),
+		if file.get_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
 		}
 		// Remove
 		vfs::remove_file_from_path(&path, &rs)?;

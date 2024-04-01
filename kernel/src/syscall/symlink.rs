@@ -28,7 +28,7 @@ use crate::{
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{errno, errno::Errno, io::IO};
 
 #[syscall]
 pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Errno> {
@@ -66,13 +66,8 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
 
-	vfs::create_file(
-		&mut parent,
-		name,
-		&rs.access_profile,
-		0o777,
-		FileContent::Link(target),
-	)?;
+	let file = vfs::create_file(&mut parent, name, &rs.access_profile, 0o777)?;
+	file.lock().write(0, target.as_bytes())?;
 
 	Ok(0)
 }

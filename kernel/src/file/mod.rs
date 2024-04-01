@@ -358,6 +358,11 @@ impl File {
 		self.ctime = timestamp;
 	}
 
+	/// Returns the number of blocks occupied by the file on disk.
+	pub fn get_blocks_count(&self) -> u64 {
+		self.blocks_count
+	}
+
 	/// Sets the file's size.
 	pub fn set_size(&mut self, size: u64) {
 		self.size = size;
@@ -407,6 +412,18 @@ impl File {
 		self.mode = mode & 0o7777;
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		self.ctime = timestamp;
+	}
+
+	/// Returns an iterator over the directory's entries.
+	///
+	/// `start` is the starting offset of the iterator.
+	///
+	/// If the file is not a directory, the iterator returns nothing.
+	pub fn iter_dir_entries(&self, start: u64) -> DirEntryIterator<'_> {
+		DirEntryIterator {
+			dir: self,
+			cursor: start,
+		}
 	}
 
 	/// Performs an ioctl operation on the file.
@@ -739,6 +756,41 @@ impl IO for File {
 			let mut io = io_mutex.lock();
 			io.poll(mask)
 		})
+	}
+}
+
+/// Iterator over a file's directory entries.
+///
+/// If the file is not a directory, the iterator returns nothing.
+pub struct DirEntryIterator<'f> {
+	/// The directory.
+	dir: &'f File,
+	/// The current offset in the file.
+	cursor: u64,
+}
+
+impl<'f> Iterator for DirEntryIterator<'f> {
+	type Item = EResult<DirEntry<'static>>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let res = self
+			.dir
+			.io_op(|io, fs| {
+				let (Some(io_mutex), Some((fs_mutex, inode))) = (io, fs) else {
+					return Ok(None);
+				};
+				let mut io = io_mutex.lock();
+				let mut fs = fs_mutex.lock();
+				fs.next_entry(&mut *io, inode, self.cursor)
+			})
+			.transpose()?;
+		match res {
+			Ok((entry, off)) => {
+				self.cursor = off;
+				Some(Ok(entry))
+			}
+			Err(e) => Some(Err(e)),
+		}
 	}
 }
 

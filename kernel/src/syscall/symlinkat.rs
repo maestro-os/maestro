@@ -30,7 +30,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{errno, errno::Errno, io::IO};
 
 #[syscall]
 pub fn symlinkat(
@@ -56,7 +56,6 @@ pub fn symlinkat(
 		return Err(errno!(ENAMETOOLONG));
 	}
 	let target = PathBuf::try_from(target_slice)?;
-	let file_content = FileContent::Link(target);
 
 	let linkpath = linkpath
 		.get(&mem_space_guard)?
@@ -71,7 +70,8 @@ pub fn symlinkat(
 			name,
 		} => {
 			let mut parent = parent.lock();
-			vfs::create_file(&mut parent, name, &rs.access_profile, 0, file_content)?;
+			let file = vfs::create_file(&mut parent, name, &rs.access_profile, 0, file_content)?;
+			file.lock().write(0, target.as_bytes())?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),
 	}

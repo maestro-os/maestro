@@ -32,12 +32,7 @@ use super::{
 	Filesystem, FilesystemType,
 };
 use crate::{
-	file::{
-		fs::Statfs,
-		path::PathBuf,
-		perm::{Gid, Uid},
-		DirEntry, File, FileType, INode, Mode,
-	},
+	file::{fs::Statfs, path::PathBuf, DirEntry, File, FileType, INode},
 	process,
 	process::{oom, pid::Pid},
 };
@@ -49,7 +44,7 @@ use sys_dir::SysDir;
 use uptime::Uptime;
 use utils::{
 	boxed::Box,
-	collections::{hashmap::HashMap, string::String},
+	collections::hashmap::HashMap,
 	errno,
 	errno::{AllocResult, EResult},
 	format,
@@ -64,8 +59,8 @@ use version::Version;
 /// On the inside, the procfs works using a kernfs.
 #[derive(Debug)]
 pub struct ProcFS {
-	/// The kernfs.
-	fs: KernFS,
+	/// The inner kernfs.
+	inner: KernFS<true>,
 	/// The list of registered processes with their directory's inode.
 	procs: HashMap<Pid, INode>,
 }
@@ -74,9 +69,9 @@ impl ProcFS {
 	/// Creates a new instance.
 	///
 	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new(readonly: bool) -> EResult<Self> {
+	pub fn new() -> EResult<Self> {
 		let mut fs = Self {
-			fs: KernFS::new(b"procfs".try_into()?, readonly)?,
+			inner: KernFS::new()?,
 			procs: HashMap::new(),
 		};
 
@@ -84,7 +79,7 @@ impl ProcFS {
 
 		// Create /proc/meminfo
 		let node = MemInfo {};
-		let inode = fs.fs.add_node(Box::new(node)?)?;
+		let inode = fs.inner.add_node(Box::new(node)?)?;
 		entries.insert(
 			b"meminfo".try_into()?,
 			DirEntry {
@@ -96,7 +91,7 @@ impl ProcFS {
 		// Create /proc/mounts
 		let node =
 			DummyKernFSNode::new(0o777, 0, 0, FileContent::Link(b"self/mounts".try_into()?));
-		let inode = fs.fs.add_node(Box::new(node)?)?;
+		let inode = fs.inner.add_node(Box::new(node)?)?;
 		entries.insert(
 			b"mounts".try_into()?,
 			DirEntry {
@@ -107,7 +102,7 @@ impl ProcFS {
 
 		// Create /proc/self
 		let node = SelfNode {};
-		let inode = fs.fs.add_node(Box::new(node)?)?;
+		let inode = fs.inner.add_node(Box::new(node)?)?;
 		entries.insert(
 			b"self".try_into()?,
 			DirEntry {
@@ -117,8 +112,8 @@ impl ProcFS {
 		)?;
 
 		// Create /proc/sys
-		let node = SysDir::new(&mut fs.fs)?;
-		let inode = fs.fs.add_node(Box::new(node)?)?;
+		let node = SysDir::new(&mut fs.inner)?;
+		let inode = fs.inner.add_node(Box::new(node)?)?;
 		entries.insert(
 			b"sys".try_into()?,
 			DirEntry {
@@ -129,7 +124,7 @@ impl ProcFS {
 
 		// Create /proc/uptime
 		let node = Uptime {};
-		let inode = fs.fs.add_node(Box::new(node)?)?;
+		let inode = fs.inner.add_node(Box::new(node)?)?;
 		entries.insert(
 			b"uptime".try_into()?,
 			DirEntry {
@@ -140,7 +135,7 @@ impl ProcFS {
 
 		// Create /proc/version
 		let node = Version {};
-		let inode = fs.fs.add_node(Box::new(node)?)?;
+		let inode = fs.inner.add_node(Box::new(node)?)?;
 		entries.insert(
 			b"version".try_into()?,
 			DirEntry {
@@ -151,7 +146,7 @@ impl ProcFS {
 
 		// Add the root node
 		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(entries));
-		fs.fs.set_root(Box::new(root_node)?)?;
+		fs.inner.set_root(Box::new(root_node)?)?;
 
 		// Add existing processes
 		{
@@ -167,12 +162,12 @@ impl ProcFS {
 	/// Adds a process with the given PID `pid` to the filesystem.
 	pub fn add_process(&mut self, pid: Pid) -> EResult<()> {
 		// Create the process's node
-		let proc_node = ProcDir::new(pid, &mut self.fs)?;
-		let inode = self.fs.add_node(Box::new(proc_node)?)?;
+		let proc_node = ProcDir::new(pid, &mut self.inner)?;
+		let inode = self.inner.add_node(Box::new(proc_node)?)?;
 		oom::wrap(|| self.procs.insert(pid, inode));
 
 		// Insert the process's entry at the root of the filesystem
-		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
+		let root = self.inner.get_node_mut(kernfs::ROOT_INODE).unwrap();
 		oom::wrap(|| {
 			let mut content = root.get_content().map_err(|_| AllocError)?;
 			let FileContent::Directory(entries) = &mut *content else {
@@ -199,7 +194,7 @@ impl ProcFS {
 		};
 
 		// Remove the process's entry from the root of the filesystem
-		let root = self.fs.get_node_mut(kernfs::ROOT_INODE).unwrap();
+		let root = self.inner.get_node_mut(kernfs::ROOT_INODE).unwrap();
 		oom::wrap(|| {
 			let mut content = root.get_content().map_err(|_| AllocError)?;
 			let FileContent::Directory(entries) = &mut *content else {
@@ -210,11 +205,12 @@ impl ProcFS {
 		});
 
 		// Remove the node
-		if let Some(mut node) = oom::wrap(|| self.fs.remove_node(inode).map_err(|_| AllocError)) {
+		if let Some(mut node) = oom::wrap(|| self.inner.remove_node(inode).map_err(|_| AllocError))
+		{
 			let node = node.as_mut() as &mut dyn Any;
 
 			if let Some(node) = node.downcast_mut::<ProcDir>() {
-				node.drop_inner(&mut self.fs);
+				node.drop_inner(&mut self.inner);
 			}
 		}
 		Ok(())
@@ -223,23 +219,23 @@ impl ProcFS {
 
 impl Filesystem for ProcFS {
 	fn get_name(&self) -> &[u8] {
-		self.fs.get_name()
+		b"procfs"
 	}
 
 	fn is_readonly(&self) -> bool {
-		self.fs.is_readonly()
+		true
 	}
 
 	fn use_cache(&self) -> bool {
-		self.fs.use_cache()
+		self.inner.use_cache()
 	}
 
 	fn get_root_inode(&self) -> INode {
-		self.fs.get_root_inode()
+		self.inner.get_root_inode()
 	}
 
 	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs> {
-		self.fs.get_stat(io)
+		self.inner.get_stat(io)
 	}
 
 	fn get_inode(
@@ -248,21 +244,19 @@ impl Filesystem for ProcFS {
 		parent: Option<INode>,
 		name: &[u8],
 	) -> EResult<INode> {
-		self.fs.get_inode(io, parent, name)
+		self.inner.get_inode(io, parent, name)
 	}
 
 	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
-		self.fs.load_file(io, inode)
+		self.inner.load_file(io, inode)
 	}
 
 	fn add_file(
 		&mut self,
 		_io: &mut dyn IO,
 		_parent_inode: INode,
-		_name: String,
-		_uid: Uid,
-		_gid: Gid,
-		_mode: Mode,
+		_name: &[u8],
+		_node: File,
 	) -> EResult<File> {
 		Err(errno!(EACCES))
 	}
@@ -297,15 +291,33 @@ impl Filesystem for ProcFS {
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {
-		self.fs.read_node(io, inode, off, buf)
+		self.inner.read_node(io, inode, off, buf)
 	}
 
 	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
-		self.fs.write_node(io, inode, off, buf)
+		self.inner.write_node(io, inode, off, buf)
+	}
+
+	fn entry_by_name<'n>(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		self.inner.entry_by_name(io, inode, name)
+	}
+
+	fn next_entry(
+		&mut self,
+		io: &mut dyn IO,
+		inode: INode,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		self.next_entry(io, inode, off)
 	}
 }
 
-/// Structure representing the procfs file system type.
+/// The procfs filesystem type.
 pub struct ProcFsType {}
 
 impl FilesystemType for ProcFsType {
@@ -321,8 +333,8 @@ impl FilesystemType for ProcFsType {
 		&self,
 		_io: &mut dyn IO,
 		_mountpath: PathBuf,
-		readonly: bool,
+		_readonly: bool,
 	) -> EResult<Arc<Mutex<dyn Filesystem>>> {
-		Ok(Arc::new(Mutex::new(ProcFS::new(readonly)?))?)
+		Ok(Arc::new(Mutex::new(ProcFS::new()?))?)
 	}
 }

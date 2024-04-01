@@ -113,7 +113,7 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 
 		st_size: file.get_size() as _,
 		st_blksize: 512, // TODO
-		st_blocks: file.blocks_count,
+		st_blocks: file.get_blocks_count(),
 
 		st_atim: Timespec::from_nano(TimestampScale::convert(
 			file.atime,
