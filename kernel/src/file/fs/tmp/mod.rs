@@ -131,15 +131,6 @@ impl Filesystem for TmpFS {
 		self.inner.get_stat(io)
 	}
 
-	fn get_inode(
-		&mut self,
-		io: &mut dyn IO,
-		parent: Option<INode>,
-		name: &[u8],
-	) -> EResult<INode> {
-		self.inner.get_inode(io, parent, name)
-	}
-
 	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
 		self.inner.load_file(io, inode)
 	}

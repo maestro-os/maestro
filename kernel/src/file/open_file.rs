@@ -267,7 +267,7 @@ impl OpenFile {
 			}
 			FileType::BlockDevice => {
 				let dev_mutex = device::get(&DeviceID {
-					type_: DeviceType::Block,
+					dev_type: DeviceType::Block,
 					major: file.dev_major,
 					minor: file.dev_minor,
 				});
@@ -278,7 +278,7 @@ impl OpenFile {
 			}
 			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
-					type_: DeviceType::Char,
+					dev_type: DeviceType::Char,
 					major: file.dev_major,
 					minor: file.dev_minor,
 				});

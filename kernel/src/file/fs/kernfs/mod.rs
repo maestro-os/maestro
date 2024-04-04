@@ -303,19 +303,6 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 		})
 	}
 
-	fn get_inode(
-		&mut self,
-		_io: &mut dyn IO,
-		parent: Option<INode>,
-		name: &[u8],
-	) -> EResult<INode> {
-		// Get the parent node
-		let parent = parent.unwrap_or(ROOT_INODE);
-		let parent = self.get_node_mut(parent)?;
-		let (entry, _) = parent.entry_by_name(name)?.ok_or_else(|| errno!(ENOENT))?;
-		Ok(entry.inode)
-	}
-
 	fn load_file(&mut self, _: &mut dyn IO, inode: INode) -> EResult<File> {
 		let node = self.get_node(inode)?;
 		Ok(load_file_impl(inode, node.as_ref()))

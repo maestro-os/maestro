@@ -34,9 +34,8 @@ use utils::{
 	collections::{hashmap::HashMap, string::String},
 	errno,
 	errno::{AllocResult, EResult},
-	io::{DummyIO, IO},
 	lock::Mutex,
-	ptr::arc::Arc,
+	ptr::arc::{Arc, Weak},
 	TryClone,
 };
 
@@ -44,7 +43,7 @@ use utils::{
 pub const FLAG_MANDLOCK: u32 = 0b000000000001;
 /// Do not update file (all kinds) access timestamps on the filesystem.
 pub const FLAG_NOATIME: u32 = 0b000000000010;
-/// Do not allows access to device files on the filesystem.
+/// Do not allow access to device files on the filesystem.
 pub const FLAG_NODEV: u32 = 0b000000000100;
 /// Do not update directory access timestamps on the filesystem.
 pub const FLAG_NODIRATIME: u32 = 0b000000001000;
@@ -73,15 +72,7 @@ pub const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub enum MountSource {
 	/// The mountpoint is mounted from a device.
-	Device {
-		/// The device type.
-		dev_type: DeviceType,
-		/// The major number.
-		major: u32,
-		/// The minor number.
-		minor: u32,
-	},
-
+	Device(DeviceID),
 	/// The mountpoint is bound to a virtual filesystem and thus isn't
 	/// associated with any device.
 	///
@@ -92,8 +83,7 @@ pub enum MountSource {
 impl MountSource {
 	/// Creates a mount source from a dummy string.
 	///
-	/// The string `string` might be either a kernfs name, a relative path or an
-	/// absolute path.
+	/// `string` might be either a kernfs name or an absolute path.
 	pub fn new(string: &[u8]) -> EResult<Self> {
 		let path = Path::new(string)?;
 		let result = vfs::get_file_from_path(path, &ResolutionSettings::kernel_follow());
@@ -101,16 +91,16 @@ impl MountSource {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();
 				match file.get_type() {
-					FileType::BlockDevice => Ok(Self::Device {
+					FileType::BlockDevice => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Block,
 						major: file.dev_major,
 						minor: file.dev_minor,
-					}),
-					FileType::CharDevice => Ok(Self::Device {
+					})),
+					FileType::CharDevice => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Char,
 						major: file.dev_major,
 						minor: file.dev_minor,
-					}),
+					})),
 					_ => Err(errno!(EINVAL)),
 				}
 			}
@@ -118,42 +108,12 @@ impl MountSource {
 			Err(err) => Err(err),
 		}
 	}
-
-	/// Returns the IO interface for the mount source.
-	pub fn get_io(&self) -> EResult<Arc<Mutex<dyn IO>>> {
-		match self {
-			Self::Device {
-				dev_type,
-				major,
-				minor,
-			} => {
-				let dev = device::get(&DeviceID {
-					type_: *dev_type,
-					major: *major,
-					minor: *minor,
-				})
-				.ok_or_else(|| errno!(ENODEV))?;
-				Ok(dev as _)
-			}
-
-			Self::NoDev(_) => Ok(Arc::new(Mutex::new(DummyIO {}))? as _),
-		}
-	}
 }
 
 impl TryClone for MountSource {
 	fn try_clone(&self) -> AllocResult<Self> {
 		Ok(match self {
-			Self::Device {
-				dev_type,
-				major,
-				minor,
-			} => Self::Device {
-				dev_type: *dev_type,
-				major: *major,
-				minor: *minor,
-			},
-
+			Self::Device(id) => Self::Device(id.clone()),
 			Self::NoDev(name) => Self::NoDev(name.try_clone()?),
 		})
 	}
@@ -162,28 +122,19 @@ impl TryClone for MountSource {
 impl fmt::Display for MountSource {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 		match self {
-			Self::Device {
+			Self::Device(DeviceID {
 				dev_type,
 				major,
 				minor,
-			} => write!(fmt, "dev({dev_type}:{major}:{minor})"),
-
+			}) => write!(fmt, "dev({dev_type}:{major}:{minor})"),
 			Self::NoDev(name) => write!(fmt, "{name}"),
 		}
 	}
 }
 
-/// Structure wrapping a loaded filesystem.
-struct LoadedFS {
-	/// The number of mountpoints using the filesystem.
-	ref_count: usize,
-
-	/// The filesystem.
-	fs: Arc<Mutex<dyn Filesystem>>,
-}
-
 /// The list of loaded filesystems associated with their respective sources.
-static FILESYSTEMS: Mutex<HashMap<MountSource, LoadedFS>> = Mutex::new(HashMap::new());
+static FILESYSTEMS: Mutex<HashMap<MountSource, Weak<Mutex<dyn Filesystem>>>> =
+	Mutex::new(HashMap::new());
 
 /// Loads a filesystem.
 ///
@@ -201,54 +152,36 @@ fn load_fs(
 	path: PathBuf,
 	readonly: bool,
 ) -> EResult<Arc<Mutex<dyn Filesystem>>> {
-	// Get the I/O interface
-	let io_mutex = source.get_io()?;
-	let mut io = io_mutex.lock();
-
-	// Get the filesystem type
-	let fs_type = match fs_type {
-		Some(fs_type) => fs_type,
-		None => match source {
-			MountSource::NoDev(ref name) => fs::get_type(name).ok_or_else(|| errno!(ENODEV))?,
-			_ => fs::detect(&mut *io)?,
-		},
+	let (io, fs_type) = match &source {
+		MountSource::Device(dev_id) => {
+			let io_mutex = device::get(dev_id).ok_or_else(|| errno!(ENODEV))?;
+			let io = io_mutex.lock();
+			let fs_type = match fs_type {
+				Some(f) => f,
+				None => fs::detect(&mut *io)?,
+			};
+			(Some(io_mutex as _), fs_type)
+		}
+		MountSource::NoDev(name) => {
+			let fs_type = match fs_type {
+				Some(f) => f,
+				None => fs::get_type(name).ok_or_else(|| errno!(ENODEV))?,
+			};
+			(None, fs_type)
+		}
 	};
-	let fs = fs_type.load_filesystem(&mut *io, path, readonly)?;
-
+	let fs = fs_type.load_filesystem(io, path, readonly)?;
 	// Insert new filesystem into filesystems list
 	let mut filesystems = FILESYSTEMS.lock();
-	filesystems.insert(
-		source,
-		LoadedFS {
-			ref_count: 1,
-
-			fs: fs.clone(),
-		},
-	)?;
-
+	filesystems.insert(source, Arc::downgrade(&fs))?;
 	Ok(fs)
-}
-
-/// Returns the loaded filesystem with the given source `source`.
-///
-/// `acquire` tells whether the function increments the references count.
-///
-/// If the filesystem isn't loaded, the function returns `None`.
-fn get_fs_impl(source: &MountSource, acquire: bool) -> Option<Arc<Mutex<dyn Filesystem>>> {
-	let mut filesystems = FILESYSTEMS.lock();
-	let fs = filesystems.get_mut(source)?;
-	// Increment the number of references if required
-	if acquire {
-		fs.ref_count += 1;
-	}
-	Some(fs.fs.clone())
 }
 
 /// Returns the loaded filesystem with the given source `source`.
 ///
 /// If the filesystem isn't loaded, the function returns `None`.
 pub fn get_fs(source: &MountSource) -> Option<Arc<Mutex<dyn Filesystem>>> {
-	get_fs_impl(source, false)
+	FILESYSTEMS.lock().get(source).and_then(Weak::upgrade)
 }
 
 /// A mount point, allowing to attach a filesystem to a directory on the VFS.
@@ -293,11 +226,10 @@ impl MountPoint {
 	) -> EResult<Self> {
 		// Tells whether the filesystem will be mounted as read-only
 		let readonly = flags & FLAG_RDONLY != 0;
-
-		let fs = match get_fs_impl(&source, true) {
-			// Filesystem exists, do nothing
+		let fs = match get_fs(&source) {
+			// Filesystem is loaded
 			Some(fs) => fs,
-			// Filesystem doesn't exist, load it
+			// Filesystem is not loaded: load it
 			None => load_fs(
 				source.try_clone()?,
 				fs_type,
@@ -306,7 +238,6 @@ impl MountPoint {
 			)?,
 		};
 		let fs_type_name = String::try_from(fs.lock().get_name())?;
-
 		Ok(Self {
 			id,
 			flags,
@@ -363,14 +294,13 @@ impl MountPoint {
 
 impl Drop for MountPoint {
 	fn drop(&mut self) {
-		// Decrement the number of references to the filesystem
 		let mut filesystems = FILESYSTEMS.lock();
-		if let Some(fs) = filesystems.get_mut(&self.source) {
-			fs.ref_count -= 1;
-			// If no reference left, drop
-			if fs.ref_count == 0 {
-				filesystems.remove(&self.source);
-			}
+		let Some(fs) = filesystems.get(&self.source) else {
+			return;
+		};
+		// Remove the associated filesystem if this was the last reference to it
+		if fs.upgrade().is_none() {
+			filesystems.remove(&self.source);
 		}
 	}
 }

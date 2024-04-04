@@ -47,7 +47,7 @@ mod inode;
 
 use crate::{
 	file::{
-		fs::{Filesystem, FilesystemType, Statfs},
+		fs::{Filesystem, FilesystemType, NodeOps, Statfs},
 		path::PathBuf,
 		DirEntry, File, FileLocation, FileType, INode,
 	},
@@ -55,7 +55,10 @@ use crate::{
 };
 use block_group_descriptor::BlockGroupDescriptor;
 use core::{
+	any::Any,
 	cmp::{max, min},
+	fmt,
+	fmt::Formatter,
 	intrinsics::unlikely,
 	mem::{size_of, size_of_val, MaybeUninit},
 	slice,
@@ -237,6 +240,91 @@ fn zero_blocks(off: u64, count: u64, superblock: &Superblock, io: &mut dyn IO) -
 	}
 
 	Ok(())
+}
+
+/// File operations.
+struct Ext2NodeOps;
+
+/// Downcasts the given `fs` into [`Ext2Fs`].
+fn downcast_fs(fs: &dyn Filesystem) -> &Ext2Fs {
+	(fs as &dyn Any).downcast_ref().unwrap()
+}
+
+impl NodeOps for Ext2NodeOps {
+	fn read_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		if inode < 1 {
+			return Err(errno!(EINVAL));
+		}
+		let fs = downcast_fs(fs);
+		let inode_ = Ext2INode::read(inode as _, &fs.superblock, io)?;
+		inode_.read_content(off, buf, &fs.superblock, io)
+	}
+
+	fn write_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &[u8],
+	) -> EResult<()> {
+		if unlikely(fs.is_readonly()) {
+			return Err(errno!(EROFS));
+		}
+		if inode < 1 {
+			return Err(errno!(EINVAL));
+		}
+		let fs = downcast_fs(fs);
+		let mut inode_ = Ext2INode::read(inode as _, &fs.superblock, io)?;
+		inode_.write_content(off, buf, &mut fs.superblock, io)?;
+		inode_.write(inode as _, &fs.superblock, io)?;
+		fs.superblock.write(io)
+	}
+
+	fn entry_by_name<'n>(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		if inode < 1 {
+			return Err(errno!(EINVAL));
+		}
+		let fs = downcast_fs(fs);
+		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
+		let Some((_, entry)) = inode_.get_dirent(name, &self.superblock, io)? else {
+			return Ok(None);
+		};
+		let entry_type = match entry.get_type(&self.superblock) {
+			Some(t) => t,
+			// The type is not hinted in the entry itself. Need to get it from the inode
+			None => Ext2INode::read(entry.inode, &self.superblock, io)?.get_type(),
+		};
+		Ok(Some(DirEntry {
+			inode: entry.inode as _,
+			entry_type,
+			name: Cow::Borrowed(name),
+		}))
+	}
+
+	fn next_entry(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		if inode < 1 {
+			return Err(errno!(EINVAL));
+		}
+		let fs = downcast_fs(fs);
+		// TODO
+		todo!()
+	}
 }
 
 /// The ext2 superblock structure.
@@ -641,8 +729,9 @@ impl Superblock {
 }
 
 /// An instance of the ext2 filesystem.
-#[derive(Debug)]
 struct Ext2Fs {
+	/// The I/O interface to the device.
+	io: Arc<Mutex<dyn IO>>,
 	/// The filesystem's superblock.
 	superblock: Superblock,
 	/// The path at which the filesystem is mounted.
@@ -663,7 +752,7 @@ impl Ext2Fs {
 	/// - `readonly` tells whether the filesystem is mounted in read-only.
 	fn new(
 		mut superblock: Superblock,
-		io: &mut dyn IO,
+		io: Arc<Mutex<dyn IO>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Self> {
@@ -710,11 +799,11 @@ impl Ext2Fs {
 		superblock.last_mount_path[len..].fill(0);
 		// Set the last mount timestamp
 		superblock.last_mount_timestamp = timestamp as _;
-		superblock.write(io)?;
+		superblock.write(&mut *io.lock())?;
 
 		Ok(Self {
+			io,
 			superblock,
-
 			mountpath,
 			readonly,
 		})
@@ -740,9 +829,8 @@ impl Filesystem for Ext2Fs {
 		inode::ROOT_DIRECTORY_INODE as _
 	}
 
-	fn get_stat(&self, _io: &mut dyn IO) -> EResult<Statfs> {
+	fn get_stat(&self) -> EResult<Statfs> {
 		let fragment_size = math::pow2(self.superblock.fragment_size_log + 10);
-
 		Ok(Statfs {
 			f_type: EXT2_SIGNATURE as _,
 			f_bsize: self.superblock.get_block_size(),
@@ -759,27 +847,9 @@ impl Filesystem for Ext2Fs {
 		})
 	}
 
-	fn get_inode(
-		&mut self,
-		io: &mut dyn IO,
-		parent: Option<INode>,
-		name: &[u8],
-	) -> EResult<INode> {
-		let parent_inode = parent.unwrap_or(inode::ROOT_DIRECTORY_INODE as _);
-		// Get the parent inode
-		let parent = Ext2INode::read(parent_inode as _, &self.superblock, io)?;
-		if parent.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// Get the entry with the given name
-		let Some((_, entry)) = parent.get_dirent(name, &self.superblock, io)? else {
-			return Err(errno!(ENOENT));
-		};
-		Ok(entry.inode as _)
-	}
-
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
-		let inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
+	fn load_file(&self, inode: INode) -> EResult<File> {
+		let mut io = self.io.lock();
+		let inode_ = Ext2INode::read(inode as _, &self.superblock, &mut *io)?;
 		let file_type = inode_.get_type();
 		let mut file = File::new(
 			FileLocation::Filesystem {
@@ -800,13 +870,7 @@ impl Filesystem for Ext2Fs {
 		Ok(file)
 	}
 
-	fn add_file(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-		mut node: File,
-	) -> EResult<File> {
+	fn add_file(&self, parent_inode: INode, name: &[u8], mut node: File) -> EResult<File> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -892,13 +956,7 @@ impl Filesystem for Ext2Fs {
 		Ok(node)
 	}
 
-	fn add_link(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-		inode: INode,
-	) -> EResult<()> {
+	fn add_link(&self, parent_inode: INode, name: &[u8], inode: INode) -> EResult<()> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -970,7 +1028,7 @@ impl Filesystem for Ext2Fs {
 		Ok(())
 	}
 
-	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> EResult<()> {
+	fn update_inode(&self, file: &File) -> EResult<()> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -993,12 +1051,7 @@ impl Filesystem for Ext2Fs {
 		inode_.write(inode as _, &self.superblock, io)
 	}
 
-	fn remove_file(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-	) -> EResult<(u16, INode)> {
+	fn remove_file(&self, parent_inode: INode, name: &[u8]) -> EResult<(u16, INode)> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -1071,68 +1124,19 @@ impl Filesystem for Ext2Fs {
 
 		Ok((inode_.hard_links_count, inode as _))
 	}
+}
 
-	fn read_node(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<u64> {
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
-		inode_.read_content(off, buf, &self.superblock, io)
-	}
-
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
-		inode_.write_content(off, buf, &mut self.superblock, io)?;
-		inode_.write(inode as _, &self.superblock, io)?;
-		self.superblock.write(io)
-	}
-
-	fn entry_by_name<'n>(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
-		let mut inode_ = Ext2INode::read(inode as _, &self.superblock, io)?;
-		let Some((_, entry)) = inode_.get_dirent(name, &self.superblock, io)? else {
-			return Ok(None);
-		};
-		let entry_type = match entry.get_type(&self.superblock) {
-			Some(t) => t,
-			// The type is not hinted in the entry itself. Need to get it from the inode
-			None => Ext2INode::read(entry.inode, &self.superblock, io)?.get_type(),
-		};
-		Ok(Some(DirEntry {
-			inode: entry.inode as _,
-			entry_type,
-			name: Cow::Borrowed(name),
-		}))
-	}
-
-	fn next_entry(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		// TODO
-		todo!()
+impl fmt::Debug for Ext2Fs {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Ext2Fs")
+			.field("superblock", &self.superblock)
+			.field("mountpath", &self.mountpath)
+			.field("readonly", &self.readonly)
+			.finish()
 	}
 }
 
-/// Structure representing the ext2 filesystem type.
+/// The ext2 filesystem type.
 pub struct Ext2FsType {}
 
 impl FilesystemType for Ext2FsType {
@@ -1146,10 +1150,11 @@ impl FilesystemType for Ext2FsType {
 
 	fn load_filesystem(
 		&self,
-		io: &mut dyn IO,
+		io: Option<Arc<Mutex<dyn IO>>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<Mutex<dyn Filesystem>>> {
+		let io = io.ok_or_else(|| errno!(ENODEV))?;
 		let superblock = Superblock::read(io)?;
 		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
 		Ok(Arc::new(Mutex::new(fs))? as _)

@@ -27,7 +27,7 @@ pub mod tmp;
 
 use super::{path::PathBuf, DirEntry, File};
 use crate::file::INode;
-use core::{any::Any, fmt::Debug};
+use core::{any::Any, ffi::c_int, fmt::Debug};
 use utils::{
 	collections::{hashmap::HashMap, string::String},
 	errno,
@@ -37,16 +37,17 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-/// This structure is used in the f_fsid field of statfs. It is currently
-/// unused.
+/// Used in the f_fsid field of [`Statfs`].
+///
+/// It is currently unused.
 #[repr(C)]
 #[derive(Debug, Default)]
 struct Fsid {
 	/// Unused.
-	_val: [i32; 2],
+	_val: [c_int; 2],
 }
 
-/// Structure storing statistics about a filesystem.
+/// Statistics about a filesystem.
 #[repr(C)]
 #[derive(Debug)]
 pub struct Statfs {
@@ -74,7 +75,88 @@ pub struct Statfs {
 	f_flags: u32,
 }
 
-/// Trait representing a filesystem.
+/// File node operations.
+pub trait NodeOps {
+	/// Reads from the node with into the buffer `buf`.
+	///
+	/// Arguments:
+	/// - `inode` is the inode from which the content is read.
+	/// - `fs` is the filesystem.
+	/// - `off` is the offset from which the data will be read from the node's data.
+	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
+	/// number of bytes to read.
+	///
+	/// This function is relevant for the following file types:
+	/// - `Regular`: Reads the content of the file
+	/// - `Link`: Reads the path the link points to
+	///
+	/// The function returns the number of bytes read.
+	fn read_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64>;
+	/// Writes to the node from the buffer `buf`.
+	///
+	/// Arguments:
+	/// - `inode` is the inode to which the content is written.
+	/// - `fs` is the filesystem.
+	/// - `off` is the offset at which the data will be written in the node's data.
+	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
+	/// number of bytes to write.
+	///
+	/// This function is relevant for the following file types:
+	/// - `Regular`: Writes the content of the file
+	/// - `Link`: Writes the path the link points to. The path is truncated to `off` before writing
+	fn write_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &[u8],
+	) -> EResult<()>;
+
+	/// Returns the directory entry with the given `name`.
+	///
+	/// Arguments:
+	/// - `inode` is the inode of the directory.
+	/// - `fs` is the filesystem.
+	///
+	/// If the entry does not exist, the function returns `None`.
+	///
+	/// If the node is not a directory, the function returns [`EISDIR`].
+	fn entry_by_name<'n>(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>>;
+	/// Returns the directory entry at the given offset `off`. The first entry is always located at
+	/// offset `0`.
+	///
+	/// The second returned value is the offset to the next entry.
+	///
+	/// Arguments:
+	/// - `inode` is the inode of the directory.
+	/// - `fs` is the filesystem.
+	///
+	/// If no entry is left, the function returns `None`.
+	///
+	/// If the node is not a directory, the function returns [`EISDIR`].
+	fn next_entry(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>>;
+}
+
+/// A filesystem.
+///
+/// Type implementing this trait must use of internal mutability to allow multiple threads to
+/// perform operations on a filesystem at the same time.
 pub trait Filesystem: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
@@ -85,75 +167,41 @@ pub trait Filesystem: Any + Debug {
 	/// Returns the root inode of the filesystem.
 	fn get_root_inode(&self) -> INode;
 	/// Returns statistics about the filesystem.
-	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs>;
-
-	/// Returns the inode of the file with name `name`, located in the directory
-	/// with inode `parent`.
-	///
-	/// Arguments:
-	/// - `io` is the IO interface.
-	/// - `parent` is the inode's parent. If `None`, the function uses the root of
-	/// the filesystem.
-	/// - `name` is the name of the file.
-	///
-	/// If the parent is not a directory, the function returns an error.
-	fn get_inode(&mut self, io: &mut dyn IO, parent: Option<INode>, name: &[u8])
-		-> EResult<INode>;
+	fn get_stat(&self) -> EResult<Statfs>;
 
 	/// Loads the node at inode `inode`.
-	///
-	/// Arguments:
-	/// - `io` is the IO interface.
-	/// - `inode` is the node's ID.
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File>;
+	fn load_file(&self, inode: INode) -> EResult<File>;
 
 	/// Adds a file to the filesystem.
 	///
 	/// Arguments:
-	/// - `io` is the IO interface.
 	/// - `parent_inode` is the parent file's inode.
 	/// - `name` is the name of the file.
 	/// - `node` is the node to add.
 	///
 	/// On success, the function returns the updated `node`.
-	fn add_file(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-		node: File,
-	) -> EResult<File>;
+	fn add_file(&self, parent_inode: INode, name: &[u8], node: File) -> EResult<File>;
 
 	/// Adds a hard link to the filesystem.
 	///
 	/// Arguments:
-	/// - `io` is the IO interface.
 	/// - `parent_inode` is the parent file's inode.
 	/// - `name` is the name of the link.
 	/// - `inode` is the inode the link points to.
 	///
 	/// If this feature is not supported by the filesystem, the function returns
 	/// an error.
-	fn add_link(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-		inode: INode,
-	) -> EResult<()>;
+	fn add_link(&self, parent_inode: INode, name: &[u8], inode: INode) -> EResult<()>;
 
 	/// Updates the given node.
 	///
-	/// Arguments:
-	/// - `io` is the IO interface.
-	/// - `file` the file structure containing the new values for the inode.
-	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> EResult<()>;
+	/// `file` the file structure containing the new values for the inode.
+	fn update_inode(&self, file: &File) -> EResult<()>;
 
 	/// Removes a file from the filesystem. If the links count of the inode
 	/// reaches zero, the node is also removed.
 	///
 	/// Arguments:
-	/// - `io` is the IO interface.
 	/// - `parent_inode` is the parent file's inode.
 	/// - `name` is the file's name.
 	///
@@ -161,75 +209,10 @@ pub trait Filesystem: Any + Debug {
 	/// [`errno::ENOTEMPTY`].
 	///
 	/// The function returns the number of hard links left on the node and the node's ID.
-	fn remove_file(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-	) -> EResult<(u16, INode)>;
-
-	/// Reads from the node with ID `inode` into the buffer `buf`.
-	///
-	/// Arguments:
-	/// - `io` is the IO interface.
-	/// - `inode` is the file's inode.
-	/// - `off` is the offset from which the data will be read from the node's data.
-	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
-	/// number of bytes to read.
-	///
-	/// This function is relevant for the following file types:
-	/// - `Regular`: Reads the content of the file
-	/// - `Link`: Reads the path the link points to
-	///
-	/// The function returns the number of bytes read.
-	fn read_node(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<u64>;
-
-	/// Writes to the given inode `inode` from the buffer `buf`.
-	///
-	/// Arguments:
-	/// - `io` is the IO interface.
-	/// - `inode` is the file's inode.
-	/// - `off` is the offset at which the data will be written in the node's data.
-	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
-	/// number of bytes to write.
-	///
-	/// This function is relevant for the following file types:
-	/// - `Regular`: Writes the content of the file
-	/// - `Link`: Writes the path the link points to. The path is truncated to `off` before writing
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()>;
-
-	/// Returns the directory entry with the given `name` in the given `inode`.
-	///
-	/// If the inode is not a directory, the function returns [`EISDIR`].
-	fn entry_by_name<'n>(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>>;
-	/// Returns the directory entry at the given offset `off`. The first entry is always located at
-	/// offset `0`.
-	///
-	/// The second returned value is the offset to the next entry.
-	///
-	/// If no entry is left, the function returns `None`.
-	///
-	/// If the inode is not a directory, the function returns [`EISDIR`].
-	fn next_entry(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>>;
+	fn remove_file(&self, parent_inode: INode, name: &[u8]) -> EResult<(u16, INode)>;
 }
 
-/// Trait representing a filesystem type.
+/// A filesystem type.
 pub trait FilesystemType {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &'static [u8];
@@ -247,7 +230,7 @@ pub trait FilesystemType {
 	/// - `readonly` tells whether the filesystem is mounted in read-only.
 	fn load_filesystem(
 		&self,
-		io: &mut dyn IO,
+		io: Option<Arc<Mutex<dyn IO>>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<Mutex<dyn Filesystem>>>;

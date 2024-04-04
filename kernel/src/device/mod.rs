@@ -88,10 +88,10 @@ impl fmt::Display for DeviceType {
 
 /// A structure grouping a device type, a device major and a device minor, which acts as a unique
 /// ID.
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct DeviceID {
 	/// The type of the device.
-	pub type_: DeviceType,
+	pub dev_type: DeviceType,
 	/// The major number.
 	pub major: u32,
 	/// The minor number.

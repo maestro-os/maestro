@@ -478,7 +478,7 @@ impl File {
 			}
 			FileType::BlockDevice => {
 				let dev_mutex = device::get(&DeviceID {
-					type_: DeviceType::Block,
+					dev_type: DeviceType::Block,
 					major: self.dev_major,
 					minor: self.dev_minor,
 				})
@@ -488,7 +488,7 @@ impl File {
 			}
 			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
-					type_: DeviceType::Char,
+					dev_type: DeviceType::Char,
 					major: self.dev_major,
 					minor: self.dev_minor,
 				})
@@ -565,7 +565,7 @@ impl File {
 			}
 			FileType::BlockDevice => {
 				let io = device::get(&DeviceID {
-					type_: DeviceType::Block,
+					dev_type: DeviceType::Block,
 					major: self.dev_major,
 					minor: self.dev_minor,
 				})
@@ -574,7 +574,7 @@ impl File {
 			}
 			FileType::CharDevice => {
 				let io = device::get(&DeviceID {
-					type_: DeviceType::Char,
+					dev_type: DeviceType::Char,
 					major: self.dev_major,
 					minor: self.dev_minor,
 				})
