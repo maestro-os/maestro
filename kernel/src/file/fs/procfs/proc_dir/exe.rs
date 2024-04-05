@@ -16,26 +16,26 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the `exe` node, which is a link to the executable
+//! Implementation of the `exe` node, which is a link to the executable
 //! file of the process.
 
 use crate::{
 	file::{
-		fs::kernfs::node::{content_chunks, KernFSNode},
+		fs::{
+			kernfs::node::{content_chunks, KernFSNode},
+			Filesystem, NodeOps,
+		},
 		perm::{Gid, Uid},
-		FileType, Mode,
+		DirEntry, FileType, INode, Mode,
 	},
 	process::{pid::Pid, Process},
 };
 use core::iter;
-use utils::{errno, errno::EResult, io::IO};
+use utils::{errno, errno::EResult};
 
-/// Structure representing the `exe` node.
+/// The `exe` node.
 #[derive(Debug)]
-pub struct Exe {
-	/// The PID of the process.
-	pub pid: Pid,
-}
+pub struct Exe(pub Pid);
 
 impl KernFSNode for Exe {
 	fn get_mode(&self) -> Mode {
@@ -47,7 +47,7 @@ impl KernFSNode for Exe {
 	}
 
 	fn get_uid(&self) -> Uid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
 			proc_mutex.lock().access_profile.get_euid()
 		} else {
 			0
@@ -55,7 +55,7 @@ impl KernFSNode for Exe {
 	}
 
 	fn get_gid(&self) -> Gid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
 			proc_mutex.lock().access_profile.get_egid()
 		} else {
 			0
@@ -63,24 +63,46 @@ impl KernFSNode for Exe {
 	}
 }
 
-impl IO for Exe {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		let Some(proc) = Process::get_by_pid(self.pid) else {
-			return content_chunks(offset, buff, iter::empty());
+impl NodeOps for Exe {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		let Some(proc) = Process::get_by_pid(self.0) else {
+			return content_chunks(off, buf, iter::empty());
 		};
 		let proc = proc.lock();
-		content_chunks(offset, buff, iter::once(Ok(proc.exec_path.as_bytes())))
+		content_chunks(off, buf, iter::once(Ok(proc.exec_path.as_bytes())))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EACCES))
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Err(errno!(EINVAL))
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

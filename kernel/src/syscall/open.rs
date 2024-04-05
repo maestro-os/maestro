@@ -71,8 +71,8 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mut
 				&mut parent,
 				name,
 				&rs.access_profile,
+				FileType::Regular,
 				mode,
-				FileContent::Regular,
 			)?
 		}
 	};

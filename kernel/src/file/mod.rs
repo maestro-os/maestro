@@ -296,25 +296,19 @@ impl File {
 	/// Creates a new instance.
 	///
 	/// Arguments:
-	/// - `location` is the location of the file
 	/// - `uid` is the id of the owner user
 	/// - `gid` is the id of the owner group
 	/// - `file_type` is the type of the file
 	/// - `perms` is the permission of the file
 	///
 	/// The created file has the following data zeroed:
+	/// - File location
 	/// - Size and blocks count
 	/// - All timestamps
 	/// - Device major/minor
-	pub fn new(
-		location: FileLocation,
-		uid: Uid,
-		gid: Gid,
-		file_type: FileType,
-		perms: Mode,
-	) -> Self {
+	fn new(uid: Uid, gid: Gid, file_type: FileType, perms: Mode) -> Self {
 		Self {
-			location,
+			location: FileLocation::dummy(),
 			hard_links_count: 1,
 
 			blocks_count: 0,

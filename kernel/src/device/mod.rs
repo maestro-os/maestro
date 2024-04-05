@@ -50,7 +50,7 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		Mode,
+		FileType, Mode,
 	},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
@@ -75,6 +75,16 @@ pub enum DeviceType {
 	Block,
 	/// A char device.
 	Char,
+}
+
+impl DeviceType {
+	/// Returns the file type associated with the device type.
+	pub fn as_file_type(&self) -> FileType {
+		match self {
+			DeviceType::Block => FileType::BlockDevice,
+			DeviceType::Char => FileType::CharDevice,
+		}
+	}
 }
 
 impl fmt::Display for DeviceType {
@@ -235,8 +245,8 @@ impl Device {
 					&mut parent,
 					name,
 					&AccessProfile::KERNEL,
+					id.to_file_type(),
 					mode,
-					id.to_file_content(),
 				)?;
 				Ok(())
 			}

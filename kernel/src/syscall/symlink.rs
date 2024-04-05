@@ -23,6 +23,7 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
+		FileType,
 	},
 	limits,
 	process::{mem_space::ptr::SyscallString, Process},
@@ -66,7 +67,7 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
 
-	let file = vfs::create_file(&mut parent, name, &rs.access_profile, 0o777)?;
+	let file = vfs::create_file(&mut parent, name, &rs.access_profile, FileType::Link, 0o777)?;
 	file.lock().write(0, target.as_bytes())?;
 
 	Ok(0)

@@ -26,7 +26,7 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, Mode,
+		File, FileType, Mode,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 	syscall::util::at,
@@ -78,8 +78,8 @@ fn get_file(
 				&mut parent,
 				name,
 				&rs.access_profile,
+				FileType::Regular,
 				mode,
-				FileContent::Regular,
 			)
 		}
 		_ => Err(errno!(ENOENT)),

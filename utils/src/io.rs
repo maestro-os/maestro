@@ -18,7 +18,7 @@
 
 //! This module implements the Input/Output interface trait.
 
-use crate::errno::{EResult};
+use crate::errno::EResult;
 
 /// Poll event: There is data to read.
 pub const POLLIN: u32 = 0x1;

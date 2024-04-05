@@ -24,11 +24,12 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
+		FileType,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 };
 use macros::syscall;
-use utils::{collections::hashmap::HashMap, errno, errno::Errno};
+use utils::{errno, errno::Errno};
 
 #[syscall]
 pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
@@ -61,8 +62,8 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 			&mut parent,
 			name,
 			&rs.access_profile,
+			FileType::Directory,
 			mode,
-			FileContent::Directory(HashMap::new()),
 		)?;
 	}
 

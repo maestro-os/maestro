@@ -325,9 +325,9 @@ pub fn content_chunks<'s, I: Iterator<Item = EResult<&'s [u8]>>>(
 
 /// A static symbolic link pointing to a constant target.
 #[derive(Debug)]
-pub struct StaticLink<const TARGET: &'static str>;
+pub struct StaticLink<const TARGET: &'static [u8]>;
 
-impl<const TARGET: &'static str> KernFSNode for StaticLink<TARGET> {
+impl<const TARGET: &'static [u8]> KernFSNode for StaticLink<TARGET> {
 	fn get_file_type(&self) -> FileType {
 		FileType::Link
 	}
@@ -337,7 +337,7 @@ impl<const TARGET: &'static str> KernFSNode for StaticLink<TARGET> {
 	}
 }
 
-impl<const TARGET: &'static str> NodeOps for StaticLink<TARGET> {
+impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 	fn read_content(
 		&self,
 		_inode: INode,

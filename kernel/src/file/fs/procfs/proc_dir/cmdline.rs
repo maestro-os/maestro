@@ -21,20 +21,20 @@
 
 use crate::{
 	file::{
-		fs::kernfs::node::{content_chunks, KernFSNode},
+		fs::{
+			kernfs::node::{content_chunks, KernFSNode},
+			Filesystem, NodeOps,
+		},
 		perm::{Gid, Uid},
-		FileType, Mode,
+		DirEntry, FileType, INode, Mode,
 	},
 	process::{pid::Pid, Process},
 };
-use utils::{errno, errno::EResult, io::IO};
+use utils::{errno, errno::EResult};
 
-/// Structure representing the cmdline node of the procfs.
+/// The cmdline node of the procfs.
 #[derive(Debug)]
-pub struct Cmdline {
-	/// The PID of the process.
-	pub pid: Pid,
-}
+pub struct Cmdline(pub Pid);
 
 impl KernFSNode for Cmdline {
 	fn get_file_type(&self) -> FileType {
@@ -62,24 +62,45 @@ impl KernFSNode for Cmdline {
 	}
 }
 
-impl IO for Cmdline {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		let proc_mutex = Process::get_by_pid(self.pid).ok_or_else(|| errno!(ENOENT))?;
+impl NodeOps for Cmdline {
+	fn read_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
 		let iter = proc.argv.iter().flat_map(|s| [Ok(s.as_bytes()), Ok(b"\0")]);
-		content_chunks(offset, buff, iter)
+		content_chunks(off, buf, iter)
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EACCES))
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

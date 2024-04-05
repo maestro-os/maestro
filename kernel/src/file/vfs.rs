@@ -30,7 +30,7 @@ use super::{
 	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	DeferredRemove, File, FileLocation, FileType, INode, MountPoint,
+	DeferredRemove, File, FileLocation, FileType, INode, Mode, MountPoint,
 };
 use crate::{limits, process::Process};
 use core::{intrinsics::unlikely, ptr::NonNull};
@@ -341,7 +341,8 @@ pub fn get_file_from_path(
 /// - `name` is the name of the file to be created
 /// - `ap` is access profile to check permissions. This also determines the UID and GID to be used
 /// for the created file
-/// - `file` is the file to add to the filesystem
+/// - `file_type` is the type of the file to create.
+/// - `perms` is the permissions of the file to create.
 ///
 /// The following errors can be returned:
 /// - The filesystem is read-only: [`errno::EROFS`]
@@ -355,7 +356,8 @@ pub fn create_file(
 	parent: &mut File,
 	name: &[u8],
 	ap: &AccessProfile,
-	mut file: File,
+	file_type: FileType,
+	perms: Mode,
 ) -> EResult<Arc<Mutex<File>>> {
 	// Validation
 	if parent.get_type() != FileType::Directory {
@@ -365,17 +367,17 @@ pub fn create_file(
 		return Err(errno!(EACCES));
 	}
 	let parent_inode = parent.location.get_inode();
-	// Set UID/GID
-	file.uid = ap.get_euid();
-	file.gid = if parent.get_mode() & perm::S_ISGID != 0 {
+	let uid = ap.get_euid();
+	let gid = if parent.get_mode() & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
 		// parent directory
 		parent.get_gid()
 	} else {
 		ap.get_egid()
 	};
+	let file = File::new(uid, gid, file_type, perms);
 	let file = op(&parent.location, true, |mp, io, fs| {
-		let mut n = fs.add_file(&mut *io, parent_inode, name, file)?;
+		let mut n = fs.add_file(parent_inode, name, file)?;
 		update_location(&mut n, mp);
 		Ok(n)
 	})?;

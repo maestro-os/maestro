@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the status file, which allows to retrieve the current
+//! Implementation of the `status` file, which allows to retrieve the current
 //! status of the process.
 
 use crate::{
@@ -30,12 +30,9 @@ use crate::{
 use core::cmp::min;
 use utils::{errno, errno::EResult, format, io::IO};
 
-/// Structure representing the status node of the procfs.
+/// The `status` node of the procfs.
 #[derive(Debug)]
-pub struct Status {
-	/// The PID of the process.
-	pub pid: Pid,
-}
+pub struct Status(pub Pid);
 
 impl KernFSNode for Status {
 	fn get_file_type(&self) -> FileType {

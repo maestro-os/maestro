@@ -16,8 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements a procfs node which allows to get the list of
-//! mountpoint.
+//! Implementation of the `mounts` node which allows to get the list of mountpoint.
 
 use crate::{
 	file::{
@@ -31,12 +30,9 @@ use crate::{
 use core::cmp::min;
 use utils::{collections::string::String, errno, errno::EResult, format, io::IO};
 
-/// Structure representing the mounts node of the procfs.
+/// The `mounts` node.
 #[derive(Debug)]
-pub struct Mounts {
-	/// The PID of the process.
-	pub pid: Pid,
-}
+pub struct Mounts(pub Pid);
 
 impl KernFSNode for Mounts {
 	fn get_file_type(&self) -> FileType {

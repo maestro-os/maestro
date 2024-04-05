@@ -24,6 +24,7 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
+		FileType,
 	},
 	limits,
 	process::{mem_space::ptr::SyscallString, Process},
@@ -70,7 +71,8 @@ pub fn symlinkat(
 			name,
 		} => {
 			let mut parent = parent.lock();
-			let file = vfs::create_file(&mut parent, name, &rs.access_profile, 0, file_content)?;
+			let file =
+				vfs::create_file(&mut parent, name, &rs.access_profile, FileType::Link, 0o777)?;
 			file.lock().write(0, target.as_bytes())?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),

@@ -26,9 +26,7 @@ use crate::{
 	file::{path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType},
 };
 use cpio::CPIOParser;
-use utils::{
-	collections::hashmap::HashMap, errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
 
 // TODO clean this function
 /// Updates the current parent used for the unpacking operation.
@@ -92,24 +90,6 @@ pub fn load(data: &[u8]) -> EResult<()> {
 		let Some(name) = parent_path.file_name() else {
 			continue;
 		};
-
-		let file_type = hdr.get_type();
-		let content = match file_type {
-			FileType::Regular => FileContent::Regular,
-			FileType::Directory => FileContent::Directory(HashMap::new()),
-			FileType::Link => FileContent::Link(entry.get_content().try_into()?),
-			FileType::Fifo => FileContent::Fifo,
-			FileType::Socket => FileContent::Socket,
-			FileType::BlockDevice => FileContent::BlockDevice {
-				major: device::id::major(hdr.c_rdev as _),
-				minor: device::id::minor(hdr.c_rdev as _),
-			},
-			FileType::CharDevice => FileContent::CharDevice {
-				major: device::id::major(hdr.c_rdev as _),
-				minor: device::id::minor(hdr.c_rdev as _),
-			},
-		};
-
 		// Change the parent directory if necessary
 		let update = match &stored_parent {
 			Some((path, _)) => path != &parent_path,
@@ -121,14 +101,14 @@ pub fn load(data: &[u8]) -> EResult<()> {
 
 		let parent_mutex = &stored_parent.as_ref().unwrap().1;
 		let mut parent = parent_mutex.lock();
-
 		// Create file
+		let file_type = hdr.get_type();
 		let create_result = vfs::create_file(
 			&mut parent,
 			name.try_into()?,
 			&AccessProfile::KERNEL,
+			file_type,
 			hdr.get_perms(),
-			content,
 		);
 		let file_mutex = match create_result {
 			Ok(file_mutex) => file_mutex,
@@ -138,13 +118,20 @@ pub fn load(data: &[u8]) -> EResult<()> {
 		let mut file = file_mutex.lock();
 		file.set_uid(hdr.c_uid);
 		file.set_gid(hdr.c_gid);
-		// Write content if the file is a regular file
-		if file_type == FileType::Regular {
-			let content = entry.get_content();
-			file.write(0, content)?;
+		match file_type {
+			FileType::Regular | FileType::Link => {
+				let content = entry.get_content();
+				file.write(0, content)?;
+			}
+			FileType::BlockDevice | FileType::CharDevice => {
+				file.dev_major = device::id::major(hdr.c_rdev as _);
+				file.dev_major = device::id::minor(hdr.c_rdev as _);
+			}
+			_ => {}
 		}
+		// Write content if the file is a regular file
+		if file_type == FileType::Regular {}
 		file.sync()?;
 	}
-
 	Ok(())
 }

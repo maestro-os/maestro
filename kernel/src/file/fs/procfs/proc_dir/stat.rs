@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the stat file, which allows to retrieve the current
+//! Implementation of the `stat` file, which allows to retrieve the current
 //! status of the process.
 
 use crate::{
@@ -30,12 +30,9 @@ use crate::{
 use core::cmp::min;
 use utils::{errno, errno::EResult, format, io::IO};
 
-/// Structure representing the stat node of the procfs.
+/// The stat node of the procfs.
 #[derive(Debug)]
-pub struct Stat {
-	/// The PID of the process.
-	pub pid: Pid,
-}
+pub struct Stat(pub Pid);
 
 impl KernFSNode for Stat {
 	fn get_file_type(&self) -> FileType {

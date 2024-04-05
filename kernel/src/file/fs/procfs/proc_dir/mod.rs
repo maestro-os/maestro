@@ -27,10 +27,10 @@ mod status;
 
 use crate::{
 	file::{
-		fs::kernfs::{node::KernFSNode, KernFS},
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
 		perm,
 		perm::{Gid, Uid},
-		DirEntry, FileType, Mode,
+		DirEntry, FileType, INode, Mode,
 	},
 	process::{pid::Pid, Process},
 };
@@ -40,104 +40,11 @@ use exe::Exe;
 use mounts::Mounts;
 use stat::Stat;
 use status::Status;
-use utils::{boxed::Box, collections::hashmap::HashMap, errno::EResult};
+use utils::{errno, errno::EResult, ptr::cow::Cow};
 
 /// The directory of a process.
 #[derive(Debug)]
-pub struct ProcDir {
-	/// The PID of the process.
-	pid: Pid,
-}
-
-impl ProcDir {
-	/// Creates a new instance for the process with the given PID `pid`.
-	///
-	/// The function adds every node to the given kernfs `fs`.
-	pub fn new(pid: Pid, fs: &mut KernFS) -> EResult<Self> {
-		let mut entries = HashMap::new();
-
-		// TODO Add every nodes
-		// TODO On fail, remove previously inserted nodes
-
-		// Create /proc/<pid>/cmdline
-		let node = Cmdline {
-			pid,
-		};
-		let inode = fs.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"cmdline".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Regular,
-			},
-		)?;
-
-		// Create /proc/<pid>/cwd
-		let node = Cwd {
-			pid,
-		};
-		let inode = fs.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"cwd".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Link,
-			},
-		)?;
-
-		// Create /proc/<pid>/exe
-		let node = Exe {
-			pid,
-		};
-		let inode = fs.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"exe".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Link,
-			},
-		)?;
-
-		// Create /proc/<pid>/mounts
-		let node = Mounts {
-			pid,
-		};
-		let inode = fs.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"mounts".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Regular,
-			},
-		)?;
-
-		// Create /proc/<pid>/stat
-		let node = Stat {
-			pid,
-		};
-		let inode = fs.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"stat".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Regular,
-			},
-		)?;
-
-		// Create /proc/<pid>/status
-		let node = Status {
-			pid,
-		};
-		let inode = fs.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"status".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Regular,
-			},
-		)?;
-	}
-}
+pub struct ProcDir(pub Pid);
 
 impl KernFSNode for ProcDir {
 	fn get_file_type(&self) -> FileType {
@@ -149,7 +56,7 @@ impl KernFSNode for ProcDir {
 	}
 
 	fn get_uid(&self) -> Uid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
 			proc_mutex.lock().access_profile.get_euid()
 		} else {
 			perm::ROOT_UID
@@ -157,10 +64,82 @@ impl KernFSNode for ProcDir {
 	}
 
 	fn get_gid(&self) -> Gid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
 			proc_mutex.lock().access_profile.get_egid()
 		} else {
 			perm::ROOT_GID
 		}
+	}
+}
+
+impl NodeOps for ProcDir {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &mut [u8],
+	) -> EResult<u64> {
+		Err(errno!(EISDIR))
+	}
+
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EISDIR))
+	}
+
+	fn entry_by_name<'n>(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		// TODO add a way to use binary search
+		let mut off = 0;
+		while let Some((e, next_off)) = Self::next_entry(inode, fs, off)? {
+			if e.name.as_ref() == name {
+				return Ok(e);
+			}
+			off = next_off;
+		}
+		Ok(None)
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let entries = &[
+			// /proc/<pid>/cmdline
+			(b"cmdline", Cmdline(self.0)),
+			// /proc/<pid>/cwd
+			(b"cwd", Cwd(self.0)),
+			// /proc/<pid>/exe
+			(b"exe", Exe(self.0)),
+			// /proc/<pid>/mounts
+			(b"mounts", Mounts(self.0)),
+			// /proc/<pid>/stat
+			(b"stat", Stat(self.0)),
+			// /proc/<pid>/status
+			(b"status", Status(self.0)),
+		];
+		let entry = entries.get(off).map(|(name, node)| {
+			(
+				DirEntry {
+					inode: 0,
+					entry_type: node.get_file_type(),
+					name: Cow::Borrowed(name),
+				},
+				off + 1,
+			)
+		});
+		Ok(entry)
 	}
 }
