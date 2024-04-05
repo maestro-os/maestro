@@ -249,6 +249,19 @@ pub struct DeferredRemove {
 	pub name: String,
 }
 
+/// I/O source given by [`File::io_op`].
+enum IoSource<'a> {
+	/// The operation is performed on a filesystem.
+	Filesystem {
+		/// The filesystem.
+		fs: &'a dyn Filesystem,
+		/// The inode on the filesystem.
+		inode: INode,
+	},
+	/// The operation is performed on a simple I/O interface.
+	IO(&'a dyn IO),
+}
+
 /// A file on a filesystem.
 ///
 /// This structure does not store the file's name as it may be different depending on the hard link
@@ -413,13 +426,12 @@ impl File {
 	///
 	/// If the file is not a directory, the function returns `None`.
 	pub fn dir_entry_by_name<'n>(&self, name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
-		self.io_op(|io, fs| {
-			let (Some(io_mutex), Some((fs_mutex, inode))) = (io, fs) else {
-				return Ok(None);
-			};
-			let mut io = io_mutex.lock();
-			let mut fs = fs_mutex.lock();
-			fs.entry_by_name(&mut *io, inode, name)
+		self.io_op(|io| match io {
+			IoSource::Filesystem {
+				fs,
+				inode,
+			} => fs.entry_by_name(inode, name),
+			IoSource::IO(_) => Ok(None),
 		})
 	}
 
@@ -503,14 +515,8 @@ impl File {
 			return Ok(());
 		};
 		let mountpoint = mountpoint_mutex.lock();
-		// Get I/O interface
-		let io_mutex = mountpoint.get_source().get_io()?;
-		let mut io = io_mutex.lock();
-		// Get filesystem
-		let fs_mutex = mountpoint.get_filesystem();
-		let mut fs = fs_mutex.lock();
-		// Update
-		fs.update_inode(&mut *io, self)
+		let fs = mountpoint.get_filesystem();
+		fs.update_inode(self)
 	}
 
 	/// Wrapper for I/O operations on files.
@@ -520,60 +526,63 @@ impl File {
 	/// - The filesystem of the file, if any.
 	fn io_op<R, F>(&self, f: F) -> EResult<R>
 	where
-		F: FnOnce(
-			Option<Arc<Mutex<dyn IO>>>,
-			Option<(Arc<Mutex<dyn Filesystem>>, INode)>,
-		) -> EResult<R>,
+		F: FnOnce(IoSource<'_>) -> EResult<R>,
 	{
 		match self.file_type {
 			FileType::Regular => match self.location {
 				FileLocation::Filesystem {
 					inode, ..
 				} => {
-					let (io, fs) = {
+					let fs = {
 						let mountpoint_mutex =
 							self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
 						let mountpoint = mountpoint_mutex.lock();
-						let io = mountpoint.get_source().get_io()?;
-						let fs = mountpoint.get_filesystem();
-						(io, fs)
+						mountpoint.get_filesystem()
 					};
-					f(Some(io), Some((fs, inode)))
+					f(IoSource::Filesystem {
+						fs: &*fs,
+						inode,
+					})
 				}
 				FileLocation::Virtual {
 					..
 				} => {
-					let io = buffer::get(&self.location).map(|io| io as _);
-					f(io, None)
+					let io_mutex = buffer::get(&self.location).map(|io| io as _);
+					let io = io_mutex.lock();
+					f(IoSource::IO(&mut *io))
 				}
 			},
 			FileType::Directory => Err(errno!(EISDIR)),
 			FileType::Link => Err(errno!(EINVAL)),
 			FileType::Fifo => {
-				let io = buffer::get_or_default::<PipeBuffer>(&self.location)?;
-				f(Some(io as _), None)
+				let io_mutex = buffer::get_or_default::<PipeBuffer>(&self.location)?;
+				let mut io = io_mutex.lock();
+				f(IoSource::IO(&mut *io))
 			}
 			FileType::Socket => {
-				let io = buffer::get_or_default::<Socket>(&self.location)?;
-				f(Some(io as _), None)
+				let io_mutex = buffer::get_or_default::<Socket>(&self.location)?;
+				let mut io = io_mutex.lock();
+				f(IoSource::IO(&mut *io))
 			}
 			FileType::BlockDevice => {
-				let io = device::get(&DeviceID {
+				let io_mutex = device::get(&DeviceID {
 					dev_type: DeviceType::Block,
 					major: self.dev_major,
 					minor: self.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
-				f(Some(io as _), None)
+				let mut io = io_mutex.lock();
+				f(IoSource::IO(&mut *io))
 			}
 			FileType::CharDevice => {
-				let io = device::get(&DeviceID {
+				let io_mutex = device::get(&DeviceID {
 					dev_type: DeviceType::Char,
 					major: self.dev_major,
 					minor: self.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
-				f(Some(io as _), None)
+				let mut io = io_mutex.lock();
+				f(IoSource::IO(&mut *io))
 			}
 		}
 	}
@@ -734,7 +743,7 @@ impl IO for File {
 	}
 
 	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		self.io_op(|io, fs| {
+		self.io_op(|io| {
 			let Some(io_mutex) = io else {
 				return Ok((0, true));
 			};
@@ -751,7 +760,7 @@ impl IO for File {
 	}
 
 	fn write(&mut self, off: u64, buff: &[u8]) -> EResult<u64> {
-		let len = self.io_op(|io, fs| {
+		let len = self.io_op(|io| {
 			let Some(io_mutex) = io else {
 				return Ok(0);
 			};
@@ -770,7 +779,7 @@ impl IO for File {
 	}
 
 	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		self.io_op(|io, _| {
+		self.io_op(|io| {
 			let Some(io_mutex) = io else {
 				return Ok(0);
 			};
@@ -796,7 +805,7 @@ impl<'f> Iterator for DirEntryIterator<'f> {
 	fn next(&mut self) -> Option<Self::Item> {
 		let res = self
 			.dir
-			.io_op(|io, fs| {
+			.io_op(|io| {
 				let (Some(io_mutex), Some((fs_mutex, inode))) = (io, fs) else {
 					return Ok(None);
 				};
@@ -822,11 +831,11 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 	fs::register_defaults()?;
 	// Create the root mountpoint
 	let mount_source = match root {
-		Some((major, minor)) => MountSource::Device {
+		Some((major, minor)) => MountSource::Device(DeviceID {
 			dev_type: DeviceType::Block,
 			major,
 			minor,
-		},
+		}),
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
 	mountpoint::create(

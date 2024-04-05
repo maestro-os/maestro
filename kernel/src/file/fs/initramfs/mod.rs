@@ -105,7 +105,7 @@ pub fn load(data: &[u8]) -> EResult<()> {
 		let file_type = hdr.get_type();
 		let create_result = vfs::create_file(
 			&mut parent,
-			name.try_into()?,
+			name,
 			&AccessProfile::KERNEL,
 			file_type,
 			hdr.get_perms(),

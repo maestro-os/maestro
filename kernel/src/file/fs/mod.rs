@@ -233,7 +233,7 @@ pub trait FilesystemType {
 		io: Option<Arc<Mutex<dyn IO>>>,
 		mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<Mutex<dyn Filesystem>>>;
+	) -> EResult<Arc<dyn Filesystem>>;
 }
 
 /// The list of filesystem types.

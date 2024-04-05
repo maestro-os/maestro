@@ -28,7 +28,7 @@ use crate::{
 	process::{pid::Pid, Process},
 };
 use core::cmp::min;
-use utils::{collections::string::String, errno, errno::EResult, format, io::IO};
+use utils::{collections::string::String, errno, errno::EResult, format, io::IO, DisplayableStr};
 
 /// The `mounts` node.
 #[derive(Debug)]
@@ -44,7 +44,7 @@ impl KernFSNode for Mounts {
 	}
 
 	fn get_uid(&self) -> Uid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
 			proc_mutex.lock().access_profile.get_euid()
 		} else {
 			0
@@ -52,7 +52,7 @@ impl KernFSNode for Mounts {
 	}
 
 	fn get_gid(&self) -> Gid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
 			proc_mutex.lock().access_profile.get_egid()
 		} else {
 			0
@@ -76,14 +76,14 @@ impl IO for Mounts {
 
 		for (_, mp_mutex) in mountpoints.iter() {
 			let mp = mp_mutex.lock();
-
-			let fs_type = mp.get_filesystem_type();
+			let fs = mp.get_filesystem();
+			let fs_type = fs.get_name();
 			let flags = "TODO"; // TODO
-
 			let s = format!(
 				"{source} {target} {fs_type} {flags} 0 0\n",
 				source = mp.get_source(),
 				target = mp.get_target_path(),
+				fs_type = DisplayableStr(fs_type)
 			)?;
 			content.push_str(s)?;
 		}

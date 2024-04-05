@@ -62,7 +62,7 @@ impl RootDir {
 	/// processes.
 	const STATIC_ENTRIES: &'static [(&'static [u8], &'static dyn KernFSNode)] = &[
 		(b"meminfo", &MemInfo {}),
-		(b"mounts", &StaticLink::<"self/mounts"> {}),
+		(b"mounts", &StaticLink::<b"self/mounts"> {}),
 		(b"self", &SelfNode {}),
 		(b"sys", &SysDir {}),
 		(b"uptime", &Uptime {}),
@@ -142,18 +142,19 @@ impl NodeOps for RootDir {
 		_fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let entry = Self::STATIC_ENTRIES
 			.get(off)
 			.map(|(name, node)| DirEntry {
 				inode: 0,
 				entry_type: node.get_file_type(),
-				name: Cow::Borrowed(name),
+				name: Cow::Borrowed(*name),
 			})
 			.or_else(|| {
 				// TODO iterate on processes
 				todo!()
 			});
-		Ok(entry.map(|e| (e, off + 1)))
+		Ok(entry.map(|e| (e, (off + 1) as u64)))
 	}
 }
 
@@ -241,7 +242,7 @@ impl FilesystemType for ProcFsType {
 		_io: Option<Arc<Mutex<dyn IO>>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
-	) -> EResult<Arc<Mutex<dyn Filesystem>>> {
-		Ok(Arc::new(Mutex::new(ProcFS::new()?))?)
+	) -> EResult<Arc<dyn Filesystem>> {
+		Ok(Arc::new(ProcFS::new()?)?)
 	}
 }

@@ -54,13 +54,8 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 		let mountpoint_mutex = file.location.get_mountpoint().unwrap();
 		let mountpoint = mountpoint_mutex.lock();
 
-		let io_mutex = mountpoint.get_source().get_io()?;
-		let mut io = io_mutex.lock();
-
-		let fs_mutex = mountpoint.get_filesystem();
-		let fs = fs_mutex.lock();
-
-		fs.get_stat(&mut *io)?
+		let fs = mountpoint.get_filesystem();
+		fs.get_stat()?
 	};
 
 	// Write structure to userspace

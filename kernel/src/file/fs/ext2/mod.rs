@@ -262,7 +262,7 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(EINVAL));
 		}
 		let fs = downcast_fs(fs);
-		let io = fs.io.lock();
+		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
 		inode_.read_content(off, buf, &superblock, &mut *io)
@@ -282,7 +282,7 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(EINVAL));
 		}
 		let fs = downcast_fs(fs);
-		let io = fs.io.lock();
+		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
 		inode_.write_content(off, buf, &mut superblock, &mut *io)?;
@@ -300,9 +300,9 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(EINVAL));
 		}
 		let fs = downcast_fs(fs);
-		let io = fs.io.lock();
+		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
-		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
 		let Some((_, entry)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
 			return Ok(None);
 		};
@@ -322,12 +322,13 @@ impl NodeOps for Ext2NodeOps {
 		&self,
 		inode: INode,
 		fs: &dyn Filesystem,
-		off: u64,
+		_off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
 		let fs = downcast_fs(fs);
+		let _io = fs.io.lock();
 		// TODO
 		todo!()
 	}
@@ -849,19 +850,10 @@ impl Filesystem for Ext2Fs {
 
 	fn load_file(&self, inode: INode) -> EResult<File> {
 		let mut io = self.io.lock();
-		let mut superblock = self.superblock.lock();
+		let superblock = self.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
 		let file_type = inode_.get_type();
-		let mut file = File::new(
-			FileLocation::Filesystem {
-				mountpoint_id: 0, // dummy value to be replaced
-				inode,
-			},
-			inode_.uid,
-			inode_.gid,
-			file_type,
-			inode_.get_permissions(),
-		);
+		let mut file = File::new(inode_.uid, inode_.gid, file_type, inode_.get_permissions());
 		file.set_hard_links_count(inode_.hard_links_count as _);
 		file.blocks_count = inode_.used_sectors as _;
 		file.set_size(inode_.get_size(&superblock));
@@ -875,7 +867,7 @@ impl Filesystem for Ext2Fs {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let io = self.io.lock();
+		let mut io = self.io.lock();
 		let mut superblock = self.superblock.lock();
 		// Get parent directory
 		let mut parent = Ext2INode::read(parent_inode as _, &superblock, &mut *io)?;
@@ -969,7 +961,7 @@ impl Filesystem for Ext2Fs {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let io = self.io.lock();
+		let mut io = self.io.lock();
 		let mut superblock = self.superblock.lock();
 		// Parent inode
 		let mut parent = Ext2INode::read(parent_inode as _, &superblock, &mut *io)?;
@@ -1034,7 +1026,7 @@ impl Filesystem for Ext2Fs {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let io = self.io.lock();
+		let mut io = self.io.lock();
 		let mut superblock = self.superblock.lock();
 		// The inode number
 		let inode = file.location.get_inode();
@@ -1062,7 +1054,7 @@ impl Filesystem for Ext2Fs {
 		if name == b"." || name == b".." {
 			return Err(errno!(EINVAL));
 		}
-		let io = self.io.lock();
+		let mut io = self.io.lock();
 		let mut superblock = self.superblock.lock();
 		// The parent inode
 		let mut parent = Ext2INode::read(parent_inode as _, &superblock, &mut *io)?;
@@ -1142,10 +1134,10 @@ impl FilesystemType for Ext2FsType {
 		io: Option<Arc<Mutex<dyn IO>>>,
 		mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<Mutex<dyn Filesystem>>> {
+	) -> EResult<Arc<dyn Filesystem>> {
 		let io = io.ok_or_else(|| errno!(ENODEV))?;
 		let superblock = Superblock::read(&mut *io.lock())?;
 		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
-		Ok(Arc::new(Mutex::new(fs))? as _)
+		Ok(Arc::new(fs)? as _)
 	}
 }

@@ -133,8 +133,7 @@ impl fmt::Display for MountSource {
 }
 
 /// The list of loaded filesystems associated with their respective sources.
-static FILESYSTEMS: Mutex<HashMap<MountSource, Weak<Mutex<dyn Filesystem>>>> =
-	Mutex::new(HashMap::new());
+static FILESYSTEMS: Mutex<HashMap<MountSource, Weak<dyn Filesystem>>> = Mutex::new(HashMap::new());
 
 /// Loads a filesystem.
 ///
@@ -151,14 +150,16 @@ fn load_fs(
 	fs_type: Option<Arc<dyn FilesystemType>>,
 	path: PathBuf,
 	readonly: bool,
-) -> EResult<Arc<Mutex<dyn Filesystem>>> {
+) -> EResult<Arc<dyn Filesystem>> {
 	let (io, fs_type) = match &source {
 		MountSource::Device(dev_id) => {
 			let io_mutex = device::get(dev_id).ok_or_else(|| errno!(ENODEV))?;
-			let io = io_mutex.lock();
 			let fs_type = match fs_type {
 				Some(f) => f,
-				None => fs::detect(&mut *io)?,
+				None => {
+					let mut io = io_mutex.lock();
+					fs::detect(&mut *io)?
+				}
 			};
 			(Some(io_mutex as _), fs_type)
 		}
@@ -180,7 +181,7 @@ fn load_fs(
 /// Returns the loaded filesystem with the given source `source`.
 ///
 /// If the filesystem isn't loaded, the function returns `None`.
-pub fn get_fs(source: &MountSource) -> Option<Arc<Mutex<dyn Filesystem>>> {
+pub fn get_fs(source: &MountSource) -> Option<Arc<dyn Filesystem>> {
 	FILESYSTEMS.lock().get(source).and_then(Weak::upgrade)
 }
 
@@ -195,9 +196,7 @@ pub struct MountPoint {
 	/// The source of the mountpoint.
 	source: MountSource,
 	/// The filesystem associated with the mountpoint.
-	fs: Arc<Mutex<dyn Filesystem>>,
-	/// The name of the filesystem's type.
-	fs_type_name: String,
+	fs: Arc<dyn Filesystem>,
 
 	/// The path to the mount directory.
 	target_path: PathBuf,
@@ -237,14 +236,12 @@ impl MountPoint {
 				readonly,
 			)?,
 		};
-		let fs_type_name = String::try_from(fs.lock().get_name())?;
 		Ok(Self {
 			id,
 			flags,
 
 			source,
 			fs,
-			fs_type_name,
 
 			target_path,
 			target_location,
@@ -272,13 +269,8 @@ impl MountPoint {
 	}
 
 	/// Returns the filesystem associated with the mountpoint.
-	pub fn get_filesystem(&self) -> Arc<Mutex<dyn Filesystem>> {
+	pub fn get_filesystem(&self) -> Arc<dyn Filesystem> {
 		self.fs.clone()
-	}
-
-	/// Returns the name of the filesystem's type.
-	pub fn get_filesystem_type(&self) -> &String {
-		&self.fs_type_name
 	}
 
 	/// Returns a reference to the path where the filesystem is mounted.
@@ -422,7 +414,7 @@ pub fn root_location() -> FileLocation {
 		panic!("No root mountpoint!");
 	};
 	let root_mp = root_mp_mutex.lock();
-	let root_inode = root_mp.get_filesystem().lock().get_root_inode();
+	let root_inode = root_mp.get_filesystem().get_root_inode();
 	FileLocation::Filesystem {
 		mountpoint_id: root_mp.get_id(),
 		inode: root_inode,

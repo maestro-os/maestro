@@ -91,27 +91,6 @@ pub trait KernFSNode: Any + Debug + NodeOps {
 	/// Sets the timestamp of the last modification of the file's content.
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
-	/// Returns the directory entry with the given `name`.
-	///
-	/// The second returned value is the offset to the next entry.
-	///
-	/// If entry does not exist, the function return `None`.
-	///
-	/// If the node is not a directory, the function does nothing.
-	fn entry_by_name<'n>(&self, _name: &'n [u8]) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		Ok(None)
-	}
-	/// Returns the directory entry at the given offset `off`. The first entry is always located at
-	/// offset `0`.
-	///
-	/// The second returned value is the offset to the next entry.
-	///
-	/// If not entry is left, the function return `None`.
-	///
-	/// If the node is not a directory, the function return `None`.
-	fn next_entry(&self, _off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		Ok(None)
-	}
 	/// If the current node is a directory, tells whether it is empty.
 	///
 	/// If the node is not a directory, the function return `true`.
@@ -291,6 +270,7 @@ impl NodeOps for DefaultNode {
 	}
 }
 
+// TODO refactor to make it a format-like macro
 /// Implementation of the [`IO::read`] function for a node that is built dynamically from a
 /// sequence of strings taken from `iter`.
 ///

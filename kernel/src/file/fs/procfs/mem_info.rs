@@ -16,45 +16,74 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The meminfo file, allows to retrieve information about memory usage of the system.
+//! Implementation of the `meminfo` file, allows to retrieve information about memory usage of the
+//! system.
 
-use crate::memory;
-use core::cmp::min;
-use utils::{errno, errno::EResult, format, io::IO};
+use crate::{
+	file::{
+		fs::{
+			kernfs::node::{content_chunks, KernFSNode},
+			Filesystem, NodeOps,
+		},
+		DirEntry, FileType, INode, Mode,
+	},
+	memory,
+};
+use core::iter;
+use utils::{errno, errno::EResult, format};
 
-/// The meminfo file.
+/// The `meminfo` file.
 #[derive(Debug)]
 pub struct MemInfo {}
 
-impl IO for MemInfo {
-	fn get_size(&self) -> u64 {
-		0
+impl KernFSNode for MemInfo {
+	fn get_file_type(&self) -> FileType {
+		FileType::Regular
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		if buff.is_empty() {
-			return Ok((0, false));
-		}
+	fn get_mode(&self) -> Mode {
+		0o444
+	}
+}
 
-		// Generate content
+impl NodeOps for MemInfo {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
 		let mem_info = memory::stats::MEM_INFO.lock();
 		let content = format!("{}", *mem_info)?;
-
-		// Copy content to userspace buffer
-		let content_bytes = content.as_bytes();
-		let len = min((content_bytes.len() as u64 - offset) as usize, buff.len());
-		buff[..len].copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);
-
-		let eof = (offset + len as u64) >= content_bytes.len() as u64;
-		Ok((len as _, eof))
+		content_chunks(off, buf, iter::once(Ok(content.as_bytes())))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EACCES))
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

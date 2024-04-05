@@ -34,7 +34,7 @@ use super::{
 };
 use crate::{limits, process::Process};
 use core::{intrinsics::unlikely, ptr::NonNull};
-use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
+use utils::{errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 // TODO implement and use cache
 
@@ -45,7 +45,7 @@ use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
 /// mounted in read-only, the function returns [`errno::EROFS`].
 fn op<F, R>(loc: &FileLocation, write: bool, f: F) -> EResult<R>
 where
-	F: FnOnce(&MountPoint, &mut dyn IO, &mut dyn Filesystem) -> EResult<R>,
+	F: FnOnce(&MountPoint, &dyn Filesystem) -> EResult<R>,
 {
 	// Get the mountpoint
 	let mp_mutex = loc.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
@@ -53,16 +53,12 @@ where
 	if write && unlikely(mp.is_readonly()) {
 		return Err(errno!(EROFS));
 	}
-	// Get the IO interface
-	let io_mutex = mp.get_source().get_io()?;
-	let mut io = io_mutex.lock();
 	// Get the filesystem
-	let fs_mutex = mp.get_filesystem();
-	let mut fs = fs_mutex.lock();
+	let fs = mp.get_filesystem();
 	if write && unlikely(fs.is_readonly()) {
 		return Err(errno!(EROFS));
 	}
-	f(&mp, &mut *io, &mut *fs)
+	f(&mp, &*fs)
 }
 
 /// Returns the file corresponding to the given location `location`.
@@ -79,19 +75,15 @@ pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File
 			// Get mountpoint
 			let mp_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
 			let mp = mp_mutex.lock();
-			// Get I/O
-			let io_mutex = mp.get_source().get_io()?;
-			let mut io = io_mutex.lock();
 			// Get the filesystem
-			let fs_mutex = mp.get_filesystem();
-			let mut fs = fs_mutex.lock();
+			let fs = mp.get_filesystem();
 			// Get file
-			let mut file = fs.load_file(&mut *io, *inode)?;
+			let mut file = fs.load_file(*inode)?;
 			update_location(&mut file, &mp);
 			Ok(Arc::new(Mutex::new(file))?)
 		}
 		FileLocation::Virtual {
-			id,
+			..
 		} => {
 			let file = Arc::new(Mutex::new(File::new(
 				0, // TODO
@@ -239,8 +231,7 @@ fn resolve_path_impl<'p>(
 				// Update location if on a different filesystem
 				if let Some(mp) = mountpoint::from_location(&loc) {
 					let mp = mp.lock();
-					let fs_mutex = mp.get_filesystem();
-					let fs = fs_mutex.lock();
+					let fs = mp.get_filesystem();
 					loc = FileLocation::Filesystem {
 						mountpoint_id: mp.get_id(),
 						inode: fs.get_root_inode(),
@@ -376,7 +367,7 @@ pub fn create_file(
 		ap.get_egid()
 	};
 	let file = File::new(uid, gid, file_type, perms);
-	let file = op(&parent.location, true, |mp, io, fs| {
+	let file = op(&parent.location, true, |mp, fs| {
 		let mut n = fs.add_file(parent_inode, name, file)?;
 		update_location(&mut n, mp);
 		Ok(n)
@@ -423,9 +414,8 @@ pub fn create_link(
 	if parent.location.get_mountpoint_id() != target.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
-	op(&target.location, true, |_mp, io, fs| {
+	op(&target.location, true, |_mp, fs| {
 		fs.add_link(
-			&mut *io,
 			parent.location.get_inode(),
 			name,
 			target.location.get_inode(),
@@ -437,12 +427,11 @@ pub fn create_link(
 
 fn remove_file_impl(
 	mp: &MountPoint,
-	io: &mut dyn IO,
-	fs: &mut dyn Filesystem,
+	fs: &dyn Filesystem,
 	parent_inode: INode,
 	name: &[u8],
 ) -> EResult<()> {
-	let (links_left, inode) = fs.remove_file(&mut *io, parent_inode, name)?;
+	let (links_left, inode) = fs.remove_file(parent_inode, name)?;
 	if links_left == 0 {
 		// If the file is a named pipe or socket, free its now unused buffer
 		let loc = FileLocation::Filesystem {
@@ -458,8 +447,8 @@ fn remove_file_impl(
 ///
 /// This is useful for deferred remove since permissions have already been checked before.
 pub fn remove_file_unchecked(parent: &FileLocation, name: &[u8]) -> EResult<()> {
-	op(parent, true, |mp, io, fs| {
-		remove_file_impl(mp, io, fs, parent.get_inode(), name)
+	op(parent, true, |mp, fs| {
+		remove_file_impl(mp, fs, parent.get_inode(), name)
 	})
 }
 
@@ -483,9 +472,9 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
-	op(&parent.location, true, |mp, io, fs| {
+	op(&parent.location, true, |mp, fs| {
 		// Get the file
-		let mut file = fs.load_file(&mut *io, parent.location.get_inode())?;
+		let mut file = fs.load_file(parent.location.get_inode())?;
 		// Check permission
 		let has_sticky_bit = parent.mode & S_ISVTX != 0;
 		if has_sticky_bit && ap.get_euid() != file.get_uid() && ap.get_euid() != parent.get_uid() {
@@ -505,7 +494,7 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 				name: name.try_into()?,
 			});
 		} else {
-			remove_file_impl(mp, io, fs, parent.location.get_inode(), name)?;
+			remove_file_impl(mp, fs, parent.location.get_inode(), name)?;
 		}
 		Ok(())
 	})

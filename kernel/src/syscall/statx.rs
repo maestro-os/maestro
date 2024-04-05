@@ -20,6 +20,7 @@
 
 use super::util::at;
 use crate::{
+	device::DeviceID,
 	file::{
 		mountpoint::MountSource,
 		path::PathBuf,
@@ -148,11 +149,11 @@ pub fn statx(
 			crate::idt::wrap_disable_interrupts(|| {
 				let mountpoint = mountpoint_mutex.lock();
 				match mountpoint.get_source() {
-					MountSource::Device {
+					MountSource::Device(DeviceID {
 						major,
 						minor,
 						..
-					} => (*major, *minor),
+					}) => (*major, *minor),
 					_ => (0, 0),
 				}
 			})

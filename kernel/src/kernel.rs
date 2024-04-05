@@ -45,6 +45,7 @@
 #![deny(warnings)]
 #![allow(clippy::tabs_in_doc_comments)]
 #![allow(dead_code)]
+#![allow(incomplete_features)]
 #![allow(internal_features)]
 #![allow(unused_attributes)]
 #![allow(unused_macros)]

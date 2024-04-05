@@ -52,13 +52,8 @@ pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
 	let mountpoint_mutex = file.location.get_mountpoint().unwrap();
 	let mountpoint = mountpoint_mutex.lock();
 
-	let io_mutex = mountpoint.get_source().get_io()?;
-	let mut io = io_mutex.lock();
-
-	let fs_mutex = mountpoint.get_filesystem();
-	let fs = fs_mutex.lock();
-
-	let stat = fs.get_stat(&mut *io)?;
+	let fs = mountpoint.get_filesystem();
+	let stat = fs.get_stat()?;
 
 	// Writing the statfs structure to userspace
 	{

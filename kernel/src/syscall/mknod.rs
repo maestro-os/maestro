@@ -25,7 +25,7 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
-		File, FileType,
+		FileType,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 };
@@ -59,12 +59,13 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	// Information to create the file
 	let mode = mode & !umask;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
-	let uid = rs.access_profile.get_euid();
-	let gid = rs.access_profile.get_egid();
 	let major = id::major(dev);
 	let minor = id::minor(dev);
+	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
+	let mut parent = parent_mutex.lock();
 	// Create file
-	let mut file = File::new(uid, gid, file_type, mode);
+	let file_mutex = vfs::create_file(&mut parent, name, &rs.access_profile, file_type, mode)?;
+	let mut file = file_mutex.lock();
 	match file_type {
 		FileType::BlockDevice | FileType::CharDevice => {
 			file.dev_major = major;
@@ -72,8 +73,6 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		}
 		_ => return Err(errno!(EPERM)),
 	}
-	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
-	let mut parent = parent_mutex.lock();
-	vfs::create_file(&mut parent, name, &rs.access_profile, file)?;
+	file.sync()?;
 	Ok(0)
 }

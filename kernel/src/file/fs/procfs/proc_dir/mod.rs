@@ -116,19 +116,19 @@ impl NodeOps for ProcDir {
 		_fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let entries = &[
+		let entries: &[(&[u8], &dyn KernFSNode)] = &[
 			// /proc/<pid>/cmdline
-			(b"cmdline", Cmdline(self.0)),
+			(b"cmdline", &Cmdline(self.0)),
 			// /proc/<pid>/cwd
-			(b"cwd", Cwd(self.0)),
+			(b"cwd", &Cwd(self.0)),
 			// /proc/<pid>/exe
-			(b"exe", Exe(self.0)),
+			(b"exe", &Exe(self.0)),
 			// /proc/<pid>/mounts
-			(b"mounts", Mounts(self.0)),
+			(b"mounts", &Mounts(self.0)),
 			// /proc/<pid>/stat
-			(b"stat", Stat(self.0)),
+			(b"stat", &Stat(self.0)),
 			// /proc/<pid>/status
-			(b"status", Status(self.0)),
+			(b"status", &Status(self.0)),
 		];
 		let entry = entries.get(off).map(|(name, node)| {
 			(

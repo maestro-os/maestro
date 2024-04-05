@@ -185,7 +185,7 @@ impl FilesystemType for TmpFsType {
 		_io: Option<Arc<Mutex<dyn IO>>>,
 		_mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<Mutex<dyn Filesystem>>> {
+	) -> EResult<Arc<dyn Filesystem>> {
 		Ok(Arc::new(Mutex::new(TmpFS::new(
 			DEFAULT_MAX_SIZE,
 			readonly,

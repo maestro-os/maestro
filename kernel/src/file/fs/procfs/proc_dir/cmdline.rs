@@ -46,7 +46,7 @@ impl KernFSNode for Cmdline {
 	}
 
 	fn get_uid(&self) -> Uid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
 			proc_mutex.lock().access_profile.get_euid()
 		} else {
 			0
@@ -54,7 +54,7 @@ impl KernFSNode for Cmdline {
 	}
 
 	fn get_gid(&self) -> Gid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
 			proc_mutex.lock().access_profile.get_egid()
 		} else {
 			0
@@ -65,8 +65,8 @@ impl KernFSNode for Cmdline {
 impl NodeOps for Cmdline {
 	fn read_content(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		_inode: INode,
+		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {

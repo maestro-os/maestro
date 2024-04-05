@@ -44,8 +44,8 @@ impl KernFSNode for Version {
 impl NodeOps for Version {
 	fn read_content(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		_inode: INode,
+		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {

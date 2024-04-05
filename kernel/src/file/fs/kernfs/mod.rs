@@ -33,9 +33,7 @@ use crate::{
 };
 use core::cmp::{max, min};
 use node::KernFSNode;
-use utils::{
-	boxed::Box, collections::vec::Vec, errno, errno::EResult, io::IO, ptr::cow::Cow, vec,
-};
+use utils::{boxed::Box, collections::vec::Vec, errno, errno::EResult, ptr::cow::Cow, vec};
 
 /// The index of the root inode.
 pub const ROOT_INODE: INode = 1;
@@ -85,15 +83,15 @@ fn insert_base_entries(
 /// Returns the file for the given `node` and `inode`.
 fn load_file_impl(inode: INode, node: &dyn KernFSNode) -> File {
 	let mut file = File::new(
-		FileLocation::Filesystem {
-			mountpoint_id: 0, // dummy value to be replaced
-			inode,
-		},
 		node.get_uid(),
 		node.get_gid(),
 		node.get_file_type(),
 		node.get_mode(),
 	);
+	file.location = FileLocation::Filesystem {
+		mountpoint_id: 0, // dummy value to be replaced
+		inode,
+	};
 	file.set_hard_links_count(node.get_hard_links_count());
 	file.set_size(node.get_size());
 	file.ctime = node.get_ctime();
@@ -260,7 +258,8 @@ impl<const READ_ONLY: bool> KernFS<READ_ONLY> {
 		if let Err(e) = res {
 			// Rollback hard link from the `..` entry
 			if node.get_file_type() == FileType::Directory {
-				node.set_hard_links_count(node.get_hard_links_count().saturating_sub(1));
+				let cnt = node.get_hard_links_count().saturating_sub(1);
+				node.set_hard_links_count(cnt);
 			}
 			// Rollback node insertion
 			self.remove_node(inode);

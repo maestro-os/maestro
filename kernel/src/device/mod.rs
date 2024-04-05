@@ -245,7 +245,7 @@ impl Device {
 					&mut parent,
 					name,
 					&AccessProfile::KERNEL,
-					id.to_file_type(),
+					id.dev_type.as_file_type(),
 					mode,
 				)?;
 				Ok(())
