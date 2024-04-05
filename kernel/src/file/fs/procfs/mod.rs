@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The procfs is a virtual filesystem which provides informations about
+//! The procfs is a virtual filesystem which provides information about
 //! processes.
 
 mod mem_info;
@@ -27,18 +27,21 @@ mod uptime;
 mod version;
 
 use super::{
-	kernfs,
-	kernfs::{node::DummyKernFSNode, KernFS},
-	Filesystem, FilesystemType,
+	kernfs::{node::DefaultNode, KernFS},
+	Filesystem, FilesystemType, NodeOps,
 };
 use crate::{
-	file::{fs::Statfs, path::PathBuf, DirEntry, File, FileType, INode},
-	process,
-	process::{oom, pid::Pid},
+	file::{
+		fs::{
+			kernfs::node::{KernFSNode, StaticLink},
+			Statfs,
+		},
+		path::PathBuf,
+		DirEntry, File, FileType, INode, Mode,
+	},
+	process::{pid::Pid, Process},
 };
-use core::{alloc::AllocError, any::Any};
 use mem_info::MemInfo;
-use proc_dir::ProcDir;
 use self_link::SelfNode;
 use sys_dir::SysDir;
 use uptime::Uptime;
@@ -46,13 +49,116 @@ use utils::{
 	boxed::Box,
 	collections::hashmap::HashMap,
 	errno,
-	errno::{AllocResult, EResult},
-	format,
+	errno::EResult,
 	io::IO,
 	lock::Mutex,
-	ptr::arc::Arc,
+	ptr::{arc::Arc, cow::Cow},
 };
 use version::Version;
+
+/// The root directory of the procfs.
+#[derive(Debug)]
+struct RootDir;
+
+impl RootDir {
+	/// Static entries of the root directory, as opposed to the dynamic ones that represent
+	/// processes.
+	const STATIC_ENTRIES: &'static [(&'static [u8], &'static dyn KernFSNode)] = &[
+		(b"meminfo", &MemInfo {}),
+		(b"mounts", &StaticLink::<"self/mounts"> {}),
+		(b"self", &SelfNode {}),
+		(b"sys", &SysDir {}),
+		(b"uptime", &Uptime {}),
+		(b"version", &Version {}),
+	];
+}
+
+impl KernFSNode for RootDir {
+	fn get_file_type(&self) -> FileType {
+		FileType::Directory
+	}
+
+	fn get_mode(&self) -> Mode {
+		0o555
+	}
+}
+
+impl NodeOps for RootDir {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &mut [u8],
+	) -> EResult<u64> {
+		Err(errno!(EISDIR))
+	}
+
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EISDIR))
+	}
+
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		let entry = core::str::from_utf8(name)
+			.ok()
+			// Check for process from pid
+			.and_then(|s| {
+				let pid: Pid = s.parse().ok()?;
+				// Check the process exists
+				Process::get_by_pid(pid)?;
+				// Return the entry for the process
+				Some(DirEntry {
+					inode: 0,
+					entry_type: FileType::Directory,
+					name: Cow::Borrowed(name),
+				})
+			})
+			// Search in static entries
+			.or_else(|| {
+				let index = Self::STATIC_ENTRIES
+					.binary_search_by(|(n, _)| (*n).cmp(name))
+					.ok()?;
+				let (name, node) = Self::STATIC_ENTRIES[index];
+				Some(DirEntry {
+					inode: 0,
+					entry_type: node.get_file_type(),
+					name: Cow::Borrowed(name),
+				})
+			});
+		Ok(entry)
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let entry = Self::STATIC_ENTRIES
+			.get(off)
+			.map(|(name, node)| DirEntry {
+				inode: 0,
+				entry_type: node.get_file_type(),
+				name: Cow::Borrowed(name),
+			})
+			.or_else(|| {
+				// TODO iterate on processes
+				todo!()
+			});
+		Ok(entry.map(|e| (e, off + 1)))
+	}
+}
 
 /// A procfs.
 ///
@@ -74,146 +180,8 @@ impl ProcFS {
 			inner: KernFS::new()?,
 			procs: HashMap::new(),
 		};
-
-		let mut entries = HashMap::new();
-
-		// Create /proc/meminfo
-		let node = MemInfo {};
-		let inode = fs.inner.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"meminfo".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Regular,
-			},
-		)?;
-
-		// Create /proc/mounts
-		let node =
-			DummyKernFSNode::new(0o777, 0, 0, FileContent::Link(b"self/mounts".try_into()?));
-		let inode = fs.inner.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"mounts".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Link,
-			},
-		)?;
-
-		// Create /proc/self
-		let node = SelfNode {};
-		let inode = fs.inner.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"self".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Link,
-			},
-		)?;
-
-		// Create /proc/sys
-		let node = SysDir::new(&mut fs.inner)?;
-		let inode = fs.inner.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"sys".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Directory,
-			},
-		)?;
-
-		// Create /proc/uptime
-		let node = Uptime {};
-		let inode = fs.inner.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"uptime".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Regular,
-			},
-		)?;
-
-		// Create /proc/version
-		let node = Version {};
-		let inode = fs.inner.add_node(Box::new(node)?)?;
-		entries.insert(
-			b"version".try_into()?,
-			DirEntry {
-				inode,
-				entry_type: FileType::Regular,
-			},
-		)?;
-
-		// Add the root node
-		let root_node = DummyKernFSNode::new(0o555, 0, 0, FileContent::Directory(entries));
-		fs.inner.set_root(Box::new(root_node)?)?;
-
-		// Add existing processes
-		{
-			let mut scheduler = process::get_scheduler().lock();
-			for (pid, _) in scheduler.iter_process() {
-				fs.add_process(*pid)?;
-			}
-		}
-
+		fs.inner.set_root(Box::new(RootDir {})?)?;
 		Ok(fs)
-	}
-
-	/// Adds a process with the given PID `pid` to the filesystem.
-	pub fn add_process(&mut self, pid: Pid) -> EResult<()> {
-		// Create the process's node
-		let proc_node = ProcDir::new(pid, &mut self.inner)?;
-		let inode = self.inner.add_node(Box::new(proc_node)?)?;
-		oom::wrap(|| self.procs.insert(pid, inode));
-
-		// Insert the process's entry at the root of the filesystem
-		let root = self.inner.get_node_mut(kernfs::ROOT_INODE).unwrap();
-		oom::wrap(|| {
-			let mut content = root.get_content().map_err(|_| AllocError)?;
-			let FileContent::Directory(entries) = &mut *content else {
-				unreachable!();
-			};
-			entries.insert(
-				format!("{pid}")?,
-				DirEntry {
-					entry_type: FileType::Directory,
-					inode,
-				},
-			)
-		});
-
-		Ok(())
-	}
-
-	/// Removes the process with pid `pid` from the filesystem.
-	///
-	/// If the process doesn't exist, the function does nothing.
-	pub fn remove_process(&mut self, pid: Pid) -> AllocResult<()> {
-		let Some(inode) = self.procs.remove(&pid) else {
-			return Ok(());
-		};
-
-		// Remove the process's entry from the root of the filesystem
-		let root = self.inner.get_node_mut(kernfs::ROOT_INODE).unwrap();
-		oom::wrap(|| {
-			let mut content = root.get_content().map_err(|_| AllocError)?;
-			let FileContent::Directory(entries) = &mut *content else {
-				unreachable!();
-			};
-			entries.remove(&format!("{pid}")?);
-			Ok(())
-		});
-
-		// Remove the node
-		if let Some(mut node) = oom::wrap(|| self.inner.remove_node(inode).map_err(|_| AllocError))
-		{
-			let node = node.as_mut() as &mut dyn Any;
-
-			if let Some(node) = node.downcast_mut::<ProcDir>() {
-				node.drop_inner(&mut self.inner);
-			}
-		}
-		Ok(())
 	}
 }
 
@@ -234,77 +202,28 @@ impl Filesystem for ProcFS {
 		self.inner.get_root_inode()
 	}
 
-	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs> {
-		self.inner.get_stat(io)
+	fn get_stat(&self) -> EResult<Statfs> {
+		self.inner.get_stat()
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
-		self.inner.load_file(io, inode)
+	fn load_file(&self, inode: INode) -> EResult<File> {
+		self.inner.load_file(inode)
 	}
 
-	fn add_file(
-		&mut self,
-		_io: &mut dyn IO,
-		_parent_inode: INode,
-		_name: &[u8],
-		_node: File,
-	) -> EResult<File> {
+	fn add_file(&self, _parent_inode: INode, _name: &[u8], _node: File) -> EResult<File> {
 		Err(errno!(EACCES))
 	}
 
-	fn add_link(
-		&mut self,
-		_io: &mut dyn IO,
-		_parent_inode: INode,
-		_name: &[u8],
-		_inode: INode,
-	) -> EResult<()> {
+	fn add_link(&self, _parent_inode: INode, _name: &[u8], _inode: INode) -> EResult<()> {
 		Err(errno!(EACCES))
 	}
 
-	fn update_inode(&mut self, _io: &mut dyn IO, _file: &File) -> EResult<()> {
+	fn update_inode(&self, _file: &File) -> EResult<()> {
 		Ok(())
 	}
 
-	fn remove_file(
-		&mut self,
-		_io: &mut dyn IO,
-		_parent_inode: INode,
-		_name: &[u8],
-	) -> EResult<(u16, INode)> {
+	fn remove_file(&self, _parent_inode: INode, _name: &[u8]) -> EResult<(u16, INode)> {
 		Err(errno!(EACCES))
-	}
-
-	fn read_node(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<u64> {
-		self.inner.read_node(io, inode, off, buf)
-	}
-
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
-		self.inner.write_node(io, inode, off, buf)
-	}
-
-	fn entry_by_name<'n>(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
-		self.inner.entry_by_name(io, inode, name)
-	}
-
-	fn next_entry(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		self.next_entry(io, inode, off)
 	}
 }
 
@@ -322,7 +241,7 @@ impl FilesystemType for ProcFsType {
 
 	fn load_filesystem(
 		&self,
-		_io: &mut dyn IO,
+		_io: Option<Arc<Mutex<dyn IO>>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
 	) -> EResult<Arc<Mutex<dyn Filesystem>>> {

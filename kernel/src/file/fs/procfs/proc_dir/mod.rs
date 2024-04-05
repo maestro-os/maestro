@@ -27,7 +27,11 @@ mod status;
 
 use crate::{
 	file::{
-		fs::kernfs::{node::KernFSNode, KernFS},
+		fs::kernfs::{
+			node::{KernFSNode, StaticDirNode},
+			KernFS,
+		},
+		perm,
 		perm::{Gid, Uid},
 		DirEntry, FileType, Mode,
 	},
@@ -47,8 +51,6 @@ use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult, io
 pub struct ProcDir {
 	/// The PID of the process.
 	pid: Pid,
-	/// The content of the directory. This will always be a Directory variant.
-	content: FileContent,
 }
 
 impl ProcDir {
@@ -138,35 +140,14 @@ impl ProcDir {
 				entry_type: FileType::Regular,
 			},
 		)?;
-
-		Ok(Self {
-			pid,
-			content: FileContent::Directory(entries),
-		})
-	}
-
-	/// Removes inner nodes in order to drop the current node.
-	///
-	/// If this function isn't called, the the kernel will be leaking the nodes
-	/// (which is bad).
-	///
-	/// `fs` is the procfs.
-	pub fn drop_inner(&mut self, fs: &mut KernFS) {
-		match &mut self.content {
-			FileContent::Directory(entries) => {
-				for (_, entry) in entries.iter() {
-					oom::wrap(|| fs.remove_node(entry.inode).map_err(|_| AllocError));
-				}
-
-				entries.clear();
-			}
-
-			_ => unreachable!(),
-		}
 	}
 }
 
 impl KernFSNode for ProcDir {
+	fn get_file_type(&self) -> FileType {
+		FileType::Directory
+	}
+
 	fn get_mode(&self) -> Mode {
 		0o555
 	}
@@ -175,7 +156,7 @@ impl KernFSNode for ProcDir {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
 			proc_mutex.lock().access_profile.get_euid()
 		} else {
-			0
+			perm::ROOT_UID
 		}
 	}
 
@@ -183,35 +164,7 @@ impl KernFSNode for ProcDir {
 		if let Some(proc_mutex) = Process::get_by_pid(self.pid) {
 			proc_mutex.lock().access_profile.get_egid()
 		} else {
-			0
-		}
-	}
-}
-
-impl IO for ProcDir {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
-		Err(errno!(EINVAL))
-	}
-
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
-	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Err(errno!(EINVAL))
-	}
-}
-
-impl Drop for ProcDir {
-	fn drop(&mut self) {
-		// Making sure inner nodes have been dropped
-		match &self.content {
-			FileContent::Directory(entries) => debug_assert!(entries.is_empty()),
-			_ => unreachable!(),
+			perm::ROOT_GID
 		}
 	}
 }

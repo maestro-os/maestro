@@ -16,21 +16,26 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements kernfs nodes.
+//! KernFS node utilities.
 
 use crate::{
 	file::{
+		fs::{Filesystem, NodeOps},
 		perm,
 		perm::{Gid, Uid},
-		DirEntry, FileType, Mode,
+		DirEntry, FileType, INode, Mode,
 	},
 	time::unit::Timestamp,
 };
-use core::{any::Any, fmt::Debug};
-use utils::{errno, errno::EResult, io::IO};
+use core::{any::Any, fmt::Debug, iter};
+use utils::{
+	errno,
+	errno::{EResult, EACCES},
+	ptr::cow::Cow,
+};
 
 /// Trait representing a node in a kernfs.
-pub trait KernFSNode: Any + Debug + IO {
+pub trait KernFSNode: Any + Debug + NodeOps {
 	/// Returns the number of hard links to the node.
 	fn get_hard_links_count(&self) -> u16 {
 		1
@@ -139,11 +144,9 @@ pub trait KernFSNode: Any + Debug + IO {
 	fn remove_entry(&mut self, _off: u64) {}
 }
 
-/// A dummy kernfs node (with the default behaviour for each file type).
-///
-/// Calling `read` or `write` on this structure does nothing.
+/// A kernfs node with the default behaviour for each file type.
 #[derive(Debug)]
-pub struct DummyKernFSNode {
+pub struct DefaultNode {
 	/// The number of hard links to the node.
 	hard_links_count: u16,
 
@@ -164,7 +167,7 @@ pub struct DummyKernFSNode {
 	atime: Timestamp,
 }
 
-impl DummyKernFSNode {
+impl DefaultNode {
 	/// Creates a new node.
 	///
 	/// Arguments:
@@ -190,7 +193,7 @@ impl DummyKernFSNode {
 	}
 }
 
-impl KernFSNode for DummyKernFSNode {
+impl KernFSNode for DefaultNode {
 	fn get_hard_links_count(&self) -> u16 {
 		self.hard_links_count
 	}
@@ -252,21 +255,43 @@ impl KernFSNode for DummyKernFSNode {
 	}
 }
 
-impl IO for DummyKernFSNode {
-	fn get_size(&self) -> u64 {
-		0
+impl NodeOps for DefaultNode {
+	fn read_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		todo!()
 	}
 
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
-		Ok((0, true))
+	fn write_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &[u8],
+	) -> EResult<()> {
+		todo!()
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Ok(0)
+	fn entry_by_name<'n>(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		todo!()
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Ok(0)
+	fn next_entry(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		todo!()
 	}
 }
 
@@ -280,7 +305,7 @@ pub fn content_chunks<'s, I: Iterator<Item = EResult<&'s [u8]>>>(
 	off: u64,
 	buff: &mut [u8],
 	iter: I,
-) -> EResult<(u64, bool)> {
+) -> EResult<u64> {
 	let mut node_cursor = 0;
 	let mut buff_cursor = 0;
 	for chunk in iter {
@@ -299,8 +324,146 @@ pub fn content_chunks<'s, I: Iterator<Item = EResult<&'s [u8]>>>(
 		}
 		node_cursor += chunk.len() as u64;
 	}
-	let eof = buff_cursor >= buff.len();
-	Ok((node_cursor, eof))
+	Ok(node_cursor)
+}
+
+/// A static symbolic link pointing to a constant target.
+#[derive(Debug)]
+pub struct StaticLink<const TARGET: &'static str>;
+
+impl<const TARGET: &'static str> KernFSNode for StaticLink<TARGET> {
+	fn get_file_type(&self) -> FileType {
+		FileType::Link
+	}
+
+	fn get_mode(&self) -> Mode {
+		0o777
+	}
+}
+
+impl<const TARGET: &'static str> NodeOps for StaticLink<TARGET> {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		content_chunks(off, buf, iter::once(TARGET))
+	}
+
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EACCES))
+	}
+
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
+	}
+}
+
+/// A read-only virtual directory used to point to other nodes.
+pub trait StaticDirNode: Debug {
+	/// Name/node pairs representing the entries of the directory, alphabetically sorted by name.
+	///
+	/// **Warning**: If this array is not sorted correctly, the behaviour of
+	/// [`NodeOps::entry_by_name`] is undefined.
+	const ENTRIES: &'static [(&'static [u8], &'static dyn KernFSNode)];
+}
+
+impl<N: StaticDirNode + 'static> KernFSNode for N {
+	fn get_file_type(&self) -> FileType {
+		FileType::Directory
+	}
+
+	fn get_mode(&self) -> Mode {
+		0o555
+	}
+
+	fn get_uid(&self) -> Uid {
+		0
+	}
+
+	fn get_gid(&self) -> Gid {
+		0
+	}
+}
+
+impl<N: StaticDirNode> NodeOps for N {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &mut [u8],
+	) -> EResult<u64> {
+		Err(errno!(EISDIR))
+	}
+
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EISDIR))
+	}
+
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		let Some(index) = Self::ENTRIES.binary_search_by(|(n, _)| (*n).cmp(name)) else {
+			return Ok(None);
+		};
+		let (name, node) = Self::ENTRIES[index];
+		Ok(Some(DirEntry {
+			inode: 0,
+			entry_type: node.get_file_type(),
+			name: Cow::Borrowed(name),
+		}))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let Some((name, node)) = Self::ENTRIES.get(off) else {
+			return Ok(None);
+		};
+		Ok(Some((
+			DirEntry {
+				inode: 0,
+				entry_type: node.get_file_type(),
+				name: Cow::Borrowed(name),
+			},
+			off + 1,
+		)))
+	}
 }
 
 #[cfg(test)]

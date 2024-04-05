@@ -16,14 +16,13 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the meminfo node, allowing to retrieve informations
-//! about memory usage of the system.
+//! The meminfo file, allows to retrieve information about memory usage of the system.
 
 use crate::memory;
 use core::cmp::min;
 use utils::{errno, errno::EResult, format, io::IO};
 
-/// Structure representing the meminfo node.
+/// The meminfo file.
 #[derive(Debug)]
 pub struct MemInfo {}
 

@@ -16,18 +16,21 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The uptime node returns the amount of time elapsed since the system started up.
+//! The uptime file returns the amount of time elapsed since the system started up.
 
 use crate::file::{
-	fs::kernfs::node::{content_chunks, KernFSNode},
-	FileType, Mode,
+	fs::{
+		kernfs::node::{content_chunks, KernFSNode},
+		Filesystem, NodeOps,
+	},
+	DirEntry, FileType, INode, Mode,
 };
 use core::iter;
-use utils::{errno, errno::EResult, io::IO};
+use utils::{errno, errno::EResult};
 
-/// The uptime node.
+/// The `uptime` file.
 #[derive(Debug)]
-pub struct Uptime {}
+pub struct Uptime;
 
 impl KernFSNode for Uptime {
 	fn get_file_type(&self) -> FileType {
@@ -39,22 +42,43 @@ impl KernFSNode for Uptime {
 	}
 }
 
-impl IO for Uptime {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+impl NodeOps for Uptime {
+	fn read_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
 		// TODO
-		content_chunks(offset, buff, iter::once(Ok("0.00 0.00\n".as_bytes())))
+		content_chunks(off, buf, iter::once(Ok("0.00 0.00\n".as_bytes())))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EACCES))
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

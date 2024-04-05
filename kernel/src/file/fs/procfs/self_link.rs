@@ -21,85 +21,65 @@
 
 use crate::{
 	file::{
-		fs::kernfs::node::{content_chunks, KernFSNode},
-		perm,
-		perm::{Gid, Uid},
-		FileType, Mode,
+		fs::{
+			kernfs::node::{content_chunks, KernFSNode},
+			Filesystem, NodeOps,
+		},
+		DirEntry, FileType, INode,
 	},
 	process::Process,
-	time::unit::Timestamp,
 };
 use core::iter;
-use utils::{errno, errno::EResult, format, io::IO};
+use utils::{errno, errno::EResult, format};
 
 /// The `self` symlink.
 #[derive(Debug)]
 pub struct SelfNode {}
 
 impl KernFSNode for SelfNode {
-	fn get_hard_links_count(&self) -> u16 {
-		1
-	}
-
 	fn get_file_type(&self) -> FileType {
 		FileType::Link
 	}
-
-	fn set_hard_links_count(&mut self, _: u16) {}
-
-	fn get_mode(&self) -> Mode {
-		0o777
-	}
-
-	fn set_mode(&mut self, _: Mode) {}
-
-	fn get_uid(&self) -> Uid {
-		perm::ROOT_UID
-	}
-
-	fn set_uid(&mut self, _: Uid) {}
-
-	fn get_gid(&self) -> Gid {
-		perm::ROOT_GID
-	}
-
-	fn set_gid(&mut self, _: Gid) {}
-
-	fn get_atime(&self) -> Timestamp {
-		0
-	}
-
-	fn set_atime(&mut self, _: Timestamp) {}
-
-	fn get_ctime(&self) -> Timestamp {
-		0
-	}
-
-	fn set_ctime(&mut self, _: Timestamp) {}
-
-	fn get_mtime(&self) -> Timestamp {
-		0
-	}
-
-	fn set_mtime(&mut self, _: Timestamp) {}
 }
 
-impl IO for SelfNode {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+impl NodeOps for SelfNode {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
 		let pid = Process::current_assert().lock().pid;
 		let pid = format!("{pid}")?;
-		content_chunks(offset, buff, iter::once(Ok(pid.as_bytes())))
+		content_chunks(off, buf, iter::once(Ok(pid.as_bytes())))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EACCES))
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Err(errno!(EINVAL))
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

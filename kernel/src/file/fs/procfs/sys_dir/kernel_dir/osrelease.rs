@@ -19,13 +19,16 @@
 //! The `osrelease` node returns the current release of the kernel.
 
 use crate::file::{
-	fs::kernfs::node::{content_chunks, KernFSNode},
+	fs::{
+		kernfs::node::{content_chunks, KernFSNode},
+		Filesystem, NodeOps,
+	},
 	perm::{Gid, Uid},
-	FileType, Mode,
+	DirEntry, FileType, INode, Mode,
 };
-use utils::{errno, errno::EResult, io::IO};
+use utils::{errno, errno::EResult};
 
-/// Structure representing the `osrelease` node.
+/// The `osrelease` file.
 #[derive(Debug)]
 pub struct OsRelease {}
 
@@ -47,25 +50,46 @@ impl KernFSNode for OsRelease {
 	}
 }
 
-impl IO for OsRelease {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+impl NodeOps for OsRelease {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
 		content_chunks(
-			offset,
-			buff,
+			off,
+			buf,
 			[crate::VERSION, "\n"].into_iter().map(|s| Ok(s.as_bytes())),
 		)
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EACCES))
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

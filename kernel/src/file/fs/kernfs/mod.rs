@@ -26,7 +26,7 @@ pub mod node;
 
 use crate::{
 	file::{
-		fs::{kernfs::node::DummyKernFSNode, Filesystem, Statfs},
+		fs::{kernfs::node::DefaultNode, Filesystem, Statfs},
 		DirEntry, File, FileLocation, FileType, INode,
 	},
 	memory,
@@ -287,7 +287,7 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 		ROOT_INODE
 	}
 
-	fn get_stat(&self, _io: &mut dyn IO) -> EResult<Statfs> {
+	fn get_stat(&self) -> EResult<Statfs> {
 		Ok(Statfs {
 			f_type: 0,
 			f_bsize: memory::PAGE_SIZE as _,
@@ -303,22 +303,16 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 		})
 	}
 
-	fn load_file(&mut self, _: &mut dyn IO, inode: INode) -> EResult<File> {
+	fn load_file(&self, inode: INode) -> EResult<File> {
 		let node = self.get_node(inode)?;
 		Ok(load_file_impl(inode, node.as_ref()))
 	}
 
-	fn add_file(
-		&mut self,
-		_: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-		file: File,
-	) -> EResult<File> {
+	fn add_file(&self, parent_inode: INode, name: &[u8], file: File) -> EResult<File> {
 		if READ_ONLY {
 			return Err(errno!(EROFS));
 		}
-		let mut node = DummyKernFSNode::new(file.uid, file.gid, file.file_type, file.mode);
+		let mut node = DefaultNode::new(file.uid, file.gid, file.file_type, file.mode);
 		node.set_atime(file.atime);
 		node.set_ctime(file.ctime);
 		node.set_mtime(file.mtime);
@@ -328,13 +322,7 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 		Ok(load_file_impl(inode, node.as_ref()))
 	}
 
-	fn add_link(
-		&mut self,
-		_: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-		inode: INode,
-	) -> EResult<()> {
+	fn add_link(&self, parent_inode: INode, name: &[u8], inode: INode) -> EResult<()> {
 		if READ_ONLY {
 			return Err(errno!(EROFS));
 		}
@@ -352,7 +340,7 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 		Ok(())
 	}
 
-	fn update_inode(&mut self, _: &mut dyn IO, file: &File) -> EResult<()> {
+	fn update_inode(&self, file: &File) -> EResult<()> {
 		if READ_ONLY {
 			return Err(errno!(EROFS));
 		}
@@ -366,12 +354,7 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 		Ok(())
 	}
 
-	fn remove_file(
-		&mut self,
-		_: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-	) -> EResult<(u16, INode)> {
+	fn remove_file(&self, parent_inode: INode, name: &[u8]) -> EResult<(u16, INode)> {
 		if READ_ONLY {
 			return Err(errno!(EROFS));
 		}
@@ -402,45 +385,5 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 			parent.set_hard_links_count(parent.get_hard_links_count().saturating_sub(1));
 		}
 		Ok((links, inode))
-	}
-
-	fn read_node(
-		&mut self,
-		_: &mut dyn IO,
-		inode: INode,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<u64> {
-		let node = self.get_node_mut(inode)?;
-		Ok(node.read(off, buf)?.0)
-	}
-
-	fn write_node(&mut self, _: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
-		if READ_ONLY {
-			return Err(errno!(EROFS));
-		}
-		let node = self.get_node_mut(inode)?;
-		node.write(off, buf)?;
-		Ok(())
-	}
-
-	fn entry_by_name<'n>(
-		&mut self,
-		_: &mut dyn IO,
-		inode: INode,
-		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
-		let node = self.get_node(inode)?;
-		Ok(node.entry_by_name(name)?.map(|(e, _)| e))
-	}
-
-	fn next_entry(
-		&mut self,
-		_: &mut dyn IO,
-		inode: INode,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let node = self.get_node(inode)?;
-		node.next_entry(off)
 	}
 }

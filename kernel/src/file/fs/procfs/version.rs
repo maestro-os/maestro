@@ -16,33 +16,70 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `/proc/version` file returns the version of the kernel.
+//! The `version` file returns the version of the kernel.
 
-use crate::file::fs::kernfs::node::content_chunks;
-use utils::{errno, errno::EResult, io::IO};
+use crate::file::{
+	fs::{
+		kernfs::node::{content_chunks, KernFSNode},
+		Filesystem, NodeOps,
+	},
+	DirEntry, FileType, INode, Mode,
+};
+use utils::{errno, errno::EResult};
 
-/// Kernel version node.
+/// Kernel version file.
 #[derive(Debug)]
-pub struct Version {}
+pub struct Version;
 
-impl IO for Version {
-	fn get_size(&self) -> u64 {
-		0
+impl KernFSNode for Version {
+	fn get_file_type(&self) -> FileType {
+		FileType::Regular
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+	fn get_mode(&self) -> Mode {
+		0o444
+	}
+}
+
+impl NodeOps for Version {
+	fn read_content(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
 		let iter = [crate::NAME, " version ", crate::VERSION]
 			.into_iter()
 			.map(|s| Ok(s.as_bytes()));
-		content_chunks(offset, buff, iter)
+		content_chunks(off, buf, iter)
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<()> {
+		Err(errno!(EACCES))
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

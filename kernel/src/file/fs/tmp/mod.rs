@@ -26,9 +26,9 @@ use super::{
 	Filesystem, FilesystemType,
 };
 use crate::file::{
-	fs::{kernfs::node::DummyKernFSNode, Statfs},
+	fs::{kernfs::node::DefaultNode, Statfs},
 	path::PathBuf,
-	DirEntry, File, FileType, INode,
+	File, FileType, INode,
 };
 use core::{intrinsics::unlikely, mem::size_of};
 use utils::{boxed::Box, errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
@@ -70,7 +70,7 @@ impl TmpFS {
 			inner: KernFS::<false>::new()?,
 		};
 		// Add the root node
-		let root_node = DummyKernFSNode::new(0, 0, FileType::Directory, 0o777);
+		let root_node = DefaultNode::new(0, 0, FileType::Directory, 0o777);
 		fs.update_size(get_used_size(&root_node) as _, |fs| {
 			fs.inner.set_root(Box::new(root_node)?)?;
 			Ok(())
@@ -127,97 +127,44 @@ impl Filesystem for TmpFS {
 		self.inner.get_root_inode()
 	}
 
-	fn get_stat(&self, io: &mut dyn IO) -> EResult<Statfs> {
-		self.inner.get_stat(io)
+	fn get_stat(&self) -> EResult<Statfs> {
+		self.inner.get_stat()
 	}
 
-	fn load_file(&mut self, io: &mut dyn IO, inode: INode) -> EResult<File> {
-		self.inner.load_file(io, inode)
+	fn load_file(&self, inode: INode) -> EResult<File> {
+		self.inner.load_file(inode)
 	}
 
-	fn add_file(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-		node: File,
-	) -> EResult<File> {
+	fn add_file(&self, parent_inode: INode, name: &[u8], node: File) -> EResult<File> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 		// TODO Update fs's size
-		self.inner.add_file(io, parent_inode, name, node)
+		self.inner.add_file(parent_inode, name, node)
 	}
 
-	fn add_link(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-		inode: INode,
-	) -> EResult<()> {
+	fn add_link(&self, parent_inode: INode, name: &[u8], inode: INode) -> EResult<()> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 		// TODO Update fs's size
-		self.inner.add_link(io, parent_inode, name, inode)
+		self.inner.add_link(parent_inode, name, inode)
 	}
 
-	fn update_inode(&mut self, io: &mut dyn IO, file: &File) -> EResult<()> {
+	fn update_inode(&self, file: &File) -> EResult<()> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 		// TODO Update fs's size
-		self.inner.update_inode(io, file)
+		self.inner.update_inode(file)
 	}
 
-	fn remove_file(
-		&mut self,
-		io: &mut dyn IO,
-		parent_inode: INode,
-		name: &[u8],
-	) -> EResult<(u16, INode)> {
+	fn remove_file(&self, parent_inode: INode, name: &[u8]) -> EResult<(u16, INode)> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
 		// TODO Update fs's size
-		self.inner.remove_file(io, parent_inode, name)
-	}
-
-	fn read_node(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<u64> {
-		self.inner.read_node(io, inode, off, buf)
-	}
-
-	fn write_node(&mut self, io: &mut dyn IO, inode: INode, off: u64, buf: &[u8]) -> EResult<()> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
-		// TODO Update fs's size
-		self.inner.write_node(io, inode, off, buf)
-	}
-
-	fn entry_by_name<'n>(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
-		self.inner.entry_by_name(io, inode, name)
-	}
-
-	fn next_entry(
-		&mut self,
-		io: &mut dyn IO,
-		inode: INode,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		self.next_entry(io, inode, off)
+		self.inner.remove_file(parent_inode, name)
 	}
 }
 
@@ -235,7 +182,7 @@ impl FilesystemType for TmpFsType {
 
 	fn load_filesystem(
 		&self,
-		_io: &mut dyn IO,
+		_io: Option<Arc<Mutex<dyn IO>>>,
 		_mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<Mutex<dyn Filesystem>>> {

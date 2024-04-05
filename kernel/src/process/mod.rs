@@ -432,32 +432,6 @@ impl Process {
 		Self::current().expect("no running process")
 	}
 
-	/// Registers the current process to the procfs.
-	fn register_procfs(&self) -> EResult<()> {
-		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
-		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
-			return Ok(());
-		};
-		let mut fs_guard = fs.lock();
-		let fs = &mut *fs_guard as &mut dyn Any;
-		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
-		procfs.add_process(self.pid)?;
-		Ok(())
-	}
-
-	/// Unregisters the current process from the procfs.
-	fn unregister_procfs(&self) -> AllocResult<()> {
-		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
-		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
-			return Ok(());
-		};
-		let mut fs_guard = fs.lock();
-		let fs = &mut *fs_guard as &mut dyn Any;
-		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
-		procfs.remove_process(self.pid)?;
-		Ok(())
-	}
-
 	/// Creates the init process and places it into the scheduler's queue.
 	///
 	/// The process is set to state [`State::Running`] by default and has user root.
@@ -533,7 +507,6 @@ impl Process {
 			exit_status: 0,
 			termsig: 0,
 		};
-		process.register_procfs()?;
 		Ok(get_scheduler().lock().add_process(process)?)
 	}
 
@@ -932,7 +905,6 @@ impl Process {
 			exit_status: self.exit_status,
 			termsig: 0,
 		};
-		process.register_procfs()?;
 		self.add_child(pid)?;
 		Ok(get_scheduler().lock().add_process(process)?)
 	}
@@ -1168,8 +1140,6 @@ impl Drop for Process {
 		if self.is_init() {
 			panic!("Terminated init process!");
 		}
-		// Unregister the process from the procfs
-		oom::wrap(|| self.unregister_procfs());
 		// Free kernel stack
 		unsafe {
 			buddy::free_kernel(self.kernel_stack.as_ptr(), KERNEL_STACK_ORDER);
