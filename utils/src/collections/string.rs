@@ -26,8 +26,9 @@ use crate::{
 use core::{
 	borrow::{Borrow, BorrowMut},
 	fmt,
-	fmt::{Debug, Write},
+	fmt::{Arguments, Debug, Write},
 	hash::{Hash, Hasher},
+	mem,
 	ops::{Add, Deref},
 	str,
 };
@@ -45,6 +46,18 @@ impl String {
 		Self {
 			data: Vec::new(),
 		}
+	}
+
+	/// Creates a new instance with the given capacity in bytes.
+	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
+		Ok(Self {
+			data: Vec::with_capacity(capacity)?,
+		})
+	}
+
+	/// Returns the capacity of the inner buffer, in bytes.
+	pub fn capacity(&self) -> usize {
+		self.data.capacity()
 	}
 
 	/// Returns a slice containing the bytes representation of the string.
@@ -301,42 +314,37 @@ impl Debug for String {
 	}
 }
 
-/// Writer used to turned a format into an allocated string.
-pub struct StringWriter {
-	/// The final string resulting from the formatting.
-	pub final_str: Option<AllocResult<String>>,
-}
+/// Fallible writer for [`String`].
+pub struct StringWriter(pub AllocResult<String>);
 
 impl Write for StringWriter {
 	fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
-		match &mut self.final_str {
-			Some(Ok(final_str)) => {
-				if let Err(e) = final_str.push_str(s.as_bytes()) {
-					self.final_str = Some(Err(e))
-				}
-			}
-			None => self.final_str = Some(String::try_from(s)),
-			_ => {}
-		}
+		let buf = mem::replace(&mut self.0, Ok(String::default()));
+		self.0 = buf.and_then(|mut buf| {
+			buf.push_str(s)?;
+			Ok(buf)
+		});
 		Ok(())
 	}
 }
 
-/// This function must be used only through the `format` macro.
-pub fn _format(args: fmt::Arguments) -> AllocResult<String> {
-	let mut w = StringWriter {
-		final_str: None,
-	};
-	fmt::write(&mut w, args).unwrap();
-
-	w.final_str.unwrap()
+/// Formats a string from the given arguments.
+///
+/// On memory allocation failure, the function returns an error.
+pub fn format_impl(args: Arguments<'_>) -> AllocResult<String> {
+	let buf = String::with_capacity(args.estimated_capacity());
+	let mut w = StringWriter(buf);
+	fmt::write(&mut w, args).expect("a formatting trait implementation returned an error");
+	w.0
 }
 
-/// Builds an owned string from the given format string.
+/// Formats a string from the given arguments.
+///
+/// On memory allocation failure, the macro returns an error.
 #[macro_export]
 macro_rules! format {
 	($($arg:tt)*) => {{
-		$crate::collections::string::_format(format_args!($($arg)*))
+		$crate::collections::string::format_impl(format_args!($($arg)*))
 	}};
 }
 

@@ -33,16 +33,17 @@
 #![feature(associated_type_defaults)]
 #![feature(coerce_unsized)]
 #![feature(core_intrinsics)]
+#![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
+#![feature(fmt_internals)]
+#![feature(is_sorted)]
 #![feature(non_null_convenience)]
 #![feature(pointer_is_aligned)]
 #![feature(portable_simd)]
-#![feature(trusted_len)]
-#![feature(unsize)]
 #![feature(set_ptr_value)]
 #![feature(slice_ptr_get)]
-#![feature(custom_test_frameworks)]
-#![feature(is_sorted)]
+#![feature(trusted_len)]
+#![feature(unsize)]
 
 extern crate alloc;
 
