@@ -238,10 +238,9 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns an immutable reference to the value with the given `key`.
 	///
 	/// If the key isn't present, the function return `None`.
-	pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>
+	pub fn get<Q: ?Sized + Hash + Eq>(&self, key: &Q) -> Option<&V>
 	where
 		K: Borrow<Q>,
-		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(key);
 		let (slot_off, occupied) = self.inner.find_slot(key, hash, false)?;
@@ -256,10 +255,9 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns a mutable reference to the value with the given `key`.
 	///
 	/// If the key isn't present, the function return `None`.
-	pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut V>
+	pub fn get_mut<Q: ?Sized + Hash + Eq>(&mut self, key: &Q) -> Option<&mut V>
 	where
 		K: Borrow<Q>,
-		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(key);
 		let (slot_off, occupied) = self.inner.find_slot(key, hash, false)?;
@@ -273,10 +271,9 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 
 	/// Tells whether the hash map contains the given `key`.
 	#[inline]
-	pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
+	pub fn contains_key<Q: ?Sized + Hash + Eq>(&self, k: &Q) -> bool
 	where
 		K: Borrow<Q>,
-		Q: Hash + Eq,
 	{
 		self.get(k).is_some()
 	}
@@ -346,10 +343,9 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Removes an element from the hash map.
 	///
 	/// If the key was present, the function returns the previous value.
-	pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Option<V>
+	pub fn remove<Q: ?Sized + Hash + Eq>(&mut self, key: &Q) -> Option<V>
 	where
 		K: Borrow<Q>,
-		Q: Hash + Eq,
 	{
 		let hash = hash::<_, H>(&key);
 		let (slot_off, occupied) = self.inner.find_slot(key, hash, false)?;

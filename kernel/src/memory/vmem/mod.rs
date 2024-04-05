@@ -442,7 +442,6 @@ pub(crate) fn init() -> AllocResult<()> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::memory;
 
 	#[test_case]
 	fn vmem_basic0() {

@@ -155,6 +155,7 @@ impl Dirent for LinuxDirent {
 
 		// Write entry
 		unsafe {
+			#[allow(invalid_reference_casting)]
 			ptr::write(&mut slice[off] as *mut _ as *mut _, ent);
 		}
 		// Copy file name

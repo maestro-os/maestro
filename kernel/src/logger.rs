@@ -52,6 +52,7 @@ pub struct Logger {
 
 impl Logger {
 	/// Creates a new instance.
+	#[allow(clippy::new_without_default)]
 	pub const fn new() -> Self {
 		Logger {
 			silent: false,

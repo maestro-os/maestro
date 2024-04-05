@@ -251,10 +251,14 @@ impl<K, V> RawTable<K, V> {
 	/// Return tuple:
 	/// - The offset of the slot in the data buffer
 	/// - Whether the slot is occupied
-	pub fn find_slot<Q: ?Sized>(&self, key: &Q, hash: u64, deleted: bool) -> Option<(usize, bool)>
+	pub fn find_slot<Q: ?Sized + Eq>(
+		&self,
+		key: &Q,
+		hash: u64,
+		deleted: bool,
+	) -> Option<(usize, bool)>
 	where
 		K: Borrow<Q>,
-		Q: Eq,
 	{
 		let groups_count = self.capacity.div_ceil(GROUP_SIZE);
 		if groups_count == 0 {

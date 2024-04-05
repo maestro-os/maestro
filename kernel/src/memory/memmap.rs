@@ -20,7 +20,7 @@
 //! information on the system memory by retrieving them from the boot
 //! information. These data are meant to be used by the memory allocators.
 
-use super::*;
+use super::{kern_to_phys, stats, PAGE_SIZE};
 use crate::{elf::kernel::sections, multiboot};
 use core::{cmp::*, ffi::c_void, iter, ptr::null};
 use utils::lock::once::OnceInit;

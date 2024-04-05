@@ -29,11 +29,11 @@ use utils::{bytes, bytes::AnyRepr};
 /// - `table` is a slice over the elements table.
 /// - `num` is the number of elements in the table.
 /// - `entsize` is the size of an element in the table.
-fn iter<T: AnyRepr>(
-	table: &[u8],
+fn iter<'t, T: 't + AnyRepr>(
+	table: &'t [u8],
 	num: usize,
 	entsize: usize,
-) -> impl Iterator<Item = EResult<&T>> {
+) -> impl Iterator<Item = EResult<&'t T>> {
 	(0..num)
 		.map(move |i| {
 			let begin = i * entsize;

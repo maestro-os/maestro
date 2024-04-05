@@ -41,7 +41,6 @@
 #![feature(pointer_is_aligned)]
 #![feature(portable_simd)]
 #![feature(set_ptr_value)]
-#![feature(slice_ptr_get)]
 #![feature(trusted_len)]
 #![feature(unsize)]
 
@@ -64,7 +63,6 @@ use core::{
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Write,
-	marker::Sized,
 	mem::size_of,
 	slice, write,
 };

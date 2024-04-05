@@ -339,8 +339,6 @@ impl Default for FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{File, FileLocation};
-	use utils::{lock::Mutex, ptr::arc::Arc};
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {
