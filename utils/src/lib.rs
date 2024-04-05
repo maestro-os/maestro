@@ -36,12 +36,10 @@
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(fmt_internals)]
-#![feature(is_sorted)]
 #![feature(non_null_convenience)]
 #![feature(pointer_is_aligned)]
 #![feature(portable_simd)]
 #![feature(set_ptr_value)]
-#![feature(slice_ptr_get)]
 #![feature(trusted_len)]
 #![feature(unsize)]
 
@@ -63,7 +61,6 @@ use core::{
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Write,
-	marker::Sized,
 	mem::size_of,
 	slice, write,
 };

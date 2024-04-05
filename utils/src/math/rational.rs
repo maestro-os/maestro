@@ -20,7 +20,7 @@
 //! two integers: `a / b`
 
 use core::{
-	cmp::{Ordering, PartialEq},
+	cmp::Ordering,
 	fmt,
 	ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
