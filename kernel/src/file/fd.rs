@@ -340,7 +340,7 @@ impl Default for FileDescriptorTable {
 mod test {
 	use super::*;
 	use crate::file::{File, FileContent, FileLocation};
-	use utils::{collections::string::String, lock::Mutex, ptr::arc::Arc};
+	use utils::collections::string::String;
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {

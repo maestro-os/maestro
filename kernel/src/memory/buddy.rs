@@ -594,7 +594,7 @@ pub fn allocated_pages_count() -> usize {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core::{ptr::null, slice};
+	use core::ptr::null;
 
 	#[test_case]
 	fn buddy0() {

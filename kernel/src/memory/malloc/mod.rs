@@ -148,7 +148,7 @@ static ALLOCATOR: Malloc = Malloc;
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::{memory, memory::buddy};
+	use crate::memory::buddy;
 	use core::slice;
 	use utils::math;
 
