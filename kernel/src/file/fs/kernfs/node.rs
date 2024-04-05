@@ -28,11 +28,7 @@ use crate::{
 	time::unit::Timestamp,
 };
 use core::{any::Any, fmt::Debug, iter};
-use utils::{
-	errno,
-	errno::{EResult, EACCES},
-	ptr::cow::Cow,
-};
+use utils::{errno, errno::EResult, ptr::cow::Cow};
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: Any + Debug + NodeOps {
@@ -475,27 +471,23 @@ mod test {
 		let chunks = ["abc", "def", "ghi"];
 		// Simple test
 		let mut out = [0u8; 9];
-		let (len, eof) = super::content_chunks(0, &mut out, chunks.iter().map(Ok)).unwrap();
+		let len = super::content_chunks(0, &mut out, chunks.iter().map(Ok)).unwrap();
 		assert_eq!(out.as_slice(), b"abcdefghi");
 		assert_eq!(len, 9);
-		assert!(eof);
 		// End
 		let mut out = [0u8; 9];
-		let (len, eof) = super::content_chunks(9, &mut out, chunks.iter().map(Ok)).unwrap();
+		let len = super::content_chunks(9, &mut out, chunks.iter().map(Ok)).unwrap();
 		assert_eq!(out, [0u8; 9]);
 		assert_eq!(len, 0);
-		assert!(eof);
 		// Start from second chunk
 		let mut out = [0u8; 9];
-		let (len, eof) = super::content_chunks(3, &mut out, chunks.iter().map(Ok)).unwrap();
+		let len = super::content_chunks(3, &mut out, chunks.iter().map(Ok)).unwrap();
 		assert_eq!(out.as_slice(), b"defghi\0\0\0");
 		assert_eq!(len, 6);
-		assert!(eof);
 		// Start from middle of chunk
 		let mut out = [0u8; 9];
-		let (len, eof) = super::content_chunks(4, &mut out, chunks.iter().map(Ok)).unwrap();
+		let len = super::content_chunks(4, &mut out, chunks.iter().map(Ok)).unwrap();
 		assert_eq!(out.as_slice(), b"efghi\0\0\0\0");
 		assert_eq!(len, 5);
-		assert!(eof);
 	}
 }

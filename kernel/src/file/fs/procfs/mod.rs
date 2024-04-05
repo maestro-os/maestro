@@ -26,10 +26,7 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{
-	kernfs::{node::DefaultNode, KernFS},
-	Filesystem, FilesystemType, NodeOps,
-};
+use super::{kernfs::KernFS, Filesystem, FilesystemType, NodeOps};
 use crate::{
 	file::{
 		fs::{

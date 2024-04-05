@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the directory of a process in the procfs.
+//! Implementation of the directory of a process in the procfs.
 
 mod cmdline;
 mod cwd;
@@ -27,24 +27,20 @@ mod status;
 
 use crate::{
 	file::{
-		fs::kernfs::{
-			node::{KernFSNode, StaticDirNode},
-			KernFS,
-		},
+		fs::kernfs::{node::KernFSNode, KernFS},
 		perm,
 		perm::{Gid, Uid},
 		DirEntry, FileType, Mode,
 	},
-	process::{oom, pid::Pid, Process},
+	process::{pid::Pid, Process},
 };
 use cmdline::Cmdline;
-use core::alloc::AllocError;
 use cwd::Cwd;
 use exe::Exe;
 use mounts::Mounts;
 use stat::Stat;
 use status::Status;
-use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult, io::IO};
+use utils::{boxed::Box, collections::hashmap::HashMap, errno::EResult};
 
 /// The directory of a process.
 #[derive(Debug)]
@@ -56,7 +52,7 @@ pub struct ProcDir {
 impl ProcDir {
 	/// Creates a new instance for the process with the given PID `pid`.
 	///
-	/// The function adds every nodes to the given kernfs `fs`.
+	/// The function adds every node to the given kernfs `fs`.
 	pub fn new(pid: Pid, fs: &mut KernFS) -> EResult<Self> {
 		let mut entries = HashMap::new();
 

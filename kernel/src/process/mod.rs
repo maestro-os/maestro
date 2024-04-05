@@ -44,7 +44,6 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
-		fs::procfs::ProcFS,
 		mountpoint, open_file,
 		path::{Path, PathBuf},
 		perm::{AccessProfile, ROOT_UID},
@@ -54,14 +53,13 @@ use crate::{
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::{mountpoint::MountSource, open_file::OpenFile},
+	process::open_file::OpenFile,
 	register_get,
 	time::timer::TimerManager,
 	tty,
 	tty::TTYHandle,
 };
 use core::{
-	any::Any,
 	ffi::c_void,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
