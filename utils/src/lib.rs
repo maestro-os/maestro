@@ -36,6 +36,7 @@
 #![feature(custom_test_frameworks)]
 #![feature(dispatch_from_dyn)]
 #![feature(fmt_internals)]
+#![feature(is_sorted)]
 #![feature(non_null_convenience)]
 #![feature(pointer_is_aligned)]
 #![feature(portable_simd)]

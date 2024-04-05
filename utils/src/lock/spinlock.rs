@@ -44,6 +44,7 @@ pub struct Spinlock {
 
 impl Spinlock {
 	/// Creates a new spinlock.
+	#[allow(clippy::new_without_default)]
 	pub const fn new() -> Self {
 		Self {
 			locked: AtomicBool::new(false),
