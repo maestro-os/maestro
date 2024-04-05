@@ -26,6 +26,7 @@
 
 #![no_std]
 #![no_main]
+#![feature(adt_const_params)]
 #![feature(allocator_api)]
 #![feature(allow_internal_unstable)]
 #![feature(array_chunks)]
