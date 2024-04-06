@@ -247,7 +247,7 @@ impl NodeOps for DefaultNode {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &[u8],
-	) -> EResult<()> {
+	) -> EResult<u64> {
 		todo!()
 	}
 
@@ -334,7 +334,7 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &[u8],
-	) -> EResult<()> {
+	) -> EResult<u64> {
 		Err(errno!(EACCES))
 	}
 
@@ -401,7 +401,7 @@ impl<N: StaticDirNode> NodeOps for N {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &[u8],
-	) -> EResult<()> {
+	) -> EResult<u64> {
 		Err(errno!(EISDIR))
 	}
 

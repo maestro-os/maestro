@@ -76,7 +76,7 @@ pub struct Statfs {
 }
 
 /// File node operations.
-pub trait NodeOps {
+pub trait NodeOps: Debug {
 	/// Reads from the node with into the buffer `buf`.
 	///
 	/// Arguments:
@@ -116,7 +116,7 @@ pub trait NodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &[u8],
-	) -> EResult<()>;
+	) -> EResult<u64>;
 
 	/// Returns the directory entry with the given `name`.
 	///

@@ -243,6 +243,7 @@ fn zero_blocks(off: u64, count: u64, superblock: &Superblock, io: &mut dyn IO) -
 }
 
 /// File operations.
+#[derive(Debug)]
 struct Ext2NodeOps;
 
 /// Downcasts the given `fs` into [`Ext2Fs`].
@@ -274,7 +275,7 @@ impl NodeOps for Ext2NodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &[u8],
-	) -> EResult<()> {
+	) -> EResult<u64> {
 		if unlikely(fs.is_readonly()) {
 			return Err(errno!(EROFS));
 		}
@@ -287,7 +288,8 @@ impl NodeOps for Ext2NodeOps {
 		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
 		inode_.write_content(off, buf, &mut superblock, &mut *io)?;
 		inode_.write(inode as _, &superblock, &mut *io)?;
-		superblock.write(&mut *io)
+		superblock.write(&mut *io)?;
+		Ok(buf.len() as _)
 	}
 
 	fn entry_by_name<'n>(

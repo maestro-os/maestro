@@ -41,7 +41,7 @@ use crate::{
 	device::{DeviceID, DeviceType},
 	file::{
 		buffer::{pipe::PipeBuffer, socket::Socket},
-		fs::Filesystem,
+		fs::{Filesystem, NodeOps},
 		path::PathBuf,
 		perm::{Gid, Uid},
 	},
@@ -57,6 +57,7 @@ use core::{cmp::max, ffi::c_void};
 use mountpoint::{MountPoint, MountSource};
 use perm::AccessProfile;
 use utils::{
+	boxed::Box,
 	collections::string::String,
 	errno,
 	errno::EResult,
@@ -257,9 +258,11 @@ enum IoSource<'a> {
 		fs: &'a dyn Filesystem,
 		/// The inode on the filesystem.
 		inode: INode,
+		/// Handle to perform operations on the filesystem's node.
+		ops: &'a dyn NodeOps,
 	},
 	/// The operation is performed on a simple I/O interface.
-	IO(&'a dyn IO),
+	IO(&'a mut dyn IO),
 }
 
 /// A file on a filesystem.
@@ -299,6 +302,9 @@ pub struct File {
 	/// If the file is a device file, this is the minor number.
 	pub dev_minor: u32,
 
+	/// Handle to perform operations on the node.
+	ops: Box<dyn NodeOps>,
+
 	/// If not `None`, the file will be removed when the last handle to it is closed.
 	///
 	/// This field contains all the information necessary to remove it.
@@ -313,13 +319,14 @@ impl File {
 	/// - `gid` is the id of the owner group
 	/// - `file_type` is the type of the file
 	/// - `perms` is the permission of the file
+	/// - `ops` is the handle to perform operations on the file
 	///
 	/// The created file has the following data zeroed:
 	/// - File location
 	/// - Size and blocks count
 	/// - All timestamps
 	/// - Device major/minor
-	fn new(uid: Uid, gid: Gid, file_type: FileType, perms: Mode) -> Self {
+	fn new(uid: Uid, gid: Gid, file_type: FileType, perms: Mode, ops: Box<dyn NodeOps>) -> Self {
 		Self {
 			location: FileLocation::dummy(),
 			hard_links_count: 1,
@@ -339,6 +346,8 @@ impl File {
 
 			dev_major: 0,
 			dev_minor: 0,
+
+			ops,
 
 			deferred_remove: None,
 		}
@@ -430,7 +439,8 @@ impl File {
 			IoSource::Filesystem {
 				fs,
 				inode,
-			} => fs.entry_by_name(inode, name),
+				ops,
+			} => ops.entry_by_name(inode, fs, name),
 			IoSource::IO(_) => Ok(None),
 		})
 	}
@@ -542,13 +552,16 @@ impl File {
 					f(IoSource::Filesystem {
 						fs: &*fs,
 						inode,
+						ops: &*self.ops,
 					})
 				}
 				FileLocation::Virtual {
 					..
 				} => {
-					let io_mutex = buffer::get(&self.location).map(|io| io as _);
-					let io = io_mutex.lock();
+					let Some(io_mutex) = buffer::get(&self.location) else {
+						return Err(errno!(ENOENT));
+					};
+					let mut io = io_mutex.lock();
 					f(IoSource::IO(&mut *io))
 				}
 			},
@@ -743,35 +756,28 @@ impl IO for File {
 	}
 
 	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		self.io_op(|io| {
-			let Some(io_mutex) = io else {
-				return Ok((0, true));
-			};
-			let mut io = io_mutex.lock();
-			if let Some((fs_mutex, inode)) = fs {
-				let mut fs = fs_mutex.lock();
-				let len = fs.read_node(&mut *io, inode, off, buff)?;
+		self.io_op(|io| match io {
+			IoSource::Filesystem {
+				fs,
+				inode,
+				ops,
+			} => {
+				let len = ops.read_content(inode, fs, off, buff)?;
 				let eof = off + len >= self.size;
 				Ok((len, eof))
-			} else {
-				io.read(off, buff)
 			}
+			IoSource::IO(io) => io.read(off, buff),
 		})
 	}
 
 	fn write(&mut self, off: u64, buff: &[u8]) -> EResult<u64> {
-		let len = self.io_op(|io| {
-			let Some(io_mutex) = io else {
-				return Ok(0);
-			};
-			let mut io = io_mutex.lock();
-			if let Some((fs_mutex, inode)) = fs {
-				let mut fs = fs_mutex.lock();
-				fs.write_node(&mut *io, inode, off, buff)?;
-				Ok(buff.len() as _)
-			} else {
-				io.write(off, buff)
-			}
+		let len = self.io_op(|io| match io {
+			IoSource::Filesystem {
+				fs,
+				inode,
+				ops,
+			} => ops.write_content(inode, fs, off, buff),
+			IoSource::IO(io) => io.write(off, buff),
 		})?;
 		// Update file's size
 		self.size = max(off + len, self.size);
@@ -780,11 +786,17 @@ impl IO for File {
 
 	fn poll(&mut self, mask: u32) -> EResult<u32> {
 		self.io_op(|io| {
-			let Some(io_mutex) = io else {
-				return Ok(0);
-			};
-			let mut io = io_mutex.lock();
-			io.poll(mask)
+			match io {
+				IoSource::Filesystem {
+					fs: _,
+					inode: _,
+					ops: _,
+				} => {
+					// TODO
+					todo!()
+				}
+				IoSource::IO(io) => io.poll(mask),
+			}
 		})
 	}
 }
@@ -805,13 +817,13 @@ impl<'f> Iterator for DirEntryIterator<'f> {
 	fn next(&mut self) -> Option<Self::Item> {
 		let res = self
 			.dir
-			.io_op(|io| {
-				let (Some(io_mutex), Some((fs_mutex, inode))) = (io, fs) else {
-					return Ok(None);
-				};
-				let mut io = io_mutex.lock();
-				let mut fs = fs_mutex.lock();
-				fs.next_entry(&mut *io, inode, self.cursor)
+			.io_op(|io| match io {
+				IoSource::Filesystem {
+					fs,
+					inode,
+					ops,
+				} => ops.next_entry(inode, fs, self.cursor),
+				IoSource::IO(_) => Err(errno!(ENOTDIR)),
 			})
 			.transpose()?;
 		match res {
