@@ -70,10 +70,11 @@ where
 pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File>>> {
 	match location {
 		FileLocation::Filesystem {
-			inode, ..
+			mountpoint_id,
+			inode,
 		} => {
 			// Get mountpoint
-			let mp_mutex = location.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
+			let mp_mutex = mountpoint::from_id(*mountpoint_id).ok_or_else(|| errno!(ENOENT))?;
 			let mp = mp_mutex.lock();
 			// Get the filesystem
 			let fs = mp.get_filesystem();

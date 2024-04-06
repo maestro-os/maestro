@@ -21,16 +21,12 @@
 
 use crate::{
 	file::{
-		fs::{
-			kernfs::node::{content_chunks, KernFSNode},
-			Filesystem, NodeOps,
-		},
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
 		DirEntry, FileType, INode, Mode,
 	},
-	memory,
+	format_content, memory,
 };
-use core::iter;
-use utils::{errno, errno::EResult, format};
+use utils::{errno, errno::EResult};
 
 /// The `meminfo` file.
 #[derive(Debug)]
@@ -55,8 +51,7 @@ impl NodeOps for MemInfo {
 		buf: &mut [u8],
 	) -> EResult<u64> {
 		let mem_info = memory::stats::MEM_INFO.lock();
-		let content = format!("{}", *mem_info)?;
-		content_chunks(off, buf, iter::once(Ok(content.as_bytes())))
+		format_content!(off, buf, "{}", *mem_info)
 	}
 
 	fn write_content(

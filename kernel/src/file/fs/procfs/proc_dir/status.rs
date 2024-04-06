@@ -21,69 +21,25 @@
 
 use crate::{
 	file::{
-		fs::kernfs::node::KernFSNode,
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
 		perm::{Gid, Uid},
-		FileType, Mode,
+		DirEntry, FileType, INode, Mode,
 	},
+	format_content,
 	process::{pid::Pid, Process},
 };
-use core::cmp::min;
-use utils::{errno, errno::EResult, format, io::IO};
+use core::{fmt, fmt::Formatter};
+use utils::{collections::string::String, errno, errno::EResult, DisplayableStr};
 
-/// The `status` node of the procfs.
-#[derive(Debug)]
-pub struct Status(pub Pid);
+struct StatusDisp<'p>(&'p Process);
 
-impl KernFSNode for Status {
-	fn get_file_type(&self) -> FileType {
-		FileType::Regular
-	}
-
-	fn get_mode(&self) -> Mode {
-		0o444
-	}
-
-	fn get_uid(&self) -> Uid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
-			proc_mutex.lock().access_profile.get_euid()
-		} else {
-			0
-		}
-	}
-
-	fn get_gid(&self) -> Gid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
-			proc_mutex.lock().access_profile.get_egid()
-		} else {
-			0
-		}
-	}
-}
-
-impl IO for Status {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		if buff.is_empty() {
-			return Ok((0, false));
-		}
-
-		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let proc = proc_mutex.lock();
-
-		let name = proc
-			.argv
-			.iter()
-			.map(|name| unsafe { name.as_str_unchecked() })
-			.next()
-			.unwrap_or("?");
-		let state = proc.get_state();
-
+impl<'p> fmt::Display for StatusDisp<'p> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
+		let state = self.0.get_state();
 		// TODO Fill every fields with process's data
-		// Generating content
-		let content = format!(
+		writeln!(
+			f,
 			"Name: {name}
 Umask: {umask:4o}
 State: {state_char} ({state_name})
@@ -140,38 +96,93 @@ Cpus_allowed_list: 0-7
 Mems_allowed: 00000001
 Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
-nonvoluntary_ctxt_switches: 0
-",
-			umask = proc.umask,
-			state_char = state.get_char(),
+nonvoluntary_ctxt_switches: 0",
+			name = DisplayableStr(name),
+			umask = self.0.umask,
+			state_char = state.as_char(),
 			state_name = state.as_str(),
-			pid = proc.pid,
-			ppid = proc.get_parent_pid(),
-			uid = proc.access_profile.get_uid(),
-			euid = proc.access_profile.get_euid(),
-			suid = proc.access_profile.get_suid(),
+			pid = self.0.pid,
+			ppid = self.0.get_parent_pid(),
+			uid = self.0.access_profile.get_uid(),
+			euid = self.0.access_profile.get_euid(),
+			suid = self.0.access_profile.get_suid(),
 			ruid = 0, // TODO
-			gid = proc.access_profile.get_gid(),
-			egid = proc.access_profile.get_egid(),
-			sgid = proc.access_profile.get_sgid(),
+			gid = self.0.access_profile.get_gid(),
+			egid = self.0.access_profile.get_egid(),
+			sgid = self.0.access_profile.get_sgid(),
 			rgid = 0, // TODO
-		)?;
+		)
+	}
+}
 
-		// Copying content to userspace buffer
-		let content_bytes = content.as_bytes();
-		let len = min((content_bytes.len() as u64 - offset) as usize, buff.len());
-		buff[..len].copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);
+/// The `status` node of the procfs.
+#[derive(Debug)]
+pub struct Status(pub Pid);
 
-		let eof = (offset + len as u64) >= content_bytes.len() as u64;
-		Ok((len as _, eof))
+impl KernFSNode for Status {
+	fn get_file_type(&self) -> FileType {
+		FileType::Regular
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn get_mode(&self) -> Mode {
+		0o444
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+	fn get_uid(&self) -> Uid {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
+			proc_mutex.lock().access_profile.get_euid()
+		} else {
+			0
+		}
+	}
+
+	fn get_gid(&self) -> Gid {
+		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
+			proc_mutex.lock().access_profile.get_egid()
+		} else {
+			0
+		}
+	}
+}
+
+impl NodeOps for Status {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
+		let proc = proc_mutex.lock();
+		format_content!(off, buf, "{}", StatusDisp(&*proc))
+	}
+
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<u64> {
+		Err(errno!(EACCES))
+	}
+
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

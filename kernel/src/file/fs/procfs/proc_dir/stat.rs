@@ -21,14 +21,47 @@
 
 use crate::{
 	file::{
-		fs::kernfs::node::KernFSNode,
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
 		perm::{Gid, Uid},
-		FileType, Mode,
+		DirEntry, FileType, INode, Mode,
 	},
+	format_content,
 	process::{pid::Pid, Process},
 };
-use core::cmp::min;
-use utils::{errno, errno::EResult, format, io::IO};
+use core::{fmt, fmt::Formatter};
+use utils::{collections::string::String, errno, errno::EResult, DisplayableStr};
+
+struct StatDisp<'p>(&'p Process);
+
+impl<'p> fmt::Display for StatDisp<'p> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
+		// TODO Fix deadlock
+		//let vmem_usage = self.0.get_vmem_usage();
+		let vmem_usage = 0;
+		let esp = self.0.regs.esp;
+		let eip = self.0.regs.eip;
+		// TODO Fill every fields with process's data
+		write!(
+			f,
+			"{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
+0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
+TODO TODO TODO TODO {esp} {eip} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
+TODO TODO TODO TODO TODO TODO TODO TODO TODO",
+			pid = self.0.pid,
+			name = DisplayableStr(name),
+			state_char = self.0.get_state().as_char(),
+			ppid = self.0.get_parent_pid(),
+			pgid = self.0.pgid,
+			sid = 0,            // TODO
+			user_jiffies = 0,   // TODO
+			kernel_jiffies = 0, // TODO
+			priority = self.0.priority,
+			nice = self.0.nice,
+			num_threads = 1, // TODO
+		)
+	}
+}
 
 /// The stat node of the procfs.
 #[derive(Debug)]
@@ -60,73 +93,44 @@ impl KernFSNode for Stat {
 	}
 }
 
-impl IO for Stat {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		if buff.is_empty() {
-			return Ok((0, false));
-		}
-
+impl NodeOps for Stat {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
-
-		let name = proc
-			.argv
-			.iter()
-			.map(|name| unsafe { name.as_str_unchecked() })
-			.next()
-			.unwrap_or("?");
-
-		let state = proc.get_state();
-		let state_char = state.get_char();
-
-		let pid = proc.pid;
-		let ppid = proc.get_parent_pid();
-		let pgid = proc.pgid;
-		let sid = 0; // TODO
-
-		let user_jiffies = 0; // TODO
-		let kernel_jiffies = 0; // TODO
-
-		let priority = proc.priority;
-		let nice = proc.nice;
-
-		let num_threads = 1; // TODO
-
-		// TODO Fix deadlock
-		//let vmem_usage = proc.get_vmem_usage();
-		let vmem_usage = 0;
-
-		let esp = proc.regs.esp;
-		let eip = proc.regs.eip;
-
-		// TODO Fill every fields with process's data
-		// Generating content
-		let content = format!(
-			"{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
-0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
-TODO TODO TODO TODO {esp} {eip} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
-TODO TODO TODO TODO TODO TODO TODO TODO TODO"
-		)?;
-
-		// Copying content to userspace buffer
-		let content_bytes = content.as_bytes();
-		let len = min((content_bytes.len() as u64 - offset) as usize, buff.len());
-		buff[..len].copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);
-
-		let eof = (offset + len as u64) >= content_bytes.len() as u64;
-		Ok((len as _, eof))
+		format_content!(off, buf, "{}", StatDisp(&*proc))
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<u64> {
+		Err(errno!(EACCES))
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
 	}
 }

@@ -20,15 +20,16 @@
 
 use crate::{
 	file::{
-		fs::kernfs::node::KernFSNode,
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
 		mountpoint,
 		perm::{Gid, Uid},
-		FileType, Mode,
+		DirEntry, FileType, INode, Mode,
 	},
+	format_content,
 	process::{pid::Pid, Process},
 };
-use core::cmp::min;
-use utils::{collections::string::String, errno, errno::EResult, format, io::IO, DisplayableStr};
+use core::{fmt, fmt::Formatter};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `mounts` node.
 #[derive(Debug)]
@@ -60,49 +61,62 @@ impl KernFSNode for Mounts {
 	}
 }
 
-impl IO for Mounts {
-	fn get_size(&self) -> u64 {
-		0
+impl NodeOps for Mounts {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		format_content!(off, buf, "{}", self)
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		if buff.is_empty() {
-			return Ok((0, false));
-		}
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<u64> {
+		Err(errno!(EACCES))
+	}
 
-		// Generate content
-		let mut content = String::new();
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<DirEntry<'n>>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
+	}
+}
+
+impl fmt::Display for Mounts {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let mountpoints = mountpoint::MOUNT_POINTS.lock();
-
 		for (_, mp_mutex) in mountpoints.iter() {
 			let mp = mp_mutex.lock();
 			let fs = mp.get_filesystem();
 			let fs_type = fs.get_name();
 			let flags = "TODO"; // TODO
-			let s = format!(
-				"{source} {target} {fs_type} {flags} 0 0\n",
+			writeln!(
+				f,
+				"{source} {target} {fs_type} {flags} 0 0",
 				source = mp.get_source(),
 				target = mp.get_target_path(),
 				fs_type = DisplayableStr(fs_type)
 			)?;
-			content.push_str(s)?;
 		}
-
-		// Copying content to userspace buffer
-		let content_bytes = content.as_bytes();
-		let len = min((content_bytes.len() as u64 - offset) as usize, buff.len());
-		buff[..len].copy_from_slice(&content_bytes[(offset as usize)..(offset as usize + len)]);
-
-		let eof = (offset + len as u64) >= content_bytes.len() as u64;
-		Ok((len as _, eof))
-	}
-
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
-		Err(errno!(EINVAL))
-	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+		Ok(())
 	}
 }

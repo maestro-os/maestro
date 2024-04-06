@@ -18,12 +18,12 @@
 
 //! The `version` file returns the version of the kernel.
 
-use crate::file::{
-	fs::{
-		kernfs::node::{content_chunks, KernFSNode},
-		Filesystem, NodeOps,
+use crate::{
+	file::{
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
+		DirEntry, FileType, INode, Mode,
 	},
-	DirEntry, FileType, INode, Mode,
+	format_content,
 };
 use utils::{errno, errno::EResult};
 
@@ -49,10 +49,7 @@ impl NodeOps for Version {
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {
-		let iter = [crate::NAME, " version ", crate::VERSION]
-			.into_iter()
-			.map(|s| Ok(s.as_bytes()));
-		content_chunks(off, buf, iter)
+		format_content!(off, buf, "{} version {}\n", crate::NAME, crate::VERSION)
 	}
 
 	fn write_content(
@@ -61,7 +58,7 @@ impl NodeOps for Version {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &[u8],
-	) -> EResult<()> {
+	) -> EResult<u64> {
 		Err(errno!(EACCES))
 	}
 

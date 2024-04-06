@@ -18,13 +18,13 @@
 
 //! The `osrelease` node returns the current release of the kernel.
 
-use crate::file::{
-	fs::{
-		kernfs::node::{content_chunks, KernFSNode},
-		Filesystem, NodeOps,
+use crate::{
+	file::{
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
+		perm::{Gid, Uid},
+		DirEntry, FileType, INode, Mode,
 	},
-	perm::{Gid, Uid},
-	DirEntry, FileType, INode, Mode,
+	format_content,
 };
 use utils::{errno, errno::EResult};
 
@@ -58,11 +58,7 @@ impl NodeOps for OsRelease {
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {
-		content_chunks(
-			off,
-			buf,
-			[crate::VERSION, "\n"].into_iter().map(|s| Ok(s.as_bytes())),
-		)
+		format_content!(off, buf, "{}\n", crate::VERSION)
 	}
 
 	fn write_content(
@@ -71,7 +67,7 @@ impl NodeOps for OsRelease {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &[u8],
-	) -> EResult<()> {
+	) -> EResult<u64> {
 		Err(errno!(EACCES))
 	}
 

@@ -131,7 +131,7 @@ pub enum State {
 
 impl State {
 	/// Returns the character associated with the state.
-	pub fn get_char(&self) -> char {
+	pub fn as_char(&self) -> char {
 		match self {
 			Self::Running => 'R',
 			Self::Sleeping => 'S',

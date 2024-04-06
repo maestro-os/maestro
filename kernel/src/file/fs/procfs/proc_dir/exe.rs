@@ -21,17 +21,14 @@
 
 use crate::{
 	file::{
-		fs::{
-			kernfs::node::{content_chunks, KernFSNode},
-			Filesystem, NodeOps,
-		},
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
 		perm::{Gid, Uid},
 		DirEntry, FileType, INode, Mode,
 	},
+	format_content,
 	process::{pid::Pid, Process},
 };
-use core::iter;
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `exe` node.
 #[derive(Debug)]
@@ -71,11 +68,9 @@ impl NodeOps for Exe {
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {
-		let Some(proc) = Process::get_by_pid(self.0) else {
-			return content_chunks(off, buf, iter::empty());
-		};
-		let proc = proc.lock();
-		content_chunks(off, buf, iter::once(Ok(proc.exec_path.as_bytes())))
+		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
+		let proc = proc_mutex.lock();
+		format_content!(off, buf, "{}", DisplayableStr(proc.exec_path.as_bytes()))
 	}
 
 	fn write_content(

@@ -16,21 +16,17 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the `self` symlink, which points to the current
-//! process's directory.
+//! Implementation of the `self` symlink, which points to the current process's directory.
 
 use crate::{
 	file::{
-		fs::{
-			kernfs::node::{content_chunks, KernFSNode},
-			Filesystem, NodeOps,
-		},
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
 		DirEntry, FileType, INode,
 	},
+	format_content,
 	process::Process,
 };
-use core::iter;
-use utils::{errno, errno::EResult, format};
+use utils::{errno, errno::EResult};
 
 /// The `self` symlink.
 #[derive(Debug)]
@@ -51,8 +47,7 @@ impl NodeOps for SelfNode {
 		buf: &mut [u8],
 	) -> EResult<u64> {
 		let pid = Process::current_assert().lock().pid;
-		let pid = format!("{pid}")?;
-		content_chunks(off, buf, iter::once(Ok(pid.as_bytes())))
+		format_content!(off, buf, "{pid}")
 	}
 
 	fn write_content(
@@ -61,7 +56,7 @@ impl NodeOps for SelfNode {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &[u8],
-	) -> EResult<()> {
+	) -> EResult<u64> {
 		Err(errno!(EACCES))
 	}
 

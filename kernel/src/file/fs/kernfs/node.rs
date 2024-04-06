@@ -27,8 +27,13 @@ use crate::{
 	},
 	time::unit::Timestamp,
 };
-use core::{any::Any, fmt::Debug, iter};
-use utils::{errno, errno::EResult, ptr::cow::Cow};
+use core::{
+	any::Any,
+	cmp::min,
+	fmt,
+	fmt::{Debug, Write},
+};
+use utils::{errno, errno::EResult, ptr::cow::Cow, DisplayableStr};
 
 /// Trait representing a node in a kernfs.
 pub trait KernFSNode: Any + Debug + NodeOps {
@@ -93,10 +98,14 @@ pub trait KernFSNode: Any + Debug + NodeOps {
 
 	/// If the current node is a directory, tells whether it is empty.
 	///
+	/// Arguments:
+	/// - `inode` is the inode of the file.
+	/// - `fs` is the filesystem.
+	///
 	/// If the node is not a directory, the function return `true`.
-	fn is_directory_empty(&self) -> EResult<bool> {
+	fn is_directory_empty(&self, inode: INode, fs: &dyn Filesystem) -> EResult<bool> {
 		let mut prev = 0;
-		while let Some((entry, off)) = self.next_entry(prev)? {
+		while let Some((entry, off)) = self.next_entry(inode, fs, prev)? {
 			if entry.name.as_ref() != b"." && entry.name.as_ref() != b".." {
 				return Ok(false);
 			}
@@ -270,37 +279,65 @@ impl NodeOps for DefaultNode {
 	}
 }
 
-// TODO refactor to make it a format-like macro
-/// Implementation of the [`IO::read`] function for a node that is built dynamically from a
-/// sequence of strings taken from `iter`.
-///
-/// `off` and `buff` are the arguments from [`IO::read`].
-///
-/// If the iterator returns an error element, the function stops and returns the error.
-pub fn content_chunks<'s, I: Iterator<Item = EResult<&'s [u8]>>>(
+/// Writer for [`format_content_args`].
+struct FormatContentWriter<'b> {
 	off: u64,
-	buff: &mut [u8],
-	iter: I,
-) -> EResult<u64> {
-	let mut node_cursor = 0;
-	let mut buff_cursor = 0;
-	for chunk in iter {
-		let chunk = chunk?;
+	buf: &'b mut [u8],
+	buf_cursor: usize,
+	stop: bool,
+}
+
+impl<'b> Write for FormatContentWriter<'b> {
+	fn write_str(&mut self, s: &str) -> fmt::Result {
+		let chunk = s.as_bytes();
+		let next_off = self.off.saturating_sub(chunk.len() as _);
 		// If at least a part of the chunk is in range, copy
-		if node_cursor + chunk.len() as u64 >= off {
+		if chunk.len() as u64 >= self.off {
 			// Begin and size of the range in the chunk to copy
-			let begin = off.saturating_sub(node_cursor) as usize;
-			let size = chunk.len().saturating_sub(begin);
-			buff[buff_cursor..(buff_cursor + size)].copy_from_slice(&chunk[begin..(begin + size)]);
-			buff_cursor += size;
-			// If the end of the output buffer is reached, break
-			if buff_cursor >= buff.len() {
-				break;
+			let off = self.off as usize;
+			let size = min(
+				self.buf.len().saturating_sub(self.buf_cursor),
+				chunk.len().saturating_sub(off),
+			);
+			self.buf[self.buf_cursor..(self.buf_cursor + size)]
+				.copy_from_slice(&chunk[off..(off + size)]);
+			self.buf_cursor += size;
+			// If the end of the output buffer is reached, stop
+			if self.buf_cursor >= self.buf.len() {
+				self.stop = true;
+				return Err(fmt::Error);
 			}
 		}
-		node_cursor += chunk.len() as u64;
+		self.off = next_off;
+		Ok(())
 	}
-	Ok(node_cursor)
+}
+
+/// Implementation of [`format_content`].
+pub fn format_content_args(off: u64, buf: &mut [u8], args: fmt::Arguments<'_>) -> EResult<u64> {
+	let mut writer = FormatContentWriter {
+		off,
+		buf,
+		buf_cursor: 0,
+		stop: false,
+	};
+	let res = fmt::write(&mut writer, args);
+	if res.is_err() && !writer.stop {
+		panic!("a formatting trait implementation returned an error");
+	}
+	Ok(writer.buf_cursor as _)
+}
+
+/// Formats the content of a kernfs node and write it on a buffer.
+///
+/// This is meant to be used in [`NodeOps::read_content`].
+///
+/// `off` and `buf` are the corresponding arguments from [`NodeOps::read_content`].
+#[macro_export]
+macro_rules! format_content {
+    ($off:expr, $buf:expr, $($arg:tt)*) => {{
+		$crate::file::fs::kernfs::node::format_content_args($off, $buf, format_args!($($arg)*))
+	}};
 }
 
 /// A static symbolic link pointing to a constant target.
@@ -325,7 +362,7 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {
-		content_chunks(off, buf, iter::once(TARGET))
+		format_content!(off, buf, "{}", DisplayableStr(TARGET))
 	}
 
 	fn write_content(
@@ -411,7 +448,7 @@ impl<N: StaticDirNode> NodeOps for N {
 		_fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<DirEntry<'n>>> {
-		let Some(index) = Self::ENTRIES.binary_search_by(|(n, _)| (*n).cmp(name)) else {
+		let Ok(index) = Self::ENTRIES.binary_search_by(|(n, _)| (*n).cmp(name)) else {
 			return Ok(None);
 		};
 		let (name, node) = Self::ENTRIES[index];
@@ -428,6 +465,7 @@ impl<N: StaticDirNode> NodeOps for N {
 		_fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let Some((name, node)) = Self::ENTRIES.get(off) else {
 			return Ok(None);
 		};
@@ -437,36 +475,33 @@ impl<N: StaticDirNode> NodeOps for N {
 				entry_type: node.get_file_type(),
 				name: Cow::Borrowed(name),
 			},
-			off + 1,
+			(off + 1) as _,
 		)))
 	}
 }
 
 #[cfg(test)]
 mod test {
-	use super::*;
-
 	#[test_case]
 	fn content_chunks() {
-		let chunks = ["abc", "def", "ghi"];
 		// Simple test
 		let mut out = [0u8; 9];
-		let len = super::content_chunks(0, &mut out, chunks.iter().map(Ok)).unwrap();
+		let len = format_content!(0, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"abcdefghi");
 		assert_eq!(len, 9);
 		// End
 		let mut out = [0u8; 9];
-		let len = super::content_chunks(9, &mut out, chunks.iter().map(Ok)).unwrap();
+		let len = format_content!(9, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out, [0u8; 9]);
 		assert_eq!(len, 0);
 		// Start from second chunk
 		let mut out = [0u8; 9];
-		let len = super::content_chunks(3, &mut out, chunks.iter().map(Ok)).unwrap();
+		let len = format_content!(3, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"defghi\0\0\0");
 		assert_eq!(len, 6);
 		// Start from middle of chunk
 		let mut out = [0u8; 9];
-		let len = super::content_chunks(4, &mut out, chunks.iter().map(Ok)).unwrap();
+		let len = format_content!(4, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"efghi\0\0\0\0");
 		assert_eq!(len, 5);
 	}

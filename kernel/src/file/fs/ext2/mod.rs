@@ -65,6 +65,7 @@ use core::{
 };
 use inode::Ext2INode;
 use utils::{
+	boxed::Box,
 	errno,
 	errno::EResult,
 	io::IO,
@@ -855,7 +856,14 @@ impl Filesystem for Ext2Fs {
 		let superblock = self.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
 		let file_type = inode_.get_type();
-		let mut file = File::new(inode_.uid, inode_.gid, file_type, inode_.get_permissions());
+		let ops = Box::new(Ext2NodeOps)?;
+		let mut file = File::new(
+			inode_.uid,
+			inode_.gid,
+			file_type,
+			inode_.get_permissions(),
+			ops,
+		);
 		file.set_hard_links_count(inode_.hard_links_count as _);
 		file.blocks_count = inode_.used_sectors as _;
 		file.set_size(inode_.get_size(&superblock));

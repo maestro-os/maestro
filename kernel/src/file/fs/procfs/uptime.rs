@@ -18,14 +18,13 @@
 
 //! The uptime file returns the amount of time elapsed since the system started up.
 
-use crate::file::{
-	fs::{
-		kernfs::node::{content_chunks, KernFSNode},
-		Filesystem, NodeOps,
+use crate::{
+	file::{
+		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
+		DirEntry, FileType, INode, Mode,
 	},
-	DirEntry, FileType, INode, Mode,
+	format_content,
 };
-use core::iter;
 use utils::{errno, errno::EResult};
 
 /// The `uptime` file.
@@ -51,7 +50,7 @@ impl NodeOps for Uptime {
 		buf: &mut [u8],
 	) -> EResult<u64> {
 		// TODO
-		content_chunks(off, buf, iter::once(Ok("0.00 0.00\n".as_bytes())))
+		format_content!(off, buf, "0.00 0.00\n")
 	}
 
 	fn write_content(
@@ -60,7 +59,7 @@ impl NodeOps for Uptime {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &[u8],
-	) -> EResult<()> {
+	) -> EResult<u64> {
 		Err(errno!(EACCES))
 	}
 
