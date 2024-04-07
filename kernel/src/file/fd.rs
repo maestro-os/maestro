@@ -340,11 +340,10 @@ impl Default for FileDescriptorTable {
 mod test {
 	use super::*;
 	use crate::file::{File, FileType};
-	use utils::{lock::Mutex, ptr::arc::Arc};
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {
-		let file = File::new(0, 0, FileType::Regular, 0o777).unwrap();
+		let file = File::new(0, 0, FileType::Regular, 0o777);
 		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), 0).unwrap()
 	}
 
