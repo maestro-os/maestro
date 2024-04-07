@@ -176,12 +176,11 @@ impl ProcFS {
 	///
 	/// `readonly` tells whether the filesystem is readonly.
 	pub fn new() -> EResult<Self> {
-		let mut fs = Self {
-			inner: KernFS::new()?,
+		let root = Box::new(RootDir)?;
+		Ok(Self {
+			inner: KernFS::new(root)?,
 			procs: HashMap::new(),
-		};
-		fs.inner.set_root(Box::new(RootDir {})?)?;
-		Ok(fs)
+		})
 	}
 }
 

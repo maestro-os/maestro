@@ -63,18 +63,14 @@ impl TmpFS {
 	/// - `max_size` is the maximum amount of memory the filesystem can use in bytes.
 	/// - `readonly` tells whether the filesystem is readonly.
 	pub fn new(max_size: usize, readonly: bool) -> EResult<Self> {
-		let mut fs = Self {
+		let root = DefaultNode::new(0, 0, FileType::Directory, 0o777);
+		let size = get_used_size(&root);
+		let fs = Self {
 			max_size,
-			size: 0,
+			size,
 			readonly,
-			inner: KernFS::<false>::new()?,
+			inner: KernFS::<false>::new(Box::new(root)?)?,
 		};
-		// Add the root node
-		let root_node = DefaultNode::new(0, 0, FileType::Directory, 0o777);
-		fs.update_size(get_used_size(&root_node) as _, |fs| {
-			fs.inner.set_root(Box::new(root_node)?)?;
-			Ok(())
-		})?;
 		Ok(fs)
 	}
 
