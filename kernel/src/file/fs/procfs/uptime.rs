@@ -68,7 +68,7 @@ impl NodeOps for Uptime {
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		_name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		Err(errno!(ENOTDIR))
 	}
 

@@ -30,7 +30,7 @@ use utils::{errno, errno::EResult};
 
 /// The `osrelease` file.
 #[derive(Debug)]
-pub struct OsRelease {}
+pub struct OsRelease;
 
 impl KernFSNode for OsRelease {
 	fn get_file_type(&self) -> FileType {
@@ -76,7 +76,7 @@ impl NodeOps for OsRelease {
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		_name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		Err(errno!(ENOTDIR))
 	}
 

@@ -63,7 +63,7 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 	}
 }
 
-/// The stat node of the procfs.
+/// The `stat` node of the procfs.
 #[derive(Debug)]
 pub struct Stat(pub Pid);
 
@@ -121,7 +121,7 @@ impl NodeOps for Stat {
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		_name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		Err(errno!(ENOTDIR))
 	}
 

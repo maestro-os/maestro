@@ -298,7 +298,7 @@ impl NodeOps for Ext2NodeOps {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
@@ -306,7 +306,7 @@ impl NodeOps for Ext2NodeOps {
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		let Some((_, entry)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
+		let Some((off, entry)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
 			return Ok(None);
 		};
 		let entry_type = match entry.get_type(&superblock) {
@@ -314,11 +314,14 @@ impl NodeOps for Ext2NodeOps {
 			// The type is not hinted in the entry itself. Need to get it from the inode
 			None => Ext2INode::read(entry.inode, &superblock, &mut *io)?.get_type(),
 		};
-		Ok(Some(DirEntry {
-			inode: entry.inode as _,
-			entry_type,
-			name: Cow::Borrowed(name),
-		}))
+		Ok(Some((
+			DirEntry {
+				inode: entry.inode as _,
+				entry_type,
+				name: Cow::Borrowed(name),
+			},
+			off,
+		)))
 	}
 
 	fn next_entry(

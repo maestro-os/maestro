@@ -29,5 +29,5 @@ pub struct KernelDir;
 
 impl StaticDirNode for KernelDir {
 	const ENTRIES: &'static [(&'static [u8], &'static dyn KernFSNode)] =
-		&[(b"osrelease", &OsRelease {})];
+		&[(b"osrelease", &OsRelease)];
 }

@@ -101,12 +101,13 @@ impl NodeOps for RootDir {
 		Err(errno!(EISDIR))
 	}
 
+	/// This returned offset is junk and should be ignored.
 	fn entry_by_name<'n>(
 		&self,
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		let entry = core::str::from_utf8(name)
 			.ok()
 			// Check for process from pid
@@ -132,7 +133,8 @@ impl NodeOps for RootDir {
 					entry_type: node.get_file_type(),
 					name: Cow::Borrowed(name),
 				})
-			});
+			})
+			.map(|entry| (entry, 0));
 		Ok(entry)
 	}
 

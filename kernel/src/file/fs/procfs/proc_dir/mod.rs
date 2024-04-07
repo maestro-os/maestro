@@ -98,12 +98,12 @@ impl NodeOps for ProcDir {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		// TODO add a way to use binary search
 		let mut off = 0;
-		while let Some((e, next_off)) = Self::next_entry(inode, fs, off)? {
+		while let Some((e, next_off)) = self.next_entry(inode, fs, off)? {
 			if e.name.as_ref() == name {
-				return Ok(e);
+				return Ok(Some((e, off)));
 			}
 			off = next_off;
 		}
@@ -130,14 +130,15 @@ impl NodeOps for ProcDir {
 			// /proc/<pid>/status
 			(b"status", &Status(self.0)),
 		];
-		let entry = entries.get(off).map(|(name, node)| {
+		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
+		let entry = entries.get(off).map(|(name, node): &(_, _)| {
 			(
 				DirEntry {
 					inode: 0,
 					entry_type: node.get_file_type(),
 					name: Cow::Borrowed(name),
 				},
-				off + 1,
+				(off + 1) as _,
 			)
 		});
 		Ok(entry)

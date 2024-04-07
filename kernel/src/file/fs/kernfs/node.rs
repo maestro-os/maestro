@@ -96,6 +96,11 @@ pub trait KernFSNode: Any + Debug + NodeOps {
 	/// Sets the timestamp of the last modification of the file's content.
 	fn set_mtime(&mut self, _ts: Timestamp) {}
 
+	/// Returns the size of the file's content in bytes.
+	fn get_size(&self) -> u64 {
+		0
+	}
+
 	/// If the current node is a directory, tells whether it is empty.
 	///
 	/// Arguments:
@@ -237,43 +242,47 @@ impl KernFSNode for DefaultNode {
 	fn set_mtime(&mut self, ts: Timestamp) {
 		self.mtime = ts;
 	}
+
+	fn get_size(&self) -> u64 {
+		todo!()
+	}
 }
 
 impl NodeOps for DefaultNode {
 	fn read_content(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &mut [u8],
 	) -> EResult<u64> {
 		todo!()
 	}
 
 	fn write_content(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-		buf: &[u8],
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
 	) -> EResult<u64> {
 		todo!()
 	}
 
 	fn entry_by_name<'n>(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		todo!()
 	}
 
 	fn next_entry(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		todo!()
 	}
@@ -380,7 +389,7 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		_name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		Err(errno!(ENOTDIR))
 	}
 
@@ -447,16 +456,19 @@ impl<N: StaticDirNode> NodeOps for N {
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		let Ok(index) = Self::ENTRIES.binary_search_by(|(n, _)| (*n).cmp(name)) else {
 			return Ok(None);
 		};
 		let (name, node) = Self::ENTRIES[index];
-		Ok(Some(DirEntry {
-			inode: 0,
-			entry_type: node.get_file_type(),
-			name: Cow::Borrowed(name),
-		}))
+		Ok(Some((
+			DirEntry {
+				inode: 0,
+				entry_type: node.get_file_type(),
+				name: Cow::Borrowed(name),
+			},
+			index as _,
+		)))
 	}
 
 	fn next_entry(

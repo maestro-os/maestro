@@ -435,13 +435,16 @@ impl File {
 	///
 	/// If the file is not a directory, the function returns `None`.
 	pub fn dir_entry_by_name<'n>(&self, name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
-		self.io_op(|io| match io {
-			IoSource::Filesystem {
-				fs,
-				inode,
-				ops,
-			} => ops.entry_by_name(inode, fs, name),
-			IoSource::IO(_) => Ok(None),
+		self.io_op(|io| {
+			let e = match io {
+				IoSource::Filesystem {
+					fs,
+					inode,
+					ops,
+				} => ops.entry_by_name(inode, fs, name),
+				IoSource::IO(_) => Ok(None),
+			}?;
+			Ok(e.map(|(e, _)| e))
 		})
 	}
 

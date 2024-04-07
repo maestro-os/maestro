@@ -41,45 +41,6 @@ pub const ROOT_INODE: INode = 1;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
-/// If the `node` is a directory, the function inserts entries `.` and `..` if not present,
-/// updating the number of hard links at the same time. The function also increments the hard links
-/// count on `parent` if necessary.
-///
-/// If `parent` is `None`, `node` is considered being its own parent.
-///
-/// On failure, `node` is left altered midway, but not `parent`.
-fn insert_base_entries(
-	node: &mut dyn KernFSNode,
-	parent: Option<&mut dyn KernFSNode>,
-) -> EResult<()> {
-	if node.get_file_type() != FileType::Directory {
-		return Ok(());
-	}
-	let mut new_links = 0;
-	if node.entry_by_name(b".")?.is_none() {
-		node.add_entry(DirEntry {
-			inode: ROOT_INODE,
-			entry_type: FileType::Directory,
-			name: Cow::Borrowed(b"."),
-		})?;
-		new_links += 1;
-	}
-	if node.entry_by_name(b"..")?.is_none() {
-		node.add_entry(DirEntry {
-			inode: ROOT_INODE,
-			entry_type: FileType::Directory,
-			name: Cow::Borrowed(b".."),
-		})?;
-		if let Some(parent) = parent {
-			parent.set_hard_links_count(parent.get_hard_links_count() + 1);
-		} else {
-			new_links += 1;
-		}
-	}
-	node.set_hard_links_count(node.get_hard_links_count() + new_links);
-	Ok(())
-}
-
 /// Returns the file for the given `node` and `inode`.
 fn load_file_impl(inode: INode, node: &dyn KernFSNode) -> File {
 	let mut file = File::new(
@@ -121,7 +82,7 @@ impl<const READ_ONLY: bool> KernFS<READ_ONLY> {
 
 	/// Sets the root node of the filesystem.
 	pub fn set_root(&mut self, mut root: Box<dyn KernFSNode>) -> EResult<()> {
-		insert_base_entries(root.as_mut(), None)?;
+		self.insert_base_entries(ROOT_INODE, root.as_mut(), None)?;
 		// Insert
 		if self.nodes.is_empty() {
 			self.nodes.push(Some(root))?;
@@ -187,6 +148,49 @@ impl<const READ_ONLY: bool> KernFS<READ_ONLY> {
 		}
 	}
 
+	/// If the `node` is a directory, the function inserts entries `.` and `..` if not present,
+	/// updating the number of hard links at the same time. The function also increments the hard
+	/// links count on `parent` if necessary.
+	///
+	/// If `parent` is `None`, `node` is considered being its own parent.
+	///
+	/// `inode` is the inode of `node`.
+	///
+	/// On failure, `node` is left altered midway, but not `parent`.
+	fn insert_base_entries(
+		&self,
+		inode: INode,
+		node: &mut dyn KernFSNode,
+		parent: Option<&mut dyn KernFSNode>,
+	) -> EResult<()> {
+		if node.get_file_type() != FileType::Directory {
+			return Ok(());
+		}
+		let mut new_links = 0;
+		if node.entry_by_name(inode, self, b".")?.is_none() {
+			node.add_entry(DirEntry {
+				inode: ROOT_INODE,
+				entry_type: FileType::Directory,
+				name: Cow::Borrowed(b"."),
+			})?;
+			new_links += 1;
+		}
+		if node.entry_by_name(inode, self, b"..")?.is_none() {
+			node.add_entry(DirEntry {
+				inode: ROOT_INODE,
+				entry_type: FileType::Directory,
+				name: Cow::Borrowed(b".."),
+			})?;
+			if let Some(parent) = parent {
+				parent.set_hard_links_count(parent.get_hard_links_count() + 1);
+			} else {
+				new_links += 1;
+			}
+		}
+		node.set_hard_links_count(node.get_hard_links_count() + new_links);
+		Ok(())
+	}
+
 	/// Adds the given node `node` to the filesystem.
 	///
 	/// The function returns the allocated inode.
@@ -244,7 +248,7 @@ impl<const READ_ONLY: bool> KernFS<READ_ONLY> {
 			}
 		};
 		// Add base entries
-		if let Err(e) = insert_base_entries(node.as_mut(), Some(parent.as_mut())) {
+		if let Err(e) = self.insert_base_entries(inode, node.as_mut(), Some(parent.as_mut())) {
 			// Rollback node insertion
 			self.remove_node(inode);
 			return Err(e);
@@ -363,11 +367,13 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 			return Err(errno!(ENOTDIR));
 		}
 		// Get node to remove
-		let (inode, entry_off) = parent.entry_by_name(name)?.ok_or_else(|| errno!(ENOENT))?;
+		let (inode, entry_off) = parent
+			.entry_by_name(parent_inode, self, name)?
+			.ok_or_else(|| errno!(ENOENT))?;
 		let inode = inode.inode;
 		let (parent, node) = self.get_node_pair_mut(parent_inode, inode)?;
 		// If the node is a non-empty directory, error
-		if !node.is_directory_empty()? {
+		if !node.is_directory_empty(inode, self)? {
 			return Err(errno!(ENOTEMPTY));
 		}
 		// If no link is left, remove the node

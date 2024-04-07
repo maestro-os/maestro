@@ -118,7 +118,7 @@ pub trait NodeOps: Debug {
 		buf: &[u8],
 	) -> EResult<u64>;
 
-	/// Returns the directory entry with the given `name`.
+	/// Returns the directory entry with the given `name`, along with its offset.
 	///
 	/// Arguments:
 	/// - `inode` is the inode of the directory.
@@ -132,7 +132,7 @@ pub trait NodeOps: Debug {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>>;
+	) -> EResult<Option<(DirEntry<'n>, u64)>>;
 	/// Returns the directory entry at the given offset `off`. The first entry is always located at
 	/// offset `0`.
 	///

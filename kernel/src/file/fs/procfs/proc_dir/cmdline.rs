@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The cmdline node allows to retrieve the list of command line arguments of
+//! The `cmdline` node allows to retrieve the list of command line arguments of
 //! the process.
 
 use crate::{
@@ -43,7 +43,7 @@ impl<'p> fmt::Display for CmdlineDisp<'p> {
 }
 
 /// The cmdline node of the procfs.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Cmdline(pub Pid);
 
 impl KernFSNode for Cmdline {
@@ -100,7 +100,7 @@ impl NodeOps for Cmdline {
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		_name: &'n [u8],
-	) -> EResult<Option<DirEntry<'n>>> {
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		Err(errno!(ENOTDIR))
 	}
 
