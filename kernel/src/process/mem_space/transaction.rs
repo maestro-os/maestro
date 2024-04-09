@@ -22,7 +22,10 @@ use super::{gap::MemGap, mapping::MemMapping, MemSpaceState};
 use crate::memory::vmem::{VMem, VMemTransaction};
 use core::{alloc::AllocError, ffi::c_void, hash::Hash, mem};
 use utils::{
-	collections::{btreemap::BTreeMap, hashmap::HashMap},
+	collections::{
+		btreemap::BTreeMap,
+		hashmap::{Entry, HashMap},
+	},
 	errno,
 	errno::AllocResult,
 };
@@ -60,15 +63,19 @@ fn insert<K: Clone + Ord + Hash, V>(
 ) -> AllocResult<()> {
 	// Insert new value and get previous
 	let old = on.insert(key.clone(), value)?;
-	// Insert `None` to reserve memory without dropping `old` on failure
-	let Ok(val) = complement.entry(key.clone()).or_insert(None) else {
-		// Memory allocation failure: rollback `on` for this element
-		rollback_impl(on, key, old);
-		return Err(AllocError);
-	};
-	// Write the actual complement value
-	*val = old;
-	// Do not discard an element that is to be restored by the complement
+	// If no value is already present in the complement for the key, insert the old value
+	if let Entry::Vacant(entry) = complement.entry(key.clone()) {
+		// Insert `None` to allocate first so that `old` is not dropped on failure
+		let Ok(val) = entry.insert(None) else {
+			// Memory allocation failure: rollback `on` for this element
+			complement.remove(&key);
+			rollback_impl(on, key, old);
+			return Err(AllocError);
+		};
+		// Then insert the actual value
+		*val = old;
+	}
+	// Do not discard an element that is being replaced by the insertion
 	discard.remove(&key);
 	Ok(())
 }
