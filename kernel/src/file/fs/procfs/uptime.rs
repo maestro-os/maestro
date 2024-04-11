@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{
-		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
-		DirEntry, FileType, INode, Mode,
+		fs::{Filesystem, NodeOps},
+		DirEntry, FileType, INode,
 	},
 	format_content,
 };
@@ -31,17 +31,11 @@ use utils::{errno, errno::EResult};
 #[derive(Debug)]
 pub struct Uptime;
 
-impl KernFSNode for Uptime {
+impl NodeOps for Uptime {
 	fn get_file_type(&self) -> FileType {
 		FileType::Regular
 	}
 
-	fn get_mode(&self) -> Mode {
-		0o444
-	}
-}
-
-impl NodeOps for Uptime {
 	fn read_content(
 		&self,
 		_inode: INode,

@@ -30,17 +30,18 @@ use super::{kernfs::KernFS, Filesystem, FilesystemType, NodeOps};
 use crate::{
 	file::{
 		fs::{
-			kernfs::node::{KernFSNode, StaticLink},
+			kernfs::node::{StaticDir, StaticLink},
+			procfs::sys_dir::OsRelease,
 			Statfs,
 		},
 		path::PathBuf,
-		DirEntry, File, FileType, INode, Mode,
+		perm::{Gid, Uid},
+		DirEntry, File, FileType, INode,
 	},
 	process::{pid::Pid, Process},
 };
 use mem_info::MemInfo;
 use self_link::SelfNode;
-use sys_dir::SysDir;
 use uptime::Uptime;
 use utils::{
 	boxed::Box,
@@ -53,6 +54,24 @@ use utils::{
 };
 use version::Version;
 
+/// Returns the user ID of the process with the given PID>
+///
+/// If the process does not exist, the function returns `0`.
+fn get_proc_uid(pid: Pid) -> Uid {
+	Process::get_by_pid(pid)
+		.map(|proc_mutex| proc_mutex.lock().access_profile.get_euid())
+		.unwrap_or(0)
+}
+
+/// Returns the group ID of the process with the given PID.
+///
+/// If the process does not exist, the function returns `0`.
+fn get_proc_gid(pid: Pid) -> Gid {
+	Process::get_by_pid(pid)
+		.map(|proc_mutex| proc_mutex.lock().access_profile.get_egid())
+		.unwrap_or(0)
+}
+
 /// The root directory of the procfs.
 #[derive(Debug)]
 struct RootDir;
@@ -60,27 +79,26 @@ struct RootDir;
 impl RootDir {
 	/// Static entries of the root directory, as opposed to the dynamic ones that represent
 	/// processes.
-	const STATIC_ENTRIES: &'static [(&'static [u8], &'static dyn KernFSNode)] = &[
-		(b"meminfo", &MemInfo {}),
-		(b"mounts", &StaticLink::<b"self/mounts"> {}),
-		(b"self", &SelfNode {}),
-		(b"sys", &SysDir {}),
-		(b"uptime", &Uptime {}),
-		(b"version", &Version {}),
+	///
+	/// This array is alphabetically sorted for fast lookup by name.
+	const STATIC_ENTRIES: &'static [(&'static [u8], &'static dyn NodeOps)] = &[
+		(b"meminfo", &MemInfo),
+		(b"mounts", &StaticLink::<b"self/mounts">),
+		(b"self", &SelfNode),
+		(
+			b"sys",
+			&StaticDir(&[(b"kernel", &StaticDir(&[(b"osrelease", &OsRelease)]))]),
+		),
+		(b"uptime", &Uptime),
+		(b"version", &Version),
 	];
 }
 
-impl KernFSNode for RootDir {
+impl NodeOps for RootDir {
 	fn get_file_type(&self) -> FileType {
 		FileType::Directory
 	}
 
-	fn get_mode(&self) -> Mode {
-		0o555
-	}
-}
-
-impl NodeOps for RootDir {
 	fn read_content(
 		&self,
 		_inode: INode,

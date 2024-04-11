@@ -25,8 +25,11 @@ pub mod kernfs;
 pub mod procfs;
 pub mod tmp;
 
-use super::{path::PathBuf, DirEntry, File};
-use crate::file::INode;
+use super::{path::PathBuf, DirEntry, File, FileType, Mode};
+use crate::file::{
+	perm::{Gid, Uid, ROOT_GID, ROOT_UID},
+	INode,
+};
 use core::{any::Any, ffi::c_int, fmt::Debug};
 use utils::{
 	collections::{hashmap::HashMap, string::String},
@@ -76,7 +79,31 @@ pub struct Statfs {
 }
 
 /// File node operations.
+///
+/// TODO: document default behaviours
 pub trait NodeOps: Debug {
+	/// Returns the file's type.
+	fn get_file_type(&self) -> FileType;
+
+	/// Returns the file's permissions.
+	fn get_mode(&self) -> Mode {
+		match self.get_file_type() {
+			FileType::Directory => 0o555,
+			FileType::Link => 0o777,
+			_ => 0o444,
+		}
+	}
+
+	/// Returns the file's user ID.
+	fn get_uid(&self) -> Uid {
+		ROOT_UID
+	}
+
+	/// Returns the file's group ID.
+	fn get_gid(&self) -> Gid {
+		ROOT_GID
+	}
+
 	/// Reads from the node with into the buffer `buf`.
 	///
 	/// Arguments:
@@ -97,7 +124,11 @@ pub trait NodeOps: Debug {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64>;
+	) -> EResult<u64> {
+		let _ = (inode, fs, off, buf);
+		Err(errno!(EINVAL))
+	}
+
 	/// Writes to the node from the buffer `buf`.
 	///
 	/// Arguments:
@@ -116,7 +147,10 @@ pub trait NodeOps: Debug {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &[u8],
-	) -> EResult<u64>;
+	) -> EResult<u64> {
+		let _ = (inode, fs, off, buf);
+		Err(errno!(EINVAL))
+	}
 
 	/// Returns the directory entry with the given `name`, along with its offset.
 	///
@@ -132,7 +166,14 @@ pub trait NodeOps: Debug {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>>;
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+		let _ = (inode, fs, name);
+		match self.get_file_type() {
+			FileType::Directory => Err(errno!(EINVAL)),
+			_ => Err(errno!(ENOTDIR)),
+		}
+	}
+
 	/// Returns the directory entry at the given offset `off`. The first entry is always located at
 	/// offset `0`.
 	///
@@ -150,7 +191,13 @@ pub trait NodeOps: Debug {
 		inode: INode,
 		fs: &dyn Filesystem,
 		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>>;
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let _ = (inode, fs, off);
+		match self.get_file_type() {
+			FileType::Directory => Err(errno!(EINVAL)),
+			_ => Err(errno!(ENOTDIR)),
+		}
+	}
 }
 
 /// A filesystem.

@@ -21,9 +21,12 @@
 
 use crate::{
 	file::{
-		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
+		fs::{
+			procfs::{get_proc_gid, get_proc_uid},
+			Filesystem, NodeOps,
+		},
 		perm::{Gid, Uid},
-		DirEntry, FileType, INode, Mode,
+		DirEntry, FileType, INode,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -34,33 +37,19 @@ use utils::{errno, errno::EResult, DisplayableStr};
 #[derive(Debug)]
 pub struct Cwd(pub Pid);
 
-impl KernFSNode for Cwd {
-	fn get_mode(&self) -> Mode {
-		0o777
-	}
-
+impl NodeOps for Cwd {
 	fn get_file_type(&self) -> FileType {
-		FileType::Link
+		FileType::Regular
 	}
 
 	fn get_uid(&self) -> Uid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
-			proc_mutex.lock().access_profile.get_euid()
-		} else {
-			0
-		}
+		get_proc_uid(self.0)
 	}
 
 	fn get_gid(&self) -> Gid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
-			proc_mutex.lock().access_profile.get_egid()
-		} else {
-			0
-		}
+		get_proc_gid(self.0)
 	}
-}
 
-impl NodeOps for Cwd {
 	fn read_content(
 		&self,
 		_inode: INode,

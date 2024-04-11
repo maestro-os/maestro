@@ -33,10 +33,17 @@ use core::{
 	fmt,
 	fmt::{Debug, Write},
 };
-use utils::{errno, errno::EResult, ptr::cow::Cow, DisplayableStr};
+use utils::{
+	boxed::Box,
+	errno,
+	errno::{AllocResult, EResult},
+	ptr::cow::Cow,
+	DisplayableStr,
+};
 
-/// Trait representing a node in a kernfs.
-pub trait KernFSNode: Any + Debug + NodeOps {
+/// The counterpart of [`NodeOps`] that is owned by the kernfs. Not all node in a kernfs have an
+/// instance with this trait, as a node may not really exist in the kernfs.
+pub trait KernFSNode: Any + Debug {
 	/// Returns the number of hard links to the node.
 	fn get_hard_links_count(&self) -> u16 {
 		1
@@ -131,6 +138,9 @@ pub trait KernFSNode: Any + Debug + NodeOps {
 	///
 	/// If the node is not a directory, the function does nothing.
 	fn remove_entry(&mut self, _off: u64) {}
+
+	/// Returns the operations handle for the node.
+	fn ops(&self) -> AllocResult<Box<dyn NodeOps>>;
 }
 
 /// A kernfs node with the default behaviour for each file type.
@@ -246,9 +256,17 @@ impl KernFSNode for DefaultNode {
 	fn get_size(&self) -> u64 {
 		todo!()
 	}
+
+	fn ops(&self) -> AllocResult<Box<dyn NodeOps>> {
+		Ok(Box::new(DefaultNodeOps)? as _)
+	}
 }
 
-impl NodeOps for DefaultNode {
+/// Operations for [`DefaultNode`].
+#[derive(Debug)]
+pub struct DefaultNodeOps;
+
+impl NodeOps for DefaultNodeOps {
 	fn read_content(
 		&self,
 		_inode: INode,
@@ -353,17 +371,11 @@ macro_rules! format_content {
 #[derive(Debug)]
 pub struct StaticLink<const TARGET: &'static [u8]>;
 
-impl<const TARGET: &'static [u8]> KernFSNode for StaticLink<TARGET> {
+impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 	fn get_file_type(&self) -> FileType {
 		FileType::Link
 	}
 
-	fn get_mode(&self) -> Mode {
-		0o777
-	}
-}
-
-impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 	fn read_content(
 		&self,
 		_inode: INode,
@@ -403,34 +415,23 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 	}
 }
 
-/// A read-only virtual directory used to point to other nodes.
-pub trait StaticDirNode: Debug {
-	/// Name/node pairs representing the entries of the directory, alphabetically sorted by name.
-	///
-	/// **Warning**: If this array is not sorted correctly, the behaviour of
-	/// [`NodeOps::entry_by_name`] is undefined.
-	const ENTRIES: &'static [(&'static [u8], &'static dyn KernFSNode)];
-}
+// TODO: the day Rust supports `dyn` in const generics (if it ever does), replace this by a const
+// generic
+/// Name/node pairs representing the entries of a [`StaticDir`], alphabetically sorted by name.
+///
+/// **Warning**: If this array is not sorted correctly, the behaviour of
+/// [`NodeOps::entry_by_name`] is undefined.
+pub type StaticDirEntries = &'static [(&'static [u8], &'static dyn NodeOps)];
 
-impl<N: StaticDirNode + 'static> KernFSNode for N {
+/// A read-only virtual directory used to point to other nodes.
+#[derive(Debug)]
+pub struct StaticDir(pub StaticDirEntries);
+
+impl NodeOps for StaticDir {
 	fn get_file_type(&self) -> FileType {
 		FileType::Directory
 	}
 
-	fn get_mode(&self) -> Mode {
-		0o555
-	}
-
-	fn get_uid(&self) -> Uid {
-		0
-	}
-
-	fn get_gid(&self) -> Gid {
-		0
-	}
-}
-
-impl<N: StaticDirNode> NodeOps for N {
 	fn read_content(
 		&self,
 		_inode: INode,
@@ -457,10 +458,10 @@ impl<N: StaticDirNode> NodeOps for N {
 		_fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		let Ok(index) = Self::ENTRIES.binary_search_by(|(n, _)| (*n).cmp(name)) else {
+		let Ok(index) = self.0.binary_search_by(|(n, _)| (*n).cmp(name)) else {
 			return Ok(None);
 		};
-		let (name, node) = Self::ENTRIES[index];
+		let (name, node) = self.0[index];
 		Ok(Some((
 			DirEntry {
 				inode: 0,
@@ -478,7 +479,7 @@ impl<N: StaticDirNode> NodeOps for N {
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
-		let Some((name, node)) = Self::ENTRIES.get(off) else {
+		let Some((name, node)) = self.0.get(off) else {
 			return Ok(None);
 		};
 		Ok(Some((

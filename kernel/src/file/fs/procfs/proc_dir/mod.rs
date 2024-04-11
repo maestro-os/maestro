@@ -27,12 +27,14 @@ mod status;
 
 use crate::{
 	file::{
-		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
-		perm,
+		fs::{
+			procfs::{get_proc_gid, get_proc_uid},
+			Filesystem, NodeOps,
+		},
 		perm::{Gid, Uid},
-		DirEntry, FileType, INode, Mode,
+		DirEntry, FileType, INode,
 	},
-	process::{pid::Pid, Process},
+	process::pid::Pid,
 };
 use cmdline::Cmdline;
 use cwd::Cwd;
@@ -46,33 +48,19 @@ use utils::{errno, errno::EResult, ptr::cow::Cow};
 #[derive(Debug)]
 pub struct ProcDir(pub Pid);
 
-impl KernFSNode for ProcDir {
+impl NodeOps for ProcDir {
 	fn get_file_type(&self) -> FileType {
 		FileType::Directory
 	}
 
-	fn get_mode(&self) -> Mode {
-		0o555
-	}
-
 	fn get_uid(&self) -> Uid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
-			proc_mutex.lock().access_profile.get_euid()
-		} else {
-			perm::ROOT_UID
-		}
+		get_proc_uid(self.0)
 	}
 
 	fn get_gid(&self) -> Gid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
-			proc_mutex.lock().access_profile.get_egid()
-		} else {
-			perm::ROOT_GID
-		}
+		get_proc_gid(self.0)
 	}
-}
 
-impl NodeOps for ProcDir {
 	fn read_content(
 		&self,
 		_inode: INode,
@@ -116,7 +104,7 @@ impl NodeOps for ProcDir {
 		_fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let entries: &[(&[u8], &dyn KernFSNode)] = &[
+		let entries: &[(&[u8], &dyn NodeOps)] = &[
 			// /proc/<pid>/cmdline
 			(b"cmdline", &Cmdline(self.0)),
 			// /proc/<pid>/cwd

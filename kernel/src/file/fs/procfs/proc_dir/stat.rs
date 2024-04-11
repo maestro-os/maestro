@@ -21,9 +21,12 @@
 
 use crate::{
 	file::{
-		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
+		fs::{
+			procfs::{get_proc_gid, get_proc_uid},
+			Filesystem, NodeOps,
+		},
 		perm::{Gid, Uid},
-		DirEntry, FileType, INode, Mode,
+		FileType, INode,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -36,7 +39,7 @@ struct StatDisp<'p>(&'p Process);
 impl<'p> fmt::Display for StatDisp<'p> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
-		// TODO Fix deadlock
+		// FIXME deadlock
 		//let vmem_usage = self.0.get_vmem_usage();
 		let vmem_usage = 0;
 		let esp = self.0.regs.esp;
@@ -67,33 +70,19 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 #[derive(Debug)]
 pub struct Stat(pub Pid);
 
-impl KernFSNode for Stat {
+impl NodeOps for Stat {
 	fn get_file_type(&self) -> FileType {
 		FileType::Regular
 	}
 
-	fn get_mode(&self) -> Mode {
-		0o444
-	}
-
 	fn get_uid(&self) -> Uid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
-			proc_mutex.lock().access_profile.get_euid()
-		} else {
-			0
-		}
+		get_proc_uid(self.0)
 	}
 
 	fn get_gid(&self) -> Gid {
-		if let Some(proc_mutex) = Process::get_by_pid(self.0) {
-			proc_mutex.lock().access_profile.get_egid()
-		} else {
-			0
-		}
+		get_proc_gid(self.0)
 	}
-}
 
-impl NodeOps for Stat {
 	fn read_content(
 		&self,
 		_inode: INode,
@@ -104,33 +93,5 @@ impl NodeOps for Stat {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
 		format_content!(off, buf, "{}", StatDisp(&*proc))
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EACCES))
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		Err(errno!(ENOTDIR))
-	}
-
-	fn next_entry(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		Err(errno!(ENOTDIR))
 	}
 }

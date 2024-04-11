@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{
-		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
-		DirEntry, FileType, INode, Mode,
+		fs::{Filesystem, NodeOps},
+		DirEntry, FileType, INode,
 	},
 	format_content, memory,
 };
@@ -30,19 +30,13 @@ use utils::{errno, errno::EResult};
 
 /// The `meminfo` file.
 #[derive(Debug)]
-pub struct MemInfo {}
+pub struct MemInfo;
 
-impl KernFSNode for MemInfo {
+impl NodeOps for MemInfo {
 	fn get_file_type(&self) -> FileType {
 		FileType::Regular
 	}
 
-	fn get_mode(&self) -> Mode {
-		0o444
-	}
-}
-
-impl NodeOps for MemInfo {
 	fn read_content(
 		&self,
 		_inode: INode,

@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{
-		fs::{kernfs::node::KernFSNode, Filesystem, NodeOps},
+		fs::{Filesystem, NodeOps},
 		DirEntry, FileType, INode,
 	},
 	format_content,
@@ -30,15 +30,13 @@ use utils::{errno, errno::EResult};
 
 /// The `self` symlink.
 #[derive(Debug)]
-pub struct SelfNode {}
+pub struct SelfNode;
 
-impl KernFSNode for SelfNode {
+impl NodeOps for SelfNode {
 	fn get_file_type(&self) -> FileType {
 		FileType::Link
 	}
-}
 
-impl NodeOps for SelfNode {
 	fn read_content(
 		&self,
 		_inode: INode,

@@ -18,16 +18,59 @@
 
 //! TODO doc
 
-mod kernel_dir;
+use crate::{
+	file::{
+		fs::{Filesystem, NodeOps},
+		DirEntry, FileType, INode,
+	},
+	format_content,
+};
+use utils::{errno, errno::EResult};
 
-use crate::file::fs::kernfs::node::{KernFSNode, StaticDirNode};
-use kernel_dir::KernelDir;
-
-/// The `sys` directory.
+/// The `osrelease` file.
 #[derive(Debug)]
-pub struct SysDir;
+pub struct OsRelease;
 
-impl StaticDirNode for SysDir {
-	const ENTRIES: &'static [(&'static [u8], &'static dyn KernFSNode)] =
-		&[(b"kernel", &KernelDir {})];
+impl NodeOps for OsRelease {
+	fn get_file_type(&self) -> FileType {
+		FileType::Regular
+	}
+
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		format_content!(off, buf, "{}\n", crate::VERSION)
+	}
+
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<u64> {
+		Err(errno!(EACCES))
+	}
+
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_name: &'n [u8],
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+		Err(errno!(ENOTDIR))
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		Err(errno!(ENOTDIR))
+	}
 }
