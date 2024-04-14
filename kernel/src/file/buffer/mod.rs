@@ -150,19 +150,12 @@ pub fn get_or_default<B: Buffer + TryDefault<Error = AllocError> + 'static>(
 pub fn register(loc: Option<FileLocation>, buff: Arc<Mutex<dyn Buffer>>) -> EResult<FileLocation> {
 	let loc = id_allocator_do(|id_allocator| match loc {
 		Some(loc) => {
-			if let FileLocation::Virtual {
-				id,
-			} = loc
-			{
+			if let FileLocation::Virtual(id) = loc {
 				id_allocator.set_used(id);
 			}
-
 			Ok(loc)
 		}
-
-		None => Ok(FileLocation::Virtual {
-			id: id_allocator.alloc(None)?,
-		}),
+		None => Ok(FileLocation::Virtual(id_allocator.alloc(None)?)),
 	})?;
 
 	let mut buffers = BUFFERS.lock();
@@ -179,10 +172,7 @@ pub fn release(loc: &FileLocation) {
 
 	let _ = buffers.remove(loc);
 
-	if let FileLocation::Virtual {
-		id,
-	} = loc
-	{
+	if let FileLocation::Virtual(id) = loc {
 		let _ = id_allocator_do(|id_allocator| {
 			id_allocator.free(*id);
 			Ok(())

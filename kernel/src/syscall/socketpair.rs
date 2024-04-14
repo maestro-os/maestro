@@ -57,7 +57,7 @@ pub fn socketpair(
 
 	let sock = Socket::new(desc)?;
 	let loc = buffer::register(None, sock)?;
-	let file = vfs::get_file_from_location(&loc)?;
+	let file = vfs::get_file_from_location(loc)?;
 
 	let open_file0 = OpenFile::new(file.clone(), open_file::O_RDONLY)?;
 	let open_file1 = OpenFile::new(file, open_file::O_WRONLY)?;

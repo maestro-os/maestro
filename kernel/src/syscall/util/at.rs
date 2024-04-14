@@ -108,7 +108,7 @@ pub fn get_file<'p>(
 		if flags & AT_EMPTY_PATH == 0 {
 			return Err(errno!(ENOENT));
 		}
-		let file = vfs::get_file_from_location(&rs.start)?;
+		let file = vfs::get_file_from_location(rs.start)?;
 		Ok(Resolved::Found(file))
 	} else {
 		vfs::resolve_path(path, &rs)

@@ -175,7 +175,7 @@ impl FileType {
 }
 
 /// The location of a file on a disk.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum FileLocation {
 	/// The file is located on a filesystem.
 	Filesystem {
@@ -185,10 +185,9 @@ pub enum FileLocation {
 		inode: INode,
 	},
 	/// The file is not located on a filesystem.
-	Virtual {
-		/// The ID of the file.
-		id: u32,
-	},
+	///
+	/// This variant contains an ID.
+	Virtual(u32),
 }
 
 impl FileLocation {
@@ -221,9 +220,7 @@ impl FileLocation {
 			Self::Filesystem {
 				inode, ..
 			} => *inode,
-			Self::Virtual {
-				id,
-			} => *id as _,
+			Self::Virtual(id) => *id as _,
 		}
 	}
 }

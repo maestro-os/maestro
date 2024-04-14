@@ -30,7 +30,7 @@ use super::{
 	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	DeferredRemove, File, FileLocation, FileType, INode, Mode, MountPoint,
+	DeferredRemove, File, FileLocation, FileType, INode, MountPoint, Stat,
 };
 use crate::{limits, process::Process};
 use core::{intrinsics::unlikely, ptr::NonNull};
@@ -67,34 +67,26 @@ where
 /// location.
 ///
 /// If the file doesn't exist, the function returns an error.
-pub fn get_file_from_location(location: &FileLocation) -> EResult<Arc<Mutex<File>>> {
-	match location {
+pub fn get_file_from_location(location: FileLocation) -> EResult<Arc<Mutex<File>>> {
+	let (ops, stat) = match location {
 		FileLocation::Filesystem {
 			mountpoint_id,
 			inode,
 		} => {
-			// Get mountpoint
-			let mp_mutex = mountpoint::from_id(*mountpoint_id).ok_or_else(|| errno!(ENOENT))?;
+			// Get filesystem
+			let mp_mutex = mountpoint::from_id(mountpoint_id).ok_or_else(|| errno!(ENOENT))?;
 			let mp = mp_mutex.lock();
-			// Get the filesystem
 			let fs = mp.get_filesystem();
 			// Get file
-			let mut file = fs.load_file(*inode)?;
-			update_location(&mut file, &mp);
-			Ok(Arc::new(Mutex::new(file))?)
+			let ops = fs.load_file(inode)?;
+			let stat = ops.get_stat(inode, &*fs)?;
+			(ops, stat)
 		}
-		FileLocation::Virtual {
-			..
-		} => {
-			let file = Arc::new(Mutex::new(File::new(
-				0, // TODO
-				0, // TODO
-				FileType::Fifo,
-				0o666,
-			)))?;
-			Ok(file)
+		FileLocation::Virtual(_) => {
+			todo!()
 		}
-	}
+	};
+	Ok(Arc::new(Mutex::new(File::new(location, stat, ops)))?)
 }
 
 /// Settings for a path resolution operation.
@@ -183,9 +175,9 @@ fn resolve_path_impl<'p>(
 ) -> EResult<Resolved<'p>> {
 	// Get start file
 	let start = if path.is_absolute() {
-		&settings.root
+		settings.root
 	} else {
-		&settings.start
+		settings.start
 	};
 	let mut file_mutex = get_file_from_location(start)?;
 	// Iterate on components
@@ -238,7 +230,7 @@ fn resolve_path_impl<'p>(
 						inode: fs.get_root_inode(),
 					};
 				}
-				get_file_from_location(&loc)?
+				get_file_from_location(loc)?
 			}
 			// Follow link, if enabled
 			FileType::Link if !is_last || settings.follow_link => {
@@ -320,8 +312,7 @@ pub fn get_file_from_path(
 /// - `name` is the name of the file to be created
 /// - `ap` is access profile to check permissions. This also determines the UID and GID to be used
 /// for the created file
-/// - `file_type` is the type of the file to create.
-/// - `perms` is the permissions of the file to create.
+/// - `stat` is the status of the newly created file
 ///
 /// The following errors can be returned:
 /// - The filesystem is read-only: [`errno::EROFS`]
@@ -335,8 +326,7 @@ pub fn create_file(
 	parent: &mut File,
 	name: &[u8],
 	ap: &AccessProfile,
-	file_type: FileType,
-	perms: Mode,
+	mut stat: Stat,
 ) -> EResult<Arc<Mutex<File>>> {
 	// Validation
 	if parent.stat.file_type != FileType::Directory {
@@ -346,7 +336,7 @@ pub fn create_file(
 		return Err(errno!(EACCES));
 	}
 	let parent_inode = parent.location.get_inode();
-	let uid = ap.get_euid();
+	stat.uid = ap.get_euid();
 	let gid = if parent.stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
 		// parent directory
@@ -354,11 +344,17 @@ pub fn create_file(
 	} else {
 		ap.get_egid()
 	};
-	let file = File::new(uid, gid, file_type, perms);
+	stat.gid = gid;
 	let file = op(&parent.location, true, |mp, fs| {
-		let mut n = fs.add_file(parent_inode, name, file)?;
-		update_location(&mut n, mp);
-		Ok(n)
+		let (stat, inode) = parent.ops.add_file(parent_inode, fs, name, stat)?;
+		Ok(File::new(
+			FileLocation::Filesystem {
+				mountpoint_id: mp.get_id(),
+				inode,
+			},
+			stat,
+			ops,
+		))
 	})?;
 	Ok(Arc::new(Mutex::new(file))?)
 }
@@ -403,8 +399,9 @@ pub fn create_link(
 		return Err(errno!(EXDEV));
 	}
 	op(&target.location, true, |_mp, fs| {
-		fs.add_link(
+		parent.ops.add_link(
 			parent.location.get_inode(),
+			fs,
 			name,
 			target.location.get_inode(),
 		)
