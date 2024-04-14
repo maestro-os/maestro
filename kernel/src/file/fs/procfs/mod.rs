@@ -30,7 +30,7 @@ use super::{kernfs::KernFS, Filesystem, FilesystemType, NodeOps};
 use crate::{
 	file::{
 		fs::{
-			kernfs::node::{StaticDir, StaticLink},
+			kernfs::node::{OwnedNode, StaticDir, StaticLink},
 			procfs::sys_dir::OsRelease,
 			Statfs,
 		},
@@ -47,7 +47,7 @@ use utils::{
 	boxed::Box,
 	collections::hashmap::HashMap,
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	io::IO,
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
@@ -69,7 +69,7 @@ fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 }
 
 /// The root directory of the procfs.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct RootDir;
 
 impl RootDir {
@@ -88,6 +88,12 @@ impl RootDir {
 		(b"uptime", &Uptime),
 		(b"version", &Version),
 	];
+}
+
+impl OwnedNode for RootDir {
+	fn detached(&self) -> AllocResult<Box<dyn NodeOps>> {
+		Ok(Box::new(self.clone())? as _)
+	}
 }
 
 impl NodeOps for RootDir {

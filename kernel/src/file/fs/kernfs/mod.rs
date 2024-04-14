@@ -109,19 +109,24 @@ impl NodesStorage {
 	///
 	/// If no slot is available, the function allocates a new one.
 	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<Box<dyn OwnedNode>>)> {
-		let slot = self.0.iter_mut().enumerate().find(|(_, s)| s.is_some());
-		let (index, slot) = match slot {
+		let slot = self
+			.0
+			.iter_mut()
+			.enumerate()
+			.find(|(_, s)| s.is_some())
+			.map(|(i, _)| i);
+		let index = match slot {
 			// Use an existing slot
-			Some((i, slot)) => (i, slot),
+			Some(i) => i,
 			// Allocate a new node slot
 			None => {
 				let i = self.0.len();
 				self.0.push(None)?;
-				let slot = &mut self.0[i];
-				(i, slot)
+				i
 			}
 		};
 		let inode = index as u64 + 1;
+		let slot = &mut self.0[index];
 		Ok((inode, slot))
 	}
 

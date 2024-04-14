@@ -21,10 +21,7 @@
 //! The files are stored on the kernel's memory and thus are removed when the
 //! filesystem is unmounted.
 
-use super::{
-	kernfs::{node::OwnedNode, KernFS},
-	Filesystem, FilesystemType, NodeOps,
-};
+use super::{kernfs, kernfs::KernFS, Filesystem, FilesystemType, NodeOps};
 use crate::file::{
 	fs::{kernfs::node::DefaultNode, Statfs},
 	path::PathBuf,
@@ -34,13 +31,10 @@ use crate::file::{
 use core::mem::size_of;
 use utils::{boxed::Box, errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
 
+// TODO count memory usage to enforce quota
+
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
-
-/// Returns the size in bytes used by the given node `node`.
-fn get_used_size<N: OwnedNode>(node: &N) -> usize {
-	size_of::<N>() + node.get_stat().size as usize
-}
 
 /// A temporary file system.
 ///
@@ -64,8 +58,8 @@ impl TmpFS {
 	/// - `max_size` is the maximum amount of memory the filesystem can use in bytes.
 	/// - `readonly` tells whether the filesystem is readonly.
 	pub fn new(max_size: usize, readonly: bool) -> EResult<Self> {
-		let root = DefaultNode {
-			stat: Stat {
+		let root = DefaultNode::new(
+			Stat {
 				file_type: FileType::Directory,
 				mode: 0o777,
 				nlink: 0,
@@ -79,13 +73,15 @@ impl TmpFS {
 				mtime: 0,
 				atime: 0,
 			},
-		};
-		let size = get_used_size(&root);
+			Some(kernfs::ROOT_INODE),
+			Some(kernfs::ROOT_INODE),
+		)?;
 		let fs = Self {
 			max_size,
-			size,
+			// Size of the root node
+			size: size_of::<DefaultNode>(),
 			readonly,
-			inner: KernFS::<false>::new(Box::new(root)?)?,
+			inner: KernFS::new(false, Box::new(root)?)?,
 		};
 		Ok(fs)
 	}
@@ -102,21 +98,14 @@ impl TmpFS {
 	fn update_size<F: FnOnce(&mut Self) -> EResult<()>>(&mut self, s: isize, f: F) -> EResult<()> {
 		if s < 0 {
 			f(self)?;
-
-			if self.size < (-s as usize) {
-				// If the result would underflow, set the total to zero
-				self.size = 0;
-			} else {
-				self.size -= -s as usize;
-			}
-
+			self.size = self.size.saturating_sub(-s as _);
 			Ok(())
 		} else if self.size + (s as usize) < self.max_size {
 			f(self)?;
-
 			self.size += s as usize;
 			Ok(())
 		} else {
+			// Quota has been reached
 			Err(errno!(ENOSPC))
 		}
 	}
@@ -149,7 +138,7 @@ impl Filesystem for TmpFS {
 }
 
 /// The tmpfs filesystem type.
-pub struct TmpFsType {}
+pub struct TmpFsType;
 
 impl FilesystemType for TmpFsType {
 	fn get_name(&self) -> &'static [u8] {

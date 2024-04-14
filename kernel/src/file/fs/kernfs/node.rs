@@ -40,7 +40,7 @@ use utils::{
 	errno::{AllocResult, EResult},
 	lock::Mutex,
 	ptr::cow::Cow,
-	vec, DisplayableStr, TryClone,
+	DisplayableStr, TryClone,
 };
 
 /// Downcasts the given `fs` into [`crate::file::fs::ext2::Ext2Fs`].
@@ -127,6 +127,71 @@ impl DefaultNodeInner {
 /// A kernfs node with the default behaviour for each file type.
 #[derive(Debug)]
 pub struct DefaultNode(Mutex<DefaultNodeInner>);
+
+impl DefaultNode {
+	/// Creates a node from the given status.
+	///
+	/// Arguments:
+	/// - `stat` is the status to initialize the node's with
+	/// - `inode` is the inode of the node
+	/// - `parent_inode` is the inode of the node's parent
+	///
+	/// Provided inodes are used only if the file is a directory, to create the `.` and `..`
+	/// entries.
+	pub fn new(
+		stat: Stat,
+		inode: Option<INode>,
+		parent_inode: Option<INode>,
+	) -> AllocResult<Self> {
+		let content = match stat.file_type {
+			FileType::Regular => DefaultNodeContent::Regular(Vec::new()),
+			FileType::Directory => {
+				let mut entries = Vec::new();
+				if let Some(inode) = inode {
+					entries.push(DirEntry {
+						inode,
+						entry_type: FileType::Directory,
+						name: Cow::Borrowed(b"."),
+					})?;
+				}
+				if let Some(parent_inode) = parent_inode {
+					entries.push(DirEntry {
+						inode: parent_inode,
+						entry_type: FileType::Directory,
+						name: Cow::Borrowed(b".."),
+					})?;
+				}
+				DefaultNodeContent::Directory(entries)
+			}
+			FileType::Link => DefaultNodeContent::Link(Vec::new()),
+			FileType::Fifo => DefaultNodeContent::Fifo,
+			FileType::Socket => DefaultNodeContent::Socket,
+			FileType::BlockDevice => DefaultNodeContent::BlockDevice {
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			},
+			FileType::CharDevice => DefaultNodeContent::CharDevice {
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			},
+		};
+		let mut nlink = 1;
+		if stat.file_type == FileType::Directory {
+			// Count the `.` entry
+			nlink += 2;
+		}
+		Ok(Self(Mutex::new(DefaultNodeInner {
+			mode: stat.mode,
+			nlink,
+			uid: stat.uid,
+			gid: stat.gid,
+			ctime: stat.ctime,
+			mtime: stat.mtime,
+			atime: stat.atime,
+			content,
+		})))
+	}
+}
 
 impl OwnedNode for DefaultNode {
 	fn detached(&self) -> AllocResult<Box<dyn NodeOps>> {
@@ -291,49 +356,8 @@ impl NodeOps for DefaultNode {
 			return Err(errno!(ENOTDIR));
 		};
 		// Prepare node to be added
-		let content = match stat.file_type {
-			FileType::Regular => DefaultNodeContent::Regular(Vec::new()),
-			FileType::Directory => DefaultNodeContent::Directory(vec![
-				DirEntry {
-					inode,
-					entry_type: FileType::Directory,
-					name: Cow::Borrowed(b"."),
-				},
-				DirEntry {
-					inode: parent_inode,
-					entry_type: FileType::Directory,
-					name: Cow::Borrowed(b".."),
-				},
-			]?),
-			FileType::Link => DefaultNodeContent::Link(Vec::new()),
-			FileType::Fifo => DefaultNodeContent::Fifo,
-			FileType::Socket => DefaultNodeContent::Socket,
-			FileType::BlockDevice => DefaultNodeContent::BlockDevice {
-				major: stat.dev_major,
-				minor: stat.dev_minor,
-			},
-			FileType::CharDevice => DefaultNodeContent::CharDevice {
-				major: stat.dev_major,
-				minor: stat.dev_minor,
-			},
-		};
-		let mut nlink = 1;
-		if stat.file_type == FileType::Directory {
-			// Count the `.` entry
-			nlink += 2;
-		}
-		let inner = DefaultNodeInner {
-			mode: stat.mode,
-			nlink,
-			uid: stat.uid,
-			gid: stat.gid,
-			ctime: stat.ctime,
-			mtime: stat.mtime,
-			atime: stat.atime,
-			content,
-		};
-		let stat = inner.as_stat();
-		let node = Box::new(DefaultNode(Mutex::new(inner)))?;
+		let node = Box::new(DefaultNode::new(stat, Some(inode), Some(parent_inode))?)?;
+		let stat = node.0.lock().as_stat();
 		// Add entry to parent
 		let ent = DirEntry {
 			inode,
@@ -540,11 +564,19 @@ struct FormatContentWriter<'b> {
 	off: u64,
 	buf: &'b mut [u8],
 	buf_cursor: usize,
-	stop: bool,
+	eof: bool,
 }
 
 impl<'b> Write for FormatContentWriter<'b> {
 	fn write_str(&mut self, s: &str) -> fmt::Result {
+		if s.is_empty() {
+			return Ok(());
+		}
+		self.eof = false;
+		// If the end of the output buffer is reached, stop
+		if self.buf_cursor >= self.buf.len() {
+			return Err(fmt::Error);
+		}
 		let chunk = s.as_bytes();
 		let next_off = self.off.saturating_sub(chunk.len() as _);
 		// If at least a part of the chunk is in range, copy
@@ -558,10 +590,10 @@ impl<'b> Write for FormatContentWriter<'b> {
 			self.buf[self.buf_cursor..(self.buf_cursor + size)]
 				.copy_from_slice(&chunk[off..(off + size)]);
 			self.buf_cursor += size;
-			// If the end of the output buffer is reached, stop
+			// If the end of the output buffer is reached, set `eof` if necessary
 			if self.buf_cursor >= self.buf.len() {
-				self.stop = true;
-				return Err(fmt::Error);
+				// If other non-empty chunks remain, the next iteration will cancel this
+				self.eof = off + size >= chunk.len();
 			}
 		}
 		self.off = next_off;
@@ -579,13 +611,13 @@ pub fn format_content_args(
 		off,
 		buf,
 		buf_cursor: 0,
-		stop: false,
+		eof: false,
 	};
 	let res = fmt::write(&mut writer, args);
-	if res.is_err() && !writer.stop {
+	if res.is_err() && (writer.buf_cursor < writer.buf.len()) {
 		panic!("a formatting trait implementation returned an error");
 	}
-	Ok(writer.buf_cursor as _)
+	Ok((writer.buf_cursor as _, writer.eof))
 }
 
 /// Formats the content of a kernfs node and write it on a buffer.
