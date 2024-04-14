@@ -21,12 +21,8 @@
 
 use crate::{
 	file::{
-		fs::{
-			procfs::{get_proc_gid, get_proc_uid},
-			Filesystem, NodeOps,
-		},
-		perm::{Gid, Uid},
-		DirEntry, FileType, INode,
+		fs::{procfs::get_proc_owner, Filesystem, NodeOps},
+		DirEntry, FileType, INode, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -50,16 +46,15 @@ impl<'p> fmt::Display for CmdlineDisp<'p> {
 pub struct Cmdline(pub Pid);
 
 impl NodeOps for Cmdline {
-	fn get_file_type(&self) -> FileType {
-		FileType::Regular
-	}
-
-	fn get_uid(&self) -> Uid {
-		get_proc_uid(self.0)
-	}
-
-	fn get_gid(&self) -> Gid {
-		get_proc_gid(self.0)
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		let (uid, gid) = get_proc_owner(self.0);
+		Ok(Stat {
+			file_type: FileType::Regular,
+			mode: 0o444,
+			uid,
+			gid,
+			..Default::default()
+		})
 	}
 
 	fn read_content(
@@ -68,7 +63,7 @@ impl NodeOps for Cmdline {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<(u64, bool)> {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
 		format_content!(off, buf, "{}", CmdlineDisp(&*proc))

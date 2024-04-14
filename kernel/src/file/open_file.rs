@@ -230,7 +230,7 @@ impl OpenFile {
 		argp: *const c_void,
 	) -> EResult<u32> {
 		let mut file = self.get_file().lock();
-		match file.get_type() {
+		match file.stat.file_type {
 			FileType::Regular => match request.get_old_format() {
 				ioctl::FIONREAD => {
 					let mut mem_space_guard = mem_space.lock();
@@ -258,7 +258,7 @@ impl OpenFile {
 	/// If the file cannot block, the function does nothing.
 	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		let file = self.get_file().lock();
-		match file.get_type() {
+		match file.stat.file_type {
 			FileType::Fifo | FileType::Socket => {
 				if let Some(buff_mutex) = buffer::get(self.get_location()) {
 					let mut buff = buff_mutex.lock();
@@ -268,8 +268,8 @@ impl OpenFile {
 			FileType::BlockDevice => {
 				let dev_mutex = device::get(&DeviceID {
 					dev_type: DeviceType::Block,
-					major: file.dev_major,
-					minor: file.dev_minor,
+					major: file.stat.dev_major,
+					minor: file.stat.dev_minor,
 				});
 				if let Some(dev_mutex) = dev_mutex {
 					let mut dev = dev_mutex.lock();
@@ -279,8 +279,8 @@ impl OpenFile {
 			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
 					dev_type: DeviceType::Char,
-					major: file.dev_major,
-					minor: file.dev_minor,
+					major: file.stat.dev_major,
+					minor: file.stat.dev_minor,
 				});
 				if let Some(dev_mutex) = dev_mutex {
 					let mut dev = dev_mutex.lock();
@@ -307,13 +307,13 @@ impl IO for OpenFile {
 		}
 		// Get file
 		let mut file = self.file.as_ref().unwrap().lock();
-		if file.get_type() == FileType::Directory {
+		if file.stat.file_type == FileType::Directory {
 			return Err(errno!(EISDIR));
 		}
 		// Update access timestamp
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
-			file.atime = timestamp;
+			file.stat.atime = timestamp;
 			file.sync()?; // TODO Lazy
 		}
 		// Read
@@ -331,7 +331,7 @@ impl IO for OpenFile {
 		}
 		// Get file
 		let mut file = self.file.as_ref().unwrap().lock();
-		if file.get_type() == FileType::Directory {
+		if file.stat.file_type == FileType::Directory {
 			return Err(errno!(EISDIR));
 		}
 		// Append if enabled
@@ -341,9 +341,9 @@ impl IO for OpenFile {
 		// Update access timestamps
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
-			file.atime = timestamp;
+			file.stat.atime = timestamp;
 		}
-		file.mtime = timestamp;
+		file.stat.mtime = timestamp;
 		file.sync()?; // TODO Lazy
 			  // Write
 		let len = file.write(self.curr_off, buf)?;

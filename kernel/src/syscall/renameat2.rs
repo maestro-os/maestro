@@ -114,7 +114,7 @@ pub fn renameat2(
 	// directory in several locations is not allowed
 	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
 
-	if old.get_type() != FileType::Directory {
+	if old.stat.file_type != FileType::Directory {
 		vfs::remove_file(&mut old_parent, old_name, &rs.access_profile)?;
 	}
 

@@ -116,16 +116,16 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			Err(e) => return Err(e),
 		};
 		let mut file = file_mutex.lock();
-		file.set_uid(hdr.c_uid);
-		file.set_gid(hdr.c_gid);
+		file.stat.set_uid(hdr.c_uid);
+		file.stat.set_gid(hdr.c_gid);
 		match file_type {
 			FileType::Regular | FileType::Link => {
 				let content = entry.get_content();
 				file.write(0, content)?;
 			}
 			FileType::BlockDevice | FileType::CharDevice => {
-				file.dev_major = device::id::major(hdr.c_rdev as _);
-				file.dev_major = device::id::minor(hdr.c_rdev as _);
+				file.stat.dev_major = device::id::major(hdr.c_rdev as _);
+				file.stat.dev_major = device::id::minor(hdr.c_rdev as _);
 			}
 			_ => {}
 		}

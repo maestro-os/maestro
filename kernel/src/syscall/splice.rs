@@ -70,8 +70,8 @@ pub fn splice(
 	};
 
 	{
-		let input_type = input_mutex.lock().get_file().lock().get_type();
-		let output_type = output_mutex.lock().get_file().lock().get_type();
+		let input_type = input_mutex.lock().get_file().lock().stat.file_type;
+		let output_type = output_mutex.lock().get_file().lock().stat.file_type;
 
 		let in_is_pipe = matches!(input_type, FileType::Fifo);
 		let out_is_pipe = matches!(output_type, FileType::Fifo);

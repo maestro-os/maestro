@@ -51,7 +51,7 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 		let file = open_file.get_file().lock();
 
 		// Check for errors
-		if file.get_type() != FileType::Directory {
+		if file.stat.file_type != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		if !ap.can_list_directory(&file) {

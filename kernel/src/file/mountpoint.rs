@@ -90,16 +90,16 @@ impl MountSource {
 		match result {
 			Ok(file_mutex) => {
 				let file = file_mutex.lock();
-				match file.get_type() {
+				match file.stat.file_type {
 					FileType::BlockDevice => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Block,
-						major: file.dev_major,
-						minor: file.dev_minor,
+						major: file.stat.dev_major,
+						minor: file.stat.dev_minor,
 					})),
 					FileType::CharDevice => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Char,
-						major: file.dev_major,
-						minor: file.dev_minor,
+						major: file.stat.dev_major,
+						minor: file.stat.dev_minor,
 					})),
 					_ => Err(errno!(EINVAL)),
 				}

@@ -21,7 +21,7 @@
 use crate::{
 	file::{
 		fs::{Filesystem, NodeOps},
-		DirEntry, FileType, INode,
+		DirEntry, FileType, INode, Stat,
 	},
 	format_content,
 };
@@ -32,8 +32,12 @@ use utils::{errno, errno::EResult};
 pub struct Uptime;
 
 impl NodeOps for Uptime {
-	fn get_file_type(&self) -> FileType {
-		FileType::Regular
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		Ok(Stat {
+			file_type: FileType::Regular,
+			mode: 0o444,
+			..Default::default()
+		})
 	}
 
 	fn read_content(
@@ -42,7 +46,7 @@ impl NodeOps for Uptime {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<(u64, bool)> {
 		// TODO
 		format_content!(off, buf, "0.00 0.00\n")
 	}

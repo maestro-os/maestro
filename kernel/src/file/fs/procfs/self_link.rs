@@ -21,7 +21,7 @@
 use crate::{
 	file::{
 		fs::{Filesystem, NodeOps},
-		DirEntry, FileType, INode,
+		DirEntry, FileType, INode, Stat,
 	},
 	format_content,
 	process::Process,
@@ -33,8 +33,12 @@ use utils::{errno, errno::EResult};
 pub struct SelfNode;
 
 impl NodeOps for SelfNode {
-	fn get_file_type(&self) -> FileType {
-		FileType::Link
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		Ok(Stat {
+			file_type: FileType::Link,
+			mode: 0o777,
+			..Default::default()
+		})
 	}
 
 	fn read_content(
@@ -43,7 +47,7 @@ impl NodeOps for SelfNode {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<(u64, bool)> {
 		let pid = Process::current_assert().lock().pid;
 		format_content!(off, buf, "{pid}")
 	}

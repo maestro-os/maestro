@@ -27,12 +27,8 @@ mod status;
 
 use crate::{
 	file::{
-		fs::{
-			procfs::{get_proc_gid, get_proc_uid},
-			Filesystem, NodeOps,
-		},
-		perm::{Gid, Uid},
-		DirEntry, FileType, INode,
+		fs::{procfs::get_proc_owner, Filesystem, NodeOps},
+		DirEntry, FileType, INode, Stat,
 	},
 	process::pid::Pid,
 };
@@ -40,7 +36,7 @@ use cmdline::Cmdline;
 use cwd::Cwd;
 use exe::Exe;
 use mounts::Mounts;
-use stat::Stat;
+use stat::StatNode;
 use status::Status;
 use utils::{errno, errno::EResult, ptr::cow::Cow};
 
@@ -49,16 +45,15 @@ use utils::{errno, errno::EResult, ptr::cow::Cow};
 pub struct ProcDir(pub Pid);
 
 impl NodeOps for ProcDir {
-	fn get_file_type(&self) -> FileType {
-		FileType::Directory
-	}
-
-	fn get_uid(&self) -> Uid {
-		get_proc_uid(self.0)
-	}
-
-	fn get_gid(&self) -> Gid {
-		get_proc_gid(self.0)
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		let (uid, gid) = get_proc_owner(self.0);
+		Ok(Stat {
+			file_type: FileType::Directory,
+			mode: 0o555,
+			uid,
+			gid,
+			..Default::default()
+		})
 	}
 
 	fn read_content(
@@ -67,7 +62,7 @@ impl NodeOps for ProcDir {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<(u64, bool)> {
 		Err(errno!(EISDIR))
 	}
 
@@ -100,8 +95,8 @@ impl NodeOps for ProcDir {
 
 	fn next_entry(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		inode: INode,
+		fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let entries: &[(&[u8], &dyn NodeOps)] = &[
@@ -114,7 +109,7 @@ impl NodeOps for ProcDir {
 			// /proc/<pid>/mounts
 			(b"mounts", &Mounts(self.0)),
 			// /proc/<pid>/stat
-			(b"stat", &Stat(self.0)),
+			(b"stat", &StatNode(self.0)),
 			// /proc/<pid>/status
 			(b"status", &Status(self.0)),
 		];
@@ -123,7 +118,8 @@ impl NodeOps for ProcDir {
 			(
 				DirEntry {
 					inode: 0,
-					entry_type: node.get_file_type(),
+					// unwrap won't fail because `get_stat` on static entries never return an error
+					entry_type: node.get_stat(inode, fs).unwrap().file_type,
 					name: Cow::Borrowed(name),
 				},
 				(off + 1) as _,

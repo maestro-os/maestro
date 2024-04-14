@@ -18,7 +18,7 @@
 
 //! This module implements Copy-On-Write (COW) pointers.
 
-use crate::TryToOwned;
+use crate::{TryClone, TryToOwned};
 use core::{borrow::Borrow, fmt};
 
 /// A clone-on-write smart pointer.
@@ -85,6 +85,20 @@ impl<'a, B: 'a + ?Sized + TryToOwned> AsRef<B> for Cow<'a, B> {
 			Self::Borrowed(r) => r,
 			Self::Owned(v) => v.borrow(),
 		}
+	}
+}
+
+impl<'a, B: 'a + ?Sized + TryToOwned, E> TryClone for Cow<'a, B>
+where
+	<B as TryToOwned>::Owned: TryClone<Error = E>,
+{
+	type Error = E;
+
+	fn try_clone(&self) -> Result<Self, E> {
+		Ok(match self {
+			Self::Borrowed(r) => Self::Borrowed(*r),
+			Self::Owned(v) => Self::Owned(v.try_clone()?),
+		})
 	}
 }
 

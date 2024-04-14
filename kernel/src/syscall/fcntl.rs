@@ -257,7 +257,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<
 			let open_file = open_file_mutex.lock();
 			let file_mutex = open_file.get_file();
 			let file = file_mutex.lock();
-			match file.get_type() {
+			match file.stat.file_type {
 				FileType::Fifo => Ok(buffer::get_or_default::<PipeBuffer>(&file.location)?
 					.lock()
 					.get_capacity() as _),

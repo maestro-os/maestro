@@ -22,7 +22,7 @@
 use crate::{
 	file::{
 		fs::{Filesystem, NodeOps},
-		DirEntry, FileType, INode,
+		DirEntry, FileType, INode, Stat,
 	},
 	format_content, memory,
 };
@@ -33,8 +33,12 @@ use utils::{errno, errno::EResult};
 pub struct MemInfo;
 
 impl NodeOps for MemInfo {
-	fn get_file_type(&self) -> FileType {
-		FileType::Regular
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		Ok(Stat {
+			file_type: FileType::Regular,
+			mode: 0o444,
+			..Default::default()
+		})
 	}
 
 	fn read_content(
@@ -43,7 +47,7 @@ impl NodeOps for MemInfo {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<(u64, bool)> {
 		let mem_info = memory::stats::MEM_INFO.lock();
 		format_content!(off, buf, "{}", *mem_info)
 	}

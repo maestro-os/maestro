@@ -36,7 +36,7 @@ use crate::{
 		},
 		path::PathBuf,
 		perm::{Gid, Uid},
-		DirEntry, File, FileType, INode,
+		DirEntry, FileType, INode, Stat,
 	},
 	process::{pid::Pid, Process},
 };
@@ -54,22 +54,18 @@ use utils::{
 };
 use version::Version;
 
-/// Returns the user ID of the process with the given PID>
+/// Returns the user ID and group ID of the process with the given PID.
 ///
-/// If the process does not exist, the function returns `0`.
-fn get_proc_uid(pid: Pid) -> Uid {
+/// If the process does not exist, the function returns `(0, 0)`.
+fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 	Process::get_by_pid(pid)
-		.map(|proc_mutex| proc_mutex.lock().access_profile.get_euid())
-		.unwrap_or(0)
-}
-
-/// Returns the group ID of the process with the given PID.
-///
-/// If the process does not exist, the function returns `0`.
-fn get_proc_gid(pid: Pid) -> Gid {
-	Process::get_by_pid(pid)
-		.map(|proc_mutex| proc_mutex.lock().access_profile.get_egid())
-		.unwrap_or(0)
+		.map(|proc_mutex| {
+			let proc = proc_mutex.lock();
+			let uid = proc.access_profile.get_euid();
+			let gid = proc.access_profile.get_egid();
+			(uid, gid)
+		})
+		.unwrap_or((0, 0))
 }
 
 /// The root directory of the procfs.
@@ -95,8 +91,12 @@ impl RootDir {
 }
 
 impl NodeOps for RootDir {
-	fn get_file_type(&self) -> FileType {
-		FileType::Directory
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		Ok(Stat {
+			file_type: FileType::Directory,
+			mode: 0o555,
+			..Default::default()
+		})
 	}
 
 	fn read_content(
@@ -105,7 +105,7 @@ impl NodeOps for RootDir {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<(u64, bool)> {
 		Err(errno!(EISDIR))
 	}
 
@@ -122,8 +122,8 @@ impl NodeOps for RootDir {
 	/// This returned offset is junk and should be ignored.
 	fn entry_by_name<'n>(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		inode: INode,
+		fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		let entry = core::str::from_utf8(name)
@@ -148,7 +148,8 @@ impl NodeOps for RootDir {
 				let (name, node) = Self::STATIC_ENTRIES[index];
 				Some(DirEntry {
 					inode: 0,
-					entry_type: node.get_file_type(),
+					// unwrap won't fail because `get_stat` on static entries never return an error
+					entry_type: node.get_stat(inode, fs).unwrap().file_type,
 					name: Cow::Borrowed(name),
 				})
 			})
@@ -158,8 +159,8 @@ impl NodeOps for RootDir {
 
 	fn next_entry(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		inode: INode,
+		fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
@@ -167,7 +168,8 @@ impl NodeOps for RootDir {
 			.get(off)
 			.map(|(name, node)| DirEntry {
 				inode: 0,
-				entry_type: node.get_file_type(),
+				// unwrap won't fail because `get_stat` on static entries never return an error
+				entry_type: node.get_stat(inode, fs).unwrap().file_type,
 				name: Cow::Borrowed(*name),
 			})
 			.or_else(|| {
@@ -184,7 +186,7 @@ impl NodeOps for RootDir {
 #[derive(Debug)]
 pub struct ProcFS {
 	/// The inner kernfs.
-	inner: KernFS<true>,
+	inner: KernFS,
 	/// The list of registered processes with their directory's inode.
 	procs: HashMap<Pid, INode>,
 }
@@ -196,7 +198,7 @@ impl ProcFS {
 	pub fn new() -> EResult<Self> {
 		let root = Box::new(RootDir)?;
 		Ok(Self {
-			inner: KernFS::new(root)?,
+			inner: KernFS::new(true, root)?,
 			procs: HashMap::new(),
 		})
 	}
@@ -223,24 +225,8 @@ impl Filesystem for ProcFS {
 		self.inner.get_stat()
 	}
 
-	fn load_file(&self, inode: INode) -> EResult<File> {
+	fn load_file(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
 		self.inner.load_file(inode)
-	}
-
-	fn add_file(&self, _parent_inode: INode, _name: &[u8], _node: File) -> EResult<File> {
-		Err(errno!(EACCES))
-	}
-
-	fn add_link(&self, _parent_inode: INode, _name: &[u8], _inode: INode) -> EResult<()> {
-		Err(errno!(EACCES))
-	}
-
-	fn update_inode(&self, _file: &File) -> EResult<()> {
-		Ok(())
-	}
-
-	fn remove_file(&self, _parent_inode: INode, _name: &[u8]) -> EResult<(u16, INode)> {
-		Err(errno!(EACCES))
 	}
 }
 

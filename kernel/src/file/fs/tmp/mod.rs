@@ -22,23 +22,24 @@
 //! filesystem is unmounted.
 
 use super::{
-	kernfs::{node::KernFSNode, KernFS},
-	Filesystem, FilesystemType,
+	kernfs::{node::OwnedNode, KernFS},
+	Filesystem, FilesystemType, NodeOps,
 };
 use crate::file::{
 	fs::{kernfs::node::DefaultNode, Statfs},
 	path::PathBuf,
-	File, FileType, INode,
+	perm::{ROOT_GID, ROOT_UID},
+	FileType, INode, Stat,
 };
-use core::{intrinsics::unlikely, mem::size_of};
+use core::mem::size_of;
 use utils::{boxed::Box, errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
 
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
 
 /// Returns the size in bytes used by the given node `node`.
-fn get_used_size<N: KernFSNode>(node: &N) -> usize {
-	size_of::<N>() + node.get_size() as usize
+fn get_used_size<N: OwnedNode>(node: &N) -> usize {
+	size_of::<N>() + node.get_stat().size as usize
 }
 
 /// A temporary file system.
@@ -53,7 +54,7 @@ pub struct TmpFS {
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 	/// The inner kernfs.
-	inner: KernFS<false>,
+	inner: KernFS,
 }
 
 impl TmpFS {
@@ -63,7 +64,22 @@ impl TmpFS {
 	/// - `max_size` is the maximum amount of memory the filesystem can use in bytes.
 	/// - `readonly` tells whether the filesystem is readonly.
 	pub fn new(max_size: usize, readonly: bool) -> EResult<Self> {
-		let root = DefaultNode::new(0, 0, FileType::Directory, 0o777);
+		let root = DefaultNode {
+			stat: Stat {
+				file_type: FileType::Directory,
+				mode: 0o777,
+				nlink: 0,
+				uid: ROOT_UID,
+				gid: ROOT_GID,
+				size: 0,
+				blocks: 0,
+				dev_major: 0,
+				dev_minor: 0,
+				ctime: 0,
+				mtime: 0,
+				atime: 0,
+			},
+		};
 		let size = get_used_size(&root);
 		let fs = Self {
 			max_size,
@@ -127,40 +143,8 @@ impl Filesystem for TmpFS {
 		self.inner.get_stat()
 	}
 
-	fn load_file(&self, inode: INode) -> EResult<File> {
+	fn load_file(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
 		self.inner.load_file(inode)
-	}
-
-	fn add_file(&self, parent_inode: INode, name: &[u8], node: File) -> EResult<File> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
-		// TODO Update fs's size
-		self.inner.add_file(parent_inode, name, node)
-	}
-
-	fn add_link(&self, parent_inode: INode, name: &[u8], inode: INode) -> EResult<()> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
-		// TODO Update fs's size
-		self.inner.add_link(parent_inode, name, inode)
-	}
-
-	fn update_inode(&self, file: &File) -> EResult<()> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
-		// TODO Update fs's size
-		self.inner.update_inode(file)
-	}
-
-	fn remove_file(&self, parent_inode: INode, name: &[u8]) -> EResult<(u16, INode)> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
-		// TODO Update fs's size
-		self.inner.remove_file(parent_inode, name)
 	}
 }
 

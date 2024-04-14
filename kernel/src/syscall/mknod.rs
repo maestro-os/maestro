@@ -68,8 +68,8 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	let mut file = file_mutex.lock();
 	match file_type {
 		FileType::BlockDevice | FileType::CharDevice => {
-			file.dev_major = major;
-			file.dev_minor = minor;
+			file.stat.dev_major = major;
+			file.stat.dev_minor = minor;
 		}
 		_ => return Err(errno!(EPERM)),
 	}

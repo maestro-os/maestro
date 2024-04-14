@@ -50,7 +50,7 @@ pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
 		let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 		let file = file_mutex.lock();
 		// Validation
-		if file.get_type() != FileType::Directory {
+		if file.stat.file_type != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		// Remove

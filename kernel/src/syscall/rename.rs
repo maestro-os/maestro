@@ -85,7 +85,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 
 	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
 
-	if old.get_type() != FileType::Directory {
+	if old.stat.file_type != FileType::Directory {
 		// TODO On fail, undo
 		vfs::remove_file(&mut old_parent, old_name, &rs.access_profile)?;
 	}

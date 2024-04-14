@@ -28,10 +28,10 @@ use crate::{
 };
 use core::ffi::{c_int, c_long};
 use macros::syscall;
-use utils::{errno, errno::Errno, io::IO};
+use utils::{errno, errno::Errno};
 
 // TODO Check types
-/// Structure containing the informations of a file.
+/// Structure containing the information of a file.
 #[repr(C)]
 #[derive(Debug)]
 struct Stat {
@@ -103,30 +103,30 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 		__st_dev_padding: 0,
 
 		st_ino: inode,
-		st_mode: file.get_mode(),
-		st_nlink: file.get_hard_links_count() as _,
-		st_uid: file.get_uid(),
-		st_gid: file.get_gid(),
+		st_mode: file.stat.mode,
+		st_nlink: file.stat.nlink as _,
+		st_uid: file.stat.uid,
+		st_gid: file.stat.gid,
 		st_rdev: 0, // TODO
 
 		__st_rdev_padding: 0,
 
-		st_size: file.get_size() as _,
+		st_size: file.stat.size as _,
 		st_blksize: 512, // TODO
-		st_blocks: file.get_blocks_count(),
+		st_blocks: file.stat.blocks,
 
 		st_atim: Timespec::from_nano(TimestampScale::convert(
-			file.atime,
+			file.stat.atime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond,
 		)),
 		st_mtim: Timespec::from_nano(TimestampScale::convert(
-			file.mtime,
+			file.stat.mtime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond,
 		)),
 		st_ctim: Timespec::from_nano(TimestampScale::convert(
-			file.ctime,
+			file.stat.ctime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond,
 		)),

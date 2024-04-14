@@ -20,245 +20,440 @@
 
 use crate::{
 	file::{
-		fs::{Filesystem, NodeOps},
-		perm,
+		fs::{kernfs::KernFS, Filesystem, NodeOps, StatSet},
 		perm::{Gid, Uid},
-		DirEntry, FileType, INode, Mode,
+		DirEntry, FileType, INode, Mode, Stat,
 	},
+	memory,
 	time::unit::Timestamp,
 };
 use core::{
 	any::Any,
-	cmp::min,
+	cmp::{max, min},
 	fmt,
 	fmt::{Debug, Write},
 };
 use utils::{
 	boxed::Box,
+	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
+	lock::Mutex,
 	ptr::cow::Cow,
-	DisplayableStr,
+	vec, DisplayableStr, TryClone,
 };
 
-/// The counterpart of [`NodeOps`] that is owned by the kernfs. Not all node in a kernfs have an
-/// instance with this trait, as a node may not really exist in the kernfs.
-pub trait KernFSNode: Any + Debug {
-	/// Returns the number of hard links to the node.
-	fn get_hard_links_count(&self) -> u16 {
-		1
-	}
+/// Downcasts the given `fs` into [`crate::file::fs::ext2::Ext2Fs`].
+fn downcast_fs(fs: &dyn Filesystem) -> &KernFS {
+	(fs as &dyn Any).downcast_ref().unwrap()
+}
 
-	/// Sets the number of hard links to the node.
-	fn set_hard_links_count(&mut self, _hard_links_count: u16) {}
-
-	/// Returns the type of the file.
-	fn get_file_type(&self) -> FileType;
-
-	/// Returns the permissions of the file.
-	fn get_mode(&self) -> Mode {
-		0o444
-	}
-
-	/// Sets the permissions of the file.
-	fn set_mode(&mut self, _mode: Mode) {}
-
-	/// Returns the UID of the file's owner.
-	fn get_uid(&self) -> Uid {
-		perm::ROOT_UID
-	}
-
-	/// Sets the UID of the file's owner.
-	fn set_uid(&mut self, _uid: Uid) {}
-
-	/// Returns the GID of the file's owner.
-	fn get_gid(&self) -> Gid {
-		perm::ROOT_GID
-	}
-
-	/// Sets the GID of the file's owner.
-	fn set_gid(&mut self, _gid: Gid) {}
-
-	/// Returns the timestamp of the last access to the file.
-	fn get_atime(&self) -> Timestamp {
-		0
-	}
-
-	/// Sets the timestamp of the last access to the file.
-	fn set_atime(&mut self, _ts: Timestamp) {}
-
-	/// Returns the timestamp of the last modification of the file's metadata.
-	fn get_ctime(&self) -> Timestamp {
-		0
-	}
-
-	/// Sets the timestamp of the last modification of the file's metadata.
-	fn set_ctime(&mut self, _ts: Timestamp) {}
-
-	/// Returns the timestamp of the last modification of the file's content.
-	fn get_mtime(&self) -> Timestamp {
-		0
-	}
-
-	/// Sets the timestamp of the last modification of the file's content.
-	fn set_mtime(&mut self, _ts: Timestamp) {}
-
-	/// Returns the size of the file's content in bytes.
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	/// If the current node is a directory, tells whether it is empty.
+/// A node that is owned by the kernfs, that is, has an associated inode.
+pub trait OwnedNode: NodeOps {
+	/// Returns the operations handle for the node to be used outside the kernfs.
 	///
-	/// Arguments:
-	/// - `inode` is the inode of the file.
-	/// - `fs` is the filesystem.
-	///
-	/// If the node is not a directory, the function return `true`.
-	fn is_directory_empty(&self, inode: INode, fs: &dyn Filesystem) -> EResult<bool> {
-		let mut prev = 0;
-		while let Some((entry, off)) = self.next_entry(inode, fs, prev)? {
-			if entry.name.as_ref() != b"." && entry.name.as_ref() != b".." {
-				return Ok(false);
-			}
-			prev = off;
+	/// This handle can carry additional information, but it is recommended to use a ZST if
+	/// possible so that no memory allocation has to be made.
+	fn detached(&self) -> AllocResult<Box<dyn NodeOps>>;
+}
+
+/// The content of a [`DefaultNode`].
+#[derive(Debug)]
+enum DefaultNodeContent {
+	Regular(Vec<u8>),
+	Directory(Vec<DirEntry<'static>>),
+	Link(Vec<u8>),
+	Fifo,
+	Socket,
+	BlockDevice { major: u32, minor: u32 },
+	CharDevice { major: u32, minor: u32 },
+}
+
+#[derive(Debug)]
+struct DefaultNodeInner {
+	/// The file's permissions.
+	mode: Mode,
+	/// The number of links to the file.
+	nlink: u16,
+	/// The file owner's user ID.
+	uid: Uid,
+	/// The file owner's group ID.
+	gid: Gid,
+	/// Timestamp of the last modification of the metadata.
+	ctime: Timestamp,
+	/// Timestamp of the last modification of the file's content.
+	mtime: Timestamp,
+	/// Timestamp of the last access to the file.
+	atime: Timestamp,
+	/// The file's content.
+	content: DefaultNodeContent,
+}
+
+impl DefaultNodeInner {
+	/// Returns the [`Stat`] associated with the content.
+	fn as_stat(&self) -> Stat {
+		let (file_type, size, dev_major, dev_minor) = match &self.content {
+			DefaultNodeContent::Regular(content) => (FileType::Regular, content.len() as _, 0, 0),
+			DefaultNodeContent::Directory(_) => (FileType::Directory, 0, 0, 0),
+			DefaultNodeContent::Link(target) => (FileType::Link, target.len() as _, 0, 0),
+			DefaultNodeContent::Fifo => (FileType::Fifo, 0, 0, 0),
+			DefaultNodeContent::Socket => (FileType::Socket, 0, 0, 0),
+			DefaultNodeContent::BlockDevice {
+				major,
+				minor,
+			} => (FileType::BlockDevice, 0, *major, *minor),
+			DefaultNodeContent::CharDevice {
+				major,
+				minor,
+			} => (FileType::CharDevice, 0, *major, *minor),
+		};
+		Stat {
+			file_type,
+			mode: self.mode,
+			nlink: self.nlink,
+			uid: self.uid,
+			gid: self.gid,
+			size,
+			blocks: size / memory::PAGE_SIZE as u64,
+			dev_major,
+			dev_minor,
+			ctime: self.ctime,
+			mtime: self.mtime,
+			atime: self.atime,
 		}
-		Ok(true)
 	}
-
-	/// Adds the `entry` to the directory.
-	///
-	/// It is the caller's responsibility to ensure there is no two entry with the same name.
-	///
-	/// If the node is not a directory, the function does nothing.
-	fn add_entry(&mut self, _entry: DirEntry<'_>) -> EResult<()> {
-		Err(errno!(EPERM))
-	}
-	/// Removes the directory entry at the given offset `off`.
-	///
-	/// If the node is not a directory, the function does nothing.
-	fn remove_entry(&mut self, _off: u64) {}
-
-	/// Returns the operations handle for the node.
-	fn ops(&self) -> AllocResult<Box<dyn NodeOps>>;
 }
 
 /// A kernfs node with the default behaviour for each file type.
 #[derive(Debug)]
-pub struct DefaultNode {
-	/// The number of hard links to the node.
-	hard_links_count: u16,
+pub struct DefaultNode(Mutex<DefaultNodeInner>);
 
-	/// The directory's owner user ID.
-	uid: Uid,
-	/// The directory's owner group ID.
-	gid: Gid,
-	/// The type of the file.
-	file_type: FileType,
-	/// The directory's permissions.
-	perms: Mode,
-
-	/// Timestamp of the last modification of the metadata.
-	ctime: Timestamp,
-	/// Timestamp of the last modification of the file.
-	mtime: Timestamp,
-	/// Timestamp of the last access to the file.
-	atime: Timestamp,
-}
-
-impl DefaultNode {
-	/// Creates a new node.
-	///
-	/// Arguments:
-	/// - `uid` is the node owner's user ID
-	/// - `gid` is the node owner's group ID
-	/// - `file_type` is the type of the node
-	/// - `perms` is the node's permissions
-	///
-	/// Timestamps are zeroed by default.
-	pub fn new(uid: Uid, gid: Gid, file_type: FileType, perms: Mode) -> Self {
-		Self {
-			hard_links_count: 1,
-
-			uid,
-			gid,
-			file_type,
-			perms,
-
-			ctime: 0,
-			mtime: 0,
-			atime: 0,
-		}
-	}
-}
-
-impl KernFSNode for DefaultNode {
-	fn get_hard_links_count(&self) -> u16 {
-		self.hard_links_count
-	}
-
-	fn set_hard_links_count(&mut self, hard_links_count: u16) {
-		self.hard_links_count = hard_links_count;
-	}
-
-	fn get_file_type(&self) -> FileType {
-		self.file_type
-	}
-
-	fn get_mode(&self) -> Mode {
-		self.perms
-	}
-
-	fn set_mode(&mut self, mode: Mode) {
-		self.perms = mode;
-	}
-
-	fn get_uid(&self) -> Uid {
-		self.uid
-	}
-
-	fn set_uid(&mut self, uid: Uid) {
-		self.uid = uid;
-	}
-
-	fn get_gid(&self) -> Gid {
-		self.gid
-	}
-
-	fn set_gid(&mut self, gid: Gid) {
-		self.gid = gid;
-	}
-
-	fn get_atime(&self) -> Timestamp {
-		self.atime
-	}
-
-	fn set_atime(&mut self, ts: Timestamp) {
-		self.atime = ts;
-	}
-
-	fn get_ctime(&self) -> Timestamp {
-		self.ctime
-	}
-
-	fn set_ctime(&mut self, ts: Timestamp) {
-		self.ctime = ts;
-	}
-
-	fn get_mtime(&self) -> Timestamp {
-		self.mtime
-	}
-
-	fn set_mtime(&mut self, ts: Timestamp) {
-		self.mtime = ts;
-	}
-
-	fn get_size(&self) -> u64 {
-		todo!()
-	}
-
-	fn ops(&self) -> AllocResult<Box<dyn NodeOps>> {
+impl OwnedNode for DefaultNode {
+	fn detached(&self) -> AllocResult<Box<dyn NodeOps>> {
 		Ok(Box::new(DefaultNodeOps)? as _)
+	}
+}
+
+impl NodeOps for DefaultNode {
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		let inner = self.0.lock();
+		Ok(inner.as_stat())
+	}
+
+	fn set_stat(&self, _inode: INode, _fs: &dyn Filesystem, set: StatSet) -> EResult<()> {
+		let mut inner = self.0.lock();
+		if let Some(mode) = set.mode {
+			inner.mode = mode;
+		}
+		if let Some(nlink) = set.nlink {
+			inner.nlink = nlink;
+		}
+		if let Some(uid) = set.uid {
+			inner.uid = uid;
+		}
+		if let Some(gid) = set.gid {
+			inner.gid = gid;
+		}
+		if let Some(ctime) = set.ctime {
+			inner.ctime = ctime;
+		}
+		if let Some(mtime) = set.mtime {
+			inner.mtime = mtime;
+		}
+		if let Some(atime) = set.atime {
+			inner.atime = atime;
+		}
+		Ok(())
+	}
+
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<(u64, bool)> {
+		let inner = self.0.lock();
+		// Get content
+		let content = match &inner.content {
+			DefaultNodeContent::Regular(content) => content,
+			DefaultNodeContent::Directory(_) => return Err(errno!(EISDIR)),
+			_ => return Err(errno!(EINVAL)),
+		};
+		// Validation
+		if off > content.len() as u64 {
+			return Err(errno!(EINVAL));
+		}
+		// Copy
+		let off = off as usize;
+		let len = min(buf.len(), content.len() - off);
+		buf[..len].copy_from_slice(&content[off..(off + len)]);
+		let eof = (off + len) >= content.len();
+		Ok((len as _, eof))
+	}
+
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+		buf: &[u8],
+	) -> EResult<u64> {
+		let mut inner = self.0.lock();
+		// Get content
+		let content = match &mut inner.content {
+			DefaultNodeContent::Regular(content) => content,
+			DefaultNodeContent::Directory(_) => return Err(errno!(EISDIR)),
+			_ => return Err(errno!(EINVAL)),
+		};
+		// Validation
+		if off > content.len() as u64 {
+			return Err(errno!(EINVAL));
+		}
+		let off = off as usize;
+		// Allocation
+		let new_len = max(content.len(), off + buf.len());
+		content.resize(new_len, 0)?;
+		// Copy
+		content[off..(off + buf.len())].copy_from_slice(&buf);
+		Ok(buf.len() as _)
+	}
+
+	fn truncate_content(&self, _inode: INode, _fs: &dyn Filesystem, size: u64) -> EResult<()> {
+		let mut inner = self.0.lock();
+		let content = match &mut inner.content {
+			DefaultNodeContent::Regular(content) => content,
+			DefaultNodeContent::Directory(_) => return Err(errno!(EISDIR)),
+			_ => return Err(errno!(EINVAL)),
+		};
+		content.truncate(size as _);
+		Ok(())
+	}
+
+	fn entry_by_name<'n>(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		name: &'n [u8],
+	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+		let inner = self.0.lock();
+		let DefaultNodeContent::Directory(entries) = &inner.content else {
+			return Err(errno!(ENOTDIR));
+		};
+		Ok(entries
+			.binary_search_by(|ent| ent.name.as_ref().cmp(name))
+			.ok()
+			.map(|off| entries[off].try_clone().map(|ent| (ent, off as _)))
+			.transpose()?)
+	}
+
+	fn next_entry(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		off: u64,
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let inner = self.0.lock();
+		let DefaultNodeContent::Directory(entries) = &inner.content else {
+			return Err(errno!(ENOTDIR));
+		};
+		// Convert offset to `usize`
+		let res = off
+			.try_into()
+			.ok()
+			// Get entry
+			.and_then(|off: usize| entries.get(off))
+			.map(|ent| ent.try_clone())
+			.transpose()
+			// Add offset
+			.map(|ent| ent.map(|entry| (entry, off + 1)));
+		Ok(res?)
+	}
+
+	fn add_file(
+		&self,
+		parent_inode: INode,
+		fs: &dyn Filesystem,
+		name: &[u8],
+		stat: Stat,
+	) -> EResult<(Stat, INode)> {
+		if fs.is_readonly() {
+			return Err(errno!(EROFS));
+		}
+		let fs = downcast_fs(fs);
+		let mut nodes = fs.nodes.lock();
+		// Allocate a new slot. In case of later failure, this does not need rollback as the unused
+		// slot is reused at the next call
+		let (inode, slot) = nodes.get_free_slot()?;
+		// Get parent entries
+		let mut parent_inner = self.0.lock();
+		let DefaultNodeContent::Directory(parent_entries) = &mut parent_inner.content else {
+			return Err(errno!(ENOTDIR));
+		};
+		// Prepare node to be added
+		let content = match stat.file_type {
+			FileType::Regular => DefaultNodeContent::Regular(Vec::new()),
+			FileType::Directory => DefaultNodeContent::Directory(vec![
+				DirEntry {
+					inode,
+					entry_type: FileType::Directory,
+					name: Cow::Borrowed(b"."),
+				},
+				DirEntry {
+					inode: parent_inode,
+					entry_type: FileType::Directory,
+					name: Cow::Borrowed(b".."),
+				},
+			]?),
+			FileType::Link => DefaultNodeContent::Link(Vec::new()),
+			FileType::Fifo => DefaultNodeContent::Fifo,
+			FileType::Socket => DefaultNodeContent::Socket,
+			FileType::BlockDevice => DefaultNodeContent::BlockDevice {
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			},
+			FileType::CharDevice => DefaultNodeContent::CharDevice {
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			},
+		};
+		let mut nlink = 1;
+		if stat.file_type == FileType::Directory {
+			// Count the `.` entry
+			nlink += 2;
+		}
+		let inner = DefaultNodeInner {
+			mode: stat.mode,
+			nlink,
+			uid: stat.uid,
+			gid: stat.gid,
+			ctime: stat.ctime,
+			mtime: stat.mtime,
+			atime: stat.atime,
+			content,
+		};
+		let stat = inner.as_stat();
+		let node = Box::new(DefaultNode(Mutex::new(inner)))?;
+		// Add entry to parent
+		let ent = DirEntry {
+			inode,
+			entry_type: stat.file_type,
+			name: Cow::Owned(name.try_into()?),
+		};
+		let res = parent_entries.binary_search_by(|ent| ent.name.as_ref().cmp(name));
+		let Err(ent_index) = res else {
+			return Err(errno!(EEXIST));
+		};
+		parent_entries.insert(ent_index, ent)?;
+		// Insert node
+		*slot = Some(node);
+		// Update links count
+		if stat.file_type == FileType::Directory {
+			parent_inner.nlink += 1;
+		}
+		Ok((stat, inode))
+	}
+
+	fn add_link(
+		&self,
+		_parent_inode: INode,
+		fs: &dyn Filesystem,
+		name: &[u8],
+		inode: INode,
+	) -> EResult<()> {
+		if fs.is_readonly() {
+			return Err(errno!(EROFS));
+		}
+		// Get node
+		let node = {
+			// Get a detached version to make sure `get_stat` does not cause a deadlock
+			let fs = downcast_fs(fs);
+			let mut nodes = fs.nodes.lock();
+			nodes.get_node_mut(inode)?.detached()?
+		};
+		let stat = node.get_stat(inode, fs)?;
+		let mut parent_inner = self.0.lock();
+		// Get parent entries
+		let DefaultNodeContent::Directory(parent_entries) = &mut parent_inner.content else {
+			return Err(errno!(ENOTDIR));
+		};
+		// Insert the new entry
+		let ent = DirEntry {
+			inode,
+			entry_type: stat.file_type,
+			name: Cow::Owned(name.try_into()?),
+		};
+		let res = parent_entries.binary_search_by(|ent| ent.name.as_ref().cmp(name));
+		let Err(ent_index) = res else {
+			return Err(errno!(EEXIST));
+		};
+		parent_entries.insert(ent_index, ent)?;
+		// Update links count
+		node.set_stat(
+			inode,
+			fs,
+			StatSet {
+				nlink: Some(stat.nlink + 1),
+				..Default::default()
+			},
+		)?;
+		Ok(())
+	}
+
+	fn remove_file(
+		&self,
+		_parent_inode: INode,
+		fs: &dyn Filesystem,
+		name: &[u8],
+	) -> EResult<(u16, INode)> {
+		if fs.is_readonly() {
+			return Err(errno!(EROFS));
+		}
+		let fs = downcast_fs(fs);
+		let mut parent_inner = self.0.lock();
+		// Get parent entries
+		let DefaultNodeContent::Directory(parent_entries) = &mut parent_inner.content else {
+			return Err(errno!(ENOTDIR));
+		};
+		// Get entry to remove
+		let ent_index = parent_entries
+			.binary_search_by(|ent| ent.name.as_ref().cmp(name))
+			.map_err(|_| errno!(ENOENT))?;
+		let ent = &parent_entries[ent_index];
+		let inode = ent.inode;
+		// Get the entry's node
+		let node = {
+			// Get a detached version to make sure `get_stat` does not cause a deadlock
+			let nodes = fs.nodes.lock();
+			nodes.get_node(inode)?.detached()?
+		};
+		let stat = node.get_stat(inode, fs)?;
+		// If the node is a non-empty directory, error
+		if !node.is_empty_directory(inode, fs)? {
+			return Err(errno!(ENOTEMPTY));
+		}
+		// Remove entry
+		parent_entries.remove(ent_index);
+		// If the node is a directory, decrement the number of hard links to the parent
+		// (because of the entry `..` in the removed node)
+		if stat.file_type == FileType::Directory {
+			parent_inner.nlink = parent_inner.nlink.saturating_sub(1);
+		}
+		let links = stat.nlink.saturating_sub(1);
+		node.set_stat(
+			inode,
+			fs,
+			StatSet {
+				nlink: Some(links),
+				..Default::default()
+			},
+		)?;
+		// If no link is left, remove the node
+		if links == 0 {
+			let mut nodes = fs.nodes.lock();
+			nodes.remove_node(inode);
+		}
+		Ok((links, inode))
 	}
 }
 
@@ -266,43 +461,77 @@ impl KernFSNode for DefaultNode {
 #[derive(Debug)]
 pub struct DefaultNodeOps;
 
+// This implementation only forwards to the actual node.
 impl NodeOps for DefaultNodeOps {
+	fn get_stat(&self, inode: INode, fs: &dyn Filesystem) -> EResult<Stat> {
+		let fs = downcast_fs(fs);
+		let nodes = fs.nodes.lock();
+		let node = nodes.get_node(inode)?;
+		node.get_stat(inode, fs)
+	}
+
+	fn set_stat(&self, inode: INode, fs: &dyn Filesystem, set: StatSet) -> EResult<()> {
+		let fs = downcast_fs(fs);
+		let nodes = fs.nodes.lock();
+		let node = nodes.get_node(inode)?;
+		node.set_stat(inode, fs, set)
+	}
+
 	fn read_content(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &mut [u8],
-	) -> EResult<u64> {
-		todo!()
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &mut [u8],
+	) -> EResult<(u64, bool)> {
+		let fs = downcast_fs(fs);
+		let nodes = fs.nodes.lock();
+		let node = nodes.get_node(inode)?;
+		node.read_content(inode, fs, off, buf)
 	}
 
 	fn write_content(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
+		buf: &[u8],
 	) -> EResult<u64> {
-		todo!()
+		let fs = downcast_fs(fs);
+		let nodes = fs.nodes.lock();
+		let node = nodes.get_node(inode)?;
+		node.write_content(inode, fs, off, buf)
+	}
+
+	fn truncate_content(&self, inode: INode, fs: &dyn Filesystem, size: u64) -> EResult<()> {
+		let fs = downcast_fs(fs);
+		let nodes = fs.nodes.lock();
+		let node = nodes.get_node(inode)?;
+		node.truncate_content(inode, fs, size)
 	}
 
 	fn entry_by_name<'n>(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_name: &'n [u8],
+		inode: INode,
+		fs: &dyn Filesystem,
+		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		todo!()
+		let fs = downcast_fs(fs);
+		let nodes = fs.nodes.lock();
+		let node = nodes.get_node(inode)?;
+		node.entry_by_name(inode, fs, name)
 	}
 
 	fn next_entry(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
+		inode: INode,
+		fs: &dyn Filesystem,
+		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		todo!()
+		let fs = downcast_fs(fs);
+		let nodes = fs.nodes.lock();
+		let node = nodes.get_node(inode)?;
+		node.next_entry(inode, fs, off)
 	}
 }
 
@@ -341,7 +570,11 @@ impl<'b> Write for FormatContentWriter<'b> {
 }
 
 /// Implementation of [`format_content`].
-pub fn format_content_args(off: u64, buf: &mut [u8], args: fmt::Arguments<'_>) -> EResult<u64> {
+pub fn format_content_args(
+	off: u64,
+	buf: &mut [u8],
+	args: fmt::Arguments<'_>,
+) -> EResult<(u64, bool)> {
 	let mut writer = FormatContentWriter {
 		off,
 		buf,
@@ -372,8 +605,12 @@ macro_rules! format_content {
 pub struct StaticLink<const TARGET: &'static [u8]>;
 
 impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
-	fn get_file_type(&self) -> FileType {
-		FileType::Link
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		Ok(Stat {
+			file_type: FileType::Link,
+			mode: 0o777,
+			..Default::default()
+		})
 	}
 
 	fn read_content(
@@ -382,36 +619,8 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<(u64, bool)> {
 		format_content!(off, buf, "{}", DisplayableStr(TARGET))
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EACCES))
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		Err(errno!(ENOTDIR))
-	}
-
-	fn next_entry(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		Err(errno!(ENOTDIR))
 	}
 }
 
@@ -428,34 +637,18 @@ pub type StaticDirEntries = &'static [(&'static [u8], &'static dyn NodeOps)];
 pub struct StaticDir(pub StaticDirEntries);
 
 impl NodeOps for StaticDir {
-	fn get_file_type(&self) -> FileType {
-		FileType::Directory
-	}
-
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &mut [u8],
-	) -> EResult<u64> {
-		Err(errno!(EISDIR))
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EISDIR))
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		Ok(Stat {
+			file_type: FileType::Directory,
+			mode: 0o555,
+			..Default::default()
+		})
 	}
 
 	fn entry_by_name<'n>(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		inode: INode,
+		fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, u64)>> {
 		let Ok(index) = self.0.binary_search_by(|(n, _)| (*n).cmp(name)) else {
@@ -465,7 +658,7 @@ impl NodeOps for StaticDir {
 		Ok(Some((
 			DirEntry {
 				inode: 0,
-				entry_type: node.get_file_type(),
+				entry_type: node.get_stat(inode, fs)?.file_type,
 				name: Cow::Borrowed(name),
 			},
 			index as _,
@@ -474,8 +667,8 @@ impl NodeOps for StaticDir {
 
 	fn next_entry(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		inode: INode,
+		fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
@@ -485,7 +678,7 @@ impl NodeOps for StaticDir {
 		Ok(Some((
 			DirEntry {
 				inode: 0,
-				entry_type: node.get_file_type(),
+				entry_type: node.get_stat(inode, fs)?.file_type,
 				name: Cow::Borrowed(name),
 			},
 			(off + 1) as _,
@@ -499,23 +692,33 @@ mod test {
 	fn content_chunks() {
 		// Simple test
 		let mut out = [0u8; 9];
-		let len = format_content!(0, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
+		let (len, eof) = format_content!(0, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"abcdefghi");
 		assert_eq!(len, 9);
+		assert_eq!(eof, true);
 		// End
 		let mut out = [0u8; 9];
-		let len = format_content!(9, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
+		let (len, eof) = format_content!(9, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out, [0u8; 9]);
 		assert_eq!(len, 0);
+		assert_eq!(eof, true);
 		// Start from second chunk
 		let mut out = [0u8; 9];
-		let len = format_content!(3, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
+		let (len, eof) = format_content!(3, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"defghi\0\0\0");
 		assert_eq!(len, 6);
+		assert_eq!(eof, true);
 		// Start from middle of chunk
 		let mut out = [0u8; 9];
-		let len = format_content!(4, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
+		let (len, eof) = format_content!(4, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"efghi\0\0\0\0");
 		assert_eq!(len, 5);
+		assert_eq!(eof, true);
+		// Stop before end
+		let mut out = [0u8; 5];
+		let (len, eof) = format_content!(0, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
+		assert_eq!(out.as_slice(), b"abcde");
+		assert_eq!(len, 5);
+		assert_eq!(eof, false);
 	}
 }

@@ -64,12 +64,11 @@ pub fn utimensat(
 		return Err(errno!(ENOENT));
 	};
 	let mut file = file_mutex.lock();
-
+	// Update timestamps
 	// TODO clean
-	file.atime = atime.to_nano() / 1000000000;
-	file.mtime = mtime.to_nano() / 1000000000;
+	file.stat.atime = atime.to_nano() / 1000000000;
+	file.stat.mtime = mtime.to_nano() / 1000000000;
 	// TODO sync only when required
 	file.sync()?;
-
 	Ok(0)
 }

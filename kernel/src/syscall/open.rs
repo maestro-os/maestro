@@ -76,9 +76,9 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mut
 			)?
 		}
 	};
-	// Get file type. There cannot be a race condition since the type of a file cannot be
+	// Get file type. There cannot be a race condition since the type of file cannot be
 	// changed
-	let file_type = file.lock().get_type();
+	let file_type = file.lock().stat.file_type;
 	// Cannot open symbolic links themselves
 	if file_type == FileType::Link {
 		return Err(errno!(ELOOP));
@@ -108,12 +108,12 @@ pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile)
 	}
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error
-	if flags & open_file::O_DIRECTORY != 0 && file.get_type() != FileType::Directory {
+	if flags & open_file::O_DIRECTORY != 0 && file.stat.file_type != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	// Truncate the file if necessary
 	if flags & open_file::O_TRUNC != 0 {
-		file.set_size(0);
+		file.truncate(0)?;
 	}
 
 	Ok(())

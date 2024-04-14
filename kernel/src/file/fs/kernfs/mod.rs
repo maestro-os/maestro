@@ -26,16 +26,14 @@ pub mod node;
 
 use crate::{
 	file::{
-		fs::{kernfs::node::DefaultNode, Filesystem, Statfs},
-		DirEntry, File, FileLocation, FileType, INode,
+		fs::{Filesystem, NodeOps, Statfs},
+		INode,
 	},
 	memory,
 };
 use core::cmp::{max, min};
-use node::KernFSNode;
-use utils::{
-	boxed::Box, collections::vec::Vec, errno, errno::EResult, lock::Mutex, ptr::cow::Cow, vec,
-};
+use node::OwnedNode;
+use utils::{boxed::Box, collections::vec::Vec, errno, errno::EResult, lock::Mutex, vec};
 
 /// The index of the root inode.
 pub const ROOT_INODE: INode = 1;
@@ -43,38 +41,18 @@ pub const ROOT_INODE: INode = 1;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
-/// Returns the file for the given `node` and `inode`.
-fn load_file_impl(inode: INode, node: &dyn KernFSNode) -> File {
-	let mut file = File::new(
-		node.get_uid(),
-		node.get_gid(),
-		node.get_file_type(),
-		node.get_mode(),
-	);
-	file.location = FileLocation::Filesystem {
-		mountpoint_id: 0, // dummy value to be replaced
-		inode,
-	};
-	file.set_hard_links_count(node.get_hard_links_count());
-	file.set_size(node.get_size());
-	file.ctime = node.get_ctime();
-	file.mtime = node.get_mtime();
-	file.atime = node.get_atime();
-	file
-}
-
 /// Storage of kernfs nodes.
 ///
 /// Each element of the inner vector is a slot to store a node. If a slot is `None`, it means it is
 /// free to be used.
 #[derive(Debug)]
-struct NodesStorage(Vec<Option<Box<dyn KernFSNode>>>);
+struct NodesStorage(Vec<Option<Box<dyn OwnedNode>>>);
 
 impl NodesStorage {
 	/// Returns an immutable reference to the node with inode `inode`.
 	///
 	/// If the node does not exist, the function returns an error.
-	pub fn get_node(&self, inode: INode) -> EResult<&Box<dyn KernFSNode>> {
+	pub fn get_node(&self, inode: INode) -> EResult<&Box<dyn OwnedNode>> {
 		self.0
 			.get(inode as usize - 1)
 			.ok_or_else(|| errno!(ENOENT))?
@@ -85,7 +63,7 @@ impl NodesStorage {
 	/// Returns a mutable reference to the node with inode `inode`.
 	///
 	/// If the node does not exist, the function returns an error.
-	pub fn get_node_mut(&mut self, inode: INode) -> EResult<&mut Box<dyn KernFSNode>> {
+	pub fn get_node_mut(&mut self, inode: INode) -> EResult<&mut Box<dyn OwnedNode>> {
 		self.0
 			.get_mut(inode as usize - 1)
 			.ok_or_else(|| errno!(ENOENT))?
@@ -102,7 +80,7 @@ impl NodesStorage {
 		&mut self,
 		a: INode,
 		b: INode,
-	) -> EResult<(&mut Box<dyn KernFSNode>, &mut Box<dyn KernFSNode>)> {
+	) -> EResult<(&mut Box<dyn OwnedNode>, &mut Box<dyn OwnedNode>)> {
 		let a = a as usize - 1;
 		let b = b as usize - 1;
 		// Validation
@@ -127,22 +105,24 @@ impl NodesStorage {
 		}
 	}
 
-	/// Adds the given node `node` to the filesystem.
+	/// Returns a free slot for a new node.
 	///
-	/// The function returns the allocated inode.
-	pub fn add_node(&mut self, node: Box<dyn KernFSNode>) -> EResult<INode> {
+	/// If no slot is available, the function allocates a new one.
+	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<Box<dyn OwnedNode>>)> {
 		let slot = self.0.iter_mut().enumerate().find(|(_, s)| s.is_some());
-		let inode = if let Some((inode, slot)) = slot {
+		let (index, slot) = match slot {
 			// Use an existing slot
-			*slot = Some(node);
-			inode
-		} else {
+			Some((i, slot)) => (i, slot),
 			// Allocate a new node slot
-			let inode = self.0.len();
-			self.0.push(Some(node))?;
-			inode
+			None => {
+				let i = self.0.len();
+				self.0.push(None)?;
+				let slot = &mut self.0[i];
+				(i, slot)
+			}
 		};
-		Ok((inode + 1) as _)
+		let inode = index as u64 + 1;
+		Ok((inode, slot))
 	}
 
 	/// Removes the node with inode `inode`.
@@ -152,7 +132,7 @@ impl NodesStorage {
 	/// so results in a memory leak.
 	///
 	/// If the node doesn't exist, the function does nothing.
-	pub fn remove_node(&mut self, inode: INode) -> Option<Box<dyn KernFSNode>> {
+	pub fn remove_node(&mut self, inode: INode) -> Option<Box<dyn OwnedNode>> {
 		self.0
 			.get_mut(inode as usize - 1)
 			.map(Option::take)
@@ -164,68 +144,32 @@ impl NodesStorage {
 ///
 /// `READ_ONLY` tells whether the filesystem is read-only.
 #[derive(Debug)]
-pub struct KernFS<const READ_ONLY: bool>(Mutex<NodesStorage>);
+pub struct KernFS {
+	/// Tells whether the filesystem is read-only.
+	read_only: bool,
+	/// Nodes storage.
+	nodes: Mutex<NodesStorage>,
+}
 
-impl<const READ_ONLY: bool> KernFS<READ_ONLY> {
+impl KernFS {
 	/// Creates a new instance.
 	///
 	/// `root` is the root node of the filesystem.
-	pub fn new(root: Box<dyn KernFSNode>) -> EResult<Self> {
-		// TODO self.insert_base_entries(ROOT_INODE, root.as_mut(), None)?;
-		Ok(Self(Mutex::new(NodesStorage(vec![Some(root)]?))))
-	}
-
-	/// If the `node` is a directory, the function inserts entries `.` and `..` if not present,
-	/// updating the number of hard links at the same time. The function also increments the hard
-	/// links count on `parent` if necessary.
-	///
-	/// If `parent` is `None`, `node` is considered being its own parent.
-	///
-	/// `inode` is the inode of `node`.
-	///
-	/// On failure, `node` is left altered midway, but not `parent`.
-	fn insert_base_entries(
-		&self,
-		inode: INode,
-		node: &mut dyn KernFSNode,
-		parent: Option<&mut dyn KernFSNode>,
-	) -> EResult<()> {
-		if node.get_file_type() != FileType::Directory {
-			return Ok(());
-		}
-		let mut new_links = 0;
-		if node.entry_by_name(inode, self, b".")?.is_none() {
-			node.add_entry(DirEntry {
-				inode: ROOT_INODE,
-				entry_type: FileType::Directory,
-				name: Cow::Borrowed(b"."),
-			})?;
-			new_links += 1;
-		}
-		if node.entry_by_name(inode, self, b"..")?.is_none() {
-			node.add_entry(DirEntry {
-				inode: ROOT_INODE,
-				entry_type: FileType::Directory,
-				name: Cow::Borrowed(b".."),
-			})?;
-			if let Some(parent) = parent {
-				parent.set_hard_links_count(parent.get_hard_links_count() + 1);
-			} else {
-				new_links += 1;
-			}
-		}
-		node.set_hard_links_count(node.get_hard_links_count() + new_links);
-		Ok(())
+	pub fn new(read_only: bool, root: Box<dyn OwnedNode>) -> EResult<Self> {
+		Ok(Self {
+			read_only,
+			nodes: Mutex::new(NodesStorage(vec![Some(root)]?)),
+		})
 	}
 }
 
-impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
+impl Filesystem for KernFS {
 	fn get_name(&self) -> &[u8] {
-		&[]
+		b"kernfs"
 	}
 
 	fn is_readonly(&self) -> bool {
-		READ_ONLY
+		self.read_only
 	}
 
 	fn use_cache(&self) -> bool {
@@ -237,7 +181,7 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
-		let nodes = self.0.lock();
+		let nodes = self.nodes.lock();
 		Ok(Statfs {
 			f_type: 0,
 			f_bsize: memory::PAGE_SIZE as _,
@@ -253,126 +197,9 @@ impl<const READ_ONLY: bool> Filesystem for KernFS<READ_ONLY> {
 		})
 	}
 
-	fn load_file(&self, inode: INode) -> EResult<File> {
-		let nodes = self.0.lock();
+	fn load_file(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
+		let nodes = self.nodes.lock();
 		let node = nodes.get_node(inode)?;
-		Ok(load_file_impl(inode, node.as_ref()))
-	}
-
-	fn add_file(&self, parent_inode: INode, name: &[u8], file: File) -> EResult<File> {
-		if READ_ONLY {
-			return Err(errno!(EROFS));
-		}
-		let mut node = DefaultNode::new(file.uid, file.gid, file.file_type, file.mode);
-		node.set_atime(file.atime);
-		node.set_ctime(file.ctime);
-		node.set_mtime(file.mtime);
-		let mut nodes = self.0.lock();
-		// Insert node and get a reference to it along with its parent
-		let inode = nodes.add_node(Box::new(node)?)?;
-		let (parent, node) = match nodes.get_node_pair_mut(parent_inode, inode) {
-			Ok(n) => n,
-			// On error, rollback the previous insertion
-			Err(e) => {
-				nodes.remove_node(inode);
-				return Err(e);
-			}
-		};
-		// Add base entries
-		if let Err(e) = self.insert_base_entries(inode, node.as_mut(), Some(parent.as_mut())) {
-			// Rollback node insertion
-			nodes.remove_node(inode);
-			return Err(e);
-		}
-		// Add entry to parent
-		let res = parent.add_entry(DirEntry {
-			inode,
-			entry_type: node.get_file_type(),
-			name: Cow::Borrowed(name),
-		});
-		if let Err(e) = res {
-			// Rollback hard link from the `..` entry
-			if node.get_file_type() == FileType::Directory {
-				let cnt = node.get_hard_links_count().saturating_sub(1);
-				node.set_hard_links_count(cnt);
-			}
-			// Rollback node insertion
-			nodes.remove_node(inode);
-			return Err(e);
-		}
-		Ok(load_file_impl(inode, node.as_ref()))
-	}
-
-	fn add_link(&self, parent_inode: INode, name: &[u8], inode: INode) -> EResult<()> {
-		if READ_ONLY {
-			return Err(errno!(EROFS));
-		}
-		let mut nodes = self.0.lock();
-		let (parent, node) = nodes.get_node_pair_mut(parent_inode, inode)?;
-		if parent.get_file_type() == FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// Insert the new entry
-		parent.add_entry(DirEntry {
-			inode,
-			entry_type: node.get_file_type(),
-			name: Cow::Borrowed(name),
-		})?;
-		// Update links count
-		let links = node.get_hard_links_count() + 1;
-		node.set_hard_links_count(links);
-		Ok(())
-	}
-
-	fn update_inode(&self, file: &File) -> EResult<()> {
-		if READ_ONLY {
-			return Err(errno!(EROFS));
-		}
-		let mut nodes = self.0.lock();
-		let node = nodes.get_node_mut(file.location.get_inode())?;
-		node.set_uid(file.get_uid());
-		node.set_gid(file.get_gid());
-		node.set_mode(file.get_mode());
-		node.set_ctime(file.ctime);
-		node.set_mtime(file.mtime);
-		node.set_atime(file.atime);
-		Ok(())
-	}
-
-	fn remove_file(&self, parent_inode: INode, name: &[u8]) -> EResult<(u16, INode)> {
-		if READ_ONLY {
-			return Err(errno!(EROFS));
-		}
-		let mut nodes = self.0.lock();
-		// Get directory
-		let parent = nodes.get_node_mut(parent_inode)?;
-		if parent.get_file_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// Get node to remove
-		let (inode, entry_off) = parent
-			.entry_by_name(parent_inode, self, name)?
-			.ok_or_else(|| errno!(ENOENT))?;
-		let inode = inode.inode;
-		let (parent, node) = nodes.get_node_pair_mut(parent_inode, inode)?;
-		// If the node is a non-empty directory, error
-		if !node.is_directory_empty(inode, self)? {
-			return Err(errno!(ENOTEMPTY));
-		}
-		// Remove directory entry
-		parent.remove_entry(entry_off);
-		// If the node is a directory, decrement the number of hard links to the parent
-		// (because of the entry `..` in the removed node)
-		if node.get_file_type() == FileType::Directory {
-			let links = parent.get_hard_links_count().saturating_sub(1);
-			parent.set_hard_links_count(links);
-		}
-		// If no link is left, remove the node
-		let links = node.get_hard_links_count().saturating_sub(1);
-		node.set_hard_links_count(links);
-		if node.get_hard_links_count() == 0 {
-			nodes.remove_node(inode);
-		}
-		Ok((links, inode))
+		Ok(node.detached()?)
 	}
 }

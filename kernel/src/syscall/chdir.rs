@@ -47,7 +47,7 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 		let dir = dir_mutex.lock();
 
 		// Check for errors
-		if dir.get_type() != FileType::Directory {
+		if dir.stat.file_type != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		if !rs.access_profile.can_list_directory(&dir) {

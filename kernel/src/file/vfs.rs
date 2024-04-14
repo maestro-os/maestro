@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The VFS (Virtual FileSystem) is a entity which aggregates every mounted
+//! The VFS (Virtual FileSystem) is an entity which aggregates every mounted
 //! filesystems into one.
 //!
 //! To manipulate files, the VFS should be used instead of
@@ -201,7 +201,7 @@ fn resolve_path_impl<'p>(
 			// Ignore
 			_ => continue,
 		};
-		let next_file = match file.get_type() {
+		let next_file = match file.stat.file_type {
 			FileType::Directory => {
 				// Check permission
 				if !settings.access_profile.can_search_directory(&file) {
@@ -291,19 +291,6 @@ pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResul
 	resolve_path_impl(path, settings, 0)
 }
 
-/// Updates the location of the file `file` according to the given mountpoint
-/// `mountpoint`.
-///
-/// If the file in not located on a filesystem, the function does nothing.
-fn update_location(file: &mut File, mp: &MountPoint) {
-	if let FileLocation::Filesystem {
-		mountpoint_id, ..
-	} = &mut file.location
-	{
-		*mountpoint_id = mp.get_id();
-	}
-}
-
 /// Like [`get_file_from_path`], but returns `None` is the file does not exist.
 pub fn get_file_from_path_opt(
 	path: &Path,
@@ -352,7 +339,7 @@ pub fn create_file(
 	perms: Mode,
 ) -> EResult<Arc<Mutex<File>>> {
 	// Validation
-	if parent.get_type() != FileType::Directory {
+	if parent.stat.file_type != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	if !ap.can_write_directory(parent) {
@@ -360,10 +347,10 @@ pub fn create_file(
 	}
 	let parent_inode = parent.location.get_inode();
 	let uid = ap.get_euid();
-	let gid = if parent.get_mode() & perm::S_ISGID != 0 {
+	let gid = if parent.stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
 		// parent directory
-		parent.get_gid()
+		parent.stat.gid
 	} else {
 		ap.get_egid()
 	};
@@ -399,13 +386,13 @@ pub fn create_link(
 	ap: &AccessProfile,
 ) -> EResult<()> {
 	// Validation
-	if parent.get_type() != FileType::Directory {
+	if parent.stat.file_type != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	if target.get_type() == FileType::Directory {
+	if target.stat.file_type == FileType::Directory {
 		return Err(errno!(EPERM));
 	}
-	if target.get_hard_links_count() >= limits::LINK_MAX as u16 {
+	if target.stat.nlink >= limits::LINK_MAX as u16 {
 		return Err(errno!(EMLINK));
 	}
 	if !ap.can_write_directory(parent) {
@@ -422,7 +409,7 @@ pub fn create_link(
 			target.location.get_inode(),
 		)
 	})?;
-	target.set_hard_links_count(target.get_hard_links_count() + 1);
+	target.stat.nlink += 1;
 	Ok(())
 }
 
@@ -477,8 +464,8 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 		// Get the file
 		let mut file = fs.load_file(parent.location.get_inode())?;
 		// Check permission
-		let has_sticky_bit = parent.mode & S_ISVTX != 0;
-		if has_sticky_bit && ap.get_euid() != file.get_uid() && ap.get_euid() != parent.get_uid() {
+		let has_sticky_bit = parent.stat.mode & S_ISVTX != 0;
+		if has_sticky_bit && ap.get_euid() != file.stat.uid && ap.get_euid() != parent.stat.uid {
 			return Err(errno!(EACCES));
 		}
 		// If the file to remove is a mountpoint, error
@@ -486,8 +473,8 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 			return Err(errno!(EBUSY));
 		}
 		// Defer remove if the file is in use
-		let last_link = file.get_hard_links_count() == 1;
-		let symlink = file.get_type() == FileType::Link;
+		let last_link = file.stat.nlink == 1;
+		let symlink = file.stat.file_type == FileType::Link;
 		let defer = last_link && !symlink && OpenFile::is_open(&file.location);
 		if defer {
 			file.defer_remove(DeferredRemove {

@@ -40,7 +40,7 @@ pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
 
 	let file_mutex = vfs::get_file_from_path(path, &rs)?;
 	let mut file = file_mutex.lock();
-	file.set_size(length as _);
+	file.truncate(length as _);
 
 	Ok(0)
 }

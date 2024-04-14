@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The statx system call returns the extended status of a file.
+//! The `statx` system call returns the extended status of a file.
 
 use super::util::at;
 use crate::{
@@ -33,7 +33,7 @@ use crate::{
 };
 use core::ffi::{c_int, c_uint};
 use macros::syscall;
-use utils::{errno, errno::Errno, io::IO};
+use utils::{errno, errno::Errno};
 
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]
@@ -167,20 +167,20 @@ pub fn statx(
 		stx_mask: !0,      // TODO
 		stx_blksize: 512,  // TODO
 		stx_attributes: 0, // TODO
-		stx_nlink: file.get_hard_links_count() as _,
-		stx_uid: file.get_uid() as _,
-		stx_gid: file.get_gid() as _,
-		stx_mode: file.get_mode() as _,
+		stx_nlink: file.stat.nlink as _,
+		stx_uid: file.stat.uid as _,
+		stx_gid: file.stat.gid as _,
+		stx_mode: file.stat.mode as _,
 
 		__padding0: 0,
 
 		stx_ino: inode,
-		stx_size: file.get_size(),
-		stx_blocks: file.get_blocks_count(),
+		stx_size: file.stat.size,
+		stx_blocks: file.stat.blocks,
 		stx_attributes_mask: 0, // TODO
 
 		stx_atime: StatxTimestamp {
-			tv_sec: file.atime as _,
+			tv_sec: file.stat.atime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
@@ -190,18 +190,18 @@ pub fn statx(
 			__reserved: 0,
 		},
 		stx_ctime: StatxTimestamp {
-			tv_sec: file.ctime as _,
+			tv_sec: file.stat.ctime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
 		stx_mtime: StatxTimestamp {
-			tv_sec: file.mtime as _,
+			tv_sec: file.stat.mtime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
 
-		stx_rdev_major: file.dev_major,
-		stx_rdev_minor: file.dev_minor,
+		stx_rdev_major: file.stat.dev_major,
+		stx_rdev_minor: file.stat.dev_minor,
 		stx_dev_major,
 		stx_dev_minor,
 

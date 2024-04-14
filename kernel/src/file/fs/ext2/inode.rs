@@ -741,7 +741,7 @@ impl Ext2INode {
 		buff: &mut [u8],
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> EResult<u64> {
+	) -> EResult<(u64, bool)> {
 		let size = self.get_size(superblock);
 		if off > size {
 			return Err(errno!(EINVAL));
@@ -771,7 +771,8 @@ impl Ext2INode {
 
 			i += len;
 		}
-		Ok(min(i, max))
+		let eof = off + i >= size;
+		Ok((i, eof))
 	}
 
 	/// Writes the content of the inode.
@@ -1315,14 +1316,17 @@ impl Ext2INode {
 
 	/// Returns the device major and minor numbers associated with the device.
 	///
-	/// If the file is not a device file, the behaviour is undefined.
+	/// If the file is not a device file, the function returns `(0, 0)`.
 	pub fn get_device(&self) -> (u8, u8) {
-		debug_assert!(
-			self.get_type() == FileType::BlockDevice || self.get_type() == FileType::CharDevice
-		);
-
-		let dev = self.direct_block_ptrs[0];
-		(((dev >> 8) & 0xff) as u8, (dev & 0xff) as u8)
+		if matches!(
+			self.get_type(),
+			FileType::BlockDevice | FileType::CharDevice
+		) {
+			let dev = self.direct_block_ptrs[0];
+			(((dev >> 8) & 0xff) as u8, (dev & 0xff) as u8)
+		} else {
+			(0, 0)
+		}
 	}
 
 	/// Sets the device major and minor numbers associated with the device.
@@ -1331,13 +1335,14 @@ impl Ext2INode {
 	/// - `major` is the major number.
 	/// - `minor` is the minor number.
 	///
-	/// If the file is not a device file, the behaviour is undefined.
+	/// If the file is not a device file, the function does nothing.
 	pub fn set_device(&mut self, major: u8, minor: u8) {
-		debug_assert!(
-			self.get_type() == FileType::BlockDevice || self.get_type() == FileType::CharDevice
-		);
-
-		self.direct_block_ptrs[0] = ((major as u32) << 8) | (minor as u32);
+		if matches!(
+			self.get_type(),
+			FileType::BlockDevice | FileType::CharDevice
+		) {
+			self.direct_block_ptrs[0] = ((major as u32) << 8) | (minor as u32);
+		}
 	}
 
 	/// Writes the inode on the device.

@@ -41,7 +41,7 @@ use crate::{
 	device::{DeviceID, DeviceType},
 	file::{
 		buffer::{pipe::PipeBuffer, socket::Socket},
-		fs::{Filesystem, NodeOps},
+		fs::{Filesystem, NodeOps, StatSet},
 		path::PathBuf,
 		perm::{Gid, Uid},
 	},
@@ -60,11 +60,11 @@ use utils::{
 	boxed::Box,
 	collections::string::String,
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::{arc::Arc, cow::Cow},
-	vec,
+	vec, TryClone,
 };
 
 /// A filesystem node ID.
@@ -143,7 +143,6 @@ impl FileType {
 			S_IFDIR => Some(Self::Directory),
 			S_IFCHR => Some(Self::CharDevice),
 			S_IFIFO => Some(Self::Fifo),
-
 			_ => None,
 		}
 	}
@@ -185,7 +184,6 @@ pub enum FileLocation {
 		/// The file's inode.
 		inode: INode,
 	},
-
 	/// The file is not located on a filesystem.
 	Virtual {
 		/// The ID of the file.
@@ -241,6 +239,99 @@ pub struct DirEntry<'name> {
 	pub name: Cow<'name, [u8]>,
 }
 
+impl<'name> TryClone for DirEntry<'name> {
+	fn try_clone(&self) -> AllocResult<Self> {
+		Ok(Self {
+			inode: self.inode,
+			entry_type: self.entry_type,
+			name: self.name.try_clone()?,
+		})
+	}
+}
+
+/// File status information.
+#[derive(Clone, Debug)]
+pub struct Stat {
+	/// The file's type.
+	///
+	/// This field **must not** be modified after the structure is initialized.
+	pub file_type: FileType,
+	/// The file's permissions.
+	pub mode: Mode,
+
+	/// The number of links to the file.
+	pub nlink: u16,
+
+	/// The file owner's user ID.
+	pub uid: Uid,
+	/// The file owner's group ID.
+	pub gid: Gid,
+
+	/// The size of the file in bytes.
+	pub size: u64,
+	/// The number of blocks occupied by the file.
+	pub blocks: u64,
+
+	/// If the file is a device file, this is the major number.
+	pub dev_major: u32,
+	/// If the file is a device file, this is the minor number.
+	pub dev_minor: u32,
+
+	/// Timestamp of the last modification of the metadata.
+	pub ctime: Timestamp,
+	/// Timestamp of the last modification of the file's content.
+	pub mtime: Timestamp,
+	/// Timestamp of the last access to the file.
+	pub atime: Timestamp,
+}
+
+impl Default for Stat {
+	fn default() -> Self {
+		Self {
+			file_type: FileType::Regular,
+			mode: 0o444,
+
+			nlink: 0,
+
+			uid: 0,
+			gid: 0,
+
+			size: 0,
+			blocks: 0,
+
+			dev_major: 0,
+			dev_minor: 0,
+
+			ctime: 0,
+			mtime: 0,
+			atime: 0,
+		}
+	}
+}
+
+impl Stat {
+	/// Sets the permissions of the file, updating `ctime` with the current timestamp.
+	pub fn set_permissions(&mut self, mode: Mode) {
+		self.mode = mode & 0o7777;
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
+		self.ctime = timestamp;
+	}
+
+	/// Sets the owner user ID, updating `ctime` with the current timestamp.
+	pub fn set_uid(&mut self, uid: Uid) {
+		self.uid = uid;
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
+		self.ctime = timestamp;
+	}
+
+	/// Sets the owner group ID, updating `ctime` with the current timestamp.
+	pub fn set_gid(&mut self, gid: Gid) {
+		self.gid = gid;
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
+		self.ctime = timestamp;
+	}
+}
+
 /// Information to remove a file when all its handles are closed.
 #[derive(Debug)]
 pub struct DeferredRemove {
@@ -273,38 +364,10 @@ enum IoSource<'a> {
 pub struct File {
 	/// The location the file is stored on.
 	pub location: FileLocation,
-	/// The number of hard links associated with the node.
-	hard_links_count: u16,
-
-	/// The number of blocks allocated on the disk for the file.
-	blocks_count: u64,
-	/// The size of the file in bytes.
-	size: u64,
-
-	/// The ID of the owner user.
-	uid: Uid,
-	/// The ID of the owner group.
-	gid: Gid,
-	/// The type of the file.
-	file_type: FileType,
-	/// The mode of the file.
-	mode: Mode,
-
-	/// Timestamp of the last modification of the metadata.
-	pub ctime: Timestamp,
-	/// Timestamp of the last modification of the file's content.
-	pub mtime: Timestamp,
-	/// Timestamp of the last access to the file.
-	pub atime: Timestamp,
-
-	/// If the file is a device file, this is the major number.
-	pub dev_major: u32,
-	/// If the file is a device file, this is the minor number.
-	pub dev_minor: u32,
-
+	/// The file's status. This is cache of the data on the filesystem.
+	pub stat: Stat,
 	/// Handle to perform operations on the node.
 	ops: Box<dyn NodeOps>,
-
 	/// If not `None`, the file will be removed when the last handle to it is closed.
 	///
 	/// This field contains all the information necessary to remove it.
@@ -315,42 +378,21 @@ impl File {
 	/// Creates a new instance.
 	///
 	/// Arguments:
-	/// - `uid` is the id of the owner user
-	/// - `gid` is the id of the owner group
-	/// - `file_type` is the type of the file
-	/// - `perms` is the permission of the file
+	/// - `location` is the file's location.
+	/// - `stat` is the file's status
 	/// - `ops` is the handle to perform operations on the file
-	///
-	/// The created file has the following data zeroed:
-	/// - File location
-	/// - Size and blocks count
-	/// - All timestamps
-	/// - Device major/minor
-	fn new(uid: Uid, gid: Gid, file_type: FileType, perms: Mode, ops: Box<dyn NodeOps>) -> Self {
+	fn new(location: FileLocation, stat: Stat, ops: Box<dyn NodeOps>) -> Self {
 		Self {
-			location: FileLocation::dummy(),
-			hard_links_count: 1,
-
-			blocks_count: 0,
-			size: 0,
-
-			uid,
-			gid,
-
-			file_type,
-			mode: perms,
-
-			ctime: 0,
-			mtime: 0,
-			atime: 0,
-
-			dev_major: 0,
-			dev_minor: 0,
-
+			location,
+			stat,
 			ops,
-
 			deferred_remove: None,
 		}
+	}
+
+	/// Returns the file's location.
+	pub fn get_location(&self) -> &FileLocation {
+		&self.location
 	}
 
 	/// Returns the mountpoint located at this file, if any.
@@ -361,74 +403,6 @@ impl File {
 	/// Tells whether there is a mountpoint on the file.
 	pub fn is_mountpoint(&self) -> bool {
 		self.as_mountpoint().is_some()
-	}
-
-	/// Returns the number of hard links.
-	pub fn get_hard_links_count(&self) -> u16 {
-		self.hard_links_count
-	}
-
-	/// Sets the number of hard links, updating `ctime` with the current timestamp.
-	pub fn set_hard_links_count(&mut self, count: u16) {
-		self.hard_links_count = count;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-		self.ctime = timestamp;
-	}
-
-	/// Returns the number of blocks occupied by the file on disk.
-	pub fn get_blocks_count(&self) -> u64 {
-		self.blocks_count
-	}
-
-	/// Sets the file's size.
-	pub fn set_size(&mut self, size: u64) {
-		self.size = size;
-	}
-
-	/// Returns the owner user ID.
-	pub fn get_uid(&self) -> Uid {
-		self.uid
-	}
-
-	/// Sets the owner user ID, updating `ctime` with the current timestamp.
-	pub fn set_uid(&mut self, uid: Uid) {
-		self.uid = uid;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-		self.ctime = timestamp;
-	}
-
-	/// Returns the owner group ID.
-	pub fn get_gid(&self) -> Gid {
-		self.gid
-	}
-
-	/// Sets the owner group ID, updating `ctime` with the current timestamp.
-	pub fn set_gid(&mut self, gid: Gid) {
-		self.gid = gid;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-		self.ctime = timestamp;
-	}
-
-	/// Returns the type of the file.
-	pub fn get_type(&self) -> FileType {
-		self.file_type
-	}
-
-	/// Returns the file's mode.
-	pub fn get_mode(&self) -> Mode {
-		self.mode | self.file_type.to_mode()
-	}
-
-	/// Returns the permissions of the file.
-	pub fn get_permissions(&self) -> Mode {
-		self.mode & 0o7777
-	}
-
-	/// Sets the permissions of the file, updating `ctime` with the current timestamp.
-	pub fn set_permissions(&mut self, mode: Mode) {
-		self.mode = mode & 0o7777;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-		self.ctime = timestamp;
 	}
 
 	/// Returns the directory entry with the given `name`.
@@ -464,12 +438,27 @@ impl File {
 	///
 	/// If the file is not a symbolic link, the function returns [`errno::EINVAL`].
 	pub fn read_link(&mut self) -> EResult<PathBuf> {
-		if self.file_type != FileType::Link {
+		if self.stat.file_type != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
-		let mut link_path = vec![0; self.size as usize]?;
+		let mut link_path = vec![0; self.stat.size as usize]?;
 		self.read(0, &mut link_path)?;
 		Ok(PathBuf::new_unchecked(String::from(link_path)))
+	}
+
+	/// Truncates the file to the given `size`.
+	///
+	/// If `size` is greater than or equals to the current size of the file, the function does
+	/// nothing.
+	pub fn truncate(&mut self, size: u64) -> EResult<()> {
+		self.io_op(|io| match io {
+			IoSource::Filesystem {
+				fs,
+				inode,
+				ops,
+			} => ops.truncate_content(inode, fs, size),
+			IoSource::IO(_) => Err(errno!(EINVAL)),
+		})
 	}
 
 	/// Performs an ioctl operation on the file.
@@ -484,7 +473,7 @@ impl File {
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> EResult<u32> {
-		match self.file_type {
+		match self.stat.file_type {
 			FileType::Fifo => {
 				let buff_mutex = buffer::get_or_default::<PipeBuffer>(&self.location)?;
 				let mut buff = buff_mutex.lock();
@@ -498,8 +487,8 @@ impl File {
 			FileType::BlockDevice => {
 				let dev_mutex = device::get(&DeviceID {
 					dev_type: DeviceType::Block,
-					major: self.dev_major,
-					minor: self.dev_minor,
+					major: self.stat.dev_major,
+					minor: self.stat.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				let mut dev = dev_mutex.lock();
@@ -508,8 +497,8 @@ impl File {
 			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
 					dev_type: DeviceType::Char,
-					major: self.dev_major,
-					minor: self.dev_minor,
+					major: self.stat.dev_major,
+					minor: self.stat.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				let mut dev = dev_mutex.lock();
@@ -523,13 +512,26 @@ impl File {
 	///
 	/// If no device is associated with the file, the function does nothing.
 	pub fn sync(&self) -> EResult<()> {
-		// Get mountpoint
+		let inode = self.location.get_inode();
 		let Some(mountpoint_mutex) = self.location.get_mountpoint() else {
 			return Ok(());
 		};
 		let mountpoint = mountpoint_mutex.lock();
 		let fs = mountpoint.get_filesystem();
-		fs.update_inode(self)
+		// TODO only set fields that were modified
+		self.ops.set_stat(
+			inode,
+			&*fs,
+			StatSet {
+				mode: Some(self.stat.mode),
+				nlink: None,
+				uid: Some(self.stat.uid),
+				gid: Some(self.stat.gid),
+				ctime: Some(self.stat.ctime),
+				mtime: Some(self.stat.mtime),
+				atime: Some(self.stat.atime),
+			},
+		)
 	}
 
 	/// Wrapper for I/O operations on files.
@@ -541,7 +543,7 @@ impl File {
 	where
 		F: FnOnce(IoSource<'_>) -> EResult<R>,
 	{
-		match self.file_type {
+		match self.stat.file_type {
 			FileType::Regular => match self.location {
 				FileLocation::Filesystem {
 					inode, ..
@@ -583,8 +585,8 @@ impl File {
 			FileType::BlockDevice => {
 				let io_mutex = device::get(&DeviceID {
 					dev_type: DeviceType::Block,
-					major: self.dev_major,
-					minor: self.dev_minor,
+					major: self.stat.dev_major,
+					minor: self.stat.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				let mut io = io_mutex.lock();
@@ -593,8 +595,8 @@ impl File {
 			FileType::CharDevice => {
 				let io_mutex = device::get(&DeviceID {
 					dev_type: DeviceType::Char,
-					major: self.dev_major,
-					minor: self.dev_minor,
+					major: self.stat.dev_major,
+					minor: self.stat.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				let mut io = io_mutex.lock();
@@ -618,6 +620,55 @@ impl File {
 	}
 }
 
+impl IO for File {
+	fn get_size(&self) -> u64 {
+		self.stat.size
+	}
+
+	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+		self.io_op(|io| match io {
+			IoSource::Filesystem {
+				fs,
+				inode,
+				ops,
+			} => ops.read_content(inode, fs, off, buff),
+			IoSource::IO(io) => io.read(off, buff),
+		})
+		// TODO update `atime` if the mountpoint allows it
+	}
+
+	fn write(&mut self, off: u64, buff: &[u8]) -> EResult<u64> {
+		let len = self.io_op(|io| match io {
+			IoSource::Filesystem {
+				fs,
+				inode,
+				ops,
+			} => ops.write_content(inode, fs, off, buff),
+			IoSource::IO(io) => io.write(off, buff),
+		})?;
+		// Update file's size
+		self.stat.size = max(off + len, self.stat.size);
+		// TODO update `mtime`
+		Ok(len)
+	}
+
+	fn poll(&mut self, mask: u32) -> EResult<u32> {
+		self.io_op(|io| {
+			match io {
+				IoSource::Filesystem {
+					fs: _,
+					inode: _,
+					ops: _,
+				} => {
+					// TODO
+					todo!()
+				}
+				IoSource::IO(io) => io.poll(mask),
+			}
+		})
+	}
+}
+
 impl Drop for File {
 	fn drop(&mut self) {
 		// TODO: kernel log on error?
@@ -632,13 +683,13 @@ impl AccessProfile {
 			return true;
 		}
 		// Check permissions
-		if file.mode & perm::S_IRUSR != 0 && file.uid == uid {
+		if file.stat.mode & perm::S_IRUSR != 0 && file.stat.uid == uid {
 			return true;
 		}
-		if file.mode & perm::S_IRGRP != 0 && file.gid == gid {
+		if file.stat.mode & perm::S_IRGRP != 0 && file.stat.gid == gid {
 			return true;
 		}
-		file.mode & perm::S_IROTH != 0
+		file.stat.mode & perm::S_IROTH != 0
 	}
 
 	/// Tells whether the agent can read the file.
@@ -673,13 +724,13 @@ impl AccessProfile {
 			return true;
 		}
 		// Check permissions
-		if file.mode & perm::S_IWUSR != 0 && file.uid == uid {
+		if file.stat.mode & perm::S_IWUSR != 0 && file.stat.uid == uid {
 			return true;
 		}
-		if file.mode & perm::S_IWGRP != 0 && file.gid == gid {
+		if file.stat.mode & perm::S_IWGRP != 0 && file.stat.gid == gid {
 			return true;
 		}
-		file.mode & perm::S_IWOTH != 0
+		file.stat.mode & perm::S_IWOTH != 0
 	}
 
 	/// Tells whether the agent can write the file.
@@ -708,18 +759,19 @@ impl AccessProfile {
 
 	fn check_execute_access_impl(uid: Uid, gid: Gid, file: &File) -> bool {
 		// If root, bypass checks (unless the file is a regular file)
-		if file.file_type != FileType::Regular && (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
+		if file.stat.file_type != FileType::Regular
+			&& (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
 		{
 			return true;
 		}
 		// Check permissions
-		if file.mode & perm::S_IXUSR != 0 && file.uid == uid {
+		if file.stat.mode & perm::S_IXUSR != 0 && file.stat.uid == uid {
 			return true;
 		}
-		if file.mode & perm::S_IXGRP != 0 && file.gid == gid {
+		if file.stat.mode & perm::S_IXGRP != 0 && file.stat.gid == gid {
 			return true;
 		}
-		file.mode & perm::S_IXOTH != 0
+		file.stat.mode & perm::S_IXOTH != 0
 	}
 
 	/// Tells whether the agent can execute the file.
@@ -749,58 +801,7 @@ impl AccessProfile {
 	/// Tells whether the agent can set permissions for the given file.
 	pub fn can_set_file_permissions(&self, file: &File) -> bool {
 		let euid = self.get_euid();
-		euid == perm::ROOT_UID || euid == file.get_uid()
-	}
-}
-
-impl IO for File {
-	fn get_size(&self) -> u64 {
-		self.size
-	}
-
-	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		self.io_op(|io| match io {
-			IoSource::Filesystem {
-				fs,
-				inode,
-				ops,
-			} => {
-				let len = ops.read_content(inode, fs, off, buff)?;
-				let eof = off + len >= self.size;
-				Ok((len, eof))
-			}
-			IoSource::IO(io) => io.read(off, buff),
-		})
-	}
-
-	fn write(&mut self, off: u64, buff: &[u8]) -> EResult<u64> {
-		let len = self.io_op(|io| match io {
-			IoSource::Filesystem {
-				fs,
-				inode,
-				ops,
-			} => ops.write_content(inode, fs, off, buff),
-			IoSource::IO(io) => io.write(off, buff),
-		})?;
-		// Update file's size
-		self.size = max(off + len, self.size);
-		Ok(len)
-	}
-
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		self.io_op(|io| {
-			match io {
-				IoSource::Filesystem {
-					fs: _,
-					inode: _,
-					ops: _,
-				} => {
-					// TODO
-					todo!()
-				}
-				IoSource::IO(io) => io.poll(mask),
-			}
-		})
+		euid == perm::ROOT_UID || euid == file.stat.uid
 	}
 }
 
