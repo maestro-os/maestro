@@ -28,9 +28,13 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Mode,
+		File, FileType, Mode, Stat,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -54,7 +58,7 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 
 /// Resolves the given `path` and returns the file.
 ///
-/// If enabled, the file is create.
+/// The function creates the file if requested and required.
 ///
 /// If the file is created, the function uses `mode` to set its permissions and the provided
 /// access profile to set the user ID and group ID.
@@ -67,12 +71,19 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mut
 			name,
 		} => {
 			let mut parent = parent.lock();
+			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 			vfs::create_file(
 				&mut parent,
 				name,
 				&rs.access_profile,
-				FileType::Regular,
-				mode,
+				Stat {
+					file_type: FileType::Regular,
+					mode,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..Default::default()
+				},
 			)?
 		}
 	};

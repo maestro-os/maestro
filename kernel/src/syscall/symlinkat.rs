@@ -24,10 +24,14 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileType,
+		FileType, Stat,
 	},
 	limits,
 	process::{mem_space::ptr::SyscallString, Process},
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -71,8 +75,20 @@ pub fn symlinkat(
 			name,
 		} => {
 			let mut parent = parent.lock();
-			let file =
-				vfs::create_file(&mut parent, name, &rs.access_profile, FileType::Link, 0o777)?;
+			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
+			let file = vfs::create_file(
+				&mut parent,
+				name,
+				&rs.access_profile,
+				Stat {
+					file_type: FileType::Link,
+					mode: 0o777,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..Default::default()
+				},
+			)?;
 			file.lock().write(0, target.as_bytes())?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),

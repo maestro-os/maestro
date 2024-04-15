@@ -355,7 +355,7 @@ impl NodeOps for Ext2NodeOps {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
@@ -378,6 +378,7 @@ impl NodeOps for Ext2NodeOps {
 				name: Cow::Borrowed(name),
 			},
 			off,
+			Box::new(Ext2NodeOps)?,
 		)))
 	}
 
@@ -402,13 +403,14 @@ impl NodeOps for Ext2NodeOps {
 		fs: &dyn Filesystem,
 		name: &[u8],
 		mut stat: Stat,
-	) -> EResult<(Stat, INode)> {
+	) -> EResult<(INode, Box<dyn NodeOps>)> {
 		if parent_inode < 1 {
 			return Err(errno!(EINVAL));
 		}
 		if unlikely(fs.is_readonly()) {
 			return Err(errno!(EROFS));
 		}
+		let ops = Box::new(Ext2NodeOps)?;
 		let fs = downcast_fs(fs);
 		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
@@ -486,7 +488,7 @@ impl NodeOps for Ext2NodeOps {
 		// Write parent
 		parent.add_dirent(&mut superblock, &mut *io, inode_index, name, stat.file_type)?;
 		parent.write(parent_inode as _, &superblock, &mut *io)?;
-		Ok((stat, inode_index as _))
+		Ok((inode_index as _, ops))
 	}
 
 	fn add_link(

@@ -314,6 +314,13 @@ pub fn get_file_from_path(
 /// for the created file
 /// - `stat` is the status of the newly created file
 ///
+/// From the provided `stat`, the following fields are ignored:
+/// - `nlink`
+/// - `uid`
+/// - `gid`
+///
+/// `uid` and `gid` are set according to `ap`.
+///
 /// The following errors can be returned:
 /// - The filesystem is read-only: [`errno::EROFS`]
 /// - I/O failed: [`errno::EIO`]
@@ -346,7 +353,8 @@ pub fn create_file(
 	};
 	stat.gid = gid;
 	let file = op(&parent.location, true, |mp, fs| {
-		let (stat, inode) = parent.ops.add_file(parent_inode, fs, name, stat)?;
+		let (inode, ops) = parent.ops.add_file(parent_inode, fs, name, stat)?;
+		let stat = ops.get_stat(inode, fs)?;
 		Ok(File::new(
 			FileLocation::Filesystem {
 				mountpoint_id: mp.get_id(),
@@ -419,11 +427,10 @@ fn remove_file_impl(
 	let (links_left, inode) = fs.remove_file(parent_inode, name)?;
 	if links_left == 0 {
 		// If the file is a named pipe or socket, free its now unused buffer
-		let loc = FileLocation::Filesystem {
+		buffer::release(&FileLocation::Filesystem {
 			mountpoint_id: mp.get_id(),
 			inode,
-		};
-		buffer::release(&loc);
+		});
 	}
 	Ok(())
 }
@@ -457,22 +464,31 @@ pub fn remove_file(parent: &mut File, name: &[u8], ap: &AccessProfile) -> EResul
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
+	let parent_inode = parent.location.get_inode();
 	op(&parent.location, true, |mp, fs| {
-		// Get the file
-		let mut file = fs.load_file(parent.location.get_inode())?;
+		// Get the entry to remove
+		let (ent, off, ops) = parent
+			.ops
+			.entry_by_name(parent_inode, fs, name)?
+			.ok_or_else(|| errno!(ENOENT))?;
+		let loc = FileLocation::Filesystem {
+			mountpoint_id: mp.get_id(),
+			inode: ent.inode,
+		};
+		let stat = ops.get_stat(ent.inode, fs)?;
 		// Check permission
 		let has_sticky_bit = parent.stat.mode & S_ISVTX != 0;
-		if has_sticky_bit && ap.get_euid() != file.stat.uid && ap.get_euid() != parent.stat.uid {
+		if has_sticky_bit && ap.get_euid() != stat.uid && ap.get_euid() != parent.stat.uid {
 			return Err(errno!(EACCES));
 		}
 		// If the file to remove is a mountpoint, error
-		if file.is_mountpoint() {
+		if mountpoint::from_location(&loc).is_some() {
 			return Err(errno!(EBUSY));
 		}
 		// Defer remove if the file is in use
-		let last_link = file.stat.nlink == 1;
-		let symlink = file.stat.file_type == FileType::Link;
-		let defer = last_link && !symlink && OpenFile::is_open(&file.location);
+		let last_link = stat.nlink == 1;
+		let symlink = stat.file_type == FileType::Link;
+		let defer = last_link && !symlink && OpenFile::is_open(&loc);
 		if defer {
 			file.defer_remove(DeferredRemove {
 				parent: parent.location.clone(),

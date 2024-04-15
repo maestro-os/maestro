@@ -22,7 +22,7 @@
 use crate::{
 	file::{
 		fs::{procfs::get_proc_owner, Filesystem, NodeOps},
-		DirEntry, FileType, INode, Stat,
+		FileType, INode, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -67,33 +67,5 @@ impl NodeOps for Cmdline {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
 		format_content!(off, buf, "{}", CmdlineDisp(&*proc))
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EACCES))
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		Err(errno!(ENOTDIR))
-	}
-
-	fn next_entry(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		Err(errno!(ENOTDIR))
 	}
 }

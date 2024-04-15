@@ -298,18 +298,22 @@ impl NodeOps for DefaultNode {
 	fn entry_by_name<'n>(
 		&self,
 		_inode: INode,
-		_fs: &dyn Filesystem,
+		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
 		let inner = self.0.lock();
 		let DefaultNodeContent::Directory(entries) = &inner.content else {
 			return Err(errno!(ENOTDIR));
 		};
-		Ok(entries
+		let Some(off) = entries
 			.binary_search_by(|ent| ent.name.as_ref().cmp(name))
 			.ok()
-			.map(|off| entries[off].try_clone().map(|ent| (ent, off as _)))
-			.transpose()?)
+		else {
+			return Ok(None);
+		};
+		let ent = entries[off].try_clone()?;
+		let ops = fs.load_file(ent.inode)?;
+		Ok(Some((ent, off as _, ops)))
 	}
 
 	fn next_entry(
@@ -341,7 +345,7 @@ impl NodeOps for DefaultNode {
 		fs: &dyn Filesystem,
 		name: &[u8],
 		stat: Stat,
-	) -> EResult<(Stat, INode)> {
+	) -> EResult<(INode, Box<dyn NodeOps>)> {
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
@@ -357,11 +361,12 @@ impl NodeOps for DefaultNode {
 		};
 		// Prepare node to be added
 		let node = Box::new(DefaultNode::new(stat, Some(inode), Some(parent_inode))?)?;
-		let stat = node.0.lock().as_stat();
+		let file_type = node.0.lock().as_stat().file_type;
+		let ops = node.detached()?;
 		// Add entry to parent
 		let ent = DirEntry {
 			inode,
-			entry_type: stat.file_type,
+			entry_type: file_type,
 			name: Cow::Owned(name.try_into()?),
 		};
 		let res = parent_entries.binary_search_by(|ent| ent.name.as_ref().cmp(name));
@@ -372,10 +377,10 @@ impl NodeOps for DefaultNode {
 		// Insert node
 		*slot = Some(node);
 		// Update links count
-		if stat.file_type == FileType::Directory {
+		if file_type == FileType::Directory {
 			parent_inner.nlink += 1;
 		}
-		Ok((stat, inode))
+		Ok((inode, ops))
 	}
 
 	fn add_link(
@@ -539,7 +544,7 @@ impl NodeOps for DefaultNodeOps {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
 		let fs = downcast_fs(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
@@ -662,7 +667,7 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 ///
 /// **Warning**: If this array is not sorted correctly, the behaviour of
 /// [`NodeOps::entry_by_name`] is undefined.
-pub type StaticDirEntries = &'static [(&'static [u8], &'static dyn NodeOps)];
+pub type StaticDirEntries = &'static [(&'static [u8], &'static dyn OwnedNode)];
 
 /// A read-only virtual directory used to point to other nodes.
 #[derive(Debug)]
@@ -682,18 +687,21 @@ impl NodeOps for StaticDir {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
 		let Ok(index) = self.0.binary_search_by(|(n, _)| (*n).cmp(name)) else {
 			return Ok(None);
 		};
 		let (name, node) = self.0[index];
+		let file_type = node.get_stat(inode, fs)?.file_type;
+		let ops = node.detached()?;
 		Ok(Some((
 			DirEntry {
 				inode: 0,
-				entry_type: node.get_stat(inode, fs)?.file_type,
+				entry_type: file_type,
 				name: Cow::Borrowed(name),
 			},
 			index as _,
+			ops,
 		)))
 	}
 

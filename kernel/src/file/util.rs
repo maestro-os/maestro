@@ -19,7 +19,7 @@
 //! This module implements utility functions for files manipulations.
 
 use super::path::{Component, Path, PathBuf};
-use crate::file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType};
+use crate::file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat};
 use utils::{errno, errno::EResult};
 
 /// Creates the directories necessary to reach path `path`.
@@ -39,8 +39,11 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 				&mut parent,
 				name,
 				&AccessProfile::KERNEL,
-				FileType::Directory,
-				0o755,
+				Stat {
+					file_type: FileType::Directory,
+					mode: 0o755,
+					..Default::default()
+				},
 			);
 			match res {
 				Err(e) if e.as_int() != errno::EEXIST => return Err(e),

@@ -22,11 +22,11 @@
 use crate::{
 	file::{
 		fs::{Filesystem, NodeOps},
-		DirEntry, FileType, INode, Stat,
+		FileType, INode, Stat,
 	},
 	format_content, memory,
 };
-use utils::{errno, errno::EResult};
+use utils::errno::EResult;
 
 /// The `meminfo` file.
 #[derive(Debug)]
@@ -50,33 +50,5 @@ impl NodeOps for MemInfo {
 	) -> EResult<(u64, bool)> {
 		let mem_info = memory::stats::MEM_INFO.lock();
 		format_content!(off, buf, "{}", *mem_info)
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EACCES))
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		Err(errno!(ENOTDIR))
-	}
-
-	fn next_entry(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		Err(errno!(ENOTDIR))
 	}
 }

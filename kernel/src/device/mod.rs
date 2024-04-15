@@ -50,7 +50,7 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileType, Mode,
+		FileType, Mode, Stat,
 	},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
@@ -225,7 +225,6 @@ impl Device {
 		// Create the parent directory in which the device file is located
 		let parent_path = path.parent().unwrap_or(Path::root());
 		file::util::create_dirs(parent_path)?;
-
 		// Resolve path
 		let resolved = vfs::resolve_path(
 			path,
@@ -245,8 +244,13 @@ impl Device {
 					&mut parent,
 					name,
 					&AccessProfile::KERNEL,
-					id.dev_type.as_file_type(),
-					mode,
+					Stat {
+						file_type: id.dev_type.as_file_type(),
+						mode,
+						dev_major: id.major,
+						dev_minor: id.minor,
+						..Default::default()
+					},
 				)?;
 				Ok(())
 			}

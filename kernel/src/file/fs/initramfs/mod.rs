@@ -23,7 +23,7 @@ mod cpio;
 
 use crate::{
 	device, file,
-	file::{path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType},
+	file::{path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType, Stat},
 };
 use cpio::CPIOParser;
 use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
@@ -107,8 +107,18 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			&mut parent,
 			name,
 			&AccessProfile::KERNEL,
-			file_type,
-			hdr.get_perms(),
+			Stat {
+				file_type,
+				mode: hdr.get_perms(),
+				uid: hdr.c_uid,
+				gid: hdr.c_gid,
+				dev_major: device::id::major(hdr.c_rdev as _),
+				dev_minor: device::id::minor(hdr.c_rdev as _),
+				ctime: 0,
+				mtime: 0,
+				atime: 0,
+				..Default::default()
+			},
 		);
 		let file_mutex = match create_result {
 			Ok(file_mutex) => file_mutex,
@@ -116,22 +126,13 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			Err(e) => return Err(e),
 		};
 		let mut file = file_mutex.lock();
-		file.stat.set_uid(hdr.c_uid);
-		file.stat.set_gid(hdr.c_gid);
 		match file_type {
 			FileType::Regular | FileType::Link => {
 				let content = entry.get_content();
 				file.write(0, content)?;
 			}
-			FileType::BlockDevice | FileType::CharDevice => {
-				file.stat.dev_major = device::id::major(hdr.c_rdev as _);
-				file.stat.dev_major = device::id::minor(hdr.c_rdev as _);
-			}
 			_ => {}
 		}
-		// Write content if the file is a regular file
-		if file_type == FileType::Regular {}
-		file.sync()?;
 	}
 	Ok(())
 }

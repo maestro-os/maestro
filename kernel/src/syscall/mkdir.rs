@@ -24,9 +24,13 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
-		FileType,
+		FileType, Stat,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use macros::syscall;
 use utils::{errno, errno::Errno};
@@ -49,23 +53,27 @@ pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
 		let rs = ResolutionSettings::for_process(&proc, true);
 		(path, mode, rs)
 	};
-
+	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 	// If the path is not empty, create
 	if let Some(name) = path.file_name() {
 		// Get parent directory
 		let parent_path = path.parent().unwrap_or(Path::root());
 		let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 		let mut parent = parent_mutex.lock();
-
 		// Create the directory
 		vfs::create_file(
 			&mut parent,
 			name,
 			&rs.access_profile,
-			FileType::Directory,
-			mode,
+			Stat {
+				file_type: FileType::Directory,
+				mode,
+				ctime: ts,
+				mtime: ts,
+				atime: ts,
+				..Default::default()
+			},
 		)?;
 	}
-
 	Ok(0)
 }

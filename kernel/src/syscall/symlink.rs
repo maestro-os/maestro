@@ -23,10 +23,14 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
-		FileType,
+		FileType, Stat,
 	},
 	limits,
 	process::{mem_space::ptr::SyscallString, Process},
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use macros::syscall;
 use utils::{errno, errno::Errno, io::IO};
@@ -57,18 +61,28 @@ pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Er
 
 		(target, linkpath, rs)
 	};
-
 	// Get the path of the parent directory
 	let parent_path = linkpath.parent().unwrap_or(Path::root());
 	// The file's basename
 	let name = linkpath.file_name().ok_or_else(|| errno!(ENOENT))?;
-
 	// The parent directory
 	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
-
-	let file = vfs::create_file(&mut parent, name, &rs.access_profile, FileType::Link, 0o777)?;
+	// Create link
+	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
+	let file = vfs::create_file(
+		&mut parent,
+		name,
+		&rs.access_profile,
+		Stat {
+			file_type: FileType::Link,
+			mode: 0o777,
+			ctime: ts,
+			mtime: ts,
+			atime: ts,
+			..Default::default()
+		},
+	)?;
 	file.lock().write(0, target.as_bytes())?;
-
 	Ok(0)
 }

@@ -38,7 +38,7 @@ use exe::Exe;
 use mounts::Mounts;
 use stat::StatNode;
 use status::Status;
-use utils::{errno, errno::EResult, ptr::cow::Cow};
+use utils::{boxed::Box, errno, errno::EResult, ptr::cow::Cow};
 
 /// The directory of a process.
 #[derive(Debug)]
@@ -56,37 +56,17 @@ impl NodeOps for ProcDir {
 		})
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
-		Err(errno!(EISDIR))
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EISDIR))
-	}
-
 	fn entry_by_name<'n>(
 		&self,
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
 		// TODO add a way to use binary search
 		let mut off = 0;
 		while let Some((e, next_off)) = self.next_entry(inode, fs, off)? {
 			if e.name.as_ref() == name {
-				return Ok(Some((e, off)));
+				return Ok(Some((e, off, ops)));
 			}
 			off = next_off;
 		}

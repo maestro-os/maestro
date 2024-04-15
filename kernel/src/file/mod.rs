@@ -415,7 +415,7 @@ impl File {
 				} => ops.entry_by_name(inode, fs, name),
 				IoSource::IO(_) => Ok(None),
 			}?;
-			Ok(e.map(|(e, _)| e))
+			Ok(e.map(|(e, ..)| e))
 		})
 	}
 
@@ -645,6 +645,7 @@ impl IO for File {
 		})?;
 		// Update file's size
 		self.stat.size = max(off + len, self.stat.size);
+		// TODO update `blocks`
 		// TODO update `mtime`
 		Ok(len)
 	}

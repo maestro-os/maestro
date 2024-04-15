@@ -26,10 +26,14 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Mode,
+		File, FileType, Mode, Stat,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 	syscall::util::at,
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -74,12 +78,19 @@ fn get_file(
 			name,
 		} if create => {
 			let mut parent = parent.lock();
+			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 			vfs::create_file(
 				&mut parent,
 				name,
 				&rs.access_profile,
-				FileType::Regular,
-				mode,
+				Stat {
+					file_type: FileType::Regular,
+					mode,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..Default::default()
+				},
 			)
 		}
 		_ => Err(errno!(ENOENT)),

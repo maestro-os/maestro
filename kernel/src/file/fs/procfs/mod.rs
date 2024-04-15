@@ -105,33 +105,13 @@ impl NodeOps for RootDir {
 		})
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
-		Err(errno!(EISDIR))
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EISDIR))
-	}
-
 	/// This returned offset is junk and should be ignored.
 	fn entry_by_name<'n>(
 		&self,
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
 		let entry = core::str::from_utf8(name)
 			.ok()
 			// Check for process from pid
@@ -159,7 +139,7 @@ impl NodeOps for RootDir {
 					name: Cow::Borrowed(name),
 				})
 			})
-			.map(|entry| (entry, 0));
+			.map(|entry| (entry, 0, ops as _));
 		Ok(entry)
 	}
 

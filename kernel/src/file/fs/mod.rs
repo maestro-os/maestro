@@ -193,7 +193,8 @@ pub trait NodeOps: Debug {
 		}
 	}
 
-	/// Returns the directory entry with the given `name`, along with its offset.
+	/// Returns the directory entry with the given `name`, along with its offset and the handle of
+	/// the file.
 	///
 	/// Arguments:
 	/// - `inode` is the inode of the directory.
@@ -209,7 +210,7 @@ pub trait NodeOps: Debug {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
 		let _ = name;
 		match self.get_stat(inode, fs)?.file_type {
 			FileType::Directory => Err(errno!(EINVAL)),
@@ -274,7 +275,8 @@ pub trait NodeOps: Debug {
 	/// - `name` is the name of the hard link to add.
 	/// - `stat` is the status of the file to add.
 	///
-	/// On success, the function returns the updated `stat`, together with an allocated [`INode`].
+	/// On success, the function returns the allocated [`INode`] together with the new file's
+	/// handle.
 	///
 	/// The default implementation of this function returns an error.
 	fn add_file(
@@ -283,7 +285,7 @@ pub trait NodeOps: Debug {
 		fs: &dyn Filesystem,
 		name: &[u8],
 		stat: Stat,
-	) -> EResult<(Stat, INode)> {
+	) -> EResult<(INode, Box<dyn NodeOps>)> {
 		let _ = (name, stat);
 		match self.get_stat(inode, fs)?.file_type {
 			FileType::Directory => Err(errno!(EINVAL)),

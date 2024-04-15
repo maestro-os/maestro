@@ -25,9 +25,13 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
-		FileType,
+		FileType, Stat,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use macros::syscall;
 use utils::{errno, errno::Errno};
@@ -59,20 +63,32 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 	// Information to create the file
 	let mode = mode & !umask;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
-	let major = id::major(dev);
-	let minor = id::minor(dev);
+	// Check file type and permissions
+	match file_type {
+		FileType::Directory => return Err(errno!(EINVAL)),
+		FileType::BlockDevice | FileType::CharDevice if !rs.access_profile.is_privileged() => {
+			return Err(errno!(EPERM));
+		}
+		_ => {}
+	}
+	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
 	// Create file
-	let file_mutex = vfs::create_file(&mut parent, name, &rs.access_profile, file_type, mode)?;
-	let mut file = file_mutex.lock();
-	match file_type {
-		FileType::BlockDevice | FileType::CharDevice => {
-			file.stat.dev_major = major;
-			file.stat.dev_minor = minor;
-		}
-		_ => return Err(errno!(EPERM)),
-	}
-	file.sync()?;
+	vfs::create_file(
+		&mut parent,
+		name,
+		&rs.access_profile,
+		Stat {
+			file_type,
+			mode,
+			dev_major: id::major(dev),
+			dev_minor: id::minor(dev),
+			ctime: ts,
+			mtime: ts,
+			atime: ts,
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }

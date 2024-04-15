@@ -21,11 +21,11 @@
 use crate::{
 	file::{
 		fs::{Filesystem, NodeOps},
-		DirEntry, FileType, INode, Stat,
+		FileType, INode, Stat,
 	},
 	format_content,
 };
-use utils::{errno, errno::EResult};
+use utils::errno::EResult;
 
 /// The `uptime` file.
 #[derive(Debug)]
@@ -49,33 +49,5 @@ impl NodeOps for Uptime {
 	) -> EResult<(u64, bool)> {
 		// TODO
 		format_content!(off, buf, "0.00 0.00\n")
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EACCES))
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		Err(errno!(ENOTDIR))
-	}
-
-	fn next_entry(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		Err(errno!(ENOTDIR))
 	}
 }

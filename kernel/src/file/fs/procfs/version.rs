@@ -21,11 +21,11 @@
 use crate::{
 	file::{
 		fs::{Filesystem, NodeOps},
-		DirEntry, FileType, INode, Stat,
+		FileType, INode, Stat,
 	},
 	format_content,
 };
-use utils::{errno, errno::EResult};
+use utils::errno::EResult;
 
 /// Kernel version file.
 #[derive(Debug)]
@@ -48,33 +48,5 @@ impl NodeOps for Version {
 		buf: &mut [u8],
 	) -> EResult<(u64, bool)> {
 		format_content!(off, buf, "{} version {}\n", crate::NAME, crate::VERSION)
-	}
-
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<u64> {
-		Err(errno!(EACCES))
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
-		Err(errno!(ENOTDIR))
-	}
-
-	fn next_entry(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		Err(errno!(ENOTDIR))
 	}
 }
