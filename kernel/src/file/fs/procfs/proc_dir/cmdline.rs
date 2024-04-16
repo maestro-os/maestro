@@ -43,7 +43,13 @@ impl<'p> fmt::Display for CmdlineDisp<'p> {
 
 /// The cmdline node of the procfs.
 #[derive(Clone, Debug)]
-pub struct Cmdline(pub Pid);
+pub struct Cmdline(Pid);
+
+impl From<Pid> for Cmdline {
+	fn from(pid: Pid) -> Self {
+		Self(pid)
+	}
+}
 
 impl NodeOps for Cmdline {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {

@@ -120,11 +120,15 @@ impl NodeOps for RootDir {
 				// Check the process exists
 				Process::get_by_pid(pid)?;
 				// Return the entry for the process
-				Some(DirEntry {
-					inode: 0,
-					entry_type: FileType::Directory,
-					name: Cow::Borrowed(name),
-				})
+				Some((
+					DirEntry {
+						inode: 0,
+						entry_type: FileType::Directory,
+						name: Cow::Borrowed(name),
+					},
+					0,
+					ops,
+				))
 			})
 			// Search in static entries
 			.or_else(|| {
@@ -132,14 +136,18 @@ impl NodeOps for RootDir {
 					.binary_search_by(|(n, _)| (*n).cmp(name))
 					.ok()?;
 				let (name, node) = Self::STATIC_ENTRIES[index];
-				Some(DirEntry {
-					inode: 0,
-					// unwrap won't fail because `get_stat` on static entries never return an error
-					entry_type: node.get_stat(inode, fs).unwrap().file_type,
-					name: Cow::Borrowed(name),
-				})
-			})
-			.map(|entry| (entry, 0, ops as _));
+				Some((
+					DirEntry {
+						inode: 0,
+						// unwrap won't fail because `get_stat` on static entries never return an
+						// error
+						entry_type: node.get_stat(inode, fs).unwrap().file_type,
+						name: Cow::Borrowed(name),
+					},
+					0,
+					ops,
+				))
+			});
 		Ok(entry)
 	}
 

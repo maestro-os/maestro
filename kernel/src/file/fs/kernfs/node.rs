@@ -48,7 +48,9 @@ fn downcast_fs(fs: &dyn Filesystem) -> &KernFS {
 	(fs as &dyn Any).downcast_ref().unwrap()
 }
 
-/// A node that is owned by the kernfs, that is, has an associated inode.
+/// A node that is owned by the kernfs, or another entity (such as another node).
+///
+/// An `OwnedNode` *may* or *may not* have an associated inode.
 pub trait OwnedNode: NodeOps {
 	/// Returns the operations handle for the node to be used outside the kernfs.
 	///

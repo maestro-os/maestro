@@ -31,7 +31,13 @@ use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `exe` node.
 #[derive(Debug)]
-pub struct Exe(pub Pid);
+pub struct Exe(Pid);
+
+impl From<Pid> for Exe {
+	fn from(pid: Pid) -> Self {
+		Self(pid)
+	}
+}
 
 impl NodeOps for Exe {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {

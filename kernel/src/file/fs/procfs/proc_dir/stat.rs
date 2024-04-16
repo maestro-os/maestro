@@ -64,7 +64,13 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 
 /// The `stat` node of the procfs.
 #[derive(Debug)]
-pub struct StatNode(pub Pid);
+pub struct StatNode(Pid);
+
+impl From<Pid> for StatNode {
+	fn from(pid: Pid) -> Self {
+		Self(pid)
+	}
+}
 
 impl NodeOps for StatNode {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {

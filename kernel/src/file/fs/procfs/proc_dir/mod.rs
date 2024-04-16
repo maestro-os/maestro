@@ -38,11 +38,39 @@ use exe::Exe;
 use mounts::Mounts;
 use stat::StatNode;
 use status::Status;
-use utils::{boxed::Box, errno, errno::EResult, ptr::cow::Cow};
+use utils::{
+	boxed::Box,
+	errno,
+	errno::{AllocResult, EResult},
+	ptr::cow::Cow,
+};
 
 /// The directory of a process.
 #[derive(Debug)]
 pub struct ProcDir(pub Pid);
+
+impl ProcDir {
+	/// The list of entries with their respective initializers.
+	const ENTRY_INIT: &'static [(
+		&'static [u8],
+		FileType,
+		fn(Pid) -> AllocResult<Box<dyn NodeOps>>,
+	)] = &[
+		(b"cmdline", FileType::Regular, Self::entry_init::<Cmdline>),
+		(b"cwd", FileType::Regular, Self::entry_init::<Cwd>),
+		(b"exe", FileType::Regular, Self::entry_init::<Exe>),
+		(b"mounts", FileType::Regular, Self::entry_init::<Mounts>),
+		(b"stat", FileType::Regular, Self::entry_init::<StatNode>),
+		(b"status", FileType::Regular, Self::entry_init::<Status>),
+	];
+
+	/// Initialization function for an entry handle.
+	fn entry_init<'e, E: 'e + NodeOps + From<Pid>>(
+		pid: Pid,
+	) -> AllocResult<Box<dyn 'e + NodeOps>> {
+		Ok(Box::new(E::from(pid))? as _)
+	}
+}
 
 impl NodeOps for ProcDir {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
@@ -58,53 +86,42 @@ impl NodeOps for ProcDir {
 
 	fn entry_by_name<'n>(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		_inode: INode,
+		_fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
-		// TODO add a way to use binary search
-		let mut off = 0;
-		while let Some((e, next_off)) = self.next_entry(inode, fs, off)? {
-			if e.name.as_ref() == name {
-				return Ok(Some((e, off, ops)));
-			}
-			off = next_off;
-		}
-		Ok(None)
+		let index = Self::ENTRY_INIT
+			.binary_search_by(|(n, ..)| (*n).cmp(name))
+			.map_err(|_| errno!(ENOENT))?;
+		let e = &Self::ENTRY_INIT[index];
+		Ok(Some((
+			DirEntry {
+				inode: 0,
+				entry_type: e.1,
+				name: Cow::Borrowed(name),
+			},
+			index as _,
+			e.2(self.0)?,
+		)))
 	}
 
 	fn next_entry(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		_inode: INode,
+		_fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let entries: &[(&[u8], &dyn NodeOps)] = &[
-			// /proc/<pid>/cmdline
-			(b"cmdline", &Cmdline(self.0)),
-			// /proc/<pid>/cwd
-			(b"cwd", &Cwd(self.0)),
-			// /proc/<pid>/exe
-			(b"exe", &Exe(self.0)),
-			// /proc/<pid>/mounts
-			(b"mounts", &Mounts(self.0)),
-			// /proc/<pid>/stat
-			(b"stat", &StatNode(self.0)),
-			// /proc/<pid>/status
-			(b"status", &Status(self.0)),
-		];
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
-		let entry = entries.get(off).map(|(name, node): &(_, _)| {
-			(
-				DirEntry {
-					inode: 0,
-					// unwrap won't fail because `get_stat` on static entries never return an error
-					entry_type: node.get_stat(inode, fs).unwrap().file_type,
-					name: Cow::Borrowed(name),
-				},
-				(off + 1) as _,
-			)
-		});
-		Ok(entry)
+		let Some((name, entry_type, _)) = &Self::ENTRY_INIT.get(off) else {
+			return Ok(None);
+		};
+		Ok(Some((
+			DirEntry {
+				inode: 0,
+				entry_type: *entry_type,
+				name: Cow::Borrowed(name),
+			},
+			off as u64 + 1,
+		)))
 	}
 }

@@ -31,7 +31,13 @@ use utils::{errno::EResult, DisplayableStr};
 
 /// The `mounts` node.
 #[derive(Debug)]
-pub struct Mounts(pub Pid);
+pub struct Mounts(Pid);
+
+impl From<Pid> for Mounts {
+	fn from(pid: Pid) -> Self {
+		Self(pid)
+	}
+}
 
 impl NodeOps for Mounts {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {

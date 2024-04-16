@@ -116,7 +116,13 @@ nonvoluntary_ctxt_switches: 0",
 
 /// The `status` node of the procfs.
 #[derive(Debug)]
-pub struct Status(pub Pid);
+pub struct Status(Pid);
+
+impl From<Pid> for Status {
+	fn from(pid: Pid) -> Self {
+		Self(pid)
+	}
+}
 
 impl NodeOps for Status {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
