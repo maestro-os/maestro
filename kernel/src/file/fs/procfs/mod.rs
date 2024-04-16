@@ -53,6 +53,7 @@ use utils::{
 	ptr::{arc::Arc, cow::Cow},
 };
 use version::Version;
+use crate::file::fs::procfs::proc_dir::ProcDir;
 
 /// Returns the user ID and group ID of the process with the given PID.
 ///
@@ -73,6 +74,7 @@ fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 struct RootDir;
 
 impl RootDir {
+	// Entries offsets: The first `Pid::MAX` offsets are reserved for processes. Static entries are located right after
 	/// Static entries of the root directory, as opposed to the dynamic ones that represent
 	/// processes.
 	///
@@ -112,43 +114,44 @@ impl NodeOps for RootDir {
 		fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
-		let entry = core::str::from_utf8(name)
-			.ok()
-			// Check for process from pid
-			.and_then(|s| {
-				let pid: Pid = s.parse().ok()?;
-				// Check the process exists
-				Process::get_by_pid(pid)?;
+		let pid = core::str::from_utf8(name).ok().and_then(|s| s.parse().ok());
+		if let Some(pid) = pid {
+			// Check the process exists
+			if Process::get_by_pid(pid).is_some() {
 				// Return the entry for the process
-				Some((
+				Ok(Some((
 					DirEntry {
 						inode: 0,
 						entry_type: FileType::Directory,
 						name: Cow::Borrowed(name),
 					},
-					0,
-					ops,
-				))
-			})
+					pid as _,
+					Box::new(ProcDir(pid))? as _,
+				)))
+			} else {
+				Ok(None)
+			}
+		} else {
 			// Search in static entries
-			.or_else(|| {
-				let index = Self::STATIC_ENTRIES
-					.binary_search_by(|(n, _)| (*n).cmp(name))
-					.ok()?;
-				let (name, node) = Self::STATIC_ENTRIES[index];
-				Some((
-					DirEntry {
-						inode: 0,
-						// unwrap won't fail because `get_stat` on static entries never return an
-						// error
-						entry_type: node.get_stat(inode, fs).unwrap().file_type,
-						name: Cow::Borrowed(name),
-					},
-					0,
-					ops,
-				))
-			});
-		Ok(entry)
+			let index = Self::STATIC_ENTRIES
+				.binary_search_by(|(n, _)| (*n).cmp(name))
+				.ok();
+			let Some(index) = index else {
+				return Ok(None);
+			};
+			let (name, node) = Self::STATIC_ENTRIES[index];
+			Ok(Some((
+				DirEntry {
+					inode: 0,
+					// unwrap won't fail because `get_stat` on static entries never return an
+					// error
+					entry_type: node.get_stat(inode, fs).unwrap().file_type,
+					name: Cow::Borrowed(name),
+				},
+				Pid::MAX as u64 + index as u64,
+				ops,
+			)))
+		}
 	}
 
 	fn next_entry(
