@@ -640,7 +640,7 @@ macro_rules! format_content {
 }
 
 /// A static symbolic link pointing to a constant target.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct StaticLink<const TARGET: &'static [u8]>;
 
 impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
@@ -663,19 +663,92 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 	}
 }
 
-// TODO: the day Rust supports `dyn` in const generics (if it ever does), replace this by a const
-// generic
-/// Name/node pairs representing the entries of a [`StaticDir`], alphabetically sorted by name.
+/// A builder for an entry of a [`StaticDir`].
 ///
-/// **Warning**: If this array is not sorted correctly, the behaviour of
-/// [`NodeOps::entry_by_name`] is undefined.
-pub type StaticDirEntries = &'static [(&'static [u8], &'static dyn OwnedNode)];
+/// `T` is the type of the parameter passed to `init`.
+#[derive(Debug)]
+pub struct StaticEntryBuilder<T = ()> {
+	/// The name of the entry.
+	pub name: &'static [u8],
+	/// The type of the entry.
+	pub entry_type: FileType,
+	/// A builder which returns a handle to perform operations on the node.
+	pub init: fn(T) -> AllocResult<Box<dyn NodeOps>>,
+}
 
+/// Helper to initialize an entry handle, using [`Default`].
+pub fn entry_init_default<'e, E: 'e + NodeOps + Default>(
+	_: (),
+) -> AllocResult<Box<dyn 'e + NodeOps>> {
+	box_wrap(E::default())
+}
+
+/// Helper to initialize an entry handle, using [`From`].
+pub fn entry_init_from<'e, E: 'e + NodeOps + From<T>, T>(
+	val: T,
+) -> AllocResult<Box<dyn 'e + NodeOps>> {
+	box_wrap(E::from(val))
+}
+
+/// Helper to wrap a [`NodeOps`] into a [`Box`].
+pub fn box_wrap<'n, N: 'n + NodeOps>(ops: N) -> AllocResult<Box<dyn 'n + NodeOps>> {
+	Ok(Box::new(ops)? as _)
+}
+
+// TODO: the day Rust supports `dyn` in const generics (if it ever does), replace the entries array
+// by a const generic
 /// A read-only virtual directory used to point to other nodes.
 #[derive(Debug)]
-pub struct StaticDir(pub StaticDirEntries);
+pub struct StaticDir<T: 'static + Clone + Debug = ()> {
+	/// The directory's entries, sorted alphabeticaly by name.
+	///
+	/// **Warning**: If this array is not sorted correctly, the behaviour of
+	/// [`NodeOps::entry_by_name`] is undefined.
+	pub entries: &'static [StaticEntryBuilder<T>],
+	/// Data used to initialize sub-nodes.
+	pub data: T,
+}
 
-impl NodeOps for StaticDir {
+impl<T: 'static + Clone + Debug> StaticDir<T> {
+	/// Inner implementation of [`entry_by_name`].
+	pub fn entry_by_name_inner<'n>(
+		&self,
+		name: &'n [u8],
+	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
+		let Ok(index) = self.entries.binary_search_by(|e| e.name.cmp(name)) else {
+			return Ok(None);
+		};
+		let e = &self.entries[index];
+		let ops = (e.init)(self.data.clone())?;
+		Ok(Some((
+			DirEntry {
+				inode: 0,
+				entry_type: e.entry_type,
+				name: Cow::Borrowed(name),
+			},
+			index as _,
+			ops,
+		)))
+	}
+
+	/// Inner implementation of [`next_entry`].
+	pub fn next_entry_inner(&self, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
+		let Some(e) = self.entries.get(off) else {
+			return Ok(None);
+		};
+		Ok(Some((
+			DirEntry {
+				inode: 0,
+				entry_type: e.entry_type,
+				name: Cow::Borrowed(e.name),
+			},
+			(off + 1) as _,
+		)))
+	}
+}
+
+impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
 		Ok(Stat {
 			file_type: FileType::Directory,
@@ -686,45 +759,20 @@ impl NodeOps for StaticDir {
 
 	fn entry_by_name<'n>(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		_inode: INode,
+		_fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
-		let Ok(index) = self.0.binary_search_by(|(n, _)| (*n).cmp(name)) else {
-			return Ok(None);
-		};
-		let (name, node) = self.0[index];
-		let file_type = node.get_stat(inode, fs)?.file_type;
-		let ops = node.detached()?;
-		Ok(Some((
-			DirEntry {
-				inode: 0,
-				entry_type: file_type,
-				name: Cow::Borrowed(name),
-			},
-			index as _,
-			ops,
-		)))
+		self.entry_by_name_inner(name)
 	}
 
 	fn next_entry(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		_inode: INode,
+		_fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
-		let Some((name, node)) = self.0.get(off) else {
-			return Ok(None);
-		};
-		Ok(Some((
-			DirEntry {
-				inode: 0,
-				entry_type: node.get_stat(inode, fs)?.file_type,
-				name: Cow::Borrowed(name),
-			},
-			(off + 1) as _,
-		)))
+		self.next_entry_inner(off)
 	}
 }
 

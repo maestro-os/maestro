@@ -29,7 +29,7 @@ use crate::{
 use utils::errno::EResult;
 
 /// The `meminfo` file.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MemInfo;
 
 impl NodeOps for MemInfo {

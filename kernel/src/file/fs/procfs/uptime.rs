@@ -28,7 +28,7 @@ use crate::{
 use utils::errno::EResult;
 
 /// The `uptime` file.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Uptime;
 
 impl NodeOps for Uptime {

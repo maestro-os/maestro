@@ -28,7 +28,7 @@ use crate::{
 use utils::errno::EResult;
 
 /// Kernel version file.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Version;
 
 impl NodeOps for Version {

@@ -28,7 +28,7 @@ use crate::{
 use utils::errno::EResult;
 
 /// The `osrelease` file.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct OsRelease;
 
 impl NodeOps for OsRelease {

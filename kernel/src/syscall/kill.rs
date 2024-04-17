@@ -110,7 +110,7 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 		try_kill_group(0, &sig)
 	} else if pid == -1 {
 		// Kill all processes for which the current process has the permission
-		let mut sched = process::get_scheduler().lock();
+		let sched = process::get_scheduler().lock();
 		for (pid, _) in sched.iter_process() {
 			if *pid == process::pid::INIT_PID {
 				continue;

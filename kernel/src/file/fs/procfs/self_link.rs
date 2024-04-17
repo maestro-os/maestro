@@ -29,7 +29,7 @@ use crate::{
 use utils::errno::EResult;
 
 /// The `self` symlink.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SelfNode;
 
 impl NodeOps for SelfNode {

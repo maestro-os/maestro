@@ -26,34 +26,43 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{kernfs::KernFS, Filesystem, FilesystemType, NodeOps};
+use super::{
+	kernfs::{
+		node::{
+			box_wrap, entry_init_default, entry_init_from, OwnedNode, StaticDir,
+			StaticEntryBuilder, StaticLink,
+		},
+		KernFS,
+	},
+	Filesystem, FilesystemType, NodeOps,
+};
 use crate::{
 	file::{
-		fs::{
-			kernfs::node::{OwnedNode, StaticDir, StaticLink},
-			procfs::sys_dir::OsRelease,
-			Statfs,
-		},
+		fs::Statfs,
 		path::PathBuf,
 		perm::{Gid, Uid},
 		DirEntry, FileType, INode, Stat,
 	},
-	process::{pid::Pid, Process},
+	process::{get_scheduler, pid::Pid, Process},
 };
 use mem_info::MemInfo;
+use proc_dir::{
+	cmdline::Cmdline, cwd::Cwd, exe::Exe, mounts::Mounts, stat::StatNode, status::Status,
+};
 use self_link::SelfNode;
+use sys_dir::OsRelease;
 use uptime::Uptime;
 use utils::{
 	boxed::Box,
 	collections::hashmap::HashMap,
 	errno,
 	errno::{AllocResult, EResult},
+	format,
 	io::IO,
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 };
 use version::Version;
-use crate::file::fs::procfs::proc_dir::ProcDir;
 
 /// Returns the user ID and group ID of the process with the given PID.
 ///
@@ -74,22 +83,63 @@ fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 struct RootDir;
 
 impl RootDir {
-	// Entries offsets: The first `Pid::MAX` offsets are reserved for processes. Static entries are located right after
+	// Entries offsets: The first `Pid::MAX` offsets are reserved for processes. Static entries are
+	// located right after
 	/// Static entries of the root directory, as opposed to the dynamic ones that represent
 	/// processes.
-	///
-	/// This array is alphabetically sorted for fast lookup by name.
-	const STATIC_ENTRIES: &'static [(&'static [u8], &'static dyn NodeOps)] = &[
-		(b"meminfo", &MemInfo),
-		(b"mounts", &StaticLink::<b"self/mounts">),
-		(b"self", &SelfNode),
-		(
-			b"sys",
-			&StaticDir(&[(b"kernel", &StaticDir(&[(b"osrelease", &OsRelease)]))]),
-		),
-		(b"uptime", &Uptime),
-		(b"version", &Version),
-	];
+	const STATIC: StaticDir = StaticDir {
+		entries: &[
+			StaticEntryBuilder {
+				name: b"meminfo",
+				entry_type: FileType::Regular,
+				init: entry_init_default::<MemInfo>,
+			},
+			StaticEntryBuilder {
+				name: b"mounts",
+				entry_type: FileType::Link,
+				init: entry_init_default::<StaticLink<b"self/mounts">>,
+			},
+			StaticEntryBuilder {
+				name: b"self",
+				entry_type: FileType::Link,
+				init: entry_init_default::<SelfNode>,
+			},
+			StaticEntryBuilder {
+				name: b"sys",
+				entry_type: FileType::Directory,
+				init: |_| {
+					box_wrap(StaticDir {
+						entries: &[(StaticEntryBuilder {
+							name: b"kernel",
+							entry_type: FileType::Directory,
+							init: |_| {
+								box_wrap(StaticDir {
+									entries: &[StaticEntryBuilder {
+										name: b"osrelease",
+										entry_type: FileType::Regular,
+										init: entry_init_default::<OsRelease>,
+									}],
+									data: (),
+								})
+							},
+						})],
+						data: (),
+					})
+				},
+			},
+			StaticEntryBuilder {
+				name: b"uptime",
+				entry_type: FileType::Regular,
+				init: entry_init_default::<Uptime>,
+			},
+			StaticEntryBuilder {
+				name: b"version",
+				entry_type: FileType::Regular,
+				init: entry_init_default::<Version>,
+			},
+		],
+		data: (),
+	};
 }
 
 impl OwnedNode for RootDir {
@@ -107,11 +157,10 @@ impl NodeOps for RootDir {
 		})
 	}
 
-	/// This returned offset is junk and should be ignored.
 	fn entry_by_name<'n>(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		_inode: INode,
+		_fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
 		let pid = core::str::from_utf8(name).ok().and_then(|s| s.parse().ok());
@@ -126,54 +175,82 @@ impl NodeOps for RootDir {
 						name: Cow::Borrowed(name),
 					},
 					pid as _,
-					Box::new(ProcDir(pid))? as _,
+					Box::new(StaticDir {
+						entries: &[
+							StaticEntryBuilder {
+								name: b"cmdline",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Cmdline, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"cwd",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Cwd, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"exe",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Exe, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"mounts",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Mounts, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"stat",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<StatNode, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"status",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Status, Pid>,
+							},
+						],
+						data: pid,
+					})? as _,
 				)))
 			} else {
 				Ok(None)
 			}
 		} else {
-			// Search in static entries
-			let index = Self::STATIC_ENTRIES
-				.binary_search_by(|(n, _)| (*n).cmp(name))
-				.ok();
-			let Some(index) = index else {
-				return Ok(None);
-			};
-			let (name, node) = Self::STATIC_ENTRIES[index];
-			Ok(Some((
-				DirEntry {
-					inode: 0,
-					// unwrap won't fail because `get_stat` on static entries never return an
-					// error
-					entry_type: node.get_stat(inode, fs).unwrap().file_type,
-					name: Cow::Borrowed(name),
-				},
-				Pid::MAX as u64 + index as u64,
-				ops,
-			)))
+			let ent = Self::STATIC.entry_by_name_inner(name)?;
+			Ok(ent.map(|(ent, next, ops)| (ent, next + Pid::MAX as u64, ops)))
 		}
 	}
 
 	fn next_entry(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		_inode: INode,
+		_fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
-		let entry = Self::STATIC_ENTRIES
-			.get(off)
-			.map(|(name, node)| DirEntry {
-				inode: 0,
-				// unwrap won't fail because `get_stat` on static entries never return an error
-				entry_type: node.get_stat(inode, fs).unwrap().file_type,
-				name: Cow::Borrowed(*name),
-			})
-			.or_else(|| {
-				// TODO iterate on processes
-				todo!()
-			});
-		Ok(entry.map(|e| (e, (off + 1) as u64)))
+		// Iterate on processes
+		if off < Pid::MAX as usize {
+			// Find next process
+			let sched = get_scheduler().lock();
+			// TODO start iterating at `off`
+			let pid = sched
+				.iter_process()
+				.map(|(pid, _)| pid)
+				.find(|pid| **pid >= off as Pid);
+			if let Some(pid) = pid {
+				return Ok(Some((
+					DirEntry {
+						inode: 0,
+						entry_type: FileType::Directory,
+						name: Cow::Owned(format!("{pid}")?),
+					},
+					*pid as u64 + 1,
+				)));
+			}
+		}
+		// No process left, go to static entries
+		let off = off - Pid::MAX as usize;
+		let ent = Self::STATIC.next_entry_inner(off as _)?;
+		Ok(ent.map(|(ent, next)| (ent, next + Pid::MAX as u64)))
 	}
 }
 
