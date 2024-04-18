@@ -1157,7 +1157,7 @@ impl Filesystem for Ext2Fs {
 		})
 	}
 
-	fn load_file(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
+	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
 		let mut io = self.io.lock();
 		let superblock = self.superblock.lock();
 		// Check the inode exists

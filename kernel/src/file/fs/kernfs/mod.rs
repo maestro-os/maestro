@@ -202,7 +202,7 @@ impl Filesystem for KernFS {
 		})
 	}
 
-	fn load_file(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
+	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
 		let nodes = self.nodes.lock();
 		let node = nodes.get_node(inode)?;
 		Ok(node.detached()?)

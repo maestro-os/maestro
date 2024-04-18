@@ -314,7 +314,7 @@ impl NodeOps for DefaultNode {
 			return Ok(None);
 		};
 		let ent = entries[off].try_clone()?;
-		let ops = fs.load_file(ent.inode)?;
+		let ops = fs.node_from_inode(ent.inode)?;
 		Ok(Some((ent, off as _, ops)))
 	}
 

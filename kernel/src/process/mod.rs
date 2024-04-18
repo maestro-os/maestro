@@ -45,7 +45,7 @@ use crate::{
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
 		mountpoint, open_file,
-		path::{Path, PathBuf},
+		path::{PathBuf},
 		perm::{AccessProfile, ROOT_UID},
 		vfs,
 		vfs::ResolutionSettings,
@@ -438,11 +438,11 @@ impl Process {
 		// Create the default file descriptors table
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
-			let tty_path = Path::new(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_file_mutex = vfs::get_file_from_path(tty_path, &rs)?;
+			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
+			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &rs)?;
 			let tty_file = tty_file_mutex.lock();
 			let file = vfs::get_file_from_location(tty_file.location)?;
-			let open_file = OpenFile::new(file, open_file::O_RDWR)?;
+			let open_file = OpenFile::new(file, tty_path, open_file::O_RDWR)?;
 			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;

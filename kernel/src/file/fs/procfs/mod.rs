@@ -299,8 +299,8 @@ impl Filesystem for ProcFS {
 		self.inner.get_stat()
 	}
 
-	fn load_file(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
-		self.inner.load_file(inode)
+	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
+		self.inner.node_from_inode(inode)
 	}
 }
 

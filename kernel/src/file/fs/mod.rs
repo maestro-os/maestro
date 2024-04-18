@@ -363,12 +363,10 @@ pub trait Filesystem: Any + Debug {
 	/// Returns statistics about the filesystem.
 	fn get_stat(&self) -> EResult<Statfs>;
 
-	/// Loads the node at inode `inode`.
-	///
-	/// The function returns the status of the file and the handle to perform operations on it.
+	/// Returns the node handle for the given `inode`.
 	///
 	/// If the node does not exist, the function returns [`ENOENT`].
-	fn load_file(&self, inode: INode) -> EResult<Box<dyn NodeOps>>;
+	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>>;
 }
 
 /// A filesystem type.

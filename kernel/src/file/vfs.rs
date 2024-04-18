@@ -70,7 +70,7 @@ pub fn get_file_from_location(location: FileLocation) -> EResult<Arc<Mutex<File>
 		FileLocation::Filesystem {
 			inode, ..
 		} => op(&location, false, |_, fs| {
-			let ops = fs.load_file(inode)?;
+			let ops = fs.node_from_inode(inode)?;
 			let stat = ops.get_stat(inode, &*fs)?;
 			Ok((ops, stat))
 		})?,
