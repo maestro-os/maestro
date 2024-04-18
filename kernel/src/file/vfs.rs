@@ -120,6 +120,19 @@ pub fn get_file_from_parent(
 	get_file_from_parent_unchecked(parent, name)
 }
 
+/// Same as [`get_file_from_parent`], but returns `None` if the file does not exist.
+pub fn get_file_from_parent_opt(
+	parent: &File,
+	name: &[u8],
+	ap: &AccessProfile,
+) -> EResult<Option<Arc<Mutex<File>>>> {
+	match get_file_from_parent(parent, name, ap) {
+		Ok(f) => Ok(Some(f)),
+		Err(e) if e.as_int() == errno::ENOENT => Ok(None),
+		Err(e) => Err(e),
+	}
+}
+
 /// Settings for a path resolution operation.
 #[derive(Clone, Debug)]
 pub struct ResolutionSettings {
@@ -226,11 +239,9 @@ fn resolve_path_impl<'p>(
 		};
 		let next_file = match file.stat.file_type {
 			FileType::Directory => {
-				// Check permission
-				if !settings.access_profile.can_search_directory(&file) {
-					return Err(errno!(EACCES));
-				}
-				let Some(entry) = file.dir_entry_by_name(name)? else {
+				let Some(subfile_mutex) =
+					get_file_from_parent_opt(&file, name, &settings.access_profile)?
+				else {
 					// If the last component does not exist and if the file may be created
 					let res = if is_last && settings.create {
 						drop(file);
@@ -243,26 +254,22 @@ fn resolve_path_impl<'p>(
 					};
 					return res;
 				};
-				let mountpoint_id = file
-					.location
-					.get_mountpoint_id()
-					.ok_or_else(|| errno!(ENOENT))?;
-				// The location on the current filesystem
-				let mut loc = FileLocation::Filesystem {
-					mountpoint_id,
-					inode: entry.inode,
-				};
-				// Update location if on a different filesystem
-				if let Some(mp) = mountpoint::from_location(&loc) {
-					let mp = mp.lock();
-					let fs = mp.get_filesystem();
-					loc = FileLocation::Filesystem {
-						mountpoint_id: mp.get_id(),
-						inode: fs.get_root_inode(),
+				let subfile = subfile_mutex.lock();
+				// If this is a mountpoint, continue resolution from the root of its filesystem
+				if let Some(mp) = mountpoint::from_location(&subfile.location) {
+					let loc = {
+						let mp = mp.lock();
+						let fs = mp.get_filesystem();
+						FileLocation::Filesystem {
+							mountpoint_id: mp.get_id(),
+							inode: fs.get_root_inode(),
+						}
 					};
+					get_file_from_location(loc)?
+				} else {
+					drop(subfile);
+					subfile_mutex
 				}
-				// TODO use file.ops.entry_by_name instead
-				get_file_from_location(loc)?
 			}
 			// Follow link, if enabled
 			FileType::Link if !is_last || settings.follow_link => {
