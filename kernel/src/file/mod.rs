@@ -332,8 +332,8 @@ impl Stat {
 /// Information to remove a file when all its handles are closed.
 #[derive(Debug)]
 pub struct DeferredRemove {
-	/// The location of the parent directory.
-	pub parent: FileLocation,
+	/// The the parent directory.
+	pub parent: Arc<Mutex<File>>,
 	/// The name of the entry to remove.
 	pub name: String,
 }
@@ -611,7 +611,8 @@ impl File {
 	pub fn close(&mut self) -> EResult<()> {
 		if let Some(deferred_remove) = self.deferred_remove.take() {
 			// No need to check permissions since they already have been checked before deferring
-			vfs::remove_file_unchecked(&deferred_remove.parent, &deferred_remove.name)?;
+			let parent = deferred_remove.parent.lock();
+			vfs::remove_file_unchecked(&parent, &deferred_remove.name)?;
 		}
 		Ok(())
 	}

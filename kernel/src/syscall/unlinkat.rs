@@ -60,10 +60,9 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 	// AT_EMPTY_PATH is required in case the path has only one component
 	let resolved = at::get_file(&fds, rs.clone(), dirfd, parent_path, flags | AT_EMPTY_PATH)?;
 	match resolved {
-		Resolved::Found(parent_mutex) => {
-			let mut parent = parent_mutex.lock();
+		Resolved::Found(parent) => {
 			let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
-			vfs::remove_file(&mut parent, name, &rs.access_profile)?;
+			vfs::remove_file(parent, name, &rs.access_profile)?;
 		}
 		_ => return Err(errno!(ENOENT)),
 	}

@@ -77,9 +77,7 @@ pub fn renameat2(
 
 	let old_parent_path = oldpath.parent().ok_or_else(|| errno!(ENOTDIR))?;
 	let old_name = oldpath.file_name().ok_or_else(|| errno!(ENOENT))?;
-
-	let old_parent_mutex = vfs::get_file_from_path(old_parent_path, &rs)?;
-	let mut old_parent = old_parent_mutex.lock();
+	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
 
 	let Resolved::Found(old_mutex) = at::get_file(&fds, rs.clone(), olddirfd, &oldpath, 0)? else {
 		return Err(errno!(ENOENT));
@@ -115,7 +113,7 @@ pub fn renameat2(
 	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
 
 	if old.stat.file_type != FileType::Directory {
-		vfs::remove_file(&mut old_parent, old_name, &rs.access_profile)?;
+		vfs::remove_file(old_parent, old_name, &rs.access_profile)?;
 	}
 
 	Ok(0)
