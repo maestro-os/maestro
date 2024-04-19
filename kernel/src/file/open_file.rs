@@ -119,32 +119,29 @@ impl OpenFile {
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
 	pub fn new(file: Arc<Mutex<File>>, path: Option<PathBuf>, flags: i32) -> EResult<Self> {
-		let location = file.lock().location.clone();
+		let location = file.lock().location;
 		let s = Self {
 			file: Some(file),
 			path,
-			location: location.clone(),
+			location,
 			flags,
 
 			curr_off: 0,
 		};
-
 		// Update the open file counter
 		{
 			let mut open_files = OPEN_FILES.lock();
 			if let Some(count) = open_files.get_mut(&location) {
 				*count += 1;
 			} else {
-				open_files.insert(location.clone(), 1)?;
+				open_files.insert(location, 1)?;
 			}
 		}
-
 		// If the file points to a buffer, increment the number of open ends
 		if let Some(buff_mutex) = buffer::get(&location) {
 			let mut buff = buff_mutex.lock();
 			buff.increment_open(s.can_read(), s.can_write());
 		}
-
 		Ok(s)
 	}
 

@@ -162,7 +162,7 @@ impl NodeOps for RootDir {
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
+	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let pid = core::str::from_utf8(name).ok().and_then(|s| s.parse().ok());
 		if let Some(pid) = pid {
 			// Check the process exists
@@ -174,7 +174,6 @@ impl NodeOps for RootDir {
 						entry_type: FileType::Directory,
 						name: Cow::Borrowed(name),
 					},
-					pid as _,
 					Box::new(StaticDir {
 						entries: &[
 							StaticEntryBuilder {
@@ -215,8 +214,7 @@ impl NodeOps for RootDir {
 				Ok(None)
 			}
 		} else {
-			let ent = Self::STATIC.entry_by_name_inner(name)?;
-			Ok(ent.map(|(ent, next, ops)| (ent, next + Pid::MAX as u64, ops)))
+			Self::STATIC.entry_by_name_inner(name)
 		}
 	}
 

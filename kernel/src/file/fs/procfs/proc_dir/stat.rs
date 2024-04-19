@@ -93,6 +93,6 @@ impl NodeOps for StatNode {
 	) -> EResult<(u64, bool)> {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", StatDisp(&*proc))
+		format_content!(off, buf, "{}", StatDisp(&proc))
 	}
 }

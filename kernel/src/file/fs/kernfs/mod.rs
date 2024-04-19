@@ -31,7 +31,6 @@ use crate::{
 	},
 	memory,
 };
-use core::cmp::{max, min};
 use node::OwnedNode;
 use utils::{boxed::Box, collections::vec::Vec, errno, errno::EResult, lock::Mutex, vec};
 
@@ -58,51 +57,6 @@ impl NodesStorage {
 			.ok_or_else(|| errno!(ENOENT))?
 			.as_ref()
 			.ok_or_else(|| errno!(ENOENT))
-	}
-
-	/// Returns a mutable reference to the node with inode `inode`.
-	///
-	/// If the node does not exist, the function returns an error.
-	pub fn get_node_mut(&mut self, inode: INode) -> EResult<&mut Box<dyn OwnedNode>> {
-		self.0
-			.get_mut(inode as usize - 1)
-			.ok_or_else(|| errno!(ENOENT))?
-			.as_mut()
-			.ok_or_else(|| errno!(ENOENT))
-	}
-
-	/// Returns mutable references to a pair of nodes.
-	///
-	/// If `a` == `b`, the function panics.
-	///
-	/// If at least one node does not exist, the function returns an error.
-	pub fn get_node_pair_mut(
-		&mut self,
-		a: INode,
-		b: INode,
-	) -> EResult<(&mut Box<dyn OwnedNode>, &mut Box<dyn OwnedNode>)> {
-		let a = a as usize - 1;
-		let b = b as usize - 1;
-		// Validation
-		if a == b {
-			panic!("kernfs: trying to get the same node twice at the same time");
-		}
-		if a >= self.0.len() || b >= self.0.len() {
-			return Err(errno!(ENOENT));
-		}
-		// Split in two slices to allow taking two mutable references at once
-		let min = min(a, b);
-		let max = max(a, b);
-		let (left, right) = self.0.split_at_mut(max);
-		// Check if None and take references
-		let left = left[min].as_mut().ok_or_else(|| errno!(ENOENT))?;
-		let right = right[0].as_mut().ok_or_else(|| errno!(ENOENT))?;
-		// Reorder according to arguments
-		if a < b {
-			Ok((left, right))
-		} else {
-			Ok((right, left))
-		}
 	}
 
 	/// Returns a free slot for a new node.
@@ -140,8 +94,7 @@ impl NodesStorage {
 	pub fn remove_node(&mut self, inode: INode) -> Option<Box<dyn OwnedNode>> {
 		self.0
 			.get_mut(inode as usize - 1)
-			.map(Option::take)
-			.flatten()
+			.and_then(Option::take)
 	}
 }
 

@@ -109,7 +109,7 @@ pub fn map(loc: FileLocation, _off: usize) -> EResult<()> {
 	let _mapped_file = match mapped_files.get_mut(&loc) {
 		Some(f) => f,
 		None => {
-			mapped_files.insert(loc.clone(), MappedFile::default())?;
+			mapped_files.insert(loc, MappedFile::default())?;
 			mapped_files.get_mut(&loc).unwrap()
 		}
 	};

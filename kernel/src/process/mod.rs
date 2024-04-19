@@ -487,7 +487,7 @@ impl Process {
 			user_stack: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: Arc::new((PathBuf::root(), root_loc.clone()))?,
+			cwd: Arc::new((PathBuf::root(), root_loc))?,
 			chroot: root_loc,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
@@ -886,7 +886,7 @@ impl Process {
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
 			cwd: self.cwd.clone(),
-			chroot: self.chroot.clone(),
+			chroot: self.chroot,
 			file_descriptors,
 
 			sigmask: self.sigmask.try_clone()?,

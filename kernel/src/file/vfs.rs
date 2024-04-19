@@ -71,7 +71,7 @@ pub fn get_file_from_location(location: FileLocation) -> EResult<Arc<Mutex<File>
 			inode, ..
 		} => op(&location, false, |_, fs| {
 			let ops = fs.node_from_inode(inode)?;
-			let stat = ops.get_stat(inode, &*fs)?;
+			let stat = ops.get_stat(inode, fs)?;
 			Ok((ops, stat))
 		})?,
 		FileLocation::Virtual(_) => {
@@ -85,7 +85,7 @@ pub fn get_file_from_location(location: FileLocation) -> EResult<Arc<Mutex<File>
 fn get_file_from_parent_unchecked(parent: &File, name: &[u8]) -> EResult<Arc<Mutex<File>>> {
 	let parent_inode = parent.location.get_inode();
 	let file = op(&parent.location, false, |mp, fs| {
-		let (ent, _, ops) = parent
+		let (ent, ops) = parent
 			.ops
 			.entry_by_name(parent_inode, fs, name)?
 			.ok_or_else(|| errno!(ENOENT))?;
@@ -181,8 +181,8 @@ impl ResolutionSettings {
 	/// `follow_links` tells whether symbolic links are followed.
 	pub fn for_process(proc: &Process, follow_links: bool) -> Self {
 		Self {
-			root: proc.chroot.clone(),
-			start: proc.cwd.1.clone(),
+			root: proc.chroot,
+			start: proc.cwd.1,
 
 			access_profile: proc.access_profile,
 
@@ -281,8 +281,8 @@ fn resolve_path_impl<'p>(
 				let link_path = file.read_link()?;
 				// Resolve link
 				let rs = ResolutionSettings {
-					root: settings.root.clone(),
-					start: file.location.clone(),
+					root: settings.root,
+					start: file.location,
 					access_profile: settings.access_profile,
 					create: false,
 					follow_link: true,

@@ -210,7 +210,7 @@ pub trait NodeOps: Debug {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
+	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let _ = name;
 		match self.get_stat(inode, fs)?.file_type {
 			FileType::Directory => Err(errno!(EINVAL)),

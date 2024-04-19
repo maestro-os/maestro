@@ -53,7 +53,7 @@ pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
 		if !proc.access_profile.can_list_directory(&file) {
 			return Err(errno!(EACCES));
 		}
-		(path.try_clone()?, file.location.clone())
+		(path.try_clone()?, file.location)
 	};
 	proc.cwd = Arc::new(cwd)?;
 	Ok(0)

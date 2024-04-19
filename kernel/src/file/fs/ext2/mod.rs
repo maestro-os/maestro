@@ -355,7 +355,7 @@ impl NodeOps for Ext2NodeOps {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
+	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
@@ -363,7 +363,7 @@ impl NodeOps for Ext2NodeOps {
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		let Some((off, entry)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
+		let Some((_, entry)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
 			return Ok(None);
 		};
 		let entry_type = match entry.get_type(&superblock) {
@@ -377,7 +377,6 @@ impl NodeOps for Ext2NodeOps {
 				entry_type,
 				name: Cow::Borrowed(name),
 			},
-			off,
 			Box::new(Ext2NodeOps)?,
 		)))
 	}
@@ -421,7 +420,7 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(ENOTDIR));
 		}
 		// Check whether the file already exists
-		if parent.get_dirent(&name, &superblock, &mut *io)?.is_some() {
+		if parent.get_dirent(name, &superblock, &mut *io)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
 		// Get a free inode ID
@@ -455,7 +454,7 @@ impl NodeOps for Ext2NodeOps {
 			FileType::Directory => {
 				// Add `.` and `..` entries
 				inode.add_dirent(
-					&mut *superblock,
+					&mut superblock,
 					&mut *io,
 					inode_index,
 					b".",
@@ -464,7 +463,7 @@ impl NodeOps for Ext2NodeOps {
 				inode.hard_links_count += 1;
 				stat.nlink += 1;
 				inode.add_dirent(
-					&mut *superblock,
+					&mut superblock,
 					&mut *io,
 					parent_inode as _,
 					b"..",

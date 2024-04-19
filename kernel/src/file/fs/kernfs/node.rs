@@ -282,7 +282,7 @@ impl NodeOps for DefaultNode {
 		let new_len = max(content.len(), off + buf.len());
 		content.resize(new_len, 0)?;
 		// Copy
-		content[off..(off + buf.len())].copy_from_slice(&buf);
+		content[off..(off + buf.len())].copy_from_slice(buf);
 		Ok(buf.len() as _)
 	}
 
@@ -302,7 +302,7 @@ impl NodeOps for DefaultNode {
 		_inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
+	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let inner = self.0.lock();
 		let DefaultNodeContent::Directory(entries) = &inner.content else {
 			return Err(errno!(ENOTDIR));
@@ -315,7 +315,7 @@ impl NodeOps for DefaultNode {
 		};
 		let ent = entries[off].try_clone()?;
 		let ops = fs.node_from_inode(ent.inode)?;
-		Ok(Some((ent, off as _, ops)))
+		Ok(Some((ent, ops)))
 	}
 
 	fn next_entry(
@@ -399,8 +399,8 @@ impl NodeOps for DefaultNode {
 		let node = {
 			// Get a detached version to make sure `get_stat` does not cause a deadlock
 			let fs = downcast_fs(fs);
-			let mut nodes = fs.nodes.lock();
-			nodes.get_node_mut(inode)?.detached()?
+			let nodes = fs.nodes.lock();
+			nodes.get_node(inode)?.detached()?
 		};
 		let stat = node.get_stat(inode, fs)?;
 		let mut parent_inner = self.0.lock();
@@ -546,7 +546,7 @@ impl NodeOps for DefaultNodeOps {
 		inode: INode,
 		fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
+	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let fs = downcast_fs(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
@@ -714,7 +714,7 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 	pub fn entry_by_name_inner<'n>(
 		&self,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
+	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let Ok(index) = self.entries.binary_search_by(|e| e.name.cmp(name)) else {
 			return Ok(None);
 		};
@@ -726,7 +726,6 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 				entry_type: e.entry_type,
 				name: Cow::Borrowed(name),
 			},
-			index as _,
 			ops,
 		)))
 	}
@@ -762,7 +761,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 		_inode: INode,
 		_fs: &dyn Filesystem,
 		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, u64, Box<dyn NodeOps>)>> {
+	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		self.entry_by_name_inner(name)
 	}
 
@@ -785,30 +784,30 @@ mod test {
 		let (len, eof) = format_content!(0, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"abcdefghi");
 		assert_eq!(len, 9);
-		assert_eq!(eof, true);
+		assert!(eof);
 		// End
 		let mut out = [0u8; 9];
 		let (len, eof) = format_content!(9, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out, [0u8; 9]);
 		assert_eq!(len, 0);
-		assert_eq!(eof, true);
+		assert!(eof);
 		// Start from second chunk
 		let mut out = [0u8; 9];
 		let (len, eof) = format_content!(3, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"defghi\0\0\0");
 		assert_eq!(len, 6);
-		assert_eq!(eof, true);
+		assert!(eof);
 		// Start from middle of chunk
 		let mut out = [0u8; 9];
 		let (len, eof) = format_content!(4, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"efghi\0\0\0\0");
 		assert_eq!(len, 5);
-		assert_eq!(eof, true);
+		assert!(eof);
 		// Stop before end
 		let mut out = [0u8; 5];
 		let (len, eof) = format_content!(0, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"abcde");
 		assert_eq!(len, 5);
-		assert_eq!(eof, false);
+		assert!(!eof);
 	}
 }

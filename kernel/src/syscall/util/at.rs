@@ -71,7 +71,7 @@ fn fd_to_loc(fds: &FileDescriptorTable, fd: c_int) -> EResult<FileLocation> {
 		.get_open_file()
 		.clone();
 	let open_file = open_file_mutex.lock();
-	Ok(open_file.get_location().clone())
+	Ok(*open_file.get_location())
 }
 
 /// Returns the file for the given path `path`.

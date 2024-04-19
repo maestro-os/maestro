@@ -348,7 +348,7 @@ pub fn create(
 		fs_type,
 		flags,
 		target_path,
-		target_location.clone(),
+		target_location,
 	)?))?;
 
 	// Insertion
