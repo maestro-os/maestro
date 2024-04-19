@@ -59,8 +59,8 @@ pub fn socketpair(
 	let loc = buffer::register(None, sock)?;
 	let file = vfs::get_file_from_location(loc)?;
 
-	let open_file0 = OpenFile::new(file.clone(), open_file::O_RDONLY)?;
-	let open_file1 = OpenFile::new(file, open_file::O_WRONLY)?;
+	let open_file0 = OpenFile::new(file.clone(), None, open_file::O_RDONLY)?;
+	let open_file1 = OpenFile::new(file, None, open_file::O_WRONLY)?;
 
 	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();

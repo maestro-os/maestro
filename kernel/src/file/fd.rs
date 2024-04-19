@@ -361,7 +361,7 @@ mod test {
 			Stat::default(),
 			Box::new(DummyNodeOps).unwrap() as _,
 		);
-		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), 0).unwrap()
+		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), None, 0).unwrap()
 	}
 
 	#[test_case]

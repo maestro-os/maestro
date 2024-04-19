@@ -161,7 +161,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: Mode) -> EResult<i32> {
 	}
 
 	// Create open file description
-	let open_file = OpenFile::new(file_mutex.clone(), flags)?;
+	// FIXME: pass the absolute path, used by `fchidr`
+	let open_file = OpenFile::new(file_mutex.clone(), None, flags)?;
 
 	// Create FD
 	let mut fd_flags = 0;

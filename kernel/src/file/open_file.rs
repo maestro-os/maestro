@@ -19,10 +19,10 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
+use super::{buffer, mountpoint, path::PathBuf, DeviceID, File, FileLocation, FileType};
 use crate::{
 	device,
 	device::DeviceType,
-	file::{buffer, mountpoint, DeviceID, File, FileLocation, FileType},
 	process::{
 		mem_space::{ptr::SyscallPtr, MemSpace},
 		Process,
@@ -93,6 +93,10 @@ static OPEN_FILES: Mutex<HashMap<FileLocation, usize>> = Mutex::new(HashMap::new
 pub struct OpenFile {
 	/// The open file. This is an option to allow easier dropping implementation.
 	file: Option<Arc<Mutex<File>>>,
+	/// The file's absolute path.
+	///
+	/// If the open file is virtual, this field is `None`.
+	path: Option<PathBuf>,
 	/// The file's location. This field is necessary to avoid locking the file's mutex each time
 	/// the location is required.
 	location: FileLocation,
@@ -109,14 +113,16 @@ impl OpenFile {
 	///
 	/// Arguments:
 	/// - `file` is the open file
+	/// - `path` is the path from which the file is opened. If the file is virtual, pass `None`
 	/// - `flags` is the open file's set of flags
 	///
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
-	pub fn new(file: Arc<Mutex<File>>, flags: i32) -> EResult<Self> {
+	pub fn new(file: Arc<Mutex<File>>, path: Option<PathBuf>, flags: i32) -> EResult<Self> {
 		let location = file.lock().location.clone();
 		let s = Self {
 			file: Some(file),
+			path,
 			location: location.clone(),
 			flags,
 
@@ -171,6 +177,11 @@ impl OpenFile {
 	/// The name of the file is not set since it cannot be known from this structure.
 	pub fn get_file(&self) -> &Arc<Mutex<File>> {
 		self.file.as_ref().unwrap()
+	}
+
+	/// Returns the file's path.
+	pub fn get_path(&self) -> Option<&PathBuf> {
+		self.path.as_ref()
 	}
 
 	/// Returns the location of the file.

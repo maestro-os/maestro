@@ -45,8 +45,8 @@ pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno>
 	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
 	let file = vfs::get_file_from_location(loc)?;
 
-	let open_file0 = OpenFile::new(file.clone(), open_file::O_RDONLY)?;
-	let open_file1 = OpenFile::new(file, open_file::O_WRONLY)?;
+	let open_file0 = OpenFile::new(file.clone(), None, open_file::O_RDONLY)?;
+	let open_file1 = OpenFile::new(file, None, open_file::O_WRONLY)?;
 
 	let mut fds = fds_mutex.lock();
 	let mut mem_space_guard = mem_space.lock();

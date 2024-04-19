@@ -133,7 +133,8 @@ pub fn openat(
 		super::open::handle_flags(&mut file, flags, &rs.access_profile)?;
 	}
 
-	let open_file = OpenFile::new(file_mutex, flags)?;
+	// FIXME: pass the absolute path, used by `fchidr`
+	let open_file = OpenFile::new(file_mutex, None, flags)?;
 
 	// Create FD
 	let mut fd_flags = 0;
