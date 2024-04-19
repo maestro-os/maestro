@@ -365,7 +365,7 @@ pub trait Filesystem: Any + Debug {
 
 	/// Returns the node handle for the given `inode`.
 	///
-	/// If the node does not exist, the function returns [`ENOENT`].
+	/// If the node does not exist, the function returns [`errno::ENOENT`].
 	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>>;
 }
 

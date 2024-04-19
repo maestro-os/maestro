@@ -608,7 +608,7 @@ impl<'b> Write for FormatContentWriter<'b> {
 	}
 }
 
-/// Implementation of [`format_content`].
+/// Implementation of [`crate::format_content`].
 pub fn format_content_args(
 	off: u64,
 	buf: &mut [u8],
@@ -710,7 +710,7 @@ pub struct StaticDir<T: 'static + Clone + Debug = ()> {
 }
 
 impl<T: 'static + Clone + Debug> StaticDir<T> {
-	/// Inner implementation of [`entry_by_name`].
+	/// Inner implementation of [`Self::entry_by_name`].
 	pub fn entry_by_name_inner<'n>(
 		&self,
 		name: &'n [u8],
@@ -731,7 +731,7 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 		)))
 	}
 
-	/// Inner implementation of [`next_entry`].
+	/// Inner implementation of [`Self::next_entry`].
 	pub fn next_entry_inner(&self, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let Some(e) = self.entries.get(off) else {

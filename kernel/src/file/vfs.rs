@@ -64,7 +64,7 @@ where
 
 /// Returns the file corresponding to the given location `location`.
 ///
-/// If the file doesn't exist, the function returns [`ENOENT`].
+/// If the file doesn't exist, the function returns [`errno::ENOENT`].
 pub fn get_file_from_location(location: FileLocation) -> EResult<Arc<Mutex<File>>> {
 	let (ops, stat) = match location {
 		FileLocation::Filesystem {
@@ -106,9 +106,9 @@ fn get_file_from_parent_unchecked(parent: &File, name: &[u8]) -> EResult<Arc<Mut
 /// Returns the file with the `name` in the directory `parent`.
 ///
 /// The function checks search access in the directory. If not allowed, the function returns
-/// [`EACCES`].
+/// [`errno::EACCES`].
 ///
-/// If the file doesn't exist, the function returns [`ENOENT`].
+/// If the file doesn't exist, the function returns [`errno::ENOENT`].
 pub fn get_file_from_parent(
 	parent: &File,
 	name: &[u8],
