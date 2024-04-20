@@ -557,9 +557,7 @@ impl File {
 						ops: &*self.ops,
 					})
 				}
-				FileLocation::Virtual {
-					..
-				} => {
+				FileLocation::Virtual(_) => {
 					let Some(io_mutex) = buffer::get(&self.location) else {
 						return Err(errno!(ENOENT));
 					};
@@ -567,7 +565,20 @@ impl File {
 					f(IoSource::IO(&mut *io))
 				}
 			},
-			FileType::Directory => Err(errno!(EISDIR)),
+			FileType::Directory => {
+				let fs = {
+					let mountpoint_mutex =
+						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
+					let mountpoint = mountpoint_mutex.lock();
+					mountpoint.get_filesystem()
+				};
+				let inode = self.location.get_inode();
+				f(IoSource::Filesystem {
+					fs: &*fs,
+					inode,
+					ops: &*self.ops,
+				})
+			}
 			FileType::Link => Err(errno!(EINVAL)),
 			FileType::Fifo => {
 				let io_mutex = buffer::get_or_default::<PipeBuffer>(&self.location)?;
