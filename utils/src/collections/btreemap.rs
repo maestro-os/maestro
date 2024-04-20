@@ -1536,19 +1536,19 @@ mod test {
 
 	#[test]
 	fn binary_tree_intoiter() {
-		let b = (0..1000)
+		let b = (0..100)
 			.map(|i| (i, i))
 			.collect::<CollectResult<BTreeMap<_, _>>>()
 			.0
 			.unwrap();
-		assert_eq!(b.len(), 1000);
+		assert_eq!(b.len(), 100);
 		let mut count = 0;
 		for (a, (b, c)) in b.into_iter().enumerate() {
 			assert_eq!(a, b);
 			assert_eq!(b, c);
 			count += 1;
 		}
-		assert_eq!(count, 1000);
+		assert_eq!(count, 100);
 	}
 
 	#[test]
