@@ -20,7 +20,6 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: clippy
     steps:
-      - uses: clippy
       - name: Debug
         working-directory: ./kernel
         run: ci/build.sh
@@ -39,7 +38,6 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: build
     steps:
-      - uses: build
       - name: Utils
         working-directory: ./utils
         env:
@@ -50,7 +48,6 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: build
     steps:
-      - uses: build
       - name: Run utils tests
         working-directory: ./utils
         run: cargo test
@@ -63,7 +60,6 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: build
     steps:
-      - uses: build
       - name: Build
         working-directory: ./kernel
         env:

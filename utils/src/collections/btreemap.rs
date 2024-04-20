@@ -828,39 +828,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Calls the given closure for every node in the subtree with root `root`.
 	///
 	/// `traversal_order` defines the order in which the tree is traversed.
-	fn foreach_node<F: FnMut(&Node<K, V>)>(
-		root: &Node<K, V>,
-		f: &mut F,
-		traversal_order: TraversalOrder,
-	) {
-		let (first, second) = if traversal_order == TraversalOrder::ReverseInOrder {
-			(root.right, root.left)
-		} else {
-			(root.left, root.right)
-		};
-		if traversal_order == TraversalOrder::PreOrder {
-			(*f)(root);
-		}
-		if let Some(mut n) = first {
-			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
-		}
-		if traversal_order == TraversalOrder::InOrder
-			|| traversal_order == TraversalOrder::ReverseInOrder
-		{
-			(*f)(root);
-		}
-		if let Some(mut n) = second {
-			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
-		}
-		if traversal_order == TraversalOrder::PostOrder {
-			(*f)(root);
-		}
-	}
-
-	/// Calls the given closure for every node in the subtree with root `root`.
-	///
-	/// `traversal_order` defines the order in which the tree is traversed.
-	fn foreach_node_mut<F: FnMut(&mut Node<K, V>)>(
+	fn foreach_node<F: FnMut(&mut Node<K, V>)>(
 		root: &mut Node<K, V>,
 		f: &mut F,
 		traversal_order: TraversalOrder,
@@ -874,7 +842,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 			f(root);
 		}
 		if let Some(mut n) = first {
-			Self::foreach_node_mut(unsafe { n.as_mut() }, f, traversal_order);
+			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
 		}
 		if traversal_order == TraversalOrder::InOrder
 			|| traversal_order == TraversalOrder::ReverseInOrder
@@ -882,7 +850,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 			f(root);
 		}
 		if let Some(mut n) = second {
-			Self::foreach_node_mut(unsafe { n.as_mut() }, f, traversal_order);
+			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
 		}
 		if traversal_order == TraversalOrder::PostOrder {
 			f(root);
@@ -904,7 +872,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		let mut explored_nodes = Vec::<*const c_void>::new();
 		Self::foreach_node(
 			root,
-			&mut |n: &Node<K, V>| {
+			&mut |n: &mut Node<K, V>| {
 				for e in explored_nodes.iter() {
 					assert_ne!(*e, n as *const _ as *const c_void);
 				}
@@ -1020,7 +988,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		let Some(root) = self.get_root() else {
 			return;
 		};
-		Self::foreach_node_mut(
+		Self::foreach_node(
 			root,
 			&mut |n| unsafe {
 				drop_node(n.into());
