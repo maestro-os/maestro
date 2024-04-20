@@ -70,8 +70,8 @@ jobs:
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   format:
     runs-on: [self-hosted, linux]
+    needs: clippy
     steps:
-      - uses: actions/checkout@v4
       - name: Macros
         working-directory: ./macros
         run: cargo fmt --check
@@ -83,8 +83,8 @@ jobs:
         run: cargo fmt --check
   documentation:
     runs-on: [self-hosted, linux]
+    needs: clippy
     steps:
-      - uses: actions/checkout@v4
       - name: Build book
         run: mdbook build doc/
       - name: Build references
