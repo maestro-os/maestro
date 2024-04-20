@@ -764,10 +764,7 @@ impl Superblock {
 	/// Returns the first inode that isn't reserved.
 	pub fn get_first_available_inode(&self) -> u32 {
 		if self.s_rev_level >= 1 {
-			max(
-				self.s_first_ino,
-				inode::ROOT_DIRECTORY_INODE + 1,
-			)
+			max(self.s_first_ino, inode::ROOT_DIRECTORY_INODE + 1)
 		} else {
 			10
 		}

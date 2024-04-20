@@ -1100,12 +1100,7 @@ impl Ext2INode {
 			new_entry.inode = entry_inode;
 			new_entry.set_name(superblock, name);
 			new_entry.set_type(superblock, file_type);
-			self.write_dirent(
-				superblock,
-				io,
-				&new_entry,
-				entry_off + entry.rec_len as u64,
-			)
+			self.write_dirent(superblock, io, &new_entry, entry_off + entry.rec_len as u64)
 		} else {
 			// cannot fails because block size is never zero
 			let entry_size = (blk_size as u16).try_into().unwrap();
