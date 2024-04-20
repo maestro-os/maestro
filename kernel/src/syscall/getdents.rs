@@ -152,7 +152,6 @@ impl Dirent for LinuxDirent {
 			d_reclen: len as _,
 			d_name: [],
 		};
-
 		// Write entry
 		unsafe {
 			#[allow(invalid_reference_casting)]

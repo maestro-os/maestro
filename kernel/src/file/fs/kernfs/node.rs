@@ -43,7 +43,7 @@ use utils::{
 	DisplayableStr, TryClone,
 };
 
-/// Downcasts the given `fs` into [`crate::file::fs::ext2::Ext2Fs`].
+/// Downcasts the given `fs` into [`KernFS`].
 fn downcast_fs(fs: &dyn Filesystem) -> &KernFS {
 	(fs as &dyn Any).downcast_ref().unwrap()
 }
