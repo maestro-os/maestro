@@ -44,7 +44,7 @@ use utils::{
 };
 
 /// The maximum number of direct blocks for each inodes.
-pub const DIRECT_BLOCKS_COUNT: u8 = 12;
+pub const DIRECT_BLOCKS_COUNT: usize = 12;
 
 /// INode type: FIFO
 pub const INODE_TYPE_FIFO: u16 = 0x1000;
@@ -139,47 +139,41 @@ pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
 #[derive(AnyRepr)]
 pub struct Ext2INode {
 	/// Type and permissions.
-	pub mode: u16,
+	pub i_mode: u16,
 	/// User ID.
-	pub uid: u16,
+	pub i_uid: u16,
 	/// Lower 32 bits of size in bytes.
-	pub size_low: u32,
+	pub i_size: u32,
 	/// Timestamp of the last modification of the metadata.
-	pub ctime: u32,
+	pub i_ctime: u32,
 	/// Timestamp of the last modification of the content.
-	pub mtime: u32,
+	pub i_mtime: u32,
 	/// Timestamp of the last access.
-	pub atime: u32,
+	pub i_atime: u32,
 	/// Timestamp of the deletion.
-	pub dtime: u32,
+	pub i_dtime: u32,
 	/// Group ID.
-	pub gid: u16,
+	pub i_gid: u16,
 	/// The number of hard links to this inode.
-	pub hard_links_count: u16,
+	pub i_links_count: u16,
 	/// The number of sectors used by this inode.
-	pub used_sectors: u32,
+	pub i_blocks: u32,
 	/// INode flags.
-	pub flags: u32,
+	pub i_flags: u32,
 	/// OS-specific value.
-	pub os_specific_0: u32,
+	pub i_osd1: u32,
 	/// Direct block pointers.
-	pub direct_block_ptrs: [u32; DIRECT_BLOCKS_COUNT as usize],
-	/// Simply indirect block pointer.
-	pub singly_indirect_block_ptr: u32,
-	/// Doubly indirect block pointer.
-	pub doubly_indirect_block_ptr: u32,
-	/// Triply indirect block pointer.
-	pub triply_indirect_block_ptr: u32,
+	pub i_block: [u32; DIRECT_BLOCKS_COUNT + 3],
 	/// Generation number.
-	pub generation: u32,
+	pub i_generation: u32,
 	/// The file's ACL.
-	pub extended_attributes_block: u32,
+	pub i_file_acl: u32,
 	/// Higher 32 bits of size in bytes.
-	pub size_high: u32,
+	pub i_dir_acl: u32,
 	/// Block address of fragment.
-	pub fragment_addr: u32,
+	pub i_faddr: u32,
 	/// OS-specific value.
-	pub os_specific_1: [u8; 12],
+	pub i_osd2: [u8; 12],
 }
 
 impl Ext2INode {
@@ -199,9 +193,9 @@ impl Ext2INode {
 		let inode_size = superblock.get_inode_size() as u64;
 
 		// The block group the inode is located in
-		let blk_grp = (i - 1) / superblock.inodes_per_group;
+		let blk_grp = (i - 1) / superblock.s_inodes_per_group;
 		// The offset of the inode in the block group's bitfield
-		let inode_grp_off = (i - 1) % superblock.inodes_per_group;
+		let inode_grp_off = (i - 1) % superblock.s_inodes_per_group;
 		// The offset of the inode's block
 		let inode_table_blk_off = (inode_grp_off as u64 * inode_size) / blk_size;
 		// The offset of the inode in the block
@@ -209,7 +203,7 @@ impl Ext2INode {
 
 		let bgd = BlockGroupDescriptor::read(blk_grp, superblock, io)?;
 		// The block containing the inode
-		let blk = bgd.inode_table_start_addr as u64 + inode_table_blk_off;
+		let blk = bgd.bg_inode_table as u64 + inode_table_blk_off;
 
 		// The offset of the inode on the disk
 		let inode_offset = (blk * blk_size) + inode_blk_off;
@@ -244,7 +238,7 @@ impl Ext2INode {
 
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> FileType {
-		let file_type = self.mode & 0xf000;
+		let file_type = self.i_mode & 0xf000;
 
 		match file_type {
 			INODE_TYPE_FIFO => FileType::Fifo,
@@ -261,25 +255,25 @@ impl Ext2INode {
 
 	/// Returns the permissions of the file.
 	pub fn get_permissions(&self) -> Mode {
-		self.mode as Mode & 0x0fff
+		self.i_mode as Mode & 0x0fff
 	}
 
 	/// Sets the permissions of the file.
 	pub fn set_permissions(&mut self, perm: Mode) {
-		self.mode = (self.mode & !0o7777) | (perm & 0o7777) as u16;
+		self.i_mode = (self.i_mode & !0o7777) | (perm & 0o7777) as u16;
 	}
 
 	/// Returns the size of the file.
 	///
 	/// `superblock` is the filesystem's superblock.
 	pub fn get_size(&self, superblock: &Superblock) -> u64 {
-		let has_version = superblock.major_version >= 1;
-		let has_feature = superblock.write_required_features & super::WRITE_REQUIRED_64_BITS != 0;
+		let has_version = superblock.s_rev_level >= 1;
+		let has_feature = superblock.s_feature_ro_compat & super::WRITE_REQUIRED_64_BITS != 0;
 
 		if has_version && has_feature {
-			((self.size_high as u64) << 32) | (self.size_low as u64)
+			((self.i_dir_acl as u64) << 32) | (self.i_size as u64)
 		} else {
-			self.size_low as u64
+			self.i_size as u64
 		}
 	}
 
@@ -289,14 +283,14 @@ impl Ext2INode {
 	/// - `superblock` is the filesystem's superblock.
 	/// - `size` is the file's size.
 	fn set_size(&mut self, superblock: &Superblock, size: u64) {
-		let has_version = superblock.major_version >= 1;
-		let has_feature = superblock.write_required_features & super::WRITE_REQUIRED_64_BITS != 0;
+		let has_version = superblock.s_rev_level >= 1;
+		let has_feature = superblock.s_feature_ro_compat & super::WRITE_REQUIRED_64_BITS != 0;
 
 		if has_version && has_feature {
-			self.size_high = ((size >> 32) & 0xffffffff) as u32;
-			self.size_low = (size & 0xffffffff) as u32;
+			self.i_dir_acl = ((size >> 32) & 0xffffffff) as u32;
+			self.i_size = (size & 0xffffffff) as u32;
 		} else {
-			self.size_low = size as u32;
+			self.i_size = size as u32;
 		}
 	}
 
@@ -304,14 +298,14 @@ impl Ext2INode {
 	///
 	/// `blk_size` is the size of a block.
 	fn increment_used_sectors(&mut self, blk_size: u32) {
-		self.used_sectors += blk_size.div_ceil(SECTOR_SIZE);
+		self.i_blocks += blk_size.div_ceil(SECTOR_SIZE);
 	}
 
 	/// Decrements the number of used sectors of one block.
 	///
 	/// `blk_size` is the size of a block.
 	fn decrement_used_sectors(&mut self, blk_size: u32) {
-		self.used_sectors -= blk_size.div_ceil(SECTOR_SIZE);
+		self.i_blocks -= blk_size.div_ceil(SECTOR_SIZE);
 	}
 
 	/// Turns a block offset into an `Option`.
@@ -330,7 +324,7 @@ impl Ext2INode {
 	/// Arguments:
 	/// - `off` is the block offset.
 	/// - `entries_per_blk` is the number of entries per block.
-	fn get_content_blk_indirections_count(off: u32, entries_per_blk: u32) -> u8 {
+	fn get_content_blk_indirections_count(off: u32, entries_per_blk: u32) -> usize {
 		if off < DIRECT_BLOCKS_COUNT as u32 {
 			0
 		} else if off < DIRECT_BLOCKS_COUNT as u32 + entries_per_blk {
@@ -354,13 +348,13 @@ impl Ext2INode {
 	///
 	/// If the block doesn't exist, the function returns `None`.
 	fn resolve_indirections(
-		n: u8,
+		n: usize,
 		begin: u32,
 		off: u32,
 		superblock: &Superblock,
 		io: &mut dyn IO,
 	) -> EResult<Option<u32>> {
-		if begin >= superblock.total_blocks {
+		if begin >= superblock.s_blocks_count {
 			return Err(errno!(EUCLEAN));
 		}
 
@@ -401,40 +395,30 @@ impl Ext2INode {
 	) -> EResult<Option<u32>> {
 		let blk_size = superblock.get_block_size();
 		let entries_per_blk = blk_size / size_of::<u32>() as u32;
-
 		// The number of indirections to perform
 		let level = Self::get_content_blk_indirections_count(i, entries_per_blk);
-
-		// If direct block, handle it directly
-		if level == 0 {
-			let blk = self.direct_block_ptrs[i as usize];
-			if blk < superblock.total_blocks {
-				return Ok(Self::blk_offset_to_option(blk));
-			} else {
-				return Err(errno!(EUCLEAN));
-			}
-		}
-
-		// The id on the beginning block to indirect from
+		// The ID on the beginning block to indirect from
 		let begin_id = match level {
-			1 => self.singly_indirect_block_ptr,
-			2 => self.doubly_indirect_block_ptr,
-			3 => self.triply_indirect_block_ptr,
-
-			_ => unreachable!(),
+			// No indirection, return directly
+			0 => {
+				let blk = self.i_block[i as usize];
+				return if blk < superblock.s_blocks_count {
+					Ok(Self::blk_offset_to_option(blk))
+				} else {
+					Err(errno!(EUCLEAN))
+				};
+			}
+			_ => self.i_block[DIRECT_BLOCKS_COUNT + level - 1],
 		};
-
 		if let Some(begin) = Self::blk_offset_to_option(begin_id) {
 			let target = i - DIRECT_BLOCKS_COUNT as u32 - {
 				match level {
 					1 => 0,
 					2 => entries_per_blk,
 					3 => entries_per_blk * entries_per_blk,
-
 					_ => unreachable!(),
 				}
 			};
-
 			Self::resolve_indirections(level, begin, target, superblock, io)
 		} else {
 			Ok(None)
@@ -452,16 +436,16 @@ impl Ext2INode {
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
 	///
-	/// The function returns the the allocated block.
+	/// The function returns the allocated block.
 	fn indirections_alloc(
 		&mut self,
-		n: u8,
+		n: usize,
 		begin: u32,
 		off: u32,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 	) -> EResult<u32> {
-		if begin >= superblock.total_blocks {
+		if begin >= superblock.s_blocks_count {
 			return Err(errno!(EUCLEAN));
 		}
 
@@ -524,7 +508,7 @@ impl Ext2INode {
 			superblock.write(io)?;
 			zero_blocks(blk as _, 1, superblock, io)?;
 
-			self.direct_block_ptrs[i as usize] = blk;
+			self.i_block[i as usize] = blk;
 
 			self.increment_used_sectors(blk_size);
 
@@ -532,20 +516,13 @@ impl Ext2INode {
 		}
 
 		// The id on the beginning block to indirect from
-		let begin_id = match level {
-			1 => self.singly_indirect_block_ptr,
-			2 => self.doubly_indirect_block_ptr,
-			3 => self.triply_indirect_block_ptr,
-
-			_ => unreachable!(),
-		};
+		let begin_id = self.i_block[DIRECT_BLOCKS_COUNT + level - 1];
 
 		let target = i - DIRECT_BLOCKS_COUNT as u32 - {
 			match level {
 				1 => 0,
 				2 => entries_per_blk,
 				3 => entries_per_blk * entries_per_blk,
-
 				_ => unreachable!(),
 			}
 		};
@@ -558,13 +535,7 @@ impl Ext2INode {
 			superblock.write(io)?;
 			zero_blocks(begin as _, 1, superblock, io)?;
 
-			match level {
-				1 => self.singly_indirect_block_ptr = begin,
-				2 => self.doubly_indirect_block_ptr = begin,
-				3 => self.triply_indirect_block_ptr = begin,
-
-				_ => unreachable!(),
-			}
+			self.i_block[DIRECT_BLOCKS_COUNT + level - 1] = begin;
 
 			self.increment_used_sectors(blk_size);
 
@@ -615,13 +586,13 @@ impl Ext2INode {
 	/// been freed.
 	fn indirections_free(
 		&mut self,
-		n: u8,
+		n: usize,
 		begin: u32,
 		off: u32,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 	) -> EResult<bool> {
-		if begin >= superblock.total_blocks {
+		if begin >= superblock.s_blocks_count {
 			return Err(errno!(EUCLEAN));
 		}
 
@@ -680,21 +651,15 @@ impl Ext2INode {
 
 		// If direct block, handle it directly
 		if level == 0 {
-			superblock.free_block(io, self.direct_block_ptrs[i as usize])?;
-			self.direct_block_ptrs[i as usize] = 0;
+			superblock.free_block(io, self.i_block[i as usize])?;
+			self.i_block[i as usize] = 0;
 			self.decrement_used_sectors(blk_size);
 
 			return Ok(());
 		}
 
 		// The id on the beginning block to indirect from
-		let begin_id = match level {
-			1 => self.singly_indirect_block_ptr,
-			2 => self.doubly_indirect_block_ptr,
-			3 => self.triply_indirect_block_ptr,
-
-			_ => unreachable!(),
-		};
+		let begin_id = self.i_block[DIRECT_BLOCKS_COUNT + level - 1];
 
 		let target = i - DIRECT_BLOCKS_COUNT as u32 - {
 			match level {
@@ -712,14 +677,7 @@ impl Ext2INode {
 			// If the block has zero entries left, free it
 			if empty {
 				superblock.free_block(io, begin)?;
-				match level {
-					1 => self.singly_indirect_block_ptr = 0,
-					2 => self.doubly_indirect_block_ptr = 0,
-					3 => self.triply_indirect_block_ptr = 0,
-
-					_ => unreachable!(),
-				}
-
+				self.i_block[DIRECT_BLOCKS_COUNT + level - 1] = 0;
 				self.decrement_used_sectors(blk_size);
 			}
 		}
@@ -888,7 +846,7 @@ impl Ext2INode {
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 	) -> EResult<()> {
-		if begin >= superblock.total_blocks {
+		if begin >= superblock.s_blocks_count {
 			return Err(errno!(EUCLEAN));
 		}
 		let blk_size = superblock.get_block_size();
@@ -927,32 +885,31 @@ impl Ext2INode {
 			}
 		}
 
-		for i in 0..(DIRECT_BLOCKS_COUNT as usize) {
-			if self.direct_block_ptrs[i] != 0 {
-				if self.direct_block_ptrs[i] >= superblock.total_blocks {
+		for i in 0..DIRECT_BLOCKS_COUNT {
+			if self.i_block[i] != 0 {
+				if self.i_block[i] >= superblock.s_blocks_count {
 					return Err(errno!(EUCLEAN));
 				}
-
-				superblock.free_block(io, self.direct_block_ptrs[i])?;
-				self.direct_block_ptrs[i] = 0;
+				superblock.free_block(io, self.i_block[i])?;
+				self.i_block[i] = 0;
 			}
 		}
 
-		if self.singly_indirect_block_ptr != 0 {
-			Self::indirect_free_all(self.singly_indirect_block_ptr, 1, superblock, io)?;
-			self.singly_indirect_block_ptr = 0;
+		if self.i_block[DIRECT_BLOCKS_COUNT] != 0 {
+			Self::indirect_free_all(self.i_block[DIRECT_BLOCKS_COUNT], 1, superblock, io)?;
+			self.i_block[DIRECT_BLOCKS_COUNT] = 0;
 		}
-		if self.doubly_indirect_block_ptr != 0 {
-			Self::indirect_free_all(self.doubly_indirect_block_ptr, 2, superblock, io)?;
-			self.doubly_indirect_block_ptr = 0;
+		if self.i_block[DIRECT_BLOCKS_COUNT + 1] != 0 {
+			Self::indirect_free_all(self.i_block[DIRECT_BLOCKS_COUNT + 1], 2, superblock, io)?;
+			self.i_block[DIRECT_BLOCKS_COUNT + 1] = 0;
 		}
-		if self.triply_indirect_block_ptr != 0 {
-			Self::indirect_free_all(self.triply_indirect_block_ptr, 3, superblock, io)?;
-			self.triply_indirect_block_ptr = 0;
+		if self.i_block[DIRECT_BLOCKS_COUNT + 2] != 0 {
+			Self::indirect_free_all(self.i_block[DIRECT_BLOCKS_COUNT + 2], 3, superblock, io)?;
+			self.i_block[DIRECT_BLOCKS_COUNT + 2] = 0;
 		}
 
 		// Updating the number of used sectors
-		self.used_sectors = 0;
+		self.i_blocks = 0;
 
 		Ok(())
 	}
@@ -975,7 +932,7 @@ impl Ext2INode {
 		self.read_content(off as _, &mut buff, superblock, io)?;
 		let entry = unsafe { DirectoryEntry::from(&buff)? };
 
-		let mut buff = vec![0; entry.total_size as _]?;
+		let mut buff = vec![0; entry.rec_len as _]?;
 		self.read_content(off as _, buff.as_mut_slice(), superblock, io)?;
 
 		Ok(unsafe { DirectoryEntry::from(buff.as_slice()) }?)
@@ -1147,7 +1104,7 @@ impl Ext2INode {
 				superblock,
 				io,
 				&new_entry,
-				entry_off + entry.total_size as u64,
+				entry_off + entry.rec_len as u64,
 			)
 		} else {
 			// cannot fails because block size is never zero
@@ -1192,7 +1149,7 @@ impl Ext2INode {
 				// size of a block
 				let mut entry = unsafe { DirectoryEntry::from(&buff.as_slice()[j..len])? };
 				// The total size of the entry
-				let total_size = entry.total_size as usize;
+				let total_size = entry.rec_len as usize;
 				// Preventing infinite loop from corrupted filesystem
 				if total_size == 0 {
 					break;
@@ -1263,7 +1220,7 @@ impl Ext2INode {
 		let s = if len <= SYMLINK_INODE_STORE_LIMIT {
 			let buff = unsafe {
 				// Safe because in range
-				let ptr = addr_of!(self.direct_block_ptrs) as *const u8;
+				let ptr = addr_of!(self.i_block) as *const u8;
 				slice::from_raw_parts(ptr, len as usize)
 			};
 
@@ -1300,7 +1257,7 @@ impl Ext2INode {
 
 			unsafe {
 				// Safe because in range
-				let ptr = addr_of!(self.direct_block_ptrs) as *mut u8;
+				let ptr = addr_of!(self.i_block) as *mut u8;
 				copy_nonoverlapping(target.as_ptr(), ptr, len);
 			}
 		} else {
@@ -1321,7 +1278,7 @@ impl Ext2INode {
 			self.get_type(),
 			FileType::BlockDevice | FileType::CharDevice
 		) {
-			let dev = self.direct_block_ptrs[0];
+			let dev = self.i_block[0];
 			(((dev >> 8) & 0xff) as u8, (dev & 0xff) as u8)
 		} else {
 			(0, 0)
@@ -1340,7 +1297,7 @@ impl Ext2INode {
 			self.get_type(),
 			FileType::BlockDevice | FileType::CharDevice
 		) {
-			self.direct_block_ptrs[0] = ((major as u32) << 8) | (minor as u32);
+			self.i_block[0] = ((major as u32) << 8) | (minor as u32);
 		}
 	}
 
@@ -1409,7 +1366,7 @@ impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
 		};
 
 		// The total size of the entry
-		let total_size = entry.total_size as usize;
+		let total_size = entry.rec_len as usize;
 		if total_size < 8 {
 			return Some(Err(errno!(EUCLEAN)));
 		}

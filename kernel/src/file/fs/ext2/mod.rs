@@ -40,6 +40,8 @@
 //! Since the size of a block pointer is 4 bytes, the maximum size of a file is:
 //! `(12 * n) + ((n/4) * n) + ((n/4)^^2 * n) + ((n/4)^^3 * n)`
 //! Where `n` is the size of a block.
+//!
+//! For more information, see the [specifications](https://www.nongnu.org/ext2-doc/ext2.html).
 
 mod block_group_descriptor;
 mod directory_entry;
@@ -83,8 +85,8 @@ use utils::{
 
 /// The offset of the superblock from the beginning of the device.
 const SUPERBLOCK_OFFSET: u64 = 1024;
-/// The filesystem's signature.
-const EXT2_SIGNATURE: u16 = 0xef53;
+/// The filesystem's magic number.
+const EXT2_MAGIC: u16 = 0xef53;
 
 /// Default filesystem major version.
 const DEFAULT_MAJOR: u32 = 1;
@@ -250,16 +252,16 @@ impl NodeOps for Ext2NodeOps {
 		Ok(Stat {
 			file_type: inode_.get_type(),
 			mode: inode_.get_permissions(),
-			nlink: inode_.hard_links_count as _,
-			uid: inode_.uid,
-			gid: inode_.gid,
+			nlink: inode_.i_links_count as _,
+			uid: inode_.i_uid,
+			gid: inode_.i_gid,
 			size: inode_.get_size(&superblock),
-			blocks: inode_.used_sectors as _,
+			blocks: inode_.i_blocks as _,
 			dev_major: dev_major as _,
 			dev_minor: dev_minor as _,
-			ctime: inode_.ctime as _,
-			mtime: inode_.mtime as _,
-			atime: inode_.atime as _,
+			ctime: inode_.i_ctime as _,
+			mtime: inode_.i_mtime as _,
+			atime: inode_.i_atime as _,
 		})
 	}
 
@@ -275,22 +277,22 @@ impl NodeOps for Ext2NodeOps {
 			inode_.set_permissions(mode);
 		}
 		if let Some(nlink) = set.nlink {
-			inode_.hard_links_count = nlink;
+			inode_.i_links_count = nlink;
 		}
 		if let Some(uid) = set.uid {
-			inode_.uid = uid;
+			inode_.i_uid = uid;
 		}
 		if let Some(gid) = set.gid {
-			inode_.gid = gid;
+			inode_.i_gid = gid;
 		}
 		if let Some(ctime) = set.ctime {
-			inode_.ctime = ctime as _;
+			inode_.i_ctime = ctime as _;
 		}
 		if let Some(mtime) = set.mtime {
-			inode_.mtime = mtime as _;
+			inode_.i_mtime = mtime as _;
 		}
 		if let Some(atime) = set.atime {
-			inode_.atime = atime as _;
+			inode_.i_atime = atime as _;
 		}
 		inode_.write(inode as _, &superblock, &mut *io)
 	}
@@ -412,27 +414,24 @@ impl NodeOps for Ext2NodeOps {
 		let inode_index = superblock.get_free_inode(&mut *io)?;
 		// Create inode
 		let mut inode = Ext2INode {
-			mode: stat.mode as _,
-			uid: stat.uid,
-			size_low: 0,
-			ctime: stat.ctime as _,
-			mtime: stat.mtime as _,
-			atime: stat.atime as _,
-			dtime: 0,
-			gid: stat.gid,
-			hard_links_count: 1,
-			used_sectors: 0,
-			flags: 0,
-			os_specific_0: 0,
-			direct_block_ptrs: [0; inode::DIRECT_BLOCKS_COUNT as usize],
-			singly_indirect_block_ptr: 0,
-			doubly_indirect_block_ptr: 0,
-			triply_indirect_block_ptr: 0,
-			generation: 0,
-			extended_attributes_block: 0,
-			size_high: 0,
-			fragment_addr: 0,
-			os_specific_1: [0; 12],
+			i_mode: stat.mode as _,
+			i_uid: stat.uid,
+			i_size: 0,
+			i_ctime: stat.ctime as _,
+			i_mtime: stat.mtime as _,
+			i_atime: stat.atime as _,
+			i_dtime: 0,
+			i_gid: stat.gid,
+			i_links_count: 1,
+			i_blocks: 0,
+			i_flags: 0,
+			i_osd1: 0,
+			i_block: [0; inode::DIRECT_BLOCKS_COUNT + 3],
+			i_generation: 0,
+			i_file_acl: 0,
+			i_dir_acl: 0,
+			i_faddr: 0,
+			i_osd2: [0; 12],
 		};
 		// Update inode with content
 		match stat.file_type {
@@ -445,7 +444,7 @@ impl NodeOps for Ext2NodeOps {
 					b".",
 					FileType::Directory,
 				)?;
-				inode.hard_links_count += 1;
+				inode.i_links_count += 1;
 				stat.nlink += 1;
 				inode.add_dirent(
 					&mut superblock,
@@ -454,7 +453,7 @@ impl NodeOps for Ext2NodeOps {
 					b"..",
 					FileType::Directory,
 				)?;
-				parent.hard_links_count += 1;
+				parent.i_links_count += 1;
 			}
 			FileType::BlockDevice | FileType::CharDevice => {
 				if stat.dev_major > (u8::MAX as u32) || stat.dev_minor > (u8::MAX as u32) {
@@ -504,7 +503,7 @@ impl NodeOps for Ext2NodeOps {
 		// The inode
 		let mut inode_ = Ext2INode::read(target_inode as _, &superblock, &mut *io)?;
 		// Check the maximum number of links is not exceeded
-		if inode_.hard_links_count == u16::MAX {
+		if inode_.i_links_count == u16::MAX {
 			return Err(errno!(EMFILE));
 		}
 		match inode_.get_type() {
@@ -534,7 +533,7 @@ impl NodeOps for Ext2NodeOps {
 			}
 			_ => {
 				// Update links count
-				inode_.hard_links_count += 1;
+				inode_.i_links_count += 1;
 			}
 		}
 		// Write directory entry
@@ -585,33 +584,33 @@ impl NodeOps for Ext2NodeOps {
 		// If directory, remove `.` and `..` entries
 		if remove_inode_.get_type() == FileType::Directory {
 			// Remove `.`
-			if remove_inode_.hard_links_count > 0
+			if remove_inode_.i_links_count > 0
 				&& remove_inode_
 					.get_dirent(b".", &superblock, &mut *io)?
 					.is_some()
 			{
-				remove_inode_.hard_links_count -= 1;
+				remove_inode_.i_links_count -= 1;
 			}
 			// Remove `..`
-			if parent.hard_links_count > 0
+			if parent.i_links_count > 0
 				&& remove_inode_
 					.get_dirent(b"..", &superblock, &mut *io)?
 					.is_some()
 			{
-				parent.hard_links_count -= 1;
+				parent.i_links_count -= 1;
 			}
 		}
 		// Remove the directory entry
 		parent.remove_dirent(&mut superblock, &mut *io, name)?;
 		parent.write(parent_inode as _, &superblock, &mut *io)?;
 		// Decrement the hard links count
-		if remove_inode_.hard_links_count > 0 {
-			remove_inode_.hard_links_count -= 1;
+		if remove_inode_.i_links_count > 0 {
+			remove_inode_.i_links_count -= 1;
 		}
 		// If this is the last link, remove the inode
-		if remove_inode_.hard_links_count == 0 {
+		if remove_inode_.i_links_count == 0 {
 			let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-			remove_inode_.dtime = timestamp as _;
+			remove_inode_.i_dtime = timestamp as _;
 			remove_inode_.free_content(&mut superblock, &mut *io)?;
 			// Free inode
 			superblock.free_inode(
@@ -623,7 +622,7 @@ impl NodeOps for Ext2NodeOps {
 		}
 		// Write the inode
 		remove_inode_.write(remove_inode, &superblock, &mut *io)?;
-		Ok((remove_inode_.hard_links_count, remove_inode as _))
+		Ok((remove_inode_.i_links_count, remove_inode as _))
 	}
 }
 
@@ -632,91 +631,91 @@ impl NodeOps for Ext2NodeOps {
 #[derive(Debug, AnyRepr)]
 pub struct Superblock {
 	/// Total number of inodes in the filesystem.
-	total_inodes: u32,
+	s_inodes_count: u32,
 	/// Total number of blocks in the filesystem.
-	total_blocks: u32,
+	s_blocks_count: u32,
 	/// Number of blocks reserved for the superuser.
-	superuser_blocks: u32,
+	s_r_blocks_count: u32,
 	/// Total number of unallocated blocks.
-	total_unallocated_blocks: u32,
+	s_free_blocks_count: u32,
 	/// Total number of unallocated inodes.
-	total_unallocated_inodes: u32,
+	s_free_inodes_count: u32,
 	/// Block number of the block containing the superblock.
-	superblock_block_number: u32,
-	/// log2(block_size) - 10
-	block_size_log: u32,
-	/// log2(fragment_size) - 10
-	fragment_size_log: u32,
+	s_first_data_block: u32,
+	/// `log2(block_size) - 10`
+	s_log_block_size: u32,
+	/// `log2(fragment_size) - 10`
+	s_log_frag_size: u32,
 	/// The number of blocks per block group.
-	blocks_per_group: u32,
+	s_blocks_per_group: u32,
 	/// The number of fragments per block group.
-	fragments_per_group: u32,
+	s_frags_per_group: u32,
 	/// The number of inodes per block group.
-	inodes_per_group: u32,
+	s_inodes_per_group: u32,
 	/// The timestamp of the last mount operation.
-	last_mount_timestamp: u32,
+	s_mtime: u32,
 	/// The timestamp of the last write operation.
-	last_write_timestamp: u32,
+	s_wtime: u32,
 	/// The number of mounts since the last consistency check.
-	mount_count_since_fsck: u16,
+	s_mnt_count: u16,
 	/// The number of mounts allowed before a consistency check must be done.
-	mount_count_before_fsck: u16,
+	s_max_mnt_count: u16,
 	/// The ext2 signature.
-	signature: u16,
+	s_magic: u16,
 	/// The filesystem's state.
-	fs_state: u16,
+	s_state: u16,
 	/// The action to perform when an error is detected.
-	error_action: u16,
+	s_errors: u16,
 	/// The minor version.
-	minor_version: u16,
+	s_minor_rev_level: u16,
 	/// The timestamp of the last consistency check.
-	last_fsck_timestamp: u32,
+	s_lastcheck: u32,
 	/// The interval between mandatory consistency checks.
-	fsck_interval: u32,
+	s_checkinterval: u32,
 	/// The id os the operating system from which the filesystem was created.
-	os_id: u32,
+	s_creator_os: u32,
 	/// The major version.
-	major_version: u32,
+	s_rev_level: u32,
 	/// The UID of the user that can use reserved blocks.
-	uid_reserved: u16,
+	s_def_resuid: u16,
 	/// The GID of the group that can use reserved blocks.
-	gid_reserved: u16,
+	s_def_resgid: u16,
 
 	// Extended superblock fields
 	/// The first non reserved inode
-	first_non_reserved_inode: u32,
+	s_first_ino: u32,
 	/// The size of the inode structure in bytes.
-	inode_size: u16,
+	s_inode_size: u16,
 	/// The block group containing the superblock.
-	superblock_group: u16,
+	s_block_group_nr: u16,
 	/// Optional features for the implementation to support.
-	optional_features: u32,
+	s_feature_compat: u32,
 	/// Required features for the implementation to support.
-	required_features: u32,
+	s_feature_incompat: u32,
 	/// Required features for the implementation to support for writing.
-	write_required_features: u32,
+	s_feature_ro_compat: u32,
 	/// The filesystem id.
-	filesystem_id: [u8; 16],
+	s_uuid: [u8; 16],
 	/// The volume name.
-	volume_name: [u8; 16],
+	s_volume_name: [u8; 16],
 	/// The path the volume was last mounted to.
-	last_mount_path: [u8; 64],
+	s_last_mounted: [u8; 64],
 	/// Used compression algorithms.
-	compression_algorithms: u32,
+	s_algo_bitmap: u32,
 	/// The number of blocks to preallocate for files.
-	files_preallocate_count: u8,
+	s_prealloc_blocks: u8,
 	/// The number of blocks to preallocate for directories.
-	direactories_preallocate_count: u8,
+	s_prealloc_dir_blocks: u8,
 	/// Unused.
-	_unused: u16,
+	_pad: u16,
 	/// The journal ID.
-	journal_id: [u8; 16],
+	s_journal_uuid: [u8; 16],
 	/// The journal inode.
-	journal_inode: u32,
+	s_journal_inum: u32,
 	/// The journal device.
-	journal_device: u32,
+	s_journal_dev: u32,
 	/// The head of orphan inodes list.
-	orphan_inode_head: u32,
+	s_last_orphan: u32,
 
 	/// Structure padding.
 	_padding: [u8; 788],
@@ -730,12 +729,12 @@ impl Superblock {
 
 	/// Tells whether the superblock is valid.
 	pub fn is_valid(&self) -> bool {
-		self.signature == EXT2_SIGNATURE
+		self.s_magic == EXT2_MAGIC
 	}
 
 	/// Returns the size of a block.
 	pub fn get_block_size(&self) -> u32 {
-		math::pow2(self.block_size_log + 10) as _
+		math::pow2(self.s_log_block_size + 10) as _
 	}
 
 	/// Returns the block offset of the Block Group Descriptor Table.
@@ -745,18 +744,18 @@ impl Superblock {
 
 	/// Returns the number of block groups.
 	fn get_block_groups_count(&self) -> u32 {
-		self.total_blocks / self.blocks_per_group
+		self.s_blocks_count / self.s_blocks_per_group
 	}
 
 	/// Returns the size of a fragment.
 	pub fn get_fragment_size(&self) -> usize {
-		math::pow2(self.fragment_size_log + 10) as _
+		math::pow2(self.s_log_frag_size + 10) as _
 	}
 
 	/// Returns the size of an inode.
 	pub fn get_inode_size(&self) -> usize {
-		if self.major_version >= 1 {
-			self.inode_size as _
+		if self.s_rev_level >= 1 {
+			self.s_inode_size as _
 		} else {
 			128
 		}
@@ -764,9 +763,9 @@ impl Superblock {
 
 	/// Returns the first inode that isn't reserved.
 	pub fn get_first_available_inode(&self) -> u32 {
-		if self.major_version >= 1 {
+		if self.s_rev_level >= 1 {
 			max(
-				self.first_non_reserved_inode,
+				self.s_first_ino,
 				inode::ROOT_DIRECTORY_INODE + 1,
 			)
 		} else {
@@ -858,11 +857,11 @@ impl Superblock {
 	pub fn get_free_inode(&self, io: &mut dyn IO) -> EResult<u32> {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, self, io)?;
-			if bgd.unallocated_inodes_number > 0 {
+			if bgd.bg_free_inodes_count > 0 {
 				if let Some(j) =
-					self.search_bitmap(io, bgd.inode_usage_bitmap_addr, self.inodes_per_group)?
+					self.search_bitmap(io, bgd.bg_inode_bitmap, self.s_inodes_per_group)?
 				{
-					return Ok(i * self.inodes_per_group + j + 1);
+					return Ok(i * self.s_inodes_per_group + j + 1);
 				}
 			}
 		}
@@ -888,19 +887,19 @@ impl Superblock {
 			return Ok(());
 		}
 
-		let group = (inode - 1) / self.inodes_per_group;
+		let group = (inode - 1) / self.s_inodes_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
 
-		let bitfield_index = (inode - 1) % self.inodes_per_group;
-		let prev = self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, true)?;
+		let bitfield_index = (inode - 1) % self.s_inodes_per_group;
+		let prev = self.set_bitmap(io, bgd.bg_inode_bitmap, bitfield_index, true)?;
 		if !prev {
-			bgd.unallocated_inodes_number -= 1;
+			bgd.bg_free_inodes_count -= 1;
 			if directory {
-				bgd.directories_number += 1;
+				bgd.bg_used_dirs_count += 1;
 			}
 			bgd.write(group, self, io)?;
 
-			self.total_unallocated_inodes -= 1;
+			self.s_free_inodes_count -= 1;
 		}
 
 		Ok(())
@@ -921,19 +920,19 @@ impl Superblock {
 			return Ok(());
 		}
 
-		let group = (inode - 1) / self.inodes_per_group;
+		let group = (inode - 1) / self.s_inodes_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
 
-		let bitfield_index = (inode - 1) % self.inodes_per_group;
-		let prev = self.set_bitmap(io, bgd.inode_usage_bitmap_addr, bitfield_index, false)?;
+		let bitfield_index = (inode - 1) % self.s_inodes_per_group;
+		let prev = self.set_bitmap(io, bgd.bg_inode_bitmap, bitfield_index, false)?;
 		if prev {
-			bgd.unallocated_inodes_number += 1;
+			bgd.bg_free_inodes_count += 1;
 			if directory {
-				bgd.directories_number -= 1;
+				bgd.bg_used_dirs_count -= 1;
 			}
 			bgd.write(group, self, io)?;
 
-			self.total_unallocated_inodes += 1;
+			self.s_free_inodes_count += 1;
 		}
 
 		Ok(())
@@ -945,12 +944,12 @@ impl Superblock {
 	pub fn get_free_block(&self, io: &mut dyn IO) -> EResult<u32> {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, self, io)?;
-			if bgd.unallocated_blocks_number > 0 {
+			if bgd.bg_free_blocks_count > 0 {
 				if let Some(j) =
-					self.search_bitmap(io, bgd.block_usage_bitmap_addr, self.blocks_per_group)?
+					self.search_bitmap(io, bgd.bg_block_bitmap, self.s_blocks_per_group)?
 				{
-					let blk = i * self.blocks_per_group + j;
-					if blk > 2 && blk < self.total_blocks {
+					let blk = i * self.s_blocks_per_group + j;
+					if blk > 2 && blk < self.s_blocks_count {
 						return Ok(blk);
 					} else {
 						return Err(errno!(EUCLEAN));
@@ -973,20 +972,20 @@ impl Superblock {
 		if blk == 0 {
 			return Ok(());
 		}
-		if blk <= 2 || blk >= self.total_blocks {
+		if blk <= 2 || blk >= self.s_blocks_count {
 			return Err(errno!(EUCLEAN));
 		}
 
-		let group = blk / self.blocks_per_group;
+		let group = blk / self.s_blocks_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
 
-		let bitfield_index = blk % self.blocks_per_group;
-		let prev = self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, true)?;
+		let bitfield_index = blk % self.s_blocks_per_group;
+		let prev = self.set_bitmap(io, bgd.bg_block_bitmap, bitfield_index, true)?;
 		if !prev {
-			bgd.unallocated_blocks_number -= 1;
+			bgd.bg_free_blocks_count -= 1;
 			bgd.write(group, self, io)?;
 
-			self.total_unallocated_blocks -= 1;
+			self.s_free_blocks_count -= 1;
 		}
 
 		Ok(())
@@ -1003,20 +1002,20 @@ impl Superblock {
 		if blk == 0 {
 			return Ok(());
 		}
-		if blk <= 2 || blk >= self.total_blocks {
+		if blk <= 2 || blk >= self.s_blocks_count {
 			return Err(errno!(EUCLEAN));
 		}
 
-		let group = blk / self.blocks_per_group;
+		let group = blk / self.s_blocks_per_group;
 		let mut bgd = BlockGroupDescriptor::read(group, self, io)?;
 
-		let bitfield_index = blk % self.blocks_per_group;
-		let prev = self.set_bitmap(io, bgd.block_usage_bitmap_addr, bitfield_index, false)?;
+		let bitfield_index = blk % self.s_blocks_per_group;
+		let prev = self.set_bitmap(io, bgd.bg_block_bitmap, bitfield_index, false)?;
 		if prev {
-			bgd.unallocated_blocks_number += 1;
+			bgd.bg_free_blocks_count += 1;
 			bgd.write(group, self, io)?;
 
-			self.total_unallocated_blocks += 1;
+			self.s_free_blocks_count += 1;
 		}
 
 		Ok(())
@@ -1061,38 +1060,38 @@ impl Ext2Fs {
 		}
 		// Check the filesystem doesn't require features that are not implemented by
 		// the driver
-		if superblock.major_version >= 1 {
+		if superblock.s_rev_level >= 1 {
 			// TODO Implement journal
 			let unsupported_required_features = REQUIRED_FEATURE_COMPRESSION
 				| REQUIRED_FEATURE_JOURNAL_REPLAY
 				| REQUIRED_FEATURE_JOURNAL_DEVIXE;
-			if superblock.required_features & unsupported_required_features != 0 {
+			if superblock.s_feature_incompat & unsupported_required_features != 0 {
 				// TODO Log?
 				return Err(errno!(EINVAL));
 			}
 			// TODO Implement
 			let unsupported_write_features = WRITE_REQUIRED_DIRECTORY_BINARY_TREE;
-			if !readonly && superblock.write_required_features & unsupported_write_features != 0 {
+			if !readonly && superblock.s_feature_ro_compat & unsupported_write_features != 0 {
 				// TODO Log?
 				return Err(errno!(EROFS));
 			}
 		}
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-		if superblock.mount_count_since_fsck >= superblock.mount_count_before_fsck {
+		if superblock.s_mnt_count >= superblock.s_max_mnt_count {
 			return Err(errno!(EINVAL));
 		}
 		// TODO
 		/*if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
 			return Err(errno::EINVAL);
 		}*/
-		superblock.mount_count_since_fsck += 1;
+		superblock.s_mnt_count += 1;
 		// Set the last mount path
 		let mountpath_bytes = mountpath.as_bytes();
-		let len = min(mountpath_bytes.len(), superblock.last_mount_path.len());
-		superblock.last_mount_path[..len].copy_from_slice(&mountpath_bytes[..len]);
-		superblock.last_mount_path[len..].fill(0);
+		let len = min(mountpath_bytes.len(), superblock.s_last_mounted.len());
+		superblock.s_last_mounted[..len].copy_from_slice(&mountpath_bytes[..len]);
+		superblock.s_last_mounted[len..].fill(0);
 		// Set the last mount timestamp
-		superblock.last_mount_timestamp = timestamp as _;
+		superblock.s_mtime = timestamp as _;
 		superblock.write(&mut *io.lock())?;
 		Ok(Self {
 			io,
@@ -1124,16 +1123,16 @@ impl Filesystem for Ext2Fs {
 
 	fn get_stat(&self) -> EResult<Statfs> {
 		let superblock = self.superblock.lock();
-		let fragment_size = math::pow2(superblock.fragment_size_log + 10);
+		let fragment_size = math::pow2(superblock.s_log_frag_size + 10);
 		Ok(Statfs {
-			f_type: EXT2_SIGNATURE as _,
+			f_type: EXT2_MAGIC as _,
 			f_bsize: superblock.get_block_size(),
-			f_blocks: superblock.total_blocks as _,
-			f_bfree: superblock.total_unallocated_blocks as _,
+			f_blocks: superblock.s_blocks_count as _,
+			f_bfree: superblock.s_free_blocks_count as _,
 			// TODO Subtract blocks for superuser
-			f_bavail: superblock.total_unallocated_blocks as _,
-			f_files: superblock.total_inodes as _,
-			f_ffree: superblock.total_unallocated_inodes as _,
+			f_bavail: superblock.s_free_blocks_count as _,
+			f_files: superblock.s_inodes_count as _,
+			f_ffree: superblock.s_free_inodes_count as _,
 			f_fsid: Default::default(),
 			f_namelen: MAX_NAME_LEN as _,
 			f_frsize: fragment_size,
