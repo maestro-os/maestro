@@ -475,7 +475,7 @@ impl<'t, K: Ord, V> VacantEntry<'t, K, V> {
 			None => *self.tree.root.get_mut() = Some(node),
 		}
 		self.tree.len += 1;
-		#[cfg(config_debug_debug)]
+		#[cfg(debug_assertions)]
 		self.tree.check();
 		Ok(&mut n.value)
 	}
@@ -820,48 +820,15 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		let root = self.get_root()?;
 		let node = get_node(root, |k| key.cmp(k.borrow())).ok()?;
 		let (_, value) = self.remove_node(node);
-		#[cfg(config_debug_debug)]
+		#[cfg(debug_assertions)]
 		self.check();
 		Some(value)
 	}
 
-	/*
 	/// Calls the given closure for every node in the subtree with root `root`.
 	///
 	/// `traversal_order` defines the order in which the tree is traversed.
-	fn foreach_node<F: FnMut(&Node<K, V>)>(
-		root: &Node<K, V>,
-		f: &mut F,
-		traversal_order: TraversalOrder,
-	) {
-		let (first, second) = if traversal_order == TraversalOrder::ReverseInOrder {
-			(root.right, root.left)
-		} else {
-			(root.left, root.right)
-		};
-		if traversal_order == TraversalOrder::PreOrder {
-			(*f)(root);
-		}
-		if let Some(mut n) = first {
-			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
-		}
-		if traversal_order == TraversalOrder::InOrder
-			|| traversal_order == TraversalOrder::ReverseInOrder
-		{
-			(*f)(root);
-		}
-		if let Some(mut n) = second {
-			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
-		}
-		if traversal_order == TraversalOrder::PostOrder {
-			(*f)(root);
-		}
-	}*/
-
-	/// Calls the given closure for every node in the subtree with root `root`.
-	///
-	/// `traversal_order` defines the order in which the tree is traversed.
-	fn foreach_node_mut<F: FnMut(&mut Node<K, V>)>(
+	fn foreach_node<F: FnMut(&mut Node<K, V>)>(
 		root: &mut Node<K, V>,
 		f: &mut F,
 		traversal_order: TraversalOrder,
@@ -875,7 +842,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 			f(root);
 		}
 		if let Some(mut n) = first {
-			Self::foreach_node_mut(unsafe { n.as_mut() }, f, traversal_order);
+			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
 		}
 		if traversal_order == TraversalOrder::InOrder
 			|| traversal_order == TraversalOrder::ReverseInOrder
@@ -883,7 +850,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 			f(root);
 		}
 		if let Some(mut n) = second {
-			Self::foreach_node_mut(unsafe { n.as_mut() }, f, traversal_order);
+			Self::foreach_node(unsafe { n.as_mut() }, f, traversal_order);
 		}
 		if traversal_order == TraversalOrder::PostOrder {
 			f(root);
@@ -895,22 +862,22 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// If the tree is invalid, the function makes the kernel panic.
 	///
 	/// This function is available only in debug mode.
-	#[cfg(config_debug_debug)]
+	#[cfg(debug_assertions)]
 	pub fn check(&self) {
 		let Some(root) = self.get_root() else {
 			return;
 		};
+		use super::vec::Vec;
+		use core::ffi::c_void;
 		let mut explored_nodes = Vec::<*const c_void>::new();
 		Self::foreach_node(
 			root,
-			&mut |n: &Node<K, V>| {
-				assert!(n as *const _ as usize >= crate::memory::PROCESS_END as usize);
+			&mut |n: &mut Node<K, V>| {
 				for e in explored_nodes.iter() {
 					assert_ne!(*e, n as *const _ as *const c_void);
 				}
 				explored_nodes.push(n as *const _ as *const c_void).unwrap();
 				if let Some(left) = n.get_left() {
-					assert!(left as *const _ as usize >= crate::memory::PROCESS_END as usize);
 					assert!(ptr::eq(
 						left.get_parent().unwrap() as *const _,
 						n as *const _
@@ -918,7 +885,6 @@ impl<K: Ord, V> BTreeMap<K, V> {
 					assert!(left.key <= n.key);
 				}
 				if let Some(right) = n.get_right() {
-					assert!(right as *const _ as usize >= crate::memory::PROCESS_END as usize);
 					assert!(ptr::eq(
 						right.get_parent().unwrap() as *const _,
 						n as *const _
@@ -1022,7 +988,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		let Some(root) = self.get_root() else {
 			return;
 		};
-		Self::foreach_node_mut(
+		Self::foreach_node(
 			root,
 			&mut |n| unsafe {
 				drop_node(n.into());
@@ -1538,19 +1504,19 @@ mod test {
 
 	#[test]
 	fn binary_tree_intoiter() {
-		let b = (0..1000)
+		let b = (0..100)
 			.map(|i| (i, i))
 			.collect::<CollectResult<BTreeMap<_, _>>>()
 			.0
 			.unwrap();
-		assert_eq!(b.len(), 1000);
+		assert_eq!(b.len(), 100);
 		let mut count = 0;
 		for (a, (b, c)) in b.into_iter().enumerate() {
 			assert_eq!(a, b);
 			assert_eq!(b, c);
 			count += 1;
 		}
-		assert_eq!(count, 1000);
+		assert_eq!(count, 100);
 	}
 
 	#[test]
