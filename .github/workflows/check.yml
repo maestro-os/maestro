@@ -1,34 +1,56 @@
 name: Check
 on: [push]
 jobs:
-  debug:
+  clippy:
     runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
-      - name: Compilation
+      - name: Macros
+        working-directory: ./macros
+        run: cargo clippy --all-features --tests
+      - name: Utils
+        working-directory: ./utils
+        run: cargo clippy --all-features --tests
+      - name: Kernel
+        working-directory: ./kernel
+        run: |
+          cp default.build-config.toml build-config.toml
+          cargo clippy --all-features --tests
+  build:
+    runs-on: [self-hosted, linux]
+    needs: clippy
+    steps:
+      - uses: clippy
+      - name: Debug
         working-directory: ./kernel
         run: ci/build.sh
-      - name: Check Multiboot2 for x86
+      - name: Check Multiboot2 for x86 (debug)
         working-directory: ./kernel
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
-  release:
-    runs-on: [self-hosted, linux]
-    needs: debug
-    steps:
-      - uses: actions/checkout@v4
-      - name: Compilation
+      - name: Release
         working-directory: ./kernel
         env:
           CARGOFLAGS: --release
         run: ci/build.sh
-      - name: Check Multiboot2 for x86
+      - name: Check Multiboot2 for x86 (release)
         working-directory: ./kernel
         run: grub-file --is-x86-multiboot2 target/x86/release/maestro
+  miri:
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - uses: build
+      - name: Utils
+        working-directory: ./utils
+        env:
+          MIRIFLAGS: -Zmiri-disable-stacked-borrows
+        run: cargo miri test
+        timeout-minutes: 10
   selftest:
     runs-on: [self-hosted, linux]
-    needs: debug
+    needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: build
       - name: Run utils tests
         working-directory: ./utils
         run: cargo test
@@ -39,10 +61,10 @@ jobs:
         timeout-minutes: 10
   strace:
     runs-on: [self-hosted, linux]
-    needs: debug
+    needs: build
     steps:
-      - uses: actions/checkout@v4
-      - name: Compilation
+      - uses: build
+      - name: Build
         working-directory: ./kernel
         env:
           CARGOFLAGS: --features strace
@@ -53,6 +75,7 @@ jobs:
   format:
     runs-on: [self-hosted, linux]
     steps:
+      - uses: actions/checkout@v4
       - name: Macros
         working-directory: ./macros
         run: cargo fmt --check
@@ -71,28 +94,3 @@ jobs:
       - name: Build references
         working-directory: ./kernel
         run: ci/doc.sh
-  clippy:
-    runs-on: [self-hosted, linux]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Macros
-        working-directory: ./macros
-        run: cargo clippy --all-features --tests
-      - name: Utils
-        working-directory: ./utils
-        run: cargo clippy --all-features --tests
-      - name: Kernel
-        working-directory: ./kernel
-        run: |
-          cp default.build-config.toml build-config.toml
-          cargo clippy --all-features --tests
-  miri:
-    runs-on: [self-hosted, linux]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Utils
-        working-directory: ./utils
-        env:
-          MIRIFLAGS: -Zmiri-disable-stacked-borrows
-        run: cargo miri test
-        timeout-minutes: 10
