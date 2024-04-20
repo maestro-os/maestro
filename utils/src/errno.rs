@@ -44,7 +44,7 @@ pub type AllocResult<T> = Result<T, AllocError>;
 pub struct CollectResult<C>(pub AllocResult<C>);
 
 /// A location at which an errno was raised.
-#[cfg(config_debug_debug)]
+#[cfg(debug_assertions)]
 #[derive(Clone, Copy, Debug)]
 pub struct ErrnoLocation {
 	/// The file in which the errno was raised.
@@ -55,7 +55,7 @@ pub struct ErrnoLocation {
 	pub column: u32,
 }
 
-#[cfg(config_debug_debug)]
+#[cfg(debug_assertions)]
 impl fmt::Display for ErrnoLocation {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(
@@ -71,9 +71,8 @@ impl fmt::Display for ErrnoLocation {
 pub struct Errno {
 	/// The errno number.
 	errno: i32,
-
 	/// The location at which the errno was raised.
-	#[cfg(config_debug_debug)]
+	#[cfg(debug_assertions)]
 	location: ErrnoLocation,
 }
 
@@ -89,7 +88,7 @@ impl Errno {
 	///
 	/// This function should not be used directly but only through the `errno`
 	/// macro.
-	#[cfg(not(config_debug_debug))]
+	#[cfg(not(debug_assertions))]
 	pub fn new(errno: i32) -> Self {
 		Self {
 			errno,
@@ -100,7 +99,7 @@ impl Errno {
 	///
 	/// This function should not be used directly but only through the `errno`
 	/// macro.
-	#[cfg(config_debug_debug)]
+	#[cfg(debug_assertions)]
 	pub fn new(errno: i32, location: ErrnoLocation) -> Self {
 		Self {
 			errno,
@@ -259,14 +258,14 @@ impl PartialEq for Errno {
 	}
 }
 
-#[cfg(not(config_debug_debug))]
+#[cfg(not(debug_assertions))]
 impl fmt::Display for Errno {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "errno: {}: {}", self.errno, self.strerror())
 	}
 }
 
-#[cfg(config_debug_debug)]
+#[cfg(debug_assertions)]
 impl fmt::Display for Errno {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(
@@ -282,7 +281,7 @@ impl fmt::Display for Errno {
 /// Raises an errno.
 ///
 /// `errno` is the name of the errno.
-#[cfg(not(config_debug_debug))]
+#[cfg(not(debug_assertions))]
 #[macro_export]
 macro_rules! errno {
 	($errno:ident) => {
@@ -293,7 +292,7 @@ macro_rules! errno {
 /// Raises an errno.
 ///
 /// `errno` is the name of the errno.
-#[cfg(config_debug_debug)]
+#[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! errno {
 	($errno:ident) => {

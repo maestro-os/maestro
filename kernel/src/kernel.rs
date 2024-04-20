@@ -193,7 +193,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	// Initialize memory management
 	memory::memmap::init(multiboot_ptr);
-	#[cfg(config_debug_debug)]
+	#[cfg(debug_assertions)]
 	memory::memmap::print_entries();
 	memory::alloc::init();
 	vmem::init()

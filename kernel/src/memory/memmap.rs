@@ -64,7 +64,7 @@ pub fn get_info() -> &'static PhysMapInfo {
 }
 
 /// Prints the physical memory mapping.
-#[cfg(config_debug_debug)]
+#[cfg(debug_assertions)]
 pub(crate) fn print_entries() {
 	let phys_map = get_info();
 	debug_assert!(!phys_map.memory_maps.is_null());

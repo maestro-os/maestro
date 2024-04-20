@@ -62,14 +62,14 @@ fn panic(panic_info: &PanicInfo) -> ! {
 	let cr2 = unsafe { register_get!("cr2") } as *const ();
 	crate::println!("cr2: {cr2:p}\n");
 
-	#[cfg(config_debug_debug)]
+	#[cfg(debug_assertions)]
 	{
 		use crate::debug;
 		use core::{ffi::c_void, ptr::null_mut};
 
 		crate::println!("--- Callstack ---");
 		unsafe {
-			let ebp = crate::register_get!("ebp") as *mut _;
+			let ebp = register_get!("ebp") as *mut _;
 			let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
 			debug::get_callstack(ebp, &mut callstack);
 			debug::print_callstack(&callstack);

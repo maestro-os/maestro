@@ -114,7 +114,7 @@ impl Zone {
 			// Jump to next offset
 			frame += p;
 		}
-		#[cfg(config_debug_debug)]
+		#[cfg(debug_assertions)]
 		self.check_free_list();
 	}
 
@@ -183,7 +183,7 @@ impl Zone {
 	///
 	/// If a frame is invalid, the function shall result in the kernel
 	/// panicking.
-	#[cfg(config_debug_debug)]
+	#[cfg(debug_assertions)]
 	fn check_free_list(&self) {
 		let zone_size = (self.pages_count as usize) * memory::PAGE_SIZE;
 		let frames = self.frames();
@@ -196,7 +196,6 @@ impl Zone {
 			// Iterate on linked list
 			loop {
 				let id = frame.get_id(self);
-				#[cfg(config_debug_debug)]
 				frame.check_broken(self);
 				debug_assert!(!frame.is_used());
 				debug_assert_eq!(frame.order, order as _);
@@ -296,7 +295,7 @@ impl Frame {
 	/// Debug function to assert that the chunk is valid.
 	///
 	/// Invalid chunk shall result in the kernel panicking.
-	#[cfg(config_debug_debug)]
+	#[cfg(debug_assertions)]
 	fn check_broken(&self, zone: &Zone) {
 		debug_assert!(self.prev == FRAME_STATE_USED || self.prev < zone.pages_count);
 		debug_assert!(self.next == FRAME_STATE_USED || self.next < zone.pages_count);
@@ -305,12 +304,12 @@ impl Frame {
 
 	/// Links the frame into zone `zone`'s free list.
 	fn link(&mut self, zone: &mut Zone) {
-		#[cfg(config_debug_debug)]
-		self.check_broken(zone);
-		#[cfg(config_debug_debug)]
-		zone.check_free_list();
-		debug_assert!(!self.is_used());
-
+		#[cfg(debug_assertions)]
+		{
+			self.check_broken(zone);
+			zone.check_free_list();
+			debug_assert!(!self.is_used());
+		}
 		let id = self.get_id(zone);
 		self.prev = id;
 		self.next = if let Some(mut next) = zone.free_list[self.order as usize] {
@@ -322,21 +321,22 @@ impl Frame {
 			id
 		};
 		zone.free_list[self.order as usize] = NonNull::new(self);
-
-		#[cfg(config_debug_debug)]
-		self.check_broken(zone);
-		#[cfg(config_debug_debug)]
-		zone.check_free_list();
+		#[cfg(debug_assertions)]
+		{
+			self.check_broken(zone);
+			zone.check_free_list();
+		}
 	}
 
 	/// Unlinks the frame from zone `zone`'s free list. The frame must not be
 	/// used.
 	fn unlink(&mut self, zone: &mut Zone) {
-		#[cfg(config_debug_debug)]
-		self.check_broken(zone);
-		debug_assert!(!self.is_used());
-		#[cfg(config_debug_debug)]
-		zone.check_free_list();
+		#[cfg(debug_assertions)]
+		{
+			self.check_broken(zone);
+			debug_assert!(!self.is_used());
+			zone.check_free_list();
+		}
 
 		let frames = zone.frames();
 		let id = self.get_id(zone);
@@ -359,10 +359,11 @@ impl Frame {
 			frames[self.next as usize].prev = if has_prev { self.prev } else { self.next };
 		}
 
-		#[cfg(config_debug_debug)]
-		self.check_broken(zone);
-		#[cfg(config_debug_debug)]
-		zone.check_free_list();
+		#[cfg(debug_assertions)]
+		{
+			self.check_broken(zone);
+			zone.check_free_list();
+		}
 	}
 
 	/// Unlinks the frame from zone `zone`'s free list, splits it until it
@@ -373,7 +374,7 @@ impl Frame {
 	///
 	/// The frame must not be marked as used.
 	fn split(&mut self, zone: &mut Zone, order: FrameOrder) {
-		#[cfg(config_debug_debug)]
+		#[cfg(debug_assertions)]
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());
 		debug_assert!(order <= MAX_ORDER);
@@ -396,7 +397,7 @@ impl Frame {
 			buddy_frame.link(zone);
 		}
 
-		#[cfg(config_debug_debug)]
+		#[cfg(debug_assertions)]
 		self.check_broken(zone);
 	}
 
@@ -411,7 +412,7 @@ impl Frame {
 	///
 	/// The frame is linked to the free list by the function.
 	fn coalesce(&mut self, zone: &mut Zone) {
-		#[cfg(config_debug_debug)]
+		#[cfg(debug_assertions)]
 		self.check_broken(zone);
 		debug_assert!(!self.is_used());
 
@@ -430,7 +431,7 @@ impl Frame {
 				break;
 			}
 			let buddy_frame = &mut frames[buddy as usize];
-			#[cfg(config_debug_debug)]
+			#[cfg(debug_assertions)]
 			buddy_frame.check_broken(zone);
 			if buddy_frame.order != self.order || buddy_frame.is_used() {
 				break;
@@ -446,10 +447,10 @@ impl Frame {
 			}
 		}
 
-		#[cfg(config_debug_debug)]
+		#[cfg(debug_assertions)]
 		zone.check_free_list();
 		self.link(zone);
-		#[cfg(config_debug_debug)]
+		#[cfg(debug_assertions)]
 		self.check_broken(zone);
 	}
 }

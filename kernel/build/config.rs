@@ -71,7 +71,6 @@ impl Config {
 	/// Sets the crate's cfg flags according to the configuration.
 	pub fn set_cfg(&self, debug: bool) {
 		if debug {
-			println!("cargo:rustc-cfg=config_debug_debug");
 			if self.debug.storage_test {
 				println!("cargo:rustc-cfg=config_debug_storage_test");
 			}
