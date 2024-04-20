@@ -567,10 +567,11 @@ impl NodeOps for DefaultNodeOps {
 }
 
 /// Writer for [`format_content_args`].
+#[derive(Debug)]
 struct FormatContentWriter<'b> {
-	off: u64,
-	buf: &'b mut [u8],
-	buf_cursor: usize,
+	src_cursor: u64,
+	dst: &'b mut [u8],
+	dst_cursor: usize,
 	eof: bool,
 }
 
@@ -579,31 +580,31 @@ impl<'b> Write for FormatContentWriter<'b> {
 		if s.is_empty() {
 			return Ok(());
 		}
-		self.eof = false;
-		// If the end of the output buffer is reached, stop
-		if self.buf_cursor >= self.buf.len() {
-			return Err(fmt::Error);
-		}
 		let chunk = s.as_bytes();
-		let next_off = self.off.saturating_sub(chunk.len() as _);
-		// If at least a part of the chunk is in range, copy
-		if chunk.len() as u64 >= self.off {
-			// Begin and size of the range in the chunk to copy
-			let off = self.off as usize;
+		// If at least part of the chunk is inside the range to read, copy
+		if (chunk.len() as u64) > self.src_cursor {
+			self.eof = false;
+			// If the end of the output buffer is reached, stop
+			if self.dst_cursor >= self.dst.len() {
+				return Err(fmt::Error);
+			}
+			// Offset and size of the range in the chunk to copy
+			let src_cursor = self.src_cursor as usize;
 			let size = min(
-				self.buf.len().saturating_sub(self.buf_cursor),
-				chunk.len().saturating_sub(off),
+				self.dst.len().saturating_sub(self.dst_cursor),
+				chunk.len().saturating_sub(src_cursor),
 			);
-			self.buf[self.buf_cursor..(self.buf_cursor + size)]
-				.copy_from_slice(&chunk[off..(off + size)]);
-			self.buf_cursor += size;
-			// If the end of the output buffer is reached, set `eof` if necessary
-			if self.buf_cursor >= self.buf.len() {
+			self.dst[self.dst_cursor..(self.dst_cursor + size)]
+				.copy_from_slice(&chunk[src_cursor..(src_cursor + size)]);
+			self.dst_cursor += size;
+			// If the end of the chunk is reached, set `eof` if necessary
+			if src_cursor + size >= chunk.len() {
 				// If other non-empty chunks remain, the next iteration will cancel this
-				self.eof = off + size >= chunk.len();
+				self.eof = true;
 			}
 		}
-		self.off = next_off;
+		// Update cursor
+		self.src_cursor = self.src_cursor.saturating_sub(chunk.len() as _);
 		Ok(())
 	}
 }
@@ -615,16 +616,16 @@ pub fn format_content_args(
 	args: fmt::Arguments<'_>,
 ) -> EResult<(u64, bool)> {
 	let mut writer = FormatContentWriter {
-		off,
-		buf,
-		buf_cursor: 0,
-		eof: false,
+		src_cursor: off,
+		dst: buf,
+		dst_cursor: 0,
+		eof: true,
 	};
 	let res = fmt::write(&mut writer, args);
-	if res.is_err() && (writer.buf_cursor < writer.buf.len()) {
+	if res.is_err() && (writer.dst_cursor < writer.dst.len()) {
 		panic!("a formatting trait implementation returned an error");
 	}
-	Ok((writer.buf_cursor as _, writer.eof))
+	Ok((writer.dst_cursor as _, writer.eof))
 }
 
 /// Formats the content of a kernfs node and write it on a buffer.
@@ -779,34 +780,30 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 mod test {
 	#[test_case]
 	fn content_chunks() {
-		// Simple test
+		let val = 123;
 		let mut out = [0u8; 9];
-		let (len, eof) = format_content!(0, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
-		assert_eq!(out.as_slice(), b"abcdefghi");
+		let (len, eof) = format_content!(0, &mut out, "{} {} {}", val, "def", "ghi").unwrap();
+		assert_eq!(out.as_slice(), b"123 def g");
 		assert_eq!(len, 9);
-		assert!(eof);
-		// End
+		assert!(!eof);
 		let mut out = [0u8; 9];
-		let (len, eof) = format_content!(9, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
-		assert_eq!(out, [0u8; 9]);
-		assert_eq!(len, 0);
+		let (len, eof) = format_content!(9, &mut out, "{} {} {}", "abc", "def", val).unwrap();
+		assert_eq!(out.as_slice(), b"23\0\0\0\0\0\0\0");
+		assert_eq!(len, 2);
 		assert!(eof);
-		// Start from second chunk
 		let mut out = [0u8; 9];
-		let (len, eof) = format_content!(3, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
-		assert_eq!(out.as_slice(), b"defghi\0\0\0");
-		assert_eq!(len, 6);
+		let (len, eof) = format_content!(3, &mut out, "{} {} {}", "abc", val, "ghi").unwrap();
+		assert_eq!(out.as_slice(), b" 123 ghi\0");
+		assert_eq!(len, 8);
 		assert!(eof);
-		// Start from middle of chunk
 		let mut out = [0u8; 9];
-		let (len, eof) = format_content!(4, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
-		assert_eq!(out.as_slice(), b"efghi\0\0\0\0");
-		assert_eq!(len, 5);
+		let (len, eof) = format_content!(4, &mut out, "{} {} {}", val, "def", "ghi").unwrap();
+		assert_eq!(out.as_slice(), b"def ghi\0\0");
+		assert_eq!(len, 7);
 		assert!(eof);
-		// Stop before end
 		let mut out = [0u8; 5];
-		let (len, eof) = format_content!(0, &mut out, "{} {} {}", "abc", "def", "ghi").unwrap();
-		assert_eq!(out.as_slice(), b"abcde");
+		let (len, eof) = format_content!(0, &mut out, "{} {} {}", "abc", val, "ghi").unwrap();
+		assert_eq!(out.as_slice(), b"abc 1");
 		assert_eq!(len, 5);
 		assert!(!eof);
 	}

@@ -92,9 +92,7 @@ impl NodesStorage {
 	///
 	/// If the node doesn't exist, the function does nothing.
 	pub fn remove_node(&mut self, inode: INode) -> Option<Box<dyn OwnedNode>> {
-		self.0
-			.get_mut(inode as usize - 1)
-			.and_then(Option::take)
+		self.0.get_mut(inode as usize - 1).and_then(Option::take)
 	}
 }
 
