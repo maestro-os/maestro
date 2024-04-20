@@ -48,10 +48,6 @@ impl DeviceHandle for NullDeviceHandle {
 }
 
 impl IO for NullDeviceHandle {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
 	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
 		Ok((0, true))
 	}
@@ -82,15 +78,8 @@ impl DeviceHandle for ZeroDeviceHandle {
 }
 
 impl IO for ZeroDeviceHandle {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
 	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		for b in buff.iter_mut() {
-			*b = 0;
-		}
-
+		buff.fill(0);
 		Ok((buff.len() as _, false))
 	}
 
@@ -184,10 +173,6 @@ impl DeviceHandle for URandomDeviceHandle {
 }
 
 impl IO for URandomDeviceHandle {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 

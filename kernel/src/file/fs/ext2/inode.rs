@@ -29,12 +29,13 @@ use crate::{
 use core::{
 	cmp::{max, min},
 	mem::size_of,
-	ptr,
 	ptr::{addr_of, copy_nonoverlapping},
 	slice,
 };
+use macros::AnyRepr;
 use utils::{
 	boxed::Box,
+	bytes::as_bytes,
 	collections::{string::String, vec::Vec},
 	errno,
 	errno::EResult,
@@ -135,6 +136,7 @@ pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
 /// The name of the file is not included in the inode but in the directory entry associated with it
 /// since several entries can refer to the same inode (hard links).
 #[repr(C, packed)]
+#[derive(AnyRepr)]
 pub struct Ext2INode {
 	/// Type and permissions.
 	pub mode: u16,
@@ -889,26 +891,26 @@ impl Ext2INode {
 		if begin >= superblock.total_blocks {
 			return Err(errno!(EUCLEAN));
 		}
-
 		let blk_size = superblock.get_block_size();
-		let entries_per_blk = blk_size as usize / size_of::<u32>();
-
-		// Reading the block
-		let mut blk_buff = vec![0; entries_per_blk]?;
+		// Read the block
+		let mut blk_buff = vec![0; blk_size as _]?;
 		read_block(begin as _, superblock, io, blk_buff.as_mut_slice())?;
-
-		// Free every entries recursively
+		// Free every entry recursively
 		if n > 0 {
+			let entries_per_blk = blk_size as usize / size_of::<u32>();
 			for i in 0..entries_per_blk {
-				let b = blk_buff[i];
-
+				let b = u32::from_le_bytes([
+					blk_buff[i],
+					blk_buff[i + 1],
+					blk_buff[i + 2],
+					blk_buff[i + 3],
+				]);
 				// If the entry is not empty, free it
 				if b != 0 {
 					Self::indirect_free_all(b, n - 1, superblock, io)?;
 				}
 			}
 		}
-
 		superblock.free_block(io, begin)
 	}
 
@@ -994,11 +996,8 @@ impl Ext2INode {
 		entry: &DirectoryEntry,
 		off: u64,
 	) -> EResult<()> {
-		let buff = unsafe {
-			slice::from_raw_parts(entry as *const _ as *const u8, entry.total_size as _)
-		};
-
-		self.write_content(off, buff, superblock, io)?;
+		let bytes = as_bytes(entry);
+		self.write_content(off, bytes, superblock, io)?;
 		Ok(())
 	}
 
@@ -1302,7 +1301,7 @@ impl Ext2INode {
 			unsafe {
 				// Safe because in range
 				let ptr = addr_of!(self.direct_block_ptrs) as *mut u8;
-				ptr::copy_nonoverlapping(target.as_ptr(), ptr, len);
+				copy_nonoverlapping(target.as_ptr(), ptr, len);
 			}
 		} else {
 			self.truncate(superblock, io, len as _)?;

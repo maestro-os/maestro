@@ -146,7 +146,7 @@ impl IO for PipeBuffer {
 		self.get_data_len() as _
 	}
 
-	/// Note: This implemention ignores the offset.
+	/// Note: This implementation ignores the offset.
 	fn read(&mut self, _: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
 		let len = self.buffer.read(buf);
 		let eof = self.write_ends == 0 && self.get_data_len() == 0;
@@ -156,7 +156,7 @@ impl IO for PipeBuffer {
 		Ok((len as _, eof))
 	}
 
-	/// Note: This implemention ignores the offset.
+	/// Note: This implementation ignores the offset.
 	fn write(&mut self, _: u64, buf: &[u8]) -> EResult<u64> {
 		if self.read_ends > 0 {
 			let len = self.buffer.write(buf);

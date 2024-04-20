@@ -47,7 +47,9 @@ pub const POLLRDHUP: u32 = 0x2000;
 /// Trait representing a data I/O interface.
 pub trait IO {
 	/// Returns the size of the underlying data.
-	fn get_size(&self) -> u64;
+	fn get_size(&self) -> u64 {
+		0
+	}
 
 	/// Reads data from the I/O and writes it into `buff`.
 	///

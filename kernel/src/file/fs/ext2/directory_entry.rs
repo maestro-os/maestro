@@ -28,6 +28,7 @@ use core::{
 	num::NonZeroU16,
 	slice,
 };
+use macros::AnyRepr;
 use utils::{
 	boxed::Box,
 	errno,
@@ -57,6 +58,7 @@ const TYPE_INDICATOR_SYMLINK: u8 = 7;
 /// Each directory entry represent a file that is the stored in the
 /// directory and points to its inode.
 #[repr(C, packed)]
+#[derive(AnyRepr)]
 pub struct DirectoryEntry {
 	/// The inode associated with the entry.
 	pub(super) inode: u32,

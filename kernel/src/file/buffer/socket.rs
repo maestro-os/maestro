@@ -226,11 +226,7 @@ impl Buffer for Socket {
 }
 
 impl IO for Socket {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	/// Note: This implemention ignores the offset.
+	/// Note: This implementation ignores the offset.
 	fn read(&mut self, _: u64, _buf: &mut [u8]) -> EResult<(u64, bool)> {
 		if !self.desc.type_.is_stream() {
 			// TODO error
@@ -240,7 +236,7 @@ impl IO for Socket {
 		todo!();
 	}
 
-	/// Note: This implemention ignores the offset.
+	/// Note: This implementation ignores the offset.
 	fn write(&mut self, _: u64, _buf: &[u8]) -> EResult<u64> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {

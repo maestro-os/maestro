@@ -22,11 +22,13 @@
 
 use super::{read, write, Superblock};
 use core::mem::size_of;
+use macros::AnyRepr;
 use utils::{errno::EResult, io::IO};
 
 /// Structure representing a block group descriptor to be stored into the Block
 /// Group Descriptor Table (BGDT).
 #[repr(C, packed)]
+#[derive(AnyRepr)]
 pub struct BlockGroupDescriptor {
 	/// The block address of the block usage bitmap.
 	pub block_usage_bitmap_addr: u32,

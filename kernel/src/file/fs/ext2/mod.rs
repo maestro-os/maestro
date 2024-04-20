@@ -60,12 +60,14 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	intrinsics::unlikely,
-	mem::{size_of, size_of_val, MaybeUninit},
+	mem::{size_of, MaybeUninit},
 	slice,
 };
 use inode::Ext2INode;
+use macros::AnyRepr;
 use utils::{
 	boxed::Box,
+	bytes::{as_bytes, AnyRepr},
 	errno,
 	errno::EResult,
 	io::IO,
@@ -154,14 +156,11 @@ const MAX_NAME_LEN: usize = 255;
 ///
 /// The function is marked unsafe because if the read object is invalid, the
 /// behaviour is undefined.
-unsafe fn read<T>(offset: u64, io: &mut dyn IO) -> EResult<T> {
-	let size = size_of::<T>();
+unsafe fn read<T: AnyRepr>(offset: u64, io: &mut dyn IO) -> EResult<T> {
 	let mut obj = MaybeUninit::<T>::uninit();
-
 	let ptr = obj.as_mut_ptr() as *mut u8;
-	let buffer = slice::from_raw_parts_mut(ptr, size);
-	io.read(offset, buffer)?;
-
+	let buf = slice::from_raw_parts_mut(ptr, size_of::<T>());
+	io.read(offset, buf)?;
 	Ok(obj.assume_init())
 }
 
@@ -172,11 +171,8 @@ unsafe fn read<T>(offset: u64, io: &mut dyn IO) -> EResult<T> {
 /// - `offset` is the offset in bytes on the device.
 /// - `io` is the I/O interface of the device.
 fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
-	let size = size_of_val(obj);
-	let ptr = obj as *const T as *const u8;
-	let buffer = unsafe { slice::from_raw_parts(ptr, size) };
+	let buffer = as_bytes(obj);
 	io.write(offset, buffer)?;
-
 	Ok(())
 }
 
@@ -187,21 +183,13 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
 /// - `off` is the offset of the block on the device.
 /// - `superblock` is the filesystem's superblock.
 /// - `io` is the I/O interface of the device.
-/// - `buff` is the buffer to write the data on.
+/// - `buf` is the buffer to write the data on.
 ///
 /// If the block is outside the storage's bounds, the function returns a
 /// error.
-fn read_block<T>(
-	off: u64,
-	superblock: &Superblock,
-	io: &mut dyn IO,
-	buff: &mut [T],
-) -> EResult<()> {
+fn read_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
 	let blk_size = superblock.get_block_size() as u64;
-	let buffer =
-		unsafe { slice::from_raw_parts_mut(buff.as_mut_ptr() as *mut u8, size_of_val(buff)) };
-	io.read(off * blk_size, buffer)?;
-
+	io.read(off * blk_size, buf)?;
 	Ok(())
 }
 
@@ -212,15 +200,13 @@ fn read_block<T>(
 /// - `off` is the offset of the block on the device.
 /// - `superblock` is the filesystem's superblock.
 /// - `io` is the I/O interface of the device.
-/// - `buff` is the buffer to read from.
+/// - `buf` is the buffer to read from.
 ///
-/// If the block is outside the storage's bounds, the function returns a
+/// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn write_block<T>(off: u64, superblock: &Superblock, io: &mut dyn IO, buff: &[T]) -> EResult<()> {
+fn write_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
 	let blk_size = superblock.get_block_size() as u64;
-	let buffer = unsafe { slice::from_raw_parts(buff.as_ptr() as *const u8, size_of_val(buff)) };
-	io.write(off * blk_size, buffer)?;
-
+	io.write(off * blk_size, buf)?;
 	Ok(())
 }
 
@@ -232,14 +218,13 @@ fn write_block<T>(off: u64, superblock: &Superblock, io: &mut dyn IO, buff: &[T]
 /// - `superblock` is the filesystem's superblock.
 /// - `io` is the I/O interface of the device.
 ///
-/// If a block is outside the storage's bounds, the function returns a error.
+/// If a block is outside the storage's bounds, the function returns an error.
 fn zero_blocks(off: u64, count: u64, superblock: &Superblock, io: &mut dyn IO) -> EResult<()> {
 	let blk_size = superblock.get_block_size() as u64;
 	let blk_buff = vec![0; blk_size as _]?;
 	for i in off..(off + count) {
 		io.write(i * blk_size, blk_buff.as_slice())?;
 	}
-
 	Ok(())
 }
 
@@ -644,7 +629,7 @@ impl NodeOps for Ext2NodeOps {
 
 /// The ext2 superblock structure.
 #[repr(C, packed)]
-#[derive(Debug)]
+#[derive(Debug, AnyRepr)]
 pub struct Superblock {
 	/// Total number of inodes in the filesystem.
 	total_inodes: u32,
