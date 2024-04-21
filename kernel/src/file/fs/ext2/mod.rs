@@ -117,34 +117,34 @@ const ERR_ACTION_READ_ONLY: u16 = 2;
 /// Error handle action telling to trigger a kernel panic.
 const ERR_ACTION_KERNEL_PANIC: u16 = 3;
 
-/// Optional feature: Preallocation of a specified number of blocks for each new
+/// `s_feature_compat`: Preallocation of a specified number of blocks for each new
 /// directories.
 const OPTIONAL_FEATURE_DIRECTORY_PREALLOCATION: u32 = 0x1;
-/// Optional feature: AFS server
+/// `s_feature_compat`: AFS server
 const OPTIONAL_FEATURE_AFS: u32 = 0x2;
-/// Optional feature: Journal
+/// `s_feature_compat`: Journal
 const OPTIONAL_FEATURE_JOURNAL: u32 = 0x4;
-/// Optional feature: Inodes have extended attributes
+/// `s_feature_compat`: Inodes have extended attributes
 const OPTIONAL_FEATURE_INODE_EXTENDED: u32 = 0x8;
-/// Optional feature: Filesystem can resize itself for larger partitions
+/// `s_feature_compat`: Filesystem can resize itself for larger partitions
 const OPTIONAL_FEATURE_RESIZE: u32 = 0x10;
-/// Optional feature: Directories use hash index
+/// `s_feature_compat`: Directories use hash index
 const OPTIONAL_FEATURE_HASH_INDEX: u32 = 0x20;
 
-/// Required feature: Compression
+/// `s_feature_incompat`: Compression
 const REQUIRED_FEATURE_COMPRESSION: u32 = 0x1;
-/// Required feature: Directory entries have a type field
+/// `s_feature_incompat`: Directory entries have a type field
 const REQUIRED_FEATURE_DIRECTORY_TYPE: u32 = 0x2;
-/// Required feature: Filesystem needs to replay its journal
+/// `s_feature_incompat`: Filesystem needs to replay its journal
 const REQUIRED_FEATURE_JOURNAL_REPLAY: u32 = 0x4;
-/// Required feature: Filesystem uses a journal device
+/// `s_feature_incompat`: Filesystem uses a journal device
 const REQUIRED_FEATURE_JOURNAL_DEVIXE: u32 = 0x8;
 
-/// Write-required feature: Sparse superblocks and group descriptor tables
+/// `s_feature_ro_compat`: Sparse superblocks and group descriptor tables
 const WRITE_REQUIRED_SPARSE_SUPERBLOCKS: u32 = 0x1;
-/// Write-required feature: Filesystem uses a 64-bit file size
+/// `s_feature_ro_compat`: Filesystem uses a 64-bit file size
 const WRITE_REQUIRED_64_BITS: u32 = 0x2;
-/// Directory contents are stored in the form of a Binary Tree.
+/// `s_feature_ro_compat`: Directory contents are stored in the form of a Binary Tree.
 const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
 
 /// The maximum length of a name in the filesystem.
@@ -1030,8 +1030,6 @@ struct Ext2Fs {
 	io: Arc<Mutex<dyn IO>>,
 	/// The filesystem's superblock.
 	superblock: Mutex<Superblock>,
-	/// The path at which the filesystem is mounted.
-	mountpath: PathBuf,
 	/// Tells whether the filesystem is mounted in read-only.
 	readonly: bool,
 }
@@ -1093,7 +1091,6 @@ impl Ext2Fs {
 		Ok(Self {
 			io,
 			superblock: Mutex::new(superblock),
-			mountpath,
 			readonly,
 		})
 	}
@@ -1150,7 +1147,6 @@ impl fmt::Debug for Ext2Fs {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Ext2Fs")
 			.field("superblock", &self.superblock)
-			.field("mountpath", &self.mountpath)
 			.field("readonly", &self.readonly)
 			.finish()
 	}
