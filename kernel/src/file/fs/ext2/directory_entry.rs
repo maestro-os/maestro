@@ -26,7 +26,6 @@ use core::{
 	alloc::{Allocator, Layout},
 	cmp::min,
 	num::NonZeroU16,
-	slice,
 };
 use macros::AnyRepr;
 use utils::{
@@ -117,12 +116,9 @@ impl DirectoryEntry {
 	/// Creates a new instance from a slice.
 	pub unsafe fn from(slice: &[u8]) -> AllocResult<Box<Self>> {
 		let layout = Layout::from_size_align(slice.len(), 8).unwrap();
-		let mut ptr = Global.allocate(layout)?.cast();
-		let alloc_slice = slice::from_raw_parts_mut(ptr.as_mut(), slice.len());
-		alloc_slice.copy_from_slice(slice);
-		Ok(Box::from_raw(
-			alloc_slice as *mut [u8] as *mut [()] as *mut Self,
-		))
+		let mut ptr = Global.allocate(layout)?;
+		ptr.as_mut().copy_from_slice(slice);
+		Ok(Box::from_raw(ptr.as_ptr() as *mut Self))
 	}
 
 	/// Returns the length the entry's name.

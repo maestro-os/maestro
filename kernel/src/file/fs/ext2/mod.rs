@@ -155,15 +155,14 @@ const MAX_NAME_LEN: usize = 255;
 /// Arguments:
 /// - `offset` is the offset in bytes on the device.
 /// - `io` is the I/O interface of the device.
-///
-/// The function is marked unsafe because if the read object is invalid, the
-/// behaviour is undefined.
-unsafe fn read<T: AnyRepr>(offset: u64, io: &mut dyn IO) -> EResult<T> {
-	let mut obj = MaybeUninit::<T>::uninit();
-	let ptr = obj.as_mut_ptr() as *mut u8;
-	let buf = slice::from_raw_parts_mut(ptr, size_of::<T>());
-	io.read(offset, buf)?;
-	Ok(obj.assume_init())
+fn read<T: AnyRepr>(offset: u64, io: &mut dyn IO) -> EResult<T> {
+	unsafe {
+		let mut obj = MaybeUninit::<T>::uninit();
+		let ptr = obj.as_mut_ptr() as *mut u8;
+		let buf = slice::from_raw_parts_mut(ptr, size_of::<T>());
+		io.read(offset, buf)?;
+		Ok(obj.assume_init())
+	}
 }
 
 /// Writes an object of the given type on the given device.
@@ -724,7 +723,7 @@ pub struct Superblock {
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
 	pub fn read(io: &mut dyn IO) -> EResult<Self> {
-		unsafe { read::<Self>(SUPERBLOCK_OFFSET, io) }
+		read::<Self>(SUPERBLOCK_OFFSET, io)
 	}
 
 	/// Tells whether the superblock is valid.

@@ -205,7 +205,7 @@ impl Ext2INode {
 	/// - `io` is the I/O interface.
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<Self> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
-		unsafe { read::<Self>(off, io) }
+		read::<Self>(off, io)
 	}
 
 	/// Returns the type of the file.
@@ -329,7 +329,7 @@ impl Ext2INode {
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
 			let byte_off = (begin as u64 * blk_size as u64) + inner_off;
-			let b = unsafe { read::<u32>(byte_off, io)? };
+			let b = read::<u32>(byte_off, io)?;
 			// Perform the next indirection if needed
 			let next_off = off - blk_per_blk * inner_index;
 			Self::resolve_indirections(n - 1, b, next_off, superblock, io)
@@ -415,7 +415,7 @@ impl Ext2INode {
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
 			let byte_off = (begin as u64 * blk_size as u64) + inner_off;
-			let mut b = unsafe { read::<u32>(byte_off, io)? };
+			let mut b = read::<u32>(byte_off, io)?;
 			if b == 0 {
 				let blk = superblock.get_free_block(io)?;
 				superblock.mark_block_used(io, blk)?;
@@ -521,7 +521,7 @@ impl Ext2INode {
 			let inner_off = inner_index as u64 * size_of::<u32>() as u64;
 			debug_assert!(inner_off < blk_size as u64);
 			let byte_off = (begin as u64 * blk_size as u64) + inner_off;
-			let b = unsafe { read::<u32>(byte_off, io)? };
+			let b = read::<u32>(byte_off, io)?;
 			let next_off = off - blk_per_blk * inner_index;
 			if self.indirections_free(n - 1, b, next_off, superblock, io)? {
 				// Reading the current block

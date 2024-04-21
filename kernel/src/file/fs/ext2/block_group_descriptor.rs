@@ -55,7 +55,7 @@ impl BlockGroupDescriptor {
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<Self> {
 		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
-		unsafe { read::<Self>(off, io) }
+		read::<Self>(off, io)
 	}
 
 	/// Writes the current block group descriptor.
