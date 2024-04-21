@@ -316,7 +316,7 @@ impl NodeOps for Ext2NodeOps {
 				let len = inode_.read_link(&superblock, &mut *io, buf)?;
 				let eof = len >= inode_.get_size(&superblock);
 				Ok((len, eof))
-			},
+			}
 			_ => Err(errno!(EINVAL)),
 		}
 	}
