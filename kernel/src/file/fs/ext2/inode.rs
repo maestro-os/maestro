@@ -705,22 +705,17 @@ impl Ext2INode {
 		if size >= old_size {
 			return Ok(());
 		}
-
 		// Change the size
 		self.set_size(superblock, size);
-
 		// The size of a block
 		let blk_size = superblock.get_block_size();
-
 		// The index of the beginning block to free
 		let begin = size.div_ceil(blk_size as _) as u32;
 		// The index of the end block to free
 		let end = old_size.div_ceil(blk_size as _) as u32;
 		for i in begin..end {
-			// TODO Optimize
 			self.free_content_block(i, superblock, io)?;
 		}
-
 		Ok(())
 	}
 
@@ -1082,6 +1077,73 @@ impl Ext2INode {
 			self.set_size(superblock, first_free_blk as u64 * blk_size as u64);
 		}
 
+		Ok(())
+	}
+
+	/// Reads the content symbolic link.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `buf` is the buffer in which the content is written.
+	///
+	/// If the file is not a symbolic link, the behaviour is undefined.
+	///
+	/// On success, the function returns the number of bytes written to `buf`.
+	pub fn read_link(
+		&self,
+		superblock: &Superblock,
+		io: &mut dyn IO,
+		buf: &mut [u8],
+	) -> EResult<u64> {
+		let size = self.get_size(superblock);
+		if size <= SYMLINK_INODE_STORE_LIMIT {
+			// The target is stored inline in the inode
+			let copy_len = min(buf.len(), size as _);
+			let buf = &mut buf[..copy_len];
+			self.i_block
+				.into_iter()
+				.flat_map(u32::to_le_bytes)
+				.zip(buf.iter_mut())
+				.for_each(|(src, dst)| {
+					*dst = src;
+				});
+			Ok(copy_len as _)
+		} else {
+			// The target is stored like in regular files
+			Ok(self.read_content(0, buf, superblock, io)?.0)
+		}
+	}
+
+	/// Writes the content symbolic link. The function always truncates the content to the size of
+	/// `buf`.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	/// - `buf` is the buffer in which the content is written.
+	///
+	/// If the file is not a symbolic link, the behaviour is undefined.
+	pub fn write_link(
+		&mut self,
+		superblock: &mut Superblock,
+		io: &mut dyn IO,
+		buf: &[u8],
+	) -> EResult<()> {
+		let new_size = buf.len() as u64;
+		// Write target
+		if new_size <= SYMLINK_INODE_STORE_LIMIT {
+			// The target is stored inline in the inode
+			self.truncate(superblock, io, 0)?;
+			// A manual loop is required because `i_block` is potentially unaligned
+			for (i, b) in buf.iter().enumerate() {
+				self.i_block[i / 4] |= (*b as u32) << (i % 4);
+			}
+			self.set_size(superblock, new_size);
+		} else {
+			self.truncate(superblock, io, new_size)?;
+			self.write_content(0, buf, superblock, io)?;
+		}
 		Ok(())
 	}
 

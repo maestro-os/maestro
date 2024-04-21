@@ -310,7 +310,15 @@ impl NodeOps for Ext2NodeOps {
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		inode_.read_content(off, buf, &superblock, &mut *io)
+		match inode_.get_type() {
+			FileType::Regular => inode_.read_content(off, buf, &superblock, &mut *io),
+			FileType::Link => {
+				let len = inode_.read_link(&superblock, &mut *io, buf)?;
+				let eof = len >= inode_.get_size(&superblock);
+				Ok((len, eof))
+			},
+			_ => Err(errno!(EINVAL)),
+		}
 	}
 
 	fn write_content(
@@ -330,7 +338,11 @@ impl NodeOps for Ext2NodeOps {
 		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		inode_.write_content(off, buf, &mut superblock, &mut *io)?;
+		match inode_.get_type() {
+			FileType::Regular => inode_.write_content(off, buf, &mut superblock, &mut *io)?,
+			FileType::Link => inode_.write_link(&mut superblock, &mut *io, buf)?,
+			_ => return Err(errno!(EINVAL)),
+		}
 		inode_.write(inode as _, &superblock, &mut *io)?;
 		superblock.write(&mut *io)?;
 		Ok(buf.len() as _)
