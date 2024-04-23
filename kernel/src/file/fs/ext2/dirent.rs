@@ -128,7 +128,7 @@ impl Dirent {
 	/// If the entry is invalid, the function returns [`EUCLEAN`].
 	pub fn from(slice: &[u8], superblock: &Superblock) -> EResult<Box<Self>> {
 		// Read record's length
-		const REC_LEN_OFF: usize = offset_of!(DirectoryEntry, rec_len);
+		const REC_LEN_OFF: usize = offset_of!(Dirent, rec_len);
 		if slice.len() < NAME_OFF {
 			return Err(errno!(EUCLEAN));
 		}
