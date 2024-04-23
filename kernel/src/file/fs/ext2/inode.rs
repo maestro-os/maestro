@@ -19,8 +19,8 @@
 //! An inode represents a file in the filesystem.
 
 use super::{
-	block_group_descriptor::BlockGroupDescriptor, directory_entry::DirectoryEntry, read,
-	read_block, write, write_block, zero_blocks, Superblock,
+	block_group_descriptor::BlockGroupDescriptor, dirent::Dirent, read, read_block, write,
+	write_block, zero_blocks, Superblock,
 };
 use crate::file::{FileType, Mode};
 use core::{
@@ -813,14 +813,14 @@ impl Ext2INode {
 		off: u64,
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> EResult<Box<DirectoryEntry>> {
+	) -> EResult<Box<Dirent>> {
 		// Allocate buffer
 		let blk_size = superblock.get_block_size() as u64;
 		let len = (blk_size - (off % blk_size)) as usize;
 		let mut buff = vec![0; len]?;
 		// Read entry
 		self.read_content(off as _, &mut buff, superblock, io)?;
-		DirectoryEntry::from(&buff, superblock)
+		Dirent::from(&buff, superblock)
 	}
 
 	/// Writes the directory entry at offset `off`.
@@ -835,7 +835,7 @@ impl Ext2INode {
 		&mut self,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
-		entry: &DirectoryEntry,
+		entry: &Dirent,
 		off: u64,
 	) -> EResult<()> {
 		let bytes = as_bytes(entry);
@@ -858,7 +858,7 @@ impl Ext2INode {
 		name: &[u8],
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> EResult<Option<(Box<DirectoryEntry>, u64)>> {
+	) -> EResult<Option<(Box<Dirent>, u64)>> {
 		// TODO If the hash index is enabled, use it
 		let mut off = 0;
 		while let Some((ent, next_off)) = self.next_dirent(off, superblock, io)? {
@@ -884,7 +884,7 @@ impl Ext2INode {
 		off: u64,
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> EResult<(Box<DirectoryEntry>, u64)> {
+	) -> EResult<(Box<Dirent>, u64)> {
 		let blk_size = superblock.get_block_size() as u64;
 		// Initialize the offset to the beginning of the current block
 		let mut o = off - (off % blk_size);
@@ -909,7 +909,7 @@ impl Ext2INode {
 		off: u64,
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> EResult<Option<(Box<DirectoryEntry>, u64)>> {
+	) -> EResult<Option<(Box<Dirent>, u64)>> {
 		if self.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
@@ -1004,7 +1004,7 @@ impl Ext2INode {
 		} else {
 			// TODO: check whether a block can be larger than the max value of `rec_len`. what to
 			// do here then?
-			let entry = DirectoryEntry::new(superblock, entry_inode, rec_len, file_type, name)?;
+			let entry = Dirent::new(superblock, entry_inode, rec_len, file_type, name)?;
 			self.write_dirent(superblock, io, &entry, self.get_size(superblock))
 		}
 	}

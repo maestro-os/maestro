@@ -44,7 +44,7 @@
 //! For more information, see the [specifications](https://www.nongnu.org/ext2-doc/ext2.html).
 
 mod block_group_descriptor;
-mod directory_entry;
+mod dirent;
 mod inode;
 
 use crate::{

@@ -53,17 +53,17 @@ const TYPE_INDICATOR_SOCKET: u8 = 6;
 /// Directory entry type indicator: Symbolic link
 const TYPE_INDICATOR_SYMLINK: u8 = 7;
 
-/// The offset of the `name` field in [`DirectoryEntry`].
+/// The offset of the `name` field in [`Dirent`].
 const NAME_OFF: usize = 8;
 
 /// A directory entry is a structure stored in the content of an inode of type
-/// `Directory`.
+/// [`FileType::Directory`].
 ///
 /// Each directory entry represent a file that is the stored in the
 /// directory and points to its inode.
 #[repr(C, packed)]
 #[derive(AnyRepr)]
-pub struct DirectoryEntry {
+pub struct Dirent {
 	/// The inode associated with the entry.
 	pub(super) inode: u32,
 	/// The total size of the entry.
@@ -76,7 +76,7 @@ pub struct DirectoryEntry {
 	name: [u8],
 }
 
-impl DirectoryEntry {
+impl Dirent {
 	/// Creates a new free instance.
 	///
 	/// `rec_len` is the size of the entry, including the name.
@@ -261,11 +261,11 @@ impl DirectoryEntry {
 			// If the entry is free, use it as a whole
 			// `rec_len` is never zero
 			let size: NonZeroU16 = self.rec_len.try_into().unwrap();
-			DirectoryEntry::new_free(size)
+			Dirent::new_free(size)
 		} else {
 			// If the entry is used, split it to use the unused space
 			self.rec_len -= size.get();
-			DirectoryEntry::new_free(size)
+			Dirent::new_free(size)
 		}
 	}
 
