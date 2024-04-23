@@ -876,7 +876,7 @@ impl Ext2INode {
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
 	///
-	/// If there is not previous entry, the function returns the entry at `off`.
+	/// If there is no previous entry, the function returns the entry at `off`.
 	///
 	/// On success, the function returns the previous directory entry along with its offset.
 	fn prev_block_dirent(
@@ -900,6 +900,7 @@ impl Ext2INode {
 	/// Returns the directory entry at offset `off`.
 	///
 	/// Arguments:
+	/// - `off` is the offset of the entry to return.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
 	///

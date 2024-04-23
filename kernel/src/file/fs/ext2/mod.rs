@@ -379,7 +379,7 @@ impl NodeOps for Ext2NodeOps {
 		&self,
 		inode: INode,
 		fs: &dyn Filesystem,
-		off: u64,
+		mut off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
@@ -388,17 +388,23 @@ impl NodeOps for Ext2NodeOps {
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		let Some((ent, next_off)) = inode_.next_dirent(off, &superblock, &mut *io)? else {
-			return Ok(None);
-		};
-		Ok(Some((
-			DirEntry {
-				inode: ent.inode as _,
-				entry_type: ent.get_type(&superblock, &mut *io)?,
-				name: Cow::Owned(ent.get_name(&superblock).try_into()?),
-			},
-			next_off,
-		)))
+		loop {
+			let Some((ent, next_off)) = inode_.next_dirent(off, &superblock, &mut *io)? else {
+				return Ok(None);
+			};
+			if ent.is_free() {
+				off = next_off;
+				continue;
+			}
+			break Ok(Some((
+				DirEntry {
+					inode: ent.inode as _,
+					entry_type: ent.get_type(&superblock, &mut *io)?,
+					name: Cow::Owned(ent.get_name(&superblock).try_into()?),
+				},
+				next_off,
+			)));
+		}
 	}
 
 	fn add_file(
