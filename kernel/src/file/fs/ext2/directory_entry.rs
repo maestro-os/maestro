@@ -19,12 +19,13 @@
 //! A directory entry is an entry stored into an inode's content which
 //! represents a subfile in a directory.
 
-use super::Superblock;
+use super::{Ext2INode, Superblock};
 use crate::file::FileType;
 use alloc::alloc::Global;
 use core::{
 	alloc::{Allocator, Layout},
 	cmp::min,
+	mem::offset_of,
 	num::NonZeroU16,
 };
 use macros::AnyRepr;
@@ -32,6 +33,7 @@ use utils::{
 	boxed::Box,
 	errno,
 	errno::{AllocResult, EResult},
+	io::IO,
 };
 
 /// Directory entry type indicator: Unknown
@@ -50,6 +52,9 @@ const TYPE_INDICATOR_FIFO: u8 = 5;
 const TYPE_INDICATOR_SOCKET: u8 = 6;
 /// Directory entry type indicator: Symbolic link
 const TYPE_INDICATOR_SYMLINK: u8 = 7;
+
+/// The offset of the `name` field in [`DirectoryEntry`].
+const NAME_OFF: usize = 8;
 
 /// A directory entry is a structure stored in the content of an inode of type
 /// `Directory`.
@@ -96,6 +101,8 @@ impl DirectoryEntry {
 	///
 	/// If the total size is not large enough to hold the entry, the function
 	/// returns an error.
+	///
+	/// If the name is too long, the function returns [`ENAMETOOLONG`].
 	pub fn new(
 		superblock: &Superblock,
 		inode: u32,
@@ -103,22 +110,46 @@ impl DirectoryEntry {
 		file_type: FileType,
 		name: &[u8],
 	) -> EResult<Box<Self>> {
-		if (rec_len.get() as usize) < (8 + name.len()) {
+		// Validation
+		if (rec_len.get() as usize) < (NAME_OFF + name.len()) {
 			return Err(errno!(EINVAL));
 		}
 		let mut entry = Self::new_free(rec_len)?;
 		entry.inode = inode;
 		entry.set_type(superblock, file_type);
-		entry.set_name(superblock, name);
+		entry.set_name(superblock, name)?;
 		Ok(entry)
 	}
 
-	/// Creates a new instance from a slice.
-	pub unsafe fn from(slice: &[u8]) -> AllocResult<Box<Self>> {
-		let layout = Layout::from_size_align(slice.len(), 8).unwrap();
+	/// Reinterprets a slice of bytes as a directory entry.
+	///
+	/// `superblock` is the filesystem's superblock.
+	///
+	/// If the entry is invalid, the function returns [`EUCLEAN`].
+	pub fn from(slice: &[u8], superblock: &Superblock) -> EResult<Box<Self>> {
+		// Read record's length
+		const REC_LEN_OFF: usize = offset_of!(DirectoryEntry, rec_len);
+		if slice.len() < NAME_OFF {
+			return Err(errno!(EUCLEAN));
+		}
+		let rec_len = u16::from_le_bytes([slice[REC_LEN_OFF], slice[REC_LEN_OFF + 1]]) as usize;
+		// Bound check
+		if rec_len < NAME_OFF || rec_len > slice.len() {
+			return Err(errno!(EUCLEAN));
+		}
+		// Reinterpret
+		let ent = unsafe { &*(&slice[..rec_len] as *const _ as *const Self) };
+		// Validation
+		if !ent.is_free() && NAME_OFF + ent.get_name_length(superblock) > rec_len {
+			return Err(errno!(EUCLEAN));
+		}
+		// Allocate and copy
+		let layout = Layout::from_size_align(rec_len, 8).unwrap();
 		let mut ptr = Global.allocate(layout)?;
-		ptr.as_mut().copy_from_slice(slice);
-		Ok(Box::from_raw(ptr.as_ptr() as *mut Self))
+		unsafe {
+			ptr.as_mut().copy_from_slice(&slice[..rec_len]);
+			Ok(Box::from_raw(ptr.as_ptr() as *mut Self))
+		}
 	}
 
 	/// Returns the length the entry's name.
@@ -142,49 +173,67 @@ impl DirectoryEntry {
 
 	/// Sets the name of the entry.
 	///
-	/// If the length of the entry is shorted than the required space, the name
+	/// If the length of the entry is shorter than the required space, the name
 	/// shall be truncated.
-	pub fn set_name(&mut self, superblock: &Superblock, name: &[u8]) {
-		let len = min(name.len(), self.rec_len as usize - 8);
-		self.name[..len].copy_from_slice(&name[..len]);
-		self.name_len = (len & 0xff) as u8;
-		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
-			self.file_type = ((len >> 8) & 0xff) as u8;
+	///
+	/// If the name is too long, the function returns [`ENAMETOOLONG`].
+	pub fn set_name(&mut self, superblock: &Superblock, name: &[u8]) -> EResult<()> {
+		if name.len() > super::MAX_NAME_LEN {
+			return Err(errno!(ENAMETOOLONG));
 		}
+		let len = min(name.len(), self.rec_len as usize - NAME_OFF);
+		self.name[..len].copy_from_slice(&name[..len]);
+		self.name_len = len as u8;
+		// If the file type hint feature is not enabled, set the high byte of the name length to
+		// zero
+		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			self.file_type = 0;
+		}
+		Ok(())
 	}
 
-	/// Returns the file type associated with the entry (if the option is
-	/// enabled).
-	pub fn get_type(&self, superblock: &Superblock) -> Option<FileType> {
-		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
-			match self.file_type {
-				TYPE_INDICATOR_REGULAR => Some(FileType::Regular),
-				TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
-				TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
-				TYPE_INDICATOR_BLOCK_DEVICE => Some(FileType::BlockDevice),
-				TYPE_INDICATOR_FIFO => Some(FileType::Fifo),
-				TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
-				TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
-				_ => None,
-			}
-		} else {
-			None
+	/// Returns the file type associated with the entry.
+	///
+	/// If the type cannot be retrieved from the entry directly, the function retrieves it from the
+	/// inode.
+	pub fn get_type(&self, superblock: &Superblock, io: &mut dyn IO) -> EResult<FileType> {
+		let ent_type =
+			if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+				match self.file_type {
+					TYPE_INDICATOR_REGULAR => Some(FileType::Regular),
+					TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
+					TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
+					TYPE_INDICATOR_BLOCK_DEVICE => Some(FileType::BlockDevice),
+					TYPE_INDICATOR_FIFO => Some(FileType::Fifo),
+					TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
+					TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
+					_ => None,
+				}
+			} else {
+				None
+			};
+		// If the type could not be retrieved from the entry itself, get it from the inode
+		match ent_type {
+			Some(t) => Ok(t),
+			None => Ok(Ext2INode::read(self.inode, superblock, &mut *io)?.get_type()),
 		}
 	}
 
 	/// Sets the file type associated with the entry (if the option is enabled).
 	pub fn set_type(&mut self, superblock: &Superblock, file_type: FileType) {
-		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE != 0 {
-			self.file_type = match file_type {
-				FileType::Regular => TYPE_INDICATOR_REGULAR,
-				FileType::Directory => TYPE_INDICATOR_DIRECTORY,
-				FileType::CharDevice => TYPE_INDICATOR_CHAR_DEVICE,
-				FileType::BlockDevice => TYPE_INDICATOR_BLOCK_DEVICE,
-				FileType::Fifo => TYPE_INDICATOR_FIFO,
-				FileType::Socket => TYPE_INDICATOR_SOCKET,
-				FileType::Link => TYPE_INDICATOR_SYMLINK,
-			};
+		// If the feature is not enabled, do nothing
+		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			return;
 		}
+		self.file_type = match file_type {
+			FileType::Regular => TYPE_INDICATOR_REGULAR,
+			FileType::Directory => TYPE_INDICATOR_DIRECTORY,
+			FileType::CharDevice => TYPE_INDICATOR_CHAR_DEVICE,
+			FileType::BlockDevice => TYPE_INDICATOR_BLOCK_DEVICE,
+			FileType::Fifo => TYPE_INDICATOR_FIFO,
+			FileType::Socket => TYPE_INDICATOR_SOCKET,
+			FileType::Link => TYPE_INDICATOR_SYMLINK,
+		};
 	}
 
 	/// Tells whether the entry is valid.
@@ -192,23 +241,32 @@ impl DirectoryEntry {
 		self.inode == 0
 	}
 
-	/// Tells whether the entry may be split to create a second entry with the
-	/// given size `new_size`.
-	pub fn may_split(&self, superblock: &Superblock, new_size: u16) -> bool {
-		if self.is_free() {
-			self.rec_len > 16 + new_size
+	/// Tells whether the current entry (free or not) may be suitable to fit a new used entry with
+	/// the given size `size`.
+	pub fn would_fit(&self, superblock: &Superblock, size: NonZeroU16) -> bool {
+		let available = if self.is_free() {
+			self.rec_len
 		} else {
-			self.rec_len - self.get_name_length(superblock) as u16 > 16 + new_size
-		}
+			self.rec_len - self.get_name_length(superblock) as u16
+		};
+		available >= size.get()
 	}
 
 	/// Splits the current entry into two entries and return the newly created
 	/// entry.
 	///
-	/// `new_size` is the size of the new entry.
-	pub fn split(&mut self, new_size: NonZeroU16) -> AllocResult<Box<Self>> {
-		self.rec_len -= new_size.get();
-		DirectoryEntry::new_free(new_size)
+	/// `size` is the size of the new entry.
+	pub fn insert(&mut self, size: NonZeroU16) -> AllocResult<Box<Self>> {
+		if self.is_free() {
+			// If the entry is free, use it as a whole
+			// `rec_len` is never zero
+			let size: NonZeroU16 = self.rec_len.try_into().unwrap();
+			DirectoryEntry::new_free(size)
+		} else {
+			// If the entry is used, split it to use the unused space
+			self.rec_len -= size.get();
+			DirectoryEntry::new_free(size)
+		}
 	}
 
 	/// Merges the current entry with the given entry `entry`.

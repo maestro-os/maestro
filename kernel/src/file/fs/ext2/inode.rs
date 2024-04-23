@@ -25,12 +25,12 @@ use super::{
 use crate::file::{FileType, Mode};
 use core::{
 	cmp::{max, min},
-	mem::{offset_of, size_of},
+	mem,
+	mem::size_of,
+	num::NonZeroU16,
 };
 use macros::AnyRepr;
-use utils::{
-	boxed::Box, bytes::as_bytes, collections::vec::Vec, errno, errno::EResult, io::IO, vec,
-};
+use utils::{boxed::Box, bytes::as_bytes, errno, errno::EResult, io::IO, vec};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -803,26 +803,24 @@ impl Ext2INode {
 	/// Reads the directory entry at offset `off` and returns it.
 	///
 	/// Arguments:
+	/// - `off` is the offset of the directory entry.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	/// - `off` is the offset of the directory entry.
 	///
 	/// If the file is not a directory, the behaviour is undefined.
 	fn read_dirent(
 		&self,
+		off: u64,
 		superblock: &Superblock,
 		io: &mut dyn IO,
-		off: u64,
 	) -> EResult<Box<DirectoryEntry>> {
-		// Read record's length
-		const FIELD_OFF: u64 = offset_of!(DirectoryEntry, rec_len) as u64;
-		let mut buff: [u8; 2] = [0; 2];
-		self.read_content(off + FIELD_OFF, &mut buff, superblock, io)?;
-		let rec_len = u16::from_le_bytes(buff);
+		// Allocate buffer
+		let blk_size = superblock.get_block_size() as u64;
+		let len = (blk_size - (off % blk_size)) as usize;
+		let mut buff = vec![0; len]?;
 		// Read entry
-		let mut buff = vec![0; rec_len as _]?;
 		self.read_content(off as _, &mut buff, superblock, io)?;
-		Ok(unsafe { DirectoryEntry::from(&buff)? })
+		DirectoryEntry::from(&buff, superblock)
 	}
 
 	/// Writes the directory entry at offset `off`.
@@ -833,7 +831,7 @@ impl Ext2INode {
 	/// - `off` is the offset of the directory entry.
 	///
 	/// If the file is not a directory, the behaviour is undefined.
-	pub fn write_dirent(
+	fn write_dirent(
 		&mut self,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
@@ -843,34 +841,6 @@ impl Ext2INode {
 		let bytes = as_bytes(entry);
 		self.write_content(off, bytes, superblock, io)?;
 		Ok(())
-	}
-
-	/// Returns an iterator to the node's directory entries.
-	///
-	/// Arguments:
-	/// - `superblock` is the filesystem's superblock.
-	/// - `io` is the I/O interface.
-	///
-	/// If the node is not a directory, the function returns `None`.
-	pub fn iter_dirent<'n, 's, 'i>(
-		&'n self,
-		superblock: &'s Superblock,
-		io: &'i mut dyn IO,
-	) -> EResult<Option<DirentIterator<'n, 's, 'i>>> {
-		if self.get_type() == FileType::Directory {
-			let blk_size = superblock.get_block_size();
-			let size = self.get_size(superblock);
-			Ok(Some(DirentIterator {
-				node: self,
-				superblock,
-				io,
-				buff: vec![0; blk_size as _]?,
-				off: 0,
-				size,
-			}))
-		} else {
-			Ok(None)
-		}
 	}
 
 	/// Returns the directory entry with the given name `name`, along with the offset of the entry.
@@ -888,22 +858,74 @@ impl Ext2INode {
 		name: &[u8],
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> EResult<Option<(u64, Box<DirectoryEntry>)>> {
-		// TODO If the binary tree feature is enabled, use it
-		if let Some(iter) = self.iter_dirent(superblock, io)? {
-			for res in iter {
-				let (off, ent) = res?;
-
-				if !ent.is_free() && ent.get_name(superblock) == name {
-					return Ok(Some((off, ent)));
-				}
+	) -> EResult<Option<(Box<DirectoryEntry>, u64)>> {
+		// TODO If the hash index is enabled, use it
+		let mut off = 0;
+		while let Some((ent, next_off)) = self.next_dirent(off, superblock, io)? {
+			if !ent.is_free() && ent.get_name(superblock) == name {
+				return Ok(Some((ent, off)));
 			}
+			off = next_off;
 		}
-
 		Ok(None)
 	}
 
-	/// Looks for a splittable entry in the inode which is large enough to fit
+	/// Finds the previous directory entry *in the same block* from the given offset `off`.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
+	/// If there is not previous entry, the function returns the entry at `off`.
+	///
+	/// On success, the function returns the previous directory entry along with its offset.
+	fn prev_block_dirent(
+		&self,
+		off: u64,
+		superblock: &Superblock,
+		io: &mut dyn IO,
+	) -> EResult<(Box<DirectoryEntry>, u64)> {
+		let blk_size = superblock.get_block_size() as u64;
+		// Initialize the offset to the beginning of the current block
+		let mut o = off - (off % blk_size);
+		while let Some((ent, next_off)) = self.next_dirent(o, superblock, io)? {
+			if next_off == off {
+				return Ok((ent, o));
+			}
+			o = next_off;
+		}
+		Err(errno!(EUCLEAN))
+	}
+
+	/// Returns the directory entry at offset `off`.
+	///
+	/// Arguments:
+	/// - `superblock` is the filesystem's superblock.
+	/// - `io` is the I/O interface.
+	///
+	/// On success, the function returns the entry and the offset to the next entry.
+	pub fn next_dirent(
+		&self,
+		off: u64,
+		superblock: &Superblock,
+		io: &mut dyn IO,
+	) -> EResult<Option<(Box<DirectoryEntry>, u64)>> {
+		if self.get_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
+		// TODO If the binary tree feature is enabled, use it
+		// If the list is exhausted, stop
+		if off >= self.get_size(superblock) {
+			return Ok(None);
+		}
+		// Read the entry
+		let ent = self.read_dirent(off, superblock, io)?;
+		// `rec_len` has been checked when reading the entry. It will never be zero
+		let next_off = off.saturating_add(ent.rec_len as _);
+		Ok(Some((ent, next_off)))
+	}
+
+	/// Looks for an entry in the inode which is large enough to fit
 	/// another entry with the given size.
 	///
 	/// Arguments:
@@ -916,22 +938,19 @@ impl Ext2INode {
 	///
 	/// If the file is not a directory, the function
 	/// returns `None`.
-	fn get_splittable_entry(
+	fn get_suitable_entry(
 		&self,
 		superblock: &Superblock,
 		io: &mut dyn IO,
-		min_size: u16,
+		min_size: NonZeroU16,
 	) -> EResult<Option<u64>> {
-		if let Some(iter) = self.iter_dirent(superblock, io)? {
-			for res in iter {
-				let (off, e) = res?;
-
-				if e.may_split(superblock, min_size) {
-					return Ok(Some(off));
-				}
+		let mut off = 0;
+		while let Some((ent, next_off)) = self.next_dirent(off, superblock, io)? {
+			if ent.would_fit(superblock, min_size) {
+				return Ok(Some(off));
 			}
+			off = next_off;
 		}
-
 		Ok(None)
 	}
 
@@ -956,128 +975,85 @@ impl Ext2INode {
 		name: &[u8],
 		file_type: FileType,
 	) -> EResult<()> {
+		debug_assert_eq!(self.get_type(), FileType::Directory);
 		// If the name is too long, error
 		if name.len() > super::MAX_NAME_LEN {
 			return Err(errno!(ENAMETOOLONG));
 		}
-
-		let mut entry_size = 8 + name.len() as u16;
-		// Ensure alignment of entries
-		if entry_size % 4 != 0 {
-			entry_size += 4 - (entry_size % 4);
-		}
-
+		let rec_len: NonZeroU16 = (8 + name.len() as u16)
+			// cannot overflow thanks to the previous check
+			.next_multiple_of(4)
+			.try_into()
+			// cannot fail because the value cannot be zero
+			.unwrap();
 		// If the entry is too large, error
 		let blk_size = superblock.get_block_size();
-		if entry_size as u32 > blk_size {
+		if rec_len.get() as u32 > blk_size {
 			return Err(errno!(ENAMETOOLONG));
 		}
-
-		if let Some(entry_off) = self.get_splittable_entry(superblock, io, entry_size)? {
-			let mut entry = self.read_dirent(superblock, io, entry_off)?;
-
-			// cannot fail because size is never zero
-			let entry_size = entry_size.try_into().unwrap();
-			let mut new_entry = entry.split(entry_size)?;
-			self.write_dirent(superblock, io, &entry, entry_off)?;
-
+		if let Some(entry_off) = self.get_suitable_entry(superblock, io, rec_len)? {
+			let mut entry = self.read_dirent(entry_off, superblock, io)?;
+			let mut new_entry = entry.insert(rec_len)?;
 			new_entry.inode = entry_inode;
-			new_entry.set_name(superblock, name);
+			new_entry.set_name(superblock, name)?;
 			new_entry.set_type(superblock, file_type);
-			self.write_dirent(superblock, io, &new_entry, entry_off + entry.rec_len as u64)
+			// Save the new entry first to make the operation atomic: if the second operation
+			// fails, the new entry remains hidden
+			self.write_dirent(superblock, io, &new_entry, entry_off + entry.rec_len as u64)?;
+			self.write_dirent(superblock, io, &entry, entry_off)
 		} else {
-			// cannot fails because block size is never zero
-			let entry_size = (blk_size as u16).try_into().unwrap();
-			let entry = DirectoryEntry::new(superblock, entry_inode, entry_size, file_type, name)?;
+			// TODO: check whether a block can be larger than the max value of `rec_len`. what to
+			// do here then?
+			let entry = DirectoryEntry::new(superblock, entry_inode, rec_len, file_type, name)?;
 			self.write_dirent(superblock, io, &entry, self.get_size(superblock))
 		}
 	}
 
-	// TODO Clean: Code from `foreach_directory_entry` has been duplicated to avoid
-	// borrow errors
 	/// Removes the entry from the current directory.
 	///
 	/// Arguments:
+	/// - `off` is the offset of the entry to remove.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	/// - `name` is the name of the entry.
-	pub fn remove_dirent<S: AsRef<[u8]>>(
+	pub fn remove_dirent(
 		&mut self,
+		off: u64,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
-		name: S,
 	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
-
-		// Allocate a buffer
-		let blk_size = superblock.get_block_size();
-		let mut buff = vec![0; blk_size as _]?;
-
-		// The previous free entry with its offset
-		let mut prev_free: Option<(u64, Box<DirectoryEntry>)> = None;
-
+		let blk_size = superblock.get_block_size() as u64;
 		let size = self.get_size(superblock);
-		let mut i = 0;
-		while i < size {
-			let len = min((size - i) as usize, blk_size as usize);
-			self.read_content(i, &mut buff.as_mut_slice()[..len], superblock, io)?;
-
-			let mut j = 0;
-			while j < len {
-				// Safe because the data is block-aligned and an entry cannot be larger than the
-				// size of a block
-				let mut entry = unsafe { DirectoryEntry::from(&buff.as_slice()[j..len])? };
-				// The total size of the entry
-				let total_size = entry.rec_len as usize;
-				// Prevent infinite loop from corrupted filesystem
-				if total_size == 0 {
-					break;
-				}
-
-				// The offset of the entry
-				let off = i + j as u64;
-
-				if !entry.is_free() {
-					if entry.get_name(superblock) == name.as_ref() {
-						// The entry has name `name`, free it
-						entry.inode = 0;
-						self.write_dirent(superblock, io, &entry, off)?;
-
-						if let Some((prev_free_off, prev_free)) = &mut prev_free {
-							// Merge previous entry with the current if they are on the same page
-							if *prev_free_off >= i {
-								prev_free.merge(entry);
-								self.write_dirent(superblock, io, prev_free, *prev_free_off)?;
-							}
-						} else {
-							prev_free = Some((off, entry));
-						}
-					} else {
-						// The entry is not free, skip it
-						prev_free = None;
-					}
-				}
-
-				j += total_size;
+		// Free entry
+		let mut ent = self.read_dirent(off, superblock, io)?;
+		ent.inode = 0;
+		// If the next entry is free, merge
+		let next_off = off + ent.rec_len as u64;
+		if next_off < size {
+			let next_ent = self.read_dirent(next_off, superblock, io)?;
+			if next_ent.is_free() {
+				ent.merge(next_ent);
 			}
-
-			i += blk_size as u64;
 		}
-
-		// If the last content blocks can be freed, free them
-		if let Some((last_free_off, _)) = prev_free {
-			// The first content block that can be freed
-			let first_free_blk = last_free_off.div_ceil(blk_size as u64) as u32;
-			// The number of content blocks in the inode
-			let blk_count = self.get_size(superblock).div_ceil(blk_size as u64) as u32;
-
-			for i in first_free_blk..blk_count {
-				self.free_content_block(i, superblock, io)?;
-			}
-			self.set_size(superblock, first_free_blk as u64 * blk_size as u64);
+		// Find the offset of the previous entry
+		let (prev_ent, prev_off) = self.prev_block_dirent(off, superblock, io)?;
+		// If there is a previous entry, and it is free: merge `ent` into it
+		if prev_off < off && prev_ent.is_free() {
+			let old = mem::replace(&mut ent, prev_ent);
+			// TODO: what if this would overflow `rec_len`?
+			ent.merge(old);
 		}
-
-		Ok(())
+		// If this is the last block, and it is now empty, free it
+		let next_blk_off = off.next_multiple_of(blk_size);
+		if next_blk_off >= size && ent.rec_len as u64 >= blk_size {
+			let cur_blk_off = off - (off % blk_size);
+			let cur_blk = (cur_blk_off / blk_size) as u32;
+			self.set_size(superblock, cur_blk_off);
+			// FIXME: consistency: need to update the inode *before* freeing the block to avoid
+			// dangling references
+			self.free_content_block(cur_blk, superblock, io)?;
+		}
+		self.write_dirent(superblock, io, &ent, off)
 	}
 
 	/// Reads the content symbolic link.
@@ -1180,87 +1156,5 @@ impl Ext2INode {
 	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<()> {
 		let off = Self::get_disk_offset(i, superblock, io)?;
 		write(self, off, io)
-	}
-}
-
-/// An itertor on the directory entries of a node (including free entries).
-///
-/// The iterator gives the offset of the directory entry and the directory entry
-/// itself.
-pub struct DirentIterator<'n, 's, 'i> {
-	/// The node.
-	node: &'n Ext2INode,
-	/// The fs's superblock.
-	superblock: &'s Superblock,
-	/// The I/O interface.
-	io: &'i mut dyn IO,
-
-	/// Block buffer.
-	buff: Vec<u8>,
-
-	/// The current offset.
-	off: u64,
-	/// The size of the directory's data.
-	size: u64,
-}
-
-impl<'n, 's, 'i> Iterator for DirentIterator<'n, 's, 'i> {
-	type Item = EResult<(u64, Box<DirectoryEntry>)>;
-
-	fn next(&mut self) -> Option<EResult<(u64, Box<DirectoryEntry>)>> {
-		let blk_size = self.superblock.get_block_size() as u64;
-
-		// If the list is exhausted, stop
-		if self.off >= self.size {
-			return None;
-		}
-
-		// The length of the buffer
-		let len = min((self.size - self.off) as usize, blk_size as usize);
-
-		// At beginning, read the first block
-		if self.off == 0 {
-			if let Err(e) = self.node.read_content(
-				self.off,
-				&mut self.buff.as_mut_slice()[..len],
-				self.superblock,
-				self.io,
-			) {
-				return Some(Err(e));
-			}
-		}
-
-		// The offset of the entry in the current block
-		let inner_off = (self.off % blk_size) as usize;
-		// Safe because the data is block-aligned and an entry cannot be larger than the
-		// size of a block
-		let entry_result = unsafe { DirectoryEntry::from(&self.buff.as_slice()[inner_off..]) };
-		let entry = match entry_result {
-			Ok(entry) => entry,
-			Err(e) => return Some(Err(e.into())),
-		};
-
-		// The total size of the entry
-		let total_size = entry.rec_len as usize;
-		if total_size < 8 {
-			return Some(Err(errno!(EUCLEAN)));
-		}
-
-		let prev_off = self.off;
-		self.off += total_size as u64;
-
-		// If the block is over, read the next
-		if self.off / blk_size > prev_off / blk_size {
-			if let Err(e) = self.node.read_content(
-				self.off,
-				&mut self.buff.as_mut_slice()[..len],
-				self.superblock,
-				self.io,
-			) {
-				return Some(Err(e));
-			}
-		}
-
-		Some(Ok((prev_off, entry)))
 	}
 }

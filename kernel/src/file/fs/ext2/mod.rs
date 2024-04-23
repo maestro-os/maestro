@@ -82,6 +82,7 @@ use utils::{
 // TODO Take into account user's UID/GID when allocating block/inode to handle
 // reserved blocks/inodes
 // TODO Document when a function writes on the storage device
+// TODO check for hard link count overflow/underflow before performing the actual operation
 
 /// The offset of the superblock from the beginning of the device.
 const SUPERBLOCK_OFFSET: u64 = 1024;
@@ -361,18 +362,13 @@ impl NodeOps for Ext2NodeOps {
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		let Some((_, entry)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
+		let Some((ent, _)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
 			return Ok(None);
-		};
-		let entry_type = match entry.get_type(&superblock) {
-			Some(t) => t,
-			// The type is not hinted in the entry itself. Need to get it from the inode
-			None => Ext2INode::read(entry.inode, &superblock, &mut *io)?.get_type(),
 		};
 		Ok(Some((
 			DirEntry {
-				inode: entry.inode as _,
-				entry_type,
+				inode: ent.inode as _,
+				entry_type: ent.get_type(&superblock, &mut *io)?,
 				name: Cow::Borrowed(name),
 			},
 			Box::new(Ext2NodeOps)?,
@@ -383,15 +379,26 @@ impl NodeOps for Ext2NodeOps {
 		&self,
 		inode: INode,
 		fs: &dyn Filesystem,
-		_off: u64,
+		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
 		let fs = downcast_fs(fs);
-		let _io = fs.io.lock();
-		// TODO
-		todo!()
+		let mut io = fs.io.lock();
+		let superblock = fs.superblock.lock();
+		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		let Some((ent, next_off)) = inode_.next_dirent(off, &superblock, &mut *io)? else {
+			return Ok(None);
+		};
+		Ok(Some((
+			DirEntry {
+				inode: ent.inode as _,
+				entry_type: ent.get_type(&superblock, &mut *io)?,
+				name: Cow::Owned(ent.get_name(&superblock).try_into()?),
+			},
+			next_off,
+		)))
 	}
 
 	fn add_file(
@@ -517,36 +524,12 @@ impl NodeOps for Ext2NodeOps {
 		if inode_.i_links_count == u16::MAX {
 			return Err(errno!(EMFILE));
 		}
-		match inode_.get_type() {
-			FileType::Directory => {
-				// Remove previous dirent
-				let old_parent_entry = inode_.get_dirent(b"..", &superblock, &mut *io)?;
-				if let Some((_, old_parent_entry)) = old_parent_entry {
-					let mut old_parent =
-						Ext2INode::read(old_parent_entry.inode as _, &superblock, &mut *io)?;
-					// TODO Write a function to remove by inode instead of name
-					if let Some(iter) = old_parent.iter_dirent(&superblock, &mut *io)? {
-						for res in iter {
-							let (_, e) = res?;
-							if e.inode == target_inode as _ {
-								let ent_name = e.get_name(&superblock);
-								old_parent.remove_dirent(&mut superblock, &mut *io, ent_name)?;
-								break;
-							}
-						}
-					}
-				}
-				// Update the `..` entry
-				if let Some((off, mut entry)) = inode_.get_dirent(b"..", &superblock, &mut *io)? {
-					entry.inode = parent_inode as _;
-					inode_.write_dirent(&mut superblock, &mut *io, &entry, off)?;
-				}
-			}
-			_ => {
-				// Update links count
-				inode_.i_links_count += 1;
-			}
+		if inode_.get_type() == FileType::Directory {
+			// Cannot add hard links to directories
+			return Err(errno!(EISDIR));
 		}
+		// Update links count
+		inode_.i_links_count += 1;
 		// Write directory entry
 		parent.add_dirent(
 			&mut superblock,
@@ -584,12 +567,11 @@ impl NodeOps for Ext2NodeOps {
 		if parent.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-		// The inode number
-		let remove_inode = parent
+		// The inode number and the offset of the entry
+		let (remove_inode, remove_off) = parent
 			.get_dirent(name, &superblock, &mut *io)?
-			.map(|(_, ent)| ent)
-			.ok_or_else(|| errno!(ENOENT))?
-			.inode;
+			.map(|(ent, off)| (ent.inode, off))
+			.ok_or_else(|| errno!(ENOENT))?;
 		// The inode
 		let mut remove_inode_ = Ext2INode::read(remove_inode, &superblock, &mut *io)?;
 		// If directory, remove `.` and `..` entries
@@ -600,7 +582,7 @@ impl NodeOps for Ext2NodeOps {
 					.get_dirent(b".", &superblock, &mut *io)?
 					.is_some()
 			{
-				remove_inode_.i_links_count -= 1;
+				remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
 			}
 			// Remove `..`
 			if parent.i_links_count > 0
@@ -608,16 +590,14 @@ impl NodeOps for Ext2NodeOps {
 					.get_dirent(b"..", &superblock, &mut *io)?
 					.is_some()
 			{
-				parent.i_links_count -= 1;
+				parent.i_links_count = parent.i_links_count.saturating_sub(1);
 			}
 		}
 		// Remove the directory entry
-		parent.remove_dirent(&mut superblock, &mut *io, name)?;
+		parent.remove_dirent(remove_off, &mut superblock, &mut *io)?;
 		parent.write(parent_inode as _, &superblock, &mut *io)?;
 		// Decrement the hard links count
-		if remove_inode_.i_links_count > 0 {
-			remove_inode_.i_links_count -= 1;
-		}
+		remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
 		// If this is the last link, remove the inode
 		if remove_inode_.i_links_count == 0 {
 			let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
