@@ -82,41 +82,40 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 		.ok_or_else(|| errno!(EFAULT))?;
 
 	let mut open_file = open_file_mutex.lock();
-	let start = open_file.get_offset();
-	let mut off = 0;
-	let mut entries_count = 0;
+	let mut off = open_file.get_offset();
+	let mut buff_off = 0;
 	{
 		let file_mutex = open_file.get_file();
 		let file = file_mutex.lock();
 		// Iterate over entries and fill the buffer
-		for entry in file.iter_dir_entries(start) {
-			let entry = entry?;
+		for entry in file.iter_dir_entries(off) {
+			let (entry, next_off) = entry?;
+			off = next_off;
 			// Skip entries whose inode cannot fit in the structure
 			if entry.inode > E::INODE_MAX {
 				continue;
 			}
 			let len = E::required_length(entry.name.as_ref());
 			// If the buffer is not large enough, return an error
-			if off == 0 && len > count {
+			if buff_off == 0 && len > count {
 				return Err(errno!(EINVAL));
 			}
 			// If reaching the end of the buffer, break
-			if off + len > count {
+			if buff_off + len > count {
 				break;
 			}
 			E::write(
 				dirp_slice,
-				off,
+				buff_off,
 				entry.inode,
 				entry.entry_type,
 				entry.name.as_ref(),
 			);
-			off += len;
-			entries_count += 1;
+			buff_off += len;
 		}
 	}
-	open_file.set_offset(start + entries_count);
-	Ok(off as _)
+	open_file.set_offset(off);
+	Ok(buff_off as _)
 }
 
 /// A Linux directory entry.

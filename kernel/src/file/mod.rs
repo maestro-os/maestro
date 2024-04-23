@@ -817,6 +817,8 @@ impl AccessProfile {
 
 /// Iterator over a file's directory entries.
 ///
+/// For each entry, the function also returns the offset to the next.
+///
 /// If the file is not a directory, the iterator returns nothing.
 pub struct DirEntryIterator<'f> {
 	/// The directory.
@@ -826,7 +828,7 @@ pub struct DirEntryIterator<'f> {
 }
 
 impl<'f> Iterator for DirEntryIterator<'f> {
-	type Item = EResult<DirEntry<'static>>;
+	type Item = EResult<(DirEntry<'static>, u64)>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let res = self
@@ -843,7 +845,7 @@ impl<'f> Iterator for DirEntryIterator<'f> {
 		match res {
 			Ok((entry, off)) => {
 				self.cursor = off;
-				Some(Ok(entry))
+				Some(Ok((entry, self.cursor)))
 			}
 			Err(e) => Some(Err(e)),
 		}
