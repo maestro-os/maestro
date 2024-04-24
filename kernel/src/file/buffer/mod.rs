@@ -22,7 +22,7 @@ pub mod pipe;
 pub mod socket;
 
 use crate::{
-	file::{blocking::BlockHandler, FileLocation},
+	file::{blocking::BlockHandler, FileLocation, Stat},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
 };
@@ -40,6 +40,8 @@ use utils::{
 pub trait Buffer: IO + Any {
 	/// Returns the capacity in bytes of the buffer.
 	fn get_capacity(&self) -> usize;
+	/// Returns the status of the file representing the buffer.
+	fn get_stat(&self) -> Stat;
 
 	/// Increments the number of open ends.
 	///
@@ -97,15 +99,10 @@ where
 	F: FnOnce(&mut IDAllocator) -> EResult<T>,
 {
 	let mut id_allocator = ID_ALLOCATOR.lock();
-
 	let id_allocator = match &mut *id_allocator {
-		Some(id_allocator) => id_allocator,
-		None => {
-			*id_allocator = Some(IDAllocator::new(65536)?);
-			id_allocator.as_mut().unwrap()
-		}
+		Some(a) => a,
+		None => id_allocator.insert(IDAllocator::new(65536)?),
 	};
-
 	f(id_allocator)
 }
 
@@ -164,9 +161,7 @@ pub fn register(loc: Option<FileLocation>, buff: Arc<Mutex<dyn Buffer>>) -> ERes
 /// If the location doesn't exist or doesn't match any existing buffer, the function does nothing.
 pub fn release(loc: &FileLocation) {
 	let mut buffers = BUFFERS.lock();
-
-	let _ = buffers.remove(loc);
-
+	buffers.remove(loc);
 	if let FileLocation::Virtual(id) = loc {
 		let _ = id_allocator_do(|id_allocator| {
 			id_allocator.free(*id);

@@ -339,28 +339,11 @@ impl Default for FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{
-		fs::{Filesystem, NodeOps},
-		File, FileLocation, INode, Stat,
-	};
-	use utils::boxed::Box;
-
-	#[derive(Debug)]
-	struct DummyNodeOps;
-
-	impl NodeOps for DummyNodeOps {
-		fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
-			Err(errno!(EINVAL))
-		}
-	}
+	use crate::file::{File, FileLocation, Stat};
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {
-		let file = File::new(
-			FileLocation::dummy(),
-			Stat::default(),
-			Box::new(DummyNodeOps).unwrap() as _,
-		);
+		let file = File::new(FileLocation::dummy(), None, Stat::default());
 		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), None, 0).unwrap()
 	}
 

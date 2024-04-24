@@ -361,10 +361,12 @@ enum IoSource<'a> {
 pub struct File {
 	/// The location the file is stored on.
 	pub location: FileLocation,
+	/// Handle to perform operations on the node.
+	///
+	/// If `None`, the file is virtual.
+	ops: Option<Box<dyn NodeOps>>,
 	/// The file's status. This is cache of the data on the filesystem.
 	pub stat: Stat,
-	/// Handle to perform operations on the node.
-	ops: Box<dyn NodeOps>,
 	/// If not `None`, the file will be removed when the last handle to it is closed.
 	///
 	/// This field contains all the information necessary to remove it.
@@ -376,13 +378,13 @@ impl File {
 	///
 	/// Arguments:
 	/// - `location` is the file's location.
-	/// - `stat` is the file's status
 	/// - `ops` is the handle to perform operations on the file
-	fn new(location: FileLocation, stat: Stat, ops: Box<dyn NodeOps>) -> Self {
+	/// - `stat` is the file's status
+	fn new(location: FileLocation, ops: Option<Box<dyn NodeOps>>, stat: Stat) -> Self {
 		Self {
 			location,
-			stat,
 			ops,
+			stat,
 			deferred_remove: None,
 		}
 	}
@@ -509,14 +511,20 @@ impl File {
 	///
 	/// If no device is associated with the file, the function does nothing.
 	pub fn sync(&self) -> EResult<()> {
-		let inode = self.location.get_inode();
+		// Cannot sync a file that has no medium to sync to
+		let Some(ops) = self.ops.as_ref() else {
+			return Ok(());
+		};
 		let Some(mountpoint_mutex) = self.location.get_mountpoint() else {
 			return Ok(());
 		};
+		// Retrieve inode and filesystem
+		let inode = self.location.get_inode();
 		let mountpoint = mountpoint_mutex.lock();
 		let fs = mountpoint.get_filesystem();
 		// TODO only set fields that were modified
-		self.ops.set_stat(
+		// Sync
+		ops.set_stat(
 			inode,
 			&*fs,
 			StatSet {
@@ -541,31 +549,7 @@ impl File {
 		F: FnOnce(IoSource<'_>) -> EResult<R>,
 	{
 		match self.stat.file_type {
-			FileType::Regular => match self.location {
-				FileLocation::Filesystem {
-					inode, ..
-				} => {
-					let fs = {
-						let mountpoint_mutex =
-							self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-						let mountpoint = mountpoint_mutex.lock();
-						mountpoint.get_filesystem()
-					};
-					f(IoSource::Filesystem {
-						fs: &*fs,
-						inode,
-						ops: &*self.ops,
-					})
-				}
-				FileLocation::Virtual(_) => {
-					let Some(io_mutex) = buffer::get(&self.location) else {
-						return Err(errno!(ENOENT));
-					};
-					let mut io = io_mutex.lock();
-					f(IoSource::IO(&mut *io))
-				}
-			},
-			FileType::Directory => {
+			FileType::Regular | FileType::Directory => {
 				let fs = {
 					let mountpoint_mutex =
 						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
@@ -573,10 +557,12 @@ impl File {
 					mountpoint.get_filesystem()
 				};
 				let inode = self.location.get_inode();
+				// A non-virtual file always have an associated operations handle
+				let ops = self.ops.as_ref().unwrap().as_ref();
 				f(IoSource::Filesystem {
 					fs: &*fs,
 					inode,
-					ops: &*self.ops,
+					ops,
 				})
 			}
 			FileType::Link => Err(errno!(EINVAL)),

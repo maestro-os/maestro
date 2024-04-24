@@ -20,7 +20,7 @@
 
 use super::Buffer;
 use crate::{
-	file::buffer::BlockHandler,
+	file::{buffer::BlockHandler, FileType, Stat},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
@@ -197,6 +197,14 @@ impl Buffer for Socket {
 	fn get_capacity(&self) -> usize {
 		// TODO
 		todo!()
+	}
+
+	fn get_stat(&self) -> Stat {
+		Stat {
+			file_type: FileType::Socket,
+			mode: 0o666,
+			..Default::default()
+		}
 	}
 
 	fn increment_open(&mut self, _read: bool, _write: bool) {
