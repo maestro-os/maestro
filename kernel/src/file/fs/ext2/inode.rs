@@ -1062,6 +1062,7 @@ impl Ext2INode {
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
+	/// - `off` is the offset from which the link is read.
 	/// - `buf` is the buffer in which the content is written.
 	///
 	/// If the file is not a symbolic link, the behaviour is undefined.
@@ -1071,24 +1072,28 @@ impl Ext2INode {
 		&self,
 		superblock: &Superblock,
 		io: &mut dyn IO,
+		off: u64,
 		buf: &mut [u8],
 	) -> EResult<u64> {
 		let size = self.get_size(superblock);
 		if size <= SYMLINK_INODE_STORE_LIMIT {
 			// The target is stored inline in the inode
-			let copy_len = min(buf.len(), size as _);
-			let buf = &mut buf[..copy_len];
+			let copy_max = min(buf.len(), (size - off) as _);
+			let buf = &mut buf[..copy_max];
+			let mut i = 0;
 			self.i_block
 				.into_iter()
 				.flat_map(u32::to_le_bytes)
+				.skip(off as _)
 				.zip(buf.iter_mut())
 				.for_each(|(src, dst)| {
 					*dst = src;
+					i += 1;
 				});
-			Ok(copy_len as _)
+			Ok(i)
 		} else {
 			// The target is stored like in regular files
-			Ok(self.read_content(0, buf, superblock, io)?.0)
+			Ok(self.read_content(off, buf, superblock, io)?.0)
 		}
 	}
 
@@ -1107,7 +1112,15 @@ impl Ext2INode {
 		io: &mut dyn IO,
 		buf: &[u8],
 	) -> EResult<()> {
+		let old_size = self.get_size(superblock);
 		let new_size = buf.len() as u64;
+		// Erase previous
+		if old_size <= SYMLINK_INODE_STORE_LIMIT {
+			// A manual loop is required because `i_block` is potentially unaligned
+			for i in 0..(DIRECT_BLOCKS_COUNT + 3) {
+				self.i_block[i] = 0;
+			}
+		}
 		// Write target
 		if new_size <= SYMLINK_INODE_STORE_LIMIT {
 			// The target is stored inline in the inode

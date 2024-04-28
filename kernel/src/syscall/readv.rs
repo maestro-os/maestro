@@ -19,7 +19,10 @@
 //! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
 use crate::{
-	file::open_file::{OpenFile, O_NONBLOCK},
+	file::{
+		open_file::{OpenFile, O_NONBLOCK},
+		FileType,
+	},
 	limits,
 	process::{
 		iovec::IOVec,
@@ -100,15 +103,14 @@ pub fn do_readv(
 	offset: Option<isize>,
 	_flags: Option<i32>,
 ) -> EResult<i32> {
+	// Validation
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
-
 	// TODO Handle flags
-
 	let (proc, mem_space, open_file_mutex) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -126,7 +128,7 @@ pub fn do_readv(
 		drop(proc);
 		(proc_mutex, mem_space, open_file_mutex)
 	};
-
+	// Validation
 	let (start_off, update_off) = match offset {
 		Some(o @ 0..) => (o as u64, false),
 		None | Some(-1) => {
@@ -135,10 +137,12 @@ pub fn do_readv(
 		}
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
-
+	let file_type = open_file_mutex.lock().get_file().lock().stat.file_type;
+	if file_type == FileType::Link {
+		return Err(errno!(EINVAL));
+	}
 	loop {
 		// TODO super::util::signal_check(regs);
-
 		{
 			let mut open_file = open_file_mutex.lock();
 			let flags = open_file.get_flags();
@@ -159,7 +163,7 @@ pub fn do_readv(
 				return Ok(len as _);
 			}
 			if flags & O_NONBLOCK != 0 {
-				// The file descriptor is non blocking
+				// The file descriptor is non-blocking
 				return Err(errno!(EAGAIN));
 			}
 

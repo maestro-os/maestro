@@ -246,7 +246,7 @@ impl NodeOps for RootDir {
 			}
 		}
 		// No process left, go to static entries
-		let off = off - Pid::MAX as usize;
+		let off = off.saturating_sub(Pid::MAX as usize);
 		let ent = Self::STATIC.next_entry_inner(off as _)?;
 		Ok(ent.map(|(ent, next)| (ent, next + Pid::MAX as u64)))
 	}

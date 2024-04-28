@@ -161,7 +161,6 @@ pub fn statx(
 			(0, 0)
 		}
 	};
-	let inode = file.location.get_inode();
 	// Fill the structure
 	let statx_val = Statx {
 		stx_mask: !0,      // TODO
@@ -174,7 +173,7 @@ pub fn statx(
 
 		__padding0: 0,
 
-		stx_ino: inode,
+		stx_ino: file.location.get_inode(),
 		stx_size: file.stat.size,
 		stx_blocks: file.stat.blocks,
 		stx_attributes_mask: 0, // TODO

@@ -237,17 +237,14 @@ impl NodeOps for Node {
 		buf: &mut [u8],
 	) -> EResult<(u64, bool)> {
 		let inner = self.0.lock();
-		// Get content
 		let content = match &inner.content {
-			NodeContent::Regular(content) => content,
+			NodeContent::Regular(content) | NodeContent::Link(content) => content,
 			NodeContent::Directory(_) => return Err(errno!(EISDIR)),
 			_ => return Err(errno!(EINVAL)),
 		};
-		// Validation
 		if off > content.len() as u64 {
 			return Err(errno!(EINVAL));
 		}
-		// Copy
 		let off = off as usize;
 		let len = min(buf.len(), content.len() - off);
 		buf[..len].copy_from_slice(&content[off..(off + len)]);
@@ -263,22 +260,23 @@ impl NodeOps for Node {
 		buf: &[u8],
 	) -> EResult<u64> {
 		let mut inner = self.0.lock();
-		// Get content
-		let content = match &mut inner.content {
-			NodeContent::Regular(content) => content,
+		match &mut inner.content {
+			NodeContent::Regular(content) => {
+				if off > content.len() as u64 {
+					return Err(errno!(EINVAL));
+				}
+				let off = off as usize;
+				let new_len = max(content.len(), off + buf.len());
+				content.resize(new_len, 0)?;
+				content[off..].copy_from_slice(buf);
+			}
+			NodeContent::Link(content) => {
+				content.resize(buf.len(), 0)?;
+				content.copy_from_slice(buf);
+			}
 			NodeContent::Directory(_) => return Err(errno!(EISDIR)),
 			_ => return Err(errno!(EINVAL)),
-		};
-		// Validation
-		if off > content.len() as u64 {
-			return Err(errno!(EINVAL));
 		}
-		let off = off as usize;
-		// Allocation
-		let new_len = max(content.len(), off + buf.len());
-		content.resize(new_len, 0)?;
-		// Copy
-		content[off..(off + buf.len())].copy_from_slice(buf);
 		Ok(buf.len() as _)
 	}
 

@@ -52,10 +52,12 @@ impl NodesStorage {
 	///
 	/// If the node does not exist, the function returns an error.
 	pub fn get_node(&self, inode: INode) -> EResult<&Box<dyn OwnedNode>> {
+		let index = (inode as usize)
+			.checked_sub(1)
+			.ok_or_else(|| errno!(ENOENT))?;
 		self.0
-			.get(inode as usize - 1)
-			.ok_or_else(|| errno!(ENOENT))?
-			.as_ref()
+			.get(index)
+			.and_then(Option::as_ref)
 			.ok_or_else(|| errno!(ENOENT))
 	}
 

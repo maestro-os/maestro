@@ -445,8 +445,18 @@ impl File {
 		if self.stat.file_type != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
-		let mut link_path = vec![0; self.stat.size as usize]?;
-		self.read(0, &mut link_path)?;
+		// TODO do statistics to determine an optimal number?
+		const BLOCK: usize = 16;
+		let init_len = max(self.stat.size as usize, BLOCK);
+		let mut link_path = vec![0; init_len]?;
+		let mut off = 0;
+		// Read and realloc until the whole target is read
+		while let (len, false) = self.read(off, &mut link_path[(off as usize)..])? {
+			off += len;
+			if off as usize >= link_path.len() {
+				link_path.resize(link_path.len() + BLOCK, 0)?;
+			}
+		}
 		Ok(PathBuf::new_unchecked(String::from(link_path)))
 	}
 
@@ -554,7 +564,7 @@ impl File {
 		F: FnOnce(IoSource<'_>) -> EResult<R>,
 	{
 		match self.stat.file_type {
-			FileType::Regular | FileType::Directory => {
+			FileType::Regular | FileType::Directory | FileType::Link => {
 				let fs = {
 					let mountpoint_mutex =
 						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
@@ -570,7 +580,6 @@ impl File {
 					ops,
 				})
 			}
-			FileType::Link => Err(errno!(EINVAL)),
 			FileType::Fifo => {
 				let io_mutex = buffer::get_or_default::<PipeBuffer>(&self.location)?;
 				let mut io = io_mutex.lock();

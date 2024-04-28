@@ -43,7 +43,7 @@ impl NodeOps for Cwd {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
-			file_type: FileType::Regular,
+			file_type: FileType::Link,
 			mode: 0o444,
 			uid,
 			gid,

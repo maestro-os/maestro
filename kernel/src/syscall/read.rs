@@ -19,7 +19,7 @@
 //! The read system call allows to read the content of an open file.
 
 use crate::{
-	file::open_file::O_NONBLOCK,
+	file::{open_file::O_NONBLOCK, FileType},
 	process::{mem_space::ptr::SyscallSlice, scheduler, Process},
 };
 use core::{cmp::min, ffi::c_int};
@@ -30,15 +30,14 @@ use utils::{errno, errno::Errno, io, io::IO};
 
 #[syscall]
 pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
+	// Validation
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
-
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
-
 	let (proc, mem_space, open_file) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -56,7 +55,11 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 		drop(proc);
 		(proc_mutex, mem_space, open_file_mutex)
 	};
-
+	// Validation
+	let file_type = open_file.lock().get_file().lock().stat.file_type;
+	if file_type == FileType::Link {
+		return Err(errno!(EINVAL));
+	}
 	loop {
 		super::util::handle_signal(regs);
 

@@ -49,7 +49,7 @@ mod inode;
 
 use crate::{
 	file::{
-		fs::{Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
+		fs::{downcast_fs, Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
 		path::PathBuf,
 		DirEntry, FileType, INode, Stat,
 	},
@@ -234,11 +234,6 @@ fn zero_blocks(off: u64, count: u64, superblock: &Superblock, io: &mut dyn IO) -
 #[derive(Debug)]
 struct Ext2NodeOps;
 
-/// Downcasts the given `fs` into [`Ext2Fs`].
-fn downcast_fs(fs: &dyn Filesystem) -> &Ext2Fs {
-	(fs as &dyn Any).downcast_ref().unwrap()
-}
-
 impl NodeOps for Ext2NodeOps {
 	fn get_stat(&self, inode: INode, fs: &dyn Filesystem) -> EResult<Stat> {
 		if inode < 1 {
@@ -314,7 +309,7 @@ impl NodeOps for Ext2NodeOps {
 		match inode_.get_type() {
 			FileType::Regular => inode_.read_content(off, buf, &superblock, &mut *io),
 			FileType::Link => {
-				let len = inode_.read_link(&superblock, &mut *io, buf)?;
+				let len = inode_.read_link(&superblock, &mut *io, off, buf)?;
 				let eof = len >= inode_.get_size(&superblock);
 				Ok((len, eof))
 			}
@@ -347,6 +342,26 @@ impl NodeOps for Ext2NodeOps {
 		inode_.write(inode as _, &superblock, &mut *io)?;
 		superblock.write(&mut *io)?;
 		Ok(buf.len() as _)
+	}
+
+	fn truncate_content(&self, inode: INode, fs: &dyn Filesystem, size: u64) -> EResult<()> {
+		if unlikely(fs.is_readonly()) {
+			return Err(errno!(EROFS));
+		}
+		if inode < 1 {
+			return Err(errno!(EINVAL));
+		}
+		let fs = downcast_fs(fs);
+		let mut io = fs.io.lock();
+		let mut superblock = fs.superblock.lock();
+		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		match inode_.get_type() {
+			FileType::Regular => inode_.truncate(&mut superblock, &mut *io, size)?,
+			_ => return Err(errno!(EINVAL)),
+		}
+		inode_.write(inode as _, &superblock, &mut *io)?;
+		superblock.write(&mut *io)?;
+		Ok(())
 	}
 
 	fn entry_by_name<'n>(

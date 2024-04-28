@@ -162,7 +162,8 @@ pub trait NodeOps: Debug {
 	///
 	/// This function is relevant for the following file types:
 	/// - `Regular`: Writes the content of the file
-	/// - `Link`: Writes the path the link points to. The path is truncated to `off` before writing
+	/// - `Link`: Writes the path the link points to. `off` is ignored for links and is always
+	///   considered to be zero
 	///
 	/// The default implementation of this function returns an error.
 	fn write_content(
