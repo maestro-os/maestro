@@ -369,6 +369,13 @@ pub trait Filesystem: Any + Debug {
 	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>>;
 }
 
+/// Downcasts the given `fs` into `F`.
+///
+/// If the filesystem type do not match, the function panics.
+pub fn downcast_fs<F: Filesystem>(fs: &dyn Filesystem) -> &F {
+	(fs as &dyn Any).downcast_ref().unwrap()
+}
+
 /// A filesystem type.
 pub trait FilesystemType {
 	/// Returns the name of the filesystem.

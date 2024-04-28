@@ -45,7 +45,7 @@ const MAX_NAME_LEN: usize = 255;
 /// Each element of the inner vector is a slot to store a node. If a slot is `None`, it means it is
 /// free to be used.
 #[derive(Debug)]
-struct NodesStorage(Vec<Option<Box<dyn OwnedNode>>>);
+pub struct NodesStorage(Vec<Option<Box<dyn OwnedNode>>>);
 
 impl NodesStorage {
 	/// Returns an immutable reference to the node with inode `inode`.
@@ -104,7 +104,7 @@ pub struct KernFS {
 	/// Tells whether the filesystem is read-only.
 	read_only: bool,
 	/// Nodes storage.
-	nodes: Mutex<NodesStorage>,
+	pub nodes: Mutex<NodesStorage>,
 }
 
 impl KernFS {
