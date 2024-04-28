@@ -57,7 +57,6 @@ use crate::{
 };
 use block_group_descriptor::BlockGroupDescriptor;
 use core::{
-	any::Any,
 	cmp::{max, min},
 	fmt,
 	fmt::Formatter,
@@ -239,7 +238,7 @@ impl NodeOps for Ext2NodeOps {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
@@ -264,7 +263,7 @@ impl NodeOps for Ext2NodeOps {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
@@ -302,7 +301,7 @@ impl NodeOps for Ext2NodeOps {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
@@ -330,7 +329,7 @@ impl NodeOps for Ext2NodeOps {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
@@ -351,7 +350,7 @@ impl NodeOps for Ext2NodeOps {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
@@ -373,7 +372,7 @@ impl NodeOps for Ext2NodeOps {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
@@ -399,7 +398,7 @@ impl NodeOps for Ext2NodeOps {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
@@ -436,7 +435,7 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(EROFS));
 		}
 		let ops = Box::new(Ext2NodeOps)?;
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		// Get parent directory
@@ -526,7 +525,7 @@ impl NodeOps for Ext2NodeOps {
 		if unlikely(fs.is_readonly()) {
 			return Err(errno!(EROFS));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		// Parent inode
@@ -579,7 +578,7 @@ impl NodeOps for Ext2NodeOps {
 		if name == b"." || name == b".." {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs(fs);
+		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		// The parent inode

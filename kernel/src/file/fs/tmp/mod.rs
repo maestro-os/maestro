@@ -25,7 +25,7 @@ use crate::{
 	file::{
 		fs::{
 			downcast_fs, kernfs,
-			kernfs::{node::OwnedNode, KernFS},
+			kernfs::{NodesStorage, OwnedNode},
 			Filesystem, FilesystemType, NodeOps, StatSet, Statfs,
 		},
 		path::PathBuf,
@@ -54,6 +54,8 @@ use utils::{
 
 /// The default maximum amount of memory the filesystem can use in bytes.
 const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
+/// The maximum length of a name in the filesystem.
+const MAX_NAME_LEN: usize = 255;
 
 /// The content of a [`Node`].
 #[derive(Debug)]
@@ -346,7 +348,7 @@ impl NodeOps for Node {
 			return Err(errno!(EROFS));
 		}
 		let fs = downcast_fs::<TmpFS>(fs);
-		let mut nodes = fs.inner.nodes.lock();
+		let mut nodes = fs.nodes.lock();
 		// Allocate a new slot. In case of later failure, this does not need rollback as the unused
 		// slot is reused at the next call
 		let (inode, slot) = nodes.get_free_slot()?;
@@ -393,7 +395,7 @@ impl NodeOps for Node {
 		let node = {
 			// Get a detached version to make sure `get_stat` does not cause a deadlock
 			let fs = downcast_fs::<TmpFS>(fs);
-			let nodes = fs.inner.nodes.lock();
+			let nodes = fs.nodes.lock();
 			nodes.get_node(inode)?.detached()?
 		};
 		let stat = node.get_stat(inode, fs)?;
@@ -449,7 +451,7 @@ impl NodeOps for Node {
 		// Get the entry's node
 		let node = {
 			// Get a detached version to make sure `get_stat` does not cause a deadlock
-			let nodes = fs.inner.nodes.lock();
+			let nodes = fs.nodes.lock();
 			nodes.get_node(inode)?.detached()?
 		};
 		let stat = node.get_stat(inode, fs)?;
@@ -475,7 +477,7 @@ impl NodeOps for Node {
 		)?;
 		// If no link is left, remove the node
 		if links == 0 {
-			let mut nodes = fs.inner.nodes.lock();
+			let mut nodes = fs.nodes.lock();
 			nodes.remove_node(inode);
 		}
 		Ok((links, inode))
@@ -489,14 +491,14 @@ pub struct TmpFSNodeOps;
 // This implementation only forwards to the actual node.
 impl NodeOps for TmpFSNodeOps {
 	fn get_stat(&self, inode: INode, fs: &dyn Filesystem) -> EResult<Stat> {
-		let fs = &downcast_fs::<TmpFS>(fs).inner;
+		let fs = downcast_fs::<TmpFS>(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
 		node.get_stat(inode, fs)
 	}
 
 	fn set_stat(&self, inode: INode, fs: &dyn Filesystem, set: StatSet) -> EResult<()> {
-		let fs = &downcast_fs::<TmpFS>(fs).inner;
+		let fs = downcast_fs::<TmpFS>(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
 		node.set_stat(inode, fs, set)
@@ -509,7 +511,7 @@ impl NodeOps for TmpFSNodeOps {
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<(u64, bool)> {
-		let fs = &downcast_fs::<TmpFS>(fs).inner;
+		let fs = downcast_fs::<TmpFS>(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
 		node.read_content(inode, fs, off, buf)
@@ -522,14 +524,14 @@ impl NodeOps for TmpFSNodeOps {
 		off: u64,
 		buf: &[u8],
 	) -> EResult<u64> {
-		let fs = &downcast_fs::<TmpFS>(fs).inner;
+		let fs = downcast_fs::<TmpFS>(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
 		node.write_content(inode, fs, off, buf)
 	}
 
 	fn truncate_content(&self, inode: INode, fs: &dyn Filesystem, size: u64) -> EResult<()> {
-		let fs = &downcast_fs::<TmpFS>(fs).inner;
+		let fs = downcast_fs::<TmpFS>(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
 		node.truncate_content(inode, fs, size)
@@ -541,7 +543,7 @@ impl NodeOps for TmpFSNodeOps {
 		fs: &dyn Filesystem,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let fs = &downcast_fs::<TmpFS>(fs).inner;
+		let fs = downcast_fs::<TmpFS>(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
 		node.entry_by_name(inode, fs, name)
@@ -553,7 +555,7 @@ impl NodeOps for TmpFSNodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let fs = &downcast_fs::<TmpFS>(fs).inner;
+		let fs = downcast_fs::<TmpFS>(fs);
 		let nodes = fs.nodes.lock();
 		let node = nodes.get_node(inode)?;
 		node.next_entry(inode, fs, off)
@@ -572,7 +574,7 @@ pub struct TmpFS {
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 	/// The inner kernfs.
-	inner: KernFS,
+	nodes: Mutex<NodesStorage>,
 }
 
 impl TmpFS {
@@ -605,7 +607,7 @@ impl TmpFS {
 			// Size of the root node
 			size: size_of::<Node>(),
 			readonly,
-			inner: KernFS::new(false, root as _)?,
+			nodes: Mutex::new(NodesStorage::new(root)?),
 		};
 		Ok(fs)
 	}
@@ -621,19 +623,31 @@ impl Filesystem for TmpFS {
 	}
 
 	fn use_cache(&self) -> bool {
-		self.inner.use_cache()
+		false
 	}
 
 	fn get_root_inode(&self) -> INode {
-		self.inner.get_root_inode()
+		kernfs::ROOT_INODE
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
-		self.inner.get_stat()
+		Ok(Statfs {
+			f_type: 0,
+			f_bsize: memory::PAGE_SIZE as _,
+			f_blocks: 0,
+			f_bfree: 0,
+			f_bavail: 0,
+			f_files: 0,
+			f_ffree: 0,
+			f_fsid: Default::default(),
+			f_namelen: MAX_NAME_LEN as _,
+			f_frsize: 0,
+			f_flags: 0,
+		})
 	}
 
 	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
-		self.inner.node_from_inode(inode)
+		Ok(self.nodes.lock().get_node(inode)?.detached()? as _)
 	}
 }
 

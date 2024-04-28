@@ -26,19 +26,16 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{
-	kernfs::{
-		node::{
-			box_wrap, entry_init_default, entry_init_from, OwnedNode, StaticDir,
-			StaticEntryBuilder, StaticLink,
-		},
-		KernFS,
-	},
-	Filesystem, FilesystemType, NodeOps,
-};
+use super::{kernfs, Filesystem, FilesystemType, NodeOps};
 use crate::{
 	file::{
-		fs::Statfs,
+		fs::{
+			kernfs::{
+				box_wrap, entry_init_default, entry_init_from, OwnedNode, StaticDir,
+				StaticEntryBuilder, StaticLink,
+			},
+			Statfs,
+		},
 		path::PathBuf,
 		perm::{Gid, Uid},
 		DirEntry, FileType, INode, Stat,
@@ -54,7 +51,6 @@ use sys_dir::OsRelease;
 use uptime::Uptime;
 use utils::{
 	boxed::Box,
-	collections::hashmap::HashMap,
 	errno,
 	errno::{AllocResult, EResult},
 	format,
@@ -253,28 +249,8 @@ impl NodeOps for RootDir {
 }
 
 /// A procfs.
-///
-/// On the inside, the procfs works using a kernfs.
 #[derive(Debug)]
-pub struct ProcFS {
-	/// The inner kernfs.
-	inner: KernFS,
-	/// The list of registered processes with their directory's inode.
-	procs: HashMap<Pid, INode>,
-}
-
-impl ProcFS {
-	/// Creates a new instance.
-	///
-	/// `readonly` tells whether the filesystem is readonly.
-	pub fn new() -> EResult<Self> {
-		let root = Box::new(RootDir)?;
-		Ok(Self {
-			inner: KernFS::new(true, root)?,
-			procs: HashMap::new(),
-		})
-	}
-}
+pub struct ProcFS;
 
 impl Filesystem for ProcFS {
 	fn get_name(&self) -> &[u8] {
@@ -286,19 +262,35 @@ impl Filesystem for ProcFS {
 	}
 
 	fn use_cache(&self) -> bool {
-		self.inner.use_cache()
+		false
 	}
 
 	fn get_root_inode(&self) -> INode {
-		self.inner.get_root_inode()
+		kernfs::ROOT_INODE
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
-		self.inner.get_stat()
+		Ok(Statfs {
+			f_type: 0,
+			f_bsize: 0,
+			f_blocks: 0,
+			f_bfree: 0,
+			f_bavail: 0,
+			f_files: 0,
+			f_ffree: 0,
+			f_fsid: Default::default(),
+			f_namelen: 0,
+			f_frsize: 0,
+			f_flags: 0,
+		})
 	}
 
 	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
-		self.inner.node_from_inode(inode)
+		if inode == kernfs::ROOT_INODE {
+			Ok(Box::new(RootDir)? as _)
+		} else {
+			Err(errno!(ENOENT))
+		}
 	}
 }
 
@@ -320,6 +312,6 @@ impl FilesystemType for ProcFsType {
 		_mountpath: PathBuf,
 		_readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {
-		Ok(Arc::new(ProcFS::new()?)?)
+		Ok(Arc::new(ProcFS)?)
 	}
 }
