@@ -170,7 +170,7 @@ pub fn statx(
 		stx_nlink: file.stat.nlink as _,
 		stx_uid: file.stat.uid as _,
 		stx_gid: file.stat.gid as _,
-		stx_mode: file.stat.mode as _,
+		stx_mode: file.stat.get_mode() as _,
 
 		__padding0: 0,
 

@@ -307,6 +307,11 @@ impl Default for Stat {
 }
 
 impl Stat {
+	/// Returns the mode of the file with the type included.
+	pub fn get_mode(&self) -> Mode {
+		self.mode | self.file_type.to_mode()
+	}
+
 	/// Sets the permissions of the file, updating `ctime` with the current timestamp.
 	pub fn set_permissions(&mut self, mode: Mode) {
 		self.mode = mode & 0o7777;
@@ -332,7 +337,7 @@ impl Stat {
 /// Information to remove a file when all its handles are closed.
 #[derive(Debug)]
 pub struct DeferredRemove {
-	/// The the parent directory.
+	/// The parent directory.
 	pub parent: Arc<Mutex<File>>,
 	/// The name of the entry to remove.
 	pub name: String,
