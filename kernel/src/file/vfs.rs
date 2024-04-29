@@ -142,8 +142,8 @@ pub struct ResolutionSettings {
 	///
 	/// Contrary to the `start` field, resolution *cannot* access a parent of this path.
 	pub root: FileLocation,
-	/// The beginning position of the path resolution.
-	pub start: FileLocation,
+	/// The beginning position of the path resolution. If `None`, resolution starts at root.
+	pub start: Option<Arc<Mutex<File>>>,
 
 	/// The access profile to use for resolution.
 	pub access_profile: AccessProfile,
@@ -161,7 +161,7 @@ impl ResolutionSettings {
 	pub fn kernel_follow() -> Self {
 		Self {
 			root: mountpoint::root_location(),
-			start: mountpoint::root_location(),
+			start: None,
 
 			access_profile: AccessProfile::KERNEL,
 
@@ -184,7 +184,7 @@ impl ResolutionSettings {
 	pub fn for_process(proc: &Process, follow_links: bool) -> Self {
 		Self {
 			root: proc.chroot,
-			start: proc.cwd.1,
+			start: Some(proc.cwd.1.clone()),
 
 			access_profile: proc.access_profile,
 
@@ -220,12 +220,10 @@ fn resolve_path_impl<'p>(
 	symlink_rec: usize,
 ) -> EResult<Resolved<'p>> {
 	// Get start file
-	let start = if path.is_absolute() {
-		settings.root
-	} else {
-		settings.start
+	let mut file_mutex = match (path.is_absolute(), &settings.start) {
+		(false, Some(start)) => start.clone(),
+		_ => get_file_from_location(settings.root)?,
 	};
-	let mut file_mutex = get_file_from_location(start)?;
 	// Iterate on components
 	let mut iter = path.components().peekable();
 	while let Some(comp) = iter.next() {
@@ -241,12 +239,11 @@ fn resolve_path_impl<'p>(
 		};
 		let next_file = match file.stat.file_type {
 			FileType::Directory => {
-				let Some(subfile_mutex) =
-					get_file_from_parent_opt(&file, name, &settings.access_profile)?
-				else {
+				let res = get_file_from_parent_opt(&file, name, &settings.access_profile)?;
+				drop(file);
+				let Some(subfile_mutex) = res else {
 					// If the last component does not exist and if the file may be created
 					let res = if is_last && settings.create {
-						drop(file);
 						Ok(Resolved::Creatable {
 							parent: file_mutex,
 							name,
@@ -281,10 +278,11 @@ fn resolve_path_impl<'p>(
 				}
 				// Read link
 				let link_path = file.read_link()?;
+				drop(file);
 				// Resolve link
 				let rs = ResolutionSettings {
 					root: settings.root,
-					start: file.location,
+					start: Some(file_mutex),
 					access_profile: settings.access_profile,
 					create: false,
 					follow_link: true,
@@ -298,7 +296,6 @@ fn resolve_path_impl<'p>(
 			}
 			_ => return Err(errno!(ENOTDIR)),
 		};
-		drop(file);
 		file_mutex = next_file;
 	}
 	Ok(Resolved::Found(file_mutex))

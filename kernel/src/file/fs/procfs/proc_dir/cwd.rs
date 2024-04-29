@@ -27,7 +27,7 @@ use crate::{
 	format_content,
 	process::{pid::Pid, Process},
 };
-use utils::{errno, errno::EResult, DisplayableStr};
+use utils::{errno, errno::EResult};
 
 /// The `cwd` node.
 #[derive(Debug)]
@@ -60,6 +60,6 @@ impl NodeOps for Cwd {
 	) -> EResult<(u64, bool)> {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", DisplayableStr(proc.cwd.0.as_bytes()))
+		format_content!(off, buf, "{}", proc.cwd.0)
 	}
 }

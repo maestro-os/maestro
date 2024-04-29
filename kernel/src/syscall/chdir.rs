@@ -41,28 +41,22 @@ pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
 		let rs = ResolutionSettings::for_process(&proc, true);
 		(path, rs)
 	};
-
-	let location = {
-		let dir_mutex = vfs::get_file_from_path(&path, &rs)?;
+	let dir_mutex = vfs::get_file_from_path(&path, &rs)?;
+	// Validation
+	{
 		let dir = dir_mutex.lock();
-
-		// Check for errors
 		if dir.stat.file_type != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		if !rs.access_profile.can_list_directory(&dir) {
 			return Err(errno!(EACCES));
 		}
-
-		dir.location
 	};
-
 	// Set new cwd
 	{
 		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
-		proc.cwd = Arc::new((path, location))?;
+		proc.cwd = Arc::new((path, dir_mutex))?;
 	}
-
 	Ok(0)
 }

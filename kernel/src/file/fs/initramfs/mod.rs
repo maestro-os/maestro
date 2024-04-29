@@ -47,10 +47,8 @@ fn update_parent<'p>(
 				return Ok(());
 			};
 			let name = Path::new(name)?;
-
-			let parent = parent.lock();
 			let rs = ResolutionSettings {
-				start: parent.location,
+				start: Some(parent.clone()),
 				..ResolutionSettings::kernel_nofollow()
 			};
 			vfs::get_file_from_path(name, &rs)

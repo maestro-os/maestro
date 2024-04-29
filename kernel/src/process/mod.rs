@@ -49,7 +49,7 @@ use crate::{
 		perm::{AccessProfile, ROOT_UID},
 		vfs,
 		vfs::ResolutionSettings,
-		FileLocation,
+		File, FileLocation,
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
@@ -256,7 +256,7 @@ pub struct Process {
 	/// same process.
 	timer_manager: Arc<Mutex<TimerManager>>,
 
-	/// The virtual memory of the process containing every mappings.
+	/// The virtual memory of the process.
 	mem_space: Option<Arc<IntMutex<MemSpace>>>,
 	/// A pointer to the userspace stack.
 	user_stack: Option<*mut c_void>,
@@ -265,8 +265,8 @@ pub struct Process {
 
 	/// Current working directory
 	///
-	/// The field contains both the path and location of the directory.
-	pub cwd: Arc<(PathBuf, FileLocation)>,
+	/// The field contains both the path and the directory.
+	pub cwd: Arc<(PathBuf, Arc<Mutex<File>>)>,
 	/// Current root path used by the process
 	pub chroot: FileLocation,
 	/// The list of open file descriptors with their respective ID.
@@ -450,6 +450,7 @@ impl Process {
 			fds_table
 		};
 		let root_loc = mountpoint::root_location();
+		let root_dir = vfs::get_file_from_location(root_loc)?;
 		let process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
@@ -487,7 +488,7 @@ impl Process {
 			user_stack: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: Arc::new((PathBuf::root(), root_loc))?,
+			cwd: Arc::new((PathBuf::root(), root_dir))?,
 			chroot: root_loc,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
