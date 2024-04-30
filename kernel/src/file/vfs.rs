@@ -211,94 +211,147 @@ pub enum Resolved<'s> {
 	},
 }
 
+/// Resolves the symbolic link `link` and returns the target.
+///
+/// Arguments:
+/// - `root` is the location of the root directory
+/// - `lookup_dir` is the directory from which the resolution of the target starts
+/// - `access_profile` is the access profile used for resultion
+/// - `symlink_rec` is the number of recursions so far
+///
+/// Symbolic links are followed recursively, including the last element of the target path.
+fn resolve_link(
+	link: &mut File,
+	root: FileLocation,
+	lookup_dir: Arc<Mutex<File>>,
+	access_profile: AccessProfile,
+	symlink_rec: usize,
+) -> EResult<Arc<Mutex<File>>> {
+	// If too many recursions occur, error
+	if symlink_rec + 1 > limits::SYMLOOP_MAX {
+		return Err(errno!(ELOOP));
+	}
+	// Read link
+	let link_path = link.read_link()?;
+	// Resolve link
+	let rs = ResolutionSettings {
+		root,
+		start: Some(lookup_dir),
+		access_profile,
+		create: false,
+		follow_link: true,
+	};
+	let resolved = resolve_path_impl(&link_path, rs, symlink_rec + 1)?;
+	let Resolved::Found(target) = resolved else {
+		// Because `create` is set to `false`
+		unreachable!();
+	};
+	Ok(target)
+}
+
 /// Implementation of [`resolve_path`].
 ///
 /// `symlink_rec` is the number of recursions due to symbolic links resolution.
-fn resolve_path_impl<'p>(
-	path: &'p Path,
-	settings: &ResolutionSettings,
+fn resolve_path_impl(
+	path: &Path,
+	settings: ResolutionSettings,
 	symlink_rec: usize,
-) -> EResult<Resolved<'p>> {
-	// Get start file
-	let mut file_mutex = match (path.is_absolute(), &settings.start) {
-		(false, Some(start)) => start.clone(),
+) -> EResult<Resolved> {
+	// Get start lookup directory
+	let mut lookup_dir = match (path.is_absolute(), settings.start) {
+		(false, Some(start)) => start,
 		_ => get_file_from_location(settings.root)?,
 	};
-	// Iterate on components
-	let mut iter = path.components().peekable();
-	while let Some(comp) = iter.next() {
-		// If this is the last component
-		let is_last = iter.peek().is_none();
-		let mut file = file_mutex.lock();
+	let mut components = path.components();
+	let Some(final_component) = components.next_back() else {
+		return Ok(Resolved::Found(lookup_dir));
+	};
+	// Iterate on intermediate components
+	for comp in components {
 		// Get the name of the next entry
 		let name = match comp {
-			Component::ParentDir if file.location != settings.root => b"..",
+			Component::ParentDir => b"..",
 			Component::Normal(name) => name,
 			// Ignore
 			_ => continue,
 		};
-		let next_file = match file.stat.file_type {
-			FileType::Directory => {
-				let res = get_file_from_parent_opt(&file, name, &settings.access_profile)?;
-				drop(file);
-				let Some(subfile_mutex) = res else {
-					// If the last component does not exist and if the file may be created
-					let res = if is_last && settings.create {
-						Ok(Resolved::Creatable {
-							parent: file_mutex,
-							name,
-						})
-					} else {
-						Err(errno!(ENOENT))
-					};
-					return res;
-				};
-				let subfile = subfile_mutex.lock();
-				// If this is a mountpoint, continue resolution from the root of its filesystem
-				if let Some(mp) = mountpoint::from_location(&subfile.location) {
-					let loc = {
-						let mp = mp.lock();
-						let fs = mp.get_filesystem();
-						FileLocation::Filesystem {
-							mountpoint_id: mp.get_id(),
-							inode: fs.get_root_inode(),
-						}
-					};
-					get_file_from_location(loc)?
-				} else {
-					drop(subfile);
-					subfile_mutex
+		// Search component
+		let res = get_file_from_parent_opt(&lookup_dir.lock(), name, &settings.access_profile)?;
+		let Some(subfile_mutex) = res else {
+			return Err(errno!(ENOENT));
+		};
+		let mut subfile = subfile_mutex.lock();
+		// If this is a mountpoint, continue resolution from the root of its filesystem
+		if let Some(mp) = mountpoint::from_location(&subfile.location) {
+			let loc = {
+				let mp = mp.lock();
+				let fs = mp.get_filesystem();
+				FileLocation::Filesystem {
+					mountpoint_id: mp.get_id(),
+					inode: fs.get_root_inode(),
 				}
+			};
+			lookup_dir = get_file_from_location(loc)?;
+			continue;
+		}
+		match subfile.stat.file_type {
+			FileType::Directory => {
+				drop(subfile);
+				lookup_dir = subfile_mutex
 			}
 			// Follow link, if enabled
-			FileType::Link if !is_last || settings.follow_link => {
-				// If too many recursions occur, error
-				if symlink_rec + 1 > limits::SYMLOOP_MAX {
-					return Err(errno!(ELOOP));
+			FileType::Link => {
+				let target = resolve_link(
+					&mut subfile,
+					settings.root,
+					lookup_dir,
+					settings.access_profile,
+					symlink_rec,
+				)?;
+				if target.lock().stat.file_type != FileType::Directory {
+					return Err(errno!(ENOTDIR));
 				}
-				// Read link
-				let link_path = file.read_link()?;
-				drop(file);
-				// Resolve link
-				let rs = ResolutionSettings {
-					root: settings.root,
-					start: Some(file_mutex),
-					access_profile: settings.access_profile,
-					create: false,
-					follow_link: true,
-				};
-				let resolved = resolve_path_impl(&link_path, &rs, symlink_rec + 1)?;
-				let Resolved::Found(next_file) = resolved else {
-					// Because `create` is set to `false`
-					unreachable!();
-				};
-				next_file
+				lookup_dir = target;
 			}
 			_ => return Err(errno!(ENOTDIR)),
-		};
-		file_mutex = next_file;
+		}
 	}
-	Ok(Resolved::Found(file_mutex))
+	// Final component lookup
+	let name = match final_component {
+		Component::RootDir | Component::CurDir => {
+			// If the component is `RootDir`, the entire path equals `/` and `lookup_dir` can only
+			// be the root. If the component is `CurDir`, the `lookup_dir` is the target
+			return Ok(Resolved::Found(lookup_dir));
+		}
+		Component::ParentDir => b"..",
+		Component::Normal(name) => name,
+	};
+	let res = get_file_from_parent_opt(&lookup_dir.lock(), name, &settings.access_profile)?;
+	let Some(file_mutex) = res else {
+		// The file does not exist
+		return if settings.create {
+			Ok(Resolved::Creatable {
+				parent: lookup_dir,
+				name,
+			})
+		} else {
+			Err(errno!(ENOENT))
+		};
+	};
+	// The file exists. Resolve symbolic link if necessary
+	let mut file = file_mutex.lock();
+	if settings.follow_link && file.stat.file_type == FileType::Link {
+		Ok(Resolved::Found(resolve_link(
+			&mut file,
+			settings.root,
+			lookup_dir,
+			settings.access_profile,
+			symlink_rec,
+		)?))
+	} else {
+		drop(file);
+		Ok(Resolved::Found(file_mutex))
+	}
 }
 
 /// Resolves the given `path` with the given `settings`.
@@ -318,7 +371,7 @@ pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResul
 	if path.is_empty() {
 		return Err(errno!(ENOENT));
 	}
-	resolve_path_impl(path, settings, 0)
+	resolve_path_impl(path, settings.clone(), 0)
 }
 
 /// Like [`get_file_from_path`], but returns `None` is the file does not exist.

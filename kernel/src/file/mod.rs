@@ -457,6 +457,15 @@ impl File {
 				link_path.resize(link_path.len() + BLOCK, 0)?;
 			}
 		}
+		// Truncate end bytes
+		let end = link_path
+			.iter()
+			.enumerate()
+			.find(|(_, b)| **b == 0)
+			.map(|(i, _)| i);
+		if let Some(end) = end {
+			link_path.truncate(end);
+		}
 		Ok(PathBuf::new_unchecked(String::from(link_path)))
 	}
 
