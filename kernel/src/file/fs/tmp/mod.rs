@@ -587,7 +587,7 @@ impl TmpFS {
 		let root = Box::new(Node::new(
 			Stat {
 				file_type: FileType::Directory,
-				mode: 0o777,
+				mode: 0o1777,
 				nlink: 0,
 				uid: ROOT_UID,
 				gid: ROOT_GID,
