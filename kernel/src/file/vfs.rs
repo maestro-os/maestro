@@ -283,14 +283,7 @@ fn resolve_path_impl<'p>(
 		let mut subfile = subfile_mutex.lock();
 		// If this is a mountpoint, continue resolution from the root of its filesystem
 		if let Some(mp) = mountpoint::from_location(&subfile.location) {
-			let loc = {
-				let mp = mp.lock();
-				let fs = mp.get_filesystem();
-				FileLocation::Filesystem {
-					mountpoint_id: mp.get_id(),
-					inode: fs.get_root_inode(),
-				}
-			};
+			let loc = mp.lock().get_root_location();
 			lookup_dir = get_file_from_location(loc)?;
 			continue;
 		}
@@ -338,8 +331,14 @@ fn resolve_path_impl<'p>(
 			Err(errno!(ENOENT))
 		};
 	};
-	// The file exists. Resolve symbolic link if necessary
+	// The file exists
 	let mut file = file_mutex.lock();
+	// If the final file is a mountpoint, return the root to it
+	if let Some(mp) = mountpoint::from_location(&file.location) {
+		let loc = mp.lock().get_root_location();
+		return Ok(Resolved::Found(get_file_from_location(loc)?));
+	}
+	// Resolve symbolic link if necessary
 	if settings.follow_link && file.stat.file_type == FileType::Link {
 		Ok(Resolved::Found(resolve_link(
 			&mut file,

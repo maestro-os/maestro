@@ -282,6 +282,15 @@ impl MountPoint {
 	pub fn get_target_location(&self) -> &FileLocation {
 		&self.target_location
 	}
+
+	/// Returns the location of the root directory of the mounted filesystem.
+	pub fn get_root_location(&self) -> FileLocation {
+		let fs = self.get_filesystem();
+		FileLocation::Filesystem {
+			mountpoint_id: self.get_id(),
+			inode: fs.get_root_inode(),
+		}
+	}
 }
 
 impl Drop for MountPoint {
