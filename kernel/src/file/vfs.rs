@@ -241,7 +241,7 @@ fn resolve_link(
 		create: false,
 		follow_link: true,
 	};
-	let resolved = resolve_path_impl(&link_path, rs, symlink_rec + 1)?;
+	let resolved = resolve_path_impl(&link_path, &rs, symlink_rec + 1)?;
 	let Resolved::Found(target) = resolved else {
 		// Because `create` is set to `false`
 		unreachable!();
@@ -252,14 +252,14 @@ fn resolve_link(
 /// Implementation of [`resolve_path`].
 ///
 /// `symlink_rec` is the number of recursions due to symbolic links resolution.
-fn resolve_path_impl(
-	path: &Path,
-	settings: ResolutionSettings,
+fn resolve_path_impl<'p>(
+	path: &'p Path,
+	settings: &ResolutionSettings,
 	symlink_rec: usize,
-) -> EResult<Resolved> {
+) -> EResult<Resolved<'p>> {
 	// Get start lookup directory
-	let mut lookup_dir = match (path.is_absolute(), settings.start) {
-		(false, Some(start)) => start,
+	let mut lookup_dir = match (path.is_absolute(), &settings.start) {
+		(false, Some(start)) => start.clone(),
 		_ => get_file_from_location(settings.root)?,
 	};
 	let mut components = path.components();
@@ -371,7 +371,7 @@ pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResul
 	if path.is_empty() {
 		return Err(errno!(ENOENT));
 	}
-	resolve_path_impl(path, settings.clone(), 0)
+	resolve_path_impl(path, settings, 0)
 }
 
 /// Like [`get_file_from_path`], but returns `None` is the file does not exist.
