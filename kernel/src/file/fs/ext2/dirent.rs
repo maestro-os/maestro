@@ -54,7 +54,9 @@ const TYPE_INDICATOR_SOCKET: u8 = 6;
 const TYPE_INDICATOR_SYMLINK: u8 = 7;
 
 /// The offset of the `name` field in [`Dirent`].
-const NAME_OFF: usize = 8;
+pub const NAME_OFF: usize = 8;
+/// The alignment of directory entries.
+pub const ALIGN: usize = 4;
 
 /// A directory entry is a structure stored in the content of an inode of type
 /// [`FileType::Directory`].
@@ -81,7 +83,8 @@ impl Dirent {
 	///
 	/// `rec_len` is the size of the entry, including the name.
 	pub fn new_free(rec_len: NonZeroU16) -> AllocResult<Box<Self>> {
-		let layout = Layout::from_size_align(rec_len.get() as _, 8).unwrap();
+		// FIXME: UB if rec_len is not large enough
+		let layout = Layout::from_size_align(rec_len.get() as _, ALIGN).unwrap();
 		let slice = Global.allocate(layout)?;
 		let mut entry = unsafe { Box::from_raw(slice.as_ptr() as *mut Self) };
 		entry.rec_len = rec_len.get();
@@ -144,7 +147,7 @@ impl Dirent {
 			return Err(errno!(EUCLEAN));
 		}
 		// Allocate and copy
-		let layout = Layout::from_size_align(rec_len, 8).unwrap();
+		let layout = Layout::from_size_align(rec_len, ALIGN).unwrap();
 		let mut ptr = Global.allocate(layout)?;
 		unsafe {
 			ptr.as_mut().copy_from_slice(&slice[..rec_len]);
@@ -241,32 +244,13 @@ impl Dirent {
 		self.inode == 0
 	}
 
-	/// Tells whether the current entry (free or not) may be suitable to fit a new used entry with
+	/// Tells whether the current entry may be suitable to fit a new used entry with
 	/// the given size `size`.
-	pub fn would_fit(&self, superblock: &Superblock, size: NonZeroU16) -> bool {
-		let available = if self.is_free() {
-			self.rec_len
-		} else {
-			self.rec_len - self.get_name_length(superblock) as u16
-		};
-		available >= size.get()
-	}
-
-	/// Splits the current entry into two entries and return the newly created
-	/// entry.
-	///
-	/// `size` is the size of the new entry.
-	pub fn insert(&mut self, size: NonZeroU16) -> AllocResult<Box<Self>> {
-		if self.is_free() {
-			// If the entry is free, use it as a whole
-			// `rec_len` is never zero
-			let size: NonZeroU16 = self.rec_len.try_into().unwrap();
-			Dirent::new_free(size)
-		} else {
-			// If the entry is used, split it to use the unused space
-			self.rec_len -= size.get();
-			Dirent::new_free(size)
+	pub fn would_fit(&self, size: NonZeroU16) -> bool {
+		if !self.is_free() {
+			return false;
 		}
+		self.rec_len as usize >= size.get() as usize
 	}
 
 	/// Merges the current entry with the given entry `entry`.
@@ -275,5 +259,12 @@ impl Dirent {
 	/// right after the current entry, the behaviour is undefined.
 	pub fn merge(&mut self, entry: Box<Self>) {
 		self.rec_len += entry.rec_len;
+	}
+
+	/// Returns the byte representation of the entry.
+	pub fn as_bytes(&self) -> &[u8] {
+		let bytes = utils::bytes::as_bytes(self);
+		let len = self.rec_len as usize;
+		&bytes[..len]
 	}
 }

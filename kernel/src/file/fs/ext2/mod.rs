@@ -186,11 +186,11 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
 /// - `io` is the I/O interface of the device.
 /// - `buf` is the buffer to write the data on.
 ///
-/// If the block is outside the storage's bounds, the function returns a
+/// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn read_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
+fn read_block(off: u32, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
 	let blk_size = superblock.get_block_size() as u64;
-	io.read(off * blk_size, buf)?;
+	io.read(off as u64 * blk_size, buf)?;
 	Ok(())
 }
 
