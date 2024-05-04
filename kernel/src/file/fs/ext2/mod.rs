@@ -74,7 +74,7 @@ use utils::{
 	io::IO,
 	lock::Mutex,
 	math,
-	ptr::{arc::Arc, cow::Cow},
+	ptr::arc::Arc,
 	vec,
 };
 
@@ -188,9 +188,9 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn read_block(off: u32, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
+fn read_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
 	let blk_size = superblock.get_block_size() as u64;
-	io.read(off as u64 * blk_size, buf)?;
+	io.read(off * blk_size, buf)?;
 	Ok(())
 }
 
@@ -379,21 +379,14 @@ impl NodeOps for Ext2NodeOps {
 		let Some((ent, _)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
 			return Ok(None);
 		};
-		Ok(Some((
-			DirEntry {
-				inode: ent.inode as _,
-				entry_type: ent.get_type(&superblock, &mut *io)?,
-				name: Cow::Borrowed(name),
-			},
-			Box::new(Ext2NodeOps)?,
-		)))
+		Ok(Some((ent, Box::new(Ext2NodeOps)?)))
 	}
 
 	fn next_entry(
 		&self,
 		inode: INode,
 		fs: &dyn Filesystem,
-		mut off: u64,
+		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
@@ -402,23 +395,7 @@ impl NodeOps for Ext2NodeOps {
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		loop {
-			let Some((ent, next_off)) = inode_.next_dirent(off, &superblock, &mut *io)? else {
-				return Ok(None);
-			};
-			if ent.is_free() {
-				off = next_off;
-				continue;
-			}
-			break Ok(Some((
-				DirEntry {
-					inode: ent.inode as _,
-					entry_type: ent.get_type(&superblock, &mut *io)?,
-					name: Cow::Owned(ent.get_name(&superblock).try_into()?),
-				},
-				next_off,
-			)));
-		}
+		inode_.next_dirent(off, &superblock, &mut *io)
 	}
 
 	fn add_file(

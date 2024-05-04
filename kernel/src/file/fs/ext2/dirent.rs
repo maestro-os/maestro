@@ -21,20 +21,9 @@
 
 use super::{Ext2INode, Superblock};
 use crate::file::FileType;
-use alloc::alloc::Global;
-use core::{
-	alloc::{Allocator, Layout},
-	cmp::min,
-	mem::offset_of,
-	num::NonZeroU16,
-};
+use core::{cmp::min, mem::offset_of, num::NonZeroU16};
 use macros::AnyRepr;
-use utils::{
-	boxed::Box,
-	errno,
-	errno::{AllocResult, EResult},
-	io::IO,
-};
+use utils::{errno, errno::EResult, io::IO};
 
 /// Directory entry type indicator: Unknown
 const TYPE_INDICATOR_UNKNOWN: u8 = 0;
@@ -63,7 +52,7 @@ pub const ALIGN: usize = 4;
 ///
 /// Each directory entry represent a file that is the stored in the
 /// directory and points to its inode.
-#[repr(C, packed)]
+#[repr(C, packed(4))]
 #[derive(AnyRepr)]
 pub struct Dirent {
 	/// The inode associated with the entry.
@@ -79,57 +68,16 @@ pub struct Dirent {
 }
 
 impl Dirent {
-	/// Creates a new free instance.
-	///
-	/// `rec_len` is the size of the entry, including the name.
-	pub fn new_free(rec_len: NonZeroU16) -> AllocResult<Box<Self>> {
-		// FIXME: UB if rec_len is not large enough
-		let layout = Layout::from_size_align(rec_len.get() as _, ALIGN).unwrap();
-		let slice = Global.allocate(layout)?;
-		let mut entry = unsafe { Box::from_raw(slice.as_ptr() as *mut Self) };
-		entry.rec_len = rec_len.get();
-		Ok(entry)
-	}
-
-	/// Creates a new instance.
-	///
-	/// Arguments:
-	/// - `superblock` is the filesystem's superblock.
-	/// - `inode` is the entry's inode.
-	/// - `rec_len` is the size of the entry, including the name.
-	/// - `file_type` is the entry's type.
-	/// - `name` is the entry's name.
-	///
-	/// If the given `inode` is zero, the entry is free.
-	///
-	/// If the total size is not large enough to hold the entry, the function
-	/// returns an error.
-	///
-	/// If the name is too long, the function returns [`ENAMETOOLONG`].
-	pub fn new(
-		superblock: &Superblock,
-		inode: u32,
-		rec_len: NonZeroU16,
-		file_type: FileType,
-		name: &[u8],
-	) -> EResult<Box<Self>> {
-		// Validation
-		if (rec_len.get() as usize) < (NAME_OFF + name.len()) {
-			return Err(errno!(EINVAL));
-		}
-		let mut entry = Self::new_free(rec_len)?;
-		entry.inode = inode;
-		entry.set_type(superblock, file_type);
-		entry.set_name(superblock, name)?;
-		Ok(entry)
-	}
-
 	/// Reinterprets a slice of bytes as a directory entry.
 	///
 	/// `superblock` is the filesystem's superblock.
 	///
 	/// If the entry is invalid, the function returns [`EUCLEAN`].
-	pub fn from(slice: &[u8], superblock: &Superblock) -> EResult<Box<Self>> {
+	pub fn from_slice<'b>(slice: &'b [u8], superblock: &Superblock) -> EResult<&'b Self> {
+		// Validation
+		if !slice.as_ptr().is_aligned_to(ALIGN) {
+			return Err(errno!(EUCLEAN));
+		}
 		// Read record's length
 		const REC_LEN_OFF: usize = offset_of!(Dirent, rec_len);
 		if slice.len() < NAME_OFF {
@@ -146,13 +94,7 @@ impl Dirent {
 		if !ent.is_free() && NAME_OFF + ent.get_name_length(superblock) > rec_len {
 			return Err(errno!(EUCLEAN));
 		}
-		// Allocate and copy
-		let layout = Layout::from_size_align(rec_len, ALIGN).unwrap();
-		let mut ptr = Global.allocate(layout)?;
-		unsafe {
-			ptr.as_mut().copy_from_slice(&slice[..rec_len]);
-			Ok(Box::from_raw(ptr.as_ptr() as *mut Self))
-		}
+		Ok(ent)
 	}
 
 	/// Returns the length the entry's name.
@@ -257,7 +199,7 @@ impl Dirent {
 	///
 	/// If both entries are not on the same page or if `entry` is not located
 	/// right after the current entry, the behaviour is undefined.
-	pub fn merge(&mut self, entry: Box<Self>) {
+	pub fn merge(&mut self, entry: &Self) {
 		self.rec_len += entry.rec_len;
 	}
 
