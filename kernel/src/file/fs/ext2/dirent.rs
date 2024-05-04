@@ -142,6 +142,8 @@ impl Dirent {
 	}
 
 	/// Returns the length of the record in bytes.
+	///
+	/// This value is never zero and always a multiple of [`ALIGN`].
 	pub fn record_len(&self) -> usize {
 		self.rec_len as _
 	}

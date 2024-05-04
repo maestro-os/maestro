@@ -210,7 +210,7 @@ fn indirection_store(buf: &mut [u8], off: u32, level: u32, val: u32, superblock:
 /// - `superblock` is the filesystem's superblock
 /// - `io` is the I/O interface
 /// - `buf` is the block buffer
-/// - `off` is the beginning offset.
+/// - `off` is the offset of the entry to return
 ///
 /// The [`Iterator`] trait cannot be used because of lifetime issues.
 fn next_dirent<'b>(
@@ -218,11 +218,11 @@ fn next_dirent<'b>(
 	superblock: &Superblock,
 	io: &mut dyn IO,
 	buf: &'b mut [u8],
-	off: &mut u64,
+	off: u64,
 ) -> EResult<Option<&'b mut Dirent>> {
 	let blk_size = superblock.get_block_size() as u64;
-	let blk_off = *off / blk_size;
-	let inner_off = (*off % blk_size) as usize;
+	let blk_off = off / blk_size;
+	let inner_off = (off % blk_size) as usize;
 	// If at the beginning of a block, read it
 	if inner_off == 0 {
 		let res = node.translate_blk_off(blk_off as _, superblock, io);
@@ -237,8 +237,6 @@ fn next_dirent<'b>(
 		read_block(blk_off.get() as _, superblock, io, buf)?;
 	}
 	let ent = Dirent::from_slice(&mut buf[inner_off..], superblock)?;
-	// `rec_len` is never zero and never exceeds the remaining space of the block
-	*off += ent.record_len() as u64;
 	Ok(Some(ent))
 }
 
@@ -824,18 +822,11 @@ impl Ext2INode {
 		// TODO If the hash index is enabled, use it
 		// Linear lookup
 		let mut off = 0;
-		loop {
-			let prev_off = off;
-			let Some(ent) = next_dirent(self, superblock, io, &mut buf, &mut off)? else {
-				break;
-			};
+		while let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? {
 			if !ent.is_free() && ent.get_name(superblock) == name {
-				return Ok(Some((
-					ent.inode,
-					ent.get_type(superblock, &mut *io)?,
-					prev_off,
-				)));
+				return Ok(Some((ent.inode, ent.get_type(superblock, &mut *io)?, off)));
 			}
+			off += ent.record_len() as u64;
 		}
 		Ok(None)
 	}
@@ -864,10 +855,10 @@ impl Ext2INode {
 		// Read the entry
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0; blk_size as _]?;
-		let mut next_off = off;
-		let Some(ent) = next_dirent(self, superblock, io, &mut buf, &mut next_off)? else {
+		let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? else {
 			return Ok(None);
 		};
+		let next_off = off + ent.record_len() as u64;
 		let entry_type = ent.get_type(superblock, io)?;
 		let name = ent.get_name(superblock).try_into()?;
 		let ent = DirEntry {
@@ -897,29 +888,29 @@ impl Ext2INode {
 	) -> EResult<Option<(u64, usize)>> {
 		let blk_size = superblock.get_block_size() as u64;
 		let mut off = 0;
-		let mut first_free_off = None;
 		let mut free_length = 0;
-		loop {
-			let prev_off = off;
-			let Some(ent) = next_dirent(self, superblock, io, buf, &mut off)? else {
-				break;
-			};
-			// If the entry is on a new block, reset counter
-			let new_block = off / blk_size > prev_off / blk_size;
-			if ent.is_free() && !new_block {
-				// Free entry, update counter
-				first_free_off = first_free_off.or(Some(prev_off));
-				free_length += ent.record_len();
+		while let Some(ent) = next_dirent(self, superblock, io, buf, off)? {
+			let next_block = (off + ent.record_len() as u64) / blk_size > off / blk_size;
+			// If the entry is not free or on the next block
+			if !ent.is_free() || next_block {
+				// If a sequence large enough has been found, stop
 				if free_length >= min_size.get() as usize {
 					break;
 				}
-			} else {
-				// Used entry, reset counter
-				first_free_off = None;
+				// Reset counter
 				free_length = 0;
+			} else {
+				// Free entry, update counter
+				free_length += ent.record_len();
 			}
+			off += ent.record_len() as u64;
 		}
-		Ok(first_free_off.map(|off| (off, free_length)))
+		if free_length >= min_size.get() as usize {
+			let begin = off - free_length as u64;
+			Ok(Some((begin, free_length)))
+		} else {
+			Ok(None)
+		}
 	}
 
 	/// Adds a new entry to the current directory.
