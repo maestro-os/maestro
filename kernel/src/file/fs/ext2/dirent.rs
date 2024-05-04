@@ -92,7 +92,7 @@ impl Dirent {
 			return Err(errno!(EUCLEAN));
 		}
 		let name_len = name.len();
-		if (rec_len as usize) >= slice.len()
+		if (rec_len as usize) > slice.len()
 			|| (rec_len as usize) < NAME_OFF + name_len
 			|| (rec_len as usize) % ALIGN != 0
 		{
@@ -129,7 +129,7 @@ impl Dirent {
 		const REC_LEN_OFF: usize = offset_of!(Dirent, rec_len);
 		let rec_len = u16::from_le_bytes([slice[REC_LEN_OFF], slice[REC_LEN_OFF + 1]]) as usize;
 		// Validation
-		if rec_len >= slice.len() || rec_len < NAME_OFF || rec_len % ALIGN != 0 {
+		if rec_len > slice.len() || rec_len < NAME_OFF || rec_len % ALIGN != 0 {
 			return Err(errno!(EUCLEAN));
 		}
 		// Reinterpret
@@ -235,12 +235,5 @@ impl Dirent {
 	/// Tells whether the entry is valid.
 	pub fn is_free(&self) -> bool {
 		self.inode == 0
-	}
-
-	/// Returns the byte representation of the entry.
-	pub fn as_bytes(&self) -> &[u8] {
-		let bytes = utils::bytes::as_bytes(self);
-		let len = self.rec_len as usize;
-		&bytes[..len]
 	}
 }

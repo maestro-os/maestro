@@ -43,7 +43,7 @@
 //!
 //! For more information, see the [specifications](https://www.nongnu.org/ext2-doc/ext2.html).
 
-mod block_group_descriptor;
+mod bgd;
 mod dirent;
 mod inode;
 
@@ -55,7 +55,7 @@ use crate::{
 	},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
-use block_group_descriptor::BlockGroupDescriptor;
+use bgd::BlockGroupDescriptor;
 use core::{
 	cmp::{max, min},
 	fmt,
@@ -208,24 +208,6 @@ fn read_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]
 fn write_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
 	let blk_size = superblock.get_block_size() as u64;
 	io.write(off * blk_size, buf)?;
-	Ok(())
-}
-
-/// Zeros the given set of `count` blocks, starting at offset `off`.
-///
-/// Arguments:
-/// - `off` is the offset of the block on the device.
-/// - `count` is the number of blocks to zero.
-/// - `superblock` is the filesystem's superblock.
-/// - `io` is the I/O interface of the device.
-///
-/// If a block is outside the storage's bounds, the function returns an error.
-fn zero_blocks(off: u64, count: u64, superblock: &Superblock, io: &mut dyn IO) -> EResult<()> {
-	let blk_size = superblock.get_block_size() as u64;
-	let blk_buff = vec![0; blk_size as _]?;
-	for i in off..(off + count) {
-		io.write(i * blk_size, blk_buff.as_slice())?;
-	}
 	Ok(())
 }
 

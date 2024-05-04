@@ -19,8 +19,8 @@
 //! An inode represents a file in the filesystem.
 
 use super::{
-	block_group_descriptor::BlockGroupDescriptor, dirent, dirent::Dirent, read, read_block, write,
-	write_block, Superblock,
+	bgd::BlockGroupDescriptor, dirent, dirent::Dirent, read, read_block, write, write_block,
+	Superblock,
 };
 use crate::file::{DirEntry, FileType, Mode};
 use core::{
