@@ -74,7 +74,7 @@ use utils::{
 	io::IO,
 	lock::Mutex,
 	math,
-	ptr::arc::Arc,
+	ptr::{arc::Arc, cow::Cow},
 	vec,
 };
 
@@ -376,8 +376,13 @@ impl NodeOps for Ext2NodeOps {
 		let mut io = fs.io.lock();
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		let Some((ent, _)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
+		let Some((inode, entry_type, _)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
 			return Ok(None);
+		};
+		let ent = DirEntry {
+			inode: inode as _,
+			entry_type,
+			name: Cow::Borrowed(name),
 		};
 		Ok(Some((ent, Box::new(Ext2NodeOps)?)))
 	}
@@ -565,9 +570,8 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(ENOTDIR));
 		}
 		// The inode number and the offset of the entry
-		let (remove_inode, remove_off) = parent
+		let (remove_inode, _, remove_off) = parent
 			.get_dirent(name, &superblock, &mut *io)?
-			.map(|(ent, off)| (ent.inode, off))
 			.ok_or_else(|| errno!(ENOENT))?;
 		// The inode
 		let mut remove_inode_ = Ext2INode::read(remove_inode, &superblock, &mut *io)?;

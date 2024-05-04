@@ -21,7 +21,7 @@
 
 use super::{Ext2INode, Superblock};
 use crate::file::FileType;
-use core::{cmp::min, mem::offset_of, num::NonZeroU16};
+use core::{cmp::min, mem::offset_of};
 use macros::AnyRepr;
 use utils::{errno, errno::EResult, io::IO};
 
@@ -58,7 +58,7 @@ pub struct Dirent {
 	/// The inode associated with the entry.
 	pub(super) inode: u32,
 	/// The total size of the entry.
-	pub(super) rec_len: u16,
+	rec_len: u16,
 	/// Name length least-significant bits.
 	name_len: u8,
 	/// Name length most-significant bits or type indicator (if enabled).
@@ -68,39 +68,88 @@ pub struct Dirent {
 }
 
 impl Dirent {
+	/// Writes a new entry onto the given slice of bytes.
+	///
+	/// Arguments:
+	/// - `slice` is the slice to write the entry onto.
+	/// - `superblock` is the filesystem's superblock
+	/// - `entry_inode` is the target inode
+	/// - `rec_len` is the length of the record
+	/// - `file_type` is the file type hint of the entry
+	/// - `name` is the name of the entry
+	///
+	/// If the parameters are invalid, the function return a corresponding error.
+	pub fn write_new(
+		slice: &mut [u8],
+		superblock: &Superblock,
+		entry_inode: u32,
+		rec_len: u16,
+		file_type: FileType,
+		name: &[u8],
+	) -> EResult<()> {
+		// Validation
+		if !slice.as_ptr().is_aligned_to(ALIGN) {
+			return Err(errno!(EUCLEAN));
+		}
+		let name_len = name.len();
+		if (rec_len as usize) >= slice.len()
+			|| (rec_len as usize) < NAME_OFF + name_len
+			|| (rec_len as usize) % ALIGN != 0
+		{
+			return Err(errno!(EINVAL));
+		}
+		if name.len() > super::MAX_NAME_LEN {
+			return Err(errno!(ENAMETOOLONG));
+		}
+		// Reinterpret
+		let ent = unsafe { &mut *(&mut slice[..rec_len as usize] as *mut _ as *mut Self) };
+		// Init
+		ent.inode = entry_inode;
+		ent.rec_len = rec_len;
+		ent.set_type(superblock, file_type);
+		ent.name[..name_len].copy_from_slice(name);
+		ent.name_len = name_len as u8;
+		Ok(())
+	}
+
 	/// Reinterprets a slice of bytes as a directory entry.
 	///
 	/// `superblock` is the filesystem's superblock.
 	///
 	/// If the entry is invalid, the function returns [`EUCLEAN`].
-	pub fn from_slice<'b>(slice: &'b [u8], superblock: &Superblock) -> EResult<&'b Self> {
+	pub fn from_slice<'b>(slice: &'b mut [u8], superblock: &Superblock) -> EResult<&'b mut Self> {
 		// Validation
 		if !slice.as_ptr().is_aligned_to(ALIGN) {
 			return Err(errno!(EUCLEAN));
 		}
-		// Read record's length
-		const REC_LEN_OFF: usize = offset_of!(Dirent, rec_len);
 		if slice.len() < NAME_OFF {
 			return Err(errno!(EUCLEAN));
 		}
+		// Read record's length
+		const REC_LEN_OFF: usize = offset_of!(Dirent, rec_len);
 		let rec_len = u16::from_le_bytes([slice[REC_LEN_OFF], slice[REC_LEN_OFF + 1]]) as usize;
-		// Bound check
-		if rec_len < NAME_OFF || rec_len > slice.len() {
+		// Validation
+		if rec_len >= slice.len() || rec_len < NAME_OFF || rec_len % ALIGN != 0 {
 			return Err(errno!(EUCLEAN));
 		}
 		// Reinterpret
-		let ent = unsafe { &*(&slice[..rec_len] as *const _ as *const Self) };
+		let ent = unsafe { &mut *(&mut slice[..rec_len] as *mut _ as *mut Self) };
 		// Validation
-		if !ent.is_free() && NAME_OFF + ent.get_name_length(superblock) > rec_len {
+		if !ent.is_free() && NAME_OFF + ent.name_len(superblock) > rec_len {
 			return Err(errno!(EUCLEAN));
 		}
 		Ok(ent)
 	}
 
+	/// Returns the length of the record in bytes.
+	pub fn record_len(&self) -> usize {
+		self.rec_len as _
+	}
+
 	/// Returns the length the entry's name.
 	///
 	/// `superblock` is the filesystem's superblock.
-	pub fn get_name_length(&self, superblock: &Superblock) -> usize {
+	pub fn name_len(&self, superblock: &Superblock) -> usize {
 		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
 			((self.file_type as usize) << 8) | (self.name_len as usize)
 		} else {
@@ -112,7 +161,7 @@ impl Dirent {
 	///
 	/// `superblock` is the filesystem's superblock.
 	pub fn get_name(&self, superblock: &Superblock) -> &[u8] {
-		let name_length = self.get_name_length(superblock);
+		let name_length = self.name_len(superblock);
 		&self.name[..name_length]
 	}
 
@@ -166,41 +215,26 @@ impl Dirent {
 
 	/// Sets the file type associated with the entry (if the option is enabled).
 	pub fn set_type(&mut self, superblock: &Superblock, file_type: FileType) {
-		// If the feature is not enabled, do nothing
-		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
-			return;
-		}
-		self.file_type = match file_type {
-			FileType::Regular => TYPE_INDICATOR_REGULAR,
-			FileType::Directory => TYPE_INDICATOR_DIRECTORY,
-			FileType::CharDevice => TYPE_INDICATOR_CHAR_DEVICE,
-			FileType::BlockDevice => TYPE_INDICATOR_BLOCK_DEVICE,
-			FileType::Fifo => TYPE_INDICATOR_FIFO,
-			FileType::Socket => TYPE_INDICATOR_SOCKET,
-			FileType::Link => TYPE_INDICATOR_SYMLINK,
-		};
+		self.file_type =
+			if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE != 0 {
+				match file_type {
+					FileType::Regular => TYPE_INDICATOR_REGULAR,
+					FileType::Directory => TYPE_INDICATOR_DIRECTORY,
+					FileType::CharDevice => TYPE_INDICATOR_CHAR_DEVICE,
+					FileType::BlockDevice => TYPE_INDICATOR_BLOCK_DEVICE,
+					FileType::Fifo => TYPE_INDICATOR_FIFO,
+					FileType::Socket => TYPE_INDICATOR_SOCKET,
+					FileType::Link => TYPE_INDICATOR_SYMLINK,
+				}
+			} else {
+				// If the feature is not enabled, do nothing
+				0
+			};
 	}
 
 	/// Tells whether the entry is valid.
 	pub fn is_free(&self) -> bool {
 		self.inode == 0
-	}
-
-	/// Tells whether the current entry may be suitable to fit a new used entry with
-	/// the given size `size`.
-	pub fn would_fit(&self, size: NonZeroU16) -> bool {
-		if !self.is_free() {
-			return false;
-		}
-		self.rec_len as usize >= size.get() as usize
-	}
-
-	/// Merges the current entry with the given entry `entry`.
-	///
-	/// If both entries are not on the same page or if `entry` is not located
-	/// right after the current entry, the behaviour is undefined.
-	pub fn merge(&mut self, entry: &Self) {
-		self.rec_len += entry.rec_len;
 	}
 
 	/// Returns the byte representation of the entry.

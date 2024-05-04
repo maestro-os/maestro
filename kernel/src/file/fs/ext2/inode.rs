@@ -26,11 +26,10 @@ use crate::file::{DirEntry, FileType, Mode};
 use core::{
 	cmp::{max, min},
 	intrinsics::unlikely,
-	mem,
 	num::{NonZeroU16, NonZeroU32},
 };
 use macros::AnyRepr;
-use utils::{boxed::Box, errno, errno::EResult, io::IO, math, ptr::cow::Cow, vec};
+use utils::{errno, errno::EResult, io::IO, math, ptr::cow::Cow, vec};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -204,64 +203,56 @@ fn indirection_store(buf: &mut [u8], off: u32, level: u32, val: u32, superblock:
 	buf[inner_off * 4..(inner_off + 1) * 4].copy_from_slice(&val_arr);
 }
 
-/// Directory entry iterator for linear lookup.
-struct DirentIterator<'n, 'b> {
-	/// The inode.
-	node: &'n Ext2INode,
-	/// The fs's superblock.
-	superblock: &'n Superblock,
-	/// The I/O interface.
-	io: &'n mut dyn IO,
-	/// Block buffer.
+/// Returns the next directory entry.
+///
+/// Arguments:
+/// - `node` is the node containing the entry
+/// - `superblock` is the filesystem's superblock
+/// - `io` is the I/O interface
+/// - `buf` is the block buffer
+/// - `off` is the beginning offset.
+///
+/// The [`Iterator`] trait cannot be used because of lifetime issues.
+fn next_dirent<'b>(
+	node: &Ext2INode,
+	superblock: &Superblock,
+	io: &mut dyn IO,
 	buf: &'b mut [u8],
-	/// The current offset in the directory's content.
-	off: u64,
-}
-
-impl<'n, 'b> DirentIterator<'n, 'b> {
-	/// Creates a new instance.
-	fn new(
-		node: &'n Ext2INode,
-		superblock: &'n Superblock,
-		io: &'n mut dyn IO,
-		buf: &'b mut [u8],
-	) -> Self {
-		Self {
-			node,
-			superblock,
-			io,
-			buf,
-			off: 0,
-		}
-	}
-}
-
-impl<'n, 'b> Iterator for DirentIterator<'n, 'b> {
-	type Item = EResult<(u64, &'b mut Dirent)>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let blk_size = self.superblock.get_block_size() as u64;
-		// The offset of the block in the file
-		let blk_off = self.off / blk_size;
-		// The offset of the entry in the current block
-		let inner_off = (self.off % blk_size) as usize;
-		// If at the beginning of a block, read it
-		if inner_off == 0 {
-			let blk_off = self
-				.node
-				.translate_blk_off(blk_off as _, self.superblock, self.io)?;
+	off: &mut u64,
+) -> EResult<Option<&'b mut Dirent>> {
+	let blk_size = superblock.get_block_size() as u64;
+	let blk_off = *off / blk_size;
+	let inner_off = (*off % blk_size) as usize;
+	// If at the beginning of a block, read it
+	if inner_off == 0 {
+		let res = node.translate_blk_off(blk_off as _, superblock, io);
+		let blk_off = match res {
+			Ok(Some(o)) => o,
 			// If reaching a zero block, stop
-			let Some(blk_off) = blk_off else {
-				return None;
-			};
-			read_block(blk_off.get() as _, self.superblock, self.io, self.buf)?;
-		}
-		let ent = Dirent::from_slice(&self.buf[inner_off..], self.superblock)?;
-		let prev_off = self.off;
-		// `rec_len` is never zero and never exceeds the remaining space of the block
-		self.off += ent.rec_len as u64;
-		Some(Ok((prev_off, ent)))
+			Ok(None) => return Ok(None),
+			// If reaching the block limit, stop
+			Err(e) if e.as_int() == errno::EOVERFLOW => return Ok(None),
+			Err(e) => return Err(e),
+		};
+		read_block(blk_off.get() as _, superblock, io, buf)?;
 	}
+	let ent = Dirent::from_slice(&mut buf[inner_off..], superblock)?;
+	// `rec_len` is never zero and never exceeds the remaining space of the block
+	*off += ent.record_len() as u64;
+	Ok(Some(ent))
+}
+
+/// Tells whether the block contains only free directory entries.
+fn is_block_empty(buf: &mut [u8], superblock: &Superblock) -> EResult<bool> {
+	let mut off = 0;
+	while off < buf.len() {
+		let ent = Dirent::from_slice(&mut buf[off..], superblock)?;
+		if !ent.is_free() {
+			return Ok(false);
+		}
+		off += ent.record_len();
+	}
+	Ok(true)
 }
 
 /// An inode represents a file in the filesystem.
@@ -528,7 +519,6 @@ impl Ext2INode {
 		Ok(blk)
 	}
 
-	/// TODO doc
 	fn free_content_blk_impl(
 		blk: NonZeroU32,
 		off: u32,
@@ -556,7 +546,7 @@ impl Ext2INode {
 			let empty = buf.iter().all(|b| *b == 0);
 			if !empty {
 				// The block is not empty, save
-				write_block(blk.get() as _, superblock, io, &mut buf)?;
+				write_block(blk.get() as _, superblock, io, &buf)?;
 			}
 			// If the block is empty, there is no point in saving it since it will be freed
 			superblock.free_block(io, b.get())?;
@@ -804,50 +794,47 @@ impl Ext2INode {
 		Ok(())
 	}
 
-	/// Returns the directory entry with the given name `name`, along with the offset of the entry.
+	/// Returns the information of a directory entry with the given name `name`.
 	///
 	/// Arguments:
 	/// - `name` is the name of the entry
 	/// - `superblock` is the filesystem's superblock
 	/// - `io` is the I/O interface
 	///
+	/// The function returns:
+	/// - The inode
+	/// - The file type
+	/// - The offset of the entry
+	///
 	/// If the entry doesn't exist, the function returns `None`.
 	///
 	/// If the file is not a directory, the function returns `None`.
-	pub fn get_dirent<'n>(
+	pub fn get_dirent(
 		&self,
-		name: &'n [u8],
+		name: &[u8],
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> EResult<Option<(DirEntry<'n>, u64)>> {
+	) -> EResult<Option<(u32, FileType, u64)>> {
 		// Validation
 		if self.get_type() != FileType::Directory {
 			return Ok(None);
 		}
-		// TODO If the hash index is enabled, use it
 		let blk_size = superblock.get_block_size();
-		let blk_count = self.get_size(superblock) / blk_size as u64;
 		let mut buf = vec![0; blk_size as _]?;
+		// TODO If the hash index is enabled, use it
 		// Linear lookup
-		for blk_off in 0..blk_count {
-			read_block(blk_off, superblock, io, &mut buf)?;
-			// Iterate on entries in the block
-			let mut off = 0;
-			while off < blk_size as usize {
-				let ent = Dirent::from_slice(&buf[off..], superblock)?;
-				if !ent.is_free() && ent.get_name(superblock) == name {
-					return Ok(Some((
-						DirEntry {
-							inode: ent.inode as _,
-							entry_type: ent.get_type(&superblock, &mut *io)?,
-							name: Cow::Borrowed(name),
-						},
-						blk_off * blk_size as u64 + off as u64,
-					)));
-				}
-				// `rec_len` has been checked to not be zero, ensuring there won't be an infinite
-				// loop
-				off = ent.rec_len as _;
+		let mut off = 0;
+		loop {
+			let prev_off = off;
+			let Some(ent) = next_dirent(self, superblock, io, &mut buf, &mut off)? else {
+				break;
+			};
+			if !ent.is_free() && ent.get_name(superblock) == name {
+				return Ok(Some((
+					ent.inode,
+					ent.get_type(superblock, &mut *io)?,
+					prev_off,
+				)));
 			}
 		}
 		Ok(None)
@@ -866,7 +853,7 @@ impl Ext2INode {
 		off: u64,
 		superblock: &Superblock,
 		io: &mut dyn IO,
-	) -> EResult<Option<(DirEntry, u64)>> {
+	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		if self.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
@@ -875,14 +862,12 @@ impl Ext2INode {
 			return Ok(None);
 		}
 		// Read the entry
-		let blk_size = superblock.get_block_size() as u64;
-		let blk_off = off / blk_size;
-		let blk_inner_off = (off % blk_size) as usize;
+		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0; blk_size as _]?;
-		read_block(blk_off, superblock, io, &mut buf)?;
-		let ent = Dirent::from_slice(&buf[blk_inner_off..], superblock)?;
-		// `rec_len` has been checked when reading the entry. It will never be zero
-		let next_off = off.saturating_add(ent.rec_len as _);
+		let mut next_off = off;
+		let Some(ent) = next_dirent(self, superblock, io, &mut buf, &mut next_off)? else {
+			return Ok(None);
+		};
 		let entry_type = ent.get_type(superblock, io)?;
 		let name = ent.get_name(superblock).try_into()?;
 		let ent = DirEntry {
@@ -893,33 +878,48 @@ impl Ext2INode {
 		Ok(Some((ent, next_off)))
 	}
 
-	/// Looks for an entry in the inode which is large enough to fit
-	/// another entry with the given size.
+	/// Looks for a sequence of free entries large enough to fit a chunk with at least `min_size`
+	/// bytes, and returns the offset to its beginning and its size in bytes.
 	///
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock
 	/// - `io` is the I/O interface
+	/// - `buf` is the block buffer
 	/// - `min_size` is the minimum size of the new entry in bytes
 	///
-	/// If the function finds an entry, it returns its offset. Else, the
-	/// function returns `None`.
-	///
-	/// If the file is not a directory, the function
-	/// returns `None`.
-	fn get_suitable_entry(
+	/// If no suitable sequence is found, the function returns `None`.
+	fn get_suitable_slot(
 		&self,
 		superblock: &Superblock,
 		io: &mut dyn IO,
+		buf: &mut [u8],
 		min_size: NonZeroU16,
-	) -> EResult<Option<u64>> {
+	) -> EResult<Option<(u64, usize)>> {
+		let blk_size = superblock.get_block_size() as u64;
 		let mut off = 0;
-		while let Some((ent, next_off)) = self.next_dirent(off, superblock, io)? {
-			if ent.would_fit(min_size) {
-				return Ok(Some(off));
+		let mut first_free_off = None;
+		let mut free_length = 0;
+		loop {
+			let prev_off = off;
+			let Some(ent) = next_dirent(self, superblock, io, buf, &mut off)? else {
+				break;
+			};
+			// If the entry is on a new block, reset counter
+			let new_block = off / blk_size > prev_off / blk_size;
+			if ent.is_free() && !new_block {
+				// Free entry, update counter
+				first_free_off = first_free_off.or(Some(prev_off));
+				free_length += ent.record_len();
+				if free_length >= min_size.get() as usize {
+					break;
+				}
+			} else {
+				// Used entry, reset counter
+				first_free_off = None;
+				free_length = 0;
 			}
-			off = next_off;
 		}
-		Ok(None)
+		Ok(first_free_off.map(|off| (off, free_length)))
 	}
 
 	/// Adds a new entry to the current directory.
@@ -959,66 +959,55 @@ impl Ext2INode {
 		if rec_len.get() as u32 > blk_size {
 			return Err(errno!(ENAMETOOLONG));
 		}
-		if let Some(entry_off) = self.get_suitable_entry(superblock, io, rec_len)? {
-			let mut entry = self.read_dirent(entry_off, superblock, io)?;
-			// TODO this is dirty. merge everything in one place
-			// TODO when using a free entry, must create a free entry after the new to cover the
-			// remaining free space
-			let (mut new_entry, new_entry_off) = entry.insert(superblock, rec_len)?;
-			new_entry.inode = entry_inode;
-			new_entry.set_name(superblock, name)?;
-			new_entry.set_type(superblock, file_type);
-			// Save the new entry first to make the operation atomic: if the second operation
-			// fails, the new entry remains hidden
-			self.write_dirent(superblock, io, &new_entry, entry_off + new_entry_off)?;
-			// Do not rewrite new entry with previous
-			if new_entry_off > 0 {
-				self.write_dirent(superblock, io, &entry, entry_off)?;
-			}
-		} else {
-			// No suitable free entry: Allocate and fill a new block
-			let mut blk = vec![0u8; blk_size as _]?;
+		let mut buf = vec![0; blk_size as _]?;
+		if let Some((off, len)) = self.get_suitable_slot(superblock, io, &mut buf, rec_len)? {
+			let blk_off = (off / blk_size as u64) as u32;
+			let inner_off = (off % buf.len() as u64) as usize;
 			// Create used entry
-			let entry = Dirent::new(superblock, entry_inode, rec_len, file_type, name)?;
-			// TODO copy to blk. or create onto blk directly?
+			Dirent::write_new(
+				&mut buf[inner_off..],
+				superblock,
+				entry_inode,
+				rec_len.get(),
+				file_type,
+				name,
+			)?;
 			// Create free entries to cover remaining free space
-			let mut off = entry.rec_len as usize;
-			while off < blk.len() {
-				// TODO create free entry
+			let mut i = inner_off + rec_len.get() as usize;
+			let end = inner_off + len;
+			while i < end {
+				let rec_len = min(buf.len() - i, u16::MAX as usize) as u16;
+				Dirent::write_new(&mut buf[i..], superblock, 0, rec_len, file_type, name)?;
+				i += rec_len as usize;
 			}
-			let off = (self.get_size(superblock) / blk_size as u64) as u32;
-			// TODO function zeros the block. this is unnecessary
-			let off = self.alloc_content_blk(off, superblock, io)?;
-			write_block(off.get() as _, superblock, io, &blk)?;
+			// Write block
+			let blk_off = self.translate_blk_off(blk_off, superblock, io)?.unwrap();
+			write_block(blk_off.get() as _, superblock, io, &buf)?;
+		} else {
+			// No suitable free entry: Fill a new block
+			let blk_off = (self.get_size(superblock) / blk_size as u64) as u32;
+			let blk_off = self.alloc_content_blk(blk_off, superblock, io)?;
+			buf.fill(0);
+			// Create used entry
+			Dirent::write_new(
+				&mut buf,
+				superblock,
+				entry_inode,
+				rec_len.get(),
+				file_type,
+				name,
+			)?;
+			// Create free entries to cover remaining free space
+			let mut i = rec_len.get() as usize;
+			while i < buf.len() {
+				let rec_len = min(buf.len() - i, u16::MAX as usize) as u16;
+				Dirent::write_new(&mut buf[i..], superblock, 0, rec_len, file_type, name)?;
+				i += rec_len as usize;
+			}
+			// Write block
+			write_block(blk_off.get() as _, superblock, io, &buf)?;
 		}
 		Ok(())
-	}
-
-	/// Finds the previous directory entry *in the same block* from the given offset `off`.
-	///
-	/// Arguments:
-	/// - `superblock` is the filesystem's superblock
-	/// - `io` is the I/O interface
-	///
-	/// If there is no previous entry, the function returns the entry at `off`.
-	///
-	/// On success, the function returns the previous directory entry along with its offset.
-	fn prev_block_dirent(
-		&self,
-		off: u64,
-		superblock: &Superblock,
-		io: &mut dyn IO,
-	) -> EResult<(Box<Dirent>, u64)> {
-		let blk_size = superblock.get_block_size() as u64;
-		// Initialize the offset to the beginning of the current block
-		let mut o = off - (off % blk_size);
-		while let Some((ent, next_off)) = self.next_dirent(o, superblock, io)? {
-			if next_off == off {
-				return Ok((ent, o));
-			}
-			o = next_off;
-		}
-		Err(errno!(EUCLEAN))
 	}
 
 	/// Removes the entry from the current directory.
@@ -1027,6 +1016,10 @@ impl Ext2INode {
 	/// - `off` is the offset of the entry to remove
 	/// - `superblock` is the filesystem's superblock
 	/// - `io` is the I/O interface
+	///
+	/// If the entry does not exist, the function does nothing.
+	///
+	/// If the file is not a directory, the behaviour is undefined.
 	pub fn remove_dirent(
 		&mut self,
 		off: u64,
@@ -1035,37 +1028,29 @@ impl Ext2INode {
 	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		let blk_size = superblock.get_block_size() as u64;
-		let size = self.get_size(superblock);
-		// Free entry
-		let mut ent = self.read_dirent(off, superblock, io)?;
+		let file_blk_off = off / blk_size;
+		let inner_off = (off % blk_size) as usize;
+		// Read entry's block
+		let mut buf = vec![0; blk_size as _]?;
+		let Some(disk_blk_off) = self.translate_blk_off(file_blk_off as _, superblock, io)? else {
+			return Ok(());
+		};
+		read_block(disk_blk_off.get() as _, superblock, io, &mut buf)?;
+		// Read and free entry
+		let ent = Dirent::from_slice(&mut buf[inner_off..], superblock)?;
 		ent.inode = 0;
-		// If the next entry is free, merge
-		let next_off = off + ent.rec_len as u64;
-		if next_off < size {
-			let next_ent = self.read_dirent(next_off, superblock, io)?;
-			if next_ent.is_free() {
-				ent.merge(next_ent);
+		// If the block is now empty, free it. Else, update it
+		if is_block_empty(&mut buf, superblock)? {
+			// If this is the last block, update the file's size
+			let last_block = (file_blk_off + 1) * blk_size >= self.get_size(superblock);
+			if last_block {
+				let new_size = file_blk_off * blk_size;
+				self.set_size(superblock, new_size);
 			}
+			self.free_content_blk(file_blk_off as _, superblock, io)
+		} else {
+			write_block(disk_blk_off.get() as _, superblock, io, &buf)
 		}
-		// Find the offset of the previous entry
-		let (prev_ent, prev_off) = self.prev_block_dirent(off, superblock, io)?;
-		// If there is a previous entry, and it is free: merge `ent` into it
-		if prev_off < off && prev_ent.is_free() {
-			let old = mem::replace(&mut ent, prev_ent);
-			// TODO: what if this would overflow `rec_len`?
-			ent.merge(old);
-		}
-		// If this is the last block, and it is now empty, free it
-		let next_blk_off = off.next_multiple_of(blk_size);
-		if next_blk_off >= size && ent.rec_len as u64 >= blk_size {
-			let cur_blk_off = off - (off % blk_size);
-			let cur_blk = (cur_blk_off / blk_size) as u32;
-			self.set_size(superblock, cur_blk_off);
-			// FIXME: consistency: need to update the inode *before* freeing the block to avoid
-			// dangling references
-			self.free_content_blk(cur_blk, superblock, io)?;
-		}
-		self.write_dirent(superblock, io, &ent, off)
 	}
 
 	/// Reads the content symbolic link.
