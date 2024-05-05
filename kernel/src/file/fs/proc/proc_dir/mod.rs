@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Implementation of the directory of a process in the procfs.
+//! Implementation of the directory of a process in the proc.
 
 pub mod cmdline;
 pub mod cwd;

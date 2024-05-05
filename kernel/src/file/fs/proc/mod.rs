@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The procfs is a virtual filesystem which provides information about
+//! The proc is a virtual filesystem which provides information about
 //! processes.
 
 mod mem_info;
@@ -74,7 +74,7 @@ fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 		.unwrap_or((0, 0))
 }
 
-/// The root directory of the procfs.
+/// The root directory of the proc.
 #[derive(Clone, Debug)]
 struct RootDir;
 
@@ -248,13 +248,13 @@ impl NodeOps for RootDir {
 	}
 }
 
-/// A procfs.
+/// A proc.
 #[derive(Debug)]
 pub struct ProcFS;
 
 impl Filesystem for ProcFS {
 	fn get_name(&self) -> &[u8] {
-		b"procfs"
+		b"proc"
 	}
 
 	fn is_readonly(&self) -> bool {
@@ -294,12 +294,12 @@ impl Filesystem for ProcFS {
 	}
 }
 
-/// The procfs filesystem type.
+/// The proc filesystem type.
 pub struct ProcFsType {}
 
 impl FilesystemType for ProcFsType {
 	fn get_name(&self) -> &'static [u8] {
-		b"procfs"
+		b"proc"
 	}
 
 	fn detect(&self, _io: &mut dyn IO) -> EResult<bool> {

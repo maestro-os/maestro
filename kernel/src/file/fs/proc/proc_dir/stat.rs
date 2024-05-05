@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{
-		fs::{procfs::get_proc_owner, Filesystem, NodeOps},
-		FileType, INode, Stat,
+        fs::{proc::get_proc_owner, Filesystem, NodeOps},
+        FileType, INode, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -62,7 +62,7 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 	}
 }
 
-/// The `stat` node of the procfs.
+/// The `stat` node of the proc.
 #[derive(Debug)]
 pub struct StatNode(Pid);
 

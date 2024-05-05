@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{
-		fs::{procfs::get_proc_owner, Filesystem, NodeOps},
-		FileType, INode, Stat,
+        fs::{proc::get_proc_owner, Filesystem, NodeOps},
+        FileType, INode, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -114,7 +114,7 @@ nonvoluntary_ctxt_switches: 0",
 	}
 }
 
-/// The `status` node of the procfs.
+/// The `status` node of the proc.
 #[derive(Debug)]
 pub struct Status(Pid);
 

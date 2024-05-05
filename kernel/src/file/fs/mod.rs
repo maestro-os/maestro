@@ -22,7 +22,7 @@
 pub mod ext2;
 pub mod initramfs;
 pub mod kernfs;
-pub mod procfs;
+pub mod proc;
 pub mod tmp;
 
 use super::{
@@ -443,7 +443,7 @@ pub fn detect(io: &mut dyn IO) -> EResult<Arc<dyn FilesystemType>> {
 pub fn register_defaults() -> EResult<()> {
 	register(ext2::Ext2FsType {})?;
 	register(tmp::TmpFsType {})?;
-	register(procfs::ProcFsType {})?;
+	register(proc::ProcFsType {})?;
 	// TODO sysfs
 	Ok(())
 }

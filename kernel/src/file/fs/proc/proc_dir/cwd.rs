@@ -16,30 +16,30 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Implementation of the `exe` node, which is a link to the executable
-//! file of the process.
+//! Implementation of the `cwd` node, which is a link to the current
+//! working directory of the process.
 
 use crate::{
 	file::{
-		fs::{procfs::get_proc_owner, Filesystem, NodeOps},
-		FileType, INode, Stat,
+        fs::{proc::get_proc_owner, Filesystem, NodeOps},
+        FileType, INode, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
 };
 use utils::{errno, errno::EResult};
 
-/// The `exe` node.
+/// The `cwd` node.
 #[derive(Debug)]
-pub struct Exe(Pid);
+pub struct Cwd(Pid);
 
-impl From<Pid> for Exe {
+impl From<Pid> for Cwd {
 	fn from(pid: Pid) -> Self {
 		Self(pid)
 	}
 }
 
-impl NodeOps for Exe {
+impl NodeOps for Cwd {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
@@ -60,6 +60,6 @@ impl NodeOps for Exe {
 	) -> EResult<(u64, bool)> {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", proc.exec_path)
+		format_content!(off, buf, "{}", proc.cwd.0)
 	}
 }

@@ -16,34 +16,46 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Implementation of the `cwd` node, which is a link to the current
-//! working directory of the process.
+//! The `cmdline` node allows to retrieve the list of command line arguments of
+//! the process.
 
 use crate::{
 	file::{
-		fs::{procfs::get_proc_owner, Filesystem, NodeOps},
-		FileType, INode, Stat,
+        fs::{proc::get_proc_owner, Filesystem, NodeOps},
+        FileType, INode, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
 };
+use core::{fmt, fmt::Formatter};
 use utils::{errno, errno::EResult};
 
-/// The `cwd` node.
-#[derive(Debug)]
-pub struct Cwd(Pid);
+struct CmdlineDisp<'p>(&'p Process);
 
-impl From<Pid> for Cwd {
+impl<'p> fmt::Display for CmdlineDisp<'p> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		for a in self.0.argv.iter() {
+			write!(f, "{a}\0")?;
+		}
+		Ok(())
+	}
+}
+
+/// The cmdline node of the proc.
+#[derive(Clone, Debug)]
+pub struct Cmdline(Pid);
+
+impl From<Pid> for Cmdline {
 	fn from(pid: Pid) -> Self {
 		Self(pid)
 	}
 }
 
-impl NodeOps for Cwd {
+impl NodeOps for Cmdline {
 	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
-			file_type: FileType::Link,
+			file_type: FileType::Regular,
 			mode: 0o444,
 			uid,
 			gid,
@@ -60,6 +72,6 @@ impl NodeOps for Cwd {
 	) -> EResult<(u64, bool)> {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", proc.cwd.0)
+		format_content!(off, buf, "{}", CmdlineDisp(&proc))
 	}
 }
