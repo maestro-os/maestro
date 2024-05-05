@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{
-        fs::{proc::get_proc_owner, Filesystem, NodeOps},
-        FileType, INode, Stat,
+		fs::{proc::get_proc_owner, Filesystem, NodeOps},
+		FileType, INode, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
