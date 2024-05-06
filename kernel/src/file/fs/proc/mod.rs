@@ -299,7 +299,7 @@ pub struct ProcFsType {}
 
 impl FilesystemType for ProcFsType {
 	fn get_name(&self) -> &'static [u8] {
-		b"proc"
+		b"procfs"
 	}
 
 	fn detect(&self, _io: &mut dyn IO) -> EResult<bool> {
