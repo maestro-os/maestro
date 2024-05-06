@@ -841,7 +841,7 @@ impl Ext2INode {
 	/// On success, the function returns the entry and the offset to the next entry.
 	pub fn next_dirent(
 		&self,
-		off: u64,
+		mut off: u64,
 		superblock: &Superblock,
 		io: &mut dyn IO,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
@@ -852,11 +852,33 @@ impl Ext2INode {
 		if off >= self.get_size(superblock) {
 			return Ok(None);
 		}
-		// Read the entry
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0; blk_size as _]?;
-		let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? else {
-			return Ok(None);
+		// If the offset is not at the beginning of a block, read it so that `next_dirent` works
+		// correctly
+		if off % blk_size as u64 != 0 {
+			let blk_off = off / blk_size as u64;
+			let res = self.translate_blk_off(blk_off as _, superblock, io);
+			let blk_off = match res {
+				Ok(Some(o)) => o,
+				// If reaching a zero block, stop
+				Ok(None) => return Ok(None),
+				// If reaching the block limit, stop
+				Err(e) if e.as_int() == errno::EOVERFLOW => return Ok(None),
+				Err(e) => return Err(e),
+			};
+			read_block(blk_off.get() as _, superblock, io, &mut buf)?;
+		}
+		// Read the next entry, skipping free ones
+		let ent = loop {
+			// If no entry remain, stop
+			let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? else {
+				return Ok(None);
+			};
+			if !ent.is_free() {
+				break ent;
+			}
+			off += ent.record_len() as u64;
 		};
 		let next_off = off + ent.record_len() as u64;
 		let entry_type = ent.get_type(superblock, io)?;
