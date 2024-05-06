@@ -22,7 +22,7 @@ pub mod pipe;
 pub mod socket;
 
 use crate::{
-	file::{blocking::BlockHandler, FileLocation},
+	file::{blocking::BlockHandler, FileLocation, Stat},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
 };
@@ -40,6 +40,8 @@ use utils::{
 pub trait Buffer: IO + Any {
 	/// Returns the capacity in bytes of the buffer.
 	fn get_capacity(&self) -> usize;
+	/// Returns the status of the file representing the buffer.
+	fn get_stat(&self) -> Stat;
 
 	/// Increments the number of open ends.
 	///
@@ -97,15 +99,10 @@ where
 	F: FnOnce(&mut IDAllocator) -> EResult<T>,
 {
 	let mut id_allocator = ID_ALLOCATOR.lock();
-
 	let id_allocator = match &mut *id_allocator {
-		Some(id_allocator) => id_allocator,
-		None => {
-			*id_allocator = Some(IDAllocator::new(65536)?);
-			id_allocator.as_mut().unwrap()
-		}
+		Some(a) => a,
+		None => id_allocator.insert(IDAllocator::new(65536)?),
 	};
-
 	f(id_allocator)
 }
 
@@ -124,14 +121,11 @@ pub fn get_or_default<B: Buffer + TryDefault<Error = AllocError> + 'static>(
 	loc: &FileLocation,
 ) -> AllocResult<Arc<Mutex<dyn Buffer>>> {
 	let mut buffers = BUFFERS.lock();
-
 	match buffers.get(loc).cloned() {
 		Some(buff) => Ok(buff),
-
 		None => {
 			let buff = Arc::new(Mutex::new(B::try_default()?))?;
-			buffers.insert(loc.clone(), buff.clone())?;
-
+			buffers.insert(*loc, buff.clone())?;
 			Ok(buff)
 		}
 	}
@@ -150,24 +144,15 @@ pub fn get_or_default<B: Buffer + TryDefault<Error = AllocError> + 'static>(
 pub fn register(loc: Option<FileLocation>, buff: Arc<Mutex<dyn Buffer>>) -> EResult<FileLocation> {
 	let loc = id_allocator_do(|id_allocator| match loc {
 		Some(loc) => {
-			if let FileLocation::Virtual {
-				id,
-			} = loc
-			{
+			if let FileLocation::Virtual(id) = loc {
 				id_allocator.set_used(id);
 			}
-
 			Ok(loc)
 		}
-
-		None => Ok(FileLocation::Virtual {
-			id: id_allocator.alloc(None)?,
-		}),
+		None => Ok(FileLocation::Virtual(id_allocator.alloc(None)?)),
 	})?;
-
 	let mut buffers = BUFFERS.lock();
-	buffers.insert(loc.clone(), buff)?;
-
+	buffers.insert(loc, buff)?;
 	Ok(loc)
 }
 
@@ -176,13 +161,8 @@ pub fn register(loc: Option<FileLocation>, buff: Arc<Mutex<dyn Buffer>>) -> ERes
 /// If the location doesn't exist or doesn't match any existing buffer, the function does nothing.
 pub fn release(loc: &FileLocation) {
 	let mut buffers = BUFFERS.lock();
-
-	let _ = buffers.remove(loc);
-
-	if let FileLocation::Virtual {
-		id,
-	} = loc
-	{
+	buffers.remove(loc);
+	if let FileLocation::Virtual(id) = loc {
 		let _ = id_allocator_do(|id_allocator| {
 			id_allocator.free(*id);
 			Ok(())

@@ -176,7 +176,7 @@ pub(crate) fn create() -> EResult<()> {
 		let path = PathBuf::try_from(format!("/dev/ram{i}")?)?;
 		let dev = Device::new(
 			DeviceID {
-				type_: DeviceType::Block,
+				dev_type: DeviceType::Block,
 				major: RAM_DISK_MAJOR,
 				minor: i as _,
 			},

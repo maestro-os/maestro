@@ -26,10 +26,10 @@ use crate::file::{
 	path::Path,
 	vfs,
 	vfs::{ResolutionSettings, Resolved},
-	FileLocation,
+	File,
 };
 use core::ffi::c_int;
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 /// Special value to be used as file descriptor, telling to take the path relative to the
 /// current working directory.
@@ -54,14 +54,14 @@ pub const AT_STATX_FORCE_SYNC: c_int = 0x2000;
 /// Flag: Don't synchronize anything, but rather take cached information.
 pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
 
-/// Returns the location of the file pointed to by the given file descriptor.
+/// Returns the file pointed to by the given file descriptor.
 ///
 /// Arguments:
 /// - `fds` is the file descriptors table
 /// - `fd` is the file descriptor
 ///
 /// If the given file descriptor is invalid, the function returns [`errno::EBADF`].
-fn fd_to_loc(fds: &FileDescriptorTable, fd: c_int) -> EResult<FileLocation> {
+fn fd_to_file(fds: &FileDescriptorTable, fd: c_int) -> EResult<Arc<Mutex<File>>> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
@@ -71,7 +71,7 @@ fn fd_to_loc(fds: &FileDescriptorTable, fd: c_int) -> EResult<FileLocation> {
 		.get_open_file()
 		.clone();
 	let open_file = open_file_mutex.lock();
-	Ok(open_file.get_location().clone())
+	Ok(open_file.get_file().clone())
 }
 
 /// Returns the file for the given path `path`.
@@ -83,8 +83,8 @@ fn fd_to_loc(fds: &FileDescriptorTable, fd: c_int) -> EResult<FileLocation> {
 /// - `path` is the path relative to the parent directory
 /// - `flags` is the set of `AT_*` flags
 ///
-/// **Note**: the `start` field of [`ResolutionSettings`] is used as the current working
-/// directory.
+/// **Note**: the `start` field of [`ResolutionSettings`] must be set as it is used as the current
+/// working directory.
 pub fn get_file<'p>(
 	fds: &FileDescriptorTable,
 	mut rs: ResolutionSettings,
@@ -101,15 +101,14 @@ pub fn get_file<'p>(
 	rs.follow_link = follow_links;
 	// If not starting from current directory, get location
 	if dirfd != AT_FDCWD {
-		rs.start = fd_to_loc(fds, dirfd)?;
+		rs.start = Some(fd_to_file(fds, dirfd)?);
 	}
 	if path.is_empty() {
 		// Validation
 		if flags & AT_EMPTY_PATH == 0 {
 			return Err(errno!(ENOENT));
 		}
-		let file = vfs::get_file_from_location(&rs.start)?;
-		Ok(Resolved::Found(file))
+		Ok(Resolved::Found(rs.start.unwrap()))
 	} else {
 		vfs::resolve_path(path, &rs)
 	}

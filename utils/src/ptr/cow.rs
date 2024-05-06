@@ -18,18 +18,18 @@
 
 //! This module implements Copy-On-Write (COW) pointers.
 
-use crate::TryClone;
+use crate::{TryClone, TryToOwned};
 use core::{borrow::Borrow, fmt};
 
-/// Structure implementing a copy-on-write smart pointer.
-pub enum Cow<'a, T: 'a + TryClone> {
+/// A clone-on-write smart pointer.
+pub enum Cow<'a, B: 'a + ?Sized + TryToOwned> {
 	/// This variant represents a borrowed value.
-	Borrowed(&'a T),
+	Borrowed(&'a B),
 	/// This variant represents a value after it has been copied.
-	Owned(T),
+	Owned(<B as TryToOwned>::Owned),
 }
 
-impl<'a, T: 'a + TryClone<Error = E>, E> Cow<'a, T> {
+impl<'a, B: 'a + ?Sized + TryToOwned> Cow<'a, B> {
 	/// Tells whether the object is a borrowed value.
 	pub fn is_borrowed(&self) -> bool {
 		match self {
@@ -48,19 +48,18 @@ impl<'a, T: 'a + TryClone<Error = E>, E> Cow<'a, T> {
 	/// This function clones the value if necessary.
 	///
 	/// On fail, the function returns an error.
-	pub fn into_owned(self) -> Result<T, E> {
+	pub fn into_owned(self) -> Result<<B as TryToOwned>::Owned, <B as TryToOwned>::Error> {
 		match self {
-			Self::Borrowed(r) => r.try_clone(),
+			Self::Borrowed(r) => r.try_to_owned(),
 			Self::Owned(v) => Ok(v),
 		}
 	}
 
 	/// Returns a mutable reference to the owned data.
-	pub fn to_mut(&mut self) -> Result<&mut T, E> {
+	pub fn to_mut(&mut self) -> Result<&mut <B as TryToOwned>::Owned, <B as TryToOwned>::Error> {
 		if let Self::Borrowed(r) = self {
-			*self = Self::Owned(r.try_clone()?);
+			*self = Self::Owned(r.try_to_owned()?);
 		}
-
 		match self {
 			Self::Owned(v) => Ok(v),
 			_ => unreachable!(),
@@ -68,37 +67,49 @@ impl<'a, T: 'a + TryClone<Error = E>, E> Cow<'a, T> {
 	}
 }
 
-impl<'a, T: 'a + TryClone> From<T> for Cow<'a, T> {
-	fn from(t: T) -> Self {
-		Self::Owned(t)
-	}
-}
-
-impl<'a, T: 'a + TryClone> From<&'a T> for Cow<'a, T> {
-	fn from(t: &'a T) -> Self {
+impl<'a, B: 'a + ?Sized + TryToOwned> From<&'a B> for Cow<'a, B> {
+	fn from(t: &'a B) -> Self {
 		Self::Borrowed(t)
 	}
 }
 
-impl<'a, T: 'a + TryClone> Borrow<T> for Cow<'a, T> {
-	fn borrow(&self) -> &T {
+impl<'a, B: 'a + ?Sized + TryToOwned> Borrow<B> for Cow<'a, B> {
+	fn borrow(&self) -> &B {
 		self.as_ref()
 	}
 }
 
-impl<'a, T: 'a + TryClone> AsRef<T> for Cow<'a, T> {
-	fn as_ref(&self) -> &T {
+impl<'a, B: 'a + ?Sized + TryToOwned> AsRef<B> for Cow<'a, B> {
+	fn as_ref(&self) -> &B {
 		match self {
 			Self::Borrowed(r) => r,
-			Self::Owned(v) => v,
+			Self::Owned(v) => v.borrow(),
 		}
 	}
 }
 
-impl<'a, T: 'a + TryClone + fmt::Display> fmt::Display for Cow<'a, T> {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-		self.as_ref().fmt(f)
+impl<'a, B: 'a + ?Sized + TryToOwned, E> TryClone for Cow<'a, B>
+where
+	<B as TryToOwned>::Owned: TryClone<Error = E>,
+{
+	type Error = E;
+
+	fn try_clone(&self) -> Result<Self, E> {
+		Ok(match self {
+			Self::Borrowed(r) => Self::Borrowed(*r),
+			Self::Owned(v) => Self::Owned(v.try_clone()?),
+		})
 	}
 }
 
-// TODO Implement comparison and arithmetic
+impl<'a, B: 'a + ?Sized + TryToOwned + fmt::Display> fmt::Display for Cow<'a, B> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+		fmt::Display::fmt(self.as_ref(), f)
+	}
+}
+
+impl<'a, B: 'a + ?Sized + TryToOwned + fmt::Debug> fmt::Debug for Cow<'a, B> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+		fmt::Debug::fmt(self.as_ref(), f)
+	}
+}

@@ -133,7 +133,7 @@ pub fn do_mmap(
 		Some(file_mutex) => {
 			let file = file_mutex.lock();
 			// Check the file is suitable
-			if !matches!(file.get_type(), FileType::Regular) {
+			if !matches!(file.stat.file_type, FileType::Regular) {
 				return Err(errno!(EACCES));
 			}
 			if prot & PROT_READ != 0 && !proc.access_profile.can_read_file(&file) {
@@ -147,7 +147,7 @@ pub fn do_mmap(
 			}
 
 			MapResidence::File {
-				location: file.get_location().clone(),
+				location: file.location,
 				off: offset,
 			}
 		}

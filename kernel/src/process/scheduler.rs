@@ -133,7 +133,7 @@ impl Scheduler {
 	}
 
 	/// Returns an iterator on the scheduler's processes.
-	pub fn iter_process(&mut self) -> MapIterator<'_, Pid, Arc<IntMutex<Process>>> {
+	pub fn iter_process(&self) -> MapIterator<'_, Pid, Arc<IntMutex<Process>>> {
 		self.processes.iter()
 	}
 

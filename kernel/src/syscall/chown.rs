@@ -61,10 +61,10 @@ pub fn do_chown(
 		return Err(errno!(EPERM));
 	}
 	if owner != -1 {
-		file.set_uid(owner as _);
+		file.stat.set_uid(owner as _);
 	}
 	if group != -1 {
-		file.set_gid(group as _);
+		file.stat.set_gid(group as _);
 	}
 	// TODO lazy
 	file.sync()?;

@@ -21,7 +21,7 @@
 use crate::{
 	collections::vec::Vec,
 	errno::{AllocResult, CollectResult},
-	AllocError, TryClone,
+	AllocError, TryClone, TryToOwned,
 };
 use core::{
 	borrow::{Borrow, BorrowMut},
@@ -181,6 +181,14 @@ impl<const N: usize> TryFrom<&[u8; N]> for String {
 
 	fn try_from(s: &[u8; N]) -> Result<Self, Self::Error> {
 		Self::try_from(s.as_slice())
+	}
+}
+
+impl TryToOwned for [u8] {
+	type Owned = String;
+
+	fn try_to_owned(&self) -> Result<Self::Owned, Self::Error> {
+		String::try_from(self)
 	}
 }
 

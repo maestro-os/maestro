@@ -71,7 +71,7 @@ pub fn linkat(
 		return Err(errno!(ENOENT));
 	};
 	let mut old = old_mutex.lock();
-	if matches!(old.get_type(), FileType::Directory) {
+	if matches!(old.stat.file_type, FileType::Directory) {
 		return Err(errno!(EISDIR));
 	}
 

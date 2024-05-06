@@ -50,7 +50,7 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileContent, Mode,
+		FileType, Mode, Stat,
 	},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
@@ -77,6 +77,16 @@ pub enum DeviceType {
 	Char,
 }
 
+impl DeviceType {
+	/// Returns the file type associated with the device type.
+	pub fn as_file_type(&self) -> FileType {
+		match self {
+			DeviceType::Block => FileType::BlockDevice,
+			DeviceType::Char => FileType::CharDevice,
+		}
+	}
+}
+
 impl fmt::Display for DeviceType {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 		match self {
@@ -88,10 +98,10 @@ impl fmt::Display for DeviceType {
 
 /// A structure grouping a device type, a device major and a device minor, which acts as a unique
 /// ID.
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct DeviceID {
 	/// The type of the device.
-	pub type_: DeviceType,
+	pub dev_type: DeviceType,
 	/// The major number.
 	pub major: u32,
 	/// The minor number.
@@ -102,20 +112,6 @@ impl DeviceID {
 	/// Returns the device number.
 	pub fn get_device_number(&self) -> u64 {
 		id::makedev(self.major, self.minor)
-	}
-
-	/// Returns the file content associated with the current ID.
-	pub fn to_file_content(&self) -> FileContent {
-		match self.type_ {
-			DeviceType::Block => FileContent::BlockDevice {
-				major: self.major,
-				minor: self.minor,
-			},
-			DeviceType::Char => FileContent::CharDevice {
-				major: self.major,
-				minor: self.minor,
-			},
-		}
 	}
 }
 
@@ -229,7 +225,6 @@ impl Device {
 		// Create the parent directory in which the device file is located
 		let parent_path = path.parent().unwrap_or(Path::root());
 		file::util::create_dirs(parent_path)?;
-
 		// Resolve path
 		let resolved = vfs::resolve_path(
 			path,
@@ -244,14 +239,18 @@ impl Device {
 				name,
 			} => {
 				let mut parent = parent.lock();
-				let name = name.try_into()?;
 				// Create the device file
 				vfs::create_file(
 					&mut parent,
 					name,
 					&AccessProfile::KERNEL,
-					mode,
-					id.to_file_content(),
+					Stat {
+						file_type: id.dev_type.as_file_type(),
+						mode,
+						dev_major: id.major,
+						dev_minor: id.minor,
+						..Default::default()
+					},
 				)?;
 				Ok(())
 			}

@@ -21,7 +21,7 @@
 
 use super::Buffer;
 use crate::{
-	file::buffer::BlockHandler,
+	file::{buffer::BlockHandler, FileType, Stat},
 	limits,
 	process::{
 		mem_space::{ptr::SyscallPtr, MemSpace},
@@ -41,7 +41,7 @@ use utils::{
 	vec, TryDefault,
 };
 
-/// Structure representing a buffer buffer.
+/// Representing a FIFO buffer.
 #[derive(Debug)]
 pub struct PipeBuffer {
 	/// The buffer's buffer.
@@ -84,6 +84,14 @@ impl TryDefault for PipeBuffer {
 impl Buffer for PipeBuffer {
 	fn get_capacity(&self) -> usize {
 		self.buffer.get_size()
+	}
+
+	fn get_stat(&self) -> Stat {
+		Stat {
+			file_type: FileType::Fifo,
+			mode: 0o666,
+			..Default::default()
+		}
 	}
 
 	fn increment_open(&mut self, read: bool, write: bool) {
@@ -146,7 +154,7 @@ impl IO for PipeBuffer {
 		self.get_data_len() as _
 	}
 
-	/// Note: This implemention ignores the offset.
+	/// Note: This implementation ignores the offset.
 	fn read(&mut self, _: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
 		let len = self.buffer.read(buf);
 		let eof = self.write_ends == 0 && self.get_data_len() == 0;
@@ -156,7 +164,7 @@ impl IO for PipeBuffer {
 		Ok((len as _, eof))
 	}
 
-	/// Note: This implemention ignores the offset.
+	/// Note: This implementation ignores the offset.
 	fn write(&mut self, _: u64, buf: &[u8]) -> EResult<u64> {
 		if self.read_ends > 0 {
 			let len = self.buffer.write(buf);

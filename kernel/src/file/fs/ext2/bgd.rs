@@ -22,27 +22,27 @@
 
 use super::{read, write, Superblock};
 use core::mem::size_of;
+use macros::AnyRepr;
 use utils::{errno::EResult, io::IO};
 
-/// Structure representing a block group descriptor to be stored into the Block
-/// Group Descriptor Table (BGDT).
+/// A block group descriptor.
 #[repr(C, packed)]
+#[derive(AnyRepr)]
 pub struct BlockGroupDescriptor {
 	/// The block address of the block usage bitmap.
-	pub block_usage_bitmap_addr: u32,
+	pub bg_block_bitmap: u32,
 	/// The block address of the inode usage bitmap.
-	pub inode_usage_bitmap_addr: u32,
+	pub bg_inode_bitmap: u32,
 	/// Starting block address of inode table.
-	pub inode_table_start_addr: u32,
+	pub bg_inode_table: u32,
 	/// Number of unallocated blocks in group.
-	pub unallocated_blocks_number: u16,
+	pub bg_free_blocks_count: u16,
 	/// Number of unallocated inodes in group.
-	pub unallocated_inodes_number: u16,
+	pub bg_free_inodes_count: u16,
 	/// Number of directories in group.
-	pub directories_number: u16,
-
+	pub bg_used_dirs_count: u16,
 	/// Structure padding.
-	pub _padding: [u8; 14],
+	pub bg_pad: [u8; 14],
 }
 
 impl BlockGroupDescriptor {
@@ -55,7 +55,7 @@ impl BlockGroupDescriptor {
 	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<Self> {
 		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
-		unsafe { read::<Self>(off, io) }
+		read::<Self>(off, io)
 	}
 
 	/// Writes the current block group descriptor.

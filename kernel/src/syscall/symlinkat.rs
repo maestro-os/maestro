@@ -24,14 +24,18 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileContent,
+		FileType, Stat,
 	},
 	limits,
 	process::{mem_space::ptr::SyscallString, Process},
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use core::ffi::c_int;
 use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{errno, errno::Errno, io::IO};
 
 #[syscall]
 pub fn symlinkat(
@@ -57,7 +61,6 @@ pub fn symlinkat(
 		return Err(errno!(ENAMETOOLONG));
 	}
 	let target = PathBuf::try_from(target_slice)?;
-	let file_content = FileContent::Link(target);
 
 	let linkpath = linkpath
 		.get(&mem_space_guard)?
@@ -72,8 +75,21 @@ pub fn symlinkat(
 			name,
 		} => {
 			let mut parent = parent.lock();
-			let name = name.try_into()?;
-			vfs::create_file(&mut parent, name, &rs.access_profile, 0, file_content)?;
+			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
+			let file = vfs::create_file(
+				&mut parent,
+				name,
+				&rs.access_profile,
+				Stat {
+					file_type: FileType::Link,
+					mode: 0o777,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..Default::default()
+				},
+			)?;
+			file.lock().write(0, target.as_bytes())?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),
 	}

@@ -48,10 +48,6 @@ impl DeviceHandle for NullDeviceHandle {
 }
 
 impl IO for NullDeviceHandle {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
 	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
 		Ok((0, true))
 	}
@@ -82,15 +78,8 @@ impl DeviceHandle for ZeroDeviceHandle {
 }
 
 impl IO for ZeroDeviceHandle {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
 	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		for b in buff.iter_mut() {
-			*b = 0;
-		}
-
+		buff.fill(0);
 		Ok((buff.len() as _, false))
 	}
 
@@ -184,10 +173,6 @@ impl DeviceHandle for URandomDeviceHandle {
 }
 
 impl IO for URandomDeviceHandle {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
 	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
@@ -269,7 +254,7 @@ pub(super) fn create() -> EResult<()> {
 	let null_path = PathBuf::try_from(b"/dev/null")?;
 	let null_device = Device::new(
 		DeviceID {
-			type_: DeviceType::Char,
+			dev_type: DeviceType::Char,
 			major: 1,
 			minor: 3,
 		},
@@ -282,7 +267,7 @@ pub(super) fn create() -> EResult<()> {
 	let zero_path = PathBuf::try_from(b"/dev/zero")?;
 	let zero_device = Device::new(
 		DeviceID {
-			type_: DeviceType::Char,
+			dev_type: DeviceType::Char,
 			major: 1,
 			minor: 5,
 		},
@@ -295,7 +280,7 @@ pub(super) fn create() -> EResult<()> {
 	let random_path = PathBuf::try_from(b"/dev/random")?;
 	let random_device = Device::new(
 		DeviceID {
-			type_: DeviceType::Char,
+			dev_type: DeviceType::Char,
 			major: 1,
 			minor: 8,
 		},
@@ -308,7 +293,7 @@ pub(super) fn create() -> EResult<()> {
 	let urandom_path = PathBuf::try_from(b"/dev/urandom")?;
 	let urandom_device = Device::new(
 		DeviceID {
-			type_: DeviceType::Char,
+			dev_type: DeviceType::Char,
 			major: 1,
 			minor: 9,
 		},
@@ -321,7 +306,7 @@ pub(super) fn create() -> EResult<()> {
 	let kmsg_path = PathBuf::try_from(b"/dev/kmsg")?;
 	let kmsg_device = Device::new(
 		DeviceID {
-			type_: DeviceType::Char,
+			dev_type: DeviceType::Char,
 			major: 1,
 			minor: 11,
 		},
@@ -336,7 +321,7 @@ pub(super) fn create() -> EResult<()> {
 	let current_tty_path = PathBuf::try_from(b"/dev/tty")?;
 	let current_tty_device = Device::new(
 		DeviceID {
-			type_: DeviceType::Char,
+			dev_type: DeviceType::Char,
 			major: 5,
 			minor: 0,
 		},

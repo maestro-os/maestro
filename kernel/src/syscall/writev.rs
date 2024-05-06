@@ -19,7 +19,10 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
 use crate::{
-	file::open_file::{OpenFile, O_NONBLOCK},
+	file::{
+		open_file::{OpenFile, O_NONBLOCK},
+		FileType,
+	},
 	limits,
 	process::{
 		iovec::IOVec,
@@ -90,13 +93,13 @@ pub fn do_writev(
 	offset: Option<isize>,
 	_flags: Option<i32>,
 ) -> EResult<i32> {
+	// Validation
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
-
 	let (proc, mem_space, open_file_mutex) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -114,7 +117,7 @@ pub fn do_writev(
 		drop(proc);
 		(proc_mutex, mem_space, open_file_mutex)
 	};
-
+	// Validation
 	let (start_off, update_off) = match offset {
 		Some(o @ 0..) => (o as u64, false),
 		None | Some(-1) => {
@@ -123,7 +126,10 @@ pub fn do_writev(
 		}
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
-
+	let file_type = open_file_mutex.lock().get_file().lock().stat.file_type;
+	if file_type == FileType::Link {
+		return Err(errno!(EINVAL));
+	}
 	loop {
 		// TODO super::util::signal_check(regs);
 

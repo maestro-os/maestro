@@ -18,7 +18,10 @@
 
 //! Utility functions for byte representations of types.
 
-use core::{mem::size_of, slice};
+use core::{
+	mem::{size_of, size_of_val},
+	slice,
+};
 
 /// Marker trait for a type valid for any bit representation.
 ///
@@ -29,9 +32,19 @@ use core::{mem::size_of, slice};
 /// To implement this trait, it must be ensured the type is valid for any set values in memory.
 pub unsafe trait AnyRepr {}
 
+// Primitive types implementation
+unsafe impl AnyRepr for i8 {}
+unsafe impl AnyRepr for i16 {}
+unsafe impl AnyRepr for i32 {}
+unsafe impl AnyRepr for i64 {}
+unsafe impl AnyRepr for u8 {}
+unsafe impl AnyRepr for u16 {}
+unsafe impl AnyRepr for u32 {}
+unsafe impl AnyRepr for u64 {}
+
 /// Returns an immutable slice to the given value.
-pub fn as_bytes<T>(val: &T) -> &[u8] {
-	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of::<T>()) }
+pub fn as_bytes<T: ?Sized>(val: &T) -> &[u8] {
+	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of_val(val)) }
 }
 
 /// Reinterprets the given slice of bytes as another type.

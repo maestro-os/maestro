@@ -18,16 +18,9 @@
 
 //! This module implements utility functions for files manipulations.
 
-use super::{
-	path::{Component, Path, PathBuf},
-	FileContent,
-};
-use crate::file::{perm::AccessProfile, vfs, vfs::ResolutionSettings};
-use utils::{
-	collections::{hashmap::HashMap, string::String},
-	errno,
-	errno::EResult,
-};
+use super::path::{Component, Path, PathBuf};
+use crate::file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat};
+use utils::{errno, errno::EResult};
 
 /// Creates the directories necessary to reach path `path`.
 ///
@@ -44,10 +37,13 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 			let mut parent = parent_mutex.lock();
 			let res = vfs::create_file(
 				&mut parent,
-				String::try_from(*name)?,
+				name,
 				&AccessProfile::KERNEL,
-				0o755,
-				FileContent::Directory(HashMap::new()),
+				Stat {
+					file_type: FileType::Directory,
+					mode: 0o755,
+					..Default::default()
+				},
 			);
 			match res {
 				Err(e) if e.as_int() != errno::EEXIST => return Err(e),

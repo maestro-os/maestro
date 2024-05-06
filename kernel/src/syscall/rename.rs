@@ -54,9 +54,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 
 	let old_parent_path = old_path.parent().ok_or_else(|| errno!(ENOTDIR))?;
 	let old_name = old_path.file_name().ok_or_else(|| errno!(ENOENT))?;
-
-	let old_parent_mutex = vfs::get_file_from_path(old_parent_path, &rs)?;
-	let mut old_parent = old_parent_mutex.lock();
+	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
 
 	let old_mutex = vfs::get_file_from_path(&old_path, &rs)?;
 	let mut old = old_mutex.lock();
@@ -77,7 +75,7 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 	let new_name = new_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 
 	// If source and destination are on different mountpoints, error
-	if new_parent.get_location().get_mountpoint_id() != old.get_location().get_mountpoint_id() {
+	if new_parent.location.get_mountpoint_id() != old.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
 
@@ -85,9 +83,9 @@ pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Err
 
 	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
 
-	if old.get_type() != FileType::Directory {
+	if old.stat.file_type != FileType::Directory {
 		// TODO On fail, undo
-		vfs::remove_file(&mut old_parent, old_name, &rs.access_profile)?;
+		vfs::remove_file(old_parent, old_name, &rs.access_profile)?;
 	}
 
 	Ok(0)

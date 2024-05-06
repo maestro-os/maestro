@@ -58,6 +58,7 @@ pub mod ptr;
 
 use core::{
 	alloc::AllocError,
+	borrow::Borrow,
 	cmp::min,
 	ffi::{c_int, c_void},
 	fmt,
@@ -137,10 +138,10 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
 /// Same as the [`Clone`] trait, but the operation can fail (on memory allocation
 /// failure, for example).
 pub trait TryClone {
-	/// The error type used when allocation fails.
+	/// The error type on failure.
 	type Error = AllocError;
 
-	/// Clones the object. If the clone fails, the function returns an error.
+	/// Clones the object. On failure, the function returns [`Self::Error`].
 	fn try_clone(&self) -> Result<Self, Self::Error>
 	where
 		Self: Sized;
@@ -156,10 +157,10 @@ impl<T: Clone + Sized> TryClone for T {
 /// Same as the [`Default`] trait, but the operation can fail (on memory allocation
 /// failure, for example).
 pub trait TryDefault {
-	/// The error type used when allocation fails.
+	/// The error type on failure.
 	type Error = AllocError;
 
-	/// Returns the default value. On fail, the function returns Err.
+	/// Returns the default value. On failure, the function returns [`Self::Error`].
 	fn try_default() -> Result<Self, Self::Error>
 	where
 		Self: Sized;
@@ -170,6 +171,18 @@ impl<T: Default + Sized> TryDefault for T {
 	fn try_default() -> Result<Self, Self::Error> {
 		Ok(Self::default())
 	}
+}
+
+/// Same as the [`alloc::borrow::ToOwned`] trait, but the operation can fail (on memory allocation
+/// failure, for example).
+pub trait TryToOwned {
+	/// The resulting type after obtaining ownership.
+	type Owned: Borrow<Self>;
+	/// The error type on failure.
+	type Error = AllocError;
+
+	/// Creates onwed data from borrowed data. On failure, the function returns [`Self::Error`].
+	fn try_to_owned(&self) -> Result<Self::Owned, Self::Error>;
 }
 
 /// Wrapper structure allowing to implement the [`fmt::Display`] trait on the [u8] type

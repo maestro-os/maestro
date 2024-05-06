@@ -339,18 +339,12 @@ impl Default for FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{File, FileContent, FileLocation};
-	use utils::collections::string::String;
+	use crate::file::{File, FileLocation, Stat};
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {
-		const DUMMY_LOCATION: FileLocation = FileLocation::Virtual {
-			id: 0,
-		};
-
-		let file =
-			File::new(String::new(), 0, 0, 0, DUMMY_LOCATION, FileContent::Regular).unwrap();
-		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), 0).unwrap()
+		let file = File::new(FileLocation::dummy(), None, Stat::default());
+		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), None, 0).unwrap()
 	}
 
 	#[test_case]
@@ -365,7 +359,6 @@ mod test {
 		let mut fds = FileDescriptorTable::default();
 		let fd = fds.create_fd(0, dummy_open_file()).unwrap().get_id();
 		assert_eq!(fd, 0);
-
 		let fd = fds.create_fd(0, dummy_open_file()).unwrap().get_id();
 		assert_eq!(fd, 1);
 	}
@@ -375,25 +368,21 @@ mod test {
 		let mut fds = FileDescriptorTable::default();
 		let fd = fds.create_fd(0, dummy_open_file()).unwrap().get_id();
 		assert_eq!(fd, 0);
-
 		let fd0 = fds
 			.duplicate_fd(0, NewFDConstraint::None, false)
 			.unwrap()
 			.get_id();
 		assert_ne!(fd0, 0);
-
 		let fd1 = fds
 			.duplicate_fd(0, NewFDConstraint::Fixed(16), false)
 			.unwrap()
 			.get_id();
 		assert_eq!(fd1, 16);
-
 		let fd2 = fds
 			.duplicate_fd(0, NewFDConstraint::Min(8), false)
 			.unwrap()
 			.get_id();
 		assert!(fd2 >= 8);
-
 		let fd3 = fds
 			.duplicate_fd(0, NewFDConstraint::Min(8), false)
 			.unwrap()

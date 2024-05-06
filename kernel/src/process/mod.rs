@@ -44,24 +44,22 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
-		fs::procfs::ProcFS,
 		mountpoint, open_file,
-		path::{Path, PathBuf},
+		path::PathBuf,
 		perm::{AccessProfile, ROOT_UID},
 		vfs,
 		vfs::ResolutionSettings,
-		FileLocation,
+		File, FileLocation,
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::{mountpoint::MountSource, open_file::OpenFile},
+	process::open_file::OpenFile,
 	register_get,
 	time::timer::TimerManager,
 	tty,
 	tty::TTYHandle,
 };
 use core::{
-	any::Any,
 	ffi::c_void,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
@@ -133,7 +131,7 @@ pub enum State {
 
 impl State {
 	/// Returns the character associated with the state.
-	pub fn get_char(&self) -> char {
+	pub fn as_char(&self) -> char {
 		match self {
 			Self::Running => 'R',
 			Self::Sleeping => 'S',
@@ -258,7 +256,7 @@ pub struct Process {
 	/// same process.
 	timer_manager: Arc<Mutex<TimerManager>>,
 
-	/// The virtual memory of the process containing every mappings.
+	/// The virtual memory of the process.
 	mem_space: Option<Arc<IntMutex<MemSpace>>>,
 	/// A pointer to the userspace stack.
 	user_stack: Option<*mut c_void>,
@@ -267,8 +265,8 @@ pub struct Process {
 
 	/// Current working directory
 	///
-	/// The field contains both the path and location of the directory.
-	pub cwd: Arc<(PathBuf, FileLocation)>,
+	/// The field contains both the path and the directory.
+	pub cwd: Arc<(PathBuf, Arc<Mutex<File>>)>,
 	/// Current root path used by the process
 	pub chroot: FileLocation,
 	/// The list of open file descriptors with their respective ID.
@@ -432,32 +430,6 @@ impl Process {
 		Self::current().expect("no running process")
 	}
 
-	/// Registers the current process to the procfs.
-	fn register_procfs(&self) -> EResult<()> {
-		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
-		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
-			return Ok(());
-		};
-		let mut fs_guard = fs.lock();
-		let fs = &mut *fs_guard as &mut dyn Any;
-		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
-		procfs.add_process(self.pid)?;
-		Ok(())
-	}
-
-	/// Unregisters the current process from the procfs.
-	fn unregister_procfs(&self) -> AllocResult<()> {
-		let procfs_source = MountSource::NoDev(b"procfs".try_into()?);
-		let Some(fs) = mountpoint::get_fs(&procfs_source) else {
-			return Ok(());
-		};
-		let mut fs_guard = fs.lock();
-		let fs = &mut *fs_guard as &mut dyn Any;
-		let procfs = fs.downcast_mut::<ProcFS>().unwrap();
-		procfs.remove_process(self.pid)?;
-		Ok(())
-	}
-
 	/// Creates the init process and places it into the scheduler's queue.
 	///
 	/// The process is set to state [`State::Running`] by default and has user root.
@@ -466,12 +438,11 @@ impl Process {
 		// Create the default file descriptors table
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
-			let tty_path = Path::new(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_file_mutex = vfs::get_file_from_path(tty_path, &rs)?;
+			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
+			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &rs)?;
 			let tty_file = tty_file_mutex.lock();
-			let loc = tty_file.get_location();
-			let file = vfs::get_file_from_location(loc)?;
-			let open_file = OpenFile::new(file, open_file::O_RDWR)?;
+			let file = vfs::get_file_from_location(tty_file.location)?;
+			let open_file = OpenFile::new(file, Some(tty_path), open_file::O_RDWR)?;
 			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
@@ -479,6 +450,7 @@ impl Process {
 			fds_table
 		};
 		let root_loc = mountpoint::root_location();
+		let root_dir = vfs::get_file_from_location(root_loc)?;
 		let process = Self {
 			pid: pid::INIT_PID,
 			pgid: pid::INIT_PID,
@@ -516,7 +488,7 @@ impl Process {
 			user_stack: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: Arc::new((PathBuf::root(), root_loc.clone()))?,
+			cwd: Arc::new((PathBuf::root(), root_dir))?,
 			chroot: root_loc,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
@@ -534,7 +506,6 @@ impl Process {
 			exit_status: 0,
 			termsig: 0,
 		};
-		process.register_procfs()?;
 		Ok(get_scheduler().lock().add_process(process)?)
 	}
 
@@ -916,7 +887,7 @@ impl Process {
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
 			cwd: self.cwd.clone(),
-			chroot: self.chroot.clone(),
+			chroot: self.chroot,
 			file_descriptors,
 
 			sigmask: self.sigmask.try_clone()?,
@@ -933,7 +904,6 @@ impl Process {
 			exit_status: self.exit_status,
 			termsig: 0,
 		};
-		process.register_procfs()?;
 		self.add_child(pid)?;
 		Ok(get_scheduler().lock().add_process(process)?)
 	}
@@ -1169,8 +1139,6 @@ impl Drop for Process {
 		if self.is_init() {
 			panic!("Terminated init process!");
 		}
-		// Unregister the process from the procfs
-		oom::wrap(|| self.unregister_procfs());
 		// Free kernel stack
 		unsafe {
 			buddy::free_kernel(self.kernel_stack.as_ptr(), KERNEL_STACK_ORDER);

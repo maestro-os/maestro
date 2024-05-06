@@ -32,7 +32,7 @@ use core::{
 use macros::syscall;
 use utils::{errno, errno::Errno};
 
-/// Structure representing a Linux directory entry with 64 bits offsets.
+/// A Linux directory entry with 64 bits offsets.
 #[repr(C)]
 struct LinuxDirent64 {
 	/// 64-bit inode number.
@@ -48,6 +48,8 @@ struct LinuxDirent64 {
 }
 
 impl Dirent for LinuxDirent64 {
+	const INODE_MAX: u64 = u64::MAX;
+
 	fn required_length(name: &[u8]) -> usize {
 		(size_of::<Self>() + name.len() + 1)
 			// Padding for alignment
@@ -63,7 +65,6 @@ impl Dirent for LinuxDirent64 {
 			d_type: entry_type.to_dirent_type(),
 			d_name: [],
 		};
-
 		// Write entry
 		unsafe {
 			#[allow(invalid_reference_casting)]

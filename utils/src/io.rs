@@ -18,7 +18,7 @@
 
 //! This module implements the Input/Output interface trait.
 
-use crate::errno::{EResult, Errno};
+use crate::errno::EResult;
 
 /// Poll event: There is data to read.
 pub const POLLIN: u32 = 0x1;
@@ -47,7 +47,9 @@ pub const POLLRDHUP: u32 = 0x2000;
 /// Trait representing a data I/O interface.
 pub trait IO {
 	/// Returns the size of the underlying data.
-	fn get_size(&self) -> u64;
+	fn get_size(&self) -> u64 {
+		0
+	}
 
 	/// Reads data from the I/O and writes it into `buff`.
 	///
@@ -72,25 +74,4 @@ pub trait IO {
 	///
 	/// The function returns the mask with available events set.
 	fn poll(&mut self, mask: u32) -> EResult<u32>;
-}
-
-/// Structure representing a dummy I/O interface.
-pub struct DummyIO {}
-
-impl IO for DummyIO {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> Result<(u64, bool), Errno> {
-		Ok((0, true))
-	}
-
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> Result<u64, Errno> {
-		Ok(0)
-	}
-
-	fn poll(&mut self, _mask: u32) -> Result<u32, Errno> {
-		Ok(0)
-	}
 }

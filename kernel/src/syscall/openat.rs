@@ -26,10 +26,14 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileContent, Mode,
+		File, FileType, Mode, Stat,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
 	syscall::util::at,
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -74,13 +78,19 @@ fn get_file(
 			name,
 		} if create => {
 			let mut parent = parent.lock();
-			let name = name.try_into()?;
+			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 			vfs::create_file(
 				&mut parent,
 				name,
 				&rs.access_profile,
-				mode,
-				FileContent::Regular,
+				Stat {
+					file_type: FileType::Regular,
+					mode,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..Default::default()
+				},
 			)
 		}
 		_ => Err(errno!(ENOENT)),
@@ -123,7 +133,8 @@ pub fn openat(
 		super::open::handle_flags(&mut file, flags, &rs.access_profile)?;
 	}
 
-	let open_file = OpenFile::new(file_mutex, flags)?;
+	// FIXME: pass the absolute path, used by `fchidr`
+	let open_file = OpenFile::new(file_mutex, None, flags)?;
 
 	// Create FD
 	let mut fd_flags = 0;

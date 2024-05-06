@@ -52,11 +52,11 @@ pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
 		vfs::get_file_from_path(path, &rs)?
 	};
 	let file = file.lock();
-	if file.get_type() != FileType::Directory {
+	if file.stat.file_type != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 
-	proc.chroot = file.get_location().clone();
+	proc.chroot = file.location;
 
 	Ok(0)
 }

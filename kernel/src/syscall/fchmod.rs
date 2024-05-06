@@ -51,7 +51,7 @@ pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
 		return Err(errno!(EPERM));
 	}
 
-	file.set_permissions(mode as _);
+	file.stat.set_permissions(mode as _);
 	// TODO lazy sync
 	file.sync()?;
 

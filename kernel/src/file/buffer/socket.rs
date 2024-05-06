@@ -20,7 +20,7 @@
 
 use super::Buffer;
 use crate::{
-	file::buffer::BlockHandler,
+	file::{buffer::BlockHandler, FileType, Stat},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
 	process::{mem_space::MemSpace, Process},
 	syscall::ioctl,
@@ -199,6 +199,14 @@ impl Buffer for Socket {
 		todo!()
 	}
 
+	fn get_stat(&self) -> Stat {
+		Stat {
+			file_type: FileType::Socket,
+			mode: 0o666,
+			..Default::default()
+		}
+	}
+
 	fn increment_open(&mut self, _read: bool, _write: bool) {
 		self.open_count += 1;
 	}
@@ -226,11 +234,7 @@ impl Buffer for Socket {
 }
 
 impl IO for Socket {
-	fn get_size(&self) -> u64 {
-		0
-	}
-
-	/// Note: This implemention ignores the offset.
+	/// Note: This implementation ignores the offset.
 	fn read(&mut self, _: u64, _buf: &mut [u8]) -> EResult<(u64, bool)> {
 		if !self.desc.type_.is_stream() {
 			// TODO error
@@ -240,7 +244,7 @@ impl IO for Socket {
 		todo!();
 	}
 
-	/// Note: This implemention ignores the offset.
+	/// Note: This implementation ignores the offset.
 	fn write(&mut self, _: u64, _buf: &[u8]) -> EResult<u64> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {

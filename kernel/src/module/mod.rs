@@ -19,7 +19,7 @@
 //! A kernel module is an executable file that is loaded in kernelspace in order to
 //! handle a specific feature such as device drivers.
 //!
-//! The some advantages of that system is a lighter kernel with clearer code and it allows to only
+//! Some advantages of that system is a lighter kernel with clearer code, and it allows to only
 //! load subsystems that are currently required.
 //!
 //! There's a distinction between a **Module** and a **Kernel Module**:

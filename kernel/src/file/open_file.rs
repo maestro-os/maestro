@@ -19,10 +19,10 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
+use super::{buffer, mountpoint, path::PathBuf, DeviceID, File, FileLocation, FileType};
 use crate::{
 	device,
 	device::DeviceType,
-	file::{buffer, mountpoint, DeviceID, File, FileContent, FileLocation},
 	process::{
 		mem_space::{ptr::SyscallPtr, MemSpace},
 		Process,
@@ -93,6 +93,10 @@ static OPEN_FILES: Mutex<HashMap<FileLocation, usize>> = Mutex::new(HashMap::new
 pub struct OpenFile {
 	/// The open file. This is an option to allow easier dropping implementation.
 	file: Option<Arc<Mutex<File>>>,
+	/// The file's absolute path.
+	///
+	/// If the open file is virtual, this field is `None`.
+	path: Option<PathBuf>,
 	/// The file's location. This field is necessary to avoid locking the file's mutex each time
 	/// the location is required.
 	location: FileLocation,
@@ -109,36 +113,35 @@ impl OpenFile {
 	///
 	/// Arguments:
 	/// - `file` is the open file
+	/// - `path` is the path from which the file is opened. If the file is virtual, pass `None`
 	/// - `flags` is the open file's set of flags
 	///
 	/// If an open file already exists for this location, the function add the given flags to the
 	/// already existing instance and returns it.
-	pub fn new(file: Arc<Mutex<File>>, flags: i32) -> EResult<Self> {
-		let location = file.lock().get_location().clone();
+	pub fn new(file: Arc<Mutex<File>>, path: Option<PathBuf>, flags: i32) -> EResult<Self> {
+		let location = file.lock().location;
 		let s = Self {
 			file: Some(file),
-			location: location.clone(),
+			path,
+			location,
 			flags,
 
 			curr_off: 0,
 		};
-
 		// Update the open file counter
 		{
 			let mut open_files = OPEN_FILES.lock();
 			if let Some(count) = open_files.get_mut(&location) {
 				*count += 1;
 			} else {
-				open_files.insert(location.clone(), 1)?;
+				open_files.insert(location, 1)?;
 			}
 		}
-
 		// If the file points to a buffer, increment the number of open ends
 		if let Some(buff_mutex) = buffer::get(&location) {
 			let mut buff = buff_mutex.lock();
 			buff.increment_open(s.can_read(), s.can_write());
 		}
-
 		Ok(s)
 	}
 
@@ -171,6 +174,11 @@ impl OpenFile {
 	/// The name of the file is not set since it cannot be known from this structure.
 	pub fn get_file(&self) -> &Arc<Mutex<File>> {
 		self.file.as_ref().unwrap()
+	}
+
+	/// Returns the file's path.
+	pub fn get_path(&self) -> Option<&PathBuf> {
+		self.path.as_ref()
 	}
 
 	/// Returns the location of the file.
@@ -230,24 +238,20 @@ impl OpenFile {
 		argp: *const c_void,
 	) -> EResult<u32> {
 		let mut file = self.get_file().lock();
-		match file.get_content() {
-			FileContent::Regular => match request.get_old_format() {
+		match file.stat.file_type {
+			FileType::Regular => match request.get_old_format() {
 				ioctl::FIONREAD => {
 					let mut mem_space_guard = mem_space.lock();
 					let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
 					let count_ref = count_ptr
 						.get_mut(&mut mem_space_guard)?
 						.ok_or_else(|| errno!(EFAULT))?;
-
 					let size = file.get_size();
 					*count_ref = (size - min(size, self.curr_off)) as _;
-
 					Ok(0)
 				}
-
 				_ => Err(errno!(ENOTTY)),
 			},
-
 			_ => file.ioctl(mem_space, request, argp),
 		}
 	}
@@ -262,49 +266,37 @@ impl OpenFile {
 	/// If the file cannot block, the function does nothing.
 	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
 		let file = self.get_file().lock();
-		match file.get_content() {
-			FileContent::Fifo | FileContent::Socket => {
+		match file.stat.file_type {
+			FileType::Fifo | FileType::Socket => {
 				if let Some(buff_mutex) = buffer::get(self.get_location()) {
 					let mut buff = buff_mutex.lock();
 					return buff.add_waiting_process(proc, mask);
 				}
 			}
-
-			FileContent::BlockDevice {
-				major,
-				minor,
-			} => {
+			FileType::BlockDevice => {
 				let dev_mutex = device::get(&DeviceID {
-					type_: DeviceType::Block,
-					major: *major,
-					minor: *minor,
+					dev_type: DeviceType::Block,
+					major: file.stat.dev_major,
+					minor: file.stat.dev_minor,
 				});
-
 				if let Some(dev_mutex) = dev_mutex {
 					let mut dev = dev_mutex.lock();
 					return dev.get_handle().add_waiting_process(proc, mask);
 				}
 			}
-
-			FileContent::CharDevice {
-				major,
-				minor,
-			} => {
+			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
-					type_: DeviceType::Char,
-					major: *major,
-					minor: *minor,
+					dev_type: DeviceType::Char,
+					major: file.stat.dev_major,
+					minor: file.stat.dev_minor,
 				});
-
 				if let Some(dev_mutex) = dev_mutex {
 					let mut dev = dev_mutex.lock();
 					return dev.get_handle().add_waiting_process(proc, mask);
 				}
 			}
-
 			_ => {}
 		}
-
 		Ok(())
 	}
 }
@@ -317,24 +309,23 @@ impl IO for OpenFile {
 	/// Note: on this specific implementation, the offset is ignored since
 	/// `set_offset` has to be used to define it.
 	fn read(&mut self, _off: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
+		// Validation
 		if !self.can_read() {
 			return Err(errno!(EINVAL));
 		}
-
+		// Get file
 		let mut file = self.file.as_ref().unwrap().lock();
-		if matches!(file.get_content(), FileContent::Directory(_)) {
+		if file.stat.file_type == FileType::Directory {
 			return Err(errno!(EISDIR));
 		}
-
 		// Update access timestamp
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
-			file.atime = timestamp;
+			file.stat.atime = timestamp;
 			file.sync()?; // TODO Lazy
 		}
-
+		// Read
 		let (len, eof) = file.read(self.curr_off, buf)?;
-
 		self.curr_off += len;
 		Ok((len as _, eof))
 	}
@@ -342,30 +333,28 @@ impl IO for OpenFile {
 	/// Note: on this specific implementation, the offset is ignored since
 	/// `set_offset` has to be used to define it.
 	fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<u64> {
+		// Validation
 		if !self.can_write() {
 			return Err(errno!(EINVAL));
 		}
-
+		// Get file
 		let mut file = self.file.as_ref().unwrap().lock();
-		if matches!(file.get_content(), FileContent::Directory(_)) {
+		if file.stat.file_type == FileType::Directory {
 			return Err(errno!(EISDIR));
 		}
-
 		// Append if enabled
 		if self.flags & O_APPEND != 0 {
 			self.curr_off = file.get_size();
 		}
-
 		// Update access timestamps
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
 		if self.is_atime_updated() {
-			file.atime = timestamp;
+			file.stat.atime = timestamp;
 		}
-		file.mtime = timestamp;
+		file.stat.mtime = timestamp;
 		file.sync()?; // TODO Lazy
-
+			  // Write
 		let len = file.write(self.curr_off, buf)?;
-
 		self.curr_off += len;
 		Ok(len as _)
 	}

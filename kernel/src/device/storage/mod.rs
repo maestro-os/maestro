@@ -504,7 +504,7 @@ impl StorageManager {
 			);
 			let device = Device::new(
 				DeviceID {
-					type_: DeviceType::Block,
+					dev_type: DeviceType::Block,
 					// TODO use a different major for different storage device types
 					major: STORAGE_MAJOR,
 					minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
@@ -525,7 +525,7 @@ impl StorageManager {
 	pub fn clear_partitions(major: u32) -> EResult<()> {
 		for i in 1..MAX_PARTITIONS {
 			device::unregister(&DeviceID {
-				type_: DeviceType::Block,
+				dev_type: DeviceType::Block,
 				major,
 				minor: i as _,
 			})?;
@@ -559,7 +559,7 @@ impl StorageManager {
 		);
 		let main_device = Device::new(
 			DeviceID {
-				type_: DeviceType::Block,
+				dev_type: DeviceType::Block,
 				major,
 				minor: storage_id * MAX_PARTITIONS as u32,
 			},

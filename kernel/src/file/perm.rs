@@ -130,7 +130,7 @@ impl AccessProfile {
 
 	/// Extracts UID and GID from file and returns the associated profile.
 	pub fn from_file(file: &File) -> Self {
-		Self::new(file.get_uid(), file.get_gid())
+		Self::new(file.stat.uid, file.stat.gid)
 	}
 
 	/// Returns the real user ID.

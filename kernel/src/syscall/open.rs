@@ -28,9 +28,13 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileContent, FileType, Mode,
+		File, FileType, Mode, Stat,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -54,7 +58,7 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 
 /// Resolves the given `path` and returns the file.
 ///
-/// If enabled, the file is create.
+/// The function creates the file if requested and required.
 ///
 /// If the file is created, the function uses `mode` to set its permissions and the provided
 /// access profile to set the user ID and group ID.
@@ -67,19 +71,25 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mut
 			name,
 		} => {
 			let mut parent = parent.lock();
-			let name = name.try_into()?;
+			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 			vfs::create_file(
 				&mut parent,
 				name,
 				&rs.access_profile,
-				mode,
-				FileContent::Regular,
+				Stat {
+					file_type: FileType::Regular,
+					mode,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..Default::default()
+				},
 			)?
 		}
 	};
-	// Get file type. There cannot be a race condition since the type of a file cannot be
+	// Get file type. There cannot be a race condition since the type of file cannot be
 	// changed
-	let file_type = file.lock().get_type();
+	let file_type = file.lock().stat.file_type;
 	// Cannot open symbolic links themselves
 	if file_type == FileType::Link {
 		return Err(errno!(ELOOP));
@@ -109,12 +119,12 @@ pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile)
 	}
 
 	// If O_DIRECTORY is set and the file is not a directory, return an error
-	if flags & open_file::O_DIRECTORY != 0 && file.get_type() != FileType::Directory {
+	if flags & open_file::O_DIRECTORY != 0 && file.stat.file_type != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	// Truncate the file if necessary
 	if flags & open_file::O_TRUNC != 0 {
-		file.set_size(0);
+		file.truncate(0)?;
 	}
 
 	Ok(())
@@ -151,7 +161,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: Mode) -> EResult<i32> {
 	}
 
 	// Create open file description
-	let open_file = OpenFile::new(file_mutex.clone(), flags)?;
+	// FIXME: pass the absolute path, used by `fchidr`
+	let open_file = OpenFile::new(file_mutex.clone(), None, flags)?;
 
 	// Create FD
 	let mut fd_flags = 0;

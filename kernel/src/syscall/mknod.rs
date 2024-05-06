@@ -25,9 +25,13 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
-		FileContent, FileType,
+		FileType, Stat,
 	},
 	process::{mem_space::ptr::SyscallString, Process},
+	time::{
+		clock::{current_time, CLOCK_REALTIME},
+		unit::TimestampScale,
+	},
 };
 use macros::syscall;
 use utils::{errno, errno::Errno};
@@ -50,47 +54,41 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32,
 		let rs = ResolutionSettings::for_process(&proc, true);
 		(path, umask, rs)
 	};
-
 	// Path of the parent directory
 	let parent_path = path.parent().unwrap_or(Path::root());
 	// File name
 	let Some(name) = path.file_name() else {
 		return Err(errno!(EEXIST));
 	};
-
+	// Information to create the file
 	let mode = mode & !umask;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
-
-	// Get the major and minor IDs
-	let major = id::major(dev);
-	let minor = id::minor(dev);
-
-	// The file's content
-	let file_content = match file_type {
-		FileType::Regular => FileContent::Regular,
-		FileType::Fifo => FileContent::Fifo,
-		FileType::Socket => FileContent::Socket,
-		FileType::BlockDevice => FileContent::BlockDevice {
-			major,
-			minor,
-		},
-		FileType::CharDevice => FileContent::CharDevice {
-			major,
-			minor,
-		},
-		_ => return Err(errno!(EPERM)),
-	};
-
-	// Create the node
+	// Check file type and permissions
+	match file_type {
+		FileType::Directory => return Err(errno!(EINVAL)),
+		FileType::BlockDevice | FileType::CharDevice if !rs.access_profile.is_privileged() => {
+			return Err(errno!(EPERM));
+		}
+		_ => {}
+	}
+	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
+	// Create file
 	vfs::create_file(
 		&mut parent,
-		name.try_into()?,
+		name,
 		&rs.access_profile,
-		mode,
-		file_content,
+		Stat {
+			file_type,
+			mode,
+			dev_major: id::major(dev),
+			dev_minor: id::minor(dev),
+			ctime: ts,
+			mtime: ts,
+			atime: ts,
+			..Default::default()
+		},
 	)?;
-
 	Ok(0)
 }

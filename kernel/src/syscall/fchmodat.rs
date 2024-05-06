@@ -69,7 +69,7 @@ pub fn fchmodat(
 		return Err(errno!(EPERM));
 	}
 
-	file.set_permissions(mode as _);
+	file.stat.set_permissions(mode as _);
 	// TODO lazy sync
 	file.sync()?;
 

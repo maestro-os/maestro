@@ -48,8 +48,7 @@ pub fn syncfs(fd: c_int) -> Result<i32, Errno> {
 	let file_mutex = open_file.get_file();
 	let file = file_mutex.lock();
 
-	let location = file.get_location();
-	let _mountpoint = location.get_mountpoint();
+	let _mountpoint = file.location.get_mountpoint();
 
 	// TODO Sync all files on mountpoint
 
