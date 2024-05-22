@@ -32,24 +32,25 @@
  *
  * BSS sections are located right after read-only sections to limit damages if the stack(s) they contain overflows.
  */
+
+ENTRY(multiboot_entry)
+
 SECTIONS
 {
-	ENTRY(multiboot_entry)
-
     /* Boot stub sections */
 	. = 0x100000;
 
-	.boot.text BLOCK(4K) : ALIGN(4K)
+	.boot.text : ALIGN(4K)
 	{
 		*(.boot.text)
 	}
 
-	.boot.stack BLOCK(4K) : ALIGN(4K)
+	.boot.stack : ALIGN(4K)
 	{
 		*(.boot.stack)
 	}
 
-	.boot.data BLOCK(4K) : ALIGN(4K)
+	.boot.data : ALIGN(4K)
 	{
 		*(.boot.data)
 	}
@@ -57,29 +58,29 @@ SECTIONS
     /* Kernel sections */
 	. = 0xc0200000;
 
-	.text BLOCK(4K) : AT (ADDR (.text) - 0xc0000000) ALIGN(4K)
+	.text : AT (ADDR (.text) - 0xc0000000) ALIGN(4K)
 	{
 		*(.text*)
 	}
 
-	.rodata BLOCK(4K) : AT (ADDR (.rodata) - 0xc0000000) ALIGN(4K)
+	.rodata : AT (ADDR (.rodata) - 0xc0000000) ALIGN(4K)
 	{
 		*(.rodata*)
 	}
 
     /* Accessible to the userspace (readonly) */
-	.user BLOCK(4K) : AT (ADDR (.user) - 0xc0000000) ALIGN(4K)
+	.user : AT (ADDR (.user) - 0xc0000000) ALIGN(4K)
 	{
 	    *(.user*)
 	}
 
-	.bss BLOCK(4K) : AT (ADDR (.bss) - 0xc0000000) ALIGN(4K)
+	.bss : AT (ADDR (.bss) - 0xc0000000) ALIGN(4K)
 	{
 		*(COMMON)
 		*(.bss*)
 	}
 
-	.data BLOCK(4K) : AT (ADDR (.data) - 0xc0000000) ALIGN(4K)
+	.data : AT (ADDR (.data) - 0xc0000000) ALIGN(4K)
 	{
 		*(.data*)
 	}

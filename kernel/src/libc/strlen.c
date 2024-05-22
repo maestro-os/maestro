@@ -36,5 +36,5 @@ size_t strlen(const char *s)
     // Count remaining
     for (; *n; ++n)
         ;
-	return n - s;
+    return n - s;
 }

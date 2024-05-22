@@ -72,14 +72,15 @@ pub fn compile_c(env: &Env, target: &Target) -> io::Result<()> {
 		.flag("-mno-red-zone")
 		.flag("-Wall")
 		.flag("-Wextra")
+		.flag("-Wno-unused-command-line-argument")
 		.flag("-Werror")
 		.pic(false)
 		.target(&target.triplet)
-		.flag(&format!("-T{}", target.get_linker_script_path().display()))
 		.debug(env.is_debug())
 		.opt_level(env.opt_level)
 		.files(files)
 		.compile("casm");
+	// Necessary to get access from dependencies
 	println!("cargo:rustc-link-arg=-lcasm");
 	Ok(())
 }
