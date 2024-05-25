@@ -23,15 +23,23 @@ macros = { path = "../macros" }
 utils = { path = "../utils" }
 
 [build-dependencies]
-cc = { version = "1.0.83", features = ["parallel"] }
+cc = { version = "1.0.98", features = ["parallel"] }
 serde = { version = "*", features = ["derive"] }
-serde_json = "1.0.114"
-toml = "0.8.8"
+serde_json = "1.0.117"
+toml = "0.8.13"
 
 [features]
 default = []
 memtrace = []
 strace = ["macros/strace"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+	"cfg(config_debug_storage_test)",
+	"cfg(config_debug_qemu)",
+	"cfg(config_debug_malloc_magic)",
+	"cfg(config_debug_malloc_check)"
+] }
 
 [profile.release]
 panic = "abort"

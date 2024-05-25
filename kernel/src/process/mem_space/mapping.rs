@@ -126,11 +126,15 @@ impl MemMapping {
 		let mut flags = 0;
 		if write && self.flags & super::MAPPING_FLAG_WRITE != 0 {
 			#[cfg(target_arch = "x86")]
-			flags |= vmem::x86::FLAG_WRITE;
+			{
+				flags |= vmem::x86::FLAG_WRITE;
+			}
 		}
 		if self.flags & super::MAPPING_FLAG_USER != 0 {
 			#[cfg(target_arch = "x86")]
-			flags |= vmem::x86::FLAG_USER;
+			{
+				flags |= vmem::x86::FLAG_USER;
+			}
 		}
 		flags
 	}
