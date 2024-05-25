@@ -20,9 +20,8 @@
 //! the current process.
 
 use crate::{
-	file::{mountpoint, path::Path, vfs::ResolutionSettings, FileType},
+	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings, FileType},
 	process::{mem_space::ptr::SyscallString, Process},
-	vfs,
 };
 use macros::syscall;
 use utils::{errno, errno::Errno};

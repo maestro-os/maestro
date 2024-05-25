@@ -16,6 +16,8 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
+.section .boot.text, "ax"
+
 /*
  * Constants used by Multiboot2 to detect the kernel.
  */
@@ -23,37 +25,12 @@
 .set MULTIBOOT_ARCHITECTURE,	0
 .set HEADER_LENGTH,				(header_end - header)
 .set CHECKSUM,					-(MULTIBOOT_MAGIC + MULTIBOOT_ARCHITECTURE + HEADER_LENGTH)
+
 /*
  * Multiboot header tags constants.
  */
 .set MULTIBOOT_HEADER_TAG_END,					0
-.set MULTIBOOT_HEADER_TAG_INFORMATION_REQUEST,	1
-.set MULTIBOOT_HEADER_TAG_ADDRESS,				2
 .set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS,		3
-.set MULTIBOOT_HEADER_TAG_CONSOLE_FLAGS,		4
-.set MULTIBOOT_HEADER_TAG_FRAMEBUFFER,			5
-.set MULTIBOOT_HEADER_TAG_MODULE_ALIGN,			6
-.set MULTIBOOT_HEADER_TAG_EFI_BS,				7
-.set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI32,	8
-.set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI64,	9
-.set MULTIBOOT_HEADER_TAG_RELOCATABLE,			10
-
-/*
- * The size of the kernel stack.
- */
-.set STACK_SIZE,	32768
-
-.global boot_stack
-.global boot_stack_begin
-
-.global multiboot_entry
-.type multiboot_entry, @function
-
-.extern setup_gdt
-.extern _init
-.extern _fini
-
-.section .boot.text, "ax"
 
 /*
  * The Multiboot2 kernel header.
@@ -81,6 +58,21 @@ entry_address_tag_end:
 	.short 0
 	.long 8
 header_end:
+
+/*
+ * The size of the kernel stack.
+ */
+.set STACK_SIZE,	32768
+
+.global boot_stack
+.global boot_stack_begin
+
+.global multiboot_entry
+.type multiboot_entry, @function
+
+.extern setup_gdt
+.extern _init
+.extern _fini
 
 /*
  * The entry point of the kernel.
