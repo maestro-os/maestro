@@ -161,8 +161,8 @@ impl KeyboardKey {
 	/// Returns the TTY characters for the given current.
 	///
 	/// Arguments:
-	/// - `shift` tells whether shift is pressed. This value has to be inverted if
-	/// caps lock is enabled.
+	/// - `shift` tells whether shift is pressed. This value has to be inverted if caps lock is
+	///   enabled.
 	/// - `alt` tells whether alt is pressed.
 	/// - `ctrl` tells whether control is pressed.
 	/// - `meta` tells whether meta is pressed.

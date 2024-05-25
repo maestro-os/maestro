@@ -58,7 +58,7 @@ pub trait IO {
 	/// The function returns a tuple containing:
 	/// - The number of bytes read.
 	/// - Whether the function reached the end of the input stream. In the context of a file, a
-	/// value of `true` is equivalent to the End Of File (EOF).
+	///   value of `true` is equivalent to the End Of File (EOF).
 	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)>;
 
 	/// Reads data from `buff` and writes it into the I/O.

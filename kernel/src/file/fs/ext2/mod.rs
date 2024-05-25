@@ -29,13 +29,13 @@
 //! overflowing on the next when full:
 //! - Direct Block Pointers: each inode has 12 of them
 //! - Singly Indirect Block Pointer: a pointer to a block dedicated to storing a list of more
-//! blocks to store the inode's data. The number of blocks it can store depends
-//! on the size of a block.
+//!   blocks to store the inode's data. The number of blocks it can store depends on the size of a
+//!   block.
 //! - Doubly Indirect Block Pointer: a pointer to a block storing pointers to Singly Indirect Block
-//! Pointers, each storing pointers to more blocks.
+//!   Pointers, each storing pointers to more blocks.
 //! - Triply Indirect Block Pointer: a pointer to a block storing pointers to Doubly Indirect Block
-//! Pointers, each storing pointers to Singly Indirect Block Pointers, each
-//! storing pointers to more blocks.
+//!   Pointers, each storing pointers to Singly Indirect Block Pointers, each storing pointers to
+//!   more blocks.
 //!
 //! Since the size of a block pointer is 4 bytes, the maximum size of a file is:
 //! `(12 * n) + ((n/4) * n) + ((n/4)^^2 * n) + ((n/4)^^3 * n)`

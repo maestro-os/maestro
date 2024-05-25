@@ -42,7 +42,7 @@ fn update_parent<'p>(
 ) -> EResult<()> {
 	// Get the parent
 	let result = match stored {
-		Some((path, parent)) if new.starts_with(&path) => {
+		Some((path, parent)) if new.starts_with(*path) => {
 			let Some(name) = new.file_name() else {
 				return Ok(());
 			};

@@ -127,7 +127,7 @@ pub trait NodeOps: Debug {
 	/// - `fs` is the filesystem.
 	/// - `off` is the offset from which the data will be read from the node's data.
 	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
-	/// number of bytes to read.
+	///   number of bytes to read.
 	///
 	/// This function is relevant for the following file types:
 	/// - `Regular`: Reads the content of the file
@@ -158,7 +158,7 @@ pub trait NodeOps: Debug {
 	/// - `fs` is the filesystem.
 	/// - `off` is the offset at which the data will be written in the node's data.
 	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
-	/// number of bytes to write.
+	///   number of bytes to write.
 	///
 	/// This function is relevant for the following file types:
 	/// - `Regular`: Writes the content of the file

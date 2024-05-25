@@ -42,7 +42,7 @@ pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
 		signal::SIG_IGN => SignalHandler::Ignore,
 		signal::SIG_DFL => SignalHandler::Default,
 		_ => SignalHandler::Handler(SigAction {
-			sa_handler: Some(unsafe { transmute(handler) }),
+			sa_handler: Some(unsafe { transmute::<*const c_void, extern "C" fn(i32)>(handler) }),
 			sa_sigaction: None,
 			sa_mask: 0,
 			sa_flags: SA_RESTART,

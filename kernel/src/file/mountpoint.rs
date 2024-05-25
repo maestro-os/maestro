@@ -139,8 +139,7 @@ static FILESYSTEMS: Mutex<HashMap<MountSource, Weak<dyn Filesystem>>> = Mutex::n
 ///
 /// Arguments:
 /// - `source` is the source of the mountpoint.
-/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it
-/// automatically.
+/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automatically.
 /// - `path` is the path to the directory on which the filesystem is mounted.
 /// - `readonly` tells whether the filesystem is mount in readonly.
 ///
@@ -211,7 +210,7 @@ impl MountPoint {
 	/// - `id` is the ID of the mountpoint.
 	/// - `source` is the source of the mountpoint.
 	/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it
-	/// automatically.
+	///   automatically.
 	/// - `flags` are the mount flags.
 	/// - `target_path` is the path to the mount directory.
 	/// - `target_location` is the location of the mount directory on the parent filesystem.

@@ -209,13 +209,17 @@ impl SignalHandler {
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
-				sa_handler: unsafe { transmute::<_, _>(SIG_IGN) },
+				sa_handler: unsafe {
+					transmute::<*const c_void, Option<extern "C" fn(i32)>>(SIG_IGN)
+				},
 				sa_sigaction: None,
 				sa_mask: 0,
 				sa_flags: 0,
 			},
 			Self::Default => SigAction {
-				sa_handler: unsafe { transmute::<_, _>(SIG_DFL) },
+				sa_handler: unsafe {
+					transmute::<*const c_void, Option<extern "C" fn(i32)>>(SIG_DFL)
+				},
 				sa_sigaction: None,
 				sa_mask: 0,
 				sa_flags: 0,

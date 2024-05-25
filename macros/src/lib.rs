@@ -62,7 +62,7 @@ pub fn any_repr(input: TokenStream) -> TokenStream {
 /// - `scale` (optional, defaults to `linear`): the scale of the allocation, either:
 ///     - `linear`: the size is taken as is in the recorded sample
 ///     - `log2`: the size is put to the power of two (`2^^n`) before begin recordedsaved in the
-///    sample
+///       sample
 ///
 /// Example:
 /// ```rust

@@ -34,8 +34,8 @@ impl MemGap {
 	/// Creates a new instance.
 	///
 	/// Arguments:
-	/// - `begin` is a pointer on the virtual memory to the beginning of the gap.
-	/// This pointer must be page-aligned.
+	/// - `begin` is a pointer on the virtual memory to the beginning of the gap. This pointer must
+	///   be page-aligned.
 	/// - `size` is the size of the gap in pages.
 	pub fn new(begin: *const c_void, size: NonZeroUsize) -> Self {
 		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));

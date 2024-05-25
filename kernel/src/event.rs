@@ -92,8 +92,8 @@ pub enum CallbackResult {
 ///
 /// Arguments:
 /// - `id` is the id of the interrupt.
-/// - `code` is an optional code associated with the interrupt. If no code is given, the value
-/// is `0`.
+/// - `code` is an optional code associated with the interrupt. If no code is given, the value is
+///   `0`.
 /// - `regs` the values of the registers when the interruption was triggered.
 /// - `ring` tells the ring at which the code was running.
 ///
@@ -185,10 +185,9 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 /// This function is called whenever an interruption is triggered.
 ///
 /// Arguments:
-/// - `id` is the identifier of the interrupt type
-/// This value is architecture-dependent
-/// - `code` is an optional code associated with the interrupt
-/// If the interrupt type doesn't have a code, the value is `0`
+/// - `id` is the identifier of the interrupt type This value is architecture-dependent
+/// - `code` is an optional code associated with the interrupt If the interrupt type doesn't have a
+///   code, the value is `0`
 /// - `regs` is the state of the registers at the moment of the interrupt
 /// - `ring` tells the ring at which the code was running
 #[no_mangle]

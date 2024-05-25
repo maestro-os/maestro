@@ -27,9 +27,9 @@
 //!
 //! Thus, devices are initialized in stages:
 //! - **stage 1**: files management is not yet initialized, which means device files are not
-//! created when devices are registered
+//!   created when devices are registered
 //! - **stage 2**: files management is initialized, device files can be created. When switching to
-//! that stage, the files of all device that are already registered are created
+//!   that stage, the files of all device that are already registered are created
 
 pub mod bar;
 pub mod bus;
@@ -120,8 +120,7 @@ pub trait DeviceHandle: IO {
 	/// Performs an ioctl operation on the device.
 	///
 	/// Arguments:
-	/// - `mem_space` is the memory space on which pointers are to be
-	/// dereferenced.
+	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
 	fn ioctl(

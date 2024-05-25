@@ -269,8 +269,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 ///
 /// Arguments:
 /// - `magic` is the magic number passed by Multiboot.
-/// - `multiboot_ptr` is the pointer to the Multiboot booting information
-/// structure.
+/// - `multiboot_ptr` is the pointer to the Multiboot booting information structure.
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_main_inner(magic, multiboot_ptr);

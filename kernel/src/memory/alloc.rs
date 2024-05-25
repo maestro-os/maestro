@@ -23,12 +23,11 @@
 //!
 //! The following zones exist:
 //! - Kernel: Memory to be allocated by the kernel, shared across processes. This zone requires
-//! that every frame of virtual memory are associated with a unique physical
-//! frame.
+//!   that every frame of virtual memory are associated with a unique physical frame.
 //! - MMIO: Memory used for Memory Mapped I/O. This zones requires only virtual memory, thus it
-//! overlaps with the user zone which allocates the physical memory.
+//!   overlaps with the user zone which allocates the physical memory.
 //! - User: Memory used for userspace mappings. This zone doesn't require virtual memory to
-//! correspond with the physical memory, thus it can be located outside the kernelspace.
+//!   correspond with the physical memory, thus it can be located outside the kernelspace.
 
 use crate::{
 	memory,

@@ -20,8 +20,8 @@
 //!
 //! A clock is an object that gives the current time. A distinction has to be made between:
 //! - Hardware Clocks, which are physical components (from the point of view of the kernel) which
-//! give the ability to measure the passage of time, notably by producing interruptions at a given
-//! frequency.
+//!   give the ability to measure the passage of time, notably by producing interruptions at a
+//!   given frequency.
 //! - Software Clocks, which maintain a timestamp based on hardware clocks.
 
 pub mod clock;

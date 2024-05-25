@@ -63,10 +63,9 @@ impl MemMapping {
 	/// Creates a new instance.
 	///
 	/// Arguments:
-	/// - `begin` is the pointer on the virtual memory to the beginning of the
-	/// mapping. This pointer must be page-aligned.
-	/// - `size` is the size of the mapping in pages. The size must be greater
-	/// than 0.
+	/// - `begin` is the pointer on the virtual memory to the beginning of the mapping. This
+	///   pointer must be page-aligned.
+	/// - `size` is the size of the mapping in pages. The size must be greater than 0.
 	/// - `flags` the mapping's flags.
 	/// - `file` is the open file the mapping points to, with an offset in it. If `None`, the
 	///   mapping doesn't point to any file.

@@ -401,7 +401,7 @@ pub fn get_file_from_path(
 /// - `parent` is the parent directory of the file to be created
 /// - `name` is the name of the file to be created
 /// - `ap` is access profile to check permissions. This also determines the UID and GID to be used
-/// for the created file
+///   for the created file
 /// - `stat` is the status of the newly created file
 ///
 /// From the provided `stat`, the following fields are ignored:

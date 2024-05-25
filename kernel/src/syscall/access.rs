@@ -45,8 +45,7 @@ const X_OK: i32 = 1;
 /// Performs the access operation.
 ///
 /// Arguments:
-/// - `dirfd` is the file descriptor of the directory relative to which the check
-/// is done.
+/// - `dirfd` is the file descriptor of the directory relative to which the check is done.
 /// - `pathname` is the path to the file.
 /// - `mode` is a bitfield of access permissions to check.
 /// - `flags` is a set of flags.

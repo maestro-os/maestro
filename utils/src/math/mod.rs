@@ -55,8 +55,8 @@ where
 /// Pseudo random number generation based on linear congruential generator.
 ///
 /// Arguments:
-/// - `x` is the value to compute the next number from.
-/// It should either be a seed, or the previous value returned from this function.
+/// - `x` is the value to compute the next number from. It should either be a seed, or the previous
+///   value returned from this function.
 /// - `a`, `c` and `m` are hyperparameters use as follows: (a * x + c) % m.
 pub fn pseudo_rand(x: u32, a: u32, c: u32, m: u32) -> u32 {
 	a.wrapping_mul(x).wrapping_add(c) % m

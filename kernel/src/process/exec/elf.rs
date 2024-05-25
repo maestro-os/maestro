@@ -309,9 +309,9 @@ impl<'s> ELFExecutor<'s> {
 
 	/// Returns two values:
 	/// - The size in bytes of the buffer to store the arguments and environment variables, padding
-	/// included.
+	///   included.
 	/// - The required size in bytes for the data to be written on the stack before the program
-	/// starts.
+	///   starts.
 	fn get_init_stack_size(
 		argv: &[String],
 		envp: &[String],

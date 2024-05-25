@@ -58,7 +58,7 @@ impl<T: ?Sized> ArcInner<T> {
 	///
 	/// Arguments:
 	/// - `ptr` is a pointer to the data to place in the `Arc`. This is used as a helper for memory
-	/// allocation
+	///   allocation
 	/// - `init` is the function to initialize the object to place in the `Arc`
 	unsafe fn new<I: FnOnce(&mut T)>(ptr: *const T, init: I) -> AllocResult<NonNull<Self>> {
 		// Allocate and make usable
