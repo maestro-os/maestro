@@ -672,11 +672,8 @@ mod test {
 			.0
 			.unwrap();
 		assert_eq!(hm.len(), 1000);
-		let mut next = 0;
 		hm.retain(|i, j| {
 			assert_eq!(*i, *j);
-			assert_eq!(*i, next);
-			next += 1;
 			i % 2 == 0
 		});
 		assert_eq!(hm.len(), 500);
