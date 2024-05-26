@@ -24,8 +24,10 @@ use crate::{
 	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
 	device::storage::StorageInterface,
 };
-use core::{mem::size_of, slice};
+use core::mem::size_of;
+use macros::AnyRepr;
 use utils::{
+	bytes::from_bytes,
 	collections::vec::Vec,
 	errno,
 	errno::{CollectResult, EResult},
@@ -65,8 +67,8 @@ fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {
 	}
 }
 
-/// Structure representing a GPT entry.
-#[derive(Clone)]
+/// A GPT entry.
+#[derive(AnyRepr, Clone)]
 #[repr(C, packed)]
 struct GPTEntry {
 	/// The partition type's GUID.
@@ -144,8 +146,8 @@ impl GPTEntry {
 	}
 }
 
-/// Structure representing the GPT header.
-#[derive(Clone)]
+/// A GPT header.
+#[derive(AnyRepr, Clone)]
 #[repr(C, packed)]
 pub struct Gpt {
 	/// The header's signature.
@@ -183,26 +185,22 @@ impl Gpt {
 	/// the given LBA `lba`.
 	///
 	/// If the header is invalid, the function returns an error.
-	fn read_hdr_struct(storage: &mut dyn StorageInterface, lba: i64) -> EResult<Self> {
+	fn read_hdr(storage: &mut dyn StorageInterface, lba: i64) -> EResult<Self> {
 		let block_size = storage.get_block_size().get() as _;
 		let blocks_count = storage.get_blocks_count();
-
 		if size_of::<Gpt>() > block_size {
 			return Err(errno!(EINVAL));
 		}
-
-		// Reading the first block
-		let mut buff = vec![0; block_size]?;
+		// Read the first block
+		let mut buf = vec![0; block_size]?;
 		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		storage.read(buff.as_mut_slice(), lba, 1)?;
-
-		// Valid because the header's size doesn't exceeds the size of the block
-		let gpt_hdr = unsafe { &*(buff.as_ptr() as *const Gpt) };
+		storage.read(&mut buf, lba, 1)?;
+		// Validate
+		let gpt_hdr = from_bytes::<Self>(&buf).unwrap().clone();
 		if !gpt_hdr.is_valid() {
 			return Err(errno!(EINVAL));
 		}
-
-		Ok(gpt_hdr.clone())
+		Ok(gpt_hdr)
 	}
 
 	/// Tells whether the header is valid.
@@ -240,19 +238,14 @@ impl Gpt {
 		let blocks_count = storage.get_blocks_count();
 		let entries_start =
 			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+		let mut buf = vec![0; size_of::<GPTEntry>()]?;
 		let entries = (0..self.entries_number)
 			// Read entry
 			.map(|i| {
 				let off = (entries_start * block_size.get()) + (i as u64 * self.entry_size as u64);
-				let mut entry = GPTEntry::default();
-				let slice: &mut [u8] = unsafe {
-					slice::from_raw_parts_mut(
-						&mut entry as *mut _ as *mut _,
-						size_of::<GPTEntry>(),
-					)
-				};
-				storage.read_bytes(slice, off)?;
-				Ok(entry)
+				storage.read_bytes(&mut buf, off)?;
+				let ent = from_bytes::<GPTEntry>(&buf).unwrap().clone();
+				Ok(ent)
 			})
 			// Ignore empty entries
 			.filter_map(|entry: EResult<GPTEntry>| {
@@ -280,12 +273,12 @@ impl Table for Gpt {
 	fn read(storage: &mut dyn StorageInterface) -> EResult<Option<Self>> {
 		let blocks_count = storage.get_blocks_count();
 
-		let main_hdr = match Self::read_hdr_struct(storage, 1) {
+		let main_hdr = match Self::read_hdr(storage, 1) {
 			Ok(hdr) => hdr,
 			Err(e) if e == errno!(EINVAL) => return Ok(None),
 			Err(e) => return Err(e),
 		};
-		let alternate_hdr = Self::read_hdr_struct(storage, main_hdr.alternate_hdr_lba)?;
+		let alternate_hdr = Self::read_hdr(storage, main_hdr.alternate_hdr_lba)?;
 
 		let main_entries = main_hdr.get_entries(storage)?;
 		let alternate_entries = alternate_hdr.get_entries(storage)?;

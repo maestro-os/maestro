@@ -28,7 +28,7 @@ use core::{
 	fmt::{Display, Error, Formatter},
 };
 
-/// Structure representing a version.
+/// A version.
 #[derive(Clone, Copy, Debug, Eq)]
 pub struct Version {
 	/// The major version
@@ -121,7 +121,7 @@ impl Display for Version {
 	}
 }
 
-/// Structure representing a dependency of a module.
+/// A dependency of a module.
 #[derive(Clone)]
 pub struct Dependency {
 	/// The name of the module

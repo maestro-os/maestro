@@ -21,7 +21,7 @@
 //! ELF structure of the kernel.
 
 use crate::memory;
-use core::{ffi::c_void, mem::ManuallyDrop, ptr::null, slice};
+use core::{ffi::c_void, ptr::null, slice};
 use utils::lock::once::OnceInit;
 
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
@@ -58,83 +58,6 @@ pub const MEMORY_BADRAM: u32 = 5;
 pub const FRAMEBUFFER_TYPE_INDEXED: u32 = 0;
 pub const FRAMEBUFFER_TYPE_RGB: u32 = 1;
 pub const FRAMEBUFFER_TYPE_EGA_TEXT: u32 = 2;
-
-#[repr(C)]
-struct HeaderTag {
-	type_: u16,
-	flags: u16,
-	size: u32,
-}
-
-#[repr(C)]
-struct HeaderTagInformationRequest {
-	type_: u16,
-	flags: u16,
-	size: u32,
-	requests: [u32; 0],
-}
-
-#[repr(C)]
-struct HeaderTagAddress {
-	type_: u16,
-	flags: u16,
-	size: u32,
-	header_addr: u32,
-	load_addr: u32,
-	load_end_addr: u32,
-	bss_end_addr: u32,
-}
-
-#[repr(C)]
-struct HeaderTagEntryAddress {
-	type_: u16,
-	flags: u16,
-	size: u32,
-	entry_addr: u32,
-}
-
-#[repr(C)]
-struct HeaderTagConsoleFlags {
-	type_: u16,
-	flags: u16,
-	size: u32,
-	console_flags: u32,
-}
-
-#[repr(C)]
-struct HeaderTagFramebuffer {
-	type_: u16,
-	flags: u16,
-	size: u32,
-	width: u32,
-	height: u32,
-	depth: u32,
-}
-
-#[repr(C)]
-struct HeaderTagModuleAlign {
-	type_: u16,
-	flags: u16,
-	size: u32,
-}
-
-#[repr(C)]
-struct HeaderTagRelocatable {
-	type_: u16,
-	flags: u16,
-	size: u32,
-	min_addr: u32,
-	max_addr: u32,
-	align: u32,
-	preference: u32,
-}
-
-#[repr(C)]
-struct Color {
-	red: u8,
-	green: u8,
-	blue: u8,
-}
 
 #[repr(C)]
 pub struct MmapEntry {
@@ -175,87 +98,12 @@ struct TagBasicMeminfo {
 }
 
 #[repr(C)]
-struct TagBootdev {
-	type_: u32,
-	size: u32,
-	biosdev: u32,
-	slice: u32,
-	part: u32,
-}
-
-#[repr(C)]
 struct TagMmap {
 	type_: u32,
 	size: u32,
 	entry_size: u32,
 	entry_version: u32,
 	entries: [MmapEntry; 0],
-}
-
-#[repr(C)]
-struct VBEInfoBlock {
-	external_specification: [u8; 512],
-}
-
-#[repr(C)]
-struct VBEModeInfoBlock {
-	external_specification: [u8; 256],
-}
-
-#[repr(C)]
-struct TagVBE {
-	type_: u32,
-	size: u32,
-
-	vbe_mode: u16,
-	vbe_interface_seg: u16,
-	vbe_interface_off: u16,
-	vbe_interface_len: u16,
-
-	vbe_control_info: VBEInfoBlock,
-	vbe_mode_info: VBEModeInfoBlock,
-}
-
-#[repr(C)]
-struct TagFramebufferCommon {
-	type_: u32,
-	size: u32,
-
-	framebuffer_addr: u64,
-	framebuffer_pitch: u32,
-	framebuffer_width: u32,
-	framebuffer_height: u32,
-	framebuffer_bpp: u8,
-	framebuffer_type: u8,
-	reserved: u16,
-}
-
-#[repr(C)]
-struct TagFramebufferUnionF0 {
-	framebuffer_palette_num_colors: u16,
-	framebuffer_palette: [Color; 0],
-}
-
-#[repr(C)]
-struct TagFramebufferUnionF1 {
-	framebuffer_red_field_position: u8,
-	framebuffer_red_mask_size: u8,
-	framebuffer_green_field_position: u8,
-	framebuffer_green_mask_size: u8,
-	framebuffer_blue_field_position: u8,
-	framebuffer_blue_mask_size: u8,
-}
-
-#[repr(C)]
-union TagFramebufferUnion {
-	f0: ManuallyDrop<TagFramebufferUnionF0>,
-	f1: ManuallyDrop<TagFramebufferUnionF1>,
-}
-
-#[repr(C)]
-struct TagFramebuffer {
-	common: TagFramebufferCommon,
-	u: TagFramebufferUnion,
 }
 
 #[repr(C)]
@@ -266,96 +114,6 @@ struct TagELFSections {
 	entsize: u32,
 	shndx: u32,
 	sections: [u8; 0],
-}
-
-#[repr(C)]
-struct TagAPM {
-	type_: u32,
-	size: u32,
-	version: u16,
-	cseg: u16,
-	offset: u32,
-	cseg_16: u16,
-	dseg: u16,
-	flags: u16,
-	cseg_len: u16,
-	cseg_16_len: u16,
-	dseg_len: u16,
-}
-
-#[repr(C)]
-struct TagEFI32 {
-	type_: u32,
-	size: u32,
-	pointer: u32,
-}
-
-#[repr(C)]
-struct TagEFI64 {
-	type_: u32,
-	size: u32,
-	pointer: u64,
-}
-
-#[repr(C)]
-struct TagSMBIOS {
-	type_: u32,
-	size: u32,
-	major: u8,
-	minor: u8,
-	reserved: [u8; 6],
-	tables: [u8; 0],
-}
-
-#[repr(C)]
-struct TagOldACPI {
-	type_: u32,
-	size: u32,
-	rsdp: [u8; 0],
-}
-
-#[repr(C)]
-struct TagNewACPI {
-	type_: u32,
-	size: u32,
-	rsdp: [u8; 0],
-}
-
-#[repr(C)]
-struct TagNetwork {
-	type_: u32,
-	size: u32,
-	dhcpack: [u8; 0],
-}
-
-#[repr(C)]
-struct TagEFIMmap {
-	type_: u32,
-	size: u32,
-	descr_size: u32,
-	descr_vers: u32,
-	efi_mmap: [u8; 0],
-}
-
-#[repr(C)]
-struct TagEFI32_IH {
-	type_: u32,
-	size: u32,
-	pointer: u32,
-}
-
-#[repr(C)]
-struct TagEFI64_IH {
-	type_: u32,
-	size: u32,
-	pointer: u64,
-}
-
-#[repr(C)]
-struct TagLoadBaseAddr {
-	type_: u32,
-	size: u32,
-	load_base_addr: u32,
 }
 
 impl MmapEntry {
@@ -456,13 +214,11 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 			let ptr = memory::kern_to_virt(t.string.as_ptr());
 			boot_info.cmdline = Some(utils::str_from_ptr(ptr));
 		},
-
 		TAG_TYPE_BOOT_LOADER_NAME => unsafe {
 			let t: &TagString = reinterpret_tag(tag);
 			let ptr = memory::kern_to_virt(t.string.as_ptr());
 			boot_info.loader_name = Some(utils::str_from_ptr(ptr));
 		},
-
 		TAG_TYPE_MODULE => {
 			let data = unsafe {
 				let t: &TagModule = reinterpret_tag(tag);
@@ -472,20 +228,17 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 			};
 			boot_info.initramfs = (!data.is_empty()).then_some(data);
 		}
-
 		TAG_TYPE_BASIC_MEMINFO => {
 			let t: &TagBasicMeminfo = unsafe { reinterpret_tag(tag) };
 			boot_info.mem_lower = t.mem_lower;
 			boot_info.mem_upper = t.mem_upper;
 		}
-
 		TAG_TYPE_MMAP => {
 			let t: &TagMmap = unsafe { reinterpret_tag(tag) };
 			boot_info.memory_maps_size = t.size as usize;
 			boot_info.memory_maps_entry_size = t.entry_size as usize;
 			boot_info.memory_maps = t.entries.as_ptr();
 		}
-
 		TAG_TYPE_ELF_SECTIONS => {
 			let t: &TagELFSections = unsafe { reinterpret_tag(tag) };
 			boot_info.elf_num = t.num;
@@ -493,7 +246,6 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 			boot_info.elf_shndx = t.shndx;
 			boot_info.elf_sections = t.sections.as_ptr() as _;
 		}
-
 		_ => {}
 	}
 }

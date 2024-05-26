@@ -38,11 +38,9 @@ use syn::{parse_macro_input, DeriveInput};
 pub fn any_repr(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
 	let ident = input.ident;
-
 	if !has_repr_c(&input.attrs) {
 		panic!("{ident} is not suitable for the trait `AnyRepr`");
 	}
-
 	let toks = quote! {
 		unsafe impl utils::bytes::AnyRepr for #ident {}
 	};

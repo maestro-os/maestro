@@ -52,12 +52,12 @@ use utils::{
 };
 use version::{Dependency, Version};
 
-/// The magic number that must be present inside of a module.
+/// The magic number that must be present inside a module.
 pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
 
 /// Macro used to declare a kernel module.
 ///
-/// This macro must be used only inside of a kernel module.
+/// This macro must be used only inside a kernel module.
 ///
 /// The argument is the list of dependencies ([`Dependency`]) of the module.
 ///
@@ -104,7 +104,7 @@ macro_rules! module {
 }
 
 // TODO keep offsets of name, version and dependencies instead of allocating
-/// Structure representing a kernel module.
+/// A loaded kernel module.
 pub struct Module {
 	/// The module's name.
 	name: String,
@@ -196,15 +196,12 @@ impl Module {
 			crate::println!("Invalid ELF file as loaded module");
 			e
 		})?;
-
 		// Allocate memory for the module
 		let mem_size = Self::get_load_size(&parser);
 		let mut mem = vec![0; mem_size]?;
-
 		// The base virtual address at which the module is loaded
 		let load_base = mem.as_ptr();
-
-		// Copying the module's image
+		// Copy the module's image
 		parser
 			.iter_segments()
 			.filter(|seg| seg.p_type != elf::PT_NULL)
@@ -212,19 +209,16 @@ impl Module {
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;
 				let mem_begin = seg.p_vaddr as usize;
 				let image_begin = seg.p_offset as usize;
-				mem.as_mut_slice()[mem_begin..(mem_begin + len)]
+				mem[mem_begin..(mem_begin + len)]
 					.copy_from_slice(&image[image_begin..(image_begin + len)]);
 			});
-
 		// Closure returning a symbol
 		let get_sym = |sym_section: u32, sym: u32| {
 			let section = parser.get_section_by_index(sym_section as _)?;
 			let sym = parser.get_symbol_by_index(section, sym as _)?;
-
 			if !sym.is_defined() {
 				let strtab = parser.get_section_by_index(section.sh_link as _)?;
 				let name = parser.get_symbol_name(strtab, sym)?;
-
 				// Look inside the kernel image or other modules
 				let Some(other_sym) = Self::resolve_symbol(name) else {
 					crate::println!(
@@ -238,7 +232,6 @@ impl Module {
 				Some(load_base as u32 + sym.st_value)
 			}
 		};
-
 		let got_sym = parser.get_symbol_by_name(GOT_SYM);
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel::<ELF32Rel>(section) {
@@ -250,47 +243,38 @@ impl Module {
 					.map_err(|_| errno!(EINVAL))?;
 			}
 		}
-
-		// Checking the magic number
-		let magic = Self::get_attribute::<u64>(mem.as_slice(), &parser, b"MOD_MAGIC").ok_or_else(
-			|| {
-				crate::println!("Missing `MOD_MAGIC` symbol in module image");
-				errno!(EINVAL)
-			},
-		)?;
+		// Check the magic number
+		let magic = Self::get_attribute::<u64>(&mem, &parser, b"MOD_MAGIC").ok_or_else(|| {
+			crate::println!("Missing `MOD_MAGIC` symbol in module image");
+			errno!(EINVAL)
+		})?;
 		if *magic != MOD_MAGIC {
 			crate::println!("Module has an invalid magic number");
 			return Err(errno!(EINVAL));
 		}
-
-		// Getting the module's name
-		let name = Self::get_attribute::<&'static str>(mem.as_slice(), &parser, b"MOD_NAME")
-			.ok_or_else(|| {
+		// Get the module's name
+		let name =
+			Self::get_attribute::<&'static str>(&mem, &parser, b"MOD_NAME").ok_or_else(|| {
 				crate::println!("Missing `MOD_NAME` symbol in module image");
 				errno!(EINVAL)
 			})?;
 		let name = String::try_from(*name)?;
-
-		// Getting the module's version
-		let version = Self::get_attribute::<Version>(mem.as_slice(), &parser, b"MOD_VERSION")
-			.ok_or_else(|| {
+		// Get the module's version
+		let version =
+			Self::get_attribute::<Version>(&mem, &parser, b"MOD_VERSION").ok_or_else(|| {
 				crate::println!("Missing `MOD_VERSION` symbol in module image");
 				errno!(EINVAL)
 			})?;
-
-		// Getting the module's dependencies
-		let deps = Self::get_array_attribute::<Dependency>(mem.as_slice(), &parser, b"MOD_DEPS")
+		// Get the module's dependencies
+		let deps = Self::get_array_attribute::<Dependency>(&mem, &parser, b"MOD_DEPS")
 			.ok_or_else(|| {
-			crate::println!("Missing `MOD_DEPS` symbol in module image");
-			errno!(EINVAL)
-		})?;
+				crate::println!("Missing `MOD_DEPS` symbol in module image");
+				errno!(EINVAL)
+			})?;
 		let deps = Vec::from_slice(deps)?;
-
-		crate::println!("Loading module `{name}` version `{version}`");
-
+		crate::println!("Load module `{name}` version `{version}`");
 		// TODO Check that all dependencies are loaded
-
-		// Initializing module
+		// Initialize module
 		let init = parser.get_symbol_by_name(b"init").ok_or_else(|| {
 			crate::println!("Missing `init` symbol in module image");
 			errno!(EINVAL)
@@ -298,20 +282,18 @@ impl Module {
 		let ok = unsafe {
 			let ptr = mem.as_ptr().add(init.st_value as usize);
 			let func: extern "C" fn() -> bool = transmute(ptr);
-			(func)()
+			func()
 		};
 		if !ok {
 			crate::println!("Failed to load module `{name}`");
 			return Err(errno!(EINVAL));
 		}
-
-		// Retrieving destructor function
+		// Retrieve destructor function
 		let fini = parser.get_symbol_by_name(b"fini").map(|fini| unsafe {
 			let ptr = mem.as_ptr().add(fini.st_value as usize);
 			let func: extern "C" fn() = transmute(ptr);
 			func
 		});
-
 		Ok(Self {
 			name,
 			version: *version,
@@ -341,7 +323,6 @@ impl Drop for Module {
 		if let Some(fini) = self.fini {
 			fini();
 		}
-
 		crate::println!("Unloaded module `{}`", self.name);
 	}
 }

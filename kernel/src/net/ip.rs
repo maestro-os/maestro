@@ -20,8 +20,9 @@
 
 use super::{buff::BuffList, osi::Layer};
 use crate::crypto::checksum;
-use core::{mem::size_of, slice};
-use utils::{boxed::Box, errno::EResult};
+use core::mem::size_of;
+use macros::AnyRepr;
+use utils::{boxed::Box, bytes::as_bytes, errno::EResult};
 
 /// The default TTL value.
 const DEFAULT_TTL: u8 = 128;
@@ -37,6 +38,7 @@ pub const PROTO_TCP: u8 = 0x06;
 pub const PROTO_UDP: u8 = 0x11;
 
 /// The IPv4 header (RFC 791).
+#[derive(AnyRepr)]
 #[repr(C, packed)]
 struct IPv4Header {
 	/// The version of the header with the IHL (header length).
@@ -69,18 +71,14 @@ impl IPv4Header {
 	///
 	/// If correct, the function returns `true`.
 	pub fn check_checksum(&self) -> bool {
-		let slice =
-			unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>()) };
-
+		let slice = as_bytes(self);
 		checksum::compute_rfc1071(slice) == 0
 	}
 
 	/// Computes the checksum of the header and writes it into the appropriate field.
 	pub fn compute_checksum(&mut self) {
 		self.hdr_checksum = 0;
-
-		let slice =
-			unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of::<Self>()) };
+		let slice = as_bytes(self);
 		self.hdr_checksum = checksum::compute_rfc1071(slice);
 	}
 }
@@ -123,7 +121,7 @@ impl Layer for IPv4Layer {
 		let dscp = 0; // TODO
 		let ecn = 0; // TODO
 
-		// TODO check endianess
+		// TODO check endianness
 		let mut hdr = IPv4Header {
 			version_ihl: 4 | (((hdr_len / 4) as u8) << 4),
 			type_of_service: (dscp << 2) | ecn,
@@ -141,11 +139,7 @@ impl Layer for IPv4Layer {
 			dst_addr: self.dst_addr,
 		};
 		hdr.compute_checksum();
-
-		let hdr_buff = unsafe {
-			slice::from_raw_parts::<u8>(&hdr as *const _ as *const _, size_of::<IPv4Header>())
-		};
-
+		let hdr_buff = as_bytes(&hdr);
 		buff.push_front(hdr_buff.into());
 		next(buff)
 	}
