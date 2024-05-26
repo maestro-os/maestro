@@ -19,6 +19,7 @@
 //! A hashmap is a data structure that stores key/value pairs into buckets and
 //! uses the hash of the key to quickly get the bucket storing the value.
 
+pub mod hash;
 mod raw;
 
 use crate::{
@@ -34,34 +35,12 @@ use core::{
 	iter::{FusedIterator, TrustedLen},
 	marker::PhantomData,
 	mem,
-	mem::size_of_val,
 	ops::{BitAnd, Index, IndexMut},
 	ptr,
 	simd::{cmp::SimdPartialEq, u8x16, Mask},
 };
+use hash::FxHasher;
 use raw::Slot;
-
-/// Bitwise XOR hasher.
-#[derive(Default)]
-pub struct XORHasher {
-	/// The currently stored value.
-	value: u64,
-	/// The offset byte at which the next XOR operation shall be performed.
-	off: u8,
-}
-
-impl Hasher for XORHasher {
-	fn finish(&self) -> u64 {
-		self.value
-	}
-
-	fn write(&mut self, bytes: &[u8]) {
-		for b in bytes {
-			self.value ^= (*b as u64) << (self.off * 8);
-			self.off = (self.off + 1) % size_of_val(&self.value) as u8;
-		}
-	}
-}
 
 /// Returns the hash for the given key.
 pub fn hash<K: ?Sized + Hash, H: Default + Hasher>(key: &K) -> u64 {
@@ -154,7 +133,7 @@ impl<'h, K: Eq + Hash, V, H: Default + Hasher> Entry<'h, K, V, H> {
 /// The implementation of the hash map.
 ///
 /// Underneath, it is an implementation of the [SwissTable](https://abseil.io/about/design/swisstables).
-pub struct HashMap<K: Eq + Hash, V, H: Default + Hasher = XORHasher> {
+pub struct HashMap<K: Eq + Hash, V, H: Default + Hasher = FxHasher> {
 	/// The inner table.
 	inner: RawTable<K, V>,
 	/// The number of elements in the map.
