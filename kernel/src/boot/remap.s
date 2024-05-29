@@ -102,7 +102,7 @@ pse_enable:
 	pop %ebp
 	ret
 
-.section .boot.data, "aw", @progbits
+.section .boot.data, "aw"
 
 /*
  * The page directory used for kernel remapping.

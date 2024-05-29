@@ -101,7 +101,7 @@ multiboot_entry:
 
 
 
-.section .boot.stack, "aw", @progbits
+.section .boot.stack, "aw"
 
 .align 8
 

@@ -28,8 +28,6 @@
 .type context_switch, @function
 .type context_switch_kernel, @function
 
-.extern end_of_interrupt
-
 /*
  * This function switches to a userspace context.
  */
