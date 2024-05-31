@@ -22,18 +22,7 @@
 .global GDT_USER_DS
 .global GDT_TSS
 
-.global GDT_PHYS_PTR
-.global GDT_DESC_PHYS_PTR
-.global GDT_VIRT_PTR
 .global GDT_DESC_VIRT_PTR
-
-.global gdt_start
-.global gdt_kernel_code
-.global gdt_kernel_data
-.global gdt_user_code
-.global gdt_user_data
-.global gdt_tss
-.global gdt
 
 .global setup_gdt
 .global gdt_move
@@ -41,6 +30,82 @@
 .type setup_gdt, @function
 .type gdt_copy, @function
 .type gdt_move, @function
+
+.section .boot.data, "aw"
+
+.align 8
+
+/*
+ * The beginning of the GDT.
+ * Every segment covers the whole memory space.
+ */
+gdt_start:
+	.quad 0
+
+/*
+ * Segment for the kernel code.
+ */
+gdt_kernel_code:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b10011010
+	.byte 0b11001111
+	.byte 0
+
+/*
+ * Segment for the kernel data.
+ */
+gdt_kernel_data:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b10010010
+	.byte 0b11001111
+	.byte 0
+
+/*
+ * Segment for the user code.
+ */
+gdt_user_code:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b11111010
+	.byte 0b11001111
+	.byte 0
+
+/*
+ * Segment for the user data.
+ */
+gdt_user_data:
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0b11110010
+	.byte 0b11001111
+	.byte 0
+
+/*
+ * Reserved space for the Task State Segment.
+ */
+gdt_tss:
+	.quad 0
+
+/*
+ * TLS GDT entries.
+ */
+gdt_tls:
+	.quad 0
+	.quad 0
+	.quad 0
+
+/*
+ * The GDT descriptor.
+ */
+gdt:
+	.word gdt - gdt_start - 1
+	.long gdt_start
 
 /*
  * Offsets into the GDT for each segment.
@@ -124,81 +189,3 @@ gdt_move:
 	lgdt GDT_DESC_VIRT_PTR
 
 	ret
-
-
-
-.section .boot.data, "aw"
-
-.align 8
-
-/*
- * The beginning of the GDT.
- * Every segment covers the whole memory space.
- */
-gdt_start:
-	.quad 0
-
-/*
- * Segment for the kernel code.
- */
-gdt_kernel_code:
-	.word 0xffff
-	.word 0
-	.byte 0
-	.byte 0b10011010
-	.byte 0b11001111
-	.byte 0
-
-/*
- * Segment for the kernel data.
- */
-gdt_kernel_data:
-	.word 0xffff
-	.word 0
-	.byte 0
-	.byte 0b10010010
-	.byte 0b11001111
-	.byte 0
-
-/*
- * Segment for the user code.
- */
-gdt_user_code:
-	.word 0xffff
-	.word 0
-	.byte 0
-	.byte 0b11111010
-	.byte 0b11001111
-	.byte 0
-
-/*
- * Segment for the user data.
- */
-gdt_user_data:
-	.word 0xffff
-	.word 0
-	.byte 0
-	.byte 0b11110010
-	.byte 0b11001111
-	.byte 0
-
-/*
- * Reserved space for the Task State Segment.
- */
-gdt_tss:
-	.quad 0
-
-/*
- * TLS GDT entries.
- */
-gdt_tls:
-	.quad 0
-	.quad 0
-	.quad 0
-
-/*
- * The GDT descriptor.
- */
-gdt:
-	.word gdt - gdt_start - 1
-	.long gdt_start
