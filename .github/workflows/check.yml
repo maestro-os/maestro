@@ -16,58 +16,6 @@ jobs:
         run: |
           cp default.build-config.toml build-config.toml
           cargo clippy --all-features --tests
-  build:
-    runs-on: [self-hosted, linux]
-    needs: clippy
-    steps:
-      - name: Debug
-        working-directory: ./kernel
-        run: ci/build.sh
-      - name: Check Multiboot2 for x86 (debug)
-        working-directory: ./kernel
-        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
-      - name: Release
-        working-directory: ./kernel
-        env:
-          CARGOFLAGS: --release
-        run: ci/build.sh
-      - name: Check Multiboot2 for x86 (release)
-        working-directory: ./kernel
-        run: grub-file --is-x86-multiboot2 target/x86/release/maestro
-  miri:
-    runs-on: [self-hosted, linux]
-    needs: build
-    steps:
-      - name: Utils
-        working-directory: ./utils
-        env:
-          MIRIFLAGS: -Zmiri-disable-stacked-borrows
-        run: cargo miri test
-        timeout-minutes: 10
-  selftest:
-    runs-on: [self-hosted, linux]
-    needs: build
-    steps:
-      - name: Run utils tests
-        working-directory: ./utils
-        run: cargo test
-        timeout-minutes: 10
-      - name: Run kernel tests
-        working-directory: ./kernel
-        run: ci/selftest.sh
-        timeout-minutes: 10
-  strace:
-    runs-on: [self-hosted, linux]
-    needs: build
-    steps:
-      - name: Build
-        working-directory: ./kernel
-        env:
-          CARGOFLAGS: --features strace
-        run: ci/build.sh
-      - name: Check Multiboot2 for x86
-        working-directory: ./kernel
-        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   format:
     runs-on: [self-hosted, linux]
     needs: clippy
@@ -90,3 +38,68 @@ jobs:
       - name: Build references
         working-directory: ./kernel
         run: ci/doc.sh
+  build:
+    runs-on: [self-hosted, linux]
+    needs: clippy
+    steps:
+      - name: Debug
+        working-directory: ./kernel
+        run: ci/build.sh
+      - name: Check Multiboot2 for x86 (debug)
+        working-directory: ./kernel
+        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
+      - name: Release
+        working-directory: ./kernel
+        env:
+          CARGOFLAGS: --release
+        run: ci/build.sh
+      - name: Check Multiboot2 for x86 (release)
+        working-directory: ./kernel
+        run: grub-file --is-x86-multiboot2 target/x86/release/maestro
+  strace:
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - name: Build
+        working-directory: ./kernel
+        env:
+          CARGOFLAGS: --features strace
+        run: ci/build.sh
+      - name: Check Multiboot2 for x86
+        working-directory: ./kernel
+        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
+  miri:
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - name: Utils
+        working-directory: ./utils
+        env:
+          MIRIFLAGS: -Zmiri-disable-stacked-borrows
+        run: cargo miri test
+        timeout-minutes: 10
+  selftest:
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - name: Run utils tests
+        working-directory: ./utils
+        run: cargo test
+        timeout-minutes: 10
+      - name: Run kernel tests
+        working-directory: ./kernel
+        run: ci/selftest.sh
+        timeout-minutes: 10
+  inttest:
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - name: Retrieve integration tests
+        working-directory: ./kernel
+        uses: maestro-os/maestro-test/.github/workflows/build.yml@master
+      - name: Run tests
+        working-directory: ./kernel
+        run: |
+          - mv disk qemu_disk
+          - ci/inttest.sh
+        timeout-minutes: 10
