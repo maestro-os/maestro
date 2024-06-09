@@ -93,7 +93,7 @@ jobs:
   prepare-inttest:
     runs-on: [self-hosted, linux]
     needs: build
-    uses: maestro-os/maestro-test/.github/workflows/run.yml@master
+    uses: maestro-os/maestro-test/.github/workflows/fetch.yml@master
   inttest:
     runs-on: [self-hosted, linux]
     needs: prepare-inttest
