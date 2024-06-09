@@ -88,16 +88,16 @@ jobs:
         timeout-minutes: 10
       - name: Run kernel tests
         working-directory: ./kernel
-        run: ci/selftest.sh
+        run: ci/test.sh self
         timeout-minutes: 10
-  inttest:
+  prepare-inttest:
     runs-on: [self-hosted, linux]
     needs: build
-    steps:
-      - uses: maestro-os/maestro-test/.github/workflows/build.yml@master
-      - name: Run tests
-        working-directory: ./kernel
-        run: |
-          - mv ../disk qemu_disk
-          - ci/inttest.sh
-        timeout-minutes: 10
+	uses: maestro-os/maestro-test/.github/workflows/run.yml@master
+  inttest:
+    runs-on: [self-hosted, linux]
+    needs: prepare-inttest
+	steps:
+	  - name: Run
+	    working-directory: ./kernel
+		run: ci/test.sh int

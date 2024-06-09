@@ -8,13 +8,31 @@ cp default.build-config.toml build-config.toml
 sed -i 's/^qemu = false$/qemu = true/' build-config.toml
 
 rm -f serial.log
-mkfifo serial.log
 
 
 
-echo "Running integration tests..."
+echo "Running selftests..."
 
-setsid cargo run --release &
-QEMU_PID=$!
+set +e
+case $1 in
+	self)
+		cargo test --lib
+		;;
+	int)
+		cargo run
+		;;
+	*)
+		>&2 echo "Invalid tests kind"
+		exit 1
+		;;
+esac
+EXIT=$?
+set -e
 
-# TODO get and analyze output
+
+
+echo
+echo "Output:"
+cat serial.log
+
+exit $EXIT
