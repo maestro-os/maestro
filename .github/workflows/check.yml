@@ -91,7 +91,6 @@ jobs:
         run: ci/test.sh self
         timeout-minutes: 10
   prepare-inttest:
-    runs-on: [self-hosted, linux]
     needs: build
     uses: maestro-os/maestro-test/.github/workflows/fetch.yml@master
   inttest:
