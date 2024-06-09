@@ -91,8 +91,17 @@ jobs:
         run: ci/test.sh self
         timeout-minutes: 10
   prepare-inttest:
+    runs-on: [self-hosted, linux]
     needs: build
-    uses: maestro-os/maestro-test/.github/workflows/fetch.yml@master
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ./maestro-test
+      - name: Build integration tests image
+        working-directory: ./maestro-test
+        run: |
+          ./build.sh
+          mv disk ../kernel/qemu_disk
   inttest:
     runs-on: [self-hosted, linux]
     needs: prepare-inttest

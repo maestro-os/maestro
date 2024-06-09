@@ -41,10 +41,8 @@ pub fn shutdown() -> ! {
 /// Reboots the system.
 pub fn reboot() -> ! {
 	cli();
-
 	// First try: ACPI
 	// TODO Use ACPI reset to ensure everything reboots
-
 	// Second try: PS/2
 	loop {
 		let tmp = unsafe { io::inb(0x64) };
@@ -63,12 +61,9 @@ pub fn reboot() -> ! {
 	unsafe {
 		io::outb(0x64, 0xfe);
 	}
-
 	// Third try: triple fault
 	unsafe {
 		asm!("jmp 0xffff, 0");
 	}
-
-	// Giving up
-	halt();
+	unreachable!();
 }

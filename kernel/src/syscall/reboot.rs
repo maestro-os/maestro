@@ -25,25 +25,24 @@ use macros::syscall;
 use utils::{errno, errno::Errno};
 
 /// First magic number.
-const MAGIC: u32 = 0xde145e83;
+const MAGIC: c_int = 0xde145e83u32 as _;
 /// Second magic number.
-const MAGIC2: u32 = 0x40367d6e;
+const MAGIC2: c_int = 0x40367d6eu32 as _;
 
 /// Command to power off the system.
-const CMD_POWEROFF: u32 = 0;
+const CMD_POWEROFF: c_int = 0;
 /// Command to reboot the system.
-const CMD_REBOOT: u32 = 1;
+const CMD_REBOOT: c_int = 1;
 /// Command to halt the system.
-const CMD_HALT: u32 = 2;
+const CMD_HALT: c_int = 2;
 /// Command to suspend the system.
-const CMD_SUSPEND: u32 = 3;
+const CMD_SUSPEND: c_int = 3;
 
 #[syscall]
 pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> Result<i32, Errno> {
-	if (magic as u32) != MAGIC || (magic2 as u32) != MAGIC2 {
+	if magic != MAGIC || magic2 != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}
-
 	{
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -51,8 +50,19 @@ pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> R
 			return Err(errno!(EPERM));
 		}
 	}
-
-	match cmd as u32 {
+	// Debug commands: shutdown with QEMU
+	#[cfg(config_debug_qemu)]
+	{
+		use crate::selftest::qemu;
+		match cmd {
+			// success
+			-1 => qemu::exit(qemu::SUCCESS),
+			// failure
+			-2 => qemu::exit(qemu::FAILURE),
+			_ => {}
+		}
+	}
+	match cmd {
 		CMD_POWEROFF => {
 			crate::println!("Power down...");
 			power::shutdown();

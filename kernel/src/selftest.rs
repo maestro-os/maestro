@@ -26,15 +26,18 @@
 //! concern since the kernel has to be as reliable as possible.
 
 use crate::power;
-use core::any::type_name;
+use core::{
+	any::type_name,
+	sync::{atomic, atomic::AtomicBool},
+};
 
 /// Boolean value telling whether selftesting is running.
-static mut RUNNING: bool = false;
+static RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// This module contains utilities to manipulate QEMU for testing.
 #[cfg(config_debug_qemu)]
 pub mod qemu {
-	use crate::io;
+	use crate::{io, power};
 
 	/// The port used to trigger QEMU emulator exit with the given exit code.
 	const EXIT_PORT: u16 = 0xf4;
@@ -49,6 +52,8 @@ pub mod qemu {
 		unsafe {
 			io::outl(EXIT_PORT, status);
 		}
+		// halt in case exiting did not succeed for some reason
+		power::halt();
 	}
 }
 
@@ -64,10 +69,8 @@ where
 {
 	fn run(&self) {
 		let name = type_name::<T>();
-		crate::print!("test {} ... ", name);
-
+		crate::print!("test {name} ... ");
 		self();
-
 		crate::println!("ok");
 	}
 }
@@ -78,23 +81,12 @@ where
 /// possible.
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
-
-	unsafe {
-		// Safe because the function is called by only one thread
-		RUNNING = true;
-	}
-
+	RUNNING.store(true, atomic::Ordering::Relaxed);
 	for test in tests {
 		test.run();
 	}
-
-	unsafe {
-		// Safe because the function is called by only one thread
-		RUNNING = false;
-	}
-
+	RUNNING.store(false, atomic::Ordering::Relaxed);
 	crate::println!("No more tests to run");
-
 	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::SUCCESS);
 	power::halt();
@@ -102,8 +94,5 @@ pub fn runner(tests: &[&dyn Testable]) {
 
 /// Tells whether selftesting is running.
 pub fn is_running() -> bool {
-	unsafe {
-		// Safe because the function is called by only one thread
-		RUNNING
-	}
+	RUNNING.load(atomic::Ordering::Relaxed)
 }
