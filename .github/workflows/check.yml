@@ -94,12 +94,10 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: build
     steps:
-      - name: Retrieve integration tests
-        working-directory: ./kernel
-        uses: maestro-os/maestro-test/.github/workflows/build.yml@master
+      - uses: maestro-os/maestro-test/.github/workflows/build.yml@master
       - name: Run tests
         working-directory: ./kernel
         run: |
-          - mv disk qemu_disk
+          - mv ../disk qemu_disk
           - ci/inttest.sh
         timeout-minutes: 10
