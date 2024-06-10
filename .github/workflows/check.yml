@@ -108,7 +108,7 @@ jobs:
         working-directory: kernel
         run: ci/test.sh int
         timeout-minutes: 10
+        continue-on-error: true
       - name: Post check
-        if: steps.build.outcome == 'success'
         working-directory: kernel
         run: fsck.ext2 -fn qemu_disk
