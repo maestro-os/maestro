@@ -99,6 +99,7 @@ jobs:
           repository: maestro-os/maestro-test
           path: maestro-test
       - name: Build
+        id: build
         working-directory: maestro-test
         run: |
           ./build.sh
@@ -108,5 +109,6 @@ jobs:
         run: ci/test.sh int
         timeout-minutes: 10
       - name: Post check
+        if: steps.build.outcome == 'success'
         working-directory: kernel
         run: fsck.ext2 -fn qemu_disk
