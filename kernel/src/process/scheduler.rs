@@ -42,7 +42,6 @@ use utils::{
 		vec::Vec,
 	},
 	errno::{AllocResult, CollectResult},
-	interrupt::cli,
 	lock::IntMutex,
 	math,
 	math::rational::Rational,
@@ -179,33 +178,28 @@ impl Scheduler {
 
 	/// Adds a process to the scheduler.
 	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<IntMutex<Process>>> {
-		let pid = process.pid;
-		let priority = process.priority;
-
 		if *process.get_state() == State::Running {
 			self.increment_running();
 		}
-
+		let pid = process.pid;
+		let priority = process.priority;
 		let ptr = Arc::new(IntMutex::new(process))?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
-
 		Ok(ptr)
 	}
 
 	/// Removes the process with the given pid `pid`.
 	pub fn remove_process(&mut self, pid: Pid) {
-		if let Some(proc_mutex) = self.get_by_pid(pid) {
-			let proc = proc_mutex.lock();
-
-			if *proc.get_state() == State::Running {
-				self.decrement_running();
-			}
-
-			let priority = proc.priority;
-			self.processes.remove(&pid);
-			self.update_priority(priority, 0);
+		let Some(proc_mutex) = self.get_by_pid(pid) else {
+			return;
+		};
+		let proc = proc_mutex.lock();
+		if *proc.get_state() == State::Running {
+			self.decrement_running();
 		}
+		self.processes.remove(&pid);
+		self.update_priority(proc.priority, 0);
 	}
 
 	/// Returns the current ticking frequency of the scheduler.
@@ -216,10 +210,8 @@ impl Scheduler {
 	/// Increments the number of running processes.
 	pub fn increment_running(&mut self) {
 		self.running_procs += 1;
-
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-
 		if self.running_procs > 1 {
 			pit.set_frequency(self.get_ticking_frequency());
 			pit.set_enabled(true);
@@ -229,10 +221,8 @@ impl Scheduler {
 	/// Decrements the number of running processes.
 	pub fn decrement_running(&mut self) {
 		self.running_procs -= 1;
-
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-
 		if self.running_procs <= 1 {
 			pit.set_enabled(false);
 		} else {
@@ -292,8 +282,7 @@ impl Scheduler {
 		let priority_sum = self.priority_sum;
 		let priority_max = self.priority_max;
 		let processes_count = self.processes.len();
-
-		// Getting the current process, or take the first process in the list if no
+		// Get the current process, or take the first process in the list if no
 		// process is running
 		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
 			self.processes
@@ -301,12 +290,10 @@ impl Scheduler {
 				.next()
 				.map(|(pid, proc)| (*pid, proc.clone()))
 		})?;
-
 		let process_filter = |(_, proc): &(&Pid, &Arc<IntMutex<Process>>)| {
 			let guard = proc.lock();
 			Self::can_run(&guard, priority_sum, priority_max, processes_count)
 		};
-
 		let next_proc = self
 			.processes
 			.range((curr_pid + 1)..)
@@ -314,11 +301,9 @@ impl Scheduler {
 			.or_else(|| {
 				// If no suitable process is found, go back to the beginning to check processes
 				// located before the previous process (looping)
-
 				self.processes.iter().find(process_filter)
 			})
 			.map(|(pid, proc)| (*pid, proc));
-
 		let (next_pid, next_proc) = next_proc?;
 		if next_pid != curr_pid || processes_count == 1 {
 			curr_proc.lock().quantum_count = 0;
@@ -338,70 +323,53 @@ impl Scheduler {
 	/// - `regs` is the state of the registers from the paused context.
 	/// - `ring` is the ring of the paused context.
 	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
-		// Disabling interrupts to avoid getting one right after unlocking mutexes
-		cli();
-
-		let tmp_stack = {
-			let mut sched = sched_mutex.lock();
-			sched.total_ticks += 1;
-
-			// If a process is running, save its registers
-			if let Some(curr_proc) = sched.get_current_process() {
-				let mut curr_proc = curr_proc.lock();
-
-				curr_proc.regs = regs.clone();
-				curr_proc.syscalling = ring < 3;
-			}
-
-			// The current kernel ID
-			let core_id = 0; // TODO
-			sched.get_tmp_stack(core_id)
-		};
-
-		loop {
-			let mut sched = sched_mutex.lock();
-
-			if let Some(next_proc) = sched.get_next_process() {
-				// Set the process as current
-				sched.curr_proc = Some(next_proc.clone());
-
-				drop(sched);
-
-				unsafe {
-					stack::switch(Some(tmp_stack), move || {
-						let (resume, syscalling, regs) = {
-							let mut next_proc = next_proc.1.lock();
-							next_proc.prepare_switch();
-							let resume = matches!(next_proc.get_state(), State::Running);
-							(resume, next_proc.syscalling, next_proc.regs.clone())
-						};
-						drop(next_proc);
-						// If the process has been killed by a signal, abort resuming
-						if !resume {
-							return;
-						}
-						// Resume execution
-						event::unlock_callbacks(0x20);
-						pic::end_of_interrupt(0x0);
-						regs.switch(!syscalling);
-					})
-					.unwrap();
+		let mut sched = sched_mutex.lock();
+		sched.total_ticks = sched.total_ticks.saturating_add(1);
+		// If a process is running, save its registers
+		if let Some(curr_proc) = sched.get_current_process() {
+			let mut curr_proc = curr_proc.lock();
+			curr_proc.regs = regs.clone();
+			curr_proc.syscalling = ring < 3;
+		}
+		// The current core ID
+		let core_id = 0; // TODO
+		let tmp_stack = sched.get_tmp_stack(core_id);
+		// Execution resume code
+		let resume_exec = move || {
+			// Loop until a runnable process is found
+			let (proc, switch_info) = loop {
+				let Some((pid, proc_mutex)) = sched.get_next_process() else {
+					// No process to run
+					break (None, None);
+				};
+				// Try switching
+				let mut proc = proc_mutex.lock();
+				proc.prepare_switch();
+				// If the process has been killed by a signal, abort resuming
+				if !matches!(proc.get_state(), State::Running) {
+					continue;
 				}
-			} else {
-				// No process to run. Just wait
-				break;
+				let regs = proc.regs.clone();
+				let syscalling = proc.syscalling;
+				drop(proc);
+				break (Some((pid, proc_mutex)), Some((regs, syscalling)));
+			};
+			// Set current running process
+			sched.curr_proc = proc;
+			// Unlock interrupt handler
+			drop(sched);
+			unsafe {
+				event::unlock_callbacks(0x20);
+				pic::end_of_interrupt(0x0);
+				match switch_info {
+					// Runnable process found: resume execution
+					Some((regs, syscalling)) => regs.switch(!syscalling),
+					// No runnable process found: idle
+					None => crate::loop_reset(tmp_stack),
+				}
 			}
-		}
-
-		{
-			sched_mutex.lock().curr_proc = None;
-		}
-
-		unsafe {
-			event::unlock_callbacks(0x20);
-			pic::end_of_interrupt(0x0);
-			crate::loop_reset(tmp_stack);
-		}
+		};
+		unsafe { stack::switch(Some(tmp_stack), resume_exec).unwrap() }
 	}
 }
 

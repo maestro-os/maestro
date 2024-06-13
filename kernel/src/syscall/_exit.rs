@@ -33,17 +33,13 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	let (_pid, _tid) = {
 		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
-
-		proc.exit(status, false);
-
+		proc.exit(status);
 		(proc.pid, proc.tid)
 	};
-
 	if thread_group {
 		// TODO Iterate on every process of thread group `tid`, except the
 		// process with pid `pid`
 	}
-
 	scheduler::end_tick();
 	// Cannot resume since the process is now a zombie
 	unreachable!();

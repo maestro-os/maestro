@@ -282,7 +282,8 @@ impl SignalHandler {
 				}
 				match signal.get_default_action() {
 					SignalAction::Terminate | SignalAction::Abort => {
-						process.exit(signal.get_id() as _, true);
+						process.set_state(State::Zombie);
+						process.set_waitable(signal.get_id() as _);
 					}
 					SignalAction::Ignore => {}
 					SignalAction::Stop => {

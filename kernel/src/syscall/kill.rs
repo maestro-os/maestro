@@ -99,6 +99,7 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> EResult<()> {
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.
+///
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {

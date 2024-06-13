@@ -46,7 +46,7 @@ use crate::{
 		fd::{FileDescriptorTable, NewFDConstraint},
 		mountpoint, open_file,
 		path::PathBuf,
-		perm::{AccessProfile, ROOT_UID},
+		perm::AccessProfile,
 		vfs,
 		vfs::ResolutionSettings,
 		File, FileLocation,
@@ -61,6 +61,7 @@ use crate::{
 };
 use core::{
 	ffi::c_void,
+	mem,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
 };
@@ -340,7 +341,7 @@ pub(crate) fn init() -> EResult<()> {
 			0x0d => {
 				let inst_prefix = unsafe { *(regs.eip as *const u8) };
 				if inst_prefix == HLT_INSTRUCTION {
-					curr_proc.exit(regs.eax, false);
+					curr_proc.exit(regs.eax);
 				} else {
 					curr_proc.kill_now(&Signal::SIGSEGV);
 				}
@@ -439,10 +440,8 @@ impl Process {
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
 			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &rs)?;
-			let tty_file = tty_file_mutex.lock();
-			let file = vfs::get_file_from_location(tty_file.location)?;
-			let open_file = OpenFile::new(file, Some(tty_path), open_file::O_RDWR)?;
+			let tty_file = vfs::get_file_from_path(&tty_path, &rs)?;
+			let open_file = OpenFile::new(tty_file, Some(tty_path), open_file::O_RDWR)?;
 			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
 			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
@@ -525,37 +524,30 @@ impl Process {
 	pub fn set_pgid(&mut self, pgid: Pid) -> EResult<()> {
 		let old_pgid = self.pgid;
 		let new_pgid = if pgid == 0 { self.pid } else { pgid };
-
 		if old_pgid == new_pgid {
 			return Ok(());
 		}
-
 		if new_pgid != self.pid {
-			// Adding the process to the new group
-			if let Some(proc_mutex) = Process::get_by_pid(new_pgid) {
-				let mut new_group_process = proc_mutex.lock();
-
-				let i = new_group_process
-					.process_group
-					.binary_search(&self.pid)
-					.unwrap_err();
-				new_group_process.process_group.insert(i, self.pid)?;
-			} else {
+			// Add the process to the new group
+			let Some(proc_mutex) = Process::get_by_pid(new_pgid) else {
 				return Err(errno!(ESRCH));
-			}
+			};
+			let mut new_group_process = proc_mutex.lock();
+			let i = new_group_process
+				.process_group
+				.binary_search(&self.pid)
+				.unwrap_err();
+			new_group_process.process_group.insert(i, self.pid)?;
 		}
-
-		// Removing the process from its old group
+		// Remove the process from its old group
 		if self.is_in_group() {
 			if let Some(proc_mutex) = Process::get_by_pid(old_pgid) {
 				let mut old_group_process = proc_mutex.lock();
-
 				if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
 					old_group_process.process_group.remove(i);
 				}
 			}
 		}
-
 		self.pgid = new_pgid;
 		Ok(())
 	}
@@ -599,40 +591,34 @@ impl Process {
 		if self.state == new_state || self.state == State::Zombie {
 			return;
 		}
-
 		// Update the number of running processes
 		if self.state != State::Running && new_state == State::Running {
 			get_scheduler().lock().increment_running();
 		} else if self.state == State::Running {
 			get_scheduler().lock().decrement_running();
 		}
-
 		self.state = new_state;
-
 		if self.state == State::Zombie {
 			if self.is_init() {
 				panic!("Terminated init process!");
 			}
-
-			// Removing the memory space and file descriptors table to save memory
+			// Remove the memory space and file descriptors table to save memory
 			//self.mem_space = None; // TODO Handle the case where the memory space is bound
 			self.file_descriptors = None;
-
-			// Attaching every child to the init process
+			// Attach every child to the init process
 			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
 			let mut init_proc = init_proc_mutex.lock();
-			for child_pid in self.children.iter() {
+			let children = mem::take(&mut self.children);
+			for child_pid in children {
 				// Check just in case
-				if *child_pid == self.pid {
+				if child_pid == self.pid {
 					continue;
 				}
-
-				if let Some(child_mutex) = Process::get_by_pid(*child_pid) {
+				if let Some(child_mutex) = Process::get_by_pid(child_pid) {
 					child_mutex.lock().parent = Some(Arc::downgrade(&init_proc_mutex));
-					oom::wrap(|| init_proc.add_child(*child_pid));
+					oom::wrap(|| init_proc.add_child(child_pid));
 				}
 			}
-
 			self.waitable = true;
 		}
 	}
@@ -725,7 +711,6 @@ impl Process {
 				panic!("Dropping the memory space of a running process!");
 			}
 		}
-
 		self.mem_space = mem_space;
 	}
 
@@ -780,11 +765,7 @@ impl Process {
 	/// Returns the exit status if the process has ended.
 	#[inline(always)]
 	pub fn get_exit_status(&self) -> Option<ExitStatus> {
-		if matches!(self.state, State::Zombie) {
-			Some(self.exit_status)
-		} else {
-			None
-		}
+		matches!(self.state, State::Zombie).then_some(self.exit_status)
 	}
 
 	/// Returns the signal number that killed the process.
@@ -947,14 +928,15 @@ impl Process {
 
 	/// Kills every process in the process group.
 	pub fn kill_group(&mut self, sig: Signal) {
-		for pid in self.process_group.iter() {
-			if *pid != self.pid {
-				if let Some(proc_mutex) = Process::get_by_pid(*pid) {
-					let mut proc = proc_mutex.lock();
-					proc.kill(&sig);
-				}
-			}
-		}
+		self.process_group
+			.iter()
+			// Avoid deadlock
+			.filter(|pid| **pid != self.pid)
+			.filter_map(|pid| Process::get_by_pid(*pid))
+			.for_each(|proc_mutex| {
+				let mut proc = proc_mutex.lock();
+				proc.kill(&sig);
+			});
 		self.kill(&sig);
 	}
 
@@ -1017,9 +999,7 @@ impl Process {
 
 	/// Clears the process's TLS entries.
 	pub fn clear_tls_entries(&mut self) {
-		for e in &mut self.tls_entries {
-			*e = Default::default();
-		}
+		self.tls_entries = Default::default();
 	}
 
 	/// Updates the `n`th TLS entry in the GDT.
@@ -1053,10 +1033,8 @@ impl Process {
 		if self.vfork_state != VForkState::Executing {
 			return;
 		}
-
 		self.vfork_state = VForkState::None;
-
-		// Resetting the parent's vfork state if needed
+		// Reset the parent's vfork state if needed
 		let parent = self.get_parent().and_then(|parent| parent.upgrade());
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
@@ -1067,23 +1045,11 @@ impl Process {
 	/// Exits the process with the given `status`.
 	///
 	/// This function changes the process's status to `Zombie`.
-	///
-	/// `signaled` tells whether the process has been terminated by a signal. If
-	/// `true`, `status` is interpreted as the signal number.
-	pub fn exit(&mut self, status: u32, signaled: bool) {
-		let sig = if signaled {
-			self.exit_status = 0;
-			self.termsig = status as ExitStatus;
-			self.termsig
-		} else {
-			self.exit_status = status as ExitStatus;
-			self.termsig = 0;
-			0
-		};
-
+	pub fn exit(&mut self, status: u32) {
+		self.exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
 		self.reset_vfork();
-		self.set_waitable(sig);
+		self.set_waitable(0);
 	}
 
 	/// Returns the number of virtual memory pages used by the process.
@@ -1101,17 +1067,14 @@ impl Process {
 	///
 	/// A higher score means a higher probability of getting killed.
 	pub fn get_oom_score(&self) -> u16 {
-		let mut score = 0;
-
-		// If the process is owned by the superuser, give it a bonus
-		if self.access_profile.is_privileged() {
-			score -= 100;
-		}
-
+		let mut score: u16 = 0;
 		// TODO Compute the score using physical memory usage
 		// TODO Take into account userspace-set values (oom may be disabled for this
 		// process, an absolute score or a bonus might be given, etc...)
-
+		// If the process is owned by the superuser, give it a bonus
+		if self.access_profile.is_privileged() {
+			score = score.saturating_sub(100);
+		}
 		score
 	}
 }
@@ -1119,13 +1082,12 @@ impl Process {
 impl AccessProfile {
 	/// Tells whether the agent can kill the process.
 	pub fn can_kill(&self, proc: &Process) -> bool {
-		let uid = self.get_uid();
-		let euid = self.get_euid();
 		// if privileged
-		if uid == ROOT_UID || euid == ROOT_UID {
+		if self.is_privileged() {
 			return true;
 		}
-
+		let uid = self.get_uid();
+		let euid = self.get_euid();
 		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
 		uid == proc.access_profile.get_uid()
 			|| uid == proc.access_profile.get_suid()
