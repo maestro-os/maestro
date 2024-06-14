@@ -47,7 +47,7 @@ pub fn vfork() -> Result<i32, Errno> {
 		regs.eax = 0;
 		new_proc.regs = regs;
 
-		new_proc.pid.get()
+		new_proc.get_pid()
 	};
 	// Let another process run instead of the current. Because the current
 	// process must now wait for the child process to terminate or execute a program

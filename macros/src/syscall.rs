@@ -125,7 +125,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 				#args_tokens
 				crate::idt::wrap_disable_interrupts(|| {
 					let pid = {
-						crate::process::Process::current_assert().lock().pid
+						crate::process::Process::current_assert().lock().get_pid()
 					};
 					println!(
 						#strace_call_format,
@@ -139,7 +139,7 @@ pub fn syscall(input: TokenStream) -> TokenStream {
 				})();
 				crate::idt::wrap_disable_interrupts(|| {
 					let pid = {
-						crate::process::Process::current_assert().lock().pid
+						crate::process::Process::current_assert().lock().get_pid()
 					};
 					match ret {
 						Ok(val) => println!("[strace PID: {pid}] -> Ok(0x{val:x})"),

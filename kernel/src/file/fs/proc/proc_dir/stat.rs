@@ -47,7 +47,7 @@ impl<'p> fmt::Display for StatDisp<'p> {
 0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
 TODO TODO TODO TODO {esp} {eip} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
 TODO TODO TODO TODO TODO TODO TODO TODO TODO",
-			pid = self.0.pid,
+			pid = self.0.get_pid(),
 			name = DisplayableStr(name),
 			state_char = self.0.get_state().as_char(),
 			ppid = self.0.get_parent_pid(),

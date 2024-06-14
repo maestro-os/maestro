@@ -21,7 +21,6 @@
 //! Each process must have a unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.
 
-use core::{fmt, fmt::Formatter};
 use utils::{collections::id_allocator::IDAllocator, errno::AllocResult, lock::Mutex};
 
 /// Type representing a Process ID. This ID is unique for every running
@@ -46,6 +45,7 @@ fn allocator_do<F: Fn(&mut IDAllocator) -> AllocResult<T>, T>(f: F) -> AllocResu
 	f(allocator)
 }
 
+#[derive(Debug)]
 pub struct PidHandle(Pid);
 
 impl PidHandle {
@@ -68,18 +68,6 @@ impl PidHandle {
 	/// Returns the actual PID.
 	pub fn get(&self) -> Pid {
 		self.0
-	}
-}
-
-impl fmt::Display for PidHandle {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		fmt::Display::fmt(&self.0, f)
-	}
-}
-
-impl fmt::Debug for PidHandle {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		fmt::Debug::fmt(&self.0, f)
 	}
 }
 

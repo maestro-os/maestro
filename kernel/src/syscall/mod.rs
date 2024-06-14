@@ -761,9 +761,8 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 				let mut proc = proc_mutex.lock();
 				if cfg!(feature = "strace") {
 					crate::println!(
-						"[strace PID: {}] invalid syscall (ID: 0x{:x})",
-						proc.pid,
-						id
+						"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
+						pid = proc.get_pid()
 					);
 				}
 				// SIGSYS cannot be caught, thus the process will be terminated

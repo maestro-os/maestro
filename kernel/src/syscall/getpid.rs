@@ -26,5 +26,5 @@ use utils::errno::Errno;
 pub fn getpid() -> Result<i32, Errno> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
-	Ok(proc.pid.get() as _)
+	Ok(proc.get_pid() as _)
 }

@@ -34,7 +34,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 		let proc_mutex = Process::current_assert();
 		let mut proc = proc_mutex.lock();
 		proc.exit(status);
-		(proc.pid.get(), proc.tid)
+		(proc.get_pid(), proc.tid)
 	};
 	if thread_group {
 		// TODO Iterate on every process of thread group `tid`, except the

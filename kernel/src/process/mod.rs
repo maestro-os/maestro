@@ -200,7 +200,7 @@ enum VForkState {
 /// about a process.
 pub struct Process {
 	/// The ID of the process.
-	pub pid: PidHandle,
+	pid: PidHandle,
 	/// The ID of the process group.
 	pub pgid: Pid,
 	/// The thread ID of the process.
@@ -486,6 +486,11 @@ impl Process {
 			termsig: 0,
 		};
 		Ok(SCHEDULER.get().lock().add_process(process)?)
+	}
+
+	/// Returns the process's ID.
+	pub fn get_pid(&self) -> u16 {
+		self.pid.get()
 	}
 
 	/// Tells whether the process is the init process.
