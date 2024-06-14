@@ -42,18 +42,15 @@ pub fn vfork() -> Result<i32, Errno> {
 		let new_mutex = curr_proc.fork(parent, fork_options)?;
 		let mut new_proc = new_mutex.lock();
 
-		// Setting registers
+		// Set registers with return value to `0`
 		let mut regs = regs.clone();
-		// Setting return value to `0`
 		regs.eax = 0;
 		new_proc.regs = regs;
 
-		new_proc.pid
+		new_proc.pid.get()
 	};
-
-	// Letting another process run instead of the current. Because the current
+	// Let another process run instead of the current. Because the current
 	// process must now wait for the child process to terminate or execute a program
 	scheduler::end_tick();
-
 	Ok(new_pid as _)
 }

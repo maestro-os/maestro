@@ -42,5 +42,5 @@ pub fn fork() -> Result<i32, Errno> {
 	regs.eax = 0;
 	new_proc.regs = regs;
 
-	Ok(new_proc.pid as _)
+	Ok(new_proc.pid.get() as _)
 }

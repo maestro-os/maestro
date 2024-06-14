@@ -48,7 +48,7 @@ impl NodeOps for SelfNode {
 		off: u64,
 		buf: &mut [u8],
 	) -> EResult<(u64, bool)> {
-		let pid = Process::current_assert().lock().pid;
+		let pid = Process::current_assert().lock().pid.get();
 		format_content!(off, buf, "{pid}")
 	}
 }

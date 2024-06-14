@@ -53,7 +53,7 @@ use crate::{
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::{open_file::OpenFile, scheduler::SCHEDULER},
+	process::{open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
 	register_get,
 	time::timer::TimerManager,
 	tty,
@@ -66,7 +66,7 @@ use core::{
 	ptr::NonNull,
 };
 use mem_space::MemSpace;
-use pid::{PIDManager, Pid};
+use pid::Pid;
 use regs::Regs;
 use rusage::RUsage;
 use signal::{Signal, SignalAction, SignalHandler};
@@ -76,7 +76,7 @@ use utils::{
 	collections::{bitfield::Bitfield, string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	lock::{once::OnceInit, IntMutex, Mutex},
+	lock::{IntMutex, Mutex},
 	ptr::arc::{Arc, Weak},
 	TryClone,
 };
@@ -200,7 +200,7 @@ enum VForkState {
 /// about a process.
 pub struct Process {
 	/// The ID of the process.
-	pub pid: Pid,
+	pub pid: PidHandle,
 	/// The ID of the process group.
 	pub pgid: Pid,
 	/// The thread ID of the process.
@@ -298,16 +298,10 @@ pub struct Process {
 	termsig: u8,
 }
 
-/// The PID manager.
-static PID_MANAGER: OnceInit<Mutex<PIDManager>> = unsafe { OnceInit::new() };
-
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
 pub(crate) fn init() -> EResult<()> {
 	TSS::init();
-	unsafe {
-		PID_MANAGER.init(Mutex::new(PIDManager::new()?));
-	}
 	scheduler::init()?;
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, regs: &Regs, ring: u32| {
@@ -435,8 +429,9 @@ impl Process {
 		};
 		let root_loc = mountpoint::root_location();
 		let root_dir = vfs::get_file_from_location(root_loc)?;
+		let pid = PidHandle::init()?;
 		let process = Self {
-			pid: pid::INIT_PID,
+			pid,
 			pgid: pid::INIT_PID,
 			tid: pid::INIT_PID,
 
@@ -496,23 +491,23 @@ impl Process {
 	/// Tells whether the process is the init process.
 	#[inline(always)]
 	pub fn is_init(&self) -> bool {
-		self.pid == pid::INIT_PID
+		self.pid.get() == pid::INIT_PID
 	}
 
 	/// Tells whether the process is among a group and is not its owner.
 	#[inline(always)]
 	pub fn is_in_group(&self) -> bool {
-		self.pgid != 0 && self.pgid != self.pid
+		self.pgid != 0 && self.pgid != self.pid.get()
 	}
 
 	/// Sets the process's group ID to the given value `pgid`, updating the associated group.
 	pub fn set_pgid(&mut self, pgid: Pid) -> EResult<()> {
 		let old_pgid = self.pgid;
-		let new_pgid = if pgid == 0 { self.pid } else { pgid };
+		let new_pgid = if pgid == 0 { self.pid.get() } else { pgid };
 		if old_pgid == new_pgid {
 			return Ok(());
 		}
-		if new_pgid != self.pid {
+		if new_pgid != self.pid.get() {
 			// Add the process to the new group
 			let Some(proc_mutex) = Process::get_by_pid(new_pgid) else {
 				return Err(errno!(ESRCH));
@@ -520,15 +515,18 @@ impl Process {
 			let mut new_group_process = proc_mutex.lock();
 			let i = new_group_process
 				.process_group
-				.binary_search(&self.pid)
+				.binary_search(&self.pid.get())
 				.unwrap_err();
-			new_group_process.process_group.insert(i, self.pid)?;
+			new_group_process.process_group.insert(i, self.pid.get())?;
 		}
-		// Remove the process from its old group
+		// Remove the process from its former group
 		if self.is_in_group() {
 			if let Some(proc_mutex) = Process::get_by_pid(old_pgid) {
 				let mut old_group_process = proc_mutex.lock();
-				if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
+				if let Ok(i) = old_group_process
+					.process_group
+					.binary_search(&self.pid.get())
+				{
 					old_group_process.process_group.remove(i);
 				}
 			}
@@ -556,8 +554,8 @@ impl Process {
 		self.parent
 			.as_ref()
 			.and_then(Weak::upgrade)
-			.map(|parent| parent.lock().pid)
-			.unwrap_or(self.pid)
+			.map(|parent| parent.lock().pid.get())
+			.unwrap_or(self.pid.get())
 	}
 
 	/// Returns the TTY associated with the process.
@@ -596,7 +594,7 @@ impl Process {
 			let children = mem::take(&mut self.children);
 			for child_pid in children {
 				// Check just in case
-				if child_pid == self.pid {
+				if child_pid == self.pid.get() {
 					continue;
 				}
 				if let Some(child_mutex) = Process::get_by_pid(child_pid) {
@@ -812,12 +810,12 @@ impl Process {
 		} else {
 			Arc::new(Mutex::new(self.signal_handlers.lock().clone()))?
 		};
-		// FIXME PID is leaked if the following code fails
-		let pid = PID_MANAGER.get().lock().get_unique_pid()?;
+		let pid = PidHandle::unique()?;
+		let pid_int = pid.get();
 		let process = Self {
 			pid,
 			pgid: self.pgid,
-			tid: pid,
+			tid: pid_int,
 
 			argv: self.argv.clone(),
 			exec_path: self.exec_path.clone(),
@@ -846,7 +844,7 @@ impl Process {
 			waitable: false,
 
 			// TODO if creating a thread: timer_manager: self.timer_manager.clone(),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid)?))?,
+			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
 			mem_space: Some(mem_space),
 			user_stack: self.user_stack,
@@ -870,7 +868,7 @@ impl Process {
 			exit_status: self.exit_status,
 			termsig: 0,
 		};
-		self.add_child(pid)?;
+		self.add_child(pid_int)?;
 		Ok(SCHEDULER.get().lock().add_process(process)?)
 	}
 
@@ -916,7 +914,7 @@ impl Process {
 		self.process_group
 			.iter()
 			// Avoid deadlock
-			.filter(|pid| **pid != self.pid)
+			.filter(|pid| **pid != self.pid.get())
 			.filter_map(|pid| Process::get_by_pid(*pid))
 			.for_each(|proc_mutex| {
 				let mut proc = proc_mutex.lock();
@@ -1090,7 +1088,5 @@ impl Drop for Process {
 		unsafe {
 			buddy::free_kernel(self.kernel_stack.as_ptr(), KERNEL_STACK_ORDER);
 		}
-		// Free the PID
-		PID_MANAGER.get().lock().release_pid(self.pid);
 	}
 }

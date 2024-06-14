@@ -34,13 +34,13 @@ pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
 	let mut proc = proc_mutex.lock();
 
 	if pid == 0 {
-		pid = proc.pid;
+		pid = proc.pid.get();
 	}
 	if pgid == 0 {
 		pgid = pid;
 	}
 
-	if pid == proc.pid {
+	if pid == proc.pid.get() {
 		proc.pgid = pgid;
 	} else {
 		drop(proc);

@@ -21,7 +21,8 @@
 //! Each process must have a unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.
 
-use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
+use core::{fmt, fmt::Formatter};
+use utils::{collections::id_allocator::IDAllocator, errno::AllocResult, lock::Mutex};
 
 /// Type representing a Process ID. This ID is unique for every running
 /// processes.
@@ -32,29 +33,62 @@ const MAX_PID: Pid = 32768;
 /// The PID of the init process.
 pub const INIT_PID: Pid = 1;
 
-/// A structure handling PID allocations.
-pub struct PIDManager(IDAllocator);
+/// The PID allocator.
+static ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
-impl PIDManager {
-	/// Creates a new instance.
-	pub fn new() -> AllocResult<Self> {
-		let mut allocator = IDAllocator::new(MAX_PID as _)?;
-		allocator.set_used((INIT_PID - 1) as _);
-		Ok(Self(allocator))
+/// Perform an operation with the allocator.
+fn allocator_do<F: Fn(&mut IDAllocator) -> AllocResult<T>, T>(f: F) -> AllocResult<T> {
+	let mut allocator = ALLOCATOR.lock();
+	let allocator = match &mut *allocator {
+		Some(a) => a,
+		None => allocator.insert(IDAllocator::new(MAX_PID as _)?),
+	};
+	f(allocator)
+}
+
+pub struct PidHandle(Pid);
+
+impl PidHandle {
+	/// Returns the init PID.
+	///
+	/// This function **must not** be used outside of the creation of the first process.
+	pub(super) fn init() -> AllocResult<Self> {
+		allocator_do(|a| {
+			a.set_used((INIT_PID - 1) as _);
+			Ok(())
+		})?;
+		Ok(Self(INIT_PID))
 	}
 
 	/// Returns an unused PID and marks it as used.
-	#[must_use = "not freeing a PID shall cause a leak"]
-	pub fn get_unique_pid(&mut self) -> AllocResult<Pid> {
-		self.0.alloc(None).map(|i| (i + 1) as _)
+	pub fn unique() -> AllocResult<PidHandle> {
+		allocator_do(|allocator| allocator.alloc(None)).map(|i| PidHandle((i + 1) as _))
 	}
 
-	/// Releases the given PID `pid` to make it available for other processes.
-	///
-	/// If the PID wasn't allocated, the function does nothing.
-	pub fn release_pid(&mut self, pid: Pid) {
-		debug_assert!(pid >= 1);
-		debug_assert!(pid <= MAX_PID as _);
-		self.0.free((pid - 1) as _)
+	/// Returns the actual PID.
+	pub fn get(&self) -> Pid {
+		self.0
+	}
+}
+
+impl fmt::Display for PidHandle {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		fmt::Display::fmt(&self.0, f)
+	}
+}
+
+impl fmt::Debug for PidHandle {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		fmt::Debug::fmt(&self.0, f)
+	}
+}
+
+impl Drop for PidHandle {
+	fn drop(&mut self) {
+		// Cannot fail
+		let _ = allocator_do(|a| {
+			a.free((self.0 - 1) as _);
+			Ok(())
+		});
 	}
 }

@@ -53,7 +53,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
 		}
 		Ok(())
 	};
-	if pid == proc.pid {
+	if pid == proc.pid.get() {
 		f(&mut proc)?;
 	} else {
 		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;

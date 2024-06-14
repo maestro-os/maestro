@@ -166,7 +166,7 @@ impl Scheduler {
 		if *process.get_state() == State::Running {
 			self.increment_running();
 		}
-		let pid = process.pid;
+		let pid = process.pid.get();
 		let priority = process.priority;
 		let ptr = Arc::new(IntMutex::new(process))?;
 		self.processes.insert(pid, ptr.clone())?;
