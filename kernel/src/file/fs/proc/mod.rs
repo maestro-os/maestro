@@ -40,7 +40,7 @@ use crate::{
 		perm::{Gid, Uid},
 		DirEntry, FileType, INode, Stat,
 	},
-	process::{get_scheduler, pid::Pid, Process},
+	process::{pid::Pid, scheduler::SCHEDULER, Process},
 };
 use mem_info::MemInfo;
 use proc_dir::{
@@ -224,7 +224,7 @@ impl NodeOps for RootDir {
 		// Iterate on processes
 		if off < Pid::MAX as usize {
 			// Find next process
-			let sched = get_scheduler().lock();
+			let sched = SCHEDULER.get().lock();
 			// TODO start iterating at `off`
 			let pid = sched
 				.iter_process()

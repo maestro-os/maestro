@@ -22,7 +22,7 @@
 use super::util;
 use crate::{
 	process,
-	process::{pid::Pid, signal::Signal, Process, State},
+	process::{pid::Pid, scheduler::SCHEDULER, signal::Signal, Process, State},
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -111,7 +111,7 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 		try_kill_group(0, &sig)
 	} else if pid == -1 {
 		// Kill all processes for which the current process has the permission
-		let sched = process::get_scheduler().lock();
+		let sched = SCHEDULER.get().lock();
 		for (pid, _) in sched.iter_process() {
 			if *pid == process::pid::INIT_PID {
 				continue;

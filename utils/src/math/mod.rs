@@ -23,7 +23,7 @@
 
 pub mod rational;
 
-use core::ops::{Add, Div, Mul, Neg, Rem, Shl, Sub};
+use core::ops::{Rem, Shl};
 
 /// Computes `pow(2, n)` where `n` is unsigned.
 ///
@@ -34,22 +34,6 @@ where
 	T: From<u8> + Shl<Output = T>,
 {
 	T::from(1) << n
-}
-
-/// Computes a linear interpolation over integers.
-///
-/// FIXME: doc is unclear
-#[inline(always)]
-pub fn integer_linear_interpolation<T>(x: T, a_x: T, a_y: T, b_x: T, b_y: T) -> T
-where
-	T: Copy
-		+ Add<Output = T>
-		+ Sub<Output = T>
-		+ Mul<Output = T>
-		+ Div<Output = T>
-		+ Neg<Output = T>,
-{
-	a_y + ((x - a_x) * (-a_y + b_y)) / (b_x - a_x)
 }
 
 /// Pseudo random number generation based on linear congruential generator.

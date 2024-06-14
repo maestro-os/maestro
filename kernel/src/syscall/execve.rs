@@ -21,12 +21,12 @@
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, File},
 	memory::stack,
-	process,
 	process::{
 		exec,
 		exec::{ExecInfo, ProgramImage},
 		mem_space::ptr::SyscallString,
 		regs::Regs,
+		scheduler::SCHEDULER,
 		Process,
 	},
 };
@@ -248,15 +248,12 @@ pub fn execve(
 	// interrupts are disabled
 	// A temporary stack cannot be allocated since it wouldn't be possible to free
 	// it on success
-	let tmp_stack = {
-		let core = 0; // TODO Get current kernel ID
-		process::get_scheduler().lock().get_tmp_stack(core)
-	};
+	let tmp_stack = SCHEDULER.get().lock().get_tmp_stack();
 
 	// Switch to another stack in order to avoid crashing when switching to the
 	// new memory space
 	unsafe {
-		stack::switch(Some(tmp_stack), move || -> EResult<()> {
+		stack::switch(Some(tmp_stack as _), move || -> EResult<()> {
 			let regs = do_exec(program_image)?;
 			regs.switch(true);
 		})

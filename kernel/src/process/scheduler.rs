@@ -31,98 +31,89 @@ use crate::{
 	idt::pic,
 	memory,
 	memory::stack,
-	process,
 	process::{pid::Pid, regs::Regs, Process, State},
 	time,
 };
-use core::{arch::asm, cmp::max, ffi::c_void};
+use core::arch::asm;
 use utils::{
 	collections::{
 		btreemap::{BTreeMap, MapIterator},
 		vec::Vec,
 	},
-	errno::{AllocResult, CollectResult},
-	lock::IntMutex,
-	math,
+	errno::AllocResult,
+	lock::{once::OnceInit, IntMutex},
 	math::rational::Rational,
 	ptr::arc::Arc,
 	vec,
 };
 
+// TODO handle processes priority
+
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
-/// The number of quanta for the process with the average priority.
-const AVERAGE_PRIORITY_QUANTA: usize = 10;
-/// The number of quanta for the process with the maximum priority.
-const MAX_PRIORITY_QUANTA: usize = 30;
 
-/// The structure representing the process scheduler.
+/// The processes scheduler.
+pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
+
+/// Initializes schedulers.
+pub fn init() -> AllocResult<()> {
+	// TODO handle multicore
+	unsafe {
+		SCHEDULER.init(IntMutex::new(Scheduler::new()?));
+	}
+	Ok(())
+}
+
+/// A process scheduler.
+///
+/// Each CPU core has its own scheduler.
 pub struct Scheduler {
-	/// A vector containing the temporary stacks for each CPU cores.
-	tmp_stacks: Vec<Vec<u8>>,
-
 	/// The ticking callback hook, called at a regular interval to make the
 	/// scheduler work.
 	tick_callback_hook: CallbackHook,
 	/// The total number of ticks since the instantiation of the scheduler.
 	total_ticks: u64,
+	/// The scheduler's temporary stacks.
+	tmp_stack: Vec<u8>,
 
 	/// A binary tree containing all processes registered to the current
 	/// scheduler.
 	processes: BTreeMap<Pid, Arc<IntMutex<Process>>>,
-	/// The currently running process with its PID.
+	/// The process currently being executed by the scheduler's core, along with its PID.
 	curr_proc: Option<(Pid, Arc<IntMutex<Process>>)>,
-
-	/// The current number of running processes.
+	/// The current number of processes in running state.
 	running_procs: usize,
-
-	/// The sum of all priorities, used to compute the average priority.
-	priority_sum: usize,
-	/// The priority of the processs which has the current highest priority.
-	priority_max: usize,
 }
 
 impl Scheduler {
 	/// Creates a new instance of scheduler.
-	pub(super) fn new(cores_count: usize) -> AllocResult<Self> {
-		// Allocate context switching stacks for each core
-		let tmp_stacks = (0..cores_count)
-			.map(|_| vec![0; TMP_STACK_SIZE])
-			.collect::<AllocResult<CollectResult<_>>>()?
-			.0?;
+	pub(super) fn new() -> AllocResult<Self> {
+		// Allocate context switching stacks
+		let tmp_stack = vec![0; TMP_STACK_SIZE]?;
 		// Register tick callback
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
 		let tick_callback_hook = event::register_callback(
 			pit.get_interrupt_vector(),
 			|_: u32, _: u32, regs: &Regs, ring: u32| {
-				Scheduler::tick(process::get_scheduler(), regs, ring);
+				Scheduler::tick(SCHEDULER.get(), regs, ring);
 			},
 		)?
 		.unwrap();
 		Ok(Self {
-			tmp_stacks,
-
 			tick_callback_hook,
 			total_ticks: 0,
+			tmp_stack,
 
 			processes: BTreeMap::new(),
 			curr_proc: None,
-
 			running_procs: 0,
-
-			priority_sum: 0,
-			priority_max: 0,
 		})
 	}
 
 	/// Returns a pointer to the top of the tmp stack for the given kernel `kernel`.
-	pub fn get_tmp_stack(&mut self, core: u32) -> *mut c_void {
-		unsafe {
-			self.tmp_stacks[core as usize]
-				.as_mut_ptr()
-				.add(TMP_STACK_SIZE) as *mut _
-		}
+	pub fn get_tmp_stack(&mut self) -> *mut u8 {
+		self.tmp_stack.last_mut().unwrap()
 	}
 
 	/// Returns the total number of ticks since the instanciation of the
@@ -166,14 +157,8 @@ impl Scheduler {
 	///
 	/// The function doesn't need to know the process which has been updated
 	/// since it updates global information.
-	pub fn update_priority(&mut self, old: usize, new: usize) {
-		self.priority_sum = self.priority_sum - old + new;
-
-		if new >= self.priority_max {
-			self.priority_max = new;
-		}
-
-		// FIXME: Unable to determine priority_max when new < old
+	fn update_priority(&mut self, _old: usize, _new: usize) {
+		// TODO
 	}
 
 	/// Adds a process to the scheduler.
@@ -230,85 +215,28 @@ impl Scheduler {
 		}
 	}
 
-	// TODO Clean
-	/// Returns the number of quantum for the given priority.
-	///
-	/// Arguments:
-	/// - `priority` is the process's priority.
-	/// - `priority_sum` is the sum of all processes' priorities.
-	/// - `priority_max` is the highest priority a process currently has.
-	/// - `processes_count` is the number of processes.
-	fn get_quantum_count(
-		priority: usize,
-		priority_sum: usize,
-		priority_max: usize,
-		processes_count: usize,
-	) -> usize {
-		let n = math::integer_linear_interpolation::<isize>(
-			priority as _,
-			(priority_sum / processes_count) as _,
-			priority_max as _,
-			AVERAGE_PRIORITY_QUANTA as _,
-			MAX_PRIORITY_QUANTA as _,
-		);
-		max(1, n) as _
-	}
-
-	// TODO Clean
-	/// Tells whether the given process `process` can run.
-	///
-	/// TODO args
-	fn can_run(
-		process: &Process,
-		_priority_sum: usize,
-		_priority_max: usize,
-		_processes_count: usize,
-	) -> bool {
-		if process.can_run() {
-			// TODO fix
-			//process.quantum_count < Self::get_quantum_count(process.get_priority(),
-			// priority_sum, 	priority_max, processes_count)
-			true
-		} else {
-			false
-		}
-	}
-
-	// TODO Clean
 	/// Returns the next process to run with its PID.
-	///
-	/// If the process is changed, the quantum count of the previous process is reset.
 	fn get_next_process(&self) -> Option<(Pid, Arc<IntMutex<Process>>)> {
-		let priority_sum = self.priority_sum;
-		let priority_max = self.priority_max;
-		let processes_count = self.processes.len();
 		// Get the current process, or take the first process in the list if no
 		// process is running
-		let (curr_pid, curr_proc) = self.curr_proc.clone().or_else(|| {
-			self.processes
-				.iter()
-				.next()
-				.map(|(pid, proc)| (*pid, proc.clone()))
-		})?;
-		let process_filter = |(_, proc): &(&Pid, &Arc<IntMutex<Process>>)| {
-			let guard = proc.lock();
-			Self::can_run(&guard, priority_sum, priority_max, processes_count)
+		let curr_pid = self
+			.curr_proc
+			.as_ref()
+			.map(|(pid, _)| *pid)
+			.or_else(|| self.processes.first_key_value().map(|(pid, _)| *pid))?;
+		let process_filter = |(_, proc_mutex): &(&Pid, &Arc<IntMutex<Process>>)| {
+			let proc = proc_mutex.lock();
+			proc.can_run()
 		};
-		let next_proc = self
-			.processes
+		self.processes
 			.range((curr_pid + 1)..)
 			.find(process_filter)
 			.or_else(|| {
 				// If no suitable process is found, go back to the beginning to check processes
 				// located before the previous process (looping)
-				self.processes.iter().find(process_filter)
+				self.processes.range(..=curr_pid).find(process_filter)
 			})
-			.map(|(pid, proc)| (*pid, proc));
-		let (next_pid, next_proc) = next_proc?;
-		if next_pid != curr_pid || processes_count == 1 {
-			curr_proc.lock().quantum_count = 0;
-		}
-		Some((next_pid, next_proc.clone()))
+			.map(|(pid, proc)| (*pid, proc.clone()))
 	}
 
 	/// Ticking the scheduler.
@@ -331,9 +259,7 @@ impl Scheduler {
 			curr_proc.regs = regs.clone();
 			curr_proc.syscalling = ring < 3;
 		}
-		// The current core ID
-		let core_id = 0; // TODO
-		let tmp_stack = sched.get_tmp_stack(core_id);
+		let tmp_stack = sched.get_tmp_stack();
 		// Execution resume code
 		let resume_exec = move || {
 			// Loop until a runnable process is found
@@ -365,11 +291,11 @@ impl Scheduler {
 					// Runnable process found: resume execution
 					Some((regs, syscalling)) => regs.switch(!syscalling),
 					// No runnable process found: idle
-					None => crate::loop_reset(tmp_stack),
+					None => crate::loop_reset(tmp_stack as _),
 				}
 			}
 		};
-		unsafe { stack::switch(Some(tmp_stack), resume_exec).unwrap() }
+		unsafe { stack::switch(Some(tmp_stack as _), resume_exec).unwrap() }
 	}
 }
 

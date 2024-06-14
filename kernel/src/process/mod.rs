@@ -53,7 +53,7 @@ use crate::{
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::open_file::OpenFile,
+	process::{open_file::OpenFile, scheduler::SCHEDULER},
 	register_get,
 	time::timer::TimerManager,
 	tty,
@@ -69,7 +69,6 @@ use mem_space::MemSpace;
 use pid::{PIDManager, Pid};
 use regs::Regs;
 use rusage::RUsage;
-use scheduler::Scheduler;
 use signal::{Signal, SignalAction, SignalHandler};
 #[cfg(target_arch = "x86")]
 use tss::TSS;
@@ -301,30 +300,22 @@ pub struct Process {
 
 /// The PID manager.
 static PID_MANAGER: OnceInit<Mutex<PIDManager>> = unsafe { OnceInit::new() };
-/// The processes scheduler.
-static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
 
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
 pub(crate) fn init() -> EResult<()> {
 	TSS::init();
-	// Init schedulers
-	let cores_count = 1; // TODO
 	unsafe {
 		PID_MANAGER.init(Mutex::new(PIDManager::new()?));
-		SCHEDULER.init(Mutex::new(Scheduler::new(cores_count)?));
 	}
+	scheduler::init()?;
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, regs: &Regs, ring: u32| {
 		if ring < 3 {
 			return CallbackResult::Panic;
 		}
 		// Get process
-		let curr_proc = {
-			let mut sched = SCHEDULER.get().lock();
-			sched.get_current_process()
-		};
-		let Some(curr_proc) = curr_proc else {
+		let Some(curr_proc) = Process::current() else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
@@ -396,32 +387,26 @@ pub(crate) fn init() -> EResult<()> {
 	Ok(())
 }
 
-/// Returns a mutable reference to the scheduler's `Mutex`.
-#[inline]
-pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
-	SCHEDULER.get()
-}
-
 impl Process {
 	/// Returns the process with PID `pid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<Arc<IntMutex<Self>>> {
-		get_scheduler().lock().get_by_pid(pid)
+		SCHEDULER.get().lock().get_by_pid(pid)
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(tid: Pid) -> Option<Arc<IntMutex<Self>>> {
-		get_scheduler().lock().get_by_tid(tid)
+		SCHEDULER.get().lock().get_by_tid(tid)
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
 	pub fn current() -> Option<Arc<IntMutex<Self>>> {
-		get_scheduler().lock().get_current_process()
+		SCHEDULER.get().lock().get_current_process()
 	}
 
 	/// Returns the current running process.
@@ -505,7 +490,7 @@ impl Process {
 			exit_status: 0,
 			termsig: 0,
 		};
-		Ok(get_scheduler().lock().add_process(process)?)
+		Ok(SCHEDULER.get().lock().add_process(process)?)
 	}
 
 	/// Tells whether the process is the init process.
@@ -593,9 +578,9 @@ impl Process {
 		}
 		// Update the number of running processes
 		if self.state != State::Running && new_state == State::Running {
-			get_scheduler().lock().increment_running();
+			SCHEDULER.get().lock().increment_running();
 		} else if self.state == State::Running {
-			get_scheduler().lock().decrement_running();
+			SCHEDULER.get().lock().decrement_running();
 		}
 		self.state = new_state;
 		if self.state == State::Zombie {
@@ -759,7 +744,7 @@ impl Process {
 		// Bind the memory space
 		self.get_mem_space().unwrap().lock().bind();
 		// Increment the number of ticks the process had
-		self.quantum_count += 1;
+		self.quantum_count = self.quantum_count.saturating_add(1);
 	}
 
 	/// Returns the exit status if the process has ended.
@@ -886,7 +871,7 @@ impl Process {
 			termsig: 0,
 		};
 		self.add_child(pid)?;
-		Ok(get_scheduler().lock().add_process(process)?)
+		Ok(SCHEDULER.get().lock().add_process(process)?)
 	}
 
 	/// Tells whether the process is handling a signal.

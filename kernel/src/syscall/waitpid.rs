@@ -19,11 +19,11 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
 use crate::{
-	process,
 	process::{
 		mem_space::ptr::SyscallPtr, pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process,
 		State,
 	},
+	syscall::waitpid::scheduler::SCHEDULER,
 };
 use core::ffi::c_int;
 use macros::syscall;
@@ -126,7 +126,7 @@ fn check_waitable(
 	// Iterating on every target processes, checking if they can be waited on
 	let mut i = 0;
 	while let Some(pid) = get_target(curr_proc, pid, i) {
-		let mut sched = process::get_scheduler().lock();
+		let mut sched = SCHEDULER.get().lock();
 
 		if let Some(p) = sched.get_by_pid(pid) {
 			let mut p = p.lock();
