@@ -124,7 +124,12 @@ fn peek_shebang(file: &mut File) -> EResult<Option<Shebang>> {
 }
 
 /// Performs the execution on the current process.
-fn do_exec(file: Arc<Mutex<File>>, rs: &ResolutionSettings, argv: Vec<String>, envp: Vec<String>) -> EResult<Regs> {
+fn do_exec(
+	file: Arc<Mutex<File>>,
+	rs: &ResolutionSettings,
+	argv: Vec<String>,
+	envp: Vec<String>,
+) -> EResult<Regs> {
 	let program_image = build_image(file, rs, argv, envp)?;
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
