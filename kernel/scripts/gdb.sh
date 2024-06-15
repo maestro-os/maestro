@@ -7,7 +7,7 @@
 # - AUX_ELF: specifies the path to an auxiliary ELF file whose symbols will be added to gdb
 
 export QEMUFLAGS="-s -S -d int"
-setsid cargo run &
+setsid cargo run $CARGOFLAGS &
 QEMU_PID=$!
 
 if [ -z "$ARCH" ]; then
