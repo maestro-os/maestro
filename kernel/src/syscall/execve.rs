@@ -229,38 +229,20 @@ pub fn execve(
 			break;
 		}
 	}
-
 	// The file
 	let file = vfs::get_file_from_path(&path, &rs)?;
-
 	// Drop path to avoid memory leak
 	drop(path);
-
 	// Disable interrupt to prevent stack switching while using a temporary stack,
 	// preventing this temporary stack from being used as a signal handling stack
 	cli();
-
-	// Build the program's image
-	let program_image =
-		unsafe { stack::switch(None, move || build_image(file, &rs, argv, envp)).unwrap()? };
-
-	// The temporary stack will not be used since the scheduler cannot be ticked when
-	// interrupts are disabled
-	// A temporary stack cannot be allocated since it wouldn't be possible to free
-	// it on success
 	let tmp_stack = SCHEDULER.get().lock().get_tmp_stack();
-
-	// Switch to another stack in order to avoid crashing when switching to the
-	// new memory space
-	unsafe {
-		stack::switch(Some(tmp_stack as _), move || -> EResult<()> {
-			let regs = do_exec(program_image)?;
+	let exec = move || {
+		let program_image = build_image(file, &rs, argv, envp)?;
+		let regs = do_exec(program_image)?;
+		unsafe {
 			regs.switch(true);
-		})
-		// `unwrap` cannot fail since the stack is provided
-		.unwrap()?;
-	}
-
-	// Cannot be reached since on success
-	unreachable!();
+		}
+	};
+	unsafe { stack::switch(tmp_stack as _, exec) }
 }

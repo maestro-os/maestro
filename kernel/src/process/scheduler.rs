@@ -113,7 +113,7 @@ impl Scheduler {
 
 	/// Returns a pointer to the top of the tmp stack for the given kernel `kernel`.
 	pub fn get_tmp_stack(&mut self) -> *mut u8 {
-		self.tmp_stack.last_mut().unwrap()
+		unsafe { self.tmp_stack.as_mut_ptr().add(self.tmp_stack.len()) }
 	}
 
 	/// Returns the total number of ticks since the instanciation of the
@@ -295,7 +295,7 @@ impl Scheduler {
 				}
 			}
 		};
-		unsafe { stack::switch(Some(tmp_stack as _), resume_exec).unwrap() }
+		unsafe { stack::switch(tmp_stack as _, resume_exec) }
 	}
 }
 

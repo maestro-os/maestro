@@ -19,7 +19,7 @@
 //! Debugging tools for the kernel.
 
 use crate::{elf, memory};
-use core::{ffi::c_void, ptr::null_mut};
+use core::{ffi::c_void, ptr, ptr::null_mut};
 use utils::DisplayableStr;
 
 /// Fills the slice `stack` with the callstack starting at `frame`.
@@ -38,12 +38,12 @@ pub unsafe fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
 		if frame.is_null() {
 			break;
 		}
-		let pc = (*frame.add(1)) as *mut c_void;
+		let pc = ptr::read_unaligned(frame.add(1) as _);
 		if pc < memory::PROCESS_END {
 			break;
 		}
 		*f = pc;
-		frame = *frame as *mut usize;
+		frame = ptr::read_unaligned(frame) as *mut usize;
 	}
 }
 
