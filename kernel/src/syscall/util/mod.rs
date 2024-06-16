@@ -20,55 +20,7 @@
 
 pub mod at;
 
-use crate::process::{mem_space::ptr::SyscallString, regs::Regs, scheduler, Process, State};
-use core::mem::size_of;
-use utils::{
-	collections::{string::String, vec::Vec},
-	errno,
-	errno::EResult,
-};
-
-// TODO Find a safer and cleaner solution
-/// Checks that the given array of strings at pointer `ptr` is accessible to
-/// process `proc`, then returns its content.
-///
-/// If the array or its content strings are not accessible by the process, the
-/// function returns an error.
-pub unsafe fn get_str_array(process: &Process, ptr: *const *const u8) -> EResult<Vec<String>> {
-	let mem_space = process.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-
-	// Checking every elements of the array and counting the number of elements
-	let mut len = 0;
-	loop {
-		let elem_ptr = ptr.add(len);
-
-		// Checking access on elem_ptr
-		if !mem_space_guard.can_access(elem_ptr as _, size_of::<*const u8>(), true, false) {
-			return Err(errno!(EFAULT));
-		}
-
-		// Safe because the access is checked before
-		let elem = *elem_ptr;
-		if elem.is_null() {
-			break;
-		}
-
-		len += 1;
-	}
-
-	// Filling the array
-	// TODO collect
-	let mut arr = Vec::with_capacity(len)?;
-	for i in 0..len {
-		let elem = *ptr.add(i);
-		let s: SyscallString = (elem as usize).into();
-
-		arr.push(String::try_from(s.get(&mem_space_guard)?.unwrap())?)?;
-	}
-
-	Ok(arr)
-}
+use crate::process::{regs::Regs, scheduler, Process, State};
 
 /// Checks whether the current syscall must be interrupted to execute a signal.
 ///

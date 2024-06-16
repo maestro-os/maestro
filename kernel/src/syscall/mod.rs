@@ -752,24 +752,22 @@ fn get_syscall(id: u32) -> Option<SyscallHandler> {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.eax;
-	let result = match get_syscall(id) {
-		Some(handler) => (handler)(regs),
+	let Some(handler) = get_syscall(id) else {
 		// The system call doesn't exist. Kill the process with SIGSYS
-		None => {
-			{
-				let proc_mutex = Process::current_assert();
-				let mut proc = proc_mutex.lock();
-				if cfg!(feature = "strace") {
-					crate::println!(
-						"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
-						pid = proc.get_pid()
-					);
-				}
-				// SIGSYS cannot be caught, thus the process will be terminated
-				proc.kill_now(&Signal::SIGSYS);
+		{
+			let proc_mutex = Process::current_assert();
+			let mut proc = proc_mutex.lock();
+			if cfg!(feature = "strace") {
+				crate::println!(
+					"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
+					pid = proc.get_pid()
+				);
 			}
-			crate::enter_loop();
+			// SIGSYS cannot be caught, thus the process will be terminated
+			proc.kill_now(&Signal::SIGSYS);
 		}
+		crate::enter_loop();
 	};
+	let result = (handler)(regs);
 	regs.set_syscall_return(result);
 }

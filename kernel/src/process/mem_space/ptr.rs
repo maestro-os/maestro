@@ -231,14 +231,6 @@ impl SyscallString {
 		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
 	}
 
-	/// Returns a mutable pointer to the data.
-	pub fn as_ptr_mut(&self) -> *mut u8 {
-		self.0
-			.as_ref()
-			.map(|p| p.as_ptr() as _)
-			.unwrap_or(null_mut())
-	}
-
 	/// Returns an immutable reference to the string.
 	///
 	/// If the string is not accessible, the function returns an error.
@@ -272,5 +264,70 @@ impl fmt::Debug for SyscallString {
 			Ok(None) => write!(fmt, "NULL"),
 			Err(e) => write!(fmt, "{ptr:p} = (cannot read: {e})"),
 		}
+	}
+}
+
+/// Wrapper for a C-style, NULL-terminated string array.
+pub struct SyscallArray(Option<NonNull<*const u8>>);
+
+impl From<usize> for SyscallArray {
+	/// Creates an instance from a register value.
+	fn from(val: usize) -> Self {
+		Self(NonNull::new(val as _))
+	}
+}
+
+impl SyscallArray {
+	/// Tells whether the pointer is null.
+	pub fn is_null(&self) -> bool {
+		self.0.is_none()
+	}
+
+	/// Returns an immutable pointer to the data.
+	pub fn as_ptr(&self) -> *const u8 {
+		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
+	}
+
+	/// Returns an iterator over the array's elements.
+	pub fn iter<'a>(
+		&'a self,
+		mem_space: &'a MemSpace,
+	) -> impl Iterator<Item = EResult<&'a [u8]>> + 'a {
+		SyscallArrayIterator {
+			mem_space,
+			arr: self,
+			i: 0,
+		}
+	}
+}
+
+pub struct SyscallArrayIterator<'a> {
+	/// The memory space.
+	mem_space: &'a MemSpace,
+	/// The array.
+	arr: &'a SyscallArray,
+	/// The current index.
+	i: usize,
+}
+
+impl<'a> Iterator for SyscallArrayIterator<'a> {
+	type Item = EResult<&'a [u8]>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let Some(arr) = self.arr.0 else {
+			return Some(Err(errno!(EFAULT)));
+		};
+		// If reaching the end of the array, stop
+		let str_ptr = unsafe { arr.add(self.i).read_volatile() };
+		if str_ptr.is_null() {
+			return None;
+		}
+		// Get string
+		let string: SyscallString = (str_ptr as usize).into();
+		let string = string
+			.get(self.mem_space)
+			.and_then(|s| s.ok_or_else(|| errno!(EFAULT)));
+		self.i += 1;
+		Some(string)
 	}
 }
