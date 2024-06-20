@@ -301,6 +301,24 @@ impl SyscallArray {
 	}
 }
 
+impl fmt::Debug for SyscallArray {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let proc_mutex = Process::current_assert();
+		let proc = proc_mutex.lock();
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space = mem_space_mutex.lock();
+		let mut list = fmt.debug_list();
+		let mut list_ref = &mut list;
+		for elem in self.iter(&mem_space) {
+			list_ref = match elem {
+				Ok(s) => list_ref.entry(&DisplayableStr(s)),
+				Err(e) => list_ref.entry(&e),
+			};
+		}
+		list_ref.finish()
+	}
+}
+
 pub struct SyscallArrayIterator<'a> {
 	/// The memory space.
 	mem_space: &'a MemSpace,

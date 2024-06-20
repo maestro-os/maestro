@@ -54,6 +54,23 @@ const INTERP_MAX: usize = 4;
 
 // TODO Use ARG_MAX
 
+/// A buffer containing a shebang.
+struct ShebangBuffer {
+	/// The before to store the shebang read from file.
+	buf: [u8; SHEBANG_MAX],
+	/// The index of the end of the shebang in the buffer.
+	end: usize,
+}
+
+impl Default for ShebangBuffer {
+	fn default() -> Self {
+		Self {
+			buf: [0; SHEBANG_MAX],
+			end: 0,
+		}
+	}
+}
+
 /// Returns the file for the given `path`.
 ///
 /// The function also parses and evential shebang string and builds the resulting **argv**.
@@ -67,16 +84,12 @@ fn get_file<'a, A: Iterator<Item = EResult<&'a [u8]>> + 'a>(
 	rs: &ResolutionSettings,
 	argv: A,
 ) -> EResult<(Arc<Mutex<File>>, Vec<String>)> {
-	let mut buffers: [[u8; SHEBANG_MAX]; INTERP_MAX] = [[0; SHEBANG_MAX]; INTERP_MAX];
+	let mut shebangs: [ShebangBuffer; INTERP_MAX] = Default::default();
 	// Read and parse shebangs
 	let mut file_mutex = vfs::get_file_from_path(path, rs)?;
 	let mut i = 0;
 	loop {
-		// If there is still an interpreter but the limit has been reached
-		if i >= INTERP_MAX {
-			return Err(errno!(ELOOP));
-		}
-		let buff = &mut buffers[i];
+		let shebang = &mut shebangs[i];
 		// Read file
 		let len = {
 			let mut file = file_mutex.lock();
@@ -84,38 +97,45 @@ fn get_file<'a, A: Iterator<Item = EResult<&'a [u8]>> + 'a>(
 			if !rs.access_profile.can_execute_file(&file) {
 				return Err(errno!(EACCES));
 			}
-			file.read(0, buff)?.0 as usize
+			file.read(0, &mut shebang.buf)?.0 as usize
 		};
 		// Parse shebang
-		let end = buff[..len].iter().position(|b| *b == b'\n').unwrap_or(len);
-		if !matches!(buff[..end], [b'#', b'!', _, ..]) {
+		shebang.end = shebang.buf[..len]
+			.iter()
+			.position(|b| *b == b'\n')
+			.unwrap_or(len);
+		if !matches!(shebang.buf[..shebang.end], [b'#', b'!', _, ..]) {
 			break;
 		}
 		i += 1;
+		// If there is still an interpreter but the limit has been reached
+		if i >= INTERP_MAX {
+			return Err(errno!(ELOOP));
+		}
 		// Get interpreter path
-		let interp_end = buff[2..end]
+		let interp_end = shebang.buf[2..shebang.end]
 			.iter()
 			.position(|b| (*b as char).is_ascii_whitespace())
-			.unwrap_or(end);
-		let interp_path = Path::new(&buff[2..interp_end])?;
+			.unwrap_or(shebang.end);
+		let interp_path = Path::new(&shebang.buf[2..interp_end])?;
 		// Read interpreter
 		file_mutex = vfs::get_file_from_path(&interp_path, rs)?;
 	}
 	// Build arguments
-	let final_argv = buffers[..=i]
+	let final_argv = shebangs[..i]
 		.into_iter()
 		.rev()
 		.enumerate()
 		.flat_map(|(i, shebang)| {
-			let mut words = shebang[2..]
-				.split(|b| (*b as char).is_ascii_whitespace())
-				.map(|s| Ok(String::try_from(s)?));
+			let mut words =
+				shebang.buf[2..shebang.end].split(|b| (*b as char).is_ascii_whitespace());
 			// Skip interpreters, except the first
 			if i > 0 {
 				words.next();
 			}
 			words
 		})
+		.map(|s| Ok(String::try_from(s)?))
 		.chain(argv.map(|s| s.and_then(|s| Ok(String::try_from(s)?))))
 		.collect::<EResult<CollectResult<Vec<String>>>>()?
 		.0?;
