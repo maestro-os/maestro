@@ -119,11 +119,11 @@ fn get_file<'a, A: Iterator<Item = EResult<&'a [u8]>> + 'a>(
 			.unwrap_or(shebang.end);
 		let interp_path = Path::new(&shebang.buf[2..interp_end])?;
 		// Read interpreter
-		file_mutex = vfs::get_file_from_path(&interp_path, rs)?;
+		file_mutex = vfs::get_file_from_path(interp_path, rs)?;
 	}
 	// Build arguments
 	let final_argv = shebangs[..i]
-		.into_iter()
+		.iter()
 		.rev()
 		.enumerate()
 		.flat_map(|(i, shebang)| {
