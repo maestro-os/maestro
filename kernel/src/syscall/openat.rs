@@ -28,8 +28,8 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		File, FileType, Mode, Stat,
 	},
-	process::{mem_space::ptr::SyscallString, Process},
-	syscall::util::at,
+	process::Process,
+	syscall::{util::at, SyscallString},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,

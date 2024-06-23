@@ -20,7 +20,8 @@
 //! given delay.
 
 use crate::{
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::Process,
+	syscall::SyscallPtr,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::Timespec32},
 };
 use macros::syscall;

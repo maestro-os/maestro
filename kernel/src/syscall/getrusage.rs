@@ -19,7 +19,10 @@
 //! The `getrusage` system call returns the system usage for the current
 //! process.
 
-use crate::process::{mem_space::ptr::SyscallPtr, rusage::RUsage, Process};
+use crate::{
+	process::{rusage::RUsage, Process},
+	syscall::SyscallPtr,
+};
 use core::ffi::c_int;
 use macros::syscall;
 use utils::{errno, errno::Errno};

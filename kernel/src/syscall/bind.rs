@@ -20,10 +20,10 @@
 
 use crate::{
 	file::{buffer, buffer::socket::Socket},
-	process::{mem_space::ptr::SyscallSlice, Process},
+	process::Process,
+	syscall::SyscallSlice,
 };
 use core::{any::Any, ffi::c_int};
-use macros::syscall;
 use utils::{errno, errno::Errno};
 
 #[syscall]

@@ -18,8 +18,9 @@
 
 //! The `clone` system call creates a child process.
 
-use crate::process::{
-	mem_space::ptr::SyscallPtr, scheduler, user_desc::UserDesc, ForkOptions, Process,
+use crate::{
+	process::{scheduler, user_desc::UserDesc, ForkOptions, Process},
+	syscall::SyscallPtr,
 };
 use core::ffi::c_void;
 use macros::syscall;

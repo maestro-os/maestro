@@ -21,7 +21,7 @@
 use super::statfs::do_statfs;
 use crate::{
 	file::fs::Statfs,
-	process::mem_space::ptr::{SyscallPtr, SyscallString},
+	syscall::{SyscallPtr, SyscallString},
 };
 use macros::syscall;
 use utils::errno::Errno;

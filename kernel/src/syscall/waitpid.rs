@@ -19,11 +19,8 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
 use crate::{
-	process::{
-		mem_space::ptr::SyscallPtr, pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process,
-		State,
-	},
-	syscall::waitpid::scheduler::SCHEDULER,
+	process::{pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process, State},
+	syscall::{waitpid::scheduler::SCHEDULER, SyscallPtr},
 };
 use core::ffi::c_int;
 use macros::syscall;

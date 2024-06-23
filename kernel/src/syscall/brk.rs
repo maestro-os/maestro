@@ -21,7 +21,6 @@
 
 use crate::process::Process;
 use core::ffi::c_void;
-use macros::syscall;
 use utils::errno::Errno;
 
 #[syscall]

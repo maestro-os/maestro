@@ -20,7 +20,7 @@
 
 use super::select::{do_select, FDSet};
 use crate::{
-	process::mem_space::ptr::{SyscallPtr, SyscallSlice},
+	syscall::{SyscallPtr, SyscallSlice},
 	time::unit::Timespec,
 };
 use core::ffi::c_int;

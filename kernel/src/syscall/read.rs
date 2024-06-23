@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{open_file::O_NONBLOCK, FileType},
-	process::{mem_space::ptr::SyscallSlice, scheduler, Process},
+	process::{scheduler, Process},
+	syscall::SyscallSlice,
 };
 use core::{cmp::min, ffi::c_int};
 use macros::syscall;

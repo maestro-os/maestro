@@ -20,10 +20,8 @@
 //! writable or for an exception to occur.
 
 use crate::{
-	process::{
-		mem_space::ptr::{SyscallPtr, SyscallSlice},
-		scheduler, Process,
-	},
+	process::{scheduler, Process},
+	syscall::{SyscallPtr, SyscallSlice},
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,

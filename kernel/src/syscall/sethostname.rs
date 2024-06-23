@@ -18,10 +18,7 @@
 
 //! The `sethostname` syscall sets the hostname of the system.
 
-use crate::{
-	limits,
-	process::{mem_space::ptr::SyscallSlice, Process},
-};
+use crate::{limits, process::Process, syscall::SyscallSlice};
 use macros::syscall;
 use utils::{collections::vec::Vec, errno, errno::Errno};
 

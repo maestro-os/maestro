@@ -161,7 +161,7 @@ mod write;
 mod writev;
 
 //use wait::wait;
-use crate::process::{regs::Regs, signal::Signal, Process};
+use crate::process::{mem_space::MemSpace, regs::Regs, signal::Signal, Process};
 use _exit::_exit;
 use _llseek::_llseek;
 use _newselect::_newselect;
@@ -179,7 +179,12 @@ use clock_gettime64::clock_gettime64;
 use clone::clone;
 use close::close;
 use connect::connect;
-use core::fmt::Debug;
+use core::{
+	fmt,
+	mem::size_of,
+	ptr::{null, null_mut, NonNull},
+	slice,
+};
 use creat::creat;
 use delete_module::delete_module;
 use dup::dup;
@@ -291,7 +296,7 @@ use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use unlinkat::unlinkat;
-use utils::{errno::EResult, lock::IntMutex, ptr::arc::Arc};
+use utils::{errno, errno::EResult, lock::IntMutex, ptr::arc::Arc, DisplayableStr};
 use utimensat::utimensat;
 use vfork::vfork;
 use wait4::wait4;
@@ -395,10 +400,7 @@ macro_rules! impl_from_syscall_primitive {
 				_process: &'p Arc<IntMutex<Process>>,
 				regs: &'p Regs,
 				args_cursor: &mut u8,
-			) -> Self
-			where
-				Self: 'p,
-			{
+			) -> Self {
 				let val = regs.get_syscall_arg(*args_cursor);
 				*args_cursor += 1;
 				val as _
@@ -416,6 +418,324 @@ impl_from_syscall_primitive!(u32);
 impl_from_syscall_primitive!(i64);
 impl_from_syscall_primitive!(u64);
 
+/// Wrapper for a pointer.
+pub struct SyscallPtr<T: Sized>(Option<NonNull<T>>);
+
+impl<T: Sized> FromSyscall<'_> for SyscallPtr<T> {
+	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
+		let val = regs.get_syscall_arg(*args_cursor);
+		*args_cursor += 1;
+		Self(NonNull::new(val as _))
+	}
+}
+
+impl<T: Sized> SyscallPtr<T> {
+	/// Tells whether the pointer is null.
+	pub fn is_null(&self) -> bool {
+		self.0.is_none()
+	}
+
+	/// Returns an immutable pointer to the data.
+	pub fn as_ptr(&self) -> *const T {
+		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
+	}
+
+	/// Returns a mutable pointer to the data.
+	pub fn as_ptr_mut(&self) -> *mut T {
+		self.0
+			.as_ref()
+			.map(|p| p.as_ptr() as _)
+			.unwrap_or(null_mut())
+	}
+
+	/// Returns an immutable reference to the value of the pointer.
+	///
+	/// If the pointer is null, the function returns `None`.
+	///
+	/// If the value is not accessible, the function returns an error.
+	pub fn get<'a>(&self, mem_space: &'a MemSpace) -> EResult<Option<&'a T>> {
+		let Some(ptr) = self.0 else {
+			return Ok(None);
+		};
+		if !mem_space.can_access(ptr.as_ptr() as _, size_of::<T>(), true, false) {
+			return Err(errno!(EFAULT));
+		}
+		// Safe because access is checked before
+		Ok(Some(unsafe { ptr.as_ref() }))
+	}
+
+	/// Returns a mutable reference to the value of the pointer.
+	///
+	/// If the pointer is null, the function returns `None`.
+	///
+	/// If the value is not accessible, the function returns an error.
+	///
+	/// If the value is located on lazily allocated pages, the function
+	/// allocates physical pages in order to allow writing.
+	pub fn get_mut<'a>(&self, mem_space: &'a mut MemSpace) -> EResult<Option<&'a mut T>> {
+		let Some(mut ptr) = self.0 else {
+			return Ok(None);
+		};
+		if !mem_space.can_access(ptr.as_ptr() as _, size_of::<T>(), true, true) {
+			return Err(errno!(EFAULT));
+		}
+		// Allocate memory to make sure it is writable
+		mem_space.alloc(ptr.as_ptr() as _, size_of::<T>())?;
+		// Safe because access is checked before
+		Ok(Some(unsafe { ptr.as_mut() }))
+	}
+}
+
+impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let proc_mutex = Process::current_assert();
+		let proc = proc_mutex.lock();
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space = mem_space_mutex.lock();
+		let ptr = self.as_ptr();
+		match self.get(&mem_space) {
+			Ok(Some(val)) => write!(fmt, "{ptr:p} = {val:?}"),
+			Ok(None) => write!(fmt, "NULL"),
+			Err(e) => write!(fmt, "{ptr:p} = (cannot read: {e})"),
+		}
+	}
+}
+
+/// Wrapper for a slice.
+///
+/// The size of the slice is required when trying to access it.
+pub struct SyscallSlice<T: Sized>(Option<NonNull<T>>);
+
+impl<T: Sized> FromSyscall<'_> for SyscallSlice<T> {
+	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
+		let val = regs.get_syscall_arg(*args_cursor);
+		*args_cursor += 1;
+		Self(NonNull::new(val as _))
+	}
+}
+
+impl<T: Sized> SyscallSlice<T> {
+	/// Tells whether the pointer is null.
+	pub fn is_null(&self) -> bool {
+		self.0.is_none()
+	}
+
+	/// Returns an immutable pointer to the data.
+	pub fn as_ptr(&self) -> *const T {
+		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
+	}
+
+	/// Returns a mutable pointer to the data.
+	pub fn as_ptr_mut(&self) -> *mut T {
+		self.0
+			.as_ref()
+			.map(|p| p.as_ptr() as _)
+			.unwrap_or(null_mut())
+	}
+
+	/// Returns an immutable reference to the slice.
+	///
+	/// `len` is the in number of elements in the slice.
+	///
+	/// If the slice is not accessible, the function returns an error.
+	pub fn get<'a>(&self, mem_space: &'a MemSpace, len: usize) -> EResult<Option<&'a [T]>> {
+		let Some(ptr) = self.0 else {
+			return Ok(None);
+		};
+		let size = size_of::<T>() * len;
+		if !mem_space.can_access(ptr.as_ptr() as _, size, true, false) {
+			return Err(errno!(EFAULT));
+		}
+		Ok(Some(unsafe {
+			// Safe because access is checked before
+			slice::from_raw_parts(ptr.as_ptr(), len)
+		}))
+	}
+
+	/// Returns a mutable reference to the slice.
+	///
+	/// `len` is the in number of elements in the slice.
+	///
+	/// If the slice is not accessible, the function returns an error.
+	///
+	/// If the slice is located on lazily allocated pages, the function
+	/// allocates physical pages in order to allow writing.
+	pub fn get_mut<'a>(
+		&self,
+		mem_space: &'a mut MemSpace,
+		len: usize,
+	) -> EResult<Option<&'a mut [T]>> {
+		let Some(ptr) = self.0 else {
+			return Ok(None);
+		};
+		let size = size_of::<T>() * len;
+		if !mem_space.can_access(ptr.as_ptr() as _, size, true, true) {
+			return Err(errno!(EFAULT));
+		}
+		// Allocate memory to make sure it is writable
+		mem_space.alloc(ptr.as_ptr() as _, size)?;
+		Ok(Some(unsafe {
+			// Safe because access is checked before
+			slice::from_raw_parts_mut(ptr.as_ptr(), len)
+		}))
+	}
+}
+
+impl<T: fmt::Debug> fmt::Debug for SyscallSlice<T> {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		// TODO Print value? (how to get the length of the slice?)
+		let ptr = self.as_ptr();
+		if !ptr.is_null() {
+			write!(fmt, "{ptr:p}")
+		} else {
+			write!(fmt, "NULL")
+		}
+	}
+}
+
+/// Wrapper for a C-style, nul-terminated (`\0`) string.
+pub struct SyscallString(Option<NonNull<u8>>);
+
+impl FromSyscall<'_> for SyscallString {
+	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
+		let val = regs.get_syscall_arg(*args_cursor);
+		*args_cursor += 1;
+		Self(NonNull::new(val as _))
+	}
+}
+
+impl SyscallString {
+	/// Tells whether the pointer is null.
+	pub fn is_null(&self) -> bool {
+		self.0.is_none()
+	}
+
+	/// Returns an immutable pointer to the data.
+	pub fn as_ptr(&self) -> *const u8 {
+		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
+	}
+
+	/// Returns an immutable reference to the string.
+	///
+	/// If the string is not accessible, the function returns an error.
+	pub fn get<'a>(&self, mem_space: &'a MemSpace) -> EResult<Option<&'a [u8]>> {
+		let Some(ptr) = self.0 else {
+			return Ok(None);
+		};
+		let len = mem_space
+			.can_access_string(ptr.as_ptr(), true, false)
+			.ok_or_else(|| errno!(EFAULT))?;
+		Ok(Some(unsafe {
+			// Safe because access is checked before
+			slice::from_raw_parts(ptr.as_ptr(), len)
+		}))
+	}
+}
+
+impl fmt::Debug for SyscallString {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let proc_mutex = Process::current_assert();
+		let proc = proc_mutex.lock();
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space = mem_space_mutex.lock();
+		let ptr = self.as_ptr();
+		match self.get(&mem_space) {
+			Ok(Some(s)) => {
+				// TODO Add backslashes to escape `"` and `\`
+				let s = DisplayableStr(s);
+				write!(fmt, "{ptr:p} = \"{s}\"")
+			}
+			Ok(None) => write!(fmt, "NULL"),
+			Err(e) => write!(fmt, "{ptr:p} = (cannot read: {e})"),
+		}
+	}
+}
+
+/// Wrapper for a C-style, NULL-terminated string array.
+pub struct SyscallArray(Option<NonNull<*const u8>>);
+
+impl FromSyscall<'_> for SyscallArray {
+	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
+		let val = regs.get_syscall_arg(*args_cursor);
+		*args_cursor += 1;
+		Self(NonNull::new(val as _))
+	}
+}
+
+impl SyscallArray {
+	/// Tells whether the pointer is null.
+	pub fn is_null(&self) -> bool {
+		self.0.is_none()
+	}
+
+	/// Returns an immutable pointer to the data.
+	pub fn as_ptr(&self) -> *const u8 {
+		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
+	}
+
+	/// Returns an iterator over the array's elements.
+	pub fn iter<'a>(
+		&'a self,
+		mem_space: &'a MemSpace,
+	) -> impl Iterator<Item = EResult<&'a [u8]>> + 'a {
+		SyscallArrayIterator {
+			mem_space,
+			arr: self,
+			i: 0,
+		}
+	}
+}
+
+impl fmt::Debug for SyscallArray {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		let proc_mutex = Process::current_assert();
+		let proc = proc_mutex.lock();
+		let mem_space_mutex = proc.get_mem_space().unwrap();
+		let mem_space = mem_space_mutex.lock();
+		let mut list = fmt.debug_list();
+		let mut list_ref = &mut list;
+		for elem in self.iter(&mem_space) {
+			list_ref = match elem {
+				Ok(s) => list_ref.entry(&DisplayableStr(s)),
+				Err(e) => list_ref.entry(&e),
+			};
+		}
+		list_ref.finish()
+	}
+}
+
+/// Iterators over elements of [`SyscallArray`].
+pub struct SyscallArrayIterator<'a> {
+	/// The memory space.
+	mem_space: &'a MemSpace,
+	/// The array.
+	arr: &'a SyscallArray,
+	/// The current index.
+	i: usize,
+}
+
+impl<'a> Iterator for SyscallArrayIterator<'a> {
+	type Item = EResult<&'a [u8]>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let Some(arr) = self.arr.0 else {
+			return Some(Err(errno!(EFAULT)));
+		};
+		// If reaching the end of the array, stop
+		let str_ptr = unsafe { arr.add(self.i).read_volatile() };
+		if str_ptr.is_null() {
+			return None;
+		}
+		// Get string
+		let string: SyscallString = (str_ptr as usize).into();
+		let string = string
+			.get(self.mem_space)
+			.and_then(|s| s.ok_or_else(|| errno!(EFAULT)));
+		self.i += 1;
+		Some(string)
+	}
+}
+
 /// Syscall declaration.
 macro_rules! syscall {
 	($name:ident, $process:expr, $regs:expr) => {{
@@ -431,7 +751,7 @@ macro_rules! syscall {
 fn do_syscall(process: &Arc<IntMutex<Process>>, regs: &Regs, id: usize) -> Option<EResult<usize>> {
 	match id {
 		0x001 => Some(syscall!(_exit, process, regs)),
-		/*0x002 => Some(syscall!(fork, process, regs)),
+		0x002 => Some(syscall!(fork, process, regs)),
 		0x003 => Some(syscall!(read, process, regs)),
 		0x004 => Some(syscall!(write, process, regs)),
 		0x005 => Some(syscall!(open, process, regs)),
@@ -866,7 +1186,7 @@ fn do_syscall(process: &Arc<IntMutex<Process>>, regs: &Regs, id: usize) -> Optio
 		// TODO 0x1bf => Some(syscall!(memfd_secret, process, regs)),
 		// TODO 0x1c0 => Some(syscall!(process_mrelease, process, regs)),
 		// TODO 0x1c1 => Some(syscall!(futex_waitv, process, regs)),
-		// TODO 0x1c2 => Some(syscall!(set_mempolicy_home_node, process, regs)),*/
+		// TODO 0x1c2 => Some(syscall!(set_mempolicy_home_node, process, regs)),
 		_ => None,
 	}
 }

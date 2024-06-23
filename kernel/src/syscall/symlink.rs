@@ -26,7 +26,8 @@ use crate::{
 		FileType, Stat,
 	},
 	limits,
-	process::{mem_space::ptr::SyscallString, Process},
+	process::Process,
+	syscall::SyscallString,
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,

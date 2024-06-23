@@ -18,10 +18,7 @@
 
 //! The `splice` system call splice data from one pipe to another.
 
-use crate::{
-	file::FileType,
-	process::{mem_space::ptr::SyscallPtr, Process},
-};
+use crate::{file::FileType, process::Process, syscall::SyscallPtr};
 use core::{
 	cmp::min,
 	ffi::{c_int, c_uint},

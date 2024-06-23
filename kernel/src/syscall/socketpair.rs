@@ -22,7 +22,8 @@
 use crate::{
 	file::{buffer, buffer::socket::Socket, open_file, open_file::OpenFile, vfs},
 	net::{SocketDesc, SocketDomain, SocketType},
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::Process,
+	syscall::SyscallPtr,
 };
 use core::ffi::c_int;
 use macros::syscall;

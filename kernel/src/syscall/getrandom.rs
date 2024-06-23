@@ -18,10 +18,7 @@
 
 //! The `getrandom` system call allows to get random bytes.
 
-use crate::{
-	crypto::rand,
-	process::{mem_space::ptr::SyscallSlice, Process},
-};
+use crate::{crypto::rand, process::Process, syscall::SyscallSlice};
 use core::ffi::c_uint;
 use macros::syscall;
 use utils::{errno, errno::Errno};

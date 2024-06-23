@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::Process,
+	syscall::SyscallPtr,
 };
 use core::ffi::c_int;
 use macros::syscall;

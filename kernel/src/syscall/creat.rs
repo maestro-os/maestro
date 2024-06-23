@@ -18,8 +18,8 @@
 
 //! The `creat` system call allows to create and open a file.
 
-use super::open;
-use crate::{file::open_file, process::mem_space::ptr::SyscallString};
+use super::{open, SyscallString};
+use crate::file::open_file;
 use core::ffi::c_int;
 use macros::syscall;
 use utils::errno::Errno;

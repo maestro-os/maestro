@@ -23,11 +23,8 @@ use super::Buffer;
 use crate::{
 	file::{buffer::BlockHandler, FileType, Stat},
 	limits,
-	process::{
-		mem_space::{ptr::SyscallPtr, MemSpace},
-		Process,
-	},
-	syscall::ioctl,
+	process::{mem_space::MemSpace, Process},
+	syscall::{ioctl, SyscallPtr},
 };
 use core::ffi::{c_int, c_void};
 use utils::{

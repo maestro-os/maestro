@@ -20,10 +20,8 @@
 
 use crate::{
 	file::{fs::Statfs, path::PathBuf, vfs, vfs::ResolutionSettings},
-	process::{
-		mem_space::ptr::{SyscallPtr, SyscallString},
-		Process,
-	},
+	process::Process,
+	syscall::{SyscallPtr, SyscallString},
 };
 use macros::syscall;
 use utils::{

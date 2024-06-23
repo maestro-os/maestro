@@ -22,7 +22,7 @@
 use super::getdents::{do_getdents, Dirent};
 use crate::{
 	file::{FileType, INode},
-	process::mem_space::ptr::SyscallSlice,
+	syscall::SyscallSlice,
 };
 use core::{
 	ffi::c_int,

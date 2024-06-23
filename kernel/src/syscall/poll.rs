@@ -20,7 +20,8 @@
 //! descriptors.
 
 use crate::{
-	process::{mem_space::ptr::SyscallSlice, scheduler, Process},
+	process::{scheduler, Process},
+	syscall::SyscallSlice,
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,

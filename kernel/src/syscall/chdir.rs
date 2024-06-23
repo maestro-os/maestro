@@ -21,7 +21,8 @@
 
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
-	process::{mem_space::ptr::SyscallString, Process},
+	process::Process,
+	syscall::SyscallString,
 };
 use macros::syscall;
 use utils::{errno, errno::Errno, ptr::arc::Arc};

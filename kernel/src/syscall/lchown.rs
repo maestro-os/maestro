@@ -18,7 +18,7 @@
 
 //! The `lchown` system call changes the owner of a symbolic link file.
 
-use crate::process::mem_space::ptr::SyscallString;
+use crate::syscall::SyscallString;
 use core::ffi::c_int;
 use macros::syscall;
 use utils::errno::Errno;

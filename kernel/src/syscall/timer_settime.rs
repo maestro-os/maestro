@@ -19,7 +19,8 @@
 //! The `timer_settime` system call creates a per-process timer.
 
 use crate::{
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::Process,
+	syscall::SyscallPtr,
 	time::unit::{ITimerspec32, TimerT},
 };
 use core::ffi::c_int;

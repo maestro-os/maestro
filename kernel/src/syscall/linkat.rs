@@ -26,7 +26,8 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType,
 	},
-	process::{mem_space::ptr::SyscallString, Process},
+	process::Process,
+	syscall::SyscallString,
 };
 use core::ffi::c_int;
 use macros::syscall;

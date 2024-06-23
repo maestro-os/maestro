@@ -18,7 +18,7 @@
 
 //! The `faccessat` system call allows to check access to a given file.
 
-use crate::process::mem_space::ptr::SyscallString;
+use crate::syscall::SyscallString;
 use core::ffi::c_int;
 use macros::syscall;
 use utils::errno::Errno;

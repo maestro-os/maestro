@@ -18,7 +18,7 @@
 
 //! The uname syscall is used to retrieve informations about the system.
 
-use crate::process::{mem_space::ptr::SyscallPtr, Process};
+use crate::{process::Process, syscall::SyscallPtr};
 use macros::syscall;
 use utils::{errno, errno::Errno};
 

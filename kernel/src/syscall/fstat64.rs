@@ -23,7 +23,8 @@ use crate::{
 		perm::{Gid, Uid},
 		INode, Mode,
 	},
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::Process,
+	syscall::SyscallPtr,
 	time::unit::{TimeUnit, Timespec, TimestampScale},
 };
 use core::ffi::{c_int, c_long};

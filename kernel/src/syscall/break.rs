@@ -18,7 +18,6 @@
 
 //! The `break` system call is not implemented.
 
-use macros::syscall;
 use utils::{errno, errno::Errno};
 
 #[syscall]

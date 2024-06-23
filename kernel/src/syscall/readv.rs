@@ -24,11 +24,8 @@ use crate::{
 		FileType,
 	},
 	limits,
-	process::{
-		iovec::IOVec,
-		mem_space::{ptr::SyscallSlice, MemSpace},
-		scheduler, Process,
-	},
+	process::{iovec::IOVec, mem_space::MemSpace, scheduler, Process},
+	syscall::SyscallSlice,
 };
 use core::{cmp::min, ffi::c_int};
 use macros::syscall;

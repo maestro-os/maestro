@@ -23,10 +23,8 @@ use crate::{
 		fs, mountpoint, mountpoint::MountSource, path::PathBuf, vfs, vfs::ResolutionSettings,
 		FileType,
 	},
-	process::{
-		mem_space::ptr::{SyscallPtr, SyscallString},
-		Process,
-	},
+	process::Process,
+	syscall::{SyscallPtr, SyscallString},
 };
 use core::ffi::{c_ulong, c_void};
 use macros::syscall;

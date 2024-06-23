@@ -19,7 +19,8 @@
 //! The `clock_gettime` syscall returns the current time of the given clock.
 
 use crate::{
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::Process,
+	syscall::SyscallPtr,
 	time::{
 		clock,
 		unit::{ClockIdT, Timespec},

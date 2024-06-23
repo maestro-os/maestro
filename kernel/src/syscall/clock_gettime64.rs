@@ -19,7 +19,8 @@
 //! `clock_gettime64` is like `clock_gettime` but using 64 bits.
 
 use crate::{
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::Process,
+	syscall::SyscallPtr,
 	time::{
 		clock,
 		unit::{ClockIdT, Timespec},

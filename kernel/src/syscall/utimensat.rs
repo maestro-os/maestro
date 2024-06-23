@@ -24,10 +24,8 @@ use crate::{
 		path::Path,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{
-		mem_space::ptr::{SyscallPtr, SyscallString},
-		Process,
-	},
+	process::Process,
+	syscall::{SyscallPtr, SyscallString},
 	time::unit::{TimeUnit, Timespec},
 };
 use core::ffi::c_int;

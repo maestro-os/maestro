@@ -21,7 +21,8 @@
 
 use crate::{
 	file::{FileType, INode},
-	process::{mem_space::ptr::SyscallSlice, Process},
+	process::Process,
+	syscall::SyscallSlice,
 };
 use core::{
 	ffi::c_uint,

@@ -20,10 +20,10 @@
 
 use crate::{
 	process::{
-		mem_space::ptr::SyscallPtr,
 		signal::{SigEvent, SigVal, Signal, SIGEV_SIGNAL},
 		Process,
 	},
+	syscall::SyscallPtr,
 	time::unit::{ClockIdT, TimerT},
 };
 use macros::syscall;

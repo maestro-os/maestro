@@ -25,7 +25,6 @@
 
 mod gap;
 mod mapping;
-pub mod ptr;
 pub mod residence;
 mod transaction;
 

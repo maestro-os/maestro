@@ -22,7 +22,8 @@
 
 use crate::{
 	file::{path::Path, vfs, vfs::ResolutionSettings},
-	process::{mem_space::ptr::SyscallString, Process},
+	process::Process,
+	syscall::SyscallString,
 };
 use macros::syscall;
 use utils::{errno, errno::Errno};

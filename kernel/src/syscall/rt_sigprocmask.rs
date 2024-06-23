@@ -18,7 +18,7 @@
 
 //! The rt_sigprocmask system call allows to change the blocked signal mask.
 
-use crate::process::{mem_space::ptr::SyscallSlice, Process};
+use crate::{process::Process, syscall::SyscallSlice};
 use core::{cmp::min, ffi::c_int};
 use macros::syscall;
 use utils::{errno, errno::Errno};

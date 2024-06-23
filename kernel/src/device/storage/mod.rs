@@ -36,8 +36,8 @@ use crate::{
 		path::{Path, PathBuf},
 		Mode,
 	},
-	process::mem_space::{ptr::SyscallPtr, MemSpace},
-	syscall::ioctl,
+	process::mem_space::MemSpace,
+	syscall::{ioctl, SyscallPtr},
 };
 use core::{
 	cmp::min,

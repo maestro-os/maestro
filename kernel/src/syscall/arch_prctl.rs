@@ -19,7 +19,6 @@
 //! The `arch_prctl` system call sets architecture-specific thread state.
 
 use core::ffi::c_int;
-use macros::syscall;
 use utils::{errno, errno::Errno};
 
 #[syscall]

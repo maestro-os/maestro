@@ -22,12 +22,12 @@
 use crate::{
 	device::DeviceHandle,
 	process::{
-		mem_space::{ptr::SyscallPtr, MemSpace},
+		mem_space::MemSpace,
 		pid::Pid,
 		signal::{Signal, SignalHandler},
 		Process,
 	},
-	syscall::ioctl,
+	syscall::{ioctl, SyscallPtr},
 	tty::{termios, termios::Termios, TTYHandle, WinSize, TTY},
 };
 use core::ffi::c_void;

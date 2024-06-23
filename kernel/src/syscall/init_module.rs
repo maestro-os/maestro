@@ -21,10 +21,8 @@
 use crate::{
 	module,
 	module::Module,
-	process::{
-		mem_space::ptr::{SyscallSlice, SyscallString},
-		Process,
-	},
+	process::Process,
+	syscall::{SyscallSlice, SyscallString},
 };
 use core::ffi::c_ulong;
 use macros::syscall;

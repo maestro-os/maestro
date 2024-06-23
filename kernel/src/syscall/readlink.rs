@@ -20,10 +20,8 @@
 
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
-	process::{
-		mem_space::ptr::{SyscallSlice, SyscallString},
-		Process,
-	},
+	process::Process,
+	syscall::{SyscallSlice, SyscallString},
 };
 use macros::syscall;
 use utils::{errno, errno::Errno, io::IO};

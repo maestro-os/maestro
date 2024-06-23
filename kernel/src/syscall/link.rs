@@ -18,10 +18,7 @@
 
 //! The link system call allows to create a directory.
 
-use crate::{
-	file::path::Path,
-	process::{mem_space::ptr::SyscallString, Process},
-};
+use crate::{file::path::Path, process::Process, syscall::SyscallString};
 use macros::syscall;
 use utils::{errno, errno::Errno};
 

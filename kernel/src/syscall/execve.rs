@@ -29,11 +29,11 @@ use crate::{
 	process::{
 		exec,
 		exec::{ExecInfo, ProgramImage},
-		mem_space::ptr::{SyscallArray, SyscallString},
 		regs::Regs,
 		scheduler::SCHEDULER,
 		Process,
 	},
+	syscall::{SyscallArray, SyscallString},
 };
 use macros::syscall;
 use utils::{

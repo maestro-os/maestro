@@ -23,14 +23,16 @@ use crate::{
 		path::Path,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::ptr::SyscallString, Process},
-	syscall::util::{
-		at,
-		at::{AT_EACCESS, AT_FDCWD},
+	process::Process,
+	syscall::{
+		util::{
+			at,
+			at::{AT_EACCESS, AT_FDCWD},
+		},
+		SyscallString,
 	},
 };
 use core::ffi::c_int;
-use macros::syscall;
 use utils::{errno, errno::Errno};
 
 /// Checks for existence of the file.

@@ -21,7 +21,8 @@
 
 use crate::{
 	gdt, process,
-	process::{mem_space::ptr::SyscallPtr, user_desc::UserDesc, Process},
+	process::{user_desc::UserDesc, Process},
+	syscall::SyscallPtr,
 };
 use core::mem::size_of;
 use macros::syscall;

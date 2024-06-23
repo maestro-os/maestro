@@ -23,11 +23,8 @@ use super::{buffer, mountpoint, path::PathBuf, DeviceID, File, FileLocation, Fil
 use crate::{
 	device,
 	device::DeviceType,
-	process::{
-		mem_space::{ptr::SyscallPtr, MemSpace},
-		Process,
-	},
-	syscall::ioctl,
+	process::{mem_space::MemSpace, Process},
+	syscall::{ioctl, SyscallPtr},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use core::{
