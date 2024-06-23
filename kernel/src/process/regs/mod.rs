@@ -71,9 +71,9 @@ pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
 	}
 }
 
-/// Structure representing the list of registers for a context.
+/// The register state of an execution context.
 ///
-/// The content of this structure depends on the architecture for which the kernel is compiled.
+/// The contents of this structure is architecture-dependent.
 #[derive(Clone, Debug)]
 #[repr(C, packed)]
 #[cfg(target_arch = "x86")]
@@ -97,8 +97,31 @@ pub struct Regs {
 }
 
 impl Regs {
+	/// Returns the ID of the system call being executed.
+	#[inline]
+	pub const fn get_syscall_id(&self) -> usize {
+		self.eax as _
+	}
+
+	/// Returns the value of the `n`th argument of the syscall being executed.
+	///
+	/// If `n` exceeds the number of arguments for the current architecture, the function returns
+	/// `0`.
+	#[inline]
+	pub const fn get_syscall_arg(&self, n: u8) -> usize {
+		match n {
+			0 => self.ebx as _,
+			1 => self.ecx as _,
+			2 => self.edx as _,
+			3 => self.esi as _,
+			4 => self.edi as _,
+			5 => self.ebp as _,
+			_ => 0,
+		}
+	}
+
 	/// Sets the return value of a system call.
-	pub fn set_syscall_return(&mut self, value: EResult<i32>) {
+	pub fn set_syscall_return(&mut self, value: EResult<usize>) {
 		let retval = match value {
 			Ok(val) => val as _,
 			Err(e) => (-e.as_int()) as _,

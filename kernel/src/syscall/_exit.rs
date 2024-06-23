@@ -21,8 +21,7 @@
 
 use crate::process::{scheduler, Process};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::EResult;
 
 /// Exits the current process.
 ///
@@ -45,7 +44,6 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	unreachable!();
 }
 
-#[syscall]
-pub fn _exit(status: c_int) -> EResult<i32> {
+pub fn _exit(status: c_int) -> EResult<usize> {
 	do_exit(status as _, false);
 }
