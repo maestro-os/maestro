@@ -30,17 +30,18 @@ use crate::{
 	syscall::SyscallString,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
 pub fn linkat(
 	olddirfd: c_int,
 	oldpath: SyscallString,
 	newdirfd: c_int,
 	newpath: SyscallString,
 	flags: c_int,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let (fds_mutex, oldpath, newpath, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

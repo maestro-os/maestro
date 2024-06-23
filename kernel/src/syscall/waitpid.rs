@@ -23,7 +23,6 @@ use crate::{
 	syscall::{waitpid::scheduler::SCHEDULER, SyscallPtr},
 };
 use core::ffi::c_int;
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -183,7 +182,7 @@ pub fn do_waitpid(
 	wstatus: SyscallPtr<i32>,
 	options: i32,
 	rusage: Option<SyscallPtr<RUsage>>,
-) -> EResult<i32> {
+) -> EResult<usize> {
 	// Sleeping until a target process is waitable
 	loop {
 		super::util::handle_signal(regs);
@@ -235,7 +234,11 @@ pub fn do_waitpid(
 	}
 }
 
-#[syscall]
-pub fn waitpid(pid: c_int, wstatus: SyscallPtr<c_int>, options: c_int) -> Result<i32, Errno> {
+pub fn waitpid(
+	pid: c_int,
+	wstatus: SyscallPtr<c_int>,
+	options: c_int,
+	regs: &Regs,
+) -> EResult<usize> {
 	do_waitpid(regs, pid, wstatus, options | WEXITED, None)
 }

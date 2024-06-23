@@ -19,10 +19,12 @@
 //! The `arch_prctl` system call sets architecture-specific thread state.
 
 use core::ffi::c_int;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn arch_prctl(_code: c_int, _addr: usize) -> EResult<i32> {
+pub fn arch_prctl(_code: c_int, _addr: usize) -> EResult<usize> {
 	// TODO
 	Err(errno!(EINVAL))
 }

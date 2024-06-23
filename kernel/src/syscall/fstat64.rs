@@ -28,14 +28,16 @@ use crate::{
 	time::unit::{TimeUnit, Timespec, TimestampScale},
 };
 use core::ffi::{c_int, c_long};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 // TODO Check types
 /// Structure containing the information of a file.
 #[repr(C)]
 #[derive(Debug)]
-struct Stat {
+pub struct Stat {
 	/// ID of the device containing the file.
 	st_dev: u64,
 
@@ -73,8 +75,7 @@ struct Stat {
 	st_ctim: Timespec,
 }
 
-#[syscall]
-pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
+pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

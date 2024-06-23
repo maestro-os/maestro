@@ -27,17 +27,18 @@ use crate::{
 	syscall::{SyscallPtr, SyscallString},
 };
 use core::ffi::{c_ulong, c_void};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
 pub fn mount(
 	source: SyscallString,
 	target: SyscallString,
 	filesystemtype: SyscallString,
 	mountflags: c_ulong,
 	_data: SyscallPtr<c_void>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let (mount_source, target_path, fs_type, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

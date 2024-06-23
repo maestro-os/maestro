@@ -29,13 +29,16 @@ use crate::{
 	},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno, io};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io,
+};
 
 /// Structure representing a file descriptor passed to the `poll` system call.
 #[repr(C)]
 #[derive(Debug)]
-struct PollFD {
+pub struct PollFD {
 	/// The file descriptor.
 	fd: i32,
 	/// The input mask telling which events to look for.
@@ -45,8 +48,7 @@ struct PollFD {
 }
 
 // TODO Check second arg type
-#[syscall]
-pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i32, Errno> {
+pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> EResult<usize> {
 	// The timeout. None means no timeout
 	let to: Option<Timestamp> = if timeout >= 0 {
 		Some(timeout as _)

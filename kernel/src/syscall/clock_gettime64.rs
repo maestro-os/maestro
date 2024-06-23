@@ -26,11 +26,12 @@ use crate::{
 		unit::{ClockIdT, Timespec},
 	},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn clock_gettime64(clockid: ClockIdT, tp: SyscallPtr<Timespec>) -> Result<i32, Errno> {
+pub fn clock_gettime64(clockid: ClockIdT, tp: SyscallPtr<Timespec>) -> EResult<usize> {
 	let curr_time = clock::current_time_struct::<Timespec>(clockid)?;
 
 	{

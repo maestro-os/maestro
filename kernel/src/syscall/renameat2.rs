@@ -30,8 +30,10 @@ use crate::{
 	syscall::SyscallString,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Flag: Don't replace new path if it exists. Return an error instead.
 const RENAME_NOREPLACE: c_int = 1;
@@ -42,14 +44,13 @@ const RENAME_EXCHANGE: c_int = 2;
 // TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
 // etc...)
 
-#[syscall]
 pub fn renameat2(
 	olddirfd: c_int,
 	oldpath: SyscallString,
 	newdirfd: c_int,
 	newpath: SyscallString,
 	_flags: c_int,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let (fds_mutex, oldpath, newpath, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

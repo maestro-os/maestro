@@ -20,12 +20,13 @@
 
 use crate::process::Process;
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 // TODO Check args type
-#[syscall]
-pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
+pub fn fchmod(fd: c_int, mode: i32) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

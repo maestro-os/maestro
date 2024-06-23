@@ -20,11 +20,12 @@
 
 use crate::process::Process;
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn fsync(fd: c_int) -> Result<i32, Errno> {
+pub fn fsync(fd: c_int) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

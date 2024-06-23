@@ -23,12 +23,10 @@ use crate::{
 	file::fs::Statfs,
 	syscall::{SyscallPtr, SyscallString},
 };
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
 // TODO Check args types
-#[syscall]
-pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
+pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr<Statfs>) -> EResult<usize> {
 	// TODO Use `sz`
 	do_statfs(path, buf)
 }

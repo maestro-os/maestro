@@ -24,10 +24,8 @@ use crate::{
 	time::unit::Timespec,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
 pub fn pselect6(
 	nfds: c_int,
 	readfds: SyscallPtr<FDSet>,
@@ -35,7 +33,7 @@ pub fn pselect6(
 	exceptfds: SyscallPtr<FDSet>,
 	timeout: SyscallPtr<Timespec>,
 	sigmask: SyscallSlice<u8>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	do_select(
 		nfds as _,
 		readfds,

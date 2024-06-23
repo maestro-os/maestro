@@ -23,11 +23,12 @@ use crate::{
 	process::Process,
 	syscall::SyscallString,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn truncate(path: SyscallString, length: usize) -> Result<i32, Errno> {
+pub fn truncate(path: SyscallString, length: usize) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

@@ -68,7 +68,7 @@ const BELL_DURATION: u32 = 500;
 
 /// Structure representing a window size for a terminal.
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WinSize {
 	/// The number of rows.
 	pub ws_row: u16,

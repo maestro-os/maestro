@@ -21,12 +21,10 @@
 use super::{open, SyscallString};
 use crate::file::open_file;
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
 // TODO Check args type
-#[syscall]
-pub fn creat(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
+pub fn creat(pathname: SyscallString, mode: c_int) -> EResult<usize> {
 	let flags = open_file::O_CREAT | open_file::O_WRONLY | open_file::O_TRUNC;
 	open::open_(pathname, flags, mode as _)
 }

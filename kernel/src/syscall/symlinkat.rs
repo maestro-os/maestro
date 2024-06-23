@@ -35,15 +35,17 @@ use crate::{
 	},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno, io::IO};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io::IO,
+};
 
-#[syscall]
 pub fn symlinkat(
 	target: SyscallString,
 	newdirfd: c_int,
 	linkpath: SyscallString,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

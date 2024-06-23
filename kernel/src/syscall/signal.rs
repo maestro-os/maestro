@@ -30,11 +30,9 @@ use core::{
 	mem::transmute,
 	ptr::null,
 };
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
+pub fn signal(signum: c_int, handler: *const c_void) -> EResult<usize> {
 	// Validation
 	let signal = Signal::try_from(signum as u32)?;
 	// Conversion

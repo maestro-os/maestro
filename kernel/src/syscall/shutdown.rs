@@ -23,8 +23,10 @@ use crate::{
 	process::Process,
 };
 use core::{any::Any, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Shutdown receive side of the connection.
 const SHUT_RD: c_int = 0;
@@ -33,8 +35,7 @@ const SHUT_WR: c_int = 1;
 /// Both sides are shutdown.
 const SHUT_RDWR: c_int = 2;
 
-#[syscall]
-pub fn shutdown(sockfd: c_int, how: c_int) -> Result<i32, Errno> {
+pub fn shutdown(sockfd: c_int, how: c_int) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}

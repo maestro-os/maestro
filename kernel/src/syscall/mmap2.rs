@@ -21,11 +21,9 @@
 
 use super::mmap;
 use core::ffi::{c_int, c_void};
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
 // TODO Check last argument type
-#[syscall]
 pub fn mmap2(
 	addr: *mut c_void,
 	length: usize,
@@ -33,6 +31,6 @@ pub fn mmap2(
 	flags: c_int,
 	fd: c_int,
 	offset: u64,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	mmap::do_mmap(addr, length, prot, flags, fd, offset * 4096)
 }

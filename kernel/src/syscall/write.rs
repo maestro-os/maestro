@@ -21,17 +21,20 @@
 
 use crate::{
 	file::{open_file::O_NONBLOCK, FileType},
-	process::{scheduler, Process},
+	process::{regs::Regs, scheduler, Process},
 	syscall::{Signal, SyscallSlice},
 };
 use core::{cmp::min, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno, io, io::IO};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io,
+	io::IO,
+};
 
 // TODO O_ASYNC
 
-#[syscall]
-pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
+pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize, regs: &Regs) -> EResult<usize> {
 	// Validation
 	if fd < 0 {
 		return Err(errno!(EBADF));

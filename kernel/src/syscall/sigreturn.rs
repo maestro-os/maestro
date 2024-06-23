@@ -23,11 +23,12 @@
 //! to allow normal execution.
 
 use crate::process::Process;
-use macros::syscall;
-use utils::{errno::Errno, interrupt::cli};
+use utils::{
+	errno::{EResult, Errno},
+	interrupt::cli,
+};
 
-#[syscall]
-pub fn sigreturn() -> EResult<i32> {
+pub fn sigreturn() -> EResult<usize> {
 	cli();
 	let regs = {
 		let proc_mutex = Process::current_assert();

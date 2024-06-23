@@ -28,7 +28,6 @@ use core::{
 	ffi::{c_int, c_void},
 	num::NonZeroUsize,
 };
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -75,7 +74,7 @@ pub fn do_mmap(
 	flags: i32,
 	fd: i32,
 	offset: u64,
-) -> EResult<i32> {
+) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
@@ -179,7 +178,6 @@ pub fn do_mmap(
 }
 
 // TODO Check last arg type
-#[syscall]
 pub fn mmap(
 	addr: *mut c_void,
 	length: usize,
@@ -187,6 +185,6 @@ pub fn mmap(
 	flags: c_int,
 	fd: c_int,
 	offset: u64,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	do_mmap(addr, length, prot, flags, fd, offset as _)
 }

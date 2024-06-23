@@ -20,11 +20,12 @@
 //! process group ID of a process.
 
 use crate::process::{pid::Pid, Process};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn getpgid(pid: Pid) -> Result<i32, Errno> {
+pub fn getpgid(pid: Pid) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

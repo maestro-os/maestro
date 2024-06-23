@@ -24,15 +24,16 @@ use crate::{
 	syscall::{SyscallPtr, SyscallSlice},
 };
 use core::{any::Any, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
 pub fn getsockname(
 	sockfd: c_int,
 	addr: SyscallSlice<u8>,
 	addrlen: SyscallPtr<isize>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}

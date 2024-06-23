@@ -178,7 +178,7 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			ioctl::TIOCGWINSZ => {
 				let mut mem_space_guard = mem_space.lock();
-				let winsize: SyscallPtr<WinSize> = (argp as usize).into();
+				let winsize = SyscallPtr::<WinSize>::from(argp as usize);
 				let winsize_ref = winsize
 					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -189,7 +189,7 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			ioctl::TIOCSWINSZ => {
 				let mem_space_guard = mem_space.lock();
-				let winsize_ptr: SyscallPtr<WinSize> = (argp as usize).into();
+				let winsize_ptr = SyscallPtr::<WinSize>::from(argp as usize);
 				let winsize = winsize_ptr
 					.get(&mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;

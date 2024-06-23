@@ -33,11 +33,12 @@ use crate::{
 		unit::TimestampScale,
 	},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> Result<i32, Errno> {
+pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> EResult<usize> {
 	let (path, mode, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

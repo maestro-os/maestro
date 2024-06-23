@@ -21,8 +21,10 @@
 
 use crate::{power, process::Process};
 use core::ffi::{c_int, c_void};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// First magic number.
 const MAGIC: u32 = 0xde145e83;
@@ -38,8 +40,7 @@ const CMD_HALT: u32 = 2;
 /// Command to suspend the system.
 const CMD_SUSPEND: u32 = 3;
 
-#[syscall]
-pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> Result<i32, Errno> {
+pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> EResult<usize> {
 	if (magic as u32) != MAGIC || (magic2 as u32) != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}

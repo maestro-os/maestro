@@ -20,8 +20,10 @@
 
 use crate::{crypto::rand, process::Process, syscall::SyscallSlice};
 use core::ffi::c_uint;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// If set, bytes are draw from the random source instead of urandom.
 const GRND_RANDOM: u32 = 2;
@@ -29,8 +31,7 @@ const GRND_RANDOM: u32 = 2;
 /// returns EAGAIN.
 const GRND_NONBLOCK: u32 = 1;
 
-#[syscall]
-pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> Result<i32, Errno> {
+pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> EResult<usize> {
 	let bypass_threshold = flags & GRND_RANDOM == 0;
 	let nonblock = flags & GRND_NONBLOCK != 0;
 

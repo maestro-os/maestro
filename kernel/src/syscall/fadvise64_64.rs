@@ -19,12 +19,10 @@
 //! The `fadvise64_64` syscall gives hints to the kernel about file accesses.
 
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
 // TODO Check args type
-#[syscall]
-pub fn fadvise64_64(_fd: c_int, _offset: u64, _len: u64, _advice: c_int) -> Result<i32, Errno> {
+pub fn fadvise64_64(_fd: c_int, _offset: u64, _len: u64, _advice: c_int) -> EResult<usize> {
 	// TODO
 	Ok(0)
 }

@@ -20,8 +20,10 @@
 
 use crate::{process::Process, syscall::SyscallSlice};
 use core::{cmp::min, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Performs the union of the given mask with the current mask.
 const SIG_BLOCK: i32 = 0;
@@ -31,13 +33,12 @@ const SIG_UNBLOCK: i32 = 1;
 const SIG_SETMASK: i32 = 2;
 
 // TODO Use SigSet in crate::process::signal
-#[syscall]
 pub fn rt_sigprocmask(
 	how: c_int,
 	set: SyscallSlice<u8>,
 	oldset: SyscallSlice<u8>,
 	sigsetsize: usize,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 

@@ -18,9 +18,11 @@
 
 //! The `break` system call is not implemented.
 
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn r#break() -> EResult<i32> {
+pub fn r#break() -> EResult<usize> {
 	Err(errno!(ENOSYS))
 }

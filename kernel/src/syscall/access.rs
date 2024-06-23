@@ -33,7 +33,10 @@ use crate::{
 	},
 };
 use core::ffi::c_int;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Checks for existence of the file.
 const F_OK: i32 = 0;
@@ -56,7 +59,7 @@ pub fn do_access(
 	pathname: SyscallString,
 	mode: i32,
 	flags: Option<i32>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let flags = flags.unwrap_or(0);
 	// Use effective IDs instead of real IDs
 	let eaccess = flags & AT_EACCESS != 0;
@@ -103,7 +106,6 @@ pub fn do_access(
 	Ok(0)
 }
 
-#[syscall]
-pub fn access(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
+pub fn access(pathname: SyscallString, mode: c_int) -> EResult<usize> {
 	do_access(None, pathname, mode, None)
 }

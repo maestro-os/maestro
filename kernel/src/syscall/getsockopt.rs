@@ -24,17 +24,18 @@ use crate::{
 	syscall::SyscallSlice,
 };
 use core::{any::Any, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
 pub fn getsockopt(
 	sockfd: c_int,
 	level: c_int,
 	optname: c_int,
 	optval: SyscallSlice<u8>,
 	optlen: usize,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}
@@ -63,4 +64,5 @@ pub fn getsockopt(
 		.ok_or(errno!(EFAULT))?;
 
 	sock.get_opt(level, optname, optval_slice)
+		.map(|opt| opt as _)
 }

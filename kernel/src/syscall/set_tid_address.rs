@@ -21,11 +21,9 @@
 
 use crate::{process::Process, syscall::SyscallPtr};
 use core::{ffi::c_int, ptr::NonNull};
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn set_tid_address(tidptr: SyscallPtr<c_int>) -> Result<i32, Errno> {
+pub fn set_tid_address(tidptr: SyscallPtr<c_int>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 

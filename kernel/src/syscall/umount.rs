@@ -24,11 +24,12 @@ use crate::{
 	process::Process,
 	syscall::SyscallString,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn umount(target: SyscallString) -> Result<i32, Errno> {
+pub fn umount(target: SyscallString) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

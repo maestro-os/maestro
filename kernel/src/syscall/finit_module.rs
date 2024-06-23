@@ -20,11 +20,14 @@
 
 use crate::{module, module::Module, process::Process, syscall::SyscallString};
 use core::{alloc::AllocError, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno, io::IO, vec};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io::IO,
+	vec,
+};
 
-#[syscall]
-pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> Result<i32, Errno> {
+pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

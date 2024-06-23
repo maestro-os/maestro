@@ -20,11 +20,12 @@
 
 use crate::{file::fs::Statfs, process::Process, syscall::SyscallPtr};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
+pub fn fstatfs64(fd: c_int, _sz: usize, buf: SyscallPtr<Statfs>) -> EResult<usize> {
 	// TODO use `sz`
 
 	if fd < 0 {

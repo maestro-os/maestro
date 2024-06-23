@@ -23,7 +23,6 @@ use crate::{
 	process::Process,
 };
 use core::ffi::{c_int, c_void};
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -134,7 +133,7 @@ const F_SEAL_WRITE: i32 = 8;
 /// Performs the fcntl system call.
 ///
 /// `fcntl64` tells whether this is the `fcntl64` system call.
-pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<i32> {
+pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
@@ -152,7 +151,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<
 			.get_id() as _),
 		F_GETFD => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-			Ok(fd.get_flags())
+			Ok(fd.get_flags() as _)
 		}
 		F_SETFD => {
 			let fd = fds.get_fd_mut(fd as _).ok_or_else(|| errno!(EBADF))?;
@@ -163,7 +162,7 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
 			let open_file_mutex = fd.get_open_file();
 			let open_file = open_file_mutex.lock();
-			Ok(open_file.get_flags())
+			Ok(open_file.get_flags() as _)
 		}
 		F_SETFL => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
@@ -292,7 +291,6 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<
 	}
 }
 
-#[syscall]
-pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> EResult<i32> {
+pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> EResult<usize> {
 	do_fcntl(fd, cmd, arg, false)
 }

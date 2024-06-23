@@ -24,19 +24,20 @@ use crate::{
 	time::unit::{ITimerspec32, TimerT},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// If set, the specified time is *not* relative to the timer's current counter.
 const TIMER_ABSTIME: c_int = 1;
 
-#[syscall]
 pub fn timer_settime(
 	timerid: TimerT,
 	flags: c_int,
 	new_value: SyscallPtr<ITimerspec32>,
 	old_value: SyscallPtr<ITimerspec32>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

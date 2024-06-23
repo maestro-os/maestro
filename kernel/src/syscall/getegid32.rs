@@ -19,11 +19,9 @@
 //! The `getegid32` syscall returns the effective GID of the process's owner.
 
 use crate::process::Process;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn getegid32() -> Result<i32, Errno> {
+pub fn getegid32() -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 	Ok(proc.access_profile.get_egid() as _)

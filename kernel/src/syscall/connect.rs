@@ -24,12 +24,13 @@ use crate::{
 	syscall::SyscallSlice,
 };
 use core::{any::Any, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// The implementation of the `connect` syscall.
-#[syscall]
-pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<i32, Errno> {
+pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}

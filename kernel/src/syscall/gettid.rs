@@ -19,11 +19,9 @@
 //! The `gettid` system call returns the thread ID of the current process.
 
 use crate::process::Process;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn gettid() -> Result<i32, Errno> {
+pub fn gettid() -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

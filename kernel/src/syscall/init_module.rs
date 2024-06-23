@@ -25,15 +25,16 @@ use crate::{
 	syscall::{SyscallSlice, SyscallString},
 };
 use core::ffi::c_ulong;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
 pub fn init_module(
 	module_image: SyscallSlice<u8>,
 	len: c_ulong,
 	_param_values: SyscallString,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let module = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

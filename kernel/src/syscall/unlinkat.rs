@@ -31,11 +31,12 @@ use crate::{
 	syscall::{util::at::AT_EMPTY_PATH, SyscallString},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i32, Errno> {
+pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> EResult<usize> {
 	let (fds_mutex, path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

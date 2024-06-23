@@ -20,11 +20,12 @@
 
 use crate::process::{pid::Pid, signal::Signal, Process};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn tkill(tid: Pid, sig: c_int) -> Result<i32, Errno> {
+pub fn tkill(tid: Pid, sig: c_int) -> EResult<usize> {
 	// Validation
 	if sig < 0 {
 		return Err(errno!(EINVAL));

@@ -21,10 +21,9 @@
 
 use crate::process::Process;
 use core::ffi::c_void;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn brk(addr: *mut c_void) -> EResult<i32> {
+pub fn brk(addr: *mut c_void) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

@@ -19,11 +19,9 @@
 //! The `setgid32` syscall sets the GID of the process's owner.
 
 use crate::{file::perm::Gid, process::Process};
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn setgid32(gid: Gid) -> Result<i32, Errno> {
+pub fn setgid32(gid: Gid) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 

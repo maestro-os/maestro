@@ -24,11 +24,13 @@ use crate::{
 	process::Process,
 	syscall::SyscallString,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno, ptr::arc::Arc};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn chdir(path: SyscallString) -> Result<i32, Errno> {
+pub fn chdir(path: SyscallString) -> EResult<usize> {
 	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

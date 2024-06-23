@@ -26,15 +26,16 @@ use crate::{
 	syscall::SyscallPtr,
 	time::unit::{ClockIdT, TimerT},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
 pub fn timer_create(
 	clockid: ClockIdT,
 	sevp: SyscallPtr<SigEvent>,
 	timerid: SyscallPtr<TimerT>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

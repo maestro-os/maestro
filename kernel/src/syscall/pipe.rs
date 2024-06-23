@@ -24,11 +24,15 @@ use crate::{
 	syscall::SyscallPtr,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno, lock::Mutex, ptr::arc::Arc, TryDefault};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+	TryDefault,
+};
 
-#[syscall]
-pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> Result<i32, Errno> {
+pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let (mem_space, fds_mutex) = {
 		let proc = proc_mutex.lock();

@@ -24,11 +24,12 @@ use crate::{
 	process::Process,
 	syscall::SyscallString,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
+pub fn chroot(path: SyscallString) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 	// Check permission

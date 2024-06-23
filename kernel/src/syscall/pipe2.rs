@@ -24,11 +24,15 @@ use crate::{
 	syscall::SyscallPtr,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno, lock::Mutex, ptr::arc::Arc, TryDefault};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+	TryDefault,
+};
 
-#[syscall]
-pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno> {
+pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> EResult<usize> {
 	let accepted_flags = open_file::O_CLOEXEC | open_file::O_DIRECT | open_file::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
 		return Err(errno!(EINVAL));

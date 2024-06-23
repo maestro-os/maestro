@@ -20,11 +20,9 @@
 //! memory in order to allow optimizations.
 
 use core::ffi::{c_int, c_void};
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn madvise(_addr: *mut c_void, _length: usize, _advice: c_int) -> Result<i32, Errno> {
+pub fn madvise(_addr: *mut c_void, _length: usize, _advice: c_int) -> EResult<usize> {
 	// TODO
 	Ok(0)
 }

@@ -24,8 +24,10 @@ use crate::{
 	process::{mem_space, Process},
 };
 use core::ffi::{c_int, c_void};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Converts the given `prot` to mapping flags.
 fn prot_to_flags(prot: i32) -> u8 {
@@ -41,8 +43,7 @@ fn prot_to_flags(prot: i32) -> u8 {
 	mem_flags
 }
 
-#[syscall]
-pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> Result<i32, Errno> {
+pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> EResult<usize> {
 	// Checking alignment of `addr` and `length`
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || len == 0 {
 		return Err(errno!(EINVAL));

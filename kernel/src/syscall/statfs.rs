@@ -23,13 +23,12 @@ use crate::{
 	process::Process,
 	syscall::{SyscallPtr, SyscallString},
 };
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult<i32> {
+pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult<usize> {
 	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -73,7 +72,6 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 	Ok(0)
 }
 
-#[syscall]
-pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
+pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult<usize> {
 	do_statfs(path, buf)
 }

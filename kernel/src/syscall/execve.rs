@@ -35,7 +35,6 @@ use crate::{
 	},
 	syscall::{SyscallArray, SyscallString},
 };
-use macros::syscall;
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
@@ -182,8 +181,7 @@ fn build_image(
 	exec::build_image(&mut file, exec_info)
 }
 
-#[syscall]
-pub fn execve(pathname: SyscallString, argv: SyscallArray, envp: SyscallArray) -> EResult<i32> {
+pub fn execve(pathname: SyscallString, argv: SyscallArray, envp: SyscallArray) -> EResult<usize> {
 	let (file, rs, argv, envp) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

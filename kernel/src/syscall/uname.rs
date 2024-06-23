@@ -16,19 +16,21 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The uname syscall is used to retrieve informations about the system.
+//! The uname syscall is used to retrieve information about the system.
 
 use crate::{process::Process, syscall::SyscallPtr};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// The length of a field of the utsname structure.
 const UTSNAME_LENGTH: usize = 65;
 
-/// Userspace structure storing uname informations.
+/// Userspace structure storing uname information.
 #[repr(C)]
 #[derive(Debug)]
-struct Utsname {
+pub struct Utsname {
 	/// Operating system name.
 	sysname: [u8; UTSNAME_LENGTH],
 	/// Network node hostname.
@@ -41,8 +43,7 @@ struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-#[syscall]
-pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
+pub fn uname(buf: SyscallPtr<Utsname>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

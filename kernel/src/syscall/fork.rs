@@ -20,12 +20,13 @@
 //! process. Execution resumes at the same location for both processes but the
 //! return value is different to allow differentiation.
 
-use crate::process::{ForkOptions, Process};
-use macros::syscall;
-use utils::{errno::Errno, ptr::arc::Arc};
+use crate::process::{regs::Regs, ForkOptions, Process};
+use utils::{
+	errno::{EResult, Errno},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn fork() -> Result<i32, Errno> {
+pub fn fork(regs: &Regs) -> EResult<usize> {
 	// The current process
 	let curr_mutex = Process::current_assert();
 	// A weak pointer to the new process's parent

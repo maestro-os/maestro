@@ -24,16 +24,17 @@ use crate::{
 	syscall::SyscallPtr,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Returns the resource usage of the current process.
 const RUSAGE_SELF: i32 = 0;
 /// Returns the resource usage of the process's children.
 const RUSAGE_CHILDREN: i32 = -1;
 
-#[syscall]
-pub fn getrusage(who: c_int, usage: SyscallPtr<RUsage>) -> Result<i32, Errno> {
+pub fn getrusage(who: c_int, usage: SyscallPtr<RUsage>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

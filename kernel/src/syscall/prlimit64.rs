@@ -23,8 +23,10 @@ use crate::{
 	syscall::SyscallPtr,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// The amount of seconds of CPU time the process can consume.
 const RLIMIT_CPU: i32 = 0;
@@ -74,7 +76,7 @@ type RLim = u64;
 /// Structure representing a resource limit.
 #[repr(C)]
 #[derive(Debug)]
-struct RLimit {
+pub struct RLimit {
 	/// Soft limit
 	rlim_cur: RLim,
 	/// Hard limit (ceiling for rlim_cur)
@@ -82,13 +84,12 @@ struct RLimit {
 }
 
 // TODO Check args types
-#[syscall]
 pub fn prlimit64(
 	pid: Pid,
 	resource: c_int,
 	_new_limit: SyscallPtr<RLimit>,
 	_old_limit: SyscallPtr<RLimit>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid == 0 {
 		None

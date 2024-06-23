@@ -21,8 +21,10 @@
 
 use crate::process::Process;
 use core::ffi::{c_int, c_ulong, c_void};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 // ioctl requests: hard drive
 
@@ -119,8 +121,7 @@ impl Request {
 	}
 }
 
-#[syscall]
-pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> Result<i32, Errno> {
+pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> EResult<usize> {
 	let request = Request::from(request);
 
 	// Getting the memory space and file

@@ -20,15 +20,13 @@
 
 use crate::syscall::SyscallString;
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
 pub fn faccessat2(
 	dir_fd: c_int,
 	pathname: SyscallString,
 	mode: c_int,
 	flags: c_int,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	super::access::do_access(Some(dir_fd), pathname, mode, Some(flags))
 }

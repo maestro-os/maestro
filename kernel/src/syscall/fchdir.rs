@@ -21,11 +21,14 @@
 
 use crate::{file::FileType, process::Process};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno, ptr::arc::Arc, TryClone};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	ptr::arc::Arc,
+	TryClone,
+};
 
-#[syscall]
-pub fn fchdir(fd: c_int) -> Result<i32, Errno> {
+pub fn fchdir(fd: c_int) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

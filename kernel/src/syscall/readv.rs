@@ -28,7 +28,6 @@ use crate::{
 	syscall::SyscallSlice,
 };
 use core::{cmp::min, ffi::c_int};
-use macros::syscall;
 use utils::{
 	collections::vec::Vec,
 	errno,
@@ -99,7 +98,7 @@ pub fn do_readv(
 	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-) -> EResult<i32> {
+) -> EResult<usize> {
 	// Validation
 	if fd < 0 {
 		return Err(errno!(EBADF));
@@ -174,7 +173,6 @@ pub fn do_readv(
 	}
 }
 
-#[syscall]
-pub fn readv(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> Result<i32, Errno> {
+pub fn readv(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> EResult<usize> {
 	do_readv(fd, iov, iovcnt, None, None)
 }

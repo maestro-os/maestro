@@ -21,11 +21,12 @@
 
 use crate::{memory, process::Process};
 use core::{ffi::c_void, num::NonZeroUsize};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
+pub fn munmap(addr: *mut c_void, length: usize) -> EResult<usize> {
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}

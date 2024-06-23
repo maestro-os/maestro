@@ -33,11 +33,13 @@ use crate::{
 		unit::TimestampScale,
 	},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno, io::IO};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io::IO,
+};
 
-#[syscall]
-pub fn symlink(target: SyscallString, linkpath: SyscallString) -> Result<i32, Errno> {
+pub fn symlink(target: SyscallString, linkpath: SyscallString) -> EResult<usize> {
 	let (target, linkpath, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

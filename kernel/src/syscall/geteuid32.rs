@@ -19,11 +19,9 @@
 //! The `geteuid32` syscall returns the effective UID of the process's owner.
 
 use crate::process::Process;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn geteuid32() -> Result<i32, Errno> {
+pub fn geteuid32() -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 	Ok(proc.access_profile.get_euid() as _)

@@ -29,16 +29,17 @@ use crate::{
 	time::unit::{TimeUnit, Timespec},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
 pub fn utimensat(
 	dirfd: c_int,
 	pathname: SyscallString,
 	times: SyscallPtr<[Timespec; 2]>,
 	flags: c_int,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

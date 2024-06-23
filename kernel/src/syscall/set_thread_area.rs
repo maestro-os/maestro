@@ -25,7 +25,6 @@ use crate::{
 	syscall::SyscallPtr,
 };
 use core::mem::size_of;
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -62,8 +61,7 @@ pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut 
 	Ok((id, &mut proc.get_tls_entries()[id]))
 }
 
-#[syscall]
-pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
+pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 

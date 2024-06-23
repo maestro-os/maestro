@@ -20,10 +20,8 @@
 //! thread group.
 
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn exit_group(status: c_int) -> Result<i32, Errno> {
+pub fn exit_group(status: c_int) -> EResult<usize> {
 	super::_exit::do_exit(status as _, true);
 }

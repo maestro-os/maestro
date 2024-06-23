@@ -24,11 +24,12 @@ use crate::{
 	syscall::SyscallString,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn chmod(pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
+pub fn chmod(pathname: SyscallString, mode: c_int) -> EResult<usize> {
 	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

@@ -20,10 +20,8 @@
 
 use crate::syscall::SyscallString;
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn lchown(pathname: SyscallString, owner: c_int, group: c_int) -> EResult<i32> {
+pub fn lchown(pathname: SyscallString, owner: c_int, group: c_int) -> EResult<usize> {
 	super::chown::do_chown(pathname, owner, group, false)
 }

@@ -20,11 +20,12 @@
 //! process group ID of a process.
 
 use crate::process::{pid::Pid, Process};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
+pub fn setpgid(pid: Pid, pgid: Pid) -> EResult<usize> {
 	let mut pid = pid;
 	let mut pgid = pgid;
 

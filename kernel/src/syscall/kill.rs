@@ -22,10 +22,9 @@
 use super::util;
 use crate::{
 	process,
-	process::{pid::Pid, scheduler::SCHEDULER, signal::Signal, Process, State},
+	process::{pid::Pid, regs::Regs, scheduler::SCHEDULER, signal::Signal, Process, State},
 };
 use core::ffi::c_int;
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -128,8 +127,7 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	}
 }
 
-#[syscall]
-pub fn kill(pid: c_int, sig: c_int) -> Result<i32, Errno> {
+pub fn kill(pid: c_int, sig: c_int, regs: &Regs) -> EResult<usize> {
 	// Validation
 	if sig < 0 {
 		return Err(errno!(EINVAL));

@@ -21,12 +21,13 @@
 //! program. During that time, the child process also shares the same memory
 //! space as the parent.
 
-use crate::process::{scheduler, ForkOptions, Process};
-use macros::syscall;
-use utils::{errno::Errno, ptr::arc::Arc};
+use crate::process::{regs::Regs, scheduler, ForkOptions, Process};
+use utils::{
+	errno::{EResult, Errno},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn vfork() -> Result<i32, Errno> {
+pub fn vfork(regs: &Regs) -> EResult<usize> {
 	let new_pid = {
 		// The current process
 		let curr_mutex = Process::current_assert();

@@ -20,16 +20,14 @@
 
 use crate::{process::iovec::IOVec, syscall::SyscallSlice};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
 pub fn pwritev2(
 	fd: c_int,
 	iov: SyscallSlice<IOVec>,
 	iovcnt: c_int,
 	offset: isize,
 	flags: c_int,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	super::writev::do_writev(fd, iov, iovcnt, Some(offset), Some(flags))
 }

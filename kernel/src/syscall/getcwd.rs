@@ -20,11 +20,13 @@
 //! the current process.
 
 use crate::{process::Process, syscall::SyscallSlice};
-use macros::syscall;
-use utils::{errno, errno::Errno, format};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	format,
+};
 
-#[syscall]
-pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
+pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> EResult<usize> {
 	if size == 0 {
 		return Err(errno!(EINVAL));
 	}

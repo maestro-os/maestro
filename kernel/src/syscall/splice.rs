@@ -23,10 +23,13 @@ use core::{
 	cmp::min,
 	ffi::{c_int, c_uint},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno, io::IO, vec};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io::IO,
+	vec,
+};
 
-#[syscall]
 pub fn splice(
 	fd_in: c_int,
 	off_in: SyscallPtr<u64>,
@@ -34,7 +37,7 @@ pub fn splice(
 	off_out: SyscallPtr<u64>,
 	len: usize,
 	_flags: c_uint,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	if fd_in < 0 || fd_out < 0 {
 		return Err(errno!(EBADF));
 	}

@@ -32,7 +32,6 @@ use core::{
 	cmp::min,
 	ffi::{c_int, c_long},
 };
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -91,7 +90,7 @@ pub fn do_select<T: TimeUnit>(
 	exceptfds: SyscallPtr<FDSet>,
 	timeout: SyscallPtr<T>,
 	_sigmask: Option<SyscallSlice<u8>>,
-) -> EResult<i32> {
+) -> EResult<usize> {
 	// Getting start timestamp
 	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
 
@@ -226,13 +225,12 @@ pub fn do_select<T: TimeUnit>(
 	}
 }
 
-#[syscall]
 pub fn select(
 	nfds: c_int,
 	readfds: SyscallPtr<FDSet>,
 	writefds: SyscallPtr<FDSet>,
 	exceptfds: SyscallPtr<FDSet>,
 	timeout: SyscallPtr<Timeval>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }

@@ -29,8 +29,10 @@ use core::{
 	mem::{offset_of, size_of},
 	ptr,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// A Linux directory entry with 64 bits offsets.
 #[repr(C)]
@@ -77,8 +79,7 @@ impl Dirent for LinuxDirent64 {
 	}
 }
 
-#[syscall]
-pub fn getdents64(fd: c_int, dirp: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
+pub fn getdents64(fd: c_int, dirp: SyscallSlice<u8>, count: usize) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

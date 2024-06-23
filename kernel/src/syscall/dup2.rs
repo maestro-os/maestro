@@ -21,11 +21,12 @@
 
 use crate::{file::fd::NewFDConstraint, process::Process};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn dup2(oldfd: c_int, newfd: c_int) -> Result<i32, Errno> {
+pub fn dup2(oldfd: c_int, newfd: c_int) -> EResult<usize> {
 	if oldfd < 0 || newfd < 0 {
 		return Err(errno!(EBADF));
 	}

@@ -24,10 +24,12 @@ use crate::{
 	syscall::SyscallSlice,
 };
 use core::{any::Any, ffi::c_int};
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn bind(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> EResult<i32> {
+pub fn bind(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}

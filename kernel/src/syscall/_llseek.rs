@@ -20,7 +20,11 @@
 
 use crate::{process::Process, syscall::SyscallPtr};
 use core::ffi::{c_uint, c_ulong};
-use utils::{errno, errno::Errno, io::IO};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io::IO,
+};
 
 /// Sets the offset from the given value.
 const SEEK_SET: u32 = 0;
@@ -29,14 +33,13 @@ const SEEK_CUR: u32 = 1;
 /// Sets the offset relative to the end of the file.
 const SEEK_END: u32 = 2;
 
-#[syscall]
 pub fn _llseek(
 	fd: c_uint,
 	offset_high: c_ulong,
 	offset_low: c_ulong,
 	result: SyscallPtr<u64>,
 	whence: c_uint,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	let (mem_space, open_file_mutex) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

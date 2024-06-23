@@ -29,7 +29,6 @@ use core::{
 	mem::{offset_of, size_of},
 	ptr,
 };
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -58,7 +57,7 @@ pub trait Dirent: Sized {
 }
 
 /// Performs the getdents system call.
-pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) -> EResult<i32> {
+pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) -> EResult<usize> {
 	let (mem_space, open_file_mutex) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -166,7 +165,6 @@ impl Dirent for LinuxDirent {
 	}
 }
 
-#[syscall]
-pub fn getdents(fd: c_uint, dirp: SyscallSlice<u8>, count: c_uint) -> Result<i32, Errno> {
+pub fn getdents(fd: c_uint, dirp: SyscallSlice<u8>, count: c_uint) -> EResult<usize> {
 	do_getdents::<LinuxDirent>(fd, dirp, count as usize)
 }

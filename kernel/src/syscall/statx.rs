@@ -30,8 +30,10 @@ use crate::{
 	syscall::{SyscallPtr, SyscallString},
 };
 use core::ffi::{c_int, c_uint};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Structure representing a timestamp with the statx syscall.
 #[repr(C)]
@@ -48,7 +50,7 @@ struct StatxTimestamp {
 /// Structure containing the extended attributes for a file.
 #[repr(C)]
 #[derive(Debug)]
-struct Statx {
+pub struct Statx {
 	/// Mask of bits indicating filled fields
 	stx_mask: u32,
 	/// Block size for filesystem I/O
@@ -101,14 +103,13 @@ struct Statx {
 	__padding1: [u64; 13],
 }
 
-#[syscall]
 pub fn statx(
 	dirfd: c_int,
 	pathname: SyscallString,
 	flags: c_int,
 	_mask: c_uint,
 	statxbuff: SyscallPtr<Statx>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	// Validation
 	if pathname.is_null() || statxbuff.is_null() {
 		return Err(errno!(EINVAL));

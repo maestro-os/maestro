@@ -24,13 +24,14 @@ use crate::{
 	syscall::SyscallPtr,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::Timespec32},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 // TODO Handle signal interruption (EINTR)
 
-#[syscall]
-pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> Result<i32, Errno> {
+pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> EResult<usize> {
 	let start_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
 
 	let delay = {

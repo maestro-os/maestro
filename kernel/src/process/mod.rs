@@ -61,6 +61,8 @@ use crate::{
 };
 use core::{
 	ffi::c_void,
+	fmt,
+	fmt::Formatter,
 	mem,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
@@ -1064,6 +1066,14 @@ impl Process {
 			score = score.saturating_sub(100);
 		}
 		score
+	}
+}
+
+impl fmt::Debug for Process {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Process")
+			.field("pid", &self.pid.get())
+			.finish()
 	}
 }
 

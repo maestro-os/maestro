@@ -36,7 +36,6 @@ use crate::{
 	},
 };
 use core::ffi::c_int;
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -97,13 +96,7 @@ fn get_file(
 	}
 }
 
-#[syscall]
-pub fn openat(
-	dirfd: c_int,
-	pathname: SyscallString,
-	flags: c_int,
-	mode: Mode,
-) -> Result<i32, Errno> {
+pub fn openat(dirfd: c_int, pathname: SyscallString, flags: c_int, mode: Mode) -> EResult<usize> {
 	let (rs, path, fds_mutex) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

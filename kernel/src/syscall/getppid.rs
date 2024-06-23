@@ -19,11 +19,9 @@
 //! The `getppid` system call returns the PID of the process's parent.
 
 use crate::process::Process;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn getppid() -> Result<i32, Errno> {
+pub fn getppid() -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

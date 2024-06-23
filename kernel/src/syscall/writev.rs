@@ -28,7 +28,6 @@ use crate::{
 	syscall::SyscallSlice,
 };
 use core::{cmp::min, ffi::c_int};
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -61,7 +60,7 @@ fn write(
 		}
 
 		// The size to write. This is limited to avoid an overflow on the total length
-		let l = min(i.iov_len, i32::MAX as usize - total_len);
+		let l = min(i.iov_len, usize::MAX - total_len);
 		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
 
 		if let Some(slice) = ptr.get(mem_space, l)? {
@@ -87,7 +86,7 @@ pub fn do_writev(
 	iovcnt: i32,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-) -> EResult<i32> {
+) -> EResult<usize> {
 	// Validation
 	if fd < 0 {
 		return Err(errno!(EBADF));
@@ -172,7 +171,6 @@ pub fn do_writev(
 	}
 }
 
-#[syscall]
-pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> EResult<i32> {
+pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> EResult<usize> {
 	do_writev(fd, iov, iovcnt, None, None)
 }

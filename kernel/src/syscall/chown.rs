@@ -24,7 +24,6 @@ use crate::{
 	syscall::SyscallString,
 };
 use core::ffi::c_int;
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -36,7 +35,7 @@ pub fn do_chown(
 	owner: c_int,
 	group: c_int,
 	follow_links: bool,
-) -> EResult<i32> {
+) -> EResult<usize> {
 	if owner < -1 || group < -1 {
 		return Err(errno!(EINVAL));
 	}
@@ -73,7 +72,6 @@ pub fn do_chown(
 	Ok(0)
 }
 
-#[syscall]
-pub fn chown(pathname: SyscallString, owner: c_int, group: c_int) -> EResult<i32> {
+pub fn chown(pathname: SyscallString, owner: c_int, group: c_int) -> EResult<usize> {
 	do_chown(pathname, owner, group, true)
 }

@@ -24,12 +24,13 @@ use crate::{
 	syscall::SyscallSlice,
 };
 use core::{any::Any, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 // TODO implement flags
 
-#[syscall]
 pub fn sendto(
 	sockfd: c_int,
 	buf: SyscallSlice<u8>,
@@ -37,7 +38,7 @@ pub fn sendto(
 	_flags: c_int,
 	dest_addr: SyscallSlice<u8>,
 	addrlen: isize,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}

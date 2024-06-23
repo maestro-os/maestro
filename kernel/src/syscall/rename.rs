@@ -23,15 +23,16 @@ use crate::{
 	process::Process,
 	syscall::SyscallString,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 // TODO implementation probably can be merged with `renameat2`
 // TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
 // etc...)
 
-#[syscall]
-pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
+pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> EResult<usize> {
 	let (old_path, new_path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

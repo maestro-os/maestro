@@ -308,7 +308,7 @@ use writev::writev;
 pub const SIGRETURN_ID: usize = 0x077;
 
 /// A system call handler.
-pub trait SyscallHandler<const NAME: &'static str, Args> {
+pub trait SyscallHandler<'p, const NAME: &'static str, Args> {
 	/// Returns the name of the handler.
 	#[inline]
 	fn name(&self) -> &'static str {
@@ -317,23 +317,23 @@ pub trait SyscallHandler<const NAME: &'static str, Args> {
 
 	/// Calls the system call.
 	///
-	/// Aguments:
+	/// Arguments:
 	/// - `process` is the process calling the system call.
 	/// - `regs` is the register state of the process at the moment of the system call.
 	///
 	/// The function returns the result of the system call.
-	fn call(self, process: &Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize>;
+	fn call(self, process: &'p Arc<IntMutex<Process>>, regs: &'p Regs) -> EResult<usize>;
 }
 
 /// Implementation of [`SyscallHandler`] for functions with arguments.
 macro_rules! impl_syscall_handler {
     ($($ty:ident),*) => {
-        impl<F, const N: &'static str, $($ty,)*> SyscallHandler<N, ($($ty,)*)> for F
+        impl<'p, F, const N: &'static str, $($ty,)*> SyscallHandler<'p, N, ($($ty,)*)> for F
         where F: FnOnce($($ty,)*) -> EResult<usize>,
-			$($ty: for<'p> FromSyscall<'p>,)*
+			$($ty: FromSyscall<'p> + 'p,)*
         {
 			#[allow(non_snake_case, unused_variables, unused_mut)]
-            fn call(self, process: &Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
+            fn call(self, process: &'p Arc<IntMutex<Process>>, regs: &'p Regs) -> EResult<usize> {
                 let mut args_cursor = 0;
                 $(
                     let $ty = $ty::from_syscall(process, regs, &mut args_cursor);
@@ -366,7 +366,7 @@ impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T1
 /// argument.
 ///
 /// The [`Debug`] trait is used for the `strace` feature.
-pub trait FromSyscall<'p>: Debug {
+pub trait FromSyscall<'p>: fmt::Debug {
 	/// Constructs the value from the given process or syscall argument value.
 	fn from_syscall(
 		process: &'p Arc<IntMutex<Process>>,
@@ -375,6 +375,34 @@ pub trait FromSyscall<'p>: Debug {
 	) -> Self
 	where
 		Self: 'p;
+}
+
+impl<'p> FromSyscall<'p> for &'p Arc<IntMutex<Process>> {
+	#[inline]
+	fn from_syscall(
+		process: &'p Arc<IntMutex<Process>>,
+		_regs: &'p Regs,
+		_args_cursor: &mut u8,
+	) -> Self
+	where
+		Self: 'p,
+	{
+		process
+	}
+}
+
+impl<'p> FromSyscall<'p> for &'p IntMutex<Process> {
+	#[inline]
+	fn from_syscall(
+		process: &'p Arc<IntMutex<Process>>,
+		_regs: &'p Regs,
+		_args_cursor: &mut u8,
+	) -> Self
+	where
+		Self: 'p,
+	{
+		process
+	}
 }
 
 impl<'p> FromSyscall<'p> for &'p Regs {
@@ -417,11 +445,37 @@ impl_from_syscall_primitive!(i32);
 impl_from_syscall_primitive!(u32);
 impl_from_syscall_primitive!(i64);
 impl_from_syscall_primitive!(u64);
+impl_from_syscall_primitive!(isize);
+impl_from_syscall_primitive!(usize);
+
+impl<T> FromSyscall<'_> for *const T {
+	#[inline]
+	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
+		let val = regs.get_syscall_arg(*args_cursor);
+		*args_cursor += 1;
+		val as _
+	}
+}
+
+impl<T> FromSyscall<'_> for *mut T {
+	#[inline]
+	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
+		let val = regs.get_syscall_arg(*args_cursor);
+		*args_cursor += 1;
+		val as _
+	}
+}
 
 /// Wrapper for a pointer.
-pub struct SyscallPtr<T: Sized>(Option<NonNull<T>>);
+pub struct SyscallPtr<T: Sized + fmt::Debug>(Option<NonNull<T>>);
 
-impl<T: Sized> FromSyscall<'_> for SyscallPtr<T> {
+impl<T: Sized + fmt::Debug> From<usize> for SyscallPtr<T> {
+	fn from(value: usize) -> Self {
+		Self(NonNull::new(value as _))
+	}
+}
+
+impl<T: Sized + fmt::Debug> FromSyscall<'_> for SyscallPtr<T> {
 	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
 		let val = regs.get_syscall_arg(*args_cursor);
 		*args_cursor += 1;
@@ -429,7 +483,7 @@ impl<T: Sized> FromSyscall<'_> for SyscallPtr<T> {
 	}
 }
 
-impl<T: Sized> SyscallPtr<T> {
+impl<T: Sized + fmt::Debug> SyscallPtr<T> {
 	/// Tells whether the pointer is null.
 	pub fn is_null(&self) -> bool {
 		self.0.is_none()
@@ -504,9 +558,15 @@ impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 /// Wrapper for a slice.
 ///
 /// The size of the slice is required when trying to access it.
-pub struct SyscallSlice<T: Sized>(Option<NonNull<T>>);
+pub struct SyscallSlice<T: Sized + fmt::Debug>(Option<NonNull<T>>);
 
-impl<T: Sized> FromSyscall<'_> for SyscallSlice<T> {
+impl<T: Sized + fmt::Debug> From<usize> for SyscallSlice<T> {
+	fn from(value: usize) -> Self {
+		Self(NonNull::new(value as _))
+	}
+}
+
+impl<T: Sized + fmt::Debug> FromSyscall<'_> for SyscallSlice<T> {
 	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
 		let val = regs.get_syscall_arg(*args_cursor);
 		*args_cursor += 1;
@@ -514,7 +574,7 @@ impl<T: Sized> FromSyscall<'_> for SyscallSlice<T> {
 	}
 }
 
-impl<T: Sized> SyscallSlice<T> {
+impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 	/// Tells whether the pointer is null.
 	pub fn is_null(&self) -> bool {
 		self.0.is_none()
@@ -596,6 +656,12 @@ impl<T: fmt::Debug> fmt::Debug for SyscallSlice<T> {
 /// Wrapper for a C-style, nul-terminated (`\0`) string.
 pub struct SyscallString(Option<NonNull<u8>>);
 
+impl From<usize> for SyscallString {
+	fn from(value: usize) -> Self {
+		Self(NonNull::new(value as _))
+	}
+}
+
 impl FromSyscall<'_> for SyscallString {
 	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {
 		let val = regs.get_syscall_arg(*args_cursor);
@@ -653,6 +719,12 @@ impl fmt::Debug for SyscallString {
 
 /// Wrapper for a C-style, NULL-terminated string array.
 pub struct SyscallArray(Option<NonNull<*const u8>>);
+
+impl From<usize> for SyscallArray {
+	fn from(value: usize) -> Self {
+		Self(NonNull::new(value as _))
+	}
+}
 
 impl FromSyscall<'_> for SyscallArray {
 	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs, args_cursor: &mut u8) -> Self {

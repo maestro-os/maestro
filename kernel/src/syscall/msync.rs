@@ -21,8 +21,10 @@
 
 use crate::{memory, process::Process};
 use core::ffi::{c_int, c_void};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// Schedules a synchronization and returns directly.
 const MS_ASYNC: i32 = 0b001;
@@ -31,8 +33,7 @@ const MS_SYNC: i32 = 0b010;
 /// Invalides other mappings of the same file so they can be updated.
 const MS_INVALIDATE: i32 = 0b100;
 
-#[syscall]
-pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> Result<i32, Errno> {
+pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> EResult<usize> {
 	// Check address alignment
 	if !addr.is_aligned_to(memory::PAGE_SIZE) {
 		return Err(errno!(EINVAL));

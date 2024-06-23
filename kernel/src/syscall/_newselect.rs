@@ -21,15 +21,14 @@
 use super::select::{do_select, FDSet};
 use crate::{syscall::SyscallPtr, time::unit::Timeval};
 use core::ffi::c_int;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
 pub fn _newselect(
 	nfds: c_int,
 	readfds: SyscallPtr<FDSet>,
 	writefds: SyscallPtr<FDSet>,
 	exceptfds: SyscallPtr<FDSet>,
 	timeout: SyscallPtr<Timeval>,
-) -> Result<i32, Errno> {
+) -> EResult<usize> {
 	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }

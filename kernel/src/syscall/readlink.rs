@@ -23,15 +23,13 @@ use crate::{
 	process::Process,
 	syscall::{SyscallSlice, SyscallString},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno, io::IO};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io::IO,
+};
 
-#[syscall]
-pub fn readlink(
-	pathname: SyscallString,
-	buf: SyscallSlice<u8>,
-	bufsiz: usize,
-) -> Result<i32, Errno> {
+pub fn readlink(pathname: SyscallString, buf: SyscallSlice<u8>, bufsiz: usize) -> EResult<usize> {
 	// process lock has to be dropped to avoid deadlock with procfs
 	let (mem_space_mutex, path, rs) = {
 		let proc_mutex = Process::current_assert();

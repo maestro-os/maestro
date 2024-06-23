@@ -19,12 +19,14 @@
 //! The `clone` system call creates a child process.
 
 use crate::{
-	process::{scheduler, user_desc::UserDesc, ForkOptions, Process},
+	process::{regs::Regs, scheduler, user_desc::UserDesc, ForkOptions, Process},
 	syscall::SyscallPtr,
 };
 use core::ffi::c_void;
-use macros::syscall;
-use utils::{errno::Errno, ptr::arc::Arc};
+use utils::{
+	errno::{EResult, Errno},
+	ptr::arc::Arc,
+};
 
 /// TODO doc
 const CLONE_IO: i32 = -0x80000000;
@@ -78,14 +80,14 @@ const CLONE_NEWPID: i32 = 0x20000000;
 const CLONE_NEWNET: i32 = 0x40000000;
 
 // TODO Check args types
-#[syscall]
 pub fn clone(
 	flags: i32,
 	stack: *mut c_void,
 	_parent_tid: SyscallPtr<i32>,
 	tls: i32,
 	_child_tid: SyscallPtr<i32>,
-) -> Result<i32, Errno> {
+	regs: &Regs,
+) -> EResult<usize> {
 	let new_tid = {
 		// The current process
 		let curr_mutex = Process::current_assert();

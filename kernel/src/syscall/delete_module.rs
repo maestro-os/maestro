@@ -20,13 +20,15 @@
 
 use crate::{module, process::Process, syscall::SyscallString};
 use core::ffi::c_uint;
-use macros::syscall;
-use utils::{collections::string::String, errno, errno::Errno};
+use utils::{
+	collections::string::String,
+	errno,
+	errno::{EResult, Errno},
+};
 
 // TODO handle flags
 
-#[syscall]
-pub fn delete_module(name: SyscallString, _flags: c_uint) -> Result<i32, Errno> {
+pub fn delete_module(name: SyscallString, _flags: c_uint) -> EResult<usize> {
 	let name = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
