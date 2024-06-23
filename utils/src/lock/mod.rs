@@ -54,7 +54,6 @@ use core::{
 struct State {
 	/// The number of currently locked mutexes that disable interruptions.
 	ref_count: usize,
-
 	/// Tells whether interruptions were enabled before locking mutexes.
 	enabled: bool,
 }
@@ -62,46 +61,48 @@ struct State {
 // TODO When implementing multicore, use an array. One element per kernel
 /// Saved state of interruptions for the current thread.
 ///
-/// This variable doesn't require synchonization since interruptions are always
+/// This variable doesn't require synchronization since interruptions are always
 /// disabled when it is accessed.
 static mut INT_DISABLE_REFS: State = State {
 	ref_count: 0,
-
 	enabled: false,
 };
 
 /// Type used to declare a guard meant to unlock the associated `Mutex` at the
 /// moment the execution gets out of the scope of its declaration.
-pub struct MutexGuard<'a, T: ?Sized, const INT: bool> {
-	/// The mutex associated to the guard
-	mutex: &'a Mutex<T, INT>,
-}
+pub struct MutexGuard<'m, T: ?Sized, const INT: bool>(&'m Mutex<T, INT>);
 
 impl<T: ?Sized, const INT: bool> Deref for MutexGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe { &(*self.mutex.inner.get()).data }
+		unsafe { &(*self.0.inner.get()).data }
 	}
 }
 
 impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		unsafe { &mut (*self.mutex.inner.get()).data }
+		unsafe { &mut (*self.0.inner.get()).data }
 	}
 }
 
 unsafe impl<T: ?Sized + Sync, const INT: bool> Sync for MutexGuard<'_, T, INT> {}
 
+impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for MutexGuard<'_, T, INT> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		fmt::Debug::fmt(self.deref(), f)
+	}
+}
+
 impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
 	fn drop(&mut self) {
 		unsafe {
-			self.mutex.unlock();
+			self.0.unlock();
 		}
 	}
 }
 
-/// The inner structure of the `Mutex` structure.
+/// The inner structure of [`Mutex`].
 struct MutexIn<T: ?Sized, const INT: bool> {
 	/// The spinlock for the underlying data.
 	spin: Spinlock,
@@ -141,26 +142,21 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	///
 	/// If the mutex is already locked, the thread shall wait until it becomes available.
 	///
-	/// The function returns a `MutexGuard` associated with the `Mutex`. When dropped, the mutex is
+	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the mutex is
 	/// unlocked.
 	pub fn lock(&self) -> MutexGuard<T, INT> {
 		let inner = unsafe {
 			// Safe because using the spinlock later
 			&mut *self.inner.get()
 		};
-
 		if !INT {
 			let state = is_interrupt_enabled();
-
 			// Here is assumed that no interruption will change eflags' INT. Which could
 			// cause a race condition
-
-			// Disable interrupts before locking to ensure no interrupt will occure while
+			// Disable interrupts before locking to ensure no interrupt will occur while
 			// locking
 			cli();
-
 			inner.spin.lock();
-
 			// Update the current thread's state
 			// Safe because interrupts are disabled and the value can be accessed only by
 			// the current kernel
@@ -173,10 +169,7 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		} else {
 			inner.spin.lock();
 		}
-
-		MutexGuard {
-			mutex: self,
-		}
+		MutexGuard(self)
 	}
 
 	/// Unlocks the mutex. This function shouldn't be used directly since it is called when the
@@ -189,7 +182,6 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	/// Unlocking the mutex while the resource is being used may result in concurrent access.
 	pub unsafe fn unlock(&self) {
 		let inner = &mut (*self.inner.get());
-
 		if !INT {
 			// Update references count
 			INT_DISABLE_REFS.ref_count -= 1;
@@ -198,10 +190,8 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			} else {
 				false
 			};
-
 			// The state to restore
 			inner.spin.unlock();
-
 			// Restore interrupts state after unlocking
 			if state {
 				sti();
@@ -220,7 +210,6 @@ impl<T, const INT: bool> Mutex<T, INT> {
 		// Make sure no one is using the resource
 		let inner = unsafe { &mut *self.inner.get() };
 		inner.spin.lock();
-
 		self.inner.into_inner().data
 	}
 }
@@ -234,5 +223,7 @@ impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for Mutex<T, INT> {
 	}
 }
 
-/// Type alias on `Mutex` representing a mutex which blocks interrupts.
+/// Type alias on [`Mutex`] representing a mutex which masks interrupts.
 pub type IntMutex<T> = Mutex<T, false>;
+/// Type alias on [`MutexGuard`] representing a mutex which masks interrupts.
+pub type IntMutexGuard<'m, T> = MutexGuard<'m, T, false>;

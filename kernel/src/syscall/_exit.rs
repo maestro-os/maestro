@@ -21,20 +21,19 @@
 
 use crate::process::{scheduler, Process};
 use core::ffi::c_int;
-use utils::errno::EResult;
+use utils::{errno::EResult, lock::IntMutexGuard};
 
 /// Exits the current process.
 ///
 /// Arguments:
 /// - `status` is the exit status.
 /// - `thread_group`: if `true`, the function exits the whole process group.
-pub fn do_exit(status: u32, thread_group: bool) -> ! {
-	let (_pid, _tid) = {
-		let proc_mutex = Process::current_assert();
-		let mut proc = proc_mutex.lock();
-		proc.exit(status);
-		(proc.get_pid(), proc.tid)
-	};
+/// - `proc` is the current process.
+pub fn do_exit(status: u32, thread_group: bool, mut proc: IntMutexGuard<Process>) -> ! {
+	proc.exit(status);
+	let _pid = proc.get_pid();
+	let _tid = proc.tid;
+	drop(proc);
 	if thread_group {
 		// TODO Iterate on every process of thread group `tid`, except the
 		// process with pid `pid`
@@ -44,6 +43,6 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	unreachable!();
 }
 
-pub fn _exit(status: c_int) -> EResult<usize> {
-	do_exit(status as _, false);
+pub fn _exit(status: c_int, proc: IntMutexGuard<Process>) -> EResult<usize> {
+	do_exit(status as _, false, proc);
 }

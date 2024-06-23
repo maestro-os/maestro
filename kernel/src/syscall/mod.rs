@@ -296,7 +296,13 @@ use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use unlinkat::unlinkat;
-use utils::{errno, errno::EResult, lock::IntMutex, ptr::arc::Arc, DisplayableStr};
+use utils::{
+	errno,
+	errno::EResult,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+	DisplayableStr,
+};
 use utimensat::utimensat;
 use vfork::vfork;
 use wait4::wait4;
@@ -402,6 +408,20 @@ impl<'p> FromSyscall<'p> for &'p IntMutex<Process> {
 		Self: 'p,
 	{
 		process
+	}
+}
+
+impl<'p> FromSyscall<'p> for IntMutexGuard<'p, Process> {
+	#[inline]
+	fn from_syscall(
+		process: &'p Arc<IntMutex<Process>>,
+		_regs: &'p Regs,
+		_args_cursor: &mut u8,
+	) -> Self
+	where
+		Self: 'p,
+	{
+		process.lock()
 	}
 }
 
@@ -706,11 +726,7 @@ impl fmt::Debug for SyscallString {
 		let mem_space = mem_space_mutex.lock();
 		let ptr = self.as_ptr();
 		match self.get(&mem_space) {
-			Ok(Some(s)) => {
-				// TODO Add backslashes to escape `"` and `\`
-				let s = DisplayableStr(s);
-				write!(fmt, "{ptr:p} = \"{s}\"")
-			}
+			Ok(Some(s)) => write!(fmt, "{ptr:p} = {:?}", DisplayableStr(s)),
 			Ok(None) => write!(fmt, "NULL"),
 			Err(e) => write!(fmt, "{ptr:p} = (cannot read: {e})"),
 		}
@@ -799,7 +815,7 @@ impl<'a> Iterator for SyscallArrayIterator<'a> {
 			return None;
 		}
 		// Get string
-		let string: SyscallString = (str_ptr as usize).into();
+		let string = SyscallString::from(str_ptr as usize);
 		let string = string
 			.get(self.mem_space)
 			.and_then(|s| s.ok_or_else(|| errno!(EFAULT)));

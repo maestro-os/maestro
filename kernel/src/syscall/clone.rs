@@ -123,7 +123,7 @@ pub fn clone(
 		};
 		// Setting TLS
 		if flags & CLONE_SETTLS != 0 {
-			let _tls: SyscallPtr<UserDesc> = (tls as usize).into();
+			let _tls = SyscallPtr::<UserDesc>::from(tls as usize);
 
 			// TODO
 			todo!();

@@ -16,12 +16,16 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The exit_group syscall allows to terminate every processes in the current
+//! The exit_group syscall allows to terminate every process in the current
 //! thread group.
 
+use crate::process::Process;
 use core::ffi::c_int;
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::IntMutexGuard,
+};
 
-pub fn exit_group(status: c_int) -> EResult<usize> {
-	super::_exit::do_exit(status as _, true);
+pub fn exit_group(status: c_int, proc: IntMutexGuard<Process>) -> EResult<usize> {
+	super::_exit::do_exit(status as _, true, proc);
 }
