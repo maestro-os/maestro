@@ -363,7 +363,6 @@ impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T1
 /// The [`Debug`] trait is used for the `strace` feature.
 pub trait FromSyscall<'p>: Debug {
 	/// Constructs the value from the given process or syscall argument value.
-	#[inline]
 	fn from_syscall(
 		process: &'p Arc<IntMutex<Process>>,
 		regs: &'p Regs,
