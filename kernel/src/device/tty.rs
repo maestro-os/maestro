@@ -27,7 +27,7 @@ use crate::{
 		signal::{Signal, SignalHandler},
 		Process,
 	},
-	syscall::{ioctl, SyscallPtr},
+	syscall::{ioctl, FromSyscallArg, SyscallPtr},
 	tty::{termios, termios::Termios, TTYHandle, WinSize, TTY},
 };
 use core::ffi::c_void;
@@ -129,7 +129,7 @@ impl DeviceHandle for TTYDeviceHandle {
 		match request.get_old_format() {
 			ioctl::TCGETS => {
 				let mut mem_space_guard = mem_space.lock();
-				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
+				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
 				let termios_ref = termios_ptr
 					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -143,7 +143,7 @@ impl DeviceHandle for TTYDeviceHandle {
 				self.check_sigttou(&mut proc, &tty)?;
 
 				let mem_space_guard = mem_space.lock();
-				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
+				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
 				let termios = termios_ptr
 					.get(&mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -154,7 +154,7 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			ioctl::TIOCGPGRP => {
 				let mut mem_space_guard = mem_space.lock();
-				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
+				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
 				let pgid_ref = pgid_ptr
 					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -167,7 +167,7 @@ impl DeviceHandle for TTYDeviceHandle {
 				self.check_sigttou(&mut proc, &tty)?;
 
 				let mem_space_guard = mem_space.lock();
-				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
+				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
 				let pgid = pgid_ptr
 					.get(&mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -178,7 +178,7 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			ioctl::TIOCGWINSZ => {
 				let mut mem_space_guard = mem_space.lock();
-				let winsize = SyscallPtr::<WinSize>::from(argp as usize);
+				let winsize = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
 				let winsize_ref = winsize
 					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -189,7 +189,7 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			ioctl::TIOCSWINSZ => {
 				let mem_space_guard = mem_space.lock();
-				let winsize_ptr = SyscallPtr::<WinSize>::from(argp as usize);
+				let winsize_ptr = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
 				let winsize = winsize_ptr
 					.get(&mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;

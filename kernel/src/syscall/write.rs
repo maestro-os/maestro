@@ -19,6 +19,7 @@
 //! This module implements the `write` system call, which allows to write data
 //! to a file.
 
+use super::Args;
 use crate::{
 	file::{open_file::O_NONBLOCK, FileType},
 	process::{regs::Regs, scheduler, Process},
@@ -34,7 +35,10 @@ use utils::{
 
 // TODO O_ASYNC
 
-pub fn write(fd: c_int, buf: SyscallSlice<u8>, count: usize, regs: &Regs) -> EResult<usize> {
+pub fn write(
+	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
+	regs: &Regs,
+) -> EResult<usize> {
 	// Validation
 	if fd < 0 {
 		return Err(errno!(EBADF));

@@ -24,7 +24,7 @@ use crate::{
 	file::{buffer::BlockHandler, FileType, Stat},
 	limits,
 	process::{mem_space::MemSpace, Process},
-	syscall::{ioctl, SyscallPtr},
+	syscall::{ioctl, FromSyscallArg, SyscallPtr},
 };
 use core::ffi::{c_int, c_void};
 use utils::{
@@ -132,7 +132,7 @@ impl Buffer for PipeBuffer {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
 				let mut mem_space_guard = mem_space.lock();
-				let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
+				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
 				let count_ref = count_ptr
 					.get_mut(&mut mem_space_guard)?
 					.ok_or_else(|| errno!(EFAULT))?;

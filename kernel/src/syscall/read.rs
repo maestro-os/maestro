@@ -18,6 +18,7 @@
 
 //! The read system call allows to read the content of an open file.
 
+use super::Args;
 use crate::{
 	file::{open_file::O_NONBLOCK, FileType},
 	process::{regs::Regs, scheduler, Process},
@@ -33,7 +34,10 @@ use utils::{
 
 // TODO O_ASYNC
 
-pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize, regs: &Regs) -> EResult<usize> {
+pub fn read(
+	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
+	regs: &Regs,
+) -> EResult<usize> {
 	// Validation
 	if fd < 0 {
 		return Err(errno!(EBADF));

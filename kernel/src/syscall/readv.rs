@@ -25,7 +25,7 @@ use crate::{
 	},
 	limits,
 	process::{iovec::IOVec, mem_space::MemSpace, scheduler, Process},
-	syscall::SyscallSlice,
+	syscall::{FromSyscallArg, SyscallSlice},
 };
 use core::{cmp::min, ffi::c_int};
 use utils::{
@@ -69,7 +69,7 @@ fn read(
 
 		// The size to read. This is limited to avoid an overflow on the total length
 		let l = min(i.iov_len, i32::MAX as usize - total_len);
-		let ptr = SyscallSlice::<u8>::from(i.iov_base as usize);
+		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
 
 		if let Some(slice) = ptr.get_mut(mem_space, l)? {
 			// The offset is ignored

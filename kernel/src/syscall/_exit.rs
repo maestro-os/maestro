@@ -19,6 +19,7 @@
 //! The _exit syscall allows to terminate the current process with the given
 //! status code.
 
+use super::Args;
 use crate::process::{scheduler, Process};
 use core::ffi::c_int;
 use utils::{errno::EResult, lock::IntMutexGuard};
@@ -43,6 +44,6 @@ pub fn do_exit(status: u32, thread_group: bool, mut proc: IntMutexGuard<Process>
 	unreachable!();
 }
 
-pub fn _exit(status: c_int, proc: IntMutexGuard<Process>) -> EResult<usize> {
+pub fn _exit(Args(status): Args<c_int>, proc: IntMutexGuard<Process>) -> EResult<usize> {
 	do_exit(status as _, false, proc);
 }

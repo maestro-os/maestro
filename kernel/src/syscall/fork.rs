@@ -23,25 +23,17 @@
 use crate::process::{regs::Regs, ForkOptions, Process};
 use utils::{
 	errno::{EResult, Errno},
+	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
-pub fn fork(regs: &Regs) -> EResult<usize> {
-	// The current process
-	let curr_mutex = Process::current_assert();
-	// A weak pointer to the new process's parent
-	let parent = Arc::downgrade(&curr_mutex);
-
-	let mut curr_proc = curr_mutex.lock();
-
-	let new_mutex = curr_proc.fork(parent, ForkOptions::default())?;
+pub fn fork(proc: &Arc<IntMutex<Process>>) -> EResult<usize> {
+	let new_mutex = proc
+		.lock()
+		.fork(Arc::downgrade(proc), ForkOptions::default())?;
+	// Set child's return value to `0`
 	let mut new_proc = new_mutex.lock();
-
-	// Set registers
-	let mut regs = regs.clone();
-	// Set return value to `0`
-	regs.eax.0 = 0;
-	new_proc.regs = regs;
-
+	new_proc.regs.set_syscall_return(Ok(0));
+	// Set parent's return value to the child's PID
 	Ok(new_proc.get_pid() as _)
 }

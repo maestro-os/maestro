@@ -25,7 +25,7 @@ use crate::{
 		user_desc::UserDesc,
 		ForkOptions, Process,
 	},
-	syscall::SyscallPtr,
+	syscall::{FromSyscallArg, SyscallPtr},
 };
 use core::ffi::c_void;
 use utils::{
@@ -128,7 +128,7 @@ pub fn clone(
 		};
 		// Set TLS
 		if flags & CLONE_SETTLS != 0 {
-			let _tls = SyscallPtr::<UserDesc>::from(tls as usize);
+			let _tls = SyscallPtr::<UserDesc>::from_syscall_arg(tls as usize);
 
 			// TODO
 			todo!();

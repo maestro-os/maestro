@@ -24,7 +24,7 @@ use crate::{
 	device,
 	device::DeviceType,
 	process::{mem_space::MemSpace, Process},
-	syscall::{ioctl, SyscallPtr},
+	syscall::{ioctl, FromSyscallArg, SyscallPtr},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use core::{
@@ -239,7 +239,7 @@ impl OpenFile {
 			FileType::Regular => match request.get_old_format() {
 				ioctl::FIONREAD => {
 					let mut mem_space_guard = mem_space.lock();
-					let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
+					let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
 					let count_ref = count_ptr
 						.get_mut(&mut mem_space_guard)?
 						.ok_or_else(|| errno!(EFAULT))?;
