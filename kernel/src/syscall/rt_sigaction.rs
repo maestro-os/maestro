@@ -23,15 +23,13 @@ use crate::{
 		signal::{SigAction, SignalHandler},
 		Process,
 	},
-	syscall::{Signal, SyscallPtr},
+	syscall::{Args, Signal, SyscallPtr},
 };
 use core::ffi::c_int;
 use utils::errno::{EResult, Errno};
 
 pub fn rt_sigaction(
-	signum: c_int,
-	act: SyscallPtr<SigAction>,
-	oldact: SyscallPtr<SigAction>,
+	Args((signum, act, oldact)): Args<(c_int, SyscallPtr<SigAction>, SyscallPtr<SigAction>)>,
 ) -> EResult<usize> {
 	// Validation
 	let signal = Signal::try_from(signum as u32)?;

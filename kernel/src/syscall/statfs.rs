@@ -21,7 +21,7 @@
 use crate::{
 	file::{fs::Statfs, path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::Process,
-	syscall::{SyscallPtr, SyscallString},
+	syscall::{Args, SyscallPtr, SyscallString},
 };
 use utils::{
 	errno,
@@ -72,6 +72,6 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 	Ok(0)
 }
 
-pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult<usize> {
+pub fn statfs(Args((path, buf)): Args<(SyscallString, SyscallPtr<Statfs>)>) -> EResult<usize> {
 	do_statfs(path, buf)
 }

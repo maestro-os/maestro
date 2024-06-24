@@ -21,6 +21,7 @@
 use crate::{
 	file::{buffer, buffer::pipe::PipeBuffer, fd::NewFDConstraint, FileType},
 	process::Process,
+	syscall::Args,
 };
 use core::ffi::{c_int, c_void};
 use utils::{
@@ -291,6 +292,6 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<
 	}
 }
 
-pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> EResult<usize> {
+pub fn fcntl(Args((fd, cmd, arg)): Args<(c_int, c_int, *mut c_void)>) -> EResult<usize> {
 	do_fcntl(fd, cmd, arg, false)
 }

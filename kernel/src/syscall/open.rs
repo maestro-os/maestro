@@ -19,7 +19,9 @@
 //! The open system call allows a process to open a file and get a file
 //! descriptor.
 
+use super::Args;
 use crate::{
+	file,
 	file::{
 		fd::FD_CLOEXEC,
 		open_file,
@@ -28,7 +30,7 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Mode, Stat,
+		File, FileType, Stat,
 	},
 	process::Process,
 	syscall::SyscallString,
@@ -62,7 +64,7 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 ///
 /// If the file is created, the function uses `mode` to set its permissions and the provided
 /// access profile to set the user ID and group ID.
-fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mutex<File>>> {
+fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<Arc<Mutex<File>>> {
 	let resolved = vfs::resolve_path(path, rs)?;
 	let file = match resolved {
 		Resolved::Found(file) => file,
@@ -131,7 +133,7 @@ pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile)
 }
 
 /// Performs the open system call.
-pub fn open_(pathname: SyscallString, flags: i32, mode: Mode) -> EResult<usize> {
+pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let (path, rs, mode, fds_mutex) = {
 		let proc = proc_mutex.lock();
@@ -184,6 +186,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: Mode) -> EResult<usize> 
 	Ok(fd_id as _)
 }
 
-pub fn open(pathname: SyscallString, flags: c_int, mode: Mode) -> EResult<usize> {
+pub fn open(
+	Args((pathname, flags, mode)): Args<(SyscallString, c_int, file::Mode)>,
+) -> EResult<usize> {
 	open_(pathname, flags, mode)
 }

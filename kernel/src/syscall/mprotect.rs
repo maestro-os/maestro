@@ -18,7 +18,7 @@
 
 //! The `mprotect` system call allows to set permissions for the given range of memory.
 
-use super::mmap;
+use super::{mmap, Args};
 use crate::{
 	memory,
 	process::{mem_space, Process},
@@ -43,7 +43,7 @@ fn prot_to_flags(prot: i32) -> u8 {
 	mem_flags
 }
 
-pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> EResult<usize> {
+pub fn mprotect(Args((addr, len, prot)): Args<(*mut c_void, usize, c_int)>) -> EResult<usize> {
 	// Checking alignment of `addr` and `length`
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || len == 0 {
 		return Err(errno!(EINVAL));

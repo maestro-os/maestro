@@ -19,7 +19,7 @@
 //! The ioctl syscall allows to control a device represented by a file
 //! descriptor.
 
-use crate::process::Process;
+use crate::{process::Process, syscall::Args};
 use core::ffi::{c_int, c_ulong, c_void};
 use utils::{
 	errno,
@@ -121,7 +121,7 @@ impl Request {
 	}
 }
 
-pub fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> EResult<usize> {
+pub fn ioctl(Args((fd, request, argp)): Args<(c_int, c_ulong, *const c_void)>) -> EResult<usize> {
 	let request = Request::from(request);
 
 	// Getting the memory space and file

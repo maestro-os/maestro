@@ -27,7 +27,7 @@ use crate::{
 		FileType,
 	},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use core::ffi::c_int;
 use utils::{
@@ -36,11 +36,13 @@ use utils::{
 };
 
 pub fn linkat(
-	olddirfd: c_int,
-	oldpath: SyscallString,
-	newdirfd: c_int,
-	newpath: SyscallString,
-	flags: c_int,
+	Args((olddirfd, oldpath, newdirfd, newpath, flags)): Args<(
+		c_int,
+		SyscallString,
+		c_int,
+		SyscallString,
+		c_int,
+	)>,
 ) -> EResult<usize> {
 	let (fds_mutex, oldpath, newpath, rs) = {
 		let proc_mutex = Process::current_assert();

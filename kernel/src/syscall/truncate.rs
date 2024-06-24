@@ -21,14 +21,14 @@
 use crate::{
 	file::{path::Path, vfs, vfs::ResolutionSettings},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn truncate(path: SyscallString, length: usize) -> EResult<usize> {
+pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

@@ -22,7 +22,7 @@ use crate::{
 	file::FileType,
 	memory,
 	process::{mem_space, mem_space::residence::MapResidence, Process},
-	syscall::mmap::mem_space::MapConstraint,
+	syscall::{mmap::mem_space::MapConstraint, Args},
 };
 use core::{
 	ffi::{c_int, c_void},
@@ -177,14 +177,15 @@ pub fn do_mmap(
 	}
 }
 
-// TODO Check last arg type
 pub fn mmap(
-	addr: *mut c_void,
-	length: usize,
-	prot: c_int,
-	flags: c_int,
-	fd: c_int,
-	offset: u64,
+	Args((addr, length, prot, flags, fd, offset)): Args<(
+		*mut c_void,
+		usize,
+		c_int,
+		c_int,
+		c_int,
+		u64,
+	)>,
 ) -> EResult<usize> {
 	do_mmap(addr, length, prot, flags, fd, offset as _)
 }

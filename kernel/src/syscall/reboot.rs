@@ -19,7 +19,7 @@
 //! The `reboot` system call allows the superuser to power off, reboot, halt or
 //! suspend the system.
 
-use crate::{power, process::Process};
+use crate::{power, process::Process, syscall::Args};
 use core::ffi::{c_int, c_void};
 use utils::{
 	errno,
@@ -40,7 +40,9 @@ const CMD_HALT: u32 = 2;
 /// Command to suspend the system.
 const CMD_SUSPEND: u32 = 3;
 
-pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> EResult<usize> {
+pub fn reboot(
+	Args((magic, magic2, cmd, _arg)): Args<(c_int, c_int, c_int, *const c_void)>,
+) -> EResult<usize> {
 	if (magic as u32) != MAGIC || (magic2 as u32) != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}

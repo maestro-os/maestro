@@ -18,14 +18,18 @@
 
 //! The `sethostname` syscall sets the hostname of the system.
 
-use crate::{limits, process::Process, syscall::SyscallSlice};
+use crate::{
+	limits,
+	process::Process,
+	syscall::{Args, SyscallSlice},
+};
 use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> EResult<usize> {
+pub fn sethostname(Args((name, len)): Args<(SyscallSlice<u8>, usize)>) -> EResult<usize> {
 	// Check the size of the hostname is in bounds
 	if len > limits::HOST_NAME_MAX {
 		return Err(errno!(EINVAL));

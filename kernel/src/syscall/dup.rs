@@ -18,14 +18,14 @@
 
 //! The `dup` syscall allows to duplicate a file descriptor.
 
-use crate::{file::fd::NewFDConstraint, process::Process};
+use crate::{file::fd::NewFDConstraint, process::Process, syscall::Args};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn dup(oldfd: c_int) -> EResult<usize> {
+pub fn dup(Args(oldfd): Args<c_int>) -> EResult<usize> {
 	if oldfd < 0 {
 		return Err(errno!(EBADF));
 	}

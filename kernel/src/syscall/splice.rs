@@ -18,7 +18,11 @@
 
 //! The `splice` system call splice data from one pipe to another.
 
-use crate::{file::FileType, process::Process, syscall::SyscallPtr};
+use crate::{
+	file::FileType,
+	process::Process,
+	syscall::{Args, SyscallPtr},
+};
 use core::{
 	cmp::min,
 	ffi::{c_int, c_uint},
@@ -30,13 +34,16 @@ use utils::{
 	vec,
 };
 
+#[allow(clippy::type_complexity)]
 pub fn splice(
-	fd_in: c_int,
-	off_in: SyscallPtr<u64>,
-	fd_out: c_int,
-	off_out: SyscallPtr<u64>,
-	len: usize,
-	_flags: c_uint,
+	Args((fd_in, off_in, fd_out, off_out, len, _flags)): Args<(
+		c_int,
+		SyscallPtr<u64>,
+		c_int,
+		SyscallPtr<u64>,
+		usize,
+		c_uint,
+	)>,
 ) -> EResult<usize> {
 	if fd_in < 0 || fd_out < 0 {
 		return Err(errno!(EBADF));

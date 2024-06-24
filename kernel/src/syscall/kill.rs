@@ -19,7 +19,7 @@
 //! This module implements the `kill` system call, which allows to send a signal
 //! to a process.
 
-use super::util;
+use super::{util, Args};
 use crate::{
 	process,
 	process::{pid::Pid, regs::Regs, scheduler::SCHEDULER, signal::Signal, Process, State},
@@ -127,7 +127,7 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	}
 }
 
-pub fn kill(pid: c_int, sig: c_int, regs: &Regs) -> EResult<usize> {
+pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>, regs: &Regs) -> EResult<usize> {
 	// Validation
 	if sig < 0 {
 		return Err(errno!(EINVAL));

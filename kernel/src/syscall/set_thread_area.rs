@@ -22,7 +22,7 @@
 use crate::{
 	gdt, process,
 	process::{user_desc::UserDesc, Process},
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 };
 use core::mem::size_of;
 use utils::{
@@ -61,7 +61,7 @@ pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut 
 	Ok((id, &mut proc.get_tls_entries()[id]))
 }
 
-pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> EResult<usize> {
+pub fn set_thread_area(Args(u_info): Args<SyscallPtr<UserDesc>>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 

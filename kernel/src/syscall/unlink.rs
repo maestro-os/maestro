@@ -20,17 +20,17 @@
 //!
 //! If no link remain to the file, the function also removes it.
 
+use super::{Args, SyscallString};
 use crate::{
 	file::{path::Path, vfs, vfs::ResolutionSettings},
 	process::Process,
-	syscall::SyscallString,
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn unlink(pathname: SyscallString) -> EResult<usize> {
+pub fn unlink(Args(pathname): Args<SyscallString>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

@@ -25,7 +25,7 @@ use crate::{
 	},
 	limits,
 	process::{iovec::IOVec, mem_space::MemSpace, scheduler, signal::Signal, Process},
-	syscall::{FromSyscallArg, SyscallSlice},
+	syscall::{Args, FromSyscallArg, SyscallSlice},
 };
 use core::{cmp::min, ffi::c_int};
 use utils::{
@@ -171,6 +171,8 @@ pub fn do_writev(
 	}
 }
 
-pub fn writev(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> EResult<usize> {
+pub fn writev(
+	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
+) -> EResult<usize> {
 	do_writev(fd, iov, iovcnt, None, None)
 }

@@ -22,7 +22,7 @@ use crate::{
 	module,
 	module::Module,
 	process::Process,
-	syscall::{SyscallSlice, SyscallString},
+	syscall::{Args, SyscallSlice, SyscallString},
 };
 use core::ffi::c_ulong;
 use utils::{
@@ -31,9 +31,7 @@ use utils::{
 };
 
 pub fn init_module(
-	module_image: SyscallSlice<u8>,
-	len: c_ulong,
-	_param_values: SyscallString,
+	Args((module_image, len, _param_values)): Args<(SyscallSlice<u8>, c_ulong, SyscallString)>,
 ) -> EResult<usize> {
 	let module = {
 		let proc_mutex = Process::current_assert();

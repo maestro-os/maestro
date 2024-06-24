@@ -24,7 +24,7 @@ use crate::{
 		FileType,
 	},
 	process::Process,
-	syscall::{SyscallPtr, SyscallString},
+	syscall::{Args, SyscallPtr, SyscallString},
 };
 use core::ffi::{c_ulong, c_void};
 use utils::{
@@ -33,11 +33,13 @@ use utils::{
 };
 
 pub fn mount(
-	source: SyscallString,
-	target: SyscallString,
-	filesystemtype: SyscallString,
-	mountflags: c_ulong,
-	_data: SyscallPtr<c_void>,
+	Args((source, target, filesystemtype, mountflags, _data)): Args<(
+		SyscallString,
+		SyscallString,
+		SyscallString,
+		c_ulong,
+		SyscallPtr<c_void>,
+	)>,
 ) -> EResult<usize> {
 	let (mount_source, target_path, fs_type, rs) = {
 		let proc_mutex = Process::current_assert();

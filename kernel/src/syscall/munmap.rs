@@ -19,14 +19,14 @@
 //! The `munmap` system call allows the process to free memory that was
 //! allocated with `mmap`.
 
-use crate::{memory, process::Process};
+use crate::{memory, process::Process, syscall::Args};
 use core::{ffi::c_void, num::NonZeroUsize};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn munmap(addr: *mut c_void, length: usize) -> EResult<usize> {
+pub fn munmap(Args((addr, length)): Args<(*mut c_void, usize)>) -> EResult<usize> {
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}

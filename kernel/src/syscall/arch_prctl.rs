@@ -18,13 +18,14 @@
 
 //! The `arch_prctl` system call sets architecture-specific thread state.
 
+use crate::syscall::Args;
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn arch_prctl(_code: c_int, _addr: usize) -> EResult<usize> {
+pub fn arch_prctl(Args((_code, _addr)): Args<(c_int, usize)>) -> EResult<usize> {
 	// TODO
 	Err(errno!(EINVAL))
 }

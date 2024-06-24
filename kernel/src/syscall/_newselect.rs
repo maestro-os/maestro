@@ -19,16 +19,22 @@
 //! `_newselect` is similar to `select`.
 
 use super::select::{do_select, FDSet};
-use crate::{syscall::SyscallPtr, time::unit::Timeval};
+use crate::{
+	syscall::{Args, SyscallPtr},
+	time::unit::Timeval,
+};
 use core::ffi::c_int;
 use utils::errno::{EResult, Errno};
 
+#[allow(clippy::type_complexity)]
 pub fn _newselect(
-	nfds: c_int,
-	readfds: SyscallPtr<FDSet>,
-	writefds: SyscallPtr<FDSet>,
-	exceptfds: SyscallPtr<FDSet>,
-	timeout: SyscallPtr<Timeval>,
+	Args((nfds, readfds, writefds, exceptfds, timeout)): Args<(
+		c_int,
+		SyscallPtr<FDSet>,
+		SyscallPtr<FDSet>,
+		SyscallPtr<FDSet>,
+		SyscallPtr<Timeval>,
+	)>,
 ) -> EResult<usize> {
 	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }

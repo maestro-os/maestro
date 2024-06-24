@@ -18,7 +18,10 @@
 
 //! The `_llseek` system call repositions the offset of a file descriptor.
 
-use crate::{process::Process, syscall::SyscallPtr};
+use crate::{
+	process::Process,
+	syscall::{Args, SyscallPtr},
+};
 use core::ffi::{c_uint, c_ulong};
 use utils::{
 	errno,
@@ -34,11 +37,13 @@ const SEEK_CUR: u32 = 1;
 const SEEK_END: u32 = 2;
 
 pub fn _llseek(
-	fd: c_uint,
-	offset_high: c_ulong,
-	offset_low: c_ulong,
-	result: SyscallPtr<u64>,
-	whence: c_uint,
+	Args((fd, offset_high, offset_low, result, whence)): Args<(
+		c_uint,
+		c_ulong,
+		c_ulong,
+		SyscallPtr<u64>,
+		c_uint,
+	)>,
 ) -> EResult<usize> {
 	let (mem_space, open_file_mutex) = {
 		let proc_mutex = Process::current_assert();

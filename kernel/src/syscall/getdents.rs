@@ -22,7 +22,7 @@
 use crate::{
 	file::{FileType, INode},
 	process::Process,
-	syscall::SyscallSlice,
+	syscall::{Args, SyscallSlice},
 };
 use core::{
 	ffi::c_uint,
@@ -165,6 +165,8 @@ impl Dirent for LinuxDirent {
 	}
 }
 
-pub fn getdents(fd: c_uint, dirp: SyscallSlice<u8>, count: c_uint) -> EResult<usize> {
+pub fn getdents(
+	Args((fd, dirp, count)): Args<(c_uint, SyscallSlice<u8>, c_uint)>,
+) -> EResult<usize> {
 	do_getdents::<LinuxDirent>(fd, dirp, count as usize)
 }

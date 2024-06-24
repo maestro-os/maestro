@@ -21,12 +21,14 @@
 use super::statfs::do_statfs;
 use crate::{
 	file::fs::Statfs,
-	syscall::{SyscallPtr, SyscallString},
+	syscall::{Args, SyscallPtr, SyscallString},
 };
 use utils::errno::{EResult, Errno};
 
 // TODO Check args types
-pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr<Statfs>) -> EResult<usize> {
+pub fn statfs64(
+	Args((path, _sz, buf)): Args<(SyscallString, usize, SyscallPtr<Statfs>)>,
+) -> EResult<usize> {
 	// TODO Use `sz`
 	do_statfs(path, buf)
 }

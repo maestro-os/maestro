@@ -18,10 +18,10 @@
 
 //! The `setuid32` syscall sets the UID of the process's owner.
 
-use crate::{file::perm::Uid, process::Process};
+use crate::{file::perm::Uid, process::Process, syscall::Args};
 use utils::errno::{EResult, Errno};
 
-pub fn setuid32(uid: Uid) -> EResult<usize> {
+pub fn setuid32(Args(uid): Args<Uid>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 

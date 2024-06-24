@@ -19,13 +19,16 @@
 //! This module implements the `getpgid` system call, which allows to get the
 //! process group ID of a process.
 
-use crate::process::{pid::Pid, Process};
+use crate::{
+	process::{pid::Pid, Process},
+	syscall::Args,
+};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn getpgid(pid: Pid) -> EResult<usize> {
+pub fn getpgid(Args(pid): Args<Pid>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

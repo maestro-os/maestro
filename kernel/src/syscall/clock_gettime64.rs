@@ -20,7 +20,7 @@
 
 use crate::{
 	process::Process,
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 	time::{
 		clock,
 		unit::{ClockIdT, Timespec},
@@ -31,7 +31,9 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn clock_gettime64(clockid: ClockIdT, tp: SyscallPtr<Timespec>) -> EResult<usize> {
+pub fn clock_gettime64(
+	Args((clockid, tp)): Args<(ClockIdT, SyscallPtr<Timespec>)>,
+) -> EResult<usize> {
 	let curr_time = clock::current_time_struct::<Timespec>(clockid)?;
 
 	{

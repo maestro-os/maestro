@@ -18,15 +18,14 @@
 
 //! The `fchmod` system call allows change the permissions on a file.
 
-use crate::process::Process;
+use crate::{file, process::Process, syscall::Args};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-// TODO Check args type
-pub fn fchmod(fd: c_int, mode: i32) -> EResult<usize> {
+pub fn fchmod(Args((fd, mode)): Args<(c_int, file::Mode)>) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

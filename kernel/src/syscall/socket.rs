@@ -22,6 +22,7 @@ use crate::{
 	file::{buffer, buffer::socket::Socket, open_file, open_file::OpenFile, vfs},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
@@ -29,7 +30,7 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> EResult<usize> {
+pub fn socket(Args((domain, r#type, protocol)): Args<(c_int, c_int, c_int)>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

@@ -23,7 +23,7 @@ use crate::{
 		signal::{SigEvent, SigVal, Signal, SIGEV_SIGNAL},
 		Process,
 	},
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 	time::unit::{ClockIdT, TimerT},
 };
 use utils::{
@@ -32,9 +32,7 @@ use utils::{
 };
 
 pub fn timer_create(
-	clockid: ClockIdT,
-	sevp: SyscallPtr<SigEvent>,
-	timerid: SyscallPtr<TimerT>,
+	Args((clockid, sevp, timerid)): Args<(ClockIdT, SyscallPtr<SigEvent>, SyscallPtr<TimerT>)>,
 ) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();

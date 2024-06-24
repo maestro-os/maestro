@@ -25,72 +25,74 @@ use crate::{
 		user_desc::UserDesc,
 		ForkOptions, Process,
 	},
-	syscall::{FromSyscallArg, SyscallPtr},
+	syscall::{Args, FromSyscallArg, SyscallPtr},
 };
-use core::ffi::c_void;
+use core::ffi::{c_int, c_ulong, c_void};
 use utils::{
 	errno::{EResult, Errno},
 	ptr::arc::Arc,
 };
 
 /// TODO doc
-const CLONE_IO: i32 = -0x80000000;
+const CLONE_IO: c_ulong = -0x80000000 as _;
 /// If specified, the parent and child processes share the same memory space.
-const CLONE_VM: i32 = 0x100;
+const CLONE_VM: c_ulong = 0x100;
 /// TODO doc
-const CLONE_FS: i32 = 0x200;
+const CLONE_FS: c_ulong = 0x200;
 /// If specified, the parent and child processes share the same file descriptors
 /// table.
-const CLONE_FILES: i32 = 0x400;
+const CLONE_FILES: c_ulong = 0x400;
 /// If specified, the parent and child processes share the same signal handlers
 /// table.
-const CLONE_SIGHAND: i32 = 0x800;
+const CLONE_SIGHAND: c_ulong = 0x800;
 /// TODO doc
-const CLONE_PIDFD: i32 = 0x1000;
+const CLONE_PIDFD: c_ulong = 0x1000;
 /// TODO doc
-const CLONE_PTRACE: i32 = 0x2000;
+const CLONE_PTRACE: c_ulong = 0x2000;
 /// TODO doc
-const CLONE_VFORK: i32 = 0x4000;
+const CLONE_VFORK: c_ulong = 0x4000;
 /// TODO doc
-const CLONE_PARENT: i32 = 0x8000;
+const CLONE_PARENT: c_ulong = 0x8000;
 /// TODO doc
-const CLONE_THREAD: i32 = 0x10000;
+const CLONE_THREAD: c_ulong = 0x10000;
 /// TODO doc
-const CLONE_NEWNS: i32 = 0x20000;
+const CLONE_NEWNS: c_ulong = 0x20000;
 /// TODO doc
-const CLONE_SYSVSEM: i32 = 0x40000;
+const CLONE_SYSVSEM: c_ulong = 0x40000;
 /// TODO doc
-const CLONE_SETTLS: i32 = 0x80000;
+const CLONE_SETTLS: c_ulong = 0x80000;
 /// TODO doc
-const CLONE_PARENT_SETTID: i32 = 0x100000;
+const CLONE_PARENT_SETTID: c_ulong = 0x100000;
 /// TODO doc
-const CLONE_CHILD_CLEARTID: i32 = 0x200000;
+const CLONE_CHILD_CLEARTID: c_ulong = 0x200000;
 /// TODO doc
-const CLONE_DETACHED: i32 = 0x400000;
+const CLONE_DETACHED: c_ulong = 0x400000;
 /// TODO doc
-const CLONE_UNTRACED: i32 = 0x800000;
+const CLONE_UNTRACED: c_ulong = 0x800000;
 /// TODO doc
-const CLONE_CHILD_SETTID: i32 = 0x1000000;
+const CLONE_CHILD_SETTID: c_ulong = 0x1000000;
 /// TODO doc
-const CLONE_NEWCGROUP: i32 = 0x2000000;
+const CLONE_NEWCGROUP: c_ulong = 0x2000000;
 /// TODO doc
-const CLONE_NEWUTS: i32 = 0x4000000;
+const CLONE_NEWUTS: c_ulong = 0x4000000;
 /// TODO doc
-const CLONE_NEWIPC: i32 = 0x8000000;
+const CLONE_NEWIPC: c_ulong = 0x8000000;
 /// TODO doc
-const CLONE_NEWUSER: i32 = 0x10000000;
+const CLONE_NEWUSER: c_ulong = 0x10000000;
 /// TODO doc
-const CLONE_NEWPID: i32 = 0x20000000;
+const CLONE_NEWPID: c_ulong = 0x20000000;
 /// TODO doc
-const CLONE_NEWNET: i32 = 0x40000000;
+const CLONE_NEWNET: c_ulong = 0x40000000;
 
-// TODO Check args types
+#[allow(clippy::type_complexity)]
 pub fn clone(
-	flags: i32,
-	stack: *mut c_void,
-	_parent_tid: SyscallPtr<i32>,
-	tls: i32,
-	_child_tid: SyscallPtr<i32>,
+	Args((flags, stack, _parent_tid, tls, _child_tid)): Args<(
+		c_ulong,
+		*mut c_void,
+		SyscallPtr<c_int>,
+		c_ulong,
+		SyscallPtr<c_int>,
+	)>,
 	regs: &Regs,
 ) -> EResult<usize> {
 	let new_tid = {

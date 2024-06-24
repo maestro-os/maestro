@@ -21,7 +21,7 @@
 use crate::{
 	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
 	process::Process,
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 };
 use core::ffi::c_int;
 use utils::{
@@ -32,7 +32,7 @@ use utils::{
 	TryDefault,
 };
 
-pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> EResult<usize> {
+pub fn pipe2(Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>) -> EResult<usize> {
 	let accepted_flags = open_file::O_CLOEXEC | open_file::O_DIRECT | open_file::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
 		return Err(errno!(EINVAL));

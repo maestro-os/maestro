@@ -24,7 +24,7 @@ use crate::{
 		INode, Mode,
 	},
 	process::Process,
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 	time::unit::{TimeUnit, Timespec, TimestampScale},
 };
 use core::ffi::{c_int, c_long};
@@ -75,7 +75,7 @@ pub struct Stat {
 	st_ctim: Timespec,
 }
 
-pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> EResult<usize> {
+pub fn fstat64(Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

@@ -28,7 +28,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::Process,
-	syscall::{util::at::AT_EMPTY_PATH, SyscallString},
+	syscall::{util::at::AT_EMPTY_PATH, Args, SyscallString},
 };
 use core::ffi::c_int;
 use utils::{
@@ -36,7 +36,9 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> EResult<usize> {
+pub fn unlinkat(
+	Args((dirfd, pathname, flags)): Args<(c_int, SyscallString, c_int)>,
+) -> EResult<usize> {
 	let (fds_mutex, path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

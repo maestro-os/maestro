@@ -22,14 +22,14 @@
 use crate::{
 	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings, FileType},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn chroot(path: SyscallString) -> EResult<usize> {
+pub fn chroot(Args(path): Args<SyscallString>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 	// Check permission

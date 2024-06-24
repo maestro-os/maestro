@@ -18,7 +18,11 @@
 
 //! The `getrandom` system call allows to get random bytes.
 
-use crate::{crypto::rand, process::Process, syscall::SyscallSlice};
+use crate::{
+	crypto::rand,
+	process::Process,
+	syscall::{Args, SyscallSlice},
+};
 use core::ffi::c_uint;
 use utils::{
 	errno,
@@ -31,7 +35,9 @@ const GRND_RANDOM: u32 = 2;
 /// returns EAGAIN.
 const GRND_NONBLOCK: u32 = 1;
 
-pub fn getrandom(buf: SyscallSlice<u8>, buflen: usize, flags: c_uint) -> EResult<usize> {
+pub fn getrandom(
+	Args((buf, buflen, flags)): Args<(SyscallSlice<u8>, usize, c_uint)>,
+) -> EResult<usize> {
 	let bypass_threshold = flags & GRND_RANDOM == 0;
 	let nonblock = flags & GRND_NONBLOCK != 0;
 

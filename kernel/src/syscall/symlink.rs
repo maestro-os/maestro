@@ -27,7 +27,7 @@ use crate::{
 	},
 	limits,
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -39,7 +39,7 @@ use utils::{
 	io::IO,
 };
 
-pub fn symlink(target: SyscallString, linkpath: SyscallString) -> EResult<usize> {
+pub fn symlink(Args((target, linkpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
 	let (target, linkpath, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

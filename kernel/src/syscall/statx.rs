@@ -27,7 +27,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::Process,
-	syscall::{SyscallPtr, SyscallString},
+	syscall::{Args, SyscallPtr, SyscallSlice, SyscallString},
 };
 use core::ffi::{c_int, c_uint};
 use utils::{
@@ -104,11 +104,13 @@ pub struct Statx {
 }
 
 pub fn statx(
-	dirfd: c_int,
-	pathname: SyscallString,
-	flags: c_int,
-	_mask: c_uint,
-	statxbuff: SyscallPtr<Statx>,
+	Args((dirfd, pathname, flags, _mask, statxbuff)): Args<(
+		c_int,
+		SyscallString,
+		c_int,
+		c_uint,
+		SyscallPtr<Statx>,
+	)>,
 ) -> EResult<usize> {
 	// Validation
 	if pathname.is_null() || statxbuff.is_null() {

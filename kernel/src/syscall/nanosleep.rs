@@ -21,7 +21,7 @@
 
 use crate::{
 	process::Process,
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::Timespec32},
 };
 use utils::{
@@ -31,7 +31,9 @@ use utils::{
 
 // TODO Handle signal interruption (EINTR)
 
-pub fn nanosleep(req: SyscallPtr<Timespec32>, rem: SyscallPtr<Timespec32>) -> EResult<usize> {
+pub fn nanosleep(
+	Args((req, rem)): Args<(SyscallPtr<Timespec32>, SyscallPtr<Timespec32>)>,
+) -> EResult<usize> {
 	let start_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
 
 	let delay = {

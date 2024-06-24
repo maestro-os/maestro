@@ -21,7 +21,7 @@
 
 use crate::{
 	process::{scheduler, Process},
-	syscall::SyscallSlice,
+	syscall::{Args, SyscallSlice},
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,
@@ -47,8 +47,9 @@ pub struct PollFD {
 	revents: i16,
 }
 
-// TODO Check second arg type
-pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> EResult<usize> {
+pub fn poll(
+	Args((fds, nfds, timeout)): Args<(SyscallSlice<PollFD>, usize, c_int)>,
+) -> EResult<usize> {
 	// The timeout. None means no timeout
 	let to: Option<Timestamp> = if timeout >= 0 {
 		Some(timeout as _)

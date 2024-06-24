@@ -21,7 +21,7 @@
 use crate::{
 	file::{buffer, buffer::socket::Socket},
 	process::Process,
-	syscall::SyscallSlice,
+	syscall::{Args, SyscallSlice},
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
@@ -30,7 +30,9 @@ use utils::{
 };
 
 /// The implementation of the `connect` syscall.
-pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> EResult<usize> {
+pub fn connect(
+	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, isize)>,
+) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}

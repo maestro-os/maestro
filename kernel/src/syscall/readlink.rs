@@ -21,7 +21,7 @@
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
 	process::Process,
-	syscall::{SyscallSlice, SyscallString},
+	syscall::{Args, SyscallSlice, SyscallString},
 };
 use utils::{
 	errno,
@@ -29,7 +29,9 @@ use utils::{
 	io::IO,
 };
 
-pub fn readlink(pathname: SyscallString, buf: SyscallSlice<u8>, bufsiz: usize) -> EResult<usize> {
+pub fn readlink(
+	Args((pathname, buf, bufsiz)): Args<(SyscallString, SyscallSlice<u8>, usize)>,
+) -> EResult<usize> {
 	// process lock has to be dropped to avoid deadlock with procfs
 	let (mem_space_mutex, path, rs) = {
 		let proc_mutex = Process::current_assert();

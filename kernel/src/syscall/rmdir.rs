@@ -23,14 +23,14 @@
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn rmdir(pathname: SyscallString) -> EResult<usize> {
+pub fn rmdir(Args(pathname): Args<SyscallString>) -> EResult<usize> {
 	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

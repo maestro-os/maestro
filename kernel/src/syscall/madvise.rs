@@ -19,10 +19,13 @@
 //! The `madvise` system call gives advices to the kernel about the usage of
 //! memory in order to allow optimizations.
 
+use crate::syscall::Args;
 use core::ffi::{c_int, c_void};
 use utils::errno::{EResult, Errno};
 
-pub fn madvise(_addr: *mut c_void, _length: usize, _advice: c_int) -> EResult<usize> {
+pub fn madvise(
+	Args((_addr, _length, _advice)): Args<(*mut c_void, usize, c_int)>,
+) -> EResult<usize> {
 	// TODO
 	Ok(0)
 }

@@ -21,6 +21,7 @@
 use crate::{
 	file::{buffer, buffer::socket::Socket},
 	process::Process,
+	syscall::Args,
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
@@ -35,7 +36,7 @@ const SHUT_WR: c_int = 1;
 /// Both sides are shutdown.
 const SHUT_RDWR: c_int = 2;
 
-pub fn shutdown(sockfd: c_int, how: c_int) -> EResult<usize> {
+pub fn shutdown(Args((sockfd, how)): Args<(c_int, c_int)>) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));
 	}

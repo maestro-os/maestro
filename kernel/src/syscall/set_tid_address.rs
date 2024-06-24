@@ -19,11 +19,14 @@
 //! The `set_tid_address` system call sets the `clear_child_tid` attribute with
 //! the given pointer.
 
-use crate::{process::Process, syscall::SyscallPtr};
+use crate::{
+	process::Process,
+	syscall::{Args, SyscallPtr},
+};
 use core::{ffi::c_int, ptr::NonNull};
 use utils::errno::{EResult, Errno};
 
-pub fn set_tid_address(tidptr: SyscallPtr<c_int>) -> EResult<usize> {
+pub fn set_tid_address(Args(tidptr): Args<SyscallPtr<c_int>>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 

@@ -20,19 +20,22 @@
 
 use super::select::{do_select, FDSet};
 use crate::{
-	syscall::{SyscallPtr, SyscallSlice},
+	syscall::{Args, SyscallPtr, SyscallSlice},
 	time::unit::Timespec,
 };
 use core::ffi::c_int;
 use utils::errno::{EResult, Errno};
 
+#[allow(clippy::type_complexity)]
 pub fn pselect6(
-	nfds: c_int,
-	readfds: SyscallPtr<FDSet>,
-	writefds: SyscallPtr<FDSet>,
-	exceptfds: SyscallPtr<FDSet>,
-	timeout: SyscallPtr<Timespec>,
-	sigmask: SyscallSlice<u8>,
+	Args((nfds, readfds, writefds, exceptfds, timeout, sigmask)): Args<(
+		c_int,
+		SyscallPtr<FDSet>,
+		SyscallPtr<FDSet>,
+		SyscallPtr<FDSet>,
+		SyscallPtr<Timespec>,
+		SyscallSlice<u8>,
+	)>,
 ) -> EResult<usize> {
 	do_select(
 		nfds as _,

@@ -18,6 +18,7 @@
 
 //! The `close` system call closes the given file descriptor.
 
+use super::Args;
 use crate::process::Process;
 use core::ffi::c_int;
 use utils::{
@@ -25,7 +26,7 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn close(fd: c_int) -> EResult<usize> {
+pub fn close(Args(fd): Args<c_int>) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

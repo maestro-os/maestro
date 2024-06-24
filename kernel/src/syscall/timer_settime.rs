@@ -20,7 +20,7 @@
 
 use crate::{
 	process::Process,
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 	time::unit::{ITimerspec32, TimerT},
 };
 use core::ffi::c_int;
@@ -33,10 +33,12 @@ use utils::{
 const TIMER_ABSTIME: c_int = 1;
 
 pub fn timer_settime(
-	timerid: TimerT,
-	flags: c_int,
-	new_value: SyscallPtr<ITimerspec32>,
-	old_value: SyscallPtr<ITimerspec32>,
+	Args((timerid, flags, new_value, old_value)): Args<(
+		TimerT,
+		c_int,
+		SyscallPtr<ITimerspec32>,
+		SyscallPtr<ITimerspec32>,
+	)>,
 ) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();

@@ -20,7 +20,7 @@
 
 use crate::{
 	process::{pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process, State},
-	syscall::{waitpid::scheduler::SCHEDULER, SyscallPtr},
+	syscall::{waitpid::scheduler::SCHEDULER, Args, SyscallPtr},
 };
 use core::ffi::c_int;
 use utils::{
@@ -235,9 +235,7 @@ pub fn do_waitpid(
 }
 
 pub fn waitpid(
-	pid: c_int,
-	wstatus: SyscallPtr<c_int>,
-	options: c_int,
+	Args((pid, wstatus, options)): Args<(c_int, SyscallPtr<c_int>, c_int)>,
 	regs: &Regs,
 ) -> EResult<usize> {
 	do_waitpid(regs, pid, wstatus, options | WEXITED, None)

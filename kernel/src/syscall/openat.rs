@@ -19,6 +19,7 @@
 //! The `openat` syscall allows to open a file.
 
 use crate::{
+	file,
 	file::{
 		fd::{FileDescriptorTable, FD_CLOEXEC},
 		open_file,
@@ -26,10 +27,10 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Mode, Stat,
+		File, FileType, Stat,
 	},
 	process::Process,
-	syscall::{util::at, SyscallString},
+	syscall::{util::at, Args, SyscallString},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -66,7 +67,7 @@ fn get_file(
 	path: &Path,
 	flags: c_int,
 	rs: ResolutionSettings,
-	mode: Mode,
+	mode: file::Mode,
 ) -> EResult<Arc<Mutex<File>>> {
 	let create = flags & open_file::O_CREAT != 0;
 	let resolved = at::get_file(fds, rs.clone(), dirfd, path, flags)?;
@@ -96,7 +97,9 @@ fn get_file(
 	}
 }
 
-pub fn openat(dirfd: c_int, pathname: SyscallString, flags: c_int, mode: Mode) -> EResult<usize> {
+pub fn openat(
+	Args((dirfd, pathname, flags, mode)): Args<(c_int, SyscallString, c_int, file::Mode)>,
+) -> EResult<usize> {
 	let (rs, path, fds_mutex) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

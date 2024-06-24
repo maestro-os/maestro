@@ -27,7 +27,7 @@ use crate::{
 		FileType,
 	},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use core::ffi::c_int;
 use utils::{
@@ -45,11 +45,13 @@ const RENAME_EXCHANGE: c_int = 2;
 // etc...)
 
 pub fn renameat2(
-	olddirfd: c_int,
-	oldpath: SyscallString,
-	newdirfd: c_int,
-	newpath: SyscallString,
-	_flags: c_int,
+	Args((olddirfd, oldpath, newdirfd, newpath, _flags)): Args<(
+		c_int,
+		SyscallString,
+		c_int,
+		SyscallString,
+		c_int,
+	)>,
 ) -> EResult<usize> {
 	let (fds_mutex, oldpath, newpath, rs) = {
 		let proc_mutex = Process::current_assert();

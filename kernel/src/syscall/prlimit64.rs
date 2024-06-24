@@ -20,7 +20,7 @@
 
 use crate::{
 	process::{pid::Pid, Process},
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 };
 use core::ffi::c_int;
 use utils::{
@@ -79,16 +79,17 @@ type RLim = u64;
 pub struct RLimit {
 	/// Soft limit
 	rlim_cur: RLim,
-	/// Hard limit (ceiling for rlim_cur)
+	/// Hard limit (ceiling for [`rlim_cur`])
 	rlim_max: RLim,
 }
 
-// TODO Check args types
 pub fn prlimit64(
-	pid: Pid,
-	resource: c_int,
-	_new_limit: SyscallPtr<RLimit>,
-	_old_limit: SyscallPtr<RLimit>,
+	Args((pid, resource, _new_limit, _old_limit)): Args<(
+		Pid,
+		c_int,
+		SyscallPtr<RLimit>,
+		SyscallPtr<RLimit>,
+	)>,
 ) -> EResult<usize> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid == 0 {

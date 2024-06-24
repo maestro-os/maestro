@@ -19,14 +19,14 @@
 //! The `dup2` syscall allows to duplicate a file descriptor, specifying the id
 //! of the newly created file descriptor.
 
-use crate::{file::fd::NewFDConstraint, process::Process};
+use crate::{file::fd::NewFDConstraint, process::Process, syscall::Args};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn dup2(oldfd: c_int, newfd: c_int) -> EResult<usize> {
+pub fn dup2(Args((oldfd, newfd)): Args<(c_int, c_int)>) -> EResult<usize> {
 	if oldfd < 0 || newfd < 0 {
 		return Err(errno!(EBADF));
 	}

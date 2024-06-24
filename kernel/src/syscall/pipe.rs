@@ -21,7 +21,7 @@
 use crate::{
 	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
 	process::Process,
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 };
 use core::ffi::c_int;
 use utils::{
@@ -32,7 +32,7 @@ use utils::{
 	TryDefault,
 };
 
-pub fn pipe(pipefd: SyscallPtr<[c_int; 2]>) -> EResult<usize> {
+pub fn pipe(Args(pipefd): Args<SyscallPtr<[c_int; 2]>>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let (mem_space, fds_mutex) = {
 		let proc = proc_mutex.lock();

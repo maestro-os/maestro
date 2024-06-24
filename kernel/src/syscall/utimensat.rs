@@ -25,7 +25,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::Process,
-	syscall::{SyscallPtr, SyscallString},
+	syscall::{Args, SyscallPtr, SyscallString},
 	time::unit::{TimeUnit, Timespec},
 };
 use core::ffi::c_int;
@@ -35,10 +35,12 @@ use utils::{
 };
 
 pub fn utimensat(
-	dirfd: c_int,
-	pathname: SyscallString,
-	times: SyscallPtr<[Timespec; 2]>,
-	flags: c_int,
+	Args((dirfd, pathname, times, flags)): Args<(
+		c_int,
+		SyscallString,
+		SyscallPtr<[Timespec; 2]>,
+		c_int,
+	)>,
 ) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();

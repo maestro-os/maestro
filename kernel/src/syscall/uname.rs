@@ -18,7 +18,10 @@
 
 //! The uname syscall is used to retrieve information about the system.
 
-use crate::{process::Process, syscall::SyscallPtr};
+use crate::{
+	process::Process,
+	syscall::{Args, SyscallPtr},
+};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -43,7 +46,7 @@ pub struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-pub fn uname(buf: SyscallPtr<Utsname>) -> EResult<usize> {
+pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

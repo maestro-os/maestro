@@ -18,7 +18,10 @@
 
 //! The rt_sigprocmask system call allows to change the blocked signal mask.
 
-use crate::{process::Process, syscall::SyscallSlice};
+use crate::{
+	process::Process,
+	syscall::{Args, SyscallSlice},
+};
 use core::{cmp::min, ffi::c_int};
 use utils::{
 	errno,
@@ -34,10 +37,7 @@ const SIG_SETMASK: i32 = 2;
 
 // TODO Use SigSet in crate::process::signal
 pub fn rt_sigprocmask(
-	how: c_int,
-	set: SyscallSlice<u8>,
-	oldset: SyscallSlice<u8>,
-	sigsetsize: usize,
+	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
 ) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();

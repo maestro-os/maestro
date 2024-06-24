@@ -19,14 +19,14 @@
 //! The `syncfs` system call allows to synchronize the filesystem containing the
 //! file pointed by the given file descriptor.
 
-use crate::process::Process;
+use crate::{process::Process, syscall::Args};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn syncfs(fd: c_int) -> EResult<usize> {
+pub fn syncfs(Args(fd): Args<c_int>) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

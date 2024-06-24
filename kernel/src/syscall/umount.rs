@@ -22,14 +22,14 @@
 use crate::{
 	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn umount(target: SyscallString) -> EResult<usize> {
+pub fn umount(Args(target): Args<SyscallString>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

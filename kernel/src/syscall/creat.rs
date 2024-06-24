@@ -18,13 +18,13 @@
 
 //! The `creat` system call allows to create and open a file.
 
-use super::{open, SyscallString};
+use super::{open, Args, SyscallString};
 use crate::file::open_file;
 use core::ffi::c_int;
 use utils::errno::{EResult, Errno};
 
 // TODO Check args type
-pub fn creat(pathname: SyscallString, mode: c_int) -> EResult<usize> {
+pub fn creat(Args((pathname, mode)): Args<(SyscallString, c_int)>) -> EResult<usize> {
 	let flags = open_file::O_CREAT | open_file::O_WRONLY | open_file::O_TRUNC;
 	open::open_(pathname, flags, mode as _)
 }

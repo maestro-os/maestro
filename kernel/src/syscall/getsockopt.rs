@@ -21,7 +21,7 @@
 use crate::{
 	file::{buffer, buffer::socket::Socket},
 	process::Process,
-	syscall::SyscallSlice,
+	syscall::{Args, SyscallSlice},
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
@@ -30,11 +30,13 @@ use utils::{
 };
 
 pub fn getsockopt(
-	sockfd: c_int,
-	level: c_int,
-	optname: c_int,
-	optval: SyscallSlice<u8>,
-	optlen: usize,
+	Args((sockfd, level, optname, optval, optlen)): Args<(
+		c_int,
+		c_int,
+		c_int,
+		SyscallSlice<u8>,
+		usize,
+	)>,
 ) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));

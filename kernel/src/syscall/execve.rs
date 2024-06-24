@@ -18,6 +18,7 @@
 
 //! The `execve` system call allows to execute a program from a file.
 
+use super::Args;
 use crate::{
 	file::{
 		path::{Path, PathBuf},
@@ -181,7 +182,9 @@ fn build_image(
 	exec::build_image(&mut file, exec_info)
 }
 
-pub fn execve(pathname: SyscallString, argv: SyscallArray, envp: SyscallArray) -> EResult<usize> {
+pub fn execve(
+	Args((pathname, argv, envp)): Args<(SyscallString, SyscallArray, SyscallArray)>,
+) -> EResult<usize> {
 	let (file, rs, argv, envp) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

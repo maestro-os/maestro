@@ -18,10 +18,10 @@
 
 //! The `timer_delete` system call deletes a per-process timer.
 
-use crate::{process::Process, time::unit::TimerT};
+use crate::{process::Process, syscall::Args, time::unit::TimerT};
 use utils::errno::{EResult, Errno};
 
-pub fn timer_delete(timerid: TimerT) -> EResult<usize> {
+pub fn timer_delete(Args(timerid): Args<TimerT>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

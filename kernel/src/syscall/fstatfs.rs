@@ -18,14 +18,18 @@
 
 //! The `fstatfs` system call returns information about a mounted file system.
 
-use crate::{file::fs::Statfs, process::Process, syscall::SyscallPtr};
+use crate::{
+	file::fs::Statfs,
+	process::Process,
+	syscall::{Args, SyscallPtr},
+};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> EResult<usize> {
+pub fn fstatfs(Args((fd, buf)): Args<(c_int, SyscallPtr<Statfs>)>) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

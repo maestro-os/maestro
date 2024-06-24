@@ -29,7 +29,7 @@ use crate::{
 			at,
 			at::{AT_EACCESS, AT_FDCWD},
 		},
-		SyscallString,
+		Args, SyscallString,
 	},
 };
 use core::ffi::c_int;
@@ -106,6 +106,6 @@ pub fn do_access(
 	Ok(0)
 }
 
-pub fn access(pathname: SyscallString, mode: c_int) -> EResult<usize> {
+pub fn access(Args((pathname, mode)): Args<(SyscallString, c_int)>) -> EResult<usize> {
 	do_access(None, pathname, mode, None)
 }

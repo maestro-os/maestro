@@ -28,7 +28,7 @@ use crate::{
 		FileType, Stat,
 	},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -39,8 +39,9 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-// TODO Check args type
-pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> EResult<usize> {
+pub fn mknod(
+	Args((pathname, mode, dev)): Args<(SyscallString, file::Mode, u64)>,
+) -> EResult<usize> {
 	let (path, umask, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

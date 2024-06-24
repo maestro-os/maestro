@@ -22,7 +22,7 @@
 use super::getdents::{do_getdents, Dirent};
 use crate::{
 	file::{FileType, INode},
-	syscall::SyscallSlice,
+	syscall::{Args, SyscallSlice, SyscallString},
 };
 use core::{
 	ffi::c_int,
@@ -79,7 +79,9 @@ impl Dirent for LinuxDirent64 {
 	}
 }
 
-pub fn getdents64(fd: c_int, dirp: SyscallSlice<u8>, count: usize) -> EResult<usize> {
+pub fn getdents64(
+	Args((fd, dirp, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
+) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

@@ -21,14 +21,14 @@
 
 use crate::{
 	process::Process,
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use utils::errno::{EResult, Errno};
 
 // TODO Watch for timestamp overflow
 
-pub fn time(tloc: SyscallPtr<u32>) -> EResult<usize> {
+pub fn time(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

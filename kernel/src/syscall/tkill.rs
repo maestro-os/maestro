@@ -18,14 +18,17 @@
 
 //! The tkill system call allows to send a signal to a specific thread.
 
-use crate::process::{pid::Pid, signal::Signal, Process};
+use crate::{
+	process::{pid::Pid, signal::Signal, Process},
+	syscall::Args,
+};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn tkill(tid: Pid, sig: c_int) -> EResult<usize> {
+pub fn tkill(Args((tid, sig)): Args<(Pid, c_int)>) -> EResult<usize> {
 	// Validation
 	if sig < 0 {
 		return Err(errno!(EINVAL));

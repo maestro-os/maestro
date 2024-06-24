@@ -18,13 +18,14 @@
 
 //! The link system call allows to create a directory.
 
+use super::Args;
 use crate::{file::path::Path, process::Process, syscall::SyscallString};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn link(oldpath: SyscallString, newpath: SyscallString) -> EResult<usize> {
+pub fn link(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 

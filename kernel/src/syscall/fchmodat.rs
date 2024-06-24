@@ -20,12 +20,13 @@
 
 use super::util::at;
 use crate::{
+	file,
 	file::{
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use core::ffi::c_int;
 use utils::{
@@ -33,8 +34,9 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-// TODO Check args type
-pub fn fchmodat(dirfd: c_int, pathname: SyscallString, mode: i32, flags: c_int) -> EResult<usize> {
+pub fn fchmodat(
+	Args((dirfd, pathname, mode, flags)): Args<(c_int, SyscallString, file::Mode, c_int)>,
+) -> EResult<usize> {
 	let (fds_mutex, path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

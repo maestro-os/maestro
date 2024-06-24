@@ -21,7 +21,7 @@
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallSlice, SyscallString},
 };
 use core::ffi::c_int;
 use utils::{
@@ -72,6 +72,8 @@ pub fn do_chown(
 	Ok(0)
 }
 
-pub fn chown(pathname: SyscallString, owner: c_int, group: c_int) -> EResult<usize> {
+pub fn chown(
+	Args((pathname, owner, group)): Args<(SyscallString, c_int, c_int)>,
+) -> EResult<usize> {
 	do_chown(pathname, owner, group, true)
 }

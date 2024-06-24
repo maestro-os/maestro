@@ -18,7 +18,12 @@
 
 //! The `finit_module` system call allows to load a module on the kernel.
 
-use crate::{module, module::Module, process::Process, syscall::SyscallString};
+use crate::{
+	module,
+	module::Module,
+	process::Process,
+	syscall::{Args, SyscallString},
+};
 use core::{alloc::AllocError, ffi::c_int};
 use utils::{
 	errno,
@@ -27,7 +32,9 @@ use utils::{
 	vec,
 };
 
-pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> EResult<usize> {
+pub fn finit_module(
+	Args((fd, _param_values, _flags)): Args<(c_int, SyscallString, c_int)>,
+) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

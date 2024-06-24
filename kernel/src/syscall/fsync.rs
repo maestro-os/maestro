@@ -18,14 +18,14 @@
 
 //! The `fsync` system call synchronizes the state of a file to storage.
 
-use crate::process::Process;
+use crate::{process::Process, syscall::Args};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub fn fsync(fd: c_int) -> EResult<usize> {
+pub fn fsync(Args(fd): Args<c_int>) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}

@@ -22,7 +22,7 @@
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use utils::{
 	errno,
@@ -30,7 +30,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn chdir(path: SyscallString) -> EResult<usize> {
+pub fn chdir(Args(path): Args<SyscallString>) -> EResult<usize> {
 	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

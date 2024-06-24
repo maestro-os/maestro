@@ -25,7 +25,7 @@ use crate::{
 	},
 	limits,
 	process::{iovec::IOVec, mem_space::MemSpace, scheduler, Process},
-	syscall::{FromSyscallArg, SyscallSlice},
+	syscall::{Args, FromSyscallArg, SyscallSlice},
 };
 use core::{cmp::min, ffi::c_int};
 use utils::{
@@ -173,6 +173,8 @@ pub fn do_readv(
 	}
 }
 
-pub fn readv(fd: c_int, iov: SyscallSlice<IOVec>, iovcnt: c_int) -> EResult<usize> {
+pub fn readv(
+	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
+) -> EResult<usize> {
 	do_readv(fd, iov, iovcnt, None, None)
 }

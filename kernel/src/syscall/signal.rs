@@ -19,10 +19,13 @@
 //! The `signal` syscall allows to specify a pointer to a function to be called
 //! when a specific signal is received by the current process.
 
-use crate::process::{
-	signal,
-	signal::{SigAction, Signal, SignalHandler, SA_RESTART},
-	Process,
+use crate::{
+	process::{
+		signal,
+		signal::{SigAction, Signal, SignalHandler, SA_RESTART},
+		Process,
+	},
+	syscall::Args,
 };
 use core::{
 	ffi::{c_int, c_void},
@@ -32,7 +35,7 @@ use core::{
 };
 use utils::errno::{EResult, Errno};
 
-pub fn signal(signum: c_int, handler: *const c_void) -> EResult<usize> {
+pub fn signal(Args((signum, handler)): Args<(c_int, *const c_void)>) -> EResult<usize> {
 	// Validation
 	let signal = Signal::try_from(signum as u32)?;
 	// Conversion

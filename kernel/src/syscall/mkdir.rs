@@ -27,7 +27,7 @@ use crate::{
 		FileType, Stat,
 	},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -38,7 +38,7 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn mkdir(pathname: SyscallString, mode: file::Mode) -> EResult<usize> {
+pub fn mkdir(Args((pathname, mode)): Args<(SyscallString, file::Mode)>) -> EResult<usize> {
 	let (path, mode, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

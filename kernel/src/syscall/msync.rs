@@ -19,7 +19,7 @@
 //! The msync system call synchronizes a memory mapping with its file on the
 //! disk.
 
-use crate::{memory, process::Process};
+use crate::{memory, process::Process, syscall::Args};
 use core::ffi::{c_int, c_void};
 use utils::{
 	errno,
@@ -30,10 +30,10 @@ use utils::{
 const MS_ASYNC: i32 = 0b001;
 /// Synchronizes the mapping before returning.
 const MS_SYNC: i32 = 0b010;
-/// Invalides other mappings of the same file so they can be updated.
+/// Invalides other mappings of the same file, so they can be updated.
 const MS_INVALIDATE: i32 = 0b100;
 
-pub fn msync(addr: *mut c_void, length: usize, flags: c_int) -> EResult<usize> {
+pub fn msync(Args((addr, length, flags)): Args<(*mut c_void, usize, c_int)>) -> EResult<usize> {
 	// Check address alignment
 	if !addr.is_aligned_to(memory::PAGE_SIZE) {
 		return Err(errno!(EINVAL));

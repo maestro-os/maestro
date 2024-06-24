@@ -21,7 +21,7 @@
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use utils::{
 	errno,
@@ -32,7 +32,7 @@ use utils::{
 // TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
 // etc...)
 
-pub fn rename(oldpath: SyscallString, newpath: SyscallString) -> EResult<usize> {
+pub fn rename(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
 	let (old_path, new_path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

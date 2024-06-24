@@ -19,18 +19,19 @@
 //! The `mmap2` system call is similar to `mmap`, except it takes a file offset
 //! in pages.
 
-use super::mmap;
+use super::{mmap, Args};
 use core::ffi::{c_int, c_void};
 use utils::errno::{EResult, Errno};
 
-// TODO Check last argument type
 pub fn mmap2(
-	addr: *mut c_void,
-	length: usize,
-	prot: c_int,
-	flags: c_int,
-	fd: c_int,
-	offset: u64,
+	Args((addr, length, prot, flags, fd, offset)): Args<(
+		*mut c_void,
+		usize,
+		c_int,
+		c_int,
+		c_int,
+		u64,
+	)>,
 ) -> EResult<usize> {
 	mmap::do_mmap(addr, length, prot, flags, fd, offset * 4096)
 }

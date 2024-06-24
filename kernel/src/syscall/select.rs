@@ -21,7 +21,7 @@
 
 use crate::{
 	process::{scheduler, Process},
-	syscall::{SyscallPtr, SyscallSlice},
+	syscall::{Args, SyscallPtr, SyscallSlice},
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,
@@ -225,12 +225,15 @@ pub fn do_select<T: TimeUnit>(
 	}
 }
 
+#[allow(clippy::type_complexity)]
 pub fn select(
-	nfds: c_int,
-	readfds: SyscallPtr<FDSet>,
-	writefds: SyscallPtr<FDSet>,
-	exceptfds: SyscallPtr<FDSet>,
-	timeout: SyscallPtr<Timeval>,
+	Args((nfds, readfds, writefds, exceptfds, timeout)): Args<(
+		c_int,
+		SyscallPtr<FDSet>,
+		SyscallPtr<FDSet>,
+		SyscallPtr<FDSet>,
+		SyscallPtr<Timeval>,
+	)>,
 ) -> EResult<usize> {
 	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }

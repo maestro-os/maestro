@@ -19,9 +19,10 @@
 //! The `chmod` system call allows change the permissions on a file.
 
 use crate::{
+	file,
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::Process,
-	syscall::SyscallString,
+	syscall::{Args, SyscallString},
 };
 use core::ffi::c_int;
 use utils::{
@@ -29,7 +30,7 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn chmod(pathname: SyscallString, mode: c_int) -> EResult<usize> {
+pub fn chmod(Args((pathname, mode)): Args<(SyscallString, file::Mode)>) -> EResult<usize> {
 	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();

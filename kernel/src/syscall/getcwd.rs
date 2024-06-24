@@ -19,14 +19,17 @@
 //! The getcwd system call allows to retrieve the current working directory of
 //! the current process.
 
-use crate::{process::Process, syscall::SyscallSlice};
+use crate::{
+	process::Process,
+	syscall::{Args, SyscallSlice},
+};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 	format,
 };
 
-pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> EResult<usize> {
+pub fn getcwd(Args((buf, size)): Args<(SyscallSlice<u8>, usize)>) -> EResult<usize> {
 	if size == 0 {
 		return Err(errno!(EINVAL));
 	}

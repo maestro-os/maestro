@@ -21,7 +21,7 @@
 use crate::{
 	file::{buffer, buffer::socket::Socket},
 	process::Process,
-	syscall::SyscallSlice,
+	syscall::{Args, SyscallSlice},
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
@@ -31,13 +31,16 @@ use utils::{
 
 // TODO implement flags
 
+#[allow(clippy::type_complexity)]
 pub fn sendto(
-	sockfd: c_int,
-	buf: SyscallSlice<u8>,
-	len: usize,
-	_flags: c_int,
-	dest_addr: SyscallSlice<u8>,
-	addrlen: isize,
+	Args((sockfd, buf, len, _flags, dest_addr, addrlen)): Args<(
+		c_int,
+		SyscallSlice<u8>,
+		usize,
+		c_int,
+		SyscallSlice<u8>,
+		isize,
+	)>,
 ) -> EResult<usize> {
 	if sockfd < 0 {
 		return Err(errno!(EBADF));

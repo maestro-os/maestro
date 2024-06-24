@@ -23,7 +23,7 @@ use crate::{
 	file::{buffer, buffer::socket::Socket, open_file, open_file::OpenFile, vfs},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
-	syscall::SyscallPtr,
+	syscall::{Args, SyscallPtr},
 };
 use core::ffi::c_int;
 use utils::{
@@ -32,10 +32,7 @@ use utils::{
 };
 
 pub fn socketpair(
-	domain: c_int,
-	r#type: c_int,
-	protocol: c_int,
-	sv: SyscallPtr<[c_int; 2]>,
+	Args((domain, r#type, protocol, sv)): Args<(c_int, c_int, c_int, SyscallPtr<[c_int; 2]>)>,
 ) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();

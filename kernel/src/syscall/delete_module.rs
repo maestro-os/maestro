@@ -18,7 +18,11 @@
 
 //! The `delete_module` system call allows to unload a module from the kernel.
 
-use crate::{module, process::Process, syscall::SyscallString};
+use crate::{
+	module,
+	process::Process,
+	syscall::{Args, SyscallString},
+};
 use core::ffi::c_uint;
 use utils::{
 	collections::string::String,
@@ -28,7 +32,7 @@ use utils::{
 
 // TODO handle flags
 
-pub fn delete_module(name: SyscallString, _flags: c_uint) -> EResult<usize> {
+pub fn delete_module(Args((name, _flags)): Args<(SyscallString, c_uint)>) -> EResult<usize> {
 	let name = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
