@@ -99,6 +99,7 @@ impl MapConstraint {
 			// Checking the address is within userspace is required because `Fixed` allocations can
 			// take place *outside of gaps* but *not inside the kernelspace*
 			MapConstraint::Fixed(addr) => {
+				// `COPY_BUFFER` is located right before the kernelspace
 				*addr < COPY_BUFFER as _ && addr.is_aligned_to(memory::PAGE_SIZE)
 			}
 			MapConstraint::Hint(addr) => addr.is_aligned_to(memory::PAGE_SIZE),
@@ -321,7 +322,7 @@ impl MemSpace {
 			return Err(AllocError);
 		}
 		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
-		// Get gap suitable for the given constraint
+		// Get suitable gap for the given constraint
 		let (gap, off) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
 				Self::unmap_impl(&mut transaction, addr, size, true)?;
@@ -344,7 +345,7 @@ impl MemSpace {
 						let end = off.checked_add(size.get())?;
 						(end <= gap.get_size().get()).then_some((gap.clone(), off))
 					})
-					// Hint cannot be satisfied. Get a gap large enough
+					// Hint cannot be satisfied. Get a large enough gap
 					.or_else(|| {
 						let gap = transaction.mem_space_state.get_gap(size)?;
 						Some((gap.clone(), 0))
