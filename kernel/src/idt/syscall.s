@@ -37,6 +37,7 @@ syscall:
 
 	# Storing registers state
 GET_REGS
+    cld
 
 	# Setting data segment
 	mov $GDT_KERNEL_DS, %ax
