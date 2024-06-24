@@ -62,21 +62,20 @@ pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> EResult<usi
 	let Some(name) = path.file_name() else {
 		return Err(errno!(EEXIST));
 	};
-	// Information to create the file
+	// Check file type and permissions
 	let mode = mode & !umask;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
-	// Check file type and permissions
-	match file_type {
-		FileType::Directory => return Err(errno!(EINVAL)),
-		FileType::BlockDevice | FileType::CharDevice if !rs.access_profile.is_privileged() => {
-			return Err(errno!(EPERM));
-		}
-		_ => {}
+	let privileged = rs.access_profile.is_privileged();
+	match (file_type, privileged) {
+		(FileType::Regular | FileType::Fifo | FileType::Socket, _) => {}
+		(FileType::BlockDevice | FileType::CharDevice, true) => {}
+		(_, false) => return Err(errno!(EPERM)),
+		(_, true) => return Err(errno!(EINVAL)),
 	}
+	// Create file
 	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
-	// Create file
 	vfs::create_file(
 		&mut parent,
 		name,
