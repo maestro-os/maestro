@@ -19,7 +19,12 @@
 //! The `clone` system call creates a child process.
 
 use crate::{
-	process::{regs::Regs, scheduler, user_desc::UserDesc, ForkOptions, Process},
+	process::{
+		regs::{Register, Regs},
+		scheduler,
+		user_desc::UserDesc,
+		ForkOptions, Process,
+	},
 	syscall::SyscallPtr,
 };
 use core::ffi::c_void;
@@ -111,17 +116,17 @@ pub fn clone(
 		let new_mutex = curr_proc.fork(parent, fork_options)?;
 		let mut new_proc = new_mutex.lock();
 
-		// Setting the process's registers
+		// Set the process's registers
 		let mut new_regs = regs.clone();
-		// Setting return value to `0`
-		new_regs.eax = 0;
-		// Setting stack
-		new_regs.esp = if stack.is_null() {
-			regs.esp as _
+		// Set return value to `0`
+		new_regs.eax.0 = 0;
+		// Set stack
+		new_regs.esp.0 = if stack.is_null() {
+			regs.esp.0
 		} else {
 			stack as _
 		};
-		// Setting TLS
+		// Set TLS
 		if flags & CLONE_SETTLS != 0 {
 			let _tls = SyscallPtr::<UserDesc>::from(tls as usize);
 

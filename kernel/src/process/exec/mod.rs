@@ -29,7 +29,12 @@ pub mod vdso;
 
 use crate::{
 	file::{vfs::ResolutionSettings, File},
-	process::{mem_space::MemSpace, regs::Regs, signal::SignalHandler, Process},
+	process::{
+		mem_space::MemSpace,
+		regs::{Register, Regs},
+		signal::SignalHandler,
+		Process,
+	},
 };
 use core::ffi::c_void;
 use utils::{
@@ -128,8 +133,8 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 
 	// Set the process's registers
 	let regs = Regs {
-		esp: image.user_stack_begin as _,
-		eip: image.entry_point as _,
+		esp: Register(image.user_stack_begin as _),
+		eip: Register(image.entry_point as _),
 		..Default::default()
 	};
 	proc.regs = regs;

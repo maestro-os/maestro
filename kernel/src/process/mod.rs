@@ -326,9 +326,9 @@ pub(crate) fn init() -> EResult<()> {
 			0x06 => curr_proc.kill_now(&Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
-				let inst_prefix = unsafe { *(regs.eip as *const u8) };
+				let inst_prefix = unsafe { *(regs.eip.0 as *const u8) };
 				if inst_prefix == HLT_INSTRUCTION {
-					curr_proc.exit(regs.eax);
+					curr_proc.exit(regs.eax.0 as _);
 				} else {
 					curr_proc.kill_now(&Signal::SIGSEGV);
 				}
@@ -960,7 +960,7 @@ impl Process {
 	pub fn get_signal_stack(&self) -> *const c_void {
 		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
 		// SA_ONSTACK)
-		(self.regs.esp as usize - REDZONE_SIZE) as _
+		(self.regs.esp.0 - REDZONE_SIZE) as _
 	}
 
 	/// Saves the process's state to handle a signal.

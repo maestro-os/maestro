@@ -16,58 +16,81 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Implementation of registers handling for each architecture.
+//! Registers state save and restore.
 
 use crate::gdt;
-use core::{arch::asm, fmt};
+use core::{fmt, mem::size_of};
 use utils::errno::EResult;
 
-/// The default value of the eflags register.
-const DEFAULT_EFLAGS: u32 = 0x1202;
-/// The default value of the FCW.
-const DEFAULT_FCW: u32 = 0b1100111111;
-/// The default value of the MXCSR.
-const DEFAULT_MXCSR: u32 = 0b1111111000000;
-
 extern "C" {
-	/// This function switches to a userspace context.
+	/// Switches to an userspace context.
 	///
 	/// Arguments:
 	/// - `regs` is the structure of registers to restore to resume the context.
 	/// - `data_selector` is the user data segment selector.
 	/// - `code_selector` is the user code segment selector.
 	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
-	/// This function switches to a kernelspace context.
+	/// Switches to a kernelspace context.
 	///
 	/// `regs` is the structure of registers to restore to resume the context.
 	fn context_switch_kernel(regs: &Regs) -> !;
 }
 
-/// Wrapper allowing to align the fxstate buffer.
-#[repr(align(16))]
-struct FXStateWrapper([u8; 512]);
+/// A register's state.
+#[derive(Clone, Copy, Default)]
+#[repr(transparent)]
+pub struct Register(pub usize);
 
-/// Saves the current x87 FPU, MMX and SSE state to the given buffer.
-#[no_mangle]
-pub extern "C" fn save_fxstate(fxstate: &mut [u8; 512]) {
-	let mut buff = FXStateWrapper([0; 512]);
-	unsafe {
-		asm!("fxsave [{}]", in(reg) buff.0.as_mut_ptr());
+impl fmt::Display for Register {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		fmt::Debug::fmt(self, f)
 	}
-
-	// TODO avoid copy (slow). `fxstate` itself should be aligned
-	fxstate.copy_from_slice(&buff.0);
 }
 
-/// Restores the x87 FPU, MMX and SSE state from the given buffer.
-#[no_mangle]
-pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
-	let mut buff = FXStateWrapper([0; 512]);
-	// TODO avoid copy (slow). `fxstate` itself should be aligned
-	buff.0.copy_from_slice(fxstate);
+impl fmt::Debug for Register {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		const LEN: usize = size_of::<usize>() / 4;
+		write!(f, "{:0LEN$x}", self.0)
+	}
+}
 
-	unsafe {
-		asm!("fxrstor [{}]", in(reg) buff.0.as_ptr());
+#[cfg(target_arch = "x86")]
+pub mod x86 {
+	use core::arch::asm;
+
+	/// The default value of the eflags register.
+	pub const DEFAULT_EFLAGS: usize = 0x1202;
+	/// The default value of the FCW.
+	pub const DEFAULT_FCW: u32 = 0b1100111111;
+	/// The default value of the MXCSR.
+	pub const DEFAULT_MXCSR: u32 = 0b1111111000000;
+
+	/// Wrapper allowing to align the fxstate buffer.
+	#[repr(align(16))]
+	struct FXStateWrapper([u8; 512]);
+
+	/// Saves the current x87 FPU, MMX and SSE state to the given buffer.
+	#[no_mangle]
+	pub extern "C" fn save_fxstate(fxstate: &mut [u8; 512]) {
+		let mut buff = FXStateWrapper([0; 512]);
+		unsafe {
+			asm!("fxsave [{}]", in(reg) buff.0.as_mut_ptr());
+		}
+
+		// TODO avoid copy (slow). `fxstate` itself should be aligned
+		fxstate.copy_from_slice(&buff.0);
+	}
+
+	/// Restores the x87 FPU, MMX and SSE state from the given buffer.
+	#[no_mangle]
+	pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
+		let mut buff = FXStateWrapper([0; 512]);
+		// TODO avoid copy (slow). `fxstate` itself should be aligned
+		buff.0.copy_from_slice(fxstate);
+
+		unsafe {
+			asm!("fxrstor [{}]", in(reg) buff.0.as_ptr());
+		}
 	}
 }
 
@@ -78,19 +101,19 @@ pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
 #[repr(C, packed)]
 #[cfg(target_arch = "x86")]
 pub struct Regs {
-	pub ebp: u32,
-	pub esp: u32,
-	pub eip: u32,
-	pub eflags: u32,
-	pub eax: u32,
-	pub ebx: u32,
-	pub ecx: u32,
-	pub edx: u32,
-	pub esi: u32,
-	pub edi: u32,
+	pub ebp: Register,
+	pub esp: Register,
+	pub eip: Register,
+	pub eflags: Register,
+	pub eax: Register,
+	pub ebx: Register,
+	pub ecx: Register,
+	pub edx: Register,
+	pub esi: Register,
+	pub edi: Register,
 
-	pub gs: u32,
-	pub fs: u32,
+	pub gs: Register,
+	pub fs: Register,
 
 	/// x87 FPU, MMX and SSE state.
 	pub fxstate: [u8; 512],
@@ -100,7 +123,7 @@ impl Regs {
 	/// Returns the ID of the system call being executed.
 	#[inline]
 	pub const fn get_syscall_id(&self) -> usize {
-		self.eax as _
+		self.eax.0 as _
 	}
 
 	/// Returns the value of the `n`th argument of the syscall being executed.
@@ -110,12 +133,12 @@ impl Regs {
 	#[inline]
 	pub const fn get_syscall_arg(&self, n: u8) -> usize {
 		match n {
-			0 => self.ebx as _,
-			1 => self.ecx as _,
-			2 => self.edx as _,
-			3 => self.esi as _,
-			4 => self.edi as _,
-			5 => self.ebp as _,
+			0 => self.ebx.0 as _,
+			1 => self.ecx.0 as _,
+			2 => self.edx.0 as _,
+			3 => self.esi.0 as _,
+			4 => self.edi.0 as _,
+			5 => self.ebp.0 as _,
 			_ => 0,
 		}
 	}
@@ -126,18 +149,17 @@ impl Regs {
 			Ok(val) => val as _,
 			Err(e) => (-e.as_int()) as _,
 		};
-
-		self.eax = retval;
+		self.eax.0 = retval;
 	}
 
 	/// Switches to the associated register context.
-	/// `user` tells whether the function switchs to userspace.
+	/// `user` tells whether the function switches to userspace.
 	///
 	/// # Safety
 	///
 	/// Invalid register values shall result in an undefined behaviour.
 	pub unsafe fn switch(&self, user: bool) -> ! {
-		let eip = self.eip;
+		let eip = self.eip.0;
 		debug_assert_ne!(eip, 0);
 		if user {
 			let user_data_selector = gdt::USER_DS | 3;
@@ -152,57 +174,62 @@ impl Regs {
 impl Default for Regs {
 	fn default() -> Self {
 		let mut s = Self {
-			ebp: 0x0,
-			esp: 0x0,
-			eip: 0x0,
-			eflags: DEFAULT_EFLAGS,
-			eax: 0x0,
-			ebx: 0x0,
-			ecx: 0x0,
-			edx: 0x0,
-			esi: 0x0,
-			edi: 0x0,
+			ebp: Register::default(),
+			esp: Register::default(),
+			eip: Register::default(),
+			eflags: Register(x86::DEFAULT_EFLAGS),
+			eax: Register::default(),
+			ebx: Register::default(),
+			ecx: Register::default(),
+			edx: Register::default(),
+			esi: Register::default(),
+			edi: Register::default(),
 
-			gs: 0x0,
-			fs: 0x0,
+			gs: Register::default(),
+			fs: Register::default(),
 
 			fxstate: [0; 512],
 		};
-
-		// Setting the default FPU control word
-		s.fxstate[0] = (DEFAULT_FCW & 0xff) as _;
-		s.fxstate[1] = ((DEFAULT_FCW >> 8) & 0xff) as _;
-
-		// Setting the default MXCSR
-		s.fxstate[24] = (DEFAULT_MXCSR & 0xff) as _;
-		s.fxstate[25] = ((DEFAULT_MXCSR >> 8) & 0xff) as _;
-		s.fxstate[26] = ((DEFAULT_MXCSR >> 16) & 0xff) as _;
-		s.fxstate[27] = ((DEFAULT_MXCSR >> 24) & 0xff) as _;
-
+		// Set the default FPU control word
+		s.fxstate[0] = (x86::DEFAULT_FCW & 0xff) as _;
+		s.fxstate[1] = ((x86::DEFAULT_FCW >> 8) & 0xff) as _;
+		// Set the default MXCSR
+		s.fxstate[24] = (x86::DEFAULT_MXCSR & 0xff) as _;
+		s.fxstate[25] = ((x86::DEFAULT_MXCSR >> 8) & 0xff) as _;
+		s.fxstate[26] = ((x86::DEFAULT_MXCSR >> 16) & 0xff) as _;
+		s.fxstate[27] = ((x86::DEFAULT_MXCSR >> 24) & 0xff) as _;
 		s
 	}
 }
 
-//#[cfg(config_general_arch = "x86")]
+#[cfg(target_arch = "x86")]
 impl fmt::Display for Regs {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(
-			f,
-			"ebp: {:08x} esp: {:08x} eip: {:08x} eax: {:08x} ebx: {:08x}
-ecx: {:08x} edx: {:08x} esi: {:08x} edi: {:08x} eflags: {:08x}
-gs: {:02x} fs: {:02x}",
-			self.ebp as usize,
-			self.esp as usize,
-			self.eip as usize,
-			self.eax as usize,
-			self.ebx as usize,
-			self.ecx as usize,
-			self.edx as usize,
-			self.esi as usize,
-			self.edi as usize,
-			self.eflags as usize,
-			self.gs as usize,
-			self.fs as usize
-		)
+		let ebp = self.ebp;
+		let esp = self.esp;
+		let eip = self.eip;
+		let eflags = self.eflags;
+		let eax = self.eax;
+		let ebx = self.ebx;
+		let ecx = self.ecx;
+		let edx = self.edx;
+		let esi = self.esi;
+		let edi = self.edi;
+		let gs = self.gs;
+		let fs = self.fs;
+		f.debug_struct("Regs")
+			.field("ebp", &ebp)
+			.field("esp", &esp)
+			.field("eip", &eip)
+			.field("eflags", &eflags)
+			.field("eax", &eax)
+			.field("ebx", &ebx)
+			.field("ecx", &ecx)
+			.field("edx", &edx)
+			.field("esi", &esi)
+			.field("edi", &edi)
+			.field("gs", &gs)
+			.field("fs", &fs)
+			.finish()
 	}
 }

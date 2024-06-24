@@ -266,12 +266,12 @@ impl SignalHandler {
 					// FIXME: not all system calls can return this
 					return_regs.set_syscall_return(Err(errno!(EINTR)));
 				}
-				debug_assert!((return_regs.eip as usize) < crate::memory::PROCESS_END as usize);
+				debug_assert!(return_regs.eip.0 < crate::memory::PROCESS_END as usize);
 				process.signal_save(signal.clone(), return_regs);
 				// Prepare registers for the handler
 				let signal_trampoline = signal_trampoline as *const c_void;
-				process.regs.esp = signal_esp as _;
-				process.regs.eip = signal_trampoline as _;
+				process.regs.esp.0 = signal_esp as _;
+				process.regs.eip.0 = signal_trampoline as _;
 			}
 			// Execute default action
 			_ => {

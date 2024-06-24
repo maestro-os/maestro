@@ -17,7 +17,7 @@
  */
 
 //! The `vfork` system call works the same as the `fork` system call, except the
-//! parnet process is blocked until the child process exits or executes a
+//! parent process is blocked until the child process exits or executes a
 //! program. During that time, the child process also shares the same memory
 //! space as the parent.
 
@@ -43,9 +43,9 @@ pub fn vfork(regs: &Regs) -> EResult<usize> {
 		let new_mutex = curr_proc.fork(parent, fork_options)?;
 		let mut new_proc = new_mutex.lock();
 
-		// Set registers with return value to `0`
+		// Update return value
 		let mut regs = regs.clone();
-		regs.eax = 0;
+		regs.set_syscall_return(Ok(0));
 		new_proc.regs = regs;
 
 		new_proc.get_pid()

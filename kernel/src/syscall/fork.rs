@@ -37,10 +37,10 @@ pub fn fork(regs: &Regs) -> EResult<usize> {
 	let new_mutex = curr_proc.fork(parent, ForkOptions::default())?;
 	let mut new_proc = new_mutex.lock();
 
-	// Setting registers
+	// Set registers
 	let mut regs = regs.clone();
-	// Setting return value to `0`
-	regs.eax = 0;
+	// Set return value to `0`
+	regs.eax.0 = 0;
 	new_proc.regs = regs;
 
 	Ok(new_proc.get_pid() as _)
