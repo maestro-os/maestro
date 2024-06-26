@@ -314,36 +314,45 @@ use writev::writev;
 pub const SIGRETURN_ID: usize = 0x077;
 
 /// A system call handler.
-pub trait SyscallHandler<'p, const NAME: &'static str, Args> {
-	/// Returns the name of the handler.
-	#[inline]
-	fn name(&self) -> &'static str {
-		NAME
-	}
-
+pub trait SyscallHandler<'p, Args> {
 	/// Calls the system call.
 	///
 	/// Arguments:
+	/// - `name` is the name of the system call.
 	/// - `process` is the process calling the system call.
 	/// - `regs` is the register state of the process at the moment of the system call.
 	///
 	/// The function returns the result of the system call.
-	fn call(self, process: &'p Arc<IntMutex<Process>>, regs: &'p Regs) -> EResult<usize>;
+	fn call(
+		self,
+		name: &str,
+		process: &'p Arc<IntMutex<Process>>,
+		regs: &'p Regs,
+	) -> EResult<usize>;
 }
 
 /// Implementation of [`SyscallHandler`] for functions with arguments.
 macro_rules! impl_syscall_handler {
     ($($ty:ident),*) => {
-        impl<'p, F, const N: &'static str, $($ty,)*> SyscallHandler<'p, N, ($($ty,)*)> for F
+        impl<'p, F, $($ty,)*> SyscallHandler<'p, ($($ty,)*)> for F
         where F: FnOnce($($ty,)*) -> EResult<usize>,
 			$($ty: FromSyscall<'p>,)*
         {
 			#[allow(non_snake_case, unused_variables)]
-            fn call(self, process: &'p Arc<IntMutex<Process>>, regs: &'p Regs) -> EResult<usize> {
+            fn call(self, name: &str, process: &'p Arc<IntMutex<Process>>, regs: &'p Regs) -> EResult<usize> {
+				if cfg!(feature = "strace") {
+					let pid = 0; // TODO
+					print!("[strace {pid}] {name}");
+				}
                 $(
                     let $ty = $ty::from_syscall(process, regs);
                 )*
-                self($($ty,)*)
+                let res = self($($ty,)*);
+				if cfg!(feature = "strace") {
+					let pid = 0; // TODO
+					println!("[strace {pid}] -> {res:?}");
+				}
+				res
             }
         }
     };
@@ -410,7 +419,11 @@ pub struct Args<T: fmt::Debug>(pub T);
 
 impl<T: FromSyscallArg> FromSyscall<'_> for Args<T> {
 	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs) -> Self {
-		Self(T::from_syscall_arg(regs.get_syscall_arg(0)))
+		let arg = T::from_syscall_arg(regs.get_syscall_arg(0));
+		if cfg!(feature = "strace") {
+			println!("({arg:?})");
+		}
+		Self(arg)
 	}
 }
 
@@ -428,7 +441,11 @@ macro_rules! impl_from_syscall_args {
                     let $ty = $ty::from_syscall_arg(regs.get_syscall_arg(cursor));
 					cursor += 1;
                 )*
-				Args(($($ty,)*))
+				let args = ($($ty,)*);
+				if cfg!(feature = "strace") {
+					println!("{args:?}");
+				}
+				Args(args)
 			}
 		}
 	};
@@ -790,7 +807,7 @@ impl<'a> Iterator for SyscallArrayIterator<'a> {
 macro_rules! syscall {
 	($name:ident, $process:expr, $regs:expr) => {{
 		const NAME: &str = stringify!($name);
-		SyscallHandler::<NAME, _>::call($name, $process, $regs)
+		SyscallHandler::call($name, NAME, $process, $regs)
 	}};
 }
 
