@@ -340,18 +340,18 @@ macro_rules! impl_syscall_handler {
         {
 			#[allow(non_snake_case, unused_variables)]
             fn call(self, name: &str, process: &'p Arc<IntMutex<Process>>, regs: &'p Regs) -> EResult<usize> {
-				if cfg!(feature = "strace") {
-					let pid = 0; // TODO
+				#[cfg(feature = "strace")]
+				let pid = {
+					let pid = process.lock().get_pid();
 					print!("[strace {pid}] {name}");
-				}
+					pid
+				};
                 $(
                     let $ty = $ty::from_syscall(process, regs);
                 )*
                 let res = self($($ty,)*);
-				if cfg!(feature = "strace") {
-					let pid = 0; // TODO
-					println!("[strace {pid}] -> {res:?}");
-				}
+				#[cfg(feature = "strace")]
+				println!("[strace {pid}] -> {res:?}");
 				res
             }
         }
@@ -420,9 +420,8 @@ pub struct Args<T: fmt::Debug>(pub T);
 impl<T: FromSyscallArg> FromSyscall<'_> for Args<T> {
 	fn from_syscall(_process: &Arc<IntMutex<Process>>, regs: &Regs) -> Self {
 		let arg = T::from_syscall_arg(regs.get_syscall_arg(0));
-		if cfg!(feature = "strace") {
-			println!("({arg:?})");
-		}
+		#[cfg(feature = "strace")]
+		println!("({arg:?})");
 		Self(arg)
 	}
 }
@@ -442,9 +441,8 @@ macro_rules! impl_from_syscall_args {
 					cursor += 1;
                 )*
 				let args = ($($ty,)*);
-				if cfg!(feature = "strace") {
-					println!("{args:?}");
-				}
+				#[cfg(feature = "strace")]
+				println!("{args:?}");
 				Args(args)
 			}
 		}
@@ -1267,12 +1265,11 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		// The system call doesn't exist. Kill the process with SIGSYS
 		{
 			let mut proc = proc_mutex.lock();
-			if cfg!(feature = "strace") {
-				crate::println!(
-					"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
-					pid = proc.get_pid()
-				);
-			}
+			#[cfg(feature = "strace")]
+			crate::println!(
+				"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
+				pid = proc.get_pid()
+			);
 			// SIGSYS cannot be caught, thus the process will be terminated
 			proc.kill_now(&Signal::SIGSYS);
 		}

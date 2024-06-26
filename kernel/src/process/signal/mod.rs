@@ -282,6 +282,12 @@ impl SignalHandler {
 				}
 				match signal.get_default_action() {
 					SignalAction::Terminate | SignalAction::Abort => {
+						#[cfg(feature = "strace")]
+						println!(
+							"[strace {pid}] killed by signal `{signal}`",
+							pid = process.get_pid(),
+							signal = signal.get_id()
+						);
 						process.set_state(State::Zombie);
 						process.set_waitable(signal.get_id() as _);
 					}

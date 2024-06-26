@@ -1036,6 +1036,11 @@ impl Process {
 	///
 	/// This function changes the process's status to `Zombie`.
 	pub fn exit(&mut self, status: u32) {
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] exited with status `{status}`",
+			pid = self.pid.get()
+		);
 		self.exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
 		self.reset_vfork();
