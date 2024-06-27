@@ -82,10 +82,8 @@ pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 /// Counts the number of time each file is open.
 static OPEN_FILES: Mutex<HashMap<FileLocation, usize>> = Mutex::new(HashMap::new());
 
-/// An open file description.
-///
-/// This structure is pointed to by file descriptors and point to files.
-/// They exist to ensure several file descriptors can share the same open file.
+/// An open file description, which is an intermediate structure between file descriptors and
+/// files, ensuring several file descriptors can share the same open file.
 #[derive(Debug)]
 pub struct OpenFile {
 	/// The open file. This is an option to allow easier dropping implementation.
@@ -126,14 +124,7 @@ impl OpenFile {
 			curr_off: 0,
 		};
 		// Update the open file counter
-		{
-			let mut open_files = OPEN_FILES.lock();
-			if let Some(count) = open_files.get_mut(&location) {
-				*count += 1;
-			} else {
-				open_files.insert(location, 1)?;
-			}
-		}
+		*OPEN_FILES.lock().entry(location).or_insert(0)? += 1;
 		// If the file points to a buffer, increment the number of open ends
 		if let Some(buff_mutex) = buffer::get(&location) {
 			let mut buff = buff_mutex.lock();
@@ -213,7 +204,6 @@ impl OpenFile {
 			return true;
 		};
 		let mp_guard = mp.lock();
-
 		mp_guard.get_flags() & mountpoint::FLAG_NOATIME != 0
 	}
 
@@ -235,21 +225,21 @@ impl OpenFile {
 		argp: *const c_void,
 	) -> EResult<u32> {
 		let mut file = self.get_file().lock();
-		match file.stat.file_type {
-			FileType::Regular => match request.get_old_format() {
-				ioctl::FIONREAD => {
-					let mut mem_space_guard = mem_space.lock();
-					let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
-					let count_ref = count_ptr
-						.get_mut(&mut mem_space_guard)?
-						.ok_or_else(|| errno!(EFAULT))?;
-					let size = file.get_size();
-					*count_ref = (size - min(size, self.curr_off)) as _;
-					Ok(0)
-				}
-				_ => Err(errno!(ENOTTY)),
-			},
-			_ => file.ioctl(mem_space, request, argp),
+		if !matches!(file.stat.file_type, FileType::Regular) {
+			return file.ioctl(mem_space, request, argp);
+		}
+		match request.get_old_format() {
+			ioctl::FIONREAD => {
+				let mut mem_space_guard = mem_space.lock();
+				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
+				let count_ref = count_ptr
+					.get_mut(&mut mem_space_guard)?
+					.ok_or_else(|| errno!(EFAULT))?;
+				let size = file.get_size();
+				*count_ref = (size - min(size, self.curr_off)) as _;
+				Ok(0)
+			}
+			_ => Err(errno!(ENOTTY)),
 		}
 	}
 

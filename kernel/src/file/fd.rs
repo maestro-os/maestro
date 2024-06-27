@@ -61,7 +61,7 @@ fn decrement_total() {
 	*TOTAL_FD.lock() -= 1;
 }
 
-/// Constraints to be respected when creating a new file descriptor.
+/// Constraints on a new file descriptor ID.
 #[derive(Debug)]
 pub enum NewFDConstraint {
 	/// No constraint
@@ -72,14 +72,13 @@ pub enum NewFDConstraint {
 	Min(u32),
 }
 
-/// Structure representing a file descriptor.
+/// A file descriptor, pointing to an [`OpenFile`].
 #[derive(Clone)]
 pub struct FileDescriptor {
-	/// The FD's id
+	/// The file descriptor's ID.
 	id: u32,
-	/// The FD's flags
-	flags: i32,
-
+	/// The file descriptor's flags.
+	pub flags: i32,
 	/// The open file description associated with the file descriptor.
 	open_file: Arc<Mutex<OpenFile>>,
 }
@@ -99,7 +98,6 @@ impl FileDescriptor {
 		Ok(Self {
 			id,
 			flags,
-
 			open_file,
 		})
 	}
@@ -107,16 +105,6 @@ impl FileDescriptor {
 	/// Returns the file descriptor's ID.
 	pub fn get_id(&self) -> u32 {
 		self.id
-	}
-
-	/// Returns the file descriptor's flags.
-	pub fn get_flags(&self) -> i32 {
-		self.flags
-	}
-
-	/// Sets the file descriptor's flags.
-	pub fn set_flags(&mut self, flags: i32) {
-		self.flags = flags;
 	}
 
 	/// Returns the open file associated with the descriptor.
@@ -129,7 +117,6 @@ impl FileDescriptor {
 		Self {
 			id,
 			flags: self.flags,
-
 			open_file: self.open_file.clone(),
 		}
 	}
@@ -168,12 +155,10 @@ impl IO for FileDescriptor {
 	}
 }
 
+// TODO use a BTreeMap or BTreeSet instead?
 /// A table of file descriptors.
-pub struct FileDescriptorTable {
-	// TODO use a BTreeMap or BTreeSet instead?
-	/// The list of file descriptors.
-	fds: Vec<FileDescriptor>,
-}
+#[derive(Default)]
+pub struct FileDescriptorTable(Vec<FileDescriptor>);
 
 impl FileDescriptorTable {
 	/// Returns the available file descriptor with the lowest ID.
@@ -186,23 +171,22 @@ impl FileDescriptorTable {
 		if min >= limits::OPEN_MAX {
 			return Err(errno!(EMFILE));
 		}
-
-		let start = match self.fds.binary_search_by(|fd| fd.get_id().cmp(&min)) {
-			Ok(i) => i,
-			Err(_) => return Ok(min),
+		// Find the beginning index for the search of the ID
+		let start = self.0.binary_search_by(|fd| fd.get_id().cmp(&min));
+		let Ok(start) = start else {
+			return Ok(min);
 		};
-
+		// Search for an unused ID
 		let mut prev = min;
-		for fd in &self.fds[start..] {
+		for fd in &self.0[start..] {
 			let fd = fd.get_id();
 			if fd - prev > 1 {
 				return Ok(prev + 1);
 			}
 			prev = fd;
 		}
-
-		// unwrap cannot fail because
-		let id = self.fds.last().map(|fd| fd.get_id() + 1).unwrap();
+		// No hole found, place the new FD at the end
+		let id = self.0.last().map(|fd| fd.get_id() + 1).unwrap_or(0);
 		let id = max(id, min);
 		if id < limits::OPEN_MAX {
 			Ok(id)
@@ -217,38 +201,38 @@ impl FileDescriptorTable {
 	/// - `flags` are the file descriptor's flags
 	/// - `open_file` is the file associated with the file descriptor
 	pub fn create_fd(&mut self, flags: i32, open_file: OpenFile) -> EResult<&FileDescriptor> {
+		// Create the file descriptor
 		let id = self.get_available_fd(None)?;
+		let fd = FileDescriptor::new(id, flags, open_file)?;
+		// Insert the file descriptor
 		let i = self
-			.fds
+			.0
 			.binary_search_by(|fd| fd.get_id().cmp(&id))
 			.unwrap_err();
-
-		let fd = FileDescriptor::new(id, flags, open_file)?;
-		self.fds.insert(i, fd)?;
-
-		Ok(&self.fds[i])
+		self.0.insert(i, fd)?;
+		Ok(&self.0[i])
 	}
 
 	/// Returns an immutable reference to the file descriptor with ID `id`.
 	///
 	/// If the file descriptor doesn't exist, the function returns `None`.
 	pub fn get_fd(&self, id: u32) -> Option<&FileDescriptor> {
-		let result = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id));
-		result.ok().map(|index| &self.fds[index])
+		let result = self.0.binary_search_by(|fd| fd.get_id().cmp(&id));
+		result.ok().map(|index| &self.0[index])
 	}
 
 	/// Returns a mutable reference to the file descriptor with ID `id`.
 	///
 	/// If the file descriptor doesn't exist, the function returns `None`.
 	pub fn get_fd_mut(&mut self, id: u32) -> Option<&mut FileDescriptor> {
-		let result = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id));
-		result.ok().map(|index| &mut self.fds[index])
+		let result = self.0.binary_search_by(|fd| fd.get_id().cmp(&id));
+		result.ok().map(|index| &mut self.0[index])
 	}
 
 	/// Duplicates the file descriptor with id `id`.
 	///
 	/// Arguments:
-	/// - `constraint` is the constraint the new file descriptor ID willl follows.
+	/// - `constraint` is the constraint the new file descriptor ID will follow.
 	/// - `cloexec` tells whether the new file descriptor has the `FD_CLOEXEC` flag enabled.
 	///
 	/// The function returns a pointer to the file descriptor with its ID.
@@ -269,29 +253,25 @@ impl FileDescriptorTable {
 			}
 			NewFDConstraint::Min(min) => self.get_available_fd(Some(min))?,
 		};
-
 		// The old FD
 		let old_fd = self.get_fd(id).ok_or_else(|| errno!(EBADF))?;
-
 		// Create the new FD
 		let mut new_fd = old_fd.duplicate(new_id);
 		let flags = if cloexec { FD_CLOEXEC } else { 0 };
-		new_fd.set_flags(flags);
-
+		new_fd.flags = flags;
 		// Insert the FD
-		let index = self.fds.binary_search_by(|fd| fd.get_id().cmp(&new_id));
+		let index = self.0.binary_search_by(|fd| fd.get_id().cmp(&new_id));
 		let index = match index {
 			Ok(i) => {
-				self.fds[i] = new_fd;
+				self.0[i] = new_fd;
 				i
 			}
 			Err(i) => {
-				self.fds.insert(i, new_fd)?;
+				self.0.insert(i, new_fd)?;
 				i
 			}
 		};
-
-		Ok(&self.fds[index])
+		Ok(&self.0[index])
 	}
 
 	/// Duplicates the whole file descriptors table.
@@ -300,39 +280,28 @@ impl FileDescriptorTable {
 	/// when executing a program.
 	pub fn duplicate(&self, cloexec: bool) -> EResult<Self> {
 		let fds = self
-			.fds
+			.0
 			.iter()
 			.filter(|fd| {
-				// cloexec implies fd's cloexec flag must be clear
-				!cloexec || fd.get_flags() & FD_CLOEXEC == 0
+				// cloexec implies the FD's cloexec flag must be clear
+				!cloexec || fd.flags & FD_CLOEXEC == 0
 			})
 			.cloned()
 			.collect::<CollectResult<Vec<_>>>()
 			.0?;
-		Ok(Self {
-			fds,
-		})
+		Ok(Self(fds))
 	}
 
 	/// Closes the file descriptor with the ID `id`.
 	///
 	/// The function returns an Err if the file descriptor doesn't exist.
 	pub fn close_fd(&mut self, id: u32) -> EResult<()> {
-		let result = self.fds.binary_search_by(|fd| fd.get_id().cmp(&id));
-		if let Ok(index) = result {
-			let fd = self.fds.remove(index);
-			fd.close()
-		} else {
-			Err(errno!(EBADF))
-		}
-	}
-}
-
-impl Default for FileDescriptorTable {
-	fn default() -> Self {
-		Self {
-			fds: Vec::new(),
-		}
+		let result = self.0.binary_search_by(|fd| fd.get_id().cmp(&id));
+		let Ok(index) = result else {
+			return Err(errno!(EBADF));
+		};
+		let fd = self.0.remove(index);
+		fd.close()
 	}
 }
 

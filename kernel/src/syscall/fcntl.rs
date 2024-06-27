@@ -152,11 +152,11 @@ pub fn do_fcntl(fd: i32, cmd: i32, arg: *mut c_void, _fcntl64: bool) -> EResult<
 			.get_id() as _),
 		F_GETFD => {
 			let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-			Ok(fd.get_flags() as _)
+			Ok(fd.flags as _)
 		}
 		F_SETFD => {
 			let fd = fds.get_fd_mut(fd as _).ok_or_else(|| errno!(EBADF))?;
-			fd.set_flags(arg as _);
+			fd.flags = arg as _;
 			Ok(0)
 		}
 		F_GETFL => {
