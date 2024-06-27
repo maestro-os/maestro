@@ -27,13 +27,15 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn fork(proc: &Arc<IntMutex<Process>>) -> EResult<usize> {
+pub fn fork(proc: &Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
 	let new_mutex = proc
 		.lock()
 		.fork(Arc::downgrade(proc), ForkOptions::default())?;
-	// Set child's return value to `0`
 	let mut new_proc = new_mutex.lock();
-	new_proc.regs.set_syscall_return(Ok(0));
+	// Set child's return value to `0`
+	let mut regs = regs.clone();
+	regs.set_syscall_return(Ok(0));
+	new_proc.regs = regs;
 	// Set parent's return value to the child's PID
 	Ok(new_proc.get_pid() as _)
 }
