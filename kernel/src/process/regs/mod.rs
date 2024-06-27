@@ -49,7 +49,7 @@ impl fmt::Display for Register {
 
 impl fmt::Debug for Register {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		const LEN: usize = size_of::<usize>() / 4;
+		const LEN: usize = size_of::<usize>() * 2;
 		write!(f, "{:0LEN$x}", self.0)
 	}
 }
@@ -97,7 +97,7 @@ pub mod x86 {
 /// The register state of an execution context.
 ///
 /// The contents of this structure is architecture-dependent.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[repr(C, packed)]
 #[cfg(target_arch = "x86")]
 pub struct Regs {
@@ -203,7 +203,7 @@ impl Default for Regs {
 }
 
 #[cfg(target_arch = "x86")]
-impl fmt::Display for Regs {
+impl fmt::Debug for Regs {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let ebp = self.ebp;
 		let esp = self.esp;
