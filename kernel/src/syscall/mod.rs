@@ -496,7 +496,7 @@ impl<T> FromSyscallArg for *mut T {
 }
 
 /// Wrapper for a pointer.
-pub struct SyscallPtr<T: Sized + fmt::Debug>(Option<NonNull<T>>);
+pub struct SyscallPtr<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
 
 impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallPtr<T> {
 	fn from_syscall_arg(val: usize) -> Self {
@@ -505,22 +505,9 @@ impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallPtr<T> {
 }
 
 impl<T: Sized + fmt::Debug> SyscallPtr<T> {
-	/// Tells whether the pointer is null.
-	pub fn is_null(&self) -> bool {
-		self.0.is_none()
-	}
-
-	/// Returns an immutable pointer to the data.
-	pub fn as_ptr(&self) -> *const T {
-		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
-	}
-
 	/// Returns a mutable pointer to the data.
-	pub fn as_ptr_mut(&self) -> *mut T {
-		self.0
-			.as_ref()
-			.map(|p| p.as_ptr() as _)
-			.unwrap_or(null_mut())
+	pub fn as_ptr(&self) -> *mut T {
+		self.0.map(NonNull::as_ptr).unwrap_or(null_mut())
 	}
 
 	/// Returns an immutable reference to the value of the pointer.
@@ -579,7 +566,7 @@ impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 /// Wrapper for a slice.
 ///
 /// The size of the slice is required when trying to access it.
-pub struct SyscallSlice<T: Sized + fmt::Debug>(Option<NonNull<T>>);
+pub struct SyscallSlice<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
 
 impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallSlice<T> {
 	fn from_syscall_arg(val: usize) -> Self {
@@ -588,22 +575,9 @@ impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallSlice<T> {
 }
 
 impl<T: Sized + fmt::Debug> SyscallSlice<T> {
-	/// Tells whether the pointer is null.
-	pub fn is_null(&self) -> bool {
-		self.0.is_none()
-	}
-
-	/// Returns an immutable pointer to the data.
-	pub fn as_ptr(&self) -> *const T {
-		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
-	}
-
 	/// Returns a mutable pointer to the data.
-	pub fn as_ptr_mut(&self) -> *mut T {
-		self.0
-			.as_ref()
-			.map(|p| p.as_ptr() as _)
-			.unwrap_or(null_mut())
+	pub fn as_ptr(&self) -> *mut T {
+		self.0.map(NonNull::as_ptr).unwrap_or(null_mut())
 	}
 
 	/// Returns an immutable reference to the slice.
@@ -656,18 +630,15 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 
 impl<T: fmt::Debug> fmt::Debug for SyscallSlice<T> {
 	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-		// TODO Print value? (how to get the length of the slice?)
-		let ptr = self.as_ptr();
-		if !ptr.is_null() {
-			write!(fmt, "{ptr:p}")
-		} else {
-			write!(fmt, "NULL")
+		match self.0 {
+			Some(ptr) => write!(fmt, "{ptr:p}"),
+			None => write!(fmt, "NULL"),
 		}
 	}
 }
 
 /// Wrapper for a C-style, nul-terminated (`\0`) string.
-pub struct SyscallString(Option<NonNull<u8>>);
+pub struct SyscallString(pub Option<NonNull<u8>>);
 
 impl FromSyscallArg for SyscallString {
 	fn from_syscall_arg(val: usize) -> Self {
@@ -676,14 +647,9 @@ impl FromSyscallArg for SyscallString {
 }
 
 impl SyscallString {
-	/// Tells whether the pointer is null.
-	pub fn is_null(&self) -> bool {
-		self.0.is_none()
-	}
-
 	/// Returns an immutable pointer to the data.
 	pub fn as_ptr(&self) -> *const u8 {
-		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
+		self.0.map(NonNull::as_ptr).unwrap_or(null_mut())
 	}
 
 	/// Returns an immutable reference to the string.
@@ -719,7 +685,7 @@ impl fmt::Debug for SyscallString {
 }
 
 /// Wrapper for a C-style, NULL-terminated string array.
-pub struct SyscallArray(Option<NonNull<*const u8>>);
+pub struct SyscallArray(pub Option<NonNull<*const u8>>);
 
 impl FromSyscallArg for SyscallArray {
 	fn from_syscall_arg(val: usize) -> Self {
@@ -728,14 +694,9 @@ impl FromSyscallArg for SyscallArray {
 }
 
 impl SyscallArray {
-	/// Tells whether the pointer is null.
-	pub fn is_null(&self) -> bool {
-		self.0.is_none()
-	}
-
 	/// Returns an immutable pointer to the data.
-	pub fn as_ptr(&self) -> *const u8 {
-		self.0.as_ref().map(|p| p.as_ptr() as _).unwrap_or(null())
+	pub fn as_ptr(&self) -> *const *const u8 {
+		self.0.map(NonNull::as_ptr).unwrap_or(null_mut())
 	}
 
 	/// Returns an iterator over the array's elements.
@@ -786,18 +747,15 @@ impl<'a> Iterator for SyscallArrayIterator<'a> {
 		let Some(arr) = self.arr.0 else {
 			return Some(Err(errno!(EFAULT)));
 		};
-		// If reaching the end of the array, stop
 		let str_ptr = unsafe { arr.add(self.i).read_volatile() };
-		if str_ptr.is_null() {
-			return None;
-		}
-		// Get string
-		let string = SyscallString::from_syscall_arg(str_ptr as usize);
-		let string = string
+		let res = SyscallString(NonNull::new(str_ptr as _))
 			.get(self.mem_space)
-			.and_then(|s| s.ok_or_else(|| errno!(EFAULT)));
-		self.i += 1;
-		Some(string)
+			.transpose();
+		// Do not increment if reaching `NULL`
+		if res.is_some() {
+			self.i += 1;
+		}
+		res
 	}
 }
 

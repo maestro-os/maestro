@@ -24,5 +24,5 @@ use core::ffi::c_int;
 use utils::errno::{EResult, Errno};
 
 pub fn wait(wstatus: SyscallPtr<c_int>, regs: &Regs) -> EResult<usize> {
-	waitpid::do_waitpid(regs, -1, wstatus, waitpid::WEXITED, None)
+	waitpid::do_waitpid(regs, -1, wstatus, waitpid::WEXITED, SyscallPtr(None))
 }

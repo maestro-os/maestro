@@ -29,13 +29,11 @@ use utils::errno::{EResult, Errno};
 pub fn set_tid_address(Args(tidptr): Args<SyscallPtr<c_int>>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
-
-	let ptr = NonNull::new(tidptr.as_ptr_mut());
-	proc.set_clear_child_tid(ptr);
+	proc.clear_child_tid = tidptr.0;
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
-	// Setting the TID at pointer if accessible
+	// Set the TID at pointer if accessible
 	if let Some(tidptr) = tidptr.get_mut(&mut mem_space_guard)? {
 		*tidptr = proc.tid as _;
 	}

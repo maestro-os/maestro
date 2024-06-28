@@ -113,7 +113,7 @@ pub fn statx(
 	)>,
 ) -> EResult<usize> {
 	// Validation
-	if pathname.is_null() || statxbuff.is_null() {
+	if pathname.0.is_none() || statxbuff.0.is_none() {
 		return Err(errno!(EINVAL));
 	}
 	// TODO Implement all flags

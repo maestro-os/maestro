@@ -32,9 +32,5 @@ pub fn wait4(
 	)>,
 	regs: &Regs,
 ) -> EResult<usize> {
-	if rusage.is_null() {
-		waitpid::do_waitpid(regs, pid, wstatus, options | waitpid::WEXITED, None)
-	} else {
-		waitpid::do_waitpid(regs, pid, wstatus, options | waitpid::WEXITED, Some(rusage))
-	}
+	waitpid::do_waitpid(regs, pid, wstatus, options | waitpid::WEXITED, rusage)
 }

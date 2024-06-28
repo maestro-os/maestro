@@ -181,7 +181,7 @@ pub fn do_waitpid(
 	pid: i32,
 	wstatus: SyscallPtr<i32>,
 	options: i32,
-	rusage: Option<SyscallPtr<RUsage>>,
+	rusage: SyscallPtr<RUsage>,
 ) -> EResult<usize> {
 	// Sleeping until a target process is waitable
 	loop {
@@ -208,10 +208,8 @@ pub fn do_waitpid(
 					*wstatus = wstatus_val;
 				}
 
-				if let Some(ref rusage) = rusage {
-					if let Some(rusage) = rusage.get_mut(&mut mem_space_guard)? {
-						*rusage = rusage_val;
-					}
+				if let Some(rusage) = rusage.get_mut(&mut mem_space_guard)? {
+					*rusage = rusage_val;
 				}
 			}
 
@@ -238,5 +236,5 @@ pub fn waitpid(
 	Args((pid, wstatus, options)): Args<(c_int, SyscallPtr<c_int>, c_int)>,
 	regs: &Regs,
 ) -> EResult<usize> {
-	do_waitpid(regs, pid, wstatus, options | WEXITED, None)
+	do_waitpid(regs, pid, wstatus, options | WEXITED, SyscallPtr(None))
 }

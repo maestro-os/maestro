@@ -286,10 +286,10 @@ pub struct Process {
 
 	/// If a thread is started using `clone` with the `CLONE_CHILD_SETTID` flag, set_child_tid is
 	/// set to the value passed in the ctid argument of that system call.
-	set_child_tid: Option<NonNull<i32>>,
+	pub set_child_tid: Option<NonNull<i32>>,
 	/// If a thread is started using `clone` with the `CLONE_CHILD_CLEARTID` flag, clear_child_tid
 	/// is set to the value passed in the ctid argument of that system call.
-	clear_child_tid: Option<NonNull<i32>>,
+	pub clear_child_tid: Option<NonNull<i32>>,
 
 	/// The process's resources usage.
 	rusage: RUsage,
@@ -1004,11 +1004,6 @@ impl Process {
 				self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}
 		}
-	}
-
-	/// Sets the `clear_child_tid` attribute of the process.
-	pub fn set_clear_child_tid(&mut self, ptr: Option<NonNull<i32>>) {
-		self.clear_child_tid = ptr;
 	}
 
 	/// Returns an immutable reference to the process's resource usage

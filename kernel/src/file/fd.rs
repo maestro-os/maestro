@@ -73,7 +73,7 @@ pub enum NewFDConstraint {
 }
 
 /// A file descriptor, pointing to an [`OpenFile`].
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FileDescriptor {
 	/// The file descriptor's ID.
 	id: u32,
