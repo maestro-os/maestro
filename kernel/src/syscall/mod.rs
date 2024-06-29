@@ -367,20 +367,9 @@ impl_syscall_handler!(T1, T2, T3, T4, T5);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8);
-impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9);
-impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
-impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
-impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
-impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
-impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14);
-impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15);
-impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16);
 
-/// Extracts a value from a system call, either from the process that made the call, or from an
-/// argument.
-///
-/// The [`Debug`] trait is used for the `strace` feature.
-pub trait FromSyscall<'p>: fmt::Debug {
+/// Extracts a value from the process that made a system call.
+pub trait FromSyscall<'p> {
 	/// Constructs the value from the given process or syscall argument value.
 	fn from_syscall(process: &'p Arc<IntMutex<Process>>, regs: &'p Regs) -> Self;
 }
@@ -457,6 +446,8 @@ impl_from_syscall_args!(T1, T2, T3, T4, T5);
 impl_from_syscall_args!(T1, T2, T3, T4, T5, T6);
 
 /// A value that can be constructed from a system call argument.
+///
+/// The [`fmt::Debug`] trait is required for the `strace` feature.
 pub trait FromSyscallArg: fmt::Debug {
 	/// Constructs a value from the given system call argument value.
 	fn from_syscall_arg(val: usize) -> Self;
@@ -771,7 +762,7 @@ macro_rules! syscall {
 ///
 /// If the syscall doesn't exist, the function returns `None`.
 #[inline]
-fn do_syscall(process: &Arc<IntMutex<Process>>, regs: &Regs, id: usize) -> Option<EResult<usize>> {
+fn do_syscall(id: usize, process: &Arc<IntMutex<Process>>, regs: &Regs) -> Option<EResult<usize>> {
 	match id {
 		0x001 => Some(syscall!(_exit, process, regs)),
 		0x002 => Some(syscall!(fork, process, regs)),
@@ -1219,7 +1210,7 @@ fn do_syscall(process: &Arc<IntMutex<Process>>, regs: &Regs, id: usize) -> Optio
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.get_syscall_id();
 	let proc_mutex = Process::current_assert();
-	let Some(res) = do_syscall(&proc_mutex, regs, id) else {
+	let Some(res) = do_syscall(id, &proc_mutex, regs) else {
 		// The system call doesn't exist. Kill the process with SIGSYS
 		{
 			let mut proc = proc_mutex.lock();
