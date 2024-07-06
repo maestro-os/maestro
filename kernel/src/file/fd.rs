@@ -204,7 +204,7 @@ impl FileDescriptorTable {
 
 	/// Returns an immutable reference to the file descriptor with ID `id`.
 	///
-	/// If the file descriptor does not exist, the function returns [`EBADF`].
+	/// If the file descriptor does not exist, the function returns [`errno::EBADF`].
 	pub fn get_fd(&self, id: c_int) -> EResult<&FileDescriptor> {
 		let id: usize = id.try_into().map_err(|_| errno!(EBADF))?;
 		self.0
@@ -215,7 +215,7 @@ impl FileDescriptorTable {
 
 	/// Returns a mutable reference to the file descriptor with ID `id`.
 	///
-	/// If the file descriptor does not exist, the function returns [`EBADF`].
+	/// If the file descriptor does not exist, the function returns [`errno::EBADF`].
 	pub fn get_fd_mut(&mut self, id: c_int) -> EResult<&mut FileDescriptor> {
 		let id: usize = id.try_into().map_err(|_| errno!(EBADF))?;
 		self.0
@@ -282,7 +282,7 @@ impl FileDescriptorTable {
 
 	/// Closes the file descriptor with the ID `id`.
 	///
-	/// If the file descriptor does not exist, the function returns [`EBADF`].
+	/// If the file descriptor does not exist, the function returns [`errno::EBADF`].
 	pub fn close_fd(&mut self, id: c_int) -> EResult<()> {
 		let id: usize = id.try_into().map_err(|_| errno!(EBADF))?;
 		let fd = self.0.get_mut(id).ok_or_else(|| errno!(EBADF))?;
