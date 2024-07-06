@@ -154,7 +154,7 @@ impl FileDescriptorTable {
 			.iter()
 			.enumerate()
 			.find(|(_, fd)| fd.is_none())
-			.map(|(i, _)| i as u32);
+			.map(|(i, _)| (min + i) as u32);
 		match fd {
 			Some(fd) => Ok(fd),
 			// No hole found, place the new FD at the end
