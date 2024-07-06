@@ -134,11 +134,7 @@ pub fn ioctl(Args((fd, request, argp)): Args<(c_int, c_ulong, *const c_void)>) -
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
 
-		let open_file_mutex = fds
-			.get_fd(fd as _)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()
-			.clone();
+		let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
 
 		(mem_space, open_file_mutex)
 	};

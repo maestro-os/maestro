@@ -425,8 +425,16 @@ impl Process {
 			let open_file = OpenFile::new(tty_file, Some(tty_path), open_file::O_RDWR)?;
 			let stdin_fd = fds_table.create_fd(0, open_file)?;
 			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
-			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
-			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), false)?;
+			fds_table.duplicate_fd(
+				STDIN_FILENO as _,
+				NewFDConstraint::Fixed(STDOUT_FILENO),
+				false,
+			)?;
+			fds_table.duplicate_fd(
+				STDIN_FILENO as _,
+				NewFDConstraint::Fixed(STDERR_FILENO),
+				false,
+			)?;
 			fds_table
 		};
 		let root_loc = mountpoint::root_location();

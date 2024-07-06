@@ -22,7 +22,7 @@
 //! open file description table.
 
 use crate::{file::open_file::OpenFile, limits};
-use core::cmp::max;
+use core::{cmp::max, ffi::c_int};
 use utils::{
 	collections::vec::Vec,
 	errno,
@@ -215,18 +215,26 @@ impl FileDescriptorTable {
 
 	/// Returns an immutable reference to the file descriptor with ID `id`.
 	///
-	/// If the file descriptor doesn't exist, the function returns `None`.
-	pub fn get_fd(&self, id: u32) -> Option<&FileDescriptor> {
+	/// If the file descriptor does not exist, the function returns [`EBADF`].
+	pub fn get_fd(&self, id: c_int) -> EResult<&FileDescriptor> {
+		let id: u32 = id.try_into().map_err(|_| errno!(EBADF))?;
 		let result = self.0.binary_search_by(|fd| fd.get_id().cmp(&id));
-		result.ok().map(|index| &self.0[index])
+		let Ok(index) = result else {
+			return Err(errno!(EBADF));
+		};
+		Ok(&self.0[index])
 	}
 
 	/// Returns a mutable reference to the file descriptor with ID `id`.
 	///
-	/// If the file descriptor doesn't exist, the function returns `None`.
-	pub fn get_fd_mut(&mut self, id: u32) -> Option<&mut FileDescriptor> {
+	/// If the file descriptor does not exist, the function returns [`EBADF`].
+	pub fn get_fd_mut(&mut self, id: c_int) -> EResult<&mut FileDescriptor> {
+		let id: u32 = id.try_into().map_err(|_| errno!(EBADF))?;
 		let result = self.0.binary_search_by(|fd| fd.get_id().cmp(&id));
-		result.ok().map(|index| &mut self.0[index])
+		let Ok(index) = result else {
+			return Err(errno!(EBADF));
+		};
+		Ok(&mut self.0[index])
 	}
 
 	/// Duplicates the file descriptor with id `id`.
@@ -238,7 +246,7 @@ impl FileDescriptorTable {
 	/// The function returns a pointer to the file descriptor with its ID.
 	pub fn duplicate_fd(
 		&mut self,
-		id: u32,
+		id: c_int,
 		constraint: NewFDConstraint,
 		cloexec: bool,
 	) -> EResult<&FileDescriptor> {
@@ -254,7 +262,7 @@ impl FileDescriptorTable {
 			NewFDConstraint::Min(min) => self.get_available_fd(Some(min))?,
 		};
 		// The old FD
-		let old_fd = self.get_fd(id).ok_or_else(|| errno!(EBADF))?;
+		let old_fd = self.get_fd(id)?;
 		// Create the new FD
 		let mut new_fd = old_fd.duplicate(new_id);
 		let flags = if cloexec { FD_CLOEXEC } else { 0 };
@@ -295,7 +303,8 @@ impl FileDescriptorTable {
 	/// Closes the file descriptor with the ID `id`.
 	///
 	/// The function returns an Err if the file descriptor doesn't exist.
-	pub fn close_fd(&mut self, id: u32) -> EResult<()> {
+	pub fn close_fd(&mut self, id: c_int) -> EResult<()> {
+		let id: u32 = id.try_into().map_err(|_| errno!(EBADF))?;
 		let result = self.0.binary_search_by(|fd| fd.get_id().cmp(&id));
 		let Ok(index) = result else {
 			return Err(errno!(EBADF));

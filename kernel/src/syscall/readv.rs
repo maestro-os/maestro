@@ -100,9 +100,6 @@ pub fn do_readv(
 	_flags: Option<i32>,
 ) -> EResult<usize> {
 	// Validation
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
@@ -115,11 +112,7 @@ pub fn do_readv(
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
-		let open_file_mutex = fds
-			.get_fd(fd as _)
-			.ok_or(errno!(EBADF))?
-			.get_open_file()
-			.clone();
+		let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
 
 		drop(proc);
 		(proc_mutex, mem_space, open_file_mutex)

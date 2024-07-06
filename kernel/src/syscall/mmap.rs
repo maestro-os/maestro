@@ -114,13 +114,17 @@ pub fn do_mmap(
 		if offset as usize % memory::PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
 		}
-
-		proc.file_descriptors
+		let fd = proc
+			.file_descriptors
 			.as_ref()
 			.unwrap()
 			.lock()
-			.get_fd(fd as _)
-			.map(|fd| fd.get_open_file().lock().get_file().clone())
+			.get_fd(fd)?
+			.get_open_file()
+			.lock()
+			.get_file()
+			.clone();
+		Some(fd)
 	} else {
 		None
 	};

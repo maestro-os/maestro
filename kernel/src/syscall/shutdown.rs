@@ -37,17 +37,13 @@ const SHUT_WR: c_int = 1;
 const SHUT_RDWR: c_int = 2;
 
 pub fn shutdown(Args((sockfd, how)): Args<(c_int, c_int)>) -> EResult<usize> {
-	if sockfd < 0 {
-		return Err(errno!(EBADF));
-	}
-
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	// Get socket
 	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let fds = fds_mutex.lock();
-	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
+	let fd = fds.get_fd(sockfd)?;
 	let open_file_mutex = fd.get_open_file();
 	let open_file = open_file_mutex.lock();
 	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;

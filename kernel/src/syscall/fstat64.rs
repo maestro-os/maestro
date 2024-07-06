@@ -76,10 +76,6 @@ pub struct Stat {
 }
 
 pub fn fstat64(Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>) -> EResult<usize> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-
 	let open_file_mutex = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -87,10 +83,7 @@ pub fn fstat64(Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>) -> EResult<
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 		let fds = fds_mutex.lock();
 
-		fds.get_fd(fd as _)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()
-			.clone()
+		fds.get_fd(fd)?.get_open_file().clone()
 	};
 	let open_file = open_file_mutex.lock();
 

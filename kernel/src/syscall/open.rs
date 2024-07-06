@@ -179,7 +179,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<u
 	// Flush file
 	let file = file_mutex.lock();
 	if let Err(e) = file.sync() {
-		fds.close_fd(fd_id)?;
+		fds.close_fd(fd_id as _)?;
 		return Err(e);
 	}
 

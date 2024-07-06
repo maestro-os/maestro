@@ -147,21 +147,13 @@ pub fn do_select<T: TimeUnit>(
 			if read || write || except {
 				all_zeros = false;
 			}
-
+			// Get file descriptor
 			let fds = fds_mutex.lock();
-			let fd = fds.get_fd(fd_id);
-
-			// Checking the file descriptor exists
-			let fd = match fd {
-				Some(fd) => fd,
-
-				None => {
-					if read || write || except {
-						return Err(errno!(EBADF));
-					}
-
-					continue;
+			let Ok(fd) = fds.get_fd(fd_id as _) else {
+				if read || write || except {
+					return Err(errno!(EBADF));
 				}
+				continue;
 			};
 
 			// Building event mask

@@ -45,10 +45,6 @@ pub fn splice(
 		c_uint,
 	)>,
 ) -> EResult<usize> {
-	if fd_in < 0 || fd_out < 0 {
-		return Err(errno!(EBADF));
-	}
-
 	let (input_mutex, off_in, output_mutex, off_out) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -56,16 +52,8 @@ pub fn splice(
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 		let fds = fds_mutex.lock();
 
-		let input = fds
-			.get_fd(fd_in as _)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()
-			.clone();
-		let output = fds
-			.get_fd(fd_out as _)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()
-			.clone();
+		let input = fds.get_fd(fd_in)?.get_open_file().clone();
+		let output = fds.get_fd(fd_out)?.get_open_file().clone();
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();

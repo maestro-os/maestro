@@ -56,7 +56,7 @@ pub trait Dirent: Sized {
 	fn write(slice: &mut [u8], off: usize, inode: INode, entry_type: FileType, name: &[u8]);
 }
 
-/// Performs the getdents system call.
+/// Performs the `getdents` system call.
 pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) -> EResult<usize> {
 	let (mem_space, open_file_mutex) = {
 		let proc_mutex = Process::current_assert();
@@ -67,11 +67,7 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
 
-		let open_file_mutex = fds
-			.get_fd(fd as _)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()
-			.clone();
+		let open_file_mutex = fds.get_fd(fd as _)?.get_open_file().clone();
 
 		(mem_space, open_file_mutex)
 	};

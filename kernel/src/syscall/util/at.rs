@@ -62,14 +62,7 @@ pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
 ///
 /// If the given file descriptor is invalid, the function returns [`errno::EBADF`].
 fn fd_to_file(fds: &FileDescriptorTable, fd: c_int) -> EResult<Arc<Mutex<File>>> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-	let open_file_mutex = fds
-		.get_fd(fd as _)
-		.ok_or(errno!(EBADF))?
-		.get_open_file()
-		.clone();
+	let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
 	let open_file = open_file_mutex.lock();
 	Ok(open_file.get_file().clone())
 }

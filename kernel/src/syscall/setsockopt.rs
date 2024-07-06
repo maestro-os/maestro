@@ -38,17 +38,13 @@ pub fn setsockopt(
 		usize,
 	)>,
 ) -> EResult<usize> {
-	if sockfd < 0 {
-		return Err(errno!(EBADF));
-	}
-
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
 	// Get socket
 	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let fds = fds_mutex.lock();
-	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
+	let fd = fds.get_fd(sockfd)?;
 	let open_file_mutex = fd.get_open_file();
 	let open_file = open_file_mutex.lock();
 	let loc = open_file.get_location();

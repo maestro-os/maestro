@@ -39,9 +39,6 @@ pub fn read(
 	regs: &Regs,
 ) -> EResult<usize> {
 	// Validation
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
@@ -54,11 +51,7 @@ pub fn read(
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
-		let open_file_mutex = fds
-			.get_fd(fd as _)
-			.ok_or(errno!(EBADF))?
-			.get_open_file()
-			.clone();
+		let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
 
 		drop(proc);
 		(proc_mutex, mem_space, open_file_mutex)

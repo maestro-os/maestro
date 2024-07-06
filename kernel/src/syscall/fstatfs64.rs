@@ -34,10 +34,6 @@ pub fn fstatfs64(
 ) -> EResult<usize> {
 	// TODO use `sz`
 
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-
 	let file_mutex = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -45,7 +41,7 @@ pub fn fstatfs64(
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 		let fds = fds_mutex.lock();
 
-		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
+		let fd = fds.get_fd(fd)?;
 
 		let open_file_mutex = fd.get_open_file();
 		let open_file = open_file_mutex.lock();

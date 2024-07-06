@@ -35,10 +35,6 @@ use utils::{
 pub fn finit_module(
 	Args((fd, _param_values, _flags)): Args<(c_int, SyscallString, c_int)>,
 ) -> EResult<usize> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-
 	let open_file_mutex = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
@@ -50,10 +46,7 @@ pub fn finit_module(
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 		let fds = fds_mutex.lock();
 
-		fds.get_fd(fd as _)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()
-			.clone()
+		fds.get_fd(fd)?.get_open_file().clone()
 	};
 	let image = {
 		let mut open_file = open_file_mutex.lock();
