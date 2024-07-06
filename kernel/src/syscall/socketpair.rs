@@ -38,8 +38,6 @@ pub fn socketpair(
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-	let sv_slice = sv.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
 	let sock_type = SocketType::try_from(r#type as u32)?;
@@ -63,9 +61,11 @@ pub fn socketpair(
 
 	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
-	let (fd0_id, _) = fds.create_fd(0, open_file0)?;
+	let (fd0_id, fd1_id) = fds.create_fd_pair(open_file0, open_file1)?;
+
+	let mut mem_space_guard = mem_space.lock();
+	let sv_slice = sv.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
 	sv_slice[0] = fd0_id as _;
-	let (fd1_id, _) = fds.create_fd(0, open_file1)?;
 	sv_slice[1] = fd1_id as _;
 
 	Ok(0)

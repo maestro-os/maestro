@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements file descriptors-related features.
+//! File descriptors implementation.
 //!
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
@@ -150,11 +150,15 @@ impl FileDescriptorTable {
 	fn get_available_fd(&self, min: Option<u32>) -> EResult<u32> {
 		let min = min.unwrap_or(0) as usize;
 		// Find a hole in the table
-		let fd = self.0[min..]
-			.iter()
-			.enumerate()
-			.find(|(_, fd)| fd.is_none())
-			.map(|(i, _)| (min + i) as u32);
+		let fd = if min < self.0.len() {
+			self.0[min..]
+				.iter()
+				.enumerate()
+				.find(|(_, fd)| fd.is_none())
+				.map(|(i, _)| (min + i) as u32)
+		} else {
+			None
+		};
 		match fd {
 			Some(fd) => Ok(fd),
 			// No hole found, place the new FD at the end
@@ -193,13 +197,39 @@ impl FileDescriptorTable {
 		flags: i32,
 		open_file: OpenFile,
 	) -> EResult<(u32, &FileDescriptor)> {
-		// Create the FD
 		let id = self.get_available_fd(None)?;
 		let fd = FileDescriptor::new(flags, open_file)?;
 		// Insert the FD
 		self.extend(id)?;
 		let fd = self.0[id as usize].insert(fd);
 		Ok((id, fd))
+	}
+
+	/// Creates a pair of file descriptors. The `flags` field is set to zero for both.
+	///
+	/// This function is a helper for system calls that create pipe or pipe-like objects. It allows
+	/// to ensure the first file descriptor is not created if the creation of the second fails.
+	///
+	/// Arguments:
+	/// - `open_file0` is the file associated with the first file descriptor
+	/// - `open_file1` is the file associated with the second file descriptor
+	///
+	/// The function returns the IDs of the new file descriptors.
+	pub fn create_fd_pair(
+		&mut self,
+		open_file0: OpenFile,
+		open_file1: OpenFile,
+	) -> EResult<(u32, u32)> {
+		let id0 = self.get_available_fd(None)?;
+		// Add a constraint to avoid using twice the same ID
+		let id1 = self.get_available_fd(Some(id0 + 1))?;
+		let fd0 = FileDescriptor::new(0, open_file0)?;
+		let fd1 = FileDescriptor::new(0, open_file1)?;
+		// Insert the FDs
+		self.extend(id1)?; // `id1` is always larger than `id0`
+		self.0[id0 as usize] = Some(fd0);
+		self.0[id1 as usize] = Some(fd1);
+		Ok((id0, id1))
 	}
 
 	/// Returns an immutable reference to the file descriptor with ID `id`.
