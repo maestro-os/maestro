@@ -63,10 +63,10 @@ pub fn socketpair(
 
 	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
-	let fd0 = fds.create_fd(0, open_file0)?;
-	sv_slice[0] = fd0.get_id() as _;
-	let fd1 = fds.create_fd(0, open_file1)?;
-	sv_slice[1] = fd1.get_id() as _;
+	let (fd0_id, _) = fds.create_fd(0, open_file0)?;
+	sv_slice[0] = fd0_id as _;
+	let (fd1_id, _) = fds.create_fd(0, open_file1)?;
+	sv_slice[1] = fd1_id as _;
 
 	Ok(0)
 }

@@ -54,10 +54,10 @@ pub fn pipe(Args(pipefd): Args<SyscallPtr<[c_int; 2]>>) -> EResult<usize> {
 	let pipefd_slice = pipefd
 		.get_mut(&mut mem_space_guard)?
 		.ok_or(errno!(EFAULT))?;
-	let fd0 = fds.create_fd(0, open_file0)?;
-	pipefd_slice[0] = fd0.get_id() as _;
-	let fd1 = fds.create_fd(0, open_file1)?;
-	pipefd_slice[1] = fd1.get_id() as _;
+	let (fd0_id, _) = fds.create_fd(0, open_file0)?;
+	pipefd_slice[0] = fd0_id as _;
+	let (fd1_id, _) = fds.create_fd(0, open_file1)?;
+	pipefd_slice[1] = fd1_id as _;
 
 	Ok(0)
 }

@@ -142,9 +142,10 @@ pub fn do_fcntl(fd: c_int, cmd: c_int, arg: *mut c_void, _fcntl64: bool) -> ERes
 	};
 	let mut fds = fds_mutex.lock();
 	match cmd {
-		F_DUPFD => Ok(fds
-			.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?
-			.get_id() as _),
+		F_DUPFD => {
+			let (id, _) = fds.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?;
+			Ok(id as _)
+		}
 		F_GETFD => {
 			let fd = fds.get_fd(fd)?;
 			Ok(fd.flags as _)
@@ -239,9 +240,10 @@ pub fn do_fcntl(fd: c_int, cmd: c_int, arg: *mut c_void, _fcntl64: bool) -> ERes
 			// TODO
 			todo!();
 		}
-		F_DUPFD_CLOEXEC => Ok(fds
-			.duplicate_fd(fd, NewFDConstraint::Min(arg as _), true)?
-			.get_id() as _),
+		F_DUPFD_CLOEXEC => {
+			let (id, _) = fds.duplicate_fd(fd, NewFDConstraint::Min(arg as _), true)?;
+			Ok(id as _)
+		}
 		F_SETPIPE_SZ => {
 			// TODO
 			todo!();

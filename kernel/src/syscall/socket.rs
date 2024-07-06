@@ -57,7 +57,7 @@ pub fn socket(Args((domain, r#type, protocol)): Args<(c_int, c_int, c_int)>) -> 
 
 	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
-	let sock_fd = fds.create_fd(0, open_file)?;
+	let (sock_fd_id, _) = fds.create_fd(0, open_file)?;
 
-	Ok(sock_fd.get_id() as _)
+	Ok(sock_fd_id as _)
 }

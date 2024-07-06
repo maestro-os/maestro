@@ -137,8 +137,7 @@ pub fn openat(
 	if flags & open_file::O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-	let fd = fds.create_fd(fd_flags, open_file)?;
-	let fd_id = fd.get_id();
+	let (fd_id, _) = fds.create_fd(fd_flags, open_file)?;
 
 	// TODO flush file? (see `open` syscall)
 

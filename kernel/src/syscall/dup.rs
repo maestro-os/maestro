@@ -36,6 +36,6 @@ pub fn dup(Args(oldfd): Args<c_int>) -> EResult<usize> {
 	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 	let mut fds = fds_mutex.lock();
 
-	let newfd = fds.duplicate_fd(oldfd as _, NewFDConstraint::None, false)?;
-	Ok(newfd.get_id() as _)
+	let (newfd_id, _) = fds.duplicate_fd(oldfd as _, NewFDConstraint::None, false)?;
+	Ok(newfd_id as _)
 }

@@ -172,8 +172,7 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<u
 		fd_flags |= FD_CLOEXEC;
 	}
 	let mut fds = fds_mutex.lock();
-	let fd = fds.create_fd(fd_flags, open_file)?;
-	let fd_id = fd.get_id();
+	let (fd_id, _) = fds.create_fd(fd_flags, open_file)?;
 
 	// TODO remove?
 	// Flush file
