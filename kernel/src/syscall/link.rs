@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The link system call allows to create a directory.
+//! The `link` system call allows to create a hard link.
 
 use super::Args;
 use crate::{file::path::Path, process::Process, syscall::SyscallString};

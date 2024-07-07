@@ -19,7 +19,8 @@
 //! The `_llseek` system call repositions the offset of a file descriptor.
 
 use crate::{
-	process::Process,
+	file::fd::FileDescriptorTable,
+	process::{mem_space::MemSpace, Process},
 	syscall::{Args, SyscallPtr},
 };
 use core::ffi::{c_uint, c_ulong};
@@ -27,6 +28,8 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
 };
 
 /// Sets the offset from the given value.
@@ -44,20 +47,11 @@ pub fn _llseek(
 		SyscallPtr<u64>,
 		c_uint,
 	)>,
+	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
+	mem_space_mutex: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
-	let (mem_space, open_file_mutex) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
-
-		let fds_mutex = proc.file_descriptors.as_ref().unwrap().clone();
-		let fds = fds_mutex.lock();
-
-		let open_file_mutex = fds.get_fd(fd as _)?.get_open_file().clone();
-
-		(mem_space, open_file_mutex)
-	};
+	let fds = fds_mutex.lock();
+	let open_file_mutex = fds.get_fd(fd as _)?.get_open_file();
 	// Get file
 	let mut open_file = open_file_mutex.lock();
 	// Compute the offset
@@ -75,9 +69,9 @@ pub fn _llseek(
 		_ => return Err(errno!(EINVAL)),
 	};
 	{
-		let mut mem_space_guard = mem_space.lock();
+		let mut mem_space = mem_space_mutex.lock();
 		// Write the result to the userspace
-		if let Some(result) = result.get_mut(&mut mem_space_guard)? {
+		if let Some(result) = result.get_mut(&mut mem_space)? {
 			*result = off;
 		}
 	}

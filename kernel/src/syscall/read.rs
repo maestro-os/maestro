@@ -79,7 +79,7 @@ pub fn read(
 				return Ok(0);
 			}
 			if len > 0 || flags & O_NONBLOCK != 0 {
-				// The file descriptor is non blocking
+				// The file descriptor is non-blocking
 				return Ok(len as _);
 			}
 

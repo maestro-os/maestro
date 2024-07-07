@@ -161,7 +161,10 @@ mod write;
 mod writev;
 
 //use wait::wait;
-use crate::process::{mem_space::MemSpace, regs::Regs, signal::Signal, Process};
+use crate::{
+	file::fd::FileDescriptorTable,
+	process::{mem_space::MemSpace, regs::Regs, signal::Signal, Process},
+};
 use _exit::_exit;
 use _llseek::_llseek;
 use _newselect::_newselect;
@@ -299,7 +302,7 @@ use unlinkat::unlinkat;
 use utils::{
 	errno,
 	errno::EResult,
-	lock::{IntMutex, IntMutexGuard},
+	lock::{IntMutex, IntMutexGuard, Mutex},
 	ptr::arc::Arc,
 	DisplayableStr,
 };
@@ -392,6 +395,20 @@ impl<'p> FromSyscall<'p> for IntMutexGuard<'p, Process> {
 	#[inline]
 	fn from_syscall(process: &'p Arc<IntMutex<Process>>, _regs: &'p Regs) -> Self {
 		process.lock()
+	}
+}
+
+impl FromSyscall<'_> for Arc<IntMutex<MemSpace>> {
+	#[inline]
+	fn from_syscall(process: &Arc<IntMutex<Process>>, _regs: &Regs) -> Self {
+		process.lock().get_mem_space().unwrap().clone()
+	}
+}
+
+impl FromSyscall<'_> for Arc<Mutex<FileDescriptorTable>> {
+	#[inline]
+	fn from_syscall(process: &Arc<IntMutex<Process>>, _regs: &Regs) -> Self {
+		process.lock().file_descriptors.clone().unwrap()
 	}
 }
 

@@ -20,11 +20,18 @@
 
 use super::select::{do_select, FDSet};
 use crate::{
+	file::fd::FileDescriptorTable,
+	memory::stats::MemInfo,
+	process::mem_space::MemSpace,
 	syscall::{Args, SyscallPtr},
 	time::unit::Timeval,
 };
 use core::ffi::c_int;
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+};
 
 #[allow(clippy::type_complexity)]
 pub fn _newselect(
@@ -35,6 +42,10 @@ pub fn _newselect(
 		SyscallPtr<FDSet>,
 		SyscallPtr<Timeval>,
 	)>,
+	mem_space: Arc<IntMutex<MemSpace>>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
+	do_select(
+		mem_space, fds, nfds as _, readfds, writefds, exceptfds, timeout, None,
+	)
 }

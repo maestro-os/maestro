@@ -20,7 +20,8 @@
 //! writable or for an exception to occur.
 
 use crate::{
-	process::{scheduler, Process},
+	file::fd::FileDescriptorTable,
+	process::{mem_space::MemSpace, scheduler, Process},
 	syscall::{Args, SyscallPtr, SyscallSlice},
 	time::{
 		clock,
@@ -37,6 +38,8 @@ use utils::{
 	errno::{EResult, Errno},
 	io,
 	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
 };
 
 /// The number of file descriptors in FDSet.
@@ -77,13 +80,18 @@ impl FDSet {
 /// Performs the select operation.
 ///
 /// Arguments:
+/// - `mem_space` is the process's memory space.
+/// - `fds` is the process's file descriptors table.
 /// - `nfds` is the number of the highest checked fd + 1.
 /// - `readfds` is the bitfield of fds to check for read operations.
 /// - `writefds` is the bitfield of fds to check for write operations.
 /// - `exceptfds` is the bitfield of fds to check for exceptional conditions.
 /// - `timeout` is the timeout after which the syscall returns.
 /// - `sigmask` TODO
+#[allow(clippy::too_many_arguments)]
 pub fn do_select<T: TimeUnit>(
+	mem_space: Arc<IntMutex<MemSpace>>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 	nfds: u32,
 	readfds: SyscallPtr<FDSet>,
 	writefds: SyscallPtr<FDSet>,
@@ -91,43 +99,21 @@ pub fn do_select<T: TimeUnit>(
 	timeout: SyscallPtr<T>,
 	_sigmask: Option<SyscallSlice<u8>>,
 ) -> EResult<usize> {
-	// Getting start timestamp
+	// Get start timestamp
 	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
-
-	// Getting timeout
-	let timeout = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-		timeout.get(&mem_space_guard)?.cloned().unwrap_or_default()
-	};
-
+	// Get timeout
+	let timeout = timeout.get(&mem_space.lock())?.cloned().unwrap_or_default();
 	// Tells whether the syscall immediately returns
 	let polling = timeout.is_zero();
 	// The end timestamp
 	let end = start + timeout;
-
 	loop {
 		let mut events_count = 0;
 		// Set if every bitfields are set to zero
 		let mut all_zeros = true;
-
 		for fd_id in 0..min(nfds, FD_SETSIZE as u32) {
-			let (mem_space, fds_mutex) = {
-				let proc_mutex = Process::current_assert();
-				let proc = proc_mutex.lock();
-
-				let mem_space = proc.get_mem_space().unwrap().clone();
-				let fds_mutex = proc.file_descriptors.clone().unwrap();
-
-				(mem_space, fds_mutex)
-			};
-
 			let (read, write, except) = {
 				let mem_space_guard = mem_space.lock();
-
 				let read = readfds
 					.get(&mem_space_guard)?
 					.map(|fds| fds.is_set(fd_id))
@@ -140,23 +126,12 @@ pub fn do_select<T: TimeUnit>(
 					.get(&mem_space_guard)?
 					.map(|fds| fds.is_set(fd_id))
 					.unwrap_or(false);
-
 				(read, write, except)
 			};
-
 			if read || write || except {
 				all_zeros = false;
 			}
-			// Get file descriptor
-			let fds = fds_mutex.lock();
-			let Ok(fd) = fds.get_fd(fd_id as _) else {
-				if read || write || except {
-					return Err(errno!(EBADF));
-				}
-				continue;
-			};
-
-			// Building event mask
+			// Build event mask
 			let mut mask = 0;
 			if read {
 				mask |= io::POLLIN;
@@ -167,12 +142,22 @@ pub fn do_select<T: TimeUnit>(
 			if except {
 				mask |= io::POLLPRI;
 			}
-
-			let open_file_mutex = fd.get_open_file();
-			let mut open_file = open_file_mutex.lock();
-
-			let result = open_file.poll(mask)?;
-
+			// Poll file
+			let result = {
+				// Get file descriptor
+				let fds = fds.lock();
+				let Ok(fd) = fds.get_fd(fd_id as _) else {
+					if read || write || except {
+						return Err(errno!(EBADF));
+					}
+					continue;
+				};
+				// Get file
+				let open_file_mutex = fd.get_open_file();
+				let mut open_file = open_file_mutex.lock();
+				// Poll
+				open_file.poll(mask)?
+			};
 			// Set results
 			let mut mem_space_guard = mem_space.lock();
 			if let Some(fds) = readfds.get_mut(&mut mem_space_guard)? {
@@ -200,18 +185,15 @@ pub fn do_select<T: TimeUnit>(
 				}
 			}
 		}
-
 		// If one or more events occurred, return
 		if all_zeros || polling || events_count > 0 {
 			return Ok(events_count);
 		}
-
 		let curr = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
 		// On timeout, return 0
 		if curr >= end {
 			return Ok(0);
 		}
-
 		// TODO Make the process sleep?
 		scheduler::end_tick();
 	}
@@ -226,6 +208,10 @@ pub fn select(
 		SyscallPtr<FDSet>,
 		SyscallPtr<Timeval>,
 	)>,
+	mem_space: Arc<IntMutex<MemSpace>>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
+	do_select(
+		mem_space, fds, nfds as _, readfds, writefds, exceptfds, timeout, None,
+	)
 }

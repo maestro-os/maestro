@@ -20,11 +20,17 @@
 
 use super::select::{do_select, FDSet};
 use crate::{
+	file::fd::FileDescriptorTable,
+	process::mem_space::MemSpace,
 	syscall::{Args, SyscallPtr, SyscallSlice},
 	time::unit::Timespec,
 };
 use core::ffi::c_int;
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+};
 
 #[allow(clippy::type_complexity)]
 pub fn pselect6(
@@ -36,8 +42,12 @@ pub fn pselect6(
 		SyscallPtr<Timespec>,
 		SyscallSlice<u8>,
 	)>,
+	mem_space: Arc<IntMutex<MemSpace>>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_select(
+		mem_space,
+		fds,
 		nfds as _,
 		readfds,
 		writefds,

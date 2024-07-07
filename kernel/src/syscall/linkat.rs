@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This `linkat` syscall creates a new hard link to a file.
+//! The `linkat` system call allows to create a hard link.
 
 use super::util::at;
 use crate::{
