@@ -41,7 +41,7 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a
 //! page table.
 
-use crate::{memory, memory::buddy, register_get, register_set};
+use crate::{cpu, memory, memory::buddy, register_get, register_set};
 use core::{
 	arch::asm,
 	ffi::c_void,
@@ -439,7 +439,7 @@ pub(super) unsafe fn bind(page_dir: *const c_void) {
 #[inline]
 pub(super) fn is_bound(page_dir: NonNull<Table>) -> bool {
 	let physaddr = memory::kern_to_phys(page_dir.as_ptr() as _) as _;
-	unsafe { register_get!("cr3") == physaddr }
+	register_get!("cr3") == physaddr
 }
 
 /// Invalidate the page at the given address on the current CPU.
@@ -481,9 +481,17 @@ pub(super) unsafe fn free(mut page_dir: NonNull<Table>) {
 
 /// Initializes virtual memory management.
 pub(super) fn init() -> AllocResult<()> {
+	// Set cr4 flags
 	// Enable GLOBAL flag
+	let mut cr4 = register_get!("cr4") | 1 << 7;
+	let (smep, smap) = cpu::supports_supervisor_prot();
+	if smep {
+		cr4 |= 1 << 20;
+	}
+	if smap {
+		cr4 |= 1 << 21;
+	}
 	unsafe {
-		let cr4 = register_get!("cr4") | 0b10000000;
 		register_set!("cr4", cr4);
 	}
 	// Allocate kernel tables

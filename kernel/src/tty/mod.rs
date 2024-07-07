@@ -270,7 +270,7 @@ impl TTY {
 
 		let buff = &self.history[get_history_offset(0, self.screen_y)];
 		unsafe {
-			vmem::write_lock_wrap(|| {
+			vmem::write_ro(|| {
 				ptr::copy_nonoverlapping(
 					buff as *const vga::Char,
 					vga::get_buffer_virt() as *mut vga::Char,

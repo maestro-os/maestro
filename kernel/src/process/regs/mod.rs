@@ -59,7 +59,7 @@ pub mod x86 {
 	use core::arch::asm;
 
 	/// The default value of the eflags register.
-	pub const DEFAULT_EFLAGS: usize = 0x1202;
+	pub const DEFAULT_EFLAGS: usize = 0x202;
 	/// The default value of the FCW.
 	pub const DEFAULT_FCW: u32 = 0b1100111111;
 	/// The default value of the MXCSR.

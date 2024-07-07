@@ -536,7 +536,7 @@ impl<'s> ELFExecutor<'s> {
 
 		// Copying the segment's data
 		unsafe {
-			vmem::write_lock_wrap(|| ptr::copy_nonoverlapping(file_begin, begin, len));
+			vmem::write_ro(|| ptr::copy_nonoverlapping(file_begin, begin, len));
 		}
 	}
 
@@ -637,7 +637,7 @@ impl<'s> ELFExecutor<'s> {
 				// Copy phdr's data if necessary
 				if phdr_needs_copy {
 					let image_phdr = &elf.get_image()[(ehdr.e_phoff as usize)..];
-					vmem::write_lock_wrap(|| {
+					vmem::write_ro(|| {
 						ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr as _, phdr_size);
 					});
 				}

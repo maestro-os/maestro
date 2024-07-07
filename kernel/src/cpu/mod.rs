@@ -25,11 +25,13 @@ pub mod sse;
 /// Returns the value stored into the specified register.
 #[macro_export]
 macro_rules! register_get {
-	($reg:expr) => {{
-		let mut val: u32;
-		core::arch::asm!(concat!("mov {}, ", $reg), out(reg) val);
-		val
-	}};
+	($reg:expr) => {
+		unsafe {
+			let mut val: usize;
+			core::arch::asm!(concat!("mov {}, ", $reg), out(reg) val);
+			val
+		}
+	};
 }
 
 /// Sets the value of the specified register.
@@ -40,17 +42,88 @@ macro_rules! register_set {
 	}};
 }
 
-/// Returns HWCAP bitmask for ELF.
-pub fn get_hwcap() -> u32 {
-	let mut hwcap: u32;
+/// Returns the value of the RFLAGS register.
+#[inline]
+pub fn get_rflags() -> u32 {
+	let mut flags;
+	unsafe {
+		asm!("pushf", "pop {}", out(reg) flags);
+	}
+	flags
+}
+
+/// Calls the CPUID instruction.
+#[inline]
+pub fn cpuid(mut eax: u32, mut ebx: u32, mut ecx: u32, mut edx: u32) -> (u32, u32, u32, u32) {
 	unsafe {
 		asm!(
 			"cpuid",
-			in("eax") 1,
-			out("ebx") _,
-			out("ecx") _,
-			lateout("edx") hwcap,
+			inout("eax") eax,
+			inout("ebx") ebx,
+			inout("ecx") ecx,
+			inout("edx") edx,
 		);
 	}
-	hwcap
+	(eax, ebx, ecx, edx)
+}
+
+/// Returns HWCAP bitmask for ELF.
+#[inline]
+pub fn get_hwcap() -> u32 {
+	cpuid(1, 0, 0, 0).3
+}
+
+/// Tells whether SMEP and SMAP are supported (in that order).
+#[inline]
+pub fn supports_supervisor_prot() -> (bool, bool) {
+	let (_, flags, ..) = cpuid(7, 0, 0, 0);
+	let smep = flags & (1 << 7) != 0;
+	let smap = flags & (1 << 20) != 0;
+	(smep, smap)
+}
+
+/// Tells whether the read-only pages protection is enabled.
+#[inline]
+pub fn is_write_protected() -> bool {
+	register_get!("cr0") & (1 << 16) != 0
+}
+
+/// Sets whether the kernel can write to read-only pages.
+///
+/// # Safety
+///
+/// Disabling this feature which makes read-only data writable in kernelspace.
+#[inline]
+pub unsafe fn set_write_protected(lock: bool) {
+	let mut val = register_get!("cr0");
+	if lock {
+		val |= 1 << 16;
+	} else {
+		val &= !(1 << 16);
+	}
+	register_set!("cr0", val);
+}
+
+/// Tells whether SMAP is enabled.
+#[inline]
+pub fn is_smap_enabled() -> bool {
+	get_rflags() & (1 << 18) == 0
+}
+
+/// Sets or clears the AC flag to disable or enable SMAP.
+///
+/// # Safety
+///
+/// SMAP provides a security against potentially malicious data accesses. As such, it should be
+/// disabled only when strictly necessary.
+///
+/// Enabling SMAP removes access to memory addresses that were previously accessible. It is the
+/// caller's responsibility to ensure no invalid memory accesses are done afterward.
+#[inline]
+pub unsafe fn set_smap_enabled(enabled: bool) {
+	if enabled {
+		asm!("clac");
+	} else {
+		asm!("stac");
+	}
 }

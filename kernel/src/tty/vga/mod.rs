@@ -105,7 +105,7 @@ pub fn entry_color(fg: Color, bg: Color) -> Color {
 pub fn clear() {
 	for i in 0..(WIDTH * HEIGHT) {
 		unsafe {
-			vmem::write_lock_wrap(|| {
+			vmem::write_ro(|| {
 				*get_buffer_virt().offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
 			});
 		}
@@ -175,7 +175,7 @@ pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
 
 	debug_assert!(pos < BUFFER_SIZE as usize);
 	unsafe {
-		vmem::write_lock_wrap(|| {
+		vmem::write_ro(|| {
 			*get_buffer_virt().add(pos) = c;
 		});
 	}

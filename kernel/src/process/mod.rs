@@ -344,7 +344,7 @@ pub(crate) fn init() -> EResult<()> {
 		}
 	};
 	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
-		let accessed_ptr = unsafe { register_get!("cr2") } as *const c_void;
+		let accessed_ptr = register_get!("cr2") as *const c_void;
 		// Get process
 		let curr_proc = Process::current();
 		let Some(curr_proc) = curr_proc else {

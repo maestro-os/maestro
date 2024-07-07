@@ -196,7 +196,7 @@ impl MemMapping {
 			// Switch to make sure the right vmem is bound, but this should already be the case
 			// so consider this has no cost
 			vmem::switch(vmem_transaction.vmem, move || {
-				vmem::write_lock_wrap(|| {
+				vmem::write_ro(|| {
 					let dest = &mut *dest;
 					if copy {
 						dest.copy_from_slice(&*COPY_BUFFER);
