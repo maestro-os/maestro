@@ -21,9 +21,10 @@
 use super::statfs::do_statfs;
 use crate::{
 	file::fs::Statfs,
-	syscall::{Args, SyscallPtr, SyscallString},
+	process::mem_space::copy::{SyscallPtr, SyscallString},
+	syscall::Args,
 };
-use utils::errno::{EResult, Errno};
+use utils::errno::EResult;
 
 // TODO Check args types
 pub fn statfs64(

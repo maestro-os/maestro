@@ -18,9 +18,9 @@
 
 //! The `faccessat2` system call allows to check access to a given file.
 
-use crate::syscall::{Args, SyscallString};
+use crate::{process::mem_space::copy::SyscallString, syscall::Args};
 use core::ffi::c_int;
-use utils::errno::{EResult, Errno};
+use utils::errno::EResult;
 
 pub fn faccessat2(
 	Args((dir_fd, pathname, mode, flags)): Args<(c_int, SyscallString, c_int, c_int)>,

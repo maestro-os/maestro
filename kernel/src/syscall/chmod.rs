@@ -21,8 +21,8 @@
 use crate::{
 	file,
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
@@ -39,7 +39,7 @@ pub fn chmod(Args((pathname, mode)): Args<(SyscallString, file::Mode)>) -> EResu
 		let mem_space_guard = mem_space.lock();
 
 		let path = pathname
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 

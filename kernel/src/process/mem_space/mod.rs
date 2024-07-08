@@ -23,6 +23,7 @@
 //! - Mapping: A chunk of virtual memory that is allocated
 //! - Gap: A chunk of virtual memory that is available to be allocated
 
+pub mod copy;
 mod gap;
 mod mapping;
 pub mod residence;

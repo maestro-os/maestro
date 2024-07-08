@@ -20,8 +20,8 @@
 
 use crate::{
 	file::FileType,
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 };
 use core::{
 	cmp::min,
@@ -58,8 +58,8 @@ pub fn splice(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let off_in = off_in.get(&mem_space_guard)?.cloned();
-		let off_out = off_out.get(&mem_space_guard)?.cloned();
+		let off_in = off_in.copy_from_user(&mem_space_guard)?;
+		let off_out = off_out.copy_from_user(&mem_space_guard)?;
 
 		(input, off_in, output, off_out)
 	};

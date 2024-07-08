@@ -20,8 +20,11 @@
 
 use crate::{
 	file::fd::FileDescriptorTable,
-	process::{mem_space::MemSpace, Process},
-	syscall::{Args, SyscallPtr},
+	process::{
+		mem_space::{copy::SyscallPtr, MemSpace},
+		Process,
+	},
+	syscall::Args,
 };
 use core::ffi::{c_uint, c_ulong};
 use utils::{
@@ -68,12 +71,10 @@ pub fn _llseek(
 			.ok_or_else(|| errno!(EOVERFLOW))?,
 		_ => return Err(errno!(EINVAL)),
 	};
+	// Write the result to the userspace
 	{
 		let mut mem_space = mem_space_mutex.lock();
-		// Write the result to the userspace
-		if let Some(result) = result.get_mut(&mut mem_space)? {
-			*result = off;
-		}
+		result.copy_to_user(&mut mem_space, off)?;
 	}
 	// Set the new offset
 	open_file.set_offset(off);

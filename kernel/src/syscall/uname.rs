@@ -19,8 +19,8 @@
 //! The uname syscall is used to retrieve information about the system.
 
 use crate::{
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -50,11 +50,7 @@ pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-	let utsname = buf.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
-
-	*utsname = Utsname {
+	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
 		nodename: [0; UTSNAME_LENGTH],
 		release: [0; UTSNAME_LENGTH],
@@ -70,6 +66,10 @@ pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
 	utils::slice_copy(crate::VERSION.as_bytes(), &mut utsname.release);
 	utils::slice_copy(&[], &mut utsname.version);
 	utils::slice_copy(crate::ARCH.as_bytes(), &mut utsname.machine);
+
+	let mem_space = proc.get_mem_space().unwrap();
+	let mut mem_space_guard = mem_space.lock();
+	buf.copy_to_user(&mut mem_space_guard, utsname)?;
 
 	Ok(0)
 }

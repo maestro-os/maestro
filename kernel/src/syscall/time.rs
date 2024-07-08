@@ -20,11 +20,11 @@
 //! the UNIX Epoch.
 
 use crate::{
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
-use utils::errno::{EResult, Errno};
+use utils::errno::EResult;
 
 // TODO Watch for timestamp overflow
 
@@ -39,9 +39,7 @@ pub fn time(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
 	let time = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
 
 	// Writing the timestamp to the given location, if not null
-	if let Some(tloc) = tloc.get_mut(&mut mem_space_guard)? {
-		*tloc = time as _;
-	}
+	tloc.copy_to_user(&mut mem_space_guard, time as _)?;
 
 	Ok(time as _)
 }

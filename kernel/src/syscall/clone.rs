@@ -20,18 +20,13 @@
 
 use crate::{
 	process::{
-		regs::{Register, Regs},
-		scheduler,
-		user_desc::UserDesc,
-		ForkOptions, Process,
+		mem_space::copy::SyscallPtr, regs::Regs, scheduler, user_desc::UserDesc, ForkOptions,
+		Process,
 	},
-	syscall::{Args, FromSyscallArg, SyscallPtr},
+	syscall::{Args, FromSyscallArg},
 };
 use core::ffi::{c_int, c_ulong, c_void};
-use utils::{
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 /// TODO doc
 const CLONE_IO: c_ulong = -0x80000000 as _;

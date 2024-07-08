@@ -20,8 +20,8 @@
 //! given delay.
 
 use crate::{
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::Timespec32},
 };
 use utils::{
@@ -43,7 +43,8 @@ pub fn nanosleep(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		*req.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?
+		req.copy_from_user(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?
 	};
 
 	// Looping until time is elapsed or the process is interrupted by a signal
@@ -65,10 +66,7 @@ pub fn nanosleep(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mut mem_space_guard = mem_space.lock();
 
-		let remaining = rem
-			.get_mut(&mut mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
-		*remaining = Timespec32::default();
+		rem.copy_to_user(&mut mem_space_guard, Timespec32::default())?;
 	}
 
 	Ok(0)

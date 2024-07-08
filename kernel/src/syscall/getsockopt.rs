@@ -20,10 +20,10 @@
 
 use crate::{
 	file::{buffer, buffer::socket::Socket},
-	process::Process,
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
-use core::{any::Any, ffi::c_int};
+use core::{any::Any, cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -53,14 +53,11 @@ pub fn getsockopt(
 	let sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
-
-	// Get optval slice
+	let val = sock.get_opt(level, optname)?;
+	// Write back
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
-	let optval_slice = optval
-		.get_mut(&mut mem_space_guard, optlen)?
-		.ok_or(errno!(EFAULT))?;
-
-	sock.get_opt(level, optname, optval_slice)
-		.map(|opt| opt as _)
+	let len = min(val.len(), optlen);
+	optval.copy_to_user(&mut mem_space_guard, &val[..len])?;
+	Ok(len as _)
 }

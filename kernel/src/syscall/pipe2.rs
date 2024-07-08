@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
@@ -57,11 +57,7 @@ pub fn pipe2(Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>) -> ER
 	let (fd0_id, fd1_id) = fds.create_fd_pair(open_file0, open_file1)?;
 
 	let mut mem_space_guard = mem_space.lock();
-	let pipefd_slice = pipefd
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-	pipefd_slice[0] = fd0_id as _;
-	pipefd_slice[1] = fd1_id as _;
+	pipefd.copy_to_user(&mut mem_space_guard, [fd0_id as _, fd1_id as _])?;
 
 	Ok(0)
 }

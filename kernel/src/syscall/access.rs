@@ -20,16 +20,16 @@
 
 use crate::{
 	file::{
-		path::Path,
+		path::{Path, PathBuf},
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::Process,
+	process::{mem_space::copy::SyscallString, Process},
 	syscall::{
 		util::{
 			at,
 			at::{AT_EACCESS, AT_FDCWD},
 		},
-		Args, SyscallString,
+		Args,
 	},
 };
 use core::ffi::c_int;
@@ -76,12 +76,12 @@ pub fn do_access(
 		let fds = proc.file_descriptors.as_ref().unwrap().lock();
 
 		let pathname = pathname
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EINVAL))?;
-		let path = Path::new(pathname)?;
+		let path = PathBuf::try_from(pathname)?;
 
 		let Resolved::Found(file) =
-			at::get_file(&fds, rs, dirfd.unwrap_or(AT_FDCWD), path, flags)?
+			at::get_file(&fds, rs, dirfd.unwrap_or(AT_FDCWD), &path, flags)?
 		else {
 			return Err(errno!(ENOENT));
 		};

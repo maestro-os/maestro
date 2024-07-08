@@ -19,8 +19,8 @@
 //! The `prlimit64` syscall returns the limit for a given resource.
 
 use crate::{
-	process::{pid::Pid, Process},
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, pid::Pid, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{

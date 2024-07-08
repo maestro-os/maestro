@@ -20,8 +20,8 @@
 
 use crate::{
 	crypto::rand,
-	process::Process,
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use core::ffi::c_uint;
 use utils::{
@@ -29,7 +29,7 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-/// If set, bytes are draw from the random source instead of urandom.
+/// If set, bytes are draw from the randomness source instead of `urandom`.
 const GRND_RANDOM: u32 = 2;
 /// If set, the function doesn't block. If no entropy is available, the function
 /// returns EAGAIN.
@@ -57,12 +57,11 @@ pub fn getrandom(
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space_mutex.lock();
 
-	if let Some(buf) = buf.get_mut(&mut mem_space_guard, buflen)? {
+	if let Some(buf) = buf.copy_to_user(&mut mem_space_guard, buflen)? {
 		let mut i = 0;
 		while i < buf.len() {
 			i += pool.read(&mut buf[i..], bypass_threshold);
 		}
-
 		Ok(buf.len() as _)
 	} else {
 		Ok(0)

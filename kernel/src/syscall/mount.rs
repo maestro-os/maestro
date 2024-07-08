@@ -23,8 +23,11 @@ use crate::{
 		fs, mountpoint, mountpoint::MountSource, path::PathBuf, vfs, vfs::ResolutionSettings,
 		FileType,
 	},
-	process::Process,
-	syscall::{Args, SyscallPtr, SyscallString},
+	process::{
+		mem_space::copy::{SyscallPtr, SyscallString},
+		Process,
+	},
+	syscall::Args,
 };
 use core::ffi::{c_ulong, c_void};
 use utils::{
@@ -56,19 +59,23 @@ pub fn mount(
 		let mem_space_guard = mem_space.lock();
 
 		// Get strings
-		let source_slice = source.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let source_slice = source
+			.copy_from_user(&mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
+		let target_slice = target
+			.copy_from_user(&mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
 		let filesystemtype_slice = filesystemtype
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or(errno!(EFAULT))?;
 
 		// Get the mount source
-		let mount_source = MountSource::new(source_slice)?;
+		let mount_source = MountSource::new(&source_slice)?;
 
 		// Get the target directory
 		let target_path = PathBuf::try_from(target_slice)?;
 
-		let fs_type = fs::get_type(filesystemtype_slice).ok_or(errno!(ENODEV))?;
+		let fs_type = fs::get_type(&filesystemtype_slice).ok_or(errno!(ENODEV))?;
 
 		(mount_source, target_path, fs_type, rs)
 	};

@@ -20,9 +20,14 @@
 //! with `mount`.
 
 use crate::{
-	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings},
-	process::Process,
-	syscall::{Args, SyscallString},
+	file::{
+		mountpoint,
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+	},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -44,9 +49,11 @@ pub fn umount(Args(target): Args<SyscallString>) -> EResult<usize> {
 	let mem_space_guard = mem_space.lock();
 
 	// Get target directory
-	let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-	let target_path = Path::new(target_slice)?;
-	let target_dir = vfs::get_file_from_path(target_path, &rs)?;
+	let target_slice = target
+		.copy_from_user(&mem_space_guard)?
+		.ok_or(errno!(EFAULT))?;
+	let target_path = PathBuf::try_from(target_slice)?;
+	let target_dir = vfs::get_file_from_path(&target_path, &rs)?;
 	let target_dir = target_dir.lock();
 
 	// Remove mountpoint

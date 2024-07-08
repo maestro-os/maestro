@@ -36,8 +36,8 @@ use crate::{
 		path::{Path, PathBuf},
 		Mode,
 	},
-	process::mem_space::MemSpace,
-	syscall::{ioctl, FromSyscallArg, SyscallPtr},
+	process::mem_space::{copy::SyscallPtr, MemSpace},
+	syscall::{ioctl, FromSyscallArg},
 };
 use core::{
 	cmp::min,
@@ -314,10 +314,7 @@ impl DeviceHandle for StorageDeviceHandle {
 				// Write to userspace
 				let mut mem_space_guard = mem_space.lock();
 				let hd_geo_ptr = SyscallPtr::<HdGeometry>::from_syscall_arg(argp as usize);
-				let hd_geo_ref = hd_geo_ptr
-					.get_mut(&mut mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				*hd_geo_ref = hd_geo;
+				hd_geo_ptr.copy_to_user(&mut mem_space_guard, hd_geo)?;
 
 				Ok(0)
 			}
@@ -346,10 +343,7 @@ impl DeviceHandle for StorageDeviceHandle {
 
 				let mut mem_space_guard = mem_space.lock();
 				let size_ptr = SyscallPtr::<u32>::from_syscall_arg(argp as usize);
-				let size_ref = size_ptr
-					.get_mut(&mut mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				*size_ref = blk_size as _;
+				size_ptr.copy_to_user(&mut mem_space_guard, blk_size as _)?;
 
 				Ok(0)
 			}
@@ -359,10 +353,7 @@ impl DeviceHandle for StorageDeviceHandle {
 
 				let mut mem_space_guard = mem_space.lock();
 				let size_ptr = SyscallPtr::<u64>::from_syscall_arg(argp as usize);
-				let size_ref = size_ptr
-					.get_mut(&mut mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				*size_ref = size;
+				size_ptr.copy_to_user(&mut mem_space_guard, size)?;
 
 				Ok(0)
 			}

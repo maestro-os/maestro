@@ -24,8 +24,12 @@ use crate::{
 		FileType,
 	},
 	limits,
-	process::{iovec::IOVec, mem_space::MemSpace, scheduler, Process},
-	syscall::{Args, FromSyscallArg, SyscallSlice},
+	process::{
+		iovec::IOVec,
+		mem_space::{copy::SyscallSlice, MemSpace},
+		scheduler, Process,
+	},
+	syscall::{Args, FromSyscallArg},
 };
 use core::{cmp::min, ffi::c_int};
 use utils::{
@@ -53,7 +57,9 @@ fn read(
 	open_file: &mut OpenFile,
 ) -> EResult<i32> {
 	let iov = {
-		let iov_slice = iov.get(mem_space, iovcnt)?.ok_or(errno!(EFAULT))?;
+		let iov_slice = iov
+			.copy_from_user(mem_space, iovcnt)?
+			.ok_or(errno!(EFAULT))?;
 		let mut iov = Vec::new();
 		iov.extend_from_slice(iov_slice)?;
 		iov
@@ -71,7 +77,7 @@ fn read(
 		let l = min(i.iov_len, i32::MAX as usize - total_len);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
 
-		if let Some(slice) = ptr.get_mut(mem_space, l)? {
+		if let Some(slice) = ptr.copy_to_user(mem_space, l)? {
 			// The offset is ignored
 			let (len, eof) = open_file.read(0, slice)?;
 			total_len += len as usize;

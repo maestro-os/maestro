@@ -20,10 +20,14 @@
 //!
 //! If no link remain to the file, the function also removes it.
 
-use super::{Args, SyscallString};
+use super::Args;
 use crate::{
-	file::{path::Path, vfs, vfs::ResolutionSettings},
-	process::Process,
+	file::{
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+	},
+	process::{mem_space::copy::SyscallString, Process},
 };
 use utils::{
 	errno,
@@ -36,13 +40,13 @@ pub fn unlink(Args(pathname): Args<SyscallString>) -> EResult<usize> {
 
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let mem_space = mem_space_mutex.lock();
-	let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
-	let path = Path::new(path)?;
+	let path = pathname.copy_from_user(&mem_space)?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
 
 	let rs = ResolutionSettings::for_process(&proc, true);
 
 	// Remove the file
-	vfs::remove_file_from_path(path, &rs)?;
+	vfs::remove_file_from_path(&path, &rs)?;
 
 	Ok(0)
 }

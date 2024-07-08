@@ -30,11 +30,11 @@ use crate::{
 	process::{
 		exec,
 		exec::{ExecInfo, ProgramImage},
+		mem_space::copy::{SyscallArray, SyscallString},
 		regs::Regs,
 		scheduler::SCHEDULER,
 		Process,
 	},
-	syscall::{SyscallArray, SyscallString},
 };
 use utils::{
 	collections::{string::String, vec::Vec},
@@ -79,7 +79,7 @@ impl Default for ShebangBuffer {
 /// - `path` is the path of the executable file.
 /// - `rs` is the resolution settings to be used to open files.
 /// - `argv` is an iterator over the arguments passed to the system call.
-fn get_file<'a, A: Iterator<Item = EResult<&'a [u8]>> + 'a>(
+fn get_file<A: Iterator<Item = EResult<String>>>(
 	path: &Path,
 	rs: &ResolutionSettings,
 	argv: A,
@@ -136,7 +136,7 @@ fn get_file<'a, A: Iterator<Item = EResult<&'a [u8]>> + 'a>(
 			words
 		})
 		.map(|s| Ok(String::try_from(s)?))
-		.chain(argv.map(|s| s.and_then(|s| Ok(String::try_from(s)?))))
+		.chain(argv)
 		.collect::<EResult<CollectResult<Vec<String>>>>()?
 		.0?;
 	Ok((file_mutex, final_argv))
@@ -193,7 +193,7 @@ pub fn execve(
 		let mem_space_guard = mem_space.lock();
 
 		let path = pathname
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
@@ -202,7 +202,6 @@ pub fn execve(
 		let (file, argv) = get_file(&path, &rs, argv)?;
 		let envp = envp
 			.iter(&mem_space_guard)
-			.map(|s| s.and_then(|s| Ok(String::try_from(s)?)))
 			.collect::<EResult<CollectResult<Vec<_>>>>()?
 			.0?;
 		(file, rs, argv, envp)

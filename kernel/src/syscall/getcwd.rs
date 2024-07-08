@@ -20,8 +20,8 @@
 //! the current process.
 
 use crate::{
-	process::Process,
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -37,22 +37,17 @@ pub fn getcwd(Args((buf, size)): Args<(SyscallSlice<u8>, usize)>) -> EResult<usi
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let cwd = format!("{}", proc.cwd.0)?;
+	let cwd = format!("{}\0", proc.cwd.0)?;
 
 	// Checking that the buffer is large enough
-	if size < cwd.len() + 1 {
+	if size < cwd.len() {
 		return Err(errno!(ERANGE));
 	}
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
 
-	let cwd_slice = cwd.as_bytes();
-	let buf_slice = buf
-		.get_mut(&mut mem_space_guard, size as _)?
-		.ok_or_else(|| errno!(EINVAL))?;
-	utils::slice_copy(cwd_slice, buf_slice);
-	buf_slice[cwd.len()] = b'\0';
+	buf.copy_to_user(&mut mem_space_guard, cwd.as_bytes())?;
 
 	Ok(buf.as_ptr() as _)
 }

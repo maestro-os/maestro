@@ -19,8 +19,8 @@
 //! The rt_sigprocmask system call allows to change the blocked signal mask.
 
 use crate::{
-	process::Process,
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use core::{cmp::min, ffi::c_int};
 use utils::{
@@ -45,16 +45,12 @@ pub fn rt_sigprocmask(
 	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mut mem_space_guard = mem_space.lock();
 
+	// Save old set
 	let curr = proc.sigmask.as_slice_mut();
+	let len = min(curr.len(), sigsetsize as _);
+	oldset.copy_to_user(&mut mem_space_guard, &curr[..len])?;
 
-	let oldset_slice = oldset.get_mut(&mut mem_space_guard, sigsetsize as _)?;
-	if let Some(oldset) = oldset_slice {
-		// Save old set
-		let len = min(oldset.len(), curr.len());
-		oldset[..len].copy_from_slice(&curr[..len]);
-	}
-
-	let set_slice = set.get(&mem_space_guard, sigsetsize as _)?;
+	let set_slice = set.copy_from_user(&mem_space_guard, sigsetsize as _)?;
 	if let Some(set) = set_slice {
 		// Applies the operation
 		match how {

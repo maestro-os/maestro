@@ -26,8 +26,8 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType,
 	},
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
@@ -56,12 +56,12 @@ pub fn linkat(
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
 		let oldpath = oldpath
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let oldpath = PathBuf::try_from(oldpath)?;
 
 		let newpath = newpath
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let newpath = PathBuf::try_from(newpath)?;
 

@@ -24,8 +24,14 @@ use crate::{
 		FileType,
 	},
 	limits,
-	process::{iovec::IOVec, mem_space::MemSpace, scheduler, signal::Signal, Process},
-	syscall::{Args, FromSyscallArg, SyscallSlice},
+	process::{
+		iovec::IOVec,
+		mem_space::{copy::SyscallSlice, MemSpace},
+		scheduler,
+		signal::Signal,
+		Process,
+	},
+	syscall::{Args, FromSyscallArg},
 };
 use core::{cmp::min, ffi::c_int};
 use utils::{
@@ -50,7 +56,9 @@ fn write(
 	iovcnt: usize,
 	open_file: &mut OpenFile,
 ) -> EResult<i32> {
-	let iov = iov.get(mem_space, iovcnt)?.ok_or(errno!(EFAULT))?;
+	let iov = iov
+		.copy_from_user(mem_space, iovcnt)?
+		.ok_or(errno!(EFAULT))?;
 	let mut total_len = 0;
 
 	for i in iov {
@@ -63,9 +71,9 @@ fn write(
 		let l = min(i.iov_len, usize::MAX - total_len);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
 
-		if let Some(slice) = ptr.get(mem_space, l)? {
+		if let Some(buffer) = ptr.copy_from_user(mem_space, l)? {
 			// The offset is ignored
-			total_len += open_file.write(0, slice)? as usize;
+			total_len += open_file.write(0, &buffer)? as usize;
 		}
 	}
 

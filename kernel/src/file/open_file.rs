@@ -23,8 +23,11 @@ use super::{buffer, mountpoint, path::PathBuf, DeviceID, File, FileLocation, Fil
 use crate::{
 	device,
 	device::DeviceType,
-	process::{mem_space::MemSpace, Process},
-	syscall::{ioctl, FromSyscallArg, SyscallPtr},
+	process::{
+		mem_space::{copy::SyscallPtr, MemSpace},
+		Process,
+	},
+	syscall::{ioctl, FromSyscallArg},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use core::{
@@ -230,13 +233,10 @@ impl OpenFile {
 		}
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
+				let count = file.get_size().saturating_sub(self.curr_off);
 				let mut mem_space_guard = mem_space.lock();
 				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
-				let count_ref = count_ptr
-					.get_mut(&mut mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				let size = file.get_size();
-				*count_ref = (size - min(size, self.curr_off)) as _;
+				count_ptr.copy_to_user(&mut mem_space_guard, count as _)?;
 				Ok(0)
 			}
 			_ => Err(errno!(ENOTTY)),

@@ -26,8 +26,8 @@ use crate::{
 		vfs::ResolutionSettings,
 		FileType, Stat,
 	},
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -49,7 +49,9 @@ pub fn mkdir(Args((pathname, mode)): Args<(SyscallString, file::Mode)>) -> EResu
 		let mem_space_guard = mem_space.lock();
 
 		// Path to the directory to create
-		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = pathname
+			.copy_from_user(&mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, true);

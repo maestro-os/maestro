@@ -19,8 +19,11 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
 use crate::{
-	process::{pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process, State},
-	syscall::{waitpid::scheduler::SCHEDULER, Args, SyscallPtr},
+	process::{
+		mem_space::copy::SyscallPtr, pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process,
+		State,
+	},
+	syscall::{waitpid::scheduler::SCHEDULER, Args},
 };
 use core::ffi::c_int;
 use utils::{
@@ -204,13 +207,8 @@ pub fn do_waitpid(
 				let mem_space = proc.get_mem_space().unwrap();
 				let mut mem_space_guard = mem_space.lock();
 
-				if let Some(wstatus) = wstatus.get_mut(&mut mem_space_guard)? {
-					*wstatus = wstatus_val;
-				}
-
-				if let Some(rusage) = rusage.get_mut(&mut mem_space_guard)? {
-					*rusage = rusage_val;
-				}
+				wstatus.copy_to_user(&mut mem_space_guard, wstatus_val)?;
+				rusage.copy_to_user(&mut mem_space_guard, rusage_val)?;
 			}
 
 			// On success, return

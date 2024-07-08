@@ -20,11 +20,11 @@
 //! the given pointer.
 
 use crate::{
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 };
-use core::{ffi::c_int, ptr::NonNull};
-use utils::errno::{EResult, Errno};
+use core::ffi::c_int;
+use utils::errno::EResult;
 
 pub fn set_tid_address(Args(tidptr): Args<SyscallPtr<c_int>>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
@@ -34,9 +34,7 @@ pub fn set_tid_address(Args(tidptr): Args<SyscallPtr<c_int>>) -> EResult<usize> 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
 	// Set the TID at pointer if accessible
-	if let Some(tidptr) = tidptr.get_mut(&mut mem_space_guard)? {
-		*tidptr = proc.tid as _;
-	}
+	tidptr.copy_to_user(&mut mem_space_guard, proc.tid as _)?;
 
 	Ok(proc.tid as _)
 }

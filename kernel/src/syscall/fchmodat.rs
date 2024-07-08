@@ -25,8 +25,8 @@ use crate::{
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
@@ -49,7 +49,7 @@ pub fn fchmodat(
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
 		let pathname = pathname
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(pathname)?;
 

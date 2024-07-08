@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{FileType, INode},
-	process::Process,
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use core::{
 	ffi::c_uint,
@@ -73,9 +73,7 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 	};
 
 	let mut mem_space_guard = mem_space.lock();
-	let dirp_slice = dirp
-		.get_mut(&mut mem_space_guard, count as _)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	dirp.copy_to_user(&mut mem_space_guard, count as _)?;
 
 	let mut open_file = open_file_mutex.lock();
 	let mut off = open_file.get_offset();

@@ -26,8 +26,11 @@ use crate::{
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::Process,
-	syscall::{Args, SyscallPtr, SyscallSlice, SyscallString},
+	process::{
+		mem_space::copy::{SyscallPtr, SyscallString},
+		Process,
+	},
+	syscall::Args,
 };
 use core::ffi::{c_int, c_uint};
 use utils::{
@@ -130,7 +133,7 @@ pub fn statx(
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
 		let path = pathname
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
@@ -214,9 +217,6 @@ pub fn statx(
 	let proc = proc_mutex.lock();
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
-	let statx = statxbuff
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-	*statx = statx_val;
+	statxbuff.copy_to_user(&mut mem_space_guard, statx_val)?;
 	Ok(0)
 }

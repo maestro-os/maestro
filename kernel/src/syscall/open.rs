@@ -32,8 +32,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		File, FileType, Stat,
 	},
-	process::Process,
-	syscall::SyscallString,
+	process::{mem_space::copy::SyscallString, Process},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -140,7 +139,9 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<u
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
-		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = pathname
+			.copy_from_user(&mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let follow_links = flags & open_file::O_NOFOLLOW == 0;

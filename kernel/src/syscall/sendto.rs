@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{buffer, buffer::socket::Socket},
-	process::Process,
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
@@ -64,9 +64,11 @@ pub fn sendto(
 	// Get slices
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
-	let _buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+	let _buf_slice = buf
+		.copy_from_user(&mem_space_guard, len)?
+		.ok_or(errno!(EFAULT))?;
 	let _dest_addr_slice = dest_addr
-		.get(&mem_space_guard, addrlen as _)?
+		.copy_from_user(&mem_space_guard, addrlen as _)?
 		.ok_or(errno!(EFAULT))?;
 
 	// TODO

@@ -20,9 +20,15 @@
 //! the current process.
 
 use crate::{
-	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings, FileType},
-	process::Process,
-	syscall::{Args, SyscallString},
+	file::{
+		mountpoint,
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+		FileType,
+	},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -47,10 +53,12 @@ pub fn chroot(Args(path): Args<SyscallString>) -> EResult<usize> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = Path::new(path)?;
+		let path = path
+			.copy_from_user(&mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
+		let path = PathBuf::try_from(path)?;
 
-		vfs::get_file_from_path(path, &rs)?
+		vfs::get_file_from_path(&path, &rs)?
 	};
 	let file = file.lock();
 	if file.stat.file_type != FileType::Directory {

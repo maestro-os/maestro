@@ -22,8 +22,8 @@
 use crate::{
 	file::{buffer, buffer::socket::Socket, open_file, open_file::OpenFile, vfs},
 	net::{SocketDesc, SocketDomain, SocketType},
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
@@ -64,9 +64,7 @@ pub fn socketpair(
 	let (fd0_id, fd1_id) = fds.create_fd_pair(open_file0, open_file1)?;
 
 	let mut mem_space_guard = mem_space.lock();
-	let sv_slice = sv.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
-	sv_slice[0] = fd0_id as _;
-	sv_slice[1] = fd1_id as _;
+	sv.copy_to_user(&mut mem_space_guard, [fd0_id as _, fd1_id as _])?;
 
 	Ok(0)
 }

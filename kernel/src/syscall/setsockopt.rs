@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{buffer, buffer::socket::Socket},
-	process::Process,
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
@@ -58,9 +58,9 @@ pub fn setsockopt(
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 	let optval_slice = optval
-		.get(&mem_space_guard, optlen)?
+		.copy_from_user(&mem_space_guard, optlen)?
 		.ok_or(errno!(EFAULT))?;
 
-	sock.set_opt(level, optname, optval_slice)
+	sock.set_opt(level, optname, &optval_slice)
 		.map(|opt| opt as _)
 }

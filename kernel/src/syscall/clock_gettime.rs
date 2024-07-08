@@ -19,8 +19,8 @@
 //! The `clock_gettime` syscall returns the current time of the given clock.
 
 use crate::{
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 	time::{
 		clock,
 		unit::{ClockIdT, Timespec},
@@ -42,9 +42,7 @@ pub fn clock_gettime(
 
 		let mem_space = proc.get_mem_space().unwrap();
 		let mut mem_space_guard = mem_space.lock();
-		let timespec = tp.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
-
-		*timespec = curr_time;
+		tp.copy_to_user(&mut mem_space_guard, curr_time)?;
 	}
 
 	Ok(0)

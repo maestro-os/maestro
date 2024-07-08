@@ -22,8 +22,8 @@
 use super::Args;
 use crate::{
 	file::{open_file::O_NONBLOCK, FileType},
-	process::{regs::Regs, scheduler, Process},
-	syscall::{Signal, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
+	syscall::Signal,
 };
 use core::{cmp::min, ffi::c_int};
 use utils::{
@@ -67,7 +67,9 @@ pub fn write(
 
 		{
 			let mem_space_guard = mem_space.lock();
-			let buf_slice = buf.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
+			let buf_slice = buf
+				.copy_from_user(&mem_space_guard, len)?
+				.ok_or(errno!(EFAULT))?;
 
 			// Write file
 			let mut open_file = open_file.lock();

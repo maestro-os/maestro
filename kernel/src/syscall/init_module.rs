@@ -21,8 +21,11 @@
 use crate::{
 	module,
 	module::Module,
-	process::Process,
-	syscall::{Args, SyscallSlice, SyscallString},
+	process::{
+		mem_space::copy::{SyscallSlice, SyscallString},
+		Process,
+	},
+	syscall::Args,
 };
 use core::ffi::c_ulong;
 use utils::{
@@ -44,10 +47,10 @@ pub fn init_module(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 		let image = module_image
-			.get(&mem_space_guard, len as usize)?
+			.copy_from_user(&mem_space_guard, len as usize)?
 			.ok_or_else(|| errno!(EFAULT))?;
 
-		Module::load(image)?
+		Module::load(&image)?
 	};
 
 	if !module::is_loaded(module.get_name()) {

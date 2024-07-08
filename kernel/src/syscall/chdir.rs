@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -38,7 +38,9 @@ pub fn chdir(Args(path): Args<SyscallString>) -> EResult<usize> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let path = path
+			.copy_from_user(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, true);

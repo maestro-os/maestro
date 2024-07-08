@@ -20,8 +20,8 @@
 //! descriptors.
 
 use crate::{
-	process::{scheduler, Process},
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, scheduler, Process},
+	syscall::Args,
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,
@@ -77,11 +77,11 @@ pub fn poll(
 			let mem_space_guard = mem_space.lock();
 
 			let fds = fds
-				.get(&mem_space_guard, nfds)?
+				.copy_from_user(&mem_space_guard, nfds)?
 				.ok_or_else(|| errno!(EFAULT))?;
 
 			// Checking the file descriptors list
-			for fd in fds {
+			for fd in &fds {
 				if fd.events as u32 & io::POLLIN != 0 {
 					// TODO
 					todo!();

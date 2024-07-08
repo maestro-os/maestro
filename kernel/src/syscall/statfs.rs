@@ -20,8 +20,11 @@
 
 use crate::{
 	file::{fs::Statfs, path::PathBuf, vfs, vfs::ResolutionSettings},
-	process::Process,
-	syscall::{Args, SyscallPtr, SyscallString},
+	process::{
+		mem_space::copy::{SyscallPtr, SyscallString},
+		Process,
+	},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -36,7 +39,9 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+		let path = path
+			.copy_from_user(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, false);
@@ -63,10 +68,7 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 		let mem_space = proc.get_mem_space().unwrap();
 		let mut mem_space_guard = mem_space.lock();
 
-		let buf = buf
-			.get_mut(&mut mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
-		*buf = stat;
+		buf.copy_to_user(&mut mem_space_guard, stat)?;
 	}
 
 	Ok(0)

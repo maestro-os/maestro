@@ -20,8 +20,8 @@
 
 use crate::{
 	file::fs::Statfs,
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
@@ -61,10 +61,7 @@ pub fn fstatfs(Args((fd, buf)): Args<(c_int, SyscallPtr<Statfs>)>) -> EResult<us
 		let mem_space = proc.get_mem_space().unwrap();
 		let mut mem_space_guard = mem_space.lock();
 
-		let buf = buf
-			.get_mut(&mut mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
-		*buf = stat;
+		buf.copy_to_user(&mut mem_space_guard, stat)?;
 	}
 
 	Ok(0)

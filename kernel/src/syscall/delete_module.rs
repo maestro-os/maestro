@@ -20,8 +20,8 @@
 
 use crate::{
 	module,
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use core::ffi::c_uint;
 use utils::{
@@ -44,8 +44,8 @@ pub fn delete_module(Args((name, _flags)): Args<(SyscallString, c_uint)>) -> ERe
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let name = name.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		String::try_from(name)?
+		name.copy_from_user(&mem_space_guard)?
+			.ok_or_else(|| errno!(EFAULT))?
 	};
 
 	// TODO handle dependency (don't unload a module that is required by another)

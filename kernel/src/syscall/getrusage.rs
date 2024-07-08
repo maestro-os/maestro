@@ -20,8 +20,8 @@
 //! process.
 
 use crate::{
-	process::{rusage::RUsage, Process},
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, rusage::RUsage, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
@@ -53,11 +53,7 @@ pub fn getrusage(Args((who, usage)): Args<(c_int, SyscallPtr<RUsage>)>) -> EResu
 
 	let mem_space = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space.lock();
-
-	let usage_val = usage
-		.get_mut(&mut mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-	*usage_val = rusage;
+	usage.copy_to_user(&mut mem_space_guard, rusage)?;
 
 	Ok(0)
 }

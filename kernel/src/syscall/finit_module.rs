@@ -21,8 +21,8 @@
 use crate::{
 	module,
 	module::Module,
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use core::{alloc::AllocError, ffi::c_int};
 use utils::{

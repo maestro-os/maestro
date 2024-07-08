@@ -27,8 +27,8 @@ use crate::{
 		FileType, Stat,
 	},
 	limits,
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -56,7 +56,7 @@ pub fn symlinkat(
 	let fds = fds_mutex.lock();
 
 	let target_slice = target
-		.get(&mem_space_guard)?
+		.copy_from_user(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
 	if target_slice.len() > limits::SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
@@ -64,12 +64,12 @@ pub fn symlinkat(
 	let target = PathBuf::try_from(target_slice)?;
 
 	let linkpath = linkpath
-		.get(&mem_space_guard)?
+		.copy_from_user(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let linkpath = Path::new(linkpath)?;
+	let linkpath = PathBuf::try_from(linkpath)?;
 
 	// Create link
-	let resolved = at::get_file(&fds, rs.clone(), newdirfd, linkpath, 0)?;
+	let resolved = at::get_file(&fds, rs.clone(), newdirfd, &linkpath, 0)?;
 	match resolved {
 		Resolved::Creatable {
 			parent,

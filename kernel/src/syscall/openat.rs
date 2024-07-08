@@ -29,8 +29,8 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		File, FileType, Stat,
 	},
-	process::Process,
-	syscall::{util::at, Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::{util::at, Args},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -111,7 +111,7 @@ pub fn openat(
 		let mem_space_guard = mem_space.lock();
 
 		let pathname = pathname
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(pathname)?;
 

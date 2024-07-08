@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -41,12 +41,12 @@ pub fn rename(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) ->
 		let mem_space_guard = mem_space.lock();
 
 		let oldpath = oldpath
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let old_path = PathBuf::try_from(oldpath)?;
 
 		let newpath = newpath
-			.get(&mem_space_guard)?
+			.copy_from_user(&mem_space_guard)?
 			.ok_or_else(|| errno!(EFAULT))?;
 		let new_path = PathBuf::try_from(newpath)?;
 

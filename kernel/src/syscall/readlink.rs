@@ -20,13 +20,18 @@
 
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
-	process::Process,
-	syscall::{Args, SyscallSlice, SyscallString},
+	process::{
+		mem_space::copy::{SyscallSlice, SyscallString},
+		Process,
+	},
+	syscall::Args,
 };
 use utils::{
+	collections::vec::Vec,
 	errno,
 	errno::{EResult, Errno},
 	io::IO,
+	vec,
 };
 
 pub fn readlink(
@@ -41,7 +46,7 @@ pub fn readlink(
 		let mem_space = mem_space_mutex.lock();
 
 		// Get file's path
-		let path = pathname.get(&mem_space)?.ok_or(errno!(EFAULT))?;
+		let path = pathname.copy_from_user(&mem_space)?.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		drop(mem_space);
@@ -57,7 +62,8 @@ pub fn readlink(
 	}
 	// Read link
 	let mut mem_space = mem_space_mutex.lock();
-	let buffer = buf.get_mut(&mut mem_space, bufsiz)?.ok_or(errno!(EFAULT))?;
-	let (len, _) = file.read(0, buffer)?;
+	let mut buffer = vec![0; bufsiz]?;
+	let (len, _) = file.read(0, &mut buffer)?;
+	buf.copy_to_user(&mut mem_space, &buffer)?;
 	Ok(len as _)
 }

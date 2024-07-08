@@ -19,8 +19,8 @@
 //! The `timer_settime` system call creates a per-process timer.
 
 use crate::{
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 	time::unit::{ITimerspec32, TimerT},
 };
 use core::ffi::c_int;
@@ -47,8 +47,7 @@ pub fn timer_settime(
 	let mut mem_space_guard = mem_space.lock();
 
 	let mut new_value_val = new_value
-		.get(&mem_space_guard)?
-		.cloned()
+		.copy_from_user(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
 
 	let old = {
@@ -66,10 +65,7 @@ pub fn timer_settime(
 		old
 	};
 
-	let old_value_val = old_value
-		.get_mut(&mut mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-	*old_value_val = old;
+	old_value.copy_to_user(&mut mem_space_guard, old)?;
 
 	Ok(0)
 }

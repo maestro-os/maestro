@@ -19,11 +19,11 @@
 //! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
 use crate::{
-	process::iovec::IOVec,
-	syscall::{Args, SyscallSlice},
+	process::{iovec::IOVec, mem_space::copy::SyscallSlice},
+	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::errno::{EResult, Errno};
+use utils::errno::EResult;
 
 pub fn preadv(
 	Args((fd, iov, iovcnt, offset)): Args<(c_int, SyscallSlice<IOVec>, c_int, isize)>,

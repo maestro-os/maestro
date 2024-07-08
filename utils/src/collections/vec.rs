@@ -188,6 +188,18 @@ impl<T> Vec<T> {
 		self.len
 	}
 
+	/// Sets the length of the vector. This is a low-level operation that maintains none of the
+	/// normal invariants of the type.
+	///
+	/// # Safety
+	///
+	/// - `new_len` must be less than or equal to [`Self::capacity`].
+	/// - The elements at `old_len..new_len` must be initialized.
+	pub unsafe fn set_len(&mut self, new_len: usize) {
+		debug_assert!(new_len <= self.capacity());
+		self.len = new_len;
+	}
+
 	/// Returns `true` if the vector contains no elements.
 	#[inline(always)]
 	pub fn is_empty(&self) -> bool {

@@ -19,11 +19,11 @@
 //! The `pwritev` system call allows to write sparse data on a file descriptor.
 
 use crate::{
-	process::iovec::IOVec,
-	syscall::{Args, SyscallSlice},
+	process::{iovec::IOVec, mem_space::copy::SyscallSlice},
+	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::errno::{EResult, Errno};
+use utils::errno::EResult;
 
 pub fn pwritev(
 	Args((fd, iov, iovcnt, offset)): Args<(c_int, SyscallSlice<IOVec>, c_int, isize)>,

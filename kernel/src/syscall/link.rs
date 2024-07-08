@@ -19,7 +19,10 @@
 //! The `link` system call allows to create a hard link.
 
 use super::Args;
-use crate::{file::path::Path, process::Process, syscall::SyscallString};
+use crate::{
+	file::path::{Path, PathBuf},
+	process::{mem_space::copy::SyscallString, Process},
+};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -33,14 +36,14 @@ pub fn link(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> E
 	let mem_space_guard = mem_space.lock();
 
 	let oldpath_str = oldpath
-		.get(&mem_space_guard)?
+		.copy_from_user(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let _old_path = Path::new(oldpath_str)?;
+	let _old_path = PathBuf::try_from(oldpath_str)?;
 
 	let newpath_str = newpath
-		.get(&mem_space_guard)?
+		.copy_from_user(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let _new_path = Path::new(newpath_str)?;
+	let _new_path = PathBuf::try_from(newpath_str)?;
 
 	// TODO Get file at `old_path`
 	// TODO Create the link to the file

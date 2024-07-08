@@ -21,8 +21,8 @@
 
 use crate::{
 	gdt, process,
-	process::{user_desc::UserDesc, Process},
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, user_desc::UserDesc, Process},
+	syscall::Args,
 };
 use core::mem::size_of;
 use utils::{
@@ -68,24 +68,25 @@ pub fn set_thread_area(Args(u_info): Args<SyscallPtr<UserDesc>>) -> EResult<usiz
 	let mem_space = proc.get_mem_space().unwrap().clone();
 	let mut mem_space_guard = mem_space.lock();
 
-	// A reference to the user_desc structure
-	let info = u_info
-		.get_mut(&mut mem_space_guard)?
+	// Read user_desc
+	let mut info = u_info
+		.copy_from_user(&mut mem_space_guard)?
 		.ok_or(errno!(EFAULT))?;
 
 	// Get the entry with its id
 	let (id, entry) = get_entry(&mut proc, info.get_entry_number())?;
 
-	// Update the entry
-	*entry = info.to_descriptor();
-	proc.update_tls(id);
-	gdt::flush();
-
 	// If the entry is allocated, tell the userspace its ID
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {
 		info.set_entry_number((TLS_BEGIN_INDEX + id) as _);
+		u_info.copy_to_user(&mut mem_space_guard, info.clone())?;
 	}
+
+	// Update the entry
+	*entry = info.to_descriptor();
+	proc.update_tls(id);
+	gdt::flush();
 
 	Ok(0)
 }

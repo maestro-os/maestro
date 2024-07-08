@@ -21,11 +21,14 @@
 use super::util::at;
 use crate::{
 	file::{
-		path::Path,
+		path::{Path, PathBuf},
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::Process,
-	syscall::{Args, SyscallPtr, SyscallString},
+	process::{
+		mem_space::copy::{SyscallPtr, SyscallString},
+		Process,
+	},
+	syscall::Args,
 	time::unit::{TimeUnit, Timespec},
 };
 use core::ffi::c_int;
@@ -53,15 +56,17 @@ pub fn utimensat(
 	let fds = proc.file_descriptors.as_ref().unwrap().lock();
 
 	let pathname = pathname
-		.get(&mem_space_guard)?
+		.copy_from_user(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	let pathname = Path::new(pathname)?;
+	let pathname = PathBuf::try_from(pathname)?;
 
-	let times_val = times.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
+	let times_val = times
+		.copy_from_user(&mem_space_guard)?
+		.ok_or_else(|| errno!(EFAULT))?;
 	let atime = times_val[0];
 	let mtime = times_val[1];
 
-	let Resolved::Found(file_mutex) = at::get_file(&fds, rs, dirfd, pathname, flags)? else {
+	let Resolved::Found(file_mutex) = at::get_file(&fds, rs, dirfd, &pathname, flags)? else {
 		return Err(errno!(ENOENT));
 	};
 	let mut file = file_mutex.lock();

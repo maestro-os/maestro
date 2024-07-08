@@ -23,8 +23,8 @@ use crate::{
 		perm::{Gid, Uid},
 		INode, Mode,
 	},
-	process::Process,
-	syscall::{Args, SyscallPtr},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 	time::unit::{TimeUnit, Timespec, TimestampScale},
 };
 use core::ffi::{c_int, c_long};
@@ -134,10 +134,7 @@ pub fn fstat64(Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>) -> EResult<
 		let mem_space = proc.get_mem_space().unwrap();
 		let mut mem_space_guard = mem_space.lock();
 
-		let statbuf = statbuf
-			.get_mut(&mut mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
-		*statbuf = stat;
+		statbuf.copy_to_user(&mut mem_space_guard, stat)?;
 	}
 
 	Ok(0)

@@ -27,8 +27,8 @@ use crate::{
 		vfs::ResolutionSettings,
 		FileType, Stat,
 	},
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -49,7 +49,9 @@ pub fn mknod(
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = pathname
+			.copy_from_user(&mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let umask = proc.umask;

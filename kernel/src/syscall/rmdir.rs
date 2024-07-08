@@ -22,8 +22,8 @@
 
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
-	process::Process,
-	syscall::{Args, SyscallString},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -40,7 +40,9 @@ pub fn rmdir(Args(pathname): Args<SyscallString>) -> EResult<usize> {
 		let mem_space = proc.get_mem_space().unwrap();
 		let mem_space_guard = mem_space.lock();
 
-		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = pathname
+			.copy_from_user(&mem_space_guard)?
+			.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		(path, rs)

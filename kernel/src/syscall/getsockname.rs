@@ -20,10 +20,13 @@
 
 use crate::{
 	file::{buffer, buffer::socket::Socket},
-	process::Process,
-	syscall::{Args, SyscallPtr, SyscallSlice},
+	process::{
+		mem_space::copy::{SyscallPtr, SyscallSlice},
+		Process,
+	},
+	syscall::Args,
 };
-use core::{any::Any, ffi::c_int};
+use core::{any::Any, cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -53,24 +56,14 @@ pub fn getsockname(
 
 	// Read and check buffer length
 	let addrlen_val = addrlen
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-	if *addrlen_val < 0 {
+		.copy_from_user(&mut mem_space_guard)?
+		.ok_or_else(|| errno!(EFAULT))?;
+	if addrlen_val < 0 {
 		return Err(errno!(EINVAL));
 	}
-	let addrlen_val = *addrlen_val as usize;
-
-	// Read socket name
-	let addr_slice = addr
-		.get_mut(&mut mem_space_guard, addrlen_val)?
-		.ok_or(errno!(EFAULT))?;
-	let len = sock.read_sockname(addr_slice) as _;
-
-	// Update actual length of the address
-	let addrlen_val = addrlen
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-	*addrlen_val = len;
-
+	let name = sock.get_sockname();
+	let len = min(name.len(), addrlen_val as _);
+	addr.copy_to_user(&mut mem_space_guard, &name[..len])?;
+	addrlen.copy_to_user(&mut mem_space_guard, len as _)?;
 	Ok(0)
 }

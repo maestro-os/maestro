@@ -21,13 +21,16 @@
 use super::select::{do_select, FDSet};
 use crate::{
 	file::fd::FileDescriptorTable,
-	process::mem_space::MemSpace,
-	syscall::{Args, SyscallPtr, SyscallSlice},
+	process::mem_space::{
+		copy::{SyscallPtr, SyscallSlice},
+		MemSpace,
+	},
+	syscall::Args,
 	time::unit::Timespec,
 };
 use core::ffi::c_int;
 use utils::{
-	errno::{EResult, Errno},
+	errno::EResult,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };

@@ -20,13 +20,14 @@
 
 use crate::{
 	process::{
+		mem_space::copy::SyscallPtr,
 		signal::{SigAction, SignalHandler},
 		Process,
 	},
-	syscall::{Args, Signal, SyscallPtr},
+	syscall::{Args, Signal},
 };
 use core::ffi::c_int;
-use utils::errno::{EResult, Errno};
+use utils::errno::EResult;
 
 pub fn rt_sigaction(
 	Args((signum, act, oldact)): Args<(c_int, SyscallPtr<SigAction>, SyscallPtr<SigAction>)>,
@@ -40,13 +41,11 @@ pub fn rt_sigaction(
 	let mut mem_space_guard = mem_space.lock();
 	let mut signal_handlers = proc.signal_handlers.lock();
 	// Save the old structure
-	if let Some(oldact) = oldact.get_mut(&mut mem_space_guard)? {
-		let action = signal_handlers[signal.get_id() as usize].get_action();
-		*oldact = action;
-	}
+	let old = signal_handlers[signal.get_id() as usize].get_action();
+	oldact.copy_to_user(&mut mem_space_guard, old)?;
 	// Set the new structure
-	if let Some(act) = act.get(&mem_space_guard)? {
-		signal_handlers[signal.get_id() as usize] = SignalHandler::Handler(*act);
+	if let Some(new) = act.copy_from_user(&mem_space_guard)? {
+		signal_handlers[signal.get_id() as usize] = SignalHandler::Handler(new);
 	}
 	Ok(0)
 }

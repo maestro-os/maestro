@@ -19,9 +19,13 @@
 //! The truncate syscall allows to truncate a file.
 
 use crate::{
-	file::{path::Path, vfs, vfs::ResolutionSettings},
-	process::Process,
-	syscall::{Args, SyscallString},
+	file::{
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+	},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use utils::{
 	errno,
@@ -37,10 +41,10 @@ pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<u
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let mem_space = mem_space_mutex.lock();
 
-	let path = path.get(&mem_space)?.ok_or(errno!(EFAULT))?;
-	let path = Path::new(path)?;
+	let path = path.copy_from_user(&mem_space)?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
 
-	let file_mutex = vfs::get_file_from_path(path, &rs)?;
+	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
 	file.truncate(length as _)?;
 

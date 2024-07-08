@@ -21,8 +21,7 @@
 use super::Args;
 use crate::{
 	file::{open_file::O_NONBLOCK, FileType},
-	process::{regs::Regs, scheduler, Process},
-	syscall::SyscallSlice,
+	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
 };
 use core::{cmp::min, ffi::c_int};
 use utils::{
@@ -66,14 +65,14 @@ pub fn read(
 
 		{
 			let mut mem_space_guard = mem_space.lock();
-			let buf_slice = buf
-				.get_mut(&mut mem_space_guard, len)?
-				.ok_or(errno!(EFAULT))?;
+			let buf = buf
+				.copy_from_user(&mut mem_space_guard, len)?
+				.ok_or_else(|| errno!(EFAULT))?;
 
 			// Read file
 			let mut open_file = open_file.lock();
 			let flags = open_file.get_flags();
-			let (len, eof) = open_file.read(0, buf_slice)?;
+			let (len, eof) = open_file.read(0, &buf)?;
 
 			if len == 0 && eof {
 				return Ok(0);

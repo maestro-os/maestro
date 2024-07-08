@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{buffer, buffer::socket::Socket},
-	process::Process,
-	syscall::{Args, SyscallSlice},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
@@ -56,9 +56,9 @@ pub fn bind(
 	let mem_space = proc.get_mem_space().unwrap();
 	let mem_space_guard = mem_space.lock();
 	let addr_slice = addr
-		.get(&mem_space_guard, addrlen as _)?
-		.ok_or(errno!(EFAULT))?;
+		.copy_from_user(&mem_space_guard, addrlen as _)?
+		.ok_or_else(|| errno!(EFAULT))?;
 
-	sock.bind(addr_slice)?;
+	sock.bind(&addr_slice)?;
 	Ok(0)
 }
