@@ -48,8 +48,8 @@ raw_copy:
 	push esi
 	push edi
 
-	mov edi, 12[esp]
-	mov esi, 16[esp]
+	mov esi, 12[esp]
+	mov edi, 16[esp]
 	mov ecx, 20[esp]
 
 	rep movsb
