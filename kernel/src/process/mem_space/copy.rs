@@ -35,27 +35,52 @@ use utils::{
 
 /// Tells whether the pointer is in bound with the userspace.
 fn bound_check(ptr: *const u8, n: usize) -> bool {
-	ptr as usize >= memory::PAGE_SIZE && (ptr as usize + n) < COPY_BUFFER as usize
+	ptr as usize >= memory::PAGE_SIZE && (ptr as usize).saturating_add(n) < COPY_BUFFER as usize
 }
 
-// TODO
+// TODO optimize copy
 global_asm!(
 	r"
 .global raw_copy
+.global copy_fault
 
 raw_copy:
+	push esp
+	mov ebp, esp
+	push esi
+	push edi
+
+	mov edi, 12[esp]
+	mov esi, 16[esp]
+	mov ecx, 20[esp]
+
+	rep movsb
+
+	pop edi
+	pop esi
+	mov eax, 1
+	ret
+
+copy_fault:
+	pop edi
+	pop esi
+	xor eax, eax
 	ret
 "
 );
 
 extern "C" {
-	/// TODO doc
-	fn raw_copy(src: *const u8, dst: *mut u8, n: usize) -> bool;
+	/// Copy, with access check. On success, the function returns `true`.
+	pub fn raw_copy(src: *const u8, dst: *mut u8, n: usize) -> bool;
+	/// Function to be called back when a page fault occurs while using [`raw_copy`].
+	pub fn copy_fault();
 }
 
-/// TODO doc
+/// Low level function to copy data from userspace to kernelspace, with access check.
+///
+/// If the access check fails, the function returns [`EFAULT`].
 unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
-	if !likely(bound_check(dst, n)) {
+	if !likely(bound_check(src, n)) {
 		return Err(errno!(EFAULT));
 	}
 	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
@@ -66,7 +91,9 @@ unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<
 	}
 }
 
-/// TODO doc
+/// Low level function to copy data from kernelspace to userspace, with access check.
+///
+/// If the access check fails, the function returns [`EFAULT`].
 unsafe fn copy_to_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
 	if !likely(bound_check(dst, n)) {
 		return Err(errno!(EFAULT));

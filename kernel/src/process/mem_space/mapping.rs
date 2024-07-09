@@ -197,12 +197,14 @@ impl MemMapping {
 			// so consider this has no cost
 			vmem::switch(vmem_transaction.vmem, move || {
 				vmem::write_ro(|| {
-					let dest = &mut *dest;
-					if copy {
-						dest.copy_from_slice(&*COPY_BUFFER);
-					} else {
-						dest.fill(0);
-					}
+					vmem::smap_disable(|| {
+						let dest = &mut *dest;
+						if copy {
+							dest.copy_from_slice(&*COPY_BUFFER);
+						} else {
+							dest.fill(0);
+						}
+					});
 				});
 			});
 		}

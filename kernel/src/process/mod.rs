@@ -40,7 +40,7 @@ pub mod user_desc;
 
 use crate::{
 	event,
-	event::CallbackResult,
+	event::{unlock_callbacks, CallbackResult},
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
@@ -53,7 +53,7 @@ use crate::{
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::{open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
+	process::{mem_space::copy, open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
 	register_get,
 	time::timer::TimerManager,
 	tty,
@@ -343,8 +343,20 @@ pub(crate) fn init() -> EResult<()> {
 			CallbackResult::Idle
 		}
 	};
-	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
+	let page_fault_callback = |_id: u32, code: u32, regs: &Regs, ring: u32| {
 		let accessed_ptr = register_get!("cr2") as *const c_void;
+		let pc = regs.eip.0;
+		// Check if the fault was caused by a user <-> kernel copy
+		if ring < 3 && (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
+			// Jump to `copy_fault`
+			let mut regs = regs.clone();
+			regs.eip.0 = copy::copy_fault as usize;
+			// TODO cleanup
+			unsafe {
+				unlock_callbacks(0x0e);
+				regs.switch(false);
+			}
+		}
 		// Get process
 		let curr_proc = Process::current();
 		let Some(curr_proc) = curr_proc else {

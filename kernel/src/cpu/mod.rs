@@ -109,6 +109,11 @@ pub unsafe fn set_write_protected(lock: bool) {
 /// caller's responsibility to ensure no invalid memory accesses are done afterward.
 #[inline]
 pub unsafe fn set_smap_enabled(enabled: bool) {
+	// TODO cache in RAM instead
+	let (_, smap) = supports_supervisor_prot();
+	if !smap {
+		return;
+	}
 	if enabled {
 		asm!("clac");
 	} else {
