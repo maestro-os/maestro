@@ -27,6 +27,7 @@ use core::ffi::c_uint;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	vec,
 };
 
 /// If set, bytes are draw from the randomness source instead of `urandom`.
@@ -57,13 +58,12 @@ pub fn getrandom(
 	let mem_space_mutex = proc.get_mem_space().unwrap();
 	let mut mem_space_guard = mem_space_mutex.lock();
 
-	if let Some(buf) = buf.copy_to_user(&mut mem_space_guard, buflen)? {
-		let mut i = 0;
-		while i < buf.len() {
-			i += pool.read(&mut buf[i..], bypass_threshold);
-		}
-		Ok(buf.len() as _)
-	} else {
-		Ok(0)
+	// TODO optimize
+	let mut buffer = vec![0u8; buflen]?;
+	let mut i = 0;
+	while i < buffer.len() {
+		i += pool.read(&mut buffer[i..], bypass_threshold);
 	}
+	buf.copy_to_user(&mut mem_space_guard, &buffer[..i])?;
+	Ok(i as _)
 }

@@ -29,6 +29,7 @@ use utils::{
 	errno::{EResult, Errno},
 	io,
 	io::IO,
+	vec,
 };
 
 // TODO O_ASYNC
@@ -64,15 +65,19 @@ pub fn read(
 		super::util::handle_signal(regs);
 
 		{
-			let mut mem_space_guard = mem_space.lock();
-			let buf = buf
-				.copy_from_user(&mut mem_space_guard, len)?
-				.ok_or_else(|| errno!(EFAULT))?;
+			// TODO perf: a buffer is necessarily required
+			let mut buffer = vec![0u8; count]?;
 
 			// Read file
 			let mut open_file = open_file.lock();
 			let flags = open_file.get_flags();
-			let (len, eof) = open_file.read(0, &buf)?;
+			let (len, eof) = open_file.read(0, &mut buffer)?;
+
+			// Write back
+			{
+				let mut mem_space_guard = mem_space.lock();
+				buf.copy_to_user(&mut mem_space_guard, &buffer[..(len as usize)])?;
+			}
 
 			if len == 0 && eof {
 				return Ok(0);

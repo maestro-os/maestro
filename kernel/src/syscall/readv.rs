@@ -38,6 +38,7 @@ use utils::{
 	errno::{EResult, Errno},
 	io,
 	io::IO,
+	vec,
 };
 
 // TODO Handle blocking writes (and thus, EINTR)
@@ -56,14 +57,9 @@ fn read(
 	iovcnt: usize,
 	open_file: &mut OpenFile,
 ) -> EResult<i32> {
-	let iov = {
-		let iov_slice = iov
-			.copy_from_user(mem_space, iovcnt)?
-			.ok_or(errno!(EFAULT))?;
-		let mut iov = Vec::new();
-		iov.extend_from_slice(iov_slice)?;
-		iov
-	};
+	let iov = iov
+		.copy_from_user(mem_space, iovcnt)?
+		.ok_or(errno!(EFAULT))?;
 
 	let mut total_len = 0;
 
@@ -77,14 +73,16 @@ fn read(
 		let l = min(i.iov_len, i32::MAX as usize - total_len);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
 
-		if let Some(slice) = ptr.copy_to_user(mem_space, l)? {
-			// The offset is ignored
-			let (len, eof) = open_file.read(0, slice)?;
-			total_len += len as usize;
-			if eof {
-				break;
-			}
+		// TODO perf: do not use a buffer
+		let mut buffer = vec![0u8; l]?;
+		// The offset is ignored
+		// FIXME: incorrect. should reuse the same buffer if not full
+		let (len, eof) = open_file.read(0, &mut buffer)?;
+		total_len += len as usize;
+		if eof {
+			break;
 		}
+		ptr.copy_to_user(mem_space, &buffer[..(len as usize)])?;
 	}
 
 	Ok(total_len as _)

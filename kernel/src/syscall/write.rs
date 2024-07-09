@@ -74,7 +74,7 @@ pub fn write(
 			// Write file
 			let mut open_file = open_file.lock();
 			let flags = open_file.get_flags();
-			let len = match open_file.write(0, buf_slice) {
+			let len = match open_file.write(0, &buf_slice) {
 				Ok(len) => len,
 				Err(e) => {
 					// If writing to a broken pipe, kill with SIGPIPE

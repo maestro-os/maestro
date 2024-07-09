@@ -56,7 +56,7 @@ pub fn getsockname(
 
 	// Read and check buffer length
 	let addrlen_val = addrlen
-		.copy_from_user(&mut mem_space_guard)?
+		.copy_from_user(&mem_space_guard)?
 		.ok_or_else(|| errno!(EFAULT))?;
 	if addrlen_val < 0 {
 		return Err(errno!(EINVAL));

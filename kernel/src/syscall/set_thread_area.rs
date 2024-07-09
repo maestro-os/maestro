@@ -70,7 +70,7 @@ pub fn set_thread_area(Args(u_info): Args<SyscallPtr<UserDesc>>) -> EResult<usiz
 
 	// Read user_desc
 	let mut info = u_info
-		.copy_from_user(&mut mem_space_guard)?
+		.copy_from_user(&mem_space_guard)?
 		.ok_or(errno!(EFAULT))?;
 
 	// Get the entry with its id

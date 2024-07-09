@@ -30,10 +30,7 @@ use crate::{
 	syscall::{ioctl, FromSyscallArg},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
-use core::{
-	cmp::min,
-	ffi::{c_int, c_void},
-};
+use core::ffi::{c_int, c_void};
 use utils::{
 	collections::hashmap::HashMap,
 	errno,

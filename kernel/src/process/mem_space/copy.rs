@@ -25,7 +25,7 @@ use crate::{
 };
 use core::{
 	fmt,
-	mem::size_of,
+	mem::{size_of, size_of_val},
 	ptr,
 	ptr::{null_mut, NonNull},
 };
@@ -162,11 +162,11 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 	///
 	/// If the slice is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
-	pub fn copy_to_user<'a>(&self, mem_space: &'a mut MemSpace, val: &[T]) -> EResult<()> {
+	pub fn copy_to_user(&self, mem_space: &mut MemSpace, val: &[T]) -> EResult<()> {
 		let Some(mut ptr) = self.0 else {
 			return Ok(());
 		};
-		let size = size_of::<T>() * val.len();
+		let size = size_of_val(val);
 		if !mem_space.can_access(ptr.as_ptr() as _, size, true, true) {
 			return Err(errno!(EFAULT));
 		}

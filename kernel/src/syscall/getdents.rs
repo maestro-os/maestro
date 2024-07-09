@@ -32,6 +32,7 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	vec,
 };
 
 /// A directory entry as returned by the `getdents*` system calls.
@@ -72,8 +73,8 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 		(mem_space, open_file_mutex)
 	};
 
-	let mut mem_space_guard = mem_space.lock();
-	dirp.copy_to_user(&mut mem_space_guard, count as _)?;
+	// TODO optimize: a buffer is not necessarily required here
+	let mut buffer = vec![0u8; count]?;
 
 	let mut open_file = open_file_mutex.lock();
 	let mut off = open_file.get_offset();
@@ -99,7 +100,7 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 				break;
 			}
 			E::write(
-				dirp_slice,
+				&mut buffer,
 				buff_off,
 				entry.inode,
 				entry.entry_type,
@@ -109,6 +110,9 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 		}
 	}
 	open_file.set_offset(off);
+	// Write back
+	let mut mem_space_guard = mem_space.lock();
+	dirp.copy_to_user(&mut mem_space_guard, &buffer[..buff_off])?;
 	Ok(buff_off as _)
 }
 
