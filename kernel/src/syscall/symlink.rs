@@ -46,20 +46,13 @@ pub fn symlink(Args((target, linkpath)): Args<(SyscallString, SyscallString)>) -
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let target_slice = target
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		if target_slice.len() > limits::SYMLINK_MAX {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		let target = PathBuf::try_from(target_slice)?;
 
-		let linkpath = linkpath
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let linkpath = linkpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let linkpath = PathBuf::try_from(linkpath)?;
 
 		(target, linkpath, rs)

@@ -38,25 +38,18 @@ pub fn timer_create(
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
+	let timerid_val = timerid.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 
-	let timerid_val = timerid
-		.copy_from_user(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-
-	let sevp_val = sevp
-		.copy_from_user(&mem_space_guard)?
-		.unwrap_or_else(|| SigEvent {
-			sigev_notify: SIGEV_SIGNAL,
-			sigev_signo: Signal::SIGALRM.get_id() as _,
-			sigev_value: SigVal {
-				sigval_ptr: timerid_val,
-			},
-			sigev_notify_function: None,
-			sigev_notify_attributes: None,
-			sigev_notify_thread_id: proc.tid,
-		});
+	let sevp_val = sevp.copy_from_user()?.unwrap_or_else(|| SigEvent {
+		sigev_notify: SIGEV_SIGNAL,
+		sigev_signo: Signal::SIGALRM.get_id() as _,
+		sigev_value: SigVal {
+			sigval_ptr: timerid_val,
+		},
+		sigev_notify_function: None,
+		sigev_notify_attributes: None,
+		sigev_notify_thread_id: proc.tid,
+	});
 
 	let id = proc
 		.timer_manager()
@@ -64,7 +57,7 @@ pub fn timer_create(
 		.create_timer(clockid, sevp_val)?;
 
 	// Return timer ID
-	timerid.copy_to_user(&mut mem_space_guard, id as _)?;
+	timerid.copy_to_user(id as _)?;
 
 	Ok(0)
 }

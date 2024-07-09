@@ -189,21 +189,13 @@ pub fn execve(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let path = pathname
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, true);
-		let argv = argv.iter(&mem_space_guard);
+		let argv = argv.iter();
 		let (file, argv) = get_file(&path, &rs, argv)?;
-		let envp = envp
-			.iter(&mem_space_guard)
-			.collect::<EResult<CollectResult<Vec<_>>>>()?
-			.0?;
+		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
 		(file, rs, argv, envp)
 	};
 	// Disable interrupt to prevent stack switching while using a temporary stack,

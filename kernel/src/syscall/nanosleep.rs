@@ -36,16 +36,7 @@ pub fn nanosleep(
 ) -> EResult<usize> {
 	let start_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
 
-	let delay = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		req.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?
-	};
+	let delay = req.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 
 	// Looping until time is elapsed or the process is interrupted by a signal
 	loop {
@@ -58,16 +49,8 @@ pub fn nanosleep(
 		// TODO Make the current process sleep
 	}
 
-	// Setting remaining time to zero
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		rem.copy_to_user(&mut mem_space_guard, Timespec32::default())?;
-	}
+	// Set remaining time to zero
+	rem.copy_to_user(Timespec32::default())?;
 
 	Ok(0)
 }

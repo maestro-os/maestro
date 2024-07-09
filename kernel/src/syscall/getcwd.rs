@@ -44,10 +44,7 @@ pub fn getcwd(Args((buf, size)): Args<(SyscallSlice<u8>, usize)>) -> EResult<usi
 		return Err(errno!(ERANGE));
 	}
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-
-	buf.copy_to_user(&mut mem_space_guard, cwd.as_bytes())?;
+	buf.copy_to_user(cwd.as_bytes())?;
 
 	Ok(buf.as_ptr() as _)
 }

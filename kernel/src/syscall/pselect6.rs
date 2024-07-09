@@ -45,11 +45,9 @@ pub fn pselect6(
 		SyscallPtr<Timespec>,
 		SyscallSlice<u8>,
 	)>,
-	mem_space: Arc<IntMutex<MemSpace>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_select(
-		mem_space,
 		fds,
 		nfds as _,
 		readfds,

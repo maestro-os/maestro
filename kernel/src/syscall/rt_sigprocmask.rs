@@ -42,15 +42,12 @@ pub fn rt_sigprocmask(
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mut mem_space_guard = mem_space.lock();
-
 	// Save old set
 	let curr = proc.sigmask.as_slice_mut();
 	let len = min(curr.len(), sigsetsize as _);
-	oldset.copy_to_user(&mut mem_space_guard, &curr[..len])?;
+	oldset.copy_to_user(&curr[..len])?;
 
-	let set_slice = set.copy_from_user(&mem_space_guard, sigsetsize as _)?;
+	let set_slice = set.copy_from_user(sigsetsize as _)?;
 	if let Some(set) = set_slice {
 		// Applies the operation
 		match how {

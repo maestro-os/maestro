@@ -43,12 +43,7 @@ pub fn timer_settime(
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-
-	let mut new_value_val = new_value
-		.copy_from_user(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	let mut new_value_val = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 
 	let old = {
 		let manager_mutex = proc.timer_manager();
@@ -65,7 +60,7 @@ pub fn timer_settime(
 		old
 	};
 
-	old_value.copy_to_user(&mut mem_space_guard, old)?;
+	old_value.copy_to_user(old)?;
 
 	Ok(0)
 }

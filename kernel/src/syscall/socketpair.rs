@@ -37,8 +37,6 @@ pub fn socketpair(
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap();
-
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
 	let sock_type = SocketType::try_from(r#type as u32)?;
 	if !proc.access_profile.can_use_sock_domain(&sock_domain)
@@ -63,8 +61,7 @@ pub fn socketpair(
 	let mut fds = fds_mutex.lock();
 	let (fd0_id, fd1_id) = fds.create_fd_pair(open_file0, open_file1)?;
 
-	let mut mem_space_guard = mem_space.lock();
-	sv.copy_to_user(&mut mem_space_guard, [fd0_id as _, fd1_id as _])?;
+	sv.copy_to_user([fd0_id as _, fd1_id as _])?;
 
 	Ok(0)
 }

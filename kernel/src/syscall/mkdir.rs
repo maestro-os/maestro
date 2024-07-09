@@ -45,13 +45,8 @@ pub fn mkdir(Args((pathname, mode)): Args<(SyscallString, file::Mode)>) -> EResu
 
 		let mode = mode & !proc.umask;
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
 		// Path to the directory to create
-		let path = pathname
-			.copy_from_user(&mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
+		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, true);

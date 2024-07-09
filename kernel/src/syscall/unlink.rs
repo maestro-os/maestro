@@ -38,9 +38,7 @@ pub fn unlink(Args(pathname): Args<SyscallString>) -> EResult<usize> {
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
 
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space = mem_space_mutex.lock();
-	let path = pathname.copy_from_user(&mem_space)?.ok_or(errno!(EFAULT))?;
+	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 
 	let rs = ResolutionSettings::for_process(&proc, true);

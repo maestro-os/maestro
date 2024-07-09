@@ -41,10 +41,7 @@ pub fn _newselect(
 		SyscallPtr<FDSet>,
 		SyscallPtr<Timeval>,
 	)>,
-	mem_space: Arc<IntMutex<MemSpace>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_select(
-		mem_space, fds, nfds as _, readfds, writefds, exceptfds, timeout, None,
-	)
+	do_select(fds, nfds as _, readfds, writefds, exceptfds, timeout, None)
 }

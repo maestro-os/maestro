@@ -43,11 +43,7 @@ pub fn sethostname(Args((name, len)): Args<(SyscallSlice<u8>, usize)>) -> EResul
 		return Err(errno!(EPERM));
 	}
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let name = name
-		.copy_from_user(&mem_space_guard, len)?
-		.ok_or(errno!(EFAULT))?;
+	let name = name.copy_from_user(len)?.ok_or(errno!(EFAULT))?;
 
 	let mut hostname = crate::HOSTNAME.lock();
 	*hostname = name;

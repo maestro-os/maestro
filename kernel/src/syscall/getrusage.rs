@@ -51,9 +51,7 @@ pub fn getrusage(Args((who, usage)): Args<(c_int, SyscallPtr<RUsage>)>) -> EResu
 		_ => return Err(errno!(EINVAL)),
 	};
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-	usage.copy_to_user(&mut mem_space_guard, rusage)?;
+	usage.copy_to_user(rusage)?;
 
 	Ok(0)
 }

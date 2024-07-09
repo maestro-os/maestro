@@ -50,19 +50,12 @@ pub fn utimensat(
 
 	let rs = ResolutionSettings::for_process(&proc, true);
 
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mem_space_guard = mem_space.lock();
-
 	let fds = proc.file_descriptors.as_ref().unwrap().lock();
 
-	let pathname = pathname
-		.copy_from_user(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let pathname = PathBuf::try_from(pathname)?;
 
-	let times_val = times
-		.copy_from_user(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	let times_val = times.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let atime = times_val[0];
 	let mtime = times_val[1];
 

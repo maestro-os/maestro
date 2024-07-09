@@ -51,19 +51,12 @@ pub fn getrandom(
 		return Err(errno!(EAGAIN));
 	}
 
-	// Getting current process
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space_mutex.lock();
-
 	// TODO optimize
 	let mut buffer = vec![0u8; buflen]?;
 	let mut i = 0;
 	while i < buffer.len() {
 		i += pool.read(&mut buffer[i..], bypass_threshold);
 	}
-	buf.copy_to_user(&mut mem_space_guard, &buffer[..i])?;
+	buf.copy_to_user(&buffer[..i])?;
 	Ok(i as _)
 }

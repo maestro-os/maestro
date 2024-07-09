@@ -203,13 +203,8 @@ pub fn do_waitpid(
 				check_waitable(&mut proc, pid, &mut wstatus_val, options, &mut rusage_val)?;
 
 			// Setting values to userspace
-			{
-				let mem_space = proc.get_mem_space().unwrap();
-				let mut mem_space_guard = mem_space.lock();
-
-				wstatus.copy_to_user(&mut mem_space_guard, wstatus_val)?;
-				rusage.copy_to_user(&mut mem_space_guard, rusage_val)?;
-			}
+			wstatus.copy_to_user(wstatus_val)?;
+			rusage.copy_to_user(rusage_val)?;
 
 			// On success, return
 			if let Some(p) = result {

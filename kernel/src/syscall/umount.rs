@@ -45,13 +45,8 @@ pub fn umount(Args(target): Args<SyscallString>) -> EResult<usize> {
 
 	let rs = ResolutionSettings::for_process(&proc, true);
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-
 	// Get target directory
-	let target_slice = target
-		.copy_from_user(&mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
+	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let target_path = PathBuf::try_from(target_slice)?;
 	let target_dir = vfs::get_file_from_path(&target_path, &rs)?;
 	let target_dir = target_dir.lock();

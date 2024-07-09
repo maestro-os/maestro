@@ -44,12 +44,7 @@ pub fn do_chown(
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space = mem_space.lock();
-
-		let path = pathname
-			.copy_from_user(&mem_space)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, follow_links);

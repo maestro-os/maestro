@@ -127,14 +127,9 @@ pub fn statx(
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let mem_space_guard = mem_space.lock();
-
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
-		let path = pathname
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		(fds_mutex, path, rs)
@@ -213,10 +208,6 @@ pub fn statx(
 		__padding1: [0; 13],
 	};
 	// Write structure
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-	statxbuff.copy_to_user(&mut mem_space_guard, statx_val)?;
+	statxbuff.copy_to_user(statx_val)?;
 	Ok(0)
 }

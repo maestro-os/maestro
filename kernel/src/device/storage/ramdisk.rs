@@ -27,7 +27,6 @@ use crate::{
 	device,
 	device::{id, Device, DeviceHandle, DeviceID, DeviceType},
 	file::path::PathBuf,
-	process::mem_space::MemSpace,
 	syscall::ioctl,
 };
 use core::{ffi::c_void, mem::ManuallyDrop, num::NonZeroU64};
@@ -37,8 +36,6 @@ use utils::{
 	errno::{AllocResult, EResult},
 	format,
 	io::IO,
-	lock::IntMutex,
-	ptr::arc::Arc,
 };
 
 /// The ramdisks' major number.
@@ -138,12 +135,7 @@ impl RAMDiskHandle {
 }
 
 impl DeviceHandle for RAMDiskHandle {
-	fn ioctl(
-		&mut self,
-		_mem_space: Arc<IntMutex<MemSpace>>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}

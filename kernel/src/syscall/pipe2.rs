@@ -39,12 +39,9 @@ pub fn pipe2(Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>) -> ER
 	}
 
 	let proc_mutex = Process::current_assert();
-	let (mem_space, fds_mutex) = {
+	let fds_mutex = {
 		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		(mem_space, fds_mutex)
+		proc.file_descriptors.clone().unwrap()
 	};
 
 	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
@@ -56,8 +53,7 @@ pub fn pipe2(Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>) -> ER
 	let mut fds = fds_mutex.lock();
 	let (fd0_id, fd1_id) = fds.create_fd_pair(open_file0, open_file1)?;
 
-	let mut mem_space_guard = mem_space.lock();
-	pipefd.copy_to_user(&mut mem_space_guard, [fd0_id as _, fd1_id as _])?;
+	pipefd.copy_to_user([fd0_id as _, fd1_id as _])?;
 
 	Ok(0)
 }

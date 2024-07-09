@@ -82,12 +82,6 @@ pub fn supports_supervisor_prot() -> (bool, bool) {
 	(smep, smap)
 }
 
-/// Tells whether the read-only pages protection is enabled.
-#[inline]
-pub fn is_write_protected() -> bool {
-	register_get!("cr0") & (1 << 16) != 0
-}
-
 /// Sets whether the kernel can write to read-only pages.
 ///
 /// # Safety
@@ -102,12 +96,6 @@ pub unsafe fn set_write_protected(lock: bool) {
 		val &= !(1 << 16);
 	}
 	register_set!("cr0", val);
-}
-
-/// Tells whether SMAP is enabled.
-#[inline]
-pub fn is_smap_enabled() -> bool {
-	get_rflags() & (1 << 18) == 0
 }
 
 /// Sets or clears the AC flag to disable or enable SMAP.

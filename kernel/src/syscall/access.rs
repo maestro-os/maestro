@@ -70,14 +70,9 @@ pub fn do_access(
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 
-		let mem_space_mutex = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space_mutex.lock();
-
 		let fds = proc.file_descriptors.as_ref().unwrap().lock();
 
-		let pathname = pathname
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EINVAL))?;
+		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 		let path = PathBuf::try_from(pathname)?;
 
 		let Resolved::Found(file) =

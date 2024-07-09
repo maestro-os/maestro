@@ -46,19 +46,11 @@ use utils::{
 /// Writes the given chunks to the file.
 ///
 /// Arguments:
-/// - `mem_space` is the memory space of the current process
 /// - `iov` is the set of chunks
 /// - `iovcnt` is the number of chunks in `iov`
 /// - `open_file` is the file to write to
-fn write(
-	mem_space: &MemSpace,
-	iov: &SyscallSlice<IOVec>,
-	iovcnt: usize,
-	open_file: &mut OpenFile,
-) -> EResult<i32> {
-	let iov = iov
-		.copy_from_user(mem_space, iovcnt)?
-		.ok_or(errno!(EFAULT))?;
+fn write(iov: &SyscallSlice<IOVec>, iovcnt: usize, open_file: &mut OpenFile) -> EResult<i32> {
+	let iov = iov.copy_from_user(iovcnt)?.ok_or(errno!(EFAULT))?;
 	let mut total_len = 0;
 
 	for i in iov {
@@ -71,7 +63,7 @@ fn write(
 		let l = min(i.iov_len, usize::MAX - total_len);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
 
-		if let Some(buffer) = ptr.copy_from_user(mem_space, l)? {
+		if let Some(buffer) = ptr.copy_from_user(l)? {
 			// The offset is ignored
 			total_len += open_file.write(0, &buffer)? as usize;
 		}
@@ -99,18 +91,16 @@ pub fn do_writev(
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
-	let (proc, mem_space, open_file_mutex) = {
+	let (proc, open_file_mutex) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
 		let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
 
 		drop(proc);
-		(proc_mutex, mem_space, open_file_mutex)
+		(proc_mutex, open_file_mutex)
 	};
 	// Validation
 	let (start_off, update_off) = match offset {
@@ -136,8 +126,7 @@ pub fn do_writev(
 			let prev_off = open_file.get_offset();
 			open_file.set_offset(start_off);
 
-			let mem_space_guard = mem_space.lock();
-			let len = match write(&mem_space_guard, &iov, iovcnt as _, &mut open_file) {
+			let len = match write(&iov, iovcnt as _, &mut open_file) {
 				Ok(len) => len,
 				Err(e) => {
 					// If writing to a broken pipe, kill with SIGPIPE

@@ -38,10 +38,7 @@ pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<u
 
 	let rs = ResolutionSettings::for_process(&proc, true);
 
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space = mem_space_mutex.lock();
-
-	let path = path.copy_from_user(&mem_space)?.ok_or(errno!(EFAULT))?;
+	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 
 	let file_mutex = vfs::get_file_from_path(&path, &rs)?;

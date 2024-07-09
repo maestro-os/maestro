@@ -126,16 +126,6 @@ pub fn fstat64(Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>) -> EResult<
 			TimestampScale::Nanosecond,
 		)),
 	};
-
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		statbuf.copy_to_user(&mut mem_space_guard, stat)?;
-	}
-
+	statbuf.copy_to_user(stat)?;
 	Ok(0)
 }

@@ -305,11 +305,11 @@ pub fn flush_current() {
 /// read-only data writable.
 ///
 /// Writing on read-only regions of memory has an undefined behavior.
+#[inline]
 pub unsafe fn write_ro<F: FnOnce() -> T, T>(f: F) -> T {
-	let enabled = cpu::is_write_protected();
 	cpu::set_write_protected(false);
 	let res = f();
-	cpu::set_write_protected(enabled);
+	cpu::set_write_protected(true);
 	res
 }
 
@@ -322,11 +322,11 @@ pub unsafe fn write_ro<F: FnOnce() -> T, T>(f: F) -> T {
 ///
 /// Enabling SMAP removes access to memory addresses that were previously accessible. It is the
 /// caller's responsibility to ensure no invalid memory accesses are done afterward.
+#[inline]
 pub unsafe fn smap_disable<F: FnOnce() -> T, T>(f: F) -> T {
-	let enabled = cpu::is_smap_enabled();
 	cpu::set_smap_enabled(false);
 	let res = f();
-	cpu::set_smap_enabled(enabled);
+	cpu::set_smap_enabled(true);
 	res
 }
 

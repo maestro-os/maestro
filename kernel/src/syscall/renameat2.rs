@@ -59,19 +59,12 @@ pub fn renameat2(
 
 		let rs = ResolutionSettings::for_process(&proc, false);
 
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let mem_space_guard = mem_space.lock();
-
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
-		let oldpath = oldpath
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let oldpath = PathBuf::try_from(oldpath)?;
 
-		let newpath = newpath
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let newpath = PathBuf::try_from(newpath)?;
 
 		(fds_mutex, oldpath, newpath, rs)

@@ -93,9 +93,7 @@ impl FDSet {
 /// - `exceptfds` is the bitfield of fds to check for exceptional conditions.
 /// - `timeout` is the timeout after which the syscall returns.
 /// - `sigmask` TODO
-#[allow(clippy::too_many_arguments)]
 pub fn do_select<T: TimeUnit>(
-	mem_space: Arc<IntMutex<MemSpace>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	nfds: u32,
 	readfds: SyscallPtr<FDSet>,
@@ -107,21 +105,15 @@ pub fn do_select<T: TimeUnit>(
 	// Get start timestamp
 	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
 	// Get timeout
-	let timeout = timeout
-		.copy_from_user(&mem_space.lock())?
-		.unwrap_or_default();
+	let timeout = timeout.copy_from_user()?.unwrap_or_default();
 	// Tells whether the syscall immediately returns
 	let polling = timeout.is_zero();
 	// The end timestamp
 	let end = start + timeout;
 	// Read
-	let (mut readfds_set, mut writefds_set, mut exceptfds_set) = {
-		let mem_space_guard = mem_space.lock();
-		let readfds_set = readfds.copy_from_user(&mem_space_guard)?;
-		let writefds_set = writefds.copy_from_user(&mem_space_guard)?;
-		let exceptfds_set = exceptfds.copy_from_user(&mem_space_guard)?;
-		(readfds_set, writefds_set, exceptfds_set)
-	};
+	let mut readfds_set = readfds.copy_from_user()?;
+	let mut writefds_set = writefds.copy_from_user()?;
+	let mut exceptfds_set = exceptfds.copy_from_user()?;
 	let res = loop {
 		let mut events_count = 0;
 		// Set if every bitfields are set to zero
@@ -197,17 +189,14 @@ pub fn do_select<T: TimeUnit>(
 		scheduler::end_tick();
 	};
 	// Write back
-	{
-		let mut mem_space_guard = mem_space.lock();
-		if let Some(val) = readfds_set {
-			readfds.copy_to_user(&mut mem_space_guard, val)?;
-		}
-		if let Some(val) = writefds_set {
-			writefds.copy_to_user(&mut mem_space_guard, val)?;
-		}
-		if let Some(val) = exceptfds_set {
-			exceptfds.copy_to_user(&mut mem_space_guard, val)?;
-		}
+	if let Some(val) = readfds_set {
+		readfds.copy_to_user(val)?;
+	}
+	if let Some(val) = writefds_set {
+		writefds.copy_to_user(val)?;
+	}
+	if let Some(val) = exceptfds_set {
+		exceptfds.copy_to_user(val)?;
 	}
 	Ok(res)
 }
@@ -221,10 +210,7 @@ pub fn select(
 		SyscallPtr<FDSet>,
 		SyscallPtr<Timeval>,
 	)>,
-	mem_space: Arc<IntMutex<MemSpace>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_select(
-		mem_space, fds, nfds as _, readfds, writefds, exceptfds, timeout, None,
-	)
+	do_select(fds, nfds as _, readfds, writefds, exceptfds, timeout, None)
 }

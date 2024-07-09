@@ -62,13 +62,9 @@ pub fn sendto(
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 
 	// Get slices
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let _buf_slice = buf
-		.copy_from_user(&mem_space_guard, len)?
-		.ok_or(errno!(EFAULT))?;
+	let _buf_slice = buf.copy_from_user(len)?.ok_or(errno!(EFAULT))?;
 	let _dest_addr_slice = dest_addr
-		.copy_from_user(&mem_space_guard, addrlen as _)?
+		.copy_from_user(addrlen as _)?
 		.ok_or(errno!(EFAULT))?;
 
 	// TODO

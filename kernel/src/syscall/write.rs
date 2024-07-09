@@ -44,18 +44,16 @@ pub fn write(
 	if len == 0 {
 		return Ok(0);
 	}
-	let (proc, mem_space, open_file) = {
+	let (proc, open_file) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
 		let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
 
 		drop(proc);
-		(proc_mutex, mem_space, open_file_mutex)
+		(proc_mutex, open_file_mutex)
 	};
 	// Validation
 	let file_type = open_file.lock().get_file().lock().stat.file_type;
@@ -66,10 +64,7 @@ pub fn write(
 		super::util::handle_signal(regs);
 
 		{
-			let mem_space_guard = mem_space.lock();
-			let buf_slice = buf
-				.copy_from_user(&mem_space_guard, len)?
-				.ok_or(errno!(EFAULT))?;
+			let buf_slice = buf.copy_from_user(len)?.ok_or(errno!(EFAULT))?;
 
 			// Write file
 			let mut open_file = open_file.lock();

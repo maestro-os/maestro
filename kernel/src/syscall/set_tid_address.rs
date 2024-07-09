@@ -31,10 +31,8 @@ pub fn set_tid_address(Args(tidptr): Args<SyscallPtr<c_int>>) -> EResult<usize> 
 	let mut proc = proc_mutex.lock();
 	proc.clear_child_tid = tidptr.0;
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
 	// Set the TID at pointer if accessible
-	tidptr.copy_to_user(&mut mem_space_guard, proc.tid as _)?;
+	tidptr.copy_to_user(proc.tid as _)?;
 
 	Ok(proc.tid as _)
 }

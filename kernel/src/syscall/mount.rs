@@ -55,19 +55,10 @@ pub fn mount(
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
 		// Get strings
-		let source_slice = source
-			.copy_from_user(&mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
-		let target_slice = target
-			.copy_from_user(&mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
-		let filesystemtype_slice = filesystemtype
-			.copy_from_user(&mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
+		let source_slice = source.copy_from_user()?.ok_or(errno!(EFAULT))?;
+		let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
+		let filesystemtype_slice = filesystemtype.copy_from_user()?.ok_or(errno!(EFAULT))?;
 
 		// Get the mount source
 		let mount_source = MountSource::new(&source_slice)?;

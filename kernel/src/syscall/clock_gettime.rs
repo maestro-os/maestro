@@ -35,15 +35,6 @@ pub fn clock_gettime(
 	Args((clockid, tp)): Args<(ClockIdT, SyscallPtr<Timespec>)>,
 ) -> EResult<usize> {
 	let curr_time = clock::current_time_struct::<Timespec>(clockid)?;
-
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-		tp.copy_to_user(&mut mem_space_guard, curr_time)?;
-	}
-
+	tp.copy_to_user(curr_time)?;
 	Ok(0)
 }

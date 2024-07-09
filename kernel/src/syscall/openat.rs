@@ -107,12 +107,7 @@ pub fn openat(
 		let follow_link = flags & open_file::O_NOFOLLOW == 0;
 		let rs = ResolutionSettings::for_process(&proc, follow_link);
 
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let mem_space_guard = mem_space.lock();
-
-		let pathname = pathname
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(pathname)?;
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();

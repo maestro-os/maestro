@@ -47,19 +47,11 @@ use utils::{
 /// Reads the given chunks from the file.
 ///
 /// Arguments:
-/// - `mem_space` is the memory space of the current process
 /// - `iov` is the set of chunks
 /// - `iovcnt` is the number of chunks in `iov`
 /// - `open_file` is the file to read from
-fn read(
-	mem_space: &mut MemSpace,
-	iov: &SyscallSlice<IOVec>,
-	iovcnt: usize,
-	open_file: &mut OpenFile,
-) -> EResult<i32> {
-	let iov = iov
-		.copy_from_user(mem_space, iovcnt)?
-		.ok_or(errno!(EFAULT))?;
+fn read(iov: &SyscallSlice<IOVec>, iovcnt: usize, open_file: &mut OpenFile) -> EResult<i32> {
+	let iov = iov.copy_from_user(iovcnt)?.ok_or(errno!(EFAULT))?;
 
 	let mut total_len = 0;
 
@@ -82,7 +74,7 @@ fn read(
 		if eof {
 			break;
 		}
-		ptr.copy_to_user(mem_space, &buffer[..(len as usize)])?;
+		ptr.copy_to_user(&buffer[..(len as usize)])?;
 	}
 
 	Ok(total_len as _)
@@ -108,18 +100,16 @@ pub fn do_readv(
 		return Err(errno!(EINVAL));
 	}
 	// TODO Handle flags
-	let (proc, mem_space, open_file_mutex) = {
+	let (proc, open_file_mutex) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
 		let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
 
 		drop(proc);
-		(proc_mutex, mem_space, open_file_mutex)
+		(proc_mutex, open_file_mutex)
 	};
 	// Validation
 	let (start_off, update_off) = match offset {
@@ -144,8 +134,7 @@ pub fn do_readv(
 			let prev_off = open_file.get_offset();
 			open_file.set_offset(start_off);
 
-			let mut mem_space_guard = mem_space.lock();
-			let len = read(&mut mem_space_guard, &iov, iovcnt as _, &mut open_file)?;
+			let len = read(&iov, iovcnt as _, &mut open_file)?;
 
 			// Restore previous offset
 			if !update_off {

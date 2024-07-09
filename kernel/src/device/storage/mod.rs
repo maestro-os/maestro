@@ -36,7 +36,7 @@ use crate::{
 		path::{Path, PathBuf},
 		Mode,
 	},
-	process::mem_space::{copy::SyscallPtr, MemSpace},
+	process::mem_space::copy::SyscallPtr,
 	syscall::{ioctl, FromSyscallArg},
 };
 use core::{
@@ -51,7 +51,7 @@ use utils::{
 	errno::EResult,
 	format,
 	io::IO,
-	lock::{IntMutex, Mutex},
+	lock::Mutex,
 	ptr::arc::{Arc, Weak},
 	vec, TryClone,
 };
@@ -278,12 +278,7 @@ impl StorageDeviceHandle {
 }
 
 impl DeviceHandle for StorageDeviceHandle {
-	fn ioctl(
-		&mut self,
-		mem_space: Arc<IntMutex<MemSpace>>,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::HDIO_GETGEO => {
 				// The total size of the disk
@@ -312,9 +307,8 @@ impl DeviceHandle for StorageDeviceHandle {
 				};
 
 				// Write to userspace
-				let mut mem_space_guard = mem_space.lock();
 				let hd_geo_ptr = SyscallPtr::<HdGeometry>::from_syscall_arg(argp as usize);
-				hd_geo_ptr.copy_to_user(&mut mem_space_guard, hd_geo)?;
+				hd_geo_ptr.copy_to_user(hd_geo)?;
 
 				Ok(0)
 			}
@@ -341,9 +335,8 @@ impl DeviceHandle for StorageDeviceHandle {
 					}
 				};
 
-				let mut mem_space_guard = mem_space.lock();
 				let size_ptr = SyscallPtr::<u32>::from_syscall_arg(argp as usize);
-				size_ptr.copy_to_user(&mut mem_space_guard, blk_size as _)?;
+				size_ptr.copy_to_user(blk_size as _)?;
 
 				Ok(0)
 			}
@@ -351,9 +344,8 @@ impl DeviceHandle for StorageDeviceHandle {
 			ioctl::BLKGETSIZE64 => {
 				let size = self.get_size();
 
-				let mut mem_space_guard = mem_space.lock();
 				let size_ptr = SyscallPtr::<u64>::from_syscall_arg(argp as usize);
-				size_ptr.copy_to_user(&mut mem_space_guard, size)?;
+				size_ptr.copy_to_user(size)?;
 
 				Ok(0)
 			}

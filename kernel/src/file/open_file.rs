@@ -23,21 +23,13 @@ use super::{buffer, mountpoint, path::PathBuf, DeviceID, File, FileLocation, Fil
 use crate::{
 	device,
 	device::DeviceType,
-	process::{
-		mem_space::{copy::SyscallPtr, MemSpace},
-		Process,
-	},
+	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::{ioctl, FromSyscallArg},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use core::ffi::{c_int, c_void};
 use utils::{
-	collections::hashmap::HashMap,
-	errno,
-	errno::EResult,
-	io::IO,
-	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
+	collections::hashmap::HashMap, errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc,
 };
 
 /// Read only.
@@ -218,22 +210,16 @@ impl OpenFile {
 	}
 
 	/// Performs an ioctl operation on the file.
-	pub fn ioctl(
-		&mut self,
-		mem_space: Arc<IntMutex<MemSpace>>,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32> {
+	pub fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let mut file = self.get_file().lock();
 		if !matches!(file.stat.file_type, FileType::Regular) {
-			return file.ioctl(mem_space, request, argp);
+			return file.ioctl(request, argp);
 		}
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
 				let count = file.get_size().saturating_sub(self.curr_off);
-				let mut mem_space_guard = mem_space.lock();
 				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
-				count_ptr.copy_to_user(&mut mem_space_guard, count as _)?;
+				count_ptr.copy_to_user(count as _)?;
 				Ok(0)
 			}
 			_ => Err(errno!(ENOTTY)),

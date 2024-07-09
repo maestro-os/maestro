@@ -55,11 +55,8 @@ pub fn splice(
 		let input = fds.get_fd(fd_in)?.get_open_file().clone();
 		let output = fds.get_fd(fd_out)?.get_open_file().clone();
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let off_in = off_in.copy_from_user(&mem_space_guard)?;
-		let off_out = off_out.copy_from_user(&mem_space_guard)?;
+		let off_in = off_in.copy_from_user()?;
+		let off_out = off_out.copy_from_user()?;
 
 		(input, off_in, output, off_out)
 	};

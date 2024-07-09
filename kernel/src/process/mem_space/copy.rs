@@ -18,15 +18,13 @@
 
 //! Userspace memory access utilities.
 
-use crate::{
-	memory::vmem,
-	process::{mem_space::MemSpace, Process},
-	syscall::FromSyscallArg,
-};
+use crate::{memory, memory::vmem, process::mem_space::COPY_BUFFER, syscall::FromSyscallArg};
 use core::{
+	arch::global_asm,
+	cmp::min,
 	fmt,
-	mem::{size_of, size_of_val},
-	ptr,
+	intrinsics::likely,
+	mem::{size_of, size_of_val, MaybeUninit},
 	ptr::{null_mut, NonNull},
 };
 use utils::{
@@ -34,6 +32,52 @@ use utils::{
 	errno,
 	errno::EResult,
 };
+
+/// Tells whether the pointer is in bound with the userspace.
+fn bound_check(ptr: *const u8, n: usize) -> bool {
+	ptr as usize >= memory::PAGE_SIZE && (ptr as usize + n) < COPY_BUFFER as usize
+}
+
+// TODO
+global_asm!(
+	r"
+.global raw_copy
+
+raw_copy:
+	ret
+"
+);
+
+extern "C" {
+	/// TODO doc
+	fn raw_copy(src: *const u8, dst: *mut u8, n: usize) -> bool;
+}
+
+/// TODO doc
+unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
+	if !likely(bound_check(dst, n)) {
+		return Err(errno!(EFAULT));
+	}
+	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
+	if likely(res) {
+		Ok(())
+	} else {
+		Err(errno!(EFAULT))
+	}
+}
+
+/// TODO doc
+unsafe fn copy_to_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
+	if !likely(bound_check(dst, n)) {
+		return Err(errno!(EFAULT));
+	}
+	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
+	if likely(res) {
+		Ok(())
+	} else {
+		Err(errno!(EFAULT))
+	}
+}
 
 /// Wrapper for a pointer.
 pub struct SyscallPtr<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
@@ -55,16 +99,19 @@ impl<T: Sized + fmt::Debug> SyscallPtr<T> {
 	/// If the pointer is null, the function returns `None`.
 	///
 	/// If the value is not accessible, the function returns an error.
-	pub fn copy_from_user(&self, mem_space: &MemSpace) -> EResult<Option<T>> {
+	pub fn copy_from_user(&self) -> EResult<Option<T>> {
 		let Some(ptr) = self.0 else {
 			return Ok(None);
 		};
-		if !mem_space.can_access(ptr.as_ptr() as _, size_of::<T>(), true, false) {
-			return Err(errno!(EFAULT));
+		unsafe {
+			let mut val = MaybeUninit::<T>::uninit();
+			copy_from_user_raw(
+				ptr.as_ptr() as *const _,
+				val.as_mut_ptr() as *mut _,
+				size_of::<T>(),
+			)?;
+			Ok(Some(val.assume_init()))
 		}
-		// Safe because access is checked before
-		let val = unsafe { vmem::smap_disable(|| ptr::read_volatile(ptr.as_ref())) };
-		Ok(Some(val))
 	}
 
 	/// Copies the value to userspace.
@@ -75,20 +122,16 @@ impl<T: Sized + fmt::Debug> SyscallPtr<T> {
 	///
 	/// If the value is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
-	pub fn copy_to_user(&self, mem_space: &mut MemSpace, val: T) -> EResult<()> {
-		let Some(mut ptr) = self.0 else {
+	pub fn copy_to_user(&self, val: T) -> EResult<()> {
+		let Some(ptr) = self.0 else {
 			return Ok(());
 		};
-		if !mem_space.can_access(ptr.as_ptr() as _, size_of::<T>(), true, true) {
-			return Err(errno!(EFAULT));
-		}
-		// Allocate memory to make sure it is writable
-		mem_space.alloc(ptr.as_ptr() as _, size_of::<T>())?;
-		// Safe because access is checked before
 		unsafe {
-			vmem::smap_disable(|| {
-				ptr::write_volatile(ptr.as_mut(), val);
-			});
+			copy_to_user_raw(
+				&val as *const _ as *const _,
+				ptr.as_ptr() as *mut _,
+				size_of::<T>(),
+			)?;
 		}
 		Ok(())
 	}
@@ -96,12 +139,8 @@ impl<T: Sized + fmt::Debug> SyscallPtr<T> {
 
 impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-		let mem_space_mutex = proc.get_mem_space().unwrap();
-		let mem_space = mem_space_mutex.lock();
 		let ptr = self.as_ptr();
-		match self.copy_from_user(&mem_space) {
+		match self.copy_from_user() {
 			Ok(Some(val)) => write!(fmt, "{ptr:p} = {val:?}"),
 			Ok(None) => write!(fmt, "NULL"),
 			Err(e) => write!(fmt, "{ptr:p} = (cannot read: {e})"),
@@ -133,23 +172,20 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 	/// If the pointer is null, the function returns `None`.
 	///
 	/// If the slice is not accessible, the function returns an error.
-	pub fn copy_from_user(&self, mem_space: &MemSpace, len: usize) -> EResult<Option<Vec<T>>> {
+	pub fn copy_from_user(&self, len: usize) -> EResult<Option<Vec<T>>> {
 		let Some(ptr) = self.0 else {
 			return Ok(None);
 		};
-		let size = size_of::<T>() * len;
-		if !mem_space.can_access(ptr.as_ptr() as _, size, true, false) {
-			return Err(errno!(EFAULT));
-		}
-		let mut arr = Vec::with_capacity(len)?;
-		// Safe because access is checked before
+		let mut buf: Vec<T> = Vec::with_capacity(len)?;
 		unsafe {
-			arr.set_len(len);
-			vmem::smap_disable(|| {
-				ptr::copy_nonoverlapping(ptr.as_ref(), arr.as_mut_ptr(), len);
-			});
+			buf.set_len(len);
+			copy_from_user_raw(
+				ptr.as_ptr() as *const _,
+				buf.as_mut_ptr() as *mut _,
+				size_of::<T>() * len,
+			)?;
+			Ok(Some(buf))
 		}
-		Ok(Some(arr))
 	}
 
 	/// Copies the value to userspace.
@@ -162,21 +198,16 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 	///
 	/// If the slice is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
-	pub fn copy_to_user(&self, mem_space: &mut MemSpace, val: &[T]) -> EResult<()> {
-		let Some(mut ptr) = self.0 else {
+	pub fn copy_to_user(&self, val: &[T]) -> EResult<()> {
+		let Some(ptr) = self.0 else {
 			return Ok(());
 		};
-		let size = size_of_val(val);
-		if !mem_space.can_access(ptr.as_ptr() as _, size, true, true) {
-			return Err(errno!(EFAULT));
-		}
-		// Allocate memory to make sure it is writable
-		mem_space.alloc(ptr.as_ptr() as _, size)?;
-		// Safe because access is checked before
 		unsafe {
-			vmem::smap_disable(|| {
-				ptr::copy_nonoverlapping(val.as_ptr(), ptr.as_mut(), val.len());
-			});
+			copy_to_user_raw(
+				val.as_ptr() as *const _,
+				ptr.as_ptr() as *mut _,
+				size_of_val(val),
+			)?;
 		}
 		Ok(())
 	}
@@ -209,35 +240,48 @@ impl SyscallString {
 	/// Returns an immutable reference to the string.
 	///
 	/// If the string is not accessible, the function returns an error.
-	pub fn copy_from_user(&self, mem_space: &MemSpace) -> EResult<Option<String>> {
+	pub fn copy_from_user(&self) -> EResult<Option<String>> {
 		let Some(ptr) = self.0 else {
 			return Ok(None);
 		};
-		// FIXME: data race
-		let len = mem_space
-			.can_access_string(ptr.as_ptr(), true, false)
-			.ok_or_else(|| errno!(EFAULT))?;
-		// Safe because access is checked before
-		let mut arr = Vec::with_capacity(len)?;
-		// Safe because access is checked before
-		unsafe {
-			arr.set_len(len);
-			vmem::smap_disable(|| {
-				ptr::copy_nonoverlapping(ptr.as_ref(), arr.as_mut_ptr(), len);
-			});
+		// TODO use empirical data to find the best value, and whether an arithmetic progression is
+		// the optimal solution
+		const CHUNK_SIZE: usize = 128;
+		let mut buf = Vec::new();
+		loop {
+			let buf_cursor = buf.len();
+			let user_cursor = ptr.as_ptr() as usize + buf_cursor;
+			let page_end = user_cursor.next_multiple_of(memory::PAGE_SIZE);
+			let buf_size = min(page_end - user_cursor, CHUNK_SIZE);
+			// Read the next chunk
+			buf.reserve(buf_size)?;
+			unsafe {
+				buf.set_len(buf_cursor + buf_size);
+				copy_from_user_raw(
+					user_cursor as *const _,
+					&mut buf[buf_cursor] as *mut _,
+					buf_size,
+				)?;
+			}
+			// Check for a nul character
+			let end = buf[buf_cursor..(buf_cursor + buf_size)]
+				.iter()
+				.enumerate()
+				.find(|(_, b)| **b == b'\0')
+				.map(|(i, _)| i);
+			if let Some(end) = end {
+				buf.truncate(end);
+				break;
+			}
 		}
-		Ok(Some(arr.into()))
+		Ok(Some(buf.into()))
 	}
 }
 
 impl fmt::Debug for SyscallString {
 	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-		let mem_space_mutex = proc.get_mem_space().unwrap();
-		let mem_space = mem_space_mutex.lock();
 		let ptr = self.as_ptr();
-		match self.copy_from_user(&mem_space) {
+		match self.copy_from_user() {
 			Ok(Some(s)) => write!(fmt, "{ptr:p} = {s:?}"),
 			Ok(None) => write!(fmt, "NULL"),
 			Err(e) => write!(fmt, "{ptr:p} = (cannot read: {e})"),
@@ -261,9 +305,8 @@ impl SyscallArray {
 	}
 
 	/// Returns an iterator over the array's elements.
-	pub fn iter<'a>(&'a self, mem_space: &'a MemSpace) -> SyscallArrayIterator {
+	pub fn iter(&self) -> SyscallArrayIterator {
 		SyscallArrayIterator {
-			mem_space,
 			arr: self,
 			i: 0,
 		}
@@ -272,13 +315,9 @@ impl SyscallArray {
 
 impl fmt::Debug for SyscallArray {
 	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-		let mem_space_mutex = proc.get_mem_space().unwrap();
-		let mem_space = mem_space_mutex.lock();
 		let mut list = fmt.debug_list();
 		let mut list_ref = &mut list;
-		for elem in self.iter(&mem_space) {
+		for elem in self.iter() {
 			list_ref = match elem {
 				Ok(s) => list_ref.entry(&s),
 				Err(e) => list_ref.entry(&e),
@@ -290,8 +329,6 @@ impl fmt::Debug for SyscallArray {
 
 /// Iterators over elements of [`SyscallArray`].
 pub struct SyscallArrayIterator<'a> {
-	/// The memory space.
-	mem_space: &'a MemSpace,
 	/// The array.
 	arr: &'a SyscallArray,
 	/// The current index.
@@ -307,7 +344,7 @@ impl<'a> Iterator for SyscallArrayIterator<'a> {
 		};
 		let str_ptr = unsafe { arr.add(self.i).read_volatile() };
 		let res = SyscallString(NonNull::new(str_ptr as _))
-			.copy_from_user(self.mem_space)
+			.copy_from_user()
 			.transpose();
 		// Do not increment if reaching `NULL`
 		if res.is_some() {

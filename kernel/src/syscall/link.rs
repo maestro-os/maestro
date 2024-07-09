@@ -29,20 +29,10 @@ use utils::{
 };
 
 pub fn link(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-
-	let oldpath_str = oldpath
-		.copy_from_user(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	let oldpath_str = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let _old_path = PathBuf::try_from(oldpath_str)?;
 
-	let newpath_str = newpath
-		.copy_from_user(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	let newpath_str = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let _new_path = PathBuf::try_from(newpath_str)?;
 
 	// TODO Get file at `old_path`

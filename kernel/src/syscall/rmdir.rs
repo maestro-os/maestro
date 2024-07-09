@@ -37,12 +37,7 @@ pub fn rmdir(Args(pathname): Args<SyscallString>) -> EResult<usize> {
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let path = pathname
-			.copy_from_user(&mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
+		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		(path, rs)

@@ -55,11 +55,7 @@ pub fn setsockopt(
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 
 	// Get optval slice
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let optval_slice = optval
-		.copy_from_user(&mem_space_guard, optlen)?
-		.ok_or(errno!(EFAULT))?;
+	let optval_slice = optval.copy_from_user(optlen)?.ok_or(errno!(EFAULT))?;
 
 	sock.set_opt(level, optname, &optval_slice)
 		.map(|opt| opt as _)

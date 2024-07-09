@@ -43,18 +43,16 @@ pub fn read(
 	if len == 0 {
 		return Ok(0);
 	}
-	let (proc, mem_space, open_file) = {
+	let (proc, open_file) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 		let fds = fds_mutex.lock();
 		let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
 
 		drop(proc);
-		(proc_mutex, mem_space, open_file_mutex)
+		(proc_mutex, open_file_mutex)
 	};
 	// Validation
 	let file_type = open_file.lock().get_file().lock().stat.file_type;
@@ -74,10 +72,7 @@ pub fn read(
 			let (len, eof) = open_file.read(0, &mut buffer)?;
 
 			// Write back
-			{
-				let mut mem_space_guard = mem_space.lock();
-				buf.copy_to_user(&mut mem_space_guard, &buffer[..(len as usize)])?;
-			}
+			buf.copy_to_user(&buffer[..(len as usize)])?;
 
 			if len == 0 && eof {
 				return Ok(0);

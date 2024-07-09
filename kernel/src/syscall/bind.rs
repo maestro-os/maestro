@@ -53,10 +53,8 @@ pub fn bind(
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 
 	// Get addr slice
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
 	let addr_slice = addr
-		.copy_from_user(&mem_space_guard, addrlen as _)?
+		.copy_from_user(addrlen as _)?
 		.ok_or_else(|| errno!(EFAULT))?;
 
 	sock.bind(&addr_slice)?;

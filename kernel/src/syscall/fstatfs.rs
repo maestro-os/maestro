@@ -53,16 +53,8 @@ pub fn fstatfs(Args((fd, buf)): Args<(c_int, SyscallPtr<Statfs>)>) -> EResult<us
 	let fs = mountpoint.get_filesystem();
 	let stat = fs.get_stat()?;
 
-	// Writing the statfs structure to userspace
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		buf.copy_to_user(&mut mem_space_guard, stat)?;
-	}
+	// Write the statfs structure to userspace
+	buf.copy_to_user(stat)?;
 
 	Ok(0)
 }

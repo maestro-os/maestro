@@ -44,10 +44,8 @@ pub fn init_module(
 			return Err(errno!(EPERM));
 		}
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
 		let image = module_image
-			.copy_from_user(&mem_space_guard, len as usize)?
+			.copy_from_user(len as usize)?
 			.ok_or_else(|| errno!(EFAULT))?;
 
 		Module::load(&image)?

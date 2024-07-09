@@ -41,11 +41,7 @@ pub fn delete_module(Args((name, _flags)): Args<(SyscallString, c_uint)>) -> ERe
 			return Err(errno!(EPERM));
 		}
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		name.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?
+		name.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?
 	};
 
 	// TODO handle dependency (don't unload a module that is required by another)

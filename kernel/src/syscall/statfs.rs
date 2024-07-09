@@ -36,12 +36,7 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let path = path
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let rs = ResolutionSettings::for_process(&proc, false);
@@ -61,15 +56,7 @@ pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult
 	};
 
 	// Write structure to userspace
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		buf.copy_to_user(&mut mem_space_guard, stat)?;
-	}
+	buf.copy_to_user(stat)?;
 
 	Ok(0)
 }

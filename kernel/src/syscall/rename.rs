@@ -37,17 +37,10 @@ pub fn rename(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) ->
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let oldpath = oldpath
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let old_path = PathBuf::try_from(oldpath)?;
 
-		let newpath = newpath
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let new_path = PathBuf::try_from(newpath)?;
 
 		let rs = ResolutionSettings::for_process(&proc, false);

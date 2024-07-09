@@ -25,23 +25,18 @@ use crate::{
 	device::{tty::TTYDeviceHandle, Device, DeviceHandle, DeviceID},
 	file::{blocking::BlockHandler, path::PathBuf},
 	logger::LOGGER,
-	process::{mem_space::MemSpace, Process},
+	process::Process,
 	syscall::ioctl,
 };
 use core::{cmp::min, ffi::c_void, mem::ManuallyDrop};
-use utils::{errno, errno::EResult, io, io::IO, lock::IntMutex, ptr::arc::Arc};
+use utils::{errno, errno::EResult, io, io::IO};
 
 /// Device which does nothing.
 #[derive(Default)]
 pub struct NullDeviceHandle {}
 
 impl DeviceHandle for NullDeviceHandle {
-	fn ioctl(
-		&mut self,
-		_mem_space: Arc<IntMutex<MemSpace>>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -66,12 +61,7 @@ impl IO for NullDeviceHandle {
 pub struct ZeroDeviceHandle {}
 
 impl DeviceHandle for ZeroDeviceHandle {
-	fn ioctl(
-		&mut self,
-		_mem_space: Arc<IntMutex<MemSpace>>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -102,12 +92,7 @@ pub struct RandomDeviceHandle {
 }
 
 impl DeviceHandle for RandomDeviceHandle {
-	fn ioctl(
-		&mut self,
-		_mem_space: Arc<IntMutex<MemSpace>>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -161,12 +146,7 @@ impl IO for RandomDeviceHandle {
 pub struct URandomDeviceHandle {}
 
 impl DeviceHandle for URandomDeviceHandle {
-	fn ioctl(
-		&mut self,
-		_mem_space: Arc<IntMutex<MemSpace>>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}
@@ -205,12 +185,7 @@ impl IO for URandomDeviceHandle {
 pub struct KMsgDeviceHandle {}
 
 impl DeviceHandle for KMsgDeviceHandle {
-	fn ioctl(
-		&mut self,
-		_mem_space: Arc<IntMutex<MemSpace>>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		// TODO
 		Err(errno!(EINVAL))
 	}

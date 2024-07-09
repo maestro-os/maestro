@@ -50,12 +50,7 @@ pub fn chroot(Args(path): Args<SyscallString>) -> EResult<usize> {
 
 	// Get file
 	let file = {
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let path = path
-			.copy_from_user(&mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
+		let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		vfs::get_file_from_path(&path, &rs)?

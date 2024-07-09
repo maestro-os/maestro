@@ -29,17 +29,7 @@ use utils::errno::EResult;
 // TODO Watch for timestamp overflow
 
 pub fn time(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-
-	// Getting the current timestamp
 	let time = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-
-	// Writing the timestamp to the given location, if not null
-	tloc.copy_to_user(&mut mem_space_guard, time as _)?;
-
+	tloc.copy_to_user(time as _)?;
 	Ok(time as _)
 }

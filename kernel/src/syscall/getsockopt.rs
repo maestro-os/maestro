@@ -55,9 +55,7 @@ pub fn getsockopt(
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 	let val = sock.get_opt(level, optname)?;
 	// Write back
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
 	let len = min(val.len(), optlen);
-	optval.copy_to_user(&mut mem_space_guard, &val[..len])?;
+	optval.copy_to_user(&val[..len])?;
 	Ok(len as _)
 }

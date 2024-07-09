@@ -65,13 +65,8 @@ pub fn set_thread_area(Args(u_info): Args<SyscallPtr<UserDesc>>) -> EResult<usiz
 	let proc_mutex = Process::current_assert();
 	let mut proc = proc_mutex.lock();
 
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mut mem_space_guard = mem_space.lock();
-
 	// Read user_desc
-	let mut info = u_info
-		.copy_from_user(&mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
+	let mut info = u_info.copy_from_user()?.ok_or(errno!(EFAULT))?;
 
 	// Get the entry with its id
 	let (id, entry) = get_entry(&mut proc, info.get_entry_number())?;
@@ -80,7 +75,7 @@ pub fn set_thread_area(Args(u_info): Args<SyscallPtr<UserDesc>>) -> EResult<usiz
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {
 		info.set_entry_number((TLS_BEGIN_INDEX + id) as _);
-		u_info.copy_to_user(&mut mem_space_guard, info.clone())?;
+		u_info.copy_to_user(info.clone())?;
 	}
 
 	// Update the entry

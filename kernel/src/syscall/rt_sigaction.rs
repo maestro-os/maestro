@@ -37,14 +37,12 @@ pub fn rt_sigaction(
 	// Get process
 	let proc_mutex = Process::current_assert();
 	let proc = proc_mutex.lock();
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mut mem_space_guard = mem_space.lock();
 	let mut signal_handlers = proc.signal_handlers.lock();
 	// Save the old structure
 	let old = signal_handlers[signal.get_id() as usize].get_action();
-	oldact.copy_to_user(&mut mem_space_guard, old)?;
+	oldact.copy_to_user(old)?;
 	// Set the new structure
-	if let Some(new) = act.copy_from_user(&mem_space_guard)? {
+	if let Some(new) = act.copy_from_user()? {
 		signal_handlers[signal.get_id() as usize] = SignalHandler::Handler(new);
 	}
 	Ok(0)

@@ -52,10 +52,8 @@ pub fn connect(
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space = mem_space_mutex.lock();
 	let _addr_slice = addr
-		.copy_from_user(&mem_space, addrlen as _)?
+		.copy_from_user(addrlen as _)?
 		.ok_or_else(|| errno!(EFAULT))?;
 
 	// TODO connect socket

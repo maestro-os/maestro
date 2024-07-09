@@ -22,7 +22,7 @@ use super::Buffer;
 use crate::{
 	file::{buffer::BlockHandler, FileType, Stat},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
-	process::{mem_space::MemSpace, Process},
+	process::Process,
 	syscall::ioctl,
 };
 use core::ffi::{c_int, c_void};
@@ -31,7 +31,7 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	io::IO,
-	lock::{IntMutex, Mutex},
+	lock::Mutex,
 	ptr::arc::Arc,
 	vec, TryDefault,
 };
@@ -210,12 +210,7 @@ impl Buffer for Socket {
 		self.block_handler.add_waiting_process(proc, mask)
 	}
 
-	fn ioctl(
-		&mut self,
-		_mem_space: Arc<IntMutex<MemSpace>>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

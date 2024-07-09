@@ -38,21 +38,16 @@ pub fn readlink(
 	Args((pathname, buf, bufsiz)): Args<(SyscallString, SyscallSlice<u8>, usize)>,
 ) -> EResult<usize> {
 	// process lock has to be dropped to avoid deadlock with procfs
-	let (mem_space_mutex, path, rs) = {
+	let (path, rs) = {
 		let proc_mutex = Process::current_assert();
 		let proc = proc_mutex.lock();
 
-		let mem_space_mutex = proc.get_mem_space().unwrap().clone();
-		let mem_space = mem_space_mutex.lock();
-
 		// Get file's path
-		let path = pathname.copy_from_user(&mem_space)?.ok_or(errno!(EFAULT))?;
+		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
-		drop(mem_space);
-
 		let rs = ResolutionSettings::for_process(&proc, false);
-		(mem_space_mutex, path, rs)
+		(path, rs)
 	};
 	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
@@ -61,9 +56,8 @@ pub fn readlink(
 		return Err(errno!(EINVAL));
 	}
 	// Read link
-	let mut mem_space = mem_space_mutex.lock();
 	let mut buffer = vec![0; bufsiz]?;
 	let (len, _) = file.read(0, &mut buffer)?;
-	buf.copy_to_user(&mut mem_space, &buffer)?;
+	buf.copy_to_user(&buffer)?;
 	Ok(len as _)
 }

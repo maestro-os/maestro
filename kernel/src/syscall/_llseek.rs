@@ -51,7 +51,6 @@ pub fn _llseek(
 		c_uint,
 	)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
-	mem_space_mutex: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	let fds = fds_mutex.lock();
 	let open_file_mutex = fds.get_fd(fd as _)?.get_open_file();
@@ -72,10 +71,7 @@ pub fn _llseek(
 		_ => return Err(errno!(EINVAL)),
 	};
 	// Write the result to the userspace
-	{
-		let mut mem_space = mem_space_mutex.lock();
-		result.copy_to_user(&mut mem_space, off)?;
-	}
+	result.copy_to_user(off)?;
 	// Set the new offset
 	open_file.set_offset(off);
 	Ok(0)

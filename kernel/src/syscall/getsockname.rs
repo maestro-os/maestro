@@ -51,19 +51,14 @@ pub fn getsockname(
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-
 	// Read and check buffer length
-	let addrlen_val = addrlen
-		.copy_from_user(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	let addrlen_val = addrlen.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	if addrlen_val < 0 {
 		return Err(errno!(EINVAL));
 	}
 	let name = sock.get_sockname();
 	let len = min(name.len(), addrlen_val as _);
-	addr.copy_to_user(&mut mem_space_guard, &name[..len])?;
-	addrlen.copy_to_user(&mut mem_space_guard, len as _)?;
+	addr.copy_to_user(&name[..len])?;
+	addrlen.copy_to_user(len as _)?;
 	Ok(0)
 }

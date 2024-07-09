@@ -43,14 +43,9 @@ pub fn fchmodat(
 
 		let rs = ResolutionSettings::for_process(&proc, true);
 
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let mem_space_guard = mem_space.lock();
-
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
-		let pathname = pathname
-			.copy_from_user(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(pathname)?;
 
 		(fds_mutex, path, rs)
