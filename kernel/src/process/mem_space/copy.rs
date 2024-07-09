@@ -45,8 +45,6 @@ global_asm!(
 .global copy_fault
 
 raw_copy:
-	push esp
-	mov ebp, esp
 	push esi
 	push edi
 
