@@ -63,7 +63,7 @@ pub fn read(
 		super::util::handle_signal(regs);
 
 		{
-			// TODO perf: a buffer is necessarily required
+			// TODO perf: a buffer is not necessarily required
 			let mut buffer = vec![0u8; count]?;
 
 			// Read file

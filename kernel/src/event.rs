@@ -166,14 +166,16 @@ where
 /// Unlocks the callback vector with id `id`. This function is to be used in
 /// case of an event callback that never returns.
 ///
+/// This function does not reenable interruptions.
+///
 /// # Safety
 ///
 /// This function is marked as unsafe since it may lead to concurrency issues if
-/// not used properly. It must be called from the same CPU kernel as the one that
+/// not used properly. It must be called from the same CPU core as the one that
 /// locked the mutex since unlocking changes the interrupt flag.
 #[no_mangle]
 pub unsafe extern "C" fn unlock_callbacks(id: usize) {
-	CALLBACKS[id].unlock();
+	CALLBACKS[id].unlock(false);
 }
 
 /// Feeds the entropy pool using the given data.

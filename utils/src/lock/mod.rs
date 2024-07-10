@@ -16,21 +16,18 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements locks, useful to prevent race conditions in
-//! multithreaded code for example.
+//! Mutually exclusive access primitive implementation.
 //!
-//! Mutual exclusion is used to protect data from concurrent access.
-//!
-//! A `Mutex` allows to ensure that one, and only thread accesses the data stored
-//! into it at the same time. Preventing race conditions. They usually work
-//! using spinlocks.
+//! A `Mutex` allows to ensure that one, and only thread accesses its data at once, preventing race
+//! conditions.
 //!
 //! One particularity with kernel development is that multi-threading is not the
 //! only way to get concurrency issues. Another factor to take into account is
 //! that fact that an interruption may be triggered at any moment while
-//! executing the code unless disabled. For this reason, mutexes in the kernel
-//! are equipped with an option allowing to disable interrupts while being
-//! locked.
+//! executing the code unless disabled.
+//!
+//! For this reason, mutexes in the kernel are equipped with an option allowing to disable
+//! interrupts while being locked.
 //!
 //! If an exception is raised while a mutex that disables interruptions is
 //! acquired, the behaviour is undefined.
@@ -44,45 +41,30 @@ use crate::{
 };
 use core::{
 	cell::UnsafeCell,
-	fmt,
-	fmt::Formatter,
+	fmt::{self, Formatter},
 	ops::{Deref, DerefMut},
-};
-
-/// Structure representing the saved state of interruptions for the current
-/// thread.
-struct State {
-	/// The number of currently locked mutexes that disable interruptions.
-	ref_count: usize,
-	/// Tells whether interruptions were enabled before locking mutexes.
-	enabled: bool,
-}
-
-// TODO When implementing multicore, use an array. One element per kernel
-/// Saved state of interruptions for the current thread.
-///
-/// This variable doesn't require synchronization since interruptions are always
-/// disabled when it is accessed.
-static mut INT_DISABLE_REFS: State = State {
-	ref_count: 0,
-	enabled: false,
 };
 
 /// Type used to declare a guard meant to unlock the associated `Mutex` at the
 /// moment the execution gets out of the scope of its declaration.
-pub struct MutexGuard<'m, T: ?Sized, const INT: bool>(&'m Mutex<T, INT>);
+pub struct MutexGuard<'m, T: ?Sized, const INT: bool> {
+	/// The locked mutex.
+	mutex: &'m Mutex<T, INT>,
+	/// The interrupt status before locking. This field is relevant only if `INT == false`.
+	int_state: bool,
+}
 
 impl<T: ?Sized, const INT: bool> Deref for MutexGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe { &(*self.0.inner.get()).data }
+		unsafe { &(*self.mutex.inner.get()).data }
 	}
 }
 
 impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		unsafe { &mut (*self.0.inner.get()).data }
+		unsafe { &mut (*self.mutex.inner.get()).data }
 	}
 }
 
@@ -97,7 +79,7 @@ impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for MutexGuard<'_, T, I
 impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
 	fn drop(&mut self) {
 		unsafe {
-			self.0.unlock();
+			self.mutex.unlock(self.int_state);
 		}
 	}
 }
@@ -149,57 +131,36 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			// Safe because using the spinlock later
 			&mut *self.inner.get()
 		};
-		if !INT {
-			let state = is_interrupt_enabled();
-			// Here is assumed that no interruption will change eflags' INT. Which could
-			// cause a race condition
-			// Disable interrupts before locking to ensure no interrupt will occur while
-			// locking
+		let int_state = if !INT {
+			let enabled = is_interrupt_enabled();
 			cli();
-			inner.spin.lock();
-			// Update the current thread's state
-			// Safe because interrupts are disabled and the value can be accessed only by
-			// the current kernel
-			unsafe {
-				if INT_DISABLE_REFS.ref_count == 0 {
-					INT_DISABLE_REFS.enabled = state;
-				}
-				INT_DISABLE_REFS.ref_count += 1;
-			}
+			enabled
 		} else {
-			inner.spin.lock();
+			// In this case, this value does not matter
+			false
+		};
+		inner.spin.lock();
+		MutexGuard {
+			mutex: self,
+			int_state,
 		}
-		MutexGuard(self)
 	}
 
 	/// Unlocks the mutex. This function shouldn't be used directly since it is called when the
 	/// mutex guard is dropped.
 	///
+	/// `int_state` is the state of interruptions before locking.
+	///
 	/// # Safety
 	///
 	/// If the mutex is not locked, the behaviour is undefined.
 	///
-	/// Unlocking the mutex while the resource is being used may result in concurrent access.
-	pub unsafe fn unlock(&self) {
+	/// Unlocking the mutex while the resource is being used may result in concurrent accesses.
+	pub unsafe fn unlock(&self, int_state: bool) {
 		let inner = &mut (*self.inner.get());
-		if !INT {
-			// Update references count
-			INT_DISABLE_REFS.ref_count -= 1;
-			let state = if INT_DISABLE_REFS.ref_count == 0 {
-				INT_DISABLE_REFS.enabled
-			} else {
-				false
-			};
-			// The state to restore
-			inner.spin.unlock();
-			// Restore interrupts state after unlocking
-			if state {
-				sti();
-			} else {
-				cli();
-			}
-		} else {
-			inner.spin.unlock();
+		inner.spin.unlock();
+		if !INT && int_state {
+			sti();
 		}
 	}
 }

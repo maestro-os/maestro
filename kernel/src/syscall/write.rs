@@ -64,6 +64,7 @@ pub fn write(
 		super::util::handle_signal(regs);
 
 		{
+			// TODO find a way to avoid allocating here
 			let buf_slice = buf.copy_from_user(len)?.ok_or(errno!(EFAULT))?;
 
 			// Write file
