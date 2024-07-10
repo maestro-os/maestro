@@ -22,6 +22,7 @@
 use super::Args;
 use crate::{
 	file::{open_file::O_NONBLOCK, FileType},
+	idt,
 	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
 	syscall::Signal,
 };
@@ -29,6 +30,7 @@ use core::{cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	interrupt::cli,
 	io,
 	io::IO,
 };
@@ -64,6 +66,8 @@ pub fn write(
 		super::util::handle_signal(regs);
 
 		{
+			// TODO determine why removing this causes a deadlock
+			cli();
 			// TODO find a way to avoid allocating here
 			let buf_slice = buf.copy_from_user(len)?.ok_or(errno!(EFAULT))?;
 
