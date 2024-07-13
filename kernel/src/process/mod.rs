@@ -345,18 +345,6 @@ pub(crate) fn init() -> EResult<()> {
 	};
 	let page_fault_callback = |_id: u32, code: u32, regs: &Regs, ring: u32| {
 		let accessed_ptr = register_get!("cr2") as *const c_void;
-		let pc = regs.eip.0;
-		// Check if the fault was caused by a user <-> kernel copy
-		if ring < 3 && (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
-			// Jump to `copy_fault`
-			let mut regs = regs.clone();
-			regs.eip.0 = copy::copy_fault as usize;
-			// TODO cleanup
-			unsafe {
-				unlock_callbacks(0x0e);
-				regs.switch(false);
-			}
-		}
 		// Get process
 		let curr_proc = Process::current();
 		let Some(curr_proc) = curr_proc else {
@@ -373,7 +361,20 @@ pub(crate) fn init() -> EResult<()> {
 		};
 		if !success {
 			if ring < 3 {
-				return CallbackResult::Panic;
+				// Check if the fault was caused by a user <-> kernel copy
+				let pc = regs.eip.0;
+				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
+					// Jump to `copy_fault`
+					let mut regs = regs.clone();
+					regs.eip.0 = copy::copy_fault as usize;
+					// TODO cleanup
+					unsafe {
+						unlock_callbacks(0x0e);
+						regs.switch(false);
+					}
+				} else {
+					return CallbackResult::Panic;
+				}
 			} else {
 				curr_proc.kill_now(&Signal::SIGSEGV);
 			}
