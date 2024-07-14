@@ -35,7 +35,7 @@ pub fn tkill(Args((tid, sig)): Args<(Pid, c_int)>) -> EResult<usize> {
 	}
 	let signal = Signal::try_from(sig as u32)?;
 	// Get process
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	// Check if the thread to kill is the current
 	if proc.tid == tid {

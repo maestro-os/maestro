@@ -35,7 +35,7 @@ use utils::{
 pub fn getsockname(
 	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, SyscallPtr<isize>)>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// Get socket

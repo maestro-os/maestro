@@ -36,7 +36,7 @@ pub fn finit_module(
 	Args((fd, _param_values, _flags)): Args<(c_int, SyscallString, c_int)>,
 ) -> EResult<usize> {
 	let open_file_mutex = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		if !proc.access_profile.is_privileged() {

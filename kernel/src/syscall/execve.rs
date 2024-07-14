@@ -150,7 +150,7 @@ fn do_exec(
 	envp: Vec<String>,
 ) -> EResult<Regs> {
 	let program_image = build_image(file, rs, argv, envp)?;
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	// Execute the program
 	exec::exec(&mut proc, program_image)?;
@@ -186,7 +186,7 @@ pub fn execve(
 	Args((pathname, argv, envp)): Args<(SyscallString, SyscallArray, SyscallArray)>,
 ) -> EResult<usize> {
 	let (file, rs, argv, envp) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;

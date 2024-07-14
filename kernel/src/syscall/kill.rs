@@ -36,7 +36,7 @@ use utils::{
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	let ap = proc.access_profile;
 	// Closure sending the signal
@@ -73,7 +73,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
 fn try_kill_group(pid: i32, sig: &Option<Signal>) -> EResult<()> {
 	let pgid = match pid {
 		0 => {
-			let proc_mutex = Process::current_assert();
+			let proc_mutex = Process::current();
 			let proc = proc_mutex.lock();
 			proc.pgid
 		}
@@ -143,7 +143,7 @@ pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>, regs: &Regs) -> EResult<usiz
 	// Setting the return value of the system call so that it is correct even if a signal is
 	// executed before returning
 	{
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
 		let mut return_regs = proc.regs.clone();
 		return_regs.set_syscall_return(Ok(0));

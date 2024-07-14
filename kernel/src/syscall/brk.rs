@@ -24,7 +24,7 @@ use core::ffi::c_void;
 use utils::errno::{EResult, Errno};
 
 pub fn brk(Args(addr): Args<*mut c_void>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	let mem_space = proc.get_mem_space().unwrap();

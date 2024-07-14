@@ -29,7 +29,7 @@ use utils::{
 };
 
 pub fn fchdir(Args(fd): Args<c_int>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	let cwd = {
 		// Get file

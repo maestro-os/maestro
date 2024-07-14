@@ -35,7 +35,7 @@ use utils::{
 };
 
 pub fn unlink(Args(pathname): Args<SyscallString>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;

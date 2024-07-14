@@ -36,7 +36,7 @@ use utils::{
 };
 
 pub fn chroot(Args(path): Args<SyscallString>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	// Check permission
 	if !proc.access_profile.is_privileged() {

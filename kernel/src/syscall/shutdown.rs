@@ -37,7 +37,7 @@ const SHUT_WR: c_int = 1;
 const SHUT_RDWR: c_int = 2;
 
 pub fn shutdown(Args((sockfd, how)): Args<(c_int, c_int)>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// Get socket

@@ -27,7 +27,7 @@ use utils::{
 
 pub fn fsync(Args(fd): Args<c_int>) -> EResult<usize> {
 	let file_mutex = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();

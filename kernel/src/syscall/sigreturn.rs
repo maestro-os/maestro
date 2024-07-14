@@ -31,7 +31,7 @@ use utils::{
 pub fn sigreturn() -> EResult<usize> {
 	cli();
 	let regs = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
 		// Restores the state of the process before the signal handler
 		proc.signal_restore();

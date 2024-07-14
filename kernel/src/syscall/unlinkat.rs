@@ -40,7 +40,7 @@ pub fn unlinkat(
 	Args((dirfd, pathname, flags)): Args<(c_int, SyscallString, c_int)>,
 ) -> EResult<usize> {
 	let (fds_mutex, path, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let rs = ResolutionSettings::for_process(&proc, false);

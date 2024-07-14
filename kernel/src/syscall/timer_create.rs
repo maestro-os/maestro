@@ -35,7 +35,7 @@ use utils::{
 pub fn timer_create(
 	Args((clockid, sevp, timerid)): Args<(ClockIdT, SyscallPtr<SigEvent>, SyscallPtr<TimerT>)>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	let timerid_val = timerid.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;

@@ -31,7 +31,7 @@ use utils::{
 };
 
 pub fn socket(Args((domain, r#type, protocol)): Args<(c_int, c_int, c_int)>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	let sock_domain = SocketDomain::try_from(domain as u32)?;

@@ -30,7 +30,7 @@ use utils::{
 pub fn vfork(regs: &Regs) -> EResult<usize> {
 	let new_pid = {
 		// The current process
-		let curr_mutex = Process::current_assert();
+		let curr_mutex = Process::current();
 		// A weak pointer to the new process's parent
 		let parent = Arc::downgrade(&curr_mutex);
 

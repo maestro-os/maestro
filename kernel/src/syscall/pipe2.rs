@@ -38,7 +38,7 @@ pub fn pipe2(Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>) -> ER
 		return Err(errno!(EINVAL));
 	}
 
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let fds_mutex = {
 		let proc = proc_mutex.lock();
 		proc.file_descriptors.clone().unwrap()

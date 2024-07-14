@@ -22,7 +22,7 @@ use crate::{process::Process, syscall::Args, time::unit::TimerT};
 use utils::errno::{EResult, Errno};
 
 pub fn timer_delete(Args(timerid): Args<TimerT>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	proc.timer_manager().lock().delete_timer(timerid)?;

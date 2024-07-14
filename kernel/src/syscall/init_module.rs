@@ -37,7 +37,7 @@ pub fn init_module(
 	Args((module_image, len, _param_values)): Args<(SyscallSlice<u8>, c_ulong, SyscallString)>,
 ) -> EResult<usize> {
 	let module = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		if !proc.access_profile.is_privileged() {

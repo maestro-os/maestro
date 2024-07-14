@@ -34,7 +34,7 @@ use utils::{
 
 pub fn delete_module(Args((name, _flags)): Args<(SyscallString, c_uint)>) -> EResult<usize> {
 	let name = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		if !proc.access_profile.is_privileged() {

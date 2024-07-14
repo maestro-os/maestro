@@ -35,7 +35,7 @@ use utils::{
 };
 
 pub fn umount(Args(target): Args<SyscallString>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// Check permission

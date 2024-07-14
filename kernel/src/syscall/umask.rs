@@ -22,7 +22,7 @@ use crate::{file, process::Process, syscall::Args};
 use utils::errno::{EResult, Errno};
 
 pub fn umask(Args(mask): Args<file::Mode>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 
 	let prev = proc.umask;

@@ -45,7 +45,7 @@ pub fn linkat(
 	)>,
 ) -> EResult<usize> {
 	let (fds_mutex, oldpath, newpath, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let rs = ResolutionSettings::for_process(&proc, false);

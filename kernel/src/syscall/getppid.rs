@@ -22,7 +22,7 @@ use crate::process::Process;
 use utils::errno::{EResult, Errno};
 
 pub fn getppid() -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	Ok(proc.get_parent_pid() as _)

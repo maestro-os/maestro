@@ -27,7 +27,7 @@ use utils::{
 
 pub fn fchmod(Args((fd, mode)): Args<(c_int, file::Mode)>) -> EResult<usize> {
 	let (file_mutex, ap) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();

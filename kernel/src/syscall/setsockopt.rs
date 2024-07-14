@@ -38,7 +38,7 @@ pub fn setsockopt(
 		usize,
 	)>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// Get socket

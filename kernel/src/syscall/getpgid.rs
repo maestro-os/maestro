@@ -29,7 +29,7 @@ use utils::{
 };
 
 pub fn getpgid(Args(pid): Args<Pid>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	if pid == 0 {

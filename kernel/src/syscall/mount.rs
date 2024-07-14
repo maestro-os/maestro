@@ -45,7 +45,7 @@ pub fn mount(
 	)>,
 ) -> EResult<usize> {
 	let (mount_source, target_path, fs_type, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		// Check permission

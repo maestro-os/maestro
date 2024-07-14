@@ -311,7 +311,7 @@ pub(crate) fn init() -> EResult<()> {
 			return CallbackResult::Panic;
 		}
 		// Get process
-		let Some(curr_proc) = Process::current() else {
+		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
@@ -347,7 +347,7 @@ pub(crate) fn init() -> EResult<()> {
 		let accessed_ptr = register_get!("cr2") as *const c_void;
 		let pc = regs.eip.0;
 		// Get current process
-		let Some(curr_proc) = Process::current() else {
+		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
@@ -414,15 +414,15 @@ impl Process {
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn current() -> Option<Arc<IntMutex<Self>>> {
+	pub fn current_opt() -> Option<Arc<IntMutex<Self>>> {
 		SCHEDULER.get().lock().get_current_process()
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function makes the kernel panic.
-	pub fn current_assert() -> Arc<IntMutex<Self>> {
-		Self::current().expect("no running process")
+	pub fn current() -> Arc<IntMutex<Self>> {
+		Self::current_opt().expect("no running process")
 	}
 
 	/// Creates the init process and places it into the scheduler's queue.

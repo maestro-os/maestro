@@ -35,7 +35,7 @@ use crate::process::{regs::Regs, scheduler, Process, State};
 ///
 /// `regs` is the registers state passed to the current syscall.
 pub fn handle_signal(regs: &Regs) {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	// If no signal is pending, return
 	let Some(sig) = proc.get_next_signal() else {

@@ -46,7 +46,7 @@ pub fn sendto(
 		return Err(errno!(EINVAL));
 	}
 
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// Get socket

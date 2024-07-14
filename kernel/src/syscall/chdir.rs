@@ -32,7 +32,7 @@ use utils::{
 
 pub fn chdir(Args(path): Args<SyscallString>) -> EResult<usize> {
 	let (path, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
@@ -54,7 +54,7 @@ pub fn chdir(Args(path): Args<SyscallString>) -> EResult<usize> {
 	};
 	// Set new cwd
 	{
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
 		proc.cwd = Arc::new((path, dir_mutex))?;
 	}

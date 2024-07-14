@@ -51,7 +51,7 @@ pub fn mprotect(Args((addr, len, prot)): Args<(*mut c_void, usize, c_int)>) -> E
 	let flags = prot_to_flags(prot);
 
 	let (mem_space_mutex, ap) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 		let mem_space = proc.get_mem_space().unwrap().clone();
 

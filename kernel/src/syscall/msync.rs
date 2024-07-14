@@ -44,7 +44,7 @@ pub fn msync(Args((addr, length, flags)): Args<(*mut c_void, usize, c_int)>) -> 
 	}
 	let pages = length.div_ceil(memory::PAGE_SIZE);
 
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// The process's memory space

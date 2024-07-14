@@ -126,7 +126,7 @@ pub fn ioctl(Args((fd, request, argp)): Args<(c_int, c_ulong, *const c_void)>) -
 
 	// Getting the memory space and file
 	let open_file_mutex = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();

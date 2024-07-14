@@ -136,7 +136,7 @@ const F_SEAL_WRITE: c_int = 8;
 /// `fcntl64` tells whether this is the `fcntl64` system call.
 pub fn do_fcntl(fd: c_int, cmd: c_int, arg: *mut c_void, _fcntl64: bool) -> EResult<usize> {
 	let fds_mutex = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 		proc.file_descriptors.clone().unwrap()
 	};

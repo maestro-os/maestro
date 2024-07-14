@@ -31,7 +31,7 @@ pub fn munmap(Args((addr, length)): Args<(*mut c_void, usize)>) -> EResult<usize
 		return Err(errno!(EINVAL));
 	}
 
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	let pages = length.div_ceil(memory::PAGE_SIZE);

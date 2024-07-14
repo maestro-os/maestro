@@ -34,7 +34,7 @@ pub fn setpgid(Args((pid, pgid)): Args<(Pid, Pid)>) -> EResult<usize> {
 
 	// TODO Check processes SID
 
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 
 	if pid == 0 {

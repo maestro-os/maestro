@@ -101,7 +101,7 @@ pub fn openat(
 	Args((dirfd, pathname, flags, mode)): Args<(c_int, SyscallString, c_int, file::Mode)>,
 ) -> EResult<usize> {
 	let (rs, path, fds_mutex) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let follow_link = flags & open_file::O_NOFOLLOW == 0;

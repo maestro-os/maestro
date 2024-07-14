@@ -34,7 +34,7 @@ pub fn getcwd(Args((buf, size)): Args<(SyscallSlice<u8>, usize)>) -> EResult<usi
 		return Err(errno!(EINVAL));
 	}
 
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	let cwd = format!("{}\0", proc.cwd.0)?;

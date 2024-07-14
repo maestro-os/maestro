@@ -33,7 +33,7 @@ use utils::{
 
 pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult<usize> {
 	let (path, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;

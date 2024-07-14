@@ -46,7 +46,7 @@ pub fn splice(
 	)>,
 ) -> EResult<usize> {
 	let (input_mutex, off_in, output_mutex, off_out) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();

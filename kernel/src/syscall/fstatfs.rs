@@ -31,7 +31,7 @@ use utils::{
 
 pub fn fstatfs(Args((fd, buf)): Args<(c_int, SyscallPtr<Statfs>)>) -> EResult<usize> {
 	let file_mutex = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();

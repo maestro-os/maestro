@@ -41,7 +41,7 @@ pub fn do_chown(
 	}
 
 	let (path, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;

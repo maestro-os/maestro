@@ -22,7 +22,7 @@ use crate::{file::perm::Uid, process::Process, syscall::Args};
 use utils::errno::{EResult, Errno};
 
 pub fn setuid(Args(uid): Args<Uid>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 
 	proc.access_profile.set_uid(uid)?;

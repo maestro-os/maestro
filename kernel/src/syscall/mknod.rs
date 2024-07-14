@@ -43,7 +43,7 @@ pub fn mknod(
 	Args((pathname, mode, dev)): Args<(SyscallString, file::Mode, u64)>,
 ) -> EResult<usize> {
 	let (path, umask, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;

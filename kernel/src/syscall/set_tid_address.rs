@@ -27,7 +27,7 @@ use core::ffi::c_int;
 use utils::errno::EResult;
 
 pub fn set_tid_address(Args(tidptr): Args<SyscallPtr<c_int>>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	proc.clear_child_tid = tidptr.0;
 

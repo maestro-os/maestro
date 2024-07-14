@@ -31,7 +31,7 @@ pub fn dup2(Args((oldfd, newfd)): Args<(c_int, c_int)>) -> EResult<usize> {
 		return Err(errno!(EBADF));
 	}
 
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	let fds_mutex = proc.file_descriptors.as_ref().unwrap();

@@ -22,7 +22,7 @@ use crate::process::{regs::Regs, Process};
 use utils::errno::EResult;
 
 pub fn getegid(_: &Regs) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 	Ok(proc.access_profile.get_egid() as _)
 }

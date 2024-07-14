@@ -105,7 +105,7 @@ pub fn do_mmap(
 	};
 
 	// Get the current process
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// The file the mapping points to

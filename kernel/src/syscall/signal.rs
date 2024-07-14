@@ -51,7 +51,7 @@ pub fn signal(Args((signum, handler)): Args<(c_int, *const c_void)>) -> EResult<
 	};
 	// Set new handler and get old
 	let old_handler = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 		let mut signal_handlers = proc.signal_handlers.lock();
 		mem::replace(&mut signal_handlers[signal.get_id() as usize], new_handler)

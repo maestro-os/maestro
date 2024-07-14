@@ -34,7 +34,7 @@ use utils::{
 
 pub fn rename(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
 	let (old_path, new_path, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;

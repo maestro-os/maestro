@@ -35,7 +35,7 @@ pub fn rt_sigaction(
 	// Validation
 	let signal = Signal::try_from(signum as u32)?;
 	// Get process
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 	let mut signal_handlers = proc.signal_handlers.lock();
 	// Save the old structure

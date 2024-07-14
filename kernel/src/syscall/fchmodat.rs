@@ -38,7 +38,7 @@ pub fn fchmodat(
 	Args((dirfd, pathname, mode, flags)): Args<(c_int, SyscallString, file::Mode, c_int)>,
 ) -> EResult<usize> {
 	let (fds_mutex, path, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let rs = ResolutionSettings::for_process(&proc, true);

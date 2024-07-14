@@ -35,7 +35,7 @@ const RUSAGE_SELF: i32 = 0;
 const RUSAGE_CHILDREN: i32 = -1;
 
 pub fn getrusage(Args((who, usage)): Args<(c_int, SyscallPtr<RUsage>)>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// TODO Check access to `usage`

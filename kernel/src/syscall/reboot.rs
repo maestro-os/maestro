@@ -48,7 +48,7 @@ pub fn reboot(
 	}
 
 	{
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 		if !proc.access_profile.is_privileged() {
 			return Err(errno!(EPERM));

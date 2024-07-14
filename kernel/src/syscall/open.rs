@@ -133,7 +133,7 @@ pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile)
 
 /// Performs the open system call.
 pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let (path, rs, mode, fds_mutex) = {
 		let proc = proc_mutex.lock();
 

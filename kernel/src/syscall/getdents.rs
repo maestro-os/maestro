@@ -60,7 +60,7 @@ pub trait Dirent: Sized {
 /// Performs the `getdents` system call.
 pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) -> EResult<usize> {
 	let open_file_mutex = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();

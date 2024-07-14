@@ -33,7 +33,7 @@ use utils::{
 };
 
 pub fn pipe(Args(pipefd): Args<SyscallPtr<[c_int; 2]>>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let fds_mutex = {
 		let proc = proc_mutex.lock();
 		proc.file_descriptors.clone().unwrap()

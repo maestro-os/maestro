@@ -40,7 +40,7 @@ use utils::{
 
 pub fn mkdir(Args((pathname, mode)): Args<(SyscallString, file::Mode)>) -> EResult<usize> {
 	let (path, mode, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let mode = mode & !proc.umask;

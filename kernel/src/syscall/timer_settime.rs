@@ -40,7 +40,7 @@ pub fn timer_settime(
 		SyscallPtr<ITimerspec32>,
 	)>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	let mut new_value_val = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;

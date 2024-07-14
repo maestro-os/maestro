@@ -62,7 +62,7 @@ pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut 
 }
 
 pub fn set_thread_area(Args(u_info): Args<SyscallPtr<UserDesc>>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 
 	// Read user_desc

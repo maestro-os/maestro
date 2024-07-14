@@ -22,7 +22,7 @@ use crate::{file::perm::Gid, process::Process, syscall::Args};
 use utils::errno::{EResult, Errno};
 
 pub fn setgid32(Args(gid): Args<Gid>) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 
 	proc.access_profile.set_gid(gid)?;

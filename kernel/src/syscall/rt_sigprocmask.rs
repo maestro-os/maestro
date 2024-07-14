@@ -39,7 +39,7 @@ const SIG_SETMASK: i32 = 2;
 pub fn rt_sigprocmask(
 	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 
 	// Save old set

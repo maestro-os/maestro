@@ -955,7 +955,7 @@ fn do_syscall(id: usize, process: &Arc<IntMutex<Process>>, regs: &Regs) -> Optio
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.get_syscall_id();
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let Some(res) = do_syscall(id, &proc_mutex, regs) else {
 		// The system call doesn't exist. Kill the process with SIGSYS
 		{

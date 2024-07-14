@@ -39,7 +39,7 @@ pub fn readlink(
 ) -> EResult<usize> {
 	// process lock has to be dropped to avoid deadlock with procfs
 	let (path, rs) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		// Get file's path

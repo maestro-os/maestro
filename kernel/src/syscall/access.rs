@@ -65,7 +65,7 @@ pub fn do_access(
 	let eaccess = flags & AT_EACCESS != 0;
 
 	let (file, ap) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let rs = ResolutionSettings::for_process(&proc, true);

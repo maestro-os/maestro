@@ -35,7 +35,7 @@ pub fn sethostname(Args((name, len)): Args<(SyscallSlice<u8>, usize)>) -> EResul
 		return Err(errno!(EINVAL));
 	}
 
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let proc = proc_mutex.lock();
 
 	// Checking permission
