@@ -16,8 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the `getpgid` system call, which allows to get the
-//! process group ID of a process.
+//! The `getpgid` system call, which allows to get the process group ID of a process.
 
 use crate::{
 	process::{pid::Pid, Process},
@@ -30,13 +29,13 @@ use utils::{
 
 pub fn getpgid(Args(pid): Args<Pid>) -> EResult<usize> {
 	if pid == 0 {
-		let proc = Process::current().lock();
-		Ok(proc.pgid as _)
+		let pgid = Process::current().lock().pgid;
+		Ok(pgid as _)
 	} else {
 		let Some(proc) = Process::get_by_pid(pid) else {
 			return Err(errno!(ESRCH));
 		};
-		let proc = proc.lock();
-		Ok(proc.pgid as _)
+		let pgid = proc.lock().pgid;
+		Ok(pgid as _)
 	}
 }

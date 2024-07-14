@@ -67,6 +67,7 @@ fn get_flags(flags: i32, prot: i32) -> u8 {
 }
 
 /// Performs the `mmap` system call.
+#[allow(clippy::too_many_arguments)]
 pub fn do_mmap(
 	addr: *mut c_void,
 	length: usize,

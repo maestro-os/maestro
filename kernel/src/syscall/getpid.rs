@@ -19,8 +19,11 @@
 //! The `getpid` system call returns the PID of the current process.
 
 use crate::process::Process;
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+};
 
-pub fn getpid(proc: &Process) -> EResult<usize> {
+pub fn getpid(proc: IntMutexGuard<Process>) -> EResult<usize> {
 	Ok(proc.get_pid() as _)
 }

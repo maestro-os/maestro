@@ -27,11 +27,12 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	format,
+	lock::IntMutexGuard,
 };
 
 pub fn getcwd(
 	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
-	proc: &Process,
+	proc: IntMutexGuard<Process>,
 ) -> EResult<usize> {
 	// Validation
 	if size == 0 {

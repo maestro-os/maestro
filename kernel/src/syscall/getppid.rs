@@ -19,8 +19,11 @@
 //! The `getppid` system call returns the PID of the process's parent.
 
 use crate::process::Process;
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::IntMutexGuard,
+};
 
-pub fn getppid(proc: &Process) -> EResult<usize> {
+pub fn getppid(proc: IntMutexGuard<Process>) -> EResult<usize> {
 	Ok(proc.get_parent_pid() as _)
 }

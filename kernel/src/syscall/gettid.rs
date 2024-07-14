@@ -19,8 +19,11 @@
 //! The `gettid` system call returns the thread ID of the current process.
 
 use crate::process::Process;
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::IntMutexGuard,
+};
 
-pub fn gettid(proc: &Process) -> EResult<usize> {
+pub fn gettid(proc: IntMutexGuard<Process>) -> EResult<usize> {
 	Ok(proc.tid as _)
 }
