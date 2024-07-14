@@ -18,12 +18,15 @@
 
 //! The `chown32` system call changes the owner of a file.
 
-use crate::{process::mem_space::copy::SyscallString, syscall::Args};
+use crate::{
+	file::vfs::ResolutionSettings, process::mem_space::copy::SyscallString, syscall::Args,
+};
 use core::ffi::c_int;
 use utils::errno::EResult;
 
 pub fn chown32(
 	Args((pathname, owner, group)): Args<(SyscallString, c_int, c_int)>,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	super::chown::do_chown(pathname, owner, group, true)
+	super::chown::do_chown(pathname, owner, group, rs)
 }

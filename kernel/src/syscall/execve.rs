@@ -73,7 +73,7 @@ impl Default for ShebangBuffer {
 
 /// Returns the file for the given `path`.
 ///
-/// The function also parses and evential shebang string and builds the resulting **argv**.
+/// The function also parses and eventual shebang string and builds the resulting **argv**.
 ///
 /// Arguments:
 /// - `path` is the path of the executable file.
@@ -184,19 +184,15 @@ fn build_image(
 
 pub fn execve(
 	Args((pathname, argv, envp)): Args<(SyscallString, SyscallArray, SyscallArray)>,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let (file, rs, argv, envp) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
+	let (file, argv, envp) = {
 		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
-
-		let rs = ResolutionSettings::for_process(&proc, true);
 		let argv = argv.iter();
 		let (file, argv) = get_file(&path, &rs, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
-		(file, rs, argv, envp)
+		(file, argv, envp)
 	};
 	// Disable interrupt to prevent stack switching while using a temporary stack,
 	// preventing this temporary stack from being used as a signal handling stack

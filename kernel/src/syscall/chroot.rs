@@ -33,34 +33,30 @@ use crate::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::IntMutex,
 };
 
-pub fn chroot(Args(path): Args<SyscallString>) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
+pub fn chroot(
+	Args(path): Args<SyscallString>,
+	rs: ResolutionSettings,
+	proc: &IntMutex<Process>,
+) -> EResult<usize> {
 	// Check permission
-	if !proc.access_profile.is_privileged() {
+	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-
+	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
 	let rs = ResolutionSettings {
 		root: mountpoint::root_location(),
-		..ResolutionSettings::for_process(&proc, true)
+		..rs
 	};
-
 	// Get file
-	let file = {
-		let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		vfs::get_file_from_path(&path, &rs)?
-	};
+	let file = vfs::get_file_from_path(&path, &rs)?;
 	let file = file.lock();
 	if file.stat.file_type != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-
-	proc.chroot = file.location;
-
+	proc.lock().chroot = file.location;
 	Ok(0)
 }

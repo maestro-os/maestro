@@ -27,20 +27,18 @@ use crate::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::IntMutex,
 	ptr::arc::Arc,
 };
 
-pub fn chdir(Args(path): Args<SyscallString>) -> EResult<usize> {
-	let (path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-		(path, rs)
-	};
+pub fn chdir(
+	Args(path): Args<SyscallString>,
+	proc: &IntMutex<Process>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	// Get directory
 	let dir_mutex = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
 	{
@@ -53,10 +51,6 @@ pub fn chdir(Args(path): Args<SyscallString>) -> EResult<usize> {
 		}
 	};
 	// Set new cwd
-	{
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
-		proc.cwd = Arc::new((path, dir_mutex))?;
-	}
+	proc.lock().cwd = Arc::new((path, dir_mutex))?;
 	Ok(0)
 }

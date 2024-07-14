@@ -26,7 +26,7 @@ use crate::{
 	syscall::{Args, FromSyscallArg},
 };
 use core::ffi::{c_int, c_ulong, c_void};
-use utils::{errno::EResult, ptr::arc::Arc};
+use utils::{errno::EResult, lock::IntMutex, ptr::arc::Arc};
 
 /// TODO doc
 const CLONE_IO: c_ulong = -0x80000000 as _;
@@ -89,30 +89,27 @@ pub fn clone(
 		SyscallPtr<c_int>,
 	)>,
 	regs: &Regs,
+	proc_mutex: &Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let new_tid = {
-		// The current process
-		let curr_mutex = Process::current();
 		// A weak pointer to the new process's parent
-		let parent = Arc::downgrade(&curr_mutex);
-
-		let mut curr_proc = curr_mutex.lock();
-
+		let parent = Arc::downgrade(proc_mutex);
+		let mut proc = proc_mutex.lock();
 		if flags & CLONE_PARENT_SETTID != 0 {
 			// TODO
 			todo!();
 		}
+		let new_mutex = proc.fork(
+			parent,
+			ForkOptions {
+				share_memory: flags & CLONE_VM != 0,
+				share_fd: flags & CLONE_FILES != 0,
+				share_sighand: flags & CLONE_SIGHAND != 0,
 
-		let fork_options = ForkOptions {
-			share_memory: flags & CLONE_VM != 0,
-			share_fd: flags & CLONE_FILES != 0,
-			share_sighand: flags & CLONE_SIGHAND != 0,
-
-			vfork: flags & CLONE_VFORK != 0,
-		};
-		let new_mutex = curr_proc.fork(parent, fork_options)?;
+				vfork: flags & CLONE_VFORK != 0,
+			},
+		)?;
 		let mut new_proc = new_mutex.lock();
-
 		// Set the process's registers
 		let mut new_regs = regs.clone();
 		// Set return value to `0`
@@ -126,12 +123,10 @@ pub fn clone(
 		// Set TLS
 		if flags & CLONE_SETTLS != 0 {
 			let _tls = SyscallPtr::<UserDesc>::from_syscall_arg(tls as usize);
-
 			// TODO
 			todo!();
 		}
 		new_proc.regs = new_regs;
-
 		if flags & CLONE_CHILD_CLEARTID != 0 {
 			// TODO new_proc.set_clear_child_tid(child_tid);
 			todo!();
@@ -140,15 +135,12 @@ pub fn clone(
 			// TODO
 			todo!();
 		}
-
 		new_proc.tid
 	};
-
 	if flags & CLONE_VFORK != 0 {
-		// Letting another process run instead of the current. Because the current
+		// Let another process run instead of the current. Because the current
 		// process must now wait for the child process to terminate or execute a program
 		scheduler::end_tick();
 	}
-
 	Ok(new_tid as _)
 }

@@ -19,7 +19,7 @@
 //! The `connect` system call connects a socket to a distant host.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket},
+	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
@@ -27,35 +27,34 @@ use core::{any::Any, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
 };
 
 /// The implementation of the `connect` syscall.
 pub fn connect(
 	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, isize)>,
+	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	// Validation
 	if addrlen < 0 {
 		return Err(errno!(EINVAL));
 	}
-
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
 	// Get socket
-	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-	let fds = fds_mutex.lock();
-	let fd = fds.get_fd(sockfd)?;
-	let open_file_mutex = fd.get_open_file();
-	let open_file = open_file_mutex.lock();
-	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;
+	let loc = *fds_mutex
+		.lock()
+		.get_fd(sockfd)?
+		.get_open_file()
+		.lock()
+		.get_location();
+	let sock_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
 	let _sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
-
-	let _addr_slice = addr
+	let _addr = addr
 		.copy_from_user(addrlen as _)?
 		.ok_or_else(|| errno!(EFAULT))?;
-
 	// TODO connect socket
 	todo!();
 }

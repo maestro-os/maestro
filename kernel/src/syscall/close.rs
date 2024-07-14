@@ -19,24 +19,16 @@
 //! The `close` system call closes the given file descriptor.
 
 use super::Args;
-use crate::process::Process;
+use crate::{file::fd::FileDescriptorTable, process::Process};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
-pub fn close(Args(fd): Args<c_int>) -> EResult<usize> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-	let mut fds = fds_mutex.lock();
-
-	fds.close_fd(fd as _)?;
+pub fn close(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+	fds.lock().close_fd(fd as _)?;
 	Ok(0)
 }

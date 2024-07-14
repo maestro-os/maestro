@@ -67,7 +67,7 @@ pub enum NewFDConstraint {
 	/// No constraint
 	None,
 	/// The new file descriptor must have given fixed value
-	Fixed(u32),
+	Fixed(c_int),
 	/// The new file descriptor must have at least the given value
 	Min(u32),
 }
@@ -271,6 +271,10 @@ impl FileDescriptorTable {
 		let new_id = match constraint {
 			NewFDConstraint::None => self.get_available_fd(None)?,
 			NewFDConstraint::Fixed(id) => {
+				if id < 0 {
+					return Err(errno!(EBADF));
+				}
+				let id = id.try_into().map_err(|_| errno!(EBADF))?;
 				if id >= limits::OPEN_MAX {
 					return Err(errno!(EMFILE));
 				}

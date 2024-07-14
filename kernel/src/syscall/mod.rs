@@ -162,7 +162,7 @@ mod writev;
 
 //use wait::wait;
 use crate::{
-	file::fd::FileDescriptorTable,
+	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
 	process::{mem_space::MemSpace, regs::Regs, signal::Signal, Process},
 };
 use _exit::_exit;
@@ -402,6 +402,18 @@ impl FromSyscall<'_> for Arc<Mutex<FileDescriptorTable>> {
 	#[inline]
 	fn from_syscall(process: &Arc<IntMutex<Process>>, _regs: &Regs) -> Self {
 		process.lock().file_descriptors.clone().unwrap()
+	}
+}
+
+impl FromSyscall<'_> for AccessProfile {
+	fn from_syscall(process: &Arc<IntMutex<Process>>, _regs: &Regs) -> Self {
+		process.lock().access_profile
+	}
+}
+
+impl FromSyscall<'_> for ResolutionSettings {
+	fn from_syscall(process: &Arc<IntMutex<Process>>, _regs: &Regs) -> Self {
+		ResolutionSettings::for_process(&process.lock(), true)
 	}
 }
 

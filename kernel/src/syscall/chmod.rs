@@ -30,29 +30,21 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn chmod(Args((pathname, mode)): Args<(SyscallString, file::Mode)>) -> EResult<usize> {
-	let (path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-		(path, rs)
-	};
-
+pub fn chmod(
+	Args((pathname, mode)): Args<(SyscallString, file::Mode)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	// Get file
 	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
-
 	// Check permissions
 	if !rs.access_profile.can_set_file_permissions(&file) {
 		return Err(errno!(EPERM));
 	}
-
 	file.stat.set_permissions(mode as _);
 	// TODO lazy sync
 	file.sync()?;
-
 	Ok(0)
 }

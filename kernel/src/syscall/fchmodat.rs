@@ -22,6 +22,7 @@ use super::util::at;
 use crate::{
 	file,
 	file::{
+		fd::FileDescriptorTable,
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
 	},
@@ -32,40 +33,30 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 pub fn fchmodat(
 	Args((dirfd, pathname, mode, flags)): Args<(c_int, SyscallString, file::Mode, c_int)>,
+	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let (fds_mutex, path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-
-		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(pathname)?;
-
-		(fds_mutex, path, rs)
-	};
-
+	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	// Get file
 	let fds = fds_mutex.lock();
-
 	let Resolved::Found(file_mutex) = at::get_file(&fds, rs.clone(), dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
 	let mut file = file_mutex.lock();
-
 	// Check permission
 	if !rs.access_profile.can_set_file_permissions(&file) {
 		return Err(errno!(EPERM));
 	}
-
+	// Update
 	file.stat.set_permissions(mode as _);
 	// TODO lazy sync
 	file.sync()?;
-
 	Ok(0)
 }

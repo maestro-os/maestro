@@ -440,12 +440,12 @@ impl Process {
 			assert_eq!(stdin_fd_id, STDIN_FILENO);
 			fds_table.duplicate_fd(
 				STDIN_FILENO as _,
-				NewFDConstraint::Fixed(STDOUT_FILENO),
+				NewFDConstraint::Fixed(STDOUT_FILENO as _),
 				false,
 			)?;
 			fds_table.duplicate_fd(
 				STDIN_FILENO as _,
-				NewFDConstraint::Fixed(STDERR_FILENO),
+				NewFDConstraint::Fixed(STDERR_FILENO as _),
 				false,
 			)?;
 			fds_table

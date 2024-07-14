@@ -19,19 +19,23 @@
 //! The `brk` system call allows to displace the end of the data segment of the
 //! process, thus allowing memory allocations.
 
-use crate::{process::Process, syscall::Args};
+use crate::{
+	process::{mem_space::MemSpace, Process},
+	syscall::Args,
+};
 use core::ffi::c_void;
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::IntMutex,
+	ptr::arc::Arc,
+};
 
-pub fn brk(Args(addr): Args<*mut c_void>) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space = mem_space.lock();
-
+pub fn brk(
+	Args(addr): Args<*mut c_void>,
+	mem_space_mutex: Arc<IntMutex<MemSpace>>,
+) -> EResult<usize> {
+	let mut mem_space = mem_space_mutex.lock();
 	let old = mem_space.get_brk_ptr();
-
 	if mem_space.set_brk_ptr(addr).is_ok() {
 		Ok(addr as _)
 	} else {

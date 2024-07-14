@@ -18,12 +18,23 @@
 
 //! The `lchown` system call changes the owner of a symbolic link file.
 
-use crate::{process::mem_space::copy::SyscallString, syscall::Args};
+use crate::{
+	file::vfs::ResolutionSettings, process::mem_space::copy::SyscallString, syscall::Args,
+};
 use core::ffi::c_int;
 use utils::errno::EResult;
 
 pub fn lchown(
 	Args((pathname, owner, group)): Args<(SyscallString, c_int, c_int)>,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	super::chown::do_chown(pathname, owner, group, false)
+	super::chown::do_chown(
+		pathname,
+		owner,
+		group,
+		ResolutionSettings {
+			follow_link: false,
+			..rs
+		},
+	)
 }

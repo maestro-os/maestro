@@ -19,6 +19,7 @@
 //! The `delete_module` system call allows to unload a module from the kernel.
 
 use crate::{
+	file::{perm::AccessProfile, vfs::ResolutionSettings},
 	module,
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
@@ -29,23 +30,17 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
-
 // TODO handle flags
 
-pub fn delete_module(Args((name, _flags)): Args<(SyscallString, c_uint)>) -> EResult<usize> {
-	let name = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		if !proc.access_profile.is_privileged() {
-			return Err(errno!(EPERM));
-		}
-
-		name.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?
-	};
-
+pub fn delete_module(
+	Args((name, _flags)): Args<(SyscallString, c_uint)>,
+	ap: AccessProfile,
+) -> EResult<usize> {
+	if !ap.is_privileged() {
+		return Err(errno!(EPERM));
+	}
+	let name = name.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	// TODO handle dependency (don't unload a module that is required by another)
 	module::remove(&name);
-
 	Ok(0)
 }

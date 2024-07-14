@@ -20,6 +20,7 @@
 
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		path::{Path, PathBuf},
 		vfs::{ResolutionSettings, Resolved},
 	},
@@ -36,6 +37,8 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 /// Checks for existence of the file.
@@ -54,53 +57,49 @@ const X_OK: i32 = 1;
 /// - `pathname` is the path to the file.
 /// - `mode` is a bitfield of access permissions to check.
 /// - `flags` is a set of flags.
+/// - `rs` is the process's resolution settings.
+/// - `fds_mutex` is the file descriptor table.
 pub fn do_access(
 	dirfd: Option<i32>,
 	pathname: SyscallString,
 	mode: i32,
 	flags: Option<i32>,
+	rs: ResolutionSettings,
+	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let flags = flags.unwrap_or(0);
 	// Use effective IDs instead of real IDs
 	let eaccess = flags & AT_EACCESS != 0;
-
-	let (file, ap) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-
-		let fds = proc.file_descriptors.as_ref().unwrap().lock();
-
+	let ap = rs.access_profile;
+	let file = {
+		let fds = fds_mutex.lock();
 		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 		let path = PathBuf::try_from(pathname)?;
-
 		let Resolved::Found(file) =
 			at::get_file(&fds, rs, dirfd.unwrap_or(AT_FDCWD), &path, flags)?
 		else {
 			return Err(errno!(ENOENT));
 		};
-
-		(file, proc.access_profile)
+		file
 	};
-
 	// Do access checks
-	{
-		let file = file.lock();
-		if (mode & R_OK != 0) && !ap.check_read_access(&file, eaccess) {
-			return Err(errno!(EACCES));
-		}
-		if (mode & W_OK != 0) && !ap.check_write_access(&file, eaccess) {
-			return Err(errno!(EACCES));
-		}
-		if (mode & X_OK != 0) && !ap.check_execute_access(&file, eaccess) {
-			return Err(errno!(EACCES));
-		}
+	let file = file.lock();
+	if (mode & R_OK != 0) && !ap.check_read_access(&file, eaccess) {
+		return Err(errno!(EACCES));
 	}
-
+	if (mode & W_OK != 0) && !ap.check_write_access(&file, eaccess) {
+		return Err(errno!(EACCES));
+	}
+	if (mode & X_OK != 0) && !ap.check_execute_access(&file, eaccess) {
+		return Err(errno!(EACCES));
+	}
 	Ok(0)
 }
 
-pub fn access(Args((pathname, mode)): Args<(SyscallString, c_int)>) -> EResult<usize> {
-	do_access(None, pathname, mode, None)
+pub fn access(
+	Args((pathname, mode)): Args<(SyscallString, c_int)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_access(None, pathname, mode, None, rs, fds)
 }

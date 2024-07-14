@@ -19,7 +19,12 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
 use crate::{
-	file::{buffer, buffer::pipe::PipeBuffer, fd::NewFDConstraint, FileType},
+	file::{
+		buffer,
+		buffer::pipe::PipeBuffer,
+		fd::{FileDescriptorTable, NewFDConstraint},
+		FileType,
+	},
 	process::Process,
 	syscall::Args,
 };
@@ -27,6 +32,8 @@ use core::ffi::{c_int, c_void};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 /// Duplicate the file descriptor using the lowest numbered available file descriptor greater than
@@ -134,13 +141,13 @@ const F_SEAL_WRITE: c_int = 8;
 /// Performs the fcntl system call.
 ///
 /// `fcntl64` tells whether this is the `fcntl64` system call.
-pub fn do_fcntl(fd: c_int, cmd: c_int, arg: *mut c_void, _fcntl64: bool) -> EResult<usize> {
-	let fds_mutex = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-		proc.file_descriptors.clone().unwrap()
-	};
-	let mut fds = fds_mutex.lock();
+pub fn do_fcntl(
+	fd: c_int,
+	cmd: c_int,
+	arg: *mut c_void,
+	_fcntl64: bool,
+	fds: &mut FileDescriptorTable,
+) -> EResult<usize> {
 	match cmd {
 		F_DUPFD => {
 			let (id, _) = fds.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?;
@@ -156,16 +163,11 @@ pub fn do_fcntl(fd: c_int, cmd: c_int, arg: *mut c_void, _fcntl64: bool) -> ERes
 			Ok(0)
 		}
 		F_GETFL => {
-			let fd = fds.get_fd(fd)?;
-			let open_file_mutex = fd.get_open_file();
-			let open_file = open_file_mutex.lock();
-			Ok(open_file.get_flags() as _)
+			let flags = fds.get_fd(fd)?.get_open_file().lock().get_flags();
+			Ok(flags as _)
 		}
 		F_SETFL => {
-			let fd = fds.get_fd(fd)?;
-			let open_file_mutex = fd.get_open_file();
-			let mut open_file = open_file_mutex.lock();
-			open_file.set_flags(arg as _);
+			fds.get_fd(fd)?.get_open_file().lock().set_flags(arg as _);
 			Ok(0)
 		}
 		F_GETLK => {
@@ -249,10 +251,7 @@ pub fn do_fcntl(fd: c_int, cmd: c_int, arg: *mut c_void, _fcntl64: bool) -> ERes
 			todo!();
 		}
 		F_GETPIPE_SZ => {
-			let fd = fds.get_fd(fd)?;
-			let open_file_mutex = fd.get_open_file();
-			let open_file = open_file_mutex.lock();
-			let file_mutex = open_file.get_file();
+			let file_mutex = fds.get_fd(fd)?.get_open_file().lock().get_file().clone();
 			let file = file_mutex.lock();
 			match file.stat.file_type {
 				FileType::Fifo => Ok(buffer::get_or_default::<PipeBuffer>(&file.location)?
@@ -289,6 +288,9 @@ pub fn do_fcntl(fd: c_int, cmd: c_int, arg: *mut c_void, _fcntl64: bool) -> ERes
 	}
 }
 
-pub fn fcntl(Args((fd, cmd, arg)): Args<(c_int, c_int, *mut c_void)>) -> EResult<usize> {
-	do_fcntl(fd, cmd, arg, false)
+pub fn fcntl(
+	Args((fd, cmd, arg)): Args<(c_int, c_int, *mut c_void)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_fcntl(fd, cmd, arg, false, &mut fds.lock())
 }

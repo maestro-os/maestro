@@ -34,43 +34,35 @@ pub fn do_chown(
 	pathname: SyscallString,
 	owner: c_int,
 	group: c_int,
-	follow_links: bool,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
+	// Validation
 	if owner < -1 || group < -1 {
 		return Err(errno!(EINVAL));
 	}
-
-	let (path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		let rs = ResolutionSettings::for_process(&proc, follow_links);
-		(path, rs)
-	};
-
+	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	// Get file
 	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let mut file = file_mutex.lock();
 	// TODO allow changing group to any group whose owner is member
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-	if owner != -1 {
+	if owner > -1 {
 		file.stat.set_uid(owner as _);
 	}
-	if group != -1 {
+	if group > -1 {
 		file.stat.set_gid(group as _);
 	}
 	// TODO lazy
 	file.sync()?;
-
 	Ok(0)
 }
 
 pub fn chown(
 	Args((pathname, owner, group)): Args<(SyscallString, c_int, c_int)>,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	do_chown(pathname, owner, group, true)
+	do_chown(pathname, owner, group, rs)
 }

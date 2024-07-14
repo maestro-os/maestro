@@ -18,12 +18,18 @@
 
 //! The `faccessat2` system call allows to check access to a given file.
 
-use crate::{process::mem_space::copy::SyscallString, syscall::Args};
+use crate::{
+	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
+	process::mem_space::copy::SyscallString,
+	syscall::Args,
+};
 use core::ffi::c_int;
-use utils::errno::EResult;
+use utils::{errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 pub fn faccessat2(
 	Args((dir_fd, pathname, mode, flags)): Args<(c_int, SyscallString, c_int, c_int)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	super::access::do_access(Some(dir_fd), pathname, mode, Some(flags))
+	super::access::do_access(Some(dir_fd), pathname, mode, Some(flags), rs, fds)
 }
