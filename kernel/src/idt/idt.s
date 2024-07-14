@@ -42,7 +42,6 @@ error\n:
 
 	# Allocate space for registers and retrieve them
 GET_REGS \n
-    cld
 
 	# Get the ring
 	mov 8(%ebp), %eax
@@ -93,7 +92,6 @@ error\n:
 
 	# Allocate space for registers and retrieve them
 GET_REGS \n
-    cld
 
 	# Get the ring
 	mov 8(%ebp), %eax
@@ -132,7 +130,6 @@ irq\n:
 
 	# Allocate space for registers and retrieve them
 GET_REGS irq_\n
-    cld
 
 	# Get the ring
 	mov 8(%ebp), %eax

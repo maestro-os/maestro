@@ -44,10 +44,21 @@ macro_rules! register_set {
 
 /// Returns the value of the RFLAGS register.
 #[inline]
-pub fn get_rflags() -> u32 {
+pub fn get_rflags() -> usize {
 	let mut flags;
 	unsafe {
-		asm!("pushf", "pop {}", out(reg) flags);
+		#[cfg(target_pointer_width = "32")]
+		asm!(
+			"pushfd",
+			"pop {:e}",
+			out(reg) flags,
+		);
+		#[cfg(target_pointer_width = "64")]
+		asm!(
+			"pushfq",
+			"pop {:r}",
+			out(reg) flags,
+		);
 	}
 	flags
 }

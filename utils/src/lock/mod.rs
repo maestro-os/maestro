@@ -127,10 +127,6 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the mutex is
 	/// unlocked.
 	pub fn lock(&self) -> MutexGuard<T, INT> {
-		let inner = unsafe {
-			// Safe because using the spinlock later
-			&mut *self.inner.get()
-		};
 		let int_state = if !INT {
 			let enabled = is_interrupt_enabled();
 			cli();
@@ -139,6 +135,8 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			// In this case, this value does not matter
 			false
 		};
+		// Safe because using the spinlock
+		let inner = unsafe { &mut *self.inner.get() };
 		inner.spin.lock();
 		MutexGuard {
 			mutex: self,
@@ -146,7 +144,7 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 		}
 	}
 
-	/// Unlocks the mutex. This function shouldn't be used directly since it is called when the
+	/// Unlocks the mutex. This function should not be used directly since it is called when the
 	/// mutex guard is dropped.
 	///
 	/// `int_state` is the state of interruptions before locking.
@@ -166,7 +164,10 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 }
 
 impl<T, const INT: bool> Mutex<T, INT> {
-	/// Consumes the mutex and returns the inner value.
+	/// Locks the mutex, consumes it and returns the inner value.
+	///
+	/// If the mutex disables interruptions, it is the caller's responsibility to handle it
+	/// afterward.
 	pub fn into_inner(self) -> T {
 		// Make sure no one is using the resource
 		let inner = unsafe { &mut *self.inner.get() };

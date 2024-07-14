@@ -31,27 +31,23 @@
  * The function handling system calls.
  */
 syscall:
-	cli
 	push %ebp
 	mov %esp, %ebp
 
-	# Storing registers state
+	# Store registers state
 GET_REGS
-    cld
 
-	# Setting data segment
+	# Set data segment
 	mov $GDT_KERNEL_DS, %ax
 	mov %ax, %ds
 	mov %ax, %es
 
-	# Calling the system call handler
+	# Call the system call handler
 	push %esp
-	sti
 	call syscall_handler
-	cli
 	add $4, %esp
 
-	# Restoring data segment
+	# Restore data segment
 	xor %ebx, %ebx
 	mov $GDT_USER_DS, %bx
 	or $3, %bx

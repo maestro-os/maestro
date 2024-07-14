@@ -159,8 +159,8 @@ impl Regs {
 	///
 	/// Invalid register values shall result in an undefined behaviour.
 	pub unsafe fn switch(&self, user: bool) -> ! {
-		let eip = self.eip.0;
-		debug_assert_ne!(eip, 0);
+		let pc = self.eip.0;
+		debug_assert_ne!(pc, 0);
 		if user {
 			let user_data_selector = gdt::USER_DS | 3;
 			let user_code_selector = gdt::USER_CS | 3;
