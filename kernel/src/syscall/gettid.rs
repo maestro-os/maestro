@@ -21,9 +21,6 @@
 use crate::process::Process;
 use utils::errno::{EResult, Errno};
 
-pub fn gettid() -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
+pub fn gettid(proc: &Process) -> EResult<usize> {
 	Ok(proc.tid as _)
 }

@@ -33,14 +33,14 @@ use utils::{
 
 pub fn bind(
 	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, isize)>,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
 	if addrlen < 0 {
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let loc = *fds_mutex
+	let loc = *fds
 		.lock()
 		.get_fd(sockfd)?
 		.get_open_file()

@@ -20,8 +20,16 @@
 //! in pages.
 
 use super::{mmap, Args};
+use crate::{
+	file::{fd::FileDescriptorTable, perm::AccessProfile},
+	process::mem_space::MemSpace,
+};
 use core::ffi::{c_int, c_void};
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+};
 
 pub fn mmap2(
 	Args((addr, length, prot, flags, fd, offset)): Args<(
@@ -32,6 +40,19 @@ pub fn mmap2(
 		c_int,
 		u64,
 	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	ap: AccessProfile,
+	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
-	mmap::do_mmap(addr, length, prot, flags, fd, offset * 4096)
+	mmap::do_mmap(
+		addr,
+		length,
+		prot,
+		flags,
+		fd,
+		offset * 4096,
+		fds,
+		ap,
+		mem_space,
+	)
 }

@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The open system call allows a process to open a file and get a file
+//! The `open` system call allows a process to open a file and get a file
 //! descriptor.
 
 use super::Args;
@@ -98,8 +98,7 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<A
 	Ok(file)
 }
 
-/// The function checks the system call's flags and performs the action associated with some of
-/// them.
+/// Checks the system call's flags and performs the action associated with some of them.
 ///
 /// Arguments:
 /// - `file` is the file

@@ -16,8 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the `kill` system call, which allows to send a signal
-//! to a process.
+//! The `kill` system call, which allows to send a signal to a process.
 
 use super::{util, Args};
 use crate::{

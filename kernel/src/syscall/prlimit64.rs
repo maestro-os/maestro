@@ -19,13 +19,19 @@
 //! The `prlimit64` syscall returns the limit for a given resource.
 
 use crate::{
-	process::{mem_space::copy::SyscallPtr, pid::Pid, Process},
+	process::{
+		mem_space::{copy::SyscallPtr, MemSpace},
+		pid::Pid,
+		Process,
+	},
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::IntMutex,
+	ptr::arc::Arc,
 };
 
 /// The amount of seconds of CPU time the process can consume.
@@ -39,7 +45,7 @@ const RLIMIT_DATA: i32 = 2;
 const RLIMIT_STACK: i32 = 3;
 /// The maximum size of a kernel file the process may dump in bytes.
 const RLIMIT_CORE: i32 = 4;
-/// A limit on the process's resident set (the numbe rof virtual pages resident in RAM).
+/// A limit on the process's resident set (the number of virtual pages resident in RAM).
 const RLIMIT_RSS: i32 = 5;
 /// The limit on the number of threads for the real user ID of the calling process.
 const RLIMIT_NPROC: i32 = 6;
@@ -57,7 +63,7 @@ const RLIMIT_LOCKS: i32 = 10;
 /// The limit on the number of signals that may be queued for the real user ID of the calling
 /// process.
 const RLIMIT_SIGPENDING: i32 = 11;
-/// The limit on the number of butes that can be allocated for POSIX message queues for the real
+/// The limit on the number of bytes that can be allocated for POSIX message queues for the real
 /// user IF of the calling process.
 const RLIMIT_MSGQUEUE: i32 = 12;
 /// The ceiling to which the process's nice value can be raised.
@@ -70,10 +76,10 @@ const RLIMIT_RTTIME: i32 = 15;
 /// TODO doc
 const RLIMIT_NLIMITS: i32 = 16;
 
-/// Type representing a resource limit.
+/// A resource limit.
 type RLim = u64;
 
-/// Structure representing a resource limit.
+/// A resource limit.
 #[repr(C)]
 #[derive(Debug)]
 pub struct RLimit {
@@ -90,21 +96,16 @@ pub fn prlimit64(
 		SyscallPtr<RLimit>,
 		SyscallPtr<RLimit>,
 	)>,
+	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	// The target process. If None, the current process is the target
-	let _target_proc = if pid == 0 {
-		None
-	} else {
+	let _target_proc = if pid != 0 {
 		// TODO Check permission
 		Some(Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?)
+	} else {
+		None
 	};
-
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let _mem_space_guard = mem_space_mutex.lock();
-
+	let _mem_space = mem_space.lock();
 	// TODO Implement all
 	match resource {
 		RLIMIT_CPU => {}
@@ -124,9 +125,7 @@ pub fn prlimit64(
 		RLIMIT_RTPRIO => {}
 		RLIMIT_RTTIME => {}
 		RLIMIT_NLIMITS => {}
-
 		_ => return Err(errno!(EINVAL)),
 	}
-
 	Ok(0)
 }

@@ -19,7 +19,7 @@
 //! The `fstatfs64` system call returns information about a mounted file system.
 
 use crate::{
-	file::fs::Statfs,
+	file::{fd::FileDescriptorTable, fs::Statfs},
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
 };
@@ -27,38 +27,13 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 pub fn fstatfs64(
-	Args((fd, _sz, buf)): Args<(c_int, usize, SyscallPtr<Statfs>)>,
+	Args((fd, sz, buf)): Args<(c_int, usize, SyscallPtr<Statfs>)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	// TODO use `sz`
-
-	let file_mutex = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-		let fds = fds_mutex.lock();
-
-		let fd = fds.get_fd(fd)?;
-
-		let open_file_mutex = fd.get_open_file();
-		let open_file = open_file_mutex.lock();
-
-		open_file.get_file().clone()
-	};
-
-	let file = file_mutex.lock();
-
-	let mountpoint_mutex = file.location.get_mountpoint().unwrap();
-	let mountpoint = mountpoint_mutex.lock();
-
-	let fs = mountpoint.get_filesystem();
-	let stat = fs.get_stat()?;
-
-	// Write the statfs structure to userspace
-	buf.copy_to_user(stat)?;
-
-	Ok(0)
+	super::fstatfs::do_fstatfs(fd, sz, buf, &fds.lock())
 }

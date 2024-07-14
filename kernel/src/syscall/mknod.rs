@@ -28,7 +28,7 @@ use crate::{
 		FileType, Stat,
 	},
 	process::{mem_space::copy::SyscallString, Process},
-	syscall::Args,
+	syscall::{Args, Umask},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -41,27 +41,18 @@ use utils::{
 
 pub fn mknod(
 	Args((pathname, mode, dev)): Args<(SyscallString, file::Mode, u64)>,
+	umask: Umask,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let (path, umask, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		let umask = proc.umask;
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-		(path, umask, rs)
-	};
-	// Path of the parent directory
+	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
 	let parent_path = path.parent().unwrap_or(Path::root());
 	// File name
 	let Some(name) = path.file_name() else {
 		return Err(errno!(EEXIST));
 	};
 	// Check file type and permissions
-	let mode = mode & !umask;
+	let mode = mode & !umask.0;
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
 	let privileged = rs.access_profile.is_privileged();
 	match (file_type, privileged) {

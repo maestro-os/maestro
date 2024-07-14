@@ -18,11 +18,9 @@
 
 //! The `getuid32` syscall returns the UID of the process's owner.
 
-use crate::process::Process;
+use crate::{file::perm::AccessProfile, process::Process};
 use utils::errno::{EResult, Errno};
 
-pub fn getuid32() -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-	Ok(proc.access_profile.get_uid() as _)
+pub fn getuid32(ap: AccessProfile) -> EResult<usize> {
+	Ok(ap.get_uid() as _)
 }

@@ -19,6 +19,7 @@
 //! The `init_module` system call allows to load a module on the kernel.
 
 use crate::{
+	file::perm::AccessProfile,
 	module,
 	module::Module,
 	process::{
@@ -35,22 +36,15 @@ use utils::{
 
 pub fn init_module(
 	Args((module_image, len, _param_values)): Args<(SyscallSlice<u8>, c_ulong, SyscallString)>,
+	ap: AccessProfile,
 ) -> EResult<usize> {
-	let module = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		if !proc.access_profile.is_privileged() {
-			return Err(errno!(EPERM));
-		}
-
-		let image = module_image
-			.copy_from_user(len as usize)?
-			.ok_or_else(|| errno!(EFAULT))?;
-
-		Module::load(&image)?
-	};
-
+	if !ap.is_privileged() {
+		return Err(errno!(EPERM));
+	}
+	let image = module_image
+		.copy_from_user(len as usize)?
+		.ok_or_else(|| errno!(EFAULT))?;
+	let module = Module::load(&image)?;
 	if !module::is_loaded(module.get_name()) {
 		module::add(module)?;
 		Ok(0)

@@ -41,16 +41,13 @@ pub fn getrandom(
 ) -> EResult<usize> {
 	let bypass_threshold = flags & GRND_RANDOM == 0;
 	let nonblock = flags & GRND_NONBLOCK != 0;
-
 	let mut pool_guard = rand::ENTROPY_POOL.lock();
 	let Some(pool) = &mut *pool_guard else {
 		return Ok(0);
 	};
-
 	if nonblock && buflen > pool.available_bytes() {
 		return Err(errno!(EAGAIN));
 	}
-
 	// TODO optimize
 	let mut buffer = vec![0u8; buflen]?;
 	let mut i = 0;

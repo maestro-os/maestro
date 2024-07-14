@@ -19,13 +19,14 @@
 //! The ioctl syscall allows to control a device represented by a file
 //! descriptor.
 
-use crate::{process::Process, syscall::Args};
+use crate::{file::fd::FileDescriptorTable, process::Process, syscall::Args};
+use alloc::sync::Arc;
 use core::ffi::{c_int, c_ulong, c_void};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
 };
-
 // ioctl requests: hard drive
 
 /// ioctl request: get device geometry.
@@ -64,7 +65,7 @@ pub const TIOCSWINSZ: u32 = 0x00005414;
 /// ioctl request: Returns the number of bytes available on the file descriptor.
 pub const FIONREAD: u32 = 0x0000541b;
 
-/// Enumeration of IO directions for ioctl requests.
+/// IO directions for ioctl requests.
 #[derive(Eq, PartialEq)]
 pub enum Direction {
 	/// No data to be transferred.
@@ -83,13 +84,12 @@ impl TryFrom<c_ulong> for Direction {
 			0 => Ok(Self::None),
 			2 => Ok(Self::Read),
 			1 => Ok(Self::Write),
-
 			_ => Err(()),
 		}
 	}
 }
 
-/// Structure representing an `ioctl` request.
+/// An `ioctl` request.
 pub struct Request {
 	/// Major number of the request.
 	pub major: u8,
@@ -121,25 +121,15 @@ impl Request {
 	}
 }
 
-pub fn ioctl(Args((fd, request, argp)): Args<(c_int, c_ulong, *const c_void)>) -> EResult<usize> {
+pub fn ioctl(
+	Args((fd, request, argp)): Args<(c_int, c_ulong, *const c_void)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
 	let request = Request::from(request);
-
-	// Getting the memory space and file
-	let open_file_mutex = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		let fds = fds_mutex.lock();
-
-		fds.get_fd(fd)?.get_open_file().clone()
-	};
-
-	// Getting the device file
-	let mut open_file = open_file_mutex.lock();
-
-	// Executing ioctl with the current memory space
-	let ret = open_file.ioctl(request, argp)?;
-
-	Ok(ret as _)
+	fds.lock()
+		.get_fd(fd)?
+		.get_open_file()
+		.lock()
+		.ioctl(request, argp)
+		.map(|v| v as _)
 }

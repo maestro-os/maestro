@@ -16,10 +16,13 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The pipe2 system call allows to create a pipe with given flags.
+//! The `pipe2` system call allows to create a pipe with given flags.
 
 use crate::{
-	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
+	file::{
+		buffer, buffer::pipe::PipeBuffer, fd::FileDescriptorTable, open_file, open_file::OpenFile,
+		vfs, File,
+	},
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
 };
@@ -32,28 +35,23 @@ use utils::{
 	TryDefault,
 };
 
-pub fn pipe2(Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>) -> EResult<usize> {
+pub fn pipe2(
+	Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	// Validation
 	let accepted_flags = open_file::O_CLOEXEC | open_file::O_DIRECT | open_file::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
 		return Err(errno!(EINVAL));
 	}
-
-	let proc_mutex = Process::current();
-	let fds_mutex = {
-		let proc = proc_mutex.lock();
-		proc.file_descriptors.clone().unwrap()
-	};
-
+	// Get file
 	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
 	let file = vfs::get_file_from_location(loc)?;
-
+	// Create open file descriptions
 	let open_file0 = OpenFile::new(file.clone(), None, open_file::O_RDONLY)?;
 	let open_file1 = OpenFile::new(file, None, open_file::O_WRONLY)?;
-
-	let mut fds = fds_mutex.lock();
-	let (fd0_id, fd1_id) = fds.create_fd_pair(open_file0, open_file1)?;
-
+	// Create file descriptors
+	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(open_file0, open_file1)?;
 	pipefd.copy_to_user([fd0_id as _, fd1_id as _])?;
-
 	Ok(0)
 }

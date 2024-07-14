@@ -43,34 +43,19 @@ pub fn mount(
 		c_ulong,
 		SyscallPtr<c_void>,
 	)>,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let (mount_source, target_path, fs_type, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		// Check permission
-		if !proc.access_profile.is_privileged() {
-			return Err(errno!(EPERM));
-		}
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-
-		// Get strings
-		let source_slice = source.copy_from_user()?.ok_or(errno!(EFAULT))?;
-		let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
-		let filesystemtype_slice = filesystemtype.copy_from_user()?.ok_or(errno!(EFAULT))?;
-
-		// Get the mount source
-		let mount_source = MountSource::new(&source_slice)?;
-
-		// Get the target directory
-		let target_path = PathBuf::try_from(target_slice)?;
-
-		let fs_type = fs::get_type(&filesystemtype_slice).ok_or(errno!(ENODEV))?;
-
-		(mount_source, target_path, fs_type, rs)
-	};
-
+	if !rs.access_profile.is_privileged() {
+		return Err(errno!(EPERM));
+	}
+	// Read arguments
+	let source_slice = source.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let mount_source = MountSource::new(&source_slice)?;
+	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let target_path = PathBuf::try_from(target_slice)?;
+	let filesystemtype_slice = filesystemtype.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let fs_type = fs::get_type(&filesystemtype_slice).ok_or(errno!(ENODEV))?;
+	// Get target file
 	let target_file_mutex = vfs::get_file_from_path(&target_path, &rs)?;
 	let target_file = target_file_mutex.lock();
 	// Check the target is a directory
@@ -78,7 +63,6 @@ pub fn mount(
 		return Err(errno!(ENOTDIR));
 	}
 	let target_location = target_file.location;
-
 	// TODO Use `data`
 	// Create mountpoint
 	mountpoint::create(
@@ -88,6 +72,5 @@ pub fn mount(
 		target_path,
 		target_location,
 	)?;
-
 	Ok(0)
 }

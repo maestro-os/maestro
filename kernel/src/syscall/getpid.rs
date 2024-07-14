@@ -21,8 +21,6 @@
 use crate::process::Process;
 use utils::errno::{EResult, Errno};
 
-pub fn getpid() -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
+pub fn getpid(proc: &Process) -> EResult<usize> {
 	Ok(proc.get_pid() as _)
 }

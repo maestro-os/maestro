@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The getcwd system call allows to retrieve the current working directory of
+//! The `getcwd` system call allows to retrieve the current working directory of
 //! the current process.
 
 use crate::{
@@ -29,22 +29,21 @@ use utils::{
 	format,
 };
 
-pub fn getcwd(Args((buf, size)): Args<(SyscallSlice<u8>, usize)>) -> EResult<usize> {
+pub fn getcwd(
+	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
+	proc: &Process,
+) -> EResult<usize> {
+	// Validation
 	if size == 0 {
 		return Err(errno!(EINVAL));
 	}
-
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	let cwd = format!("{}\0", proc.cwd.0)?;
-
-	// Checking that the buffer is large enough
-	if size < cwd.len() {
+	// Check that the buffer is large enough
+	if size < proc.cwd.0.len() + 1 {
 		return Err(errno!(ERANGE));
 	}
-
+	// Write
+	// TODO do not allocate. write twice instead
+	let cwd = format!("{}\0", proc.cwd.0)?;
 	buf.copy_to_user(cwd.as_bytes())?;
-
 	Ok(buf.as_ptr() as _)
 }

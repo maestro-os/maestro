@@ -18,11 +18,9 @@
 
 //! The `getgid` syscall returns the GID of the process's owner.
 
-use crate::process::Process;
+use crate::{file::perm::AccessProfile, process::Process};
 use utils::errno::{EResult, Errno};
 
-pub fn getgid() -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-	Ok(proc.access_profile.get_gid() as _)
+pub fn getgid(ap: AccessProfile) -> EResult<usize> {
+	Ok(ap.get_gid() as _)
 }

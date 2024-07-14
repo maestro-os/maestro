@@ -19,7 +19,7 @@
 //! The `getsockopt` system call gets an option on a socket.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket},
+	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
@@ -27,6 +27,8 @@ use core::{any::Any, cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 pub fn getsockopt(
@@ -37,18 +39,16 @@ pub fn getsockopt(
 		SyscallSlice<u8>,
 		usize,
 	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
 	// Get socket
-	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-	let fds = fds_mutex.lock();
-	let fd = fds.get_fd(sockfd)?;
-	let open_file_mutex = fd.get_open_file();
-	let open_file = open_file_mutex.lock();
-	let loc = open_file.get_location();
-	let sock_mutex = buffer::get(loc).ok_or_else(|| errno!(ENOENT))?;
+	let loc = *fds
+		.lock()
+		.get_fd(sockfd)?
+		.get_open_file()
+		.lock()
+		.get_location();
+	let sock_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
 	let sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()

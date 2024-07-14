@@ -21,6 +21,7 @@
 use super::util::at;
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		path::PathBuf,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
@@ -33,6 +34,8 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 pub fn linkat(
@@ -43,26 +46,19 @@ pub fn linkat(
 		SyscallString,
 		c_int,
 	)>,
+	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
+	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let (fds_mutex, oldpath, newpath, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, false);
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-
-		let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let oldpath = PathBuf::try_from(oldpath)?;
-
-		let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let newpath = PathBuf::try_from(newpath)?;
-
-		(fds_mutex, oldpath, newpath, rs)
-	};
-
+	let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let oldpath = PathBuf::try_from(oldpath)?;
+	let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let newpath = PathBuf::try_from(newpath)?;
 	let fds = fds_mutex.lock();
-
+	let rs = ResolutionSettings {
+		follow_link: false,
+		..rs
+	};
+	// Get old file
 	let Resolved::Found(old_mutex) = at::get_file(&fds, rs.clone(), olddirfd, &oldpath, flags)?
 	else {
 		return Err(errno!(ENOENT));
@@ -71,7 +67,7 @@ pub fn linkat(
 	if matches!(old.stat.file_type, FileType::Directory) {
 		return Err(errno!(EISDIR));
 	}
-
+	// Create new file
 	let rs = ResolutionSettings {
 		create: true,
 		..rs
@@ -84,8 +80,6 @@ pub fn linkat(
 		return Err(errno!(EEXIST));
 	};
 	let new_parent = new_parent.lock();
-
 	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
-
 	Ok(0)
 }

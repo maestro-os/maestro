@@ -35,23 +35,14 @@ const RUSAGE_SELF: i32 = 0;
 const RUSAGE_CHILDREN: i32 = -1;
 
 pub fn getrusage(Args((who, usage)): Args<(c_int, SyscallPtr<RUsage>)>) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	// TODO Check access to `usage`
-
 	let rusage = match who {
-		RUSAGE_SELF => proc.get_rusage().clone(),
-
+		RUSAGE_SELF => Process::current().lock().get_rusage().clone(),
 		RUSAGE_CHILDREN => {
-			// TODO Return resources of terminates children
+			// TODO Return resources of terminated children
 			RUsage::default()
 		}
-
 		_ => return Err(errno!(EINVAL)),
 	};
-
 	usage.copy_to_user(rusage)?;
-
 	Ok(0)
 }

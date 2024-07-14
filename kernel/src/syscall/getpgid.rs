@@ -29,21 +29,14 @@ use utils::{
 };
 
 pub fn getpgid(Args(pid): Args<Pid>) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
 	if pid == 0 {
+		let proc = Process::current().lock();
 		Ok(proc.pgid as _)
 	} else {
-		let proc_mutex = {
-			if let Some(proc) = Process::get_by_pid(pid) {
-				proc
-			} else {
-				return Err(errno!(ESRCH));
-			}
+		let Some(proc) = Process::get_by_pid(pid) else {
+			return Err(errno!(ESRCH));
 		};
-		let proc = proc_mutex.lock();
-
+		let proc = proc.lock();
 		Ok(proc.pgid as _)
 	}
 }

@@ -35,7 +35,7 @@ use utils::{
 	io,
 };
 
-/// Structure representing a file descriptor passed to the `poll` system call.
+/// A file descriptor passed to the `poll` system call.
 #[repr(C)]
 #[derive(Debug)]
 pub struct PollFD {
@@ -50,66 +50,51 @@ pub struct PollFD {
 pub fn poll(
 	Args((fds, nfds, timeout)): Args<(SyscallSlice<PollFD>, usize, c_int)>,
 ) -> EResult<usize> {
-	// The timeout. None means no timeout
-	let to: Option<Timestamp> = if timeout >= 0 {
-		Some(timeout as _)
-	} else {
-		None
-	};
-
+	// The timeout. `None` means no timeout
+	let to = (timeout >= 0).then_some(timeout as Timestamp);
 	// The start timestamp
 	let start_ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)?;
-
 	loop {
-		// Checking whether the system call timed out
+		// Check whether the system call timed out
 		if let Some(timeout) = to {
 			let now = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)?;
 			if now >= start_ts + timeout {
 				return Ok(0);
 			}
 		}
-
 		{
 			let fds = fds.copy_from_user(nfds)?.ok_or_else(|| errno!(EFAULT))?;
-
-			// Checking the file descriptors list
+			// Check the file descriptors list
 			for fd in &fds {
 				if fd.events as u32 & io::POLLIN != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLPRI != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLOUT != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLRDNORM != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLRDBAND != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLWRNORM != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLWRBAND != 0 {
 					// TODO
 					todo!();
 				}
 			}
-
 			// The number of file descriptor with at least one event
 			let fd_event_count = fds.iter().filter(|fd| fd.revents != 0).count();
 			// If at least on event happened, return the number of file descriptors
@@ -118,7 +103,6 @@ pub fn poll(
 				return Ok(fd_event_count as _);
 			}
 		}
-
 		// TODO Make process sleep until an event occurs on a file descriptor in
 		// `fds`
 		scheduler::end_tick();

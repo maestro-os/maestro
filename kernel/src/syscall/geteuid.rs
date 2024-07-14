@@ -18,11 +18,9 @@
 
 //! The `geteuid` syscall returns the effective UID of the process's owner.
 
-use crate::process::Process;
+use crate::{file::perm::AccessProfile, process::Process};
 use utils::errno::{EResult, Errno};
 
-pub fn geteuid() -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-	Ok(proc.access_profile.get_euid() as _)
+pub fn geteuid(ap: AccessProfile) -> EResult<usize> {
+	Ok(ap.get_euid() as _)
 }

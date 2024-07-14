@@ -16,10 +16,13 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The pipe system call allows to create a pipe.
+//! The `pipe` system call allows to create a pipe.
 
 use crate::{
-	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
+	file::{
+		buffer, buffer::pipe::PipeBuffer, fd::FileDescriptorTable, open_file, open_file::OpenFile,
+		vfs,
+	},
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
 };
@@ -27,28 +30,23 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
+	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	TryDefault,
 };
 
-pub fn pipe(Args(pipefd): Args<SyscallPtr<[c_int; 2]>>) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let fds_mutex = {
-		let proc = proc_mutex.lock();
-		proc.file_descriptors.clone().unwrap()
-	};
-
+pub fn pipe(
+	Args(pipefd): Args<SyscallPtr<[c_int; 2]>>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	// Get file
 	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
 	let file = vfs::get_file_from_location(loc)?;
-
+	// Create open file descriptions
 	let open_file0 = OpenFile::new(file.clone(), None, open_file::O_RDONLY)?;
 	let open_file1 = OpenFile::new(file, None, open_file::O_WRONLY)?;
-
-	let mut fds = fds_mutex.lock();
-	let (fd0_id, fd1_id) = fds.create_fd_pair(open_file0, open_file1)?;
-
+	// Create file descriptors
+	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(open_file0, open_file1)?;
 	pipefd.copy_to_user([fd0_id as _, fd1_id as _])?;
-
 	Ok(0)
 }

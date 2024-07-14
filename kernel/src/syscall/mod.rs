@@ -162,6 +162,7 @@ mod writev;
 
 //use wait::wait;
 use crate::{
+	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
 	process::{mem_space::MemSpace, regs::Regs, signal::Signal, Process},
 };
@@ -414,6 +415,15 @@ impl FromSyscall<'_> for AccessProfile {
 impl FromSyscall<'_> for ResolutionSettings {
 	fn from_syscall(process: &Arc<IntMutex<Process>>, _regs: &Regs) -> Self {
 		ResolutionSettings::for_process(&process.lock(), true)
+	}
+}
+
+/// The umask of the process performing the system call.
+pub struct Umask(file::Mode);
+
+impl FromSyscall<'_> for Umask {
+	fn from_syscall(process: &Arc<IntMutex<Process>>, _regs: &Regs) -> Self {
+		Self(process.lock().umask)
 	}
 }
 

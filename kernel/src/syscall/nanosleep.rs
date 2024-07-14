@@ -35,22 +35,17 @@ pub fn nanosleep(
 	Args((req, rem)): Args<(SyscallPtr<Timespec32>, SyscallPtr<Timespec32>)>,
 ) -> EResult<usize> {
 	let start_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
-
 	let delay = req.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-
-	// Looping until time is elapsed or the process is interrupted by a signal
+	// Loop until time is elapsed or the process is interrupted by a signal
 	loop {
 		let curr_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
 		if curr_time >= start_time + delay {
 			break;
 		}
-
 		// TODO Allow interruption by signal
 		// TODO Make the current process sleep
 	}
-
 	// Set remaining time to zero
 	rem.copy_to_user(Timespec32::default())?;
-
 	Ok(0)
 }

@@ -31,12 +31,9 @@ use utils::{
 pub fn link(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
 	let oldpath_str = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let _old_path = PathBuf::try_from(oldpath_str)?;
-
 	let newpath_str = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let _new_path = PathBuf::try_from(newpath_str)?;
-
 	// TODO Get file at `old_path`
 	// TODO Create the link to the file
-
 	Ok(0)
 }
