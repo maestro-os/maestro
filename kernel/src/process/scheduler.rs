@@ -291,7 +291,7 @@ impl Scheduler {
 					// Runnable process found: resume execution
 					Some((regs, syscalling)) => regs.switch(!syscalling),
 					// No runnable process found: idle
-					None => crate::loop_reset(tmp_stack as _),
+					None => crate::enter_loop(),
 				}
 			}
 		};

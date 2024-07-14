@@ -128,6 +128,7 @@ pub fn wait() {
 }
 
 /// Enters the kernel loop and processes every interrupts indefinitely.
+#[inline]
 pub fn enter_loop() -> ! {
 	loop {
 		wait();
@@ -139,6 +140,7 @@ pub fn enter_loop() -> ! {
 /// # Safety
 ///
 /// The callee must ensure the given stack is usable.
+#[inline]
 pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
 	kernel_loop_reset(stack);
 }

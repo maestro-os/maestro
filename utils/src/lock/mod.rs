@@ -36,7 +36,8 @@ pub mod once;
 pub mod spinlock;
 
 use crate::{
-	interrupt::{cli, is_interrupt_enabled, sti},
+	interrupt,
+	interrupt::{cli, sti},
 	lock::spinlock::Spinlock,
 };
 use core::{
@@ -128,7 +129,7 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	/// unlocked.
 	pub fn lock(&self) -> MutexGuard<T, INT> {
 		let int_state = if !INT {
-			let enabled = is_interrupt_enabled();
+			let enabled = interrupt::is_enabled();
 			cli();
 			enabled
 		} else {

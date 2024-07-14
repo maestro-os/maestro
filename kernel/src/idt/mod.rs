@@ -23,7 +23,10 @@
 pub mod pic;
 
 use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
-use utils::interrupt::{cli, is_interrupt_enabled, sti};
+use utils::{
+	interrupt,
+	interrupt::{cli, sti},
+};
 
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
@@ -166,7 +169,7 @@ unsafe fn idt_load(idt: *const InterruptDescriptorTable) {
 /// This function saves the state of the interrupt flag and restores it before
 /// returning.
 pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
-	let int = is_interrupt_enabled();
+	let int = interrupt::is_enabled();
 
 	// Here is assumed that no interruption will change eflags. Which could cause a
 	// race condition

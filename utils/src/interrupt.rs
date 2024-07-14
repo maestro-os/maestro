@@ -22,7 +22,7 @@ use core::arch::asm;
 
 /// Tells whether interrupts are enabled on the current CPU kernel.
 #[inline(always)]
-pub fn is_interrupt_enabled() -> bool {
+pub fn is_enabled() -> bool {
 	let mut flags: usize;
 	unsafe {
 		#[cfg(target_pointer_width = "32")]
