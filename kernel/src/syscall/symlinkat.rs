@@ -21,6 +21,7 @@
 use super::util::at;
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
@@ -39,30 +40,24 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	io::IO,
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 pub fn symlinkat(
 	Args((target, newdirfd, linkpath)): Args<(SyscallString, c_int, SyscallString)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	let rs = ResolutionSettings::for_process(&proc, true);
-
-	let fds_mutex = proc.file_descriptors.clone().unwrap();
-	let fds = fds_mutex.lock();
-
 	let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	if target_slice.len() > limits::SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
 	let target = PathBuf::try_from(target_slice)?;
-
 	let linkpath = linkpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let linkpath = PathBuf::try_from(linkpath)?;
-
 	// Create link
-	let resolved = at::get_file(&fds, rs.clone(), newdirfd, &linkpath, 0)?;
+	let resolved = at::get_file(&fds.lock(), rs.clone(), newdirfd, &linkpath, 0)?;
 	match resolved {
 		Resolved::Creatable {
 			parent,
@@ -83,6 +78,7 @@ pub fn symlinkat(
 					..Default::default()
 				},
 			)?;
+			// TODO remove file on failure
 			file.lock().write(0, target.as_bytes())?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),

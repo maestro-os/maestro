@@ -33,9 +33,17 @@ use core::{
 	mem::transmute,
 	ptr::null,
 };
-use utils::errno::{EResult, Errno};
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+};
 
-pub fn signal(Args((signum, handler)): Args<(c_int, *const c_void)>) -> EResult<usize> {
+pub fn signal(
+	Args((signum, handler)): Args<(c_int, *const c_void)>,
+	proc: IntMutexGuard<Process>,
+) -> EResult<usize> {
+	let signal_handlers = proc.signal_handlers.clone();
+	drop(proc);
 	// Validation
 	let signal = Signal::try_from(signum as u32)?;
 	// Conversion
@@ -50,12 +58,10 @@ pub fn signal(Args((signum, handler)): Args<(c_int, *const c_void)>) -> EResult<
 		}),
 	};
 	// Set new handler and get old
-	let old_handler = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-		let mut signal_handlers = proc.signal_handlers.lock();
-		mem::replace(&mut signal_handlers[signal.get_id() as usize], new_handler)
-	};
+	let old_handler = mem::replace(
+		&mut signal_handlers.lock()[signal.get_id() as usize],
+		new_handler,
+	);
 	// Convert to pointer and return
 	let ptr = match old_handler {
 		SignalHandler::Ignore => signal::SIG_IGN,

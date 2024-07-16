@@ -27,6 +27,7 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::IntMutexGuard,
 };
 
 /// If set, the specified time is *not* relative to the timer's current counter.
@@ -39,28 +40,22 @@ pub fn timer_settime(
 		SyscallPtr<ITimerspec32>,
 		SyscallPtr<ITimerspec32>,
 	)>,
+	proc: IntMutexGuard<Process>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	let mut new_value_val = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-
-	let old = {
-		let manager_mutex = proc.timer_manager();
-		let mut manager = manager_mutex.lock();
-		let timer = manager
-			.get_timer_mut(timerid)
-			.ok_or_else(|| errno!(EINVAL))?;
-
-		let old = timer.get_time();
-		if (flags & TIMER_ABSTIME) == 0 {
-			new_value_val.it_value = new_value_val.it_value + old.it_value;
-		}
-		timer.set_time(new_value_val, proc.get_pid(), timerid)?;
-		old
-	};
-
+	// Get timer
+	let manager_mutex = proc.timer_manager().clone();
+	let mut manager = manager_mutex.lock();
+	let timer = manager
+		.get_timer_mut(timerid)
+		.ok_or_else(|| errno!(EINVAL))?;
+	// Write old value
+	let old = timer.get_time();
 	old_value.copy_to_user(old)?;
-
+	// Set new value
+	let mut new_value_val = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	if (flags & TIMER_ABSTIME) == 0 {
+		new_value_val.it_value = new_value_val.it_value + old.it_value;
+	}
+	timer.set_time(new_value_val, proc.get_pid(), timerid)?;
 	Ok(0)
 }

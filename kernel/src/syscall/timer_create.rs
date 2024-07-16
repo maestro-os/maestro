@@ -30,16 +30,14 @@ use crate::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::IntMutexGuard,
 };
 
 pub fn timer_create(
 	Args((clockid, sevp, timerid)): Args<(ClockIdT, SyscallPtr<SigEvent>, SyscallPtr<TimerT>)>,
+	proc: IntMutexGuard<Process>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
 	let timerid_val = timerid.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-
 	let sevp_val = sevp.copy_from_user()?.unwrap_or_else(|| SigEvent {
 		sigev_notify: SIGEV_SIGNAL,
 		sigev_signo: Signal::SIGALRM.get_id() as _,
@@ -50,14 +48,10 @@ pub fn timer_create(
 		sigev_notify_attributes: None,
 		sigev_notify_thread_id: proc.tid,
 	});
-
 	let id = proc
 		.timer_manager()
 		.lock()
 		.create_timer(clockid, sevp_val)?;
-
-	// Return timer ID
 	timerid.copy_to_user(id as _)?;
-
 	Ok(0)
 }

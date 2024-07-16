@@ -22,6 +22,7 @@ use super::util::at;
 use crate::{
 	device::DeviceID,
 	file::{
+		fd::FileDescriptorTable,
 		mountpoint::MountSource,
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
@@ -36,9 +37,11 @@ use core::ffi::{c_int, c_uint};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
-/// Structure representing a timestamp with the statx syscall.
+/// A timestamp for the `statx` syscall.
 #[repr(C)]
 #[derive(Debug)]
 struct StatxTimestamp {
@@ -50,7 +53,7 @@ struct StatxTimestamp {
 	__reserved: i32,
 }
 
-/// Structure containing the extended attributes for a file.
+/// Extended attributes for a file.
 #[repr(C)]
 #[derive(Debug)]
 pub struct Statx {
@@ -114,6 +117,8 @@ pub fn statx(
 		c_uint,
 		SyscallPtr<Statx>,
 	)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
 	if pathname.0.is_none() || statxbuff.0.is_none() {
@@ -121,21 +126,9 @@ pub fn statx(
 	}
 	// TODO Implement all flags
 	// Get the file
-	let (fds_mutex, path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-
-		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		(fds_mutex, path, rs)
-	};
-	let fds = fds_mutex.lock();
-	let Resolved::Found(file_mutex) = at::get_file(&fds, rs, dirfd, &path, flags)? else {
+	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	let Resolved::Found(file_mutex) = at::get_file(&fds.lock(), rs, dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
 	let file = file_mutex.lock();
@@ -160,8 +153,8 @@ pub fn statx(
 			(0, 0)
 		}
 	};
-	// Fill the structure
-	let statx_val = Statx {
+	// Write
+	statxbuff.copy_to_user(Statx {
 		stx_mask: !0,      // TODO
 		stx_blksize: 512,  // TODO
 		stx_attributes: 0, // TODO
@@ -206,8 +199,6 @@ pub fn statx(
 		stx_mnt_id: 0, // TODO
 
 		__padding1: [0; 13],
-	};
-	// Write structure
-	statxbuff.copy_to_user(statx_val)?;
+	})?;
 	Ok(0)
 }

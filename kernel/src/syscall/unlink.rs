@@ -34,17 +34,10 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn unlink(Args(pathname): Args<SyscallString>) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
+pub fn unlink(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
 	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
-
-	let rs = ResolutionSettings::for_process(&proc, true);
-
 	// Remove the file
 	vfs::remove_file_from_path(&path, &rs)?;
-
 	Ok(0)
 }

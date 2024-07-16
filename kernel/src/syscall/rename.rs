@@ -32,32 +32,29 @@ use utils::{
 // TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
 // etc...)
 
-pub fn rename(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
-	let (old_path, new_path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let old_path = PathBuf::try_from(oldpath)?;
-
-		let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let new_path = PathBuf::try_from(newpath)?;
-
-		let rs = ResolutionSettings::for_process(&proc, false);
-		(old_path, new_path, rs)
+pub fn rename(
+	Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let rs = ResolutionSettings {
+		follow_link: false,
+		..rs
 	};
-
+	// Get old file
+	let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let old_path = PathBuf::try_from(oldpath)?;
 	let old_parent_path = old_path.parent().ok_or_else(|| errno!(ENOTDIR))?;
 	let old_name = old_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
-
 	let old_mutex = vfs::get_file_from_path(&old_path, &rs)?;
 	let mut old = old_mutex.lock();
 	// Cannot rename mountpoint
 	if old.is_mountpoint() {
 		return Err(errno!(EBUSY));
 	}
-
+	// Get new file
+	let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let new_path = PathBuf::try_from(newpath)?;
 	let new_parent_path = new_path.parent().ok_or_else(|| errno!(ENOTDIR))?;
 	let new_parent_mutex = vfs::get_file_from_path(
 		new_parent_path,
@@ -68,20 +65,14 @@ pub fn rename(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) ->
 	)?;
 	let new_parent = new_parent_mutex.lock();
 	let new_name = new_path.file_name().ok_or_else(|| errno!(ENOENT))?;
-
 	// If source and destination are on different mountpoints, error
 	if new_parent.location.get_mountpoint_id() != old.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
-
 	// TODO Check permissions if sticky bit is set
-
+	// Do rename
 	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
-
-	if old.stat.file_type != FileType::Directory {
-		// TODO On fail, undo
-		vfs::remove_file(old_parent, old_name, &rs.access_profile)?;
-	}
-
+	// TODO On fail, undo previous creation
+	vfs::remove_file(old_parent, old_name, &rs.access_profile)?;
 	Ok(0)
 }

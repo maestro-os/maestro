@@ -26,14 +26,15 @@ use crate::process::Process;
 use utils::{
 	errno::{EResult, Errno},
 	interrupt::cli,
+	lock::{IntMutex, IntMutexGuard},
 };
 
-pub fn sigreturn() -> EResult<usize> {
+pub fn sigreturn(proc: &IntMutex<Process>) -> EResult<usize> {
+	// Avoid re-enabling interrupts before context switching
 	cli();
+	// Restores the state of the process before the signal handler
 	let regs = {
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
-		// Restores the state of the process before the signal handler
+		let mut proc = proc.lock();
 		proc.signal_restore();
 		proc.regs.clone()
 	};

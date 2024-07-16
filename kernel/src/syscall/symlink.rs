@@ -39,36 +39,27 @@ use utils::{
 	io::IO,
 };
 
-pub fn symlink(Args((target, linkpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
-	let (target, linkpath, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-
-		let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		if target_slice.len() > limits::SYMLINK_MAX {
-			return Err(errno!(ENAMETOOLONG));
-		}
-		let target = PathBuf::try_from(target_slice)?;
-
-		let linkpath = linkpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let linkpath = PathBuf::try_from(linkpath)?;
-
-		(target, linkpath, rs)
-	};
-	// Get the path of the parent directory
-	let parent_path = linkpath.parent().unwrap_or(Path::root());
-	// The file's basename
-	let name = linkpath.file_name().ok_or_else(|| errno!(ENOENT))?;
-	// The parent directory
-	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
+pub fn symlink(
+	Args((target, linkpath)): Args<(SyscallString, SyscallString)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	if target_slice.len() > limits::SYMLINK_MAX {
+		return Err(errno!(ENAMETOOLONG));
+	}
+	let target = PathBuf::try_from(target_slice)?;
+	let linkpath = linkpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let linkpath = PathBuf::try_from(linkpath)?;
+	let link_parent = linkpath.parent().unwrap_or(Path::root());
+	let link_name = linkpath.file_name().ok_or_else(|| errno!(ENOENT))?;
+	// Link's parent
+	let parent_mutex = vfs::get_file_from_path(link_parent, &rs)?;
 	let mut parent = parent_mutex.lock();
 	// Create link
 	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 	let file = vfs::create_file(
 		&mut parent,
-		name,
+		link_name,
 		&rs.access_profile,
 		Stat {
 			file_type: FileType::Link,
@@ -79,6 +70,7 @@ pub fn symlink(Args((target, linkpath)): Args<(SyscallString, SyscallString)>) -
 			..Default::default()
 		},
 	)?;
+	// TODO remove file on failure
 	file.lock().write(0, target.as_bytes())?;
 	Ok(0)
 }

@@ -27,16 +27,14 @@ use crate::{
 	syscall::{Args, Signal},
 };
 use core::ffi::c_int;
-use utils::errno::EResult;
+use utils::{errno::EResult, lock::IntMutexGuard};
 
 pub fn rt_sigaction(
 	Args((signum, act, oldact)): Args<(c_int, SyscallPtr<SigAction>, SyscallPtr<SigAction>)>,
+	proc: IntMutexGuard<Process>,
 ) -> EResult<usize> {
 	// Validation
 	let signal = Signal::try_from(signum as u32)?;
-	// Get process
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
 	let mut signal_handlers = proc.signal_handlers.lock();
 	// Save the old structure
 	let old = signal_handlers[signal.get_id() as usize].get_action();

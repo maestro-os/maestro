@@ -19,7 +19,7 @@
 //! The `reboot` system call allows the superuser to power off, reboot, halt or
 //! suspend the system.
 
-use crate::{power, process::Process, syscall::Args};
+use crate::{file::perm::AccessProfile, power, process::Process, syscall::Args};
 use core::ffi::{c_int, c_void};
 use utils::{
 	errno,
@@ -42,19 +42,15 @@ const CMD_SUSPEND: u32 = 3;
 
 pub fn reboot(
 	Args((magic, magic2, cmd, _arg)): Args<(c_int, c_int, c_int, *const c_void)>,
+	ap: AccessProfile,
 ) -> EResult<usize> {
+	// Validation
 	if (magic as u32) != MAGIC || (magic2 as u32) != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}
-
-	{
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-		if !proc.access_profile.is_privileged() {
-			return Err(errno!(EPERM));
-		}
+	if !ap.is_privileged() {
+		return Err(errno!(EPERM));
 	}
-
 	match cmd as u32 {
 		CMD_POWEROFF => {
 			crate::println!("Power down...");

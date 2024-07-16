@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The rt_sigprocmask system call allows to change the blocked signal mask.
+//! The `rt_sigprocmask` system call allows to change the blocked signal mask.
 
 use crate::{
 	process::{mem_space::copy::SyscallSlice, Process},

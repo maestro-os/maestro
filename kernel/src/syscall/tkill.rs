@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The tkill system call allows to send a signal to a specific thread.
+//! The `tkill` system call allows to send a signal to a specific thread.
 
 use crate::{
 	process::{pid::Pid, signal::Signal, Process},

@@ -34,25 +34,16 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn umount(Args(target): Args<SyscallString>) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
+pub fn umount(Args(target): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
 	// Check permission
-	if !proc.access_profile.is_privileged() {
+	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-
-	let rs = ResolutionSettings::for_process(&proc, true);
-
 	// Get target directory
 	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let target_path = PathBuf::try_from(target_slice)?;
-	let target_dir = vfs::get_file_from_path(&target_path, &rs)?;
-	let target_dir = target_dir.lock();
-
+	let target_location = vfs::get_file_from_path(&target_path, &rs)?.lock().location;
 	// Remove mountpoint
-	mountpoint::remove(&target_dir.location)?;
-
+	mountpoint::remove(&target_location)?;
 	Ok(0)
 }

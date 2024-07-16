@@ -30,31 +30,17 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn rmdir(Args(pathname): Args<SyscallString>) -> EResult<usize> {
-	let (path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-
-		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		(path, rs)
-	};
-
-	// Remove the directory
-	{
-		// Get directory
-		let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-		let file = file_mutex.lock();
-		// Validation
-		if file.stat.file_type != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// Remove
-		vfs::remove_file_from_path(&path, &rs)?;
+pub fn rmdir(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
+	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	// Get directory
+	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
+	let file = file_mutex.lock();
+	// Validation
+	if file.stat.file_type != FileType::Directory {
+		return Err(errno!(ENOTDIR));
 	}
-
+	// Remove
+	vfs::remove_file_from_path(&path, &rs)?;
 	Ok(0)
 }

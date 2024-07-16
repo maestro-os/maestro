@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The uname syscall is used to retrieve information about the system.
+//! The `uname` syscall is used to retrieve information about the system.
 
 use crate::{
 	process::{mem_space::copy::SyscallPtr, Process},
@@ -54,17 +54,11 @@ pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
 		version: [0; UTSNAME_LENGTH],
 		machine: [0; UTSNAME_LENGTH],
 	};
-
 	utils::slice_copy(crate::NAME.as_bytes(), &mut utsname.sysname);
-
-	let hostname = crate::HOSTNAME.lock();
-	utils::slice_copy(&hostname, &mut utsname.nodename);
-
+	utils::slice_copy(&crate::HOSTNAME.lock(), &mut utsname.nodename);
 	utils::slice_copy(crate::VERSION.as_bytes(), &mut utsname.release);
 	utils::slice_copy(&[], &mut utsname.version);
 	utils::slice_copy(crate::ARCH.as_bytes(), &mut utsname.machine);
-
 	buf.copy_to_user(utsname)?;
-
 	Ok(0)
 }
