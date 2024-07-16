@@ -56,6 +56,6 @@ pub fn getsockopt(
 	let val = sock.get_opt(level, optname)?;
 	// Write back
 	let len = min(val.len(), optlen);
-	optval.copy_to_user(&val[..len])?;
+	optval.copy_to_user(0, &val[..len])?;
 	Ok(len as _)
 }

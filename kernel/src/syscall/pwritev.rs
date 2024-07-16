@@ -19,14 +19,21 @@
 //! The `pwritev` system call allows to write sparse data on a file descriptor.
 
 use crate::{
-	process::{iovec::IOVec, mem_space::copy::SyscallSlice},
+	file::fd::FileDescriptorTable,
+	process::{iovec::IOVec, mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::errno::EResult;
+use utils::{
+	errno::EResult,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+};
 
 pub fn pwritev(
 	Args((fd, iov, iovcnt, offset)): Args<(c_int, SyscallSlice<IOVec>, c_int, isize)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	proc: &IntMutex<Process>,
 ) -> EResult<usize> {
-	super::writev::do_writev(fd, iov, iovcnt, Some(offset), None)
+	super::writev::do_writev(fd, iov, iovcnt, Some(offset), None, &fds, proc)
 }

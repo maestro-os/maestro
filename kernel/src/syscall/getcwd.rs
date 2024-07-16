@@ -43,8 +43,8 @@ pub fn getcwd(
 		return Err(errno!(ERANGE));
 	}
 	// Write
-	// TODO do not allocate. write twice instead
-	let cwd = format!("{}\0", proc.cwd.0)?;
-	buf.copy_to_user(cwd.as_bytes())?;
+	let cwd = proc.cwd.0.as_bytes();
+	buf.copy_to_user(0, cwd)?;
+	buf.copy_to_user(cwd.len(), b"\0")?;
 	Ok(buf.as_ptr() as _)
 }

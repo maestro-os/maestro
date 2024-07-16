@@ -19,6 +19,7 @@
 //! The `sethostname` syscall sets the hostname of the system.
 
 use crate::{
+	file::perm::AccessProfile,
 	limits,
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
@@ -29,24 +30,19 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn sethostname(Args((name, len)): Args<(SyscallSlice<u8>, usize)>) -> EResult<usize> {
+pub fn sethostname(
+	Args((name, len)): Args<(SyscallSlice<u8>, usize)>,
+	ap: AccessProfile,
+) -> EResult<usize> {
 	// Check the size of the hostname is in bounds
 	if len > limits::HOST_NAME_MAX {
 		return Err(errno!(EINVAL));
 	}
-
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	// Checking permission
-	if !proc.access_profile.is_privileged() {
+	// Check permission
+	if !ap.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-
-	let name = name.copy_from_user(len)?.ok_or(errno!(EFAULT))?;
-
 	let mut hostname = crate::HOSTNAME.lock();
-	*hostname = name;
-
+	*hostname = name.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
 	Ok(0)
 }

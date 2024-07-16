@@ -63,9 +63,9 @@ pub fn poll(
 			}
 		}
 		{
-			let fds = fds.copy_from_user(nfds)?.ok_or_else(|| errno!(EFAULT))?;
+			let fds_arr = fds.copy_from_user(..nfds)?.ok_or_else(|| errno!(EFAULT))?;
 			// Check the file descriptors list
-			for fd in &fds {
+			for fd in &fds_arr {
 				if fd.events as u32 & io::POLLIN != 0 {
 					// TODO
 					todo!();
@@ -96,10 +96,11 @@ pub fn poll(
 				}
 			}
 			// The number of file descriptor with at least one event
-			let fd_event_count = fds.iter().filter(|fd| fd.revents != 0).count();
+			let fd_event_count = fds_arr.iter().filter(|fd| fd.revents != 0).count();
 			// If at least on event happened, return the number of file descriptors
 			// concerned
 			if fd_event_count > 0 {
+				fds.copy_to_user(0, &fds_arr)?;
 				return Ok(fd_event_count as _);
 			}
 		}

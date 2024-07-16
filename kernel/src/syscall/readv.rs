@@ -20,6 +20,7 @@
 
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		open_file::{OpenFile, O_NONBLOCK},
 		FileType,
 	},
@@ -38,9 +39,10 @@ use utils::{
 	errno::{EResult, Errno},
 	io,
 	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
 	vec,
 };
-
 // TODO Handle blocking writes (and thus, EINTR)
 // TODO Reimplement by taking example on `writev` (currently doesn't work with blocking files)
 
@@ -51,33 +53,28 @@ use utils::{
 /// - `iovcnt` is the number of chunks in `iov`
 /// - `open_file` is the file to read from
 fn read(iov: &SyscallSlice<IOVec>, iovcnt: usize, open_file: &mut OpenFile) -> EResult<i32> {
-	let iov = iov.copy_from_user(iovcnt)?.ok_or(errno!(EFAULT))?;
-
-	let mut total_len = 0;
-
+	let mut off = 0;
+	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
 		// Ignore zero entry
 		if i.iov_len == 0 {
 			continue;
 		}
-
 		// The size to read. This is limited to avoid an overflow on the total length
-		let l = min(i.iov_len, i32::MAX as usize - total_len);
+		let l = min(i.iov_len, i32::MAX as usize - off);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
-
+		// Read
 		// TODO perf: do not use a buffer
 		let mut buffer = vec![0u8; l]?;
-		// The offset is ignored
 		// FIXME: incorrect. should reuse the same buffer if not full
 		let (len, eof) = open_file.read(0, &mut buffer)?;
-		total_len += len as usize;
+		ptr.copy_to_user(off, &buffer[..(len as usize)])?;
+		off += len as usize;
 		if eof {
 			break;
 		}
-		ptr.copy_to_user(&buffer[..(len as usize)])?;
 	}
-
-	Ok(total_len as _)
+	Ok(off as _)
 }
 
 /// Performs the readv operation.
@@ -94,23 +91,15 @@ pub fn do_readv(
 	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
+	fds: &Mutex<FileDescriptorTable>,
+	proc: &IntMutex<Process>,
 ) -> EResult<usize> {
 	// Validation
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
 	// TODO Handle flags
-	let (proc, open_file_mutex) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		let fds = fds_mutex.lock();
-		let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
-
-		drop(proc);
-		(proc_mutex, open_file_mutex)
-	};
+	let open_file_mutex = fds.lock().get_fd(fd)?.get_open_file().clone();
 	// Validation
 	let (start_off, update_off) = match offset {
 		Some(o @ 0..) => (o as u64, false),
@@ -129,18 +118,14 @@ pub fn do_readv(
 		{
 			let mut open_file = open_file_mutex.lock();
 			let flags = open_file.get_flags();
-
 			// Change the offset temporarily
 			let prev_off = open_file.get_offset();
 			open_file.set_offset(start_off);
-
 			let len = read(&iov, iovcnt as _, &mut open_file)?;
-
 			// Restore previous offset
 			if !update_off {
 				open_file.set_offset(prev_off);
 			}
-
 			if len > 0 {
 				return Ok(len as _);
 			}
@@ -148,12 +133,10 @@ pub fn do_readv(
 				// The file descriptor is non-blocking
 				return Err(errno!(EAGAIN));
 			}
-
 			// Block on file
 			let mut proc = proc.lock();
 			open_file.add_waiting_process(&mut proc, io::POLLIN | io::POLLERR)?;
 		}
-
 		// Make current process sleep
 		scheduler::end_tick();
 	}
@@ -161,6 +144,8 @@ pub fn do_readv(
 
 pub fn readv(
 	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	proc: &IntMutex<Process>,
 ) -> EResult<usize> {
-	do_readv(fd, iov, iovcnt, None, None)
+	do_readv(fd, iov, iovcnt, None, None, &fds, proc)
 }

@@ -20,18 +20,22 @@
 //! directory.
 
 use crate::{
-	file::{FileType, INode},
+	file::{fd::FileDescriptorTable, FileType, INode},
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
 use core::{
 	ffi::c_uint,
 	mem::{offset_of, size_of},
+	ops::Range,
 	ptr,
 };
 use utils::{
+	bytes::as_bytes,
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 	vec,
 };
 
@@ -50,28 +54,27 @@ pub trait Dirent: Sized {
 	///
 	/// Arguments:
 	/// - `slice` is the slice to write on.
-	/// - `off` is the offset to the beginning of the entry in the slice.
+	/// - `off` is the offset at which the entry is to be written.
 	/// - `inode` is the inode of the entry.
 	/// - `entry_type` is the type of the entry.
 	/// - `name` is the name of the entry.
-	fn write(slice: &mut [u8], off: usize, inode: INode, entry_type: FileType, name: &[u8]);
+	fn write(
+		slice: &SyscallSlice<u8>,
+		off: usize,
+		inode: INode,
+		entry_type: FileType,
+		name: &[u8],
+	) -> EResult<()>;
 }
 
 /// Performs the `getdents` system call.
-pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) -> EResult<usize> {
-	let open_file_mutex = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		let fds = fds_mutex.lock();
-
-		fds.get_fd(fd as _)?.get_open_file().clone()
-	};
-
-	// TODO optimize: a buffer is not necessarily required here
-	let mut buffer = vec![0u8; count]?;
-
+pub fn do_getdents<E: Dirent>(
+	fd: c_uint,
+	dirp: SyscallSlice<u8>,
+	count: usize,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	let open_file_mutex = fds.lock().get_fd(fd as _)?.get_open_file().clone();
 	let mut open_file = open_file_mutex.lock();
 	let mut off = open_file.get_offset();
 	let mut buff_off = 0;
@@ -96,18 +99,16 @@ pub fn do_getdents<E: Dirent>(fd: c_uint, dirp: SyscallSlice<u8>, count: usize) 
 				break;
 			}
 			E::write(
-				&mut buffer,
+				&dirp,
 				buff_off,
 				entry.inode,
 				entry.entry_type,
 				entry.name.as_ref(),
-			);
+			)?;
 			buff_off += len;
 		}
 	}
 	open_file.set_offset(off);
-	// Write back
-	dirp.copy_to_user(&buffer[..buff_off])?;
 	Ok(buff_off as _)
 }
 
@@ -136,7 +137,13 @@ impl Dirent for LinuxDirent {
 			.next_multiple_of(size_of::<usize>())
 	}
 
-	fn write(slice: &mut [u8], off: usize, inode: INode, entry_type: FileType, name: &[u8]) {
+	fn write(
+		slice: &SyscallSlice<u8>,
+		off: usize,
+		inode: INode,
+		entry_type: FileType,
+		name: &[u8],
+	) -> EResult<()> {
 		let len = Self::required_length(name);
 		let ent = Self {
 			d_ino: inode as _,
@@ -145,21 +152,21 @@ impl Dirent for LinuxDirent {
 			d_name: [],
 		};
 		// Write entry
-		unsafe {
-			#[allow(invalid_reference_casting)]
-			ptr::write(&mut slice[off] as *mut _ as *mut _, ent);
-		}
+		slice.copy_to_user(off, as_bytes(&ent))?;
 		// Copy file name
-		let name_slice = &mut slice[off + offset_of!(Self, d_name)..];
-		name_slice[..name.len()].copy_from_slice(name);
-		name_slice[name.len()] = 0;
-		// Write entry type
-		name_slice[name.len() + 1] = entry_type.to_dirent_type();
+		slice.copy_to_user(off + offset_of!(Self, d_name), name)?;
+		// Write nul byte and entry type
+		slice.copy_to_user(
+			off + offset_of!(Self, d_name) + name.len(),
+			&[b'\0', entry_type.to_dirent_type()],
+		)?;
+		Ok(())
 	}
 }
 
 pub fn getdents(
 	Args((fd, dirp, count)): Args<(c_uint, SyscallSlice<u8>, c_uint)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_getdents::<LinuxDirent>(fd, dirp, count as usize)
+	do_getdents::<LinuxDirent>(fd, dirp, count as usize, fds)
 }

@@ -30,10 +30,10 @@ use utils::{
 	vec,
 };
 
-/// If set, bytes are draw from the randomness source instead of `urandom`.
+/// If set, bytes are drawn from the randomness source instead of `urandom`.
 const GRND_RANDOM: u32 = 2;
 /// If set, the function doesn't block. If no entropy is available, the function
-/// returns EAGAIN.
+/// returns [`EAGAIN`].
 const GRND_NONBLOCK: u32 = 1;
 
 pub fn getrandom(
@@ -48,12 +48,13 @@ pub fn getrandom(
 	if nonblock && buflen > pool.available_bytes() {
 		return Err(errno!(EAGAIN));
 	}
-	// TODO optimize
-	let mut buffer = vec![0u8; buflen]?;
+	// Write
+	let mut tmp: [u8; 256] = [0; 256];
 	let mut i = 0;
-	while i < buffer.len() {
-		i += pool.read(&mut buffer[i..], bypass_threshold);
+	while i < buflen {
+		let len = pool.read(&mut tmp, bypass_threshold);
+		buf.copy_to_user(i, &tmp[..len])?;
+		i += len;
 	}
-	buf.copy_to_user(&buffer[..i])?;
 	Ok(i as _)
 }

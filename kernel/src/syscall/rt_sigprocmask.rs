@@ -26,6 +26,7 @@ use core::{cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::IntMutexGuard,
 };
 
 /// Performs the union of the given mask with the current mask.
@@ -38,39 +39,24 @@ const SIG_SETMASK: i32 = 2;
 // TODO Use SigSet in crate::process::signal
 pub fn rt_sigprocmask(
 	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
+	mut proc: IntMutexGuard<Process>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
-
 	// Save old set
 	let curr = proc.sigmask.as_slice_mut();
 	let len = min(curr.len(), sigsetsize as _);
-	oldset.copy_to_user(&curr[..len])?;
-
-	let set_slice = set.copy_from_user(sigsetsize as _)?;
+	oldset.copy_to_user(0, &curr[..len])?;
+	// Apply new set
+	let set_slice = set.copy_from_user(..sigsetsize)?;
 	if let Some(set) = set_slice {
-		// Applies the operation
-		match how {
-			SIG_BLOCK => {
-				for i in 0..min(set.len(), curr.len()) {
-					curr[i] |= set[i];
-				}
+		let iter = curr.iter_mut().zip(set.iter());
+		for (curr, set) in iter {
+			match how {
+				SIG_BLOCK => *curr |= *set,
+				SIG_UNBLOCK => *curr &= !*set,
+				SIG_SETMASK => *curr = *set,
+				_ => return Err(errno!(EINVAL)),
 			}
-
-			SIG_UNBLOCK => {
-				for i in 0..min(set.len(), curr.len()) {
-					curr[i] &= !set[i];
-				}
-			}
-
-			SIG_SETMASK => {
-				let len = min(set.len(), curr.len());
-				curr[..len].copy_from_slice(&set[..len]);
-			}
-
-			_ => return Err(errno!(EINVAL)),
 		}
 	}
-
 	Ok(0)
 }

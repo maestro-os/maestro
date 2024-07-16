@@ -53,7 +53,7 @@ pub fn connect(
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 	let _addr = addr
-		.copy_from_user(addrlen as _)?
+		.copy_from_user(..(addrlen as usize))?
 		.ok_or_else(|| errno!(EFAULT))?;
 	// TODO connect socket
 	todo!();

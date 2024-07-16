@@ -25,6 +25,7 @@ use core::{
 	fmt,
 	intrinsics::likely,
 	mem::{size_of, size_of_val, MaybeUninit},
+	ops::{Bound, RangeBounds},
 	ptr::{null_mut, NonNull},
 };
 use utils::{
@@ -173,6 +174,15 @@ impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 	}
 }
 
+/// Turns the given range bound into the corresponding index.
+fn bound_to_index(b: Bound<&usize>) -> usize {
+	match b {
+		Bound::Included(v) => *v + 1,
+		Bound::Excluded(v) => *v,
+		Bound::Unbounded => 0,
+	}
+}
+
 /// Wrapper for a slice.
 ///
 /// The size of the slice is required when trying to access it.
@@ -192,20 +202,24 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 
 	/// Copies the slice from userspace and returns it.
 	///
-	/// `len` is the in number of elements in the slice.
+	/// `range` is the bytes range to copy from the source userspace slice. An unbounded side is
+	/// considered to be `0`.
 	///
 	/// If the pointer is null, the function returns `None`.
 	///
 	/// If the slice is not accessible, the function returns an error.
-	pub fn copy_from_user(&self, len: usize) -> EResult<Option<Vec<T>>> {
+	pub fn copy_from_user<R: RangeBounds<usize>>(&self, range: R) -> EResult<Option<Vec<T>>> {
 		let Some(ptr) = self.0 else {
 			return Ok(None);
 		};
+		let start = bound_to_index(range.start_bound());
+		let end = bound_to_index(range.end_bound());
+		let len = end.saturating_sub(start);
 		let mut buf: Vec<T> = Vec::with_capacity(len)?;
 		unsafe {
 			buf.set_len(len);
 			copy_from_user_raw(
-				ptr.as_ptr() as *const _,
+				ptr.as_ptr().add(start) as *const _,
 				buf.as_mut_ptr() as *mut _,
 				size_of::<T>() * len,
 			)?;
@@ -215,7 +229,9 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 
 	/// Copies the value to userspace.
 	///
-	/// `len` is the in number of elements in the slice.
+	/// Arguments:
+	/// - `off` is the byte offset in the slice to which the data is to be copied.
+	/// - `val` is the source slice to copy from.
 	///
 	/// If the pointer is null, the function does nothing.
 	///
@@ -223,14 +239,14 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 	///
 	/// If the slice is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
-	pub fn copy_to_user(&self, val: &[T]) -> EResult<()> {
+	pub fn copy_to_user(&self, off: usize, val: &[T]) -> EResult<()> {
 		let Some(ptr) = self.0 else {
 			return Ok(());
 		};
 		unsafe {
 			copy_to_user_raw(
 				val.as_ptr() as *const _,
-				ptr.as_ptr() as *mut _,
+				ptr.as_ptr().add(off) as *mut _,
 				size_of_val(val),
 			)?;
 		}

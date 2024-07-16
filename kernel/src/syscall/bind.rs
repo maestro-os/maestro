@@ -52,7 +52,7 @@ pub fn bind(
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 	let addr = addr
-		.copy_from_user(addrlen as _)?
+		.copy_from_user(..(addrlen as usize))?
 		.ok_or_else(|| errno!(EFAULT))?;
 	sock.bind(&addr)?;
 	Ok(0)
