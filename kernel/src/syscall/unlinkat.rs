@@ -23,6 +23,7 @@
 use super::util::at;
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		path::PathBuf,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
@@ -34,29 +35,30 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 pub fn unlinkat(
 	Args((dirfd, pathname, flags)): Args<(c_int, SyscallString, c_int)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let (fds_mutex, path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, false);
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-
-		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(pathname)?;
-
-		(fds_mutex, path, rs)
+	let rs = ResolutionSettings {
+		follow_link: false,
+		..rs
 	};
-
-	let fds = fds_mutex.lock();
+	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(pathname)?;
 	let parent_path = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	// AT_EMPTY_PATH is required in case the path has only one component
-	let resolved = at::get_file(&fds, rs.clone(), dirfd, parent_path, flags | AT_EMPTY_PATH)?;
+	let resolved = at::get_file(
+		&fds.lock(),
+		rs.clone(),
+		dirfd,
+		parent_path,
+		flags | AT_EMPTY_PATH,
+	)?;
 	match resolved {
 		Resolved::Found(parent) => {
 			let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
@@ -64,6 +66,5 @@ pub fn unlinkat(
 		}
 		_ => return Err(errno!(ENOENT)),
 	}
-
 	Ok(0)
 }

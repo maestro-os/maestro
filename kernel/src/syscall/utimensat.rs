@@ -21,6 +21,7 @@
 use super::util::at;
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		path::{Path, PathBuf},
 		vfs::{ResolutionSettings, Resolved},
 	},
@@ -35,6 +36,8 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 pub fn utimensat(
@@ -44,22 +47,17 @@ pub fn utimensat(
 		SyscallPtr<[Timespec; 2]>,
 		c_int,
 	)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let proc = proc_mutex.lock();
-
-	let rs = ResolutionSettings::for_process(&proc, true);
-
-	let fds = proc.file_descriptors.as_ref().unwrap().lock();
-
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let pathname = PathBuf::try_from(pathname)?;
-
 	let times_val = times.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let atime = times_val[0];
 	let mtime = times_val[1];
-
-	let Resolved::Found(file_mutex) = at::get_file(&fds, rs, dirfd, &pathname, flags)? else {
+	// Get file
+	let Resolved::Found(file_mutex) = at::get_file(&fds.lock(), rs, dirfd, &pathname, flags)?
+	else {
 		return Err(errno!(ENOENT));
 	};
 	let mut file = file_mutex.lock();

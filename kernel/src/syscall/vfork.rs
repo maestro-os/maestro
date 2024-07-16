@@ -24,34 +24,27 @@
 use crate::process::{regs::Regs, scheduler, ForkOptions, Process};
 use utils::{
 	errno::{EResult, Errno},
+	lock::IntMutex,
 	ptr::arc::Arc,
 };
 
-pub fn vfork(regs: &Regs) -> EResult<usize> {
+pub fn vfork(proc: &Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
 	let new_pid = {
-		// The current process
-		let curr_mutex = Process::current();
-		// A weak pointer to the new process's parent
-		let parent = Arc::downgrade(&curr_mutex);
-
-		let mut curr_proc = curr_mutex.lock();
-
 		let fork_options = ForkOptions {
 			vfork: true,
 			..ForkOptions::default()
 		};
-		let new_mutex = curr_proc.fork(parent, fork_options)?;
+		let new_mutex = proc.lock().fork(Arc::downgrade(proc), fork_options)?;
 		let mut new_proc = new_mutex.lock();
-
-		// Update return value
+		// Set child's return value to `0`
 		let mut regs = regs.clone();
 		regs.set_syscall_return(Ok(0));
 		new_proc.regs = regs;
-
 		new_proc.get_pid()
 	};
 	// Let another process run instead of the current. Because the current
 	// process must now wait for the child process to terminate or execute a program
 	scheduler::end_tick();
+	// Set parent's return value to the child's PID
 	Ok(new_pid as _)
 }
