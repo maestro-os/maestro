@@ -34,7 +34,7 @@ pub fn rt_sigaction(
 	proc: IntMutexGuard<Process>,
 ) -> EResult<usize> {
 	// Validation
-	let signal = Signal::try_from(signum as u32)?;
+	let signal = Signal::try_from(signum)?;
 	let mut signal_handlers = proc.signal_handlers.lock();
 	// Save the old structure
 	let old = signal_handlers[signal.get_id() as usize].get_action();

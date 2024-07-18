@@ -26,17 +26,14 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::IntMutexGuard,
 };
 
-pub fn tkill(Args((tid, sig)): Args<(Pid, c_int)>) -> EResult<usize> {
-	// Validation
-	if sig < 0 {
-		return Err(errno!(EINVAL));
-	}
-	let signal = Signal::try_from(sig as u32)?;
-	// Get process
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
+pub fn tkill(
+	Args((tid, sig)): Args<(Pid, c_int)>,
+	mut proc: IntMutexGuard<Process>,
+) -> EResult<usize> {
+	let signal = Signal::try_from(sig)?;
 	// Check if the thread to kill is the current
 	if proc.tid == tid {
 		proc.kill(&signal);
@@ -44,7 +41,7 @@ pub fn tkill(Args((tid, sig)): Args<(Pid, c_int)>) -> EResult<usize> {
 		// Get the thread
 		let thread_mutex = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
 		let mut thread = thread_mutex.lock();
-		// Check permissions
+		// Check permission
 		if !proc.access_profile.can_kill(&thread) {
 			return Err(errno!(EPERM));
 		}

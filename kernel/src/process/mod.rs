@@ -60,7 +60,7 @@ use crate::{
 	tty::TTYHandle,
 };
 use core::{
-	ffi::c_void,
+	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
 	mem,
@@ -963,16 +963,10 @@ impl Process {
 		self.sigpending
 			.iter()
 			.enumerate()
-			.filter_map(|(i, b)| {
-				if !b {
-					return None;
-				}
-				let s = Signal::try_from(i as u32).ok()?;
-				if !s.can_catch() || !self.sigmask.is_set(i) {
-					Some(s)
-				} else {
-					None
-				}
+			.filter(|(_, b)| *b)
+			.filter_map(|(i, _)| {
+				let s = Signal::try_from(i as c_int).ok()?;
+				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
 			})
 			.next()
 	}

@@ -45,7 +45,7 @@ pub fn signal(
 	let signal_handlers = proc.signal_handlers.clone();
 	drop(proc);
 	// Validation
-	let signal = Signal::try_from(signum as u32)?;
+	let signal = Signal::try_from(signum)?;
 	// Conversion
 	let new_handler = match handler {
 		signal::SIG_IGN => SignalHandler::Ignore,

@@ -41,7 +41,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
 	// Closure sending the signal
 	let f = |target: &mut Process| {
 		if matches!(target.get_state(), State::Zombie) {
-			return Err(errno!(ESRCH));
+			return Ok(());
 		}
 		if !ap.can_kill(target) {
 			return Err(errno!(EPERM));
@@ -80,17 +80,14 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> EResult<()> {
 		_ => pid as Pid,
 	};
 	// Kill process group
-	{
-		let proc_mutex = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
-		let proc = proc_mutex.lock();
-		let group = proc.get_group_processes();
-		for pid in group {
-			if *pid == pgid {
-				continue;
-			}
-			try_kill(*pid as _, sig)?;
-		}
-	}
+	Process::get_by_pid(pgid)
+		.ok_or_else(|| errno!(ESRCH))?
+		.lock()
+		.get_group_processes()
+		.iter()
+		// Avoid deadlock
+		.filter(|pid| **pid != pgid)
+		.try_for_each(|pid| try_kill(*pid as _, sig))?;
 	// Kill process group owner
 	try_kill(pgid, sig)?;
 	Ok(())
@@ -101,41 +98,30 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> EResult<()> {
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
-	if pid > 0 {
+	match pid {
 		// Kill the process with the given PID
-		try_kill(pid as _, &sig)
-	} else if pid == 0 {
+		1.. => try_kill(pid as _, &sig),
 		// Kill all processes in the current process group
-		try_kill_group(0, &sig)
-	} else if pid == -1 {
+		0 => try_kill_group(0, &sig),
 		// Kill all processes for which the current process has the permission
-		let sched = SCHEDULER.get().lock();
-		for (pid, _) in sched.iter_process() {
-			if *pid == process::pid::INIT_PID {
-				continue;
+		-1 => {
+			let sched = SCHEDULER.get().lock();
+			for (pid, _) in sched.iter_process() {
+				if *pid == process::pid::INIT_PID {
+					continue;
+				}
+				// TODO Check permission
+				try_kill(*pid, &sig)?;
 			}
-			// TODO Check permission
-			try_kill(*pid, &sig)?;
+			Ok(())
 		}
-		Ok(())
-	} else if pid < -1 {
 		// Kill the given process group
-		try_kill_group(-pid as _, &sig)
-	} else {
-		Err(errno!(ESRCH))
+		..-1 => try_kill_group(-pid as _, &sig),
 	}
 }
 
 pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>, regs: &Regs) -> EResult<usize> {
-	// Validation
-	if sig < 0 {
-		return Err(errno!(EINVAL));
-	}
-	let sig = if sig > 0 {
-		Some(Signal::try_from(sig as u32)?)
-	} else {
-		None
-	};
+	let sig = (sig != 0).then(|| Signal::try_from(sig)).transpose()?;
 	// TODO check if necessary
 	cli();
 	send_signal(pid, sig)?;

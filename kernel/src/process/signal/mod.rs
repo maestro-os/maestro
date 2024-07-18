@@ -183,7 +183,7 @@ impl SigEvent {
 		if !matches!(self.sigev_notify, SIGEV_SIGNAL | SIGEV_NONE | SIGEV_THREAD) {
 			return false;
 		}
-		if Signal::try_from(self.sigev_signo as u32).is_err() {
+		if Signal::try_from(self.sigev_signo).is_err() {
 			return false;
 		}
 		// TODO check sigev_notify_thread_id
@@ -373,11 +373,11 @@ pub enum Signal {
 	SIGSYS,
 }
 
-impl TryFrom<u32> for Signal {
+impl TryFrom<c_int> for Signal {
 	type Error = Errno;
 
 	/// `id` is the signal ID.
-	fn try_from(id: u32) -> Result<Self, Self::Error> {
+	fn try_from(id: c_int) -> Result<Self, Self::Error> {
 		match id {
 			1 => Ok(Self::SIGHUP),
 			2 => Ok(Self::SIGINT),

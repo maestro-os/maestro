@@ -160,7 +160,7 @@ impl Timer {
 	pub fn fire(&mut self, proc: &mut Process) {
 		match self.sevp.sigev_notify {
 			SIGEV_SIGNAL => {
-				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo as u32) else {
+				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo) else {
 					return;
 				};
 				// TODO on sigint_t, set si_code to SI_TIMER
