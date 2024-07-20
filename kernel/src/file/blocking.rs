@@ -48,9 +48,8 @@ impl BlockHandler {
 	///
 	/// `mask` is the mask of poll event to wait for.
 	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		self.waiting_procs.insert(proc.pid, mask)?;
+		self.waiting_procs.insert(proc.get_pid(), mask)?;
 		proc.set_state(process::State::Sleeping);
-
 		Ok(())
 	}
 

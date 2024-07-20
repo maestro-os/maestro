@@ -20,38 +20,33 @@
 
 use crate::{
 	process::{
-		mem_space::ptr::SyscallPtr,
+		mem_space::copy::SyscallPtr,
 		signal::{SigAction, SignalHandler},
 		Process,
 	},
-	syscall::Signal,
+	syscall::{Args, Signal},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{
+	errno::EResult,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
 pub fn rt_sigaction(
-	signum: c_int,
-	act: SyscallPtr<SigAction>,
-	oldact: SyscallPtr<SigAction>,
-) -> Result<i32, Errno> {
+	Args((signum, act, oldact)): Args<(c_int, SyscallPtr<SigAction>, SyscallPtr<SigAction>)>,
+	proc: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
 	// Validation
-	let signal = Signal::try_from(signum as u32)?;
-	// Get process
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mut mem_space_guard = mem_space.lock();
-	let mut signal_handlers = proc.signal_handlers.lock();
+	let signal = Signal::try_from(signum)?;
+	let signal_handlers_mutex = proc.lock().signal_handlers.clone();
+	let mut signal_handlers = signal_handlers_mutex.lock();
 	// Save the old structure
-	if let Some(oldact) = oldact.get_mut(&mut mem_space_guard)? {
-		let action = signal_handlers[signal.get_id() as usize].get_action();
-		*oldact = action;
-	}
+	let old = signal_handlers[signal.get_id() as usize].get_action();
+	oldact.copy_to_user(old)?;
 	// Set the new structure
-	if let Some(act) = act.get(&mem_space_guard)? {
-		signal_handlers[signal.get_id() as usize] = SignalHandler::Handler(*act);
+	if let Some(new) = act.copy_from_user()? {
+		signal_handlers[signal.get_id() as usize] = SignalHandler::Handler(new);
 	}
 	Ok(0)
 }

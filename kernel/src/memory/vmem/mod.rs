@@ -22,7 +22,7 @@
 #[cfg(target_arch = "x86")]
 pub mod x86;
 
-use crate::{elf, idt, memory, register_get, register_set, tty::vga};
+use crate::{cpu, elf, idt, memory, register_get, tty::vga};
 use core::{
 	alloc::AllocError,
 	ffi::c_void,
@@ -297,12 +297,7 @@ pub fn flush_current() {
 	x86::flush_current();
 }
 
-/// Tells whether the read-only pages protection is enabled.
-pub fn is_write_locked() -> bool {
-	unsafe { (register_get!("cr0") & (1 << 16)) != 0 }
-}
-
-/// Sets whether the kernel can write to read-only pages.
+/// Executes the closure while allowing the kernel to write on read-only pages.
 ///
 /// # Safety
 ///
@@ -310,34 +305,29 @@ pub fn is_write_locked() -> bool {
 /// read-only data writable.
 ///
 /// Writing on read-only regions of memory has an undefined behavior.
-pub unsafe fn set_write_lock(lock: bool) {
-	let mut val = register_get!("cr0");
-	if lock {
-		val |= 1 << 16;
-	} else {
-		val &= !(1 << 16);
-	}
-	register_set!("cr0", val);
+#[inline]
+pub unsafe fn write_ro<F: FnOnce() -> T, T>(f: F) -> T {
+	cpu::set_write_protected(false);
+	let res = f();
+	cpu::set_write_protected(true);
+	res
 }
 
-/// Executes the closure given as parameter.
-///
-/// During execution, the kernel can write on read-only pages.
-///
-/// The state of the write lock is restored after the closure's execution.
+/// Executes the closure while allowing the kernel to access user data by disabling SMAP.
 ///
 /// # Safety
 ///
-/// This function disables memory protection on the kernel side, which makes
-/// read-only data writable.
+/// SMAP provides a security against potentially malicious data accesses. As such, it should be
+/// disabled only when strictly necessary.
 ///
-/// Writing on read-only regions of memory has an undefined behavior.
-pub unsafe fn write_lock_wrap<F: FnOnce() -> T, T>(f: F) -> T {
-	let lock = is_write_locked();
-	set_write_lock(false);
-	let result = f();
-	set_write_lock(lock);
-	result
+/// Enabling SMAP removes access to memory addresses that were previously accessible. It is the
+/// caller's responsibility to ensure no invalid memory accesses are done afterward.
+#[inline]
+pub unsafe fn smap_disable<F: FnOnce() -> T, T>(f: F) -> T {
+	cpu::set_smap_enabled(false);
+	let res = f();
+	cpu::set_smap_enabled(true);
+	res
 }
 
 /// Executes the given closure `f` while being bound to the given virtual memory

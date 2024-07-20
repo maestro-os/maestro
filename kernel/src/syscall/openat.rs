@@ -19,6 +19,7 @@
 //! The `openat` syscall allows to open a file.
 
 use crate::{
+	file,
 	file::{
 		fd::{FileDescriptorTable, FD_CLOEXEC},
 		open_file,
@@ -26,17 +27,16 @@ use crate::{
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Mode, Stat,
+		File, FileType, Stat,
 	},
-	process::{mem_space::ptr::SyscallString, Process},
-	syscall::util::at,
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::{util::at, Args},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
 	},
 };
 use core::ffi::c_int;
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -67,7 +67,7 @@ fn get_file(
 	path: &Path,
 	flags: c_int,
 	rs: ResolutionSettings,
-	mode: Mode,
+	mode: file::Mode,
 ) -> EResult<Arc<Mutex<File>>> {
 	let create = flags & open_file::O_CREAT != 0;
 	let resolved = at::get_file(fds, rs.clone(), dirfd, path, flags)?;
@@ -97,26 +97,17 @@ fn get_file(
 	}
 }
 
-#[syscall]
 pub fn openat(
-	dirfd: c_int,
-	pathname: SyscallString,
-	flags: c_int,
-	mode: Mode,
-) -> Result<i32, Errno> {
+	Args((dirfd, pathname, flags, mode)): Args<(c_int, SyscallString, c_int, file::Mode)>,
+) -> EResult<usize> {
 	let (rs, path, fds_mutex) = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let follow_link = flags & open_file::O_NOFOLLOW == 0;
 		let rs = ResolutionSettings::for_process(&proc, follow_link);
 
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let mem_space_guard = mem_space.lock();
-
-		let pathname = pathname
-			.get(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
+		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(pathname)?;
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
@@ -141,8 +132,7 @@ pub fn openat(
 	if flags & open_file::O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-	let fd = fds.create_fd(fd_flags, open_file)?;
-	let fd_id = fd.get_id();
+	let (fd_id, _) = fds.create_fd(fd_flags, open_file)?;
 
 	// TODO flush file? (see `open` syscall)
 

@@ -153,13 +153,13 @@ impl MemMapping {
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> AllocResult<()> {
 		let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
-		// Get old page
-		let old = self
+		// Get previous page
+		let previous = self
 			.phys_pages
 			// Bound check
 			.get(offset)
 			.ok_or(AllocError)?;
-		match old {
+		match previous {
 			// If not pending for an allocation: map and stop here
 			Some(p) if !Self::is_cow(p, self.flags) => {
 				let physaddr = unsafe { p.ptr() };
@@ -172,12 +172,12 @@ impl MemMapping {
 		let new = self.residence.acquire_page(offset)?;
 		// Tells initializing the new page is necessary
 		let init = self.residence.is_normal();
-		// Tells whether a copy from the old page is necessary
-		let copy = old.is_some();
+		// Tells whether a copy from the previous page is necessary
+		let copy = previous.is_some();
 		if init {
-			if let Some(old) = &old {
-				// Map old page for copy
-				let physaddr = unsafe { old.ptr() as _ };
+			if let Some(previous) = &previous {
+				// Map previous page for copy
+				let physaddr = unsafe { previous.ptr() as _ };
 				vmem_transaction.map(physaddr, COPY_BUFFER as _, 0)?;
 			}
 		}
@@ -196,17 +196,19 @@ impl MemMapping {
 			// Switch to make sure the right vmem is bound, but this should already be the case
 			// so consider this has no cost
 			vmem::switch(vmem_transaction.vmem, move || {
-				vmem::write_lock_wrap(|| {
-					let dest = &mut *dest;
-					if copy {
-						dest.copy_from_slice(&*COPY_BUFFER);
-					} else {
-						dest.fill(0);
-					}
+				vmem::write_ro(|| {
+					vmem::smap_disable(|| {
+						let dest = &mut *dest;
+						if copy {
+							dest.copy_from_slice(&*COPY_BUFFER);
+						} else {
+							dest.fill(0);
+						}
+					});
 				});
 			});
 		}
-		// Store the new page and drop the old
+		// Store the new page and drop the previous
 		self.phys_pages[offset] = Some(new);
 		// Make the new page writable if necessary. Does not fail since the page has already been
 		// mapped

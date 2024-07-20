@@ -18,17 +18,15 @@
 
 //! The `umask` syscall is used to set the process's file creation mask.
 
-use crate::{file, process::Process};
-use macros::syscall;
-use utils::errno::Errno;
+use crate::{file, process::Process, syscall::Args};
+use core::mem;
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn umask(mask: file::Mode) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
-
-	let prev = proc.umask;
-	proc.umask = mask & 0o777;
-
+pub fn umask(Args(mask): Args<file::Mode>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
+	let prev = mem::replace(&mut proc.lock().umask, mask & 0o777);
 	Ok(prev as _)
 }

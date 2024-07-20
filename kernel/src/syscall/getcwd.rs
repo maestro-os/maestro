@@ -16,38 +16,33 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The getcwd system call allows to retrieve the current working directory of
+//! The `getcwd` system call allows to retrieve the current working directory of
 //! the current process.
 
-use crate::process::{mem_space::ptr::SyscallSlice, Process};
-use macros::syscall;
-use utils::{errno, errno::Errno, format};
+use crate::{
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
+};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	format,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn getcwd(buf: SyscallSlice<u8>, size: usize) -> Result<i32, Errno> {
-	if size == 0 {
-		return Err(errno!(EINVAL));
-	}
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let cwd = format!("{}", proc.cwd.0)?;
-
-	// Checking that the buffer is large enough
-	if size < cwd.len() + 1 {
+pub fn getcwd(
+	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
+	proc: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
+	let proc = proc.lock();
+	// Check that the buffer is large enough
+	if size < proc.cwd.0.len() + 1 {
 		return Err(errno!(ERANGE));
 	}
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-
-	let cwd_slice = cwd.as_bytes();
-	let buf_slice = buf
-		.get_mut(&mut mem_space_guard, size as _)?
-		.ok_or_else(|| errno!(EINVAL))?;
-	utils::slice_copy(cwd_slice, buf_slice);
-	buf_slice[cwd.len()] = b'\0';
-
+	// Write
+	let cwd = proc.cwd.0.as_bytes();
+	buf.copy_to_user(0, cwd)?;
+	buf.copy_to_user(cwd.len(), b"\0")?;
 	Ok(buf.as_ptr() as _)
 }

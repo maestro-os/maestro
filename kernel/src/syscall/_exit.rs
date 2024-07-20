@@ -16,40 +16,37 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The _exit syscall allows to terminate the current process with the given
+//! The `_exit` syscall allows to terminate the current process with the given
 //! status code.
 
+use super::Args;
 use crate::process::{scheduler, Process};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{errno::EResult, lock::IntMutexGuard};
 
 /// Exits the current process.
 ///
 /// Arguments:
 /// - `status` is the exit status.
 /// - `thread_group`: if `true`, the function exits the whole process group.
+/// - `proc` is the current process.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
-	let (_pid, _tid) = {
-		let proc_mutex = Process::current_assert();
+	{
+		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
-
-		proc.exit(status, false);
-
-		(proc.pid, proc.tid)
-	};
-
-	if thread_group {
-		// TODO Iterate on every process of thread group `tid`, except the
-		// process with pid `pid`
+		proc.exit(status);
+		let _pid = proc.get_pid();
+		let _tid = proc.tid;
+		if thread_group {
+			// TODO Iterate on every process of thread group `tid`, except the
+			// process with pid `pid`
+		}
 	}
-
 	scheduler::end_tick();
 	// Cannot resume since the process is now a zombie
 	unreachable!();
 }
 
-#[syscall]
-pub fn _exit(status: c_int) -> EResult<i32> {
+pub fn _exit(Args(status): Args<c_int>) -> EResult<usize> {
 	do_exit(status as _, false);
 }

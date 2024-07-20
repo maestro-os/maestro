@@ -16,25 +16,26 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! CPU interruptions help functions.
+//! CPU interruption helpers.
 
 use core::arch::asm;
 
 /// Tells whether interrupts are enabled on the current CPU kernel.
-pub fn is_interrupt_enabled() -> bool {
+#[inline(always)]
+pub fn is_enabled() -> bool {
 	let mut flags: usize;
 	unsafe {
 		#[cfg(target_pointer_width = "32")]
 		asm!(
 			"pushfd",
-			"pop {flags:e}",
-			flags = out(reg) flags,
+			"pop {:e}",
+			out(reg) flags,
 		);
 		#[cfg(target_pointer_width = "64")]
 		asm!(
 			"pushfq",
-			"pop {flags:r}",
-			flags = out(reg) flags,
+			"pop {:r}",
+			out(reg) flags,
 		);
 	}
 	flags & 0x200 != 0

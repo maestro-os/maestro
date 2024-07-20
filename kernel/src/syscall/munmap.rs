@@ -19,36 +19,38 @@
 //! The `munmap` system call allows the process to free memory that was
 //! allocated with `mmap`.
 
-use crate::{memory, process::Process};
+use crate::{
+	memory,
+	process::{mem_space::MemSpace, Process},
+	syscall::Args,
+};
 use core::{ffi::c_void, num::NonZeroUsize};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::IntMutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn munmap(addr: *mut c_void, length: usize) -> Result<i32, Errno> {
+pub fn munmap(
+	Args((addr, length)): Args<(*mut c_void, usize)>,
+	mem_space: Arc<IntMutex<MemSpace>>,
+) -> EResult<usize> {
+	// Check address alignment
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
 	let pages = length.div_ceil(memory::PAGE_SIZE);
 	let length = pages * memory::PAGE_SIZE;
-
-	// Checking for overflow
-	let end = (addr as usize).wrapping_add(length);
-	if end < addr as usize {
+	// Check for overflow
+	let Some(end) = (addr as usize).checked_add(length) else {
 		return Err(errno!(EINVAL));
-	}
-
+	};
 	// Prevent from unmapping kernel memory
 	if (addr as usize) >= (memory::PROCESS_END as usize) || end > (memory::PROCESS_END as usize) {
 		return Err(errno!(EINVAL));
 	}
-
-	proc.get_mem_space()
-		.unwrap()
+	mem_space
 		.lock()
 		.unmap(addr, NonZeroUsize::new(pages).unwrap(), false)?;
 	Ok(0)

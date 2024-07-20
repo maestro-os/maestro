@@ -19,10 +19,13 @@
 //! The `signal` syscall allows to specify a pointer to a function to be called
 //! when a specific signal is received by the current process.
 
-use crate::process::{
-	signal,
-	signal::{SigAction, Signal, SignalHandler, SA_RESTART},
-	Process,
+use crate::{
+	process::{
+		signal,
+		signal::{SigAction, Signal, SignalHandler, SA_RESTART},
+		Process,
+	},
+	syscall::Args,
 };
 use core::{
 	ffi::{c_int, c_void},
@@ -30,13 +33,19 @@ use core::{
 	mem::transmute,
 	ptr::null,
 };
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
+pub fn signal(
+	Args((signum, handler)): Args<(c_int, *const c_void)>,
+	proc: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
+	let signal_handlers = proc.lock().signal_handlers.clone();
 	// Validation
-	let signal = Signal::try_from(signum as u32)?;
+	let signal = Signal::try_from(signum)?;
 	// Conversion
 	let new_handler = match handler {
 		signal::SIG_IGN => SignalHandler::Ignore,
@@ -49,12 +58,10 @@ pub fn signal(signum: c_int, handler: *const c_void) -> Result<i32, Errno> {
 		}),
 	};
 	// Set new handler and get old
-	let old_handler = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-		let mut signal_handlers = proc.signal_handlers.lock();
-		mem::replace(&mut signal_handlers[signal.get_id() as usize], new_handler)
-	};
+	let old_handler = mem::replace(
+		&mut signal_handlers.lock()[signal.get_id() as usize],
+		new_handler,
+	);
 	// Convert to pointer and return
 	let ptr = match old_handler {
 		SignalHandler::Ignore => signal::SIG_IGN,

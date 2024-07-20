@@ -179,7 +179,7 @@ pub trait TryToOwned {
 	/// The error type on failure.
 	type Error = AllocError;
 
-	/// Creates onwed data from borrowed data. On failure, the function returns [`Self::Error`].
+	/// Creates owned data from borrowed data. On failure, the function returns [`Self::Error`].
 	fn try_to_owned(&self) -> Result<Self::Owned, Self::Error>;
 }
 
@@ -198,11 +198,12 @@ impl<'a> fmt::Display for DisplayableStr<'a> {
 
 impl<'a> fmt::Debug for DisplayableStr<'a> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		// TODO Add backslashes to escape `"` and `\`
 		write!(fmt, "\"{self}\"")
 	}
 }
 
-/// Structure used to store data given the given memory alignment.
+/// Wrapper to store data given the given memory alignment.
 #[repr(C)]
 pub struct Aligned<Align, Data: ?Sized> {
 	/// Alignment padding.

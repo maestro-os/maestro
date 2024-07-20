@@ -21,6 +21,7 @@
 use core::{
 	cmp::Ordering,
 	ffi::{c_int, c_long, c_void},
+	fmt::Debug,
 	ops::{Add, Sub},
 };
 
@@ -71,9 +72,9 @@ impl TimestampScale {
 	}
 }
 
-/// Trait to be implement on a structure describing a moment in time.
+/// Trait to be implemented on a structure describing a moment in time.
 pub trait TimeUnit:
-	Sized + Clone + Default + Add<Self, Output = Self> + Sub<Self, Output = Self> + PartialOrd
+	Sized + Clone + Debug + Default + Add<Self, Output = Self> + Sub<Self, Output = Self> + PartialOrd
 {
 	/// Creates the structure from the given timestamp in nanoseconds.
 	fn from_nano(timestamp: u64) -> Self;

@@ -23,7 +23,7 @@ pub mod socket;
 
 use crate::{
 	file::{blocking::BlockHandler, FileLocation, Stat},
-	process::{mem_space::MemSpace, Process},
+	process::Process,
 	syscall::ioctl,
 };
 use core::{alloc::AllocError, any::Any, ffi::c_void};
@@ -31,7 +31,7 @@ use utils::{
 	collections::{hashmap::HashMap, id_allocator::IDAllocator},
 	errno::{AllocResult, EResult},
 	io::IO,
-	lock::{IntMutex, Mutex},
+	lock::Mutex,
 	ptr::arc::Arc,
 	TryDefault,
 };
@@ -75,12 +75,7 @@ pub trait Buffer: IO + Any {
 	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
-	fn ioctl(
-		&mut self,
-		mem_space: Arc<IntMutex<MemSpace>>,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32>;
+	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32>;
 }
 
 /// All the system's buffer. The key is the location of the file associated with the

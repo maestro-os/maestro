@@ -19,13 +19,12 @@
 //! The `getpid` system call returns the PID of the current process.
 
 use crate::process::Process;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn getpid() -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	Ok(proc.pid as _)
+pub fn getpid(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
+	Ok(proc.lock().get_pid() as _)
 }

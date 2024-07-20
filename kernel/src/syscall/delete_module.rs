@@ -19,34 +19,28 @@
 //! The `delete_module` system call allows to unload a module from the kernel.
 
 use crate::{
+	file::{perm::AccessProfile, vfs::ResolutionSettings},
 	module,
-	process::{mem_space::ptr::SyscallString, Process},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use core::ffi::c_uint;
-use macros::syscall;
-use utils::{collections::string::String, errno, errno::Errno};
-
+use utils::{
+	collections::string::String,
+	errno,
+	errno::{EResult, Errno},
+};
 // TODO handle flags
 
-#[syscall]
-pub fn delete_module(name: SyscallString, _flags: c_uint) -> Result<i32, Errno> {
-	let name = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		if !proc.access_profile.is_privileged() {
-			return Err(errno!(EPERM));
-		}
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let name = name.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		String::try_from(name)?
-	};
-
+pub fn delete_module(
+	Args((name, _flags)): Args<(SyscallString, c_uint)>,
+	ap: AccessProfile,
+) -> EResult<usize> {
+	if !ap.is_privileged() {
+		return Err(errno!(EPERM));
+	}
+	let name = name.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	// TODO handle dependency (don't unload a module that is required by another)
 	module::remove(&name);
-
 	Ok(0)
 }

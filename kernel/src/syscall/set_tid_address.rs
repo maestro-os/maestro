@@ -19,25 +19,23 @@
 //! The `set_tid_address` system call sets the `clear_child_tid` attribute with
 //! the given pointer.
 
-use crate::process::{mem_space::ptr::SyscallPtr, Process};
-use core::{ffi::c_int, ptr::NonNull};
-use macros::syscall;
-use utils::errno::Errno;
+use crate::{
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
+};
+use core::ffi::c_int;
+use utils::{
+	errno::EResult,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn set_tid_address(tidptr: SyscallPtr<c_int>) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
-
-	let ptr = NonNull::new(tidptr.as_ptr_mut());
-	proc.set_clear_child_tid(ptr);
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-	// Setting the TID at pointer if accessible
-	if let Some(tidptr) = tidptr.get_mut(&mut mem_space_guard)? {
-		*tidptr = proc.tid as _;
-	}
-
+pub fn set_tid_address(
+	Args(tidptr): Args<SyscallPtr<c_int>>,
+	proc: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
+	let mut proc = proc.lock();
+	proc.clear_child_tid = tidptr.0;
+	tidptr.copy_to_user(proc.tid as _)?;
 	Ok(proc.tid as _)
 }

@@ -22,19 +22,16 @@ use super::Buffer;
 use crate::{
 	file::{buffer::BlockHandler, FileType, Stat},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
-	process::{mem_space::MemSpace, Process},
+	process::Process,
 	syscall::ioctl,
 };
-use core::{
-	cmp::min,
-	ffi::{c_int, c_void},
-};
+use core::ffi::{c_int, c_void};
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	io::IO,
-	lock::{IntMutex, Mutex},
+	lock::Mutex,
 	ptr::arc::Arc,
 	vec, TryDefault,
 };
@@ -103,10 +100,7 @@ impl Socket {
 	/// Arguments:
 	/// - `level` is the level (protocol) at which the option is located.
 	/// - `optname` is the name of the option.
-	/// - `optval` is the value of the option.
-	///
-	/// The function returns a value to be returned by the syscall on success.
-	pub fn get_opt(&self, _level: c_int, _optname: c_int, _optval: &mut [u8]) -> EResult<c_int> {
+	pub fn get_opt(&self, _level: c_int, _optname: c_int) -> EResult<&[u8]> {
 		// TODO
 		todo!()
 	}
@@ -124,15 +118,9 @@ impl Socket {
 		Ok(0)
 	}
 
-	/// Writes the bound socket name into `sockaddr`.
-	/// If the buffer is too small, the address is truncated.
-	///
-	/// The function returns the length of the socket address.
-	pub fn read_sockname(&self, sockaddr: &mut [u8]) -> usize {
-		let len = min(sockaddr.len(), self.sockname.len());
-		sockaddr[..len].copy_from_slice(&self.sockname);
-
-		self.sockname.len()
+	/// Returns the name of the socket.
+	pub fn get_sockname(&self) -> &[u8] {
+		&self.sockname
 	}
 
 	/// Tells whether the socket is bound.
@@ -222,12 +210,7 @@ impl Buffer for Socket {
 		self.block_handler.add_waiting_process(proc, mask)
 	}
 
-	fn ioctl(
-		&mut self,
-		_mem_space: Arc<IntMutex<MemSpace>>,
-		_request: ioctl::Request,
-		_argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		// TODO
 		todo!();
 	}

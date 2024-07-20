@@ -23,16 +23,19 @@
 //! to allow normal execution.
 
 use crate::process::Process;
-use macros::syscall;
-use utils::{errno::Errno, interrupt::cli};
+use utils::{
+	errno::{EResult, Errno},
+	interrupt::cli,
+	lock::{IntMutex, IntMutexGuard},
+};
 
-#[syscall]
-pub fn sigreturn() -> EResult<i32> {
+pub fn sigreturn() -> EResult<usize> {
+	// Avoid re-enabling interrupts before context switching
 	cli();
+	// Restores the state of the process before the signal handler
 	let regs = {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
-		// Restores the state of the process before the signal handler
 		proc.signal_restore();
 		proc.regs.clone()
 	};

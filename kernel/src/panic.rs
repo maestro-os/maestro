@@ -59,7 +59,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		"If you believe this is a bug on the kernel side, please feel free to report it."
 	);
 
-	let cr2 = unsafe { register_get!("cr2") } as *const ();
+	let cr2 = register_get!("cr2") as *const ();
 	crate::println!("cr2: {cr2:p}\n");
 
 	#[cfg(debug_assertions)]
@@ -68,12 +68,12 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		use core::{ffi::c_void, ptr::null_mut};
 
 		crate::println!("--- Callstack ---");
+		let ebp = register_get!("ebp") as *mut _;
+		let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
 		unsafe {
-			let ebp = register_get!("ebp") as *mut _;
-			let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
 			debug::get_callstack(ebp, &mut callstack);
-			debug::print_callstack(&callstack);
 		}
+		debug::print_callstack(&callstack);
 	}
 
 	power::halt();

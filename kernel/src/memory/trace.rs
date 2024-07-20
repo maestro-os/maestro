@@ -30,9 +30,9 @@ use core::{ffi::c_void, ptr::null_mut};
 /// - `size` is the new size of the allocation. The unit is dependent on the allocator.
 pub fn sample<T>(allocator: &str, op: u8, ptr: *const T, size: usize) {
 	// Dump callstack
+	let ebp = register_get!("ebp");
 	let mut callstack: [*mut c_void; 64] = [null_mut(); 64];
 	unsafe {
-		let ebp = register_get!("ebp");
 		debug::get_callstack(ebp as _, &mut callstack);
 	}
 	// COM2

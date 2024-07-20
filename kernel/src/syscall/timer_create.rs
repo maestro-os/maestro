@@ -20,55 +20,40 @@
 
 use crate::{
 	process::{
-		mem_space::ptr::SyscallPtr,
+		mem_space::copy::SyscallPtr,
 		signal::{SigEvent, SigVal, Signal, SIGEV_SIGNAL},
 		Process,
 	},
+	syscall::Args,
 	time::unit::{ClockIdT, TimerT},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
 pub fn timer_create(
-	clockid: ClockIdT,
-	sevp: SyscallPtr<SigEvent>,
-	timerid: SyscallPtr<TimerT>,
-) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-
-	let timerid_val = *timerid
-		.get(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-
-	let sevp_val = sevp
-		.get(&mem_space_guard)?
-		.cloned()
-		.unwrap_or_else(|| SigEvent {
-			sigev_notify: SIGEV_SIGNAL,
-			sigev_signo: Signal::SIGALRM.get_id() as _,
-			sigev_value: SigVal {
-				sigval_ptr: timerid_val,
-			},
-			sigev_notify_function: None,
-			sigev_notify_attributes: None,
-			sigev_notify_thread_id: proc.tid,
-		});
-
+	Args((clockid, sevp, timerid)): Args<(ClockIdT, SyscallPtr<SigEvent>, SyscallPtr<TimerT>)>,
+	proc: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
+	let proc = proc.lock();
+	let timerid_val = timerid.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let sevp_val = sevp.copy_from_user()?.unwrap_or_else(|| SigEvent {
+		sigev_notify: SIGEV_SIGNAL,
+		sigev_signo: Signal::SIGALRM.get_id() as _,
+		sigev_value: SigVal {
+			sigval_ptr: timerid_val,
+		},
+		sigev_notify_function: None,
+		sigev_notify_attributes: None,
+		sigev_notify_thread_id: proc.tid,
+	});
 	let id = proc
 		.timer_manager()
 		.lock()
 		.create_timer(clockid, sevp_val)?;
-
-	// Return timer ID
-	let timerid_val = timerid
-		.get_mut(&mut mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-	*timerid_val = id as _;
-
+	timerid.copy_to_user(id as _)?;
 	Ok(0)
 }

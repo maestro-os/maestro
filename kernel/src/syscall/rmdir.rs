@@ -22,40 +22,25 @@
 
 use crate::{
 	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
-	process::{mem_space::ptr::SyscallString, Process},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn rmdir(pathname: SyscallString) -> Result<i32, Errno> {
-	let (path, rs) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		(path, rs)
-	};
-
-	// Remove the directory
-	{
-		// Get directory
-		let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-		let file = file_mutex.lock();
-		// Validation
-		if file.stat.file_type != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// Remove
-		vfs::remove_file_from_path(&path, &rs)?;
+pub fn rmdir(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
+	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	// Get directory
+	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
+	let file = file_mutex.lock();
+	// Validation
+	if file.stat.file_type != FileType::Directory {
+		return Err(errno!(ENOTDIR));
 	}
-
+	// Remove
+	vfs::remove_file_from_path(&path, &rs)?;
 	Ok(0)
 }

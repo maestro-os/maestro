@@ -19,19 +19,24 @@
 //! The `mmap` system call allows the process to allocate memory.
 
 use crate::{
-	file::FileType,
+	file::{fd::FileDescriptorTable, perm::AccessProfile, FileType},
 	memory,
-	process::{mem_space, mem_space::residence::MapResidence, Process},
-	syscall::mmap::mem_space::MapConstraint,
+	process::{
+		mem_space,
+		mem_space::{residence::MapResidence, MemSpace},
+		Process,
+	},
+	syscall::{mmap::mem_space::MapConstraint, Args},
 };
 use core::{
 	ffi::{c_int, c_void},
 	num::NonZeroUsize,
 };
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
 };
 
 /// Data can be read.
@@ -49,25 +54,20 @@ const MAP_FIXED: i32 = 0b010;
 /// Converts mmap's `flags` and `prot` to mem space mapping flags.
 fn get_flags(flags: i32, prot: i32) -> u8 {
 	let mut mem_flags = mem_space::MAPPING_FLAG_USER;
-
 	if flags & MAP_SHARED != 0 {
 		mem_flags |= mem_space::MAPPING_FLAG_SHARED;
 	}
-
 	if prot & PROT_WRITE != 0 {
 		mem_flags |= mem_space::MAPPING_FLAG_WRITE;
 	}
 	if prot & PROT_EXEC != 0 {
 		mem_flags |= mem_space::MAPPING_FLAG_EXEC;
 	}
-
 	mem_flags
 }
 
 /// Performs the `mmap` system call.
-///
-/// This function takes a `u64` for `offset` to allow implementing the `mmap2`
-/// syscall.
+#[allow(clippy::too_many_arguments)]
 pub fn do_mmap(
 	addr: *mut c_void,
 	length: usize,
@@ -75,24 +75,26 @@ pub fn do_mmap(
 	flags: i32,
 	fd: i32,
 	offset: u64,
-) -> EResult<i32> {
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	ap: AccessProfile,
+	mem_space: Arc<IntMutex<MemSpace>>,
+) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
 	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
-
 	// The length in number of pages
 	let pages = length.div_ceil(memory::PAGE_SIZE);
 	let Some(pages) = NonZeroUsize::new(pages) else {
 		return Err(errno!(EINVAL));
 	};
-
 	// Check for overflow
-	let end = (addr as usize).wrapping_add(pages.get() * memory::PAGE_SIZE);
-	if end < addr as usize {
+	if (addr as usize)
+		.checked_add(pages.get() * memory::PAGE_SIZE)
+		.is_none()
+	{
 		return Err(errno!(EINVAL));
 	}
-
 	let constraint = {
 		if !addr.is_null() {
 			if flags & MAP_FIXED != 0 {
@@ -104,30 +106,24 @@ pub fn do_mmap(
 			MapConstraint::None
 		}
 	};
-
-	// Get the current process
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
 	// The file the mapping points to
 	let file_mutex = if fd >= 0 {
 		// Check the alignment of the offset
 		if offset as usize % memory::PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
 		}
-
-		proc.file_descriptors
-			.as_ref()
-			.unwrap()
+		let fd = fds
 			.lock()
-			.get_fd(fd as _)
-			.map(|fd| fd.get_open_file().lock().get_file().clone())
+			.get_fd(fd)?
+			.get_open_file()
+			.lock()
+			.get_file()
+			.clone();
+		Some(fd)
 	} else {
 		None
 	};
-
 	// TODO anon flag
-
 	// Get residence
 	let residence = match file_mutex {
 		Some(file_mutex) => {
@@ -136,16 +132,15 @@ pub fn do_mmap(
 			if !matches!(file.stat.file_type, FileType::Regular) {
 				return Err(errno!(EACCES));
 			}
-			if prot & PROT_READ != 0 && !proc.access_profile.can_read_file(&file) {
+			if prot & PROT_READ != 0 && !ap.can_read_file(&file) {
 				return Err(errno!(EPERM));
 			}
-			if prot & PROT_WRITE != 0 && !proc.access_profile.can_write_file(&file) {
+			if prot & PROT_WRITE != 0 && !ap.can_write_file(&file) {
 				return Err(errno!(EPERM));
 			}
-			if prot & PROT_EXEC != 0 && !proc.access_profile.can_execute_file(&file) {
+			if prot & PROT_EXEC != 0 && !ap.can_execute_file(&file) {
 				return Err(errno!(EPERM));
 			}
-
 			MapResidence::File {
 				location: file.location,
 				off: offset,
@@ -156,13 +151,8 @@ pub fn do_mmap(
 			MapResidence::Normal
 		}
 	};
-
-	// The process's memory space
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mut mem_space = mem_space_mutex.lock();
-
 	let flags = get_flags(flags, prot);
-
+	let mut mem_space = mem_space.lock();
 	// The pointer on the virtual memory to the beginning of the mapping
 	let result = mem_space.map(constraint, pages, flags, residence.clone());
 	match result {
@@ -178,15 +168,28 @@ pub fn do_mmap(
 	}
 }
 
-// TODO Check last arg type
-#[syscall]
 pub fn mmap(
-	addr: *mut c_void,
-	length: usize,
-	prot: c_int,
-	flags: c_int,
-	fd: c_int,
-	offset: u64,
-) -> Result<i32, Errno> {
-	do_mmap(addr, length, prot, flags, fd, offset as _)
+	Args((addr, length, prot, flags, fd, offset)): Args<(
+		*mut c_void,
+		usize,
+		c_int,
+		c_int,
+		c_int,
+		u64,
+	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	ap: AccessProfile,
+	mem_space: Arc<IntMutex<MemSpace>>,
+) -> EResult<usize> {
+	do_mmap(
+		addr,
+		length,
+		prot,
+		flags,
+		fd,
+		offset as _,
+		fds,
+		ap,
+		mem_space,
+	)
 }

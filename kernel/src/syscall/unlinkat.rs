@@ -23,42 +23,42 @@
 use super::util::at;
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		path::PathBuf,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::ptr::SyscallString, Process},
-	syscall::util::at::AT_EMPTY_PATH,
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::{util::at::AT_EMPTY_PATH, Args},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i32, Errno> {
-	let (fds_mutex, path, rs) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, false);
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let mem_space_guard = mem_space.lock();
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-
-		let pathname = pathname
-			.get(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(pathname)?;
-
-		(fds_mutex, path, rs)
+pub fn unlinkat(
+	Args((dirfd, pathname, flags)): Args<(c_int, SyscallString, c_int)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	let rs = ResolutionSettings {
+		follow_link: false,
+		..rs
 	};
-
-	let fds = fds_mutex.lock();
+	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(pathname)?;
 	let parent_path = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	// AT_EMPTY_PATH is required in case the path has only one component
-	let resolved = at::get_file(&fds, rs.clone(), dirfd, parent_path, flags | AT_EMPTY_PATH)?;
+	let resolved = at::get_file(
+		&fds.lock(),
+		rs.clone(),
+		dirfd,
+		parent_path,
+		flags | AT_EMPTY_PATH,
+	)?;
 	match resolved {
 		Resolved::Found(parent) => {
 			let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
@@ -66,6 +66,5 @@ pub fn unlinkat(dirfd: c_int, pathname: SyscallString, flags: c_int) -> Result<i
 		}
 		_ => return Err(errno!(ENOENT)),
 	}
-
 	Ok(0)
 }

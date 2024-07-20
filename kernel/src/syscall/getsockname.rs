@@ -19,65 +19,45 @@
 //! The `getsockname` system call returns the socket address bound to a socket.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket},
+	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
 	process::{
-		mem_space::ptr::{SyscallPtr, SyscallSlice},
+		mem_space::copy::{SyscallPtr, SyscallSlice},
 		Process,
 	},
+	syscall::Args,
 };
-use core::{any::Any, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use core::{any::Any, cmp::min, ffi::c_int};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
 pub fn getsockname(
-	sockfd: c_int,
-	addr: SyscallSlice<u8>,
-	addrlen: SyscallPtr<isize>,
-) -> Result<i32, Errno> {
-	if sockfd < 0 {
-		return Err(errno!(EBADF));
-	}
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
+	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, SyscallPtr<isize>)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
 	// Get socket
-	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-	let fds = fds_mutex.lock();
-	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
-	let open_file_mutex = fd.get_open_file();
-	let open_file = open_file_mutex.lock();
-	let loc = open_file.get_location();
-	let sock_mutex = buffer::get(loc).ok_or_else(|| errno!(ENOENT))?;
+	let loc = *fds
+		.lock()
+		.get_fd(sockfd)?
+		.get_open_file()
+		.lock()
+		.get_location();
+	let sock_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
 	let sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-
 	// Read and check buffer length
-	let addrlen_val = addrlen
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-	if *addrlen_val < 0 {
+	let addrlen_val = addrlen.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	if addrlen_val < 0 {
 		return Err(errno!(EINVAL));
 	}
-	let addrlen_val = *addrlen_val as usize;
-
-	// Read socket name
-	let addr_slice = addr
-		.get_mut(&mut mem_space_guard, addrlen_val)?
-		.ok_or(errno!(EFAULT))?;
-	let len = sock.read_sockname(addr_slice) as _;
-
-	// Update actual length of the address
-	let addrlen_val = addrlen
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-	*addrlen_val = len;
-
+	let name = sock.get_sockname();
+	let len = min(name.len(), addrlen_val as _);
+	addr.copy_to_user(0, &name[..len])?;
+	addrlen.copy_to_user(len as _)?;
 	Ok(0)
 }

@@ -18,23 +18,22 @@
 
 //! The `dup` syscall allows to duplicate a file descriptor.
 
-use crate::{file::fd::NewFDConstraint, process::Process};
+use crate::{
+	file::fd::{FileDescriptorTable, NewFDConstraint},
+	process::Process,
+	syscall::Args,
+};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn dup(oldfd: c_int) -> Result<i32, Errno> {
-	if oldfd < 0 {
-		return Err(errno!(EBADF));
-	}
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-	let mut fds = fds_mutex.lock();
-
-	let newfd = fds.duplicate_fd(oldfd as _, NewFDConstraint::None, false)?;
-	Ok(newfd.get_id() as _)
+pub fn dup(Args(oldfd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+	let (newfd_id, _) = fds
+		.lock()
+		.duplicate_fd(oldfd as _, NewFDConstraint::None, false)?;
+	Ok(newfd_id as _)
 }

@@ -366,7 +366,7 @@ impl<'s> ELFExecutor<'s> {
 	) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
 
-		// A slice on the stack representing the region which will containing the
+		// A slice on the stack representing the region which will contain the
 		// arguments and environment variables
 		let info_slice = unsafe {
 			slice::from_raw_parts_mut((user_stack as usize - info_size) as *mut u8, info_size)
@@ -536,7 +536,9 @@ impl<'s> ELFExecutor<'s> {
 
 		// Copying the segment's data
 		unsafe {
-			vmem::write_lock_wrap(|| ptr::copy_nonoverlapping(file_begin, begin, len));
+			vmem::write_ro(|| {
+				vmem::smap_disable(|| ptr::copy_nonoverlapping(file_begin, begin, len))
+			});
 		}
 	}
 
@@ -637,8 +639,14 @@ impl<'s> ELFExecutor<'s> {
 				// Copy phdr's data if necessary
 				if phdr_needs_copy {
 					let image_phdr = &elf.get_image()[(ehdr.e_phoff as usize)..];
-					vmem::write_lock_wrap(|| {
-						ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr as _, phdr_size);
+					vmem::write_ro(|| {
+						vmem::smap_disable(|| {
+							ptr::copy_nonoverlapping::<u8>(
+								image_phdr.as_ptr(),
+								phdr as _,
+								phdr_size,
+							);
+						});
 					});
 				}
 
@@ -735,11 +743,12 @@ impl<'s> Executor for ELFExecutor<'s> {
 		let brk_ptr = unsafe { utils::align(load_info.load_end, memory::PAGE_SIZE) };
 		mem_space.set_brk_init(brk_ptr as _);
 
-		// Switch to the process's vmem to write onto the virtual memory
+		// Initializing the userspace stack
 		unsafe {
 			vmem::switch(mem_space.get_vmem(), move || {
-				// Initializing the userspace stack
-				self.init_stack(user_stack, &self.info.argv, &self.info.envp, &aux);
+				vmem::smap_disable(|| {
+					self.init_stack(user_stack, &self.info.argv, &self.info.envp, &aux);
+				});
 			});
 		}
 

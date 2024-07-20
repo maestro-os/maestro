@@ -21,16 +21,22 @@
 
 use super::getdents::{do_getdents, Dirent};
 use crate::{
-	file::{FileType, INode},
-	process::mem_space::ptr::SyscallSlice,
+	file::{fd::FileDescriptorTable, FileType, INode},
+	process::mem_space::copy::SyscallSlice,
+	syscall::Args,
 };
 use core::{
 	ffi::c_int,
 	mem::{offset_of, size_of},
 	ptr,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	bytes::as_bytes,
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 /// A Linux directory entry with 64 bits offsets.
 #[repr(C)]
@@ -56,7 +62,13 @@ impl Dirent for LinuxDirent64 {
 			.next_multiple_of(size_of::<usize>())
 	}
 
-	fn write(slice: &mut [u8], off: usize, inode: INode, entry_type: FileType, name: &[u8]) {
+	fn write(
+		slice: &SyscallSlice<u8>,
+		off: usize,
+		inode: INode,
+		entry_type: FileType,
+		name: &[u8],
+	) -> EResult<()> {
 		let len = Self::required_length(name);
 		let ent = Self {
 			d_ino: inode,
@@ -66,21 +78,20 @@ impl Dirent for LinuxDirent64 {
 			d_name: [],
 		};
 		// Write entry
-		unsafe {
-			#[allow(invalid_reference_casting)]
-			ptr::write(&mut slice[off] as *mut _ as *mut _, ent);
-		}
+		slice.copy_to_user(off, as_bytes(&ent))?;
 		// Copy file name
-		let name_slice = &mut slice[off + offset_of!(Self, d_name)..];
-		name_slice[..name.len()].copy_from_slice(name);
-		name_slice[name.len()] = 0;
+		slice.copy_to_user(off + offset_of!(Self, d_name), name)?;
+		slice.copy_to_user(off + offset_of!(Self, d_name) + name.len(), b"\0")?;
+		Ok(())
 	}
 }
 
-#[syscall]
-pub fn getdents64(fd: c_int, dirp: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
+pub fn getdents64(
+	Args((fd, dirp, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
-	do_getdents::<LinuxDirent64>(fd as _, dirp, count)
+	do_getdents::<LinuxDirent64>(fd as _, dirp, count, fds)
 }

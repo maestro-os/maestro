@@ -16,48 +16,42 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The pipe2 system call allows to create a pipe with given flags.
+//! The `pipe2` system call allows to create a pipe with given flags.
 
 use crate::{
-	file::{buffer, buffer::pipe::PipeBuffer, open_file, open_file::OpenFile, vfs},
-	process::{mem_space::ptr::SyscallPtr, Process},
+	file::{
+		buffer, buffer::pipe::PipeBuffer, fd::FileDescriptorTable, open_file, open_file::OpenFile,
+		vfs, File,
+	},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno, lock::Mutex, ptr::arc::Arc, TryDefault};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+	TryDefault,
+};
 
-#[syscall]
-pub fn pipe2(pipefd: SyscallPtr<[c_int; 2]>, flags: c_int) -> Result<i32, Errno> {
+pub fn pipe2(
+	Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	// Validation
 	let accepted_flags = open_file::O_CLOEXEC | open_file::O_DIRECT | open_file::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
 		return Err(errno!(EINVAL));
 	}
-
-	let proc_mutex = Process::current_assert();
-	let (mem_space, fds_mutex) = {
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		(mem_space, fds_mutex)
-	};
-
+	// Get file
 	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
 	let file = vfs::get_file_from_location(loc)?;
-
+	// Create open file descriptions
 	let open_file0 = OpenFile::new(file.clone(), None, open_file::O_RDONLY)?;
 	let open_file1 = OpenFile::new(file, None, open_file::O_WRONLY)?;
-
-	let mut fds = fds_mutex.lock();
-	let mut mem_space_guard = mem_space.lock();
-
-	let pipefd_slice = pipefd
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-	let fd0 = fds.create_fd(0, open_file0)?;
-	pipefd_slice[0] = fd0.get_id() as _;
-	let fd1 = fds.create_fd(0, open_file1)?;
-	pipefd_slice[1] = fd1.get_id() as _;
-
+	// Create file descriptors
+	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(open_file0, open_file1)?;
+	pipefd.copy_to_user([fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }

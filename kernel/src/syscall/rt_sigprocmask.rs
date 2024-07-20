@@ -16,12 +16,19 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The rt_sigprocmask system call allows to change the blocked signal mask.
+//! The `rt_sigprocmask` system call allows to change the blocked signal mask.
 
-use crate::process::{mem_space::ptr::SyscallSlice, Process};
+use crate::{
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
+};
 use core::{cmp::min, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
 /// Performs the union of the given mask with the current mask.
 const SIG_BLOCK: i32 = 0;
@@ -31,52 +38,27 @@ const SIG_UNBLOCK: i32 = 1;
 const SIG_SETMASK: i32 = 2;
 
 // TODO Use SigSet in crate::process::signal
-#[syscall]
 pub fn rt_sigprocmask(
-	how: c_int,
-	set: SyscallSlice<u8>,
-	oldset: SyscallSlice<u8>,
-	sigsetsize: usize,
-) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mut mem_space_guard = mem_space.lock();
-
+	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
+	proc: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
+	let mut proc = proc.lock();
+	// Save old set
 	let curr = proc.sigmask.as_slice_mut();
-
-	let oldset_slice = oldset.get_mut(&mut mem_space_guard, sigsetsize as _)?;
-	if let Some(oldset) = oldset_slice {
-		// Save old set
-		let len = min(oldset.len(), curr.len());
-		oldset[..len].copy_from_slice(&curr[..len]);
-	}
-
-	let set_slice = set.get(&mem_space_guard, sigsetsize as _)?;
+	let len = min(curr.len(), sigsetsize as _);
+	oldset.copy_to_user(0, &curr[..len])?;
+	// Apply new set
+	let set_slice = set.copy_from_user(..sigsetsize)?;
 	if let Some(set) = set_slice {
-		// Applies the operation
-		match how {
-			SIG_BLOCK => {
-				for i in 0..min(set.len(), curr.len()) {
-					curr[i] |= set[i];
-				}
+		let iter = curr.iter_mut().zip(set.iter());
+		for (curr, set) in iter {
+			match how {
+				SIG_BLOCK => *curr |= *set,
+				SIG_UNBLOCK => *curr &= !*set,
+				SIG_SETMASK => *curr = *set,
+				_ => return Err(errno!(EINVAL)),
 			}
-
-			SIG_UNBLOCK => {
-				for i in 0..min(set.len(), curr.len()) {
-					curr[i] &= !set[i];
-				}
-			}
-
-			SIG_SETMASK => {
-				let len = min(set.len(), curr.len());
-				curr[..len].copy_from_slice(&set[..len]);
-			}
-
-			_ => return Err(errno!(EINVAL)),
 		}
 	}
-
 	Ok(0)
 }

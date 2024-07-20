@@ -40,35 +40,37 @@ pub mod user_desc;
 
 use crate::{
 	event,
-	event::CallbackResult,
+	event::{unlock_callbacks, CallbackResult},
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
 		mountpoint, open_file,
 		path::PathBuf,
-		perm::{AccessProfile, ROOT_UID},
+		perm::AccessProfile,
 		vfs,
 		vfs::ResolutionSettings,
 		File, FileLocation,
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::open_file::OpenFile,
+	process::{mem_space::copy, open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
 	register_get,
 	time::timer::TimerManager,
 	tty,
 	tty::TTYHandle,
 };
 use core::{
-	ffi::c_void,
+	ffi::{c_int, c_void},
+	fmt,
+	fmt::Formatter,
+	mem,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
 };
 use mem_space::MemSpace;
-use pid::{PIDManager, Pid};
+use pid::Pid;
 use regs::Regs;
 use rusage::RUsage;
-use scheduler::Scheduler;
 use signal::{Signal, SignalAction, SignalHandler};
 #[cfg(target_arch = "x86")]
 use tss::TSS;
@@ -76,7 +78,7 @@ use utils::{
 	collections::{bitfield::Bitfield, string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	lock::{once::OnceInit, IntMutex, Mutex},
+	lock::{IntMutex, Mutex},
 	ptr::arc::{Arc, Weak},
 	TryClone,
 };
@@ -200,7 +202,7 @@ enum VForkState {
 /// about a process.
 pub struct Process {
 	/// The ID of the process.
-	pub pid: Pid,
+	pid: PidHandle,
 	/// The ID of the process group.
 	pub pgid: Pid,
 	/// The thread ID of the process.
@@ -284,10 +286,10 @@ pub struct Process {
 
 	/// If a thread is started using `clone` with the `CLONE_CHILD_SETTID` flag, set_child_tid is
 	/// set to the value passed in the ctid argument of that system call.
-	set_child_tid: Option<NonNull<i32>>,
+	pub set_child_tid: Option<NonNull<i32>>,
 	/// If a thread is started using `clone` with the `CLONE_CHILD_CLEARTID` flag, clear_child_tid
 	/// is set to the value passed in the ctid argument of that system call.
-	clear_child_tid: Option<NonNull<i32>>,
+	pub clear_child_tid: Option<NonNull<i32>>,
 
 	/// The process's resources usage.
 	rusage: RUsage,
@@ -298,32 +300,18 @@ pub struct Process {
 	termsig: u8,
 }
 
-/// The PID manager.
-static PID_MANAGER: OnceInit<Mutex<PIDManager>> = unsafe { OnceInit::new() };
-/// The processes scheduler.
-static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
-
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
 pub(crate) fn init() -> EResult<()> {
 	TSS::init();
-	// Init schedulers
-	let cores_count = 1; // TODO
-	unsafe {
-		PID_MANAGER.init(Mutex::new(PIDManager::new()?));
-		SCHEDULER.init(Mutex::new(Scheduler::new(cores_count)?));
-	}
+	scheduler::init()?;
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, regs: &Regs, ring: u32| {
 		if ring < 3 {
 			return CallbackResult::Panic;
 		}
 		// Get process
-		let curr_proc = {
-			let mut sched = SCHEDULER.get().lock();
-			sched.get_current_process()
-		};
-		let Some(curr_proc) = curr_proc else {
+		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
@@ -338,9 +326,9 @@ pub(crate) fn init() -> EResult<()> {
 			0x06 => curr_proc.kill_now(&Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
-				let inst_prefix = unsafe { *(regs.eip as *const u8) };
+				let inst_prefix = unsafe { *(regs.eip.0 as *const u8) };
 				if inst_prefix == HLT_INSTRUCTION {
-					curr_proc.exit(regs.eax, false);
+					curr_proc.exit(regs.eax.0 as _);
 				} else {
 					curr_proc.kill_now(&Signal::SIGSEGV);
 				}
@@ -355,15 +343,15 @@ pub(crate) fn init() -> EResult<()> {
 			CallbackResult::Idle
 		}
 	};
-	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
-		let accessed_ptr = unsafe { register_get!("cr2") } as *const c_void;
-		// Get process
-		let curr_proc = Process::current();
-		let Some(curr_proc) = curr_proc else {
+	let page_fault_callback = |_id: u32, code: u32, regs: &Regs, ring: u32| {
+		let accessed_ptr = register_get!("cr2") as *const c_void;
+		let pc = regs.eip.0;
+		// Get current process
+		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
-		// Handle page fault
+		// Check access
 		let success = {
 			let Some(mem_space_mutex) = curr_proc.get_mem_space() else {
 				return CallbackResult::Panic;
@@ -373,7 +361,20 @@ pub(crate) fn init() -> EResult<()> {
 		};
 		if !success {
 			if ring < 3 {
-				return CallbackResult::Panic;
+				// Check if the fault was caused by a user <-> kernel copy
+				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
+					// Jump to `copy_fault`
+					let mut regs = regs.clone();
+					regs.eip.0 = copy::copy_fault as usize;
+					// TODO cleanup
+					drop(curr_proc);
+					unsafe {
+						unlock_callbacks(0x0e);
+						regs.switch(false);
+					}
+				} else {
+					return CallbackResult::Panic;
+				}
 			} else {
 				curr_proc.kill_now(&Signal::SIGSEGV);
 			}
@@ -395,39 +396,33 @@ pub(crate) fn init() -> EResult<()> {
 	Ok(())
 }
 
-/// Returns a mutable reference to the scheduler's `Mutex`.
-#[inline]
-pub fn get_scheduler() -> &'static IntMutex<Scheduler> {
-	SCHEDULER.get()
-}
-
 impl Process {
 	/// Returns the process with PID `pid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<Arc<IntMutex<Self>>> {
-		get_scheduler().lock().get_by_pid(pid)
+		SCHEDULER.get().lock().get_by_pid(pid)
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(tid: Pid) -> Option<Arc<IntMutex<Self>>> {
-		get_scheduler().lock().get_by_tid(tid)
+		SCHEDULER.get().lock().get_by_tid(tid)
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn current() -> Option<Arc<IntMutex<Self>>> {
-		get_scheduler().lock().get_current_process()
+	pub fn current_opt() -> Option<Arc<IntMutex<Self>>> {
+		SCHEDULER.get().lock().get_current_process()
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function makes the kernel panic.
-	pub fn current_assert() -> Arc<IntMutex<Self>> {
-		Self::current().expect("no running process")
+	pub fn current() -> Arc<IntMutex<Self>> {
+		Self::current_opt().expect("no running process")
 	}
 
 	/// Creates the init process and places it into the scheduler's queue.
@@ -439,20 +434,27 @@ impl Process {
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
 			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_file_mutex = vfs::get_file_from_path(&tty_path, &rs)?;
-			let tty_file = tty_file_mutex.lock();
-			let file = vfs::get_file_from_location(tty_file.location)?;
-			let open_file = OpenFile::new(file, Some(tty_path), open_file::O_RDWR)?;
-			let stdin_fd = fds_table.create_fd(0, open_file)?;
-			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
-			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
-			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), false)?;
+			let tty_file = vfs::get_file_from_path(&tty_path, &rs)?;
+			let open_file = OpenFile::new(tty_file, Some(tty_path), open_file::O_RDWR)?;
+			let (stdin_fd_id, _) = fds_table.create_fd(0, open_file)?;
+			assert_eq!(stdin_fd_id, STDIN_FILENO);
+			fds_table.duplicate_fd(
+				STDIN_FILENO as _,
+				NewFDConstraint::Fixed(STDOUT_FILENO as _),
+				false,
+			)?;
+			fds_table.duplicate_fd(
+				STDIN_FILENO as _,
+				NewFDConstraint::Fixed(STDERR_FILENO as _),
+				false,
+			)?;
 			fds_table
 		};
 		let root_loc = mountpoint::root_location();
 		let root_dir = vfs::get_file_from_location(root_loc)?;
+		let pid = PidHandle::init()?;
 		let process = Self {
-			pid: pid::INIT_PID,
+			pid,
 			pgid: pid::INIT_PID,
 			tid: pid::INIT_PID,
 
@@ -506,56 +508,57 @@ impl Process {
 			exit_status: 0,
 			termsig: 0,
 		};
-		Ok(get_scheduler().lock().add_process(process)?)
+		Ok(SCHEDULER.get().lock().add_process(process)?)
+	}
+
+	/// Returns the process's ID.
+	pub fn get_pid(&self) -> u16 {
+		self.pid.get()
 	}
 
 	/// Tells whether the process is the init process.
 	#[inline(always)]
 	pub fn is_init(&self) -> bool {
-		self.pid == pid::INIT_PID
+		self.pid.get() == pid::INIT_PID
 	}
 
 	/// Tells whether the process is among a group and is not its owner.
 	#[inline(always)]
 	pub fn is_in_group(&self) -> bool {
-		self.pgid != 0 && self.pgid != self.pid
+		self.pgid != 0 && self.pgid != self.pid.get()
 	}
 
 	/// Sets the process's group ID to the given value `pgid`, updating the associated group.
 	pub fn set_pgid(&mut self, pgid: Pid) -> EResult<()> {
 		let old_pgid = self.pgid;
-		let new_pgid = if pgid == 0 { self.pid } else { pgid };
-
+		let new_pgid = if pgid == 0 { self.pid.get() } else { pgid };
 		if old_pgid == new_pgid {
 			return Ok(());
 		}
-
-		if new_pgid != self.pid {
-			// Adding the process to the new group
-			if let Some(proc_mutex) = Process::get_by_pid(new_pgid) {
-				let mut new_group_process = proc_mutex.lock();
-
-				let i = new_group_process
-					.process_group
-					.binary_search(&self.pid)
-					.unwrap_err();
-				new_group_process.process_group.insert(i, self.pid)?;
-			} else {
+		if new_pgid != self.pid.get() {
+			// Add the process to the new group
+			let Some(proc_mutex) = Process::get_by_pid(new_pgid) else {
 				return Err(errno!(ESRCH));
-			}
+			};
+			let mut new_group_process = proc_mutex.lock();
+			let i = new_group_process
+				.process_group
+				.binary_search(&self.pid.get())
+				.unwrap_err();
+			new_group_process.process_group.insert(i, self.pid.get())?;
 		}
-
-		// Removing the process from its old group
+		// Remove the process from its former group
 		if self.is_in_group() {
 			if let Some(proc_mutex) = Process::get_by_pid(old_pgid) {
 				let mut old_group_process = proc_mutex.lock();
-
-				if let Ok(i) = old_group_process.process_group.binary_search(&self.pid) {
+				if let Ok(i) = old_group_process
+					.process_group
+					.binary_search(&self.pid.get())
+				{
 					old_group_process.process_group.remove(i);
 				}
 			}
 		}
-
 		self.pgid = new_pgid;
 		Ok(())
 	}
@@ -579,8 +582,8 @@ impl Process {
 		self.parent
 			.as_ref()
 			.and_then(Weak::upgrade)
-			.map(|parent| parent.lock().pid)
-			.unwrap_or(self.pid)
+			.map(|parent| parent.lock().pid.get())
+			.unwrap_or(self.pid.get())
 	}
 
 	/// Returns the TTY associated with the process.
@@ -599,40 +602,34 @@ impl Process {
 		if self.state == new_state || self.state == State::Zombie {
 			return;
 		}
-
 		// Update the number of running processes
 		if self.state != State::Running && new_state == State::Running {
-			get_scheduler().lock().increment_running();
+			SCHEDULER.get().lock().increment_running();
 		} else if self.state == State::Running {
-			get_scheduler().lock().decrement_running();
+			SCHEDULER.get().lock().decrement_running();
 		}
-
 		self.state = new_state;
-
 		if self.state == State::Zombie {
 			if self.is_init() {
 				panic!("Terminated init process!");
 			}
-
-			// Removing the memory space and file descriptors table to save memory
+			// Remove the memory space and file descriptors table to save memory
 			//self.mem_space = None; // TODO Handle the case where the memory space is bound
 			self.file_descriptors = None;
-
-			// Attaching every child to the init process
+			// Attach every child to the init process
 			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
 			let mut init_proc = init_proc_mutex.lock();
-			for child_pid in self.children.iter() {
+			let children = mem::take(&mut self.children);
+			for child_pid in children {
 				// Check just in case
-				if *child_pid == self.pid {
+				if child_pid == self.pid.get() {
 					continue;
 				}
-
-				if let Some(child_mutex) = Process::get_by_pid(*child_pid) {
+				if let Some(child_mutex) = Process::get_by_pid(child_pid) {
 					child_mutex.lock().parent = Some(Arc::downgrade(&init_proc_mutex));
-					oom::wrap(|| init_proc.add_child(*child_pid));
+					oom::wrap(|| init_proc.add_child(child_pid));
 				}
 			}
-
 			self.waitable = true;
 		}
 	}
@@ -725,7 +722,6 @@ impl Process {
 				panic!("Dropping the memory space of a running process!");
 			}
 		}
-
 		self.mem_space = mem_space;
 	}
 
@@ -774,17 +770,13 @@ impl Process {
 		// Bind the memory space
 		self.get_mem_space().unwrap().lock().bind();
 		// Increment the number of ticks the process had
-		self.quantum_count += 1;
+		self.quantum_count = self.quantum_count.saturating_add(1);
 	}
 
 	/// Returns the exit status if the process has ended.
 	#[inline(always)]
 	pub fn get_exit_status(&self) -> Option<ExitStatus> {
-		if matches!(self.state, State::Zombie) {
-			Some(self.exit_status)
-		} else {
-			None
-		}
+		matches!(self.state, State::Zombie).then_some(self.exit_status)
 	}
 
 	/// Returns the signal number that killed the process.
@@ -846,12 +838,12 @@ impl Process {
 		} else {
 			Arc::new(Mutex::new(self.signal_handlers.lock().clone()))?
 		};
-		// FIXME PID is leaked if the following code fails
-		let pid = PID_MANAGER.get().lock().get_unique_pid()?;
+		let pid = PidHandle::unique()?;
+		let pid_int = pid.get();
 		let process = Self {
 			pid,
 			pgid: self.pgid,
-			tid: pid,
+			tid: pid_int,
 
 			argv: self.argv.clone(),
 			exec_path: self.exec_path.clone(),
@@ -880,7 +872,7 @@ impl Process {
 			waitable: false,
 
 			// TODO if creating a thread: timer_manager: self.timer_manager.clone(),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid)?))?,
+			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
 			mem_space: Some(mem_space),
 			user_stack: self.user_stack,
@@ -904,8 +896,8 @@ impl Process {
 			exit_status: self.exit_status,
 			termsig: 0,
 		};
-		self.add_child(pid)?;
-		Ok(get_scheduler().lock().add_process(process)?)
+		self.add_child(pid_int)?;
+		Ok(SCHEDULER.get().lock().add_process(process)?)
 	}
 
 	/// Tells whether the process is handling a signal.
@@ -947,14 +939,15 @@ impl Process {
 
 	/// Kills every process in the process group.
 	pub fn kill_group(&mut self, sig: Signal) {
-		for pid in self.process_group.iter() {
-			if *pid != self.pid {
-				if let Some(proc_mutex) = Process::get_by_pid(*pid) {
-					let mut proc = proc_mutex.lock();
-					proc.kill(&sig);
-				}
-			}
-		}
+		self.process_group
+			.iter()
+			// Avoid deadlock
+			.filter(|pid| **pid != self.pid.get())
+			.filter_map(|pid| Process::get_by_pid(*pid))
+			.for_each(|proc_mutex| {
+				let mut proc = proc_mutex.lock();
+				proc.kill(&sig);
+			});
 		self.kill(&sig);
 	}
 
@@ -970,16 +963,10 @@ impl Process {
 		self.sigpending
 			.iter()
 			.enumerate()
-			.filter_map(|(i, b)| {
-				if !b {
-					return None;
-				}
-				let s = Signal::try_from(i as u32).ok()?;
-				if !s.can_catch() || !self.sigmask.is_set(i) {
-					Some(s)
-				} else {
-					None
-				}
+			.filter(|(_, b)| *b)
+			.filter_map(|(i, _)| {
+				let s = Signal::try_from(i as c_int).ok()?;
+				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
 			})
 			.next()
 	}
@@ -988,7 +975,7 @@ impl Process {
 	pub fn get_signal_stack(&self) -> *const c_void {
 		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
 		// SA_ONSTACK)
-		(self.regs.esp as usize - REDZONE_SIZE) as _
+		(self.regs.esp.0 - REDZONE_SIZE) as _
 	}
 
 	/// Saves the process's state to handle a signal.
@@ -1017,9 +1004,7 @@ impl Process {
 
 	/// Clears the process's TLS entries.
 	pub fn clear_tls_entries(&mut self) {
-		for e in &mut self.tls_entries {
-			*e = Default::default();
-		}
+		self.tls_entries = Default::default();
 	}
 
 	/// Updates the `n`th TLS entry in the GDT.
@@ -1036,11 +1021,6 @@ impl Process {
 		}
 	}
 
-	/// Sets the `clear_child_tid` attribute of the process.
-	pub fn set_clear_child_tid(&mut self, ptr: Option<NonNull<i32>>) {
-		self.clear_child_tid = ptr;
-	}
-
 	/// Returns an immutable reference to the process's resource usage
 	/// structure.
 	pub fn get_rusage(&self) -> &RUsage {
@@ -1053,10 +1033,8 @@ impl Process {
 		if self.vfork_state != VForkState::Executing {
 			return;
 		}
-
 		self.vfork_state = VForkState::None;
-
-		// Resetting the parent's vfork state if needed
+		// Reset the parent's vfork state if needed
 		let parent = self.get_parent().and_then(|parent| parent.upgrade());
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
@@ -1067,23 +1045,16 @@ impl Process {
 	/// Exits the process with the given `status`.
 	///
 	/// This function changes the process's status to `Zombie`.
-	///
-	/// `signaled` tells whether the process has been terminated by a signal. If
-	/// `true`, `status` is interpreted as the signal number.
-	pub fn exit(&mut self, status: u32, signaled: bool) {
-		let sig = if signaled {
-			self.exit_status = 0;
-			self.termsig = status as ExitStatus;
-			self.termsig
-		} else {
-			self.exit_status = status as ExitStatus;
-			self.termsig = 0;
-			0
-		};
-
+	pub fn exit(&mut self, status: u32) {
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] exited with status `{status}`",
+			pid = self.pid.get()
+		);
+		self.exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
 		self.reset_vfork();
-		self.set_waitable(sig);
+		self.set_waitable(0);
 	}
 
 	/// Returns the number of virtual memory pages used by the process.
@@ -1101,31 +1072,35 @@ impl Process {
 	///
 	/// A higher score means a higher probability of getting killed.
 	pub fn get_oom_score(&self) -> u16 {
-		let mut score = 0;
-
-		// If the process is owned by the superuser, give it a bonus
-		if self.access_profile.is_privileged() {
-			score -= 100;
-		}
-
+		let mut score: u16 = 0;
 		// TODO Compute the score using physical memory usage
 		// TODO Take into account userspace-set values (oom may be disabled for this
 		// process, an absolute score or a bonus might be given, etc...)
-
+		// If the process is owned by the superuser, give it a bonus
+		if self.access_profile.is_privileged() {
+			score = score.saturating_sub(100);
+		}
 		score
+	}
+}
+
+impl fmt::Debug for Process {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Process")
+			.field("pid", &self.pid.get())
+			.finish()
 	}
 }
 
 impl AccessProfile {
 	/// Tells whether the agent can kill the process.
 	pub fn can_kill(&self, proc: &Process) -> bool {
-		let uid = self.get_uid();
-		let euid = self.get_euid();
 		// if privileged
-		if uid == ROOT_UID || euid == ROOT_UID {
+		if self.is_privileged() {
 			return true;
 		}
-
+		let uid = self.get_uid();
+		let euid = self.get_euid();
 		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
 		uid == proc.access_profile.get_uid()
 			|| uid == proc.access_profile.get_suid()
@@ -1143,7 +1118,5 @@ impl Drop for Process {
 		unsafe {
 			buddy::free_kernel(self.kernel_stack.as_ptr(), KERNEL_STACK_ORDER);
 		}
-		// Free the PID
-		PID_MANAGER.get().lock().release_pid(self.pid);
 	}
 }

@@ -20,15 +20,17 @@
 
 use super::statfs::do_statfs;
 use crate::{
-	file::fs::Statfs,
-	process::mem_space::ptr::{SyscallPtr, SyscallString},
+	file::{fs::Statfs, vfs::ResolutionSettings},
+	process::mem_space::copy::{SyscallPtr, SyscallString},
+	syscall::Args,
 };
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::EResult;
 
 // TODO Check args types
-#[syscall]
-pub fn statfs64(path: SyscallString, _sz: usize, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
+pub fn statfs64(
+	Args((path, _sz, buf)): Args<(SyscallString, usize, SyscallPtr<Statfs>)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
 	// TODO Use `sz`
-	do_statfs(path, buf)
+	do_statfs(path, buf, rs)
 }

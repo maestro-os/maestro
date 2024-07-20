@@ -16,45 +16,35 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements stack utility functions.
+//! Stack utility functions.
 
-use crate::memory;
-use core::{ffi::c_void, mem, ptr};
-use utils::{errno::AllocResult, vec};
+use core::{
+	arch::asm,
+	ffi::c_void,
+	mem,
+	mem::{size_of, MaybeUninit},
+	ptr,
+};
 
-/// The size of a temporary stack in bytes.
-const TMP_STACK_SIZE: usize = memory::PAGE_SIZE * 8;
-
-extern "C" {
-	/// Performs the stack switching for the given stack and closure to execute.
-	///
-	/// `s` is the `StackLambda` structure.
-	fn stack_switch_(stack: *mut c_void, s: *mut c_void, f: *const c_void);
-}
-
-/// Structure storing a lambda to be executed on an alternate stack.
-struct StackLambda<F: FnOnce() -> T, T> {
+/// A closure to be executed on an alternate stack.
+struct StackInfo<F: FnOnce() -> T, T> {
 	/// The lambda to be called on the alternate stack.
 	f: F,
-
 	/// The return value.
-	ret_val: Option<T>,
+	ret_val: MaybeUninit<T>,
 }
 
-impl<F: FnOnce() -> T, T> StackLambda<F, T> {
+impl<F: FnOnce() -> T, T> StackInfo<F, T> {
 	/// Performs the execution of the lambda on the alternate stack.
 	extern "C" fn exec(&mut self) {
 		let f = unsafe { ptr::read(&self.f) };
-
-		self.ret_val = Some(f());
+		self.ret_val.write(f());
 	}
 }
 
 /// Executes the given closure `f` while being on the given stack.
 ///
 /// `stack` is the pointer to the beginning of the alternate stack.
-///
-/// If the given stack is `None`, the function allocates a temporary stack.
 ///
 /// # Safety
 ///
@@ -63,26 +53,37 @@ impl<F: FnOnce() -> T, T> StackLambda<F, T> {
 /// When passing a closure to this function, the `move` keyword should be used in the case the
 /// previous stack becomes unreachable. This keyword ensures that variables are captured by value
 /// and not by reference, thus avoiding to create dangling references.
-pub unsafe fn switch<F: FnOnce() -> T, T>(stack: Option<*mut c_void>, f: F) -> AllocResult<T> {
-	let mut f = StackLambda {
+pub unsafe fn switch<F: FnOnce() -> T, T>(stack: *mut c_void, f: F) -> T {
+	debug_assert!(stack.is_aligned_to(size_of::<usize>()));
+	let mut f = StackInfo {
 		f,
-		ret_val: None,
+		ret_val: MaybeUninit::uninit(),
 	};
-	let func = StackLambda::<F, T>::exec;
-
-	if let Some(stack) = stack {
-		stack_switch_(stack, &mut f as *mut _ as _, func as *const _);
-	} else {
-		let stack = vec![0; TMP_STACK_SIZE]?;
-		let stack_top = (stack.as_ptr() as *mut c_void).add(TMP_STACK_SIZE);
-
-		stack_switch_(stack_top, &mut f as *mut _ as _, func as *const _);
-	}
-
-	let ret_val = ptr::read(&f.ret_val).unwrap();
-
+	let func = StackInfo::<F, T>::exec;
+	asm!(
+		// Save stack
+		"mov {esp_stash}, esp",
+		"mov {ebp_stash}, ebp",
+		// Set new stack
+		"mov esp, {stack}",
+		"xor ebp, ebp",
+		// Call execution function
+		"push {f}",
+		"call {func}",
+		// Restore previous stack
+		"mov esp, {esp_stash}",
+		"mov ebp, {ebp_stash}",
+		esp_stash = out(reg) _,
+		ebp_stash = out(reg) _,
+		stack = in(reg) stack,
+		f = in(reg) &mut f,
+		func = in(reg) func
+	);
+	let StackInfo {
+		f,
+		ret_val,
+	} = f;
 	// Avoid double free
 	mem::forget(f);
-
-	Ok(ret_val)
+	ret_val.assume_init()
 }

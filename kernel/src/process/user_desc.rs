@@ -26,6 +26,7 @@ use core::{ffi::c_void, fmt};
 pub const USER_DESC_SIZE: usize = 16;
 
 /// The `user_desc` structure.
+#[derive(Clone)]
 #[repr(transparent)]
 pub struct UserDesc([i8; USER_DESC_SIZE]);
 

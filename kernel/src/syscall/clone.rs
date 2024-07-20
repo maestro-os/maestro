@@ -18,115 +18,113 @@
 
 //! The `clone` system call creates a child process.
 
-use crate::process::{
-	mem_space::ptr::SyscallPtr, scheduler, user_desc::UserDesc, ForkOptions, Process,
+use crate::{
+	process::{
+		mem_space::copy::SyscallPtr, regs::Regs, scheduler, user_desc::UserDesc, ForkOptions,
+		Process,
+	},
+	syscall::{Args, FromSyscallArg},
 };
-use core::ffi::c_void;
-use macros::syscall;
-use utils::{errno::Errno, ptr::arc::Arc};
+use core::ffi::{c_int, c_ulong, c_void};
+use utils::{errno::EResult, lock::IntMutex, ptr::arc::Arc};
 
 /// TODO doc
-const CLONE_IO: i32 = -0x80000000;
+const CLONE_IO: c_ulong = -0x80000000 as _;
 /// If specified, the parent and child processes share the same memory space.
-const CLONE_VM: i32 = 0x100;
+const CLONE_VM: c_ulong = 0x100;
 /// TODO doc
-const CLONE_FS: i32 = 0x200;
+const CLONE_FS: c_ulong = 0x200;
 /// If specified, the parent and child processes share the same file descriptors
 /// table.
-const CLONE_FILES: i32 = 0x400;
+const CLONE_FILES: c_ulong = 0x400;
 /// If specified, the parent and child processes share the same signal handlers
 /// table.
-const CLONE_SIGHAND: i32 = 0x800;
+const CLONE_SIGHAND: c_ulong = 0x800;
 /// TODO doc
-const CLONE_PIDFD: i32 = 0x1000;
+const CLONE_PIDFD: c_ulong = 0x1000;
 /// TODO doc
-const CLONE_PTRACE: i32 = 0x2000;
+const CLONE_PTRACE: c_ulong = 0x2000;
 /// TODO doc
-const CLONE_VFORK: i32 = 0x4000;
+const CLONE_VFORK: c_ulong = 0x4000;
 /// TODO doc
-const CLONE_PARENT: i32 = 0x8000;
+const CLONE_PARENT: c_ulong = 0x8000;
 /// TODO doc
-const CLONE_THREAD: i32 = 0x10000;
+const CLONE_THREAD: c_ulong = 0x10000;
 /// TODO doc
-const CLONE_NEWNS: i32 = 0x20000;
+const CLONE_NEWNS: c_ulong = 0x20000;
 /// TODO doc
-const CLONE_SYSVSEM: i32 = 0x40000;
+const CLONE_SYSVSEM: c_ulong = 0x40000;
 /// TODO doc
-const CLONE_SETTLS: i32 = 0x80000;
+const CLONE_SETTLS: c_ulong = 0x80000;
 /// TODO doc
-const CLONE_PARENT_SETTID: i32 = 0x100000;
+const CLONE_PARENT_SETTID: c_ulong = 0x100000;
 /// TODO doc
-const CLONE_CHILD_CLEARTID: i32 = 0x200000;
+const CLONE_CHILD_CLEARTID: c_ulong = 0x200000;
 /// TODO doc
-const CLONE_DETACHED: i32 = 0x400000;
+const CLONE_DETACHED: c_ulong = 0x400000;
 /// TODO doc
-const CLONE_UNTRACED: i32 = 0x800000;
+const CLONE_UNTRACED: c_ulong = 0x800000;
 /// TODO doc
-const CLONE_CHILD_SETTID: i32 = 0x1000000;
+const CLONE_CHILD_SETTID: c_ulong = 0x1000000;
 /// TODO doc
-const CLONE_NEWCGROUP: i32 = 0x2000000;
+const CLONE_NEWCGROUP: c_ulong = 0x2000000;
 /// TODO doc
-const CLONE_NEWUTS: i32 = 0x4000000;
+const CLONE_NEWUTS: c_ulong = 0x4000000;
 /// TODO doc
-const CLONE_NEWIPC: i32 = 0x8000000;
+const CLONE_NEWIPC: c_ulong = 0x8000000;
 /// TODO doc
-const CLONE_NEWUSER: i32 = 0x10000000;
+const CLONE_NEWUSER: c_ulong = 0x10000000;
 /// TODO doc
-const CLONE_NEWPID: i32 = 0x20000000;
+const CLONE_NEWPID: c_ulong = 0x20000000;
 /// TODO doc
-const CLONE_NEWNET: i32 = 0x40000000;
+const CLONE_NEWNET: c_ulong = 0x40000000;
 
-// TODO Check args types
-#[syscall]
+#[allow(clippy::type_complexity)]
 pub fn clone(
-	flags: i32,
-	stack: *mut c_void,
-	_parent_tid: SyscallPtr<i32>,
-	tls: i32,
-	_child_tid: SyscallPtr<i32>,
-) -> Result<i32, Errno> {
+	Args((flags, stack, _parent_tid, tls, _child_tid)): Args<(
+		c_ulong,
+		*mut c_void,
+		SyscallPtr<c_int>,
+		c_ulong,
+		SyscallPtr<c_int>,
+	)>,
+	regs: &Regs,
+	proc_mutex: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
 	let new_tid = {
-		// The current process
-		let curr_mutex = Process::current_assert();
-		// A weak pointer to the new process's parent
-		let parent = Arc::downgrade(&curr_mutex);
-
-		let mut curr_proc = curr_mutex.lock();
-
+		let mut proc = proc_mutex.lock();
 		if flags & CLONE_PARENT_SETTID != 0 {
 			// TODO
 			todo!();
 		}
+		let new_mutex = proc.fork(
+			Arc::downgrade(&proc_mutex),
+			ForkOptions {
+				share_memory: flags & CLONE_VM != 0,
+				share_fd: flags & CLONE_FILES != 0,
+				share_sighand: flags & CLONE_SIGHAND != 0,
 
-		let fork_options = ForkOptions {
-			share_memory: flags & CLONE_VM != 0,
-			share_fd: flags & CLONE_FILES != 0,
-			share_sighand: flags & CLONE_SIGHAND != 0,
-
-			vfork: flags & CLONE_VFORK != 0,
-		};
-		let new_mutex = curr_proc.fork(parent, fork_options)?;
+				vfork: flags & CLONE_VFORK != 0,
+			},
+		)?;
 		let mut new_proc = new_mutex.lock();
-
-		// Setting the process's registers
+		// Set the process's registers
 		let mut new_regs = regs.clone();
-		// Setting return value to `0`
-		new_regs.eax = 0;
-		// Setting stack
-		new_regs.esp = if stack.is_null() {
-			regs.esp as _
+		// Set return value to `0`
+		new_regs.eax.0 = 0;
+		// Set stack
+		new_regs.esp.0 = if stack.is_null() {
+			regs.esp.0
 		} else {
 			stack as _
 		};
-		// Setting TLS
+		// Set TLS
 		if flags & CLONE_SETTLS != 0 {
-			let _tls: SyscallPtr<UserDesc> = (tls as usize).into();
-
+			let _tls = SyscallPtr::<UserDesc>::from_syscall_arg(tls as usize);
 			// TODO
 			todo!();
 		}
 		new_proc.regs = new_regs;
-
 		if flags & CLONE_CHILD_CLEARTID != 0 {
 			// TODO new_proc.set_clear_child_tid(child_tid);
 			todo!();
@@ -135,15 +133,12 @@ pub fn clone(
 			// TODO
 			todo!();
 		}
-
 		new_proc.tid
 	};
-
 	if flags & CLONE_VFORK != 0 {
-		// Letting another process run instead of the current. Because the current
+		// Let another process run instead of the current. Because the current
 		// process must now wait for the child process to terminate or execute a program
 		scheduler::end_tick();
 	}
-
 	Ok(new_tid as _)
 }

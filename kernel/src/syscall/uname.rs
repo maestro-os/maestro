@@ -16,19 +16,24 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The uname syscall is used to retrieve informations about the system.
+//! The `uname` syscall is used to retrieve information about the system.
 
-use crate::process::{mem_space::ptr::SyscallPtr, Process};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use crate::{
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
+};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
 /// The length of a field of the utsname structure.
 const UTSNAME_LENGTH: usize = 65;
 
-/// Userspace structure storing uname informations.
+/// Userspace structure storing uname information.
 #[repr(C)]
 #[derive(Debug)]
-struct Utsname {
+pub struct Utsname {
 	/// Operating system name.
 	sysname: [u8; UTSNAME_LENGTH],
 	/// Network node hostname.
@@ -41,31 +46,19 @@ struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-#[syscall]
-pub fn uname(buf: SyscallPtr<Utsname>) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-	let utsname = buf.get_mut(&mut mem_space_guard)?.ok_or(errno!(EFAULT))?;
-
-	*utsname = Utsname {
+pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
+	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
 		nodename: [0; UTSNAME_LENGTH],
 		release: [0; UTSNAME_LENGTH],
 		version: [0; UTSNAME_LENGTH],
 		machine: [0; UTSNAME_LENGTH],
 	};
-
 	utils::slice_copy(crate::NAME.as_bytes(), &mut utsname.sysname);
-
-	let hostname = crate::HOSTNAME.lock();
-	utils::slice_copy(&hostname, &mut utsname.nodename);
-
+	utils::slice_copy(&crate::HOSTNAME.lock(), &mut utsname.nodename);
 	utils::slice_copy(crate::VERSION.as_bytes(), &mut utsname.release);
 	utils::slice_copy(&[], &mut utsname.version);
 	utils::slice_copy(crate::ARCH.as_bytes(), &mut utsname.machine);
-
+	buf.copy_to_user(utsname)?;
 	Ok(0)
 }

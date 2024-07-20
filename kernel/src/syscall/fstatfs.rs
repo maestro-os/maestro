@@ -19,55 +19,45 @@
 //! The `fstatfs` system call returns information about a mounted file system.
 
 use crate::{
-	file::fs::Statfs,
-	process::{mem_space::ptr::SyscallPtr, Process},
+	file::{fd::FileDescriptorTable, fs::Statfs},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 };
-use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use core::{ffi::c_int, intrinsics::size_of};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn fstatfs(fd: c_int, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-
-	let file_mutex = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-		let fds = fds_mutex.lock();
-
-		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-
-		let open_file_mutex = fd.get_open_file();
-		let open_file = open_file_mutex.lock();
-
-		open_file.get_file().clone()
-	};
-
-	let file = file_mutex.lock();
-
-	let mountpoint_mutex = file.location.get_mountpoint().unwrap();
-	let mountpoint = mountpoint_mutex.lock();
-
-	let fs = mountpoint.get_filesystem();
-	let stat = fs.get_stat()?;
-
-	// Writing the statfs structure to userspace
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		let buf = buf
-			.get_mut(&mut mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
-		*buf = stat;
-	}
-
+/// Performs the `fstatfs` system call.
+pub fn do_fstatfs(
+	fd: c_int,
+	_sz: usize,
+	buf: SyscallPtr<Statfs>,
+	fds: &FileDescriptorTable,
+) -> EResult<usize> {
+	// TODO use `sz`
+	let stat = fds
+		.get_fd(fd)?
+		.get_open_file()
+		.lock()
+		.get_file()
+		.lock()
+		.location
+		.get_mountpoint()
+		.ok_or_else(|| errno!(ENOSYS))?
+		.lock()
+		.get_filesystem()
+		.get_stat()?;
+	buf.copy_to_user(stat)?;
 	Ok(0)
+}
+
+pub fn fstatfs(
+	Args((fd, buf)): Args<(c_int, SyscallPtr<Statfs>)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_fstatfs(fd, size_of::<Statfs>(), buf, &fds.lock())
 }

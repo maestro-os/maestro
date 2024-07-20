@@ -19,18 +19,18 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
 use crate::{
-	process,
 	process::{
-		mem_space::ptr::SyscallPtr, pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process,
+		mem_space::copy::SyscallPtr, pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process,
 		State,
 	},
+	syscall::{waitpid::scheduler::SCHEDULER, Args},
 };
-use core::ffi::c_int;
-use macros::syscall;
+use core::{ffi::c_int, iter};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 	interrupt::cli,
+	lock::IntMutex,
 };
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -46,199 +46,135 @@ pub const WCONTINUED: i32 = 8;
 /// child.
 pub const WNOWAIT: i32 = 0x1000000;
 
-/// Returns the `i`th target process for the given constraint `pid`.
+/// Returns an iterator over the IDs of the processes to be watched according to the given
+/// constraint.
 ///
 /// Arguments:
 /// - `curr_proc` is the current process.
 /// - `pid` is the constraint given to the system call.
-/// - `i` is the index of the target process.
-///
-/// The function is built such as iterating on `i` until the function returns
-/// `None` gives every targets for the system call.
-fn get_target(curr_proc: &Process, pid: i32, i: usize) -> Option<Pid> {
-	if pid < -1 {
-		let group_processes = curr_proc.get_group_processes();
-
-		if i < group_processes.len() {
-			Some(group_processes[i])
-		} else {
-			None
-		}
-	} else if pid == -1 {
-		let children = curr_proc.get_children();
-
-		if i < children.len() {
-			Some(children[i])
-		} else {
-			None
-		}
-	} else if pid == 0 {
-		let group = curr_proc.get_group_processes();
-
-		if i < group.len() {
-			Some(group[i])
-		} else {
-			None
-		}
-	} else if i == 0 {
-		Some(pid as _)
-	} else {
-		None
-	}
+fn iter_targets(curr_proc: &Process, pid: i32) -> impl Iterator<Item = Pid> + '_ {
+	let mut i = 0;
+	iter::from_fn(move || {
+		let res = match pid {
+			..-1 => curr_proc.get_group_processes().get(i).cloned(),
+			-1 => curr_proc.get_children().get(i).cloned(),
+			0 => curr_proc.get_group_processes().get(i).cloned(),
+			_ => (i == 0).then_some(pid as _),
+		};
+		i += 1;
+		res
+	})
 }
 
 /// Returns the wait status for the given process.
 fn get_wstatus(proc: &Process) -> i32 {
 	let status = proc.get_exit_status().unwrap_or(0);
 	let termsig = proc.get_termsig();
-
 	let wstatus = match proc.get_state() {
 		State::Running | State::Sleeping => 0xffff,
 		State::Stopped => ((termsig as i32 & 0xff) << 8) | 0x7f,
 		State::Zombie => ((status as i32 & 0xff) << 8) | (termsig as i32 & 0x7f),
 	};
-
 	// TODO
 	/*if coredump {
 		wstatus |= 0x80;
 	}*/
-
 	wstatus
 }
 
-/// Checks if at least one process corresponding to the given constraint is
-/// waitable. If yes, the function clears its waitable state, sets the wstatus
-/// and returns the process's PID.
+/// Waits upon a process and returns it. If no process can be waited upon, the function returns
+/// `None`.
 ///
 /// Arguments:
 /// - `curr_proc` is the current process.
 /// - `pid` is the constraint given to the system call.
-/// - `wstatus` is a reference to the wait status.
+/// - `wstatus` is the pointer to the wait status.
 /// - `options` is a set of flags.
 /// - `rusage` is the pointer to the resource usage structure.
-fn check_waitable(
+fn get_waitable(
 	curr_proc: &mut Process,
 	pid: i32,
-	wstatus: &mut i32,
+	wstatus: &SyscallPtr<i32>,
 	options: i32,
-	rusage: &mut RUsage,
+	rusage: &SyscallPtr<RUsage>,
 ) -> EResult<Option<Pid>> {
-	// Iterating on every target processes, checking if they can be waited on
-	let mut i = 0;
-	while let Some(pid) = get_target(curr_proc, pid, i) {
-		let mut sched = process::get_scheduler().lock();
-
-		if let Some(p) = sched.get_by_pid(pid) {
-			let mut p = p.lock();
-
-			let stopped = matches!(p.get_state(), State::Stopped);
-			let zombie = matches!(p.get_state(), State::Zombie);
-			let running = matches!(p.get_state(), State::Running | State::Sleeping);
-
-			let stop_check = stopped && options & WUNTRACED != 0;
-			let exit_check = zombie && options & WEXITED != 0;
-			let continue_check = running && options & WCONTINUED != 0;
-
-			// If waitable, return
-			if p.is_waitable() && (stop_check || exit_check || continue_check) {
-				*wstatus = get_wstatus(&p);
-				*rusage = p.get_rusage().clone();
-
-				let clear_waitable = options & WNOWAIT == 0;
-				if clear_waitable {
-					p.clear_waitable();
-
-					// If the process was a zombie, remove it
-					if exit_check {
-						drop(p);
-
-						curr_proc.remove_child(pid);
-						sched.remove_process(pid);
-					}
-				}
-
-				return Ok(Some(pid));
-			}
+	let mut empty = true;
+	let mut sched = SCHEDULER.get().lock();
+	// Find a waitable process
+	let proc = iter_targets(curr_proc, pid)
+		.inspect(|_| empty = false)
+		.filter_map(|pid| sched.get_by_pid(pid))
+		// Select a waitable process
+		.find(|proc| {
+			let proc = proc.lock();
+			let state = proc.get_state();
+			let stopped = options & WUNTRACED != 0 && matches!(state, State::Stopped);
+			let exited = options & WEXITED != 0 && matches!(state, State::Zombie);
+			let continued =
+				options & WCONTINUED != 0 && matches!(state, State::Running | State::Sleeping);
+			proc.is_waitable() && (stopped || exited || continued)
+		});
+	let Some(proc) = proc else {
+		return if empty {
+			// No target
+			Err(errno!(ECHILD))
+		} else {
+			Ok(None)
+		};
+	};
+	let mut proc = proc.lock();
+	let pid = proc.get_pid();
+	// Write values back
+	wstatus.copy_to_user(get_wstatus(&proc))?;
+	rusage.copy_to_user(proc.get_rusage().clone())?;
+	// Clear the waitable flag if requested
+	if options & WNOWAIT == 0 {
+		proc.clear_waitable();
+		// If the process was a zombie, remove it
+		if matches!(proc.get_state(), State::Zombie) {
+			drop(proc);
+			curr_proc.remove_child(pid);
+			sched.remove_process(pid);
 		}
-
-		i += 1;
 	}
-
-	if i == 0 {
-		// No target
-		Err(errno!(ECHILD))
-	} else {
-		Ok(None)
-	}
+	Ok(Some(pid))
 }
 
 /// Executes the `waitpid` system call.
-///
-/// Arguments:
-/// - `regs` is the registers state.
-/// - `pid` is the PID to wait for.
-/// - `wstatus` is the pointer on which to write the status.
-/// - `options` are flags passed with the syscall.
-/// - `rusage` is the pointer to the resource usage structure.
 pub fn do_waitpid(
-	regs: &Regs,
 	pid: i32,
 	wstatus: SyscallPtr<i32>,
 	options: i32,
-	rusage: Option<SyscallPtr<RUsage>>,
-) -> EResult<i32> {
-	// Sleeping until a target process is waitable
+	rusage: SyscallPtr<RUsage>,
+	regs: &Regs,
+) -> EResult<usize> {
+	// Sleep until a target process is waitable
 	loop {
 		super::util::handle_signal(regs);
-
 		cli();
-
 		{
-			let proc_mutex = Process::current_assert();
+			let proc_mutex = Process::current();
 			let mut proc = proc_mutex.lock();
-
-			// Check if at least one target process is waitable
-			let mut wstatus_val = Default::default();
-			let mut rusage_val = Default::default();
-			let result =
-				check_waitable(&mut proc, pid, &mut wstatus_val, options, &mut rusage_val)?;
-
-			// Setting values to userspace
-			{
-				let mem_space = proc.get_mem_space().unwrap();
-				let mut mem_space_guard = mem_space.lock();
-
-				if let Some(wstatus) = wstatus.get_mut(&mut mem_space_guard)? {
-					*wstatus = wstatus_val;
-				}
-
-				if let Some(ref rusage) = rusage {
-					if let Some(rusage) = rusage.get_mut(&mut mem_space_guard)? {
-						*rusage = rusage_val;
-					}
-				}
-			}
-
+			let result = get_waitable(&mut proc, pid, &wstatus, options, &rusage)?;
 			// On success, return
 			if let Some(p) = result {
 				return Ok(p as _);
 			}
-
 			// If the flag is set, do not wait
 			if options & WNOHANG != 0 {
 				return Ok(0);
 			}
-
 			// When a child process is paused or resumed by a signal or is terminated, it
 			// changes the state of the current process to wake it up
 			proc.set_state(State::Sleeping);
 		}
-
 		scheduler::end_tick();
 	}
 }
 
-#[syscall]
-pub fn waitpid(pid: c_int, wstatus: SyscallPtr<c_int>, options: c_int) -> Result<i32, Errno> {
-	do_waitpid(regs, pid, wstatus, options | WEXITED, None)
+pub fn waitpid(
+	Args((pid, wstatus, options)): Args<(c_int, SyscallPtr<c_int>, c_int)>,
+	regs: &Regs,
+) -> EResult<usize> {
+	do_waitpid(pid, wstatus, options | WEXITED, SyscallPtr(None), regs)
 }

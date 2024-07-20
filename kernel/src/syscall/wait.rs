@@ -19,12 +19,10 @@
 //! The `wait` system call is a simpler version of the `waitpid` system call.
 
 use super::waitpid;
-use crate::process::mem_space::ptr::SyscallPtr;
+use crate::process::{mem_space::copy::SyscallPtr, regs::Regs, Process};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{errno::EResult, lock::IntMutex};
 
-#[syscall]
-pub fn wait(wstatus: SyscallPtr<c_int>) -> Result<i32, Errno> {
-	waitpid::do_waitpid(regs, -1, wstatus, waitpid::WEXITED, None)
+pub fn wait(wstatus: SyscallPtr<c_int>, regs: &Regs) -> EResult<usize> {
+	waitpid::do_waitpid(-1, wstatus, waitpid::WEXITED, SyscallPtr(None), regs)
 }

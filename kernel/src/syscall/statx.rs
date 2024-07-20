@@ -22,20 +22,26 @@ use super::util::at;
 use crate::{
 	device::DeviceID,
 	file::{
+		fd::FileDescriptorTable,
 		mountpoint::MountSource,
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{
-		mem_space::ptr::{SyscallPtr, SyscallString},
+		mem_space::copy::{SyscallPtr, SyscallString},
 		Process,
 	},
+	syscall::Args,
 };
 use core::ffi::{c_int, c_uint};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-/// Structure representing a timestamp with the statx syscall.
+/// A timestamp for the `statx` syscall.
 #[repr(C)]
 #[derive(Debug)]
 struct StatxTimestamp {
@@ -47,10 +53,10 @@ struct StatxTimestamp {
 	__reserved: i32,
 }
 
-/// Structure containing the extended attributes for a file.
+/// Extended attributes for a file.
 #[repr(C)]
 #[derive(Debug)]
-struct Statx {
+pub struct Statx {
 	/// Mask of bits indicating filled fields
 	stx_mask: u32,
 	/// Block size for filesystem I/O
@@ -103,40 +109,26 @@ struct Statx {
 	__padding1: [u64; 13],
 }
 
-#[syscall]
 pub fn statx(
-	dirfd: c_int,
-	pathname: SyscallString,
-	flags: c_int,
-	_mask: c_uint,
-	statxbuff: SyscallPtr<Statx>,
-) -> Result<i32, Errno> {
+	Args((dirfd, pathname, flags, _mask, statxbuff)): Args<(
+		c_int,
+		SyscallString,
+		c_int,
+		c_uint,
+		SyscallPtr<Statx>,
+	)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
 	// Validation
-	if pathname.is_null() || statxbuff.is_null() {
+	if pathname.0.is_none() || statxbuff.0.is_none() {
 		return Err(errno!(EINVAL));
 	}
 	// TODO Implement all flags
 	// Get the file
-	let (fds_mutex, path, rs) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
-		let mem_space_guard = mem_space.lock();
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-
-		let path = pathname
-			.get(&mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		(fds_mutex, path, rs)
-	};
-	let fds = fds_mutex.lock();
-	let Resolved::Found(file_mutex) = at::get_file(&fds, rs, dirfd, &path, flags)? else {
+	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	let Resolved::Found(file_mutex) = at::get_file(&fds.lock(), rs, dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
 	let file = file_mutex.lock();
@@ -161,8 +153,8 @@ pub fn statx(
 			(0, 0)
 		}
 	};
-	// Fill the structure
-	let statx_val = Statx {
+	// Write
+	statxbuff.copy_to_user(Statx {
 		stx_mask: !0,      // TODO
 		stx_blksize: 512,  // TODO
 		stx_attributes: 0, // TODO
@@ -207,15 +199,6 @@ pub fn statx(
 		stx_mnt_id: 0, // TODO
 
 		__padding1: [0; 13],
-	};
-	// Write structure
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-	let statx = statxbuff
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-	*statx = statx_val;
+	})?;
 	Ok(0)
 }

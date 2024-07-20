@@ -27,54 +27,44 @@ use crate::{
 		vfs::ResolutionSettings,
 		FileType, Stat,
 	},
-	process::{mem_space::ptr::SyscallString, Process},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::{Args, Umask},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
 	},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-// TODO Check args type
-#[syscall]
-pub fn mknod(pathname: SyscallString, mode: file::Mode, dev: u64) -> Result<i32, Errno> {
-	let (path, umask, rs) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		let umask = proc.umask;
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-		(path, umask, rs)
-	};
-	// Path of the parent directory
+pub fn mknod(
+	Args((pathname, mode, dev)): Args<(SyscallString, file::Mode, u64)>,
+	umask: Umask,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
 	let parent_path = path.parent().unwrap_or(Path::root());
 	// File name
 	let Some(name) = path.file_name() else {
 		return Err(errno!(EEXIST));
 	};
-	// Information to create the file
-	let mode = mode & !umask;
-	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
 	// Check file type and permissions
-	match file_type {
-		FileType::Directory => return Err(errno!(EINVAL)),
-		FileType::BlockDevice | FileType::CharDevice if !rs.access_profile.is_privileged() => {
-			return Err(errno!(EPERM));
-		}
-		_ => {}
+	let mode = mode & !umask.0;
+	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
+	let privileged = rs.access_profile.is_privileged();
+	match (file_type, privileged) {
+		(FileType::Regular | FileType::Fifo | FileType::Socket, _) => {}
+		(FileType::BlockDevice | FileType::CharDevice, true) => {}
+		(_, false) => return Err(errno!(EPERM)),
+		(_, true) => return Err(errno!(EINVAL)),
 	}
+	// Create file
 	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
 	let mut parent = parent_mutex.lock();
-	// Create file
 	vfs::create_file(
 		&mut parent,
 		name,
