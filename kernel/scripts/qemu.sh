@@ -17,7 +17,7 @@ if [ -f $QEMUDISK ]; then
   QEMUFLAGS="-drive file=$QEMUDISK,format=raw $QEMUFLAGS"
 fi
 
-qemu-system-i386 -cdrom kernel.iso $QEMUFLAGS >qemu.log 2>&1
+qemu-system-i386 -cdrom kernel.iso $QEMUFLAGS
 EXIT=$?
 
 if [ "$EXIT" -ne 33 ]; then

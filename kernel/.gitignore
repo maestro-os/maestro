@@ -15,7 +15,7 @@ iso/
 # Rust compilation files
 target/
 
-# Debug files
+# Log files
 *.log
 
 # Disk files

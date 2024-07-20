@@ -6,40 +6,74 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Macros
-        working-directory: ./macros
+        working-directory: macros
         run: cargo clippy --all-features --tests
       - name: Utils
-        working-directory: ./utils
+        working-directory: utils
         run: cargo clippy --all-features --tests
       - name: Kernel
-        working-directory: ./kernel
+        working-directory: kernel
         run: |
           cp default.build-config.toml build-config.toml
           cargo clippy --all-features --tests
+  format:
+    runs-on: [self-hosted, linux]
+    needs: clippy
+    steps:
+      - name: Macros
+        working-directory: macros
+        run: cargo fmt --check
+      - name: Utils
+        working-directory: utils
+        run: cargo fmt --check
+      - name: Kernel
+        working-directory: kernel
+        run: cargo fmt --check
+  documentation:
+    runs-on: [self-hosted, linux]
+    needs: clippy
+    steps:
+      - name: Build book
+        run: mdbook build doc/
+      - name: Build references
+        working-directory: kernel
+        run: ci/doc.sh
   build:
     runs-on: [self-hosted, linux]
     needs: clippy
     steps:
       - name: Debug
-        working-directory: ./kernel
+        working-directory: kernel
         run: ci/build.sh
       - name: Check Multiboot2 for x86 (debug)
-        working-directory: ./kernel
+        working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
       - name: Release
-        working-directory: ./kernel
+        working-directory: kernel
         env:
           CARGOFLAGS: --release
         run: ci/build.sh
       - name: Check Multiboot2 for x86 (release)
-        working-directory: ./kernel
+        working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/x86/release/maestro
+  strace:
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - name: Build
+        working-directory: kernel
+        env:
+          CARGOFLAGS: --features strace
+        run: ci/build.sh
+      - name: Check Multiboot2 for x86
+        working-directory: kernel
+        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
   miri:
     runs-on: [self-hosted, linux]
     needs: build
     steps:
       - name: Utils
-        working-directory: ./utils
+        working-directory: utils
         env:
           MIRIFLAGS: -Zmiri-disable-stacked-borrows
         run: cargo miri test
@@ -49,44 +83,30 @@ jobs:
     needs: build
     steps:
       - name: Run utils tests
-        working-directory: ./utils
+        working-directory: utils
         run: cargo test
         timeout-minutes: 10
       - name: Run kernel tests
-        working-directory: ./kernel
-        run: ci/selftest.sh
+        working-directory: kernel
+        run: ci/test.sh self
         timeout-minutes: 10
-  strace:
+  inttest:
     runs-on: [self-hosted, linux]
     needs: build
     steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: maestro-os/maestro-test
+          path: maestro-test
       - name: Build
-        working-directory: ./kernel
-        env:
-          CARGOFLAGS: --features strace
-        run: ci/build.sh
-      - name: Check Multiboot2 for x86
-        working-directory: ./kernel
-        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
-  format:
-    runs-on: [self-hosted, linux]
-    needs: clippy
-    steps:
-      - name: Macros
-        working-directory: ./macros
-        run: cargo fmt --check
-      - name: Utils
-        working-directory: ./utils
-        run: cargo fmt --check
-      - name: Kernel
-        working-directory: ./kernel
-        run: cargo fmt --check
-  documentation:
-    runs-on: [self-hosted, linux]
-    needs: clippy
-    steps:
-      - name: Build book
-        run: mdbook build doc/
-      - name: Build references
-        working-directory: ./kernel
-        run: ci/doc.sh
+        id: build
+        working-directory: maestro-test
+        run: |
+          ./build.sh
+          mv disk ../kernel/qemu_disk
+      - name: Run
+        working-directory: kernel
+        run: |
+          ci/test.sh int
+          fsck.ext2 -fn qemu_disk
+        timeout-minutes: 10

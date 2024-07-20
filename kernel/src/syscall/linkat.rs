@@ -65,7 +65,7 @@ pub fn linkat(
 	};
 	let mut old = old_mutex.lock();
 	if matches!(old.stat.file_type, FileType::Directory) {
-		return Err(errno!(EISDIR));
+		return Err(errno!(EPERM));
 	}
 	// Create new file
 	let rs = ResolutionSettings {

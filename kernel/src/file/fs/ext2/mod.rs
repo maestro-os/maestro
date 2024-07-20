@@ -416,7 +416,7 @@ impl NodeOps for Ext2NodeOps {
 		let inode_index = superblock.get_free_inode(&mut *io)?;
 		// Create inode
 		let mut inode = Ext2INode {
-			i_mode: stat.mode as _,
+			i_mode: stat.get_mode() as _,
 			i_uid: stat.uid,
 			i_size: 0,
 			i_ctime: stat.ctime as _,
