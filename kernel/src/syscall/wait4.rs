@@ -18,22 +18,19 @@
 
 //! The `wait4` system call waits for a process to change state.
 
-use super::waitpid;
-use crate::process::{mem_space::ptr::SyscallPtr, rusage::RUsage};
+use super::{waitpid, Args};
+use crate::process::{mem_space::copy::SyscallPtr, regs::Regs, rusage::RUsage, Process};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{errno::EResult, lock::IntMutex};
 
-#[syscall]
 pub fn wait4(
-	pid: c_int,
-	wstatus: SyscallPtr<c_int>,
-	options: c_int,
-	rusage: SyscallPtr<RUsage>,
-) -> Result<i32, Errno> {
-	if rusage.is_null() {
-		waitpid::do_waitpid(regs, pid, wstatus, options | waitpid::WEXITED, None)
-	} else {
-		waitpid::do_waitpid(regs, pid, wstatus, options | waitpid::WEXITED, Some(rusage))
-	}
+	Args((pid, wstatus, options, rusage)): Args<(
+		c_int,
+		SyscallPtr<c_int>,
+		c_int,
+		SyscallPtr<RUsage>,
+	)>,
+	regs: &Regs,
+) -> EResult<usize> {
+	waitpid::do_waitpid(pid, wstatus, options | waitpid::WEXITED, rusage, regs)
 }

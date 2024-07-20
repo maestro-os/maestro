@@ -18,15 +18,14 @@
 
 //! The `setgid` syscall sets the GID of the process's owner.
 
-use crate::{file::perm::Gid, process::Process};
-use macros::syscall;
-use utils::errno::Errno;
+use crate::{file::perm::Gid, process::Process, syscall::Args};
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn setgid(gid: Gid) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
-
-	proc.access_profile.set_gid(gid)?;
+pub fn setgid(Args(gid): Args<Gid>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
+	proc.lock().access_profile.set_gid(gid)?;
 	Ok(0)
 }

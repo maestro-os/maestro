@@ -20,35 +20,30 @@
 //! with `mount`.
 
 use crate::{
-	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings},
-	process::{mem_space::ptr::SyscallString, Process},
+	file::{
+		mountpoint,
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+	},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn umount(target: SyscallString) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
+pub fn umount(Args(target): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
 	// Check permission
-	if !proc.access_profile.is_privileged() {
+	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-
-	let rs = ResolutionSettings::for_process(&proc, true);
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-
 	// Get target directory
-	let target_slice = target.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-	let target_path = Path::new(target_slice)?;
-	let target_dir = vfs::get_file_from_path(target_path, &rs)?;
-	let target_dir = target_dir.lock();
-
+	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let target_path = PathBuf::try_from(target_slice)?;
+	let target_location = vfs::get_file_from_path(&target_path, &rs)?.lock().location;
 	// Remove mountpoint
-	mountpoint::remove(&target_dir.location)?;
-
+	mountpoint::remove(&target_location)?;
 	Ok(0)
 }

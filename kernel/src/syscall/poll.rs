@@ -20,7 +20,8 @@
 //! descriptors.
 
 use crate::{
-	process::{mem_space::ptr::SyscallSlice, scheduler, Process},
+	process::{mem_space::copy::SyscallSlice, scheduler, Process},
+	syscall::Args,
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,
@@ -28,13 +29,16 @@ use crate::{
 	},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno, io};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io,
+};
 
-/// Structure representing a file descriptor passed to the `poll` system call.
+/// A file descriptor passed to the `poll` system call.
 #[repr(C)]
 #[derive(Debug)]
-struct PollFD {
+pub struct PollFD {
 	/// The file descriptor.
 	fd: i32,
 	/// The input mask telling which events to look for.
@@ -43,86 +47,63 @@ struct PollFD {
 	revents: i16,
 }
 
-// TODO Check second arg type
-#[syscall]
-pub fn poll(fds: SyscallSlice<PollFD>, nfds: usize, timeout: c_int) -> Result<i32, Errno> {
-	// The timeout. None means no timeout
-	let to: Option<Timestamp> = if timeout >= 0 {
-		Some(timeout as _)
-	} else {
-		None
-	};
-
+pub fn poll(
+	Args((fds, nfds, timeout)): Args<(SyscallSlice<PollFD>, usize, c_int)>,
+) -> EResult<usize> {
+	// The timeout. `None` means no timeout
+	let to = (timeout >= 0).then_some(timeout as Timestamp);
 	// The start timestamp
 	let start_ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)?;
-
 	loop {
-		// Checking whether the system call timed out
+		// Check whether the system call timed out
 		if let Some(timeout) = to {
 			let now = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)?;
 			if now >= start_ts + timeout {
 				return Ok(0);
 			}
 		}
-
 		{
-			let proc_mutex = Process::current_assert();
-			let proc = proc_mutex.lock();
-
-			let mem_space = proc.get_mem_space().unwrap();
-			let mem_space_guard = mem_space.lock();
-
-			let fds = fds
-				.get(&mem_space_guard, nfds)?
-				.ok_or_else(|| errno!(EFAULT))?;
-
-			// Checking the file descriptors list
-			for fd in fds {
+			let fds_arr = fds.copy_from_user(..nfds)?.ok_or_else(|| errno!(EFAULT))?;
+			// Check the file descriptors list
+			for fd in &fds_arr {
 				if fd.events as u32 & io::POLLIN != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLPRI != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLOUT != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLRDNORM != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLRDBAND != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLWRNORM != 0 {
 					// TODO
 					todo!();
 				}
-
 				if fd.events as u32 & io::POLLWRBAND != 0 {
 					// TODO
 					todo!();
 				}
 			}
-
 			// The number of file descriptor with at least one event
-			let fd_event_count = fds.iter().filter(|fd| fd.revents != 0).count();
+			let fd_event_count = fds_arr.iter().filter(|fd| fd.revents != 0).count();
 			// If at least on event happened, return the number of file descriptors
 			// concerned
 			if fd_event_count > 0 {
+				fds.copy_to_user(0, &fds_arr)?;
 				return Ok(fd_event_count as _);
 			}
 		}
-
 		// TODO Make process sleep until an event occurs on a file descriptor in
 		// `fds`
 		scheduler::end_tick();

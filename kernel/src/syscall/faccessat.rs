@@ -18,12 +18,18 @@
 
 //! The `faccessat` system call allows to check access to a given file.
 
-use crate::process::mem_space::ptr::SyscallString;
+use crate::{
+	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
+	process::mem_space::copy::SyscallString,
+	syscall::Args,
+};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{errno::EResult, lock::Mutex, ptr::arc::Arc};
 
-#[syscall]
-pub fn faccessat(dir_fd: c_int, pathname: SyscallString, mode: c_int) -> Result<i32, Errno> {
-	super::access::do_access(Some(dir_fd), pathname, mode, None)
+pub fn faccessat(
+	Args((dir_fd, pathname, mode)): Args<(c_int, SyscallString, c_int)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	super::access::do_access(Some(dir_fd), pathname, mode, None, rs, fds)
 }

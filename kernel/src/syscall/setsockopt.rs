@@ -19,47 +19,42 @@
 //! The `setsockopt` system call sets an option on a socket.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket},
-	process::{mem_space::ptr::SyscallSlice, Process},
+	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use core::{any::Any, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
 pub fn setsockopt(
-	sockfd: c_int,
-	level: c_int,
-	optname: c_int,
-	optval: SyscallSlice<u8>,
-	optlen: usize,
-) -> Result<i32, Errno> {
-	if sockfd < 0 {
-		return Err(errno!(EBADF));
-	}
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
+	Args((sockfd, level, optname, optval, optlen)): Args<(
+		c_int,
+		c_int,
+		c_int,
+		SyscallSlice<u8>,
+		usize,
+	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
 	// Get socket
-	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-	let fds = fds_mutex.lock();
-	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
-	let open_file_mutex = fd.get_open_file();
-	let open_file = open_file_mutex.lock();
-	let loc = open_file.get_location();
-	let sock_mutex = buffer::get(loc).ok_or_else(|| errno!(ENOENT))?;
+	let loc = *fds
+		.lock()
+		.get_fd(sockfd)?
+		.get_open_file()
+		.lock()
+		.get_location();
+	let sock_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
 	let sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
-
-	// Get optval slice
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let optval_slice = optval
-		.get(&mem_space_guard, optlen)?
-		.ok_or(errno!(EFAULT))?;
-
-	sock.set_opt(level, optname, optval_slice)
+	// Set opt
+	let optval_slice = optval.copy_from_user(..optlen)?.ok_or(errno!(EFAULT))?;
+	sock.set_opt(level, optname, &optval_slice)
+		.map(|opt| opt as _)
 }

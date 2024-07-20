@@ -18,34 +18,22 @@
 
 //! The `fsync` system call synchronizes the state of a file to storage.
 
-use crate::process::Process;
+use crate::{file::fd::FileDescriptorTable, process::Process, syscall::Args};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn fsync(fd: c_int) -> Result<i32, Errno> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-
-	let file_mutex = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-		let fds = fds_mutex.lock();
-
-		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-
-		let open_file_mutex = fd.get_open_file();
-		let open_file = open_file_mutex.lock();
-
-		open_file.get_file().clone()
-	};
-
-	let file = file_mutex.lock();
-	file.sync()?;
-
+pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+	fds.lock()
+		.get_fd(fd)?
+		.get_open_file()
+		.lock()
+		.get_file()
+		.lock()
+		.sync()?;
 	Ok(0)
 }

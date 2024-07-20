@@ -16,57 +16,40 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module contains the Spinlock structure, which is considered as being a
-//! low level feature.
-//!
-//! Unless for special cases, other locks should be used instead.
+//! Spinlock implementation.
 
 use core::{
 	hint,
-	sync::atomic::{AtomicBool, Ordering},
+	sync::{atomic, atomic::AtomicBool},
 };
 
-/// A spinlock is a lock that is used to prevent a specific piece of code from
-/// being accessed by more than one thread at a time.
+/// Locking primitive spinning until the resource can be acquired.
 ///
 /// It works by storing a value telling whether a thread is already in that piece of code.
 ///
-/// To avoid race conditions, the implementation uses an atomic exchange instruction to
-/// check/lock the structure. If a threads tries to lock the structure while
-/// already being locked, the thread shall wait in a loop (spin) until the
-/// structure is unlocked.
-///
-/// Special attention must be aimed toward the usage of this structure since it
-/// can easily result in deadlocks if misused.
-pub struct Spinlock {
-	locked: AtomicBool,
-}
+/// To avoid race conditions, the implementation uses an atomic exchange instruction. If a threads
+/// tries to acquire the lock while already in use, the thread shall wait in a loop (spin) until
+/// the lock is released.
+pub struct Spinlock(AtomicBool);
 
 impl Spinlock {
 	/// Creates a new spinlock.
 	#[allow(clippy::new_without_default)]
 	pub const fn new() -> Self {
-		Self {
-			locked: AtomicBool::new(false),
-		}
+		Self(AtomicBool::new(false))
 	}
 
 	/// Locks the spinlock.
 	#[inline(always)]
 	pub fn lock(&mut self) {
-		while self.locked.swap(true, Ordering::Acquire) {
+		while self.0.swap(true, atomic::Ordering::Acquire) {
 			hint::spin_loop();
 		}
 	}
 
 	/// Unlocks the spinlock.
-	///
-	/// # Safety
-	///
-	/// The caller must ensure the resource protected by the spinlock is not in use before calling
-	/// this function. Otherwise, data races might happen.
 	#[inline(always)]
-	pub unsafe fn unlock(&mut self) {
-		self.locked.store(false, Ordering::Release);
+	pub fn unlock(&mut self) {
+		self.0.store(false, atomic::Ordering::Release);
 	}
 }

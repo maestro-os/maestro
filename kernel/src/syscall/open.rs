@@ -16,10 +16,12 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The open system call allows a process to open a file and get a file
+//! The `open` system call allows a process to open a file and get a file
 //! descriptor.
 
+use super::Args;
 use crate::{
+	file,
 	file::{
 		fd::FD_CLOEXEC,
 		open_file,
@@ -28,16 +30,15 @@ use crate::{
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Mode, Stat,
+		File, FileType, Stat,
 	},
-	process::{mem_space::ptr::SyscallString, Process},
+	process::{mem_space::copy::SyscallString, Process},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
 	},
 };
 use core::ffi::c_int;
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -62,7 +63,7 @@ pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
 ///
 /// If the file is created, the function uses `mode` to set its permissions and the provided
 /// access profile to set the user ID and group ID.
-fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mutex<File>>> {
+fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<Arc<Mutex<File>>> {
 	let resolved = vfs::resolve_path(path, rs)?;
 	let file = match resolved {
 		Resolved::Found(file) => file,
@@ -97,8 +98,7 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: Mode) -> EResult<Arc<Mut
 	Ok(file)
 }
 
-/// The function checks the system call's flags and performs the action associated with some of
-/// them.
+/// Checks the system call's flags and performs the action associated with some of them.
 ///
 /// Arguments:
 /// - `file` is the file
@@ -131,14 +131,12 @@ pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile)
 }
 
 /// Performs the open system call.
-pub fn open_(pathname: SyscallString, flags: i32, mode: Mode) -> EResult<i32> {
-	let proc_mutex = Process::current_assert();
+pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<usize> {
+	let proc_mutex = Process::current();
 	let (path, rs, mode, fds_mutex) = {
 		let proc = proc_mutex.lock();
 
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-		let path = pathname.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
+		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
 		let follow_links = flags & open_file::O_NOFOLLOW == 0;
@@ -170,21 +168,21 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: Mode) -> EResult<i32> {
 		fd_flags |= FD_CLOEXEC;
 	}
 	let mut fds = fds_mutex.lock();
-	let fd = fds.create_fd(fd_flags, open_file)?;
-	let fd_id = fd.get_id();
+	let (fd_id, _) = fds.create_fd(fd_flags, open_file)?;
 
 	// TODO remove?
 	// Flush file
 	let file = file_mutex.lock();
 	if let Err(e) = file.sync() {
-		fds.close_fd(fd_id)?;
+		fds.close_fd(fd_id as _)?;
 		return Err(e);
 	}
 
 	Ok(fd_id as _)
 }
 
-#[syscall]
-pub fn open(pathname: SyscallString, flags: c_int, mode: Mode) -> Result<i32, Errno> {
+pub fn open(
+	Args((pathname, flags, mode)): Args<(SyscallString, c_int, file::Mode)>,
+) -> EResult<usize> {
 	open_(pathname, flags, mode)
 }

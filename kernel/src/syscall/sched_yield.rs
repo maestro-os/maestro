@@ -20,11 +20,9 @@
 //! control back to the scheduler.
 
 use crate::process::scheduler;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::{EResult, Errno};
 
-#[syscall]
-pub fn sched_yield() -> Result<i32, Errno> {
+pub fn sched_yield() -> EResult<usize> {
 	scheduler::end_tick();
 	Ok(0)
 }

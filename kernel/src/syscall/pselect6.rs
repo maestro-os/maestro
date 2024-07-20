@@ -20,23 +20,35 @@
 
 use super::select::{do_select, FDSet};
 use crate::{
-	process::mem_space::ptr::{SyscallPtr, SyscallSlice},
+	file::fd::FileDescriptorTable,
+	process::mem_space::{
+		copy::{SyscallPtr, SyscallSlice},
+		MemSpace,
+	},
+	syscall::Args,
 	time::unit::Timespec,
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{
+	errno::EResult,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+};
 
-#[syscall]
+#[allow(clippy::type_complexity)]
 pub fn pselect6(
-	nfds: c_int,
-	readfds: SyscallPtr<FDSet>,
-	writefds: SyscallPtr<FDSet>,
-	exceptfds: SyscallPtr<FDSet>,
-	timeout: SyscallPtr<Timespec>,
-	sigmask: SyscallSlice<u8>,
-) -> Result<i32, Errno> {
+	Args((nfds, readfds, writefds, exceptfds, timeout, sigmask)): Args<(
+		c_int,
+		SyscallPtr<FDSet>,
+		SyscallPtr<FDSet>,
+		SyscallPtr<FDSet>,
+		SyscallPtr<Timespec>,
+		SyscallSlice<u8>,
+	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
 	do_select(
+		fds,
 		nfds as _,
 		readfds,
 		writefds,

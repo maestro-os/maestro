@@ -52,7 +52,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType, Mode, Stat,
 	},
-	process::{mem_space::MemSpace, Process},
+	process::Process,
 	syscall::ioctl,
 };
 use core::{ffi::c_void, fmt};
@@ -63,7 +63,7 @@ use utils::{
 	collections::{hashmap::HashMap, vec::Vec},
 	errno::{AllocResult, CollectResult, EResult},
 	io::IO,
-	lock::{IntMutex, Mutex},
+	lock::Mutex,
 	ptr::arc::Arc,
 	TryClone,
 };
@@ -123,12 +123,7 @@ pub trait DeviceHandle: IO {
 	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
-	fn ioctl(
-		&mut self,
-		mem_space: Arc<IntMutex<MemSpace>>,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32>;
+	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32>;
 
 	/// Adds the given process to the list of processes waiting on the device.
 	///

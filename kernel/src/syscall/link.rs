@@ -16,35 +16,24 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The link system call allows to create a directory.
+//! The `link` system call allows to create a hard link.
 
+use super::Args;
 use crate::{
-	file::path::Path,
-	process::{mem_space::ptr::SyscallString, Process},
+	file::path::{Path, PathBuf},
+	process::{mem_space::copy::SyscallString, Process},
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn link(oldpath: SyscallString, newpath: SyscallString) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-
-	let oldpath_str = oldpath
-		.get(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-	let _old_path = Path::new(oldpath_str)?;
-
-	let newpath_str = newpath
-		.get(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-	let _new_path = Path::new(newpath_str)?;
-
+pub fn link(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
+	let oldpath_str = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let _old_path = PathBuf::try_from(oldpath_str)?;
+	let newpath_str = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let _new_path = PathBuf::try_from(newpath_str)?;
 	// TODO Get file at `old_path`
 	// TODO Create the link to the file
-
 	Ok(0)
 }

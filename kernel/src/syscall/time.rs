@@ -20,29 +20,16 @@
 //! the UNIX Epoch.
 
 use crate::{
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
-use macros::syscall;
-use utils::errno::Errno;
+use utils::errno::EResult;
 
 // TODO Watch for timestamp overflow
 
-#[syscall]
-pub fn time(tloc: SyscallPtr<u32>) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mut mem_space_guard = mem_space.lock();
-
-	// Getting the current timestamp
+pub fn time(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
 	let time = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-
-	// Writing the timestamp to the given location, if not null
-	if let Some(tloc) = tloc.get_mut(&mut mem_space_guard)? {
-		*tloc = time as _;
-	}
-
+	tloc.copy_to_user(time as _)?;
 	Ok(time as _)
 }

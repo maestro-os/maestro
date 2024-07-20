@@ -18,15 +18,14 @@
 
 //! The `setuid32` syscall sets the UID of the process's owner.
 
-use crate::{file::perm::Uid, process::Process};
-use macros::syscall;
-use utils::errno::Errno;
+use crate::{file::perm::Uid, process::Process, syscall::Args};
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn setuid32(uid: Uid) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
-
-	proc.access_profile.set_uid(uid)?;
+pub fn setuid32(Args(uid): Args<Uid>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
+	proc.lock().access_profile.set_uid(uid)?;
 	Ok(0)
 }

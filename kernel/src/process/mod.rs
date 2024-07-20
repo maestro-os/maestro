@@ -40,7 +40,7 @@ pub mod user_desc;
 
 use crate::{
 	event,
-	event::CallbackResult,
+	event::{unlock_callbacks, CallbackResult},
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
@@ -53,14 +53,16 @@ use crate::{
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::{open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
+	process::{mem_space::copy, open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
 	register_get,
 	time::timer::TimerManager,
 	tty,
 	tty::TTYHandle,
 };
 use core::{
-	ffi::c_void,
+	ffi::{c_int, c_void},
+	fmt,
+	fmt::Formatter,
 	mem,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
@@ -284,10 +286,10 @@ pub struct Process {
 
 	/// If a thread is started using `clone` with the `CLONE_CHILD_SETTID` flag, set_child_tid is
 	/// set to the value passed in the ctid argument of that system call.
-	set_child_tid: Option<NonNull<i32>>,
+	pub set_child_tid: Option<NonNull<i32>>,
 	/// If a thread is started using `clone` with the `CLONE_CHILD_CLEARTID` flag, clear_child_tid
 	/// is set to the value passed in the ctid argument of that system call.
-	clear_child_tid: Option<NonNull<i32>>,
+	pub clear_child_tid: Option<NonNull<i32>>,
 
 	/// The process's resources usage.
 	rusage: RUsage,
@@ -309,7 +311,7 @@ pub(crate) fn init() -> EResult<()> {
 			return CallbackResult::Panic;
 		}
 		// Get process
-		let Some(curr_proc) = Process::current() else {
+		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
@@ -324,9 +326,9 @@ pub(crate) fn init() -> EResult<()> {
 			0x06 => curr_proc.kill_now(&Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
-				let inst_prefix = unsafe { *(regs.eip as *const u8) };
+				let inst_prefix = unsafe { *(regs.eip.0 as *const u8) };
 				if inst_prefix == HLT_INSTRUCTION {
-					curr_proc.exit(regs.eax);
+					curr_proc.exit(regs.eax.0 as _);
 				} else {
 					curr_proc.kill_now(&Signal::SIGSEGV);
 				}
@@ -341,15 +343,15 @@ pub(crate) fn init() -> EResult<()> {
 			CallbackResult::Idle
 		}
 	};
-	let page_fault_callback = |_id: u32, code: u32, _regs: &Regs, ring: u32| {
-		let accessed_ptr = unsafe { register_get!("cr2") } as *const c_void;
-		// Get process
-		let curr_proc = Process::current();
-		let Some(curr_proc) = curr_proc else {
+	let page_fault_callback = |_id: u32, code: u32, regs: &Regs, ring: u32| {
+		let accessed_ptr = register_get!("cr2") as *const c_void;
+		let pc = regs.eip.0;
+		// Get current process
+		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
 		};
 		let mut curr_proc = curr_proc.lock();
-		// Handle page fault
+		// Check access
 		let success = {
 			let Some(mem_space_mutex) = curr_proc.get_mem_space() else {
 				return CallbackResult::Panic;
@@ -359,7 +361,20 @@ pub(crate) fn init() -> EResult<()> {
 		};
 		if !success {
 			if ring < 3 {
-				return CallbackResult::Panic;
+				// Check if the fault was caused by a user <-> kernel copy
+				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
+					// Jump to `copy_fault`
+					let mut regs = regs.clone();
+					regs.eip.0 = copy::copy_fault as usize;
+					// TODO cleanup
+					drop(curr_proc);
+					unsafe {
+						unlock_callbacks(0x0e);
+						regs.switch(false);
+					}
+				} else {
+					return CallbackResult::Panic;
+				}
 			} else {
 				curr_proc.kill_now(&Signal::SIGSEGV);
 			}
@@ -399,15 +414,15 @@ impl Process {
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn current() -> Option<Arc<IntMutex<Self>>> {
+	pub fn current_opt() -> Option<Arc<IntMutex<Self>>> {
 		SCHEDULER.get().lock().get_current_process()
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function makes the kernel panic.
-	pub fn current_assert() -> Arc<IntMutex<Self>> {
-		Self::current().expect("no running process")
+	pub fn current() -> Arc<IntMutex<Self>> {
+		Self::current_opt().expect("no running process")
 	}
 
 	/// Creates the init process and places it into the scheduler's queue.
@@ -421,10 +436,18 @@ impl Process {
 			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
 			let tty_file = vfs::get_file_from_path(&tty_path, &rs)?;
 			let open_file = OpenFile::new(tty_file, Some(tty_path), open_file::O_RDWR)?;
-			let stdin_fd = fds_table.create_fd(0, open_file)?;
-			assert_eq!(stdin_fd.get_id(), STDIN_FILENO);
-			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDOUT_FILENO), false)?;
-			fds_table.duplicate_fd(STDIN_FILENO, NewFDConstraint::Fixed(STDERR_FILENO), false)?;
+			let (stdin_fd_id, _) = fds_table.create_fd(0, open_file)?;
+			assert_eq!(stdin_fd_id, STDIN_FILENO);
+			fds_table.duplicate_fd(
+				STDIN_FILENO as _,
+				NewFDConstraint::Fixed(STDOUT_FILENO as _),
+				false,
+			)?;
+			fds_table.duplicate_fd(
+				STDIN_FILENO as _,
+				NewFDConstraint::Fixed(STDERR_FILENO as _),
+				false,
+			)?;
 			fds_table
 		};
 		let root_loc = mountpoint::root_location();
@@ -940,16 +963,10 @@ impl Process {
 		self.sigpending
 			.iter()
 			.enumerate()
-			.filter_map(|(i, b)| {
-				if !b {
-					return None;
-				}
-				let s = Signal::try_from(i as u32).ok()?;
-				if !s.can_catch() || !self.sigmask.is_set(i) {
-					Some(s)
-				} else {
-					None
-				}
+			.filter(|(_, b)| *b)
+			.filter_map(|(i, _)| {
+				let s = Signal::try_from(i as c_int).ok()?;
+				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
 			})
 			.next()
 	}
@@ -958,7 +975,7 @@ impl Process {
 	pub fn get_signal_stack(&self) -> *const c_void {
 		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
 		// SA_ONSTACK)
-		(self.regs.esp as usize - REDZONE_SIZE) as _
+		(self.regs.esp.0 - REDZONE_SIZE) as _
 	}
 
 	/// Saves the process's state to handle a signal.
@@ -1004,11 +1021,6 @@ impl Process {
 		}
 	}
 
-	/// Sets the `clear_child_tid` attribute of the process.
-	pub fn set_clear_child_tid(&mut self, ptr: Option<NonNull<i32>>) {
-		self.clear_child_tid = ptr;
-	}
-
 	/// Returns an immutable reference to the process's resource usage
 	/// structure.
 	pub fn get_rusage(&self) -> &RUsage {
@@ -1034,6 +1046,11 @@ impl Process {
 	///
 	/// This function changes the process's status to `Zombie`.
 	pub fn exit(&mut self, status: u32) {
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] exited with status `{status}`",
+			pid = self.pid.get()
+		);
 		self.exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
 		self.reset_vfork();
@@ -1064,6 +1081,14 @@ impl Process {
 			score = score.saturating_sub(100);
 		}
 		score
+	}
+}
+
+impl fmt::Debug for Process {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Process")
+			.field("pid", &self.pid.get())
+			.finish()
 	}
 }
 

@@ -45,7 +45,6 @@ use crate::{
 		path::PathBuf,
 		perm::{Gid, Uid},
 	},
-	process::mem_space::MemSpace,
 	syscall::ioctl,
 	time::{
 		clock,
@@ -62,7 +61,7 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	io::IO,
-	lock::{IntMutex, Mutex},
+	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 	vec, TryClone,
 };
@@ -490,22 +489,17 @@ impl File {
 	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
-	pub fn ioctl(
-		&mut self,
-		mem_space: Arc<IntMutex<MemSpace>>,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32> {
+	pub fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match self.stat.file_type {
 			FileType::Fifo => {
 				let buff_mutex = buffer::get_or_default::<PipeBuffer>(&self.location)?;
 				let mut buff = buff_mutex.lock();
-				buff.ioctl(mem_space, request, argp)
+				buff.ioctl(request, argp)
 			}
 			FileType::Socket => {
 				let buff_mutex = buffer::get_or_default::<Socket>(&self.location)?;
 				let mut buff = buff_mutex.lock();
-				buff.ioctl(mem_space, request, argp)
+				buff.ioctl(request, argp)
 			}
 			FileType::BlockDevice => {
 				let dev_mutex = device::get(&DeviceID {
@@ -515,7 +509,7 @@ impl File {
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				let mut dev = dev_mutex.lock();
-				dev.get_handle().ioctl(mem_space, request, argp)
+				dev.get_handle().ioctl(request, argp)
 			}
 			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
@@ -525,7 +519,7 @@ impl File {
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				let mut dev = dev_mutex.lock();
-				dev.get_handle().ioctl(mem_space, request, argp)
+				dev.get_handle().ioctl(request, argp)
 			}
 			_ => Err(errno!(ENOTTY)),
 		}

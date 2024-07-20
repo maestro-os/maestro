@@ -48,17 +48,20 @@
 	mov %ebx, 0x14(%esp)
 	mov %eax, 0x10(%esp)
 
+	mov 12(%ebp), %eax
+	mov %eax, 0xc(%esp) # eflags
+	mov 4(%ebp), %eax
+	mov %eax, 0x8(%esp) # eip
+
+    # Prevent userspace from breaking kernel
+	cld
+
 	# Save the fx state
 	mov %esp, %eax
 	add $0x30, %eax
 	push %eax
 	call save_fxstate
 	add $4, %esp
-
-	mov 12(%ebp), %eax
-	mov %eax, 0xc(%esp) # eflags
-	mov 4(%ebp), %eax
-	mov %eax, 0x8(%esp) # eip
 
 	cmpl $0x8, 8(%ebp)
 	je ring0_\n

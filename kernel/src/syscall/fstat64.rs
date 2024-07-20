@@ -19,22 +19,29 @@
 //! The `fstat64` system call allows get the status of a file.
 
 use crate::{
+	device::id::makedev,
 	file::{
+		fd::FileDescriptorTable,
 		perm::{Gid, Uid},
 		INode, Mode,
 	},
-	process::{mem_space::ptr::SyscallPtr, Process},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
 	time::unit::{TimeUnit, Timespec, TimestampScale},
 };
 use core::ffi::{c_int, c_long};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
 // TODO Check types
-/// Structure containing the information of a file.
+/// A file's stat.
 #[repr(C)]
 #[derive(Debug)]
-struct Stat {
+pub struct Stat {
 	/// ID of the device containing the file.
 	st_dev: u64,
 
@@ -72,31 +79,20 @@ struct Stat {
 	st_ctim: Timespec,
 }
 
-#[syscall]
-pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-
-	let open_file_mutex = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-		let fds = fds_mutex.lock();
-
-		fds.get_fd(fd as _)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()
-			.clone()
-	};
-	let open_file = open_file_mutex.lock();
-
-	let file_mutex = open_file.get_file();
+pub fn fstat64(
+	Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	let file_mutex = fds
+		.lock()
+		.get_fd(fd)?
+		.get_open_file()
+		.lock()
+		.get_file()
+		.clone();
 	let file = file_mutex.lock();
-
 	let inode = file.location.get_inode();
-
+	let rdev = makedev(file.stat.dev_major, file.stat.dev_minor);
 	let stat = Stat {
 		st_dev: 0, // TODO
 
@@ -107,7 +103,7 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 		st_nlink: file.stat.nlink as _,
 		st_uid: file.stat.uid,
 		st_gid: file.stat.gid,
-		st_rdev: 0, // TODO
+		st_rdev: rdev,
 
 		__st_rdev_padding: 0,
 
@@ -131,19 +127,6 @@ pub fn fstat64(fd: c_int, statbuf: SyscallPtr<Stat>) -> Result<i32, Errno> {
 			TimestampScale::Nanosecond,
 		)),
 	};
-
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		let statbuf = statbuf
-			.get_mut(&mut mem_space_guard)?
-			.ok_or(errno!(EFAULT))?;
-		*statbuf = stat;
-	}
-
+	statbuf.copy_to_user(stat)?;
 	Ok(0)
 }

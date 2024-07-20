@@ -25,7 +25,6 @@ extern crate proc_macro;
 
 mod allocator;
 mod aml;
-mod syscall;
 mod util;
 
 use crate::util::has_repr_c;
@@ -78,13 +77,4 @@ pub fn instrument_allocator(metadata: TokenStream, input: TokenStream) -> TokenS
 #[proc_macro_derive(Parseable)]
 pub fn aml_parseable(input: TokenStream) -> TokenStream {
 	aml::derive_parseable(input)
-}
-
-/// Attribute macro to declare a system call.
-///
-/// This macro allows to take the system call's arguments directly instead of taking the process's
-/// registers.
-#[proc_macro_attribute]
-pub fn syscall(_metadata: TokenStream, input: TokenStream) -> TokenStream {
-	syscall::syscall(input)
 }

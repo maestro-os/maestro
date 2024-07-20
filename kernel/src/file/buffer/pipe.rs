@@ -23,11 +23,8 @@ use super::Buffer;
 use crate::{
 	file::{buffer::BlockHandler, FileType, Stat},
 	limits,
-	process::{
-		mem_space::{ptr::SyscallPtr, MemSpace},
-		Process,
-	},
-	syscall::ioctl,
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::{ioctl, FromSyscallArg},
 };
 use core::ffi::{c_int, c_void};
 use utils::{
@@ -36,8 +33,6 @@ use utils::{
 	errno::EResult,
 	io,
 	io::IO,
-	lock::IntMutex,
-	ptr::arc::Arc,
 	vec, TryDefault,
 };
 
@@ -126,20 +121,11 @@ impl Buffer for PipeBuffer {
 		self.block_handler.add_waiting_process(proc, mask)
 	}
 
-	fn ioctl(
-		&mut self,
-		mem_space: Arc<IntMutex<MemSpace>>,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
-				let mut mem_space_guard = mem_space.lock();
-				let count_ptr: SyscallPtr<c_int> = (argp as usize).into();
-				let count_ref = count_ptr
-					.get_mut(&mut mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				*count_ref = self.get_available_len() as _;
+				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
+				count_ptr.copy_to_user(self.get_available_len() as _)?;
 			}
 
 			_ => return Err(errno!(ENOTTY)),

@@ -16,40 +16,40 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the `setpgid` system call, which allows to set the
-//! process group ID of a process.
+//! The `setpgid` system call allows to set the process group ID of a process.
 
-use crate::process::{pid::Pid, Process};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use crate::{
+	process::{pid::Pid, Process},
+	syscall::Args,
+};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn setpgid(pid: Pid, pgid: Pid) -> Result<i32, Errno> {
-	let mut pid = pid;
-	let mut pgid = pgid;
-
+pub fn setpgid(
+	Args((mut pid, mut pgid)): Args<(Pid, Pid)>,
+	proc: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
+	let mut proc = proc.lock();
 	// TODO Check processes SID
-
-	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
-
 	if pid == 0 {
 		pid = proc.get_pid();
 	}
 	if pgid == 0 {
 		pgid = pid;
 	}
-
 	if pid == proc.get_pid() {
 		proc.pgid = pgid;
 	} else {
+		// Avoid deadlock
 		drop(proc);
-
-		let proc_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		let mut proc = proc_mutex.lock();
-
-		proc.set_pgid(pgid)?;
+		Process::get_by_pid(pid)
+			.ok_or_else(|| errno!(ESRCH))?
+			.lock()
+			.set_pgid(pgid)?;
 	}
-
 	Ok(0)
 }

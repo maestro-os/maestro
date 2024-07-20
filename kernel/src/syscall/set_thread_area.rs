@@ -16,18 +16,19 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the `set_thread_area` system call, which allows to
-//! set a TLS area.
+//! The `set_thread_area` system call allows to set a TLS area.
 
 use crate::{
 	gdt, process,
-	process::{mem_space::ptr::SyscallPtr, user_desc::UserDesc, Process},
+	process::{mem_space::copy::SyscallPtr, user_desc::UserDesc, Process},
+	syscall::Args,
 };
 use core::mem::size_of;
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
 /// The index of the first entry for TLS segments in the GDT.
@@ -61,32 +62,24 @@ pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut 
 	Ok((id, &mut proc.get_tls_entries()[id]))
 }
 
-#[syscall]
-pub fn set_thread_area(u_info: SyscallPtr<UserDesc>) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
-
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mut mem_space_guard = mem_space.lock();
-
-	// A reference to the user_desc structure
-	let info = u_info
-		.get_mut(&mut mem_space_guard)?
-		.ok_or(errno!(EFAULT))?;
-
+pub fn set_thread_area(
+	Args(u_info): Args<SyscallPtr<UserDesc>>,
+	proc: Arc<IntMutex<Process>>,
+) -> EResult<usize> {
+	// Read user_desc
+	let mut info = u_info.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let mut proc = proc.lock();
 	// Get the entry with its id
 	let (id, entry) = get_entry(&mut proc, info.get_entry_number())?;
-
-	// Update the entry
-	*entry = info.to_descriptor();
-	proc.update_tls(id);
-	gdt::flush();
-
 	// If the entry is allocated, tell the userspace its ID
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {
 		info.set_entry_number((TLS_BEGIN_INDEX + id) as _);
+		u_info.copy_to_user(info.clone())?;
 	}
-
+	// Update the entry
+	*entry = info.to_descriptor();
+	proc.update_tls(id);
+	gdt::flush();
 	Ok(0)
 }

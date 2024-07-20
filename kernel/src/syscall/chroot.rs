@@ -20,42 +20,44 @@
 //! the current process.
 
 use crate::{
-	file::{mountpoint, path::Path, vfs, vfs::ResolutionSettings, FileType},
-	process::{mem_space::ptr::SyscallString, Process},
+	file::{
+		mountpoint,
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+		FileType,
+	},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::IntMutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
-pub fn chroot(path: SyscallString) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let mut proc = proc_mutex.lock();
+pub fn chroot(
+	Args(path): Args<SyscallString>,
+	proc: Arc<IntMutex<Process>>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
 	// Check permission
-	if !proc.access_profile.is_privileged() {
+	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-
+	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
 	let rs = ResolutionSettings {
 		root: mountpoint::root_location(),
-		..ResolutionSettings::for_process(&proc, true)
+		..rs
 	};
-
 	// Get file
-	let file = {
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let path = path.get(&mem_space_guard)?.ok_or(errno!(EFAULT))?;
-		let path = Path::new(path)?;
-
-		vfs::get_file_from_path(path, &rs)?
-	};
+	let file = vfs::get_file_from_path(&path, &rs)?;
 	let file = file.lock();
 	if file.stat.file_type != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-
-	proc.chroot = file.location;
-
+	proc.lock().chroot = file.location;
 	Ok(0)
 }

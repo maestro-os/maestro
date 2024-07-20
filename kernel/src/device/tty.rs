@@ -22,12 +22,12 @@
 use crate::{
 	device::DeviceHandle,
 	process::{
-		mem_space::{ptr::SyscallPtr, MemSpace},
+		mem_space::copy::SyscallPtr,
 		pid::Pid,
 		signal::{Signal, SignalHandler},
 		Process,
 	},
-	syscall::ioctl,
+	syscall::{ioctl, FromSyscallArg},
 	tty::{termios, termios::Termios, TTYHandle, WinSize, TTY},
 };
 use core::ffi::c_void;
@@ -51,7 +51,7 @@ impl TTYDeviceHandle {
 
 	/// Returns the current process and its associated TTY.
 	fn get_tty(&self) -> EResult<(Arc<IntMutex<Process>>, TTYHandle)> {
-		let proc_mutex = Process::current_assert();
+		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
 		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());
@@ -116,24 +116,15 @@ impl TTYDeviceHandle {
 }
 
 impl DeviceHandle for TTYDeviceHandle {
-	fn ioctl(
-		&mut self,
-		mem_space: Arc<IntMutex<MemSpace>>,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
 
 		match request.get_old_format() {
 			ioctl::TCGETS => {
-				let mut mem_space_guard = mem_space.lock();
-				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
-				let termios_ref = termios_ptr
-					.get_mut(&mut mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				*termios_ref = tty.get_termios().clone();
+				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
+				termios_ptr.copy_to_user(tty.get_termios().clone())?;
 
 				Ok(0)
 			}
@@ -142,10 +133,9 @@ impl DeviceHandle for TTYDeviceHandle {
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
 				self.check_sigttou(&mut proc, &tty)?;
 
-				let mem_space_guard = mem_space.lock();
-				let termios_ptr: SyscallPtr<Termios> = (argp as usize).into();
+				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
 				let termios = termios_ptr
-					.get(&mem_space_guard)?
+					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_termios(termios.clone());
 
@@ -153,12 +143,8 @@ impl DeviceHandle for TTYDeviceHandle {
 			}
 
 			ioctl::TIOCGPGRP => {
-				let mut mem_space_guard = mem_space.lock();
-				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
-				let pgid_ref = pgid_ptr
-					.get_mut(&mut mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				*pgid_ref = tty.get_pgrp();
+				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
+				pgid_ptr.copy_to_user(tty.get_pgrp())?;
 
 				Ok(0)
 			}
@@ -166,32 +152,24 @@ impl DeviceHandle for TTYDeviceHandle {
 			ioctl::TIOCSPGRP => {
 				self.check_sigttou(&mut proc, &tty)?;
 
-				let mem_space_guard = mem_space.lock();
-				let pgid_ptr: SyscallPtr<Pid> = (argp as usize).into();
-				let pgid = pgid_ptr
-					.get(&mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				tty.set_pgrp(*pgid);
+				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
+				let pgid = pgid_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+				tty.set_pgrp(pgid);
 
 				Ok(0)
 			}
 
 			ioctl::TIOCGWINSZ => {
-				let mut mem_space_guard = mem_space.lock();
-				let winsize: SyscallPtr<WinSize> = (argp as usize).into();
-				let winsize_ref = winsize
-					.get_mut(&mut mem_space_guard)?
-					.ok_or_else(|| errno!(EFAULT))?;
-				*winsize_ref = tty.get_winsize().clone();
+				let winsize = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
+				winsize.copy_to_user(tty.get_winsize().clone())?;
 
 				Ok(0)
 			}
 
 			ioctl::TIOCSWINSZ => {
-				let mem_space_guard = mem_space.lock();
-				let winsize_ptr: SyscallPtr<WinSize> = (argp as usize).into();
+				let winsize_ptr = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
 				let winsize = winsize_ptr
-					.get(&mem_space_guard)?
+					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
 
 				// Drop to avoid deadlock since `set_winsize` sends the SIGWINCH signal

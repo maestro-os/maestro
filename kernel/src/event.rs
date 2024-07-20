@@ -16,13 +16,14 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This interface allows to register callbacks for each interrupts.
+//! Interrupt callback register interface.
 
 use crate::{
 	crypto::{rand, rand::EntropyPool},
 	idt,
 	idt::pic,
-	process::{regs::Regs, tss::TSS},
+	memory::stack,
+	process::{regs::Regs, scheduler::SCHEDULER},
 };
 use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
 use utils::{boxed::Box, collections::vec::Vec, errno::AllocResult, lock::IntMutex};
@@ -166,14 +167,16 @@ where
 /// Unlocks the callback vector with id `id`. This function is to be used in
 /// case of an event callback that never returns.
 ///
+/// This function does not reenable interruptions.
+///
 /// # Safety
 ///
 /// This function is marked as unsafe since it may lead to concurrency issues if
-/// not used properly. It must be called from the same CPU kernel as the one that
+/// not used properly. It must be called from the same CPU core as the one that
 /// locked the mutex since unlocking changes the interrupt flag.
 #[no_mangle]
 pub unsafe extern "C" fn unlock_callbacks(id: usize) {
-	CALLBACKS[id].unlock();
+	CALLBACKS[id].unlock(false);
 }
 
 /// Feeds the entropy pool using the given data.
@@ -208,19 +211,18 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 		let result = c(id, code, regs, ring);
 		match result {
 			CallbackResult::Continue => {}
-
 			CallbackResult::Idle => {
 				// Unlock to avoid deadlocks
 				if id >= ERROR_MESSAGES.len() as u32 {
 					pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
 				}
 				drop(callbacks);
-
+				// Wait for the next interrupt
+				let tmp_stack = SCHEDULER.get().lock().get_tmp_stack();
 				unsafe {
-					crate::loop_reset(TSS.0.esp0 as _);
+					stack::switch(tmp_stack as _, crate::enter_loop);
 				}
 			}
-
 			CallbackResult::Panic => panic!("{}, code: {code:x}", get_error_message(id)),
 		}
 	}

@@ -19,20 +19,40 @@
 //! The `mmap2` system call is similar to `mmap`, except it takes a file offset
 //! in pages.
 
-use super::mmap;
+use super::{mmap, Args};
+use crate::{
+	file::{fd::FileDescriptorTable, perm::AccessProfile},
+	process::mem_space::MemSpace,
+};
 use core::ffi::{c_int, c_void};
-use macros::syscall;
-use utils::errno::Errno;
+use utils::{
+	errno::{EResult, Errno},
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+};
 
-// TODO Check last argument type
-#[syscall]
 pub fn mmap2(
-	addr: *mut c_void,
-	length: usize,
-	prot: c_int,
-	flags: c_int,
-	fd: c_int,
-	offset: u64,
-) -> Result<i32, Errno> {
-	mmap::do_mmap(addr, length, prot, flags, fd, offset * 4096)
+	Args((addr, length, prot, flags, fd, offset)): Args<(
+		*mut c_void,
+		usize,
+		c_int,
+		c_int,
+		c_int,
+		u64,
+	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	ap: AccessProfile,
+	mem_space: Arc<IntMutex<MemSpace>>,
+) -> EResult<usize> {
+	mmap::do_mmap(
+		addr,
+		length,
+		prot,
+		flags,
+		fd,
+		offset * 4096,
+		fds,
+		ap,
+		mem_space,
+	)
 }

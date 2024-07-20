@@ -23,9 +23,9 @@
 //! - Mapping: A chunk of virtual memory that is allocated
 //! - Gap: A chunk of virtual memory that is available to be allocated
 
+pub mod copy;
 mod gap;
 mod mapping;
-pub mod ptr;
 pub mod residence;
 mod transaction;
 
@@ -492,85 +492,6 @@ impl MemSpace {
 		self.unmap(ptr, size, false)
 	}
 
-	// TODO Optimize (use MMU)
-	/// Tells whether the given mapping of memory `ptr` of size `size` in bytes
-	/// can be accessed.
-	///
-	/// Arguments:
-	/// - `user` tells whether the memory must be accessible from userspace or just kernelspace.
-	/// - `write` tells whether to check for write permission.
-	pub fn can_access(&self, ptr: *const u8, size: usize, user: bool, write: bool) -> bool {
-		// TODO Allow reading kernelspace data that is available to userspace?
-		let mut i = 0;
-		while i < size {
-			// The beginning of the current page
-			let p = (ptr as usize + i) as _;
-			let Some(mapping) = self.state.get_mapping_for_ptr(p) else {
-				return false;
-			};
-			// Check mapping's flags
-			let flags = mapping.get_flags();
-			if write && (flags & MAPPING_FLAG_WRITE == 0) {
-				return false;
-			}
-			if user && (flags & MAPPING_FLAG_USER == 0) {
-				return false;
-			}
-			i += mapping.get_size().get() * memory::PAGE_SIZE;
-		}
-		true
-	}
-
-	// TODO Optimize (use MMU)
-	/// Tells whether the given zero-terminated string beginning at `ptr` can be
-	/// accessed.
-	///
-	/// Arguments:
-	/// - `user` tells whether the memory must be accessible from userspace or just kernelspace.
-	/// - `write` tells whether to check for write permission.
-	///
-	/// If the memory can be accessed, the function returns the length of the string located at
-	/// the pointer `ptr`.
-	///
-	/// If the memory cannot be accessed, the function returns `None`.
-	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn can_access_string(&self, ptr: *const u8, user: bool, write: bool) -> Option<usize> {
-		// TODO Allow reading kernelspace data that is available to userspace?
-		unsafe {
-			vmem::switch(&self.vmem, move || {
-				let mut i = 0;
-				'outer: loop {
-					// Safe because not dereferenced before checking if accessible
-					let curr_ptr = ptr.add(i);
-					let mapping = self.state.get_mapping_for_ptr(curr_ptr as _)?;
-					// Check mapping flags
-					let flags = mapping.get_flags();
-					if write && (flags & MAPPING_FLAG_WRITE == 0) {
-						return None;
-					}
-					if user && (flags & MAPPING_FLAG_USER == 0) {
-						return None;
-					}
-					// The beginning of the current page
-					let page_begin = utils::down_align(curr_ptr as _, memory::PAGE_SIZE);
-					// The offset of the current pointer in its page
-					let inner_off = curr_ptr as usize - page_begin as usize;
-					let check_size = memory::PAGE_SIZE - inner_off;
-					// Look for the null byte
-					for j in 0..check_size {
-						let c = *curr_ptr.add(j);
-						// TODO Optimize by checking several bytes at a time
-						if c == b'\0' {
-							break 'outer;
-						}
-						i += 1;
-					}
-				}
-				Some(i)
-			})
-		}
-	}
-
 	/// Binds the memory space to the current kernel.
 	pub fn bind(&self) {
 		self.vmem.bind();
@@ -791,7 +712,6 @@ impl Drop for MemSpace {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core::ptr::null;
 
 	#[test_case]
 	fn test0() {
@@ -807,11 +727,12 @@ mod test {
 			)
 			.unwrap();
 		assert_eq!(res, addr);
-		assert!(!mem_space.can_access(null(), memory::PAGE_SIZE, true, true));
+		// TODO test access
+		/*assert!(!mem_space.can_access(null(), memory::PAGE_SIZE, true, true));
 		assert!(!mem_space.can_access(null(), memory::PAGE_SIZE + 1, true, true));
 		assert!(mem_space.can_access(addr as _, memory::PAGE_SIZE, true, true));
-		assert!(!mem_space.can_access(addr as _, memory::PAGE_SIZE + 1, true, true));
+		assert!(!mem_space.can_access(addr as _, memory::PAGE_SIZE + 1, true, true));*/
 		mem_space.unmap(addr, size, false).unwrap();
-		assert!(!mem_space.can_access(addr as _, memory::PAGE_SIZE, true, true));
+		//assert!(!mem_space.can_access(addr as _, memory::PAGE_SIZE, true, true));
 	}
 }

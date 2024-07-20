@@ -19,36 +19,32 @@
 //! The `finit_module` system call allows to load a module on the kernel.
 
 use crate::{
+	file::{fd::FileDescriptorTable, perm::AccessProfile},
 	module,
 	module::Module,
-	process::{mem_space::ptr::SyscallString, Process},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 };
 use core::{alloc::AllocError, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno, io::IO, vec};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io::IO,
+	lock::Mutex,
+	ptr::arc::Arc,
+	vec,
+};
 
-#[syscall]
-pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> Result<i32, Errno> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
+pub fn finit_module(
+	Args((fd, _param_values, _flags)): Args<(c_int, SyscallString, c_int)>,
+	ap: AccessProfile,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	if !ap.is_privileged() {
+		return Err(errno!(EPERM));
 	}
-
-	let open_file_mutex = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		if !proc.access_profile.is_privileged() {
-			return Err(errno!(EPERM));
-		}
-
-		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-		let fds = fds_mutex.lock();
-
-		fds.get_fd(fd as _)
-			.ok_or_else(|| errno!(EBADF))?
-			.get_open_file()
-			.clone()
-	};
+	// Read file
+	let open_file_mutex = fds.lock().get_fd(fd)?.get_open_file().clone();
 	let image = {
 		let mut open_file = open_file_mutex.lock();
 		let len = open_file.get_size().try_into().map_err(|_| AllocError)?;
@@ -56,8 +52,7 @@ pub fn finit_module(fd: c_int, _param_values: SyscallString, _flags: c_int) -> R
 		open_file.read(0, image.as_mut_slice())?;
 		image
 	};
-
-	let module = Module::load(image.as_slice())?;
+	let module = Module::load(&image)?;
 	if !module::is_loaded(module.get_name()) {
 		module::add(module)?;
 		Ok(0)

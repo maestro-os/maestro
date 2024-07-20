@@ -19,44 +19,42 @@
 //! The `connect` system call connects a socket to a distant host.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket},
-	process::{mem_space::ptr::SyscallSlice, Process},
+	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
 use core::{any::Any, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+};
 
 /// The implementation of the `connect` syscall.
-#[syscall]
-pub fn connect(sockfd: c_int, addr: SyscallSlice<u8>, addrlen: isize) -> Result<i32, Errno> {
-	if sockfd < 0 {
-		return Err(errno!(EBADF));
-	}
+pub fn connect(
+	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, isize)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	// Validation
 	if addrlen < 0 {
 		return Err(errno!(EINVAL));
 	}
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
 	// Get socket
-	let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-	let fds = fds_mutex.lock();
-	let fd = fds.get_fd(sockfd as _).ok_or_else(|| errno!(EBADF))?;
-	let open_file_mutex = fd.get_open_file();
-	let open_file = open_file_mutex.lock();
-	let sock_mutex = buffer::get(open_file.get_location()).ok_or_else(|| errno!(ENOENT))?;
+	let loc = *fds
+		.lock()
+		.get_fd(sockfd)?
+		.get_open_file()
+		.lock()
+		.get_location();
+	let sock_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
 	let mut sock = sock_mutex.lock();
 	let _sock = (&mut *sock as &mut dyn Any)
 		.downcast_mut::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
-
-	let mem_space_mutex = proc.get_mem_space().unwrap();
-	let mem_space = mem_space_mutex.lock();
-	let _addr_slice = addr
-		.get(&mem_space, addrlen as _)?
+	let _addr = addr
+		.copy_from_user(..(addrlen as usize))?
 		.ok_or_else(|| errno!(EFAULT))?;
-
 	// TODO connect socket
 	todo!();
 }

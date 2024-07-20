@@ -21,54 +21,43 @@
 use super::util::at;
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 		FileType, Stat,
 	},
 	limits,
-	process::{mem_space::ptr::SyscallString, Process},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::Args,
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
 	},
 };
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno, io::IO};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	io::IO,
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-#[syscall]
 pub fn symlinkat(
-	target: SyscallString,
-	newdirfd: c_int,
-	linkpath: SyscallString,
-) -> Result<i32, Errno> {
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	let rs = ResolutionSettings::for_process(&proc, true);
-
-	let mem_space = proc.get_mem_space().unwrap().clone();
-	let mem_space_guard = mem_space.lock();
-
-	let fds_mutex = proc.file_descriptors.clone().unwrap();
-	let fds = fds_mutex.lock();
-
-	let target_slice = target
-		.get(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	Args((target, newdirfd, linkpath)): Args<(SyscallString, c_int, SyscallString)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	if target_slice.len() > limits::SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
 	let target = PathBuf::try_from(target_slice)?;
-
-	let linkpath = linkpath
-		.get(&mem_space_guard)?
-		.ok_or_else(|| errno!(EFAULT))?;
-	let linkpath = Path::new(linkpath)?;
-
+	let linkpath = linkpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let linkpath = PathBuf::try_from(linkpath)?;
 	// Create link
-	let resolved = at::get_file(&fds, rs.clone(), newdirfd, linkpath, 0)?;
+	let resolved = at::get_file(&fds.lock(), rs.clone(), newdirfd, &linkpath, 0)?;
 	match resolved {
 		Resolved::Creatable {
 			parent,
@@ -89,6 +78,7 @@ pub fn symlinkat(
 					..Default::default()
 				},
 			)?;
+			// TODO remove file on failure
 			file.lock().write(0, target.as_bytes())?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),

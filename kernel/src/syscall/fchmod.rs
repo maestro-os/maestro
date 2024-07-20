@@ -18,42 +18,40 @@
 
 //! The `fchmod` system call allows change the permissions on a file.
 
-use crate::process::Process;
+use crate::{
+	file,
+	file::{fd::FileDescriptorTable, perm::AccessProfile},
+	process::Process,
+	syscall::Args,
+};
 use core::ffi::c_int;
-use macros::syscall;
-use utils::{errno, errno::Errno};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-// TODO Check args type
-#[syscall]
-pub fn fchmod(fd: c_int, mode: i32) -> Result<i32, Errno> {
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
-
-	let (file_mutex, ap) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
-		let fds = fds_mutex.lock();
-		let fd = fds.get_fd(fd as _).ok_or_else(|| errno!(EBADF))?;
-
-		let open_file_mutex = fd.get_open_file();
-		let open_file = open_file_mutex.lock();
-		let file_mutex = open_file.get_file().clone();
-
-		(file_mutex, proc.access_profile)
-	};
+pub fn fchmod(
+	Args((fd, mode)): Args<(c_int, file::Mode)>,
+	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
+	ap: AccessProfile,
+) -> EResult<usize> {
+	let file_mutex = fds_mutex
+		.lock()
+		.get_fd(fd)?
+		.get_open_file()
+		.lock()
+		.get_file()
+		.clone();
 	let mut file = file_mutex.lock();
-
 	// Check permissions
 	if !ap.can_set_file_permissions(&file) {
 		return Err(errno!(EPERM));
 	}
-
+	// Update
 	file.stat.set_permissions(mode as _);
 	// TODO lazy sync
 	file.sync()?;
-
 	Ok(0)
 }

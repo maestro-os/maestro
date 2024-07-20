@@ -18,25 +18,28 @@
 
 //! The `execve` system call allows to execute a program from a file.
 
+use super::Args;
 use crate::{
-	file::{path::PathBuf, vfs, vfs::ResolutionSettings, File},
+	file::{
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+		File,
+	},
 	memory::stack,
 	process::{
 		exec,
 		exec::{ExecInfo, ProgramImage},
-		mem_space::ptr::SyscallString,
+		mem_space::copy::{SyscallArray, SyscallString},
 		regs::Regs,
 		scheduler::SCHEDULER,
 		Process,
 	},
 };
-use core::ops::Range;
-use macros::syscall;
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
-	errno::{EResult, Errno},
-	format,
+	errno::{CollectResult, EResult, Errno},
 	interrupt::cli,
 	io::IO,
 	lock::Mutex,
@@ -44,83 +47,99 @@ use utils::{
 };
 
 /// The maximum length of the shebang.
-const SHEBANG_MAX: usize = 257;
-/// The maximum number of interpreter that can be used recursively for an
+const SHEBANG_MAX: usize = 256;
+/// The maximum number of interpreters that can be used recursively for an
 /// execution.
 const INTERP_MAX: usize = 4;
 
 // TODO Use ARG_MAX
 
-/// Structure representing a shebang.
-struct Shebang {
-	/// The shebang's string.
-	buff: [u8; SHEBANG_MAX],
-
-	/// The range on the shebang's string which represents the location of the
-	/// interpreter.
-	interp: Range<usize>,
-	/// The range on the shebang's string which represents the location of the
-	/// optional argument.
-	arg: Option<Range<usize>>,
+/// A buffer containing a shebang.
+struct ShebangBuffer {
+	/// The before to store the shebang read from file.
+	buf: [u8; SHEBANG_MAX],
+	/// The index of the end of the shebang in the buffer.
+	end: usize,
 }
 
-/// Peeks the shebang in the file.
+impl Default for ShebangBuffer {
+	fn default() -> Self {
+		Self {
+			buf: [0; SHEBANG_MAX],
+			end: 0,
+		}
+	}
+}
+
+/// Returns the file for the given `path`.
+///
+/// The function also parses and eventual shebang string and builds the resulting **argv**.
 ///
 /// Arguments:
-/// - `file` is the file from which the shebang is to be read.
-/// - `buff` is the buffer to write the shebang into.
-///
-/// If the file has a shebang, the function returns its size in bytes + the
-/// offset to the end of the interpreter.
-///
-/// If the string is longer than the interpreter's name, the remaining characters shall be used as
-/// an argument.
-fn peek_shebang(file: &mut File) -> EResult<Option<Shebang>> {
-	let mut buff: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
-
-	let (size, _) = file.read(0, &mut buff)?;
-	let size = size as usize;
-
-	if size >= 2 && buff[0..2] == [b'#', b'!'] {
-		// Getting the end of the shebang
-		let shebang_end = buff[..size]
-			.iter()
-			.enumerate()
-			.filter(|(_, c)| **c == b'\n')
-			.map(|(off, _)| off)
-			.next();
-		let shebang_end = match shebang_end {
-			Some(shebang_end) => shebang_end,
-			None => return Ok(None),
+/// - `path` is the path of the executable file.
+/// - `rs` is the resolution settings to be used to open files.
+/// - `argv` is an iterator over the arguments passed to the system call.
+fn get_file<A: Iterator<Item = EResult<String>>>(
+	path: &Path,
+	rs: &ResolutionSettings,
+	argv: A,
+) -> EResult<(Arc<Mutex<File>>, Vec<String>)> {
+	let mut shebangs: [ShebangBuffer; INTERP_MAX] = Default::default();
+	// Read and parse shebangs
+	let mut file_mutex = vfs::get_file_from_path(path, rs)?;
+	let mut i = 0;
+	loop {
+		let shebang = &mut shebangs[i];
+		// Read file
+		let len = {
+			let mut file = file_mutex.lock();
+			// Check permission
+			if !rs.access_profile.can_execute_file(&file) {
+				return Err(errno!(EACCES));
+			}
+			file.read(0, &mut shebang.buf)?.0 as usize
 		};
-
-		// Getting the range of the interpreter
-		let interp_end = buff[..size]
+		// Parse shebang
+		shebang.end = shebang.buf[..len]
 			.iter()
-			.enumerate()
-			.filter(|(_, c)| **c == b' ' || **c == b'\t' || **c == b'\n')
-			.map(|(off, _)| off)
-			.next()
-			.unwrap_or(shebang_end);
-		let interp = 2..interp_end;
-
-		// Getting the range of the optional argument
-		let arg = buff[..size]
+			.position(|b| *b == b'\n')
+			.unwrap_or(len);
+		if !matches!(shebang.buf[..shebang.end], [b'#', b'!', _, ..]) {
+			break;
+		}
+		i += 1;
+		// If there is still an interpreter but the limit has been reached
+		if i >= INTERP_MAX {
+			return Err(errno!(ELOOP));
+		}
+		// Get interpreter path
+		let interp_end = shebang.buf[2..shebang.end]
 			.iter()
-			.enumerate()
-			.skip(interp_end)
-			.filter(|(_, c)| **c != b' ' && **c != b'\t')
-			.map(|(off, _)| off..shebang_end)
-			.find(|arg| !arg.is_empty());
-
-		Ok(Some(Shebang {
-			buff,
-			interp,
-			arg,
-		}))
-	} else {
-		Ok(None)
+			.position(|b| (*b as char).is_ascii_whitespace())
+			.unwrap_or(shebang.end);
+		let interp_path = Path::new(&shebang.buf[2..interp_end])?;
+		// Read interpreter
+		file_mutex = vfs::get_file_from_path(interp_path, rs)?;
 	}
+	// Build arguments
+	let final_argv = shebangs[..i]
+		.iter()
+		.rev()
+		.enumerate()
+		.flat_map(|(i, shebang)| {
+			let mut words =
+				shebang.buf[2..shebang.end].split(|b| (*b as char).is_ascii_whitespace());
+			// Skip interpreters, except the first
+			if i > 0 {
+				words.next();
+			}
+			words
+		})
+		.map(|s| Ok(String::try_from(s)?))
+		.chain(argv)
+		.collect::<EResult<CollectResult<Vec<String>>>>()?
+		.0?;
+	Ok((file_mutex, final_argv))
 }
 
 /// Performs the execution on the current process.
@@ -131,7 +150,7 @@ fn do_exec(
 	envp: Vec<String>,
 ) -> EResult<Regs> {
 	let program_image = build_image(file, rs, argv, envp)?;
-	let proc_mutex = Process::current_assert();
+	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	// Execute the program
 	exec::exec(&mut proc, program_image)?;
@@ -155,7 +174,6 @@ fn build_image(
 	if !path_resolution.access_profile.can_execute_file(&file) {
 		return Err(errno!(EACCES));
 	}
-
 	let exec_info = ExecInfo {
 		path_resolution,
 		argv,
@@ -164,80 +182,18 @@ fn build_image(
 	exec::build_image(&mut file, exec_info)
 }
 
-#[syscall]
 pub fn execve(
-	pathname: SyscallString,
-	argv: *const *const u8,
-	envp: *const *const u8,
-) -> Result<i32, Errno> {
-	let (mut path, mut argv, envp, rs) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let path = {
-			let mem_space = proc.get_mem_space().unwrap();
-			let mem_space_guard = mem_space.lock();
-
-			let path = pathname
-				.get(&mem_space_guard)?
-				.ok_or_else(|| errno!(EFAULT))?;
-			PathBuf::try_from(path)?
-		};
-
-		let argv = unsafe { super::util::get_str_array(&proc, argv)? };
-		let envp = unsafe { super::util::get_str_array(&proc, envp)? };
-
-		let rs = ResolutionSettings::for_process(&proc, true);
-		(path, argv, envp, rs)
+	Args((pathname, argv, envp)): Args<(SyscallString, SyscallArray, SyscallArray)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let (file, argv, envp) = {
+		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+		let path = PathBuf::try_from(path)?;
+		let argv = argv.iter();
+		let (file, argv) = get_file(&path, &rs, argv)?;
+		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
+		(file, argv, envp)
 	};
-
-	// Handling shebang
-	let mut i = 0;
-	while i < INTERP_MAX + 1 {
-		// The file
-		let file = vfs::get_file_from_path(&path, &rs)?;
-		let mut f = file.lock();
-
-		if !rs.access_profile.can_execute_file(&f) {
-			return Err(errno!(EACCES));
-		}
-
-		// If the file has a shebang, process it
-		if let Some(shebang) = peek_shebang(&mut f)? {
-			// If too many interpreter recursions, abort
-			if i == INTERP_MAX {
-				return Err(errno!(ELOOP));
-			}
-
-			// Add the script to arguments
-			if argv.is_empty() {
-				argv.push(format!("{path}")?)?;
-			} else {
-				argv[0] = format!("{path}")?;
-			}
-
-			// Set interpreter to arguments
-			let interp = String::try_from(&shebang.buff[shebang.interp.clone()])?;
-			argv.insert(0, interp)?;
-
-			// Set optional argument if it exists
-			if let Some(arg) = shebang.arg {
-				let arg = String::try_from(&shebang.buff[arg])?;
-				argv.insert(1, arg)?;
-			}
-
-			// Set interpreter's path
-			path = PathBuf::try_from(&shebang.buff[shebang.interp])?;
-
-			i += 1;
-		} else {
-			break;
-		}
-	}
-	// The file
-	let file = vfs::get_file_from_path(&path, &rs)?;
-	// Drop path to avoid memory leak
-	drop(path);
 	// Disable interrupt to prevent stack switching while using a temporary stack,
 	// preventing this temporary stack from being used as a signal handling stack
 	cli();

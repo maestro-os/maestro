@@ -16,45 +16,39 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The read system call allows to read the content of an open file.
+//! The `read` system call allows to read the content of an open file.
 
+use super::Args;
 use crate::{
-	file::{open_file::O_NONBLOCK, FileType},
-	process::{mem_space::ptr::SyscallSlice, scheduler, Process},
+	file::{fd::FileDescriptorTable, open_file::O_NONBLOCK, FileType},
+	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
 };
 use core::{cmp::min, ffi::c_int};
-use macros::syscall;
-use utils::{errno, errno::Errno, io, io::IO};
+use utils::{
+	errno,
+	errno::{EResult, Errno},
+	interrupt::cli,
+	io,
+	io::IO,
+	lock::{IntMutex, Mutex},
+	ptr::arc::Arc,
+	vec,
+};
 
 // TODO O_ASYNC
 
-#[syscall]
-pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno> {
+pub fn read(
+	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
+	regs: &Regs,
+	proc: Arc<IntMutex<Process>>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
 	// Validation
-	if fd < 0 {
-		return Err(errno!(EBADF));
-	}
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
-	let (proc, mem_space, open_file) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap().clone();
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		let fds = fds_mutex.lock();
-		let open_file_mutex = fds
-			.get_fd(fd as _)
-			.ok_or(errno!(EBADF))?
-			.get_open_file()
-			.clone();
-
-		drop(proc);
-		(proc_mutex, mem_space, open_file_mutex)
-	};
+	let open_file = fds.lock().get_fd(fd)?.get_open_file().clone();
 	// Validation
 	let file_type = open_file.lock().get_file().lock().stat.file_type;
 	if file_type == FileType::Link {
@@ -62,31 +56,29 @@ pub fn read(fd: c_int, buf: SyscallSlice<u8>, count: usize) -> Result<i32, Errno
 	}
 	loop {
 		super::util::handle_signal(regs);
-
+		// Use a scope to drop mutex guards
 		{
-			let mut mem_space_guard = mem_space.lock();
-			let buf_slice = buf
-				.get_mut(&mut mem_space_guard, len)?
-				.ok_or(errno!(EFAULT))?;
-
+			// TODO determine why removing this causes a deadlock
+			cli();
+			// TODO perf: a buffer is not necessarily required
+			let mut buffer = vec![0u8; count]?;
 			// Read file
 			let mut open_file = open_file.lock();
 			let flags = open_file.get_flags();
-			let (len, eof) = open_file.read(0, buf_slice)?;
-
+			let (len, eof) = open_file.read(0, &mut buffer)?;
+			// Write back
+			buf.copy_to_user(0, &buffer[..(len as usize)])?;
 			if len == 0 && eof {
 				return Ok(0);
 			}
 			if len > 0 || flags & O_NONBLOCK != 0 {
-				// The file descriptor is non blocking
+				// The file descriptor is non-blocking
 				return Ok(len as _);
 			}
-
 			// Block on file
 			let mut proc = proc.lock();
 			open_file.add_waiting_process(&mut proc, io::POLLIN | io::POLLERR)?;
 		}
-
 		// Make current process sleep
 		scheduler::end_tick();
 	}

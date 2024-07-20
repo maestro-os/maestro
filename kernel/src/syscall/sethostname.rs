@@ -19,33 +19,30 @@
 //! The `sethostname` syscall sets the hostname of the system.
 
 use crate::{
+	file::perm::AccessProfile,
 	limits,
-	process::{mem_space::ptr::SyscallSlice, Process},
+	process::{mem_space::copy::SyscallSlice, Process},
+	syscall::Args,
 };
-use macros::syscall;
-use utils::{collections::vec::Vec, errno, errno::Errno};
+use utils::{
+	collections::vec::Vec,
+	errno,
+	errno::{EResult, Errno},
+};
 
-#[syscall]
-pub fn sethostname(name: SyscallSlice<u8>, len: usize) -> Result<i32, Errno> {
+pub fn sethostname(
+	Args((name, len)): Args<(SyscallSlice<u8>, usize)>,
+	ap: AccessProfile,
+) -> EResult<usize> {
 	// Check the size of the hostname is in bounds
 	if len > limits::HOST_NAME_MAX {
 		return Err(errno!(EINVAL));
 	}
-
-	let proc_mutex = Process::current_assert();
-	let proc = proc_mutex.lock();
-
-	// Checking permission
-	if !proc.access_profile.is_privileged() {
+	// Check permission
+	if !ap.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-
-	let mem_space = proc.get_mem_space().unwrap();
-	let mem_space_guard = mem_space.lock();
-	let name_slice = name.get(&mem_space_guard, len)?.ok_or(errno!(EFAULT))?;
-
 	let mut hostname = crate::HOSTNAME.lock();
-	*hostname = Vec::from_slice(name_slice)?;
-
+	*hostname = name.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
 	Ok(0)
 }

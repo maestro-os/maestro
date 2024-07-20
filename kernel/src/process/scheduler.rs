@@ -41,6 +41,7 @@ use utils::{
 		vec::Vec,
 	},
 	errno::AllocResult,
+	interrupt::cli,
 	lock::{once::OnceInit, IntMutex},
 	math::rational::Rational,
 	ptr::arc::Arc,
@@ -251,17 +252,19 @@ impl Scheduler {
 	/// - `regs` is the state of the registers from the paused context.
 	/// - `ring` is the ring of the paused context.
 	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
-		let mut sched = sched_mutex.lock();
-		sched.total_ticks = sched.total_ticks.saturating_add(1);
-		// If a process is running, save its registers
-		if let Some(curr_proc) = sched.get_current_process() {
-			let mut curr_proc = curr_proc.lock();
-			curr_proc.regs = regs.clone();
-			curr_proc.syscalling = ring < 3;
-		}
-		let tmp_stack = sched.get_tmp_stack();
-		// Execution resume code
-		let resume_exec = move || {
+		// Disable interrupts so that they remain disabled between the time the scheduler is
+		// unlocked and the context is switched to the next process
+		cli();
+		// Use a scope to drop mutex guards
+		let (switch_info, tmp_stack) = {
+			let mut sched = sched_mutex.lock();
+			sched.total_ticks = sched.total_ticks.saturating_add(1);
+			// If a process is running, save its registers
+			if let Some(curr_proc) = sched.get_current_process() {
+				let mut curr_proc = curr_proc.lock();
+				curr_proc.regs = regs.clone();
+				curr_proc.syscalling = ring < 3;
+			}
 			// Loop until a runnable process is found
 			let (proc, switch_info) = loop {
 				let Some((pid, proc_mutex)) = sched.get_next_process() else {
@@ -271,7 +274,7 @@ impl Scheduler {
 				// Try switching
 				let mut proc = proc_mutex.lock();
 				proc.prepare_switch();
-				// If the process has been killed by a signal, abort resuming
+				// If the process has been killed by a signal, try the next process
 				if !matches!(proc.get_state(), State::Running) {
 					continue;
 				}
@@ -282,20 +285,20 @@ impl Scheduler {
 			};
 			// Set current running process
 			sched.curr_proc = proc;
-			// Unlock interrupt handler
-			drop(sched);
-			unsafe {
-				event::unlock_callbacks(0x20);
-				pic::end_of_interrupt(0x0);
-				match switch_info {
-					// Runnable process found: resume execution
-					Some((regs, syscalling)) => regs.switch(!syscalling),
-					// No runnable process found: idle
-					None => crate::loop_reset(tmp_stack as _),
-				}
-			}
+			let tmp_stack = sched.get_tmp_stack();
+			(switch_info, tmp_stack)
 		};
-		unsafe { stack::switch(tmp_stack as _, resume_exec) }
+		unsafe {
+			// Unlock interrupt handler
+			event::unlock_callbacks(0x20);
+			pic::end_of_interrupt(0x0);
+			match switch_info {
+				// Runnable process found: resume execution
+				Some((regs, syscalling)) => regs.switch(!syscalling),
+				// No runnable process found: idle
+				None => stack::switch(tmp_stack as _, crate::enter_loop),
+			}
+		}
 	}
 }
 

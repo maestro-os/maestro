@@ -21,61 +21,44 @@
 use crate::{
 	file::{fs::Statfs, path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::{
-		mem_space::ptr::{SyscallPtr, SyscallString},
+		mem_space::copy::{SyscallPtr, SyscallString},
 		Process,
 	},
+	syscall::Args,
 };
-use macros::syscall;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-pub(super) fn do_statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> EResult<i32> {
-	let (path, rs) = {
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mem_space_guard = mem_space.lock();
-
-		let path = path.get(&mem_space_guard)?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		let rs = ResolutionSettings::for_process(&proc, false);
-		(path, rs)
+pub(super) fn do_statfs(
+	path: SyscallString,
+	buf: SyscallPtr<Statfs>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let rs = ResolutionSettings {
+		follow_link: false,
+		..rs
 	};
-
-	let stat = {
-		let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-		let file = file_mutex.lock();
-
+	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	let stat = vfs::get_file_from_path(&path, &rs)?
+		.lock()
+		.location
+		.get_mountpoint()
 		// Unwrapping will not fail since the file is accessed from path
-		let mountpoint_mutex = file.location.get_mountpoint().unwrap();
-		let mountpoint = mountpoint_mutex.lock();
-
-		let fs = mountpoint.get_filesystem();
-		fs.get_stat()?
-	};
-
+		.unwrap()
+		.lock()
+		.get_filesystem()
+		.get_stat()?;
 	// Write structure to userspace
-	{
-		let proc_mutex = Process::current_assert();
-		let proc = proc_mutex.lock();
-
-		let mem_space = proc.get_mem_space().unwrap();
-		let mut mem_space_guard = mem_space.lock();
-
-		let buf = buf
-			.get_mut(&mut mem_space_guard)?
-			.ok_or_else(|| errno!(EFAULT))?;
-		*buf = stat;
-	}
-
+	buf.copy_to_user(stat)?;
 	Ok(0)
 }
 
-#[syscall]
-pub fn statfs(path: SyscallString, buf: SyscallPtr<Statfs>) -> Result<i32, Errno> {
-	do_statfs(path, buf)
+pub fn statfs(
+	Args((path, buf)): Args<(SyscallString, SyscallPtr<Statfs>)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	do_statfs(path, buf, rs)
 }
