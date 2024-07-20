@@ -271,10 +271,7 @@ impl FileDescriptorTable {
 		let new_id = match constraint {
 			NewFDConstraint::None => self.get_available_fd(None)?,
 			NewFDConstraint::Fixed(id) => {
-				if id < 0 {
-					return Err(errno!(EBADF));
-				}
-				let id = id.try_into().map_err(|_| errno!(EBADF))?;
+				let id: u32 = id.try_into().map_err(|_| errno!(EBADF))?;
 				if id >= limits::OPEN_MAX {
 					return Err(errno!(EMFILE));
 				}

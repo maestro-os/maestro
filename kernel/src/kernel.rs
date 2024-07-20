@@ -114,10 +114,6 @@ const INIT_PATH: &[u8] = b"/sbin/init";
 /// The current hostname of the system.
 pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
-extern "C" {
-	fn kernel_loop_reset(stack: *mut c_void) -> !;
-}
-
 /// Makes the kernel wait for an interrupt, then returns.
 /// This function enables interruptions.
 #[inline(always)]
@@ -127,22 +123,12 @@ pub fn wait() {
 	}
 }
 
-/// Enters the kernel loop and processes every interrupts indefinitely.
+/// Enters the kernel loop and processes every interrupt indefinitely.
 #[inline]
 pub fn enter_loop() -> ! {
 	loop {
 		wait();
 	}
-}
-
-/// Resets the stack to the given value, then calls [`enter_loop`].
-///
-/// # Safety
-///
-/// The callee must ensure the given stack is usable.
-#[inline]
-pub unsafe fn loop_reset(stack: *mut c_void) -> ! {
-	kernel_loop_reset(stack);
 }
 
 /// Launches the init process.
