@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The mkdir system call allows to create a directory.
+//! The `mkdir` system call allows to create a directory.
 
 use crate::{
 	file,

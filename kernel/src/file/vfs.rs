@@ -367,7 +367,7 @@ fn resolve_path_impl<'p>(
 ///   [`limits::SYMLOOP_MAX`], the function returns [`errno::ELOOP`].
 pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Resolved<'p>> {
 	// Required by POSIX
-	if path.is_empty() {
+	if settings.start.is_none() && path.is_empty() {
 		return Err(errno!(ENOENT));
 	}
 	resolve_path_impl(path, settings, 0)
