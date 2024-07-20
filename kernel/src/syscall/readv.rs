@@ -91,8 +91,8 @@ pub fn do_readv(
 	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-	fds: &Mutex<FileDescriptorTable>,
-	proc: &IntMutex<Process>,
+	proc: Arc<IntMutex<Process>>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
@@ -144,8 +144,8 @@ pub fn do_readv(
 
 pub fn readv(
 	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
+	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
-	proc: &IntMutex<Process>,
 ) -> EResult<usize> {
-	do_readv(fd, iov, iovcnt, None, None, &fds, proc)
+	do_readv(fd, iov, iovcnt, None, None, proc, fds)
 }

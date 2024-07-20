@@ -37,7 +37,7 @@ pub fn fchdir(
 	Args(fd): Args<c_int>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
-	proc: &IntMutex<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let cwd = {
 		// Get file

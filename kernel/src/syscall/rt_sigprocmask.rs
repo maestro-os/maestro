@@ -26,7 +26,8 @@ use core::{cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutexGuard,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
 /// Performs the union of the given mask with the current mask.
@@ -39,8 +40,9 @@ const SIG_SETMASK: i32 = 2;
 // TODO Use SigSet in crate::process::signal
 pub fn rt_sigprocmask(
 	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
-	mut proc: IntMutexGuard<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
+	let mut proc = proc.lock();
 	// Save old set
 	let curr = proc.sigmask.as_slice_mut();
 	let len = min(curr.len(), sigsetsize as _);

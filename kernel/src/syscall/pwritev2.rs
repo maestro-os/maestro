@@ -39,7 +39,7 @@ pub fn pwritev2(
 		c_int,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
-	proc: &IntMutex<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	super::writev::do_writev(fd, iov, iovcnt, Some(offset), Some(flags), &fds, proc)
+	super::writev::do_writev(fd, iov, iovcnt, Some(offset), Some(flags), proc, fds)
 }

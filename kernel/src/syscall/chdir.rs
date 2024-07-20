@@ -33,7 +33,7 @@ use utils::{
 
 pub fn chdir(
 	Args(path): Args<SyscallString>,
-	proc: &IntMutex<Process>,
+	proc: Arc<IntMutex<Process>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;

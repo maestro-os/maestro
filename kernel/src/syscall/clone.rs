@@ -89,18 +89,16 @@ pub fn clone(
 		SyscallPtr<c_int>,
 	)>,
 	regs: &Regs,
-	proc_mutex: &Arc<IntMutex<Process>>,
+	proc_mutex: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let new_tid = {
-		// A weak pointer to the new process's parent
-		let parent = Arc::downgrade(proc_mutex);
 		let mut proc = proc_mutex.lock();
 		if flags & CLONE_PARENT_SETTID != 0 {
 			// TODO
 			todo!();
 		}
 		let new_mutex = proc.fork(
-			parent,
+			Arc::downgrade(&proc_mutex),
 			ForkOptions {
 				share_memory: flags & CLONE_VM != 0,
 				share_fd: flags & CLONE_FILES != 0,

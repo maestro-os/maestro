@@ -28,13 +28,13 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn vfork(proc: &Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
+pub fn vfork(proc: Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
 	let new_pid = {
 		let fork_options = ForkOptions {
 			vfork: true,
 			..ForkOptions::default()
 		};
-		let new_mutex = proc.lock().fork(Arc::downgrade(proc), fork_options)?;
+		let new_mutex = proc.lock().fork(Arc::downgrade(&proc), fork_options)?;
 		let mut new_proc = new_mutex.lock();
 		// Set child's return value to `0`
 		let mut regs = regs.clone();

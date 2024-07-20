@@ -34,12 +34,13 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	lock::IntMutex,
+	ptr::arc::Arc,
 };
 
 pub fn chroot(
 	Args(path): Args<SyscallString>,
+	proc: Arc<IntMutex<Process>>,
 	rs: ResolutionSettings,
-	proc: &IntMutex<Process>,
 ) -> EResult<usize> {
 	// Check permission
 	if !rs.access_profile.is_privileged() {

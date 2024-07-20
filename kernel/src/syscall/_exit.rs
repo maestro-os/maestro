@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The _exit syscall allows to terminate the current process with the given
+//! The `_exit` syscall allows to terminate the current process with the given
 //! status code.
 
 use super::Args;
@@ -30,20 +30,23 @@ use utils::{errno::EResult, lock::IntMutexGuard};
 /// - `status` is the exit status.
 /// - `thread_group`: if `true`, the function exits the whole process group.
 /// - `proc` is the current process.
-pub fn do_exit(status: u32, thread_group: bool, mut proc: IntMutexGuard<Process>) -> ! {
-	proc.exit(status);
-	let _pid = proc.get_pid();
-	let _tid = proc.tid;
-	drop(proc);
-	if thread_group {
-		// TODO Iterate on every process of thread group `tid`, except the
-		// process with pid `pid`
+pub fn do_exit(status: u32, thread_group: bool) -> ! {
+	{
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
+		proc.exit(status);
+		let _pid = proc.get_pid();
+		let _tid = proc.tid;
+		if thread_group {
+			// TODO Iterate on every process of thread group `tid`, except the
+			// process with pid `pid`
+		}
 	}
 	scheduler::end_tick();
 	// Cannot resume since the process is now a zombie
 	unreachable!();
 }
 
-pub fn _exit(Args(status): Args<c_int>, proc: IntMutexGuard<Process>) -> EResult<usize> {
-	do_exit(status as _, false, proc);
+pub fn _exit(Args(status): Args<c_int>) -> EResult<usize> {
+	do_exit(status as _, false);
 }

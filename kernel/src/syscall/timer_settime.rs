@@ -27,7 +27,8 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutexGuard,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
 /// If set, the specified time is *not* relative to the timer's current counter.
@@ -40,8 +41,9 @@ pub fn timer_settime(
 		SyscallPtr<ITimerspec32>,
 		SyscallPtr<ITimerspec32>,
 	)>,
-	proc: IntMutexGuard<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
+	let proc = proc.lock();
 	// Get timer
 	let manager_mutex = proc.timer_manager().clone();
 	let mut manager = manager_mutex.lock();

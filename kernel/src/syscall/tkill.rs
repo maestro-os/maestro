@@ -26,14 +26,16 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutexGuard,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
 pub fn tkill(
 	Args((tid, sig)): Args<(Pid, c_int)>,
-	mut proc: IntMutexGuard<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let signal = Signal::try_from(sig)?;
+	let mut proc = proc.lock();
 	// Check if the thread to kill is the current
 	if proc.tid == tid {
 		proc.kill(&signal);

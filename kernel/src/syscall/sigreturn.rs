@@ -29,12 +29,13 @@ use utils::{
 	lock::{IntMutex, IntMutexGuard},
 };
 
-pub fn sigreturn(proc: &IntMutex<Process>) -> EResult<usize> {
+pub fn sigreturn() -> EResult<usize> {
 	// Avoid re-enabling interrupts before context switching
 	cli();
 	// Restores the state of the process before the signal handler
 	let regs = {
-		let mut proc = proc.lock();
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
 		proc.signal_restore();
 		proc.regs.clone()
 	};

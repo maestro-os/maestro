@@ -32,8 +32,8 @@ use utils::{
 
 pub fn pwritev(
 	Args((fd, iov, iovcnt, offset)): Args<(c_int, SyscallSlice<IOVec>, c_int, isize)>,
+	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
-	proc: &IntMutex<Process>,
 ) -> EResult<usize> {
-	super::writev::do_writev(fd, iov, iovcnt, Some(offset), None, &fds, proc)
+	super::writev::do_writev(fd, iov, iovcnt, Some(offset), None, proc, fds)
 }

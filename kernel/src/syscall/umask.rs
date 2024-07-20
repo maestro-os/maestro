@@ -22,10 +22,11 @@ use crate::{file, process::Process, syscall::Args};
 use core::mem;
 use utils::{
 	errno::{EResult, Errno},
-	lock::IntMutexGuard,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
-pub fn umask(Args(mask): Args<file::Mode>, mut proc: IntMutexGuard<Process>) -> EResult<usize> {
-	let prev = mem::replace(&mut proc.umask, mask & 0o777);
+pub fn umask(Args(mask): Args<file::Mode>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
+	let prev = mem::replace(&mut proc.lock().umask, mask & 0o777);
 	Ok(prev as _)
 }

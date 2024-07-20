@@ -40,8 +40,8 @@ use utils::{
 pub fn write(
 	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
 	regs: &Regs,
+	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
-	proc: &IntMutex<Process>,
 ) -> EResult<usize> {
 	// Validation
 	let len = min(count, i32::MAX as usize);

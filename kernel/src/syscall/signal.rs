@@ -36,14 +36,14 @@ use core::{
 use utils::{
 	errno::{EResult, Errno},
 	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
 pub fn signal(
 	Args((signum, handler)): Args<(c_int, *const c_void)>,
-	proc: IntMutexGuard<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	let signal_handlers = proc.signal_handlers.clone();
-	drop(proc);
+	let signal_handlers = proc.lock().signal_handlers.clone();
 	// Validation
 	let signal = Signal::try_from(signum)?;
 	// Conversion

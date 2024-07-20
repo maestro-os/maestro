@@ -27,7 +27,8 @@ use core::mem::size_of;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutexGuard,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
 /// The index of the first entry for TLS segments in the GDT.
@@ -63,10 +64,11 @@ pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut 
 
 pub fn set_thread_area(
 	Args(u_info): Args<SyscallPtr<UserDesc>>,
-	mut proc: IntMutexGuard<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	// Read user_desc
 	let mut info = u_info.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let mut proc = proc.lock();
 	// Get the entry with its id
 	let (id, entry) = get_entry(&mut proc, info.get_entry_number())?;
 	// If the entry is allocated, tell the userspace its ID

@@ -25,13 +25,15 @@ use crate::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutexGuard,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
 pub fn setpgid(
 	Args((mut pid, mut pgid)): Args<(Pid, Pid)>,
-	mut proc: IntMutexGuard<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
+	let mut proc = proc.lock();
 	// TODO Check processes SID
 	if pid == 0 {
 		pid = proc.get_pid();

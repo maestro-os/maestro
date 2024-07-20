@@ -146,7 +146,6 @@ pub fn do_waitpid(
 	wstatus: SyscallPtr<i32>,
 	options: i32,
 	rusage: SyscallPtr<RUsage>,
-	proc: &IntMutex<Process>,
 	regs: &Regs,
 ) -> EResult<usize> {
 	// Sleep until a target process is waitable
@@ -154,7 +153,8 @@ pub fn do_waitpid(
 		super::util::handle_signal(regs);
 		cli();
 		{
-			let mut proc = proc.lock();
+			let proc_mutex = Process::current();
+			let mut proc = proc_mutex.lock();
 			let result = get_waitable(&mut proc, pid, &wstatus, options, &rusage)?;
 			// On success, return
 			if let Some(p) = result {
@@ -174,15 +174,7 @@ pub fn do_waitpid(
 
 pub fn waitpid(
 	Args((pid, wstatus, options)): Args<(c_int, SyscallPtr<c_int>, c_int)>,
-	proc: &IntMutex<Process>,
 	regs: &Regs,
 ) -> EResult<usize> {
-	do_waitpid(
-		pid,
-		wstatus,
-		options | WEXITED,
-		SyscallPtr(None),
-		proc,
-		regs,
-	)
+	do_waitpid(pid, wstatus, options | WEXITED, SyscallPtr(None), regs)
 }

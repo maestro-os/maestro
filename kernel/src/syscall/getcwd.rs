@@ -27,17 +27,15 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	format,
-	lock::IntMutexGuard,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
 pub fn getcwd(
 	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
-	proc: IntMutexGuard<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	// Validation
-	if size == 0 {
-		return Err(errno!(EINVAL));
-	}
+	let proc = proc.lock();
 	// Check that the buffer is large enough
 	if size < proc.cwd.0.len() + 1 {
 		return Err(errno!(ERANGE));

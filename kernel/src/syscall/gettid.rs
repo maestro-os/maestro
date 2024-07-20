@@ -21,9 +21,10 @@
 use crate::process::Process;
 use utils::{
 	errno::{EResult, Errno},
-	lock::IntMutexGuard,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
 };
 
-pub fn gettid(proc: IntMutexGuard<Process>) -> EResult<usize> {
-	Ok(proc.tid as _)
+pub fn gettid(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
+	Ok(proc.lock().tid as _)
 }

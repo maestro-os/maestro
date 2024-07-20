@@ -27,10 +27,10 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn fork(proc: &Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
+pub fn fork(proc: Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
 	let new_mutex = proc
 		.lock()
-		.fork(Arc::downgrade(proc), ForkOptions::default())?;
+		.fork(Arc::downgrade(&proc), ForkOptions::default())?;
 	let mut new_proc = new_mutex.lock();
 	// Set child's return value to `0`
 	let mut regs = regs.clone();

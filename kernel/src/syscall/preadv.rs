@@ -33,7 +33,7 @@ use utils::{
 pub fn preadv(
 	Args((fd, iov, iovcnt, offset)): Args<(c_int, SyscallSlice<IOVec>, c_int, isize)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
-	proc: &IntMutex<Process>,
+	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	super::readv::do_readv(fd, iov, iovcnt, Some(offset), None, &fds, proc)
+	super::readv::do_readv(fd, iov, iovcnt, Some(offset), None, proc, fds)
 }
