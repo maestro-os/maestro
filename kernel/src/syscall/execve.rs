@@ -117,7 +117,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 			.iter()
 			.position(|b| (*b as char).is_ascii_whitespace())
 			.unwrap_or(shebang.end);
-		let interp_path = Path::new(&shebang.buf[2..interp_end])?;
+		let interp_path = Path::new(&shebang.buf[2..(2 + interp_end)])?;
 		// Read interpreter
 		file_mutex = vfs::get_file_from_path(interp_path, rs)?;
 	}
