@@ -292,7 +292,7 @@ impl SyscallString {
 		loop {
 			let buf_cursor = buf.len();
 			let user_cursor = ptr.as_ptr() as usize + buf_cursor;
-			let page_end = user_cursor.next_multiple_of(memory::PAGE_SIZE);
+			let page_end = user_cursor + (memory::PAGE_SIZE - (user_cursor % memory::PAGE_SIZE));
 			let buf_size = min(page_end - user_cursor, CHUNK_SIZE);
 			// Read the next chunk
 			buf.reserve(buf_size)?;
@@ -304,14 +304,12 @@ impl SyscallString {
 					buf_size,
 				)?;
 			}
-			// Check for a nul character
-			let end = buf[buf_cursor..(buf_cursor + buf_size)]
+			// Look for a nul byte
+			let nul_off = buf[buf_cursor..(buf_cursor + buf_size)]
 				.iter()
-				.enumerate()
-				.find(|(_, b)| **b == b'\0')
-				.map(|(i, _)| i);
-			if let Some(end) = end {
-				buf.truncate(end);
+				.position(|b| *b == b'\0');
+			if let Some(i) = nul_off {
+				buf.truncate(buf_cursor + i);
 				break;
 			}
 		}
