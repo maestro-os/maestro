@@ -106,7 +106,9 @@ jobs:
           mv disk ../kernel/qemu_disk
       - name: Run
         working-directory: kernel
-        run: |
-          ci/test.sh int
-          fsck.ext2 -fn qemu_disk
+        run: ci/test.sh int
         timeout-minutes: 10
+      - name: Post check
+        working-directory: kernel
+        if: always()
+        run: fsck.ext2 -fn qemu_disk
