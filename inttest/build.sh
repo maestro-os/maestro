@@ -17,6 +17,6 @@ mkfs.ext2 disk
 debugfs -wf - disk <<EOF
 mkdir /dev
 mkdir /sbin
-write target/$TARGET/release/init /sbin/init
-write target/$TARGET/release/maestro-test /maestro-test
+write target/$TARGET/debug/init /sbin/init
+write target/$TARGET/debug/maestro-test /maestro-test
 EOF
