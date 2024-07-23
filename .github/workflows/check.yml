@@ -16,6 +16,9 @@ jobs:
         run: |
           cp default.build-config.toml build-config.toml
           cargo clippy --all-features --tests
+      - name: Integration tests
+        working-directory: inttest
+        run: cargo clippy --all-features --tests
   format:
     runs-on: [self-hosted, linux]
     needs: clippy
@@ -28,6 +31,9 @@ jobs:
         run: cargo fmt --check
       - name: Kernel
         working-directory: kernel
+        run: cargo fmt --check
+      - name: Integration tests
+        working-directory: inttest
         run: cargo fmt --check
   documentation:
     runs-on: [self-hosted, linux]
@@ -94,13 +100,9 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: build
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: maestro-os/maestro-test
-          path: maestro-test
-      - name: Build
+      - name: Build tests
         id: build
-        working-directory: maestro-test
+        working-directory: inttest
         run: |
           ./build.sh
           mv disk ../kernel/qemu_disk
@@ -110,5 +112,5 @@ jobs:
         timeout-minutes: 10
       - name: Post check
         working-directory: kernel
-        if: always()
+        if: steps.build.outcome == 'success'
         run: fsck.ext2 -fn qemu_disk

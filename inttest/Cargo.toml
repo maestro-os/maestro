@@ -1,0 +1,15 @@
+[package]
+name = "maestro-test"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "maestro-test"
+path = "src/main.rs"
+
+[[bin]]
+name = "init"
+path = "src/boot.rs"
+
+[dependencies]
+libc = "0.2.153"
