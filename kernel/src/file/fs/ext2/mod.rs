@@ -711,6 +711,12 @@ impl Superblock {
 		math::pow2(self.s_log_block_size + 10) as _
 	}
 
+	/// Returns the `log2` of the number of block entries in each block.
+	pub fn get_entries_per_block_log(&self) -> u32 {
+		// An entry is `log2(4) = 2` bytes long
+		self.s_log_block_size + 10 - 2
+	}
+
 	/// Returns the block offset of the Block Group Descriptor Table.
 	pub fn get_bgdt_offset(&self) -> u64 {
 		(SUPERBLOCK_OFFSET / self.get_block_size() as u64) + 1
