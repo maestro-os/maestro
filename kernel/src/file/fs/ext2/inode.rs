@@ -29,7 +29,7 @@ use core::{
 	num::{NonZeroU16, NonZeroU32},
 };
 use macros::AnyRepr;
-use utils::{errno, errno::EResult, io::IO, math, ptr::cow::Cow, vec};
+use utils::{collections::vec::Vec, errno, errno::EResult, io::IO, math, ptr::cow::Cow, vec};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -119,26 +119,56 @@ pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
 	| INODE_PERMISSION_IROTH
 	| INODE_PERMISSION_IXOTH;
 
-/// Returns the number of indirections for the given block offset `off` in the inode.
+/// Computes the indirection offsets to reach the block at the linear offset `off`.
 ///
-/// **Note**: The given offset has to start *after* direct blocks.
+/// Arguments:
+/// - `ent_per_blk_log` is the log2 of the number of entries in a block.
+/// - `offsets` is the array to which the offsets are written.
 ///
-/// `ent_per_blk_log` is the log2 of the number of entries per block.
-///
-/// If the offset is out of bounds, the function returns [`EOVERFLOW`].
-fn indirections_count(off: u32, ent_per_blk_log: u32) -> EResult<u32> {
-	/*
-	 * Let `n` be the number of indirections
-	 *
-	 * n = ilog_(ent_per_blk)(off) + 1
-	 *   = ilog_2(off) / log_2(ent_per_blk) + 1
-	 *   = ilog_2(off) / ent_per_blk_log + 1
-	 */
-	let indir_count = off.checked_ilog2().unwrap_or(0) / ent_per_blk_log;
-	if unlikely(indir_count >= 3) {
-		return Err(errno!(EOVERFLOW));
+/// If the given offset is out of bounds, the function returns [`EOVERFLOW`].
+fn indirections_offsets(
+	mut off: u64,
+	ent_per_blk_log: u32,
+	offsets: &mut [usize; 4],
+) -> EResult<()> {
+	let ent_per_blk = math::pow2(ent_per_blk_log as _);
+	offsets.fill(0);
+	if off < DIRECT_BLOCKS_COUNT as u64 {
+		offsets[0] = off as _;
+		return Ok(());
 	}
-	Ok(indir_count + 1)
+	off -= DIRECT_BLOCKS_COUNT as u64;
+	if off < ent_per_blk {
+		offsets[0] = DIRECT_BLOCKS_COUNT + 1;
+		offsets[1] = off as _;
+		return Ok(());
+	}
+	off -= ent_per_blk;
+	if off < ent_per_blk * ent_per_blk {
+		offsets[0] = DIRECT_BLOCKS_COUNT + 2;
+		offsets[1] = (off >> ent_per_blk_log) as _;
+		offsets[2] = (off & (ent_per_blk_log as u64 - 1)) as _;
+		return Ok(());
+	}
+	off -= ent_per_blk * ent_per_blk;
+	if off < ent_per_blk * ent_per_blk * ent_per_blk {
+		offsets[0] = DIRECT_BLOCKS_COUNT + 3;
+		offsets[1] = (off >> (ent_per_blk_log * 2)) as _;
+		offsets[2] = ((off >> ent_per_blk_log) & (ent_per_blk_log as u64 - 1)) as _;
+		offsets[3] = (off & (ent_per_blk_log as u64 - 1)) as _;
+		return Ok(());
+	}
+	Err(errno!(EOVERFLOW))
+}
+
+/// Increments the given indirection offsets to reach the next page.
+fn increment_indirection_offsets(off: &mut [usize], ent_per_blk: usize) {
+	for off in off.iter_mut().rev() {
+		*off = (*off + 1) % ent_per_blk;
+		if *off != 0 {
+			break;
+		}
+	}
 }
 
 /// Checks for an invalid block number.
@@ -151,41 +181,89 @@ fn check_blk_off(blk: u32, superblock: &Superblock) -> EResult<Option<NonZeroU32
 	Ok(NonZeroU32::new(blk))
 }
 
-/// Returns the inner offset in the indirection block for the given offset `off` and indirection
-/// `level`.
-fn indirection_inner_off(off: u32, level: u32, ent_per_blk_log: u32) -> usize {
-	/*
-	 * inner_off = off / ent_per_blk^^n
-	 *           = off / 2^^(ent_per_blk_log * n)
-	 */
-	let inner_off = (off >> (ent_per_blk_log * level))
-		// Only keep the part we are interested in
-		& (math::pow2(ent_per_blk_log) - 1);
-	inner_off as usize
-}
-
 /// Loads an index from an indirection block.
-fn indirection_load(
-	buf: &[u8],
-	off: u32,
-	level: u32,
-	superblock: &Superblock,
-) -> EResult<Option<NonZeroU32>> {
-	let inner_off = indirection_inner_off(off, level, superblock.get_entries_per_block_log());
-	let blk = u32::from_le_bytes([
-		buf[inner_off * 4],
-		buf[inner_off * 4 + 1],
-		buf[inner_off * 4 + 2],
-		buf[inner_off * 4 + 3],
-	]);
-	check_blk_off(blk, superblock)
+fn indirection_load(buf: &[u8], off: usize) -> u32 {
+	u32::from_le_bytes([
+		buf[off * 4],
+		buf[off * 4 + 1],
+		buf[off * 4 + 2],
+		buf[off * 4 + 3],
+	])
 }
 
 /// Stores an index into an indirection block.
-fn indirection_store(buf: &mut [u8], off: u32, level: u32, val: u32, superblock: &Superblock) {
-	let inner_off = indirection_inner_off(off, level, superblock.get_entries_per_block_log());
+fn indirection_store(buf: &mut [u8], off: usize, val: u32) {
 	let val_arr = val.to_le_bytes();
-	buf[inner_off * 4..(inner_off + 1) * 4].copy_from_slice(&val_arr);
+	buf[off * 4..(off + 1) * 4].copy_from_slice(&val_arr);
+}
+
+struct BlkResolver<'s> {
+	/// The superblock.
+	superblock: &'s Superblock,
+	/// Offsets to the blocks.
+	offsets: [usize; 4],
+	/// The content of resolved blocks with their disk offset.
+	blocks: [(u32, Option<Vec<u8>>); 4],
+}
+
+impl<'s> BlkResolver<'s> {
+	/// Creates a new instance.
+	///
+	/// If `begin_blk` is out of bounds, the function returns [`EOVERFLOW`].
+	pub fn new(superblock: &'s Superblock, begin_blk: u64) -> EResult<Self> {
+		let mut offsets = Default::default();
+		indirections_offsets(
+			begin_blk,
+			superblock.get_entries_per_block_log(),
+			&mut offsets,
+		)?;
+		Ok(Self {
+			superblock,
+			offsets,
+			blocks: Default::default(),
+		})
+	}
+
+	/// Returns the content of the next block.
+	///
+	/// If the block does not exist, the function returns `None`.
+	pub fn next(&mut self, inode: &Ext2INode, io: &mut dyn IO) -> EResult<Option<&[u8]>> {
+		let depth = self.offsets[0].saturating_sub(DIRECT_BLOCKS_COUNT as _);
+		let blk_size = self.superblock.get_block_size();
+		let ent_per_blk = math::pow2(self.superblock.get_entries_per_block_log());
+		for i in 0..depth {
+			let off = self.offsets[i];
+			let off = match i.checked_sub(1) {
+				// First iteration, take from the inode
+				None => {
+					// Manual check because of packed field `i_block`
+					if off >= DIRECT_BLOCKS_COUNT + 3 {
+						return Err(errno!(EOVERFLOW));
+					}
+					inode.i_block[off]
+				}
+				// Take offset from the previous block
+				Some(prev) => self.blocks[prev]
+					.1
+					.as_deref()
+					.map(|prev_blk| indirection_load(prev_blk, off))
+					.unwrap_or(0),
+			};
+			// If block does not exist. Stop here
+			if off == 0 {
+				increment_indirection_offsets(&mut self.offsets[..=depth], ent_per_blk as _);
+				return Ok(None);
+			}
+			// Read the block if not in cache
+			if !matches!(self.blocks[i], (o, Some(_)) if o == off) {
+				let mut buf = vec![0u8; blk_size as usize]?;
+				read_block(off as _, blk_size, io, &mut buf)?;
+				self.blocks[i] = (off, Some(buf));
+			}
+		}
+		increment_indirection_offsets(&mut self.offsets[..=depth], ent_per_blk as _);
+		Ok(self.blocks[depth].1.as_deref())
+	}
 }
 
 /// Returns the next directory entry.
@@ -396,45 +474,6 @@ impl Ext2INode {
 		self.i_blocks -= blk_size / SECTOR_SIZE;
 	}
 
-	/// Translates the given file block offset `off` to disk block offset.
-	///
-	/// Arguments:
-	/// - `off` is the file block offset
-	/// - `superblock` is the filesystem's superblock
-	/// - `io` is the I/O interface
-	///
-	/// If the block does not exist, the function returns `None`.
-	fn translate_blk_off(
-		&self,
-		off: u32,
-		superblock: &Superblock,
-		io: &mut dyn IO,
-	) -> EResult<Option<NonZeroU32>> {
-		let Some(mut off) = off.checked_sub(DIRECT_BLOCKS_COUNT as u32) else {
-			// No indirection is required, stop here
-			return check_blk_off(self.i_block[off as usize], superblock);
-		};
-		let ent_per_blk_log = superblock.get_entries_per_block_log();
-		let indir_cnt = indirections_count(off, ent_per_blk_log)?;
-		let blk = self.i_block[DIRECT_BLOCKS_COUNT + indir_cnt as usize - 1];
-		let Some(mut blk) = check_blk_off(blk, superblock)? else {
-			return Ok(None);
-		};
-		// Adapt offset
-		off -= math::pow2(ent_per_blk_log) * (math::pow2(indir_cnt - 1) - 1);
-		// Perform indirections
-		let blk_size = superblock.get_block_size();
-		let mut buf = vec![0u8; blk_size as _]?;
-		for n in (0..indir_cnt).rev() {
-			read_block(blk.get() as _, superblock, io, &mut buf)?;
-			let Some(b) = indirection_load(&buf, off, n, superblock)? else {
-				return Ok(None);
-			};
-			blk = b;
-		}
-		Ok(Some(blk))
-	}
-
 	/// Allocates a block for the node's content block at the given file block offset `off`.
 	///
 	/// Arguments:
@@ -603,30 +642,25 @@ impl Ext2INode {
 		if off > size {
 			return Err(errno!(EINVAL));
 		}
-		let blk_size = superblock.get_block_size();
-		let mut blk_buff = vec![0u8; blk_size as _]?;
-		let mut cur = 0;
-		let max = min(buff.len() as u64, size - off);
-		while cur < max {
-			// Get slice of the destination buffer corresponding to the current block
-			let blk_off = (off + cur) / blk_size as u64;
-			let blk_inner_off = ((off + cur) % blk_size as u64) as usize;
-			let len = min(max - cur, (blk_size - blk_inner_off as u32) as u64);
-			let dst = &mut buff[(cur as usize)..((cur + len) as usize)];
-			// Get disk block offset
-			if let Some(blk_off) = self.translate_blk_off(blk_off as _, superblock, io)? {
-				// A content block is present, copy
-				read_block(blk_off.get() as _, superblock, io, &mut blk_buff)?;
-				let src = &blk_buff[blk_inner_off..(blk_inner_off + len as usize)];
-				dst.copy_from_slice(src);
+		let blk_size = superblock.get_block_size() as u64;
+		let begin_blk = off / blk_size;
+		let end_blk = (off + buff.len() as u64).div_ceil(blk_size);
+		let mut i = 0;
+		let mut resolver = BlkResolver::new(superblock, begin_blk)?;
+		for _ in begin_blk..end_blk {
+			let inner_off = (off % blk_size) as usize;
+			let len = min(buff.len() - i, blk_size as usize - inner_off);
+			let chunk = &mut buff[i..(i + len)];
+			if let Some(blk) = resolver.next(self, io)? {
+				chunk.copy_from_slice(&blk[inner_off..(inner_off + len)])
 			} else {
-				// No content block, writing zeros
-				dst.fill(0);
+				// No block. Fill with zeros
+				chunk.fill(0);
 			}
-			cur += len;
+			i += len;
 		}
-		let eof = off + cur >= size;
-		Ok((cur, eof))
+		let eof = (off + i as u64) >= size;
+		Ok((off, eof))
 	}
 
 	/// Writes the content of the inode.

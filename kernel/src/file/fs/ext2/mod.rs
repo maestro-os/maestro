@@ -182,15 +182,14 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
 ///
 /// Arguments:
 /// - `off` is the offset of the block on the device.
-/// - `superblock` is the filesystem's superblock.
+/// - `blk_size` is the size of a block in the filesystem.
 /// - `io` is the I/O interface of the device.
 /// - `buf` is the buffer to write the data on.
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn read_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
-	let blk_size = superblock.get_block_size() as u64;
-	io.read(off * blk_size, buf)?;
+fn read_block(off: u64, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
+	io.read(off * blk_size as u64, buf)?;
 	Ok(())
 }
 
@@ -199,15 +198,14 @@ fn read_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]
 ///
 /// Arguments:
 /// - `off` is the offset of the block on the device.
-/// - `superblock` is the filesystem's superblock.
+/// - `blk_size` is the size of a block in the filesystem.
 /// - `io` is the I/O interface of the device.
 /// - `buf` is the buffer to read from.
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn write_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
-	let blk_size = superblock.get_block_size() as u64;
-	io.write(off * blk_size, buf)?;
+fn write_block(off: u64, blk_size: u32, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
+	io.write(off * blk_size as u64, buf)?;
 	Ok(())
 }
 
