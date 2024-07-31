@@ -59,3 +59,21 @@ pub fn from_bytes<T: AnyRepr>(slice: &[u8]) -> Option<&T> {
 		None
 	}
 }
+
+/// Reinterprets the given slice of bytes as a slice of another type.
+/// 
+/// If the length of `slice` is not a multiple of the size of `T`, the function truncates the output slice.
+pub fn slice_from_bytes<T: AnyRepr>(slice: &[u8]) -> &[T] {
+	let len = slice.len() / size_of::<T>();
+	unsafe {
+		slice::from_raw_parts(slice.as_ptr() as _, len)
+	}
+}
+
+/// Same as [`slice_from_bytes`], but mutable.
+pub fn slice_from_bytes_mut<T: AnyRepr>(slice: &mut [u8]) -> &mut [T] {
+	let len = slice.len() / size_of::<T>();
+	unsafe {
+		slice::from_raw_parts_mut(slice.as_mut_ptr() as _, len)
+	}
+}

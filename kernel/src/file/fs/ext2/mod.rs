@@ -182,15 +182,14 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
 ///
 /// Arguments:
 /// - `off` is the offset of the block on the device.
-/// - `superblock` is the filesystem's superblock.
+/// - `blk_size` is the size of a block in the filesystem.
 /// - `io` is the I/O interface of the device.
 /// - `buf` is the buffer to write the data on.
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn read_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
-	let blk_size = superblock.get_block_size() as u64;
-	io.read(off * blk_size, buf)?;
+fn read_block(off: u64, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
+	io.read(off * blk_size as u64, buf)?;
 	Ok(())
 }
 
@@ -199,15 +198,14 @@ fn read_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &mut [u8]
 ///
 /// Arguments:
 /// - `off` is the offset of the block on the device.
-/// - `superblock` is the filesystem's superblock.
+/// - `blk_size` is the size of a block in the filesystem.
 /// - `io` is the I/O interface of the device.
 /// - `buf` is the buffer to read from.
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn write_block(off: u64, superblock: &Superblock, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
-	let blk_size = superblock.get_block_size() as u64;
-	io.write(off * blk_size, buf)?;
+fn write_block(off: u64, blk_size: u32, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
+	io.write(off * blk_size as u64, buf)?;
 	Ok(())
 }
 
@@ -711,6 +709,12 @@ impl Superblock {
 		math::pow2(self.s_log_block_size + 10) as _
 	}
 
+	/// Returns the log2 of the number of block entries in each block.
+	pub fn get_entries_per_block_log(&self) -> u32 {
+		// An entry is 4 bytes long (`log2(4) = 2`)
+		self.s_log_block_size + 10 - 2
+	}
+
 	/// Returns the block offset of the Block Group Descriptor Table.
 	pub fn get_bgdt_offset(&self) -> u64 {
 		(SUPERBLOCK_OFFSET / self.get_block_size() as u64) + 1
@@ -779,7 +783,7 @@ impl Superblock {
 
 		while (i * (blk_size * 8)) < size {
 			let bitmap_blk_index = start + i;
-			read_block(bitmap_blk_index as _, self, io, buff.as_mut_slice())?;
+			read_block(bitmap_blk_index as _, blk_size, io, buff.as_mut_slice())?;
 
 			if let Some(j) = Self::search_bitmap_blk(buff.as_slice()) {
 				return Ok(Some(i * (blk_size * 8) + j));
@@ -805,7 +809,7 @@ impl Superblock {
 		let mut buff = vec![0; blk_size as _]?;
 
 		let bitmap_blk_index = start + (i / (blk_size * 8));
-		read_block(bitmap_blk_index as _, self, io, buff.as_mut_slice())?;
+		read_block(bitmap_blk_index as _, blk_size, io, buff.as_mut_slice())?;
 
 		let bitmap_byte_index = i / 8;
 		let bitmap_bit_index = i % 8;
@@ -817,7 +821,7 @@ impl Superblock {
 			buff[bitmap_byte_index as usize] &= !(1 << bitmap_bit_index);
 		}
 
-		write_block(bitmap_blk_index as _, self, io, buff.as_slice())?;
+		write_block(bitmap_blk_index as _, blk_size, io, buff.as_slice())?;
 
 		Ok(prev)
 	}

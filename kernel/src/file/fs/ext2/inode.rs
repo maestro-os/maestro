@@ -26,10 +26,11 @@ use crate::file::{DirEntry, FileType, Mode};
 use core::{
 	cmp::{max, min},
 	intrinsics::unlikely,
+	mem,
 	num::{NonZeroU16, NonZeroU32},
 };
 use macros::AnyRepr;
-use utils::{errno, errno::EResult, io::IO, math, ptr::cow::Cow, vec};
+use utils::{bytes, errno, errno::EResult, io::IO, math, ptr::cow::Cow, vec};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -119,43 +120,48 @@ pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
 	| INODE_PERMISSION_IROTH
 	| INODE_PERMISSION_IXOTH;
 
-/// Returns a tuple containing:
-/// - The number of indirections for the given `off`
-/// - The updated value of `off` for it to be relative to the corresponding `i_block` slot
+/// Computes the indirection offsets to reach the block at the linear offset `off`.
 ///
-/// If no indirection is necessary, the function returns `None`.
+/// Arguments:
+/// - `ent_per_blk_log` is the log2 of the number of entries in a block.
+/// - `offsets` is the array to which the offsets are written.
+///
+/// On success, the function returns the number of offsets.
 ///
 /// If the offset is out of bounds, the function returns [`EOVERFLOW`].
-fn indirections_count(mut off: u32, superblock: &Superblock) -> EResult<(Option<u32>, u32)> {
+fn indirections_offsets(
+	mut off: u32,
+	ent_per_blk_log: u32,
+	offsets: &mut [usize; 4],
+) -> EResult<usize> {
+	offsets.fill(0);
 	if off < DIRECT_BLOCKS_COUNT as u32 {
-		return Ok((None, off));
+		offsets[0] = off as _;
+		return Ok(1);
 	}
 	off -= DIRECT_BLOCKS_COUNT as u32;
-	/*
-	 * blk_size = 2^^(superblock.s_log_block_size + 10)
-	 * ent_size = 4
-	 * ent_per_blk = blk_size / ent_size
-	 * ent_per_blk_log = log_2(ent_per_blk)
-	 *                 = log_2(blk_size) - log_2(ent_size)
-	 *                 = log_2(blk_size) - 2
-	 *
-	 * Let `n` be the number of indirections
-	 *
-	 * n = log_(ent_per_blk)(off)
-	 *   = log_2(off) / log_2(ent_per_blk)
-	 *   = log_2(off) / ent_per_blk_log
-	 */
-	let ent_per_blk_log = (superblock.s_log_block_size + 10) - 2;
-	let indir_count = off.checked_ilog2().unwrap_or(0) / ent_per_blk_log;
-	// Get first block with bound check
-	if unlikely(indir_count >= 3) {
-		return Err(errno!(EOVERFLOW));
+	let ent_per_blk = math::pow2(ent_per_blk_log as _);
+	if off < ent_per_blk {
+		offsets[0] = DIRECT_BLOCKS_COUNT;
+		offsets[1] = off as _;
+		return Ok(2);
 	}
-	// Adapt offset
-	for n in 0..indir_count {
-		off -= math::pow2(ent_per_blk_log * n);
+	off -= ent_per_blk;
+	if off < ent_per_blk * ent_per_blk {
+		offsets[0] = DIRECT_BLOCKS_COUNT + 1;
+		offsets[1] = (off >> ent_per_blk_log) as _;
+		offsets[2] = (off & (ent_per_blk - 1)) as _;
+		return Ok(3);
 	}
-	Ok((Some(indir_count), off))
+	off -= ent_per_blk * ent_per_blk;
+	if off < ent_per_blk * ent_per_blk * ent_per_blk {
+		offsets[0] = DIRECT_BLOCKS_COUNT + 2;
+		offsets[1] = (off >> (ent_per_blk_log * 2)) as _;
+		offsets[2] = ((off >> ent_per_blk_log) & (ent_per_blk_log - 1)) as _;
+		offsets[3] = (off & (ent_per_blk - 1)) as _;
+		return Ok(4);
+	}
+	Err(errno!(EOVERFLOW))
 }
 
 /// Checks for an invalid block number.
@@ -168,39 +174,20 @@ fn check_blk_off(blk: u32, superblock: &Superblock) -> EResult<Option<NonZeroU32
 	Ok(NonZeroU32::new(blk))
 }
 
-/// Returns the inner offset in the indirection block for the given offset `off` and indirection
-/// level `level.
-fn indirection_inner_off(off: u32, level: u32, superblock: &Superblock) -> usize {
-	let ent_per_blk_log = (superblock.s_log_block_size + 10) - 2;
-	/*
-	 * inner_off = off / ent_per_blk^^n
-	 *           = off / 2^^(ent_per_blk_log * n)
-	 */
-	(off >> (ent_per_blk_log * level)) as usize
-}
-
-/// Loads an index from an indirection block.
-fn indirection_load(
-	buf: &[u8],
-	off: u32,
-	level: u32,
-	superblock: &Superblock,
-) -> EResult<Option<NonZeroU32>> {
-	let inner_off = indirection_inner_off(off, level, superblock);
-	let blk = u32::from_le_bytes([
-		buf[inner_off * 4],
-		buf[inner_off * 4 + 1],
-		buf[inner_off * 4 + 2],
-		buf[inner_off * 4 + 3],
-	]);
-	check_blk_off(blk, superblock)
-}
-
-/// Stores an index into an indirection block.
-fn indirection_store(buf: &mut [u8], off: u32, level: u32, val: u32, superblock: &Superblock) {
-	let inner_off = indirection_inner_off(off, level, superblock);
-	let val_arr = val.to_le_bytes();
-	buf[inner_off * 4..(inner_off + 1) * 4].copy_from_slice(&val_arr);
+/// If no block is allocated at `blk`, allocate one.
+///
+/// On success, the function returns `blk`.
+fn ensure_allocated(
+	blk: &mut u32,
+	superblock: &mut Superblock,
+	io: &mut dyn IO,
+) -> EResult<NonZeroU32> {
+	if *blk == 0 {
+		let new_blk = superblock.get_free_block(io)?;
+		superblock.mark_block_used(io, new_blk)?;
+		*blk = new_blk;
+	}
+	Ok(NonZeroU32::new(*blk).unwrap())
 }
 
 /// Returns the next directory entry.
@@ -220,12 +207,12 @@ fn next_dirent<'b>(
 	buf: &'b mut [u8],
 	off: u64,
 ) -> EResult<Option<&'b mut Dirent>> {
-	let blk_size = superblock.get_block_size() as u64;
-	let blk_off = off / blk_size;
-	let inner_off = (off % blk_size) as usize;
+	let blk_size = superblock.get_block_size();
+	let blk_off = (off / blk_size as u64) as u32;
+	let inner_off = (off % blk_size as u64) as usize;
 	// If at the beginning of a block, read it
 	if inner_off == 0 {
-		let res = node.translate_blk_off(blk_off as _, superblock, io);
+		let res = node.translate_blk_off(blk_off, superblock, io);
 		let blk_off = match res {
 			Ok(Some(o)) => o,
 			// If reaching a zero block, stop
@@ -234,7 +221,7 @@ fn next_dirent<'b>(
 			Err(e) if e.as_int() == errno::EOVERFLOW => return Ok(None),
 			Err(e) => return Err(e),
 		};
-		read_block(blk_off.get() as _, superblock, io, buf)?;
+		read_block(blk_off.get() as _, blk_size, io, buf)?;
 	}
 	let ent = Dirent::from_slice(&mut buf[inner_off..], superblock)?;
 	Ok(Some(ent))
@@ -257,7 +244,7 @@ fn is_block_empty(buf: &mut [u8], superblock: &Superblock) -> EResult<bool> {
 ///
 /// The name of the file is not included in the inode but in the directory entry associated with it
 /// since several entries can refer to the same inode (hard links).
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(AnyRepr)]
 pub struct Ext2INode {
 	/// Type and permissions.
@@ -425,22 +412,19 @@ impl Ext2INode {
 		superblock: &Superblock,
 		io: &mut dyn IO,
 	) -> EResult<Option<NonZeroU32>> {
-		let (indir_cnt, off) = indirections_count(off, superblock)?;
-		let indir_cnt = match indir_cnt {
-			Some(indir_cnt) => indir_cnt,
-			// No indirection is required, stop here
-			None => return check_blk_off(self.i_block[off as usize], superblock),
-		};
-		let blk = self.i_block[DIRECT_BLOCKS_COUNT + indir_cnt as usize];
-		let Some(mut blk) = check_blk_off(blk, superblock)? else {
+		let mut offsets: [usize; 4] = [0; 4];
+		let depth =
+			indirections_offsets(off, superblock.get_entries_per_block_log(), &mut offsets)?;
+		let Some(mut blk) = check_blk_off(self.i_block[offsets[0]], superblock)? else {
 			return Ok(None);
 		};
 		// Perform indirections
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0u8; blk_size as _]?;
-		for n in (0..=indir_cnt).rev() {
-			read_block(blk.get() as _, superblock, io, &mut buf)?;
-			let Some(b) = indirection_load(&buf, off, n, superblock)? else {
+		for off in &offsets[1..depth] {
+			read_block(blk.get() as _, blk_size, io, &mut buf)?;
+			let ents = bytes::slice_from_bytes(&buf);
+			let Some(b) = check_blk_off(ents[*off], superblock)? else {
 				return Ok(None);
 			};
 			blk = b;
@@ -466,88 +450,49 @@ impl Ext2INode {
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 	) -> EResult<NonZeroU32> {
-		let (indir_cnt, off) = indirections_count(off, superblock)?;
-		let Some(indir_cnt) = indir_cnt else {
-			// No indirection is required, stop here
-			let blk = check_blk_off(self.i_block[off as usize], superblock)?;
-			let blk = match blk {
-				Some(b) => b,
-				// No block is present, allocate
-				None => {
-					let new_blk = superblock.get_free_block(io)?;
-					superblock.mark_block_used(io, new_blk)?;
-					self.i_block[off as usize] = new_blk;
-					NonZeroU32::new(new_blk).unwrap()
-				}
-			};
-			return Ok(blk);
-		};
-		let blk = check_blk_off(
-			self.i_block[DIRECT_BLOCKS_COUNT + indir_cnt as usize],
-			superblock,
-		)?;
-		let mut blk = match blk {
-			Some(b) => b,
-			// No block is present, allocate
-			None => {
-				let new_blk = superblock.get_free_block(io)?;
-				superblock.mark_block_used(io, new_blk)?;
-				self.i_block[DIRECT_BLOCKS_COUNT + indir_cnt as usize] = new_blk;
-				NonZeroU32::new(new_blk).unwrap()
-			}
-		};
+		let mut offsets: [usize; 4] = [0; 4];
+		let depth =
+			indirections_offsets(off, superblock.get_entries_per_block_log(), &mut offsets)?;
+		let mut blk = ensure_allocated(&mut self.i_block[offsets[0]], superblock, io)?;
 		// Perform indirections
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0u8; blk_size as _]?;
-		for n in (0..=indir_cnt).rev() {
-			read_block(blk.get() as _, superblock, io, &mut buf)?;
-			let b = match indirection_load(&buf, off, n, superblock)? {
-				Some(b) => b,
-				// No block is present, allocate
-				None => {
-					let new_blk = superblock.get_free_block(io)?;
-					superblock.mark_block_used(io, new_blk)?;
-					indirection_store(&mut buf, off, n, new_blk, superblock);
-					write_block(blk.get() as _, superblock, io, &buf)?;
-					NonZeroU32::new(new_blk).unwrap()
-				}
-			};
+		for off in &offsets[1..depth] {
+			read_block(blk.get() as _, blk_size, io, &mut buf)?;
+			let ents = bytes::slice_from_bytes_mut(&mut buf);
+			let b = ensure_allocated(&mut ents[*off], superblock, io)?;
+			// TODO avoided if unnecessary
+			write_block(blk.get() as _, blk_size, io, &buf)?;
 			blk = b;
 		}
 		Ok(blk)
 	}
 
 	fn free_content_blk_impl(
-		blk: NonZeroU32,
-		off: u32,
-		n: u32,
+		blk: u32,
+		offsets: &[usize],
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 	) -> EResult<bool> {
+		let Some(off) = offsets.first() else {
+			return Ok(true);
+		};
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0u8; blk_size as _]?;
-		read_block(blk.get() as _, superblock, io, &mut buf)?;
-		// If no block is present, nothing is left to do
-		let Some(b) = indirection_load(&buf, off, n, superblock)? else {
-			// Assuming previous calls would have freed the block if it was emptied
-			return Ok(false);
-		};
+		read_block(blk as _, blk_size, io, &mut buf)?;
+		let ents = bytes::slice_from_bytes_mut(&mut buf);
+		let b = &mut ents[*off];
 		// Handle child block and determine whether the entry in the current block should be freed
-		let free = if n > 0 {
-			Self::free_content_blk_impl(b, n - 1, off, superblock, io)?
-		} else {
-			true
-		};
+		let free = Self::free_content_blk_impl(*b, &offsets[1..], superblock, io)?;
 		if free {
-			indirection_store(&mut buf, off, n, 0, superblock);
-			// TODO determine whether using `i_blocks` for this is correct
-			let empty = buf.iter().all(|b| *b == 0);
+			let b = mem::take(b);
+			let empty = ents.iter().all(|b| *b == 0);
 			if !empty {
 				// The block is not empty, save
-				write_block(blk.get() as _, superblock, io, &buf)?;
+				write_block(blk as _, blk_size, io, &buf)?;
 			}
 			// If the block is empty, there is no point in saving it since it will be freed
-			superblock.free_block(io, b.get())?;
+			superblock.free_block(io, b)?;
 			Ok(empty)
 		} else {
 			Ok(false)
@@ -568,28 +513,17 @@ impl Ext2INode {
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 	) -> EResult<()> {
-		let (indir_cnt, off) = indirections_count(off, superblock)?;
-		let Some(indir_cnt) = indir_cnt else {
-			// No indirection is required, stop here
-			let blk = check_blk_off(self.i_block[off as usize], superblock)?;
-			let Some(blk) = blk else {
-				return Ok(());
-			};
-			// TODO write inode before freeing block to avoid dangling references
-			superblock.free_block(io, blk.get())?;
-			self.i_block[off as usize] = 0;
+		let mut offsets: [usize; 4] = [0; 4];
+		let depth =
+			indirections_offsets(off, superblock.get_entries_per_block_log(), &mut offsets)?;
+		let blk = &mut self.i_block[offsets[0]];
+		if check_blk_off(*blk, superblock)?.is_none() {
 			return Ok(());
-		};
-		let blk = check_blk_off(
-			self.i_block[DIRECT_BLOCKS_COUNT + indir_cnt as usize],
-			superblock,
-		)?;
-		// If no block is present, stop
-		let Some(blk) = blk else {
-			return Ok(());
-		};
-		// Perform indirections
-		Self::free_content_blk_impl(blk, off, indir_cnt, superblock, io)?;
+		}
+		if depth == 0 || Self::free_content_blk_impl(*blk, &offsets[1..depth], superblock, io)? {
+			let blk = mem::take(blk);
+			superblock.free_block(io, blk)?;
+		}
 		Ok(())
 	}
 
@@ -627,7 +561,7 @@ impl Ext2INode {
 			// Get disk block offset
 			if let Some(blk_off) = self.translate_blk_off(blk_off as _, superblock, io)? {
 				// A content block is present, copy
-				read_block(blk_off.get() as _, superblock, io, &mut blk_buff)?;
+				read_block(blk_off.get() as _, blk_size, io, &mut blk_buff)?;
 				let src = &blk_buff[blk_inner_off..(blk_inner_off + len as usize)];
 				dst.copy_from_slice(src);
 			} else {
@@ -669,7 +603,7 @@ impl Ext2INode {
 			let blk_off =
 				if let Some(blk_off) = self.translate_blk_off(blk_off as _, superblock, io)? {
 					// A content block is present, read it
-					read_block(blk_off.get() as _, superblock, io, &mut blk_buff)?;
+					read_block(blk_off.get() as _, blk_size, io, &mut blk_buff)?;
 					blk_off
 				} else {
 					// No content block, allocate one
@@ -683,7 +617,7 @@ impl Ext2INode {
 			blk_buff[blk_inner_off..(blk_inner_off + len)]
 				.copy_from_slice(&buff[cur..(cur + len)]);
 			// Write block
-			write_block(blk_off.get() as _, superblock, io, &blk_buff)?;
+			write_block(blk_off.get() as _, blk_size, io, &blk_buff)?;
 			cur += len;
 		}
 		// Update size
@@ -733,24 +667,22 @@ impl Ext2INode {
 	/// - `superblock` is the filesystem's superblock
 	/// - `io` is the I/O interface
 	fn indirect_free_all(
-		blk: NonZeroU32,
+		blk: u32,
 		level: usize,
 		superblock: &mut Superblock,
 		io: &mut dyn IO,
 	) -> EResult<()> {
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0; blk_size as _]?;
-		read_block(blk.get() as _, superblock, io, &mut buf)?;
-		// Free every entry recursively
-		let entries_per_blk = blk_size / 4;
-		for i in 0..entries_per_blk {
-			let Some(b) = indirection_load(&buf, i, 0, superblock)? else {
+		read_block(blk as _, blk_size, io, &mut buf)?;
+		for blk in bytes::slice_from_bytes(&buf) {
+			let Some(blk) = check_blk_off(*blk, superblock)? else {
 				continue;
 			};
-			if level > 0 {
-				Self::indirect_free_all(b, level - 1, superblock, io)?;
+			if let Some(next_level) = level.checked_sub(1) {
+				Self::indirect_free_all(blk.get(), next_level, superblock, io)?;
 			}
-			superblock.free_block(io, b.get())?;
+			superblock.free_block(io, blk.get())?;
 		}
 		Ok(())
 	}
@@ -767,26 +699,17 @@ impl Ext2INode {
 		{
 			return Ok(());
 		}
-		// Zeros blocks in inode and write it
-		let blocks = self.i_block;
-		for i in 0..(DIRECT_BLOCKS_COUNT + 3) {
-			self.i_block[i] = 0;
-		}
 		self.i_blocks = 0;
 		// TODO write inode
-		// Free direct blocks
-		for blk in &blocks[..DIRECT_BLOCKS_COUNT] {
+		// Free blocks
+		for (off, blk) in self.i_block.iter().enumerate() {
 			let Some(blk) = check_blk_off(*blk, superblock)? else {
 				continue;
 			};
-			superblock.free_block(io, blk.get())?;
-		}
-		// Free indirect blocks
-		for (indir_cnt, blk) in blocks[DIRECT_BLOCKS_COUNT..].iter().enumerate() {
-			let Some(blk) = check_blk_off(*blk, superblock)? else {
-				continue;
-			};
-			Self::indirect_free_all(blk, indir_cnt, superblock, io)?;
+			let depth = off.saturating_sub(DIRECT_BLOCKS_COUNT);
+			if let Some(depth) = depth.checked_sub(1) {
+				Self::indirect_free_all(blk.get(), depth, superblock, io)?;
+			}
 			superblock.free_block(io, blk.get())?;
 		}
 		Ok(())
@@ -867,7 +790,7 @@ impl Ext2INode {
 				Err(e) if e.as_int() == errno::EOVERFLOW => return Ok(None),
 				Err(e) => return Err(e),
 			};
-			read_block(blk_off.get() as _, superblock, io, &mut buf)?;
+			read_block(blk_off.get() as _, blk_size, io, &mut buf)?;
 		}
 		// Read the next entry, skipping free ones
 		let ent = loop {
@@ -995,7 +918,7 @@ impl Ext2INode {
 			}
 			// Write block
 			let blk_off = self.translate_blk_off(blk_off, superblock, io)?.unwrap();
-			write_block(blk_off.get() as _, superblock, io, &buf)?;
+			write_block(blk_off.get() as _, blk_size, io, &buf)?;
 		} else {
 			// No suitable free entry: Fill a new block
 			let blk_off = (self.get_size(superblock) / blk_size as u64) as u32;
@@ -1018,7 +941,7 @@ impl Ext2INode {
 				i += rec_len as usize;
 			}
 			// Write block
-			write_block(blk_off.get() as _, superblock, io, &buf)?;
+			write_block(blk_off.get() as _, blk_size, io, &buf)?;
 		}
 		Ok(())
 	}
@@ -1040,29 +963,29 @@ impl Ext2INode {
 		io: &mut dyn IO,
 	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
-		let blk_size = superblock.get_block_size() as u64;
-		let file_blk_off = off / blk_size;
-		let inner_off = (off % blk_size) as usize;
+		let blk_size = superblock.get_block_size();
+		let file_blk_off = off / blk_size as u64;
+		let inner_off = (off % blk_size as u64) as usize;
 		// Read entry's block
 		let mut buf = vec![0; blk_size as _]?;
 		let Some(disk_blk_off) = self.translate_blk_off(file_blk_off as _, superblock, io)? else {
 			return Ok(());
 		};
-		read_block(disk_blk_off.get() as _, superblock, io, &mut buf)?;
+		read_block(disk_blk_off.get() as _, blk_size, io, &mut buf)?;
 		// Read and free entry
 		let ent = Dirent::from_slice(&mut buf[inner_off..], superblock)?;
 		ent.inode = 0;
 		// If the block is now empty, free it. Else, update it
 		if is_block_empty(&mut buf, superblock)? {
 			// If this is the last block, update the file's size
-			let last_block = (file_blk_off + 1) * blk_size >= self.get_size(superblock);
+			let last_block = (file_blk_off + 1) * blk_size as u64 >= self.get_size(superblock);
 			if last_block {
-				let new_size = file_blk_off * blk_size;
+				let new_size = file_blk_off * blk_size as u64;
 				self.set_size(superblock, new_size);
 			}
 			self.free_content_blk(file_blk_off as _, superblock, io)
 		} else {
-			write_block(disk_blk_off.get() as _, superblock, io, &buf)
+			write_block(disk_blk_off.get() as _, blk_size, io, &buf)
 		}
 	}
 
