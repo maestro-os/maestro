@@ -69,7 +69,7 @@ fn translate_lba(lba: i64, storage_size: u64) -> Option<u64> {
 
 /// A GPT entry.
 #[derive(AnyRepr, Clone)]
-#[repr(C, packed)]
+#[repr(C)]
 struct GPTEntry {
 	/// The partition type's GUID.
 	partition_type: Guid,
@@ -148,7 +148,7 @@ impl GPTEntry {
 
 /// A GPT header.
 #[derive(AnyRepr, Clone)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Gpt {
 	/// The header's signature.
 	signature: [u8; 8],

@@ -188,8 +188,8 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn read_block(off: u64, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
-	io.read(off * blk_size as u64, buf)?;
+fn read_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
+	io.read(off as u64 * blk_size as u64, buf)?;
 	Ok(())
 }
 
@@ -204,8 +204,8 @@ fn read_block(off: u64, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResu
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn write_block(off: u64, blk_size: u32, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
-	io.write(off * blk_size as u64, buf)?;
+fn write_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
+	io.write(off as u64 * blk_size as u64, buf)?;
 	Ok(())
 }
 
@@ -599,7 +599,7 @@ impl NodeOps for Ext2NodeOps {
 }
 
 /// The ext2 superblock structure.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, AnyRepr)]
 pub struct Superblock {
 	/// Total number of inodes in the filesystem.

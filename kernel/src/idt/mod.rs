@@ -54,7 +54,7 @@ struct InterruptDescriptorTable {
 }
 
 /// An IDT entry.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy)]
 struct InterruptDescriptor {
 	/// Bits 0..15 of the address to the handler for the interrupt.

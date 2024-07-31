@@ -52,7 +52,7 @@ pub const ALIGN: usize = 4;
 ///
 /// Each directory entry represent a file that is the stored in the
 /// directory and points to its inode.
-#[repr(C, packed(4))]
+#[repr(C)]
 #[derive(AnyRepr)]
 pub struct Dirent {
 	/// The inode associated with the entry.

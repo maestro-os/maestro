@@ -26,7 +26,7 @@ use macros::AnyRepr;
 use utils::{errno::EResult, io::IO};
 
 /// A block group descriptor.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(AnyRepr)]
 pub struct BlockGroupDescriptor {
 	/// The block address of the block usage bitmap.

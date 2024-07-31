@@ -29,7 +29,7 @@ use crate::gdt;
 use core::{arch::asm, mem::size_of, ptr::addr_of};
 
 /// The TSS structure.
-#[repr(C, packed)]
+#[repr(C)]
 pub struct TSS {
 	pub prev_tss: u32,
 	pub esp0: u32,

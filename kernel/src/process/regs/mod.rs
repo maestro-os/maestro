@@ -98,7 +98,7 @@ pub mod x86 {
 ///
 /// The contents of this structure is architecture-dependent.
 #[derive(Clone)]
-#[repr(C, packed)]
+#[repr(C)]
 #[cfg(target_arch = "x86")]
 pub struct Regs {
 	pub ebp: Register,
