@@ -158,10 +158,12 @@ const TESTS: &[TestSuite] = &[
 ];
 
 fn main() {
+	// The total number of tests
+	let total: usize = TESTS.iter().map(|t| t.tests.len()).sum();
 	// Start marker
 	println!();
 	println!("[START]");
-	let mut failure = false;
+	let mut success = 0;
 	for suite in TESTS {
 		println!("[SUITE] {}", suite.name);
 		println!("[DESC] {}", suite.desc);
@@ -170,17 +172,18 @@ fn main() {
 			println!("[DESC] {}", test.desc);
 			let res = (test.start)();
 			match res {
-				Ok(_) => println!("[OK]"),
-				Err(err) => {
-					failure = true;
-					println!("[KO] {}", err.0);
+				Ok(_) => {
+					success += 1;
+					println!("[OK]")
 				}
+				Err(err) => println!("[KO] {}", err.0),
 			}
 		}
 	}
+	println!("[SUCCESS] {success}/{total}");
 	// End marker
 	println!("[END]");
-	if failure {
+	if success < TESTS.len() {
 		exit(1);
 	}
 }

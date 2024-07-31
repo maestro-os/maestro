@@ -24,7 +24,7 @@
 use std::process::Command;
 
 pub fn main() {
-	let status = Command::new("/maestro-test").status().unwrap();
+	let status = Command::new("/inttest").status().unwrap();
 	let cmd = if status.success() { -1 } else { -2 };
 	// Shutdown
 	unsafe {

@@ -18,5 +18,5 @@ debugfs -wf - disk <<EOF
 mkdir /dev
 mkdir /sbin
 write target/$TARGET/debug/init /sbin/init
-write target/$TARGET/debug/maestro-test /maestro-test
+write target/$TARGET/debug/inttest /inttest
 EOF

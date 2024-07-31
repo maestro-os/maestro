@@ -96,21 +96,21 @@ jobs:
         working-directory: kernel
         run: ci/test.sh self
         timeout-minutes: 10
-  #inttest:
-  #  runs-on: [self-hosted, linux]
-  #  needs: build
-  #  steps:
-  #    - name: Build tests
-  #      id: build
-  #      working-directory: inttest
-  #      run: |
-  #        ./build.sh
-  #        mv disk ../kernel/qemu_disk
-  #    - name: Run
-  #      working-directory: kernel
-  #      run: ci/test.sh int
-  #      timeout-minutes: 10
-  #    - name: Post check
-  #      working-directory: kernel
-  #      if: steps.build.outcome == 'success'
-  #      run: fsck.ext2 -fn qemu_disk
+  inttest:
+    runs-on: [self-hosted, linux]
+    needs: build
+    steps:
+      - name: Build tests
+        id: build
+        working-directory: inttest
+        run: |
+          ./build.sh
+          mv disk ../kernel/qemu_disk
+      - name: Run
+        working-directory: kernel
+        run: ci/test.sh int
+        timeout-minutes: 10
+      - name: Post check
+        working-directory: kernel
+        if: steps.build.outcome == 'success'
+        run: fsck.ext2 -fn qemu_disk
