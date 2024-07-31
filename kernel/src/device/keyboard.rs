@@ -26,6 +26,7 @@ use utils::errno::EResult;
 
 /// Enumeration of keyboard keys.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(missing_docs)]
 pub enum KeyboardKey {
 	KeyEsc,
 	Key1,

@@ -34,6 +34,7 @@ pub enum BARType {
 /// Structure representing a Base Address Register.
 #[derive(Clone, Debug)]
 pub enum BAR {
+	/// A memory mapped register.
 	MemorySpace {
 		/// The type of the BAR, specifying the size of the register.
 		type_: BARType,
@@ -42,15 +43,13 @@ pub enum BAR {
 
 		/// Virtual address to the registers.
 		address: u64,
-
 		/// The size of the address space in bytes.
 		size: usize,
 	},
-
+	/// A IO port mapped register.
 	IOSpace {
 		/// Address to the registers in I/O space.
 		address: u64,
-
 		/// The size of the address space in bytes.
 		size: usize,
 	},

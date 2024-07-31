@@ -97,7 +97,7 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the write operation.
 	fn check_sigttou(&self, proc: &mut Process, tty: &TTY) -> EResult<()> {
-		if tty.get_termios().c_lflag & termios::TOSTOP == 0 {
+		if tty.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
 			return Ok(());
 		}
 		// Hold the signal handlers table to avoid a race condition

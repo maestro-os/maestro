@@ -55,7 +55,7 @@ impl fmt::Debug for Register {
 }
 
 #[cfg(target_arch = "x86")]
-pub mod x86 {
+mod x86 {
 	use core::arch::asm;
 
 	/// The default value of the eflags register.
@@ -99,6 +99,7 @@ pub mod x86 {
 /// The contents of this structure is architecture-dependent.
 #[derive(Clone)]
 #[repr(C)]
+#[allow(missing_docs)]
 #[cfg(target_arch = "x86")]
 pub struct Regs {
 	pub ebp: Register,

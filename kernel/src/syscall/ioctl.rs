@@ -121,7 +121,7 @@ impl Request {
 	}
 }
 
-pub fn ioctl(
+pub(super) fn ioctl(
 	Args((fd, request, argp)): Args<(c_int, c_ulong, *const c_void)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

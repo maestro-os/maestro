@@ -33,7 +33,7 @@ use crate::{
 	file::blocking::BlockHandler,
 	memory::vmem,
 	process::{pid::Pid, signal::Signal, Process},
-	tty::termios::Termios,
+	tty::termios::{consts::*, Termios},
 };
 use core::{cmp::*, intrinsics::size_of, mem::MaybeUninit, ptr, slice};
 use utils::{
@@ -439,7 +439,7 @@ impl TTY {
 
 	/// Writes the character `c` to the TTY.
 	fn putchar(&mut self, mut c: u8) {
-		if self.termios.c_oflag & termios::OLCUC != 0 && (c as char).is_ascii_uppercase() {
+		if self.termios.c_oflag & OLCUC != 0 && (c as char).is_ascii_uppercase() {
 			c = (c as char).to_ascii_lowercase() as u8;
 		}
 
@@ -511,8 +511,8 @@ impl TTY {
 		// The length of data to consume
 		let mut len = min(buff.len(), self.available_size);
 
-		if self.termios.c_lflag & termios::ICANON != 0 {
-			let eof = self.termios.c_cc[termios::VEOF];
+		if self.termios.c_lflag & ICANON != 0 {
+			let eof = self.termios.c_cc[VEOF];
 
 			if len > 0 && self.input_buffer[0] == eof {
 				// Shifting data
@@ -528,7 +528,7 @@ impl TTY {
 				// Making the next call EOF
 				len = eof_off;
 			}
-		} else if len < self.termios.c_cc[termios::VMIN] as usize {
+		} else if len < self.termios.c_cc[VMIN] as usize {
 			return (0, false);
 		}
 
@@ -544,7 +544,7 @@ impl TTY {
 		self.input_size -= len;
 		self.available_size -= len;
 
-		if self.termios.c_iflag & termios::IMAXBEL != 0 && self.input_size >= buff.len() {
+		if self.termios.c_iflag & IMAXBEL != 0 && self.input_size >= buff.len() {
 			self.ring_bell();
 		}
 
@@ -560,7 +560,7 @@ impl TTY {
 		// The slice containing the input
 		let input = &buffer[..len];
 
-		if self.termios.c_lflag & termios::ECHO != 0 {
+		if self.termios.c_lflag & ECHO != 0 {
 			// Writing onto the TTY
 			self.write(input);
 		}
@@ -577,28 +577,28 @@ impl TTY {
 			self.input_size += len;
 
 			for b in new_bytes {
-				if self.termios.c_iflag & termios::ISTRIP != 0 {
+				if self.termios.c_iflag & ISTRIP != 0 {
 					// Stripping eighth bit
 					*b &= 1 << 7;
 				}
 
 				// TODO Implement IGNCR (ignore carriage return)
 
-				if self.termios.c_iflag & termios::INLCR != 0 {
+				if self.termios.c_iflag & INLCR != 0 {
 					// Translating NL to CR
 					if *b == b'\n' {
 						*b = b'\r';
 					}
 				}
 
-				if self.termios.c_iflag & termios::ICRNL != 0 {
+				if self.termios.c_iflag & ICRNL != 0 {
 					// Translating CR to NL
 					if *b == b'\r' {
 						*b = b'\n';
 					}
 				}
 
-				if self.termios.c_iflag & termios::IUCLC != 0 {
+				if self.termios.c_iflag & IUCLC != 0 {
 					// Translating uppercase characters to lowercase
 					if (*b as char).is_ascii_uppercase() {
 						*b = (*b as char).to_ascii_uppercase() as u8;
@@ -611,13 +611,13 @@ impl TTY {
 		// TODO IXANY
 		// TODO IXOFF
 
-		if self.termios.c_lflag & termios::ICANON != 0 {
+		if self.termios.c_lflag & ICANON != 0 {
 			// Processing input
 			let mut i = self.input_size - len;
 			while i < self.input_size {
 				let b = self.input_buffer[i];
 
-				if b == self.termios.c_cc[termios::VEOF] || b == b'\n' {
+				if b == self.termios.c_cc[VEOF] || b == b'\n' {
 					// Making the input available for reading
 					self.available_size = i + 1;
 
@@ -635,22 +635,22 @@ impl TTY {
 		}
 
 		// Sending signals if enabled
-		if self.termios.c_lflag & termios::ISIG != 0 {
+		if self.termios.c_lflag & ISIG != 0 {
 			for b in input {
 				// Printing special control characters if enabled
-				if self.termios.c_lflag & termios::ECHO != 0
-					&& self.termios.c_lflag & termios::ECHOCTL != 0
+				if self.termios.c_lflag & ECHO != 0
+					&& self.termios.c_lflag & ECHOCTL != 0
 					&& *b >= 1 && *b < 32
 				{
 					self.write(&[b'^', b + b'A']);
 				}
 
 				// TODO Handle every special characters
-				if *b == self.termios.c_cc[termios::VINTR] {
+				if *b == self.termios.c_cc[VINTR] {
 					self.send_signal(Signal::SIGINT);
-				} else if *b == self.termios.c_cc[termios::VQUIT] {
+				} else if *b == self.termios.c_cc[VQUIT] {
 					self.send_signal(Signal::SIGQUIT);
-				} else if *b == self.termios.c_cc[termios::VSUSP] {
+				} else if *b == self.termios.c_cc[VSUSP] {
 					self.send_signal(Signal::SIGTSTP);
 				}
 			}
@@ -661,13 +661,13 @@ impl TTY {
 
 	/// Erases `count` characters in TTY.
 	pub fn erase(&mut self, count: usize) {
-		if self.termios.c_lflag & termios::ICANON != 0 {
+		if self.termios.c_lflag & ICANON != 0 {
 			let count = min(count, self.input_buffer.len());
 			if count > self.input_size {
 				return;
 			}
 
-			if self.termios.c_lflag & termios::ECHOE != 0 {
+			if self.termios.c_lflag & ECHOE != 0 {
 				// TODO Handle tab characters
 				self.cursor_backward(count, 0);
 

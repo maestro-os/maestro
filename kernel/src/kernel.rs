@@ -42,6 +42,7 @@
 #![feature(strict_provenance)]
 #![feature(trait_upcasting)]
 #![deny(warnings)]
+#![deny(missing_docs)]
 #![allow(clippy::tabs_in_doc_comments)]
 #![allow(dead_code)]
 #![allow(incomplete_features)]

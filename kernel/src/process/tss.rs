@@ -30,6 +30,7 @@ use core::{arch::asm, mem::size_of, ptr::addr_of};
 
 /// The TSS structure.
 #[repr(C)]
+#[allow(missing_docs)]
 pub struct TSS {
 	pub prev_tss: u32,
 	pub esp0: u32,

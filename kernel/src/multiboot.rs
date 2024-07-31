@@ -24,45 +24,41 @@ use crate::memory;
 use core::{ffi::c_void, ptr::null, slice};
 use utils::lock::once::OnceInit;
 
+/// Multiboot2 magic number.
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
-pub const TAG_ALIGN: usize = 8;
 
+/// Multiboot tag type: end of tags
 pub const TAG_TYPE_END: u32 = 0;
+/// Multiboot tag type: command line
 pub const TAG_TYPE_CMDLINE: u32 = 1;
+/// Multiboot tag type: bootloader name
 pub const TAG_TYPE_BOOT_LOADER_NAME: u32 = 2;
+/// Multiboot tag type: bootloader module
 pub const TAG_TYPE_MODULE: u32 = 3;
+/// Multiboot tag type: memory mapping information
 pub const TAG_TYPE_BASIC_MEMINFO: u32 = 4;
-pub const TAG_TYPE_BOOTDEV: u32 = 5;
+/// Multiboot tag type: memory size
 pub const TAG_TYPE_MMAP: u32 = 6;
-pub const TAG_TYPE_VBE: u32 = 7;
-pub const TAG_TYPE_FRAMEBUFFER: u32 = 8;
+/// Multiboot tag type: kernel's ELF sections
 pub const TAG_TYPE_ELF_SECTIONS: u32 = 9;
-pub const TAG_TYPE_APM: u32 = 10;
-pub const TAG_TYPE_EFI32: u32 = 11;
-pub const TAG_TYPE_EFI64: u32 = 12;
-pub const TAG_TYPE_SMBIOS: u32 = 13;
-pub const TAG_TYPE_ACPI_OLD: u32 = 14;
-pub const TAG_TYPE_ACPI_NEW: u32 = 15;
-pub const TAG_TYPE_NETWORK: u32 = 16;
-pub const TAG_TYPE_EFI_MMAP: u32 = 17;
-pub const TAG_TYPE_EFI_BS: u32 = 18;
-pub const TAG_TYPE_EFI32_IH: u32 = 19;
-pub const TAG_TYPE_EFI64_IH: u32 = 20;
-pub const TAG_TYPE_LOAD_BASE_ADDR: u32 = 21;
 
+/// Memory region: available
 pub const MEMORY_AVAILABLE: u32 = 1;
+/// Memory region: ACPI reclaimable
 pub const MEMORY_ACPI_RECLAIMABLE: u32 = 3;
+/// Memory region: ACPI NVS
 pub const MEMORY_NVS: u32 = 4;
+/// Memory region: bad memory
 pub const MEMORY_BADRAM: u32 = 5;
 
-pub const FRAMEBUFFER_TYPE_INDEXED: u32 = 0;
-pub const FRAMEBUFFER_TYPE_RGB: u32 = 1;
-pub const FRAMEBUFFER_TYPE_EGA_TEXT: u32 = 2;
-
+/// A memory mapping entry.
 #[repr(C)]
 pub struct MmapEntry {
+	/// The address to the beginning of the mapping.
 	pub addr: u64,
+	/// The length of the mapping.
 	pub len: u64,
+	/// Mapping type.
 	pub type_: u32,
 	zero: u32,
 }

@@ -46,6 +46,7 @@ pub struct AtomicTimestamp {
 }
 
 impl AtomicTimestamp {
+	/// Creates a new instance.
 	pub const fn new(val: Timestamp) -> Self {
 		Self {
 			#[cfg(not(target_has_atomic = "64"))]

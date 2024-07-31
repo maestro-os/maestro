@@ -45,13 +45,14 @@ fn allocator_do<F: Fn(&mut IDAllocator) -> AllocResult<T>, T>(f: F) -> AllocResu
 	f(allocator)
 }
 
+/// Wrapper for a PID, freeing it on drop.
 #[derive(Debug)]
 pub struct PidHandle(Pid);
 
 impl PidHandle {
 	/// Returns the init PID.
 	///
-	/// This function **must not** be used outside of the creation of the first process.
+	/// This function **must not** be used outside the creation of the first process.
 	pub(super) fn init() -> AllocResult<Self> {
 		allocator_do(|a| {
 			a.set_used((INIT_PID - 1) as _);
