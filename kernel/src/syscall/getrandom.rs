@@ -52,7 +52,7 @@ pub fn getrandom(
 	let mut tmp: [u8; 256] = [0; 256];
 	let mut i = 0;
 	while i < buflen {
-		let len = pool.read(&mut tmp, bypass_threshold);
+		let len = pool.read(&mut tmp[..buflen - i], bypass_threshold);
 		buf.copy_to_user(i, &tmp[..len])?;
 		i += len;
 	}
