@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The proc is a virtual filesystem which provides information about
+//! The `procfs` is a virtual filesystem which provides information about
 //! processes.
 
 mod mem_info;
@@ -34,6 +34,7 @@ use crate::{
 				box_wrap, entry_init_default, entry_init_from, OwnedNode, StaticDir,
 				StaticEntryBuilder, StaticLink,
 			},
+			proc::proc_dir::environ::Environ,
 			Statfs,
 		},
 		path::PathBuf,
@@ -181,6 +182,11 @@ impl NodeOps for RootDir {
 								name: b"cwd",
 								entry_type: FileType::Regular,
 								init: entry_init_from::<Cwd, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"environ",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Environ, Pid>,
 							},
 							StaticEntryBuilder {
 								name: b"exe",

@@ -58,6 +58,8 @@ pub struct ExecInfo<'s> {
 pub struct ProgramImage {
 	/// The argv of the program.
 	argv: Vec<String>,
+	/// The environment variables of the program.
+	envp: String,
 
 	/// The image's memory space.
 	mem_space: MemSpace,
@@ -96,6 +98,7 @@ pub fn build_image(file: &mut File, info: ExecInfo) -> EResult<ProgramImage> {
 /// Executes the program image `image` on the process `proc`.
 pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.argv = Arc::new(image.argv)?;
+	proc.envp = Arc::new(image.envp)?;
 	// TODO Set exec path
 
 	// Duplicate the file descriptor table

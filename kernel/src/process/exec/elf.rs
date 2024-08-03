@@ -40,6 +40,7 @@ use core::{
 	alloc::AllocError,
 	cmp::{max, min},
 	ffi::c_void,
+	iter,
 	mem::size_of,
 	num::NonZeroUsize,
 	ptr,
@@ -49,7 +50,7 @@ use core::{
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
-	errno::EResult,
+	errno::{CollectResult, EResult},
 	io::IO,
 	vec, TryClone,
 };
@@ -108,7 +109,7 @@ const AT_SYSINFO: i32 = 32;
 /// A pointer to the beginning of the vDSO ELF image.
 const AT_SYSINFO_EHDR: i32 = 33;
 
-/// Informations returned after loading an ELF program used to finish
+/// Information returned after loading an ELF program used to finish
 /// initialization.
 #[derive(Debug)]
 struct ELFLoadInfo {
@@ -133,7 +134,7 @@ struct ELFLoadInfo {
 	interp_entry: Option<*const c_void>,
 }
 
-/// An entry of System V's Auxilary Vectors.
+/// An entry of System V's Auxiliary Vectors.
 #[repr(C)]
 struct AuxEntry {
 	/// The entry's type.
@@ -142,7 +143,7 @@ struct AuxEntry {
 	a_val: isize,
 }
 
-/// Enumeration of possible values for an auxilary vector entry.
+/// Enumeration of possible values for an auxiliary vector entry.
 enum AuxEntryDescValue {
 	/// A single number.
 	Number(isize),
@@ -150,7 +151,7 @@ enum AuxEntryDescValue {
 	String(&'static [u8]),
 }
 
-/// Structure describing an auxilary vector entry.
+/// Structure describing an auxiliary vector entry.
 struct AuxEntryDesc {
 	/// The entry's type.
 	a_type: i32,
@@ -168,13 +169,13 @@ impl AuxEntryDesc {
 	}
 }
 
-/// Builds an auxilary vector.
+/// Builds an auxiliary vector.
 ///
 /// Arguments:
-/// - `exec_info` is the set of execution informations.
-/// - `load_info` is the set of ELF load informations.
-/// - `vdso` is the set of vDSO informations.
-fn build_auxilary(
+/// - `exec_info` is the set of execution information.
+/// - `load_info` is the set of ELF load information.
+/// - `vdso` is the set of vDSO information.
+fn build_auxiliary(
 	exec_info: &ExecInfo,
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
@@ -333,7 +334,7 @@ impl<'s> ELFExecutor<'s> {
 		// The padding before the information block allowing to preserve stack alignment
 		let info_block_pad = 4 - (info_block_size % 4);
 
-		// The size of the auxilary vector
+		// The size of the auxiliary vector
 		let aux_size = aux.len() * size_of::<AuxEntry>();
 		// The size of the environment pointers + the null fourbyte
 		let envp_size = envp.len() * 4 + 4;
@@ -346,14 +347,13 @@ impl<'s> ELFExecutor<'s> {
 		(info_block_size + info_block_pad, total_size)
 	}
 
-	// TODO Clean
 	/// Initializes the stack data of the process according to the System V ABI.
 	///
 	/// Arguments:
 	/// - `user_stack` the pointer to the user stack.
 	/// - `argv` is the list of arguments.
 	/// - `envp` is the environment.
-	/// - `aux` is the auxilary vector.
+	/// - `aux` is the auxiliary vector.
 	///
 	/// The function returns the distance between the top of the stack and the
 	/// new bottom after the data has been written.
@@ -365,13 +365,11 @@ impl<'s> ELFExecutor<'s> {
 		aux: &[AuxEntryDesc],
 	) {
 		let (info_size, total_size) = Self::get_init_stack_size(argv, envp, aux);
-
 		// A slice on the stack representing the region which will contain the
 		// arguments and environment variables
 		let info_slice = unsafe {
 			slice::from_raw_parts_mut((user_stack as usize - info_size) as *mut u8, info_size)
 		};
-
 		// A slice on the stack representing the region to fill
 		let stack_slice = unsafe {
 			slice::from_raw_parts_mut(
@@ -379,86 +377,58 @@ impl<'s> ELFExecutor<'s> {
 				total_size / size_of::<u32>(),
 			)
 		};
-
 		// The offset in the information block
 		let mut info_off = 0;
 		// The offset in the pointers list
 		let mut stack_off = 0;
-
-		// Setting argc
+		// Set argc
 		stack_slice[stack_off] = argv.len() as u32;
 		stack_off += 1;
-
-		// Setting arguments
+		// Set argv
 		for arg in argv {
-			// The offset of the beginning of the argument in the information block
-			let begin = info_off;
-
-			// Copying the argument into the information block
-			for b in arg.iter() {
-				info_slice[info_off] = *b;
-				info_off += 1;
-			}
-			// Setting the nullbyte to end the string
-			info_slice[info_off] = 0;
-			info_off += 1;
-
-			// Setting the argument's pointer
-			stack_slice[stack_off] = &mut info_slice[begin] as *mut _ as u32;
+			// Set the argument's pointer
+			stack_slice[stack_off] = &info_slice[info_off] as *const _ as u32;
+			// Copy string
+			let len = arg.len();
+			info_slice[info_off..(info_off + len)].copy_from_slice(arg);
+			info_slice[info_off + len] = 0;
+			info_off += len + 1;
 			stack_off += 1;
 		}
-		// Setting the nullbyte to end argv
+		// Set the nul byte to end argv
 		stack_slice[stack_off] = 0;
 		stack_off += 1;
-
-		// Setting environment
+		// Set environment
 		for var in envp {
-			// The offset of the beginning of the variable in the information block
-			let begin = info_off;
-
-			// Copying the variable into the information block
-			for b in var.iter() {
-				info_slice[info_off] = *b;
-				info_off += 1;
-			}
-			// Setting the nullbyte to end the string
-			info_slice[info_off] = 0;
-			info_off += 1;
-
-			// Setting the variable's pointer
-			stack_slice[stack_off] = &mut info_slice[begin] as *mut _ as u32;
+			// Set the variable's pointer
+			stack_slice[stack_off] = &info_slice[info_off] as *const _ as u32;
+			// Copy string
+			let len = var.len();
+			info_slice[info_off..(info_off + len)].copy_from_slice(var);
+			info_slice[info_off + len] = 0;
+			info_off += len + 1;
 			stack_off += 1;
 		}
-		// Setting the nullbytes to end envp
+		// Set the nul bytes to end envp
 		stack_slice[stack_off] = 0;
 		stack_off += 1;
-
-		// Setting auxilary vector
+		// Set auxiliary vector
 		for a in aux {
 			let val = match a.a_val {
 				AuxEntryDescValue::Number(n) => n as _,
-
 				AuxEntryDescValue::String(slice) => {
-					// The offset of the beginning of the variable in the information block
-					let begin = info_off;
-
-					// Copying the string into the information block
-					for b in slice {
-						info_slice[info_off] = *b;
-						info_off += 1;
-					}
-					// Setting the nullbyte to end the string
-					info_slice[info_off] = 0;
-					info_off += 1;
-
-					&mut info_slice[begin] as *mut _ as _
+					let val = &info_slice[info_off] as *const _ as _;
+					// Copy string
+					let len = slice.len();
+					info_slice[info_off..(info_off + len)].copy_from_slice(slice);
+					info_slice[info_off + len] = 0;
+					info_off += len + 1;
+					val
 				}
 			};
-
-			// Setting the entry
+			// Set the entry
 			stack_slice[stack_off] = a.a_type as _;
 			stack_slice[stack_off + 1] = val;
-
 			stack_off += 2;
 		}
 	}
@@ -703,7 +673,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 	fn build_image(&self, file: &mut File) -> EResult<ProgramImage> {
 		// The ELF file image
 		let image = read_exec_file(file, &self.info.path_resolution.access_profile)?;
-		// Parsing the ELF file
+		// Parse the ELF file
 		let parser = ELFParser::new(image.as_slice())?;
 
 		// The process's new memory space
@@ -722,7 +692,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 		let vdso = vdso::map(&mut mem_space)?;
 
 		// The auxiliary vector
-		let aux = build_auxilary(&self.info, &load_info, &vdso)?;
+		let aux = build_auxiliary(&self.info, &load_info, &vdso)?;
 		// The size in bytes of the initial data on the stack
 		let init_stack_size = Self::get_init_stack_size(&self.info.argv, &self.info.envp, &aux).1;
 		// Pre-allocate pages on the user stack to write the initial data
@@ -743,7 +713,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 		let brk_ptr = unsafe { utils::align(load_info.load_end, memory::PAGE_SIZE) };
 		mem_space.set_brk_init(brk_ptr as _);
 
-		// Initializing the userspace stack
+		// Initialize the userspace stack
 		unsafe {
 			vmem::switch(mem_space.get_vmem(), move || {
 				vmem::smap_disable(|| {
@@ -752,10 +722,18 @@ impl<'s> Executor for ELFExecutor<'s> {
 			});
 		}
 
+		let envp = self
+			.info
+			.envp
+			.iter()
+			.flat_map(|e| e.as_bytes().iter().cloned().chain(iter::once(b'\0')))
+			.collect::<CollectResult<_>>()
+			.0?;
 		let user_stack_begin = unsafe { user_stack.sub(init_stack_size) };
 
 		Ok(ProgramImage {
 			argv: self.info.argv.try_clone()?,
+			envp,
 
 			mem_space,
 

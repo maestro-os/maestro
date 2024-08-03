@@ -21,10 +21,13 @@
 //! This file exists to run the tests as a second process in order to retrieve the exit code, then
 //! shutdown the machine.
 
-use std::process::Command;
+use std::{os::unix::process::ExitStatusExt, process::Command};
 
 pub fn main() {
 	let status = Command::new("/inttest").status().unwrap();
+	if let Some(sig) = status.signal() {
+		eprintln!("[KILLED] {sig}");
+	}
 	let cmd = if status.success() { -1 } else { -2 };
 	// Shutdown
 	unsafe {

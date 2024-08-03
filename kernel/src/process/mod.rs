@@ -210,6 +210,8 @@ pub struct Process {
 
 	/// The argv of the process.
 	pub argv: Arc<Vec<String>>,
+	/// The environment variables of the process, separated by `\0`.
+	pub envp: Arc<String>,
 	/// The path to the process's executable.
 	pub exec_path: Arc<PathBuf>,
 
@@ -459,6 +461,7 @@ impl Process {
 			tid: pid::INIT_PID,
 
 			argv: Arc::new(Vec::new())?,
+			envp: Arc::new(String::new())?,
 			exec_path: Arc::new(PathBuf::root())?,
 
 			tty: tty::get(None).unwrap(), // Initialization with the init TTY
@@ -846,6 +849,7 @@ impl Process {
 			tid: pid_int,
 
 			argv: self.argv.clone(),
+			envp: self.envp.clone(),
 			exec_path: self.exec_path.clone(),
 
 			tty: self.tty.clone(),
