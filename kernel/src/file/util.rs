@@ -27,7 +27,7 @@ use utils::{errno, errno::EResult};
 /// If relative, the path is taken from the root.
 pub fn create_dirs(path: &Path) -> EResult<()> {
 	// Path of the parent directory
-	let mut p = PathBuf::root();
+	let mut p = PathBuf::root()?;
 	for comp in path.components() {
 		let Component::Normal(name) = &comp else {
 			continue;

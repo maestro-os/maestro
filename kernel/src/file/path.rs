@@ -24,7 +24,7 @@ use core::{
 	ops::Deref,
 };
 use utils::{
-	collections::string::String,
+	collections::{string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, CollectResult, EResult, Errno},
 	DisplayableStr, TryClone,
@@ -39,8 +39,8 @@ pub struct PathBuf(String);
 
 impl PathBuf {
 	/// Creates a new path to root.
-	pub fn root() -> Self {
-		Self(String::default())
+	pub fn root() -> AllocResult<Self> {
+		Ok(Self(String::from(Vec::try_from(b"/".as_slice())?)))
 	}
 
 	/// Creates a `PathBuf` without checking the length of the given [`String`].

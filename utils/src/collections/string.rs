@@ -171,7 +171,7 @@ impl TryFrom<&[u8]> for String {
 
 	fn try_from(s: &[u8]) -> Result<Self, Self::Error> {
 		Ok(Self {
-			data: Vec::from_slice(s)?,
+			data: Vec::try_from(s)?,
 		})
 	}
 }

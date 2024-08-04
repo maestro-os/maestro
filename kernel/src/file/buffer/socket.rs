@@ -142,7 +142,7 @@ impl Socket {
 		// TODO check the requested network interface exists (EADDRNOTAVAIL)
 		// TODO check address against stack's domain
 
-		self.sockname = Vec::from_slice(sockaddr)?;
+		self.sockname = Vec::try_from(sockaddr)?;
 		Ok(())
 	}
 

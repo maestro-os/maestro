@@ -269,7 +269,7 @@ impl MemMapping {
 					flags: self.flags,
 					residence: self.residence.clone(),
 
-					phys_pages: Vec::from_slice(&self.phys_pages[..size.get()])?,
+					phys_pages: Vec::try_from(&self.phys_pages[..size.get()])?,
 				})
 			})
 			.transpose()?;
@@ -293,7 +293,7 @@ impl MemMapping {
 					flags: self.flags,
 					residence,
 
-					phys_pages: Vec::from_slice(&self.phys_pages[end..])?,
+					phys_pages: Vec::try_from(&self.phys_pages[end..])?,
 				})
 			})
 			.transpose()?;

@@ -873,7 +873,7 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 		mount_source,
 		None,
 		0,
-		PathBuf::root(),
+		PathBuf::root()?,
 		FileLocation::dummy(),
 	)?;
 	Ok(())

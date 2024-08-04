@@ -462,7 +462,7 @@ impl Process {
 
 			argv: Arc::new(Vec::new())?,
 			envp: Arc::new(String::new())?,
-			exec_path: Arc::new(PathBuf::root())?,
+			exec_path: Arc::new(PathBuf::root()?)?,
 
 			tty: tty::get(None).unwrap(), // Initialization with the init TTY
 
@@ -493,7 +493,7 @@ impl Process {
 			user_stack: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: Arc::new((PathBuf::root(), root_dir))?,
+			cwd: Arc::new((PathBuf::root()?, root_dir))?,
 			chroot: root_loc,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 

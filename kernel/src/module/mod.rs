@@ -271,7 +271,7 @@ impl Module {
 				crate::println!("Missing `MOD_DEPS` symbol in module image");
 				errno!(EINVAL)
 			})?;
-		let deps = Vec::from_slice(deps)?;
+		let deps = Vec::try_from(deps)?;
 		crate::println!("Load module `{name}` version `{version}`");
 		// TODO Check that all dependencies are loaded
 		// Initialize module

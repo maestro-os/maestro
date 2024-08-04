@@ -155,6 +155,22 @@ impl<T> Default for Vec<T> {
 	}
 }
 
+impl<T, const N: usize> TryFrom<[T; N]> for Vec<T> {
+	type Error = AllocError;
+
+	fn try_from(arr: [T; N]) -> Result<Self, Self::Error> {
+		CollectResult::<Self>::from_iter(arr.into_iter()).0
+	}
+}
+
+impl<T: Clone> TryFrom<&[T]> for Vec<T> {
+	type Error = AllocError;
+
+	fn try_from(slice: &[T]) -> Result<Self, Self::Error> {
+		CollectResult::<Self>::from_iter(slice.iter()).0
+	}
+}
+
 impl<T> Vec<T> {
 	/// Creates a new empty vector.
 	pub const fn new() -> Self {
@@ -405,23 +421,10 @@ impl<T> Vec<T> {
 
 impl<T> FromIterator<T> for CollectResult<Vec<T>> {
 	fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-		let mut iter = iter.into_iter();
+		let iter = iter.into_iter();
 		let min_size = iter.size_hint().0;
 		let res = (|| {
 			let mut vec = Vec::with_capacity(min_size)?;
-			vec.len = min_size;
-			// push elements in the range of minimum size
-			for (dst, elem) in vec
-				.inner
-				.as_mut_slice()
-				.iter_mut()
-				.zip(iter.by_ref().take(min_size))
-			{
-				unsafe {
-					ptr::write(dst, elem);
-				}
-			}
-			// push remaining elements
 			for elem in iter {
 				vec.push(elem)?;
 			}
@@ -494,20 +497,6 @@ impl<T: Clone> Vec<T> {
 			}
 		}
 		Ok(())
-	}
-
-	/// Creates a new vector from the given slice.
-	pub fn from_slice(slice: &[T]) -> AllocResult<Self> {
-		let mut v = Vec::with_capacity(slice.len())?;
-		v.len = slice.len();
-		for (i, elem) in slice.iter().enumerate() {
-			// Safe because in range
-			unsafe {
-				// This is necessary to avoid dropping
-				ptr::write(&mut v[i], elem.clone());
-			}
-		}
-		Ok(v)
 	}
 
 	/// Extends the vector by cloning the elements from the given slice `slice`.
