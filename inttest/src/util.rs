@@ -18,7 +18,7 @@
 
 //! Utility features.
 
-use libc::mode_t;
+use libc::{gid_t, mode_t, uid_t};
 use std::{
 	error::Error,
 	ffi::{c_int, c_ulong, c_void, CStr, CString},
@@ -143,6 +143,34 @@ pub fn mount(
 	} else {
 		Err(io::Error::last_os_error())
 	}
+}
+
+pub fn seteuid(uid: uid_t) -> io::Result<()> {
+	let res = unsafe { libc::seteuid(uid) };
+	if res >= 0 {
+		Ok(())
+	} else {
+		Err(io::Error::last_os_error())
+	}
+}
+
+pub fn setegid(gid: gid_t) -> io::Result<()> {
+	let res = unsafe { libc::setegid(gid) };
+	if res >= 0 {
+		Ok(())
+	} else {
+		Err(io::Error::last_os_error())
+	}
+}
+
+/// Executes the given code while unprivileged
+pub fn unprivileged<F: FnOnce() -> R, R>(f: F) -> io::Result<R> {
+	seteuid(1000)?;
+	setegid(1000)?;
+	let res = f();
+	seteuid(0)?;
+	setegid(0)?;
+	Ok(res)
 }
 
 /// Executes the given command and returns a [`Result`] corresponding to the exit status.

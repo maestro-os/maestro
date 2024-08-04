@@ -388,7 +388,7 @@ impl NodeOps for Ext2NodeOps {
 		parent_inode: INode,
 		fs: &dyn Filesystem,
 		name: &[u8],
-		mut stat: Stat,
+		stat: Stat,
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
 		if parent_inode < 1 {
 			return Err(errno!(EINVAL));
@@ -444,8 +444,6 @@ impl NodeOps for Ext2NodeOps {
 					b".",
 					FileType::Directory,
 				)?;
-				inode.i_links_count += 1;
-				stat.nlink += 1;
 				inode.add_dirent(
 					&mut superblock,
 					&mut *io,
@@ -453,6 +451,7 @@ impl NodeOps for Ext2NodeOps {
 					b"..",
 					FileType::Directory,
 				)?;
+				inode.i_links_count += 1;
 				parent.i_links_count += 1;
 			}
 			FileType::BlockDevice | FileType::CharDevice => {
@@ -555,24 +554,13 @@ impl NodeOps for Ext2NodeOps {
 			.ok_or_else(|| errno!(ENOENT))?;
 		// The inode
 		let mut remove_inode_ = Ext2INode::read(remove_inode, &superblock, &mut *io)?;
-		// If directory, remove `.` and `..` entries
 		if remove_inode_.get_type() == FileType::Directory {
-			// Remove `.`
-			if remove_inode_.i_links_count > 0
-				&& remove_inode_
-					.get_dirent(b".", &superblock, &mut *io)?
-					.is_some()
-			{
-				remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
+			// If the directory is not empty, error
+			if !remove_inode_.is_directory_empty(&superblock, &mut *io)? {
+				return Err(errno!(ENOTEMPTY));
 			}
-			// Remove `..`
-			if parent.i_links_count > 0
-				&& remove_inode_
-					.get_dirent(b"..", &superblock, &mut *io)?
-					.is_some()
-			{
-				parent.i_links_count = parent.i_links_count.saturating_sub(1);
-			}
+			// Decrement links to parent because of `..` being removed
+			parent.i_links_count = parent.i_links_count.saturating_sub(1);
 		}
 		// Remove the directory entry
 		parent.remove_dirent(remove_off, &mut superblock, &mut *io)?;

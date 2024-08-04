@@ -814,6 +814,23 @@ impl Ext2INode {
 		Ok(Some((ent, next_off)))
 	}
 
+	/// Tells whether the current directory is empty.
+	pub fn is_directory_empty(&self, superblock: &Superblock, io: &mut dyn IO) -> EResult<bool> {
+		let blk_size = superblock.get_block_size() as u64;
+		let mut buf = vec![0; blk_size as _]?;
+		let mut off = 0;
+		while let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? {
+			if !ent.is_free() {
+				let name = ent.get_name(superblock);
+				if name != b"." && name != b".." {
+					return Ok(false);
+				}
+			}
+			off += ent.record_len() as u64;
+		}
+		Ok(true)
+	}
+
 	/// Looks for a sequence of free entries large enough to fit a chunk with at least `min_size`
 	/// bytes, and returns the offset to its beginning and its size in bytes.
 	///

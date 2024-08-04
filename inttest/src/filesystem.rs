@@ -20,7 +20,7 @@
 
 use crate::{
 	log, test_assert, test_assert_eq, util,
-	util::{TestError, TestResult},
+	util::{unprivileged, TestError, TestResult},
 };
 use std::{
 	fs,
@@ -102,39 +102,46 @@ pub fn directories() -> TestResult {
 
 	log!("Create directories");
 	fs::create_dir_all("/abc/def/ghi")?;
-	let stat = util::stat("/")?;
-	test_assert_eq!(stat.st_nlink, 3);
+	log!("Stat `/abc`");
 	let stat = util::stat("/abc")?;
+	log!("Stat `/abc/def`");
 	test_assert_eq!(stat.st_nlink, 3);
-	let stat = util::stat("/def")?;
+	let stat = util::stat("/abc/def")?;
 	test_assert_eq!(stat.st_nlink, 3);
-	let stat = util::stat("/ghi")?;
-	test_assert_eq!(stat.st_nlink, 2);
+	log!("Stat `/abc/def/ghi`");
 	let stat = util::stat("/abc/def/ghi")?;
+	test_assert_eq!(stat.st_nlink, 2);
 	test_assert_eq!(stat.st_mode & 0o7777, 0o755);
 
-	log!("Permissions check");
-	// No permission
-	util::chmod("/abc", 0o000)?;
-	util::stat("/abc")?;
-	let res = util::stat("/abc/def");
-	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
-	let res = fs::read_dir("/abc");
-	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
-	// Entries list and write without search permissions
-	for mode in [0o444, 0o666] {
-		util::chmod("/abc", mode)?;
+	unprivileged(|| {
+		log!("Permissions check (no permission)");
+		util::chmod("/abc", 0o000)?;
+		util::stat("/abc")?;
 		let res = util::stat("/abc/def");
 		test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
+		let res = fs::read_dir("/abc");
+		test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
+		log!("Permissions check (entries list and write without search permissions)");
+		for mode in [0o444, 0o666] {
+			util::chmod("/abc", mode)?;
+			let res = util::stat("/abc/def");
+			test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
+			fs::read_dir("/abc")?;
+			let res = fs::create_dir("/abc/no_perm");
+			test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
+		}
+		log!("Permissions check (search permissions)");
+		util::chmod("/abc", 0o555)?;
 		fs::read_dir("/abc")?;
 		let res = fs::create_dir("/abc/no_perm");
 		test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
-	}
-	// Search permission
-	util::chmod("/abc", 0o555)?;
-	fs::read_dir("/abc")?;
-	let res = fs::create_dir("/abc/no_perm");
-	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
+		log!("Cleanup");
+		util::chmod("/abc", 0o755)?;
+		Ok(())
+	})??;
+
+	log!("Cleanup");
+	fs::remove_dir_all("/abc/def")?;
 
 	log!("Create entries");
 	for i in 0..1000 {
@@ -153,6 +160,9 @@ pub fn directories() -> TestResult {
 		})
 		.collect::<Result<Vec<u32>, TestError>>()?;
 	entries.sort_unstable();
+	for (a, b) in entries.into_iter().enumerate() {
+		test_assert_eq!(a as u32, b);
+	}
 
 	log!("Remove non-empty directory (invalid)");
 	let res = fs::remove_dir("/abc");

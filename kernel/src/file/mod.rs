@@ -287,7 +287,7 @@ impl Default for Stat {
 			file_type: FileType::Regular,
 			mode: 0o444,
 
-			nlink: 0,
+			nlink: 1,
 
 			uid: 0,
 			gid: 0,
