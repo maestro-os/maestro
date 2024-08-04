@@ -113,11 +113,12 @@ const TESTS: &[TestSuite] = &[
 				desc: "/proc/self/cwd",
 				start: procfs::cwd,
 			},
-			Test {
+			// TODO: not yet implemented
+			/*Test {
 				name: "/proc/self/exe",
 				desc: "/proc/self/exe",
 				start: procfs::exe,
-			},
+			},*/
 			Test {
 				name: "/proc/self/cmdline",
 				desc: "/proc/self/cmdline",

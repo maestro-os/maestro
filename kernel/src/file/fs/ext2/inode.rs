@@ -520,7 +520,7 @@ impl Ext2INode {
 		if check_blk_off(*blk, superblock)?.is_none() {
 			return Ok(());
 		}
-		if depth == 0 || Self::free_content_blk_impl(*blk, &offsets[1..depth], superblock, io)? {
+		if Self::free_content_blk_impl(*blk, &offsets[1..depth], superblock, io)? {
 			let blk = mem::take(blk);
 			superblock.free_block(io, blk)?;
 		}

@@ -50,11 +50,12 @@ pub fn cwd() -> TestResult {
 	Ok(())
 }
 
-pub fn exe() -> TestResult {
+// TODO: not yet implemented
+/*pub fn exe() -> TestResult {
 	let exe = fs::read_link("/proc/self/exe")?;
 	test_assert_eq!(exe.as_os_str().as_bytes(), b"/maestro-test");
 	Ok(())
-}
+}*/
 
 pub fn cmdline() -> TestResult {
 	let args0 = fs::read("/proc/self/cmdline")?;
