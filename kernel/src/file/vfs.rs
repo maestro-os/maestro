@@ -435,13 +435,13 @@ pub fn create_file(
 	let Some(parent_ops) = parent.ops.as_ref() else {
 		return Err(errno!(ENOTDIR));
 	};
-	stat.uid = ap.get_euid();
+	stat.uid = ap.euid;
 	let gid = if parent.stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
 		// parent directory
 		parent.stat.gid
 	} else {
-		ap.get_egid()
+		ap.egid
 	};
 	stat.gid = gid;
 	let parent_inode = parent.location.get_inode();
@@ -564,7 +564,7 @@ pub fn remove_file(parent: Arc<Mutex<File>>, name: &[u8], ap: &AccessProfile) ->
 	let mut file = file_mutex.lock();
 	// Check permission
 	let has_sticky_bit = parent_dir.stat.mode & S_ISVTX != 0;
-	if has_sticky_bit && ap.get_euid() != file.stat.uid && ap.get_euid() != parent_dir.stat.uid {
+	if has_sticky_bit && ap.euid != file.stat.uid && ap.euid != parent_dir.stat.uid {
 		return Err(errno!(EACCES));
 	}
 	// If the file to remove is a mountpoint, error

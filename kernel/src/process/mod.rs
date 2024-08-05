@@ -1103,13 +1103,11 @@ impl AccessProfile {
 		if self.is_privileged() {
 			return true;
 		}
-		let uid = self.get_uid();
-		let euid = self.get_euid();
 		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
-		uid == proc.access_profile.get_uid()
-			|| uid == proc.access_profile.get_suid()
-			|| euid == proc.access_profile.get_uid()
-			|| euid == proc.access_profile.get_suid()
+		self.uid == proc.access_profile.uid
+			|| self.uid == proc.access_profile.suid
+			|| self.euid == proc.access_profile.uid
+			|| self.euid == proc.access_profile.suid
 	}
 }
 

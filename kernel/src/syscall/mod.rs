@@ -34,7 +34,6 @@ mod brk;
 mod chdir;
 mod chmod;
 mod chown;
-mod chown32;
 mod chroot;
 mod clock_gettime;
 mod clock_gettime64;
@@ -65,21 +64,19 @@ mod getcwd;
 mod getdents;
 mod getdents64;
 mod getegid;
-mod getegid32;
 mod geteuid;
-mod geteuid32;
 mod getgid;
-mod getgid32;
 mod getpgid;
 mod getpid;
 mod getppid;
 mod getrandom;
+mod getresgid;
+mod getresuid;
 mod getrusage;
 mod getsockname;
 mod getsockopt;
 mod gettid;
 mod getuid;
-mod getuid32;
 mod init_module;
 pub mod ioctl;
 mod kill;
@@ -122,12 +119,14 @@ mod sendto;
 mod set_thread_area;
 mod set_tid_address;
 mod setgid;
-mod setgid32;
 mod sethostname;
 mod setpgid;
+mod setregid;
+mod setresgid;
+mod setresuid;
+mod setreuid;
 mod setsockopt;
 mod setuid;
-mod setuid32;
 mod shutdown;
 mod signal;
 mod sigreturn;
@@ -176,7 +175,6 @@ use brk::brk;
 use chdir::chdir;
 use chmod::chmod;
 use chown::chown;
-use chown32::chown32;
 use chroot::chroot;
 use clock_gettime::clock_gettime;
 use clock_gettime64::clock_gettime64;
@@ -208,21 +206,19 @@ use getcwd::getcwd;
 use getdents::getdents;
 use getdents64::getdents64;
 use getegid::getegid;
-use getegid32::getegid32;
 use geteuid::geteuid;
-use geteuid32::geteuid32;
 use getgid::getgid;
-use getgid32::getgid32;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
 use getrandom::getrandom;
+use getresgid::getresgid;
+use getresuid::getresuid;
 use getrusage::getrusage;
 use getsockname::getsockname;
 use getsockopt::getsockopt;
 use gettid::gettid;
 use getuid::getuid;
-use getuid32::getuid32;
 use init_module::init_module;
 use ioctl::ioctl;
 use kill::kill;
@@ -266,12 +262,14 @@ use sendto::sendto;
 use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
 use setgid::setgid;
-use setgid32::setgid32;
 use sethostname::sethostname;
 use setpgid::setpgid;
+use setregid::setregid;
+use setresgid::setresgid;
+use setresuid::setresuid;
+use setreuid::setreuid;
 use setsockopt::setsockopt;
 use setuid::setuid;
-use setuid32::setuid32;
 use shutdown::shutdown;
 use signal::signal;
 use sigreturn::sigreturn;
@@ -580,8 +578,8 @@ fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
 		// TODO 0x043 => Some(syscall!(sigaction, regs)),
 		// TODO 0x044 => Some(syscall!(sgetmask, regs)),
 		// TODO 0x045 => Some(syscall!(ssetmask, regs)),
-		// TODO 0x046 => Some(syscall!(setreuid, regs)),
-		// TODO 0x047 => Some(syscall!(setregid, regs)),
+		0x046 => Some(syscall!(setreuid, regs)),
+		0x047 => Some(syscall!(setregid, regs)),
 		// TODO 0x048 => Some(syscall!(sigsuspend, regs)),
 		// TODO 0x049 => Some(syscall!(sigpending, regs)),
 		0x04a => Some(syscall!(sethostname, regs)),
@@ -672,14 +670,14 @@ fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
 		// TODO 0x0a1 => Some(syscall!(sched_rr_get_interval, regs)),
 		0x0a2 => Some(syscall!(nanosleep, regs)),
 		// TODO 0x0a3 => Some(syscall!(mremap, regs)),
-		// TODO 0x0a4 => Some(syscall!(setresuid, regs)),
-		// TODO 0x0a5 => Some(syscall!(getresuid, regs)),
+		0x0a4 => Some(syscall!(setresuid, regs)),
+		0x0a5 => Some(syscall!(getresuid, regs)),
 		// TODO 0x0a6 => Some(syscall!(vm86, regs)),
 		// TODO 0x0a7 => Some(syscall!(query_module, regs)),
 		0x0a8 => Some(syscall!(poll, regs)),
 		// TODO 0x0a9 => Some(syscall!(nfsservctl, regs)),
-		// TODO 0x0aa => Some(syscall!(setresgid, regs)),
-		// TODO 0x0ab => Some(syscall!(getresgid, regs)),
+		0x0aa => Some(syscall!(setresgid, regs)),
+		0x0ab => Some(syscall!(getresgid, regs)),
 		// TODO 0x0ac => Some(syscall!(prctl, regs)),
 		// TODO 0x0ad => Some(syscall!(rt_sigreturn, regs)),
 		0x0ae => Some(syscall!(rt_sigaction, regs)),
@@ -707,22 +705,22 @@ fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
 		// TODO 0x0c4 => Some(syscall!(lstat64, regs)),
 		0x0c5 => Some(syscall!(fstat64, regs)),
 		// TODO 0x0c6 => Some(syscall!(lchown32, regs)),
-		0x0c7 => Some(syscall!(getuid32, regs)),
-		0x0c8 => Some(syscall!(getgid32, regs)),
-		0x0c9 => Some(syscall!(geteuid32, regs)),
-		0x0ca => Some(syscall!(getegid32, regs)),
-		// TODO 0x0cb => Some(syscall!(setreuid32, regs)),
-		// TODO 0x0cc => Some(syscall!(setregid32, regs)),
+		0x0c7 => Some(syscall!(getuid, regs)),   // getuid32
+		0x0c8 => Some(syscall!(getgid, regs)),   // getgid32
+		0x0c9 => Some(syscall!(geteuid, regs)),  // geteuid32
+		0x0ca => Some(syscall!(getegid, regs)),  // getegid32
+		0x0cb => Some(syscall!(setreuid, regs)), // setreuid32
+		0x0cc => Some(syscall!(setregid, regs)), // setregid32
 		// TODO 0x0cd => Some(syscall!(getgroups32, regs)),
 		// TODO 0x0ce => Some(syscall!(setgroups32, regs)),
 		// TODO 0x0cf => Some(syscall!(fchown32, regs)),
-		// TODO 0x0d0 => Some(syscall!(setresuid32, regs)),
-		// TODO 0x0d1 => Some(syscall!(getresuid32, regs)),
-		// TODO 0x0d2 => Some(syscall!(setresgid32, regs)),
-		// TODO 0x0d3 => Some(syscall!(getresgid32, regs)),
-		0x0d4 => Some(syscall!(chown32, regs)),
-		0x0d5 => Some(syscall!(setuid32, regs)),
-		0x0d6 => Some(syscall!(setgid32, regs)),
+		0x0d0 => Some(syscall!(setresuid, regs)), // setresuid32
+		0x0d1 => Some(syscall!(getresuid, regs)), // getresuid32
+		0x0d2 => Some(syscall!(setresgid, regs)), // setresgid32
+		0x0d3 => Some(syscall!(getresgid, regs)), // getresgid32
+		0x0d4 => Some(syscall!(chown, regs)),     // chown32
+		0x0d5 => Some(syscall!(setuid, regs)),    // setuid32
+		0x0d6 => Some(syscall!(setgid, regs)),    // setgid32
 		// TODO 0x0d7 => Some(syscall!(setfsuid32, regs)),
 		// TODO 0x0d8 => Some(syscall!(setfsgid32, regs)),
 		// TODO 0x0d9 => Some(syscall!(pivot_root, regs)),

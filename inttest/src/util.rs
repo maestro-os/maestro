@@ -95,6 +95,16 @@ pub fn fchmod(fd: c_int, mode: mode_t) -> io::Result<()> {
 	}
 }
 
+pub fn chown<P: AsRef<Path>>(path: P, uid: uid_t, gid: gid_t) -> io::Result<()> {
+	let path = CString::new(path.as_ref().as_os_str().as_bytes())?;
+	let res = unsafe { libc::chown(path.as_ptr(), uid, gid) };
+	if res >= 0 {
+		Ok(())
+	} else {
+		Err(io::Error::last_os_error())
+	}
+}
+
 pub fn stat<P: AsRef<Path>>(path: P) -> io::Result<libc::stat> {
 	let path = CString::new(path.as_ref().as_os_str().as_bytes())?;
 	unsafe {

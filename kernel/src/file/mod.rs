@@ -710,9 +710,9 @@ impl AccessProfile {
 	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
 	pub fn check_read_access(&self, file: &File, effective: bool) -> bool {
 		let (uid, gid) = if effective {
-			(self.get_euid(), self.get_egid())
+			(self.euid, self.egid)
 		} else {
-			(self.get_uid(), self.get_gid())
+			(self.uid, self.gid)
 		};
 		Self::check_read_access_impl(uid, gid, file)
 	}
@@ -751,9 +751,9 @@ impl AccessProfile {
 	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
 	pub fn check_write_access(&self, file: &File, effective: bool) -> bool {
 		let (uid, gid) = if effective {
-			(self.get_euid(), self.get_egid())
+			(self.euid, self.egid)
 		} else {
-			(self.get_uid(), self.get_gid())
+			(self.uid, self.gid)
 		};
 		Self::check_write_access_impl(uid, gid, file)
 	}
@@ -792,9 +792,9 @@ impl AccessProfile {
 	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
 	pub fn check_execute_access(&self, file: &File, effective: bool) -> bool {
 		let (uid, gid) = if effective {
-			(self.get_euid(), self.get_egid())
+			(self.euid, self.egid)
 		} else {
-			(self.get_uid(), self.get_gid())
+			(self.uid, self.gid)
 		};
 		Self::check_execute_access_impl(uid, gid, file)
 	}
@@ -813,8 +813,7 @@ impl AccessProfile {
 
 	/// Tells whether the agent can set permissions for the given file.
 	pub fn can_set_file_permissions(&self, file: &File) -> bool {
-		let euid = self.get_euid();
-		euid == perm::ROOT_UID || euid == file.stat.uid
+		self.euid == perm::ROOT_UID || self.euid == file.stat.uid
 	}
 }
 

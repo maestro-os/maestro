@@ -68,8 +68,8 @@ fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 	Process::get_by_pid(pid)
 		.map(|proc_mutex| {
 			let proc = proc_mutex.lock();
-			let uid = proc.access_profile.get_euid();
-			let gid = proc.access_profile.get_egid();
+			let uid = proc.access_profile.euid;
+			let gid = proc.access_profile.egid;
 			(uid, gid)
 		})
 		.unwrap_or((0, 0))

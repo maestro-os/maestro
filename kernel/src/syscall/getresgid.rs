@@ -16,11 +16,27 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `getegid32` syscall returns the effective GID of the process's owner.
+//! `getresgid` returns the real, effective and saved group ID of the current process.
 
-use crate::{file::perm::AccessProfile, process::Process};
-use utils::errno::{EResult, Errno};
+use crate::{
+	file::perm::{AccessProfile, Gid, Uid},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
+};
+use core::ffi::c_int;
+use utils::{
+	errno,
+	errno::EResult,
+	lock::{IntMutex, IntMutexGuard},
+	ptr::arc::Arc,
+};
 
-pub fn getegid32(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.get_egid() as _)
+pub fn getresgid(
+	Args((rgid, egid, sgid)): Args<(SyscallPtr<Gid>, SyscallPtr<Gid>, SyscallPtr<Gid>)>,
+	ap: AccessProfile,
+) -> EResult<usize> {
+	rgid.copy_to_user(ap.gid)?;
+	egid.copy_to_user(ap.egid)?;
+	sgid.copy_to_user(ap.sgid)?;
+	Ok(0)
 }

@@ -22,5 +22,5 @@ use crate::{file::perm::AccessProfile, process::Process};
 use utils::errno::{EResult, Errno};
 
 pub fn getgid(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.get_gid() as _)
+	Ok(ap.gid as _)
 }

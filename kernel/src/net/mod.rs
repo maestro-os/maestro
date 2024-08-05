@@ -28,7 +28,7 @@ pub mod sockaddr;
 pub mod tcp;
 
 use crate::{
-	file::perm::{AccessProfile, ROOT_GID, ROOT_UID},
+	file::perm::AccessProfile,
 	net::sockaddr::{SockAddrIn, SockAddrIn6},
 };
 use buff::BuffList;
@@ -284,7 +284,7 @@ impl AccessProfile {
 	/// Tells whether the agent has the permission to use the socket domain.
 	pub fn can_use_sock_domain(&self, domain: &SocketDomain) -> bool {
 		match domain {
-			SocketDomain::AfPacket => self.get_euid() == ROOT_UID || self.get_egid() == ROOT_GID,
+			SocketDomain::AfPacket => self.is_privileged(),
 			_ => true,
 		}
 	}
@@ -340,7 +340,7 @@ impl AccessProfile {
 	/// Tells whether the agent has the permission to use the socket type.
 	pub fn can_use_sock_type(&self, sock_type: &SocketType) -> bool {
 		match sock_type {
-			SocketType::SockRaw => self.get_euid() == ROOT_UID || self.get_egid() == ROOT_GID,
+			SocketType::SockRaw => self.is_privileged(),
 			_ => true,
 		}
 	}

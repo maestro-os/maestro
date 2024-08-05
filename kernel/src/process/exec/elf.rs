@@ -217,19 +217,19 @@ fn build_auxiliary(
 	aux.push(AuxEntryDesc::new(AT_NOTELF, AuxEntryDescValue::Number(0)))?;
 	aux.push(AuxEntryDesc::new(
 		AT_UID,
-		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.get_uid() as _),
+		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.uid as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_EUID,
-		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.get_euid() as _),
+		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.euid as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_GID,
-		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.get_gid() as _),
+		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.gid as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_EGID,
-		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.get_egid() as _),
+		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.egid as _),
 	))?;
 	aux.push(AuxEntryDesc::new(
 		AT_PLATFORM,

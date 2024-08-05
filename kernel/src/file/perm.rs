@@ -86,19 +86,19 @@ pub const S_ISVTX: Mode = 0o1000;
 #[derive(Clone, Copy, Debug)]
 pub struct AccessProfile {
 	/// Real ID of user.
-	uid: Uid,
+	pub uid: Uid,
 	/// Real ID of group.
-	gid: Gid,
+	pub gid: Gid,
 
 	/// The effective ID of user.
-	euid: Uid,
+	pub euid: Uid,
 	/// The effective ID of group.
-	egid: Gid,
+	pub egid: Gid,
 
 	/// The saved user ID.
-	suid: Uid,
+	pub suid: Uid,
 	/// The saved group ID.
-	sgid: Gid,
+	pub sgid: Gid,
 }
 
 impl AccessProfile {
@@ -133,42 +133,9 @@ impl AccessProfile {
 		Self::new(file.stat.uid, file.stat.gid)
 	}
 
-	/// Returns the real user ID.
-	pub fn get_uid(&self) -> Uid {
-		self.uid
-	}
-
-	/// Returns the effective user ID.
-	pub fn get_euid(&self) -> Uid {
-		self.euid
-	}
-
-	/// Returns the saved user ID.
-	pub fn get_suid(&self) -> Uid {
-		self.suid
-	}
-
-	/// Returns the real group ID.
-	pub fn get_gid(&self) -> Gid {
-		self.gid
-	}
-
-	/// Returns the effective group ID.
-	pub fn get_egid(&self) -> Gid {
-		self.egid
-	}
-
-	/// Returns the saved group ID.
-	pub fn get_sgid(&self) -> Gid {
-		self.sgid
-	}
-
 	/// Tells whether the agent is privileged (root).
 	pub fn is_privileged(&self) -> bool {
-		self.uid == ROOT_UID
-			|| self.euid == ROOT_UID
-			|| self.gid == ROOT_GID
-			|| self.egid == ROOT_GID
+		self.euid == ROOT_UID || self.egid == ROOT_GID
 	}
 
 	/// Sets the user ID in the same way the `setgid` system call does.

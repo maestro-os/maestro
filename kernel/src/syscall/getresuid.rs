@@ -16,16 +16,27 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `setuid32` syscall sets the UID of the process's owner.
+//! `getresuid` returns the real, effective and saved user ID of the current process.
 
-use crate::{file::perm::Uid, process::Process, syscall::Args};
+use crate::{
+	file::perm::{AccessProfile, Uid},
+	process::{mem_space::copy::SyscallPtr, Process},
+	syscall::Args,
+};
+use core::ffi::c_int;
 use utils::{
-	errno::{EResult, Errno},
+	errno,
+	errno::EResult,
 	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
-pub fn setuid32(Args(uid): Args<Uid>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	proc.lock().access_profile.set_uid(uid)?;
+pub fn getresuid(
+	Args((ruid, euid, suid)): Args<(SyscallPtr<Uid>, SyscallPtr<Uid>, SyscallPtr<Uid>)>,
+	ap: AccessProfile,
+) -> EResult<usize> {
+	ruid.copy_to_user(ap.uid)?;
+	euid.copy_to_user(ap.euid)?;
+	suid.copy_to_user(ap.suid)?;
 	Ok(0)
 }

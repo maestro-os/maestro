@@ -63,6 +63,11 @@ const TESTS: &[TestSuite] = &[
 				start: filesystem::directories,
 			},
 			Test {
+				name: "dir_perms",
+				desc: "Test directory permissions",
+				start: filesystem::dir_perms,
+			},
+			Test {
 				name: "hardlinks",
 				desc: "Test hard links",
 				start: filesystem::hardlinks,

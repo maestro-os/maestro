@@ -25,5 +25,5 @@ use crate::{
 use utils::errno::EResult;
 
 pub fn getegid(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.get_egid() as _)
+	Ok(ap.egid as _)
 }

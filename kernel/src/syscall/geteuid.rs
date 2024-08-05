@@ -22,5 +22,5 @@ use crate::{file::perm::AccessProfile, process::Process};
 use utils::errno::{EResult, Errno};
 
 pub fn geteuid(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.get_euid() as _)
+	Ok(ap.euid as _)
 }

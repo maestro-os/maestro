@@ -102,14 +102,14 @@ nonvoluntary_ctxt_switches: 0",
 			state_name = state.as_str(),
 			pid = self.0.get_pid(),
 			ppid = self.0.get_parent_pid(),
-			uid = self.0.access_profile.get_uid(),
-			euid = self.0.access_profile.get_euid(),
-			suid = self.0.access_profile.get_suid(),
-			ruid = 0, // TODO
-			gid = self.0.access_profile.get_gid(),
-			egid = self.0.access_profile.get_egid(),
-			sgid = self.0.access_profile.get_sgid(),
-			rgid = 0, // TODO
+			uid = self.0.access_profile.uid,
+			euid = self.0.access_profile.euid,
+			suid = self.0.access_profile.suid,
+			ruid = self.0.access_profile.uid,
+			gid = self.0.access_profile.gid,
+			egid = self.0.access_profile.egid,
+			sgid = self.0.access_profile.sgid,
+			rgid = self.0.access_profile.gid,
 		)
 	}
 }
