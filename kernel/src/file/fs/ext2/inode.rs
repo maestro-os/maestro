@@ -107,9 +107,9 @@ const INODE_FLAG_JOURNAL_FILE: u32 = 0x40000;
 /// The size of a sector in bytes.
 const SECTOR_SIZE: u32 = 512;
 
-/// The limit length for a symlink to be stored in the inode itself instead of a
+/// The maximum length for a symlink to be stored in the inode itself instead of a
 /// separate block.
-const SYMLINK_INODE_STORE_LIMIT: u64 = 60;
+const SYMLINK_INLINE_LIMIT: u64 = 60;
 
 /// The inode of the root directory.
 pub const ROOT_DIRECTORY_INODE: u32 = 2;
@@ -369,9 +369,10 @@ impl Ext2INode {
 	/// Sets the file's size.
 	///
 	/// Arguments:
-	/// - `superblock` is the filesystem's superblock.
-	/// - `size` is the file's size.
-	fn set_size(&mut self, superblock: &Superblock, size: u64) {
+	/// - `superblock` is the filesystem's superblock
+	/// - `size` is the file's size
+	/// - `inline` is `true` if the inode is a symlink storing the target inline
+	fn set_size(&mut self, superblock: &Superblock, size: u64, inline: bool) {
 		let has_version = superblock.s_rev_level >= 1;
 		let has_feature = superblock.s_feature_ro_compat & super::WRITE_REQUIRED_64_BITS != 0;
 		if has_version && has_feature {
@@ -380,22 +381,16 @@ impl Ext2INode {
 		} else {
 			self.i_size = size as u32;
 		}
+		if !inline {
+			self.i_blocks = size.div_ceil(SECTOR_SIZE as _) as _;
+		} else {
+			self.i_blocks = 0;
+		}
 	}
 
-	/// Increments the number of used sectors of one block.
-	///
-	/// `blk_size` is the size of a block.
-	fn increment_used_sectors(&mut self, blk_size: u32) {
-		// The block size is a multiple of the sector size
-		self.i_blocks += blk_size / SECTOR_SIZE;
-	}
-
-	/// Decrements the number of used sectors of one block.
-	///
-	/// `blk_size` is the size of a block.
-	fn decrement_used_sectors(&mut self, blk_size: u32) {
-		// The block size is a multiple of the sector size
-		self.i_blocks -= blk_size / SECTOR_SIZE;
+	/// Returns the number of content blocks.
+	pub fn get_blocks(&self) -> u32 {
+		self.i_blocks / SECTOR_SIZE
 	}
 
 	/// Translates the given file block offset `off` to disk block offset.
@@ -622,7 +617,7 @@ impl Ext2INode {
 		}
 		// Update size
 		let new_size = max(off + buff.len() as u64, curr_size);
-		self.set_size(superblock, new_size);
+		self.set_size(superblock, new_size, false);
 		Ok(())
 	}
 
@@ -646,7 +641,7 @@ impl Ext2INode {
 			return Ok(());
 		}
 		// Change the size
-		self.set_size(superblock, size);
+		self.set_size(superblock, size, false);
 		// The size of a block
 		let blk_size = superblock.get_block_size();
 		// The index of the beginning block to free
@@ -695,11 +690,11 @@ impl Ext2INode {
 	pub fn free_content(&mut self, superblock: &mut Superblock, io: &mut dyn IO) -> EResult<()> {
 		// If the file is a link and its content is stored inline, there is nothing to do
 		if matches!(self.get_type(), FileType::Link)
-			&& self.get_size(superblock) <= SYMLINK_INODE_STORE_LIMIT
+			&& self.get_size(superblock) <= SYMLINK_INLINE_LIMIT
 		{
 			return Ok(());
 		}
-		self.i_blocks = 0;
+		self.set_size(superblock, 0, false);
 		// TODO write inode
 		// Free blocks
 		for (off, blk) in self.i_block.iter().enumerate() {
@@ -938,8 +933,8 @@ impl Ext2INode {
 			write_block(blk_off.get() as _, blk_size, io, &buf)?;
 		} else {
 			// No suitable free entry: Fill a new block
-			let blk_off = (self.get_size(superblock) / blk_size as u64) as u32;
-			let blk_off = self.alloc_content_blk(blk_off, superblock, io)?;
+			let blocks = self.get_blocks();
+			let blk = self.alloc_content_blk(blocks, superblock, io)?;
 			buf.fill(0);
 			// Create used entry
 			Dirent::write_new(
@@ -958,7 +953,8 @@ impl Ext2INode {
 				i += rec_len as usize;
 			}
 			// Write block
-			write_block(blk_off.get() as _, blk_size, io, &buf)?;
+			write_block(blk.get() as _, blk_size, io, &buf)?;
+			self.set_size(superblock, (blocks as u64 + 1) * blk_size as u64, false);
 		}
 		Ok(())
 	}
@@ -995,10 +991,8 @@ impl Ext2INode {
 		// If the block is now empty, free it. Else, update it
 		if is_block_empty(&mut buf, superblock)? {
 			// If this is the last block, update the file's size
-			let last_block = (file_blk_off + 1) * blk_size as u64 >= self.get_size(superblock);
-			if last_block {
-				let new_size = file_blk_off * blk_size as u64;
-				self.set_size(superblock, new_size);
+			if file_blk_off as u32 + 1 >= self.get_blocks() {
+				self.set_size(superblock, file_blk_off * blk_size as u64, false);
 			}
 			self.free_content_blk(file_blk_off as _, superblock, io)
 		} else {
@@ -1025,21 +1019,17 @@ impl Ext2INode {
 		buf: &mut [u8],
 	) -> EResult<u64> {
 		let size = self.get_size(superblock);
-		if size <= SYMLINK_INODE_STORE_LIMIT {
+		if size <= SYMLINK_INLINE_LIMIT {
 			// The target is stored inline in the inode
-			let copy_max = min(buf.len(), (size - off) as _);
-			let buf = &mut buf[..copy_max];
-			let mut i = 0;
-			self.i_block
-				.into_iter()
-				.flat_map(u32::to_le_bytes)
-				.skip(off as _)
-				.zip(buf.iter_mut())
-				.for_each(|(src, dst)| {
-					*dst = src;
-					i += 1;
-				});
-			Ok(i)
+			let Some(len) = size.checked_sub(off) else {
+				return Err(errno!(EINVAL));
+			};
+			// Copy
+			let len = min(buf.len(), len as usize);
+			let src = bytes::as_bytes(&self.i_block);
+			let off = off as usize;
+			buf[..len].copy_from_slice(&src[off..(off + len)]);
+			Ok(len as _)
 		} else {
 			// The target is stored like in regular files
 			Ok(self.read_content(off, buf, superblock, io)?.0)
@@ -1064,21 +1054,17 @@ impl Ext2INode {
 		let old_size = self.get_size(superblock);
 		let new_size = buf.len() as u64;
 		// Erase previous
-		if old_size <= SYMLINK_INODE_STORE_LIMIT {
-			// A manual loop is required because `i_block` is potentially unaligned
-			for i in 0..(DIRECT_BLOCKS_COUNT + 3) {
-				self.i_block[i] = 0;
-			}
+		if old_size <= SYMLINK_INLINE_LIMIT {
+			self.i_block.fill(0);
 		}
 		// Write target
-		if new_size <= SYMLINK_INODE_STORE_LIMIT {
+		if new_size <= SYMLINK_INLINE_LIMIT {
 			// The target is stored inline in the inode
 			self.truncate(superblock, io, 0)?;
-			// A manual loop is required because `i_block` is potentially unaligned
-			for (i, b) in buf.iter().enumerate() {
-				self.i_block[i / 4] |= (*b as u32) << (i % 4);
-			}
-			self.set_size(superblock, new_size);
+			// Copy
+			let dst = bytes::as_bytes_mut(&mut self.i_block);
+			dst[..buf.len()].copy_from_slice(buf);
+			self.set_size(superblock, new_size, true);
 		} else {
 			self.truncate(superblock, io, new_size)?;
 			self.write_content(0, buf, superblock, io)?;

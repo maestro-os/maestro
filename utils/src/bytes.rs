@@ -47,6 +47,11 @@ pub fn as_bytes<T: ?Sized>(val: &T) -> &[u8] {
 	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of_val(val)) }
 }
 
+/// As as [`as_bytes`], but mutable.
+pub fn as_bytes_mut<T: ?Sized>(val: &mut T) -> &mut [u8] {
+	unsafe { slice::from_raw_parts_mut(val as *mut _ as *mut u8, size_of_val(val)) }
+}
+
 /// Reinterprets the given slice of bytes as another type.
 ///
 /// If the size or alignment of the structure is invalid, the function returns `None`.

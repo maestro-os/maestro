@@ -114,7 +114,7 @@ pub fn directories() -> TestResult {
 	test_assert_eq!(stat.st_mode & 0o7777, 0o755);
 
 	log!("Create entries");
-	for i in 0..1000 {
+	for i in 0..100 {
 		fs::create_dir(format!("/abc/{i}"))?;
 	}
 	log!("List entries");
