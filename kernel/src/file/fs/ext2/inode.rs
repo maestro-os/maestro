@@ -27,7 +27,7 @@ use core::{
 	cmp::{max, min},
 	intrinsics::unlikely,
 	mem,
-	num::{NonZeroU16, NonZeroU32},
+	num::NonZeroU32,
 };
 use macros::AnyRepr;
 use utils::{bytes, errno, errno::EResult, io::IO, math, ptr::cow::Cow, vec};
@@ -235,7 +235,7 @@ fn is_block_empty(buf: &mut [u8], superblock: &Superblock) -> EResult<bool> {
 		if !ent.is_free() {
 			return Ok(false);
 		}
-		off += ent.record_len();
+		off += ent.rec_len as usize;
 	}
 	Ok(true)
 }
@@ -744,7 +744,7 @@ impl Ext2INode {
 			if !ent.is_free() && ent.get_name(superblock) == name {
 				return Ok(Some((ent.inode, ent.get_type(superblock, &mut *io)?, off)));
 			}
-			off += ent.record_len() as u64;
+			off += ent.rec_len as u64;
 		}
 		Ok(None)
 	}
@@ -793,12 +793,11 @@ impl Ext2INode {
 			let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? else {
 				return Ok(None);
 			};
+			off += ent.rec_len as u64;
 			if !ent.is_free() {
 				break ent;
 			}
-			off += ent.record_len() as u64;
 		};
-		let next_off = off + ent.record_len() as u64;
 		let entry_type = ent.get_type(superblock, io)?;
 		let name = ent.get_name(superblock).try_into()?;
 		let ent = DirEntry {
@@ -806,7 +805,7 @@ impl Ext2INode {
 			entry_type,
 			name: Cow::Owned(name),
 		};
-		Ok(Some((ent, next_off)))
+		Ok(Some((ent, off)))
 	}
 
 	/// Tells whether the current directory is empty.
@@ -821,7 +820,7 @@ impl Ext2INode {
 					return Ok(false);
 				}
 			}
-			off += ent.record_len() as u64;
+			off += ent.rec_len as u64;
 		}
 		Ok(true)
 	}
@@ -841,33 +840,33 @@ impl Ext2INode {
 		superblock: &Superblock,
 		io: &mut dyn IO,
 		buf: &mut [u8],
-		min_size: NonZeroU16,
+		min_size: u16,
 	) -> EResult<Option<(u64, usize)>> {
 		let blk_size = superblock.get_block_size() as u64;
 		let mut off = 0;
 		let mut free_length = 0;
 		while let Some(ent) = next_dirent(self, superblock, io, buf, off)? {
-			let next_block = (off + ent.record_len() as u64) / blk_size > off / blk_size;
-			// If the entry is not free or on the next block
-			if !ent.is_free() || next_block {
-				// If a sequence large enough has been found, stop
-				if free_length >= min_size.get() as usize {
-					break;
-				}
+			// If an entry is used but is able to fit the new entry, stop
+			if !ent.is_free() && ent.can_fit(min_size, superblock) {
+				return Ok(Some((off, ent.rec_len as _)));
+			}
+			// If the entry is used or on the next block
+			let next = (off % blk_size + ent.rec_len as u64) > blk_size;
+			if !ent.is_free() || next {
 				// Reset counter
 				free_length = 0;
 			} else {
 				// Free entry, update counter
-				free_length += ent.record_len();
+				free_length += ent.rec_len as usize;
 			}
-			off += ent.record_len() as u64;
+			off += ent.rec_len as u64;
+			// If a sequence large enough has been found, stop
+			if free_length >= min_size as usize {
+				let begin = off - free_length as u64;
+				return Ok(Some((begin, free_length)));
+			}
 		}
-		if free_length >= min_size.get() as usize {
-			let begin = off - free_length as u64;
-			Ok(Some((begin, free_length)))
-		} else {
-			Ok(None)
-		}
+		Ok(None)
 	}
 
 	/// Adds a new entry to the current directory.
@@ -896,39 +895,45 @@ impl Ext2INode {
 		if name.len() > super::MAX_NAME_LEN {
 			return Err(errno!(ENAMETOOLONG));
 		}
-		let rec_len: NonZeroU16 = ((dirent::NAME_OFF + name.len()) as u16)
-			// cannot overflow thanks to the previous check
-			.next_multiple_of(dirent::ALIGN as u16)
-			.try_into()
-			// cannot fail because the value cannot be zero
-			.unwrap();
+		let rec_len = (dirent::NAME_OFF + name.len()).next_multiple_of(dirent::ALIGN) as u16;
 		// If the entry is too large, error
 		let blk_size = superblock.get_block_size();
-		if rec_len.get() as u32 > blk_size {
+		if rec_len as u32 > blk_size {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		let mut buf = vec![0; blk_size as _]?;
-		if let Some((off, len)) = self.get_suitable_slot(superblock, io, &mut buf, rec_len)? {
-			let blk_off = (off / blk_size as u64) as u32;
+		if let Some((mut off, mut len)) =
+			self.get_suitable_slot(superblock, io, &mut buf, rec_len)?
+		{
+			// If the entry is used, shrink it
 			let inner_off = (off % buf.len() as u64) as usize;
+			let dirent = Dirent::from_slice(&mut buf[inner_off..], superblock)?;
+			if !dirent.is_free() {
+				let used_space = dirent.used_space(superblock);
+				off += used_space as u64;
+				len -= used_space as usize;
+				dirent.rec_len = used_space;
+			}
 			// Create used entry
+			let inner_off = (off % buf.len() as u64) as usize;
 			Dirent::write_new(
 				&mut buf[inner_off..],
 				superblock,
 				entry_inode,
-				rec_len.get(),
-				file_type,
+				rec_len,
+				Some(file_type),
 				name,
 			)?;
 			// Create free entries to cover remaining free space
-			let mut i = inner_off + rec_len.get() as usize;
+			let mut i = inner_off + rec_len as usize;
 			let end = inner_off + len;
 			while i < end {
 				let rec_len = min(buf.len() - i, u16::MAX as usize) as u16;
-				Dirent::write_new(&mut buf[i..], superblock, 0, rec_len, file_type, name)?;
+				Dirent::write_new(&mut buf[i..], superblock, 0, rec_len, None, b"")?;
 				i += rec_len as usize;
 			}
 			// Write block
+			let blk_off = (off / blk_size as u64) as u32;
 			let blk_off = self.translate_blk_off(blk_off, superblock, io)?.unwrap();
 			write_block(blk_off.get() as _, blk_size, io, &buf)?;
 		} else {
@@ -941,15 +946,15 @@ impl Ext2INode {
 				&mut buf,
 				superblock,
 				entry_inode,
-				rec_len.get(),
-				file_type,
+				rec_len,
+				Some(file_type),
 				name,
 			)?;
 			// Create free entries to cover remaining free space
-			let mut i = rec_len.get() as usize;
+			let mut i = rec_len as usize;
 			while i < buf.len() {
 				let rec_len = min(buf.len() - i, u16::MAX as usize) as u16;
-				Dirent::write_new(&mut buf[i..], superblock, 0, rec_len, file_type, name)?;
+				Dirent::write_new(&mut buf[i..], superblock, 0, rec_len, None, b"")?;
 				i += rec_len as usize;
 			}
 			// Write block

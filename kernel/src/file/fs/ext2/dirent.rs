@@ -58,7 +58,7 @@ pub struct Dirent {
 	/// The inode associated with the entry.
 	pub(super) inode: u32,
 	/// The total size of the entry.
-	rec_len: u16,
+	pub(super) rec_len: u16,
 	/// Name length least-significant bits.
 	name_len: u8,
 	/// Name length most-significant bits or type indicator (if enabled).
@@ -84,7 +84,7 @@ impl Dirent {
 		superblock: &Superblock,
 		entry_inode: u32,
 		rec_len: u16,
-		file_type: FileType,
+		file_type: Option<FileType>,
 		name: &[u8],
 	) -> EResult<()> {
 		// Validation
@@ -141,13 +141,6 @@ impl Dirent {
 		Ok(ent)
 	}
 
-	/// Returns the length of the record in bytes.
-	///
-	/// This value is never zero and always a multiple of [`ALIGN`].
-	pub fn record_len(&self) -> usize {
-		self.rec_len as _
-	}
-
 	/// Returns the length the entry's name.
 	///
 	/// `superblock` is the filesystem's superblock.
@@ -157,6 +150,16 @@ impl Dirent {
 		} else {
 			self.name_len as usize
 		}
+	}
+
+	/// Returns the number of bytes actually used by the entry.
+	pub fn used_space(&self, superblock: &Superblock) -> u16 {
+		(NAME_OFF + self.name_len(superblock)).next_multiple_of(ALIGN) as _
+	}
+
+	/// Tells whether the entry can fit another entry with the given `length` in bytes.
+	pub fn can_fit(&self, length: u16, superblock: &Superblock) -> bool {
+		self.rec_len - self.used_space(superblock) >= length
 	}
 
 	/// Returns the entry's name.
@@ -216,22 +219,19 @@ impl Dirent {
 	}
 
 	/// Sets the file type associated with the entry (if the option is enabled).
-	pub fn set_type(&mut self, superblock: &Superblock, file_type: FileType) {
-		self.file_type =
-			if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE != 0 {
-				match file_type {
-					FileType::Regular => TYPE_INDICATOR_REGULAR,
-					FileType::Directory => TYPE_INDICATOR_DIRECTORY,
-					FileType::CharDevice => TYPE_INDICATOR_CHAR_DEVICE,
-					FileType::BlockDevice => TYPE_INDICATOR_BLOCK_DEVICE,
-					FileType::Fifo => TYPE_INDICATOR_FIFO,
-					FileType::Socket => TYPE_INDICATOR_SOCKET,
-					FileType::Link => TYPE_INDICATOR_SYMLINK,
-				}
-			} else {
-				// If the feature is not enabled, do nothing
-				0
+	pub fn set_type(&mut self, superblock: &Superblock, file_type: Option<FileType>) {
+		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE != 0 {
+			self.file_type = match file_type {
+				None => TYPE_INDICATOR_UNKNOWN,
+				Some(FileType::Regular) => TYPE_INDICATOR_REGULAR,
+				Some(FileType::Directory) => TYPE_INDICATOR_DIRECTORY,
+				Some(FileType::CharDevice) => TYPE_INDICATOR_CHAR_DEVICE,
+				Some(FileType::BlockDevice) => TYPE_INDICATOR_BLOCK_DEVICE,
+				Some(FileType::Fifo) => TYPE_INDICATOR_FIFO,
+				Some(FileType::Socket) => TYPE_INDICATOR_SOCKET,
+				Some(FileType::Link) => TYPE_INDICATOR_SYMLINK,
 			};
+		}
 	}
 
 	/// Tells whether the entry is valid.
