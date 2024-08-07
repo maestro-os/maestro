@@ -559,7 +559,8 @@ impl NodeOps for Ext2NodeOps {
 			if !remove_inode_.is_directory_empty(&superblock, &mut *io)? {
 				return Err(errno!(ENOTEMPTY));
 			}
-			// Decrement links to parent because of `..` being removed
+			// Decrement links because of `.` and `..` entries being removed
+			remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
 			parent.i_links_count = parent.i_links_count.saturating_sub(1);
 		}
 		// Remove the directory entry
