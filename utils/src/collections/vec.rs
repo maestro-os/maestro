@@ -159,7 +159,7 @@ impl<T, const N: usize> TryFrom<[T; N]> for Vec<T> {
 	type Error = AllocError;
 
 	fn try_from(arr: [T; N]) -> Result<Self, Self::Error> {
-		CollectResult::<Self>::from_iter(arr.into_iter()).0
+		CollectResult::<Self>::from_iter(arr).0
 	}
 }
 
@@ -167,7 +167,7 @@ impl<T: Clone> TryFrom<&[T]> for Vec<T> {
 	type Error = AllocError;
 
 	fn try_from(slice: &[T]) -> Result<Self, Self::Error> {
-		CollectResult::<Self>::from_iter(slice.iter()).0
+		CollectResult::<Self>::from_iter(slice).0
 	}
 }
 
