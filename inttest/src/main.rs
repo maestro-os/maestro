@@ -189,7 +189,7 @@ fn main() {
 	println!("[SUCCESS] {success}/{total}");
 	// End marker
 	println!("[END]");
-	if success < TESTS.len() {
+	if success < total {
 		exit(1);
 	}
 }
