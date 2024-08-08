@@ -12,7 +12,12 @@ case $1 in
 		cargo test --lib
 		;;
 	int)
+	  set +e
 		cargo run
+		STATUS=$?
+		set -e
+		fsck.ext2 -fn qemu_disk
+    exit $STATUS
 		;;
 	*)
 		>&2 echo "Invalid tests kind"
