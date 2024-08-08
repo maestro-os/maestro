@@ -195,13 +195,15 @@ pub fn hardlinks() -> TestResult {
 	fs::remove_dir("test_dir")?;
 
 	log!("Create link to file");
-	fs::hard_link("maestro-test", "good_link")?;
-	let inode0 = util::stat("maestro-test")?.st_ino;
+	fs::hard_link("inttest", "good_link")?;
+	log!("Stat original");
+	let inode0 = util::stat("inttest")?.st_ino;
+	log!("Stat link");
 	let inode1 = util::stat("good_link")?.st_ino;
 	test_assert_eq!(inode0, inode1);
 	log!("Remove link to file");
 	fs::remove_file("good_link")?;
-	util::stat("maestro-test")?;
+	util::stat("inttest")?;
 	let res = util::stat("good_link");
 	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::NotFound));
 
@@ -214,7 +216,7 @@ pub fn hardlinks() -> TestResult {
 
 pub fn symlinks() -> TestResult {
 	log!("Create link");
-	unix::fs::symlink("maestro-test", "testlink")?;
+	unix::fs::symlink("inttest", "testlink")?;
 	log!("Cleanup");
 	fs::remove_file("testlink")?;
 
