@@ -44,13 +44,13 @@ pub fn unlinkat(
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(pathname)?;
+	let parent_path = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	let rs = ResolutionSettings {
 		follow_link: false,
 		..rs
 	};
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(pathname)?;
-	let parent_path = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	// AT_EMPTY_PATH is required in case the path has only one component
 	let resolved = at::get_file(
 		&fds.lock(),

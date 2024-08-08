@@ -38,6 +38,10 @@ pub fn unlink(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> ER
 	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Remove the file
+	let rs = ResolutionSettings {
+		follow_link: false,
+		..rs
+	};
 	vfs::remove_file_from_path(&path, &rs)?;
 	Ok(0)
 }
