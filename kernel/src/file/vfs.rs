@@ -216,7 +216,7 @@ pub enum Resolved<'s> {
 /// Arguments:
 /// - `root` is the location of the root directory
 /// - `lookup_dir` is the directory from which the resolution of the target starts
-/// - `access_profile` is the access profile used for resultion
+/// - `access_profile` is the access profile used for resolution
 /// - `symlink_rec` is the number of recursions so far
 ///
 /// Symbolic links are followed recursively, including the last element of the target path.
