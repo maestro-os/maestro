@@ -112,6 +112,8 @@ pub fn directories() -> TestResult {
 	let stat = util::stat("/abc/def/ghi")?;
 	test_assert_eq!(stat.st_nlink, 2);
 	test_assert_eq!(stat.st_mode & 0o7777, 0o755);
+	log!("Cleanup");
+	fs::remove_dir_all("/abc/def")?;
 
 	log!("Create entries");
 	for i in 0..100 {
@@ -221,16 +223,16 @@ pub fn symlinks() -> TestResult {
 	log!("Create link to directory");
 	unix::fs::symlink("target", "link")?;
 	log!("Stat link");
-	test_assert!(fs::metadata("link")?.is_symlink());
+	test_assert!(fs::symlink_metadata("link")?.is_symlink());
 	log!("Stat directory");
-	test_assert!(fs::metadata("link/")?.is_dir());
+	test_assert!(fs::symlink_metadata("link/")?.is_dir());
 
 	log!("Make dangling");
 	fs::remove_dir("target")?;
 	log!("Stat link");
-	test_assert!(fs::metadata("link")?.is_symlink());
+	test_assert!(fs::symlink_metadata("link")?.is_symlink());
 	log!("Stat directory");
-	test_assert!(matches!(fs::metadata("link/"), Err(e) if e.kind() == io::ErrorKind::NotFound));
+	test_assert!(matches!(fs::symlink_metadata("link/"), Err(e) if e.kind() == io::ErrorKind::NotFound));
 	log!("Cleanup");
 	fs::remove_file("link")?;
 

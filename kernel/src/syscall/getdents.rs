@@ -84,7 +84,6 @@ pub fn do_getdents<E: Dirent>(
 		// Iterate over entries and fill the buffer
 		for entry in file.iter_dir_entries(off) {
 			let (entry, next_off) = entry?;
-			off = next_off;
 			// Skip entries whose inode cannot fit in the structure
 			if entry.inode > E::INODE_MAX {
 				continue;
@@ -106,6 +105,7 @@ pub fn do_getdents<E: Dirent>(
 				entry.name.as_ref(),
 			)?;
 			buff_off += len;
+			off = next_off;
 		}
 	}
 	open_file.set_offset(off);
