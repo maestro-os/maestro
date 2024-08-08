@@ -232,7 +232,9 @@ pub fn symlinks() -> TestResult {
 	log!("Stat link");
 	test_assert!(fs::symlink_metadata("link")?.is_symlink());
 	log!("Stat directory");
-	test_assert!(matches!(fs::symlink_metadata("link/"), Err(e) if e.kind() == io::ErrorKind::NotFound));
+	test_assert!(
+		matches!(fs::symlink_metadata("link/"), Err(e) if e.kind() == io::ErrorKind::NotFound)
+	);
 	log!("Cleanup");
 	fs::remove_file("link")?;
 
