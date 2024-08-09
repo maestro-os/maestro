@@ -475,7 +475,7 @@ impl NodeOps for Node {
 	}
 }
 
-/// Operations for [`Node`].
+/// Tmpfs node.
 #[derive(Debug)]
 pub struct TmpFSNodeOps;
 
