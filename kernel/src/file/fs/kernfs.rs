@@ -38,7 +38,7 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
-	ptr::cow::Cow,
+	ptr::{arc::Arc, cow::Cow},
 	vec, DisplayableStr,
 };
 
@@ -50,18 +50,18 @@ pub const ROOT_INODE: INode = 1;
 /// Each element of the inner vector is a slot to store a node. If a slot is `None`, it means it is
 /// free to be used.
 #[derive(Debug)]
-pub struct NodesStorage(Vec<Option<Box<dyn OwnedNode>>>);
+pub struct NodesStorage(Vec<Option<Arc<dyn NodeOps>>>);
 
 impl NodesStorage {
 	/// Creates a new instance with the given root node.
-	pub fn new(root: Box<dyn OwnedNode>) -> AllocResult<Self> {
-		Ok(Self(vec![Some(root)]?))
+	pub fn new<N: 'static + NodeOps>(root: N) -> AllocResult<Self> {
+		Ok(Self(vec![Some(Arc::new(root)? as _)]?))
 	}
 
 	/// Returns an immutable reference to the node with inode `inode`.
 	///
 	/// If the node does not exist, the function returns an error.
-	pub fn get_node(&self, inode: INode) -> EResult<&Box<dyn OwnedNode>> {
+	pub fn get_node(&self, inode: INode) -> EResult<&Arc<dyn NodeOps>> {
 		let index = (inode as usize)
 			.checked_sub(1)
 			.ok_or_else(|| errno!(ENOENT))?;
@@ -74,12 +74,12 @@ impl NodesStorage {
 	/// Returns a free slot for a new node.
 	///
 	/// If no slot is available, the function allocates a new one.
-	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<Box<dyn OwnedNode>>)> {
+	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<Arc<dyn NodeOps>>)> {
 		let slot = self
 			.0
 			.iter_mut()
 			.enumerate()
-			.find(|(_, s)| s.is_some())
+			.find(|(_, s)| s.is_none())
 			.map(|(i, _)| i);
 		let index = match slot {
 			// Use an existing slot
@@ -103,20 +103,9 @@ impl NodesStorage {
 	/// so results in a memory leak.
 	///
 	/// If the node doesn't exist, the function does nothing.
-	pub fn remove_node(&mut self, inode: INode) -> Option<Box<dyn OwnedNode>> {
+	pub fn remove_node(&mut self, inode: INode) -> Option<Arc<dyn NodeOps>> {
 		self.0.get_mut(inode as usize - 1).and_then(Option::take)
 	}
-}
-
-/// A node that is owned by the kernfs, or another entity (such as another node).
-///
-/// An `OwnedNode` *may* or *may not* have an associated inode.
-pub trait OwnedNode: NodeOps {
-	/// Returns the operations handle for the node to be used outside the kernfs.
-	///
-	/// This handle can carry additional information, but it is recommended to use a ZST if
-	/// possible so that no memory allocation has to be made.
-	fn detached(&self) -> AllocResult<Box<dyn NodeOps>>;
 }
 
 /// Writer for [`format_content_args`].

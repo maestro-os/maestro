@@ -290,7 +290,7 @@ fn resolve_path_impl<'p>(
 		match subfile.stat.file_type {
 			FileType::Directory => {
 				drop(subfile);
-				lookup_dir = subfile_mutex
+				lookup_dir = subfile_mutex;
 			}
 			// Follow link, if enabled
 			FileType::Link => {

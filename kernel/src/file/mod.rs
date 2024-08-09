@@ -479,7 +479,7 @@ impl File {
 				inode,
 				ops,
 			} => ops.truncate_content(inode, fs, size),
-			IoSource::IO(_) => Err(errno!(EINVAL)),
+			IoSource::IO(_) => Ok(()),
 		})
 	}
 

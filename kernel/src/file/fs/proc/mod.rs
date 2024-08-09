@@ -31,8 +31,8 @@ use crate::{
 	file::{
 		fs::{
 			kernfs::{
-				box_wrap, entry_init_default, entry_init_from, OwnedNode, StaticDir,
-				StaticEntryBuilder, StaticLink,
+				box_wrap, entry_init_default, entry_init_from, StaticDir, StaticEntryBuilder,
+				StaticLink,
 			},
 			proc::proc_dir::environ::Environ,
 			Statfs,
@@ -53,7 +53,7 @@ use uptime::Uptime;
 use utils::{
 	boxed::Box,
 	errno,
-	errno::{AllocResult, EResult},
+	errno::EResult,
 	format,
 	io::IO,
 	lock::Mutex,
@@ -137,12 +137,6 @@ impl RootDir {
 		],
 		data: (),
 	};
-}
-
-impl OwnedNode for RootDir {
-	fn detached(&self) -> AllocResult<Box<dyn NodeOps>> {
-		Ok(Box::new(self.clone())? as _)
-	}
 }
 
 impl NodeOps for RootDir {
