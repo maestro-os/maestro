@@ -37,7 +37,6 @@ use crate::{
 	},
 };
 use core::{
-	alloc::AllocError,
 	cmp::{max, min},
 	ffi::c_void,
 	iter,
@@ -51,8 +50,7 @@ use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
 	errno::{CollectResult, EResult},
-	io::IO,
-	vec, TryClone,
+	TryClone,
 };
 
 /// Used to define the end of the entries list.
@@ -282,11 +280,7 @@ fn read_exec_file(file: &mut File, ap: &AccessProfile) -> EResult<Vec<u8>> {
 	if !ap.can_execute_file(file) {
 		return Err(errno!(ENOEXEC));
 	}
-
-	let len = file.get_size().try_into().map_err(|_| AllocError)?;
-	let mut image = vec![0u8; len]?;
-	file.read(0, image.as_mut_slice())?;
-	Ok(image)
+	file.read_all()
 }
 
 /// The program executor for ELF files.

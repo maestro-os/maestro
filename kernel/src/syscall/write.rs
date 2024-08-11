@@ -30,8 +30,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	interrupt::cli,
-	io,
-	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
@@ -39,7 +37,6 @@ use utils::{
 
 pub fn write(
 	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
-	regs: &Regs,
 	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
@@ -54,39 +51,22 @@ pub fn write(
 	if file_type == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	loop {
-		super::util::handle_signal(regs);
-		{
-			// TODO determine why removing this causes a deadlock
-			cli();
-			// TODO find a way to avoid allocating here
-			let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
-			// Write file
-			let mut open_file = open_file.lock();
-			let flags = open_file.get_flags();
-			let len = match open_file.write(0, &buf_slice) {
-				Ok(len) => len,
-				Err(e) => {
-					// If writing to a broken pipe, kill with SIGPIPE
-					if e.as_int() == errno::EPIPE {
-						let mut proc = proc.lock();
-						proc.kill_now(&Signal::SIGPIPE);
-					}
-					return Err(e);
-				}
-			};
-			if len > 0 {
-				return Ok(len as _);
+	// TODO determine why removing this causes a deadlock
+	cli();
+	// TODO find a way to avoid allocating here
+	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
+	// Write file
+	let mut open_file = open_file.lock();
+	let len = match open_file.write(0, &buf_slice) {
+		Ok(len) => len,
+		Err(e) => {
+			// If writing to a broken pipe, kill with SIGPIPE
+			if e.as_int() == errno::EPIPE {
+				let mut proc = proc.lock();
+				proc.kill_now(Signal::SIGPIPE);
 			}
-			if flags & O_NONBLOCK != 0 {
-				// The file descriptor is non-blocking
-				return Err(errno!(EAGAIN));
-			}
-			// Block on file
-			let mut proc = proc.lock();
-			open_file.add_waiting_process(&mut proc, io::POLLOUT | io::POLLERR)?;
+			return Err(e);
 		}
-		// Make current process sleep
-		scheduler::end_tick();
-	}
+	};
+	Ok(len as _)
 }

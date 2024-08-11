@@ -28,8 +28,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	interrupt::cli,
-	io,
-	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	vec,
@@ -39,8 +37,6 @@ use utils::{
 
 pub fn read(
 	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
-	regs: &Regs,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
@@ -54,32 +50,14 @@ pub fn read(
 	if file_type == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	loop {
-		super::util::handle_signal(regs);
-		// Use a scope to drop mutex guards
-		{
-			// TODO determine why removing this causes a deadlock
-			cli();
-			// TODO perf: a buffer is not necessarily required
-			let mut buffer = vec![0u8; count]?;
-			// Read file
-			let mut open_file = open_file.lock();
-			let flags = open_file.get_flags();
-			let (len, eof) = open_file.read(0, &mut buffer)?;
-			// Write back
-			buf.copy_to_user(0, &buffer[..(len as usize)])?;
-			if len == 0 && eof {
-				return Ok(0);
-			}
-			if len > 0 || flags & O_NONBLOCK != 0 {
-				// The file descriptor is non-blocking
-				return Ok(len as _);
-			}
-			// Block on file
-			let mut proc = proc.lock();
-			open_file.add_waiting_process(&mut proc, io::POLLIN | io::POLLERR)?;
-		}
-		// Make current process sleep
-		scheduler::end_tick();
-	}
+	// TODO determine why removing this causes a deadlock
+	cli();
+	// TODO perf: a buffer is not necessarily required
+	let mut buffer = vec![0u8; count]?;
+	// Read file
+	let mut open_file = open_file.lock();
+	let len = open_file.read(0, &mut buffer)?;
+	// Write back
+	buf.copy_to_user(0, &buffer[..(len as usize)])?;
+	Ok(len as _)
 }

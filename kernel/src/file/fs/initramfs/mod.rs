@@ -26,7 +26,7 @@ use crate::{
 	file::{path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType, Stat},
 };
 use cpio::CPIOParser;
-use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
+use utils::{errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 // TODO clean this function
 /// Updates the current parent used for the unpacking operation.

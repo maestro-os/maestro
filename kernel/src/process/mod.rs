@@ -321,22 +321,22 @@ pub(crate) fn init() -> EResult<()> {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
 			// SIMD Floating-Point Exception
-			0x00 | 0x10 | 0x13 => curr_proc.kill_now(&Signal::SIGFPE),
+			0x00 | 0x10 | 0x13 => curr_proc.kill_now(Signal::SIGFPE),
 			// Breakpoint
-			0x03 => curr_proc.kill_now(&Signal::SIGTRAP),
+			0x03 => curr_proc.kill_now(Signal::SIGTRAP),
 			// Invalid Opcode
-			0x06 => curr_proc.kill_now(&Signal::SIGILL),
+			0x06 => curr_proc.kill_now(Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
 				let inst_prefix = unsafe { *(regs.eip.0 as *const u8) };
 				if inst_prefix == HLT_INSTRUCTION {
 					curr_proc.exit(regs.eax.0 as _);
 				} else {
-					curr_proc.kill_now(&Signal::SIGSEGV);
+					curr_proc.kill_now(Signal::SIGSEGV);
 				}
 			}
 			// Alignment Check
-			0x11 => curr_proc.kill_now(&Signal::SIGBUS),
+			0x11 => curr_proc.kill_now(Signal::SIGBUS),
 			_ => {}
 		}
 		if matches!(curr_proc.get_state(), State::Running) {
@@ -378,7 +378,7 @@ pub(crate) fn init() -> EResult<()> {
 					return CallbackResult::Panic;
 				}
 			} else {
-				curr_proc.kill_now(&Signal::SIGSEGV);
+				curr_proc.kill_now(Signal::SIGSEGV);
 			}
 		}
 		if matches!(curr_proc.get_state(), State::Running) {
@@ -663,7 +663,7 @@ impl Process {
 		let parent = self.get_parent().as_ref().and_then(Weak::upgrade);
 		if let Some(parent) = parent {
 			let mut parent = parent.lock();
-			parent.kill(&Signal::SIGCHLD);
+			parent.kill(Signal::SIGCHLD);
 			parent.wake();
 		}
 	}
@@ -756,7 +756,7 @@ impl Process {
 				let signal_handlers = self.signal_handlers.clone();
 				let signal_handlers = signal_handlers.lock();
 				let sig_handler = &signal_handlers[sig.get_id() as usize];
-				sig_handler.prepare_execution(&mut *self, &sig, false);
+				sig_handler.prepare_execution(&mut *self, sig, false);
 				// If the process has been killed by the signal, abort switching
 				if !matches!(self.state, State::Running) {
 					return;
@@ -914,7 +914,7 @@ impl Process {
 	///
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
-	pub fn kill(&mut self, sig: &Signal) {
+	pub fn kill(&mut self, sig: Signal) {
 		// Ignore blocked signals
 		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
 			return;
@@ -934,11 +934,12 @@ impl Process {
 	///
 	/// This is useful for cases where the execution of the program **MUST NOT** resume before
 	/// handling the signal (such as hardware faults).
-	pub fn kill_now(&mut self, sig: &Signal) {
+	pub fn kill_now(&mut self, sig: Signal) {
 		self.kill(sig);
 		let signal_handlers = self.signal_handlers.clone();
 		let signal_handlers = signal_handlers.lock();
-		signal_handlers[sig.get_id() as usize].prepare_execution(self, sig, false);
+		let id = sig.get_id();
+		signal_handlers[id as usize].prepare_execution(self, sig, false);
 	}
 
 	/// Kills every process in the process group.
@@ -950,13 +951,13 @@ impl Process {
 			.filter_map(|pid| Process::get_by_pid(*pid))
 			.for_each(|proc_mutex| {
 				let mut proc = proc_mutex.lock();
-				proc.kill(&sig);
+				proc.kill(sig);
 			});
-		self.kill(&sig);
+		self.kill(sig);
 	}
 
 	/// Tells whether the given signal is blocked by the process.
-	pub fn is_signal_blocked(&self, sig: &Signal) -> bool {
+	pub fn is_signal_blocked(&self, sig: Signal) -> bool {
 		self.sigmask.is_set(sig.get_id() as _)
 	}
 

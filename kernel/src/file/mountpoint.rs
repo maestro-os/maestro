@@ -152,15 +152,15 @@ fn load_fs(
 ) -> EResult<Arc<dyn Filesystem>> {
 	let (io, fs_type) = match &source {
 		MountSource::Device(dev_id) => {
-			let io_mutex = device::get(dev_id).ok_or_else(|| errno!(ENODEV))?;
+			let dev = device::get(dev_id).ok_or_else(|| errno!(ENODEV))?;
 			let fs_type = match fs_type {
 				Some(f) => f,
 				None => {
-					let mut io = io_mutex.lock();
-					fs::detect(&mut *io)?
+					let mut dev = dev.lock();
+					fs::detect(dev.get_io())?
 				}
 			};
-			(Some(io_mutex as _), fs_type)
+			(Some(dev as _), fs_type)
 		}
 		MountSource::NoDev(name) => {
 			let fs_type = match fs_type {

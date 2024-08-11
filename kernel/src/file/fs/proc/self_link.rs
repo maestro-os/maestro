@@ -47,7 +47,7 @@ impl NodeOps for SelfNode {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	) -> EResult<u64> {
 		let pid = Process::current().lock().get_pid();
 		format_content!(off, buf, "{pid}")
 	}

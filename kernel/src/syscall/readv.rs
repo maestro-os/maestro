@@ -37,8 +37,6 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{EResult, Errno},
-	io,
-	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	vec,
@@ -67,12 +65,12 @@ fn read(iov: &SyscallSlice<IOVec>, iovcnt: usize, open_file: &mut OpenFile) -> E
 		// TODO perf: do not use a buffer
 		let mut buffer = vec![0u8; l]?;
 		// FIXME: incorrect. should reuse the same buffer if not full
-		let (len, eof) = open_file.read(0, &mut buffer)?;
-		ptr.copy_to_user(off, &buffer[..(len as usize)])?;
-		off += len as usize;
-		if eof {
+		let len = open_file.read(0, &mut buffer)?;
+		if len == 0 {
 			break;
 		}
+		ptr.copy_to_user(off, &buffer[..(len as usize)])?;
+		off += len as usize;
 	}
 	Ok(off as _)
 }
@@ -91,7 +89,6 @@ pub fn do_readv(
 	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
@@ -113,39 +110,26 @@ pub fn do_readv(
 	if file_type == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	loop {
-		// TODO super::util::signal_check(regs);
-		{
-			let mut open_file = open_file_mutex.lock();
-			let flags = open_file.get_flags();
-			// Change the offset temporarily
-			let prev_off = open_file.get_offset();
-			open_file.set_offset(start_off);
-			let len = read(&iov, iovcnt as _, &mut open_file)?;
-			// Restore previous offset
-			if !update_off {
-				open_file.set_offset(prev_off);
-			}
-			if len > 0 {
-				return Ok(len as _);
-			}
-			if flags & O_NONBLOCK != 0 {
-				// The file descriptor is non-blocking
-				return Err(errno!(EAGAIN));
-			}
-			// Block on file
-			let mut proc = proc.lock();
-			open_file.add_waiting_process(&mut proc, io::POLLIN | io::POLLERR)?;
-		}
-		// Make current process sleep
-		scheduler::end_tick();
+	let mut open_file = open_file_mutex.lock();
+	let flags = open_file.get_flags();
+	// Change the offset temporarily
+	let prev_off = open_file.get_offset();
+	open_file.set_offset(start_off);
+	let len = read(&iov, iovcnt as _, &mut open_file)?;
+	// Restore previous offset
+	if !update_off {
+		open_file.set_offset(prev_off);
 	}
+	if len == 0 && flags & O_NONBLOCK != 0 {
+		// The file descriptor is non-blocking
+		return Err(errno!(EAGAIN));
+	}
+	Ok(len as _)
 }
 
 pub fn readv(
 	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_readv(fd, iov, iovcnt, None, None, proc, fds)
+	do_readv(fd, iov, iovcnt, None, None, fds)
 }

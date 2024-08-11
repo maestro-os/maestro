@@ -30,7 +30,6 @@ use core::ffi::{c_uint, c_ulong};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
@@ -65,7 +64,10 @@ pub fn _llseek(
 			.checked_add(off)
 			.ok_or_else(|| errno!(EOVERFLOW))?,
 		SEEK_END => open_file
-			.get_size()
+			.get_file()
+			.lock()
+			.stat
+			.size
 			.checked_add(off)
 			.ok_or_else(|| errno!(EOVERFLOW))?,
 		_ => return Err(errno!(EINVAL)),

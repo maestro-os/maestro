@@ -47,7 +47,7 @@ impl NodeOps for MemInfo {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	) -> EResult<u64> {
 		let mem_info = memory::stats::MEM_INFO.lock();
 		format_content!(off, buf, "{}", *mem_info)
 	}

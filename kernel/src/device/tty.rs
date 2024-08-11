@@ -20,7 +20,7 @@
 //! communicate with it.
 
 use crate::{
-	device::DeviceHandle,
+	device::DeviceIO,
 	process::{
 		mem_space::copy::SyscallPtr,
 		pid::Pid,
@@ -30,8 +30,8 @@ use crate::{
 	syscall::{ioctl, FromSyscallArg},
 	tty::{termios, termios::Termios, TTYHandle, WinSize, TTY},
 };
-use core::ffi::c_void;
-use utils::{errno, errno::EResult, io, io::IO, lock::IntMutex, ptr::arc::Arc};
+use core::{ffi::c_void, num::NonZeroU64};
+use utils::{errno, errno::EResult, lock::IntMutex, ptr::arc::Arc};
 
 /// A TTY device's handle.
 pub struct TTYDeviceHandle {
@@ -77,7 +77,7 @@ impl TTYDeviceHandle {
 		let signal_handlers = proc.signal_handlers.clone();
 		let signal_handlers = signal_handlers.lock();
 		let handler = &signal_handlers[Signal::SIGTTIN.get_id() as usize];
-		if proc.is_signal_blocked(&Signal::SIGTTIN)
+		if proc.is_signal_blocked(Signal::SIGTTIN)
 			|| matches!(handler, SignalHandler::Ignore)
 			|| proc.is_in_orphan_process_group()
 		{
@@ -104,7 +104,7 @@ impl TTYDeviceHandle {
 		let signal_handlers = proc.signal_handlers.clone();
 		let signal_handlers = signal_handlers.lock();
 		let handler = &signal_handlers[Signal::SIGTTOU.get_id() as usize];
-		if proc.is_signal_blocked(&Signal::SIGTTOU) || matches!(handler, SignalHandler::Ignore) {
+		if proc.is_signal_blocked(Signal::SIGTTOU) || matches!(handler, SignalHandler::Ignore) {
 			return Ok(());
 		}
 		if proc.is_in_orphan_process_group() {
@@ -115,7 +115,32 @@ impl TTYDeviceHandle {
 	}
 }
 
-impl DeviceHandle for TTYDeviceHandle {
+impl DeviceIO for TTYDeviceHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		1.try_into().unwrap()
+	}
+
+	fn blocks_count(&self) -> u64 {
+		0
+	}
+
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<u64> {
+		let (proc_mutex, tty_mutex) = self.get_tty()?;
+		let mut proc = proc_mutex.lock();
+		let mut tty = tty_mutex.lock();
+		self.check_sigttin(&mut proc, &tty)?;
+		tty.read(buff)
+	}
+
+	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
+		let (proc_mutex, tty_mutex) = self.get_tty()?;
+		let mut proc = proc_mutex.lock();
+		let mut tty = tty_mutex.lock();
+		self.check_sigttou(&mut proc, &tty)?;
+		tty.write(buff);
+		Ok(buff.len() as _)
+	}
+
 	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
 		let mut proc = proc_mutex.lock();
@@ -181,60 +206,5 @@ impl DeviceHandle for TTYDeviceHandle {
 
 			_ => Err(errno!(EINVAL)),
 		}
-	}
-
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());
-		let mut tty = tty_mutex.lock();
-		tty.add_waiting_process(proc, mask)
-	}
-}
-
-impl IO for TTYDeviceHandle {
-	fn get_size(&self) -> u64 {
-		if let Ok((_, tty_mutex)) = self.get_tty() {
-			let tty = tty_mutex.lock();
-			tty.get_available_size() as _
-		} else {
-			0
-		}
-	}
-
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let mut proc = proc_mutex.lock();
-		let mut tty = tty_mutex.lock();
-
-		self.check_sigttin(&mut proc, &tty)?;
-
-		let (len, eof) = tty.read(buff);
-		Ok((len as _, eof))
-	}
-
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
-		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let mut proc = proc_mutex.lock();
-		let mut tty = tty_mutex.lock();
-
-		self.check_sigttou(&mut proc, &tty)?;
-
-		tty.write(buff);
-		Ok(buff.len() as _)
-	}
-
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		let (_, tty_mutex) = self.get_tty()?;
-		let tty = tty_mutex.lock();
-
-		let mut result = 0;
-		if mask & io::POLLIN != 0 && tty.get_available_size() > 0 {
-			result |= io::POLLIN;
-		}
-		if mask & io::POLLOUT != 0 {
-			result |= io::POLLOUT;
-		}
-		// TODO Implement every events
-
-		Ok(result)
 	}
 }

@@ -97,7 +97,7 @@ mod open;
 mod openat;
 mod pipe;
 mod pipe2;
-mod poll;
+pub mod poll;
 mod preadv;
 mod preadv2;
 mod prlimit64;
@@ -965,7 +965,7 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 				pid = proc.get_pid()
 			);
 			// SIGSYS cannot be caught, thus the process will be terminated
-			proc.kill_now(&Signal::SIGSYS);
+			proc.kill_now(Signal::SIGSYS);
 		}
 		crate::enter_loop();
 	};

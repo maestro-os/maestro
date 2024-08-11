@@ -38,8 +38,6 @@ use core::{cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io,
-	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
@@ -106,43 +104,26 @@ pub fn do_writev(
 	if file_type == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	loop {
-		// TODO super::util::signal_check(regs);
-		{
-			let mut open_file = open_file_mutex.lock();
-			let flags = open_file.get_flags();
-			// Change the offset temporarily
-			let prev_off = open_file.get_offset();
-			open_file.set_offset(start_off);
-			let len = match write(&iov, iovcnt as _, &mut open_file) {
-				Ok(len) => len,
-				Err(e) => {
-					// If writing to a broken pipe, kill with SIGPIPE
-					if e.as_int() == errno::EPIPE {
-						let mut proc = proc.lock();
-						proc.kill_now(&Signal::SIGPIPE);
-					}
-					return Err(e);
-				}
-			};
-			// Restore previous offset
-			if !update_off {
-				open_file.set_offset(prev_off);
+	let mut open_file = open_file_mutex.lock();
+	// Change the offset temporarily
+	let prev_off = open_file.get_offset();
+	open_file.set_offset(start_off);
+	let len = match write(&iov, iovcnt as _, &mut open_file) {
+		Ok(len) => len,
+		Err(e) => {
+			// If writing to a broken pipe, kill with SIGPIPE
+			if e.as_int() == errno::EPIPE {
+				let mut proc = proc.lock();
+				proc.kill_now(Signal::SIGPIPE);
 			}
-			if len > 0 {
-				return Ok(len as _);
-			}
-			if flags & O_NONBLOCK != 0 {
-				// The file descriptor is non-blocking
-				return Err(errno!(EAGAIN));
-			}
-			// Block on file
-			let mut proc = proc.lock();
-			open_file.add_waiting_process(&mut proc, io::POLLOUT | io::POLLERR)?;
+			return Err(e);
 		}
-		// Make current process sleep
-		scheduler::end_tick();
+	};
+	// Restore previous offset
+	if !update_off {
+		open_file.set_offset(prev_off);
 	}
+	Ok(len as _)
 }
 
 pub fn writev(

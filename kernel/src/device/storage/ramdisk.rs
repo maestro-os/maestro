@@ -19,23 +19,20 @@
 //! A ramdisk is a virtual storage device stored on the RAM. From the point of
 //! view of the userspace, it works exactly the same.
 //!
-//! Ramdisks are lazily allocated so they do not use much memory as long as they
+//! Ramdisks are lazily allocated, so they do not use much memory as long as they
 //! are not used.
 
-use super::StorageInterface;
 use crate::{
 	device,
-	device::{id, Device, DeviceHandle, DeviceID, DeviceType},
+	device::{id, Device, DeviceID, DeviceIO, DeviceType},
 	file::path::PathBuf,
-	syscall::ioctl,
 };
-use core::{ffi::c_void, mem::ManuallyDrop, num::NonZeroU64};
+use core::{mem::ManuallyDrop, num::NonZeroU64};
 use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
 	format,
-	io::IO,
 };
 
 /// The ramdisks' major number.
@@ -47,9 +44,9 @@ const RAM_DISK_SIZE: usize = 4 * 1024 * 1024;
 
 // TODO Add a mechanism to free when cleared?
 
-/// Structure representing a ram disk.
+/// A disk, on RAM.
 struct RAMDisk {
-	/// The ram's data.
+	/// The ramdisk's data.
 	data: Vec<u8>,
 }
 
@@ -67,23 +64,24 @@ impl RAMDisk {
 	}
 }
 
-impl StorageInterface for RAMDisk {
-	fn get_block_size(&self) -> NonZeroU64 {
+impl DeviceIO for RAMDisk {
+	fn block_size(&self) -> NonZeroU64 {
 		512.try_into().unwrap()
 	}
 
-	fn get_blocks_count(&self) -> u64 {
-		(RAM_DISK_SIZE as u64) / self.get_block_size().get()
+	fn blocks_count(&self) -> u64 {
+		(RAM_DISK_SIZE as u64) / self.block_size().get()
 	}
 
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> EResult<()> {
-		let block_size = self.get_block_size().get();
-		let blocks_count = self.get_blocks_count();
-		if offset > blocks_count || offset + size > blocks_count {
+	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<()> {
+		let block_size = self.block_size().get();
+		let blocks_count = self.blocks_count();
+		let size = buf.len() as u64 / block_size;
+		if off > blocks_count || off + size > blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
-		let off = offset * block_size;
+		let off = off * block_size;
 		for i in 0..size {
 			for j in 0..block_size {
 				let buf_index = (i * block_size + j) as usize;
@@ -96,16 +94,17 @@ impl StorageInterface for RAMDisk {
 		Ok(())
 	}
 
-	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> EResult<()> {
-		let block_size = self.get_block_size().get();
-		let blocks_count = self.get_blocks_count();
-		if offset > blocks_count || offset + size > blocks_count {
+	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<()> {
+		let block_size = self.block_size().get();
+		let blocks_count = self.blocks_count();
+		let size = buf.len() as u64 / block_size;
+		if off > blocks_count || off + size > blocks_count {
 			return Err(errno!(EINVAL));
 		}
 
 		self.allocate()?;
 
-		let off = offset * block_size;
+		let off = off * block_size;
 		for i in 0..size {
 			for j in 0..block_size {
 				let buf_index = (i * block_size + j) as usize;
@@ -134,28 +133,21 @@ impl RAMDiskHandle {
 	}
 }
 
-impl DeviceHandle for RAMDiskHandle {
-	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
-		// TODO
-		Err(errno!(EINVAL))
-	}
-}
-
-impl IO for RAMDiskHandle {
-	fn get_size(&self) -> u64 {
-		RAM_DISK_SIZE as _
+impl DeviceIO for RAMDiskHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		1.try_into().unwrap()
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+	fn blocks_count(&self) -> u64 {
+		self.disk.data.len() as _
+	}
+
+	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<u64> {
 		self.disk.read_bytes(buff, offset)
 	}
 
 	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
 		self.disk.write_bytes(buff, offset)
-	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Ok(0)
 	}
 }
 

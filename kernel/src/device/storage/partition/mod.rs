@@ -22,7 +22,7 @@
 mod gpt;
 mod mbr;
 
-use super::StorageInterface;
+use crate::device::DeviceIO;
 use gpt::Gpt;
 use mbr::MbrTable;
 use utils::{boxed::Box, collections::vec::Vec, errno::EResult};
@@ -64,7 +64,7 @@ pub trait Table {
 	///
 	/// If the partition table isn't present on the storage interface, the
 	/// function returns `None`.
-	fn read(storage: &mut dyn StorageInterface) -> EResult<Option<Self>>
+	fn read(storage: &mut dyn DeviceIO) -> EResult<Option<Self>>
 	where
 		Self: Sized;
 
@@ -75,13 +75,13 @@ pub trait Table {
 	///
 	/// `storage` is the storage interface on which the partitions are to be
 	/// read.
-	fn get_partitions(&self, storage: &mut dyn StorageInterface) -> EResult<Vec<Partition>>;
+	fn get_partitions(&self, storage: &mut dyn DeviceIO) -> EResult<Vec<Partition>>;
 }
 
 /// Reads the list of partitions from the given storage interface `storage`.
 ///
 /// If no partitions table is present, the function returns `None`.
-pub fn read(storage: &mut dyn StorageInterface) -> EResult<Option<Box<dyn Table>>> {
+pub fn read(storage: &mut dyn DeviceIO) -> EResult<Option<Box<dyn Table>>> {
 	// Try GPT
 	if let Some(table) = Gpt::read(storage)? {
 		return Ok(Some(Box::new(table)?));

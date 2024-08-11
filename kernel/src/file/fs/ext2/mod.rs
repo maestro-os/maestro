@@ -48,6 +48,7 @@ mod dirent;
 mod inode;
 
 use crate::{
+	device::DeviceIO,
 	file::{
 		fs::{downcast_fs, Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
 		path::PathBuf,
@@ -61,17 +62,13 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	intrinsics::unlikely,
-	mem::{size_of, MaybeUninit},
-	slice,
 };
 use inode::Ext2INode;
 use macros::AnyRepr;
 use utils::{
 	boxed::Box,
-	bytes::{as_bytes, AnyRepr},
 	errno,
 	errno::EResult,
-	io::IO,
 	lock::Mutex,
 	math,
 	ptr::{arc::Arc, cow::Cow},
@@ -150,33 +147,6 @@ const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
-/// Reads an object of the given type on the given device.
-///
-/// Arguments:
-/// - `offset` is the offset in bytes on the device.
-/// - `io` is the I/O interface of the device.
-fn read<T: AnyRepr>(offset: u64, io: &mut dyn IO) -> EResult<T> {
-	unsafe {
-		let mut obj = MaybeUninit::<T>::uninit();
-		let ptr = obj.as_mut_ptr() as *mut u8;
-		let buf = slice::from_raw_parts_mut(ptr, size_of::<T>());
-		io.read(offset, buf)?;
-		Ok(obj.assume_init())
-	}
-}
-
-/// Writes an object of the given type on the given device.
-///
-/// Arguments:
-/// - `obj` is the object to write.
-/// - `offset` is the offset in bytes on the device.
-/// - `io` is the I/O interface of the device.
-fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
-	let buffer = as_bytes(obj);
-	io.write(offset, buffer)?;
-	Ok(())
-}
-
 /// Reads the `off`th block on the given device and writes the data onto the
 /// given buffer.
 ///
@@ -188,7 +158,7 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn read_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
+fn read_block(off: u32, blk_size: u32, io: &mut dyn DeviceIO, buf: &mut [u8]) -> EResult<()> {
 	io.read(off as u64 * blk_size as u64, buf)?;
 	Ok(())
 }
@@ -204,7 +174,7 @@ fn read_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResu
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn write_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
+fn write_block(off: u32, blk_size: u32, io: &mut dyn DeviceIO, buf: &[u8]) -> EResult<()> {
 	io.write(off as u64 * blk_size as u64, buf)?;
 	Ok(())
 }
@@ -277,7 +247,7 @@ impl NodeOps for Ext2NodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	) -> EResult<u64> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
@@ -287,11 +257,7 @@ impl NodeOps for Ext2NodeOps {
 		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
 		match inode_.get_type() {
 			FileType::Regular => inode_.read_content(off, buf, &superblock, &mut *io),
-			FileType::Link => {
-				let len = inode_.read_link(&superblock, &mut *io, off, buf)?;
-				let eof = len >= inode_.get_size(&superblock);
-				Ok((len, eof))
-			}
+			FileType::Link => inode_.read_link(&superblock, &mut *io, off, buf),
 			_ => Err(errno!(EINVAL)),
 		}
 	}
@@ -684,7 +650,7 @@ pub struct Superblock {
 
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
-	pub fn read(io: &mut dyn IO) -> EResult<Self> {
+	fn read(io: &mut dyn DeviceIO) -> EResult<Self> {
 		read::<Self>(SUPERBLOCK_OFFSET, io)
 	}
 
@@ -765,7 +731,7 @@ impl Superblock {
 	/// - `io` is the I/O interface.
 	/// - `start` is the starting block.
 	/// - `size` is the number of entries.
-	fn search_bitmap(&self, io: &mut dyn IO, start: u32, size: u32) -> EResult<Option<u32>> {
+	fn search_bitmap(&self, io: &mut dyn DeviceIO, start: u32, size: u32) -> EResult<Option<u32>> {
 		let blk_size = self.get_block_size();
 		let mut buff = vec![0; blk_size as _]?;
 		let mut i = 0;
@@ -793,7 +759,7 @@ impl Superblock {
 	/// - `val` is the value to set the entry to.
 	///
 	/// The function returns the previous value of the entry.
-	fn set_bitmap(&self, io: &mut dyn IO, start: u32, i: u32, val: bool) -> EResult<bool> {
+	fn set_bitmap(&self, io: &mut dyn DeviceIO, start: u32, i: u32, val: bool) -> EResult<bool> {
 		let blk_size = self.get_block_size();
 		let mut buff = vec![0; blk_size as _]?;
 
@@ -818,7 +784,7 @@ impl Superblock {
 	/// Returns the id of a free inode in the filesystem.
 	///
 	/// `io` is the I/O interface.
-	pub fn get_free_inode(&self, io: &mut dyn IO) -> EResult<u32> {
+	pub fn get_free_inode(&self, io: &mut dyn DeviceIO) -> EResult<u32> {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, self, io)?;
 			if bgd.bg_free_inodes_count > 0 {
@@ -843,7 +809,7 @@ impl Superblock {
 	/// If the inode is already marked as used, the behaviour is undefined.
 	pub fn mark_inode_used(
 		&mut self,
-		io: &mut dyn IO,
+		io: &mut dyn DeviceIO,
 		inode: u32,
 		directory: bool,
 	) -> EResult<()> {
@@ -879,7 +845,12 @@ impl Superblock {
 	/// If `inode` is zero, the function does nothing.
 	///
 	/// If the inode is already marked as free, the behaviour is undefined.
-	pub fn free_inode(&mut self, io: &mut dyn IO, inode: u32, directory: bool) -> EResult<()> {
+	pub fn free_inode(
+		&mut self,
+		io: &mut dyn DeviceIO,
+		inode: u32,
+		directory: bool,
+	) -> EResult<()> {
 		if inode == 0 {
 			return Ok(());
 		}
@@ -905,7 +876,7 @@ impl Superblock {
 	/// Returns the id of a free block in the filesystem.
 	///
 	/// `io` is the I/O interface.
-	pub fn get_free_block(&self, io: &mut dyn IO) -> EResult<u32> {
+	pub fn get_free_block(&self, io: &mut dyn DeviceIO) -> EResult<u32> {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, self, io)?;
 			if bgd.bg_free_blocks_count > 0 {
@@ -932,7 +903,7 @@ impl Superblock {
 	/// - `blk` is the block number.
 	///
 	/// If `blk` is zero, the function does nothing.
-	pub fn mark_block_used(&mut self, io: &mut dyn IO, blk: u32) -> EResult<()> {
+	pub fn mark_block_used(&mut self, io: &mut dyn DeviceIO, blk: u32) -> EResult<()> {
 		if blk == 0 {
 			return Ok(());
 		}
@@ -962,7 +933,7 @@ impl Superblock {
 	/// - `blk` is the block number.
 	///
 	/// If `blk` is zero, the function does nothing.
-	pub fn free_block(&mut self, io: &mut dyn IO, blk: u32) -> EResult<()> {
+	pub fn free_block(&mut self, io: &mut dyn DeviceIO, blk: u32) -> EResult<()> {
 		if blk == 0 {
 			return Ok(());
 		}
@@ -986,7 +957,7 @@ impl Superblock {
 	}
 
 	/// Writes the superblock on the device.
-	pub fn write(&self, io: &mut dyn IO) -> EResult<()> {
+	pub fn write(&self, io: &mut dyn DeviceIO) -> EResult<()> {
 		write::<Self>(self, SUPERBLOCK_OFFSET, io)
 	}
 }
@@ -994,7 +965,7 @@ impl Superblock {
 /// An instance of the ext2 filesystem.
 struct Ext2Fs {
 	/// The I/O interface to the device.
-	io: Arc<Mutex<dyn IO>>,
+	io: Arc<Mutex<dyn DeviceIO>>,
 	/// The filesystem's superblock.
 	superblock: Mutex<Superblock>,
 	/// Tells whether the filesystem is mounted in read-only.
@@ -1013,7 +984,7 @@ impl Ext2Fs {
 	/// - `readonly` tells whether the filesystem is mounted in read-only.
 	fn new(
 		mut superblock: Superblock,
-		io: Arc<Mutex<dyn IO>>,
+		io: Arc<Mutex<dyn DeviceIO>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Self> {
@@ -1127,13 +1098,13 @@ impl FilesystemType for Ext2FsType {
 		b"ext2"
 	}
 
-	fn detect(&self, io: &mut dyn IO) -> EResult<bool> {
+	fn detect(&self, io: &mut dyn DeviceIO) -> EResult<bool> {
 		Ok(Superblock::read(io)?.is_valid())
 	}
 
 	fn load_filesystem(
 		&self,
-		io: Option<Arc<Mutex<dyn IO>>>,
+		io: Option<Arc<Mutex<dyn DeviceIO>>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {

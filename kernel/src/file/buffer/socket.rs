@@ -20,17 +20,18 @@
 
 use super::Buffer;
 use crate::{
-	file::{buffer::BlockHandler, FileType, Stat},
+	file::{
+		buffer::WaitQueue,
+		fs::{Filesystem, NodeOps},
+		FileType, INode, Stat,
+	},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
-	process::Process,
-	syscall::ioctl,
 };
-use core::ffi::{c_int, c_void};
+use core::ffi::c_int;
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 	vec, TryDefault,
@@ -43,6 +44,7 @@ const BUFFER_SIZE: usize = 65536;
 const SOL_SOCKET: c_int = 1;
 
 /// Structure representing a socket.
+#[derive(Debug)]
 pub struct Socket {
 	/// The socket's stack descriptor.
 	desc: SocketDesc,
@@ -59,7 +61,7 @@ pub struct Socket {
 	open_count: u32,
 
 	/// The socket's block handler.
-	block_handler: BlockHandler,
+	block_handler: WaitQueue,
 
 	/// The address the socket is bound to.
 	sockname: Vec<u8>,
@@ -77,7 +79,7 @@ impl Socket {
 
 			open_count: 0,
 
-			block_handler: BlockHandler::new(),
+			block_handler: WaitQueue::default(),
 
 			sockname: Vec::new(),
 		}))
@@ -174,7 +176,7 @@ impl TryDefault for Socket {
 
 			open_count: 0,
 
-			block_handler: BlockHandler::new(),
+			block_handler: WaitQueue::default(),
 
 			sockname: Default::default(),
 		})
@@ -187,14 +189,6 @@ impl Buffer for Socket {
 		todo!()
 	}
 
-	fn get_stat(&self) -> Stat {
-		Stat {
-			file_type: FileType::Socket,
-			mode: 0o666,
-			..Default::default()
-		}
-	}
-
 	fn increment_open(&mut self, _read: bool, _write: bool) {
 		self.open_count += 1;
 	}
@@ -205,41 +199,43 @@ impl Buffer for Socket {
 			// TODO close the socket
 		}
 	}
-
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		self.block_handler.add_waiting_process(proc, mask)
-	}
-
-	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
-		// TODO
-		todo!();
-	}
 }
 
-impl IO for Socket {
-	/// Note: This implementation ignores the offset.
-	fn read(&mut self, _: u64, _buf: &mut [u8]) -> EResult<(u64, bool)> {
+impl NodeOps for Socket {
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		Ok(Stat {
+			file_type: FileType::Socket,
+			mode: 0o666,
+			..Default::default()
+		})
+	}
+
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &mut [u8],
+	) -> EResult<u64> {
 		if !self.desc.type_.is_stream() {
 			// TODO error
 		}
-
 		// TODO
-		todo!();
+		todo!()
 	}
 
-	/// Note: This implementation ignores the offset.
-	fn write(&mut self, _: u64, _buf: &[u8]) -> EResult<u64> {
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		_buf: &[u8],
+	) -> EResult<u64> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {
 			return Err(errno!(EDESTADDRREQ));
 		};
-
 		// TODO
-		todo!();
-	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+		todo!()
 	}
 }

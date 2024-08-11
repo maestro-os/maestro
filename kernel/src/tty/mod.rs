@@ -30,16 +30,15 @@ pub mod vga;
 
 use crate::{
 	device::serial,
-	file::blocking::BlockHandler,
+	file::blocking::WaitQueue,
 	memory::vmem,
 	process::{pid::Pid, signal::Signal, Process},
+	syscall::poll,
 	tty::termios::{consts::*, Termios},
 };
 use core::{cmp::*, intrinsics::size_of, mem::MaybeUninit, ptr, slice};
 use utils::{
 	collections::vec::Vec,
-	errno::EResult,
-	io,
 	lock::{IntMutex, MutexGuard},
 	ptr::arc::Arc,
 };
@@ -137,7 +136,7 @@ pub struct TTY {
 	winsize: WinSize,
 
 	/// The TTY's block handler.
-	block_handler: BlockHandler,
+	block_handler: WaitQueue,
 }
 
 /// The initialization TTY.
@@ -253,7 +252,7 @@ impl TTY {
 			ws_ypixel: vga::PIXEL_HEIGHT as _,
 		};
 
-		self.block_handler = BlockHandler::default();
+		self.block_handler = WaitQueue::default();
 	}
 
 	/// Returns the id of the TTY.
@@ -507,7 +506,7 @@ impl TTY {
 	/// Note that reaching the EOF doesn't necessary mean the TTY is
 	/// closed. Subsequent calls to this function might still successfully read
 	/// data.
-	pub fn read(&mut self, buff: &mut [u8]) -> (usize, bool) {
+	pub fn read(&mut self, buff: &mut [u8]) -> usize {
 		// The length of data to consume
 		let mut len = min(buff.len(), self.available_size);
 
@@ -520,7 +519,7 @@ impl TTY {
 				self.input_size -= len;
 				self.available_size -= len;
 
-				return (0, true);
+				return 0;
 			}
 
 			let eof_off = self.input_buffer[..len].iter().position(|v| *v == eof);
@@ -656,7 +655,7 @@ impl TTY {
 			}
 		}
 
-		self.block_handler.wake_processes(io::POLLIN);
+		self.block_handler.wake_processes(poll::POLLIN);
 	}
 
 	/// Erases `count` characters in TTY.
@@ -686,7 +685,7 @@ impl TTY {
 			}
 		}
 
-		self.block_handler.wake_processes(io::POLLIN);
+		self.block_handler.wake_processes(poll::POLLIN);
 	}
 
 	/// Returns the terminal IO settings.
@@ -745,15 +744,5 @@ impl TTY {
 
 		// Sending a SIGWINCH if a process group is present
 		self.send_signal(Signal::SIGWINCH);
-	}
-
-	/// Adds the given process to the list of processes waiting on the TTY.
-	///
-	/// The function sets the state of the process to `Sleeping`.
-	/// When the event occurs, the process will be woken up.
-	///
-	/// `mask` is the mask of poll event to wait for.
-	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		self.block_handler.add_waiting_process(proc, mask)
 	}
 }

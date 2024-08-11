@@ -34,7 +34,7 @@ use utils::{
 ///
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
-fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
+fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	let ap = proc.access_profile;
@@ -69,7 +69,7 @@ fn try_kill(pid: Pid, sig: &Option<Signal>) -> EResult<()> {
 ///
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
-fn try_kill_group(pid: i32, sig: &Option<Signal>) -> EResult<()> {
+fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	let pgid = match pid {
 		0 => {
 			let proc_mutex = Process::current();
@@ -100,9 +100,9 @@ fn try_kill_group(pid: i32, sig: &Option<Signal>) -> EResult<()> {
 fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	match pid {
 		// Kill the process with the given PID
-		1.. => try_kill(pid as _, &sig),
+		1.. => try_kill(pid as _, sig),
 		// Kill all processes in the current process group
-		0 => try_kill_group(0, &sig),
+		0 => try_kill_group(0, sig),
 		// Kill all processes for which the current process has the permission
 		-1 => {
 			let sched = SCHEDULER.get().lock();
@@ -111,12 +111,12 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 					continue;
 				}
 				// TODO Check permission
-				try_kill(*pid, &sig)?;
+				try_kill(*pid, sig)?;
 			}
 			Ok(())
 		}
 		// Kill the given process group
-		..-1 => try_kill_group(-pid as _, &sig),
+		..-1 => try_kill_group(-pid as _, sig),
 	}
 }
 

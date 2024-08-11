@@ -114,7 +114,6 @@ struct FormatContentWriter<'b> {
 	src_cursor: u64,
 	dst: &'b mut [u8],
 	dst_cursor: usize,
-	eof: bool,
 }
 
 impl<'b> Write for FormatContentWriter<'b> {
@@ -125,7 +124,6 @@ impl<'b> Write for FormatContentWriter<'b> {
 		let chunk = s.as_bytes();
 		// If at least part of the chunk is inside the range to read, copy
 		if (chunk.len() as u64) > self.src_cursor {
-			self.eof = false;
 			// If the end of the output buffer is reached, stop
 			if self.dst_cursor >= self.dst.len() {
 				return Err(fmt::Error);
@@ -139,11 +137,6 @@ impl<'b> Write for FormatContentWriter<'b> {
 			self.dst[self.dst_cursor..(self.dst_cursor + size)]
 				.copy_from_slice(&chunk[src_cursor..(src_cursor + size)]);
 			self.dst_cursor += size;
-			// If the end of the chunk is reached, set `eof` if necessary
-			if src_cursor + size >= chunk.len() {
-				// If other non-empty chunks remain, the next iteration will cancel this
-				self.eof = true;
-			}
 		}
 		// Update cursor
 		self.src_cursor = self.src_cursor.saturating_sub(chunk.len() as _);
@@ -152,22 +145,17 @@ impl<'b> Write for FormatContentWriter<'b> {
 }
 
 /// Implementation of [`crate::format_content`].
-pub fn format_content_args(
-	off: u64,
-	buf: &mut [u8],
-	args: fmt::Arguments<'_>,
-) -> EResult<(u64, bool)> {
+pub fn format_content_args(off: u64, buf: &mut [u8], args: fmt::Arguments<'_>) -> EResult<u64> {
 	let mut writer = FormatContentWriter {
 		src_cursor: off,
 		dst: buf,
 		dst_cursor: 0,
-		eof: true,
 	};
 	let res = fmt::write(&mut writer, args);
 	if res.is_err() && (writer.dst_cursor < writer.dst.len()) {
 		panic!("a formatting trait implementation returned an error");
 	}
-	Ok((writer.dst_cursor as _, writer.eof))
+	Ok(writer.dst_cursor as _)
 }
 
 /// Formats the content of a kernfs node and write it on a buffer.
@@ -201,7 +189,7 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	) -> EResult<u64> {
 		format_content!(off, buf, "{}", DisplayableStr(TARGET))
 	}
 }
@@ -324,29 +312,24 @@ mod test {
 	fn content_chunks() {
 		let val = 123;
 		let mut out = [0u8; 9];
-		let (len, eof) = format_content!(0, &mut out, "{} {} {}", val, "def", "ghi").unwrap();
+		let len = format_content!(0, &mut out, "{} {} {}", val, "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"123 def g");
 		assert_eq!(len, 9);
-		assert!(!eof);
 		let mut out = [0u8; 9];
-		let (len, eof) = format_content!(9, &mut out, "{} {} {}", "abc", "def", val).unwrap();
+		let len = format_content!(9, &mut out, "{} {} {}", "abc", "def", val).unwrap();
 		assert_eq!(out.as_slice(), b"23\0\0\0\0\0\0\0");
 		assert_eq!(len, 2);
-		assert!(eof);
 		let mut out = [0u8; 9];
-		let (len, eof) = format_content!(3, &mut out, "{} {} {}", "abc", val, "ghi").unwrap();
+		let len = format_content!(3, &mut out, "{} {} {}", "abc", val, "ghi").unwrap();
 		assert_eq!(out.as_slice(), b" 123 ghi\0");
 		assert_eq!(len, 8);
-		assert!(eof);
 		let mut out = [0u8; 9];
-		let (len, eof) = format_content!(4, &mut out, "{} {} {}", val, "def", "ghi").unwrap();
+		let len = format_content!(4, &mut out, "{} {} {}", val, "def", "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"def ghi\0\0");
 		assert_eq!(len, 7);
-		assert!(eof);
 		let mut out = [0u8; 5];
-		let (len, eof) = format_content!(0, &mut out, "{} {} {}", "abc", val, "ghi").unwrap();
+		let len = format_content!(0, &mut out, "{} {} {}", "abc", val, "ghi").unwrap();
 		assert_eq!(out.as_slice(), b"abc 1");
 		assert_eq!(len, 5);
-		assert!(!eof);
 	}
 }

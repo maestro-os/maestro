@@ -30,7 +30,6 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io::IO,
 	vec,
 };
 
@@ -88,7 +87,7 @@ pub fn splice(
 	let len = {
 		let mut input = input_mutex.lock();
 		let prev_off = input.get_offset();
-		let (len, _) = input.read(off_in.unwrap_or(0), buff.as_mut_slice())?;
+		let len = input.read(off_in.unwrap_or(0), buff.as_mut_slice())?;
 		if off_in.is_some() {
 			input.set_offset(prev_off);
 		}

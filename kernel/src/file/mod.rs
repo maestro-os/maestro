@@ -57,10 +57,9 @@ use mountpoint::{MountPoint, MountSource};
 use perm::AccessProfile;
 use utils::{
 	boxed::Box,
-	collections::string::String,
+	collections::{string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	io::IO,
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 	vec, TryClone,
@@ -342,19 +341,14 @@ pub struct DeferredRemove {
 	pub name: String,
 }
 
-/// I/O source given by [`File::io_op`].
-enum IoSource<'a> {
-	/// The operation is performed on a filesystem.
-	Filesystem {
-		/// The filesystem.
-		fs: &'a dyn Filesystem,
-		/// The inode on the filesystem.
-		inode: INode,
-		/// Handle to perform operations on the filesystem's node.
-		ops: &'a dyn NodeOps,
-	},
-	/// The operation is performed on a simple I/O interface.
-	IO(&'a mut dyn IO),
+/// Information to perform I/O on the file.
+struct IoSource<'a> {
+	/// The inode on the filesystem.
+	inode: INode,
+	/// The filesystem.
+	fs: &'a dyn Filesystem,
+	/// Handle to perform operations on the filesystem's node.
+	ops: &'a dyn NodeOps,
 }
 
 /// A file on a filesystem.
@@ -368,7 +362,7 @@ pub struct File {
 	/// Handle to perform operations on the node.
 	///
 	/// If `None`, the file is virtual.
-	ops: Option<Box<dyn NodeOps>>,
+	ops: Box<dyn NodeOps>,
 	/// The file's status. This is cache of the data on the filesystem.
 	pub stat: Stat,
 	/// If not `None`, the file will be removed when the last handle to it is closed.
@@ -384,7 +378,7 @@ impl File {
 	/// - `location` is the file's location.
 	/// - `ops` is the handle to perform operations on the file
 	/// - `stat` is the file's status
-	fn new(location: FileLocation, ops: Option<Box<dyn NodeOps>>, stat: Stat) -> Self {
+	fn new(location: FileLocation, ops: Box<dyn NodeOps>, stat: Stat) -> Self {
 		Self {
 			location,
 			ops,
@@ -408,19 +402,47 @@ impl File {
 		self.as_mountpoint().is_some()
 	}
 
+	pub fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<u64> {
+		self.io_op(|io| io.ops.read_content(io.inode, io.fs, off, buf))
+		// TODO update `atime` if the mountpoint allows it
+	}
+
+	/// Reads the whole content of a file into a buffer.
+	pub fn read_all(&mut self) -> EResult<Vec<u8>> {
+		let mut buf = Vec::with_capacity(self.stat.size as _)?;
+		self.io_op(|io| {
+			let mut off = 0;
+			loop {
+				let len = io.ops.read_content(io.inode, io.fs, off, &mut buf)?;
+				if len == 0 {
+					break;
+				}
+				off += len;
+			}
+			Ok(())
+		})?;
+		Ok(buf)
+	}
+
+	pub fn write(&mut self, off: u64, buff: &[u8]) -> EResult<u64> {
+		let len = self.io_op(|io| io.ops.write_content(io.inode, io.fs, off, buff))?;
+		// Update file's size
+		self.stat.size = max(off + len, self.stat.size);
+		// TODO update `blocks`
+		// TODO update `mtime`
+		Ok(len)
+	}
+
+	pub fn poll(&mut self, mask: u32) -> EResult<u32> {
+		self.io_op(|io| io.ops.poll(io.inode, io.fs, mask))
+	}
+
 	/// Returns the directory entry with the given `name`.
 	///
 	/// If the file is not a directory, the function returns `None`.
 	pub fn dir_entry_by_name<'n>(&self, name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
 		self.io_op(|io| {
-			let e = match io {
-				IoSource::Filesystem {
-					fs,
-					inode,
-					ops,
-				} => ops.entry_by_name(inode, fs, name),
-				IoSource::IO(_) => Ok(None),
-			}?;
+			let e = io.ops.entry_by_name(io.inode, io.fs, name)?;
 			Ok(e.map(|(e, ..)| e))
 		})
 	}
@@ -450,9 +472,13 @@ impl File {
 		let mut link_path = vec![0; init_len]?;
 		let mut off = 0;
 		// Read and realloc until the whole target is read
-		while let (len, false) = self.read(off, &mut link_path[(off as usize)..])? {
+		loop {
+			let len = self.read(off, &mut link_path[(off as usize)..])?;
+			if len == 0 {
+				break;
+			}
 			off += len;
-			if off as usize >= link_path.len() {
+			if off >= link_path.len() as u64 {
 				link_path.resize(link_path.len() + BLOCK, 0)?;
 			}
 		}
@@ -566,54 +592,15 @@ impl File {
 	where
 		F: FnOnce(IoSource<'_>) -> EResult<R>,
 	{
-		match self.stat.file_type {
-			FileType::Regular | FileType::Directory | FileType::Link => {
-				let fs = {
-					let mountpoint_mutex =
-						self.location.get_mountpoint().ok_or_else(|| errno!(EIO))?;
-					let mountpoint = mountpoint_mutex.lock();
-					mountpoint.get_filesystem()
-				};
-				let inode = self.location.get_inode();
-				// A non-virtual file always have an associated operations handle
-				let ops = self.ops.as_ref().unwrap().as_ref();
-				f(IoSource::Filesystem {
-					fs: &*fs,
-					inode,
-					ops,
-				})
-			}
-			FileType::Fifo => {
-				let io_mutex = buffer::get_or_default::<PipeBuffer>(&self.location)?;
-				let mut io = io_mutex.lock();
-				f(IoSource::IO(&mut *io))
-			}
-			FileType::Socket => {
-				let io_mutex = buffer::get_or_default::<Socket>(&self.location)?;
-				let mut io = io_mutex.lock();
-				f(IoSource::IO(&mut *io))
-			}
-			FileType::BlockDevice => {
-				let io_mutex = device::get(&DeviceID {
-					dev_type: DeviceType::Block,
-					major: self.stat.dev_major,
-					minor: self.stat.dev_minor,
-				})
-				.ok_or_else(|| errno!(ENODEV))?;
-				let mut io = io_mutex.lock();
-				f(IoSource::IO(&mut *io))
-			}
-			FileType::CharDevice => {
-				let io_mutex = device::get(&DeviceID {
-					dev_type: DeviceType::Char,
-					major: self.stat.dev_major,
-					minor: self.stat.dev_minor,
-				})
-				.ok_or_else(|| errno!(ENODEV))?;
-				let mut io = io_mutex.lock();
-				f(IoSource::IO(&mut *io))
-			}
-		}
+		let fs = self
+			.location
+			.get_mountpoint()
+			.map(|m| m.lock().get_filesystem());
+		f(IoSource {
+			inode: self.location.get_inode(),
+			fs: &*fs,
+			ops: self.ops.as_ref(),
+		})
 	}
 
 	/// Defers removal of the file, meaning the file will be removed when closed.
@@ -629,56 +616,6 @@ impl File {
 			vfs::remove_file_unchecked(&parent, &deferred_remove.name)?;
 		}
 		Ok(())
-	}
-}
-
-impl IO for File {
-	fn get_size(&self) -> u64 {
-		self.stat.size
-	}
-
-	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		self.io_op(|io| match io {
-			IoSource::Filesystem {
-				fs,
-				inode,
-				ops,
-			} => ops.read_content(inode, fs, off, buff),
-			IoSource::IO(io) => io.read(off, buff),
-		})
-		// TODO update `atime` if the mountpoint allows it
-	}
-
-	fn write(&mut self, off: u64, buff: &[u8]) -> EResult<u64> {
-		let len = self.io_op(|io| match io {
-			IoSource::Filesystem {
-				fs,
-				inode,
-				ops,
-			} => ops.write_content(inode, fs, off, buff),
-			IoSource::IO(io) => io.write(off, buff),
-		})?;
-		// Update file's size
-		self.stat.size = max(off + len, self.stat.size);
-		// TODO update `blocks`
-		// TODO update `mtime`
-		Ok(len)
-	}
-
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		self.io_op(|io| {
-			match io {
-				IoSource::Filesystem {
-					fs: _,
-					inode: _,
-					ops: _,
-				} => {
-					// TODO
-					todo!()
-				}
-				IoSource::IO(io) => io.poll(mask),
-			}
-		})
 	}
 }
 

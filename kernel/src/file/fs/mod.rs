@@ -30,14 +30,17 @@ use super::{
 	perm::{Gid, Uid},
 	DirEntry, FileType, INode, Mode, Stat,
 };
-use crate::time::unit::Timestamp;
-use core::{any::Any, ffi::c_int, fmt::Debug};
+use crate::{device::DeviceIO, syscall::ioctl, time::unit::Timestamp};
+use core::{
+	any::Any,
+	ffi::{c_int, c_void},
+	fmt::Debug,
+};
 use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, string::String},
 	errno,
 	errno::{EResult, ENOTDIR},
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 };
@@ -120,6 +123,28 @@ pub trait NodeOps: Debug {
 		Ok(())
 	}
 
+	/// Polls the file with the given `mask`.
+	fn poll(&self, inode: INode, fs: &dyn Filesystem, mask: u32) -> EResult<u32> {
+		let _ = (inode, fs, mask);
+		Err(errno!(EINVAL))
+	}
+
+	/// Performs an ioctl operation on the device file.
+	///
+	/// Arguments:
+	/// - `request` is the ID of the request to perform.
+	/// - `argp` is a pointer to the argument.
+	fn ioctl(
+		&self,
+		inode: INode,
+		fs: &dyn Filesystem,
+		request: ioctl::Request,
+		argp: *const c_void,
+	) -> EResult<u32> {
+		let _ = (inode, fs, request, argp);
+		Err(errno!(EINVAL))
+	}
+
 	/// Reads from the node with into the buffer `buf`.
 	///
 	/// Arguments:
@@ -143,7 +168,7 @@ pub trait NodeOps: Debug {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	) -> EResult<u64> {
 		let _ = (off, buf);
 		match self.get_stat(inode, fs)?.file_type {
 			FileType::Directory => Err(errno!(EISDIR)),
@@ -385,7 +410,7 @@ pub trait FilesystemType {
 	/// Tells whether the given IO interface has the current filesystem.
 	///
 	/// `io` is the IO interface.
-	fn detect(&self, io: &mut dyn IO) -> EResult<bool>;
+	fn detect(&self, io: &mut dyn DeviceIO) -> EResult<bool>;
 
 	/// Creates a new instance of the filesystem to mount it.
 	///
@@ -395,7 +420,7 @@ pub trait FilesystemType {
 	/// - `readonly` tells whether the filesystem is mounted in read-only.
 	fn load_filesystem(
 		&self,
-		io: Option<Arc<Mutex<dyn IO>>>,
+		io: Option<Arc<Mutex<dyn DeviceIO>>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>>;
@@ -427,7 +452,7 @@ pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
 }
 
 /// Detects the filesystem type on the given IO interface `io`.
-pub fn detect(io: &mut dyn IO) -> EResult<Arc<dyn FilesystemType>> {
+pub fn detect(io: &mut dyn DeviceIO) -> EResult<Arc<dyn FilesystemType>> {
 	let fs_types = FS_TYPES.lock();
 	for (_, fs_type) in fs_types.iter() {
 		if fs_type.detect(io)? {

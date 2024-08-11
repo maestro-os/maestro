@@ -28,6 +28,7 @@ mod version;
 
 use super::{kernfs, Filesystem, FilesystemType, NodeOps};
 use crate::{
+	device::DeviceIO,
 	file::{
 		fs::{
 			kernfs::{
@@ -55,7 +56,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	format,
-	io::IO,
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 };
@@ -302,13 +302,13 @@ impl FilesystemType for ProcFsType {
 		b"procfs"
 	}
 
-	fn detect(&self, _io: &mut dyn IO) -> EResult<bool> {
+	fn detect(&self, _io: &mut dyn DeviceIO) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
-		_io: Option<Arc<Mutex<dyn IO>>>,
+		_io: Option<Arc<Mutex<dyn DeviceIO>>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {

@@ -57,7 +57,7 @@ impl NodeOps for Mounts {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	) -> EResult<u64> {
 		format_content!(off, buf, "{}", self)
 	}
 }

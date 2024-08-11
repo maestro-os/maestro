@@ -41,7 +41,6 @@ use utils::{
 	errno,
 	errno::{CollectResult, EResult, Errno},
 	interrupt::cli,
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 };
@@ -97,7 +96,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 			if !rs.access_profile.can_execute_file(&file) {
 				return Err(errno!(EACCES));
 			}
-			file.read(0, &mut shebang.buf)?.0 as usize
+			file.read(0, &mut shebang.buf)? as usize
 		};
 		// Parse shebang
 		shebang.end = shebang.buf[..len]

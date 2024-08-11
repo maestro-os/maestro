@@ -21,27 +21,20 @@
 pub mod pipe;
 pub mod socket;
 
-use crate::{
-	file::{blocking::BlockHandler, FileLocation, Stat},
-	process::Process,
-	syscall::ioctl,
-};
-use core::{alloc::AllocError, any::Any, ffi::c_void};
+use crate::file::{blocking::WaitQueue, fs::NodeOps, FileLocation};
+use core::{alloc::AllocError, any::Any};
 use utils::{
 	collections::{hashmap::HashMap, id_allocator::IDAllocator},
 	errno::{AllocResult, EResult},
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 	TryDefault,
 };
 
 /// Trait representing a buffer.
-pub trait Buffer: IO + Any {
+pub trait Buffer: Any + NodeOps {
 	/// Returns the capacity in bytes of the buffer.
 	fn get_capacity(&self) -> usize;
-	/// Returns the status of the file representing the buffer.
-	fn get_stat(&self) -> Stat;
 
 	/// Increments the number of open ends.
 	///
@@ -56,26 +49,6 @@ pub trait Buffer: IO + Any {
 	/// - `read` tells whether the open end allows reading.
 	/// - `write` tells whether the open end allows writing.
 	fn decrement_open(&mut self, read: bool, write: bool);
-
-	/// Adds the given process to the list of processes waiting on the buffer.
-	///
-	/// The function sets the state of the process to `Sleeping`.
-	/// When the event occurs, the process will be woken up.
-	///
-	/// `mask` is the mask of poll event to wait for.
-	///
-	/// If the buffer cannot block, the function does nothing.
-	fn add_waiting_process(&mut self, _proc: &mut Process, _mask: u32) -> EResult<()> {
-		Ok(())
-	}
-
-	/// Performs an ioctl operation on the file.
-	///
-	/// Arguments:
-	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
-	/// - `request` is the ID of the request to perform.
-	/// - `argp` is a pointer to the argument.
-	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32>;
 }
 
 /// All the system's buffer. The key is the location of the file associated with the

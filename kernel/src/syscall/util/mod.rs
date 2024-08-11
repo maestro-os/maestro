@@ -49,7 +49,7 @@ pub fn handle_signal(regs: &Regs) {
 		// Update registers with the ones passed to the system call so that `sigreturn` returns to
 		// the correct location
 		proc.regs = regs.clone();
-		sig_handler.prepare_execution(&mut proc, &sig, true);
+		sig_handler.prepare_execution(&mut proc, sig, true);
 	}
 	// Update the execution flow of the current context according to the new state of the process
 	match proc.get_state() {

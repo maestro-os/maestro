@@ -86,9 +86,9 @@ pub fn get_file_from_location(location: FileLocation) -> EResult<Arc<Mutex<File>
 /// Same as [`get_file_from_parent`], without checking permissions.
 fn get_file_from_parent_unchecked(parent: &File, name: &[u8]) -> EResult<Arc<Mutex<File>>> {
 	let parent_inode = parent.location.get_inode();
-	let parent_ops = parent.ops.as_ref().ok_or_else(|| errno!(ENOENT))?;
 	let file = op(&parent.location, false, |mp, fs| {
-		let (ent, ops) = parent_ops
+		let (ent, ops) = parent
+			.ops
 			.entry_by_name(parent_inode, fs, name)?
 			.ok_or_else(|| errno!(ENOENT))?;
 		let inode = ent.inode;
@@ -98,7 +98,7 @@ fn get_file_from_parent_unchecked(parent: &File, name: &[u8]) -> EResult<Arc<Mut
 				mountpoint_id: mp.get_id(),
 				inode,
 			},
-			Some(ops),
+			ops,
 			stat,
 		))
 	})?;
@@ -432,9 +432,6 @@ pub fn create_file(
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
-	let Some(parent_ops) = parent.ops.as_ref() else {
-		return Err(errno!(ENOTDIR));
-	};
 	stat.uid = ap.euid;
 	let gid = if parent.stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
@@ -446,14 +443,14 @@ pub fn create_file(
 	stat.gid = gid;
 	let parent_inode = parent.location.get_inode();
 	let file = op(&parent.location, true, |mp, fs| {
-		let (inode, ops) = parent_ops.add_file(parent_inode, fs, name, stat)?;
+		let (inode, ops) = parent.ops.add_file(parent_inode, fs, name, stat)?;
 		let stat = ops.get_stat(inode, fs)?;
 		Ok(File::new(
 			FileLocation::Filesystem {
 				mountpoint_id: mp.get_id(),
 				inode,
 			},
-			Some(ops),
+			ops,
 			stat,
 		))
 	})?;
@@ -495,15 +492,12 @@ pub fn create_link(
 	if !ap.can_write_directory(parent) {
 		return Err(errno!(EACCES));
 	}
-	let Some(parent_ops) = parent.ops.as_ref() else {
-		return Err(errno!(ENOTDIR));
-	};
 	// Check the target and source are both on the same mountpoint
 	if parent.location.get_mountpoint_id() != target.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
 	op(&target.location, true, |_mp, fs| {
-		parent_ops.add_link(
+		parent.ops.add_link(
 			parent.location.get_inode(),
 			fs,
 			name,
@@ -518,12 +512,9 @@ pub fn create_link(
 ///
 /// This is useful for deferred remove since permissions have already been checked before.
 pub fn remove_file_unchecked(parent: &File, name: &[u8]) -> EResult<()> {
-	let Some(parent_ops) = parent.ops.as_ref() else {
-		return Err(errno!(ENOTDIR));
-	};
 	let parent_inode = parent.get_location().get_inode();
 	op(&parent.location, true, |mp, fs| {
-		let (links_left, inode) = parent_ops.remove_file(parent_inode, fs, name)?;
+		let (links_left, inode) = parent.ops.remove_file(parent_inode, fs, name)?;
 		if links_left == 0 {
 			// If the file is a named pipe or socket, free its now unused buffer
 			buffer::release(&FileLocation::Filesystem {

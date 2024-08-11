@@ -22,7 +22,7 @@
 use super::{Partition, Table};
 use crate::{
 	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
-	device::storage::StorageInterface,
+	device::DeviceIO,
 };
 use core::mem::size_of;
 use macros::AnyRepr;
@@ -185,16 +185,16 @@ impl Gpt {
 	/// the given LBA `lba`.
 	///
 	/// If the header is invalid, the function returns an error.
-	fn read_hdr(storage: &mut dyn StorageInterface, lba: i64) -> EResult<Self> {
-		let block_size = storage.get_block_size().get() as _;
-		let blocks_count = storage.get_blocks_count();
+	fn read_hdr(storage: &mut dyn DeviceIO, lba: i64) -> EResult<Self> {
+		let block_size = storage.block_size().get() as _;
+		let blocks_count = storage.blocks_count();
 		if size_of::<Gpt>() > block_size {
 			return Err(errno!(EINVAL));
 		}
 		// Read the first block
 		let mut buf = vec![0; block_size]?;
 		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		storage.read(&mut buf, lba, 1)?;
+		storage.read(lba, &mut buf)?;
 		// Validate
 		let gpt_hdr = from_bytes::<Self>(&buf).unwrap().clone();
 		if !gpt_hdr.is_valid() {
@@ -233,9 +233,9 @@ impl Gpt {
 	/// Returns the list of entries in the table.
 	///
 	/// `storage` is the storage device interface.
-	fn get_entries(&self, storage: &mut dyn StorageInterface) -> EResult<Vec<GPTEntry>> {
-		let block_size = storage.get_block_size();
-		let blocks_count = storage.get_blocks_count();
+	fn get_entries(&self, storage: &mut dyn DeviceIO) -> EResult<Vec<GPTEntry>> {
+		let block_size = storage.block_size();
+		let blocks_count = storage.blocks_count();
 		let entries_start =
 			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 		let mut buf = vec![0; size_of::<GPTEntry>()]?;
@@ -270,8 +270,8 @@ impl Gpt {
 }
 
 impl Table for Gpt {
-	fn read(storage: &mut dyn StorageInterface) -> EResult<Option<Self>> {
-		let blocks_count = storage.get_blocks_count();
+	fn read(storage: &mut dyn DeviceIO) -> EResult<Option<Self>> {
+		let blocks_count = storage.blocks_count();
 
 		let main_hdr = match Self::read_hdr(storage, 1) {
 			Ok(hdr) => hdr,
@@ -297,8 +297,8 @@ impl Table for Gpt {
 		"GPT"
 	}
 
-	fn get_partitions(&self, storage: &mut dyn StorageInterface) -> EResult<Vec<Partition>> {
-		let blocks_count = storage.get_blocks_count();
+	fn get_partitions(&self, storage: &mut dyn DeviceIO) -> EResult<Vec<Partition>> {
+		let blocks_count = storage.blocks_count();
 		let mut partitions = Vec::new();
 
 		for e in self.get_entries(storage)? {

@@ -52,17 +52,16 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType, Mode, Stat,
 	},
-	process::Process,
 	syscall::ioctl,
 };
-use core::{ffi::c_void, fmt};
+use core::{ffi::c_void, fmt, num::NonZeroU64};
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, vec::Vec},
+	errno,
 	errno::{AllocResult, CollectResult, EResult},
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 	TryClone,
@@ -89,15 +88,11 @@ impl DeviceType {
 
 impl fmt::Display for DeviceType {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-		match self {
-			Self::Block => write!(fmt, "Block"),
-			Self::Char => write!(fmt, "Char"),
-		}
+		fmt::Debug::fmt(self, fmt)
 	}
 }
 
-/// A structure grouping a device type, a device major and a device minor, which acts as a unique
-/// ID.
+/// A device type, major and minor, who act as a unique ID for a device.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct DeviceID {
 	/// The type of the device.
@@ -115,43 +110,55 @@ impl DeviceID {
 	}
 }
 
-/// Trait providing a interface for device I/O.
-pub trait DeviceHandle: IO {
+/// Device I/O interface.
+pub trait DeviceIO {
+	/// Returns the granularity of I/O for the device, in bytes.
+	fn block_size(&self) -> NonZeroU64;
+	/// Returns the number of blocks on the device.
+	fn blocks_count(&self) -> u64;
+
+	/// Reads data from the device.
+	///
+	/// Arguments:
+	/// - `off` is the offset on the device, in blocks
+	/// - `buf` is the buffer to which the data is written
+	///
+	/// The size of the buffer has to be a multiple of the block size.
+	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<u64>;
+
+	/// Writes data to the device.
+	///
+	/// Arguments:
+	/// - `off` is the offset on the device, in blocks
+	/// - `buf` is the buffer from which the data is read
+	///
+	/// The size of the buffer has to be a multiple of the block size.
+	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<u64>;
+
 	/// Performs an ioctl operation on the device.
 	///
 	/// Arguments:
-	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
-	/// - `request` is the ID of the request to perform.
-	/// - `argp` is a pointer to the argument.
-	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32>;
-
-	/// Adds the given process to the list of processes waiting on the device.
-	///
-	/// The function sets the state of the process to `Sleeping`.
-	/// When the event occurs, the process will be woken up.
-	///
-	/// `mask` is the mask of poll event to wait for.
-	///
-	/// If the device cannot block, the function does nothing.
-	fn add_waiting_process(&mut self, _proc: &mut Process, _mask: u32) -> EResult<()> {
-		Ok(())
+	/// - `request` is the ID of the request to perform
+	/// - `argp` is a pointer to the argument
+	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+		let _ = (request, argp);
+		Err(errno!(EINVAL))
 	}
 }
 
-/// Structure representing a device, either a block device or a char device.
+/// A device, either a block device or a char device.
 ///
 /// Each device has a major and a minor number.
 pub struct Device {
 	/// The device's ID.
 	id: DeviceID,
-
 	/// The path to the device file.
 	path: PathBuf,
 	/// The file's mode.
 	mode: Mode,
 
-	/// The object handling the device I/O.
-	handle: Box<dyn DeviceHandle>,
+	/// The device I/O interface.
+	io: Box<dyn DeviceIO>,
 }
 
 impl Device {
@@ -163,11 +170,11 @@ impl Device {
 	/// - `path` is the path to the device's file.
 	/// - `mode` is the set of permissions associated with the device's file.
 	/// - `handle` is the handle for I/O operations.
-	pub fn new<H: 'static + DeviceHandle>(
+	pub fn new<IO: 'static + DeviceIO>(
 		id: DeviceID,
 		path: PathBuf,
 		mode: Mode,
-		handle: H,
+		handle: IO,
 	) -> EResult<Self> {
 		Ok(Self {
 			id,
@@ -175,7 +182,7 @@ impl Device {
 			path,
 			mode,
 
-			handle: Box::new(handle)?,
+			io: Box::new(handle)?,
 		})
 	}
 
@@ -197,10 +204,10 @@ impl Device {
 		self.mode
 	}
 
-	/// Returns the handle of the device for I/O operations.
+	/// Returns the I/O interface.
 	#[inline]
-	pub fn get_handle(&mut self) -> &mut dyn DeviceHandle {
-		self.handle.as_mut()
+	pub fn get_io(&mut self) -> &mut dyn DeviceIO {
+		self.io.as_mut()
 	}
 
 	/// Creates a device file.
@@ -258,24 +265,6 @@ impl Device {
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&mut self) -> EResult<()> {
 		vfs::remove_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
-	}
-}
-
-impl IO for Device {
-	fn get_size(&self) -> u64 {
-		self.handle.get_size()
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		self.handle.read(offset, buff)
-	}
-
-	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
-		self.handle.write(offset, buff)
-	}
-
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		self.handle.poll(mask)
 	}
 }
 

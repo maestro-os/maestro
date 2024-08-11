@@ -39,7 +39,6 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 };

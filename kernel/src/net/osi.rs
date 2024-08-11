@@ -64,7 +64,7 @@ impl Stack {
 	///
 	/// Arguments:
 	/// - `desc` is the descriptor of the socket.
-	/// - `sockaddr` is the socket address structure containing informations to initialize the
+	/// - `sockaddr` is the socket address structure containing information to initialize the
 	///   stack.
 	///
 	/// If the descriptor is invalid or if the stack cannot be created, the function returns an

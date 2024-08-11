@@ -27,7 +27,6 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, CollectResult, EResult},
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 };
@@ -116,24 +115,6 @@ impl FileDescriptor {
 			return Ok(());
 		};
 		file.into_inner().close()
-	}
-}
-
-impl IO for FileDescriptor {
-	fn get_size(&self) -> u64 {
-		self.open_file.lock().get_size()
-	}
-
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
-		self.open_file.lock().read(off, buf)
-	}
-
-	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<u64> {
-		self.open_file.lock().write(off, buf)
-	}
-
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		self.open_file.lock().poll(mask)
 	}
 }
 
@@ -338,11 +319,29 @@ impl FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{File, FileLocation, Stat};
+	use crate::file::{
+		fs::{Filesystem, NodeOps},
+		File, FileLocation, INode, Stat,
+	};
+	use utils::boxed::Box;
+
+	/// Dummy node ops for testing purpose.
+	#[derive(Debug)]
+	struct DummyNodeOps;
+
+	impl NodeOps for DummyNodeOps {
+		fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+			Ok(Stat::default())
+		}
+	}
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_open_file() -> OpenFile {
-		let file = File::new(FileLocation::dummy(), None, Stat::default());
+		let file = File::new(
+			FileLocation::dummy(),
+			Box::new(DummyNodeOps).unwrap(),
+			Stat::default(),
+		);
 		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), None, 0).unwrap()
 	}
 

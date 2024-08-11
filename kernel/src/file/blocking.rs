@@ -21,60 +21,65 @@
 
 use crate::{
 	process,
-	process::{pid::Pid, Process},
+	process::{pid::Pid, scheduler, Process},
 };
-use utils::{collections::hashmap::HashMap, errno::EResult, io};
+use core::mem;
+use utils::{collections::vec::Vec, errno::EResult};
 
-/// Handler allowing to make a process sleep when waiting on a resource, then resume its execution
-/// when the resource is available.
+/// A queue of processes waiting on a resource.
+///
+/// Wait processes shall sleep, and be woken up when the resource is available.
+///
+/// **Note**: dropping this structure while processes are waiting on it makes them starve.
 #[derive(Debug, Default)]
-pub struct BlockHandler {
-	/// The list of processes waiting on the resource, along with the mask of events to wait for.
-	waiting_procs: HashMap<Pid, u32>,
-}
+pub struct WaitQueue(Vec<Pid>); // TODO use a VecDeque
 
-impl BlockHandler {
-	/// Creates a new instance.
-	pub fn new() -> Self {
-		Self {
-			waiting_procs: HashMap::new(),
+impl WaitQueue {
+	/// Makes the current process wait until the given predicate `f` is true.
+	pub fn wait_until<F: FnMut() -> bool>(&mut self, mut f: F) -> EResult<()> {
+		loop {
+			if f() {
+				break;
+			}
+			// Queue
+			{
+				let proc_mutex = Process::current();
+				let mut proc = proc_mutex.lock();
+				self.0.push(proc.get_pid())?;
+				proc.set_state(process::State::Sleeping);
+			}
+			// Yield
+			scheduler::end_tick();
 		}
-	}
-
-	/// Adds the given process to the list of processes waiting on the resource.
-	///
-	/// The function sets the state of the process to `Sleeping`.
-	/// When the event occurs, the process will be woken up.
-	///
-	/// `mask` is the mask of poll event to wait for.
-	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		self.waiting_procs.insert(proc.get_pid(), mask)?;
-		proc.set_state(process::State::Sleeping);
 		Ok(())
 	}
 
-	/// Wakes processes for the events in the given mask.
-	pub fn wake_processes(&mut self, mask: u32) {
-		self.waiting_procs.retain(|pid, m| {
-			let Some(proc_mutex) = Process::get_by_pid(*pid) else {
-				return false;
-			};
-
-			let wake = mask & *m != 0;
-			if !wake {
-				return true;
+	/// Wakes the next process in queue.
+	pub fn wake_next(&mut self) {
+		let proc = loop {
+			// TODO: unefficient, must use VecDeque
+			if self.0.is_empty() {
+				// No process to wake, stop
+				return;
 			}
-
-			let mut proc = proc_mutex.lock();
-			proc.wake();
-
-			false
-		});
+			let pid = self.0.remove(0);
+			let Some(proc) = Process::get_by_pid(pid) else {
+				// Process does not exist, try next
+				continue;
+			};
+			break proc;
+		};
+		proc.lock().wake();
 	}
-}
 
-impl Drop for BlockHandler {
-	fn drop(&mut self) {
-		self.wake_processes(io::POLLERR);
+	/// Wakes all processes.
+	pub fn wake_all(&mut self) {
+		for pid in mem::take(&mut self.0) {
+			let Some(proc) = Process::get_by_pid(pid) else {
+				// Process does not exist, try next
+				continue;
+			};
+			proc.lock().wake();
+		}
 	}
 }

@@ -49,7 +49,6 @@ pub mod bytes;
 pub mod collections;
 pub mod errno;
 pub mod interrupt;
-pub mod io;
 pub mod lock;
 pub mod math;
 pub mod ptr;

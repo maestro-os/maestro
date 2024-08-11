@@ -164,7 +164,7 @@ impl Timer {
 					return;
 				};
 				// TODO on sigint_t, set si_code to SI_TIMER
-				proc.kill(&signal);
+				proc.kill(signal);
 			}
 			SIGEV_THREAD => todo!(), // TODO
 			_ => {}

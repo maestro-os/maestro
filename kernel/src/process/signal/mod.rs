@@ -231,7 +231,7 @@ impl SignalHandler {
 	/// Prepare the given `process` for the execution of the given `signal`.
 	///
 	/// If `syscall` is set, the signal is executed when the current system call returns.
-	pub fn prepare_execution(&self, process: &mut Process, signal: &Signal, syscall: bool) {
+	pub fn prepare_execution(&self, process: &mut Process, signal: Signal, syscall: bool) {
 		let process_state = process.get_state();
 		if matches!(process_state, State::Zombie) {
 			return;
@@ -312,7 +312,7 @@ impl SignalHandler {
 }
 
 /// Enumeration of signal types.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Signal {
 	/// Hangup.
 	SIGHUP,

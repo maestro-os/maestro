@@ -19,18 +19,14 @@
 //! An open file description is a structure pointing to a file, allowing to
 //! perform operations on it. It is pointed to by file descriptors.
 
-use super::{buffer, mountpoint, path::PathBuf, DeviceID, File, FileLocation, FileType};
+use super::{buffer, mountpoint, path::PathBuf, File, FileLocation, FileType};
 use crate::{
-	device,
-	device::DeviceType,
-	process::{mem_space::copy::SyscallPtr, Process},
+	process::mem_space::copy::SyscallPtr,
 	syscall::{ioctl, FromSyscallArg},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use core::ffi::{c_int, c_void};
-use utils::{
-	collections::hashmap::HashMap, errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc,
-};
+use utils::{collections::hashmap::HashMap, errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 /// Read only.
 pub const O_RDONLY: i32 = 0b00000000000000000000000000000000;
@@ -209,76 +205,7 @@ impl OpenFile {
 		self.curr_off = off;
 	}
 
-	/// Performs an ioctl operation on the file.
-	pub fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let mut file = self.get_file().lock();
-		if !matches!(file.stat.file_type, FileType::Regular) {
-			return file.ioctl(request, argp);
-		}
-		match request.get_old_format() {
-			ioctl::FIONREAD => {
-				let count = file.get_size().saturating_sub(self.curr_off);
-				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
-				count_ptr.copy_to_user(count as _)?;
-				Ok(0)
-			}
-			_ => Err(errno!(ENOTTY)),
-		}
-	}
-
-	/// Adds the given process to the list of processes waiting on the file.
-	///
-	/// The function sets the state of the process to `Sleeping`.
-	/// When the event occurs, the process will be woken up.
-	///
-	/// `mask` is the mask of poll event to wait for.
-	///
-	/// If the file cannot block, the function does nothing.
-	pub fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		let file = self.get_file().lock();
-		match file.stat.file_type {
-			FileType::Fifo | FileType::Socket => {
-				if let Some(buff_mutex) = buffer::get(self.get_location()) {
-					let mut buff = buff_mutex.lock();
-					return buff.add_waiting_process(proc, mask);
-				}
-			}
-			FileType::BlockDevice => {
-				let dev_mutex = device::get(&DeviceID {
-					dev_type: DeviceType::Block,
-					major: file.stat.dev_major,
-					minor: file.stat.dev_minor,
-				});
-				if let Some(dev_mutex) = dev_mutex {
-					let mut dev = dev_mutex.lock();
-					return dev.get_handle().add_waiting_process(proc, mask);
-				}
-			}
-			FileType::CharDevice => {
-				let dev_mutex = device::get(&DeviceID {
-					dev_type: DeviceType::Char,
-					major: file.stat.dev_major,
-					minor: file.stat.dev_minor,
-				});
-				if let Some(dev_mutex) = dev_mutex {
-					let mut dev = dev_mutex.lock();
-					return dev.get_handle().add_waiting_process(proc, mask);
-				}
-			}
-			_ => {}
-		}
-		Ok(())
-	}
-}
-
-impl IO for OpenFile {
-	fn get_size(&self) -> u64 {
-		self.get_file().lock().get_size()
-	}
-
-	/// Note: on this specific implementation, the offset is ignored since
-	/// `set_offset` has to be used to define it.
-	fn read(&mut self, _off: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
+	pub fn read(&mut self, _off: u64, buf: &mut [u8]) -> EResult<u64> {
 		// Validation
 		if !self.can_read() {
 			return Err(errno!(EINVAL));
@@ -295,14 +222,12 @@ impl IO for OpenFile {
 			file.sync()?; // TODO Lazy
 		}
 		// Read
-		let (len, eof) = file.read(self.curr_off, buf)?;
+		let len = file.read(self.curr_off, buf)?;
 		self.curr_off += len;
-		Ok((len as _, eof))
+		Ok(len as _)
 	}
 
-	/// Note: on this specific implementation, the offset is ignored since
-	/// `set_offset` has to be used to define it.
-	fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<u64> {
+	pub fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<u64> {
 		// Validation
 		if !self.can_write() {
 			return Err(errno!(EINVAL));
@@ -329,8 +254,25 @@ impl IO for OpenFile {
 		Ok(len as _)
 	}
 
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
+	pub fn poll(&mut self, mask: u32) -> EResult<u32> {
 		self.get_file().lock().poll(mask)
+	}
+
+	/// Performs an ioctl operation on the file.
+	pub fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+		let mut file = self.get_file().lock();
+		if !matches!(file.stat.file_type, FileType::Regular) {
+			return file.ioctl(request, argp);
+		}
+		match request.get_old_format() {
+			ioctl::FIONREAD => {
+				let count = file.get_size().saturating_sub(self.curr_off);
+				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
+				count_ptr.copy_to_user(count as _)?;
+				Ok(0)
+			}
+			_ => Err(errno!(ENOTTY)),
+		}
 	}
 }
 

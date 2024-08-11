@@ -38,7 +38,6 @@ use core::{alloc::AllocError, ffi::c_void, num::NonZeroUsize, ops::Range, slice}
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
-	io::IO,
 	ptr::arc::Arc,
 	TryClone,
 };

@@ -22,6 +22,7 @@
 //! filesystem is unmounted.
 
 use crate::{
+	device::DeviceIO,
 	file::{
 		fs::{
 			downcast_fs, kernfs, kernfs::NodesStorage, Filesystem, FilesystemType, NodeOps,
@@ -43,12 +44,10 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
-	io::IO,
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
 };
-
 // TODO count memory usage to enforce quota
 
 /// The default maximum amount of memory the filesystem can use in bytes.
@@ -230,7 +229,7 @@ impl NodeOps for Node {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	) -> EResult<u64> {
 		let inner = self.0.lock();
 		let content = match &inner.content {
 			NodeContent::Regular(content) | NodeContent::Link(content) => content,
@@ -243,8 +242,7 @@ impl NodeOps for Node {
 		let off = off as usize;
 		let len = min(buf.len(), content.len() - off);
 		buf[..len].copy_from_slice(&content[off..(off + len)]);
-		let eof = (off + len) >= content.len();
-		Ok((len as _, eof))
+		Ok(len as _)
 	}
 
 	fn write_content(
@@ -261,7 +259,10 @@ impl NodeOps for Node {
 					return Err(errno!(EINVAL));
 				}
 				let off = off as usize;
-				let new_len = max(content.len(), off + buf.len());
+				let Some(end) = off.checked_add(buf.len()) else {
+					return Err(errno!(EOVERFLOW));
+				};
+				let new_len = max(content.len(), end);
 				content.resize(new_len, 0)?;
 				content[off..].copy_from_slice(buf);
 			}
@@ -505,7 +506,7 @@ impl NodeOps for TmpFSNodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	) -> EResult<u64> {
 		let node = downcast_fs::<TmpFS>(fs)
 			.nodes
 			.lock()
@@ -710,13 +711,13 @@ impl FilesystemType for TmpFsType {
 		b"tmpfs"
 	}
 
-	fn detect(&self, _io: &mut dyn IO) -> EResult<bool> {
+	fn detect(&self, _io: &mut dyn DeviceIO) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
-		_io: Option<Arc<Mutex<dyn IO>>>,
+		_io: Option<Arc<Mutex<dyn DeviceIO>>>,
 		_mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {

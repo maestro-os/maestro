@@ -21,18 +21,23 @@
 
 use super::Buffer;
 use crate::{
-	file::{buffer::BlockHandler, FileType, Stat},
+	file::{
+		buffer::WaitQueue,
+		fs::{Filesystem, NodeOps},
+		FileType, INode, Stat,
+	},
 	limits,
-	process::{mem_space::copy::SyscallPtr, Process},
+	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
 	syscall::{ioctl, FromSyscallArg},
 };
-use core::ffi::{c_int, c_void};
+use core::{
+	ffi::{c_int, c_void},
+	intrinsics::unlikely,
+};
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::EResult,
-	io,
-	io::IO,
 	vec, TryDefault,
 };
 
@@ -42,13 +47,15 @@ pub struct PipeBuffer {
 	/// The buffer's buffer.
 	buffer: RingBuffer<u8, Vec<u8>>,
 
-	/// The number of reading ends attached to the pipe.
-	read_ends: u32,
-	/// The number of writing ends attached to the pipe.
-	write_ends: u32,
+	/// The number of readers on the pipe.
+	readers: usize,
+	/// The number of writers on the pipe.
+	writers: usize,
 
-	/// The pipe's block handler.
-	block_handler: BlockHandler,
+	/// The queue of processing waiting to read from the pipe.
+	rd_queue: WaitQueue,
+	/// The queue of processing waiting to write to the pipe.
+	wr_queue: WaitQueue,
 }
 
 impl PipeBuffer {
@@ -68,10 +75,11 @@ impl TryDefault for PipeBuffer {
 		Ok(Self {
 			buffer: RingBuffer::new(vec![0; limits::PIPE_BUF]?),
 
-			read_ends: 0,
-			write_ends: 0,
+			readers: 0,
+			writers: 0,
 
-			block_handler: BlockHandler::new(),
+			rd_queue: WaitQueue::default(),
+			wr_queue: WaitQueue::default(),
 		})
 	}
 }
@@ -81,101 +89,85 @@ impl Buffer for PipeBuffer {
 		self.buffer.get_size()
 	}
 
-	fn get_stat(&self) -> Stat {
-		Stat {
-			file_type: FileType::Fifo,
-			mode: 0o666,
-			..Default::default()
-		}
-	}
-
 	fn increment_open(&mut self, read: bool, write: bool) {
 		if read {
-			self.read_ends += 1;
+			self.readers += 1;
 		}
-
 		if write {
-			self.write_ends += 1;
+			self.writers += 1;
 		}
 	}
 
 	fn decrement_open(&mut self, read: bool, write: bool) {
 		if read {
-			self.read_ends -= 1;
-
-			if self.read_ends == 0 {
-				self.block_handler.wake_processes(io::POLLERR);
-			}
+			self.readers -= 1;
 		}
-
 		if write {
-			self.write_ends -= 1;
-
-			if self.write_ends == 0 {
-				self.block_handler.wake_processes(io::POLLERR);
-			}
+			self.writers -= 1;
+		}
+		if (self.readers == 0) != (self.writers == 0) {
+			self.rd_queue.wake_all();
+			self.wr_queue.wake_all();
 		}
 	}
+}
 
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		self.block_handler.add_waiting_process(proc, mask)
+impl NodeOps for PipeBuffer {
+	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		Ok(Stat {
+			file_type: FileType::Fifo,
+			mode: 0o666,
+			..Default::default()
+		})
 	}
 
-	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+	fn ioctl(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		request: ioctl::Request,
+		argp: *const c_void,
+	) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
 				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
 				count_ptr.copy_to_user(self.get_available_len() as _)?;
 			}
-
 			_ => return Err(errno!(ENOTTY)),
 		}
-
 		Ok(0)
 	}
-}
 
-impl IO for PipeBuffer {
-	fn get_size(&self) -> u64 {
-		self.get_data_len() as _
-	}
-
-	/// Note: This implementation ignores the offset.
-	fn read(&mut self, _: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
+	fn read_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		buf: &mut [u8],
+	) -> EResult<u64> {
 		let len = self.buffer.read(buf);
-		let eof = self.write_ends == 0 && self.get_data_len() == 0;
-
-		self.block_handler.wake_processes(io::POLLOUT);
-
-		Ok((len as _, eof))
+		if len > 0 {
+			self.wr_queue.wake_next();
+		}
+		Ok(len as _)
 	}
 
-	/// Note: This implementation ignores the offset.
-	fn write(&mut self, _: u64, buf: &[u8]) -> EResult<u64> {
-		if self.read_ends > 0 {
-			let len = self.buffer.write(buf);
-
-			self.block_handler.wake_processes(io::POLLIN);
-
-			Ok(len as _)
-		} else {
-			Err(errno!(EPIPE))
+	fn write_content(
+		&self,
+		_inode: INode,
+		_fs: &dyn Filesystem,
+		_off: u64,
+		buf: &[u8],
+	) -> EResult<u64> {
+		if unlikely(buf.len() == 0) {
+			return Ok(0);
 		}
-	}
-
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		let mut result = 0;
-
-		if mask & io::POLLIN != 0 && self.get_data_len() > 0 {
-			result |= io::POLLIN;
+		if self.readers == 0 {
+			Process::current().lock().kill(Signal::SIGPIPE);
+			return Err(errno!(EPIPE));
 		}
-		if mask & io::POLLOUT != 0 && self.get_available_len() > 0 {
-			result |= io::POLLOUT;
-		}
-		if mask & io::POLLPRI != 0 && self.read_ends == 0 {
-			result |= io::POLLPRI;
-		}
-
-		Ok(result)
+		let len = self.buffer.write(buf);
+		self.rd_queue.wake_next();
+		Ok(len as _)
 	}
 }

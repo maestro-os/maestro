@@ -30,7 +30,6 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{EResult, Errno},
-	io::IO,
 	vec,
 };
 
@@ -57,7 +56,7 @@ pub fn readlink(
 	}
 	// Read link
 	let mut buffer = vec![0; bufsiz]?;
-	let (len, _) = file.read(0, &mut buffer)?;
+	let len = file.read(0, &mut buffer)?;
 	buf.copy_to_user(0, &buffer)?;
 	Ok(len as _)
 }

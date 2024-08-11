@@ -18,67 +18,60 @@
 
 //! This module implements default devices.
 
-use super::{id, DeviceType};
+use super::{id, DeviceIO, DeviceType};
 use crate::{
 	crypto::rand,
 	device,
-	device::{tty::TTYDeviceHandle, Device, DeviceHandle, DeviceID},
-	file::{blocking::BlockHandler, path::PathBuf},
+	device::{tty::TTYDeviceHandle, Device, DeviceID},
+	file::{blocking::WaitQueue, path::PathBuf},
 	logger::LOGGER,
-	process::Process,
-	syscall::ioctl,
+	syscall::poll,
 };
-use core::{cmp::min, ffi::c_void, mem::ManuallyDrop};
-use utils::{errno, errno::EResult, io, io::IO};
+use core::{cmp::min, mem::ManuallyDrop, num::NonZeroU64};
+use utils::{errno, errno::EResult};
 
 /// Device which does nothing.
 #[derive(Default)]
-pub struct NullDeviceHandle {}
+pub struct NullDeviceHandle;
 
-impl DeviceHandle for NullDeviceHandle {
-	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
-		// TODO
-		Err(errno!(EINVAL))
-	}
-}
-
-impl IO for NullDeviceHandle {
-	fn read(&mut self, _offset: u64, _buff: &mut [u8]) -> EResult<(u64, bool)> {
-		Ok((0, true))
+impl DeviceIO for NullDeviceHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		1.try_into().unwrap()
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
-		Ok(buff.len() as _)
+	fn blocks_count(&self) -> u64 {
+		0
 	}
 
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Ok(io::POLLIN | io::POLLOUT)
+	fn read(&mut self, _off: u64, _buf: &mut [u8]) -> EResult<u64> {
+		Ok(0)
+	}
+
+	fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<u64> {
+		Ok(buf.len() as _)
 	}
 }
 
 /// Device returning only null bytes.
 #[derive(Default)]
-pub struct ZeroDeviceHandle {}
+pub struct ZeroDeviceHandle;
 
-impl DeviceHandle for ZeroDeviceHandle {
-	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
-		// TODO
-		Err(errno!(EINVAL))
+impl DeviceIO for ZeroDeviceHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		1.try_into().unwrap()
 	}
-}
 
-impl IO for ZeroDeviceHandle {
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+	fn blocks_count(&self) -> u64 {
+		0
+	}
+
+	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<u64> {
 		buff.fill(0);
-		Ok((buff.len() as _, false))
+		Ok(buff.len() as _)
 	}
 
 	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
 		Ok(buff.len() as _)
-	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
 
@@ -87,30 +80,23 @@ impl IO for ZeroDeviceHandle {
 /// This device will block reading until enough entropy is available.
 #[derive(Default)]
 pub struct RandomDeviceHandle {
-	/// The device's block handler.
-	block_handler: BlockHandler,
+	/// The device's wait queue.
+	wait_queue: WaitQueue,
 }
 
-impl DeviceHandle for RandomDeviceHandle {
-	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
-		// TODO
-		Err(errno!(EINVAL))
+impl DeviceIO for RandomDeviceHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		1.try_into().unwrap()
 	}
 
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		self.block_handler.add_waiting_process(proc, mask)
-	}
-}
-
-impl IO for RandomDeviceHandle {
-	fn get_size(&self) -> u64 {
+	fn blocks_count(&self) -> u64 {
 		0
 	}
 
-	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<u64> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
-		self.block_handler.wake_processes(io::POLLIN);
+		self.wait_queue.wake_processes(poll::POLLIN);
 
 		if let Some(pool) = &mut *pool {
 			let len = pool.read(buff, false);
@@ -123,7 +109,7 @@ impl IO for RandomDeviceHandle {
 	fn write(&mut self, _: u64, buff: &[u8]) -> EResult<u64> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
-		self.block_handler.wake_processes(io::POLLOUT);
+		self.wait_queue.wake_processes(poll::POLLOUT);
 
 		if let Some(pool) = &mut *pool {
 			let len = pool.write(buff);
@@ -132,28 +118,25 @@ impl IO for RandomDeviceHandle {
 			Err(errno!(EINVAL))
 		}
 	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Ok(io::POLLIN | io::POLLOUT)
-	}
 }
 
-/// This device works exactly like [`RandomDeviceHandle`], except it doesn't block.
+/// This device works exactly like [`RandomDeviceHandle`], except it does not block.
 ///
 /// If not enough entropy is available, the output might not have a sufficient
 /// quality.
 #[derive(Default)]
-pub struct URandomDeviceHandle {}
+pub struct URandomDeviceHandle;
 
-impl DeviceHandle for URandomDeviceHandle {
-	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
-		// TODO
-		Err(errno!(EINVAL))
+impl DeviceIO for URandomDeviceHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		1.try_into().unwrap()
 	}
-}
 
-impl IO for URandomDeviceHandle {
-	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
+	fn blocks_count(&self) -> u64 {
+		0
+	}
+
+	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<u64> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
@@ -174,51 +157,35 @@ impl IO for URandomDeviceHandle {
 			Err(errno!(EINVAL))
 		}
 	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Ok(io::POLLIN | io::POLLOUT)
-	}
 }
 
 /// Device allowing to read or write kernel logs.
 #[derive(Default)]
-pub struct KMsgDeviceHandle {}
+pub struct KMsgDeviceHandle;
 
-impl DeviceHandle for KMsgDeviceHandle {
-	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
-		// TODO
-		Err(errno!(EINVAL))
-	}
-}
-
-impl IO for KMsgDeviceHandle {
-	fn get_size(&self) -> u64 {
-		LOGGER.lock().get_size() as _
+impl DeviceIO for KMsgDeviceHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		1.try_into().unwrap()
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		if offset > (usize::MAX as u64) {
-			return Err(errno!(EINVAL));
-		}
+	fn blocks_count(&self) -> u64 {
+		0
+	}
 
+	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<u64> {
+		let off = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let logger = LOGGER.lock();
 		let size = logger.get_size();
 		let content = logger.get_content();
 
-		let len = min(size - offset as usize, buff.len());
-		buff[..len].copy_from_slice(&content[(offset as usize)..(offset as usize + len)]);
-
-		let eof = offset as usize + len >= size;
-		Ok((len as _, eof))
+		let len = min(size - off, buff.len());
+		buff[..len].copy_from_slice(&content[off..(off + len)]);
+		Ok(len as _)
 	}
 
-	fn write(&mut self, _offset: u64, _buff: &[u8]) -> EResult<u64> {
+	fn write(&mut self, _off: u64, _buff: &[u8]) -> EResult<u64> {
 		// TODO
 		todo!();
-	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Ok(io::POLLIN | io::POLLOUT)
 	}
 }
 

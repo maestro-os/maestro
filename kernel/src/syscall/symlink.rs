@@ -36,7 +36,6 @@ use crate::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io::IO,
 };
 
 pub fn symlink(
