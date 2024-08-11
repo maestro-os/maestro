@@ -164,7 +164,7 @@ impl Scheduler {
 
 	/// Adds a process to the scheduler.
 	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<IntMutex<Process>>> {
-		if *process.get_state() == State::Running {
+		if process.get_state() == State::Running {
 			self.increment_running();
 		}
 		let pid = process.pid.get();
@@ -181,7 +181,7 @@ impl Scheduler {
 			return;
 		};
 		let proc = proc_mutex.lock();
-		if *proc.get_state() == State::Running {
+		if proc.get_state() == State::Running {
 			self.decrement_running();
 		}
 		self.processes.remove(&pid);

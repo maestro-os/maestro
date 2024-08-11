@@ -236,6 +236,7 @@ impl SignalHandler {
 		if matches!(process_state, State::Zombie) {
 			return;
 		}
+		process.sigpending.clear(signal.get_id() as _);
 		match self {
 			Self::Ignore => {}
 			Self::Handler(action) if !process.is_handling_signal() && signal.can_catch() => {

@@ -55,7 +55,9 @@ pub const WNOWAIT: i32 = 0x1000000;
 fn iter_targets(curr_proc: &Process, pid: i32) -> impl Iterator<Item = Pid> + '_ {
 	let mut i = 0;
 	iter::from_fn(move || {
+		// FIXME: select only process that are children of `curr_proc`
 		let res = match pid {
+			// FIXME: must wait for any child process whose pgid is equal to -pid
 			..-1 => curr_proc.get_group_processes().get(i).cloned(),
 			-1 => curr_proc.get_children().get(i).cloned(),
 			0 => curr_proc.get_group_processes().get(i).cloned(),
@@ -70,6 +72,7 @@ fn iter_targets(curr_proc: &Process, pid: i32) -> impl Iterator<Item = Pid> + '_
 fn get_wstatus(proc: &Process) -> i32 {
 	let status = proc.get_exit_status().unwrap_or(0);
 	let termsig = proc.get_termsig();
+	#[allow(clippy::let_and_return)]
 	let wstatus = match proc.get_state() {
 		State::Running | State::Sleeping => 0xffff,
 		State::Stopped => ((termsig as i32 & 0xff) << 8) | 0x7f,

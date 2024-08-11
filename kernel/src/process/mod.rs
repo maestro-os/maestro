@@ -119,7 +119,7 @@ pub const TLS_ENTRIES_COUNT: usize = 3;
 const REDZONE_SIZE: usize = 128;
 
 /// An enumeration containing possible states for a process.
-#[derive(Eq, Debug, PartialEq)]
+#[derive(Clone, Eq, Debug, PartialEq)]
 pub enum State {
 	/// The process is running or waiting to run.
 	Running,
@@ -596,8 +596,8 @@ impl Process {
 
 	/// Returns the process's current state.
 	#[inline(always)]
-	pub fn get_state(&self) -> &State {
-		&self.state
+	pub fn get_state(&self) -> State {
+		self.state.clone()
 	}
 
 	/// Sets the process's state to `new_state`.
@@ -995,9 +995,8 @@ impl Process {
 
 	/// Restores the process's state after handling a signal.
 	pub fn signal_restore(&mut self) {
-		if let Some(sig) = self.handled_signal.take() {
+		if self.handled_signal.take().is_some() {
 			self.regs = self.sigreturn_regs.clone();
-			self.sigpending.clear(sig.get_id() as _);
 		}
 	}
 

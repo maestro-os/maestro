@@ -123,13 +123,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.update_tss();
 
 	// Reset signals
-	proc.sigmask.clear_all();
-	{
-		let mut handlers = proc.signal_handlers.lock();
-		for i in 0..handlers.len() {
-			handlers[i] = SignalHandler::Default;
-		}
-	}
+	proc.signal_handlers.lock().fill(SignalHandler::Default);
 
 	proc.reset_vfork();
 	proc.clear_tls_entries();
