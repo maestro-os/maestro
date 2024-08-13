@@ -124,7 +124,9 @@ pub trait DeviceIO {
 	/// - `buf` is the buffer to which the data is written
 	///
 	/// The size of the buffer has to be a multiple of the block size.
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<u64>;
+	///
+	/// On success, the function returns the number of bytes read.
+	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize>;
 
 	/// Writes data to the device.
 	///
@@ -133,7 +135,9 @@ pub trait DeviceIO {
 	/// - `buf` is the buffer from which the data is read
 	///
 	/// The size of the buffer has to be a multiple of the block size.
-	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<u64>;
+	///
+	/// On success, the function returns the number of bytes written.
+	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<usize>;
 
 	/// Performs an ioctl operation on the device.
 	///

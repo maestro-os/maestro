@@ -73,7 +73,7 @@ impl DeviceIO for RAMDisk {
 		(RAM_DISK_SIZE as u64) / self.block_size().get()
 	}
 
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<()> {
+	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let block_size = self.block_size().get();
 		let blocks_count = self.blocks_count();
 		let size = buf.len() as u64 / block_size;
@@ -91,10 +91,10 @@ impl DeviceIO for RAMDisk {
 			}
 		}
 
-		Ok(())
+		Ok((size * block_size) as _)
 	}
 
-	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<()> {
+	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<usize> {
 		let block_size = self.block_size().get();
 		let blocks_count = self.blocks_count();
 		let size = buf.len() as u64 / block_size;
@@ -114,7 +114,7 @@ impl DeviceIO for RAMDisk {
 			}
 		}
 
-		Ok(())
+		Ok((size * block_size) as _)
 	}
 }
 
@@ -142,12 +142,12 @@ impl DeviceIO for RAMDiskHandle {
 		self.disk.data.len() as _
 	}
 
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<u64> {
-		self.disk.read_bytes(buff, offset)
+	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<usize> {
+		self.disk.read(off, buff)
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
-		self.disk.write_bytes(buff, offset)
+	fn write(&mut self, off: u64, buff: &[u8]) -> EResult<usize> {
+		self.disk.write(off, buff)
 	}
 }
 

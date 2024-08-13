@@ -43,12 +43,12 @@ impl DeviceIO for NullDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _off: u64, _buf: &mut [u8]) -> EResult<u64> {
-		Ok(0)
+	fn read(&mut self, _off: u64, buf: &mut [u8]) -> EResult<usize> {
+		Ok(buf.len())
 	}
 
-	fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<u64> {
-		Ok(buf.len() as _)
+	fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<usize> {
+		Ok(buf.len())
 	}
 }
 
@@ -65,13 +65,13 @@ impl DeviceIO for ZeroDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<u64> {
-		buff.fill(0);
-		Ok(buff.len() as _)
+	fn read(&mut self, _offset: u64, buf: &mut [u8]) -> EResult<usize> {
+		buf.fill(0);
+		Ok(buf.len())
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
-		Ok(buff.len() as _)
+	fn write(&mut self, _offset: u64, buf: &[u8]) -> EResult<usize> {
+		Ok(buf.len())
 	}
 }
 
@@ -93,26 +93,25 @@ impl DeviceIO for RandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<u64> {
+	fn read(&mut self, _: u64, buf: &mut [u8]) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		self.wait_queue.wake_processes(poll::POLLIN);
 
 		if let Some(pool) = &mut *pool {
-			let len = pool.read(buff, false);
-			Ok((len as _, false))
+			Ok(pool.read(buf, false))
 		} else {
-			Ok((0, true))
+			Ok(0)
 		}
 	}
 
-	fn write(&mut self, _: u64, buff: &[u8]) -> EResult<u64> {
+	fn write(&mut self, _: u64, buf: &[u8]) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		self.wait_queue.wake_processes(poll::POLLOUT);
 
 		if let Some(pool) = &mut *pool {
-			let len = pool.write(buff);
+			let len = pool.write(buf);
 			Ok(len as _)
 		} else {
 			Err(errno!(EINVAL))
@@ -136,23 +135,23 @@ impl DeviceIO for URandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _: u64, buff: &mut [u8]) -> EResult<u64> {
+	fn read(&mut self, _: u64, buf: &mut [u8]) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
-			let len = pool.read(buff, true);
-			Ok((len as _, false))
+			let len = pool.read(buf, true);
+			Ok(len)
 		} else {
-			Ok((0, true))
+			Ok(0)
 		}
 	}
 
-	fn write(&mut self, _: u64, buff: &[u8]) -> EResult<u64> {
+	fn write(&mut self, _: u64, buf: &[u8]) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 
 		if let Some(pool) = &mut *pool {
-			let len = pool.write(buff);
-			Ok(len as _)
+			let len = pool.write(buf);
+			Ok(len)
 		} else {
 			Err(errno!(EINVAL))
 		}
@@ -172,18 +171,18 @@ impl DeviceIO for KMsgDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<u64> {
+	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let off = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let logger = LOGGER.lock();
 		let size = logger.get_size();
 		let content = logger.get_content();
 
-		let len = min(size - off, buff.len());
-		buff[..len].copy_from_slice(&content[off..(off + len)]);
-		Ok(len as _)
+		let len = min(size - off, buf.len());
+		buf[..len].copy_from_slice(&content[off..(off + len)]);
+		Ok(len)
 	}
 
-	fn write(&mut self, _off: u64, _buff: &[u8]) -> EResult<u64> {
+	fn write(&mut self, _off: u64, _buf: &[u8]) -> EResult<usize> {
 		// TODO
 		todo!();
 	}

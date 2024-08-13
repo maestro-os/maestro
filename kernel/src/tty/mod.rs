@@ -547,7 +547,7 @@ impl TTY {
 			self.ring_bell();
 		}
 
-		(len, false)
+		len
 	}
 
 	// TODO Implement IUTF8

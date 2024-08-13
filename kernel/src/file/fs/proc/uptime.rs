@@ -46,7 +46,7 @@ impl NodeOps for Uptime {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		// TODO
 		format_content!(off, buf, "0.00 0.00\n")
 	}

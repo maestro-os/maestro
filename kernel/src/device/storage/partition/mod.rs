@@ -27,35 +27,12 @@ use gpt::Gpt;
 use mbr::MbrTable;
 use utils::{boxed::Box, collections::vec::Vec, errno::EResult};
 
-/// Structure representing a disk partition.
+/// A disk partition bounds.
 pub struct Partition {
 	/// The offset to the first sector of the partition.
-	offset: u64,
+	pub offset: u64,
 	/// The number of sectors in the partition.
-	size: u64,
-}
-
-impl Partition {
-	/// Creates a new instance with the given partition offset `offset` and size
-	/// `size`.
-	pub fn new(offset: u64, size: u64) -> Self {
-		Self {
-			offset,
-			size,
-		}
-	}
-
-	/// Returns the offset of the first sector of the partition.
-	#[inline]
-	pub fn get_offset(&self) -> u64 {
-		self.offset
-	}
-
-	/// Returns the number of sectors in the partition.
-	#[inline]
-	pub fn get_size(&self) -> u64 {
-		self.size
-	}
+	pub size: u64,
 }
 
 /// Trait representing a partition table.

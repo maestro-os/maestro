@@ -402,7 +402,7 @@ impl File {
 		self.as_mountpoint().is_some()
 	}
 
-	pub fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<u64> {
+	pub fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		self.io_op(|io| io.ops.read_content(io.inode, io.fs, off, buf))
 		// TODO update `atime` if the mountpoint allows it
 	}
@@ -417,17 +417,17 @@ impl File {
 				if len == 0 {
 					break;
 				}
-				off += len;
+				off += len as u64;
 			}
 			Ok(())
 		})?;
 		Ok(buf)
 	}
 
-	pub fn write(&mut self, off: u64, buff: &[u8]) -> EResult<u64> {
+	pub fn write(&mut self, off: u64, buff: &[u8]) -> EResult<usize> {
 		let len = self.io_op(|io| io.ops.write_content(io.inode, io.fs, off, buff))?;
 		// Update file's size
-		self.stat.size = max(off + len, self.stat.size);
+		self.stat.size = max(off + len as u64, self.stat.size);
 		// TODO update `blocks`
 		// TODO update `mtime`
 		Ok(len)
@@ -477,7 +477,7 @@ impl File {
 			if len == 0 {
 				break;
 			}
-			off += len;
+			off += len as u64;
 			if off >= link_path.len() as u64 {
 				link_path.resize(link_path.len() + BLOCK, 0)?;
 			}
@@ -499,14 +499,7 @@ impl File {
 	/// If `size` is greater than or equals to the current size of the file, the function does
 	/// nothing.
 	pub fn truncate(&mut self, size: u64) -> EResult<()> {
-		self.io_op(|io| match io {
-			IoSource::Filesystem {
-				fs,
-				inode,
-				ops,
-			} => ops.truncate_content(inode, fs, size),
-			IoSource::IO(_) => Ok(()),
-		})
+		self.io_op(|io| io.ops.truncate_content(io.inode, io.fs, size))
 	}
 
 	/// Performs an ioctl operation on the file.
@@ -535,7 +528,7 @@ impl File {
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				let mut dev = dev_mutex.lock();
-				dev.get_handle().ioctl(request, argp)
+				dev.get_io().ioctl(request, argp)
 			}
 			FileType::CharDevice => {
 				let dev_mutex = device::get(&DeviceID {
@@ -545,7 +538,7 @@ impl File {
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				let mut dev = dev_mutex.lock();
-				dev.get_handle().ioctl(request, argp)
+				dev.get_io().ioctl(request, argp)
 			}
 			_ => Err(errno!(ENOTTY)),
 		}
@@ -555,10 +548,6 @@ impl File {
 	///
 	/// If no device is associated with the file, the function does nothing.
 	pub fn sync(&self) -> EResult<()> {
-		// Cannot sync a file that has no medium to sync to
-		let Some(ops) = self.ops.as_ref() else {
-			return Ok(());
-		};
 		let Some(mountpoint_mutex) = self.location.get_mountpoint() else {
 			return Ok(());
 		};
@@ -568,7 +557,7 @@ impl File {
 		let fs = mountpoint.get_filesystem();
 		// TODO only set fields that were modified
 		// Sync
-		ops.set_stat(
+		self.ops.set_stat(
 			inode,
 			&*fs,
 			StatSet {
@@ -772,14 +761,7 @@ impl<'f> Iterator for DirEntryIterator<'f> {
 	fn next(&mut self) -> Option<Self::Item> {
 		let res = self
 			.dir
-			.io_op(|io| match io {
-				IoSource::Filesystem {
-					fs,
-					inode,
-					ops,
-				} => ops.next_entry(inode, fs, self.cursor),
-				IoSource::IO(_) => Err(errno!(ENOTDIR)),
-			})
+			.io_op(|io| io.ops.next_entry(io.inode, io.fs, self.cursor))
 			.transpose()?;
 		match res {
 			Ok((entry, off)) => {

@@ -46,7 +46,7 @@ impl NodeOps for OsRelease {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		format_content!(off, buf, "{}\n", crate::VERSION)
 	}
 }

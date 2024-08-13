@@ -56,7 +56,7 @@ impl NodeOps for Environ {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let proc = proc_mutex.lock();
 		format_content!(off, buf, "{}", proc.envp)

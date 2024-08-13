@@ -223,7 +223,7 @@ impl OpenFile {
 		}
 		// Read
 		let len = file.read(self.curr_off, buf)?;
-		self.curr_off += len;
+		self.curr_off += len as u64;
 		Ok(len as _)
 	}
 
@@ -250,7 +250,7 @@ impl OpenFile {
 		file.sync()?; // TODO Lazy
 			  // Write
 		let len = file.write(self.curr_off, buf)?;
-		self.curr_off += len;
+		self.curr_off += len as u64;
 		Ok(len as _)
 	}
 

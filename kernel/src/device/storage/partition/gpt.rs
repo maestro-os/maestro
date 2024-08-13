@@ -308,7 +308,10 @@ impl Table for Gpt {
 			// checked + 1 is required because the ending LBA is included
 			let size = (end - start) + 1;
 
-			partitions.push(Partition::new(start, size))?;
+			partitions.push(Partition {
+				offset: start,
+				size,
+			})?;
 		}
 
 		Ok(partitions)

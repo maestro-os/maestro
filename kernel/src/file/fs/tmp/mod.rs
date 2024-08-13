@@ -229,7 +229,7 @@ impl NodeOps for Node {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let inner = self.0.lock();
 		let content = match &inner.content {
 			NodeContent::Regular(content) | NodeContent::Link(content) => content,
@@ -242,7 +242,7 @@ impl NodeOps for Node {
 		let off = off as usize;
 		let len = min(buf.len(), content.len() - off);
 		buf[..len].copy_from_slice(&content[off..(off + len)]);
-		Ok(len as _)
+		Ok(len)
 	}
 
 	fn write_content(
@@ -251,7 +251,7 @@ impl NodeOps for Node {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &[u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let mut inner = self.0.lock();
 		match &mut inner.content {
 			NodeContent::Regular(content) => {
@@ -273,7 +273,7 @@ impl NodeOps for Node {
 			NodeContent::Directory(_) => return Err(errno!(EISDIR)),
 			_ => return Err(errno!(EINVAL)),
 		}
-		Ok(buf.len() as _)
+		Ok(buf.len())
 	}
 
 	fn truncate_content(&self, _inode: INode, _fs: &dyn Filesystem, size: u64) -> EResult<()> {
@@ -506,7 +506,7 @@ impl NodeOps for TmpFSNodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let node = downcast_fs::<TmpFS>(fs)
 			.nodes
 			.lock()
@@ -521,7 +521,7 @@ impl NodeOps for TmpFSNodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &[u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let node = downcast_fs::<TmpFS>(fs)
 			.nodes
 			.lock()

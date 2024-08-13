@@ -102,10 +102,10 @@ impl Table for MbrTable {
 
 		for mbr_partition in self.partitions.iter() {
 			if mbr_partition.partition_type != 0 {
-				let partition = Partition::new(
-					mbr_partition.lba_start as _,
-					mbr_partition.sectors_count as _,
-				);
+				let partition = Partition {
+					offset: mbr_partition.lba_start as _,
+					size: mbr_partition.sectors_count as _,
+				};
 				partitions.push(partition)?;
 			}
 		}

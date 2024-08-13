@@ -168,7 +168,7 @@ pub trait NodeOps: Debug {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let _ = (off, buf);
 		match self.get_stat(inode, fs)?.file_type {
 			FileType::Directory => Err(errno!(EISDIR)),
@@ -197,7 +197,7 @@ pub trait NodeOps: Debug {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &[u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let _ = (off, buf);
 		match self.get_stat(inode, fs)?.file_type {
 			FileType::Directory => Err(errno!(EISDIR)),

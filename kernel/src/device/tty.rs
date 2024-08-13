@@ -124,21 +124,22 @@ impl DeviceIO for TTYDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<u64> {
+	fn read(&mut self, _off: u64, buff: &mut [u8]) -> EResult<usize> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
 		self.check_sigttin(&mut proc, &tty)?;
-		tty.read(buff)
+		let len = tty.read(buff);
+		Ok(len)
 	}
 
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
+	fn write(&mut self, _off: u64, buff: &[u8]) -> EResult<usize> {
 		let (proc_mutex, tty_mutex) = self.get_tty()?;
 		let mut proc = proc_mutex.lock();
 		let mut tty = tty_mutex.lock();
 		self.check_sigttou(&mut proc, &tty)?;
 		tty.write(buff);
-		Ok(buff.len() as _)
+		Ok(buff.len())
 	}
 
 	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {

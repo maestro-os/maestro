@@ -62,11 +62,13 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	intrinsics::unlikely,
+	mem::size_of,
 };
 use inode::Ext2INode;
 use macros::AnyRepr;
 use utils::{
 	boxed::Box,
+	bytes::{as_bytes, from_bytes, AnyRepr},
 	errno,
 	errno::EResult,
 	lock::Mutex,
@@ -147,6 +149,8 @@ const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
+// TODO page cache on read_block and write_block
+
 /// Reads the `off`th block on the given device and writes the data onto the
 /// given buffer.
 ///
@@ -159,7 +163,9 @@ const MAX_NAME_LEN: usize = 255;
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
 fn read_block(off: u32, blk_size: u32, io: &mut dyn DeviceIO, buf: &mut [u8]) -> EResult<()> {
-	io.read(off as u64 * blk_size as u64, buf)?;
+	let dev_blk_size = io.block_size().get();
+	let off = off as u64 * (blk_size as u64 / dev_blk_size);
+	io.read(off, buf)?;
 	Ok(())
 }
 
@@ -175,8 +181,53 @@ fn read_block(off: u32, blk_size: u32, io: &mut dyn DeviceIO, buf: &mut [u8]) ->
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
 fn write_block(off: u32, blk_size: u32, io: &mut dyn DeviceIO, buf: &[u8]) -> EResult<()> {
-	io.write(off as u64 * blk_size as u64, buf)?;
+	let dev_blk_size = io.block_size().get();
+	let off = off as u64 * (blk_size as u64 / dev_blk_size);
+	io.write(off, buf)?;
 	Ok(())
+}
+
+/// Reads an object of the given type on the given device.
+///
+/// Arguments:
+/// - `off` is the offset in bytes on the device
+/// - `blk_size` is the size of a block in the filesystem
+/// - `io` is the I/O interface of the device
+///
+/// If the object spans several blocks, the function returns [`EUCLEAN`].
+fn read<T: AnyRepr + Clone>(off: u64, blk_size: u32, io: &mut dyn DeviceIO) -> EResult<T> {
+	let blk = off / blk_size as u64;
+	let inner_off = (off % blk_size as u64) as usize;
+	let mut buf = vec![0u8; blk_size as usize]?;
+	read_block(blk as _, blk_size, io, &mut buf)?;
+	from_bytes(&buf[inner_off..])
+		.cloned()
+		.ok_or_else(|| errno!(EUCLEAN))
+}
+
+/// Writes an object of the given type on the given device.
+///
+/// Arguments:
+/// - `off` is the offset in bytes on the device
+/// - `blk_size` is the size of a block in the filesystem
+/// - `io` is the I/O interface of the device
+/// - `val` is the value to write
+///
+/// If the object spans several blocks, the function returns [`EUCLEAN`].
+fn write<T>(off: u64, blk_size: u32, io: &mut dyn DeviceIO, val: &T) -> EResult<()> {
+	let len = size_of::<T>();
+	let blk = off / blk_size as u64;
+	let inner_off = (off % blk_size as u64) as usize;
+	// Validation
+	if inner_off + len > blk_size as usize {
+		return Err(errno!(EUCLEAN));
+	}
+	// Read block
+	let mut buf = vec![0u8; blk_size as usize]?;
+	read_block(blk as _, blk_size, io, &mut buf)?;
+	// Write back
+	buf[inner_off..(inner_off + len)].copy_from_slice(as_bytes(val));
+	write_block(blk as _, blk_size, io, &buf)
 }
 
 /// File operations.
@@ -247,7 +298,7 @@ impl NodeOps for Ext2NodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		if inode < 1 {
 			return Err(errno!(EINVAL));
 		}
@@ -268,7 +319,7 @@ impl NodeOps for Ext2NodeOps {
 		fs: &dyn Filesystem,
 		off: u64,
 		buf: &[u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		if unlikely(fs.is_readonly()) {
 			return Err(errno!(EROFS));
 		}
@@ -555,7 +606,7 @@ impl NodeOps for Ext2NodeOps {
 
 /// The ext2 superblock structure.
 #[repr(C)]
-#[derive(Debug, AnyRepr)]
+#[derive(AnyRepr, Clone, Debug)]
 pub struct Superblock {
 	/// Total number of inodes in the filesystem.
 	s_inodes_count: u32,
@@ -651,7 +702,7 @@ pub struct Superblock {
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
 	fn read(io: &mut dyn DeviceIO) -> EResult<Self> {
-		read::<Self>(SUPERBLOCK_OFFSET, io)
+		read::<Self>(1, SUPERBLOCK_OFFSET as _, io)
 	}
 
 	/// Tells whether the superblock is valid.
@@ -958,7 +1009,7 @@ impl Superblock {
 
 	/// Writes the superblock on the device.
 	pub fn write(&self, io: &mut dyn DeviceIO) -> EResult<()> {
-		write::<Self>(self, SUPERBLOCK_OFFSET, io)
+		write(1, SUPERBLOCK_OFFSET as _, io, self)
 	}
 }
 

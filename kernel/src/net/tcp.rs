@@ -53,6 +53,7 @@ pub struct TCPHdr {
 }
 
 /// The network layer for the TCP protocol.
+#[derive(Debug)]
 pub struct TCPLayer {}
 
 impl Layer for TCPLayer {

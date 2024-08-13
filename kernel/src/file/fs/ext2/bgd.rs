@@ -20,7 +20,7 @@
 //! Table which represents a block group, which is a subdivision of the
 //! filesystem.
 
-use super::Superblock;
+use super::{read, write, Superblock};
 use crate::device::DeviceIO;
 use core::mem::size_of;
 use macros::AnyRepr;
@@ -28,7 +28,7 @@ use utils::errno::EResult;
 
 /// A block group descriptor.
 #[repr(C)]
-#[derive(AnyRepr)]
+#[derive(AnyRepr, Clone)]
 pub struct BlockGroupDescriptor {
 	/// The block address of the block usage bitmap.
 	pub bg_block_bitmap: u32,
@@ -53,10 +53,11 @@ impl BlockGroupDescriptor {
 	/// - `i` the id of the group descriptor to write.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<Self> {
-		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
+	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceIO) -> EResult<Self> {
+		let blk_size = superblock.get_block_size();
+		let off = (superblock.get_bgdt_offset() * blk_size as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
-		read::<Self>(off, io)
+		read::<Self>(off, blk_size, io)
 	}
 
 	/// Writes the current block group descriptor.
@@ -65,9 +66,10 @@ impl BlockGroupDescriptor {
 	/// - `i` the id of the group descriptor to write.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<()> {
-		let off = (superblock.get_bgdt_offset() * superblock.get_block_size() as u64)
+	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn DeviceIO) -> EResult<()> {
+		let blk_size = superblock.get_block_size();
+		let off = (superblock.get_bgdt_offset() * blk_size as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
-		write(self, off, io)
+		write(off, blk_size, io, self)
 	}
 }

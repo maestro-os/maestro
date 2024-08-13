@@ -144,12 +144,12 @@ impl NodeOps for PipeBuffer {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let len = self.buffer.read(buf);
 		if len > 0 {
 			self.wr_queue.wake_next();
 		}
-		Ok(len as _)
+		Ok(len)
 	}
 
 	fn write_content(
@@ -158,7 +158,7 @@ impl NodeOps for PipeBuffer {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		buf: &[u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		if unlikely(buf.len() == 0) {
 			return Ok(0);
 		}
@@ -168,6 +168,6 @@ impl NodeOps for PipeBuffer {
 		}
 		let len = self.buffer.write(buf);
 		self.rd_queue.wake_next();
-		Ok(len as _)
+		Ok(len)
 	}
 }

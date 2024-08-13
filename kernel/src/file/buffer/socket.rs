@@ -216,7 +216,7 @@ impl NodeOps for Socket {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		if !self.desc.type_.is_stream() {
 			// TODO error
 		}
@@ -230,7 +230,7 @@ impl NodeOps for Socket {
 		_fs: &dyn Filesystem,
 		_off: u64,
 		_buf: &[u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {
 			return Err(errno!(EDESTADDRREQ));

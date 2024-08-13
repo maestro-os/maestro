@@ -39,7 +39,10 @@ use crate::{
 	process::mem_space::copy::SyscallPtr,
 	syscall::{ioctl, FromSyscallArg},
 };
-use core::ffi::{c_uchar, c_ulong, c_ushort, c_void};
+use core::{
+	ffi::{c_uchar, c_ulong, c_ushort, c_void},
+	num::NonZeroU64,
+};
 use partition::Partition;
 use utils::{
 	collections::vec::Vec,
@@ -116,83 +119,78 @@ impl StorageDeviceHandle {
 }
 
 impl DeviceIO for StorageDeviceHandle {
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<u64> {
+	fn block_size(&self) -> NonZeroU64 {
 		let Some(io) = self.io.upgrade() else {
-			return Err(errno!(ENODEV));
+			return 1.try_into().unwrap();
 		};
-		let mut io = io.lock();
-		// Check offset
-		let (start, size) = match &self.partition {
-			Some(p) => {
-				let block_size = io.block_size().get();
-				let start = p.get_offset() * block_size;
-				let size = p.get_size() * block_size;
-				(start, size)
-			}
-			None => (0, io.get_size()),
-		};
-		if (offset + buff.len() as u64) > size {
-			return Err(errno!(EINVAL));
-		}
-		io.read_bytes(buff, start + offset)
+		io.lock().block_size()
 	}
 
-	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
+	fn blocks_count(&self) -> u64 {
+		let Some(io) = self.io.upgrade() else {
+			return 0;
+		};
+		io.lock().blocks_count()
+	}
+
+	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let Some(io) = self.io.upgrade() else {
 			return Err(errno!(ENODEV));
 		};
 		let mut io = io.lock();
-		// Check offset
+		// Bound check
 		let (start, size) = match &self.partition {
-			Some(p) => {
-				let block_size = io.block_size().get();
-				let start = p.get_offset() * block_size;
-				let size = p.get_size() * block_size;
-				(start, size)
-			}
-			None => (0, io.get_size()),
+			Some(p) => (p.offset, p.size),
+			None => (0, io.blocks_count()),
 		};
-		if (offset + buff.len() as u64) > size {
+		let blk_size = io.block_size().get();
+		let buf_blks = (buf.len() as u64).div_ceil(blk_size);
+		if off.saturating_add(buf_blks) > size {
 			return Err(errno!(EINVAL));
 		}
-		io.write_bytes(buff, start + offset)
+		io.read(start + off, buf)
+	}
+
+	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<usize> {
+		let Some(io) = self.io.upgrade() else {
+			return Err(errno!(ENODEV));
+		};
+		let mut io = io.lock();
+		// Bound check
+		let (start, size) = match &self.partition {
+			Some(p) => (p.offset, p.size),
+			None => (0, io.blocks_count()),
+		};
+		let blk_size = io.block_size().get();
+		let buf_blks = (buf.len() as u64).div_ceil(blk_size);
+		if off.saturating_add(buf_blks) > size {
+			return Err(errno!(EINVAL));
+		}
+		io.write(start + off, buf)
 	}
 
 	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::HDIO_GETGEO => {
 				// The total size of the disk
-				let size = {
-					if let Some(io) = self.io.upgrade() {
-						let io = io.lock();
-						io.block_size().get() * io.blocks_count()
-					} else {
-						0
-					}
-				};
-
+				let size = self.block_size().get() * self.blocks_count();
 				// Translate from LBA to CHS
 				let s = (size % c_uchar::MAX as u64) as _;
 				let h = ((size - s as u64) / c_uchar::MAX as u64 % c_uchar::MAX as u64) as _;
 				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
-
 				// Starting LBA of the partition
-				let start = self.partition.as_ref().map(|p| p.get_offset()).unwrap_or(0) as _;
-
+				let start = self.partition.as_ref().map(|p| p.offset).unwrap_or(0) as _;
 				let hd_geo = HdGeometry {
 					heads: h,
 					sectors: s,
 					cylinders: c,
 					start,
 				};
-
 				// Write to userspace
 				let hd_geo_ptr = SyscallPtr::<HdGeometry>::from_syscall_arg(argp as usize);
 				hd_geo_ptr.copy_to_user(hd_geo)?;
-
 				Ok(0)
 			}
-
 			ioctl::BLKRRPART => {
 				StorageManager::clear_partitions(self.major)?;
 				StorageManager::read_partitions(
@@ -201,42 +199,20 @@ impl DeviceIO for StorageDeviceHandle {
 					self.storage_id,
 					&self.path_prefix,
 				)?;
-
 				Ok(0)
 			}
-
 			ioctl::BLKSSZGET => {
-				let blk_size = {
-					if let Some(io) = self.io.upgrade() {
-						let io = io.lock();
-						io.block_size().get()
-					} else {
-						0
-					}
-				};
-
+				let blk_size = self.block_size();
 				let size_ptr = SyscallPtr::<u32>::from_syscall_arg(argp as usize);
-				size_ptr.copy_to_user(blk_size as _)?;
-
+				size_ptr.copy_to_user(blk_size.get() as _)?;
 				Ok(0)
 			}
-
 			ioctl::BLKGETSIZE64 => {
-				let size = {
-					if let Some(io) = self.io.upgrade() {
-						let io = io.lock();
-						io.block_size().get() * io.blocks_count()
-					} else {
-						0
-					}
-				};
-
+				let size = self.block_size().get() * self.blocks_count();
 				let size_ptr = SyscallPtr::<u64>::from_syscall_arg(argp as usize);
 				size_ptr.copy_to_user(size)?;
-
 				Ok(0)
 			}
-
 			_ => Err(errno!(ENOTTY)),
 		}
 	}

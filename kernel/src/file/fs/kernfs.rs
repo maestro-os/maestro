@@ -145,7 +145,7 @@ impl<'b> Write for FormatContentWriter<'b> {
 }
 
 /// Implementation of [`crate::format_content`].
-pub fn format_content_args(off: u64, buf: &mut [u8], args: fmt::Arguments<'_>) -> EResult<u64> {
+pub fn format_content_args(off: u64, buf: &mut [u8], args: fmt::Arguments<'_>) -> EResult<usize> {
 	let mut writer = FormatContentWriter {
 		src_cursor: off,
 		dst: buf,
@@ -155,7 +155,7 @@ pub fn format_content_args(off: u64, buf: &mut [u8], args: fmt::Arguments<'_>) -
 	if res.is_err() && (writer.dst_cursor < writer.dst.len()) {
 		panic!("a formatting trait implementation returned an error");
 	}
-	Ok(writer.dst_cursor as _)
+	Ok(writer.dst_cursor)
 }
 
 /// Formats the content of a kernfs node and write it on a buffer.
@@ -189,7 +189,7 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 		_fs: &dyn Filesystem,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		format_content!(off, buf, "{}", DisplayableStr(TARGET))
 	}
 }

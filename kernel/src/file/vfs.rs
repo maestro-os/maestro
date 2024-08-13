@@ -76,7 +76,7 @@ pub fn get_file_from_location(location: FileLocation) -> EResult<Arc<Mutex<File>
 		})?,
 		loc @ FileLocation::Virtual(_) => {
 			let buffer_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
-			let stat = buffer_mutex.lock().get_stat();
+			let stat = buffer_mutex.lock().get_stat()?;
 			(None, stat)
 		}
 	};
