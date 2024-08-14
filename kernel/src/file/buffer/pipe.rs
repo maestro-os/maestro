@@ -38,17 +38,21 @@ use utils::{
 	vec, TryDefault,
 };
 
-/// Representing a FIFO buffer.
 #[derive(Debug)]
-pub struct PipeBuffer {
+struct PipeInner {
 	/// The pipe's buffer.
-	buffer: Mutex<RingBuffer<u8, Vec<u8>>>,
-
+	buffer: RingBuffer<u8, Vec<u8>>,
 	/// The number of readers on the pipe.
 	readers: usize,
 	/// The number of writers on the pipe.
 	writers: usize,
+}
 
+/// Representing a FIFO buffer.
+#[derive(Debug)]
+pub struct PipeBuffer {
+	/// Inner with locking.
+	inner: Mutex<PipeInner>,
 	/// The queue of processing waiting to read from the pipe.
 	rd_queue: WaitQueue,
 	/// The queue of processing waiting to write to the pipe.
@@ -58,23 +62,23 @@ pub struct PipeBuffer {
 impl PipeBuffer {
 	/// Returns the capacity of the pipe in bytes.
 	pub fn get_capacity(&self) -> usize {
-		self.buffer.lock().get_size()
+		self.inner.lock().buffer.get_size()
 	}
 
 	/// Returns the available space in the buffer in bytes.
 	pub fn get_available_len(&self) -> usize {
-		self.buffer.lock().get_available_len()
+		self.inner.lock().buffer.get_available_len()
 	}
 }
 
 impl TryDefault for PipeBuffer {
 	fn try_default() -> Result<Self, Self::Error> {
 		Ok(Self {
-			buffer: Mutex::new(RingBuffer::new(vec![0; limits::PIPE_BUF]?)),
-
-			readers: 0,
-			writers: 0,
-
+			inner: Mutex::new(PipeInner {
+				buffer: RingBuffer::new(vec![0; limits::PIPE_BUF]?),
+				readers: 0,
+				writers: 0,
+			}),
 			rd_queue: WaitQueue::default(),
 			wr_queue: WaitQueue::default(),
 		})
@@ -83,22 +87,24 @@ impl TryDefault for PipeBuffer {
 
 impl Buffer for PipeBuffer {
 	fn acquire(&self, read: bool, write: bool) {
+		let mut inner = self.inner.lock();
 		if read {
-			self.readers += 1;
+			inner.readers += 1;
 		}
 		if write {
-			self.writers += 1;
+			inner.writers += 1;
 		}
 	}
 
 	fn release(&self, read: bool, write: bool) {
+		let mut inner = self.inner.lock();
 		if read {
-			self.readers -= 1;
+			inner.readers -= 1;
 		}
 		if write {
-			self.writers -= 1;
+			inner.writers -= 1;
 		}
-		if (self.readers == 0) != (self.writers == 0) {
+		if (inner.readers == 0) != (inner.writers == 0) {
 			self.rd_queue.wake_all();
 			self.wr_queue.wake_all();
 		}
@@ -131,7 +137,7 @@ impl NodeOps for PipeBuffer {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, _off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let len = self.buffer.lock().read(buf);
+		let len = self.inner.lock().buffer.read(buf);
 		if len > 0 {
 			self.wr_queue.wake_next();
 		}
@@ -142,11 +148,12 @@ impl NodeOps for PipeBuffer {
 		if unlikely(buf.len() == 0) {
 			return Ok(0);
 		}
-		if self.readers == 0 {
+		let mut inner = self.inner.lock();
+		if inner.readers == 0 {
 			Process::current().lock().kill(Signal::SIGPIPE);
 			return Err(errno!(EPIPE));
 		}
-		let len = self.buffer.lock().write(buf);
+		let len = inner.buffer.write(buf);
 		self.rd_queue.wake_next();
 		Ok(len)
 	}

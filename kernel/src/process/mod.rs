@@ -56,8 +56,6 @@ use crate::{
 	process::{mem_space::copy, open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
 	register_get,
 	time::timer::TimerManager,
-	tty,
-	tty::TTYHandle,
 };
 use core::{
 	ffi::{c_int, c_void},
@@ -214,9 +212,6 @@ pub struct Process {
 	pub envp: Arc<String>,
 	/// The path to the process's executable.
 	pub exec_path: Arc<PathBuf>,
-
-	/// The process's current TTY.
-	tty: TTYHandle,
 
 	/// The process's access profile, containing user and group IDs.
 	pub access_profile: AccessProfile,
@@ -464,8 +459,6 @@ impl Process {
 			envp: Arc::new(String::new())?,
 			exec_path: Arc::new(PathBuf::root()?)?,
 
-			tty: tty::get(None).unwrap(), // Initialization with the init TTY
-
 			access_profile: rs.access_profile,
 			umask: DEFAULT_UMASK,
 
@@ -587,11 +580,6 @@ impl Process {
 			.and_then(Weak::upgrade)
 			.map(|parent| parent.lock().pid.get())
 			.unwrap_or(self.pid.get())
-	}
-
-	/// Returns the TTY associated with the process.
-	pub fn get_tty(&self) -> TTYHandle {
-		self.tty.clone()
 	}
 
 	/// Returns the process's current state.
@@ -851,8 +839,6 @@ impl Process {
 			argv: self.argv.clone(),
 			envp: self.envp.clone(),
 			exec_path: self.exec_path.clone(),
-
-			tty: self.tty.clone(),
 
 			access_profile: self.access_profile,
 			umask: self.umask,

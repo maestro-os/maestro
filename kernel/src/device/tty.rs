@@ -28,38 +28,16 @@ use crate::{
 		Process,
 	},
 	syscall::{ioctl, FromSyscallArg},
-	tty::{termios, termios::Termios, TTYHandle, WinSize, TTY},
+	tty::{termios, termios::Termios, TTYDisplay, WinSize, TTY},
 };
 use core::{ffi::c_void, num::NonZeroU64};
-use utils::{errno, errno::EResult, lock::IntMutex, ptr::arc::Arc};
+use utils::{errno, errno::EResult};
 
 /// A TTY device's handle.
-pub struct TTYDeviceHandle {
-	/// The device's TTY. If `None`, using the current process's TTY.
-	tty: Option<TTYHandle>,
-}
+#[derive(Default)]
+pub struct TTYDeviceHandle;
 
 impl TTYDeviceHandle {
-	/// Creates a new instance for the given TTY `tty`.
-	///
-	/// If `tty` is `None`, the device works with the current process's TTY.
-	pub fn new(tty: Option<TTYHandle>) -> Self {
-		Self {
-			tty,
-		}
-	}
-
-	/// Returns the current process and its associated TTY.
-	fn get_tty(&self) -> EResult<(Arc<IntMutex<Process>>, TTYHandle)> {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());
-		drop(proc);
-
-		Ok((proc_mutex, tty_mutex))
-	}
-
 	/// Checks whether the process is allowed to read from the TTY.
 	///
 	/// If not, it is killed with a `SIGTTIN` signal.
@@ -69,7 +47,7 @@ impl TTYDeviceHandle {
 	/// - `tty` is the TTY.
 	///
 	/// This function must be called before performing the read operation.
-	fn check_sigttin(&self, proc: &mut Process, tty: &TTY) -> EResult<()> {
+	fn check_sigttin(&self, proc: &mut Process, tty: &TTYDisplay) -> EResult<()> {
 		if proc.pgid == tty.get_pgrp() {
 			return Ok(());
 		}
@@ -96,7 +74,7 @@ impl TTYDeviceHandle {
 	/// - `tty` is the TTY.
 	///
 	/// This function must be called before performing the write operation.
-	fn check_sigttou(&self, proc: &mut Process, tty: &TTY) -> EResult<()> {
+	fn check_sigttou(&self, proc: &mut Process, tty: &TTYDisplay) -> EResult<()> {
 		if tty.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
 			return Ok(());
 		}
@@ -125,86 +103,69 @@ impl DeviceIO for TTYDeviceHandle {
 	}
 
 	fn read(&self, _off: u64, buff: &mut [u8]) -> EResult<usize> {
-		let (proc_mutex, tty_mutex) = self.get_tty()?;
+		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
-		let mut tty = tty_mutex.lock();
-		self.check_sigttin(&mut proc, &tty)?;
-		let len = tty.read(buff);
+		self.check_sigttin(&mut proc, &TTY.display.lock())?;
+		let len = TTY.read(buff)?;
 		Ok(len)
 	}
 
 	fn write(&self, _off: u64, buff: &[u8]) -> EResult<usize> {
-		let (proc_mutex, tty_mutex) = self.get_tty()?;
+		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
-		let mut tty = tty_mutex.lock();
+		let mut tty = TTY.display.lock();
 		self.check_sigttou(&mut proc, &tty)?;
 		tty.write(buff);
 		Ok(buff.len())
 	}
 
 	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let (proc_mutex, tty_mutex) = self.get_tty()?;
+		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
-		let mut tty = tty_mutex.lock();
-
+		let mut tty = TTY.display.lock();
 		match request.get_old_format() {
 			ioctl::TCGETS => {
 				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
 				termios_ptr.copy_to_user(tty.get_termios().clone())?;
-
 				Ok(0)
 			}
-
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
 				self.check_sigttou(&mut proc, &tty)?;
-
 				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
 				let termios = termios_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_termios(termios.clone());
-
 				Ok(0)
 			}
-
 			ioctl::TIOCGPGRP => {
 				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
 				pgid_ptr.copy_to_user(tty.get_pgrp())?;
-
 				Ok(0)
 			}
-
 			ioctl::TIOCSPGRP => {
 				self.check_sigttou(&mut proc, &tty)?;
-
 				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
 				let pgid = pgid_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_pgrp(pgid);
-
 				Ok(0)
 			}
-
 			ioctl::TIOCGWINSZ => {
 				let winsize = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
 				winsize.copy_to_user(tty.get_winsize().clone())?;
-
 				Ok(0)
 			}
-
 			ioctl::TIOCSWINSZ => {
 				let winsize_ptr = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
 				let winsize = winsize_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
-
 				// Drop to avoid deadlock since `set_winsize` sends the SIGWINCH signal
 				drop(proc);
 				tty.set_winsize(winsize.clone());
-
 				Ok(0)
 			}
-
 			_ => Err(errno!(EINVAL)),
 		}
 	}

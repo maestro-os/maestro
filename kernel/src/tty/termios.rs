@@ -206,8 +206,9 @@ pub struct Termios {
 	pub __c_ospeed: u32,
 }
 
-impl Default for Termios {
-	fn default() -> Self {
+impl Termios {
+	/// Creates a new instance with the default values.
+	pub const fn new() -> Self {
 		use consts::*;
 		let mut t = Self {
 			c_iflag: ICRNL | IUCLC | IXANY | IMAXBEL,

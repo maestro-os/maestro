@@ -20,14 +20,18 @@
 
 use super::Buffer;
 use crate::{
-	file::{buffer::WaitQueue, fs::NodeOps, FileLocation, FileType, Stat},
+	file::{blocking::WaitQueue, fs::NodeOps, FileLocation, FileType, Stat},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
 };
-use core::ffi::c_int;
+use core::{
+	ffi::c_int,
+	sync::{atomic, atomic::AtomicUsize},
+};
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
+	lock::Mutex,
 	ptr::arc::Arc,
 	vec, TryDefault,
 };
@@ -38,28 +42,29 @@ const BUFFER_SIZE: usize = 65536;
 /// Socket option level: Socket
 const SOL_SOCKET: c_int = 1;
 
-/// Structure representing a socket.
+/// A UNIX socket.
 #[derive(Debug)]
 pub struct Socket {
 	/// The socket's stack descriptor.
 	desc: SocketDesc,
 	/// The socket's network stack corresponding to the descriptor.
 	stack: Option<osi::Stack>,
-
-	/// The buffer containing received data. If `None`, reception has been shutdown.
-	receive_buffer: Option<RingBuffer<u8, Vec<u8>>>,
-	/// The buffer containing data to be transmitted. If `None`, transmission has been shutdown.
-	transmit_buffer: Option<RingBuffer<u8, Vec<u8>>>,
-
 	/// The number of entities owning a reference to the socket. When this count reaches zero, the
 	/// socket is closed.
-	open_count: u32,
-
-	/// The socket's block handler.
-	block_handler: WaitQueue,
+	open_count: AtomicUsize,
 
 	/// The address the socket is bound to.
-	sockname: Vec<u8>,
+	sockname: Mutex<Vec<u8>>,
+
+	/// The buffer containing received data. If `None`, reception has been shutdown.
+	rx_buff: Mutex<Option<RingBuffer<u8, Vec<u8>>>>,
+	/// The buffer containing data to be transmitted. If `None`, transmission has been shutdown.
+	tx_buff: Mutex<Option<RingBuffer<u8, Vec<u8>>>>,
+
+	/// Receive wait queue.
+	rx_queue: WaitQueue,
+	/// Transmit wait queue.
+	tx_queue: WaitQueue,
 }
 
 impl Socket {
@@ -68,15 +73,15 @@ impl Socket {
 		Arc::new(Self {
 			desc,
 			stack: None,
+			open_count: AtomicUsize::new(0),
 
-			receive_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
-			transmit_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
+			sockname: Default::default(),
 
-			open_count: 0,
+			rx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
+			tx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
 
-			block_handler: WaitQueue::default(),
-
-			sockname: Vec::new(),
+			rx_queue: WaitQueue::new(),
+			tx_queue: WaitQueue::new(),
 		})
 	}
 
@@ -116,13 +121,8 @@ impl Socket {
 	}
 
 	/// Returns the name of the socket.
-	pub fn get_sockname(&self) -> &[u8] {
+	pub fn get_sockname(&self) -> &Mutex<Vec<u8>> {
 		&self.sockname
-	}
-
-	/// Tells whether the socket is bound.
-	pub fn is_bound(&self) -> bool {
-		!self.sockname.is_empty()
 	}
 
 	/// Binds the socket to the given address.
@@ -132,25 +132,26 @@ impl Socket {
 	/// If the socket is already bound, or if the address is invalid, or if the address is already
 	/// in used, the function returns an error.
 	pub fn bind(&self, sockaddr: &[u8]) -> EResult<()> {
-		if self.is_bound() {
+		let mut sockname = self.sockname.lock();
+		if !sockname.is_empty() {
 			return Err(errno!(EINVAL));
 		}
 		// TODO check if address is already in used (EADDRINUSE)
 		// TODO check the requested network interface exists (EADDRNOTAVAIL)
 		// TODO check address against stack's domain
 
-		self.sockname = Vec::try_from(sockaddr)?;
+		*sockname = Vec::try_from(sockaddr)?;
 		Ok(())
 	}
 
 	/// Shuts down the reception side of the socket.
 	pub fn shutdown_reception(&self) {
-		self.receive_buffer = None;
+		*self.rx_buff.lock() = None;
 	}
 
 	/// Shuts down the transmit side of the socket.
 	pub fn shutdown_transmit(&self) {
-		self.transmit_buffer = None;
+		*self.tx_buff.lock() = None;
 	}
 }
 
@@ -165,27 +166,27 @@ impl TryDefault for Socket {
 		Ok(Self {
 			desc,
 			stack: None,
-
-			receive_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
-			transmit_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
-
-			open_count: 0,
-
-			block_handler: WaitQueue::default(),
+			open_count: AtomicUsize::new(0),
 
 			sockname: Default::default(),
+
+			rx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
+			tx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
+
+			rx_queue: WaitQueue::new(),
+			tx_queue: WaitQueue::new(),
 		})
 	}
 }
 
 impl Buffer for Socket {
 	fn acquire(&self, _read: bool, _write: bool) {
-		self.open_count += 1;
+		self.open_count.fetch_add(1, atomic::Ordering::Acquire);
 	}
 
 	fn release(&self, _read: bool, _write: bool) {
-		self.open_count -= 1;
-		if self.open_count == 0 {
+		let cnt = self.open_count.fetch_sub(1, atomic::Ordering::Release);
+		if cnt == 0 {
 			// TODO close the socket
 		}
 	}

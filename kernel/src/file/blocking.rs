@@ -24,7 +24,11 @@ use crate::{
 	process::{pid::Pid, scheduler, Process},
 };
 use core::mem;
-use utils::{collections::vec::Vec, errno::EResult, lock::Mutex};
+use utils::{
+	collections::vec::Vec,
+	errno::AllocResult,
+	lock::{IntMutex, Mutex},
+};
 
 /// A queue of processes waiting on a resource.
 ///
@@ -32,11 +36,16 @@ use utils::{collections::vec::Vec, errno::EResult, lock::Mutex};
 ///
 /// **Note**: dropping this structure while processes are waiting on it makes them starve.
 #[derive(Debug, Default)]
-pub struct WaitQueue(Mutex<Vec<Pid>>); // TODO use a VecDeque
+pub struct WaitQueue(IntMutex<Vec<Pid>>); // TODO use a VecDeque
 
 impl WaitQueue {
+	/// Creates a new empty queue.
+	pub const fn new() -> Self {
+		Self(Mutex::new(Vec::new()))
+	}
+
 	/// Makes the current process wait until the given predicate `f` is true.
-	pub fn wait_until<F: FnMut() -> bool>(&self, mut f: F) -> EResult<()> {
+	pub fn wait_until<F: FnMut() -> bool>(&self, mut f: F) -> AllocResult<()> {
 		loop {
 			if f() {
 				break;

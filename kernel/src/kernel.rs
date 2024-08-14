@@ -92,6 +92,7 @@ use crate::{
 	logger::LOGGER,
 	memory::vmem,
 	process::{exec, exec::ExecInfo, Process},
+	tty::TTY,
 };
 use core::{arch::asm, ffi::c_void};
 use utils::{
@@ -164,7 +165,7 @@ fn init(init_path: String) -> EResult<()> {
 /// [`enter_loop`].
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
-	tty::init();
+	TTY.display.lock().show();
 	// Ensure the CPU has SSE
 	if !cpu::sse::is_present() {
 		panic!("SSE support is required to run this kernel :(");

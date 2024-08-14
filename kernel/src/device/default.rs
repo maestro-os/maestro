@@ -258,7 +258,7 @@ pub(super) fn create() -> EResult<()> {
 		},
 		current_tty_path,
 		0o666,
-		TTYDeviceHandle::new(None),
+		TTYDeviceHandle::default(),
 	)?;
 	device::register(current_tty_device)?;
 
