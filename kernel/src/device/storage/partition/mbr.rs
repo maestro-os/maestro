@@ -24,14 +24,15 @@
 
 use super::{Partition, Table};
 use crate::device::DeviceIO;
-use utils::{collections::vec::Vec, errno::EResult};
+use macros::AnyRepr;
+use utils::{bytes::from_bytes, collections::vec::Vec, errno::EResult, vec};
 
 /// The signature of the MBR partition table.
 const MBR_SIGNATURE: u16 = 0xaa55;
 
-/// Structure representing a partition.
-#[derive(Clone)]
+/// A MBR partition.
 #[repr(C, packed)]
+#[derive(AnyRepr, Clone)]
 struct MbrPartition {
 	/// Partition attributes.
 	attrs: u8,
@@ -47,8 +48,9 @@ struct MbrPartition {
 	sectors_count: u32,
 }
 
-/// Structure representing the partition table.
+/// A MBR partition table.
 #[repr(C, packed)]
+#[derive(AnyRepr)]
 pub struct MbrTable {
 	/// The boot code.
 	boot: [u8; 440],
@@ -76,20 +78,15 @@ impl Clone for MbrTable {
 
 impl Table for MbrTable {
 	fn read(storage: &dyn DeviceIO) -> EResult<Option<Self>> {
-		let mut first_sector: [u8; 512] = [0; 512];
-
-		if first_sector.len() as u64 > storage.get_size() {
-			return Ok(None);
-		}
-		storage.read_bytes(&mut first_sector, 0)?;
-
-		// Valid because taking the pointer to the buffer on the stack which has the
-		// same size as the structure
-		let mbr_table = unsafe { &*(first_sector.as_ptr() as *const MbrTable) };
+		// Read first sector
+		let blk_size = storage.block_size().get();
+		let len = 512usize.next_multiple_of(blk_size as usize);
+		let mut buf = vec![0u8; len]?;
+		storage.read(0, &mut buf)?;
+		let mbr_table: &MbrTable = from_bytes(&buf).unwrap();
 		if mbr_table.signature != MBR_SIGNATURE {
 			return Ok(None);
 		}
-
 		Ok(Some(mbr_table.clone()))
 	}
 

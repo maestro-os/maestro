@@ -234,17 +234,18 @@ impl Gpt {
 	///
 	/// `storage` is the storage device interface.
 	fn get_entries(&self, storage: &dyn DeviceIO) -> EResult<Vec<GPTEntry>> {
-		let block_size = storage.block_size();
+		let block_size = storage.block_size().get();
 		let blocks_count = storage.blocks_count();
 		let entries_start =
 			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		let mut buf = vec![0; size_of::<GPTEntry>()]?;
+		let mut buf = vec![0; block_size as usize]?;
 		let entries = (0..self.entries_number)
 			// Read entry
 			.map(|i| {
-				let off = (entries_start * block_size.get()) + (i as u64 * self.entry_size as u64);
-				storage.read_bytes(&mut buf, off)?;
-				let ent = from_bytes::<GPTEntry>(&buf).unwrap().clone();
+				let off = entries_start + (i as u64 * self.entry_size as u64) / block_size;
+				let inner_off = ((i as u64 * self.entry_size as u64) % block_size) as usize;
+				storage.read(off, &mut buf)?;
+				let ent = from_bytes::<GPTEntry>(&buf[inner_off..]).unwrap().clone();
 				Ok(ent)
 			})
 			// Ignore empty entries
