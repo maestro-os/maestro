@@ -42,7 +42,7 @@ use crate::{
 	io,
 };
 use core::{cmp::min, num::NonZeroU64};
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, lock::Mutex};
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;
@@ -140,8 +140,7 @@ enum PortOffset {
 	Control(u16),
 }
 
-/// Structure representing a PATA interface. An instance is associated with a
-/// unique disk.
+/// A PATA interface with a unique disk.
 #[derive(Debug)]
 pub struct PATAInterface {
 	/// The channel on which the disk is located.
@@ -151,9 +150,11 @@ pub struct PATAInterface {
 
 	/// Tells whether the drive supports LBA48.
 	lba48: bool,
-
 	/// The number of sectors on the disk.
 	sectors_count: u64,
+
+	/// Mutex preventing data race on read/write operations.
+	lock: Mutex<()>,
 }
 
 impl PATAInterface {
@@ -170,8 +171,9 @@ impl PATAInterface {
 			slave,
 
 			lba48: false,
-
 			sectors_count: 0,
+
+			lock: Default::default(),
 		};
 		s.identify()?;
 		Ok(s)
@@ -415,6 +417,9 @@ impl DeviceIO for PATAInterface {
 			(u8::MAX as u64) + 1
 		};
 
+		// Avoid data race
+		let _guard = self.lock.lock();
+		// Select disk
 		self.select(false);
 
 		let mut i = 0;
@@ -523,6 +528,9 @@ impl DeviceIO for PATAInterface {
 			(u8::MAX as u64) + 1
 		};
 
+		// Avoid data race
+		let _guard = self.lock.lock();
+		// Select disk
 		self.select(false);
 
 		let mut i = 0;
