@@ -185,7 +185,7 @@ impl Gpt {
 	/// the given LBA `lba`.
 	///
 	/// If the header is invalid, the function returns an error.
-	fn read_hdr(storage: &mut dyn DeviceIO, lba: i64) -> EResult<Self> {
+	fn read_hdr(storage: &dyn DeviceIO, lba: i64) -> EResult<Self> {
 		let block_size = storage.block_size().get() as _;
 		let blocks_count = storage.blocks_count();
 		if size_of::<Gpt>() > block_size {
@@ -233,7 +233,7 @@ impl Gpt {
 	/// Returns the list of entries in the table.
 	///
 	/// `storage` is the storage device interface.
-	fn get_entries(&self, storage: &mut dyn DeviceIO) -> EResult<Vec<GPTEntry>> {
+	fn get_entries(&self, storage: &dyn DeviceIO) -> EResult<Vec<GPTEntry>> {
 		let block_size = storage.block_size();
 		let blocks_count = storage.blocks_count();
 		let entries_start =
@@ -270,7 +270,7 @@ impl Gpt {
 }
 
 impl Table for Gpt {
-	fn read(storage: &mut dyn DeviceIO) -> EResult<Option<Self>> {
+	fn read(storage: &dyn DeviceIO) -> EResult<Option<Self>> {
 		let blocks_count = storage.blocks_count();
 
 		let main_hdr = match Self::read_hdr(storage, 1) {
@@ -297,7 +297,7 @@ impl Table for Gpt {
 		"GPT"
 	}
 
-	fn get_partitions(&self, storage: &mut dyn DeviceIO) -> EResult<Vec<Partition>> {
+	fn get_partitions(&self, storage: &dyn DeviceIO) -> EResult<Vec<Partition>> {
 		let blocks_count = storage.blocks_count();
 		let mut partitions = Vec::new();
 

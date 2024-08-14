@@ -24,10 +24,7 @@
 //!
 //! This module implements utilities for kernfs.
 
-use crate::file::{
-	fs::{Filesystem, NodeOps},
-	DirEntry, FileType, INode, Stat,
-};
+use crate::file::{fs::NodeOps, DirEntry, FileLocation, FileType, INode, Stat};
 use core::{
 	cmp::min,
 	fmt,
@@ -38,7 +35,7 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
-	ptr::{arc::Arc, cow::Cow},
+	ptr::cow::Cow,
 	vec, DisplayableStr,
 };
 
@@ -50,18 +47,18 @@ pub const ROOT_INODE: INode = 1;
 /// Each element of the inner vector is a slot to store a node. If a slot is `None`, it means it is
 /// free to be used.
 #[derive(Debug)]
-pub struct NodesStorage(Vec<Option<Arc<dyn NodeOps>>>);
+pub struct NodeStorage<N: NodeOps>(Vec<Option<N>>);
 
-impl NodesStorage {
+impl<N: NodeOps> NodeStorage<N> {
 	/// Creates a new instance with the given root node.
-	pub fn new<N: 'static + NodeOps>(root: N) -> AllocResult<Self> {
-		Ok(Self(vec![Some(Arc::new(root)? as _)]?))
+	pub fn new(root: N) -> AllocResult<Self> {
+		Ok(Self(vec![Some(root)]?))
 	}
 
 	/// Returns an immutable reference to the node with inode `inode`.
 	///
 	/// If the node does not exist, the function returns an error.
-	pub fn get_node(&self, inode: INode) -> EResult<&Arc<dyn NodeOps>> {
+	pub fn get_node(&self, inode: INode) -> EResult<&N> {
 		let index = (inode as usize)
 			.checked_sub(1)
 			.ok_or_else(|| errno!(ENOENT))?;
@@ -74,7 +71,7 @@ impl NodesStorage {
 	/// Returns a free slot for a new node.
 	///
 	/// If no slot is available, the function allocates a new one.
-	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<Arc<dyn NodeOps>>)> {
+	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<N>)> {
 		let slot = self
 			.0
 			.iter_mut()
@@ -103,7 +100,7 @@ impl NodesStorage {
 	/// so results in a memory leak.
 	///
 	/// If the node doesn't exist, the function does nothing.
-	pub fn remove_node(&mut self, inode: INode) -> Option<Arc<dyn NodeOps>> {
+	pub fn remove_node(&mut self, inode: INode) -> Option<N> {
 		self.0.get_mut(inode as usize - 1).and_then(Option::take)
 	}
 }
@@ -175,7 +172,7 @@ macro_rules! format_content {
 pub struct StaticLink<const TARGET: &'static [u8]>;
 
 impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
 			file_type: FileType::Link,
 			mode: 0o777,
@@ -183,13 +180,7 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 		})
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<usize> {
+	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		format_content!(off, buf, "{}", DisplayableStr(TARGET))
 	}
 }
@@ -279,7 +270,7 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 }
 
 impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
 			file_type: FileType::Directory,
 			mode: 0o555,
@@ -289,8 +280,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 
 	fn entry_by_name<'n>(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		_loc: &FileLocation,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		self.entry_by_name_inner(name)
@@ -298,8 +288,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 
 	fn next_entry(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		_loc: &FileLocation,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		self.next_entry_inner(off)

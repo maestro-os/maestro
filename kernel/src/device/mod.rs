@@ -111,6 +111,8 @@ impl DeviceID {
 }
 
 /// Device I/O interface.
+///
+/// This trait makes use of **interior mutability** to allow concurrent accesses.
 pub trait DeviceIO {
 	/// Returns the granularity of I/O for the device, in bytes.
 	fn block_size(&self) -> NonZeroU64;
@@ -126,7 +128,7 @@ pub trait DeviceIO {
 	/// The size of the buffer has to be a multiple of the block size.
 	///
 	/// On success, the function returns the number of bytes read.
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize>;
+	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize>;
 
 	/// Writes data to the device.
 	///
@@ -137,14 +139,14 @@ pub trait DeviceIO {
 	/// The size of the buffer has to be a multiple of the block size.
 	///
 	/// On success, the function returns the number of bytes written.
-	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<usize>;
+	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize>;
 
 	/// Performs an ioctl operation on the device.
 	///
 	/// Arguments:
 	/// - `request` is the ID of the request to perform
 	/// - `argp` is a pointer to the argument
-	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let _ = (request, argp);
 		Err(errno!(EINVAL))
 	}

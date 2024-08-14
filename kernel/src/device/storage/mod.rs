@@ -49,7 +49,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	format,
-	lock::Mutex,
 	ptr::arc::{Arc, Weak},
 	TryClone,
 };
@@ -78,7 +77,7 @@ struct HdGeometry {
 /// Handle for the device file of a whole storage device or a partition.
 pub struct StorageDeviceHandle {
 	/// Device I/O.
-	io: Weak<Mutex<dyn DeviceIO>>,
+	io: Weak<dyn DeviceIO>,
 	/// The partition associated with the handle. If `None`, the handle covers the whole device.
 	partition: Option<Partition>,
 
@@ -101,7 +100,7 @@ impl StorageDeviceHandle {
 	/// - `storage_id` is the ID of the storage device in the manager.
 	/// - `path_prefix` is the path to the file of the main device containing the partition table.
 	pub fn new(
-		io: Weak<Mutex<dyn DeviceIO>>,
+		io: Weak<dyn DeviceIO>,
 		partition: Option<Partition>,
 		major: u32,
 		storage_id: u32,
@@ -123,21 +122,20 @@ impl DeviceIO for StorageDeviceHandle {
 		let Some(io) = self.io.upgrade() else {
 			return 1.try_into().unwrap();
 		};
-		io.lock().block_size()
+		io.block_size()
 	}
 
 	fn blocks_count(&self) -> u64 {
 		let Some(io) = self.io.upgrade() else {
 			return 0;
 		};
-		io.lock().blocks_count()
+		io.blocks_count()
 	}
 
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let Some(io) = self.io.upgrade() else {
 			return Err(errno!(ENODEV));
 		};
-		let mut io = io.lock();
 		// Bound check
 		let (start, size) = match &self.partition {
 			Some(p) => (p.offset, p.size),
@@ -151,11 +149,10 @@ impl DeviceIO for StorageDeviceHandle {
 		io.read(start + off, buf)
 	}
 
-	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
 		let Some(io) = self.io.upgrade() else {
 			return Err(errno!(ENODEV));
 		};
-		let mut io = io.lock();
 		// Bound check
 		let (start, size) = match &self.partition {
 			Some(p) => (p.offset, p.size),
@@ -169,7 +166,7 @@ impl DeviceIO for StorageDeviceHandle {
 		io.write(start + off, buf)
 	}
 
-	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::HDIO_GETGEO => {
 				// The total size of the disk
@@ -225,7 +222,7 @@ pub struct StorageManager {
 	/// The allocated device major number for storage devices.
 	major_block: MajorBlock,
 	/// The list of detected interfaces.
-	interfaces: Vec<Arc<Mutex<dyn DeviceIO>>>,
+	interfaces: Vec<Arc<dyn DeviceIO>>,
 }
 
 impl StorageManager {
@@ -247,20 +244,18 @@ impl StorageManager {
 	/// - `storage_id` is the ID of the storage device in the manager.
 	/// - `path_prefix` is the path to the file of the main device containing the partition table.
 	pub fn read_partitions(
-		io: Weak<Mutex<dyn DeviceIO>>,
+		io: Weak<dyn DeviceIO>,
 		major: u32,
 		storage_id: u32,
 		path_prefix: &Path,
 	) -> EResult<()> {
-		let Some(io_mutex) = io.upgrade() else {
+		let Some(io_arc) = io.upgrade() else {
 			return Ok(());
 		};
-		let mut s = io_mutex.lock();
-
-		let Some(partitions_table) = partition::read(&mut *s)? else {
+		let Some(partitions_table) = partition::read(&*io_arc)? else {
 			return Ok(());
 		};
-		let partitions = partitions_table.get_partitions(&mut *s)?;
+		let partitions = partitions_table.get_partitions(&*io_arc)?;
 
 		let iter = partitions.into_iter().take(MAX_PARTITIONS - 1).enumerate();
 		for (i, partition) in iter {
@@ -292,7 +287,7 @@ impl StorageManager {
 		Ok(())
 	}
 
-	/// Clears device files for every partitions.
+	/// Clears device files for every partition.
 	///
 	/// `major` is the major number of the devices to be removed.
 	pub fn clear_partitions(major: u32) -> EResult<()> {
@@ -311,7 +306,7 @@ impl StorageManager {
 	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
 	/// Adds the given storage device to the manager.
-	fn add(&mut self, storage: Arc<Mutex<dyn DeviceIO>>) -> EResult<()> {
+	fn add(&mut self, storage: Arc<dyn DeviceIO>) -> EResult<()> {
 		// The device files' major number
 		let major = self.major_block.get_major();
 		// The id of the storage interface in the manager's list

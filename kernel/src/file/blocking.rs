@@ -24,7 +24,7 @@ use crate::{
 	process::{pid::Pid, scheduler, Process},
 };
 use core::mem;
-use utils::{collections::vec::Vec, errno::EResult};
+use utils::{collections::vec::Vec, errno::EResult, lock::Mutex};
 
 /// A queue of processes waiting on a resource.
 ///
@@ -32,11 +32,11 @@ use utils::{collections::vec::Vec, errno::EResult};
 ///
 /// **Note**: dropping this structure while processes are waiting on it makes them starve.
 #[derive(Debug, Default)]
-pub struct WaitQueue(Vec<Pid>); // TODO use a VecDeque
+pub struct WaitQueue(Mutex<Vec<Pid>>); // TODO use a VecDeque
 
 impl WaitQueue {
 	/// Makes the current process wait until the given predicate `f` is true.
-	pub fn wait_until<F: FnMut() -> bool>(&mut self, mut f: F) -> EResult<()> {
+	pub fn wait_until<F: FnMut() -> bool>(&self, mut f: F) -> EResult<()> {
 		loop {
 			if f() {
 				break;
@@ -45,7 +45,7 @@ impl WaitQueue {
 			{
 				let proc_mutex = Process::current();
 				let mut proc = proc_mutex.lock();
-				self.0.push(proc.get_pid())?;
+				self.0.lock().push(proc.get_pid())?;
 				proc.set_state(process::State::Sleeping);
 			}
 			// Yield
@@ -55,14 +55,17 @@ impl WaitQueue {
 	}
 
 	/// Wakes the next process in queue.
-	pub fn wake_next(&mut self) {
+	pub fn wake_next(&self) {
 		let proc = loop {
-			// TODO: unefficient, must use VecDeque
-			if self.0.is_empty() {
-				// No process to wake, stop
-				return;
-			}
-			let pid = self.0.remove(0);
+			// TODO: inefficient, must use VecDeque
+			let pid = {
+				let mut pids = self.0.lock();
+				if pids.is_empty() {
+					// No process to wake, stop
+					return;
+				}
+				pids.remove(0)
+			};
 			let Some(proc) = Process::get_by_pid(pid) else {
 				// Process does not exist, try next
 				continue;
@@ -73,8 +76,9 @@ impl WaitQueue {
 	}
 
 	/// Wakes all processes.
-	pub fn wake_all(&mut self) {
-		for pid in mem::take(&mut self.0) {
+	pub fn wake_all(&self) {
+		let mut pids = self.0.lock();
+		for pid in mem::take(&mut *pids) {
 			let Some(proc) = Process::get_by_pid(pid) else {
 				// Process does not exist, try next
 				continue;

@@ -23,9 +23,8 @@ use crate::{
 	crypto::rand,
 	device,
 	device::{tty::TTYDeviceHandle, Device, DeviceID},
-	file::{blocking::WaitQueue, path::PathBuf},
+	file::path::PathBuf,
 	logger::LOGGER,
-	syscall::poll,
 };
 use core::{cmp::min, mem::ManuallyDrop, num::NonZeroU64};
 use utils::{errno, errno::EResult};
@@ -43,11 +42,11 @@ impl DeviceIO for NullDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _off: u64, buf: &mut [u8]) -> EResult<usize> {
 		Ok(buf.len())
 	}
 
-	fn write(&mut self, _off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _off: u64, buf: &[u8]) -> EResult<usize> {
 		Ok(buf.len())
 	}
 }
@@ -65,12 +64,12 @@ impl DeviceIO for ZeroDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _offset: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _offset: u64, buf: &mut [u8]) -> EResult<usize> {
 		buf.fill(0);
 		Ok(buf.len())
 	}
 
-	fn write(&mut self, _offset: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _offset: u64, buf: &[u8]) -> EResult<usize> {
 		Ok(buf.len())
 	}
 }
@@ -79,10 +78,7 @@ impl DeviceIO for ZeroDeviceHandle {
 ///
 /// This device will block reading until enough entropy is available.
 #[derive(Default)]
-pub struct RandomDeviceHandle {
-	/// The device's wait queue.
-	wait_queue: WaitQueue,
-}
+pub struct RandomDeviceHandle;
 
 impl DeviceIO for RandomDeviceHandle {
 	fn block_size(&self) -> NonZeroU64 {
@@ -93,24 +89,20 @@ impl DeviceIO for RandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _: u64, buf: &mut [u8]) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
-
-		self.wait_queue.wake_processes(poll::POLLIN);
-
 		if let Some(pool) = &mut *pool {
+			// TODO actual make this device blocking
 			Ok(pool.read(buf, false))
 		} else {
 			Ok(0)
 		}
 	}
 
-	fn write(&mut self, _: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _: u64, buf: &[u8]) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
-
-		self.wait_queue.wake_processes(poll::POLLOUT);
-
 		if let Some(pool) = &mut *pool {
+			// TODO actual make this device blocking
 			let len = pool.write(buf);
 			Ok(len as _)
 		} else {
@@ -135,9 +127,8 @@ impl DeviceIO for URandomDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, _: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _: u64, buf: &mut [u8]) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
-
 		if let Some(pool) = &mut *pool {
 			let len = pool.read(buf, true);
 			Ok(len)
@@ -146,9 +137,8 @@ impl DeviceIO for URandomDeviceHandle {
 		}
 	}
 
-	fn write(&mut self, _: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _: u64, buf: &[u8]) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
-
 		if let Some(pool) = &mut *pool {
 			let len = pool.write(buf);
 			Ok(len)
@@ -171,7 +161,7 @@ impl DeviceIO for KMsgDeviceHandle {
 		0
 	}
 
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let off = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let logger = LOGGER.lock();
 		let size = logger.get_size();
@@ -182,7 +172,7 @@ impl DeviceIO for KMsgDeviceHandle {
 		Ok(len)
 	}
 
-	fn write(&mut self, _off: u64, _buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _off: u64, _buf: &[u8]) -> EResult<usize> {
 		// TODO
 		todo!();
 	}

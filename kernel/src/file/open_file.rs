@@ -239,7 +239,7 @@ impl OpenFile {
 		}
 		// Append if enabled
 		if self.flags & O_APPEND != 0 {
-			self.curr_off = file.get_size();
+			self.curr_off = file.stat.size;
 		}
 		// Update access timestamps
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);

@@ -393,7 +393,7 @@ impl DeviceIO for PATAInterface {
 	}
 
 	// TODO clean
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let size = buf.len() as u64 / SECTOR_SIZE;
 		// If the offset and size are out of bounds of the disk, return an error
 		if off >= self.sectors_count || off + size > self.sectors_count {
@@ -501,7 +501,7 @@ impl DeviceIO for PATAInterface {
 	}
 
 	// TODO clean
-	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
 		let size = buf.len() as u64 / SECTOR_SIZE;
 		// If the offset and size are out of bounds of the disk, return an error
 		if off >= self.sectors_count || off + size > self.sectors_count {

@@ -40,7 +40,7 @@ use crate::{
 		},
 		path::PathBuf,
 		perm::{Gid, Uid},
-		DirEntry, FileType, INode, Stat,
+		DirEntry, FileLocation, FileType, INode, Stat,
 	},
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
 };
@@ -140,7 +140,7 @@ impl RootDir {
 }
 
 impl NodeOps for RootDir {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
 			file_type: FileType::Directory,
 			mode: 0o555,
@@ -150,8 +150,7 @@ impl NodeOps for RootDir {
 
 	fn entry_by_name<'n>(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		_loc: &FileLocation,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let pid = core::str::from_utf8(name).ok().and_then(|s| s.parse().ok());
@@ -216,8 +215,7 @@ impl NodeOps for RootDir {
 
 	fn next_entry(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		_loc: &FileLocation,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
@@ -295,7 +293,7 @@ impl Filesystem for ProcFS {
 }
 
 /// The proc filesystem type.
-pub struct ProcFsType {}
+pub struct ProcFsType;
 
 impl FilesystemType for ProcFsType {
 	fn get_name(&self) -> &'static [u8] {

@@ -73,7 +73,7 @@ impl DeviceIO for RAMDisk {
 		(RAM_DISK_SIZE as u64) / self.block_size().get()
 	}
 
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let block_size = self.block_size().get();
 		let blocks_count = self.blocks_count();
 		let size = buf.len() as u64 / block_size;
@@ -94,7 +94,7 @@ impl DeviceIO for RAMDisk {
 		Ok((size * block_size) as _)
 	}
 
-	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
 		let block_size = self.block_size().get();
 		let blocks_count = self.blocks_count();
 		let size = buf.len() as u64 / block_size;
@@ -142,11 +142,11 @@ impl DeviceIO for RAMDiskHandle {
 		self.disk.data.len() as _
 	}
 
-	fn read(&mut self, off: u64, buff: &mut [u8]) -> EResult<usize> {
+	fn read(&self, off: u64, buff: &mut [u8]) -> EResult<usize> {
 		self.disk.read(off, buff)
 	}
 
-	fn write(&mut self, off: u64, buff: &[u8]) -> EResult<usize> {
+	fn write(&self, off: u64, buff: &[u8]) -> EResult<usize> {
 		self.disk.write(off, buff)
 	}
 }

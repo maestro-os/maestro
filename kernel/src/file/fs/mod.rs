@@ -28,7 +28,7 @@ pub mod tmp;
 use super::{
 	path::PathBuf,
 	perm::{Gid, Uid},
-	DirEntry, FileType, INode, Mode, Stat,
+	DirEntry, FileLocation, INode, Mode, Stat,
 };
 use crate::{device::DeviceIO, syscall::ioctl, time::unit::Timestamp};
 use core::{
@@ -106,50 +106,47 @@ pub struct StatSet {
 pub trait NodeOps: Debug {
 	/// Returns the file's status.
 	///
-	/// Arguments:
-	/// - `inode` is the inode from which the content is read.
-	/// - `fs` is the filesystem.
-	fn get_stat(&self, inode: INode, fs: &dyn Filesystem) -> EResult<Stat>;
+	/// `loc` is the location of the file.
+	fn get_stat(&self, loc: &FileLocation) -> EResult<Stat>;
+
 	/// Sets the file's status.
 	///
 	/// Arguments:
-	/// - `inode` is the inode from which the content is read.
-	/// - `fs` is the filesystem.
+	/// - `loc` is the location of the file.
 	/// - `set` is the set of status attributes to modify on the file.
 	///
 	/// The default implementation of this function does nothing.
-	fn set_stat(&self, inode: INode, fs: &dyn Filesystem, set: StatSet) -> EResult<()> {
-		let _ = (inode, fs, set);
+	fn set_stat(&self, loc: &FileLocation, set: StatSet) -> EResult<()> {
+		let _ = (loc, set);
 		Ok(())
 	}
 
 	/// Polls the file with the given `mask`.
-	fn poll(&self, inode: INode, fs: &dyn Filesystem, mask: u32) -> EResult<u32> {
-		let _ = (inode, fs, mask);
+	fn poll(&self, loc: &FileLocation, mask: u32) -> EResult<u32> {
+		let _ = (loc, mask);
 		Err(errno!(EINVAL))
 	}
 
 	/// Performs an ioctl operation on the device file.
 	///
 	/// Arguments:
+	/// - `loc` is the location of the file.
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
 	fn ioctl(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		loc: &FileLocation,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> EResult<u32> {
-		let _ = (inode, fs, request, argp);
+		let _ = (loc, request, argp);
 		Err(errno!(EINVAL))
 	}
 
 	/// Reads from the node with into the buffer `buf`.
 	///
 	/// Arguments:
-	/// - `inode` is the inode from which the content is read.
-	/// - `fs` is the filesystem.
+	/// - `loc` is the location of the file.
 	/// - `off` is the offset from which the data will be read from the node's data.
 	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
 	///   number of bytes to read.
@@ -162,25 +159,15 @@ pub trait NodeOps: Debug {
 	/// reached.
 	///
 	/// The default implementation of this function returns an error.
-	fn read_content(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<usize> {
-		let _ = (off, buf);
-		match self.get_stat(inode, fs)?.file_type {
-			FileType::Directory => Err(errno!(EISDIR)),
-			_ => Err(errno!(EINVAL)),
-		}
+	fn read_content(&self, loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let _ = (loc, off, buf);
+		Err(errno!(EINVAL))
 	}
 
 	/// Writes to the node from the buffer `buf`.
 	///
 	/// Arguments:
-	/// - `inode` is the inode to which the content is written.
-	/// - `fs` is the filesystem.
+	/// - `loc` is the location of the file.
 	/// - `off` is the offset at which the data will be written in the node's data.
 	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
 	///   number of bytes to write.
@@ -191,18 +178,9 @@ pub trait NodeOps: Debug {
 	///   considered to be zero
 	///
 	/// The default implementation of this function returns an error.
-	fn write_content(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-		buf: &[u8],
-	) -> EResult<usize> {
-		let _ = (off, buf);
-		match self.get_stat(inode, fs)?.file_type {
-			FileType::Directory => Err(errno!(EISDIR)),
-			_ => Err(errno!(EINVAL)),
-		}
+	fn write_content(&self, loc: &FileLocation, off: u64, buf: &[u8]) -> EResult<usize> {
+		let _ = (loc, off, buf);
+		Err(errno!(EINVAL))
 	}
 
 	/// Changes the size of the file, truncating its content if necessary.
@@ -211,20 +189,13 @@ pub trait NodeOps: Debug {
 	/// nothing.
 	///
 	/// The default implementation of this function returns an error.
-	fn truncate_content(&self, inode: INode, fs: &dyn Filesystem, size: u64) -> EResult<()> {
-		let _ = size;
-		match self.get_stat(inode, fs)?.file_type {
-			FileType::Directory => Err(errno!(EISDIR)),
-			_ => Err(errno!(EINVAL)),
-		}
+	fn truncate_content(&self, loc: &FileLocation, size: u64) -> EResult<()> {
+		let _ = (loc, size);
+		Err(errno!(EINVAL))
 	}
 
 	/// Returns the directory entry with the given `name`, along with its offset and the handle of
 	/// the file.
-	///
-	/// Arguments:
-	/// - `inode` is the inode of the directory.
-	/// - `fs` is the filesystem.
 	///
 	/// If the entry does not exist, the function returns `None`.
 	///
@@ -233,25 +204,17 @@ pub trait NodeOps: Debug {
 	/// The default implementation of this function returns an error.
 	fn entry_by_name<'n>(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		loc: &FileLocation,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let _ = name;
-		match self.get_stat(inode, fs)?.file_type {
-			FileType::Directory => Err(errno!(EINVAL)),
-			_ => Err(errno!(ENOTDIR)),
-		}
+		let _ = (loc, name);
+		Err(errno!(EINVAL))
 	}
 
 	/// Returns the directory entry at the given offset `off`. The first entry is always located at
 	/// offset `0`.
 	///
 	/// The second returned value is the offset to the next entry.
-	///
-	/// Arguments:
-	/// - `inode` is the inode of the directory.
-	/// - `fs` is the filesystem.
 	///
 	/// If no entry is left, the function returns `None`.
 	///
@@ -260,24 +223,20 @@ pub trait NodeOps: Debug {
 	/// The default implementation of this function returns an error.
 	fn next_entry(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		loc: &FileLocation,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let _ = off;
-		match self.get_stat(inode, fs)?.file_type {
-			FileType::Directory => Err(errno!(EINVAL)),
-			_ => Err(errno!(ENOTDIR)),
-		}
+		let _ = (loc, off);
+		Err(errno!(EINVAL))
 	}
 
 	/// Helper function to check whether the node is an empty directory.
 	///
 	/// If the node is not a directory, the function returns `false`.
-	fn is_empty_directory(&self, inode: INode, fs: &dyn Filesystem) -> EResult<bool> {
+	fn is_empty_directory(&self, loc: &FileLocation) -> EResult<bool> {
 		let mut off = 0;
 		loop {
-			let res = self.next_entry(inode, fs, off);
+			let res = self.next_entry(loc, off);
 			let (ent, next_off) = match res {
 				Ok(Some(ent)) => ent,
 				Ok(None) => break,
@@ -296,8 +255,7 @@ pub trait NodeOps: Debug {
 	/// Adds a file into the directory.
 	///
 	/// Arguments:
-	/// - `inode` is the parent directory's inode.
-	/// - `fs` is the filesystem.
+	/// - `parent` is the location of the parent directory.
 	/// - `name` is the name of the hard link to add.
 	/// - `stat` is the status of the file to add.
 	///
@@ -307,69 +265,56 @@ pub trait NodeOps: Debug {
 	/// The default implementation of this function returns an error.
 	fn add_file(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		parent: &FileLocation,
 		name: &[u8],
 		stat: Stat,
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		let _ = (name, stat);
-		match self.get_stat(inode, fs)?.file_type {
-			FileType::Directory => Err(errno!(EINVAL)),
-			_ => Err(errno!(ENOTDIR)),
-		}
+		let _ = (parent, name, stat);
+		Err(errno!(EINVAL))
 	}
 
 	/// Adds a hard link into the directory.
 	///
 	/// Arguments:
-	/// - `inode` is the parent directory's inode.
-	/// - `fs` is the filesystem.
+	/// - `parent` is the location of the parent directory.
 	/// - `name` is the name of the hard link to add.
-	/// - `target_inode` is the inode the link points to.
+	/// - `target` is the inode the link points to.
 	///
 	/// If this feature is not supported by the filesystem, the function returns
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn add_link(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-		target_inode: INode,
-	) -> EResult<()> {
-		let _ = (name, target_inode);
-		match self.get_stat(inode, fs)?.file_type {
-			FileType::Directory => Err(errno!(EINVAL)),
-			_ => Err(errno!(ENOTDIR)),
-		}
+	fn link(&self, parent: &FileLocation, name: &[u8], target: INode) -> EResult<()> {
+		let _ = (parent, name, target);
+		Err(errno!(EINVAL))
 	}
 
-	/// Removes a file from the directory. If the links count of the node reaches zero, the node is
-	/// also removed.
+	/// Removes a hard link from the directory.
 	///
 	/// Arguments:
-	/// - `inode` is the parent directory's inode.
-	/// - `fs` is the filesystem.
-	/// - `name` is name of the file to remove.
+	/// - `parent` is the parent directory.
+	/// - `name` is the name of the hard link to remove.
+	///
+	/// On success, the function returns the number of links to the target node left.
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
+	///
+	/// The default implementation of this function returns an error.
+	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<(u16, INode)> {
+		let _ = (parent, name);
+		Err(errno!(EINVAL))
+	}
+
+	/// Removes a file from the filesystem.
 	///
 	/// If the file to be removed is a non-empty directory, the function returns
 	/// [`errno::ENOTEMPTY`].
 	///
-	/// The function returns the number of hard links left on the node and the inode.
-	///
 	/// The default implementation of this function returns an error.
-	fn remove_file(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-	) -> EResult<(u16, INode)> {
-		let _ = name;
-		match self.get_stat(inode, fs)?.file_type {
-			FileType::Directory => Err(errno!(EINVAL)),
-			_ => Err(errno!(ENOTDIR)),
-		}
+	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
+		let _ = loc;
+		Err(errno!(EINVAL))
 	}
 }
 

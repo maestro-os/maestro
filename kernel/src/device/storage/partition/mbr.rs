@@ -75,7 +75,7 @@ impl Clone for MbrTable {
 }
 
 impl Table for MbrTable {
-	fn read(storage: &mut dyn DeviceIO) -> EResult<Option<Self>> {
+	fn read(storage: &dyn DeviceIO) -> EResult<Option<Self>> {
 		let mut first_sector: [u8; 512] = [0; 512];
 
 		if first_sector.len() as u64 > storage.get_size() {
@@ -97,7 +97,7 @@ impl Table for MbrTable {
 		"MBR"
 	}
 
-	fn get_partitions(&self, _: &mut dyn DeviceIO) -> EResult<Vec<Partition>> {
+	fn get_partitions(&self, _: &dyn DeviceIO) -> EResult<Vec<Partition>> {
 		let mut partitions = Vec::<Partition>::new();
 
 		for mbr_partition in self.partitions.iter() {

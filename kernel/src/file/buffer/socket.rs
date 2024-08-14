@@ -20,11 +20,7 @@
 
 use super::Buffer;
 use crate::{
-	file::{
-		buffer::WaitQueue,
-		fs::{Filesystem, NodeOps},
-		FileType, INode, Stat,
-	},
+	file::{buffer::WaitQueue, fs::NodeOps, FileLocation, FileType, Stat},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
 };
 use core::ffi::c_int;
@@ -184,11 +180,6 @@ impl TryDefault for Socket {
 }
 
 impl Buffer for Socket {
-	fn get_capacity(&self) -> usize {
-		// TODO
-		todo!()
-	}
-
 	fn increment_open(&mut self, _read: bool, _write: bool) {
 		self.open_count += 1;
 	}
@@ -202,7 +193,7 @@ impl Buffer for Socket {
 }
 
 impl NodeOps for Socket {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
 			file_type: FileType::Socket,
 			mode: 0o666,
@@ -210,13 +201,7 @@ impl NodeOps for Socket {
 		})
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &mut [u8],
-	) -> EResult<usize> {
+	fn read_content(&self, _loc: &FileLocation, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
 		if !self.desc.type_.is_stream() {
 			// TODO error
 		}
@@ -224,13 +209,7 @@ impl NodeOps for Socket {
 		todo!()
 	}
 
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		_buf: &[u8],
-	) -> EResult<usize> {
+	fn write_content(&self, _loc: &FileLocation, _off: u64, _buf: &[u8]) -> EResult<usize> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {
 			return Err(errno!(EDESTADDRREQ));

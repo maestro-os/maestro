@@ -33,9 +33,6 @@ use utils::{
 
 /// Trait representing a buffer.
 pub trait Buffer: Any + NodeOps {
-	/// Returns the capacity in bytes of the buffer.
-	fn get_capacity(&self) -> usize;
-
 	/// Increments the number of open ends.
 	///
 	/// Arguments:

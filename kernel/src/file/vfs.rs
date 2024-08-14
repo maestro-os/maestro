@@ -497,12 +497,9 @@ pub fn create_link(
 		return Err(errno!(EXDEV));
 	}
 	op(&target.location, true, |_mp, fs| {
-		parent.ops.add_link(
-			parent.location.get_inode(),
-			fs,
-			name,
-			target.location.get_inode(),
-		)
+		parent
+			.ops
+			.link(&parent.location, name, target.location.get_inode())
 	})?;
 	target.stat.nlink += 1;
 	Ok(())
@@ -512,9 +509,8 @@ pub fn create_link(
 ///
 /// This is useful for deferred remove since permissions have already been checked before.
 pub fn remove_file_unchecked(parent: &File, name: &[u8]) -> EResult<()> {
-	let parent_inode = parent.get_location().get_inode();
 	op(&parent.location, true, |mp, fs| {
-		let (links_left, inode) = parent.ops.remove_file(parent_inode, fs, name)?;
+		let (links_left, inode) = parent.ops.unlink(&parent.location, name)?;
 		if links_left == 0 {
 			// If the file is a named pipe or socket, free its now unused buffer
 			buffer::release(&FileLocation::Filesystem {

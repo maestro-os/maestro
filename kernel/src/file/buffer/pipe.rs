@@ -21,11 +21,7 @@
 
 use super::Buffer;
 use crate::{
-	file::{
-		buffer::WaitQueue,
-		fs::{Filesystem, NodeOps},
-		FileType, INode, Stat,
-	},
+	file::{buffer::WaitQueue, fs::NodeOps, FileLocation, FileType, Stat},
 	limits,
 	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
 	syscall::{ioctl, FromSyscallArg},
@@ -38,14 +34,15 @@ use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::EResult,
+	lock::Mutex,
 	vec, TryDefault,
 };
 
 /// Representing a FIFO buffer.
 #[derive(Debug)]
 pub struct PipeBuffer {
-	/// The buffer's buffer.
-	buffer: RingBuffer<u8, Vec<u8>>,
+	/// The pipe's buffer.
+	buffer: Mutex<RingBuffer<u8, Vec<u8>>>,
 
 	/// The number of readers on the pipe.
 	readers: usize,
@@ -59,21 +56,26 @@ pub struct PipeBuffer {
 }
 
 impl PipeBuffer {
+	/// Returns the capacity of the pipe in bytes.
+	pub fn get_capacity(&self) -> usize {
+		self.buffer.lock().get_size()
+	}
+
 	/// Returns the length of the data to be read in the buffer.
 	pub fn get_data_len(&self) -> usize {
-		self.buffer.get_data_len()
+		self.buffer.lock().get_data_len()
 	}
 
 	/// Returns the available space in the buffer in bytes.
 	pub fn get_available_len(&self) -> usize {
-		self.buffer.get_available_len()
+		self.buffer.lock().get_available_len()
 	}
 }
 
 impl TryDefault for PipeBuffer {
 	fn try_default() -> Result<Self, Self::Error> {
 		Ok(Self {
-			buffer: RingBuffer::new(vec![0; limits::PIPE_BUF]?),
+			buffer: Mutex::new(RingBuffer::new(vec![0; limits::PIPE_BUF]?)),
 
 			readers: 0,
 			writers: 0,
@@ -85,10 +87,6 @@ impl TryDefault for PipeBuffer {
 }
 
 impl Buffer for PipeBuffer {
-	fn get_capacity(&self) -> usize {
-		self.buffer.get_size()
-	}
-
 	fn increment_open(&mut self, read: bool, write: bool) {
 		if read {
 			self.readers += 1;
@@ -113,7 +111,7 @@ impl Buffer for PipeBuffer {
 }
 
 impl NodeOps for PipeBuffer {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
 			file_type: FileType::Fifo,
 			mode: 0o666,
@@ -123,8 +121,7 @@ impl NodeOps for PipeBuffer {
 
 	fn ioctl(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		_loc: &FileLocation,
 		request: ioctl::Request,
 		argp: *const c_void,
 	) -> EResult<u32> {
@@ -138,27 +135,15 @@ impl NodeOps for PipeBuffer {
 		Ok(0)
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		buf: &mut [u8],
-	) -> EResult<usize> {
-		let len = self.buffer.read(buf);
+	fn read_content(&self, _loc: &FileLocation, _off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let len = self.buffer.lock().read(buf);
 		if len > 0 {
 			self.wr_queue.wake_next();
 		}
 		Ok(len)
 	}
 
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		_off: u64,
-		buf: &[u8],
-	) -> EResult<usize> {
+	fn write_content(&self, _loc: &FileLocation, _off: u64, buf: &[u8]) -> EResult<usize> {
 		if unlikely(buf.len() == 0) {
 			return Ok(0);
 		}
@@ -166,7 +151,7 @@ impl NodeOps for PipeBuffer {
 			Process::current().lock().kill(Signal::SIGPIPE);
 			return Err(errno!(EPIPE));
 		}
-		let len = self.buffer.write(buf);
+		let len = self.buffer.lock().write(buf);
 		self.rd_queue.wake_next();
 		Ok(len)
 	}

@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{
-		fs::{proc::get_proc_owner, Filesystem, NodeOps},
-		mountpoint, FileType, INode, Stat,
+		fs::{proc::get_proc_owner, NodeOps},
+		mountpoint, FileLocation, FileType, Stat,
 	},
 	format_content,
 	process::pid::Pid,
@@ -40,7 +40,7 @@ impl From<Pid> for Mounts {
 }
 
 impl NodeOps for Mounts {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
 			file_type: FileType::Regular,
@@ -51,13 +51,7 @@ impl NodeOps for Mounts {
 		})
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<usize> {
+	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		format_content!(off, buf, "{}", self)
 	}
 }

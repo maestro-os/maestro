@@ -319,10 +319,7 @@ impl FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{
-		fs::{Filesystem, NodeOps},
-		File, FileLocation, INode, Stat,
-	};
+	use crate::file::{fs::NodeOps, File, FileLocation, Stat};
 	use utils::boxed::Box;
 
 	/// Dummy node ops for testing purpose.
@@ -330,7 +327,7 @@ mod test {
 	struct DummyNodeOps;
 
 	impl NodeOps for DummyNodeOps {
-		fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+		fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 			Ok(Stat::default())
 		}
 	}

@@ -25,7 +25,7 @@ use crate::device::{
 	storage::{pata::PATAInterface, PhysicalDevice},
 	DeviceIO,
 };
-use utils::{errno::AllocResult, lock::Mutex, ptr::arc::Arc};
+use utils::{errno::AllocResult, ptr::arc::Arc};
 
 /// The beginning of the port range for the primary ATA bus (compatibility
 /// mode).
@@ -148,9 +148,7 @@ impl Controller {
 	///
 	/// If an error is returned from a call to the closure, the function returns
 	/// with the same error.
-	pub(super) fn detect(
-		&self,
-	) -> impl '_ + Iterator<Item = AllocResult<Arc<Mutex<dyn DeviceIO>>>> {
+	pub(super) fn detect(&self) -> impl '_ + Iterator<Item = AllocResult<Arc<dyn DeviceIO>>> {
 		(0..4)
 			.map(|i| {
 				let secondary = (i & 0b10) != 0;
@@ -178,6 +176,6 @@ impl Controller {
 			})
 			// TODO log errors?
 			.filter_map(|(channel, slave)| PATAInterface::new(channel, slave).ok())
-			.map(|i| Arc::new(Mutex::new(i)).map(|a| a as Arc<Mutex<dyn DeviceIO>>))
+			.map(|i| Arc::new(i).map(|a| a as Arc<dyn DeviceIO>))
 	}
 }
