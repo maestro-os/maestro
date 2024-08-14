@@ -58,7 +58,6 @@ use core::{ffi::c_void, fmt, num::NonZeroU64};
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 use utils::{
-	boxed::Box,
 	collections::{hashmap::HashMap, vec::Vec},
 	errno,
 	errno::{AllocResult, CollectResult, EResult},
@@ -164,7 +163,7 @@ pub struct Device {
 	mode: Mode,
 
 	/// The device I/O interface.
-	io: Box<dyn DeviceIO>,
+	io: Arc<dyn DeviceIO>,
 }
 
 impl Device {
@@ -188,7 +187,7 @@ impl Device {
 			path,
 			mode,
 
-			io: Box::new(handle)?,
+			io: Arc::new(handle)?,
 		})
 	}
 
@@ -212,8 +211,8 @@ impl Device {
 
 	/// Returns the I/O interface.
 	#[inline]
-	pub fn get_io(&mut self) -> &mut dyn DeviceIO {
-		self.io.as_mut()
+	pub fn get_io(&self) -> &Arc<dyn DeviceIO> {
+		&self.io
 	}
 
 	/// Creates a device file.
@@ -269,7 +268,7 @@ impl Device {
 	/// If exists, removes the device file.
 	///
 	/// If the file doesn't exist, the function does nothing.
-	pub fn remove_file(&mut self) -> EResult<()> {
+	pub fn remove_file(&self) -> EResult<()> {
 		vfs::remove_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
 	}
 }
@@ -283,7 +282,7 @@ impl Drop for Device {
 }
 
 /// The list of registered devices.
-static DEVICES: Mutex<HashMap<DeviceID, Arc<Mutex<Device>>>> = Mutex::new(HashMap::new());
+static DEVICES: Mutex<HashMap<DeviceID, Arc<Device>>> = Mutex::new(HashMap::new());
 
 /// Registers the given device.
 ///
@@ -294,19 +293,16 @@ pub fn register(device: Device) -> EResult<()> {
 	let id = device.id.clone();
 	let path = device.get_path().to_path_buf()?;
 	let mode = device.get_mode();
-
 	// Insert
 	{
-		let dev_mutex = Arc::new(Mutex::new(device))?;
+		let dev = Arc::new(device)?;
 		let mut devs = DEVICES.lock();
-		devs.insert(id.clone(), dev_mutex.clone())?;
+		devs.insert(id.clone(), dev)?;
 	}
-
 	// Create file if files management has been initialized
 	if file::is_init() {
 		Device::create_file(&id, &path, mode)?;
 	}
-
 	Ok(())
 }
 
@@ -316,24 +312,20 @@ pub fn register(device: Device) -> EResult<()> {
 ///
 /// If files management is initialized, the function removes the associated device file.
 pub fn unregister(id: &DeviceID) -> EResult<()> {
-	let dev_mutex = {
+	let dev = {
 		let mut devs = DEVICES.lock();
 		devs.remove(id)
 	};
-
-	if let Some(dev_mutex) = dev_mutex {
-		// Remove file
-		let mut dev = dev_mutex.lock();
+	if let Some(dev) = dev {
 		dev.remove_file()?;
 	}
-
 	Ok(())
 }
 
 /// Returns a mutable reference to the device with the given ID.
 ///
 /// If the device doesn't exist, the function returns `None`.
-pub fn get(id: &DeviceID) -> Option<Arc<Mutex<Device>>> {
+pub fn get(id: &DeviceID) -> Option<Arc<Device>> {
 	let devs = DEVICES.lock();
 	devs.get(id).cloned()
 }
@@ -367,22 +359,17 @@ pub(crate) fn init() -> EResult<()> {
 /// This function must be used only once at boot, after files management has been initialized.
 pub(crate) fn stage2() -> EResult<()> {
 	default::create().unwrap_or_else(|e| panic!("Failed to create default devices! ({e})"));
-
 	// Collecting all data to create device files is necessary to avoid a deadlock, because disk
 	// accesses require locking the filesystem's device
 	let devs_info = {
 		let devs = DEVICES.lock();
 		devs.iter()
-			.map(|(id, dev)| {
-				let dev = dev.lock();
-				Ok((id.clone(), dev.path.try_clone()?, dev.mode))
-			})
+			.map(|(id, dev)| Ok((id.clone(), dev.path.try_clone()?, dev.mode)))
 			.collect::<AllocResult<CollectResult<Vec<_>>>>()?
 			.0?
 	};
 	for (id, path, mode) in devs_info {
 		Device::create_file(&id, &path, mode)?;
 	}
-
 	Ok(())
 }

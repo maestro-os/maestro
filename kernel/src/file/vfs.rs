@@ -23,85 +23,48 @@
 //! calling the filesystems' functions directly.
 
 use super::{
-	buffer,
-	fs::Filesystem,
-	mapping, mountpoint,
+	buffer, mapping, mountpoint,
 	open_file::OpenFile,
 	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	DeferredRemove, File, FileLocation, FileType, MountPoint, Stat,
+	DeferredRemove, File, FileLocation, FileType, Stat,
 };
 use crate::{limits, process::Process};
-use core::{intrinsics::unlikely, ptr::NonNull};
+use core::ptr::NonNull;
 use utils::{errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 // TODO implement and use cache
 
-/// Helper function for filesystem I/O. Provides mountpoint, I/O interface and filesystem handle
-/// for the given location.
-///
-/// If `write` is set to `true`, the function checks the filesystem is not mounted in read-only. If
-/// mounted in read-only, the function returns [`errno::EROFS`].
-#[inline]
-fn op<F, R>(loc: &FileLocation, write: bool, f: F) -> EResult<R>
-where
-	F: FnOnce(&MountPoint, &dyn Filesystem) -> EResult<R>,
-{
-	// Get the mountpoint
-	let mp_mutex = loc.get_mountpoint().ok_or_else(|| errno!(ENOENT))?;
-	let mp = mp_mutex.lock();
-	if write && unlikely(mp.is_readonly()) {
-		return Err(errno!(EROFS));
-	}
-	// Get the filesystem
-	let fs = mp.get_filesystem();
-	if write && unlikely(fs.is_readonly()) {
-		return Err(errno!(EROFS));
-	}
-	f(&mp, &*fs)
-}
-
 /// Returns the file corresponding to the given location `location`.
 ///
 /// If the file doesn't exist, the function returns [`errno::ENOENT`].
-pub fn get_file_from_location(location: FileLocation) -> EResult<Arc<Mutex<File>>> {
-	let (ops, stat) = match location {
+pub fn get_file_from_location(loc: FileLocation) -> EResult<Arc<Mutex<File>>> {
+	let ops = match loc {
 		FileLocation::Filesystem {
 			inode, ..
-		} => op(&location, false, |_, fs| {
-			let ops = fs.node_from_inode(inode)?;
-			let stat = ops.get_stat(inode, fs)?;
-			Ok((Some(ops), stat))
-		})?,
-		loc @ FileLocation::Virtual(_) => {
-			let buffer_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
-			let stat = buffer_mutex.lock().get_stat()?;
-			(None, stat)
-		}
+		} => loc
+			.get_filesystem()
+			.ok_or_else(|| errno!(ENOENT))?
+			.node_from_inode(inode)?,
+		FileLocation::Virtual(_) => buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?,
 	};
-	Ok(Arc::new(Mutex::new(File::new(location, ops, stat)))?)
+	let stat = ops.get_stat(&loc)?;
+	Ok(Arc::new(Mutex::new(File::new(loc, ops, stat)))?)
 }
 
 /// Same as [`get_file_from_parent`], without checking permissions.
 fn get_file_from_parent_unchecked(parent: &File, name: &[u8]) -> EResult<Arc<Mutex<File>>> {
-	let parent_inode = parent.location.get_inode();
-	let file = op(&parent.location, false, |mp, fs| {
-		let (ent, ops) = parent
-			.ops
-			.entry_by_name(parent_inode, fs, name)?
-			.ok_or_else(|| errno!(ENOENT))?;
-		let inode = ent.inode;
-		let stat = ops.get_stat(inode, fs)?;
-		Ok(File::new(
-			FileLocation::Filesystem {
-				mountpoint_id: mp.get_id(),
-				inode,
-			},
-			ops,
-			stat,
-		))
-	})?;
+	let (ent, ops) = parent
+		.ops
+		.entry_by_name(&parent.location, name)?
+		.ok_or_else(|| errno!(ENOENT))?;
+	let loc = FileLocation::Filesystem {
+		mountpoint_id: parent.location.get_mountpoint_id().unwrap(),
+		inode: ent.inode,
+	};
+	let stat = ops.get_stat(&loc)?;
+	let file = File::new(loc, ops, stat);
 	Ok(Arc::new(Mutex::new(file))?)
 }
 
@@ -441,19 +404,13 @@ pub fn create_file(
 		ap.egid
 	};
 	stat.gid = gid;
-	let parent_inode = parent.location.get_inode();
-	let file = op(&parent.location, true, |mp, fs| {
-		let (inode, ops) = parent.ops.add_file(parent_inode, fs, name, stat)?;
-		let stat = ops.get_stat(inode, fs)?;
-		Ok(File::new(
-			FileLocation::Filesystem {
-				mountpoint_id: mp.get_id(),
-				inode,
-			},
-			ops,
-			stat,
-		))
-	})?;
+	let (inode, ops) = parent.ops.add_file(&parent.location, name, stat)?;
+	let loc = FileLocation::Filesystem {
+		mountpoint_id: parent.location.get_mountpoint_id().unwrap(),
+		inode,
+	};
+	let stat = ops.get_stat(&loc)?;
+	let file = File::new(loc, ops, stat);
 	Ok(Arc::new(Mutex::new(file))?)
 }
 
@@ -496,11 +453,9 @@ pub fn create_link(
 	if parent.location.get_mountpoint_id() != target.location.get_mountpoint_id() {
 		return Err(errno!(EXDEV));
 	}
-	op(&target.location, true, |_mp, fs| {
-		parent
-			.ops
-			.link(&parent.location, name, target.location.get_inode())
-	})?;
+	parent
+		.ops
+		.link(&parent.location, name, target.location.get_inode())?;
 	target.stat.nlink += 1;
 	Ok(())
 }
@@ -509,17 +464,16 @@ pub fn create_link(
 ///
 /// This is useful for deferred remove since permissions have already been checked before.
 pub fn remove_file_unchecked(parent: &File, name: &[u8]) -> EResult<()> {
-	op(&parent.location, true, |mp, fs| {
-		let (links_left, inode) = parent.ops.unlink(&parent.location, name)?;
-		if links_left == 0 {
-			// If the file is a named pipe or socket, free its now unused buffer
-			buffer::release(&FileLocation::Filesystem {
-				mountpoint_id: mp.get_id(),
-				inode,
-			});
-		}
-		Ok(())
-	})
+	let (links_left, inode) = parent.ops.unlink(&parent.location, name)?;
+	if links_left == 0 {
+		// TODO remove inode if all open files have been closed
+		// If the file is a named pipe or socket, free its now unused buffer
+		buffer::release(&FileLocation::Filesystem {
+			mountpoint_id: parent.location.get_mountpoint_id().unwrap(),
+			inode,
+		});
+	}
+	Ok(())
 }
 
 /// Removes a file.

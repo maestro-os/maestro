@@ -56,7 +56,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	format,
-	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 };
 use version::Version;
@@ -300,13 +299,13 @@ impl FilesystemType for ProcFsType {
 		b"procfs"
 	}
 
-	fn detect(&self, _io: &mut dyn DeviceIO) -> EResult<bool> {
+	fn detect(&self, _io: &dyn DeviceIO) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
-		_io: Option<Arc<Mutex<dyn DeviceIO>>>,
+		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {

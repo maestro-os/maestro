@@ -38,19 +38,19 @@ pub trait Buffer: Any + NodeOps {
 	/// Arguments:
 	/// - `read` tells whether the open end allows reading.
 	/// - `write` tells whether the open end allows writing.
-	fn increment_open(&mut self, read: bool, write: bool);
+	fn acquire(&self, read: bool, write: bool);
 
 	/// Decrements the number of open ends.
 	///
 	/// Arguments:
 	/// - `read` tells whether the open end allows reading.
 	/// - `write` tells whether the open end allows writing.
-	fn decrement_open(&mut self, read: bool, write: bool);
+	fn release(&self, read: bool, write: bool);
 }
 
 /// All the system's buffer. The key is the location of the file associated with the
 /// entry.
-static BUFFERS: Mutex<HashMap<FileLocation, Arc<Mutex<dyn Buffer>>>> = Mutex::new(HashMap::new());
+static BUFFERS: Mutex<HashMap<FileLocation, Arc<dyn Buffer>>> = Mutex::new(HashMap::new());
 /// Buffer ID allocator.
 static ID_ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
 
@@ -74,7 +74,7 @@ where
 /// Returns the buffer associated with the file at location `loc`.
 ///
 /// If the buffer doesn't exist, the function creates it.
-pub fn get(loc: &FileLocation) -> Option<Arc<Mutex<dyn Buffer>>> {
+pub fn get(loc: &FileLocation) -> Option<Arc<dyn Buffer>> {
 	let buffers = BUFFERS.lock();
 	buffers.get(loc).cloned()
 }
@@ -84,14 +84,14 @@ pub fn get(loc: &FileLocation) -> Option<Arc<Mutex<dyn Buffer>>> {
 /// If the buffer doesn't exist, the function registers a new default buffer.
 pub fn get_or_default<B: Buffer + TryDefault<Error = AllocError> + 'static>(
 	loc: &FileLocation,
-) -> AllocResult<Arc<Mutex<dyn Buffer>>> {
+) -> AllocResult<Arc<dyn Buffer>> {
 	let mut buffers = BUFFERS.lock();
 	match buffers.get(loc).cloned() {
 		Some(buff) => Ok(buff),
 		None => {
-			let buff = Arc::new(Mutex::new(B::try_default()?))?;
-			buffers.insert(*loc, buff.clone())?;
-			Ok(buff)
+			let buf = Arc::new(B::try_default()?)?;
+			buffers.insert(*loc, buf.clone())?;
+			Ok(buf)
 		}
 	}
 }
@@ -106,7 +106,7 @@ pub fn get_or_default<B: Buffer + TryDefault<Error = AllocError> + 'static>(
 /// - `buff` is the buffer to be registered.
 ///
 /// The function returns the location associated with the buffer.
-pub fn register(loc: Option<FileLocation>, buff: Arc<Mutex<dyn Buffer>>) -> EResult<FileLocation> {
+pub fn register(loc: Option<FileLocation>, buff: Arc<dyn Buffer>) -> EResult<FileLocation> {
 	let loc = id_allocator_do(|id_allocator| match loc {
 		Some(loc) => {
 			if let FileLocation::Virtual(id) = loc {

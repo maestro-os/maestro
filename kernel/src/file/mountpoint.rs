@@ -155,12 +155,9 @@ fn load_fs(
 			let dev = device::get(dev_id).ok_or_else(|| errno!(ENODEV))?;
 			let fs_type = match fs_type {
 				Some(f) => f,
-				None => {
-					let mut dev = dev.lock();
-					fs::detect(dev.get_io())?
-				}
+				None => fs::detect(Arc::as_ref(dev.get_io()))?,
 			};
-			(Some(dev as _), fs_type)
+			(Some(dev.get_io().clone()), fs_type)
 		}
 		MountSource::NoDev(name) => {
 			let fs_type = match fs_type {
@@ -222,7 +219,7 @@ impl MountPoint {
 		target_path: PathBuf,
 		target_location: FileLocation,
 	) -> EResult<Self> {
-		// Tells whether the filesystem will be mounted as read-only
+		// Tells whether the filesystem has to be mounted as read-only
 		let readonly = flags & FLAG_RDONLY != 0;
 		let fs = match get_fs(&source) {
 			// Filesystem is loaded
@@ -255,11 +252,6 @@ impl MountPoint {
 	/// Returns the mountpoint's flags.
 	pub fn get_flags(&self) -> u32 {
 		self.flags
-	}
-
-	/// Tells whether the mountpoint's is mounted as read-only.
-	pub fn is_readonly(&self) -> bool {
-		self.flags & FLAG_RDONLY != 0
 	}
 
 	/// Returns the source of the mountpoint.

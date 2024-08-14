@@ -502,33 +502,29 @@ impl File {
 	pub fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match self.stat.file_type {
 			FileType::Fifo => {
-				let buff_mutex = buffer::get_or_default::<PipeBuffer>(&self.location)?;
-				let buff = buff_mutex.lock();
+				let buff = buffer::get_or_default::<PipeBuffer>(&self.location)?;
 				buff.ioctl(&self.location, request, argp)
 			}
 			FileType::Socket => {
-				let buff_mutex = buffer::get_or_default::<Socket>(&self.location)?;
-				let buff = buff_mutex.lock();
+				let buff = buffer::get_or_default::<Socket>(&self.location)?;
 				buff.ioctl(&self.location, request, argp)
 			}
 			FileType::BlockDevice => {
-				let dev_mutex = device::get(&DeviceID {
+				let dev = device::get(&DeviceID {
 					dev_type: DeviceType::Block,
 					major: self.stat.dev_major,
 					minor: self.stat.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
-				let mut dev = dev_mutex.lock();
 				dev.get_io().ioctl(request, argp)
 			}
 			FileType::CharDevice => {
-				let dev_mutex = device::get(&DeviceID {
+				let dev = device::get(&DeviceID {
 					dev_type: DeviceType::Char,
 					major: self.stat.dev_major,
 					minor: self.stat.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
-				let mut dev = dev_mutex.lock();
 				dev.get_io().ioctl(request, argp)
 			}
 			_ => Err(errno!(ENOTTY)),

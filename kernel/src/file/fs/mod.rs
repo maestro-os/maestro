@@ -295,7 +295,8 @@ pub trait NodeOps: Debug {
 	/// - `parent` is the parent directory.
 	/// - `name` is the name of the hard link to remove.
 	///
-	/// On success, the function returns the number of links to the target node left.
+	/// On success, the function returns the number of links to the target node left, along with
+	/// the target inode.
 	///
 	/// If this feature is not supported by the filesystem, the function returns
 	/// an error.
@@ -355,7 +356,7 @@ pub trait FilesystemType {
 	/// Tells whether the given IO interface has the current filesystem.
 	///
 	/// `io` is the IO interface.
-	fn detect(&self, io: &mut dyn DeviceIO) -> EResult<bool>;
+	fn detect(&self, io: &dyn DeviceIO) -> EResult<bool>;
 
 	/// Creates a new instance of the filesystem to mount it.
 	///
@@ -365,7 +366,7 @@ pub trait FilesystemType {
 	/// - `readonly` tells whether the filesystem is mounted in read-only.
 	fn load_filesystem(
 		&self,
-		io: Option<Arc<Mutex<dyn DeviceIO>>>,
+		io: Option<Arc<dyn DeviceIO>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>>;
@@ -397,7 +398,7 @@ pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
 }
 
 /// Detects the filesystem type on the given IO interface `io`.
-pub fn detect(io: &mut dyn DeviceIO) -> EResult<Arc<dyn FilesystemType>> {
+pub fn detect(io: &dyn DeviceIO) -> EResult<Arc<dyn FilesystemType>> {
 	let fs_types = FS_TYPES.lock();
 	for (_, fs_type) in fs_types.iter() {
 		if fs_type.detect(io)? {

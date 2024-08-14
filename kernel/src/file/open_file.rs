@@ -114,9 +114,8 @@ impl OpenFile {
 		// Update the open file counter
 		*OPEN_FILES.lock().entry(location).or_insert(0)? += 1;
 		// If the file points to a buffer, increment the number of open ends
-		if let Some(buff_mutex) = buffer::get(&location) {
-			let mut buff = buff_mutex.lock();
-			buff.increment_open(s.can_read(), s.can_write());
+		if let Some(buff) = buffer::get(&location) {
+			buff.acquire(s.can_read(), s.can_write());
 		}
 		Ok(s)
 	}
@@ -266,7 +265,7 @@ impl OpenFile {
 		}
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
-				let count = file.get_size().saturating_sub(self.curr_off);
+				let count = file.stat.size.saturating_sub(self.curr_off);
 				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
 				count_ptr.copy_to_user(count as _)?;
 				Ok(0)
@@ -279,9 +278,8 @@ impl OpenFile {
 impl Drop for OpenFile {
 	fn drop(&mut self) {
 		// If the file points to a buffer, decrement the number of open ends
-		if let Some(buff_mutex) = buffer::get(&self.location) {
-			let mut buff = buff_mutex.lock();
-			buff.decrement_open(self.can_read(), self.can_write());
+		if let Some(buff) = buffer::get(&self.location) {
+			buff.release(self.can_read(), self.can_write());
 		}
 		// Update the open file counter
 		{

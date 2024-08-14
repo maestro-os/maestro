@@ -45,7 +45,7 @@ pub fn pipe2(
 		return Err(errno!(EINVAL));
 	}
 	// Get file
-	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
+	let loc = buffer::register(None, Arc::new(PipeBuffer::try_default()?)?)?;
 	let file = vfs::get_file_from_location(loc)?;
 	// Create open file descriptions
 	let open_file0 = OpenFile::new(file.clone(), None, open_file::O_RDONLY)?;

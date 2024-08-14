@@ -48,10 +48,9 @@ pub fn getsockopt(
 		.get_open_file()
 		.lock()
 		.get_location();
-	let sock_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
-	let mut sock = sock_mutex.lock();
-	let sock = (&mut *sock as &mut dyn Any)
-		.downcast_mut::<Socket>()
+	let sock = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
+	let sock = (&*sock as &dyn Any)
+		.downcast_ref::<Socket>()
 		.ok_or_else(|| errno!(ENOTSOCK))?;
 	let val = sock.get_opt(level, optname)?;
 	// Write back

@@ -28,7 +28,10 @@ use crate::{
 	process::Process,
 	syscall::Args,
 };
-use core::ffi::{c_int, c_void};
+use core::{
+	any::Any,
+	ffi::{c_int, c_void},
+};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -254,9 +257,11 @@ pub fn do_fcntl(
 			let file_mutex = fds.get_fd(fd)?.get_open_file().lock().get_file().clone();
 			let file = file_mutex.lock();
 			match file.stat.file_type {
-				FileType::Fifo => Ok(buffer::get_or_default::<PipeBuffer>(&file.location)?
-					.lock()
-					.get_capacity() as _),
+				FileType::Fifo => {
+					let buf = buffer::get_or_default::<PipeBuffer>(&file.location)?;
+					let buf: &PipeBuffer = (&*buf as &dyn Any).downcast_ref().unwrap();
+					Ok(buf.get_capacity() as _)
+				}
 				_ => Ok(0),
 			}
 		}

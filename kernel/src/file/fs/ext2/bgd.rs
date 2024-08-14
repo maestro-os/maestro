@@ -53,7 +53,7 @@ impl BlockGroupDescriptor {
 	/// - `i` the id of the group descriptor to write.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn DeviceIO) -> EResult<Self> {
+	pub fn read(i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<Self> {
 		let blk_size = superblock.get_block_size();
 		let off = (superblock.get_bgdt_offset() * blk_size as u64)
 			+ (i as u64 * size_of::<Self>() as u64);
@@ -66,7 +66,7 @@ impl BlockGroupDescriptor {
 	/// - `i` the id of the group descriptor to write.
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn DeviceIO) -> EResult<()> {
+	pub fn write(&self, i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<()> {
 		let blk_size = superblock.get_block_size();
 		let off = (superblock.get_bgdt_offset() * blk_size as u64)
 			+ (i as u64 * size_of::<Self>() as u64);

@@ -28,7 +28,6 @@ use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	lock::Mutex,
 	ptr::arc::Arc,
 	vec, TryDefault,
 };
@@ -65,8 +64,8 @@ pub struct Socket {
 
 impl Socket {
 	/// Creates a new instance.
-	pub fn new(desc: SocketDesc) -> AllocResult<Arc<Mutex<Self>>> {
-		Arc::new(Mutex::new(Self {
+	pub fn new(desc: SocketDesc) -> AllocResult<Arc<Self>> {
+		Arc::new(Self {
 			desc,
 			stack: None,
 
@@ -78,7 +77,7 @@ impl Socket {
 			block_handler: WaitQueue::default(),
 
 			sockname: Vec::new(),
-		}))
+		})
 	}
 
 	/// Returns the socket's descriptor.
@@ -111,7 +110,7 @@ impl Socket {
 	/// - `optval` is the value of the option.
 	///
 	/// The function returns a value to be returned by the syscall on success.
-	pub fn set_opt(&mut self, _level: c_int, _optname: c_int, _optval: &[u8]) -> EResult<c_int> {
+	pub fn set_opt(&self, _level: c_int, _optname: c_int, _optval: &[u8]) -> EResult<c_int> {
 		// TODO
 		Ok(0)
 	}
@@ -132,7 +131,7 @@ impl Socket {
 	///
 	/// If the socket is already bound, or if the address is invalid, or if the address is already
 	/// in used, the function returns an error.
-	pub fn bind(&mut self, sockaddr: &[u8]) -> EResult<()> {
+	pub fn bind(&self, sockaddr: &[u8]) -> EResult<()> {
 		if self.is_bound() {
 			return Err(errno!(EINVAL));
 		}
@@ -144,13 +143,13 @@ impl Socket {
 		Ok(())
 	}
 
-	/// Shuts down the receive side of the socket.
-	pub fn shutdown_receive(&mut self) {
+	/// Shuts down the reception side of the socket.
+	pub fn shutdown_reception(&self) {
 		self.receive_buffer = None;
 	}
 
 	/// Shuts down the transmit side of the socket.
-	pub fn shutdown_transmit(&mut self) {
+	pub fn shutdown_transmit(&self) {
 		self.transmit_buffer = None;
 	}
 }
@@ -180,11 +179,11 @@ impl TryDefault for Socket {
 }
 
 impl Buffer for Socket {
-	fn increment_open(&mut self, _read: bool, _write: bool) {
+	fn acquire(&self, _read: bool, _write: bool) {
 		self.open_count += 1;
 	}
 
-	fn decrement_open(&mut self, _read: bool, _write: bool) {
+	fn release(&self, _read: bool, _write: bool) {
 		self.open_count -= 1;
 		if self.open_count == 0 {
 			// TODO close the socket

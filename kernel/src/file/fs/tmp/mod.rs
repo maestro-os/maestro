@@ -392,7 +392,7 @@ impl NodeOps for Node {
 		Ok(())
 	}
 
-	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<u16> {
+	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<(u16, INode)> {
 		let fs = parent.get_filesystem().unwrap();
 		let fs = downcast_fs::<TmpFS>(&*fs);
 		if fs.is_readonly() {
@@ -408,16 +408,19 @@ impl NodeOps for Node {
 			.binary_search_by(|ent| ent.name.as_ref().cmp(name))
 			.map_err(|_| errno!(ENOENT))?;
 		let ent = &parent_entries[ent_index];
-		let inode = ent.inode;
 		// Get the entry's node
+		let inode = ent.inode;
 		let node = downcast_fs::<TmpFS>(fs)
 			.nodes
 			.lock()
 			.get_node(inode)?
 			.clone();
-		let inner = node.0.lock();
+		let mut inner = node.0.lock();
 		// If the node is a non-empty directory, error
-		if !node.is_empty_directory()? {
+		if !node.is_empty_directory(&FileLocation::Filesystem {
+			mountpoint_id: parent.get_mountpoint_id().unwrap(),
+			inode,
+		})? {
 			return Err(errno!(ENOTEMPTY));
 		}
 		// Remove entry
@@ -428,7 +431,7 @@ impl NodeOps for Node {
 			parent_inner.nlink = parent_inner.nlink.saturating_sub(1);
 		}
 		inner.nlink = inner.nlink.saturating_sub(1);
-		Ok(inner.nlink)
+		Ok((inner.nlink, inode))
 	}
 
 	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
@@ -541,13 +544,13 @@ impl FilesystemType for TmpFsType {
 		b"tmpfs"
 	}
 
-	fn detect(&self, _io: &mut dyn DeviceIO) -> EResult<bool> {
+	fn detect(&self, _io: &dyn DeviceIO) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
-		_io: Option<Arc<Mutex<dyn DeviceIO>>>,
+		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {

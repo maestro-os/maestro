@@ -195,7 +195,7 @@ impl Dirent {
 	///
 	/// If the type cannot be retrieved from the entry directly, the function retrieves it from the
 	/// inode.
-	pub fn get_type(&self, superblock: &Superblock, io: &mut dyn DeviceIO) -> EResult<FileType> {
+	pub fn get_type(&self, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<FileType> {
 		let ent_type =
 			if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
 				match self.file_type {
@@ -214,7 +214,7 @@ impl Dirent {
 		// If the type could not be retrieved from the entry itself, get it from the inode
 		match ent_type {
 			Some(t) => Ok(t),
-			None => Ok(Ext2INode::read(self.inode, superblock, &mut *io)?.get_type()),
+			None => Ok(Ext2INode::read(self.inode, superblock, &*io)?.get_type()),
 		}
 	}
 

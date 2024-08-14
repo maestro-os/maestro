@@ -61,11 +61,6 @@ impl PipeBuffer {
 		self.buffer.lock().get_size()
 	}
 
-	/// Returns the length of the data to be read in the buffer.
-	pub fn get_data_len(&self) -> usize {
-		self.buffer.lock().get_data_len()
-	}
-
 	/// Returns the available space in the buffer in bytes.
 	pub fn get_available_len(&self) -> usize {
 		self.buffer.lock().get_available_len()
@@ -87,7 +82,7 @@ impl TryDefault for PipeBuffer {
 }
 
 impl Buffer for PipeBuffer {
-	fn increment_open(&mut self, read: bool, write: bool) {
+	fn acquire(&self, read: bool, write: bool) {
 		if read {
 			self.readers += 1;
 		}
@@ -96,7 +91,7 @@ impl Buffer for PipeBuffer {
 		}
 	}
 
-	fn decrement_open(&mut self, read: bool, write: bool) {
+	fn release(&self, read: bool, write: bool) {
 		if read {
 			self.readers -= 1;
 		}
