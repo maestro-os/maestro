@@ -40,8 +40,7 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 				name,
 				&AccessProfile::KERNEL,
 				Stat {
-					file_type: FileType::Directory,
-					mode: 0o755,
+					mode: FileType::Directory.to_mode() | 0o755,
 					..Default::default()
 				},
 			);

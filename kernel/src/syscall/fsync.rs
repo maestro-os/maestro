@@ -27,13 +27,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
-	fds.lock()
-		.get_fd(fd)?
-		.get_open_file()
-		.lock()
-		.get_file()
-		.lock()
-		.sync()?;
+pub fn fsync(Args(_fd): Args<c_int>, _fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+	// TODO
 	Ok(0)
 }

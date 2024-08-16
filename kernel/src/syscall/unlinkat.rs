@@ -62,7 +62,7 @@ pub fn unlinkat(
 	match resolved {
 		Resolved::Found(parent) => {
 			let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
-			vfs::remove_file(parent, name, &rs.access_profile)?;
+			vfs::unlink(parent, name, &rs.access_profile)?;
 		}
 		_ => return Err(errno!(ENOENT)),
 	}

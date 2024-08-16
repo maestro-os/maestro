@@ -20,7 +20,7 @@
 
 use super::Args;
 use crate::{
-	file::{fd::FileDescriptorTable, open_file::O_NONBLOCK, FileType},
+	file::{fd::FileDescriptorTable, FileType},
 	idt,
 	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
 	syscall::Signal,
@@ -33,6 +33,7 @@ use utils::{
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
+
 // TODO O_ASYNC
 
 pub fn write(
@@ -41,14 +42,14 @@ pub fn write(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	let len = min(count, i32::MAX as usize);
+	let len = min(count, usize::MAX);
 	if len == 0 {
 		return Ok(0);
 	}
-	let open_file = fds.lock().get_fd(fd)?.get_open_file().clone();
+	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
+	let mut file = file_mutex.lock();
 	// Validation
-	let file_type = open_file.lock().get_file().lock().stat.file_type;
-	if file_type == FileType::Link {
+	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
 	// TODO determine why removing this causes a deadlock
@@ -56,17 +57,21 @@ pub fn write(
 	// TODO find a way to avoid allocating here
 	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
 	// Write file
-	let mut open_file = open_file.lock();
-	let len = match open_file.write(0, &buf_slice) {
-		Ok(len) => len,
+	let res = file
+		.ops()
+		.write_content(file.get_location(), file.off, &buf_slice);
+	match res {
+		Ok(len) => {
+			file.off += len as u64;
+			Ok(len)
+		}
 		Err(e) => {
 			// If writing to a broken pipe, kill with SIGPIPE
 			if e.as_int() == errno::EPIPE {
 				let mut proc = proc.lock();
 				proc.kill_now(Signal::SIGPIPE);
 			}
-			return Err(e);
+			Err(e)
 		}
-	};
-	Ok(len as _)
+	}
 }

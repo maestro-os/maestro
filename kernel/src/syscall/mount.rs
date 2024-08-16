@@ -59,10 +59,9 @@ pub fn mount(
 	let target_file_mutex = vfs::get_file_from_path(&target_path, &rs)?;
 	let target_file = target_file_mutex.lock();
 	// Check the target is a directory
-	if target_file.stat.file_type != FileType::Directory {
+	if target_file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	let target_location = target_file.location;
 	// TODO Use `data`
 	// Create mountpoint
 	mountpoint::create(
@@ -70,7 +69,7 @@ pub fn mount(
 		Some(fs_type),
 		mountflags,
 		target_path,
-		target_location,
+		target_file.get_location().clone(),
 	)?;
 	Ok(0)
 }

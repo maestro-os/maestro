@@ -43,8 +43,7 @@ pub fn finit_module(
 		return Err(errno!(EPERM));
 	}
 	// Read file
-	let open_file_mutex = fds.lock().get_fd(fd)?.get_open_file().clone();
-	let image = open_file_mutex.lock().get_file().lock().read_all()?;
+	let image = fds.lock().get_fd(fd)?.get_file().lock().read_all()?;
 	let module = Module::load(&image)?;
 	if !module::is_loaded(module.get_name()) {
 		module::add(module)?;

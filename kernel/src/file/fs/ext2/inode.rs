@@ -346,11 +346,6 @@ impl Ext2INode {
 		}
 	}
 
-	/// Returns the permissions of the file.
-	pub fn get_permissions(&self) -> Mode {
-		self.i_mode as Mode & 0x0fff
-	}
-
 	/// Sets the permissions of the file.
 	pub fn set_permissions(&mut self, perm: Mode) {
 		self.i_mode = (self.i_mode & !0o7777) | (perm & 0o7777) as u16;

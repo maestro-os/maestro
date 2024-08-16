@@ -42,7 +42,10 @@ pub fn umount(Args(target): Args<SyscallString>, rs: ResolutionSettings) -> ERes
 	// Get target directory
 	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let target_path = PathBuf::try_from(target_slice)?;
-	let target_location = vfs::get_file_from_path(&target_path, &rs)?.lock().location;
+	let target_location = vfs::get_file_from_path(&target_path, &rs)?
+		.lock()
+		.get_location()
+		.clone();
 	// Remove mountpoint
 	mountpoint::remove(&target_location)?;
 	Ok(0)

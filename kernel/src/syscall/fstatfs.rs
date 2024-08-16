@@ -41,11 +41,9 @@ pub fn do_fstatfs(
 	// TODO use `sz`
 	let stat = fds
 		.get_fd(fd)?
-		.get_open_file()
-		.lock()
 		.get_file()
 		.lock()
-		.location
+		.get_location()
 		.get_mountpoint()
 		.ok_or_else(|| errno!(ENOSYS))?
 		.lock()

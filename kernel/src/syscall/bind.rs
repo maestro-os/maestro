@@ -40,12 +40,13 @@ pub fn bind(
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let loc = *fds
+	let loc = fds
 		.lock()
 		.get_fd(sockfd)?
-		.get_open_file()
+		.get_file()
 		.lock()
-		.get_location();
+		.get_location()
+		.clone();
 	let sock = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
 	let sock = (&*sock as &dyn Any)
 		.downcast_ref::<Socket>()

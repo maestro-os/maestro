@@ -64,7 +64,7 @@ pub fn linkat(
 		return Err(errno!(ENOENT));
 	};
 	let mut old = old_mutex.lock();
-	if matches!(old.stat.file_type, FileType::Directory) {
+	if old.get_type()? == FileType::Directory {
 		return Err(errno!(EPERM));
 	}
 	// Create new file
@@ -80,6 +80,6 @@ pub fn linkat(
 		return Err(errno!(EEXIST));
 	};
 	let new_parent = new_parent.lock();
-	vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
+	vfs::link(&new_parent, new_name, &mut old, &rs.access_profile)?;
 	Ok(0)
 }

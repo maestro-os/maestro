@@ -36,12 +36,14 @@ pub fn getcwd(
 	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let proc = proc.lock();
+	let cwd = proc.cwd.lock();
+	let path = cwd.get_path();
 	// Check that the buffer is large enough
-	if size < proc.cwd.0.len() + 1 {
+	if size < path.len() + 1 {
 		return Err(errno!(ERANGE));
 	}
 	// Write
-	let cwd = proc.cwd.0.as_bytes();
+	let cwd = path.as_bytes();
 	buf.copy_to_user(0, cwd)?;
 	buf.copy_to_user(cwd.len(), b"\0")?;
 	Ok(buf.as_ptr() as _)

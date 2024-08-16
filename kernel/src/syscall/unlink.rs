@@ -42,6 +42,6 @@ pub fn unlink(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> ER
 		follow_link: false,
 		..rs
 	};
-	vfs::remove_file_from_path(&path, &rs)?;
+	vfs::unlink_from_path(&path, &rs)?;
 	Ok(0)
 }

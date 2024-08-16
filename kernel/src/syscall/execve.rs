@@ -91,12 +91,14 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 		let shebang = &mut shebangs[i];
 		// Read file
 		let len = {
-			let mut file = file_mutex.lock();
+			let file = file_mutex.lock();
 			// Check permission
-			if !rs.access_profile.can_execute_file(&file) {
+			let stat = file.get_stat()?;
+			if !rs.access_profile.can_execute_file(&stat) {
 				return Err(errno!(EACCES));
 			}
-			file.read(0, &mut shebang.buf)? as usize
+			file.ops()
+				.read_content(file.get_location(), 0, &mut shebang.buf)?
 		};
 		// Parse shebang
 		shebang.end = shebang.buf[..len]
@@ -170,7 +172,8 @@ fn build_image(
 	envp: Vec<String>,
 ) -> EResult<ProgramImage> {
 	let mut file = file.lock();
-	if !path_resolution.access_profile.can_execute_file(&file) {
+	let stat = file.get_stat()?;
+	if !path_resolution.access_profile.can_execute_file(&stat) {
 		return Err(errno!(EACCES));
 	}
 	let exec_info = ExecInfo {

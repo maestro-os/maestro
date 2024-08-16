@@ -59,8 +59,7 @@ pub fn mkdir(
 			name,
 			&rs.access_profile,
 			Stat {
-				file_type: FileType::Directory,
-				mode,
+				mode: FileType::Directory.to_mode() | mode,
 				ctime: ts,
 				mtime: ts,
 				atime: ts,

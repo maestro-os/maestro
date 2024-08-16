@@ -24,8 +24,6 @@ use crate::{
 	file,
 	file::{
 		fd::FD_CLOEXEC,
-		open_file,
-		open_file::OpenFile,
 		path::{Path, PathBuf},
 		perm::AccessProfile,
 		vfs,
@@ -47,13 +45,13 @@ use utils::{
 };
 
 /// Mask of status flags to be kept by an open file description.
-pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
-	| open_file::O_CREAT
-	| open_file::O_DIRECTORY
-	| open_file::O_EXCL
-	| open_file::O_NOCTTY
-	| open_file::O_NOFOLLOW
-	| open_file::O_TRUNC);
+pub const STATUS_FLAGS_MASK: i32 = !(file::O_CLOEXEC
+	| file::O_CREAT
+	| file::O_DIRECTORY
+	| file::O_EXCL
+	| file::O_NOCTTY
+	| file::O_NOFOLLOW
+	| file::O_TRUNC);
 
 // TODO Implement all flags
 
@@ -78,8 +76,7 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<A
 				name,
 				&rs.access_profile,
 				Stat {
-					file_type: FileType::Regular,
-					mode,
+					mode: FileType::Regular.to_mode() | mode,
 					ctime: ts,
 					mtime: ts,
 					atime: ts,
@@ -90,7 +87,7 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<A
 	};
 	// Get file type. There cannot be a race condition since the type of file cannot be
 	// changed
-	let file_type = file.lock().stat.file_type;
+	let file_type = file.lock().get_type()?;
 	// Cannot open symbolic links themselves
 	if file_type == FileType::Link {
 		return Err(errno!(ELOOP));
@@ -106,27 +103,27 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<A
 /// - `access_profile` is the access profile to check permissions
 pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile) -> EResult<()> {
 	let (read, write) = match flags & 0b11 {
-		open_file::O_RDONLY => (true, false),
-		open_file::O_WRONLY => (false, true),
-		open_file::O_RDWR => (true, true),
+		file::O_RDONLY => (true, false),
+		file::O_WRONLY => (false, true),
+		file::O_RDWR => (true, true),
 		_ => return Err(errno!(EINVAL)),
 	};
-	if read && !access_profile.can_read_file(file) {
+	let stat = file.get_stat()?;
+	// Check access
+	if read && !access_profile.can_read_file(&stat) {
 		return Err(errno!(EACCES));
 	}
-	if write && !access_profile.can_write_file(file) {
+	if write && !access_profile.can_write_file(&stat) {
 		return Err(errno!(EACCES));
 	}
-
 	// If O_DIRECTORY is set and the file is not a directory, return an error
-	if flags & open_file::O_DIRECTORY != 0 && file.stat.file_type != FileType::Directory {
+	if flags & file::O_DIRECTORY != 0 && stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
 	// Truncate the file if necessary
-	if flags & open_file::O_TRUNC != 0 {
+	if flags & file::O_TRUNC != 0 {
 		file.truncate(0)?;
 	}
-
 	Ok(())
 }
 
@@ -139,8 +136,8 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<u
 		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 
-		let follow_links = flags & open_file::O_NOFOLLOW == 0;
-		let create = flags & open_file::O_CREAT != 0;
+		let follow_links = flags & file::O_NOFOLLOW == 0;
+		let create = flags & file::O_CREAT != 0;
 		let mut rs = ResolutionSettings::for_process(&proc, follow_links);
 		rs.create = create;
 
@@ -150,34 +147,15 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<u
 
 		(path, rs, mode, fds_mutex)
 	};
-
 	// Get file
-	let file_mutex = get_file(&path, &rs, mode)?;
-	{
-		let mut file = file_mutex.lock();
-		handle_flags(&mut file, flags, &rs.access_profile)?;
-	}
-
-	// Create open file description
-	// FIXME: pass the absolute path, used by `fchidr`
-	let open_file = OpenFile::new(file_mutex.clone(), None, flags)?;
-
+	let file = get_file(&path, &rs, mode)?;
+	handle_flags(&mut file.lock(), flags, &rs.access_profile)?;
 	// Create FD
 	let mut fd_flags = 0;
-	if flags & open_file::O_CLOEXEC != 0 {
+	if flags & file::O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-	let mut fds = fds_mutex.lock();
-	let (fd_id, _) = fds.create_fd(fd_flags, open_file)?;
-
-	// TODO remove?
-	// Flush file
-	let file = file_mutex.lock();
-	if let Err(e) = file.sync() {
-		fds.close_fd(fd_id as _)?;
-		return Err(e);
-	}
-
+	let (fd_id, _) = fds_mutex.lock().create_fd(fd_flags, file)?;
 	Ok(fd_id as _)
 }
 

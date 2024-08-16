@@ -19,7 +19,7 @@
 //! A pipe is an object that links two file descriptors together. One reading
 //! and another writing, with a buffer in between.
 
-use super::Buffer;
+use super::BufferOps;
 use crate::{
 	file::{buffer::WaitQueue, fs::NodeOps, FileLocation, FileType, Stat},
 	limits,
@@ -85,7 +85,7 @@ impl TryDefault for PipeBuffer {
 	}
 }
 
-impl Buffer for PipeBuffer {
+impl BufferOps for PipeBuffer {
 	fn acquire(&self, read: bool, write: bool) {
 		let mut inner = self.inner.lock();
 		if read {
@@ -114,8 +114,7 @@ impl Buffer for PipeBuffer {
 impl NodeOps for PipeBuffer {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Fifo,
-			mode: 0o666,
+			mode: FileType::Fifo.to_mode() | 0o666,
 			..Default::default()
 		})
 	}

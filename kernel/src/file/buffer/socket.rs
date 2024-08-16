@@ -18,7 +18,7 @@
 
 //! This file implements sockets.
 
-use super::Buffer;
+use super::BufferOps;
 use crate::{
 	file::{blocking::WaitQueue, fs::NodeOps, FileLocation, FileType, Stat},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
@@ -32,7 +32,6 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	lock::Mutex,
-	ptr::arc::Arc,
 	vec, TryDefault,
 };
 
@@ -69,8 +68,8 @@ pub struct Socket {
 
 impl Socket {
 	/// Creates a new instance.
-	pub fn new(desc: SocketDesc) -> AllocResult<Arc<Self>> {
-		Arc::new(Self {
+	pub fn new(desc: SocketDesc) -> AllocResult<Self> {
+		Ok(Self {
 			desc,
 			stack: None,
 			open_count: AtomicUsize::new(0),
@@ -179,7 +178,7 @@ impl TryDefault for Socket {
 	}
 }
 
-impl Buffer for Socket {
+impl BufferOps for Socket {
 	fn acquire(&self, _read: bool, _write: bool) {
 		self.open_count.fetch_add(1, atomic::Ordering::Acquire);
 	}
@@ -195,8 +194,7 @@ impl Buffer for Socket {
 impl NodeOps for Socket {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Socket,
-			mode: 0o666,
+			mode: FileType::Socket.to_mode() | 0o666,
 			..Default::default()
 		})
 	}

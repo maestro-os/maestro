@@ -30,7 +30,6 @@ pub mod fd;
 pub mod fs;
 pub mod mapping;
 pub mod mountpoint;
-pub mod open_file;
 pub mod path;
 pub mod perm;
 pub mod util;
@@ -40,9 +39,8 @@ use crate::{
 	device,
 	device::{DeviceID, DeviceType},
 	file::{
-		buffer::{pipe::PipeBuffer, socket::Socket},
-		fs::{Filesystem, NodeOps, StatSet},
-		path::PathBuf,
+		fs::{Filesystem, NodeOps},
+		path::{Path, PathBuf},
 		perm::{Gid, Uid},
 	},
 	syscall::ioctl,
@@ -52,7 +50,7 @@ use crate::{
 		unit::{Timestamp, TimestampScale},
 	},
 };
-use core::{cmp::max, ffi::c_void};
+use core::{ffi::c_void, ops::Deref};
 use mountpoint::{MountPoint, MountSource};
 use perm::AccessProfile;
 use utils::{
@@ -62,7 +60,7 @@ use utils::{
 	errno::{AllocResult, EResult},
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
-	vec, TryClone,
+	TryClone,
 };
 
 /// A filesystem node ID.
@@ -109,6 +107,43 @@ pub const DT_SOCK: u8 = 12;
 /// Directory entry type: Unknown
 pub const DT_UNKNOWN: u8 = 0;
 
+/// Read only.
+pub const O_RDONLY: i32 = 0b00000000000000000000000000000000;
+/// Write only.
+pub const O_WRONLY: i32 = 0b00000000000000000000000000000001;
+/// Read and write.
+pub const O_RDWR: i32 = 0b00000000000000000000000000000010;
+/// At each write operations, the cursor is placed at the end of the file so the
+/// data is appended.
+pub const O_APPEND: i32 = 0b00000000000000000000010000000000;
+/// Generates a SIGIO when input or output becomes possible on the file.
+pub const O_ASYNC: i32 = 0b00000000000000000010000000000000;
+/// Close-on-exec.
+pub const O_CLOEXEC: i32 = 0b00000000000010000000000000000000;
+/// If the file doesn't exist, create it.
+pub const O_CREAT: i32 = 0b00000000000000000000000001000000;
+/// Disables caching data.
+pub const O_DIRECT: i32 = 0b00000000000000000100000000000000;
+/// If pathname is not a directory, cause the open to fail.
+pub const O_DIRECTORY: i32 = 0b00000000000000010000000000000000;
+/// Ensure the file is created (when used with O_CREAT). If not, the call fails.
+pub const O_EXCL: i32 = 0b00000000000000000000000010000000;
+/// Allows openning large files (more than 2^32 bytes).
+pub const O_LARGEFILE: i32 = 0b00000000000000001000000000000000;
+/// Don't update file access time.
+pub const O_NOATIME: i32 = 0b00000000000001000000000000000000;
+/// If refering to a tty, it will not become the process's controlling tty.
+pub const O_NOCTTY: i32 = 0b00000000000000000000000100000000;
+/// Tells `open` not to follow symbolic links.
+pub const O_NOFOLLOW: i32 = 0b00000000000000100000000000000000;
+/// I/O is non blocking.
+pub const O_NONBLOCK: i32 = 0b00000000000000000000100000000000;
+/// When using `write`, the data has been transfered to the hardware before
+/// returning.
+pub const O_SYNC: i32 = 0b00000000000100000001000000000000;
+/// If the file already exists, truncate it to length zero.
+pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
+
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileType {
@@ -132,7 +167,7 @@ impl FileType {
 	/// Returns the type corresponding to the given mode `mode`.
 	///
 	/// If the type doesn't exist, the function returns `None`.
-	pub fn from_mode(mode: Mode) -> Option<Self> {
+	pub const fn from_mode(mode: Mode) -> Option<Self> {
 		match mode & 0o770000 {
 			S_IFSOCK => Some(Self::Socket),
 			S_IFLNK => Some(Self::Link),
@@ -146,7 +181,7 @@ impl FileType {
 	}
 
 	/// Returns the mode corresponding to the type.
-	pub fn to_mode(&self) -> Mode {
+	pub const fn to_mode(&self) -> Mode {
 		match self {
 			Self::Socket => S_IFSOCK,
 			Self::Link => S_IFLNK,
@@ -159,7 +194,7 @@ impl FileType {
 	}
 
 	/// Returns the directory entry type.
-	pub fn to_dirent_type(&self) -> u8 {
+	pub const fn to_dirent_type(&self) -> u8 {
 		match self {
 			Self::Socket => DT_SOCK,
 			Self::Link => DT_LNK,
@@ -170,56 +205,38 @@ impl FileType {
 			Self::Fifo => DT_FIFO,
 		}
 	}
+
+	/// Returns the device type, if any.
+	pub const fn to_device_type(&self) -> Option<DeviceType> {
+		match self {
+			FileType::BlockDevice => Some(DeviceType::Block),
+			FileType::CharDevice => Some(DeviceType::Char),
+			_ => None,
+		}
+	}
 }
 
-/// The location of a file on a disk.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum FileLocation {
-	/// The file is located on a filesystem.
-	Filesystem {
-		/// The ID of the mountpoint of the file.
-		mountpoint_id: u32,
-		/// The file's inode.
-		inode: INode,
-	},
-	/// The file is not located on a filesystem.
-	///
-	/// This variant contains an ID.
-	Virtual(u32),
+/// The location of a file.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct FileLocation {
+	/// The ID of the mountpoint of the file.
+	pub mountpoint_id: u32,
+	/// The file's inode.
+	pub inode: INode,
 }
 
 impl FileLocation {
-	/// Dummy location, to be used by the root mountpoint.
-	pub const fn dummy() -> Self {
-		Self::Filesystem {
+	/// Location to nowhere.
+	pub const fn nowhere() -> Self {
+		Self {
 			mountpoint_id: 0,
 			inode: 0,
 		}
 	}
 
-	/// Returns the ID of the mountpoint.
-	pub fn get_mountpoint_id(&self) -> Option<u32> {
-		match self {
-			Self::Filesystem {
-				mountpoint_id, ..
-			} => Some(*mountpoint_id),
-			_ => None,
-		}
-	}
-
 	/// Returns the mountpoint on which the file is located.
 	pub fn get_mountpoint(&self) -> Option<Arc<Mutex<MountPoint>>> {
-		mountpoint::from_id(self.get_mountpoint_id()?)
-	}
-
-	/// Returns the inode.
-	pub fn get_inode(&self) -> INode {
-		match self {
-			Self::Filesystem {
-				inode, ..
-			} => *inode,
-			Self::Virtual(id) => *id as _,
-		}
+		mountpoint::from_id(self.mountpoint_id)
 	}
 
 	/// Returns the filesystem associated with the location, if any.
@@ -253,10 +270,6 @@ impl<'name> TryClone for DirEntry<'name> {
 /// File status information.
 #[derive(Clone, Debug)]
 pub struct Stat {
-	/// The file's type.
-	///
-	/// This field **must not** be modified after the structure is initialized.
-	pub file_type: FileType,
 	/// The file's permissions.
 	pub mode: Mode,
 
@@ -289,7 +302,6 @@ pub struct Stat {
 impl Default for Stat {
 	fn default() -> Self {
 		Self {
-			file_type: FileType::Regular,
 			mode: 0o444,
 
 			nlink: 1,
@@ -311,16 +323,11 @@ impl Default for Stat {
 }
 
 impl Stat {
-	/// Returns the mode of the file with the type included.
-	pub fn get_mode(&self) -> Mode {
-		self.mode | self.file_type.to_mode()
-	}
-
-	/// Sets the permissions of the file, updating `ctime` with the current timestamp.
-	pub fn set_permissions(&mut self, mode: Mode) {
-		self.mode = mode & 0o7777;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
-		self.ctime = timestamp;
+	/// Returns the file type.
+	///
+	/// If the file type if invalid, the function returns `None`.
+	pub fn get_type(&self) -> Option<FileType> {
+		FileType::from_mode(self.mode)
 	}
 
 	/// Sets the owner user ID, updating `ctime` with the current timestamp.
@@ -338,49 +345,70 @@ impl Stat {
 	}
 }
 
-/// Information to remove a file when all its handles are closed.
-#[derive(Debug)]
-pub struct DeferredRemove {
-	/// The parent directory.
-	pub parent: Arc<Mutex<File>>,
-	/// The name of the entry to remove.
-	pub name: String,
-}
-
-/// A file on a filesystem.
-///
-/// This structure does not store the file's name as it may be different depending on the hard link
-/// used to access it.
+/// An open file description.
 #[derive(Debug)]
 pub struct File {
+	/// The file's absolute path.
+	path: PathBuf,
 	/// The location the file is stored on.
-	pub location: FileLocation,
+	location: FileLocation,
 	/// Handle to perform operations on the node.
 	///
 	/// If `None`, the file is virtual.
 	ops: Box<dyn NodeOps>,
-	/// The file's status. This is cache of the data on the filesystem.
-	pub stat: Stat,
-	/// If not `None`, the file will be removed when the last handle to it is closed.
-	///
-	/// This field contains all the information necessary to remove it.
-	deferred_remove: Option<DeferredRemove>,
+
+	/// Open file description flags.
+	pub flags: i32,
+	/// The current offset in the file.
+	pub off: u64,
 }
 
 impl File {
-	/// Creates a new instance.
+	/// Opens a file.
 	///
 	/// Arguments:
+	/// - `path` is the file's absolute path.
 	/// - `location` is the file's location.
 	/// - `ops` is the handle to perform operations on the file
-	/// - `stat` is the file's status
-	fn new(location: FileLocation, ops: Box<dyn NodeOps>, stat: Stat) -> Self {
-		Self {
+	/// - `flags` is the open file description's flags.
+	pub fn open(
+		path: PathBuf,
+		location: FileLocation,
+		ops: Box<dyn NodeOps>,
+		flags: i32,
+	) -> EResult<Arc<Mutex<Self>>> {
+		let file = Self {
+			path,
 			location,
 			ops,
-			stat,
-			deferred_remove: None,
-		}
+
+			flags,
+			off: 0,
+		};
+		Ok(Arc::new(Mutex::new(file))?)
+	}
+
+	/// Like [`open`], but without an associated location.
+	pub fn open_ops(ops: Box<dyn NodeOps>, flags: i32) -> EResult<Arc<Mutex<Self>>> {
+		let file = Self {
+			path: PathBuf::empty(),
+			location: FileLocation::nowhere(),
+			ops,
+
+			flags,
+			off: 0,
+		};
+		Ok(Arc::new(Mutex::new(file))?)
+	}
+
+	/// Returns the absolute path to the file.
+	pub fn get_path(&self) -> &Path {
+		&self.path
+	}
+
+	/// Returns the location of the file.
+	pub fn get_location(&self) -> &FileLocation {
+		&self.location
 	}
 
 	/// Returns the mountpoint located at this file, if any.
@@ -393,14 +421,30 @@ impl File {
 		self.as_mountpoint().is_some()
 	}
 
-	pub fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		self.ops.read_content(&self.location, off, buf)
-		// TODO update `atime` if the mountpoint allows it
+	/// Returns the file's operations handle.
+	pub fn ops(&self) -> &dyn NodeOps {
+		self.ops.deref()
+	}
+
+	pub fn get_stat(&self) -> EResult<Stat> {
+		self.ops.get_stat(&self.location)
+	}
+
+	/// Returns the type of the file.
+	pub fn get_type(&self) -> EResult<FileType> {
+		let stat = self.get_stat()?;
+		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
 	}
 
 	/// Reads the whole content of a file into a buffer.
+	///
+	/// This function does not change the file's offset.
 	pub fn read_all(&mut self) -> EResult<Vec<u8>> {
-		let len: usize = self.stat.size.try_into().map_err(|_| errno!(EOVERFLOW))?;
+		let len: usize = self
+			.get_stat()?
+			.size
+			.try_into()
+			.map_err(|_| errno!(EOVERFLOW))?;
 		let mut buf = Vec::with_capacity(len)?;
 		let mut off = 0;
 		// Stick to the file's size to have an upper bound
@@ -413,17 +457,7 @@ impl File {
 			}
 			off += len;
 		}
-		// TODO update `atime` if the mountpoint allows it
 		Ok(buf)
-	}
-
-	pub fn write(&mut self, off: u64, buff: &[u8]) -> EResult<usize> {
-		let len = self.ops.write_content(&self.location, off, buff)?;
-		// Update file's size
-		self.stat.size = max(off + len as u64, self.stat.size);
-		// TODO update `blocks`
-		// TODO update `mtime`
-		Ok(len)
 	}
 
 	pub fn poll(&mut self, mask: u32) -> EResult<u32> {
@@ -450,41 +484,6 @@ impl File {
 		}
 	}
 
-	/// Reads the symbolic link.
-	///
-	/// If the file is not a symbolic link, the function returns [`errno::EINVAL`].
-	pub fn read_link(&mut self) -> EResult<PathBuf> {
-		if self.stat.file_type != FileType::Link {
-			return Err(errno!(EINVAL));
-		}
-		// TODO do statistics to determine an optimal number?
-		const BLOCK: usize = 16;
-		let init_len = max(self.stat.size as usize, BLOCK);
-		let mut link_path = vec![0; init_len]?;
-		let mut off = 0;
-		// Read and realloc until the whole target is read
-		loop {
-			let len = self.read(off, &mut link_path[(off as usize)..])?;
-			if len == 0 {
-				break;
-			}
-			off += len as u64;
-			if off >= link_path.len() as u64 {
-				link_path.resize(link_path.len() + BLOCK, 0)?;
-			}
-		}
-		// Truncate end bytes
-		let end = link_path
-			.iter()
-			.enumerate()
-			.find(|(_, b)| **b == 0)
-			.map(|(i, _)| i);
-		if let Some(end) = end {
-			link_path.truncate(end);
-		}
-		Ok(PathBuf::new_unchecked(String::from(link_path)))
-	}
-
 	/// Truncates the file to the given `size`.
 	///
 	/// If `size` is greater than or equals to the current size of the file, the function does
@@ -500,68 +499,28 @@ impl File {
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
 	pub fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		match self.stat.file_type {
-			FileType::Fifo => {
-				let buff = buffer::get_or_default::<PipeBuffer>(&self.location)?;
-				buff.ioctl(&self.location, request, argp)
-			}
-			FileType::Socket => {
-				let buff = buffer::get_or_default::<Socket>(&self.location)?;
-				buff.ioctl(&self.location, request, argp)
-			}
-			FileType::BlockDevice => {
+		let stat = self.ops.get_stat(&self.location)?;
+		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
+		match dev_type {
+			Some(dev_type) => {
 				let dev = device::get(&DeviceID {
-					dev_type: DeviceType::Block,
-					major: self.stat.dev_major,
-					minor: self.stat.dev_minor,
+					dev_type,
+					major: stat.dev_major,
+					minor: stat.dev_minor,
 				})
 				.ok_or_else(|| errno!(ENODEV))?;
 				dev.get_io().ioctl(request, argp)
 			}
-			FileType::CharDevice => {
-				let dev = device::get(&DeviceID {
-					dev_type: DeviceType::Char,
-					major: self.stat.dev_major,
-					minor: self.stat.dev_minor,
-				})
-				.ok_or_else(|| errno!(ENODEV))?;
-				dev.get_io().ioctl(request, argp)
-			}
-			_ => Err(errno!(ENOTTY)),
+			None => self.ops.ioctl(&self.location, request, argp),
 		}
-	}
-
-	/// Synchronizes the file with the device.
-	///
-	/// If no device is associated with the file, the function does nothing.
-	pub fn sync(&self) -> EResult<()> {
-		// TODO only set fields that were modified
-		// Sync
-		self.ops.set_stat(
-			&self.location,
-			StatSet {
-				mode: Some(self.stat.mode),
-				nlink: None,
-				uid: Some(self.stat.uid),
-				gid: Some(self.stat.gid),
-				ctime: Some(self.stat.ctime),
-				mtime: Some(self.stat.mtime),
-				atime: Some(self.stat.atime),
-			},
-		)
-	}
-
-	/// Defers removal of the file, meaning the file will be removed when closed.
-	pub fn defer_remove(&mut self, info: DeferredRemove) {
-		self.deferred_remove = Some(info);
 	}
 
 	/// Closes the file, removing it if removal has been deferred.
 	pub fn close(&mut self) -> EResult<()> {
-		if let Some(deferred_remove) = self.deferred_remove.take() {
-			// No need to check permissions since they already have been checked before deferring
-			let parent = deferred_remove.parent.lock();
-			vfs::remove_file_unchecked(&parent, &deferred_remove.name)?;
+		let stat = self.ops.get_stat(&self.location)?;
+		// If no more link remain to the file, remove the node
+		if stat.nlink == 0 {
+			self.ops.remove_file(&self.location)?;
 		}
 		Ok(())
 	}
@@ -575,130 +534,130 @@ impl Drop for File {
 }
 
 impl AccessProfile {
-	fn check_read_access_impl(uid: Uid, gid: Gid, file: &File) -> bool {
+	fn check_read_access_impl(uid: Uid, gid: Gid, stat: &Stat) -> bool {
 		// If root, bypass checks
 		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
 			return true;
 		}
 		// Check permissions
-		if file.stat.mode & perm::S_IRUSR != 0 && file.stat.uid == uid {
+		if stat.mode & perm::S_IRUSR != 0 && stat.uid == uid {
 			return true;
 		}
-		if file.stat.mode & perm::S_IRGRP != 0 && file.stat.gid == gid {
+		if stat.mode & perm::S_IRGRP != 0 && stat.gid == gid {
 			return true;
 		}
-		file.stat.mode & perm::S_IROTH != 0
+		stat.mode & perm::S_IROTH != 0
 	}
 
-	/// Tells whether the agent can read the file.
+	/// Tells whether the agent can read a file with the given status.
 	///
 	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
-	pub fn check_read_access(&self, file: &File, effective: bool) -> bool {
+	pub fn check_read_access(&self, stat: &Stat, effective: bool) -> bool {
 		let (uid, gid) = if effective {
 			(self.euid, self.egid)
 		} else {
 			(self.uid, self.gid)
 		};
-		Self::check_read_access_impl(uid, gid, file)
+		Self::check_read_access_impl(uid, gid, stat)
 	}
 
-	/// Tells whether the agent can read the file.
+	/// Tells whether the agent can read a file with the given status.
 	///
 	/// This function is the preferred from `check_read_access` for general cases.
-	pub fn can_read_file(&self, file: &File) -> bool {
-		self.check_read_access(file, true)
+	pub fn can_read_file(&self, stat: &Stat) -> bool {
+		self.check_read_access(stat, true)
 	}
 
-	/// Tells whether the agent can list files of the directories, **not** including access to
-	/// files' contents and metadata.
+	/// Tells whether the agent can list files of a directory with the given status, **not**
+	/// including access to files' contents and metadata.
 	#[inline]
-	pub fn can_list_directory(&self, file: &File) -> bool {
-		self.can_read_file(file)
+	pub fn can_list_directory(&self, stat: &Stat) -> bool {
+		self.can_read_file(stat)
 	}
 
-	fn check_write_access_impl(uid: Uid, gid: Gid, file: &File) -> bool {
+	fn check_write_access_impl(uid: Uid, gid: Gid, stat: &Stat) -> bool {
 		// If root, bypass checks
 		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
 			return true;
 		}
 		// Check permissions
-		if file.stat.mode & perm::S_IWUSR != 0 && file.stat.uid == uid {
+		if stat.mode & perm::S_IWUSR != 0 && stat.uid == uid {
 			return true;
 		}
-		if file.stat.mode & perm::S_IWGRP != 0 && file.stat.gid == gid {
+		if stat.mode & perm::S_IWGRP != 0 && stat.gid == gid {
 			return true;
 		}
-		file.stat.mode & perm::S_IWOTH != 0
+		stat.mode & perm::S_IWOTH != 0
 	}
 
-	/// Tells whether the agent can write the file.
+	/// Tells whether the agent can write a file with the given status.
 	///
 	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
-	pub fn check_write_access(&self, file: &File, effective: bool) -> bool {
+	pub fn check_write_access(&self, stat: &Stat, effective: bool) -> bool {
 		let (uid, gid) = if effective {
 			(self.euid, self.egid)
 		} else {
 			(self.uid, self.gid)
 		};
-		Self::check_write_access_impl(uid, gid, file)
+		Self::check_write_access_impl(uid, gid, stat)
 	}
 
-	/// Tells whether the agent can write the file.
-	pub fn can_write_file(&self, file: &File) -> bool {
-		self.check_write_access(file, true)
+	/// Tells whether the agent can write a file with the given status.
+	pub fn can_write_file(&self, stat: &Stat) -> bool {
+		self.check_write_access(stat, true)
 	}
 
-	/// Tells whether the agent can modify entries in the directory, including creating files,
-	/// deleting files, and renaming files.
+	/// Tells whether the agent can modify entries in a directory with the given status, including
+	/// creating files, deleting files, and renaming files.
 	#[inline]
-	pub fn can_write_directory(&self, file: &File) -> bool {
-		self.can_write_file(file) && self.can_execute_file(file)
+	pub fn can_write_directory(&self, stat: &Stat) -> bool {
+		self.can_write_file(stat) && self.can_execute_file(stat)
 	}
 
-	fn check_execute_access_impl(uid: Uid, gid: Gid, file: &File) -> bool {
+	fn check_execute_access_impl(uid: Uid, gid: Gid, stat: &Stat) -> bool {
 		// If root, bypass checks (unless the file is a regular file)
-		if file.stat.file_type != FileType::Regular
+		if stat.get_type() != Some(FileType::Regular)
 			&& (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
 		{
 			return true;
 		}
 		// Check permissions
-		if file.stat.mode & perm::S_IXUSR != 0 && file.stat.uid == uid {
+		if stat.mode & perm::S_IXUSR != 0 && stat.uid == uid {
 			return true;
 		}
-		if file.stat.mode & perm::S_IXGRP != 0 && file.stat.gid == gid {
+		if stat.mode & perm::S_IXGRP != 0 && stat.gid == gid {
 			return true;
 		}
-		file.stat.mode & perm::S_IXOTH != 0
+		stat.mode & perm::S_IXOTH != 0
 	}
 
-	/// Tells whether the agent can execute the file.
+	/// Tells whether the agent can execute a file with the given status.
 	///
 	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
-	pub fn check_execute_access(&self, file: &File, effective: bool) -> bool {
+	pub fn check_execute_access(&self, stat: &Stat, effective: bool) -> bool {
 		let (uid, gid) = if effective {
 			(self.euid, self.egid)
 		} else {
 			(self.uid, self.gid)
 		};
-		Self::check_execute_access_impl(uid, gid, file)
+		Self::check_execute_access_impl(uid, gid, stat)
 	}
 
-	/// Tells whether the agent can execute the file.
-	pub fn can_execute_file(&self, file: &File) -> bool {
-		self.check_execute_access(file, true)
+	/// Tells whether the agent can execute a file with the given status.
+	pub fn can_execute_file(&self, stat: &Stat) -> bool {
+		self.check_execute_access(stat, true)
 	}
 
-	/// Tells whether the agent can access files of the directory *if the name of the file is
-	/// known*.
+	/// Tells whether the agent can access files of a directory with the given status, *if the name
+	/// of the file is known*.
 	#[inline]
-	pub fn can_search_directory(&self, file: &File) -> bool {
-		self.can_execute_file(file)
+	pub fn can_search_directory(&self, stat: &Stat) -> bool {
+		self.can_execute_file(stat)
 	}
 
-	/// Tells whether the agent can set permissions for the given file.
-	pub fn can_set_file_permissions(&self, file: &File) -> bool {
-		self.euid == perm::ROOT_UID || self.euid == file.stat.uid
+	/// Tells whether the agent can set permissions for a file with the given status.
+	pub fn can_set_file_permissions(&self, stat: &Stat) -> bool {
+		self.euid == perm::ROOT_UID || self.euid == stat.uid
 	}
 }
 
@@ -752,7 +711,7 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 		None,
 		0,
 		PathBuf::root()?,
-		FileLocation::dummy(),
+		FileLocation::nowhere(),
 	)?;
 	Ok(())
 }

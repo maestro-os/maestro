@@ -70,7 +70,6 @@ pub fn mknod(
 		name,
 		&rs.access_profile,
 		Stat {
-			file_type,
 			mode,
 			dev_major: id::major(dev),
 			dev_minor: id::minor(dev),

@@ -43,8 +43,7 @@ impl NodeOps for Cwd {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
-			file_type: FileType::Link,
-			mode: 0o444,
+			mode: FileType::Link.to_mode() | 0o444,
 			uid,
 			gid,
 			..Default::default()
@@ -52,8 +51,12 @@ impl NodeOps for Cwd {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", proc.cwd.0)
+		let cwd = Process::get_by_pid(self.0)
+			.ok_or_else(|| errno!(ENOENT))?
+			.lock()
+			.cwd
+			.clone();
+		let cwd = cwd.lock();
+		format_content!(off, buf, "{}", cwd.get_path())
 	}
 }

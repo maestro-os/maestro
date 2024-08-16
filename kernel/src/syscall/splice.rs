@@ -51,8 +51,8 @@ pub fn splice(
 		let fds_mutex = proc.file_descriptors.as_ref().unwrap();
 		let fds = fds_mutex.lock();
 
-		let input = fds.get_fd(fd_in)?.get_open_file().clone();
-		let output = fds.get_fd(fd_out)?.get_open_file().clone();
+		let input = fds.get_fd(fd_in)?.get_file().clone();
+		let output = fds.get_fd(fd_out)?.get_file().clone();
 
 		let off_in = off_in.copy_from_user()?;
 		let off_out = off_out.copy_from_user()?;
@@ -61,8 +61,8 @@ pub fn splice(
 	};
 
 	{
-		let input_type = input_mutex.lock().get_file().lock().stat.file_type;
-		let output_type = output_mutex.lock().get_file().lock().stat.file_type;
+		let input_type = input_mutex.lock().get_type()?;
+		let output_type = output_mutex.lock().get_type()?;
 
 		let in_is_pipe = matches!(input_type, FileType::Fifo);
 		let out_is_pipe = matches!(output_type, FileType::Fifo);
@@ -82,34 +82,31 @@ pub fn splice(
 
 	// TODO implement flags
 
-	let mut buff = vec![0u8; len]?;
+	let mut buf = vec![0u8; len]?;
 
 	let len = {
 		let mut input = input_mutex.lock();
-		let prev_off = input.get_offset();
-		let len = input.read(off_in.unwrap_or(0), buff.as_mut_slice())?;
-		if off_in.is_some() {
-			input.set_offset(prev_off);
+		let len = input
+			.ops()
+			.read_content(input.get_location(), off_in.unwrap_or(0), &mut buf)?;
+		if off_in.is_none() {
+			input.off += len as u64;
 		}
 		len
 	};
 
-	let in_slice = &buff.as_slice()[..(len as usize)];
+	let in_slice = &buf[..len];
 	let mut i = 0;
-
 	while i < len {
 		// TODO Check for signal (and handle syscall restart correctly with offsets)
-
 		let mut output = output_mutex.lock();
-
-		let prev_off = output.get_offset();
-
-		let l = output.write(off_out.unwrap_or(0), in_slice)?;
-
-		if off_out.is_some() {
-			output.set_offset(prev_off);
+		let l =
+			output
+				.ops()
+				.write_content(output.get_location(), off_out.unwrap_or(0), in_slice)?;
+		if off_out.is_none() {
+			output.off += l as u64;
 		}
-
 		i += l;
 	}
 

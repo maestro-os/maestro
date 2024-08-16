@@ -20,7 +20,7 @@
 
 use crate::{
 	file,
-	file::{fd::FileDescriptorTable, perm::AccessProfile},
+	file::{fd::FileDescriptorTable, fs::StatSet, perm::AccessProfile},
 	process::Process,
 	syscall::Args,
 };
@@ -37,21 +37,19 @@ pub fn fchmod(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
-	let file_mutex = fds_mutex
-		.lock()
-		.get_fd(fd)?
-		.get_open_file()
-		.lock()
-		.get_file()
-		.clone();
-	let mut file = file_mutex.lock();
+	let file_mutex = fds_mutex.lock().get_fd(fd)?.get_file().clone();
+	let file = file_mutex.lock();
 	// Check permissions
-	if !ap.can_set_file_permissions(&file) {
+	let stat = file.get_stat()?;
+	if !ap.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	// Update
-	file.stat.set_permissions(mode as _);
-	// TODO lazy sync
-	file.sync()?;
+	file.ops().set_stat(
+		file.get_location(),
+		StatSet {
+			mode: Some(mode & 0o7777),
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }

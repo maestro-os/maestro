@@ -37,10 +37,10 @@ pub fn rmdir(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> ERe
 	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
 	let file = file_mutex.lock();
 	// Validation
-	if file.stat.file_type != FileType::Directory {
+	if file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	// Remove
-	vfs::remove_file_from_path(&path, &rs)?;
+	vfs::unlink_from_path(&path, &rs)?;
 	Ok(0)
 }

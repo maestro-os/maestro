@@ -22,8 +22,6 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, FD_CLOEXEC},
-		open_file,
-		open_file::OpenFile,
 		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
@@ -69,7 +67,7 @@ fn get_file(
 	rs: ResolutionSettings,
 	mode: file::Mode,
 ) -> EResult<Arc<Mutex<File>>> {
-	let create = flags & open_file::O_CREAT != 0;
+	let create = flags & file::O_CREAT != 0;
 	let resolved = at::get_file(fds, rs.clone(), dirfd, path, flags)?;
 	match resolved {
 		Resolved::Found(file) => Ok(file),
@@ -84,8 +82,7 @@ fn get_file(
 				name,
 				&rs.access_profile,
 				Stat {
-					file_type: FileType::Regular,
-					mode,
+					mode: FileType::Regular.to_mode() | mode,
 					ctime: ts,
 					mtime: ts,
 					atime: ts,
@@ -100,11 +97,11 @@ fn get_file(
 pub fn openat(
 	Args((dirfd, pathname, flags, mode)): Args<(c_int, SyscallString, c_int, file::Mode)>,
 ) -> EResult<usize> {
-	let (rs, path, fds_mutex) = {
+	let (rs, path, fds_mutex, mode) = {
 		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
-		let follow_link = flags & open_file::O_NOFOLLOW == 0;
+		let follow_link = flags & file::O_NOFOLLOW == 0;
 		let rs = ResolutionSettings::for_process(&proc, follow_link);
 
 		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
@@ -112,29 +109,21 @@ pub fn openat(
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
-		(rs, path, fds_mutex)
+		let mode = mode & !proc.umask;
+
+		(rs, path, fds_mutex, mode)
 	};
 
 	let mut fds = fds_mutex.lock();
 
 	// Get file
-	let file_mutex = get_file(&fds, dirfd, &path, flags, rs.clone(), mode)?;
-	{
-		let mut file = file_mutex.lock();
-		super::open::handle_flags(&mut file, flags, &rs.access_profile)?;
-	}
-
-	// FIXME: pass the absolute path, used by `fchidr`
-	let open_file = OpenFile::new(file_mutex, None, flags)?;
-
+	let file = get_file(&fds, dirfd, &path, flags, rs.clone(), mode)?;
+	super::open::handle_flags(&mut file.lock(), flags, &rs.access_profile)?;
 	// Create FD
 	let mut fd_flags = 0;
-	if flags & open_file::O_CLOEXEC != 0 {
+	if flags & file::O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-	let (fd_id, _) = fds.create_fd(fd_flags, open_file)?;
-
-	// TODO flush file? (see `open` syscall)
-
+	let (fd_id, _) = fds.create_fd(fd_flags, file)?;
 	Ok(fd_id as _)
 }

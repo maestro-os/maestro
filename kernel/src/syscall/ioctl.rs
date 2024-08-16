@@ -128,7 +128,7 @@ pub(super) fn ioctl(
 	let request = Request::from(request);
 	fds.lock()
 		.get_fd(fd)?
-		.get_open_file()
+		.get_file()
 		.lock()
 		.ioctl(request, argp)
 		.map(|v| v as _)

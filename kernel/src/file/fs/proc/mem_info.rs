@@ -32,8 +32,7 @@ pub struct MemInfo;
 impl NodeOps for MemInfo {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Regular,
-			mode: 0o444,
+			mode: FileType::Regular.to_mode() | 0o444,
 			..Default::default()
 		})
 	}

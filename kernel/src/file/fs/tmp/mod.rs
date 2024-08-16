@@ -48,6 +48,7 @@ use utils::{
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
 };
+
 // TODO count memory usage to enforce quota
 
 /// The default maximum amount of memory the filesystem can use in bytes.
@@ -106,8 +107,7 @@ impl NodeInner {
 			} => (FileType::CharDevice, 0, *major, *minor),
 		};
 		Stat {
-			file_type,
-			mode: self.mode,
+			mode: file_type.to_mode() | self.mode,
 			nlink: self.nlink,
 			uid: self.uid,
 			gid: self.gid,
@@ -141,7 +141,8 @@ impl Node {
 		inode: Option<INode>,
 		parent_inode: Option<INode>,
 	) -> AllocResult<Self> {
-		let content = match stat.file_type {
+		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
+		let content = match file_type {
 			FileType::Regular => NodeContent::Regular(Vec::new()),
 			FileType::Directory => {
 				let mut entries = Vec::new();
@@ -174,9 +175,9 @@ impl Node {
 			},
 		};
 		let mut nlink = 1;
-		if stat.file_type == FileType::Directory {
+		if stat.get_type() == Some(FileType::Directory) {
 			// Count the `.` entry
-			nlink += 2;
+			nlink += 1;
 		}
 		Ok(Self(Arc::new(Mutex::new(NodeInner {
 			mode: stat.mode,
@@ -329,7 +330,7 @@ impl NodeOps for Node {
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
-		let parent_inode = parent.get_inode();
+		let entry_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		let mut nodes = fs.nodes.lock();
 		// Allocate a new slot. In case of later failure, this does not need rollback as the unused
 		// slot is reused at the next call
@@ -339,9 +340,8 @@ impl NodeOps for Node {
 		let NodeContent::Directory(parent_entries) = &mut parent_inner.content else {
 			return Err(errno!(ENOTDIR));
 		};
-		let entry_type = stat.file_type;
 		// Prepare node to be added
-		let node = Node::new(stat, Some(inode), Some(parent_inode))?;
+		let node = Node::new(stat, Some(inode), Some(parent.inode))?;
 		// Add entry to parent
 		let ent = DirEntry {
 			inode,
@@ -371,6 +371,7 @@ impl NodeOps for Node {
 		// Get node
 		let node = fs.nodes.lock().get_node(inode)?.clone();
 		let mut inner = node.0.lock();
+		let entry_type = FileType::from_mode(inner.as_stat().mode).unwrap();
 		let mut parent_inner = self.0.lock();
 		// Get parent entries
 		let NodeContent::Directory(parent_entries) = &mut parent_inner.content else {
@@ -379,7 +380,7 @@ impl NodeOps for Node {
 		// Insert the new entry
 		let ent = DirEntry {
 			inode,
-			entry_type: inner.as_stat().file_type,
+			entry_type,
 			name: Cow::Owned(name.try_into()?),
 		};
 		let res = parent_entries.binary_search_by(|ent| ent.name.as_ref().cmp(name));
@@ -392,7 +393,7 @@ impl NodeOps for Node {
 		Ok(())
 	}
 
-	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<(u16, INode)> {
+	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
 		let fs = parent.get_filesystem().unwrap();
 		let fs = downcast_fs::<TmpFS>(&*fs);
 		if fs.is_readonly() {
@@ -417,8 +418,8 @@ impl NodeOps for Node {
 			.clone();
 		let mut inner = node.0.lock();
 		// If the node is a non-empty directory, error
-		if !node.is_empty_directory(&FileLocation::Filesystem {
-			mountpoint_id: parent.get_mountpoint_id().unwrap(),
+		if !node.is_empty_directory(&FileLocation {
+			mountpoint_id: parent.mountpoint_id,
 			inode,
 		})? {
 			return Err(errno!(ENOTEMPTY));
@@ -431,7 +432,7 @@ impl NodeOps for Node {
 			parent_inner.nlink = parent_inner.nlink.saturating_sub(1);
 		}
 		inner.nlink = inner.nlink.saturating_sub(1);
-		Ok((inner.nlink, inode))
+		Ok(())
 	}
 
 	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
@@ -440,9 +441,8 @@ impl NodeOps for Node {
 		if fs.is_readonly() {
 			return Err(errno!(EROFS));
 		}
-		let inode = loc.get_inode();
 		let mut nodes = fs.nodes.lock();
-		nodes.remove_node(inode);
+		nodes.remove_node(loc.inode);
 		Ok(())
 	}
 }
@@ -471,8 +471,7 @@ impl TmpFS {
 	pub fn new(max_size: usize, readonly: bool) -> EResult<Self> {
 		let root = Node::new(
 			Stat {
-				file_type: FileType::Directory,
-				mode: 0o1777,
+				mode: FileType::Directory.to_mode() | 0o1777,
 				nlink: 0,
 				uid: ROOT_UID,
 				gid: ROOT_GID,

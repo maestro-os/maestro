@@ -22,6 +22,7 @@ use super::util::at;
 use crate::{
 	file::{
 		fd::FileDescriptorTable,
+		fs::StatSet,
 		path::{Path, PathBuf},
 		vfs::{ResolutionSettings, Resolved},
 	},
@@ -31,6 +32,7 @@ use crate::{
 	},
 	syscall::Args,
 	time::unit::{TimeUnit, Timespec},
+	tty::vga::DEFAULT_COLOR,
 };
 use core::ffi::c_int;
 use utils::{
@@ -60,12 +62,15 @@ pub fn utimensat(
 	else {
 		return Err(errno!(ENOENT));
 	};
-	let mut file = file_mutex.lock();
+	let file = file_mutex.lock();
 	// Update timestamps
-	// TODO clean
-	file.stat.atime = atime.to_nano() / 1000000000;
-	file.stat.mtime = mtime.to_nano() / 1000000000;
-	// TODO sync only when required
-	file.sync()?;
+	file.ops().set_stat(
+		file.get_location(),
+		StatSet {
+			atime: Some(atime.to_nano() / 1000000000),
+			mtime: Some(mtime.to_nano() / 1000000000),
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }

@@ -19,11 +19,7 @@
 //! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
 use crate::{
-	file::{
-		fd::FileDescriptorTable,
-		open_file::{OpenFile, O_NONBLOCK},
-		FileType,
-	},
+	file::{fd::FileDescriptorTable, File, FileType},
 	limits,
 	process::{
 		iovec::IOVec,
@@ -41,6 +37,7 @@ use utils::{
 	ptr::arc::Arc,
 	vec,
 };
+
 // TODO Handle blocking writes (and thus, EINTR)
 // TODO Reimplement by taking example on `writev` (currently doesn't work with blocking files)
 
@@ -49,28 +46,47 @@ use utils::{
 /// Arguments:
 /// - `iov` is the set of chunks
 /// - `iovcnt` is the number of chunks in `iov`
+/// - `offset` is the offset at which the read operation in the file begins
 /// - `open_file` is the file to read from
-fn read(iov: &SyscallSlice<IOVec>, iovcnt: usize, open_file: &mut OpenFile) -> EResult<i32> {
+fn read(
+	iov: &SyscallSlice<IOVec>,
+	iovcnt: usize,
+	offset: Option<u64>,
+	file: &mut File,
+) -> EResult<usize> {
 	let mut off = 0;
 	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
-		// Ignore zero entry
-		if i.iov_len == 0 {
-			continue;
-		}
 		// The size to read. This is limited to avoid an overflow on the total length
-		let l = min(i.iov_len, i32::MAX as usize - off);
+		let l = min(i.iov_len, usize::MAX - off);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
 		// Read
 		// TODO perf: do not use a buffer
-		let mut buffer = vec![0u8; l]?;
-		// FIXME: incorrect. should reuse the same buffer if not full
-		let len = open_file.read(0, &mut buffer)?;
-		if len == 0 {
+		let mut buf = vec![0u8; l]?;
+		let mut inner_off = 0;
+		while inner_off < buf.len() {
+			let len = if let Some(offset) = offset {
+				let file_off = offset + off as u64;
+				file.ops()
+					.read_content(file.get_location(), file_off, &mut buf)?
+			} else {
+				let len = file
+					.ops()
+					.read_content(file.get_location(), file.off, &mut buf)?;
+				file.off += len as u64;
+				len
+			};
+			if len == 0 {
+				break;
+			}
+			inner_off += len;
+		}
+		ptr.copy_to_user(off, &buf[..inner_off])?;
+		off += inner_off;
+		// If the last buffer reached the end, stop
+		if inner_off < l {
 			break;
 		}
-		ptr.copy_to_user(off, &buffer[..(len as usize)])?;
-		off += len as usize;
 	}
 	Ok(off as _)
 }
@@ -95,35 +111,18 @@ pub fn do_readv(
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
-	// TODO Handle flags
-	let open_file_mutex = fds.lock().get_fd(fd)?.get_open_file().clone();
-	// Validation
-	let (start_off, update_off) = match offset {
-		Some(o @ 0..) => (o as u64, false),
-		None | Some(-1) => {
-			let open_file = open_file_mutex.lock();
-			(open_file.get_offset(), true)
-		}
+	let offset = match offset {
+		Some(o @ 0..) => Some(o as u64),
+		None | Some(-1) => None,
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
-	let file_type = open_file_mutex.lock().get_file().lock().stat.file_type;
-	if file_type == FileType::Link {
+	// TODO Handle flags
+	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
+	let mut file = file_mutex.lock();
+	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	let mut open_file = open_file_mutex.lock();
-	let flags = open_file.get_flags();
-	// Change the offset temporarily
-	let prev_off = open_file.get_offset();
-	open_file.set_offset(start_off);
-	let len = read(&iov, iovcnt as _, &mut open_file)?;
-	// Restore previous offset
-	if !update_off {
-		open_file.set_offset(prev_off);
-	}
-	if len == 0 && flags & O_NONBLOCK != 0 {
-		// The file descriptor is non-blocking
-		return Err(errno!(EAGAIN));
-	}
+	let len = read(&iov, iovcnt as _, offset, &mut file)?;
 	Ok(len as _)
 }
 

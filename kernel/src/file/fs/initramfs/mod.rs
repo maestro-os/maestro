@@ -100,14 +100,12 @@ pub fn load(data: &[u8]) -> EResult<()> {
 		let parent_mutex = &stored_parent.as_ref().unwrap().1;
 		let mut parent = parent_mutex.lock();
 		// Create file
-		let file_type = hdr.get_type();
 		let create_result = vfs::create_file(
 			&mut parent,
 			name,
 			&AccessProfile::KERNEL,
 			Stat {
-				file_type,
-				mode: hdr.get_perms(),
+				mode: hdr.c_mode as _,
 				uid: hdr.c_uid,
 				gid: hdr.c_gid,
 				dev_major: device::id::major(hdr.c_rdev as _),
@@ -123,11 +121,11 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			Err(e) if e.as_int() == errno::EEXIST => continue,
 			Err(e) => return Err(e),
 		};
-		let mut file = file_mutex.lock();
-		match file_type {
+		let file = file_mutex.lock();
+		match file.get_type()? {
 			FileType::Regular | FileType::Link => {
 				let content = entry.get_content();
-				file.write(0, content)?;
+				file.ops().write_content(file.get_location(), 0, content)?;
 			}
 			_ => {}
 		}

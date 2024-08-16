@@ -19,9 +19,9 @@
 //! A file mapping is a view of a file in memory, which can be modified, shared between processes,
 //! etc...
 
-use crate::{file::FileLocation, memory, memory::buddy};
+use crate::{memory, memory::buddy};
 use core::ptr::NonNull;
-use utils::{collections::hashmap::HashMap, errno::EResult, lock::Mutex};
+use utils::{collections::hashmap::HashMap, errno::EResult};
 
 /// Structure representing a mapped page for a file.
 struct Page {
@@ -78,67 +78,5 @@ impl MappedFile {
 		if page.ref_count == 0 {
 			self.pages.remove(&off);
 		}
-	}
-}
-
-/// The list of mapped files, by location.
-static MAPPED_FILES: Mutex<HashMap<FileLocation, MappedFile>> = Mutex::new(HashMap::new());
-
-/// Returns a reference to a mapped page.
-///
-/// Arguments:
-/// - `loc` is the location to the file.
-/// - `off` is the offset of the page.
-///
-/// If the page is not mapped, the function returns `None`.
-pub fn get_page(loc: &FileLocation, off: usize) -> Option<&mut [u8; memory::PAGE_SIZE]> {
-	let mut mapped_files = MAPPED_FILES.lock();
-	let file = mapped_files.get_mut(loc)?;
-	let page = file.pages.get_mut(&off)?;
-
-	Some(unsafe { page.ptr.as_mut() })
-}
-
-/// Maps the the file at the given location.
-///
-/// Arguments:
-/// - `loc` is the location to the file.
-/// - `off` is the offset of the page to map.
-pub fn map(loc: FileLocation, _off: usize) -> EResult<()> {
-	let mut mapped_files = MAPPED_FILES.lock();
-	let _mapped_file = match mapped_files.get_mut(&loc) {
-		Some(f) => f,
-		None => {
-			mapped_files.insert(loc, MappedFile::default())?;
-			mapped_files.get_mut(&loc).unwrap()
-		}
-	};
-
-	// TODO increment references count on page
-
-	Ok(())
-}
-
-/// Unmaps the file at the given location.
-///
-/// Arguments:
-/// - `loc` is the location to the file.
-/// - `off` is the offset of the page to unmap.
-///
-/// If the file mapping doesn't exist or the page isn't mapped, the function does nothing.
-pub fn unmap(loc: &FileLocation, _off: usize) {
-	let mut mapped_files = MAPPED_FILES.lock();
-	let Some(mapped_file) = mapped_files.get_mut(loc) else {
-		return;
-	};
-
-	// TODO decrement ref count on page
-
-	// Remove mapping that are not referenced
-	// TODO mapped_file.pages.retain(|_, p| p.ref_count <= 0);
-
-	// If no mapping is left for the file, remove it
-	if mapped_file.pages.is_empty() {
-		mapped_files.remove(loc);
 	}
 }

@@ -32,8 +32,7 @@ pub struct SelfNode;
 impl NodeOps for SelfNode {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Link,
-			mode: 0o777,
+			mode: FileType::Link.to_mode() | 0o777,
 			..Default::default()
 		})
 	}

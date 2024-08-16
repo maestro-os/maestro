@@ -32,11 +32,9 @@ pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> ER
 	let _mountpoint = fds
 		.lock()
 		.get_fd(fd)?
-		.get_open_file()
-		.lock()
 		.get_file()
 		.lock()
-		.location
+		.get_location()
 		.get_mountpoint();
 	// TODO Sync all files on mountpoint
 	Ok(0)

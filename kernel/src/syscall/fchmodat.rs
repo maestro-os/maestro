@@ -23,6 +23,7 @@ use crate::{
 	file,
 	file::{
 		fd::FileDescriptorTable,
+		fs::StatSet,
 		path::PathBuf,
 		vfs::{ResolutionSettings, Resolved},
 	},
@@ -49,14 +50,18 @@ pub fn fchmodat(
 	let Resolved::Found(file_mutex) = at::get_file(&fds, rs.clone(), dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
-	let mut file = file_mutex.lock();
+	let file = file_mutex.lock();
 	// Check permission
-	if !rs.access_profile.can_set_file_permissions(&file) {
+	let stat = file.get_stat()?;
+	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	// Update
-	file.stat.set_permissions(mode as _);
-	// TODO lazy sync
-	file.sync()?;
+	file.ops().set_stat(
+		file.get_location(),
+		StatSet {
+			mode: Some(mode & 0o7777),
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }

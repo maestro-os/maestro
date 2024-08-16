@@ -83,14 +83,14 @@ pub fn do_access(
 		file
 	};
 	// Do access checks
-	let file = file.lock();
-	if (mode & R_OK != 0) && !ap.check_read_access(&file, eaccess) {
+	let stat = file.lock().get_stat()?;
+	if (mode & R_OK != 0) && !ap.check_read_access(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
-	if (mode & W_OK != 0) && !ap.check_write_access(&file, eaccess) {
+	if (mode & W_OK != 0) && !ap.check_write_access(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
-	if (mode & X_OK != 0) && !ap.check_execute_access(&file, eaccess) {
+	if (mode & X_OK != 0) && !ap.check_execute_access(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
 	Ok(0)

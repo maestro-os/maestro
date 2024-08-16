@@ -302,7 +302,7 @@ pub trait NodeOps: Debug {
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<(u16, INode)> {
+	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
 		let _ = (parent, name);
 		Err(errno!(EINVAL))
 	}

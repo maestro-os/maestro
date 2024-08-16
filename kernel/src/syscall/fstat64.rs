@@ -83,46 +83,41 @@ pub fn fstat64(
 	Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let file_mutex = fds
-		.lock()
-		.get_fd(fd)?
-		.get_open_file()
-		.lock()
-		.get_file()
-		.clone();
+	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
 	let file = file_mutex.lock();
-	let inode = file.location.get_inode();
-	let rdev = makedev(file.stat.dev_major, file.stat.dev_minor);
+	let loc = file.get_location();
+	let stat = file.ops().get_stat(loc)?;
+	let rdev = makedev(stat.dev_major, stat.dev_minor);
 	let stat = Stat {
 		st_dev: 0, // TODO
 
 		__st_dev_padding: 0,
 
-		st_ino: inode,
-		st_mode: file.stat.mode,
-		st_nlink: file.stat.nlink as _,
-		st_uid: file.stat.uid,
-		st_gid: file.stat.gid,
+		st_ino: loc.inode,
+		st_mode: stat.mode,
+		st_nlink: stat.nlink as _,
+		st_uid: stat.uid,
+		st_gid: stat.gid,
 		st_rdev: rdev,
 
 		__st_rdev_padding: 0,
 
-		st_size: file.stat.size as _,
+		st_size: stat.size as _,
 		st_blksize: 512, // TODO
-		st_blocks: file.stat.blocks,
+		st_blocks: stat.blocks,
 
 		st_atim: Timespec::from_nano(TimestampScale::convert(
-			file.stat.atime,
+			stat.atime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond,
 		)),
 		st_mtim: Timespec::from_nano(TimestampScale::convert(
-			file.stat.mtime,
+			stat.mtime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond,
 		)),
 		st_ctim: Timespec::from_nano(TimestampScale::convert(
-			file.stat.ctime,
+			stat.ctime,
 			TimestampScale::Second,
 			TimestampScale::Nanosecond,
 		)),

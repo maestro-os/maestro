@@ -55,8 +55,7 @@ impl NodeOps for Cmdline {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
-			file_type: FileType::Regular,
-			mode: 0o444,
+			mode: FileType::Regular.to_mode() | 0o444,
 			uid,
 			gid,
 			..Default::default()

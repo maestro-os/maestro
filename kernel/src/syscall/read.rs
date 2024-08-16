@@ -20,7 +20,7 @@
 
 use super::Args;
 use crate::{
-	file::{fd::FileDescriptorTable, open_file::O_NONBLOCK, FileType},
+	file::{fd::FileDescriptorTable, FileType},
 	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
 };
 use core::{cmp::min, ffi::c_int};
@@ -32,7 +32,6 @@ use utils::{
 	ptr::arc::Arc,
 	vec,
 };
-
 // TODO O_ASYNC
 
 pub fn read(
@@ -40,14 +39,14 @@ pub fn read(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	let len = min(count, i32::MAX as usize);
+	let len = min(count, usize::MAX);
 	if len == 0 {
 		return Ok(0);
 	}
-	let open_file = fds.lock().get_fd(fd)?.get_open_file().clone();
+	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
+	let file = file_mutex.lock();
 	// Validation
-	let file_type = open_file.lock().get_file().lock().stat.file_type;
-	if file_type == FileType::Link {
+	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
 	// TODO determine why removing this causes a deadlock
@@ -55,9 +54,12 @@ pub fn read(
 	// TODO perf: a buffer is not necessarily required
 	let mut buffer = vec![0u8; count]?;
 	// Read file
-	let mut open_file = open_file.lock();
-	let len = open_file.read(0, &mut buffer)?;
+	let mut file = file_mutex.lock();
+	let len = file
+		.ops()
+		.read_content(file.get_location(), file.off, &mut buffer)?;
+	file.off += len as u64;
 	// Write back
-	buf.copy_to_user(0, &buffer[..(len as usize)])?;
+	buf.copy_to_user(0, &buffer[..len])?;
 	Ok(len as _)
 }

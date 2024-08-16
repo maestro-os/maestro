@@ -38,6 +38,11 @@ pub const PATH_SEPARATOR: u8 = b'/';
 pub struct PathBuf(String);
 
 impl PathBuf {
+	/// Creates a new empty path.
+	pub fn empty() -> Self {
+		Self(String::new())
+	}
+
 	/// Creates a new path to root.
 	pub fn root() -> AllocResult<Self> {
 		Ok(Self(String::from(Vec::try_from(b"/".as_slice())?)))
@@ -161,9 +166,14 @@ impl fmt::Debug for PathBuf {
 pub struct Path([u8]);
 
 impl Path {
+	/// Creates a new empty to root.
+	pub fn empty() -> &'static Self {
+		Self::new_unchecked(&[])
+	}
+
 	/// Creates a new path to root.
 	pub fn root() -> &'static Self {
-		Self::new_unchecked(&[])
+		Self::new_unchecked(b"/")
 	}
 
 	/// Creates a new instance from the given string.

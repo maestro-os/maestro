@@ -89,17 +89,20 @@ impl MountSource {
 		let result = vfs::get_file_from_path(path, &ResolutionSettings::kernel_follow());
 		match result {
 			Ok(file_mutex) => {
-				let file = file_mutex.lock();
-				match file.stat.file_type {
-					FileType::BlockDevice => Ok(Self::Device(DeviceID {
+				let stat = {
+					let file = file_mutex.lock();
+					file.ops().get_stat(file.get_location())?
+				};
+				match stat.get_type() {
+					Some(FileType::BlockDevice) => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Block,
-						major: file.stat.dev_major,
-						minor: file.stat.dev_minor,
+						major: stat.dev_major,
+						minor: stat.dev_minor,
 					})),
-					FileType::CharDevice => Ok(Self::Device(DeviceID {
+					Some(FileType::CharDevice) => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Char,
-						major: file.stat.dev_major,
-						minor: file.stat.dev_minor,
+						major: stat.dev_major,
+						minor: stat.dev_minor,
 					})),
 					_ => Err(errno!(EINVAL)),
 				}
@@ -277,7 +280,7 @@ impl MountPoint {
 	/// Returns the location of the root directory of the mounted filesystem.
 	pub fn get_root_location(&self) -> FileLocation {
 		let fs = self.get_filesystem();
-		FileLocation::Filesystem {
+		FileLocation {
 			mountpoint_id: self.get_id(),
 			inode: fs.get_root_inode(),
 		}
@@ -348,7 +351,7 @@ pub fn create(
 		fs_type,
 		flags,
 		target_path,
-		target_location,
+		target_location.clone(),
 	)?))?;
 
 	// Insertion
@@ -415,7 +418,7 @@ pub fn root_location() -> FileLocation {
 	};
 	let root_mp = root_mp_mutex.lock();
 	let root_inode = root_mp.get_filesystem().get_root_inode();
-	FileLocation::Filesystem {
+	FileLocation {
 		mountpoint_id: root_mp.get_id(),
 		inode: root_inode,
 	}

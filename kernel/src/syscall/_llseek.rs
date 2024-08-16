@@ -52,29 +52,20 @@ pub fn _llseek(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let fds = fds_mutex.lock();
-	let open_file_mutex = fds.get_fd(fd as _)?.get_open_file();
-	// Get file
-	let mut open_file = open_file_mutex.lock();
+	let file_mutex = fds.get_fd(fd as _)?.get_file();
+	let mut file = file_mutex.lock();
 	// Compute the offset
 	let off = ((offset_high as u64) << 32) | (offset_low as u64);
-	let off = match whence {
-		SEEK_SET => off,
-		SEEK_CUR => open_file
-			.get_offset()
-			.checked_add(off)
-			.ok_or_else(|| errno!(EOVERFLOW))?,
-		SEEK_END => open_file
-			.get_file()
-			.lock()
-			.stat
-			.size
-			.checked_add(off)
-			.ok_or_else(|| errno!(EOVERFLOW))?,
+	let base = match whence {
+		SEEK_SET => 0,
+		SEEK_CUR => file.off,
+		SEEK_END => file.get_stat()?.size,
 		_ => return Err(errno!(EINVAL)),
 	};
+	let off = base.checked_add(off).ok_or_else(|| errno!(EOVERFLOW))?;
 	// Write the result to the userspace
 	result.copy_to_user(off)?;
 	// Set the new offset
-	open_file.set_offset(off);
+	file.off = off;
 	Ok(0)
 }

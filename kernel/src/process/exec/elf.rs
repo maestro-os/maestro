@@ -277,7 +277,8 @@ fn build_auxiliary(
 /// If the file is not executable, the function returns an error.
 fn read_exec_file(file: &mut File, ap: &AccessProfile) -> EResult<Vec<u8>> {
 	// Check that the file can be executed by the user
-	if !ap.can_execute_file(file) {
+	let stat = file.get_stat()?;
+	if !ap.can_execute_file(&stat) {
 		return Err(errno!(ENOEXEC));
 	}
 	file.read_all()

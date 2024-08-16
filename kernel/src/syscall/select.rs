@@ -145,7 +145,6 @@ pub fn do_select<T: TimeUnit>(
 			}
 			// Poll file
 			let result = {
-				// Get file descriptor
 				let fds = fds.lock();
 				let Ok(fd) = fds.get_fd(fd_id as _) else {
 					if mask != 0 {
@@ -153,11 +152,8 @@ pub fn do_select<T: TimeUnit>(
 					}
 					continue;
 				};
-				// Get file
-				let open_file_mutex = fd.get_open_file();
-				let mut open_file = open_file_mutex.lock();
-				// Poll
-				open_file.poll(mask)?
+				let mut file = fd.get_file().lock();
+				file.poll(mask)?
 			};
 			// Set results
 			let read = read && result & poll::POLLIN != 0;

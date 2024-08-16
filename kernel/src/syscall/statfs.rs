@@ -44,7 +44,7 @@ pub(super) fn do_statfs(
 	let path = PathBuf::try_from(path)?;
 	let stat = vfs::get_file_from_path(&path, &rs)?
 		.lock()
-		.location
+		.get_location()
 		.get_mountpoint()
 		// Unwrapping will not fail since the file is accessed from path
 		.unwrap()

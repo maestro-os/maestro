@@ -68,14 +68,14 @@ pub fn rename(
 		let new_parent = new_parent_mutex.lock();
 		let new_name = new_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 		// If source and destination are on different mountpoints, error
-		if new_parent.location.get_mountpoint_id() != old.location.get_mountpoint_id() {
+		if new_parent.get_location().mountpoint_id != old.get_location().mountpoint_id {
 			return Err(errno!(EXDEV));
 		}
 		// TODO Check permissions if sticky bit is set
-		vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
+		vfs::link(&new_parent, new_name, &mut old, &rs.access_profile)?;
 	}
 	// Remove source file
 	// TODO On fail, undo previous creation
-	vfs::remove_file(old_parent, old_name, &rs.access_profile)?;
+	vfs::unlink(old_parent, old_name, &rs.access_profile)?;
 	Ok(0)
 }

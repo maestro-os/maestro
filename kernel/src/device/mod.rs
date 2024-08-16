@@ -220,14 +220,14 @@ impl Device {
 	/// Arguments:
 	/// - `id` is the ID of the device.
 	/// - `path` is the path of the device file.
-	/// - `mode` is the permissions of the device file.
+	/// - `perms` is the permissions of the device file.
 	///
 	/// If the file already exist, the function does nothing.
 	///
 	/// The function takes a mutex guard because it needs to unlock the device
 	/// in order to create the file without a deadlock since the VFS accesses a device to write on
 	/// the filesystem.
-	pub fn create_file(id: &DeviceID, path: &Path, mode: Mode) -> EResult<()> {
+	pub fn create_file(id: &DeviceID, path: &Path, perms: Mode) -> EResult<()> {
 		// Create the parent directory in which the device file is located
 		let parent_path = path.parent().unwrap_or(Path::root());
 		file::util::create_dirs(parent_path)?;
@@ -251,8 +251,7 @@ impl Device {
 					name,
 					&AccessProfile::KERNEL,
 					Stat {
-						file_type: id.dev_type.as_file_type(),
-						mode,
+						mode: id.dev_type.as_file_type().to_mode() | perms,
 						dev_major: id.major,
 						dev_minor: id.minor,
 						..Default::default()
@@ -269,7 +268,7 @@ impl Device {
 	///
 	/// If the file doesn't exist, the function does nothing.
 	pub fn remove_file(&self) -> EResult<()> {
-		vfs::remove_file_from_path(&self.path, &ResolutionSettings::kernel_follow())
+		vfs::unlink_from_path(&self.path, &ResolutionSettings::kernel_follow())
 	}
 }
 

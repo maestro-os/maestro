@@ -44,7 +44,7 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
-		mountpoint, open_file,
+		mountpoint,
 		path::PathBuf,
 		perm::AccessProfile,
 		vfs,
@@ -53,7 +53,7 @@ use crate::{
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::{mem_space::copy, open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
+	process::{mem_space::copy, pid::PidHandle, scheduler::SCHEDULER},
 	register_get,
 	time::timer::TimerManager,
 };
@@ -265,7 +265,7 @@ pub struct Process {
 	/// Current working directory
 	///
 	/// The field contains both the path and the directory.
-	pub cwd: Arc<(PathBuf, Arc<Mutex<File>>)>,
+	pub cwd: Arc<Mutex<File>>,
 	/// Current root path used by the process
 	pub chroot: FileLocation,
 	/// The list of open file descriptors with their respective ID.
@@ -432,8 +432,8 @@ impl Process {
 			let mut fds_table = FileDescriptorTable::default();
 			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
 			let tty_file = vfs::get_file_from_path(&tty_path, &rs)?;
-			let open_file = OpenFile::new(tty_file, Some(tty_path), open_file::O_RDWR)?;
-			let (stdin_fd_id, _) = fds_table.create_fd(0, open_file)?;
+			let file = File::open(tty_file, Some(tty_path), file::O_RDWR)?;
+			let (stdin_fd_id, _) = fds_table.create_fd(0, file)?;
 			assert_eq!(stdin_fd_id, STDIN_FILENO);
 			fds_table.duplicate_fd(
 				STDIN_FILENO as _,
@@ -448,7 +448,7 @@ impl Process {
 			fds_table
 		};
 		let root_loc = mountpoint::root_location();
-		let root_dir = vfs::get_file_from_location(root_loc)?;
+		let root_dir = vfs::get_file_from_location(root_loc.clone())?;
 		let pid = PidHandle::init()?;
 		let process = Self {
 			pid,
@@ -486,7 +486,7 @@ impl Process {
 			user_stack: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: Arc::new((PathBuf::root()?, root_dir))?,
+			cwd: root_dir,
 			chroot: root_loc,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
@@ -869,7 +869,7 @@ impl Process {
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
 			cwd: self.cwd.clone(),
-			chroot: self.chroot,
+			chroot: self.chroot.clone(),
 			file_descriptors,
 
 			sigmask: self.sigmask.try_clone()?,

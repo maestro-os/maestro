@@ -165,12 +165,9 @@ pub fn do_fcntl(
 			fd.flags = arg as _;
 			Ok(0)
 		}
-		F_GETFL => {
-			let flags = fds.get_fd(fd)?.get_open_file().lock().get_flags();
-			Ok(flags as _)
-		}
+		F_GETFL => Ok(fds.get_fd(fd)?.get_file().lock().flags as _),
 		F_SETFL => {
-			fds.get_fd(fd)?.get_open_file().lock().set_flags(arg as _);
+			fds.get_fd(fd)?.get_file().lock().flags = arg as _;
 			Ok(0)
 		}
 		F_GETLK => {
@@ -254,11 +251,11 @@ pub fn do_fcntl(
 			todo!();
 		}
 		F_GETPIPE_SZ => {
-			let file_mutex = fds.get_fd(fd)?.get_open_file().lock().get_file().clone();
+			let file_mutex = fds.get_fd(fd)?.get_file();
 			let file = file_mutex.lock();
-			match file.stat.file_type {
+			match file.get_type()? {
 				FileType::Fifo => {
-					let buf = buffer::get_or_default::<PipeBuffer>(&file.location)?;
+					let buf = buffer::get_or_default::<PipeBuffer>(&file.get_location())?;
 					let buf: &PipeBuffer = (&*buf as &dyn Any).downcast_ref().unwrap();
 					Ok(buf.get_capacity() as _)
 				}

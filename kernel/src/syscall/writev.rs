@@ -19,11 +19,7 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
 use crate::{
-	file::{
-		fd::FileDescriptorTable,
-		open_file::{OpenFile, O_NONBLOCK},
-		FileType,
-	},
+	file::{fd::FileDescriptorTable, File, FileType, O_NONBLOCK},
 	limits,
 	process::{
 		iovec::IOVec,
@@ -48,25 +44,38 @@ use utils::{
 /// Arguments:
 /// - `iov` is the set of chunks
 /// - `iovcnt` is the number of chunks in `iov`
-/// - `open_file` is the file to write to
-fn write(iov: &SyscallSlice<IOVec>, iovcnt: usize, open_file: &mut OpenFile) -> EResult<i32> {
+/// - `offset` is the offset at which the write operation in the file begins
+/// - `file` is the file to write to
+fn write(
+	iov: &SyscallSlice<IOVec>,
+	iovcnt: usize,
+	offset: Option<u64>,
+	file: &mut File,
+) -> EResult<usize> {
 	let mut off = 0;
 	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
-		// Ignore zero entry
-		if i.iov_len == 0 {
-			continue;
-		}
 		// The size to write. This is limited to avoid an overflow on the total length
 		let l = min(i.iov_len, usize::MAX - off);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
-		if let Some(buffer) = ptr.copy_from_user(..l)? {
+		if let Some(buf) = ptr.copy_from_user(..l)? {
 			// FIXME: if not everything has been written, must retry with the same buffer with the
 			// corresponding offset
-			off += open_file.write(0, &buffer)? as usize;
+			let len = if let Some(offset) = offset {
+				let file_off = offset + off as u64;
+				file.ops()
+					.write_content(file.get_location(), file_off, &buf)?
+			} else {
+				let len = file
+					.ops()
+					.write_content(file.get_location(), file.off, &buf)?;
+				file.off += len as u64;
+				len
+			};
+			off += len;
 		}
 	}
-	Ok(off as _)
+	Ok(off)
 }
 
 /// Performs the `writev` operation.
@@ -90,25 +99,18 @@ pub fn do_writev(
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
-	let open_file_mutex = fds.lock().get_fd(fd)?.get_open_file().clone();
-	// Validation
-	let (start_off, update_off) = match offset {
-		Some(o @ 0..) => (o as u64, false),
-		None | Some(-1) => {
-			let open_file = open_file_mutex.lock();
-			(open_file.get_offset(), true)
-		}
+	let offset = match offset {
+		Some(o @ 0..) => Some(o as u64),
+		None | Some(-1) => None,
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
-	let file_type = open_file_mutex.lock().get_file().lock().stat.file_type;
-	if file_type == FileType::Link {
+	// Get file
+	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
+	let mut file = file_mutex.lock();
+	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	let mut open_file = open_file_mutex.lock();
-	// Change the offset temporarily
-	let prev_off = open_file.get_offset();
-	open_file.set_offset(start_off);
-	let len = match write(&iov, iovcnt as _, &mut open_file) {
+	let len = match write(&iov, iovcnt as _, offset, &mut file) {
 		Ok(len) => len,
 		Err(e) => {
 			// If writing to a broken pipe, kill with SIGPIPE
@@ -119,11 +121,7 @@ pub fn do_writev(
 			return Err(e);
 		}
 	};
-	// Restore previous offset
-	if !update_off {
-		open_file.set_offset(prev_off);
-	}
-	Ok(len as _)
+	Ok(len)
 }
 
 pub fn writev(

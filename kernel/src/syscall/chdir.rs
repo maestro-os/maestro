@@ -41,16 +41,14 @@ pub fn chdir(
 	// Get directory
 	let dir_mutex = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
-	{
-		let dir = dir_mutex.lock();
-		if dir.stat.file_type != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		if !rs.access_profile.can_list_directory(&dir) {
-			return Err(errno!(EACCES));
-		}
-	};
+	let stat = dir_mutex.lock().get_stat()?;
+	if stat.get_type() != Some(FileType::Directory) {
+		return Err(errno!(ENOTDIR));
+	}
+	if !rs.access_profile.can_list_directory(&stat) {
+		return Err(errno!(EACCES));
+	}
 	// Set new cwd
-	proc.lock().cwd = Arc::new((path, dir_mutex))?;
+	proc.lock().cwd = dir_mutex;
 	Ok(0)
 }

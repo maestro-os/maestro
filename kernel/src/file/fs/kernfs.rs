@@ -174,8 +174,7 @@ pub struct StaticLink<const TARGET: &'static [u8]>;
 impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Link,
-			mode: 0o777,
+			mode: FileType::Link.to_mode() | 0o777,
 			..Default::default()
 		})
 	}
@@ -272,8 +271,7 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Directory,
-			mode: 0o555,
+			mode: FileType::Directory.to_mode() | 0o555,
 			..Default::default()
 		})
 	}

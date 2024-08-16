@@ -141,8 +141,7 @@ impl RootDir {
 impl NodeOps for RootDir {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Directory,
-			mode: 0o555,
+			mode: FileType::Directory.to_mode() | 0o555,
 			..Default::default()
 		})
 	}

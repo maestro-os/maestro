@@ -23,34 +23,23 @@
 //! calling the filesystems' functions directly.
 
 use super::{
-	buffer, mapping, mountpoint,
-	open_file::OpenFile,
+	mountpoint,
 	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	DeferredRemove, File, FileLocation, FileType, Stat,
+	File, FileLocation, FileType, Stat,
 };
-use crate::{limits, process::Process};
-use core::ptr::NonNull;
-use utils::{errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
-
+use crate::{file::path::PathBuf, limits, process::Process};
+use utils::{collections::string::String, errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
 // TODO implement and use cache
 
 /// Returns the file corresponding to the given location `location`.
 ///
 /// If the file doesn't exist, the function returns [`errno::ENOENT`].
 pub fn get_file_from_location(loc: FileLocation) -> EResult<Arc<Mutex<File>>> {
-	let ops = match loc {
-		FileLocation::Filesystem {
-			inode, ..
-		} => loc
-			.get_filesystem()
-			.ok_or_else(|| errno!(ENOENT))?
-			.node_from_inode(inode)?,
-		FileLocation::Virtual(_) => buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?,
-	};
-	let stat = ops.get_stat(&loc)?;
-	Ok(Arc::new(Mutex::new(File::new(loc, ops, stat)))?)
+	let fs = loc.get_filesystem().ok_or_else(|| errno!(ENOENT))?;
+	let ops = fs.node_from_inode(loc.inode)?;
+	File::open(loc, ops)
 }
 
 /// Same as [`get_file_from_parent`], without checking permissions.
@@ -59,13 +48,11 @@ fn get_file_from_parent_unchecked(parent: &File, name: &[u8]) -> EResult<Arc<Mut
 		.ops
 		.entry_by_name(&parent.location, name)?
 		.ok_or_else(|| errno!(ENOENT))?;
-	let loc = FileLocation::Filesystem {
-		mountpoint_id: parent.location.get_mountpoint_id().unwrap(),
+	let loc = FileLocation {
+		mountpoint_id: parent.location.mountpoint_id,
 		inode: ent.inode,
 	};
-	let stat = ops.get_stat(&loc)?;
-	let file = File::new(loc, ops, stat);
-	Ok(Arc::new(Mutex::new(file))?)
+	Ok(File::open(loc, ops)?)
 }
 
 /// Returns the file with the `name` in the directory `parent`.
@@ -79,7 +66,8 @@ pub fn get_file_from_parent(
 	name: &[u8],
 	ap: &AccessProfile,
 ) -> EResult<Arc<Mutex<File>>> {
-	if !ap.can_search_directory(parent) {
+	let parent_stat = parent.get_stat()?;
+	if !ap.can_search_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	get_file_from_parent_unchecked(parent, name)
@@ -146,8 +134,8 @@ impl ResolutionSettings {
 	/// `follow_links` tells whether symbolic links are followed.
 	pub fn for_process(proc: &Process, follow_links: bool) -> Self {
 		Self {
-			root: proc.chroot,
-			start: Some(proc.cwd.1.clone()),
+			root: proc.chroot.clone(),
+			start: Some(proc.cwd.clone()),
 
 			access_profile: proc.access_profile,
 
@@ -195,7 +183,7 @@ fn resolve_link(
 		return Err(errno!(ELOOP));
 	}
 	// Read link
-	let link_path = link.read_link()?;
+	let link_path = PathBuf::try_from(String::from(link.read_all()?))?;
 	// Resolve link
 	let rs = ResolutionSettings {
 		root,
@@ -223,7 +211,7 @@ fn resolve_path_impl<'p>(
 	// Get start lookup directory
 	let mut lookup_dir = match (path.is_absolute(), &settings.start) {
 		(false, Some(start)) => start.clone(),
-		_ => get_file_from_location(settings.root)?,
+		_ => get_file_from_location(settings.root.clone())?,
 	};
 	let mut components = path.components();
 	let Some(final_component) = components.next_back() else {
@@ -250,7 +238,7 @@ fn resolve_path_impl<'p>(
 			lookup_dir = get_file_from_location(loc)?;
 			continue;
 		}
-		match subfile.stat.file_type {
+		match subfile.get_type()? {
 			FileType::Directory => {
 				drop(subfile);
 				lookup_dir = subfile_mutex;
@@ -259,12 +247,12 @@ fn resolve_path_impl<'p>(
 			FileType::Link => {
 				let target = resolve_link(
 					&mut subfile,
-					settings.root,
+					settings.root.clone(),
 					lookup_dir,
 					settings.access_profile,
 					symlink_rec,
 				)?;
-				if target.lock().stat.file_type != FileType::Directory {
+				if target.lock().get_type()? != FileType::Directory {
 					return Err(errno!(ENOTDIR));
 				}
 				lookup_dir = target;
@@ -302,10 +290,10 @@ fn resolve_path_impl<'p>(
 		return Ok(Resolved::Found(get_file_from_location(loc)?));
 	}
 	// Resolve symbolic link if necessary
-	if settings.follow_link && file.stat.file_type == FileType::Link {
+	if settings.follow_link && file.get_type()? == FileType::Link {
 		Ok(Resolved::Found(resolve_link(
 			&mut file,
-			settings.root,
+			settings.root.clone(),
 			lookup_dir,
 			settings.access_profile,
 			symlink_rec,
@@ -388,30 +376,29 @@ pub fn create_file(
 	ap: &AccessProfile,
 	mut stat: Stat,
 ) -> EResult<Arc<Mutex<File>>> {
+	let parent_stat = parent.ops().get_stat(parent.get_location())?;
 	// Validation
-	if parent.stat.file_type != FileType::Directory {
+	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	if !ap.can_write_directory(parent) {
+	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	stat.uid = ap.euid;
-	let gid = if parent.stat.mode & perm::S_ISGID != 0 {
+	let gid = if parent_stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
 		// parent directory
-		parent.stat.gid
+		parent_stat.gid
 	} else {
 		ap.egid
 	};
 	stat.gid = gid;
 	let (inode, ops) = parent.ops.add_file(&parent.location, name, stat)?;
-	let loc = FileLocation::Filesystem {
-		mountpoint_id: parent.location.get_mountpoint_id().unwrap(),
+	let loc = FileLocation {
+		mountpoint_id: parent.location.mountpoint_id,
 		inode,
 	};
-	let stat = ops.get_stat(&loc)?;
-	let file = File::new(loc, ops, stat);
-	Ok(Arc::new(Mutex::new(file))?)
+	File::open(loc, ops)
 }
 
 /// Creates a new hard link to the given target file.
@@ -430,56 +417,33 @@ pub fn create_file(
 /// - `target` is a directory: [`errno::EPERM`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn create_link(
-	parent: &File,
-	name: &[u8],
-	target: &mut File,
-	ap: &AccessProfile,
-) -> EResult<()> {
+pub fn link(parent: &File, name: &[u8], target: &mut File, ap: &AccessProfile) -> EResult<()> {
+	let parent_stat = parent.get_stat()?;
 	// Validation
-	if parent.stat.file_type != FileType::Directory {
+	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	if target.stat.file_type == FileType::Directory {
+	let target_stat = target.ops.get_stat(&target.location)?;
+	if target_stat.get_type() == Some(FileType::Directory) {
 		return Err(errno!(EPERM));
 	}
-	if target.stat.nlink >= limits::LINK_MAX as u16 {
+	if target_stat.nlink >= limits::LINK_MAX as u16 {
 		return Err(errno!(EMLINK));
 	}
-	if !ap.can_write_directory(parent) {
+	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	// Check the target and source are both on the same mountpoint
-	if parent.location.get_mountpoint_id() != target.location.get_mountpoint_id() {
+	if parent.location.mountpoint_id != target.location.mountpoint_id {
 		return Err(errno!(EXDEV));
 	}
 	parent
 		.ops
-		.link(&parent.location, name, target.location.get_inode())?;
-	target.stat.nlink += 1;
+		.link(&parent.location, name, target.location.inode)?;
 	Ok(())
 }
 
-/// Removes a file without checking permissions.
-///
-/// This is useful for deferred remove since permissions have already been checked before.
-pub fn remove_file_unchecked(parent: &File, name: &[u8]) -> EResult<()> {
-	let (links_left, inode) = parent.ops.unlink(&parent.location, name)?;
-	if links_left == 0 {
-		// TODO remove inode if all open files have been closed
-		// If the file is a named pipe or socket, free its now unused buffer
-		buffer::release(&FileLocation::Filesystem {
-			mountpoint_id: parent.location.get_mountpoint_id().unwrap(),
-			inode,
-		});
-	}
-	Ok(())
-}
-
-/// Removes a file.
-///
-/// If the file is still open, the function defers removal until it is closed. For this reason, it
-/// may retain a link to `parent`.
+/// Removes a hard link to a file.
 ///
 /// Arguments:
 /// - `parent` is the parent directory of the file to remove
@@ -489,72 +453,39 @@ pub fn remove_file_unchecked(parent: &File, name: &[u8]) -> EResult<()> {
 /// The following errors can be returned:
 /// - The filesystem is read-only: [`errno::EROFS`]
 /// - I/O failed: [`errno::EIO`]
-/// - The file doesn't exist: [`errno::ENOENT`]
-/// - Permissions to remove the file are not fulfilled for the given `ap`: [`errno::EACCES`]
+/// - The link does not exist: [`errno::ENOENT`]
+/// - Permissions to remove the link are not fulfilled for the given `ap`: [`errno::EACCES`]
 /// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn remove_file(parent: Arc<Mutex<File>>, name: &[u8], ap: &AccessProfile) -> EResult<()> {
-	let parent_dir = parent.lock();
+pub fn unlink(parent: Arc<Mutex<File>>, name: &[u8], ap: &AccessProfile) -> EResult<()> {
+	let parent = parent.lock();
+	let parent_stat = parent.get_stat()?;
 	// Check permission
-	if !ap.can_write_directory(&parent_dir) {
+	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	// Get file to remove
-	let file_mutex = get_file_from_parent_unchecked(&parent_dir, name)?;
-	let mut file = file_mutex.lock();
+	let file_mutex = get_file_from_parent_unchecked(&parent, name)?;
+	let file = file_mutex.lock();
+	let stat = file.get_stat()?;
 	// Check permission
-	let has_sticky_bit = parent_dir.stat.mode & S_ISVTX != 0;
-	if has_sticky_bit && ap.euid != file.stat.uid && ap.euid != parent_dir.stat.uid {
+	let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
+	if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
 	// If the file to remove is a mountpoint, error
 	if mountpoint::from_location(&file.location).is_some() {
 		return Err(errno!(EBUSY));
 	}
-	// Defer remove if the file is in use. Else, remove it directly
-	let last_link = file.stat.nlink == 1;
-	let symlink = file.stat.file_type == FileType::Link;
-	let defer = last_link && !symlink && OpenFile::is_open(&file.location);
-	if defer {
-		drop(parent_dir);
-		file.defer_remove(DeferredRemove {
-			parent,
-			name: name.try_into()?,
-		});
-	} else {
-		remove_file_unchecked(&parent_dir, name)?;
-	}
+	parent.ops.unlink(&parent.location, name)?;
 	Ok(())
 }
 
-/// Helper function to remove a file from a given `path`.
-pub fn remove_file_from_path(
-	path: &Path,
-	resolution_settings: &ResolutionSettings,
-) -> EResult<()> {
+/// Helper function to remove a hard link from a given `path`.
+pub fn unlink_from_path(path: &Path, resolution_settings: &ResolutionSettings) -> EResult<()> {
 	let file_name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
 	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	let parent = get_file_from_path(parent, resolution_settings)?;
-	remove_file(parent, file_name, &resolution_settings.access_profile)
-}
-
-/// Maps the page at offset `off` in the file at location `loc`.
-///
-/// On success, the function returns a reference to the page.
-///
-/// If the file doesn't exist, the function returns an error.
-pub fn map_file(loc: FileLocation, off: usize) -> EResult<NonNull<u8>> {
-	// TODO if the page is being init, read from disk
-	mapping::map(loc, off)?;
-
-	todo!();
-}
-
-/// Maps the page at offset `off` in the file at location `loc`.
-///
-/// If the page is not mapped, the function does nothing.
-pub fn unmap_file(loc: &FileLocation, off: usize) {
-	// TODO sync to disk if necessary
-	mapping::unmap(loc, off);
+	unlink(parent, file_name, &resolution_settings.access_profile)
 }

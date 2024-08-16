@@ -74,42 +74,38 @@ pub fn do_getdents<E: Dirent>(
 	count: usize,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let open_file_mutex = fds.lock().get_fd(fd as _)?.get_open_file().clone();
-	let mut open_file = open_file_mutex.lock();
-	let mut off = open_file.get_offset();
-	let mut buff_off = 0;
-	{
-		let file_mutex = open_file.get_file();
-		let file = file_mutex.lock();
-		// Iterate over entries and fill the buffer
-		for entry in file.iter_dir_entries(off) {
-			let (entry, next_off) = entry?;
-			// Skip entries whose inode cannot fit in the structure
-			if entry.inode > E::INODE_MAX {
-				continue;
-			}
-			let len = E::required_length(entry.name.as_ref());
-			// If the buffer is not large enough, return an error
-			if buff_off == 0 && len > count {
-				return Err(errno!(EINVAL));
-			}
-			// If reaching the end of the buffer, break
-			if buff_off + len > count {
-				break;
-			}
-			E::write(
-				&dirp,
-				buff_off,
-				entry.inode,
-				entry.entry_type,
-				entry.name.as_ref(),
-			)?;
-			buff_off += len;
-			off = next_off;
+	let file_mutex = fds.lock().get_fd(fd as _)?.get_file().clone();
+	let mut file = file_mutex.lock();
+	let mut off = file.off;
+	let mut buf_off = 0;
+	// Iterate over entries and fill the buffer
+	for entry in file.iter_dir_entries(off) {
+		let (entry, next_off) = entry?;
+		// Skip entries whose inode cannot fit in the structure
+		if entry.inode > E::INODE_MAX {
+			continue;
 		}
+		let len = E::required_length(entry.name.as_ref());
+		// If the buffer is not large enough, return an error
+		if buf_off == 0 && len > count {
+			return Err(errno!(EINVAL));
+		}
+		// If reaching the end of the buffer, break
+		if buf_off + len > count {
+			break;
+		}
+		E::write(
+			&dirp,
+			buf_off,
+			entry.inode,
+			entry.entry_type,
+			entry.name.as_ref(),
+		)?;
+		buf_off += len;
+		off = next_off;
 	}
-	open_file.set_offset(off);
-	Ok(buff_off as _)
+	file.off = off;
+	Ok(buf_off as _)
 }
 
 /// A Linux directory entry.
