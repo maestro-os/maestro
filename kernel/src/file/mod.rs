@@ -39,6 +39,7 @@ use crate::{
 	device,
 	device::{DeviceID, DeviceType},
 	file::{
+		buffer::{Buffer, BufferOps},
 		fs::{Filesystem, NodeOps},
 		path::{Path, PathBuf},
 		perm::{Gid, Uid},
@@ -50,7 +51,7 @@ use crate::{
 		unit::{Timestamp, TimestampScale},
 	},
 };
-use core::{ffi::c_void, ops::Deref};
+use core::{any::Any, ffi::c_void, ops::Deref};
 use mountpoint::{MountPoint, MountSource};
 use perm::AccessProfile;
 use utils::{
@@ -434,6 +435,14 @@ impl File {
 	pub fn get_type(&self) -> EResult<FileType> {
 		let stat = self.get_stat()?;
 		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
+	}
+
+	/// Returns the file's associated buffer.
+	///
+	/// If the file does not have a buffer of type `B`, the function returns `None`.
+	pub fn get_buffer<B: BufferOps>(&self) -> Option<&B> {
+		let buf = (&self.ops as &dyn Any).downcast_ref::<Buffer>()?;
+		(buf.0.deref() as &dyn Any).downcast_ref()
 	}
 
 	/// Reads the whole content of a file into a buffer.

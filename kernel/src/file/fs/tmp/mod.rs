@@ -141,7 +141,7 @@ impl Node {
 		inode: Option<INode>,
 		parent_inode: Option<INode>,
 	) -> AllocResult<Self> {
-		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
+		let file_type = stat.get_type().unwrap();
 		let content = match file_type {
 			FileType::Regular => NodeContent::Regular(Vec::new()),
 			FileType::Directory => {
@@ -371,7 +371,7 @@ impl NodeOps for Node {
 		// Get node
 		let node = fs.nodes.lock().get_node(inode)?.clone();
 		let mut inner = node.0.lock();
-		let entry_type = FileType::from_mode(inner.as_stat().mode).unwrap();
+		let entry_type = inner.as_stat().get_type().unwrap();
 		let mut parent_inner = self.0.lock();
 		// Get parent entries
 		let NodeContent::Directory(parent_entries) = &mut parent_inner.content else {

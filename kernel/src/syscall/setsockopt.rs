@@ -42,17 +42,9 @@ pub fn setsockopt(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Get socket
-	let loc = fds
-		.lock()
-		.get_fd(sockfd)?
-		.get_file()
-		.lock()
-		.get_location()
-		.clone();
-	let sock = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
-	let sock = (&*sock as &dyn Any)
-		.downcast_ref::<Socket>()
-		.ok_or_else(|| errno!(ENOTSOCK))?;
+	let file_mutex = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let file = file_mutex.lock();
+	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Set opt
 	let optval_slice = optval.copy_from_user(..optlen)?.ok_or(errno!(EFAULT))?;
 	sock.set_opt(level, optname, &optval_slice)

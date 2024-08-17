@@ -253,12 +253,8 @@ pub fn do_fcntl(
 		F_GETPIPE_SZ => {
 			let file_mutex = fds.get_fd(fd)?.get_file();
 			let file = file_mutex.lock();
-			match file.get_type()? {
-				FileType::Fifo => {
-					let buf = buffer::get_or_default::<PipeBuffer>(&file.get_location())?;
-					let buf: &PipeBuffer = (&*buf as &dyn Any).downcast_ref().unwrap();
-					Ok(buf.get_capacity() as _)
-				}
+			match file.get_buffer::<PipeBuffer>() {
+				Some(fifo) => Ok(fifo.get_capacity() as _),
 				_ => Ok(0),
 			}
 		}

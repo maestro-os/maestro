@@ -27,7 +27,6 @@ use crate::{
 };
 use core::{alloc::AllocError, any::Any, ffi::c_void};
 use utils::{
-	boxed::Box,
 	collections::hashmap::HashMap,
 	errno::{AllocResult, EResult},
 	lock::Mutex,
@@ -54,7 +53,7 @@ pub trait BufferOps: Any + NodeOps {
 
 /// A buffer.
 #[derive(Clone, Debug)]
-pub struct Buffer(Arc<dyn BufferOps>);
+pub struct Buffer(pub Arc<dyn BufferOps>);
 
 impl Buffer {
 	/// Creates a new instance with the given buffer type.
@@ -91,20 +90,3 @@ impl NodeOps for Buffer {
 ///
 /// The key is the location of the file associated with the entry.
 pub static BUFFERS: Mutex<HashMap<FileLocation, Buffer>> = Mutex::new(HashMap::new());
-
-/// Returns the buffer associated with the file at location `loc`.
-///
-/// If the buffer does not exist, the function registers a new default buffer.
-pub fn get_or_default<B: BufferOps + TryDefault<Error = AllocError> + 'static>(
-	loc: &FileLocation,
-) -> AllocResult<Box<Buffer>> {
-	let mut buffers = BUFFERS.lock();
-	match buffers.get(loc).cloned() {
-		Some(buf) => Box::new(buf.clone()),
-		None => {
-			let buf = Buffer::new(B::try_default()?)?;
-			buffers.insert(loc.clone(), buf.clone())?;
-			Ok(buf)
-		}
-	}
-}
