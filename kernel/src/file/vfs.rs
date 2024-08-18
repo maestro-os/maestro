@@ -40,7 +40,7 @@ use core::{
 };
 use utils::{
 	boxed::Box,
-	collections::{hashmap::HashMap, string::String, vec::Vec},
+	collections::{hashmap::HashSet, string::String, vec::Vec},
 	errno,
 	errno::EResult,
 	lock::Mutex,
@@ -86,7 +86,7 @@ pub struct Entry {
 	/// The list of cached file entries.
 	///
 	/// This is not an exhaustive list of the file's entries. Only those that are loaded.
-	children: Mutex<HashMap<EntryChild, ()>>,
+	children: Mutex<HashSet<EntryChild>>,
 
 	/// The location of the file on a filesystem.
 	pub location: FileLocation,
@@ -259,7 +259,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 	let mut children = lookup_dir.children.lock();
 	// Try to get from cache first
 	if let Some(ent) = children.get(name) {
-		return Ok(Some(ent.clone()));
+		return Ok(Some(ent.0.clone()));
 	}
 	// Not in cache. Try to get from the filesystem
 	let Some((entry, mut ops)) = lookup_dir.ops.entry_by_name(&lookup_dir.location, name)? else {
@@ -284,7 +284,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		location,
 		ops,
 	})?;
-	children.insert(ent.clone(), ())?;
+	children.insert(EntryChild(ent.clone()))?;
 	Ok(Some(ent))
 }
 
