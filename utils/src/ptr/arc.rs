@@ -19,6 +19,7 @@
 //! Implementation of [`Arc`] and [`Weak`], similar to the ones present in the Rust standard
 //! library.
 
+use core::hash::{Hash, Hasher};
 use crate::{boxed::Box, errno::AllocResult};
 use alloc::alloc::Global;
 use core::{
@@ -238,6 +239,20 @@ impl<T: ?Sized> Clone for Arc<T> {
 		Self {
 			inner: self.inner,
 		}
+	}
+}
+
+impl<T: Eq> Eq for Arc<T> {}
+
+impl<T: PartialEq> PartialEq for Arc<T> {
+	fn eq(&self, other: &Self) -> bool {
+		Self::as_ref(self).eq(&other)
+	}
+}
+
+impl<T: Hash> Hash for Arc<T> {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		Self::as_ref(self).hash(state)
 	}
 }
 

@@ -37,15 +37,14 @@ pub fn chmod(
 	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Get file
-	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-	let file = file_mutex.lock();
+	let file = vfs::get_file_from_path(&path, &rs)?;
 	// Check permissions
 	let stat = file.get_stat()?;
 	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.ops().set_stat(
-		file.get_location(),
+	file.ops.set_stat(
+		&file.location,
 		StatSet {
 			mode: Some(mode & 0o777),
 			..Default::default()

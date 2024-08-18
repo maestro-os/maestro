@@ -63,12 +63,9 @@ fn write(
 			// corresponding offset
 			let len = if let Some(offset) = offset {
 				let file_off = offset + off as u64;
-				file.ops()
-					.write_content(file.get_location(), file_off, &buf)?
+				file.write(file_off, &buf)?
 			} else {
-				let len = file
-					.ops()
-					.write_content(file.get_location(), file.off, &buf)?;
+				let len = file.write(file.off, &buf)?;
 				file.off += len as u64;
 				len
 			};

@@ -67,12 +67,9 @@ fn read(
 		while inner_off < buf.len() {
 			let len = if let Some(offset) = offset {
 				let file_off = offset + off as u64;
-				file.ops()
-					.read_content(file.get_location(), file_off, &mut buf)?
+				file.read(file_off, &mut buf)?
 			} else {
-				let len = file
-					.ops()
-					.read_content(file.get_location(), file.off, &mut buf)?;
+				let len = file.read(file.off, &mut buf)?;
 				file.off += len as u64;
 				len
 			};

@@ -66,7 +66,7 @@ fn get_file(
 	flags: c_int,
 	rs: ResolutionSettings,
 	mode: file::Mode,
-) -> EResult<Arc<Mutex<File>>> {
+) -> EResult<Arc<vfs::Entry>> {
 	let create = flags & file::O_CREAT != 0;
 	let resolved = at::get_file(fds, rs.clone(), dirfd, path, flags)?;
 	match resolved {
@@ -75,10 +75,9 @@ fn get_file(
 			parent,
 			name,
 		} if create => {
-			let mut parent = parent.lock();
 			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 			vfs::create_file(
-				&mut parent,
+				parent,
 				name,
 				&rs.access_profile,
 				Stat {
@@ -118,7 +117,12 @@ pub fn openat(
 
 	// Get file
 	let file = get_file(&fds, dirfd, &path, flags, rs.clone(), mode)?;
-	super::open::handle_flags(&mut file.lock(), flags, &rs.access_profile)?;
+	super::open::check_perms(&file, flags, &rs.access_profile)?;
+	let file = File::open(file, flags)?;
+	// Truncate the file if necessary
+	if flags & file::O_TRUNC != 0 {
+		file.lock().truncate(0)?;
+	}
 	// Create FD
 	let mut fd_flags = 0;
 	if flags & file::O_CLOEXEC != 0 {

@@ -34,8 +34,7 @@ pub fn rmdir(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> ERe
 	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Get directory
-	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-	let file = file_mutex.lock();
+	let file = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
 	if file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));

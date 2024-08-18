@@ -318,7 +318,7 @@ impl FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{fs::NodeOps, path::PathBuf, File, FileLocation, Stat};
+	use crate::file::{fs::NodeOps, File, FileLocation, Stat};
 	use utils::boxed::Box;
 
 	/// Dummy node ops for testing purpose.
@@ -333,13 +333,7 @@ mod test {
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_file() -> Arc<Mutex<File>> {
-		File::open(
-			PathBuf::empty(),
-			FileLocation::nowhere(),
-			Box::new(DummyNodeOps).unwrap(),
-			0,
-		)
-		.unwrap()
+		File::open_ops(Box::new(DummyNodeOps).unwrap(), 0).unwrap()
 	}
 
 	#[test_case]

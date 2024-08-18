@@ -208,7 +208,7 @@ pub trait NodeOps: Debug {
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let _ = (loc, name);
-		Err(errno!(EINVAL))
+		Err(errno!(ENOTDIR))
 	}
 
 	/// Returns the directory entry at the given offset `off`. The first entry is always located at
@@ -227,7 +227,7 @@ pub trait NodeOps: Debug {
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let _ = (loc, off);
-		Err(errno!(EINVAL))
+		Err(errno!(ENOTDIR))
 	}
 
 	/// Helper function to check whether the node is an empty directory.
@@ -270,7 +270,7 @@ pub trait NodeOps: Debug {
 		stat: Stat,
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
 		let _ = (parent, name, stat);
-		Err(errno!(EINVAL))
+		Err(errno!(ENOTDIR))
 	}
 
 	/// Adds a hard link into the directory.
@@ -286,7 +286,7 @@ pub trait NodeOps: Debug {
 	/// The default implementation of this function returns an error.
 	fn link(&self, parent: &FileLocation, name: &[u8], target: INode) -> EResult<()> {
 		let _ = (parent, name, target);
-		Err(errno!(EINVAL))
+		Err(errno!(ENOTDIR))
 	}
 
 	/// Removes a hard link from the directory.
@@ -304,7 +304,7 @@ pub trait NodeOps: Debug {
 	/// The default implementation of this function returns an error.
 	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
 		let _ = (parent, name);
-		Err(errno!(EINVAL))
+		Err(errno!(ENOTDIR))
 	}
 
 	/// Removes a file from the filesystem.
@@ -315,7 +315,7 @@ pub trait NodeOps: Debug {
 	/// The default implementation of this function returns an error.
 	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
 		let _ = loc;
-		Err(errno!(EINVAL))
+		Err(errno!(ENOTDIR))
 	}
 }
 

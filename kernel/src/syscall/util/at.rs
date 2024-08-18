@@ -81,14 +81,14 @@ pub fn get_file<'p>(
 	rs.follow_link = follow_links;
 	// If not starting from current directory, get location
 	if dirfd != AT_FDCWD {
-		rs.start = Some(fds.get_fd(dirfd)?.get_file().clone());
+		rs.cwd = Some(fds.get_fd(dirfd)?.get_file().lock().vfs_entry.clone());
 	}
 	if path.is_empty() {
 		// Validation
 		if flags & AT_EMPTY_PATH == 0 {
 			return Err(errno!(ENOENT));
 		}
-		Ok(Resolved::Found(rs.start.unwrap()))
+		Ok(Resolved::Found(rs.cwd.unwrap()))
 	} else {
 		vfs::resolve_path(path, &rs)
 	}

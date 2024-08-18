@@ -83,17 +83,15 @@ pub fn fstat64(
 	Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
-	let file = file_mutex.lock();
-	let loc = file.get_location();
-	let stat = file.ops().get_stat(loc)?;
+	let file = fds.lock().get_fd(fd)?.get_file().lock().vfs_entry.clone();
+	let stat = file.get_stat()?;
 	let rdev = makedev(stat.dev_major, stat.dev_minor);
 	let stat = Stat {
 		st_dev: 0, // TODO
 
 		__st_dev_padding: 0,
 
-		st_ino: loc.inode,
+		st_ino: file.location.inode,
 		st_mode: stat.mode,
 		st_nlink: stat.nlink as _,
 		st_uid: stat.uid,

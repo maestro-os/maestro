@@ -57,9 +57,7 @@ pub fn write(
 	// TODO find a way to avoid allocating here
 	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
 	// Write file
-	let res = file
-		.ops()
-		.write_content(file.get_location(), file.off, &buf_slice);
+	let res = file.write(file.off, &buf_slice);
 	match res {
 		Ok(len) => {
 			file.off += len as u64;

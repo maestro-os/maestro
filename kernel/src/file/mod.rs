@@ -41,7 +41,7 @@ use crate::{
 	file::{
 		buffer::{Buffer, BufferOps},
 		fs::{Filesystem, NodeOps},
-		path::{Path, PathBuf},
+		path::PathBuf,
 		perm::{Gid, Uid},
 	},
 	syscall::ioctl,
@@ -51,12 +51,12 @@ use crate::{
 		unit::{Timestamp, TimestampScale},
 	},
 };
-use core::{any::Any, ffi::c_void, ops::Deref};
+use core::{any::Any, ffi::c_void, intrinsics::unlikely, ops::Deref};
 use mountpoint::{MountPoint, MountSource};
 use perm::AccessProfile;
 use utils::{
 	boxed::Box,
-	collections::{string::String, vec::Vec},
+	collections::string::String,
 	errno,
 	errno::{AllocResult, EResult},
 	lock::Mutex,
@@ -349,15 +349,8 @@ impl Stat {
 /// An open file description.
 #[derive(Debug)]
 pub struct File {
-	/// The file's absolute path.
-	path: PathBuf,
-	/// The location the file is stored on.
-	location: FileLocation,
-	/// Handle to perform operations on the node.
-	///
-	/// If `None`, the file is virtual.
-	ops: Box<dyn NodeOps>,
-
+	/// The VFS entry of the file.
+	pub vfs_entry: Arc<vfs::Entry>,
 	/// Open file description flags.
 	pub flags: i32,
 	/// The current offset in the file.
@@ -368,21 +361,11 @@ impl File {
 	/// Opens a file.
 	///
 	/// Arguments:
-	/// - `path` is the file's absolute path.
-	/// - `location` is the file's location.
-	/// - `ops` is the handle to perform operations on the file
+	/// - `entry` is the VFS entry of the file.
 	/// - `flags` is the open file description's flags.
-	pub fn open(
-		path: PathBuf,
-		location: FileLocation,
-		ops: Box<dyn NodeOps>,
-		flags: i32,
-	) -> EResult<Arc<Mutex<Self>>> {
+	pub fn open(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Mutex<Self>>> {
 		let file = Self {
-			path,
-			location,
-			ops,
-
+			vfs_entry: entry,
 			flags,
 			off: 0,
 		};
@@ -392,43 +375,26 @@ impl File {
 	/// Like [`open`], but without an associated location.
 	pub fn open_ops(ops: Box<dyn NodeOps>, flags: i32) -> EResult<Arc<Mutex<Self>>> {
 		let file = Self {
-			path: PathBuf::empty(),
-			location: FileLocation::nowhere(),
-			ops,
-
+			vfs_entry: Arc::new(vfs::Entry::new_ops(ops))?,
 			flags,
 			off: 0,
 		};
 		Ok(Arc::new(Mutex::new(file))?)
 	}
 
-	/// Returns the absolute path to the file.
-	pub fn get_path(&self) -> &Path {
-		&self.path
+	/// Tells whether the file is open for reading.
+	pub fn can_read(&self) -> bool {
+		matches!(self.flags & 0b11, O_RDONLY | O_RDWR)
 	}
 
-	/// Returns the location of the file.
-	pub fn get_location(&self) -> &FileLocation {
-		&self.location
+	/// Tells whether the file is open for writing.
+	pub fn can_write(&self) -> bool {
+		matches!(self.flags & 0b11, O_WRONLY | O_RDWR)
 	}
 
-	/// Returns the mountpoint located at this file, if any.
-	pub fn as_mountpoint(&self) -> Option<Arc<Mutex<MountPoint>>> {
-		mountpoint::from_location(&self.location)
-	}
-
-	/// Tells whether there is a mountpoint on the file.
-	pub fn is_mountpoint(&self) -> bool {
-		self.as_mountpoint().is_some()
-	}
-
-	/// Returns the file's operations handle.
-	pub fn ops(&self) -> &dyn NodeOps {
-		self.ops.deref()
-	}
-
+	/// Returns the file's status.
 	pub fn get_stat(&self) -> EResult<Stat> {
-		self.ops.get_stat(&self.location)
+		self.vfs_entry.ops.get_stat(&self.vfs_entry.location)
 	}
 
 	/// Returns the type of the file.
@@ -441,43 +407,60 @@ impl File {
 	///
 	/// If the file does not have a buffer of type `B`, the function returns `None`.
 	pub fn get_buffer<B: BufferOps>(&self) -> Option<&B> {
-		let buf = (&self.ops as &dyn Any).downcast_ref::<Buffer>()?;
+		let buf = (&self.vfs_entry.ops as &dyn Any).downcast_ref::<Buffer>()?;
 		(buf.0.deref() as &dyn Any).downcast_ref()
 	}
 
-	/// Reads the whole content of a file into a buffer.
-	///
-	/// This function does not change the file's offset.
-	pub fn read_all(&mut self) -> EResult<Vec<u8>> {
-		let len: usize = self
-			.get_stat()?
-			.size
-			.try_into()
-			.map_err(|_| errno!(EOVERFLOW))?;
-		let mut buf = Vec::with_capacity(len)?;
-		let mut off = 0;
-		// Stick to the file's size to have an upper bound
-		while off < len {
-			let len = self
-				.ops
-				.read_content(&self.location, off as _, &mut buf[off..])?;
-			if len == 0 {
-				break;
-			}
-			off += len;
-		}
-		Ok(buf)
+	/// Polls the file with the given `mask`.
+	pub fn poll(&mut self, mask: u32) -> EResult<u32> {
+		self.vfs_entry.ops.poll(&self.vfs_entry.location, mask)
 	}
 
-	pub fn poll(&mut self, mask: u32) -> EResult<u32> {
-		self.ops.poll(&self.location, mask)
+	/// Reads data from the file at the given offset.
+	///
+	/// On success, the function returns the number of bytes read.
+	pub fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		if unlikely(!self.can_read()) {
+			return Err(errno!(EACCES));
+		}
+		self.vfs_entry
+			.ops
+			.read_content(&self.vfs_entry.location, off, buf)
+	}
+
+	/// Writes data to the file at the given offset.
+	///
+	/// On success, the function returns the number of bytes read.
+	pub fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
+		if unlikely(!self.can_write()) {
+			return Err(errno!(EACCES));
+		}
+		self.vfs_entry
+			.ops
+			.write_content(&self.vfs_entry.location, off, buf)
+	}
+
+	/// Truncates the file to the given `size`.
+	///
+	/// If `size` is greater than or equals to the current size of the file, the function does
+	/// nothing.
+	pub fn truncate(&self, size: u64) -> EResult<()> {
+		if unlikely(!self.can_write()) {
+			return Err(errno!(EACCES));
+		}
+		self.vfs_entry
+			.ops
+			.truncate_content(&self.vfs_entry.location, size)
 	}
 
 	/// Returns the directory entry with the given `name`.
 	///
 	/// If the file is not a directory, the function returns `None`.
 	pub fn dir_entry_by_name<'n>(&self, name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
-		let e = self.ops.entry_by_name(&self.location, name)?;
+		let e = self
+			.vfs_entry
+			.ops
+			.entry_by_name(&self.vfs_entry.location, name)?;
 		Ok(e.map(|(e, ..)| e))
 	}
 
@@ -493,14 +476,6 @@ impl File {
 		}
 	}
 
-	/// Truncates the file to the given `size`.
-	///
-	/// If `size` is greater than or equals to the current size of the file, the function does
-	/// nothing.
-	pub fn truncate(&mut self, size: u64) -> EResult<()> {
-		self.ops.truncate_content(&self.location, size)
-	}
-
 	/// Performs an ioctl operation on the file.
 	///
 	/// Arguments:
@@ -508,7 +483,7 @@ impl File {
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
 	pub fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let stat = self.ops.get_stat(&self.location)?;
+		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -520,16 +495,19 @@ impl File {
 				.ok_or_else(|| errno!(ENODEV))?;
 				dev.get_io().ioctl(request, argp)
 			}
-			None => self.ops.ioctl(&self.location, request, argp),
+			None => self
+				.vfs_entry
+				.ops
+				.ioctl(&self.vfs_entry.location, request, argp),
 		}
 	}
 
 	/// Closes the file, removing it if removal has been deferred.
 	pub fn close(&mut self) -> EResult<()> {
-		let stat = self.ops.get_stat(&self.location)?;
+		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
 		// If no more link remain to the file, remove the node
 		if stat.nlink == 0 {
-			self.ops.remove_file(&self.location)?;
+			self.vfs_entry.ops.remove_file(&self.vfs_entry.location)?;
 		}
 		Ok(())
 	}
@@ -688,8 +666,9 @@ impl<'f> Iterator for DirEntryIterator<'f> {
 	fn next(&mut self) -> Option<Self::Item> {
 		let res = self
 			.dir
+			.vfs_entry
 			.ops
-			.next_entry(&self.dir.location, self.cursor)
+			.next_entry(&self.dir.vfs_entry.location, self.cursor)
 			.transpose()?;
 		match res {
 			Ok((entry, off)) => {

@@ -47,17 +47,16 @@ pub fn fchmodat(
 	let path = PathBuf::try_from(path)?;
 	// Get file
 	let fds = fds_mutex.lock();
-	let Resolved::Found(file_mutex) = at::get_file(&fds, rs.clone(), dirfd, &path, flags)? else {
+	let Resolved::Found(file) = at::get_file(&fds, rs.clone(), dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
-	let file = file_mutex.lock();
 	// Check permission
 	let stat = file.get_stat()?;
 	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.ops().set_stat(
-		file.get_location(),
+	file.ops.set_stat(
+		&file.location,
 		StatSet {
 			mode: Some(mode & 0o7777),
 			..Default::default()

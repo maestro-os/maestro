@@ -39,9 +39,9 @@ pub fn chdir(
 	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Get directory
-	let dir_mutex = vfs::get_file_from_path(&path, &rs)?;
+	let dir = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
-	let stat = dir_mutex.lock().get_stat()?;
+	let stat = dir.get_stat()?;
 	if stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
@@ -49,6 +49,6 @@ pub fn chdir(
 		return Err(errno!(EACCES));
 	}
 	// Set new cwd
-	proc.lock().cwd = dir_mutex;
+	proc.lock().cwd = dir;
 	Ok(0)
 }

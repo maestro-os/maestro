@@ -128,16 +128,15 @@ pub fn statx(
 	// Get the file
 	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
-	let Resolved::Found(file_mutex) = at::get_file(&fds.lock(), rs, dirfd, &path, flags)? else {
+	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
 	// Get file's stat
-	let file = file_mutex.lock();
-	let stat = file.ops().get_stat(file.get_location())?;
+	let stat = file.get_stat()?;
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
 	let (stx_dev_major, stx_dev_minor) = {
-		if let Some(mountpoint_mutex) = file.get_location().get_mountpoint() {
+		if let Some(mountpoint_mutex) = file.location.get_mountpoint() {
 			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using
 			// the mountpoint and locking vfs requires disabling interrupts
 			crate::idt::wrap_disable_interrupts(|| {
@@ -167,7 +166,7 @@ pub fn statx(
 
 		__padding0: 0,
 
-		stx_ino: file.get_location().inode,
+		stx_ino: file.location.inode,
 		stx_size: stat.size,
 		stx_blocks: stat.blocks,
 		stx_attributes_mask: 0, // TODO

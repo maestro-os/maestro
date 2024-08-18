@@ -26,7 +26,7 @@ use crate::{
 		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
 		ELF32ProgramHeader,
 	},
-	file::{path::Path, perm::AccessProfile, vfs, File},
+	file::{path::Path, perm::AccessProfile, vfs},
 	memory,
 	memory::vmem,
 	process,
@@ -275,7 +275,7 @@ fn build_auxiliary(
 /// `ap` is the access profile to check permissions.
 ///
 /// If the file is not executable, the function returns an error.
-fn read_exec_file(file: &mut File, ap: &AccessProfile) -> EResult<Vec<u8>> {
+fn read_exec_file(file: &vfs::Entry, ap: &AccessProfile) -> EResult<Vec<u8>> {
 	// Check that the file can be executed by the user
 	let stat = file.get_stat()?;
 	if !ap.can_execute_file(&stat) {
@@ -576,12 +576,10 @@ impl<'s> ELFExecutor<'s> {
 
 			// Get file
 			let interp_path = Path::new(interp_path)?;
-			let interp_file_mutex =
-				vfs::get_file_from_path(interp_path, self.info.path_resolution)?;
-			let mut interp_file = interp_file_mutex.lock();
+			let interp_file = vfs::get_file_from_path(interp_path, self.info.path_resolution)?;
 
 			let interp_image =
-				read_exec_file(&mut interp_file, &self.info.path_resolution.access_profile)?;
+				read_exec_file(&interp_file, &self.info.path_resolution.access_profile)?;
 			let interp_elf = ELFParser::new(interp_image.as_slice())?;
 			let i_load_base = load_end as _; // TODO ASLR
 			let load_info = self.load_elf(&interp_elf, mem_space, i_load_base, true)?;
@@ -665,7 +663,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 	// TODO Ensure there is no way to write in kernel space (check segments position
 	// and relocations)
 	// TODO Handle suid and sgid
-	fn build_image(&self, file: &mut File) -> EResult<ProgramImage> {
+	fn build_image(&self, file: &vfs::Entry) -> EResult<ProgramImage> {
 		// The ELF file image
 		let image = read_exec_file(file, &self.info.path_resolution.access_profile)?;
 		// Parse the ELF file

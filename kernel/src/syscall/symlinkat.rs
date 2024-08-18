@@ -62,10 +62,9 @@ pub fn symlinkat(
 			parent,
 			name,
 		} => {
-			let mut parent = parent.lock();
 			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
-			let file_mutex = vfs::create_file(
-				&mut parent,
+			let file = vfs::create_file(
+				parent,
 				name,
 				&rs.access_profile,
 				Stat {
@@ -77,9 +76,8 @@ pub fn symlinkat(
 				},
 			)?;
 			// TODO remove file on failure
-			let file = file_mutex.lock();
-			file.ops()
-				.write_content(file.get_location(), 0, target.as_bytes())?;
+			file.ops
+				.write_content(&file.location, 0, target.as_bytes())?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),
 	}

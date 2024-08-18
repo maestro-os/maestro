@@ -55,9 +55,7 @@ pub fn read(
 	let mut buffer = vec![0u8; count]?;
 	// Read file
 	let mut file = file_mutex.lock();
-	let len = file
-		.ops()
-		.read_content(file.get_location(), file.off, &mut buffer)?;
+	let len = file.read(file.off, &mut buffer)?;
 	file.off += len as u64;
 	// Write back
 	buf.copy_to_user(0, &buffer[..len])?;

@@ -56,7 +56,6 @@ impl NodeOps for Cwd {
 			.lock()
 			.cwd
 			.clone();
-		let cwd = cwd.lock();
 		format_content!(off, buf, "{}", cwd.get_path())
 	}
 }

@@ -54,10 +54,9 @@ pub fn chroot(
 	};
 	// Get file
 	let file = vfs::get_file_from_path(&path, &rs)?;
-	let file = file.lock();
 	if file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	proc.lock().chroot = file.get_location().clone();
+	proc.lock().chroot = file;
 	Ok(0)
 }

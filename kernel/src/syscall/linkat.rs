@@ -59,11 +59,9 @@ pub fn linkat(
 		..rs
 	};
 	// Get old file
-	let Resolved::Found(old_mutex) = at::get_file(&fds, rs.clone(), olddirfd, &oldpath, flags)?
-	else {
+	let Resolved::Found(old) = at::get_file(&fds, rs.clone(), olddirfd, &oldpath, flags)? else {
 		return Err(errno!(ENOENT));
 	};
-	let mut old = old_mutex.lock();
 	if old.get_type()? == FileType::Directory {
 		return Err(errno!(EPERM));
 	}
@@ -79,7 +77,6 @@ pub fn linkat(
 	else {
 		return Err(errno!(EEXIST));
 	};
-	let new_parent = new_parent.lock();
-	vfs::link(&new_parent, new_name, &mut old, &rs.access_profile)?;
+	vfs::link(&new_parent, new_name, &old, &rs.access_profile)?;
 	Ok(0)
 }

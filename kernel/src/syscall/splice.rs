@@ -86,9 +86,7 @@ pub fn splice(
 
 	let len = {
 		let mut input = input_mutex.lock();
-		let len = input
-			.ops()
-			.read_content(input.get_location(), off_in.unwrap_or(0), &mut buf)?;
+		let len = input.read(off_in.unwrap_or(0), &mut buf)?;
 		if off_in.is_none() {
 			input.off += len as u64;
 		}
@@ -100,10 +98,7 @@ pub fn splice(
 	while i < len {
 		// TODO Check for signal (and handle syscall restart correctly with offsets)
 		let mut output = output_mutex.lock();
-		let l =
-			output
-				.ops()
-				.write_content(output.get_location(), off_out.unwrap_or(0), in_slice)?;
+		let l = output.write(off_out.unwrap_or(0), in_slice)?;
 		if off_out.is_none() {
 			output.off += l as u64;
 		}

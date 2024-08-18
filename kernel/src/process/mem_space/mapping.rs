@@ -333,10 +333,8 @@ impl MemMapping {
 				let file = file.lock();
 				let mut i = 0;
 				while i < slice.len() {
-					let l = file
-						.ops()
-						.write_content(file.get_location(), *off, &slice[i..])?;
-					i += l as usize;
+					let l = file.write(*off, &slice[i..])?;
+					i += l;
 				}
 				Ok(())
 			})

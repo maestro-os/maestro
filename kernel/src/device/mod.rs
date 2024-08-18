@@ -244,10 +244,9 @@ impl Device {
 				parent,
 				name,
 			} => {
-				let mut parent = parent.lock();
 				// Create the device file
 				vfs::create_file(
-					&mut parent,
+					parent,
 					name,
 					&AccessProfile::KERNEL,
 					Stat {

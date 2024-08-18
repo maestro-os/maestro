@@ -88,11 +88,8 @@ impl MountSource {
 		let path = Path::new(string)?;
 		let result = vfs::get_file_from_path(path, &ResolutionSettings::kernel_follow());
 		match result {
-			Ok(file_mutex) => {
-				let stat = {
-					let file = file_mutex.lock();
-					file.ops().get_stat(file.get_location())?
-				};
+			Ok(file) => {
+				let stat = file.get_stat()?;
 				match stat.get_type() {
 					Some(FileType::BlockDevice) => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Block,

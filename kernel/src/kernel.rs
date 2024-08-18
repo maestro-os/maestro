@@ -146,15 +146,14 @@ fn init(init_path: String) -> EResult<()> {
 	let rs = ResolutionSettings::kernel_follow();
 
 	let path = Path::new(&init_path)?;
-	let file_mutex = vfs::get_file_from_path(path, &rs)?;
-	let mut file = file_mutex.lock();
+	let file = vfs::get_file_from_path(path, &rs)?;
 
 	let exec_info = ExecInfo {
 		path_resolution: &rs,
 		argv: vec![init_path]?,
 		envp: env,
 	};
-	let program_image = exec::build_image(&mut file, exec_info)?;
+	let program_image = exec::build_image(&file, exec_info)?;
 
 	let proc_mutex = Process::new()?;
 	let mut proc = proc_mutex.lock();

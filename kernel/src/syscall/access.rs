@@ -83,7 +83,7 @@ pub fn do_access(
 		file
 	};
 	// Do access checks
-	let stat = file.lock().get_stat()?;
+	let stat = file.get_stat()?;
 	if (mode & R_OK != 0) && !ap.check_read_access(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}

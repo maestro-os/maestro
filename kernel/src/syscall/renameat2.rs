@@ -68,11 +68,10 @@ pub fn renameat2(
 	let old_parent_path = oldpath.parent().ok_or_else(|| errno!(ENOTDIR))?;
 	let old_name = oldpath.file_name().ok_or_else(|| errno!(ENOENT))?;
 	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
-	let Resolved::Found(old_mutex) = at::get_file(&fds.lock(), rs.clone(), olddirfd, &oldpath, 0)?
+	let Resolved::Found(old) = at::get_file(&fds.lock(), rs.clone(), olddirfd, &oldpath, 0)?
 	else {
 		return Err(errno!(ENOENT));
 	};
-	let mut old = old_mutex.lock();
 	// Cannot rename mountpoint
 	if old.is_mountpoint() {
 		return Err(errno!(EBUSY));
@@ -90,16 +89,15 @@ pub fn renameat2(
 	};
 	// Create destination file
 	{
-		let new_parent = new_parent.lock();
 		// If source and destination are on different mountpoints, error
-		if new_parent.get_location().mountpoint_id != old.get_location().mountpoint_id {
+		if new_parent.location.mountpoint_id != old.location.mountpoint_id {
 			return Err(errno!(EXDEV));
 		}
 		// TODO Check permissions if sticky bit is set
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs::link(&new_parent, new_name, &mut old, &rs.access_profile)?;
+		vfs::link(&new_parent, new_name, &old, &rs.access_profile)?;
 	}
 	// Remove source file
 	// TODO on failure, undo previous creation

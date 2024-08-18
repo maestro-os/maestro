@@ -52,12 +52,11 @@ pub fn symlink(
 	let link_parent = linkpath.parent().unwrap_or(Path::root());
 	let link_name = linkpath.file_name().ok_or_else(|| errno!(ENOENT))?;
 	// Link's parent
-	let parent_mutex = vfs::get_file_from_path(link_parent, &rs)?;
-	let mut parent = parent_mutex.lock();
+	let parent = vfs::get_file_from_path(link_parent, &rs)?;
 	// Create link
 	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
-	let file_mutex = vfs::create_file(
-		&mut parent,
+	let file = vfs::create_file(
+		parent,
 		link_name,
 		&rs.access_profile,
 		Stat {
@@ -68,9 +67,8 @@ pub fn symlink(
 			..Default::default()
 		},
 	)?;
-	let file = file_mutex.lock();
 	// TODO remove file on failure
-	file.ops()
-		.write_content(file.get_location(), 0, target.as_bytes())?;
+	file.ops
+		.write_content(&file.location, 0, target.as_bytes())?;
 	Ok(0)
 }

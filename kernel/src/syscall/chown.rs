@@ -43,14 +43,13 @@ pub fn do_chown(
 	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Get file
-	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-	let file = file_mutex.lock();
+	let file = vfs::get_file_from_path(&path, &rs)?;
 	// TODO allow changing group to any group whose owner is member
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-	file.ops().set_stat(
-		file.get_location(),
+	file.ops.set_stat(
+		&file.location,
 		StatSet {
 			uid: (owner > -1).then_some(owner as _),
 			gid: (group > -1).then_some(group as _),

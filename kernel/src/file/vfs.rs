@@ -27,62 +27,152 @@ use super::{
 	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	File, FileLocation, FileType, Stat,
+	FileLocation, FileType, Stat,
 };
-use crate::{file::path::PathBuf, limits, process::Process};
-use utils::{collections::string::String, errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
-// TODO implement and use cache
+use crate::{
+	file::{fs::NodeOps, path::PathBuf},
+	limits,
+	process::Process,
+};
+use core::{
+	borrow::Borrow,
+	hash::{Hash, Hasher},
+};
+use utils::{
+	boxed::Box,
+	collections::{hashmap::HashMap, string::String, vec::Vec},
+	errno,
+	errno::EResult,
+	lock::Mutex,
+	ptr::arc::Arc,
+};
 
-/// Returns the file corresponding to the given location `location`.
+/// A child of a VFS entry.
 ///
-/// If the file doesn't exist, the function returns [`errno::ENOENT`].
-pub fn get_file_from_location(loc: FileLocation) -> EResult<Arc<Mutex<File>>> {
-	let fs = loc.get_filesystem().ok_or_else(|| errno!(ENOENT))?;
-	let ops = fs.node_from_inode(loc.inode)?;
-	File::open(loc, ops)
-}
+/// The [`Hash`] and [`PartialEq`] traits are forwarded to the entry's name.
+#[derive(Debug)]
+struct EntryChild(Arc<Entry>);
 
-/// Same as [`get_file_from_parent`], without checking permissions.
-fn get_file_from_parent_unchecked(parent: &File, name: &[u8]) -> EResult<Arc<Mutex<File>>> {
-	let (ent, ops) = parent
-		.ops
-		.entry_by_name(&parent.location, name)?
-		.ok_or_else(|| errno!(ENOENT))?;
-	let loc = FileLocation {
-		mountpoint_id: parent.location.mountpoint_id,
-		inode: ent.inode,
-	};
-	Ok(File::open(loc, ops)?)
-}
-
-/// Returns the file with the `name` in the directory `parent`.
-///
-/// The function checks search access in the directory. If not allowed, the function returns
-/// [`errno::EACCES`].
-///
-/// If the file doesn't exist, the function returns [`errno::ENOENT`].
-pub fn get_file_from_parent(
-	parent: &File,
-	name: &[u8],
-	ap: &AccessProfile,
-) -> EResult<Arc<Mutex<File>>> {
-	let parent_stat = parent.get_stat()?;
-	if !ap.can_search_directory(&parent_stat) {
-		return Err(errno!(EACCES));
+impl Borrow<[u8]> for EntryChild {
+	fn borrow(&self) -> &[u8] {
+		&self.0.name
 	}
-	get_file_from_parent_unchecked(parent, name)
 }
 
-/// Same as [`get_file_from_parent`], but returns `None` if the file does not exist.
-pub fn get_file_from_parent_opt(
-	parent: &File,
-	name: &[u8],
-	ap: &AccessProfile,
-) -> EResult<Option<Arc<Mutex<File>>>> {
-	match get_file_from_parent(parent, name, ap) {
-		Ok(f) => Ok(Some(f)),
-		Err(e) if e.as_int() == errno::ENOENT => Ok(None),
-		Err(e) => Err(e),
+impl Eq for EntryChild {}
+
+impl PartialEq for EntryChild {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.name.eq(&other.0.name)
+	}
+}
+
+impl Hash for EntryChild {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.0.name.hash(state)
+	}
+}
+
+/// A VFS entry, representing a file cached in memory.
+#[derive(Debug)]
+pub struct Entry {
+	/// Filename.
+	name: String,
+	/// The parent of the entry.
+	///
+	/// If `None`, the current entry is the root of the VFS.
+	parent: Option<Arc<Entry>>,
+	// TODO use HashSet
+	/// The list of cached file entries.
+	///
+	/// This is not an exhaustive list of the file's entries. Only those that are loaded.
+	children: Mutex<HashMap<EntryChild, ()>>,
+
+	/// The location of the file on a filesystem.
+	pub location: FileLocation,
+	/// Handle for node operations.
+	pub ops: Box<dyn NodeOps>,
+}
+
+impl Entry {
+	/// Creates a new virtual entry, not located on any filesystem.
+	pub fn new_ops(ops: Box<dyn NodeOps>) -> Self {
+		Self {
+			name: String::new(),
+			parent: None,
+			children: Default::default(),
+
+			location: FileLocation::nowhere(),
+			ops,
+		}
+	}
+
+	/// Returns the entry's status.
+	pub fn get_stat(&self) -> EResult<Stat> {
+		self.ops.get_stat(&self.location)
+	}
+
+	/// Returns the file's type.
+	pub fn get_type(&self) -> EResult<FileType> {
+		FileType::from_mode(self.get_stat()?.mode).ok_or_else(|| errno!(EUCLEAN))
+	}
+
+	/// Tells whether the entry is a mountpoint.
+	pub fn is_mountpoint(&self) -> bool {
+		mountpoint::from_location(&self.location).is_some()
+	}
+
+	/// Reads the whole content of the file into a buffer.
+	pub fn read_all(&self) -> EResult<Vec<u8>> {
+		let len: usize = self
+			.ops
+			.get_stat(&self.location)?
+			.size
+			.try_into()
+			.map_err(|_| errno!(EOVERFLOW))?;
+		let mut buf = Vec::with_capacity(len)?;
+		let mut off = 0;
+		// Stick to the file's size to have an upper bound
+		while off < len {
+			let len = self
+				.ops
+				.read_content(&self.location, off as _, &mut buf[off..])?;
+			if len == 0 {
+				break;
+			}
+			off += len;
+		}
+		Ok(buf)
+	}
+
+	/// Removes the entry from the tree.
+	pub fn remove(this: Arc<Self>) {
+		// Loop to go up the tree if necessary
+		let mut cur = this;
+		loop {
+			let Some(parent) = &cur.parent else {
+				// This is the root of the VFS, stop
+				break;
+			};
+			{
+				// Lock to avoid a race condition with `strong_count`
+				let mut parent_children = parent.children.lock();
+				// If this is **not** the last reference to the current (the one held by its own
+				// parent
+				// + the one that we hold here)
+				if Arc::strong_count(&cur) > 2 {
+					break;
+				}
+				parent_children.remove(&*cur.name);
+			}
+			// The reference count is now `1` on `cur`
+			let Some(mut c) = Arc::into_inner(cur) else {
+				// Unexpected, but not critical
+				break;
+			};
+			// Cannot fail since we check earlier the parent exists
+			cur = c.parent.take().unwrap();
+		}
 	}
 }
 
@@ -92,9 +182,11 @@ pub struct ResolutionSettings {
 	/// The location of the root directory for the operation.
 	///
 	/// Contrary to the `start` field, resolution *cannot* access a parent of this path.
-	pub root: FileLocation,
-	/// The beginning position of the path resolution. If `None`, resolution starts at root.
-	pub start: Option<Arc<Mutex<File>>>,
+	pub root: Arc<Entry>,
+	/// The current working directory, from which the resolution starts.
+	///
+	/// If `None`, resolution starts from `root`.
+	pub cwd: Option<Arc<Entry>>,
 
 	/// The access profile to use for resolution.
 	pub access_profile: AccessProfile,
@@ -112,7 +204,7 @@ impl ResolutionSettings {
 	pub fn kernel_follow() -> Self {
 		Self {
 			root: mountpoint::root_location(),
-			start: None,
+			cwd: None,
 
 			access_profile: AccessProfile::KERNEL,
 
@@ -135,7 +227,7 @@ impl ResolutionSettings {
 	pub fn for_process(proc: &Process, follow_links: bool) -> Self {
 		Self {
 			root: proc.chroot.clone(),
-			start: Some(proc.cwd.clone()),
+			cwd: Some(proc.cwd.clone()),
 
 			access_profile: proc.access_profile,
 
@@ -149,35 +241,69 @@ impl ResolutionSettings {
 #[derive(Debug)]
 pub enum Resolved<'s> {
 	/// The file has been found.
-	Found(Arc<Mutex<File>>),
+	Found(Arc<Entry>),
 	/// The file can be created.
 	///
 	/// This variant can be returned only if the `create` field is set to `true` in
 	/// [`ResolutionSettings`].
 	Creatable {
 		/// The parent directory in which the file is to be created.
-		parent: Arc<Mutex<File>>,
+		parent: Arc<Entry>,
 		/// The name of the file to be created.
 		name: &'s [u8],
 	},
 }
 
+/// Resolves an entry with the given `name`, in the given `lookup_dir`.
+fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Entry>>> {
+	let mut children = lookup_dir.children.lock();
+	// Try to get from cache first
+	if let Some(ent) = children.get(name) {
+		return Ok(Some(ent.clone()));
+	}
+	// Not in cache. Try to get from the filesystem
+	let Some((entry, mut ops)) = lookup_dir.ops.entry_by_name(&lookup_dir.location, name)? else {
+		return Ok(None);
+	};
+	let mut location = FileLocation {
+		mountpoint_id: lookup_dir.location.mountpoint_id,
+		inode: entry.inode,
+	};
+	// If this is a mountpoint, jump to its root
+	if let Some(mp) = mountpoint::from_location(&location) {
+		let mp = mp.lock();
+		location = mp.get_root_location();
+		ops = mp.get_filesystem().node_from_inode(location.inode)?;
+	}
+	// Build entry
+	let ent = Arc::new(Entry {
+		name: String::try_from(name)?,
+		parent: Some(lookup_dir.clone()),
+		children: Default::default(),
+
+		location,
+		ops,
+	})?;
+	children.insert(ent.clone(), ())?;
+	Ok(Some(ent))
+}
+
 /// Resolves the symbolic link `link` and returns the target.
 ///
 /// Arguments:
-/// - `root` is the location of the root directory
+/// - `root` is the root directory
 /// - `lookup_dir` is the directory from which the resolution of the target starts
 /// - `access_profile` is the access profile used for resolution
 /// - `symlink_rec` is the number of recursions so far
 ///
 /// Symbolic links are followed recursively, including the last element of the target path.
 fn resolve_link(
-	link: &mut File,
-	root: FileLocation,
-	lookup_dir: Arc<Mutex<File>>,
+	link: &Entry,
+	root: Arc<Entry>,
+	lookup_dir: Arc<Entry>,
 	access_profile: AccessProfile,
 	symlink_rec: usize,
-) -> EResult<Arc<Mutex<File>>> {
+) -> EResult<Arc<Entry>> {
 	// If too many recursions occur, error
 	if symlink_rec + 1 > limits::SYMLOOP_MAX {
 		return Err(errno!(ELOOP));
@@ -187,7 +313,7 @@ fn resolve_link(
 	// Resolve link
 	let rs = ResolutionSettings {
 		root,
-		start: Some(lookup_dir),
+		cwd: Some(lookup_dir),
 		access_profile,
 		create: false,
 		follow_link: true,
@@ -209,9 +335,9 @@ fn resolve_path_impl<'p>(
 	symlink_rec: usize,
 ) -> EResult<Resolved<'p>> {
 	// Get start lookup directory
-	let mut lookup_dir = match (path.is_absolute(), &settings.start) {
+	let mut lookup_dir = match (path.is_absolute(), &settings.cwd) {
 		(false, Some(start)) => start.clone(),
-		_ => get_file_from_location(settings.root.clone())?,
+		_ => settings.root.clone(),
 	};
 	let mut components = path.components();
 	let Some(final_component) = components.next_back() else {
@@ -219,6 +345,14 @@ fn resolve_path_impl<'p>(
 	};
 	// Iterate on intermediate components
 	for comp in components {
+		// Check lookup permission
+		let lookup_dir_stat = lookup_dir.ops.get_stat(&lookup_dir.location)?;
+		if !settings
+			.access_profile
+			.can_search_directory(&lookup_dir_stat)
+		{
+			return Err(errno!(EACCES));
+		}
 		// Get the name of the next entry
 		let name = match comp {
 			Component::ParentDir => b"..",
@@ -226,36 +360,18 @@ fn resolve_path_impl<'p>(
 			// Ignore
 			_ => continue,
 		};
-		// Search component
-		let res = get_file_from_parent_opt(&lookup_dir.lock(), name, &settings.access_profile)?;
-		let Some(subfile_mutex) = res else {
-			return Err(errno!(ENOENT));
-		};
-		let mut subfile = subfile_mutex.lock();
-		// If this is a mountpoint, continue resolution from the root of its filesystem
-		if let Some(mp) = mountpoint::from_location(&subfile.location) {
-			let loc = mp.lock().get_root_location();
-			lookup_dir = get_file_from_location(loc)?;
-			continue;
-		}
-		match subfile.get_type()? {
-			FileType::Directory => {
-				drop(subfile);
-				lookup_dir = subfile_mutex;
-			}
-			// Follow link, if enabled
+		// Get entry
+		let entry = resolve_entry(&lookup_dir, name)?.ok_or_else(|| errno!(ENOENT))?;
+		match entry.get_type()? {
+			FileType::Directory => lookup_dir = entry,
 			FileType::Link => {
-				let target = resolve_link(
-					&mut subfile,
+				lookup_dir = resolve_link(
+					&entry,
 					settings.root.clone(),
 					lookup_dir,
 					settings.access_profile,
 					symlink_rec,
 				)?;
-				if target.lock().get_type()? != FileType::Directory {
-					return Err(errno!(ENOTDIR));
-				}
-				lookup_dir = target;
 			}
 			_ => return Err(errno!(ENOTDIR)),
 		}
@@ -270,8 +386,16 @@ fn resolve_path_impl<'p>(
 		Component::ParentDir => b"..",
 		Component::Normal(name) => name,
 	};
-	let res = get_file_from_parent_opt(&lookup_dir.lock(), name, &settings.access_profile)?;
-	let Some(file_mutex) = res else {
+	// Check lookup permission
+	let lookup_dir_stat = lookup_dir.ops.get_stat(&lookup_dir.location)?;
+	if !settings
+		.access_profile
+		.can_search_directory(&lookup_dir_stat)
+	{
+		return Err(errno!(EACCES));
+	}
+	// Get entry
+	let Some(entry) = resolve_entry(&lookup_dir, name)? else {
 		// The file does not exist
 		return if settings.create {
 			Ok(Resolved::Creatable {
@@ -282,25 +406,18 @@ fn resolve_path_impl<'p>(
 			Err(errno!(ENOENT))
 		};
 	};
-	// The file exists
-	let mut file = file_mutex.lock();
-	// If the final file is a mountpoint, return the root to it
-	if let Some(mp) = mountpoint::from_location(&file.location) {
-		let loc = mp.lock().get_root_location();
-		return Ok(Resolved::Found(get_file_from_location(loc)?));
-	}
 	// Resolve symbolic link if necessary
-	if settings.follow_link && file.get_type()? == FileType::Link {
+	let entry_type = entry.ops.get_stat(&entry.location)?.get_type();
+	if settings.follow_link && entry_type == Some(FileType::Link) {
 		Ok(Resolved::Found(resolve_link(
-			&mut file,
+			&entry,
 			settings.root.clone(),
 			lookup_dir,
 			settings.access_profile,
 			symlink_rec,
 		)?))
 	} else {
-		drop(file);
-		Ok(Resolved::Found(file_mutex))
+		Ok(Resolved::Found(entry))
 	}
 }
 
@@ -318,7 +435,7 @@ fn resolve_path_impl<'p>(
 ///   [`limits::SYMLOOP_MAX`], the function returns [`errno::ELOOP`].
 pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Resolved<'p>> {
 	// Required by POSIX
-	if settings.start.is_none() && path.is_empty() {
+	if settings.cwd.is_none() && path.is_empty() {
 		return Err(errno!(ENOENT));
 	}
 	resolve_path_impl(path, settings, 0)
@@ -328,7 +445,7 @@ pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResul
 pub fn get_file_from_path_opt(
 	path: &Path,
 	resolution_settings: &ResolutionSettings,
-) -> EResult<Option<Arc<Mutex<File>>>> {
+) -> EResult<Option<Arc<Entry>>> {
 	let file = match resolve_path(path, resolution_settings)? {
 		Resolved::Found(file) => Some(file),
 		_ => None,
@@ -342,7 +459,7 @@ pub fn get_file_from_path_opt(
 pub fn get_file_from_path(
 	path: &Path,
 	resolution_settings: &ResolutionSettings,
-) -> EResult<Arc<Mutex<File>>> {
+) -> EResult<Arc<Entry>> {
 	get_file_from_path_opt(path, resolution_settings)?.ok_or_else(|| errno!(ENOENT))
 }
 
@@ -371,12 +488,12 @@ pub fn get_file_from_path(
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn create_file(
-	parent: &mut File,
+	parent: Arc<Entry>,
 	name: &[u8],
 	ap: &AccessProfile,
 	mut stat: Stat,
-) -> EResult<Arc<Mutex<File>>> {
-	let parent_stat = parent.ops().get_stat(parent.get_location())?;
+) -> EResult<Arc<Entry>> {
+	let parent_stat = parent.ops.get_stat(&parent.location)?;
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -394,11 +511,20 @@ pub fn create_file(
 	};
 	stat.gid = gid;
 	let (inode, ops) = parent.ops.add_file(&parent.location, name, stat)?;
-	let loc = FileLocation {
+	let location = FileLocation {
 		mountpoint_id: parent.location.mountpoint_id,
 		inode,
 	};
-	File::open(loc, ops)
+	let entry = Arc::new(Entry {
+		name: String::try_from(name)?,
+		parent: Some(parent),
+		children: Default::default(),
+
+		location,
+		ops,
+	})?;
+	// TODO insert entry into parent
+	Ok(entry)
 }
 
 /// Creates a new hard link to the given target file.
@@ -417,8 +543,8 @@ pub fn create_file(
 /// - `target` is a directory: [`errno::EPERM`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn link(parent: &File, name: &[u8], target: &mut File, ap: &AccessProfile) -> EResult<()> {
-	let parent_stat = parent.get_stat()?;
+pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> EResult<()> {
+	let parent_stat = parent.ops.get_stat(&parent.location)?;
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -458,27 +584,35 @@ pub fn link(parent: &File, name: &[u8], target: &mut File, ap: &AccessProfile) -
 /// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn unlink(parent: Arc<Mutex<File>>, name: &[u8], ap: &AccessProfile) -> EResult<()> {
-	let parent = parent.lock();
-	let parent_stat = parent.get_stat()?;
+pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()> {
+	let parent_stat = parent.ops.get_stat(&parent.location)?;
 	// Check permission
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	// Get file to remove
-	let file_mutex = get_file_from_parent_unchecked(&parent, name)?;
-	let file = file_mutex.lock();
-	let stat = file.get_stat()?;
+	// Lock now to avoid race conditions
+	let mut children = parent.children.lock();
+	// Get entry from filesystem
+	let Some((ent, ops)) = parent.ops.entry_by_name(&parent.location, name)? else {
+		return Err(errno!(ENOENT));
+	};
+	let loc = FileLocation {
+		mountpoint_id: parent.location.mountpoint_id,
+		inode: ent.inode,
+	};
+	let stat = ops.get_stat(&loc)?;
 	// Check permission
 	let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
 	if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
 	// If the file to remove is a mountpoint, error
-	if mountpoint::from_location(&file.location).is_some() {
+	if mountpoint::from_location(&loc).is_some() {
 		return Err(errno!(EBUSY));
 	}
 	parent.ops.unlink(&parent.location, name)?;
+	// Remove from cache
+	children.remove(name);
 	Ok(())
 }
 

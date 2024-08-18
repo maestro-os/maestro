@@ -44,12 +44,11 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
-		mountpoint,
-		path::PathBuf,
+		path::{Path, PathBuf},
 		perm::AccessProfile,
 		vfs,
 		vfs::ResolutionSettings,
-		File, FileLocation,
+		File, O_RDWR,
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
@@ -265,9 +264,9 @@ pub struct Process {
 	/// Current working directory
 	///
 	/// The field contains both the path and the directory.
-	pub cwd: Arc<Mutex<File>>,
+	pub cwd: Arc<vfs::Entry>,
 	/// Current root path used by the process
-	pub chroot: FileLocation,
+	pub chroot: Arc<vfs::Entry>,
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
@@ -432,6 +431,7 @@ impl Process {
 			let mut fds_table = FileDescriptorTable::default();
 			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
 			let tty_file = vfs::get_file_from_path(&tty_path, &rs)?;
+			let tty_file = File::open(tty_file, O_RDWR)?;
 			let (stdin_fd_id, _) = fds_table.create_fd(0, tty_file)?;
 			assert_eq!(stdin_fd_id, STDIN_FILENO);
 			fds_table.duplicate_fd(
@@ -446,8 +446,7 @@ impl Process {
 			)?;
 			fds_table
 		};
-		let root_loc = mountpoint::root_location();
-		let root_dir = vfs::get_file_from_location(root_loc.clone())?;
+		let root_dir = vfs::get_file_from_path(Path::root(), &rs)?;
 		let pid = PidHandle::init()?;
 		let process = Self {
 			pid,
@@ -485,8 +484,8 @@ impl Process {
 			user_stack: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: root_dir,
-			chroot: root_loc,
+			cwd: root_dir.clone(),
+			chroot: root_dir,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
 			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,

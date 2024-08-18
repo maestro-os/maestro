@@ -58,14 +58,12 @@ pub fn utimensat(
 	let atime = times_val[0];
 	let mtime = times_val[1];
 	// Get file
-	let Resolved::Found(file_mutex) = at::get_file(&fds.lock(), rs, dirfd, &pathname, flags)?
-	else {
+	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, &pathname, flags)? else {
 		return Err(errno!(ENOENT));
 	};
-	let file = file_mutex.lock();
 	// Update timestamps
-	file.ops().set_stat(
-		file.get_location(),
+	file.ops.set_stat(
+		&file.location,
 		StatSet {
 			atime: Some(atime.to_nano() / 1000000000),
 			mtime: Some(mtime.to_nano() / 1000000000),

@@ -61,7 +61,7 @@ pub const STATUS_FLAGS_MASK: i32 = !(file::O_CLOEXEC
 ///
 /// If the file is created, the function uses `mode` to set its permissions and the provided
 /// access profile to set the user ID and group ID.
-fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<Arc<Mutex<File>>> {
+fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<Arc<vfs::Entry>> {
 	let resolved = vfs::resolve_path(path, rs)?;
 	let file = match resolved {
 		Resolved::Found(file) => file,
@@ -69,10 +69,9 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<A
 			parent,
 			name,
 		} => {
-			let mut parent = parent.lock();
 			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 			vfs::create_file(
-				&mut parent,
+				parent,
 				name,
 				&rs.access_profile,
 				Stat {
@@ -85,11 +84,8 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<A
 			)?
 		}
 	};
-	// Get file type. There cannot be a race condition since the type of file cannot be
-	// changed
-	let file_type = file.lock().get_type()?;
 	// Cannot open symbolic links themselves
-	if file_type == FileType::Link {
+	if file.get_type()? == FileType::Link {
 		return Err(errno!(ELOOP));
 	}
 	Ok(file)
@@ -101,7 +97,7 @@ fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<A
 /// - `file` is the file
 /// - `flags` is the set of flags provided by userspace
 /// - `access_profile` is the access profile to check permissions
-pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile) -> EResult<()> {
+pub fn check_perms(file: &vfs::Entry, flags: i32, access_profile: &AccessProfile) -> EResult<()> {
 	let (read, write) = match flags & 0b11 {
 		file::O_RDONLY => (true, false),
 		file::O_WRONLY => (false, true),
@@ -119,10 +115,6 @@ pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile)
 	// If O_DIRECTORY is set and the file is not a directory, return an error
 	if flags & file::O_DIRECTORY != 0 && stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
-	}
-	// Truncate the file if necessary
-	if flags & file::O_TRUNC != 0 {
-		file.truncate(0)?;
 	}
 	Ok(())
 }
@@ -149,7 +141,12 @@ pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<u
 	};
 	// Get file
 	let file = get_file(&path, &rs, mode)?;
-	handle_flags(&mut file.lock(), flags, &rs.access_profile)?;
+	check_perms(&file, flags, &rs.access_profile)?;
+	let file = File::open(file, flags)?;
+	// Truncate the file if necessary
+	if flags & file::O_TRUNC != 0 {
+		file.lock().truncate(0)?;
+	}
 	// Create FD
 	let mut fd_flags = 0;
 	if flags & file::O_CLOEXEC != 0 {
