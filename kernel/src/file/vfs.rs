@@ -16,11 +16,10 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The VFS (Virtual FileSystem) is an entity which aggregates every mounted
-//! filesystems into one.
+//! The VFS (Virtual FileSystem) aggregates every mounted filesystems into one.
 //!
 //! To manipulate files, the VFS should be used instead of
-//! calling the filesystems' functions directly.
+//! calling the filesystems' directly.
 
 use super::{
 	mountpoint,
@@ -43,7 +42,7 @@ use utils::{
 	collections::{hashmap::HashSet, string::String, vec::Vec},
 	errno,
 	errno::EResult,
-	lock::Mutex,
+	lock::{once::OnceInit, Mutex},
 	ptr::arc::Arc,
 };
 
@@ -176,6 +175,14 @@ impl Entry {
 	}
 }
 
+/// The root entry of the VFS.
+pub(super) static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
+
+/// Returns the root entry.
+pub fn root() -> Arc<Entry> {
+	ROOT.get().clone()
+}
+
 /// Settings for a path resolution operation.
 #[derive(Clone, Debug)]
 pub struct ResolutionSettings {
@@ -203,7 +210,7 @@ impl ResolutionSettings {
 	/// Kernel access, following symbolic links.
 	pub fn kernel_follow() -> Self {
 		Self {
-			root: mountpoint::root_location(),
+			root: root(),
 			cwd: None,
 
 			access_profile: AccessProfile::KERNEL,

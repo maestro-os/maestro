@@ -694,13 +694,23 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 		}),
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	mountpoint::create(
+	let mp = mountpoint::create(
 		mount_source,
 		None,
 		0,
 		PathBuf::root()?,
 		FileLocation::nowhere(),
 	)?;
+	// Init the VFS's root entry.
+	let mp = mp.lock();
+	let root_location = mp.get_root_location();
+	let ops = mp.get_filesystem().node_from_inode(root_location.inode)?;
+	let mut ent = vfs::Entry::new_ops(ops);
+	ent.location = root_location;
+	let ent = Arc::new(ent)?;
+	unsafe {
+		vfs::ROOT.init(ent);
+	}
 	Ok(())
 }
 
