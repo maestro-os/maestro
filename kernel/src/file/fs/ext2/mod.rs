@@ -689,7 +689,7 @@ pub struct Superblock {
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
 	fn read(io: &dyn DeviceIO) -> EResult<Self> {
-		read::<Self>(1, SUPERBLOCK_OFFSET as _, io)
+		read::<Self>(SUPERBLOCK_OFFSET, SUPERBLOCK_OFFSET as _, io)
 	}
 
 	/// Tells whether the superblock is valid.
@@ -991,7 +991,7 @@ impl Superblock {
 
 	/// Writes the superblock on the device.
 	pub fn write(&self, io: &dyn DeviceIO) -> EResult<()> {
-		write(1, SUPERBLOCK_OFFSET as _, io, self)
+		write(SUPERBLOCK_OFFSET, SUPERBLOCK_OFFSET as _, io, self)
 	}
 }
 

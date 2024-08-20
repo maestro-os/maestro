@@ -130,7 +130,7 @@ impl Entry {
 			.size
 			.try_into()
 			.map_err(|_| errno!(EOVERFLOW))?;
-		let mut buf = Vec::with_capacity(len)?;
+		let mut buf = vec![0u8; len]?;
 		let mut off = 0;
 		// Stick to the file's size to have an upper bound
 		while off < len {
