@@ -34,7 +34,6 @@ use core::{ffi::c_void, num::NonZeroU64};
 use utils::{errno, errno::EResult};
 
 /// A TTY device's handle.
-#[derive(Default)]
 pub struct TTYDeviceHandle;
 
 impl TTYDeviceHandle {

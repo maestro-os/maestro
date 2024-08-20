@@ -30,7 +30,6 @@ use core::{cmp::min, mem::ManuallyDrop, num::NonZeroU64};
 use utils::{errno, errno::EResult};
 
 /// Device which does nothing.
-#[derive(Default)]
 pub struct NullDeviceHandle;
 
 impl DeviceIO for NullDeviceHandle {
@@ -52,7 +51,6 @@ impl DeviceIO for NullDeviceHandle {
 }
 
 /// Device returning only null bytes.
-#[derive(Default)]
 pub struct ZeroDeviceHandle;
 
 impl DeviceIO for ZeroDeviceHandle {
@@ -77,7 +75,6 @@ impl DeviceIO for ZeroDeviceHandle {
 /// Device allows to get random bytes.
 ///
 /// This device will block reading until enough entropy is available.
-#[derive(Default)]
 pub struct RandomDeviceHandle;
 
 impl DeviceIO for RandomDeviceHandle {
@@ -115,7 +112,6 @@ impl DeviceIO for RandomDeviceHandle {
 ///
 /// If not enough entropy is available, the output might not have a sufficient
 /// quality.
-#[derive(Default)]
 pub struct URandomDeviceHandle;
 
 impl DeviceIO for URandomDeviceHandle {
@@ -149,7 +145,6 @@ impl DeviceIO for URandomDeviceHandle {
 }
 
 /// Device allowing to read or write kernel logs.
-#[derive(Default)]
 pub struct KMsgDeviceHandle;
 
 impl DeviceIO for KMsgDeviceHandle {
@@ -191,7 +186,7 @@ pub(super) fn create() -> EResult<()> {
 		},
 		null_path,
 		0o666,
-		NullDeviceHandle::default(),
+		NullDeviceHandle,
 	)?;
 	device::register(null_device)?;
 
@@ -204,7 +199,7 @@ pub(super) fn create() -> EResult<()> {
 		},
 		zero_path,
 		0o666,
-		ZeroDeviceHandle::default(),
+		ZeroDeviceHandle,
 	)?;
 	device::register(zero_device)?;
 
@@ -217,7 +212,7 @@ pub(super) fn create() -> EResult<()> {
 		},
 		random_path,
 		0o666,
-		RandomDeviceHandle::default(),
+		RandomDeviceHandle,
 	)?;
 	device::register(random_device)?;
 
@@ -230,7 +225,7 @@ pub(super) fn create() -> EResult<()> {
 		},
 		urandom_path,
 		0o666,
-		URandomDeviceHandle::default(),
+		URandomDeviceHandle,
 	)?;
 	device::register(urandom_device)?;
 
@@ -243,7 +238,7 @@ pub(super) fn create() -> EResult<()> {
 		},
 		kmsg_path,
 		0o600,
-		KMsgDeviceHandle::default(),
+		KMsgDeviceHandle,
 	)?;
 	device::register(kmsg_device)?;
 
@@ -258,7 +253,7 @@ pub(super) fn create() -> EResult<()> {
 		},
 		current_tty_path,
 		0o666,
-		TTYDeviceHandle::default(),
+		TTYDeviceHandle,
 	)?;
 	device::register(current_tty_device)?;
 

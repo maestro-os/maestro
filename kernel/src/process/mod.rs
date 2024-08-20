@@ -855,7 +855,7 @@ impl Process {
 			regs: self.regs.clone(),
 			syscalling: false,
 
-			handled_signal: self.handled_signal.clone(),
+			handled_signal: self.handled_signal,
 			sigreturn_regs: self.sigreturn_regs.clone(),
 			waitable: false,
 

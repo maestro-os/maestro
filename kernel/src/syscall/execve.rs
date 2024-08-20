@@ -178,7 +178,7 @@ fn build_image(
 		argv,
 		envp,
 	};
-	exec::build_image(&file, exec_info)
+	exec::build_image(file, exec_info)
 }
 
 pub fn execve(

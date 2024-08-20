@@ -268,7 +268,7 @@ impl SignalHandler {
 					return_regs.set_syscall_return(Err(errno!(EINTR)));
 				}
 				debug_assert!(return_regs.eip.0 < crate::memory::PROCESS_END as usize);
-				process.signal_save(signal.clone(), return_regs);
+				process.signal_save(signal, return_regs);
 				// Prepare registers for the handler
 				let signal_trampoline = signal_trampoline as *const c_void;
 				process.regs.esp.0 = signal_esp as _;

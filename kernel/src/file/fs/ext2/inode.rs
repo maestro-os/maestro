@@ -550,7 +550,7 @@ impl Ext2INode {
 			let blk_off = (off + cur as u64) / blk_size as u64;
 			let blk_inner_off = ((off + cur as u64) % blk_size as u64) as usize;
 			let len = min(max - cur, (blk_size - blk_inner_off as u32) as usize);
-			let dst = &mut buff[(cur as usize)..((cur + len) as usize)];
+			let dst = &mut buff[cur..(cur + len)];
 			// Get disk block offset
 			if let Some(blk_off) = self.translate_blk_off(blk_off as _, superblock, io)? {
 				// A content block is present, copy
@@ -739,7 +739,7 @@ impl Ext2INode {
 		let mut off = 0;
 		while let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? {
 			if !ent.is_free() && ent.get_name(superblock) == name {
-				return Ok(Some((ent.inode, ent.get_type(superblock, &*io)?, off)));
+				return Ok(Some((ent.inode, ent.get_type(superblock, io)?, off)));
 			}
 			off += ent.rec_len as u64;
 		}

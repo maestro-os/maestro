@@ -208,6 +208,7 @@ pub struct Termios {
 
 impl Termios {
 	/// Creates a new instance with the default values.
+	#[allow(clippy::new_without_default)]
 	pub const fn new() -> Self {
 		use consts::*;
 		let mut t = Self {

@@ -115,11 +115,11 @@ impl MapResidence {
 
 	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
 	pub fn offset_add(&mut self, pages: usize) {
-		match self {
-			Self::File {
-				off, ..
-			} => *off += pages as u64 * memory::PAGE_SIZE as u64,
-			_ => {}
+		if let Self::File {
+			off, ..
+		} = self
+		{
+			*off += pages as u64 * memory::PAGE_SIZE as u64
 		}
 	}
 

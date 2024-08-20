@@ -144,7 +144,7 @@ impl NodeOps for PipeBuffer {
 	}
 
 	fn write_content(&self, _loc: &FileLocation, _off: u64, buf: &[u8]) -> EResult<usize> {
-		if unlikely(buf.len() == 0) {
+		if unlikely(buf.is_empty()) {
 			return Ok(0);
 		}
 		let mut inner = self.inner.lock();
