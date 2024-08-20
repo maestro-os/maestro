@@ -44,6 +44,7 @@ use utils::{
 	errno::EResult,
 	lock::{once::OnceInit, Mutex},
 	ptr::arc::Arc,
+	vec,
 };
 
 /// A child of a VFS entry.
@@ -76,7 +77,7 @@ impl Hash for EntryChild {
 #[derive(Debug)]
 pub struct Entry {
 	/// Filename.
-	name: String,
+	pub name: String,
 	/// The parent of the entry.
 	///
 	/// If `None`, the current entry is the root of the VFS.
@@ -142,6 +143,27 @@ impl Entry {
 			off += len;
 		}
 		Ok(buf)
+	}
+
+	/// Returns an iterator of entries, starting from `this`, to the root of the VFS.
+	pub fn get_path(this: Arc<Self>) -> EResult<PathBuf> {
+		let mut buf = vec![0u8; limits::PATH_MAX]?;
+		let mut off = limits::PATH_MAX;
+		let mut cur = this;
+		loop {
+			let Some(parent) = &cur.parent else {
+				break;
+			};
+			let len = cur.name.len();
+			off = off
+				.checked_sub(len + 1)
+				.ok_or_else(|| errno!(ENAMETOOLONG))?;
+			buf[off..(off + len)].copy_from_slice(&cur.name);
+			buf[off + len] = b'\0';
+			cur = parent.clone();
+		}
+		buf.rotate_left(off);
+		Ok(PathBuf::new_unchecked(String::from(buf)))
 	}
 
 	/// Removes the entry from the tree.

@@ -22,12 +22,12 @@
 use crate::{
 	file::{
 		fs::{proc::get_proc_owner, NodeOps},
-		FileLocation, FileType, Stat,
+		vfs, FileLocation, FileType, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
 };
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `cwd` node.
 #[derive(Debug)]
@@ -56,6 +56,7 @@ impl NodeOps for Cwd {
 			.lock()
 			.cwd
 			.clone();
-		format_content!(off, buf, "{}", cwd.get_path())
+		let cwd = vfs::Entry::get_path(cwd)?;
+		format_content!(off, buf, "{}", DisplayableStr(cwd.as_bytes()))
 	}
 }
