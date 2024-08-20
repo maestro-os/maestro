@@ -182,8 +182,8 @@ pub trait TryToOwned {
 	fn try_to_owned(&self) -> Result<Self::Owned, Self::Error>;
 }
 
-/// Wrapper structure allowing to implement the [`fmt::Display`] trait on the [u8] type
-/// to display it as a string.
+/// Wrapper structure allowing to implement the [`fmt::Display`] trait on `&[u8]` to display it as
+/// a string.
 pub struct DisplayableStr<'a>(pub &'a [u8]);
 
 impl<'a> fmt::Display for DisplayableStr<'a> {

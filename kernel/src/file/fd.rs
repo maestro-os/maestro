@@ -71,7 +71,7 @@ pub enum NewFDConstraint {
 	Min(u32),
 }
 
-/// A file descriptor, pointing to an [`OpenFile`].
+/// A file descriptor, pointing to a [`File`].
 #[derive(Clone, Debug)]
 pub struct FileDescriptor {
 	/// The file descriptor's flags.

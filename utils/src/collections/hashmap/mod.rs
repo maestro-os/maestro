@@ -470,11 +470,11 @@ impl<K: Eq + Hash + fmt::Debug, V: fmt::Debug, H: Default + Hasher> fmt::Debug
 }
 
 impl<
-	K: Eq + Hash + TryClone<Error = E>,
-	V: TryClone<Error = E>,
-	H: Default + Hasher,
-	E: From<AllocError>,
-> TryClone for HashMap<K, V, H>
+		K: Eq + Hash + TryClone<Error = E>,
+		V: TryClone<Error = E>,
+		H: Default + Hasher,
+		E: From<AllocError>,
+	> TryClone for HashMap<K, V, H>
 {
 	type Error = E;
 
@@ -725,7 +725,7 @@ impl<K: Eq + Hash, H: Default + Hasher> HashSet<K, H> {
 			Entry::Occupied(e) => {
 				let old = mem::replace(unsafe { e.inner.key.assume_init_mut() }, e.key);
 				Ok(Some(old))
-			},
+			}
 			Entry::Vacant(e) => {
 				e.insert(())?;
 				Ok(None)
@@ -768,18 +768,14 @@ impl<K: Eq + Hash, H: Default + Hasher> HashSet<K, H> {
 	}
 }
 
-impl<K: Eq + Hash + fmt::Debug, H: Default + Hasher> fmt::Debug for HashSet<K, H>
-{
+impl<K: Eq + Hash + fmt::Debug, H: Default + Hasher> fmt::Debug for HashSet<K, H> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		fmt::Debug::fmt(&self.0, f)
 	}
 }
 
-impl<
-	K: Eq + Hash + TryClone<Error = E>,
-	H: Default + Hasher,
-	E: From<AllocError>,
-> TryClone for HashSet<K, H>
+impl<K: Eq + Hash + TryClone<Error = E>, H: Default + Hasher, E: From<AllocError>> TryClone
+	for HashSet<K, H>
 {
 	type Error = E;
 

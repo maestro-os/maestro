@@ -19,13 +19,13 @@
 //! Implementation of [`Arc`] and [`Weak`], similar to the ones present in the Rust standard
 //! library.
 
-use core::hash::{Hash, Hasher};
 use crate::{boxed::Box, errno::AllocResult};
 use alloc::alloc::Global;
 use core::{
 	alloc::{AllocError, Allocator, Layout},
 	borrow::Borrow,
 	fmt,
+	hash::{Hash, Hasher},
 	intrinsics::size_of_val,
 	marker::Unsize,
 	mem::ManuallyDrop,

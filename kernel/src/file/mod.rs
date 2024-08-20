@@ -372,7 +372,7 @@ impl File {
 		Ok(Arc::new(Mutex::new(file))?)
 	}
 
-	/// Like [`open`], but without an associated location.
+	/// Like [`Self::open`], but without an associated location.
 	pub fn open_ops(ops: Box<dyn NodeOps>, flags: i32) -> EResult<Arc<Mutex<Self>>> {
 		let file = Self {
 			vfs_entry: Arc::new(vfs::Entry::new_ops(ops))?,
