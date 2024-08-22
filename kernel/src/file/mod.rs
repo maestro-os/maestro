@@ -423,9 +423,23 @@ impl File {
 		if unlikely(!self.can_read()) {
 			return Err(errno!(EACCES));
 		}
-		self.vfs_entry
-			.ops
-			.read_content(&self.vfs_entry.location, off, buf)
+		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
+		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
+		match dev_type {
+			Some(dev_type) => {
+				let dev = device::get(&DeviceID {
+					dev_type,
+					major: stat.dev_major,
+					minor: stat.dev_minor,
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
+				dev.get_io().read_bytes(off, buf)
+			}
+			None => self
+				.vfs_entry
+				.ops
+				.read_content(&self.vfs_entry.location, off, buf),
+		}
 	}
 
 	/// Writes data to the file at the given offset.
@@ -435,9 +449,23 @@ impl File {
 		if unlikely(!self.can_write()) {
 			return Err(errno!(EACCES));
 		}
-		self.vfs_entry
-			.ops
-			.write_content(&self.vfs_entry.location, off, buf)
+		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
+		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
+		match dev_type {
+			Some(dev_type) => {
+				let dev = device::get(&DeviceID {
+					dev_type,
+					major: stat.dev_major,
+					minor: stat.dev_minor,
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
+				dev.get_io().write_bytes(off, buf)
+			}
+			None => self
+				.vfs_entry
+				.ops
+				.write_content(&self.vfs_entry.location, off, buf),
+		}
 	}
 
 	/// Truncates the file to the given `size`.
@@ -507,6 +535,7 @@ impl File {
 		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
 		// If no more link remain to the file, remove the node
 		if stat.nlink == 0 {
+			// FIXME: do only if this is the last reference to the dentry
 			self.vfs_entry.ops.remove_file(&self.vfs_entry.location)?;
 		}
 		Ok(())

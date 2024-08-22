@@ -44,17 +44,16 @@ pub fn read(
 		return Ok(0);
 	}
 	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
-	let file = file_mutex.lock();
+	// TODO perf: a buffer is not necessarily required
+	let mut buffer = vec![0u8; count]?;
+	// TODO determine why removing this causes a deadlock
+	cli();
+	// Read file
+	let mut file = file_mutex.lock();
 	// Validation
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	// TODO determine why removing this causes a deadlock
-	cli();
-	// TODO perf: a buffer is not necessarily required
-	let mut buffer = vec![0u8; count]?;
-	// Read file
-	let mut file = file_mutex.lock();
 	let len = file.read(file.off, &mut buffer)?;
 	file.off += len as u64;
 	// Write back

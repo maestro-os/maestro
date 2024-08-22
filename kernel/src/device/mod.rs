@@ -63,7 +63,7 @@ use utils::{
 	errno::{AllocResult, CollectResult, EResult},
 	lock::Mutex,
 	ptr::arc::Arc,
-	TryClone,
+	slice_copy, vec, TryClone,
 };
 
 /// Enumeration representing the type of the device.
@@ -139,6 +139,47 @@ pub trait DeviceIO {
 	///
 	/// On success, the function returns the number of bytes written.
 	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize>;
+
+	/// Reads data from the device.
+	///
+	/// Contrary to [`Self::read`], `off` is in bytes and no block alignment is required.
+	fn read_bytes(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let blk_size = self.block_size().get();
+		let mut blk = vec![0u8; blk_size as usize]?;
+		let start = off / blk_size;
+		let end = off
+			.checked_add(buf.len() as u64)
+			.ok_or_else(|| errno!(EOVERFLOW))?
+			/ blk_size;
+		let mut buf_off = 0;
+		for i in start..end {
+			self.read(i, &mut blk)?;
+			let inner_off = (off % blk_size) as usize;
+			buf_off += slice_copy(&blk[inner_off..], &mut buf[buf_off..]);
+		}
+		Ok(buf.len())
+	}
+
+	/// Writes data to the device.
+	///
+	/// Contrary to [`Self::write`], `off` is in bytes and no block alignment is required.
+	fn write_bytes(&self, off: u64, buf: &[u8]) -> EResult<usize> {
+		let blk_size = self.block_size().get();
+		let mut blk = vec![0u8; blk_size as usize]?;
+		let start = off / blk_size;
+		let end = off
+			.checked_add(buf.len() as u64)
+			.ok_or_else(|| errno!(EOVERFLOW))?
+			/ blk_size;
+		let mut buf_off = 0;
+		for i in start..end {
+			self.read(i, &mut blk)?;
+			let inner_off = (off % blk_size) as usize;
+			buf_off += slice_copy(&buf[buf_off..], &mut blk[inner_off..]);
+			self.write(i, &blk)?;
+		}
+		Ok(buf.len())
+	}
 
 	/// Performs an ioctl operation on the device.
 	///

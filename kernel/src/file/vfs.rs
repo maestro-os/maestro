@@ -384,7 +384,12 @@ fn resolve_path_impl<'p>(
 		}
 		// Get the name of the next entry
 		let name = match comp {
-			Component::ParentDir => b"..",
+			Component::ParentDir => {
+				if let Some(parent) = &lookup_dir.parent {
+					lookup_dir = parent.clone();
+				}
+				continue;
+			}
 			Component::Normal(name) => name,
 			// Ignore
 			_ => continue,

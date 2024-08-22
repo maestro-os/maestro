@@ -127,9 +127,12 @@ pub fn nbr_len(s: &[u8]) -> usize {
 /// Copies from slice `src` to `dst`.
 ///
 /// If slice are not of the same length, the function copies only up to the length of the smallest.
-pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
+/// 
+/// The function returns the number of bytes copied.
+pub fn slice_copy(src: &[u8], dst: &mut [u8]) -> usize {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
+	len
 }
 
 /// Same as the [`Clone`] trait, but the operation can fail (on memory allocation

@@ -47,15 +47,15 @@ pub fn write(
 		return Ok(0);
 	}
 	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
+	// TODO find a way to avoid allocating here
+	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
+	// TODO determine why removing this causes a deadlock
+	cli();
 	let mut file = file_mutex.lock();
 	// Validation
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	// TODO determine why removing this causes a deadlock
-	cli();
-	// TODO find a way to avoid allocating here
-	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
 	// Write file
 	let res = file.write(file.off, &buf_slice);
 	match res {

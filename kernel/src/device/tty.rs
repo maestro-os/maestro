@@ -118,6 +118,14 @@ impl DeviceIO for TTYDeviceHandle {
 		Ok(buff.len())
 	}
 
+	fn read_bytes(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		self.read(off, buf)
+	}
+
+	fn write_bytes(&self, off: u64, buf: &[u8]) -> EResult<usize> {
+		self.write(off, buf)
+	}
+
 	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
