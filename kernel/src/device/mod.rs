@@ -181,6 +181,12 @@ pub trait DeviceIO {
 		Ok(buf.len())
 	}
 
+	/// Polls the device with the given mask.
+	fn poll(&self, mask: u32) -> EResult<u32> {
+		let _ = mask;
+		Err(errno!(EINVAL))
+	}
+
 	/// Performs an ioctl operation on the device.
 	///
 	/// Arguments:

@@ -70,7 +70,7 @@ pub struct PollFD {
 	revents: i16,
 }
 
-pub fn poll(
+pub(super) fn poll(
 	Args((fds, nfds, timeout)): Args<(SyscallSlice<PollFD>, usize, c_int)>,
 ) -> EResult<usize> {
 	// The timeout. `None` means no timeout

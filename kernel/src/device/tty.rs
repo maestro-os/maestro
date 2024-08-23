@@ -27,7 +27,11 @@ use crate::{
 		signal::{Signal, SignalHandler},
 		Process,
 	},
-	syscall::{ioctl, FromSyscallArg},
+	syscall::{
+		ioctl,
+		poll::{POLLIN, POLLOUT},
+		FromSyscallArg,
+	},
 	tty::{termios, termios::Termios, TTYDisplay, WinSize, TTY},
 };
 use core::{ffi::c_void, num::NonZeroU64};
@@ -37,16 +41,14 @@ use utils::{errno, errno::EResult};
 pub struct TTYDeviceHandle;
 
 impl TTYDeviceHandle {
-	/// Checks whether the process is allowed to read from the TTY.
+	/// Checks whether the current process is allowed to read from the TTY.
 	///
 	/// If not, it is killed with a `SIGTTIN` signal.
 	///
-	/// Arguments:
-	/// - `process` is the process.
-	/// - `tty` is the TTY.
-	///
 	/// This function must be called before performing the read operation.
-	fn check_sigttin(&self, proc: &mut Process, tty: &TTYDisplay) -> EResult<()> {
+	fn check_sigttin(&self, tty: &TTYDisplay) -> EResult<()> {
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
 		if proc.pgid == tty.get_pgrp() {
 			return Ok(());
 		}
@@ -64,16 +66,14 @@ impl TTYDeviceHandle {
 		Ok(())
 	}
 
-	/// Checks whether the process is allowed to write to the TTY.
+	/// Checks whether the current process is allowed to write to the TTY.
 	///
 	/// If not, it is killed with a `SIGTTOU` signal.
 	///
-	/// Arguments:
-	/// - `process` is the process.
-	/// - `tty` is the TTY.
-	///
 	/// This function must be called before performing the write operation.
-	fn check_sigttou(&self, proc: &mut Process, tty: &TTYDisplay) -> EResult<()> {
+	fn check_sigttou(&self, tty: &TTYDisplay) -> EResult<()> {
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
 		if tty.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
 			return Ok(());
 		}
@@ -102,19 +102,14 @@ impl DeviceIO for TTYDeviceHandle {
 	}
 
 	fn read(&self, _off: u64, buff: &mut [u8]) -> EResult<usize> {
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
-		self.check_sigttin(&mut proc, &TTY.display.lock())?;
+		self.check_sigttin(&TTY.display.lock())?;
 		let len = TTY.read(buff)?;
 		Ok(len)
 	}
 
 	fn write(&self, _off: u64, buff: &[u8]) -> EResult<usize> {
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
-		let mut tty = TTY.display.lock();
-		self.check_sigttou(&mut proc, &tty)?;
-		tty.write(buff);
+		self.check_sigttou(&TTY.display.lock())?;
+		TTY.display.lock().write(buff);
 		Ok(buff.len())
 	}
 
@@ -126,9 +121,13 @@ impl DeviceIO for TTYDeviceHandle {
 		self.write(off, buf)
 	}
 
+	fn poll(&self, mask: u32) -> EResult<u32> {
+		let input = TTY.has_input_available();
+		let res = (if input { POLLIN } else { 0 } | POLLOUT) & mask;
+		Ok(res)
+	}
+
 	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
 		let mut tty = TTY.display.lock();
 		match request.get_old_format() {
 			ioctl::TCGETS => {
@@ -138,7 +137,7 @@ impl DeviceIO for TTYDeviceHandle {
 			}
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
-				self.check_sigttou(&mut proc, &tty)?;
+				self.check_sigttou(&tty)?;
 				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
 				let termios = termios_ptr
 					.copy_from_user()?
@@ -152,7 +151,7 @@ impl DeviceIO for TTYDeviceHandle {
 				Ok(0)
 			}
 			ioctl::TIOCSPGRP => {
-				self.check_sigttou(&mut proc, &tty)?;
+				self.check_sigttou(&tty)?;
 				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
 				let pgid = pgid_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_pgrp(pgid);
@@ -168,8 +167,6 @@ impl DeviceIO for TTYDeviceHandle {
 				let winsize = winsize_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
-				// Drop to avoid deadlock since `set_winsize` sends the SIGWINCH signal
-				drop(proc);
 				tty.set_winsize(winsize.clone());
 				Ok(0)
 			}

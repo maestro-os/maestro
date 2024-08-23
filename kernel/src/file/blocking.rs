@@ -44,11 +44,11 @@ impl WaitQueue {
 		Self(Mutex::new(Vec::new()))
 	}
 
-	/// Makes the current process wait until the given predicate `f` is true.
-	pub fn wait_until<F: FnMut() -> bool>(&self, mut f: F) -> AllocResult<()> {
+	/// Makes the current process wait until the given closure returns `Some`.
+	pub fn wait_until<F: FnMut() -> Option<T>, T>(&self, mut f: F) -> AllocResult<T> {
 		loop {
-			if f() {
-				break;
+			if let Some(val) = f() {
+				break Ok(val);
 			}
 			// Queue
 			{
@@ -60,7 +60,6 @@ impl WaitQueue {
 			// Yield
 			scheduler::end_tick();
 		}
-		Ok(())
 	}
 
 	/// Wakes the next process in queue.

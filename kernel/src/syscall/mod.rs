@@ -97,7 +97,7 @@ mod open;
 mod openat;
 mod pipe;
 mod pipe2;
-mod poll;
+pub mod poll;
 mod preadv;
 mod preadv2;
 mod prlimit64;

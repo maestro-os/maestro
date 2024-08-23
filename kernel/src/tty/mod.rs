@@ -410,7 +410,7 @@ impl TTYDisplay {
 /// TTY input manager.
 struct TTYInput {
 	/// The buffer containing characters from TTY input.
-	buff: [u8; INPUT_MAX],
+	buf: [u8; INPUT_MAX],
 	/// The current size of the input buffer.
 	input_size: usize,
 	/// The size of the data available to be read from the TTY.
@@ -453,7 +453,7 @@ pub static TTY: TTY = TTY {
 		current_color: vga::DEFAULT_COLOR,
 	}),
 	input: Mutex::new(TTYInput {
-		buff: [0; INPUT_MAX],
+		buf: [0; INPUT_MAX],
 		input_size: 0,
 		available_size: 0,
 	}),
@@ -462,59 +462,69 @@ pub static TTY: TTY = TTY {
 
 impl TTY {
 	// TODO Implement IUTF8
-	/// Reads inputs from the TTY and places it into the buffer `buff`.
+	/// Reads inputs from the TTY and places it into the buffer `buf`.
 	///
-	/// The function returns the number of bytes read and whether the EOF is
-	/// reached.
-	///
-	/// Note that reaching the EOF doesn't necessary mean the TTY is
-	/// closed. Subsequent calls to this function might still successfully read
-	/// data.
-	pub fn read(&self, buff: &mut [u8]) -> AllocResult<usize> {
-		let termios = self.display.lock().get_termios().clone();
-		let mut input = self.input.lock();
-		let mut len = min(buff.len(), input.available_size);
-		if termios.c_lflag & ICANON != 0 {
-			let eof = termios.c_cc[VEOF];
-			let eof_off = input.buff[..len].iter().position(|v| *v == eof);
-			if eof_off == Some(0) {
-				// Shift data
-				input.buff.rotate_left(1);
-				input.input_size -= 1;
-				input.available_size -= 1;
-				return Ok(0);
+	/// The function returns the number of bytes read.
+	pub fn read(&self, buf: &mut [u8]) -> AllocResult<usize> {
+		self.rd_queue.wait_until(|| {
+			let termios = self.display.lock().get_termios().clone();
+			let mut input = self.input.lock();
+			// Canonical mode
+			let canon = termios.c_lflag & ICANON != 0;
+			let min_chars = if canon {
+				1
+			} else {
+				termios.c_cc[VMIN] as usize
+			};
+			// If not enough data is available, wait
+			if input.available_size < min_chars {
+				return None;
 			}
-			if let Some(eof_off) = eof_off {
-				// Making the next call EOF
-				len = eof_off;
+			let mut len = min(buf.len(), input.available_size);
+			if canon {
+				let eof = termios.c_cc[VEOF];
+				let eof_off = input.buf[..len].iter().position(|v| *v == eof);
+				if eof_off == Some(0) {
+					// Shift data
+					input.buf.rotate_left(1);
+					input.input_size -= 1;
+					input.available_size -= 1;
+					return Some(0);
+				}
+				if let Some(eof_off) = eof_off {
+					// Making the next call EOF
+					len = eof_off;
+				}
+			} else {
+				// Update available length
+				len = min(buf.len(), input.available_size);
 			}
+			// Copy data
+			buf[..len].copy_from_slice(&input.buf[..len]);
+			// Shift data
+			input.buf.rotate_left(len);
+			input.input_size -= len;
+			input.available_size -= len;
+			// Ring the bell if the buffer is full
+			if termios.c_iflag & IMAXBEL != 0 && input.input_size >= buf.len() {
+				ring_bell();
+			}
+			Some(len)
+		})
+	}
+
+	/// Tells whether the TTY has any data available to be read.
+	pub fn has_input_available(&self) -> bool {
+		let display = self.display.lock();
+		let input = self.input.lock();
+		// Canonical mode
+		let canon = display.termios.c_lflag & ICANON != 0;
+		let min = if canon {
+			1
 		} else {
-			// Wait until enough data is available
-			drop(input);
-			self.rd_queue.wait_until(|| {
-				let display = self.display.lock();
-				let input = self.input.lock();
-				let len = min(buff.len(), input.available_size);
-				len < display.get_termios().c_cc[VMIN] as usize
-			})?;
-			// Update available length
-			{
-				let input = self.input.lock();
-				len = min(buff.len(), input.available_size);
-			}
-		}
-		let mut input = self.input.lock();
-		// Copy data
-		buff[..len].copy_from_slice(&input.buff[..len]);
-		// Shift data
-		input.buff.rotate_left(len);
-		input.input_size -= len;
-		input.available_size -= len;
-		// Ring the bell if there is a BELL character or if the buffer is full
-		if termios.c_iflag & IMAXBEL != 0 && input.input_size >= buff.len() {
-			ring_bell();
-		}
-		Ok(len)
+			display.get_termios().c_cc[VMIN] as usize
+		};
+		input.available_size >= min
 	}
 
 	// TODO Implement IUTF8
@@ -524,7 +534,7 @@ impl TTY {
 		let termios = self.display.lock().get_termios().clone();
 		let mut input = self.input.lock();
 		// The length to write to the input buffer
-		let len = min(buffer.len(), input.buff.len() - input.input_size);
+		let len = min(buffer.len(), input.buf.len() - input.input_size);
 		// The slice containing the input
 		let buffer = &buffer[..len];
 
@@ -541,8 +551,8 @@ impl TTY {
 		// TODO Put in a different function
 		{
 			let input_size = input.input_size;
-			utils::slice_copy(buffer, &mut input.buff[input_size..]);
-			let new_bytes = &mut input.buff[input_size..(input_size + len)];
+			utils::slice_copy(buffer, &mut input.buf[input_size..]);
+			let new_bytes = &mut input.buf[input_size..(input_size + len)];
 
 			for b in new_bytes {
 				if termios.c_iflag & ISTRIP != 0 {
@@ -584,7 +594,7 @@ impl TTY {
 			// Processing input
 			let mut i = input.input_size - len;
 			while i < input.input_size {
-				let b = input.buff[i];
+				let b = input.buf[i];
 
 				if b == termios.c_cc[VEOF] || b == b'\n' {
 					// Making the input available for reading
@@ -633,7 +643,7 @@ impl TTY {
 		let termios = self.display.lock().termios.clone();
 		let mut input = self.input.lock();
 		if termios.c_lflag & ICANON != 0 {
-			let count = min(count, input.buff.len());
+			let count = min(count, input.buf.len());
 			if count > input.input_size {
 				return;
 			}

@@ -411,11 +411,6 @@ impl File {
 		(buf.0.deref() as &dyn Any).downcast_ref()
 	}
 
-	/// Polls the file with the given `mask`.
-	pub fn poll(&mut self, mask: u32) -> EResult<u32> {
-		self.vfs_entry.ops.poll(&self.vfs_entry.location, mask)
-	}
-
 	/// Reads data from the file at the given offset.
 	///
 	/// On success, the function returns the number of bytes read.
@@ -501,6 +496,24 @@ impl File {
 		DirEntryIterator {
 			dir: self,
 			cursor: start,
+		}
+	}
+
+	/// Polls the file with the given `mask`.
+	pub fn poll(&mut self, mask: u32) -> EResult<u32> {
+		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
+		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
+		match dev_type {
+			Some(dev_type) => {
+				let dev = device::get(&DeviceID {
+					dev_type,
+					major: stat.dev_major,
+					minor: stat.dev_minor,
+				})
+				.ok_or_else(|| errno!(ENODEV))?;
+				dev.get_io().poll(mask)
+			}
+			None => self.vfs_entry.ops.poll(&self.vfs_entry.location, mask),
 		}
 	}
 
