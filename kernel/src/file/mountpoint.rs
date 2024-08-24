@@ -185,19 +185,19 @@ pub fn get_fs(source: &MountSource) -> Option<Arc<dyn Filesystem>> {
 #[derive(Debug)]
 pub struct MountPoint {
 	/// The ID of the mountpoint.
-	id: u32,
+	pub id: u32,
 	/// Mount flags.
-	flags: u32,
+	pub flags: u32,
 
 	/// The source of the mountpoint.
-	source: MountSource,
+	pub source: MountSource,
 	/// The filesystem associated with the mountpoint.
-	fs: Arc<dyn Filesystem>,
+	pub fs: Arc<dyn Filesystem>,
 
 	/// The path to the mount directory.
-	target_path: PathBuf,
+	pub target_path: PathBuf,
 	/// The location of the mount directory on the parent filesystem.
-	target_location: FileLocation,
+	pub target_location: FileLocation,
 }
 
 impl MountPoint {
@@ -244,42 +244,11 @@ impl MountPoint {
 		})
 	}
 
-	/// Returns the ID of the mountpoint.
-	pub fn get_id(&self) -> u32 {
-		self.id
-	}
-
-	/// Returns the mountpoint's flags.
-	pub fn get_flags(&self) -> u32 {
-		self.flags
-	}
-
-	/// Returns the source of the mountpoint.
-	pub fn get_source(&self) -> &MountSource {
-		&self.source
-	}
-
-	/// Returns the filesystem associated with the mountpoint.
-	pub fn get_filesystem(&self) -> Arc<dyn Filesystem> {
-		self.fs.clone()
-	}
-
-	/// Returns a reference to the path where the filesystem is mounted.
-	pub fn get_target_path(&self) -> &Path {
-		&self.target_path
-	}
-
-	/// Returns a reference to the location of the mount directory on the parent filesystem.
-	pub fn get_target_location(&self) -> &FileLocation {
-		&self.target_location
-	}
-
 	/// Returns the location of the root directory of the mounted filesystem.
 	pub fn get_root_location(&self) -> FileLocation {
-		let fs = self.get_filesystem();
 		FileLocation {
-			mountpoint_id: self.get_id(),
-			inode: fs.get_root_inode(),
+			mountpoint_id: self.id,
+			inode: self.fs.get_root_inode(),
 		}
 	}
 }
@@ -298,7 +267,7 @@ impl Drop for MountPoint {
 }
 
 /// The list of mountpoints with their respective ID.
-pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<Mutex<MountPoint>>>> = Mutex::new(HashMap::new());
+pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<MountPoint>>> = Mutex::new(HashMap::new());
 /// A map from mount locations to mountpoint IDs.
 pub static LOC_TO_ID: Mutex<HashMap<FileLocation, u32>> = Mutex::new(HashMap::new());
 
@@ -321,7 +290,7 @@ pub fn create(
 	flags: u32,
 	target_path: PathBuf,
 	target_location: FileLocation,
-) -> EResult<Arc<Mutex<MountPoint>>> {
+) -> EResult<Arc<MountPoint>> {
 	// TODO clean
 	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
 	// the locks of MOUNT_POINTS
@@ -341,26 +310,22 @@ pub fn create(
 			.max()
 			.unwrap_or(0)
 	};
-
-	let mountpoint = Arc::new(Mutex::new(MountPoint::new(
+	// Create mountpoint
+	let mountpoint = Arc::new(MountPoint::new(
 		id,
 		source,
 		fs_type,
 		flags,
 		target_path,
 		target_location.clone(),
-	)?))?;
-
+	)?)?;
 	// Insertion
-	{
-		let mut mount_points = MOUNT_POINTS.lock();
-		mount_points.insert(id, mountpoint.clone())?;
-		if let Err(e) = path_to_id.insert(target_location, id) {
-			mount_points.remove(&id);
-			return Err(e.into());
-		}
+	let mut mount_points = MOUNT_POINTS.lock();
+	mount_points.insert(id, mountpoint.clone())?;
+	if let Err(e) = path_to_id.insert(target_location, id) {
+		mount_points.remove(&id);
+		return Err(e.into());
 	}
-
 	Ok(mountpoint)
 }
 
@@ -392,14 +357,14 @@ pub fn remove(target_location: &FileLocation) -> EResult<()> {
 /// Returns the mountpoint with id `id`.
 ///
 /// If it doesn't exist, the function returns `None`.
-pub fn from_id(id: u32) -> Option<Arc<Mutex<MountPoint>>> {
+pub fn from_id(id: u32) -> Option<Arc<MountPoint>> {
 	MOUNT_POINTS.lock().get(&id).cloned()
 }
 
 /// Returns the mountpoint that is mounted at the given `target_location`.
 ///
 /// If it doesn't exist, the function returns `None`.
-pub fn from_location(target_location: &FileLocation) -> Option<Arc<Mutex<MountPoint>>> {
+pub fn from_location(target_location: &FileLocation) -> Option<Arc<MountPoint>> {
 	let loc_to_id = LOC_TO_ID.lock();
 	let id = loc_to_id.get(target_location)?;
 	from_id(*id)
@@ -410,13 +375,12 @@ pub fn from_location(target_location: &FileLocation) -> Option<Arc<Mutex<MountPo
 /// If no the root mountpoint does not exist, the function panics.
 pub fn root_location() -> FileLocation {
 	// TODO cache?
-	let Some(root_mp_mutex) = from_id(0) else {
+	let Some(root_mp) = from_id(0) else {
 		panic!("No root mountpoint!");
 	};
-	let root_mp = root_mp_mutex.lock();
-	let root_inode = root_mp.get_filesystem().get_root_inode();
+	let root_inode = root_mp.fs.get_root_inode();
 	FileLocation {
-		mountpoint_id: root_mp.get_id(),
+		mountpoint_id: root_mp.id,
 		inode: root_inode,
 	}
 }

@@ -58,16 +58,14 @@ impl NodeOps for Mounts {
 impl fmt::Display for Mounts {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let mountpoints = mountpoint::MOUNT_POINTS.lock();
-		for (_, mp_mutex) in mountpoints.iter() {
-			let mp = mp_mutex.lock();
-			let fs = mp.get_filesystem();
-			let fs_type = fs.get_name();
+		for (_, mp) in mountpoints.iter() {
+			let fs_type = mp.fs.get_name();
 			let flags = "TODO"; // TODO
 			writeln!(
 				f,
 				"{source} {target} {fs_type} {flags} 0 0",
-				source = mp.get_source(),
-				target = mp.get_target_path(),
+				source = mp.source,
+				target = mp.target_path,
 				fs_type = DisplayableStr(fs_type)
 			)?;
 		}

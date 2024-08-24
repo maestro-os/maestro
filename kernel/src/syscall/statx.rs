@@ -135,24 +135,16 @@ pub fn statx(
 	let stat = file.get_stat()?;
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
-	let (stx_dev_major, stx_dev_minor) = {
-		if let Some(mountpoint_mutex) = file.node.location.get_mountpoint() {
-			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using
-			// the mountpoint and locking vfs requires disabling interrupts
-			crate::idt::wrap_disable_interrupts(|| {
-				let mountpoint = mountpoint_mutex.lock();
-				match mountpoint.get_source() {
-					MountSource::Device(DeviceID {
-						major,
-						minor,
-						..
-					}) => (*major, *minor),
-					_ => (0, 0),
-				}
-			})
-		} else {
-			(0, 0)
-		}
+	let (stx_dev_major, stx_dev_minor) = match file.node.location.get_mountpoint() {
+		Some(mp) => match mp.source {
+			MountSource::Device(DeviceID {
+				major,
+				minor,
+				..
+			}) => (major, minor),
+			_ => (0, 0),
+		},
+		None => (0, 0),
 	};
 	// Write
 	statxbuff.copy_to_user(Statx {

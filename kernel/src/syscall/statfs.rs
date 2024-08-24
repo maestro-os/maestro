@@ -48,8 +48,7 @@ pub(super) fn do_statfs(
 		.get_mountpoint()
 		// Unwrapping will not fail since the file is accessed from path
 		.unwrap()
-		.lock()
-		.get_filesystem()
+		.fs
 		.get_stat()?;
 	// Write structure to userspace
 	buf.copy_to_user(stat)?;

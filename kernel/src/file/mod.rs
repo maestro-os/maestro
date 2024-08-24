@@ -237,14 +237,13 @@ impl FileLocation {
 	}
 
 	/// Returns the mountpoint on which the file is located.
-	pub fn get_mountpoint(&self) -> Option<Arc<Mutex<MountPoint>>> {
+	pub fn get_mountpoint(&self) -> Option<Arc<MountPoint>> {
 		mountpoint::from_id(self.mountpoint_id)
 	}
 
 	/// Returns the filesystem associated with the location, if any.
 	pub fn get_filesystem(&self) -> Option<Arc<dyn Filesystem>> {
-		self.get_mountpoint()
-			.map(|mp| mp.lock().get_filesystem().clone())
+		self.get_mountpoint().map(|mp| mp.fs.clone())
 	}
 }
 
@@ -783,9 +782,8 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 		FileLocation::nowhere(),
 	)?;
 	// Init the VFS's root entry.
-	let mp = mp.lock();
 	let root_location = mp.get_root_location();
-	let ops = mp.get_filesystem().node_from_inode(root_location.inode)?;
+	let ops = mp.fs.node_from_inode(root_location.inode)?;
 	let ent = Arc::new(vfs::Entry::from_node(Arc::new(Node {
 		location: root_location,
 		ops,

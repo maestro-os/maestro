@@ -122,9 +122,8 @@ fn get_node(mut location: FileLocation, mut ops: Box<dyn NodeOps>) -> EResult<Ar
 		None => {
 			// If this is a mountpoint, jump to its root
 			if let Some(mp) = mountpoint::from_location(&location) {
-				let mp = mp.lock();
 				location = mp.get_root_location();
-				ops = mp.get_filesystem().node_from_inode(location.inode)?;
+				ops = mp.fs.node_from_inode(location.inode)?;
 			}
 			// Create and insert node
 			let node = Arc::new(Node {

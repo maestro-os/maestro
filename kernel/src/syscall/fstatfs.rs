@@ -47,8 +47,7 @@ pub fn do_fstatfs(
 		.location
 		.get_mountpoint()
 		.ok_or_else(|| errno!(ENOSYS))?
-		.lock()
-		.get_filesystem()
+		.fs
 		.get_stat()?;
 	buf.copy_to_user(stat)?;
 	Ok(0)
