@@ -23,7 +23,7 @@ use crate::{
 	file::{fd::FileDescriptorTable, FileType},
 	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
 };
-use core::{cmp::min, ffi::c_int};
+use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -43,19 +43,16 @@ pub fn read(
 	if len == 0 {
 		return Ok(0);
 	}
-	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
-	// TODO perf: a buffer is not necessarily required
-	let mut buffer = vec![0u8; count]?;
-	// TODO determine why removing this causes a deadlock
-	cli();
-	// Read file
-	let mut file = file_mutex.lock();
+	let file = fds.lock().get_fd(fd)?.get_file().clone();
 	// Validation
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	let len = file.read(file.off, &mut buffer)?;
-	file.off += len as u64;
+	// TODO perf: a buffer is not necessarily required
+	let mut buffer = vec![0u8; count]?;
+	let off = file.off.load(atomic::Ordering::Acquire);
+	let len = file.read(off, &mut buffer)?;
+	file.off.fetch_add(len as u64, atomic::Ordering::Release);
 	// Write back
 	buf.copy_to_user(0, &buffer[..len])?;
 	Ok(len as _)

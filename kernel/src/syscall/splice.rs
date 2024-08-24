@@ -26,6 +26,7 @@ use crate::{
 use core::{
 	cmp::min,
 	ffi::{c_int, c_uint},
+	sync::atomic,
 };
 use utils::{
 	errno,
@@ -44,7 +45,7 @@ pub fn splice(
 		c_uint,
 	)>,
 ) -> EResult<usize> {
-	let (input_mutex, off_in, output_mutex, off_out) = {
+	let (input, off_in, output, off_out) = {
 		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
@@ -61,8 +62,8 @@ pub fn splice(
 	};
 
 	{
-		let input_type = input_mutex.lock().get_type()?;
-		let output_type = output_mutex.lock().get_type()?;
+		let input_type = input.get_type()?;
+		let output_type = output.get_type()?;
 
 		let in_is_pipe = matches!(input_type, FileType::Fifo);
 		let out_is_pipe = matches!(output_type, FileType::Fifo);
@@ -85,10 +86,9 @@ pub fn splice(
 	let mut buf = vec![0u8; len]?;
 
 	let len = {
-		let mut input = input_mutex.lock();
 		let len = input.read(off_in.unwrap_or(0), &mut buf)?;
 		if off_in.is_none() {
-			input.off += len as u64;
+			input.off.fetch_add(len as u64, atomic::Ordering::Relaxed);
 		}
 		len
 	};
@@ -97,10 +97,9 @@ pub fn splice(
 	let mut i = 0;
 	while i < len {
 		// TODO Check for signal (and handle syscall restart correctly with offsets)
-		let mut output = output_mutex.lock();
 		let l = output.write(off_out.unwrap_or(0), in_slice)?;
 		if off_out.is_none() {
-			output.off += l as u64;
+			input.off.fetch_add(l as u64, atomic::Ordering::Relaxed);
 		}
 		i += l;
 	}

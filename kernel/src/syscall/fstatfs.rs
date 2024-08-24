@@ -42,7 +42,6 @@ pub fn do_fstatfs(
 	let stat = fds
 		.get_fd(fd)?
 		.get_file()
-		.lock()
 		.vfs_entry
 		.location
 		.get_mountpoint()

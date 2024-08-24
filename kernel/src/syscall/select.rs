@@ -152,8 +152,7 @@ pub fn do_select<T: TimeUnit>(
 					}
 					continue;
 				};
-				let mut file = fd.get_file().lock();
-				file.poll(mask)?
+				fd.get_file().poll(mask)?
 			};
 			// Set results
 			let read = read && result & poll::POLLIN != 0;

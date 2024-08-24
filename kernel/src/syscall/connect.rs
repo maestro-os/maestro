@@ -41,8 +41,7 @@ pub fn connect(
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let file_mutex = fds.lock().get_fd(sockfd)?.get_file().clone();
-	let file = file_mutex.lock();
+	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let _addr = addr
 		.copy_from_user(..(addrlen as usize))?

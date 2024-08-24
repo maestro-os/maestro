@@ -83,7 +83,7 @@ pub fn fstat64(
 	Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let file = fds.lock().get_fd(fd)?.get_file().lock().vfs_entry.clone();
+	let file = fds.lock().get_fd(fd)?.get_file().vfs_entry.clone();
 	let stat = file.get_stat()?;
 	let rdev = makedev(stat.dev_major, stat.dev_minor);
 	let stat = Stat {

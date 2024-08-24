@@ -42,8 +42,7 @@ pub fn getsockopt(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Get socket
-	let file_mutex = fds.lock().get_fd(sockfd)?.get_file().clone();
-	let file = file_mutex.lock();
+	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let val = sock.get_opt(level, optname)?;
 	// Write back

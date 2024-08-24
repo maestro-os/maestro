@@ -129,7 +129,6 @@ pub(super) fn ioctl(
 	fds.lock()
 		.get_fd(fd)?
 		.get_file()
-		.lock()
 		.ioctl(request, argp)
 		.map(|v| v as _)
 }

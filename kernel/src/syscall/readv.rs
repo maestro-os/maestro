@@ -28,7 +28,7 @@ use crate::{
 	},
 	syscall::{Args, FromSyscallArg},
 };
-use core::{cmp::min, ffi::c_int};
+use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	collections::vec::Vec,
 	errno,
@@ -52,7 +52,7 @@ fn read(
 	iov: &SyscallSlice<IOVec>,
 	iovcnt: usize,
 	offset: Option<u64>,
-	file: &mut File,
+	file: &File,
 ) -> EResult<usize> {
 	let mut off = 0;
 	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
@@ -69,8 +69,9 @@ fn read(
 				let file_off = offset + off as u64;
 				file.read(file_off, &mut buf)?
 			} else {
-				let len = file.read(file.off, &mut buf)?;
-				file.off += len as u64;
+				let off = file.off.load(atomic::Ordering::Acquire);
+				let len = file.read(off, &mut buf)?;
+				file.off.fetch_add(len as u64, atomic::Ordering::Release);
 				len
 			};
 			if len == 0 {
@@ -114,12 +115,11 @@ pub fn do_readv(
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
 	// TODO Handle flags
-	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
-	let mut file = file_mutex.lock();
+	let file = fds.lock().get_fd(fd)?.get_file().clone();
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	let len = read(&iov, iovcnt as _, offset, &mut file)?;
+	let len = read(&iov, iovcnt as _, offset, &file)?;
 	Ok(len as _)
 }
 

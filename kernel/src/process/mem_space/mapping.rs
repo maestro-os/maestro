@@ -330,7 +330,6 @@ impl MemMapping {
 					self.begin as *mut u8,
 					self.size.get() * memory::PAGE_SIZE,
 				);
-				let file = file.lock();
 				let mut i = 0;
 				while i < slice.len() {
 					let l = file.write(*off, &slice[i..])?;

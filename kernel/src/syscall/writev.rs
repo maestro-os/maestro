@@ -30,7 +30,7 @@ use crate::{
 	},
 	syscall::{Args, FromSyscallArg},
 };
-use core::{cmp::min, ffi::c_int};
+use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -50,7 +50,7 @@ fn write(
 	iov: &SyscallSlice<IOVec>,
 	iovcnt: usize,
 	offset: Option<u64>,
-	file: &mut File,
+	file: &File,
 ) -> EResult<usize> {
 	let mut off = 0;
 	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
@@ -65,8 +65,9 @@ fn write(
 				let file_off = offset + off as u64;
 				file.write(file_off, &buf)?
 			} else {
-				let len = file.write(file.off, &buf)?;
-				file.off += len as u64;
+				let off = file.off.load(atomic::Ordering::Acquire);
+				let len = file.write(off, &buf)?;
+				file.off.fetch_add(len as u64, atomic::Ordering::Release);
 				len
 			};
 			off += len;
@@ -102,12 +103,11 @@ pub fn do_writev(
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
 	// Get file
-	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
-	let mut file = file_mutex.lock();
+	let file = fds.lock().get_fd(fd)?.get_file().clone();
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	let len = match write(&iov, iovcnt as _, offset, &mut file) {
+	let len = match write(&iov, iovcnt as _, offset, &file) {
 		Ok(len) => len,
 		Err(e) => {
 			// If writing to a broken pipe, kill with SIGPIPE

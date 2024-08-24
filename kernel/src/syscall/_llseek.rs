@@ -26,7 +26,10 @@ use crate::{
 	},
 	syscall::Args,
 };
-use core::ffi::{c_uint, c_ulong};
+use core::{
+	ffi::{c_uint, c_ulong},
+	sync::atomic,
+};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -52,13 +55,12 @@ pub fn _llseek(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let fds = fds_mutex.lock();
-	let file_mutex = fds.get_fd(fd as _)?.get_file();
-	let mut file = file_mutex.lock();
+	let file = fds.get_fd(fd as _)?.get_file();
 	// Compute the offset
 	let off = ((offset_high as u64) << 32) | (offset_low as u64);
 	let base = match whence {
 		SEEK_SET => 0,
-		SEEK_CUR => file.off,
+		SEEK_CUR => file.off.load(atomic::Ordering::Acquire),
 		SEEK_END => file.get_stat()?.size,
 		_ => return Err(errno!(EINVAL)),
 	};
@@ -66,6 +68,6 @@ pub fn _llseek(
 	// Write the result to the userspace
 	result.copy_to_user(off)?;
 	// Set the new offset
-	file.off = off;
+	file.off.store(off, atomic::Ordering::Release);
 	Ok(0)
 }

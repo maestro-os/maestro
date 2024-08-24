@@ -77,7 +77,7 @@ pub struct FileDescriptor {
 	/// The file descriptor's flags.
 	pub flags: i32,
 	/// The open file description associated with the file descriptor.
-	file: Arc<Mutex<File>>,
+	file: Arc<File>,
 }
 
 impl FileDescriptor {
@@ -89,7 +89,7 @@ impl FileDescriptor {
 	/// Arguments:
 	/// - `flags` is the set of flags associated with the file descriptor
 	/// - `location` is the location of the open file the file descriptor points to
-	pub fn new(flags: i32, file: Arc<Mutex<File>>) -> EResult<Self> {
+	pub fn new(flags: i32, file: Arc<File>) -> EResult<Self> {
 		Ok(Self {
 			flags,
 			file,
@@ -97,7 +97,7 @@ impl FileDescriptor {
 	}
 
 	/// Returns the open file associated with the descriptor.
-	pub fn get_file(&self) -> &Arc<Mutex<File>> {
+	pub fn get_file(&self) -> &Arc<File> {
 		&self.file
 	}
 
@@ -113,7 +113,7 @@ impl FileDescriptor {
 		let Some(file) = Arc::into_inner(self.file) else {
 			return Ok(());
 		};
-		file.into_inner().close()
+		file.close()
 	}
 }
 
@@ -172,11 +172,7 @@ impl FileDescriptorTable {
 	/// - `file` is the file associated with the file descriptor
 	///
 	/// The function returns the ID of the new file descriptor alongside a reference to it.
-	pub fn create_fd(
-		&mut self,
-		flags: i32,
-		file: Arc<Mutex<File>>,
-	) -> EResult<(u32, &FileDescriptor)> {
+	pub fn create_fd(&mut self, flags: i32, file: Arc<File>) -> EResult<(u32, &FileDescriptor)> {
 		let id = self.get_available_fd(None)?;
 		let fd = FileDescriptor::new(flags, file)?;
 		// Insert the FD
@@ -195,11 +191,7 @@ impl FileDescriptorTable {
 	/// - `file1` is the file associated with the second file descriptor
 	///
 	/// The function returns the IDs of the new file descriptors.
-	pub fn create_fd_pair(
-		&mut self,
-		file0: Arc<Mutex<File>>,
-		file1: Arc<Mutex<File>>,
-	) -> EResult<(u32, u32)> {
+	pub fn create_fd_pair(&mut self, file0: Arc<File>, file1: Arc<File>) -> EResult<(u32, u32)> {
 		let id0 = self.get_available_fd(None)?;
 		// Add a constraint to avoid using twice the same ID
 		let id1 = self.get_available_fd(Some(id0 + 1))?;
@@ -332,7 +324,7 @@ mod test {
 	}
 
 	/// Creates a dummy open file for testing purpose.
-	fn dummy_file() -> Arc<Mutex<File>> {
+	fn dummy_file() -> Arc<File> {
 		File::open_ops(Box::new(DummyNodeOps).unwrap(), 0).unwrap()
 	}
 

@@ -147,7 +147,7 @@ pub fn do_openat(
 	let file = File::open(file, flags & FLAGS_MASK)?;
 	// Truncate if necessary
 	if flags & O_TRUNC != 0 {
-		file.lock().truncate(0)?;
+		file.truncate(0)?;
 	}
 	// Create FD
 	let mut fd_flags = 0;

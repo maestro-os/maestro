@@ -120,8 +120,8 @@ pub fn do_mmap(
 	// TODO anon flag
 	// Get residence
 	let residence = match file_mutex {
-		Some(file_mutex) => {
-			let stat = file_mutex.lock().get_stat()?;
+		Some(file) => {
+			let stat = file.get_stat()?;
 			// Check the file is suitable
 			if stat.get_type() != Some(FileType::Regular) {
 				return Err(errno!(EACCES));
@@ -136,7 +136,7 @@ pub fn do_mmap(
 				return Err(errno!(EPERM));
 			}
 			MapResidence::File {
-				file: file_mutex,
+				file,
 				off: offset,
 			}
 		}

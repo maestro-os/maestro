@@ -25,7 +25,7 @@ use crate::{
 	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
 	syscall::Signal,
 };
-use core::{cmp::min, ffi::c_int};
+use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -46,21 +46,19 @@ pub fn write(
 	if len == 0 {
 		return Ok(0);
 	}
-	let file_mutex = fds.lock().get_fd(fd)?.get_file().clone();
-	// TODO find a way to avoid allocating here
-	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
-	// TODO determine why removing this causes a deadlock
-	cli();
-	let mut file = file_mutex.lock();
+	let file = fds.lock().get_fd(fd)?.get_file().clone();
 	// Validation
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
+	// TODO find a way to avoid allocating here
+	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
 	// Write file
-	let res = file.write(file.off, &buf_slice);
+	let off = file.off.load(atomic::Ordering::Acquire);
+	let res = file.write(off, &buf_slice);
 	match res {
 		Ok(len) => {
-			file.off += len as u64;
+			file.off.fetch_add(len as u64, atomic::Ordering::Release);
 			Ok(len)
 		}
 		Err(e) => {

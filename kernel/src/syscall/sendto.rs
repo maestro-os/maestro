@@ -49,8 +49,7 @@ pub fn sendto(
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let file_mutex = fds.lock().get_fd(sockfd)?.get_file().clone();
-	let file = file_mutex.lock();
+	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Get slices
 	let _buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;

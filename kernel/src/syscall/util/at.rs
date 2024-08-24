@@ -81,7 +81,7 @@ pub fn get_file<'p>(
 	rs.follow_link = follow_links;
 	// If not starting from current directory, get location
 	if dirfd != AT_FDCWD {
-		rs.cwd = Some(fds.get_fd(dirfd)?.get_file().lock().vfs_entry.clone());
+		rs.cwd = Some(fds.get_fd(dirfd)?.get_file().vfs_entry.clone());
 	}
 	if path.is_empty() {
 		// Validation

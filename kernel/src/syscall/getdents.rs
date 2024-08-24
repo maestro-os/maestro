@@ -29,6 +29,7 @@ use core::{
 	mem::{offset_of, size_of},
 	ops::Range,
 	ptr,
+	sync::atomic,
 };
 use utils::{
 	bytes::as_bytes,
@@ -74,9 +75,8 @@ pub fn do_getdents<E: Dirent>(
 	count: usize,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let file_mutex = fds.lock().get_fd(fd as _)?.get_file().clone();
-	let mut file = file_mutex.lock();
-	let mut off = file.off;
+	let file = fds.lock().get_fd(fd as _)?.get_file().clone();
+	let mut off = file.off.load(atomic::Ordering::Acquire);
 	let mut buf_off = 0;
 	// Iterate over entries and fill the buffer
 	for entry in file.iter_dir_entries(off) {
@@ -104,7 +104,7 @@ pub fn do_getdents<E: Dirent>(
 		buf_off += len;
 		off = next_off;
 	}
-	file.off = off;
+	file.off.store(off, atomic::Ordering::Release);
 	Ok(buf_off as _)
 }
 

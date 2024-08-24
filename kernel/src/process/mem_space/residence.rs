@@ -20,7 +20,7 @@
 
 use crate::{file::File, memory, memory::buddy};
 use core::{alloc::AllocError, ptr::NonNull};
-use utils::{collections::vec::Vec, errno::AllocResult, lock::Mutex, ptr::arc::Arc};
+use utils::{collections::vec::Vec, errno::AllocResult, ptr::arc::Arc};
 
 /// Type representing a memory page.
 pub type Page = [u8; memory::PAGE_SIZE];
@@ -91,7 +91,7 @@ pub enum MapResidence {
 	/// The mapping resides in a file.
 	File {
 		/// The mapped file.
-		file: Arc<Mutex<File>>,
+		file: Arc<File>,
 		/// The offset of the mapping in the file.
 		off: u64,
 	},

@@ -59,7 +59,7 @@ use utils::{
 	collections::string::String,
 	errno,
 	errno::{AllocResult, EResult},
-	lock::Mutex,
+	lock::{atomic::AtomicU64, Mutex},
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
 };
@@ -352,9 +352,9 @@ pub struct File {
 	/// The VFS entry of the file.
 	pub vfs_entry: Arc<vfs::Entry>,
 	/// Open file description flags.
-	pub flags: i32,
+	pub flags: Mutex<i32>,
 	/// The current offset in the file.
-	pub off: u64,
+	pub off: AtomicU64,
 }
 
 impl File {
@@ -363,33 +363,52 @@ impl File {
 	/// Arguments:
 	/// - `entry` is the VFS entry of the file.
 	/// - `flags` is the open file description's flags.
-	pub fn open(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Mutex<Self>>> {
+	pub fn open(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
 		let file = Self {
 			vfs_entry: entry,
-			flags,
-			off: 0,
+			flags: Mutex::new(flags),
+			off: Default::default(),
 		};
-		Ok(Arc::new(Mutex::new(file))?)
+		Ok(Arc::new(file)?)
 	}
 
 	/// Like [`Self::open`], but without an associated location.
-	pub fn open_ops(ops: Box<dyn NodeOps>, flags: i32) -> EResult<Arc<Mutex<Self>>> {
+	pub fn open_ops(ops: Box<dyn NodeOps>, flags: i32) -> EResult<Arc<Self>> {
 		let file = Self {
 			vfs_entry: Arc::new(vfs::Entry::new_ops(ops))?,
-			flags,
-			off: 0,
+			flags: Mutex::new(flags),
+			off: Default::default(),
 		};
-		Ok(Arc::new(Mutex::new(file))?)
+		Ok(Arc::new(file)?)
+	}
+
+	/// Returns the open file description's flags.
+	pub fn get_flags(&self) -> i32 {
+		*self.flags.lock()
+	}
+
+	/// Sets the open file description's flags.
+	///
+	/// If `user` is set to `true`, the function only touches [`O_APPEND`], [`O_ASYNC`],
+	/// [`O_DIRECT`], [`O_NOATIME`], and [`O_NONBLOCK`].
+	pub fn set_flags(&self, flags: i32, user: bool) {
+		let mut guard = self.flags.lock();
+		if user {
+			const TOUCHABLE: i32 = O_APPEND | O_ASYNC | O_DIRECT | O_NOATIME | O_NONBLOCK;
+			*guard = (*guard & !TOUCHABLE) | (flags & TOUCHABLE);
+		} else {
+			*guard = flags;
+		}
 	}
 
 	/// Tells whether the file is open for reading.
 	pub fn can_read(&self) -> bool {
-		matches!(self.flags & 0b11, O_RDONLY | O_RDWR)
+		matches!(self.get_flags() & 0b11, O_RDONLY | O_RDWR)
 	}
 
 	/// Tells whether the file is open for writing.
 	pub fn can_write(&self) -> bool {
-		matches!(self.flags & 0b11, O_WRONLY | O_RDWR)
+		matches!(self.get_flags() & 0b11, O_WRONLY | O_RDWR)
 	}
 
 	/// Returns the file's status.
@@ -500,7 +519,7 @@ impl File {
 	}
 
 	/// Polls the file with the given `mask`.
-	pub fn poll(&mut self, mask: u32) -> EResult<u32> {
+	pub fn poll(&self, mask: u32) -> EResult<u32> {
 		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
@@ -523,7 +542,7 @@ impl File {
 	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
-	pub fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+	pub fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
@@ -544,7 +563,7 @@ impl File {
 	}
 
 	/// Closes the file, removing it if removal has been deferred.
-	pub fn close(&mut self) -> EResult<()> {
+	pub fn close(&self) -> EResult<()> {
 		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
 		// If no more link remain to the file, remove the node
 		if stat.nlink == 0 {

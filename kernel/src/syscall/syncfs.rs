@@ -33,7 +33,6 @@ pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> ER
 		.lock()
 		.get_fd(fd)?
 		.get_file()
-		.lock()
 		.vfs_entry
 		.location
 		.get_mountpoint();
