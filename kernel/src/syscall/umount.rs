@@ -44,6 +44,6 @@ pub fn umount(Args(target): Args<SyscallString>, rs: ResolutionSettings) -> ERes
 	let target_path = PathBuf::try_from(target_slice)?;
 	let target_file = vfs::get_file_from_path(&target_path, &rs)?;
 	// Remove mountpoint
-	mountpoint::remove(&target_file.location)?;
+	mountpoint::remove(&target_file.node.location)?;
 	Ok(0)
 }

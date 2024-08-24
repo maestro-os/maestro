@@ -96,7 +96,9 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 			if !rs.access_profile.can_execute_file(&stat) {
 				return Err(errno!(EACCES));
 			}
-			file.ops.read_content(&file.location, 0, &mut shebang.buf)?
+			file.node
+				.ops
+				.read_content(&file.node.location, 0, &mut shebang.buf)?
 		};
 		// Parse shebang
 		shebang.end = shebang.buf[..len]

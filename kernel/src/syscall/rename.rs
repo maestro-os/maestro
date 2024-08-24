@@ -66,7 +66,7 @@ pub fn rename(
 	{
 		let new_name = new_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 		// If source and destination are on different mountpoints, error
-		if new_parent.location.mountpoint_id != old.location.mountpoint_id {
+		if new_parent.node.location.mountpoint_id != old.node.location.mountpoint_id {
 			return Err(errno!(EXDEV));
 		}
 		// TODO Check permissions if sticky bit is set

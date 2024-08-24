@@ -91,7 +91,7 @@ pub fn fstat64(
 
 		__st_dev_padding: 0,
 
-		st_ino: file.location.inode,
+		st_ino: file.node.location.inode,
 		st_mode: stat.mode,
 		st_nlink: stat.nlink as _,
 		st_uid: stat.uid,

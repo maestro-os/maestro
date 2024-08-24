@@ -62,8 +62,8 @@ pub fn utimensat(
 		return Err(errno!(ENOENT));
 	};
 	// Update timestamps
-	file.ops.set_stat(
-		&file.location,
+	file.node.ops.set_stat(
+		&file.node.location,
 		StatSet {
 			atime: Some(atime.to_nano() / 1000000000),
 			mtime: Some(mtime.to_nano() / 1000000000),

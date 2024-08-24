@@ -123,7 +123,9 @@ pub fn load(data: &[u8]) -> EResult<()> {
 		match file.get_type()? {
 			FileType::Regular | FileType::Link => {
 				let content = entry.get_content();
-				file.ops.write_content(&file.location, 0, content)?;
+				file.node
+					.ops
+					.write_content(&file.node.location, 0, content)?;
 			}
 			_ => {}
 		}

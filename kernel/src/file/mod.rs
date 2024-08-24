@@ -43,6 +43,7 @@ use crate::{
 		fs::{Filesystem, NodeOps},
 		path::PathBuf,
 		perm::{Gid, Uid},
+		vfs::Node,
 	},
 	syscall::ioctl,
 	time::{
@@ -374,12 +375,14 @@ impl File {
 
 	/// Like [`Self::open`], but without an associated location.
 	pub fn open_ops(ops: Box<dyn NodeOps>, flags: i32) -> EResult<Arc<Self>> {
-		let file = Self {
-			vfs_entry: Arc::new(vfs::Entry::new_ops(ops))?,
+		Ok(Arc::new(Self {
+			vfs_entry: Arc::new(vfs::Entry::from_node(Arc::new(Node {
+				location: FileLocation::nowhere(),
+				ops,
+			})?))?,
 			flags: Mutex::new(flags),
 			off: Default::default(),
-		};
-		Ok(Arc::new(file)?)
+		})?)
 	}
 
 	/// Returns the open file description's flags.
@@ -413,7 +416,10 @@ impl File {
 
 	/// Returns the file's status.
 	pub fn get_stat(&self) -> EResult<Stat> {
-		self.vfs_entry.ops.get_stat(&self.vfs_entry.location)
+		self.vfs_entry
+			.node
+			.ops
+			.get_stat(&self.vfs_entry.node.location)
 	}
 
 	/// Returns the type of the file.
@@ -426,7 +432,7 @@ impl File {
 	///
 	/// If the file does not have a buffer of type `B`, the function returns `None`.
 	pub fn get_buffer<B: BufferOps>(&self) -> Option<&B> {
-		let buf = (&self.vfs_entry.ops as &dyn Any).downcast_ref::<Buffer>()?;
+		let buf = (&self.vfs_entry.node.ops as &dyn Any).downcast_ref::<Buffer>()?;
 		(buf.0.deref() as &dyn Any).downcast_ref()
 	}
 
@@ -437,7 +443,11 @@ impl File {
 		if unlikely(!self.can_read()) {
 			return Err(errno!(EACCES));
 		}
-		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
+		let stat = self
+			.vfs_entry
+			.node
+			.ops
+			.get_stat(&self.vfs_entry.node.location)?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -451,8 +461,9 @@ impl File {
 			}
 			None => self
 				.vfs_entry
+				.node
 				.ops
-				.read_content(&self.vfs_entry.location, off, buf),
+				.read_content(&self.vfs_entry.node.location, off, buf),
 		}
 	}
 
@@ -463,7 +474,11 @@ impl File {
 		if unlikely(!self.can_write()) {
 			return Err(errno!(EACCES));
 		}
-		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
+		let stat = self
+			.vfs_entry
+			.node
+			.ops
+			.get_stat(&self.vfs_entry.node.location)?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -477,8 +492,9 @@ impl File {
 			}
 			None => self
 				.vfs_entry
+				.node
 				.ops
-				.write_content(&self.vfs_entry.location, off, buf),
+				.write_content(&self.vfs_entry.node.location, off, buf),
 		}
 	}
 
@@ -491,8 +507,9 @@ impl File {
 			return Err(errno!(EACCES));
 		}
 		self.vfs_entry
+			.node
 			.ops
-			.truncate_content(&self.vfs_entry.location, size)
+			.truncate_content(&self.vfs_entry.node.location, size)
 	}
 
 	/// Returns the directory entry with the given `name`.
@@ -501,8 +518,9 @@ impl File {
 	pub fn dir_entry_by_name<'n>(&self, name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
 		let e = self
 			.vfs_entry
+			.node
 			.ops
-			.entry_by_name(&self.vfs_entry.location, name)?;
+			.entry_by_name(&self.vfs_entry.node.location, name)?;
 		Ok(e.map(|(e, ..)| e))
 	}
 
@@ -520,7 +538,11 @@ impl File {
 
 	/// Polls the file with the given `mask`.
 	pub fn poll(&self, mask: u32) -> EResult<u32> {
-		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
+		let stat = self
+			.vfs_entry
+			.node
+			.ops
+			.get_stat(&self.vfs_entry.node.location)?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -532,7 +554,11 @@ impl File {
 				.ok_or_else(|| errno!(ENODEV))?;
 				dev.get_io().poll(mask)
 			}
-			None => self.vfs_entry.ops.poll(&self.vfs_entry.location, mask),
+			None => self
+				.vfs_entry
+				.node
+				.ops
+				.poll(&self.vfs_entry.node.location, mask),
 		}
 	}
 
@@ -543,7 +569,11 @@ impl File {
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
 	pub fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
+		let stat = self
+			.vfs_entry
+			.node
+			.ops
+			.get_stat(&self.vfs_entry.node.location)?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -557,27 +587,16 @@ impl File {
 			}
 			None => self
 				.vfs_entry
+				.node
 				.ops
-				.ioctl(&self.vfs_entry.location, request, argp),
+				.ioctl(&self.vfs_entry.node.location, request, argp),
 		}
 	}
 
-	/// Closes the file, removing it if removal has been deferred.
-	pub fn close(&self) -> EResult<()> {
-		let stat = self.vfs_entry.ops.get_stat(&self.vfs_entry.location)?;
-		// If no more link remain to the file, remove the node
-		if stat.nlink == 0 {
-			// FIXME: do only if this is the last reference to the dentry
-			self.vfs_entry.ops.remove_file(&self.vfs_entry.location)?;
-		}
-		Ok(())
-	}
-}
-
-impl Drop for File {
-	fn drop(&mut self) {
-		// TODO: kernel log on error?
-		let _ = self.close();
+	/// Closes the file, removing it the underlying node if no link remain and this was the last
+	/// use of it.
+	pub fn close(self) -> EResult<()> {
+		vfs::Entry::release(self.vfs_entry)
 	}
 }
 
@@ -728,8 +747,9 @@ impl<'f> Iterator for DirEntryIterator<'f> {
 		let res = self
 			.dir
 			.vfs_entry
+			.node
 			.ops
-			.next_entry(&self.dir.vfs_entry.location, self.cursor)
+			.next_entry(&self.dir.vfs_entry.node.location, self.cursor)
 			.transpose()?;
 		match res {
 			Ok((entry, off)) => {
@@ -766,9 +786,10 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 	let mp = mp.lock();
 	let root_location = mp.get_root_location();
 	let ops = mp.get_filesystem().node_from_inode(root_location.inode)?;
-	let mut ent = vfs::Entry::new_ops(ops);
-	ent.location = root_location;
-	let ent = Arc::new(ent)?;
+	let ent = Arc::new(vfs::Entry::from_node(Arc::new(Node {
+		location: root_location,
+		ops,
+	})?))?;
 	unsafe {
 		vfs::ROOT.init(ent);
 	}

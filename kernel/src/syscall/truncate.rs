@@ -47,7 +47,9 @@ pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<u
 	if !rs.access_profile.can_write_file(&stat) {
 		return Err(errno!(EACCES));
 	}
-	file.ops.truncate_content(&file.location, length as _)?;
+	file.node
+		.ops
+		.truncate_content(&file.node.location, length as _)?;
 
 	Ok(0)
 }

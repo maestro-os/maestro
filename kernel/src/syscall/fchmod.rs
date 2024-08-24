@@ -43,8 +43,8 @@ pub fn fchmod(
 	if !ap.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.ops.set_stat(
-		&file.location,
+	file.node.ops.set_stat(
+		&file.node.location,
 		StatSet {
 			mode: Some(mode & 0o7777),
 			..Default::default()

@@ -68,7 +68,7 @@ pub fn mount(
 		Some(fs_type),
 		mountflags,
 		target_path,
-		target_file.location.clone(),
+		target_file.node.location.clone(),
 	)?;
 	Ok(0)
 }
