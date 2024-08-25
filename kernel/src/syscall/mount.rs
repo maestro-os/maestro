@@ -20,7 +20,10 @@
 
 use crate::{
 	file::{
-		fs, mountpoint, mountpoint::MountSource, path::PathBuf, vfs, vfs::ResolutionSettings,
+		fs,
+		path::PathBuf,
+		vfs,
+		vfs::{mountpoint, mountpoint::MountSource, ResolutionSettings},
 		FileType,
 	},
 	process::{

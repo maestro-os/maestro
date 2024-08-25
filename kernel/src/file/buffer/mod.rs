@@ -22,7 +22,7 @@ pub mod pipe;
 pub mod socket;
 
 use crate::{
-	file::{blocking::WaitQueue, fs::NodeOps, FileLocation, Stat},
+	file::{fs::NodeOps, wait_queue::WaitQueue, FileLocation, Stat},
 	syscall::ioctl::Request,
 };
 use core::{alloc::AllocError, any::Any, ffi::c_void};

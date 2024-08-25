@@ -21,24 +21,22 @@
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' directly.
 
+pub mod mountpoint;
+pub mod node;
+
 use super::{
-	mountpoint,
 	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
 	FileLocation, FileType, Stat,
 };
-use crate::{
-	file::{fs::NodeOps, path::PathBuf},
-	limits,
-	process::Process,
-};
+use crate::{file::path::PathBuf, limits, process::Process};
 use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
 };
+use node::Node;
 use utils::{
-	boxed::Box,
 	collections::{hashmap::HashSet, string::String, vec::Vec},
 	errno,
 	errno::EResult,
@@ -46,95 +44,6 @@ use utils::{
 	ptr::arc::Arc,
 	vec,
 };
-
-/// A filesystem node, cached by the VFS.
-#[derive(Debug)]
-pub struct Node {
-	/// The location of the file on a filesystem.
-	pub location: FileLocation,
-	/// Handle for node operations.
-	pub ops: Box<dyn NodeOps>,
-}
-
-impl Node {
-	/// Releases the node, removing it from the disk if this is the last reference to it.
-	pub fn release(this: Arc<Self>) -> EResult<()> {
-		// Lock to avoid race condition later
-		let mut used_nodes = USED_NODES.lock();
-		// current instance + the one in `USED_NODE` = `2`
-		if Arc::strong_count(&this) > 2 {
-			return Ok(());
-		}
-		used_nodes.remove(&this.location);
-		// The reference count is now `1`
-		let Some(node) = Arc::into_inner(this) else {
-			// TODO log?
-			return Ok(());
-		};
-		// If there is no hard link left to the node, remove it
-		let stat = node.ops.get_stat(&node.location)?;
-		if stat.nlink == 0 {
-			node.ops.remove_file(&node.location)?;
-		}
-		Ok(())
-	}
-}
-
-/// An entry in the nodes cache.
-///
-/// The [`Hash`] and [`PartialEq`] traits are forwarded to the entry's location.
-#[derive(Debug)]
-struct NodeEntry(Arc<Node>);
-
-impl Borrow<FileLocation> for NodeEntry {
-	fn borrow(&self) -> &FileLocation {
-		&self.0.location
-	}
-}
-
-impl Eq for NodeEntry {}
-
-impl PartialEq for NodeEntry {
-	fn eq(&self, other: &Self) -> bool {
-		self.0.location.eq(&other.0.location)
-	}
-}
-
-impl Hash for NodeEntry {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.0.location.hash(state)
-	}
-}
-
-/// The list of nodes current in use.
-static USED_NODES: Mutex<HashSet<NodeEntry>> = Mutex::new(HashSet::new());
-
-/// Looks in the nodes cache for the node with the given location. If not in cache, the node is
-/// created and inserted.
-///
-/// If the node to be added in cache is a mountpoint `location` and `ops` are modified accordingly.
-fn get_node(mut location: FileLocation, mut ops: Box<dyn NodeOps>) -> EResult<Arc<Node>> {
-	let mut used_nodes = USED_NODES.lock();
-	let node = used_nodes.get(&location).map(|e| e.0.clone());
-	match node {
-		Some(node) => Ok(node),
-		// The node is not in cache. Insert it
-		None => {
-			// If this is a mountpoint, jump to its root
-			if let Some(mp) = mountpoint::from_location(&location) {
-				location = mp.get_root_location();
-				ops = mp.fs.node_from_inode(location.inode)?;
-			}
-			// Create and insert node
-			let node = Arc::new(Node {
-				location,
-				ops,
-			})?;
-			used_nodes.insert(NodeEntry(node.clone()))?;
-			Ok(node)
-		}
-	}
-}
 
 /// A child of a VFS entry.
 ///
@@ -230,7 +139,7 @@ impl Entry {
 		Ok(buf)
 	}
 
-	/// Returns an iterator of entries, starting from `this`, to the root of the VFS.
+	/// Returns the absolute path to reach the entry.
 	pub fn get_path(this: Arc<Self>) -> EResult<PathBuf> {
 		let mut buf = vec![0u8; limits::PATH_MAX]?;
 		let mut off = limits::PATH_MAX;
@@ -390,7 +299,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		mountpoint_id: lookup_dir.node.location.mountpoint_id,
 		inode: entry.inode,
 	};
-	let node = get_node(location, ops)?;
+	let node = node::get(location, ops)?;
 	// Create entry and insert in parent
 	let ent = Arc::new(Entry {
 		name: String::try_from(name)?,
@@ -642,7 +551,7 @@ pub fn create_file(
 		mountpoint_id: parent.node.location.mountpoint_id,
 		inode,
 	};
-	let node = get_node(location, ops)?;
+	let node = node::get(location, ops)?;
 	// Create entry and insert it in parent
 	let entry = Arc::new(Entry {
 		name: String::try_from(name)?,

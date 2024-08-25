@@ -30,7 +30,7 @@ pub mod vga;
 
 use crate::{
 	device::serial,
-	file::blocking::WaitQueue,
+	file::wait_queue::WaitQueue,
 	memory::vmem,
 	process::{pid::Pid, signal::Signal, Process},
 	tty::{

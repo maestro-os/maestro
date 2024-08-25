@@ -23,9 +23,8 @@ use crate::{
 	device::DeviceID,
 	file::{
 		fd::FileDescriptorTable,
-		mountpoint::MountSource,
 		path::PathBuf,
-		vfs::{ResolutionSettings, Resolved},
+		vfs::{mountpoint::MountSource, ResolutionSettings, Resolved},
 	},
 	process::{
 		mem_space::copy::{SyscallPtr, SyscallString},

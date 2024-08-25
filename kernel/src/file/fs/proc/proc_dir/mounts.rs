@@ -21,7 +21,8 @@
 use crate::{
 	file::{
 		fs::{proc::get_proc_owner, NodeOps},
-		mountpoint, FileLocation, FileType, Stat,
+		vfs::mountpoint,
+		FileLocation, FileType, Stat,
 	},
 	format_content,
 	process::pid::Pid,

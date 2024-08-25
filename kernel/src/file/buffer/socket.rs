@@ -20,7 +20,7 @@
 
 use super::BufferOps;
 use crate::{
-	file::{blocking::WaitQueue, fs::NodeOps, FileLocation, FileType, Stat},
+	file::{fs::NodeOps, wait_queue::WaitQueue, FileLocation, FileType, Stat},
 	net::{osi, SocketDesc, SocketDomain, SocketType},
 };
 use core::{

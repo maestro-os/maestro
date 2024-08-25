@@ -24,16 +24,14 @@
 //! The root filesystem is passed to the kernel as an argument on boot.
 //! Other filesystems are mounted into subdirectories.
 
-pub mod blocking;
 pub mod buffer;
 pub mod fd;
 pub mod fs;
-pub mod mapping;
-pub mod mountpoint;
 pub mod path;
 pub mod perm;
 pub mod util;
 pub mod vfs;
+pub mod wait_queue;
 
 use crate::{
 	device,
@@ -43,7 +41,6 @@ use crate::{
 		fs::{Filesystem, NodeOps},
 		path::PathBuf,
 		perm::{Gid, Uid},
-		vfs::Node,
 	},
 	syscall::ioctl,
 	time::{
@@ -53,7 +50,6 @@ use crate::{
 	},
 };
 use core::{any::Any, ffi::c_void, intrinsics::unlikely, ops::Deref};
-use mountpoint::{MountPoint, MountSource};
 use perm::AccessProfile;
 use utils::{
 	boxed::Box,
@@ -63,6 +59,11 @@ use utils::{
 	lock::{atomic::AtomicU64, Mutex},
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
+};
+use vfs::{
+	mountpoint,
+	mountpoint::{MountPoint, MountSource},
+	node::Node,
 };
 
 /// A filesystem node ID.

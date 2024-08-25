@@ -21,10 +21,9 @@
 
 use crate::{
 	file::{
-		mountpoint,
 		path::{Path, PathBuf},
 		vfs,
-		vfs::ResolutionSettings,
+		vfs::{mountpoint, ResolutionSettings},
 	},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,

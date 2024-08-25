@@ -18,16 +18,17 @@
 
 //! A mount point is a directory in which a filesystem is mounted.
 
-use super::{
-	fs,
-	fs::{Filesystem, FilesystemType},
-	path::{Path, PathBuf},
-	vfs, FileLocation, FileType,
-};
 use crate::{
 	device,
 	device::{DeviceID, DeviceType},
-	file::vfs::ResolutionSettings,
+	file::{
+		fs,
+		fs::{Filesystem, FilesystemType},
+		path::{Path, PathBuf},
+		vfs,
+		vfs::ResolutionSettings,
+		FileLocation, FileType,
+	},
 };
 use core::fmt;
 use utils::{
@@ -35,7 +36,7 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	lock::Mutex,
-	ptr::arc::{Arc, Weak},
+	ptr::arc::Arc,
 	TryClone,
 };
 
@@ -133,7 +134,7 @@ impl fmt::Display for MountSource {
 }
 
 /// The list of loaded filesystems associated with their respective sources.
-static FILESYSTEMS: Mutex<HashMap<MountSource, Weak<dyn Filesystem>>> = Mutex::new(HashMap::new());
+static FILESYSTEMS: Mutex<HashMap<MountSource, Arc<dyn Filesystem>>> = Mutex::new(HashMap::new());
 
 /// Loads a filesystem.
 ///
@@ -170,7 +171,7 @@ fn load_fs(
 	let fs = fs_type.load_filesystem(io, path, readonly)?;
 	// Insert new filesystem into filesystems list
 	let mut filesystems = FILESYSTEMS.lock();
-	filesystems.insert(source, Arc::downgrade(&fs))?;
+	filesystems.insert(source, fs.clone())?;
 	Ok(fs)
 }
 
@@ -178,7 +179,7 @@ fn load_fs(
 ///
 /// If the filesystem isn't loaded, the function returns `None`.
 pub fn get_fs(source: &MountSource) -> Option<Arc<dyn Filesystem>> {
-	FILESYSTEMS.lock().get(source).and_then(Weak::upgrade)
+	FILESYSTEMS.lock().get(source).cloned()
 }
 
 /// A mount point, allowing to attach a filesystem to a directory on the VFS.
@@ -259,8 +260,12 @@ impl Drop for MountPoint {
 		let Some(fs) = filesystems.get(&self.source) else {
 			return;
 		};
-		// Remove the associated filesystem if this was the last reference to it
-		if fs.upgrade().is_none() {
+		/*
+		 * Remove the associated filesystem if this was the last reference to it.
+		 *
+		 * the current instance + FILESYSTEMS = `2`
+		 */
+		if Arc::strong_count(fs) <= 2 {
 			filesystems.remove(&self.source);
 		}
 	}
