@@ -683,23 +683,6 @@ impl<K: Eq + Hash, H: Default + Hasher> HashSet<K, H> {
 		}
 	}
 
-	/// Returns a mutable reference to the value matching `value`.
-	///
-	/// If the key isn't present, the function return `None`.
-	pub fn get_mut<Q: ?Sized + Hash + Eq>(&mut self, value: &Q) -> Option<&mut K>
-	where
-		K: Borrow<Q>,
-	{
-		let hash = hash::<_, H>(value);
-		let (slot_off, occupied) = self.0.inner.find_slot(value, hash, false)?;
-		if occupied {
-			let slot = self.0.inner.get_slot_mut(slot_off);
-			Some(unsafe { slot.key.assume_init_mut() })
-		} else {
-			None
-		}
-	}
-
 	/// Tells whether the hash set contains the given `value`.
 	#[inline]
 	pub fn contains<Q: ?Sized + Hash + Eq>(&self, value: &Q) -> bool

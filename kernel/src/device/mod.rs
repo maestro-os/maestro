@@ -92,7 +92,7 @@ impl fmt::Display for DeviceType {
 }
 
 /// A device type, major and minor, who act as a unique ID for a device.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct DeviceID {
 	/// The type of the device.
 	pub dev_type: DeviceType,
@@ -335,15 +335,11 @@ static DEVICES: Mutex<HashMap<DeviceID, Arc<Device>>> = Mutex::new(HashMap::new(
 ///
 /// If files management is initialized, the function creates the associated device file.
 pub fn register(device: Device) -> EResult<()> {
-	let id = device.id.clone();
+	let id = device.id;
 	let path = device.get_path().to_path_buf()?;
 	let mode = device.get_mode();
 	// Insert
-	{
-		let dev = Arc::new(device)?;
-		let mut devs = DEVICES.lock();
-		devs.insert(id.clone(), dev)?;
-	}
+	DEVICES.lock().insert(id, Arc::new(device)?)?;
 	// Create file if files management has been initialized
 	if file::is_init() {
 		Device::create_file(&id, &path, mode)?;
@@ -406,13 +402,12 @@ pub(crate) fn stage2() -> EResult<()> {
 	default::create().unwrap_or_else(|e| panic!("Failed to create default devices! ({e})"));
 	// Collecting all data to create device files is necessary to avoid a deadlock, because disk
 	// accesses require locking the filesystem's device
-	let devs_info = {
-		let devs = DEVICES.lock();
-		devs.iter()
-			.map(|(id, dev)| Ok((id.clone(), dev.path.try_clone()?, dev.mode)))
-			.collect::<AllocResult<CollectResult<Vec<_>>>>()?
-			.0?
-	};
+	let devs_info = DEVICES
+		.lock()
+		.iter()
+		.map(|(id, dev)| Ok((*id, dev.path.try_clone()?, dev.mode)))
+		.collect::<AllocResult<CollectResult<Vec<_>>>>()?
+		.0?;
 	for (id, path, mode) in devs_info {
 		Device::create_file(&id, &path, mode)?;
 	}

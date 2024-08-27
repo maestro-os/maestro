@@ -253,10 +253,6 @@ impl Filesystem for ProcFS {
 		b"proc"
 	}
 
-	fn is_readonly(&self) -> bool {
-		true
-	}
-
 	fn use_cache(&self) -> bool {
 		false
 	}

@@ -326,8 +326,6 @@ pub trait NodeOps: Debug {
 pub trait Filesystem: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
-	/// Tells whether the filesystem is mounted in read-only.
-	fn is_readonly(&self) -> bool;
 	/// Tells the kernel can cache the filesystem's files in memory.
 	fn use_cache(&self) -> bool;
 	/// Returns the root inode of the filesystem.

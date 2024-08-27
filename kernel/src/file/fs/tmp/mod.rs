@@ -37,6 +37,7 @@ use crate::{
 };
 use core::{
 	cmp::{max, min},
+	intrinsics::unlikely,
 	mem::size_of,
 };
 use utils::{
@@ -327,7 +328,7 @@ impl NodeOps for Node {
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
 		let fs = parent.get_filesystem().unwrap();
 		let fs = downcast_fs::<TmpFS>(&*fs);
-		if fs.is_readonly() {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		let entry_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
@@ -365,7 +366,7 @@ impl NodeOps for Node {
 	fn link(&self, parent: &FileLocation, name: &[u8], inode: INode) -> EResult<()> {
 		let fs = parent.get_filesystem().unwrap();
 		let fs = downcast_fs::<TmpFS>(&*fs);
-		if fs.is_readonly() {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		// Get node
@@ -396,7 +397,7 @@ impl NodeOps for Node {
 	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
 		let fs = parent.get_filesystem().unwrap();
 		let fs = downcast_fs::<TmpFS>(&*fs);
-		if fs.is_readonly() {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		let mut parent_inner = self.0.lock();
@@ -438,7 +439,7 @@ impl NodeOps for Node {
 	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<TmpFS>(&*fs);
-		if fs.is_readonly() {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		let mut nodes = fs.nodes.lock();
@@ -500,10 +501,6 @@ impl TmpFS {
 impl Filesystem for TmpFS {
 	fn get_name(&self) -> &[u8] {
 		b"tmpfs"
-	}
-
-	fn is_readonly(&self) -> bool {
-		self.readonly
 	}
 
 	fn use_cache(&self) -> bool {

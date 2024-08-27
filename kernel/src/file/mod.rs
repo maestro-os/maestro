@@ -39,7 +39,6 @@ use crate::{
 	file::{
 		buffer::{Buffer, BufferOps},
 		fs::{Filesystem, NodeOps},
-		path::PathBuf,
 		perm::{Gid, Uid},
 	},
 	syscall::ioctl,
@@ -767,7 +766,7 @@ impl<'f> Iterator for DirEntryIterator<'f> {
 pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 	fs::register_defaults()?;
 	// Create the root mountpoint
-	let mount_source = match root {
+	let source = match root {
 		Some((major, minor)) => MountSource::Device(DeviceID {
 			dev_type: DeviceType::Block,
 			major,
@@ -775,22 +774,10 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 		}),
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	let mp = mountpoint::create(
-		mount_source,
-		None,
-		0,
-		PathBuf::root()?,
-		FileLocation::nowhere(),
-	)?;
+	let root = mountpoint::create_root(source)?;
 	// Init the VFS's root entry.
-	let root_location = mp.get_root_location();
-	let ops = mp.fs.node_from_inode(root_location.inode)?;
-	let ent = Arc::new(vfs::Entry::from_node(Arc::new(Node {
-		location: root_location,
-		ops,
-	})?))?;
 	unsafe {
-		vfs::ROOT.init(ent);
+		vfs::ROOT.init(root);
 	}
 	Ok(())
 }

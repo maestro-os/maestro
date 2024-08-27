@@ -66,12 +66,6 @@ pub fn mount(
 	}
 	// TODO Use `data`
 	// Create mountpoint
-	mountpoint::create(
-		mount_source,
-		Some(fs_type),
-		mountflags,
-		target_path,
-		target_file.node.location.clone(),
-	)?;
+	mountpoint::create(mount_source, Some(fs_type), mountflags, target_file)?;
 	Ok(0)
 }

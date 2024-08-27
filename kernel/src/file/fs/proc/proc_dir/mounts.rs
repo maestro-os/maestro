@@ -21,6 +21,7 @@
 use crate::{
 	file::{
 		fs::{proc::get_proc_owner, NodeOps},
+		vfs,
 		vfs::mountpoint,
 		FileLocation, FileType, Stat,
 	},
@@ -58,15 +59,18 @@ impl NodeOps for Mounts {
 
 impl fmt::Display for Mounts {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let mountpoints = mountpoint::MOUNT_POINTS.lock();
-		for (_, mp) in mountpoints.iter() {
+		let mps = mountpoint::MOUNT_POINTS.lock();
+		for (_, mp) in mps.iter() {
+			let Ok(target) = vfs::Entry::get_path(&mp.root_entry) else {
+				continue;
+			};
 			let fs_type = mp.fs.get_name();
 			let flags = "TODO"; // TODO
 			writeln!(
 				f,
 				"{source} {target} {fs_type} {flags} 0 0",
 				source = mp.source,
-				target = mp.target_path,
+				target = target,
 				fs_type = DisplayableStr(fs_type)
 			)?;
 		}

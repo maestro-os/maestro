@@ -309,7 +309,7 @@ impl NodeOps for Ext2NodeOps {
 	fn write_content(&self, loc: &FileLocation, off: u64, buf: &[u8]) -> EResult<usize> {
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		if unlikely(fs.is_readonly()) {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if loc.inode < 1 {
@@ -330,7 +330,7 @@ impl NodeOps for Ext2NodeOps {
 	fn truncate_content(&self, loc: &FileLocation, size: u64) -> EResult<()> {
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		if unlikely(fs.is_readonly()) {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if loc.inode < 1 {
@@ -394,7 +394,7 @@ impl NodeOps for Ext2NodeOps {
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
 		let fs = parent.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		if unlikely(fs.is_readonly()) {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if parent.inode < 1 {
@@ -480,7 +480,7 @@ impl NodeOps for Ext2NodeOps {
 	fn link(&self, parent: &FileLocation, name: &[u8], target: INode) -> EResult<()> {
 		let fs = parent.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		if unlikely(fs.is_readonly()) {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if parent.inode < 1 {
@@ -525,7 +525,7 @@ impl NodeOps for Ext2NodeOps {
 	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
 		let fs = parent.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		if unlikely(fs.is_readonly()) {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if parent.inode < 1 {
@@ -565,7 +565,7 @@ impl NodeOps for Ext2NodeOps {
 	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		if unlikely(fs.is_readonly()) {
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if loc.inode < 1 {
@@ -1072,10 +1072,6 @@ impl Ext2Fs {
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
-	}
-
-	fn is_readonly(&self) -> bool {
-		self.readonly
 	}
 
 	fn use_cache(&self) -> bool {

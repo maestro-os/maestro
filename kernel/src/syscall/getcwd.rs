@@ -36,8 +36,7 @@ pub fn getcwd(
 	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
 	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	let cwd = proc.lock().cwd.clone();
-	let cwd = vfs::Entry::get_path(cwd)?;
+	let cwd = vfs::Entry::get_path(&proc.lock().cwd)?;
 	if unlikely(size < cwd.len() + 1) {
 		return Err(errno!(ERANGE));
 	}

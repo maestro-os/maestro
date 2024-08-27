@@ -47,10 +47,6 @@ pub fn rename(
 	let old_name = old_path.file_name().ok_or_else(|| errno!(ENOENT))?;
 	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
 	let old = vfs::get_file_from_path(&old_path, &rs)?;
-	// Cannot rename mountpoint
-	if old.is_mountpoint() {
-		return Err(errno!(EBUSY));
-	}
 	// Get new file
 	let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let new_path = PathBuf::try_from(newpath)?;

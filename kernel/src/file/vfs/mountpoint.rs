@@ -26,7 +26,7 @@ use crate::{
 		fs::{Filesystem, FilesystemType},
 		path::{Path, PathBuf},
 		vfs,
-		vfs::ResolutionSettings,
+		vfs::{node, node::Node, EntryChild, ResolutionSettings},
 		FileLocation, FileType,
 	},
 };
@@ -65,9 +65,6 @@ pub const FLAG_SILENT: u32 = 0b001000000000;
 pub const FLAG_STRICTATIME: u32 = 0b010000000000;
 /// Makes writes on this filesystem synchronous.
 pub const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
-
-// TODO When removing a mountpoint, return an error if another mountpoint is
-// present in a subdir
 
 /// Value specifying the device from which a filesystem is mounted.
 #[derive(Debug, Eq, Hash, PartialEq)]
@@ -114,7 +111,7 @@ impl MountSource {
 impl TryClone for MountSource {
 	fn try_clone(&self) -> AllocResult<Self> {
 		Ok(match self {
-			Self::Device(id) => Self::Device(id.clone()),
+			Self::Device(id) => Self::Device(*id),
 			Self::NoDev(name) => Self::NoDev(name.try_clone()?),
 		})
 	}
@@ -134,52 +131,48 @@ impl fmt::Display for MountSource {
 }
 
 /// The list of loaded filesystems associated with their respective sources.
-static FILESYSTEMS: Mutex<HashMap<MountSource, Arc<dyn Filesystem>>> = Mutex::new(HashMap::new());
+static FILESYSTEMS: Mutex<HashMap<DeviceID, Arc<dyn Filesystem>>> = Mutex::new(HashMap::new());
 
-/// Loads a filesystem.
+/// Returns the loaded filesystem with the given source `source`. If not loaded, the function loads
+/// it.
 ///
 /// Arguments:
 /// - `source` is the source of the mountpoint.
 /// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automatically.
-/// - `path` is the path to the directory on which the filesystem is mounted.
+/// - `target_path` is the path at which the filesystem is to be mounted.
 /// - `readonly` tells whether the filesystem is mount in readonly.
-///
-/// On success, the function returns the loaded filesystem.
-fn load_fs(
-	source: MountSource,
+fn get_fs(
+	source: &MountSource,
 	fs_type: Option<Arc<dyn FilesystemType>>,
-	path: PathBuf,
+	target_path: PathBuf,
 	readonly: bool,
 ) -> EResult<Arc<dyn Filesystem>> {
-	let (io, fs_type) = match &source {
+	match source {
 		MountSource::Device(dev_id) => {
+			let mut filesystems = FILESYSTEMS.lock();
+			// If the filesystem is already loaded, return it
+			if let Some(fs) = filesystems.get(dev_id) {
+				return Ok(fs.clone());
+			}
+			// Else, load it
 			let dev = device::get(dev_id).ok_or_else(|| errno!(ENODEV))?;
 			let fs_type = match fs_type {
 				Some(f) => f,
 				None => fs::detect(Arc::as_ref(dev.get_io()))?,
 			};
-			(Some(dev.get_io().clone()), fs_type)
+			let fs = fs_type.load_filesystem(Some(dev.get_io().clone()), target_path, readonly)?;
+			// Insert new filesystem into filesystems list
+			filesystems.insert(*dev_id, fs.clone())?;
+			Ok(fs)
 		}
 		MountSource::NoDev(name) => {
 			let fs_type = match fs_type {
 				Some(f) => f,
 				None => fs::get_type(name).ok_or_else(|| errno!(ENODEV))?,
 			};
-			(None, fs_type)
+			fs_type.load_filesystem(None, target_path, readonly)
 		}
-	};
-	let fs = fs_type.load_filesystem(io, path, readonly)?;
-	// Insert new filesystem into filesystems list
-	let mut filesystems = FILESYSTEMS.lock();
-	filesystems.insert(source, fs.clone())?;
-	Ok(fs)
-}
-
-/// Returns the loaded filesystem with the given source `source`.
-///
-/// If the filesystem isn't loaded, the function returns `None`.
-pub fn get_fs(source: &MountSource) -> Option<Arc<dyn Filesystem>> {
-	FILESYSTEMS.lock().get(source).cloned()
+	}
 }
 
 /// A mount point, allowing to attach a filesystem to a directory on the VFS.
@@ -195,56 +188,11 @@ pub struct MountPoint {
 	/// The filesystem associated with the mountpoint.
 	pub fs: Arc<dyn Filesystem>,
 
-	/// The path to the mount directory.
-	pub target_path: PathBuf,
-	/// The location of the mount directory on the parent filesystem.
-	pub target_location: FileLocation,
+	/// The root entry of the mountpoint.
+	pub root_entry: Arc<vfs::Entry>,
 }
 
 impl MountPoint {
-	/// Creates a new instance.
-	///
-	/// Arguments:
-	/// - `id` is the ID of the mountpoint.
-	/// - `source` is the source of the mountpoint.
-	/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it
-	///   automatically.
-	/// - `flags` are the mount flags.
-	/// - `target_path` is the path to the mount directory.
-	/// - `target_location` is the location of the mount directory on the parent filesystem.
-	fn new(
-		id: u32,
-		source: MountSource,
-		fs_type: Option<Arc<dyn FilesystemType>>,
-		flags: u32,
-		target_path: PathBuf,
-		target_location: FileLocation,
-	) -> EResult<Self> {
-		// Tells whether the filesystem has to be mounted as read-only
-		let readonly = flags & FLAG_RDONLY != 0;
-		let fs = match get_fs(&source) {
-			// Filesystem is loaded
-			Some(fs) => fs,
-			// Filesystem is not loaded: load it
-			None => load_fs(
-				source.try_clone()?,
-				fs_type,
-				target_path.try_clone()?,
-				readonly,
-			)?,
-		};
-		Ok(Self {
-			id,
-			flags,
-
-			source,
-			fs,
-
-			target_path,
-			target_location,
-		})
-	}
-
 	/// Returns the location of the root directory of the mounted filesystem.
 	pub fn get_root_location(&self) -> FileLocation {
 		FileLocation {
@@ -256,8 +204,12 @@ impl MountPoint {
 
 impl Drop for MountPoint {
 	fn drop(&mut self) {
+		// If not associated with a device, stop
+		let MountSource::Device(dev_id) = &self.source else {
+			return;
+		};
 		let mut filesystems = FILESYSTEMS.lock();
-		let Some(fs) = filesystems.get(&self.source) else {
+		let Some(fs) = filesystems.get(dev_id) else {
 			return;
 		};
 		/*
@@ -266,126 +218,140 @@ impl Drop for MountPoint {
 		 * the current instance + FILESYSTEMS = `2`
 		 */
 		if Arc::strong_count(fs) <= 2 {
-			filesystems.remove(&self.source);
+			filesystems.remove(dev_id);
 		}
 	}
 }
 
 /// The list of mountpoints with their respective ID.
 pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<MountPoint>>> = Mutex::new(HashMap::new());
-/// A map from mount locations to mountpoint IDs.
-pub static LOC_TO_ID: Mutex<HashMap<FileLocation, u32>> = Mutex::new(HashMap::new());
+
+/// Creates the root mountpoint and returns the newly created root entry of the VFS.
+pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
+	let fs = get_fs(&source, None, PathBuf::root()?, false)?;
+	// Get filesystem root node
+	let root_inode = fs.get_root_inode();
+	let node = node::insert(Node {
+		location: FileLocation {
+			mountpoint_id: 0,
+			inode: root_inode,
+		},
+		ops: fs.node_from_inode(root_inode)?,
+	})?;
+	// Create an entry for the root of the mountpoint
+	let root_entry = Arc::new(vfs::Entry {
+		name: String::new(),
+		parent: None,
+		children: Default::default(),
+		node,
+	})?;
+	// Create mountpoint
+	let mountpoint = Arc::new(MountPoint {
+		id: 0,
+		flags: 0,
+
+		source,
+		fs,
+
+		root_entry: root_entry.clone(),
+	})?;
+	MOUNT_POINTS.lock().insert(0, mountpoint)?;
+	Ok(root_entry)
+}
 
 /// Creates a new mountpoint.
 ///
 /// If a mountpoint is already present at the same path, the function fails with [`errno::EINVAL`].
 ///
 /// Arguments:
-/// - `source` is the source of the mountpoint.
-/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automatically.
-/// - `flags` are the mount flags.
-/// - `target_path` is the path on which the filesystem is to be mounted.
-/// - `target_location` is the location on which the filesystem is to be mounted on the parent
-///   filesystem.
+/// - `source` is the source of the mountpoint
+/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automatically
+/// - `flags` are the mount flags
+/// - `target` is the target directory
 ///
 /// The function returns the ID of the newly created mountpoint.
 pub fn create(
 	source: MountSource,
 	fs_type: Option<Arc<dyn FilesystemType>>,
 	flags: u32,
-	target_path: PathBuf,
-	target_location: FileLocation,
-) -> EResult<Arc<MountPoint>> {
-	// TODO clean
-	// PATH_TO_ID is locked first and during the whole function to prevent a race condition between
-	// the locks of MOUNT_POINTS
-	let mut path_to_id = LOC_TO_ID.lock();
-	// If a mountpoint is already present at this location, error
-	if path_to_id.get(&target_location).is_some() {
-		return Err(errno!(EINVAL));
-	}
-
+	target: Arc<vfs::Entry>,
+) -> EResult<()> {
+	// Get filesystem
+	let target_path = vfs::Entry::get_path(&target)?;
+	let fs = get_fs(&source, fs_type, target_path, flags & FLAG_RDONLY != 0)?;
+	let mut mps = MOUNT_POINTS.lock();
+	// Mountpoint ID allocation
 	// TODO improve
-	// ID allocation
-	let id = {
-		MOUNT_POINTS
-			.lock()
-			.iter()
-			.map(|(i, _)| *i + 1)
-			.max()
-			.unwrap_or(0)
-	};
+	let id = mps.iter().map(|(i, _)| *i + 1).max().unwrap_or(0);
+	// Get filesystem root node
+	let root_inode = fs.get_root_inode();
+	let node = node::insert(Node {
+		location: FileLocation {
+			mountpoint_id: id,
+			inode: root_inode,
+		},
+		ops: fs.node_from_inode(root_inode)?,
+	})?;
+	// Create an entry for the root of the mountpoint
+	let root_entry = Arc::new(vfs::Entry {
+		name: target.name.try_clone()?,
+		parent: target.parent.clone(),
+		children: Default::default(),
+		node,
+	})?;
 	// Create mountpoint
-	let mountpoint = Arc::new(MountPoint::new(
+	let mountpoint = Arc::new(MountPoint {
 		id,
-		source,
-		fs_type,
 		flags,
-		target_path,
-		target_location.clone(),
-	)?)?;
-	// Insertion
-	let mut mount_points = MOUNT_POINTS.lock();
-	mount_points.insert(id, mountpoint.clone())?;
-	if let Err(e) = path_to_id.insert(target_location, id) {
-		mount_points.remove(&id);
-		return Err(e.into());
+
+		source,
+		fs,
+
+		root_entry: root_entry.clone(),
+	})?;
+	// If the next insertion fails, this will be undone by the implementation of `Drop`
+	mps.insert(id, mountpoint)?;
+	// Replace `target` with the mountpoint's root in the tree
+	if let Some(target_parent) = &target.parent {
+		target_parent
+			.children
+			.lock()
+			.insert(EntryChild(root_entry))?;
 	}
-	Ok(mountpoint)
+	Ok(())
 }
 
-/// Removes the mountpoint at the given `target_location`.
+/// Removes the mountpoint at the given `target` entry.
 ///
 /// Data is synchronized to the associated storage device, if any, before removing the mountpoint.
 ///
-/// If the mountpoint doesn't exist, the function returns [`errno::EINVAL`].
+/// If `target` is not a mountpoint, the function returns [`errno::EINVAL`].
 ///
 /// If the mountpoint is busy, the function returns [`errno::EBUSY`].
-pub fn remove(target_location: &FileLocation) -> EResult<()> {
-	let mut loc_to_id = LOC_TO_ID.lock();
-	let mut mount_points = MOUNT_POINTS.lock();
-
-	let id = *loc_to_id.get(target_location).ok_or(errno!(EINVAL))?;
-	let _mountpoint = mount_points.get(&id).ok_or(errno!(EINVAL))?;
-
+pub fn remove(target: Arc<vfs::Entry>) -> EResult<()> {
+	let Some(mp) = target.get_mountpoint() else {
+		return Err(errno!(EINVAL));
+	};
+	// TODO Check if another mount point is present in a subdirectory? (EBUSY)
 	// TODO Check if busy (EBUSY)
-	// TODO Check if another mount point is present in a subdirectory (EBUSY)
-
 	// TODO sync fs
-
-	loc_to_id.remove(target_location);
-	mount_points.remove(&id);
-
+	// Detach entry from parent
+	let Some(parent) = &target.parent else {
+		// Cannot unmount root filesystem
+		return Err(errno!(EINVAL));
+	};
+	parent.children.lock().remove(target.name.as_bytes());
+	// If this was the last reference to the mountpoint, remove it
+	let mut mps = MOUNT_POINTS.lock();
+	if Arc::strong_count(&mp) <= 2 {
+		mps.remove(&mp.id);
+	}
 	Ok(())
 }
 
 /// Returns the mountpoint with id `id`.
 ///
-/// If it doesn't exist, the function returns `None`.
+/// If it does not exist, the function returns `None`.
 pub fn from_id(id: u32) -> Option<Arc<MountPoint>> {
 	MOUNT_POINTS.lock().get(&id).cloned()
-}
-
-/// Returns the mountpoint that is mounted at the given `target_location`.
-///
-/// If it doesn't exist, the function returns `None`.
-pub fn from_location(target_location: &FileLocation) -> Option<Arc<MountPoint>> {
-	let loc_to_id = LOC_TO_ID.lock();
-	let id = loc_to_id.get(target_location)?;
-	from_id(*id)
-}
-
-/// Returns the location to start path resolution from.
-///
-/// If no the root mountpoint does not exist, the function panics.
-pub fn root_location() -> FileLocation {
-	// TODO cache?
-	let Some(root_mp) = from_id(0) else {
-		panic!("No root mountpoint!");
-	};
-	let root_inode = root_mp.fs.get_root_inode();
-	FileLocation {
-		mountpoint_id: root_mp.id,
-		inode: root_inode,
-	}
 }

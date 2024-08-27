@@ -30,7 +30,11 @@ use super::{
 	perm::{AccessProfile, S_ISVTX},
 	FileLocation, FileType, Stat,
 };
-use crate::{file::path::PathBuf, limits, process::Process};
+use crate::{
+	file::{path::PathBuf, vfs::mountpoint::MountPoint},
+	limits,
+	process::Process,
+};
 use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
@@ -89,13 +93,25 @@ pub struct Entry {
 }
 
 impl Entry {
-	/// Creates a new entry for the given node.
+	/// Creates a new entry for the given `node`.
 	pub fn from_node(node: Arc<Node>) -> Self {
 		Self {
 			name: String::new(),
 			parent: None,
 			children: Default::default(),
 			node,
+		}
+	}
+
+	/// If the entry is a mountpoint, return it.
+	pub fn get_mountpoint(&self) -> Option<Arc<MountPoint>> {
+		let mp_id = self.node.location.mountpoint_id;
+		match &self.parent {
+			// The parent is on the same mountpoint: this IS NOT the root of a mountpoint
+			Some(parent) if parent.node.location.mountpoint_id == mp_id => None,
+			// The parent is on a different mountpoint, or there is no parent: this IS the root of
+			// a mountpoint
+			Some(_) | None => mountpoint::from_id(mp_id),
 		}
 	}
 
@@ -107,11 +123,6 @@ impl Entry {
 	/// Returns the file's type.
 	pub fn get_type(&self) -> EResult<FileType> {
 		FileType::from_mode(self.get_stat()?.mode).ok_or_else(|| errno!(EUCLEAN))
-	}
-
-	/// Tells whether the entry is a mountpoint.
-	pub fn is_mountpoint(&self) -> bool {
-		mountpoint::from_location(&self.node.location).is_some()
 	}
 
 	/// Reads the whole content of the file into a buffer.
@@ -140,7 +151,7 @@ impl Entry {
 	}
 
 	/// Returns the absolute path to reach the entry.
-	pub fn get_path(this: Arc<Self>) -> EResult<PathBuf> {
+	pub fn get_path(this: &Arc<Self>) -> EResult<PathBuf> {
 		let mut buf = vec![0u8; limits::PATH_MAX]?;
 		let mut off = limits::PATH_MAX;
 		let mut cur = this;
@@ -154,7 +165,7 @@ impl Entry {
 				.ok_or_else(|| errno!(ENAMETOOLONG))?;
 			buf[off..(off + len)].copy_from_slice(&cur.name);
 			buf[off + len] = b'\0';
-			cur = parent.clone();
+			cur = parent;
 		}
 		buf.rotate_left(off);
 		Ok(PathBuf::new_unchecked(String::from(buf)))
@@ -440,8 +451,9 @@ fn resolve_path_impl<'p>(
 		};
 	};
 	// Resolve symbolic link if necessary
-	let entry_type = entry.node.ops.get_stat(&entry.node.location)?.get_type();
-	if settings.follow_link && entry_type == Some(FileType::Link) {
+	if settings.follow_link
+		&& entry.node.ops.get_stat(&entry.node.location)?.get_type() == Some(FileType::Link)
+	{
 		Ok(Resolved::Found(resolve_link(
 			&entry,
 			settings.root.clone(),
@@ -624,31 +636,44 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()> {
 	let parent_stat = parent.node.ops.get_stat(&parent.node.location)?;
 	// Check permission
+	if parent_stat.get_type() != Some(FileType::Directory) {
+		return Err(errno!(ENOTDIR));
+	}
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	// Lock now to avoid race conditions
 	let mut children = parent.children.lock();
-	// Get entry from filesystem
-	let Some((ent, ops)) = parent.node.ops.entry_by_name(&parent.node.location, name)? else {
-		return Err(errno!(ENOENT));
+	// Try to get from cache first
+	let stat = match children.get(name) {
+		Some(EntryChild(entry)) => {
+			// If the file to remove is a mountpoint, error
+			if parent.node.location.mountpoint_id != entry.node.location.mountpoint_id {
+				return Err(errno!(EBUSY));
+			}
+			entry.node.ops.get_stat(&entry.node.location)?
+		}
+		// The entry is not in cache
+		None => {
+			let (entry, ops) = parent
+				.node
+				.ops
+				.entry_by_name(&parent.node.location, name)?
+				.ok_or_else(|| errno!(ENOENT))?;
+			// The entry cannot be a mountpoint since it is not in cache
+			ops.get_stat(&FileLocation {
+				mountpoint_id: parent.node.location.mountpoint_id,
+				inode: entry.inode,
+			})?
+		}
 	};
-	let loc = FileLocation {
-		mountpoint_id: parent.node.location.mountpoint_id,
-		inode: ent.inode,
-	};
-	let stat = ops.get_stat(&loc)?;
 	// Check permission
 	let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
 	if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
-	// If the file to remove is a mountpoint, error
-	if mountpoint::from_location(&loc).is_some() {
-		return Err(errno!(EBUSY));
-	}
+	// Remove from filesystem and cache
 	parent.node.ops.unlink(&parent.node.location, name)?;
-	// Remove from cache
 	children.remove(name);
 	Ok(())
 }

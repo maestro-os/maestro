@@ -18,13 +18,17 @@
 
 //! Filesystem node cache, allowing to handle hard links pointing to the same node.
 
-use crate::file::{fs::NodeOps, vfs::mountpoint, FileLocation};
+use crate::file::{fs::NodeOps, FileLocation};
 use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
 };
 use utils::{
-	boxed::Box, collections::hashmap::HashSet, errno::EResult, lock::Mutex, ptr::arc::Arc,
+	boxed::Box,
+	collections::hashmap::HashSet,
+	errno::{AllocResult, EResult},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
 /// A filesystem node, cached by the VFS.
@@ -91,23 +95,13 @@ static USED_NODES: Mutex<HashSet<NodeEntry>> = Mutex::new(HashSet::new());
 
 /// Looks in the nodes cache for the node with the given location. If not in cache, the node is
 /// created and inserted.
-///
-/// If the node to be added in cache is a mountpoint `location` and `ops` are modified accordingly.
-pub(super) fn get(
-	mut location: FileLocation,
-	mut ops: Box<dyn NodeOps>,
-) -> EResult<Arc<Node>> {
+pub(super) fn get(location: FileLocation, ops: Box<dyn NodeOps>) -> EResult<Arc<Node>> {
 	let mut used_nodes = USED_NODES.lock();
 	let node = used_nodes.get(&location).map(|e| e.0.clone());
 	match node {
 		Some(node) => Ok(node),
 		// The node is not in cache. Insert it
 		None => {
-			// If this is a mountpoint, jump to its root
-			if let Some(mp) = mountpoint::from_location(&location) {
-				location = mp.get_root_location();
-				ops = mp.fs.node_from_inode(location.inode)?;
-			}
 			// Create and insert node
 			let node = Arc::new(Node {
 				location,
@@ -117,4 +111,12 @@ pub(super) fn get(
 			Ok(node)
 		}
 	}
+}
+
+/// Inserts a new node in cache.
+pub(super) fn insert(node: Node) -> AllocResult<Arc<Node>> {
+	let mut used_nodes = USED_NODES.lock();
+	let node = Arc::new(node)?;
+	used_nodes.insert(NodeEntry(node.clone()))?;
+	Ok(node)
 }

@@ -72,10 +72,6 @@ pub fn renameat2(
 	else {
 		return Err(errno!(ENOENT));
 	};
-	// Cannot rename mountpoint
-	if old.is_mountpoint() {
-		return Err(errno!(EBUSY));
-	}
 	// Get new file
 	let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let newpath = PathBuf::try_from(newpath)?;

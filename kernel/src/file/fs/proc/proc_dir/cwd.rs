@@ -51,12 +51,12 @@ impl NodeOps for Cwd {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let cwd = Process::get_by_pid(self.0)
-			.ok_or_else(|| errno!(ENOENT))?
-			.lock()
-			.cwd
-			.clone();
-		let cwd = vfs::Entry::get_path(cwd)?;
+		let cwd = vfs::Entry::get_path(
+			&Process::get_by_pid(self.0)
+				.ok_or_else(|| errno!(ENOENT))?
+				.lock()
+				.cwd,
+		)?;
 		format_content!(off, buf, "{}", DisplayableStr(cwd.as_bytes()))
 	}
 }
