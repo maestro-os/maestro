@@ -38,6 +38,7 @@ use crate::{
 use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
+	intrinsics::unlikely,
 };
 use node::Node;
 use utils::{
@@ -126,7 +127,11 @@ impl Entry {
 	}
 
 	/// Reads the whole content of the file into a buffer.
+	///
+	/// **Caution**: the function reads until EOF, meaning the caller should not call this function
+	/// on an infinite file.
 	pub fn read_all(&self) -> EResult<Vec<u8>> {
+		const INCREMENT: usize = 512;
 		let len: usize = self
 			.node
 			.ops
@@ -134,19 +139,34 @@ impl Entry {
 			.size
 			.try_into()
 			.map_err(|_| errno!(EOVERFLOW))?;
+		let len = len
+			.checked_add(INCREMENT)
+			.ok_or_else(|| errno!(EOVERFLOW))?;
+		// Add more space to allow check for EOF
 		let mut buf = vec![0u8; len]?;
 		let mut off = 0;
-		// Stick to the file's size to have an upper bound
-		while off < len {
+		// Read until EOF
+		loop {
+			// If the size has been exceeded, resize the buffer
+			if off >= buf.len() {
+				let new_size = buf
+					.len()
+					.checked_add(INCREMENT)
+					.ok_or_else(|| errno!(EOVERFLOW))?;
+				buf.resize(new_size, 0)?;
+			}
 			let len =
 				self.node
 					.ops
 					.read_content(&self.node.location, off as _, &mut buf[off..])?;
+			// Reached EOF, stop here
 			if len == 0 {
 				break;
 			}
 			off += len;
 		}
+		// Adjust the size of the buffer
+		buf.truncate(off);
 		Ok(buf)
 	}
 
@@ -343,7 +363,7 @@ fn resolve_link(
 	symlink_rec: usize,
 ) -> EResult<Arc<Entry>> {
 	// If too many recursions occur, error
-	if symlink_rec + 1 > limits::SYMLOOP_MAX {
+	if unlikely(symlink_rec + 1 > limits::SYMLOOP_MAX) {
 		return Err(errno!(ELOOP));
 	}
 	// Read link

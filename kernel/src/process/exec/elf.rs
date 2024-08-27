@@ -26,7 +26,7 @@ use crate::{
 		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
 		ELF32ProgramHeader,
 	},
-	file::{path::Path, perm::AccessProfile, vfs},
+	file::{path::Path, perm::AccessProfile, vfs, FileType},
 	memory,
 	memory::vmem,
 	process,
@@ -39,6 +39,7 @@ use crate::{
 use core::{
 	cmp::{max, min},
 	ffi::c_void,
+	intrinsics::unlikely,
 	iter,
 	mem::size_of,
 	num::NonZeroUsize,
@@ -278,8 +279,11 @@ fn build_auxiliary(
 fn read_exec_file(file: &vfs::Entry, ap: &AccessProfile) -> EResult<Vec<u8>> {
 	// Check that the file can be executed by the user
 	let stat = file.get_stat()?;
-	if !ap.can_execute_file(&stat) {
-		return Err(errno!(ENOEXEC));
+	if unlikely(stat.get_type() != Some(FileType::Regular)) {
+		return Err(errno!(EACCES));
+	}
+	if unlikely(!ap.can_execute_file(&stat)) {
+		return Err(errno!(EACCES));
 	}
 	file.read_all()
 }

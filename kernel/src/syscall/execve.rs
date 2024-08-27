@@ -171,10 +171,6 @@ fn build_image(
 	argv: Vec<String>,
 	envp: Vec<String>,
 ) -> EResult<ProgramImage> {
-	let stat = file.get_stat()?;
-	if !path_resolution.access_profile.can_execute_file(&stat) {
-		return Err(errno!(EACCES));
-	}
 	let exec_info = ExecInfo {
 		path_resolution,
 		argv,
