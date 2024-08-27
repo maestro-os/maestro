@@ -96,6 +96,8 @@ pub fn basic() -> TestResult {
 	Ok(())
 }
 
+// TODO O_APPEND
+
 pub fn directories() -> TestResult {
 	log!("Create directory at non-existent location (invalid)");
 	let res = fs::create_dir("/abc/def");

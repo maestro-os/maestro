@@ -138,7 +138,7 @@ pub fn do_openat(
 		return Err(errno!(EACCES));
 	}
 	// If `O_DIRECTORY` is set and the file is not a directory, return an error
-	if flags & file::O_DIRECTORY != 0 && stat.get_type() != Some(FileType::Directory) {
+	if flags & O_DIRECTORY != 0 && stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
 	// Open file

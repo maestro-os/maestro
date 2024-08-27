@@ -172,13 +172,13 @@ impl Entry {
 
 	/// Returns the absolute path to reach the entry.
 	pub fn get_path(this: &Arc<Self>) -> EResult<PathBuf> {
+		if this.parent.is_none() {
+			return Ok(PathBuf::root()?);
+		}
 		let mut buf = vec![0u8; limits::PATH_MAX]?;
 		let mut off = limits::PATH_MAX;
 		let mut cur = this;
-		loop {
-			let Some(parent) = &cur.parent else {
-				break;
-			};
+		while let Some(parent) = &cur.parent {
 			let len = cur.name.len();
 			off = off
 				.checked_sub(len + 1)
@@ -188,6 +188,7 @@ impl Entry {
 			cur = parent;
 		}
 		buf.rotate_left(off);
+		buf.truncate(buf.len() - off);
 		Ok(PathBuf::new_unchecked(String::from(buf)))
 	}
 
