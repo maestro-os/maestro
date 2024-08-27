@@ -306,11 +306,15 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 	else {
 		return Ok(None);
 	};
-	let location = FileLocation {
-		mountpoint_id: lookup_dir.node.location.mountpoint_id,
-		inode: entry.inode,
-	};
-	let node = node::get(location, ops)?;
+	let node = node::insert(Node {
+		location: FileLocation {
+			// The file is on the same mountpoint as the parent since mountpoint roots are always
+			// in cache
+			mountpoint_id: lookup_dir.node.location.mountpoint_id,
+			inode: entry.inode,
+		},
+		ops,
+	})?;
 	// Create entry and insert in parent
 	let ent = Arc::new(Entry {
 		name: String::try_from(name)?,
@@ -563,7 +567,7 @@ pub fn create_file(
 		mountpoint_id: parent.node.location.mountpoint_id,
 		inode,
 	};
-	let node = node::get(location, ops)?;
+	let node = node::get_or_insert(location, ops)?;
 	// Create entry and insert it in parent
 	let entry = Arc::new(Entry {
 		name: String::try_from(name)?,

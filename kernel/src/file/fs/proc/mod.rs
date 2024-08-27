@@ -152,63 +152,61 @@ impl NodeOps for RootDir {
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let pid = core::str::from_utf8(name).ok().and_then(|s| s.parse().ok());
-		if let Some(pid) = pid {
-			// Check the process exists
-			if Process::get_by_pid(pid).is_some() {
-				// Return the entry for the process
-				Ok(Some((
-					DirEntry {
-						inode: 0,
-						entry_type: FileType::Directory,
-						name: Cow::Borrowed(name),
-					},
-					Box::new(StaticDir {
-						entries: &[
-							StaticEntryBuilder {
-								name: b"cmdline",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Cmdline, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"cwd",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Cwd, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"environ",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Environ, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"exe",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Exe, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"mounts",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Mounts, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"stat",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<StatNode, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"status",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Status, Pid>,
-							},
-						],
-						data: pid,
-					})? as _,
-				)))
-			} else {
-				Ok(None)
-			}
-		} else {
-			Self::STATIC.entry_by_name_inner(name)
+		let Some(pid) = pid else {
+			return Self::STATIC.entry_by_name_inner(name);
+		};
+		// Check the process exists
+		if Process::get_by_pid(pid).is_none() {
+			return Ok(None);
 		}
+		// Return the entry for the process
+		Ok(Some((
+			DirEntry {
+				inode: 0,
+				entry_type: FileType::Directory,
+				name: Cow::Borrowed(name),
+			},
+			Box::new(StaticDir {
+				entries: &[
+					StaticEntryBuilder {
+						name: b"cmdline",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Cmdline, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"cwd",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Cwd, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"environ",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Environ, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"exe",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Exe, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"mounts",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Mounts, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"stat",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<StatNode, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"status",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Status, Pid>,
+					},
+				],
+				data: pid,
+			})? as _,
+		)))
 	}
 
 	fn next_entry(

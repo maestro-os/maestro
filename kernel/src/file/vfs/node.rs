@@ -95,7 +95,7 @@ static USED_NODES: Mutex<HashSet<NodeEntry>> = Mutex::new(HashSet::new());
 
 /// Looks in the nodes cache for the node with the given location. If not in cache, the node is
 /// created and inserted.
-pub(super) fn get(location: FileLocation, ops: Box<dyn NodeOps>) -> EResult<Arc<Node>> {
+pub(super) fn get_or_insert(location: FileLocation, ops: Box<dyn NodeOps>) -> EResult<Arc<Node>> {
 	let mut used_nodes = USED_NODES.lock();
 	let node = used_nodes.get(&location).map(|e| e.0.clone());
 	match node {
