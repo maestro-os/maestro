@@ -19,57 +19,21 @@
 //! The `rename` system call renames a file.
 
 use crate::{
-	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
-	process::{mem_space::copy::SyscallString, Process},
-	syscall::Args,
+	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
+	process::mem_space::copy::SyscallString,
+	syscall::{renameat2::do_renameat2, util::at::AT_FDCWD, Args},
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
-
-// TODO implementation probably can be merged with `renameat2`
-// TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
-// etc...)
 
 pub fn rename(
 	Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let rs = ResolutionSettings {
-		follow_link: false,
-		..rs
-	};
-	// Get old file
-	let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let old_path = PathBuf::try_from(oldpath)?;
-	let old_parent_path = old_path.parent().ok_or_else(|| errno!(ENOTDIR))?;
-	let old_name = old_path.file_name().ok_or_else(|| errno!(ENOENT))?;
-	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
-	let old = vfs::get_file_from_path(&old_path, &rs)?;
-	// Get new file
-	let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let new_path = PathBuf::try_from(newpath)?;
-	let new_parent_path = new_path.parent().ok_or_else(|| errno!(ENOTDIR))?;
-	let new_parent = vfs::get_file_from_path(
-		new_parent_path,
-		&ResolutionSettings {
-			follow_link: true,
-			..rs
-		},
-	)?;
-	// Create destination file
-	{
-		let new_name = new_path.file_name().ok_or_else(|| errno!(ENOENT))?;
-		// If source and destination are on different mountpoints, error
-		if new_parent.node.location.mountpoint_id != old.node.location.mountpoint_id {
-			return Err(errno!(EXDEV));
-		}
-		// TODO Check permissions if sticky bit is set
-		vfs::link(&new_parent, new_name, &old, &rs.access_profile)?;
-	}
-	// Remove source file
-	// TODO On fail, undo previous creation
-	vfs::unlink(old_parent, old_name, &rs.access_profile)?;
-	Ok(0)
+	do_renameat2(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0, fds, rs)
 }

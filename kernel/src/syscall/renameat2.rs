@@ -47,14 +47,12 @@ const RENAME_EXCHANGE: c_int = 2;
 // TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
 // etc...)
 
-pub fn renameat2(
-	Args((olddirfd, oldpath, newdirfd, newpath, _flags)): Args<(
-		c_int,
-		SyscallString,
-		c_int,
-		SyscallString,
-		c_int,
-	)>,
+pub(super) fn do_renameat2(
+	olddirfd: c_int,
+	oldpath: SyscallString,
+	newdirfd: c_int,
+	newpath: SyscallString,
+	_flags: c_int,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
@@ -99,4 +97,18 @@ pub fn renameat2(
 	// TODO on failure, undo previous creation
 	vfs::unlink(old_parent, old_name, &rs.access_profile)?;
 	Ok(0)
+}
+
+pub fn renameat2(
+	Args((olddirfd, oldpath, newdirfd, newpath, flags)): Args<(
+		c_int,
+		SyscallString,
+		c_int,
+		SyscallString,
+		c_int,
+	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	do_renameat2(olddirfd, oldpath, newdirfd, newpath, flags, fds, rs)
 }
