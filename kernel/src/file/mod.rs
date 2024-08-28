@@ -505,10 +505,15 @@ impl File {
 		if unlikely(!self.can_write()) {
 			return Err(errno!(EACCES));
 		}
-		self.vfs_entry
-			.node
-			.ops
-			.truncate_content(&self.vfs_entry.node.location, size)
+		let stat = self.vfs_entry.node.ops.get_stat(&self.vfs_entry.node.location)?;
+		match stat.get_type() {
+			// If the file is a device, do nothing
+			Some(FileType::BlockDevice | FileType::CharDevice) => Ok(()),
+			_ => self.vfs_entry
+				.node
+				.ops
+				.truncate_content(&self.vfs_entry.node.location, size),
+		}
 	}
 
 	/// Returns the directory entry with the given `name`.

@@ -18,7 +18,7 @@
 
 //! Filesystem node cache, allowing to handle hard links pointing to the same node.
 
-use crate::file::{fs::NodeOps, FileLocation};
+use crate::file::{fs::NodeOps, FileLocation, FileType};
 use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
@@ -57,7 +57,10 @@ impl Node {
 		};
 		// If there is no hard link left to the node, remove it
 		let stat = node.ops.get_stat(&node.location)?;
-		if stat.nlink == 0 {
+		let dir = stat.get_type() == Some(FileType::Directory);
+		// If the file is a directory, the threshold is `1` because of the `.` entry
+		let remove = (dir && stat.nlink <= 1) || stat.nlink == 0;
+		if remove {
 			node.ops.remove_file(&node.location)?;
 		}
 		Ok(())

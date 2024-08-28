@@ -82,8 +82,7 @@ pub fn basic() -> TestResult {
 	test_assert!(!path.exists());
 	test_assert!(matches!(fs::remove_file(path), Err(e) if e.kind() == io::ErrorKind::NotFound));
 
-	// FIXME
-	/*log!("File remove defer");
+	log!("File use after remove");
 	let off = file.seek(SeekFrom::End(0))?;
 	test_assert_eq!(off, 16);
 	let off = file.seek(SeekFrom::Start(0))?;
@@ -91,7 +90,7 @@ pub fn basic() -> TestResult {
 	let mut buf: [u8; 16] = [0; 16];
 	let len = file.read(&mut buf)?;
 	test_assert_eq!(len, 16);
-	test_assert_eq!(&buf, b"hello abcdefghij");*/
+	test_assert_eq!(&buf, b"hello abcdefghij");
 
 	Ok(())
 }

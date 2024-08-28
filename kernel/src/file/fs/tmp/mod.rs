@@ -417,7 +417,6 @@ impl NodeOps for Node {
 			.lock()
 			.get_node(inode)?
 			.clone();
-		let mut inner = node.0.lock();
 		// If the node is a non-empty directory, error
 		if !node.is_empty_directory(&FileLocation {
 			mountpoint_id: parent.mountpoint_id,
@@ -429,6 +428,7 @@ impl NodeOps for Node {
 		parent_entries.remove(ent_index);
 		// If the node is a directory, decrement the number of hard links to the parent
 		// (because of the entry `..` in the removed node)
+		let mut inner = node.0.lock();
 		if matches!(inner.content, NodeContent::Directory(_)) {
 			parent_inner.nlink = parent_inner.nlink.saturating_sub(1);
 		}
