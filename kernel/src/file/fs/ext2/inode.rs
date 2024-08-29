@@ -380,15 +380,18 @@ impl Ext2INode {
 			self.i_size = size as u32;
 		}
 		if !inline {
-			self.i_blocks = size.div_ceil(SECTOR_SIZE as _) as _;
+			let blk_size = superblock.get_block_size();
+			let sector_per_blk = blk_size / SECTOR_SIZE;
+			self.i_blocks = size.div_ceil(blk_size as _) as u32 * sector_per_blk;
 		} else {
 			self.i_blocks = 0;
 		}
 	}
 
 	/// Returns the number of content blocks.
-	pub fn get_blocks(&self) -> u32 {
-		self.i_blocks / SECTOR_SIZE
+	pub fn get_blocks(&self, superblock: &Superblock) -> u32 {
+		let sector_per_blk = superblock.get_block_size() / SECTOR_SIZE;
+		self.i_blocks.div_ceil(sector_per_blk)
 	}
 
 	/// Translates the given file block offset `off` to disk block offset.
@@ -935,7 +938,7 @@ impl Ext2INode {
 			write_block(blk_off.get() as _, blk_size, io, &buf)?;
 		} else {
 			// No suitable free entry: Fill a new block
-			let blocks = self.get_blocks();
+			let blocks = self.get_blocks(superblock);
 			let blk = self.alloc_content_blk(blocks, superblock, io)?;
 			buf.fill(0);
 			// Create used entry
@@ -993,7 +996,7 @@ impl Ext2INode {
 		// If the block is now empty, free it. Else, update it
 		if is_block_empty(&mut buf, superblock)? {
 			// If this is the last block, update the file's size
-			if file_blk_off as u32 + 1 >= self.get_blocks() {
+			if file_blk_off as u32 + 1 >= self.get_blocks(superblock) {
 				self.set_size(superblock, file_blk_off * blk_size as u64, false);
 			}
 			self.free_content_blk(file_blk_off as _, superblock, io)
