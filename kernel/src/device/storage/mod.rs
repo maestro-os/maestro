@@ -44,14 +44,7 @@ use core::{
 	num::NonZeroU64,
 };
 use partition::Partition;
-use utils::{
-	collections::vec::Vec,
-	errno,
-	errno::EResult,
-	format,
-	ptr::arc::{Arc, Weak},
-	TryClone,
-};
+use utils::{collections::vec::Vec, errno, errno::EResult, format, ptr::arc::Arc, TryClone};
 
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;
@@ -77,93 +70,53 @@ struct HdGeometry {
 /// Handle for the device file of a whole storage device or a partition.
 pub struct StorageDeviceHandle {
 	/// Device I/O.
-	io: Weak<dyn DeviceIO>,
+	pub io: Arc<dyn DeviceIO>,
 	/// The partition associated with the handle. If `None`, the handle covers the whole device.
-	partition: Option<Partition>,
+	pub partition: Option<Partition>,
 
 	/// The major number of the device.
-	major: u32,
+	pub major: u32,
 	/// The ID of the storage device in the manager.
-	storage_id: u32,
+	pub storage_id: u32,
 	/// The path to the file of the main device containing the partition table.
-	path_prefix: PathBuf,
-}
-
-impl StorageDeviceHandle {
-	/// Creates a new instance for the given storage interface and the given
-	/// partition number.
-	///
-	/// Arguments:
-	/// - `io` is the storage I/O interface.
-	/// - `partition` is the partition. If `None`, the handle works on the whole storage device.
-	/// - `major` is the major number of the device.
-	/// - `storage_id` is the ID of the storage device in the manager.
-	/// - `path_prefix` is the path to the file of the main device containing the partition table.
-	pub fn new(
-		io: Weak<dyn DeviceIO>,
-		partition: Option<Partition>,
-		major: u32,
-		storage_id: u32,
-		path_prefix: PathBuf,
-	) -> Self {
-		Self {
-			io,
-			partition,
-
-			major,
-			storage_id,
-			path_prefix,
-		}
-	}
+	pub path_prefix: PathBuf,
 }
 
 impl DeviceIO for StorageDeviceHandle {
 	fn block_size(&self) -> NonZeroU64 {
-		let Some(io) = self.io.upgrade() else {
-			return 1.try_into().unwrap();
-		};
-		io.block_size()
+		self.io.block_size()
 	}
 
 	fn blocks_count(&self) -> u64 {
-		let Some(io) = self.io.upgrade() else {
-			return 0;
-		};
-		io.blocks_count()
+		self.io.blocks_count()
 	}
 
 	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let Some(io) = self.io.upgrade() else {
-			return Err(errno!(ENODEV));
-		};
 		// Bound check
 		let (start, size) = match &self.partition {
 			Some(p) => (p.offset, p.size),
-			None => (0, io.blocks_count()),
+			None => (0, self.io.blocks_count()),
 		};
-		let blk_size = io.block_size().get();
+		let blk_size = self.io.block_size().get();
 		let buf_blks = (buf.len() as u64).div_ceil(blk_size);
 		if off.saturating_add(buf_blks) > size {
 			return Err(errno!(EINVAL));
 		}
-		io.read(start + off, buf)
+		self.io.read(start + off, buf)
 	}
 
 	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
-		let Some(io) = self.io.upgrade() else {
-			return Err(errno!(ENODEV));
-		};
 		// Bound check
 		let (start, size) = match &self.partition {
 			Some(p) => (p.offset, p.size),
-			None => (0, io.blocks_count()),
+			None => (0, self.io.blocks_count()),
 		};
-		let blk_size = io.block_size().get();
+		let blk_size = self.io.block_size().get();
 		let buf_blks = (buf.len() as u64).div_ceil(blk_size);
 		if off.saturating_add(buf_blks) > size {
 			return Err(errno!(EINVAL));
 		}
-		io.write(start + off, buf)
+		self.io.write(start + off, buf)
 	}
 
 	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
@@ -244,18 +197,15 @@ impl StorageManager {
 	/// - `storage_id` is the ID of the storage device in the manager.
 	/// - `path_prefix` is the path to the file of the main device containing the partition table.
 	pub fn read_partitions(
-		io: Weak<dyn DeviceIO>,
+		io: Arc<dyn DeviceIO>,
 		major: u32,
 		storage_id: u32,
 		path_prefix: &Path,
 	) -> EResult<()> {
-		let Some(io_arc) = io.upgrade() else {
+		let Some(partitions_table) = partition::read(&*io)? else {
 			return Ok(());
 		};
-		let Some(partitions_table) = partition::read(&*io_arc)? else {
-			return Ok(());
-		};
-		let partitions = partitions_table.get_partitions(&*io_arc)?;
+		let partitions = partitions_table.get_partitions(&*io)?;
 
 		let iter = partitions.into_iter().take(MAX_PARTITIONS - 1).enumerate();
 		for (i, partition) in iter {
@@ -263,13 +213,14 @@ impl StorageManager {
 			let path = PathBuf::try_from(format!("{path_prefix}{part_nbr}")?)?;
 
 			// Create the partition's device file
-			let handle = StorageDeviceHandle::new(
-				io.clone(),
-				Some(partition),
+			let handle = StorageDeviceHandle {
+				io: io.clone(),
+				partition: Some(partition),
+
 				major,
 				storage_id,
-				path_prefix.to_path_buf()?,
-			);
+				path_prefix: path_prefix.to_path_buf()?,
+			};
 			let device = Device::new(
 				DeviceID {
 					dev_type: DeviceType::Block,
@@ -306,7 +257,7 @@ impl StorageManager {
 	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
 	/// Adds the given storage device to the manager.
-	fn add(&mut self, storage: Arc<dyn DeviceIO>) -> EResult<()> {
+	fn add(&mut self, io: Arc<dyn DeviceIO>) -> EResult<()> {
 		// The device files' major number
 		let major = self.major_block.get_major();
 		// The id of the storage interface in the manager's list
@@ -318,13 +269,14 @@ impl StorageManager {
 		let main_path = PathBuf::try_from(format!("/dev/sd{letter}")?)?;
 
 		// Create the main device file
-		let main_handle = StorageDeviceHandle::new(
-			Arc::downgrade(&storage),
-			None,
+		let main_handle = StorageDeviceHandle {
+			io: io.clone(),
+			partition: None,
+
 			major,
 			storage_id,
-			main_path.try_clone()?,
-		);
+			path_prefix: main_path.try_clone()?,
+		};
 		let main_device = Device::new(
 			DeviceID {
 				dev_type: DeviceType::Block,
@@ -337,9 +289,9 @@ impl StorageManager {
 		)?;
 		device::register(main_device)?;
 
-		Self::read_partitions(Arc::downgrade(&storage), major, storage_id, &main_path)?;
+		Self::read_partitions(io.clone(), major, storage_id, &main_path)?;
 
-		self.interfaces.push(storage)?;
+		self.interfaces.push(io)?;
 		Ok(())
 	}
 

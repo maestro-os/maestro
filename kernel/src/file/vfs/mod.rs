@@ -215,8 +215,7 @@ impl Entry {
 			}
 			// The reference count is now `1`
 			let Some(mut c) = Arc::into_inner(cur) else {
-				// Unexpected, but not critical
-				break;
+				unreachable!();
 			};
 			Node::release(c.node)?;
 			// Cannot fail since we check earlier the parent exists
@@ -685,8 +684,8 @@ pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()
 				.ops
 				.entry_by_name(&parent.node.location, name)?
 				.ok_or_else(|| errno!(ENOENT))?;
-			// The entry cannot be a mountpoint since it is not in cache
 			ops.get_stat(&FileLocation {
+				// The entry cannot be a mountpoint since it is not in cache
 				mountpoint_id: parent.node.location.mountpoint_id,
 				inode: entry.inode,
 			})?

@@ -76,7 +76,7 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	lock::{IntMutex, Mutex},
-	ptr::arc::{Arc, Weak},
+	ptr::arc::Arc,
 	TryClone,
 };
 
@@ -231,7 +231,7 @@ pub struct Process {
 	quantum_count: usize,
 
 	/// A pointer to the parent process.
-	parent: Option<Weak<IntMutex<Process>>>,
+	parent: Option<Arc<IntMutex<Process>>>,
 	/// The list of children processes.
 	children: Vec<Pid>,
 	/// The list of processes in the process group.
@@ -575,7 +575,6 @@ impl Process {
 	pub fn get_parent_pid(&self) -> Pid {
 		self.parent
 			.as_ref()
-			.and_then(Weak::upgrade)
 			.map(|parent| parent.lock().pid.get())
 			.unwrap_or(self.pid.get())
 	}
@@ -615,7 +614,7 @@ impl Process {
 					continue;
 				}
 				if let Some(child_mutex) = Process::get_by_pid(child_pid) {
-					child_mutex.lock().parent = Some(Arc::downgrade(&init_proc_mutex));
+					child_mutex.lock().parent = Some(init_proc_mutex.clone());
 					oom::wrap(|| init_proc.add_child(child_pid));
 				}
 			}
@@ -646,8 +645,7 @@ impl Process {
 		self.waitable = true;
 		self.termsig = sig_type;
 		// Wake the parent
-		let parent = self.get_parent().as_ref().and_then(Weak::upgrade);
-		if let Some(parent) = parent {
+		if let Some(parent) = &self.parent {
 			let mut parent = parent.lock();
 			parent.kill(Signal::SIGCHLD);
 			parent.wake();
@@ -668,7 +666,7 @@ impl Process {
 	///
 	/// If the process is the init process, the function returns `None`.
 	#[inline(always)]
-	pub fn get_parent(&self) -> Option<Weak<IntMutex<Process>>> {
+	pub fn get_parent(&self) -> Option<Arc<IntMutex<Process>>> {
 		self.parent.clone()
 	}
 
@@ -779,29 +777,27 @@ impl Process {
 	/// The internal state of the process (registers and memory) are always copied.
 	/// Other data may be copied according to provided fork options.
 	///
-	/// Arguments:
-	/// - `parent` is the parent of the new process.
-	/// - `fork_options` are the options for the fork operation.
+	/// `fork_options` are the options for the fork operation.
 	///
 	/// On fail, the function returns an `Err` with the appropriate Errno.
 	///
 	/// If the process is not running, the behaviour is undefined.
 	pub fn fork(
-		&mut self,
-		parent: Weak<IntMutex<Self>>,
+		this: Arc<IntMutex<Self>>,
 		fork_options: ForkOptions,
 	) -> EResult<Arc<IntMutex<Self>>> {
-		debug_assert!(matches!(self.get_state(), State::Running));
+		let mut proc = this.lock();
+		debug_assert!(matches!(proc.get_state(), State::Running));
 		// Handle vfork
 		let vfork_state = if fork_options.vfork {
-			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
+			proc.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
 			VForkState::Executing
 		} else {
 			VForkState::None
 		};
 		// Clone memory space
 		let mem_space = {
-			let curr_mem_space = self.get_mem_space().unwrap();
+			let curr_mem_space = proc.get_mem_space().unwrap();
 			if fork_options.share_memory || fork_options.vfork {
 				curr_mem_space.clone()
 			} else {
@@ -810,9 +806,9 @@ impl Process {
 		};
 		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
-			self.file_descriptors.clone()
+			proc.file_descriptors.clone()
 		} else {
-			self.file_descriptors
+			proc.file_descriptors
 				.as_ref()
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
@@ -823,68 +819,68 @@ impl Process {
 		};
 		// Clone signal handlers
 		let signal_handlers = if fork_options.share_sighand {
-			self.signal_handlers.clone()
+			proc.signal_handlers.clone()
 		} else {
-			Arc::new(Mutex::new(self.signal_handlers.lock().clone()))?
+			Arc::new(Mutex::new(proc.signal_handlers.lock().clone()))?
 		};
 		let pid = PidHandle::unique()?;
 		let pid_int = pid.get();
 		let process = Self {
 			pid,
-			pgid: self.pgid,
+			pgid: proc.pgid,
 			tid: pid_int,
 
-			argv: self.argv.clone(),
-			envp: self.envp.clone(),
-			exec_path: self.exec_path.clone(),
+			argv: proc.argv.clone(),
+			envp: proc.envp.clone(),
+			exec_path: proc.exec_path.clone(),
 
-			access_profile: self.access_profile,
-			umask: self.umask,
+			access_profile: proc.access_profile,
+			umask: proc.umask,
 
 			state: State::Running,
 			vfork_state,
 
-			priority: self.priority,
-			nice: self.nice,
+			priority: proc.priority,
+			nice: proc.nice,
 			quantum_count: 0,
 
-			parent: Some(parent),
+			parent: Some(this.clone()),
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs: self.regs.clone(),
+			regs: proc.regs.clone(),
 			syscalling: false,
 
-			handled_signal: self.handled_signal,
-			sigreturn_regs: self.sigreturn_regs.clone(),
+			handled_signal: proc.handled_signal,
+			sigreturn_regs: proc.sigreturn_regs.clone(),
 			waitable: false,
 
-			// TODO if creating a thread: timer_manager: self.timer_manager.clone(),
+			// TODO if creating a thread: timer_manager: proc.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
 			mem_space: Some(mem_space),
-			user_stack: self.user_stack,
+			user_stack: proc.user_stack,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: self.cwd.clone(),
-			chroot: self.chroot.clone(),
+			cwd: proc.cwd.clone(),
+			chroot: proc.chroot.clone(),
 			file_descriptors,
 
-			sigmask: self.sigmask.try_clone()?,
+			sigmask: proc.sigmask.try_clone()?,
 			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
 			signal_handlers,
 
-			tls_entries: self.tls_entries,
+			tls_entries: proc.tls_entries,
 
-			set_child_tid: self.set_child_tid,
-			clear_child_tid: self.clear_child_tid,
+			set_child_tid: proc.set_child_tid,
+			clear_child_tid: proc.clear_child_tid,
 
 			rusage: RUsage::default(),
 
-			exit_status: self.exit_status,
+			exit_status: proc.exit_status,
 			termsig: 0,
 		};
-		self.add_child(pid_int)?;
+		proc.add_child(pid_int)?;
 		Ok(SCHEDULER.get().lock().add_process(process)?)
 	}
 
@@ -1023,8 +1019,7 @@ impl Process {
 		}
 		self.vfork_state = VForkState::None;
 		// Reset the parent's vfork state if needed
-		let parent = self.get_parent().and_then(|parent| parent.upgrade());
-		if let Some(parent) = parent {
+		if let Some(parent) = &self.parent {
 			let mut parent = parent.lock();
 			parent.vfork_state = VForkState::None;
 		}

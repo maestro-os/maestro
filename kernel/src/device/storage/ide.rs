@@ -143,7 +143,7 @@ impl Controller {
 		self.prog_if & 0b10000000 != 0
 	}
 
-	/// Detects all disks on the controller. For each disks, the function calls
+	/// Detects all disks on the controller. For each disk, the function calls
 	/// the given closure `f`.
 	///
 	/// If an error is returned from a call to the closure, the function returns

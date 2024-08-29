@@ -52,8 +52,7 @@ impl Node {
 		used_nodes.remove(&this.location);
 		// The reference count is now `1`
 		let Some(node) = Arc::into_inner(this) else {
-			// TODO log?
-			return Ok(());
+			unreachable!();
 		};
 		// If there is no hard link left to the node, remove it
 		let stat = node.ops.get_stat(&node.location)?;

@@ -59,12 +59,10 @@ pub fn unlinkat(
 		parent_path,
 		flags | AT_EMPTY_PATH,
 	)?;
-	match resolved {
-		Resolved::Found(parent) => {
-			let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
-			vfs::unlink(parent, name, &rs.access_profile)?;
-		}
-		_ => return Err(errno!(ENOENT)),
-	}
+	let Resolved::Found(parent) = resolved else {
+		return Err(errno!(ENOENT));
+	};
+	let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
+	vfs::unlink(parent, name, &rs.access_profile)?;
 	Ok(0)
 }

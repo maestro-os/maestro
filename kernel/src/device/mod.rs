@@ -34,7 +34,6 @@
 pub mod bar;
 pub mod bus;
 pub mod default;
-pub mod driver;
 pub mod id;
 pub mod keyboard;
 pub mod manager;

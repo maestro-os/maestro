@@ -31,7 +31,7 @@
 use crate::{
 	device::{
 		bar::{BARType, BAR},
-		driver, manager,
+		manager,
 		manager::PhysicalDevice,
 		DeviceManager,
 	},
@@ -548,7 +548,6 @@ impl PCIManager {
 
 				// Register the device
 				let dev = PCIDevice::new(bus, device, func, &data)?;
-				driver::on_plug(&dev);
 				manager::on_plug(&dev)?;
 				Ok(dev)
 			})
