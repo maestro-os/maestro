@@ -736,10 +736,7 @@ impl<K: Eq + Hash, H: Default + Hasher> HashSet<K, H> {
 			self.0.inner.set_ctrl(group, index, h2);
 			// Return previous value
 			let slot = self.0.inner.get_slot_mut(slot_off);
-			unsafe {
-				slot.key.assume_init_drop();
-				Some(slot.key.assume_init_read())
-			}
+			unsafe { Some(slot.key.assume_init_read()) }
 		} else {
 			None
 		}
