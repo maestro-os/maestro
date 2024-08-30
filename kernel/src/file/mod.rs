@@ -414,16 +414,14 @@ impl File {
 	}
 
 	/// Returns the file's status.
-	pub fn get_stat(&self) -> EResult<Stat> {
-		self.vfs_entry
-			.node
-			.ops
-			.get_stat(&self.vfs_entry.node.location)
+	#[inline]
+	pub fn stat(&self) -> EResult<Stat> {
+		self.vfs_entry.stat()
 	}
 
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> EResult<FileType> {
-		let stat = self.get_stat()?;
+		let stat = self.stat()?;
 		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
 	}
 
@@ -431,7 +429,8 @@ impl File {
 	///
 	/// If the file does not have a buffer of type `B`, the function returns `None`.
 	pub fn get_buffer<B: BufferOps>(&self) -> Option<&B> {
-		let buf = (&self.vfs_entry.node.ops as &dyn Any).downcast_ref::<Buffer>()?;
+		let ops = &self.vfs_entry.node().ops;
+		let buf = (ops as &dyn Any).downcast_ref::<Buffer>()?;
 		(buf.0.deref() as &dyn Any).downcast_ref()
 	}
 
@@ -442,11 +441,7 @@ impl File {
 		if unlikely(!self.can_read()) {
 			return Err(errno!(EACCES));
 		}
-		let stat = self
-			.vfs_entry
-			.node
-			.ops
-			.get_stat(&self.vfs_entry.node.location)?;
+		let stat = self.vfs_entry.stat()?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -458,11 +453,12 @@ impl File {
 				.ok_or_else(|| errno!(ENODEV))?;
 				dev.get_io().read_bytes(off, buf)
 			}
-			None => self
-				.vfs_entry
-				.node
-				.ops
-				.read_content(&self.vfs_entry.node.location, off, buf),
+			None => {
+				self.vfs_entry
+					.node()
+					.ops
+					.read_content(&self.vfs_entry.node().location, off, buf)
+			}
 		}
 	}
 
@@ -473,11 +469,7 @@ impl File {
 		if unlikely(!self.can_write()) {
 			return Err(errno!(EACCES));
 		}
-		let stat = self
-			.vfs_entry
-			.node
-			.ops
-			.get_stat(&self.vfs_entry.node.location)?;
+		let stat = self.vfs_entry.stat()?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -489,11 +481,12 @@ impl File {
 				.ok_or_else(|| errno!(ENODEV))?;
 				dev.get_io().write_bytes(off, buf)
 			}
-			None => self
-				.vfs_entry
-				.node
-				.ops
-				.write_content(&self.vfs_entry.node.location, off, buf),
+			None => {
+				self.vfs_entry
+					.node()
+					.ops
+					.write_content(&self.vfs_entry.node().location, off, buf)
+			}
 		}
 	}
 
@@ -505,19 +498,15 @@ impl File {
 		if unlikely(!self.can_write()) {
 			return Err(errno!(EACCES));
 		}
-		let stat = self
-			.vfs_entry
-			.node
-			.ops
-			.get_stat(&self.vfs_entry.node.location)?;
+		let stat = self.vfs_entry.stat()?;
 		match stat.get_type() {
 			// If the file is a device, do nothing
 			Some(FileType::BlockDevice | FileType::CharDevice) => Ok(()),
 			_ => self
 				.vfs_entry
-				.node
+				.node()
 				.ops
-				.truncate_content(&self.vfs_entry.node.location, size),
+				.truncate_content(&self.vfs_entry.node().location, size),
 		}
 	}
 
@@ -527,9 +516,9 @@ impl File {
 	pub fn dir_entry_by_name<'n>(&self, name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
 		let e = self
 			.vfs_entry
-			.node
+			.node()
 			.ops
-			.entry_by_name(&self.vfs_entry.node.location, name)?;
+			.entry_by_name(&self.vfs_entry.node().location, name)?;
 		Ok(e.map(|(e, ..)| e))
 	}
 
@@ -547,11 +536,7 @@ impl File {
 
 	/// Polls the file with the given `mask`.
 	pub fn poll(&self, mask: u32) -> EResult<u32> {
-		let stat = self
-			.vfs_entry
-			.node
-			.ops
-			.get_stat(&self.vfs_entry.node.location)?;
+		let stat = self.vfs_entry.stat()?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -565,9 +550,9 @@ impl File {
 			}
 			None => self
 				.vfs_entry
-				.node
+				.node()
 				.ops
-				.poll(&self.vfs_entry.node.location, mask),
+				.poll(&self.vfs_entry.node().location, mask),
 		}
 	}
 
@@ -578,11 +563,7 @@ impl File {
 	/// - `request` is the ID of the request to perform.
 	/// - `argp` is a pointer to the argument.
 	pub fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let stat = self
-			.vfs_entry
-			.node
-			.ops
-			.get_stat(&self.vfs_entry.node.location)?;
+		let stat = self.vfs_entry.stat()?;
 		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
 		match dev_type {
 			Some(dev_type) => {
@@ -594,11 +575,12 @@ impl File {
 				.ok_or_else(|| errno!(ENODEV))?;
 				dev.get_io().ioctl(request, argp)
 			}
-			None => self
-				.vfs_entry
-				.node
-				.ops
-				.ioctl(&self.vfs_entry.node.location, request, argp),
+			None => {
+				self.vfs_entry
+					.node()
+					.ops
+					.ioctl(&self.vfs_entry.node().location, request, argp)
+			}
 		}
 	}
 
@@ -756,9 +738,9 @@ impl<'f> Iterator for DirEntryIterator<'f> {
 		let res = self
 			.dir
 			.vfs_entry
-			.node
+			.node()
 			.ops
-			.next_entry(&self.dir.vfs_entry.node.location, self.cursor)
+			.next_entry(&self.dir.vfs_entry.node().location, self.cursor)
 			.transpose()?;
 		match res {
 			Ok((entry, off)) => {

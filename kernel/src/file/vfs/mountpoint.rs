@@ -87,7 +87,7 @@ impl MountSource {
 		let result = vfs::get_file_from_path(path, &ResolutionSettings::kernel_follow());
 		match result {
 			Ok(file) => {
-				let stat = file.get_stat()?;
+				let stat = file.stat()?;
 				match stat.get_type() {
 					Some(FileType::BlockDevice) => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Block,
@@ -239,12 +239,7 @@ pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
 		ops: fs.node_from_inode(root_inode)?,
 	})?;
 	// Create an entry for the root of the mountpoint
-	let root_entry = Arc::new(vfs::Entry {
-		name: String::new(),
-		parent: None,
-		children: Default::default(),
-		node,
-	})?;
+	let root_entry = Arc::new(vfs::Entry::from_node(node))?;
 	// Create mountpoint
 	let mountpoint = Arc::new(MountPoint {
 		id: 0,
@@ -297,7 +292,7 @@ pub fn create(
 		name: target.name.try_clone()?,
 		parent: target.parent.clone(),
 		children: Default::default(),
-		node,
+		node: Some(node),
 	})?;
 	// Create mountpoint
 	let mountpoint = Arc::new(MountPoint {

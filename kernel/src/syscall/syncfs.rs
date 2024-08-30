@@ -34,7 +34,7 @@ pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> ER
 		.get_fd(fd)?
 		.get_file()
 		.vfs_entry
-		.node
+		.node()
 		.location
 		.get_mountpoint();
 	// TODO Sync all files on mountpoint

@@ -39,12 +39,12 @@ pub fn chmod(
 	// Get file
 	let file = vfs::get_file_from_path(&path, &rs)?;
 	// Check permissions
-	let stat = file.get_stat()?;
+	let stat = file.stat()?;
 	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.node.ops.set_stat(
-		&file.node.location,
+	file.node().ops.set_stat(
+		&file.node().location,
 		StatSet {
 			mode: Some(mode & 0o777),
 			..Default::default()

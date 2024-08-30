@@ -43,13 +43,13 @@ pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<u
 
 	let file = vfs::get_file_from_path(&path, &rs)?;
 	// Permission check
-	let stat = file.get_stat()?;
+	let stat = file.stat()?;
 	if !rs.access_profile.can_write_file(&stat) {
 		return Err(errno!(EACCES));
 	}
-	file.node
+	file.node()
 		.ops
-		.truncate_content(&file.node.location, length as _)?;
+		.truncate_content(&file.node().location, length as _)?;
 
 	Ok(0)
 }

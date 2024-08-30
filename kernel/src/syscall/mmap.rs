@@ -121,7 +121,7 @@ pub fn do_mmap(
 	// Get residence
 	let residence = match file_mutex {
 		Some(file) => {
-			let stat = file.get_stat()?;
+			let stat = file.stat()?;
 			// Check the file is suitable
 			if stat.get_type() != Some(FileType::Regular) {
 				return Err(errno!(EACCES));

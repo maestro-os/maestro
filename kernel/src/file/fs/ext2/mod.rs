@@ -556,6 +556,7 @@ impl NodeOps for Ext2NodeOps {
 		}
 		// Decrement the hard links count
 		remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
+		remove_inode_.write(remove_inode, &superblock, &*fs.io)?;
 		// Remove the directory entry
 		parent_.remove_dirent(remove_off, &mut superblock, &*fs.io)?;
 		parent_.write(parent.inode as _, &superblock, &*fs.io)?;
@@ -574,19 +575,15 @@ impl NodeOps for Ext2NodeOps {
 		let inode: u32 = loc.inode.try_into().map_err(|_| errno!(EINVAL))?;
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(inode, &superblock, &*fs.io)?;
-		if inode_.get_type() == FileType::Directory {
-			// Decrement links because of the `.` entry being removed
-			inode_.i_links_count = inode_.i_links_count.saturating_sub(1);
-		}
 		// Remove the inode
+		inode_.i_links_count = 0;
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
 		inode_.i_dtime = timestamp as _;
 		inode_.free_content(&mut superblock, &*fs.io)?;
+		inode_.write(inode, &superblock, &*fs.io)?;
 		// Free inode
 		superblock.free_inode(&*fs.io, inode, inode_.get_type() == FileType::Directory)?;
 		superblock.write(&*fs.io)?;
-		// Write the inode
-		inode_.write(inode, &superblock, &*fs.io)?;
 		Ok(())
 	}
 }

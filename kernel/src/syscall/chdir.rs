@@ -41,7 +41,7 @@ pub fn chdir(
 	// Get directory
 	let dir = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
-	let stat = dir.get_stat()?;
+	let stat = dir.stat()?;
 	if stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}

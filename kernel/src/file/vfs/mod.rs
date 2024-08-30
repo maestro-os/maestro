@@ -90,7 +90,9 @@ pub struct Entry {
 	/// This is not an exhaustive list of the file's entries. Only those that are loaded.
 	children: Mutex<HashSet<EntryChild>>,
 	/// The node associated with the entry.
-	pub node: Arc<Node>,
+	///
+	/// If `None`, the file do not actually exist.
+	node: Option<Arc<Node>>,
 }
 
 impl Entry {
@@ -100,30 +102,44 @@ impl Entry {
 			name: String::new(),
 			parent: None,
 			children: Default::default(),
-			node,
+			node: Some(node),
 		}
 	}
 
 	/// If the entry is a mountpoint, return it.
 	pub fn get_mountpoint(&self) -> Option<Arc<MountPoint>> {
-		let mp_id = self.node.location.mountpoint_id;
+		let mp_id = self.node.as_ref()?.location.mountpoint_id;
 		match &self.parent {
 			// The parent is on the same mountpoint: this IS NOT the root of a mountpoint
-			Some(parent) if parent.node.location.mountpoint_id == mp_id => None,
+			Some(parent) if parent.node().location.mountpoint_id == mp_id => None,
 			// The parent is on a different mountpoint, or there is no parent: this IS the root of
 			// a mountpoint
 			Some(_) | None => mountpoint::from_id(mp_id),
 		}
 	}
 
-	/// Returns the entry's status.
-	pub fn get_stat(&self) -> EResult<Stat> {
-		self.node.ops.get_stat(&self.node.location)
+	/// Returns a reference to the underlying node.
+	///
+	/// If the entry represents a non-existent file, the function panics.
+	#[inline]
+	pub fn node(&self) -> &Arc<Node> {
+		self.node
+			.as_ref()
+			.expect("trying to access a non-existent node")
+	}
+
+	/// Helper returning the status of the underlying node.
+	///
+	/// If the entry represents a non-existent file, the function panics.
+	#[inline]
+	pub fn stat(&self) -> EResult<Stat> {
+		self.node().ops.get_stat(&self.node().location)
 	}
 
 	/// Returns the file's type.
+	#[inline]
 	pub fn get_type(&self) -> EResult<FileType> {
-		FileType::from_mode(self.get_stat()?.mode).ok_or_else(|| errno!(EUCLEAN))
+		FileType::from_mode(self.stat()?.mode).ok_or_else(|| errno!(EUCLEAN))
 	}
 
 	/// Reads the whole content of the file into a buffer.
@@ -133,9 +149,9 @@ impl Entry {
 	pub fn read_all(&self) -> EResult<Vec<u8>> {
 		const INCREMENT: usize = 512;
 		let len: usize = self
-			.node
+			.node()
 			.ops
-			.get_stat(&self.node.location)?
+			.get_stat(&self.node().location)?
 			.size
 			.try_into()
 			.map_err(|_| errno!(EOVERFLOW))?;
@@ -156,9 +172,9 @@ impl Entry {
 				buf.resize(new_size, 0)?;
 			}
 			let len =
-				self.node
+				self.node()
 					.ops
-					.read_content(&self.node.location, off as _, &mut buf[off..])?;
+					.read_content(&self.node().location, off as _, &mut buf[off..])?;
 			// Reached EOF, stop here
 			if len == 0 {
 				break;
@@ -195,31 +211,28 @@ impl Entry {
 	/// Releases the entry, removing it the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
-		// Loop to go up the tree if necessary
-		let mut cur = this;
-		loop {
-			let Some(parent) = &cur.parent else {
-				// This is the root of the VFS, stop
-				break;
-			};
-			{
-				// Lock to avoid a race condition with `strong_count`
-				let mut parent_children = parent.children.lock();
-				// If this is **not** the last reference to the current (the one held by its own
-				// parent
-				// + the one that we hold here)
-				if Arc::strong_count(&cur) > 2 {
-					break;
-				}
-				parent_children.remove(&*cur.name);
+		let Some(parent) = &this.parent else {
+			// This is the root of the VFS, stop
+			return Ok(());
+		};
+		{
+			// Lock to avoid a race condition with `strong_count`
+			let mut parent_children = parent.children.lock();
+			// If this is **not** the last reference to the current (the one held by its own
+			// parent
+			// + the one that we hold here)
+			if Arc::strong_count(&this) > 2 {
+				return Ok(());
 			}
-			// The reference count is now `1`
-			let Some(mut c) = Arc::into_inner(cur) else {
-				unreachable!();
-			};
-			Node::release(c.node)?;
-			// Cannot fail since we check earlier the parent exists
-			cur = c.parent.take().unwrap();
+			parent_children.remove(&*this.name);
+		}
+		let Some(c) = Arc::into_inner(this) else {
+			// The entry was already detached from its parent before: someone else references it
+			return Ok(());
+		};
+		// Release the inner node if present
+		if let Some(node) = c.node {
+			Node::release(node)?;
 		}
 		Ok(())
 	}
@@ -312,17 +325,23 @@ pub enum Resolved<'s> {
 }
 
 /// Resolves an entry with the given `name`, in the given `lookup_dir`.
+///
+/// If the entry does not exist, the function returns `None`.
 fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Entry>>> {
 	let mut children = lookup_dir.children.lock();
 	// Try to get from cache first
 	if let Some(ent) = children.get(name) {
-		return Ok(Some(ent.0.clone()));
+		return if ent.0.node.is_some() {
+			Ok(Some(ent.0.clone()))
+		} else {
+			Ok(None)
+		};
 	}
 	// Not in cache. Try to get from the filesystem
 	let Some((entry, ops)) = lookup_dir
-		.node
+		.node()
 		.ops
-		.entry_by_name(&lookup_dir.node.location, name)?
+		.entry_by_name(&lookup_dir.node().location, name)?
 	else {
 		return Ok(None);
 	};
@@ -330,7 +349,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		location: FileLocation {
 			// The file is on the same mountpoint as the parent since mountpoint roots are always
 			// in cache
-			mountpoint_id: lookup_dir.node.location.mountpoint_id,
+			mountpoint_id: lookup_dir.node().location.mountpoint_id,
 			inode: entry.inode,
 		},
 		ops,
@@ -340,7 +359,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		name: String::try_from(name)?,
 		parent: Some(lookup_dir.clone()),
 		children: Default::default(),
-		node,
+		node: Some(node),
 	})?;
 	children.insert(EntryChild(ent.clone()))?;
 	Ok(Some(ent))
@@ -404,7 +423,7 @@ fn resolve_path_impl<'p>(
 	// Iterate on intermediate components
 	for comp in components {
 		// Check lookup permission
-		let lookup_dir_stat = lookup_dir.node.ops.get_stat(&lookup_dir.node.location)?;
+		let lookup_dir_stat = lookup_dir.stat()?;
 		if !settings
 			.access_profile
 			.can_search_directory(&lookup_dir_stat)
@@ -455,7 +474,7 @@ fn resolve_path_impl<'p>(
 		Component::Normal(name) => name,
 	};
 	// Check lookup permission
-	let lookup_dir_stat = lookup_dir.node.ops.get_stat(&lookup_dir.node.location)?;
+	let lookup_dir_stat = lookup_dir.stat()?;
 	if !settings
 		.access_profile
 		.can_search_directory(&lookup_dir_stat)
@@ -475,9 +494,7 @@ fn resolve_path_impl<'p>(
 		};
 	};
 	// Resolve symbolic link if necessary
-	if settings.follow_link
-		&& entry.node.ops.get_stat(&entry.node.location)?.get_type() == Some(FileType::Link)
-	{
+	if settings.follow_link && entry.stat()?.get_type() == Some(FileType::Link) {
 		Ok(Resolved::Found(resolve_link(
 			&entry,
 			settings.root.clone(),
@@ -562,7 +579,7 @@ pub fn create_file(
 	ap: &AccessProfile,
 	mut stat: Stat,
 ) -> EResult<Arc<Entry>> {
-	let parent_stat = parent.node.ops.get_stat(&parent.node.location)?;
+	let parent_stat = parent.stat()?;
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -579,12 +596,13 @@ pub fn create_file(
 		ap.egid
 	};
 	stat.gid = gid;
+	// Add file to filesystem
 	let (inode, ops) = parent
-		.node
+		.node()
 		.ops
-		.add_file(&parent.node.location, name, stat)?;
+		.add_file(&parent.node().location, name, stat)?;
 	let location = FileLocation {
-		mountpoint_id: parent.node.location.mountpoint_id,
+		mountpoint_id: parent.node().location.mountpoint_id,
 		inode,
 	};
 	let node = node::get_or_insert(location, ops)?;
@@ -593,7 +611,7 @@ pub fn create_file(
 		name: String::try_from(name)?,
 		parent: Some(parent.clone()),
 		children: Default::default(),
-		node,
+		node: Some(node),
 	})?;
 	parent.children.lock().insert(EntryChild(entry.clone()))?;
 	Ok(entry)
@@ -616,12 +634,12 @@ pub fn create_file(
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> EResult<()> {
-	let parent_stat = parent.node.ops.get_stat(&parent.node.location)?;
+	let parent_stat = parent.stat()?;
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	let target_stat = target.node.ops.get_stat(&target.node.location)?;
+	let target_stat = target.stat()?;
 	if target_stat.get_type() == Some(FileType::Directory) {
 		return Err(errno!(EPERM));
 	}
@@ -632,13 +650,13 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 		return Err(errno!(EACCES));
 	}
 	// Check the target and source are both on the same mountpoint
-	if parent.node.location.mountpoint_id != target.node.location.mountpoint_id {
+	if parent.node().location.mountpoint_id != target.node().location.mountpoint_id {
 		return Err(errno!(EXDEV));
 	}
 	parent
-		.node
+		.node()
 		.ops
-		.link(&parent.node.location, name, target.node.location.inode)?;
+		.link(&parent.node().location, name, target.node().location.inode)?;
 	Ok(())
 }
 
@@ -658,7 +676,7 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()> {
-	let parent_stat = parent.node.ops.get_stat(&parent.node.location)?;
+	let parent_stat = parent.stat()?;
 	// Check permission
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -668,38 +686,49 @@ pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()
 	}
 	// Lock now to avoid race conditions
 	let mut children = parent.children.lock();
-	// Try to get from cache first
-	let stat = match children.get(name) {
+	match children.get(name) {
+		// The entry is in cache
 		Some(EntryChild(entry)) => {
 			// If the file to remove is a mountpoint, error
-			if parent.node.location.mountpoint_id != entry.node.location.mountpoint_id {
+			if parent.node().location.mountpoint_id != entry.node().location.mountpoint_id {
 				return Err(errno!(EBUSY));
 			}
-			entry.node.ops.get_stat(&entry.node.location)?
+			let stat = entry.stat()?;
+			// Check permission
+			let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
+			if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
+				return Err(errno!(EACCES));
+			}
+			// Remove link from filesystem
+			parent.node().ops.unlink(&parent.node().location, name)?;
+			// Remove link from cache
+			let EntryChild(ent) = children.remove(name).unwrap();
+			drop(children);
+			Entry::release(ent)
 		}
 		// The entry is not in cache
 		None => {
 			let (entry, ops) = parent
-				.node
+				.node()
 				.ops
-				.entry_by_name(&parent.node.location, name)?
+				.entry_by_name(&parent.node().location, name)?
 				.ok_or_else(|| errno!(ENOENT))?;
-			ops.get_stat(&FileLocation {
+			let loc = FileLocation {
 				// The entry cannot be a mountpoint since it is not in cache
-				mountpoint_id: parent.node.location.mountpoint_id,
+				mountpoint_id: parent.node().location.mountpoint_id,
 				inode: entry.inode,
-			})?
+			};
+			let stat = ops.get_stat(&loc)?;
+			// Check permission
+			let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
+			if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
+				return Err(errno!(EACCES));
+			}
+			// Remove link from filesystem
+			parent.node().ops.unlink(&parent.node().location, name)?;
+			node::try_remove(&loc, &*ops)
 		}
-	};
-	// Check permission
-	let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
-	if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
-		return Err(errno!(EACCES));
 	}
-	// Remove from filesystem and cache
-	parent.node.ops.unlink(&parent.node.location, name)?;
-	children.remove(name);
-	Ok(())
 }
 
 /// Helper function to remove a hard link from a given `path`.

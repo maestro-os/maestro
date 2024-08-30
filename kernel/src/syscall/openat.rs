@@ -130,7 +130,7 @@ pub fn do_openat(
 		O_RDWR => (true, true),
 		_ => return Err(errno!(EINVAL)),
 	};
-	let stat = file.get_stat()?;
+	let stat = file.stat()?;
 	if read && !rs.access_profile.can_read_file(&stat) {
 		return Err(errno!(EACCES));
 	}

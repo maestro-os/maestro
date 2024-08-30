@@ -76,9 +76,9 @@ pub fn symlinkat(
 				},
 			)?;
 			// TODO remove file on failure
-			file.node
+			file.node()
 				.ops
-				.write_content(&file.node.location, 0, target.as_bytes())?;
+				.write_content(&file.node().location, 0, target.as_bytes())?;
 		}
 		Resolved::Found(_) => return Err(errno!(EEXIST)),
 	}

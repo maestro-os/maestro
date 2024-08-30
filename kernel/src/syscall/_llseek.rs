@@ -61,7 +61,7 @@ pub fn _llseek(
 	let base = match whence {
 		SEEK_SET => 0,
 		SEEK_CUR => file.off.load(atomic::Ordering::Acquire),
-		SEEK_END => file.get_stat()?.size,
+		SEEK_END => file.stat()?.size,
 		_ => return Err(errno!(EINVAL)),
 	};
 	let off = base.checked_add(off).ok_or_else(|| errno!(EOVERFLOW))?;

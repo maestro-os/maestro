@@ -68,8 +68,8 @@ pub fn symlink(
 		},
 	)?;
 	// TODO remove file on failure
-	file.node
+	file.node()
 		.ops
-		.write_content(&file.node.location, 0, target.as_bytes())?;
+		.write_content(&file.node().location, 0, target.as_bytes())?;
 	Ok(0)
 }

@@ -92,13 +92,13 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 		// Read file
 		let len = {
 			// Check permission
-			let stat = file.get_stat()?;
+			let stat = file.stat()?;
 			if !rs.access_profile.can_execute_file(&stat) {
 				return Err(errno!(EACCES));
 			}
-			file.node
+			file.node()
 				.ops
-				.read_content(&file.node.location, 0, &mut shebang.buf)?
+				.read_content(&file.node().location, 0, &mut shebang.buf)?
 		};
 		// Parse shebang
 		shebang.end = shebang.buf[..len]

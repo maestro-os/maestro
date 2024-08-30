@@ -39,12 +39,12 @@ pub fn fchmod(
 ) -> EResult<usize> {
 	let file = fds_mutex.lock().get_fd(fd)?.get_file().vfs_entry.clone();
 	// Check permissions
-	let stat = file.get_stat()?;
+	let stat = file.stat()?;
 	if !ap.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.node.ops.set_stat(
-		&file.node.location,
+	file.node().ops.set_stat(
+		&file.node().location,
 		StatSet {
 			mode: Some(mode & 0o7777),
 			..Default::default()

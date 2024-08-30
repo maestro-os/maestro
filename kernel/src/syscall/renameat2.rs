@@ -84,7 +84,7 @@ pub(super) fn do_renameat2(
 	// Create destination file
 	{
 		// If source and destination are on different mountpoints, error
-		if new_parent.node.location.mountpoint_id != old.node.location.mountpoint_id {
+		if new_parent.node().location.mountpoint_id != old.node().location.mountpoint_id {
 			return Err(errno!(EXDEV));
 		}
 		// TODO Check permissions if sticky bit is set

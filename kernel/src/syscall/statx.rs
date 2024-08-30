@@ -131,10 +131,10 @@ pub fn statx(
 		return Err(errno!(ENOENT));
 	};
 	// Get file's stat
-	let stat = file.get_stat()?;
+	let stat = file.stat()?;
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
-	let (stx_dev_major, stx_dev_minor) = match file.node.location.get_mountpoint() {
+	let (stx_dev_major, stx_dev_minor) = match file.node().location.get_mountpoint() {
 		Some(mp) => match mp.source {
 			MountSource::Device(DeviceID {
 				major,
@@ -157,7 +157,7 @@ pub fn statx(
 
 		__padding0: 0,
 
-		stx_ino: file.node.location.inode,
+		stx_ino: file.node().location.inode,
 		stx_size: stat.size,
 		stx_blocks: stat.blocks,
 		stx_attributes_mask: 0, // TODO

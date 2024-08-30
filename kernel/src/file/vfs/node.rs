@@ -50,17 +50,25 @@ impl Node {
 			return Ok(());
 		}
 		used_nodes.remove(&this.location);
-		// The reference count is now `1`
 		let Some(node) = Arc::into_inner(this) else {
-			unreachable!();
+			return Ok(());
 		};
+		Self::try_remove(&node.location, &*node.ops)
+	}
+
+	/// Removes the node from the disk if it is orphan.
+	///
+	/// Arguments:
+	/// - `loc` is the location of the node
+	/// - `ops` is the handle to perform operations on the node
+	fn try_remove(loc: &FileLocation, ops: &dyn NodeOps) -> EResult<()> {
 		// If there is no hard link left to the node, remove it
-		let stat = node.ops.get_stat(&node.location)?;
+		let stat = ops.get_stat(loc)?;
 		let dir = stat.get_type() == Some(FileType::Directory);
 		// If the file is a directory, the threshold is `1` because of the `.` entry
 		let remove = (dir && stat.nlink <= 1) || stat.nlink == 0;
 		if remove {
-			node.ops.remove_file(&node.location)?;
+			ops.remove_file(loc)?;
 		}
 		Ok(())
 	}
@@ -121,4 +129,25 @@ pub(super) fn insert(node: Node) -> AllocResult<Arc<Node>> {
 	let node = Arc::new(node)?;
 	used_nodes.insert(NodeEntry(node.clone()))?;
 	Ok(node)
+}
+
+/// The function removes the node from:
+/// - the cache if no reference to it is taken
+/// - the filesystem if it is orphan
+///
+/// Arguments:
+/// - `loc` is the location of the node
+/// - `ops` is the handle to perform operations on the node
+pub(super) fn try_remove(loc: &FileLocation, ops: &dyn NodeOps) -> EResult<()> {
+	let mut used_nodes = USED_NODES.lock();
+	// Remove from cache
+	if let Some(NodeEntry(node)) = used_nodes.get(loc) {
+		// If the node is referenced elsewhere, stop
+		if Arc::strong_count(node) > 1 {
+			return Ok(());
+		}
+		used_nodes.remove(loc);
+	}
+	// Remove the node
+	Node::try_remove(loc, ops)
 }
