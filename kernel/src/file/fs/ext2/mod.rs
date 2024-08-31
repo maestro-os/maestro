@@ -563,7 +563,7 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
+	fn remove_node(&self, loc: &FileLocation) -> EResult<()> {
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		if unlikely(fs.readonly) {

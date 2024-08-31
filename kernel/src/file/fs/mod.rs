@@ -313,7 +313,7 @@ pub trait NodeOps: Debug {
 	/// [`errno::ENOTEMPTY`].
 	///
 	/// The default implementation of this function returns an error.
-	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
+	fn remove_node(&self, loc: &FileLocation) -> EResult<()> {
 		let _ = loc;
 		Err(errno!(ENOTDIR))
 	}

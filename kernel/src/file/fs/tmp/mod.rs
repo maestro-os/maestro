@@ -436,7 +436,7 @@ impl NodeOps for Node {
 		Ok(())
 	}
 
-	fn remove_file(&self, loc: &FileLocation) -> EResult<()> {
+	fn remove_node(&self, loc: &FileLocation) -> EResult<()> {
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<TmpFS>(&*fs);
 		if unlikely(fs.readonly) {

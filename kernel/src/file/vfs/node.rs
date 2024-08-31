@@ -68,7 +68,7 @@ impl Node {
 		// If the file is a directory, the threshold is `1` because of the `.` entry
 		let remove = (dir && stat.nlink <= 1) || stat.nlink == 0;
 		if remove {
-			ops.remove_file(loc)?;
+			ops.remove_node(loc)?;
 		}
 		Ok(())
 	}

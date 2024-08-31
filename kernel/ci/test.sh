@@ -16,7 +16,7 @@ case $1 in
 		cargo run
 		STATUS=$?
 		set -e
-		fsck.ext2 -fn qemu_disk
+		fsck.ext2 -fnv qemu_disk
     exit $STATUS
 		;;
 	*)

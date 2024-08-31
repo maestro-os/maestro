@@ -39,8 +39,11 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn unlinkat(
-	Args((dirfd, pathname, flags)): Args<(c_int, SyscallString, c_int)>,
+/// Perform the `unlinkat` system call.
+pub fn do_unlinkat(
+	dirfd: c_int,
+	pathname: SyscallString,
+	flags: c_int,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
@@ -65,4 +68,12 @@ pub fn unlinkat(
 	let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
 	vfs::unlink(parent, name, &rs.access_profile)?;
 	Ok(0)
+}
+
+pub fn unlinkat(
+	Args((dirfd, pathname, flags)): Args<(c_int, SyscallString, c_int)>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_unlinkat(dirfd, pathname, flags, rs, fds)
 }

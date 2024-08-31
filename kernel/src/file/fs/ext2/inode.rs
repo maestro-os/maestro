@@ -707,6 +707,7 @@ impl Ext2INode {
 			}
 			superblock.free_block(io, blk.get())?;
 		}
+		self.i_block.fill(0);
 		Ok(())
 	}
 

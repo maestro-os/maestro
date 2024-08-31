@@ -23,25 +23,25 @@
 use super::Args;
 use crate::{
 	file::{
+		fd::FileDescriptorTable,
 		path::{Path, PathBuf},
 		vfs,
 		vfs::ResolutionSettings,
 	},
 	process::{mem_space::copy::SyscallString, Process},
+	syscall::{unlinkat::do_unlinkat, util::at::AT_FDCWD},
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
-pub fn unlink(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	// Remove the file
-	let rs = ResolutionSettings {
-		follow_link: false,
-		..rs
-	};
-	vfs::unlink_from_path(&path, &rs)?;
-	Ok(0)
+pub fn unlink(
+	Args(pathname): Args<SyscallString>,
+	rs: ResolutionSettings,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_unlinkat(AT_FDCWD, pathname, 0, rs, fds)
 }

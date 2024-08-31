@@ -33,11 +33,12 @@ use utils::{
 pub fn rmdir(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
 	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
-	// Get directory
-	let file = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
-	if file.get_type()? != FileType::Directory {
-		return Err(errno!(ENOTDIR));
+	{
+		let file = vfs::get_file_from_path(&path, &rs)?;
+		if file.get_type()? != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
 	}
 	// Remove
 	vfs::unlink_from_path(&path, &rs)?;
