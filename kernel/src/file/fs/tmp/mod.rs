@@ -44,7 +44,7 @@ use utils::{
 	boxed::Box,
 	collections::vec::Vec,
 	errno,
-	errno::{AllocResult, EResult},
+	errno::EResult,
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
@@ -90,6 +90,23 @@ struct NodeInner {
 }
 
 impl NodeInner {
+	/// Returns the type of the file.
+	fn get_type(&self) -> FileType {
+		match &self.content {
+			NodeContent::Regular(_) => FileType::Regular,
+			NodeContent::Directory(_) => FileType::Directory,
+			NodeContent::Link(_) => FileType::Link,
+			NodeContent::Fifo => FileType::Fifo,
+			NodeContent::Socket => FileType::Socket,
+			NodeContent::BlockDevice {
+				..
+			} => FileType::BlockDevice,
+			NodeContent::CharDevice {
+				..
+			} => FileType::CharDevice,
+		}
+	}
+
 	/// Returns the [`Stat`] associated with the content.
 	fn as_stat(&self) -> Stat {
 		let (file_type, size, dev_major, dev_minor) = match &self.content {
@@ -137,12 +154,8 @@ impl Node {
 	///
 	/// Provided inodes are used only if the file is a directory, to create the `.` and `..`
 	/// entries.
-	pub fn new(
-		stat: Stat,
-		inode: Option<INode>,
-		parent_inode: Option<INode>,
-	) -> AllocResult<Self> {
-		let file_type = stat.get_type().unwrap();
+	pub fn new(stat: Stat, inode: Option<INode>, parent_inode: Option<INode>) -> EResult<Self> {
+		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		let content = match file_type {
 			FileType::Regular => NodeContent::Regular(Vec::new()),
 			FileType::Directory => {
@@ -176,7 +189,7 @@ impl Node {
 			},
 		};
 		let mut nlink = 1;
-		if stat.get_type() == Some(FileType::Directory) {
+		if file_type == FileType::Directory {
 			// Count the `.` entry
 			nlink += 1;
 		}
@@ -372,7 +385,6 @@ impl NodeOps for Node {
 		// Get node
 		let node = fs.nodes.lock().get_node(inode)?.clone();
 		let mut inner = node.0.lock();
-		let entry_type = inner.as_stat().get_type().unwrap();
 		let mut parent_inner = self.0.lock();
 		// Get parent entries
 		let NodeContent::Directory(parent_entries) = &mut parent_inner.content else {
@@ -381,7 +393,7 @@ impl NodeOps for Node {
 		// Insert the new entry
 		let ent = DirEntry {
 			inode,
-			entry_type,
+			entry_type: inner.get_type(),
 			name: Cow::Owned(name.try_into()?),
 		};
 		let res = parent_entries.binary_search_by(|ent| ent.name.as_ref().cmp(name));
@@ -418,10 +430,11 @@ impl NodeOps for Node {
 			.get_node(inode)?
 			.clone();
 		// If the node is a non-empty directory, error
-		if !node.is_empty_directory(&FileLocation {
-			mountpoint_id: parent.mountpoint_id,
-			inode,
-		})? {
+		if node.0.lock().get_type() == FileType::Directory
+			&& !node.is_empty_directory(&FileLocation {
+				mountpoint_id: parent.mountpoint_id,
+				inode,
+			})? {
 			return Err(errno!(ENOTEMPTY));
 		}
 		// Remove entry
