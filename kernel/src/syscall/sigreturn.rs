@@ -22,7 +22,6 @@
 //! The system call restores the previous state of the process
 //! to allow normal execution.
 
-use core::mem::size_of;
 use crate::{
 	process::{
 		mem_space::copy::SyscallPtr,
@@ -32,7 +31,7 @@ use crate::{
 	},
 	syscall::FromSyscallArg,
 };
-use core::ptr;
+use core::{mem::size_of, ptr};
 use utils::{
 	errno,
 	errno::{EResult, Errno},

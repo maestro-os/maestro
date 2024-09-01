@@ -26,7 +26,15 @@ use crate::{
 	process::{pid::Pid, regs::Regs, signal::signal_trampoline::signal_trampoline},
 	time::unit::ClockIdT,
 };
-use core::{ffi::{c_int, c_void}, fmt, fmt::Debug, mem::{size_of, transmute}, ptr, ptr::{null_mut, NonNull}, slice};
+use core::{
+	ffi::{c_int, c_void},
+	fmt,
+	fmt::Debug,
+	mem::{size_of, transmute},
+	ptr,
+	ptr::{null_mut, NonNull},
+	slice,
+};
 use utils::{errno, errno::Errno};
 
 /// Ignoring the signal.
