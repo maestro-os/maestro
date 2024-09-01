@@ -35,39 +35,34 @@ use crate::process::{regs::Regs, scheduler, Process, State};
 ///
 /// `regs` is the registers state passed to the current syscall.
 pub fn handle_signal(regs: &Regs) {
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
-	// If no signal is pending, return
-	let Some(sig) = proc.get_next_signal() else {
-		return;
-	};
-	// Prepare signal for execution
-	{
-		let signal_handlers = proc.signal_handlers.clone();
-		let signal_handlers = signal_handlers.lock();
-		let sig_handler = &signal_handlers[sig.get_id() as usize];
+	let regs = {
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
+		// If no signal is pending, return
+		let Some(sig) = proc.next_signal() else {
+			return;
+		};
+		// Prepare signal for execution
+		let handlers = proc.signal_handlers.clone();
+		let handlers = handlers.lock();
+		let handler = &handlers[sig.get_id() as usize];
 		// Update registers with the ones passed to the system call so that `sigreturn` returns to
 		// the correct location
 		proc.regs = regs.clone();
-		sig_handler.prepare_execution(&mut proc, sig, true);
-	}
-	// Update the execution flow of the current context according to the new state of the process
-	match proc.get_state() {
-		// The process must execute a signal handler. Jump to it
-		State::Running if proc.is_handling_signal() => {
-			let regs = proc.regs.clone();
-			drop(proc);
-			drop(proc_mutex);
-			unsafe {
-				regs.switch(true);
-			}
+		handler.prepare_execution(&mut proc, sig);
+		// Alter the execution flow of the current context according to the new state of the
+		// process
+		match proc.get_state() {
+			// The process must execute a signal handler. Jump to it
+			State::Running => Some(proc.regs.clone()),
+			// Stop execution. Waiting until wakeup (or terminate if Zombie)
+			State::Sleeping | State::Stopped | State::Zombie => None,
 		}
-		// Stop execution. Waiting until wakeup (or terminate if Zombie)
-		State::Sleeping | State::Stopped | State::Zombie => {
-			drop(proc);
-			drop(proc_mutex);
-			scheduler::end_tick();
-		}
-		_ => {}
+	};
+	match regs {
+		Some(regs) => unsafe {
+			regs.switch(true);
+		},
+		None => scheduler::end_tick(),
 	}
 }

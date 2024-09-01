@@ -120,7 +120,7 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	}
 }
 
-pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>, regs: &Regs) -> EResult<usize> {
+pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
 	let sig = (sig != 0).then(|| Signal::try_from(sig)).transpose()?;
 	// TODO check if necessary
 	cli();
@@ -134,9 +134,5 @@ pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>, regs: &Regs) -> EResult<usiz
 		return_regs.set_syscall_return(Ok(0));
 		proc.regs = return_regs;
 	}
-	// If the current process has been killed, the system call must execute the signal before
-	// returning FIXME: this must be done only if no other thread has the signal unblocked or
-	// listening to the signal
-	util::handle_signal(regs);
 	Ok(0)
 }

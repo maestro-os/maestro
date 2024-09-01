@@ -970,4 +970,6 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 		crate::enter_loop();
 	};
 	regs.set_syscall_return(res);
+	// If the process has been killed, handle it
+	util::handle_signal(regs);
 }

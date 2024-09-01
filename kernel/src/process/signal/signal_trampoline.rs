@@ -22,7 +22,7 @@
 //!
 //! When the signal handler returns, the process returns directly to execution.
 
-use crate::syscall::SIGRETURN_ID;
+use crate::{process::signal::UContext, syscall::SIGRETURN_ID};
 use core::arch::asm;
 
 /// The signal handler trampoline.
@@ -36,15 +36,22 @@ use core::arch::asm;
 /// Arguments:
 /// - `handler` is a pointer to the handler function for the signal.
 /// - `sig` is the signal number.
-#[no_mangle]
+/// - `ctx` is the context to restore after the handler finishes.
 #[link_section = ".user"]
-pub unsafe extern "C" fn signal_trampoline(handler: unsafe extern "C" fn(i32), sig: i32) -> ! {
+pub unsafe extern "C" fn signal_trampoline(
+	handler: unsafe extern "C" fn(i32),
+	sig: usize,
+	ctx: &mut UContext,
+) -> ! {
 	// Call the signal handler
-	handler(sig);
+	handler(sig as _);
 	// Call `sigreturn` to end signal handling
 	asm!(
+		"mov esp, {}",
 		"int 0x80",
+		"ud2",
+		in(reg) ctx.uc_stack,
 		in("eax") SIGRETURN_ID,
-		options(noreturn),
+		options(noreturn)
 	)
 }

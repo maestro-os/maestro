@@ -547,7 +547,7 @@ impl MemSpace {
 	/// - `virtaddr` is the virtual address to beginning of the range to allocate.
 	/// - `len` is the size of the range in bytes.
 	///
-	/// If the mapping doesn't exist, the function returns an error.
+	/// If the mapping does not exist, the function returns an error.
 	///
 	/// On error, allocations that have been made are not freed as it does not affect the behaviour
 	/// from the user's point of view.

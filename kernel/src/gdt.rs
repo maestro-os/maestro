@@ -127,8 +127,8 @@ impl Entry {
 	///
 	/// # Safety
 	///
-	/// An invalid offset, either not a multiple of 8 or out of bounds of the GDT, shall result in
-	/// an undefined behaviour.
+	/// An invalid offset, either not a multiple of `8` or out of bounds of the GDT, shall result
+	/// in an undefined behaviour.
 	pub unsafe fn update_gdt(&self, off: usize) {
 		let ptr = get_segment_ptr(off);
 		ptr::write_volatile(ptr, self.0);

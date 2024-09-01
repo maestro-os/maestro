@@ -52,7 +52,7 @@ use crate::{
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::{mem_space::copy, pid::PidHandle, scheduler::SCHEDULER},
+	process::{mem_space::copy, pid::PidHandle, scheduler::SCHEDULER, signal::SigSet},
 	register_get,
 	time::timer::TimerManager,
 };
@@ -72,12 +72,11 @@ use signal::{Signal, SignalAction, SignalHandler};
 #[cfg(target_arch = "x86")]
 use tss::TSS;
 use utils::{
-	collections::{bitfield::Bitfield, string::String, vec::Vec},
+	collections::{string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
-	TryClone,
 };
 
 /// The opcode of the `hlt` instruction.
@@ -242,10 +241,6 @@ pub struct Process {
 	/// Tells whether the process was executing a system call.
 	pub syscalling: bool,
 
-	/// Tells whether the process is handling a signal.
-	handled_signal: Option<Signal>,
-	/// Registers state to be restored by `sigreturn`.
-	sigreturn_regs: Regs,
 	/// Tells whether the process has information that can be retrieved by
 	/// wait/waitpid.
 	waitable: bool,
@@ -271,14 +266,14 @@ pub struct Process {
 	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
 	/// A bitfield storing the set of blocked signals.
-	pub sigmask: Bitfield,
+	pub sigmask: SigSet,
 	/// A bitfield storing the set of pending signals.
-	sigpending: Bitfield,
+	sigpending: SigSet,
 	/// The list of signal handlers.
 	pub signal_handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
 
 	/// TLS entries.
-	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
+	pub tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 
 	/// If a thread is started using `clone` with the `CLONE_CHILD_SETTID` flag, set_child_tid is
 	/// set to the value passed in the ctid argument of that system call.
@@ -474,8 +469,6 @@ impl Process {
 			regs: Regs::default(),
 			syscalling: false,
 
-			handled_signal: None,
-			sigreturn_regs: Regs::default(),
 			waitable: false,
 
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
@@ -488,8 +481,8 @@ impl Process {
 			chroot: root_dir,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
-			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
-			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
+			sigmask: Default::default(),
+			sigpending: Default::default(),
 			signal_handlers: Arc::new(Mutex::new(Default::default()))?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
@@ -735,12 +728,12 @@ impl Process {
 		// If the process is not in a syscall and a signal is pending on the process,
 		// execute it
 		if !self.syscalling {
-			if let Some(sig) = self.get_next_signal() {
+			if let Some(sig) = self.next_signal() {
 				// Prepare signal for execution
 				let signal_handlers = self.signal_handlers.clone();
 				let signal_handlers = signal_handlers.lock();
 				let sig_handler = &signal_handlers[sig.get_id() as usize];
-				sig_handler.prepare_execution(&mut *self, sig, false);
+				sig_handler.prepare_execution(&mut *self, sig);
 				// If the process has been killed by the signal, abort switching
 				if !matches!(self.state, State::Running) {
 					return;
@@ -851,8 +844,6 @@ impl Process {
 			regs: proc.regs.clone(),
 			syscalling: false,
 
-			handled_signal: proc.handled_signal,
-			sigreturn_regs: proc.sigreturn_regs.clone(),
 			waitable: false,
 
 			// TODO if creating a thread: timer_manager: proc.timer_manager.clone(),
@@ -866,8 +857,8 @@ impl Process {
 			chroot: proc.chroot.clone(),
 			file_descriptors,
 
-			sigmask: proc.sigmask.try_clone()?,
-			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
+			sigmask: proc.sigmask,
+			sigpending: Default::default(),
 			signal_handlers,
 
 			tls_entries: proc.tls_entries,
@@ -882,12 +873,6 @@ impl Process {
 		};
 		proc.add_child(pid_int)?;
 		Ok(SCHEDULER.get().lock().add_process(process)?)
-	}
-
-	/// Tells whether the process is handling a signal.
-	#[inline(always)]
-	pub fn is_handling_signal(&self) -> bool {
-		self.handled_signal.is_some()
 	}
 
 	/// Kills the process with the given signal `sig`.
@@ -919,7 +904,7 @@ impl Process {
 		let signal_handlers = self.signal_handlers.clone();
 		let signal_handlers = signal_handlers.lock();
 		let id = sig.get_id();
-		signal_handlers[id as usize].prepare_execution(self, sig, false);
+		signal_handlers[id as usize].prepare_execution(self, sig);
 	}
 
 	/// Kills every process in the process group.
@@ -941,11 +926,12 @@ impl Process {
 		self.sigmask.is_set(sig.get_id() as _)
 	}
 
-	/// Returns the ID of the next signal to be handled.
+	/// Returns the ID of the next signal to be handled, clearing it from the bitfield.
 	///
 	/// If no signal is pending, the function returns `None`.
-	pub fn get_next_signal(&self) -> Option<Signal> {
-		self.sigpending
+	pub fn next_signal(&mut self) -> Option<Signal> {
+		let sig = self
+			.sigpending
 			.iter()
 			.enumerate()
 			.filter(|(_, b)| *b)
@@ -953,54 +939,22 @@ impl Process {
 				let s = Signal::try_from(i as c_int).ok()?;
 				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
 			})
-			.next()
-	}
-
-	/// Returns the pointer to use as a stack when executing a signal handler.
-	pub fn get_signal_stack(&self) -> *const c_void {
-		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
-		// SA_ONSTACK)
-		(self.regs.esp.0 - REDZONE_SIZE) as _
-	}
-
-	/// Saves the process's state to handle a signal.
-	///
-	/// `sig` is the signal.
-	///
-	/// If the process is already handling a signal, the behaviour is undefined.
-	pub fn signal_save(&mut self, sig: Signal, sigreturn_regs: Regs) {
-		debug_assert!(!self.is_handling_signal());
-		self.handled_signal = Some(sig);
-		self.sigreturn_regs = sigreturn_regs;
-	}
-
-	/// Restores the process's state after handling a signal.
-	pub fn signal_restore(&mut self) {
-		if self.handled_signal.take().is_some() {
-			self.regs = self.sigreturn_regs.clone();
+			.next();
+		if let Some(id) = sig {
+			self.sigpending.clear(id.get_id() as _);
 		}
-	}
-
-	/// Returns the list of TLS entries for the process.
-	pub fn get_tls_entries(&mut self) -> &mut [gdt::Entry] {
-		&mut self.tls_entries
-	}
-
-	/// Clears the process's TLS entries.
-	pub fn clear_tls_entries(&mut self) {
-		self.tls_entries = Default::default();
+		sig
 	}
 
 	/// Updates the `n`th TLS entry in the GDT.
 	///
 	/// If `n` is out of bounds, the function does nothing.
 	///
-	/// This function doesn't flush the GDT's cache. Thus it is the caller's responsibility.
+	/// This function does not flush the GDT's cache. Thus, it is the caller's responsibility.
 	pub fn update_tls(&self, n: usize) {
-		if n < TLS_ENTRIES_COUNT {
+		if let Some(ent) = self.tls_entries.get(n) {
 			unsafe {
-				// Safe because the offset is checked by the condition
-				self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
+				ent.update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}
 		}
 	}

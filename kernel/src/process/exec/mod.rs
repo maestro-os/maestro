@@ -126,7 +126,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.signal_handlers.lock().fill(SignalHandler::Default);
 
 	proc.reset_vfork();
-	proc.clear_tls_entries();
+	proc.tls_entries = Default::default();
 
 	// Set the process's registers
 	let regs = Regs {

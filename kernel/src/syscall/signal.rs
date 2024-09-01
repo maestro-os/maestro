@@ -47,16 +47,7 @@ pub fn signal(
 	// Validation
 	let signal = Signal::try_from(signum)?;
 	// Conversion
-	let new_handler = match handler {
-		signal::SIG_IGN => SignalHandler::Ignore,
-		signal::SIG_DFL => SignalHandler::Default,
-		_ => SignalHandler::Handler(SigAction {
-			sa_handler: Some(unsafe { transmute::<*const c_void, extern "C" fn(i32)>(handler) }),
-			sa_sigaction: None,
-			sa_mask: 0,
-			sa_flags: SA_RESTART,
-		}),
-	};
+	let new_handler = SignalHandler::from_legacy(handler);
 	// Set new handler and get old
 	let old_handler = mem::replace(
 		&mut signal_handlers.lock()[signal.get_id() as usize],
