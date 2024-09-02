@@ -60,6 +60,7 @@ use core::{
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
+	intrinsics::unlikely,
 	mem,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
@@ -728,12 +729,12 @@ impl Process {
 		// If the process is not in a syscall and a signal is pending on the process,
 		// execute it
 		if !self.syscalling {
-			if let Some(sig) = self.next_signal() {
+			if let Some(sig) = self.next_signal(false) {
 				// Prepare signal for execution
 				let signal_handlers = self.signal_handlers.clone();
 				let signal_handlers = signal_handlers.lock();
 				let sig_handler = &signal_handlers[sig.get_id() as usize];
-				sig_handler.prepare_execution(&mut *self, sig);
+				sig_handler.exec(sig, &mut *self);
 				// If the process has been killed by the signal, abort switching
 				if !matches!(self.state, State::Running) {
 					return;
@@ -880,14 +881,37 @@ impl Process {
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
 	pub fn kill(&mut self, sig: Signal) {
+		// Cannot kill a zombie process
+		if unlikely(self.state == State::Zombie) {
+			return;
+		}
 		// Ignore blocked signals
 		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
 			return;
 		}
 		// Statistics
 		self.rusage.ru_nsignals = self.rusage.ru_nsignals.saturating_add(1);
-		if matches!(self.get_state(), State::Stopped)
-			&& sig.get_default_action() == SignalAction::Continue
+		// If the signal's action can be executed now, do it
+		{
+			let handlers = self.signal_handlers.clone();
+			let handlers = handlers.lock();
+			let handler = &handlers[sig.get_id() as usize];
+			match handler {
+				SignalHandler::Ignore => return,
+				SignalHandler::Default
+					if self.state != State::Stopped
+						|| sig.get_default_action() == SignalAction::Continue =>
+				{
+					sig.get_default_action().exec(sig, self);
+					return;
+				}
+				_ => {}
+			}
+		}
+		// Resume execution if necessary
+		if matches!(self.state, State::Sleeping)
+			|| (matches!(self.state, State::Stopped)
+				&& sig.get_default_action() == SignalAction::Continue)
 		{
 			self.set_state(State::Running);
 		}
@@ -904,7 +928,7 @@ impl Process {
 		let signal_handlers = self.signal_handlers.clone();
 		let signal_handlers = signal_handlers.lock();
 		let id = sig.get_id();
-		signal_handlers[id as usize].prepare_execution(self, sig);
+		signal_handlers[id as usize].exec(sig, self);
 	}
 
 	/// Kills every process in the process group.
@@ -926,10 +950,12 @@ impl Process {
 		self.sigmask.is_set(sig.get_id() as _)
 	}
 
-	/// Returns the ID of the next signal to be handled, clearing it from the bitfield.
+	/// Returns the ID of the next signal to be handled.
+	///
+	/// If `peek` is `false`, the signal is cleared from the bitfield.
 	///
 	/// If no signal is pending, the function returns `None`.
-	pub fn next_signal(&mut self) -> Option<Signal> {
+	pub fn next_signal(&mut self, peek: bool) -> Option<Signal> {
 		let sig = self
 			.sigpending
 			.iter()
@@ -940,8 +966,10 @@ impl Process {
 				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
 			})
 			.next();
-		if let Some(id) = sig {
-			self.sigpending.clear(id.get_id() as _);
+		if !peek {
+			if let Some(id) = sig {
+				self.sigpending.clear(id.get_id() as _);
+			}
 		}
 		sig
 	}

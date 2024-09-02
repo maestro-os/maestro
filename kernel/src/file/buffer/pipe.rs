@@ -136,10 +136,18 @@ impl NodeOps for PipeBuffer {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, _off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let len = self.inner.lock().buffer.read(buf);
-		if len > 0 {
-			self.wr_queue.wake_next();
+		if unlikely(buf.is_empty()) {
+			return Ok(0);
 		}
+		let len = self.rd_queue.wait_until(|| {
+			let len = self.inner.lock().buffer.read(buf);
+			if len > 0 {
+				self.wr_queue.wake_next();
+				Some(len)
+			} else {
+				None
+			}
+		})?;
 		Ok(len)
 	}
 
@@ -147,13 +155,20 @@ impl NodeOps for PipeBuffer {
 		if unlikely(buf.is_empty()) {
 			return Ok(0);
 		}
-		let mut inner = self.inner.lock();
-		if inner.readers == 0 {
-			Process::current().lock().kill(Signal::SIGPIPE);
-			return Err(errno!(EPIPE));
-		}
-		let len = inner.buffer.write(buf);
-		self.rd_queue.wake_next();
+		let len = self.wr_queue.wait_until(|| {
+			let mut inner = self.inner.lock();
+			if inner.readers == 0 {
+				Process::current().lock().kill(Signal::SIGPIPE);
+				return Some(Err(errno!(EPIPE)));
+			}
+			let len = inner.buffer.write(buf);
+			if len > 0 {
+				self.rd_queue.wake_next();
+				Some(Ok(len))
+			} else {
+				None
+			}
+		})??;
 		Ok(len)
 	}
 }

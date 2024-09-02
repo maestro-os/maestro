@@ -39,7 +39,7 @@ use crate::{
 	},
 };
 use core::{cmp::min, ptr};
-use utils::{errno::AllocResult, lock::Mutex};
+use utils::{errno::EResult, lock::Mutex};
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -465,7 +465,7 @@ impl TTY {
 	/// Reads inputs from the TTY and places it into the buffer `buf`.
 	///
 	/// The function returns the number of bytes read.
-	pub fn read(&self, buf: &mut [u8]) -> AllocResult<usize> {
+	pub fn read(&self, buf: &mut [u8]) -> EResult<usize> {
 		self.rd_queue.wait_until(|| {
 			let termios = self.display.lock().get_termios().clone();
 			let mut input = self.input.lock();

@@ -29,7 +29,7 @@ use crate::{
 use core::{
 	ffi::{c_int, c_void},
 	fmt,
-	fmt::Debug,
+	fmt::Formatter,
 	mem::{size_of, transmute},
 	ptr,
 	ptr::{null_mut, NonNull},
@@ -77,6 +77,38 @@ pub enum SignalAction {
 	Continue,
 }
 
+impl SignalAction {
+	/// Executes the signal action for the given process.
+	pub fn exec(self, sig: Signal, process: &mut Process) {
+		match self {
+			// TODO when `Abort`ing, dump core
+			SignalAction::Terminate | SignalAction::Abort => {
+				#[cfg(feature = "strace")]
+				println!(
+					"[strace {pid}] killed by signal `{signal}`",
+					pid = process.get_pid(),
+					signal = sig.get_id()
+				);
+				process.set_state(State::Zombie);
+				process.set_waitable(sig.get_id() as _);
+			}
+			SignalAction::Ignore => {}
+			SignalAction::Stop => {
+				if matches!(process.state, State::Running) {
+					process.set_state(State::Stopped);
+				}
+				process.set_waitable(sig.get_id());
+			}
+			SignalAction::Continue => {
+				if matches!(process.state, State::Stopped) {
+					process.set_state(State::Running);
+				}
+				process.set_waitable(sig.get_id());
+			}
+		}
+	}
+}
+
 /// Union representing a signal value.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -87,7 +119,7 @@ pub union SigVal {
 	pub sigval_ptr: *mut c_void,
 }
 
-impl Debug for SigVal {
+impl fmt::Debug for SigVal {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let val = unsafe { self.sigval_ptr };
 		f.debug_struct("SigVal").field("sigval", &val).finish()
@@ -185,14 +217,29 @@ impl SigSet {
 	}
 }
 
-/// An action to be executed when a signal is received.
+/// Union of the `sa_handler` and `sa_sigaction` fields.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SigAction {
-	/// The action associated with the signal.
+#[derive(Clone, Copy)]
+pub union SigActionHandler {
+	/// The pointer to the signal's handler.
 	pub sa_handler: Option<extern "C" fn(i32)>,
 	/// Used instead of `sa_handler` if [`SA_SIGINFO`] is specified in `sa_flags`.
 	pub sa_sigaction: Option<extern "C" fn(i32, *mut SigInfo, *mut c_void)>,
+}
+
+impl fmt::Debug for SigActionHandler {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let ptr = unsafe { self.sa_handler };
+		fmt::Debug::fmt(&ptr, f)
+	}
+}
+
+/// An action to be executed when a signal is received.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SigAction {
+	/// The pointer to the signal's handler.
+	pub sa_handler: SigActionHandler,
 	/// A mask of signals that should be masked while executing the signal
 	/// handler.
 	pub sa_mask: SigSet,
@@ -251,7 +298,7 @@ pub struct UContext {
 }
 
 /// Enumeration containing the different possibilities for signal handling.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub enum SignalHandler {
 	/// Ignores the signal.
 	Ignore,
@@ -264,8 +311,7 @@ pub enum SignalHandler {
 
 impl From<SigAction> for SignalHandler {
 	fn from(action: SigAction) -> Self {
-		let handler =
-			unsafe { transmute::<Option<extern "C" fn(i32)>, *const c_void>(action.sa_handler) };
+		let handler = unsafe { transmute::<SigActionHandler, *const c_void>(action.sa_handler) };
 		match handler {
 			SIG_IGN => Self::Ignore,
 			SIG_DFL => Self::Default,
@@ -282,10 +328,7 @@ impl SignalHandler {
 			SIG_IGN => Self::Ignore,
 			SIG_DFL => Self::Default,
 			_ => Self::Handler(SigAction {
-				sa_handler: Some(unsafe {
-					transmute::<*const c_void, extern "C" fn(i32)>(handler)
-				}),
-				sa_sigaction: None,
+				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(handler) },
 				sa_mask: Default::default(),
 				// TODO use System V semantic like Linux instead of BSD? (SA_RESETHAND |
 				// SA_NODEFER)
@@ -294,22 +337,29 @@ impl SignalHandler {
 		}
 	}
 
+	/// The opposite operation of [`Self::from_legacy`].
+	pub fn to_legacy(&self) -> *const c_void {
+		match self {
+			SignalHandler::Ignore => SIG_IGN,
+			SignalHandler::Default => SIG_DFL,
+			SignalHandler::Handler(action) => unsafe {
+				transmute::<Option<extern "C" fn(i32)>, *const c_void>(
+					action.sa_handler.sa_handler,
+				)
+			},
+		}
+	}
+
 	/// Returns an instance of [`SigAction`] associated with the handler.
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
-				sa_handler: unsafe {
-					transmute::<*const c_void, Option<extern "C" fn(i32)>>(SIG_IGN)
-				},
-				sa_sigaction: None,
+				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(SIG_IGN) },
 				sa_mask: Default::default(),
 				sa_flags: 0,
 			},
 			Self::Default => SigAction {
-				sa_handler: unsafe {
-					transmute::<*const c_void, Option<extern "C" fn(i32)>>(SIG_DFL)
-				},
-				sa_sigaction: None,
+				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(SIG_DFL) },
 				sa_mask: Default::default(),
 				sa_flags: 0,
 			},
@@ -317,15 +367,14 @@ impl SignalHandler {
 		}
 	}
 
-	/// Prepare the given `process` for the execution of the given `signal`.
-	///
-	/// If `syscall` is set, the signal is executed when the current system call returns.
-	pub fn prepare_execution(&self, process: &mut Process, signal: Signal) {
+	/// Executes the action for `signal` on `process`.
+	pub fn exec(&self, signal: Signal, process: &mut Process) {
 		let process_state = process.get_state();
 		if matches!(process_state, State::Zombie) {
 			return;
 		}
 		match self {
+			Self::Ignore => {}
 			// TODO handle SA_SIGINFO
 			Self::Handler(action) if signal.can_catch() => {
 				// Prepare the signal handler stack
@@ -357,9 +406,9 @@ impl SignalHandler {
 					// Pointer to  `ctx`
 					args[3] = ctx_ptr;
 					// Signal number
-					args[2] = signal.get_id() as _;
+					args[2] = signal.get_id() as usize;
 					// Pointer to the handler
-					args[1] = action.sa_handler.unwrap() as _;
+					args[1] = action.sa_handler.sa_handler.unwrap() as usize;
 					// Padding (return pointer)
 					args[0] = 0;
 				}
@@ -374,7 +423,6 @@ impl SignalHandler {
 				process.regs.esp.0 = signal_esp as _;
 				process.regs.eip.0 = signal_trampoline as _;
 			}
-			Self::Ignore => {}
 			// Execute default action
 			_ => {
 				// Signals on the init process can be executed only if the process has set a
@@ -382,31 +430,7 @@ impl SignalHandler {
 				if signal.can_catch() && process.is_init() {
 					return;
 				}
-				match signal.get_default_action() {
-					SignalAction::Terminate | SignalAction::Abort => {
-						#[cfg(feature = "strace")]
-						println!(
-							"[strace {pid}] killed by signal `{signal}`",
-							pid = process.get_pid(),
-							signal = signal.get_id()
-						);
-						process.set_state(State::Zombie);
-						process.set_waitable(signal.get_id() as _);
-					}
-					SignalAction::Ignore => {}
-					SignalAction::Stop => {
-						if matches!(process_state, State::Running) {
-							process.set_state(State::Stopped);
-						}
-						process.set_waitable(signal.get_id());
-					}
-					SignalAction::Continue => {
-						if matches!(process_state, State::Stopped) {
-							process.set_state(State::Running);
-						}
-						process.set_waitable(signal.get_id());
-					}
-				}
+				signal.get_default_action().exec(signal, process)
 			}
 		}
 	}

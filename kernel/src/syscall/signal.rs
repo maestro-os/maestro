@@ -54,13 +54,5 @@ pub fn signal(
 		new_handler,
 	);
 	// Convert to pointer and return
-	let ptr = match old_handler {
-		SignalHandler::Ignore => signal::SIG_IGN,
-		SignalHandler::Default => signal::SIG_DFL,
-		SignalHandler::Handler(action) => action
-			.sa_handler
-			.map(|ptr| ptr as *const c_void)
-			.unwrap_or(null()),
-	};
-	Ok(ptr as _)
+	Ok(old_handler.to_legacy() as _)
 }

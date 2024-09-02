@@ -39,7 +39,7 @@ pub fn handle_signal(regs: &Regs) {
 		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
 		// If no signal is pending, return
-		let Some(sig) = proc.next_signal() else {
+		let Some(sig) = proc.next_signal(false) else {
 			return;
 		};
 		// Prepare signal for execution
@@ -49,7 +49,7 @@ pub fn handle_signal(regs: &Regs) {
 		// Update registers with the ones passed to the system call so that `sigreturn` returns to
 		// the correct location
 		proc.regs = regs.clone();
-		handler.prepare_execution(&mut proc, sig);
+		handler.exec(sig, &mut proc);
 		// Alter the execution flow of the current context according to the new state of the
 		// process
 		match proc.get_state() {

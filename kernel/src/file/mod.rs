@@ -358,6 +358,18 @@ pub struct File {
 }
 
 impl File {
+	fn get_buffer_impl(&self) -> Option<&Buffer> {
+		let ops = &self.vfs_entry.node().ops;
+		(ops as &dyn Any).downcast_ref::<Buffer>()
+	}
+
+	/// Increment the reference counter on the underlying buffer, if any.
+	fn buffer_increment(&self) {
+		if let Some(buf) = self.get_buffer_impl() {
+			buf.0.acquire(self.can_read(), self.can_write());
+		}
+	}
+
 	/// Opens a file.
 	///
 	/// Arguments:
@@ -369,19 +381,22 @@ impl File {
 			flags: Mutex::new(flags),
 			off: Default::default(),
 		};
+		file.buffer_increment();
 		Ok(Arc::new(file)?)
 	}
 
 	/// Like [`Self::open`], but without an associated location.
 	pub fn open_ops(ops: Box<dyn NodeOps>, flags: i32) -> EResult<Arc<Self>> {
-		Ok(Arc::new(Self {
+		let file = Self {
 			vfs_entry: Arc::new(vfs::Entry::from_node(Arc::new(Node {
 				location: FileLocation::nowhere(),
 				ops,
 			})?))?,
 			flags: Mutex::new(flags),
 			off: Default::default(),
-		})?)
+		};
+		file.buffer_increment();
+		Ok(Arc::new(file)?)
 	}
 
 	/// Returns the open file description's flags.
@@ -429,9 +444,7 @@ impl File {
 	///
 	/// If the file does not have a buffer of type `B`, the function returns `None`.
 	pub fn get_buffer<B: BufferOps>(&self) -> Option<&B> {
-		let ops = &self.vfs_entry.node().ops;
-		let buf = (ops as &dyn Any).downcast_ref::<Buffer>()?;
-		(buf.0.deref() as &dyn Any).downcast_ref()
+		(self.get_buffer_impl()?.0.deref() as &dyn Any).downcast_ref()
 	}
 
 	/// Reads data from the file at the given offset.
@@ -587,6 +600,9 @@ impl File {
 	/// Closes the file, removing it the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn close(self) -> EResult<()> {
+		if let Some(buf) = self.get_buffer_impl() {
+			buf.0.release(self.can_read(), self.can_write());
+		}
 		vfs::Entry::release(self.vfs_entry)
 	}
 }

@@ -26,7 +26,8 @@ use crate::{
 use core::mem;
 use utils::{
 	collections::vec::Vec,
-	errno::AllocResult,
+	errno,
+	errno::EResult,
 	lock::{IntMutex, Mutex},
 };
 
@@ -45,7 +46,9 @@ impl WaitQueue {
 	}
 
 	/// Makes the current process wait until the given closure returns `Some`.
-	pub fn wait_until<F: FnMut() -> Option<T>, T>(&self, mut f: F) -> AllocResult<T> {
+	///
+	/// If waiting is interrupted by a signal handler, the function returns [`errno::EINTR`].
+	pub fn wait_until<F: FnMut() -> Option<T>, T>(&self, mut f: F) -> EResult<T> {
 		loop {
 			if let Some(val) = f() {
 				break Ok(val);
@@ -59,6 +62,16 @@ impl WaitQueue {
 			}
 			// Yield
 			scheduler::end_tick();
+			// TODO try to remove the process from the queue (since it might get woken up by
+			// something else) Execution resumes. If the current process had received a signal,
+			// return
+			{
+				let proc_mutex = Process::current();
+				let mut proc = proc_mutex.lock();
+				if proc.next_signal(true).is_some() {
+					return Err(errno!(EINTR));
+				}
+			}
 		}
 	}
 
