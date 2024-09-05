@@ -22,7 +22,7 @@
 //! open file description table.
 
 use crate::{file::File, limits};
-use core::{cmp::max, ffi::c_int};
+use core::{cmp::max, ffi::c_int, mem};
 use utils::{
 	collections::vec::Vec,
 	errno,
@@ -257,9 +257,15 @@ impl FileDescriptorTable {
 		let mut new_fd = old_fd.clone();
 		let flags = if cloexec { FD_CLOEXEC } else { 0 };
 		new_fd.flags = flags;
-		// Insert the FD
+		// Make sure the table is large enough
 		self.extend(new_id)?;
-		let new_fd = self.0[new_id as usize].insert(new_fd);
+		// If there was a file descriptor in the slot, close it
+		let slot = &mut self.0[new_id as usize];
+		if let Some(prev) = slot.take() {
+			let _ = prev.close();
+		}
+		// Insert the FD
+		let new_fd = slot.insert(new_fd);
 		Ok((new_id, new_fd))
 	}
 
@@ -304,6 +310,15 @@ impl FileDescriptorTable {
 		self.0.truncate(new_len);
 		// Close FD
 		fd.close()
+	}
+}
+
+impl Drop for FileDescriptorTable {
+	fn drop(&mut self) {
+		let fds = mem::take(&mut self.0);
+		for fd in fds.into_iter().flatten() {
+			let _ = fd.close();
+		}
 	}
 }
 
