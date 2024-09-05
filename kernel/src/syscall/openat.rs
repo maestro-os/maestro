@@ -137,8 +137,9 @@ pub fn do_openat(
 	if write && !rs.access_profile.can_write_file(&stat) {
 		return Err(errno!(EACCES));
 	}
+	let file_type = stat.get_type();
 	// If `O_DIRECTORY` is set and the file is not a directory, return an error
-	if flags & O_DIRECTORY != 0 && stat.get_type() != Some(FileType::Directory) {
+	if flags & O_DIRECTORY != 0 && file_type != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
 	// Open file
@@ -146,7 +147,7 @@ pub fn do_openat(
 		!(O_CLOEXEC | O_CREAT | O_DIRECTORY | O_EXCL | O_NOCTTY | O_NOFOLLOW | O_TRUNC);
 	let file = File::open_entry(file, flags & FLAGS_MASK)?;
 	// Truncate if necessary
-	if flags & O_TRUNC != 0 {
+	if flags & O_TRUNC != 0 && file_type == Some(FileType::Regular) {
 		file.truncate(0)?;
 	}
 	// Create FD
