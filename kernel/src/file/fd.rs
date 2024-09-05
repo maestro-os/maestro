@@ -310,22 +310,49 @@ impl FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{fs::NodeOps, File, FileLocation, Stat};
-	use utils::boxed::Box;
+	use crate::{
+		file::{File, FileOps, Stat},
+		syscall::ioctl::Request,
+	};
+	use core::ffi::c_void;
 
 	/// Dummy node ops for testing purpose.
 	#[derive(Debug)]
-	struct DummyNodeOps;
+	struct Dummy;
 
-	impl NodeOps for DummyNodeOps {
-		fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-			Ok(Stat::default())
+	impl FileOps for Dummy {
+		fn get_stat(&self, _file: &File) -> EResult<Stat> {
+			unreachable!()
+		}
+
+		fn acquire(&self, _file: &File) {
+			unreachable!()
+		}
+
+		fn release(&self, _file: &File) {
+			unreachable!()
+		}
+
+		fn poll(&self, _file: &File, _mask: u32) -> EResult<u32> {
+			unreachable!()
+		}
+
+		fn ioctl(&self, _file: &File, _request: Request, _argp: *const c_void) -> EResult<u32> {
+			unreachable!()
+		}
+
+		fn read(&self, _file: &File, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
+			unreachable!()
+		}
+
+		fn write(&self, _file: &File, _off: u64, _buf: &[u8]) -> EResult<usize> {
+			unreachable!()
 		}
 	}
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_file() -> Arc<File> {
-		File::open_ops(Box::new(DummyNodeOps).unwrap(), 0).unwrap()
+		File::open_floating(Arc::new(Dummy).unwrap(), 0).unwrap()
 	}
 
 	#[test_case]

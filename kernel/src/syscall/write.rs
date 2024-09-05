@@ -55,7 +55,7 @@ pub fn write(
 	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
 	// Write file
 	let off = file.off.load(atomic::Ordering::Acquire);
-	let res = file.write(off, &buf_slice);
+	let res = file.ops.write(&file, off, &buf_slice);
 	match res {
 		Ok(len) => {
 			file.off.fetch_add(len as u64, atomic::Ordering::Release);

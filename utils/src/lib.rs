@@ -154,25 +154,6 @@ impl<T: Clone + Sized> TryClone for T {
 	}
 }
 
-/// Same as the [`Default`] trait, but the operation can fail (on memory allocation
-/// failure, for example).
-pub trait TryDefault {
-	/// The error type on failure.
-	type Error = AllocError;
-
-	/// Returns the default value. On failure, the function returns [`Self::Error`].
-	fn try_default() -> Result<Self, Self::Error>
-	where
-		Self: Sized;
-}
-
-/// Blanket implementation.
-impl<T: Default + Sized> TryDefault for T {
-	fn try_default() -> Result<Self, Self::Error> {
-		Ok(Self::default())
-	}
-}
-
 /// Same as the [`alloc::borrow::ToOwned`] trait, but the operation can fail (on memory allocation
 /// failure, for example).
 pub trait TryToOwned {

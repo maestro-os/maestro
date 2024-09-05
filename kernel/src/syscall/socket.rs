@@ -20,13 +20,7 @@
 
 use crate::{
 	file,
-	file::{
-		buffer,
-		buffer::{socket::Socket, Buffer},
-		fd::FileDescriptorTable,
-		perm::AccessProfile,
-		vfs, File,
-	},
+	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
 	syscall::Args,
@@ -57,8 +51,8 @@ pub fn socket(
 		protocol,
 	};
 	// Create socket
-	let sock = Buffer::new(Socket::new(desc)?)?;
-	let file = File::open_ops(Box::new(sock)?, file::O_RDWR)?;
+	let sock = Arc::new(Socket::new(desc)?)?;
+	let file = File::open_floating(sock, file::O_RDWR)?;
 	let (sock_fd_id, _) = fds.lock().create_fd(0, file)?;
 	Ok(sock_fd_id as _)
 }

@@ -28,15 +28,19 @@ use super::{
 	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	FileLocation, FileType, Stat,
+	File, FileLocation, FileType, Stat,
 };
 use crate::{
+	device,
+	device::DeviceID,
 	file::{path::PathBuf, vfs::mountpoint::MountPoint},
 	limits,
 	process::Process,
+	syscall::ioctl::Request,
 };
 use core::{
 	borrow::Borrow,
+	ffi::c_void,
 	hash::{Hash, Hasher},
 	intrinsics::unlikely,
 };
@@ -737,4 +741,94 @@ pub fn unlink_from_path(path: &Path, resolution_settings: &ResolutionSettings) -
 	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	let parent = get_file_from_path(parent, resolution_settings)?;
 	unlink(parent, file_name, &resolution_settings.access_profile)
+}
+
+/// Implementation of [`super::FileOps`] for file from the VFS.
+#[derive(Debug)]
+pub struct FileOps;
+
+impl super::FileOps for FileOps {
+	fn get_stat(&self, file: &File) -> EResult<Stat> {
+		file.vfs_entry.as_ref().unwrap().stat()
+	}
+
+	fn acquire(&self, _file: &File) {}
+
+	fn release(&self, _file: &File) {}
+
+	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
+		let stat = self.get_stat(file)?;
+		let dev_type = stat.get_type().and_then(FileType::to_device_type);
+		match dev_type {
+			Some(dev_type) => device::get(&DeviceID {
+				dev_type,
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			})
+			.ok_or_else(|| errno!(ENODEV))?
+			.get_io()
+			.poll(mask),
+			None => todo!(),
+		}
+	}
+
+	fn ioctl(&self, file: &File, request: Request, argp: *const c_void) -> EResult<u32> {
+		let stat = self.get_stat(file)?;
+		let dev_type = stat
+			.get_type()
+			.and_then(FileType::to_device_type)
+			.ok_or_else(|| errno!(ENOTTY))?;
+		device::get(&DeviceID {
+			dev_type,
+			major: stat.dev_major,
+			minor: stat.dev_minor,
+		})
+		.ok_or_else(|| errno!(ENODEV))?
+		.get_io()
+		.ioctl(request, argp)
+	}
+
+	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		if unlikely(!file.can_read()) {
+			return Err(errno!(EACCES));
+		}
+		let stat = self.get_stat(file)?;
+		let dev_type = stat.get_type().and_then(FileType::to_device_type);
+		match dev_type {
+			Some(dev_type) => device::get(&DeviceID {
+				dev_type,
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			})
+			.ok_or_else(|| errno!(ENODEV))?
+			.get_io()
+			.read_bytes(off, buf),
+			None => {
+				let node = file.vfs_entry.as_ref().unwrap().node();
+				node.ops.read_content(&node.location, off, buf)
+			}
+		}
+	}
+
+	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+		if unlikely(!file.can_write()) {
+			return Err(errno!(EACCES));
+		}
+		let stat = self.get_stat(file)?;
+		let dev_type = stat.get_type().and_then(FileType::to_device_type);
+		match dev_type {
+			Some(dev_type) => device::get(&DeviceID {
+				dev_type,
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			})
+			.ok_or_else(|| errno!(ENODEV))?
+			.get_io()
+			.write_bytes(off, buf),
+			None => {
+				let node = file.vfs_entry.as_ref().unwrap().node();
+				node.ops.write_content(&node.location, off, buf)
+			}
+		}
+	}
 }

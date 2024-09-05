@@ -51,7 +51,7 @@ pub fn read(
 	// TODO perf: a buffer is not necessarily required
 	let mut buffer = vec![0u8; count]?;
 	let off = file.off.load(atomic::Ordering::Acquire);
-	let len = file.read(off, &mut buffer)?;
+	let len = file.ops.read(&file, off, &mut buffer)?;
 	file.off.fetch_add(len as u64, atomic::Ordering::Release);
 	// Write back
 	buf.copy_to_user(0, &buffer[..len])?;

@@ -19,7 +19,7 @@
 //! The `connect` system call connects a socket to a distant host.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
+	file::{fd::FileDescriptorTable, socket::Socket},
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };

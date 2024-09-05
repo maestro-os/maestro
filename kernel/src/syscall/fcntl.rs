@@ -20,9 +20,8 @@
 
 use crate::{
 	file::{
-		buffer,
-		buffer::pipe::PipeBuffer,
 		fd::{FileDescriptorTable, NewFDConstraint},
+		pipe::PipeBuffer,
 		FileType,
 	},
 	process::Process,

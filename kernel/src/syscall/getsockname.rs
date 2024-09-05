@@ -19,7 +19,7 @@
 //! The `getsockname` system call returns the socket address bound to a socket.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
+	file::{fd::FileDescriptorTable, socket::Socket},
 	process::{
 		mem_space::copy::{SyscallPtr, SyscallSlice},
 		Process,

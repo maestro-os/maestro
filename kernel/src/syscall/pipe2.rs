@@ -20,12 +20,7 @@
 
 use crate::{
 	file,
-	file::{
-		buffer,
-		buffer::{pipe::PipeBuffer, Buffer},
-		fd::FileDescriptorTable,
-		vfs, File, FileLocation,
-	},
+	file::{fd::FileDescriptorTable, pipe::PipeBuffer, vfs, File, FileLocation},
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
 };
@@ -36,7 +31,6 @@ use utils::{
 	errno::{EResult, Errno},
 	lock::Mutex,
 	ptr::arc::Arc,
-	TryDefault,
 };
 
 pub fn pipe2(
@@ -48,9 +42,9 @@ pub fn pipe2(
 	if flags & !accepted_flags != 0 {
 		return Err(errno!(EINVAL));
 	}
-	let ops = Buffer::new(PipeBuffer::try_default()?)?;
-	let file0 = File::open_ops(Box::new(ops.clone())?, flags | file::O_RDONLY)?;
-	let file1 = File::open_ops(Box::new(ops)?, flags | file::O_WRONLY)?;
+	let ops = Arc::new(PipeBuffer::new()?)?;
+	let file0 = File::open_floating(ops.clone(), flags | file::O_RDONLY)?;
+	let file1 = File::open_floating(ops, flags | file::O_WRONLY)?;
 	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
 	pipefd.copy_to_user([fd0_id as _, fd1_id as _])?;
 	Ok(0)

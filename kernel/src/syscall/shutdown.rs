@@ -19,7 +19,7 @@
 //! The `shutdown` system call shuts down part of a full-duplex connection.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
+	file::{fd::FileDescriptorTable, socket::Socket},
 	process::Process,
 	syscall::Args,
 };

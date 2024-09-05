@@ -19,7 +19,7 @@
 //! The `sendto` system call sends a message on a socket.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
+	file::{fd::FileDescriptorTable, socket::Socket},
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };

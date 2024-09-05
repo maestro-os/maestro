@@ -23,6 +23,7 @@ use crate::{
 	file::{
 		fd::FileDescriptorTable,
 		perm::{Gid, Uid},
+		vfs::{mountpoint::MountSource, Entry},
 		INode, Mode,
 	},
 	process::{mem_space::copy::SyscallPtr, Process},
@@ -83,15 +84,33 @@ pub fn fstat64(
 	Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let file = fds.lock().get_fd(fd)?.get_file().vfs_entry.clone();
+	let fds = fds.lock();
+	let file = fds.get_fd(fd)?.get_file();
+	let (st_dev, st_ino) = match &file.vfs_entry {
+		Some(ent) => {
+			let node = ent.node();
+			let mount_source = &node
+				.location
+				.get_mountpoint()
+				.ok_or_else(|| errno!(ENOENT))?
+				.source;
+			let st_dev = match mount_source {
+				MountSource::Device(dev) => dev.get_device_number(),
+				MountSource::NoDev(_) => 0,
+			};
+			let st_ino = node.location.inode;
+			(st_dev, st_ino)
+		}
+		None => (0, 0),
+	};
 	let stat = file.stat()?;
 	let rdev = makedev(stat.dev_major, stat.dev_minor);
 	let stat = Stat {
-		st_dev: 0, // TODO
+		st_dev,
 
 		__st_dev_padding: 0,
 
-		st_ino: file.node().location.inode,
+		st_ino,
 		st_mode: stat.mode,
 		st_nlink: stat.nlink as _,
 		st_uid: stat.uid,

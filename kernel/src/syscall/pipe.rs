@@ -20,24 +20,20 @@
 
 use crate::{
 	file,
-	file::{
-		buffer::{pipe::PipeBuffer, Buffer},
-		fd::FileDescriptorTable,
-		File, FileLocation,
-	},
+	file::{fd::FileDescriptorTable, pipe::PipeBuffer, File, FileLocation},
 	process::mem_space::copy::SyscallPtr,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{boxed::Box, errno::EResult, lock::Mutex, ptr::arc::Arc, TryDefault};
+use utils::{boxed::Box, errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 pub fn pipe(
 	Args(pipefd): Args<SyscallPtr<[c_int; 2]>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let ops = Buffer::new(PipeBuffer::try_default()?)?;
-	let file0 = File::open_ops(Box::new(ops.clone())?, file::O_RDONLY)?;
-	let file1 = File::open_ops(Box::new(ops)?, file::O_WRONLY)?;
+	let ops = Arc::new(PipeBuffer::new()?)?;
+	let file0 = File::open_floating(ops.clone(), file::O_RDONLY)?;
+	let file1 = File::open_floating(ops, file::O_WRONLY)?;
 	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
 	pipefd.copy_to_user([fd0_id as _, fd1_id as _])?;
 	Ok(0)

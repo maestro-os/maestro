@@ -332,7 +332,7 @@ impl MemMapping {
 				);
 				let mut i = 0;
 				while i < slice.len() {
-					let l = file.write(*off, &slice[i..])?;
+					let l = file.ops.write(file, *off, &slice[i..])?;
 					i += l;
 				}
 				Ok(())

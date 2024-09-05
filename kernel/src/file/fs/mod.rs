@@ -30,12 +30,8 @@ use super::{
 	perm::{Gid, Uid},
 	DirEntry, FileLocation, INode, Mode, Stat,
 };
-use crate::{device::DeviceIO, syscall::ioctl, time::unit::Timestamp};
-use core::{
-	any::Any,
-	ffi::{c_int, c_void},
-	fmt::Debug,
-};
+use crate::{device::DeviceIO, time::unit::Timestamp};
+use core::{any::Any, ffi::c_int, fmt::Debug};
 use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, string::String},
@@ -102,7 +98,7 @@ pub struct StatSet {
 	pub atime: Option<Timestamp>,
 }
 
-/// File node operations.
+/// Filesystem node operations.
 pub trait NodeOps: Debug {
 	/// Returns the file's status.
 	///
@@ -119,28 +115,6 @@ pub trait NodeOps: Debug {
 	fn set_stat(&self, loc: &FileLocation, set: StatSet) -> EResult<()> {
 		let _ = (loc, set);
 		Ok(())
-	}
-
-	/// Polls the file with the given `mask`.
-	fn poll(&self, loc: &FileLocation, mask: u32) -> EResult<u32> {
-		let _ = (loc, mask);
-		Err(errno!(EINVAL))
-	}
-
-	/// Performs an ioctl operation on the device file.
-	///
-	/// Arguments:
-	/// - `loc` is the location of the file.
-	/// - `request` is the ID of the request to perform.
-	/// - `argp` is a pointer to the argument.
-	fn ioctl(
-		&self,
-		loc: &FileLocation,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32> {
-		let _ = (loc, request, argp);
-		Err(errno!(EINVAL))
 	}
 
 	/// Reads from the node with into the buffer `buf`.

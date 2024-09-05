@@ -37,7 +37,13 @@ pub fn fchmod(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
-	let file = fds_mutex.lock().get_fd(fd)?.get_file().vfs_entry.clone();
+	let file = fds_mutex
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.vfs_entry
+		.clone()
+		.ok_or_else(|| errno!(EROFS))?;
 	// Check permissions
 	let stat = file.stat()?;
 	if !ap.can_set_file_permissions(&stat) {

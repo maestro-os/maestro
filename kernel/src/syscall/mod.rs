@@ -132,7 +132,6 @@ mod signal;
 mod sigreturn;
 mod socket;
 mod socketpair;
-mod splice;
 mod statfs;
 mod statfs64;
 mod statx;
@@ -275,7 +274,6 @@ use signal::signal;
 use sigreturn::sigreturn;
 use socket::socket;
 use socketpair::socketpair;
-use splice::splice;
 use statfs::statfs;
 use statfs64::statfs64;
 use statx::statx;
@@ -815,7 +813,7 @@ fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
 		// TODO 0x136 => Some(syscall!(unshare, regs)),
 		// TODO 0x137 => Some(syscall!(set_robust_list, regs)),
 		// TODO 0x138 => Some(syscall!(get_robust_list, regs)),
-		0x139 => Some(syscall!(splice, regs)),
+		// TODO 0x139 => Some(syscall!(splice, regs)),
 		// TODO 0x13a => Some(syscall!(sync_file_range, regs)),
 		// TODO 0x13b => Some(syscall!(tee, regs)),
 		// TODO 0x13c => Some(syscall!(vmsplice, regs)),

@@ -18,13 +18,13 @@
 
 //! This file implements sockets.
 
-use super::BufferOps;
 use crate::{
-	file::{fs::NodeOps, wait_queue::WaitQueue, FileLocation, FileType, Stat},
-	net::{osi, SocketDesc, SocketDomain, SocketType},
+	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
+	net::{osi, SocketDesc},
+	syscall::ioctl::Request,
 };
 use core::{
-	ffi::c_int,
+	ffi::{c_int, c_void},
 	sync::{atomic, atomic::AtomicUsize},
 };
 use utils::{
@@ -32,7 +32,7 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	lock::Mutex,
-	vec, TryDefault,
+	vec,
 };
 
 /// The maximum size of a socket's buffers.
@@ -154,65 +154,45 @@ impl Socket {
 	}
 }
 
-impl TryDefault for Socket {
-	fn try_default() -> Result<Self, Self::Error> {
-		let desc = SocketDesc {
-			domain: SocketDomain::AfUnix,
-			type_: SocketType::SockRaw,
-			protocol: 0,
-		};
-
-		Ok(Self {
-			desc,
-			stack: None,
-			open_count: AtomicUsize::new(0),
-
-			sockname: Default::default(),
-
-			rx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
-			tx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
-
-			rx_queue: WaitQueue::new(),
-			tx_queue: WaitQueue::new(),
-		})
-	}
-}
-
-impl BufferOps for Socket {
-	fn acquire(&self, _read: bool, _write: bool) {
-		self.open_count.fetch_add(1, atomic::Ordering::Acquire);
-	}
-
-	fn release(&self, _read: bool, _write: bool) {
-		let cnt = self.open_count.fetch_sub(1, atomic::Ordering::Release);
-		if cnt == 0 {
-			// TODO close the socket
-		}
-	}
-}
-
-impl NodeOps for Socket {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
+impl FileOps for Socket {
+	fn get_stat(&self, _file: &File) -> EResult<Stat> {
 		Ok(Stat {
 			mode: FileType::Socket.to_mode() | 0o666,
 			..Default::default()
 		})
 	}
 
-	fn read_content(&self, _loc: &FileLocation, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
-		if !self.desc.type_.is_stream() {
-			// TODO error
+	fn acquire(&self, _file: &File) {
+		self.open_count.fetch_add(1, atomic::Ordering::Acquire);
+	}
+
+	fn release(&self, _file: &File) {
+		let cnt = self.open_count.fetch_sub(1, atomic::Ordering::Release);
+		if cnt == 0 {
+			// TODO close the socket
 		}
-		// TODO
+	}
+
+	fn poll(&self, _file: &File, _mask: u32) -> EResult<u32> {
 		todo!()
 	}
 
-	fn write_content(&self, _loc: &FileLocation, _off: u64, _buf: &[u8]) -> EResult<usize> {
+	fn ioctl(&self, _file: &File, _request: Request, _argp: *const c_void) -> EResult<u32> {
+		todo!()
+	}
+
+	fn read(&self, _file: &File, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
+		if !self.desc.type_.is_stream() {
+			// TODO error
+		}
+		todo!()
+	}
+
+	fn write(&self, _file: &File, _off: u64, _buf: &[u8]) -> EResult<usize> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {
 			return Err(errno!(EDESTADDRREQ));
 		};
-		// TODO
 		todo!()
 	}
 }

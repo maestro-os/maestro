@@ -19,9 +19,8 @@
 //! A pipe is an object that links two file descriptors together. One reading
 //! and another writing, with a buffer in between.
 
-use super::BufferOps;
 use crate::{
-	file::{buffer::WaitQueue, fs::NodeOps, FileLocation, FileType, Stat},
+	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
 	limits,
 	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
 	syscall::{ioctl, FromSyscallArg},
@@ -33,9 +32,9 @@ use core::{
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	lock::Mutex,
-	vec, TryDefault,
+	vec,
 };
 
 #[derive(Debug)]
@@ -60,19 +59,8 @@ pub struct PipeBuffer {
 }
 
 impl PipeBuffer {
-	/// Returns the capacity of the pipe in bytes.
-	pub fn get_capacity(&self) -> usize {
-		self.inner.lock().buffer.get_size()
-	}
-
-	/// Returns the available space in the buffer in bytes.
-	pub fn get_available_len(&self) -> usize {
-		self.inner.lock().buffer.get_available_len()
-	}
-}
-
-impl TryDefault for PipeBuffer {
-	fn try_default() -> Result<Self, Self::Error> {
+	/// Creates a new instance.
+	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
 			inner: Mutex::new(PipeInner {
 				buffer: RingBuffer::new(vec![0; limits::PIPE_BUF]?),
@@ -83,25 +71,37 @@ impl TryDefault for PipeBuffer {
 			wr_queue: WaitQueue::default(),
 		})
 	}
+
+	/// Returns the capacity of the pipe in bytes.
+	pub fn get_capacity(&self) -> usize {
+		self.inner.lock().buffer.get_size()
+	}
 }
 
-impl BufferOps for PipeBuffer {
-	fn acquire(&self, read: bool, write: bool) {
+impl FileOps for PipeBuffer {
+	fn get_stat(&self, _file: &File) -> EResult<Stat> {
+		Ok(Stat {
+			mode: FileType::Fifo.to_mode() | 0o666,
+			..Default::default()
+		})
+	}
+
+	fn acquire(&self, file: &File) {
 		let mut inner = self.inner.lock();
-		if read {
+		if file.can_read() {
 			inner.readers += 1;
 		}
-		if write {
+		if file.can_write() {
 			inner.writers += 1;
 		}
 	}
 
-	fn release(&self, read: bool, write: bool) {
+	fn release(&self, file: &File) {
 		let mut inner = self.inner.lock();
-		if read {
+		if file.can_read() {
 			inner.readers -= 1;
 		}
-		if write {
+		if file.can_write() {
 			inner.writers -= 1;
 		}
 		if (inner.readers == 0) != (inner.writers == 0) {
@@ -109,33 +109,24 @@ impl BufferOps for PipeBuffer {
 			self.wr_queue.wake_all();
 		}
 	}
-}
 
-impl NodeOps for PipeBuffer {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Fifo.to_mode() | 0o666,
-			..Default::default()
-		})
+	fn poll(&self, _file: &File, _mask: u32) -> EResult<u32> {
+		todo!()
 	}
 
-	fn ioctl(
-		&self,
-		_loc: &FileLocation,
-		request: ioctl::Request,
-		argp: *const c_void,
-	) -> EResult<u32> {
+	fn ioctl(&self, _file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
+				let len = self.inner.lock().buffer.get_data_len();
 				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
-				count_ptr.copy_to_user(self.get_available_len() as _)?;
+				count_ptr.copy_to_user(len as _)?;
 			}
 			_ => return Err(errno!(ENOTTY)),
 		}
 		Ok(0)
 	}
 
-	fn read_content(&self, _loc: &FileLocation, _off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, _off: u64, buf: &mut [u8]) -> EResult<usize> {
 		if unlikely(buf.is_empty()) {
 			return Ok(0);
 		}
@@ -156,7 +147,7 @@ impl NodeOps for PipeBuffer {
 		Ok(len)
 	}
 
-	fn write_content(&self, _loc: &FileLocation, _off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _file: &File, _off: u64, buf: &[u8]) -> EResult<usize> {
 		if unlikely(buf.is_empty()) {
 			return Ok(0);
 		}

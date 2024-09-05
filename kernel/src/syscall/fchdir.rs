@@ -39,7 +39,13 @@ pub fn fchdir(
 	ap: AccessProfile,
 	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	let file = fds.lock().get_fd(fd)?.get_file().vfs_entry.clone();
+	let file = fds
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.vfs_entry
+		.clone()
+		.ok_or_else(|| errno!(ENOTDIR))?;
 	let stat = file.stat()?;
 	// Check the file is an accessible directory
 	if stat.get_type() != Some(FileType::Directory) {

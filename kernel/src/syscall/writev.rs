@@ -63,10 +63,10 @@ fn write(
 			// corresponding offset
 			let len = if let Some(offset) = offset {
 				let file_off = offset + off as u64;
-				file.write(file_off, &buf)?
+				file.ops.write(file, file_off, &buf)?
 			} else {
 				let off = file.off.load(atomic::Ordering::Acquire);
-				let len = file.write(off, &buf)?;
+				let len = file.ops.write(file, off, &buf)?;
 				file.off.fetch_add(len as u64, atomic::Ordering::Release);
 				len
 			};

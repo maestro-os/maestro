@@ -67,10 +67,10 @@ fn read(
 		while inner_off < buf.len() {
 			let len = if let Some(offset) = offset {
 				let file_off = offset + off as u64;
-				file.read(file_off, &mut buf)?
+				file.ops.read(file, file_off, &mut buf)?
 			} else {
 				let off = file.off.load(atomic::Ordering::Acquire);
-				let len = file.read(off, &mut buf)?;
+				let len = file.ops.read(file, off, &mut buf)?;
 				file.off.fetch_add(len as u64, atomic::Ordering::Release);
 				len
 			};

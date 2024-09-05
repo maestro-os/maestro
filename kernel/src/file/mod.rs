@@ -24,21 +24,20 @@
 //! The root filesystem is passed to the kernel as an argument on boot.
 //! Other filesystems are mounted into subdirectories.
 
-pub mod buffer;
 pub mod fd;
 pub mod fs;
 pub mod path;
 pub mod perm;
+pub mod pipe;
+pub mod socket;
 pub mod util;
 pub mod vfs;
 pub mod wait_queue;
 
 use crate::{
-	device,
 	device::{DeviceID, DeviceType},
 	file::{
-		buffer::{Buffer, BufferOps},
-		fs::{Filesystem, NodeOps},
+		fs::Filesystem,
 		perm::{Gid, Uid},
 	},
 	syscall::ioctl,
@@ -48,7 +47,7 @@ use crate::{
 		unit::{Timestamp, TimestampScale},
 	},
 };
-use core::{any::Any, ffi::c_void, intrinsics::unlikely, ops::Deref};
+use core::{any::Any, ffi::c_void, fmt::Debug, intrinsics::unlikely, ops::Deref};
 use perm::AccessProfile;
 use utils::{
 	boxed::Box,
@@ -62,7 +61,6 @@ use utils::{
 use vfs::{
 	mountpoint,
 	mountpoint::{MountPoint, MountSource},
-	node::Node,
 };
 
 /// A filesystem node ID.
@@ -183,7 +181,7 @@ impl FileType {
 	}
 
 	/// Returns the mode corresponding to the type.
-	pub const fn to_mode(&self) -> Mode {
+	pub const fn to_mode(self) -> Mode {
 		match self {
 			Self::Socket => S_IFSOCK,
 			Self::Link => S_IFLNK,
@@ -196,7 +194,7 @@ impl FileType {
 	}
 
 	/// Returns the directory entry type.
-	pub const fn to_dirent_type(&self) -> u8 {
+	pub const fn to_dirent_type(self) -> u8 {
 		match self {
 			Self::Socket => DT_SOCK,
 			Self::Link => DT_LNK,
@@ -209,7 +207,7 @@ impl FileType {
 	}
 
 	/// Returns the device type, if any.
-	pub const fn to_device_type(&self) -> Option<DeviceType> {
+	pub const fn to_device_type(self) -> Option<DeviceType> {
 		match self {
 			FileType::BlockDevice => Some(DeviceType::Block),
 			FileType::CharDevice => Some(DeviceType::Char),
@@ -346,11 +344,81 @@ impl Stat {
 	}
 }
 
+/// File operations.
+pub trait FileOps: Any + Debug {
+	/// Returns the file's status.
+	fn get_stat(&self, file: &File) -> EResult<Stat>;
+
+	/// Increments the reference counter of the file.
+	fn acquire(&self, file: &File);
+	/// Decrements the reference counter of the file.
+	fn release(&self, file: &File);
+
+	/// Wait for events on the file.
+	///
+	/// Arguments:
+	/// - `file` is the file to perform the operation onto.
+	/// - `mask` is the mask of events to wait for.
+	///
+	/// On success, the function returns the mask events that occurred.
+	fn poll(&self, file: &File, mask: u32) -> EResult<u32>;
+
+	/// Performs an ioctl operation on the device file.
+	///
+	/// Arguments:
+	/// - `file` is the file to perform the operation onto.
+	/// - `request` is the ID of the request to perform.
+	/// - `argp` is a pointer to the argument.
+	fn ioctl(&self, file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32>;
+
+	/// Reads the file's content.
+	///
+	/// Arguments:
+	/// - `file` is the file to perform the operation onto.
+	/// - `off` is the offset to read at on the file.
+	/// - `buf` is the buffer on which the read data is written.
+	///
+	/// On success, the function returns the number of bytes written.
+	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize>;
+
+	/// Writes the file's content.
+	///
+	/// Arguments:
+	/// - `file` is the file to perform the operation onto.
+	/// - `off` is the offset to write at on the file.
+	/// - `buf` is the buffer containing the data to write.
+	///
+	/// On success, the function returns the number of bytes written.
+	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize>;
+}
+
+/// An object that may optionally have a reference counter.
+#[derive(Debug)]
+pub enum CounterOption<T: ?Sized> {
+	/// The object has a reference counter.
+	Some(Arc<T>),
+	/// The object does not have a reference counter.
+	None(Box<T>),
+}
+
+impl<T: ?Sized> Deref for CounterOption<T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		match self {
+			CounterOption::Some(t) => t.deref(),
+			CounterOption::None(t) => t.deref(),
+		}
+	}
+}
+
 /// An open file description.
 #[derive(Debug)]
 pub struct File {
 	/// The VFS entry of the file.
-	pub vfs_entry: Arc<vfs::Entry>,
+	pub vfs_entry: Option<Arc<vfs::Entry>>,
+	/// Handle for file operations.
+	pub ops: CounterOption<dyn FileOps>,
 	/// Open file description flags.
 	pub flags: Mutex<i32>,
 	/// The current offset in the file.
@@ -358,45 +426,37 @@ pub struct File {
 }
 
 impl File {
-	fn get_buffer_impl(&self) -> Option<&Buffer> {
-		let ops = &self.vfs_entry.node().ops;
-		(ops as &dyn Any).downcast_ref::<Buffer>()
-	}
-
-	/// Increment the reference counter on the underlying buffer, if any.
-	fn buffer_increment(&self) {
-		if let Some(buf) = self.get_buffer_impl() {
-			buf.0.acquire(self.can_read(), self.can_write());
-		}
-	}
-
-	/// Opens a file.
+	/// Opens a file from a [`vfs::Entry`].
 	///
 	/// Arguments:
 	/// - `entry` is the VFS entry of the file.
 	/// - `flags` is the open file description's flags.
-	pub fn open(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
+	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
 		let file = Self {
-			vfs_entry: entry,
+			vfs_entry: Some(entry),
+			ops: CounterOption::None(Box::new(vfs::FileOps)?),
 			flags: Mutex::new(flags),
 			off: Default::default(),
 		};
-		file.buffer_increment();
+		file.ops.acquire(&file);
 		Ok(Arc::new(file)?)
 	}
 
-	/// Like [`Self::open`], but without an associated location.
-	pub fn open_ops(ops: Box<dyn NodeOps>, flags: i32) -> EResult<Arc<Self>> {
+	/// Open a file with no associated VFS entry.
+	pub fn open_floating(ops: Arc<dyn FileOps>, flags: i32) -> EResult<Arc<Self>> {
 		let file = Self {
-			vfs_entry: Arc::new(vfs::Entry::from_node(Arc::new(Node {
-				location: FileLocation::nowhere(),
-				ops,
-			})?))?,
+			vfs_entry: None,
+			ops: CounterOption::Some(ops),
 			flags: Mutex::new(flags),
 			off: Default::default(),
 		};
-		file.buffer_increment();
+		file.ops.acquire(&file);
 		Ok(Arc::new(file)?)
+	}
+
+	/// Returns the underlying buffer, if any.
+	pub fn get_buffer<B: FileOps>(&self) -> Option<&B> {
+		(self.ops.deref() as &dyn Any).downcast_ref::<B>()
 	}
 
 	/// Returns the open file description's flags.
@@ -429,78 +489,14 @@ impl File {
 	}
 
 	/// Returns the file's status.
-	#[inline]
 	pub fn stat(&self) -> EResult<Stat> {
-		self.vfs_entry.stat()
+		self.ops.get_stat(self)
 	}
 
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> EResult<FileType> {
 		let stat = self.stat()?;
 		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
-	}
-
-	/// Returns the file's associated buffer.
-	///
-	/// If the file does not have a buffer of type `B`, the function returns `None`.
-	pub fn get_buffer<B: BufferOps>(&self) -> Option<&B> {
-		(self.get_buffer_impl()?.0.deref() as &dyn Any).downcast_ref()
-	}
-
-	/// Reads data from the file at the given offset.
-	///
-	/// On success, the function returns the number of bytes read.
-	pub fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		if unlikely(!self.can_read()) {
-			return Err(errno!(EACCES));
-		}
-		let stat = self.vfs_entry.stat()?;
-		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => {
-				let dev = device::get(&DeviceID {
-					dev_type,
-					major: stat.dev_major,
-					minor: stat.dev_minor,
-				})
-				.ok_or_else(|| errno!(ENODEV))?;
-				dev.get_io().read_bytes(off, buf)
-			}
-			None => {
-				self.vfs_entry
-					.node()
-					.ops
-					.read_content(&self.vfs_entry.node().location, off, buf)
-			}
-		}
-	}
-
-	/// Writes data to the file at the given offset.
-	///
-	/// On success, the function returns the number of bytes read.
-	pub fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
-		if unlikely(!self.can_write()) {
-			return Err(errno!(EACCES));
-		}
-		let stat = self.vfs_entry.stat()?;
-		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => {
-				let dev = device::get(&DeviceID {
-					dev_type,
-					major: stat.dev_major,
-					minor: stat.dev_minor,
-				})
-				.ok_or_else(|| errno!(ENODEV))?;
-				dev.get_io().write_bytes(off, buf)
-			}
-			None => {
-				self.vfs_entry
-					.node()
-					.ops
-					.write_content(&self.vfs_entry.node().location, off, buf)
-			}
-		}
 	}
 
 	/// Truncates the file to the given `size`.
@@ -511,99 +507,22 @@ impl File {
 		if unlikely(!self.can_write()) {
 			return Err(errno!(EACCES));
 		}
-		let stat = self.vfs_entry.stat()?;
-		match stat.get_type() {
-			// If the file is a device, do nothing
-			Some(FileType::BlockDevice | FileType::CharDevice) => Ok(()),
-			_ => self
-				.vfs_entry
-				.node()
-				.ops
-				.truncate_content(&self.vfs_entry.node().location, size),
-		}
-	}
-
-	/// Returns the directory entry with the given `name`.
-	///
-	/// If the file is not a directory, the function returns `None`.
-	pub fn dir_entry_by_name<'n>(&self, name: &'n [u8]) -> EResult<Option<DirEntry<'n>>> {
-		let e = self
+		let node = self
 			.vfs_entry
-			.node()
-			.ops
-			.entry_by_name(&self.vfs_entry.node().location, name)?;
-		Ok(e.map(|(e, ..)| e))
-	}
-
-	/// Returns an iterator over the directory's entries.
-	///
-	/// `start` is the starting offset of the iterator.
-	///
-	/// If the file is not a directory, the iterator returns nothing.
-	pub fn iter_dir_entries(&self, start: u64) -> DirEntryIterator<'_> {
-		DirEntryIterator {
-			dir: self,
-			cursor: start,
-		}
-	}
-
-	/// Polls the file with the given `mask`.
-	pub fn poll(&self, mask: u32) -> EResult<u32> {
-		let stat = self.vfs_entry.stat()?;
-		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => {
-				let dev = device::get(&DeviceID {
-					dev_type,
-					major: stat.dev_major,
-					minor: stat.dev_minor,
-				})
-				.ok_or_else(|| errno!(ENODEV))?;
-				dev.get_io().poll(mask)
-			}
-			None => self
-				.vfs_entry
-				.node()
-				.ops
-				.poll(&self.vfs_entry.node().location, mask),
-		}
-	}
-
-	/// Performs an ioctl operation on the file.
-	///
-	/// Arguments:
-	/// - `mem_space` is the memory space on which pointers are to be dereferenced.
-	/// - `request` is the ID of the request to perform.
-	/// - `argp` is a pointer to the argument.
-	pub fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let stat = self.vfs_entry.stat()?;
-		let dev_type = stat.get_type().as_ref().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => {
-				let dev = device::get(&DeviceID {
-					dev_type,
-					major: stat.dev_major,
-					minor: stat.dev_minor,
-				})
-				.ok_or_else(|| errno!(ENODEV))?;
-				dev.get_io().ioctl(request, argp)
-			}
-			None => {
-				self.vfs_entry
-					.node()
-					.ops
-					.ioctl(&self.vfs_entry.node().location, request, argp)
-			}
-		}
+			.as_ref()
+			.ok_or_else(|| errno!(EINVAL))?
+			.node();
+		node.ops.truncate_content(&node.location, size)
 	}
 
 	/// Closes the file, removing it the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn close(self) -> EResult<()> {
-		if let Some(buf) = self.get_buffer_impl() {
-			buf.0.release(self.can_read(), self.can_write());
+		self.ops.release(&self);
+		if let Some(ent) = self.vfs_entry {
+			vfs::Entry::release(ent)?;
 		}
-		vfs::Entry::release(self.vfs_entry)
+		Ok(())
 	}
 }
 
@@ -732,39 +651,6 @@ impl AccessProfile {
 	/// Tells whether the agent can set permissions for a file with the given status.
 	pub fn can_set_file_permissions(&self, stat: &Stat) -> bool {
 		self.euid == perm::ROOT_UID || self.euid == stat.uid
-	}
-}
-
-/// Iterator over a file's directory entries.
-///
-/// For each entry, the function also returns the offset to the next.
-///
-/// If the file is not a directory, the iterator returns nothing.
-pub struct DirEntryIterator<'f> {
-	/// The directory.
-	dir: &'f File,
-	/// The current offset in the file.
-	cursor: u64,
-}
-
-impl<'f> Iterator for DirEntryIterator<'f> {
-	type Item = EResult<(DirEntry<'static>, u64)>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let res = self
-			.dir
-			.vfs_entry
-			.node()
-			.ops
-			.next_entry(&self.dir.vfs_entry.node().location, self.cursor)
-			.transpose()?;
-		match res {
-			Ok((entry, off)) => {
-				self.cursor = off;
-				Some(Ok((entry, self.cursor)))
-			}
-			Err(e) => Some(Err(e)),
-		}
 	}
 }
 

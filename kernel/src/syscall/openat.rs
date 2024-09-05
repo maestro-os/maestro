@@ -144,7 +144,7 @@ pub fn do_openat(
 	// Open file
 	const FLAGS_MASK: i32 =
 		!(O_CLOEXEC | O_CREAT | O_DIRECTORY | O_EXCL | O_NOCTTY | O_NOFOLLOW | O_TRUNC);
-	let file = File::open(file, flags & FLAGS_MASK)?;
+	let file = File::open_entry(file, flags & FLAGS_MASK)?;
 	// Truncate if necessary
 	if flags & O_TRUNC != 0 {
 		file.truncate(0)?;

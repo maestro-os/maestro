@@ -76,11 +76,18 @@ pub fn do_getdents<E: Dirent>(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let file = fds.lock().get_fd(fd as _)?.get_file().clone();
+	let node = file
+		.vfs_entry
+		.as_ref()
+		.ok_or_else(|| errno!(ENOTDIR))?
+		.node();
 	let mut off = file.off.load(atomic::Ordering::Acquire);
 	let mut buf_off = 0;
 	// Iterate over entries and fill the buffer
-	for entry in file.iter_dir_entries(off) {
-		let (entry, next_off) = entry?;
+	loop {
+		let Some((entry, next_off)) = node.ops.next_entry(&node.location, off)? else {
+			break;
+		};
 		// Skip entries whose inode cannot fit in the structure
 		if entry.inode > E::INODE_MAX {
 			continue;

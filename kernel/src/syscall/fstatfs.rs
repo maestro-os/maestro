@@ -43,6 +43,8 @@ pub fn do_fstatfs(
 		.get_fd(fd)?
 		.get_file()
 		.vfs_entry
+		.as_ref()
+		.ok_or_else(|| errno!(ENOSYS))?
 		.node()
 		.location
 		.get_mountpoint()

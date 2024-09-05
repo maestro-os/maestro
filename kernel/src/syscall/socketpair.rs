@@ -21,13 +21,7 @@
 
 use crate::{
 	file,
-	file::{
-		buffer,
-		buffer::{socket::Socket, Buffer},
-		fd::FileDescriptorTable,
-		perm::AccessProfile,
-		vfs, File,
-	},
+	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
@@ -58,9 +52,9 @@ pub fn socketpair(
 		protocol,
 	};
 	// Create socket
-	let sock = Buffer::new(Socket::new(desc)?)?;
-	let file0 = File::open_ops(Box::new(sock.clone())?, file::O_RDWR)?;
-	let file1 = File::open_ops(Box::new(sock)?, file::O_RDWR)?;
+	let sock = Arc::new(Socket::new(desc)?)?;
+	let file0 = File::open_floating(sock.clone(), file::O_RDWR)?;
+	let file1 = File::open_floating(sock, file::O_RDWR)?;
 	// Create file descriptors
 	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
 	sv.copy_to_user([fd0_id as _, fd1_id as _])?;
