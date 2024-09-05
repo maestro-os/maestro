@@ -337,31 +337,27 @@ mod test {
 
 	impl FileOps for Dummy {
 		fn get_stat(&self, _file: &File) -> EResult<Stat> {
-			unreachable!()
+			Ok(Stat::default())
 		}
 
-		fn acquire(&self, _file: &File) {
-			unreachable!()
-		}
+		fn acquire(&self, _file: &File) {}
 
-		fn release(&self, _file: &File) {
-			unreachable!()
-		}
+		fn release(&self, _file: &File) {}
 
 		fn poll(&self, _file: &File, _mask: u32) -> EResult<u32> {
-			unreachable!()
+			Ok(0)
 		}
 
 		fn ioctl(&self, _file: &File, _request: Request, _argp: *const c_void) -> EResult<u32> {
-			unreachable!()
+			Ok(0)
 		}
 
 		fn read(&self, _file: &File, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
-			unreachable!()
+			Ok(0)
 		}
 
 		fn write(&self, _file: &File, _off: u64, _buf: &[u8]) -> EResult<usize> {
-			unreachable!()
+			Ok(0)
 		}
 	}
 
