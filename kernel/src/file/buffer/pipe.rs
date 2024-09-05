@@ -140,11 +140,16 @@ impl NodeOps for PipeBuffer {
 			return Ok(0);
 		}
 		let len = self.rd_queue.wait_until(|| {
-			let len = self.inner.lock().buffer.read(buf);
+			let mut inner = self.inner.lock();
+			let len = inner.buffer.read(buf);
 			if len > 0 {
 				self.wr_queue.wake_next();
 				Some(len)
 			} else {
+				if inner.writers == 0 {
+					return Some(0);
+				}
+				// TODO if O_NONBLOCK, return `EAGAIN`
 				None
 			}
 		})?;
@@ -166,6 +171,7 @@ impl NodeOps for PipeBuffer {
 				self.rd_queue.wake_next();
 				Some(Ok(len))
 			} else {
+				// TODO if O_NONBLOCK, return `EAGAIN`
 				None
 			}
 		})??;
