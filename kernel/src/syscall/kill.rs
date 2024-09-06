@@ -122,17 +122,6 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 
 pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
 	let sig = (sig != 0).then(|| Signal::try_from(sig)).transpose()?;
-	// TODO check if necessary
-	cli();
 	send_signal(pid, sig)?;
-	// Setting the return value of the system call so that it is correct even if a signal is
-	// executed before returning
-	{
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
-		let mut return_regs = proc.regs.clone();
-		return_regs.set_syscall_return(Ok(0));
-		proc.regs = return_regs;
-	}
 	Ok(0)
 }

@@ -62,6 +62,7 @@ impl TTYDeviceHandle {
 		{
 			return Err(errno!(EIO));
 		}
+		drop(signal_handlers);
 		proc.kill_group(Signal::SIGTTIN);
 		Ok(())
 	}
@@ -87,6 +88,7 @@ impl TTYDeviceHandle {
 		if proc.is_in_orphan_process_group() {
 			return Err(errno!(EIO));
 		}
+		drop(signal_handlers);
 		proc.kill_group(Signal::SIGTTOU);
 		Ok(())
 	}
