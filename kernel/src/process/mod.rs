@@ -303,37 +303,31 @@ pub(crate) fn init() -> EResult<()> {
 			return CallbackResult::Panic;
 		}
 		// Get process
-		let Some(curr_proc) = Process::current_opt() else {
-			return CallbackResult::Panic;
-		};
-		let mut curr_proc = curr_proc.lock();
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
 		match id {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
 			// SIMD Floating-Point Exception
-			0x00 | 0x10 | 0x13 => curr_proc.kill_now(Signal::SIGFPE),
+			0x00 | 0x10 | 0x13 => proc.kill(Signal::SIGFPE),
 			// Breakpoint
-			0x03 => curr_proc.kill_now(Signal::SIGTRAP),
+			0x03 => proc.kill(Signal::SIGTRAP),
 			// Invalid Opcode
-			0x06 => curr_proc.kill_now(Signal::SIGILL),
+			0x06 => proc.kill(Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
 				let inst_prefix = unsafe { *(regs.eip.0 as *const u8) };
 				if inst_prefix == HLT_INSTRUCTION {
-					curr_proc.exit(regs.eax.0 as _);
+					proc.exit(regs.eax.0 as _);
 				} else {
-					curr_proc.kill_now(Signal::SIGSEGV);
+					proc.kill(Signal::SIGSEGV);
 				}
 			}
 			// Alignment Check
-			0x11 => curr_proc.kill_now(Signal::SIGBUS),
+			0x11 => proc.kill(Signal::SIGBUS),
 			_ => {}
 		}
-		if matches!(curr_proc.get_state(), State::Running) {
-			CallbackResult::Continue
-		} else {
-			CallbackResult::Idle
-		}
+		CallbackResult::Continue
 	};
 	let page_fault_callback = |_id: u32, code: u32, regs: &Regs, ring: u32| {
 		let accessed_ptr = register_get!("cr2") as *const c_void;
@@ -368,14 +362,10 @@ pub(crate) fn init() -> EResult<()> {
 					return CallbackResult::Panic;
 				}
 			} else {
-				curr_proc.kill_now(Signal::SIGSEGV);
+				curr_proc.kill(Signal::SIGSEGV);
 			}
 		}
-		if matches!(curr_proc.get_state(), State::Running) {
-			CallbackResult::Continue
-		} else {
-			CallbackResult::Idle
-		}
+		CallbackResult::Continue
 	};
 	let _ = ManuallyDrop::new(event::register_callback(0x00, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x03, callback)?);
@@ -917,18 +907,6 @@ impl Process {
 		}
 		// Set the signal as pending
 		self.sigpending.set(sig.get_id() as _);
-	}
-
-	/// Same as [`Self::kill`], except the signal prepared for execution directly.
-	///
-	/// This is useful for cases where the execution of the program **MUST NOT** resume before
-	/// handling the signal (such as hardware faults).
-	pub fn kill_now(&mut self, sig: Signal) {
-		self.kill(sig);
-		let signal_handlers = self.signal_handlers.clone();
-		let signal_handlers = signal_handlers.lock();
-		let id = sig.get_id();
-		signal_handlers[id as usize].exec(sig, self);
 	}
 
 	/// Kills every process in the process group.

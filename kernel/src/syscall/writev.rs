@@ -90,7 +90,6 @@ pub fn do_writev(
 	iovcnt: i32,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
@@ -107,24 +106,12 @@ pub fn do_writev(
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	let len = match write(&iov, iovcnt as _, offset, &file) {
-		Ok(len) => len,
-		Err(e) => {
-			// If writing to a broken pipe, kill with SIGPIPE
-			if e.as_int() == errno::EPIPE {
-				let mut proc = proc.lock();
-				proc.kill_now(Signal::SIGPIPE);
-			}
-			return Err(e);
-		}
-	};
-	Ok(len)
+	write(&iov, iovcnt as _, offset, &file)
 }
 
 pub fn writev(
 	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_writev(fd, iov, iovcnt, None, None, proc, fds)
+	do_writev(fd, iov, iovcnt, None, None, fds)
 }

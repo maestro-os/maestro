@@ -38,7 +38,6 @@ use utils::{
 
 pub fn write(
 	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
@@ -55,19 +54,7 @@ pub fn write(
 	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
 	// Write file
 	let off = file.off.load(atomic::Ordering::Acquire);
-	let res = file.ops.write(&file, off, &buf_slice);
-	match res {
-		Ok(len) => {
-			file.off.fetch_add(len as u64, atomic::Ordering::Release);
-			Ok(len)
-		}
-		Err(e) => {
-			// If writing to a broken pipe, kill with SIGPIPE
-			if e.as_int() == errno::EPIPE {
-				let mut proc = proc.lock();
-				proc.kill_now(Signal::SIGPIPE);
-			}
-			Err(e)
-		}
-	}
+	let len = file.ops.write(&file, off, &buf_slice)?;
+	file.off.fetch_add(len as u64, atomic::Ordering::Release);
+	Ok(len)
 }

@@ -953,9 +953,11 @@ fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.get_syscall_id();
-	let Some(res) = do_syscall(id, regs) else {
-		// The system call doesn't exist. Kill the process with SIGSYS
-		{
+	match do_syscall(id, regs) {
+		// Success: Set the return value
+		Some(res) => regs.set_syscall_return(res),
+		// The system call does not exist: Kill the process with SIGSYS
+		None => {
 			let proc_mutex = Process::current();
 			let mut proc = proc_mutex.lock();
 			#[cfg(feature = "strace")]
@@ -964,11 +966,9 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 				pid = proc.get_pid()
 			);
 			// SIGSYS cannot be caught, thus the process will be terminated
-			proc.kill_now(Signal::SIGSYS);
+			proc.kill(Signal::SIGSYS);
 		}
-		crate::enter_loop();
-	};
-	regs.set_syscall_return(res);
+	}
 	// If the process has been killed, handle it
 	process::yield_current(3, regs);
 }
