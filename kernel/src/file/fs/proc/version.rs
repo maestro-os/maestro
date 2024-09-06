@@ -19,10 +19,7 @@
 //! The `version` file returns the version of the kernel.
 
 use crate::{
-	file::{
-		fs::{Filesystem, NodeOps},
-		FileType, INode, Stat,
-	},
+	file::{fs::NodeOps, FileLocation, FileType, Stat},
 	format_content,
 };
 use utils::errno::EResult;
@@ -32,21 +29,14 @@ use utils::errno::EResult;
 pub struct Version;
 
 impl NodeOps for Version {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Regular,
-			mode: 0o444,
+			mode: FileType::Regular.to_mode() | 0o444,
 			..Default::default()
 		})
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		format_content!(off, buf, "{} version {}\n", crate::NAME, crate::VERSION)
 	}
 }

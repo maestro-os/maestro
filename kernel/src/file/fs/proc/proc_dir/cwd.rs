@@ -21,13 +21,13 @@
 
 use crate::{
 	file::{
-		fs::{proc::get_proc_owner, Filesystem, NodeOps},
-		FileType, INode, Stat,
+		fs::{proc::get_proc_owner, NodeOps},
+		vfs, FileLocation, FileType, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
 };
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `cwd` node.
 #[derive(Debug)]
@@ -40,26 +40,23 @@ impl From<Pid> for Cwd {
 }
 
 impl NodeOps for Cwd {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
-			file_type: FileType::Link,
-			mode: 0o444,
+			mode: FileType::Link.to_mode() | 0o444,
 			uid,
 			gid,
 			..Default::default()
 		})
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
-		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", proc.cwd.0)
+	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let cwd = vfs::Entry::get_path(
+			&Process::get_by_pid(self.0)
+				.ok_or_else(|| errno!(ENOENT))?
+				.lock()
+				.cwd,
+		)?;
+		format_content!(off, buf, "{}", DisplayableStr(cwd.as_bytes()))
 	}
 }

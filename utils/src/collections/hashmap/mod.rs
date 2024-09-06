@@ -51,6 +51,9 @@ pub fn hash<K: ?Sized + Hash, H: Default + Hasher>(key: &K) -> u64 {
 
 /// Occupied entry in the hashmap.
 pub struct OccupiedEntry<'h, K, V> {
+	/// The key to insert.
+	key: K,
+	/// The slot to insert into.
 	inner: &'h mut Slot<K, V>,
 }
 
@@ -197,6 +200,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		let hash = hash::<_, H>(&key);
 		match self.inner.find_slot(&key, hash, true) {
 			Some((slot_off, true)) => Entry::Occupied(OccupiedEntry {
+				key,
 				inner: self.inner.get_slot_mut(slot_off),
 			}),
 			Some((slot_off, false)) => Entry::Vacant(VacantEntry {
@@ -250,11 +254,11 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 
 	/// Tells whether the hash map contains the given `key`.
 	#[inline]
-	pub fn contains_key<Q: ?Sized + Hash + Eq>(&self, k: &Q) -> bool
+	pub fn contains_key<Q: ?Sized + Hash + Eq>(&self, key: &Q) -> bool
 	where
 		K: Borrow<Q>,
 	{
-		self.get(k).is_some()
+		self.get(key).is_some()
 	}
 
 	/// Creates an iterator of immutable references for the hash map.
@@ -391,7 +395,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		}
 	}
 
-	/// Drops all elements in the hash map.
+	/// Drops all elements from the hash map.
 	pub fn clear(&mut self) {
 		// Drop everything
 		self.retain(|_, _| false);
@@ -623,6 +627,148 @@ impl<'m, K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for Iter<'m, K,
 impl<'m, K: Hash + Eq, V, H: Default + Hasher> FusedIterator for Iter<'m, K, V, H> {}
 
 unsafe impl<'m, K: Hash + Eq, V, H: Default + Hasher> TrustedLen for Iter<'m, K, V, H> {}
+
+/// The implementation of the hash set.
+pub struct HashSet<K: Eq + Hash, H: Default + Hasher = FxHasher>(HashMap<K, (), H>);
+
+impl<K: Eq + Hash> Default for HashSet<K> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl<K: Eq + Hash, H: Default + Hasher> HashSet<K, H> {
+	/// Creates a new empty instance.
+	pub const fn new() -> Self {
+		Self(HashMap::new())
+	}
+
+	/// Creates a new instance with the given capacity in number of elements.
+	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
+		Ok(Self(HashMap::with_capacity(capacity)?))
+	}
+
+	/// Returns the number of elements in the hash set.
+	#[inline]
+	pub fn len(&self) -> usize {
+		self.0.len
+	}
+
+	/// Tells whether the hash set is empty.
+	#[inline]
+	pub fn is_empty(&self) -> bool {
+		self.0.len == 0
+	}
+
+	/// Returns the number of elements the set can hold without reallocating.
+	#[inline]
+	pub fn capacity(&self) -> usize {
+		self.0.capacity()
+	}
+
+	/// Returns an immutable reference to the value matching `value`.
+	///
+	/// If the key isn't present, the function return `None`.
+	pub fn get<Q: ?Sized + Hash + Eq>(&self, value: &Q) -> Option<&K>
+	where
+		K: Borrow<Q>,
+	{
+		let hash = hash::<_, H>(value);
+		let (slot_off, occupied) = self.0.inner.find_slot(value, hash, false)?;
+		if occupied {
+			let slot = self.0.inner.get_slot(slot_off);
+			Some(unsafe { slot.key.assume_init_ref() })
+		} else {
+			None
+		}
+	}
+
+	/// Tells whether the hash set contains the given `value`.
+	#[inline]
+	pub fn contains<Q: ?Sized + Hash + Eq>(&self, value: &Q) -> bool
+	where
+		K: Borrow<Q>,
+	{
+		self.get(value).is_some()
+	}
+
+	/// Tries to reserve memory for at least `additional` more elements. The function might reserve
+	/// more memory than necessary to avoid frequent re-allocations.
+	///
+	/// If the hash set already has enough capacity, the function does nothing.
+	pub fn reserve(&mut self, additional: usize) -> AllocResult<()> {
+		self.0.reserve(additional)
+	}
+
+	/// Inserts a new element into the hash set.
+	///
+	/// If the value was already present, the function returns the previous value.
+	pub fn insert(&mut self, value: K) -> AllocResult<Option<K>> {
+		match self.0.entry(value) {
+			Entry::Occupied(e) => {
+				let old = mem::replace(unsafe { e.inner.key.assume_init_mut() }, e.key);
+				Ok(Some(old))
+			}
+			Entry::Vacant(e) => {
+				e.insert(())?;
+				Ok(None)
+			}
+		}
+	}
+
+	/// Removes an element from the hash set.
+	///
+	/// If the value was present, the function returns the previous.
+	pub fn remove<Q: ?Sized + Hash + Eq>(&mut self, value: &Q) -> Option<K>
+	where
+		K: Borrow<Q>,
+	{
+		let hash = hash::<_, H>(&value);
+		let (slot_off, occupied) = self.0.inner.find_slot(value, hash, false)?;
+		if occupied {
+			self.0.len -= 1;
+			let (group, index) = raw::get_slot_position::<K, ()>(slot_off);
+			// Update control byte
+			let ctrl = self.0.inner.get_ctrl(group);
+			let h2 = raw::group_match_unused(ctrl, false)
+				.map(|_| CTRL_EMPTY)
+				.unwrap_or(CTRL_DELETED);
+			self.0.inner.set_ctrl(group, index, h2);
+			// Return previous value
+			let slot = self.0.inner.get_slot_mut(slot_off);
+			unsafe { Some(slot.key.assume_init_read()) }
+		} else {
+			None
+		}
+	}
+
+	/// Drops all elements from the hash set.
+	pub fn clear(&mut self) {
+		self.0.clear()
+	}
+}
+
+impl<K: Eq + Hash + fmt::Debug, H: Default + Hasher> fmt::Debug for HashSet<K, H> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		fmt::Debug::fmt(&self.0, f)
+	}
+}
+
+impl<K: Eq + Hash + TryClone<Error = E>, H: Default + Hasher, E: From<AllocError>> TryClone
+	for HashSet<K, H>
+{
+	type Error = E;
+
+	fn try_clone(&self) -> Result<Self, Self::Error> {
+		let hm = self
+			.0
+			.iter()
+			.map(|(e, v)| Ok((e.try_clone()?, v.try_clone()?)))
+			.collect::<Result<CollectResult<_>, Self::Error>>()?
+			.0?;
+		Ok(Self(hm))
+	}
+}
 
 #[cfg(test)]
 mod test {

@@ -23,9 +23,8 @@ use crate::{
 	device::DeviceID,
 	file::{
 		fd::FileDescriptorTable,
-		mountpoint::MountSource,
 		path::PathBuf,
-		vfs::{ResolutionSettings, Resolved},
+		vfs::{mountpoint::MountSource, ResolutionSettings, Resolved},
 	},
 	process::{
 		mem_space::copy::{SyscallPtr, SyscallString},
@@ -128,50 +127,43 @@ pub fn statx(
 	// Get the file
 	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
-	let Resolved::Found(file_mutex) = at::get_file(&fds.lock(), rs, dirfd, &path, flags)? else {
+	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, &path, flags)? else {
 		return Err(errno!(ENOENT));
 	};
-	let file = file_mutex.lock();
+	// Get file's stat
+	let stat = file.stat()?;
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
-	let (stx_dev_major, stx_dev_minor) = {
-		if let Some(mountpoint_mutex) = file.location.get_mountpoint() {
-			// TODO Clean: This is a quick fix to avoid a deadlock because vfs is also using
-			// the mountpoint and locking vfs requires disabling interrupts
-			crate::idt::wrap_disable_interrupts(|| {
-				let mountpoint = mountpoint_mutex.lock();
-				match mountpoint.get_source() {
-					MountSource::Device(DeviceID {
-						major,
-						minor,
-						..
-					}) => (*major, *minor),
-					_ => (0, 0),
-				}
-			})
-		} else {
-			(0, 0)
-		}
+	let (stx_dev_major, stx_dev_minor) = match file.node().location.get_mountpoint() {
+		Some(mp) => match mp.source {
+			MountSource::Device(DeviceID {
+				major,
+				minor,
+				..
+			}) => (major, minor),
+			_ => (0, 0),
+		},
+		None => (0, 0),
 	};
 	// Write
 	statxbuff.copy_to_user(Statx {
 		stx_mask: !0,      // TODO
 		stx_blksize: 512,  // TODO
 		stx_attributes: 0, // TODO
-		stx_nlink: file.stat.nlink as _,
-		stx_uid: file.stat.uid as _,
-		stx_gid: file.stat.gid as _,
-		stx_mode: file.stat.get_mode() as _,
+		stx_nlink: stat.nlink as _,
+		stx_uid: stat.uid as _,
+		stx_gid: stat.gid as _,
+		stx_mode: stat.mode as _,
 
 		__padding0: 0,
 
-		stx_ino: file.location.get_inode(),
-		stx_size: file.stat.size,
-		stx_blocks: file.stat.blocks,
+		stx_ino: file.node().location.inode,
+		stx_size: stat.size,
+		stx_blocks: stat.blocks,
 		stx_attributes_mask: 0, // TODO
 
 		stx_atime: StatxTimestamp {
-			tv_sec: file.stat.atime as _,
+			tv_sec: stat.atime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
@@ -181,18 +173,18 @@ pub fn statx(
 			__reserved: 0,
 		},
 		stx_ctime: StatxTimestamp {
-			tv_sec: file.stat.ctime as _,
+			tv_sec: stat.ctime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
 		stx_mtime: StatxTimestamp {
-			tv_sec: file.stat.mtime as _,
+			tv_sec: stat.mtime as _,
 			tv_nsec: 0, // TODO
 			__reserved: 0,
 		},
 
-		stx_rdev_major: file.stat.dev_major,
-		stx_rdev_minor: file.stat.dev_minor,
+		stx_rdev_major: stat.dev_major,
+		stx_rdev_minor: stat.dev_minor,
 		stx_dev_major,
 		stx_dev_minor,
 

@@ -28,6 +28,7 @@ mod version;
 
 use super::{kernfs, Filesystem, FilesystemType, NodeOps};
 use crate::{
+	device::DeviceIO,
 	file::{
 		fs::{
 			kernfs::{
@@ -39,7 +40,7 @@ use crate::{
 		},
 		path::PathBuf,
 		perm::{Gid, Uid},
-		DirEntry, FileType, INode, Stat,
+		DirEntry, FileLocation, FileType, INode, Stat,
 	},
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
 };
@@ -55,8 +56,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	format,
-	io::IO,
-	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 };
 use version::Version;
@@ -140,84 +139,79 @@ impl RootDir {
 }
 
 impl NodeOps for RootDir {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
-			file_type: FileType::Directory,
-			mode: 0o555,
+			mode: FileType::Directory.to_mode() | 0o555,
 			..Default::default()
 		})
 	}
 
 	fn entry_by_name<'n>(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		_loc: &FileLocation,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let pid = core::str::from_utf8(name).ok().and_then(|s| s.parse().ok());
-		if let Some(pid) = pid {
-			// Check the process exists
-			if Process::get_by_pid(pid).is_some() {
-				// Return the entry for the process
-				Ok(Some((
-					DirEntry {
-						inode: 0,
-						entry_type: FileType::Directory,
-						name: Cow::Borrowed(name),
-					},
-					Box::new(StaticDir {
-						entries: &[
-							StaticEntryBuilder {
-								name: b"cmdline",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Cmdline, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"cwd",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Cwd, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"environ",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Environ, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"exe",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Exe, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"mounts",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Mounts, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"stat",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<StatNode, Pid>,
-							},
-							StaticEntryBuilder {
-								name: b"status",
-								entry_type: FileType::Regular,
-								init: entry_init_from::<Status, Pid>,
-							},
-						],
-						data: pid,
-					})? as _,
-				)))
-			} else {
-				Ok(None)
-			}
-		} else {
-			Self::STATIC.entry_by_name_inner(name)
+		let Some(pid) = pid else {
+			return Self::STATIC.entry_by_name_inner(name);
+		};
+		// Check the process exists
+		if Process::get_by_pid(pid).is_none() {
+			return Ok(None);
 		}
+		// Return the entry for the process
+		Ok(Some((
+			DirEntry {
+				inode: 0,
+				entry_type: FileType::Directory,
+				name: Cow::Borrowed(name),
+			},
+			Box::new(StaticDir {
+				entries: &[
+					StaticEntryBuilder {
+						name: b"cmdline",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Cmdline, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"cwd",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Cwd, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"environ",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Environ, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"exe",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Exe, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"mounts",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Mounts, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"stat",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<StatNode, Pid>,
+					},
+					StaticEntryBuilder {
+						name: b"status",
+						entry_type: FileType::Regular,
+						init: entry_init_from::<Status, Pid>,
+					},
+				],
+				data: pid,
+			})? as _,
+		)))
 	}
 
 	fn next_entry(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		_loc: &FileLocation,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
@@ -257,10 +251,6 @@ impl Filesystem for ProcFS {
 		b"proc"
 	}
 
-	fn is_readonly(&self) -> bool {
-		true
-	}
-
 	fn use_cache(&self) -> bool {
 		false
 	}
@@ -295,20 +285,20 @@ impl Filesystem for ProcFS {
 }
 
 /// The proc filesystem type.
-pub struct ProcFsType {}
+pub struct ProcFsType;
 
 impl FilesystemType for ProcFsType {
 	fn get_name(&self) -> &'static [u8] {
 		b"procfs"
 	}
 
-	fn detect(&self, _io: &mut dyn IO) -> EResult<bool> {
+	fn detect(&self, _io: &dyn DeviceIO) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
-		_io: Option<Arc<Mutex<dyn IO>>>,
+		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {

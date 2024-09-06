@@ -29,7 +29,6 @@ use core::{alloc::AllocError, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 	vec,
@@ -44,14 +43,14 @@ pub fn finit_module(
 		return Err(errno!(EPERM));
 	}
 	// Read file
-	let open_file_mutex = fds.lock().get_fd(fd)?.get_open_file().clone();
-	let image = {
-		let mut open_file = open_file_mutex.lock();
-		let len = open_file.get_size().try_into().map_err(|_| AllocError)?;
-		let mut image = vec![0u8; len]?;
-		open_file.read(0, image.as_mut_slice())?;
-		image
-	};
+	let image = fds
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.vfs_entry
+		.as_ref()
+		.ok_or_else(|| errno!(ENOEXEC))?
+		.read_all()?;
 	let module = Module::load(&image)?;
 	if !module::is_loaded(module.get_name()) {
 		module::add(module)?;

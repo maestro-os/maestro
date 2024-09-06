@@ -18,13 +18,9 @@
 
 //! A map residence provides information about how to populate a memory mapping.
 
-use crate::{
-	file::{open_file::OpenFile, FileLocation},
-	memory,
-	memory::buddy,
-};
+use crate::{file::File, memory, memory::buddy};
 use core::{alloc::AllocError, ptr::NonNull};
-use utils::{collections::vec::Vec, errno::AllocResult, lock::Mutex, ptr::arc::Arc};
+use utils::{collections::vec::Vec, errno::AllocResult, ptr::arc::Arc};
 
 /// Type representing a memory page.
 pub type Page = [u8; memory::PAGE_SIZE];
@@ -94,19 +90,10 @@ pub enum MapResidence {
 	},
 	/// The mapping resides in a file.
 	File {
-		/// The location of the file.
-		location: FileLocation,
+		/// The mapped file.
+		file: Arc<File>,
 		/// The offset of the mapping in the file.
 		off: u64,
-	},
-	/// The mapping resides in swap memory.
-	Swap {
-		/// The location of the swap memory.
-		swap_file: Arc<Mutex<OpenFile>>,
-		/// The ID of the slot occupied by the mapping.
-		slot_id: u32,
-		/// The page offset in the slot.
-		page_off: usize,
 	},
 }
 
@@ -128,14 +115,11 @@ impl MapResidence {
 
 	/// Adds a value of `pages` pages to the offset of the residence, if applicable.
 	pub fn offset_add(&mut self, pages: usize) {
-		match self {
-			Self::File {
-				off, ..
-			} => *off += pages as u64 * memory::PAGE_SIZE as u64,
-			Self::Swap {
-				page_off, ..
-			} => *page_off += pages,
-			_ => {}
+		if let Self::File {
+			off, ..
+		} = self
+		{
+			*off += pages as u64 * memory::PAGE_SIZE as u64
 		}
 	}
 
@@ -156,16 +140,10 @@ impl MapResidence {
 				pages,
 			} => pages.get(offset).cloned().ok_or(AllocError),
 			MapResidence::File {
-				location: _,
+				file: _,
 				off: _,
 			} => {
 				// TODO get physical page for this offset
-				todo!();
-			}
-			MapResidence::Swap {
-				..
-			} => {
-				// TODO
 				todo!();
 			}
 		}

@@ -41,15 +41,15 @@ pub fn do_fstatfs(
 	// TODO use `sz`
 	let stat = fds
 		.get_fd(fd)?
-		.get_open_file()
-		.lock()
 		.get_file()
-		.lock()
+		.vfs_entry
+		.as_ref()
+		.ok_or_else(|| errno!(ENOSYS))?
+		.node()
 		.location
 		.get_mountpoint()
 		.ok_or_else(|| errno!(ENOSYS))?
-		.lock()
-		.get_filesystem()
+		.fs
 		.get_stat()?;
 	buf.copy_to_user(stat)?;
 	Ok(0)

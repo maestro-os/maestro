@@ -92,6 +92,7 @@ use crate::{
 	logger::LOGGER,
 	memory::vmem,
 	process::{exec, exec::ExecInfo, Process},
+	tty::TTY,
 };
 use core::{arch::asm, ffi::c_void};
 use utils::{
@@ -145,15 +146,14 @@ fn init(init_path: String) -> EResult<()> {
 	let rs = ResolutionSettings::kernel_follow();
 
 	let path = Path::new(&init_path)?;
-	let file_mutex = vfs::get_file_from_path(path, &rs)?;
-	let mut file = file_mutex.lock();
+	let file = vfs::get_file_from_path(path, &rs)?;
 
 	let exec_info = ExecInfo {
 		path_resolution: &rs,
 		argv: vec![init_path]?,
 		envp: env,
 	};
-	let program_image = exec::build_image(&mut file, exec_info)?;
+	let program_image = exec::build_image(&file, exec_info)?;
 
 	let proc_mutex = Process::new()?;
 	let mut proc = proc_mutex.lock();
@@ -164,7 +164,7 @@ fn init(init_path: String) -> EResult<()> {
 /// [`enter_loop`].
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
-	tty::init();
+	TTY.display.lock().show();
 	// Ensure the CPU has SSE
 	if !cpu::sse::is_present() {
 		panic!("SSE support is required to run this kernel :(");

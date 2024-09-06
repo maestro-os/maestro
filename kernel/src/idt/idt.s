@@ -24,8 +24,6 @@
 
 .section .text
 
-.extern end_of_interrupt
-
 /*
  * This macro creates a function to handle an error interrupt that does **not** pass an additional
  * error code.
@@ -142,10 +140,6 @@ GET_REGS irq_\n
 	push $(\n + 0x20) # id
 	call event_handler
 	add $16, %esp
-
-	push $\n
-	call end_of_interrupt
-	add $4, %esp
 
 RESTORE_REGS
 

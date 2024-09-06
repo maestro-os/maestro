@@ -20,13 +20,14 @@
 //! the current process.
 
 use crate::{
+	file::vfs,
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
+use core::intrinsics::unlikely;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	format,
 	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
@@ -35,14 +36,11 @@ pub fn getcwd(
 	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
 	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	let proc = proc.lock();
-	// Check that the buffer is large enough
-	if size < proc.cwd.0.len() + 1 {
+	let cwd = vfs::Entry::get_path(&proc.lock().cwd)?;
+	if unlikely(size < cwd.len() + 1) {
 		return Err(errno!(ERANGE));
 	}
-	// Write
-	let cwd = proc.cwd.0.as_bytes();
-	buf.copy_to_user(0, cwd)?;
+	buf.copy_to_user(0, cwd.as_bytes())?;
 	buf.copy_to_user(cwd.len(), b"\0")?;
 	Ok(buf.as_ptr() as _)
 }

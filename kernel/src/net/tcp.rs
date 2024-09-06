@@ -20,7 +20,7 @@
 //! two-way, connection-based byte streams.
 
 use super::{buff::BuffList, osi::Layer};
-use crate::file::buffer::socket::Socket;
+use crate::file::socket::Socket;
 use utils::errno::EResult;
 
 /// The TCP segment header.
@@ -53,6 +53,7 @@ pub struct TCPHdr {
 }
 
 /// The network layer for the TCP protocol.
+#[derive(Debug)]
 pub struct TCPLayer {}
 
 impl Layer for TCPLayer {

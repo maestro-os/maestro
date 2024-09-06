@@ -22,12 +22,12 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, FD_CLOEXEC},
-		open_file,
-		open_file::OpenFile,
 		path::{Path, PathBuf},
+		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Stat,
+		File, FileType, Stat, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOCTTY, O_NOFOLLOW,
+		O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY,
 	},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::{util::at, Args},
@@ -68,24 +68,21 @@ fn get_file(
 	flags: c_int,
 	rs: ResolutionSettings,
 	mode: file::Mode,
-) -> EResult<Arc<Mutex<File>>> {
-	let create = flags & open_file::O_CREAT != 0;
+) -> EResult<Arc<vfs::Entry>> {
 	let resolved = at::get_file(fds, rs.clone(), dirfd, path, flags)?;
 	match resolved {
 		Resolved::Found(file) => Ok(file),
 		Resolved::Creatable {
 			parent,
 			name,
-		} if create => {
-			let mut parent = parent.lock();
+		} => {
 			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 			vfs::create_file(
-				&mut parent,
+				parent,
 				name,
 				&rs.access_profile,
 				Stat {
-					file_type: FileType::Regular,
-					mode,
+					mode: FileType::Regular.to_mode() | mode,
 					ctime: ts,
 					mtime: ts,
 					atime: ts,
@@ -93,48 +90,77 @@ fn get_file(
 				},
 			)
 		}
-		_ => Err(errno!(ENOENT)),
 	}
 }
 
-pub fn openat(
-	Args((dirfd, pathname, flags, mode)): Args<(c_int, SyscallString, c_int, file::Mode)>,
+/// Perform the `openat` system call.
+pub fn do_openat(
+	dirfd: c_int,
+	pathname: SyscallString,
+	flags: c_int,
+	mode: file::Mode,
 ) -> EResult<usize> {
-	let (rs, path, fds_mutex) = {
+	let (rs, path, fds_mutex, mode) = {
 		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
 
-		let follow_link = flags & open_file::O_NOFOLLOW == 0;
-		let rs = ResolutionSettings::for_process(&proc, follow_link);
+		let follow_link = flags & O_NOFOLLOW == 0;
+		let create = flags & O_CREAT != 0;
+		let mut rs = ResolutionSettings::for_process(&proc, follow_link);
+		rs.create = create;
 
 		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(pathname)?;
 
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
 
-		(rs, path, fds_mutex)
+		let mode = mode & !proc.umask;
+
+		(rs, path, fds_mutex, mode)
 	};
 
 	let mut fds = fds_mutex.lock();
 
 	// Get file
-	let file_mutex = get_file(&fds, dirfd, &path, flags, rs.clone(), mode)?;
-	{
-		let mut file = file_mutex.lock();
-		super::open::handle_flags(&mut file, flags, &rs.access_profile)?;
+	let file = get_file(&fds, dirfd, &path, flags, rs.clone(), mode)?;
+	// Check permissions
+	let (read, write) = match flags & 0b11 {
+		O_RDONLY => (true, false),
+		O_WRONLY => (false, true),
+		O_RDWR => (true, true),
+		_ => return Err(errno!(EINVAL)),
+	};
+	let stat = file.stat()?;
+	if read && !rs.access_profile.can_read_file(&stat) {
+		return Err(errno!(EACCES));
 	}
-
-	// FIXME: pass the absolute path, used by `fchidr`
-	let open_file = OpenFile::new(file_mutex, None, flags)?;
-
+	if write && !rs.access_profile.can_write_file(&stat) {
+		return Err(errno!(EACCES));
+	}
+	let file_type = stat.get_type();
+	// If `O_DIRECTORY` is set and the file is not a directory, return an error
+	if flags & O_DIRECTORY != 0 && file_type != Some(FileType::Directory) {
+		return Err(errno!(ENOTDIR));
+	}
+	// Open file
+	const FLAGS_MASK: i32 =
+		!(O_CLOEXEC | O_CREAT | O_DIRECTORY | O_EXCL | O_NOCTTY | O_NOFOLLOW | O_TRUNC);
+	let file = File::open_entry(file, flags & FLAGS_MASK)?;
+	// Truncate if necessary
+	if flags & O_TRUNC != 0 && file_type == Some(FileType::Regular) {
+		file.truncate(0)?;
+	}
 	// Create FD
 	let mut fd_flags = 0;
-	if flags & open_file::O_CLOEXEC != 0 {
+	if flags & O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-	let (fd_id, _) = fds.create_fd(fd_flags, open_file)?;
-
-	// TODO flush file? (see `open` syscall)
-
+	let (fd_id, _) = fds.create_fd(fd_flags, file)?;
 	Ok(fd_id as _)
+}
+
+pub fn openat(
+	Args((dirfd, pathname, flags, mode)): Args<(c_int, SyscallString, c_int, file::Mode)>,
+) -> EResult<usize> {
+	do_openat(dirfd, pathname, flags, mode)
 }

@@ -23,10 +23,10 @@ mod cpio;
 
 use crate::{
 	device, file,
-	file::{path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType, Stat},
+	file::{path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat},
 };
 use cpio::CPIOParser;
-use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 // TODO clean this function
 /// Updates the current parent used for the unpacking operation.
@@ -37,7 +37,7 @@ use utils::{errno, errno::EResult, io::IO, lock::Mutex, ptr::arc::Arc};
 /// - `retry` tells whether the function is called as a second try.
 fn update_parent<'p>(
 	new: &'p Path,
-	stored: &mut Option<(&'p Path, Arc<Mutex<File>>)>,
+	stored: &mut Option<(&'p Path, Arc<vfs::Entry>)>,
 	retry: bool,
 ) -> EResult<()> {
 	// Get the parent
@@ -48,7 +48,7 @@ fn update_parent<'p>(
 			};
 			let name = Path::new(name)?;
 			let rs = ResolutionSettings {
-				start: Some(parent.clone()),
+				cwd: Some(parent.clone()),
 				..ResolutionSettings::kernel_nofollow()
 			};
 			vfs::get_file_from_path(name, &rs)
@@ -78,7 +78,7 @@ fn update_parent<'p>(
 pub fn load(data: &[u8]) -> EResult<()> {
 	// TODO Use a stack instead?
 	// The stored parent directory
-	let mut stored_parent: Option<(&Path, Arc<Mutex<File>>)> = None;
+	let mut stored_parent: Option<(&Path, Arc<vfs::Entry>)> = None;
 
 	let cpio_parser = CPIOParser::new(data);
 	for entry in cpio_parser {
@@ -97,17 +97,14 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			update_parent(parent_path, &mut stored_parent, false)?;
 		}
 
-		let parent_mutex = &stored_parent.as_ref().unwrap().1;
-		let mut parent = parent_mutex.lock();
+		let parent = &stored_parent.as_ref().unwrap().1;
 		// Create file
-		let file_type = hdr.get_type();
 		let create_result = vfs::create_file(
-			&mut parent,
+			parent.clone(),
 			name,
 			&AccessProfile::KERNEL,
 			Stat {
-				file_type,
-				mode: hdr.get_perms(),
+				mode: hdr.c_mode as _,
 				uid: hdr.c_uid,
 				gid: hdr.c_gid,
 				dev_major: device::id::major(hdr.c_rdev as _),
@@ -118,16 +115,17 @@ pub fn load(data: &[u8]) -> EResult<()> {
 				..Default::default()
 			},
 		);
-		let file_mutex = match create_result {
+		let file = match create_result {
 			Ok(file_mutex) => file_mutex,
 			Err(e) if e.as_int() == errno::EEXIST => continue,
 			Err(e) => return Err(e),
 		};
-		let mut file = file_mutex.lock();
-		match file_type {
+		match file.get_type()? {
 			FileType::Regular | FileType::Link => {
 				let content = entry.get_content();
-				file.write(0, content)?;
+				file.node()
+					.ops
+					.write_content(&file.node().location, 0, content)?;
 			}
 			_ => {}
 		}

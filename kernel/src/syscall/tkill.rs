@@ -38,7 +38,7 @@ pub fn tkill(
 	let mut proc = proc.lock();
 	// Check if the thread to kill is the current
 	if proc.tid == tid {
-		proc.kill(&signal);
+		proc.kill(signal);
 	} else {
 		// Get the thread
 		let thread_mutex = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
@@ -47,7 +47,7 @@ pub fn tkill(
 		if !proc.access_profile.can_kill(&thread) {
 			return Err(errno!(EPERM));
 		}
-		thread.kill(&signal);
+		thread.kill(signal);
 	}
 	Ok(0)
 }

@@ -23,7 +23,6 @@
 
 use super::gap::MemGap;
 use crate::{
-	file::vfs,
 	memory,
 	memory::{
 		vmem,
@@ -38,7 +37,6 @@ use core::{alloc::AllocError, ffi::c_void, num::NonZeroUsize, ops::Range, slice}
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
-	io::IO,
 	ptr::arc::Arc,
 	TryClone,
 };
@@ -317,13 +315,10 @@ impl MemMapping {
 		// TODO if locked, EBUSY
 		// Get file
 		let MapResidence::File {
-			location,
+			file,
 			off,
 		} = &self.residence
 		else {
-			return Ok(());
-		};
-		let Ok(file_mutex) = vfs::get_file_from_location(*location) else {
 			return Ok(());
 		};
 		// Sync
@@ -335,11 +330,10 @@ impl MemMapping {
 					self.begin as *mut u8,
 					self.size.get() * memory::PAGE_SIZE,
 				);
-				let mut file = file_mutex.lock();
 				let mut i = 0;
 				while i < slice.len() {
-					let l = file.write(*off, &slice[i..])?;
-					i += l as usize;
+					let l = file.ops.write(file, *off, &slice[i..])?;
+					i += l;
 				}
 				Ok(())
 			})

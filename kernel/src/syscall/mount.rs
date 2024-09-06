@@ -20,7 +20,10 @@
 
 use crate::{
 	file::{
-		fs, mountpoint, mountpoint::MountSource, path::PathBuf, vfs, vfs::ResolutionSettings,
+		fs,
+		path::PathBuf,
+		vfs,
+		vfs::{mountpoint, mountpoint::MountSource, ResolutionSettings},
 		FileType,
 	},
 	process::{
@@ -56,21 +59,13 @@ pub fn mount(
 	let filesystemtype_slice = filesystemtype.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let fs_type = fs::get_type(&filesystemtype_slice).ok_or(errno!(ENODEV))?;
 	// Get target file
-	let target_file_mutex = vfs::get_file_from_path(&target_path, &rs)?;
-	let target_file = target_file_mutex.lock();
+	let target_file = vfs::get_file_from_path(&target_path, &rs)?;
 	// Check the target is a directory
-	if target_file.stat.file_type != FileType::Directory {
+	if target_file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	let target_location = target_file.location;
 	// TODO Use `data`
 	// Create mountpoint
-	mountpoint::create(
-		mount_source,
-		Some(fs_type),
-		mountflags,
-		target_path,
-		target_location,
-	)?;
+	mountpoint::create(mount_source, Some(fs_type), mountflags, target_file)?;
 	Ok(0)
 }

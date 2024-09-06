@@ -19,9 +19,9 @@
 //! Kernel logging
 //!
 //! If the logger is set as silent, logs will not show up on screen, but will be kept in memory
-//! anyways.
+//! anyway.
 
-use crate::tty;
+use crate::tty::TTY;
 use core::{
 	cmp::{min, Ordering},
 	fmt,
@@ -127,10 +127,7 @@ impl Write for Logger {
 	fn write_str(&mut self, s: &str) -> fmt::Result {
 		self.push(s.as_bytes());
 		if !self.silent {
-			let Some(tty) = tty::get(None) else {
-				return Ok(());
-			};
-			tty.lock().write(s.as_bytes());
+			TTY.display.lock().write(s.as_bytes());
 		}
 		Ok(())
 	}

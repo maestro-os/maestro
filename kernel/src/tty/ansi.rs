@@ -19,7 +19,7 @@
 //! ANSI escape sequences allow to control the terminal by specifying commands in standard output
 //! of the terminal.
 
-use super::TTY;
+use super::TTYDisplay;
 use crate::tty::vga;
 use core::{
 	cmp::{max, min},
@@ -57,7 +57,7 @@ pub(super) struct ANSIBuffer {
 
 impl ANSIBuffer {
 	/// Creates a new instance.
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self {
 			buf: [0; BUFFER_SIZE],
 			cursor: 0,
@@ -104,23 +104,18 @@ impl ANSIBuffer {
 /// Consuming data on the view doesn't affect the underlying buffer. Only the view itself.
 struct ANSIBufferView<'tty> {
 	/// The TTY.
-	tty: &'tty mut TTY,
+	tty: &'tty mut TTYDisplay,
 	/// The current offset of the view in the buffer.
 	cursor: usize,
 }
 
 impl<'tty> ANSIBufferView<'tty> {
 	/// Creates a view the buffer of the given TTY.
-	fn new(tty: &'tty mut TTY) -> Self {
+	fn new(tty: &'tty mut TTYDisplay) -> Self {
 		Self {
 			tty,
 			cursor: 0,
 		}
-	}
-
-	/// Returns the associated TTY.
-	pub fn tty(&mut self) -> &mut TTY {
-		self.tty
 	}
 
 	/// Returns an immutable reference to the underlying buffer view.
@@ -255,7 +250,7 @@ fn get_vga_color_from_id(id: u8) -> vga::Color {
 /// Arguments:
 /// - `d` is the direction character.
 /// - `n` is the number of cells to travel. If `None`, the default is used (`1`).
-fn move_cursor(tty: &mut TTY, d: u8, n: Option<u32>) -> ANSIState {
+fn move_cursor(tty: &mut TTYDisplay, d: u8, n: Option<u32>) -> ANSIState {
 	let n = n.unwrap_or(1).clamp(0, i16::MAX as _) as i16;
 	match d {
 		b'A' => {
@@ -285,7 +280,7 @@ fn move_cursor(tty: &mut TTY, d: u8, n: Option<u32>) -> ANSIState {
 /// Handles an Select Graphics Renderition (SGR) command.
 ///
 /// `seq` is the id of the numbers describing the command.
-fn parse_sgr(tty: &mut TTY, seq: &[Option<u32>]) -> ANSIState {
+fn parse_sgr(tty: &mut TTYDisplay, seq: &[Option<u32>]) -> ANSIState {
 	match seq.first().cloned().flatten().unwrap_or(0) {
 		0 => {
 			tty.reset_attrs();
@@ -390,18 +385,18 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 	let status = match (seq, cmd) {
 		(_, b'?') => match (view.next_nbr(), view.next_char()) {
 			(Some(7 | 25), Some(b'h')) => {
-				view.tty().set_cursor_visible(true);
+				view.tty.set_cursor_visible(true);
 				ANSIState::Valid
 			}
 			(Some(7 | 25), Some(b'l')) => {
-				view.tty().set_cursor_visible(false);
+				view.tty.set_cursor_visible(false);
 				ANSIState::Valid
 			}
 			_ => ANSIState::Invalid,
 		},
-		(&[nbr], b'A'..=b'D') => move_cursor(view.tty(), cmd, nbr.map(|i| i as _)),
+		(&[nbr], b'A'..=b'D') => move_cursor(view.tty, cmd, nbr.map(|i| i as _)),
 		(&[nbr], b'E') => {
-			view.tty().newline(nbr.unwrap_or(1) as _);
+			view.tty.newline(nbr.unwrap_or(1) as _);
 			ANSIState::Valid
 		}
 		(&[_nbr], b'F') => {
@@ -409,12 +404,12 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 			ANSIState::Valid
 		}
 		(&[nbr], b'G') => {
-			view.tty().cursor_y = nbr.map(|i| i as _).unwrap_or(1).clamp(1, vga::WIDTH + 1) - 1;
+			view.tty.cursor_y = nbr.map(|i| i as _).unwrap_or(1).clamp(1, vga::WIDTH + 1) - 1;
 			ANSIState::Valid
 		}
 		(&[row, column], b'H') => {
-			view.tty().cursor_x = column.map(|i| i as _).unwrap_or(1).clamp(1, vga::WIDTH + 1) - 1;
-			view.tty().cursor_y = row.map(|i| i as _).unwrap_or(1).clamp(1, vga::HEIGHT + 1) - 1;
+			view.tty.cursor_x = column.map(|i| i as _).unwrap_or(1).clamp(1, vga::WIDTH + 1) - 1;
+			view.tty.cursor_y = row.map(|i| i as _).unwrap_or(1).clamp(1, vga::HEIGHT + 1) - 1;
 			ANSIState::Valid
 		}
 		(&[_nbr], b'J') => {
@@ -433,10 +428,10 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 			// TODO Scroll down
 			ANSIState::Valid
 		}
-		(seq, b'm') => parse_sgr(view.tty(), seq),
+		(seq, b'm') => parse_sgr(view.tty, seq),
 		_ => ANSIState::Invalid,
 	};
-	view.tty().update();
+	view.tty.update();
 	status
 }
 
@@ -465,7 +460,7 @@ fn parse(view: &mut ANSIBufferView) -> ANSIState {
 /// undefined.
 ///
 /// The function returns the number of bytes consumed by the function.
-pub fn handle(tty: &mut TTY, buffer: &[u8]) -> usize {
+pub fn handle(tty: &mut TTYDisplay, buffer: &[u8]) -> usize {
 	tty.ansi_buffer.push_back(buffer);
 	let mut n = 0;
 	while !tty.ansi_buffer.is_empty() {

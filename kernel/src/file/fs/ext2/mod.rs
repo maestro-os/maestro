@@ -48,10 +48,11 @@ mod dirent;
 mod inode;
 
 use crate::{
+	device::DeviceIO,
 	file::{
 		fs::{downcast_fs, Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
 		path::PathBuf,
-		DirEntry, FileType, INode, Stat,
+		DirEntry, FileLocation, FileType, INode, Stat,
 	},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
@@ -61,17 +62,15 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	intrinsics::unlikely,
-	mem::{size_of, MaybeUninit},
-	slice,
+	mem::size_of,
 };
 use inode::Ext2INode;
 use macros::AnyRepr;
 use utils::{
 	boxed::Box,
-	bytes::{as_bytes, AnyRepr},
+	bytes::{as_bytes, from_bytes, AnyRepr},
 	errno,
 	errno::EResult,
-	io::IO,
 	lock::Mutex,
 	math,
 	ptr::{arc::Arc, cow::Cow},
@@ -150,32 +149,7 @@ const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
-/// Reads an object of the given type on the given device.
-///
-/// Arguments:
-/// - `offset` is the offset in bytes on the device.
-/// - `io` is the I/O interface of the device.
-fn read<T: AnyRepr>(offset: u64, io: &mut dyn IO) -> EResult<T> {
-	unsafe {
-		let mut obj = MaybeUninit::<T>::uninit();
-		let ptr = obj.as_mut_ptr() as *mut u8;
-		let buf = slice::from_raw_parts_mut(ptr, size_of::<T>());
-		io.read(offset, buf)?;
-		Ok(obj.assume_init())
-	}
-}
-
-/// Writes an object of the given type on the given device.
-///
-/// Arguments:
-/// - `obj` is the object to write.
-/// - `offset` is the offset in bytes on the device.
-/// - `io` is the I/O interface of the device.
-fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
-	let buffer = as_bytes(obj);
-	io.write(offset, buffer)?;
-	Ok(())
-}
+// TODO page cache on read_block and write_block
 
 /// Reads the `off`th block on the given device and writes the data onto the
 /// given buffer.
@@ -188,8 +162,10 @@ fn write<T>(obj: &T, offset: u64, io: &mut dyn IO) -> EResult<()> {
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn read_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResult<()> {
-	io.read(off as u64 * blk_size as u64, buf)?;
+fn read_block(off: u32, blk_size: u32, io: &dyn DeviceIO, buf: &mut [u8]) -> EResult<()> {
+	let dev_blk_size = io.block_size().get();
+	let off = off as u64 * (blk_size as u64 / dev_blk_size);
+	io.read(off, buf)?;
 	Ok(())
 }
 
@@ -204,9 +180,54 @@ fn read_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &mut [u8]) -> EResu
 ///
 /// If the block is outside the storage's bounds, the function returns an
 /// error.
-fn write_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &[u8]) -> EResult<()> {
-	io.write(off as u64 * blk_size as u64, buf)?;
+fn write_block(off: u32, blk_size: u32, io: &dyn DeviceIO, buf: &[u8]) -> EResult<()> {
+	let dev_blk_size = io.block_size().get();
+	let off = off as u64 * (blk_size as u64 / dev_blk_size);
+	io.write(off, buf)?;
 	Ok(())
+}
+
+/// Reads an object of the given type on the given device.
+///
+/// Arguments:
+/// - `off` is the offset in bytes on the device
+/// - `blk_size` is the size of a block in the filesystem
+/// - `io` is the I/O interface of the device
+///
+/// If the object spans several blocks, the function returns [`EUCLEAN`].
+fn read<T: AnyRepr + Clone>(off: u64, blk_size: u32, io: &dyn DeviceIO) -> EResult<T> {
+	let blk = off / blk_size as u64;
+	let inner_off = (off % blk_size as u64) as usize;
+	let mut buf = vec![0u8; blk_size as usize]?;
+	read_block(blk as _, blk_size, io, &mut buf)?;
+	from_bytes(&buf[inner_off..])
+		.cloned()
+		.ok_or_else(|| errno!(EUCLEAN))
+}
+
+/// Writes an object of the given type on the given device.
+///
+/// Arguments:
+/// - `off` is the offset in bytes on the device
+/// - `blk_size` is the size of a block in the filesystem
+/// - `io` is the I/O interface of the device
+/// - `val` is the value to write
+///
+/// If the object spans several blocks, the function returns [`EUCLEAN`].
+fn write<T>(off: u64, blk_size: u32, io: &dyn DeviceIO, val: &T) -> EResult<()> {
+	let len = size_of::<T>();
+	let blk = off / blk_size as u64;
+	let inner_off = (off % blk_size as u64) as usize;
+	// Validation
+	if inner_off + len > blk_size as usize {
+		return Err(errno!(EUCLEAN));
+	}
+	// Read block
+	let mut buf = vec![0u8; blk_size as usize]?;
+	read_block(blk as _, blk_size, io, &mut buf)?;
+	// Write back
+	buf[inner_off..(inner_off + len)].copy_from_slice(as_bytes(val));
+	write_block(blk as _, blk_size, io, &buf)
 }
 
 /// File operations.
@@ -214,18 +235,14 @@ fn write_block(off: u32, blk_size: u32, io: &mut dyn IO, buf: &[u8]) -> EResult<
 struct Ext2NodeOps;
 
 impl NodeOps for Ext2NodeOps {
-	fn get_stat(&self, inode: INode, fs: &dyn Filesystem) -> EResult<Stat> {
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
+	fn get_stat(&self, loc: &FileLocation) -> EResult<Stat> {
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
-		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		let inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
 		let (dev_major, dev_minor) = inode_.get_device();
 		Ok(Stat {
-			file_type: inode_.get_type(),
-			mode: inode_.get_permissions(),
+			mode: inode_.i_mode as _,
 			nlink: inode_.i_links_count as _,
 			uid: inode_.i_uid,
 			gid: inode_.i_gid,
@@ -239,14 +256,11 @@ impl NodeOps for Ext2NodeOps {
 		})
 	}
 
-	fn set_stat(&self, inode: INode, fs: &dyn Filesystem, set: StatSet) -> EResult<()> {
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
+	fn set_stat(&self, loc: &FileLocation, set: StatSet) -> EResult<()> {
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
-		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		let mut inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
 		if let Some(mode) = set.mode {
 			inode_.set_permissions(mode);
 		}
@@ -268,95 +282,67 @@ impl NodeOps for Ext2NodeOps {
 		if let Some(atime) = set.atime {
 			inode_.i_atime = atime as _;
 		}
-		inode_.write(inode as _, &superblock, &mut *io)
+		inode_.write(loc.inode as _, &superblock, &*fs.io)
 	}
 
-	fn read_content(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
+	fn read_content(&self, loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
-		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		let inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
 		match inode_.get_type() {
-			FileType::Regular => inode_.read_content(off, buf, &superblock, &mut *io),
-			FileType::Link => {
-				let len = inode_.read_link(&superblock, &mut *io, off, buf)?;
-				let eof = len >= inode_.get_size(&superblock);
-				Ok((len, eof))
-			}
+			FileType::Regular => inode_.read_content(off, buf, &superblock, &*fs.io),
+			FileType::Link => inode_.read_link(&superblock, &*fs.io, off, buf),
 			_ => Err(errno!(EINVAL)),
 		}
 	}
 
-	fn write_content(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-		buf: &[u8],
-	) -> EResult<u64> {
-		if unlikely(fs.is_readonly()) {
+	fn write_content(&self, loc: &FileLocation, off: u64, buf: &[u8]) -> EResult<usize> {
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
-		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		let mut inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
 		match inode_.get_type() {
-			FileType::Regular => inode_.write_content(off, buf, &mut superblock, &mut *io)?,
-			FileType::Link => inode_.write_link(&mut superblock, &mut *io, buf)?,
+			FileType::Regular => inode_.write_content(off, buf, &mut superblock, &*fs.io)?,
+			FileType::Link => inode_.write_link(&mut superblock, &*fs.io, buf)?,
 			_ => return Err(errno!(EINVAL)),
 		}
-		inode_.write(inode as _, &superblock, &mut *io)?;
-		superblock.write(&mut *io)?;
+		inode_.write(loc.inode as _, &superblock, &*fs.io)?;
+		superblock.write(&*fs.io)?;
 		Ok(buf.len() as _)
 	}
 
-	fn truncate_content(&self, inode: INode, fs: &dyn Filesystem, size: u64) -> EResult<()> {
-		if unlikely(fs.is_readonly()) {
+	fn truncate_content(&self, loc: &FileLocation, size: u64) -> EResult<()> {
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
 		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
-		let mut inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		let mut inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
 		match inode_.get_type() {
-			FileType::Regular => inode_.truncate(&mut superblock, &mut *io, size)?,
+			FileType::Regular => inode_.truncate(&mut superblock, &*fs.io, size)?,
 			_ => return Err(errno!(EINVAL)),
 		}
-		inode_.write(inode as _, &superblock, &mut *io)?;
-		superblock.write(&mut *io)?;
+		inode_.write(loc.inode as _, &superblock, &*fs.io)?;
+		superblock.write(&*fs.io)?;
 		Ok(())
 	}
 
 	fn entry_by_name<'n>(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		loc: &FileLocation,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
-		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		let Some((inode, entry_type, _)) = inode_.get_dirent(name, &superblock, &mut *io)? else {
+		let inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
+		let Some((inode, entry_type, _)) = inode_.get_dirent(name, &superblock, &*fs.io)? else {
 			return Ok(None);
 		};
 		let ent = DirEntry {
@@ -369,52 +355,46 @@ impl NodeOps for Ext2NodeOps {
 
 	fn next_entry(
 		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
+		loc: &FileLocation,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		if inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
-		let inode_ = Ext2INode::read(inode as _, &superblock, &mut *io)?;
-		inode_.next_dirent(off, &superblock, &mut *io)
+		let inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
+		inode_.next_dirent(off, &superblock, &*fs.io)
 	}
 
 	fn add_file(
 		&self,
-		parent_inode: INode,
-		fs: &dyn Filesystem,
+		parent: &FileLocation,
 		name: &[u8],
 		stat: Stat,
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		if parent_inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		if unlikely(fs.is_readonly()) {
+		let fs = parent.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
+		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		let ops = Box::new(Ext2NodeOps)?;
 		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		// Get parent directory
-		let mut parent = Ext2INode::read(parent_inode as _, &superblock, &mut *io)?;
+		let mut parent_ = Ext2INode::read(parent.inode as _, &superblock, &*fs.io)?;
 		// Check the parent is a directory
-		if parent.get_type() != FileType::Directory {
+		if parent_.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		// Check whether the file already exists
-		if parent.get_dirent(name, &superblock, &mut *io)?.is_some() {
+		if parent_.get_dirent(name, &superblock, &*fs.io)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
 		// Get a free inode ID
-		let inode_index = superblock.get_free_inode(&mut *io)?;
+		let inode_index = superblock.get_free_inode(&*fs.io)?;
 		// Create inode
 		let mut inode = Ext2INode {
-			i_mode: stat.get_mode() as _,
+			i_mode: stat.mode as _,
 			i_uid: stat.uid,
 			i_size: 0,
 			i_ctime: stat.ctime as _,
@@ -434,25 +414,25 @@ impl NodeOps for Ext2NodeOps {
 			i_osd2: [0; 12],
 		};
 		// Update inode with content
-		match stat.file_type {
+		match file_type {
 			FileType::Directory => {
 				// Add `.` and `..` entries
 				inode.add_dirent(
 					&mut superblock,
-					&mut *io,
+					&*fs.io,
 					inode_index,
 					b".",
 					FileType::Directory,
 				)?;
 				inode.add_dirent(
 					&mut superblock,
-					&mut *io,
-					parent_inode as _,
+					&*fs.io,
+					parent.inode as _,
 					b"..",
 					FileType::Directory,
 				)?;
 				inode.i_links_count += 1;
-				parent.i_links_count += 1;
+				parent_.i_links_count += 1;
 			}
 			FileType::BlockDevice | FileType::CharDevice => {
 				if stat.dev_major > (u8::MAX as u32) || stat.dev_minor > (u8::MAX as u32) {
@@ -462,45 +442,36 @@ impl NodeOps for Ext2NodeOps {
 			}
 			_ => {}
 		}
-		let is_dir = stat.file_type == FileType::Directory;
+		let is_dir = file_type == FileType::Directory;
 		// Write node
-		inode.write(inode_index, &superblock, &mut *io)?;
-		superblock.mark_inode_used(&mut *io, inode_index, is_dir)?;
-		superblock.write(&mut *io)?;
+		inode.write(inode_index as _, &superblock, &*fs.io)?;
+		superblock.mark_inode_used(&*fs.io, inode_index, is_dir)?;
+		superblock.write(&*fs.io)?;
 		// Write parent
-		parent.add_dirent(&mut superblock, &mut *io, inode_index, name, stat.file_type)?;
-		parent.write(parent_inode as _, &superblock, &mut *io)?;
+		parent_.add_dirent(&mut superblock, &*fs.io, inode_index, name, file_type)?;
+		parent_.write(parent.inode as _, &superblock, &*fs.io)?;
 		Ok((inode_index as _, ops))
 	}
 
-	fn add_link(
-		&self,
-		parent_inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-		target_inode: INode,
-	) -> EResult<()> {
-		if parent_inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		if unlikely(fs.is_readonly()) {
+	fn link(&self, parent: &FileLocation, name: &[u8], target: INode) -> EResult<()> {
+		let fs = parent.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		// Parent inode
-		let mut parent = Ext2INode::read(parent_inode as _, &superblock, &mut *io)?;
+		let mut parent_ = Ext2INode::read(parent.inode as _, &superblock, &*fs.io)?;
 		// Check the parent file is a directory
-		if parent.get_type() != FileType::Directory {
+		if parent_.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		// Check the entry doesn't exist
-		if parent.get_dirent(name, &superblock, &mut *io)?.is_some() {
+		if parent_.get_dirent(name, &superblock, &*fs.io)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
 		// The inode
-		let mut inode_ = Ext2INode::read(target_inode as _, &superblock, &mut *io)?;
+		let mut inode_ = Ext2INode::read(target as _, &superblock, &*fs.io)?;
 		// Check the maximum number of links is not exceeded
 		if inode_.i_links_count == u16::MAX {
 			return Err(errno!(EMFILE));
@@ -512,84 +483,80 @@ impl NodeOps for Ext2NodeOps {
 		// Update links count
 		inode_.i_links_count += 1;
 		// Write directory entry
-		parent.add_dirent(
+		parent_.add_dirent(
 			&mut superblock,
-			&mut *io,
-			target_inode as _,
+			&*fs.io,
+			target as _,
 			name,
 			inode_.get_type(),
 		)?;
-		parent.write(parent_inode as _, &superblock, &mut *io)?;
-		inode_.write(target_inode as _, &superblock, &mut *io)?;
+		parent_.write(parent.inode as _, &superblock, &*fs.io)?;
+		inode_.write(target as _, &superblock, &*fs.io)?;
 		Ok(())
 	}
 
-	fn remove_file(
-		&self,
-		parent_inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-	) -> EResult<(u16, INode)> {
-		if parent_inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		if unlikely(fs.is_readonly()) {
+	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
+		let fs = parent.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		if name == b"." || name == b".." {
 			return Err(errno!(EINVAL));
 		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut io = fs.io.lock();
 		let mut superblock = fs.superblock.lock();
 		// The parent inode
-		let mut parent = Ext2INode::read(parent_inode as _, &superblock, &mut *io)?;
+		let mut parent_ = Ext2INode::read(parent.inode as _, &superblock, &*fs.io)?;
 		// Check the parent file is a directory
-		if parent.get_type() != FileType::Directory {
+		if parent_.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		// The inode number and the offset of the entry
-		let (remove_inode, _, remove_off) = parent
-			.get_dirent(name, &superblock, &mut *io)?
+		let (remove_inode, _, remove_off) = parent_
+			.get_dirent(name, &superblock, &*fs.io)?
 			.ok_or_else(|| errno!(ENOENT))?;
-		// The inode
-		let mut remove_inode_ = Ext2INode::read(remove_inode, &superblock, &mut *io)?;
+		let mut remove_inode_ = Ext2INode::read(remove_inode as _, &superblock, &*fs.io)?;
 		if remove_inode_.get_type() == FileType::Directory {
 			// If the directory is not empty, error
-			if !remove_inode_.is_directory_empty(&superblock, &mut *io)? {
+			if !remove_inode_.is_directory_empty(&superblock, &*fs.io)? {
 				return Err(errno!(ENOTEMPTY));
 			}
-			// Decrement links because of `.` and `..` entries being removed
-			remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
-			parent.i_links_count = parent.i_links_count.saturating_sub(1);
+			// Decrement links because of the `..` entry being removed
+			parent_.i_links_count = parent_.i_links_count.saturating_sub(1);
 		}
-		// Remove the directory entry
-		parent.remove_dirent(remove_off, &mut superblock, &mut *io)?;
-		parent.write(parent_inode as _, &superblock, &mut *io)?;
 		// Decrement the hard links count
 		remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
-		// If this is the last link, remove the inode
-		if remove_inode_.i_links_count == 0 {
-			let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-			remove_inode_.i_dtime = timestamp as _;
-			remove_inode_.free_content(&mut superblock, &mut *io)?;
-			// Free inode
-			superblock.free_inode(
-				&mut *io,
-				remove_inode,
-				remove_inode_.get_type() == FileType::Directory,
-			)?;
-			superblock.write(&mut *io)?;
+		remove_inode_.write(remove_inode as _, &superblock, &*fs.io)?;
+		// Remove the directory entry
+		parent_.remove_dirent(remove_off, &mut superblock, &*fs.io)?;
+		parent_.write(parent.inode as _, &superblock, &*fs.io)?;
+		Ok(())
+	}
+
+	fn remove_node(&self, loc: &FileLocation) -> EResult<()> {
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(&*fs);
+		if unlikely(fs.readonly) {
+			return Err(errno!(EROFS));
 		}
-		// Write the inode
-		remove_inode_.write(remove_inode, &superblock, &mut *io)?;
-		Ok((remove_inode_.i_links_count, remove_inode as _))
+		let mut superblock = fs.superblock.lock();
+		let mut inode_ = Ext2INode::read(loc.inode, &superblock, &*fs.io)?;
+		// Remove the inode
+		inode_.i_links_count = 0;
+		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
+		inode_.i_dtime = timestamp as _;
+		inode_.free_content(&mut superblock, &*fs.io)?;
+		inode_.write(loc.inode, &superblock, &*fs.io)?;
+		// Free inode
+		superblock.free_inode(&*fs.io, loc.inode, inode_.get_type() == FileType::Directory)?;
+		superblock.write(&*fs.io)?;
+		Ok(())
 	}
 }
 
 /// The ext2 superblock structure.
 #[repr(C)]
-#[derive(Debug, AnyRepr)]
+#[derive(AnyRepr, Clone, Debug)]
 pub struct Superblock {
 	/// Total number of inodes in the filesystem.
 	s_inodes_count: u32,
@@ -684,8 +651,8 @@ pub struct Superblock {
 
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
-	pub fn read(io: &mut dyn IO) -> EResult<Self> {
-		read::<Self>(SUPERBLOCK_OFFSET, io)
+	fn read(io: &dyn DeviceIO) -> EResult<Self> {
+		read::<Self>(SUPERBLOCK_OFFSET, SUPERBLOCK_OFFSET as _, io)
 	}
 
 	/// Tells whether the superblock is valid.
@@ -765,7 +732,7 @@ impl Superblock {
 	/// - `io` is the I/O interface.
 	/// - `start` is the starting block.
 	/// - `size` is the number of entries.
-	fn search_bitmap(&self, io: &mut dyn IO, start: u32, size: u32) -> EResult<Option<u32>> {
+	fn search_bitmap(&self, io: &dyn DeviceIO, start: u32, size: u32) -> EResult<Option<u32>> {
 		let blk_size = self.get_block_size();
 		let mut buff = vec![0; blk_size as _]?;
 		let mut i = 0;
@@ -793,7 +760,7 @@ impl Superblock {
 	/// - `val` is the value to set the entry to.
 	///
 	/// The function returns the previous value of the entry.
-	fn set_bitmap(&self, io: &mut dyn IO, start: u32, i: u32, val: bool) -> EResult<bool> {
+	fn set_bitmap(&self, io: &dyn DeviceIO, start: u32, i: u32, val: bool) -> EResult<bool> {
 		let blk_size = self.get_block_size();
 		let mut buff = vec![0; blk_size as _]?;
 
@@ -818,7 +785,7 @@ impl Superblock {
 	/// Returns the id of a free inode in the filesystem.
 	///
 	/// `io` is the I/O interface.
-	pub fn get_free_inode(&self, io: &mut dyn IO) -> EResult<u32> {
+	pub fn get_free_inode(&self, io: &dyn DeviceIO) -> EResult<u32> {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, self, io)?;
 			if bgd.bg_free_inodes_count > 0 {
@@ -843,7 +810,7 @@ impl Superblock {
 	/// If the inode is already marked as used, the behaviour is undefined.
 	pub fn mark_inode_used(
 		&mut self,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 		inode: u32,
 		directory: bool,
 	) -> EResult<()> {
@@ -879,7 +846,8 @@ impl Superblock {
 	/// If `inode` is zero, the function does nothing.
 	///
 	/// If the inode is already marked as free, the behaviour is undefined.
-	pub fn free_inode(&mut self, io: &mut dyn IO, inode: u32, directory: bool) -> EResult<()> {
+	pub fn free_inode(&mut self, io: &dyn DeviceIO, inode: INode, directory: bool) -> EResult<()> {
+		let inode: u32 = inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		if inode == 0 {
 			return Ok(());
 		}
@@ -905,7 +873,7 @@ impl Superblock {
 	/// Returns the id of a free block in the filesystem.
 	///
 	/// `io` is the I/O interface.
-	pub fn get_free_block(&self, io: &mut dyn IO) -> EResult<u32> {
+	pub fn get_free_block(&self, io: &dyn DeviceIO) -> EResult<u32> {
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::read(i as _, self, io)?;
 			if bgd.bg_free_blocks_count > 0 {
@@ -932,7 +900,7 @@ impl Superblock {
 	/// - `blk` is the block number.
 	///
 	/// If `blk` is zero, the function does nothing.
-	pub fn mark_block_used(&mut self, io: &mut dyn IO, blk: u32) -> EResult<()> {
+	pub fn mark_block_used(&mut self, io: &dyn DeviceIO, blk: u32) -> EResult<()> {
 		if blk == 0 {
 			return Ok(());
 		}
@@ -962,7 +930,7 @@ impl Superblock {
 	/// - `blk` is the block number.
 	///
 	/// If `blk` is zero, the function does nothing.
-	pub fn free_block(&mut self, io: &mut dyn IO, blk: u32) -> EResult<()> {
+	pub fn free_block(&mut self, io: &dyn DeviceIO, blk: u32) -> EResult<()> {
 		if blk == 0 {
 			return Ok(());
 		}
@@ -986,15 +954,15 @@ impl Superblock {
 	}
 
 	/// Writes the superblock on the device.
-	pub fn write(&self, io: &mut dyn IO) -> EResult<()> {
-		write::<Self>(self, SUPERBLOCK_OFFSET, io)
+	pub fn write(&self, io: &dyn DeviceIO) -> EResult<()> {
+		write(SUPERBLOCK_OFFSET, SUPERBLOCK_OFFSET as _, io, self)
 	}
 }
 
 /// An instance of the ext2 filesystem.
 struct Ext2Fs {
 	/// The I/O interface to the device.
-	io: Arc<Mutex<dyn IO>>,
+	io: Arc<dyn DeviceIO>,
 	/// The filesystem's superblock.
 	superblock: Mutex<Superblock>,
 	/// Tells whether the filesystem is mounted in read-only.
@@ -1013,7 +981,7 @@ impl Ext2Fs {
 	/// - `readonly` tells whether the filesystem is mounted in read-only.
 	fn new(
 		mut superblock: Superblock,
-		io: Arc<Mutex<dyn IO>>,
+		io: Arc<dyn DeviceIO>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Self> {
@@ -1054,7 +1022,7 @@ impl Ext2Fs {
 		superblock.s_last_mounted[len..].fill(0);
 		// Set the last mount timestamp
 		superblock.s_mtime = timestamp as _;
-		superblock.write(&mut *io.lock())?;
+		superblock.write(&*io)?;
 		Ok(Self {
 			io,
 			superblock: Mutex::new(superblock),
@@ -1068,10 +1036,6 @@ impl Ext2Fs {
 impl Filesystem for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
-	}
-
-	fn is_readonly(&self) -> bool {
-		self.readonly
 	}
 
 	fn use_cache(&self) -> bool {
@@ -1102,10 +1066,9 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
-		let mut io = self.io.lock();
 		let superblock = self.superblock.lock();
 		// Check the inode exists
-		Ext2INode::read(inode as _, &superblock, &mut *io)?;
+		Ext2INode::read(inode as _, &superblock, &*self.io)?;
 		Ok(Box::new(Ext2NodeOps)?)
 	}
 }
@@ -1127,18 +1090,18 @@ impl FilesystemType for Ext2FsType {
 		b"ext2"
 	}
 
-	fn detect(&self, io: &mut dyn IO) -> EResult<bool> {
+	fn detect(&self, io: &dyn DeviceIO) -> EResult<bool> {
 		Ok(Superblock::read(io)?.is_valid())
 	}
 
 	fn load_filesystem(
 		&self,
-		io: Option<Arc<Mutex<dyn IO>>>,
+		io: Option<Arc<dyn DeviceIO>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {
 		let io = io.ok_or_else(|| errno!(ENODEV))?;
-		let superblock = Superblock::read(&mut *io.lock())?;
+		let superblock = Superblock::read(&*io)?;
 		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
 		Ok(Arc::new(fs)? as _)
 	}

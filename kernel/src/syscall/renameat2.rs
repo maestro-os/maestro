@@ -47,14 +47,12 @@ const RENAME_EXCHANGE: c_int = 2;
 // TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
 // etc...)
 
-pub fn renameat2(
-	Args((olddirfd, oldpath, newdirfd, newpath, _flags)): Args<(
-		c_int,
-		SyscallString,
-		c_int,
-		SyscallString,
-		c_int,
-	)>,
+pub(super) fn do_renameat2(
+	olddirfd: c_int,
+	oldpath: SyscallString,
+	newdirfd: c_int,
+	newpath: SyscallString,
+	_flags: c_int,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
@@ -68,15 +66,10 @@ pub fn renameat2(
 	let old_parent_path = oldpath.parent().ok_or_else(|| errno!(ENOTDIR))?;
 	let old_name = oldpath.file_name().ok_or_else(|| errno!(ENOENT))?;
 	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
-	let Resolved::Found(old_mutex) = at::get_file(&fds.lock(), rs.clone(), olddirfd, &oldpath, 0)?
+	let Resolved::Found(old) = at::get_file(&fds.lock(), rs.clone(), olddirfd, &oldpath, 0)?
 	else {
 		return Err(errno!(ENOENT));
 	};
-	let mut old = old_mutex.lock();
-	// Cannot rename mountpoint
-	if old.is_mountpoint() {
-		return Err(errno!(EBUSY));
-	}
 	// Get new file
 	let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let newpath = PathBuf::try_from(newpath)?;
@@ -90,19 +83,32 @@ pub fn renameat2(
 	};
 	// Create destination file
 	{
-		let new_parent = new_parent.lock();
 		// If source and destination are on different mountpoints, error
-		if new_parent.location.get_mountpoint_id() != old.location.get_mountpoint_id() {
+		if new_parent.node().location.mountpoint_id != old.node().location.mountpoint_id {
 			return Err(errno!(EXDEV));
 		}
 		// TODO Check permissions if sticky bit is set
 		// Create link at new location
 		// The `..` entry is already updated by the file system since having the same
 		// directory in several locations is not allowed
-		vfs::create_link(&new_parent, new_name, &mut old, &rs.access_profile)?;
+		vfs::link(&new_parent, new_name, &old, &rs.access_profile)?;
 	}
 	// Remove source file
 	// TODO on failure, undo previous creation
-	vfs::remove_file(old_parent, old_name, &rs.access_profile)?;
+	vfs::unlink(old_parent, old_name, &rs.access_profile)?;
 	Ok(0)
+}
+
+pub fn renameat2(
+	Args((olddirfd, oldpath, newdirfd, newpath, flags)): Args<(
+		c_int,
+		SyscallString,
+		c_int,
+		SyscallString,
+		c_int,
+	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	do_renameat2(olddirfd, oldpath, newdirfd, newpath, flags, fds, rs)
 }

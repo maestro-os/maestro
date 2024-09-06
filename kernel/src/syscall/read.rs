@@ -20,27 +20,21 @@
 
 use super::Args;
 use crate::{
-	file::{fd::FileDescriptorTable, open_file::O_NONBLOCK, FileType},
+	file::{fd::FileDescriptorTable, FileType},
 	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
 };
-use core::{cmp::min, ffi::c_int};
+use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 	interrupt::cli,
-	io,
-	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	vec,
 };
 
-// TODO O_ASYNC
-
 pub fn read(
 	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
-	regs: &Regs,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
@@ -48,38 +42,19 @@ pub fn read(
 	if len == 0 {
 		return Ok(0);
 	}
-	let open_file = fds.lock().get_fd(fd)?.get_open_file().clone();
+	let file = fds.lock().get_fd(fd)?.get_file().clone();
 	// Validation
-	let file_type = open_file.lock().get_file().lock().stat.file_type;
-	if file_type == FileType::Link {
+	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	loop {
-		super::util::handle_signal(regs);
-		// Use a scope to drop mutex guards
-		{
-			// TODO determine why removing this causes a deadlock
-			cli();
-			// TODO perf: a buffer is not necessarily required
-			let mut buffer = vec![0u8; count]?;
-			// Read file
-			let mut open_file = open_file.lock();
-			let flags = open_file.get_flags();
-			let (len, eof) = open_file.read(0, &mut buffer)?;
-			// Write back
-			buf.copy_to_user(0, &buffer[..(len as usize)])?;
-			if len == 0 && eof {
-				return Ok(0);
-			}
-			if len > 0 || flags & O_NONBLOCK != 0 {
-				// The file descriptor is non-blocking
-				return Ok(len as _);
-			}
-			// Block on file
-			let mut proc = proc.lock();
-			open_file.add_waiting_process(&mut proc, io::POLLIN | io::POLLERR)?;
-		}
-		// Make current process sleep
-		scheduler::end_tick();
-	}
+	// TODO perf: a buffer is not necessarily required
+	let mut buffer = vec![0u8; count]?;
+	let off = file.off.load(atomic::Ordering::Acquire);
+	let len = file.ops.read(&file, off, &mut buffer)?;
+	// Update offset
+	let new_off = off.saturating_add(len as u64);
+	file.off.store(new_off, atomic::Ordering::Release);
+	// Write back
+	buf.copy_to_user(0, &buffer[..len])?;
+	Ok(len as _)
 }

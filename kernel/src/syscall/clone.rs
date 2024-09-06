@@ -92,13 +92,12 @@ pub fn clone(
 	proc_mutex: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let new_tid = {
-		let mut proc = proc_mutex.lock();
 		if flags & CLONE_PARENT_SETTID != 0 {
 			// TODO
 			todo!();
 		}
-		let new_mutex = proc.fork(
-			Arc::downgrade(&proc_mutex),
+		let new_mutex = Process::fork(
+			proc_mutex,
 			ForkOptions {
 				share_memory: flags & CLONE_VM != 0,
 				share_fd: flags & CLONE_FILES != 0,

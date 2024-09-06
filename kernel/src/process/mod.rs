@@ -44,25 +44,23 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
-		mountpoint, open_file,
-		path::PathBuf,
+		path::{Path, PathBuf},
 		perm::AccessProfile,
 		vfs,
 		vfs::ResolutionSettings,
-		File, FileLocation,
+		File, O_RDWR,
 	},
 	gdt,
 	memory::{buddy, buddy::FrameOrder},
-	process::{mem_space::copy, open_file::OpenFile, pid::PidHandle, scheduler::SCHEDULER},
+	process::{mem_space::copy, pid::PidHandle, scheduler::SCHEDULER, signal::SigSet},
 	register_get,
 	time::timer::TimerManager,
-	tty,
-	tty::TTYHandle,
 };
 use core::{
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
+	intrinsics::unlikely,
 	mem,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
@@ -75,12 +73,11 @@ use signal::{Signal, SignalAction, SignalHandler};
 #[cfg(target_arch = "x86")]
 use tss::TSS;
 use utils::{
-	collections::{bitfield::Bitfield, string::String, vec::Vec},
+	collections::{string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	lock::{IntMutex, Mutex},
-	ptr::arc::{Arc, Weak},
-	TryClone,
+	ptr::arc::Arc,
 };
 
 /// The opcode of the `hlt` instruction.
@@ -215,9 +212,6 @@ pub struct Process {
 	/// The path to the process's executable.
 	pub exec_path: Arc<PathBuf>,
 
-	/// The process's current TTY.
-	tty: TTYHandle,
-
 	/// The process's access profile, containing user and group IDs.
 	pub access_profile: AccessProfile,
 	/// The process's current umask.
@@ -237,7 +231,7 @@ pub struct Process {
 	quantum_count: usize,
 
 	/// A pointer to the parent process.
-	parent: Option<Weak<IntMutex<Process>>>,
+	parent: Option<Arc<IntMutex<Process>>>,
 	/// The list of children processes.
 	children: Vec<Pid>,
 	/// The list of processes in the process group.
@@ -248,10 +242,6 @@ pub struct Process {
 	/// Tells whether the process was executing a system call.
 	pub syscalling: bool,
 
-	/// Tells whether the process is handling a signal.
-	handled_signal: Option<Signal>,
-	/// Registers state to be restored by `sigreturn`.
-	sigreturn_regs: Regs,
 	/// Tells whether the process has information that can be retrieved by
 	/// wait/waitpid.
 	waitable: bool,
@@ -270,21 +260,21 @@ pub struct Process {
 	/// Current working directory
 	///
 	/// The field contains both the path and the directory.
-	pub cwd: Arc<(PathBuf, Arc<Mutex<File>>)>,
+	pub cwd: Arc<vfs::Entry>,
 	/// Current root path used by the process
-	pub chroot: FileLocation,
+	pub chroot: Arc<vfs::Entry>,
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
 	/// A bitfield storing the set of blocked signals.
-	pub sigmask: Bitfield,
+	pub sigmask: SigSet,
 	/// A bitfield storing the set of pending signals.
-	sigpending: Bitfield,
+	sigpending: SigSet,
 	/// The list of signal handlers.
 	pub signal_handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
 
 	/// TLS entries.
-	tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
+	pub tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 
 	/// If a thread is started using `clone` with the `CLONE_CHILD_SETTID` flag, set_child_tid is
 	/// set to the value passed in the ctid argument of that system call.
@@ -313,37 +303,31 @@ pub(crate) fn init() -> EResult<()> {
 			return CallbackResult::Panic;
 		}
 		// Get process
-		let Some(curr_proc) = Process::current_opt() else {
-			return CallbackResult::Panic;
-		};
-		let mut curr_proc = curr_proc.lock();
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
 		match id {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
 			// SIMD Floating-Point Exception
-			0x00 | 0x10 | 0x13 => curr_proc.kill_now(&Signal::SIGFPE),
+			0x00 | 0x10 | 0x13 => proc.kill(Signal::SIGFPE),
 			// Breakpoint
-			0x03 => curr_proc.kill_now(&Signal::SIGTRAP),
+			0x03 => proc.kill(Signal::SIGTRAP),
 			// Invalid Opcode
-			0x06 => curr_proc.kill_now(&Signal::SIGILL),
+			0x06 => proc.kill(Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
 				let inst_prefix = unsafe { *(regs.eip.0 as *const u8) };
 				if inst_prefix == HLT_INSTRUCTION {
-					curr_proc.exit(regs.eax.0 as _);
+					proc.exit(regs.eax.0 as _);
 				} else {
-					curr_proc.kill_now(&Signal::SIGSEGV);
+					proc.kill(Signal::SIGSEGV);
 				}
 			}
 			// Alignment Check
-			0x11 => curr_proc.kill_now(&Signal::SIGBUS),
+			0x11 => proc.kill(Signal::SIGBUS),
 			_ => {}
 		}
-		if matches!(curr_proc.get_state(), State::Running) {
-			CallbackResult::Continue
-		} else {
-			CallbackResult::Idle
-		}
+		CallbackResult::Continue
 	};
 	let page_fault_callback = |_id: u32, code: u32, regs: &Regs, ring: u32| {
 		let accessed_ptr = register_get!("cr2") as *const c_void;
@@ -378,14 +362,10 @@ pub(crate) fn init() -> EResult<()> {
 					return CallbackResult::Panic;
 				}
 			} else {
-				curr_proc.kill_now(&Signal::SIGSEGV);
+				curr_proc.kill(Signal::SIGSEGV);
 			}
 		}
-		if matches!(curr_proc.get_state(), State::Running) {
-			CallbackResult::Continue
-		} else {
-			CallbackResult::Idle
-		}
+		CallbackResult::Continue
 	};
 	let _ = ManuallyDrop::new(event::register_callback(0x00, callback)?);
 	let _ = ManuallyDrop::new(event::register_callback(0x03, callback)?);
@@ -437,8 +417,8 @@ impl Process {
 			let mut fds_table = FileDescriptorTable::default();
 			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
 			let tty_file = vfs::get_file_from_path(&tty_path, &rs)?;
-			let open_file = OpenFile::new(tty_file, Some(tty_path), open_file::O_RDWR)?;
-			let (stdin_fd_id, _) = fds_table.create_fd(0, open_file)?;
+			let tty_file = File::open_entry(tty_file, O_RDWR)?;
+			let (stdin_fd_id, _) = fds_table.create_fd(0, tty_file)?;
 			assert_eq!(stdin_fd_id, STDIN_FILENO);
 			fds_table.duplicate_fd(
 				STDIN_FILENO as _,
@@ -452,8 +432,7 @@ impl Process {
 			)?;
 			fds_table
 		};
-		let root_loc = mountpoint::root_location();
-		let root_dir = vfs::get_file_from_location(root_loc)?;
+		let root_dir = vfs::get_file_from_path(Path::root(), &rs)?;
 		let pid = PidHandle::init()?;
 		let process = Self {
 			pid,
@@ -463,8 +442,6 @@ impl Process {
 			argv: Arc::new(Vec::new())?,
 			envp: Arc::new(String::new())?,
 			exec_path: Arc::new(PathBuf::root()?)?,
-
-			tty: tty::get(None).unwrap(), // Initialization with the init TTY
 
 			access_profile: rs.access_profile,
 			umask: DEFAULT_UMASK,
@@ -483,8 +460,6 @@ impl Process {
 			regs: Regs::default(),
 			syscalling: false,
 
-			handled_signal: None,
-			sigreturn_regs: Regs::default(),
 			waitable: false,
 
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
@@ -493,12 +468,12 @@ impl Process {
 			user_stack: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: Arc::new((PathBuf::root()?, root_dir))?,
-			chroot: root_loc,
+			cwd: root_dir.clone(),
+			chroot: root_dir,
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
-			sigmask: Bitfield::new(signal::SIGNALS_COUNT)?,
-			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
+			sigmask: Default::default(),
+			sigpending: Default::default(),
 			signal_handlers: Arc::new(Mutex::new(Default::default()))?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
@@ -584,14 +559,8 @@ impl Process {
 	pub fn get_parent_pid(&self) -> Pid {
 		self.parent
 			.as_ref()
-			.and_then(Weak::upgrade)
 			.map(|parent| parent.lock().pid.get())
 			.unwrap_or(self.pid.get())
-	}
-
-	/// Returns the TTY associated with the process.
-	pub fn get_tty(&self) -> TTYHandle {
-		self.tty.clone()
 	}
 
 	/// Returns the process's current state.
@@ -629,7 +598,7 @@ impl Process {
 					continue;
 				}
 				if let Some(child_mutex) = Process::get_by_pid(child_pid) {
-					child_mutex.lock().parent = Some(Arc::downgrade(&init_proc_mutex));
+					child_mutex.lock().parent = Some(init_proc_mutex.clone());
 					oom::wrap(|| init_proc.add_child(child_pid));
 				}
 			}
@@ -660,10 +629,9 @@ impl Process {
 		self.waitable = true;
 		self.termsig = sig_type;
 		// Wake the parent
-		let parent = self.get_parent().as_ref().and_then(Weak::upgrade);
-		if let Some(parent) = parent {
+		if let Some(parent) = &self.parent {
 			let mut parent = parent.lock();
-			parent.kill(&Signal::SIGCHLD);
+			parent.kill(Signal::SIGCHLD);
 			parent.wake();
 		}
 	}
@@ -682,7 +650,7 @@ impl Process {
 	///
 	/// If the process is the init process, the function returns `None`.
 	#[inline(always)]
-	pub fn get_parent(&self) -> Option<Weak<IntMutex<Process>>> {
+	pub fn get_parent(&self) -> Option<Arc<IntMutex<Process>>> {
 		self.parent.clone()
 	}
 
@@ -751,12 +719,12 @@ impl Process {
 		// If the process is not in a syscall and a signal is pending on the process,
 		// execute it
 		if !self.syscalling {
-			if let Some(sig) = self.get_next_signal() {
+			if let Some(sig) = self.next_signal(false) {
 				// Prepare signal for execution
 				let signal_handlers = self.signal_handlers.clone();
 				let signal_handlers = signal_handlers.lock();
 				let sig_handler = &signal_handlers[sig.get_id() as usize];
-				sig_handler.prepare_execution(&mut *self, &sig, false);
+				sig_handler.exec(sig, &mut *self);
 				// If the process has been killed by the signal, abort switching
 				if !matches!(self.state, State::Running) {
 					return;
@@ -793,29 +761,27 @@ impl Process {
 	/// The internal state of the process (registers and memory) are always copied.
 	/// Other data may be copied according to provided fork options.
 	///
-	/// Arguments:
-	/// - `parent` is the parent of the new process.
-	/// - `fork_options` are the options for the fork operation.
+	/// `fork_options` are the options for the fork operation.
 	///
 	/// On fail, the function returns an `Err` with the appropriate Errno.
 	///
 	/// If the process is not running, the behaviour is undefined.
 	pub fn fork(
-		&mut self,
-		parent: Weak<IntMutex<Self>>,
+		this: Arc<IntMutex<Self>>,
 		fork_options: ForkOptions,
 	) -> EResult<Arc<IntMutex<Self>>> {
-		debug_assert!(matches!(self.get_state(), State::Running));
+		let mut proc = this.lock();
+		debug_assert!(matches!(proc.get_state(), State::Running));
 		// Handle vfork
 		let vfork_state = if fork_options.vfork {
-			self.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
+			proc.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
 			VForkState::Executing
 		} else {
 			VForkState::None
 		};
 		// Clone memory space
 		let mem_space = {
-			let curr_mem_space = self.get_mem_space().unwrap();
+			let curr_mem_space = proc.get_mem_space().unwrap();
 			if fork_options.share_memory || fork_options.vfork {
 				curr_mem_space.clone()
 			} else {
@@ -824,9 +790,9 @@ impl Process {
 		};
 		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
-			self.file_descriptors.clone()
+			proc.file_descriptors.clone()
 		} else {
-			self.file_descriptors
+			proc.file_descriptors
 				.as_ref()
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
@@ -837,108 +803,110 @@ impl Process {
 		};
 		// Clone signal handlers
 		let signal_handlers = if fork_options.share_sighand {
-			self.signal_handlers.clone()
+			proc.signal_handlers.clone()
 		} else {
-			Arc::new(Mutex::new(self.signal_handlers.lock().clone()))?
+			Arc::new(Mutex::new(proc.signal_handlers.lock().clone()))?
 		};
 		let pid = PidHandle::unique()?;
 		let pid_int = pid.get();
 		let process = Self {
 			pid,
-			pgid: self.pgid,
+			pgid: proc.pgid,
 			tid: pid_int,
 
-			argv: self.argv.clone(),
-			envp: self.envp.clone(),
-			exec_path: self.exec_path.clone(),
+			argv: proc.argv.clone(),
+			envp: proc.envp.clone(),
+			exec_path: proc.exec_path.clone(),
 
-			tty: self.tty.clone(),
-
-			access_profile: self.access_profile,
-			umask: self.umask,
+			access_profile: proc.access_profile,
+			umask: proc.umask,
 
 			state: State::Running,
 			vfork_state,
 
-			priority: self.priority,
-			nice: self.nice,
+			priority: proc.priority,
+			nice: proc.nice,
 			quantum_count: 0,
 
-			parent: Some(parent),
+			parent: Some(this.clone()),
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs: self.regs.clone(),
+			regs: proc.regs.clone(),
 			syscalling: false,
 
-			handled_signal: self.handled_signal.clone(),
-			sigreturn_regs: self.sigreturn_regs.clone(),
 			waitable: false,
 
-			// TODO if creating a thread: timer_manager: self.timer_manager.clone(),
+			// TODO if creating a thread: timer_manager: proc.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
 			mem_space: Some(mem_space),
-			user_stack: self.user_stack,
+			user_stack: proc.user_stack,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: self.cwd.clone(),
-			chroot: self.chroot,
+			cwd: proc.cwd.clone(),
+			chroot: proc.chroot.clone(),
 			file_descriptors,
 
-			sigmask: self.sigmask.try_clone()?,
-			sigpending: Bitfield::new(signal::SIGNALS_COUNT)?,
+			sigmask: proc.sigmask,
+			sigpending: Default::default(),
 			signal_handlers,
 
-			tls_entries: self.tls_entries,
+			tls_entries: proc.tls_entries,
 
-			set_child_tid: self.set_child_tid,
-			clear_child_tid: self.clear_child_tid,
+			set_child_tid: proc.set_child_tid,
+			clear_child_tid: proc.clear_child_tid,
 
 			rusage: RUsage::default(),
 
-			exit_status: self.exit_status,
+			exit_status: proc.exit_status,
 			termsig: 0,
 		};
-		self.add_child(pid_int)?;
+		proc.add_child(pid_int)?;
 		Ok(SCHEDULER.get().lock().add_process(process)?)
-	}
-
-	/// Tells whether the process is handling a signal.
-	#[inline(always)]
-	pub fn is_handling_signal(&self) -> bool {
-		self.handled_signal.is_some()
 	}
 
 	/// Kills the process with the given signal `sig`.
 	///
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
-	pub fn kill(&mut self, sig: &Signal) {
+	pub fn kill(&mut self, sig: Signal) {
+		// Cannot kill a zombie process
+		if unlikely(self.state == State::Zombie) {
+			return;
+		}
 		// Ignore blocked signals
 		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
 			return;
 		}
 		// Statistics
 		self.rusage.ru_nsignals = self.rusage.ru_nsignals.saturating_add(1);
-		if matches!(self.get_state(), State::Stopped)
-			&& sig.get_default_action() == SignalAction::Continue
+		// If the signal's action can be executed now, do it
+		{
+			let handlers = self.signal_handlers.clone();
+			let handlers = handlers.lock();
+			let handler = &handlers[sig.get_id() as usize];
+			match handler {
+				SignalHandler::Ignore => return,
+				SignalHandler::Default
+					if self.state != State::Stopped
+						|| sig.get_default_action() == SignalAction::Continue =>
+				{
+					sig.get_default_action().exec(sig, self);
+					return;
+				}
+				_ => {}
+			}
+		}
+		// Resume execution if necessary
+		if matches!(self.state, State::Sleeping)
+			|| (matches!(self.state, State::Stopped)
+				&& sig.get_default_action() == SignalAction::Continue)
 		{
 			self.set_state(State::Running);
 		}
 		// Set the signal as pending
 		self.sigpending.set(sig.get_id() as _);
-	}
-
-	/// Same as [`Self::kill`], except the signal prepared for execution directly.
-	///
-	/// This is useful for cases where the execution of the program **MUST NOT** resume before
-	/// handling the signal (such as hardware faults).
-	pub fn kill_now(&mut self, sig: &Signal) {
-		self.kill(sig);
-		let signal_handlers = self.signal_handlers.clone();
-		let signal_handlers = signal_handlers.lock();
-		signal_handlers[sig.get_id() as usize].prepare_execution(self, sig, false);
 	}
 
 	/// Kills every process in the process group.
@@ -950,21 +918,24 @@ impl Process {
 			.filter_map(|pid| Process::get_by_pid(*pid))
 			.for_each(|proc_mutex| {
 				let mut proc = proc_mutex.lock();
-				proc.kill(&sig);
+				proc.kill(sig);
 			});
-		self.kill(&sig);
+		self.kill(sig);
 	}
 
 	/// Tells whether the given signal is blocked by the process.
-	pub fn is_signal_blocked(&self, sig: &Signal) -> bool {
+	pub fn is_signal_blocked(&self, sig: Signal) -> bool {
 		self.sigmask.is_set(sig.get_id() as _)
 	}
 
 	/// Returns the ID of the next signal to be handled.
 	///
+	/// If `peek` is `false`, the signal is cleared from the bitfield.
+	///
 	/// If no signal is pending, the function returns `None`.
-	pub fn get_next_signal(&self) -> Option<Signal> {
-		self.sigpending
+	pub fn next_signal(&mut self, peek: bool) -> Option<Signal> {
+		let sig = self
+			.sigpending
 			.iter()
 			.enumerate()
 			.filter(|(_, b)| *b)
@@ -972,54 +943,24 @@ impl Process {
 				let s = Signal::try_from(i as c_int).ok()?;
 				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
 			})
-			.next()
-	}
-
-	/// Returns the pointer to use as a stack when executing a signal handler.
-	pub fn get_signal_stack(&self) -> *const c_void {
-		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
-		// SA_ONSTACK)
-		(self.regs.esp.0 - REDZONE_SIZE) as _
-	}
-
-	/// Saves the process's state to handle a signal.
-	///
-	/// `sig` is the signal.
-	///
-	/// If the process is already handling a signal, the behaviour is undefined.
-	pub fn signal_save(&mut self, sig: Signal, sigreturn_regs: Regs) {
-		debug_assert!(!self.is_handling_signal());
-		self.handled_signal = Some(sig);
-		self.sigreturn_regs = sigreturn_regs;
-	}
-
-	/// Restores the process's state after handling a signal.
-	pub fn signal_restore(&mut self) {
-		if self.handled_signal.take().is_some() {
-			self.regs = self.sigreturn_regs.clone();
+			.next();
+		if !peek {
+			if let Some(id) = sig {
+				self.sigpending.clear(id.get_id() as _);
+			}
 		}
-	}
-
-	/// Returns the list of TLS entries for the process.
-	pub fn get_tls_entries(&mut self) -> &mut [gdt::Entry] {
-		&mut self.tls_entries
-	}
-
-	/// Clears the process's TLS entries.
-	pub fn clear_tls_entries(&mut self) {
-		self.tls_entries = Default::default();
+		sig
 	}
 
 	/// Updates the `n`th TLS entry in the GDT.
 	///
 	/// If `n` is out of bounds, the function does nothing.
 	///
-	/// This function doesn't flush the GDT's cache. Thus it is the caller's responsibility.
+	/// This function does not flush the GDT's cache. Thus, it is the caller's responsibility.
 	pub fn update_tls(&self, n: usize) {
-		if n < TLS_ENTRIES_COUNT {
+		if let Some(ent) = self.tls_entries.get(n) {
 			unsafe {
-				// Safe because the offset is checked by the condition
-				self.tls_entries[n].update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
+				ent.update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}
 		}
 	}
@@ -1038,8 +979,7 @@ impl Process {
 		}
 		self.vfork_state = VForkState::None;
 		// Reset the parent's vfork state if needed
-		let parent = self.get_parent().and_then(|parent| parent.upgrade());
-		if let Some(parent) = parent {
+		if let Some(parent) = &self.parent {
 			let mut parent = parent.lock();
 			parent.vfork_state = VForkState::None;
 		}
@@ -1119,5 +1059,70 @@ impl Drop for Process {
 		unsafe {
 			buddy::free_kernel(self.kernel_stack.as_ptr(), KERNEL_STACK_ORDER);
 		}
+	}
+}
+
+fn yield_current_impl(regs: &mut Regs) -> bool {
+	let proc_mutex = Process::current();
+	let mut proc = proc_mutex.lock();
+	// If the process is not running anymore, do not resume execution
+	if proc.state != State::Running {
+		return true;
+	}
+	// If no signal is pending, return
+	let Some(sig) = proc.next_signal(false) else {
+		return false;
+	};
+	// Prepare signal for execution
+	let handlers = proc.signal_handlers.clone();
+	let handlers = handlers.lock();
+	let handler = &handlers[sig.get_id() as usize];
+	// Update registers with the ones passed to the system call so that `sigreturn` returns to
+	// the correct location
+	proc.regs = regs.clone();
+	handler.exec(sig, &mut proc);
+	// Alter the execution flow of the current context according to the new state of the
+	// process
+	match proc.state {
+		// The process must execute a signal handler: Jump to it
+		State::Running => {
+			*regs = proc.regs.clone();
+			true
+		}
+		// Stop execution: Waiting until wakeup (or terminate if Zombie)
+		State::Sleeping | State::Stopped | State::Zombie => false,
+	}
+}
+
+/// Before returning to userspace from the current context, this function checks the state of the
+/// current process to potentially alter the execution flow.
+///
+/// Arguments:
+/// - `ring` is the ring the current context is returning to.
+/// - `regs` is the set of registers from the previously interrupted context.
+///
+/// The execution flow can be altered by:
+/// - The process is no longer in [`State::Running`] state
+/// - A signal handler has to be executed
+///
+/// The current function may save `regs` and replaces it with the required state for the new
+/// context.
+///
+/// The function locks the mutex of the current process. Thus, the caller must
+/// ensure the mutex isn't already locked to prevent a deadlock.
+///
+/// # Safety
+///
+/// This function may not return in some cases (example: the process has been turned into a
+/// Zombie). It is the caller's responsibility to drop all objects on the stack that need it, in
+/// order to avoid unintended side effects.
+pub fn yield_current(ring: u32, regs: &mut Regs) {
+	// If returning to kernelspace, do nothing
+	if ring < 3 {
+		return;
+	}
+	let end_tick = yield_current_impl(regs);
+	if end_tick {
+		scheduler::end_tick();
 	}
 }

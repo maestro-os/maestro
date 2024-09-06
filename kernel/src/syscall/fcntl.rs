@@ -20,15 +20,17 @@
 
 use crate::{
 	file::{
-		buffer,
-		buffer::pipe::PipeBuffer,
 		fd::{FileDescriptorTable, NewFDConstraint},
+		pipe::PipeBuffer,
 		FileType,
 	},
 	process::Process,
 	syscall::Args,
 };
-use core::ffi::{c_int, c_void};
+use core::{
+	any::Any,
+	ffi::{c_int, c_void},
+};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -162,12 +164,9 @@ pub fn do_fcntl(
 			fd.flags = arg as _;
 			Ok(0)
 		}
-		F_GETFL => {
-			let flags = fds.get_fd(fd)?.get_open_file().lock().get_flags();
-			Ok(flags as _)
-		}
+		F_GETFL => Ok(fds.get_fd(fd)?.get_file().get_flags() as _),
 		F_SETFL => {
-			fds.get_fd(fd)?.get_open_file().lock().set_flags(arg as _);
+			fds.get_fd(fd)?.get_file().set_flags(arg as _, true);
 			Ok(0)
 		}
 		F_GETLK => {
@@ -251,12 +250,9 @@ pub fn do_fcntl(
 			todo!();
 		}
 		F_GETPIPE_SZ => {
-			let file_mutex = fds.get_fd(fd)?.get_open_file().lock().get_file().clone();
-			let file = file_mutex.lock();
-			match file.stat.file_type {
-				FileType::Fifo => Ok(buffer::get_or_default::<PipeBuffer>(&file.location)?
-					.lock()
-					.get_capacity() as _),
+			let file = fds.get_fd(fd)?.get_file();
+			match file.get_buffer::<PipeBuffer>() {
+				Some(fifo) => Ok(fifo.get_capacity() as _),
 				_ => Ok(0),
 			}
 		}

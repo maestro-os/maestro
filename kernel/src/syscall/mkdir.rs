@@ -49,18 +49,16 @@ pub fn mkdir(
 	if let Some(name) = path.file_name() {
 		// Get parent directory
 		let parent_path = path.parent().unwrap_or(Path::root());
-		let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
-		let mut parent = parent_mutex.lock();
+		let parent = vfs::get_file_from_path(parent_path, &rs)?;
 		let mode = mode & !umask.0;
 		let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 		// Create the directory
 		vfs::create_file(
-			&mut parent,
+			parent,
 			name,
 			&rs.access_profile,
 			Stat {
-				file_type: FileType::Directory,
-				mode,
+				mode: FileType::Directory.to_mode() | mode,
 				ctime: ts,
 				mtime: ts,
 				atime: ts,

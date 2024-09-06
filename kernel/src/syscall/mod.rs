@@ -97,7 +97,7 @@ mod open;
 mod openat;
 mod pipe;
 mod pipe2;
-mod poll;
+pub mod poll;
 mod preadv;
 mod preadv2;
 mod prlimit64;
@@ -132,7 +132,6 @@ mod signal;
 mod sigreturn;
 mod socket;
 mod socketpair;
-mod splice;
 mod statfs;
 mod statfs64;
 mod statx;
@@ -163,6 +162,7 @@ mod writev;
 use crate::{
 	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
+	process,
 	process::{mem_space::MemSpace, regs::Regs, signal::Signal, Process},
 };
 use _exit::_exit;
@@ -275,7 +275,6 @@ use signal::signal;
 use sigreturn::sigreturn;
 use socket::socket;
 use socketpair::socketpair;
-use splice::splice;
 use statfs::statfs;
 use statfs64::statfs64;
 use statx::statx;
@@ -295,7 +294,7 @@ use unlink::unlink;
 use unlinkat::unlinkat;
 use utils::{
 	errno::EResult,
-	lock::{IntMutex, IntMutexGuard, Mutex},
+	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 use utimensat::utimensat;
@@ -815,7 +814,7 @@ fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
 		// TODO 0x136 => Some(syscall!(unshare, regs)),
 		// TODO 0x137 => Some(syscall!(set_robust_list, regs)),
 		// TODO 0x138 => Some(syscall!(get_robust_list, regs)),
-		0x139 => Some(syscall!(splice, regs)),
+		// TODO 0x139 => Some(syscall!(splice, regs)),
 		// TODO 0x13a => Some(syscall!(sync_file_range, regs)),
 		// TODO 0x13b => Some(syscall!(tee, regs)),
 		// TODO 0x13c => Some(syscall!(vmsplice, regs)),
@@ -954,9 +953,11 @@ fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
 #[no_mangle]
 pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	let id = regs.get_syscall_id();
-	let Some(res) = do_syscall(id, regs) else {
-		// The system call doesn't exist. Kill the process with SIGSYS
-		{
+	match do_syscall(id, regs) {
+		// Success: Set the return value
+		Some(res) => regs.set_syscall_return(res),
+		// The system call does not exist: Kill the process with SIGSYS
+		None => {
 			let proc_mutex = Process::current();
 			let mut proc = proc_mutex.lock();
 			#[cfg(feature = "strace")]
@@ -965,9 +966,9 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 				pid = proc.get_pid()
 			);
 			// SIGSYS cannot be caught, thus the process will be terminated
-			proc.kill_now(&Signal::SIGSYS);
+			proc.kill(Signal::SIGSYS);
 		}
-		crate::enter_loop();
-	};
-	regs.set_syscall_return(res);
+	}
+	// If the process has been killed, handle it
+	process::yield_current(3, regs);
 }

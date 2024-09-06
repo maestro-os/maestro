@@ -28,7 +28,7 @@ use crate::{
 		},
 		scheduler, Process,
 	},
-	syscall::Args,
+	syscall::{poll, Args},
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,
@@ -42,8 +42,6 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io,
-	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
@@ -134,20 +132,19 @@ pub fn do_select<T: TimeUnit>(
 			// Build event mask
 			let mut mask = 0;
 			if read {
-				mask |= io::POLLIN;
+				mask |= poll::POLLIN;
 			}
 			if write {
-				mask |= io::POLLOUT;
+				mask |= poll::POLLOUT;
 			}
 			if except {
-				mask |= io::POLLPRI;
+				mask |= poll::POLLPRI;
 			}
 			if mask != 0 {
 				all_zeros = false;
 			}
 			// Poll file
 			let result = {
-				// Get file descriptor
 				let fds = fds.lock();
 				let Ok(fd) = fds.get_fd(fd_id as _) else {
 					if mask != 0 {
@@ -155,16 +152,13 @@ pub fn do_select<T: TimeUnit>(
 					}
 					continue;
 				};
-				// Get file
-				let open_file_mutex = fd.get_open_file();
-				let mut open_file = open_file_mutex.lock();
-				// Poll
-				open_file.poll(mask)?
+				let file = fd.get_file();
+				file.ops.poll(file, mask)?
 			};
 			// Set results
-			let read = read && result & io::POLLIN != 0;
-			let write = write && result & io::POLLOUT != 0;
-			let except = except && result & io::POLLPRI != 0;
+			let read = read && result & poll::POLLIN != 0;
+			let write = write && result & poll::POLLOUT != 0;
+			let except = except && result & poll::POLLPRI != 0;
 			if let Some(fds) = &mut readfds_set {
 				fds.set(fd_id, read);
 			}

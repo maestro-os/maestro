@@ -22,9 +22,10 @@
 use crate::device::{
 	bar::BAR,
 	bus::pci,
-	storage::{pata::PATAInterface, PhysicalDevice, StorageInterface},
+	storage::{pata::PATAInterface, PhysicalDevice},
+	DeviceIO,
 };
-use utils::{errno::AllocResult, lock::Mutex, ptr::arc::Arc};
+use utils::{errno::AllocResult, ptr::arc::Arc};
 
 /// The beginning of the port range for the primary ATA bus (compatibility
 /// mode).
@@ -142,14 +143,12 @@ impl Controller {
 		self.prog_if & 0b10000000 != 0
 	}
 
-	/// Detects all disks on the controller. For each disks, the function calls
+	/// Detects all disks on the controller. For each disk, the function calls
 	/// the given closure `f`.
 	///
 	/// If an error is returned from a call to the closure, the function returns
 	/// with the same error.
-	pub(super) fn detect(
-		&self,
-	) -> impl '_ + Iterator<Item = AllocResult<Arc<Mutex<dyn StorageInterface>>>> {
+	pub(super) fn detect(&self) -> impl '_ + Iterator<Item = AllocResult<Arc<dyn DeviceIO>>> {
 		(0..4)
 			.map(|i| {
 				let secondary = (i & 0b10) != 0;
@@ -177,6 +176,6 @@ impl Controller {
 			})
 			// TODO log errors?
 			.filter_map(|(channel, slave)| PATAInterface::new(channel, slave).ok())
-			.map(|i| Arc::new(Mutex::new(i)).map(|a| a as Arc<Mutex<dyn StorageInterface>>))
+			.map(|i| Arc::new(i).map(|a| a as Arc<dyn DeviceIO>))
 	}
 }

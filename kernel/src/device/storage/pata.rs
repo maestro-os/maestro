@@ -37,10 +37,12 @@
 
 // TODO Add support for third and fourth bus
 
-use super::StorageInterface;
-use crate::{device::storage::ide, io};
+use crate::{
+	device::{storage::ide, DeviceIO},
+	io,
+};
 use core::{cmp::min, num::NonZeroU64};
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, lock::Mutex};
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;
@@ -138,8 +140,7 @@ enum PortOffset {
 	Control(u16),
 }
 
-/// Structure representing a PATA interface. An instance is associated with a
-/// unique disk.
+/// A PATA interface with a unique disk.
 #[derive(Debug)]
 pub struct PATAInterface {
 	/// The channel on which the disk is located.
@@ -149,9 +150,11 @@ pub struct PATAInterface {
 
 	/// Tells whether the drive supports LBA48.
 	lba48: bool,
-
 	/// The number of sectors on the disk.
 	sectors_count: u64,
+
+	/// Mutex preventing data race on read/write operations.
+	lock: Mutex<()>,
 }
 
 impl PATAInterface {
@@ -168,8 +171,9 @@ impl PATAInterface {
 			slave,
 
 			lba48: false,
-
 			sectors_count: 0,
+
+			lock: Default::default(),
 		};
 		s.identify()?;
 		Ok(s)
@@ -381,26 +385,25 @@ impl PATAInterface {
 	}
 }
 
-impl StorageInterface for PATAInterface {
-	fn get_block_size(&self) -> NonZeroU64 {
+impl DeviceIO for PATAInterface {
+	fn block_size(&self) -> NonZeroU64 {
 		SECTOR_SIZE.try_into().unwrap()
 	}
 
-	fn get_blocks_count(&self) -> u64 {
+	fn blocks_count(&self) -> u64 {
 		self.sectors_count
 	}
 
 	// TODO clean
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> EResult<()> {
-		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
-
+	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let size = buf.len() as u64 / SECTOR_SIZE;
 		// If the offset and size are out of bounds of the disk, return an error
-		if offset >= self.sectors_count || offset + size > self.sectors_count {
+		if off >= self.sectors_count || off + size > self.sectors_count {
 			return Err(errno!(EINVAL));
 		}
 
 		// Tells whether to use LBA48
-		let lba48 = (offset + size) >= ((1 << 28) - 1);
+		let lba48 = (off + size) >= ((1 << 28) - 1);
 
 		// If LBA48 is required but not supported, return an error
 		if lba48 && !self.lba48 {
@@ -414,11 +417,14 @@ impl StorageInterface for PATAInterface {
 			(u8::MAX as u64) + 1
 		};
 
+		// Avoid data race
+		let _guard = self.lock.lock();
+		// Select disk
 		self.select(false);
 
 		let mut i = 0;
 		while i < size {
-			let off = offset + i;
+			let off = off + i;
 
 			// The number of blocks for this iteration
 			let mut count = min(size - i, iter_max);
@@ -496,20 +502,19 @@ impl StorageInterface for PATAInterface {
 			i += count;
 		}
 
-		Ok(())
+		Ok((size * SECTOR_SIZE) as _)
 	}
 
 	// TODO clean
-	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> EResult<()> {
-		debug_assert!((buf.len() as u64) >= size * SECTOR_SIZE);
-
+	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
+		let size = buf.len() as u64 / SECTOR_SIZE;
 		// If the offset and size are out of bounds of the disk, return an error
-		if offset >= self.sectors_count || offset + size > self.sectors_count {
+		if off >= self.sectors_count || off + size > self.sectors_count {
 			return Err(errno!(EINVAL));
 		}
 
 		// Tells whether to use LBA48
-		let lba48 = (offset + size) >= ((1 << 28) - 1);
+		let lba48 = (off + size) >= ((1 << 28) - 1);
 
 		// If LBA48 is required but not supported, return an error
 		if lba48 && !self.lba48 {
@@ -523,11 +528,14 @@ impl StorageInterface for PATAInterface {
 			(u8::MAX as u64) + 1
 		};
 
+		// Avoid data race
+		let _guard = self.lock.lock();
+		// Select disk
 		self.select(false);
 
 		let mut i = 0;
 		while i < size {
-			let off = offset + i;
+			let off = off + i;
 
 			// The number of blocks for this iteration
 			let mut count = min(size - i, iter_max);
@@ -605,6 +613,6 @@ impl StorageInterface for PATAInterface {
 			i += count;
 		}
 
-		Ok(())
+		Ok((size * SECTOR_SIZE) as _)
 	}
 }

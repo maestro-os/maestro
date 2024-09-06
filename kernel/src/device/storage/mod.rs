@@ -30,7 +30,7 @@ use crate::{
 		id,
 		id::MajorBlock,
 		manager::{DeviceManager, PhysicalDevice},
-		Device, DeviceHandle, DeviceID, DeviceType,
+		Device, DeviceID, DeviceIO, DeviceType,
 	},
 	file::{
 		path::{Path, PathBuf},
@@ -40,21 +40,11 @@ use crate::{
 	syscall::{ioctl, FromSyscallArg},
 };
 use core::{
-	cmp::min,
 	ffi::{c_uchar, c_ulong, c_ushort, c_void},
 	num::NonZeroU64,
 };
 use partition::Partition;
-use utils::{
-	collections::vec::Vec,
-	errno,
-	errno::EResult,
-	format,
-	io::IO,
-	lock::Mutex,
-	ptr::arc::{Arc, Weak},
-	vec, TryClone,
-};
+use utils::{collections::vec::Vec, errno, errno::EResult, format, ptr::arc::Arc, TryClone};
 
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;
@@ -77,354 +67,104 @@ struct HdGeometry {
 	start: c_ulong,
 }
 
-/// Trait representing a storage interface.
-///
-/// A storage block is the atomic unit for I/O access on the storage device.
-pub trait StorageInterface {
-	/// Returns the size of the storage blocks in bytes.
-	///
-	/// This value is guaranteed to be fixed.
-	fn get_block_size(&self) -> NonZeroU64;
-	/// Returns the number of storage blocks.
-	///
-	/// This value is guaranteed to be fixed.
-	fn get_blocks_count(&self) -> u64;
-
-	/// Returns the size of the storage in bytes.
-	///
-	/// This value is guaranteed to be fixed.
-	fn get_size(&self) -> u64 {
-		self.get_block_size().get() * self.get_blocks_count()
-	}
-
-	/// Reads `size` blocks from storage at block offset `offset`, writing the
-	/// data to `buf`.
-	///
-	/// If the offset and size are out of bounds, the function returns an error.
-	fn read(&mut self, buf: &mut [u8], offset: u64, size: u64) -> EResult<()>;
-	/// Writes `size` blocks to storage at block offset `offset`, reading the
-	/// data from `buf`.
-	///
-	/// If the offset and size are out of bounds, the function returns an error.
-	fn write(&mut self, buf: &[u8], offset: u64, size: u64) -> EResult<()>;
-
-	// Unit testing is done through ramdisk testing
-	/// Reads bytes from storage at offset `offset`, writing the data to `buf`.
-	///
-	/// If the offset and size are out of bounds, the function returns an error.
-	fn read_bytes(&mut self, buf: &mut [u8], offset: u64) -> EResult<(u64, bool)> {
-		let block_size = self.get_block_size();
-		let block_size_usize = block_size.get() as usize;
-		let blocks_count = self.get_blocks_count();
-
-		let blk_begin = offset / block_size;
-		let blk_end = (offset + buf.len() as u64).div_ceil(block_size.get());
-		if blk_begin > blocks_count || blk_end > blocks_count {
-			return Err(errno!(EINVAL));
-		}
-
-		let mut i = 0;
-		while i < buf.len() {
-			let remaining_bytes = buf.len() - i;
-
-			let storage_i = offset + i as u64;
-			let block_off = storage_i / block_size;
-			let block_inner_off = (storage_i as usize) % block_size_usize;
-			let block_aligned = block_inner_off == 0;
-
-			if !block_aligned {
-				let mut tmp_buf = vec![0; block_size_usize]?;
-				self.read(tmp_buf.as_mut_slice(), block_off, 1)?;
-
-				let diff = min(remaining_bytes, block_size_usize - block_inner_off);
-				for j in 0..diff {
-					debug_assert!(i + j < buf.len());
-					debug_assert!(block_inner_off + j < tmp_buf.len());
-					buf[i + j] = tmp_buf[block_inner_off + j];
-				}
-
-				i += diff;
-			} else if (remaining_bytes as u64) < block_size.get() {
-				let mut tmp_buf = vec![0; block_size_usize]?;
-				self.read(tmp_buf.as_mut_slice(), block_off, 1)?;
-
-				for j in 0..remaining_bytes {
-					debug_assert!(i + j < buf.len());
-					debug_assert!(j < tmp_buf.len());
-					buf[i + j] = tmp_buf[j];
-				}
-
-				i += remaining_bytes;
-			} else {
-				let remaining_blocks = (remaining_bytes as u64) / block_size.get();
-				let len = (remaining_blocks * block_size.get()) as usize;
-				debug_assert!(i + len <= buf.len());
-				self.read(&mut buf[i..(i + len)], block_off, remaining_blocks as _)?;
-
-				i += len;
-			}
-		}
-
-		let eof = (offset + buf.len() as u64) >= block_size.get() * blocks_count;
-		Ok((buf.len() as _, eof))
-	}
-
-	// Unit testing is done through ramdisk testing
-	/// Writes bytes to storage at offset `offset`, reading the data from `buf`.
-	///
-	/// If the offset and size are out of bounds, the function returns an error.
-	fn write_bytes(&mut self, buf: &[u8], offset: u64) -> EResult<u64> {
-		let block_size = self.get_block_size();
-		let block_size_usize = block_size.get() as usize;
-		let blocks_count = self.get_blocks_count();
-
-		let blk_begin = offset / block_size;
-		let blk_end = (offset + buf.len() as u64).div_ceil(block_size.get());
-		if blk_begin > blocks_count || blk_end > blocks_count {
-			return Err(errno!(EINVAL));
-		}
-
-		let mut i = 0;
-		while i < buf.len() {
-			let remaining_bytes = buf.len() - i;
-
-			let storage_i = offset + i as u64;
-			let block_off = storage_i / block_size;
-			let block_inner_off = (storage_i as usize) % block_size_usize;
-			let block_aligned = block_inner_off == 0;
-
-			if !block_aligned {
-				let mut tmp_buf = vec![0; block_size_usize]?;
-				self.read(tmp_buf.as_mut_slice(), block_off, 1)?;
-
-				let diff = min(remaining_bytes, block_size_usize - block_inner_off);
-				for j in 0..diff {
-					debug_assert!(i + j < buf.len());
-					debug_assert!(block_inner_off + j < tmp_buf.len());
-					tmp_buf[block_inner_off + j] = buf[i + j];
-				}
-
-				self.write(tmp_buf.as_slice(), block_off, 1)?;
-
-				i += diff;
-			} else if (remaining_bytes as u64) < block_size.get() {
-				let mut tmp_buf = vec![0; block_size_usize]?;
-				self.read(tmp_buf.as_mut_slice(), block_off, 1)?;
-
-				for j in 0..remaining_bytes {
-					debug_assert!(i + j < buf.len());
-					debug_assert!(j < tmp_buf.len());
-					tmp_buf[j] = buf[i + j];
-				}
-
-				self.write(tmp_buf.as_slice(), block_off, 1)?;
-
-				i += remaining_bytes;
-			} else {
-				let remaining_blocks = (remaining_bytes as u64) / block_size.get();
-				let len = (remaining_blocks * block_size.get()) as usize;
-				debug_assert!(i + len <= buf.len());
-				self.write(&buf[i..(i + len)], block_off, remaining_blocks as _)?;
-
-				i += len;
-			}
-		}
-
-		Ok(buf.len() as _)
-	}
-}
-
 /// Handle for the device file of a whole storage device or a partition.
 pub struct StorageDeviceHandle {
-	/// A reference to the storage interface.
-	interface: Weak<Mutex<dyn StorageInterface>>,
+	/// Device I/O.
+	pub io: Arc<dyn DeviceIO>,
 	/// The partition associated with the handle. If `None`, the handle covers the whole device.
-	partition: Option<Partition>,
+	pub partition: Option<Partition>,
 
 	/// The major number of the device.
-	major: u32,
+	pub major: u32,
 	/// The ID of the storage device in the manager.
-	storage_id: u32,
+	pub storage_id: u32,
 	/// The path to the file of the main device containing the partition table.
-	path_prefix: PathBuf,
+	pub path_prefix: PathBuf,
 }
 
-impl StorageDeviceHandle {
-	/// Creates a new instance for the given storage interface and the given
-	/// partition number.
-	///
-	/// Arguments:
-	/// - `interface` is the storage interface.
-	/// - `partition` is the partition. If `None`, the handle works on the whole storage device.
-	/// - `major` is the major number of the device.
-	/// - `storage_id` is the ID of the storage device in the manager.
-	/// - `path_prefix` is the path to the file of the main device containing the partition table.
-	pub fn new(
-		interface: Weak<Mutex<dyn StorageInterface>>,
-		partition: Option<Partition>,
-		major: u32,
-		storage_id: u32,
-		path_prefix: PathBuf,
-	) -> Self {
-		Self {
-			interface,
-			partition,
-
-			major,
-			storage_id,
-			path_prefix,
-		}
+impl DeviceIO for StorageDeviceHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		self.io.block_size()
 	}
-}
 
-impl DeviceHandle for StorageDeviceHandle {
-	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+	fn blocks_count(&self) -> u64 {
+		self.io.blocks_count()
+	}
+
+	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		// Bound check
+		let (start, size) = match &self.partition {
+			Some(p) => (p.offset, p.size),
+			None => (0, self.io.blocks_count()),
+		};
+		let blk_size = self.io.block_size().get();
+		let buf_blks = (buf.len() as u64).div_ceil(blk_size);
+		if off.saturating_add(buf_blks) > size {
+			return Err(errno!(EINVAL));
+		}
+		self.io.read(start + off, buf)
+	}
+
+	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
+		// Bound check
+		let (start, size) = match &self.partition {
+			Some(p) => (p.offset, p.size),
+			None => (0, self.io.blocks_count()),
+		};
+		let blk_size = self.io.block_size().get();
+		let buf_blks = (buf.len() as u64).div_ceil(blk_size);
+		if off.saturating_add(buf_blks) > size {
+			return Err(errno!(EINVAL));
+		}
+		self.io.write(start + off, buf)
+	}
+
+	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::HDIO_GETGEO => {
 				// The total size of the disk
-				let size = {
-					if let Some(interface) = self.interface.upgrade() {
-						let interface = interface.lock();
-						interface.get_block_size().get() * interface.get_blocks_count()
-					} else {
-						0
-					}
-				};
-
+				let size = self.block_size().get() * self.blocks_count();
 				// Translate from LBA to CHS
 				let s = (size % c_uchar::MAX as u64) as _;
 				let h = ((size - s as u64) / c_uchar::MAX as u64 % c_uchar::MAX as u64) as _;
 				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
-
 				// Starting LBA of the partition
-				let start = self.partition.as_ref().map(|p| p.get_offset()).unwrap_or(0) as _;
-
+				let start = self.partition.as_ref().map(|p| p.offset).unwrap_or(0) as _;
 				let hd_geo = HdGeometry {
 					heads: h,
 					sectors: s,
 					cylinders: c,
 					start,
 				};
-
 				// Write to userspace
 				let hd_geo_ptr = SyscallPtr::<HdGeometry>::from_syscall_arg(argp as usize);
 				hd_geo_ptr.copy_to_user(hd_geo)?;
-
 				Ok(0)
 			}
-
 			ioctl::BLKRRPART => {
 				StorageManager::clear_partitions(self.major)?;
 				StorageManager::read_partitions(
-					self.interface.clone(),
+					self.io.clone(),
 					self.major,
 					self.storage_id,
 					&self.path_prefix,
 				)?;
-
 				Ok(0)
 			}
-
 			ioctl::BLKSSZGET => {
-				let blk_size = {
-					if let Some(interface) = self.interface.upgrade() {
-						let interface = interface.lock();
-						interface.get_block_size().get()
-					} else {
-						0
-					}
-				};
-
+				let blk_size = self.block_size();
 				let size_ptr = SyscallPtr::<u32>::from_syscall_arg(argp as usize);
-				size_ptr.copy_to_user(blk_size as _)?;
-
+				size_ptr.copy_to_user(blk_size.get() as _)?;
 				Ok(0)
 			}
-
 			ioctl::BLKGETSIZE64 => {
-				let size = self.get_size();
-
+				let size = self.block_size().get() * self.blocks_count();
 				let size_ptr = SyscallPtr::<u64>::from_syscall_arg(argp as usize);
 				size_ptr.copy_to_user(size)?;
-
 				Ok(0)
 			}
-
 			_ => Err(errno!(ENOTTY)),
 		}
-	}
-}
-
-impl IO for StorageDeviceHandle {
-	fn get_size(&self) -> u64 {
-		if let Some(interface) = self.interface.upgrade() {
-			let interface = interface.lock();
-
-			let blocks_count = self
-				.partition
-				.as_ref()
-				.map(|p| p.get_size())
-				.unwrap_or_else(|| interface.get_blocks_count());
-			interface.get_block_size().get() * blocks_count
-		} else {
-			0
-		}
-	}
-
-	fn read(&mut self, offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		if let Some(interface) = self.interface.upgrade() {
-			let mut interface = interface.lock();
-
-			// Check offset
-			let (start, size) = match &self.partition {
-				Some(p) => {
-					let block_size = interface.get_block_size().get();
-					let start = p.get_offset() * block_size;
-					let size = p.get_size() * block_size;
-
-					(start, size)
-				}
-
-				None => (0, interface.get_size()),
-			};
-			if (offset + buff.len() as u64) > size {
-				return Err(errno!(EINVAL));
-			}
-
-			interface.read_bytes(buff, start + offset)
-		} else {
-			Err(errno!(ENODEV))
-		}
-	}
-
-	fn write(&mut self, offset: u64, buff: &[u8]) -> EResult<u64> {
-		if let Some(interface) = self.interface.upgrade() {
-			let mut interface = interface.lock();
-
-			// Check offset
-			let (start, size) = match &self.partition {
-				Some(p) => {
-					let block_size = interface.get_block_size().get();
-					let start = p.get_offset() * block_size;
-					let size = p.get_size() * block_size;
-
-					(start, size)
-				}
-
-				None => (0, interface.get_size()),
-			};
-			if (offset + buff.len() as u64) > size {
-				return Err(errno!(EINVAL));
-			}
-
-			interface.write_bytes(buff, start + offset)
-		} else {
-			Err(errno!(ENODEV))
-		}
-	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		Ok(0)
 	}
 }
 
@@ -435,7 +175,7 @@ pub struct StorageManager {
 	/// The allocated device major number for storage devices.
 	major_block: MajorBlock,
 	/// The list of detected interfaces.
-	interfaces: Vec<Arc<Mutex<dyn StorageInterface>>>,
+	interfaces: Vec<Arc<dyn DeviceIO>>,
 }
 
 impl StorageManager {
@@ -452,25 +192,20 @@ impl StorageManager {
 	/// `MAX_PARTITIONS`.
 	///
 	/// Arguments:
-	/// - `storage` is the storage interface.
+	/// - `io` is the I/O interface.
 	/// - `major` is the major number of the device.
 	/// - `storage_id` is the ID of the storage device in the manager.
 	/// - `path_prefix` is the path to the file of the main device containing the partition table.
 	pub fn read_partitions(
-		storage: Weak<Mutex<dyn StorageInterface>>,
+		io: Arc<dyn DeviceIO>,
 		major: u32,
 		storage_id: u32,
 		path_prefix: &Path,
 	) -> EResult<()> {
-		let Some(storage_mutex) = storage.upgrade() else {
+		let Some(partitions_table) = partition::read(&*io)? else {
 			return Ok(());
 		};
-		let mut s = storage_mutex.lock();
-
-		let Some(partitions_table) = partition::read(&mut *s)? else {
-			return Ok(());
-		};
-		let partitions = partitions_table.get_partitions(&mut *s)?;
+		let partitions = partitions_table.get_partitions(&*io)?;
 
 		let iter = partitions.into_iter().take(MAX_PARTITIONS - 1).enumerate();
 		for (i, partition) in iter {
@@ -478,13 +213,14 @@ impl StorageManager {
 			let path = PathBuf::try_from(format!("{path_prefix}{part_nbr}")?)?;
 
 			// Create the partition's device file
-			let handle = StorageDeviceHandle::new(
-				storage.clone(),
-				Some(partition),
+			let handle = StorageDeviceHandle {
+				io: io.clone(),
+				partition: Some(partition),
+
 				major,
 				storage_id,
-				path_prefix.to_path_buf()?,
-			);
+				path_prefix: path_prefix.to_path_buf()?,
+			};
 			let device = Device::new(
 				DeviceID {
 					dev_type: DeviceType::Block,
@@ -502,7 +238,7 @@ impl StorageManager {
 		Ok(())
 	}
 
-	/// Clears device files for every partitions.
+	/// Clears device files for every partition.
 	///
 	/// `major` is the major number of the devices to be removed.
 	pub fn clear_partitions(major: u32) -> EResult<()> {
@@ -521,7 +257,7 @@ impl StorageManager {
 	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
 	/// Adds the given storage device to the manager.
-	fn add(&mut self, storage: Arc<Mutex<dyn StorageInterface>>) -> EResult<()> {
+	fn add(&mut self, io: Arc<dyn DeviceIO>) -> EResult<()> {
 		// The device files' major number
 		let major = self.major_block.get_major();
 		// The id of the storage interface in the manager's list
@@ -533,13 +269,14 @@ impl StorageManager {
 		let main_path = PathBuf::try_from(format!("/dev/sd{letter}")?)?;
 
 		// Create the main device file
-		let main_handle = StorageDeviceHandle::new(
-			Arc::downgrade(&storage),
-			None,
+		let main_handle = StorageDeviceHandle {
+			io: io.clone(),
+			partition: None,
+
 			major,
 			storage_id,
-			main_path.try_clone()?,
-		);
+			path_prefix: main_path.try_clone()?,
+		};
 		let main_device = Device::new(
 			DeviceID {
 				dev_type: DeviceType::Block,
@@ -552,9 +289,9 @@ impl StorageManager {
 		)?;
 		device::register(main_device)?;
 
-		Self::read_partitions(Arc::downgrade(&storage), major, storage_id, &main_path)?;
+		Self::read_partitions(io.clone(), major, storage_id, &main_path)?;
 
-		self.interfaces.push(storage)?;
+		self.interfaces.push(io)?;
 		Ok(())
 	}
 

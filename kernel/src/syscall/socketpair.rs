@@ -20,16 +20,15 @@
 //! socket which can be used for IPC (Inter-Process Communication).
 
 use crate::{
-	file::{
-		buffer, buffer::socket::Socket, fd::FileDescriptorTable, open_file, open_file::OpenFile,
-		perm::AccessProfile, vfs,
-	},
+	file,
+	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
+	boxed::Box,
 	errno,
 	errno::{EResult, Errno},
 	lock::Mutex,
@@ -53,13 +52,11 @@ pub fn socketpair(
 		protocol,
 	};
 	// Create socket
-	let sock = Socket::new(desc)?;
-	let loc = buffer::register(None, sock)?;
+	let sock = Arc::new(Socket::new(desc)?)?;
+	let file0 = File::open_floating(sock.clone(), file::O_RDWR)?;
+	let file1 = File::open_floating(sock, file::O_RDWR)?;
 	// Create file descriptors
-	let file = vfs::get_file_from_location(loc)?;
-	let open_file0 = OpenFile::new(file.clone(), None, open_file::O_RDONLY)?;
-	let open_file1 = OpenFile::new(file, None, open_file::O_WRONLY)?;
-	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(open_file0, open_file1)?;
+	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
 	sv.copy_to_user([fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }

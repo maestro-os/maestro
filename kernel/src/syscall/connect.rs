@@ -19,7 +19,7 @@
 //! The `connect` system call connects a socket to a distant host.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
+	file::{fd::FileDescriptorTable, socket::Socket},
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
@@ -41,17 +41,8 @@ pub fn connect(
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let loc = *fds
-		.lock()
-		.get_fd(sockfd)?
-		.get_open_file()
-		.lock()
-		.get_location();
-	let sock_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
-	let mut sock = sock_mutex.lock();
-	let _sock = (&mut *sock as &mut dyn Any)
-		.downcast_mut::<Socket>()
-		.ok_or_else(|| errno!(ENOTSOCK))?;
+	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let _addr = addr
 		.copy_from_user(..(addrlen as usize))?
 		.ok_or_else(|| errno!(EFAULT))?;

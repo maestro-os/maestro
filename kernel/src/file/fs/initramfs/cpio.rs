@@ -20,25 +20,9 @@
 //!
 //! The kernel only support binary CPIO, not ASCII.
 
-use crate::{file, file::FileType};
 use core::mem::size_of;
 use macros::AnyRepr;
 use utils::bytes;
-
-/// Entry type: FIFO
-pub const TYPE_FIFO: u16 = 0x1000;
-/// Entry type: Char device
-pub const TYPE_CHAR_DEVICE: u16 = 0x2000;
-/// Entry type: Directory
-pub const TYPE_DIRECTORY: u16 = 0x4000;
-/// Entry type: Block device
-pub const TYPE_BLOCK_DEVICE: u16 = 0x6000;
-/// Entry type: Regular file
-pub const TYPE_REGULAR: u16 = 0x8000;
-/// Entry type: Symbolic link
-pub const TYPE_SYMLINK: u16 = 0xa000;
-/// Entry type: Socket
-pub const TYPE_SOCKET: u16 = 0xc000;
 
 /// Rotates the given 4 bytes value from PDP-endian.
 ///
@@ -74,29 +58,6 @@ pub struct CPIOHeader {
 	pub c_namesize: u16,
 	/// The length in bytes of the file's content.
 	pub c_filesize: u32,
-}
-
-impl CPIOHeader {
-	/// Returns the file type associated with the entry.
-	pub fn get_type(&self) -> FileType {
-		let file_type = self.c_mode & 0xf000;
-
-		match file_type {
-			TYPE_FIFO => FileType::Fifo,
-			TYPE_CHAR_DEVICE => FileType::CharDevice,
-			TYPE_DIRECTORY => FileType::Directory,
-			TYPE_BLOCK_DEVICE => FileType::BlockDevice,
-			TYPE_REGULAR => FileType::Regular,
-			TYPE_SYMLINK => FileType::Link,
-			TYPE_SOCKET => FileType::Socket,
-			_ => FileType::Regular,
-		}
-	}
-
-	/// Returns the permissions of the entry.
-	pub fn get_perms(&self) -> file::Mode {
-		self.c_mode as file::Mode & 0x0fff
-	}
 }
 
 /// A CPIO entry, consisting of a CPIO header, the filename and the content of the file.

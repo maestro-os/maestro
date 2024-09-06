@@ -19,34 +19,22 @@
 //! The `pipe` system call allows to create a pipe.
 
 use crate::{
-	file::{
-		buffer, buffer::pipe::PipeBuffer, fd::FileDescriptorTable, open_file, open_file::OpenFile,
-		vfs,
-	},
-	process::{mem_space::copy::SyscallPtr, Process},
+	file,
+	file::{fd::FileDescriptorTable, pipe::PipeBuffer, File, FileLocation},
+	process::mem_space::copy::SyscallPtr,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
-	TryDefault,
-};
+use utils::{boxed::Box, errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 pub fn pipe(
 	Args(pipefd): Args<SyscallPtr<[c_int; 2]>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	// Get file
-	let loc = buffer::register(None, Arc::new(Mutex::new(PipeBuffer::try_default()?))?)?;
-	let file = vfs::get_file_from_location(loc)?;
-	// Create open file descriptions
-	let open_file0 = OpenFile::new(file.clone(), None, open_file::O_RDONLY)?;
-	let open_file1 = OpenFile::new(file, None, open_file::O_WRONLY)?;
-	// Create file descriptors
-	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(open_file0, open_file1)?;
+	let ops = Arc::new(PipeBuffer::new()?)?;
+	let file0 = File::open_floating(ops.clone(), file::O_RDONLY)?;
+	let file1 = File::open_floating(ops, file::O_WRONLY)?;
+	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
 	pipefd.copy_to_user([fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }

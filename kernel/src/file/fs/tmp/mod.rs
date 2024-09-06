@@ -22,28 +22,29 @@
 //! filesystem is unmounted.
 
 use crate::{
+	device::DeviceIO,
 	file::{
 		fs::{
-			downcast_fs, kernfs, kernfs::NodesStorage, Filesystem, FilesystemType, NodeOps,
+			downcast_fs, kernfs, kernfs::NodeStorage, Filesystem, FilesystemType, NodeOps,
 			StatSet, Statfs,
 		},
 		path::PathBuf,
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
-		DirEntry, FileType, INode, Mode, Stat,
+		DirEntry, FileLocation, FileType, INode, Mode, Stat,
 	},
 	memory,
 	time::unit::Timestamp,
 };
 use core::{
 	cmp::{max, min},
+	intrinsics::unlikely,
 	mem::size_of,
 };
 use utils::{
 	boxed::Box,
 	collections::vec::Vec,
 	errno,
-	errno::{AllocResult, EResult},
-	io::IO,
+	errno::EResult,
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
@@ -89,6 +90,23 @@ struct NodeInner {
 }
 
 impl NodeInner {
+	/// Returns the type of the file.
+	fn get_type(&self) -> FileType {
+		match &self.content {
+			NodeContent::Regular(_) => FileType::Regular,
+			NodeContent::Directory(_) => FileType::Directory,
+			NodeContent::Link(_) => FileType::Link,
+			NodeContent::Fifo => FileType::Fifo,
+			NodeContent::Socket => FileType::Socket,
+			NodeContent::BlockDevice {
+				..
+			} => FileType::BlockDevice,
+			NodeContent::CharDevice {
+				..
+			} => FileType::CharDevice,
+		}
+	}
+
 	/// Returns the [`Stat`] associated with the content.
 	fn as_stat(&self) -> Stat {
 		let (file_type, size, dev_major, dev_minor) = match &self.content {
@@ -107,8 +125,7 @@ impl NodeInner {
 			} => (FileType::CharDevice, 0, *major, *minor),
 		};
 		Stat {
-			file_type,
-			mode: self.mode,
+			mode: file_type.to_mode() | self.mode,
 			nlink: self.nlink,
 			uid: self.uid,
 			gid: self.gid,
@@ -124,8 +141,8 @@ impl NodeInner {
 }
 
 /// A tmpfs node.
-#[derive(Debug)]
-struct Node(Mutex<NodeInner>);
+#[derive(Clone, Debug)]
+struct Node(Arc<Mutex<NodeInner>>);
 
 impl Node {
 	/// Creates a node from the given status.
@@ -137,12 +154,9 @@ impl Node {
 	///
 	/// Provided inodes are used only if the file is a directory, to create the `.` and `..`
 	/// entries.
-	pub fn new(
-		stat: Stat,
-		inode: Option<INode>,
-		parent_inode: Option<INode>,
-	) -> AllocResult<Self> {
-		let content = match stat.file_type {
+	pub fn new(stat: Stat, inode: Option<INode>, parent_inode: Option<INode>) -> EResult<Self> {
+		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
+		let content = match file_type {
 			FileType::Regular => NodeContent::Regular(Vec::new()),
 			FileType::Directory => {
 				let mut entries = Vec::new();
@@ -175,11 +189,11 @@ impl Node {
 			},
 		};
 		let mut nlink = 1;
-		if stat.file_type == FileType::Directory {
+		if file_type == FileType::Directory {
 			// Count the `.` entry
-			nlink += 2;
+			nlink += 1;
 		}
-		Ok(Self(Mutex::new(NodeInner {
+		Ok(Self(Arc::new(Mutex::new(NodeInner {
 			mode: stat.mode,
 			nlink,
 			uid: stat.uid,
@@ -188,17 +202,17 @@ impl Node {
 			mtime: stat.mtime,
 			atime: stat.atime,
 			content,
-		})))
+		}))?))
 	}
 }
 
 impl NodeOps for Node {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		let inner = self.0.lock();
 		Ok(inner.as_stat())
 	}
 
-	fn set_stat(&self, _inode: INode, _fs: &dyn Filesystem, set: StatSet) -> EResult<()> {
+	fn set_stat(&self, _loc: &FileLocation, set: StatSet) -> EResult<()> {
 		let mut inner = self.0.lock();
 		if let Some(mode) = set.mode {
 			inner.mode = mode;
@@ -224,13 +238,7 @@ impl NodeOps for Node {
 		Ok(())
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let inner = self.0.lock();
 		let content = match &inner.content {
 			NodeContent::Regular(content) | NodeContent::Link(content) => content,
@@ -243,17 +251,10 @@ impl NodeOps for Node {
 		let off = off as usize;
 		let len = min(buf.len(), content.len() - off);
 		buf[..len].copy_from_slice(&content[off..(off + len)]);
-		let eof = (off + len) >= content.len();
-		Ok((len as _, eof))
+		Ok(len)
 	}
 
-	fn write_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		off: u64,
-		buf: &[u8],
-	) -> EResult<u64> {
+	fn write_content(&self, _loc: &FileLocation, off: u64, buf: &[u8]) -> EResult<usize> {
 		let mut inner = self.0.lock();
 		match &mut inner.content {
 			NodeContent::Regular(content) => {
@@ -261,7 +262,10 @@ impl NodeOps for Node {
 					return Err(errno!(EINVAL));
 				}
 				let off = off as usize;
-				let new_len = max(content.len(), off + buf.len());
+				let Some(end) = off.checked_add(buf.len()) else {
+					return Err(errno!(EOVERFLOW));
+				};
+				let new_len = max(content.len(), end);
 				content.resize(new_len, 0)?;
 				content[off..].copy_from_slice(buf);
 			}
@@ -272,10 +276,10 @@ impl NodeOps for Node {
 			NodeContent::Directory(_) => return Err(errno!(EISDIR)),
 			_ => return Err(errno!(EINVAL)),
 		}
-		Ok(buf.len() as _)
+		Ok(buf.len())
 	}
 
-	fn truncate_content(&self, _inode: INode, _fs: &dyn Filesystem, size: u64) -> EResult<()> {
+	fn truncate_content(&self, _loc: &FileLocation, size: u64) -> EResult<()> {
 		let mut inner = self.0.lock();
 		let content = match &mut inner.content {
 			NodeContent::Regular(content) => content,
@@ -288,8 +292,7 @@ impl NodeOps for Node {
 
 	fn entry_by_name<'n>(
 		&self,
-		_inode: INode,
-		fs: &dyn Filesystem,
+		loc: &FileLocation,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		let inner = self.0.lock();
@@ -303,14 +306,14 @@ impl NodeOps for Node {
 			return Ok(None);
 		};
 		let ent = entries[off].try_clone()?;
+		let fs = loc.get_filesystem().unwrap();
 		let ops = fs.node_from_inode(ent.inode)?;
 		Ok(Some((ent, ops)))
 	}
 
 	fn next_entry(
 		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
+		_loc: &FileLocation,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let inner = self.0.lock();
@@ -332,15 +335,16 @@ impl NodeOps for Node {
 
 	fn add_file(
 		&self,
-		parent_inode: INode,
-		fs: &dyn Filesystem,
+		parent: &FileLocation,
 		name: &[u8],
 		stat: Stat,
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		if fs.is_readonly() {
+		let fs = parent.get_filesystem().unwrap();
+		let fs = downcast_fs::<TmpFS>(&*fs);
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let fs = downcast_fs::<TmpFS>(fs);
+		let entry_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		let mut nodes = fs.nodes.lock();
 		// Allocate a new slot. In case of later failure, this does not need rollback as the unused
 		// slot is reused at the next call
@@ -350,9 +354,8 @@ impl NodeOps for Node {
 		let NodeContent::Directory(parent_entries) = &mut parent_inner.content else {
 			return Err(errno!(ENOTDIR));
 		};
-		let entry_type = stat.file_type;
 		// Prepare node to be added
-		let node = Node::new(stat, Some(inode), Some(parent_inode))?;
+		let node = Node::new(stat, Some(inode), Some(parent.inode))?;
 		// Add entry to parent
 		let ent = DirEntry {
 			inode,
@@ -365,31 +368,23 @@ impl NodeOps for Node {
 		};
 		parent_entries.insert(ent_index, ent)?;
 		// Insert node
-		*slot = Some(Arc::new(node)?);
+		*slot = Some(node.clone());
 		// Update links count
 		if entry_type == FileType::Directory {
 			parent_inner.nlink += 1;
 		}
-		Ok((inode, Box::new(TmpFSNodeOps)?))
+		Ok((inode, Box::new(node)?))
 	}
 
-	fn add_link(
-		&self,
-		_parent_inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-		inode: INode,
-	) -> EResult<()> {
-		if fs.is_readonly() {
+	fn link(&self, parent: &FileLocation, name: &[u8], inode: INode) -> EResult<()> {
+		let fs = parent.get_filesystem().unwrap();
+		let fs = downcast_fs::<TmpFS>(&*fs);
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		// Get node
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		let stat = node.get_stat(inode, fs)?;
+		let node = fs.nodes.lock().get_node(inode)?.clone();
+		let mut inner = node.0.lock();
 		let mut parent_inner = self.0.lock();
 		// Get parent entries
 		let NodeContent::Directory(parent_entries) = &mut parent_inner.content else {
@@ -398,7 +393,7 @@ impl NodeOps for Node {
 		// Insert the new entry
 		let ent = DirEntry {
 			inode,
-			entry_type: stat.file_type,
+			entry_type: inner.get_type(),
 			name: Cow::Owned(name.try_into()?),
 		};
 		let res = parent_entries.binary_search_by(|ent| ent.name.as_ref().cmp(name));
@@ -407,27 +402,16 @@ impl NodeOps for Node {
 		};
 		parent_entries.insert(ent_index, ent)?;
 		// Update links count
-		node.set_stat(
-			inode,
-			fs,
-			StatSet {
-				nlink: Some(stat.nlink + 1),
-				..Default::default()
-			},
-		)?;
+		inner.nlink += 1;
 		Ok(())
 	}
 
-	fn remove_file(
-		&self,
-		_parent_inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-	) -> EResult<(u16, INode)> {
-		if fs.is_readonly() {
+	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
+		let fs = parent.get_filesystem().unwrap();
+		let fs = downcast_fs::<TmpFS>(&*fs);
+		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let fs = downcast_fs::<TmpFS>(fs);
 		let mut parent_inner = self.0.lock();
 		// Get parent entries
 		let NodeContent::Directory(parent_entries) = &mut parent_inner.content else {
@@ -438,176 +422,42 @@ impl NodeOps for Node {
 			.binary_search_by(|ent| ent.name.as_ref().cmp(name))
 			.map_err(|_| errno!(ENOENT))?;
 		let ent = &parent_entries[ent_index];
-		let inode = ent.inode;
 		// Get the entry's node
+		let inode = ent.inode;
 		let node = downcast_fs::<TmpFS>(fs)
 			.nodes
 			.lock()
 			.get_node(inode)?
 			.clone();
-		let stat = node.get_stat(inode, fs)?;
 		// If the node is a non-empty directory, error
-		if !node.is_empty_directory(inode, fs)? {
+		if node.0.lock().get_type() == FileType::Directory
+			&& !node.is_empty_directory(&FileLocation {
+				mountpoint_id: parent.mountpoint_id,
+				inode,
+			})? {
 			return Err(errno!(ENOTEMPTY));
 		}
 		// Remove entry
 		parent_entries.remove(ent_index);
 		// If the node is a directory, decrement the number of hard links to the parent
 		// (because of the entry `..` in the removed node)
-		if stat.file_type == FileType::Directory {
+		let mut inner = node.0.lock();
+		if matches!(inner.content, NodeContent::Directory(_)) {
 			parent_inner.nlink = parent_inner.nlink.saturating_sub(1);
 		}
-		let links = stat.nlink.saturating_sub(1);
-		node.set_stat(
-			inode,
-			fs,
-			StatSet {
-				nlink: Some(links),
-				..Default::default()
-			},
-		)?;
-		// If no link is left, remove the node
-		if links == 0 {
-			let mut nodes = fs.nodes.lock();
-			nodes.remove_node(inode);
+		inner.nlink = inner.nlink.saturating_sub(1);
+		Ok(())
+	}
+
+	fn remove_node(&self, loc: &FileLocation) -> EResult<()> {
+		let fs = loc.get_filesystem().unwrap();
+		let fs = downcast_fs::<TmpFS>(&*fs);
+		if unlikely(fs.readonly) {
+			return Err(errno!(EROFS));
 		}
-		Ok((links, inode))
-	}
-}
-
-/// Tmpfs node.
-#[derive(Debug)]
-pub struct TmpFSNodeOps;
-
-// This implementation only forwards to the actual node.
-impl NodeOps for TmpFSNodeOps {
-	fn get_stat(&self, inode: INode, fs: &dyn Filesystem) -> EResult<Stat> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.get_stat(inode, fs)
-	}
-
-	fn set_stat(&self, inode: INode, fs: &dyn Filesystem, set: StatSet) -> EResult<()> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.set_stat(inode, fs, set)
-	}
-
-	fn read_content(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.read_content(inode, fs, off, buf)
-	}
-
-	fn write_content(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-		buf: &[u8],
-	) -> EResult<u64> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.write_content(inode, fs, off, buf)
-	}
-
-	fn truncate_content(&self, inode: INode, fs: &dyn Filesystem, size: u64) -> EResult<()> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.truncate_content(inode, fs, size)
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.entry_by_name(inode, fs, name)
-	}
-
-	fn next_entry(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.next_entry(inode, fs, off)
-	}
-
-	fn add_file(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-		stat: Stat,
-	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.add_file(inode, fs, name, stat)
-	}
-
-	fn add_link(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-		target_inode: INode,
-	) -> EResult<()> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.add_link(inode, fs, name, target_inode)
-	}
-
-	fn remove_file(
-		&self,
-		inode: INode,
-		fs: &dyn Filesystem,
-		name: &[u8],
-	) -> EResult<(u16, INode)> {
-		let node = downcast_fs::<TmpFS>(fs)
-			.nodes
-			.lock()
-			.get_node(inode)?
-			.clone();
-		node.remove_file(inode, fs, name)
+		let mut nodes = fs.nodes.lock();
+		nodes.remove_node(loc.inode);
+		Ok(())
 	}
 }
 
@@ -623,7 +473,7 @@ pub struct TmpFS {
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 	/// The inner kernfs.
-	nodes: Mutex<NodesStorage>,
+	nodes: Mutex<NodeStorage<Node>>,
 }
 
 impl TmpFS {
@@ -635,8 +485,7 @@ impl TmpFS {
 	pub fn new(max_size: usize, readonly: bool) -> EResult<Self> {
 		let root = Node::new(
 			Stat {
-				file_type: FileType::Directory,
-				mode: 0o1777,
+				mode: FileType::Directory.to_mode() | 0o1777,
 				nlink: 0,
 				uid: ROOT_UID,
 				gid: ROOT_GID,
@@ -656,7 +505,7 @@ impl TmpFS {
 			// Size of the root node
 			size: size_of::<Node>(),
 			readonly,
-			nodes: Mutex::new(NodesStorage::new(root)?),
+			nodes: Mutex::new(NodeStorage::new(root)?),
 		};
 		Ok(fs)
 	}
@@ -665,10 +514,6 @@ impl TmpFS {
 impl Filesystem for TmpFS {
 	fn get_name(&self) -> &[u8] {
 		b"tmpfs"
-	}
-
-	fn is_readonly(&self) -> bool {
-		self.readonly
 	}
 
 	fn use_cache(&self) -> bool {
@@ -696,9 +541,7 @@ impl Filesystem for TmpFS {
 	}
 
 	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
-		// Check the node exists
-		self.nodes.lock().get_node(inode)?;
-		Ok(Box::new(TmpFSNodeOps)? as _)
+		Ok(Box::new(self.nodes.lock().get_node(inode)?.clone())? as _)
 	}
 }
 
@@ -710,13 +553,13 @@ impl FilesystemType for TmpFsType {
 		b"tmpfs"
 	}
 
-	fn detect(&self, _io: &mut dyn IO) -> EResult<bool> {
+	fn detect(&self, _io: &dyn DeviceIO) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
-		_io: Option<Arc<Mutex<dyn IO>>>,
+		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<dyn Filesystem>> {

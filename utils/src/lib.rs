@@ -49,7 +49,6 @@ pub mod bytes;
 pub mod collections;
 pub mod errno;
 pub mod interrupt;
-pub mod io;
 pub mod lock;
 pub mod math;
 pub mod ptr;
@@ -128,9 +127,12 @@ pub fn nbr_len(s: &[u8]) -> usize {
 /// Copies from slice `src` to `dst`.
 ///
 /// If slice are not of the same length, the function copies only up to the length of the smallest.
-pub fn slice_copy(src: &[u8], dst: &mut [u8]) {
+///
+/// The function returns the number of bytes copied.
+pub fn slice_copy(src: &[u8], dst: &mut [u8]) -> usize {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
+	len
 }
 
 /// Same as the [`Clone`] trait, but the operation can fail (on memory allocation
@@ -152,25 +154,6 @@ impl<T: Clone + Sized> TryClone for T {
 	}
 }
 
-/// Same as the [`Default`] trait, but the operation can fail (on memory allocation
-/// failure, for example).
-pub trait TryDefault {
-	/// The error type on failure.
-	type Error = AllocError;
-
-	/// Returns the default value. On failure, the function returns [`Self::Error`].
-	fn try_default() -> Result<Self, Self::Error>
-	where
-		Self: Sized;
-}
-
-/// Blanket implementation.
-impl<T: Default + Sized> TryDefault for T {
-	fn try_default() -> Result<Self, Self::Error> {
-		Ok(Self::default())
-	}
-}
-
 /// Same as the [`alloc::borrow::ToOwned`] trait, but the operation can fail (on memory allocation
 /// failure, for example).
 pub trait TryToOwned {
@@ -183,8 +166,8 @@ pub trait TryToOwned {
 	fn try_to_owned(&self) -> Result<Self::Owned, Self::Error>;
 }
 
-/// Wrapper structure allowing to implement the [`fmt::Display`] trait on the [u8] type
-/// to display it as a string.
+/// Wrapper structure allowing to implement the [`fmt::Display`] trait on `&[u8]` to display it as
+/// a string.
 pub struct DisplayableStr<'a>(pub &'a [u8]);
 
 impl<'a> fmt::Display for DisplayableStr<'a> {

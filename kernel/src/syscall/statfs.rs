@@ -43,13 +43,12 @@ pub(super) fn do_statfs(
 	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	let stat = vfs::get_file_from_path(&path, &rs)?
-		.lock()
+		.node()
 		.location
 		.get_mountpoint()
 		// Unwrapping will not fail since the file is accessed from path
 		.unwrap()
-		.lock()
-		.get_filesystem()
+		.fs
 		.get_stat()?;
 	// Write structure to userspace
 	buf.copy_to_user(stat)?;

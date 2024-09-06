@@ -21,7 +21,6 @@
 //! This module implements management of such permissions.
 
 use super::Mode;
-use crate::file::File;
 use utils::{errno, errno::EResult};
 
 /// Type representing a user ID.
@@ -126,11 +125,6 @@ impl AccessProfile {
 			suid: uid,
 			sgid: gid,
 		}
-	}
-
-	/// Extracts UID and GID from file and returns the associated profile.
-	pub fn from_file(file: &File) -> Self {
-		Self::new(file.stat.uid, file.stat.gid)
 	}
 
 	/// Tells whether the agent is privileged (root).

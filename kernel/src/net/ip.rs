@@ -103,6 +103,7 @@ struct IPv6Header {
 }
 
 /// The network layer for the IPv4 protocol.
+#[derive(Debug)]
 pub struct IPv4Layer {
 	/// The protocol ID.
 	pub protocol: u8,

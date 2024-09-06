@@ -36,7 +36,6 @@ use crate::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io::IO,
 };
 
 pub fn symlink(
@@ -53,17 +52,15 @@ pub fn symlink(
 	let link_parent = linkpath.parent().unwrap_or(Path::root());
 	let link_name = linkpath.file_name().ok_or_else(|| errno!(ENOENT))?;
 	// Link's parent
-	let parent_mutex = vfs::get_file_from_path(link_parent, &rs)?;
-	let mut parent = parent_mutex.lock();
+	let parent = vfs::get_file_from_path(link_parent, &rs)?;
 	// Create link
 	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
 	let file = vfs::create_file(
-		&mut parent,
+		parent,
 		link_name,
 		&rs.access_profile,
 		Stat {
-			file_type: FileType::Link,
-			mode: 0o777,
+			mode: FileType::Link.to_mode() | 0o777,
 			ctime: ts,
 			mtime: ts,
 			atime: ts,
@@ -71,6 +68,8 @@ pub fn symlink(
 		},
 	)?;
 	// TODO remove file on failure
-	file.lock().write(0, target.as_bytes())?;
+	file.node()
+		.ops
+		.write_content(&file.node().location, 0, target.as_bytes())?;
 	Ok(0)
 }

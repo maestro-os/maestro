@@ -37,7 +37,7 @@ const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
 /// Returns the ID of a free TLS entry for the given process.
 pub fn get_free_entry(process: &mut Process) -> EResult<usize> {
 	process
-		.get_tls_entries()
+		.tls_entries
 		.iter()
 		.enumerate()
 		.find(|(_, e)| !e.is_present())
@@ -59,7 +59,7 @@ pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut 
 		// Out of bounds
 		_ => return Err(errno!(EINVAL)),
 	};
-	Ok((id, &mut proc.get_tls_entries()[id]))
+	Ok((id, &mut proc.tls_entries[id]))
 }
 
 pub fn set_thread_area(

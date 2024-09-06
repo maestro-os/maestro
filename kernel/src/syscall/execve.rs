@@ -41,7 +41,6 @@ use utils::{
 	errno,
 	errno::{CollectResult, EResult, Errno},
 	interrupt::cli,
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 };
@@ -83,21 +82,23 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 	path: &Path,
 	rs: &ResolutionSettings,
 	argv: A,
-) -> EResult<(Arc<Mutex<File>>, Vec<String>)> {
+) -> EResult<(Arc<vfs::Entry>, Vec<String>)> {
 	let mut shebangs: [ShebangBuffer; INTERP_MAX] = Default::default();
 	// Read and parse shebangs
-	let mut file_mutex = vfs::get_file_from_path(path, rs)?;
+	let mut file = vfs::get_file_from_path(path, rs)?;
 	let mut i = 0;
 	loop {
 		let shebang = &mut shebangs[i];
 		// Read file
 		let len = {
-			let mut file = file_mutex.lock();
 			// Check permission
-			if !rs.access_profile.can_execute_file(&file) {
+			let stat = file.stat()?;
+			if !rs.access_profile.can_execute_file(&stat) {
 				return Err(errno!(EACCES));
 			}
-			file.read(0, &mut shebang.buf)?.0 as usize
+			file.node()
+				.ops
+				.read_content(&file.node().location, 0, &mut shebang.buf)?
 		};
 		// Parse shebang
 		shebang.end = shebang.buf[..len]
@@ -119,7 +120,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 			.unwrap_or(shebang.end);
 		let interp_path = Path::new(&shebang.buf[2..(2 + interp_end)])?;
 		// Read interpreter
-		file_mutex = vfs::get_file_from_path(interp_path, rs)?;
+		file = vfs::get_file_from_path(interp_path, rs)?;
 	}
 	// Build arguments
 	let final_argv = shebangs[..i]
@@ -139,12 +140,12 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 		.chain(argv)
 		.collect::<EResult<CollectResult<Vec<String>>>>()?
 		.0?;
-	Ok((file_mutex, final_argv))
+	Ok((file, final_argv))
 }
 
 /// Performs the execution on the current process.
 fn do_exec(
-	file: Arc<Mutex<File>>,
+	file: &vfs::Entry,
 	rs: &ResolutionSettings,
 	argv: Vec<String>,
 	envp: Vec<String>,
@@ -165,21 +166,17 @@ fn do_exec(
 /// - `argv` is the arguments list
 /// - `envp` is the environment variables list
 fn build_image(
-	file: Arc<Mutex<File>>,
+	file: &vfs::Entry,
 	path_resolution: &ResolutionSettings,
 	argv: Vec<String>,
 	envp: Vec<String>,
 ) -> EResult<ProgramImage> {
-	let mut file = file.lock();
-	if !path_resolution.access_profile.can_execute_file(&file) {
-		return Err(errno!(EACCES));
-	}
 	let exec_info = ExecInfo {
 		path_resolution,
 		argv,
 		envp,
 	};
-	exec::build_image(&mut file, exec_info)
+	exec::build_image(file, exec_info)
 }
 
 pub fn execve(
@@ -199,7 +196,7 @@ pub fn execve(
 	cli();
 	let tmp_stack = SCHEDULER.get().lock().get_tmp_stack();
 	let exec = move || {
-		let regs = do_exec(file, &rs, argv, envp)?;
+		let regs = do_exec(&file, &rs, argv, envp)?;
 		unsafe {
 			regs.switch(true);
 		}

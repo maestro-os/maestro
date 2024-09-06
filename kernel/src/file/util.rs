@@ -32,16 +32,13 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 		let Component::Normal(name) = &comp else {
 			continue;
 		};
-		if let Ok(parent_mutex) = vfs::get_file_from_path(&p, &ResolutionSettings::kernel_follow())
-		{
-			let mut parent = parent_mutex.lock();
+		if let Ok(parent) = vfs::get_file_from_path(&p, &ResolutionSettings::kernel_follow()) {
 			let res = vfs::create_file(
-				&mut parent,
+				parent,
 				name,
 				&AccessProfile::KERNEL,
 				Stat {
-					file_type: FileType::Directory,
-					mode: 0o755,
+					mode: FileType::Directory.to_mode() | 0o755,
 					..Default::default()
 				},
 			);

@@ -19,16 +19,15 @@
 //! The `socket` system call allows to create a socket.
 
 use crate::{
-	file::{
-		buffer, buffer::socket::Socket, fd::FileDescriptorTable, open_file, open_file::OpenFile,
-		perm::AccessProfile, vfs,
-	},
+	file,
+	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
+	boxed::Box,
 	errno,
 	errno::{EResult, Errno},
 	lock::Mutex,
@@ -52,11 +51,8 @@ pub fn socket(
 		protocol,
 	};
 	// Create socket
-	let sock = Socket::new(desc)?;
-	let loc = buffer::register(None, sock)?;
-	// Create file descriptor
-	let file = vfs::get_file_from_location(loc)?;
-	let open_file = OpenFile::new(file, None, open_file::O_RDWR)?;
-	let (sock_fd_id, _) = fds.lock().create_fd(0, open_file)?;
+	let sock = Arc::new(Socket::new(desc)?)?;
+	let file = File::open_floating(sock, file::O_RDWR)?;
+	let (sock_fd_id, _) = fds.lock().create_fd(0, file)?;
 	Ok(sock_fd_id as _)
 }

@@ -19,7 +19,7 @@
 //! The `Box` structure allows to hold an object on the heap and handles its
 //! memory properly.
 
-use crate::{errno::AllocResult, AllocError, TryClone, TryDefault};
+use crate::{errno::AllocResult, AllocError, TryClone};
 use alloc::alloc::Global;
 use core::{
 	alloc::{Allocator, Layout},
@@ -40,14 +40,6 @@ use core::{
 pub struct Box<T: ?Sized> {
 	/// Pointer to the allocated memory
 	ptr: NonNull<T>,
-}
-
-impl<T: TryDefault<Error = E>, E: From<AllocError>> TryDefault for Box<T> {
-	type Error = E;
-
-	fn try_default() -> Result<Self, Self::Error> {
-		Ok(Self::new(T::try_default()?)?)
-	}
 }
 
 impl<T> Box<T> {

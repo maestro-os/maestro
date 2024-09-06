@@ -54,19 +54,6 @@ pub const AT_STATX_FORCE_SYNC: c_int = 0x2000;
 /// Flag: Don't synchronize anything, but rather take cached information.
 pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
 
-/// Returns the file pointed to by the given file descriptor.
-///
-/// Arguments:
-/// - `fds` is the file descriptors table
-/// - `fd` is the file descriptor
-///
-/// If the given file descriptor is invalid, the function returns [`errno::EBADF`].
-fn fd_to_file(fds: &FileDescriptorTable, fd: c_int) -> EResult<Arc<Mutex<File>>> {
-	let open_file_mutex = fds.get_fd(fd)?.get_open_file().clone();
-	let open_file = open_file_mutex.lock();
-	Ok(open_file.get_file().clone())
-}
-
 /// Returns the file for the given path `path`.
 ///
 /// Arguments:
@@ -94,14 +81,20 @@ pub fn get_file<'p>(
 	rs.follow_link = follow_links;
 	// If not starting from current directory, get location
 	if dirfd != AT_FDCWD {
-		rs.start = Some(fd_to_file(fds, dirfd)?);
+		let cwd = fds
+			.get_fd(dirfd)?
+			.get_file()
+			.vfs_entry
+			.clone()
+			.ok_or_else(|| errno!(ENOTDIR))?;
+		rs.cwd = Some(cwd);
 	}
 	if path.is_empty() {
 		// Validation
 		if flags & AT_EMPTY_PATH == 0 {
 			return Err(errno!(ENOENT));
 		}
-		Ok(Resolved::Found(rs.start.unwrap()))
+		Ok(Resolved::Found(rs.cwd.unwrap()))
 	} else {
 		vfs::resolve_path(path, &rs)
 	}

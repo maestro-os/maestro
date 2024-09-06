@@ -20,8 +20,10 @@
 
 use crate::{
 	file::{
-		fs::{proc::get_proc_owner, Filesystem, NodeOps},
-		mountpoint, FileType, INode, Stat,
+		fs::{proc::get_proc_owner, NodeOps},
+		vfs,
+		vfs::mountpoint,
+		FileLocation, FileType, Stat,
 	},
 	format_content,
 	process::pid::Pid,
@@ -40,41 +42,35 @@ impl From<Pid> for Mounts {
 }
 
 impl NodeOps for Mounts {
-	fn get_stat(&self, _inode: INode, _fs: &dyn Filesystem) -> EResult<Stat> {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
-			file_type: FileType::Regular,
-			mode: 0o444,
+			mode: FileType::Regular.to_mode() | 0o444,
 			uid,
 			gid,
 			..Default::default()
 		})
 	}
 
-	fn read_content(
-		&self,
-		_inode: INode,
-		_fs: &dyn Filesystem,
-		off: u64,
-		buf: &mut [u8],
-	) -> EResult<(u64, bool)> {
+	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		format_content!(off, buf, "{}", self)
 	}
 }
 
 impl fmt::Display for Mounts {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let mountpoints = mountpoint::MOUNT_POINTS.lock();
-		for (_, mp_mutex) in mountpoints.iter() {
-			let mp = mp_mutex.lock();
-			let fs = mp.get_filesystem();
-			let fs_type = fs.get_name();
+		let mps = mountpoint::MOUNT_POINTS.lock();
+		for (_, mp) in mps.iter() {
+			let Ok(target) = vfs::Entry::get_path(&mp.root_entry) else {
+				continue;
+			};
+			let fs_type = mp.fs.get_name();
 			let flags = "TODO"; // TODO
 			writeln!(
 				f,
 				"{source} {target} {fs_type} {flags} 0 0",
-				source = mp.get_source(),
-				target = mp.get_target_path(),
+				source = mp.source,
+				target = target,
 				fs_type = DisplayableStr(fs_type)
 			)?;
 		}

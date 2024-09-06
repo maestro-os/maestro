@@ -346,7 +346,7 @@ pub fn format_impl(args: Arguments<'_>) -> AllocResult<String> {
 	w.0
 }
 
-/// Formats a string from the given arguments.
+/// Formats a [`String`] from the given arguments.
 ///
 /// On memory allocation failure, the macro returns an error.
 #[macro_export]

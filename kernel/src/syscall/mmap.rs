@@ -112,13 +112,7 @@ pub fn do_mmap(
 		if offset as usize % memory::PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
 		}
-		let fd = fds
-			.lock()
-			.get_fd(fd)?
-			.get_open_file()
-			.lock()
-			.get_file()
-			.clone();
+		let fd = fds.lock().get_fd(fd)?.get_file().clone();
 		Some(fd)
 	} else {
 		None
@@ -126,23 +120,23 @@ pub fn do_mmap(
 	// TODO anon flag
 	// Get residence
 	let residence = match file_mutex {
-		Some(file_mutex) => {
-			let file = file_mutex.lock();
+		Some(file) => {
+			let stat = file.stat()?;
 			// Check the file is suitable
-			if !matches!(file.stat.file_type, FileType::Regular) {
+			if stat.get_type() != Some(FileType::Regular) {
 				return Err(errno!(EACCES));
 			}
-			if prot & PROT_READ != 0 && !ap.can_read_file(&file) {
+			if prot & PROT_READ != 0 && !ap.can_read_file(&stat) {
 				return Err(errno!(EPERM));
 			}
-			if prot & PROT_WRITE != 0 && !ap.can_write_file(&file) {
+			if prot & PROT_WRITE != 0 && !ap.can_write_file(&stat) {
 				return Err(errno!(EPERM));
 			}
-			if prot & PROT_EXEC != 0 && !ap.can_execute_file(&file) {
+			if prot & PROT_EXEC != 0 && !ap.can_execute_file(&stat) {
 				return Err(errno!(EPERM));
 			}
 			MapResidence::File {
-				location: file.location,
+				file,
 				off: offset,
 			}
 		}

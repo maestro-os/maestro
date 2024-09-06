@@ -19,7 +19,7 @@
 //! The `rt_sigprocmask` system call allows to change the blocked signal mask.
 
 use crate::{
-	process::{mem_space::copy::SyscallSlice, Process},
+	process::{mem_space::copy::SyscallSlice, signal::SigSet, Process},
 	syscall::Args,
 };
 use core::{cmp::min, ffi::c_int};
@@ -37,27 +37,23 @@ const SIG_UNBLOCK: i32 = 1;
 /// Sets the mask with the given one.
 const SIG_SETMASK: i32 = 2;
 
-// TODO Use SigSet in crate::process::signal
 pub fn rt_sigprocmask(
 	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
 	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let mut proc = proc.lock();
 	// Save old set
-	let curr = proc.sigmask.as_slice_mut();
-	let len = min(curr.len(), sigsetsize as _);
-	oldset.copy_to_user(0, &curr[..len])?;
+	let cur = proc.sigmask.0.to_ne_bytes();
+	let len = min(cur.len(), sigsetsize as _);
+	oldset.copy_to_user(0, &cur[..len])?;
 	// Apply new set
-	let set_slice = set.copy_from_user(..sigsetsize)?;
-	if let Some(set) = set_slice {
-		let iter = curr.iter_mut().zip(set.iter());
-		for (curr, set) in iter {
-			match how {
-				SIG_BLOCK => *curr |= *set,
-				SIG_UNBLOCK => *curr &= !*set,
-				SIG_SETMASK => *curr = *set,
-				_ => return Err(errno!(EINVAL)),
-			}
+	if let Some(set) = set.copy_from_user(..sigsetsize)? {
+		let set = SigSet::from(set.as_slice());
+		match how {
+			SIG_BLOCK => proc.sigmask.0 |= set.0,
+			SIG_UNBLOCK => proc.sigmask.0 &= !set.0,
+			SIG_SETMASK => proc.sigmask = set,
+			_ => return Err(errno!(EINVAL)),
 		}
 	}
 	Ok(0)

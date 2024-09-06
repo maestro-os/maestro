@@ -20,56 +20,35 @@
 //! communicate with it.
 
 use crate::{
-	device::DeviceHandle,
+	device::DeviceIO,
 	process::{
 		mem_space::copy::SyscallPtr,
 		pid::Pid,
 		signal::{Signal, SignalHandler},
 		Process,
 	},
-	syscall::{ioctl, FromSyscallArg},
-	tty::{termios, termios::Termios, TTYHandle, WinSize, TTY},
+	syscall::{
+		ioctl,
+		poll::{POLLIN, POLLOUT},
+		FromSyscallArg,
+	},
+	tty::{termios, termios::Termios, TTYDisplay, WinSize, TTY},
 };
-use core::ffi::c_void;
-use utils::{errno, errno::EResult, io, io::IO, lock::IntMutex, ptr::arc::Arc};
+use core::{ffi::c_void, num::NonZeroU64};
+use utils::{errno, errno::EResult};
 
 /// A TTY device's handle.
-pub struct TTYDeviceHandle {
-	/// The device's TTY. If `None`, using the current process's TTY.
-	tty: Option<TTYHandle>,
-}
+pub struct TTYDeviceHandle;
 
 impl TTYDeviceHandle {
-	/// Creates a new instance for the given TTY `tty`.
-	///
-	/// If `tty` is `None`, the device works with the current process's TTY.
-	pub fn new(tty: Option<TTYHandle>) -> Self {
-		Self {
-			tty,
-		}
-	}
-
-	/// Returns the current process and its associated TTY.
-	fn get_tty(&self) -> EResult<(Arc<IntMutex<Process>>, TTYHandle)> {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
-
-		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());
-		drop(proc);
-
-		Ok((proc_mutex, tty_mutex))
-	}
-
-	/// Checks whether the process is allowed to read from the TTY.
+	/// Checks whether the current process is allowed to read from the TTY.
 	///
 	/// If not, it is killed with a `SIGTTIN` signal.
 	///
-	/// Arguments:
-	/// - `process` is the process.
-	/// - `tty` is the TTY.
-	///
 	/// This function must be called before performing the read operation.
-	fn check_sigttin(&self, proc: &mut Process, tty: &TTY) -> EResult<()> {
+	fn check_sigttin(&self, tty: &TTYDisplay) -> EResult<()> {
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
 		if proc.pgid == tty.get_pgrp() {
 			return Ok(());
 		}
@@ -77,26 +56,25 @@ impl TTYDeviceHandle {
 		let signal_handlers = proc.signal_handlers.clone();
 		let signal_handlers = signal_handlers.lock();
 		let handler = &signal_handlers[Signal::SIGTTIN.get_id() as usize];
-		if proc.is_signal_blocked(&Signal::SIGTTIN)
+		if proc.is_signal_blocked(Signal::SIGTTIN)
 			|| matches!(handler, SignalHandler::Ignore)
 			|| proc.is_in_orphan_process_group()
 		{
 			return Err(errno!(EIO));
 		}
+		drop(signal_handlers);
 		proc.kill_group(Signal::SIGTTIN);
 		Ok(())
 	}
 
-	/// Checks whether the process is allowed to write to the TTY.
+	/// Checks whether the current process is allowed to write to the TTY.
 	///
 	/// If not, it is killed with a `SIGTTOU` signal.
 	///
-	/// Arguments:
-	/// - `process` is the process.
-	/// - `tty` is the TTY.
-	///
 	/// This function must be called before performing the write operation.
-	fn check_sigttou(&self, proc: &mut Process, tty: &TTY) -> EResult<()> {
+	fn check_sigttou(&self, tty: &TTYDisplay) -> EResult<()> {
+		let proc_mutex = Process::current();
+		let mut proc = proc_mutex.lock();
 		if tty.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
 			return Ok(());
 		}
@@ -104,137 +82,97 @@ impl TTYDeviceHandle {
 		let signal_handlers = proc.signal_handlers.clone();
 		let signal_handlers = signal_handlers.lock();
 		let handler = &signal_handlers[Signal::SIGTTOU.get_id() as usize];
-		if proc.is_signal_blocked(&Signal::SIGTTOU) || matches!(handler, SignalHandler::Ignore) {
+		if proc.is_signal_blocked(Signal::SIGTTOU) || matches!(handler, SignalHandler::Ignore) {
 			return Ok(());
 		}
 		if proc.is_in_orphan_process_group() {
 			return Err(errno!(EIO));
 		}
+		drop(signal_handlers);
 		proc.kill_group(Signal::SIGTTOU);
 		Ok(())
 	}
 }
 
-impl DeviceHandle for TTYDeviceHandle {
-	fn ioctl(&mut self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let mut proc = proc_mutex.lock();
-		let mut tty = tty_mutex.lock();
+impl DeviceIO for TTYDeviceHandle {
+	fn block_size(&self) -> NonZeroU64 {
+		1.try_into().unwrap()
+	}
 
+	fn blocks_count(&self) -> u64 {
+		0
+	}
+
+	fn read(&self, _off: u64, buff: &mut [u8]) -> EResult<usize> {
+		self.check_sigttin(&TTY.display.lock())?;
+		let len = TTY.read(buff)?;
+		Ok(len)
+	}
+
+	fn write(&self, _off: u64, buff: &[u8]) -> EResult<usize> {
+		self.check_sigttou(&TTY.display.lock())?;
+		TTY.display.lock().write(buff);
+		Ok(buff.len())
+	}
+
+	fn read_bytes(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		self.read(off, buf)
+	}
+
+	fn write_bytes(&self, off: u64, buf: &[u8]) -> EResult<usize> {
+		self.write(off, buf)
+	}
+
+	fn poll(&self, mask: u32) -> EResult<u32> {
+		let input = TTY.has_input_available();
+		let res = (if input { POLLIN } else { 0 } | POLLOUT) & mask;
+		Ok(res)
+	}
+
+	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+		let mut tty = TTY.display.lock();
 		match request.get_old_format() {
 			ioctl::TCGETS => {
 				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
 				termios_ptr.copy_to_user(tty.get_termios().clone())?;
-
 				Ok(0)
 			}
-
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
-				self.check_sigttou(&mut proc, &tty)?;
-
+				self.check_sigttou(&tty)?;
 				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
 				let termios = termios_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_termios(termios.clone());
-
 				Ok(0)
 			}
-
 			ioctl::TIOCGPGRP => {
 				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
 				pgid_ptr.copy_to_user(tty.get_pgrp())?;
-
 				Ok(0)
 			}
-
 			ioctl::TIOCSPGRP => {
-				self.check_sigttou(&mut proc, &tty)?;
-
+				self.check_sigttou(&tty)?;
 				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
 				let pgid = pgid_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_pgrp(pgid);
-
 				Ok(0)
 			}
-
 			ioctl::TIOCGWINSZ => {
 				let winsize = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
 				winsize.copy_to_user(tty.get_winsize().clone())?;
-
 				Ok(0)
 			}
-
 			ioctl::TIOCSWINSZ => {
 				let winsize_ptr = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
 				let winsize = winsize_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
-
-				// Drop to avoid deadlock since `set_winsize` sends the SIGWINCH signal
-				drop(proc);
 				tty.set_winsize(winsize.clone());
-
 				Ok(0)
 			}
-
 			_ => Err(errno!(EINVAL)),
 		}
-	}
-
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		let tty_mutex = self.tty.clone().unwrap_or_else(|| proc.get_tty());
-		let mut tty = tty_mutex.lock();
-		tty.add_waiting_process(proc, mask)
-	}
-}
-
-impl IO for TTYDeviceHandle {
-	fn get_size(&self) -> u64 {
-		if let Ok((_, tty_mutex)) = self.get_tty() {
-			let tty = tty_mutex.lock();
-			tty.get_available_size() as _
-		} else {
-			0
-		}
-	}
-
-	fn read(&mut self, _offset: u64, buff: &mut [u8]) -> EResult<(u64, bool)> {
-		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let mut proc = proc_mutex.lock();
-		let mut tty = tty_mutex.lock();
-
-		self.check_sigttin(&mut proc, &tty)?;
-
-		let (len, eof) = tty.read(buff);
-		Ok((len as _, eof))
-	}
-
-	fn write(&mut self, _offset: u64, buff: &[u8]) -> EResult<u64> {
-		let (proc_mutex, tty_mutex) = self.get_tty()?;
-		let mut proc = proc_mutex.lock();
-		let mut tty = tty_mutex.lock();
-
-		self.check_sigttou(&mut proc, &tty)?;
-
-		tty.write(buff);
-		Ok(buff.len() as _)
-	}
-
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		let (_, tty_mutex) = self.get_tty()?;
-		let tty = tty_mutex.lock();
-
-		let mut result = 0;
-		if mask & io::POLLIN != 0 && tty.get_available_size() > 0 {
-			result |= io::POLLIN;
-		}
-		if mask & io::POLLOUT != 0 {
-			result |= io::POLLOUT;
-		}
-		// TODO Implement every events
-
-		Ok(result)
 	}
 }

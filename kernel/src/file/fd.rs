@@ -21,13 +21,12 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-use crate::{file::open_file::OpenFile, limits};
-use core::{cmp::max, ffi::c_int};
+use crate::{file::File, limits};
+use core::{cmp::max, ffi::c_int, mem};
 use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, CollectResult, EResult},
-	io::IO,
 	lock::Mutex,
 	ptr::arc::Arc,
 };
@@ -72,13 +71,13 @@ pub enum NewFDConstraint {
 	Min(u32),
 }
 
-/// A file descriptor, pointing to an [`OpenFile`].
+/// A file descriptor, pointing to a [`File`].
 #[derive(Clone, Debug)]
 pub struct FileDescriptor {
 	/// The file descriptor's flags.
 	pub flags: i32,
 	/// The open file description associated with the file descriptor.
-	open_file: Arc<Mutex<OpenFile>>,
+	file: Arc<File>,
 }
 
 impl FileDescriptor {
@@ -90,17 +89,16 @@ impl FileDescriptor {
 	/// Arguments:
 	/// - `flags` is the set of flags associated with the file descriptor
 	/// - `location` is the location of the open file the file descriptor points to
-	pub fn new(flags: i32, open_file: OpenFile) -> EResult<Self> {
-		let open_file = Arc::new(Mutex::new(open_file))?;
+	pub fn new(flags: i32, file: Arc<File>) -> EResult<Self> {
 		Ok(Self {
 			flags,
-			open_file,
+			file,
 		})
 	}
 
 	/// Returns the open file associated with the descriptor.
-	pub fn get_open_file(&self) -> &Arc<Mutex<OpenFile>> {
-		&self.open_file
+	pub fn get_file(&self) -> &Arc<File> {
+		&self.file
 	}
 
 	/// Closes the file descriptor.
@@ -112,28 +110,10 @@ impl FileDescriptor {
 	/// then the function returns an error.
 	pub fn close(self) -> EResult<()> {
 		// Close file if this is the last reference to it
-		let Some(file) = Arc::into_inner(self.open_file) else {
+		let Some(file) = Arc::into_inner(self.file) else {
 			return Ok(());
 		};
-		file.into_inner().close()
-	}
-}
-
-impl IO for FileDescriptor {
-	fn get_size(&self) -> u64 {
-		self.open_file.lock().get_size()
-	}
-
-	fn read(&mut self, off: u64, buf: &mut [u8]) -> EResult<(u64, bool)> {
-		self.open_file.lock().read(off, buf)
-	}
-
-	fn write(&mut self, off: u64, buf: &[u8]) -> EResult<u64> {
-		self.open_file.lock().write(off, buf)
-	}
-
-	fn poll(&mut self, mask: u32) -> EResult<u32> {
-		self.open_file.lock().poll(mask)
+		file.close()
 	}
 }
 
@@ -189,16 +169,12 @@ impl FileDescriptorTable {
 	///
 	/// Arguments:
 	/// - `flags` are the file descriptor's flags
-	/// - `open_file` is the file associated with the file descriptor
+	/// - `file` is the file associated with the file descriptor
 	///
 	/// The function returns the ID of the new file descriptor alongside a reference to it.
-	pub fn create_fd(
-		&mut self,
-		flags: i32,
-		open_file: OpenFile,
-	) -> EResult<(u32, &FileDescriptor)> {
+	pub fn create_fd(&mut self, flags: i32, file: Arc<File>) -> EResult<(u32, &FileDescriptor)> {
 		let id = self.get_available_fd(None)?;
-		let fd = FileDescriptor::new(flags, open_file)?;
+		let fd = FileDescriptor::new(flags, file)?;
 		// Insert the FD
 		self.extend(id)?;
 		let fd = self.0[id as usize].insert(fd);
@@ -211,20 +187,16 @@ impl FileDescriptorTable {
 	/// to ensure the first file descriptor is not created if the creation of the second fails.
 	///
 	/// Arguments:
-	/// - `open_file0` is the file associated with the first file descriptor
-	/// - `open_file1` is the file associated with the second file descriptor
+	/// - `file0` is the file associated with the first file descriptor
+	/// - `file1` is the file associated with the second file descriptor
 	///
 	/// The function returns the IDs of the new file descriptors.
-	pub fn create_fd_pair(
-		&mut self,
-		open_file0: OpenFile,
-		open_file1: OpenFile,
-	) -> EResult<(u32, u32)> {
+	pub fn create_fd_pair(&mut self, file0: Arc<File>, file1: Arc<File>) -> EResult<(u32, u32)> {
 		let id0 = self.get_available_fd(None)?;
 		// Add a constraint to avoid using twice the same ID
 		let id1 = self.get_available_fd(Some(id0 + 1))?;
-		let fd0 = FileDescriptor::new(0, open_file0)?;
-		let fd1 = FileDescriptor::new(0, open_file1)?;
+		let fd0 = FileDescriptor::new(0, file0)?;
+		let fd1 = FileDescriptor::new(0, file1)?;
 		// Insert the FDs
 		self.extend(id1)?; // `id1` is always larger than `id0`
 		self.0[id0 as usize] = Some(fd0);
@@ -285,9 +257,15 @@ impl FileDescriptorTable {
 		let mut new_fd = old_fd.clone();
 		let flags = if cloexec { FD_CLOEXEC } else { 0 };
 		new_fd.flags = flags;
-		// Insert the FD
+		// Make sure the table is large enough
 		self.extend(new_id)?;
-		let new_fd = self.0[new_id as usize].insert(new_fd);
+		// If there was a file descriptor in the slot, close it
+		let slot = &mut self.0[new_id as usize];
+		if let Some(prev) = slot.take() {
+			let _ = prev.close();
+		}
+		// Insert the FD
+		let new_fd = slot.insert(new_fd);
 		Ok((new_id, new_fd))
 	}
 
@@ -335,37 +313,79 @@ impl FileDescriptorTable {
 	}
 }
 
+impl Drop for FileDescriptorTable {
+	fn drop(&mut self) {
+		let fds = mem::take(&mut self.0);
+		for fd in fds.into_iter().flatten() {
+			let _ = fd.close();
+		}
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{File, FileLocation, Stat};
+	use crate::{
+		file::{File, FileOps, Stat},
+		syscall::ioctl::Request,
+	};
+	use core::ffi::c_void;
+
+	/// Dummy node ops for testing purpose.
+	#[derive(Debug)]
+	struct Dummy;
+
+	impl FileOps for Dummy {
+		fn get_stat(&self, _file: &File) -> EResult<Stat> {
+			Ok(Stat::default())
+		}
+
+		fn acquire(&self, _file: &File) {}
+
+		fn release(&self, _file: &File) {}
+
+		fn poll(&self, _file: &File, _mask: u32) -> EResult<u32> {
+			Ok(0)
+		}
+
+		fn ioctl(&self, _file: &File, _request: Request, _argp: *const c_void) -> EResult<u32> {
+			Ok(0)
+		}
+
+		fn read(&self, _file: &File, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
+			Ok(0)
+		}
+
+		fn write(&self, _file: &File, _off: u64, _buf: &[u8]) -> EResult<usize> {
+			Ok(0)
+		}
+	}
 
 	/// Creates a dummy open file for testing purpose.
-	fn dummy_open_file() -> OpenFile {
-		let file = File::new(FileLocation::dummy(), None, Stat::default());
-		OpenFile::new(Arc::new(Mutex::new(file)).unwrap(), None, 0).unwrap()
+	fn dummy_file() -> Arc<File> {
+		File::open_floating(Arc::new(Dummy).unwrap(), 0).unwrap()
 	}
 
 	#[test_case]
 	fn fd_create0() {
 		let mut fds = FileDescriptorTable::default();
-		let (id, _) = fds.create_fd(0, dummy_open_file()).unwrap();
+		let (id, _) = fds.create_fd(0, dummy_file()).unwrap();
 		assert_eq!(id, 0);
 	}
 
 	#[test_case]
 	fn fd_create1() {
 		let mut fds = FileDescriptorTable::default();
-		let (id, _) = fds.create_fd(0, dummy_open_file()).unwrap();
+		let (id, _) = fds.create_fd(0, dummy_file()).unwrap();
 		assert_eq!(id, 0);
-		let (id, _) = fds.create_fd(0, dummy_open_file()).unwrap();
+		let (id, _) = fds.create_fd(0, dummy_file()).unwrap();
 		assert_eq!(id, 1);
 	}
 
 	#[test_case]
 	fn fd_dup() {
 		let mut fds = FileDescriptorTable::default();
-		let (id, _) = fds.create_fd(0, dummy_open_file()).unwrap();
+		let (id, _) = fds.create_fd(0, dummy_file()).unwrap();
 		assert_eq!(id, 0);
 		let (id0, _) = fds.duplicate_fd(0, NewFDConstraint::None, false).unwrap();
 		assert_ne!(id0, 0);

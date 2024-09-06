@@ -28,9 +28,7 @@ use utils::{
 };
 
 pub fn fork(proc: Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
-	let new_mutex = proc
-		.lock()
-		.fork(Arc::downgrade(&proc), ForkOptions::default())?;
+	let new_mutex = Process::fork(proc, ForkOptions::default())?;
 	let mut new_proc = new_mutex.lock();
 	// Set child's return value to `0`
 	let mut regs = regs.clone();

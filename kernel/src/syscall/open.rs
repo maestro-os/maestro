@@ -19,13 +19,11 @@
 //! The `open` system call allows a process to open a file and get a file
 //! descriptor.
 
-use super::Args;
+use super::{openat, Args};
 use crate::{
 	file,
 	file::{
 		fd::FD_CLOEXEC,
-		open_file,
-		open_file::OpenFile,
 		path::{Path, PathBuf},
 		perm::AccessProfile,
 		vfs,
@@ -33,6 +31,7 @@ use crate::{
 		File, FileType, Stat,
 	},
 	process::{mem_space::copy::SyscallString, Process},
+	syscall::{openat::do_openat, util::at::AT_FDCWD},
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
 		unit::TimestampScale,
@@ -46,143 +45,8 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-/// Mask of status flags to be kept by an open file description.
-pub const STATUS_FLAGS_MASK: i32 = !(open_file::O_CLOEXEC
-	| open_file::O_CREAT
-	| open_file::O_DIRECTORY
-	| open_file::O_EXCL
-	| open_file::O_NOCTTY
-	| open_file::O_NOFOLLOW
-	| open_file::O_TRUNC);
-
-// TODO Implement all flags
-
-/// Resolves the given `path` and returns the file.
-///
-/// The function creates the file if requested and required.
-///
-/// If the file is created, the function uses `mode` to set its permissions and the provided
-/// access profile to set the user ID and group ID.
-fn get_file(path: &Path, rs: &ResolutionSettings, mode: file::Mode) -> EResult<Arc<Mutex<File>>> {
-	let resolved = vfs::resolve_path(path, rs)?;
-	let file = match resolved {
-		Resolved::Found(file) => file,
-		Resolved::Creatable {
-			parent,
-			name,
-		} => {
-			let mut parent = parent.lock();
-			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
-			vfs::create_file(
-				&mut parent,
-				name,
-				&rs.access_profile,
-				Stat {
-					file_type: FileType::Regular,
-					mode,
-					ctime: ts,
-					mtime: ts,
-					atime: ts,
-					..Default::default()
-				},
-			)?
-		}
-	};
-	// Get file type. There cannot be a race condition since the type of file cannot be
-	// changed
-	let file_type = file.lock().stat.file_type;
-	// Cannot open symbolic links themselves
-	if file_type == FileType::Link {
-		return Err(errno!(ELOOP));
-	}
-	Ok(file)
-}
-
-/// Checks the system call's flags and performs the action associated with some of them.
-///
-/// Arguments:
-/// - `file` is the file
-/// - `flags` is the set of flags provided by userspace
-/// - `access_profile` is the access profile to check permissions
-pub fn handle_flags(file: &mut File, flags: i32, access_profile: &AccessProfile) -> EResult<()> {
-	let (read, write) = match flags & 0b11 {
-		open_file::O_RDONLY => (true, false),
-		open_file::O_WRONLY => (false, true),
-		open_file::O_RDWR => (true, true),
-		_ => return Err(errno!(EINVAL)),
-	};
-	if read && !access_profile.can_read_file(file) {
-		return Err(errno!(EACCES));
-	}
-	if write && !access_profile.can_write_file(file) {
-		return Err(errno!(EACCES));
-	}
-
-	// If O_DIRECTORY is set and the file is not a directory, return an error
-	if flags & open_file::O_DIRECTORY != 0 && file.stat.file_type != FileType::Directory {
-		return Err(errno!(ENOTDIR));
-	}
-	// Truncate the file if necessary
-	if flags & open_file::O_TRUNC != 0 {
-		file.truncate(0)?;
-	}
-
-	Ok(())
-}
-
-/// Performs the open system call.
-pub fn open_(pathname: SyscallString, flags: i32, mode: file::Mode) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let (path, rs, mode, fds_mutex) = {
-		let proc = proc_mutex.lock();
-
-		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		let follow_links = flags & open_file::O_NOFOLLOW == 0;
-		let create = flags & open_file::O_CREAT != 0;
-		let mut rs = ResolutionSettings::for_process(&proc, follow_links);
-		rs.create = create;
-
-		let mode = mode & !proc.umask;
-
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-
-		(path, rs, mode, fds_mutex)
-	};
-
-	// Get file
-	let file_mutex = get_file(&path, &rs, mode)?;
-	{
-		let mut file = file_mutex.lock();
-		handle_flags(&mut file, flags, &rs.access_profile)?;
-	}
-
-	// Create open file description
-	// FIXME: pass the absolute path, used by `fchidr`
-	let open_file = OpenFile::new(file_mutex.clone(), None, flags)?;
-
-	// Create FD
-	let mut fd_flags = 0;
-	if flags & open_file::O_CLOEXEC != 0 {
-		fd_flags |= FD_CLOEXEC;
-	}
-	let mut fds = fds_mutex.lock();
-	let (fd_id, _) = fds.create_fd(fd_flags, open_file)?;
-
-	// TODO remove?
-	// Flush file
-	let file = file_mutex.lock();
-	if let Err(e) = file.sync() {
-		fds.close_fd(fd_id as _)?;
-		return Err(e);
-	}
-
-	Ok(fd_id as _)
-}
-
 pub fn open(
 	Args((pathname, flags, mode)): Args<(SyscallString, c_int, file::Mode)>,
 ) -> EResult<usize> {
-	open_(pathname, flags, mode)
+	do_openat(AT_FDCWD, pathname, flags, mode)
 }

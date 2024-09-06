@@ -19,7 +19,7 @@
 //! The `getsockopt` system call gets an option on a socket.
 
 use crate::{
-	file::{buffer, buffer::socket::Socket, fd::FileDescriptorTable},
+	file::{fd::FileDescriptorTable, socket::Socket},
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
@@ -42,17 +42,8 @@ pub fn getsockopt(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Get socket
-	let loc = *fds
-		.lock()
-		.get_fd(sockfd)?
-		.get_open_file()
-		.lock()
-		.get_location();
-	let sock_mutex = buffer::get(&loc).ok_or_else(|| errno!(ENOENT))?;
-	let mut sock = sock_mutex.lock();
-	let sock = (&mut *sock as &mut dyn Any)
-		.downcast_mut::<Socket>()
-		.ok_or_else(|| errno!(ENOTSOCK))?;
+	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let val = sock.get_opt(level, optname)?;
 	// Write back
 	let len = min(val.len(), optlen);

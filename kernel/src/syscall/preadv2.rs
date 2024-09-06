@@ -38,8 +38,7 @@ pub fn preadv2(
 		isize,
 		c_int,
 	)>,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	super::readv::do_readv(fd, iov, iovcnt, Some(offset), Some(flags), proc, fds)
+	super::readv::do_readv(fd, iov, iovcnt, Some(offset), Some(flags), fds)
 }

@@ -39,26 +39,21 @@ pub fn fchdir(
 	ap: AccessProfile,
 	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	let cwd = {
-		// Get file
-		let open_file_mutex = fds.lock().get_fd(fd)?.get_open_file().clone();
-		let open_file = open_file_mutex.lock();
-		let file_mutex = open_file.get_file().clone();
-		let file = file_mutex.lock();
-		// Check the file is an accessible directory
-		// Virtual files can only be FIFOs or sockets
-		let Some(path) = open_file.get_path() else {
-			return Err(errno!(ENOTDIR));
-		};
-		if file.stat.file_type != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		if !ap.can_list_directory(&file) {
-			return Err(errno!(EACCES));
-		}
-		drop(file);
-		(path.try_clone()?, file_mutex)
-	};
-	proc.lock().cwd = Arc::new(cwd)?;
+	let file = fds
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.vfs_entry
+		.clone()
+		.ok_or_else(|| errno!(ENOTDIR))?;
+	let stat = file.stat()?;
+	// Check the file is an accessible directory
+	if stat.get_type() != Some(FileType::Directory) {
+		return Err(errno!(ENOTDIR));
+	}
+	if !ap.can_list_directory(&stat) {
+		return Err(errno!(EACCES));
+	}
+	proc.lock().cwd = file;
 	Ok(0)
 }

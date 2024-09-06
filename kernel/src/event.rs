@@ -22,8 +22,8 @@ use crate::{
 	crypto::{rand, rand::EntropyPool},
 	idt,
 	idt::pic,
-	memory::stack,
-	process::{regs::Regs, scheduler::SCHEDULER},
+	process,
+	process::regs::Regs,
 };
 use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
 use utils::{boxed::Box, collections::vec::Vec, errno::AllocResult, lock::IntMutex};
@@ -80,11 +80,8 @@ fn get_error_message(i: u32) -> &'static str {
 pub enum CallbackResult {
 	/// Executes remaining callbacks for the interrupt.
 	///
-	/// If this is the last callback to be executed, the execution resumes the code that was
-	/// interrupted.
+	/// If this is the last callback to be executed, the current context is yielded.
 	Continue,
-	/// Makes the current CPU kernel idle until the next interruption.
-	Idle,
 	/// Makes the kernel panic with a message corresponding to the interruption.
 	Panic,
 }
@@ -167,7 +164,7 @@ where
 /// Unlocks the callback vector with id `id`. This function is to be used in
 /// case of an event callback that never returns.
 ///
-/// This function does not reenable interruptions.
+/// This function does not re-enable interruptions.
 ///
 /// # Safety
 ///
@@ -194,7 +191,7 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 /// - `regs` is the state of the registers at the moment of the interrupt
 /// - `ring` tells the ring at which the code was running
 #[no_mangle]
-extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
+extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &mut Regs) {
 	// Feed entropy pool
 	{
 		let mut pool = rand::ENTROPY_POOL.lock();
@@ -208,22 +205,16 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 
 	let mut callbacks = CALLBACKS[id as usize].lock();
 	for c in callbacks.iter_mut() {
-		let result = c(id, code, regs, ring);
-		match result {
+		let res = c(id, code, regs, ring);
+		match res {
 			CallbackResult::Continue => {}
-			CallbackResult::Idle => {
-				// Unlock to avoid deadlocks
-				if id >= ERROR_MESSAGES.len() as u32 {
-					pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
-				}
-				drop(callbacks);
-				// Wait for the next interrupt
-				let tmp_stack = SCHEDULER.get().lock().get_tmp_stack();
-				unsafe {
-					stack::switch(tmp_stack as _, crate::enter_loop);
-				}
-			}
 			CallbackResult::Panic => panic!("{}, code: {code:x}", get_error_message(id)),
 		}
 	}
+	// Unlock to avoid deadlocks
+	if id >= ERROR_MESSAGES.len() as u32 {
+		pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
+	}
+	drop(callbacks);
+	process::yield_current(ring, regs)
 }

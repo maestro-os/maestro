@@ -19,7 +19,7 @@
 //! The `chown` system call changes the owner of a file.
 
 use crate::{
-	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
+	file::{fs::StatSet, path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 };
@@ -37,26 +37,25 @@ pub fn do_chown(
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	// Validation
-	if owner < -1 || group < -1 {
+	if !(-1..=u16::MAX as c_int).contains(&owner) || !(-1..=u16::MAX as c_int).contains(&group) {
 		return Err(errno!(EINVAL));
 	}
 	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Get file
-	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-	let mut file = file_mutex.lock();
+	let file = vfs::get_file_from_path(&path, &rs)?;
 	// TODO allow changing group to any group whose owner is member
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-	if owner > -1 {
-		file.stat.set_uid(owner as _);
-	}
-	if group > -1 {
-		file.stat.set_gid(group as _);
-	}
-	// TODO lazy
-	file.sync()?;
+	file.node().ops.set_stat(
+		&file.node().location,
+		StatSet {
+			uid: (owner > -1).then_some(owner as _),
+			gid: (group > -1).then_some(group as _),
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }
 

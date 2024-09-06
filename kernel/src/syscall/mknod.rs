@@ -63,14 +63,12 @@ pub fn mknod(
 	}
 	// Create file
 	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
-	let parent_mutex = vfs::get_file_from_path(parent_path, &rs)?;
-	let mut parent = parent_mutex.lock();
+	let parent = vfs::get_file_from_path(parent_path, &rs)?;
 	vfs::create_file(
-		&mut parent,
+		parent,
 		name,
 		&rs.access_profile,
 		Stat {
-			file_type,
 			mode,
 			dev_major: id::major(dev),
 			dev_minor: id::minor(dev),

@@ -19,12 +19,13 @@
 //! The Open Systems Interconnection (OSI) model defines the architecure of a network stack.
 
 use super::{buff::BuffList, ip, SocketDesc, SocketDomain, SocketType};
+use core::fmt::Debug;
 use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult, lock::Mutex};
 
 /// An OSI layer.
 ///
 /// A layer stack acts as a pipeline, passing data from one layer to the other.
-pub trait Layer {
+pub trait Layer: Debug {
 	// TODO receive
 
 	/// Transmits data in the given buffer.
@@ -52,6 +53,7 @@ static PROTOCOLS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new())
 static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, SocketType), u32>> = Mutex::new(HashMap::new());
 
 /// A stack of layers for a socket.
+#[derive(Debug)]
 pub struct Stack {
 	/// The socket's protocol on OSI layer 3.
 	pub domain: Box<dyn Layer>,
@@ -64,7 +66,7 @@ impl Stack {
 	///
 	/// Arguments:
 	/// - `desc` is the descriptor of the socket.
-	/// - `sockaddr` is the socket address structure containing informations to initialize the
+	/// - `sockaddr` is the socket address structure containing information to initialize the
 	///   stack.
 	///
 	/// If the descriptor is invalid or if the stack cannot be created, the function returns an

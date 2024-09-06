@@ -19,6 +19,7 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
 use crate::{
+	process,
 	process::{
 		mem_space::copy::SyscallPtr, pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process,
 		State,
@@ -149,15 +150,15 @@ pub fn do_waitpid(
 	wstatus: SyscallPtr<i32>,
 	options: i32,
 	rusage: SyscallPtr<RUsage>,
-	regs: &Regs,
 ) -> EResult<usize> {
 	// Sleep until a target process is waitable
 	loop {
-		super::util::handle_signal(regs);
-		cli();
 		{
 			let proc_mutex = Process::current();
 			let mut proc = proc_mutex.lock();
+			if proc.next_signal(true).is_some() {
+				return Err(errno!(EINTR));
+			}
 			let result = get_waitable(&mut proc, pid, &wstatus, options, &rusage)?;
 			// On success, return
 			if let Some(p) = result {
@@ -177,7 +178,6 @@ pub fn do_waitpid(
 
 pub fn waitpid(
 	Args((pid, wstatus, options)): Args<(c_int, SyscallPtr<c_int>, c_int)>,
-	regs: &Regs,
 ) -> EResult<usize> {
-	do_waitpid(pid, wstatus, options | WEXITED, SyscallPtr(None), regs)
+	do_waitpid(pid, wstatus, options | WEXITED, SyscallPtr(None))
 }

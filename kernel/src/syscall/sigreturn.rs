@@ -22,25 +22,39 @@
 //! The system call restores the previous state of the process
 //! to allow normal execution.
 
-use crate::process::Process;
+use crate::{
+	process::{
+		mem_space::copy::SyscallPtr,
+		regs::Regs,
+		signal::{Signal, UContext},
+		Process,
+	},
+	syscall::FromSyscallArg,
+};
+use core::{mem::size_of, ptr};
 use utils::{
+	errno,
 	errno::{EResult, Errno},
 	interrupt::cli,
 	lock::{IntMutex, IntMutexGuard},
 };
 
-pub fn sigreturn() -> EResult<usize> {
+pub fn sigreturn(regs: &Regs) -> EResult<usize> {
 	// Avoid re-enabling interrupts before context switching
 	cli();
-	// Restores the state of the process before the signal handler
-	let regs = {
+	// Retrieve the previous state
+	let ctx_ptr = regs.esp.0 - size_of::<UContext>();
+	let ctx_ptr = SyscallPtr::<UContext>::from_syscall_arg(ctx_ptr);
+	let ctx = ctx_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	{
 		let proc_mutex = Process::current();
 		let mut proc = proc_mutex.lock();
-		proc.signal_restore();
-		proc.regs.clone()
-	};
-	// Resume execution
+		// Restores the state of the process before the signal handler
+		proc.sigmask = ctx.uc_sigmask;
+	}
+	// Do not handle the next pending signal here, to prevent signal spamming from completely
+	// blocking the process
 	unsafe {
-		regs.switch(true);
+		ctx.uc_mcontext.switch(true);
 	}
 }

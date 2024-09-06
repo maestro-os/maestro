@@ -126,10 +126,7 @@ pub(super) fn ioctl(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let request = Request::from(request);
-	fds.lock()
-		.get_fd(fd)?
-		.get_open_file()
-		.lock()
-		.ioctl(request, argp)
-		.map(|v| v as _)
+	let fds = fds.lock();
+	let file = fds.get_fd(fd)?.get_file();
+	file.ops.ioctl(file, request, argp).map(|v| v as _)
 }

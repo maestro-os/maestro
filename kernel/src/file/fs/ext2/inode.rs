@@ -22,7 +22,10 @@ use super::{
 	bgd::BlockGroupDescriptor, dirent, dirent::Dirent, read, read_block, write, write_block,
 	Superblock,
 };
-use crate::file::{DirEntry, FileType, Mode};
+use crate::{
+	device::DeviceIO,
+	file::{DirEntry, FileType, INode, Mode},
+};
 use core::{
 	cmp::{max, min},
 	intrinsics::unlikely,
@@ -30,7 +33,7 @@ use core::{
 	num::NonZeroU32,
 };
 use macros::AnyRepr;
-use utils::{bytes, errno, errno::EResult, io::IO, math, ptr::cow::Cow, vec};
+use utils::{bytes, errno, errno::EResult, math, ptr::cow::Cow, vec};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -180,7 +183,7 @@ fn check_blk_off(blk: u32, superblock: &Superblock) -> EResult<Option<NonZeroU32
 fn ensure_allocated(
 	blk: &mut u32,
 	superblock: &mut Superblock,
-	io: &mut dyn IO,
+	io: &dyn DeviceIO,
 ) -> EResult<NonZeroU32> {
 	if *blk == 0 {
 		let new_blk = superblock.get_free_block(io)?;
@@ -203,7 +206,7 @@ fn ensure_allocated(
 fn next_dirent<'b>(
 	node: &Ext2INode,
 	superblock: &Superblock,
-	io: &mut dyn IO,
+	io: &dyn DeviceIO,
 	buf: &'b mut [u8],
 	off: u64,
 ) -> EResult<Option<&'b mut Dirent>> {
@@ -245,7 +248,7 @@ fn is_block_empty(buf: &mut [u8], superblock: &Superblock) -> EResult<bool> {
 /// The name of the file is not included in the inode but in the directory entry associated with it
 /// since several entries can refer to the same inode (hard links).
 #[repr(C)]
-#[derive(AnyRepr)]
+#[derive(AnyRepr, Clone)]
 pub struct Ext2INode {
 	/// Type and permissions.
 	pub i_mode: u16,
@@ -292,12 +295,12 @@ impl Ext2INode {
 	/// - `i` is the inode's index (starting at `1`).
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	fn get_disk_offset(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<u64> {
-		// Check the inode is correct
-		if i == 0 {
+	fn get_disk_offset(i: INode, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<u64> {
+		let i: u32 = i.try_into().map_err(|_| errno!(EOVERFLOW))?;
+		// Check the index is correct
+		let Some(i) = i.checked_sub(1) else {
 			return Err(errno!(EINVAL));
-		}
-		let i = i - 1;
+		};
 		let blk_size = superblock.get_block_size() as u64;
 		let inode_size = superblock.get_inode_size() as u64;
 		// The block group the inode is located in
@@ -323,9 +326,10 @@ impl Ext2INode {
 	/// - `i` is the inode's index (starting at `1`).
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<Self> {
+	pub fn read(i: INode, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<Self> {
+		let blk_size = superblock.get_block_size();
 		let off = Self::get_disk_offset(i, superblock, io)?;
-		read::<Self>(off, io)
+		read::<Self>(off, blk_size, io)
 	}
 
 	/// Returns the type of the file.
@@ -341,11 +345,6 @@ impl Ext2INode {
 			INODE_TYPE_SOCKET => FileType::Socket,
 			_ => FileType::Regular,
 		}
-	}
-
-	/// Returns the permissions of the file.
-	pub fn get_permissions(&self) -> Mode {
-		self.i_mode as Mode & 0x0fff
 	}
 
 	/// Sets the permissions of the file.
@@ -382,15 +381,18 @@ impl Ext2INode {
 			self.i_size = size as u32;
 		}
 		if !inline {
-			self.i_blocks = size.div_ceil(SECTOR_SIZE as _) as _;
+			let blk_size = superblock.get_block_size();
+			let sector_per_blk = blk_size / SECTOR_SIZE;
+			self.i_blocks = size.div_ceil(blk_size as _) as u32 * sector_per_blk;
 		} else {
 			self.i_blocks = 0;
 		}
 	}
 
 	/// Returns the number of content blocks.
-	pub fn get_blocks(&self) -> u32 {
-		self.i_blocks / SECTOR_SIZE
+	pub fn get_blocks(&self, superblock: &Superblock) -> u32 {
+		let sector_per_blk = superblock.get_block_size() / SECTOR_SIZE;
+		self.i_blocks.div_ceil(sector_per_blk)
 	}
 
 	/// Translates the given file block offset `off` to disk block offset.
@@ -405,7 +407,7 @@ impl Ext2INode {
 		&self,
 		off: u32,
 		superblock: &Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<Option<NonZeroU32>> {
 		let mut offsets: [usize; 4] = [0; 4];
 		let depth =
@@ -443,7 +445,7 @@ impl Ext2INode {
 		&mut self,
 		off: u32,
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<NonZeroU32> {
 		let mut offsets: [usize; 4] = [0; 4];
 		let depth =
@@ -467,7 +469,7 @@ impl Ext2INode {
 		blk: u32,
 		offsets: &[usize],
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<bool> {
 		let Some(off) = offsets.first() else {
 			return Ok(true);
@@ -506,7 +508,7 @@ impl Ext2INode {
 		&mut self,
 		off: u32,
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<()> {
 		let mut offsets: [usize; 4] = [0; 4];
 		let depth =
@@ -537,8 +539,8 @@ impl Ext2INode {
 		off: u64,
 		buff: &mut [u8],
 		superblock: &Superblock,
-		io: &mut dyn IO,
-	) -> EResult<(u64, bool)> {
+		io: &dyn DeviceIO,
+	) -> EResult<usize> {
 		let size = self.get_size(superblock);
 		if off > size {
 			return Err(errno!(EINVAL));
@@ -546,13 +548,13 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let mut blk_buff = vec![0u8; blk_size as _]?;
 		let mut cur = 0;
-		let max = min(buff.len() as u64, size - off);
+		let max = min(buff.len(), (size - off) as usize);
 		while cur < max {
 			// Get slice of the destination buffer corresponding to the current block
-			let blk_off = (off + cur) / blk_size as u64;
-			let blk_inner_off = ((off + cur) % blk_size as u64) as usize;
-			let len = min(max - cur, (blk_size - blk_inner_off as u32) as u64);
-			let dst = &mut buff[(cur as usize)..((cur + len) as usize)];
+			let blk_off = (off + cur as u64) / blk_size as u64;
+			let blk_inner_off = ((off + cur as u64) % blk_size as u64) as usize;
+			let len = min(max - cur, (blk_size - blk_inner_off as u32) as usize);
+			let dst = &mut buff[cur..(cur + len)];
 			// Get disk block offset
 			if let Some(blk_off) = self.translate_blk_off(blk_off as _, superblock, io)? {
 				// A content block is present, copy
@@ -565,8 +567,7 @@ impl Ext2INode {
 			}
 			cur += len;
 		}
-		let eof = off + cur >= size;
-		Ok((cur, eof))
+		Ok(cur)
 	}
 
 	/// Writes the content of the inode.
@@ -583,7 +584,7 @@ impl Ext2INode {
 		off: u64,
 		buff: &[u8],
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<()> {
 		let curr_size = self.get_size(superblock);
 		if off > curr_size {
@@ -633,7 +634,7 @@ impl Ext2INode {
 	pub fn truncate(
 		&mut self,
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 		size: u64,
 	) -> EResult<()> {
 		let old_size = self.get_size(superblock);
@@ -665,7 +666,7 @@ impl Ext2INode {
 		blk: u32,
 		level: usize,
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<()> {
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0; blk_size as _]?;
@@ -687,7 +688,7 @@ impl Ext2INode {
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock
 	/// - `io` is the I/O interface
-	pub fn free_content(&mut self, superblock: &mut Superblock, io: &mut dyn IO) -> EResult<()> {
+	pub fn free_content(&mut self, superblock: &mut Superblock, io: &dyn DeviceIO) -> EResult<()> {
 		// If the file is a link and its content is stored inline, there is nothing to do
 		if matches!(self.get_type(), FileType::Link)
 			&& self.get_size(superblock) <= SYMLINK_INLINE_LIMIT
@@ -707,6 +708,7 @@ impl Ext2INode {
 			}
 			superblock.free_block(io, blk.get())?;
 		}
+		self.i_block.fill(0);
 		Ok(())
 	}
 
@@ -729,7 +731,7 @@ impl Ext2INode {
 		&self,
 		name: &[u8],
 		superblock: &Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<Option<(u32, FileType, u64)>> {
 		// Validation
 		if self.get_type() != FileType::Directory {
@@ -742,7 +744,7 @@ impl Ext2INode {
 		let mut off = 0;
 		while let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? {
 			if !ent.is_free() && ent.get_name(superblock) == name {
-				return Ok(Some((ent.inode, ent.get_type(superblock, &mut *io)?, off)));
+				return Ok(Some((ent.inode, ent.get_type(superblock, io)?, off)));
 			}
 			off += ent.rec_len as u64;
 		}
@@ -761,7 +763,7 @@ impl Ext2INode {
 		&self,
 		mut off: u64,
 		superblock: &Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		if self.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
@@ -809,7 +811,7 @@ impl Ext2INode {
 	}
 
 	/// Tells whether the current directory is empty.
-	pub fn is_directory_empty(&self, superblock: &Superblock, io: &mut dyn IO) -> EResult<bool> {
+	pub fn is_directory_empty(&self, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<bool> {
 		let blk_size = superblock.get_block_size() as u64;
 		let mut buf = vec![0; blk_size as _]?;
 		let mut off = 0;
@@ -838,7 +840,7 @@ impl Ext2INode {
 	fn get_suitable_slot(
 		&self,
 		superblock: &Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 		buf: &mut [u8],
 		min_size: u16,
 	) -> EResult<Option<(u64, usize)>> {
@@ -885,7 +887,7 @@ impl Ext2INode {
 	pub fn add_dirent(
 		&mut self,
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 		entry_inode: u32,
 		name: &[u8],
 		file_type: FileType,
@@ -938,7 +940,7 @@ impl Ext2INode {
 			write_block(blk_off.get() as _, blk_size, io, &buf)?;
 		} else {
 			// No suitable free entry: Fill a new block
-			let blocks = self.get_blocks();
+			let blocks = self.get_blocks(superblock);
 			let blk = self.alloc_content_blk(blocks, superblock, io)?;
 			buf.fill(0);
 			// Create used entry
@@ -978,7 +980,7 @@ impl Ext2INode {
 		&mut self,
 		off: u64,
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		let blk_size = superblock.get_block_size();
@@ -996,7 +998,7 @@ impl Ext2INode {
 		// If the block is now empty, free it. Else, update it
 		if is_block_empty(&mut buf, superblock)? {
 			// If this is the last block, update the file's size
-			if file_blk_off as u32 + 1 >= self.get_blocks() {
+			if file_blk_off as u32 + 1 >= self.get_blocks(superblock) {
 				self.set_size(superblock, file_blk_off * blk_size as u64, false);
 			}
 			self.free_content_blk(file_blk_off as _, superblock, io)
@@ -1019,10 +1021,10 @@ impl Ext2INode {
 	pub fn read_link(
 		&self,
 		superblock: &Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 		off: u64,
 		buf: &mut [u8],
-	) -> EResult<u64> {
+	) -> EResult<usize> {
 		let size = self.get_size(superblock);
 		if size <= SYMLINK_INLINE_LIMIT {
 			// The target is stored inline in the inode
@@ -1034,10 +1036,10 @@ impl Ext2INode {
 			let src = bytes::as_bytes(&self.i_block);
 			let off = off as usize;
 			buf[..len].copy_from_slice(&src[off..(off + len)]);
-			Ok(len as _)
+			Ok(len)
 		} else {
 			// The target is stored like in regular files
-			Ok(self.read_content(off, buf, superblock, io)?.0)
+			self.read_content(off, buf, superblock, io)
 		}
 	}
 
@@ -1053,7 +1055,7 @@ impl Ext2INode {
 	pub fn write_link(
 		&mut self,
 		superblock: &mut Superblock,
-		io: &mut dyn IO,
+		io: &dyn DeviceIO,
 		buf: &[u8],
 	) -> EResult<()> {
 		let old_size = self.get_size(superblock);
@@ -1103,8 +1105,9 @@ impl Ext2INode {
 	}
 
 	/// Writes the inode on the device.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &mut dyn IO) -> EResult<()> {
+	pub fn write(&self, i: INode, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<()> {
+		let blk_size = superblock.get_block_size();
 		let off = Self::get_disk_offset(i, superblock, io)?;
-		write(self, off, io)
+		write(off, blk_size, io, self)
 	}
 }

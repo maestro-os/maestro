@@ -18,13 +18,12 @@
 
 //! This module implements system clocks.
 
-use super::AtomicTimestamp;
 use crate::time::{
 	unit::{ClockIdT, TimeUnit},
 	Timestamp, TimestampScale,
 };
-use core::cmp::max;
-use utils::{errno, errno::EResult};
+use core::{cmp::max, sync::atomic};
+use utils::{errno, errno::EResult, lock::atomic::AtomicU64};
 
 /// System clock ID
 pub const CLOCK_REALTIME: ClockIdT = 0;
@@ -54,18 +53,18 @@ pub const CLOCK_TAI: ClockIdT = 11;
 // TODO allow accessing clocks through an address shared with userspace (vDSO)
 
 /// The current timestamp of the real time clock, in nanoseconds.
-static REALTIME: AtomicTimestamp = AtomicTimestamp::new(0);
-/// On time adjustement, this value is updated with the previous value of the real time clock so
+static REALTIME: AtomicU64 = AtomicU64::new(0);
+/// On time adjustment, this value is updated with the previous value of the real time clock so
 /// that it can be used if the clock went backwards in time.
-static MONOTONIC: AtomicTimestamp = AtomicTimestamp::new(0);
+static MONOTONIC: AtomicU64 = AtomicU64::new(0);
 /// The time elapsed since boot time, in nanoseconds.
-static BOOTTIME: AtomicTimestamp = AtomicTimestamp::new(0);
+static BOOTTIME: AtomicU64 = AtomicU64::new(0);
 
 /// Updates clocks with the given delta value in nanoseconds.
 pub fn update(delta: Timestamp) {
-	REALTIME.fetch_add(delta as _);
-	MONOTONIC.fetch_add(delta as _);
-	BOOTTIME.fetch_add(delta as _);
+	REALTIME.fetch_add(delta as _, atomic::Ordering::Relaxed);
+	MONOTONIC.fetch_add(delta as _, atomic::Ordering::Relaxed);
+	BOOTTIME.fetch_add(delta as _, atomic::Ordering::Relaxed);
 }
 
 /// Returns the current timestamp according to the clock with the given ID.
@@ -78,15 +77,13 @@ pub fn update(delta: Timestamp) {
 pub fn current_time(clk: ClockIdT, scale: TimestampScale) -> EResult<Timestamp> {
 	// TODO implement all clocks
 	let raw_ts = match clk {
-		CLOCK_REALTIME | CLOCK_REALTIME_ALARM => REALTIME.load(),
+		CLOCK_REALTIME | CLOCK_REALTIME_ALARM => REALTIME.load(atomic::Ordering::Relaxed),
 		CLOCK_MONOTONIC => {
-			let realtime = REALTIME.load();
-			let monotonic = MONOTONIC.load();
-
+			let realtime = REALTIME.load(atomic::Ordering::Relaxed);
+			let monotonic = MONOTONIC.load(atomic::Ordering::Relaxed);
 			max(realtime, monotonic)
 		}
-		CLOCK_BOOTTIME | CLOCK_BOOTTIME_ALARM => BOOTTIME.load(),
-
+		CLOCK_BOOTTIME | CLOCK_BOOTTIME_ALARM => BOOTTIME.load(atomic::Ordering::Relaxed),
 		_ => return Err(errno!(EINVAL)),
 	};
 

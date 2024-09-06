@@ -20,10 +20,10 @@
 //! represents a subfile in a directory.
 
 use super::{Ext2INode, Superblock};
-use crate::file::FileType;
+use crate::{device::DeviceIO, file::FileType};
 use core::{cmp::min, mem::offset_of};
 use macros::AnyRepr;
-use utils::{errno, errno::EResult, io::IO};
+use utils::{errno, errno::EResult};
 
 /// Directory entry type indicator: Unknown
 const TYPE_INDICATOR_UNKNOWN: u8 = 0;
@@ -195,7 +195,7 @@ impl Dirent {
 	///
 	/// If the type cannot be retrieved from the entry directly, the function retrieves it from the
 	/// inode.
-	pub fn get_type(&self, superblock: &Superblock, io: &mut dyn IO) -> EResult<FileType> {
+	pub fn get_type(&self, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<FileType> {
 		let ent_type =
 			if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
 				match self.file_type {
@@ -214,7 +214,7 @@ impl Dirent {
 		// If the type could not be retrieved from the entry itself, get it from the inode
 		match ent_type {
 			Some(t) => Ok(t),
-			None => Ok(Ext2INode::read(self.inode, superblock, &mut *io)?.get_type()),
+			None => Ok(Ext2INode::read(self.inode as _, superblock, io)?.get_type()),
 		}
 	}
 

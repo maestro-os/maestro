@@ -19,11 +19,7 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
 use crate::{
-	file::{
-		fd::FileDescriptorTable,
-		open_file::{OpenFile, O_NONBLOCK},
-		FileType,
-	},
+	file::{fd::FileDescriptorTable, File, FileType, O_NONBLOCK},
 	limits,
 	process::{
 		iovec::IOVec,
@@ -34,41 +30,51 @@ use crate::{
 	},
 	syscall::{Args, FromSyscallArg},
 };
-use core::{cmp::min, ffi::c_int};
+use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	io,
-	io::IO,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
-// TODO Handle blocking writes (and thus, EINTR)
 
 /// Writes the given chunks to the file.
 ///
 /// Arguments:
 /// - `iov` is the set of chunks
 /// - `iovcnt` is the number of chunks in `iov`
-/// - `open_file` is the file to write to
-fn write(iov: &SyscallSlice<IOVec>, iovcnt: usize, open_file: &mut OpenFile) -> EResult<i32> {
+/// - `offset` is the offset at which the write operation in the file begins
+/// - `file` is the file to write to
+fn write(
+	iov: &SyscallSlice<IOVec>,
+	iovcnt: usize,
+	offset: Option<u64>,
+	file: &File,
+) -> EResult<usize> {
 	let mut off = 0;
 	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
-		// Ignore zero entry
-		if i.iov_len == 0 {
-			continue;
-		}
 		// The size to write. This is limited to avoid an overflow on the total length
 		let l = min(i.iov_len, usize::MAX - off);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
-		if let Some(buffer) = ptr.copy_from_user(..l)? {
+		if let Some(buf) = ptr.copy_from_user(..l)? {
 			// FIXME: if not everything has been written, must retry with the same buffer with the
 			// corresponding offset
-			off += open_file.write(0, &buffer)? as usize;
+			let len = if let Some(offset) = offset {
+				let file_off = offset + off as u64;
+				file.ops.write(file, file_off, &buf)?
+			} else {
+				let off = file.off.load(atomic::Ordering::Acquire);
+				let len = file.ops.write(file, off, &buf)?;
+				// Update offset
+				let new_off = off.saturating_add(len as u64);
+				file.off.store(new_off, atomic::Ordering::Release);
+				len
+			};
+			off += len;
 		}
 	}
-	Ok(off as _)
+	Ok(off)
 }
 
 /// Performs the `writev` operation.
@@ -85,70 +91,28 @@ pub fn do_writev(
 	iovcnt: i32,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
 	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
-	let open_file_mutex = fds.lock().get_fd(fd)?.get_open_file().clone();
-	// Validation
-	let (start_off, update_off) = match offset {
-		Some(o @ 0..) => (o as u64, false),
-		None | Some(-1) => {
-			let open_file = open_file_mutex.lock();
-			(open_file.get_offset(), true)
-		}
+	let offset = match offset {
+		Some(o @ 0..) => Some(o as u64),
+		None | Some(-1) => None,
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
-	let file_type = open_file_mutex.lock().get_file().lock().stat.file_type;
-	if file_type == FileType::Link {
+	// Get file
+	let file = fds.lock().get_fd(fd)?.get_file().clone();
+	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	loop {
-		// TODO super::util::signal_check(regs);
-		{
-			let mut open_file = open_file_mutex.lock();
-			let flags = open_file.get_flags();
-			// Change the offset temporarily
-			let prev_off = open_file.get_offset();
-			open_file.set_offset(start_off);
-			let len = match write(&iov, iovcnt as _, &mut open_file) {
-				Ok(len) => len,
-				Err(e) => {
-					// If writing to a broken pipe, kill with SIGPIPE
-					if e.as_int() == errno::EPIPE {
-						let mut proc = proc.lock();
-						proc.kill_now(&Signal::SIGPIPE);
-					}
-					return Err(e);
-				}
-			};
-			// Restore previous offset
-			if !update_off {
-				open_file.set_offset(prev_off);
-			}
-			if len > 0 {
-				return Ok(len as _);
-			}
-			if flags & O_NONBLOCK != 0 {
-				// The file descriptor is non-blocking
-				return Err(errno!(EAGAIN));
-			}
-			// Block on file
-			let mut proc = proc.lock();
-			open_file.add_waiting_process(&mut proc, io::POLLOUT | io::POLLERR)?;
-		}
-		// Make current process sleep
-		scheduler::end_tick();
-	}
+	write(&iov, iovcnt as _, offset, &file)
 }
 
 pub fn writev(
 	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
-	proc: Arc<IntMutex<Process>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_writev(fd, iov, iovcnt, None, None, proc, fds)
+	do_writev(fd, iov, iovcnt, None, None, fds)
 }

@@ -21,10 +21,9 @@
 
 use crate::{
 	file::{
-		mountpoint,
 		path::{Path, PathBuf},
 		vfs,
-		vfs::ResolutionSettings,
+		vfs::{mountpoint, ResolutionSettings},
 		FileType,
 	},
 	process::{mem_space::copy::SyscallString, Process},
@@ -49,15 +48,14 @@ pub fn chroot(
 	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	let rs = ResolutionSettings {
-		root: mountpoint::root_location(),
+		root: vfs::root(),
 		..rs
 	};
 	// Get file
 	let file = vfs::get_file_from_path(&path, &rs)?;
-	let file = file.lock();
-	if file.stat.file_type != FileType::Directory {
+	if file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	proc.lock().chroot = file.location;
+	proc.lock().chroot = file;
 	Ok(0)
 }

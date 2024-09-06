@@ -29,15 +29,12 @@ use utils::{
 };
 
 pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
-	let _mountpoint = fds
-		.lock()
-		.get_fd(fd)?
-		.get_open_file()
-		.lock()
-		.get_file()
-		.lock()
-		.location
-		.get_mountpoint();
+	let fds = fds.lock();
+	let file = fds.get_fd(fd)?.get_file();
+	let Some(ent) = &file.vfs_entry else {
+		return Ok(0);
+	};
+	let _mountpoint = ent.node().location.get_mountpoint();
 	// TODO Sync all files on mountpoint
 	Ok(0)
 }

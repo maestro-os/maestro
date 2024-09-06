@@ -20,7 +20,7 @@
 
 use crate::{
 	device::manager::{DeviceManager, PhysicalDevice},
-	tty,
+	tty::TTY,
 };
 use utils::errno::EResult;
 
@@ -564,37 +564,15 @@ impl KeyboardManager {
 		}
 
 		if action == KeyboardAction::Pressed {
-			if self.ctrl && self.alt {
-				// FIXME: TTYs must be allocated first
-				// Switch TTY
-				let id = match key {
-					KeyboardKey::KeyF1 => Some(0),
-					KeyboardKey::KeyF2 => Some(1),
-					KeyboardKey::KeyF3 => Some(2),
-					KeyboardKey::KeyF4 => Some(3),
-					KeyboardKey::KeyF5 => Some(4),
-					KeyboardKey::KeyF6 => Some(5),
-					KeyboardKey::KeyF7 => Some(6),
-					KeyboardKey::KeyF8 => Some(7),
-					KeyboardKey::KeyF9 => Some(8),
-					_ => None,
-				};
-				tty::switch(id);
-			}
-			// Get tty
-			if let Some(tty_mutex) = tty::current() {
-				let mut tty = tty_mutex.lock();
+			let ctrl = self.ctrl || self.right_ctrl;
+			let alt = self.alt || self.right_alt;
+			let shift = (self.left_shift || self.right_shift) != self.caps_lock.is_enabled();
+			// TODO
+			let meta = false;
 
-				let ctrl = self.ctrl || self.right_ctrl;
-				let alt = self.alt || self.right_alt;
-				let shift = (self.left_shift || self.right_shift) != self.caps_lock.is_enabled();
-				// TODO
-				let meta = false;
-
-				// Write on TTY
-				if let Some(tty_chars) = key.get_tty_chars(shift, alt, ctrl, meta) {
-					tty.input(tty_chars);
-				}
+			// Write on TTY
+			if let Some(tty_chars) = key.get_tty_chars(shift, alt, ctrl, meta) {
+				TTY.input(tty_chars);
 			}
 		}
 	}

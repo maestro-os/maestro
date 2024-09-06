@@ -32,6 +32,7 @@
 //! If an exception is raised while a mutex that disables interruptions is
 //! acquired, the behaviour is undefined.
 
+pub mod atomic;
 pub mod once;
 pub mod spinlock;
 

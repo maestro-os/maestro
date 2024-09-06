@@ -20,17 +20,21 @@
 
 mod signal_trampoline;
 
-use super::{oom, Process, State};
-use crate::{file::perm::Uid, process::pid::Pid, time::unit::ClockIdT};
+use super::{oom, Process, State, REDZONE_SIZE};
+use crate::{
+	file::perm::Uid,
+	process::{pid::Pid, regs::Regs, signal::signal_trampoline::signal_trampoline},
+	time::unit::ClockIdT,
+};
 use core::{
 	ffi::{c_int, c_void},
 	fmt,
-	fmt::Debug,
+	fmt::Formatter,
 	mem::{size_of, transmute},
-	ptr::NonNull,
+	ptr,
+	ptr::{null_mut, NonNull},
 	slice,
 };
-use signal_trampoline::signal_trampoline;
 use utils::{errno, errno::Errno};
 
 /// Ignoring the signal.
@@ -39,10 +43,13 @@ pub const SIG_IGN: *const c_void = 0x0 as _;
 pub const SIG_DFL: *const c_void = 0x1 as _;
 
 // TODO implement all flags
-/// `SigAction` flag: If set, use `sa_sigaction` instead of `sa_handler`.
+/// [`SigAction`] flag: If set, use `sa_sigaction` instead of `sa_handler`.
 pub const SA_SIGINFO: i32 = 0x00000004;
-/// `SigAction` flag: If set, the system call must restart after being interrupted by a signal.
+/// [`SigAction`] flag: If set, the system call must restart after being interrupted by a signal.
 pub const SA_RESTART: i32 = 0x10000000;
+/// [`SigAction`] flag: If set, the signal is not added to the signal mask of the process when
+/// executed.
+pub const SA_NODEFER: i32 = 0x40000000;
 
 /// Notify method: generate a signal
 pub const SIGEV_SIGNAL: c_int = 0;
@@ -70,6 +77,38 @@ pub enum SignalAction {
 	Continue,
 }
 
+impl SignalAction {
+	/// Executes the signal action for the given process.
+	pub fn exec(self, sig: Signal, process: &mut Process) {
+		match self {
+			// TODO when `Abort`ing, dump core
+			SignalAction::Terminate | SignalAction::Abort => {
+				#[cfg(feature = "strace")]
+				println!(
+					"[strace {pid}] killed by signal `{signal}`",
+					pid = process.get_pid(),
+					signal = sig.get_id()
+				);
+				process.set_state(State::Zombie);
+				process.set_waitable(sig.get_id() as _);
+			}
+			SignalAction::Ignore => {}
+			SignalAction::Stop => {
+				if matches!(process.state, State::Running) {
+					process.set_state(State::Stopped);
+				}
+				process.set_waitable(sig.get_id());
+			}
+			SignalAction::Continue => {
+				if matches!(process.state, State::Stopped) {
+					process.set_state(State::Running);
+				}
+				process.set_waitable(sig.get_id());
+			}
+		}
+	}
+}
+
 /// Union representing a signal value.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -80,13 +119,14 @@ pub union SigVal {
 	pub sigval_ptr: *mut c_void,
 }
 
-impl Debug for SigVal {
+impl fmt::Debug for SigVal {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let val = unsafe { self.sigval_ptr };
 		f.debug_struct("SigVal").field("sigval", &val).finish()
 	}
 }
 
+// FIXME: fields are incorrect (check musl source)
 /// Signal information.
 #[repr(C)]
 pub struct SigInfo {
@@ -140,18 +180,66 @@ pub struct SigInfo {
 	si_arch: u32,
 }
 
-// TODO Check the type is correct
-/// Type representing a signal mask.
-pub type SigSet = u32;
+/// A bits signal mask.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SigSet(pub u64);
 
-/// An action to be executed when a signal is received.
+impl From<&[u8]> for SigSet {
+	fn from(bytes: &[u8]) -> Self {
+		let mut set = 0;
+		let iter = bytes.iter().enumerate().take(8);
+		for (i, b) in iter {
+			set |= (*b as u64) << (i * 8) as u64;
+		}
+		Self(set)
+	}
+}
+
+impl SigSet {
+	/// Tells whether the `n`th bit is set.
+	pub fn is_set(&self, n: usize) -> bool {
+		self.0 & (1 << n) != 0
+	}
+
+	/// Sets the `n`th bit.
+	pub fn set(&mut self, n: usize) {
+		self.0 |= (1 << n) as u64;
+	}
+
+	/// Sets the `n`th bit.
+	pub fn clear(&mut self, n: usize) {
+		self.0 &= !((1 << n) as u64);
+	}
+
+	/// Returns an iterator over the bitset's values
+	pub fn iter(&self) -> impl Iterator<Item = bool> + '_ {
+		(0..64).map(|n| self.is_set(n))
+	}
+}
+
+/// Union of the `sa_handler` and `sa_sigaction` fields.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SigAction {
-	/// The action associated with the signal.
+#[derive(Clone, Copy)]
+pub union SigActionHandler {
+	/// The pointer to the signal's handler.
 	pub sa_handler: Option<extern "C" fn(i32)>,
 	/// Used instead of `sa_handler` if [`SA_SIGINFO`] is specified in `sa_flags`.
 	pub sa_sigaction: Option<extern "C" fn(i32, *mut SigInfo, *mut c_void)>,
+}
+
+impl fmt::Debug for SigActionHandler {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let ptr = unsafe { self.sa_handler };
+		fmt::Debug::fmt(&ptr, f)
+	}
+}
+
+/// An action to be executed when a signal is received.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SigAction {
+	/// The pointer to the signal's handler.
+	pub sa_handler: SigActionHandler,
 	/// A mask of signals that should be masked while executing the signal
 	/// handler.
 	pub sa_mask: SigSet,
@@ -192,8 +280,25 @@ impl SigEvent {
 	}
 }
 
+/// Saved information to be used by the trampoline to restore the state of the process.
+#[repr(C)]
+#[derive(Debug)]
+pub struct UContext {
+	/// TODO
+	pub uc_flags: u32,
+	/// TODO
+	pub uc_link: *mut UContext,
+	/// Blocked signals mask before the signal.
+	pub uc_sigmask: SigSet,
+	/// The stack used to handle the signal.
+	pub uc_stack: *mut c_void,
+	// FIXME: `Regs` does not match the actual layout of mcontext_t
+	/// Saved registers.
+	pub uc_mcontext: Regs,
+}
+
 /// Enumeration containing the different possibilities for signal handling.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub enum SignalHandler {
 	/// Ignores the signal.
 	Ignore,
@@ -204,73 +309,117 @@ pub enum SignalHandler {
 	Handler(SigAction),
 }
 
+impl From<SigAction> for SignalHandler {
+	fn from(action: SigAction) -> Self {
+		let handler = unsafe { transmute::<SigActionHandler, *const c_void>(action.sa_handler) };
+		match handler {
+			SIG_IGN => Self::Ignore,
+			SIG_DFL => Self::Default,
+			_ => Self::Handler(action),
+		}
+	}
+}
+
 impl SignalHandler {
+	/// Creates a handler from a value given by the `signal` system call.
+	#[allow(clippy::not_unsafe_ptr_arg_deref)]
+	pub fn from_legacy(handler: *const c_void) -> Self {
+		match handler {
+			SIG_IGN => Self::Ignore,
+			SIG_DFL => Self::Default,
+			_ => Self::Handler(SigAction {
+				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(handler) },
+				sa_mask: Default::default(),
+				// TODO use System V semantic like Linux instead of BSD? (SA_RESETHAND |
+				// SA_NODEFER)
+				sa_flags: SA_RESTART,
+			}),
+		}
+	}
+
+	/// The opposite operation of [`Self::from_legacy`].
+	pub fn to_legacy(&self) -> *const c_void {
+		match self {
+			SignalHandler::Ignore => SIG_IGN,
+			SignalHandler::Default => SIG_DFL,
+			SignalHandler::Handler(action) => unsafe {
+				transmute::<Option<extern "C" fn(i32)>, *const c_void>(
+					action.sa_handler.sa_handler,
+				)
+			},
+		}
+	}
+
 	/// Returns an instance of [`SigAction`] associated with the handler.
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
-				sa_handler: unsafe {
-					transmute::<*const c_void, Option<extern "C" fn(i32)>>(SIG_IGN)
-				},
-				sa_sigaction: None,
-				sa_mask: 0,
+				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(SIG_IGN) },
+				sa_mask: Default::default(),
 				sa_flags: 0,
 			},
 			Self::Default => SigAction {
-				sa_handler: unsafe {
-					transmute::<*const c_void, Option<extern "C" fn(i32)>>(SIG_DFL)
-				},
-				sa_sigaction: None,
-				sa_mask: 0,
+				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(SIG_DFL) },
+				sa_mask: Default::default(),
 				sa_flags: 0,
 			},
 			Self::Handler(action) => *action,
 		}
 	}
 
-	/// Prepare the given `process` for the execution of the given `signal`.
-	///
-	/// If `syscall` is set, the signal is executed when the current system call returns.
-	pub fn prepare_execution(&self, process: &mut Process, signal: &Signal, syscall: bool) {
+	/// Executes the action for `signal` on `process`.
+	pub fn exec(&self, signal: Signal, process: &mut Process) {
 		let process_state = process.get_state();
 		if matches!(process_state, State::Zombie) {
 			return;
 		}
-		process.sigpending.clear(signal.get_id() as _);
 		match self {
 			Self::Ignore => {}
-			Self::Handler(action) if !process.is_handling_signal() && signal.can_catch() => {
+			// TODO handle SA_SIGINFO
+			Self::Handler(action) if signal.can_catch() => {
 				// Prepare the signal handler stack
-				let stack = process.get_signal_stack();
-				let signal_data_size = size_of::<[usize; 3]>();
-				let signal_esp = (stack as usize) - signal_data_size;
-				// FIXME Don't write data out of the stack
+				// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
+				// SA_ONSTACK)
+				let stack_ptr = process.regs.esp.0 - REDZONE_SIZE;
+				let signal_data_size = size_of::<UContext>() + size_of::<usize>() * 4;
+				let signal_esp = stack_ptr - signal_data_size;
 				{
 					let mem_space = process.get_mem_space().unwrap();
 					let mut mem_space = mem_space.lock();
 					mem_space.bind();
+					// FIXME: a stack overflow would cause an infinite loop
 					oom::wrap(|| mem_space.alloc(signal_esp as _, signal_data_size));
 				}
-				let signal_data =
-					unsafe { slice::from_raw_parts_mut(signal_esp as *mut usize, 3) };
-				// TODO handle SA_SIGINFO
-				// The signal number
-				signal_data[2] = signal.get_id() as _;
-				// The pointer to the signal handler
-				signal_data[1] = action.sa_handler.map(|f| f as usize).unwrap_or(0);
-				// Padding (return pointer)
-				signal_data[0] = 0;
-				// Prepare `sigreturn` registers
-				let mut return_regs = process.regs.clone();
-				// TODO implement syscall restart (SA_RESTART)
-				if syscall {
-					// FIXME: not all system calls can return this
-					return_regs.set_syscall_return(Err(errno!(EINTR)));
+				// Write data on stack
+				let ctx = UContext {
+					uc_flags: 0, // TODO
+					uc_link: null_mut(),
+					uc_sigmask: process.sigmask,
+					uc_stack: stack_ptr as _,
+					uc_mcontext: process.regs.clone(),
+				};
+				unsafe {
+					// Write `ctx`
+					let ctx_ptr = stack_ptr - size_of::<UContext>();
+					ptr::write_volatile(ctx_ptr as *mut UContext, ctx);
+					let args = slice::from_raw_parts_mut(signal_esp as *mut usize, 4);
+					// Pointer to  `ctx`
+					args[3] = ctx_ptr;
+					// Signal number
+					args[2] = signal.get_id() as usize;
+					// Pointer to the handler
+					args[1] = action.sa_handler.sa_handler.unwrap() as usize;
+					// Padding (return pointer)
+					args[0] = 0;
 				}
-				debug_assert!(return_regs.eip.0 < crate::memory::PROCESS_END as usize);
-				process.signal_save(signal.clone(), return_regs);
-				// Prepare registers for the handler
+				// Block signals from `sa_mask`
+				process.sigmask.0 |= action.sa_mask.0;
+				if action.sa_flags & SA_NODEFER == 0 {
+					process.sigmask.set(signal.get_id() as _);
+				}
+				// Prepare registers for the trampoline
 				let signal_trampoline = signal_trampoline as *const c_void;
+				process.regs.ebp.0 = 0;
 				process.regs.esp.0 = signal_esp as _;
 				process.regs.eip.0 = signal_trampoline as _;
 			}
@@ -281,38 +430,14 @@ impl SignalHandler {
 				if signal.can_catch() && process.is_init() {
 					return;
 				}
-				match signal.get_default_action() {
-					SignalAction::Terminate | SignalAction::Abort => {
-						#[cfg(feature = "strace")]
-						println!(
-							"[strace {pid}] killed by signal `{signal}`",
-							pid = process.get_pid(),
-							signal = signal.get_id()
-						);
-						process.set_state(State::Zombie);
-						process.set_waitable(signal.get_id() as _);
-					}
-					SignalAction::Ignore => {}
-					SignalAction::Stop => {
-						if matches!(process_state, State::Running) {
-							process.set_state(State::Stopped);
-						}
-						process.set_waitable(signal.get_id());
-					}
-					SignalAction::Continue => {
-						if matches!(process_state, State::Stopped) {
-							process.set_state(State::Running);
-						}
-						process.set_waitable(signal.get_id());
-					}
-				}
+				signal.get_default_action().exec(signal, process)
 			}
 		}
 	}
 }
 
 /// Enumeration of signal types.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Signal {
 	/// Hangup.
 	SIGHUP,

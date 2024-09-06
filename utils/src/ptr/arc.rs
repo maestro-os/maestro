@@ -16,8 +16,8 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Implementation of [`Arc`] and [`Weak`], similar to the ones present in the Rust standard
-//! library.
+//! Implementation of [`Arc`], similar to the ones present in the Rust standard
+//! library, but without the support for `Weak`.
 
 use crate::{boxed::Box, errno::AllocResult};
 use alloc::alloc::Global;
@@ -25,6 +25,7 @@ use core::{
 	alloc::{AllocError, Allocator, Layout},
 	borrow::Borrow,
 	fmt,
+	hash::{Hash, Hasher},
 	intrinsics::size_of_val,
 	marker::Unsize,
 	mem::ManuallyDrop,
@@ -38,8 +39,6 @@ use core::{
 pub struct ArcInner<T: ?Sized> {
 	/// Strong references counter.
 	strong: AtomicUsize,
-	/// Weak references counter.
-	weak: AtomicUsize,
 	/// The object the `Arc` points to.
 	obj: T,
 }
@@ -69,8 +68,6 @@ impl<T: ?Sized> ArcInner<T> {
 		let i = inner.as_mut();
 		// The initial strong reference
 		i.strong = AtomicUsize::new(1);
-		// Every strong references collectively hold a weak reference
-		i.weak = AtomicUsize::new(1);
 		init(&mut i.obj);
 		Ok(inner)
 	}
@@ -133,13 +130,14 @@ impl<T> Arc<T> {
 		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
 			return None;
 		}
-		// If no other reference is left, get the inner value and free
-		let obj = unsafe { ptr::read(&inner.obj) };
-		// Drop the weak reference that is collectively held by all strong references
-		drop(Weak {
-			inner: this.inner,
-		});
-		Some(obj)
+		unsafe {
+			// If no other reference is left, get the inner value and free
+			let obj = ptr::read(&inner.obj);
+			// Free the inner structure without dropping the object since it has been read before
+			let layout = Layout::for_value(inner);
+			Global.deallocate(this.inner.cast(), layout);
+			Some(obj)
+		}
 	}
 }
 
@@ -150,61 +148,15 @@ impl<T: ?Sized> Arc<T> {
 		unsafe { self.inner.as_ref() }
 	}
 
-	/// Drops the object stored by the shared pointer.
-	///
-	/// This function is used when all strong references have been dropped, because the remaining
-	/// weak references may not access the object once no strong reference is left.
-	///
-	/// # Safety
-	///
-	/// This function must not be called twice since it would result in a double free.
-	unsafe fn partial_drop(&mut self) {
-		debug_assert_eq!(Arc::strong_count(self), 0);
-		// Drop the inner object since weak pointers cannot access it once no strong reference is
-		// left
-		drop_in_place(Self::get_mut_unchecked(self));
-		// Drop the weak reference that is collectively held by all strong references
-		drop(Weak {
-			inner: self.inner,
-		});
-	}
-
 	/// Returns a pointer to the inner object.
 	pub fn as_ptr(&self) -> *const T {
 		&self.inner().obj
-	}
-
-	/// Returns a mutable reference to the inner object without any safety check.
-	///
-	/// # Safety
-	///
-	/// It is the caller's responsibility to ensure concurrency rules are respected.
-	#[allow(clippy::needless_pass_by_ref_mut)]
-	pub unsafe fn get_mut_unchecked(this: &mut Arc<T>) -> &mut T {
-		&mut (*this.inner.as_ptr()).obj
 	}
 
 	/// Returns the number of strong pointers to the allocation.
 	#[inline]
 	pub fn strong_count(this: &Self) -> usize {
 		this.inner().strong.load(Ordering::Relaxed)
-	}
-
-	/// Returns the number of weak pointers to the allocation.
-	#[inline]
-	pub fn weak_count(this: &Self) -> usize {
-		let weak = this.inner().weak.load(Ordering::Relaxed);
-		// Subtract reference that is collectively held by strong references
-		weak - 1
-	}
-
-	/// Creates a new weak pointer to this allocation.
-	pub fn downgrade(this: &Arc<T>) -> Weak<T> {
-		let inner = this.inner();
-		inner.weak.fetch_add(1, Ordering::Relaxed);
-		Weak {
-			inner: this.inner,
-		}
 	}
 }
 
@@ -241,6 +193,20 @@ impl<T: ?Sized> Clone for Arc<T> {
 	}
 }
 
+impl<T: Eq> Eq for Arc<T> {}
+
+impl<T: PartialEq> PartialEq for Arc<T> {
+	fn eq(&self, other: &Self) -> bool {
+		Self::as_ref(self).eq(&other)
+	}
+}
+
+impl<T: Hash> Hash for Arc<T> {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		Self::as_ref(self).hash(state)
+	}
+}
+
 impl<T: ?Sized + fmt::Display> fmt::Display for Arc<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		fmt::Display::fmt(&**self, f)
@@ -259,73 +225,12 @@ impl<T: ?Sized> Drop for Arc<T> {
 		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
 			return;
 		}
-		// Safe because this function cannot be called twice because no other `Arc` is left to
-		// drop.
 		unsafe {
-			self.partial_drop();
-		}
-	}
-}
-
-/// `Weak` is a version of `Arc` that holds a non-owning reference to the managed allocation.
-pub struct Weak<T: ?Sized> {
-	/// Pointer to the shared object.
-	inner: NonNull<ArcInner<T>>,
-}
-
-impl<T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Weak<U>> for Weak<T> {}
-
-impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Weak<U>> for Weak<T> {}
-
-impl<T: ?Sized> Weak<T> {
-	/// Returns a reference to the inner object.
-	fn inner(&self) -> &ArcInner<T> {
-		// Safe because the inner object is Sync
-		unsafe { self.inner.as_ref() }
-	}
-
-	/// Attempts to upgrade into an `Arc`.
-	///
-	/// If the value has already been dropped, the function returns `None`.
-	pub fn upgrade(&self) -> Option<Arc<T>> {
-		self.inner()
-			.strong
-			.fetch_update(Ordering::Acquire, Ordering::Relaxed, |n| {
-				(n != 0).then_some(n + 1)
-			})
-			.ok()
-			.map(|_| Arc {
-				inner: self.inner,
-			})
-	}
-}
-
-impl<T: ?Sized> Clone for Weak<T> {
-	fn clone(&self) -> Self {
-		let inner = self.inner();
-		let old_count = inner.weak.fetch_add(1, Ordering::Relaxed);
-		if old_count == usize::MAX {
-			panic!("Weak reference count overflow");
-		}
-		Self {
-			inner: self.inner,
-		}
-	}
-}
-
-impl<T: ?Sized> Drop for Weak<T> {
-	fn drop(&mut self) {
-		let inner = self.inner();
-		if inner.weak.fetch_sub(1, Ordering::Release) != 1 {
-			return;
-		}
-		// Free the inner structure since it cannot be referenced anywhere else
-		//
-		// At this point, we can be sure the inner object has been dropped since strong references
-		// collectively hold a weak reference which is removed only when the strong references
-		// count reaches zero.
-		let layout = Layout::for_value(self.inner());
-		unsafe {
+			// Drop the object
+			let obj = &mut (*self.inner.as_ptr()).obj;
+			drop_in_place(obj);
+			// Free the inner structure
+			let layout = Layout::for_value(inner);
 			Global.deallocate(self.inner.cast(), layout);
 		}
 	}

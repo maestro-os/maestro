@@ -18,22 +18,21 @@
 
 //! This file implements sockets.
 
-use super::Buffer;
 use crate::{
-	file::{buffer::BlockHandler, FileType, Stat},
-	net::{osi, SocketDesc, SocketDomain, SocketType},
-	process::Process,
-	syscall::ioctl,
+	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
+	net::{osi, SocketDesc},
+	syscall::ioctl::Request,
 };
-use core::ffi::{c_int, c_void};
+use core::{
+	ffi::{c_int, c_void},
+	sync::{atomic, atomic::AtomicUsize},
+};
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	io::IO,
 	lock::Mutex,
-	ptr::arc::Arc,
-	vec, TryDefault,
+	vec,
 };
 
 /// The maximum size of a socket's buffers.
@@ -42,45 +41,47 @@ const BUFFER_SIZE: usize = 65536;
 /// Socket option level: Socket
 const SOL_SOCKET: c_int = 1;
 
-/// Structure representing a socket.
+/// A UNIX socket.
+#[derive(Debug)]
 pub struct Socket {
 	/// The socket's stack descriptor.
 	desc: SocketDesc,
 	/// The socket's network stack corresponding to the descriptor.
 	stack: Option<osi::Stack>,
-
-	/// The buffer containing received data. If `None`, reception has been shutdown.
-	receive_buffer: Option<RingBuffer<u8, Vec<u8>>>,
-	/// The buffer containing data to be transmitted. If `None`, transmission has been shutdown.
-	transmit_buffer: Option<RingBuffer<u8, Vec<u8>>>,
-
 	/// The number of entities owning a reference to the socket. When this count reaches zero, the
 	/// socket is closed.
-	open_count: u32,
-
-	/// The socket's block handler.
-	block_handler: BlockHandler,
+	open_count: AtomicUsize,
 
 	/// The address the socket is bound to.
-	sockname: Vec<u8>,
+	sockname: Mutex<Vec<u8>>,
+
+	/// The buffer containing received data. If `None`, reception has been shutdown.
+	rx_buff: Mutex<Option<RingBuffer<u8, Vec<u8>>>>,
+	/// The buffer containing data to be transmitted. If `None`, transmission has been shutdown.
+	tx_buff: Mutex<Option<RingBuffer<u8, Vec<u8>>>>,
+
+	/// Receive wait queue.
+	rx_queue: WaitQueue,
+	/// Transmit wait queue.
+	tx_queue: WaitQueue,
 }
 
 impl Socket {
 	/// Creates a new instance.
-	pub fn new(desc: SocketDesc) -> AllocResult<Arc<Mutex<Self>>> {
-		Arc::new(Mutex::new(Self {
+	pub fn new(desc: SocketDesc) -> AllocResult<Self> {
+		Ok(Self {
 			desc,
 			stack: None,
+			open_count: AtomicUsize::new(0),
 
-			receive_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
-			transmit_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
+			sockname: Default::default(),
 
-			open_count: 0,
+			rx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
+			tx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
 
-			block_handler: BlockHandler::new(),
-
-			sockname: Vec::new(),
-		}))
+			rx_queue: WaitQueue::new(),
+			tx_queue: WaitQueue::new(),
+		})
 	}
 
 	/// Returns the socket's descriptor.
@@ -113,19 +114,14 @@ impl Socket {
 	/// - `optval` is the value of the option.
 	///
 	/// The function returns a value to be returned by the syscall on success.
-	pub fn set_opt(&mut self, _level: c_int, _optname: c_int, _optval: &[u8]) -> EResult<c_int> {
+	pub fn set_opt(&self, _level: c_int, _optname: c_int, _optval: &[u8]) -> EResult<c_int> {
 		// TODO
 		Ok(0)
 	}
 
 	/// Returns the name of the socket.
-	pub fn get_sockname(&self) -> &[u8] {
+	pub fn get_sockname(&self) -> &Mutex<Vec<u8>> {
 		&self.sockname
-	}
-
-	/// Tells whether the socket is bound.
-	pub fn is_bound(&self) -> bool {
-		!self.sockname.is_empty()
 	}
 
 	/// Binds the socket to the given address.
@@ -134,112 +130,69 @@ impl Socket {
 	///
 	/// If the socket is already bound, or if the address is invalid, or if the address is already
 	/// in used, the function returns an error.
-	pub fn bind(&mut self, sockaddr: &[u8]) -> EResult<()> {
-		if self.is_bound() {
+	pub fn bind(&self, sockaddr: &[u8]) -> EResult<()> {
+		let mut sockname = self.sockname.lock();
+		if !sockname.is_empty() {
 			return Err(errno!(EINVAL));
 		}
 		// TODO check if address is already in used (EADDRINUSE)
 		// TODO check the requested network interface exists (EADDRNOTAVAIL)
 		// TODO check address against stack's domain
 
-		self.sockname = Vec::try_from(sockaddr)?;
+		*sockname = Vec::try_from(sockaddr)?;
 		Ok(())
 	}
 
-	/// Shuts down the receive side of the socket.
-	pub fn shutdown_receive(&mut self) {
-		self.receive_buffer = None;
+	/// Shuts down the reception side of the socket.
+	pub fn shutdown_reception(&self) {
+		*self.rx_buff.lock() = None;
 	}
 
 	/// Shuts down the transmit side of the socket.
-	pub fn shutdown_transmit(&mut self) {
-		self.transmit_buffer = None;
+	pub fn shutdown_transmit(&self) {
+		*self.tx_buff.lock() = None;
 	}
 }
 
-impl TryDefault for Socket {
-	fn try_default() -> Result<Self, Self::Error> {
-		let desc = SocketDesc {
-			domain: SocketDomain::AfUnix,
-			type_: SocketType::SockRaw,
-			protocol: 0,
-		};
-
-		Ok(Self {
-			desc,
-			stack: None,
-
-			receive_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
-			transmit_buffer: Some(RingBuffer::new(vec![0; BUFFER_SIZE]?)),
-
-			open_count: 0,
-
-			block_handler: BlockHandler::new(),
-
-			sockname: Default::default(),
+impl FileOps for Socket {
+	fn get_stat(&self, _file: &File) -> EResult<Stat> {
+		Ok(Stat {
+			mode: FileType::Socket.to_mode() | 0o666,
+			..Default::default()
 		})
 	}
-}
 
-impl Buffer for Socket {
-	fn get_capacity(&self) -> usize {
-		// TODO
-		todo!()
+	fn acquire(&self, _file: &File) {
+		self.open_count.fetch_add(1, atomic::Ordering::Acquire);
 	}
 
-	fn get_stat(&self) -> Stat {
-		Stat {
-			file_type: FileType::Socket,
-			mode: 0o666,
-			..Default::default()
-		}
-	}
-
-	fn increment_open(&mut self, _read: bool, _write: bool) {
-		self.open_count += 1;
-	}
-
-	fn decrement_open(&mut self, _read: bool, _write: bool) {
-		self.open_count -= 1;
-		if self.open_count == 0 {
+	fn release(&self, _file: &File) {
+		let cnt = self.open_count.fetch_sub(1, atomic::Ordering::Release);
+		if cnt == 0 {
 			// TODO close the socket
 		}
 	}
 
-	fn add_waiting_process(&mut self, proc: &mut Process, mask: u32) -> EResult<()> {
-		self.block_handler.add_waiting_process(proc, mask)
+	fn poll(&self, _file: &File, _mask: u32) -> EResult<u32> {
+		todo!()
 	}
 
-	fn ioctl(&mut self, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
-		// TODO
-		todo!();
+	fn ioctl(&self, _file: &File, _request: Request, _argp: *const c_void) -> EResult<u32> {
+		todo!()
 	}
-}
 
-impl IO for Socket {
-	/// Note: This implementation ignores the offset.
-	fn read(&mut self, _: u64, _buf: &mut [u8]) -> EResult<(u64, bool)> {
+	fn read(&self, _file: &File, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
 		if !self.desc.type_.is_stream() {
 			// TODO error
 		}
-
-		// TODO
-		todo!();
+		todo!()
 	}
 
-	/// Note: This implementation ignores the offset.
-	fn write(&mut self, _: u64, _buf: &[u8]) -> EResult<u64> {
+	fn write(&self, _file: &File, _off: u64, _buf: &[u8]) -> EResult<usize> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {
 			return Err(errno!(EDESTADDRREQ));
 		};
-
-		// TODO
-		todo!();
-	}
-
-	fn poll(&mut self, _mask: u32) -> EResult<u32> {
-		// TODO
-		todo!();
+		todo!()
 	}
 }

@@ -28,7 +28,7 @@ pub mod elf;
 pub mod vdso;
 
 use crate::{
-	file::{vfs::ResolutionSettings, File},
+	file::{vfs, vfs::ResolutionSettings},
 	process::{
 		mem_space::MemSpace,
 		regs::{Register, Regs},
@@ -77,18 +77,18 @@ pub struct ProgramImage {
 pub trait Executor {
 	/// Builds a program image.
 	/// `file` is the program's file.
-	fn build_image(&self, file: &mut File) -> EResult<ProgramImage>;
+	fn build_image(&self, file: &vfs::Entry) -> EResult<ProgramImage>;
 }
 
 /// Builds a program image from the given executable file.
 ///
 /// Arguments:
 /// - `file` is the program's file
-/// - `info` is the set execution informations for the program
+/// - `info` is the set execution information for the program
 ///
 /// The function returns a memory space containing the program image and the
 /// pointer to the entry point.
-pub fn build_image(file: &mut File, info: ExecInfo) -> EResult<ProgramImage> {
+pub fn build_image(file: &vfs::Entry, info: ExecInfo) -> EResult<ProgramImage> {
 	// TODO Support other formats than ELF (wasm?)
 
 	let exec = elf::ELFExecutor::new(info)?;
@@ -126,7 +126,7 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.signal_handlers.lock().fill(SignalHandler::Default);
 
 	proc.reset_vfork();
-	proc.clear_tls_entries();
+	proc.tls_entries = Default::default();
 
 	// Set the process's registers
 	let regs = Regs {

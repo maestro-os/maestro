@@ -20,7 +20,7 @@
 
 use crate::{
 	file,
-	file::{path::PathBuf, vfs, vfs::ResolutionSettings},
+	file::{fs::StatSet, path::PathBuf, vfs, vfs::ResolutionSettings},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 };
@@ -37,14 +37,18 @@ pub fn chmod(
 	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Get file
-	let file_mutex = vfs::get_file_from_path(&path, &rs)?;
-	let mut file = file_mutex.lock();
+	let file = vfs::get_file_from_path(&path, &rs)?;
 	// Check permissions
-	if !rs.access_profile.can_set_file_permissions(&file) {
+	let stat = file.stat()?;
+	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.stat.set_permissions(mode as _);
-	// TODO lazy sync
-	file.sync()?;
+	file.node().ops.set_stat(
+		&file.node().location,
+		StatSet {
+			mode: Some(mode & 0o777),
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }
