@@ -24,7 +24,7 @@ use super::{
 };
 use crate::{
 	device::DeviceIO,
-	file::{DirEntry, FileType, Mode},
+	file::{DirEntry, FileType, INode, Mode},
 };
 use core::{
 	cmp::{max, min},
@@ -295,7 +295,8 @@ impl Ext2INode {
 	/// - `i` is the inode's index (starting at `1`).
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	fn get_disk_offset(i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<u64> {
+	fn get_disk_offset(i: INode, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<u64> {
+		let i: u32 = i.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		// Check the index is correct
 		let Some(i) = i.checked_sub(1) else {
 			return Err(errno!(EINVAL));
@@ -325,7 +326,7 @@ impl Ext2INode {
 	/// - `i` is the inode's index (starting at `1`).
 	/// - `superblock` is the filesystem's superblock.
 	/// - `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<Self> {
+	pub fn read(i: INode, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<Self> {
 		let blk_size = superblock.get_block_size();
 		let off = Self::get_disk_offset(i, superblock, io)?;
 		read::<Self>(off, blk_size, io)
@@ -1104,7 +1105,7 @@ impl Ext2INode {
 	}
 
 	/// Writes the inode on the device.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<()> {
+	pub fn write(&self, i: INode, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<()> {
 		let blk_size = superblock.get_block_size();
 		let off = Self::get_disk_offset(i, superblock, io)?;
 		write(off, blk_size, io, self)

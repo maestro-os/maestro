@@ -57,12 +57,8 @@ use core::{ffi::c_void, fmt, num::NonZeroU64};
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 use utils::{
-	collections::{hashmap::HashMap, vec::Vec},
-	errno,
-	errno::{AllocResult, CollectResult, EResult},
-	lock::Mutex,
-	ptr::arc::Arc,
-	slice_copy, vec, TryClone,
+	collections::hashmap::HashMap, errno, errno::EResult, lock::Mutex, ptr::arc::Arc, slice_copy,
+	vec, TryClone,
 };
 
 /// Enumeration representing the type of the device.
@@ -76,7 +72,7 @@ pub enum DeviceType {
 
 impl DeviceType {
 	/// Returns the file type associated with the device type.
-	pub fn as_file_type(&self) -> FileType {
+	pub fn to_file_type(self) -> FileType {
 		match self {
 			DeviceType::Block => FileType::BlockDevice,
 			DeviceType::Char => FileType::CharDevice,
@@ -149,14 +145,14 @@ pub trait DeviceIO {
 		let end = off
 			.checked_add(buf.len() as u64)
 			.ok_or_else(|| errno!(EOVERFLOW))?
-			/ blk_size;
+			.div_ceil(blk_size);
 		let mut buf_off = 0;
 		for i in start..end {
 			self.read(i, &mut blk)?;
 			let inner_off = (off % blk_size) as usize;
 			buf_off += slice_copy(&blk[inner_off..], &mut buf[buf_off..]);
 		}
-		Ok(buf.len())
+		Ok(buf_off)
 	}
 
 	/// Writes data to the device.
@@ -169,7 +165,7 @@ pub trait DeviceIO {
 		let end = off
 			.checked_add(buf.len() as u64)
 			.ok_or_else(|| errno!(EOVERFLOW))?
-			/ blk_size;
+			.div_ceil(blk_size);
 		let mut buf_off = 0;
 		for i in start..end {
 			self.read(i, &mut blk)?;
@@ -177,7 +173,7 @@ pub trait DeviceIO {
 			buf_off += slice_copy(&buf[buf_off..], &mut blk[inner_off..]);
 			self.write(i, &blk)?;
 		}
-		Ok(buf.len())
+		Ok(buf_off)
 	}
 
 	/// Polls the device with the given mask.
@@ -296,7 +292,7 @@ impl Device {
 					name,
 					&AccessProfile::KERNEL,
 					Stat {
-						mode: id.dev_type.as_file_type().to_mode() | perms,
+						mode: id.dev_type.to_file_type().to_mode() | perms,
 						dev_major: id.major,
 						dev_minor: id.minor,
 						..Default::default()
@@ -335,7 +331,7 @@ static DEVICES: Mutex<HashMap<DeviceID, Arc<Device>>> = Mutex::new(HashMap::new(
 /// If files management is initialized, the function creates the associated device file.
 pub fn register(device: Device) -> EResult<()> {
 	let id = device.id;
-	let path = device.get_path().to_path_buf()?;
+	let path = device.path.try_clone()?;
 	let mode = device.get_mode();
 	// Insert
 	DEVICES.lock().insert(id, Arc::new(device)?)?;
@@ -401,14 +397,9 @@ pub(crate) fn stage2() -> EResult<()> {
 	default::create().unwrap_or_else(|e| panic!("Failed to create default devices! ({e})"));
 	// Collecting all data to create device files is necessary to avoid a deadlock, because disk
 	// accesses require locking the filesystem's device
-	let devs_info = DEVICES
-		.lock()
-		.iter()
-		.map(|(id, dev)| Ok((*id, dev.path.try_clone()?, dev.mode)))
-		.collect::<AllocResult<CollectResult<Vec<_>>>>()?
-		.0?;
-	for (id, path, mode) in devs_info {
-		Device::create_file(&id, &path, mode)?;
+	let devs = DEVICES.lock();
+	for (id, dev) in devs.iter() {
+		Device::create_file(id, &dev.path, dev.mode)?;
 	}
 	Ok(())
 }

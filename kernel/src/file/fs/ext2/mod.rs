@@ -236,9 +236,6 @@ struct Ext2NodeOps;
 
 impl NodeOps for Ext2NodeOps {
 	fn get_stat(&self, loc: &FileLocation) -> EResult<Stat> {
-		if loc.inode < 1 {
-			return Err(errno!(EINVAL));
-		}
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
@@ -260,9 +257,6 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn set_stat(&self, loc: &FileLocation, set: StatSet) -> EResult<()> {
-		if loc.inode < 1 {
-			return Err(errno!(EINVAL));
-		}
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
@@ -292,9 +286,6 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn read_content(&self, loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		if loc.inode < 1 {
-			return Err(errno!(EINVAL));
-		}
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
@@ -311,9 +302,6 @@ impl NodeOps for Ext2NodeOps {
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
-		}
-		if loc.inode < 1 {
-			return Err(errno!(EINVAL));
 		}
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
@@ -333,9 +321,6 @@ impl NodeOps for Ext2NodeOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		if loc.inode < 1 {
-			return Err(errno!(EINVAL));
-		}
 		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
@@ -353,9 +338,6 @@ impl NodeOps for Ext2NodeOps {
 		loc: &FileLocation,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		if loc.inode < 1 {
-			return Err(errno!(EINVAL));
-		}
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
@@ -376,9 +358,6 @@ impl NodeOps for Ext2NodeOps {
 		loc: &FileLocation,
 		off: u64,
 	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		if loc.inode < 1 {
-			return Err(errno!(EINVAL));
-		}
 		let fs = loc.get_filesystem().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		let superblock = fs.superblock.lock();
@@ -396,9 +375,6 @@ impl NodeOps for Ext2NodeOps {
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
-		}
-		if parent.inode < 1 {
-			return Err(errno!(EINVAL));
 		}
 		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		let ops = Box::new(Ext2NodeOps)?;
@@ -468,7 +444,7 @@ impl NodeOps for Ext2NodeOps {
 		}
 		let is_dir = file_type == FileType::Directory;
 		// Write node
-		inode.write(inode_index, &superblock, &*fs.io)?;
+		inode.write(inode_index as _, &superblock, &*fs.io)?;
 		superblock.mark_inode_used(&*fs.io, inode_index, is_dir)?;
 		superblock.write(&*fs.io)?;
 		// Write parent
@@ -482,9 +458,6 @@ impl NodeOps for Ext2NodeOps {
 		let fs = downcast_fs::<Ext2Fs>(&*fs);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
-		}
-		if parent.inode < 1 {
-			return Err(errno!(EINVAL));
 		}
 		let mut superblock = fs.superblock.lock();
 		// Parent inode
@@ -528,9 +501,6 @@ impl NodeOps for Ext2NodeOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		if parent.inode < 1 {
-			return Err(errno!(EINVAL));
-		}
 		if name == b"." || name == b".." {
 			return Err(errno!(EINVAL));
 		}
@@ -545,7 +515,7 @@ impl NodeOps for Ext2NodeOps {
 		let (remove_inode, _, remove_off) = parent_
 			.get_dirent(name, &superblock, &*fs.io)?
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mut remove_inode_ = Ext2INode::read(remove_inode, &superblock, &*fs.io)?;
+		let mut remove_inode_ = Ext2INode::read(remove_inode as _, &superblock, &*fs.io)?;
 		if remove_inode_.get_type() == FileType::Directory {
 			// If the directory is not empty, error
 			if !remove_inode_.is_directory_empty(&superblock, &*fs.io)? {
@@ -556,7 +526,7 @@ impl NodeOps for Ext2NodeOps {
 		}
 		// Decrement the hard links count
 		remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
-		remove_inode_.write(remove_inode, &superblock, &*fs.io)?;
+		remove_inode_.write(remove_inode as _, &superblock, &*fs.io)?;
 		// Remove the directory entry
 		parent_.remove_dirent(remove_off, &mut superblock, &*fs.io)?;
 		parent_.write(parent.inode as _, &superblock, &*fs.io)?;
@@ -569,20 +539,16 @@ impl NodeOps for Ext2NodeOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		if loc.inode < 1 {
-			return Err(errno!(EINVAL));
-		}
-		let inode: u32 = loc.inode.try_into().map_err(|_| errno!(EINVAL))?;
 		let mut superblock = fs.superblock.lock();
-		let mut inode_ = Ext2INode::read(inode, &superblock, &*fs.io)?;
+		let mut inode_ = Ext2INode::read(loc.inode, &superblock, &*fs.io)?;
 		// Remove the inode
 		inode_.i_links_count = 0;
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
 		inode_.i_dtime = timestamp as _;
 		inode_.free_content(&mut superblock, &*fs.io)?;
-		inode_.write(inode, &superblock, &*fs.io)?;
+		inode_.write(loc.inode, &superblock, &*fs.io)?;
 		// Free inode
-		superblock.free_inode(&*fs.io, inode, inode_.get_type() == FileType::Directory)?;
+		superblock.free_inode(&*fs.io, loc.inode, inode_.get_type() == FileType::Directory)?;
 		superblock.write(&*fs.io)?;
 		Ok(())
 	}
@@ -880,7 +846,8 @@ impl Superblock {
 	/// If `inode` is zero, the function does nothing.
 	///
 	/// If the inode is already marked as free, the behaviour is undefined.
-	pub fn free_inode(&mut self, io: &dyn DeviceIO, inode: u32, directory: bool) -> EResult<()> {
+	pub fn free_inode(&mut self, io: &dyn DeviceIO, inode: INode, directory: bool) -> EResult<()> {
+		let inode: u32 = inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		if inode == 0 {
 			return Ok(());
 		}

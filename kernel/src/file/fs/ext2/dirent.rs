@@ -214,7 +214,7 @@ impl Dirent {
 		// If the type could not be retrieved from the entry itself, get it from the inode
 		match ent_type {
 			Some(t) => Ok(t),
-			None => Ok(Ext2INode::read(self.inode, superblock, io)?.get_type()),
+			None => Ok(Ext2INode::read(self.inode as _, superblock, io)?.get_type()),
 		}
 	}
 

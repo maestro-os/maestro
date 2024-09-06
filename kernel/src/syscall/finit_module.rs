@@ -48,7 +48,7 @@ pub fn finit_module(
 		.get_fd(fd)?
 		.get_file()
 		.vfs_entry
-		.clone()
+		.as_ref()
 		.ok_or_else(|| errno!(ENOEXEC))?
 		.read_all()?;
 	let module = Module::load(&image)?;
