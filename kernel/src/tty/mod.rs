@@ -95,6 +95,17 @@ fn ring_bell() {
 	// TODO
 }
 
+/// Sends a signal `sig` to the given process group `pgid`.
+fn send_signal(sig: Signal, pgrp: Pid) {
+	if pgrp == 0 {
+		return;
+	}
+	if let Some(proc_mutex) = Process::get_by_pid(pgrp) {
+		let mut proc = proc_mutex.lock();
+		proc.kill_group(sig);
+	}
+}
+
 /// TTY display manager.
 pub struct TTYDisplay {
 	/// The X position of the cursor in the history
@@ -368,17 +379,6 @@ impl TTYDisplay {
 		self.pgrp = pgrp;
 	}
 
-	/// Sends a signal to the foreground process group if present.
-	pub fn send_signal(&self, sig: Signal) {
-		if self.pgrp == 0 {
-			return;
-		}
-		if let Some(proc_mutex) = Process::get_by_pid(self.pgrp) {
-			let mut proc = proc_mutex.lock();
-			proc.kill_group(sig);
-		}
-	}
-
 	/// Returns the window size of the TTY.
 	pub fn get_winsize(&self) -> &WinSize {
 		&self.winsize
@@ -403,7 +403,7 @@ impl TTYDisplay {
 		self.winsize = winsize;
 
 		// Send a SIGWINCH if a process group is present
-		self.send_signal(Signal::SIGWINCH);
+		send_signal(Signal::SIGWINCH, self.pgrp); // FIXME: deadlock when using `strace`
 	}
 }
 
@@ -625,12 +625,13 @@ impl TTY {
 				}
 
 				// TODO Handle every special characters
+				let pgrp = self.display.lock().pgrp;
 				if *b == termios.c_cc[VINTR] {
-					self.display.lock().send_signal(Signal::SIGINT);
+					send_signal(Signal::SIGINT, pgrp);
 				} else if *b == termios.c_cc[VQUIT] {
-					self.display.lock().send_signal(Signal::SIGQUIT);
+					send_signal(Signal::SIGQUIT, pgrp);
 				} else if *b == termios.c_cc[VSUSP] {
-					self.display.lock().send_signal(Signal::SIGTSTP);
+					send_signal(Signal::SIGTSTP, pgrp);
 				}
 			}
 		}
