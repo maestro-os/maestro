@@ -41,8 +41,8 @@ impl DeviceIO for NullDeviceHandle {
 		0
 	}
 
-	fn read(&self, _off: u64, buf: &mut [u8]) -> EResult<usize> {
-		Ok(buf.len())
+	fn read(&self, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
+		Ok(0)
 	}
 
 	fn write(&self, _off: u64, buf: &[u8]) -> EResult<usize> {
@@ -168,7 +168,6 @@ impl DeviceIO for KMsgDeviceHandle {
 	}
 
 	fn write(&self, _off: u64, _buf: &[u8]) -> EResult<usize> {
-		// TODO
 		todo!();
 	}
 }
