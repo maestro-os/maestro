@@ -37,7 +37,6 @@ use utils::{
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
-// TODO Handle blocking writes (and thus, EINTR)
 
 /// Writes the given chunks to the file.
 ///
@@ -67,7 +66,9 @@ fn write(
 			} else {
 				let off = file.off.load(atomic::Ordering::Acquire);
 				let len = file.ops.write(file, off, &buf)?;
-				file.off.fetch_add(len as u64, atomic::Ordering::Release);
+				// Update offset
+				let new_off = off.saturating_add(len as u64);
+				file.off.store(new_off, atomic::Ordering::Release);
 				len
 			};
 			off += len;

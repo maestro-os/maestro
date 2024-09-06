@@ -32,14 +32,13 @@ use utils::{
 	ptr::arc::Arc,
 	vec,
 };
-// TODO O_ASYNC
 
 pub fn read(
 	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	let len = min(count, usize::MAX);
+	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
@@ -52,7 +51,9 @@ pub fn read(
 	let mut buffer = vec![0u8; count]?;
 	let off = file.off.load(atomic::Ordering::Acquire);
 	let len = file.ops.read(&file, off, &mut buffer)?;
-	file.off.fetch_add(len as u64, atomic::Ordering::Release);
+	// Update offset
+	let new_off = off.saturating_add(len as u64);
+	file.off.store(new_off, atomic::Ordering::Release);
 	// Write back
 	buf.copy_to_user(0, &buffer[..len])?;
 	Ok(len as _)

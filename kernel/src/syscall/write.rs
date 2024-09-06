@@ -41,7 +41,7 @@ pub fn write(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	let len = min(count, usize::MAX);
+	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
@@ -55,6 +55,8 @@ pub fn write(
 	// Write file
 	let off = file.off.load(atomic::Ordering::Acquire);
 	let len = file.ops.write(&file, off, &buf_slice)?;
-	file.off.fetch_add(len as u64, atomic::Ordering::Release);
+	// Update offset
+	let new_off = off.saturating_add(len as u64);
+	file.off.store(new_off, atomic::Ordering::Release);
 	Ok(len)
 }

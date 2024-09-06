@@ -38,9 +38,6 @@ use utils::{
 	vec,
 };
 
-// TODO Handle blocking writes (and thus, EINTR)
-// TODO Reimplement by taking example on `writev` (currently doesn't work with blocking files)
-
 /// Reads the given chunks from the file.
 ///
 /// Arguments:
@@ -71,7 +68,9 @@ fn read(
 			} else {
 				let off = file.off.load(atomic::Ordering::Acquire);
 				let len = file.ops.read(file, off, &mut buf)?;
-				file.off.fetch_add(len as u64, atomic::Ordering::Release);
+				// Update offset
+				let new_off = off.saturating_add(len as u64);
+				file.off.store(new_off, atomic::Ordering::Release);
 				len
 			};
 			if len == 0 {
