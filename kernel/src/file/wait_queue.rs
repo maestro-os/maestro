@@ -78,7 +78,7 @@ impl WaitQueue {
 	/// Wakes the next process in queue.
 	pub fn wake_next(&self) {
 		let proc = loop {
-			// TODO: inefficient, must use VecDeque
+			// TODO: inefficient, must use a linked list
 			let pid = {
 				let mut pids = self.0.lock();
 				if pids.is_empty() {

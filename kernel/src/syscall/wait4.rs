@@ -30,7 +30,6 @@ pub fn wait4(
 		c_int,
 		SyscallPtr<RUsage>,
 	)>,
-	regs: &Regs,
 ) -> EResult<usize> {
-	waitpid::do_waitpid(pid, wstatus, options | waitpid::WEXITED, rusage, regs)
+	waitpid::do_waitpid(pid, wstatus, options | waitpid::WEXITED, rusage)
 }

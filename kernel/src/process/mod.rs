@@ -1083,3 +1083,68 @@ impl Drop for Process {
 		}
 	}
 }
+
+fn yield_current_impl(regs: &mut Regs) -> bool {
+	let proc_mutex = Process::current();
+	let mut proc = proc_mutex.lock();
+	// If the process is not running anymore, do not resume execution
+	if proc.state != State::Running {
+		return true;
+	}
+	// If no signal is pending, return
+	let Some(sig) = proc.next_signal(false) else {
+		return false;
+	};
+	// Prepare signal for execution
+	let handlers = proc.signal_handlers.clone();
+	let handlers = handlers.lock();
+	let handler = &handlers[sig.get_id() as usize];
+	// Update registers with the ones passed to the system call so that `sigreturn` returns to
+	// the correct location
+	proc.regs = regs.clone();
+	handler.exec(sig, &mut proc);
+	// Alter the execution flow of the current context according to the new state of the
+	// process
+	match proc.state {
+		// The process must execute a signal handler: Jump to it
+		State::Running => {
+			*regs = proc.regs.clone();
+			true
+		}
+		// Stop execution: Waiting until wakeup (or terminate if Zombie)
+		State::Sleeping | State::Stopped | State::Zombie => false,
+	}
+}
+
+/// Before returning to userspace from the current context, this function checks the state of the
+/// current process to potentially alter the execution flow.
+///
+/// Arguments:
+/// - `ring` is the ring the current context is returning to.
+/// - `regs` is the set of registers from the previously interrupted context.
+///
+/// The execution flow can be altered by:
+/// - The process is no longer in [`State::Running`] state
+/// - A signal handler has to be executed
+///
+/// The current function may save `regs` and replaces it with the required state for the new
+/// context.
+///
+/// The function locks the mutex of the current process. Thus, the caller must
+/// ensure the mutex isn't already locked to prevent a deadlock.
+///
+/// # Safety
+///
+/// This function may not return in some cases (example: the process has been turned into a
+/// Zombie). It is the caller's responsibility to drop all objects on the stack that need it, in
+/// order to avoid unintended side effects.
+pub fn yield_current(ring: u32, regs: &mut Regs) {
+	// If returning to kernelspace, do nothing
+	if ring < 3 {
+		return;
+	}
+	let end_tick = yield_current_impl(regs);
+	if end_tick {
+		scheduler::end_tick();
+	}
+}

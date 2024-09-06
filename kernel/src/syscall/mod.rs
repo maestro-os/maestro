@@ -162,6 +162,7 @@ mod writev;
 use crate::{
 	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
+	process,
 	process::{mem_space::MemSpace, regs::Regs, signal::Signal, Process},
 };
 use _exit::_exit;
@@ -293,7 +294,7 @@ use unlink::unlink;
 use unlinkat::unlinkat;
 use utils::{
 	errno::EResult,
-	lock::{IntMutex, IntMutexGuard, Mutex},
+	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 use utimensat::utimensat;
@@ -969,5 +970,5 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	};
 	regs.set_syscall_return(res);
 	// If the process has been killed, handle it
-	util::handle_signal(regs);
+	process::yield_current(3, regs);
 }

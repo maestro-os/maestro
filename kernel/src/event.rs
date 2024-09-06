@@ -23,6 +23,7 @@ use crate::{
 	idt,
 	idt::pic,
 	memory::stack,
+	process,
 	process::{regs::Regs, scheduler::SCHEDULER},
 };
 use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
@@ -194,7 +195,7 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 /// - `regs` is the state of the registers at the moment of the interrupt
 /// - `ring` tells the ring at which the code was running
 #[no_mangle]
-extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
+extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &mut Regs) {
 	// Feed entropy pool
 	{
 		let mut pool = rand::ENTROPY_POOL.lock();
@@ -226,4 +227,10 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &Regs) {
 			CallbackResult::Panic => panic!("{}, code: {code:x}", get_error_message(id)),
 		}
 	}
+	// Unlock to avoid deadlocks
+	if id >= ERROR_MESSAGES.len() as u32 {
+		pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
+	}
+	drop(callbacks);
+	process::yield_current(ring, regs)
 }
