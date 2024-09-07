@@ -20,7 +20,7 @@
 //!
 //! The kernel only support binary CPIO, not ASCII.
 
-use core::mem::size_of;
+use core::{intrinsics::unlikely, mem::size_of};
 use macros::AnyRepr;
 use utils::bytes;
 
@@ -32,7 +32,7 @@ pub fn rot_u32(v: u32) -> u32 {
 	(v >> 16) | (v << 16)
 }
 
-/// Structure representing a CPIO header.
+/// A CPIO entry header.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C, packed)]
 pub struct CPIOHeader {
@@ -76,39 +76,33 @@ impl<'a> CPIOEntry<'a> {
 	/// Returns a reference storing the filename.
 	pub fn get_filename(&self) -> &'a [u8] {
 		let hdr = self.get_hdr();
-
 		let start = size_of::<CPIOHeader>();
 		let mut end = start + hdr.c_namesize as usize;
-
 		// Removing trailing NUL byte
 		if end - start > 0 && self.data[end - 1] == b'\0' {
 			end -= 1;
 		}
-
 		&self.data[start..end]
 	}
 
 	/// Returns a reference storing the content.
 	pub fn get_content(&self) -> &'a [u8] {
 		let hdr = self.get_hdr();
-
 		let mut start = size_of::<CPIOHeader>() + hdr.c_namesize as usize;
 		if start % 2 != 0 {
 			start += 1;
 		}
-
 		let filesize = rot_u32(hdr.c_filesize);
 		&self.data[start..(start + filesize as usize)]
 	}
 }
 
-/// Structure representing a CPIO parser.
+/// A CPIO archive parser.
 pub struct CPIOParser<'a> {
 	/// The data to parse.
 	data: &'a [u8],
-
 	/// The current offset in data.
-	curr_off: usize,
+	off: usize,
 }
 
 impl<'a> CPIOParser<'a> {
@@ -116,8 +110,7 @@ impl<'a> CPIOParser<'a> {
 	pub fn new(data: &'a [u8]) -> Self {
 		Self {
 			data,
-
-			curr_off: 0,
+			off: 0,
 		}
 	}
 }
@@ -126,50 +119,42 @@ impl<'a> Iterator for CPIOParser<'a> {
 	type Item = CPIOEntry<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let off = self.curr_off;
-		if off >= self.data.len() {
+		// Validation
+		if unlikely(self.off >= self.data.len()) {
 			return None;
 		}
-
-		let remaining_len = self.data.len() - off;
-		if remaining_len < size_of::<CPIOHeader>() {
-			return None;
-		}
-
-		// Will not fail because the structure is in range of the slice
-		let hdr = bytes::from_bytes::<CPIOHeader>(&self.data[off..]).unwrap();
-
+		let hdr = bytes::from_bytes::<CPIOHeader>(&self.data[self.off..])?;
 		// TODO: If invalid, check 0o707070. If valid, then data needs conversion (endianess)
 		// Check magic
-		if hdr.c_magic != 0o070707 {
+		if unlikely(hdr.c_magic != 0o070707) {
 			return None;
 		}
-
 		let mut namesize = hdr.c_namesize as usize;
 		if namesize % 2 != 0 {
 			namesize += 1;
 		}
-
 		let mut filesize = rot_u32(hdr.c_filesize) as usize;
 		if filesize % 2 != 0 {
 			filesize += 1;
 		}
-
 		let size = size_of::<CPIOHeader>() + namesize + filesize;
-		if off + size > self.data.len() {
+		// Validation
+		let overflow = self
+			.off
+			.checked_add(size)
+			.map(|end| end > self.data.len())
+			.unwrap_or(false);
+		if unlikely(overflow) {
 			return None;
 		}
-
-		self.curr_off += size;
-
 		let entry = CPIOEntry {
-			data: &self.data[off..(off + size)],
+			data: &self.data[self.off..(self.off + size)],
 		};
+		self.off += size;
 		// Ignoring the entry if it is the last
-		if entry.get_filename() == b"TRAILER!!!" {
+		if unlikely(entry.get_filename() == b"TRAILER!!!") {
 			return None;
 		}
-
 		Some(entry)
 	}
 }

@@ -203,8 +203,8 @@ impl Entry {
 			off = off
 				.checked_sub(len + 1)
 				.ok_or_else(|| errno!(ENAMETOOLONG))?;
-			buf[off..(off + len)].copy_from_slice(&cur.name);
-			buf[off + len] = b'\0';
+			buf[off] = b'/';
+			buf[(off + 1)..(off + len + 1)].copy_from_slice(&cur.name);
 			cur = parent;
 		}
 		buf.rotate_left(off);

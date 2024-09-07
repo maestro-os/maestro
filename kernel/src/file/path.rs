@@ -267,7 +267,10 @@ impl Path {
 		let last = comps.next_back();
 		last.and_then(move |p| match p {
 			Component::RootDir => None,
-			_ => Some(comps.as_path()),
+			_ => {
+				let path = comps.as_path();
+				(!path.is_empty()).then_some(path)
+			}
 		})
 	}
 
