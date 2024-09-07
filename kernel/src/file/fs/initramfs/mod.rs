@@ -78,7 +78,11 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			continue;
 		};
 		// Change the parent directory if necessary
-		let parent_path = path.parent().unwrap_or(Path::root());
+		let parent_path = match path.parent() {
+			Some(p) if p.is_empty() => Path::root(),
+			None => Path::root(),
+			Some(p) => p,
+		};
 		update_parent(parent_path, &mut cur_parent, false)?;
 		// Create file
 		let create_result = vfs::create_file(
