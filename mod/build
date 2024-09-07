@@ -14,6 +14,5 @@ else
   PROFILE="debug"
 fi
 export RUSTFLAGS="--extern kernel=$KERN_SRC/kernel/target/$ARCH/$PROFILE/libkernel.so -L $KERN_SRC/kernel/target/$ARCH/$PROFILE/deps -L $KERN_SRC/kernel/target/$PROFILE/deps $RUSTFLAGS"
-echo $RUSTFLAGS
 
 cargo build $CARGOFLAGS $@
