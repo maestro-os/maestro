@@ -31,7 +31,12 @@ use crate::{
 		Process,
 	},
 	syscall::Args,
-	time::unit::{TimeUnit, Timespec},
+	time,
+	time::{
+		clock,
+		clock::CLOCK_MONOTONIC,
+		unit::{TimeUnit, Timespec},
+	},
 	tty::vga::DEFAULT_COLOR,
 };
 use core::ffi::c_int;
@@ -52,13 +57,22 @@ pub fn utimensat(
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let pathname = PathBuf::try_from(pathname)?;
-	let times_val = times.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let pathname = pathname
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.transpose()?;
+	let times_val = match times.copy_from_user()? {
+		Some(times) => times,
+		None => {
+			let ts = clock::current_time_struct(CLOCK_MONOTONIC)?;
+			[ts, ts]
+		}
+	};
 	let atime = times_val[0];
 	let mtime = times_val[1];
 	// Get file
-	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, &pathname, flags)? else {
+	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, pathname.as_deref(), flags)?
+	else {
 		return Err(errno!(ENOENT));
 	};
 	// Update timestamps

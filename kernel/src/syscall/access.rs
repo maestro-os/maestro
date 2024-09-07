@@ -73,10 +73,17 @@ pub fn do_access(
 	let ap = rs.access_profile;
 	let file = {
 		let fds = fds_mutex.lock();
-		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
-		let path = PathBuf::try_from(pathname)?;
-		let Resolved::Found(file) =
-			at::get_file(&fds, rs, dirfd.unwrap_or(AT_FDCWD), &path, flags)?
+		let pathname = pathname
+			.copy_from_user()?
+			.map(PathBuf::try_from)
+			.transpose()?;
+		let Resolved::Found(file) = at::get_file(
+			&fds,
+			rs,
+			dirfd.unwrap_or(AT_FDCWD),
+			pathname.as_deref(),
+			flags,
+		)?
 		else {
 			return Err(errno!(ENOENT));
 		};

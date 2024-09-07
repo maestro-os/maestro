@@ -43,11 +43,14 @@ pub fn fchmodat(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+	let pathname = pathname
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.transpose()?;
 	// Get file
 	let fds = fds_mutex.lock();
-	let Resolved::Found(file) = at::get_file(&fds, rs.clone(), dirfd, &path, flags)? else {
+	let Resolved::Found(file) = at::get_file(&fds, rs.clone(), dirfd, pathname.as_deref(), flags)?
+	else {
 		return Err(errno!(ENOENT));
 	};
 	// Check permission

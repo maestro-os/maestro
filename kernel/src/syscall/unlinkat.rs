@@ -47,9 +47,11 @@ pub fn do_unlinkat(
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(pathname)?;
-	let parent_path = path.parent().ok_or_else(|| errno!(ENOENT))?;
+	let pathname = pathname
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.ok_or_else(|| errno!(EFAULT))??;
+	let parent_path = pathname.parent().ok_or_else(|| errno!(ENOENT))?;
 	let rs = ResolutionSettings {
 		follow_link: false,
 		..rs
@@ -59,13 +61,13 @@ pub fn do_unlinkat(
 		&fds.lock(),
 		rs.clone(),
 		dirfd,
-		parent_path,
+		Some(parent_path),
 		flags | AT_EMPTY_PATH,
 	)?;
 	let Resolved::Found(parent) = resolved else {
 		return Err(errno!(ENOENT));
 	};
-	let name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
+	let name = pathname.file_name().ok_or_else(|| errno!(ENOENT))?;
 	vfs::unlink(parent, name, &rs.access_profile)?;
 	Ok(0)
 }

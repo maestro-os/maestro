@@ -49,17 +49,22 @@ pub fn linkat(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let oldpath = PathBuf::try_from(oldpath)?;
-	let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let newpath = PathBuf::try_from(newpath)?;
+	let oldpath = oldpath
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.ok_or_else(|| errno!(EFAULT))??;
+	let newpath = newpath
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.ok_or_else(|| errno!(EFAULT))??;
 	let fds = fds_mutex.lock();
 	let rs = ResolutionSettings {
 		follow_link: false,
 		..rs
 	};
 	// Get old file
-	let Resolved::Found(old) = at::get_file(&fds, rs.clone(), olddirfd, &oldpath, flags)? else {
+	let Resolved::Found(old) = at::get_file(&fds, rs.clone(), olddirfd, Some(&oldpath), flags)?
+	else {
 		return Err(errno!(ENOENT));
 	};
 	if old.get_type()? == FileType::Directory {
@@ -73,7 +78,7 @@ pub fn linkat(
 	let Resolved::Creatable {
 		parent: new_parent,
 		name: new_name,
-	} = at::get_file(&fds, rs.clone(), newdirfd, &newpath, 0)?
+	} = at::get_file(&fds, rs.clone(), newdirfd, Some(&newpath), 0)?
 	else {
 		return Err(errno!(EEXIST));
 	};

@@ -125,9 +125,12 @@ pub fn statx(
 	}
 	// TODO Implement all flags
 	// Get the file
-	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, &path, flags)? else {
+	let pathname = pathname
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.transpose()?;
+	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, pathname.as_deref(), flags)?
+	else {
 		return Err(errno!(ENOENT));
 	};
 	// Get file's stat

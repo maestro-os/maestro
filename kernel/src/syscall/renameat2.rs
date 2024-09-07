@@ -61,23 +61,27 @@ pub(super) fn do_renameat2(
 		..rs
 	};
 	// Get old file
-	let oldpath = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let oldpath = PathBuf::try_from(oldpath)?;
+	let oldpath = oldpath
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.ok_or_else(|| errno!(EFAULT))??;
 	let old_parent_path = oldpath.parent().ok_or_else(|| errno!(ENOTDIR))?;
 	let old_name = oldpath.file_name().ok_or_else(|| errno!(ENOENT))?;
 	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
-	let Resolved::Found(old) = at::get_file(&fds.lock(), rs.clone(), olddirfd, &oldpath, 0)?
+	let Resolved::Found(old) = at::get_file(&fds.lock(), rs.clone(), olddirfd, Some(&oldpath), 0)?
 	else {
 		return Err(errno!(ENOENT));
 	};
 	// Get new file
-	let newpath = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let newpath = PathBuf::try_from(newpath)?;
+	let newpath = newpath
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.ok_or_else(|| errno!(EFAULT))??;
 	// TODO RENAME_NOREPLACE
 	let Resolved::Creatable {
 		parent: new_parent,
 		name: new_name,
-	} = at::get_file(&fds.lock(), rs.clone(), newdirfd, &newpath, 0)?
+	} = at::get_file(&fds.lock(), rs.clone(), newdirfd, Some(&newpath), 0)?
 	else {
 		return Err(errno!(EEXIST));
 	};

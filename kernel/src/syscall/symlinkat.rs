@@ -53,10 +53,12 @@ pub fn symlinkat(
 		return Err(errno!(ENAMETOOLONG));
 	}
 	let target = PathBuf::try_from(target_slice)?;
-	let linkpath = linkpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let linkpath = PathBuf::try_from(linkpath)?;
+	let linkpath = linkpath
+		.copy_from_user()?
+		.map(PathBuf::try_from)
+		.transpose()?;
 	// Create link
-	let resolved = at::get_file(&fds.lock(), rs.clone(), newdirfd, &linkpath, 0)?;
+	let resolved = at::get_file(&fds.lock(), rs.clone(), newdirfd, linkpath.as_deref(), 0)?;
 	match resolved {
 		Resolved::Creatable {
 			parent,

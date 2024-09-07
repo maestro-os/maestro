@@ -69,7 +69,7 @@ pub fn get_file<'p>(
 	fds: &FileDescriptorTable,
 	mut rs: ResolutionSettings,
 	dirfd: c_int,
-	path: &'p Path,
+	path: Option<&'p Path>,
 	flags: c_int,
 ) -> EResult<Resolved<'p>> {
 	// Prepare resolution settings
@@ -89,13 +89,22 @@ pub fn get_file<'p>(
 			.ok_or_else(|| errno!(ENOTDIR))?;
 		rs.cwd = Some(cwd);
 	}
-	if path.is_empty() {
-		// Validation
-		if flags & AT_EMPTY_PATH == 0 {
-			return Err(errno!(ENOENT));
+	match path {
+		Some(path) if !path.is_empty() => vfs::resolve_path(path, &rs),
+		// Empty path
+		Some(_) => {
+			// Validation
+			if flags & AT_EMPTY_PATH == 0 {
+				return Err(errno!(ENOENT));
+			}
+			Ok(Resolved::Found(rs.cwd.unwrap()))
 		}
-		Ok(Resolved::Found(rs.cwd.unwrap()))
-	} else {
-		vfs::resolve_path(path, &rs)
+		None => {
+			// Validation
+			if dirfd == AT_FDCWD {
+				return Err(errno!(EFAULT));
+			}
+			Ok(Resolved::Found(rs.cwd.unwrap()))
+		}
 	}
 }

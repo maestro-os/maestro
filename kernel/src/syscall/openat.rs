@@ -64,7 +64,7 @@ use utils::{
 fn get_file(
 	fds: &FileDescriptorTable,
 	dirfd: c_int,
-	path: &Path,
+	path: Option<&Path>,
 	flags: c_int,
 	rs: ResolutionSettings,
 	mode: file::Mode,
@@ -100,29 +100,27 @@ pub fn do_openat(
 	flags: c_int,
 	mode: file::Mode,
 ) -> EResult<usize> {
-	let (rs, path, fds_mutex, mode) = {
+	let (rs, pathname, fds_mutex, mode) = {
 		let proc_mutex = Process::current();
 		let proc = proc_mutex.lock();
-
 		let follow_link = flags & O_NOFOLLOW == 0;
-		let create = flags & O_CREAT != 0;
-		let mut rs = ResolutionSettings::for_process(&proc, follow_link);
-		rs.create = create;
-
-		let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(pathname)?;
-
+		let rs = ResolutionSettings {
+			create: flags & O_CREAT != 0,
+			..ResolutionSettings::for_process(&proc, follow_link)
+		};
+		let pathname = pathname
+			.copy_from_user()?
+			.map(PathBuf::try_from)
+			.ok_or_else(|| errno!(EFAULT))??;
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
-
 		let mode = mode & !proc.umask;
-
-		(rs, path, fds_mutex, mode)
+		(rs, pathname, fds_mutex, mode)
 	};
 
 	let mut fds = fds_mutex.lock();
 
 	// Get file
-	let file = get_file(&fds, dirfd, &path, flags, rs.clone(), mode)?;
+	let file = get_file(&fds, dirfd, Some(&pathname), flags, rs.clone(), mode)?;
 	// Check permissions
 	let (read, write) = match flags & 0b11 {
 		O_RDONLY => (true, false),
