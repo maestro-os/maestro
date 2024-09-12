@@ -18,7 +18,7 @@
 
 //! Userspace memory access utilities.
 
-use crate::{memory, memory::vmem, process::mem_space::COPY_BUFFER, syscall::FromSyscallArg};
+use crate::{memory::vmem, process::mem_space::COPY_BUFFER, syscall::FromSyscallArg};
 use core::{
 	arch::global_asm,
 	cmp::min,
@@ -32,11 +32,12 @@ use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
 	errno::EResult,
+	limits::PAGE_SIZE,
 };
 
 /// Tells whether the pointer is in bound with the userspace.
 fn bound_check(ptr: *const u8, n: usize) -> bool {
-	ptr as usize >= memory::PAGE_SIZE && (ptr as usize).saturating_add(n) < COPY_BUFFER as usize
+	ptr as usize >= PAGE_SIZE && (ptr as usize).saturating_add(n) < COPY_BUFFER as usize
 }
 
 // TODO optimize copy
@@ -292,7 +293,7 @@ impl SyscallString {
 		loop {
 			let buf_cursor = buf.len();
 			let user_cursor = ptr.as_ptr() as usize + buf_cursor;
-			let page_end = user_cursor + (memory::PAGE_SIZE - (user_cursor % memory::PAGE_SIZE));
+			let page_end = user_cursor + (PAGE_SIZE - (user_cursor % PAGE_SIZE));
 			let buf_size = min(page_end - user_cursor, CHUNK_SIZE);
 			// Read the next chunk
 			buf.reserve(buf_size)?;

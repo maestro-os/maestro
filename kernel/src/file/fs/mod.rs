@@ -26,7 +26,6 @@ pub mod proc;
 pub mod tmp;
 
 use super::{
-	path::PathBuf,
 	perm::{Gid, Uid},
 	DirEntry, FileLocation, INode, Mode, Stat,
 };
@@ -34,7 +33,7 @@ use crate::{device::DeviceIO, time::unit::Timestamp};
 use core::{any::Any, ffi::c_int, fmt::Debug};
 use utils::{
 	boxed::Box,
-	collections::{hashmap::HashMap, string::String},
+	collections::{hashmap::HashMap, path::PathBuf, string::String},
 	errno,
 	errno::{EResult, ENOTDIR},
 	lock::Mutex,

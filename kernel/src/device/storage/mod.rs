@@ -32,10 +32,7 @@ use crate::{
 		manager::{DeviceManager, PhysicalDevice},
 		Device, DeviceID, DeviceIO, DeviceType,
 	},
-	file::{
-		path::{Path, PathBuf},
-		Mode,
-	},
+	file::Mode,
 	process::mem_space::copy::SyscallPtr,
 	syscall::{ioctl, FromSyscallArg},
 };
@@ -44,7 +41,17 @@ use core::{
 	num::NonZeroU64,
 };
 use partition::Partition;
-use utils::{collections::vec::Vec, errno, errno::EResult, format, ptr::arc::Arc, TryClone};
+use utils::{
+	collections::{
+		path::{Path, PathBuf},
+		vec::Vec,
+	},
+	errno,
+	errno::EResult,
+	format,
+	ptr::arc::Arc,
+	TryClone,
+};
 
 /// The major number for storage devices.
 const STORAGE_MAJOR: u32 = 8;

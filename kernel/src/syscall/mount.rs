@@ -20,9 +20,7 @@
 
 use crate::{
 	file::{
-		fs,
-		path::PathBuf,
-		vfs,
+		fs, vfs,
 		vfs::{mountpoint, mountpoint::MountSource, ResolutionSettings},
 		FileType,
 	},
@@ -34,6 +32,7 @@ use crate::{
 };
 use core::ffi::{c_ulong, c_void};
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 };

@@ -29,6 +29,7 @@ use core::ffi::{c_int, c_void};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	limits::PAGE_SIZE,
 	lock::IntMutex,
 	ptr::arc::Arc,
 };
@@ -51,7 +52,7 @@ pub fn mprotect(
 	ap: AccessProfile,
 ) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
-	if !addr.is_aligned_to(memory::PAGE_SIZE) || len == 0 {
+	if !addr.is_aligned_to(PAGE_SIZE) || len == 0 {
 		return Err(errno!(EINVAL));
 	}
 	let flags = prot_to_flags(prot);

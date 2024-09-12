@@ -26,8 +26,7 @@ use crate::{
 		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
 		ELF32ProgramHeader,
 	},
-	file::{path::Path, perm::AccessProfile, vfs, FileType},
-	memory,
+	file::{perm::AccessProfile, vfs, FileType},
 	memory::vmem,
 	process,
 	process::{
@@ -48,9 +47,10 @@ use core::{
 	slice,
 };
 use utils::{
-	collections::{string::String, vec::Vec},
+	collections::{path::Path, string::String, vec::Vec},
 	errno,
 	errno::{CollectResult, EResult},
+	limits::PAGE_SIZE,
 	TryClone,
 };
 
@@ -196,7 +196,7 @@ fn build_auxiliary(
 
 	aux.push(AuxEntryDesc::new(
 		AT_PAGESZ,
-		AuxEntryDescValue::Number(memory::PAGE_SIZE as _),
+		AuxEntryDescValue::Number(PAGE_SIZE as _),
 	))?;
 
 	if let Some(base) = load_info.interp_load_base {
@@ -459,11 +459,11 @@ impl<'s> ELFExecutor<'s> {
 		}
 
 		// The size of the padding before the segment
-		let pad = seg.p_vaddr as usize % max(seg.p_align as usize, memory::PAGE_SIZE);
+		let pad = seg.p_vaddr as usize % max(seg.p_align as usize, PAGE_SIZE);
 		// The pointer to the beginning of the segment in memory
 		let mem_begin = unsafe { load_base.add(seg.p_vaddr as usize - pad) };
 		// The length of the memory to allocate in pages
-		let pages = (pad + seg.p_memsz as usize).div_ceil(memory::PAGE_SIZE);
+		let pages = (pad + seg.p_memsz as usize).div_ceil(PAGE_SIZE);
 
 		if let Some(pages) = NonZeroUsize::new(pages) {
 			mem_space.map(
@@ -473,11 +473,11 @@ impl<'s> ELFExecutor<'s> {
 				MapResidence::Normal,
 			)?;
 			// Pre-allocate the pages to make them writable
-			mem_space.alloc(mem_begin, pages.get() * memory::PAGE_SIZE)?;
+			mem_space.alloc(mem_begin, pages.get() * PAGE_SIZE)?;
 		}
 
 		// The pointer to the end of the virtual memory chunk
-		let mem_end = unsafe { mem_begin.add(pages * memory::PAGE_SIZE) };
+		let mem_end = unsafe { mem_begin.add(pages * PAGE_SIZE) };
 		Ok(Some(mem_end as _))
 	}
 
@@ -550,7 +550,7 @@ impl<'s> ELFExecutor<'s> {
 
 			// Not phdr segment. Load it manually
 			None => {
-				let pages = phdr_size.div_ceil(memory::PAGE_SIZE);
+				let pages = phdr_size.div_ceil(PAGE_SIZE);
 				let Some(pages) = NonZeroUsize::new(pages) else {
 					return Err(errno!(EINVAL));
 				};
@@ -695,19 +695,19 @@ impl<'s> Executor for ELFExecutor<'s> {
 		// Pre-allocate pages on the user stack to write the initial data
 		{
 			// The number of pages to allocate on the user stack to write the initial data
-			let pages_count = init_stack_size.div_ceil(memory::PAGE_SIZE);
+			let pages_count = init_stack_size.div_ceil(PAGE_SIZE);
 			// Check the data doesn't exceed the stack's size
 			if pages_count >= process::USER_STACK_SIZE {
 				return Err(errno!(ENOMEM));
 			}
 			// Allocate the pages on the stack to write the initial data
-			let len = pages_count * memory::PAGE_SIZE;
+			let len = pages_count * PAGE_SIZE;
 			let begin = (user_stack as usize - len) as *const c_void;
 			mem_space.alloc(begin, len)?;
 		}
 
 		// The initial pointer for `brk`
-		let brk_ptr = unsafe { utils::align(load_info.load_end, memory::PAGE_SIZE) };
+		let brk_ptr = unsafe { utils::align(load_info.load_end, PAGE_SIZE) };
 		mem_space.set_brk_init(brk_ptr as _);
 
 		// Initialize the userspace stack

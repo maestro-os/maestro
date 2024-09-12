@@ -19,7 +19,7 @@
 //! The `readlink` syscall allows to read the target of a symbolic link.
 
 use crate::{
-	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
+	file::{vfs, vfs::ResolutionSettings, FileType},
 	process::{
 		mem_space::copy::{SyscallSlice, SyscallString},
 		Process,
@@ -27,7 +27,7 @@ use crate::{
 	syscall::Args,
 };
 use utils::{
-	collections::vec::Vec,
+	collections::{path::PathBuf, vec::Vec},
 	errno,
 	errno::{EResult, Errno},
 	vec,

@@ -23,7 +23,6 @@ use super::{
 	unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, TimestampScale},
 };
 use crate::{
-	limits,
 	process::{
 		oom,
 		pid::Pid,
@@ -36,6 +35,7 @@ use utils::{
 	collections::{btreemap::BTreeMap, hashmap::HashMap, id_allocator::IDAllocator},
 	errno,
 	errno::{AllocResult, EResult},
+	limits::TIMER_MAX,
 	lock::IntMutex,
 };
 
@@ -231,7 +231,7 @@ impl TimerManager {
 		Ok(Self {
 			pid,
 
-			id_allocator: IDAllocator::new(limits::TIMER_MAX as _)?,
+			id_allocator: IDAllocator::new(TIMER_MAX as _)?,
 			timers: HashMap::new(),
 		})
 	}

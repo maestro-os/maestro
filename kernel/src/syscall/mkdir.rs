@@ -20,12 +20,7 @@
 
 use crate::{
 	file,
-	file::{
-		path::{Path, PathBuf},
-		vfs,
-		vfs::ResolutionSettings,
-		FileType, Stat,
-	},
+	file::{vfs, vfs::ResolutionSettings, FileType, Stat},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::{Args, Umask},
 	time::{
@@ -34,6 +29,7 @@ use crate::{
 	},
 };
 use utils::{
+	collections::path::{Path, PathBuf},
 	errno,
 	errno::{EResult, Errno},
 };

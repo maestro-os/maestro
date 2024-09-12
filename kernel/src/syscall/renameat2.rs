@@ -22,7 +22,6 @@ use super::util::at;
 use crate::{
 	file::{
 		fd::FileDescriptorTable,
-		path::PathBuf,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 		FileType,
@@ -32,6 +31,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 	lock::Mutex,

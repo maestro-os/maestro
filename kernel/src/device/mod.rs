@@ -45,7 +45,6 @@ use crate::{
 	device::manager::DeviceManager,
 	file,
 	file::{
-		path::{Path, PathBuf},
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
@@ -57,8 +56,15 @@ use core::{ffi::c_void, fmt, num::NonZeroU64};
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 use utils::{
-	collections::hashmap::HashMap, errno, errno::EResult, lock::Mutex, ptr::arc::Arc, slice_copy,
-	vec, TryClone,
+	collections::{
+		hashmap::HashMap,
+		path::{Path, PathBuf},
+	},
+	errno,
+	errno::EResult,
+	lock::Mutex,
+	ptr::arc::Arc,
+	slice_copy, vec, TryClone,
 };
 
 /// Enumeration representing the type of the device.

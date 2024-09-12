@@ -20,12 +20,7 @@
 
 use super::Args;
 use crate::{
-	file::{
-		path::{Path, PathBuf},
-		vfs,
-		vfs::ResolutionSettings,
-		File,
-	},
+	file::{vfs, vfs::ResolutionSettings, File},
 	memory::stack,
 	process::{
 		exec,
@@ -37,7 +32,11 @@ use crate::{
 	},
 };
 use utils::{
-	collections::{string::String, vec::Vec},
+	collections::{
+		path::{Path, PathBuf},
+		string::String,
+		vec::Vec,
+	},
 	errno,
 	errno::{CollectResult, EResult, Errno},
 	interrupt::cli,

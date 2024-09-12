@@ -28,6 +28,7 @@ use core::{ffi::c_void, num::NonZeroUsize};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	limits::PAGE_SIZE,
 	lock::IntMutex,
 	ptr::arc::Arc,
 };
@@ -37,11 +38,11 @@ pub fn munmap(
 	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	// Check address alignment
-	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
+	if !addr.is_aligned_to(PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
-	let pages = length.div_ceil(memory::PAGE_SIZE);
-	let length = pages * memory::PAGE_SIZE;
+	let pages = length.div_ceil(PAGE_SIZE);
+	let length = pages * PAGE_SIZE;
 	// Check for overflow
 	let Some(end) = (addr as usize).checked_add(length) else {
 		return Err(errno!(EINVAL));

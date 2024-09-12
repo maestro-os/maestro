@@ -21,7 +21,6 @@
 
 use crate::{
 	file::{
-		path::{Path, PathBuf},
 		vfs,
 		vfs::{mountpoint, ResolutionSettings},
 		FileType,
@@ -30,6 +29,7 @@ use crate::{
 	syscall::Args,
 };
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 	lock::IntMutex,

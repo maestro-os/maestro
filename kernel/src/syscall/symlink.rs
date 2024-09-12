@@ -19,13 +19,7 @@
 //! The `symlink` syscall allows to create a symbolic link.
 
 use crate::{
-	file::{
-		path::{Path, PathBuf},
-		vfs,
-		vfs::ResolutionSettings,
-		FileType, Stat,
-	},
-	limits,
+	file::{vfs, vfs::ResolutionSettings, FileType, Stat},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 	time::{
@@ -34,8 +28,10 @@ use crate::{
 	},
 };
 use utils::{
+	collections::path::{Path, PathBuf},
 	errno,
 	errno::{EResult, Errno},
+	limits::SYMLINK_MAX,
 };
 
 pub fn symlink(
@@ -43,7 +39,7 @@ pub fn symlink(
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	if target_slice.len() > limits::SYMLINK_MAX {
+	if target_slice.len() > SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
 	let target = PathBuf::try_from(target_slice)?;

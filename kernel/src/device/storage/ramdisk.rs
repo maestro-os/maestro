@@ -25,10 +25,15 @@
 use crate::{
 	device,
 	device::{id, Device, DeviceID, DeviceIO, DeviceType},
-	file::path::PathBuf,
 };
 use core::{cmp::max, mem::ManuallyDrop, num::NonZeroU64};
-use utils::{collections::vec::Vec, errno, errno::EResult, format, lock::Mutex};
+use utils::{
+	collections::{path::PathBuf, vec::Vec},
+	errno,
+	errno::EResult,
+	format,
+	lock::Mutex,
+};
 
 /// The ramdisks' major number.
 const RAM_DISK_MAJOR: u32 = 1;

@@ -44,7 +44,6 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
-		path::{Path, PathBuf},
 		perm::AccessProfile,
 		vfs,
 		vfs::ResolutionSettings,
@@ -73,7 +72,11 @@ use signal::{Signal, SignalAction, SignalHandler};
 #[cfg(target_arch = "x86")]
 use tss::TSS;
 use utils::{
-	collections::{string::String, vec::Vec},
+	collections::{
+		path::{Path, PathBuf},
+		string::String,
+		vec::Vec,
+	},
 	errno,
 	errno::{AllocResult, EResult},
 	lock::{IntMutex, Mutex},

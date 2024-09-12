@@ -35,6 +35,7 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	limits::PAGE_SIZE,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
@@ -80,17 +81,17 @@ pub fn do_mmap(
 	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
-	if !addr.is_aligned_to(memory::PAGE_SIZE) || length == 0 {
+	if !addr.is_aligned_to(PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
 	}
 	// The length in number of pages
-	let pages = length.div_ceil(memory::PAGE_SIZE);
+	let pages = length.div_ceil(PAGE_SIZE);
 	let Some(pages) = NonZeroUsize::new(pages) else {
 		return Err(errno!(EINVAL));
 	};
 	// Check for overflow
 	if (addr as usize)
-		.checked_add(pages.get() * memory::PAGE_SIZE)
+		.checked_add(pages.get() * PAGE_SIZE)
 		.is_none()
 	{
 		return Err(errno!(EINVAL));
@@ -109,7 +110,7 @@ pub fn do_mmap(
 	// The file the mapping points to
 	let file_mutex = if fd >= 0 {
 		// Check the alignment of the offset
-		if offset as usize % memory::PAGE_SIZE != 0 {
+		if offset as usize % PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
 		}
 		let fd = fds.lock().get_fd(fd)?.get_file().clone();

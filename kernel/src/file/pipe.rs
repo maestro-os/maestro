@@ -21,7 +21,6 @@
 
 use crate::{
 	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
-	limits,
 	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
 	syscall::{ioctl, FromSyscallArg},
 };
@@ -33,6 +32,7 @@ use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
+	limits::PIPE_BUF,
 	lock::Mutex,
 	vec,
 };
@@ -63,7 +63,7 @@ impl PipeBuffer {
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
 			inner: Mutex::new(PipeInner {
-				buffer: RingBuffer::new(vec![0; limits::PIPE_BUF]?),
+				buffer: RingBuffer::new(vec![0; PIPE_BUF]?),
 				readers: 0,
 				writers: 0,
 			}),

@@ -68,7 +68,6 @@ pub mod gdt;
 #[macro_use]
 pub mod idt;
 pub mod io;
-pub mod limits;
 pub mod logger;
 pub mod memory;
 pub mod module;
@@ -88,7 +87,7 @@ pub mod tty;
 pub use utils;
 
 use crate::{
-	file::{fs::initramfs, path::Path, vfs, vfs::ResolutionSettings},
+	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
 	memory::vmem,
 	process::{exec, exec::ExecInfo, Process},
@@ -96,7 +95,7 @@ use crate::{
 };
 use core::{arch::asm, ffi::c_void};
 use utils::{
-	collections::{string::String, vec::Vec},
+	collections::{path::Path, string::String, vec::Vec},
 	errno::EResult,
 	lock::Mutex,
 	vec,

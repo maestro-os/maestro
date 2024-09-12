@@ -43,12 +43,15 @@
 #![feature(unsize)]
 
 extern crate alloc;
+extern crate self as utils;
 
 pub mod boxed;
 pub mod bytes;
 pub mod collections;
+pub mod cpio;
 pub mod errno;
 pub mod interrupt;
+pub mod limits;
 pub mod lock;
 pub mod math;
 pub mod ptr;

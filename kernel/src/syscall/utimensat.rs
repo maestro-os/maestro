@@ -23,7 +23,6 @@ use crate::{
 	file::{
 		fd::FileDescriptorTable,
 		fs::StatSet,
-		path::{Path, PathBuf},
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{
@@ -41,6 +40,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 	lock::Mutex,

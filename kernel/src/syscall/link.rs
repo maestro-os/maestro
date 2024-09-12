@@ -19,11 +19,9 @@
 //! The `link` system call allows to create a hard link.
 
 use super::Args;
-use crate::{
-	file::path::{Path, PathBuf},
-	process::{mem_space::copy::SyscallString, Process},
-};
+use crate::process::{mem_space::copy::SyscallString, Process};
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 };

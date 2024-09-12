@@ -23,13 +23,12 @@
 
 use crate::file::{
 	fd::FileDescriptorTable,
-	path::Path,
 	vfs,
 	vfs::{ResolutionSettings, Resolved},
 	File,
 };
 use core::ffi::c_int;
-use utils::{errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
+use utils::{collections::path::Path, errno, errno::EResult, lock::Mutex, ptr::arc::Arc};
 
 /// Special value to be used as file descriptor, telling to take the path relative to the
 /// current working directory.

@@ -23,7 +23,6 @@ use crate::{
 	device::DeviceID,
 	file::{
 		fd::FileDescriptorTable,
-		path::PathBuf,
 		vfs::{mountpoint::MountSource, ResolutionSettings, Resolved},
 	},
 	process::{
@@ -34,6 +33,7 @@ use crate::{
 };
 use core::ffi::{c_int, c_uint};
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 	lock::Mutex,

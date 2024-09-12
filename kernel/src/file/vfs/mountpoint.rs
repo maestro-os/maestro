@@ -24,7 +24,6 @@ use crate::{
 	file::{
 		fs,
 		fs::{Filesystem, FilesystemType},
-		path::{Path, PathBuf},
 		vfs,
 		vfs::{node, node::Node, EntryChild, ResolutionSettings},
 		FileLocation, FileType,
@@ -32,7 +31,11 @@ use crate::{
 };
 use core::fmt;
 use utils::{
-	collections::{hashmap::HashMap, string::String},
+	collections::{
+		hashmap::HashMap,
+		path::{Path, PathBuf},
+		string::String,
+	},
 	errno,
 	errno::{AllocResult, EResult},
 	lock::Mutex,

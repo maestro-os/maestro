@@ -28,6 +28,7 @@ use core::ffi::{c_int, c_void};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	limits::PAGE_SIZE,
 	lock::IntMutex,
 	ptr::arc::Arc,
 };
@@ -44,7 +45,7 @@ pub fn msync(
 	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	// Check address alignment
-	if !addr.is_aligned_to(memory::PAGE_SIZE) {
+	if !addr.is_aligned_to(PAGE_SIZE) {
 		return Err(errno!(EINVAL));
 	}
 	// Check for conflicts in flags
@@ -54,7 +55,7 @@ pub fn msync(
 	// Iterate over mappings
 	let mem_space = mem_space.lock();
 	let mut i = 0;
-	let pages = length.div_ceil(memory::PAGE_SIZE);
+	let pages = length.div_ceil(PAGE_SIZE);
 	while i < pages {
 		let mapping = mem_space.get_mapping_for_ptr(addr).ok_or(errno!(ENOMEM))?;
 		mapping.fs_sync(mem_space.get_vmem())?; // TODO Use flags

@@ -20,11 +20,12 @@
 //! current process.
 
 use crate::{
-	file::{path::PathBuf, vfs, vfs::ResolutionSettings, FileType},
+	file::{vfs, vfs::ResolutionSettings, FileType},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 };
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 	lock::IntMutex,

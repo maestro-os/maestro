@@ -21,7 +21,6 @@
 use crate::{
 	file::{
 		fd::FileDescriptorTable,
-		path::{Path, PathBuf},
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{mem_space::copy::SyscallString, Process},
@@ -35,6 +34,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 	lock::Mutex,

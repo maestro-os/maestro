@@ -20,7 +20,6 @@
 
 use crate::{
 	file::perm::AccessProfile,
-	limits,
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
@@ -28,6 +27,7 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{EResult, Errno},
+	limits::HOST_NAME_MAX,
 };
 
 pub fn sethostname(
@@ -35,7 +35,7 @@ pub fn sethostname(
 	ap: AccessProfile,
 ) -> EResult<usize> {
 	// Check the size of the hostname is in bounds
-	if len > limits::HOST_NAME_MAX {
+	if len > HOST_NAME_MAX {
 		return Err(errno!(EINVAL));
 	}
 	// Check permission

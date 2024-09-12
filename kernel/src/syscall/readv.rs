@@ -20,7 +20,6 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, File, FileType},
-	limits,
 	process::{
 		iovec::IOVec,
 		mem_space::{copy::SyscallSlice, MemSpace},
@@ -33,6 +32,7 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{EResult, Errno},
+	limits::IOV_MAX,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	vec,
@@ -105,7 +105,7 @@ pub fn do_readv(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
+	if iovcnt < 0 || iovcnt as usize > IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
 	let offset = match offset {

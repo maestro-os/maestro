@@ -20,10 +20,10 @@
 //! information on the system memory by retrieving them from the boot
 //! information. These data are meant to be used by the memory allocators.
 
-use super::{kern_to_phys, stats, PAGE_SIZE};
+use super::{kern_to_phys, stats};
 use crate::{elf::kernel::sections, multiboot};
 use core::{cmp::*, ffi::c_void, iter, ptr::null};
-use utils::lock::once::OnceInit;
+use utils::{limits::PAGE_SIZE, lock::once::OnceInit};
 
 /// Physical memory map information.
 #[derive(Debug)]

@@ -22,7 +22,6 @@ use crate::{
 	file,
 	file::{
 		fd::{FileDescriptorTable, FD_CLOEXEC},
-		path::{Path, PathBuf},
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
@@ -38,6 +37,7 @@ use crate::{
 };
 use core::ffi::c_int;
 use utils::{
+	collections::path::{Path, PathBuf},
 	errno,
 	errno::{EResult, Errno},
 	lock::Mutex,

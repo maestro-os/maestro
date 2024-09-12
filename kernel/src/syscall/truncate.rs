@@ -19,15 +19,12 @@
 //! The `truncate` syscall allows to truncate a file.
 
 use crate::{
-	file::{
-		path::{Path, PathBuf},
-		vfs,
-		vfs::ResolutionSettings,
-	},
+	file::{vfs, vfs::ResolutionSettings},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 };
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 };

@@ -18,9 +18,12 @@
 
 //! This module implements utility functions for files manipulations.
 
-use super::path::{Component, Path, PathBuf};
 use crate::file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat};
-use utils::{errno, errno::EResult};
+use utils::{
+	collections::path::{Component, Path, PathBuf},
+	errno,
+	errno::EResult,
+};
 
 /// Creates the directories necessary to reach path `path`.
 ///

@@ -47,7 +47,7 @@ use core::{
 	ffi::c_void,
 	ptr::{null_mut, NonNull},
 };
-use utils::{down_align, errno::AllocResult, lock::Mutex};
+use utils::{down_align, errno::AllocResult, limits::PAGE_SIZE, lock::Mutex};
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.
@@ -155,6 +155,7 @@ unsafe fn unwrap_entry(entry: u32) -> (NonNull<Table>, u32) {
 /// Page tables manipulation.
 mod table {
 	use super::*;
+	use utils::limits::PAGE_SIZE;
 
 	/// Creates an expanded table meant to replace a PSE entry.
 	///
@@ -172,7 +173,7 @@ mod table {
 		let base_addr = new_table.as_ptr() as usize;
 		let table = unsafe { unwrap_entry(entry).0.as_mut() };
 		table.iter_mut().enumerate().for_each(|(i, e)| {
-			let addr = (base_addr + i * memory::PAGE_SIZE) as *const c_void;
+			let addr = (base_addr + i * PAGE_SIZE) as *const c_void;
 			*e = to_entry(addr, flags);
 		});
 		Ok(())
@@ -238,9 +239,9 @@ fn translate_impl(page_dir: &Table, ptr: *const c_void) -> Option<u32> {
 pub(super) fn translate(page_dir: &Table, ptr: *const c_void) -> Option<*const c_void> {
 	let entry = translate_impl(page_dir, ptr)?;
 	let remain_mask = if entry & FLAG_PAGE_SIZE == 0 {
-		memory::PAGE_SIZE - 1
+		PAGE_SIZE - 1
 	} else {
-		ENTRIES_PER_TABLE * memory::PAGE_SIZE - 1
+		ENTRIES_PER_TABLE * PAGE_SIZE - 1
 	};
 	let mut virtptr = (entry & ADDR_MASK) as usize;
 	virtptr |= ptr as usize & remain_mask;
@@ -317,8 +318,8 @@ pub(super) unsafe fn map(
 	flags: u32,
 ) -> AllocResult<Rollback> {
 	// Sanitize
-	let physaddr = down_align(physaddr, memory::PAGE_SIZE);
-	let virtaddr = down_align(virtaddr, memory::PAGE_SIZE);
+	let physaddr = down_align(physaddr, PAGE_SIZE);
+	let virtaddr = down_align(virtaddr, PAGE_SIZE);
 	let flags = (flags & FLAGS_MASK) | FLAG_PRESENT;
 	// First level
 	let pd_index = get_addr_element_index(virtaddr, 1);
@@ -371,7 +372,7 @@ pub(super) unsafe fn unmap(
 	virtaddr: *const c_void,
 ) -> AllocResult<Rollback> {
 	// Sanitize
-	let virtaddr = down_align(virtaddr, memory::PAGE_SIZE);
+	let virtaddr = down_align(virtaddr, PAGE_SIZE);
 	// First level
 	let pd_index = get_addr_element_index(virtaddr, 1);
 	let mut previous_entry = page_dir[pd_index];

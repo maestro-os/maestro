@@ -32,6 +32,7 @@ use core::{
 use utils::{
 	collections::vec::Vec,
 	errno::AllocResult,
+	limits::PAGE_SIZE,
 	lock::{once::OnceInit, Mutex},
 	vec,
 };
@@ -42,7 +43,7 @@ use utils::{
 /// - `virtaddr` is the start of the range.
 /// - `pages` is the size of the range in pages.
 fn is_kernelspace<T>(virtaddr: *const T, pages: usize) -> bool {
-	let Some(end) = (virtaddr as usize).checked_add(pages * memory::PAGE_SIZE) else {
+	let Some(end) = (virtaddr as usize).checked_add(pages * PAGE_SIZE) else {
 		return true;
 	};
 	end > memory::PROCESS_END as usize
@@ -211,8 +212,8 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		// Map each page
 		self.rollback.reserve(pages)?;
 		for i in 0..pages {
-			let physaddr = (physaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
-			let virtaddr = (virtaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
+			let physaddr = (physaddr as usize + i * PAGE_SIZE) as *const c_void;
+			let virtaddr = (virtaddr as usize + i * PAGE_SIZE) as *const c_void;
 			let r = self.map_impl(physaddr, virtaddr, flags)?;
 			self.rollback.push(r)?;
 		}
@@ -256,7 +257,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		// Map each page
 		self.rollback.reserve(pages)?;
 		for i in 0..pages {
-			let virtaddr = (virtaddr as usize + i * memory::PAGE_SIZE) as *const c_void;
+			let virtaddr = (virtaddr as usize + i * PAGE_SIZE) as *const c_void;
 			let r = self.unmap_impl(virtaddr)?;
 			self.rollback.push(r)?;
 		}
@@ -389,11 +390,11 @@ pub(crate) fn init() -> AllocResult<()> {
 	transaction.map_range(
 		null::<c_void>(),
 		memory::PROCESS_END,
-		memory::get_kernelspace_size() / memory::PAGE_SIZE,
+		memory::get_kernelspace_size() / PAGE_SIZE,
 		x86::FLAG_WRITE | x86::FLAG_GLOBAL,
 	)?;
 	// Make the kernel's code read-only
-	let iter = elf::kernel::sections().filter(|s| s.sh_addralign as usize == memory::PAGE_SIZE);
+	let iter = elf::kernel::sections().filter(|s| s.sh_addralign as usize == PAGE_SIZE);
 	for section in iter {
 		let write = section.sh_flags & elf::SHF_WRITE != 0;
 		let user = elf::kernel::get_section_name(section) == Some(b".user");
@@ -407,7 +408,7 @@ pub(crate) fn init() -> AllocResult<()> {
 		// Map
 		let phys_addr = memory::kern_to_phys(section.sh_addr as _);
 		let virt_addr = memory::kern_to_virt(section.sh_addr as _);
-		let pages = section.sh_size.div_ceil(memory::PAGE_SIZE as _) as usize;
+		let pages = section.sh_size.div_ceil(PAGE_SIZE as _) as usize;
 		transaction.map_range(phys_addr, virt_addr, pages, flags)?;
 	}
 	// Map VGA buffer
@@ -436,7 +437,7 @@ mod test {
 	#[test_case]
 	fn vmem_basic0() {
 		let vmem = VMem::new().unwrap();
-		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
+		for i in (0usize..0xc0000000).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(i as _), None);
 		}
 	}
@@ -444,7 +445,7 @@ mod test {
 	#[test_case]
 	fn vmem_basic1() {
 		let vmem = VMem::new().unwrap();
-		for i in (0..0x40000000).step_by(memory::PAGE_SIZE) {
+		for i in (0..0x40000000).step_by(PAGE_SIZE) {
 			let virt_ptr = ((memory::PROCESS_END as usize) + i) as _;
 			let result = vmem.translate(virt_ptr);
 			assert_ne!(result, None);
@@ -460,7 +461,7 @@ mod test {
 		transaction.map(0x100000 as _, 0x100000 as _, 0).unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
+		for i in (0usize..0xc0000000).step_by(PAGE_SIZE) {
 			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
 				assert!(result.is_some());
@@ -479,7 +480,7 @@ mod test {
 		transaction.map(0x200000 as _, 0x100000 as _, 0).unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
+		for i in (0usize..0xc0000000).step_by(PAGE_SIZE) {
 			if (0x100000..0x101000).contains(&i) {
 				let result = vmem.translate(i as _);
 				assert!(result.is_some());
@@ -498,7 +499,7 @@ mod test {
 		transaction.unmap(0x100000 as _).unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0usize..0xc0000000).step_by(memory::PAGE_SIZE) {
+		for i in (0usize..0xc0000000).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(i as _), None);
 		}
 	}

@@ -23,11 +23,10 @@ use crate::{
 	crypto::rand,
 	device,
 	device::{tty::TTYDeviceHandle, Device, DeviceID},
-	file::path::PathBuf,
 	logger::LOGGER,
 };
 use core::{cmp::min, mem::ManuallyDrop, num::NonZeroU64};
-use utils::{errno, errno::EResult};
+use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 /// Device which does nothing.
 pub struct NullDeviceHandle;

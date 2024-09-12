@@ -23,7 +23,6 @@
 
 use super::gap::MemGap;
 use crate::{
-	memory,
 	memory::{
 		vmem,
 		vmem::{VMem, VMemTransaction},
@@ -37,6 +36,7 @@ use core::{alloc::AllocError, ffi::c_void, num::NonZeroUsize, ops::Range, slice}
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
+	limits::PAGE_SIZE,
 	ptr::arc::Arc,
 	TryClone,
 };
@@ -74,7 +74,7 @@ impl MemMapping {
 		flags: u8,
 		residence: MapResidence,
 	) -> AllocResult<Self> {
-		debug_assert!(begin.is_aligned_to(memory::PAGE_SIZE));
+		debug_assert!(begin.is_aligned_to(PAGE_SIZE));
 		let mut phys_pages = Vec::new();
 		phys_pages.resize(size.get(), None)?;
 		Ok(Self {
@@ -150,7 +150,7 @@ impl MemMapping {
 		offset: usize,
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> AllocResult<()> {
-		let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
+		let virtaddr = (self.begin as usize + offset * PAGE_SIZE) as _;
 		// Get previous page
 		let previous = self
 			.phys_pages
@@ -190,7 +190,7 @@ impl MemMapping {
 		}
 		// Initialize the new page
 		unsafe {
-			let dest = (self.begin as usize + offset * memory::PAGE_SIZE) as *mut Page;
+			let dest = (self.begin as usize + offset * PAGE_SIZE) as *mut Page;
 			// Switch to make sure the right vmem is bound, but this should already be the case
 			// so consider this has no cost
 			vmem::switch(vmem_transaction.vmem, move || {
@@ -228,7 +228,7 @@ impl MemMapping {
 						(ptr, write)
 					})
 					.unwrap_or((default_page.as_ptr() as _, false));
-				let virtaddr = (self.begin as usize + offset * memory::PAGE_SIZE) as _;
+				let virtaddr = (self.begin as usize + offset * PAGE_SIZE) as _;
 				let flags = self.get_vmem_flags(write);
 				vmem_transaction.map(physaddr as _, virtaddr, flags)?;
 				// TODO invalidate cache for this page
@@ -272,7 +272,7 @@ impl MemMapping {
 			})
 			.transpose()?;
 		let gap = NonZeroUsize::new(size).map(|size| {
-			let begin = (self.begin as usize + begin * memory::PAGE_SIZE) as _;
+			let begin = (self.begin as usize + begin * PAGE_SIZE) as _;
 			MemGap::new(begin, size)
 		});
 		// The gap's end
@@ -286,7 +286,7 @@ impl MemMapping {
 				let mut residence = self.residence.clone();
 				residence.offset_add(end);
 				Ok(Self {
-					begin: (self.begin as usize + end * memory::PAGE_SIZE) as _,
+					begin: (self.begin as usize + end * PAGE_SIZE) as _,
 					size,
 					flags: self.flags,
 					residence,
@@ -326,10 +326,8 @@ impl MemMapping {
 			vmem::switch(vmem, || {
 				// TODO Make use of dirty flag if present on the current architecture to update
 				// only pages that have been modified
-				let slice = slice::from_raw_parts(
-					self.begin as *mut u8,
-					self.size.get() * memory::PAGE_SIZE,
-				);
+				let slice =
+					slice::from_raw_parts(self.begin as *mut u8, self.size.get() * PAGE_SIZE);
 				let mut i = 0;
 				while i < slice.len() {
 					let l = file.ops.write(file, *off, &slice[i..])?;
@@ -356,7 +354,7 @@ impl MemMapping {
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> EResult<()> {
 		self.fs_sync(vmem_transaction.vmem)?;
-		let begin = (self.begin as usize + pages_range.start * memory::PAGE_SIZE) as _;
+		let begin = (self.begin as usize + pages_range.start * PAGE_SIZE) as _;
 		let len = pages_range.end - pages_range.start;
 		vmem_transaction.unmap_range(begin, len)?;
 		Ok(())

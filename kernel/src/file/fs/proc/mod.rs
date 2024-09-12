@@ -38,7 +38,6 @@ use crate::{
 			proc::proc_dir::environ::Environ,
 			Statfs,
 		},
-		path::PathBuf,
 		perm::{Gid, Uid},
 		DirEntry, FileLocation, FileType, INode, Stat,
 	},
@@ -53,6 +52,7 @@ use sys_dir::OsRelease;
 use uptime::Uptime;
 use utils::{
 	boxed::Box,
+	collections::path::PathBuf,
 	errno,
 	errno::EResult,
 	format,

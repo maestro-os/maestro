@@ -19,7 +19,7 @@
 //! The `statfs` system call returns information about a mounted file system.
 
 use crate::{
-	file::{fs::Statfs, path::PathBuf, vfs, vfs::ResolutionSettings},
+	file::{fs::Statfs, vfs, vfs::ResolutionSettings},
 	process::{
 		mem_space::copy::{SyscallPtr, SyscallString},
 		Process,
@@ -27,6 +27,7 @@ use crate::{
 	syscall::Args,
 };
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 };

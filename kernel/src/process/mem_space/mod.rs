@@ -50,6 +50,7 @@ use transaction::MemSpaceTransaction;
 use utils::{
 	collections::{btreemap::BTreeMap, vec::Vec},
 	errno::{AllocResult, CollectResult, EResult},
+	limits::PAGE_SIZE,
 	TryClone,
 };
 
@@ -68,7 +69,7 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b1000;
 
 /// The virtual address of the buffer used to map pages for copy.
 /// TODO use PROCESS_END instead of hardcoding value
-const COPY_BUFFER: *mut Page = (0xc0000000 - memory::PAGE_SIZE) as _;
+const COPY_BUFFER: *mut Page = (0xc0000000 - PAGE_SIZE) as _;
 
 // TODO Add a variant for ASLR
 /// Enumeration of constraints for the selection of the virtual address for a memory mapping.
@@ -100,9 +101,9 @@ impl MapConstraint {
 			// take place *outside of gaps* but *not inside the kernelspace*
 			MapConstraint::Fixed(addr) => {
 				// `COPY_BUFFER` is located right before the kernelspace
-				*addr < COPY_BUFFER as _ && addr.is_aligned_to(memory::PAGE_SIZE)
+				*addr < COPY_BUFFER as _ && addr.is_aligned_to(PAGE_SIZE)
 			}
-			MapConstraint::Hint(addr) => addr.is_aligned_to(memory::PAGE_SIZE),
+			MapConstraint::Hint(addr) => addr.is_aligned_to(PAGE_SIZE),
 			_ => true,
 		}
 	}
@@ -124,7 +125,7 @@ fn remove_gaps_in_range(
 		// No gap contain the start address, start at the next one
 		.unwrap_or(start);
 	// Bound the search to the end of the range
-	let end = (start as usize + size * memory::PAGE_SIZE) as *const c_void;
+	let end = (start as usize + size * PAGE_SIZE) as *const c_void;
 	// Collect gaps that match
 	let gaps = transaction
 		.mem_space_state
@@ -141,7 +142,7 @@ fn remove_gaps_in_range(
 		let start = (start as usize).clamp(gap_begin as usize, gap_end as usize);
 		let end = (end as usize).clamp(gap_begin as usize, gap_end as usize);
 		// Rounding is not a problem because all values are multiples of the page size
-		let size = (end - start) / memory::PAGE_SIZE;
+		let size = (end - start) / PAGE_SIZE;
 		// Consume the gap and store new gaps
 		let (prev, next) = gap.consume(start, size);
 		transaction.remove_gap(gap_begin)?;
@@ -211,7 +212,7 @@ impl MemSpaceState {
 	/// - `size` is the size of the object in pages
 	fn ptr_search(begin: *const c_void, size: usize, ptr: *const c_void) -> Ordering {
 		let begin = begin as usize;
-		let end = begin + size * memory::PAGE_SIZE;
+		let end = begin + size * PAGE_SIZE;
 		let ptr = ptr as usize;
 		if ptr >= begin && ptr < end {
 			Ordering::Equal
@@ -266,7 +267,7 @@ impl MemSpace {
 		};
 		// Create the default gap of memory which is present at the beginning
 		let begin = memory::ALLOC_BEGIN;
-		let size = (COPY_BUFFER as usize - begin as usize) / memory::PAGE_SIZE;
+		let size = (COPY_BUFFER as usize - begin as usize) / PAGE_SIZE;
 		let gap = MemGap::new(begin, NonZeroUsize::new(size).unwrap());
 		let mut transaction = MemSpaceTransaction::new(&mut s.state, &mut s.vmem);
 		transaction.insert_gap(gap)?;
@@ -362,7 +363,7 @@ impl MemSpace {
 				(gap, 0)
 			}
 		};
-		let addr = (gap.get_begin() as usize + (off * memory::PAGE_SIZE)) as *mut c_void;
+		let addr = (gap.get_begin() as usize + (off * PAGE_SIZE)) as *mut c_void;
 		// Split the old gap to fit the mapping, and insert new gaps
 		let (left_gap, right_gap) = gap.consume(off, size.get());
 		transaction.remove_gap(gap.get_begin())?;
@@ -394,7 +395,7 @@ impl MemSpace {
 		let mut i = 0;
 		while i < size.get() {
 			// The current page's beginning
-			let page_ptr = (ptr as usize + i * memory::PAGE_SIZE) as *const c_void;
+			let page_ptr = (ptr as usize + i * PAGE_SIZE) as *const c_void;
 			// The mapping containing the page
 			let Some(mapping) = transaction.mem_space_state.get_mapping_for_ptr(page_ptr) else {
 				// TODO jump to next mapping directly using binary tree (currently O(n log n))
@@ -404,7 +405,7 @@ impl MemSpace {
 			// The pointer to the beginning of the mapping
 			let mapping_begin = mapping.get_begin();
 			// The offset in the mapping to the beginning of pages to unmap
-			let begin = (page_ptr as usize - mapping_begin as usize) / memory::PAGE_SIZE;
+			let begin = (page_ptr as usize - mapping_begin as usize) / PAGE_SIZE;
 			// The number of pages to unmap in the mapping
 			let pages = min(size.get() - i, mapping.get_size().get() - begin);
 			i += pages;
@@ -465,7 +466,7 @@ impl MemSpace {
 	/// fault.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn unmap(&mut self, ptr: *const c_void, size: NonZeroUsize, brk: bool) -> AllocResult<()> {
-		if !ptr.is_aligned_to(memory::PAGE_SIZE) {
+		if !ptr.is_aligned_to(PAGE_SIZE) {
 			return Err(AllocError);
 		}
 		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
@@ -480,7 +481,7 @@ impl MemSpace {
 	/// memory mapping.
 	pub fn map_stack(&mut self, size: NonZeroUsize, flags: u8) -> AllocResult<*mut c_void> {
 		let mapping_ptr = self.map(MapConstraint::None, size, flags, MapResidence::Normal)?;
-		Ok((mapping_ptr as usize + (size.get() * memory::PAGE_SIZE)) as _)
+		Ok((mapping_ptr as usize + (size.get() * PAGE_SIZE)) as _)
 	}
 
 	/// Same as `unmap`, except the function takes a pointer to the end of the
@@ -488,7 +489,7 @@ impl MemSpace {
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn unmap_stack(&mut self, ptr: *const c_void, size: NonZeroUsize) -> AllocResult<()> {
 		// Safe because the new pointer stays in the range of the allocated mapping
-		let ptr = (ptr as usize - (size.get() * memory::PAGE_SIZE)) as _;
+		let ptr = (ptr as usize - (size.get() * PAGE_SIZE)) as _;
 		self.unmap(ptr, size, false)
 	}
 
@@ -557,11 +558,10 @@ impl MemSpace {
 		while off < len {
 			let virtaddr = (virtaddr as usize + off) as *const c_void;
 			if let Some(mapping) = self.state.get_mut_mapping_for_ptr(virtaddr) {
-				let page_offset =
-					(virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+				let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / PAGE_SIZE;
 				mapping.alloc(page_offset, &mut transaction)?;
 			}
-			off += memory::PAGE_SIZE;
+			off += PAGE_SIZE;
 		}
 		transaction.commit();
 		Ok(())
@@ -604,7 +604,7 @@ impl MemSpace {
 	///
 	/// `ptr` MUST be page-aligned.
 	pub fn set_brk_init(&mut self, ptr: *mut c_void) {
-		debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
+		debug_assert!(ptr.is_aligned_to(PAGE_SIZE));
 		self.state.brk_init = ptr;
 		self.state.brk_ptr = ptr;
 	}
@@ -620,8 +620,8 @@ impl MemSpace {
 				return Err(AllocError);
 			}
 			// Allocate memory
-			let begin = unsafe { utils::align(self.state.brk_ptr, memory::PAGE_SIZE) };
-			let pages = (ptr as usize - begin as usize).div_ceil(memory::PAGE_SIZE);
+			let begin = unsafe { utils::align(self.state.brk_ptr, PAGE_SIZE) };
+			let pages = (ptr as usize - begin as usize).div_ceil(PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};
@@ -638,8 +638,8 @@ impl MemSpace {
 				return Err(AllocError);
 			}
 			// Free memory
-			let begin = unsafe { utils::align(ptr, memory::PAGE_SIZE) };
-			let pages = (begin as usize - ptr as usize).div_ceil(memory::PAGE_SIZE);
+			let begin = unsafe { utils::align(ptr, PAGE_SIZE) };
+			let pages = (begin as usize - ptr as usize).div_ceil(PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};
@@ -681,7 +681,7 @@ impl MemSpace {
 			return false;
 		}
 		// Map the accessed page
-		let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / memory::PAGE_SIZE;
+		let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / PAGE_SIZE;
 		let mut transaction = self.vmem.transaction();
 		// TODO use OOM killer
 		mapping
@@ -728,11 +728,11 @@ mod test {
 			.unwrap();
 		assert_eq!(res, addr);
 		// TODO test access
-		/*assert!(!mem_space.can_access(null(), memory::PAGE_SIZE, true, true));
-		assert!(!mem_space.can_access(null(), memory::PAGE_SIZE + 1, true, true));
-		assert!(mem_space.can_access(addr as _, memory::PAGE_SIZE, true, true));
-		assert!(!mem_space.can_access(addr as _, memory::PAGE_SIZE + 1, true, true));*/
+		/*assert!(!mem_space.can_access(null(), PAGE_SIZE, true, true));
+		assert!(!mem_space.can_access(null(), PAGE_SIZE + 1, true, true));
+		assert!(mem_space.can_access(addr as _, PAGE_SIZE, true, true));
+		assert!(!mem_space.can_access(addr as _, PAGE_SIZE + 1, true, true));*/
 		mem_space.unmap(addr, size, false).unwrap();
-		//assert!(!mem_space.can_access(addr as _, memory::PAGE_SIZE, true, true));
+		//assert!(!mem_space.can_access(addr as _, PAGE_SIZE, true, true));
 	}
 }

@@ -35,18 +35,19 @@ use crate::{
 		manager::PhysicalDevice,
 		DeviceManager,
 	},
-	io, memory,
+	io,
 	memory::mmio::MMIO,
 };
 use core::{cmp::min, mem::size_of};
 use utils::{
 	collections::vec::Vec,
 	errno::{CollectResult, EResult},
+	limits::PAGE_SIZE,
 };
 
 /// The port used to specify the configuration address.
 const CONFIG_ADDRESS_PORT: u16 = 0xcf8;
-/// The port used to retrieve the devices informations.
+/// The port used to retrieve the devices' information.
 const CONFIG_DATA_PORT: u16 = 0xcfc;
 
 /// Device class: Unclassified
@@ -298,7 +299,7 @@ impl PCIDevice {
 			let prefetchable = value & 0b1000 != 0;
 
 			// Create MMIO
-			let pages = size.div_ceil(memory::PAGE_SIZE);
+			let pages = size.div_ceil(PAGE_SIZE);
 			let mut mmio = MMIO::new(address as _, pages, prefetchable)?;
 			address = mmio.as_mut_ptr() as _;
 

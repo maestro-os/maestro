@@ -36,6 +36,7 @@ use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, CollectResult, EResult},
 	include_bytes_aligned,
+	limits::PAGE_SIZE,
 	lock::Mutex,
 	ptr::arc::Arc,
 };
@@ -70,11 +71,11 @@ fn load_image() -> EResult<Vdso> {
 	let parser = ELFParser::new(ELF_IMAGE)?;
 	let entry_off = parser.hdr().e_entry as _;
 	// Load image into pages
-	let pages_count = ELF_IMAGE.len().div_ceil(memory::PAGE_SIZE);
+	let pages_count = ELF_IMAGE.len().div_ceil(PAGE_SIZE);
 	let pages = (0..pages_count)
 		.map(|i| {
-			let off = i * memory::PAGE_SIZE;
-			let len = min(memory::PAGE_SIZE, ELF_IMAGE.len() - off);
+			let off = i * PAGE_SIZE;
+			let len = min(PAGE_SIZE, ELF_IMAGE.len() - off);
 			// Alloc page
 			let page = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?.cast();
 			let virtaddr = memory::kern_to_virt(page.as_ptr()) as *mut Page;
@@ -101,7 +102,7 @@ fn load_image() -> EResult<Vdso> {
 pub fn map(mem_space: &mut MemSpace) -> EResult<MappedVDSO> {
 	let mut elf_image = VDSO.lock();
 	let img = elf_image.get_or_insert_with(|| load_image().expect("Failed to load vDSO"));
-	let vdso_pages = img.len.div_ceil(memory::PAGE_SIZE);
+	let vdso_pages = img.len.div_ceil(PAGE_SIZE);
 	let Some(vdso_pages) = NonZeroUsize::new(vdso_pages) else {
 		panic!("Invalid vDSO image");
 	};

@@ -20,9 +20,9 @@
 //!
 //! The kernel only support binary CPIO, not ASCII.
 
+use crate::bytes;
 use core::{intrinsics::unlikely, mem::size_of};
 use macros::AnyRepr;
-use utils::bytes;
 
 /// Rotates the given 4 bytes value from PDP-endian.
 ///
@@ -69,7 +69,7 @@ pub struct CPIOEntry<'a> {
 impl<'a> CPIOEntry<'a> {
 	/// Returns a reference to the header of the entry.
 	pub fn get_hdr(&self) -> &'a CPIOHeader {
-		// Will not fail because the structure is in range of the slice
+		// Will not fail because the structure is in range of the slice and is aligned at `1`
 		bytes::from_bytes::<CPIOHeader>(self.data).unwrap()
 	}
 
@@ -143,7 +143,7 @@ impl<'a> Iterator for CPIOParser<'a> {
 			.off
 			.checked_add(size)
 			.map(|end| end > self.data.len())
-			.unwrap_or(false);
+			.unwrap_or(true);
 		if unlikely(overflow) {
 			return None;
 		}

@@ -24,7 +24,6 @@ use crate::{
 	file,
 	file::{
 		fd::FD_CLOEXEC,
-		path::{Path, PathBuf},
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},

@@ -36,7 +36,7 @@ use core::{
 	slice,
 };
 use macros::instrument_allocator;
-use utils::{errno::AllocResult, lock::IntMutex, math};
+use utils::{errno::AllocResult, limits::PAGE_SIZE, lock::IntMutex, math};
 
 /// The order of a memory frame.
 pub type FrameOrder = u8;
@@ -144,7 +144,7 @@ impl Zone {
 	/// Returns the size in bytes of the allocatable memory.
 	#[inline]
 	fn get_size(&self) -> usize {
-		(self.pages_count as usize) * memory::PAGE_SIZE
+		(self.pages_count as usize) * PAGE_SIZE
 	}
 
 	/// Returns an available frame owned by this zone, with an order of at least
@@ -165,7 +165,7 @@ impl Zone {
 	///
 	/// The pointer must point to the frame itself, not the Frame structure.
 	fn get_frame_id_from_ptr(&self, ptr: *const c_void) -> FrameID {
-		(((ptr as usize) - (self.begin as usize)) / memory::PAGE_SIZE) as _
+		(((ptr as usize) - (self.begin as usize)) / PAGE_SIZE) as _
 	}
 
 	/// Returns a mutable slice over the metadata of the zone's frames.
@@ -185,7 +185,7 @@ impl Zone {
 	/// panicking.
 	#[cfg(debug_assertions)]
 	fn check_free_list(&self) {
-		let zone_size = (self.pages_count as usize) * memory::PAGE_SIZE;
+		let zone_size = (self.pages_count as usize) * PAGE_SIZE;
 		let frames = self.frames();
 		for (order, list) in self.free_list.iter().enumerate() {
 			let Some(mut first) = *list else {
@@ -261,7 +261,7 @@ impl Frame {
 
 	/// Returns the pointer to the location of the associated physical memory.
 	fn memory_ptr(&self, zone: &Zone) -> *mut c_void {
-		let off = self.get_id(zone) as usize * memory::PAGE_SIZE;
+		let off = self.get_id(zone) as usize * PAGE_SIZE;
 		(zone.begin as usize + off) as _
 	}
 
@@ -465,7 +465,7 @@ pub(crate) static ZONES: IntMutex<[Zone; ZONES_COUNT]> = IntMutex::new([
 /// The size in bytes of a frame with the given order `order`.
 #[inline]
 pub fn get_frame_size(order: FrameOrder) -> usize {
-	memory::PAGE_SIZE << order
+	PAGE_SIZE << order
 }
 
 /// Returns the buddy order required to fit the given number of pages.
@@ -520,7 +520,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
 	debug_assert!(!frame.is_used());
 	frame.split(zone, order);
 	let ptr = frame.memory_ptr(zone);
-	debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
+	debug_assert!(ptr.is_aligned_to(PAGE_SIZE));
 	debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
 	frame.mark_used();
 	// Statistics
@@ -554,7 +554,7 @@ pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 /// Using the memory referenced by the pointer after freeing results in an undefined behaviour.
 #[instrument_allocator(name = buddy, op = free, ptr = ptr, size = order, scale = log2)]
 pub unsafe fn free(ptr: *const c_void, order: FrameOrder) {
-	debug_assert!(ptr.is_aligned_to(memory::PAGE_SIZE));
+	debug_assert!(ptr.is_aligned_to(PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
 	// Get zone
 	let mut zones = ZONES.lock();

@@ -18,16 +18,15 @@
 
 //! This module implements structure to represent file paths.
 
-use crate::limits;
-use core::{
-	alloc::AllocError, borrow::Borrow, fmt, fmt::Formatter, hash::Hash, iter::FusedIterator,
-	ops::Deref,
-};
-use utils::{
-	collections::{string::String, vec::Vec},
+use crate::{
+	collections::string::String,
 	errno,
 	errno::{AllocResult, CollectResult, EResult, Errno},
-	DisplayableStr, TryClone,
+	limits, DisplayableStr, TryClone,
+};
+use core::{
+	alloc::AllocError, borrow::Borrow, fmt, fmt::Formatter, hash::Hash, intrinsics::likely,
+	iter::FusedIterator, ops::Deref,
 };
 
 /// The character used as a path separator.
@@ -45,7 +44,7 @@ impl PathBuf {
 
 	/// Creates a new path to root.
 	pub fn root() -> AllocResult<Self> {
-		Ok(Self(String::from(Vec::try_from(b"/".as_slice())?)))
+		Ok(Self(String::try_from(b"/")?))
 	}
 
 	/// Creates a `PathBuf` without checking the length of the given [`String`].
@@ -114,7 +113,7 @@ impl TryFrom<&[u8]> for PathBuf {
 
 impl AsRef<Path> for PathBuf {
 	fn as_ref(&self) -> &Path {
-		Path::new_unchecked(self.0.as_bytes())
+		Path::new_unbounded(self.0.as_bytes())
 	}
 }
 
@@ -168,12 +167,12 @@ pub struct Path([u8]);
 impl Path {
 	/// Creates a new empty to root.
 	pub fn empty() -> &'static Self {
-		Self::new_unchecked(&[])
+		Self::new_unbounded(&[])
 	}
 
 	/// Creates a new path to root.
 	pub fn root() -> &'static Self {
-		Self::new_unchecked(b"/")
+		Self::new_unbounded(b"/")
 	}
 
 	/// Creates a new instance from the given string.
@@ -182,15 +181,15 @@ impl Path {
 	/// an error ([`errno::ENAMETOOLONG`]).
 	pub fn new<S: AsRef<[u8]> + ?Sized>(s: &S) -> EResult<&Self> {
 		let slice = s.as_ref();
-		if slice.len() <= limits::PATH_MAX {
-			Ok(Self::new_unchecked(slice))
+		if likely(slice.len() <= limits::PATH_MAX) {
+			Ok(Self::new_unbounded(slice))
 		} else {
 			Err(errno!(ENAMETOOLONG))
 		}
 	}
 
 	/// Creates a new instance from the given string without checking its length.
-	pub fn new_unchecked<S: AsRef<[u8]> + ?Sized>(s: &S) -> &Self {
+	pub fn new_unbounded<S: AsRef<[u8]> + ?Sized>(s: &S) -> &Self {
 		unsafe { &*(s.as_ref() as *const [u8] as *const Self) }
 	}
 
@@ -285,7 +284,7 @@ impl Path {
 	pub fn strip_prefix<P: AsRef<Path>>(&self, prefix: P) -> Option<&Path> {
 		let prefix = prefix.as_ref();
 		let slice = self.0.strip_prefix(&prefix.0)?;
-		Some(Self::new_unchecked(slice))
+		Some(Self::new_unbounded(slice))
 	}
 }
 
@@ -348,7 +347,7 @@ impl<'p> AsRef<[u8]> for Component<'p> {
 impl<'p> AsRef<Path> for Component<'p> {
 	fn as_ref(&self) -> &Path {
 		let slice: &[u8] = self.as_ref();
-		Path::new_unchecked(slice)
+		Path::new_unbounded(slice)
 	}
 }
 
@@ -387,7 +386,7 @@ impl<'p> Components<'p> {
 
 	/// Returns a path representing the remaining data in the iterator.
 	pub fn as_path(&self) -> &'p Path {
-		Path::new_unchecked(self.as_slice())
+		Path::new_unbounded(self.as_slice())
 	}
 
 	fn next_impl(&mut self, backwards: bool) -> Option<Component<'p>> {
@@ -454,32 +453,32 @@ impl<'p> FusedIterator for Components<'p> {}
 mod test {
 	use super::*;
 
-	#[test_case]
+	#[test]
 	fn path_absolute0() {
 		assert!(Path::new(b"/").unwrap().is_absolute());
 	}
 
-	#[test_case]
+	#[test]
 	fn path_absolute1() {
 		assert!(Path::new(b"/.").unwrap().is_absolute());
 	}
 
-	#[test_case]
+	#[test]
 	fn path_absolute2() {
 		assert!(!Path::new(b".").unwrap().is_absolute());
 	}
 
-	#[test_case]
+	#[test]
 	fn path_absolute3() {
 		assert!(!Path::new(b"..").unwrap().is_absolute());
 	}
 
-	#[test_case]
+	#[test]
 	fn path_absolute4() {
 		assert!(!Path::new(b"./").unwrap().is_absolute());
 	}
 
-	#[test_case]
+	#[test]
 	fn components() {
 		// Absolute
 		let path = Path::new(b"/etc/passwd").unwrap();
@@ -507,7 +506,7 @@ mod test {
 		assert_eq!(iter.next(), None);
 	}
 
-	#[test_case]
+	#[test]
 	fn components_back() {
 		// Absolute
 		let path = Path::new(b"/etc/passwd").unwrap();

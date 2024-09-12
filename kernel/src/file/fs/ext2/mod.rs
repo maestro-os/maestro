@@ -51,7 +51,6 @@ use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{downcast_fs, Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
-		path::PathBuf,
 		DirEntry, FileLocation, FileType, INode, Stat,
 	},
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
@@ -69,6 +68,7 @@ use macros::AnyRepr;
 use utils::{
 	boxed::Box,
 	bytes::{as_bytes, from_bytes, AnyRepr},
+	collections::path::PathBuf,
 	errno,
 	errno::EResult,
 	lock::Mutex,

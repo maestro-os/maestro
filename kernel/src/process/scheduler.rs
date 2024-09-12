@@ -29,7 +29,6 @@ use crate::{
 	event,
 	event::CallbackHook,
 	idt::pic,
-	memory,
 	memory::stack,
 	process::{pid::Pid, regs::Regs, Process, State},
 	time,
@@ -42,6 +41,7 @@ use utils::{
 	},
 	errno::AllocResult,
 	interrupt::cli,
+	limits::PAGE_SIZE,
 	lock::{once::OnceInit, IntMutex},
 	math::rational::Rational,
 	ptr::arc::Arc,
@@ -51,9 +51,9 @@ use utils::{
 // TODO handle processes priority
 
 /// The size of the temporary stack for context switching.
-const TMP_STACK_SIZE: usize = 16 * memory::PAGE_SIZE;
+const TMP_STACK_SIZE: usize = 16 * PAGE_SIZE;
 
-/// The processes scheduler.
+/// The process scheduler.
 pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
 
 /// Initializes schedulers.

@@ -22,12 +22,7 @@
 
 use super::Args;
 use crate::{
-	file::{
-		fd::FileDescriptorTable,
-		path::{Path, PathBuf},
-		vfs,
-		vfs::ResolutionSettings,
-	},
+	file::{fd::FileDescriptorTable, vfs, vfs::ResolutionSettings},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::{unlinkat::do_unlinkat, util::at::AT_FDCWD},
 };

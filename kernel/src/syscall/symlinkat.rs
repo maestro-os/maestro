@@ -22,12 +22,10 @@ use super::util::at;
 use crate::{
 	file::{
 		fd::FileDescriptorTable,
-		path::{Path, PathBuf},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 		FileType, Stat,
 	},
-	limits,
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 	time::{
@@ -37,8 +35,10 @@ use crate::{
 };
 use core::ffi::c_int;
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
+	limits::SYMLINK_MAX,
 	lock::Mutex,
 	ptr::arc::Arc,
 };
@@ -49,7 +49,7 @@ pub fn symlinkat(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	if target_slice.len() > limits::SYMLINK_MAX {
+	if target_slice.len() > SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
 	let target = PathBuf::try_from(target_slice)?;

@@ -39,14 +39,6 @@ pub mod vmem;
 
 use core::ffi::c_void;
 
-/// The size of a page in bytes.
-///
-/// If the architecture supports several page sizes, this constant gives the minimum.
-pub const PAGE_SIZE: usize = 0x1000;
-
-/// The physical pointer to the beginning of the kernel.
-pub const KERNEL_PHYS_BEGIN: *const c_void = 0x100000 as *const _;
-
 /// Pointer to the beginning of the allocatable region in the virtual memory.
 pub const ALLOC_BEGIN: *mut c_void = 0x40000000 as *mut _;
 /// Pointer to the end of the virtual memory reserved to the process.

@@ -20,12 +20,13 @@
 
 use crate::{
 	file,
-	file::{fs::StatSet, path::PathBuf, vfs, vfs::ResolutionSettings},
+	file::{fs::StatSet, vfs, vfs::ResolutionSettings},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
+	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
 };

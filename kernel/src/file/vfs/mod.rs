@@ -25,17 +25,12 @@ pub mod mountpoint;
 pub mod node;
 
 use super::{
-	path::{Component, Path},
 	perm,
 	perm::{AccessProfile, S_ISVTX},
 	File, FileLocation, FileType, Stat,
 };
 use crate::{
-	device,
-	device::DeviceID,
-	file::{path::PathBuf, vfs::mountpoint::MountPoint},
-	limits,
-	process::Process,
+	device, device::DeviceID, file::vfs::mountpoint::MountPoint, process::Process,
 	syscall::ioctl::Request,
 };
 use core::{
@@ -46,9 +41,15 @@ use core::{
 };
 use node::Node;
 use utils::{
-	collections::{hashmap::HashSet, string::String, vec::Vec},
+	collections::{
+		hashmap::HashSet,
+		path::{Component, Path, PathBuf},
+		string::String,
+		vec::Vec,
+	},
 	errno,
 	errno::EResult,
+	limits::{LINK_MAX, PATH_MAX, SYMLOOP_MAX},
 	lock::{once::OnceInit, Mutex},
 	ptr::arc::Arc,
 	vec,
@@ -195,8 +196,8 @@ impl Entry {
 		if this.parent.is_none() {
 			return Ok(PathBuf::root()?);
 		}
-		let mut buf = vec![0u8; limits::PATH_MAX]?;
-		let mut off = limits::PATH_MAX;
+		let mut buf = vec![0u8; PATH_MAX]?;
+		let mut off = PATH_MAX;
 		let mut cur = this;
 		while let Some(parent) = &cur.parent {
 			let len = cur.name.len();
@@ -386,7 +387,7 @@ fn resolve_link(
 	symlink_rec: usize,
 ) -> EResult<Arc<Entry>> {
 	// If too many recursions occur, error
-	if unlikely(symlink_rec + 1 > limits::SYMLOOP_MAX) {
+	if unlikely(symlink_rec + 1 > SYMLOOP_MAX) {
 		return Err(errno!(ELOOP));
 	}
 	// Read link
@@ -647,7 +648,7 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 	if target_stat.get_type() == Some(FileType::Directory) {
 		return Err(errno!(EPERM));
 	}
-	if target_stat.nlink >= limits::LINK_MAX as u16 {
+	if target_stat.nlink >= LINK_MAX as u16 {
 		return Err(errno!(EMLINK));
 	}
 	if !ap.can_write_directory(&parent_stat) {

@@ -19,14 +19,12 @@
 //! The initramfs is a tmpfs stored under the form of an archive. It is used as an initialization
 //! environment which doesn't require disk accesses.
 
-mod cpio;
-
 use crate::{
 	device, file,
-	file::{path::Path, perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat},
+	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat},
+	println,
 };
-use cpio::CPIOParser;
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use utils::{collections::path::Path, cpio::CPIOParser, errno, errno::EResult, ptr::arc::Arc};
 
 /// Updates the current parent used for the unpacking operation.
 ///
@@ -39,6 +37,7 @@ fn update_parent<'p>(
 	parent: &mut (&'p Path, Arc<vfs::Entry>),
 	retry: bool,
 ) -> EResult<()> {
+	println!("chemaing {new}");
 	// Get the parent
 	let result = match new.strip_prefix(parent.0) {
 		Some(suffix) => {

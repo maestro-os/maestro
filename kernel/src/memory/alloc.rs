@@ -34,6 +34,7 @@ use crate::{
 	memory::{buddy, memmap},
 };
 use core::{cmp::min, ffi::c_void};
+use utils::limits::PAGE_SIZE;
 
 /// Initializes the memory allocators.
 pub(crate) fn init() {
@@ -44,8 +45,7 @@ pub(crate) fn init() {
 	let mut available_pages = phys_map.phys_main_pages;
 
 	// The pointer to the beginning of the buddy allocator's metadata
-	let metadata_begin =
-		unsafe { utils::align(virt_alloc_begin, memory::PAGE_SIZE) as *mut c_void };
+	let metadata_begin = unsafe { utils::align(virt_alloc_begin, PAGE_SIZE) as *mut c_void };
 	// The size of the buddy allocator's metadata
 	let metadata_size = available_pages * buddy::get_frame_metadata_size();
 	// The end of the buddy allocator's metadata
@@ -54,14 +54,12 @@ pub(crate) fn init() {
 	let phys_metadata_end = memory::kern_to_phys(metadata_end);
 
 	// Updating the number of available pages
-	available_pages -= metadata_size.div_ceil(memory::PAGE_SIZE);
+	available_pages -= metadata_size.div_ceil(PAGE_SIZE);
 
 	// The beginning of the kernel's zone
-	let kernel_zone_begin =
-		unsafe { utils::align(phys_metadata_end, memory::PAGE_SIZE) as *mut c_void };
+	let kernel_zone_begin = unsafe { utils::align(phys_metadata_end, PAGE_SIZE) as *mut c_void };
 	// The maximum number of pages the kernel zone can hold.
-	let kernel_max =
-		(memory::get_kernelspace_size() - phys_metadata_end as usize) / memory::PAGE_SIZE;
+	let kernel_max = (memory::get_kernelspace_size() - phys_metadata_end as usize) / PAGE_SIZE;
 	// The number of frames the kernel zone holds.
 	let kernel_zone_frames = min(available_pages, kernel_max);
 	// The kernel's zone
@@ -72,7 +70,7 @@ pub(crate) fn init() {
 
 	// The beginning of the userspace's zone
 	let userspace_zone_begin =
-		(kernel_zone_begin as usize + kernel_zone_frames * memory::PAGE_SIZE) as *mut c_void;
+		(kernel_zone_begin as usize + kernel_zone_frames * PAGE_SIZE) as *mut c_void;
 	// The beginning of the userspace zone's metadata
 	let userspace_metadata_begin = (metadata_begin as usize
 		+ kernel_zone_frames * buddy::get_frame_metadata_size())

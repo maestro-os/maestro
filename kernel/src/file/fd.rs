@@ -21,12 +21,13 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-use crate::{file::File, limits};
+use crate::file::File;
 use core::{cmp::max, ffi::c_int, mem};
 use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, CollectResult, EResult},
+	limits::OPEN_MAX,
 	lock::Mutex,
 	ptr::arc::Arc,
 };
@@ -144,7 +145,7 @@ impl FileDescriptorTable {
 			// No hole found, place the new FD at the end
 			None => {
 				let id = max(self.0.len(), min) as u32;
-				if id < limits::OPEN_MAX {
+				if id < OPEN_MAX {
 					Ok(id)
 				} else {
 					Err(errno!(EMFILE))
@@ -244,7 +245,7 @@ impl FileDescriptorTable {
 			NewFDConstraint::None => self.get_available_fd(None)?,
 			NewFDConstraint::Fixed(id) => {
 				let id: u32 = id.try_into().map_err(|_| errno!(EBADF))?;
-				if id >= limits::OPEN_MAX {
+				if id >= OPEN_MAX {
 					return Err(errno!(EMFILE));
 				}
 				id

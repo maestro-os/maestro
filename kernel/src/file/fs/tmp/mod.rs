@@ -28,11 +28,9 @@ use crate::{
 			downcast_fs, kernfs, kernfs::NodeStorage, Filesystem, FilesystemType, NodeOps,
 			StatSet, Statfs,
 		},
-		path::PathBuf,
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		DirEntry, FileLocation, FileType, INode, Mode, Stat,
 	},
-	memory,
 	time::unit::Timestamp,
 };
 use core::{
@@ -42,9 +40,10 @@ use core::{
 };
 use utils::{
 	boxed::Box,
-	collections::vec::Vec,
+	collections::{path::PathBuf, vec::Vec},
 	errno,
 	errno::EResult,
+	limits::PAGE_SIZE,
 	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
@@ -130,7 +129,7 @@ impl NodeInner {
 			uid: self.uid,
 			gid: self.gid,
 			size,
-			blocks: size / memory::PAGE_SIZE as u64,
+			blocks: size / PAGE_SIZE as u64,
 			dev_major,
 			dev_minor,
 			ctime: self.ctime,
@@ -527,7 +526,7 @@ impl Filesystem for TmpFS {
 	fn get_stat(&self) -> EResult<Statfs> {
 		Ok(Statfs {
 			f_type: 0,
-			f_bsize: memory::PAGE_SIZE as _,
+			f_bsize: PAGE_SIZE as _,
 			f_blocks: 0,
 			f_bfree: 0,
 			f_bavail: 0,

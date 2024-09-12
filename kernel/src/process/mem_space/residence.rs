@@ -20,10 +20,10 @@
 
 use crate::{file::File, memory, memory::buddy};
 use core::{alloc::AllocError, ptr::NonNull};
-use utils::{collections::vec::Vec, errno::AllocResult, ptr::arc::Arc};
+use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 /// Type representing a memory page.
-pub type Page = [u8; memory::PAGE_SIZE];
+pub type Page = [u8; PAGE_SIZE];
 
 /// Returns a physical address to the default zeroed page.
 ///
@@ -33,7 +33,7 @@ pub type Page = [u8; memory::PAGE_SIZE];
 fn zeroed_page() -> NonNull<Page> {
 	#[repr(align(4096))]
 	struct DefaultPage(Page);
-	static DEFAULT_PAGE: DefaultPage = DefaultPage([0; memory::PAGE_SIZE]);
+	static DEFAULT_PAGE: DefaultPage = DefaultPage([0; PAGE_SIZE]);
 	let ptr = memory::kern_to_phys(DEFAULT_PAGE.0.as_ptr() as _) as *mut _;
 	NonNull::new(ptr).unwrap()
 }
@@ -119,7 +119,7 @@ impl MapResidence {
 			off, ..
 		} = self
 		{
-			*off += pages as u64 * memory::PAGE_SIZE as u64
+			*off += pages as u64 * PAGE_SIZE as u64
 		}
 	}
 

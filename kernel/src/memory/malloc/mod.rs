@@ -150,7 +150,7 @@ mod test {
 	use super::*;
 	use crate::memory::buddy;
 	use core::slice;
-	use utils::math;
+	use utils::{limits::PAGE_SIZE, math};
 
 	#[test_case]
 	fn alloc_free1() {
@@ -178,8 +178,8 @@ mod test {
 	fn alloc_free2() {
 		let usage = buddy::allocated_pages_count();
 		unsafe {
-			let ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE).unwrap()).unwrap();
-			slice::from_raw_parts_mut(ptr.as_ptr(), memory::PAGE_SIZE).fill(!0);
+			let ptr = alloc(NonZeroUsize::new(PAGE_SIZE).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr.as_ptr(), PAGE_SIZE).fill(!0);
 			free(ptr);
 		}
 		assert_eq!(usage, buddy::allocated_pages_count());
@@ -189,8 +189,8 @@ mod test {
 	fn alloc_free3() {
 		let usage = buddy::allocated_pages_count();
 		unsafe {
-			let ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE * 10).unwrap()).unwrap();
-			slice::from_raw_parts_mut(ptr.as_ptr(), memory::PAGE_SIZE * 10).fill(!0);
+			let ptr = alloc(NonZeroUsize::new(PAGE_SIZE * 10).unwrap()).unwrap();
+			slice::from_raw_parts_mut(ptr.as_ptr(), PAGE_SIZE * 10).fill(!0);
 			free(ptr);
 		}
 		assert_eq!(usage, buddy::allocated_pages_count());
@@ -243,7 +243,7 @@ mod test {
 		let usage = buddy::allocated_pages_count();
 		unsafe {
 			let mut ptr = alloc(NonZeroUsize::new(1).unwrap()).unwrap();
-			for i in 1..memory::PAGE_SIZE {
+			for i in 1..PAGE_SIZE {
 				ptr = realloc(ptr, NonZeroUsize::new(i).unwrap()).unwrap();
 				slice::from_raw_parts_mut(ptr.as_ptr(), i).fill(!0);
 			}
@@ -257,8 +257,8 @@ mod test {
 	fn realloc1() {
 		let usage = buddy::allocated_pages_count();
 		unsafe {
-			let mut ptr = alloc(NonZeroUsize::new(memory::PAGE_SIZE).unwrap()).unwrap();
-			for i in (1..memory::PAGE_SIZE).rev() {
+			let mut ptr = alloc(NonZeroUsize::new(PAGE_SIZE).unwrap()).unwrap();
+			for i in (1..PAGE_SIZE).rev() {
 				ptr = realloc(ptr, NonZeroUsize::new(i).unwrap()).unwrap();
 				slice::from_raw_parts_mut(ptr.as_ptr(), i).fill(!0);
 			}

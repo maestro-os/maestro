@@ -18,8 +18,6 @@
 
 //! POSIX limits
 
-use crate::memory;
-
 /// Maximum number of I/O operations in a single list I/O call supported by the
 /// implementation.
 pub const AIO_LISTIO_MAX: usize = 2;
@@ -53,7 +51,7 @@ pub const MQ_PRIO_MAX: usize = 32;
 /// newly-created file descriptor.
 pub const OPEN_MAX: u32 = 1024;
 /// Size in bytes of a page.
-pub const PAGESIZE: usize = memory::PAGE_SIZE;
+pub const PAGESIZE: usize = 0x1000;
 /// Equivalent to {PAGESIZE}. If either {PAGESIZE} or {PAGE_SIZE} is defined,
 /// the other is defined with the same value.
 pub const PAGE_SIZE: usize = PAGESIZE;

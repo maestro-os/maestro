@@ -20,7 +20,6 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, File, FileType, O_NONBLOCK},
-	limits,
 	process::{
 		iovec::IOVec,
 		mem_space::{copy::SyscallSlice, MemSpace},
@@ -34,6 +33,7 @@ use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
+	limits::IOV_MAX,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
@@ -94,7 +94,7 @@ pub fn do_writev(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	if iovcnt < 0 || iovcnt as usize > limits::IOV_MAX {
+	if iovcnt < 0 || iovcnt as usize > IOV_MAX {
 		return Err(errno!(EINVAL));
 	}
 	let offset = match offset {
