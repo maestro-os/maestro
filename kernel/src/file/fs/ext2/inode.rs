@@ -420,7 +420,7 @@ impl Ext2INode {
 		let mut buf = vec![0u8; blk_size as _]?;
 		for off in &offsets[1..depth] {
 			read_block(blk.get() as _, blk_size, io, &mut buf)?;
-			let ents = bytes::slice_from_bytes(&buf);
+			let ents = bytes::slice_from_bytes(&buf).unwrap();
 			let Some(b) = check_blk_off(ents[*off], superblock)? else {
 				return Ok(None);
 			};
@@ -456,7 +456,7 @@ impl Ext2INode {
 		let mut buf = vec![0u8; blk_size as _]?;
 		for off in &offsets[1..depth] {
 			read_block(blk.get() as _, blk_size, io, &mut buf)?;
-			let ents = bytes::slice_from_bytes_mut(&mut buf);
+			let ents = bytes::slice_from_bytes_mut(&mut buf).unwrap();
 			let b = ensure_allocated(&mut ents[*off], superblock, io)?;
 			// TODO avoided if unnecessary
 			write_block(blk.get() as _, blk_size, io, &buf)?;
@@ -477,7 +477,7 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0u8; blk_size as _]?;
 		read_block(blk as _, blk_size, io, &mut buf)?;
-		let ents = bytes::slice_from_bytes_mut(&mut buf);
+		let ents = bytes::slice_from_bytes_mut(&mut buf).unwrap();
 		let b = &mut ents[*off];
 		// Handle child block and determine whether the entry in the current block should be freed
 		let free = Self::free_content_blk_impl(*b, &offsets[1..], superblock, io)?;
@@ -671,7 +671,8 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let mut buf = vec![0; blk_size as _]?;
 		read_block(blk as _, blk_size, io, &mut buf)?;
-		for blk in bytes::slice_from_bytes(&buf) {
+		let ents = bytes::slice_from_bytes(&buf).unwrap();
+		for blk in ents {
 			let Some(blk) = check_blk_off(*blk, superblock)? else {
 				continue;
 			};

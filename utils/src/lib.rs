@@ -37,6 +37,7 @@
 #![feature(dispatch_from_dyn)]
 #![feature(fmt_internals)]
 #![feature(is_sorted)]
+#![feature(pointer_is_aligned_to)]
 #![feature(portable_simd)]
 #![feature(set_ptr_value)]
 #![feature(trusted_len)]

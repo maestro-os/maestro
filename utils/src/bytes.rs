@@ -19,7 +19,7 @@
 //! Utility functions for byte representations of types.
 
 use core::{
-	mem::{size_of, size_of_val},
+	mem::{align_of, size_of, size_of_val},
 	slice,
 };
 
@@ -56,7 +56,9 @@ pub fn as_bytes_mut<T: ?Sized>(val: &mut T) -> &mut [u8] {
 ///
 /// If the size or alignment of the structure is invalid, the function returns `None`.
 pub fn from_bytes<T: AnyRepr>(slice: &[u8]) -> Option<&T> {
-	if size_of::<T>() <= slice.len() && slice.as_ptr().is_aligned() {
+	let size = size_of::<T>();
+	let align = align_of::<T>();
+	if size <= slice.len() && slice.as_ptr().is_aligned_to(align) {
 		// Safe because the slice is large enough
 		let val = unsafe { &*(slice.as_ptr() as *const T) };
 		Some(val)
@@ -69,13 +71,27 @@ pub fn from_bytes<T: AnyRepr>(slice: &[u8]) -> Option<&T> {
 ///
 /// If the length of `slice` is not a multiple of the size of `T`, the function truncates the
 /// output slice.
-pub fn slice_from_bytes<T: AnyRepr>(slice: &[u8]) -> &[T] {
+///
+/// If the alignment is invalid, the function returns `None`.
+pub fn slice_from_bytes<T: AnyRepr>(slice: &[u8]) -> Option<&[T]> {
 	let len = slice.len() / size_of::<T>();
-	unsafe { slice::from_raw_parts(slice.as_ptr() as _, len) }
+	let align = align_of::<T>();
+	if slice.as_ptr().is_aligned_to(align) {
+		let val = unsafe { slice::from_raw_parts(slice.as_ptr() as _, len) };
+		Some(val)
+	} else {
+		None
+	}
 }
 
 /// Same as [`slice_from_bytes`], but mutable.
-pub fn slice_from_bytes_mut<T: AnyRepr>(slice: &mut [u8]) -> &mut [T] {
+pub fn slice_from_bytes_mut<T: AnyRepr>(slice: &mut [u8]) -> Option<&mut [T]> {
 	let len = slice.len() / size_of::<T>();
-	unsafe { slice::from_raw_parts_mut(slice.as_mut_ptr() as _, len) }
+	let align = align_of::<T>();
+	if slice.as_ptr().is_aligned_to(align) {
+		let val = unsafe { slice::from_raw_parts_mut(slice.as_mut_ptr() as _, len) };
+		Some(val)
+	} else {
+		None
+	}
 }

@@ -22,7 +22,6 @@
 use crate::{
 	device, file,
 	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat},
-	println,
 };
 use utils::{collections::path::Path, cpio::CPIOParser, errno, errno::EResult, ptr::arc::Arc};
 
@@ -37,7 +36,6 @@ fn update_parent<'p>(
 	parent: &mut (&'p Path, Arc<vfs::Entry>),
 	retry: bool,
 ) -> EResult<()> {
-	println!("chemaing {new}");
 	// Get the parent
 	let result = match new.strip_prefix(parent.0) {
 		Some(suffix) => {

@@ -21,7 +21,7 @@
 //! information. These data are meant to be used by the memory allocators.
 
 use super::{kern_to_phys, stats};
-use crate::{elf::kernel::sections, multiboot};
+use crate::{elf::kernel::sections, multiboot, multiboot::BootInfo};
 use core::{cmp::*, ffi::c_void, iter, ptr::null};
 use utils::{limits::PAGE_SIZE, lock::once::OnceInit};
 
@@ -86,8 +86,7 @@ pub(crate) fn print_entries() {
 }
 
 /// Computes and returns the physical address to the end of the kernel's ELF sections' content.
-fn sections_end() -> *const c_void {
-	let boot_info = multiboot::get_boot_info();
+fn sections_end(boot_info: &BootInfo) -> *const c_void {
 	// The end of ELF sections list
 	let sections_list_end = (boot_info.elf_sections as usize
 		+ boot_info.elf_num as usize * boot_info.elf_entsize as usize)
@@ -105,14 +104,12 @@ fn sections_end() -> *const c_void {
 
 /// Returns the pointer to the beginning of the main physical allocatable memory
 /// and its size in number of pages.
-fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
-	let boot_info = multiboot::get_boot_info();
-	// Get end of multiboot tags
-	let multiboot_tags_size = unsafe { multiboot::get_tags_size(multiboot_ptr) };
-	let multiboot_tags_end = ((multiboot_ptr as usize) + multiboot_tags_size) as *const _;
-	// Get end of the ELF sections
-	let sections_end = sections_end();
-	// Get end of the loaded initramfs
+fn get_phys_main(boot_info: &BootInfo) -> (*const c_void, usize) {
+	// The end address of multiboot tags
+	let multiboot_tags_end = (boot_info.tags_ptr as usize + boot_info.tags_size) as *const _;
+	// The end address of the ELF sections
+	let sections_end = sections_end(boot_info);
+	// The end address of the loaded initramfs
 	let initramfs_end = boot_info
 		.initramfs
 		.map(|initramfs| {
@@ -133,17 +130,16 @@ fn get_phys_main(multiboot_ptr: *const c_void) -> (*const c_void, usize) {
 }
 
 /// Fills the memory mapping structure according to Multiboot's information.
-pub(crate) fn init(multiboot_ptr: *const c_void) {
-	let boot_info = multiboot::get_boot_info();
+pub(crate) fn init(boot_info: &BootInfo) {
 	// Set memory information
-	let (main_begin, main_pages) = get_phys_main(multiboot_ptr);
+	let (phys_main_begin, phys_main_pages) = get_phys_main(boot_info);
 	let phys_map = PhysMapInfo {
 		memory_maps_size: boot_info.memory_maps_size,
 		memory_maps_entry_size: boot_info.memory_maps_entry_size,
 		memory_maps: boot_info.memory_maps,
 
-		phys_main_begin: main_begin,
-		phys_main_pages: main_pages,
+		phys_main_begin,
+		phys_main_pages,
 	};
 	unsafe {
 		MAP.init(phys_map);
@@ -151,5 +147,5 @@ pub(crate) fn init(multiboot_ptr: *const c_void) {
 	// Update memory stats
 	let mut stats = stats::MEM_INFO.lock();
 	stats.mem_total = min(boot_info.mem_upper, 4194304) as _; // TODO Handle 64-bits systems
-	stats.mem_free = main_pages * 4;
+	stats.mem_free = phys_main_pages * 4;
 }

@@ -133,12 +133,19 @@ impl MmapEntry {
 impl Tag {
 	/// Returns the pointer to the next Multiboot tag after the current tag.
 	pub fn next(&self) -> *const Self {
-		((self as *const _ as usize) + (((self.size + 7) & !7) as usize)) as *const _
+		unsafe {
+			(self as *const _ as *const c_void).add(((self.size + 7) & !7) as usize) as *const _
+		}
 	}
 }
 
 /// Kernel boot information provided by Multiboot, structured and filtered.
 pub struct BootInfo {
+	/// The pointer to the beginning of the tags.
+	pub tags_ptr: *const c_void,
+	/// The size of the tags in bytes.
+	pub tags_size: usize,
+
 	/// The command line used to boot the kernel.
 	pub cmdline: Option<&'static [u8]>,
 	/// The bootloader's name.
@@ -173,6 +180,8 @@ pub struct BootInfo {
 impl Default for BootInfo {
 	fn default() -> Self {
 		Self {
+			tags_ptr: null(),
+			tags_size: 0,
 			cmdline: None,
 			loader_name: None,
 			mem_lower: 0,
@@ -246,32 +255,23 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 	}
 }
 
-/// Returns the size in bytes of Multiboot tags pointed to by `ptr`.
+/// Reads the multiboot tags from the given `ptr` and returns relevant information.
 ///
 /// # Safety
 ///
 /// The caller must ensure the given pointer is valid and points to Multiboot tags.
-pub(crate) unsafe fn get_tags_size(ptr: *const c_void) -> usize {
-	let mut tag = ptr.offset(8) as *const Tag;
-	while (*tag).type_ != TAG_TYPE_END {
-		tag = (*tag).next();
-	}
-	tag = (*tag).next();
-	tag as usize - ptr as usize
-}
-
-/// Reads the multiboot tags from the given `ptr` and fills the boot
-/// information structure.
-///
-/// # Safety
-///
-/// The caller must ensure the given pointer is valid and points to Multiboot tags.
-pub(crate) unsafe fn read_tags(ptr: *const c_void) {
+pub(crate) unsafe fn read(ptr: *const c_void) -> &'static BootInfo {
 	let mut boot_info = BootInfo::default();
 	let mut tag = ptr.offset(8) as *const Tag;
 	while (*tag).type_ != TAG_TYPE_END {
 		handle_tag(&mut boot_info, &*tag);
 		tag = (*tag).next();
 	}
+	// Pass end tag
+	tag = (*tag).next();
+	boot_info.tags_ptr = ptr;
+	boot_info.tags_size = tag as usize - ptr as usize;
+	// Write to static variable and return
 	BOOT_INFO.init(boot_info);
+	BOOT_INFO.get()
 }

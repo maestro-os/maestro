@@ -194,12 +194,12 @@ impl Path {
 	}
 
 	/// Returns the length of the path in bytes.
-	pub fn len(&self) -> usize {
+	pub const fn len(&self) -> usize {
 		self.0.len()
 	}
 
 	/// Tells whether the path is empty.
-	pub fn is_empty(&self) -> bool {
+	pub const fn is_empty(&self) -> bool {
 		self.0.is_empty()
 	}
 
@@ -209,7 +209,7 @@ impl Path {
 	}
 
 	/// Returns slice of the bytes representation of the path.
-	pub fn as_bytes(&self) -> &[u8] {
+	pub const fn as_bytes(&self) -> &[u8] {
 		&self.0
 	}
 

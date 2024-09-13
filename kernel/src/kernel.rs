@@ -176,12 +176,10 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {
 		panic!("Bootloader non compliant with Multiboot2!");
 	}
-	unsafe {
-		multiboot::read_tags(multiboot_ptr);
-	}
+	let boot_info = unsafe { multiboot::read(multiboot_ptr) };
 
 	// Initialize memory management
-	memory::memmap::init(multiboot_ptr);
+	memory::memmap::init(boot_info);
 	#[cfg(debug_assertions)]
 	memory::memmap::print_entries();
 	memory::alloc::init();
@@ -198,8 +196,6 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Perform kernel self-tests
 	#[cfg(test)]
 	kernel_selftest();
-
-	let boot_info = multiboot::get_boot_info();
 
 	// Parse bootloader command line arguments
 	let cmdline = boot_info.cmdline.unwrap_or_default();
