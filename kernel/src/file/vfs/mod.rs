@@ -522,8 +522,8 @@ fn resolve_path_impl<'p>(
 ///   function returns [`errno::ENOTDIR`].
 /// - If a component of the path (excluding the last) is a symbolic link and following them is
 ///   disabled, the function returns [`errno::ENOTDIR`].
-/// - If the resolution of the path requires more symbolic link indirections than
-///   [`limits::SYMLOOP_MAX`], the function returns [`errno::ELOOP`].
+/// - If the resolution of the path requires more symbolic link indirections than [`SYMLOOP_MAX`],
+///   the function returns [`errno::ELOOP`].
 pub fn resolve_path<'p>(path: &'p Path, settings: &ResolutionSettings) -> EResult<Resolved<'p>> {
 	// Required by POSIX
 	if settings.cwd.is_none() && path.is_empty() {
@@ -634,7 +634,7 @@ pub fn create_file(
 /// - The filesystem is read-only: [`errno::EROFS`]
 /// - I/O failed: [`errno::EIO`]
 /// - Permissions to create the link are not fulfilled for the given `ap`: [`errno::EACCES`]
-/// - The number of links to the file is larger than [`limits::LINK_MAX`]: [`errno::EMLINK`]
+/// - The number of links to the file is larger than [`LINK_MAX`]: [`errno::EMLINK`]
 /// - `target` is a directory: [`errno::EPERM`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
