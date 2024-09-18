@@ -38,7 +38,6 @@
 #![feature(panic_info_message)]
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
-#![feature(stmt_expr_attributes)]
 #![feature(strict_provenance)]
 #![feature(trait_upcasting)]
 #![deny(warnings)]
@@ -47,8 +46,6 @@
 #![allow(dead_code)]
 #![allow(incomplete_features)]
 #![allow(internal_features)]
-#![allow(unused_attributes)]
-#![allow(unused_macros)]
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
@@ -83,8 +80,6 @@ pub mod selftest;
 pub mod syscall;
 pub mod time;
 pub mod tty;
-#[macro_use]
-pub use utils;
 
 use crate::{
 	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
