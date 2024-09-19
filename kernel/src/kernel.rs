@@ -87,6 +87,7 @@ use crate::{
 	tty::TTY,
 };
 use core::{arch::asm, ffi::c_void};
+pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
 	errno::EResult,
