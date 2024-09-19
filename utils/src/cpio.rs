@@ -29,7 +29,7 @@ use macros::AnyRepr;
 /// On PDP systems, long values (4 bytes) were stored as big endian, which means these values
 /// need to be rotated to be read correctly.
 pub fn rot_u32(v: u32) -> u32 {
-	(v >> 16) | (v << 16)
+	v.rotate_left(16)
 }
 
 /// A CPIO entry header.

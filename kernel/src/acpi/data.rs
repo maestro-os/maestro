@@ -155,7 +155,8 @@ impl ACPIData {
 				(self
 					.data
 					.as_ptr()
-					.add(*entries_ptr.add(i) as usize - self.off) as usize) as *const ACPITableHeader
+					.add(*entries_ptr.add(i) as usize - self.off) as usize)
+					as *const ACPITableHeader
 			};
 			let header = unsafe { &*header_ptr };
 
@@ -199,7 +200,8 @@ impl ACPIData {
 				(self
 					.data
 					.as_ptr()
-					.add(*entries_ptr.add(i) as usize - self.off) as usize) as *const ACPITableHeader
+					.add(*entries_ptr.add(i) as usize - self.off) as usize)
+					as *const ACPITableHeader
 			};
 			let header = unsafe { &*header_ptr };
 

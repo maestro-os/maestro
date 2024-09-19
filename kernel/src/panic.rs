@@ -47,9 +47,7 @@ fn panic(panic_info: &PanicInfo) -> ! {
 
 	crate::println!("--- KERNEL PANIC ---\n");
 	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
-	if let Some(msg) = panic_info.message() {
-		crate::print!("Reason: {msg}");
-	}
+	crate::print!("Reason: {}", panic_info.message());
 	if let Some(loc) = panic_info.location() {
 		crate::println!(" (location: {loc})");
 	} else {

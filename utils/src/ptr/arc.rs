@@ -197,7 +197,7 @@ impl<T: Eq> Eq for Arc<T> {}
 
 impl<T: PartialEq> PartialEq for Arc<T> {
 	fn eq(&self, other: &Self) -> bool {
-		Self::as_ref(self).eq(&other)
+		Self::as_ref(self).eq(other)
 	}
 }
 

@@ -135,7 +135,7 @@ pub struct ArgsParser<'s> {
 
 impl<'s> ArgsParser<'s> {
 	/// Parses the given command line and returns a new instance.
-	pub fn parse(cmdline: &'s [u8]) -> Result<Self, ParseError<'_>> {
+	pub fn parse(cmdline: &'s [u8]) -> Result<Self, ParseError<'s>> {
 		let mut s = Self {
 			root: None,
 			init: None,

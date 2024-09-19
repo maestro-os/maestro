@@ -73,7 +73,7 @@ pub trait Relocation {
 
 		// The offset in the GOT entry for the symbol
 		let got_offset = 0u32; // TODO
-					   // The offset in the PLT entry for the symbol
+						 // The offset in the PLT entry for the symbol
 		let plt_offset = 0u32; // TODO
 
 		// The value of the symbol

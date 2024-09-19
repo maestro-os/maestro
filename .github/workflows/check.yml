@@ -7,18 +7,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Macros
         working-directory: macros
-        run: cargo clippy --all-features --tests
+        run: cargo clippy --all-features --all-targets
       - name: Utils
         working-directory: utils
-        run: cargo clippy --all-features --tests
+        run: cargo clippy --all-features --all-targets
       - name: Kernel
         working-directory: kernel
         run: |
           cp default.build-config.toml build-config.toml
-          cargo clippy --all-features --tests
+          cargo clippy --all-features --all-targets
       - name: Integration tests
         working-directory: inttest
-        run: cargo clippy --all-features --tests
+        run: cargo clippy --all-features --all-targets
   format:
     runs-on: [self-hosted, linux]
     needs: clippy

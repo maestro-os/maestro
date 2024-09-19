@@ -192,9 +192,8 @@ impl Module {
 
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> EResult<Self> {
-		let parser = ELFParser::new(image).map_err(|e| {
+		let parser = ELFParser::new(image).inspect_err(|_| {
 			crate::println!("Invalid ELF file as loaded module");
-			e
 		})?;
 		// Allocate memory for the module
 		let mem_size = Self::get_load_size(&parser);

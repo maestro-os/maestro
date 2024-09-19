@@ -93,7 +93,7 @@ impl RootDir {
 			StaticEntryBuilder {
 				name: b"mounts",
 				entry_type: FileType::Link,
-				init: entry_init_default::<StaticLink<b"self/mounts">>,
+				init: |_| box_wrap(StaticLink(b"self/mounts")),
 			},
 			StaticEntryBuilder {
 				name: b"self",

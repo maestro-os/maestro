@@ -167,11 +167,13 @@ macro_rules! format_content {
 	}};
 }
 
-/// A static symbolic link pointing to a constant target.
+/// A static symbolic link.
+///
+/// The inner value is the target of the symbolic link.
 #[derive(Debug, Default)]
-pub struct StaticLink<const TARGET: &'static [u8]>;
+pub struct StaticLink(pub &'static [u8]);
 
-impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
+impl NodeOps for StaticLink {
 	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
 		Ok(Stat {
 			mode: FileType::Link.to_mode() | 0o777,
@@ -180,7 +182,7 @@ impl<const TARGET: &'static [u8]> NodeOps for StaticLink<TARGET> {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		format_content!(off, buf, "{}", DisplayableStr(TARGET))
+		format_content!(off, buf, "{}", DisplayableStr(self.0))
 	}
 }
 
@@ -221,7 +223,7 @@ pub fn box_wrap<'n, N: 'n + NodeOps>(ops: N) -> AllocResult<Box<dyn 'n + NodeOps
 /// A read-only virtual directory used to point to other nodes.
 #[derive(Debug)]
 pub struct StaticDir<T: 'static + Clone + Debug = ()> {
-	/// The directory's entries, sorted alphabeticaly by name.
+	/// The directory's entries, sorted alphabetically by name.
 	///
 	/// **Warning**: If this array is not sorted correctly, the behaviour of
 	/// [`NodeOps::entry_by_name`] is undefined.
