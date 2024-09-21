@@ -32,16 +32,16 @@ mod transaction;
 use crate::{
 	file::perm::AccessProfile,
 	memory,
-	memory::{vmem, vmem::VMem},
-	process::mem_space::residence::Page,
+	memory::{vmem, vmem::VMem, VirtAddr, PROCESS_END},
 };
 use core::{
 	alloc::AllocError,
 	cmp::{min, Ordering},
 	ffi::c_void,
-	fmt, mem,
+	fmt,
+	intrinsics::unlikely,
+	mem,
 	num::NonZeroUsize,
-	ptr::null_mut,
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -68,8 +68,12 @@ pub const MAPPING_FLAG_USER: u8 = 0b00100;
 pub const MAPPING_FLAG_SHARED: u8 = 0b1000;
 
 /// The virtual address of the buffer used to map pages for copy.
-/// TODO use PROCESS_END instead of hardcoding value
-const COPY_BUFFER: *mut Page = (0xc0000000 - PAGE_SIZE) as _;
+const COPY_BUFFER: VirtAddr = VirtAddr(PROCESS_END.0 - PAGE_SIZE);
+
+/// Tells whether the address is in bound of the userspace.
+pub fn bound_check(addr: usize, n: usize) -> bool {
+	addr >= PAGE_SIZE && addr.saturating_add(n) <= COPY_BUFFER.0
+}
 
 // TODO Add a variant for ASLR
 /// Enumeration of constraints for the selection of the virtual address for a memory mapping.
@@ -81,13 +85,13 @@ pub enum MapConstraint {
 	///
 	/// The allocation is allowed to take place outside ranges that are normally allowed, but not
 	/// in kernelspace.
-	Fixed(*mut c_void),
+	Fixed(VirtAddr),
 
 	/// Providing a hint for the address to use. The allocator will try to use the address if
 	/// available.
 	///
 	/// If not available, the constraint is ignored and another address is selected.
-	Hint(*mut c_void),
+	Hint(VirtAddr),
 
 	/// No constraint.
 	None,
@@ -95,13 +99,13 @@ pub enum MapConstraint {
 
 impl MapConstraint {
 	/// Tells whether the constraint is valid.
-	pub fn is_valid(&self) -> bool {
+	pub fn is_valid(self) -> bool {
 		match self {
 			// Checking the address is within userspace is required because `Fixed` allocations can
 			// take place *outside of gaps* but *not inside the kernelspace*
 			MapConstraint::Fixed(addr) => {
-				// `COPY_BUFFER` is located right before the kernelspace
-				*addr < COPY_BUFFER as _ && addr.is_aligned_to(PAGE_SIZE)
+				// The copy buffer is located right before the kernelspace
+				addr < COPY_BUFFER && addr.is_aligned_to(PAGE_SIZE)
 			}
 			MapConstraint::Hint(addr) => addr.is_aligned_to(PAGE_SIZE),
 			_ => true,
@@ -114,18 +118,18 @@ impl MapConstraint {
 /// `start` is the start address of the range and `size` is the size of the range in pages.
 fn remove_gaps_in_range(
 	transaction: &mut MemSpaceTransaction,
-	start: *const c_void,
+	start: VirtAddr,
 	size: usize,
 ) -> AllocResult<()> {
 	// Start the search at the gap containing the start address
 	let search_start = transaction
 		.mem_space_state
-		.get_gap_for_ptr(start)
+		.get_gap_for_addr(start)
 		.map(MemGap::get_begin)
 		// No gap contain the start address, start at the next one
 		.unwrap_or(start);
 	// Bound the search to the end of the range
-	let end = (start as usize + size * PAGE_SIZE) as *const c_void;
+	let end = start + size * PAGE_SIZE;
 	// Collect gaps that match
 	let gaps = transaction
 		.mem_space_state
@@ -139,8 +143,8 @@ fn remove_gaps_in_range(
 		let gap_begin = gap.get_begin();
 		let gap_end = gap.get_end();
 		// Compute range to remove
-		let start = (start as usize).clamp(gap_begin as usize, gap_end as usize);
-		let end = (end as usize).clamp(gap_begin as usize, gap_end as usize);
+		let start = start.0.clamp(gap_begin.0, gap_end.0);
+		let end = end.0.clamp(gap_begin.0, gap_end.0);
 		// Rounding is not a problem because all values are multiples of the page size
 		let size = (end - start) / PAGE_SIZE;
 		// Consume the gap and store new gaps
@@ -157,39 +161,25 @@ fn remove_gaps_in_range(
 }
 
 /// Inner state of the memory space, to use as a model for the virtual memory context.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct MemSpaceState {
 	/// Binary tree storing the list of memory gaps, ready for new mappings.
 	///
 	/// The collection is sorted by pointer to the beginning of the mapping on the virtual
 	/// memory.
-	gaps: BTreeMap<*const c_void, MemGap>,
+	gaps: BTreeMap<VirtAddr, MemGap>,
 	/// Binary tree storing the list of memory mappings.
 	///
 	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
-	mappings: BTreeMap<*const c_void, MemMapping>,
+	mappings: BTreeMap<*mut u8, MemMapping>,
 
 	/// The number of used virtual memory pages.
 	vmem_usage: usize,
 
 	/// The initial pointer of the `[s]brk` system calls.
-	brk_init: *mut c_void,
+	brk_init: VirtAddr,
 	/// The current pointer of the `[s]brk` system calls.
-	brk_ptr: *mut c_void,
-}
-
-impl Default for MemSpaceState {
-	fn default() -> Self {
-		Self {
-			gaps: Default::default(),
-			mappings: Default::default(),
-
-			vmem_usage: 0,
-
-			brk_init: null_mut::<_>(),
-			brk_ptr: null_mut::<_>(),
-		}
-	}
+	brk_addr: VirtAddr,
 }
 
 impl MemSpaceState {
@@ -205,48 +195,48 @@ impl MemSpaceState {
 			.find(|g| g.get_size() >= size)
 	}
 
-	/// Comparison function to search for the object containing `ptr`.
+	/// Comparison function to search for the object containing the address `addr`.
 	///
 	/// Arguments:
 	/// - `begin` is the beginning of the object to compare for
 	/// - `size` is the size of the object in pages
-	fn ptr_search(begin: *const c_void, size: usize, ptr: *const c_void) -> Ordering {
-		let begin = begin as usize;
+	fn addr_search(begin: VirtAddr, size: usize, addr: VirtAddr) -> Ordering {
 		let end = begin + size * PAGE_SIZE;
-		let ptr = ptr as usize;
-		if ptr >= begin && ptr < end {
+		if addr >= begin && addr < end {
 			Ordering::Equal
-		} else if ptr < begin {
+		} else if addr < begin {
 			Ordering::Less
 		} else {
 			Ordering::Greater
 		}
 	}
 
-	/// Returns a reference to the gap containing the given virtual address `ptr`.
+	/// Returns a reference to the gap containing the given virtual address.
 	///
 	/// If no gap contain the pointer, the function returns `None`.
-	fn get_gap_for_ptr(&self, ptr: *const c_void) -> Option<&MemGap> {
+	fn get_gap_for_addr(&self, addr: VirtAddr) -> Option<&MemGap> {
 		self.gaps
-			.cmp_get(|key, value| Self::ptr_search(*key, value.get_size().get(), ptr))
+			.cmp_get(|key, value| Self::addr_search(*key, value.get_size().get(), addr))
 	}
 
 	/// Returns an immutable reference to the memory mapping containing the given virtual
-	/// address `ptr`.
+	/// address.
 	///
 	/// If no mapping contains the address, the function returns `None`.
-	pub fn get_mapping_for_ptr(&self, ptr: *const c_void) -> Option<&MemMapping> {
-		self.mappings
-			.cmp_get(|key, value| Self::ptr_search(*key, value.get_size().get(), ptr))
+	pub fn get_mapping_for_addr(&self, addr: VirtAddr) -> Option<&MemMapping> {
+		self.mappings.cmp_get(|key, value| {
+			Self::addr_search(VirtAddr::from(*key), value.get_size().get(), addr)
+		})
 	}
 
 	/// Returns a mutable reference to the memory mapping containing the given virtual
-	/// address `ptr`.
+	/// address.
 	///
 	/// If no mapping contains the address, the function returns `None`.
-	pub fn get_mut_mapping_for_ptr(&mut self, ptr: *const c_void) -> Option<&mut MemMapping> {
-		self.mappings
-			.cmp_get_mut(|key, value| Self::ptr_search(*key, value.get_size().get(), ptr))
+	pub fn get_mut_mapping_for_addr(&mut self, addr: VirtAddr) -> Option<&mut MemMapping> {
+		self.mappings.cmp_get_mut(|key, value| {
+			Self::addr_search(VirtAddr::from(*key), value.get_size().get(), addr)
+		})
 	}
 }
 
@@ -267,7 +257,7 @@ impl MemSpace {
 		};
 		// Create the default gap of memory which is present at the beginning
 		let begin = memory::ALLOC_BEGIN;
-		let size = (COPY_BUFFER as usize - begin as usize) / PAGE_SIZE;
+		let size = (COPY_BUFFER.0 - begin.0) / PAGE_SIZE;
 		let gap = MemGap::new(begin, NonZeroUsize::new(size).unwrap());
 		let mut transaction = MemSpaceTransaction::new(&mut s.state, &mut s.vmem);
 		transaction.insert_gap(gap)?;
@@ -288,12 +278,12 @@ impl MemSpace {
 	}
 
 	/// Returns an immutable reference to the memory mapping containing the given virtual
-	/// address `ptr`.
+	/// address.
 	///
 	/// If no mapping contains the address, the function returns `None`.
 	#[inline]
-	pub fn get_mapping_for_ptr(&self, ptr: *const c_void) -> Option<&MemMapping> {
-		self.state.get_mapping_for_ptr(ptr)
+	pub fn get_mapping_for_addr(&self, addr: VirtAddr) -> Option<&MemMapping> {
+		self.state.get_mapping_for_addr(addr)
 	}
 
 	/// Maps a chunk of memory.
@@ -318,7 +308,7 @@ impl MemSpace {
 		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
-	) -> AllocResult<*mut c_void> {
+	) -> AllocResult<*mut u8> {
 		if !map_constraint.is_valid() {
 			return Err(AllocError);
 		}
@@ -338,7 +328,7 @@ impl MemSpace {
 				transaction
 					.mem_space_state
 					// Get the gap for the pointer
-					.get_gap_for_ptr(addr)
+					.get_gap_for_addr(addr)
 					.and_then(|gap| {
 						// Offset in the gap
 						let off = gap.get_page_offset_for(addr);
@@ -363,7 +353,7 @@ impl MemSpace {
 				(gap, 0)
 			}
 		};
-		let addr = (gap.get_begin() as usize + (off * PAGE_SIZE)) as *mut c_void;
+		let addr = (gap.get_begin() + off * PAGE_SIZE).as_ptr();
 		// Split the old gap to fit the mapping, and insert new gaps
 		let (left_gap, right_gap) = gap.consume(off, size.get());
 		transaction.remove_gap(gap.get_begin())?;
@@ -387,7 +377,7 @@ impl MemSpace {
 	/// On success, the function returns the transaction.
 	fn unmap_impl(
 		transaction: &mut MemSpaceTransaction,
-		ptr: *const c_void,
+		addr: VirtAddr,
 		size: NonZeroUsize,
 		nogap: bool,
 	) -> AllocResult<()> {
@@ -395,9 +385,9 @@ impl MemSpace {
 		let mut i = 0;
 		while i < size.get() {
 			// The current page's beginning
-			let page_ptr = (ptr as usize + i * PAGE_SIZE) as *const c_void;
+			let page_addr = addr + i * PAGE_SIZE;
 			// The mapping containing the page
-			let Some(mapping) = transaction.mem_space_state.get_mapping_for_ptr(page_ptr) else {
+			let Some(mapping) = transaction.mem_space_state.get_mapping_for_addr(page_addr) else {
 				// TODO jump to next mapping directly using binary tree (currently O(n log n))
 				i += 1;
 				continue;
@@ -405,12 +395,12 @@ impl MemSpace {
 			// The pointer to the beginning of the mapping
 			let mapping_begin = mapping.get_begin();
 			// The offset in the mapping to the beginning of pages to unmap
-			let begin = (page_ptr as usize - mapping_begin as usize) / PAGE_SIZE;
+			let inner_off = (page_addr.0 - mapping_begin as usize) / PAGE_SIZE;
 			// The number of pages to unmap in the mapping
-			let pages = min(size.get() - i, mapping.get_size().get() - begin);
+			let pages = min(size.get() - i, mapping.get_size().get() - inner_off);
 			i += pages;
 			// Newly created mappings and gap after removing parts of the previous one
-			let (prev, gap, next) = mapping.split(begin, pages)?;
+			let (prev, gap, next) = mapping.split(inner_off, pages)?;
 			// Remove the old mapping and insert new ones
 			transaction.remove_mapping(mapping_begin)?;
 			if let Some(m) = prev {
@@ -427,8 +417,8 @@ impl MemSpace {
 				// Merge previous gap
 				let prev_gap = (!gap.get_begin().is_null())
 					.then(|| {
-						let prev_gap_ptr = unsafe { gap.get_begin().sub(1) };
-						transaction.mem_space_state.get_gap_for_ptr(prev_gap_ptr)
+						let prev_gap_ptr = gap.get_begin() - 1;
+						transaction.mem_space_state.get_gap_for_addr(prev_gap_ptr)
 					})
 					.flatten()
 					.cloned();
@@ -439,7 +429,7 @@ impl MemSpace {
 				// Merge next gap
 				let next_gap = transaction
 					.mem_space_state
-					.get_gap_for_ptr(gap.get_end())
+					.get_gap_for_addr(gap.get_end())
 					.cloned();
 				if let Some(n) = next_gap {
 					transaction.remove_gap(n.get_begin())?;
@@ -454,7 +444,7 @@ impl MemSpace {
 	/// Unmaps the given mapping of memory.
 	///
 	/// Arguments:
-	/// - `ptr` represents the aligned address of the beginning of the chunk to unmap.
+	/// - `addr` represents the aligned address of the beginning of the chunk to unmap.
 	/// - `size` represents the size of the mapping in number of memory pages.
 	/// - `brk` tells whether the function is called through the `brk` syscall.
 	///
@@ -465,32 +455,17 @@ impl MemSpace {
 	/// be revoked and further attempts to access it shall result in a page
 	/// fault.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn unmap(&mut self, ptr: *const c_void, size: NonZeroUsize, brk: bool) -> AllocResult<()> {
-		if !ptr.is_aligned_to(PAGE_SIZE) {
+	pub fn unmap(&mut self, addr: VirtAddr, size: NonZeroUsize, brk: bool) -> AllocResult<()> {
+		// Validation
+		if unlikely(!addr.is_aligned_to(PAGE_SIZE)) {
 			return Err(AllocError);
 		}
 		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
 		// Do not create gaps if unmapping for `*brk` system calls as this space is reserved by
 		// it and must not be reused by `mmap`
-		Self::unmap_impl(&mut transaction, ptr, size, brk)?;
+		Self::unmap_impl(&mut transaction, addr, size, brk)?;
 		transaction.commit();
 		Ok(())
-	}
-
-	/// Same as `map`, except the function returns a pointer to the end of the
-	/// memory mapping.
-	pub fn map_stack(&mut self, size: NonZeroUsize, flags: u8) -> AllocResult<*mut c_void> {
-		let mapping_ptr = self.map(MapConstraint::None, size, flags, MapResidence::Normal)?;
-		Ok((mapping_ptr as usize + (size.get() * PAGE_SIZE)) as _)
-	}
-
-	/// Same as `unmap`, except the function takes a pointer to the end of the
-	/// memory mapping.
-	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn unmap_stack(&mut self, ptr: *const c_void, size: NonZeroUsize) -> AllocResult<()> {
-		// Safe because the new pointer stays in the range of the allocated mapping
-		let ptr = (ptr as usize - (size.get() * PAGE_SIZE)) as _;
-		self.unmap(ptr, size, false)
 	}
 
 	/// Binds the memory space to the current kernel.
@@ -536,7 +511,7 @@ impl MemSpace {
 				vmem_usage: self.state.vmem_usage,
 
 				brk_init: self.state.brk_init,
-				brk_ptr: self.state.brk_ptr,
+				brk_addr: self.state.brk_addr,
 			},
 			vmem: new_vmem,
 		})
@@ -545,20 +520,20 @@ impl MemSpace {
 	/// Allocates the physical pages on the given range.
 	///
 	/// Arguments:
-	/// - `virtaddr` is the virtual address to beginning of the range to allocate.
+	/// - `addr` is the virtual address to beginning of the range to allocate.
 	/// - `len` is the size of the range in bytes.
 	///
 	/// If the mapping does not exist, the function returns an error.
 	///
 	/// On error, allocations that have been made are not freed as it does not affect the behaviour
 	/// from the user's point of view.
-	pub fn alloc(&mut self, virtaddr: *const c_void, len: usize) -> AllocResult<()> {
+	pub fn alloc(&mut self, addr: VirtAddr, len: usize) -> AllocResult<()> {
 		let mut transaction = self.vmem.transaction();
 		let mut off = 0;
 		while off < len {
-			let virtaddr = (virtaddr as usize + off) as *const c_void;
-			if let Some(mapping) = self.state.get_mut_mapping_for_ptr(virtaddr) {
-				let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / PAGE_SIZE;
+			let addr = addr + off;
+			if let Some(mapping) = self.state.get_mut_mapping_for_addr(addr) {
+				let page_offset = (addr.0 - mapping.get_begin() as usize) / PAGE_SIZE;
 				mapping.alloc(page_offset, &mut transaction)?;
 			}
 			off += PAGE_SIZE;
@@ -593,59 +568,59 @@ impl MemSpace {
 		Ok(())
 	}
 
-	/// Returns the pointer for the `brk` syscall.
-	pub fn get_brk_ptr(&self) -> *mut c_void {
-		self.state.brk_ptr
+	/// Returns the address for the `brk` syscall.
+	pub fn get_brk(&self) -> VirtAddr {
+		self.state.brk_addr
 	}
 
 	/// Sets the initial pointer for the `brk` syscall.
 	///
 	/// This function MUST be called *only once*, before the program starts.
 	///
-	/// `ptr` MUST be page-aligned.
-	pub fn set_brk_init(&mut self, ptr: *mut c_void) {
-		debug_assert!(ptr.is_aligned_to(PAGE_SIZE));
-		self.state.brk_init = ptr;
-		self.state.brk_ptr = ptr;
+	/// `addr` MUST be page-aligned.
+	pub fn set_brk_init(&mut self, addr: VirtAddr) {
+		debug_assert!(addr.is_aligned_to(PAGE_SIZE));
+		self.state.brk_init = addr;
+		self.state.brk_addr = addr;
 	}
 
-	/// Sets the pointer for the `brk` syscall.
+	/// Sets the address for the `brk` syscall.
 	///
 	/// If the memory cannot be allocated, the function returns an error.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn set_brk_ptr(&mut self, ptr: *mut c_void) -> AllocResult<()> {
-		if ptr >= self.state.brk_ptr {
+	pub fn set_brk(&mut self, addr: VirtAddr) -> AllocResult<()> {
+		if addr >= self.state.brk_addr {
 			// Check the pointer is valid
-			if ptr > COPY_BUFFER as _ {
+			if addr > COPY_BUFFER {
 				return Err(AllocError);
 			}
 			// Allocate memory
-			let begin = unsafe { utils::align(self.state.brk_ptr, PAGE_SIZE) };
-			let pages = (ptr as usize - begin as usize).div_ceil(PAGE_SIZE);
+			let begin = self.state.brk_addr.align_to(PAGE_SIZE);
+			let pages = (addr.0 - begin.0).div_ceil(PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 			self.map(
-				MapConstraint::Fixed(begin as _),
+				MapConstraint::Fixed(begin),
 				pages,
 				flags,
 				MapResidence::Normal,
 			)?;
 		} else {
 			// Check the pointer is valid
-			if ptr < self.state.brk_init {
+			if unlikely(addr < self.state.brk_init) {
 				return Err(AllocError);
 			}
 			// Free memory
-			let begin = unsafe { utils::align(ptr, PAGE_SIZE) };
-			let pages = (begin as usize - ptr as usize).div_ceil(PAGE_SIZE);
+			let begin = addr.align_to(PAGE_SIZE);
+			let pages = (begin.0 - addr.0).div_ceil(PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};
 			self.unmap(begin, pages, true)?;
 		}
-		self.state.brk_ptr = ptr;
+		self.state.brk_addr = addr;
 		Ok(())
 	}
 
@@ -657,15 +632,15 @@ impl MemSpace {
 	/// A typical situation where is function is useful is for Copy-On-Write allocations.
 	///
 	/// Arguments:
-	/// - `virtaddr` is the virtual address of the wrong memory access that caused the fault.
+	/// - `addr` is the virtual address of the wrong memory access that caused the fault.
 	/// - `code` is the error code given along with the error.
 	///
 	/// If the process should continue, the function returns `true`, else `false`.
-	pub fn handle_page_fault(&mut self, virtaddr: *const c_void, code: u32) -> bool {
+	pub fn handle_page_fault(&mut self, addr: VirtAddr, code: u32) -> bool {
 		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
 			return false;
 		}
-		let Some(mapping) = self.state.get_mut_mapping_for_ptr(virtaddr) else {
+		let Some(mapping) = self.state.get_mut_mapping_for_addr(addr) else {
 			return false;
 		};
 		// Check permissions
@@ -681,7 +656,7 @@ impl MemSpace {
 			return false;
 		}
 		// Map the accessed page
-		let page_offset = (virtaddr as usize - mapping.get_begin() as usize) / PAGE_SIZE;
+		let page_offset = (addr.0 - mapping.get_begin() as usize) / PAGE_SIZE;
 		let mut transaction = self.vmem.transaction();
 		// TODO use OOM killer
 		mapping
@@ -716,7 +691,7 @@ mod test {
 	#[test_case]
 	fn test0() {
 		let mut mem_space = MemSpace::new().unwrap();
-		let addr = 0x1000 as _;
+		let addr = VirtAddr(0x1000);
 		let size = NonZeroUsize::new(1).unwrap();
 		let res = mem_space
 			.map(
@@ -726,7 +701,7 @@ mod test {
 				MapResidence::Normal,
 			)
 			.unwrap();
-		assert_eq!(res, addr);
+		assert_eq!(VirtAddr::from(res), addr);
 		// TODO test access
 		/*assert!(!mem_space.can_access(null(), PAGE_SIZE, true, true));
 		assert!(!mem_space.can_access(null(), PAGE_SIZE + 1, true, true));

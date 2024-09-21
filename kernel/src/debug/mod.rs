@@ -18,8 +18,8 @@
 
 //! Debugging tools for the kernel.
 
-use crate::{elf, memory};
-use core::{ffi::c_void, ptr, ptr::null_mut};
+use crate::{elf, memory, memory::VirtAddr};
+use core::ptr;
 use utils::DisplayableStr;
 
 /// Fills the slice `stack` with the callstack starting at `frame`.
@@ -32,8 +32,8 @@ use utils::DisplayableStr;
 /// # Safety
 ///
 /// The caller must ensure the `frame` parameter points ta a valid stack frame.
-pub unsafe fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
-	stack.fill(null_mut::<c_void>());
+pub unsafe fn get_callstack(mut frame: *const usize, stack: &mut [VirtAddr]) {
+	stack.fill(VirtAddr::default());
 	for f in stack.iter_mut() {
 		if frame.is_null() {
 			break;
@@ -43,7 +43,7 @@ pub unsafe fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
 			break;
 		}
 		*f = pc;
-		frame = ptr::read_unaligned(frame) as *mut usize;
+		frame = ptr::read_unaligned(frame as *const *const usize);
 	}
 }
 
@@ -52,7 +52,7 @@ pub unsafe fn get_callstack(mut frame: *mut usize, stack: &mut [*mut c_void]) {
 /// `stack` is the callstack to print.
 ///
 /// If the callstack is empty, the function just prints `Empty`.
-pub fn print_callstack(stack: &[*mut c_void]) {
+pub fn print_callstack(stack: &[VirtAddr]) {
 	if !matches!(stack.first(), Some(p) if !p.is_null()) {
 		crate::println!("Empty");
 		return;

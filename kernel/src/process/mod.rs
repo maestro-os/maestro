@@ -50,13 +50,19 @@ use crate::{
 		File, O_RDWR,
 	},
 	gdt,
-	memory::{buddy, buddy::FrameOrder},
-	process::{mem_space::copy, pid::PidHandle, scheduler::SCHEDULER, signal::SigSet},
+	memory::{buddy, buddy::FrameOrder, VirtAddr},
+	process::{
+		mem_space::{copy, copy::SyscallPtr},
+		pid::PidHandle,
+		scheduler::SCHEDULER,
+		signal::SigSet,
+	},
 	register_get,
+	syscall::FromSyscallArg,
 	time::timer::TimerManager,
 };
 use core::{
-	ffi::{c_int, c_void},
+	ffi::c_int,
 	fmt,
 	fmt::Formatter,
 	intrinsics::unlikely,
@@ -255,10 +261,8 @@ pub struct Process {
 
 	/// The virtual memory of the process.
 	mem_space: Option<Arc<IntMutex<MemSpace>>>,
-	/// A pointer to the userspace stack.
-	user_stack: Option<*mut c_void>,
 	/// A pointer to the kernelspace stack.
-	kernel_stack: NonNull<c_void>,
+	kernel_stack: NonNull<u8>,
 
 	/// Current working directory
 	///
@@ -319,9 +323,12 @@ pub(crate) fn init() -> EResult<()> {
 			0x06 => proc.kill(Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
-				let inst_prefix = unsafe { *(regs.eip.0 as *const u8) };
-				if inst_prefix == HLT_INSTRUCTION {
-					proc.exit(regs.eax.0 as _);
+				// Get the instruction opcode
+				let ptr = SyscallPtr::<u8>::from_syscall_arg(regs.eip);
+				let opcode = ptr.copy_from_user();
+				// If the instruction is `hlt`, exit
+				if opcode == Ok(Some(HLT_INSTRUCTION)) {
+					proc.exit(regs.eax as _);
 				} else {
 					proc.kill(Signal::SIGSEGV);
 				}
@@ -333,8 +340,8 @@ pub(crate) fn init() -> EResult<()> {
 		CallbackResult::Continue
 	};
 	let page_fault_callback = |_id: u32, code: u32, regs: &Regs, ring: u32| {
-		let accessed_ptr = register_get!("cr2") as *const c_void;
-		let pc = regs.eip.0;
+		let accessed_addr = VirtAddr(register_get!("cr2"));
+		let pc = regs.eip;
 		// Get current process
 		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
@@ -346,7 +353,7 @@ pub(crate) fn init() -> EResult<()> {
 				return CallbackResult::Panic;
 			};
 			let mut mem_space = mem_space_mutex.lock();
-			mem_space.handle_page_fault(accessed_ptr, code)
+			mem_space.handle_page_fault(accessed_addr, code)
 		};
 		if !success {
 			if ring < 3 {
@@ -354,7 +361,7 @@ pub(crate) fn init() -> EResult<()> {
 				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
 					// Jump to `copy_fault`
 					let mut regs = regs.clone();
-					regs.eip.0 = copy::copy_fault as usize;
+					regs.eip = copy::copy_fault as usize;
 					// TODO cleanup
 					drop(curr_proc);
 					unsafe {
@@ -468,7 +475,6 @@ impl Process {
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
 
 			mem_space: None,
-			user_stack: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
 			cwd: root_dir.clone(),
@@ -844,7 +850,6 @@ impl Process {
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
 			mem_space: Some(mem_space),
-			user_stack: proc.user_stack,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
 			cwd: proc.cwd.clone(),

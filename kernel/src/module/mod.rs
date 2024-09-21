@@ -234,11 +234,11 @@ impl Module {
 		let got_sym = parser.get_symbol_by_name(GOT_SYM);
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel::<ELF32Rel>(section) {
-				unsafe { rel.perform(load_base as _, section, get_sym, got_sym) }
+				unsafe { rel.perform(load_base, section, get_sym, got_sym, false) }
 					.map_err(|_| errno!(EINVAL))?;
 			}
 			for rela in parser.iter_rel::<ELF32Rela>(section) {
-				unsafe { rela.perform(load_base as _, section, get_sym, got_sym) }
+				unsafe { rela.perform(load_base, section, get_sym, got_sym, false) }
 					.map_err(|_| errno!(EINVAL))?;
 			}
 		}

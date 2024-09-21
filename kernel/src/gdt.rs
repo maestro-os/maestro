@@ -16,17 +16,17 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Under the x86 architecture, the GDT (Global Descriptior Table) is a table of
+//! Under the x86 architecture, the GDT (Global Descriptor Table) is a table of
 //! structure that describes the segments of memory.
 //!
 //! It is a deprecated structure that still must be used in order to switch to protected mode,
 //! handle protection rings and load the Task State Segment (TSS).
 
-use crate::memory;
-use core::{arch::asm, ffi::c_void, fmt, ptr};
+use crate::memory::PhysAddr;
+use core::{arch::asm, fmt, ptr};
 
 /// The address in physical memory to the beginning of the GDT.
-const PHYS_PTR: *mut c_void = 0x800 as _;
+const PHYS_PTR: PhysAddr = PhysAddr(0x800);
 
 /// The offset of the kernel code segment.
 pub const KERNEL_CS: usize = 8;
@@ -155,8 +155,16 @@ pub fn make_segment_selector(offset: u32, ring: u32) -> u16 {
 }
 
 /// Returns the pointer to the segment at offset `offset`.
-pub fn get_segment_ptr(offset: usize) -> *mut u64 {
-	unsafe { memory::kern_to_virt(PHYS_PTR.add(offset as _)) as _ }
+///
+/// # Safety
+///
+/// The caller must ensure the given `offset` is in bounds of the GDT.
+pub unsafe fn get_segment_ptr(offset: usize) -> *mut u64 {
+	PHYS_PTR
+		.kernel_to_virtual()
+		.unwrap()
+		.as_ptr::<u64>()
+		.byte_add(offset)
 }
 
 /// Refreshes the GDT's cache.

@@ -29,14 +29,9 @@ pub mod vdso;
 
 use crate::{
 	file::{vfs, vfs::ResolutionSettings},
-	process::{
-		mem_space::MemSpace,
-		regs::{Register, Regs},
-		signal::SignalHandler,
-		Process,
-	},
+	memory::VirtAddr,
+	process::{mem_space::MemSpace, regs::Regs, signal::SignalHandler, Process},
 };
-use core::ffi::c_void;
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno::EResult,
@@ -65,15 +60,12 @@ pub struct ProgramImage {
 	mem_space: MemSpace,
 
 	/// A pointer to the entry point of the program.
-	entry_point: *const c_void,
-
-	/// A pointer to the process's user stack.
-	user_stack: *mut c_void,
+	entry_point: VirtAddr,
 	/// A pointer to the initial value of the user stack pointer.
-	user_stack_begin: *mut c_void,
+	user_stack: VirtAddr,
 }
 
-/// A program executor, whose role is to load a program and to preprare it for execution.
+/// A program executor, whose role is to load a program and to prepare it for execution.
 pub trait Executor {
 	/// Builds a program image.
 	/// `file` is the program's file.
@@ -100,9 +92,10 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.argv = Arc::new(image.argv)?;
 	proc.envp = Arc::new(image.envp)?;
 	// TODO Set exec path
-
+	// Set the new memory space to the process
+	proc.set_mem_space(Some(Arc::new(IntMutex::new(image.mem_space))?));
 	// Duplicate the file descriptor table
-	let fds = proc
+	proc.file_descriptors = proc
 		.file_descriptors
 		.as_ref()
 		.map(|fds_mutex| -> EResult<_> {
@@ -111,30 +104,16 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 			Ok(Arc::new(Mutex::new(new_fds))?)
 		})
 		.transpose()?;
-
-	// Set the new memory space to the process
-	proc.set_mem_space(Some(Arc::new(IntMutex::new(image.mem_space))?));
-
-	// Set new file descriptor table
-	proc.file_descriptors = fds;
-
-	// Set the process's stack
-	proc.user_stack = Some(image.user_stack);
-	proc.update_tss();
-
 	// Reset signals
 	proc.signal_handlers.lock().fill(SignalHandler::Default);
-
 	proc.reset_vfork();
 	proc.tls_entries = Default::default();
-
+	proc.update_tss();
 	// Set the process's registers
-	let regs = Regs {
-		esp: Register(image.user_stack_begin as _),
-		eip: Register(image.entry_point as _),
+	proc.regs = Regs {
+		esp: image.user_stack.0,
+		eip: image.entry_point.0,
 		..Default::default()
 	};
-	proc.regs = regs;
-
 	Ok(())
 }

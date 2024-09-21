@@ -19,8 +19,10 @@
 //! Functions to explore the kernel's ELF structures.
 
 use super::{ELF32SectionHeader, ELF32Sym, SHT_SYMTAB};
-use crate::{memory, multiboot};
-use core::ffi::c_void;
+use crate::{
+	memory::{PhysAddr, VirtAddr},
+	multiboot,
+};
 use utils::{
 	collections::hashmap::HashMap,
 	errno::{AllocResult, CollectResult},
@@ -46,8 +48,8 @@ pub fn get_section_by_offset(n: u32) -> Option<&'static ELF32SectionHeader> {
 	if n < boot_info.elf_num {
 		let offset = n as usize * boot_info.elf_entsize as usize;
 		let section = unsafe {
-			let ptr = boot_info.elf_sections.add(offset);
-			&*(memory::kern_to_virt(ptr) as *const ELF32SectionHeader)
+			let elf_sections = boot_info.elf_sections.kernel_to_virtual().unwrap();
+			&*(elf_sections + offset).as_ptr()
 		};
 		Some(section)
 	} else {
@@ -62,7 +64,10 @@ pub fn get_section_name(section: &ELF32SectionHeader) -> Option<&'static [u8]> {
 	let boot_info = multiboot::get_boot_info();
 	// `unwrap` cannot fail because the ELF will always have this section
 	let names_section = get_section_by_offset(boot_info.elf_shndx).unwrap();
-	let ptr = memory::kern_to_virt((names_section.sh_addr + section.sh_name) as *const u8);
+	let ptr = PhysAddr(names_section.sh_addr as usize + section.sh_name as usize)
+		.kernel_to_virtual()
+		.unwrap()
+		.as_ptr();
 	// The string is in bound, otherwise the kernel's ELF is invalid
 	Some(unsafe { utils::str_from_ptr(ptr) })
 }
@@ -81,7 +86,10 @@ pub fn symbols() -> impl Iterator<Item = &'static ELF32Sym> {
 	let symtab = sections()
 		.find(|section| section.sh_type == SHT_SYMTAB)
 		.unwrap();
-	let begin = memory::kern_to_virt(symtab.sh_addr as *const u8);
+	let begin: *const u8 = PhysAddr(symtab.sh_addr as usize)
+		.kernel_to_virtual()
+		.unwrap()
+		.as_ptr();
 	let symbols_count = (symtab.sh_size / symtab.sh_entsize) as usize;
 	(0..symbols_count).map(move |i| {
 		let off = i * symtab.sh_entsize as usize;
@@ -93,7 +101,10 @@ pub fn symbols() -> impl Iterator<Item = &'static ELF32Sym> {
 ///
 /// If the name of the symbol could not be found, the function returns `None`.
 pub fn get_symbol_name(symbol: &ELF32Sym) -> Option<&'static [u8]> {
-	let ptr = memory::kern_to_virt((STRTAB.get().sh_addr + symbol.st_name) as *const u8);
+	let ptr = PhysAddr(STRTAB.get().sh_addr as usize + symbol.st_name as usize)
+		.kernel_to_virtual()
+		.unwrap()
+		.as_ptr();
 	// The string is in bound, otherwise the kernel's ELF is invalid
 	Some(unsafe { utils::str_from_ptr(ptr) })
 }
@@ -103,12 +114,12 @@ pub fn get_symbol_name(symbol: &ELF32Sym) -> Option<&'static [u8]> {
 /// `inst` is the pointer to the instruction on the virtual memory.
 ///
 /// If the name cannot be retrieved, the function returns `None`.
-pub fn get_function_name(inst: *const c_void) -> Option<&'static [u8]> {
+pub fn get_function_name(inst: VirtAddr) -> Option<&'static [u8]> {
 	symbols()
 		.find(|sym| {
-			let begin = sym.st_value as usize;
+			let begin = VirtAddr(sym.st_value as usize);
 			let end = begin + sym.st_size as usize;
-			(inst as usize) >= begin && (inst as usize) < end
+			(begin..end).contains(&inst)
 		})
 		.and_then(get_symbol_name)
 }

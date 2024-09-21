@@ -33,13 +33,11 @@ use core::{
 	ptr,
 	ptr::{drop_in_place, null_mut},
 };
-use macros::instrument_allocator;
 use utils::{errno::AllocResult, lock::IntMutex};
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());
 
-#[instrument_allocator(name = malloc, op = alloc, size = n)]
 unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	let _ = MUTEX.lock();
 	// Get free chunk
@@ -53,11 +51,17 @@ unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	// Return pointer
 	let ptr = chunk.get_ptr_mut();
 	debug_assert!(ptr.is_aligned_to(chunk::ALIGNMENT));
-	debug_assert!(ptr as usize >= memory::PROCESS_END as usize);
+	debug_assert!(ptr as usize >= memory::PROCESS_END.0);
+	#[cfg(feature = "memtrace")]
+	super::trace::sample(
+		"malloc",
+		super::trace::SampleOp::Alloc,
+		ptr as usize,
+		n.get(),
+	);
 	NonNull::new(ptr).ok_or(AllocError)
 }
 
-#[instrument_allocator(name = malloc, op = realloc, ptr = ptr, size = n)]
 unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	let _ = MUTEX.lock();
 	// Get chunk
@@ -66,10 +70,10 @@ unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>>
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	let chunk_size = chunk.get_size();
-	match n.get().cmp(&chunk_size) {
+	let new_ptr = match n.get().cmp(&chunk_size) {
 		Ordering::Less => {
 			chunk.shrink(chunk_size - n.get());
-			Ok(ptr)
+			ptr
 		}
 		Ordering::Greater => {
 			if !chunk.grow(n.get() - chunk_size) {
@@ -77,16 +81,23 @@ unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>>
 				let mut new_ptr = alloc(n)?;
 				ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut(), chunk_size);
 				free(ptr);
-				Ok(new_ptr)
+				new_ptr
 			} else {
-				Ok(ptr)
+				ptr
 			}
 		}
-		Ordering::Equal => Ok(ptr),
-	}
+		Ordering::Equal => ptr,
+	};
+	#[cfg(feature = "memtrace")]
+	super::trace::sample(
+		"malloc",
+		super::trace::SampleOp::Realloc,
+		ptr.as_ptr() as _,
+		n.get(),
+	);
+	Ok(new_ptr)
 }
 
-#[instrument_allocator(name = malloc, op = free, ptr = ptr)]
 unsafe fn free(mut ptr: NonNull<u8>) {
 	let _ = MUTEX.lock();
 	// Get chunk
@@ -106,6 +117,8 @@ unsafe fn free(mut ptr: NonNull<u8>) {
 		let block = Block::from_first_chunk(chunk);
 		drop_in_place(block);
 	}
+	#[cfg(feature = "memtrace")]
+	super::trace::sample("malloc", super::trace::SampleOp::Free, ptr.as_ptr() as _, 0);
 }
 
 /// The global allocator for the kernel.
@@ -200,7 +213,7 @@ mod test {
 	fn alloc_free_fifo() {
 		let usage = buddy::allocated_pages_count();
 		unsafe {
-			let mut ptrs: [NonNull<u8>; 1024] = [NonNull::new(1 as _).unwrap(); 1024];
+			let mut ptrs: [NonNull<u8>; 1024] = [NonNull::dangling(); 1024];
 			for (i, p) in ptrs.iter_mut().enumerate() {
 				let size = i + 1;
 				let ptr = alloc(NonZeroUsize::new(size).unwrap()).unwrap();

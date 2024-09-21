@@ -18,11 +18,13 @@
 
 //! This module handles the memory information, which stores global
 //! information on the system memory by retrieving them from the boot
-//! information. These data are meant to be used by the memory allocators.
+//! information.
+//!
+//! This data is meant to be used by the memory allocators.
 
-use super::{kern_to_phys, stats};
+use super::{stats, PhysAddr, VirtAddr};
 use crate::{elf::kernel::sections, multiboot, multiboot::BootInfo};
-use core::{cmp::*, ffi::c_void, iter, ptr::null};
+use core::{cmp::*, iter, ptr::null};
 use utils::{limits::PAGE_SIZE, lock::once::OnceInit};
 
 /// Physical memory map information.
@@ -35,9 +37,8 @@ pub struct PhysMapInfo {
 	/// Pointer to the Multiboot2 memory map
 	pub memory_maps: *const multiboot::MmapEntry,
 
-	/// Pointer to the beginning of the main block of physical allocatable
-	/// memory, page aligned.
-	pub phys_main_begin: *const c_void,
+	/// Physical address to the beginning of the main block of allocatable memory, page aligned.
+	pub phys_main_begin: PhysAddr,
 	/// The size of the main block of physical allocatable memory, in pages.
 	pub phys_main_pages: usize,
 }
@@ -49,7 +50,7 @@ impl Default for PhysMapInfo {
 			memory_maps_entry_size: 0,
 			memory_maps: null(),
 
-			phys_main_begin: null(),
+			phys_main_begin: PhysAddr::default(),
 			phys_main_pages: 0,
 		}
 	}
@@ -68,64 +69,59 @@ pub fn get_info() -> &'static PhysMapInfo {
 pub(crate) fn print_entries() {
 	let phys_map = get_info();
 	debug_assert!(!phys_map.memory_maps.is_null());
-
 	crate::println!("--- Memory mapping ---");
 	crate::println!("<begin> <end> <type>");
-
-	let mut ptr = phys_map.memory_maps;
-	while (ptr as usize) < (phys_map.memory_maps as usize) + (phys_map.memory_maps_size) {
-		let entry = unsafe { &*ptr };
+	for off in (0..phys_map.memory_maps_size).step_by(phys_map.memory_maps_entry_size) {
+		// Safe because in range
+		let entry = unsafe { &*phys_map.memory_maps.byte_add(off) };
 		if entry.is_valid() {
 			let begin = entry.addr;
 			let end = begin + entry.len;
 			let type_ = entry.get_type_string();
 			crate::println!("- {begin:08x} {end:08x} {type_}");
 		}
-		ptr = ((ptr as usize) + phys_map.memory_maps_entry_size) as *const _;
 	}
 }
 
 /// Computes and returns the physical address to the end of the kernel's ELF sections' content.
-fn sections_end(boot_info: &BootInfo) -> *const c_void {
+fn sections_end(boot_info: &BootInfo) -> PhysAddr {
 	// The end of ELF sections list
-	let sections_list_end = (boot_info.elf_sections as usize
-		+ boot_info.elf_num as usize * boot_info.elf_entsize as usize)
-		as *const c_void;
+	let sections_list_end =
+		boot_info.elf_sections + boot_info.elf_num as usize * boot_info.elf_entsize as usize;
 	sections()
 		// Get end of sections' content
-		.map(|hdr| {
-			let ptr = (hdr.sh_addr as usize + hdr.sh_size as usize) as *const c_void;
-			kern_to_phys(ptr)
+		.filter_map(|hdr| {
+			let addr = hdr.sh_addr as usize + hdr.sh_size as usize;
+			VirtAddr(addr).kernel_to_physical()
 		})
 		.chain(iter::once(sections_list_end))
 		.max()
-		.unwrap_or(null())
+		.unwrap_or_default()
 }
 
 /// Returns the pointer to the beginning of the main physical allocatable memory
 /// and its size in number of pages.
-fn get_phys_main(boot_info: &BootInfo) -> (*const c_void, usize) {
-	// The end address of multiboot tags
-	let multiboot_tags_end = (boot_info.tags_ptr as usize + boot_info.tags_size) as *const _;
-	// The end address of the ELF sections
-	let sections_end = sections_end(boot_info);
+fn get_phys_main(boot_info: &BootInfo) -> (PhysAddr, usize) {
 	// The end address of the loaded initramfs
 	let initramfs_end = boot_info
 		.initramfs
 		.map(|initramfs| {
-			let initramfs_begin = kern_to_phys(initramfs.as_ptr() as _);
-			(initramfs_begin as usize + initramfs.len()) as *const c_void
+			let initramfs_begin = VirtAddr::from(initramfs.as_ptr())
+				.kernel_to_physical()
+				.unwrap();
+			initramfs_begin + initramfs.len()
 		})
-		.unwrap_or(null());
+		.unwrap_or_default();
 	// Compute the physical address of the beginning of allocatable memory
-	let mut begin = [multiboot_tags_end, sections_end, initramfs_end]
+	let begin = [boot_info.tags_end, sections_end(boot_info), initramfs_end]
 		.into_iter()
 		.max()
 		.unwrap();
-	begin = unsafe { utils::align(begin, PAGE_SIZE) };
 	// TODO Handle 64-bits systems
-	let pages = min((1000 + boot_info.mem_upper) / 4, 1024 * 1024) as usize
-		- ((begin as usize) / PAGE_SIZE);
+	// The size of the physical memory in pages
+	let memory_size = min((1000 + boot_info.mem_upper) / 4, 1024 * 1024) as usize;
+	// The number of physical page available for memory allocation
+	let pages = memory_size - begin.0.div_ceil(PAGE_SIZE);
 	(begin, pages)
 }
 

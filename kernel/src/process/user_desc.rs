@@ -20,7 +20,7 @@
 //! global descriptor.
 
 use crate::gdt;
-use core::{ffi::c_void, fmt};
+use core::{ffi::c_void, fmt, ptr};
 
 /// The size of the `user_desc` structure in bytes.
 pub const USER_DESC_SIZE: usize = 16;
@@ -54,12 +54,13 @@ impl UserDesc {
 	/// Returns the base address.
 	#[inline(always)]
 	pub fn get_base_addr(&self) -> *const c_void {
-		i32::from_ne_bytes([
+		let addr = i32::from_ne_bytes([
 			self.0[4] as _,
 			self.0[5] as _,
 			self.0[6] as _,
 			self.0[7] as _,
-		]) as _
+		]) as usize;
+		ptr::with_exposed_provenance(addr)
 	}
 
 	/// Returns the limit.

@@ -19,9 +19,9 @@
 //! MMIO (Memory-Mapped I/O) allows to access a device's registers by mapping them on the main
 //! memory.
 
-use super::{buddy, vmem};
+use super::{buddy, vmem, PhysAddr, VirtAddr};
 use crate::process::oom;
-use core::ffi::c_void;
+use core::ptr::NonNull;
 use utils::errno::AllocResult;
 
 /// Default flags for kernelspace in virtual memory.
@@ -33,13 +33,13 @@ const MMIO_FLAGS: u32 =
 
 // TODO allow usage of virtual memory that isn't linked to any physical pages
 
-/// Structure representing the mapping of a chunk of memory for MMIO.
+/// The mapping of a chunk of memory for MMIO.
 #[derive(Debug)]
 pub struct MMIO {
 	/// The physical address.
-	phys_addr: *mut c_void,
+	phys_addr: PhysAddr,
 	/// The virtual address.
-	virt_addr: *mut c_void,
+	virt_addr: VirtAddr,
 
 	/// The number of mapped pages.
 	pages: usize,
@@ -57,9 +57,9 @@ impl MMIO {
 	///
 	/// If not enough physical or virtual memory is available, the function returns an error.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn new(phys_addr: *mut c_void, pages: usize, prefetchable: bool) -> AllocResult<Self> {
+	pub fn new(phys_addr: PhysAddr, pages: usize, prefetchable: bool) -> AllocResult<Self> {
 		let order = buddy::get_order(pages);
-		let virt_addr = buddy::alloc_kernel(order)?;
+		let virt_addr = buddy::alloc_kernel(order)?.into();
 
 		let mut flags = MMIO_FLAGS;
 		if !prefetchable {
@@ -68,25 +68,20 @@ impl MMIO {
 
 		let mut vmem = vmem::kernel().lock();
 		let mut transaction = vmem.transaction();
-		transaction.map_range(phys_addr, virt_addr.as_ptr(), pages, flags)?;
+		transaction.map_range(phys_addr, virt_addr, pages, flags)?;
 		transaction.commit();
 
 		Ok(Self {
 			phys_addr,
-			virt_addr: virt_addr.as_ptr(),
+			virt_addr,
 
 			pages,
 		})
 	}
 
-	/// Returns an immutable pointer to the virtual address of the chunk.
-	pub fn as_ptr(&self) -> *const c_void {
-		self.virt_addr
-	}
-
-	/// Returns an immutable pointer to the virtual address of the chunk.
-	pub fn as_mut_ptr(&mut self) -> *mut c_void {
-		self.virt_addr
+	/// Returns the pointer to the beginning of the MMIO chunk.
+	pub fn as_ptr(&self) -> NonNull<u8> {
+		NonNull::new(self.virt_addr.as_ptr()).unwrap()
 	}
 
 	/// Unmaps the MMIO chunk.
@@ -97,14 +92,15 @@ impl MMIO {
 		let mut transaction = vmem.transaction();
 		transaction.map_range(
 			self.phys_addr,
-			super::kern_to_virt(self.phys_addr),
+			self.phys_addr.kernel_to_virtual().unwrap(),
 			self.pages,
 			DEFAULT_FLAGS,
 		)?;
 		transaction.commit();
+		// Free allocated virtual pages
 		let order = buddy::get_order(self.pages);
 		unsafe {
-			buddy::free_kernel(self.phys_addr, order);
+			buddy::free_kernel(self.virt_addr.as_ptr(), order);
 		}
 		Ok(())
 	}

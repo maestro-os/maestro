@@ -23,7 +23,6 @@
 
 extern crate proc_macro;
 
-mod allocator;
 mod aml;
 mod util;
 
@@ -44,30 +43,6 @@ pub fn any_repr(input: TokenStream) -> TokenStream {
 		unsafe impl utils::bytes::AnyRepr for #ident {}
 	};
 	TokenStream::from(toks)
-}
-
-/// Instrumentation macro for memory allocators.
-///
-/// This macro allows to trace memory allocations/reallocations/frees in order to determine which
-/// portion of the codebase consume the most memory, and to help finding memory leaks.
-///
-/// The macro takes the following attributes:
-/// - `name`: the name of the allocator
-/// - `op`: the operation the function performs (either `alloc`, `realloc` or `free`)
-/// - `ptr` (required for `realloc` and `free`): the field specifying the pointer
-/// - `size` (required for `alloc` and `free`): the field specifiying the size of the allocation
-/// - `scale` (optional, defaults to `linear`): the scale of the allocation, either:
-///     - `linear`: the size is taken as is in the recorded sample
-///     - `log2`: the size is put to the power of two (`2^^n`) before begin recordedsaved in the
-///       sample
-///
-/// Example:
-/// ```rust
-/// #[instrument_allocator(name = buddy, op = alloc, size = order, scale = log2)]
-/// ```
-#[proc_macro_attribute]
-pub fn instrument_allocator(metadata: TokenStream, input: TokenStream) -> TokenStream {
-	allocator::instrument_allocator(metadata, input)
 }
 
 /// Definition of a derive macro used to turn a structure into a parsable object for the AML

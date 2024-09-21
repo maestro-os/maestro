@@ -21,6 +21,7 @@
 
 use crate::{
 	memory,
+	memory::VirtAddr,
 	process::{mem_space::MemSpace, Process},
 	syscall::Args,
 };
@@ -41,7 +42,7 @@ const MS_SYNC: i32 = 0b010;
 const MS_INVALIDATE: i32 = 0b100;
 
 pub fn msync(
-	Args((addr, length, flags)): Args<(*mut c_void, usize, c_int)>,
+	Args((addr, length, flags)): Args<(VirtAddr, usize, c_int)>,
 	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	// Check address alignment
@@ -57,7 +58,7 @@ pub fn msync(
 	let mut i = 0;
 	let pages = length.div_ceil(PAGE_SIZE);
 	while i < pages {
-		let mapping = mem_space.get_mapping_for_ptr(addr).ok_or(errno!(ENOMEM))?;
+		let mapping = mem_space.get_mapping_for_addr(addr).ok_or(errno!(ENOMEM))?;
 		mapping.fs_sync(mem_space.get_vmem())?; // TODO Use flags
 		i += mapping.get_size().get();
 	}

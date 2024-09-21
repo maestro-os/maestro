@@ -38,8 +38,10 @@
 #![feature(pointer_is_aligned_to)]
 #![feature(portable_simd)]
 #![feature(set_ptr_value)]
+#![feature(strict_provenance)]
 #![feature(trusted_len)]
 #![feature(unsize)]
+#![deny(fuzzy_provenance_casts)]
 
 extern crate alloc;
 extern crate self as utils;
@@ -76,14 +78,6 @@ extern "C" {
 	fn strlen(s: *const c_void) -> usize;
 }
 
-/// Aligns down a pointer.
-///
-/// The returned value shall be lower than `ptr` or equal if the pointer is already aligned.
-#[inline(always)]
-pub fn down_align<T>(ptr: *const T, n: usize) -> *const T {
-	((ptr as usize) & !(n - 1)) as *const T
-}
-
 /// Aligns a pointer.
 ///
 /// The returned value shall be greater than `ptr` or equal if the pointer is already aligned.
@@ -94,7 +88,7 @@ pub fn down_align<T>(ptr: *const T, n: usize) -> *const T {
 /// object.
 #[inline(always)]
 pub unsafe fn align<T>(ptr: *const T, align: usize) -> *const T {
-	(ptr as *const c_void).add(ptr.align_offset(align)) as _
+	ptr.byte_add(ptr.align_offset(align))
 }
 
 /// Returns the of a type in bits.
@@ -110,9 +104,9 @@ pub const fn bit_size_of<T>() -> usize {
 /// The caller must ensure the pointer has a valid C string. An invalid C string causes an
 /// undefined behavior.
 ///
-/// The returned slice remains valid only as long as the pointer does.
+/// The given pointer must remain valid during the whole execution.
 pub unsafe fn str_from_ptr(ptr: *const u8) -> &'static [u8] {
-	let len = strlen(ptr as *const _);
+	let len = strlen(ptr as _);
 	slice::from_raw_parts(ptr, len)
 }
 
@@ -170,9 +164,9 @@ pub trait TryToOwned {
 
 /// Wrapper structure allowing to implement the [`fmt::Display`] trait on `&[u8]` to display it as
 /// a string.
-pub struct DisplayableStr<'a>(pub &'a [u8]);
+pub struct DisplayableStr<'s>(pub &'s [u8]);
 
-impl<'a> fmt::Display for DisplayableStr<'a> {
+impl fmt::Display for DisplayableStr<'_> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		for b in self.0 {
 			fmt.write_char(*b as char)?;
@@ -181,7 +175,7 @@ impl<'a> fmt::Display for DisplayableStr<'a> {
 	}
 }
 
-impl<'a> fmt::Debug for DisplayableStr<'a> {
+impl fmt::Debug for DisplayableStr<'_> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		// TODO Add backslashes to escape `"` and `\`
 		write!(fmt, "\"{self}\"")

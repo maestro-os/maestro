@@ -21,6 +21,7 @@
 use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile, FileType},
 	memory,
+	memory::VirtAddr,
 	process::{
 		mem_space,
 		mem_space::{residence::MapResidence, MemSpace},
@@ -30,6 +31,7 @@ use crate::{
 };
 use core::{
 	ffi::{c_int, c_void},
+	intrinsics::unlikely,
 	num::NonZeroUsize,
 };
 use utils::{
@@ -70,7 +72,7 @@ fn get_flags(flags: i32, prot: i32) -> u8 {
 /// Performs the `mmap` system call.
 #[allow(clippy::too_many_arguments)]
 pub fn do_mmap(
-	addr: *mut c_void,
+	addr: VirtAddr,
 	length: usize,
 	prot: i32,
 	flags: i32,
@@ -90,18 +92,15 @@ pub fn do_mmap(
 		return Err(errno!(EINVAL));
 	};
 	// Check for overflow
-	if (addr as usize)
-		.checked_add(pages.get() * PAGE_SIZE)
-		.is_none()
-	{
+	if unlikely(addr.0.checked_add(pages.get() * PAGE_SIZE).is_none()) {
 		return Err(errno!(EINVAL));
 	}
 	let constraint = {
 		if !addr.is_null() {
 			if flags & MAP_FIXED != 0 {
-				MapConstraint::Fixed(addr as _)
+				MapConstraint::Fixed(addr)
 			} else {
-				MapConstraint::Hint(addr as _)
+				MapConstraint::Hint(addr)
 			}
 		} else {
 			MapConstraint::None
@@ -165,7 +164,7 @@ pub fn do_mmap(
 
 pub fn mmap(
 	Args((addr, length, prot, flags, fd, offset)): Args<(
-		*mut c_void,
+		VirtAddr,
 		usize,
 		c_int,
 		c_int,

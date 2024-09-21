@@ -85,7 +85,7 @@ impl Chunk {
 
 	/// Returns the chunk corresponding to the given data pointer.
 	pub unsafe fn from_ptr(ptr: *mut u8) -> &'static mut Self {
-		&mut *(((ptr as usize) - size_of::<Self>()) as *mut Self)
+		&mut *(ptr.sub(size_of::<Self>()) as *mut Self)
 	}
 
 	/// Returns the previous chunk.

@@ -20,7 +20,7 @@
 //! Direct Access Memory (DMA).
 
 use crate::io;
-use core::{mem::size_of, ptr};
+use core::{mem::size_of, ptr, ptr::NonNull};
 
 /// Enumeration of Memory Space BAR types.
 #[derive(Clone, Debug)]
@@ -38,36 +38,24 @@ pub enum BAR {
 	MemorySpace {
 		/// The type of the BAR, specifying the size of the register.
 		type_: BARType,
-		/// If `true`, read accesses don't have any side effects.
+		/// If `true`, read accesses do not have any side effects.
 		prefetchable: bool,
 
-		/// Virtual address to the registers.
-		address: u64,
+		/// Pointer to the registers.
+		address: NonNull<u8>,
 		/// The size of the address space in bytes.
 		size: usize,
 	},
 	/// A IO port mapped register.
 	IOSpace {
 		/// Address to the registers in I/O space.
-		address: u64,
+		address: u32,
 		/// The size of the address space in bytes.
 		size: usize,
 	},
 }
 
 impl BAR {
-	/// Returns the base address.
-	pub fn get_address(&self) -> *mut () {
-		match self {
-			Self::MemorySpace {
-				address, ..
-			} => *address as _,
-			Self::IOSpace {
-				address, ..
-			} => *address as _,
-		}
-	}
-
 	/// Returns the amount of memory.
 	pub fn get_size(&self) -> usize {
 		match self {
@@ -102,23 +90,25 @@ impl BAR {
 				..
 			} => match type_ {
 				BARType::Size32 => unsafe {
-					let addr = (address + off as u64) as *const u32;
-					ptr::read_volatile::<u32>(addr).into()
+					let addr = address.as_ptr().add(off) as *const u32;
+					ptr::read_volatile(addr).into()
 				},
 				BARType::Size64 => unsafe {
-					let addr = (address + off as u64) as *const u64;
-					ptr::read_volatile::<u64>(addr)
+					let addr = address.as_ptr().add(off) as *const u64;
+					ptr::read_volatile(addr)
 				},
 			},
 			Self::IOSpace {
 				address, ..
 			} => {
-				let off = (*address + off as u64) as u16;
-				match size_of::<T>() {
-					1 => unsafe { io::inb(off).into() },
-					2 => unsafe { io::inw(off).into() },
-					4 => unsafe { io::inl(off).into() },
-					_ => 0u32.into(),
+				let off = address.wrapping_add(off as u32) as u16;
+				unsafe {
+					match size_of::<T>() {
+						1 => io::inb(off).into(),
+						2 => io::inw(off).into(),
+						4 => io::inl(off).into(),
+						_ => 0u32.into(),
+					}
 				}
 			}
 		}
@@ -134,23 +124,25 @@ impl BAR {
 				..
 			} => match type_ {
 				BARType::Size32 => unsafe {
-					let addr = (address + off as u64) as *mut u32;
-					ptr::write_volatile::<u32>(addr, val as _);
+					let addr = address.as_ptr().add(off) as *mut u32;
+					ptr::write_volatile(addr, val as _);
 				},
 				BARType::Size64 => unsafe {
-					let addr = (address + off as u64) as *mut u64;
-					ptr::write_volatile::<u64>(addr, val);
+					let addr = address.as_ptr().add(off) as *mut u64;
+					ptr::write_volatile(addr, val);
 				},
 			},
 			Self::IOSpace {
 				address, ..
 			} => {
-				let off = (*address + off as u64) as u16;
-				match size_of::<T>() {
-					1 => unsafe { io::outb(off, val as _) },
-					2 => unsafe { io::outw(off, val as _) },
-					4 => unsafe { io::outl(off, val as _) },
-					_ => {}
+				let off = address.wrapping_add(off as u32) as u16;
+				unsafe {
+					match size_of::<T>() {
+						1 => io::outb(off, val as _),
+						2 => io::outw(off, val as _),
+						4 => io::outl(off, val as _),
+						_ => {}
+					}
 				}
 			}
 		}

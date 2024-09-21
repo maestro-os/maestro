@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This file handles memory allocators initialization for the kernel.
+//! Kernel Memory allocators initialization.
 //!
 //! The physical memory is divided into zones. Each zones contain frames that
 //! can be allocated by the buddy allocator
@@ -29,56 +29,52 @@
 //! - User: Memory used for userspace mappings. This zone doesn't require virtual memory to
 //!   correspond with the physical memory, thus it can be located outside the kernelspace.
 
-use crate::{
-	memory,
-	memory::{buddy, memmap},
-};
-use core::{cmp::min, ffi::c_void};
+use crate::memory::{buddy, memmap, KERNELSPACE_SIZE};
+use core::cmp::min;
 use utils::limits::PAGE_SIZE;
 
 /// Initializes the memory allocators.
 pub(crate) fn init() {
 	let phys_map = memmap::get_info();
-	// The pointer to the beginning of available memory
-	let virt_alloc_begin = memory::kern_to_virt(phys_map.phys_main_begin);
 	// The number of available physical memory pages
 	let mut available_pages = phys_map.phys_main_pages;
 
 	// The pointer to the beginning of the buddy allocator's metadata
-	let metadata_begin = unsafe { utils::align(virt_alloc_begin, PAGE_SIZE) as *mut c_void };
+	let metadata_begin = phys_map.phys_main_begin.align_to(PAGE_SIZE);
+	let metadata_begin_virt = metadata_begin.kernel_to_virtual().unwrap();
 	// The size of the buddy allocator's metadata
-	let metadata_size = available_pages * buddy::get_frame_metadata_size();
+	let metadata_size = available_pages * buddy::FRAME_METADATA_SIZE;
 	// The end of the buddy allocator's metadata
-	let metadata_end = (metadata_begin as usize + metadata_size) as *mut c_void;
-	// The physical address of the end of the buddy allocator's metadata
-	let phys_metadata_end = memory::kern_to_phys(metadata_end);
+	let metadata_end = metadata_begin + metadata_size;
 
-	// Updating the number of available pages
+	// Update the number of available pages
 	available_pages -= metadata_size.div_ceil(PAGE_SIZE);
 
 	// The beginning of the kernel's zone
-	let kernel_zone_begin = unsafe { utils::align(phys_metadata_end, PAGE_SIZE) as *mut c_void };
+	let kernel_zone_begin = metadata_end.align_to(PAGE_SIZE);
 	// The maximum number of pages the kernel zone can hold.
-	let kernel_max = (memory::get_kernelspace_size() - phys_metadata_end as usize) / PAGE_SIZE;
+	let kernel_max = (KERNELSPACE_SIZE - metadata_end.0) / PAGE_SIZE;
 	// The number of frames the kernel zone holds.
 	let kernel_zone_frames = min(available_pages, kernel_max);
 	// The kernel's zone
-	let kernel_zone = buddy::Zone::new(metadata_begin, kernel_zone_frames as _, kernel_zone_begin);
+	let kernel_zone = buddy::Zone::new(
+		metadata_begin_virt,
+		kernel_zone_begin,
+		kernel_zone_frames as _,
+	);
 
-	// Updating the number of available pages
+	// Update the number of available pages
 	available_pages -= kernel_zone_frames;
 
 	// The beginning of the userspace's zone
-	let userspace_zone_begin =
-		(kernel_zone_begin as usize + kernel_zone_frames * PAGE_SIZE) as *mut c_void;
+	let userspace_zone_begin = kernel_zone_begin + kernel_zone_frames * PAGE_SIZE;
 	// The beginning of the userspace zone's metadata
-	let userspace_metadata_begin = (metadata_begin as usize
-		+ kernel_zone_frames * buddy::get_frame_metadata_size())
-		as *mut c_void;
+	let userspace_metadata_begin =
+		metadata_begin_virt + kernel_zone_frames * buddy::FRAME_METADATA_SIZE;
 	let user_zone = buddy::Zone::new(
 		userspace_metadata_begin,
-		available_pages as _,
 		userspace_zone_begin,
+		available_pages as _,
 	);
 
 	// TODO MMIO zone

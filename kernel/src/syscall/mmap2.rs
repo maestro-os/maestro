@@ -22,6 +22,7 @@
 use super::{mmap, Args};
 use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile},
+	memory::VirtAddr,
 	process::mem_space::MemSpace,
 };
 use core::ffi::{c_int, c_void};
@@ -33,7 +34,7 @@ use utils::{
 
 pub fn mmap2(
 	Args((addr, length, prot, flags, fd, offset)): Args<(
-		*mut c_void,
+		VirtAddr,
 		usize,
 		c_int,
 		c_int,

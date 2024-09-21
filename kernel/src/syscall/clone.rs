@@ -110,10 +110,10 @@ pub fn clone(
 		// Set the process's registers
 		let mut new_regs = regs.clone();
 		// Set return value to `0`
-		new_regs.eax.0 = 0;
+		new_regs.eax = 0;
 		// Set stack
-		new_regs.esp.0 = if stack.is_null() {
-			regs.esp.0
+		new_regs.esp = if stack.is_null() {
+			regs.esp
 		} else {
 			stack as _
 		};

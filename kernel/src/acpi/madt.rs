@@ -16,9 +16,10 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This modules handles ACPI's Multiple APIC Description Table (MADT).
+//! ACPI's Multiple APIC Description Table (MADT) handling.
 
-use super::{ACPITable, ACPITableHeader};
+use super::{Table, TableHdr};
+use core::{ffi::c_void, intrinsics::likely};
 
 /// The offset of the entries in the MADT.
 const ENTRIES_OFF: usize = 0x2c;
@@ -32,7 +33,7 @@ const PCAT_COMPAT: u32 = 0b1;
 #[derive(Debug)]
 pub struct Madt {
 	/// The table's header.
-	pub header: ACPITableHeader,
+	pub header: TableHdr,
 
 	/// The physical address at which each process can access its local
 	/// interrupt controller.
@@ -51,7 +52,7 @@ impl Madt {
 	}
 }
 
-impl ACPITable for Madt {
+impl Table for Madt {
 	const SIGNATURE: &'static [u8; 4] = b"APIC";
 }
 
@@ -77,10 +78,12 @@ impl<'m> Iterator for EntriesIterator<'m> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let entries_len = self.madt.header.length as usize - ENTRIES_OFF;
-		if self.cursor < entries_len {
-			let ptr =
-				(self as *const _ as usize + ENTRIES_OFF + self.cursor) as *const EntryHeader;
-			let entry = unsafe { &*ptr };
+		if likely(self.cursor < entries_len) {
+			let entry = unsafe {
+				let ptr = (self as *const _ as *const c_void).add(ENTRIES_OFF + self.cursor)
+					as *const EntryHeader;
+				&*ptr
+			};
 			self.cursor += entry.length as usize;
 			Some(entry)
 		} else {

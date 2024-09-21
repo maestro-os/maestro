@@ -18,8 +18,8 @@
 
 //! This module handles ACPI's Fixed ACPI Description Table (FADT).
 
-use super::{dsdt::Dsdt, ACPITable, ACPITableHeader};
-use core::slice;
+use super::{dsdt::Dsdt, Table, TableHdr};
+use core::{ptr, slice};
 
 /// TODO doc
 pub struct GenericAddr {
@@ -32,11 +32,11 @@ pub struct GenericAddr {
 
 /// The Fixed ACPI Description Table.
 ///
-/// The documentation of every fields can be found in the ACPI documentation.
+/// The documentation of every field can be found in the ACPI documentation.
 #[repr(C)]
 pub struct Fadt {
 	/// The table's header.
-	pub header: ACPITableHeader,
+	pub header: TableHdr,
 
 	pub firmware_ctrl: u32,
 	pub dsdt: u32,
@@ -106,19 +106,17 @@ impl Fadt {
 			self.x_dsdt
 		} else {
 			self.dsdt as _
-		} as *const u8;
-		// TODO Add displacement relative to ACPI data buffer
-
+		};
+		let dsdt: *const TableHdr = ptr::with_exposed_provenance(dsdt as _);
 		if !dsdt.is_null() {
 			let dsdt = unsafe {
-				let dsdt_slice = slice::from_raw_parts(dsdt, 1);
-				&*(dsdt_slice as *const [u8] as *const [()] as *const Dsdt)
+				let len = (*dsdt).length as usize;
+				let dsdt_slice = slice::from_raw_parts(dsdt as *const u8, len);
+				&*(dsdt_slice as *const [_] as *const [()] as *const Dsdt)
 			};
-
-			if !dsdt.get_header().check::<Dsdt>() {
+			if !dsdt.hdr().check::<Dsdt>() {
 				panic!("Invalid ACPI structure!");
 			}
-
 			Some(dsdt)
 		} else {
 			None
@@ -126,6 +124,6 @@ impl Fadt {
 	}
 }
 
-impl ACPITable for Fadt {
+impl Table for Fadt {
 	const SIGNATURE: &'static [u8; 4] = b"FACP";
 }

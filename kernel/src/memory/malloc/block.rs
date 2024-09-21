@@ -71,7 +71,7 @@ impl Block {
 	/// is passed as argument.
 	pub unsafe fn from_first_chunk(chunk: *mut Chunk) -> &'static mut Block {
 		let first_chunk_off = offset_of!(Block, first_chunk);
-		let ptr = ((chunk as usize) - first_chunk_off) as *mut Self;
+		let ptr = chunk.byte_sub(first_chunk_off) as *mut Self;
 		debug_assert!(ptr.is_aligned_to(PAGE_SIZE));
 		&mut *ptr
 	}

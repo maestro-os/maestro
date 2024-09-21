@@ -22,7 +22,7 @@
 //! from. This is an undesirable state which requires to reboot the host
 //! machine.
 
-use crate::{logger, power, register_get};
+use crate::{logger, memory::VirtAddr, power, register_get};
 use core::panic::PanicInfo;
 use utils::interrupt::cli;
 
@@ -57,17 +57,16 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		"If you believe this is a bug on the kernel side, please feel free to report it."
 	);
 
-	let cr2 = register_get!("cr2") as *const ();
-	crate::println!("cr2: {cr2:p}\n");
+	crate::println!("cr2: {:?}\n", VirtAddr(register_get!("cr2")));
 
 	#[cfg(debug_assertions)]
 	{
 		use crate::debug;
-		use core::{ffi::c_void, ptr::null_mut};
+		use core::ptr;
 
 		crate::println!("--- Callstack ---");
-		let ebp = register_get!("ebp") as *mut _;
-		let mut callstack: [*mut c_void; 8] = [null_mut::<c_void>(); 8];
+		let ebp = ptr::with_exposed_provenance(register_get!("ebp"));
+		let mut callstack: [VirtAddr; 8] = [VirtAddr::default(); 8];
 		unsafe {
 			debug::get_callstack(ebp, &mut callstack);
 		}

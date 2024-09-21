@@ -23,13 +23,13 @@ mod signal_trampoline;
 use super::{oom, Process, State, REDZONE_SIZE};
 use crate::{
 	file::perm::Uid,
+	memory::VirtAddr,
 	process::{pid::Pid, regs::Regs, signal::signal_trampoline::signal_trampoline},
 	time::unit::ClockIdT,
 };
 use core::{
 	ffi::{c_int, c_void},
 	fmt,
-	fmt::Formatter,
 	mem::{size_of, transmute},
 	ptr,
 	ptr::{null_mut, NonNull},
@@ -37,10 +37,10 @@ use core::{
 };
 use utils::{errno, errno::Errno};
 
-/// Ignoring the signal.
-pub const SIG_IGN: *const c_void = 0x0 as _;
-/// The default action for the signal.
-pub const SIG_DFL: *const c_void = 0x1 as _;
+/// Signal handler value: Ignoring the signal.
+pub const SIG_IGN: usize = 0x0;
+/// Signal handler value: The default action for the signal.
+pub const SIG_DFL: usize = 0x1;
 
 // TODO implement all flags
 /// [`SigAction`] flag: If set, use `sa_sigaction` instead of `sa_handler`.
@@ -109,22 +109,8 @@ impl SignalAction {
 	}
 }
 
-/// Union representing a signal value.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub union SigVal {
-	/// The value as an int.
-	pub sigval_int: i32,
-	/// The value as a pointer.
-	pub sigval_ptr: *mut c_void,
-}
-
-impl fmt::Debug for SigVal {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let val = unsafe { self.sigval_ptr };
-		f.debug_struct("SigVal").field("sigval", &val).finish()
-	}
-}
+/// A signal handler value.
+pub type SigVal = usize;
 
 // FIXME: fields are incorrect (check musl source)
 /// Signal information.
@@ -228,7 +214,7 @@ pub union SigActionHandler {
 }
 
 impl fmt::Debug for SigActionHandler {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let ptr = unsafe { self.sa_handler };
 		fmt::Debug::fmt(&ptr, f)
 	}
@@ -311,7 +297,7 @@ pub enum SignalHandler {
 
 impl From<SigAction> for SignalHandler {
 	fn from(action: SigAction) -> Self {
-		let handler = unsafe { transmute::<SigActionHandler, *const c_void>(action.sa_handler) };
+		let handler = unsafe { transmute::<SigActionHandler, usize>(action.sa_handler) };
 		match handler {
 			SIG_IGN => Self::Ignore,
 			SIG_DFL => Self::Default,
@@ -324,7 +310,7 @@ impl SignalHandler {
 	/// Creates a handler from a value given by the `signal` system call.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn from_legacy(handler: *const c_void) -> Self {
-		match handler {
+		match handler as usize {
 			SIG_IGN => Self::Ignore,
 			SIG_DFL => Self::Default,
 			_ => Self::Handler(SigAction {
@@ -338,14 +324,12 @@ impl SignalHandler {
 	}
 
 	/// The opposite operation of [`Self::from_legacy`].
-	pub fn to_legacy(&self) -> *const c_void {
+	pub fn to_legacy(&self) -> usize {
 		match self {
 			SignalHandler::Ignore => SIG_IGN,
 			SignalHandler::Default => SIG_DFL,
 			SignalHandler::Handler(action) => unsafe {
-				transmute::<Option<extern "C" fn(i32)>, *const c_void>(
-					action.sa_handler.sa_handler,
-				)
+				transmute::<Option<extern "C" fn(i32)>, usize>(action.sa_handler.sa_handler)
 			},
 		}
 	}
@@ -354,12 +338,12 @@ impl SignalHandler {
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
-				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(SIG_IGN) },
+				sa_handler: unsafe { transmute::<usize, SigActionHandler>(SIG_IGN) },
 				sa_mask: Default::default(),
 				sa_flags: 0,
 			},
 			Self::Default => SigAction {
-				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(SIG_DFL) },
+				sa_handler: unsafe { transmute::<usize, SigActionHandler>(SIG_DFL) },
 				sa_mask: Default::default(),
 				sa_flags: 0,
 			},
@@ -380,31 +364,31 @@ impl SignalHandler {
 				// Prepare the signal handler stack
 				// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
 				// SA_ONSTACK)
-				let stack_ptr = process.regs.esp.0 - REDZONE_SIZE;
+				let stack_addr = VirtAddr(process.regs.esp) - REDZONE_SIZE;
 				let signal_data_size = size_of::<UContext>() + size_of::<usize>() * 4;
-				let signal_esp = stack_ptr - signal_data_size;
+				let signal_esp = stack_addr - signal_data_size;
 				{
 					let mem_space = process.get_mem_space().unwrap();
 					let mut mem_space = mem_space.lock();
 					mem_space.bind();
 					// FIXME: a stack overflow would cause an infinite loop
-					oom::wrap(|| mem_space.alloc(signal_esp as _, signal_data_size));
+					oom::wrap(|| mem_space.alloc(signal_esp, signal_data_size));
 				}
 				// Write data on stack
 				let ctx = UContext {
 					uc_flags: 0, // TODO
 					uc_link: null_mut(),
 					uc_sigmask: process.sigmask,
-					uc_stack: stack_ptr as _,
+					uc_stack: stack_addr.as_ptr(),
 					uc_mcontext: process.regs.clone(),
 				};
 				unsafe {
 					// Write `ctx`
-					let ctx_ptr = stack_ptr - size_of::<UContext>();
-					ptr::write_volatile(ctx_ptr as *mut UContext, ctx);
-					let args = slice::from_raw_parts_mut(signal_esp as *mut usize, 4);
+					let ctx_addr = stack_addr - size_of::<UContext>();
+					ptr::write_volatile(ctx_addr.as_ptr(), ctx);
+					let args = slice::from_raw_parts_mut(signal_esp.as_ptr::<usize>(), 4);
 					// Pointer to  `ctx`
-					args[3] = ctx_ptr;
+					args[3] = ctx_addr.0;
 					// Signal number
 					args[2] = signal.get_id() as usize;
 					// Pointer to the handler
@@ -419,9 +403,9 @@ impl SignalHandler {
 				}
 				// Prepare registers for the trampoline
 				let signal_trampoline = signal_trampoline as *const c_void;
-				process.regs.ebp.0 = 0;
-				process.regs.esp.0 = signal_esp as _;
-				process.regs.eip.0 = signal_trampoline as _;
+				process.regs.ebp = 0;
+				process.regs.esp = signal_esp.0;
+				process.regs.eip = signal_trampoline as _;
 			}
 			// Execute default action
 			_ => {

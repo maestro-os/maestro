@@ -6,7 +6,7 @@
 # - ARCH: specifies the architecture to build for
 # - AUX_ELF: specifies the path to an auxiliary ELF file whose symbols will be added to gdb
 
-export QEMUFLAGS="-s -S -d int"
+export QEMUFLAGS="$QEMUFLAGS -s -S -d int"
 setsid cargo run $CARGOFLAGS >qemu.log 2>&1 &
 QEMU_PID=$!
 

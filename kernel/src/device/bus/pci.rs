@@ -36,7 +36,7 @@ use crate::{
 		DeviceManager,
 	},
 	io,
-	memory::mmio::MMIO,
+	memory::{mmio::MMIO, PhysAddr},
 };
 use core::{cmp::min, mem::size_of};
 use utils::{
@@ -255,7 +255,7 @@ impl PCIDevice {
 	///
 	/// If it doesn't exist, the function returns `None`.
 	///
-	/// A BAR may be accompanied with an MMIO, allowing to map a portion of virtual memory in order
+	/// A BAR may be accompanied by an MMIO, allowing to map a portion of virtual memory in order
 	/// to make the BAR accessible.
 	///
 	/// Dropping the MMIO makes using the associated BAR an undefined behaviour.
@@ -278,52 +278,40 @@ impl PCIDevice {
 
 				_ => return Ok(None),
 			};
-			let mut address = match type_ {
+			let phys_addr = match type_ {
 				BARType::Size32 => (value & 0xfffffff0) as u64,
-
 				BARType::Size64 => {
 					let Some(next_bar_off) = self.get_bar_reg_off(n + 1) else {
 						return Ok(None);
 					};
-
 					// The next BAR's value
 					let next_value =
 						read_long(self.bus, self.device, self.function, next_bar_off as _);
 					(value & 0xfffffff0) as u64 | ((next_value as u64) << 32)
 				}
 			};
-			if address == 0 {
+			if phys_addr == 0 {
 				return Ok(None);
 			}
-
 			let prefetchable = value & 0b1000 != 0;
-
 			// Create MMIO
 			let pages = size.div_ceil(PAGE_SIZE);
-			let mut mmio = MMIO::new(address as _, pages, prefetchable)?;
-			address = mmio.as_mut_ptr() as _;
-
+			let mmio = MMIO::new(PhysAddr(phys_addr as _), pages, prefetchable)?;
 			Ok(Some((
 				BAR::MemorySpace {
 					type_,
 					prefetchable,
 
-					address,
-
+					address: mmio.as_ptr(),
 					size,
 				},
 				Some(mmio),
 			)))
 		} else {
-			let address = (value & 0xfffffffc) as u64;
-			if address == 0 {
-				return Ok(None);
-			}
-
-			Ok(Some((
+			let address = value & 0xfffffffc;
+			Ok((address != 0).then_some((
 				BAR::IOSpace {
 					address,
-
 					size,
 				},
 				None,

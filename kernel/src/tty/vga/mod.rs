@@ -23,7 +23,10 @@
 //!
 //! Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
-use crate::{io, memory, memory::vmem};
+use crate::{
+	io,
+	memory::{vmem, PhysAddr},
+};
 
 /// Type representing a VGA text mode character.
 pub type Char = u16;
@@ -33,7 +36,7 @@ pub type Color = u8;
 pub type Pos = i16;
 
 /// Physical address of the VGA text buffer.
-pub const BUFFER_PHYS: *mut Char = 0xb8000 as _;
+pub const BUFFER_PHYS: PhysAddr = PhysAddr(0xb8000);
 
 /// Width of the screen in characters under the VGA text mode.
 pub const WIDTH: Pos = 80;
@@ -91,7 +94,7 @@ pub const CURSOR_END: u8 = 15;
 /// Returns the virtual address of the VGA text buffer.
 #[inline]
 pub fn get_buffer_virt() -> *mut Char {
-	(memory::PROCESS_END as usize + BUFFER_PHYS as usize) as _
+	BUFFER_PHYS.kernel_to_virtual().unwrap().as_ptr()
 }
 
 /// Returns the value for the given foreground color `fg` and background color
@@ -103,10 +106,10 @@ pub fn entry_color(fg: Color, bg: Color) -> Color {
 
 /// Clears the VGA text buffer.
 pub fn clear() {
-	for i in 0..(WIDTH * HEIGHT) {
+	for i in 0..(WIDTH as usize * HEIGHT as usize) {
 		unsafe {
 			vmem::write_ro(|| {
-				*get_buffer_virt().offset(i as isize) = (DEFAULT_COLOR as Char) << 8;
+				*get_buffer_virt().add(i) = (DEFAULT_COLOR as Char) << 8;
 			});
 		}
 	}

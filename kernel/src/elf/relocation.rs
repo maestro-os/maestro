@@ -16,13 +16,14 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements ELF relocations.
+//! ELF relocations implementation.
 
 use crate::{
 	elf,
 	elf::{ELF32SectionHeader, ELF32Sym, SHT_REL, SHT_RELA},
+	process::mem_space::bound_check,
 };
-use core::{ffi::c_void, ptr};
+use core::{intrinsics::unlikely, mem::size_of_val, ptr};
 use macros::AnyRepr;
 
 /// The name of the symbol pointing to the global offset table.
@@ -37,7 +38,7 @@ pub trait Relocation {
 	const REQUIRED_SECTION_TYPE: u32;
 
 	/// Returns the `r_offset` field of the relocation.
-	fn get_offset(&self) -> u32;
+	fn get_offset(&self) -> usize;
 
 	/// Returns the `r_info` field of the relocation.
 	fn get_info(&self) -> u32;
@@ -51,6 +52,7 @@ pub trait Relocation {
 	///     - The index of the section containing the symbol.
 	///     - The index of the symbol in the section.
 	/// - `got` is the Global Offset Table's symbol (named after [`GOT_SYM`]).
+	/// - `user` tells whether the relocation must be done for userspace or kernelspace.
 	///
 	/// If the relocation cannot be performed, the function returns an error.
 	///
@@ -59,26 +61,24 @@ pub trait Relocation {
 	/// TODO
 	unsafe fn perform<F>(
 		&self,
-		base_addr: *const c_void,
+		base_addr: *const u8,
 		rel_section: &ELF32SectionHeader,
 		get_sym: F,
 		got: Option<&ELF32Sym>,
+		user: bool,
 	) -> Result<(), RelocationError>
 	where
 		F: FnOnce(u32, u32) -> Option<u32>,
 	{
-		let got_off = got.map(|sym| sym.st_value).unwrap_or(0);
+		let got_off = got.map(|sym| sym.st_value as usize).unwrap_or(0);
 		// The address of the GOT
-		let got_addr = (base_addr as u32).wrapping_add(got_off);
-
+		let got_addr = (base_addr as usize).wrapping_add(got_off);
 		// The offset in the GOT entry for the symbol
-		let got_offset = 0u32; // TODO
-						 // The offset in the PLT entry for the symbol
-		let plt_offset = 0u32; // TODO
-
-		// The value of the symbol
-		let sym_val = get_sym(rel_section.sh_link, self.get_sym());
-
+		let got_offset = 0usize; // TODO
+						   // The offset in the PLT entry for the symbol
+		let plt_offset = 0usize; // TODO
+						   // The value of the symbol
+		let sym_val = get_sym(rel_section.sh_link, self.get_sym()).map(|val| val as usize);
 		let value = match self.get_type() {
 			elf::R_386_32 => sym_val
 				.ok_or(RelocationError)?
@@ -93,7 +93,7 @@ pub trait Relocation {
 				.wrapping_sub(self.get_offset()),
 			elf::R_386_COPY => return Ok(()),
 			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
-			elf::R_386_RELATIVE => (base_addr as u32).wrapping_add(self.get_addend()),
+			elf::R_386_RELATIVE => (base_addr as usize).wrapping_add(self.get_addend()),
 			elf::R_386_GOTOFF => sym_val
 				.ok_or(RelocationError)?
 				.wrapping_add(self.get_addend())
@@ -101,22 +101,20 @@ pub trait Relocation {
 			elf::R_386_GOTPC => got_addr
 				.wrapping_add(self.get_addend())
 				.wrapping_sub(self.get_offset()),
-
 			// Ignored
 			elf::R_386_IRELATIVE => return Ok(()),
-
 			_ => return Err(RelocationError),
-		};
-
-		let addr = (base_addr as u32).wrapping_add(self.get_offset()) as *mut u32;
-		// TODO Check the address is accessible
-
+		} as u32;
+		let addr = base_addr.add(self.get_offset()) as *mut u32;
+		// If the resulting address is not accessible, error
+		if unlikely(user != bound_check(addr as _, size_of_val(&value))) {
+			return Err(RelocationError);
+		}
 		let value = match self.get_type() {
 			elf::R_386_RELATIVE => ptr::read_volatile(addr).wrapping_add(value),
 			_ => value,
 		};
 		ptr::write_volatile(addr, value);
-
 		Ok(())
 	}
 
@@ -131,7 +129,7 @@ pub trait Relocation {
 	}
 
 	/// Returns the relocation's addend.
-	fn get_addend(&self) -> u32;
+	fn get_addend(&self) -> usize;
 }
 
 /// A 32 bits ELF relocation.
@@ -147,15 +145,15 @@ pub struct ELF32Rel {
 impl Relocation for ELF32Rel {
 	const REQUIRED_SECTION_TYPE: u32 = SHT_REL;
 
-	fn get_offset(&self) -> u32 {
-		self.r_offset
+	fn get_offset(&self) -> usize {
+		self.r_offset as _
 	}
 
 	fn get_info(&self) -> u32 {
 		self.r_info
 	}
 
-	fn get_addend(&self) -> u32 {
+	fn get_addend(&self) -> usize {
 		0
 	}
 }
@@ -175,15 +173,15 @@ pub struct ELF32Rela {
 impl Relocation for ELF32Rela {
 	const REQUIRED_SECTION_TYPE: u32 = SHT_RELA;
 
-	fn get_offset(&self) -> u32 {
-		self.r_offset
+	fn get_offset(&self) -> usize {
+		self.r_offset as _
 	}
 
 	fn get_info(&self) -> u32 {
 		self.r_info
 	}
 
-	fn get_addend(&self) -> u32 {
-		self.r_addend
+	fn get_addend(&self) -> usize {
+		self.r_addend as _
 	}
 }

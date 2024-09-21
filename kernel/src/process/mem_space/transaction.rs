@@ -19,8 +19,11 @@
 //! Implementation of memory space transactions to modify [`MemSpaceState`] atomically.
 
 use super::{gap::MemGap, mapping::MemMapping, MemSpaceState};
-use crate::memory::vmem::{VMem, VMemTransaction};
-use core::{alloc::AllocError, ffi::c_void, hash::Hash, mem};
+use crate::memory::{
+	vmem::{VMem, VMemTransaction},
+	VirtAddr,
+};
+use core::{alloc::AllocError, hash::Hash, mem};
 use utils::{
 	collections::{
 		btreemap::BTreeMap,
@@ -93,14 +96,14 @@ pub(super) struct MemSpaceTransaction<'m, 'v> {
 	vmem_transaction: VMemTransaction<'v, false>,
 
 	/// The complement used to restore `gaps` on rollback.
-	gaps_complement: HashMap<*const c_void, Option<MemGap>>,
+	gaps_complement: HashMap<VirtAddr, Option<MemGap>>,
 	/// The complement used to restore `mappings` on rollback.
-	mappings_complement: HashMap<*const c_void, Option<MemMapping>>,
+	mappings_complement: HashMap<*mut u8, Option<MemMapping>>,
 
 	/// The list of gaps that must be discarded on commit.
-	gaps_discard: HashMap<*const c_void, ()>,
+	gaps_discard: HashMap<VirtAddr, ()>,
 	/// The list of mappings that must be discarded on commit.
-	mappings_discard: HashMap<*const c_void, ()>,
+	mappings_discard: HashMap<*mut u8, ()>,
 
 	/// The new value for the `vmem_usage` field.
 	vmem_usage: usize,
@@ -141,7 +144,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	/// Removes the gap beginning at the given address from the state.
 	///
 	/// On failure, the transaction is dropped and rolled back.
-	pub fn remove_gap(&mut self, gap_begin: *const c_void) -> AllocResult<()> {
+	pub fn remove_gap(&mut self, gap_begin: VirtAddr) -> AllocResult<()> {
 		if let Some(gap) = self.mem_space_state.gaps.get(&gap_begin) {
 			self.gaps_discard.insert(gap.get_begin(), ())?;
 		}
@@ -168,7 +171,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	/// Removes the mapping beginning at the given address from the state.
 	///
 	/// On failure, the transaction is dropped and rolled back.
-	pub fn remove_mapping(&mut self, mapping_begin: *const c_void) -> AllocResult<()> {
+	pub fn remove_mapping(&mut self, mapping_begin: *mut u8) -> AllocResult<()> {
 		if let Some(mapping) = self.mem_space_state.mappings.get(&mapping_begin) {
 			self.mappings_discard.insert(mapping_begin, ())?;
 			let size = mapping.get_size().get();

@@ -18,14 +18,15 @@
 
 //! A gap is a region of the virtual memory which is available for allocation.
 
-use core::{cmp::min, ffi::c_void, fmt, num::NonZeroUsize};
+use crate::memory::VirtAddr;
+use core::{cmp::min, fmt, num::NonZeroUsize};
 use utils::limits::PAGE_SIZE;
 
 /// A gap in the memory space that can use for new mappings.
 #[derive(Clone)]
 pub struct MemGap {
 	/// Address on the virtual memory to the beginning of the gap
-	begin: *const c_void,
+	begin: VirtAddr,
 	/// The size of the gap in pages.
 	size: NonZeroUsize,
 }
@@ -37,7 +38,7 @@ impl MemGap {
 	/// - `begin` is a pointer on the virtual memory to the beginning of the gap. This pointer must
 	///   be page-aligned.
 	/// - `size` is the size of the gap in pages.
-	pub fn new(begin: *const c_void, size: NonZeroUsize) -> Self {
+	pub fn new(begin: VirtAddr, size: NonZeroUsize) -> Self {
 		debug_assert!(begin.is_aligned_to(PAGE_SIZE));
 		Self {
 			begin,
@@ -47,14 +48,14 @@ impl MemGap {
 
 	/// Returns a pointer on the virtual memory to the beginning of the gap.
 	#[inline]
-	pub fn get_begin(&self) -> *const c_void {
+	pub fn get_begin(&self) -> VirtAddr {
 		self.begin
 	}
 
 	/// Returns a pointer on the virtual memory to the end of the gap.
 	#[inline]
-	pub fn get_end(&self) -> *const c_void {
-		(self.begin as usize + self.size.get() * PAGE_SIZE) as _
+	pub fn get_end(&self) -> VirtAddr {
+		self.begin + self.size.get() * PAGE_SIZE
 	}
 
 	/// Returns the size of the gap in memory pages.
@@ -65,8 +66,8 @@ impl MemGap {
 
 	/// Returns the offset in pages to the given address in the gap.
 	#[inline]
-	pub fn get_page_offset_for(&self, addr: *const c_void) -> usize {
-		(addr as usize - self.begin as usize) / PAGE_SIZE
+	pub fn get_page_offset_for(&self, addr: VirtAddr) -> usize {
+		(addr.0 - self.begin.0) / PAGE_SIZE
 	}
 
 	/// Creates new gaps to replace the current one after mapping memory onto
@@ -91,7 +92,7 @@ impl MemGap {
 			.checked_sub(off + size)
 			.and_then(NonZeroUsize::new)
 			.map(|gap_size| Self {
-				begin: (self.begin as usize + (off + size) * PAGE_SIZE) as _,
+				begin: self.begin + (off + size) * PAGE_SIZE,
 				size: gap_size,
 			});
 		(left, right)
@@ -114,11 +115,9 @@ impl MemGap {
 
 impl fmt::Debug for MemGap {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(
-			f,
-			"MemGap {{ begin: {:p}, end: {:p} }}",
-			self.begin,
-			self.get_end()
-		)
+		f.debug_struct("MemGap")
+			.field("begin", &self.begin)
+			.field("end", &self.get_end())
+			.finish()
 	}
 }

@@ -20,7 +20,7 @@
 
 use core::{
 	cmp::Ordering,
-	ffi::{c_int, c_long, c_void},
+	ffi::{c_int, c_long},
 	fmt::Debug,
 	ops::{Add, Sub},
 };
@@ -32,8 +32,9 @@ pub type Timestamp = u64;
 pub type UTimestamp = u64;
 /// Equivalent of POSIX `clockid_t`.
 pub type ClockIdT = c_int;
+// FIXME: size must match the size of a pointer in userspace
 /// Equivalent of POSIX `timer_t`.
-pub type TimerT = *mut c_void;
+pub type TimerT = usize;
 
 /// Enumeration of available timestamp scales.
 #[derive(Debug)]

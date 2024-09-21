@@ -181,7 +181,7 @@ use clock_gettime64::clock_gettime64;
 use clone::clone;
 use close::close;
 use connect::connect;
-use core::fmt;
+use core::{fmt, ptr};
 use creat::creat;
 use delete_module::delete_module;
 use dup::dup;
@@ -484,13 +484,13 @@ impl_from_syscall_arg_primitive!(usize);
 
 impl<T> FromSyscallArg for *const T {
 	fn from_syscall_arg(val: usize) -> Self {
-		val as _
+		ptr::with_exposed_provenance(val)
 	}
 }
 
 impl<T> FromSyscallArg for *mut T {
 	fn from_syscall_arg(val: usize) -> Self {
-		val as _
+		ptr::with_exposed_provenance_mut(val)
 	}
 }
 

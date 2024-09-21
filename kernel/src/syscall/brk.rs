@@ -20,6 +20,7 @@
 //! process, thus allowing memory allocations.
 
 use crate::{
+	memory::VirtAddr,
 	process::{mem_space::MemSpace, Process},
 	syscall::Args,
 };
@@ -31,14 +32,14 @@ use utils::{
 };
 
 pub fn brk(
-	Args(addr): Args<*mut c_void>,
+	Args(addr): Args<VirtAddr>,
 	mem_space_mutex: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	let mut mem_space = mem_space_mutex.lock();
-	let old = mem_space.get_brk_ptr();
-	if mem_space.set_brk_ptr(addr).is_ok() {
-		Ok(addr as _)
+	let old = mem_space.get_brk();
+	if mem_space.set_brk(addr).is_ok() {
+		Ok(addr.0 as _)
 	} else {
-		Ok(old as _)
+		Ok(old.0 as _)
 	}
 }

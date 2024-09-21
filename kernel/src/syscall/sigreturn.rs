@@ -43,7 +43,7 @@ pub fn sigreturn(regs: &Regs) -> EResult<usize> {
 	// Avoid re-enabling interrupts before context switching
 	cli();
 	// Retrieve the previous state
-	let ctx_ptr = regs.esp.0 - size_of::<UContext>();
+	let ctx_ptr = regs.esp - size_of::<UContext>();
 	let ctx_ptr = SyscallPtr::<UContext>::from_syscall_arg(ctx_ptr);
 	let ctx = ctx_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	{

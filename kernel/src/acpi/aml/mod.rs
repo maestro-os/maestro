@@ -281,6 +281,5 @@ pub struct AMLCode {
 ///
 /// On parsing error, the function returns an error message.
 pub fn parse(_aml: &[u8]) -> Result<AMLCode, String> {
-	// TODO
 	todo!();
 }

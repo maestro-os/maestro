@@ -18,8 +18,8 @@
 
 //! Registers state save and restore.
 
-use crate::gdt;
-use core::{fmt, mem::size_of};
+use crate::{gdt, memory::VirtAddr};
+use core::fmt;
 use utils::errno::EResult;
 
 extern "C" {
@@ -34,24 +34,6 @@ extern "C" {
 	///
 	/// `regs` is the structure of registers to restore to resume the context.
 	fn context_switch_kernel(regs: &Regs) -> !;
-}
-
-/// A register's state.
-#[derive(Clone, Copy, Default)]
-#[repr(transparent)]
-pub struct Register(pub usize);
-
-impl fmt::Display for Register {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		fmt::Debug::fmt(self, f)
-	}
-}
-
-impl fmt::Debug for Register {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		const LEN: usize = size_of::<usize>() * 2;
-		write!(f, "{:0LEN$x}", self.0)
-	}
 }
 
 #[cfg(target_arch = "x86")]
@@ -102,19 +84,19 @@ mod x86 {
 #[allow(missing_docs)]
 #[cfg(target_arch = "x86")]
 pub struct Regs {
-	pub ebp: Register,
-	pub esp: Register,
-	pub eip: Register,
-	pub eflags: Register,
-	pub eax: Register,
-	pub ebx: Register,
-	pub ecx: Register,
-	pub edx: Register,
-	pub esi: Register,
-	pub edi: Register,
+	pub ebp: usize,
+	pub esp: usize,
+	pub eip: usize,
+	pub eflags: usize,
+	pub eax: usize,
+	pub ebx: usize,
+	pub ecx: usize,
+	pub edx: usize,
+	pub esi: usize,
+	pub edi: usize,
 
-	pub gs: Register,
-	pub fs: Register,
+	pub gs: usize,
+	pub fs: usize,
 
 	/// x87 FPU, MMX and SSE state.
 	pub fxstate: [u8; 512],
@@ -124,7 +106,7 @@ impl Regs {
 	/// Returns the ID of the system call being executed.
 	#[inline]
 	pub const fn get_syscall_id(&self) -> usize {
-		self.eax.0 as _
+		self.eax
 	}
 
 	/// Returns the value of the `n`th argument of the syscall being executed.
@@ -134,23 +116,19 @@ impl Regs {
 	#[inline]
 	pub const fn get_syscall_arg(&self, n: u8) -> usize {
 		match n {
-			0 => self.ebx.0 as _,
-			1 => self.ecx.0 as _,
-			2 => self.edx.0 as _,
-			3 => self.esi.0 as _,
-			4 => self.edi.0 as _,
-			5 => self.ebp.0 as _,
+			0 => self.ebx,
+			1 => self.ecx,
+			2 => self.edx,
+			3 => self.esi,
+			4 => self.edi,
+			5 => self.ebp,
 			_ => 0,
 		}
 	}
 
 	/// Sets the return value of a system call.
 	pub fn set_syscall_return(&mut self, value: EResult<usize>) {
-		let retval = match value {
-			Ok(val) => val as _,
-			Err(e) => (-e.as_int()) as _,
-		};
-		self.eax.0 = retval;
+		self.eax = value.unwrap_or_else(|e| (-e.as_int()) as _);
 	}
 
 	/// Switches to the associated register context.
@@ -160,7 +138,7 @@ impl Regs {
 	///
 	/// Invalid register values shall result in an undefined behaviour.
 	pub unsafe fn switch(&self, user: bool) -> ! {
-		let pc = self.eip.0;
+		let pc = self.eip;
 		debug_assert_ne!(pc, 0);
 		if user {
 			let user_data_selector = gdt::USER_DS | 3;
@@ -175,19 +153,19 @@ impl Regs {
 impl Default for Regs {
 	fn default() -> Self {
 		let mut s = Self {
-			ebp: Register::default(),
-			esp: Register::default(),
-			eip: Register::default(),
-			eflags: Register(x86::DEFAULT_EFLAGS),
-			eax: Register::default(),
-			ebx: Register::default(),
-			ecx: Register::default(),
-			edx: Register::default(),
-			esi: Register::default(),
-			edi: Register::default(),
+			ebp: 0,
+			esp: 0,
+			eip: 0,
+			eflags: x86::DEFAULT_EFLAGS,
+			eax: 0,
+			ebx: 0,
+			ecx: 0,
+			edx: 0,
+			esi: 0,
+			edi: 0,
 
-			gs: Register::default(),
-			fs: Register::default(),
+			gs: 0,
+			fs: 0,
 
 			fxstate: [0; 512],
 		};
@@ -206,31 +184,20 @@ impl Default for Regs {
 #[cfg(target_arch = "x86")]
 impl fmt::Debug for Regs {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let ebp = self.ebp;
-		let esp = self.esp;
-		let eip = self.eip;
-		let eflags = self.eflags;
-		let eax = self.eax;
-		let ebx = self.ebx;
-		let ecx = self.ecx;
-		let edx = self.edx;
-		let esi = self.esi;
-		let edi = self.edi;
-		let gs = self.gs;
-		let fs = self.fs;
+		// use `VirtAddr` to avoid duplicate code
 		f.debug_struct("Regs")
-			.field("ebp", &ebp)
-			.field("esp", &esp)
-			.field("eip", &eip)
-			.field("eflags", &eflags)
-			.field("eax", &eax)
-			.field("ebx", &ebx)
-			.field("ecx", &ecx)
-			.field("edx", &edx)
-			.field("esi", &esi)
-			.field("edi", &edi)
-			.field("gs", &gs)
-			.field("fs", &fs)
+			.field("ebp", &VirtAddr(self.ebp))
+			.field("esp", &VirtAddr(self.esp))
+			.field("eip", &VirtAddr(self.eip))
+			.field("eflags", &VirtAddr(self.eflags))
+			.field("eax", &VirtAddr(self.eax))
+			.field("ebx", &VirtAddr(self.ebx))
+			.field("ecx", &VirtAddr(self.ecx))
+			.field("edx", &VirtAddr(self.edx))
+			.field("esi", &VirtAddr(self.esi))
+			.field("edi", &VirtAddr(self.edi))
+			.field("gs", &VirtAddr(self.gs))
+			.field("fs", &VirtAddr(self.fs))
 			.finish()
 	}
 }

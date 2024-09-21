@@ -18,7 +18,7 @@
 
 //! Userspace memory access utilities.
 
-use crate::{memory::vmem, process::mem_space::COPY_BUFFER, syscall::FromSyscallArg};
+use crate::{memory::vmem, process::mem_space::bound_check, syscall::FromSyscallArg};
 use core::{
 	arch::global_asm,
 	cmp::min,
@@ -26,6 +26,7 @@ use core::{
 	intrinsics::likely,
 	mem::{size_of, size_of_val, MaybeUninit},
 	ops::{Bound, RangeBounds},
+	ptr,
 	ptr::{null_mut, NonNull},
 };
 use utils::{
@@ -34,11 +35,6 @@ use utils::{
 	errno::EResult,
 	limits::PAGE_SIZE,
 };
-
-/// Tells whether the pointer is in bound with the userspace.
-fn bound_check(ptr: *const u8, n: usize) -> bool {
-	ptr as usize >= PAGE_SIZE && (ptr as usize).saturating_add(n) < COPY_BUFFER as usize
-}
 
 // TODO optimize copy
 global_asm!(
@@ -80,7 +76,7 @@ extern "C" {
 ///
 /// If the access check fails, the function returns [`EFAULT`].
 unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
-	if !likely(bound_check(src, n)) {
+	if !likely(bound_check(src as _, n)) {
 		return Err(errno!(EFAULT));
 	}
 	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
@@ -95,7 +91,7 @@ unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<
 ///
 /// If the access check fails, the function returns [`EFAULT`].
 unsafe fn copy_to_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
-	if !likely(bound_check(dst, n)) {
+	if !likely(bound_check(dst as _, n)) {
 		return Err(errno!(EFAULT));
 	}
 	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
@@ -111,7 +107,7 @@ pub struct SyscallPtr<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
 
 impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallPtr<T> {
 	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(val as _))
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
 	}
 }
 
@@ -191,7 +187,7 @@ pub struct SyscallSlice<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
 
 impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallSlice<T> {
 	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(val as _))
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
 	}
 }
 
@@ -269,7 +265,7 @@ pub struct SyscallString(pub Option<NonNull<u8>>);
 
 impl FromSyscallArg for SyscallString {
 	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(val as _))
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
 	}
 }
 
@@ -292,21 +288,19 @@ impl SyscallString {
 		let mut buf = Vec::new();
 		loop {
 			let buf_cursor = buf.len();
-			let user_cursor = ptr.as_ptr() as usize + buf_cursor;
-			let page_end = user_cursor + (PAGE_SIZE - (user_cursor % PAGE_SIZE));
-			let buf_size = min(page_end - user_cursor, CHUNK_SIZE);
+			// May not wrap since the chunk size is obviously lower than the size of the
+			// kernelspace
+			let user_cursor = ptr.as_ptr().wrapping_add(buf_cursor);
+			let page_end = PAGE_SIZE - (user_cursor as usize % PAGE_SIZE);
+			let len = min(page_end, CHUNK_SIZE);
 			// Read the next chunk
-			buf.reserve(buf_size)?;
+			buf.reserve(len)?;
 			unsafe {
-				buf.set_len(buf_cursor + buf_size);
-				copy_from_user_raw(
-					user_cursor as *const _,
-					&mut buf[buf_cursor] as *mut _,
-					buf_size,
-				)?;
+				buf.set_len(buf_cursor + len);
+				copy_from_user_raw(user_cursor, &mut buf[buf_cursor], len)?;
 			}
 			// Look for a nul byte
-			let nul_off = buf[buf_cursor..(buf_cursor + buf_size)]
+			let nul_off = buf[buf_cursor..(buf_cursor + len)]
 				.iter()
 				.position(|b| *b == b'\0');
 			if let Some(i) = nul_off {
@@ -334,7 +328,7 @@ pub struct SyscallArray(pub Option<NonNull<*const u8>>);
 
 impl FromSyscallArg for SyscallArray {
 	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(val as _))
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
 	}
 }
 

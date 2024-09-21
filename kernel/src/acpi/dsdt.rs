@@ -16,22 +16,21 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The DSDT (Differentiated System Description Table) provides informations about supported power
+//! The DSDT (Differentiated System Description Table) provides information about supported power
 //! events.
 //!
 //! This table contains AML code which has to be parsed and executed to retrieve the required
-//! informations.
+//! information.
 
-use super::{ACPITable, ACPITableHeader};
-use core::{mem::size_of, slice};
+use super::{Table, TableHdr};
+use core::mem::size_of;
 
 /// The Differentiated System Description Table.
 #[repr(C)]
 #[derive(Debug)]
 pub struct Dsdt {
 	/// The table's header.
-	pub header: ACPITableHeader,
-
+	pub header: TableHdr,
 	/// The definition of the AML code.
 	definition_block: [u8],
 }
@@ -39,12 +38,11 @@ pub struct Dsdt {
 impl Dsdt {
 	/// Returns a slice to the AML code.
 	pub fn get_aml(&self) -> &[u8] {
-		let code_len = self.header.length as usize - size_of::<ACPITableHeader>();
-
-		unsafe { slice::from_raw_parts(&self.definition_block[0], code_len) }
+		let code_len = self.header.length as usize - size_of::<TableHdr>();
+		&self.definition_block[..code_len]
 	}
 }
 
-impl ACPITable for Dsdt {
+impl Table for Dsdt {
 	const SIGNATURE: &'static [u8; 4] = b"DSDT";
 }

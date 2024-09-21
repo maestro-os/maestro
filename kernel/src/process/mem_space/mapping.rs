@@ -26,13 +26,14 @@ use crate::{
 	memory::{
 		vmem,
 		vmem::{VMem, VMemTransaction},
+		VirtAddr,
 	},
 	process::mem_space::{
 		residence::{MapResidence, Page, ResidencePage},
 		COPY_BUFFER,
 	},
 };
-use core::{alloc::AllocError, ffi::c_void, num::NonZeroUsize, ops::Range, slice};
+use core::{alloc::AllocError, num::NonZeroUsize, ops::Range, slice};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
@@ -45,7 +46,7 @@ use utils::{
 #[derive(Debug)]
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
-	begin: *const c_void,
+	begin: *mut u8,
 	/// The size of the mapping in pages.
 	size: NonZeroUsize,
 	/// The mapping's flags.
@@ -69,7 +70,7 @@ impl MemMapping {
 	///   mapping doesn't point to any file.
 	/// - `residence` is the residence for the mapping.
 	pub fn new(
-		begin: *const c_void,
+		begin: *mut u8,
 		size: NonZeroUsize,
 		flags: u8,
 		residence: MapResidence,
@@ -88,7 +89,7 @@ impl MemMapping {
 	}
 
 	/// Returns a pointer on the virtual memory to the beginning of the mapping.
-	pub fn get_begin(&self) -> *const c_void {
+	pub fn get_begin(&self) -> *mut u8 {
 		self.begin
 	}
 
@@ -150,7 +151,7 @@ impl MemMapping {
 		offset: usize,
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> AllocResult<()> {
-		let virtaddr = (self.begin as usize + offset * PAGE_SIZE) as _;
+		let virtaddr = VirtAddr::from(self.begin) + offset * PAGE_SIZE;
 		// Get previous page
 		let previous = self
 			.phys_pages
@@ -159,10 +160,9 @@ impl MemMapping {
 			.ok_or(AllocError)?;
 		match previous {
 			// If not pending for an allocation: map and stop here
-			Some(p) if !Self::is_cow(p, self.flags) => {
-				let physaddr = unsafe { p.ptr() };
+			Some(physaddr) if !Self::is_cow(physaddr, self.flags) => {
 				let flags = self.get_vmem_flags(true);
-				return vmem_transaction.map(physaddr as _, virtaddr, flags);
+				return vmem_transaction.map(physaddr.get(), virtaddr, flags);
 			}
 			_ => {}
 		}
@@ -175,12 +175,11 @@ impl MemMapping {
 		if init {
 			if let Some(previous) = &previous {
 				// Map previous page for copy
-				let physaddr = unsafe { previous.ptr() as _ };
-				vmem_transaction.map(physaddr, COPY_BUFFER as _, 0)?;
+				vmem_transaction.map(previous.get(), COPY_BUFFER, 0)?;
 			}
 		}
 		// Map new page
-		let new_physaddr = unsafe { new.ptr() as _ };
+		let new_physaddr = new.get();
 		// If the page has to be initialized, do not allow writing during initialization to avoid
 		// concurrency issues
 		let flags = self.get_vmem_flags(!init);
@@ -190,7 +189,7 @@ impl MemMapping {
 		}
 		// Initialize the new page
 		unsafe {
-			let dest = (self.begin as usize + offset * PAGE_SIZE) as *mut Page;
+			let dest = self.begin.add(offset * PAGE_SIZE) as *mut Page;
 			// Switch to make sure the right vmem is bound, but this should already be the case
 			// so consider this has no cost
 			vmem::switch(vmem_transaction.vmem, move || {
@@ -198,7 +197,7 @@ impl MemMapping {
 					vmem::smap_disable(|| {
 						let dest = &mut *dest;
 						if copy {
-							dest.copy_from_slice(&*COPY_BUFFER);
+							dest.copy_from_slice(&*COPY_BUFFER.as_ptr::<Page>());
 						} else {
 							dest.fill(0);
 						}
@@ -222,15 +221,14 @@ impl MemMapping {
 			for (offset, phys_page) in self.phys_pages.iter().enumerate() {
 				let (physaddr, write) = phys_page
 					.as_ref()
-					.map(|p| {
-						let ptr = unsafe { p.ptr() };
-						let write = !Self::is_cow(p, self.flags);
-						(ptr, write)
+					.map(|physaddr| {
+						let write = !Self::is_cow(physaddr, self.flags);
+						(physaddr.get(), write)
 					})
-					.unwrap_or((default_page.as_ptr() as _, false));
-				let virtaddr = (self.begin as usize + offset * PAGE_SIZE) as _;
+					.unwrap_or((default_page, false));
+				let virtaddr = VirtAddr::from(self.begin) + offset * PAGE_SIZE;
 				let flags = self.get_vmem_flags(write);
-				vmem_transaction.map(physaddr as _, virtaddr, flags)?;
+				vmem_transaction.map(physaddr, virtaddr, flags)?;
 				// TODO invalidate cache for this page
 			}
 		} else {
@@ -272,7 +270,7 @@ impl MemMapping {
 			})
 			.transpose()?;
 		let gap = NonZeroUsize::new(size).map(|size| {
-			let begin = (self.begin as usize + begin * PAGE_SIZE) as _;
+			let begin = VirtAddr::from(self.begin) + begin * PAGE_SIZE;
 			MemGap::new(begin, size)
 		});
 		// The gap's end
@@ -286,7 +284,7 @@ impl MemMapping {
 				let mut residence = self.residence.clone();
 				residence.offset_add(end);
 				Ok(Self {
-					begin: (self.begin as usize + end * PAGE_SIZE) as _,
+					begin: self.begin.wrapping_add(end * PAGE_SIZE),
 					size,
 					flags: self.flags,
 					residence,
@@ -326,8 +324,7 @@ impl MemMapping {
 			vmem::switch(vmem, || {
 				// TODO Make use of dirty flag if present on the current architecture to update
 				// only pages that have been modified
-				let slice =
-					slice::from_raw_parts(self.begin as *mut u8, self.size.get() * PAGE_SIZE);
+				let slice = slice::from_raw_parts(self.begin, self.size.get() * PAGE_SIZE);
 				let mut i = 0;
 				while i < slice.len() {
 					let l = file.ops.write(file, *off, &slice[i..])?;
@@ -354,7 +351,7 @@ impl MemMapping {
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> EResult<()> {
 		self.fs_sync(vmem_transaction.vmem)?;
-		let begin = (self.begin as usize + pages_range.start * PAGE_SIZE) as _;
+		let begin = VirtAddr::from(self.begin) + pages_range.start * PAGE_SIZE;
 		let len = pages_range.end - pages_range.start;
 		vmem_transaction.unmap_range(begin, len)?;
 		Ok(())

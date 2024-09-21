@@ -24,24 +24,22 @@
 //! The order of a frame is the `n` in the expression `pow(2, n)` that represents the
 //! size of a frame in pages.
 
-use super::stats;
-use crate::memory;
+use super::{stats, PhysAddr, VirtAddr};
 use core::{
 	alloc::AllocError,
 	cmp::min,
-	ffi::c_void,
 	intrinsics::likely,
 	mem::size_of,
 	ptr::{null_mut, NonNull},
 	slice,
 };
-use macros::instrument_allocator;
 use utils::{errno::AllocResult, limits::PAGE_SIZE, lock::IntMutex, math};
 
 /// The order of a memory frame.
 pub type FrameOrder = u8;
 /// Buddy allocator flags.
 pub type Flags = i32;
+// An `u32` is enough to fit 16 TiB of RAM
 /// The identifier of a frame.
 type FrameID = u32;
 
@@ -61,6 +59,8 @@ pub const FLAG_ZONE_TYPE_MMIO: Flags = 0b01;
 /// Buddy allocator flag: allocate in kernel zone
 pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b10;
 
+/// The size of the metadata for one frame.
+pub const FRAME_METADATA_SIZE: usize = size_of::<Frame>();
 /// Value indicating that the frame is used.
 pub const FRAME_STATE_USED: FrameID = !0_u32;
 
@@ -69,7 +69,7 @@ pub(crate) struct Zone {
 	/// A pointer to the beginning of the metadata of the zone
 	metadata_begin: *mut Frame,
 	/// A pointer to the beginning of the allocatable memory of the zone
-	begin: *mut c_void,
+	begin: PhysAddr,
 	/// The size of the zone in pages
 	pages_count: FrameID,
 	/// The number of allocated pages in the zone
@@ -84,7 +84,7 @@ impl Zone {
 	const fn placeholder() -> Self {
 		Self {
 			metadata_begin: null_mut(),
-			begin: null_mut(),
+			begin: PhysAddr(0),
 			pages_count: 0,
 			allocated_pages: 0,
 			free_list: [None; (MAX_ORDER + 1) as usize],
@@ -125,13 +125,9 @@ impl Zone {
 	///
 	/// `metadata_begin` must be a virtual address and `begin` must be a
 	/// physical address.
-	pub(crate) fn new(
-		metadata_begin: *mut c_void,
-		pages_count: FrameID,
-		begin: *mut c_void,
-	) -> Zone {
+	pub(crate) fn new(metadata_begin: VirtAddr, begin: PhysAddr, pages_count: FrameID) -> Zone {
 		let mut z = Zone {
-			metadata_begin: metadata_begin as _,
+			metadata_begin: metadata_begin.as_ptr(),
 			begin,
 			pages_count,
 			allocated_pages: 0,
@@ -156,16 +152,16 @@ impl Zone {
 			.next()?;
 		let f = unsafe { frame.as_mut() };
 		debug_assert!(!f.is_used());
-		debug_assert!((f.memory_ptr(self) as usize) >= (self.begin as usize));
-		debug_assert!((f.memory_ptr(self) as usize) < (self.begin as usize) + self.get_size());
+		debug_assert!(f.addr(self) >= self.begin);
+		debug_assert!(f.addr(self) < self.begin + self.get_size());
 		Some(frame)
 	}
 
-	/// Returns the identifier for the frame at the given pointer `ptr`.
+	/// Returns the identifier for the frame at the given physical address.
 	///
 	/// The pointer must point to the frame itself, not the Frame structure.
-	fn get_frame_id_from_ptr(&self, ptr: *const c_void) -> FrameID {
-		(((ptr as usize) - (self.begin as usize)) / PAGE_SIZE) as _
+	fn get_frame_id_from_addr(&self, addr: PhysAddr) -> FrameID {
+		((addr.0 - self.begin.0) / PAGE_SIZE) as _
 	}
 
 	/// Returns a mutable slice over the metadata of the zone's frames.
@@ -201,13 +197,9 @@ impl Zone {
 				debug_assert_eq!(frame.order, order as _);
 				debug_assert!(!is_first || frame.prev == id);
 
-				let frame_ptr = frame.memory_ptr(self);
+				let frame_ptr = frame.addr(self);
 				debug_assert!(frame_ptr >= self.begin);
-				unsafe {
-					let zone_end = self.begin.add(zone_size);
-					debug_assert!(frame_ptr < zone_end);
-					debug_assert!(frame_ptr.add(frame.get_size()) <= zone_end);
-				}
+				debug_assert!(frame_ptr + frame.get_size() <= self.begin + zone_size);
 
 				if frame.next == id {
 					break;
@@ -259,10 +251,9 @@ impl Frame {
 		self.get_id(zone) ^ (1 << self.order) as u32
 	}
 
-	/// Returns the pointer to the location of the associated physical memory.
-	fn memory_ptr(&self, zone: &Zone) -> *mut c_void {
-		let off = self.get_id(zone) as usize * PAGE_SIZE;
-		(zone.begin as usize + off) as _
+	/// Returns the address of the associated physical memory.
+	fn addr(&self, zone: &Zone) -> PhysAddr {
+		zone.begin + self.get_id(zone) as usize * PAGE_SIZE
 	}
 
 	/// Tells whether the frame is used or not.
@@ -471,6 +462,7 @@ pub fn get_frame_size(order: FrameOrder) -> usize {
 /// Returns the buddy order required to fit the given number of pages.
 #[inline]
 pub fn get_order(pages: usize) -> FrameOrder {
+	// this is equivalent to `ceil(log2(pages))`
 	if likely(pages != 0) {
 		(u32::BITS - pages.leading_zeros()) as _
 	} else {
@@ -478,19 +470,14 @@ pub fn get_order(pages: usize) -> FrameOrder {
 	}
 }
 
-/// Returns the size of the metadata for one frame.
-#[inline]
-pub const fn get_frame_metadata_size() -> usize {
-	size_of::<Frame>()
-}
-
-/// Returns a mutable reference to the zone that contains the given pointer `ptr`.
+/// Returns a mutable reference to the zone that contains the given physical address `phys_addr`.
 ///
 /// `zones` is the list of zones.
-fn get_zone_for_pointer(zones: &mut [Zone; ZONES_COUNT], ptr: *const c_void) -> Option<&mut Zone> {
-	zones
-		.iter_mut()
-		.find(|z| ptr >= z.begin && (ptr as usize) < (z.begin as usize) + z.get_size())
+fn get_zone_for_addr(zones: &mut [Zone; ZONES_COUNT], phys_addr: PhysAddr) -> Option<&mut Zone> {
+	zones.iter_mut().find(|z| {
+		let end = z.begin + z.get_size();
+		(z.begin..end).contains(&phys_addr)
+	})
 }
 
 /// Allocates a frame of memory using the buddy allocator.
@@ -502,8 +489,7 @@ fn get_zone_for_pointer(zones: &mut [Zone; ZONES_COUNT], ptr: *const c_void) -> 
 /// If no suitable frame is found, the function returns an error.
 ///
 /// On success, the function returns a *physical* pointer to the allocated memory.
-#[instrument_allocator(name = buddy, op = alloc, size = order, scale = log2)]
-pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
+pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<PhysAddr> {
 	if order > MAX_ORDER {
 		return Err(AllocError);
 	}
@@ -519,24 +505,27 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<c_void>> {
 	// Do the actual allocation
 	debug_assert!(!frame.is_used());
 	frame.split(zone, order);
-	let ptr = frame.memory_ptr(zone);
-	debug_assert!(ptr.is_aligned_to(PAGE_SIZE));
-	debug_assert!(ptr >= zone.begin && ptr < (zone.begin as usize + zone.get_size()) as _);
+	let addr = frame.addr(zone);
+	debug_assert!(addr.is_aligned_to(PAGE_SIZE));
+	debug_assert!(addr >= zone.begin && addr < zone.begin + zone.get_size());
 	frame.mark_used();
 	// Statistics
 	let pages_count = math::pow2(order as usize);
 	zone.allocated_pages += pages_count;
 	stats::MEM_INFO.lock().mem_free -= pages_count * 4;
-	NonNull::new(ptr).ok_or(AllocError)
+	#[cfg(feature = "memtrace")]
+	super::trace::sample("buddy", super::trace::SampleOp::Alloc, addr.0, pages_count);
+	Ok(addr)
 }
 
 /// Calls [`alloc()`] with order `order`, allocating in the kernel zone.
 ///
-/// The function returns the *virtual* address, not the physical one.
-pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
-	let ptr = alloc(order, FLAG_ZONE_TYPE_KERNEL)?;
-	let virt_ptr = memory::kern_to_virt(ptr.as_ptr()) as _;
-	NonNull::new(virt_ptr).ok_or(AllocError)
+/// The function returns the virtual address, to the frame.
+pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<u8>> {
+	alloc(order, FLAG_ZONE_TYPE_KERNEL)?
+		.kernel_to_virtual()
+		.and_then(|addr| NonNull::new(addr.as_ptr()))
+		.ok_or(AllocError)
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator.
@@ -552,16 +541,15 @@ pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<c_void>> {
 /// If the `ptr` or `order` are invalid, the behaviour is undefined.
 ///
 /// Using the memory referenced by the pointer after freeing results in an undefined behaviour.
-#[instrument_allocator(name = buddy, op = free, ptr = ptr, size = order, scale = log2)]
-pub unsafe fn free(ptr: *const c_void, order: FrameOrder) {
-	debug_assert!(ptr.is_aligned_to(PAGE_SIZE));
+pub unsafe fn free(addr: PhysAddr, order: FrameOrder) {
+	debug_assert!(addr.is_aligned_to(PAGE_SIZE));
 	debug_assert!(order <= MAX_ORDER);
 	// Get zone
 	let mut zones = ZONES.lock();
-	let zone = get_zone_for_pointer(&mut zones, ptr).unwrap();
+	let zone = get_zone_for_addr(&mut zones, addr).unwrap();
 	let frames = zone.frames();
 	// Perform free
-	let frame_id = zone.get_frame_id_from_ptr(ptr);
+	let frame_id = zone.get_frame_id_from_addr(addr);
 	debug_assert!(frame_id < zone.pages_count);
 	let frame = &mut frames[frame_id as usize];
 	debug_assert!(frame.is_used());
@@ -571,19 +559,22 @@ pub unsafe fn free(ptr: *const c_void, order: FrameOrder) {
 	let pages_count = math::pow2(order as usize);
 	zone.allocated_pages -= pages_count;
 	stats::MEM_INFO.lock().mem_free += pages_count * 4;
+	#[cfg(feature = "memtrace")]
+	super::trace::sample("buddy", super::trace::SampleOp::Free, addr.0, pages_count);
 }
 
 /// Frees the given memory frame.
 ///
 /// Arguments:
-/// - `ptr` is the *virtual* address to the beginning of the frame
+/// - `ptr` is the pointer to the beginning of the frame
 /// - `order` is the order of the frame
 ///
 /// # Safety
 ///
 /// See [`free`]
-pub unsafe fn free_kernel(ptr: *const c_void, order: FrameOrder) {
-	free(memory::kern_to_phys(ptr), order);
+pub unsafe fn free_kernel(ptr: *mut u8, order: FrameOrder) {
+	let addr = VirtAddr::from(ptr).kernel_to_physical().unwrap();
+	free(addr, order);
 }
 
 /// Returns the total number of pages allocated by the buddy allocator.
@@ -595,14 +586,13 @@ pub fn allocated_pages_count() -> usize {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core::ptr::null;
 
 	#[test_case]
 	fn buddy0() {
 		let alloc_pages = allocated_pages_count();
 		unsafe {
 			let p = alloc_kernel(0).unwrap();
-			let slice = slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0));
+			let slice = slice::from_raw_parts_mut(p.as_ptr(), get_frame_size(0));
 			slice.fill(!0);
 			free_kernel(p.as_ptr(), 0);
 		}
@@ -614,7 +604,7 @@ mod test {
 		let alloc_pages = allocated_pages_count();
 		unsafe {
 			let p = alloc_kernel(1).unwrap();
-			let slice = slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0));
+			let slice = slice::from_raw_parts_mut(p.as_ptr(), get_frame_size(0));
 			slice.fill(!0);
 			free_kernel(p.as_ptr(), 1);
 		}
@@ -624,7 +614,7 @@ mod test {
 	fn lifo_test(i: usize) {
 		unsafe {
 			let p = alloc_kernel(0).unwrap();
-			let slice = slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0));
+			let slice = slice::from_raw_parts_mut(p.as_ptr(), get_frame_size(0));
 			slice.fill(!0);
 			if i > 0 {
 				lifo_test(i - 1);
@@ -643,23 +633,22 @@ mod test {
 	#[test_case]
 	fn buddy_fifo() {
 		let alloc_pages = allocated_pages_count();
+		let mut frames: [PhysAddr; 100] = [PhysAddr(0); 100];
 		unsafe {
-			let mut frames: [*const c_void; 100] = [null::<c_void>(); 100];
 			for frame in &mut frames {
-				let p = alloc_kernel(0).unwrap();
-				*frame = p.as_ptr();
+				*frame = alloc(0, FLAG_ZONE_TYPE_KERNEL).unwrap();
 			}
 			for frame in frames {
-				free_kernel(frame, 0);
+				free(frame, 0);
 			}
 		}
 		debug_assert_eq!(allocated_pages_count(), alloc_pages);
 	}
 
-	fn get_dangling(order: FrameOrder) -> *mut c_void {
+	fn get_dangling(order: FrameOrder) -> *mut u8 {
 		unsafe {
 			let p = alloc_kernel(order).unwrap();
-			let slice = slice::from_raw_parts_mut(p.as_ptr() as *mut u8, get_frame_size(0));
+			let slice = slice::from_raw_parts_mut(p.as_ptr(), get_frame_size(0));
 			slice.fill(!0);
 			free_kernel(p.as_ptr(), 0);
 			p.as_ptr()
@@ -709,7 +698,7 @@ mod test {
 			while let Some(mut node) = first {
 				let n = node.as_mut();
 				let next = n.next;
-				free_kernel(n as *const _ as *const _, 0);
+				free_kernel(n as *mut _ as *mut _, 0);
 				first = next;
 			}
 		}

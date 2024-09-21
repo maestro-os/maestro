@@ -21,10 +21,11 @@
 
 use crate::{
 	memory,
+	memory::VirtAddr,
 	process::{mem_space::MemSpace, Process},
 	syscall::Args,
 };
-use core::{ffi::c_void, num::NonZeroUsize};
+use core::{ffi::c_void, intrinsics::unlikely, num::NonZeroUsize};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -34,7 +35,7 @@ use utils::{
 };
 
 pub fn munmap(
-	Args((addr, length)): Args<(*mut c_void, usize)>,
+	Args((addr, length)): Args<(VirtAddr, usize)>,
 	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	// Check address alignment
@@ -44,11 +45,11 @@ pub fn munmap(
 	let pages = length.div_ceil(PAGE_SIZE);
 	let length = pages * PAGE_SIZE;
 	// Check for overflow
-	let Some(end) = (addr as usize).checked_add(length) else {
+	let Some(end) = addr.0.checked_add(length) else {
 		return Err(errno!(EINVAL));
 	};
 	// Prevent from unmapping kernel memory
-	if (addr as usize) >= (memory::PROCESS_END as usize) || end > (memory::PROCESS_END as usize) {
+	if unlikely(end > memory::PROCESS_END.0) {
 		return Err(errno!(EINVAL));
 	}
 	mem_space

@@ -20,7 +20,7 @@
 //! image. It provides essential information such as the memory mapping and the
 //! ELF structure of the kernel.
 
-use crate::memory;
+use crate::memory::PhysAddr;
 use core::{ffi::c_void, ptr::null, slice};
 use utils::lock::once::OnceInit;
 
@@ -130,21 +130,10 @@ impl MmapEntry {
 	}
 }
 
-impl Tag {
-	/// Returns the pointer to the next Multiboot tag after the current tag.
-	pub fn next(&self) -> *const Self {
-		unsafe {
-			(self as *const _ as *const c_void).add(((self.size + 7) & !7) as usize) as *const _
-		}
-	}
-}
-
 /// Kernel boot information provided by Multiboot, structured and filtered.
 pub struct BootInfo {
-	/// The pointer to the beginning of the tags.
-	pub tags_ptr: *const c_void,
-	/// The size of the tags in bytes.
-	pub tags_size: usize,
+	/// The pointer to the end of the Multiboot2 tags.
+	pub tags_end: PhysAddr,
 
 	/// The command line used to boot the kernel.
 	pub cmdline: Option<&'static [u8]>,
@@ -168,8 +157,8 @@ pub struct BootInfo {
 	pub elf_entsize: u32,
 	/// The index of the kernel's ELF section containing the kernel's symbols.
 	pub elf_shndx: u32,
-	/// A pointer to the kernel's ELF sections.
-	pub elf_sections: *const c_void,
+	/// The physical address of the kernel's ELF sections.
+	pub elf_sections: PhysAddr,
 
 	/// Slice of data representing an initramfs image.
 	///
@@ -180,8 +169,7 @@ pub struct BootInfo {
 impl Default for BootInfo {
 	fn default() -> Self {
 		Self {
-			tags_ptr: null(),
-			tags_size: 0,
+			tags_end: PhysAddr::default(),
 			cmdline: None,
 			loader_name: None,
 			mem_lower: 0,
@@ -192,7 +180,7 @@ impl Default for BootInfo {
 			elf_num: 0,
 			elf_entsize: 0,
 			elf_shndx: 0,
-			elf_sections: null(),
+			elf_sections: PhysAddr::default(),
 			initramfs: None,
 		}
 	}
@@ -216,20 +204,29 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 	match tag.type_ {
 		TAG_TYPE_CMDLINE => unsafe {
 			let t: &TagString = reinterpret_tag(tag);
-			let ptr = memory::kern_to_virt(t.string.as_ptr());
+			let ptr = PhysAddr(t.string.as_ptr() as _)
+				.kernel_to_virtual()
+				.unwrap()
+				.as_ptr();
 			boot_info.cmdline = Some(utils::str_from_ptr(ptr));
 		},
 		TAG_TYPE_BOOT_LOADER_NAME => unsafe {
 			let t: &TagString = reinterpret_tag(tag);
-			let ptr = memory::kern_to_virt(t.string.as_ptr());
+			let ptr = PhysAddr(t.string.as_ptr() as _)
+				.kernel_to_virtual()
+				.unwrap()
+				.as_ptr();
 			boot_info.loader_name = Some(utils::str_from_ptr(ptr));
 		},
 		TAG_TYPE_MODULE => {
 			let data = unsafe {
 				let t: &TagModule = reinterpret_tag(tag);
-				let begin = memory::kern_to_virt(t.mod_start as *const u8);
-				let end = memory::kern_to_virt(t.mod_end as *const u8);
-				slice::from_raw_parts::<u8>(begin, end as usize - begin as usize)
+				let begin = PhysAddr(t.mod_start as _)
+					.kernel_to_virtual()
+					.unwrap()
+					.as_ptr();
+				let len = t.mod_end.saturating_sub(t.mod_start) as usize;
+				slice::from_raw_parts::<u8>(begin, len)
 			};
 			boot_info.initramfs = (!data.is_empty()).then_some(data);
 		}
@@ -249,10 +246,16 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 			boot_info.elf_num = t.num;
 			boot_info.elf_entsize = t.entsize;
 			boot_info.elf_shndx = t.shndx;
-			boot_info.elf_sections = t.sections.as_ptr() as _;
+			boot_info.elf_sections = PhysAddr(t.sections.as_ptr() as usize);
 		}
 		_ => {}
 	}
+}
+
+/// Returns the pointer to the next Multiboot tag after the current tag.
+unsafe fn next(tag: *const Tag) -> *const Tag {
+	let size = (*tag).size;
+	tag.wrapping_byte_add(((size + 7) & !7) as usize)
 }
 
 /// Reads the multiboot tags from the given `ptr` and returns relevant information.
@@ -265,12 +268,11 @@ pub(crate) unsafe fn read(ptr: *const c_void) -> &'static BootInfo {
 	let mut tag = ptr.offset(8) as *const Tag;
 	while (*tag).type_ != TAG_TYPE_END {
 		handle_tag(&mut boot_info, &*tag);
-		tag = (*tag).next();
+		tag = next(tag);
 	}
-	// Pass end tag
-	tag = (*tag).next();
-	boot_info.tags_ptr = ptr;
-	boot_info.tags_size = tag as usize - ptr as usize;
+	// Handle end tag
+	tag = next(tag);
+	boot_info.tags_end = PhysAddr(tag as _);
 	// Write to static variable and return
 	BOOT_INFO.init(boot_info);
 	BOOT_INFO.get()

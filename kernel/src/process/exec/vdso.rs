@@ -21,8 +21,7 @@
 
 use crate::{
 	elf::parser::ELFParser,
-	memory,
-	memory::buddy,
+	memory::{buddy, VirtAddr},
 	process::{
 		mem_space,
 		mem_space::{
@@ -31,7 +30,7 @@ use crate::{
 		},
 	},
 };
-use core::{cmp::min, ffi::c_void, num::NonZeroUsize, ptr::NonNull};
+use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, CollectResult, EResult},
@@ -55,12 +54,12 @@ struct Vdso {
 	entry_off: usize,
 }
 
-/// Information about mapped vDSO.
+/// Information about the mapped vDSO.
 pub struct MappedVDSO {
-	/// The virtual address to the beginning of the vDSO.
-	pub ptr: *mut c_void,
-	/// The virtual pointer to the entry point of the vDSO.
-	pub entry: NonNull<c_void>,
+	/// The virtual address to the beginning of the vDSO
+	pub begin: VirtAddr,
+	/// The pointer to the entry point of the vDSO
+	pub entry: NonNull<u8>,
 }
 
 /// The info of the vDSO. If `None`, the vDSO is not loaded yet.
@@ -77,14 +76,14 @@ fn load_image() -> EResult<Vdso> {
 			let off = i * PAGE_SIZE;
 			let len = min(PAGE_SIZE, ELF_IMAGE.len() - off);
 			// Alloc page
-			let page = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?.cast();
-			let virtaddr = memory::kern_to_virt(page.as_ptr()) as *mut Page;
-			let virtaddr = unsafe { &mut *virtaddr };
+			let physaddr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
+			let virtaddr = physaddr.kernel_to_virtual().unwrap();
+			let virtaddr = unsafe { &mut *virtaddr.as_ptr::<Page>() };
 			// Copy data
 			let src = &ELF_IMAGE[off..(off + len)];
 			virtaddr[..src.len()].copy_from_slice(src);
 			virtaddr[src.len()..].fill(0);
-			Arc::new(ResidencePage::new(page))
+			Arc::new(ResidencePage::new(physaddr))
 		})
 		.collect::<AllocResult<CollectResult<_>>>()?
 		.0?;
@@ -107,7 +106,7 @@ pub fn map(mem_space: &mut MemSpace) -> EResult<MappedVDSO> {
 		panic!("Invalid vDSO image");
 	};
 	// TODO ASLR
-	let ptr = mem_space.map(
+	let begin = mem_space.map(
 		MapConstraint::None,
 		vdso_pages,
 		mem_space::MAPPING_FLAG_USER,
@@ -115,10 +114,9 @@ pub fn map(mem_space: &mut MemSpace) -> EResult<MappedVDSO> {
 			pages: img.pages.clone(),
 		},
 	)?;
-	let entry_ptr = (ptr as usize + img.entry_off) as *mut c_void;
-	let entry = NonNull::new(entry_ptr).unwrap();
+	let entry_ptr = begin.wrapping_add(img.entry_off);
 	Ok(MappedVDSO {
-		ptr,
-		entry,
+		begin: begin.into(),
+		entry: NonNull::new(entry_ptr).unwrap(),
 	})
 }

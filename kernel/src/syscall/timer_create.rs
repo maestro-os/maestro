@@ -21,7 +21,7 @@
 use crate::{
 	process::{
 		mem_space::copy::SyscallPtr,
-		signal::{SigEvent, SigVal, Signal, SIGEV_SIGNAL},
+		signal::{SigEvent, Signal, SIGEV_SIGNAL},
 		Process,
 	},
 	syscall::Args,
@@ -43,9 +43,7 @@ pub fn timer_create(
 	let sevp_val = sevp.copy_from_user()?.unwrap_or_else(|| SigEvent {
 		sigev_notify: SIGEV_SIGNAL,
 		sigev_signo: Signal::SIGALRM.get_id() as _,
-		sigev_value: SigVal {
-			sigval_ptr: timerid_val,
-		},
+		sigev_value: timerid_val,
 		sigev_notify_function: None,
 		sigev_notify_attributes: None,
 		sigev_notify_thread_id: proc.tid,

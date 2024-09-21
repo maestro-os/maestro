@@ -18,8 +18,11 @@
 
 //! A map residence provides information about how to populate a memory mapping.
 
-use crate::{file::File, memory, memory::buddy};
-use core::{alloc::AllocError, ptr::NonNull};
+use crate::{
+	file::File,
+	memory::{buddy, PhysAddr, VirtAddr},
+};
+use core::alloc::AllocError;
 use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 /// Type representing a memory page.
@@ -30,48 +33,42 @@ pub type Page = [u8; PAGE_SIZE];
 /// This page is meant to be mapped in read-only and is a placeholder for pages that are
 /// accessed without being allocated nor written.
 #[inline]
-fn zeroed_page() -> NonNull<Page> {
+fn zeroed_page() -> PhysAddr {
 	#[repr(align(4096))]
 	struct DefaultPage(Page);
 	static DEFAULT_PAGE: DefaultPage = DefaultPage([0; PAGE_SIZE]);
-	let ptr = memory::kern_to_phys(DEFAULT_PAGE.0.as_ptr() as _) as *mut _;
-	NonNull::new(ptr).unwrap()
+	VirtAddr::from(DEFAULT_PAGE.0.as_ptr())
+		.kernel_to_physical()
+		.unwrap()
 }
 
 /// Wrapper for an allocated physical page of memory.
 ///
 /// On drop, the page is freed.
 #[derive(Debug)]
-pub struct ResidencePage(NonNull<Page>);
+pub struct ResidencePage(PhysAddr);
 
 impl ResidencePage {
-	/// Creates a new instance from the given page.
-	///
-	/// **Note**: The resulting `ResidencePage` takes the ownership of the page.
-	pub fn new(page: NonNull<Page>) -> Self {
+	/// Creates a new instance from the given physical address, taking ownership over it.
+	pub fn new(page: PhysAddr) -> Self {
 		Self(page)
 	}
 
-	/// Returns the page's pointer.
-	///
-	/// # Safety
-	///
-	/// Using the pointed to by the given pointer is undefined.
-	pub unsafe fn ptr(&self) -> *const Page {
-		self.0.as_ptr()
+	/// Returns the page's physical address.
+	pub fn get(&self) -> PhysAddr {
+		self.0
 	}
 }
 
 impl Drop for ResidencePage {
 	fn drop(&mut self) {
 		unsafe {
-			buddy::free(self.0.as_ptr() as _, 0);
+			buddy::free(self.0, 0);
 		}
 	}
 }
 
 // TODO when reaching the last reference to the open file, close it on unmap
-// TODO Disallow clone and use a special function + Drop to increment/decrement reference counters
 /// A map residence is the source of the data on a physical page used by a mapping. It is also the
 /// location to which the data is to be synchronized when modified.
 #[derive(Clone, Debug)]
@@ -106,7 +103,7 @@ impl MapResidence {
 	/// Returns the default physical page for the mapping, if applicable.
 	///
 	/// If no default page exist, pages should be allocated directly.
-	pub fn get_default_page(&self) -> Option<NonNull<Page>> {
+	pub fn get_default_page(&self) -> Option<PhysAddr> {
 		match self {
 			MapResidence::Normal => Some(zeroed_page()),
 			_ => None,
@@ -133,7 +130,7 @@ impl MapResidence {
 	pub fn acquire_page(&self, offset: usize) -> AllocResult<Arc<ResidencePage>> {
 		match self {
 			MapResidence::Normal => {
-				let page = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?.cast();
+				let page = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_USER)?;
 				Arc::new(ResidencePage::new(page))
 			}
 			MapResidence::Static {

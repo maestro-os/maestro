@@ -41,13 +41,16 @@
 //! The Page Size Extension (PSE) allows to map 4MB large blocks without using a
 //! page table.
 
-use crate::{cpu, memory, memory::buddy, register_get, register_set};
+use crate::{
+	cpu,
+	memory::{buddy, PhysAddr, VirtAddr},
+	register_get, register_set,
+};
 use core::{
 	arch::asm,
-	ffi::c_void,
 	ptr::{null_mut, NonNull},
 };
-use utils::{down_align, errno::AllocResult, limits::PAGE_SIZE, lock::Mutex};
+use utils::{errno::AllocResult, limits::PAGE_SIZE, lock::Mutex};
 
 /// x86 paging flag. If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.
@@ -131,23 +134,25 @@ unsafe fn free_table(table: NonNull<Table>) {
 ///
 /// Invalid flags are ignored and the [`FLAG_PRESENT`] flag is inserted automatically.
 #[inline]
-fn to_entry<T>(table: *const T, flags: u32) -> u32 {
-	// Pointer alignment guarantees the address does not overlap flags
-	let physaddr = memory::kern_to_phys(table) as u32;
+fn to_entry(addr: PhysAddr, flags: u32) -> u32 {
 	// Sanitize flags
 	let flags = flags & FLAGS_MASK | FLAG_PRESENT;
-	physaddr | flags
+	// Address alignment guarantees the address does not overlap flags
+	addr.0 as u32 | flags
 }
 
-/// Turns an entry back into a object/flags pair.
+/// Turns an entry back into an object/flags pair.
 ///
 /// # Safety
 ///
 /// If the object's address in the entry is invalid, the behaviour is undefined.
 #[inline]
 unsafe fn unwrap_entry(entry: u32) -> (NonNull<Table>, u32) {
-	let table_addr = (entry & ADDR_MASK) as *mut Table;
-	let table = NonNull::from(&mut *(memory::kern_to_virt(table_addr) as *mut _));
+	let table = PhysAddr((entry & ADDR_MASK) as usize)
+		.kernel_to_virtual()
+		.unwrap()
+		.as_ptr();
+	let table = NonNull::new(table).unwrap();
 	let flags = entry & FLAGS_MASK;
 	(table, flags)
 }
@@ -170,10 +175,12 @@ mod table {
 		let flags = (entry & FLAGS_MASK) & !FLAG_PAGE_SIZE;
 		// Create table
 		let new_table = alloc_table()?;
-		let base_addr = new_table.as_ptr() as usize;
+		let base_addr = new_table.as_ptr();
 		let table = unsafe { unwrap_entry(entry).0.as_mut() };
 		table.iter_mut().enumerate().for_each(|(i, e)| {
-			let addr = (base_addr + i * PAGE_SIZE) as *const c_void;
+			let addr = (VirtAddr::from(base_addr) + i * PAGE_SIZE)
+				.kernel_to_physical()
+				.unwrap();
 			*e = to_entry(addr, flags);
 		});
 		Ok(())
@@ -200,24 +207,25 @@ pub(super) fn alloc() -> AllocResult<NonNull<Table>> {
 		.iter_mut()
 		.zip(kernel_tables.iter())
 		.for_each(|(dst, src)| {
-			*dst = to_entry(*src, KERNEL_FLAGS);
+			let addr = VirtAddr::from(*src).kernel_to_physical().unwrap();
+			*dst = to_entry(addr, KERNEL_FLAGS);
 		});
 	Ok(page_dir)
 }
 
 /// Returns the index of the element corresponding to the given virtual
-/// address `ptr` for element at level `level` in the tree.
+/// address `addr` for element at level `level` in the tree.
 ///
 /// The level represents the depth in the tree. `0` is the deepest.
 #[inline]
-fn get_addr_element_index(ptr: *const c_void, level: usize) -> usize {
-	((ptr as usize) >> (12 + level * 10)) & 0x3ff
+fn get_addr_element_index(addr: VirtAddr, level: usize) -> usize {
+	(addr.0 >> (12 + level * 10)) & 0x3ff
 }
 
 /// Returns the corresponding entry for [`translate`].
-fn translate_impl(page_dir: &Table, ptr: *const c_void) -> Option<u32> {
+fn translate_impl(page_dir: &Table, addr: VirtAddr) -> Option<u32> {
 	// First level
-	let index = get_addr_element_index(ptr, 1);
+	let index = get_addr_element_index(addr, 1);
 	let entry_val = page_dir[index];
 	if entry_val & FLAG_PRESENT == 0 {
 		return None;
@@ -226,7 +234,7 @@ fn translate_impl(page_dir: &Table, ptr: *const c_void) -> Option<u32> {
 		return Some(entry_val);
 	}
 	// Second level
-	let index = get_addr_element_index(ptr, 0);
+	let index = get_addr_element_index(addr, 0);
 	let table = unsafe { unwrap_entry(entry_val).0.as_mut() };
 	let entry_val = table[index];
 	if entry_val & FLAG_PRESENT == 0 {
@@ -236,22 +244,22 @@ fn translate_impl(page_dir: &Table, ptr: *const c_void) -> Option<u32> {
 }
 
 /// Translates the given virtual address to the corresponding physical address using `page_dir`.
-pub(super) fn translate(page_dir: &Table, ptr: *const c_void) -> Option<*const c_void> {
-	let entry = translate_impl(page_dir, ptr)?;
+pub(super) fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
+	let entry = translate_impl(page_dir, addr)?;
 	let remain_mask = if entry & FLAG_PAGE_SIZE == 0 {
 		PAGE_SIZE - 1
 	} else {
 		ENTRIES_PER_TABLE * PAGE_SIZE - 1
 	};
 	let mut virtptr = (entry & ADDR_MASK) as usize;
-	virtptr |= ptr as usize & remain_mask;
-	Some(virtptr as _)
+	virtptr |= addr.0 & remain_mask;
+	Some(PhysAddr(virtptr))
 }
 
 /// Inner version of [`super::Rollback`] for x86.
 pub(super) struct Rollback {
 	/// The virtual address of the affected page.
-	virtaddr: *const c_void,
+	virtaddr: VirtAddr,
 	/// Previous entry in the page table, unless the [`FLAG_PAGE_SIZE`] flag is set, in which case
 	/// the entry is the page directory.
 	previous_entry: u32,
@@ -266,8 +274,9 @@ impl Rollback {
 		let index = get_addr_element_index(self.virtaddr, 1);
 		// Replace the table for the previous one
 		if let Some(table) = self.table.take() {
+			let addr = VirtAddr::from(table.as_ptr()).kernel_to_physical().unwrap();
 			let flags = self.previous_entry & FLAGS_MASK & !FLAG_PAGE_SIZE;
-			page_dir[index] = to_entry(table.as_ptr(), flags);
+			page_dir[index] = to_entry(addr, flags);
 			// No need to care about the previous table as the algorithms will never replace an
 			// already present table
 		}
@@ -313,13 +322,13 @@ impl Drop for Rollback {
 /// kernel remain accessible and valid.
 pub(super) unsafe fn map(
 	page_dir: &mut Table,
-	physaddr: *const c_void,
-	virtaddr: *const c_void,
+	physaddr: PhysAddr,
+	virtaddr: VirtAddr,
 	flags: u32,
 ) -> AllocResult<Rollback> {
 	// Sanitize
-	let physaddr = down_align(physaddr, PAGE_SIZE);
-	let virtaddr = down_align(virtaddr, PAGE_SIZE);
+	let physaddr = PhysAddr(physaddr.0 & !(PAGE_SIZE - 1));
+	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 	let flags = (flags & FLAGS_MASK) | FLAG_PRESENT;
 	// First level
 	let pd_index = get_addr_element_index(virtaddr, 1);
@@ -339,7 +348,8 @@ pub(super) unsafe fn map(
 	if previous_entry & FLAG_PRESENT == 0 {
 		// No table is present, allocate one
 		let table = alloc_table()?;
-		page_dir[pd_index] = to_entry(table.as_ptr(), flags);
+		let addr = VirtAddr::from(table.as_ptr()).kernel_to_physical().unwrap();
+		page_dir[pd_index] = to_entry(addr, flags);
 	} else if previous_entry & FLAG_PAGE_SIZE != 0 {
 		// A PSE entry is present, need to expand it for the mapping
 		table::expand(page_dir, pd_index)?;
@@ -367,12 +377,9 @@ pub(super) unsafe fn map(
 ///
 /// In case the unmapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
-pub(super) unsafe fn unmap(
-	page_dir: &mut Table,
-	virtaddr: *const c_void,
-) -> AllocResult<Rollback> {
+pub(super) unsafe fn unmap(page_dir: &mut Table, virtaddr: VirtAddr) -> AllocResult<Rollback> {
 	// Sanitize
-	let virtaddr = down_align(virtaddr, PAGE_SIZE);
+	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 	// First level
 	let pd_index = get_addr_element_index(virtaddr, 1);
 	let mut previous_entry = page_dir[pd_index];
@@ -425,13 +432,13 @@ pub(super) unsafe fn unmap(
 /// The caller must ensure the given page directory is correct.
 /// Meaning it must be mapping the kernel's code and data sections, and any regions of memory that
 /// might be accessed in the future.
-pub(super) unsafe fn bind(page_dir: *const c_void) {
+pub(super) unsafe fn bind(page_dir: PhysAddr) {
 	asm!(
 		"mov cr3, {dir}",
 		"mov {tmp}, cr0",
 		"or {tmp}, 0x80010000",
 		"mov cr0, {tmp}",
-		dir = in(reg) page_dir,
+		dir = in(reg) page_dir.0,
 		tmp = out(reg) _,
 	)
 }
@@ -439,15 +446,15 @@ pub(super) unsafe fn bind(page_dir: *const c_void) {
 /// Tells whether the given page directory is bound on the current CPU.
 #[inline]
 pub(super) fn is_bound(page_dir: NonNull<Table>) -> bool {
-	let physaddr = memory::kern_to_phys(page_dir.as_ptr() as _) as _;
-	register_get!("cr3") == physaddr
+	let physaddr = VirtAddr::from(page_dir).kernel_to_physical().unwrap();
+	register_get!("cr3") == physaddr.0
 }
 
 /// Invalidate the page at the given address on the current CPU.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub(super) fn invalidate_page_current(addr: *const c_void) {
+pub(super) fn invalidate_page_current(addr: VirtAddr) {
 	unsafe {
-		asm!("invlpg [{addr}]", addr = in(reg) addr);
+		asm!("invlpg [{addr}]", addr = in(reg) addr.0);
 	}
 }
 
