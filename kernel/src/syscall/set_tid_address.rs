@@ -31,11 +31,10 @@ use utils::{
 };
 
 pub fn set_tid_address(
-	Args(tidptr): Args<SyscallPtr<c_int>>,
+	Args(_tidptr): Args<SyscallPtr<c_int>>,
 	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
-	let mut proc = proc.lock();
-	proc.clear_child_tid = tidptr.0;
-	tidptr.copy_to_user(proc.tid as _)?;
+	let proc = proc.lock();
+	// TODO set process's clear_child_tid
 	Ok(proc.tid as _)
 }

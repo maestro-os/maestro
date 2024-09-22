@@ -283,13 +283,6 @@ pub struct Process {
 	/// TLS entries.
 	pub tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 
-	/// If a thread is started using `clone` with the `CLONE_CHILD_SETTID` flag, set_child_tid is
-	/// set to the value passed in the ctid argument of that system call.
-	pub set_child_tid: Option<NonNull<i32>>,
-	/// If a thread is started using `clone` with the `CLONE_CHILD_CLEARTID` flag, clear_child_tid
-	/// is set to the value passed in the ctid argument of that system call.
-	pub clear_child_tid: Option<NonNull<i32>>,
-
 	/// The process's resources usage.
 	rusage: RUsage,
 
@@ -486,9 +479,6 @@ impl Process {
 			signal_handlers: Arc::new(Mutex::new(Default::default()))?,
 
 			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
-
-			set_child_tid: None,
-			clear_child_tid: None,
 
 			rusage: RUsage::default(),
 
@@ -861,9 +851,6 @@ impl Process {
 			signal_handlers,
 
 			tls_entries: proc.tls_entries,
-
-			set_child_tid: proc.set_child_tid,
-			clear_child_tid: proc.clear_child_tid,
 
 			rusage: RUsage::default(),
 
