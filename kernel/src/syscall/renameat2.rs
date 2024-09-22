@@ -77,6 +77,10 @@ pub(super) fn do_renameat2(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.ok_or_else(|| errno!(EFAULT))??;
+	let rs = ResolutionSettings {
+		create: true,
+		..rs
+	};
 	// TODO RENAME_NOREPLACE
 	let Resolved::Creatable {
 		parent: new_parent,
