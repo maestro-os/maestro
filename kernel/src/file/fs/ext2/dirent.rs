@@ -21,7 +21,7 @@
 
 use super::{Ext2INode, Superblock};
 use crate::{device::DeviceIO, file::FileType};
-use core::{cmp::min, mem::offset_of};
+use core::{cmp::min, intrinsics::unlikely, mem::offset_of};
 use macros::AnyRepr;
 use utils::{errno, errno::EResult};
 
@@ -88,17 +88,15 @@ impl Dirent {
 		name: &[u8],
 	) -> EResult<()> {
 		// Validation
-		if !slice.as_ptr().is_aligned_to(ALIGN) {
-			return Err(errno!(EUCLEAN));
-		}
 		let name_len = name.len();
-		if (rec_len as usize) > slice.len()
-			|| (rec_len as usize) < NAME_OFF + name_len
-			|| (rec_len as usize) % ALIGN != 0
-		{
+		if unlikely(
+			(rec_len as usize) > slice.len()
+				|| (rec_len as usize) < NAME_OFF + name_len
+				|| (rec_len as usize) % ALIGN != 0,
+		) {
 			return Err(errno!(EINVAL));
 		}
-		if name.len() > super::MAX_NAME_LEN {
+		if unlikely(name.len() > super::MAX_NAME_LEN) {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		// Reinterpret
@@ -119,23 +117,20 @@ impl Dirent {
 	/// If the entry is invalid, the function returns [`EUCLEAN`].
 	pub fn from_slice<'b>(slice: &'b mut [u8], superblock: &Superblock) -> EResult<&'b mut Self> {
 		// Validation
-		if !slice.as_ptr().is_aligned_to(ALIGN) {
-			return Err(errno!(EUCLEAN));
-		}
-		if slice.len() < NAME_OFF {
+		if unlikely(slice.len() < NAME_OFF) {
 			return Err(errno!(EUCLEAN));
 		}
 		// Read record's length
 		const REC_LEN_OFF: usize = offset_of!(Dirent, rec_len);
 		let rec_len = u16::from_le_bytes([slice[REC_LEN_OFF], slice[REC_LEN_OFF + 1]]) as usize;
 		// Validation
-		if rec_len > slice.len() || rec_len < NAME_OFF || rec_len % ALIGN != 0 {
+		if unlikely(rec_len > slice.len() || rec_len < NAME_OFF || rec_len % ALIGN != 0) {
 			return Err(errno!(EUCLEAN));
 		}
 		// Reinterpret
 		let ent = unsafe { &mut *(&mut slice[..rec_len] as *mut _ as *mut Self) };
 		// Validation
-		if !ent.is_free() && NAME_OFF + ent.name_len(superblock) > rec_len {
+		if unlikely(!ent.is_free() && NAME_OFF + ent.name_len(superblock) > rec_len) {
 			return Err(errno!(EUCLEAN));
 		}
 		Ok(ent)

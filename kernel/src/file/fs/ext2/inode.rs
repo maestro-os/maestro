@@ -243,6 +243,37 @@ fn is_block_empty(buf: &mut [u8], superblock: &Superblock) -> EResult<bool> {
 	Ok(true)
 }
 
+/// Fills the given slice with empty directory entries.
+///
+/// It is the caller's responsibility to ensure the starting offset is properly aligned to
+/// [`dirent::ALIGN`].
+///
+/// If an entry could not be created, the associated error is returned.
+fn fill_free_entries(buf: &mut [u8], superblock: &Superblock) -> EResult<()> {
+	const MIN: usize = dirent::NAME_OFF;
+	const MAX: usize = u16::MAX as usize;
+	const SPECIAL_CASE_END: usize = MAX + MIN;
+	let mut i = 0;
+	loop {
+		let rec_len = match buf.len() - i {
+			// Special case: a max-sized entry would leave a space too small to be filled
+			MAX..SPECIAL_CASE_END => (MAX / 2).next_multiple_of(dirent::ALIGN),
+			// Clamp to maximum size
+			SPECIAL_CASE_END.. => MAX,
+			// An entry could not fill the remaining space: stop
+			//
+			// This can only happen when reaching the end, unless the starting offset is
+			// misaligned, which is invalid
+			..MIN => break,
+			// Fill the remaining space
+			r => r,
+		};
+		Dirent::write_new(&mut buf[i..], superblock, 0, rec_len as _, None, b"")?;
+		i += rec_len;
+	}
+	Ok(())
+}
+
 /// An inode represents a file in the filesystem.
 ///
 /// The name of the file is not included in the inode but in the directory entry associated with it
@@ -829,7 +860,7 @@ impl Ext2INode {
 	}
 
 	/// Looks for a sequence of free entries large enough to fit a chunk with at least `min_size`
-	/// bytes, and returns the offset to its beginning and its size in bytes.
+	/// bytes, and returns the offset to its beginning.
 	///
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock
@@ -844,14 +875,14 @@ impl Ext2INode {
 		io: &dyn DeviceIO,
 		buf: &mut [u8],
 		min_size: u16,
-	) -> EResult<Option<(u64, usize)>> {
+	) -> EResult<Option<u64>> {
 		let blk_size = superblock.get_block_size() as u64;
 		let mut off = 0;
 		let mut free_length = 0;
 		while let Some(ent) = next_dirent(self, superblock, io, buf, off)? {
 			// If an entry is used but is able to fit the new entry, stop
 			if !ent.is_free() && ent.can_fit(min_size, superblock) {
-				return Ok(Some((off, ent.rec_len as _)));
+				return Ok(Some(off));
 			}
 			// If the entry is used or on the next block
 			let next = (off % blk_size + ent.rec_len as u64) > blk_size;
@@ -866,7 +897,7 @@ impl Ext2INode {
 			// If a sequence large enough has been found, stop
 			if free_length >= min_size as usize {
 				let begin = off - free_length as u64;
-				return Ok(Some((begin, free_length)));
+				return Ok(Some(begin));
 			}
 		}
 		Ok(None)
@@ -895,30 +926,32 @@ impl Ext2INode {
 	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		// If the name is too long, error
-		if name.len() > super::MAX_NAME_LEN {
+		if unlikely(name.len() > super::MAX_NAME_LEN) {
 			return Err(errno!(ENAMETOOLONG));
 		}
-		let rec_len = (dirent::NAME_OFF + name.len()).next_multiple_of(dirent::ALIGN) as u16;
+		let mut rec_len = (dirent::NAME_OFF + name.len()).next_multiple_of(dirent::ALIGN) as u16;
 		// If the entry is too large, error
 		let blk_size = superblock.get_block_size();
-		if rec_len as u32 > blk_size {
+		if unlikely(rec_len as u32 > blk_size) {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		let mut buf = vec![0; blk_size as _]?;
-		if let Some((mut off, mut len)) =
-			self.get_suitable_slot(superblock, io, &mut buf, rec_len)?
-		{
+		if let Some(mut off) = self.get_suitable_slot(superblock, io, &mut buf, rec_len)? {
 			// If the entry is used, shrink it
 			let inner_off = (off % buf.len() as u64) as usize;
 			let dirent = Dirent::from_slice(&mut buf[inner_off..], superblock)?;
 			if !dirent.is_free() {
 				let used_space = dirent.used_space(superblock);
 				off += used_space as u64;
-				len -= used_space as usize;
 				dirent.rec_len = used_space;
 			}
 			// Create used entry
 			let inner_off = (off % buf.len() as u64) as usize;
+			// If not enough space is left on the block to fit another entry, use the remaining
+			// space
+			if inner_off + rec_len as usize + dirent::NAME_OFF >= buf.len() {
+				rec_len = (buf.len() - inner_off) as u16;
+			}
 			Dirent::write_new(
 				&mut buf[inner_off..],
 				superblock,
@@ -928,13 +961,7 @@ impl Ext2INode {
 				name,
 			)?;
 			// Create free entries to cover remaining free space
-			let mut i = inner_off + rec_len as usize;
-			let end = inner_off + len;
-			while i < end {
-				let rec_len = min(buf.len() - i, u16::MAX as usize) as u16;
-				Dirent::write_new(&mut buf[i..], superblock, 0, rec_len, None, b"")?;
-				i += rec_len as usize;
-			}
+			fill_free_entries(&mut buf[(inner_off + rec_len as usize)..], superblock)?;
 			// Write block
 			let blk_off = (off / blk_size as u64) as u32;
 			let blk_off = self.translate_blk_off(blk_off, superblock, io)?.unwrap();
@@ -954,12 +981,7 @@ impl Ext2INode {
 				name,
 			)?;
 			// Create free entries to cover remaining free space
-			let mut i = rec_len as usize;
-			while i < buf.len() {
-				let rec_len = min(buf.len() - i, u16::MAX as usize) as u16;
-				Dirent::write_new(&mut buf[i..], superblock, 0, rec_len, None, b"")?;
-				i += rec_len as usize;
-			}
+			fill_free_entries(&mut buf[rec_len as usize..], superblock)?;
 			// Write block
 			write_block(blk.get() as _, blk_size, io, &buf)?;
 			self.set_size(superblock, (blocks as u64 + 1) * blk_size as u64, false);
