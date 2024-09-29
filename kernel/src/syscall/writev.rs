@@ -38,6 +38,8 @@ use utils::{
 	ptr::arc::Arc,
 };
 
+// FIXME: the operation has to be atomic
+
 /// Writes the given chunks to the file.
 ///
 /// Arguments:
@@ -55,11 +57,9 @@ fn write(
 	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
 		// The size to write. This is limited to avoid an overflow on the total length
-		let l = min(i.iov_len, usize::MAX - off);
+		let l = min(i.iov_len, i32::MAX as usize - off);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
 		if let Some(buf) = ptr.copy_from_user(..l)? {
-			// FIXME: if not everything has been written, must retry with the same buffer with the
-			// corresponding offset
 			let len = if let Some(offset) = offset {
 				let file_off = offset + off as u64;
 				file.ops.write(file, file_off, &buf)?

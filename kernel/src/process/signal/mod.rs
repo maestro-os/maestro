@@ -170,17 +170,6 @@ pub struct SigInfo {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SigSet(pub u64);
 
-impl From<&[u8]> for SigSet {
-	fn from(bytes: &[u8]) -> Self {
-		let mut set = 0;
-		let iter = bytes.iter().enumerate().take(8);
-		for (i, b) in iter {
-			set |= (*b as u64) << (i * 8) as u64;
-		}
-		Self(set)
-	}
-}
-
 impl SigSet {
 	/// Tells whether the `n`th bit is set.
 	pub fn is_set(&self, n: usize) -> bool {

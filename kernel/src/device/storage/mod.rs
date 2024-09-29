@@ -129,23 +129,23 @@ impl DeviceIO for StorageDeviceHandle {
 	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::HDIO_GETGEO => {
-				// The total size of the disk
-				let size = self.block_size().get() * self.blocks_count();
+				// Starting LBA and size in sectors count
+				let (start, size) = match &self.partition {
+					Some(partition) => (partition.offset as _, partition.size),
+					None => (0, self.blocks_count()),
+				};
 				// Translate from LBA to CHS
 				let s = (size % c_uchar::MAX as u64) as _;
 				let h = ((size - s as u64) / c_uchar::MAX as u64 % c_uchar::MAX as u64) as _;
 				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
-				// Starting LBA of the partition
-				let start = self.partition.as_ref().map(|p| p.offset).unwrap_or(0) as _;
-				let hd_geo = HdGeometry {
+				// Write to userspace
+				let hd_geo_ptr = SyscallPtr::<HdGeometry>::from_syscall_arg(argp as usize);
+				hd_geo_ptr.copy_to_user(HdGeometry {
 					heads: h,
 					sectors: s,
 					cylinders: c,
 					start,
-				};
-				// Write to userspace
-				let hd_geo_ptr = SyscallPtr::<HdGeometry>::from_syscall_arg(argp as usize);
-				hd_geo_ptr.copy_to_user(hd_geo)?;
+				})?;
 				Ok(0)
 			}
 			ioctl::BLKRRPART => {

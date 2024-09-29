@@ -27,7 +27,7 @@ use crate::{
 	},
 	syscall::{Args, FromSyscallArg},
 };
-use core::{cmp::min, ffi::c_int, sync::atomic};
+use core::{cmp::min, ffi::c_int, intrinsics::unlikely, sync::atomic};
 use utils::{
 	collections::vec::Vec,
 	errno,
@@ -37,6 +37,8 @@ use utils::{
 	ptr::arc::Arc,
 	vec,
 };
+
+// FIXME: the operation has to be atomic
 
 /// Reads the given chunks from the file.
 ///
@@ -55,37 +57,29 @@ fn read(
 	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
 		// The size to read. This is limited to avoid an overflow on the total length
-		let l = min(i.iov_len, usize::MAX - off);
+		let max_len = min(i.iov_len, i32::MAX as usize - off);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
 		// Read
 		// TODO perf: do not use a buffer
-		let mut buf = vec![0u8; l]?;
-		let mut inner_off = 0;
-		while inner_off < buf.len() {
-			let len = if let Some(offset) = offset {
-				let file_off = offset + off as u64;
-				file.ops.read(file, file_off, &mut buf)?
-			} else {
-				let off = file.off.load(atomic::Ordering::Acquire);
-				let len = file.ops.read(file, off, &mut buf)?;
-				// Update offset
-				let new_off = off.saturating_add(len as u64);
-				file.off.store(new_off, atomic::Ordering::Release);
-				len
-			};
-			if len == 0 {
-				break;
-			}
-			inner_off += len;
-		}
-		ptr.copy_to_user(off, &buf[..inner_off])?;
-		off += inner_off;
-		// If the last buffer reached the end, stop
-		if inner_off < l {
+		let mut buf = vec![0u8; max_len]?;
+		let len = if let Some(offset) = offset {
+			let file_off = offset + off as u64;
+			file.ops.read(file, file_off, &mut buf)?
+		} else {
+			let off = file.off.load(atomic::Ordering::Acquire);
+			let len = file.ops.read(file, off, &mut buf)?;
+			// Update offset
+			let new_off = off.saturating_add(len as u64);
+			file.off.store(new_off, atomic::Ordering::Release);
+			len
+		};
+		ptr.copy_to_user(0, &buf[..len])?;
+		off += len;
+		if unlikely(len < max_len) {
 			break;
 		}
 	}
-	Ok(off as _)
+	Ok(off)
 }
 
 /// Performs the readv operation.
@@ -105,7 +99,7 @@ pub fn do_readv(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	if iovcnt < 0 || iovcnt as usize > IOV_MAX {
+	if unlikely(iovcnt < 0 || iovcnt as usize > IOV_MAX) {
 		return Err(errno!(EINVAL));
 	}
 	let offset = match offset {

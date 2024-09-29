@@ -22,10 +22,10 @@ use crate::{
 	process::{mem_space::copy::SyscallSlice, signal::SigSet, Process},
 	syscall::Args,
 };
-use core::{cmp::min, ffi::c_int};
+use core::{cmp::min, ffi::c_int, intrinsics::unlikely};
 use utils::{
 	errno,
-	errno::{EResult, Errno},
+	errno::{EResult, Errno, EINVAL},
 	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
@@ -41,18 +41,21 @@ pub fn rt_sigprocmask(
 	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
 	proc: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
+	// Validation
+	if unlikely(sigsetsize != 8) {
+		return Err(errno!(EINVAL));
+	}
 	let mut proc = proc.lock();
 	// Save old set
 	let cur = proc.sigmask.0.to_ne_bytes();
-	let len = min(cur.len(), sigsetsize as _);
-	oldset.copy_to_user(0, &cur[..len])?;
+	oldset.copy_to_user(0, &cur)?;
 	// Apply new set
-	if let Some(set) = set.copy_from_user(..sigsetsize)? {
-		let set = SigSet::from(set.as_slice());
+	if let Some(set) = set.copy_from_user(..8)? {
+		let set = u64::from_ne_bytes(set.try_into().unwrap());
 		match how {
-			SIG_BLOCK => proc.sigmask.0 |= set.0,
-			SIG_UNBLOCK => proc.sigmask.0 &= !set.0,
-			SIG_SETMASK => proc.sigmask = set,
+			SIG_BLOCK => proc.sigmask.0 |= set,
+			SIG_UNBLOCK => proc.sigmask.0 &= !set,
+			SIG_SETMASK => proc.sigmask.0 = set,
 			_ => return Err(errno!(EINVAL)),
 		}
 	}

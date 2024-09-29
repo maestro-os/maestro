@@ -31,5 +31,3 @@ pub struct IOVec {
 	/// Number of bytes to transfer.
 	pub iov_len: usize,
 }
-
-// TODO add a function to turn into an entry into a SyscallSlice?

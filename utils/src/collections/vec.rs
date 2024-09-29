@@ -29,7 +29,7 @@ use core::{
 	fmt,
 	hash::{Hash, Hasher},
 	iter::{FusedIterator, TrustedLen},
-	mem::ManuallyDrop,
+	mem::{ManuallyDrop, MaybeUninit},
 	ops::{Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeTo},
 	ptr,
 	ptr::NonNull,
@@ -50,22 +50,6 @@ impl<T> RawVec<T> {
 		Self {
 			data: NonNull::dangling(),
 			capacity: 0,
-		}
-	}
-
-	fn as_slice(&self) -> &[T] {
-		if self.capacity > 0 {
-			unsafe { NonNull::slice_from_raw_parts(self.data, self.capacity).as_ref() }
-		} else {
-			&[]
-		}
-	}
-
-	fn as_mut_slice(&mut self) -> &mut [T] {
-		if self.capacity > 0 {
-			unsafe { NonNull::slice_from_raw_parts(self.data, self.capacity).as_mut() }
-		} else {
-			&mut []
 		}
 	}
 
@@ -171,6 +155,25 @@ impl<T: Clone> TryFrom<&[T]> for Vec<T> {
 	}
 }
 
+impl<T, const N: usize> TryFrom<Vec<T>> for [T; N] {
+	type Error = Vec<T>;
+
+	fn try_from(mut vec: Vec<T>) -> Result<Self, Self::Error> {
+		if vec.len() == N {
+			let arr = unsafe {
+				let mut arr = MaybeUninit::<Self>::uninit();
+				ptr::copy_nonoverlapping(vec.as_ptr(), arr.as_mut_ptr() as *mut _, N);
+				arr.assume_init()
+			};
+			// Avoid double drop
+			vec.len = 0;
+			Ok(arr)
+		} else {
+			Err(vec)
+		}
+	}
+}
+
 impl<T> Vec<T> {
 	/// Creates a new empty vector.
 	pub const fn new() -> Self {
@@ -231,12 +234,20 @@ impl<T> Vec<T> {
 
 	/// Returns a slice containing the data.
 	pub fn as_slice(&self) -> &[T] {
-		&self.inner.as_slice()[..self.len]
+		if self.len > 0 {
+			unsafe { NonNull::slice_from_raw_parts(self.inner.data, self.len).as_ref() }
+		} else {
+			&[]
+		}
 	}
 
 	/// Returns a mutable slice containing the data.
 	pub fn as_mut_slice(&mut self) -> &mut [T] {
-		&mut self.inner.as_mut_slice()[..self.len]
+		if self.len > 0 {
+			unsafe { NonNull::slice_from_raw_parts(self.inner.data, self.len).as_mut() }
+		} else {
+			&mut []
+		}
 	}
 
 	/// Triggers a panic after invalid access to the vector.
@@ -259,12 +270,11 @@ impl<T> Vec<T> {
 			self.vector_panic(index);
 		}
 		self.reserve(1)?;
-		let data = self.inner.as_mut_slice();
+		let data = self.inner.data.as_ptr();
 		unsafe {
 			// Shift
-			let ptr = data.as_mut_ptr();
-			ptr::copy(ptr.add(index), ptr.add(index + 1), self.len - index);
-			ptr::write(&mut data[index], element);
+			ptr::copy(data.add(index), data.add(index + 1), self.len - index);
+			ptr::write(data.add(index), element);
 		}
 		self.len += 1;
 		Ok(())
@@ -280,12 +290,11 @@ impl<T> Vec<T> {
 		if index >= self.len() {
 			self.vector_panic(index);
 		}
-		let data = self.inner.as_mut_slice();
+		let data = self.inner.data.as_ptr();
 		let v = unsafe {
-			let v = ptr::read(&data[index]);
+			let v = ptr::read(data.add(index));
 			// Shift
-			let ptr = data.as_mut_ptr();
-			ptr::copy(ptr.add(index + 1), ptr.add(index), self.len - index - 1);
+			ptr::copy(data.add(index + 1), data.add(index), self.len - index - 1);
 			v
 		};
 		self.len -= 1;
@@ -298,8 +307,8 @@ impl<T> Vec<T> {
 			return Ok(());
 		}
 		self.reserve(other.len())?;
+		let self_ptr = self.inner.data.as_ptr();
 		unsafe {
-			let self_ptr = self.inner.as_mut_slice().as_mut_ptr();
 			ptr::copy_nonoverlapping(other.as_ptr(), self_ptr.add(self.len), other.len());
 		}
 		self.len += other.len();
@@ -313,7 +322,7 @@ impl<T> Vec<T> {
 	pub fn push(&mut self, value: T) -> AllocResult<()> {
 		self.reserve(1)?;
 		unsafe {
-			ptr::write(&mut self.inner.as_mut_slice()[self.len], value);
+			ptr::write(self.inner.data.add(self.len).as_ptr(), value);
 		}
 		self.len += 1;
 		Ok(())
@@ -322,9 +331,9 @@ impl<T> Vec<T> {
 	/// Removes the last element from a vector and returns it, or `None` if it is
 	/// empty.
 	pub fn pop(&mut self) -> Option<T> {
-		if !self.is_empty() {
-			self.len -= 1;
-			unsafe { Some(ptr::read(&self.inner.as_slice()[self.len])) }
+		if let Some(new_len) = self.len.checked_sub(1) {
+			self.len = new_len;
+			Some(unsafe { ptr::read(self.inner.data.add(self.len).as_ptr()) })
 		} else {
 			None
 		}

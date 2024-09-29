@@ -73,6 +73,7 @@ pub fn cpuid(mut eax: u32, mut ebx: u32, mut ecx: u32, mut edx: u32) -> (u32, u3
 			inout("ebx") ebx,
 			inout("ecx") ecx,
 			inout("edx") edx,
+			options(nomem, nostack)
 		);
 	}
 	(eax, ebx, ecx, edx)

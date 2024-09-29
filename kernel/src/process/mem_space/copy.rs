@@ -23,7 +23,7 @@ use core::{
 	arch::global_asm,
 	cmp::min,
 	fmt,
-	intrinsics::likely,
+	intrinsics::{likely, unlikely},
 	mem::{size_of, size_of_val, MaybeUninit},
 	ops::{Bound, RangeBounds},
 	ptr,
@@ -76,7 +76,7 @@ extern "C" {
 ///
 /// If the access check fails, the function returns [`EFAULT`].
 unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
-	if !likely(bound_check(src as _, n)) {
+	if unlikely(!bound_check(src as _, n)) {
 		return Err(errno!(EFAULT));
 	}
 	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
@@ -91,7 +91,7 @@ unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<
 ///
 /// If the access check fails, the function returns [`EFAULT`].
 unsafe fn copy_to_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
-	if !likely(bound_check(dst as _, n)) {
+	if unlikely(!bound_check(dst as _, n)) {
 		return Err(errno!(EFAULT));
 	}
 	let res = vmem::smap_disable(|| raw_copy(src, dst, n));

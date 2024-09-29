@@ -258,7 +258,7 @@ pub(crate) fn init() {
 	}
 	let idt = InterruptDescriptorTable {
 		size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
-		offset: unsafe { IDT_ENTRIES.as_ptr() } as _,
+		offset: addr_of!(IDT_ENTRIES) as _,
 	};
 	unsafe {
 		idt_load(addr_of!(idt));
