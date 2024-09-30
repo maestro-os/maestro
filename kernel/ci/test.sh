@@ -12,13 +12,13 @@ case $1 in
 		cargo test --lib
 		;;
 	int)
-	  set +e
+		set +e
 		cargo run
 		STATUS=$?
 		set -e
 		# FIXME: the clock currently starts at the timestamp zero, which causes fsck to detect errors due to the low value for dtime
 		#fsck.ext2 -fnv qemu_disk
-    exit $STATUS
+		exit $STATUS
 		;;
 	*)
 		>&2 echo "Invalid tests kind"

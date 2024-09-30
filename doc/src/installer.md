@@ -1,6 +1,6 @@
 # Installer
 
-Since the kernel cannot run by itself, the [installer](https://github.com/llenotre/maestro-install) can be used to build it.
+Since the kernel cannot run by itself, the [installer](https://github.com/maestro-os/maestro-install) can be used to build it.
 
 The utility on the installer's repository produces an ISO file which can be run on a virtual or physical machine to install the operating system on it.
 

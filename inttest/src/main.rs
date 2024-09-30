@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! `maestro-test` is a test suite for [Maestro](https://github.com/llenotre/maestro).
+//! Integration tests for Maestro.
 
 #![feature(io_error_more)]
 

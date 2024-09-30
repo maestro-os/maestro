@@ -27,7 +27,7 @@ use crate::{
 	format_content,
 	process::{pid::Pid, Process},
 };
-use utils::{errno, errno::EResult, DisplayableStr};
+use utils::{errno, errno::EResult};
 
 /// The `cwd` node.
 #[derive(Debug)]
@@ -57,6 +57,6 @@ impl NodeOps for Cwd {
 				.lock()
 				.cwd,
 		)?;
-		format_content!(off, buf, "{}", DisplayableStr(cwd.as_bytes()))
+		format_content!(off, buf, "{cwd}")
 	}
 }

@@ -42,13 +42,16 @@ unsafe impl AnyRepr for u16 {}
 unsafe impl AnyRepr for u32 {}
 unsafe impl AnyRepr for u64 {}
 
+unsafe impl<T: AnyRepr> AnyRepr for [T] {}
+unsafe impl<T: AnyRepr, const N: usize> AnyRepr for [T; N] {}
+
 /// Returns an immutable slice to the given value.
 pub fn as_bytes<T: ?Sized>(val: &T) -> &[u8] {
 	unsafe { slice::from_raw_parts(val as *const _ as *const u8, size_of_val(val)) }
 }
 
 /// As as [`as_bytes`], but mutable.
-pub fn as_bytes_mut<T: ?Sized>(val: &mut T) -> &mut [u8] {
+pub fn as_bytes_mut<T: ?Sized + AnyRepr>(val: &mut T) -> &mut [u8] {
 	unsafe { slice::from_raw_parts_mut(val as *mut _ as *mut u8, size_of_val(val)) }
 }
 

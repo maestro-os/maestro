@@ -10,11 +10,7 @@ cargo build --features memtrace
 
 When run, the kernel will then write tracing data to the **COM2** serial port.
 
-This data can then be fed to [kern-profile](https://github.com/llenotre/kern-profile) to generate a FlameGraph.
-
-## Trace an allocator
-
-An allocator can be traced using the `instrument_allocator` attribute macro (see kernel API reference).
+This data can then be fed to [kern-profile](https://github.com/maestro-os/kern-profile) to generate a FlameGraph.
 
 
 

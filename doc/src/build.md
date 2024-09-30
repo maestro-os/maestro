@@ -146,7 +146,7 @@ mkdir -pv mnt/var/lib/{color,misc,locate}
 
 ## Install packages
 
-You can decide to compile and install packages by hand, or you can use [maestro's package manager](https://github.com/llenotre/blimp).
+You can decide to compile and install packages by hand, or you can use [maestro's package manager](https://github.com/maestro-os/blimp).
 
 The minimum recommended packages are:
 - `bash`: shell

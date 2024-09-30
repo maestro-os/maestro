@@ -19,19 +19,27 @@
 //! The `link` system call allows to create a hard link.
 
 use super::Args;
-use crate::process::{mem_space::copy::SyscallString, Process};
+use crate::{
+	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
+	process::{mem_space::copy::SyscallString, Process},
+	syscall::{linkat::linkat, util::at::AT_FDCWD},
+};
 use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
+	lock::Mutex,
+	ptr::arc::Arc,
 };
 
-pub fn link(Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>) -> EResult<usize> {
-	let oldpath_str = oldpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let _old_path = PathBuf::try_from(oldpath_str)?;
-	let newpath_str = newpath.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let _new_path = PathBuf::try_from(newpath_str)?;
-	// TODO Get file at `old_path`
-	// TODO Create the link to the file
-	Ok(0)
+pub fn link(
+	Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>,
+	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	linkat(
+		Args((AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)),
+		fds_mutex,
+		rs,
+	)
 }
