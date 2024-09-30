@@ -6,7 +6,7 @@
 </p>
 
 [![AGPL-3.0 license](https://img.shields.io/badge/license-AGPL--3.0-blue.svg?style=for-the-badge&logo=book)](./COPYING)
-![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmaestro-os%2Fmaestro%2Fmaster%2FCargo.toml&query=%24.package.version&style=for-the-badge&label=version)
+![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmaestro-os%2Fmaestro%2Fmaster%2Fkernel%2FCargo.toml&query=%24.package.version&style=for-the-badge&label=version)
 ![Rust toolchain](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmaestro-os%2Fmaestro%2Fmaster%2Frust-toolchain.toml&query=%24.toolchain.channel&style=for-the-badge&logo=rust&label=rust%20toolchain&color=%23444)
 ![Continuous integration](https://img.shields.io/github/actions/workflow/status/maestro-os/maestro/check.yml?style=for-the-badge&logo=github)
 ![Stars](https://img.shields.io/github/stars/maestro-os/maestro?style=for-the-badge&color=yellow)
