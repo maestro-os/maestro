@@ -11,7 +11,7 @@ Unit tests and integration tests are present in the kernel.
 To run them, use the command:
 
 ```sh
-cargo test --lib`
+cargo test
 ```
 
 

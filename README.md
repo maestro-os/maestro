@@ -1,15 +1,15 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/llenotre/maestro-lnf/master/logo-light.svg">
-    <img src="https://raw.githubusercontent.com/llenotre/maestro-lnf/master/logo.svg" alt="logo" width="50%" />
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/maestro-os/maestro-lnf/master/logo-light.svg">
+    <img src="https://raw.githubusercontent.com/maestro-os/maestro-lnf/master/logo.svg" alt="logo" width="50%" />
   </picture>
 </p>
 
 [![AGPL-3.0 license](https://img.shields.io/badge/license-AGPL--3.0-blue.svg?style=for-the-badge&logo=book)](./COPYING)
-![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fllenotre%2Fmaestro%2Fmaster%2FCargo.toml&query=%24.package.version&style=for-the-badge&label=version)
-![Rust toolchain](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fllenotre%2Fmaestro%2Fmaster%2Frust-toolchain.toml&query=%24.toolchain.channel&style=for-the-badge&logo=rust&label=rust%20toolchain&color=%23444)
-![Continuous integration](https://img.shields.io/github/actions/workflow/status/llenotre/maestro/check.yml?style=for-the-badge&logo=github)
-![Stars](https://img.shields.io/github/stars/llenotre/maestro?style=for-the-badge&color=yellow)
+![Version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmaestro-os%2Fmaestro%2Fmaster%2FCargo.toml&query=%24.package.version&style=for-the-badge&label=version)
+![Rust toolchain](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmaestro-os%2Fmaestro%2Fmaster%2Frust-toolchain.toml&query=%24.toolchain.channel&style=for-the-badge&logo=rust&label=rust%20toolchain&color=%23444)
+![Continuous integration](https://img.shields.io/github/actions/workflow/status/maestro-os/maestro/check.yml?style=for-the-badge&logo=github)
+![Stars](https://img.shields.io/github/stars/maestro-os/maestro?style=for-the-badge&color=yellow)
 [![Discord](https://img.shields.io/discord/971452040821760080?style=for-the-badge&logo=discord&color=%235865f2)](https://discord.gg/4JMBN3YPAk)
 
 
@@ -62,7 +62,7 @@ The following features are currently implemented (non-exhaustive):
 This repository is not a full operating system in itself but only the kernel.
 
 You can either:
-- Use the [installer](https://github.com/llenotre/maestro-install) to build a full operating system from an ISO file
+- Use the [installer](https://github.com/maestro-os/maestro-install) to build a full operating system from an ISO file
 - Build the OS by hand. For this, you can check the kernel's book
 
 The OS can then be run by a virtual machine such a **QEMU** or **VirtualBox**, or on a physical machine.
@@ -71,74 +71,17 @@ The OS can then be run by a virtual machine such a **QEMU** or **VirtualBox**, o
 
 ## Build
 
-The configuration allows to easily specify which features have to be enabled in the kernel. This configuration is *required* to compile the kernel.
-
-A default configuration is available in the file `default.config.toml`. To use it, simply type the command:
+To build and/or run the OS, `cd` into the kernel's crate:
 
 ```sh
-cp default.config.toml config.toml
+cd kernel/
 ```
 
-After configuration, the kernel can be built using the following commands:
-
-```sh
-cargo build               # Debug mode
-cargo build --release     # Release mode
-```
-
-The default architecture is `x86`. To specify another architecture, add the following parameter to the build command: `--target arch/<arch>/<arch>.json`, where `<arch>` is the selected architecture.
-
-The list of available architectures can be retrieved by typing the command:
-
-```sh
-ls -1 arch/
-```
-
-
-
-## Run
-
-### With QEMU
-
-QEMU is the preferred virtual machine to test the kernel.
-
-To install QEMU, type the following command:
-
-Ubuntu/Debian:
-
-```sh
-apt install qemu
-```
-
-Arch Linux:
-
-```sh
-pacman -S qemu
-```
-
-A fully built operating system is required to run the system. This system must be present on a raw disk in the file `qemu_disk` at the root of the repository. The option `-drive file=qemu_disk,format=raw` is used on QEMU to reference the disk.
-
-The kernel can be run using:
-
-```sh
-cargo run               # Debug mode
-cargo run --release     # Release mode
-```
-
-
-#### Run unit tests
-
-The following command runs unit tests in QEMU:
-
-```sh
-cargo test --lib
-```
+Then follow the instructions in [README.md](kernel/README.md)
 
 
 
 ## Documentation
-
-### The book
 
 The kernel's book contains general information on how to use the kernel.
 
@@ -149,17 +92,3 @@ mdbook build doc/
 ```
 
 Then, it can be accessed at `doc/book/index.html`.
-
-
-
-### References
-
-The references contain the documentation for functions, structures, etc...
-
-It can be built using the command:
-
-```sh
-cargo doc
-```
-
-Then, it can be accessed at `target/<arch>/doc/kernel/index.html`, where `<arch>` is the architecture the kernel has been compiled for.

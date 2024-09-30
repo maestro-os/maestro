@@ -1,23 +1,18 @@
 #!/bin/sh
 
-# This script is builds kernel modules.
+# This script builds kernel modules.
 
 KERN_SRC=$(realpath $(dirname $0)/..)
-if [ "$(pwd)" = "$KERN_SRC" ]; then
-	>&2 echo "This script is to be used for kernel modules. Not the kernel itself"
-	exit 1
-fi
-
 if [ -z "$ARCH" ]; then
 	ARCH="x86"
 fi
-CARGOFLAGS="--target $KERN_SRC/arch/$ARCH/$ARCH.json $CARGOFLAGS"
+CARGOFLAGS="--target $KERN_SRC/kernel/arch/$ARCH/$ARCH.json $CARGOFLAGS"
 
-if [ -z "$PROFILE" ]; then
-	PROFILE="debug"
-elif [ "$PROFILE" = "release" ]; then
-	CARGOFLAGS="$CARGOFLAGS --release"
+if [ ! -z "$PROFILE" ] && [ "$PROFILE" != "debug" ]; then
+	CARGOFLAGS="$CARGOFLAGS --profile $PROFILE"
+else
+  PROFILE="debug"
 fi
-export RUSTFLAGS="--extern kernel=$KERN_SRC/target/$ARCH/$PROFILE/libkernel.so -L $KERN_SRC/target/$ARCH/$PROFILE/deps -L $KERN_SRC/target/$PROFILE/deps $RUSTFLAGS"
+export RUSTFLAGS="--extern kernel=$KERN_SRC/kernel/target/$ARCH/$PROFILE/libkernel.so -L $KERN_SRC/kernel/target/$ARCH/$PROFILE/deps -L $KERN_SRC/kernel/target/$PROFILE/deps $RUSTFLAGS"
 
 cargo build $CARGOFLAGS $@

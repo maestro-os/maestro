@@ -1,0 +1,23 @@
+# This is the default configuration for the kernel compilation.
+# To setup a configuration, copy this file under the name `build-config.toml`, then modify it
+
+
+
+# These options are only enabled when compiling in debug mode
+[debug]
+# If enabled, the kernel tests storage.
+#
+# **Warning**: this option is destructive for any data present on disks connected to the
+# host.
+storage_test = false
+
+# If enabled, the kernel is compiled for QEMU. This feature is not *required* for QEMU but
+# it can provide additional features.
+qemu = false
+
+# If enabled, the kernel places a magic number in malloc chunks to allow checking integrity.
+malloc_magic = false
+# If enabled, the kernel checks integrity of memory allocations.
+#
+# **Warning**: this options slows down the system significantly.
+malloc_check = false

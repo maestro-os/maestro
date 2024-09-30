@@ -19,15 +19,9 @@
 //! This module implements macros used to parse AML bytecode.
 
 use proc_macro::TokenStream;
-use proc_macro2::Ident;
-use proc_macro2::Span;
+use proc_macro2::{Ident, Span};
 use quote::quote;
-use syn::parse_macro_input;
-use syn::Data;
-use syn::DataEnum;
-use syn::DataStruct;
-use syn::DeriveInput;
-use syn::Fields;
+use syn::{parse_macro_input, Data, DataEnum, DataStruct, DeriveInput, Fields};
 
 /// Returns the parse code for the given set of fields.
 fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {

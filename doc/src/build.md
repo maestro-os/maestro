@@ -11,7 +11,7 @@ If you are just willing to quickly install a system, the best option is to use t
 
 While the kernel partially supports UEFI, it must boot using the legacy bios.
 
-This is due to the fact that the only way the kernel currently uses to display informations on the screen is via the VGA text mode, which is not supported under UEFI.
+This is due to the fact that the only way the kernel currently uses to display information on the screen is via the VGA text mode, which is not supported under UEFI.
 
 Make sure legacy boot is enabled in your BIOS, or the kernel will not show anything on screen.
 
@@ -19,15 +19,18 @@ Make sure legacy boot is enabled in your BIOS, or the kernel will not show anyth
 
 ## Kernel compilation
 
-## Configuration
-
-The configuration file is mandatory to build the kernel. It specifies which features are enabled.
-
-A default configuration is available in the file `default.config.toml`. To use it, simply type the command:
+First `cd` into the kernel's crate with:
 
 ```sh
-cp default.config.toml config.toml
+cd kernel/
 ```
+
+## Configuration
+
+The configuration file located at `build-config.toml` allows to specify which features have to be enabled in the kernel.
+
+A default configuration is available in the file `default.build-config.toml`.
+If `build-config.toml` does not exist, the default configuration is used instead.
 
 
 
@@ -40,7 +43,7 @@ cargo build               # Debug mode
 cargo build --release     # Release mode
 ```
 
-The default architecture is `x86`. To specify an other architecture, add the following parameter to the build command: `--target arch/<arch>/<arch>.json`, where `<arch>` is the selected architecture.
+The default architecture is `x86`. To specify another architecture, add the following parameter to the build command: `--target arch/<arch>/<arch>.json`, where `<arch>` is the selected architecture.
 
 The list of available architecture can be retrieved by typing:
 
@@ -83,8 +86,8 @@ where `X` is the letter associated to the disk on which you want to install the 
 
 Either GPT (recommended) or MBR partition tables can be used.
 
-It is recommended to create a least two partitions:
-- a boot partition for GRUB (approximatively 200MB)
+It is recommended to create at least two partitions:
+- a boot partition for GRUB (approximately 200MB)
 - a main partition for the system
 
 
@@ -143,7 +146,7 @@ mkdir -pv mnt/var/lib/{color,misc,locate}
 
 ## Install packages
 
-You can decide to compile and install packages by hand, or you can use [maestro's package manager](https://github.com/llenotre/blimp).
+You can decide to compile and install packages by hand, or you can use [maestro's package manager](https://github.com/maestro-os/blimp).
 
 The minimum recommended packages are:
 - `bash`: shell
