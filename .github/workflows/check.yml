@@ -35,42 +35,51 @@ jobs:
       - name: Integration tests
         working-directory: inttest
         run: cargo fmt --check
-  documentation:
+  book:
     runs-on: [self-hosted, linux]
     needs: clippy
     steps:
       - name: Build book
         run: mdbook build doc/
+  documentation:
+    runs-on: [self-hosted, linux]
+    needs: clippy
+    strategy:
+      matrix:
+        arch: ["x86", "x86_64"]
+    steps:
       - name: Build references
         working-directory: kernel
-        run: ci/doc.sh
+        run: cargo doc --target target/${{ matrix.arch }}/${{ matrix.arch }}.json
   build:
     runs-on: [self-hosted, linux]
     needs: clippy
+    strategy:
+      matrix:
+        arch: ["x86", "x86_64"]
     steps:
       - name: Debug
         working-directory: kernel
-        run: ci/build.sh
+        run: cargo build --target target/${{ matrix.arch }}/${{ matrix.arch }}.json
       - name: Check Multiboot2 for x86 (debug)
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
       - name: Release
         working-directory: kernel
-        env:
-          CARGOFLAGS: --release
-        run: ci/build.sh
+        run: cargo build --target target/${{ matrix.arch }}/${{ matrix.arch }}.json --release
       - name: Check Multiboot2 for x86 (release)
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/x86/release/maestro
   strace:
     runs-on: [self-hosted, linux]
     needs: build
+    strategy:
+      matrix:
+        arch: ["x86", "x86_64"]
     steps:
       - name: Build
         working-directory: kernel
-        env:
-          CARGOFLAGS: --features strace
-        run: ci/build.sh
+        run: cargo build --target target/${{ matrix.arch }}/${{ matrix.arch }}.json --features strace
       - name: Check Multiboot2 for x86
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
@@ -87,6 +96,9 @@ jobs:
   selftest:
     runs-on: [self-hosted, linux]
     needs: build
+    strategy:
+      matrix:
+        arch: ["x86", "x86_64"]
     steps:
       - name: Run utils tests
         working-directory: utils
@@ -94,18 +106,31 @@ jobs:
         timeout-minutes: 10
       - name: Run kernel tests
         working-directory: kernel
+        env:
+          CARGOFLAGS: --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
         run: ci/test.sh self
         timeout-minutes: 10
   inttest:
     runs-on: [self-hosted, linux]
     needs: build
+    strategy:
+      matrix:
+        arch:
+          - kernel: "x86"
+            user: "i686-unknown-linux-musl"
+          - kernel: "x86_64"
+            user: "x86_64-unknown-linux-musl"
     steps:
       - name: Build tests
         working-directory: inttest
+        env:
+          TARGET: ${{ matrix.arch.user }}
         run: |
           ./build.sh
           mv disk ../kernel/qemu_disk
       - name: Run
         working-directory: kernel
+        env:
+          CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
         run: ci/test.sh int
         timeout-minutes: 10

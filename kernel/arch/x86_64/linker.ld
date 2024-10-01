@@ -17,28 +17,16 @@
  */
 
 /*
- * The linker script for the x86 architecture.
+ * The linker script for the x86_64 architecture.
  *
- * The kernel image is split into two parts:
- * - The boot part, in lower memory (sections with the `.boot` prefix)
- * - The kernel part, in higher memory, starting at 0xc0000000
- *
- * In the first boot stage of the kernel, the memory must be remapped so that
- * the kernel image is relocated to higher memory.
- * After running the kernel code, the booting code isn't useful anymore.
- *
- * Sections need to be aligned on the page boundary to be protected against
- * writing (for those where it applies).
- *
- * BSS sections are located right after read-only sections to limit damages if
- * the stack(s) they contain overflows.
+ * For more information about the organization of this particular file, check
+ * the documentation in the linker script for the x86 architecture.
  */
 
 ENTRY(multiboot_entry)
 
 SECTIONS
 {
-    /* Boot stub sections */
 	. = 0x100000;
 
 	.boot.text : ALIGN(4K)
@@ -56,7 +44,6 @@ SECTIONS
 		*(.boot.data)
 	}
 
-    /* Kernel sections */
 	. = 0xc0200000;
 
 	.text : AT (ADDR (.text) - 0xc0000000) ALIGN(4K)
@@ -69,7 +56,6 @@ SECTIONS
 		*(.rodata*)
 	}
 
-    /* Accessible to the userspace (readonly) */
 	.user : AT (ADDR (.user) - 0xc0000000) ALIGN(4K)
 	{
 	    *(.user*)

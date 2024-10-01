@@ -11,7 +11,7 @@ setsid cargo run $CARGOFLAGS >qemu.log 2>&1 &
 QEMU_PID=$!
 
 if [ -z "$ARCH" ]; then
-  ARCH="x86"
+  ARCH="x86_64"
 fi
 KERN_PATH="target/$ARCH/debug/maestro"
 
