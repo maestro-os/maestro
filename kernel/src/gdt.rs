@@ -41,21 +41,32 @@ pub const TSS_OFFSET: usize = 40;
 /// The offset of Thread Local Storage (TLS) entries.
 pub const TLS_OFFSET: usize = 48;
 
-/// Structure representing a GDT entry.
-#[repr(transparent)]
+/// A GDT entry.
+#[repr(C, align(8))]
 #[derive(Clone, Copy, Default)]
 pub struct Entry(pub u64);
 
 impl Entry {
+	/// Creates a new entry with the give information.
+	#[inline(always)]
+	pub const fn new(base: u32, limit: u32, access_byte: u8, flags: u8) -> Self {
+		let mut ent = Self(0);
+		ent.set_base(base);
+		ent.set_limit(limit);
+		ent.set_access_byte(access_byte);
+		ent.set_flags(flags);
+		ent
+	}
+
 	/// Returns the entry's base address.
 	#[inline(always)]
-	pub fn get_base(&self) -> u32 {
+	pub const fn get_base(&self) -> u32 {
 		(((self.0 >> 16) & 0xffffff) | ((self.0 >> 32) & 0xff000000)) as _
 	}
 
 	/// Sets the entry's base address.
 	#[inline(always)]
-	pub fn set_base(&mut self, base: u32) {
+	pub const fn set_base(&mut self, base: u32) {
 		self.0 &= !(0xffffff << 16);
 		self.0 &= !(0xff << 56);
 
@@ -65,7 +76,7 @@ impl Entry {
 
 	/// Returns the entry's limit.
 	#[inline(always)]
-	pub fn get_limit(&self) -> u32 {
+	pub const fn get_limit(&self) -> u32 {
 		((self.0 & 0xffff) | (((self.0 >> 48) & 0xf) << 16)) as _
 	}
 
@@ -73,7 +84,7 @@ impl Entry {
 	///
 	/// If the given limit is more than `pow(2, 20) - 1`, the value is truncated.
 	#[inline(always)]
-	pub fn set_limit(&mut self, limit: u32) {
+	pub const fn set_limit(&mut self, limit: u32) {
 		self.0 &= !0xffff;
 		self.0 &= !(0xf << 48);
 
@@ -83,39 +94,39 @@ impl Entry {
 
 	/// Returns the value of the access byte.
 	#[inline(always)]
-	pub fn get_access_byte(&self) -> u8 {
+	pub const fn get_access_byte(&self) -> u8 {
 		((self.0 >> 40) & 0xff) as _
 	}
 
 	/// Sets the value of the access byte.
 	#[inline(always)]
-	pub fn set_access_byte(&mut self, byte: u8) {
+	pub const fn set_access_byte(&mut self, byte: u8) {
 		self.0 &= !(0xff << 40);
 		self.0 |= (byte as u64) << 40;
 	}
 
 	/// Returns the flags.
 	#[inline(always)]
-	pub fn get_flags(&self) -> u8 {
+	pub const fn get_flags(&self) -> u8 {
 		((self.0 >> 52) & 0x0f) as _
 	}
 
 	/// Sets the flags.
 	#[inline(always)]
-	pub fn set_flags(&mut self, flags: u8) {
+	pub const fn et_flags(&mut self, flags: u8) {
 		self.0 &= !(0x0f << 52);
 		self.0 |= ((flags as u64) & 0x0f) << 52;
 	}
 
 	/// Tells whether the entry is present.
 	#[inline(always)]
-	pub fn is_present(&self) -> bool {
+	pub const fn is_present(&self) -> bool {
 		(self.0 >> 47 & 1) != 0
 	}
 
 	/// Sets the entry present or not.
 	#[inline(always)]
-	pub fn set_present(&mut self, present: bool) {
+	pub const fn set_present(&mut self, present: bool) {
 		if present {
 			self.0 |= 1 << 47;
 		} else {

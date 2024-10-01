@@ -19,7 +19,7 @@
 //! The virtual memory makes the kernel able to isolate processes, which is
 //! essential for modern systems.
 
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
 
 use crate::{
