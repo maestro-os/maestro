@@ -60,13 +60,13 @@ jobs:
     steps:
       - name: Debug
         working-directory: kernel
-        run: cargo build --target target/${{ matrix.arch }}/${{ matrix.arch }}.json
+        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
       - name: Check Multiboot2 for x86 (debug)
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
       - name: Release
         working-directory: kernel
-        run: cargo build --target target/${{ matrix.arch }}/${{ matrix.arch }}.json --release
+        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --release
       - name: Check Multiboot2 for x86 (release)
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/x86/release/maestro
@@ -79,7 +79,7 @@ jobs:
     steps:
       - name: Build
         working-directory: kernel
-        run: cargo build --target target/${{ matrix.arch }}/${{ matrix.arch }}.json --features strace
+        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --features strace
       - name: Check Multiboot2 for x86
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
