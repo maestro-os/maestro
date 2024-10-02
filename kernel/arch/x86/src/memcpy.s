@@ -22,39 +22,39 @@
 .type memcpy, @function
 
 memcpy:
-	push %esi
-	push %edi
+	push esi
+	push edi
 
-	mov 12(%esp), %edi
-	mov 16(%esp), %esi
-	mov 20(%esp), %ecx
+	mov edi, [esp + 12]
+	mov esi, [esp + 16]
+	mov ecx, [esp + 20]
 
-	mov %edi, %eax
+	mov eax, edi
 
-	cmp $4, %ecx
+	cmp ecx, 4
 	jc loop
-	test $3, %edi
+	test edi, 3
 	jz loop
 
 pad:
 	movsb
-	dec %ecx
-	test $3, %edi
+	decl ecx
+	test edi, 3
 	jnz pad
 
 loop:
-	mov %ecx, %edx
-	shr $2, %ecx
+	mov edx, ecx
+	shr ecx, 2
 	rep movsl
-	and $3, %edx
+	and edx, 3
 	jz end
 
 remain:
 	movsb
-	dec %edx
+	dec edx
 	jnz remain
 
 end:
-	pop %edi
-	pop %esi
+	pop edi
+	pop esi
 	ret

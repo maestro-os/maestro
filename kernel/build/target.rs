@@ -1,4 +1,22 @@
-//! TODO doc
+/*
+ * Copyright 2024 Luc Lenôtre
+ *
+ * This file is part of Maestro.
+ *
+ * Maestro is free software: you can redistribute it and/or modify it under the
+ * terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 3 of the License, or (at your option) any later
+ * version.
+ *
+ * Maestro is distributed in the hope that it will be useful, but WITHOUT ANY
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+ * A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * Maestro. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+//! Compilation target information.
 
 use crate::Env;
 use serde::Deserialize;
@@ -37,5 +55,10 @@ impl<'s> Target<'s> {
 	/// Returns the path to the linker script of the target.
 	pub fn get_linker_script_path(&self) -> PathBuf {
 		PathBuf::from(format!("arch/{}/linker.ld", self.name))
+	}
+
+	/// Returns the path to the directory containing target-specific sources.
+	pub fn src(&self) -> PathBuf {
+		PathBuf::from(format!("arch/{}/src/", self.name))
 	}
 }

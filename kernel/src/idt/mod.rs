@@ -22,6 +22,7 @@
 
 pub mod pic;
 
+use crate::syscall::syscall32;
 use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
 use utils::{
 	interrupt,
@@ -151,8 +152,6 @@ extern "C" {
 	fn error29();
 	fn error30();
 	fn error31();
-
-	fn syscall();
 }
 
 /// The list of IDT entries.
@@ -250,7 +249,7 @@ pub(crate) fn init() {
 	entries[0x2e] = InterruptDescriptor::new(irq14 as _, 0x8, 0x8e);
 	entries[0x2f] = InterruptDescriptor::new(irq15 as _, 0x8, 0x8e);
 	// System calls
-	entries[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall as _, 0x8, 0xee);
+	entries[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall32 as _, 0x8, 0xee);
 
 	// Safe because the current function is called only once at boot
 	unsafe {

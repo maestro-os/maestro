@@ -22,58 +22,140 @@ use crate::{gdt, memory::VirtAddr};
 use core::fmt;
 use utils::errno::EResult;
 
-extern "C" {
-	/// Switches to an userspace context.
-	///
-	/// Arguments:
-	/// - `regs` is the structure of registers to restore to resume the context.
-	/// - `data_selector` is the user data segment selector.
-	/// - `code_selector` is the user code segment selector.
-	fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
-	/// Switches to a kernelspace context.
-	///
-	/// `regs` is the structure of registers to restore to resume the context.
-	fn context_switch_kernel(regs: &Regs) -> !;
-}
-
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86 {
-	use core::arch::asm;
+	use super::Regs;
+	use core::arch::{asm, global_asm};
 
-	/// The default value of the eflags register.
-	pub const DEFAULT_EFLAGS: usize = 0x202;
+	/// The default value of the flags register.
+	pub const DEFAULT_FLAGS: usize = 0x202;
 	/// The default value of the FCW.
 	pub const DEFAULT_FCW: u32 = 0b1100111111;
 	/// The default value of the MXCSR.
 	pub const DEFAULT_MXCSR: u32 = 0b1111111000000;
 
-	/// Wrapper allowing to align the fxstate buffer.
+	/// FXstate buffer.
 	#[repr(align(16))]
-	struct FXStateWrapper([u8; 512]);
+	struct FXState([u8; 512]);
 
 	/// Saves the current x87 FPU, MMX and SSE state to the given buffer.
 	#[no_mangle]
 	pub extern "C" fn save_fxstate(fxstate: &mut [u8; 512]) {
-		let mut buff = FXStateWrapper([0; 512]);
+		let mut buf = FXState([0; 512]);
 		unsafe {
-			asm!("fxsave [{}]", in(reg) buff.0.as_mut_ptr());
+			asm!("fxsave [{}]", in(reg) buf.0.as_mut_ptr());
 		}
-
 		// TODO avoid copy (slow). `fxstate` itself should be aligned
-		fxstate.copy_from_slice(&buff.0);
+		fxstate.copy_from_slice(&buf.0);
 	}
 
 	/// Restores the x87 FPU, MMX and SSE state from the given buffer.
 	#[no_mangle]
 	pub extern "C" fn restore_fxstate(fxstate: &[u8; 512]) {
-		let mut buff = FXStateWrapper([0; 512]);
+		let mut buf = FXState([0; 512]);
 		// TODO avoid copy (slow). `fxstate` itself should be aligned
-		buff.0.copy_from_slice(fxstate);
-
+		buf.0.copy_from_slice(fxstate);
 		unsafe {
-			asm!("fxrstor [{}]", in(reg) buff.0.as_ptr());
+			asm!("fxrstor [{}]", in(reg) buf.0.as_ptr());
 		}
 	}
+
+	extern "C" {
+		/// Switches to an userspace context.
+		///
+		/// Arguments:
+		/// - `regs` is the structure of registers to restore to resume the context.
+		/// - `data_selector` is the user data segment selector.
+		/// - `code_selector` is the user code segment selector.
+		pub(super) fn context_switch(regs: &Regs, data_selector: u16, code_selector: u16) -> !;
+		/// Switches to a kernelspace context.
+		///
+		/// `regs` is the structure of registers to restore to resume the context.
+		pub(super) fn context_switch_kernel(regs: &Regs) -> !;
+	}
+
+	global_asm!(
+		r"
+.section .text
+
+.global context_switch
+.global context_switch_kernel
+
+.type context_switch, @function
+.type context_switch_kernel, @function
+
+context_switch:
+	# Set segment registers
+	mov 8(%esp), %eax
+	mov %ax, %ds
+	mov %ax, %es
+
+	# Restore the fx state
+	mov 4(%esp), %eax
+	add $0x30, %eax
+	push %eax
+	call restore_fxstate
+	add $4, %esp
+
+	# Set registers, except %eax
+	mov 4(%esp), %eax
+	mov 0x0(%eax), %ebp
+	mov 0x14(%eax), %ebx
+	mov 0x18(%eax), %ecx
+	mov 0x1c(%eax), %edx
+	mov 0x20(%eax), %esi
+	mov 0x24(%eax), %edi
+	mov 0x28(%eax), %gs
+	mov 0x2c(%eax), %fs
+
+	# Place iret data on the stack
+	push 8(%esp) # data segment selector
+	push 0x4(%eax) # esp
+	push 0xc(%eax) # eflags
+	push 24(%esp) # code segment selector
+	push 0x8(%eax) # eip
+
+	# Set %eax
+	mov 0x10(%eax), %eax
+
+	iret
+
+context_switch_kernel:
+	# Restore the fx state
+	mov 4(%esp), %eax
+	add $0x30, %eax
+	push %eax
+	call restore_fxstate
+	add $4, %esp
+
+	mov 4(%esp), %eax
+
+	# Set eflags without the interrupt flag
+	mov 12(%eax), %ebx
+	mov $512, %ecx
+	not %ecx
+	and %ecx, %ebx
+	push %ebx
+	popf
+
+	# Set registers
+	mov 0x0(%eax), %ebp
+	mov 0x4(%eax), %esp
+	push 0x8(%eax) # eip
+	mov 0x14(%eax), %ebx
+	mov 0x18(%eax), %ecx
+	mov 0x1c(%eax), %edx
+	mov 0x20(%eax), %esi
+	mov 0x24(%eax), %edi
+	mov 0x28(%eax), %gs
+	mov 0x2c(%eax), %fs
+	mov 0x10(%eax), %eax
+
+	# Set the interrupt flag and jumping to kernel code execution
+	# (Note: These two instructions, if placed in this order are atomic on x86, meaning that an interrupt cannot happen in between)
+	sti
+	ret"
+	);
 }
 
 /// The register state of an execution context.
@@ -82,7 +164,7 @@ mod x86 {
 #[derive(Clone)]
 #[repr(C)]
 #[allow(missing_docs)]
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub struct Regs {
 	pub ebp: usize,
 	pub esp: usize,
@@ -143,9 +225,9 @@ impl Regs {
 		if user {
 			let user_data_selector = gdt::USER_DS | 3;
 			let user_code_selector = gdt::USER_CS | 3;
-			context_switch(self, user_data_selector as _, user_code_selector as _);
+			x86::context_switch(self, user_data_selector as _, user_code_selector as _);
 		} else {
-			context_switch_kernel(self);
+			x86::context_switch_kernel(self);
 		}
 	}
 }
@@ -156,7 +238,7 @@ impl Default for Regs {
 			ebp: 0,
 			esp: 0,
 			eip: 0,
-			eflags: x86::DEFAULT_EFLAGS,
+			eflags: x86::DEFAULT_FLAGS,
 			eax: 0,
 			ebx: 0,
 			ecx: 0,
@@ -181,7 +263,6 @@ impl Default for Regs {
 	}
 }
 
-#[cfg(target_arch = "x86")]
 impl fmt::Debug for Regs {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		// use `VirtAddr` to avoid duplicate code

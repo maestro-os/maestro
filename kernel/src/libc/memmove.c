@@ -19,8 +19,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "libc.h"
-
 void *memcpy(void *dest, const void *src, size_t n);
 
 // TODO Optimize

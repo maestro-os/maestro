@@ -181,7 +181,7 @@ use clock_gettime64::clock_gettime64;
 use clone::clone;
 use close::close;
 use connect::connect;
-use core::{fmt, ptr};
+use core::{arch::global_asm, fmt, ptr};
 use creat::creat;
 use delete_module::delete_module;
 use dup::dup;
@@ -972,3 +972,49 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// If the process has been killed, handle it
 	process::yield_current(3, regs);
 }
+
+extern "C" {
+	/// The syscall interrupt handler for 32 bits.
+	pub fn syscall32();
+}
+
+// Implementation of `syscall`
+global_asm!(
+	r"
+.section .text
+
+.global syscall32
+.type syscall32, @function
+
+syscall32:
+	push %ebp
+	mov %esp, %ebp
+
+	# Store registers state
+GET_REGS
+
+	# Set data segment
+	xor eax, eax
+	mov ax, GDT_KERNEL_DS
+	mov ds, ax
+	mov es, ax
+
+	# Call the system call handler
+	push esp
+	call syscall_handler
+	add esp, 4
+
+	# Restore data segment
+	xor eax, eax
+	mov ax, GDT_USER_DS
+	or ax, 3
+	mov fs, ax
+	mov es, ax
+
+RESTORE_REGS
+
+	# Restore context
+	mov %ebp, %esp
+	pop %ebp
+	iret"
+);
