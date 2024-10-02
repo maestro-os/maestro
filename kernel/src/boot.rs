@@ -101,14 +101,15 @@ header:
 # The entry tag, setting the entry point of the kernel.
 .align 8
 entry_address_tag:
-	.short MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS
-	.short 1
+	.short 3
+	.short 0
 	.long (entry_address_tag_end - entry_address_tag)
 	.long multiboot_entry
 entry_address_tag_end:
 
+# End tag
 .align 8
-	.short MULTIBOOT_HEADER_TAG_END
+	.short 0
 	.short 0
 	.long 8
 header_end:
@@ -116,7 +117,7 @@ header_end:
 multiboot_entry:
 	mov esp, boot_stack_begin
 	xor ebp, ebp
-	pushl 0
+	push 0
 	popf
 
 	push ebx
@@ -136,13 +137,15 @@ setup_gdt:
 	rep movsb
 	
 	# Load GDT
-	pushl {GDT_PHYS_ADDR}
-	pushw ({GDT_SIZE} - 1)
+	push {GDT_PHYS_ADDR}
+	push ({GDT_SIZE} - 1)
 	lgdt [esp]
 	add esp, 6
-	jmp 8, complete_flush
+	push complete_flush
+	push 8 # kernel code segment
+	retf
 complete_flush:
-	mov ax, GDT_KERNEL_DS
+	mov ax, 16 # kernel data segment
 	mov ds, ax
 	mov es, ax
 	mov ss, ax
@@ -158,7 +161,8 @@ complete_flush:
  */
 remap:
     # Set page directory
-	mov cr3, {REMAP_DIR}
+    mov eax, {REMAP_DIR}
+	mov cr3, eax
 	
     # Enable PSE
 	mov eax, cr4
@@ -178,6 +182,8 @@ remap:
 .section .boot.stack
 
 .align 8
+
+.set STACK_SIZE, 32768
 
 boot_stack:
 .size boot_stack, STACK_SIZE

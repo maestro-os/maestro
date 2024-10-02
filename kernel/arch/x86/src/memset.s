@@ -16,6 +16,8 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
+.intel_syntax noprefix
+
 .section .text
 
 .global memset
@@ -73,7 +75,7 @@ memset:
     ret
 
 2:
-	movzbl eax, [esp + 8]
+	movzb eax, [esp + 8]
 	mov [esp + 12], edi
 	imul eax, 0x1010101
 	mov edi, [esp + 4]
@@ -84,7 +86,7 @@ memset:
 1:
     shr ecx, 2
 	rep
-	stosl
+	stosd
 	mov eax, [esp + 4]
 	mov edi, [esp + 12]
 	ret

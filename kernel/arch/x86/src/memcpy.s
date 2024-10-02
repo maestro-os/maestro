@@ -16,6 +16,8 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
+.intel_syntax noprefix
+
 .section .text
 
 .global memcpy
@@ -38,14 +40,14 @@ memcpy:
 
 pad:
 	movsb
-	decl ecx
+	dec ecx
 	test edi, 3
 	jnz pad
 
 loop:
 	mov edx, ecx
 	shr ecx, 2
-	rep movsl
+	rep movsd
 	and edx, 3
 	jz end
 

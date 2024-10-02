@@ -980,22 +980,24 @@ extern "C" {
 
 // Implementation of `syscall`
 global_asm!(
-	r"
+	r#"
+.include "src/process/regs/regs.s"
+
 .section .text
 
 .global syscall32
 .type syscall32, @function
 
 syscall32:
-	push %ebp
-	mov %esp, %ebp
+	push ebp
+	mov ebp, esp
 
 	# Store registers state
 GET_REGS
 
 	# Set data segment
 	xor eax, eax
-	mov ax, GDT_KERNEL_DS
+	mov ax, 16 # kernel data segment
 	mov ds, ax
 	mov es, ax
 
@@ -1006,7 +1008,7 @@ GET_REGS
 
 	# Restore data segment
 	xor eax, eax
-	mov ax, GDT_USER_DS
+	mov ax, 32 # user data segment
 	or ax, 3
 	mov fs, ax
 	mov es, ax
@@ -1014,7 +1016,7 @@ GET_REGS
 RESTORE_REGS
 
 	# Restore context
-	mov %ebp, %esp
-	pop %ebp
-	iret"
+	mov esp, ebp
+	pop ebp
+	iret"#
 );

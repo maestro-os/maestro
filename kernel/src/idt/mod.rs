@@ -107,193 +107,199 @@ impl InterruptDescriptor {
 	}
 }
 
+// include registers save/restore macros
+global_asm!(r#".include "src/process/regs/regs.s""#);
+
 /// Declare an error handler.
 ///
 /// An error can be accompanied by a code, in which case the handler must be declared with the
 /// `code` keyword.
 macro_rules! error {
-	($name:ident) => {
+	($name:ident, $id:expr) => {
 		extern "C" {
 			fn $name();
 		}
 
 		global_asm!(
-			r"
+			r#"
 .global {name}
 .type {name}, @function
 
 {name}:
-	push %ebp
-	mov %esp, %ebp
+	push ebp
+	mov ebp, esp
 
 	# Allocate space for registers and retrieve them
-GET_REGS \n
+GET_REGS
 
 	# Get the ring
-	mov 8(%ebp), %eax
-	and $0b11, %eax
+	mov eax, [ebp + 8]
+	and eax, 0b11
 
 	# Push arguments to call event_handler
-	push %esp # regs
-	push %eax # ring
-	push $0 # code
-	push $\n # id
+	push esp # regs
+	push eax # ring
+	push 0 # code
+	push {id}
 	call event_handler
-	add $16, %esp
+	add esp, 16
 
 RESTORE_REGS
 
 	# Restore the context
-	mov %ebp, %esp
-	pop %ebp
-	iret",
-			name = sym $name
+	mov esp, ebp
+	pop ebp
+	iret"#,
+			name = sym $name,
+			id = const($id)
 		);
 	};
-	($name:ident, code) => {
+	($name:ident, $id:expr, code) => {
 		extern "C" {
 			fn $name();
 		}
 
 		global_asm!(
-			r"
+			r#"
 .global {name}
 .type {name}, @function
 
 {name}:
 	# Retrieve the error code and write it after the stack pointer so that it can be retrieved
 	# after the stack frame
-	push %eax
-	mov 4(%esp), %eax
-	mov %eax, -4(%esp)
-	pop %eax
+	push eax
+	mov eax, [esp + 4]
+	mov [esp - 4], eax
+	pop eax
 
 	# Remove the code from its previous location on the stack
-	add $4, %esp
+	add esp, 4
 
-	push %ebp
-	mov %esp, %ebp
+	push ebp
+	mov ebp, esp
 
 	# Allocate space for the error code
-	push -8(%esp)
+	push [esp - 8]
 
 	# Allocate space for registers and retrieve them
-GET_REGS \n
+GET_REGS
 
 	# Get the ring
-	mov 8(%ebp), %eax
-	and $0b11, %eax
+	mov eax, [ebp + 8]
+	and eax, 0b11
 
 	# Push arguments to call event_handler
-	push %esp # regs
-	push %eax # ring
-	push (REGS_SIZE + 8)(%esp) # code
-	push $\n # id
+	push esp # regs
+	push eax # ring
+	push [esp + REGS_SIZE + 8] # code
+	push {id}
 	call event_handler
-	add $16, %esp
+	add esp, 16
 
 RESTORE_REGS
 
 	# Free the space allocated for the error code
-	add $4, %esp
+	add esp, 4
 
-	mov %ebp, %esp
-	pop %ebp
-	iret",
-			name = sym $name
+	mov esp, ebp
+	pop ebp
+	iret"#,
+			name = sym $name,
+			id = const($id)
 		);
 	};
 }
 
 macro_rules! irq {
-	($name:ident) => {
+	($name:ident, $id:expr) => {
 		extern "C" {
 			fn $name();
 		}
 
 		global_asm!(
-			r"
+			r#"
 .global {name}
 
 {name}:
-	push %ebp
-	mov %esp, %ebp
+	push ebp
+	mov ebp, esp
 
 	# Allocate space for registers and retrieve them
-GET_REGS irq_\n
+GET_REGS
 
 	# Get the ring
-	mov 8(%ebp), %eax
-	and $0b11, %eax
+	mov eax, [ebp + 8]
+	and eax, 0b11
 
 	# Push arguments to call event_handler
-	push %esp # regs
-	push %eax # ring
-	push $0 # code
-	push $(\n + 0x20) # id
+	push esp # regs
+	push eax # ring
+	push 0 # code
+	push ({id} + 0x20)
 	call event_handler
-	add $16, %esp
+	add esp, 16
 
 RESTORE_REGS
 
 	# Restore the context
-	mov %ebp, %esp
-	pop %ebp
-	iret",
-			name = sym $name
+	mov ebp, ebp
+	pop ebp
+	iret"#,
+			name = sym $name,
+			id = const($id)
 		);
 	};
 }
 
-error!(error0);
-error!(error1);
-error!(error2);
-error!(error3);
-error!(error4);
-error!(error5);
-error!(error6);
-error!(error7);
-error!(error8, code);
-error!(error9);
-error!(error10, code);
-error!(error11, code);
-error!(error12, code);
-error!(error13, code);
-error!(error14, code);
-error!(error15);
-error!(error16);
-error!(error17, code);
-error!(error18);
-error!(error19);
-error!(error20);
-error!(error21);
-error!(error22);
-error!(error23);
-error!(error24);
-error!(error25);
-error!(error26);
-error!(error27);
-error!(error28);
-error!(error29);
-error!(error30, code);
-error!(error31);
+error!(error0, 0);
+error!(error1, 1);
+error!(error2, 2);
+error!(error3, 3);
+error!(error4, 4);
+error!(error5, 5);
+error!(error6, 6);
+error!(error7, 7);
+error!(error8, 8, code);
+error!(error9, 9);
+error!(error10, 10, code);
+error!(error11, 11, code);
+error!(error12, 12, code);
+error!(error13, 13, code);
+error!(error14, 14, code);
+error!(error15, 15);
+error!(error16, 16);
+error!(error17, 17, code);
+error!(error18, 18);
+error!(error19, 19);
+error!(error20, 20);
+error!(error21, 21);
+error!(error22, 22);
+error!(error23, 23);
+error!(error24, 24);
+error!(error25, 25);
+error!(error26, 26);
+error!(error27, 27);
+error!(error28, 28);
+error!(error29, 29);
+error!(error30, 30, code);
+error!(error31, 31);
 
-irq!(irq0);
-irq!(irq1);
-irq!(irq2);
-irq!(irq3);
-irq!(irq4);
-irq!(irq5);
-irq!(irq6);
-irq!(irq7);
-irq!(irq8);
-irq!(irq9);
-irq!(irq10);
-irq!(irq11);
-irq!(irq12);
-irq!(irq13);
-irq!(irq14);
-irq!(irq15);
+irq!(irq0, 0);
+irq!(irq1, 1);
+irq!(irq2, 2);
+irq!(irq3, 3);
+irq!(irq4, 4);
+irq!(irq5, 5);
+irq!(irq6, 6);
+irq!(irq7, 7);
+irq!(irq8, 8);
+irq!(irq9, 9);
+irq!(irq10, 10);
+irq!(irq11, 11);
+irq!(irq12, 12);
+irq!(irq13, 13);
+irq!(irq14, 14);
+irq!(irq15, 15);
 
 /// The list of IDT entries.
 static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] =

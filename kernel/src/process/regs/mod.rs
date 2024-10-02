@@ -86,70 +86,70 @@ mod x86 {
 
 context_switch:
 	# Set segment registers
-	mov 8(%esp), %eax
-	mov %ax, %ds
-	mov %ax, %es
+	mov eax, [esp + 8]
+	mov ds, ax
+	mov es, ax
 
 	# Restore the fx state
-	mov 4(%esp), %eax
-	add $0x30, %eax
-	push %eax
+	mov eax, [esp + 4]
+	add eax, 0x30
+	push eax
 	call restore_fxstate
-	add $4, %esp
+	add esp, 4
 
-	# Set registers, except %eax
-	mov 4(%esp), %eax
-	mov 0x0(%eax), %ebp
-	mov 0x14(%eax), %ebx
-	mov 0x18(%eax), %ecx
-	mov 0x1c(%eax), %edx
-	mov 0x20(%eax), %esi
-	mov 0x24(%eax), %edi
-	mov 0x28(%eax), %gs
-	mov 0x2c(%eax), %fs
+	# Set registers, except eax
+	mov eax, [esp + 4]
+	mov ebp, [eax]
+	mov ebx, [eax + 20]
+	mov ecx, [eax + 24]
+	mov edx, [eax + 28]
+	mov esi, [eax + 32]
+	mov edi, [eax + 36]
+	mov gs, [eax + 40]
+	mov fs, [eax + 44]
 
 	# Place iret data on the stack
-	push 8(%esp) # data segment selector
-	push 0x4(%eax) # esp
-	push 0xc(%eax) # eflags
-	push 24(%esp) # code segment selector
-	push 0x8(%eax) # eip
+	push [esp + 8] # data segment selector
+	push [eax + 4] # esp
+	push [eax + 12] # eflags
+	push [esp + 24] # code segment selector
+	push [eax + 8] # eip
 
-	# Set %eax
-	mov 0x10(%eax), %eax
+	# Set eax
+	mov eax, [eax + 16]
 
 	iret
 
 context_switch_kernel:
 	# Restore the fx state
-	mov 4(%esp), %eax
-	add $0x30, %eax
-	push %eax
+	mov eax, [esp + 4]
+	add eax, 0x30
+	push eax
 	call restore_fxstate
-	add $4, %esp
+	add esp, 4
 
-	mov 4(%esp), %eax
+	mov eax, [esp + 4]
 
 	# Set eflags without the interrupt flag
-	mov 12(%eax), %ebx
-	mov $512, %ecx
-	not %ecx
-	and %ecx, %ebx
-	push %ebx
+	mov ebx, [eax + 12]
+	mov ecx, 512
+	not ecx
+	and ebx, ecx
+	push ebx
 	popf
 
 	# Set registers
-	mov 0x0(%eax), %ebp
-	mov 0x4(%eax), %esp
-	push 0x8(%eax) # eip
-	mov 0x14(%eax), %ebx
-	mov 0x18(%eax), %ecx
-	mov 0x1c(%eax), %edx
-	mov 0x20(%eax), %esi
-	mov 0x24(%eax), %edi
-	mov 0x28(%eax), %gs
-	mov 0x2c(%eax), %fs
-	mov 0x10(%eax), %eax
+	mov ebp, [eax]
+	mov esp, [eax + 4]
+	push [eax + 8] # eip
+	mov [eax + 20], ebx
+	mov [eax + 24], ecx
+	mov [eax + 28], edx
+	mov [eax + 32], esi
+	mov [eax + 36], edi
+	mov [eax + 40], gs
+	mov [eax + 44], fs
+	mov [eax + 16], eax
 
 	# Set the interrupt flag and jumping to kernel code execution
 	# (Note: These two instructions, if placed in this order are atomic on x86, meaning that an interrupt cannot happen in between)

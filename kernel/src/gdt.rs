@@ -182,6 +182,6 @@ pub unsafe fn get_segment_ptr(offset: usize) -> *mut u64 {
 #[inline(always)]
 pub fn flush() {
 	unsafe {
-		asm!("lgdt GDT_DESC_VIRT_PTR");
+		asm!("lgdt [0xc000800]"); // FIXME: don't use a hardcoded value
 	}
 }
