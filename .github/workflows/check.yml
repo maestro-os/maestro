@@ -50,7 +50,7 @@ jobs:
     steps:
       - name: Build references
         working-directory: kernel
-        run: cargo doc --target target/${{ matrix.arch }}/${{ matrix.arch }}.json
+        run: cargo doc --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
   build:
     runs-on: [self-hosted, linux]
     needs: clippy
