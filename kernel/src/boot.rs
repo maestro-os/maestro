@@ -26,91 +26,18 @@ use crate::{
 use core::arch::global_asm;
 use utils::limits::PAGE_SIZE;
 
-/// The value of the Multiboot2 magic.
-const MULTIBOOT_MAGIC: u32 = 0xe85250d6;
-
-/// Multiboot header tag: End
-const MULTIBOOT_HEADER_TAG_END: u16 = 0;
-/// Multiboot header tag: The kernel's entry point address
-const MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS: u16 = 3;
-
 /// The physical address of the GDT.
 const GDT_PHYS_ADDR: PhysAddr = PhysAddr(0x800);
 
-/// The header of a multiboot2 tag.
-#[repr(C, align(8))]
-struct MultibootTagHdr {
-	/// The tag's type.
-	r#type: u16,
-	/// The tag's flags.
-	///
-	/// Currently, has only one flag:
-	/// - `0`: if set, the tag may be considered as optional by the bootloader.
-	flags: u16,
-	/// The size of the tag in bytes.
-	size: u32,
-}
-
-/// Layout of the multiboot2 tag indicating the entry point of the kernel.
-#[repr(C, align(8))]
-struct MultibootEntryAddrTag {
-	/// The tag's header.
-	hdr: MultibootTagHdr,
-	/// The entry point's physical address.
-	entry_addr: u32,
-}
-
-/// Layout of the multiboot2 header.
-#[repr(C, align(8))]
-struct MultibootHeader {
-	// Mandatory fields
-	/// Multiboot magic number.
-	magic: u32,
-	/// The CPU architecture to boot for.
-	architecture: u32,
-	/// The size of this header in bytes.
-	header_length: u32,
-	/// The checksum of the previous fields.
-	checksum: u32,
-
-	/// The entry point tag.
-	entry_addr_tag: MultibootEntryAddrTag,
-	/// The end tag.
-	end_tag: MultibootTagHdr,
-}
-
-/// The header used to provide multiboot2 with the necessary information to boot the kernel.
-#[no_mangle]
-#[link_section = ".boot.rodata"]
-pub static MULTIBOOT_HEADER: MultibootHeader = MultibootHeader {
-	magic: MULTIBOOT_MAGIC,
-	// x86
-	architecture: 0,
-	header_length: size_of::<MultibootHeader>() as _,
-	// Compute checksum of the previous values
-	checksum: 0.wrapping_sub(MULTIBOOT_MAGIC + 0 + size_of::<MultibootHeader>()),
-
-	entry_addr_tag: MultibootEntryAddrTag {
-		hdr: MultibootTagHdr {
-			r#type: MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS,
-			flags: 0,
-			size: size_of::<MultibootEntryAddrTag>(),
-		},
-		entry_addr: multiboot_entry as _,
-	},
-	end_tag: MultibootTagHdr {
-		r#type: MULTIBOOT_HEADER_TAG_END,
-		flags: 0,
-		size: size_of::<MultibootTagHdr>(),
-	},
-};
+/// The initial Global Descriptor Table.
+pub type InitGdt = [gdt::Entry; 9];
 
 /// The initial Global Descriptor Table.
 #[no_mangle]
 #[link_section = ".boot.rodata"]
 pub static INIT_GDT: [gdt::Entry; 9] = [
 	// First entry, empty
-	gdt::Entry::default(),
+	gdt::Entry(0),
 	// Kernel code segment
 	gdt::Entry::new(0, !0, 0b10011010, 0b1100),
 	// Kernel data segment
@@ -120,35 +47,33 @@ pub static INIT_GDT: [gdt::Entry; 9] = [
 	// User data segment
 	gdt::Entry::new(0, !0, 0b11110010, 0b1100),
 	// TSS
-	gdt::Entry::default(),
+	gdt::Entry(0),
 	// TLS entries
-	gdt::Entry::default(),
-	gdt::Entry::default(),
-	gdt::Entry::default(),
+	gdt::Entry(0),
+	gdt::Entry(0),
+	gdt::Entry(0),
 ];
 
 /// A page directory.
 #[repr(C, align(8))]
 struct PageDir([u32; 1024]);
 
-impl PageDir {
-	/// Initializes a page directory to remap the kernel to the higher half of the memory.
-	pub const fn higher_half() -> Self {
-		let mut dir = [0; 1024];
-		for i in 0..256 {
-			let addr = (i * PAGE_SIZE * 1024) as u32;
-			let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
-			dir[i] = ent;
-			dir[i + 768] = ent;
-		}
-		Self(dir)
-	}
-}
-
 /// The page directory used to remap the kernel to higher memory.
 #[no_mangle]
 #[link_section = ".boot.rodata"]
-pub static REMAP_DIR: PageDir = PageDir::higher_half();
+pub static REMAP_DIR: PageDir = const {
+	let mut dir = [0; 1024];
+	// TODO use for loop when stabilized
+	let mut i = 0;
+	while i < 256 {
+		let addr = (i * PAGE_SIZE * 1024) as u32;
+		let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
+		dir[i] = ent;
+		dir[i + 768] = ent;
+		i += 1;
+	}
+	PageDir(dir)
+};
 
 extern "C" {
 	/// The kernel's entry point.
@@ -161,6 +86,32 @@ global_asm!(
 .type multiboot_entry, @function
 
 .section .boot.text
+
+# Multiboot2 kernel header
+.align 8
+header:
+	# Multiboot2 magic
+	.long 0xe85250d6
+	# Architecture (x86)
+	.long 0
+	# Header length
+	.long (header_end - header)
+	.long -(0xe85250d6 + (header_end - header))
+
+# The entry tag, setting the entry point of the kernel.
+.align 8
+entry_address_tag:
+	.short MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS
+	.short 1
+	.long (entry_address_tag_end - entry_address_tag)
+	.long multiboot_entry
+entry_address_tag_end:
+
+.align 8
+	.short MULTIBOOT_HEADER_TAG_END
+	.short 0
+	.long 8
+header_end:
 
 multiboot_entry:
 	mov esp, boot_stack_begin
@@ -207,7 +158,7 @@ complete_flush:
  */
 remap:
     # Set page directory
-	mov cr3, {REMAP_DIR_ADDR}
+	mov cr3, {REMAP_DIR}
 	
     # Enable PSE
 	mov eax, cr4
@@ -231,8 +182,8 @@ remap:
 boot_stack:
 .size boot_stack, STACK_SIZE
 .skip STACK_SIZE
-boot_stack_begin:
-",
-	GDT_SIZE = size_of_val(&INIT_GDT),
-	REMAP_DIR_ADDR = &REMAP_DIR
+boot_stack_begin:",
+	GDT_PHYS_ADDR = const(GDT_PHYS_ADDR.0),
+	GDT_SIZE = const(size_of::<InitGdt>()),
+	REMAP_DIR = sym REMAP_DIR
 );

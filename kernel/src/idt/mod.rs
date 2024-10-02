@@ -23,7 +23,12 @@
 pub mod pic;
 
 use crate::syscall::syscall32;
-use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
+use core::{
+	arch::{asm, global_asm},
+	ffi::c_void,
+	mem::size_of,
+	ptr::addr_of,
+};
 use utils::{
 	interrupt,
 	interrupt::{cli, sti},
@@ -102,57 +107,193 @@ impl InterruptDescriptor {
 	}
 }
 
-extern "C" {
-	fn irq0();
-	fn irq1();
-	fn irq2();
-	fn irq3();
-	fn irq4();
-	fn irq5();
-	fn irq6();
-	fn irq7();
-	fn irq8();
-	fn irq9();
-	fn irq10();
-	fn irq11();
-	fn irq12();
-	fn irq13();
-	fn irq14();
-	fn irq15();
+/// Declare an error handler.
+///
+/// An error can be accompanied by a code, in which case the handler must be declared with the
+/// `code` keyword.
+macro_rules! error {
+	($name:ident) => {
+		extern "C" {
+			fn $name();
+		}
 
-	fn error0();
-	fn error1();
-	fn error2();
-	fn error3();
-	fn error4();
-	fn error5();
-	fn error6();
-	fn error7();
-	fn error8();
-	fn error9();
-	fn error10();
-	fn error11();
-	fn error12();
-	fn error13();
-	fn error14();
-	fn error15();
-	fn error16();
-	fn error17();
-	fn error18();
-	fn error19();
-	fn error20();
-	fn error21();
-	fn error22();
-	fn error23();
-	fn error24();
-	fn error25();
-	fn error26();
-	fn error27();
-	fn error28();
-	fn error29();
-	fn error30();
-	fn error31();
+		global_asm!(
+			r"
+.global {name}
+.type {name}, @function
+
+{name}:
+	push %ebp
+	mov %esp, %ebp
+
+	# Allocate space for registers and retrieve them
+GET_REGS \n
+
+	# Get the ring
+	mov 8(%ebp), %eax
+	and $0b11, %eax
+
+	# Push arguments to call event_handler
+	push %esp # regs
+	push %eax # ring
+	push $0 # code
+	push $\n # id
+	call event_handler
+	add $16, %esp
+
+RESTORE_REGS
+
+	# Restore the context
+	mov %ebp, %esp
+	pop %ebp
+	iret",
+			name = sym $name
+		);
+	};
+	($name:ident, code) => {
+		extern "C" {
+			fn $name();
+		}
+
+		global_asm!(
+			r"
+.global {name}
+.type {name}, @function
+
+{name}:
+	# Retrieve the error code and write it after the stack pointer so that it can be retrieved
+	# after the stack frame
+	push %eax
+	mov 4(%esp), %eax
+	mov %eax, -4(%esp)
+	pop %eax
+
+	# Remove the code from its previous location on the stack
+	add $4, %esp
+
+	push %ebp
+	mov %esp, %ebp
+
+	# Allocate space for the error code
+	push -8(%esp)
+
+	# Allocate space for registers and retrieve them
+GET_REGS \n
+
+	# Get the ring
+	mov 8(%ebp), %eax
+	and $0b11, %eax
+
+	# Push arguments to call event_handler
+	push %esp # regs
+	push %eax # ring
+	push (REGS_SIZE + 8)(%esp) # code
+	push $\n # id
+	call event_handler
+	add $16, %esp
+
+RESTORE_REGS
+
+	# Free the space allocated for the error code
+	add $4, %esp
+
+	mov %ebp, %esp
+	pop %ebp
+	iret",
+			name = sym $name
+		);
+	};
 }
+
+macro_rules! irq {
+	($name:ident) => {
+		extern "C" {
+			fn $name();
+		}
+
+		global_asm!(
+			r"
+.global {name}
+
+{name}:
+	push %ebp
+	mov %esp, %ebp
+
+	# Allocate space for registers and retrieve them
+GET_REGS irq_\n
+
+	# Get the ring
+	mov 8(%ebp), %eax
+	and $0b11, %eax
+
+	# Push arguments to call event_handler
+	push %esp # regs
+	push %eax # ring
+	push $0 # code
+	push $(\n + 0x20) # id
+	call event_handler
+	add $16, %esp
+
+RESTORE_REGS
+
+	# Restore the context
+	mov %ebp, %esp
+	pop %ebp
+	iret",
+			name = sym $name
+		);
+	};
+}
+
+error!(error0);
+error!(error1);
+error!(error2);
+error!(error3);
+error!(error4);
+error!(error5);
+error!(error6);
+error!(error7);
+error!(error8, code);
+error!(error9);
+error!(error10, code);
+error!(error11, code);
+error!(error12, code);
+error!(error13, code);
+error!(error14, code);
+error!(error15);
+error!(error16);
+error!(error17, code);
+error!(error18);
+error!(error19);
+error!(error20);
+error!(error21);
+error!(error22);
+error!(error23);
+error!(error24);
+error!(error25);
+error!(error26);
+error!(error27);
+error!(error28);
+error!(error29);
+error!(error30, code);
+error!(error31);
+
+irq!(irq0);
+irq!(irq1);
+irq!(irq2);
+irq!(irq3);
+irq!(irq4);
+irq!(irq5);
+irq!(irq6);
+irq!(irq7);
+irq!(irq8);
+irq!(irq9);
+irq!(irq10);
+irq!(irq11);
+irq!(irq12);
+irq!(irq13);
+irq!(irq14);
+irq!(irq15);
 
 /// The list of IDT entries.
 static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] =
@@ -169,21 +310,16 @@ unsafe fn idt_load(idt: *const InterruptDescriptorTable) {
 /// returning.
 pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 	let int = interrupt::is_enabled();
-
-	// Here is assumed that no interruption will change eflags. Which could cause a
+	// Here is assumed that no interruption will change flags register. Which could cause a
 	// race condition
-
 	cli();
-
-	let result = f();
-
+	let res = f();
 	if int {
 		sti();
 	} else {
 		cli();
 	}
-
-	result
+	res
 }
 
 /// Initializes the IDT.

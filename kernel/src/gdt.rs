@@ -113,7 +113,7 @@ impl Entry {
 
 	/// Sets the flags.
 	#[inline(always)]
-	pub const fn et_flags(&mut self, flags: u8) {
+	pub const fn set_flags(&mut self, flags: u8) {
 		self.0 &= !(0x0f << 52);
 		self.0 |= ((flags as u64) & 0x0f) << 52;
 	}

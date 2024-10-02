@@ -18,9 +18,9 @@
 
 //! This module implements hardware clocks.
 
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod pit;
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod rtc;
 
 use crate::time::unit::Timestamp;

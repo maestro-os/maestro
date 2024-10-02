@@ -30,7 +30,7 @@ use utils::{boxed::Box, collections::vec::Vec, errno::AllocResult, lock::IntMute
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 static ERROR_MESSAGES: &[&str] = &[
 	"Divide-by-zero Error",
 	"Debug",

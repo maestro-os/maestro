@@ -57,7 +57,7 @@ fn is_kernelspace(virtaddr: VirtAddr, pages: usize) -> bool {
 /// `KERNEL` specifies whether mapping in kernelspace is allowed. If not allowed, trying to do it
 /// results in an error.
 pub struct VMem<const KERNEL: bool = false> {
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	page_dir: NonNull<x86::Table>,
 }
 
@@ -65,7 +65,7 @@ impl VMem<false> {
 	/// Creates a new virtual memory context.
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
-			#[cfg(target_arch = "x86")]
+			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			page_dir: x86::alloc()?,
 		})
 	}
@@ -80,7 +80,7 @@ impl VMem<true> {
 	/// valid. Failure to do so results in an undefined behaviour.
 	pub unsafe fn new_kernel() -> AllocResult<Self> {
 		Ok(Self {
-			#[cfg(target_arch = "x86")]
+			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			page_dir: x86::alloc()?,
 		})
 	}
@@ -88,13 +88,13 @@ impl VMem<true> {
 
 impl<const KERNEL: bool> VMem<KERNEL> {
 	/// Returns an immutable reference to the **architecture-dependent** inner representation.
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	pub fn inner(&self) -> &x86::Table {
 		unsafe { self.page_dir.as_ref() }
 	}
 
 	/// Returns a mutable reference to the architecture-dependent inner representation.
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	pub fn inner_mut(&mut self) -> &mut x86::Table {
 		unsafe { self.page_dir.as_mut() }
 	}
@@ -104,7 +104,7 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 	///
 	/// If the address is not mapped, the function returns `None`.
 	pub fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
-		#[cfg(target_arch = "x86")]
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		x86::translate(self.inner(), addr)
 	}
 
@@ -122,7 +122,7 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 			.kernel_to_physical()
 			.unwrap();
 		unsafe {
-			#[cfg(target_arch = "x86")]
+			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			x86::bind(phys_addr);
 		}
 	}
@@ -138,7 +138,7 @@ impl<const KERNEL: bool> Drop for VMem<KERNEL> {
 		if self.is_bound() {
 			panic!("Dropping virtual memory context while in use!");
 		}
-		#[cfg(target_arch = "x86")]
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
 			x86::free(self.page_dir);
 		}
@@ -153,12 +153,12 @@ pub struct VMemTransaction<'v, const KERNEL: bool> {
 	/// The virtual memory context on which the transaction applies.
 	pub vmem: &'v mut VMem<KERNEL>,
 	/// The vector of handles to roll back the whole transaction.
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	rollback: Vec<x86::Rollback>,
 }
 
 impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	fn map_impl(
 		&mut self,
 		physaddr: PhysAddr,
@@ -219,7 +219,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		Ok(())
 	}
 
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	fn unmap_impl(&mut self, virtaddr: VirtAddr) -> AllocResult<x86::Rollback> {
 		let res = unsafe { x86::unmap(self.vmem.inner_mut(), virtaddr) };
 		invalidate_page_current(virtaddr);
@@ -284,7 +284,7 @@ impl<const KERNEL: bool> Drop for VMemTransaction<'_, KERNEL> {
 
 /// Invalidate the page at the given address on the current CPU.
 pub fn invalidate_page_current(addr: VirtAddr) {
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	x86::invalidate_page_current(addr);
 }
 
@@ -295,7 +295,7 @@ pub fn invalidate_page_current(addr: VirtAddr) {
 ///
 /// This is an expensive operation for the CPU cache and should be used as few as possible.
 pub fn flush_current() {
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	x86::flush_current();
 }
 
@@ -375,7 +375,7 @@ pub fn kernel() -> &'static Mutex<VMem<true>> {
 /// Initializes virtual memory management.
 pub(crate) fn init() -> AllocResult<()> {
 	// Architecture-specific init
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		x86::init()?;
 	}
@@ -412,7 +412,7 @@ pub(crate) fn init() -> AllocResult<()> {
 		transaction.map_range(phys_addr, virt_addr, pages, flags)?;
 	}
 	// Map VGA buffer
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		transaction.map_range(
 			vga::BUFFER_PHYS as _,

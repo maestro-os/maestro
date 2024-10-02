@@ -67,13 +67,17 @@ pub fn get_rflags() -> usize {
 #[inline]
 pub fn cpuid(mut eax: u32, mut ebx: u32, mut ecx: u32, mut edx: u32) -> (u32, u32, u32, u32) {
 	unsafe {
+		// `ebx` could be use directly in 32 bits. Not doing it to avoid adding more complexity
 		asm!(
+			"push rbx",
+			"mov ebx, {rbx:e}",
 			"cpuid",
-			inout("eax") eax,
-			inout("ebx") ebx,
-			inout("ecx") ecx,
-			inout("edx") edx,
-			options(nomem, nostack)
+			"mov {rbx:e}, ebx",
+			"pop rbx",
+			inout("rax") eax,
+			rbx = inout(reg) ebx,
+			inout("rcx") ecx,
+			inout("rdx") edx,
 		);
 	}
 	(eax, ebx, ecx, edx)

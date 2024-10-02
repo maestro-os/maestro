@@ -34,7 +34,7 @@ pub mod regs;
 pub mod rusage;
 pub mod scheduler;
 pub mod signal;
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod tss;
 pub mod user_desc;
 
@@ -75,7 +75,7 @@ use pid::Pid;
 use regs::Regs;
 use rusage::RUsage;
 use signal::{Signal, SignalAction, SignalHandler};
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use tss::TSS;
 use utils::{
 	collections::{
