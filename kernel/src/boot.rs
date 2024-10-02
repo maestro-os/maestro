@@ -30,12 +30,12 @@ use utils::limits::PAGE_SIZE;
 const GDT_PHYS_ADDR: PhysAddr = PhysAddr(0x800);
 
 /// The initial Global Descriptor Table.
-pub type InitGdt = [gdt::Entry; 9];
+type InitGdt = [gdt::Entry; 9];
 
 /// The initial Global Descriptor Table.
 #[no_mangle]
 #[link_section = ".boot.rodata"]
-pub static INIT_GDT: [gdt::Entry; 9] = [
+static INIT_GDT: InitGdt = [
 	// First entry, empty
 	gdt::Entry(0),
 	// Kernel code segment
@@ -61,7 +61,7 @@ struct PageDir([u32; 1024]);
 /// The page directory used to remap the kernel to higher memory.
 #[no_mangle]
 #[link_section = ".boot.rodata"]
-pub static REMAP_DIR: PageDir = const {
+static REMAP_DIR: PageDir = const {
 	let mut dir = [0; 1024];
 	// TODO use for loop when stabilized
 	let mut i = 0;
