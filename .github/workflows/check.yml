@@ -45,6 +45,7 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: clippy
     strategy:
+      fail-fast: false
       matrix:
         arch: ["x86", "x86_64"]
     steps:
@@ -55,6 +56,7 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: clippy
     strategy:
+      fail-fast: false
       matrix:
         arch: ["x86", "x86_64"]
     steps:
@@ -74,6 +76,7 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: build
     strategy:
+      fail-fast: false
       matrix:
         arch: ["x86", "x86_64"]
     steps:
@@ -97,6 +100,7 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: build
     strategy:
+      fail-fast: false
       matrix:
         arch: ["x86", "x86_64"]
     steps:
@@ -114,6 +118,7 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: build
     strategy:
+      fail-fast: false
       matrix:
         arch:
           - kernel: "x86"
