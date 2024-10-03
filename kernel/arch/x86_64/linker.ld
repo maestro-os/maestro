@@ -39,11 +39,6 @@ SECTIONS
 		*(.boot.stack)
 	}
 
-	.boot.data : ALIGN(4K)
-	{
-		*(.boot.data)
-	}
-
 	. = 0xc0200000;
 
 	.text : AT (ADDR (.text) - 0xc0000000) ALIGN(4K)

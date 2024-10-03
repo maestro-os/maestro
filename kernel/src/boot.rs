@@ -81,11 +81,11 @@ extern "C" {
 }
 
 global_asm!(
-	r"
+	r#"
 .global multiboot_entry
 .type multiboot_entry, @function
 
-.section .boot.text
+.section .boot.text, "ax"
 
 # Multiboot2 kernel header
 .align 8
@@ -179,7 +179,7 @@ remap:
 	
 	ret
 
-.section .boot.stack
+.section .boot.stack, "aw"
 
 .align 8
 
@@ -188,7 +188,7 @@ remap:
 boot_stack:
 .size boot_stack, STACK_SIZE
 .skip STACK_SIZE
-boot_stack_begin:",
+boot_stack_begin:"#,
 	GDT_PHYS_ADDR = const(GDT_PHYS_ADDR.0),
 	GDT_SIZE = const(size_of::<InitGdt>()),
 	REMAP_DIR = sym REMAP_DIR

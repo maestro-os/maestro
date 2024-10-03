@@ -51,11 +51,6 @@ SECTIONS
 		*(.boot.stack)
 	}
 
-	.boot.data : ALIGN(4K)
-	{
-		*(.boot.data)
-	}
-
     /* Kernel sections */
 	. = 0xc0200000;
 
