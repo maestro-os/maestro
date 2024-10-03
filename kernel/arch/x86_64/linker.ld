@@ -34,6 +34,11 @@ SECTIONS
 		*(.boot.text)
 	}
 
+	.boot.rodata : ALIGN(4K)
+	{
+		*(.boot.rodata)
+	}
+
 	.boot.stack : ALIGN(4K)
 	{
 		*(.boot.stack)

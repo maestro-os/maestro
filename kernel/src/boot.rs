@@ -115,7 +115,7 @@ entry_address_tag_end:
 header_end:
 
 multiboot_entry:
-	mov esp, boot_stack_begin
+	mov esp, offset boot_stack_begin
 	xor ebp, ebp
 	push 0
 	popf
@@ -131,18 +131,20 @@ multiboot_entry:
 
 setup_gdt:
     # Copy GDT to its physical address
-	mov esi, INIT_GDT
+	mov esi, offset INIT_GDT
 	mov edi, {GDT_PHYS_ADDR}
 	mov ecx, {GDT_SIZE}
 	rep movsb
 	
 	# Load GDT
-	push {GDT_PHYS_ADDR}
-	push ({GDT_SIZE} - 1)
+	sub esp, 6
+	mov word ptr [esp], ({GDT_SIZE} - 1)
+	mov dword ptr [esp + 2], {GDT_PHYS_ADDR}
 	lgdt [esp]
 	add esp, 6
-	push complete_flush
+	mov eax, offset complete_flush
 	push 8 # kernel code segment
+	push eax
 	retf
 complete_flush:
 	mov ax, 16 # kernel data segment
@@ -161,7 +163,7 @@ complete_flush:
  */
 remap:
     # Set page directory
-    mov eax, {REMAP_DIR}
+    mov eax, offset {REMAP_DIR}
 	mov cr3, eax
 	
     # Enable PSE
