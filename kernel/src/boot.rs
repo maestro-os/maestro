@@ -20,7 +20,7 @@ use crate::{
 	gdt,
 	memory::{
 		vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE},
-		PhysAddr,
+		PhysAddr, VirtAddr,
 	},
 };
 use core::arch::global_asm;
@@ -28,40 +28,44 @@ use utils::limits::PAGE_SIZE;
 
 /// The physical address of the GDT.
 const GDT_PHYS_ADDR: PhysAddr = PhysAddr(0x800);
+/// The virtual address of the GDT.
+const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
 
 /// The initial Global Descriptor Table.
-type InitGdt = [gdt::Entry; 9];
+type InitGdt = [gdt::Entry32; 9];
 
 /// The initial Global Descriptor Table.
 #[no_mangle]
-#[link_section = ".boot.rodata"]
+#[link_section = ".boot.data"]
 static INIT_GDT: InitGdt = [
 	// First entry, empty
-	gdt::Entry(0),
+	gdt::Entry32(0),
 	// Kernel code segment
-	gdt::Entry::new(0, !0, 0b10011010, 0b1100),
+	gdt::Entry32::new(0, !0, 0b10011010, 0b1100),
 	// Kernel data segment
-	gdt::Entry::new(0, !0, 0b10010010, 0b1100),
+	gdt::Entry32::new(0, !0, 0b10010010, 0b1100),
 	// User code segment
-	gdt::Entry::new(0, !0, 0b11111010, 0b1100),
+	gdt::Entry32::new(0, !0, 0b11111010, 0b1100),
 	// User data segment
-	gdt::Entry::new(0, !0, 0b11110010, 0b1100),
+	gdt::Entry32::new(0, !0, 0b11110010, 0b1100),
 	// TSS
-	gdt::Entry(0),
+	gdt::Entry32(0),
 	// TLS entries
-	gdt::Entry(0),
-	gdt::Entry(0),
-	gdt::Entry(0),
+	gdt::Entry32(0),
+	gdt::Entry32(0),
+	gdt::Entry32(0),
 ];
 
 /// A page directory.
-#[repr(C, align(8))]
+#[repr(C, align(4096))]
 struct PageDir([u32; 1024]);
 
 /// The page directory used to remap the kernel to higher memory.
+///
+/// The static is marked as **mutable** because the CPU will set the dirty flag.
 #[no_mangle]
-#[link_section = ".boot.rodata"]
-static REMAP_DIR: PageDir = const {
+#[link_section = ".boot.data"]
+static mut REMAP_DIR: PageDir = const {
 	let mut dir = [0; 1024];
 	// TODO use for loop when stabilized
 	let mut i = 0;
@@ -118,7 +122,7 @@ multiboot_entry:
 	mov esp, offset boot_stack_begin
 	xor ebp, ebp
 	push 0
-	popf
+	popfd
 
 	push ebx
 	push eax
@@ -178,7 +182,14 @@ remap:
 	
 	# Update stack
     add esp, 0xc0000000
-	
+
+    # Update GDT
+	sub esp, 6
+	mov word ptr [esp], ({GDT_SIZE} - 1)
+	mov dword ptr [esp + 2], {GDT_VIRT_ADDR}
+	lgdt [esp]
+	add esp, 6
+
 	ret
 
 .section .boot.stack, "aw"
@@ -192,6 +203,7 @@ boot_stack:
 .skip STACK_SIZE
 boot_stack_begin:"#,
 	GDT_PHYS_ADDR = const(GDT_PHYS_ADDR.0),
+	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
 	GDT_SIZE = const(size_of::<InitGdt>()),
 	REMAP_DIR = sym REMAP_DIR
 );

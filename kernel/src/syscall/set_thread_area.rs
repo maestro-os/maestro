@@ -32,7 +32,7 @@ use utils::{
 };
 
 /// The index of the first entry for TLS segments in the GDT.
-const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
+const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry32>();
 
 /// Returns the ID of a free TLS entry for the given process.
 pub fn get_free_entry(process: &mut Process) -> EResult<usize> {
@@ -48,7 +48,7 @@ pub fn get_free_entry(process: &mut Process) -> EResult<usize> {
 /// Returns an entry ID for the given process and entry number.
 ///
 /// If the id is `-1`, the function shall find a free entry.
-pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut gdt::Entry)> {
+pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut gdt::Entry32)> {
 	const BEGIN_ENTRY: i32 = TLS_BEGIN_INDEX as i32;
 	const END_ENTRY: i32 = BEGIN_ENTRY + process::TLS_ENTRIES_COUNT as i32;
 	let id = match entry_number {

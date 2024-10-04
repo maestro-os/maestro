@@ -107,7 +107,7 @@ impl TSS {
 			| (((limit >> 16) & 0x0f) << 48)
 			| (((base >> 24) & 0xff) << 56);
 
-		let gdt_entry = gdt::Entry(tss_value);
+		let gdt_entry = gdt::Entry32(tss_value);
 		unsafe {
 			gdt_entry.update_gdt(gdt::TSS_OFFSET);
 		}

@@ -41,12 +41,12 @@ pub const TSS_OFFSET: usize = 40;
 /// The offset of Thread Local Storage (TLS) entries.
 pub const TLS_OFFSET: usize = 48;
 
-/// A GDT entry.
+/// A *protected mode* GDT entry.
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Default)]
-pub struct Entry(pub u64);
+pub struct Entry32(pub u64);
 
-impl Entry {
+impl Entry32 {
 	/// Creates a new entry with the give information.
 	#[inline(always)]
 	pub const fn new(base: u32, limit: u32, access_byte: u8, flags: u8) -> Self {
@@ -146,7 +146,7 @@ impl Entry {
 	}
 }
 
-impl fmt::Debug for Entry {
+impl fmt::Debug for Entry32 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Entry")
 			.field("base", &self.get_base())

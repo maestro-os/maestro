@@ -281,7 +281,7 @@ pub struct Process {
 	pub signal_handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
 
 	/// TLS entries.
-	pub tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
+	pub tls_entries: [gdt::Entry32; TLS_ENTRIES_COUNT],
 
 	/// The process's resources usage.
 	rusage: RUsage,
@@ -478,7 +478,7 @@ impl Process {
 			sigpending: Default::default(),
 			signal_handlers: Arc::new(Mutex::new(Default::default()))?,
 
-			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
+			tls_entries: [gdt::Entry32::default(); TLS_ENTRIES_COUNT],
 
 			rusage: RUsage::default(),
 
@@ -955,7 +955,7 @@ impl Process {
 	pub fn update_tls(&self, n: usize) {
 		if let Some(ent) = self.tls_entries.get(n) {
 			unsafe {
-				ent.update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
+				ent.update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry32>());
 			}
 		}
 	}
