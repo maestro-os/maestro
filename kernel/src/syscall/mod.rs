@@ -1018,5 +1018,5 @@ RESTORE_REGS
 	# Restore context
 	mov esp, ebp
 	pop ebp
-	iret"#
+	iretd"#
 );

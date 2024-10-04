@@ -118,7 +118,7 @@ context_switch:
 	# Set eax
 	mov eax, [eax + 16]
 
-	iret
+	iretd
 
 context_switch_kernel:
 	# Restore the fx state
@@ -136,7 +136,7 @@ context_switch_kernel:
 	not ecx
 	and ebx, ecx
 	push ebx
-	popf
+	popfd
 
 	# Set registers
 	mov ebp, [eax]

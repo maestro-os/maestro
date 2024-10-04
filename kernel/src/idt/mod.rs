@@ -149,7 +149,7 @@ RESTORE_REGS
 	# Restore the context
 	mov esp, ebp
 	pop ebp
-	iret"#,
+	iretd"#,
 			name = sym $name,
 			id = const($id)
 		);
@@ -203,7 +203,7 @@ RESTORE_REGS
 
 	mov esp, ebp
 	pop ebp
-	iret"#,
+	iretd"#,
 			name = sym $name,
 			id = const($id)
 		);
@@ -244,7 +244,7 @@ RESTORE_REGS
 	# Restore the context
 	mov ebp, ebp
 	pop ebp
-	iret"#,
+	iretd"#,
 			name = sym $name,
 			id = const($id)
 		);

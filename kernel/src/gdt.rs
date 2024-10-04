@@ -181,7 +181,12 @@ pub unsafe fn get_segment_ptr(offset: usize) -> *mut u64 {
 /// Refreshes the GDT's cache.
 #[inline(always)]
 pub fn flush() {
+	// FIXME: don't use a hardcoded value
 	unsafe {
-		asm!("lgdt [0xc000800]"); // FIXME: don't use a hardcoded value
+		asm!(
+			"mov word ptr [esp], (8 * 9 - 1)",
+			"mov dword ptr [esp + 2], 0xc0000800",
+			"lgdt [esp]"
+		);
 	}
 }
