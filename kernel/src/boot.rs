@@ -18,13 +18,9 @@
 
 use crate::{
 	gdt,
-	memory::{
-		vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE},
-		PhysAddr, VirtAddr,
-	},
+	memory::{PhysAddr, VirtAddr},
 };
 use core::arch::global_asm;
-use utils::limits::PAGE_SIZE;
 
 /// The physical address of the GDT.
 const GDT_PHYS_ADDR: PhysAddr = PhysAddr(0x800);
@@ -57,15 +53,25 @@ static INIT_GDT: InitGdt = [
 ];
 
 /// A page directory.
+#[cfg(target_arch = "x86")]
 #[repr(C, align(4096))]
 struct PageDir([u32; 1024]);
+
+/// A page directory.
+#[cfg(target_arch = "x86_64")]
+#[repr(C, align(4096))]
+struct PageDir([u64; 512]);
 
 /// The page directory used to remap the kernel to higher memory.
 ///
 /// The static is marked as **mutable** because the CPU will set the dirty flag.
+#[cfg(target_arch = "x86")]
 #[no_mangle]
 #[link_section = ".boot.data"]
 static mut REMAP_DIR: PageDir = const {
+	use crate::vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
+	use utils::limits::PAGE_SIZE;
+
 	let mut dir = [0; 1024];
 	// TODO use for loop when stabilized
 	let mut i = 0;
@@ -77,6 +83,17 @@ static mut REMAP_DIR: PageDir = const {
 		i += 1;
 	}
 	PageDir(dir)
+};
+
+/// The page directory used to remap the kernel to higher memory.
+///
+/// The static is marked as **mutable** because the CPU will set the dirty flag.
+#[cfg(target_arch = "x86_64")]
+#[no_mangle]
+#[link_section = ".boot.data"]
+static mut REMAP_DIR: PageDir = const {
+	let _dir = [0; 512];
+	todo!()
 };
 
 extern "C" {
@@ -186,7 +203,7 @@ complete_flush:
 	or eax, 0x00000010
 	mov cr4, eax
 
-    # Enable paging
+    # Enable paging and write protect
 	mov eax, cr0
 	or eax, 0x80010000
 	mov cr0, eax
@@ -217,10 +234,30 @@ arch_setup:
 	# Init flags
 	push 0
 	popfq
+
+    # Set page directory
+    mov eax, offset {REMAP_DIR}
+	mov cr3, eax
+
+	# Enable PAE
+	mov eax, cr4
+	or eax, 0x20
+	mov cr4, eax
+
+	# Enable LME
+	mov ecx, 0xc0000080 # EFER
+	rdmsr
+	or eax, 0x100
+	wrmsr
+
+    # Enable paging and write protect
+	mov eax, cr0
+	or eax, 0x80010000
+	mov cr0, eax
 	
-	# Enable long mode
-	# TODO
-	
+	# TODO init GDT
+
 	ret
-"#
+"#,
+	REMAP_DIR = sym REMAP_DIR
 );
