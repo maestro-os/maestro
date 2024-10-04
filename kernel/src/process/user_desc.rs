@@ -105,7 +105,7 @@ impl UserDesc {
 	}
 
 	/// Converts the current descriptor to a GDT entry.
-	pub fn to_descriptor(&self) -> gdt::Entry32 {
+	pub fn to_descriptor(&self) -> gdt::Entry {
 		let mut access_byte = 0b01110010;
 		if self.is_present() && self.is_usable() {
 			access_byte |= 1 << 7;
@@ -120,7 +120,7 @@ impl UserDesc {
 		if self.is_limit_in_pages() {
 			flags |= 1 << 3;
 		}
-		let mut entry = gdt::Entry32::default();
+		let mut entry = gdt::Entry::default();
 		entry.set_base(self.get_base_addr() as _);
 		entry.set_limit(self.get_limit() as _);
 		entry.set_access_byte(access_byte);

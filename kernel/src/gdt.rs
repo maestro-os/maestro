@@ -41,12 +41,12 @@ pub const TSS_OFFSET: usize = 40;
 /// The offset of Thread Local Storage (TLS) entries.
 pub const TLS_OFFSET: usize = 48;
 
-/// A *protected mode* GDT entry.
+/// A GDT entry.
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Default)]
-pub struct Entry32(pub u64);
+pub struct Entry(pub u64);
 
-impl Entry32 {
+impl Entry {
 	/// Creates a new entry with the give information.
 	#[inline(always)]
 	pub const fn new(base: u32, limit: u32, access_byte: u8, flags: u8) -> Self {
@@ -56,6 +56,14 @@ impl Entry32 {
 		ent.set_access_byte(access_byte);
 		ent.set_flags(flags);
 		ent
+	}
+
+	/// Creates a long mode entry, spanning two regular entries.
+	pub const fn new64(base: u64, limit: u32, access_byte: u8, flags: u8) -> [Self; 2] {
+		[
+			Self::new((base & 0xffffffff) as _, limit, access_byte, flags),
+			Self((base >> 32) & 0xffffffff),
+		]
 	}
 
 	/// Returns the entry's base address.
@@ -140,13 +148,13 @@ impl Entry32 {
 	///
 	/// An invalid offset, either not a multiple of `8` or out of bounds of the GDT, shall result
 	/// in an undefined behaviour.
-	pub unsafe fn update_gdt(&self, off: usize) {
+	pub unsafe fn update_gdt(self, off: usize) {
 		let ptr = get_segment_ptr(off);
-		ptr::write_volatile(ptr, self.0);
+		ptr::write_volatile(ptr, self);
 	}
 }
 
-impl fmt::Debug for Entry32 {
+impl fmt::Debug for Entry {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Entry")
 			.field("base", &self.get_base())
@@ -158,23 +166,16 @@ impl fmt::Debug for Entry32 {
 	}
 }
 
-/// Creates a segment selector for the given segment offset and ring.
-#[inline(always)]
-pub fn make_segment_selector(offset: u32, ring: u32) -> u16 {
-	debug_assert!(ring <= 3);
-	(offset | ring) as _
-}
-
 /// Returns the pointer to the segment at offset `offset`.
 ///
 /// # Safety
 ///
 /// The caller must ensure the given `offset` is in bounds of the GDT.
-pub unsafe fn get_segment_ptr(offset: usize) -> *mut u64 {
+pub unsafe fn get_segment_ptr(offset: usize) -> *mut Entry {
 	PHYS_PTR
 		.kernel_to_virtual()
 		.unwrap()
-		.as_ptr::<u64>()
+		.as_ptr::<Entry>()
 		.byte_add(offset)
 }
 

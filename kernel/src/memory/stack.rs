@@ -52,7 +52,7 @@ impl<F: FnOnce() -> T, T> StackInfo<F, T> {
 ///
 /// When passing a closure to this function, the `move` keyword should be used in the case the
 /// previous stack becomes unreachable. This keyword ensures that variables are captured by value
-/// and not by reference, thus avoiding to create dangling references.
+/// and not by reference, thus avoiding creating dangling references.
 pub unsafe fn switch<F: FnOnce() -> T, T>(stack: *mut c_void, f: F) -> T {
 	debug_assert!(stack.is_aligned_to(size_of::<usize>()));
 	let mut f = StackInfo {
@@ -60,10 +60,11 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(stack: *mut c_void, f: F) -> T {
 		ret_val: MaybeUninit::uninit(),
 	};
 	let func = StackInfo::<F, T>::exec;
+	#[cfg(target_arch = "x86")]
 	asm!(
 		// Save stack
-		"mov {esp_stash}, esp",
-		"mov {ebp_stash}, ebp",
+		"mov {sp}, esp",
+		"mov {bp}, ebp",
 		// Set new stack
 		"mov esp, {stack}",
 		"xor ebp, ebp",
@@ -71,10 +72,30 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(stack: *mut c_void, f: F) -> T {
 		"push {f}",
 		"call {func}",
 		// Restore previous stack
-		"mov esp, {esp_stash}",
-		"mov ebp, {ebp_stash}",
-		esp_stash = out(reg) _,
-		ebp_stash = out(reg) _,
+		"mov esp, {sp}",
+		"mov ebp, {bp}",
+		sp = out(reg) _,
+		bp = out(reg) _,
+		stack = in(reg) stack,
+		f = in(reg) &mut f,
+		func = in(reg) func
+	);
+	#[cfg(target_arch = "x86_64")]
+	asm!(
+		// Save stack
+		"mov {sp}, rsp",
+		"mov {bp}, rbp",
+		// Set new stack
+		"mov rsp, {stack}",
+		"xor rbp, rbp",
+		// Call execution function
+		"push {f}",
+		"call {func}",
+		// Restore previous stack
+		"mov rsp, {sp}",
+		"mov rbp, {bp}",
+		sp = out(reg) _,
+		bp = out(reg) _,
 		stack = in(reg) stack,
 		f = in(reg) &mut f,
 		func = in(reg) func

@@ -32,28 +32,28 @@ const GDT_PHYS_ADDR: PhysAddr = PhysAddr(0x800);
 const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
 
 /// The initial Global Descriptor Table.
-type InitGdt = [gdt::Entry32; 9];
+type InitGdt = [gdt::Entry; 9];
 
 /// The initial Global Descriptor Table.
 #[no_mangle]
 #[link_section = ".boot.data"]
 static INIT_GDT: InitGdt = [
 	// First entry, empty
-	gdt::Entry32(0),
+	gdt::Entry(0),
 	// Kernel code segment
-	gdt::Entry32::new(0, !0, 0b10011010, 0b1100),
+	gdt::Entry::new(0, !0, 0b10011010, 0b1100),
 	// Kernel data segment
-	gdt::Entry32::new(0, !0, 0b10010010, 0b1100),
+	gdt::Entry::new(0, !0, 0b10010010, 0b1100),
 	// User code segment
-	gdt::Entry32::new(0, !0, 0b11111010, 0b1100),
+	gdt::Entry::new(0, !0, 0b11111010, 0b1100),
 	// User data segment
-	gdt::Entry32::new(0, !0, 0b11110010, 0b1100),
+	gdt::Entry::new(0, !0, 0b11110010, 0b1100),
 	// TSS
-	gdt::Entry32(0),
+	gdt::Entry(0),
 	// TLS entries
-	gdt::Entry32(0),
-	gdt::Entry32(0),
-	gdt::Entry32(0),
+	gdt::Entry(0),
+	gdt::Entry(0),
+	gdt::Entry(0),
 ];
 
 /// A page directory.
@@ -84,11 +84,9 @@ extern "C" {
 	fn multiboot_entry();
 }
 
+// Common initialization code
 global_asm!(
 	r#"
-.global multiboot_entry
-.type multiboot_entry, @function
-
 .section .boot.text, "ax"
 
 # Multiboot2 kernel header
@@ -118,28 +116,47 @@ entry_address_tag_end:
 	.long 8
 header_end:
 
+.global multiboot_entry
+.type multiboot_entry, @function
+
 multiboot_entry:
 	mov esp, offset boot_stack_begin
 	xor ebp, ebp
-	push 0
-	popfd
 
 	push ebx
 	push eax
-	call setup_gdt
-	call remap
-
+	call arch_setup
 	call kernel_main
 	# `kernel_main` cannot return
 	ud2
 
-setup_gdt:
+.section .boot.stack, "aw"
+
+.align 8
+
+.set STACK_SIZE, 32768
+
+boot_stack:
+.size boot_stack, STACK_SIZE
+.skip STACK_SIZE
+boot_stack_begin:"#
+);
+
+// x86-specific initialization
+#[cfg(target_arch = "x86")]
+global_asm!(
+	r#"
+arch_setup:
+	# Init flags
+	push 0
+	popfd
+
     # Copy GDT to its physical address
 	mov esi, offset INIT_GDT
 	mov edi, {GDT_PHYS_ADDR}
 	mov ecx, {GDT_SIZE}
 	rep movsb
-	
+
 	# Load GDT
 	sub esp, 6
 	mov word ptr [esp], ({GDT_SIZE} - 1)
@@ -160,26 +177,20 @@ complete_flush:
 	mov fs, ax
 	mov gs, ax
 
-	ret
-	
-/*
- * Remaps the first gigabyte of memory to the last one, enabling paging and PSE.
- */
-remap:
     # Set page directory
     mov eax, offset {REMAP_DIR}
 	mov cr3, eax
-	
+
     # Enable PSE
 	mov eax, cr4
 	or eax, 0x00000010
 	mov cr4, eax
-	
+
     # Enable paging
 	mov eax, cr0
 	or eax, 0x80010000
 	mov cr0, eax
-	
+
 	# Update stack
     add esp, 0xc0000000
 
@@ -191,19 +202,25 @@ remap:
 	add esp, 6
 
 	ret
-
-.section .boot.stack, "aw"
-
-.align 8
-
-.set STACK_SIZE, 32768
-
-boot_stack:
-.size boot_stack, STACK_SIZE
-.skip STACK_SIZE
-boot_stack_begin:"#,
+"#,
 	GDT_PHYS_ADDR = const(GDT_PHYS_ADDR.0),
 	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
 	GDT_SIZE = const(size_of::<InitGdt>()),
 	REMAP_DIR = sym REMAP_DIR
+);
+
+// x86_64-specific initialization
+#[cfg(target_arch = "x86_64")]
+global_asm!(
+	r#"
+arch_setup:
+	# Init flags
+	push 0
+	popfq
+	
+	# Enable long mode
+	# TODO
+	
+	ret
+"#
 );
