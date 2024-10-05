@@ -24,7 +24,7 @@ pub mod x86;
 
 use crate::{
 	cpu, elf, idt, memory,
-	memory::{PhysAddr, VirtAddr, KERNELSPACE_SIZE},
+	memory::{vmem::x86::Entry, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
 	register_get,
 	tty::vga,
 };
@@ -163,7 +163,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		&mut self,
 		physaddr: PhysAddr,
 		virtaddr: VirtAddr,
-		flags: u32,
+		flags: Entry,
 	) -> AllocResult<x86::Rollback> {
 		let res = unsafe { x86::map(self.vmem.inner_mut(), physaddr, virtaddr, flags) };
 		invalidate_page_current(virtaddr);
@@ -178,7 +178,12 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 	/// The modifications may not be flushed to the cache. It is the caller's responsibility to
 	/// ensure they are.
 	#[inline]
-	pub fn map(&mut self, physaddr: PhysAddr, virtaddr: VirtAddr, flags: u32) -> AllocResult<()> {
+	pub fn map(
+		&mut self,
+		physaddr: PhysAddr,
+		virtaddr: VirtAddr,
+		flags: Entry,
+	) -> AllocResult<()> {
 		// If kernelspace modification is disabled, error if mapping onto kernelspace
 		if !KERNEL && is_kernelspace(virtaddr, 1) {
 			return Err(AllocError);
@@ -195,7 +200,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		physaddr: PhysAddr,
 		virtaddr: VirtAddr,
 		pages: usize,
-		flags: u32,
+		flags: Entry,
 	) -> AllocResult<()> {
 		if pages == 0 {
 			// No op

@@ -18,7 +18,7 @@
 
 use crate::{
 	gdt,
-	memory::{PhysAddr, VirtAddr},
+	memory::{vmem, PhysAddr, VirtAddr},
 };
 use core::arch::global_asm;
 
@@ -52,48 +52,37 @@ static INIT_GDT: InitGdt = [
 	gdt::Entry(0),
 ];
 
-/// A page directory.
-#[cfg(target_arch = "x86")]
-#[repr(C, align(4096))]
-struct PageDir([u32; 1024]);
-
-/// A page directory.
-#[cfg(target_arch = "x86_64")]
-#[repr(C, align(4096))]
-struct PageDir([u64; 512]);
-
 /// The page directory used to remap the kernel to higher memory.
 ///
 /// The static is marked as **mutable** because the CPU will set the dirty flag.
-#[cfg(target_arch = "x86")]
 #[no_mangle]
 #[link_section = ".boot.data"]
-static mut REMAP_DIR: PageDir = const {
+static mut REMAP_DIR: vmem::x86::Table = const {
 	use crate::vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
 	use utils::limits::PAGE_SIZE;
 
+	#[cfg(target_arch = "x86")]
 	let mut dir = [0; 1024];
+	#[cfg(target_arch = "x86_64")]
+	let mut dir = [0; 512];
 	// TODO use for loop when stabilized
 	let mut i = 0;
 	while i < 256 {
-		let addr = (i * PAGE_SIZE * 1024) as u32;
-		let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
+		#[cfg(target_arch = "x86")]
+		let ent = {
+			let addr = (i * PAGE_SIZE * 1024) as u32;
+			addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT
+		};
+		#[cfg(target_arch = "x86_64")]
+		let ent = {
+			let addr = (i * PAGE_SIZE * 512 * 512) as u64;
+			addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT
+		};
 		dir[i] = ent;
-		dir[i + 768] = ent;
+		dir[i + 256] = ent;
 		i += 1;
 	}
-	PageDir(dir)
-};
-
-/// The page directory used to remap the kernel to higher memory.
-///
-/// The static is marked as **mutable** because the CPU will set the dirty flag.
-#[cfg(target_arch = "x86_64")]
-#[no_mangle]
-#[link_section = ".boot.data"]
-static mut REMAP_DIR: PageDir = const {
-	let _dir = [0; 512];
-	todo!()
+	vmem::x86::Table(dir)
 };
 
 extern "C" {

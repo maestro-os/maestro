@@ -25,7 +25,7 @@ use super::gap::MemGap;
 use crate::{
 	memory::{
 		vmem,
-		vmem::{VMem, VMemTransaction},
+		vmem::{x86::Entry, VMem, VMemTransaction},
 		VirtAddr,
 	},
 	process::mem_space::{
@@ -120,7 +120,7 @@ impl MemMapping {
 	/// Returns virtual memory context flags.
 	///
 	/// If `write` is `false, write is disabled even if enabled on the mapping.
-	fn get_vmem_flags(&self, write: bool) -> u32 {
+	fn get_vmem_flags(&self, write: bool) -> Entry {
 		let mut flags = 0;
 		if write && self.flags & super::MAPPING_FLAG_WRITE != 0 {
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -134,7 +134,13 @@ impl MemMapping {
 				flags |= vmem::x86::FLAG_USER;
 			}
 		}
-		// TODO execute flag
+		// Careful, the condition is inverted here. Using == instead of !=
+		if self.flags & super::MAPPING_FLAG_EXEC == 0 {
+			#[cfg(target_arch = "x86_64")]
+			{
+				flags |= vmem::x86::FLAG_XD;
+			}
+		}
 		flags
 	}
 

@@ -30,7 +30,7 @@ use crate::syscall::FromSyscallArg;
 use core::{
 	fmt,
 	mem::size_of,
-	ops::{Add, Sub},
+	ops::{Add, Deref, DerefMut, Sub},
 	ptr,
 	ptr::NonNull,
 };
@@ -134,6 +134,20 @@ macro_rules! addr_impl {
 			/// If `self` is already aligned, the function returns `self`.
 			pub fn align_to(self, align: usize) -> Self {
 				Self(self.0.next_multiple_of(align))
+			}
+		}
+
+		impl Deref for $name {
+			type Target = usize;
+
+			fn deref(&self) -> &Self::Target {
+				&self.0
+			}
+		}
+
+		impl DerefMut for $name {
+			fn deref_mut(&mut self) -> &mut Self::Target {
+				&mut self.0
 			}
 		}
 

@@ -48,36 +48,47 @@ use crate::{
 };
 use core::{
 	arch::asm,
+	ops::{Deref, DerefMut},
 	ptr::{null_mut, NonNull},
 };
 use utils::{errno::AllocResult, limits::PAGE_SIZE, lock::Mutex};
 
-/// x86 paging flag. If set, prevents the CPU from updating the associated
+/// Paging entry.
+#[cfg(target_arch = "x86")]
+pub type Entry = u32;
+/// Paging entry.
+#[cfg(target_arch = "x86_64")]
+pub type Entry = u64;
+
+#[cfg(target_arch = "x86_64")]
+/// **x86 paging flag**: If set, execution of instruction is disabled.
+pub const FLAG_XD: Entry = 1 << 63;
+/// **x86 paging flag**: If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.
-pub const FLAG_GLOBAL: u32 = 0b100000000;
-/// x86 paging flag. If set, pages are 4 MB long.
-pub const FLAG_PAGE_SIZE: u32 = 0b010000000;
-/// x86 paging flag. Indicates that the page has been written.
-pub const FLAG_DIRTY: u32 = 0b001000000;
-/// x86 paging flag. Set if the page has been read or written.
-pub const FLAG_ACCESSED: u32 = 0b000100000;
-/// x86 paging flag. If set, page will not be cached.
-pub const FLAG_CACHE_DISABLE: u32 = 0b000010000;
-/// x86 paging flag. If set, write-through caching is enabled.
+pub const FLAG_GLOBAL: Entry = 0b100000000;
+/// **x86 paging flag**: If set, pages are 4 MB long.
+pub const FLAG_PAGE_SIZE: Entry = 0b010000000;
+/// **x86 paging flag**: Indicates that the page has been written.
+pub const FLAG_DIRTY: Entry = 0b001000000;
+/// **x86 paging flag**: Set if the page has been read or written.
+pub const FLAG_ACCESSED: Entry = 0b000100000;
+/// **x86 paging flag**: If set, page will not be cached.
+pub const FLAG_CACHE_DISABLE: Entry = 0b000010000;
+/// **x86 paging flag**: If set, write-through caching is enabled.
 /// If not, then write-back is enabled instead.
-pub const FLAG_WRITE_THROUGH: u32 = 0b000001000;
-/// x86 paging flag. If set, the page can be accessed by userspace operations.
-pub const FLAG_USER: u32 = 0b000000100;
-/// x86 paging flag. If set, the page can be written.
-pub const FLAG_WRITE: u32 = 0b000000010;
-/// x86 paging flag. If set, the page is present.
-pub const FLAG_PRESENT: u32 = 0b000000001;
+pub const FLAG_WRITE_THROUGH: Entry = 0b000001000;
+/// **x86 paging flag**: If set, the page can be accessed by userspace operations.
+pub const FLAG_USER: Entry = 0b000000100;
+/// **x86 paging flag**: If set, the page can be written.
+pub const FLAG_WRITE: Entry = 0b000000010;
+/// **x86 paging flag**: If set, the page is present.
+pub const FLAG_PRESENT: Entry = 0b000000001;
 
 /// Flags mask in a page directory entry.
-pub const FLAGS_MASK: u32 = 0xfff;
+pub const FLAGS_MASK: Entry = 0xfff;
 /// Address mask in a page directory entry. The address doesn't need every byte
 /// since it must be page-aligned.
-pub const ADDR_MASK: u32 = !FLAGS_MASK;
+pub const ADDR_MASK: Entry = !FLAGS_MASK;
 
 /// x86 page fault flag. If set, the page was present.
 pub const PAGE_FAULT_PRESENT: u32 = 0b00001;
@@ -95,16 +106,32 @@ pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
 /// The number of entries in a table.
-pub(super) const ENTRIES_PER_TABLE: usize = 1024;
+pub const ENTRIES_PER_TABLE: usize = if cfg!(target_arch = "x86") { 1024 } else { 512 };
 /// The number of tables reserved for the userspace.
 ///
 /// Those tables start at the beginning of the page directory. Remaining tables are reserved for
 /// the kernel.
-pub(super) const USERSPACE_TABLES: usize = 768;
-/// Paging table.
-pub(super) type Table = [u32; ENTRIES_PER_TABLE];
+pub const USERSPACE_TABLES: usize = if cfg!(target_arch = "x86") { 768 } else { 256 };
 /// Kernel space entries flags.
-const KERNEL_FLAGS: u32 = FLAG_PRESENT | FLAG_WRITE | FLAG_USER | FLAG_GLOBAL;
+const KERNEL_FLAGS: Entry = FLAG_PRESENT | FLAG_WRITE | FLAG_USER | FLAG_GLOBAL;
+
+/// Paging table.
+#[repr(C, align(4096))]
+pub struct Table(pub [Entry; ENTRIES_PER_TABLE]);
+
+impl Deref for Table {
+	type Target = [Entry; ENTRIES_PER_TABLE];
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl DerefMut for Table {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
+	}
+}
 
 /// Kernel space paging tables common to every context.
 static KERNEL_TABLES: Mutex<[*mut Table; 256]> =
@@ -116,7 +143,7 @@ static KERNEL_TABLES: Mutex<[*mut Table; 256]> =
 fn alloc_table() -> AllocResult<NonNull<Table>> {
 	let mut table = buddy::alloc_kernel(0)?.cast::<Table>();
 	unsafe {
-		table.as_mut().fill(0);
+		table.as_mut().0.fill(0);
 	}
 	Ok(table)
 }
@@ -134,11 +161,11 @@ unsafe fn free_table(table: NonNull<Table>) {
 ///
 /// Invalid flags are ignored and the [`FLAG_PRESENT`] flag is inserted automatically.
 #[inline]
-fn to_entry(addr: PhysAddr, flags: u32) -> u32 {
+fn to_entry(addr: PhysAddr, flags: Entry) -> Entry {
 	// Sanitize flags
 	let flags = flags & FLAGS_MASK | FLAG_PRESENT;
 	// Address alignment guarantees the address does not overlap flags
-	addr.0 as u32 | flags
+	addr.0 as Entry | flags
 }
 
 /// Turns an entry back into an object/flags pair.
@@ -147,7 +174,7 @@ fn to_entry(addr: PhysAddr, flags: u32) -> u32 {
 ///
 /// If the object's address in the entry is invalid, the behaviour is undefined.
 #[inline]
-unsafe fn unwrap_entry(entry: u32) -> (NonNull<Table>, u32) {
+unsafe fn unwrap_entry(entry: Entry) -> (NonNull<Table>, Entry) {
 	let table = PhysAddr((entry & ADDR_MASK) as usize)
 		.kernel_to_virtual()
 		.unwrap()
@@ -167,7 +194,7 @@ mod table {
 	/// This function allocates a new page table and fills it so that the memory mapping keeps the
 	/// same behavior.
 	pub fn expand(parent: &mut Table, index: usize) -> AllocResult<()> {
-		let entry = parent[index];
+		let entry = parent.0[index];
 		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE == 0 {
 			return Ok(());
 		}
@@ -223,7 +250,7 @@ fn get_addr_element_index(addr: VirtAddr, level: usize) -> usize {
 }
 
 /// Returns the corresponding entry for [`translate`].
-fn translate_impl(page_dir: &Table, addr: VirtAddr) -> Option<u32> {
+fn translate_impl(page_dir: &Table, addr: VirtAddr) -> Option<Entry> {
 	// First level
 	let index = get_addr_element_index(addr, 1);
 	let entry_val = page_dir[index];
@@ -262,7 +289,7 @@ pub(super) struct Rollback {
 	virtaddr: VirtAddr,
 	/// Previous entry in the page table, unless the [`FLAG_PAGE_SIZE`] flag is set, in which case
 	/// the entry is the page directory.
-	previous_entry: u32,
+	previous_entry: Entry,
 	/// The table that was deleted, if any.
 	table: Option<NonNull<Table>>,
 }
@@ -324,7 +351,7 @@ pub(super) unsafe fn map(
 	page_dir: &mut Table,
 	physaddr: PhysAddr,
 	virtaddr: VirtAddr,
-	flags: u32,
+	flags: Entry,
 ) -> AllocResult<Rollback> {
 	// Sanitize
 	let physaddr = PhysAddr(physaddr.0 & !(PAGE_SIZE - 1));
