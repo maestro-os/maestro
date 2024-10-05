@@ -44,30 +44,30 @@ SECTIONS
 		*(.boot.stack)
 	}
 
-	. = 0xc0200000;
+	. = 0xffff000000200000;
 
-	.text : AT (ADDR (.text) - 0xc0000000) ALIGN(4K)
+	.text : AT (ADDR (.text) - 0xffff000000000000) ALIGN(4K)
 	{
 		*(.text*)
 	}
 
-	.rodata : AT (ADDR (.rodata) - 0xc0000000) ALIGN(4K)
+	.rodata : AT (ADDR (.rodata) - 0xffff000000000000) ALIGN(4K)
 	{
 		*(.rodata*)
 	}
 
-	.user : AT (ADDR (.user) - 0xc0000000) ALIGN(4K)
+	.user : AT (ADDR (.user) - 0xffff000000000000) ALIGN(4K)
 	{
 	    *(.user*)
 	}
 
-	.bss : AT (ADDR (.bss) - 0xc0000000) ALIGN(4K)
+	.bss : AT (ADDR (.bss) - 0xffff000000000000) ALIGN(4K)
 	{
 		*(COMMON)
 		*(.bss*)
 	}
 
-	.data : AT (ADDR (.data) - 0xc0000000) ALIGN(4K)
+	.data : AT (ADDR (.data) - 0xffff000000000000) ALIGN(4K)
 	{
 		*(.data*)
 	}

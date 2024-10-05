@@ -243,10 +243,39 @@ arch_setup:
 	mov eax, cr0
 	or eax, 0x80010000
 	mov cr0, eax
-	
-	# TODO init GDT
+
+	# Update stack
+    add rsp, 0xffff000000000000
+
+    # Copy GDT to its physical address
+	mov rsi, offset INIT_GDT
+	mov rdi, {GDT_VIRT_ADDR}
+	mov rcx, {GDT_SIZE}
+	rep movsb
+
+	# Load GDT
+	sub rsp, 10
+	mov word ptr [rsp], ({GDT_SIZE} - 1)
+	mov qword ptr [rsp + 2], {GDT_VIRT_ADDR}
+	lgdt [rsp]
+	add rsp, 6
+	mov rax, offset complete_flush
+	push 8 # kernel code segment
+	push rax
+	retf
+complete_flush:
+	mov ax, 16 # kernel data segment
+	mov ds, ax
+	mov es, ax
+	mov ss, ax
+
+	mov ax, 0
+	mov fs, ax
+	mov gs, ax
 
 	ret
 "#,
+	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
+	GDT_SIZE = const(size_of::<InitGdt>()),
 	REMAP_DIR = sym REMAP_DIR
 );
