@@ -354,7 +354,7 @@ pub(crate) fn init() -> EResult<()> {
 				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
 					// Jump to `copy_fault`
 					let mut regs = regs.clone();
-					regs.eip = copy::copy_fault as _;
+					regs.eip = copy::copy_fault as usize as _;
 					// TODO cleanup
 					drop(curr_proc);
 					unsafe {

@@ -297,7 +297,7 @@ impl fmt::Debug for Regs32 {
 #[derive(Clone)]
 #[repr(C)]
 #[allow(missing_docs)]
-#[cfg(any(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 pub struct Regs64 {
 	pub rbp: u64,
 	pub rsp: u64,
