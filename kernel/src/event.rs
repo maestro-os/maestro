@@ -23,7 +23,7 @@ use crate::{
 	idt,
 	idt::pic,
 	process,
-	process::regs::Regs,
+	process::regs::Regs32,
 };
 use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
 use utils::{boxed::Box, collections::vec::Vec, errno::AllocResult, lock::IntMutex};
@@ -96,7 +96,7 @@ pub enum CallbackResult {
 /// - `ring` tells the ring at which the code was running.
 ///
 /// The return value tells which action to perform next.
-type CallbackWrapper = Box<dyn FnMut(u32, u32, &Regs, u32) -> CallbackResult>;
+type CallbackWrapper = Box<dyn FnMut(u32, u32, &Regs32, u32) -> CallbackResult>;
 
 /// Structure used to detect whenever the object owning the callback is
 /// destroyed, allowing to unregister it automatically.
@@ -144,7 +144,7 @@ static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] =
 /// If the provided ID is invalid, the function returns `None`.
 pub fn register_callback<C>(id: u32, callback: C) -> AllocResult<Option<CallbackHook>>
 where
-	C: 'static + FnMut(u32, u32, &Regs, u32) -> CallbackResult,
+	C: 'static + FnMut(u32, u32, &Regs32, u32) -> CallbackResult,
 {
 	if unlikely(id as usize >= CALLBACKS.len()) {
 		return Ok(None);
@@ -191,7 +191,7 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 /// - `regs` is the state of the registers at the moment of the interrupt
 /// - `ring` tells the ring at which the code was running
 #[no_mangle]
-extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &mut Regs) {
+extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &mut Regs32) {
 	// Feed entropy pool
 	{
 		let mut pool = rand::ENTROPY_POOL.lock();

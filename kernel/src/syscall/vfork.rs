@@ -21,14 +21,14 @@
 //! program. During that time, the child process also shares the same memory
 //! space as the parent.
 
-use crate::process::{regs::Regs, scheduler, ForkOptions, Process};
+use crate::process::{regs::Regs32, scheduler, ForkOptions, Process};
 use utils::{
 	errno::{EResult, Errno},
 	lock::IntMutex,
 	ptr::arc::Arc,
 };
 
-pub fn vfork(proc: Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
+pub fn vfork(proc: Arc<IntMutex<Process>>, regs: &Regs32) -> EResult<usize> {
 	let new_pid = {
 		let fork_options = ForkOptions {
 			vfork: true,

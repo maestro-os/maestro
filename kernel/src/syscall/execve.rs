@@ -26,7 +26,7 @@ use crate::{
 		exec,
 		exec::{ExecInfo, ProgramImage},
 		mem_space::copy::{SyscallArray, SyscallString},
-		regs::Regs,
+		regs::Regs32,
 		scheduler::SCHEDULER,
 		Process,
 	},
@@ -148,7 +148,7 @@ fn do_exec(
 	rs: &ResolutionSettings,
 	argv: Vec<String>,
 	envp: Vec<String>,
-) -> EResult<Regs> {
+) -> EResult<Regs32> {
 	let program_image = build_image(file, rs, argv, envp)?;
 	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();

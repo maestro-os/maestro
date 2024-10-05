@@ -20,7 +20,7 @@
 
 use crate::{
 	file::perm::AccessProfile,
-	process::{regs::Regs, Process},
+	process::{regs::Regs32, Process},
 };
 use utils::errno::EResult;
 

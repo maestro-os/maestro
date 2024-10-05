@@ -72,7 +72,7 @@ use core::{
 };
 use mem_space::MemSpace;
 use pid::Pid;
-use regs::Regs;
+use regs::Regs32;
 use rusage::RUsage;
 use signal::{Signal, SignalAction, SignalHandler};
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -247,7 +247,7 @@ pub struct Process {
 	process_group: Vec<Pid>,
 
 	/// The last saved registers state.
-	pub regs: Regs,
+	pub regs: Regs32,
 	/// Tells whether the process was executing a system call.
 	pub syscalling: bool,
 
@@ -298,7 +298,7 @@ pub(crate) fn init() -> EResult<()> {
 	TSS::init();
 	scheduler::init()?;
 	// Register interruption callbacks
-	let callback = |id: u32, _code: u32, regs: &Regs, ring: u32| {
+	let callback = |id: u32, _code: u32, regs: &Regs32, ring: u32| {
 		if ring < 3 {
 			return CallbackResult::Panic;
 		}
@@ -317,7 +317,7 @@ pub(crate) fn init() -> EResult<()> {
 			// General Protection Fault
 			0x0d => {
 				// Get the instruction opcode
-				let ptr = SyscallPtr::<u8>::from_syscall_arg(regs.eip);
+				let ptr = SyscallPtr::<u8>::from_syscall_arg(regs.eip as _);
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {
@@ -332,9 +332,9 @@ pub(crate) fn init() -> EResult<()> {
 		}
 		CallbackResult::Continue
 	};
-	let page_fault_callback = |_id: u32, code: u32, regs: &Regs, ring: u32| {
+	let page_fault_callback = |_id: u32, code: u32, regs: &Regs32, ring: u32| {
 		let accessed_addr = VirtAddr(register_get!("cr2"));
-		let pc = regs.eip;
+		let pc = regs.eip as usize;
 		// Get current process
 		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
@@ -354,7 +354,7 @@ pub(crate) fn init() -> EResult<()> {
 				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
 					// Jump to `copy_fault`
 					let mut regs = regs.clone();
-					regs.eip = copy::copy_fault as usize;
+					regs.eip = copy::copy_fault as _;
 					// TODO cleanup
 					drop(curr_proc);
 					unsafe {
@@ -460,7 +460,7 @@ impl Process {
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs: Regs::default(),
+			regs: Regs32::default(),
 			syscalling: false,
 
 			waitable: false,
@@ -1057,7 +1057,7 @@ impl Drop for Process {
 	}
 }
 
-fn yield_current_impl(regs: &mut Regs) -> bool {
+fn yield_current_impl(regs: &mut Regs32) -> bool {
 	let proc_mutex = Process::current();
 	let mut proc = proc_mutex.lock();
 	// If the process is not running anymore, do not resume execution
@@ -1111,7 +1111,7 @@ fn yield_current_impl(regs: &mut Regs) -> bool {
 /// This function may not return in some cases (example: the process has been turned into a
 /// Zombie). It is the caller's responsibility to drop all objects on the stack that need it, in
 /// order to avoid unintended side effects.
-pub fn yield_current(ring: u32, regs: &mut Regs) {
+pub fn yield_current(ring: u32, regs: &mut Regs32) {
 	// If returning to kernelspace, do nothing
 	if ring < 3 {
 		return;
