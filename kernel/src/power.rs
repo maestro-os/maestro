@@ -63,11 +63,7 @@ pub fn reboot() -> ! {
 	}
 	// Third try: triple fault
 	unsafe {
-		asm!(
-			"push 0xffff",
-			"push 0",
-			"retf"
-		);
+		asm!("push 0xffff", "push 0", "retf");
 	}
 	unreachable!();
 }
