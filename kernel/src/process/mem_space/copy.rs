@@ -20,7 +20,6 @@
 
 use crate::{memory::vmem, process::mem_space::bound_check, syscall::FromSyscallArg};
 use core::{
-	arch::global_asm,
 	cmp::min,
 	fmt,
 	intrinsics::{likely, unlikely},
@@ -35,35 +34,6 @@ use utils::{
 	errno::EResult,
 	limits::PAGE_SIZE,
 };
-
-// TODO optimize copy
-global_asm!(
-	r"
-.global raw_copy
-.global copy_fault
-
-raw_copy:
-	push esi
-	push edi
-
-	mov esi, 12[esp]
-	mov edi, 16[esp]
-	mov ecx, 20[esp]
-
-	rep movsb
-
-	pop edi
-	pop esi
-	mov eax, 1
-	ret
-
-copy_fault:
-	pop edi
-	pop esi
-	xor eax, eax
-	ret
-"
-);
 
 extern "C" {
 	/// Copy, with access check. On success, the function returns `true`.

@@ -49,11 +49,11 @@ pub mod vmem;
 /// Address of the beginning of the allocatable region in the virtual memory.
 pub const ALLOC_BEGIN: VirtAddr = VirtAddr(0x40000000);
 /// Address of the end of the virtual memory reserved to the process.
-pub const PROCESS_END: VirtAddr = if cfg!(target_arch = "x86") {
-	VirtAddr(0xc0000000)
-} else {
-	VirtAddr(800000000000)
-};
+#[cfg(target_arch = "x86")]
+pub const PROCESS_END: VirtAddr = VirtAddr(0xc0000000);
+/// Address of the end of the virtual memory reserved to the process.
+#[cfg(target_arch = "x86_64")]
+pub const PROCESS_END: VirtAddr = VirtAddr(800000000000);
 
 /// The size of the kernelspace virtual memory in bytes.
 pub const KERNELSPACE_SIZE: usize = usize::MAX - PROCESS_END.0 + 1;

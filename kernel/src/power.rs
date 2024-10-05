@@ -63,7 +63,11 @@ pub fn reboot() -> ! {
 	}
 	// Third try: triple fault
 	unsafe {
-		asm!("jmp 0xffff, 0");
+		asm!(
+			"push 0xffff",
+			"push 0",
+			"retf"
+		);
 	}
 	unreachable!();
 }

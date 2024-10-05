@@ -93,6 +93,7 @@ extern "C" {
 // Common initialization code
 global_asm!(
 	r#"
+.code32
 .section .boot.text, "ax"
 
 # Multiboot2 kernel header
@@ -128,6 +129,8 @@ header_end:
 multiboot_entry:
 	mov esp, offset boot_stack_begin
 	xor ebp, ebp
+	push 0
+	popfd
 
 	push ebx
 	push eax
@@ -152,11 +155,9 @@ boot_stack_begin:"#
 #[cfg(target_arch = "x86")]
 global_asm!(
 	r#"
-arch_setup:
-	# Init flags
-	push 0
-	popfd
+.section .boot.text
 
+arch_setup:
     # Copy GDT to its physical address
 	mov esi, offset INIT_GDT
 	mov edi, {GDT_PHYS_ADDR}
@@ -219,11 +220,10 @@ complete_flush:
 #[cfg(target_arch = "x86_64")]
 global_asm!(
 	r#"
-arch_setup:
-	# Init flags
-	push 0
-	popfq
+.code32
+.section .boot.text
 
+arch_setup:
     # Set page directory
     mov eax, offset {REMAP_DIR}
 	mov cr3, eax
@@ -244,8 +244,10 @@ arch_setup:
 	or eax, 0x80010000
 	mov cr0, eax
 
+.code64
 	# Update stack
-    add rsp, 0xffff000000000000
+	mov rax, 0xffff000000000000
+    add rsp, rax
 
     # Copy GDT to its physical address
 	mov rsi, offset INIT_GDT
@@ -256,7 +258,8 @@ arch_setup:
 	# Load GDT
 	sub rsp, 10
 	mov word ptr [rsp], ({GDT_SIZE} - 1)
-	mov qword ptr [rsp + 2], {GDT_VIRT_ADDR}
+	mov rax, {GDT_VIRT_ADDR}
+	mov qword ptr [rsp + 2], rax
 	lgdt [rsp]
 	add rsp, 6
 	mov rax, offset complete_flush

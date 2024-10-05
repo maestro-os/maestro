@@ -452,21 +452,16 @@ pub(super) unsafe fn unmap(page_dir: &mut Table, virtaddr: VirtAddr) -> AllocRes
 
 /// Binds the given page directory to the current CPU.
 ///
-/// If paging is not enabled, the function enables it.
-///
 /// # Safety
 ///
 /// The caller must ensure the given page directory is correct.
 /// Meaning it must be mapping the kernel's code and data sections, and any regions of memory that
 /// might be accessed in the future.
+#[inline]
 pub(super) unsafe fn bind(page_dir: PhysAddr) {
 	asm!(
-		"mov cr3, {dir}",
-		"mov {tmp}, cr0",
-		"or {tmp}, 0x80010000",
-		"mov cr0, {tmp}",
-		dir = in(reg) page_dir.0,
-		tmp = out(reg) _,
+		"mov cr0, {dir}",
+		dir = in(reg) page_dir.0
 	)
 }
 

@@ -46,6 +46,7 @@ pub unsafe extern "C" fn signal_trampoline(
 	// Call the signal handler
 	handler(sig as _);
 	// Call `sigreturn` to end signal handling
+	#[cfg(target_arch = "x86")]
 	asm!(
 		"mov esp, {}",
 		"int 0x80",
@@ -53,5 +54,14 @@ pub unsafe extern "C" fn signal_trampoline(
 		in(reg) ctx.uc_stack,
 		in("eax") SIGRETURN_ID,
 		options(noreturn)
-	)
+	);
+	#[cfg(target_arch = "x86_64")]
+	asm!(
+		"mov rsp, {}",
+		"sysenter",
+		"ud2",
+		in(reg) ctx.uc_stack,
+		in("rax") SIGRETURN_ID,
+		options(noreturn)
+	);
 }

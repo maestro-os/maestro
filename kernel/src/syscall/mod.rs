@@ -979,6 +979,7 @@ extern "C" {
 }
 
 // Implementation of `syscall`
+#[cfg(target_arch = "x86")]
 global_asm!(
 	r#"
 .include "src/process/regs/regs.s"

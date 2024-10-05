@@ -65,7 +65,11 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		use core::ptr;
 
 		crate::println!("--- Callstack ---");
-		let ebp = ptr::with_exposed_provenance(register_get!("ebp"));
+		#[cfg(target_arch = "x86")]
+		let frame = register_get!("ebp");
+		#[cfg(target_arch = "x86_64")]
+		let frame = register_get!("rbp");
+		let ebp = ptr::with_exposed_provenance(frame);
 		let mut callstack: [VirtAddr; 8] = [VirtAddr::default(); 8];
 		unsafe {
 			debug::get_callstack(ebp, &mut callstack);
