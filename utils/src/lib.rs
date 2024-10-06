@@ -162,8 +162,8 @@ impl<T: Clone + Sized> TryClone for T {
 	}
 }
 
-/// Same as the [`alloc::borrow::ToOwned`] trait, but the operation can fail (on memory allocation
-/// failure, for example).
+/// Same as the `ToOwned` trait, but the operation can fail (on memory allocation failure, for
+/// example).
 pub trait TryToOwned {
 	/// The resulting type after obtaining ownership.
 	type Owned: Borrow<Self>;

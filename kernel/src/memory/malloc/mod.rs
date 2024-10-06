@@ -17,8 +17,6 @@
  */
 
 //! This module implements the global memory allocator for kernelside operations.
-//!
-//! The allocator is accessible through [`alloc::alloc::Global`].
 
 mod block;
 mod chunk;
