@@ -19,12 +19,12 @@
 //! A dynamically-resizable array of elements.
 
 use crate::{
+	__alloc, __dealloc, __realloc,
 	errno::{AllocResult, CollectResult},
 	TryClone,
 };
-use alloc::alloc::Global;
 use core::{
-	alloc::{AllocError, Allocator, Layout},
+	alloc::{AllocError, Layout},
 	cmp::max,
 	fmt,
 	hash::{Hash, Hasher},
@@ -60,14 +60,17 @@ impl<T> RawVec<T> {
 			self.free();
 			return Ok(());
 		}
+		let old_layout = Layout::array::<T>(self.capacity).unwrap();
 		let new_layout = Layout::array::<T>(capacity).map_err(|_| AllocError)?;
-		let new = if self.capacity > 0 {
-			let old_layout = Layout::array::<T>(self.capacity).unwrap();
-			// SAFETY: memory is rewritten when the object is placed into the vector
-			unsafe { Global.grow(self.data.cast(), old_layout, new_layout)? }.cast()
-		} else {
-			Global.allocate(new_layout)?.cast()
-		};
+		let new = unsafe {
+			if self.capacity > 0 {
+				// SAFETY: memory is rewritten when the object is placed into the vector
+				__realloc(self.data.cast(), old_layout, new_layout.size())?
+			} else {
+				__alloc(new_layout)?
+			}
+		}
+		.cast();
 		self.data = new;
 		self.capacity = capacity;
 		Ok(())
@@ -81,7 +84,7 @@ impl<T> RawVec<T> {
 		let layout = Layout::array::<T>(self.capacity).unwrap();
 		// SAFETY: the underlying data is no longer used
 		unsafe {
-			Global.deallocate(self.data.cast(), layout);
+			__dealloc(self.data.cast(), layout);
 		}
 		self.capacity = 0;
 	}

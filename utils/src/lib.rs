@@ -43,7 +43,6 @@
 #![feature(unsize)]
 #![deny(fuzzy_provenance_casts)]
 
-extern crate alloc;
 extern crate self as utils;
 
 pub mod boxed;
@@ -57,14 +56,16 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use crate::errno::AllocResult;
 use core::{
-	alloc::AllocError,
+	alloc::{AllocError, Layout},
 	borrow::Borrow,
 	cmp::min,
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Write,
 	mem::size_of,
+	ptr::NonNull,
 	slice, write,
 };
 
@@ -76,6 +77,17 @@ extern "C" {
 	fn memcmp(dest: *const c_void, src: *const c_void, n: usize) -> c_int;
 	fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void;
 	fn strlen(s: *const c_void) -> usize;
+}
+
+// Global allocator functions
+extern "Rust" {
+	fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>>;
+	fn __realloc(
+		ptr: NonNull<u8>,
+		old_layout: Layout,
+		new_size: usize,
+	) -> AllocResult<NonNull<[u8]>>;
+	fn __dealloc(ptr: NonNull<u8>, layout: Layout);
 }
 
 /// Aligns a pointer.

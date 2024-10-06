@@ -19,10 +19,9 @@
 //! Implementation of [`Arc`], similar to the ones present in the Rust standard
 //! library, but without the support for `Weak`.
 
-use crate::{boxed::Box, errno::AllocResult};
-use alloc::alloc::Global;
+use crate::{__alloc, __dealloc, boxed::Box, errno::AllocResult};
 use core::{
-	alloc::{AllocError, Allocator, Layout},
+	alloc::{AllocError, Layout},
 	borrow::Borrow,
 	fmt,
 	hash::{Hash, Hasher},
@@ -61,7 +60,7 @@ impl<T: ?Sized> ArcInner<T> {
 	/// - `init` is the function to initialize the object to place in the `Arc`
 	unsafe fn new<I: FnOnce(&mut T)>(ptr: *const T, init: I) -> AllocResult<NonNull<Self>> {
 		// Allocate and make usable
-		let inner = Global.allocate(Self::layout(&*ptr))?;
+		let inner = __alloc(Self::layout(&*ptr))?;
 		let inner = inner.as_ptr().with_metadata_of(ptr as *const Self);
 		let mut inner: NonNull<Self> = NonNull::new_unchecked(inner);
 		// Initialize
@@ -135,7 +134,7 @@ impl<T> Arc<T> {
 			let obj = ptr::read(&inner.obj);
 			// Free the inner structure without dropping the object since it has been read before
 			let layout = Layout::for_value(inner);
-			Global.deallocate(this.inner.cast(), layout);
+			__dealloc(this.inner.cast(), layout);
 			Some(obj)
 		}
 	}
@@ -231,7 +230,7 @@ impl<T: ?Sized> Drop for Arc<T> {
 			drop_in_place(obj);
 			// Free the inner structure
 			let layout = Layout::for_value(inner);
-			Global.deallocate(self.inner.cast(), layout);
+			__dealloc(self.inner.cast(), layout);
 		}
 	}
 }

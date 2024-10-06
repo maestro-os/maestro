@@ -18,10 +18,9 @@
 
 //! Inner table implementation for hashmaps.
 
-use crate::errno::AllocResult;
-use alloc::alloc::Global;
+use crate::{__alloc, __dealloc, errno::AllocResult};
 use core::{
-	alloc::{Allocator, Layout},
+	alloc::Layout,
 	borrow::Borrow,
 	intrinsics::{likely, unlikely},
 	iter::FusedIterator,
@@ -56,7 +55,7 @@ pub fn init_data<K, V>(capacity: usize) -> AllocResult<NonNull<u8>> {
 	let (size, ctrl_off) = buff_size::<K, V>(capacity);
 	unsafe {
 		let layout = Layout::from_size_align_unchecked(size, ALIGN);
-		let mut data = Global.allocate(layout)?;
+		let mut data = __alloc(layout)?;
 		data.as_mut()[ctrl_off..].fill(CTRL_EMPTY);
 		Ok(data.cast())
 	}
@@ -297,7 +296,7 @@ impl<K, V> Drop for RawTable<K, V> {
 		let size = buff_size::<K, V>(self.capacity).0;
 		unsafe {
 			let layout = Layout::from_size_align_unchecked(size, ALIGN);
-			Global.deallocate(self.data, layout)
+			__dealloc(self.data, layout)
 		}
 	}
 }
