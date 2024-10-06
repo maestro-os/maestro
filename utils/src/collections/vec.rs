@@ -65,7 +65,7 @@ impl<T> RawVec<T> {
 		let new = unsafe {
 			if self.capacity > 0 {
 				// SAFETY: memory is rewritten when the object is placed into the vector
-				__realloc(self.data.cast(), old_layout, new_layout.size())?
+				__realloc(self.data.cast(), old_layout, new_layout)?
 			} else {
 				__alloc(new_layout)?
 			}

@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the global memory allocator for kernelside operations.
+//! Implementation of the global memory allocator for kernelspace operations.
 
 mod block;
 mod chunk;
@@ -133,9 +133,9 @@ unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 unsafe fn __realloc(
 	ptr: NonNull<u8>,
 	old_layout: Layout,
-	new_size: usize,
+	new_layout: Layout,
 ) -> AllocResult<NonNull<[u8]>> {
-	let Some(new_size) = NonZeroUsize::new(new_size) else {
+	let Some(new_size) = NonZeroUsize::new(new_layout.size()) else {
 		__dealloc(ptr, old_layout);
 		return Ok(NonNull::slice_from_raw_parts(NonNull::dangling(), 0));
 	};

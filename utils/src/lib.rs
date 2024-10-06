@@ -80,14 +80,53 @@ extern "C" {
 }
 
 // Global allocator functions
+#[cfg(not(any(feature = "std", test)))]
 extern "Rust" {
 	fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>>;
 	fn __realloc(
 		ptr: NonNull<u8>,
 		old_layout: Layout,
-		new_size: usize,
+		new_layout: Layout,
 	) -> AllocResult<NonNull<[u8]>>;
 	fn __dealloc(ptr: NonNull<u8>, layout: Layout);
+}
+
+// If the library is compiled for userspace, make use of the `alloc` crate for allocation
+
+#[cfg(any(feature = "std", test))]
+extern crate alloc as rust_alloc;
+
+#[cfg(any(feature = "std", test))]
+#[no_mangle]
+extern "Rust" fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
+	use rust_alloc::alloc::{Allocator, Global};
+	Global.allocate(layout)
+}
+
+#[cfg(any(feature = "std", test))]
+#[no_mangle]
+unsafe extern "Rust" fn __realloc(
+	ptr: NonNull<u8>,
+	old_layout: Layout,
+	new_layout: Layout,
+) -> AllocResult<NonNull<[u8]>> {
+	use core::cmp::Ordering;
+	use rust_alloc::alloc::{Allocator, Global};
+	match new_layout.size().cmp(&old_layout.size()) {
+		Ordering::Less => unsafe { Global.shrink(ptr, old_layout, new_layout) },
+		Ordering::Greater => unsafe { Global.grow(ptr, old_layout, new_layout) },
+		Ordering::Equal => Ok(NonNull::slice_from_raw_parts(
+			NonNull::dangling(),
+			new_layout.size(),
+		)),
+	}
+}
+
+#[cfg(any(feature = "std", test))]
+#[no_mangle]
+unsafe extern "Rust" fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
+	use rust_alloc::alloc::{Allocator, Global};
+	unsafe { Global.deallocate(ptr, layout) }
 }
 
 /// Aligns a pointer.
