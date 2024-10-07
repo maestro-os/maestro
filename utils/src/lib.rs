@@ -113,8 +113,8 @@ unsafe fn __realloc(
 	use core::cmp::Ordering;
 	use rust_alloc::alloc::{Allocator, Global};
 	match new_layout.size().cmp(&old_layout.size()) {
-		Ordering::Less => unsafe { Global.shrink(ptr, old_layout, new_layout) },
-		Ordering::Greater => unsafe { Global.grow(ptr, old_layout, new_layout) },
+		Ordering::Less => Global.shrink(ptr, old_layout, new_layout),
+		Ordering::Greater => Global.grow(ptr, old_layout, new_layout),
 		Ordering::Equal => Ok(NonNull::slice_from_raw_parts(
 			NonNull::dangling(),
 			new_layout.size(),
@@ -126,7 +126,7 @@ unsafe fn __realloc(
 #[no_mangle]
 unsafe fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
 	use rust_alloc::alloc::{Allocator, Global};
-	unsafe { Global.deallocate(ptr, layout) }
+	Global.deallocate(ptr, layout);
 }
 
 /// Aligns a pointer.
