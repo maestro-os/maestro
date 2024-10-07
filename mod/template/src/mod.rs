@@ -3,7 +3,11 @@
 #![no_std]
 #![no_main]
 
-// hello module, version 1.0.0
+// Do not include kernel symbols in the module
+#[no_link]
+extern crate kernel;
+
+// Declare the module, with its dependencies
 kernel::module!([]);
 
 /// Called on module load

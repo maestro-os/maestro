@@ -43,12 +43,8 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 [profile.release]
 panic = "abort"
-rustflags = [
-    "-Zexport-executable-symbols"
-]
 
 [profile.dev]
 rustflags = [
-    "-Zexport-executable-symbols",
-    "-Cforce-frame-pointers=yes"
+	"-Cforce-frame-pointers=yes"
 ]

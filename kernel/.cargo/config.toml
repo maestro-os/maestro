@@ -1,5 +1,5 @@
 [unstable]
-build-std = ["core", "alloc"]
+build-std = ["core"]
 
 [target.x86]
 runner = "scripts/qemu.sh"
@@ -10,3 +10,6 @@ runner = "scripts/qemu.sh"
 [build]
 # Set default target
 target = "arch/x86_64/x86_64.json"
+rustflags = [
+    "-Zexport-executable-symbols"
+]
