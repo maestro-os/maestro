@@ -3,11 +3,11 @@
 #![no_std]
 #![no_main]
 
-// do not include kernel symbols in the module
+// Do not include kernel symbols in the module
 #[no_link]
 extern crate kernel;
 
-// declare the module, with its dependencies
+// Declare the module, with its dependencies
 kernel::module!([]);
 
 /// Called on module load

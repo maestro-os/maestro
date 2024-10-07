@@ -123,7 +123,7 @@ unsafe fn free(mut ptr: NonNull<u8>) {
 #[no_mangle]
 unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 	let Some(size) = NonZeroUsize::new(layout.size()) else {
-		return Ok(NonNull::slice_from_raw_parts(NonNull::dangling(), 0));
+		return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
 	};
 	let ptr = alloc(size)?;
 	Ok(NonNull::slice_from_raw_parts(ptr, size.get()))
@@ -137,7 +137,7 @@ unsafe fn __realloc(
 ) -> AllocResult<NonNull<[u8]>> {
 	let Some(new_size) = NonZeroUsize::new(new_layout.size()) else {
 		__dealloc(ptr, old_layout);
-		return Ok(NonNull::slice_from_raw_parts(NonNull::dangling(), 0));
+		return Ok(NonNull::slice_from_raw_parts(new_layout.dangling(), 0));
 	};
 	let ptr = realloc(ptr, new_size)?;
 	Ok(NonNull::slice_from_raw_parts(ptr, new_size.get()))
