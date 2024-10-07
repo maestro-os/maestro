@@ -22,11 +22,10 @@
 
 use crate::{
 	errno::{AllocResult, CollectResult},
-	AllocError, TryClone,
+	AllocError, TryClone, __alloc, __dealloc,
 };
-use alloc::alloc::Global;
 use core::{
-	alloc::{Allocator, Layout},
+	alloc::Layout,
 	borrow::Borrow,
 	cell::UnsafeCell,
 	cmp::Ordering,
@@ -78,7 +77,8 @@ struct Node<K, V> {
 #[inline]
 unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
 	let node = ptr.read();
-	Global.deallocate(ptr.cast(), Layout::new::<Node<K, V>>());
+	let layout = Layout::new::<Node<K, V>>();
+	__dealloc(ptr.cast(), layout);
 	let Node::<K, V> {
 		key,
 		value,
@@ -107,11 +107,12 @@ impl<K, V> Node<K, V> {
 			key,
 			value,
 		};
-		let ptr = Global.allocate(Layout::new::<Self>())?.cast();
+		let layout = Layout::new::<Self>();
 		unsafe {
+			let ptr = __alloc(layout)?.cast();
 			ptr.write(s);
+			Ok(ptr)
 		}
-		Ok(ptr)
 	}
 
 	/// Tells whether the node is red.

@@ -16,9 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the global memory allocator for kernelside operations.
-//!
-//! The allocator is accessible through [`alloc::alloc::Global`].
+//! Implementation of the global memory allocator for kernelspace operations.
 
 mod block;
 mod chunk;
@@ -27,11 +25,12 @@ use crate::{memory, memory::malloc::ptr::NonNull};
 use block::Block;
 use chunk::Chunk;
 use core::{
-	alloc::{AllocError, GlobalAlloc, Layout},
+	alloc::{AllocError, Layout},
 	cmp::Ordering,
+	intrinsics::unlikely,
 	num::NonZeroUsize,
 	ptr,
-	ptr::{drop_in_place, null_mut},
+	ptr::drop_in_place,
 };
 use utils::{errno::AllocResult, lock::IntMutex};
 
@@ -121,42 +120,36 @@ unsafe fn free(mut ptr: NonNull<u8>) {
 	super::trace::sample("malloc", super::trace::SampleOp::Free, ptr.as_ptr() as _, 0);
 }
 
-/// The global allocator for the kernel.
-struct Malloc;
-
-unsafe impl GlobalAlloc for Malloc {
-	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-		let Some(size) = NonZeroUsize::new(layout.size()) else {
-			return null_mut();
-		};
-		alloc(size).map(|p| p.as_ptr()).unwrap_or(null_mut())
-	}
-
-	unsafe fn dealloc(&self, ptr: *mut u8, _: Layout) {
-		let Some(ptr) = NonNull::new(ptr) else {
-			return;
-		};
-		free(ptr);
-	}
-
-	unsafe fn realloc(&self, ptr: *mut u8, _: Layout, new_size: usize) -> *mut u8 {
-		let Some(ptr) = NonNull::new(ptr) else {
-			return null_mut();
-		};
-		match NonZeroUsize::new(new_size) {
-			Some(new_size) => realloc(ptr, new_size)
-				.map(|p| p.as_ptr())
-				.unwrap_or(null_mut()),
-			None => {
-				free(ptr);
-				null_mut()
-			}
-		}
-	}
+#[no_mangle]
+unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
+	let Some(size) = NonZeroUsize::new(layout.size()) else {
+		return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
+	};
+	let ptr = alloc(size)?;
+	Ok(NonNull::slice_from_raw_parts(ptr, size.get()))
 }
 
-#[global_allocator]
-static ALLOCATOR: Malloc = Malloc;
+#[no_mangle]
+unsafe fn __realloc(
+	ptr: NonNull<u8>,
+	old_layout: Layout,
+	new_layout: Layout,
+) -> AllocResult<NonNull<[u8]>> {
+	let Some(new_size) = NonZeroUsize::new(new_layout.size()) else {
+		__dealloc(ptr, old_layout);
+		return Ok(NonNull::slice_from_raw_parts(new_layout.dangling(), 0));
+	};
+	let ptr = realloc(ptr, new_size)?;
+	Ok(NonNull::slice_from_raw_parts(ptr, new_size.get()))
+}
+
+#[no_mangle]
+unsafe fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
+	if unlikely(layout.size() == 0) {
+		return;
+	}
+	free(ptr);
+}
 
 #[cfg(test)]
 mod test {

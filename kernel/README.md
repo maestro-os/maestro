@@ -59,7 +59,7 @@ cargo run --release     # Release mode
 The following command runs unit tests in QEMU:
 
 ```sh
-cargo test
+cargo test --lib
 ```
 
 

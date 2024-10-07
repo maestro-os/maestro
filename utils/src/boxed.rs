@@ -19,10 +19,9 @@
 //! The `Box` structure allows to hold an object on the heap and handles its
 //! memory properly.
 
-use crate::{errno::AllocResult, AllocError, TryClone};
-use alloc::alloc::Global;
+use crate::{errno::AllocResult, AllocError, TryClone, __alloc, __dealloc};
 use core::{
-	alloc::{Allocator, Layout},
+	alloc::Layout,
 	borrow::{Borrow, BorrowMut},
 	fmt,
 	marker::Unsize,
@@ -49,11 +48,11 @@ impl<T> Box<T> {
 	pub fn new(value: T) -> AllocResult<Box<T>> {
 		let layout = Layout::for_value(&value);
 		let ptr = if layout.size() > 0 {
-			let ptr = Global.allocate(layout)?.cast();
 			unsafe {
+				let ptr = __alloc(layout)?.cast();
 				ptr.write(value);
+				ptr
 			}
-			ptr
 		} else {
 			// Prevent double drop
 			mem::forget(value);
@@ -69,7 +68,7 @@ impl<T> Box<T> {
 		let layout = Layout::for_value(&*self);
 		unsafe {
 			let t = self.ptr.read();
-			Global.deallocate(self.ptr.cast(), layout);
+			__dealloc(self.ptr.cast(), layout);
 			mem::forget(self);
 			t
 		}
@@ -183,7 +182,7 @@ impl<T: ?Sized> Drop for Box<T> {
 				let inner = self.ptr.as_mut();
 				let layout = Layout::for_value(inner);
 				drop_in_place(inner);
-				Global.deallocate(self.ptr.cast(), layout);
+				__dealloc(self.ptr.cast(), layout);
 			}
 		}
 	}

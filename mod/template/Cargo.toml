@@ -1,7 +1,7 @@
 cargo-features = ["profile-rustflags"]
 
 [package]
-name = "module_name"
+name = "hello"
 version = "0.1.0"
 edition = "2021"
 

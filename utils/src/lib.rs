@@ -43,7 +43,6 @@
 #![feature(unsize)]
 #![deny(fuzzy_provenance_casts)]
 
-extern crate alloc;
 extern crate self as utils;
 
 pub mod boxed;
@@ -57,14 +56,16 @@ pub mod lock;
 pub mod math;
 pub mod ptr;
 
+use crate::errno::AllocResult;
 use core::{
-	alloc::AllocError,
+	alloc::{AllocError, Layout},
 	borrow::Borrow,
 	cmp::min,
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Write,
 	mem::size_of,
+	ptr::NonNull,
 	slice, write,
 };
 
@@ -76,6 +77,56 @@ extern "C" {
 	fn memcmp(dest: *const c_void, src: *const c_void, n: usize) -> c_int;
 	fn memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void;
 	fn strlen(s: *const c_void) -> usize;
+}
+
+// Global allocator functions
+#[cfg(not(any(feature = "std", test)))]
+extern "Rust" {
+	fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>>;
+	fn __realloc(
+		ptr: NonNull<u8>,
+		old_layout: Layout,
+		new_layout: Layout,
+	) -> AllocResult<NonNull<[u8]>>;
+	fn __dealloc(ptr: NonNull<u8>, layout: Layout);
+}
+
+// If the library is compiled for userspace, make use of the `alloc` crate for allocation
+
+#[cfg(any(feature = "std", test))]
+extern crate alloc as rust_alloc;
+
+#[cfg(any(feature = "std", test))]
+#[no_mangle]
+fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
+	use rust_alloc::alloc::{Allocator, Global};
+	Global.allocate(layout)
+}
+
+#[cfg(any(feature = "std", test))]
+#[no_mangle]
+unsafe fn __realloc(
+	ptr: NonNull<u8>,
+	old_layout: Layout,
+	new_layout: Layout,
+) -> AllocResult<NonNull<[u8]>> {
+	use core::cmp::Ordering;
+	use rust_alloc::alloc::{Allocator, Global};
+	match new_layout.size().cmp(&old_layout.size()) {
+		Ordering::Less => Global.shrink(ptr, old_layout, new_layout),
+		Ordering::Greater => Global.grow(ptr, old_layout, new_layout),
+		Ordering::Equal => Ok(NonNull::slice_from_raw_parts(
+			NonNull::dangling(),
+			new_layout.size(),
+		)),
+	}
+}
+
+#[cfg(any(feature = "std", test))]
+#[no_mangle]
+unsafe fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
+	use rust_alloc::alloc::{Allocator, Global};
+	Global.deallocate(ptr, layout);
 }
 
 /// Aligns a pointer.
@@ -150,8 +201,8 @@ impl<T: Clone + Sized> TryClone for T {
 	}
 }
 
-/// Same as the [`alloc::borrow::ToOwned`] trait, but the operation can fail (on memory allocation
-/// failure, for example).
+/// Same as the `ToOwned` trait, but the operation can fail (on memory allocation failure, for
+/// example).
 pub trait TryToOwned {
 	/// The resulting type after obtaining ownership.
 	type Owned: Borrow<Self>;

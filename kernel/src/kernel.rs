@@ -27,18 +27,19 @@
 #![no_std]
 #![no_main]
 #![feature(adt_const_params)]
+#![feature(alloc_layout_extra)]
 #![feature(allocator_api)]
 #![feature(allow_internal_unstable)]
 #![feature(array_chunks)]
 #![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
+#![feature(exposed_provenance)]
 #![feature(lang_items)]
 #![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
 #![feature(strict_provenance)]
 #![feature(trait_upcasting)]
-#![feature(exposed_provenance)]
 #![deny(fuzzy_provenance_casts)]
 #![deny(missing_docs)]
 #![deny(warnings)]
@@ -48,8 +49,6 @@
 #![allow(internal_features)]
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
-
-extern crate alloc;
 
 pub mod acpi;
 pub mod cmdline;
