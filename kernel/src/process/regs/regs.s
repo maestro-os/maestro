@@ -16,8 +16,10 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
+.intel_syntax noprefix
+
 /*
- * This file implements functions for the structure containing registers's states
+ * Register save/restore macros.
  */
 
 // The size in bytes of the structure storing the registers' states
@@ -30,58 +32,58 @@
  *
  * The stack frame is used as a reference to place the register values.
  */
-.macro GET_REGS n
+.macro GET_REGS
 	# Allocate space on the stack to store the registers
-	sub $REGS_SIZE, %esp
+	sub esp, REGS_SIZE
 
 	# Fill segments in the structure
-	movl $0, 0x2c(%esp)
-	mov %fs, 0x2c(%esp)
-	movl $0, 0x28(%esp)
-	mov %gs, 0x28(%esp)
+	mov dword ptr [esp + 40], 0
+	mov [esp + 40], gs
+	mov dword ptr [esp + 44], 0
+	mov [esp + 44], fs
 
 	# Fill registers in the structure
-	mov %edi, 0x24(%esp)
-	mov %esi, 0x20(%esp)
-	mov %edx, 0x1c(%esp)
-	mov %ecx, 0x18(%esp)
-	mov %ebx, 0x14(%esp)
-	mov %eax, 0x10(%esp)
+	mov [esp + 36], edi
+	mov [esp + 32], esi
+	mov [esp + 28], edx
+	mov [esp + 24], ecx
+	mov [esp + 20], ebx
+	mov [esp + 16], eax
 
-	mov 12(%ebp), %eax
-	mov %eax, 0xc(%esp) # eflags
-	mov 4(%ebp), %eax
-	mov %eax, 0x8(%esp) # eip
+	mov eax, [ebp + 12]
+	mov [esp + 12], eax # eflags
+	mov eax, [ebp + 4]
+	mov [esp + 8], eax # eip
 
     # Prevent userspace from breaking kernel
 	cld
 
 	# Save the fx state
-	mov %esp, %eax
-	add $0x30, %eax
-	push %eax
+	mov eax, esp
+	add eax, 0x30
+	push eax
 	call save_fxstate
-	add $4, %esp
+	add esp, 4
 
-	cmpl $0x8, 8(%ebp)
-	je ring0_\n
-	jmp ring3_\n
+	cmp dword ptr [ebp + 8], 0x8
+	je 0f
+	jmp 1f
 
 # If the interruption was raised while executing on ring 0
-ring0_\n:
-	mov %ebp, %eax
-	add $16, %eax
-	mov %eax, 0x4(%esp) # esp
-	jmp esp_end_\n
+0:
+	mov eax, ebp
+	add eax, 16
+	mov [esp + 4], eax # esp
+	jmp 2f
 
 # If the interruption was raised while executing on ring 3
-ring3_\n:
-	mov 16(%ebp), %eax
-	mov %eax, 0x4(%esp) # esp
+1:
+	mov eax, [ebp + 16]
+	mov [esp + 4], eax # esp
 
-esp_end_\n:
-	mov (%ebp), %eax
-	mov %eax, 0x0(%esp) # ebp
+2:
+	mov eax, [ebp]
+	mov [esp], eax # ebp
 .endm
 
 
@@ -91,24 +93,24 @@ esp_end_\n:
  */
 .macro RESTORE_REGS
 	# Restore the fx state
-	mov %esp, %eax
-	add $0x30, %eax
-	push %eax
+	mov eax, esp
+	add eax, 0x30
+	push eax
 	call restore_fxstate
-	add $4, %esp
+	add esp, 4
 
 	# Restore segments
-	mov 0x2c(%esp), %fs
-	mov 0x28(%esp), %gs
+	mov gs, [esp + 40]
+	mov fs, [esp + 44]
 
 	# Restore registers
-	mov 0x24(%esp), %edi
-	mov 0x20(%esp), %esi
-	mov 0x1c(%esp), %edx
-	mov 0x18(%esp), %ecx
-	mov 0x14(%esp), %ebx
-	mov 0x10(%esp), %eax
+	mov edi, [esp + 36]
+	mov esi, [esp + 32]
+	mov edx, [esp + 28]
+	mov ecx, [esp + 24]
+	mov ebx, [esp + 20]
+	mov eax, [esp + 16]
 
 	# Free the space allocated on the stack
-	add $REGS_SIZE, %esp
+	add esp, REGS_SIZE
 .endm

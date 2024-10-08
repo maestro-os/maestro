@@ -163,7 +163,7 @@ use crate::{
 	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
 	process,
-	process::{mem_space::MemSpace, regs::Regs, signal::Signal, Process},
+	process::{mem_space::MemSpace, regs::Regs32, signal::Signal, Process},
 };
 use _exit::_exit;
 use _llseek::_llseek;
@@ -181,7 +181,7 @@ use clock_gettime64::clock_gettime64;
 use clone::clone;
 use close::close;
 use connect::connect;
-use core::{fmt, ptr};
+use core::{arch::global_asm, fmt, ptr};
 use creat::creat;
 use delete_module::delete_module;
 use dup::dup;
@@ -316,7 +316,7 @@ pub trait SyscallHandler<'p, Args> {
 	/// - `regs` is the register state of the process at the moment of the system call.
 	///
 	/// The function returns the result of the system call.
-	fn call(self, name: &str, regs: &'p Regs) -> EResult<usize>;
+	fn call(self, name: &str, regs: &'p Regs32) -> EResult<usize>;
 }
 
 /// Implementation of [`SyscallHandler`] for functions with arguments.
@@ -327,7 +327,7 @@ macro_rules! impl_syscall_handler {
 			$($ty: FromSyscall<'p>,)*
         {
 			#[allow(non_snake_case, unused_variables)]
-            fn call(self, name: &str, regs: &'p Regs) -> EResult<usize> {
+            fn call(self, name: &str, regs: &'p Regs32) -> EResult<usize> {
 				#[cfg(feature = "strace")]
 				let pid = {
 					let pid = Process::current().lock().get_pid();
@@ -359,38 +359,38 @@ impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8);
 /// Extracts a value from the process that made a system call.
 pub trait FromSyscall<'p> {
 	/// Constructs the value from the given process or syscall argument value.
-	fn from_syscall(regs: &'p Regs) -> Self;
+	fn from_syscall(regs: &'p Regs32) -> Self;
 }
 
 impl<'p> FromSyscall<'p> for Arc<IntMutex<Process>> {
 	#[inline]
-	fn from_syscall(_regs: &'p Regs) -> Self {
+	fn from_syscall(_regs: &'p Regs32) -> Self {
 		Process::current()
 	}
 }
 
 impl FromSyscall<'_> for Arc<IntMutex<MemSpace>> {
 	#[inline]
-	fn from_syscall(_regs: &Regs) -> Self {
+	fn from_syscall(_regs: &Regs32) -> Self {
 		Process::current().lock().get_mem_space().unwrap().clone()
 	}
 }
 
 impl FromSyscall<'_> for Arc<Mutex<FileDescriptorTable>> {
 	#[inline]
-	fn from_syscall(_regs: &Regs) -> Self {
+	fn from_syscall(_regs: &Regs32) -> Self {
 		Process::current().lock().file_descriptors.clone().unwrap()
 	}
 }
 
 impl FromSyscall<'_> for AccessProfile {
-	fn from_syscall(_regs: &Regs) -> Self {
+	fn from_syscall(_regs: &Regs32) -> Self {
 		Process::current().lock().access_profile
 	}
 }
 
 impl FromSyscall<'_> for ResolutionSettings {
-	fn from_syscall(_regs: &Regs) -> Self {
+	fn from_syscall(_regs: &Regs32) -> Self {
 		ResolutionSettings::for_process(&Process::current().lock(), true)
 	}
 }
@@ -399,14 +399,14 @@ impl FromSyscall<'_> for ResolutionSettings {
 pub struct Umask(file::Mode);
 
 impl FromSyscall<'_> for Umask {
-	fn from_syscall(_regs: &Regs) -> Self {
+	fn from_syscall(_regs: &Regs32) -> Self {
 		Self(Process::current().lock().umask)
 	}
 }
 
-impl<'p> FromSyscall<'p> for &'p Regs {
+impl<'p> FromSyscall<'p> for &'p Regs32 {
 	#[inline]
-	fn from_syscall(regs: &'p Regs) -> Self {
+	fn from_syscall(regs: &'p Regs32) -> Self {
 		regs
 	}
 }
@@ -416,7 +416,7 @@ impl<'p> FromSyscall<'p> for &'p Regs {
 pub struct Args<T: fmt::Debug>(pub T);
 
 impl<T: FromSyscallArg> FromSyscall<'_> for Args<T> {
-	fn from_syscall(regs: &Regs) -> Self {
+	fn from_syscall(regs: &Regs32) -> Self {
 		let arg = T::from_syscall_arg(regs.get_syscall_arg(0));
 		#[cfg(feature = "strace")]
 		println!("({arg:?})");
@@ -430,7 +430,7 @@ macro_rules! impl_from_syscall_args {
 			#[inline]
 			#[allow(non_snake_case, unused_variables, unused_mut, unused_assignments)]
 			fn from_syscall(
-				regs: &Regs,
+				regs: &Regs32,
 			) -> Self {
 				let mut cursor = 0;
                 $(
@@ -506,7 +506,7 @@ macro_rules! syscall {
 ///
 /// If the syscall doesn't exist, the function returns `None`.
 #[inline]
-fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
+fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 	match id {
 		0x001 => Some(syscall!(_exit, regs)),
 		0x002 => Some(syscall!(fork, regs)),
@@ -951,7 +951,7 @@ fn do_syscall(id: usize, regs: &Regs) -> Option<EResult<usize>> {
 
 /// Called whenever a system call is triggered.
 #[no_mangle]
-pub extern "C" fn syscall_handler(regs: &mut Regs) {
+pub extern "C" fn syscall_handler(regs: &mut Regs32) {
 	let id = regs.get_syscall_id();
 	match do_syscall(id, regs) {
 		// Success: Set the return value
@@ -972,3 +972,52 @@ pub extern "C" fn syscall_handler(regs: &mut Regs) {
 	// If the process has been killed, handle it
 	process::yield_current(3, regs);
 }
+
+extern "C" {
+	/// The syscall interrupt handler for 32 bits.
+	pub fn syscall32();
+}
+
+// Implementation of `syscall`
+#[cfg(target_arch = "x86")]
+global_asm!(
+	r#"
+.include "src/process/regs/regs.s"
+
+.section .text
+
+.global syscall32
+.type syscall32, @function
+
+syscall32:
+	push ebp
+	mov ebp, esp
+
+	# Store registers state
+GET_REGS
+
+	# Set data segment
+	xor eax, eax
+	mov ax, 16 # kernel data segment
+	mov ds, ax
+	mov es, ax
+
+	# Call the system call handler
+	push esp
+	call syscall_handler
+	add esp, 4
+
+	# Restore data segment
+	xor eax, eax
+	mov ax, 32 # user data segment
+	or ax, 3
+	mov fs, ax
+	mov es, ax
+
+RESTORE_REGS
+
+	# Restore context
+	mov esp, ebp
+	pop ebp
+	iretd"#
+);

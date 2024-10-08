@@ -22,7 +22,13 @@
 
 pub mod pic;
 
-use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
+use crate::syscall::syscall32;
+use core::{
+	arch::{asm, global_asm},
+	ffi::c_void,
+	mem::size_of,
+	ptr::addr_of,
+};
 use utils::{
 	interrupt,
 	interrupt::{cli, sti},
@@ -49,24 +55,34 @@ pub const ENTRIES_COUNT: usize = 0x81;
 struct InterruptDescriptorTable {
 	/// The size of the IDT in bytes, minus 1.
 	size: u16,
-	/// The pointer to the beginning of the IDT.
+	/// The address to the beginning of the IDT.
+	#[cfg(target_arch = "x86")]
 	offset: u32,
+	/// The address to the beginning of the IDT.
+	#[cfg(target_arch = "x86_64")]
+	offset: u64,
 }
 
 /// An IDT entry.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct InterruptDescriptor {
-	/// Bits 0..15 of the address to the handler for the interrupt.
-	offset: u16,
+	/// Bits 0..16 of the address to the handler for the interrupt.
+	offset0: u16,
 	/// The code segment selector to execute the interrupt.
 	selector: u16,
 	/// Must be set to zero.
-	zero: u8,
+	zero0: u8,
 	/// Interrupt handler flags.
 	flags: u8,
-	/// Bits 16..31 of the address to the handler for the interrupt.
-	offset_2: u16,
+	/// Bits 16..32 of the address to the handler for the interrupt.
+	offset1: u16,
+	/// Bits 32..64 of the address to the handler for the interrupt.
+	#[cfg(target_arch = "x86_64")]
+	offset2: u32,
+	/// Must be set to zero.
+	#[cfg(target_arch = "x86_64")]
+	zero1: u32,
 }
 
 impl InterruptDescriptor {
@@ -76,11 +92,15 @@ impl InterruptDescriptor {
 	/// preventing to use `Default`.
 	const fn placeholder() -> Self {
 		Self {
-			offset: 0,
+			offset0: 0,
 			selector: 0,
-			zero: 0,
+			zero0: 0,
 			flags: 0,
-			offset_2: 0,
+			offset1: 0,
+			#[cfg(target_arch = "x86_64")]
+			offset2: 0,
+			#[cfg(target_arch = "x86_64")]
+			zero1: 0,
 		}
 	}
 
@@ -92,77 +112,219 @@ impl InterruptDescriptor {
 	/// - `flags` is the set of flags for the entry (see Intel documentation).
 	fn new(address: *const c_void, selector: u16, flags: u8) -> Self {
 		Self {
-			offset: ((address as u32) & 0xffff) as u16,
+			offset0: (address as usize & 0xffff) as u16,
 			selector,
-			zero: 0,
+			zero0: 0,
 			flags,
-			offset_2: (((address as u32) & 0xffff0000) >> utils::bit_size_of::<u16>()) as u16,
+			offset1: ((address as usize >> 16) & 0xffff) as u16,
+			#[cfg(target_arch = "x86_64")]
+			offset2: ((address as usize >> 32) & 0xffffffff) as u32,
+			#[cfg(target_arch = "x86_64")]
+			zero1: 0,
 		}
 	}
 }
 
-extern "C" {
-	fn irq0();
-	fn irq1();
-	fn irq2();
-	fn irq3();
-	fn irq4();
-	fn irq5();
-	fn irq6();
-	fn irq7();
-	fn irq8();
-	fn irq9();
-	fn irq10();
-	fn irq11();
-	fn irq12();
-	fn irq13();
-	fn irq14();
-	fn irq15();
+// include registers save/restore macros
+global_asm!(r#".include "src/process/regs/regs.s""#);
 
-	fn error0();
-	fn error1();
-	fn error2();
-	fn error3();
-	fn error4();
-	fn error5();
-	fn error6();
-	fn error7();
-	fn error8();
-	fn error9();
-	fn error10();
-	fn error11();
-	fn error12();
-	fn error13();
-	fn error14();
-	fn error15();
-	fn error16();
-	fn error17();
-	fn error18();
-	fn error19();
-	fn error20();
-	fn error21();
-	fn error22();
-	fn error23();
-	fn error24();
-	fn error25();
-	fn error26();
-	fn error27();
-	fn error28();
-	fn error29();
-	fn error30();
-	fn error31();
+/// Declare an error handler.
+///
+/// An error can be accompanied by a code, in which case the handler must be declared with the
+/// `code` keyword.
+macro_rules! error {
+	($name:ident, $id:expr) => {
+		extern "C" {
+			fn $name();
+		}
 
-	fn syscall();
+		#[cfg(target_arch = "x86")]
+		global_asm!(
+			r#"
+.global {name}
+.type {name}, @function
+
+{name}:
+	push ebp
+	mov ebp, esp
+
+	# Allocate space for registers and retrieve them
+GET_REGS
+
+	# Get the ring
+	mov eax, [ebp + 8]
+	and eax, 0b11
+
+	# Push arguments to call event_handler
+	push esp # regs
+	push eax # ring
+	push 0 # code
+	push {id}
+	call event_handler
+	add esp, 16
+
+RESTORE_REGS
+
+	# Restore the context
+	mov esp, ebp
+	pop ebp
+	iretd"#,
+			name = sym $name,
+			id = const($id)
+		);
+	};
+	($name:ident, $id:expr, code) => {
+		extern "C" {
+			fn $name();
+		}
+
+		#[cfg(target_arch = "x86")]
+		global_asm!(
+			r#"
+.global {name}
+.type {name}, @function
+
+{name}:
+	# Retrieve the error code and write it after the stack pointer so that it can be retrieved
+	# after the stack frame
+	push eax
+	mov eax, [esp + 4]
+	mov [esp - 4], eax
+	pop eax
+
+	# Remove the code from its previous location on the stack
+	add esp, 4
+
+	push ebp
+	mov ebp, esp
+
+	# Allocate space for the error code
+	push [esp - 8]
+
+	# Allocate space for registers and retrieve them
+GET_REGS
+
+	# Get the ring
+	mov eax, [ebp + 8]
+	and eax, 0b11
+
+	# Push arguments to call event_handler
+	push esp # regs
+	push eax # ring
+	push [esp + REGS_SIZE + 8] # code
+	push {id}
+	call event_handler
+	add esp, 16
+
+RESTORE_REGS
+
+	# Free the space allocated for the error code
+	add esp, 4
+
+	mov esp, ebp
+	pop ebp
+	iretd"#,
+			name = sym $name,
+			id = const($id)
+		);
+	};
 }
+
+macro_rules! irq {
+	($name:ident, $id:expr) => {
+		extern "C" {
+			fn $name();
+		}
+
+		#[cfg(target_arch = "x86")]
+		global_asm!(
+			r#"
+.global {name}
+
+{name}:
+	push ebp
+	mov ebp, esp
+
+	# Allocate space for registers and retrieve them
+GET_REGS
+
+	# Get the ring
+	mov eax, [ebp + 8]
+	and eax, 0b11
+
+	# Push arguments to call event_handler
+	push esp # regs
+	push eax # ring
+	push 0 # code
+	push ({id} + 0x20)
+	call event_handler
+	add esp, 16
+
+RESTORE_REGS
+
+	# Restore the context
+	mov ebp, ebp
+	pop ebp
+	iretd"#,
+			name = sym $name,
+			id = const($id)
+		);
+	};
+}
+
+error!(error0, 0);
+error!(error1, 1);
+error!(error2, 2);
+error!(error3, 3);
+error!(error4, 4);
+error!(error5, 5);
+error!(error6, 6);
+error!(error7, 7);
+error!(error8, 8, code);
+error!(error9, 9);
+error!(error10, 10, code);
+error!(error11, 11, code);
+error!(error12, 12, code);
+error!(error13, 13, code);
+error!(error14, 14, code);
+error!(error15, 15);
+error!(error16, 16);
+error!(error17, 17, code);
+error!(error18, 18);
+error!(error19, 19);
+error!(error20, 20);
+error!(error21, 21);
+error!(error22, 22);
+error!(error23, 23);
+error!(error24, 24);
+error!(error25, 25);
+error!(error26, 26);
+error!(error27, 27);
+error!(error28, 28);
+error!(error29, 29);
+error!(error30, 30, code);
+error!(error31, 31);
+
+irq!(irq0, 0);
+irq!(irq1, 1);
+irq!(irq2, 2);
+irq!(irq3, 3);
+irq!(irq4, 4);
+irq!(irq5, 5);
+irq!(irq6, 6);
+irq!(irq7, 7);
+irq!(irq8, 8);
+irq!(irq9, 9);
+irq!(irq10, 10);
+irq!(irq11, 11);
+irq!(irq12, 12);
+irq!(irq13, 13);
+irq!(irq14, 14);
+irq!(irq15, 15);
 
 /// The list of IDT entries.
 static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] =
 	[InterruptDescriptor::placeholder(); ENTRIES_COUNT];
-
-/// Loads the given Interrupt Descriptor Table.
-unsafe fn idt_load(idt: *const InterruptDescriptorTable) {
-	asm!("lidt [{idt}]", idt = in(reg) idt);
-}
 
 /// Executes the given function `f` with maskable interruptions disabled.
 ///
@@ -170,21 +332,16 @@ unsafe fn idt_load(idt: *const InterruptDescriptorTable) {
 /// returning.
 pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 	let int = interrupt::is_enabled();
-
-	// Here is assumed that no interruption will change eflags. Which could cause a
+	// Here is assumed that no interruption will change flags register. Which could cause a
 	// race condition
-
 	cli();
-
-	let result = f();
-
+	let res = f();
 	if int {
 		sti();
 	} else {
 		cli();
 	}
-
-	result
+	res
 }
 
 /// Initializes the IDT.
@@ -195,72 +352,65 @@ pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 pub(crate) fn init() {
 	cli();
 	pic::init(0x20, 0x28);
-
-	// Fill entries table
-	let mut entries: [InterruptDescriptor; ENTRIES_COUNT] =
-		[InterruptDescriptor::placeholder(); ENTRIES_COUNT];
-	// Errors
-	entries[0x00] = InterruptDescriptor::new(error0 as _, 0x8, 0x8e);
-	entries[0x01] = InterruptDescriptor::new(error1 as _, 0x8, 0x8e);
-	entries[0x02] = InterruptDescriptor::new(error2 as _, 0x8, 0x8e);
-	entries[0x03] = InterruptDescriptor::new(error3 as _, 0x8, 0x8e);
-	entries[0x04] = InterruptDescriptor::new(error4 as _, 0x8, 0x8e);
-	entries[0x05] = InterruptDescriptor::new(error5 as _, 0x8, 0x8e);
-	entries[0x06] = InterruptDescriptor::new(error6 as _, 0x8, 0x8e);
-	entries[0x07] = InterruptDescriptor::new(error7 as _, 0x8, 0x8e);
-	entries[0x08] = InterruptDescriptor::new(error8 as _, 0x8, 0x8e);
-	entries[0x09] = InterruptDescriptor::new(error9 as _, 0x8, 0x8e);
-	entries[0x0a] = InterruptDescriptor::new(error10 as _, 0x8, 0x8e);
-	entries[0x0b] = InterruptDescriptor::new(error11 as _, 0x8, 0x8e);
-	entries[0x0c] = InterruptDescriptor::new(error12 as _, 0x8, 0x8e);
-	entries[0x0d] = InterruptDescriptor::new(error13 as _, 0x8, 0x8e);
-	entries[0x0e] = InterruptDescriptor::new(error14 as _, 0x8, 0x8e);
-	entries[0x0f] = InterruptDescriptor::new(error15 as _, 0x8, 0x8e);
-	entries[0x10] = InterruptDescriptor::new(error16 as _, 0x8, 0x8e);
-	entries[0x11] = InterruptDescriptor::new(error17 as _, 0x8, 0x8e);
-	entries[0x12] = InterruptDescriptor::new(error18 as _, 0x8, 0x8e);
-	entries[0x13] = InterruptDescriptor::new(error19 as _, 0x8, 0x8e);
-	entries[0x14] = InterruptDescriptor::new(error20 as _, 0x8, 0x8e);
-	entries[0x15] = InterruptDescriptor::new(error21 as _, 0x8, 0x8e);
-	entries[0x16] = InterruptDescriptor::new(error22 as _, 0x8, 0x8e);
-	entries[0x17] = InterruptDescriptor::new(error23 as _, 0x8, 0x8e);
-	entries[0x18] = InterruptDescriptor::new(error24 as _, 0x8, 0x8e);
-	entries[0x19] = InterruptDescriptor::new(error25 as _, 0x8, 0x8e);
-	entries[0x1a] = InterruptDescriptor::new(error26 as _, 0x8, 0x8e);
-	entries[0x1b] = InterruptDescriptor::new(error27 as _, 0x8, 0x8e);
-	entries[0x1c] = InterruptDescriptor::new(error28 as _, 0x8, 0x8e);
-	entries[0x1d] = InterruptDescriptor::new(error29 as _, 0x8, 0x8e);
-	entries[0x1e] = InterruptDescriptor::new(error30 as _, 0x8, 0x8e);
-	entries[0x1f] = InterruptDescriptor::new(error31 as _, 0x8, 0x8e);
-	// PIC interruptions
-	entries[0x20] = InterruptDescriptor::new(irq0 as _, 0x8, 0x8e);
-	entries[0x21] = InterruptDescriptor::new(irq1 as _, 0x8, 0x8e);
-	entries[0x22] = InterruptDescriptor::new(irq2 as _, 0x8, 0x8e);
-	entries[0x23] = InterruptDescriptor::new(irq3 as _, 0x8, 0x8e);
-	entries[0x24] = InterruptDescriptor::new(irq4 as _, 0x8, 0x8e);
-	entries[0x25] = InterruptDescriptor::new(irq5 as _, 0x8, 0x8e);
-	entries[0x26] = InterruptDescriptor::new(irq6 as _, 0x8, 0x8e);
-	entries[0x27] = InterruptDescriptor::new(irq7 as _, 0x8, 0x8e);
-	entries[0x28] = InterruptDescriptor::new(irq8 as _, 0x8, 0x8e);
-	entries[0x29] = InterruptDescriptor::new(irq9 as _, 0x8, 0x8e);
-	entries[0x2a] = InterruptDescriptor::new(irq10 as _, 0x8, 0x8e);
-	entries[0x2b] = InterruptDescriptor::new(irq11 as _, 0x8, 0x8e);
-	entries[0x2c] = InterruptDescriptor::new(irq12 as _, 0x8, 0x8e);
-	entries[0x2d] = InterruptDescriptor::new(irq13 as _, 0x8, 0x8e);
-	entries[0x2e] = InterruptDescriptor::new(irq14 as _, 0x8, 0x8e);
-	entries[0x2f] = InterruptDescriptor::new(irq15 as _, 0x8, 0x8e);
-	// System calls
-	entries[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall as _, 0x8, 0xee);
-
 	// Safe because the current function is called only once at boot
 	unsafe {
-		IDT_ENTRIES = entries;
-	}
-	let idt = InterruptDescriptorTable {
-		size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
-		offset: addr_of!(IDT_ENTRIES) as _,
-	};
-	unsafe {
-		idt_load(addr_of!(idt));
+		// Errors
+		IDT_ENTRIES[0x00] = InterruptDescriptor::new(error0 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x01] = InterruptDescriptor::new(error1 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x02] = InterruptDescriptor::new(error2 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x03] = InterruptDescriptor::new(error3 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x04] = InterruptDescriptor::new(error4 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x05] = InterruptDescriptor::new(error5 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x06] = InterruptDescriptor::new(error6 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x07] = InterruptDescriptor::new(error7 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x08] = InterruptDescriptor::new(error8 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x09] = InterruptDescriptor::new(error9 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x0a] = InterruptDescriptor::new(error10 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x0b] = InterruptDescriptor::new(error11 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x0c] = InterruptDescriptor::new(error12 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x0d] = InterruptDescriptor::new(error13 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x0e] = InterruptDescriptor::new(error14 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x0f] = InterruptDescriptor::new(error15 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x10] = InterruptDescriptor::new(error16 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x11] = InterruptDescriptor::new(error17 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x12] = InterruptDescriptor::new(error18 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x13] = InterruptDescriptor::new(error19 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x14] = InterruptDescriptor::new(error20 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x15] = InterruptDescriptor::new(error21 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x16] = InterruptDescriptor::new(error22 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x17] = InterruptDescriptor::new(error23 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x18] = InterruptDescriptor::new(error24 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x19] = InterruptDescriptor::new(error25 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x1a] = InterruptDescriptor::new(error26 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x1b] = InterruptDescriptor::new(error27 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x1c] = InterruptDescriptor::new(error28 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x1d] = InterruptDescriptor::new(error29 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x1e] = InterruptDescriptor::new(error30 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x1f] = InterruptDescriptor::new(error31 as _, 0x8, 0x8e);
+		// IRQ
+		IDT_ENTRIES[0x20] = InterruptDescriptor::new(irq0 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x21] = InterruptDescriptor::new(irq1 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x22] = InterruptDescriptor::new(irq2 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x23] = InterruptDescriptor::new(irq3 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x24] = InterruptDescriptor::new(irq4 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x25] = InterruptDescriptor::new(irq5 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x26] = InterruptDescriptor::new(irq6 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x27] = InterruptDescriptor::new(irq7 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x28] = InterruptDescriptor::new(irq8 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x29] = InterruptDescriptor::new(irq9 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x2a] = InterruptDescriptor::new(irq10 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x2b] = InterruptDescriptor::new(irq11 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x2c] = InterruptDescriptor::new(irq12 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x2d] = InterruptDescriptor::new(irq13 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x2e] = InterruptDescriptor::new(irq14 as _, 0x8, 0x8e);
+		IDT_ENTRIES[0x2f] = InterruptDescriptor::new(irq15 as _, 0x8, 0x8e);
+		// System calls
+		IDT_ENTRIES[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall32 as _, 0x8, 0xee);
+		// Load
+		let idt = InterruptDescriptorTable {
+			size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
+			offset: addr_of!(IDT_ENTRIES) as _,
+		};
+		asm!("lidt [{idt}]", idt = in(reg) &idt);
 	}
 }
