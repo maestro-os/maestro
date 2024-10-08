@@ -116,8 +116,8 @@ context_switch32:
 	push (32 | 3) # data segment selector
 	push [eax + 4] # esp
 	push [eax + 12] # eflags
-	push [esp + 24] # code segment selector
-	push (24 | 3) # eip
+	push (24 | 3) # code segment selector
+	push [esp + 24] # eip
 
 	# Set eax
 	mov eax, [eax + 16]

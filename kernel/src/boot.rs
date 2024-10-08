@@ -69,17 +69,19 @@ static mut REMAP_DIR: vmem::x86::Table = const {
 	let mut i = 0;
 	while i < 256 {
 		#[cfg(target_arch = "x86")]
-		let ent = {
+		{
 			let addr = (i * PAGE_SIZE * 1024) as u32;
-			addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT
-		};
+			let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
+			dir[i] = ent;
+			dir[i + 768] = ent;
+		}
 		#[cfg(target_arch = "x86_64")]
-		let ent = {
+		{
 			let addr = (i * PAGE_SIZE * 512 * 512) as u64;
-			addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT
-		};
-		dir[i] = ent;
-		dir[i + 256] = ent;
+			let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
+			dir[i] = ent;
+			dir[i + 256] = ent;
+		}
 		i += 1;
 	}
 	vmem::x86::Table(dir)

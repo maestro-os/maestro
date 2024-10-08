@@ -460,7 +460,7 @@ pub(super) unsafe fn unmap(page_dir: &mut Table, virtaddr: VirtAddr) -> AllocRes
 #[inline]
 pub(super) unsafe fn bind(page_dir: PhysAddr) {
 	asm!(
-		"mov cr0, {dir}",
+		"mov cr3, {dir}",
 		dir = in(reg) page_dir.0
 	)
 }
