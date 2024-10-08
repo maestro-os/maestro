@@ -1,10 +1,12 @@
 # Code taken from musl. License: https://git.musl-libc.org/cgit/musl/tree/COPYRIGHT
 
+.intel_syntax noprefix
+
 .global memset
 .type memset, @function
 
 memset:
-    movzbq rax, sil
+    movzb rax, sil
     mov r8, 0x101010101010101
     imul rax, r8
 
@@ -15,7 +17,7 @@ memset:
     jz 1f
 
     mov [rdi], sil
-    mov [rdi + rdx -1], [sil]
+    mov [rdi + rdx -1], sil
     cmp edx, 2
     jbe 1f
 
@@ -69,7 +71,7 @@ memset:
     ret
 
 2:
-    xor edx,edx
+    xor edx, edx
     sub edx, edi
     and edx, 15
     mov [rdi], rax
