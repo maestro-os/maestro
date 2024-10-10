@@ -25,7 +25,7 @@ use utils::errno::EResult;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86 {
 	use super::Regs32;
-	use core::arch::{asm, global_asm};
+	use core::arch::asm;
 
 	/// The default value of the flags register.
 	pub const DEFAULT_FLAGS: usize = 0x202;
@@ -76,93 +76,6 @@ mod x86 {
 		/// `regs` is the structure of registers to restore to resume the context.
 		pub(super) fn context_switch_kernel(regs: &Regs32) -> !;
 	}
-
-	#[cfg(target_arch = "x86")]
-	global_asm!(
-		r"
-.section .text
-
-.global context_switch32
-.global context_switch_kernel
-
-.type context_switch32, @function
-.type context_switch_kernel, @function
-
-context_switch32:
-	# Restore the fx state
-	mov eax, [esp + 4]
-	add eax, 0x30
-	push eax
-	call restore_fxstate
-	add esp, 4
-
-	# Set segment registers
-	mov ax, (32 | 3)
-	mov ds, ax
-	mov es, ax
-
-	# Set registers, except eax
-	mov eax, [esp + 4]
-	mov ebp, [eax]
-	mov ebx, [eax + 20]
-	mov ecx, [eax + 24]
-	mov edx, [eax + 28]
-	mov esi, [eax + 32]
-	mov edi, [eax + 36]
-	mov gs, [eax + 40]
-	mov fs, [eax + 44]
-
-	# Place iret data on the stack
-	push (32 | 3) # data segment selector
-	push [eax + 4] # esp
-	push [eax + 12] # eflags
-	push (24 | 3) # code segment selector
-	push [esp + 24] # eip
-
-	# Set eax
-	mov eax, [eax + 16]
-
-	iretd
-
-context_switch_kernel:
-	# Restore the fx state
-	mov eax, [esp + 4]
-	add eax, 0x30
-	push eax
-	call restore_fxstate
-	add esp, 4
-
-	mov eax, [esp + 4]
-
-	# Set eflags without the interrupt flag
-	mov ebx, [eax + 12]
-	mov ecx, 512
-	not ecx
-	and ebx, ecx
-	push ebx
-	popfd
-
-	# Set registers
-	mov ebp, [eax]
-	mov esp, [eax + 4]
-	push [eax + 8] # eip
-	mov [eax + 20], ebx
-	mov [eax + 24], ecx
-	mov [eax + 28], edx
-	mov [eax + 32], esi
-	mov [eax + 36], edi
-	mov [eax + 40], gs
-	mov [eax + 44], fs
-	mov [eax + 16], eax
-
-	# Set the interrupt flag and jumping to kernel code execution
-	# (Note: These two instructions, if placed in this order are atomic on x86, meaning that an interrupt cannot happen in between)
-	sti
-	ret"
-	);
-
-	#[cfg(target_arch = "x86_64")]
-	global_asm!(r""); // TODO
 }
 
 /// The register state of a 32 bit execution context.

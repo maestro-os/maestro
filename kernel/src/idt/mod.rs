@@ -22,7 +22,7 @@
 
 pub mod pic;
 
-use crate::syscall::syscall32;
+use crate::syscall::syscall;
 use core::{
 	arch::{asm, global_asm},
 	ffi::c_void,
@@ -126,7 +126,10 @@ impl InterruptDescriptor {
 }
 
 // include registers save/restore macros
-global_asm!(r#".include "src/process/regs/regs.s""#);
+#[cfg(target_arch = "x86")]
+global_asm!(r#".include "arch/x86/src/regs.s""#);
+#[cfg(target_arch = "x86_64")]
+global_asm!(r#".include "arch/x86_64/src/regs.s""#);
 
 /// Declare an error handler.
 ///
@@ -169,6 +172,40 @@ RESTORE_REGS
 	mov esp, ebp
 	pop ebp
 	iretd"#,
+			name = sym $name,
+			id = const($id)
+		);
+
+		#[cfg(target_arch = "x86_64")]
+		global_asm!(
+			r#"
+.global {name}
+.type {name}, @function
+
+{name}:
+	push rbp
+	mov rbp, rsp
+
+	# Allocate space for registers and retrieve them
+GET_REGS
+
+	# Get the ring
+	mov rax, [rbp + 16]
+	and rax, 0b11
+
+	# Push arguments to call event_handler
+	mov rdi, rsp # regs
+	mov rsi, rax # ring
+	mov rdx, 0 # code
+	mov rcx, {id}
+	call event_handler
+
+RESTORE_REGS
+
+	# Restore the context
+	mov rsp, rbp
+	pop rbp
+	iretq"#,
 			name = sym $name,
 			id = const($id)
 		);
@@ -227,6 +264,55 @@ RESTORE_REGS
 			name = sym $name,
 			id = const($id)
 		);
+
+		#[cfg(target_arch = "x86_64")]
+		global_asm!(
+			r#"
+.global {name}
+.type {name}, @function
+
+{name}:
+	# Retrieve the error code and write it after the stack pointer so that it can be retrieved
+	# after the stack frame
+	push rax
+	mov rax, [rsp + 8]
+	mov [rsp - 8], rax
+	pop rax
+
+	# Remove the code from its previous location on the stack
+	add rsp, 8
+
+	push rbp
+	mov rbp, rsp
+
+	# Allocate space for the error code
+	push [rsp - 16]
+
+	# Allocate space for registers and retrieve them
+GET_REGS
+
+	# Get the ring
+	mov rax, [rbp + 16]
+	and rax, 0b11
+
+	# Push arguments to call event_handler
+	mov rdi, rsp # regs
+	mov rsi, rax # ring
+	mov rdx, [rsp + REGS_SIZE + 16] # code
+	mov rcx, {id}
+	call event_handler
+
+RESTORE_REGS
+
+	# Free the space allocated for the error code
+	add rsp, 8
+
+	mov rsp, rbp
+	pop rbp
+	iretq"#,
+			name = sym $name,
+			id = const($id)
+		);
 	};
 }
 
@@ -266,6 +352,39 @@ RESTORE_REGS
 	mov ebp, ebp
 	pop ebp
 	iretd"#,
+			name = sym $name,
+			id = const($id)
+		);
+
+		#[cfg(target_arch = "x86_64")]
+		global_asm!(
+			r#"
+.global {name}
+
+{name}:
+	push rbp
+	mov rbp, rsp
+
+	# Allocate space for registers and retrieve them
+GET_REGS
+
+	# Get the ring
+	mov rax, [rbp + 8]
+	and rax, 0b11
+
+	# Push arguments to call event_handler
+	mov rdi, rsp # regs
+	mov rsi, rax # ring
+	mov rdx, 0 # code
+	mov rcx, ({id} + 0x20)
+	call event_handler
+
+RESTORE_REGS
+
+	# Restore the context
+	mov rbp, rbp
+	pop rbp
+	iretq"#,
 			name = sym $name,
 			id = const($id)
 		);
@@ -405,7 +524,7 @@ pub(crate) fn init() {
 		IDT_ENTRIES[0x2e] = InterruptDescriptor::new(irq14 as _, 0x8, 0x8e);
 		IDT_ENTRIES[0x2f] = InterruptDescriptor::new(irq15 as _, 0x8, 0x8e);
 		// System calls
-		IDT_ENTRIES[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall32 as _, 0x8, 0xee);
+		IDT_ENTRIES[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall as _, 0x8, 0xee);
 		// Load
 		let idt = InterruptDescriptorTable {
 			size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,

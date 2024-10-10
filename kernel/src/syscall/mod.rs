@@ -974,50 +974,6 @@ pub extern "C" fn syscall_handler(regs: &mut Regs32) {
 }
 
 extern "C" {
-	/// The syscall interrupt handler for 32 bits.
-	pub fn syscall32();
+	/// The syscall interrupt handler.
+	pub fn syscall();
 }
-
-// Implementation of `syscall`
-#[cfg(target_arch = "x86")]
-global_asm!(
-	r#"
-.include "src/process/regs/regs.s"
-
-.section .text
-
-.global syscall32
-.type syscall32, @function
-
-syscall32:
-	push ebp
-	mov ebp, esp
-
-	# Store registers state
-GET_REGS
-
-	# Set data segment
-	xor eax, eax
-	mov ax, 16 # kernel data segment
-	mov ds, ax
-	mov es, ax
-
-	# Call the system call handler
-	push esp
-	call syscall_handler
-	add esp, 4
-
-	# Restore data segment
-	xor eax, eax
-	mov ax, 32 # user data segment
-	or ax, 3
-	mov fs, ax
-	mov es, ax
-
-RESTORE_REGS
-
-	# Restore context
-	mov esp, ebp
-	pop ebp
-	iretd"#
-);

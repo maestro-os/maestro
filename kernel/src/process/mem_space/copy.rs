@@ -37,7 +37,7 @@ use utils::{
 
 extern "C" {
 	/// Copy, with access check. On success, the function returns `true`.
-	pub fn raw_copy(src: *const u8, dst: *mut u8, n: usize) -> bool;
+	pub fn raw_copy(dst: *mut u8, src: *const u8, n: usize) -> bool;
 	/// Function to be called back when a page fault occurs while using [`raw_copy`].
 	pub fn copy_fault();
 }
@@ -49,7 +49,7 @@ unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<
 	if unlikely(!bound_check(src as _, n)) {
 		return Err(errno!(EFAULT));
 	}
-	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
+	let res = vmem::smap_disable(|| raw_copy(dst, src, n));
 	if likely(res) {
 		Ok(())
 	} else {
@@ -64,7 +64,7 @@ unsafe fn copy_to_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()
 	if unlikely(!bound_check(dst as _, n)) {
 		return Err(errno!(EFAULT));
 	}
-	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
+	let res = vmem::smap_disable(|| raw_copy(dst, src, n));
 	if likely(res) {
 		Ok(())
 	} else {

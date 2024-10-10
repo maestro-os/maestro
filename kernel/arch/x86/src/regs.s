@@ -18,12 +18,10 @@
 
 .intel_syntax noprefix
 
-/*
- * Register save/restore macros.
- */
-
 // The size in bytes of the structure storing the registers' states
 .set REGS_SIZE, 560
+
+// Register save/restore macros.
 
 /*
  * This macro stores the values of every registers after an interruption was triggered.
@@ -37,9 +35,7 @@
 	sub esp, REGS_SIZE
 
 	# Fill segments in the structure
-	mov dword ptr [esp + 40], 0
 	mov [esp + 40], gs
-	mov dword ptr [esp + 44], 0
 	mov [esp + 44], fs
 
 	# Fill registers in the structure
@@ -86,11 +82,7 @@
 	mov [esp], eax # ebp
 .endm
 
-
-
-/*
- * This macro restores the registers' states and frees the space allocated by the function GET_REGS.
- */
+// Macro restoring the registers' states and freeing the space allocated by GET_REGS
 .macro RESTORE_REGS
 	# Restore the fx state
 	mov eax, esp

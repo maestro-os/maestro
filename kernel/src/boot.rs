@@ -125,22 +125,6 @@ entry_address_tag_end:
 	.long 8
 header_end:
 
-.global multiboot_entry
-.type multiboot_entry, @function
-
-multiboot_entry:
-	mov esp, offset boot_stack_begin
-	xor ebp, ebp
-	push 0
-	popfd
-
-	push ebx
-	push eax
-	call arch_setup
-	call kernel_main
-	# `kernel_main` cannot return
-	ud2
-
 .section .boot.stack, "aw"
 
 .align 8
@@ -159,7 +143,20 @@ global_asm!(
 	r#"
 .section .boot.text
 
-arch_setup:
+.global multiboot_entry
+.hidden complete_flush
+.type multiboot_entry, @function
+
+multiboot_entry:
+	mov esp, offset boot_stack_begin
+	xor ebp, ebp
+	push 0
+	popfd
+
+	# Stash multiboot info
+	push ebx
+	push eax
+
     # Copy GDT to its physical address
 	mov esi, offset INIT_GDT
 	mov edi, {GDT_PHYS_ADDR}
@@ -210,7 +207,9 @@ complete_flush:
 	lgdt [esp]
 	add esp, 6
 
-	ret
+	call kernel_main
+	# cannot return
+	ud2
 "#,
 	GDT_PHYS_ADDR = const(GDT_PHYS_ADDR.0),
 	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
@@ -225,7 +224,20 @@ global_asm!(
 .code32
 .section .boot.text
 
-arch_setup:
+.global multiboot_entry
+.hidden complete_flush
+.type multiboot_entry, @function
+
+multiboot_entry:
+	mov esp, offset boot_stack_begin
+	xor ebp, ebp
+	push 0
+	popfd
+
+	# Stash multiboot info
+	push ebx
+	push eax
+
     # Set page directory
     mov eax, offset {REMAP_DIR}
 	mov cr3, eax
@@ -278,7 +290,14 @@ complete_flush:
 	mov fs, ax
 	mov gs, ax
 
-	ret
+	xor rsi, rsi
+	mov esi, dword ptr [rsp]
+	xor rdi, rdi
+	mov edi, dword ptr [rsp + 4]
+	add rsp, 8
+	call kernel_main
+	# cannot return
+	ud2
 "#,
 	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
 	GDT_SIZE = const(size_of::<InitGdt>()),

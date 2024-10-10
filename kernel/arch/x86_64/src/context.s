@@ -16,33 +16,37 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// Copy from/to userspace
-
 .intel_syntax noprefix
 
-.section .text
+.include "arch/x86_64/src/regs.s"
 
-.global raw_copy
-.global copy_fault
+// Context switch functions
 
-// TODO can be optimized
-raw_copy:
-	push esi
-	push edi
+.global context_switch32
+.global context_switch64
+.global context_switch_kernel
 
-	mov edi, 12[esp]
-	mov esi, 16[esp]
-	mov ecx, 20[esp]
+.type context_switch32, @function
+.type context_switch64, @function
+.type context_switch_kernel, @function
 
-	rep movsb
+context_switch32:
+    # TODO
+    ud2
 
-	pop edi
-	pop esi
-	mov eax, 1
-	ret
+context_switch64:
+    # TODO
+    ud2
 
-copy_fault:
-	pop edi
-	pop esi
-	xor eax, eax
-	ret
+context_switch_kernel:
+    # TODO
+    ud2
+
+// System calls handler
+
+.global syscall
+.type syscall, @function
+
+syscall:
+    # TODO
+    ud2

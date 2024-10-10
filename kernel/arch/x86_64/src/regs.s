@@ -16,33 +16,17 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// Copy from/to userspace
-
 .intel_syntax noprefix
 
-.section .text
+// The size in bytes of the structure storing the registers' states
+.set REGS_SIZE, 664
 
-.global raw_copy
-.global copy_fault
+// Register save/restore macros.
 
-// TODO can be optimized
-raw_copy:
-	push esi
-	push edi
+.macro GET_REGS
+    # TODO
+.endm
 
-	mov edi, 12[esp]
-	mov esi, 16[esp]
-	mov ecx, 20[esp]
-
-	rep movsb
-
-	pop edi
-	pop esi
-	mov eax, 1
-	ret
-
-copy_fault:
-	pop edi
-	pop esi
-	xor eax, eax
-	ret
+.macro RESTORE_REGS
+    # TODO
+.endm

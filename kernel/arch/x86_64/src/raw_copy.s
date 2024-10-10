@@ -27,22 +27,11 @@
 
 // TODO can be optimized
 raw_copy:
-	push esi
-	push edi
-
-	mov edi, 12[esp]
-	mov esi, 16[esp]
-	mov ecx, 20[esp]
-
+    mov rcx, rdx
 	rep movsb
-
-	pop edi
-	pop esi
-	mov eax, 1
+	mov rax, 1
 	ret
 
 copy_fault:
-	pop edi
-	pop esi
-	xor eax, eax
+	xor rax, rax
 	ret
