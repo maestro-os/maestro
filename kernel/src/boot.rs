@@ -189,7 +189,7 @@ complete_flush:
 
     # Enable PSE
 	mov eax, cr4
-	or eax, 0x00000010
+	or eax, 0x10
 	mov cr4, eax
 
     # Enable paging and write protect
@@ -242,9 +242,9 @@ multiboot_entry:
     mov eax, offset {REMAP_DIR}
 	mov cr3, eax
 
-	# Enable PAE
+	# Enable PSE and PAE
 	mov eax, cr4
-	or eax, 0x20
+	or eax, 0x30
 	mov cr4, eax
 
 	# Enable LME
