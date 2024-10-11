@@ -295,7 +295,8 @@ complete_flush:
 	xor rdi, rdi
 	mov edi, dword ptr [rsp + 4]
 	add rsp, 8
-	call kernel_main
+	movabs rax, offset kernel_main
+	call rax
 	# cannot return
 	ud2
 "#,
