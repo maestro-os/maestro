@@ -49,7 +49,7 @@ use crate::{
 use core::{
 	arch::asm,
 	ops::{Deref, DerefMut},
-	ptr::{null_mut, NonNull},
+	ptr::NonNull,
 };
 use utils::{errno::AllocResult, limits::PAGE_SIZE, lock::Mutex};
 
@@ -117,6 +117,7 @@ const KERNEL_FLAGS: Entry = FLAG_PRESENT | FLAG_WRITE | FLAG_USER | FLAG_GLOBAL;
 
 /// Paging table.
 #[repr(C, align(4096))]
+#[derive(Clone, Copy)]
 pub struct Table(pub [Entry; ENTRIES_PER_TABLE]);
 
 impl Deref for Table {
@@ -134,8 +135,7 @@ impl DerefMut for Table {
 }
 
 /// Kernel space paging tables common to every context.
-static KERNEL_TABLES: Mutex<[*mut Table; 256]> =
-	Mutex::new([null_mut(); ENTRIES_PER_TABLE - USERSPACE_TABLES]);
+static KERNEL_TABLES: Mutex<[Table; 256]> = Mutex::new([Table([0; ENTRIES_PER_TABLE]); 256]);
 
 /// Allocates a table and returns its virtual address.
 ///
@@ -234,7 +234,9 @@ pub(super) fn alloc() -> AllocResult<NonNull<Table>> {
 		.iter_mut()
 		.zip(kernel_tables.iter())
 		.for_each(|(dst, src)| {
-			let addr = VirtAddr::from(*src).kernel_to_physical().unwrap();
+			let addr = VirtAddr::from(src as *const _)
+				.kernel_to_physical()
+				.unwrap();
 			*dst = to_entry(addr, KERNEL_FLAGS);
 		});
 	Ok(page_dir)
@@ -510,7 +512,7 @@ pub(super) unsafe fn free(mut page_dir: NonNull<Table>) {
 }
 
 /// Initializes virtual memory management.
-pub(super) fn init() -> AllocResult<()> {
+pub(super) fn init() {
 	// Set cr4 flags
 	// Enable GLOBAL flag
 	let mut cr4 = register_get!("cr4") | 1 << 7;
@@ -524,10 +526,4 @@ pub(super) fn init() -> AllocResult<()> {
 	unsafe {
 		register_set!("cr4", cr4);
 	}
-	// Allocate kernel tables
-	let mut tables = KERNEL_TABLES.lock();
-	for table in &mut *tables {
-		*table = alloc_table()?.as_ptr();
-	}
-	Ok(())
 }

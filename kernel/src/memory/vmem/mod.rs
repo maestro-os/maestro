@@ -381,9 +381,7 @@ pub fn kernel() -> &'static Mutex<VMem<true>> {
 pub(crate) fn init() -> AllocResult<()> {
 	// Architecture-specific init
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	{
-		x86::init()?;
-	}
+	x86::init();
 	// Kernel context init
 	let mut kernel_vmem = unsafe { VMem::new_kernel()? };
 	let mut transaction = kernel_vmem.transaction();

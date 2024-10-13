@@ -18,17 +18,19 @@
 
 use crate::{
 	gdt,
-	memory::{vmem, PhysAddr, VirtAddr},
+	memory::{vmem, VirtAddr},
 };
 use core::arch::global_asm;
 
-/// The physical address of the GDT.
-const GDT_PHYS_ADDR: PhysAddr = PhysAddr(0x800);
-/// The virtual address of the GDT.
+#[cfg(target_arch = "x86")]
 const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
+#[cfg(target_arch = "x86_64")]
+const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff000000000800);
 
-/// The initial Global Descriptor Table.
+#[cfg(target_arch = "x86")]
 type InitGdt = [gdt::Entry; 9];
+#[cfg(target_arch = "x86_64")]
+type InitGdt = [gdt::Entry; 11];
 
 /// The initial Global Descriptor Table.
 #[no_mangle]
@@ -37,12 +39,18 @@ static INIT_GDT: InitGdt = [
 	// First entry, empty
 	gdt::Entry(0),
 	// Kernel code segment
+	#[cfg(target_arch = "x86")]
 	gdt::Entry::new(0, !0, 0b10011010, 0b1100),
+	#[cfg(target_arch = "x86_64")]
+	gdt::Entry::new(0, !0, 0b10011010, 0b1110),
 	// Kernel data segment
+	#[cfg(target_arch = "x86")]
 	gdt::Entry::new(0, !0, 0b10010010, 0b1100),
-	// User code segment
+	#[cfg(target_arch = "x86_64")]
+	gdt::Entry::new(0, !0, 0b10010010, 0b1110),
+	// User code segment (32 bits)
 	gdt::Entry::new(0, !0, 0b11111010, 0b1100),
-	// User data segment
+	// User data segment (32 bits)
 	gdt::Entry::new(0, !0, 0b11110010, 0b1100),
 	// TSS
 	gdt::Entry(0),
@@ -50,38 +58,61 @@ static INIT_GDT: InitGdt = [
 	gdt::Entry(0),
 	gdt::Entry(0),
 	gdt::Entry(0),
+	// User code segment (64 bits)
+	#[cfg(target_arch = "x86_64")]
+	gdt::Entry::new(0, !0, 0b11111010, 0b1110),
+	// User data segment (64 bits)
+	#[cfg(target_arch = "x86_64")]
+	gdt::Entry::new(0, !0, 0b11110010, 0b1110),
 ];
 
-/// The page directory used to remap the kernel to higher memory.
+/// The paging object used to remap the kernel to higher memory.
 ///
 /// The static is marked as **mutable** because the CPU will set the dirty flag.
 #[no_mangle]
 #[link_section = ".boot.data"]
-static mut REMAP_DIR: vmem::x86::Table = const {
-	use crate::vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
-	use utils::limits::PAGE_SIZE;
-
+static mut REMAP: vmem::x86::Table = const {
 	#[cfg(target_arch = "x86")]
-	let mut dir = [0; 1024];
-	#[cfg(target_arch = "x86_64")]
-	let mut dir = [0; 512];
-	// TODO use for loop when stabilized
-	let mut i = 0;
-	while i < 256 {
-		#[cfg(target_arch = "x86")]
-		{
+	{
+		use crate::vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
+		use utils::limits::PAGE_SIZE;
+
+		let mut dir = [0; 1024];
+		// TODO use for loop when stabilized
+		let mut i = 0;
+		while i < 256 {
 			let addr = (i * PAGE_SIZE * 1024) as u32;
 			let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
 			dir[i] = ent;
 			dir[i + 768] = ent;
+			i += 1;
 		}
-		#[cfg(target_arch = "x86_64")]
-		{
-			let addr = (i * PAGE_SIZE * 512 * 512) as u64;
-			let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
-			dir[i] = ent;
-			dir[i + 256] = ent;
-		}
+		vmem::x86::Table(dir)
+	}
+	// This is initialized at runtime in assembly
+	#[cfg(target_arch = "x86_64")]
+	vmem::x86::Table([0; 512])
+};
+
+/// Directory use for the stage 1 of kernel remapping to higher memory under `x86_64`.
+///
+/// This directory identity maps the first GiB of physical memory.
+///
+/// The static is marked as **mutable** because the CPU will set the dirty flag.
+#[no_mangle]
+#[link_section = ".boot.data"]
+#[cfg(target_arch = "x86_64")]
+static mut REMAP_DIR: vmem::x86::Table = const {
+	use crate::vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
+	use utils::limits::PAGE_SIZE;
+
+	let mut dir = [0; 512];
+	// TODO use for loop when stabilized
+	let mut i = 0;
+	while i < dir.len() {
+		let addr = (i * PAGE_SIZE * 512) as u64;
+		let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
+		dir[i] = ent;
 		i += 1;
 	}
 	vmem::x86::Table(dir)
@@ -157,34 +188,8 @@ multiboot_entry:
 	push ebx
 	push eax
 
-    # Copy GDT to its physical address
-	mov esi, offset INIT_GDT
-	mov edi, {GDT_PHYS_ADDR}
-	mov ecx, {GDT_SIZE}
-	rep movsb
-
-	# Load GDT
-	sub esp, 6
-	mov word ptr [esp], ({GDT_SIZE} - 1)
-	mov dword ptr [esp + 2], {GDT_PHYS_ADDR}
-	lgdt [esp]
-	add esp, 6
-	mov eax, offset complete_flush
-	push 8 # kernel code segment
-	push eax
-	retf
-complete_flush:
-	mov ax, 16 # kernel data segment
-	mov ds, ax
-	mov es, ax
-	mov ss, ax
-
-	mov ax, 0
-	mov fs, ax
-	mov gs, ax
-
     # Set page directory
-    mov eax, offset {REMAP_DIR}
+    mov eax, offset {REMAP}
 	mov cr3, eax
 
     # Enable PSE
@@ -197,24 +202,44 @@ complete_flush:
 	or eax, 0x80010000
 	mov cr0, eax
 
+    # Copy GDT to its physical address
+	mov esi, offset INIT_GDT
+	mov edi, {GDT_VIRT_ADDR}
+	mov ecx, {GDT_SIZE}
+	rep movsb
+
+	# Load GDT
+	lgdt [gdt]
+	push 8 # kernel code segment
+	mov eax, offset complete_flush
+	push eax
+	retf
+complete_flush:
+	mov ax, 16 # kernel data segment
+	mov ds, ax
+	mov es, ax
+	mov ss, ax
+
+	mov ax, 0
+	mov fs, ax
+	mov gs, ax
+
 	# Update stack
     add esp, 0xc0000000
-
-    # Update GDT
-	sub esp, 6
-	mov word ptr [esp], ({GDT_SIZE} - 1)
-	mov dword ptr [esp + 2], {GDT_VIRT_ADDR}
-	lgdt [esp]
-	add esp, 6
 
 	call kernel_main
 	# cannot return
 	ud2
+
+.section .boot.data
+
+gdt:
+	.word {GDT_SIZE} - 1
+	.long {GDT_VIRT_ADDR}
 "#,
-	GDT_PHYS_ADDR = const(GDT_PHYS_ADDR.0),
 	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
 	GDT_SIZE = const(size_of::<InitGdt>()),
-	REMAP_DIR = sym REMAP_DIR
+	REMAP = sym REMAP
 );
 
 // x86_64-specific initialization
@@ -238,8 +263,14 @@ multiboot_entry:
 	push ebx
 	push eax
 
-    # Set page directory
-    mov eax, offset {REMAP_DIR}
+	# Init PDPT (offset 0 and 256)
+	mov eax, offset {REMAP_DIR}
+	or eax, 0b11 # address | WRITE | PRESENT
+	mov {REMAP}, eax
+	mov dword ptr [offset {REMAP} + 256 * 8], eax
+
+    # Set PDPT
+    mov eax, offset {REMAP}
 	mov cr3, eax
 
 	# Enable PSE and PAE
@@ -258,29 +289,20 @@ multiboot_entry:
 	or eax, 0x80010000
 	mov cr0, eax
 
-.code64
-	# Update stack
-	mov rax, 0xffff000000000000
-    add rsp, rax
-
-    # Copy GDT to its physical address
-	mov rsi, offset INIT_GDT
-	mov rdi, {GDT_VIRT_ADDR}
-	mov rcx, {GDT_SIZE}
+    # Copy GDT to its address
+	mov esi, offset INIT_GDT
+	mov edi, {GDT_VIRT_ADDR}
+	mov ecx, {GDT_SIZE}
 	rep movsb
 
 	# Load GDT
-	sub rsp, 10
-	mov word ptr [rsp], ({GDT_SIZE} - 1)
-	mov rax, {GDT_VIRT_ADDR}
-	mov qword ptr [rsp + 2], rax
-	lgdt [rsp]
-	add rsp, 6
-	mov rax, offset complete_flush
+	lgdt [gdt]
 	push 8 # kernel code segment
-	push rax
+	mov eax, offset complete_flush
+	push eax
 	retf
 complete_flush:
+.code64
 	mov ax, 16 # kernel data segment
 	mov ds, ax
 	mov es, ax
@@ -290,6 +312,11 @@ complete_flush:
 	mov fs, ax
 	mov gs, ax
 
+	# Update stack
+	mov rax, 0xffff000000000000
+    add rsp, rax
+
+	# Call kernel_main
 	xor rsi, rsi
 	mov esi, dword ptr [rsp]
 	xor rdi, rdi
@@ -299,8 +326,15 @@ complete_flush:
 	call rax
 	# cannot return
 	ud2
+
+.section .boot.data
+
+gdt:
+	.word {GDT_SIZE} - 1
+	.quad {GDT_VIRT_ADDR}
 "#,
 	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
 	GDT_SIZE = const(size_of::<InitGdt>()),
+	REMAP = sym REMAP,
 	REMAP_DIR = sym REMAP_DIR
 );
