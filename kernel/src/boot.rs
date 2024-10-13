@@ -25,7 +25,7 @@ use core::arch::global_asm;
 #[cfg(target_arch = "x86")]
 const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
 #[cfg(target_arch = "x86_64")]
-const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff000000000800);
+const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff800000000800);
 
 #[cfg(target_arch = "x86")]
 type InitGdt = [gdt::Entry; 9];
@@ -313,14 +313,14 @@ complete_flush:
 	mov gs, ax
 
 	# Update stack
-	mov rax, 0xffff000000000000
+	mov rax, 0xffff800000000000
     add rsp, rax
 
 	# Call kernel_main
-	xor rsi, rsi
-	mov esi, dword ptr [rsp]
 	xor rdi, rdi
-	mov edi, dword ptr [rsp + 4]
+	mov edi, dword ptr [rsp]
+	xor rsi, rsi
+	mov esi, dword ptr [rsp + 4]
 	add rsp, 8
 	movabs rax, offset kernel_main
 	call rax

@@ -23,7 +23,7 @@
 //!
 //! The system's memory is divided in two chunks:
 //! - Userspace: Virtual memory below `PROCESS_END`, used by the currently running process
-//! - Kernelspace: Virtual memory above `PROCESS_END`, used by the kernel itself and shared across
+//! - Kernelspace: Virtual memory above `KERNEL_BEGIN`, used by the kernel itself and shared across
 //!   processes
 
 use crate::syscall::FromSyscallArg;
@@ -53,7 +53,14 @@ pub const ALLOC_BEGIN: VirtAddr = VirtAddr(0x40000000);
 pub const PROCESS_END: VirtAddr = VirtAddr(0xc0000000);
 /// Address of the end of the virtual memory reserved to the process.
 #[cfg(target_arch = "x86_64")]
-pub const PROCESS_END: VirtAddr = VirtAddr(800000000000);
+pub const PROCESS_END: VirtAddr = VirtAddr(0x800000000000);
+
+/// Address of the beginning of the kernelspace.
+#[cfg(not(target_arch = "x86_64"))]
+pub const KERNEL_BEGIN: VirtAddr = PROCESS_END;
+/// Address of the beginning of the kernelspace.
+#[cfg(target_arch = "x86_64")]
+pub const KERNEL_BEGIN: VirtAddr = VirtAddr(0xffff800000000000);
 
 /// The size of the kernelspace virtual memory in bytes.
 pub const KERNELSPACE_SIZE: usize = usize::MAX - PROCESS_END.0 + 1;
@@ -68,7 +75,7 @@ impl PhysAddr {
 	///
 	/// If the address is outside the kernelspace, the function returns `None`.
 	pub fn kernel_to_virtual(self) -> Option<VirtAddr> {
-		self.0.checked_add(PROCESS_END.0).map(VirtAddr)
+		self.0.checked_add(KERNEL_BEGIN.0).map(VirtAddr)
 	}
 }
 
@@ -109,7 +116,7 @@ impl VirtAddr {
 	///
 	/// If the address is outside the kernelspace, the function returns `None`.
 	pub fn kernel_to_physical(self) -> Option<PhysAddr> {
-		self.0.checked_sub(PROCESS_END.0).map(PhysAddr)
+		self.0.checked_sub(KERNEL_BEGIN.0).map(PhysAddr)
 	}
 
 	/// Returns a mutable pointer to the virtual address.
