@@ -464,7 +464,7 @@ pub fn get_frame_size(order: FrameOrder) -> usize {
 pub fn get_order(pages: usize) -> FrameOrder {
 	// this is equivalent to `ceil(log2(pages))`
 	if likely(pages != 0) {
-		(u32::BITS - pages.leading_zeros()) as _
+		(usize::BITS - pages.leading_zeros()) as _
 	} else {
 		0
 	}

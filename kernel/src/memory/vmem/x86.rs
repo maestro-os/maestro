@@ -107,6 +107,13 @@ pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
 /// The number of entries in a table.
 pub const ENTRIES_PER_TABLE: usize = if cfg!(target_arch = "x86") { 1024 } else { 512 };
+/// The paging level.
+#[cfg(target_arch = "x86")]
+pub const DEPTH: usize = 3;
+/// The paging level.
+#[cfg(target_arch = "x86_64")]
+pub const DEPTH: usize = 4;
+
 /// The number of tables reserved for the userspace.
 ///
 /// Those tables start at the beginning of the page directory. Remaining tables are reserved for
@@ -134,6 +141,43 @@ impl DerefMut for Table {
 	}
 }
 
+impl Table {
+	/// Expands the PSE entry at `index` into a new table.
+	///
+	/// This function allocates a new page table and fills it so that the memory mapping keeps the
+	/// same behavior.
+	pub fn expand(&mut self, index: usize) -> AllocResult<()> {
+		let entry = self[index];
+		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE == 0 {
+			return Ok(());
+		}
+		let addr = entry & ADDR_MASK;
+		let flags = entry & (FLAGS_MASK & !FLAG_PAGE_SIZE);
+		// Create table
+		let mut new_table = alloc_table()?;
+		let new_table_ref = unsafe { new_table.as_mut() };
+		new_table_ref.iter_mut().enumerate().for_each(|(i, e)| {
+			// FIXME the stride can be more than PAGE_SIZE depending on whether we are on 32 or 64
+			// bit and the level of the paging object
+			let addr = VirtAddr(addr as usize) + i * PAGE_SIZE;
+			let addr = addr.kernel_to_physical().unwrap();
+			*e = to_entry(addr, flags);
+		});
+		// Set new entry
+		let addr = VirtAddr::from(new_table).kernel_to_physical().unwrap();
+		self[index] = to_entry(addr, flags);
+		Ok(())
+	}
+
+	/// Tells whether the table at index `index` in the page directory is empty.
+	pub fn is_empty(&self) -> bool {
+		// TODO Use a counter instead. Increment it when mapping a page in the table and
+		// decrement it when unmapping. Then return `true` if the counter has the value
+		// `0`
+		self.iter().all(|e| e & FLAG_PRESENT == 0)
+	}
+}
+
 /// Kernel space paging tables common to every context.
 static KERNEL_TABLES: Mutex<[Table; 256]> = Mutex::new([Table([0; ENTRIES_PER_TABLE]); 256]);
 
@@ -143,7 +187,7 @@ static KERNEL_TABLES: Mutex<[Table; 256]> = Mutex::new([Table([0; ENTRIES_PER_TA
 fn alloc_table() -> AllocResult<NonNull<Table>> {
 	let mut table = buddy::alloc_kernel(0)?.cast::<Table>();
 	unsafe {
-		table.as_mut().0.fill(0);
+		table.as_mut().fill(0);
 	}
 	Ok(table)
 }
@@ -184,44 +228,6 @@ unsafe fn unwrap_entry(entry: Entry) -> (NonNull<Table>, Entry) {
 	(table, flags)
 }
 
-/// Page tables manipulation.
-mod table {
-	use super::*;
-	use utils::limits::PAGE_SIZE;
-
-	/// Creates an expanded table meant to replace a PSE entry.
-	///
-	/// This function allocates a new page table and fills it so that the memory mapping keeps the
-	/// same behavior.
-	pub fn expand(parent: &mut Table, index: usize) -> AllocResult<()> {
-		let entry = parent.0[index];
-		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE == 0 {
-			return Ok(());
-		}
-		// Sanitize
-		let flags = (entry & FLAGS_MASK) & !FLAG_PAGE_SIZE;
-		// Create table
-		let new_table = alloc_table()?;
-		let base_addr = new_table.as_ptr();
-		let table = unsafe { unwrap_entry(entry).0.as_mut() };
-		table.iter_mut().enumerate().for_each(|(i, e)| {
-			let addr = (VirtAddr::from(base_addr) + i * PAGE_SIZE)
-				.kernel_to_physical()
-				.unwrap();
-			*e = to_entry(addr, flags);
-		});
-		Ok(())
-	}
-
-	/// Tells whether the table at index `index` in the page directory is empty.
-	pub fn is_empty(table: &Table) -> bool {
-		// TODO Use a counter instead. Increment it when mapping a page in the table and
-		// decrement it when unmapping. Then return `true` if the counter has the value
-		// `0`
-		table.iter().all(|e| e & FLAG_PRESENT == 0)
-	}
-}
-
 /// Allocates and initializes a new page directory.
 ///
 /// The kernel memory is mapped into the context by default.
@@ -248,31 +254,40 @@ pub(super) fn alloc() -> AllocResult<NonNull<Table>> {
 /// The level represents the depth in the tree. `0` is the deepest.
 #[inline]
 fn get_addr_element_index(addr: VirtAddr, level: usize) -> usize {
-	(addr.0 >> (12 + level * 10)) & 0x3ff
+	#[cfg(target_arch = "x86")]
+	{
+		(addr.0 >> (12 + level * 10)) & 0x3ff
+	}
+	#[cfg(target_arch = "x86_64")]
+	{
+		(addr.0 >> (12 + level * 9)) & 0x1ff
+	}
 }
 
 /// Returns the corresponding entry for [`translate`].
-fn translate_impl(page_dir: &Table, addr: VirtAddr) -> Option<Entry> {
-	// First level
-	let index = get_addr_element_index(addr, 1);
-	let entry_val = page_dir[index];
-	if entry_val & FLAG_PRESENT == 0 {
-		return None;
+fn translate_impl(mut table: &Table, addr: VirtAddr) -> Option<Entry> {
+	for level in (0..DEPTH).rev() {
+		let index = get_addr_element_index(addr, level);
+		let entry = table[index];
+		if entry & FLAG_PRESENT == 0 {
+			break;
+		}
+		if level == 0 {
+			return Some(entry);
+		}
+		if entry & FLAG_PAGE_SIZE != 0 {
+			return Some(entry);
+		}
+		// Jump to next table
+		let phys_addr = PhysAddr((entry & ADDR_MASK) as _);
+		let virt_addr = phys_addr.kernel_to_virtual().unwrap();
+		table = unsafe { &*virt_addr.as_ptr() };
 	}
-	if entry_val & FLAG_PAGE_SIZE != 0 {
-		return Some(entry_val);
-	}
-	// Second level
-	let index = get_addr_element_index(addr, 0);
-	let table = unsafe { unwrap_entry(entry_val).0.as_mut() };
-	let entry_val = table[index];
-	if entry_val & FLAG_PRESENT == 0 {
-		return None;
-	}
-	Some(entry_val)
+	None
 }
 
-/// Translates the given virtual address to the corresponding physical address using `page_dir`.
+/// Translates the given virtual address `addr` to the corresponding physical address using
+/// `page_dir`.
 pub(super) fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 	let entry = translate_impl(page_dir, addr)?;
 	let remain_mask = if entry & FLAG_PAGE_SIZE == 0 {
@@ -280,9 +295,9 @@ pub(super) fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 	} else {
 		ENTRIES_PER_TABLE * PAGE_SIZE - 1
 	};
-	let mut virtptr = (entry & ADDR_MASK) as usize;
-	virtptr |= addr.0 & remain_mask;
-	Some(PhysAddr(virtptr))
+	let mut phys_addr = (entry & ADDR_MASK) as usize;
+	phys_addr |= addr.0 & remain_mask;
+	Some(PhysAddr(phys_addr))
 }
 
 /// Inner version of [`super::Rollback`] for x86.
@@ -325,7 +340,7 @@ impl Rollback {
 		table[index] = self.previous_entry;
 		// If the table is now empty, delete it
 		// `is_empty` is expensive. Call it only if the entry has been set to "not present"
-		if table[index] & FLAG_PRESENT == 0 && table::is_empty(table) {
+		if table[index] & FLAG_PRESENT == 0 && table.is_empty() {
 			// The table will be freed when dropping `self`
 			self.table = Some(table_ptr);
 			page_dir[index] = 0;
@@ -381,7 +396,7 @@ pub(super) unsafe fn map(
 		page_dir[pd_index] = to_entry(addr, flags);
 	} else if previous_entry & FLAG_PAGE_SIZE != 0 {
 		// A PSE entry is present, need to expand it for the mapping
-		table::expand(page_dir, pd_index)?;
+		page_dir.expand(pd_index)?;
 		expanded = true;
 	}
 	// Set the table's flags
@@ -438,7 +453,7 @@ pub(super) unsafe fn unmap(page_dir: &mut Table, virtaddr: VirtAddr) -> AllocRes
 	// Remove the table if it is empty and if not a kernel space table
 	let table = if table_index < USERSPACE_TABLES
 		&& previous_entry & FLAG_PRESENT != 0
-		&& table::is_empty(table)
+		&& table.is_empty()
 	{
 		page_dir[pd_index] = 0;
 		Some(table_ptr)

@@ -117,9 +117,11 @@ fn get_phys_main(boot_info: &BootInfo) -> (PhysAddr, usize) {
 		.into_iter()
 		.max()
 		.unwrap();
-	// TODO Handle 64-bits systems
 	// The size of the physical memory in pages
-	let memory_size = min((1000 + boot_info.mem_upper) / 4, 1024 * 1024) as usize;
+	let memory_size = min(
+		(1000 + boot_info.mem_upper as usize) / 4,
+		usize::MAX / PAGE_SIZE,
+	);
 	// The number of physical page available for memory allocation
 	let pages = memory_size - begin.0.div_ceil(PAGE_SIZE);
 	(begin, pages)
@@ -142,6 +144,6 @@ pub(crate) fn init(boot_info: &BootInfo) {
 	}
 	// Update memory stats
 	let mut stats = stats::MEM_INFO.lock();
-	stats.mem_total = min(boot_info.mem_upper, 4194304) as _; // TODO Handle 64-bits systems
+	stats.mem_total = phys_main_pages * 4;
 	stats.mem_free = phys_main_pages * 4;
 }

@@ -63,7 +63,7 @@ pub const KERNEL_BEGIN: VirtAddr = PROCESS_END;
 pub const KERNEL_BEGIN: VirtAddr = VirtAddr(0xffff800000000000);
 
 /// The size of the kernelspace virtual memory in bytes.
-pub const KERNELSPACE_SIZE: usize = usize::MAX - PROCESS_END.0 + 1;
+pub const KERNELSPACE_SIZE: usize = usize::MAX - KERNEL_BEGIN.0 + 1;
 
 /// An address on physical memory.
 #[repr(transparent)]
