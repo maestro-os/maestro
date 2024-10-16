@@ -24,7 +24,11 @@ pub mod x86;
 
 use crate::{
 	cpu, elf, idt, memory,
-	memory::{memmap, vmem::x86::Entry, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
+	memory::{
+		memmap,
+		vmem::x86::{Entry, Rollback},
+		PhysAddr, VirtAddr, KERNELSPACE_SIZE,
+	},
 	register_get,
 	tty::vga,
 };
@@ -282,10 +286,7 @@ impl<const KERNEL: bool> Drop for VMemTransaction<'_, KERNEL> {
 	fn drop(&mut self) {
 		let rollback = mem::take(&mut self.rollback);
 		// Rollback in reverse order
-		rollback
-			.into_iter()
-			.rev()
-			.for_each(|r| r.rollback(self.vmem.inner_mut()));
+		rollback.into_iter().rev().for_each(Rollback::rollback);
 	}
 }
 
