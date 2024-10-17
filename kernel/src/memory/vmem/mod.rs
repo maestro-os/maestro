@@ -452,7 +452,8 @@ mod test {
 	#[test_case]
 	fn vmem_basic1() {
 		let vmem = VMem::new().unwrap();
-		for i in (0..0x40000000).step_by(PAGE_SIZE) {
+		let memmap = memmap::get_info();
+		for i in (0..memmap.memory_size).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(KERNEL_BEGIN + i), Some(PhysAddr(i)));
 		}
 	}
