@@ -19,16 +19,20 @@
 //! The virtual memory makes the kernel able to isolate processes, which is
 //! essential for modern systems.
 
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
 
 use crate::{
 	cpu, elf, idt, memory,
-	memory::{PhysAddr, VirtAddr, KERNELSPACE_SIZE},
+	memory::{
+		memmap,
+		vmem::x86::{Entry, Rollback},
+		PhysAddr, VirtAddr, KERNELSPACE_SIZE,
+	},
 	register_get,
 	tty::vga,
 };
-use core::{alloc::AllocError, mem, ptr::NonNull};
+use core::{alloc::AllocError, cmp::min, intrinsics::unlikely, mem, ptr::NonNull};
 use utils::{
 	collections::vec::Vec,
 	errno::AllocResult,
@@ -46,7 +50,7 @@ fn is_kernelspace(virtaddr: VirtAddr, pages: usize) -> bool {
 	let Some(end) = virtaddr.0.checked_add(pages * PAGE_SIZE) else {
 		return true;
 	};
-	end > memory::PROCESS_END.0
+	end > memory::KERNEL_BEGIN.0
 }
 
 /// A virtual memory context.
@@ -57,16 +61,17 @@ fn is_kernelspace(virtaddr: VirtAddr, pages: usize) -> bool {
 /// `KERNEL` specifies whether mapping in kernelspace is allowed. If not allowed, trying to do it
 /// results in an error.
 pub struct VMem<const KERNEL: bool = false> {
-	#[cfg(target_arch = "x86")]
-	page_dir: NonNull<x86::Table>,
+	/// The root paging object.
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	table: NonNull<x86::Table>,
 }
 
 impl VMem<false> {
 	/// Creates a new virtual memory context.
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
-			#[cfg(target_arch = "x86")]
-			page_dir: x86::alloc()?,
+			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+			table: x86::alloc()?,
 		})
 	}
 }
@@ -80,23 +85,23 @@ impl VMem<true> {
 	/// valid. Failure to do so results in an undefined behaviour.
 	pub unsafe fn new_kernel() -> AllocResult<Self> {
 		Ok(Self {
-			#[cfg(target_arch = "x86")]
-			page_dir: x86::alloc()?,
+			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+			table: x86::alloc()?,
 		})
 	}
 }
 
 impl<const KERNEL: bool> VMem<KERNEL> {
 	/// Returns an immutable reference to the **architecture-dependent** inner representation.
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	pub fn inner(&self) -> &x86::Table {
-		unsafe { self.page_dir.as_ref() }
+		unsafe { self.table.as_ref() }
 	}
 
 	/// Returns a mutable reference to the architecture-dependent inner representation.
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	pub fn inner_mut(&mut self) -> &mut x86::Table {
-		unsafe { self.page_dir.as_mut() }
+		unsafe { self.table.as_mut() }
 	}
 
 	/// Translates the given virtual address `addr` to the corresponding physical
@@ -104,7 +109,7 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 	///
 	/// If the address is not mapped, the function returns `None`.
 	pub fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
-		#[cfg(target_arch = "x86")]
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		x86::translate(self.inner(), addr)
 	}
 
@@ -118,18 +123,19 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 
 	/// Binds the virtual memory context to the current CPU.
 	pub fn bind(&self) {
-		let phys_addr = VirtAddr::from(self.page_dir.as_ptr())
+		let phys_addr = VirtAddr::from(self.table.as_ptr())
 			.kernel_to_physical()
 			.unwrap();
 		unsafe {
-			#[cfg(target_arch = "x86")]
+			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			x86::bind(phys_addr);
 		}
 	}
 
 	/// Tells whether the context is bound to the current CPU.
 	pub fn is_bound(&self) -> bool {
-		x86::is_bound(self.page_dir)
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+		x86::is_bound(self.table)
 	}
 }
 
@@ -138,9 +144,9 @@ impl<const KERNEL: bool> Drop for VMem<KERNEL> {
 		if self.is_bound() {
 			panic!("Dropping virtual memory context while in use!");
 		}
-		#[cfg(target_arch = "x86")]
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
-			x86::free(self.page_dir);
+			x86::free(self.table);
 		}
 	}
 }
@@ -153,17 +159,17 @@ pub struct VMemTransaction<'v, const KERNEL: bool> {
 	/// The virtual memory context on which the transaction applies.
 	pub vmem: &'v mut VMem<KERNEL>,
 	/// The vector of handles to roll back the whole transaction.
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	rollback: Vec<x86::Rollback>,
 }
 
 impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	fn map_impl(
 		&mut self,
 		physaddr: PhysAddr,
 		virtaddr: VirtAddr,
-		flags: u32,
+		flags: Entry,
 	) -> AllocResult<x86::Rollback> {
 		let res = unsafe { x86::map(self.vmem.inner_mut(), physaddr, virtaddr, flags) };
 		invalidate_page_current(virtaddr);
@@ -178,9 +184,14 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 	/// The modifications may not be flushed to the cache. It is the caller's responsibility to
 	/// ensure they are.
 	#[inline]
-	pub fn map(&mut self, physaddr: PhysAddr, virtaddr: VirtAddr, flags: u32) -> AllocResult<()> {
+	pub fn map(
+		&mut self,
+		physaddr: PhysAddr,
+		virtaddr: VirtAddr,
+		flags: Entry,
+	) -> AllocResult<()> {
 		// If kernelspace modification is disabled, error if mapping onto kernelspace
-		if !KERNEL && is_kernelspace(virtaddr, 1) {
+		if unlikely(!KERNEL && is_kernelspace(virtaddr, 1)) {
 			return Err(AllocError);
 		}
 		let r = self.map_impl(physaddr, virtaddr, flags)?;
@@ -195,9 +206,9 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		physaddr: PhysAddr,
 		virtaddr: VirtAddr,
 		pages: usize,
-		flags: u32,
+		flags: Entry,
 	) -> AllocResult<()> {
-		if pages == 0 {
+		if unlikely(pages == 0) {
 			// No op
 			return Ok(());
 		}
@@ -205,7 +216,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 			return self.map(physaddr, virtaddr, flags);
 		}
 		// If kernelspace modification is disabled, error if mapping onto kernelspace
-		if !KERNEL && is_kernelspace(virtaddr, pages) {
+		if unlikely(!KERNEL && is_kernelspace(virtaddr, pages)) {
 			return Err(AllocError);
 		}
 		// Map each page
@@ -219,7 +230,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		Ok(())
 	}
 
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	fn unmap_impl(&mut self, virtaddr: VirtAddr) -> AllocResult<x86::Rollback> {
 		let res = unsafe { x86::unmap(self.vmem.inner_mut(), virtaddr) };
 		invalidate_page_current(virtaddr);
@@ -233,7 +244,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 	#[inline]
 	pub fn unmap(&mut self, virtaddr: VirtAddr) -> AllocResult<()> {
 		// If kernelspace modification is disabled, error if unmapping onto kernelspace
-		if !KERNEL && is_kernelspace(virtaddr, 1) {
+		if unlikely(!KERNEL && is_kernelspace(virtaddr, 1)) {
 			return Err(AllocError);
 		}
 		let r = self.unmap_impl(virtaddr)?;
@@ -244,7 +255,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 	///
 	/// On overflow, the physical and virtual addresses wrap around the userspace.
 	pub fn unmap_range(&mut self, virtaddr: VirtAddr, pages: usize) -> AllocResult<()> {
-		if pages == 0 {
+		if unlikely(pages == 0) {
 			// No op
 			return Ok(());
 		}
@@ -252,7 +263,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 			return self.unmap(virtaddr);
 		}
 		// If kernelspace modification is disabled, error if unmapping onto kernelspace
-		if !KERNEL && is_kernelspace(virtaddr, pages) {
+		if unlikely(!KERNEL && is_kernelspace(virtaddr, pages)) {
 			return Err(AllocError);
 		}
 		// Map each page
@@ -275,16 +286,13 @@ impl<const KERNEL: bool> Drop for VMemTransaction<'_, KERNEL> {
 	fn drop(&mut self) {
 		let rollback = mem::take(&mut self.rollback);
 		// Rollback in reverse order
-		rollback
-			.into_iter()
-			.rev()
-			.for_each(|r| r.rollback(self.vmem.inner_mut()));
+		rollback.into_iter().rev().for_each(Rollback::rollback);
 	}
 }
 
 /// Invalidate the page at the given address on the current CPU.
 pub fn invalidate_page_current(addr: VirtAddr) {
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	x86::invalidate_page_current(addr);
 }
 
@@ -295,7 +303,7 @@ pub fn invalidate_page_current(addr: VirtAddr) {
 ///
 /// This is an expensive operation for the CPU cache and should be used as few as possible.
 pub fn flush_current() {
-	#[cfg(target_arch = "x86")]
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	x86::flush_current();
 }
 
@@ -375,20 +383,20 @@ pub fn kernel() -> &'static Mutex<VMem<true>> {
 /// Initializes virtual memory management.
 pub(crate) fn init() -> AllocResult<()> {
 	// Architecture-specific init
-	#[cfg(target_arch = "x86")]
-	{
-		x86::init()?;
-	}
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	x86::init();
 	// Kernel context init
 	let mut kernel_vmem = unsafe { VMem::new_kernel()? };
 	let mut transaction = kernel_vmem.transaction();
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
 	// the kernel for interrupts
 	// Map kernel
+	let memmap = memmap::get_info();
+	let kernelspace_size = min(memmap.memory_size, KERNELSPACE_SIZE / PAGE_SIZE);
 	transaction.map_range(
 		PhysAddr::default(),
-		memory::PROCESS_END,
-		KERNELSPACE_SIZE / PAGE_SIZE,
+		memory::KERNEL_BEGIN,
+		kernelspace_size,
 		x86::FLAG_WRITE | x86::FLAG_GLOBAL,
 	)?;
 	// Make the kernel's code read-only
@@ -412,15 +420,13 @@ pub(crate) fn init() -> AllocResult<()> {
 		transaction.map_range(phys_addr, virt_addr, pages, flags)?;
 	}
 	// Map VGA buffer
-	#[cfg(target_arch = "x86")]
-	{
-		transaction.map_range(
-			vga::BUFFER_PHYS as _,
-			vga::get_buffer_virt().into(),
-			1,
-			x86::FLAG_CACHE_DISABLE | x86::FLAG_WRITE_THROUGH | x86::FLAG_WRITE | x86::FLAG_GLOBAL,
-		)?;
-	}
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	transaction.map_range(
+		vga::BUFFER_PHYS as _,
+		vga::get_buffer_virt().into(),
+		1,
+		x86::FLAG_CACHE_DISABLE | x86::FLAG_WRITE_THROUGH | x86::FLAG_WRITE | x86::FLAG_GLOBAL,
+	)?;
 	transaction.commit();
 	drop(transaction);
 	kernel_vmem.bind();
@@ -433,11 +439,12 @@ pub(crate) fn init() -> AllocResult<()> {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use crate::memory::{KERNEL_BEGIN, PROCESS_END};
 
 	#[test_case]
 	fn vmem_basic0() {
 		let vmem = VMem::new().unwrap();
-		for i in (0usize..0xc0000000).step_by(PAGE_SIZE) {
+		for i in (0..PROCESS_END.0).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(VirtAddr(i)), None);
 		}
 	}
@@ -445,8 +452,9 @@ mod test {
 	#[test_case]
 	fn vmem_basic1() {
 		let vmem = VMem::new().unwrap();
-		for i in (0..0x40000000).step_by(PAGE_SIZE) {
-			assert_eq!(vmem.translate(memory::PROCESS_END + i), Some(PhysAddr(i)));
+		let memmap = memmap::get_info();
+		for i in (0..memmap.memory_size).step_by(PAGE_SIZE) {
+			assert_eq!(vmem.translate(KERNEL_BEGIN + i), Some(PhysAddr(i)));
 		}
 	}
 
@@ -459,7 +467,7 @@ mod test {
 			.unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0usize..0xc0000000).step_by(PAGE_SIZE) {
+		for i in (0..PROCESS_END.0).step_by(PAGE_SIZE) {
 			let res = vmem.translate(VirtAddr(i));
 			if (0x100000..0x101000).contains(&i) {
 				assert_eq!(res, Some(PhysAddr(i)));
@@ -481,7 +489,7 @@ mod test {
 			.unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0usize..0xc0000000).step_by(PAGE_SIZE) {
+		for i in (0..PROCESS_END.0).step_by(PAGE_SIZE) {
 			let res = vmem.translate(VirtAddr(i));
 			if (0x100000..0x101000).contains(&i) {
 				assert_eq!(res, Some(PhysAddr(0x100000 + i)));
@@ -501,7 +509,7 @@ mod test {
 		transaction.unmap(VirtAddr(0x100000)).unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0usize..0xc0000000).step_by(PAGE_SIZE) {
+		for i in (0..PROCESS_END.0).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(VirtAddr(i)), None);
 		}
 	}

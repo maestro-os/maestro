@@ -48,36 +48,48 @@ use crate::{
 };
 use core::{
 	arch::asm,
-	ptr::{null_mut, NonNull},
+	mem,
+	ops::{Deref, DerefMut},
+	ptr::{addr_of, NonNull},
 };
-use utils::{errno::AllocResult, limits::PAGE_SIZE, lock::Mutex};
+use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE};
 
-/// x86 paging flag. If set, prevents the CPU from updating the associated
+/// Paging entry.
+#[cfg(target_arch = "x86")]
+pub type Entry = u32;
+/// Paging entry.
+#[cfg(target_arch = "x86_64")]
+pub type Entry = u64;
+
+#[cfg(target_arch = "x86_64")]
+/// **x86 paging flag**: If set, execution of instruction is disabled.
+pub const FLAG_XD: Entry = 1 << 63;
+/// **x86 paging flag**: If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.
-pub const FLAG_GLOBAL: u32 = 0b100000000;
-/// x86 paging flag. If set, pages are 4 MB long.
-pub const FLAG_PAGE_SIZE: u32 = 0b010000000;
-/// x86 paging flag. Indicates that the page has been written.
-pub const FLAG_DIRTY: u32 = 0b001000000;
-/// x86 paging flag. Set if the page has been read or written.
-pub const FLAG_ACCESSED: u32 = 0b000100000;
-/// x86 paging flag. If set, page will not be cached.
-pub const FLAG_CACHE_DISABLE: u32 = 0b000010000;
-/// x86 paging flag. If set, write-through caching is enabled.
+pub const FLAG_GLOBAL: Entry = 0b100000000;
+/// **x86 paging flag**: If set, pages are 4 MB long.
+pub const FLAG_PAGE_SIZE: Entry = 0b010000000;
+/// **x86 paging flag**: Indicates that the page has been written.
+pub const FLAG_DIRTY: Entry = 0b001000000;
+/// **x86 paging flag**: Set if the page has been read or written.
+pub const FLAG_ACCESSED: Entry = 0b000100000;
+/// **x86 paging flag**: If set, page will not be cached.
+pub const FLAG_CACHE_DISABLE: Entry = 0b000010000;
+/// **x86 paging flag**: If set, write-through caching is enabled.
 /// If not, then write-back is enabled instead.
-pub const FLAG_WRITE_THROUGH: u32 = 0b000001000;
-/// x86 paging flag. If set, the page can be accessed by userspace operations.
-pub const FLAG_USER: u32 = 0b000000100;
-/// x86 paging flag. If set, the page can be written.
-pub const FLAG_WRITE: u32 = 0b000000010;
-/// x86 paging flag. If set, the page is present.
-pub const FLAG_PRESENT: u32 = 0b000000001;
+pub const FLAG_WRITE_THROUGH: Entry = 0b000001000;
+/// **x86 paging flag**: If set, the page can be accessed by userspace operations.
+pub const FLAG_USER: Entry = 0b000000100;
+/// **x86 paging flag**: If set, the page can be written.
+pub const FLAG_WRITE: Entry = 0b000000010;
+/// **x86 paging flag**: If set, the page is present.
+pub const FLAG_PRESENT: Entry = 0b000000001;
 
 /// Flags mask in a page directory entry.
-pub const FLAGS_MASK: u32 = 0xfff;
+pub const FLAGS_MASK: Entry = 0xfff;
 /// Address mask in a page directory entry. The address doesn't need every byte
 /// since it must be page-aligned.
-pub const ADDR_MASK: u32 = !FLAGS_MASK;
+pub const ADDR_MASK: Entry = !FLAGS_MASK;
 
 /// x86 page fault flag. If set, the page was present.
 pub const PAGE_FAULT_PRESENT: u32 = 0b00001;
@@ -95,20 +107,83 @@ pub const PAGE_FAULT_RESERVED: u32 = 0b01000;
 pub const PAGE_FAULT_INSTRUCTION: u32 = 0b10000;
 
 /// The number of entries in a table.
-pub(super) const ENTRIES_PER_TABLE: usize = 1024;
+pub const ENTRIES_PER_TABLE: usize = if cfg!(target_arch = "x86") { 1024 } else { 512 };
+/// The paging level.
+#[cfg(target_arch = "x86")]
+pub const DEPTH: usize = 2;
+/// The paging level.
+#[cfg(target_arch = "x86_64")]
+pub const DEPTH: usize = 4;
+
 /// The number of tables reserved for the userspace.
 ///
 /// Those tables start at the beginning of the page directory. Remaining tables are reserved for
 /// the kernel.
-pub(super) const USERSPACE_TABLES: usize = 768;
-/// Paging table.
-pub(super) type Table = [u32; ENTRIES_PER_TABLE];
+const USERSPACE_TABLES: usize = if cfg!(target_arch = "x86") { 768 } else { 256 };
+/// The number of tables reserved for the kernelspace.
+const KERNELSPACE_TABLES: usize = ENTRIES_PER_TABLE - USERSPACE_TABLES;
 /// Kernel space entries flags.
-const KERNEL_FLAGS: u32 = FLAG_PRESENT | FLAG_WRITE | FLAG_USER | FLAG_GLOBAL;
+const KERNEL_FLAGS: Entry = FLAG_PRESENT | FLAG_WRITE | FLAG_USER | FLAG_GLOBAL;
+
+/// Paging table.
+#[repr(C, align(4096))]
+#[derive(Clone, Copy)]
+pub struct Table(pub [Entry; ENTRIES_PER_TABLE]);
+
+impl Deref for Table {
+	type Target = [Entry; ENTRIES_PER_TABLE];
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl DerefMut for Table {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
+	}
+}
+
+impl Table {
+	/// Expands the PSE entry at `index` into a new table.
+	///
+	/// This function allocates a new page table and fills it so that the memory mapping keeps the
+	/// same behavior.
+	pub fn expand(&mut self, index: usize) -> AllocResult<()> {
+		let entry = self[index];
+		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE == 0 {
+			return Ok(());
+		}
+		let addr = entry & ADDR_MASK;
+		let flags = entry & (FLAGS_MASK & !FLAG_PAGE_SIZE);
+		// Create table
+		let mut new_table = alloc_table()?;
+		let new_table_ref = unsafe { new_table.as_mut() };
+		new_table_ref.iter_mut().enumerate().for_each(|(i, e)| {
+			// FIXME the stride can be more than PAGE_SIZE depending on whether we are on 32 or 64
+			// bit and the level of the paging object
+			let addr = VirtAddr(addr as usize) + i * PAGE_SIZE;
+			let addr = addr.kernel_to_physical().unwrap();
+			*e = to_entry(addr, flags);
+		});
+		// Set new entry
+		let addr = VirtAddr::from(new_table).kernel_to_physical().unwrap();
+		self[index] = to_entry(addr, flags);
+		Ok(())
+	}
+
+	/// Tells whether the table at index `index` in the page directory is empty.
+	pub fn is_empty(&self) -> bool {
+		// TODO Use a counter instead. Increment it when mapping a page in the table and
+		// decrement it when unmapping. Then return `true` if the counter has the value
+		// `0`
+		self.iter().all(|e| e & FLAG_PRESENT == 0)
+	}
+}
 
 /// Kernel space paging tables common to every context.
-static KERNEL_TABLES: Mutex<[*mut Table; 256]> =
-	Mutex::new([null_mut(); ENTRIES_PER_TABLE - USERSPACE_TABLES]);
+static mut KERNEL_TABLES: [Table; KERNELSPACE_TABLES] =
+	[Table([0; ENTRIES_PER_TABLE]); KERNELSPACE_TABLES];
 
 /// Allocates a table and returns its virtual address.
 ///
@@ -134,11 +209,11 @@ unsafe fn free_table(table: NonNull<Table>) {
 ///
 /// Invalid flags are ignored and the [`FLAG_PRESENT`] flag is inserted automatically.
 #[inline]
-fn to_entry(addr: PhysAddr, flags: u32) -> u32 {
+fn to_entry(addr: PhysAddr, flags: Entry) -> Entry {
 	// Sanitize flags
 	let flags = flags & FLAGS_MASK | FLAG_PRESENT;
 	// Address alignment guarantees the address does not overlap flags
-	addr.0 as u32 | flags
+	addr.0 as Entry | flags
 }
 
 /// Turns an entry back into an object/flags pair.
@@ -147,7 +222,7 @@ fn to_entry(addr: PhysAddr, flags: u32) -> u32 {
 ///
 /// If the object's address in the entry is invalid, the behaviour is undefined.
 #[inline]
-unsafe fn unwrap_entry(entry: u32) -> (NonNull<Table>, u32) {
+unsafe fn unwrap_entry(entry: Entry) -> (NonNull<Table>, Entry) {
 	let table = PhysAddr((entry & ADDR_MASK) as usize)
 		.kernel_to_virtual()
 		.unwrap()
@@ -157,60 +232,23 @@ unsafe fn unwrap_entry(entry: u32) -> (NonNull<Table>, u32) {
 	(table, flags)
 }
 
-/// Page tables manipulation.
-mod table {
-	use super::*;
-	use utils::limits::PAGE_SIZE;
-
-	/// Creates an expanded table meant to replace a PSE entry.
-	///
-	/// This function allocates a new page table and fills it so that the memory mapping keeps the
-	/// same behavior.
-	pub fn expand(parent: &mut Table, index: usize) -> AllocResult<()> {
-		let entry = parent[index];
-		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE == 0 {
-			return Ok(());
-		}
-		// Sanitize
-		let flags = (entry & FLAGS_MASK) & !FLAG_PAGE_SIZE;
-		// Create table
-		let new_table = alloc_table()?;
-		let base_addr = new_table.as_ptr();
-		let table = unsafe { unwrap_entry(entry).0.as_mut() };
-		table.iter_mut().enumerate().for_each(|(i, e)| {
-			let addr = (VirtAddr::from(base_addr) + i * PAGE_SIZE)
-				.kernel_to_physical()
-				.unwrap();
-			*e = to_entry(addr, flags);
-		});
-		Ok(())
-	}
-
-	/// Tells whether the table at index `index` in the page directory is empty.
-	pub fn is_empty(table: &Table) -> bool {
-		// TODO Use a counter instead. Increment it when mapping a page in the table and
-		// decrement it when unmapping. Then return `true` if the counter has the value
-		// `0`
-		table.iter().all(|e| e & FLAG_PRESENT == 0)
-	}
-}
-
-/// Allocates and initializes a new page directory.
+/// Allocates and initializes a virtual memory context.
 ///
 /// The kernel memory is mapped into the context by default.
 pub(super) fn alloc() -> AllocResult<NonNull<Table>> {
-	let mut page_dir = alloc_table()?;
+	let mut ctx = alloc_table()?;
 	// Init kernel entries
-	let kernel_tables = KERNEL_TABLES.lock();
-	let pd = unsafe { page_dir.as_mut() };
-	pd[USERSPACE_TABLES..]
+	let kernel_tables = addr_of!(KERNEL_TABLES) as *const Table;
+	let ctx_ref = unsafe { ctx.as_mut() };
+	ctx_ref[USERSPACE_TABLES..]
 		.iter_mut()
-		.zip(kernel_tables.iter())
-		.for_each(|(dst, src)| {
-			let addr = VirtAddr::from(*src).kernel_to_physical().unwrap();
+		.enumerate()
+		.for_each(|(i, dst)| {
+			let addr = unsafe { kernel_tables.add(i) };
+			let addr = VirtAddr::from(addr).kernel_to_physical().unwrap();
 			*dst = to_entry(addr, KERNEL_FLAGS);
 		});
-	Ok(page_dir)
+	Ok(ctx)
 }
 
 /// Returns the index of the element corresponding to the given virtual
@@ -219,31 +257,40 @@ pub(super) fn alloc() -> AllocResult<NonNull<Table>> {
 /// The level represents the depth in the tree. `0` is the deepest.
 #[inline]
 fn get_addr_element_index(addr: VirtAddr, level: usize) -> usize {
-	(addr.0 >> (12 + level * 10)) & 0x3ff
+	#[cfg(target_arch = "x86")]
+	{
+		(addr.0 >> (12 + level * 10)) & 0x3ff
+	}
+	#[cfg(target_arch = "x86_64")]
+	{
+		(addr.0 >> (12 + level * 9)) & 0x1ff
+	}
 }
 
 /// Returns the corresponding entry for [`translate`].
-fn translate_impl(page_dir: &Table, addr: VirtAddr) -> Option<u32> {
-	// First level
-	let index = get_addr_element_index(addr, 1);
-	let entry_val = page_dir[index];
-	if entry_val & FLAG_PRESENT == 0 {
-		return None;
+fn translate_impl(mut table: &Table, addr: VirtAddr) -> Option<Entry> {
+	for level in (0..DEPTH).rev() {
+		let index = get_addr_element_index(addr, level);
+		let entry = table[index];
+		if entry & FLAG_PRESENT == 0 {
+			break;
+		}
+		if level == 0 {
+			return Some(entry);
+		}
+		if entry & FLAG_PAGE_SIZE != 0 {
+			return Some(entry);
+		}
+		// Jump to next table
+		let phys_addr = PhysAddr((entry & ADDR_MASK) as _);
+		let virt_addr = phys_addr.kernel_to_virtual().unwrap();
+		table = unsafe { &*virt_addr.as_ptr() };
 	}
-	if entry_val & FLAG_PAGE_SIZE != 0 {
-		return Some(entry_val);
-	}
-	// Second level
-	let index = get_addr_element_index(addr, 0);
-	let table = unsafe { unwrap_entry(entry_val).0.as_mut() };
-	let entry_val = table[index];
-	if entry_val & FLAG_PRESENT == 0 {
-		return None;
-	}
-	Some(entry_val)
+	None
 }
 
-/// Translates the given virtual address to the corresponding physical address using `page_dir`.
+/// Translates the given virtual address `addr` to the corresponding physical address using
+/// `page_dir`.
 pub(super) fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 	let entry = translate_impl(page_dir, addr)?;
 	let remain_mask = if entry & FLAG_PAGE_SIZE == 0 {
@@ -251,64 +298,61 @@ pub(super) fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 	} else {
 		ENTRIES_PER_TABLE * PAGE_SIZE - 1
 	};
-	let mut virtptr = (entry & ADDR_MASK) as usize;
-	virtptr |= addr.0 & remain_mask;
-	Some(PhysAddr(virtptr))
+	let mut phys_addr = (entry & ADDR_MASK) as usize;
+	phys_addr |= addr.0 & remain_mask;
+	Some(PhysAddr(phys_addr))
 }
 
 /// Inner version of [`super::Rollback`] for x86.
 pub(super) struct Rollback {
-	/// The virtual address of the affected page.
-	virtaddr: VirtAddr,
-	/// Previous entry in the page table, unless the [`FLAG_PAGE_SIZE`] flag is set, in which case
-	/// the entry is the page directory.
-	previous_entry: u32,
-	/// The table that was deleted, if any.
-	table: Option<NonNull<Table>>,
+	/// The list of modified entries, with their respective previous value and a boolean
+	/// indicating whether the underlying table could be freed.
+	///
+	/// This field works in a FIFO fashion. That is, the rollback operation must begin with the
+	/// last element.
+	entries: Vec<(NonNull<Entry>, Entry, bool)>,
 }
 
 impl Rollback {
-	/// Rollbacks the operation on `page_dir`.
+	fn cleanup_table(cur_entry: Entry, prev_entry: Entry) {
+		let cur_has_table = cur_entry & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT;
+		let prev_has_table = prev_entry & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT;
+		if !cur_has_table && prev_has_table {
+			unsafe {
+				let (mut table_ptr, _) = unwrap_entry(prev_entry);
+				let table = table_ptr.as_mut();
+				if table.is_empty() {
+					free_table(table_ptr);
+				}
+			}
+		}
+	}
+
+	/// Rollbacks the operation on the given `table`.
 	#[cold]
-	pub(super) fn rollback(mut self, page_dir: &mut Table) {
-		let index = get_addr_element_index(self.virtaddr, 1);
-		// Replace the table for the previous one
-		if let Some(table) = self.table.take() {
-			let addr = VirtAddr::from(table.as_ptr()).kernel_to_physical().unwrap();
-			let flags = self.previous_entry & FLAGS_MASK & !FLAG_PAGE_SIZE;
-			page_dir[index] = to_entry(addr, flags);
-			// No need to care about the previous table as the algorithms will never replace an
-			// already present table
-		}
-		// If the table is PSE, simply replace the entry and stop here
-		if self.previous_entry & FLAG_PAGE_SIZE != 0 {
-			page_dir[index] = self.previous_entry;
-			return;
-		}
-		// If no table is present, stop here
-		if page_dir[index] & FLAG_PRESENT == 0 {
-			return;
-		}
-		// A table is present, set entry with previous value
-		let mut table_ptr = unsafe { unwrap_entry(page_dir[index]).0 };
-		let table = unsafe { table_ptr.as_mut() };
-		let index = get_addr_element_index(self.virtaddr, 0);
-		table[index] = self.previous_entry;
-		// If the table is now empty, delete it
-		// `is_empty` is expensive. Call it only if the entry has been set to "not present"
-		if table[index] & FLAG_PRESENT == 0 && table::is_empty(table) {
-			// The table will be freed when dropping `self`
-			self.table = Some(table_ptr);
-			page_dir[index] = 0;
+	pub(super) fn rollback(mut self) {
+		let entries = mem::take(&mut self.entries);
+		for (mut ptr, prev_entry, free) in entries.into_iter().rev() {
+			let ent = unsafe { ptr.as_mut() };
+			// Reverse entry change
+			let prev_entry = mem::replace(ent, prev_entry);
+			if free {
+				// If a table was just created by the operation and is now empty, remove it
+				Self::cleanup_table(*ent, prev_entry)
+			}
 		}
 	}
 }
 
 impl Drop for Rollback {
 	fn drop(&mut self) {
-		if let Some(table) = self.table {
-			unsafe {
-				free_table(table);
+		// Remove old tables if empty
+		let entries = mem::take(&mut self.entries);
+		for (mut ptr, prev_entry, free) in entries.into_iter().rev() {
+			let ent = unsafe { ptr.as_mut() };
+			if free {
+				// If a table was just removed by the operation and is now empty, remove it
+				Self::cleanup_table(*ent, prev_entry)
 			}
 		}
 	}
@@ -321,53 +365,50 @@ impl Drop for Rollback {
 /// In case the mapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
 pub(super) unsafe fn map(
-	page_dir: &mut Table,
+	mut table: &mut Table,
 	physaddr: PhysAddr,
 	virtaddr: VirtAddr,
-	flags: u32,
+	flags: Entry,
 ) -> AllocResult<Rollback> {
 	// Sanitize
 	let physaddr = PhysAddr(physaddr.0 & !(PAGE_SIZE - 1));
 	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
-	let flags = (flags & FLAGS_MASK) | FLAG_PRESENT;
-	// First level
-	let pd_index = get_addr_element_index(virtaddr, 1);
-	let mut previous_entry = page_dir[pd_index];
-	// If using PSE, set entry and stop
-	if flags & FLAG_PAGE_SIZE != 0 {
-		page_dir[pd_index] = to_entry(physaddr, flags);
-		let table = (previous_entry & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT)
-			.then(|| unsafe { unwrap_entry(previous_entry).0 });
-		return Ok(Rollback {
-			virtaddr,
-			previous_entry,
-			table,
-		});
+	// TODO support FLAG_PAGE_SIZE (requires a way to specify a which level it must be enabled)
+	let flags = (flags & FLAGS_MASK & !FLAG_PAGE_SIZE) | FLAG_PRESENT;
+	// Set entries
+	let mut previous_entries = Vec::with_capacity(DEPTH)?;
+	for level in (0..DEPTH).rev() {
+		let index = get_addr_element_index(virtaddr, level);
+		let previous_entry = table[index];
+		// Add entry for rollback
+		let may_remove_table = level > 0 && (level < DEPTH - 1 || index < USERSPACE_TABLES);
+		previous_entries
+			.push((
+				NonNull::from(&table[index]),
+				previous_entry,
+				may_remove_table,
+			))
+			.unwrap();
+		if level == 0 {
+			table[index] = to_entry(physaddr, flags);
+			break;
+		}
+		// Allocate a table if necessary
+		if previous_entry & FLAG_PRESENT == 0 {
+			// No table is present, allocate one
+			let new_table = alloc_table()?;
+			let addr = VirtAddr::from(new_table).kernel_to_physical().unwrap();
+			table[index] = to_entry(addr, flags);
+		} else if previous_entry & FLAG_PAGE_SIZE != 0 {
+			// A PSE entry is present, need to expand it for the mapping
+			table.expand(index)?;
+			table[index] |= flags;
+		}
+		// Jump to next table
+		table = unsafe { unwrap_entry(table[index]).0.as_mut() };
 	}
-	let mut expanded = false;
-	if previous_entry & FLAG_PRESENT == 0 {
-		// No table is present, allocate one
-		let table = alloc_table()?;
-		let addr = VirtAddr::from(table.as_ptr()).kernel_to_physical().unwrap();
-		page_dir[pd_index] = to_entry(addr, flags);
-	} else if previous_entry & FLAG_PAGE_SIZE != 0 {
-		// A PSE entry is present, need to expand it for the mapping
-		table::expand(page_dir, pd_index)?;
-		expanded = true;
-	}
-	// Set the table's flags
-	page_dir[pd_index] |= flags;
-	// Second level
-	let table = unsafe { unwrap_entry(page_dir[pd_index]).0.as_mut() };
-	let table_index = get_addr_element_index(virtaddr, 0);
-	if !expanded {
-		previous_entry = table[table_index];
-	}
-	table[table_index] = to_entry(physaddr, flags);
 	Ok(Rollback {
-		virtaddr,
-		previous_entry,
-		table: None,
+		entries: previous_entries,
 	})
 }
 
@@ -377,69 +418,48 @@ pub(super) unsafe fn map(
 ///
 /// In case the unmapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
-pub(super) unsafe fn unmap(page_dir: &mut Table, virtaddr: VirtAddr) -> AllocResult<Rollback> {
+pub(super) unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) -> AllocResult<Rollback> {
 	// Sanitize
 	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
-	// First level
-	let pd_index = get_addr_element_index(virtaddr, 1);
-	let mut previous_entry = page_dir[pd_index];
-	if previous_entry & FLAG_PRESENT == 0 {
-		// The entry does not exist, do nothing
-		return Ok(Rollback {
-			virtaddr,
-			previous_entry,
-			table: None,
-		});
+	// Set entries
+	let mut previous_entries = Vec::with_capacity(DEPTH)?;
+	for level in (0..DEPTH).rev() {
+		let index = get_addr_element_index(virtaddr, level);
+		// Remove entry and get previous value
+		let previous_entry = mem::replace(&mut table[index], 0);
+		// Add entry for rollback
+		let may_remove_table = level > 0 && (level < DEPTH - 1 || index < USERSPACE_TABLES);
+		previous_entries
+			.push((
+				NonNull::from(&table[index]),
+				previous_entry,
+				may_remove_table,
+			))
+			.unwrap();
+		// If the entry did not exist or was PSE, stop here
+		if previous_entry & FLAG_PRESENT == 0 || previous_entry & FLAG_PAGE_SIZE != 0 {
+			break;
+		}
+		// Jump to next table
+		table = unsafe { unwrap_entry(previous_entry).0.as_mut() };
 	}
-	if previous_entry & FLAG_PAGE_SIZE != 0 {
-		// The entry is PSE, remove it and stop here
-		page_dir[pd_index] = 0;
-		return Ok(Rollback {
-			virtaddr,
-			previous_entry,
-			table: None,
-		});
-	}
-	let mut table_ptr = unsafe { unwrap_entry(previous_entry).0 };
-	let table = unsafe { table_ptr.as_mut() };
-	// Second level
-	let table_index = get_addr_element_index(virtaddr, 0);
-	previous_entry = table[table_index];
-	table[table_index] = 0;
-	// Remove the table if it is empty and if not a kernel space table
-	let table = if table_index < USERSPACE_TABLES
-		&& previous_entry & FLAG_PRESENT != 0
-		&& table::is_empty(table)
-	{
-		page_dir[pd_index] = 0;
-		Some(table_ptr)
-	} else {
-		None
-	};
 	Ok(Rollback {
-		virtaddr,
-		previous_entry,
-		table,
+		entries: previous_entries,
 	})
 }
 
 /// Binds the given page directory to the current CPU.
-///
-/// If paging is not enabled, the function enables it.
 ///
 /// # Safety
 ///
 /// The caller must ensure the given page directory is correct.
 /// Meaning it must be mapping the kernel's code and data sections, and any regions of memory that
 /// might be accessed in the future.
+#[inline]
 pub(super) unsafe fn bind(page_dir: PhysAddr) {
 	asm!(
 		"mov cr3, {dir}",
-		"mov {tmp}, cr0",
-		"or {tmp}, 0x80010000",
-		"mov cr0, {tmp}",
-		dir = in(reg) page_dir.0,
-		tmp = out(reg) _,
+		dir = in(reg) page_dir.0
 	)
 }
 
@@ -488,7 +508,7 @@ pub(super) unsafe fn free(mut page_dir: NonNull<Table>) {
 }
 
 /// Initializes virtual memory management.
-pub(super) fn init() -> AllocResult<()> {
+pub(super) fn init() {
 	// Set cr4 flags
 	// Enable GLOBAL flag
 	let mut cr4 = register_get!("cr4") | 1 << 7;
@@ -502,10 +522,4 @@ pub(super) fn init() -> AllocResult<()> {
 	unsafe {
 		register_set!("cr4", cr4);
 	}
-	// Allocate kernel tables
-	let mut tables = KERNEL_TABLES.lock();
-	for table in &mut *tables {
-		*table = alloc_table()?.as_ptr();
-	}
-	Ok(())
 }

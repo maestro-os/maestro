@@ -21,7 +21,7 @@
 use crate::{
 	process,
 	process::{
-		mem_space::copy::SyscallPtr, pid::Pid, regs::Regs, rusage::RUsage, scheduler, Process,
+		mem_space::copy::SyscallPtr, pid::Pid, regs::Regs32, rusage::RUsage, scheduler, Process,
 		State,
 	},
 	syscall::{waitpid::scheduler::SCHEDULER, Args},

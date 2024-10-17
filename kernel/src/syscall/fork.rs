@@ -20,14 +20,14 @@
 //! process. Execution resumes at the same location for both processes but the
 //! return value is different to allow differentiation.
 
-use crate::process::{regs::Regs, ForkOptions, Process};
+use crate::process::{regs::Regs32, ForkOptions, Process};
 use utils::{
 	errno::{EResult, Errno},
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
-pub fn fork(proc: Arc<IntMutex<Process>>, regs: &Regs) -> EResult<usize> {
+pub fn fork(proc: Arc<IntMutex<Process>>, regs: &Regs32) -> EResult<usize> {
 	let new_mutex = Process::fork(proc, ForkOptions::default())?;
 	let mut new_proc = new_mutex.lock();
 	// Set child's return value to `0`

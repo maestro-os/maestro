@@ -7,11 +7,9 @@ authors = ["llenotre <llenotre@student.42.fr>"]
 edition = "2021"
 build = "build/main.rs"
 
-# The kernel is implemented as a shared library in order to make it accessible from kernel modules
 [lib]
 name = "kernel"
 path = "src/kernel.rs"
-crate-type = ["rlib", "dylib"]
 
 # Export the kernel as executable
 [[bin]]

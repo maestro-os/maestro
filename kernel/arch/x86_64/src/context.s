@@ -16,47 +16,37 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/*
- * This file implements the function that handles the system calls.
- */
+.intel_syntax noprefix
 
-.include "src/process/regs/regs.s"
+.include "arch/x86_64/src/regs.s"
 
-.section .text
+// Context switch functions
+
+.global context_switch32
+.global context_switch64
+.global context_switch_kernel
+
+.type context_switch32, @function
+.type context_switch64, @function
+.type context_switch_kernel, @function
+
+context_switch32:
+    # TODO
+    ud2
+
+context_switch64:
+    # TODO
+    ud2
+
+context_switch_kernel:
+    # TODO
+    ud2
+
+// System calls handler
 
 .global syscall
 .type syscall, @function
 
-/*
- * The function handling system calls.
- */
 syscall:
-	push %ebp
-	mov %esp, %ebp
-
-	# Store registers state
-GET_REGS
-
-	# Set data segment
-	mov $GDT_KERNEL_DS, %ax
-	mov %ax, %ds
-	mov %ax, %es
-
-	# Call the system call handler
-	push %esp
-	call syscall_handler
-	add $4, %esp
-
-	# Restore data segment
-	xor %ebx, %ebx
-	mov $GDT_USER_DS, %bx
-	or $3, %bx
-	mov %bx, %ds
-	mov %bx, %es
-
-RESTORE_REGS
-
-	# Restoring the context
-	mov %ebp, %esp
-	pop %ebp
-	iret
+    # TODO
+    ud2

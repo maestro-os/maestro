@@ -591,7 +591,7 @@ impl<'s> ELFExecutor<'s> {
 				// Perform relocations if no interpreter is present
 				if !interp && interp_path.is_none() {
 					// Closure returning a symbol
-					let get_sym = |sym_section: u32, sym: u32| {
+					let get_sym = |sym_section: u32, sym: usize| {
 						let section = elf.get_section_by_index(sym_section as _)?;
 						let sym = elf.get_symbol_by_index(section, sym as _)?;
 						if sym.is_defined() {
