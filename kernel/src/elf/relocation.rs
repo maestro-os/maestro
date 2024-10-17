@@ -41,7 +41,7 @@ pub trait Relocation {
 	fn get_offset(&self) -> usize;
 
 	/// Returns the `r_info` field of the relocation.
-	fn get_info(&self) -> u32;
+	fn get_info(&self) -> usize;
 
 	/// Performs the relocation.
 	///
@@ -68,7 +68,7 @@ pub trait Relocation {
 		user: bool,
 	) -> Result<(), RelocationError>
 	where
-		F: FnOnce(u32, u32) -> Option<u32>,
+		F: FnOnce(u32, usize) -> Option<u32>,
 	{
 		let got_off = got.map(|sym| sym.st_value as usize).unwrap_or(0);
 		// The address of the GOT
@@ -82,24 +82,24 @@ pub trait Relocation {
 		let value = match self.get_type() {
 			elf::R_386_32 => sym_val
 				.ok_or(RelocationError)?
-				.wrapping_add(self.get_addend()),
+				.wrapping_add_signed(self.get_addend()),
 			elf::R_386_PC32 => sym_val
 				.ok_or(RelocationError)?
-				.wrapping_add(self.get_addend())
+				.wrapping_add_signed(self.get_addend())
 				.wrapping_sub(self.get_offset()),
-			elf::R_386_GOT32 => got_offset.wrapping_add(self.get_addend()),
+			elf::R_386_GOT32 => got_offset.wrapping_add_signed(self.get_addend()),
 			elf::R_386_PLT32 => plt_offset
-				.wrapping_add(self.get_addend())
+				.wrapping_add_signed(self.get_addend())
 				.wrapping_sub(self.get_offset()),
 			elf::R_386_COPY => return Ok(()),
 			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
-			elf::R_386_RELATIVE => (base_addr as usize).wrapping_add(self.get_addend()),
+			elf::R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(self.get_addend()),
 			elf::R_386_GOTOFF => sym_val
 				.ok_or(RelocationError)?
-				.wrapping_add(self.get_addend())
+				.wrapping_add_signed(self.get_addend())
 				.wrapping_sub(got_addr),
 			elf::R_386_GOTPC => got_addr
-				.wrapping_add(self.get_addend())
+				.wrapping_add_signed(self.get_addend())
 				.wrapping_sub(self.get_offset()),
 			// Ignored
 			elf::R_386_IRELATIVE => return Ok(()),
@@ -119,7 +119,7 @@ pub trait Relocation {
 	}
 
 	/// Returns the relocation's symbol.
-	fn get_sym(&self) -> u32 {
+	fn get_sym(&self) -> usize {
 		self.get_info() >> 8
 	}
 
@@ -129,10 +129,12 @@ pub trait Relocation {
 	}
 
 	/// Returns the relocation's addend.
-	fn get_addend(&self) -> usize;
+	fn get_addend(&self) -> isize {
+		0
+	}
 }
 
-/// A 32 bits ELF relocation.
+/// 32 bits ELF relocation.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Rel {
@@ -142,23 +144,18 @@ pub struct ELF32Rel {
 	pub r_info: u32,
 }
 
-impl Relocation for ELF32Rel {
-	const REQUIRED_SECTION_TYPE: u32 = SHT_REL;
-
-	fn get_offset(&self) -> usize {
-		self.r_offset as _
-	}
-
-	fn get_info(&self) -> u32 {
-		self.r_info
-	}
-
-	fn get_addend(&self) -> usize {
-		0
-	}
+/// 64 bits ELF relocation.
+#[cfg(target_arch = "x86_64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64Rel {
+	/// The location of the relocation action.
+	pub r_offset: u64,
+	/// The relocation type and symbol index.
+	pub r_info: u64,
 }
 
-/// A 32 bits ELF relocation with an addend.
+/// 32 bits ELF relocation with an addend.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Rela {
@@ -167,21 +164,53 @@ pub struct ELF32Rela {
 	/// The relocation type and symbol index.
 	pub r_info: u32,
 	/// A constant value used to compute the relocation.
-	pub r_addend: u32,
+	pub r_addend: i32,
 }
 
-impl Relocation for ELF32Rela {
-	const REQUIRED_SECTION_TYPE: u32 = SHT_RELA;
-
-	fn get_offset(&self) -> usize {
-		self.r_offset as _
-	}
-
-	fn get_info(&self) -> u32 {
-		self.r_info
-	}
-
-	fn get_addend(&self) -> usize {
-		self.r_addend as _
-	}
+/// 64 bits ELF relocation with an addend.
+#[cfg(target_arch = "x86_64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64Rela {
+	/// The location of the relocation action.
+	pub r_offset: u64,
+	/// The relocation type and symbol index.
+	pub r_info: u64,
+	/// A constant value used to compute the relocation.
+	pub r_addend: i64,
 }
+
+macro_rules! rel_impl {
+	($rel:ident, $rela:ident) => {
+		impl Relocation for $rel {
+			const REQUIRED_SECTION_TYPE: u32 = SHT_REL;
+
+			fn get_offset(&self) -> usize {
+				self.r_offset as _
+			}
+
+			fn get_info(&self) -> usize {
+				self.r_info as _
+			}
+		}
+
+		impl Relocation for $rela {
+			const REQUIRED_SECTION_TYPE: u32 = SHT_RELA;
+
+			fn get_offset(&self) -> usize {
+				self.r_offset as _
+			}
+
+			fn get_info(&self) -> usize {
+				self.r_info as _
+			}
+
+			fn get_addend(&self) -> isize {
+				self.r_addend as _
+			}
+		}
+	};
+}
+
+rel_impl!(ELF32Rel, ELF32Rela);
+rel_impl!(ELF64Rel, ELF64Rela);

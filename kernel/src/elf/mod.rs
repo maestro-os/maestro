@@ -190,7 +190,7 @@ pub const R_386_GOTPC: u8 = 10;
 /// Relocation type.
 pub const R_386_IRELATIVE: u8 = 42;
 
-/// A 32 bits ELF header.
+/// 32 bits ELF header.
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ELFHeader {
@@ -225,7 +225,43 @@ pub struct ELF32ELFHeader {
 	pub e_shstrndx: u16,
 }
 
-/// Structure representing an ELF program header.
+/// 64 bits ELF header.
+#[cfg(target_arch = "x86_64")]
+#[derive(AnyRepr, Clone, Debug)]
+#[repr(C)]
+pub struct ELF64ELFHeader {
+	/// Identification bytes.
+	pub e_ident: [u8; EI_NIDENT],
+	/// Identifies the object file type.
+	pub e_type: u16,
+	/// Specifies the required machine type.
+	pub e_machine: u16,
+	/// The file's version.
+	pub e_version: u32,
+	/// The virtual address of the file's entry point.
+	pub e_entry: u64,
+	/// The program header table's file offset in bytes.
+	pub e_phoff: u64,
+	/// The section header table's file offset in bytes.
+	pub e_shoff: u64,
+	/// Processor-specific flags.
+	pub e_flags: u32,
+	/// ELF header's size in bytes.
+	pub e_ehsize: u16,
+	/// The size of one entry in the program header table.
+	pub e_phentsize: u16,
+	/// The number of entries in the program header table.
+	pub e_phnum: u16,
+	/// The size of one entry in the section header table.
+	pub e_shentsize: u16,
+	/// The number of entries in the section header table.
+	pub e_shnum: u16,
+	/// The section header table index holding the header of the section name
+	/// string table.
+	pub e_shstrndx: u16,
+}
+
+/// 32 bits ELF program header.
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ProgramHeader {
@@ -277,7 +313,30 @@ impl ELF32ProgramHeader {
 	}
 }
 
-/// A 32 bits ELF section header.
+/// 64 bits ELF program header.
+#[cfg(target_arch = "x86_64")]
+#[derive(AnyRepr, Clone, Debug)]
+#[repr(C)]
+pub struct ELF64ProgramHeader {
+	/// Tells what kind of segment this header describes.
+	pub p_type: u32,
+	/// Segment's flags.
+	pub p_flags: u32,
+	/// The offset of the segment's content in the file.
+	pub p_offset: u64,
+	/// The virtual address of the segment's content.
+	pub p_vaddr: u64,
+	/// The physical address of the segment's content (if relevant).
+	pub p_paddr: u64,
+	/// The size of the segment's content in the file.
+	pub p_filesz: u32,
+	/// The size of the segment's content in memory.
+	pub p_memsz: u32,
+	/// Segment's alignment.
+	pub p_align: u32,
+}
+
+/// 32 bits ELF section header.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32SectionHeader {
@@ -321,7 +380,36 @@ impl ELF32SectionHeader {
 	}
 }
 
-/// A 32 bits ELF symbol in memory.
+/// 64 bits ELF section header.
+#[cfg(target_arch = "x86_64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64SectionHeader {
+	/// Index in the string table section specifying the name of the section.
+	pub sh_name: u32,
+	/// The type of the section.
+	pub sh_type: u32,
+	/// Section flags.
+	pub sh_flags: u64,
+	/// The address to the section's data in memory during execution.
+	pub sh_addr: u64,
+	/// The offset of the section's data in the ELF file.
+	pub sh_offset: u64,
+	/// The size of the section's data in bytes.
+	pub sh_size: u64,
+	/// Section header table index link.
+	pub sh_link: u32,
+	/// Extra-information whose interpretation depends on the section type.
+	pub sh_info: u32,
+	/// Alignment constraints of the section in memory. `0` or `1` means that
+	/// the section doesn't require specific alignment.
+	pub sh_addralign: u64,
+	/// If the section is a table of entry, this field holds the size of one
+	/// entry. Else, holds `0`.
+	pub sh_entsize: u64,
+}
+
+/// 32 bits ELF symbol in memory.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Sym {
@@ -354,4 +442,23 @@ pub fn hash_sym_name(name: &[u8]) -> u32 {
 		res
 	});
 	res & 0xfffffff
+}
+
+/// 64 bits ELF symbol in memory.
+#[cfg(target_arch = "x86_64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64Sym {
+	/// Offset in the string table section specifying the name of the symbol.
+	pub st_name: u32,
+	/// The symbol's type and binding attributes.
+	pub st_info: u8,
+	/// Holds `0`.
+	pub st_other: u8,
+	/// The index of the section the symbol is in.
+	pub st_shndx: u16,
+	/// The value of the symbol.
+	pub st_value: u64,
+	/// The size of the symbol.
+	pub st_size: u64,
 }
