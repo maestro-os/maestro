@@ -113,7 +113,7 @@ pub const ENTRIES_PER_TABLE: usize = if cfg!(target_arch = "x86") { 1024 } else 
 pub const DEPTH: usize = 2;
 /// The paging level.
 #[cfg(target_arch = "x86_64")]
-pub const DEPTH: usize = 3;
+pub const DEPTH: usize = 4;
 
 /// The number of tables reserved for the userspace.
 ///
@@ -184,13 +184,6 @@ impl Table {
 /// Kernel space paging tables common to every context.
 static mut KERNEL_TABLES: [Table; KERNELSPACE_TABLES] =
 	[Table([0; ENTRIES_PER_TABLE]); KERNELSPACE_TABLES];
-
-/// Tells whether the given pointer is a kernelspace table.
-fn is_kernel_table(table: *const Table) -> bool {
-	let begin = addr_of!(KERNEL_TABLES) as usize;
-	let end = begin + KERNELSPACE_TABLES * size_of::<Table>();
-	(begin..end).contains(&(table as usize))
-}
 
 /// Allocates a table and returns its virtual address.
 ///
@@ -312,11 +305,12 @@ pub(super) fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 
 /// Inner version of [`super::Rollback`] for x86.
 pub(super) struct Rollback {
-	/// The list of modified entries, with their respective previous value.
+	/// The list of modified entries, with their respective previous value and a boolean
+	/// indicating whether the underlying table could be freed.
 	///
 	/// This field works in a FIFO fashion. That is, the rollback operation must begin with the
 	/// last element.
-	entries: Vec<(NonNull<Entry>, Entry)>,
+	entries: Vec<(NonNull<Entry>, Entry, bool)>,
 }
 
 impl Rollback {
@@ -326,9 +320,6 @@ impl Rollback {
 		if !cur_has_table && prev_has_table {
 			unsafe {
 				let (mut table_ptr, _) = unwrap_entry(prev_entry);
-				if is_kernel_table(table_ptr.as_ptr()) {
-					return;
-				}
 				let table = table_ptr.as_mut();
 				if table.is_empty() {
 					free_table(table_ptr);
@@ -341,12 +332,14 @@ impl Rollback {
 	#[cold]
 	pub(super) fn rollback(mut self) {
 		let entries = mem::take(&mut self.entries);
-		for (mut ptr, prev_entry) in entries.into_iter().rev() {
+		for (mut ptr, prev_entry, free) in entries.into_iter().rev() {
 			let ent = unsafe { ptr.as_mut() };
 			// Reverse entry change
 			let prev_entry = mem::replace(ent, prev_entry);
-			// If a table was just created by the operation and is now empty, remove it
-			Self::cleanup_table(*ent, prev_entry)
+			if free {
+				// If a table was just created by the operation and is now empty, remove it
+				Self::cleanup_table(*ent, prev_entry)
+			}
 		}
 	}
 }
@@ -355,10 +348,12 @@ impl Drop for Rollback {
 	fn drop(&mut self) {
 		// Remove old tables if empty
 		let entries = mem::take(&mut self.entries);
-		for (mut ptr, prev_entry) in entries.into_iter().rev() {
+		for (mut ptr, prev_entry, free) in entries.into_iter().rev() {
 			let ent = unsafe { ptr.as_mut() };
-			// If a table was just removed by the operation and is now empty, remove it
-			Self::cleanup_table(*ent, prev_entry)
+			if free {
+				// If a table was just removed by the operation and is now empty, remove it
+				Self::cleanup_table(*ent, prev_entry)
+			}
 		}
 	}
 }
@@ -385,8 +380,14 @@ pub(super) unsafe fn map(
 	for level in (0..DEPTH).rev() {
 		let index = get_addr_element_index(virtaddr, level);
 		let previous_entry = table[index];
+		// Add entry for rollback
+		let may_remove_table = level > 0 && (level < DEPTH - 1 || index < USERSPACE_TABLES);
 		previous_entries
-			.push((NonNull::from(&table[index]), previous_entry))
+			.push((
+				NonNull::from(&table[index]),
+				previous_entry,
+				may_remove_table,
+			))
 			.unwrap();
 		if level == 0 {
 			table[index] = to_entry(physaddr, flags);
@@ -426,8 +427,14 @@ pub(super) unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) -> AllocRe
 		let index = get_addr_element_index(virtaddr, level);
 		// Remove entry and get previous value
 		let previous_entry = mem::replace(&mut table[index], 0);
+		// Add entry for rollback
+		let may_remove_table = level > 0 && (level < DEPTH - 1 || index < USERSPACE_TABLES);
 		previous_entries
-			.push((NonNull::from(&table[index]), previous_entry))
+			.push((
+				NonNull::from(&table[index]),
+				previous_entry,
+				may_remove_table,
+			))
 			.unwrap();
 		// If the entry did not exist or was PSE, stop here
 		if previous_entry & FLAG_PRESENT == 0 || previous_entry & FLAG_PAGE_SIZE != 0 {

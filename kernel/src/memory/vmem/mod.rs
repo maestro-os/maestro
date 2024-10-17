@@ -392,10 +392,10 @@ pub(crate) fn init() -> AllocResult<()> {
 	// the kernel for interrupts
 	// Map kernel
 	let memmap = memmap::get_info();
-	let kernelspace_size = min(memmap.phys_main_pages, KERNELSPACE_SIZE / PAGE_SIZE);
+	let kernelspace_size = min(memmap.memory_size, KERNELSPACE_SIZE / PAGE_SIZE);
 	transaction.map_range(
 		PhysAddr::default(),
-		memory::PROCESS_END,
+		memory::KERNEL_BEGIN,
 		kernelspace_size,
 		x86::FLAG_WRITE | x86::FLAG_GLOBAL,
 	)?;
