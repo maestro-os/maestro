@@ -22,7 +22,10 @@
 //! It is a deprecated structure that still must be used in order to switch to protected mode,
 //! handle protection rings and load the Task State Segment (TSS).
 
-use crate::memory::PhysAddr;
+use crate::{
+	boot::{InitGdt, GDT_VIRT_ADDR},
+	memory::{PhysAddr, VirtAddr},
+};
 use core::{arch::asm, fmt, ptr};
 
 /// The address in physical memory to the beginning of the GDT.
@@ -179,15 +182,23 @@ pub unsafe fn get_segment_ptr(offset: usize) -> *mut Entry {
 		.byte_add(offset)
 }
 
+/// A GDT descriptor.
+#[repr(C, packed)]
+struct Gdt {
+	/// The size of the GDT in bytes, minus `1`.
+	size: u16,
+	/// The address to the GDT.
+	addr: VirtAddr,
+}
+
 /// Refreshes the GDT's cache.
 #[inline(always)]
 pub fn flush() {
-	// FIXME: don't use a hardcoded value
+	let gdt = Gdt {
+		size: (size_of::<InitGdt>() - 1) as _,
+		addr: GDT_VIRT_ADDR,
+	};
 	unsafe {
-		asm!(
-			"mov word ptr [esp], (8 * 9 - 1)",
-			"mov dword ptr [esp + 2], 0xc0000800",
-			"lgdt [esp]"
-		);
+		asm!("lgdt [{}]", in(reg) &gdt);
 	}
 }

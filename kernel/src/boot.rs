@@ -23,14 +23,14 @@ use crate::{
 use core::arch::global_asm;
 
 #[cfg(target_arch = "x86")]
-const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
+pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
 #[cfg(target_arch = "x86_64")]
-const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff800000000800);
+pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff800000000800);
 
 #[cfg(target_arch = "x86")]
-type InitGdt = [gdt::Entry; 9];
+pub type InitGdt = [gdt::Entry; 9];
 #[cfg(target_arch = "x86_64")]
-type InitGdt = [gdt::Entry; 11];
+pub type InitGdt = [gdt::Entry; 11];
 
 /// The initial Global Descriptor Table.
 #[no_mangle]
@@ -312,9 +312,10 @@ complete_flush:
 	mov fs, ax
 	mov gs, ax
 
-	# Update stack
+	# Update stack and GDT
 	mov rax, 0xffff800000000000
     add rsp, rax
+	lgdt [gdt]
 
 	# Call kernel_main
 	xor rdi, rdi
