@@ -33,9 +33,9 @@ pub mod version;
 use crate::{
 	elf,
 	elf::{
+		kernel::KernSym,
 		parser::ELFParser,
 		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
-		ELF32Sym,
 	},
 };
 use core::{
@@ -138,7 +138,7 @@ impl Module {
 	/// `name` is the name of the symbol to look for.
 	///
 	/// If the symbol doesn't exist, the function returns `None`.
-	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
+	fn resolve_symbol(name: &[u8]) -> Option<&KernSym> {
 		// The symbol on the kernel side
 		let kernel_sym = elf::kernel::get_symbol_by_name(name)?;
 		// TODO check symbols from other loaded modules
@@ -226,9 +226,9 @@ impl Module {
 					);
 					return None;
 				};
-				Some(other_sym.st_value)
+				Some(other_sym.st_value as usize)
 			} else {
-				Some(load_base as u32 + sym.st_value)
+				Some(load_base as usize + sym.st_value as usize)
 			}
 		};
 		let got_sym = parser.get_symbol_by_name(GOT_SYM);

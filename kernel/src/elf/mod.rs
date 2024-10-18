@@ -111,39 +111,39 @@ pub const PF_W: u32 = 0x2;
 pub const PF_R: u32 = 0x4;
 
 /// The section header is inactive.
-pub const SHT_NULL: u32 = 0x00000000;
+pub const SHT_NULL: u32 = 0x0;
 /// The section holds information defined by the program.
-pub const SHT_PROGBITS: u32 = 0x00000001;
+pub const SHT_PROGBITS: u32 = 0x1;
 /// The section holds a symbol table.
-pub const SHT_SYMTAB: u32 = 0x00000002;
+pub const SHT_SYMTAB: u32 = 0x2;
 /// the section holds a string table.
-pub const SHT_STRTAB: u32 = 0x00000003;
+pub const SHT_STRTAB: u32 = 0x3;
 /// The section holds relocation entries with explicit attends.
-pub const SHT_RELA: u32 = 0x00000004;
+pub const SHT_RELA: u32 = 0x4;
 /// The section holds a symbol hash table.
-pub const SHT_HASH: u32 = 0x00000005;
+pub const SHT_HASH: u32 = 0x5;
 /// The section holds information for dynamic linking.
-pub const SHT_DYNAMIC: u32 = 0x00000006;
+pub const SHT_DYNAMIC: u32 = 0x6;
 /// The section holds information that marks the file in some way.
-pub const SHT_NOTE: u32 = 0x00000007;
+pub const SHT_NOTE: u32 = 0x7;
 /// The section is empty but contains information in its offset.
-pub const SHT_NOBITS: u32 = 0x00000008;
+pub const SHT_NOBITS: u32 = 0x8;
 /// The section holds relocation entries without explicit attends.
-pub const SHT_REL: u32 = 0x00000009;
+pub const SHT_REL: u32 = 0x9;
 /// Reserved section type.
-pub const SHT_SHLIB: u32 = 0x0000000a;
+pub const SHT_SHLIB: u32 = 0xa;
 /// The section holds a symbol table.
-pub const SHT_DYNSYM: u32 = 0x0000000b;
+pub const SHT_DYNSYM: u32 = 0xb;
 
-/// The section contains writable data.
-pub const SHF_WRITE: u32 = 0x00000001;
-/// The section occupies memory during execution.
-pub const SHF_ALLOC: u32 = 0x00000002;
-/// The section contains executable machine instructions.
-pub const SHF_EXECINSTR: u32 = 0x00000004;
-/// Thread-Local Storage (TLS) section.
+/// Section flag: Contains writable data.
+pub const SHF_WRITE: u32 = 0x1;
+/// Section flag: Occupies memory during execution.
+pub const SHF_ALLOC: u32 = 0x2;
+/// Section flag: Contains executable machine instructions.
+pub const SHF_EXECINSTR: u32 = 0x4;
+/// Section flag: Thread-Local Storage (TLS) section.
 pub const SHF_TLS: u32 = 0x400;
-/// All bits included in this mask are reserved for processor-specific
+/// Section flag: All bits included in this mask are reserved for processor-specific
 /// semantics.
 pub const SHF_MASKPROC: u32 = 0xf0000000;
 

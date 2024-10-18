@@ -595,7 +595,7 @@ impl<'s> ELFExecutor<'s> {
 						let section = elf.get_section_by_index(sym_section as _)?;
 						let sym = elf.get_symbol_by_index(section, sym as _)?;
 						if sym.is_defined() {
-							Some(load_base as u32 + sym.st_value)
+							Some(load_base as usize + sym.st_value as usize)
 						} else {
 							None
 						}

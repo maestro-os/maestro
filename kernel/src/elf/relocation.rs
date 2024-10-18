@@ -68,7 +68,7 @@ pub trait Relocation {
 		user: bool,
 	) -> Result<(), RelocationError>
 	where
-		F: FnOnce(u32, usize) -> Option<u32>,
+		F: FnOnce(u32, usize) -> Option<usize>,
 	{
 		let got_off = got.map(|sym| sym.st_value as usize).unwrap_or(0);
 		// The address of the GOT
@@ -78,7 +78,7 @@ pub trait Relocation {
 						   // The offset in the PLT entry for the symbol
 		let plt_offset = 0usize; // TODO
 						   // The value of the symbol
-		let sym_val = get_sym(rel_section.sh_link, self.get_sym()).map(|val| val as usize);
+		let sym_val = get_sym(rel_section.sh_link, self.get_sym());
 		let value = match self.get_type() {
 			elf::R_386_32 => sym_val
 				.ok_or(RelocationError)?
@@ -213,4 +213,5 @@ macro_rules! rel_impl {
 }
 
 rel_impl!(ELF32Rel, ELF32Rela);
+#[cfg(target_arch = "x86_64")]
 rel_impl!(ELF64Rel, ELF64Rela);
