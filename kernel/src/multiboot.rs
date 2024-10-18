@@ -140,9 +140,7 @@ pub struct BootInfo {
 	/// The bootloader's name.
 	pub loader_name: Option<&'static [u8]>,
 
-	/// The lower memory size.
-	pub mem_lower: u32,
-	/// The upper memory size.
+	/// The upper memory size in kilobytes.
 	pub mem_upper: u32,
 	/// The size of physical memory mappings.
 	pub memory_maps_size: usize,
@@ -172,7 +170,6 @@ impl Default for BootInfo {
 			tags_end: PhysAddr::default(),
 			cmdline: None,
 			loader_name: None,
-			mem_lower: 0,
 			mem_upper: 0,
 			memory_maps_size: 0,
 			memory_maps_entry_size: 0,
@@ -232,7 +229,6 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 		}
 		TAG_TYPE_BASIC_MEMINFO => {
 			let t: &TagBasicMeminfo = unsafe { reinterpret_tag(tag) };
-			boot_info.mem_lower = t.mem_lower;
 			boot_info.mem_upper = t.mem_upper;
 		}
 		TAG_TYPE_MMAP => {

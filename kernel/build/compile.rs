@@ -61,7 +61,10 @@ pub fn compile_vdso(env: &Env, target: &Target) -> io::Result<()> {
 
 /// Compiles the C and assembly code that are parts of the kernel's codebase.
 pub fn compile_c(env: &Env, target: &Target) -> io::Result<()> {
-	let files = list_c_files(Path::new("src"))?;
+	let files: Vec<PathBuf> = list_c_files(Path::new("src"))?
+		.into_iter()
+		.chain(list_c_files(&target.src())?)
+		.collect();
 	for f in &files {
 		println!("cargo:rerun-if-changed={}", f.display());
 	}

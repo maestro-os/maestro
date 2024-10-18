@@ -51,6 +51,7 @@
 #![reexport_test_harness_main = "kernel_selftest"]
 
 pub mod acpi;
+mod boot;
 pub mod cmdline;
 pub mod cpu;
 pub mod crypto;
@@ -59,7 +60,7 @@ pub mod device;
 pub mod elf;
 pub mod event;
 pub mod file;
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod gdt;
 #[macro_use]
 pub mod idt;

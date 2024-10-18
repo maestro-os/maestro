@@ -17,7 +17,7 @@
  */
 
 /*
- * This file is the linker script for the x86 architecture.
+ * The linker script for the x86 architecture.
  *
  * The kernel image is split into two parts:
  * - The boot part, in lower memory (sections with the `.boot` prefix)
@@ -27,10 +27,11 @@
  * the kernel image is relocated to higher memory.
  * After running the kernel code, the booting code isn't useful anymore.
  *
- * Sections need to be aligned on the page boundary to be protected against writing (for those
- * where it applies).
+ * Sections need to be aligned on the page boundary to be protected against
+ * writing (for those where it applies).
  *
- * BSS sections are located right after read-only sections to limit damages if the stack(s) they contain overflows.
+ * BSS sections are located right after read-only sections to limit damages if
+ * the stack(s) they contain overflows.
  */
 
 ENTRY(multiboot_entry)
@@ -45,14 +46,14 @@ SECTIONS
 		*(.boot.text)
 	}
 
-	.boot.stack : ALIGN(4K)
-	{
-		*(.boot.stack)
-	}
-
 	.boot.data : ALIGN(4K)
 	{
 		*(.boot.data)
+	}
+
+	.boot.stack : ALIGN(4K)
+	{
+		*(.boot.stack)
 	}
 
     /* Kernel sections */

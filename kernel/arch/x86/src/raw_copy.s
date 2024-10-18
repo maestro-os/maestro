@@ -16,20 +16,33 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `wait4` system call waits for a process to change state.
+// Copy from/to userspace
 
-use super::{waitpid, Args};
-use crate::process::{mem_space::copy::SyscallPtr, regs::Regs32, rusage::RUsage, Process};
-use core::ffi::c_int;
-use utils::{errno::EResult, lock::IntMutex};
+.intel_syntax noprefix
 
-pub fn wait4(
-	Args((pid, wstatus, options, rusage)): Args<(
-		c_int,
-		SyscallPtr<c_int>,
-		c_int,
-		SyscallPtr<RUsage>,
-	)>,
-) -> EResult<usize> {
-	waitpid::do_waitpid(pid, wstatus, options | waitpid::WEXITED, rusage)
-}
+.section .text
+
+.global raw_copy
+.global copy_fault
+
+// TODO can be optimized
+raw_copy:
+	push esi
+	push edi
+
+	mov edi, 12[esp]
+	mov esi, 16[esp]
+	mov ecx, 20[esp]
+
+	rep movsb
+
+	pop edi
+	pop esi
+	mov eax, 1
+	ret
+
+copy_fault:
+	pop edi
+	pop esi
+	xor eax, eax
+	ret

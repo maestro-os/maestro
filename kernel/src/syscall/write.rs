@@ -22,7 +22,7 @@ use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, FileType},
 	idt,
-	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
+	process::{mem_space::copy::SyscallSlice, regs::Regs32, scheduler, Process},
 	syscall::Signal,
 };
 use core::{cmp::min, ffi::c_int, sync::atomic};

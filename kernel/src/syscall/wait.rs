@@ -19,7 +19,7 @@
 //! The `wait` system call is a simpler version of the `waitpid` system call.
 
 use super::waitpid;
-use crate::process::{mem_space::copy::SyscallPtr, regs::Regs, Process};
+use crate::process::{mem_space::copy::SyscallPtr, regs::Regs32, Process};
 use core::ffi::c_int;
 use utils::{errno::EResult, lock::IntMutex};
 

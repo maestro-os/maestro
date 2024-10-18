@@ -30,7 +30,7 @@ pub mod vdso;
 use crate::{
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
-	process::{mem_space::MemSpace, regs::Regs, signal::SignalHandler, Process},
+	process::{mem_space::MemSpace, regs::Regs32, signal::SignalHandler, Process},
 };
 use utils::{
 	collections::{string::String, vec::Vec},
@@ -110,9 +110,9 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.tls_entries = Default::default();
 	proc.update_tss();
 	// Set the process's registers
-	proc.regs = Regs {
-		esp: image.user_stack.0,
-		eip: image.entry_point.0,
+	proc.regs = Regs32 {
+		esp: image.user_stack.0 as _,
+		eip: image.entry_point.0 as _,
 		..Default::default()
 	};
 	Ok(())

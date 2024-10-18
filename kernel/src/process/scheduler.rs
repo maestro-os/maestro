@@ -30,7 +30,7 @@ use crate::{
 	event::CallbackHook,
 	idt::pic,
 	memory::stack,
-	process::{pid::Pid, regs::Regs, Process, State},
+	process::{pid::Pid, regs::Regs32, Process, State},
 	time,
 };
 use core::arch::asm;
@@ -96,7 +96,7 @@ impl Scheduler {
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
 		let tick_callback_hook = event::register_callback(
 			pit.get_interrupt_vector(),
-			|_: u32, _: u32, regs: &Regs, ring: u32| {
+			|_: u32, _: u32, regs: &Regs32, ring: u32| {
 				Scheduler::tick(SCHEDULER.get(), regs, ring);
 			},
 		)?
@@ -251,7 +251,7 @@ impl Scheduler {
 	/// - `sched_mutex` is the scheduler's mutex.
 	/// - `regs` is the state of the registers from the paused context.
 	/// - `ring` is the ring of the paused context.
-	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs, ring: u32) -> ! {
+	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs32, ring: u32) -> ! {
 		// Disable interrupts so that they remain disabled between the time the scheduler is
 		// unlocked and the context is switched to the next process
 		cli();
