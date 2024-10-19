@@ -16,156 +16,595 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the ELF parser.
+//! ELF parser.
 
 use super::*;
 use crate::elf::relocation::Relocation;
-use core::mem::size_of;
-use utils::{bytes, bytes::AnyRepr};
+use utils::bytes;
+
+/// The ELF's class.
+#[derive(Clone, Copy)]
+pub enum Class {
+	/// 32 bit
+	Bit32,
+	/// 64 bit
+	#[cfg(target_pointer_width = "64")]
+	Bit64,
+}
+
+impl Class {
+	/// Returns the class corresponding to the given value.
+	///
+	/// 64 bit may be valid only if the kernel is compiled for a 64 bit target.
+	///
+	/// If invalid, the function returns `None`.
+	fn from_value(value: u8) -> Option<Self> {
+		match value {
+			ELFCLASS32 => Some(Class::Bit32),
+			#[cfg(target_pointer_width = "64")]
+			ELFCLASS64 => Some(Class::Bit64),
+			_ => None,
+		}
+	}
+}
+
+/// Trait allowing to parse a structure from an ELF image.
+pub trait Parse: Sized {
+	/// Parse the structure from `data`.
+	///
+	/// If invalid, the function returns `None`.
+	fn parse(data: &[u8], class: Class) -> Option<Self>;
+}
+
+/// Representation of a file header, bit-width-agnostic.
+#[derive(Debug)]
+pub struct FileHeader {
+	/// Identification bytes.
+	pub e_ident: [u8; EI_NIDENT],
+	/// Identifies the object file type.
+	pub e_type: u16,
+	/// Specifies the required machine type.
+	pub e_machine: u16,
+	/// The file's version.
+	pub e_version: u32,
+	/// The virtual address of the file's entry point.
+	pub e_entry: u64,
+	/// The program header table's file offset in bytes.
+	pub e_phoff: u64,
+	/// The section header table's file offset in bytes.
+	pub e_shoff: u64,
+	/// Processor-specific flags.
+	pub e_flags: u32,
+	/// ELF header's size in bytes.
+	pub e_ehsize: u16,
+	/// The size of one entry in the program header table.
+	pub e_phentsize: u16,
+	/// The number of entries in the program header table.
+	pub e_phnum: u16,
+	/// The size of one entry in the section header table.
+	pub e_shentsize: u16,
+	/// The number of entries in the section header table.
+	pub e_shnum: u16,
+	/// The section header table index holding the header of the section name
+	/// string table.
+	pub e_shstrndx: u16,
+}
+
+impl Parse for FileHeader {
+	fn parse(data: &[u8], class: Class) -> Option<Self> {
+		match class {
+			Class::Bit32 => {
+				let hdr: &ELF32ELFHeader = bytes::from_bytes(data)?;
+				Some(Self {
+					e_ident: hdr.e_ident,
+					e_type: hdr.e_type,
+					e_machine: hdr.e_machine,
+					e_version: hdr.e_version,
+					e_entry: hdr.e_entry as _,
+					e_phoff: hdr.e_phoff as _,
+					e_shoff: hdr.e_shoff as _,
+					e_flags: hdr.e_flags,
+					e_ehsize: hdr.e_ehsize,
+					e_phentsize: hdr.e_phentsize,
+					e_phnum: hdr.e_phnum,
+					e_shentsize: hdr.e_shentsize,
+					e_shnum: hdr.e_shnum,
+					e_shstrndx: hdr.e_shstrndx,
+				})
+			}
+			#[cfg(target_pointer_width = "64")]
+			Class::Bit64 => {
+				let hdr: &ELF64ELFHeader = bytes::from_bytes(data)?;
+				Some(Self {
+					e_ident: hdr.e_ident,
+					e_type: hdr.e_type,
+					e_machine: hdr.e_machine,
+					e_version: hdr.e_version,
+					e_entry: hdr.e_entry,
+					e_phoff: hdr.e_phoff,
+					e_shoff: hdr.e_shoff,
+					e_flags: hdr.e_flags,
+					e_ehsize: hdr.e_ehsize,
+					e_phentsize: hdr.e_phentsize,
+					e_phnum: hdr.e_phnum,
+					e_shentsize: hdr.e_shentsize,
+					e_shnum: hdr.e_shnum,
+					e_shstrndx: hdr.e_shstrndx,
+				})
+			}
+		}
+	}
+}
+
+/// Representation of a program header, bit-width-agnostic.
+#[derive(Debug)]
+pub struct ProgramHeader {
+	/// Tells what kind of segment this header describes.
+	pub p_type: u32,
+	/// Segment's flags.
+	pub p_flags: u32,
+	/// The offset of the segment's content in the file.
+	pub p_offset: u64,
+	/// The virtual address of the segment's content.
+	pub p_vaddr: u64,
+	/// The physical address of the segment's content (if relevant).
+	pub p_paddr: u64,
+	/// The size of the segment's content in the file.
+	pub p_filesz: u64,
+	/// The size of the segment's content in memory.
+	pub p_memsz: u64,
+	/// Segment's alignment.
+	pub p_align: u64,
+}
+
+impl Parse for ProgramHeader {
+	fn parse(data: &[u8], class: Class) -> Option<Self> {
+		match class {
+			Class::Bit32 => {
+				let hdr: &ELF32ProgramHeader = bytes::from_bytes(data)?;
+				Some(Self {
+					p_type: hdr.p_type,
+					p_flags: hdr.p_flags,
+					p_offset: hdr.p_offset as _,
+					p_vaddr: hdr.p_vaddr as _,
+					p_paddr: hdr.p_paddr as _,
+					p_filesz: hdr.p_filesz as _,
+					p_memsz: hdr.p_memsz as _,
+					p_align: hdr.p_align as _,
+				})
+			}
+			#[cfg(target_pointer_width = "64")]
+			Class::Bit64 => {
+				let hdr: &ELF64ProgramHeader = bytes::from_bytes(data)?;
+				Some(Self {
+					p_type: hdr.p_type,
+					p_flags: hdr.p_flags,
+					p_offset: hdr.p_offset,
+					p_vaddr: hdr.p_vaddr,
+					p_paddr: hdr.p_paddr,
+					p_filesz: hdr.p_filesz,
+					p_memsz: hdr.p_memsz,
+					p_align: hdr.p_align,
+				})
+			}
+		}
+	}
+}
+
+impl ProgramHeader {
+	/// Tells whether the program header is valid.
+	///
+	/// `file_size` is the size of the file.
+	fn is_valid(&self, file_size: u64) -> EResult<()> {
+		// TODO Check p_type
+		let end = self.p_offset.checked_add(self.p_filesz as _);
+		if !matches!(end, Some(end) if end <= file_size) {
+			return Err(errno!(EINVAL));
+		}
+		if self.p_align > 0 {
+			if !self.p_align.is_power_of_two() {
+				return Err(errno!(EINVAL));
+			}
+			if self.p_offset % self.p_align != self.p_vaddr % self.p_align {
+				return Err(errno!(EINVAL));
+			}
+		}
+		Ok(())
+	}
+
+	/// Returns the flags to map the current segment into a process's memory
+	/// space.
+	pub fn get_mem_space_flags(&self) -> u8 {
+		let mut flags = mem_space::MAPPING_FLAG_USER;
+		if self.p_flags & PF_X != 0 {
+			flags |= mem_space::MAPPING_FLAG_EXEC;
+		}
+		if self.p_flags & PF_W != 0 {
+			flags |= mem_space::MAPPING_FLAG_WRITE;
+		}
+		flags
+	}
+}
+
+/// Representation of a section header, bit-width-agnostic.
+#[derive(Debug)]
+pub struct SectionHeader {
+	/// Index in the string table section specifying the name of the section.
+	pub sh_name: u32,
+	/// The type of the section.
+	pub sh_type: u32,
+	/// Section flags.
+	pub sh_flags: u64,
+	/// The address to the section's data in memory during execution.
+	pub sh_addr: u64,
+	/// The offset of the section's data in the ELF file.
+	pub sh_offset: u64,
+	/// The size of the section's data in bytes.
+	pub sh_size: u64,
+	/// Section header table index link.
+	pub sh_link: u32,
+	/// Extra-information whose interpretation depends on the section type.
+	pub sh_info: u32,
+	/// Alignment constraints of the section in memory. `0` or `1` means that
+	/// the section doesn't require specific alignment.
+	pub sh_addralign: u64,
+	/// If the section is a table of entry, this field holds the size of one
+	/// entry. Else, holds `0`.
+	pub sh_entsize: u64,
+}
+
+impl Parse for SectionHeader {
+	fn parse(data: &[u8], class: Class) -> Option<Self> {
+		match class {
+			Class::Bit32 => {
+				let hdr: &ELF32SectionHeader = bytes::from_bytes(data)?;
+				Some(Self {
+					sh_name: hdr.sh_name,
+					sh_type: hdr.sh_type,
+					sh_flags: hdr.sh_flags as _,
+					sh_addr: hdr.sh_addr as _,
+					sh_offset: hdr.sh_offset as _,
+					sh_size: hdr.sh_size as _,
+					sh_link: hdr.sh_link,
+					sh_info: hdr.sh_info,
+					sh_addralign: hdr.sh_addralign as _,
+					sh_entsize: hdr.sh_entsize as _,
+				})
+			}
+			#[cfg(target_pointer_width = "64")]
+			Class::Bit64 => {
+				let hdr: &ELF64SectionHeader = bytes::from_bytes(data)?;
+				Some(Self {
+					sh_name: hdr.sh_name,
+					sh_type: hdr.sh_type,
+					sh_flags: hdr.sh_flags,
+					sh_addr: hdr.sh_addr,
+					sh_offset: hdr.sh_offset,
+					sh_size: hdr.sh_size,
+					sh_link: hdr.sh_link,
+					sh_info: hdr.sh_info,
+					sh_addralign: hdr.sh_addralign,
+					sh_entsize: hdr.sh_entsize,
+				})
+			}
+		}
+	}
+}
+
+impl SectionHeader {
+	/// Tells whether the section header is valid.
+	///
+	/// `file_size` is the size of the file.
+	fn is_valid(&self, file_size: u64) -> EResult<()> {
+		// TODO Check sh_name
+		let end = self.sh_offset.checked_add(self.sh_size);
+		if self.sh_type & SHT_NOBITS == 0 && !matches!(end, Some(end) if end <= file_size) {
+			return Err(errno!(EINVAL));
+		}
+		if self.sh_addralign != 0 && !self.sh_addralign.is_power_of_two() {
+			return Err(errno!(EINVAL));
+		}
+		Ok(())
+	}
+}
+
+/// Representation of a symbol, bit-width-agnostic.
+#[derive(Debug)]
+pub struct Sym {
+	/// Offset in the string table section specifying the name of the symbol.
+	pub st_name: u32,
+	/// The symbol's type and binding attributes.
+	pub st_info: u8,
+	/// Holds `0`.
+	pub st_other: u8,
+	/// The index of the section the symbol is in.
+	pub st_shndx: u16,
+	/// The value of the symbol.
+	pub st_value: u64,
+	/// The size of the symbol.
+	pub st_size: u64,
+}
+
+impl Parse for Sym {
+	fn parse(data: &[u8], class: Class) -> Option<Self> {
+		match class {
+			Class::Bit32 => {
+				let hdr: &ELF32Sym = bytes::from_bytes(data)?;
+				Some(Self {
+					st_name: hdr.st_name,
+					st_info: hdr.st_info,
+					st_other: hdr.st_other,
+					st_shndx: hdr.st_shndx,
+					st_value: hdr.st_value as _,
+					st_size: hdr.st_size as _,
+				})
+			}
+			#[cfg(target_pointer_width = "64")]
+			Class::Bit64 => {
+				let hdr: &ELF64Sym = bytes::from_bytes(data)?;
+				Some(Self {
+					st_name: hdr.st_name,
+					st_info: hdr.st_info,
+					st_other: hdr.st_other,
+					st_shndx: hdr.st_shndx,
+					st_value: hdr.st_value,
+					st_size: hdr.st_size,
+				})
+			}
+		}
+	}
+}
+
+impl Sym {
+	/// Tells whether the symbol is defined.
+	pub fn is_defined(&self) -> bool {
+		self.st_shndx != 0
+	}
+}
+
+/// Representation of a relocation, bit-width-agnostic.
+#[derive(Debug)]
+pub struct Rel {
+	/// The location of the relocation action.
+	pub r_offset: u64,
+	/// The relocation type and symbol index.
+	pub r_info: u64,
+}
+
+impl Parse for Rel {
+	fn parse(data: &[u8], class: Class) -> Option<Self> {
+		match class {
+			Class::Bit32 => {
+				let hdr: &ELF32Rel = bytes::from_bytes(data)?;
+				Some(Self {
+					r_offset: hdr.r_offset as _,
+					r_info: hdr.r_info as _,
+				})
+			}
+			#[cfg(target_pointer_width = "64")]
+			Class::Bit64 => {
+				let hdr: &ELF64Rel = bytes::from_bytes(data)?;
+				Some(Self {
+					r_offset: hdr.r_offset,
+					r_info: hdr.r_info,
+				})
+			}
+		}
+	}
+}
+
+impl Relocation for Rel {
+	const REQUIRED_SECTION_TYPE: u32 = SHT_REL;
+
+	fn get_offset(&self) -> usize {
+		self.r_offset as _
+	}
+
+	fn get_info(&self) -> usize {
+		self.r_info as _
+	}
+}
+
+/// Representation of a relocation with an addend, bit-width-agnostic.
+#[derive(Debug)]
+pub struct Rela {
+	/// The location of the relocation action.
+	pub r_offset: u64,
+	/// The relocation type and symbol index.
+	pub r_info: u64,
+	/// A constant value used to compute the relocation.
+	pub r_addend: i64,
+}
+
+impl Parse for Rela {
+	fn parse(data: &[u8], class: Class) -> Option<Self> {
+		match class {
+			Class::Bit32 => {
+				let hdr: &ELF32Rela = bytes::from_bytes(data)?;
+				Some(Self {
+					r_offset: hdr.r_offset as _,
+					r_info: hdr.r_info as _,
+					r_addend: hdr.r_addend as _,
+				})
+			}
+			#[cfg(target_pointer_width = "64")]
+			Class::Bit64 => {
+				let hdr: &ELF64Rela = bytes::from_bytes(data)?;
+				Some(Self {
+					r_offset: hdr.r_offset,
+					r_info: hdr.r_info,
+					r_addend: hdr.r_addend,
+				})
+			}
+		}
+	}
+}
+
+impl Relocation for Rela {
+	const REQUIRED_SECTION_TYPE: u32 = SHT_RELA;
+
+	fn get_offset(&self) -> usize {
+		self.r_offset as _
+	}
+
+	fn get_info(&self) -> usize {
+		self.r_info as _
+	}
+
+	fn get_addend(&self) -> isize {
+		self.r_addend as _
+	}
+}
 
 /// Returns an iterator over ELF elements.
 ///
 /// Arguments:
 /// - `table` is a slice over the elements table.
+/// - `class` is the class to parse for.
 /// - `num` is the number of elements in the table.
 /// - `entsize` is the size of an element in the table.
-fn iter<'t, T: 't + AnyRepr>(
-	table: &'t [u8],
+fn iter<'data, T: 'data + Parse>(
+	table: &'data [u8],
+	class: Class,
 	num: usize,
 	entsize: usize,
-) -> impl Iterator<Item = EResult<&'t T>> {
-	(0..num)
-		.map(move |i| {
-			let begin = i * entsize;
-			let end = begin + entsize;
-			// Check in if in bound
-			if end <= table.len() {
-				bytes::from_bytes(&table[begin..end])
-			} else {
-				None
-			}
-		})
-		.map(|e| e.ok_or_else(|| errno!(EINVAL)))
+) -> impl Iterator<Item = EResult<T>> + use<'data, T> {
+	(0..num).map(move |i| {
+		let begin = i * entsize;
+		let end = begin + entsize;
+		table
+			.get(begin..end)
+			.and_then(|data| T::parse(data, class))
+			.ok_or_else(|| errno!(EINVAL))
+	})
 }
 
 /// The ELF parser allows to parse an ELF image and retrieve information on it.
 ///
 /// It is especially useful to load a kernel module or userspace program.
-pub struct ELFParser<'a>(&'a [u8]);
+pub struct ELFParser<'data>(&'data [u8]);
 
-impl<'a> ELFParser<'a> {
-	/// Returns the image's header.
-	pub fn hdr(&self) -> &ELF32ELFHeader {
-		// Safe because the image is already checked to be large enough on parser instantiation
-		bytes::from_bytes(self.0).unwrap()
-	}
-
-	// TODO Support 64 bit
-	/// Tells whether the ELF image is valid.
-	fn check_image(&self) -> EResult<()> {
-		if self.0.len() < EI_NIDENT {
+impl<'data> ELFParser<'data> {
+	/// Creates a new instance for the given image.
+	///
+	/// The function checks if the image is valid. If not, the function returns
+	/// an error.
+	pub fn new(image: &'data [u8]) -> EResult<Self> {
+		// Check signature
+		if image.len() < EI_NIDENT {
 			return Err(errno!(EINVAL));
 		}
-		let signature = b"\x7fELF";
-		if &self.0[0..signature.len()] != signature {
+		if !image.starts_with(b"\x7fELF") {
 			return Err(errno!(EINVAL));
 		}
-
-		#[cfg(target_pointer_width = "32")]
-		if self.0[EI_CLASS] != ELFCLASS32 {
+		// Detect 32/64 bit
+		let class = Class::from_value(image[EI_CLASS]).ok_or_else(|| errno!(EINVAL))?;
+		// Check endianness
+		match image[EI_DATA] {
+			#[cfg(target_endian = "little")]
+			ELFDATA2LSB => {}
+			#[cfg(target_endian = "big")]
+			ELFDATA2MSB => {}
+			_ => return Err(errno!(EINVAL)),
+		}
+		// Get full header
+		let ehdr = FileHeader::parse(image, class).ok_or_else(|| errno!(EINVAL))?;
+		// Check machine type
+		let valid = match ehdr.e_machine {
+			// x86 | Intel 80860
+			0x3 | 0x7 => cfg!(target_arch = "x86") || cfg!(target_arch = "x86_64"),
+			// AMD x86_64
+			0x3e => cfg!(target_arch = "x86_64"),
+			_ => false,
+		};
+		if !valid {
 			return Err(errno!(EINVAL));
 		}
-
-		#[cfg(target_endian = "big")]
-		if self.0[EI_DATA] != ELFDATA2LSB {
+		// Check header validity
+		let min_size = match class {
+			Class::Bit32 => size_of::<ELF32ELFHeader>(),
+			#[cfg(target_pointer_width = "64")]
+			Class::Bit64 => size_of::<ELF64ELFHeader>(),
+		};
+		if (ehdr.e_ehsize as usize) < min_size {
 			return Err(errno!(EINVAL));
 		}
-
-		if self.0.len() < size_of::<ELF32ELFHeader>() {
-			return Err(errno!(EINVAL));
-		}
-		let ehdr = self.hdr();
-
-		// TODO Check e_machine
-		// TODO Check e_version
-
-		if ehdr.e_ehsize != size_of::<ELF32ELFHeader>() as u16 {
-			return Err(errno!(EINVAL));
-		}
-
-		// Check segments validity
-		// Bound check is made when getting the structure from bytes
-		self.try_iter_segments()
-			.try_for_each(|phdr| phdr?.is_valid(self.0.len()))?;
-
-		// Check sections validity
 		if ehdr.e_shstrndx >= ehdr.e_shnum {
 			return Err(errno!(EINVAL));
 		}
-		// Bound check is made when getting the structure from bytes
-		self.try_iter_sections()
-			.try_for_each(|shdr| shdr?.is_valid(self.0.len()))?;
-
-		// TODO check relocations
-		// TODO check symbols
-
-		Ok(())
-	}
-
-	/// Creates a new instance for the given image.
-	///
-	/// The function checks if the image is valid. If not, the function retuns
-	/// an error.
-	pub fn new(image: &'a [u8]) -> EResult<Self> {
 		let p = Self(image);
-		p.check_image()?;
+		p.try_iter_segments()
+			.try_for_each(|phdr| phdr?.is_valid(image.len() as _))?;
+		p.try_iter_sections()
+			.try_for_each(|shdr| shdr?.is_valid(image.len() as _))?;
+		// TODO check symbols
+		// TODO check relocations
 		Ok(p)
 	}
 
-	/// Returns a reference to the ELF image.
-	pub fn get_image(&self) -> &[u8] {
+	/// Returns a slice to the raw ELF data.
+	pub fn as_slice(&self) -> &[u8] {
 		self.0
+	}
+
+	/// Returns the image's class.
+	pub fn class(&self) -> Class {
+		// Will not fail, because this is checked on instantiation
+		Class::from_value(self.0[EI_CLASS]).unwrap()
+	}
+
+	/// Returns the image's header.
+	pub fn hdr(&self) -> FileHeader {
+		// Will not fail, because the size is checked on parser instantiation
+		Parse::parse(self.0, self.class()).unwrap()
 	}
 
 	/// Returns an iterator on the image's segment headers.
 	///
 	/// If a section is out of bounds, the iterator returns an error.
-	fn try_iter_segments(&self) -> impl Iterator<Item = EResult<&ELF32ProgramHeader>> {
+	fn try_iter_segments(&self) -> impl Iterator<Item = EResult<ProgramHeader>> + use<'data> {
 		let ehdr = self.hdr();
 		let table = &self.0[ehdr.e_phoff as usize..];
-		iter(table, ehdr.e_phnum as usize, ehdr.e_phentsize as usize)
+		iter(
+			table,
+			self.class(),
+			ehdr.e_phnum as usize,
+			ehdr.e_phentsize as usize,
+		)
 	}
 
 	/// Returns an iterator on the image's segment headers.
-	pub fn iter_segments(&self) -> impl Iterator<Item = &ELF32ProgramHeader> {
+	pub fn iter_segments(&self) -> impl Iterator<Item = ProgramHeader> + use<'data> {
 		self.try_iter_segments().filter_map(Result::ok)
 	}
 
 	/// Returns an iterator on the image's section headers.
 	///
 	/// If a section is out of bounds, the iterator returns an error.
-	fn try_iter_sections(&self) -> impl Iterator<Item = EResult<&ELF32SectionHeader>> {
+	fn try_iter_sections(&self) -> impl Iterator<Item = EResult<SectionHeader>> + use<'data> {
 		let ehdr = self.hdr();
 		let table = &self.0[ehdr.e_shoff as usize..];
-		iter(table, ehdr.e_shnum as usize, ehdr.e_shentsize as usize)
+		iter(
+			table,
+			self.class(),
+			ehdr.e_shnum as usize,
+			ehdr.e_shentsize as usize,
+		)
 	}
 
 	/// Returns an iterator on the image's section headers.
-	pub fn iter_sections(&self) -> impl Iterator<Item = &ELF32SectionHeader> {
+	pub fn iter_sections(&self) -> impl Iterator<Item = SectionHeader> + use<'data> {
 		self.try_iter_sections().filter_map(Result::ok)
 	}
 
 	/// Returns the section with the given index.
 	///
 	/// If the section does not exist, the function returns `None`.
-	pub fn get_section_by_index(&self, i: usize) -> Option<&ELF32SectionHeader> {
-		// Bound check
-		if i < self.hdr().e_shnum as usize {
-			let off = self.hdr().e_shoff as usize + i * self.hdr().e_shentsize as usize;
-			bytes::from_bytes(&self.0[off..])
-		} else {
-			None
-		}
+	pub fn get_section_by_index(&self, i: usize) -> Option<SectionHeader> {
+		let hdr = self.hdr();
+		let off = hdr.e_shoff as usize + i * hdr.e_shentsize as usize;
+		let end = hdr.e_shnum as usize * hdr.e_shentsize as usize;
+		SectionHeader::parse(self.0.get(off..end)?, self.class())
 	}
 
 	/// Returns an iterator on the relocations of the given section.
@@ -173,10 +612,10 @@ impl<'a> ELFParser<'a> {
 	/// If the section does not have the correct type, the function returns an empty iterator.
 	///
 	/// If a relocation is out of bounds, the iterator returns an error.
-	fn try_iter_rel<'elf, R: 'elf + AnyRepr + Relocation>(
-		&'elf self,
-		section: &'elf ELF32SectionHeader,
-	) -> impl Iterator<Item = EResult<&'elf R>> {
+	fn try_iter_rel<R: 'data + Parse + Relocation>(
+		&self,
+		section: &SectionHeader,
+	) -> impl Iterator<Item = EResult<R>> + use<'data, R> {
 		let table = &self.0[section.sh_offset as usize..];
 		let mut num = (section.sh_size as usize)
 			.checked_div(section.sh_entsize as usize)
@@ -185,16 +624,16 @@ impl<'a> ELFParser<'a> {
 		if section.sh_type != R::REQUIRED_SECTION_TYPE {
 			num = 0;
 		}
-		iter(table, num, section.sh_entsize as usize)
+		iter(table, self.class(), num, section.sh_entsize as usize)
 	}
 
 	/// Returns an iterator on the section's relocations.
 	///
 	/// If the section doesn't have the correct type, the function returns an empty iterator.
-	pub fn iter_rel<'elf, R: 'elf + AnyRepr + Relocation>(
-		&'elf self,
-		section: &'elf ELF32SectionHeader,
-	) -> impl Iterator<Item = &'elf R> {
+	pub fn iter_rel<R: 'data + Parse + Relocation>(
+		&self,
+		section: &SectionHeader,
+	) -> impl Iterator<Item = R> + use<'data, R> {
 		self.try_iter_rel(section).filter_map(Result::ok)
 	}
 
@@ -205,8 +644,8 @@ impl<'a> ELFParser<'a> {
 	/// If a symbol is out of bounds, the iterator returns an error.
 	pub fn try_iter_symbols(
 		&self,
-		section: &ELF32SectionHeader,
-	) -> impl Iterator<Item = EResult<&ELF32Sym>> {
+		section: &SectionHeader,
+	) -> impl Iterator<Item = EResult<Sym>> + use<'data> {
 		let table = &self.0[section.sh_offset as usize..];
 		let mut num = (section.sh_size as usize)
 			.checked_div(section.sh_entsize as usize)
@@ -215,13 +654,13 @@ impl<'a> ELFParser<'a> {
 		if section.sh_type != SHT_SYMTAB && section.sh_type != SHT_DYNSYM {
 			num = 0;
 		}
-		iter(table, num, section.sh_entsize as usize)
+		iter(table, self.class(), num, section.sh_entsize as usize)
 	}
 
 	/// Returns an iterator on the section's relocations.
 	///
 	/// If the section doesn't have the correct type, the function returns an empty iterator.
-	pub fn iter_symbols(&self, section: &ELF32SectionHeader) -> impl Iterator<Item = &ELF32Sym> {
+	pub fn iter_symbols(&self, section: &SectionHeader) -> impl Iterator<Item = Sym> + use<'data> {
 		self.try_iter_symbols(section).filter_map(Result::ok)
 	}
 
@@ -230,17 +669,18 @@ impl<'a> ELFParser<'a> {
 	/// `symtab` is the symbol table to look into.
 	///
 	/// If the symbol does not exist, the function returns `None`.
-	pub fn get_symbol_by_index(&self, symtab: &ELF32SectionHeader, i: usize) -> Option<&ELF32Sym> {
+	pub fn get_symbol_by_index(&self, symtab: &SectionHeader, i: usize) -> Option<Sym> {
 		let begin = symtab.sh_offset as usize;
 		let off = begin + i * symtab.sh_entsize as usize;
 		let end = begin + symtab.sh_size as usize;
-		bytes::from_bytes(&self.0[off..end])
+		let data = self.0.get(off..end)?;
+		Sym::parse(data, self.class())
 	}
 
 	/// Returns the symbol with name `name`.
 	///
 	/// If the symbol does not exist, the function returns `None`.
-	pub fn get_symbol_by_name(&self, name: &[u8]) -> Option<&ELF32Sym> {
+	pub fn get_symbol_by_name(&self, name: &[u8]) -> Option<Sym> {
 		if self.has_hash() {
 			// Fast path: get symbol from hash table
 			self.hash_find(name)
@@ -252,15 +692,14 @@ impl<'a> ELFParser<'a> {
 					Some((section, strtab_section))
 				})
 				.flat_map(|(section, strtab_section)| {
-					self.iter_symbols(section).filter(|sym| {
+					self.iter_symbols(&section).filter(move |sym| {
 						let sym_name_begin =
 							strtab_section.sh_offset as usize + sym.st_name as usize;
 						let sym_name_end = sym_name_begin + name.len();
-						if sym_name_end <= self.0.len() {
-							let sym_name = &self.0[sym_name_begin..sym_name_end];
-							sym_name == name
-						} else {
-							false
+						let sym_name = self.0.get(sym_name_begin..sym_name_end);
+						match sym_name {
+							Some(sym_name) => sym_name == name,
+							None => false,
 						}
 					})
 				})
@@ -271,7 +710,7 @@ impl<'a> ELFParser<'a> {
 	/// Returns the name of the symbol `sym` using the string table section `strtab`.
 	///
 	/// If the symbol name doesn't exist, the function returns `None`.
-	pub fn get_symbol_name(&self, strtab: &ELF32SectionHeader, sym: &ELF32Sym) -> Option<&[u8]> {
+	pub fn get_symbol_name(&self, strtab: &SectionHeader, sym: &Sym) -> Option<&[u8]> {
 		if sym.st_name != 0 {
 			let begin = strtab.sh_offset as usize + sym.st_name as usize;
 			let max_len = strtab.sh_size as usize - sym.st_name as usize;
@@ -305,7 +744,7 @@ impl<'a> ELFParser<'a> {
 	/// Returns the section containing the hash table.
 	///
 	/// If the section does not exist, the function returns `None`.
-	fn get_hash_section(&self) -> Option<&ELF32SectionHeader> {
+	fn get_hash_section(&self) -> Option<SectionHeader> {
 		self.iter_sections().find(|s| s.sh_type == SHT_HASH)
 	}
 
@@ -318,7 +757,7 @@ impl<'a> ELFParser<'a> {
 	///
 	/// If the ELF does not have a hash table, if the table is invalid, or if the symbol could not
 	/// be found, the function returns `None`.
-	pub fn hash_find(&self, name: &[u8]) -> Option<&ELF32Sym> {
+	pub fn hash_find(&self, name: &[u8]) -> Option<Sym> {
 		// TODO implement SHT_GNU_HASH
 		// TODO if not present, fallback to this:
 		// Get required sections
@@ -342,9 +781,9 @@ impl<'a> ELFParser<'a> {
 		let mut i = get(2 + hash % nbucket)? as usize;
 		let mut iter = 0;
 		while i != STN_UNDEF && iter < nchain + 1 {
-			let sym = self.get_symbol_by_index(symtab, i)?;
+			let sym = self.get_symbol_by_index(&symtab, i)?;
 			// If the name matches, return the symbol
-			if self.get_symbol_name(strtab, sym) == Some(name) {
+			if self.get_symbol_name(&strtab, &sym) == Some(name) {
 				return Some(sym);
 			}
 			// Get next in chain

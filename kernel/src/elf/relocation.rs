@@ -20,11 +20,10 @@
 
 use crate::{
 	elf,
-	elf::{ELF32SectionHeader, ELF32Sym, SHT_REL, SHT_RELA},
+	elf::parser::{SectionHeader, Sym},
 	process::mem_space::bound_check,
 };
 use core::{intrinsics::unlikely, mem::size_of_val, ptr};
-use macros::AnyRepr;
 
 /// The name of the symbol pointing to the global offset table.
 pub const GOT_SYM: &[u8] = b"_GLOBAL_OFFSET_TABLE_";
@@ -43,81 +42,6 @@ pub trait Relocation {
 	/// Returns the `r_info` field of the relocation.
 	fn get_info(&self) -> usize;
 
-	/// Performs the relocation.
-	///
-	/// Arguments:
-	/// - `base_addr` is the base address at which the ELF is loaded.
-	/// - `rel_section` is the section containing the relocation.
-	/// - `get_sym` is a closure returning the a symbol. Arguments are:
-	///     - The index of the section containing the symbol.
-	///     - The index of the symbol in the section.
-	/// - `got` is the Global Offset Table's symbol (named after [`GOT_SYM`]).
-	/// - `user` tells whether the relocation must be done for userspace or kernelspace.
-	///
-	/// If the relocation cannot be performed, the function returns an error.
-	///
-	/// # Safety
-	///
-	/// TODO
-	unsafe fn perform<F>(
-		&self,
-		base_addr: *const u8,
-		rel_section: &ELF32SectionHeader,
-		get_sym: F,
-		got: Option<&ELF32Sym>,
-		user: bool,
-	) -> Result<(), RelocationError>
-	where
-		F: FnOnce(u32, usize) -> Option<usize>,
-	{
-		let got_off = got.map(|sym| sym.st_value as usize).unwrap_or(0);
-		// The address of the GOT
-		let got_addr = (base_addr as usize).wrapping_add(got_off);
-		// The offset in the GOT entry for the symbol
-		let got_offset = 0usize; // TODO
-						   // The offset in the PLT entry for the symbol
-		let plt_offset = 0usize; // TODO
-						   // The value of the symbol
-		let sym_val = get_sym(rel_section.sh_link, self.get_sym());
-		let value = match self.get_type() {
-			elf::R_386_32 => sym_val
-				.ok_or(RelocationError)?
-				.wrapping_add_signed(self.get_addend()),
-			elf::R_386_PC32 => sym_val
-				.ok_or(RelocationError)?
-				.wrapping_add_signed(self.get_addend())
-				.wrapping_sub(self.get_offset()),
-			elf::R_386_GOT32 => got_offset.wrapping_add_signed(self.get_addend()),
-			elf::R_386_PLT32 => plt_offset
-				.wrapping_add_signed(self.get_addend())
-				.wrapping_sub(self.get_offset()),
-			elf::R_386_COPY => return Ok(()),
-			elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
-			elf::R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(self.get_addend()),
-			elf::R_386_GOTOFF => sym_val
-				.ok_or(RelocationError)?
-				.wrapping_add_signed(self.get_addend())
-				.wrapping_sub(got_addr),
-			elf::R_386_GOTPC => got_addr
-				.wrapping_add_signed(self.get_addend())
-				.wrapping_sub(self.get_offset()),
-			// Ignored
-			elf::R_386_IRELATIVE => return Ok(()),
-			_ => return Err(RelocationError),
-		} as u32;
-		let addr = base_addr.add(self.get_offset()) as *mut u32;
-		// If the resulting address is not accessible, error
-		if unlikely(user != bound_check(addr as _, size_of_val(&value))) {
-			return Err(RelocationError);
-		}
-		let value = match self.get_type() {
-			elf::R_386_RELATIVE => ptr::read_volatile(addr).wrapping_add(value),
-			_ => value,
-		};
-		ptr::write_volatile(addr, value);
-		Ok(())
-	}
-
 	/// Returns the relocation's symbol.
 	fn get_sym(&self) -> usize {
 		self.get_info() >> 8
@@ -134,84 +58,77 @@ pub trait Relocation {
 	}
 }
 
-/// 32 bits ELF relocation.
-#[derive(AnyRepr, Clone, Copy, Debug)]
-#[repr(C)]
-pub struct ELF32Rel {
-	/// The location of the relocation action.
-	pub r_offset: u32,
-	/// The relocation type and symbol index.
-	pub r_info: u32,
-}
-
-/// 64 bits ELF relocation.
-#[cfg(target_arch = "x86_64")]
-#[derive(AnyRepr, Clone, Copy, Debug)]
-#[repr(C)]
-pub struct ELF64Rel {
-	/// The location of the relocation action.
-	pub r_offset: u64,
-	/// The relocation type and symbol index.
-	pub r_info: u64,
-}
-
-/// 32 bits ELF relocation with an addend.
-#[derive(AnyRepr, Clone, Copy, Debug)]
-#[repr(C)]
-pub struct ELF32Rela {
-	/// The location of the relocation action.
-	pub r_offset: u32,
-	/// The relocation type and symbol index.
-	pub r_info: u32,
-	/// A constant value used to compute the relocation.
-	pub r_addend: i32,
-}
-
-/// 64 bits ELF relocation with an addend.
-#[cfg(target_arch = "x86_64")]
-#[derive(AnyRepr, Clone, Copy, Debug)]
-#[repr(C)]
-pub struct ELF64Rela {
-	/// The location of the relocation action.
-	pub r_offset: u64,
-	/// The relocation type and symbol index.
-	pub r_info: u64,
-	/// A constant value used to compute the relocation.
-	pub r_addend: i64,
-}
-
-macro_rules! rel_impl {
-	($rel:ident, $rela:ident) => {
-		impl Relocation for $rel {
-			const REQUIRED_SECTION_TYPE: u32 = SHT_REL;
-
-			fn get_offset(&self) -> usize {
-				self.r_offset as _
-			}
-
-			fn get_info(&self) -> usize {
-				self.r_info as _
-			}
-		}
-
-		impl Relocation for $rela {
-			const REQUIRED_SECTION_TYPE: u32 = SHT_RELA;
-
-			fn get_offset(&self) -> usize {
-				self.r_offset as _
-			}
-
-			fn get_info(&self) -> usize {
-				self.r_info as _
-			}
-
-			fn get_addend(&self) -> isize {
-				self.r_addend as _
-			}
-		}
+/// Performs the relocation.
+///
+/// Arguments:
+/// - `base_addr` is the base address at which the ELF is loaded.
+/// - `rel_section` is the section containing the relocation.
+/// - `get_sym` is a closure returning the a symbol. Arguments are:
+///     - The index of the section containing the symbol.
+///     - The index of the symbol in the section.
+/// - `got` is the Global Offset Table's symbol (named after [`GOT_SYM`]).
+/// - `user` tells whether the relocation must be done for userspace or kernelspace.
+///
+/// If the relocation cannot be performed, the function returns an error.
+///
+/// # Safety
+///
+/// TODO
+pub unsafe fn perform<R: Relocation, F>(
+	relocation: &R,
+	base_addr: *const u8,
+	rel_section: &SectionHeader,
+	get_sym: F,
+	got: Option<&Sym>,
+	user: bool,
+) -> Result<(), RelocationError>
+where
+	F: FnOnce(u32, usize) -> Option<usize>,
+{
+	let got_off = got.map(|sym| sym.st_value as usize).unwrap_or(0);
+	// The address of the GOT
+	let got_addr = (base_addr as usize).wrapping_add(got_off);
+	// The offset in the GOT entry for the symbol
+	let got_offset = 0usize; // TODO
+						  // The offset in the PLT entry for the symbol
+	let plt_offset = 0usize; // TODO
+						  // The value of the symbol
+	let sym_val = get_sym(rel_section.sh_link, relocation.get_sym());
+	let value = match relocation.get_type() {
+		elf::R_386_32 => sym_val
+			.ok_or(RelocationError)?
+			.wrapping_add_signed(relocation.get_addend()),
+		elf::R_386_PC32 => sym_val
+			.ok_or(RelocationError)?
+			.wrapping_add_signed(relocation.get_addend())
+			.wrapping_sub(relocation.get_offset()),
+		elf::R_386_GOT32 => got_offset.wrapping_add_signed(relocation.get_addend()),
+		elf::R_386_PLT32 => plt_offset
+			.wrapping_add_signed(relocation.get_addend())
+			.wrapping_sub(relocation.get_offset()),
+		elf::R_386_COPY => return Ok(()),
+		elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
+		elf::R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(relocation.get_addend()),
+		elf::R_386_GOTOFF => sym_val
+			.ok_or(RelocationError)?
+			.wrapping_add_signed(relocation.get_addend())
+			.wrapping_sub(got_addr),
+		elf::R_386_GOTPC => got_addr
+			.wrapping_add_signed(relocation.get_addend())
+			.wrapping_sub(relocation.get_offset()),
+		// Ignored
+		elf::R_386_IRELATIVE => return Ok(()),
+		_ => return Err(RelocationError),
+	} as u32;
+	let addr = base_addr.add(relocation.get_offset()) as *mut u32;
+	// If the resulting address is not accessible, error
+	if unlikely(user != bound_check(addr as _, size_of_val(&value))) {
+		return Err(RelocationError);
+	}
+	let value = match relocation.get_type() {
+		elf::R_386_RELATIVE => ptr::read_volatile(addr).wrapping_add(value),
+		_ => value,
 	};
+	ptr::write_volatile(addr, value);
+	Ok(())
 }
-
-rel_impl!(ELF32Rel, ELF32Rela);
-#[cfg(target_arch = "x86_64")]
-rel_impl!(ELF64Rel, ELF64Rela);

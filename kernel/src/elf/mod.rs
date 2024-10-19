@@ -190,7 +190,7 @@ pub const R_386_GOTPC: u8 = 10;
 /// Relocation type.
 pub const R_386_IRELATIVE: u8 = 42;
 
-/// 32 bits ELF header.
+/// 32 bit ELF header.
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ELFHeader {
@@ -225,8 +225,8 @@ pub struct ELF32ELFHeader {
 	pub e_shstrndx: u16,
 }
 
-/// 64 bits ELF header.
-#[cfg(target_arch = "x86_64")]
+/// 64 bit ELF header.
+#[cfg(target_pointer_width = "64")]
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF64ELFHeader {
@@ -261,7 +261,7 @@ pub struct ELF64ELFHeader {
 	pub e_shstrndx: u16,
 }
 
-/// 32 bits ELF program header.
+/// 32 bit ELF program header.
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ProgramHeader {
@@ -283,38 +283,8 @@ pub struct ELF32ProgramHeader {
 	pub p_align: u32,
 }
 
-impl ELF32ProgramHeader {
-	/// Tells whether the program header is valid.
-	///
-	/// `file_size` is the size of the file.
-	fn is_valid(&self, file_size: usize) -> EResult<()> {
-		// TODO Check p_type
-		if (self.p_offset + self.p_filesz) as usize > file_size {
-			return Err(errno!(EINVAL));
-		}
-		if self.p_align != 0 && !self.p_align.is_power_of_two() {
-			return Err(errno!(EINVAL));
-		}
-
-		Ok(())
-	}
-
-	/// Returns the flags to map the current segment into a process's memory
-	/// space.
-	pub fn get_mem_space_flags(&self) -> u8 {
-		let mut flags = mem_space::MAPPING_FLAG_USER;
-		if self.p_flags & PF_X != 0 {
-			flags |= mem_space::MAPPING_FLAG_EXEC;
-		}
-		if self.p_flags & PF_W != 0 {
-			flags |= mem_space::MAPPING_FLAG_WRITE;
-		}
-		flags
-	}
-}
-
-/// 64 bits ELF program header.
-#[cfg(target_arch = "x86_64")]
+/// 64 bit ELF program header.
+#[cfg(target_pointer_width = "64")]
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF64ProgramHeader {
@@ -329,14 +299,14 @@ pub struct ELF64ProgramHeader {
 	/// The physical address of the segment's content (if relevant).
 	pub p_paddr: u64,
 	/// The size of the segment's content in the file.
-	pub p_filesz: u32,
+	pub p_filesz: u64,
 	/// The size of the segment's content in memory.
-	pub p_memsz: u32,
+	pub p_memsz: u64,
 	/// Segment's alignment.
-	pub p_align: u32,
+	pub p_align: u64,
 }
 
-/// 32 bits ELF section header.
+/// 32 bit ELF section header.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32SectionHeader {
@@ -364,24 +334,8 @@ pub struct ELF32SectionHeader {
 	pub sh_entsize: u32,
 }
 
-impl ELF32SectionHeader {
-	/// Tells whether the section header is valid.
-	///
-	/// `file_size` is the size of the file.
-	fn is_valid(&self, file_size: usize) -> EResult<()> {
-		// TODO Check sh_name
-		if self.sh_type & SHT_NOBITS == 0 && (self.sh_offset + self.sh_size) as usize > file_size {
-			return Err(errno!(EINVAL));
-		}
-		if self.sh_addralign != 0 && !self.sh_addralign.is_power_of_two() {
-			return Err(errno!(EINVAL));
-		}
-		Ok(())
-	}
-}
-
-/// 64 bits ELF section header.
-#[cfg(target_arch = "x86_64")]
+/// 64 bit ELF section header.
+#[cfg(target_pointer_width = "64")]
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF64SectionHeader {
@@ -409,7 +363,7 @@ pub struct ELF64SectionHeader {
 	pub sh_entsize: u64,
 }
 
-/// 32 bits ELF symbol in memory.
+/// 32 bit ELF symbol in memory.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Sym {
@@ -427,11 +381,50 @@ pub struct ELF32Sym {
 	pub st_shndx: u16,
 }
 
-impl ELF32Sym {
-	/// Tells whether the symbol is defined.
-	pub fn is_defined(&self) -> bool {
-		self.st_shndx != 0
-	}
+/// 32 bit ELF relocation.
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF32Rel {
+	/// The location of the relocation action.
+	pub r_offset: u32,
+	/// The relocation type and symbol index.
+	pub r_info: u32,
+}
+
+/// 64 bit ELF relocation.
+#[cfg(target_pointer_width = "64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64Rel {
+	/// The location of the relocation action.
+	pub r_offset: u64,
+	/// The relocation type and symbol index.
+	pub r_info: u64,
+}
+
+/// 32 bit ELF relocation with an addend.
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF32Rela {
+	/// The location of the relocation action.
+	pub r_offset: u32,
+	/// The relocation type and symbol index.
+	pub r_info: u32,
+	/// A constant value used to compute the relocation.
+	pub r_addend: i32,
+}
+
+/// 64 bit ELF relocation with an addend.
+#[cfg(target_pointer_width = "64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64Rela {
+	/// The location of the relocation action.
+	pub r_offset: u64,
+	/// The relocation type and symbol index.
+	pub r_info: u64,
+	/// A constant value used to compute the relocation.
+	pub r_addend: i64,
 }
 
 /// The hash function for an ELF hash table.
@@ -444,8 +437,8 @@ pub fn hash_sym_name(name: &[u8]) -> u32 {
 	res & 0xfffffff
 }
 
-/// 64 bits ELF symbol in memory.
-#[cfg(target_arch = "x86_64")]
+/// 64 bit ELF symbol in memory.
+#[cfg(target_pointer_width = "64")]
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF64Sym {
