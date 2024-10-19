@@ -439,12 +439,12 @@ pub(crate) fn init() -> AllocResult<()> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::memory::{KERNEL_BEGIN, PROCESS_END};
+	use crate::memory::KERNEL_BEGIN;
 
 	#[test_case]
 	fn vmem_basic0() {
 		let vmem = VMem::new().unwrap();
-		for i in (0..PROCESS_END.0).step_by(PAGE_SIZE) {
+		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(VirtAddr(i)), None);
 		}
 	}
@@ -467,7 +467,7 @@ mod test {
 			.unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0..PROCESS_END.0).step_by(PAGE_SIZE) {
+		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			let res = vmem.translate(VirtAddr(i));
 			if (0x100000..0x101000).contains(&i) {
 				assert_eq!(res, Some(PhysAddr(i)));
@@ -489,7 +489,7 @@ mod test {
 			.unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0..PROCESS_END.0).step_by(PAGE_SIZE) {
+		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			let res = vmem.translate(VirtAddr(i));
 			if (0x100000..0x101000).contains(&i) {
 				assert_eq!(res, Some(PhysAddr(0x100000 + i)));
@@ -509,7 +509,7 @@ mod test {
 		transaction.unmap(VirtAddr(0x100000)).unwrap();
 		transaction.commit();
 		drop(transaction);
-		for i in (0..PROCESS_END.0).step_by(PAGE_SIZE) {
+		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(VirtAddr(i)), None);
 		}
 	}
