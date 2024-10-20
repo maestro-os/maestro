@@ -303,7 +303,8 @@ pub fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 	Some(PhysAddr(phys_addr))
 }
 
-/// Inner version of [`super::Rollback`] for x86.
+/// Memory paging rollback hook, allowing to undo modifications on a virtual memory context if an
+/// operation in a transaction fails, allowing to preserve integrity.
 pub struct Rollback {
 	/// The list of modified entries, with their respective previous value and a boolean
 	/// indicating whether the underlying table could be freed.
@@ -358,7 +359,7 @@ impl Drop for Rollback {
 	}
 }
 
-/// Inner implementation of [`super::VMem::map`] for x86.
+/// Inner implementation of [`crate::memory::vmem::VMemTransaction::map`] for x86.
 ///
 /// # Safety
 ///
@@ -412,7 +413,7 @@ pub unsafe fn map(
 	})
 }
 
-/// Inner implementation of [`super::VMem::unmap`] for x86.
+/// Inner implementation of [`crate::memory::vmem::VMemTransaction::unmap`] for x86.
 ///
 /// # Safety
 ///

@@ -17,11 +17,10 @@
  */
 
 use crate::{
-	arch::{x86, x86::gdt},
+	arch::x86::{gdt, paging::Table},
 	memory::VirtAddr,
 };
 use core::arch::global_asm;
-use crate::arch::x86::paging::Table;
 
 #[cfg(target_arch = "x86")]
 pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
