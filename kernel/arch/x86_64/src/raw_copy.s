@@ -16,23 +16,22 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! SSE-related features.
+// Copy from/to userspace
 
-use crate::{cpu::get_hwcap, register_get, register_set};
+.intel_syntax noprefix
 
-/// Tells whether the CPU supports SSE.
-pub fn is_present() -> bool {
-	get_hwcap() & (1 << 25) != 0
-}
+.section .text
 
-/// Enables SSE.
-pub fn enable() {
-	// Enable x87 FPU
-	let cr0 = (register_get!("cr0") & !0b100) | 0b10;
-	// Enable FXSAVE and FXRSTOR (thus, enabling SSE) and SSE exceptions
-	let cr4 = register_get!("cr4") | 0b11000000000;
-	unsafe {
-		register_set!("cr0", cr0);
-		register_set!("cr4", cr4);
-	}
-}
+.global raw_copy
+.global copy_fault
+
+// TODO can be optimized
+raw_copy:
+    mov rcx, rdx
+	rep movsb
+	mov rax, 1
+	ret
+
+copy_fault:
+	xor rax, rax
+	ret

@@ -24,7 +24,7 @@ use super::{oom, Process, State, REDZONE_SIZE};
 use crate::{
 	file::perm::Uid,
 	memory::VirtAddr,
-	process::{pid::Pid, regs::Regs, signal::signal_trampoline::signal_trampoline},
+	process::{pid::Pid, regs::Regs32, signal::signal_trampoline::signal_trampoline},
 	time::unit::ClockIdT,
 };
 use core::{
@@ -269,7 +269,7 @@ pub struct UContext {
 	pub uc_stack: *mut c_void,
 	// FIXME: `Regs` does not match the actual layout of mcontext_t
 	/// Saved registers.
-	pub uc_mcontext: Regs,
+	pub uc_mcontext: Regs32,
 }
 
 /// Enumeration containing the different possibilities for signal handling.
@@ -353,7 +353,7 @@ impl SignalHandler {
 				// Prepare the signal handler stack
 				// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
 				// SA_ONSTACK)
-				let stack_addr = VirtAddr(process.regs.esp) - REDZONE_SIZE;
+				let stack_addr = VirtAddr(process.regs.esp as _) - REDZONE_SIZE;
 				let signal_data_size = size_of::<UContext>() + size_of::<usize>() * 4;
 				let signal_esp = stack_addr - signal_data_size;
 				{
@@ -393,7 +393,7 @@ impl SignalHandler {
 				// Prepare registers for the trampoline
 				let signal_trampoline = signal_trampoline as *const c_void;
 				process.regs.ebp = 0;
-				process.regs.esp = signal_esp.0;
+				process.regs.esp = signal_esp.0 as _;
 				process.regs.eip = signal_trampoline as _;
 			}
 			// Execute default action

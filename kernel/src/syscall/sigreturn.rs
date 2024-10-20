@@ -25,7 +25,7 @@
 use crate::{
 	process::{
 		mem_space::copy::SyscallPtr,
-		regs::Regs,
+		regs::Regs32,
 		signal::{Signal, UContext},
 		Process,
 	},
@@ -39,11 +39,11 @@ use utils::{
 	lock::{IntMutex, IntMutexGuard},
 };
 
-pub fn sigreturn(regs: &Regs) -> EResult<usize> {
+pub fn sigreturn(regs: &Regs32) -> EResult<usize> {
 	// Avoid re-enabling interrupts before context switching
 	cli();
 	// Retrieve the previous state
-	let ctx_ptr = regs.esp - size_of::<UContext>();
+	let ctx_ptr = regs.esp as usize - size_of::<UContext>();
 	let ctx_ptr = SyscallPtr::<UContext>::from_syscall_arg(ctx_ptr);
 	let ctx = ctx_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	{

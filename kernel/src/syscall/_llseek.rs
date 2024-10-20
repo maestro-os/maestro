@@ -47,8 +47,8 @@ const SEEK_END: u32 = 2;
 pub fn _llseek(
 	Args((fd, offset_high, offset_low, result, whence)): Args<(
 		c_uint,
-		c_ulong,
-		c_ulong,
+		u32,
+		u32,
 		SyscallPtr<u64>,
 		c_uint,
 	)>,

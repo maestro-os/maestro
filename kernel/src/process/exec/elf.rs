@@ -20,11 +20,12 @@
 
 use super::vdso;
 use crate::{
-	cpu, elf,
+	arch::x86,
+	elf,
 	elf::{
-		parser::ELFParser,
-		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
-		ELF32ProgramHeader,
+		parser::{ELFParser, ProgramHeader, Rel, Rela},
+		relocation,
+		relocation::GOT_SYM,
 	},
 	file::{perm::AccessProfile, vfs, FileType},
 	memory::{vmem, VirtAddr},
@@ -232,7 +233,7 @@ fn build_auxiliary(
 		AuxEntryDescValue::String(crate::NAME.as_bytes()),
 	))?;
 
-	let hwcap = cpu::get_hwcap();
+	let hwcap = x86::get_hwcap();
 	aux.push(AuxEntryDesc::new(
 		AT_HWCAP,
 		AuxEntryDescValue::Number(hwcap as _),
@@ -442,7 +443,7 @@ impl<'s> ELFExecutor<'s> {
 	fn alloc_segment(
 		load_base: *mut u8,
 		mem_space: &mut MemSpace,
-		seg: &ELF32ProgramHeader,
+		seg: &ProgramHeader,
 	) -> EResult<Option<*mut u8>> {
 		// Load only loadable segments
 		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
@@ -481,7 +482,7 @@ impl<'s> ELFExecutor<'s> {
 	/// - `load_base` is the address at which the executable is loaded.
 	/// - `seg` is the segment.
 	/// - `image` is the ELF file image.
-	fn copy_segment(load_base: *mut u8, seg: &ELF32ProgramHeader, image: &[u8]) {
+	fn copy_segment(load_base: *mut u8, seg: &ProgramHeader, image: &[u8]) {
 		// Load only loadable segments
 		if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
 			return;
@@ -517,7 +518,7 @@ impl<'s> ELFExecutor<'s> {
 		// Allocate memory for segments
 		let mut load_end = load_base;
 		for seg in elf.iter_segments() {
-			if let Some(end) = Self::alloc_segment(load_base, mem_space, seg)? {
+			if let Some(end) = Self::alloc_segment(load_base, mem_space, &seg)? {
 				load_end = max(end, load_end);
 			}
 		}
@@ -577,11 +578,11 @@ impl<'s> ELFExecutor<'s> {
 			vmem::switch(mem_space.get_vmem(), move || -> EResult<()> {
 				// Copy segments' data
 				for seg in elf.iter_segments() {
-					Self::copy_segment(load_base, seg, elf.get_image());
+					Self::copy_segment(load_base, &seg, elf.as_slice());
 				}
 				// Copy phdr's data if necessary
 				if phdr_needs_copy {
-					let image_phdr = &elf.get_image()[(ehdr.e_phoff as usize)..];
+					let image_phdr = &elf.as_slice()[(ehdr.e_phoff as usize)..];
 					vmem::write_ro(|| {
 						vmem::smap_disable(|| {
 							ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr, phdr_size);
@@ -591,24 +592,38 @@ impl<'s> ELFExecutor<'s> {
 				// Perform relocations if no interpreter is present
 				if !interp && interp_path.is_none() {
 					// Closure returning a symbol
-					let get_sym = |sym_section: u32, sym: u32| {
+					let get_sym = |sym_section: u32, sym: usize| {
 						let section = elf.get_section_by_index(sym_section as _)?;
-						let sym = elf.get_symbol_by_index(section, sym as _)?;
+						let sym = elf.get_symbol_by_index(&section, sym as _)?;
 						if sym.is_defined() {
-							Some(load_base as u32 + sym.st_value)
+							Some(load_base as usize + sym.st_value as usize)
 						} else {
 							None
 						}
 					};
 					let got_sym = elf.get_symbol_by_name(GOT_SYM);
 					for section in elf.iter_sections() {
-						for rel in elf.iter_rel::<ELF32Rel>(section) {
-							rel.perform(load_base as _, section, get_sym, got_sym, true)
-								.map_err(|_| errno!(EINVAL))?;
+						for rel in elf.iter_rel::<Rel>(&section) {
+							relocation::perform(
+								&rel,
+								load_base as _,
+								&section,
+								get_sym,
+								got_sym.as_ref(),
+								true,
+							)
+							.map_err(|_| errno!(EINVAL))?;
 						}
-						for rela in elf.iter_rel::<ELF32Rela>(section) {
-							rela.perform(load_base as _, section, get_sym, got_sym, true)
-								.map_err(|_| errno!(EINVAL))?;
+						for rela in elf.iter_rel::<Rela>(&section) {
+							relocation::perform(
+								&rela,
+								load_base as _,
+								&section,
+								get_sym,
+								got_sym.as_ref(),
+								true,
+							)
+							.map_err(|_| errno!(EINVAL))?;
 						}
 					}
 				}

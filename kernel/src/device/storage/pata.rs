@@ -38,8 +38,8 @@
 // TODO Add support for third and fourth bus
 
 use crate::{
+	arch::x86::io::inb,
 	device::{storage::ide, DeviceIO},
-	io,
 };
 use core::{cmp::min, num::NonZeroU64};
 use utils::{errno, errno::EResult, lock::Mutex};
@@ -127,7 +127,7 @@ fn delay(n: u32) {
 	let n = n.div_ceil(30) * 1000;
 	for _ in 0..n {
 		unsafe {
-			io::inb(STATUS_REGISTER_OFFSET);
+			inb(STATUS_REGISTER_OFFSET);
 		}
 	}
 }

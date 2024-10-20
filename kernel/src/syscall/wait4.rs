@@ -19,7 +19,7 @@
 //! The `wait4` system call waits for a process to change state.
 
 use super::{waitpid, Args};
-use crate::process::{mem_space::copy::SyscallPtr, regs::Regs, rusage::RUsage, Process};
+use crate::process::{mem_space::copy::SyscallPtr, regs::Regs32, rusage::RUsage, Process};
 use core::ffi::c_int;
 use utils::{errno::EResult, lock::IntMutex};
 

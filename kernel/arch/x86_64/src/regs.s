@@ -16,25 +16,17 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <stddef.h>
+.intel_syntax noprefix
 
-#include "libc.h"
+// The size in bytes of the structure storing the registers' states
+.set REGS_SIZE, 664
 
-void *memcpy(void *dest, const void *src, size_t n);
+// Register save/restore macros.
 
-// TODO Optimize
-void *memmove(void *dest, const void *src, size_t n)
-{
-       void *begin = dest;
-       size_t i = 0;
+.macro GET_REGS
+    # TODO
+.endm
 
-       if (dest < src)
-               return memcpy(dest, src, n);
-       while (i < n)
-       {
-               ((char *) dest)[n - i - 1] = ((char *) src)[n - i - 1];
-               ++i;
-       }
-       return begin;
-}
+.macro RESTORE_REGS
+    # TODO
+.endm

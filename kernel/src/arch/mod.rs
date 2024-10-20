@@ -16,47 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/*
- * This file implements the function that handles the system calls.
- */
+//! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
-.include "src/process/regs/regs.s"
-
-.section .text
-
-.global syscall
-.type syscall, @function
-
-/*
- * The function handling system calls.
- */
-syscall:
-	push %ebp
-	mov %esp, %ebp
-
-	# Store registers state
-GET_REGS
-
-	# Set data segment
-	mov $GDT_KERNEL_DS, %ax
-	mov %ax, %ds
-	mov %ax, %es
-
-	# Call the system call handler
-	push %esp
-	call syscall_handler
-	add $4, %esp
-
-	# Restore data segment
-	xor %ebx, %ebx
-	mov $GDT_USER_DS, %bx
-	or $3, %bx
-	mov %bx, %ds
-	mov %bx, %es
-
-RESTORE_REGS
-
-	# Restoring the context
-	mov %ebp, %esp
-	pop %ebp
-	iret
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub mod x86;
