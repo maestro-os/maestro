@@ -20,9 +20,7 @@
 //! storing the list of interrupt handlers, allowing to catch and handle
 //! interruptions.
 
-pub mod pic;
-
-use crate::syscall::syscall;
+use crate::{arch::x86::pic, syscall::syscall};
 use core::{
 	arch::{asm, global_asm},
 	ffi::c_void,

@@ -20,7 +20,7 @@
 //! trigger interruptions at a fixed interval.
 
 use super::HwClock;
-use crate::arch::x86::{idt, idt::pic, io::outb};
+use crate::arch::x86::{idt, io::outb, pic};
 use utils::math::rational::Rational;
 
 /// PIT channel number 0.

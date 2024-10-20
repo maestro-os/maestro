@@ -26,7 +26,7 @@
 //! running until switching to the next process.
 
 use crate::{
-	arch::x86::idt::pic,
+	arch::x86::pic,
 	event,
 	event::CallbackHook,
 	memory::stack,
