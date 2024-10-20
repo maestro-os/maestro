@@ -17,10 +17,11 @@
  */
 
 use crate::{
-	gdt,
-	memory::{vmem, VirtAddr},
+	arch::{x86, x86::gdt},
+	memory::VirtAddr,
 };
 use core::arch::global_asm;
+use crate::arch::x86::paging::Table;
 
 #[cfg(target_arch = "x86")]
 pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
@@ -71,10 +72,10 @@ static INIT_GDT: InitGdt = [
 /// The static is marked as **mutable** because the CPU will set the dirty flag.
 #[no_mangle]
 #[link_section = ".boot.data"]
-static mut REMAP: vmem::x86::Table = const {
+static mut REMAP: Table = const {
 	#[cfg(target_arch = "x86")]
 	{
-		use crate::vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
+		use crate::arch::x86::paging::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
 		use utils::limits::PAGE_SIZE;
 
 		let mut dir = [0; 1024];
@@ -87,11 +88,11 @@ static mut REMAP: vmem::x86::Table = const {
 			dir[i + 768] = ent;
 			i += 1;
 		}
-		vmem::x86::Table(dir)
+		Table(dir)
 	}
 	// This is initialized at runtime in assembly
 	#[cfg(target_arch = "x86_64")]
-	vmem::x86::Table([0; 512])
+	Table([0; 512])
 };
 
 /// Directory use for the stage 1 of kernel remapping to higher memory under `x86_64`.
@@ -102,8 +103,8 @@ static mut REMAP: vmem::x86::Table = const {
 #[no_mangle]
 #[link_section = ".boot.data"]
 #[cfg(target_arch = "x86_64")]
-static mut REMAP_DIR: vmem::x86::Table = const {
-	use crate::vmem::x86::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
+static mut REMAP_DIR: Table = const {
+	use crate::arch::x86::paging::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
 	use utils::limits::PAGE_SIZE;
 
 	let mut dir = [0; 512];
@@ -115,7 +116,7 @@ static mut REMAP_DIR: vmem::x86::Table = const {
 		dir[i] = ent;
 		i += 1;
 	}
-	vmem::x86::Table(dir)
+	Table(dir)
 };
 
 extern "C" {

@@ -42,7 +42,7 @@
 //! page table.
 
 use crate::{
-	cpu,
+	arch::x86::supports_supervisor_prot,
 	memory::{buddy, PhysAddr, VirtAddr},
 	register_get, register_set,
 };
@@ -235,7 +235,7 @@ unsafe fn unwrap_entry(entry: Entry) -> (NonNull<Table>, Entry) {
 /// Allocates and initializes a virtual memory context.
 ///
 /// The kernel memory is mapped into the context by default.
-pub(super) fn alloc() -> AllocResult<NonNull<Table>> {
+pub fn alloc() -> AllocResult<NonNull<Table>> {
 	let mut ctx = alloc_table()?;
 	// Init kernel entries
 	let kernel_tables = addr_of!(KERNEL_TABLES) as *const Table;
@@ -291,7 +291,7 @@ fn translate_impl(mut table: &Table, addr: VirtAddr) -> Option<Entry> {
 
 /// Translates the given virtual address `addr` to the corresponding physical address using
 /// `page_dir`.
-pub(super) fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
+pub fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 	let entry = translate_impl(page_dir, addr)?;
 	let remain_mask = if entry & FLAG_PAGE_SIZE == 0 {
 		PAGE_SIZE - 1
@@ -304,7 +304,7 @@ pub(super) fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 }
 
 /// Inner version of [`super::Rollback`] for x86.
-pub(super) struct Rollback {
+pub struct Rollback {
 	/// The list of modified entries, with their respective previous value and a boolean
 	/// indicating whether the underlying table could be freed.
 	///
@@ -330,7 +330,7 @@ impl Rollback {
 
 	/// Rollbacks the operation on the given `table`.
 	#[cold]
-	pub(super) fn rollback(mut self) {
+	pub fn rollback(mut self) {
 		let entries = mem::take(&mut self.entries);
 		for (mut ptr, prev_entry, free) in entries.into_iter().rev() {
 			let ent = unsafe { ptr.as_mut() };
@@ -364,7 +364,7 @@ impl Drop for Rollback {
 ///
 /// In case the mapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
-pub(super) unsafe fn map(
+pub unsafe fn map(
 	mut table: &mut Table,
 	physaddr: PhysAddr,
 	virtaddr: VirtAddr,
@@ -418,7 +418,7 @@ pub(super) unsafe fn map(
 ///
 /// In case the unmapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
-pub(super) unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) -> AllocResult<Rollback> {
+pub unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) -> AllocResult<Rollback> {
 	// Sanitize
 	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 	// Set entries
@@ -456,7 +456,7 @@ pub(super) unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) -> AllocRe
 /// Meaning it must be mapping the kernel's code and data sections, and any regions of memory that
 /// might be accessed in the future.
 #[inline]
-pub(super) unsafe fn bind(page_dir: PhysAddr) {
+pub unsafe fn bind(page_dir: PhysAddr) {
 	asm!(
 		"mov cr3, {dir}",
 		dir = in(reg) page_dir.0
@@ -465,21 +465,22 @@ pub(super) unsafe fn bind(page_dir: PhysAddr) {
 
 /// Tells whether the given page directory is bound on the current CPU.
 #[inline]
-pub(super) fn is_bound(page_dir: NonNull<Table>) -> bool {
+pub fn is_bound(page_dir: NonNull<Table>) -> bool {
 	let physaddr = VirtAddr::from(page_dir).kernel_to_physical().unwrap();
 	register_get!("cr3") == physaddr.0
 }
 
-/// Invalidate the page at the given address on the current CPU.
+/// Invalidate the page from the TLB at the given address on the current CPU.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub(super) fn invalidate_page_current(addr: VirtAddr) {
+#[inline]
+pub fn invlpg(addr: VirtAddr) {
 	unsafe {
-		asm!("invlpg [{addr}]", addr = in(reg) addr.0);
+		asm!("invlpg [{addr}]", addr = in(reg) addr.0, options(nostack));
 	}
 }
 
 /// Flush the Translation Lookaside Buffer (TLB) on the current CPU.
-pub(super) fn flush_current() {
+pub fn flush_current() {
 	unsafe {
 		asm!(
 			"mov {tmp}, cr3",
@@ -496,7 +497,7 @@ pub(super) fn flush_current() {
 /// It is assumed the context is not being used.
 ///
 /// Subsequent uses of `page_dir` are undefined.
-pub(super) unsafe fn free(mut page_dir: NonNull<Table>) {
+pub unsafe fn free(mut page_dir: NonNull<Table>) {
 	let pd = unsafe { page_dir.as_mut() };
 	for entry in &pd[..USERSPACE_TABLES] {
 		let (table, flags) = unwrap_entry(*entry);
@@ -507,12 +508,12 @@ pub(super) unsafe fn free(mut page_dir: NonNull<Table>) {
 	free_table(page_dir);
 }
 
-/// Initializes virtual memory management.
-pub(super) fn init() {
+/// Prepares for virtual memory management on the current CPU.
+pub(crate) fn prepare() {
 	// Set cr4 flags
 	// Enable GLOBAL flag
 	let mut cr4 = register_get!("cr4") | 1 << 7;
-	let (smep, smap) = cpu::supports_supervisor_prot();
+	let (smep, smap) = supports_supervisor_prot();
 	if smep {
 		cr4 |= 1 << 20;
 	}

@@ -24,7 +24,7 @@
 //! Note: The VGA text mode runs only when booting with a Legacy BIOS.
 
 use crate::{
-	io,
+	arch::x86::io::{inb, outb},
 	memory::{vmem, PhysAddr},
 };
 
@@ -118,18 +118,18 @@ pub fn clear() {
 /// Enables the VGA text mode cursor.
 pub fn enable_cursor() {
 	unsafe {
-		io::outb(0x3d4, 0x0a);
-		io::outb(0x3d5, (io::inb(0x3d5) & 0xc0) | CURSOR_START);
-		io::outb(0x3d4, 0x0b);
-		io::outb(0x3d5, (io::inb(0x3d5) & 0xe0) | CURSOR_END);
+		outb(0x3d4, 0x0a);
+		outb(0x3d5, (inb(0x3d5) & 0xc0) | CURSOR_START);
+		outb(0x3d4, 0x0b);
+		outb(0x3d5, (inb(0x3d5) & 0xe0) | CURSOR_END);
 	}
 }
 
 /// Disables the VGA text mode cursor.
 pub fn disable_cursor() {
 	unsafe {
-		io::outb(0x3d4, 0x0a);
-		io::outb(0x3d5, 0x20);
+		outb(0x3d4, 0x0a);
+		outb(0x3d5, 0x20);
 	}
 }
 
@@ -138,10 +138,10 @@ pub fn get_cursor_position() -> (Pos, Pos) {
 	let mut pos: u16 = 0;
 
 	unsafe {
-		io::outb(0x3d4, 0x0f);
-		pos |= io::inb(0x3d5) as u16;
-		io::outb(0x3d4, 0x0e);
-		pos |= (io::inb(0x3d5) as u16) << 8;
+		outb(0x3d4, 0x0f);
+		pos |= inb(0x3d5) as u16;
+		outb(0x3d4, 0x0e);
+		pos |= (inb(0x3d5) as u16) << 8;
 	}
 
 	(pos as i16 % WIDTH, pos as i16 / WIDTH)
@@ -152,10 +152,10 @@ pub fn move_cursor(x: Pos, y: Pos) {
 	let pos = y * WIDTH + x;
 
 	unsafe {
-		io::outb(0x3d4, 0x0f);
-		io::outb(0x3d5, (pos & 0xff) as u8);
-		io::outb(0x3d4, 0x0e);
-		io::outb(0x3d5, ((pos >> 8) & 0xff) as u8);
+		outb(0x3d4, 0x0f);
+		outb(0x3d5, (pos & 0xff) as u8);
+		outb(0x3d4, 0x0e);
+		outb(0x3d5, ((pos >> 8) & 0xff) as u8);
 	}
 }
 

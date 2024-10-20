@@ -39,6 +39,7 @@ pub mod tss;
 pub mod user_desc;
 
 use crate::{
+	arch::x86::gdt,
 	event,
 	event::{unlock_callbacks, CallbackResult},
 	file,
@@ -49,7 +50,6 @@ use crate::{
 		vfs::ResolutionSettings,
 		File, O_RDWR,
 	},
-	gdt,
 	memory::{buddy, buddy::FrameOrder, VirtAddr},
 	process::{
 		mem_space::{copy, copy::SyscallPtr},

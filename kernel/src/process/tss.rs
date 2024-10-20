@@ -26,7 +26,7 @@
 //! The structure has to be registered into the GDT into the TSS segment, and must be loaded using
 //! instruction `ltr`.
 
-use crate::gdt;
+use crate::arch::x86::gdt;
 use core::{arch::asm, mem::size_of, ptr::addr_of};
 
 /// The TSS structure.

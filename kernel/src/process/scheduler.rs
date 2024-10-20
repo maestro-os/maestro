@@ -26,9 +26,9 @@
 //! running until switching to the next process.
 
 use crate::{
+	arch::x86::idt::pic,
 	event,
 	event::CallbackHook,
-	idt::pic,
 	memory::stack,
 	process::{pid::Pid, regs::Regs32, Process, State},
 	time,
@@ -47,7 +47,6 @@ use utils::{
 	ptr::arc::Arc,
 	vec,
 };
-
 // TODO handle processes priority
 
 /// The size of the temporary stack for context switching.

@@ -20,7 +20,7 @@
 //! trigger interruptions at a fixed interval.
 
 use super::HwClock;
-use crate::{idt, idt::pic, io};
+use crate::arch::x86::{idt, idt::pic, io::outb};
 use utils::math::rational::Rational;
 
 /// PIT channel number 0.
@@ -89,7 +89,7 @@ impl PIT {
 		s.set_enabled(false);
 
 		idt::wrap_disable_interrupts(|| unsafe {
-			io::outb(
+			outb(
 				PIT_COMMAND,
 				SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
 			);
@@ -122,8 +122,8 @@ impl HwClock for PIT {
 
 		// Update frequency divider's value
 		idt::wrap_disable_interrupts(|| unsafe {
-			io::outb(CHANNEL_0, (count & 0xff) as u8);
-			io::outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
+			outb(CHANNEL_0, (count & 0xff) as u8);
+			outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
 		});
 	}
 

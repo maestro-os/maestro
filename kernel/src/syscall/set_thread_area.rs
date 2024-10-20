@@ -19,7 +19,8 @@
 //! The `set_thread_area` system call allows to set a TLS area.
 
 use crate::{
-	gdt, process,
+	arch::x86::gdt,
+	process,
 	process::{mem_space::copy::SyscallPtr, user_desc::UserDesc, Process},
 	syscall::Args,
 };

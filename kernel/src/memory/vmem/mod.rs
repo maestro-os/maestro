@@ -19,16 +19,16 @@
 //! The virtual memory makes the kernel able to isolate processes, which is
 //! essential for modern systems.
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub mod x86;
-
 use crate::{
-	cpu, elf, idt, memory,
-	memory::{
-		memmap,
-		vmem::x86::{Entry, Rollback},
-		PhysAddr, VirtAddr, KERNELSPACE_SIZE,
+	arch::{
+		x86,
+		x86::{
+			idt,
+			paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_USER, FLAG_WRITE, FLAG_WRITE_THROUGH},
+		},
 	},
+	elf, memory,
+	memory::{memmap, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
 	register_get,
 	tty::vga,
 };
@@ -63,7 +63,7 @@ fn is_kernelspace(virtaddr: VirtAddr, pages: usize) -> bool {
 pub struct VMem<const KERNEL: bool = false> {
 	/// The root paging object.
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	table: NonNull<x86::Table>,
+	table: NonNull<x86::paging::Table>,
 }
 
 impl VMem<false> {
@@ -71,7 +71,7 @@ impl VMem<false> {
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-			table: x86::alloc()?,
+			table: x86::paging::alloc()?,
 		})
 	}
 }
@@ -86,7 +86,7 @@ impl VMem<true> {
 	pub unsafe fn new_kernel() -> AllocResult<Self> {
 		Ok(Self {
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-			table: x86::alloc()?,
+			table: x86::paging::alloc()?,
 		})
 	}
 }
@@ -94,13 +94,13 @@ impl VMem<true> {
 impl<const KERNEL: bool> VMem<KERNEL> {
 	/// Returns an immutable reference to the **architecture-dependent** inner representation.
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	pub fn inner(&self) -> &x86::Table {
+	pub fn inner(&self) -> &x86::paging::Table {
 		unsafe { self.table.as_ref() }
 	}
 
 	/// Returns a mutable reference to the architecture-dependent inner representation.
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	pub fn inner_mut(&mut self) -> &mut x86::Table {
+	pub fn inner_mut(&mut self) -> &mut x86::paging::Table {
 		unsafe { self.table.as_mut() }
 	}
 
@@ -110,7 +110,7 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 	/// If the address is not mapped, the function returns `None`.
 	pub fn translate(&self, addr: VirtAddr) -> Option<PhysAddr> {
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-		x86::translate(self.inner(), addr)
+		x86::paging::translate(self.inner(), addr)
 	}
 
 	/// Begins a transaction.
@@ -128,14 +128,14 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 			.unwrap();
 		unsafe {
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-			x86::bind(phys_addr);
+			x86::paging::bind(phys_addr);
 		}
 	}
 
 	/// Tells whether the context is bound to the current CPU.
 	pub fn is_bound(&self) -> bool {
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-		x86::is_bound(self.table)
+		x86::paging::is_bound(self.table)
 	}
 }
 
@@ -146,7 +146,7 @@ impl<const KERNEL: bool> Drop for VMem<KERNEL> {
 		}
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
-			x86::free(self.table);
+			x86::paging::free(self.table);
 		}
 	}
 }
@@ -160,7 +160,7 @@ pub struct VMemTransaction<'v, const KERNEL: bool> {
 	pub vmem: &'v mut VMem<KERNEL>,
 	/// The vector of handles to roll back the whole transaction.
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	rollback: Vec<x86::Rollback>,
+	rollback: Vec<x86::paging::Rollback>,
 }
 
 impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
@@ -169,9 +169,9 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		&mut self,
 		physaddr: PhysAddr,
 		virtaddr: VirtAddr,
-		flags: Entry,
-	) -> AllocResult<x86::Rollback> {
-		let res = unsafe { x86::map(self.vmem.inner_mut(), physaddr, virtaddr, flags) };
+		flags: x86::paging::Entry,
+	) -> AllocResult<x86::paging::Rollback> {
+		let res = unsafe { x86::paging::map(self.vmem.inner_mut(), physaddr, virtaddr, flags) };
 		invalidate_page_current(virtaddr);
 		res
 	}
@@ -188,7 +188,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		&mut self,
 		physaddr: PhysAddr,
 		virtaddr: VirtAddr,
-		flags: Entry,
+		flags: x86::paging::Entry,
 	) -> AllocResult<()> {
 		// If kernelspace modification is disabled, error if mapping onto kernelspace
 		if unlikely(!KERNEL && is_kernelspace(virtaddr, 1)) {
@@ -206,7 +206,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		physaddr: PhysAddr,
 		virtaddr: VirtAddr,
 		pages: usize,
-		flags: Entry,
+		flags: x86::paging::Entry,
 	) -> AllocResult<()> {
 		if unlikely(pages == 0) {
 			// No op
@@ -231,8 +231,8 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 	}
 
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	fn unmap_impl(&mut self, virtaddr: VirtAddr) -> AllocResult<x86::Rollback> {
-		let res = unsafe { x86::unmap(self.vmem.inner_mut(), virtaddr) };
+	fn unmap_impl(&mut self, virtaddr: VirtAddr) -> AllocResult<x86::paging::Rollback> {
+		let res = unsafe { x86::paging::unmap(self.vmem.inner_mut(), virtaddr) };
 		invalidate_page_current(virtaddr);
 		res
 	}
@@ -286,14 +286,18 @@ impl<const KERNEL: bool> Drop for VMemTransaction<'_, KERNEL> {
 	fn drop(&mut self) {
 		let rollback = mem::take(&mut self.rollback);
 		// Rollback in reverse order
-		rollback.into_iter().rev().for_each(Rollback::rollback);
+		rollback
+			.into_iter()
+			.rev()
+			.for_each(x86::paging::Rollback::rollback);
 	}
 }
 
-/// Invalidate the page at the given address on the current CPU.
+/// Invalidate the page from cache at the given address on the current CPU.
+#[inline]
 pub fn invalidate_page_current(addr: VirtAddr) {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	x86::invalidate_page_current(addr);
+	x86::paging::invlpg(addr);
 }
 
 /// Flush the Translation Lookaside Buffer (TLB) on the current CPU.
@@ -304,7 +308,7 @@ pub fn invalidate_page_current(addr: VirtAddr) {
 /// This is an expensive operation for the CPU cache and should be used as few as possible.
 pub fn flush_current() {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	x86::flush_current();
+	x86::paging::flush_current();
 }
 
 /// Executes the closure while allowing the kernel to write on read-only pages.
@@ -317,9 +321,9 @@ pub fn flush_current() {
 /// Writing on read-only regions of memory has an undefined behavior.
 #[inline]
 pub unsafe fn write_ro<F: FnOnce() -> T, T>(f: F) -> T {
-	cpu::set_write_protected(false);
+	x86::set_write_protected(false);
 	let res = f();
-	cpu::set_write_protected(true);
+	x86::set_write_protected(true);
 	res
 }
 
@@ -334,9 +338,9 @@ pub unsafe fn write_ro<F: FnOnce() -> T, T>(f: F) -> T {
 /// caller's responsibility to ensure no invalid memory accesses are done afterward.
 #[inline]
 pub unsafe fn smap_disable<F: FnOnce() -> T, T>(f: F) -> T {
-	cpu::set_smap_enabled(false);
+	x86::set_smap_enabled(false);
 	let res = f();
-	cpu::set_smap_enabled(true);
+	x86::set_smap_enabled(true);
 	res
 }
 
@@ -366,7 +370,7 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &VMem, f: F) -> T {
 			vmem.bind();
 			let result = f();
 			// Restore previous vmem
-			x86::bind(page_dir);
+			x86::paging::bind(page_dir);
 			result
 		}
 	})
@@ -384,7 +388,7 @@ pub fn kernel() -> &'static Mutex<VMem<true>> {
 pub(crate) fn init() -> AllocResult<()> {
 	// Architecture-specific init
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	x86::init();
+	x86::paging::prepare();
 	// Kernel context init
 	let mut kernel_vmem = unsafe { VMem::new_kernel()? };
 	let mut transaction = kernel_vmem.transaction();
@@ -397,19 +401,19 @@ pub(crate) fn init() -> AllocResult<()> {
 		PhysAddr::default(),
 		memory::KERNEL_BEGIN,
 		kernelspace_size,
-		x86::FLAG_WRITE | x86::FLAG_GLOBAL,
+		FLAG_WRITE | FLAG_GLOBAL,
 	)?;
 	// Make the kernel's code read-only
 	let iter = elf::kernel::sections().filter(|s| s.sh_addralign as usize == PAGE_SIZE);
 	for section in iter {
 		let write = section.sh_flags as u32 & elf::SHF_WRITE != 0;
 		let user = elf::kernel::get_section_name(section) == Some(b".user");
-		let mut flags = x86::FLAG_GLOBAL;
+		let mut flags = FLAG_GLOBAL;
 		if write {
-			flags |= x86::FLAG_WRITE;
+			flags |= FLAG_WRITE;
 		}
 		if user {
-			flags |= x86::FLAG_USER;
+			flags |= FLAG_USER;
 		}
 		// Map
 		let virt_addr = VirtAddr(section.sh_addr as _);
@@ -425,7 +429,7 @@ pub(crate) fn init() -> AllocResult<()> {
 		vga::BUFFER_PHYS as _,
 		vga::get_buffer_virt().into(),
 		1,
-		x86::FLAG_CACHE_DISABLE | x86::FLAG_WRITE_THROUGH | x86::FLAG_WRITE | x86::FLAG_GLOBAL,
+		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
 	)?;
 	transaction.commit();
 	drop(transaction);

@@ -29,13 +29,13 @@
 //! communications through DMA (Direct Memory Access).
 
 use crate::{
+	arch::x86::io::{inl, outl},
 	device::{
 		bar::{BARType, BAR},
 		manager,
 		manager::PhysicalDevice,
 		DeviceManager,
 	},
-	io,
 	memory::{mmio::MMIO, PhysAddr},
 };
 use core::{cmp::min, mem::size_of};
@@ -107,9 +107,9 @@ fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
 
 	unsafe {
 		// Set the address
-		io::outl(CONFIG_ADDRESS_PORT, addr);
+		outl(CONFIG_ADDRESS_PORT, addr);
 		// Read the value
-		io::inl(CONFIG_DATA_PORT)
+		inl(CONFIG_DATA_PORT)
 	}
 }
 
@@ -125,9 +125,9 @@ fn write_long(bus: u8, device: u8, func: u8, reg_off: u8, value: u32) {
 
 	unsafe {
 		// Set the address
-		io::outl(CONFIG_ADDRESS_PORT, addr);
+		outl(CONFIG_ADDRESS_PORT, addr);
 		// Write the value
-		io::outl(CONFIG_DATA_PORT, value);
+		outl(CONFIG_DATA_PORT, value);
 	}
 }
 

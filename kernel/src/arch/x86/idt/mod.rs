@@ -468,7 +468,7 @@ pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 /// This function must be called only once at kernel initialization.
 ///
 /// When returning, maskable interrupts are disabled by default.
-pub(crate) fn init() {
+pub fn init() {
 	cli();
 	pic::init(0x20, 0x28);
 	// Safe because the current function is called only once at boot
@@ -530,6 +530,6 @@ pub(crate) fn init() {
 			size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
 			offset: addr_of!(IDT_ENTRIES) as _,
 		};
-		asm!("lidt [{idt}]", idt = in(reg) &idt);
+		asm!("lidt [{}]", in(reg) &idt);
 	}
 }

@@ -19,9 +19,8 @@
 //! Interrupt callback register interface.
 
 use crate::{
+	arch::x86::{idt, idt::pic},
 	crypto::{rand, rand::EntropyPool},
-	idt,
-	idt::pic,
 	process,
 	process::regs::Regs32,
 };

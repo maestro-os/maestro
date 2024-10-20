@@ -30,9 +30,10 @@ pub mod residence;
 mod transaction;
 
 use crate::{
+	arch::x86::paging::{PAGE_FAULT_PRESENT, PAGE_FAULT_USER, PAGE_FAULT_WRITE},
 	file::perm::AccessProfile,
 	memory,
-	memory::{vmem, vmem::VMem, VirtAddr, PROCESS_END},
+	memory::{vmem::VMem, VirtAddr, PROCESS_END},
 };
 use core::{
 	alloc::AllocError,
@@ -637,20 +638,20 @@ impl MemSpace {
 	///
 	/// If the process should continue, the function returns `true`, else `false`.
 	pub fn handle_page_fault(&mut self, addr: VirtAddr, code: u32) -> bool {
-		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
+		if code & PAGE_FAULT_PRESENT == 0 {
 			return false;
 		}
 		let Some(mapping) = self.state.get_mut_mapping_for_addr(addr) else {
 			return false;
 		};
 		// Check permissions
-		let code_write = code & vmem::x86::PAGE_FAULT_WRITE != 0;
+		let code_write = code & PAGE_FAULT_WRITE != 0;
 		let mapping_write = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
 		if code_write && !mapping_write {
 			return false;
 		}
 		// TODO check exec
-		let code_userspace = code & vmem::x86::PAGE_FAULT_USER != 0;
+		let code_userspace = code & PAGE_FAULT_USER != 0;
 		let mapping_userspace = mapping.get_flags() & MAPPING_FLAG_USER != 0;
 		if code_userspace && !mapping_userspace {
 			return false;

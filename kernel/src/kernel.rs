@@ -51,20 +51,15 @@
 #![reexport_test_harness_main = "kernel_selftest"]
 
 pub mod acpi;
+pub mod arch;
 mod boot;
 pub mod cmdline;
-pub mod cpu;
 pub mod crypto;
 pub mod debug;
 pub mod device;
 pub mod elf;
 pub mod event;
 pub mod file;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub mod gdt;
-#[macro_use]
-pub mod idt;
-pub mod io;
 pub mod logger;
 pub mod memory;
 pub mod module;
@@ -82,6 +77,7 @@ pub mod time;
 pub mod tty;
 
 use crate::{
+	arch::x86::{enable_sse, has_sse, idt},
 	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
 	memory::vmem,
@@ -160,13 +156,16 @@ fn init(init_path: String) -> EResult<()> {
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
 	TTY.display.lock().show();
-	// Ensure the CPU has SSE
-	if !cpu::sse::is_present() {
-		panic!("SSE support is required to run this kernel :(");
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
+		// Ensure the CPU has SSE
+		if !has_sse() {
+			panic!("SSE support is required to run this kernel :(");
+		}
+		enable_sse();
+		// Initialize IDT
+		idt::init();
 	}
-	cpu::sse::enable();
-	// Initialize IDT
-	idt::init();
 
 	// Read multiboot information
 	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {

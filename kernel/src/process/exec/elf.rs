@@ -20,7 +20,8 @@
 
 use super::vdso;
 use crate::{
-	cpu, elf,
+	arch::x86,
+	elf,
 	elf::{
 		parser::{ELFParser, ProgramHeader, Rel, Rela},
 		relocation,
@@ -232,7 +233,7 @@ fn build_auxiliary(
 		AuxEntryDescValue::String(crate::NAME.as_bytes()),
 	))?;
 
-	let hwcap = cpu::get_hwcap();
+	let hwcap = x86::get_hwcap();
 	aux.push(AuxEntryDesc::new(
 		AT_HWCAP,
 		AuxEntryDescValue::Number(hwcap as _),

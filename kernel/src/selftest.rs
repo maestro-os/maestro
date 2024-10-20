@@ -37,7 +37,7 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 /// This module contains utilities to manipulate QEMU for testing.
 #[cfg(config_debug_qemu)]
 pub mod qemu {
-	use crate::{io, power};
+	use crate::{arch::x86::io::outl, power};
 
 	/// The port used to trigger QEMU emulator exit with the given exit code.
 	const EXIT_PORT: u16 = 0xf4;
@@ -50,7 +50,7 @@ pub mod qemu {
 	/// Exits QEMU with the given status.
 	pub fn exit(status: u32) {
 		unsafe {
-			io::outl(EXIT_PORT, status);
+			outl(EXIT_PORT, status);
 		}
 		// halt in case exiting did not succeed for some reason
 		power::halt();

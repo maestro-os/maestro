@@ -18,7 +18,7 @@
 
 //! This module implements Serial port communications.
 
-use crate::io;
+use crate::arch::x86::io::{inb, outb};
 use utils::lock::Mutex;
 
 /// The offset of COM1 registers.
@@ -104,19 +104,19 @@ impl Serial {
 	/// Tests whether the current serial port exists.
 	fn probe(&mut self) -> bool {
 		unsafe {
-			io::outb(self.regs_off + INTERRUPT_REG_OFF, 0x00);
+			outb(self.regs_off + INTERRUPT_REG_OFF, 0x00);
 			self.set_baud_rate(38400);
-			io::outb(self.regs_off + LINE_CTRL_REG_OFF, 0x03);
-			io::outb(self.regs_off + II_FIFO_REG_OFF, 0xc7);
-			io::outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x0b);
-			io::outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x1e);
-			io::outb(self.regs_off + DATA_REG_OFF, 0xae);
+			outb(self.regs_off + LINE_CTRL_REG_OFF, 0x03);
+			outb(self.regs_off + II_FIFO_REG_OFF, 0xc7);
+			outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x0b);
+			outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x1e);
+			outb(self.regs_off + DATA_REG_OFF, 0xae);
 
-			if io::inb(self.regs_off + DATA_REG_OFF) != 0xae {
+			if inb(self.regs_off + DATA_REG_OFF) != 0xae {
 				return false;
 			}
 
-			io::outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x0f);
+			outb(self.regs_off + MODEM_CTRL_REG_OFF, 0x0f);
 		}
 
 		true
@@ -142,13 +142,13 @@ impl Serial {
 	fn set_baud_rate(&mut self, baud: u32) {
 		let div = (UART_FREQUENCY / baud) as u16;
 		unsafe {
-			let line_ctrl = io::inb(self.regs_off + LINE_CTRL_REG_OFF);
-			io::outb(self.regs_off + LINE_CTRL_REG_OFF, line_ctrl | DLAB);
+			let line_ctrl = inb(self.regs_off + LINE_CTRL_REG_OFF);
+			outb(self.regs_off + LINE_CTRL_REG_OFF, line_ctrl | DLAB);
 
-			io::outb(self.regs_off + DIVISOR_LO_REG_OFF, (div & 0xff) as _);
-			io::outb(self.regs_off + DIVISOR_HI_REG_OFF, ((div >> 8) & 0xff) as _);
+			outb(self.regs_off + DIVISOR_LO_REG_OFF, (div & 0xff) as _);
+			outb(self.regs_off + DIVISOR_HI_REG_OFF, ((div >> 8) & 0xff) as _);
 
-			io::outb(self.regs_off + LINE_CTRL_REG_OFF, line_ctrl & !DLAB);
+			outb(self.regs_off + LINE_CTRL_REG_OFF, line_ctrl & !DLAB);
 		}
 	}
 
@@ -156,7 +156,7 @@ impl Serial {
 
 	/// Tells whether the transmission buffer is empty.
 	fn is_transmit_empty(&self) -> bool {
-		(unsafe { io::inb(self.regs_off + LINE_STATUS_REG_OFF) } & LINE_STATUS_THRE) != 0
+		(unsafe { inb(self.regs_off + LINE_STATUS_REG_OFF) } & LINE_STATUS_THRE) != 0
 	}
 
 	/// Writes the given buffer to the port's output.
@@ -173,7 +173,7 @@ impl Serial {
 		for b in buff {
 			while !self.is_transmit_empty() {}
 			unsafe {
-				io::outb(self.regs_off + DATA_REG_OFF, *b);
+				outb(self.regs_off + DATA_REG_OFF, *b);
 			}
 		}
 	}

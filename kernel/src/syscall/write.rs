@@ -21,7 +21,6 @@
 use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, FileType},
-	idt,
 	process::{mem_space::copy::SyscallSlice, regs::Regs32, scheduler, Process},
 	syscall::Signal,
 };

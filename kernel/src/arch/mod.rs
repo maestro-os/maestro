@@ -16,23 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! SSE-related features.
+//! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
-use crate::{cpu::get_hwcap, register_get, register_set};
-
-/// Tells whether the CPU supports SSE.
-pub fn is_present() -> bool {
-	get_hwcap() & (1 << 25) != 0
-}
-
-/// Enables SSE.
-pub fn enable() {
-	// Enable x87 FPU
-	let cr0 = (register_get!("cr0") & !0b100) | 0b10;
-	// Enable FXSAVE and FXRSTOR (thus, enabling SSE) and SSE exceptions
-	let cr4 = register_get!("cr4") | 0b11000000000;
-	unsafe {
-		register_set!("cr0", cr0);
-		register_set!("cr4", cr4);
-	}
-}
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub mod x86;

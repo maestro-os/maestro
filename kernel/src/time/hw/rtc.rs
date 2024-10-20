@@ -19,7 +19,10 @@
 //! The Real Time Clock (RTC) is the clock used by the CMOS to maintain system time.
 
 use super::HwClock;
-use crate::{idt, io};
+use crate::arch::x86::{
+	idt,
+	io::{inb, outb},
+};
 use utils::math::rational::Rational;
 
 /// The ID of the port used to select the CMOS register to read.
@@ -56,8 +59,8 @@ impl RTC {
 	#[inline]
 	pub fn reset() {
 		unsafe {
-			io::outb(SELECT_PORT, STATUS_C_REGISTER);
-			io::inb(VALUE_PORT);
+			outb(SELECT_PORT, STATUS_C_REGISTER);
+			inb(VALUE_PORT);
 		}
 	}
 }
@@ -65,14 +68,14 @@ impl RTC {
 impl HwClock for RTC {
 	fn set_enabled(&mut self, enable: bool) {
 		idt::wrap_disable_interrupts(|| unsafe {
-			io::outb(SELECT_PORT, STATUS_B_REGISTER | 0x80);
-			let prev = io::inb(VALUE_PORT);
+			outb(SELECT_PORT, STATUS_B_REGISTER | 0x80);
+			let prev = inb(VALUE_PORT);
 
-			io::outb(SELECT_PORT, STATUS_B_REGISTER | 0x80);
+			outb(SELECT_PORT, STATUS_B_REGISTER | 0x80);
 			if enable {
-				io::outb(VALUE_PORT, prev | 0x40);
+				outb(VALUE_PORT, prev | 0x40);
 			} else {
-				io::outb(VALUE_PORT, prev & !0x40);
+				outb(VALUE_PORT, prev & !0x40);
 			}
 		});
 	}
@@ -81,10 +84,10 @@ impl HwClock for RTC {
 		// TODO adapt to given frequency
 
 		idt::wrap_disable_interrupts(|| unsafe {
-			io::outb(0x70, STATUS_A_REGISTER | 0x80);
-			let prev = io::inb(VALUE_PORT);
-			io::outb(0x70, STATUS_A_REGISTER | 0x80);
-			io::outb(0x71, (prev & 0xf0) | 6);
+			outb(0x70, STATUS_A_REGISTER | 0x80);
+			let prev = inb(VALUE_PORT);
+			outb(0x70, STATUS_A_REGISTER | 0x80);
+			outb(0x71, (prev & 0xf0) | 6);
 		});
 	}
 
