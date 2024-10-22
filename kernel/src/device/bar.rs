@@ -19,7 +19,7 @@
 //! The Base Address Register (BAR) is a way to communicate with a device using
 //! Direct Access Memory (DMA).
 
-use crate::io;
+use crate::arch::x86::io::{inb, inl, inw, outb, outl, outw};
 use core::{mem::size_of, ptr, ptr::NonNull};
 
 /// Enumeration of Memory Space BAR types.
@@ -104,9 +104,9 @@ impl BAR {
 				let off = address.wrapping_add(off as u32) as u16;
 				unsafe {
 					match size_of::<T>() {
-						1 => io::inb(off).into(),
-						2 => io::inw(off).into(),
-						4 => io::inl(off).into(),
+						1 => inb(off).into(),
+						2 => inw(off).into(),
+						4 => inl(off).into(),
 						_ => 0u32.into(),
 					}
 				}
@@ -138,9 +138,9 @@ impl BAR {
 				let off = address.wrapping_add(off as u32) as u16;
 				unsafe {
 					match size_of::<T>() {
-						1 => io::outb(off, val as _),
-						2 => io::outw(off, val as _),
-						4 => io::outl(off, val as _),
+						1 => outb(off, val as _),
+						2 => outw(off, val as _),
+						4 => outl(off, val as _),
 						_ => {}
 					}
 				}

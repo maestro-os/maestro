@@ -19,7 +19,7 @@
 //! The `user_desc` structure, is used in userspace to specify the value for either a local or
 //! global descriptor.
 
-use crate::gdt;
+use crate::arch::x86::gdt;
 use core::{ffi::c_void, fmt, ptr};
 
 /// The size of the `user_desc` structure in bytes.

@@ -33,9 +33,10 @@ pub mod version;
 use crate::{
 	elf,
 	elf::{
-		parser::ELFParser,
-		relocation::{ELF32Rel, ELF32Rela, Relocation, GOT_SYM},
-		ELF32Sym,
+		kernel::KernSym,
+		parser::{ELFParser, Rel, Rela},
+		relocation,
+		relocation::GOT_SYM,
 	},
 };
 use core::{
@@ -138,7 +139,7 @@ impl Module {
 	/// `name` is the name of the symbol to look for.
 	///
 	/// If the symbol doesn't exist, the function returns `None`.
-	fn resolve_symbol(name: &[u8]) -> Option<&ELF32Sym> {
+	fn resolve_symbol(name: &[u8]) -> Option<&KernSym> {
 		// The symbol on the kernel side
 		let kernel_sym = elf::kernel::get_symbol_by_name(name)?;
 		// TODO check symbols from other loaded modules
@@ -212,12 +213,12 @@ impl Module {
 					.copy_from_slice(&image[image_begin..(image_begin + len)]);
 			});
 		// Closure returning a symbol
-		let get_sym = |sym_section: u32, sym: u32| {
+		let get_sym = |sym_section: u32, sym: usize| {
 			let section = parser.get_section_by_index(sym_section as _)?;
-			let sym = parser.get_symbol_by_index(section, sym as _)?;
+			let sym = parser.get_symbol_by_index(&section, sym as _)?;
 			if !sym.is_defined() {
 				let strtab = parser.get_section_by_index(section.sh_link as _)?;
-				let name = parser.get_symbol_name(strtab, sym)?;
+				let name = parser.get_symbol_name(&strtab, &sym)?;
 				// Look inside the kernel image or other modules
 				let Some(other_sym) = Self::resolve_symbol(name) else {
 					crate::println!(
@@ -226,20 +227,38 @@ impl Module {
 					);
 					return None;
 				};
-				Some(other_sym.st_value)
+				Some(other_sym.st_value as usize)
 			} else {
-				Some(load_base as u32 + sym.st_value)
+				Some(load_base as usize + sym.st_value as usize)
 			}
 		};
 		let got_sym = parser.get_symbol_by_name(GOT_SYM);
 		for section in parser.iter_sections() {
-			for rel in parser.iter_rel::<ELF32Rel>(section) {
-				unsafe { rel.perform(load_base, section, get_sym, got_sym, false) }
-					.map_err(|_| errno!(EINVAL))?;
+			for rel in parser.iter_rel::<Rel>(&section) {
+				unsafe {
+					relocation::perform(
+						&rel,
+						load_base,
+						&section,
+						get_sym,
+						got_sym.as_ref(),
+						false,
+					)
+				}
+				.map_err(|_| errno!(EINVAL))?;
 			}
-			for rela in parser.iter_rel::<ELF32Rela>(section) {
-				unsafe { rela.perform(load_base, section, get_sym, got_sym, false) }
-					.map_err(|_| errno!(EINVAL))?;
+			for rela in parser.iter_rel::<Rela>(&section) {
+				unsafe {
+					relocation::perform(
+						&rela,
+						load_base,
+						&section,
+						get_sym,
+						got_sym.as_ref(),
+						false,
+					)
+				}
+				.map_err(|_| errno!(EINVAL))?;
 			}
 		}
 		// Check the magic number

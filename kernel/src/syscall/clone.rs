@@ -20,7 +20,7 @@
 
 use crate::{
 	process::{
-		mem_space::copy::SyscallPtr, regs::Regs, scheduler, user_desc::UserDesc, ForkOptions,
+		mem_space::copy::SyscallPtr, regs::Regs32, scheduler, user_desc::UserDesc, ForkOptions,
 		Process,
 	},
 	syscall::{Args, FromSyscallArg},
@@ -88,7 +88,7 @@ pub fn clone(
 		c_ulong,
 		SyscallPtr<c_int>,
 	)>,
-	regs: &Regs,
+	regs: &Regs32,
 	proc_mutex: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let new_tid = {

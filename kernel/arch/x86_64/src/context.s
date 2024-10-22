@@ -16,24 +16,37 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// C functions utils
+.intel_syntax noprefix
 
-#ifndef LIBC_H
-# define LIBC_H
+.include "arch/x86_64/src/regs.s"
 
-// Gives the offset of the pointer `ptr` relative to its down-aligned
-// counterpart.
-# define ALIGN_MASK(ptr, n)	((intptr_t) (ptr) & ((n) - 1))
+// Context switch functions
 
-// Tells whether the pointer `ptr` is aligned on boundary `n`.
-//
-// If `n` is zero, the behaviour is undefined.
-# define IS_ALIGNED(ptr, n)	(ALIGN_MASK(ptr, n) == 0)
+.global context_switch32
+.global context_switch64
+.global context_switch_kernel
 
-// Aligns down the given memory pointer `ptr` to the boundary `n`.
-//
-// If `n` is zero, the behaviour is undefined.
-# define DOWN_ALIGN(ptr, n)\
-	(typeof(ptr)) ((intptr_t) (ptr) & ~((intptr_t) ((n) - 1)))
+.type context_switch32, @function
+.type context_switch64, @function
+.type context_switch_kernel, @function
 
-#endif
+context_switch32:
+    # TODO
+    ud2
+
+context_switch64:
+    # TODO
+    ud2
+
+context_switch_kernel:
+    # TODO
+    ud2
+
+// System calls handler
+
+.global syscall
+.type syscall, @function
+
+syscall:
+    # TODO
+    ud2
