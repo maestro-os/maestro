@@ -42,7 +42,7 @@ pub const USER_DS: usize = 32;
 /// The offset of the Task State Segment (TSS).
 pub const TSS_OFFSET: usize = 40;
 /// The offset of Thread Local Storage (TLS) entries.
-pub const TLS_OFFSET: usize = 48;
+pub const TLS_OFFSET: usize = 56;
 
 /// A GDT entry.
 #[repr(C, align(8))]

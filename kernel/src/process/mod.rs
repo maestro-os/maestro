@@ -34,12 +34,10 @@ pub mod regs;
 pub mod rusage;
 pub mod scheduler;
 pub mod signal;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub mod tss;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::gdt,
+	arch::x86::{gdt, tss, tss::TSS},
 	event,
 	event::{unlock_callbacks, CallbackResult},
 	file,
@@ -75,8 +73,6 @@ use pid::Pid;
 use regs::Regs32;
 use rusage::RUsage;
 use signal::{Signal, SignalAction, SignalHandler};
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use tss::TSS;
 use utils::{
 	collections::{
 		path::{Path, PathBuf},
@@ -295,7 +291,7 @@ pub struct Process {
 /// Initializes processes system. This function must be called only once, at
 /// kernel initialization.
 pub(crate) fn init() -> EResult<()> {
-	TSS::init();
+	tss::init();
 	scheduler::init()?;
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, regs: &Regs32, ring: u32| {
@@ -697,13 +693,13 @@ impl Process {
 
 	/// Updates the TSS on the current kernel for the process.
 	pub fn update_tss(&self) {
-		let kernel_stack_begin =
-			self.kernel_stack.as_ptr() as usize + buddy::get_frame_size(KERNEL_STACK_ORDER);
-		// Fill the TSS
+		// Set kernel stack pointer
 		unsafe {
-			TSS.0.esp0 = kernel_stack_begin as _;
-			TSS.0.ss0 = gdt::KERNEL_DS as _;
-			TSS.0.ss = gdt::USER_DS as _;
+			let kernel_stack_begin = self
+				.kernel_stack
+				.as_ptr()
+				.add(buddy::get_frame_size(KERNEL_STACK_ORDER));
+			TSS.set_kernel_stack(kernel_stack_begin);
 		}
 	}
 

@@ -24,6 +24,7 @@ pub mod idt;
 pub mod io;
 pub mod paging;
 pub mod pic;
+pub mod tss;
 
 use core::arch::asm;
 

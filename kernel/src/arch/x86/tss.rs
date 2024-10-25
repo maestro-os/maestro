@@ -27,12 +27,13 @@
 //! instruction `ltr`.
 
 use crate::arch::x86::gdt;
-use core::{arch::asm, mem::size_of, ptr::addr_of};
+use core::{arch::asm, mem, ptr::addr_of};
 
-/// The TSS structure.
-#[repr(C)]
+/// Task State Segment.
+#[repr(C, align(8))]
 #[allow(missing_docs)]
-pub struct TSS {
+#[cfg(target_arch = "x86")]
+pub struct Tss {
 	pub prev_tss: u32,
 	pub esp0: u32,
 	pub ss0: u32,
@@ -62,76 +63,60 @@ pub struct TSS {
 	pub iomap_base: u16,
 }
 
-impl TSS {
-	/// Creates a new zeroed instance.
-	const fn new() -> Self {
-		Self {
-			prev_tss: 0,
-			esp0: 0,
-			ss0: 0,
-			esp1: 0,
-			ss1: 0,
-			esp2: 0,
-			ss2: 0,
-			cr3: 0,
-			eip: 0,
-			eflags: 0,
-			eax: 0,
-			ecx: 0,
-			edx: 0,
-			ebx: 0,
-			esp: 0,
-			ebp: 0,
-			esi: 0,
-			edi: 0,
-			es: 0,
-			cs: 0,
-			ss: 0,
-			ds: 0,
-			fs: 0,
-			gs: 0,
-			ldt: 0,
-			trap: 0,
-			iomap_base: 0,
-		}
-	}
+/// Task State Segment.
+#[repr(C, align(8))]
+#[allow(missing_docs)]
+#[cfg(target_arch = "x86_64")]
+pub struct Tss {
+	pub reserved0: u32,
+	pub rsp0: u64,
+	pub rsp1: u64,
+	pub rsp2: u64,
+	pub reserved1: u64,
+	pub ist1: u64,
+	pub ist2: u64,
+	pub ist3: u64,
+	pub ist4: u64,
+	pub ist5: u64,
+	pub ist6: u64,
+	pub ist7: u64,
+	pub reserved2: u64,
+	pub reserved3: u16,
+	pub iopb: u16,
+}
 
-	/// Initializes the TSS.
-	pub fn init() {
-		let limit = size_of::<Self>() as u64;
-		let base = addr_of!(TSS) as u64;
-		let flags = 0b0100000010001001_u64;
-		let tss_value = (limit & 0xffff)
-			| ((base & 0xffffff) << 16)
-			| (flags << 40)
-			| (((limit >> 16) & 0x0f) << 48)
-			| (((base >> 24) & 0xff) << 56);
-
-		let gdt_entry = gdt::Entry(tss_value);
-		unsafe {
-			gdt_entry.update_gdt(gdt::TSS_OFFSET);
+impl Tss {
+	/// Sets the kernel stack pointer.
+	pub fn set_kernel_stack(&mut self, kernel_stack: *mut u8) {
+		#[cfg(target_arch = "x86")]
+		{
+			self.esp0 = kernel_stack as _;
+			self.ss0 = gdt::KERNEL_DS as _;
+			self.ss = gdt::USER_DS as _;
 		}
-		Self::flush();
-	}
-
-	/// Updates the TSS into the GDT.
-	#[inline(always)]
-	pub fn flush() {
-		unsafe {
-			asm!(
-				"mov ax, {off}",
-				"ltr ax",
-				off = const gdt::TSS_OFFSET
-			);
+		#[cfg(target_arch = "x86_64")]
+		{
+			self.rsp0 = kernel_stack as _;
 		}
-		gdt::flush();
 	}
 }
 
-/// Wrapper for memory alignment.
-#[repr(align(4096))]
-pub struct TSSWrap(pub TSS);
-
 /// The Task State Segment.
 #[no_mangle]
-pub static mut TSS: TSSWrap = TSSWrap(TSS::new());
+pub static mut TSS: Tss = unsafe { mem::zeroed() };
+
+/// Initializes the TSS.
+pub(crate) fn init() {
+	let [gdt_entry_low, gdt_entry_high] =
+		gdt::Entry::new64(addr_of!(TSS) as u64, size_of::<Tss>() as _, 0b10001001, 0);
+	unsafe {
+		gdt_entry_low.update_gdt(gdt::TSS_OFFSET);
+		gdt_entry_high.update_gdt(gdt::TSS_OFFSET + size_of::<gdt::Entry>());
+		// Sets TSS offset
+		asm!(
+			"mov ax, {off}",
+			"ltr ax",
+			off = const gdt::TSS_OFFSET
+		);
+	}
+}

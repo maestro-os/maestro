@@ -28,9 +28,9 @@ pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
 pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff800000000800);
 
 #[cfg(target_arch = "x86")]
-pub type InitGdt = [gdt::Entry; 9];
-#[cfg(target_arch = "x86_64")]
 pub type InitGdt = [gdt::Entry; 10];
+#[cfg(target_arch = "x86_64")]
+pub type InitGdt = [gdt::Entry; 11];
 
 /// The initial Global Descriptor Table.
 #[no_mangle]
@@ -50,6 +50,7 @@ static INIT_GDT: InitGdt = [
 	// User data segment (32 bits)
 	gdt::Entry::new(0, !0, 0b11110010, 0b1100),
 	// TSS
+	gdt::Entry(0),
 	gdt::Entry(0),
 	// TLS entries
 	gdt::Entry(0),
