@@ -19,14 +19,10 @@
 //! POSIX signals implementation.
 
 mod signal_trampoline;
+pub mod ucontext;
 
 use super::{oom, Process, State, REDZONE_SIZE};
-use crate::{
-	file::perm::Uid,
-	memory::VirtAddr,
-	process::{pid::Pid, regs::Regs32, signal::signal_trampoline::signal_trampoline},
-	time::unit::ClockIdT,
-};
+use crate::{file::perm::Uid, memory::VirtAddr, process::pid::Pid, time::unit::ClockIdT};
 use core::{
 	ffi::{c_int, c_void},
 	fmt,
@@ -253,23 +249,6 @@ impl SigEvent {
 
 		true
 	}
-}
-
-/// Saved information to be used by the trampoline to restore the state of the process.
-#[repr(C)]
-#[derive(Debug)]
-pub struct UContext {
-	/// TODO
-	pub uc_flags: u32,
-	/// TODO
-	pub uc_link: *mut UContext,
-	/// Blocked signals mask before the signal.
-	pub uc_sigmask: SigSet,
-	/// The stack used to handle the signal.
-	pub uc_stack: *mut c_void,
-	// FIXME: `Regs` does not match the actual layout of mcontext_t
-	/// Saved registers.
-	pub uc_mcontext: Regs32,
 }
 
 /// Enumeration containing the different possibilities for signal handling.

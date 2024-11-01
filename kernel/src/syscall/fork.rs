@@ -20,20 +20,23 @@
 //! process. Execution resumes at the same location for both processes but the
 //! return value is different to allow differentiation.
 
-use crate::process::{regs::Regs32, ForkOptions, Process};
+use crate::{
+	arch::x86::idt::IntFrame,
+	process::{ForkOptions, Process},
+};
 use utils::{
 	errno::{EResult, Errno},
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
-pub fn fork(proc: Arc<IntMutex<Process>>, regs: &Regs32) -> EResult<usize> {
+pub fn fork(proc: Arc<IntMutex<Process>>, frame: &IntFrame) -> EResult<usize> {
 	let new_mutex = Process::fork(proc, ForkOptions::default())?;
 	let mut new_proc = new_mutex.lock();
 	// Set child's return value to `0`
-	let mut regs = regs.clone();
-	regs.set_syscall_return(Ok(0));
-	new_proc.regs = regs;
+	let mut frame = frame.clone();
+	frame.set_syscall_return(Ok(0));
+	new_proc.regs = frame;
 	// Set parent's return value to the child's PID
 	Ok(new_proc.get_pid() as _)
 }

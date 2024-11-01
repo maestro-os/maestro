@@ -21,7 +21,7 @@
 use super::{util, Args};
 use crate::{
 	process,
-	process::{pid::Pid, regs::Regs32, scheduler::SCHEDULER, signal::Signal, Process, State},
+	process::{pid::Pid, scheduler::SCHEDULER, signal::Signal, Process, State},
 };
 use core::ffi::c_int;
 use utils::{

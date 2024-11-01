@@ -23,12 +23,8 @@
 //! to allow normal execution.
 
 use crate::{
-	process::{
-		mem_space::copy::SyscallPtr,
-		regs::Regs32,
-		signal::{Signal, UContext},
-		Process,
-	},
+	arch::x86::idt::IntFrame,
+	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
 	syscall::FromSyscallArg,
 };
 use core::{mem::size_of, ptr};
@@ -39,11 +35,11 @@ use utils::{
 	lock::{IntMutex, IntMutexGuard},
 };
 
-pub fn sigreturn(regs: &Regs32) -> EResult<usize> {
+pub fn sigreturn(frame: &IntFrame) -> EResult<usize> {
 	// Avoid re-enabling interrupts before context switching
 	cli();
 	// Retrieve the previous state
-	let ctx_ptr = regs.esp as usize - size_of::<UContext>();
+	let ctx_ptr = frame.esp as usize - size_of::<UContext>();
 	let ctx_ptr = SyscallPtr::<UContext>::from_syscall_arg(ctx_ptr);
 	let ctx = ctx_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	{

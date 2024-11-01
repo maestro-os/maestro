@@ -26,7 +26,9 @@ use crate::{
 			copy::{SyscallPtr, SyscallSlice},
 			MemSpace,
 		},
-		scheduler, Process,
+		scheduler,
+		scheduler::Scheduler,
+		Process,
 	},
 	syscall::{poll, Args},
 	time::{
@@ -180,7 +182,7 @@ pub fn do_select<T: TimeUnit>(
 			break 0;
 		}
 		// TODO Make the process sleep?
-		scheduler::end_tick();
+		Scheduler::tick();
 	};
 	// Write back
 	if let Some(val) = readfds_set {

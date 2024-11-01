@@ -28,6 +28,7 @@ use core::{
 	ptr::addr_of,
 };
 use utils::{
+	errno::EResult,
 	interrupt,
 	interrupt::{cli, sti},
 };
@@ -47,6 +48,152 @@ const ID_PRESENT: u8 = 0b00000001;
 pub const SYSCALL_ENTRY: usize = 0x80;
 /// The number of entries into the IDT.
 pub const ENTRIES_COUNT: usize = 0x81;
+
+/// Interruption stack frame, with saved registers state.
+#[repr(C)]
+#[allow(missing_docs)]
+#[cfg(target_arch = "x86")]
+pub struct IntFrame {
+	pub eip: u32,
+	pub cs: u32,
+	pub eflags: u32,
+	pub esp: u32,
+	pub ss: u32,
+
+	/// Error code, if any.
+	pub code: u32,
+	/// Interruption number.
+	pub int: u32,
+
+	pub eax: u32,
+	pub ebx: u32,
+	pub ecx: u32,
+	pub edx: u32,
+	pub esi: u32,
+	pub edi: u32,
+	pub ebp: u32,
+}
+
+/// Interruption stack frame, with saved registers state.
+#[repr(C)]
+#[allow(missing_docs)]
+#[cfg(target_arch = "x86_64")]
+pub struct IntFrame {
+	pub rax: u64,
+	pub rbx: u64,
+	pub rcx: u64,
+	pub rdx: u64,
+	pub rsi: u64,
+	pub rdi: u64,
+	pub rbp: u64,
+	// Added by long mode
+	pub r8: u64,
+	pub r9: u64,
+	pub r10: u64,
+	pub r11: u64,
+	pub r12: u64,
+	pub r13: u64,
+	pub r14: u64,
+	pub r15: u64,
+
+	/// Interruption number.
+	pub int: u64,
+	/// Error code, if any.
+	pub code: u64,
+
+	pub rip: u64,
+	pub cs: u64,
+	pub rflags: u64,
+	pub rsp: u64,
+	pub ss: u64,
+}
+
+impl IntFrame {
+	/// Returns the ID of the system call being executed.
+	#[inline]
+	pub const fn get_syscall_id(&self) -> usize {
+		#[cfg(target_arch = "x86")]
+		{
+			self.eax as usize
+		}
+		#[cfg(target_arch = "x86_64")]
+		{
+			self.rax as usize
+		}
+	}
+
+	/// Returns the value of the `n`th argument of the syscall being executed.
+	///
+	/// If `n` exceeds the number of arguments for the current architecture, the function returns
+	/// `0`.
+	#[inline]
+	pub const fn get_syscall_arg(&self, n: u8) -> usize {
+		#[cfg(target_arch = "x86")]
+		let val = match n {
+			0 => self.ebx,
+			1 => self.ecx,
+			2 => self.edx,
+			3 => self.esi,
+			4 => self.edi,
+			5 => self.ebp,
+			_ => 0,
+		};
+		#[cfg(target_arch = "x86_64")]
+		let val = match n {
+			0 => self.rdi,
+			1 => self.rsi,
+			2 => self.rdx,
+			3 => self.r10,
+			4 => self.r8,
+			5 => self.r9,
+			_ => 0,
+		};
+		val as _
+	}
+
+	/// Sets the return value of a system call.
+	pub fn set_syscall_return(&mut self, value: EResult<usize>) {
+		let val = value.map(|v| v as _).unwrap_or_else(|e| (-e.as_int()) as _);
+		#[cfg(target_arch = "x86")]
+		{
+			self.eax = val;
+		}
+		#[cfg(target_arch = "x86_64")]
+		{
+			self.rax = val;
+		}
+	}
+
+	/// Returns the address of the instruction to be executed when the interrupt handler returns.
+	pub fn get_program_counter(&self) -> usize {
+		#[cfg(target_arch = "x86")]
+		{
+			self.eax as usize
+		}
+		#[cfg(target_arch = "x86_64")]
+		{
+			self.rax as usize
+		}
+	}
+
+	/// Sets the address of the instruction to be executed when the interrupt handler returns.
+	pub fn set_program_counter(&mut self, val: usize) {
+		#[cfg(target_arch = "x86")]
+		{
+			self.eax = val as _;
+		}
+		#[cfg(target_arch = "x86_64")]
+		{
+			self.rax = val as _;
+		}
+	}
+}
+
+// include registers save/restore macros
+#[cfg(target_arch = "x86")]
+global_asm!(r#".include "arch/x86/src/regs.s""#);
+#[cfg(target_arch = "x86_64")]
+global_asm!(r#".include "arch/x86_64/src/regs.s""#);
 
 /// An IDT header.
 #[repr(C, packed)]
@@ -123,12 +270,6 @@ impl InterruptDescriptor {
 	}
 }
 
-// include registers save/restore macros
-#[cfg(target_arch = "x86")]
-global_asm!(r#".include "arch/x86/src/regs.s""#);
-#[cfg(target_arch = "x86_64")]
-global_asm!(r#".include "arch/x86_64/src/regs.s""#);
-
 /// Declare an error handler.
 ///
 /// An error can be accompanied by a code, in which case the handler must be declared with the
@@ -141,69 +282,48 @@ macro_rules! error {
 
 		#[cfg(target_arch = "x86")]
 		global_asm!(
-			r#"
+			r"
 .global {name}
 .type {name}, @function
 
 {name}:
-	push ebp
-	mov ebp, esp
-
-	# Allocate space for registers and retrieve them
-GET_REGS
-
-	# Get the ring
-	mov eax, [ebp + 8]
-	and eax, 0b11
-
-	# Push arguments to call event_handler
-	push esp # regs
-	push eax # ring
-	push 0 # code
+	cld
+	push 0 # code (absent)
 	push {id}
+
+STORE_REGS
+
+	xor ebp, ebp
+	push esp
 	call event_handler
-	add esp, 16
+	add esp, 4
 
-RESTORE_REGS
-
-	# Restore the context
-	mov esp, ebp
-	pop ebp
-	iretd"#,
+LOAD_REGS
+	add esp, 8
+	iretd",
 			name = sym $name,
 			id = const($id)
 		);
 
 		#[cfg(target_arch = "x86_64")]
 		global_asm!(
-			r#"
+			r"
 .global {name}
 .type {name}, @function
 
 {name}:
-	push rbp
-	mov rbp, rsp
+	cld
+	push 0 # code (absent)
+	push {id}
+STORE_REGS
 
-	# Allocate space for registers and retrieve them
-GET_REGS
-
-	# Get the ring
-	mov rax, [rbp + 16]
-	and rax, 0b11
-
-	# Push arguments to call event_handler
-	mov rdi, rsp # regs
-	mov rsi, rax # ring
-	mov rdx, 0 # code
-	mov rcx, {id}
+	xor rbp, rbp
+	mov rdi, rsp
 	call event_handler
 
-RESTORE_REGS
-
-	# Restore the context
-	mov rsp, rbp
-	pop rbp
-	iretq"#,
+LOAD_REGS
+	add rsp, 16
+	iretq",
 			name = sym $name,
 			id = const($id)
 		);
@@ -220,44 +340,17 @@ RESTORE_REGS
 .type {name}, @function
 
 {name}:
-	# Retrieve the error code and write it after the stack pointer so that it can be retrieved
-	# after the stack frame
-	push eax
-	mov eax, [esp + 4]
-	mov [esp - 4], eax
-	pop eax
-
-	# Remove the code from its previous location on the stack
-	add esp, 4
-
-	push ebp
-	mov ebp, esp
-
-	# Allocate space for the error code
-	push [esp - 8]
-
-	# Allocate space for registers and retrieve them
-GET_REGS
-
-	# Get the ring
-	mov eax, [ebp + 8]
-	and eax, 0b11
-
-	# Push arguments to call event_handler
-	push esp # regs
-	push eax # ring
-	push [esp + REGS_SIZE + 8] # code
+	cld
 	push {id}
+STORE_REGS
+
+	xor ebp, ebp
+	push esp
 	call event_handler
-	add esp, 16
-
-RESTORE_REGS
-
-	# Free the space allocated for the error code
 	add esp, 4
 
-	mov esp, ebp
-	pop ebp
+LOAD_REGS
+	add esp, 8
 	iretd"#,
 			name = sym $name,
 			id = const($id)
@@ -270,43 +363,16 @@ RESTORE_REGS
 .type {name}, @function
 
 {name}:
-	# Retrieve the error code and write it after the stack pointer so that it can be retrieved
-	# after the stack frame
-	push rax
-	mov rax, [rsp + 8]
-	mov [rsp - 8], rax
-	pop rax
+	cld
+	push {id}
+STORE_REGS
 
-	# Remove the code from its previous location on the stack
-	add rsp, 8
-
-	push rbp
-	mov rbp, rsp
-
-	# Allocate space for the error code
-	push [rsp - 16]
-
-	# Allocate space for registers and retrieve them
-GET_REGS
-
-	# Get the ring
-	mov rax, [rbp + 16]
-	and rax, 0b11
-
-	# Push arguments to call event_handler
-	mov rdi, rsp # regs
-	mov rsi, rax # ring
-	mov rdx, [rsp + REGS_SIZE + 16] # code
-	mov rcx, {id}
+	xor rbp, rbp
+	mov rdi, rsp
 	call event_handler
 
-RESTORE_REGS
-
-	# Free the space allocated for the error code
-	add rsp, 8
-
-	mov rsp, rbp
-	pop rbp
+LOAD_REGS
+	add rsp, 16
 	iretq"#,
 			name = sym $name,
 			id = const($id)
@@ -326,29 +392,18 @@ macro_rules! irq {
 .global {name}
 
 {name}:
-	push ebp
-	mov ebp, esp
+	cld
+	push 0 # code (absent)
+	push {id}
+STORE_REGS
 
-	# Allocate space for registers and retrieve them
-GET_REGS
-
-	# Get the ring
-	mov eax, [ebp + 8]
-	and eax, 0b11
-
-	# Push arguments to call event_handler
-	push esp # regs
-	push eax # ring
-	push 0 # code
-	push ({id} + 0x20)
+	xor ebp, ebp
+	push esp
 	call event_handler
-	add esp, 16
+	add esp, 4
 
-RESTORE_REGS
-
-	# Restore the context
-	mov ebp, ebp
-	pop ebp
+LOAD_REGS
+	add esp, 8
 	iretd"#,
 			name = sym $name,
 			id = const($id)
@@ -360,28 +415,17 @@ RESTORE_REGS
 .global {name}
 
 {name}:
-	push rbp
-	mov rbp, rsp
+	cld
+	push 0 # code (absent)
+	push {id}
+STORE_REGS
 
-	# Allocate space for registers and retrieve them
-GET_REGS
-
-	# Get the ring
-	mov rax, [rbp + 8]
-	and rax, 0b11
-
-	# Push arguments to call event_handler
-	mov rdi, rsp # regs
-	mov rsi, rax # ring
-	mov rdx, 0 # code
-	mov rcx, ({id} + 0x20)
+	xor rbp, rbp
+	mov rdi, rsp
 	call event_handler
 
-RESTORE_REGS
-
-	# Restore the context
-	mov rbp, rbp
-	pop rbp
+LOAD_REGS
+	add rsp, 16
 	iretq"#,
 			name = sym $name,
 			id = const($id)

@@ -16,37 +16,32 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! A signal handler trampoline is the function that handles returning from a signal handler.
+//! A signal trampoline calls a signal handler when a signal occurs, and handling restoring the
+//! original context after the handler returns.
 //!
-//! The trampoline is using the same stack as the normal process execution.
+//! The trampoline executing in userspace.
 //!
-//! When the signal handler returns, the process returns directly to execution.
+//! The trampoline takes as argument:
+//! - `handler`: a pointer to the handler function for the signal
+//! - `sig`: the signal number
+//! - `ctx`: the context to restore after the handler finishes
+//!
+//! Restoring the original context is done by calling [`crate::syscall::sigreturn::sigreturn`].
 
-use crate::{process::signal::UContext, syscall::SIGRETURN_ID};
+use crate::{
+	process::signal::ucontext::{UContext32, UContext64},
+	syscall::SIGRETURN_ID,
+};
 use core::arch::asm;
 
-/// The signal handler trampoline.
-///
-/// The process resumes to this function when it received a signal.
-/// Thus, this code is executed in userspace.
-///
-/// When the process finished handling the signal, it calls the `sigreturn`
-/// system call in order to tell the kernel to resume normal execution.
-///
-/// Arguments:
-/// - `handler` is a pointer to the handler function for the signal.
-/// - `sig` is the signal number.
-/// - `ctx` is the context to restore after the handler finishes.
 #[link_section = ".user"]
-pub unsafe extern "C" fn signal_trampoline(
+pub unsafe extern "C" fn trampoline32(
 	handler: unsafe extern "C" fn(i32),
 	sig: usize,
-	ctx: &mut UContext,
+	ctx: &mut UContext32,
 ) -> ! {
-	// Call the signal handler
 	handler(sig as _);
-	// Call `sigreturn` to end signal handling
-	#[cfg(target_arch = "x86")]
+	// Call `sigreturn`
 	asm!(
 		"mov esp, {}",
 		"int 0x80",
@@ -55,7 +50,17 @@ pub unsafe extern "C" fn signal_trampoline(
 		in("eax") SIGRETURN_ID,
 		options(noreturn)
 	);
-	#[cfg(target_arch = "x86_64")]
+}
+
+#[cfg(target_arch = "x86_64")]
+#[link_section = ".user"]
+pub unsafe extern "C" fn trampoline64(
+	handler: unsafe extern "C" fn(i32),
+	sig: usize,
+	ctx: &mut UContext64,
+) -> ! {
+	handler(sig as _);
+	// Call `sigreturn`
 	asm!(
 		"mov rsp, {}",
 		"sysenter",

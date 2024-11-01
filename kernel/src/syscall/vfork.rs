@@ -21,14 +21,17 @@
 //! program. During that time, the child process also shares the same memory
 //! space as the parent.
 
-use crate::process::{regs::Regs32, scheduler, ForkOptions, Process};
+use crate::{
+	arch::x86::idt::IntFrame,
+	process::{scheduler, scheduler::Scheduler, ForkOptions, Process},
+};
 use utils::{
 	errno::{EResult, Errno},
 	lock::IntMutex,
 	ptr::arc::Arc,
 };
 
-pub fn vfork(proc: Arc<IntMutex<Process>>, regs: &Regs32) -> EResult<usize> {
+pub fn vfork(proc: Arc<IntMutex<Process>>, frame: &IntFrame) -> EResult<usize> {
 	let new_pid = {
 		let fork_options = ForkOptions {
 			vfork: true,
@@ -37,14 +40,14 @@ pub fn vfork(proc: Arc<IntMutex<Process>>, regs: &Regs32) -> EResult<usize> {
 		let new_mutex = Process::fork(proc, fork_options)?;
 		let mut new_proc = new_mutex.lock();
 		// Set child's return value to `0`
-		let mut regs = regs.clone();
-		regs.set_syscall_return(Ok(0));
-		new_proc.regs = regs;
+		let mut frame = frame.clone();
+		frame.set_syscall_return(Ok(0));
+		new_proc.regs = frame;
 		new_proc.get_pid()
 	};
 	// Let another process run instead of the current. Because the current
 	// process must now wait for the child process to terminate or execute a program
-	scheduler::end_tick();
+	Scheduler::tick();
 	// Set parent's return value to the child's PID
 	Ok(new_pid as _)
 }

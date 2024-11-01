@@ -24,29 +24,14 @@
 
 .global context_switch32
 .global context_switch64
-.global context_switch_kernel
 
 .type context_switch32, @function
 .type context_switch64, @function
-.type context_switch_kernel, @function
 
 context_switch32:
     # TODO
     ud2
 
 context_switch64:
-    # TODO
-    ud2
-
-context_switch_kernel:
-    # TODO
-    ud2
-
-// System calls handler
-
-.global syscall
-.type syscall, @function
-
-syscall:
     # TODO
     ud2

@@ -21,8 +21,8 @@
 use crate::{
 	process,
 	process::{
-		mem_space::copy::SyscallPtr, pid::Pid, regs::Regs32, rusage::RUsage, scheduler, Process,
-		State,
+		mem_space::copy::SyscallPtr, pid::Pid, rusage::RUsage, scheduler, scheduler::Scheduler,
+		Process, State,
 	},
 	syscall::{waitpid::scheduler::SCHEDULER, Args},
 };
@@ -172,7 +172,7 @@ pub fn do_waitpid(
 			// changes the state of the current process to wake it up
 			proc.set_state(State::Sleeping);
 		}
-		scheduler::end_tick();
+		Scheduler::tick();
 	}
 }
 

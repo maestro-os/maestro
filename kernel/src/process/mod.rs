@@ -30,16 +30,15 @@ pub mod iovec;
 pub mod mem_space;
 pub mod oom;
 pub mod pid;
-pub mod regs;
 pub mod rusage;
 pub mod scheduler;
 pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{gdt, tss, tss::TSS},
+	arch::x86::{gdt, idt::IntFrame, tss, tss::TSS},
 	event,
-	event::{unlock_callbacks, CallbackResult},
+	event::CallbackResult,
 	file,
 	file::{
 		fd::{FileDescriptorTable, NewFDConstraint},
@@ -52,7 +51,7 @@ use crate::{
 	process::{
 		mem_space::{copy, copy::SyscallPtr},
 		pid::PidHandle,
-		scheduler::SCHEDULER,
+		scheduler::{Scheduler, SCHEDULER},
 		signal::SigSet,
 	},
 	register_get,
@@ -67,10 +66,10 @@ use core::{
 	mem,
 	mem::{size_of, ManuallyDrop},
 	ptr::NonNull,
+	sync::atomic::AtomicPtr,
 };
 use mem_space::MemSpace;
 use pid::Pid;
-use regs::Regs32;
 use rusage::RUsage;
 use signal::{Signal, SignalAction, SignalHandler};
 use utils::{
@@ -232,8 +231,6 @@ pub struct Process {
 	pub priority: usize,
 	/// The nice value of the process.
 	pub nice: usize,
-	/// The number of quantum run during the cycle.
-	quantum_count: usize,
 
 	/// A pointer to the parent process.
 	parent: Option<Arc<IntMutex<Process>>>,
@@ -242,11 +239,6 @@ pub struct Process {
 	/// The list of processes in the process group.
 	process_group: Vec<Pid>,
 
-	/// The last saved registers state.
-	pub regs: Regs32,
-	/// Tells whether the process was executing a system call.
-	pub syscalling: bool,
-
 	/// Tells whether the process has information that can be retrieved by
 	/// wait/waitpid.
 	waitable: bool,
@@ -254,6 +246,9 @@ pub struct Process {
 	/// Structure managing the process's timers. This manager is shared between all threads of the
 	/// same process.
 	timer_manager: Arc<Mutex<TimerManager>>,
+
+	/// Kernel stack pointer of saved context.
+	kernel_sp: AtomicPtr<u8>,
 
 	/// The virtual memory of the process.
 	mem_space: Option<Arc<IntMutex<MemSpace>>>,
@@ -294,7 +289,7 @@ pub(crate) fn init() -> EResult<()> {
 	tss::init();
 	scheduler::init()?;
 	// Register interruption callbacks
-	let callback = |id: u32, _code: u32, regs: &Regs32, ring: u32| {
+	let callback = |id: u32, _code: u32, frame: &mut IntFrame, ring: u8| {
 		if ring < 3 {
 			return CallbackResult::Panic;
 		}
@@ -313,11 +308,11 @@ pub(crate) fn init() -> EResult<()> {
 			// General Protection Fault
 			0x0d => {
 				// Get the instruction opcode
-				let ptr = SyscallPtr::<u8>::from_syscall_arg(regs.eip as _);
+				let ptr = SyscallPtr::<u8>::from_syscall_arg(frame.get_program_counter());
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {
-					proc.exit(regs.eax as _);
+					proc.exit(frame.get_syscall_id() as _);
 				} else {
 					proc.kill(Signal::SIGSEGV);
 				}
@@ -328,9 +323,9 @@ pub(crate) fn init() -> EResult<()> {
 		}
 		CallbackResult::Continue
 	};
-	let page_fault_callback = |_id: u32, code: u32, regs: &Regs32, ring: u32| {
+	let page_fault_callback = |_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
 		let accessed_addr = VirtAddr(register_get!("cr2"));
-		let pc = regs.eip as usize;
+		let pc = frame.get_program_counter();
 		// Get current process
 		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
@@ -349,14 +344,7 @@ pub(crate) fn init() -> EResult<()> {
 				// Check if the fault was caused by a user <-> kernel copy
 				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
 					// Jump to `copy_fault`
-					let mut regs = regs.clone();
-					regs.eip = copy::copy_fault as usize as _;
-					// TODO cleanup
-					drop(curr_proc);
-					unsafe {
-						unlock_callbacks(0x0e);
-						regs.switch(false);
-					}
+					frame.set_program_counter(copy::copy_fault as usize);
 				} else {
 					return CallbackResult::Panic;
 				}
@@ -450,18 +438,16 @@ impl Process {
 
 			priority: 0,
 			nice: 0,
-			quantum_count: 0,
 
 			parent: None,
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			regs: Regs32::default(),
-			syscalling: false,
-
 			waitable: false,
 
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
+
+			kernel_sp: AtomicPtr::default(),
 
 			mem_space: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
@@ -668,6 +654,13 @@ impl Process {
 		}
 	}
 
+	/// Returns the last known userspace registers state.
+	///
+	/// This information is stored at the beginning of the process's interrupt stack.
+	pub fn user_regs(&self) -> IntFrame {
+		todo!()
+	}
+
 	/// Returns a reference to the process's memory space.
 	///
 	/// If the process is terminated, the function returns `None`.
@@ -701,42 +694,6 @@ impl Process {
 				.add(buddy::get_frame_size(KERNEL_STACK_ORDER));
 			TSS.set_kernel_stack(kernel_stack_begin);
 		}
-	}
-
-	/// Prepares for context switching to the process.
-	///
-	/// The function may update the state of the process. Thus, the caller must
-	/// check the state to ensure the process can actually be run.
-	pub fn prepare_switch(&mut self) {
-		if !matches!(self.state, State::Running) {
-			return;
-		}
-		// If the process is not in a syscall and a signal is pending on the process,
-		// execute it
-		if !self.syscalling {
-			if let Some(sig) = self.next_signal(false) {
-				// Prepare signal for execution
-				let signal_handlers = self.signal_handlers.clone();
-				let signal_handlers = signal_handlers.lock();
-				let sig_handler = &signal_handlers[sig.get_id() as usize];
-				sig_handler.exec(sig, &mut *self);
-				// If the process has been killed by the signal, abort switching
-				if !matches!(self.state, State::Running) {
-					return;
-				}
-			}
-		}
-		// Update the TSS for the process
-		self.update_tss();
-		// Update TLS entries in the GDT
-		for i in 0..TLS_ENTRIES_COUNT {
-			self.update_tls(i);
-		}
-		gdt::flush();
-		// Bind the memory space
-		self.get_mem_space().unwrap().lock().bind();
-		// Increment the number of ticks the process had
-		self.quantum_count = self.quantum_count.saturating_add(1);
 	}
 
 	/// Returns the exit status if the process has ended.
@@ -821,14 +778,10 @@ impl Process {
 
 			priority: proc.priority,
 			nice: proc.nice,
-			quantum_count: 0,
 
 			parent: Some(this.clone()),
 			children: Vec::new(),
 			process_group: Vec::new(),
-
-			regs: proc.regs.clone(),
-			syscalling: false,
 
 			waitable: false,
 
@@ -1053,38 +1006,6 @@ impl Drop for Process {
 	}
 }
 
-fn yield_current_impl(regs: &mut Regs32) -> bool {
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
-	// If the process is not running anymore, do not resume execution
-	if proc.state != State::Running {
-		return true;
-	}
-	// If no signal is pending, return
-	let Some(sig) = proc.next_signal(false) else {
-		return false;
-	};
-	// Prepare signal for execution
-	let handlers = proc.signal_handlers.clone();
-	let handlers = handlers.lock();
-	let handler = &handlers[sig.get_id() as usize];
-	// Update registers with the ones passed to the system call so that `sigreturn` returns to
-	// the correct location
-	proc.regs = regs.clone();
-	handler.exec(sig, &mut proc);
-	// Alter the execution flow of the current context according to the new state of the
-	// process
-	match proc.state {
-		// The process must execute a signal handler: Jump to it
-		State::Running => {
-			*regs = proc.regs.clone();
-			true
-		}
-		// Stop execution: Waiting until wakeup (or terminate if Zombie)
-		State::Sleeping | State::Stopped | State::Zombie => false,
-	}
-}
-
 /// Before returning to userspace from the current context, this function checks the state of the
 /// current process to potentially alter the execution flow.
 ///
@@ -1107,13 +1028,36 @@ fn yield_current_impl(regs: &mut Regs32) -> bool {
 /// This function may not return in some cases (example: the process has been turned into a
 /// Zombie). It is the caller's responsibility to drop all objects on the stack that need it, in
 /// order to avoid unintended side effects.
-pub fn yield_current(ring: u32, regs: &mut Regs32) {
+pub fn yield_current(ring: u8) {
 	// If returning to kernelspace, do nothing
 	if ring < 3 {
 		return;
 	}
-	let end_tick = yield_current_impl(regs);
-	if end_tick {
-		scheduler::end_tick();
+	let proc_mutex = Process::current();
+	let mut proc = proc_mutex.lock();
+	// If the process is not running anymore, stop execution
+	if proc.state != State::Running {
+		Scheduler::tick();
+	}
+	// If no signal is pending, return
+	let Some(sig) = proc.next_signal(false) else {
+		return;
+	};
+	// Prepare signal for execution
+	let handlers = proc.signal_handlers.clone();
+	let handlers = handlers.lock();
+	let handler = &handlers[sig.get_id() as usize];
+	// Update registers with the ones passed to the system call so that `sigreturn` returns to
+	// the correct location
+	handler.exec(sig, &mut proc);
+	// Alter the execution flow of the current context according to the new state of the
+	// process
+	match proc.state {
+		// The process must execute a signal handler: Jump to it
+		State::Running => {
+			todo!()
+		}
+		// Stop execution: Waiting until wakeup (or terminate if Zombie)
+		State::Sleeping | State::Stopped | State::Zombie => Scheduler::tick(),
 	}
 }

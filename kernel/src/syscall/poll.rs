@@ -20,7 +20,7 @@
 //! descriptors.
 
 use crate::{
-	process::{mem_space::copy::SyscallSlice, scheduler, Process},
+	process::{mem_space::copy::SyscallSlice, scheduler, scheduler::Scheduler, Process},
 	syscall::Args,
 	time::{
 		clock,
@@ -129,6 +129,6 @@ pub(super) fn poll(
 		}
 		// TODO Make process sleep until an event occurs on a file descriptor in
 		// `fds`
-		scheduler::end_tick();
+		Scheduler::tick();
 	}
 }

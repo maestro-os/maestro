@@ -28,6 +28,13 @@ pub mod tss;
 
 use core::arch::asm;
 
+/// Process default `rflags`
+pub const DEFAULT_FLAGS: usize = 0x202;
+/// Process default `FCW`
+pub const DEFAULT_FCW: u32 = 0b1100111111;
+/// Process default `MXCSR`
+pub const DEFAULT_MXCSR: u32 = 0b1111111000000;
+
 /// Returns the value stored into the specified register.
 #[macro_export]
 macro_rules! register_get {
@@ -165,5 +172,25 @@ pub unsafe fn set_smap_enabled(enabled: bool) {
 		asm!("clac");
 	} else {
 		asm!("stac");
+	}
+}
+
+/// FXstate buffer.
+#[repr(align(16))]
+struct FxState([u8; 512]);
+
+/// Saves the current x87 FPU, MMX and SSE state to the given buffer.
+#[inline]
+pub fn fxstate_save(fxstate: &mut FxState) {
+	unsafe {
+		asm!("fxsave [{}]", in(reg) fxstate.0.as_mut_ptr());
+	}
+}
+
+/// Restores the x87 FPU, MMX and SSE state from the given buffer.
+#[inline]
+pub fn fxstate_restore(fxstate: &FxState) {
+	unsafe {
+		asm!("fxrstor [{}]", in(reg) fxstate.0.as_ptr());
 	}
 }

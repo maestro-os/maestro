@@ -19,10 +19,9 @@
 //! Interrupt callback register interface.
 
 use crate::{
-	arch::x86::{idt, pic},
+	arch::x86::{idt, idt::IntFrame, pic},
 	crypto::{rand, rand::EntropyPool},
 	process,
-	process::regs::Regs32,
 };
 use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
 use utils::{boxed::Box, collections::vec::Vec, errno::AllocResult, lock::IntMutex};
@@ -95,7 +94,7 @@ pub enum CallbackResult {
 /// - `ring` tells the ring at which the code was running.
 ///
 /// The return value tells which action to perform next.
-type CallbackWrapper = Box<dyn FnMut(u32, u32, &Regs32, u32) -> CallbackResult>;
+type CallbackWrapper = Box<dyn FnMut(u32, u32, &mut IntFrame, u8) -> CallbackResult>;
 
 /// Structure used to detect whenever the object owning the callback is
 /// destroyed, allowing to unregister it automatically.
@@ -143,7 +142,7 @@ static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] =
 /// If the provided ID is invalid, the function returns `None`.
 pub fn register_callback<C>(id: u32, callback: C) -> AllocResult<Option<CallbackHook>>
 where
-	C: 'static + FnMut(u32, u32, &Regs32, u32) -> CallbackResult,
+	C: 'static + FnMut(u32, u32, &mut IntFrame, u8) -> CallbackResult,
 {
 	if unlikely(id as usize >= CALLBACKS.len()) {
 		return Ok(None);
@@ -181,30 +180,25 @@ fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
 	pool.write(buff);
 }
 
-/// This function is called whenever an interruption is triggered.
+/// Called whenever an interruption is triggered.
 ///
-/// Arguments:
-/// - `id` is the identifier of the interrupt type This value is architecture-dependent
-/// - `code` is an optional code associated with the interrupt If the interrupt type doesn't have a
-///   code, the value is `0`
-/// - `regs` is the state of the registers at the moment of the interrupt
-/// - `ring` tells the ring at which the code was running
+/// `frame` is the stack frame of the interruption, with general purpose registers saved.
 #[no_mangle]
-extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &mut Regs32) {
+extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	// Feed entropy pool
 	{
 		let mut pool = rand::ENTROPY_POOL.lock();
 		if let Some(pool) = &mut *pool {
-			feed_entropy(pool, &id);
-			feed_entropy(pool, &code);
-			feed_entropy(pool, &ring);
-			feed_entropy(pool, regs);
+			feed_entropy(pool, frame);
 		}
 	}
-
+	let id = frame.int as u32;
+	let ring = (frame.cs & 0b11) as u8;
+	let code = frame.code as u32;
+	// Call corresponding callbacks
 	let mut callbacks = CALLBACKS[id as usize].lock();
 	for c in callbacks.iter_mut() {
-		let res = c(id, code, regs, ring);
+		let res = c(id, code, frame, ring);
 		match res {
 			CallbackResult::Continue => {}
 			CallbackResult::Panic => panic!("{}, code: {code:x}", get_error_message(id)),
@@ -215,5 +209,5 @@ extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &mut Regs32) {
 		pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
 	}
 	drop(callbacks);
-	process::yield_current(ring, regs)
+	process::yield_current(ring);
 }

@@ -19,21 +19,19 @@
 //! The role of the process scheduler is to interrupt the currently running
 //! process periodically to switch to another process that is in running state.
 //!
-//! A scheduler cycle is a period during which the scheduler iterates through
-//! each process. The scheduler works by assigning a number of quantum for
-//! each process, based on the number of running processes and their priority.
-//! This number represents the number of ticks during which the process keeps
-//! running until switching to the next process.
+//! TODO
 
+mod switch;
+
+use core::mem;
 use crate::{
-	arch::x86::pic,
+	arch::x86::{idt::IntFrame, pic},
 	event,
-	event::CallbackHook,
+	event::{CallbackHook, CallbackResult},
 	memory::stack,
-	process::{pid::Pid, regs::Regs32, Process, State},
+	process::{pid::Pid, scheduler::switch::switch, Process, State},
 	time,
 };
-use core::arch::asm;
 use utils::{
 	collections::{
 		btreemap::{BTreeMap, MapIterator},
@@ -47,7 +45,6 @@ use utils::{
 	ptr::arc::Arc,
 	vec,
 };
-// TODO handle processes priority
 
 /// The size of the temporary stack for context switching.
 const TMP_STACK_SIZE: usize = 16 * PAGE_SIZE;
@@ -57,7 +54,6 @@ pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() }
 
 /// Initializes schedulers.
 pub fn init() -> AllocResult<()> {
-	// TODO handle multicore
 	unsafe {
 		SCHEDULER.init(IntMutex::new(Scheduler::new()?));
 	}
@@ -95,8 +91,9 @@ impl Scheduler {
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
 		let tick_callback_hook = event::register_callback(
 			pit.get_interrupt_vector(),
-			|_: u32, _: u32, regs: &Regs32, ring: u32| {
-				Scheduler::tick(SCHEDULER.get(), regs, ring);
+			|_: u32, _: u32, _: &mut IntFrame, _: u8| {
+				Scheduler::tick();
+				CallbackResult::Continue
 			},
 		)?
 		.unwrap();
@@ -241,73 +238,45 @@ impl Scheduler {
 
 	/// Ticking the scheduler.
 	///
-	/// This function saves the data of the currently running process, then switches to the next
-	/// process to run.
+	/// The function looks for the next process to run, then switches context to it.
 	///
-	/// If no process is ready to run, the scheduler halts the system until a process is runnable.
-	///
-	/// Arguments:
-	/// - `sched_mutex` is the scheduler's mutex.
-	/// - `regs` is the state of the registers from the paused context.
-	/// - `ring` is the ring of the paused context.
-	fn tick(sched_mutex: &IntMutex<Self>, regs: &Regs32, ring: u32) -> ! {
+	/// If no process is ready to run, the scheduler halts the current core until a process becomes
+	/// runnable.
+	pub fn tick() {
+		let sched_mutex = SCHEDULER.get();
 		// Disable interrupts so that they remain disabled between the time the scheduler is
 		// unlocked and the context is switched to the next process
 		cli();
 		// Use a scope to drop mutex guards
-		let (switch_info, tmp_stack) = {
+		let (prev, next, tmp_stack) = {
 			let mut sched = sched_mutex.lock();
 			sched.total_ticks = sched.total_ticks.saturating_add(1);
-			// If a process is running, save its registers
-			if let Some(curr_proc) = sched.get_current_process() {
-				let mut curr_proc = curr_proc.lock();
-				curr_proc.regs = regs.clone();
-				curr_proc.syscalling = ring < 3;
+			// Find the next process to run
+			let next = sched.get_next_process();
+			// If the process to run is the current, do nothing
+			let cur_pid = sched.curr_proc.as_ref().map(|(pid, _)| *pid);
+			let next_pid = next.as_ref().map(|(pid, _)| *pid);
+			if cur_pid == next_pid {
+				return;
 			}
-			// Loop until a runnable process is found
-			let (proc, switch_info) = loop {
-				let Some((pid, proc_mutex)) = sched.get_next_process() else {
-					// No process to run
-					break (None, None);
-				};
-				// Try switching
-				let mut proc = proc_mutex.lock();
-				proc.prepare_switch();
-				// If the process has been killed by a signal, try the next process
-				if !matches!(proc.get_state(), State::Running) {
-					continue;
-				}
-				let regs = proc.regs.clone();
-				let syscalling = proc.syscalling;
-				drop(proc);
-				break (Some((pid, proc_mutex)), Some((regs, syscalling)));
-			};
-			// Set current running process
-			sched.curr_proc = proc;
-			let tmp_stack = sched.get_tmp_stack();
-			(switch_info, tmp_stack)
+			// Swap current running process
+			let prev = mem::replace(&mut sched.curr_proc, next.clone());
+			(prev, next, sched.get_tmp_stack())
 		};
 		unsafe {
 			// Unlock interrupt handler
 			event::unlock_callbacks(0x20);
 			pic::end_of_interrupt(0x0);
-			match switch_info {
+			match (prev, next) {
 				// Runnable process found: resume execution
-				Some((regs, syscalling)) => regs.switch(!syscalling),
+				(Some((_, prev)), Some((_, next))) => {
+					switch(prev, next);
+				}
 				// No runnable process found: idle
-				None => stack::switch(tmp_stack as _, crate::enter_loop),
+				(_, None) => stack::switch(tmp_stack as _, crate::enter_loop),
+				// Scheduler running with no task on it?
+				(None, _) => unreachable!(),
 			}
 		}
-	}
-}
-
-/// Ends the current tick on the current CPU.
-///
-/// Since this function triggers an interruption, the caller must ensure that no critical mutex is
-/// locked, that could be used in the interruption handler. Otherwise, a deadlock could occur.
-#[inline]
-pub fn end_tick() {
-	unsafe {
-		asm!("int 0x20");
 	}
 }

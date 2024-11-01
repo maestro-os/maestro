@@ -26,7 +26,6 @@ use crate::{
 		exec,
 		exec::{ExecInfo, ProgramImage},
 		mem_space::copy::{SyscallArray, SyscallString},
-		regs::Regs32,
 		scheduler::SCHEDULER,
 		Process,
 	},

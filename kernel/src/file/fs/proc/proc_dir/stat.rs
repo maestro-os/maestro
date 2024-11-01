@@ -38,14 +38,15 @@ impl<'p> fmt::Display for StatDisp<'p> {
 		// FIXME deadlock
 		//let vmem_usage = self.0.get_vmem_usage();
 		let vmem_usage = 0;
-		let esp = self.0.regs.esp;
-		let eip = self.0.regs.eip;
+		let user_regs = self.0.user_regs();
+		let sp = user_regs.esp;
+		let pc = user_regs.eip;
 		// TODO Fill every fields with process's data
 		write!(
 			f,
 			"{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
 0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
-TODO TODO TODO TODO {esp} {eip} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
+TODO TODO TODO TODO {sp} {pc} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
 TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 			pid = self.0.get_pid(),
 			name = DisplayableStr(name),

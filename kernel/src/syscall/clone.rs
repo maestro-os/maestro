@@ -19,10 +19,8 @@
 //! The `clone` system call creates a child process.
 
 use crate::{
-	process::{
-		mem_space::copy::SyscallPtr, regs::Regs32, scheduler, user_desc::UserDesc, ForkOptions,
-		Process,
-	},
+	arch::x86::idt::IntFrame,
+	process::{mem_space::copy::SyscallPtr, scheduler, user_desc::UserDesc, ForkOptions, Process},
 	syscall::{Args, FromSyscallArg},
 };
 use core::ffi::{c_int, c_ulong, c_void};
@@ -88,7 +86,7 @@ pub fn clone(
 		c_ulong,
 		SyscallPtr<c_int>,
 	)>,
-	regs: &Regs32,
+	frame: &IntFrame,
 	proc_mutex: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let new_tid = {
@@ -108,12 +106,12 @@ pub fn clone(
 		)?;
 		let mut new_proc = new_mutex.lock();
 		// Set the process's registers
-		let mut new_regs = regs.clone();
+		let mut new_regs = frame.clone();
 		// Set return value to `0`
 		new_regs.eax = 0;
 		// Set stack
 		new_regs.esp = if stack.is_null() {
-			regs.esp
+			frame.esp
 		} else {
 			stack as _
 		};

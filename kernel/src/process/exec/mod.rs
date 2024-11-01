@@ -30,7 +30,7 @@ pub mod vdso;
 use crate::{
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
-	process::{mem_space::MemSpace, regs::Regs32, signal::SignalHandler, Process},
+	process::{mem_space::MemSpace, signal::SignalHandler, Process},
 };
 use utils::{
 	collections::{string::String, vec::Vec},

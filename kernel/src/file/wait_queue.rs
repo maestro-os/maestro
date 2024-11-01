@@ -21,7 +21,7 @@
 
 use crate::{
 	process,
-	process::{pid::Pid, scheduler, Process},
+	process::{pid::Pid, scheduler::Scheduler, Process},
 };
 use core::mem;
 use utils::{
@@ -61,7 +61,7 @@ impl WaitQueue {
 				proc.set_state(process::State::Sleeping);
 			}
 			// Yield
-			scheduler::end_tick();
+			Scheduler::tick();
 			// TODO try to remove the process from the queue (since it might get woken up by
 			// something else) Execution resumes. If the current process had received a signal,
 			// return
