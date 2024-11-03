@@ -77,11 +77,16 @@ pub mod time;
 pub mod tty;
 
 use crate::{
-	arch::x86::{enable_sse, has_sse, idt},
+	arch::x86::{enable_sse, has_sse, idt, idt::IntFrame},
 	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
 	memory::vmem,
-	process::{exec, exec::ExecInfo, Process},
+	process::{
+		exec,
+		exec::{exec, ExecInfo},
+		scheduler::switch,
+		Process,
+	},
 	tty::TTY,
 };
 use core::{arch::asm, ffi::c_void};
@@ -127,28 +132,31 @@ pub fn enter_loop() -> ! {
 /// Launches the init process.
 ///
 /// `init_path` is the path to the init program.
+///
+/// On success, the function does not return.
 fn init(init_path: String) -> EResult<()> {
-	// The initial environment
-	let env: Vec<String> = vec![
-		b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
-		b"TERM=maestro".try_into()?,
-	]?;
-
-	let rs = ResolutionSettings::kernel_follow();
-
-	let path = Path::new(&init_path)?;
-	let file = vfs::get_file_from_path(path, &rs)?;
-
-	let exec_info = ExecInfo {
-		path_resolution: &rs,
-		argv: vec![init_path]?,
-		envp: env,
-	};
-	let program_image = exec::build_image(&file, exec_info)?;
-
-	let proc_mutex = Process::new()?;
-	let mut proc = proc_mutex.lock();
-	exec::exec(&mut proc, program_image)
+	let mut frame = IntFrame::default();
+	{
+		let path = Path::new(&init_path)?;
+		let rs = ResolutionSettings::kernel_follow();
+		let file = vfs::get_file_from_path(path, &rs)?;
+		let program_image = exec::build_image(
+			&file,
+			ExecInfo {
+				path_resolution: &rs,
+				argv: vec![init_path]?,
+				envp: vec![
+					b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
+						.try_into()?,
+					b"TERM=maestro".try_into()?,
+				]?,
+			},
+		)?;
+		let proc_mutex = Process::init()?;
+		let mut proc = proc_mutex.lock();
+		exec(&mut proc, &mut frame, program_image)?;
+	}
+	switch::init(&frame);
 }
 
 /// An inner function is required to ensure everything in scope is dropped before calling

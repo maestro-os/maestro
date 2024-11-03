@@ -28,28 +28,25 @@
 //!
 //! Restoring the original context is done by calling [`crate::syscall::sigreturn::sigreturn`].
 
-use crate::{
-	process::signal::ucontext::{UContext32, UContext64},
-	syscall::SIGRETURN_ID,
-};
+use crate::{process::signal::ucontext, syscall::SIGRETURN_ID};
 use core::arch::asm;
 
 #[link_section = ".user"]
 pub unsafe extern "C" fn trampoline32(
 	handler: unsafe extern "C" fn(i32),
 	sig: usize,
-	ctx: &mut UContext32,
+	ctx: &mut ucontext::UContext32,
 ) -> ! {
 	handler(sig as _);
 	// Call `sigreturn`
 	asm!(
-		"mov esp, {}",
+		"mov esp, {:e}",
 		"int 0x80",
 		"ud2",
-		in(reg) ctx.uc_stack,
+		in(reg) ctx.uc_stack.ss_sp,
 		in("eax") SIGRETURN_ID,
 		options(noreturn)
-	);
+	)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -57,7 +54,7 @@ pub unsafe extern "C" fn trampoline32(
 pub unsafe extern "C" fn trampoline64(
 	handler: unsafe extern "C" fn(i32),
 	sig: usize,
-	ctx: &mut UContext64,
+	ctx: &mut ucontext::UContext64,
 ) -> ! {
 	handler(sig as _);
 	// Call `sigreturn`
@@ -65,8 +62,8 @@ pub unsafe extern "C" fn trampoline64(
 		"mov rsp, {}",
 		"sysenter",
 		"ud2",
-		in(reg) ctx.uc_stack,
+		in(reg) ctx.uc_stack.ss_sp,
 		in("rax") SIGRETURN_ID,
 		options(noreturn)
-	);
+	)
 }

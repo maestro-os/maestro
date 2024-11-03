@@ -20,11 +20,12 @@
 
 use super::Args;
 use crate::{
+	arch::x86::idt::IntFrame,
 	file::{vfs, vfs::ResolutionSettings, File},
 	memory::stack,
 	process::{
 		exec,
-		exec::{ExecInfo, ProgramImage},
+		exec::{exec, ExecInfo, ProgramImage},
 		mem_space::copy::{SyscallArray, SyscallString},
 		scheduler::SCHEDULER,
 		Process,
@@ -141,45 +142,10 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 	Ok((file, final_argv))
 }
 
-/// Performs the execution on the current process.
-fn do_exec(
-	file: &vfs::Entry,
-	rs: &ResolutionSettings,
-	argv: Vec<String>,
-	envp: Vec<String>,
-) -> EResult<Regs32> {
-	let program_image = build_image(file, rs, argv, envp)?;
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
-	// Execute the program
-	exec::exec(&mut proc, program_image)?;
-	Ok(proc.regs.clone())
-}
-
-/// Builds a program image.
-///
-/// Arguments:
-/// - `file` is the executable file
-/// - `path_resolution` is settings for path resolution
-/// - `argv` is the arguments list
-/// - `envp` is the environment variables list
-fn build_image(
-	file: &vfs::Entry,
-	path_resolution: &ResolutionSettings,
-	argv: Vec<String>,
-	envp: Vec<String>,
-) -> EResult<ProgramImage> {
-	let exec_info = ExecInfo {
-		path_resolution,
-		argv,
-		envp,
-	};
-	exec::build_image(file, exec_info)
-}
-
 pub fn execve(
 	Args((pathname, argv, envp)): Args<(SyscallString, SyscallArray, SyscallArray)>,
 	rs: ResolutionSettings,
+	frame: &mut IntFrame,
 ) -> EResult<usize> {
 	let (file, argv, envp) = {
 		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
@@ -189,15 +155,16 @@ pub fn execve(
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
 		(file, argv, envp)
 	};
-	// Disable interrupt to prevent stack switching while using a temporary stack,
-	// preventing this temporary stack from being used as a signal handling stack
-	cli();
-	let tmp_stack = SCHEDULER.get().lock().get_tmp_stack();
-	let exec = move || {
-		let regs = do_exec(&file, &rs, argv, envp)?;
-		unsafe {
-			regs.switch(true);
-		}
-	};
-	unsafe { stack::switch(tmp_stack as _, exec) }
+	let program_image = exec::build_image(
+		&file,
+		ExecInfo {
+			path_resolution: &rs,
+			argv,
+			envp,
+		},
+	)?;
+	let proc_mutex = Process::current();
+	let mut proc = proc_mutex.lock();
+	exec(&mut proc, frame, program_image)?;
+	Ok(0)
 }

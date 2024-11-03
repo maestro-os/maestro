@@ -31,18 +31,16 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn vfork(proc: Arc<IntMutex<Process>>, frame: &IntFrame) -> EResult<usize> {
+pub fn vfork(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
 	let new_pid = {
-		let fork_options = ForkOptions {
-			vfork: true,
-			..ForkOptions::default()
-		};
-		let new_mutex = Process::fork(proc, fork_options)?;
-		let mut new_proc = new_mutex.lock();
-		// Set child's return value to `0`
-		let mut frame = frame.clone();
-		frame.set_syscall_return(Ok(0));
-		new_proc.regs = frame;
+		let new_mutex = Process::fork(
+			proc,
+			ForkOptions {
+				vfork: true,
+				..ForkOptions::default()
+			},
+		)?;
+		let new_proc = new_mutex.lock();
 		new_proc.get_pid()
 	};
 	// Let another process run instead of the current. Because the current

@@ -24,7 +24,11 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
+	process::{
+		mem_space::copy::SyscallPtr,
+		signal::{ucontext, Signal},
+		Process,
+	},
 	syscall::FromSyscallArg,
 };
 use core::{mem::size_of, ptr};
@@ -35,22 +39,23 @@ use utils::{
 	lock::{IntMutex, IntMutexGuard},
 };
 
-pub fn sigreturn(frame: &IntFrame) -> EResult<usize> {
-	// Avoid re-enabling interrupts before context switching
-	cli();
-	// Retrieve the previous state
-	let ctx_ptr = frame.esp as usize - size_of::<UContext>();
-	let ctx_ptr = SyscallPtr::<UContext>::from_syscall_arg(ctx_ptr);
-	let ctx = ctx_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	{
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
-		// Restores the state of the process before the signal handler
-		proc.sigmask = ctx.uc_sigmask;
+pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
+	let proc_mutex = Process::current();
+	let mut proc = proc_mutex.lock();
+	// Retrieve and restore previous state
+	let ctx_ptr = frame.get_stack_address();
+	if frame.is_32bit() {
+		let ctx = SyscallPtr::<ucontext::UContext32>::from_syscall_arg(ctx_ptr);
+		let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+		ctx.restore_regs(&mut proc, frame);
+	} else {
+		#[cfg(target_arch = "x86_64")]
+		{
+			let ctx = SyscallPtr::<ucontext::UContext64>::from_syscall_arg(ctx_ptr);
+			let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+			ctx.restore_regs(&mut proc, frame);
+		}
 	}
-	// Do not handle the next pending signal here, to prevent signal spamming from completely
-	// blocking the process
-	unsafe {
-		ctx.uc_mcontext.switch(true);
-	}
+	// Do not touch register
+	Ok(frame.get_syscall_id())
 }

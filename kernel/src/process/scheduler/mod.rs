@@ -21,9 +21,8 @@
 //!
 //! TODO
 
-mod switch;
+pub mod switch;
 
-use core::mem;
 use crate::{
 	arch::x86::{idt::IntFrame, pic},
 	event,
@@ -32,6 +31,7 @@ use crate::{
 	process::{pid::Pid, scheduler::switch::switch, Process, State},
 	time,
 };
+use core::mem;
 use utils::{
 	collections::{
 		btreemap::{BTreeMap, MapIterator},

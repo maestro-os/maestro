@@ -23,7 +23,7 @@ use crate::{
 	arch::x86,
 	elf,
 	elf::{
-		parser::{ELFParser, ProgramHeader, Rel, Rela},
+		parser::{Class, ELFParser, ProgramHeader, Rel, Rela},
 		relocation,
 		relocation::GOT_SYM,
 	},
@@ -715,6 +715,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 			envp,
 
 			mem_space,
+			bit32: parser.class() == Class::Bit32,
 
 			entry_point: load_info.entry_point,
 			user_stack: VirtAddr::from(user_stack) - init_stack_size,

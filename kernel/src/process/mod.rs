@@ -59,7 +59,7 @@ use crate::{
 	time::timer::TimerManager,
 };
 use core::{
-	ffi::c_int,
+	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
 	intrinsics::unlikely,
@@ -178,6 +178,9 @@ pub struct ForkOptions {
 	/// This is useful in order to avoid an unnecessary clone of the memory space in case the
 	/// child process executes a program or exits quickly.
 	pub vfork: bool,
+
+	/// The stack address the child process begins with.
+	pub stack: Option<NonNull<c_void>>,
 }
 
 /// The vfork operation is similar to the fork operation except the parent
@@ -397,7 +400,7 @@ impl Process {
 	/// Creates the init process and places it into the scheduler's queue.
 	///
 	/// The process is set to state [`State::Running`] by default and has user root.
-	pub fn new() -> EResult<Arc<IntMutex<Self>>> {
+	pub fn init() -> EResult<Arc<IntMutex<Self>>> {
 		let rs = ResolutionSettings::kernel_follow();
 		// Create the default file descriptors table
 		let file_descriptors = {
@@ -788,6 +791,8 @@ impl Process {
 			// TODO if creating a thread: timer_manager: proc.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
+			kernel_sp,
+
 			mem_space: Some(mem_space),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
@@ -1011,24 +1016,14 @@ impl Drop for Process {
 ///
 /// Arguments:
 /// - `ring` is the ring the current context is returning to.
-/// - `regs` is the set of registers from the previously interrupted context.
+/// - `frame` is the interrupt frame.
 ///
 /// The execution flow can be altered by:
 /// - The process is no longer in [`State::Running`] state
 /// - A signal handler has to be executed
 ///
-/// The current function may save `regs` and replaces it with the required state for the new
-/// context.
-///
-/// The function locks the mutex of the current process. Thus, the caller must
-/// ensure the mutex isn't already locked to prevent a deadlock.
-///
-/// # Safety
-///
-/// This function may not return in some cases (example: the process has been turned into a
-/// Zombie). It is the caller's responsibility to drop all objects on the stack that need it, in
-/// order to avoid unintended side effects.
-pub fn yield_current(ring: u8) {
+/// This function never returns in case the process state turns to [`State::Zombie`].
+pub fn yield_current(ring: u8, frame: &mut IntFrame) {
 	// If returning to kernelspace, do nothing
 	if ring < 3 {
 		return;
@@ -1046,18 +1041,11 @@ pub fn yield_current(ring: u8) {
 	// Prepare signal for execution
 	let handlers = proc.signal_handlers.clone();
 	let handlers = handlers.lock();
-	let handler = &handlers[sig.get_id() as usize];
-	// Update registers with the ones passed to the system call so that `sigreturn` returns to
-	// the correct location
-	handler.exec(sig, &mut proc);
+	handlers[sig.get_id() as usize].exec(sig, &mut proc, frame);
 	// Alter the execution flow of the current context according to the new state of the
 	// process
 	match proc.state {
-		// The process must execute a signal handler: Jump to it
-		State::Running => {
-			todo!()
-		}
-		// Stop execution: Waiting until wakeup (or terminate if Zombie)
+		State::Running => {}
 		State::Sleeping | State::Stopped | State::Zombie => Scheduler::tick(),
 	}
 }

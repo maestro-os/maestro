@@ -30,13 +30,8 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn fork(proc: Arc<IntMutex<Process>>, frame: &IntFrame) -> EResult<usize> {
+pub fn fork(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
 	let new_mutex = Process::fork(proc, ForkOptions::default())?;
-	let mut new_proc = new_mutex.lock();
-	// Set child's return value to `0`
-	let mut frame = frame.clone();
-	frame.set_syscall_return(Ok(0));
-	new_proc.regs = frame;
-	// Set parent's return value to the child's PID
+	let new_proc = new_mutex.lock();
 	Ok(new_proc.get_pid() as _)
 }

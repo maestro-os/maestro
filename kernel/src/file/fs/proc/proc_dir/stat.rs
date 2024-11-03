@@ -25,6 +25,7 @@ use crate::{
 		FileLocation, FileType, Stat,
 	},
 	format_content,
+	memory::VirtAddr,
 	process::{pid::Pid, Process},
 };
 use core::{fmt, fmt::Formatter};
@@ -39,14 +40,12 @@ impl<'p> fmt::Display for StatDisp<'p> {
 		//let vmem_usage = self.0.get_vmem_usage();
 		let vmem_usage = 0;
 		let user_regs = self.0.user_regs();
-		let sp = user_regs.esp;
-		let pc = user_regs.eip;
 		// TODO Fill every fields with process's data
 		write!(
 			f,
 			"{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
 0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
-TODO TODO TODO TODO {sp} {pc} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
+TODO TODO TODO TODO {sp:?} {pc:?} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
 TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 			pid = self.0.get_pid(),
 			name = DisplayableStr(name),
@@ -59,6 +58,8 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 			priority = self.0.priority,
 			nice = self.0.nice,
 			num_threads = 1, // TODO
+			sp = VirtAddr(user_regs.get_stack_address() as _),
+			pc = VirtAddr(user_regs.get_program_counter() as _),
 		)
 	}
 }

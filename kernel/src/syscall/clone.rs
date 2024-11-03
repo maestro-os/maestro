@@ -20,10 +20,16 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	process::{mem_space::copy::SyscallPtr, scheduler, user_desc::UserDesc, ForkOptions, Process},
+	process::{
+		mem_space::copy::SyscallPtr, scheduler, scheduler::Scheduler, user_desc::UserDesc,
+		ForkOptions, Process,
+	},
 	syscall::{Args, FromSyscallArg},
 };
-use core::ffi::{c_int, c_ulong, c_void};
+use core::{
+	ffi::{c_int, c_ulong, c_void},
+	ptr::NonNull,
+};
 use utils::{errno::EResult, lock::IntMutex, ptr::arc::Arc};
 
 /// TODO doc
@@ -79,20 +85,18 @@ const CLONE_NEWNET: c_ulong = 0x40000000;
 
 #[allow(clippy::type_complexity)]
 pub fn clone(
-	Args((flags, stack, _parent_tid, tls, _child_tid)): Args<(
+	Args((flags, stack, _parent_tid, _tls, _child_tid)): Args<(
 		c_ulong,
 		*mut c_void,
 		SyscallPtr<c_int>,
 		c_ulong,
 		SyscallPtr<c_int>,
 	)>,
-	frame: &IntFrame,
 	proc_mutex: Arc<IntMutex<Process>>,
 ) -> EResult<usize> {
 	let new_tid = {
 		if flags & CLONE_PARENT_SETTID != 0 {
-			// TODO
-			todo!();
+			todo!()
 		}
 		let new_mutex = Process::fork(
 			proc_mutex,
@@ -102,40 +106,26 @@ pub fn clone(
 				share_sighand: flags & CLONE_SIGHAND != 0,
 
 				vfork: flags & CLONE_VFORK != 0,
+
+				stack: NonNull::new(stack),
 			},
 		)?;
-		let mut new_proc = new_mutex.lock();
-		// Set the process's registers
-		let mut new_regs = frame.clone();
-		// Set return value to `0`
-		new_regs.eax = 0;
-		// Set stack
-		new_regs.esp = if stack.is_null() {
-			frame.esp
-		} else {
-			stack as _
-		};
-		// Set TLS
+		let new_proc = new_mutex.lock();
 		if flags & CLONE_SETTLS != 0 {
-			let _tls = SyscallPtr::<UserDesc>::from_syscall_arg(tls as usize);
-			// TODO
-			todo!();
+			todo!()
 		}
-		new_proc.regs = new_regs;
 		if flags & CLONE_CHILD_CLEARTID != 0 {
-			// TODO new_proc.set_clear_child_tid(child_tid);
-			todo!();
+			todo!()
 		}
 		if flags & CLONE_CHILD_SETTID != 0 {
-			// TODO
-			todo!();
+			todo!()
 		}
 		new_proc.tid
 	};
 	if flags & CLONE_VFORK != 0 {
 		// Let another process run instead of the current. Because the current
 		// process must now wait for the child process to terminate or execute a program
-		scheduler::end_tick();
+		Scheduler::tick();
 	}
 	Ok(new_tid as _)
 }

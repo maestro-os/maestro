@@ -18,8 +18,40 @@
 
 //! Context switching utilities.
 
-use crate::process::{Process, TLS_ENTRIES_COUNT};
-use core::{arch::global_asm, mem::offset_of};
+use crate::{
+	arch::x86::idt::IntFrame,
+	process::{Process, TLS_ENTRIES_COUNT},
+};
+use core::{
+	arch::{asm, global_asm},
+	mem::offset_of,
+};
+
+/// Jumps to a context with the given `frame`.
+pub fn init(frame: &IntFrame) -> ! {
+	#[cfg(target_arch = "x86")]
+	unsafe {
+		asm!(
+			r"mov esp, {}
+			LOAD_REGS
+			add esp, 8
+			iretd",
+			in(reg) frame,
+			options(noreturn)
+		)
+	}
+	#[cfg(target_arch = "x86_64")]
+	unsafe {
+		asm!(
+			r"mov esp, {}
+			LOAD_REGS
+			add esp, 8
+			iretd",
+			in(reg) frame,
+			options(noreturn)
+		)
+	}
+}
 
 /// Switches context from `prev` to `next`.
 ///
@@ -35,7 +67,21 @@ extern "C" {
 	fn switch_asm(prev: &mut Process, next: &mut Process);
 }
 
-// TODO 32 bit
+//#[cfg(target_arch = "x86")]
+global_asm!(r"
+switch_asm:
+	push ebp
+	push ebx
+
+    # Swap contexts
+    mov [edi + {off}], esp
+    mov esp, [esi + {off}]
+
+	push ebx
+	push ebp
+
+	jmp switch_finish
+", off = const offset_of!(Process, kernel_sp));
 
 #[cfg(target_arch = "x86_64")]
 global_asm!(r"

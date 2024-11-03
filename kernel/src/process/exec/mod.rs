@@ -28,6 +28,7 @@ pub mod elf;
 pub mod vdso;
 
 use crate::{
+	arch::x86::idt::IntFrame,
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
 	process::{mem_space::MemSpace, signal::SignalHandler, Process},
@@ -58,6 +59,8 @@ pub struct ProgramImage {
 
 	/// The image's memory space.
 	mem_space: MemSpace,
+	/// Tells whether the program is 32 bit.
+	bit32: bool,
 
 	/// A pointer to the entry point of the program.
 	entry_point: VirtAddr,
@@ -88,7 +91,10 @@ pub fn build_image(file: &vfs::Entry, info: ExecInfo) -> EResult<ProgramImage> {
 }
 
 /// Executes the program image `image` on the process `proc`.
-pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
+///
+/// `frame` is the interrupt frame of the current content. The function sets the appropriate values
+/// for each register so that the execution beings when the interrupt handler returns.
+pub fn exec(proc: &mut Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
 	proc.argv = Arc::new(image.argv)?;
 	proc.envp = Arc::new(image.envp)?;
 	// TODO Set exec path
@@ -110,10 +116,6 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 	proc.tls_entries = Default::default();
 	proc.update_tss();
 	// Set the process's registers
-	proc.regs = Regs32 {
-		esp: image.user_stack.0 as _,
-		eip: image.entry_point.0 as _,
-		..Default::default()
-	};
+	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.bit32);
 	Ok(())
 }

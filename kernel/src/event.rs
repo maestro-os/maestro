@@ -209,5 +209,5 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 		pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
 	}
 	drop(callbacks);
-	process::yield_current(ring);
+	process::yield_current(ring, frame);
 }

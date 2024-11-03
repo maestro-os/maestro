@@ -309,7 +309,7 @@ use writev::writev;
 pub const SIGRETURN_ID: usize = 0x077;
 
 /// A system call handler.
-pub trait SyscallHandler<'p, Args> {
+pub trait SyscallHandler<Args> {
 	/// Calls the system call.
 	///
 	/// Arguments:
@@ -317,18 +317,19 @@ pub trait SyscallHandler<'p, Args> {
 	/// - `frame` is the interrupt handler's stack frame.
 	///
 	/// The function returns the result of the system call.
-	fn call(self, name: &str, frame: &'p IntFrame) -> EResult<usize>;
+	fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize>;
 }
 
 /// Implementation of [`SyscallHandler`] for functions with arguments.
 macro_rules! impl_syscall_handler {
     ($($ty:ident),*) => {
-        impl<'p, F, $($ty,)*> SyscallHandler<'p, ($($ty,)*)> for F
+		// Implementation **without** trailing reference to frame
+        impl<F, $($ty,)*> SyscallHandler<($($ty,)*)> for F
         where F: FnOnce($($ty,)*) -> EResult<usize>,
-			$($ty: FromSyscall<'p>,)*
+			$($ty: FromSyscall,)*
         {
 			#[allow(non_snake_case, unused_variables)]
-            fn call(self, name: &str, frame: &'p IntFrame) -> EResult<usize> {
+            fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
 				#[cfg(feature = "strace")]
 				let pid = {
 					let pid = Process::current().lock().get_pid();
@@ -339,6 +340,30 @@ macro_rules! impl_syscall_handler {
                     let $ty = $ty::from_syscall(frame);
                 )*
                 let res = self($($ty,)*);
+				#[cfg(feature = "strace")]
+				println!("[strace {pid}] -> {res:?}");
+				res
+            }
+        }
+
+		// Implementation **with** trailing reference to frame
+		#[allow(unused_parens)]
+        impl<F, $($ty,)*> SyscallHandler<($($ty,)* &mut IntFrame)> for F
+        where F: FnOnce($($ty,)* &mut IntFrame) -> EResult<usize>,
+			$($ty: FromSyscall,)*
+        {
+			#[allow(non_snake_case, unused_variables)]
+            fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
+				#[cfg(feature = "strace")]
+				let pid = {
+					let pid = Process::current().lock().get_pid();
+					print!("[strace {pid}] {name}");
+					pid
+				};
+                $(
+                    let $ty = $ty::from_syscall(frame);
+                )*
+                let res = self($($ty,)* frame);
 				#[cfg(feature = "strace")]
 				println!("[strace {pid}] -> {res:?}");
 				res
@@ -358,39 +383,39 @@ impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8);
 
 /// Extracts a value from the process that made a system call.
-pub trait FromSyscall<'p> {
+pub trait FromSyscall {
 	/// Constructs the value from the given process or syscall argument value.
-	fn from_syscall(frame: &'p IntFrame) -> Self;
+	fn from_syscall(frame: &IntFrame) -> Self;
 }
 
-impl<'p> FromSyscall<'p> for Arc<IntMutex<Process>> {
+impl FromSyscall for Arc<IntMutex<Process>> {
 	#[inline]
-	fn from_syscall(_frame: &'p IntFrame) -> Self {
+	fn from_syscall(_frame: &IntFrame) -> Self {
 		Process::current()
 	}
 }
 
-impl FromSyscall<'_> for Arc<IntMutex<MemSpace>> {
+impl FromSyscall for Arc<IntMutex<MemSpace>> {
 	#[inline]
 	fn from_syscall(_frame: &IntFrame) -> Self {
 		Process::current().lock().get_mem_space().unwrap().clone()
 	}
 }
 
-impl FromSyscall<'_> for Arc<Mutex<FileDescriptorTable>> {
+impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
 	#[inline]
 	fn from_syscall(_frame: &IntFrame) -> Self {
 		Process::current().lock().file_descriptors.clone().unwrap()
 	}
 }
 
-impl FromSyscall<'_> for AccessProfile {
+impl FromSyscall for AccessProfile {
 	fn from_syscall(_frame: &IntFrame) -> Self {
 		Process::current().lock().access_profile
 	}
 }
 
-impl FromSyscall<'_> for ResolutionSettings {
+impl FromSyscall for ResolutionSettings {
 	fn from_syscall(_frame: &IntFrame) -> Self {
 		ResolutionSettings::for_process(&Process::current().lock(), true)
 	}
@@ -399,16 +424,9 @@ impl FromSyscall<'_> for ResolutionSettings {
 /// The umask of the process performing the system call.
 pub struct Umask(file::Mode);
 
-impl FromSyscall<'_> for Umask {
+impl FromSyscall for Umask {
 	fn from_syscall(_frame: &IntFrame) -> Self {
 		Self(Process::current().lock().umask)
-	}
-}
-
-impl<'p> FromSyscall<'p> for &'p IntFrame {
-	#[inline]
-	fn from_syscall(frame: &'p IntFrame) -> Self {
-		frame
 	}
 }
 
@@ -416,7 +434,7 @@ impl<'p> FromSyscall<'p> for &'p IntFrame {
 #[derive(Debug)]
 pub struct Args<T: fmt::Debug>(pub T);
 
-impl<T: FromSyscallArg> FromSyscall<'_> for Args<T> {
+impl<T: FromSyscallArg> FromSyscall for Args<T> {
 	fn from_syscall(frame: &IntFrame) -> Self {
 		let arg = T::from_syscall_arg(frame.get_syscall_arg(0));
 		#[cfg(feature = "strace")]
@@ -427,7 +445,7 @@ impl<T: FromSyscallArg> FromSyscall<'_> for Args<T> {
 
 macro_rules! impl_from_syscall_args {
     ($($ty:ident),*) => {
-		impl<$($ty: FromSyscallArg,)*> FromSyscall<'_> for Args<($($ty,)*)> {
+		impl<$($ty: FromSyscallArg,)*> FromSyscall for Args<($($ty,)*)> {
 			#[inline]
 			#[allow(non_snake_case, unused_variables, unused_mut, unused_assignments)]
 			fn from_syscall(
@@ -497,17 +515,16 @@ impl<T> FromSyscallArg for *mut T {
 
 /// Syscall declaration.
 macro_rules! syscall {
-	($name:ident, $frame:expr) => {{
-		const NAME: &str = stringify!($name);
-		SyscallHandler::call($name, NAME, $frame)
-	}};
+	($name:ident, $frame:expr) => {
+		SyscallHandler::call($name, stringify!($name), $frame)
+	};
 }
 
 /// Executes the system call associated with the given `id` and returns its result.
 ///
 /// If the syscall doesn't exist, the function returns `None`.
 #[inline]
-fn do_syscall(id: usize, frame: &IntFrame) -> Option<EResult<usize>> {
+fn do_syscall(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 	match id {
 		0x001 => Some(syscall!(_exit, frame)),
 		0x002 => Some(syscall!(fork, frame)),
@@ -971,7 +988,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 		}
 	}
 	// If the process has been killed, handle it
-	process::yield_current(3);
+	process::yield_current(3, frame);
 }
 
 extern "C" {

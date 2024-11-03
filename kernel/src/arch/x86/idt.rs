@@ -20,7 +20,10 @@
 //! storing the list of interrupt handlers, allowing to catch and handle
 //! interruptions.
 
-use crate::{arch::x86::pic, syscall::syscall};
+use crate::{
+	arch::x86::{gdt, pic, DEFAULT_FLAGS},
+	syscall::syscall,
+};
 use core::{
 	arch::{asm, global_asm},
 	ffi::c_void,
@@ -50,34 +53,40 @@ pub const SYSCALL_ENTRY: usize = 0x80;
 pub const ENTRIES_COUNT: usize = 0x81;
 
 /// Interruption stack frame, with saved registers state.
+#[cfg(target_arch = "x86")]
 #[repr(C)]
 #[allow(missing_docs)]
-#[cfg(target_arch = "x86")]
+#[derive(Default)]
 pub struct IntFrame {
-	pub eip: u32,
-	pub cs: u32,
-	pub eflags: u32,
-	pub esp: u32,
-	pub ss: u32,
+	// Using the prefix `r` to avoid duplicate code
+	pub rax: u32,
+	pub rbx: u32,
+	pub rcx: u32,
+	pub rdx: u32,
+	pub rsi: u32,
+	pub rdi: u32,
+	pub rbp: u32,
 
-	/// Error code, if any.
-	pub code: u32,
+	pub gs: u32,
+	pub fs: u32,
+
 	/// Interruption number.
 	pub int: u32,
+	/// Error code, if any.
+	pub code: u32,
 
-	pub eax: u32,
-	pub ebx: u32,
-	pub ecx: u32,
-	pub edx: u32,
-	pub esi: u32,
-	pub edi: u32,
-	pub ebp: u32,
+	pub rip: u32,
+	pub cs: u32,
+	pub rflags: u32,
+	pub rsp: u32,
+	pub ss: u32,
 }
 
 /// Interruption stack frame, with saved registers state.
-#[repr(C)]
-#[allow(missing_docs)]
 #[cfg(target_arch = "x86_64")]
+#[allow(missing_docs)]
+#[repr(C)]
+#[derive(Default)]
 pub struct IntFrame {
 	pub rax: u64,
 	pub rbx: u64,
@@ -96,6 +105,9 @@ pub struct IntFrame {
 	pub r14: u64,
 	pub r15: u64,
 
+	pub gs: u32,
+	pub fs: u32,
+
 	/// Interruption number.
 	pub int: u64,
 	/// Error code, if any.
@@ -109,17 +121,15 @@ pub struct IntFrame {
 }
 
 impl IntFrame {
+	/// Tells whether the interrupted context is 32 bit.
+	pub const fn is_32bit(&self) -> bool {
+		self.cs as usize == gdt::USER_CS | 3
+	}
+
 	/// Returns the ID of the system call being executed.
 	#[inline]
 	pub const fn get_syscall_id(&self) -> usize {
-		#[cfg(target_arch = "x86")]
-		{
-			self.eax as usize
-		}
-		#[cfg(target_arch = "x86_64")]
-		{
-			self.rax as usize
-		}
+		self.rax as usize
 	}
 
 	/// Returns the value of the `n`th argument of the syscall being executed.
@@ -130,12 +140,12 @@ impl IntFrame {
 	pub const fn get_syscall_arg(&self, n: u8) -> usize {
 		#[cfg(target_arch = "x86")]
 		let val = match n {
-			0 => self.ebx,
-			1 => self.ecx,
-			2 => self.edx,
-			3 => self.esi,
-			4 => self.edi,
-			5 => self.ebp,
+			0 => self.rbx,
+			1 => self.rcx,
+			2 => self.rdx,
+			3 => self.rsi,
+			4 => self.rdi,
+			5 => self.rbp,
 			_ => 0,
 		};
 		#[cfg(target_arch = "x86_64")]
@@ -153,39 +163,41 @@ impl IntFrame {
 
 	/// Sets the return value of a system call.
 	pub fn set_syscall_return(&mut self, value: EResult<usize>) {
-		let val = value.map(|v| v as _).unwrap_or_else(|e| (-e.as_int()) as _);
-		#[cfg(target_arch = "x86")]
-		{
-			self.eax = val;
-		}
-		#[cfg(target_arch = "x86_64")]
-		{
-			self.rax = val;
-		}
+		self.rax = value.map(|v| v as _).unwrap_or_else(|e| (-e.as_int()) as _);
+	}
+
+	/// Returns the stack address.
+	pub fn get_stack_address(&self) -> usize {
+		self.rsp as usize
 	}
 
 	/// Returns the address of the instruction to be executed when the interrupt handler returns.
 	pub fn get_program_counter(&self) -> usize {
-		#[cfg(target_arch = "x86")]
-		{
-			self.eax as usize
-		}
-		#[cfg(target_arch = "x86_64")]
-		{
-			self.rax as usize
-		}
+		self.rip as usize
 	}
 
 	/// Sets the address of the instruction to be executed when the interrupt handler returns.
 	pub fn set_program_counter(&mut self, val: usize) {
-		#[cfg(target_arch = "x86")]
-		{
-			self.eax = val as _;
-		}
-		#[cfg(target_arch = "x86_64")]
-		{
-			self.rax = val as _;
-		}
+		self.rip = val as _;
+	}
+
+	/// Sets the values of `frame` so that it can be used to begin the execution of a program.
+	///
+	/// Arguments:
+	/// - `pc` is the program counter
+	/// - `sp` is the stack pointer
+	/// - `bit32` tells whether the program is 32 bits. If the kernel is compiled for 32 bit, this
+	///   value is ignored.
+	pub fn exec(frame: &mut Self, pc: usize, sp: usize, bit32: bool) {
+		let cs_segment = if bit32 { gdt::USER_CS } else { gdt::USER_CS64 };
+		*frame = IntFrame {
+			rip: pc as _,
+			cs: (cs_segment | 3) as _,
+			rflags: DEFAULT_FLAGS as _,
+			rsp: sp as _,
+			ss: (gdt::USER_DS | 3) as _,
+			..Default::default()
+		};
 	}
 }
 
