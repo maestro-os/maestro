@@ -25,7 +25,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn timer_delete(Args(timerid): Args<TimerT>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	proc.lock().timer_manager().lock().delete_timer(timerid)?;
+pub fn timer_delete(Args(timerid): Args<TimerT>, proc: Arc<Process>) -> EResult<usize> {
+	proc.timer_manager().lock().delete_timer(timerid)?;
 	Ok(0)
 }

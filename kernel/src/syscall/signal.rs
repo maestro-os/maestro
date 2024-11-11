@@ -41,9 +41,9 @@ use utils::{
 
 pub fn signal(
 	Args((signum, handler)): Args<(c_int, *const c_void)>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let signal_handlers = proc.lock().signal_handlers.clone();
+	let signal_handlers = proc.signal_handlers.clone();
 	// Validation
 	let signal = Signal::try_from(signum)?;
 	// Conversion

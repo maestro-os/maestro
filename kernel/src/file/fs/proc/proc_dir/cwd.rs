@@ -54,7 +54,6 @@ impl NodeOps for Cwd {
 		let cwd = vfs::Entry::get_path(
 			&Process::get_by_pid(self.0)
 				.ok_or_else(|| errno!(ENOENT))?
-				.lock()
 				.cwd,
 		)?;
 		format_content!(off, buf, "{cwd}")

@@ -94,12 +94,12 @@ pub fn build_image(file: &vfs::Entry, info: ExecInfo) -> EResult<ProgramImage> {
 ///
 /// `frame` is the interrupt frame of the current content. The function sets the appropriate values
 /// for each register so that the execution beings when the interrupt handler returns.
-pub fn exec(proc: &mut Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
+pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
+	// Note: the implementation makes sure all fallible operations are done before the ones that
+	// cannot be undone
 	proc.argv = Arc::new(image.argv)?;
 	proc.envp = Arc::new(image.envp)?;
 	// TODO Set exec path
-	// Set the new memory space to the process
-	proc.set_mem_space(Some(Arc::new(IntMutex::new(image.mem_space))?));
 	// Duplicate the file descriptor table
 	proc.file_descriptors = proc
 		.file_descriptors
@@ -110,6 +110,10 @@ pub fn exec(proc: &mut Process, frame: &mut IntFrame, image: ProgramImage) -> ER
 			Ok(Arc::new(Mutex::new(new_fds))?)
 		})
 		.transpose()?;
+	// Set the new memory space to the process
+	let mem_space = Arc::new(IntMutex::new(image.mem_space))?;
+	mem_space.lock().bind();
+	proc.mem_space = Some(mem_space);
 	// Reset signals
 	proc.signal_handlers.lock().fill(SignalHandler::Default);
 	proc.reset_vfork();

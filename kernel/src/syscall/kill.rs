@@ -35,11 +35,10 @@ use utils::{
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
+	let proc = Process::current();
 	let ap = proc.access_profile;
 	// Closure sending the signal
-	let f = |target: &mut Process| {
+	let f = |target: &Process| {
 		if matches!(target.get_state(), State::Zombie) {
 			return Ok(());
 		}
@@ -52,11 +51,10 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 		Ok(())
 	};
 	if pid == proc.get_pid() {
-		f(&mut proc)?;
+		f(&proc)?;
 	} else {
-		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		let mut target_proc = target_mutex.lock();
-		f(&mut target_proc)?;
+		let target_proc = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
+		f(&target_proc)?;
 	}
 	Ok(())
 }
@@ -72,8 +70,7 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	let pgid = match pid {
 		0 => {
-			let proc_mutex = Process::current();
-			let proc = proc_mutex.lock();
+			let proc = Process::current();
 			proc.pgid
 		}
 		i if i < 0 => -pid as Pid,
@@ -82,7 +79,6 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	// Kill process group
 	Process::get_by_pid(pgid)
 		.ok_or_else(|| errno!(ESRCH))?
-		.lock()
 		.get_group_processes()
 		.iter()
 		// Avoid deadlock

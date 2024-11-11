@@ -36,7 +36,7 @@ use utils::{
 const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
 
 /// Returns the ID of a free TLS entry for the given process.
-pub fn get_free_entry(process: &mut Process) -> EResult<usize> {
+pub fn get_free_entry(process: &Process) -> EResult<usize> {
 	process
 		.tls_entries
 		.iter()
@@ -49,7 +49,7 @@ pub fn get_free_entry(process: &mut Process) -> EResult<usize> {
 /// Returns an entry ID for the given process and entry number.
 ///
 /// If the id is `-1`, the function shall find a free entry.
-pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut gdt::Entry)> {
+pub fn get_entry(proc: &Process, entry_number: i32) -> EResult<(usize, &mut gdt::Entry)> {
 	const BEGIN_ENTRY: i32 = TLS_BEGIN_INDEX as i32;
 	const END_ENTRY: i32 = BEGIN_ENTRY + process::TLS_ENTRIES_COUNT as i32;
 	let id = match entry_number {
@@ -65,13 +65,12 @@ pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut 
 
 pub fn set_thread_area(
 	Args(u_info): Args<SyscallPtr<UserDesc>>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Read user_desc
 	let mut info = u_info.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let mut proc = proc.lock();
 	// Get the entry with its id
-	let (id, entry) = get_entry(&mut proc, info.get_entry_number())?;
+	let (id, entry) = get_entry(&proc, info.get_entry_number())?;
 	// If the entry is allocated, tell the userspace its ID
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {

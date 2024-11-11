@@ -30,8 +30,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn fork(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	let new_mutex = Process::fork(proc, ForkOptions::default())?;
-	let new_proc = new_mutex.lock();
+pub fn fork(proc: Arc<Process>) -> EResult<usize> {
+	let new_proc = Process::fork(proc, ForkOptions::default())?;
 	Ok(new_proc.get_pid() as _)
 }

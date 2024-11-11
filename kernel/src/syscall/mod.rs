@@ -332,7 +332,7 @@ macro_rules! impl_syscall_handler {
             fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
 				#[cfg(feature = "strace")]
 				let pid = {
-					let pid = Process::current().lock().get_pid();
+					let pid = Process::current().get_pid();
 					print!("[strace {pid}] {name}");
 					pid
 				};
@@ -356,7 +356,7 @@ macro_rules! impl_syscall_handler {
             fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
 				#[cfg(feature = "strace")]
 				let pid = {
-					let pid = Process::current().lock().get_pid();
+					let pid = Process::current().get_pid();
 					print!("[strace {pid}] {name}");
 					pid
 				};
@@ -388,7 +388,7 @@ pub trait FromSyscall {
 	fn from_syscall(frame: &IntFrame) -> Self;
 }
 
-impl FromSyscall for Arc<IntMutex<Process>> {
+impl FromSyscall for Arc<Process> {
 	#[inline]
 	fn from_syscall(_frame: &IntFrame) -> Self {
 		Process::current()
@@ -398,26 +398,26 @@ impl FromSyscall for Arc<IntMutex<Process>> {
 impl FromSyscall for Arc<IntMutex<MemSpace>> {
 	#[inline]
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().lock().get_mem_space().unwrap().clone()
+		Process::current().get_mem_space().unwrap().clone()
 	}
 }
 
 impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
 	#[inline]
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().lock().file_descriptors.clone().unwrap()
+		Process::current().file_descriptors.clone().unwrap()
 	}
 }
 
 impl FromSyscall for AccessProfile {
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().lock().access_profile
+		Process::current().access_profile
 	}
 }
 
 impl FromSyscall for ResolutionSettings {
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		ResolutionSettings::for_process(&Process::current().lock(), true)
+		ResolutionSettings::for_process(&Process::current(), true)
 	}
 }
 
@@ -426,7 +426,7 @@ pub struct Umask(file::Mode);
 
 impl FromSyscall for Umask {
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Self(Process::current().lock().umask)
+		Self(Process::current().umask)
 	}
 }
 
@@ -976,8 +976,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 		Some(res) => frame.set_syscall_return(res),
 		// The system call does not exist: Kill the process with SIGSYS
 		None => {
-			let proc_mutex = Process::current();
-			let mut proc = proc_mutex.lock();
+			let proc = Process::current();
 			#[cfg(feature = "strace")]
 			crate::println!(
 				"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",

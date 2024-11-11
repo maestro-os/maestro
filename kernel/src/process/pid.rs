@@ -67,6 +67,7 @@ impl PidHandle {
 	}
 
 	/// Returns the actual PID.
+	#[inline]
 	pub fn get(&self) -> Pid {
 		self.0
 	}

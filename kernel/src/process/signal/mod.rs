@@ -78,7 +78,7 @@ pub enum SignalAction {
 
 impl SignalAction {
 	/// Executes the signal action for the given process.
-	pub fn exec(self, sig: Signal, process: &mut Process) {
+	pub fn exec(self, sig: Signal, process: &Process) {
 		match self {
 			// TODO when `Abort`ing, dump core
 			SignalAction::Terminate | SignalAction::Abort => {
@@ -323,7 +323,7 @@ impl SignalHandler {
 	}
 
 	/// Executes the action for `signal` on `process`.
-	pub fn exec(&self, signal: Signal, process: &mut Process, frame: &mut IntFrame) {
+	pub fn exec(&self, signal: Signal, process: &Process, frame: &mut IntFrame) {
 		let process_state = process.get_state();
 		if matches!(process_state, State::Zombie) {
 			return;

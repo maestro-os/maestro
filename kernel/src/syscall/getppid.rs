@@ -25,6 +25,6 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn getppid(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	Ok(proc.lock().get_parent_pid() as _)
+pub fn getppid(proc: Arc<Process>) -> EResult<usize> {
+	Ok(proc.get_parent_pid() as _)
 }

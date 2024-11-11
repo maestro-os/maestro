@@ -57,17 +57,17 @@ pub fn init(frame: &IntFrame) -> ! {
 ///
 /// After returning, the execution will continue on `next`.
 #[inline]
-pub fn switch(prev: &mut Process, next: &mut Process) {
+pub fn switch(prev: *const Process, next: *const Process) {
 	unsafe {
 		switch_asm(prev, next);
 	}
 }
 
 extern "C" {
-	fn switch_asm(prev: &mut Process, next: &mut Process);
+	fn switch_asm(prev: *const Process, next: *const Process);
 }
 
-//#[cfg(target_arch = "x86")]
+#[cfg(target_arch = "x86")]
 global_asm!(r"
 switch_asm:
 	push ebp

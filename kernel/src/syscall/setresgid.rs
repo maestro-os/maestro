@@ -34,7 +34,7 @@ use utils::{
 pub fn setresgid(
 	Args((rgid, egid, sgid)): Args<(c_int, c_int, c_int)>,
 	ap: AccessProfile,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Validation
 	if rgid < -1 || egid < -1 || sgid < -1 {
@@ -47,7 +47,6 @@ pub fn setresgid(
 		}
 	}
 	// Update
-	let mut proc = proc.lock();
 	proc.access_profile.gid = match rgid {
 		-1 => ap.gid,
 		i => i as _,

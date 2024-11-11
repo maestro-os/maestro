@@ -32,9 +32,8 @@ use utils::{
 
 pub fn set_tid_address(
 	Args(_tidptr): Args<SyscallPtr<c_int>>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let proc = proc.lock();
 	// TODO set process's clear_child_tid
 	Ok(proc.tid as _)
 }

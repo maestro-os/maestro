@@ -152,9 +152,8 @@ fn init(init_path: String) -> EResult<()> {
 				]?,
 			},
 		)?;
-		let proc_mutex = Process::init()?;
-		let mut proc = proc_mutex.lock();
-		exec(&mut proc, &mut frame, program_image)?;
+		let proc = Process::init()?;
+		exec(&proc, &mut frame, program_image)?;
 	}
 	switch::init(&frame);
 }

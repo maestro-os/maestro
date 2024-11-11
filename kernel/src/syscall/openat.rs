@@ -101,8 +101,7 @@ pub fn do_openat(
 	mode: file::Mode,
 ) -> EResult<usize> {
 	let (rs, pathname, fds_mutex, mode) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
+		let proc = Process::current();
 		let follow_link = flags & O_NOFOLLOW == 0;
 		let rs = ResolutionSettings {
 			create: flags & O_CREAT != 0,

@@ -302,12 +302,11 @@ pub(super) fn tick() {
 		let timer_id = *timer_id;
 
 		// Get process
-		let Some(proc_mutex) = Process::get_by_pid(pid) else {
+		let Some(proc) = Process::get_by_pid(pid) else {
 			// invalid timer, remove
 			queue.pop_first();
 			break;
 		};
-		let mut proc = proc_mutex.lock();
 		// Get timer manager
 		let timer_manager_mutex = proc.timer_manager();
 		let mut timer_manager = timer_manager_mutex.lock();

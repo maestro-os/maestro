@@ -163,8 +163,7 @@ pub fn execve(
 			envp,
 		},
 	)?;
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
-	exec(&mut proc, frame, program_image)?;
+	let proc = Process::current();
+	exec(&proc, frame, program_image)?;
 	Ok(0)
 }

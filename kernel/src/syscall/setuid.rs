@@ -25,7 +25,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn setuid(Args(uid): Args<Uid>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	proc.lock().access_profile.set_uid(uid)?;
+pub fn setuid(Args(uid): Args<Uid>, proc: Arc<Process>) -> EResult<usize> {
+	proc.access_profile.set_uid(uid)?;
 	Ok(0)
 }

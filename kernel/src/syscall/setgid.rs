@@ -25,7 +25,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn setgid(Args(gid): Args<Gid>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	proc.lock().access_profile.set_gid(gid)?;
+pub fn setgid(Args(gid): Args<Gid>, proc: Arc<Process>) -> EResult<usize> {
+	proc.access_profile.set_gid(gid)?;
 	Ok(0)
 }

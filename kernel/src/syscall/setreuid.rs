@@ -34,7 +34,7 @@ use utils::{
 pub fn setreuid(
 	Args((ruid, euid)): Args<(c_int, c_int)>,
 	ap: AccessProfile,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Validation
 	if ruid < -1 || euid < -1 {
@@ -46,7 +46,6 @@ pub fn setreuid(
 		return Err(errno!(EPERM));
 	}
 	// Update
-	let mut proc = proc.lock();
 	let new_ruid = match ruid {
 		-1 => ap.uid,
 		i => i as _,

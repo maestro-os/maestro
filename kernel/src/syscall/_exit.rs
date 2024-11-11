@@ -32,8 +32,7 @@ use utils::{errno::EResult, lock::IntMutexGuard};
 /// - `proc` is the current process.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	{
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
+		let proc = Process::current();
 		proc.exit(status);
 		let _pid = proc.get_pid();
 		let _tid = proc.tid;

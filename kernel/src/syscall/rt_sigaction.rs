@@ -35,11 +35,11 @@ use utils::{
 
 pub fn rt_sigaction(
 	Args((signum, act, oldact)): Args<(c_int, SyscallPtr<SigAction>, SyscallPtr<SigAction>)>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Validation
 	let signal = Signal::try_from(signum)?;
-	let signal_handlers_mutex = proc.lock().signal_handlers.clone();
+	let signal_handlers_mutex = proc.signal_handlers.clone();
 	let mut signal_handlers = signal_handlers_mutex.lock();
 	// Save the old structure
 	let old = signal_handlers[signal.get_id() as usize].get_action();

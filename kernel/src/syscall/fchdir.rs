@@ -37,7 +37,7 @@ pub fn fchdir(
 	Args(fd): Args<c_int>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	let file = fds
 		.lock()
@@ -54,6 +54,6 @@ pub fn fchdir(
 	if !ap.can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
-	proc.lock().cwd = file;
+	proc.cwd = file;
 	Ok(0)
 }

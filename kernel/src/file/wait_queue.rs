@@ -55,8 +55,7 @@ impl WaitQueue {
 			}
 			// Queue
 			{
-				let proc_mutex = Process::current();
-				let mut proc = proc_mutex.lock();
+				let proc = Process::current();
 				self.0.lock().push(proc.get_pid())?;
 				proc.set_state(process::State::Sleeping);
 			}
@@ -66,8 +65,7 @@ impl WaitQueue {
 			// something else) Execution resumes. If the current process had received a signal,
 			// return
 			{
-				let proc_mutex = Process::current();
-				let mut proc = proc_mutex.lock();
+				let proc = Process::current();
 				if proc.next_signal(true).is_some() {
 					return Err(errno!(EINTR));
 				}
@@ -93,7 +91,7 @@ impl WaitQueue {
 			};
 			break proc;
 		};
-		proc.lock().wake();
+		proc.wake();
 	}
 
 	/// Wakes all processes.
@@ -104,7 +102,7 @@ impl WaitQueue {
 				// Process does not exist, try next
 				continue;
 			};
-			proc.lock().wake();
+			proc.wake();
 		}
 	}
 }

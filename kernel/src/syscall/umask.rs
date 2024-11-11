@@ -26,7 +26,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn umask(Args(mask): Args<file::Mode>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	let prev = mem::replace(&mut proc.lock().umask, mask & 0o777);
+pub fn umask(Args(mask): Args<file::Mode>, proc: Arc<Process>) -> EResult<usize> {
+	let prev = mem::replace(&mut proc.umask, mask & 0o777);
 	Ok(prev as _)
 }

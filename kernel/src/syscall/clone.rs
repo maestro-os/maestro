@@ -92,14 +92,14 @@ pub fn clone(
 		c_ulong,
 		SyscallPtr<c_int>,
 	)>,
-	proc_mutex: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	let new_tid = {
 		if flags & CLONE_PARENT_SETTID != 0 {
 			todo!()
 		}
-		let new_mutex = Process::fork(
-			proc_mutex,
+		let new_proc = Process::fork(
+			proc,
 			ForkOptions {
 				share_memory: flags & CLONE_VM != 0,
 				share_fd: flags & CLONE_FILES != 0,
@@ -110,7 +110,6 @@ pub fn clone(
 				stack: NonNull::new(stack),
 			},
 		)?;
-		let new_proc = new_mutex.lock();
 		if flags & CLONE_SETTLS != 0 {
 			todo!()
 		}

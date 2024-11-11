@@ -47,8 +47,7 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the read operation.
 	fn check_sigttin(&self, tty: &TTYDisplay) -> EResult<()> {
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
+		let proc = Process::current();
 		if proc.pgid == tty.get_pgrp() {
 			return Ok(());
 		}
@@ -73,8 +72,7 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the write operation.
 	fn check_sigttou(&self, tty: &TTYDisplay) -> EResult<()> {
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
+		let proc = Process::current();
 		if tty.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
 			return Ok(());
 		}

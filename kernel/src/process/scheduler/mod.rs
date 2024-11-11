@@ -24,14 +24,14 @@
 pub mod switch;
 
 use crate::{
-	arch::x86::{idt::IntFrame, pic},
+	arch::x86::idt::IntFrame,
 	event,
 	event::{CallbackHook, CallbackResult},
 	memory::stack,
 	process::{pid::Pid, scheduler::switch::switch, Process, State},
 	time,
 };
-use core::mem;
+use core::{mem, sync::atomic};
 use utils::{
 	collections::{
 		btreemap::{BTreeMap, MapIterator},
@@ -40,7 +40,7 @@ use utils::{
 	errno::AllocResult,
 	interrupt::cli,
 	limits::PAGE_SIZE,
-	lock::{once::OnceInit, IntMutex},
+	lock::{atomic::AtomicU64, once::OnceInit, IntMutex},
 	math::rational::Rational,
 	ptr::arc::Arc,
 	vec,
@@ -68,15 +68,15 @@ pub struct Scheduler {
 	/// scheduler work.
 	tick_callback_hook: CallbackHook,
 	/// The total number of ticks since the instantiation of the scheduler.
-	total_ticks: u64,
+	total_ticks: AtomicU64,
 	/// The scheduler's temporary stacks.
 	tmp_stack: Vec<u8>,
 
 	/// A binary tree containing all processes registered to the current
 	/// scheduler.
-	processes: BTreeMap<Pid, Arc<IntMutex<Process>>>,
-	/// The process currently being executed by the scheduler's core, along with its PID.
-	curr_proc: Option<(Pid, Arc<IntMutex<Process>>)>,
+	processes: BTreeMap<Pid, Arc<Process>>,
+	/// The process currently being executed by the scheduler's core.
+	curr_proc: Option<Arc<Process>>,
 	/// The current number of processes in running state.
 	running_procs: usize,
 }
@@ -99,7 +99,7 @@ impl Scheduler {
 		.unwrap();
 		Ok(Self {
 			tick_callback_hook,
-			total_ticks: 0,
+			total_ticks: AtomicU64::new(0),
 			tmp_stack,
 
 			processes: BTreeMap::new(),
@@ -113,37 +113,36 @@ impl Scheduler {
 		unsafe { self.tmp_stack.as_mut_ptr().add(self.tmp_stack.len()) }
 	}
 
-	/// Returns the total number of ticks since the instanciation of the
+	/// Returns the total number of ticks since the instantiation of the
 	/// scheduler.
 	pub fn get_total_ticks(&self) -> u64 {
-		self.total_ticks
+		self.total_ticks.load(atomic::Ordering::Relaxed)
 	}
 
 	/// Returns an iterator on the scheduler's processes.
-	pub fn iter_process(&self) -> MapIterator<'_, Pid, Arc<IntMutex<Process>>> {
+	pub fn iter_process(&self) -> MapIterator<'_, Pid, Arc<Process>> {
 		self.processes.iter()
 	}
 
 	/// Returns the process with PID `pid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_pid(&self, pid: Pid) -> Option<Arc<IntMutex<Process>>> {
+	pub fn get_by_pid(&self, pid: Pid) -> Option<Arc<Process>> {
 		Some(self.processes.get(&pid)?.clone())
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_tid(&self, _tid: Pid) -> Option<Arc<IntMutex<Process>>> {
-		// TODO
-		todo!();
+	pub fn get_by_tid(&self, _tid: Pid) -> Option<Arc<Process>> {
+		todo!()
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn get_current_process(&mut self) -> Option<Arc<IntMutex<Process>>> {
-		Some(self.curr_proc.as_ref().cloned()?.1)
+	pub fn get_current_process(&mut self) -> Option<Arc<Process>> {
+		self.curr_proc.clone()
 	}
 
 	/// Updates the scheduler's heuristic with the new priority of a process.
@@ -159,13 +158,13 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<IntMutex<Process>>> {
+	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<Process>> {
 		if process.get_state() == State::Running {
 			self.increment_running();
 		}
 		let pid = process.pid.get();
 		let priority = process.priority;
-		let ptr = Arc::new(IntMutex::new(process))?;
+		let ptr = Arc::new(process)?;
 		self.processes.insert(pid, ptr.clone())?;
 		self.update_priority(0, priority);
 		Ok(ptr)
@@ -173,10 +172,9 @@ impl Scheduler {
 
 	/// Removes the process with the given pid `pid`.
 	pub fn remove_process(&mut self, pid: Pid) {
-		let Some(proc_mutex) = self.get_by_pid(pid) else {
+		let Some(proc) = self.get_by_pid(pid) else {
 			return;
 		};
-		let proc = proc_mutex.lock();
 		if proc.get_state() == State::Running {
 			self.decrement_running();
 		}
@@ -213,18 +211,15 @@ impl Scheduler {
 	}
 
 	/// Returns the next process to run with its PID.
-	fn get_next_process(&self) -> Option<(Pid, Arc<IntMutex<Process>>)> {
+	fn get_next_process(&self) -> Option<Arc<Process>> {
 		// Get the current process, or take the first process in the list if no
 		// process is running
 		let curr_pid = self
 			.curr_proc
 			.as_ref()
-			.map(|(pid, _)| *pid)
+			.map(|proc| proc.get_pid())
 			.or_else(|| self.processes.first_key_value().map(|(pid, _)| *pid))?;
-		let process_filter = |(_, proc_mutex): &(&Pid, &Arc<IntMutex<Process>>)| {
-			let proc = proc_mutex.lock();
-			proc.can_run()
-		};
+		let process_filter = |(_, proc): &(&Pid, &Arc<Process>)| proc.can_run();
 		self.processes
 			.range((curr_pid + 1)..)
 			.find(process_filter)
@@ -233,7 +228,7 @@ impl Scheduler {
 				// located before the previous process (looping)
 				self.processes.range(..=curr_pid).find(process_filter)
 			})
-			.map(|(pid, proc)| (*pid, proc.clone()))
+			.map(|(_, proc)| proc.clone())
 	}
 
 	/// Ticking the scheduler.
@@ -244,34 +239,29 @@ impl Scheduler {
 	/// runnable.
 	pub fn tick() {
 		let sched_mutex = SCHEDULER.get();
-		// Disable interrupts so that they remain disabled between the time the scheduler is
-		// unlocked and the context is switched to the next process
-		cli();
-		// Use a scope to drop mutex guards
 		let (prev, next, tmp_stack) = {
 			let mut sched = sched_mutex.lock();
-			sched.total_ticks = sched.total_ticks.saturating_add(1);
+			sched.total_ticks.fetch_add(1, atomic::Ordering::Relaxed);
 			// Find the next process to run
 			let next = sched.get_next_process();
 			// If the process to run is the current, do nothing
-			let cur_pid = sched.curr_proc.as_ref().map(|(pid, _)| *pid);
-			let next_pid = next.as_ref().map(|(pid, _)| *pid);
+			let cur_pid = sched.curr_proc.as_ref().map(|proc| proc.get_pid());
+			let next_pid = next.as_ref().map(|proc| proc.get_pid());
 			if cur_pid == next_pid {
 				return;
 			}
-			// Swap current running process
-			let prev = mem::replace(&mut sched.curr_proc, next.clone());
-			(prev, next, sched.get_tmp_stack())
+			// Swap current running process. We use pointers to avoid cloning the Arc
+			let next_ptr = next.as_ref().map(Arc::as_ptr);
+			let prev = mem::replace(&mut sched.curr_proc, next);
+			let prev_ptr = prev.as_ref().map(Arc::as_ptr);
+			(prev_ptr, next_ptr, sched.get_tmp_stack())
 		};
+		// Disable interrupts so that no interrupt can occur before switch to the next process
+		cli();
 		unsafe {
-			// Unlock interrupt handler
-			event::unlock_callbacks(0x20);
-			pic::end_of_interrupt(0x0);
 			match (prev, next) {
 				// Runnable process found: resume execution
-				(Some((_, prev)), Some((_, next))) => {
-					switch(prev, next);
-				}
+				(Some(prev), Some(next)) => switch(prev, next),
 				// No runnable process found: idle
 				(_, None) => stack::switch(tmp_stack as _, crate::enter_loop),
 				// Scheduler running with no task on it?

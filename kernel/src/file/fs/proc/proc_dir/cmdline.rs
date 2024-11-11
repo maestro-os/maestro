@@ -63,8 +63,7 @@ impl NodeOps for Cmdline {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let proc = proc_mutex.lock();
+		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		format_content!(off, buf, "{}", CmdlineDisp(&proc))
 	}
 }

@@ -25,6 +25,6 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn getpid(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	Ok(proc.lock().get_pid() as _)
+pub fn getpid(proc: Arc<Process>) -> EResult<usize> {
+	Ok(proc.get_pid() as _)
 }

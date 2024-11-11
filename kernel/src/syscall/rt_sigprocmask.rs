@@ -39,13 +39,12 @@ const SIG_SETMASK: i32 = 2;
 
 pub fn rt_sigprocmask(
 	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Validation
 	if unlikely(sigsetsize != 8) {
 		return Err(errno!(EINVAL));
 	}
-	let mut proc = proc.lock();
 	// Save old set
 	let cur = proc.sigmask.0.to_ne_bytes();
 	oldset.copy_to_user(0, &cur)?;

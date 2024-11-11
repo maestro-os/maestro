@@ -40,20 +40,19 @@ use utils::{
 };
 
 pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
+	let proc = Process::current();
 	// Retrieve and restore previous state
 	let ctx_ptr = frame.get_stack_address();
 	if frame.is_32bit() {
 		let ctx = SyscallPtr::<ucontext::UContext32>::from_syscall_arg(ctx_ptr);
 		let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		ctx.restore_regs(&mut proc, frame);
+		ctx.restore_regs(&proc, frame);
 	} else {
 		#[cfg(target_arch = "x86_64")]
 		{
 			let ctx = SyscallPtr::<ucontext::UContext64>::from_syscall_arg(ctx_ptr);
 			let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-			ctx.restore_regs(&mut proc, frame);
+			ctx.restore_regs(&proc, frame);
 		}
 	}
 	// Do not touch register

@@ -30,19 +30,14 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn tkill(
-	Args((tid, sig)): Args<(Pid, c_int)>,
-	proc: Arc<IntMutex<Process>>,
-) -> EResult<usize> {
+pub fn tkill(Args((tid, sig)): Args<(Pid, c_int)>, proc: Arc<Process>) -> EResult<usize> {
 	let signal = Signal::try_from(sig)?;
-	let mut proc = proc.lock();
 	// Check if the thread to kill is the current
 	if proc.tid == tid {
 		proc.kill(signal);
 	} else {
 		// Get the thread
-		let thread_mutex = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
-		let mut thread = thread_mutex.lock();
+		let thread = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
 		// Check permission
 		if !proc.access_profile.can_kill(&thread) {
 			return Err(errno!(EPERM));

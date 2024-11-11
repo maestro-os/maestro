@@ -25,6 +25,6 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn gettid(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	Ok(proc.lock().tid as _)
+pub fn gettid(proc: Arc<Process>) -> EResult<usize> {
+	Ok(proc.tid as _)
 }

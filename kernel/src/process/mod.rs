@@ -62,11 +62,13 @@ use core::{
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
-	intrinsics::unlikely,
 	mem,
 	mem::{size_of, ManuallyDrop},
-	ptr::NonNull,
-	sync::atomic::AtomicPtr,
+	ptr::{null_mut, NonNull},
+	sync::{
+		atomic,
+		atomic::{AtomicPtr, AtomicU8},
+	},
 };
 use mem_space::MemSpace;
 use pid::Pid;
@@ -120,19 +122,31 @@ pub const TLS_ENTRIES_COUNT: usize = 3;
 const REDZONE_SIZE: usize = 128;
 
 /// An enumeration containing possible states for a process.
-#[derive(Clone, Eq, Debug, PartialEq)]
+#[repr(u8)]
+#[derive(Clone, Copy, Eq, Debug, PartialEq)]
 pub enum State {
 	/// The process is running or waiting to run.
-	Running,
+	Running = 0,
 	/// The process is waiting for an event.
-	Sleeping,
+	Sleeping = 1,
 	/// The process has been stopped by a signal or by tracing.
-	Stopped,
+	Stopped = 2,
 	/// The process has been killed.
-	Zombie,
+	Zombie = 3,
 }
 
 impl State {
+	/// Returns the state with the given ID.
+	fn from_id(id: u8) -> Self {
+		match id {
+			0 => Self::Running,
+			1 => Self::Sleeping,
+			2 => Self::Stopped,
+			3 => Self::Zombie,
+			_ => unreachable!(),
+		}
+	}
+
 	/// Returns the character associated with the state.
 	pub fn as_char(&self) -> char {
 		match self {
@@ -199,7 +213,7 @@ enum VForkState {
 	/// The process is the parent waiting for the child to terminate.
 	Waiting,
 	/// The process is the child the parent waits for.
-	Executing,
+	Running,
 }
 
 /// The **Process Control Block** (PCB). This structure stores all the information
@@ -225,7 +239,7 @@ pub struct Process {
 	pub umask: file::Mode,
 
 	/// The current state of the process.
-	state: State,
+	state: AtomicU8,
 	/// The current vfork state of the process (see documentation of
 	/// `VForkState`).
 	vfork_state: VForkState,
@@ -236,15 +250,11 @@ pub struct Process {
 	pub nice: usize,
 
 	/// A pointer to the parent process.
-	parent: Option<Arc<IntMutex<Process>>>,
+	parent: Option<Arc<Process>>,
 	/// The list of children processes.
 	children: Vec<Pid>,
 	/// The list of processes in the process group.
 	process_group: Vec<Pid>,
-
-	/// Tells whether the process has information that can be retrieved by
-	/// wait/waitpid.
-	waitable: bool,
 
 	/// Structure managing the process's timers. This manager is shared between all threads of the
 	/// same process.
@@ -297,8 +307,7 @@ pub(crate) fn init() -> EResult<()> {
 			return CallbackResult::Panic;
 		}
 		// Get process
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
+		let proc = Process::current();
 		match id {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
@@ -333,7 +342,6 @@ pub(crate) fn init() -> EResult<()> {
 		let Some(curr_proc) = Process::current_opt() else {
 			return CallbackResult::Panic;
 		};
-		let mut curr_proc = curr_proc.lock();
 		// Check access
 		let success = {
 			let Some(mem_space_mutex) = curr_proc.get_mem_space() else {
@@ -372,35 +380,35 @@ impl Process {
 	/// Returns the process with PID `pid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_pid(pid: Pid) -> Option<Arc<IntMutex<Self>>> {
+	pub fn get_by_pid(pid: Pid) -> Option<Arc<Self>> {
 		SCHEDULER.get().lock().get_by_pid(pid)
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_tid(tid: Pid) -> Option<Arc<IntMutex<Self>>> {
+	pub fn get_by_tid(tid: Pid) -> Option<Arc<Self>> {
 		SCHEDULER.get().lock().get_by_tid(tid)
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn current_opt() -> Option<Arc<IntMutex<Self>>> {
+	pub fn current_opt() -> Option<Arc<Self>> {
 		SCHEDULER.get().lock().get_current_process()
 	}
 
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function makes the kernel panic.
-	pub fn current() -> Arc<IntMutex<Self>> {
+	pub fn current() -> Arc<Self> {
 		Self::current_opt().expect("no running process")
 	}
 
 	/// Creates the init process and places it into the scheduler's queue.
 	///
 	/// The process is set to state [`State::Running`] by default and has user root.
-	pub fn init() -> EResult<Arc<IntMutex<Self>>> {
+	pub fn init() -> EResult<Arc<Self>> {
 		let rs = ResolutionSettings::kernel_follow();
 		// Create the default file descriptors table
 		let file_descriptors = {
@@ -436,7 +444,7 @@ impl Process {
 			access_profile: rs.access_profile,
 			umask: DEFAULT_UMASK,
 
-			state: State::Running,
+			state: AtomicU8::new(State::Running as _),
 			vfork_state: VForkState::None,
 
 			priority: 0,
@@ -445,8 +453,6 @@ impl Process {
 			parent: None,
 			children: Vec::new(),
 			process_group: Vec::new(),
-
-			waitable: false,
 
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
 
@@ -474,7 +480,8 @@ impl Process {
 	}
 
 	/// Returns the process's ID.
-	pub fn get_pid(&self) -> u16 {
+	#[inline]
+	pub fn get_pid(&self) -> Pid {
 		self.pid.get()
 	}
 
@@ -491,7 +498,7 @@ impl Process {
 	}
 
 	/// Sets the process's group ID to the given value `pgid`, updating the associated group.
-	pub fn set_pgid(&mut self, pgid: Pid) -> EResult<()> {
+	pub fn set_pgid(&self, pgid: Pid) -> EResult<()> {
 		let old_pgid = self.pgid;
 		let new_pgid = if pgid == 0 { self.pid.get() } else { pgid };
 		if old_pgid == new_pgid {
@@ -499,10 +506,9 @@ impl Process {
 		}
 		if new_pgid != self.pid.get() {
 			// Add the process to the new group
-			let Some(proc_mutex) = Process::get_by_pid(new_pgid) else {
+			let Some(new_group_process) = Process::get_by_pid(new_pgid) else {
 				return Err(errno!(ESRCH));
 			};
-			let mut new_group_process = proc_mutex.lock();
 			let i = new_group_process
 				.process_group
 				.binary_search(&self.pid.get())
@@ -511,8 +517,7 @@ impl Process {
 		}
 		// Remove the process from its former group
 		if self.is_in_group() {
-			if let Some(proc_mutex) = Process::get_by_pid(old_pgid) {
-				let mut old_group_process = proc_mutex.lock();
+			if let Some(old_group_process) = Process::get_by_pid(old_pgid) {
 				if let Ok(i) = old_group_process
 					.process_group
 					.binary_search(&self.pid.get())
@@ -543,29 +548,34 @@ impl Process {
 	pub fn get_parent_pid(&self) -> Pid {
 		self.parent
 			.as_ref()
-			.map(|parent| parent.lock().pid.get())
-			.unwrap_or(self.pid.get())
+			.map(|parent| parent.get_pid())
+			.unwrap_or(self.get_pid())
 	}
 
 	/// Returns the process's current state.
+	///
+	/// **Note**: since the process cannot be locked, this function may cause data races. Use with
+	/// caution
 	#[inline(always)]
 	pub fn get_state(&self) -> State {
-		self.state.clone()
+		let id = self.state.load(atomic::Ordering::Relaxed);
+		State::from_id(id)
 	}
 
 	/// Sets the process's state to `new_state`.
-	pub fn set_state(&mut self, new_state: State) {
-		if self.state == new_state || self.state == State::Zombie {
+	pub fn set_state(&self, new_state: State) {
+		let old_state = self.get_state();
+		if old_state == new_state || old_state == State::Zombie {
 			return;
 		}
+		self.state.store(new_state as _, atomic::Ordering::Relaxed);
 		// Update the number of running processes
-		if self.state != State::Running && new_state == State::Running {
+		if old_state != State::Running && new_state == State::Running {
 			SCHEDULER.get().lock().increment_running();
-		} else if self.state == State::Running {
+		} else if old_state == State::Running {
 			SCHEDULER.get().lock().decrement_running();
 		}
-		self.state = new_state;
-		if self.state == State::Zombie {
+		if new_state == State::Zombie {
 			if self.is_init() {
 				panic!("Terminated init process!");
 			}
@@ -573,20 +583,24 @@ impl Process {
 			//self.mem_space = None; // TODO Handle the case where the memory space is bound
 			self.file_descriptors = None;
 			// Attach every child to the init process
-			let init_proc_mutex = Process::get_by_pid(pid::INIT_PID).unwrap();
-			let mut init_proc = init_proc_mutex.lock();
+			let init_proc = Process::get_by_pid(pid::INIT_PID).unwrap();
 			let children = mem::take(&mut self.children);
 			for child_pid in children {
 				// Check just in case
 				if child_pid == self.pid.get() {
 					continue;
 				}
-				if let Some(child_mutex) = Process::get_by_pid(child_pid) {
-					child_mutex.lock().parent = Some(init_proc_mutex.clone());
+				if let Some(child) = Process::get_by_pid(child_pid) {
+					child.parent = Some(init_proc.clone());
 					oom::wrap(|| init_proc.add_child(child_pid));
 				}
 			}
-			self.waitable = true;
+		}
+		// Send SIGCHLD
+		if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
+			if let Some(parent) = &self.parent {
+				parent.kill(Signal::SIGCHLD);
+			}
 		}
 	}
 
@@ -596,33 +610,13 @@ impl Process {
 	}
 
 	/// Wakes up the process if in [`State::Sleeping`] state.
-	pub fn wake(&mut self) {
-		if self.state == State::Sleeping {
-			self.set_state(State::Running);
-		}
-	}
-
-	/// Tells whether the current process has information to be retrieved by
-	/// the `waitpid` system call.
-	pub fn is_waitable(&self) -> bool {
-		self.waitable
-	}
-
-	/// Sets the process waitable with the given signal type.
-	pub fn set_waitable(&mut self, sig_type: u8) {
-		self.waitable = true;
-		self.termsig = sig_type;
-		// Wake the parent
-		if let Some(parent) = &self.parent {
-			let mut parent = parent.lock();
-			parent.kill(Signal::SIGCHLD);
-			parent.wake();
-		}
-	}
-
-	/// Clears the waitable flag.
-	pub fn clear_waitable(&mut self) {
-		self.waitable = false;
+	pub fn wake(&self) {
+		// TODO make sure the ordering is right
+		let _ = self.state.fetch_update(
+			atomic::Ordering::SeqCst,
+			atomic::Ordering::SeqCst,
+			|old_state| (old_state == State::Sleeping as _).then_some(State::Running as _),
+		);
 	}
 
 	/// Returns the process's timer manager.
@@ -634,7 +628,7 @@ impl Process {
 	///
 	/// If the process is the init process, the function returns `None`.
 	#[inline(always)]
-	pub fn get_parent(&self) -> Option<Arc<IntMutex<Process>>> {
+	pub fn get_parent(&self) -> Option<Arc<Process>> {
 		self.parent.clone()
 	}
 
@@ -645,13 +639,13 @@ impl Process {
 	}
 
 	/// Adds the process with the given PID `pid` as child to the process.
-	pub fn add_child(&mut self, pid: Pid) -> AllocResult<()> {
+	pub fn add_child(&self, pid: Pid) -> AllocResult<()> {
 		let i = self.children.binary_search(&pid).unwrap_or_else(|i| i);
 		self.children.insert(i, pid)
 	}
 
 	/// Removes the process with the given PID `pid` as child to the process.
-	pub fn remove_child(&mut self, pid: Pid) {
+	pub fn remove_child(&self, pid: Pid) {
 		if let Ok(i) = self.children.binary_search(&pid) {
 			self.children.remove(i);
 		}
@@ -670,21 +664,6 @@ impl Process {
 	#[inline(always)]
 	pub fn get_mem_space(&self) -> Option<&Arc<IntMutex<MemSpace>>> {
 		self.mem_space.as_ref()
-	}
-
-	/// Sets the new memory space for the process, dropping the previous if any.
-	#[inline(always)]
-	pub fn set_mem_space(&mut self, mem_space: Option<Arc<IntMutex<MemSpace>>>) {
-		// TODO Handle multicore
-		// If the process is currently running, switch the memory space
-		if matches!(self.state, State::Running) {
-			if let Some(mem_space) = &mem_space {
-				mem_space.lock().bind();
-			} else {
-				panic!("Dropping the memory space of a running process!");
-			}
-		}
-		self.mem_space = mem_space;
 	}
 
 	/// Updates the TSS on the current kernel for the process.
@@ -721,22 +700,18 @@ impl Process {
 	/// On fail, the function returns an `Err` with the appropriate Errno.
 	///
 	/// If the process is not running, the behaviour is undefined.
-	pub fn fork(
-		this: Arc<IntMutex<Self>>,
-		fork_options: ForkOptions,
-	) -> EResult<Arc<IntMutex<Self>>> {
-		let mut proc = this.lock();
-		debug_assert!(matches!(proc.get_state(), State::Running));
+	pub fn fork(this: Arc<Self>, fork_options: ForkOptions) -> EResult<Arc<Self>> {
+		debug_assert!(matches!(this.get_state(), State::Running));
 		// Handle vfork
 		let vfork_state = if fork_options.vfork {
-			proc.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
-			VForkState::Executing
+			this.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
+			VForkState::Running
 		} else {
 			VForkState::None
 		};
 		// Clone memory space
 		let mem_space = {
-			let curr_mem_space = proc.get_mem_space().unwrap();
+			let curr_mem_space = this.get_mem_space().unwrap();
 			if fork_options.share_memory || fork_options.vfork {
 				curr_mem_space.clone()
 			} else {
@@ -745,9 +720,9 @@ impl Process {
 		};
 		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
-			proc.file_descriptors.clone()
+			this.file_descriptors.clone()
 		} else {
-			proc.file_descriptors
+			this.file_descriptors
 				.as_ref()
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
@@ -758,60 +733,58 @@ impl Process {
 		};
 		// Clone signal handlers
 		let signal_handlers = if fork_options.share_sighand {
-			proc.signal_handlers.clone()
+			this.signal_handlers.clone()
 		} else {
-			Arc::new(Mutex::new(proc.signal_handlers.lock().clone()))?
+			Arc::new(Mutex::new(this.signal_handlers.lock().clone()))?
 		};
 		let pid = PidHandle::unique()?;
 		let pid_int = pid.get();
 		let process = Self {
 			pid,
-			pgid: proc.pgid,
+			pgid: this.pgid,
 			tid: pid_int,
 
-			argv: proc.argv.clone(),
-			envp: proc.envp.clone(),
-			exec_path: proc.exec_path.clone(),
+			argv: this.argv.clone(),
+			envp: this.envp.clone(),
+			exec_path: this.exec_path.clone(),
 
-			access_profile: proc.access_profile,
-			umask: proc.umask,
+			access_profile: this.access_profile,
+			umask: this.umask,
 
 			state: State::Running,
 			vfork_state,
 
-			priority: proc.priority,
-			nice: proc.nice,
+			priority: this.priority,
+			nice: this.nice,
 
 			parent: Some(this.clone()),
 			children: Vec::new(),
 			process_group: Vec::new(),
 
-			waitable: false,
-
-			// TODO if creating a thread: timer_manager: proc.timer_manager.clone(),
+			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
-			kernel_sp,
+			kernel_sp: AtomicPtr::new(null_mut()), // TODO
 
 			mem_space: Some(mem_space),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 
-			cwd: proc.cwd.clone(),
-			chroot: proc.chroot.clone(),
+			cwd: this.cwd.clone(),
+			chroot: this.chroot.clone(),
 			file_descriptors,
 
-			sigmask: proc.sigmask,
+			sigmask: this.sigmask,
 			sigpending: Default::default(),
 			signal_handlers,
 
-			tls_entries: proc.tls_entries,
+			tls_entries: this.tls_entries,
 
 			rusage: RUsage::default(),
 
-			exit_status: proc.exit_status,
+			exit_status: this.exit_status,
 			termsig: 0,
 		};
-		proc.add_child(pid_int)?;
+		this.add_child(pid_int)?;
 		Ok(SCHEDULER.get().lock().add_process(process)?)
 	}
 
@@ -819,11 +792,7 @@ impl Process {
 	///
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
-	pub fn kill(&mut self, sig: Signal) {
-		// Cannot kill a zombie process
-		if unlikely(self.state == State::Zombie) {
-			return;
-		}
+	pub fn kill(&self, sig: Signal) {
 		// Ignore blocked signals
 		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
 			return;
@@ -847,26 +816,18 @@ impl Process {
 				_ => {}
 			}
 		}
-		// Resume execution if necessary
-		if matches!(self.state, State::Sleeping)
-			|| (matches!(self.state, State::Stopped)
-				&& sig.get_default_action() == SignalAction::Continue)
-		{
-			self.set_state(State::Running);
-		}
 		// Set the signal as pending
 		self.sigpending.set(sig.get_id() as _);
 	}
 
 	/// Kills every process in the process group.
-	pub fn kill_group(&mut self, sig: Signal) {
+	pub fn kill_group(&self, sig: Signal) {
 		self.process_group
 			.iter()
 			// Avoid deadlock
 			.filter(|pid| **pid != self.pid.get())
 			.filter_map(|pid| Process::get_by_pid(*pid))
-			.for_each(|proc_mutex| {
-				let mut proc = proc_mutex.lock();
+			.for_each(|proc| {
 				proc.kill(sig);
 			});
 		self.kill(sig);
@@ -882,7 +843,7 @@ impl Process {
 	/// If `peek` is `false`, the signal is cleared from the bitfield.
 	///
 	/// If no signal is pending, the function returns `None`.
-	pub fn next_signal(&mut self, peek: bool) -> Option<Signal> {
+	pub fn next_signal(&self, peek: bool) -> Option<Signal> {
 		let sig = self
 			.sigpending
 			.iter()
@@ -922,14 +883,13 @@ impl Process {
 
 	/// If the process is a vfork child, resets its state and its parent's
 	/// state.
-	pub fn reset_vfork(&mut self) {
-		if self.vfork_state != VForkState::Executing {
+	pub fn reset_vfork(&self) {
+		if self.vfork_state != VForkState::Running {
 			return;
 		}
 		self.vfork_state = VForkState::None;
 		// Reset the parent's vfork state if needed
 		if let Some(parent) = &self.parent {
-			let mut parent = parent.lock();
 			parent.vfork_state = VForkState::None;
 		}
 	}
@@ -937,7 +897,7 @@ impl Process {
 	/// Exits the process with the given `status`.
 	///
 	/// This function changes the process's status to `Zombie`.
-	pub fn exit(&mut self, status: u32) {
+	pub fn exit(&self, status: u32) {
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] exited with status `{status}`",
@@ -946,7 +906,6 @@ impl Process {
 		self.exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
 		self.reset_vfork();
-		self.set_waitable(0);
 	}
 
 	/// Returns the number of virtual memory pages used by the process.
@@ -1028,10 +987,9 @@ pub fn yield_current(ring: u8, frame: &mut IntFrame) {
 	if ring < 3 {
 		return;
 	}
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
+	let proc = Process::current();
 	// If the process is not running anymore, stop execution
-	if proc.state != State::Running {
+	if proc.get_state() != State::Running {
 		Scheduler::tick();
 	}
 	// If no signal is pending, return
@@ -1041,10 +999,10 @@ pub fn yield_current(ring: u8, frame: &mut IntFrame) {
 	// Prepare signal for execution
 	let handlers = proc.signal_handlers.clone();
 	let handlers = handlers.lock();
-	handlers[sig.get_id() as usize].exec(sig, &mut proc, frame);
+	handlers[sig.get_id() as usize].exec(sig, &proc, frame);
 	// Alter the execution flow of the current context according to the new state of the
 	// process
-	match proc.state {
+	match proc.get_state() {
 		State::Running => {}
 		State::Sleeping | State::Stopped | State::Zombie => Scheduler::tick(),
 	}

@@ -110,7 +110,6 @@ fn get_waitable(
 		.filter_map(|pid| sched.get_by_pid(pid))
 		// Select a waitable process
 		.find(|proc| {
-			let proc = proc.lock();
 			let state = proc.get_state();
 			let stopped = options & WUNTRACED != 0 && matches!(state, State::Stopped);
 			let exited = options & WEXITED != 0 && matches!(state, State::Zombie);
@@ -126,7 +125,6 @@ fn get_waitable(
 			Ok(None)
 		};
 	};
-	let mut proc = proc.lock();
 	let pid = proc.get_pid();
 	// Write values back
 	wstatus.copy_to_user(get_wstatus(&proc))?;
@@ -154,8 +152,7 @@ pub fn do_waitpid(
 	// Sleep until a target process is waitable
 	loop {
 		{
-			let proc_mutex = Process::current();
-			let mut proc = proc_mutex.lock();
+			let proc = Process::current();
 			if proc.next_signal(true).is_some() {
 				return Err(errno!(EINTR));
 			}

@@ -100,8 +100,7 @@ fn send_signal(sig: Signal, pgrp: Pid) {
 	if pgrp == 0 {
 		return;
 	}
-	if let Some(proc_mutex) = Process::get_by_pid(pgrp) {
-		let mut proc = proc_mutex.lock();
+	if let Some(proc) = Process::get_by_pid(pgrp) {
 		proc.kill_group(sig);
 	}
 }

@@ -41,9 +41,8 @@ pub fn timer_settime(
 		SyscallPtr<ITimerspec32>,
 		SyscallPtr<ITimerspec32>,
 	)>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let proc = proc.lock();
 	// Get timer
 	let manager_mutex = proc.timer_manager().clone();
 	let mut manager = manager_mutex.lock();

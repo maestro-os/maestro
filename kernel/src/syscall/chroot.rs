@@ -38,7 +38,7 @@ use utils::{
 
 pub fn chroot(
 	Args(path): Args<SyscallString>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	// Check permission
@@ -56,6 +56,6 @@ pub fn chroot(
 	if file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	proc.lock().chroot = file;
+	proc.chroot = file;
 	Ok(0)
 }
