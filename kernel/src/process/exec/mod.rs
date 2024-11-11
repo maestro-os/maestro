@@ -37,7 +37,7 @@ use utils::{
 	collections::{string::String, vec::Vec},
 	errno::EResult,
 	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
+	ptr::arc::{Arc, AtomicArc},
 };
 
 /// Information to prepare a program image to be executed.
@@ -95,13 +95,11 @@ pub fn build_image(file: &vfs::Entry, info: ExecInfo) -> EResult<ProgramImage> {
 /// `frame` is the interrupt frame of the current content. The function sets the appropriate values
 /// for each register so that the execution beings when the interrupt handler returns.
 pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
-	// Note: the implementation makes sure all fallible operations are done before the ones that
-	// cannot be undone
-	proc.argv = Arc::new(image.argv)?;
-	proc.envp = Arc::new(image.envp)?;
-	// TODO Set exec path
-	// Duplicate the file descriptor table
-	proc.file_descriptors = proc
+	// Preform all fallible operations first before touching the process
+	let argv = Arc::new(image.argv)?;
+	let envp = Arc::new(image.envp)?;
+	let mem_space = Arc::new(IntMutex::new(image.mem_space))?;
+	let fds = proc
 		.file_descriptors
 		.as_ref()
 		.map(|fds_mutex| -> EResult<_> {
@@ -110,8 +108,11 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 			Ok(Arc::new(Mutex::new(new_fds))?)
 		})
 		.transpose()?;
-	// Set the new memory space to the process
-	let mem_space = Arc::new(IntMutex::new(image.mem_space))?;
+	// Flush to process
+	proc.argv.swap(argv);
+	proc.envp.swap(envp);
+	// TODO Set exec path
+	proc.file_descriptors = fds;
 	mem_space.lock().bind();
 	proc.mem_space = Some(mem_space);
 	// Reset signals

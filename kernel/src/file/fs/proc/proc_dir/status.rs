@@ -34,7 +34,8 @@ struct StatusDisp<'p>(&'p Process);
 
 impl<'p> fmt::Display for StatusDisp<'p> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
+		let argv = self.0.argv.get();
+		let name = argv.first().map(String::as_bytes).unwrap_or(b"?");
 		let state = self.0.get_state();
 		// TODO Fill every fields with process's data
 		writeln!(

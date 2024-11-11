@@ -29,7 +29,7 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
+	ptr::arc::{Arc, AtomicArc},
 	TryClone,
 };
 
@@ -54,6 +54,6 @@ pub fn fchdir(
 	if !ap.can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
-	proc.cwd = file;
+	proc.cwd.swap(file);
 	Ok(0)
 }

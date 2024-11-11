@@ -33,7 +33,7 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	lock::IntMutex,
-	ptr::arc::Arc,
+	ptr::arc::{Arc, AtomicArc},
 };
 
 pub fn chroot(
@@ -56,6 +56,6 @@ pub fn chroot(
 	if file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	proc.chroot = file;
+	proc.chroot.swap(file);
 	Ok(0)
 }

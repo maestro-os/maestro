@@ -35,7 +35,8 @@ struct StatDisp<'p>(&'p Process);
 
 impl<'p> fmt::Display for StatDisp<'p> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
+		let argv = self.0.argv.get();
+		let name = argv.first().map(String::as_bytes).unwrap_or(b"?");
 		// FIXME deadlock
 		//let vmem_usage = self.0.get_vmem_usage();
 		let vmem_usage = 0;

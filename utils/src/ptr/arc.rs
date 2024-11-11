@@ -33,11 +33,13 @@ use core::{
 	ptr::{drop_in_place, NonNull},
 	sync::atomic::{AtomicUsize, Ordering},
 };
+use core::mem;
+use core::sync::atomic::AtomicPtr;
 
 /// Inner structure shared between arcs pointing to the same object.
 pub struct ArcInner<T: ?Sized> {
-	/// Strong references counter.
-	strong: AtomicUsize,
+	/// References counter.
+	ref_count: AtomicUsize,
 	/// The object the `Arc` points to.
 	obj: T,
 }
@@ -66,7 +68,7 @@ impl<T: ?Sized> ArcInner<T> {
 		// Initialize
 		let i = inner.as_mut();
 		// The initial strong reference
-		i.strong = AtomicUsize::new(1);
+		i.ref_count = AtomicUsize::new(1);
 		init(&mut i.obj);
 		Ok(inner)
 	}
@@ -126,7 +128,7 @@ impl<T> Arc<T> {
 		// Avoid double free
 		let this = ManuallyDrop::new(this);
 		let inner = this.inner();
-		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
+		if inner.ref_count.fetch_sub(1, Ordering::Release) != 1 {
 			return None;
 		}
 		unsafe {
@@ -155,7 +157,7 @@ impl<T: ?Sized> Arc<T> {
 	/// Returns the number of strong pointers to the allocation.
 	#[inline]
 	pub fn strong_count(this: &Self) -> usize {
-		this.inner().strong.load(Ordering::Relaxed)
+		this.inner().ref_count.load(Ordering::Relaxed)
 	}
 }
 
@@ -182,7 +184,7 @@ impl<T: ?Sized> Deref for Arc<T> {
 impl<T: ?Sized> Clone for Arc<T> {
 	fn clone(&self) -> Self {
 		let inner = self.inner();
-		let old_count = inner.strong.fetch_add(1, Ordering::Relaxed);
+		let old_count = inner.ref_count.fetch_add(1, Ordering::Relaxed);
 		if old_count == usize::MAX {
 			panic!("Arc reference count overflow");
 		}
@@ -221,7 +223,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Arc<T> {
 impl<T: ?Sized> Drop for Arc<T> {
 	fn drop(&mut self) {
 		let inner = self.inner();
-		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
+		if inner.ref_count.fetch_sub(1, Ordering::Release) != 1 {
 			return;
 		}
 		unsafe {
@@ -232,5 +234,66 @@ impl<T: ?Sized> Drop for Arc<T> {
 			let layout = Layout::for_value(inner);
 			__dealloc(self.inner.cast(), layout);
 		}
+	}
+}
+
+/// Wrapper for an [`Arc`], allowing to atomically swap it for another.
+///
+/// This structure uses interior mutability.
+///
+/// Note that this structure disables niche optimization.
+pub struct AtomicArc<T> {
+	/// Pointer to shared object.
+	inner: AtomicPtr<ArcInner<T>>,
+}
+
+impl<T> AtomicArc<T> {
+	/// Creates a new instance with the given [`Arc`].
+	pub fn new(arc: Arc<T>) -> Self {
+		let inner = arc.inner.as_ptr();
+		mem::forget(arc);
+		Self {
+			inner: AtomicPtr::new(inner),
+		}
+	}
+
+	/// Atomically replaces the inner [`Arc`] for `other`, returning the previous.
+	pub fn swap(&self, other: Arc<T>) -> Arc<T> {
+		let new = other.inner.as_ptr();
+		mem::forget(other);
+		let old = self.inner.swap(new, Ordering::Release);
+		Arc {
+			inner: NonNull::new(old).unwrap(),
+		}
+	}
+
+	/// Returns a reference of the inner [`Arc`].
+	pub fn get(&self) -> Arc<T> {
+		let inner = self.inner.load(Ordering::Relaxed);
+		let inner_ref = unsafe { &*inner };
+		inner_ref.ref_count.fetch_add(1, Ordering::Relaxed);
+		Arc {
+			inner: NonNull::new(inner).unwrap(),
+		}
+	}
+}
+
+impl<T> Clone for AtomicArc<T> {
+	fn clone(&self) -> Self {
+		let inner = self.inner.load(Ordering::Relaxed);
+		let inner_ref = unsafe { &*inner };
+		inner_ref.ref_count.fetch_add(1, Ordering::Relaxed);
+		Self {
+			inner: AtomicPtr::new(inner),
+		}
+	}
+}
+
+impl<T> Drop for AtomicArc<T> {
+	fn drop(&mut self) {
+		let inner = self.inner.load(Ordering::Relaxed);
+		drop(Arc {
+			inner: NonNull::new(inner).unwrap(),
+		});
 	}
 }

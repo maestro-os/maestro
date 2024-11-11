@@ -29,7 +29,7 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	lock::IntMutex,
-	ptr::arc::Arc,
+	ptr::arc::{Arc, AtomicArc},
 };
 
 pub fn chdir(
@@ -50,6 +50,6 @@ pub fn chdir(
 		return Err(errno!(EACCES));
 	}
 	// Set new cwd
-	proc.cwd = dir;
+	proc.cwd.swap(dir);
 	Ok(0)
 }

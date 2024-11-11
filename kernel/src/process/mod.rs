@@ -80,7 +80,7 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
+	ptr::arc::{Arc, AtomicArc},
 };
 
 /// The opcode of the `hlt` instruction.
@@ -222,11 +222,11 @@ pub struct Process {
 	pub tid: Pid,
 
 	/// The argv of the process.
-	pub argv: Arc<Vec<String>>,
+	pub argv: AtomicArc<Vec<String>>,
 	/// The environment variables of the process, separated by `\0`.
-	pub envp: Arc<String>,
+	pub envp: AtomicArc<String>,
 	/// The path to the process's executable.
-	pub exec_path: Arc<PathBuf>,
+	pub exec_path: AtomicArc<PathBuf>,
 
 	/// The process's access profile, containing user and group IDs.
 	pub access_profile: AccessProfile,
@@ -270,9 +270,9 @@ pub struct Process {
 	/// Current working directory
 	///
 	/// The field contains both the path and the directory.
-	pub cwd: Arc<vfs::Entry>,
+	pub cwd: AtomicArc<vfs::Entry>,
 	/// Current root path used by the process
-	pub chroot: Arc<vfs::Entry>,
+	pub chroot: AtomicArc<vfs::Entry>,
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
@@ -435,9 +435,9 @@ impl Process {
 			pid,
 			tid: pid::INIT_PID,
 
-			argv: Arc::new(Vec::new())?,
-			envp: Arc::new(String::new())?,
-			exec_path: Arc::new(PathBuf::root()?)?,
+			argv: AtomicArc::new(Arc::new(Vec::new())?),
+			envp: AtomicArc::new(Arc::new(String::new())?),
+			exec_path: AtomicArc::new(Arc::new(PathBuf::root()?)?),
 
 			access_profile: rs.access_profile,
 			umask: AtomicU32::new(DEFAULT_UMASK),
@@ -737,7 +737,7 @@ impl Process {
 			exec_path: this.exec_path.clone(),
 
 			access_profile: this.access_profile,
-			umask: this.umask.load(atomic::Ordering::Release),
+			umask: AtomicU32::new(this.umask.load(atomic::Ordering::Release)),
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_state,
@@ -747,6 +747,7 @@ impl Process {
 
 			parent: Some(this.clone()),
 			children: Vec::new(),
+			group_leader: this.group_leader.clone(),
 			process_group: Vec::new(),
 
 			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),

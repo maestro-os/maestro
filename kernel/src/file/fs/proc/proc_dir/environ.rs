@@ -51,6 +51,6 @@ impl NodeOps for Environ {
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		format_content!(off, buf, "{}", proc.envp)
+		format_content!(off, buf, "{}", proc.envp.get())
 	}
 }

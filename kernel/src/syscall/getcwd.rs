@@ -36,7 +36,7 @@ pub fn getcwd(
 	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let cwd = vfs::Entry::get_path(&proc.cwd)?;
+	let cwd = vfs::Entry::get_path(&proc.cwd.get())?;
 	if unlikely(size < cwd.len() + 1) {
 		return Err(errno!(ERANGE));
 	}
