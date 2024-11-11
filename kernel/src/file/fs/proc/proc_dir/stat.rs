@@ -51,7 +51,7 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 			name = DisplayableStr(name),
 			state_char = self.0.get_state().as_char(),
 			ppid = self.0.get_parent_pid(),
-			pgid = self.0.pgid,
+			pgid = self.0.get_pgid(),
 			sid = 0,            // TODO
 			user_jiffies = 0,   // TODO
 			kernel_jiffies = 0, // TODO

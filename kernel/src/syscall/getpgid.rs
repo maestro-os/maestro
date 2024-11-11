@@ -30,11 +30,11 @@ use utils::{
 pub fn getpgid(Args(pid): Args<Pid>) -> EResult<usize> {
 	if pid == 0 {
 		let proc = Process::current();
-		Ok(proc.pgid as _)
+		Ok(proc.get_pgid() as _)
 	} else {
 		let Some(proc) = Process::get_by_pid(pid) else {
 			return Err(errno!(ESRCH));
 		};
-		Ok(proc.pgid as _)
+		Ok(proc.get_pgid() as _)
 	}
 }

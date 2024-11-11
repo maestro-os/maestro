@@ -71,7 +71,7 @@ fn iter_targets(curr_proc: &Process, pid: i32) -> impl Iterator<Item = Pid> + '_
 
 /// Returns the wait status for the given process.
 fn get_wstatus(proc: &Process) -> i32 {
-	let status = proc.get_exit_status().unwrap_or(0);
+	let status = proc.get_exit_status();
 	let termsig = proc.get_termsig();
 	#[allow(clippy::let_and_return)]
 	let wstatus = match proc.get_state() {
@@ -128,7 +128,7 @@ fn get_waitable(
 	let pid = proc.get_pid();
 	// Write values back
 	wstatus.copy_to_user(get_wstatus(&proc))?;
-	rusage.copy_to_user(proc.get_rusage().clone())?;
+	rusage.copy_to_user(proc.rusage.clone())?;
 	// Clear the waitable flag if requested
 	if options & WNOWAIT == 0 {
 		proc.clear_waitable();
@@ -156,7 +156,7 @@ pub fn do_waitpid(
 			if proc.next_signal(true).is_some() {
 				return Err(errno!(EINTR));
 			}
-			let result = get_waitable(&mut proc, pid, &wstatus, options, &rusage)?;
+			let result = get_waitable(&proc, pid, &wstatus, options, &rusage)?;
 			// On success, return
 			if let Some(p) = result {
 				return Ok(p as _);

@@ -48,7 +48,7 @@ impl TTYDeviceHandle {
 	/// This function must be called before performing the read operation.
 	fn check_sigttin(&self, tty: &TTYDisplay) -> EResult<()> {
 		let proc = Process::current();
-		if proc.pgid == tty.get_pgrp() {
+		if proc.get_pgid() == tty.get_pgrp() {
 			return Ok(());
 		}
 		// Hold the signal handlers table to avoid a race condition

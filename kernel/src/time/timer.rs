@@ -157,7 +157,7 @@ impl Timer {
 	/// Fires the timer.
 	///
 	/// `proc` is the process to which the timer is fired.
-	pub fn fire(&mut self, proc: &mut Process) {
+	pub fn fire(&mut self, proc: &Process) {
 		match self.sevp.sigev_notify {
 			SIGEV_SIGNAL => {
 				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo) else {
@@ -333,7 +333,7 @@ pub(super) fn tick() {
 			break;
 		}
 
-		timer.fire(&mut proc);
+		timer.fire(&proc);
 
 		if timer.is_oneshot() {
 			queue.pop_first();

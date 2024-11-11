@@ -22,9 +22,6 @@
 //! several processes to run at the same time by sharing the CPU resources using
 //! a scheduler.
 
-// TODO Do not reallocate a PID of used as a pgid
-// TODO When a process receives a signal or exits, log it if the `strace` feature is enabled
-
 pub mod exec;
 pub mod iovec;
 pub mod mem_space;
@@ -51,6 +48,7 @@ use crate::{
 	process::{
 		mem_space::{copy, copy::SyscallPtr},
 		pid::PidHandle,
+		rusage::RUsage,
 		scheduler::{Scheduler, SCHEDULER},
 		signal::SigSet,
 	},
@@ -67,12 +65,11 @@ use core::{
 	ptr::{null_mut, NonNull},
 	sync::{
 		atomic,
-		atomic::{AtomicPtr, AtomicU8},
+		atomic::{AtomicPtr, AtomicU32, AtomicU8},
 	},
 };
 use mem_space::MemSpace;
 use pid::Pid;
-use rusage::RUsage;
 use signal::{Signal, SignalAction, SignalHandler};
 use utils::{
 	collections::{
@@ -221,8 +218,6 @@ enum VForkState {
 pub struct Process {
 	/// The ID of the process.
 	pid: PidHandle,
-	/// The ID of the process group.
-	pub pgid: Pid,
 	/// The thread ID of the process.
 	pub tid: Pid,
 
@@ -236,7 +231,7 @@ pub struct Process {
 	/// The process's access profile, containing user and group IDs.
 	pub access_profile: AccessProfile,
 	/// The process's current umask.
-	pub umask: file::Mode,
+	pub umask: AtomicU32,
 
 	/// The current state of the process.
 	state: AtomicU8,
@@ -253,6 +248,10 @@ pub struct Process {
 	parent: Option<Arc<Process>>,
 	/// The list of children processes.
 	children: Vec<Pid>,
+	/// The process's group leader. The PID of the group leader is the PGID of this process.
+	///
+	/// If `None`, the process is its own leader (to avoid self reference).
+	group_leader: Option<Arc<Process>>,
 	/// The list of processes in the process group.
 	process_group: Vec<Pid>,
 
@@ -288,7 +287,7 @@ pub struct Process {
 	pub tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
 
 	/// The process's resources usage.
-	rusage: RUsage,
+	pub rusage: RUsage,
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -434,7 +433,6 @@ impl Process {
 		let pid = PidHandle::init()?;
 		let process = Self {
 			pid,
-			pgid: pid::INIT_PID,
 			tid: pid::INIT_PID,
 
 			argv: Arc::new(Vec::new())?,
@@ -442,7 +440,7 @@ impl Process {
 			exec_path: Arc::new(PathBuf::root()?)?,
 
 			access_profile: rs.access_profile,
-			umask: DEFAULT_UMASK,
+			umask: AtomicU32::new(DEFAULT_UMASK),
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_state: VForkState::None,
@@ -452,6 +450,7 @@ impl Process {
 
 			parent: None,
 			children: Vec::new(),
+			group_leader: None,
 			process_group: Vec::new(),
 
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
@@ -491,42 +490,23 @@ impl Process {
 		self.pid.get() == pid::INIT_PID
 	}
 
-	/// Tells whether the process is among a group and is not its owner.
-	#[inline(always)]
-	pub fn is_in_group(&self) -> bool {
-		self.pgid != 0 && self.pgid != self.pid.get()
+	/// Returns the process group ID.
+	pub fn get_pgid(&self) -> Pid {
+		self.group_leader
+			.as_ref()
+			.map(|p| p.get_pid())
+			.unwrap_or(self.get_pid())
 	}
 
 	/// Sets the process's group ID to the given value `pgid`, updating the associated group.
 	pub fn set_pgid(&self, pgid: Pid) -> EResult<()> {
-		let old_pgid = self.pgid;
-		let new_pgid = if pgid == 0 { self.pid.get() } else { pgid };
-		if old_pgid == new_pgid {
-			return Ok(());
-		}
-		if new_pgid != self.pid.get() {
-			// Add the process to the new group
-			let Some(new_group_process) = Process::get_by_pid(new_pgid) else {
-				return Err(errno!(ESRCH));
-			};
-			let i = new_group_process
-				.process_group
-				.binary_search(&self.pid.get())
-				.unwrap_err();
-			new_group_process.process_group.insert(i, self.pid.get())?;
-		}
-		// Remove the process from its former group
-		if self.is_in_group() {
-			if let Some(old_group_process) = Process::get_by_pid(old_pgid) {
-				if let Ok(i) = old_group_process
-					.process_group
-					.binary_search(&self.pid.get())
-				{
-					old_group_process.process_group.remove(i);
-				}
-			}
-		}
-		self.pgid = new_pgid;
+		let new_group_leader = (pgid != 0 && pgid != self.get_pid())
+			.then(|| Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH)))
+			.transpose()?;
+		// TODO use an atomic swap to get the former group
+		self.group_leader = new_group_leader;
+		// TODO remove process from the old group's list
+		// TODO add process to the new group's list
 		Ok(())
 	}
 
@@ -538,10 +518,10 @@ impl Process {
 
 	/// The function tells whether the process is in an orphaned process group.
 	pub fn is_in_orphan_process_group(&self) -> bool {
-		if !self.is_in_group() {
-			return false;
-		}
-		Process::get_by_pid(self.pgid).is_none()
+		self.group_leader
+			.as_ref()
+			.map(|group_leader| group_leader.get_state() == State::Zombie)
+			.unwrap_or(false)
 	}
 
 	/// Returns the parent process's PID.
@@ -550,6 +530,11 @@ impl Process {
 			.as_ref()
 			.map(|parent| parent.get_pid())
 			.unwrap_or(self.get_pid())
+	}
+
+	/// Returns the process's umask.
+	pub fn umask(&self) -> file::Mode {
+		self.umask.load(atomic::Ordering::Relaxed)
 	}
 
 	/// Returns the process's current state.
@@ -678,13 +663,17 @@ impl Process {
 		}
 	}
 
-	/// Returns the exit status if the process has ended.
+	/// Returns the exit status.
+	///
+	/// If the process is still running, the value is undefined.
 	#[inline(always)]
-	pub fn get_exit_status(&self) -> Option<ExitStatus> {
-		matches!(self.state, State::Zombie).then_some(self.exit_status)
+	pub fn get_exit_status(&self) -> ExitStatus {
+		self.exit_status
 	}
 
 	/// Returns the signal number that killed the process.
+	///
+	/// If the process was not killed, the value is undefined.
 	#[inline(always)]
 	pub fn get_termsig(&self) -> u8 {
 		self.termsig
@@ -741,7 +730,6 @@ impl Process {
 		let pid_int = pid.get();
 		let process = Self {
 			pid,
-			pgid: this.pgid,
 			tid: pid_int,
 
 			argv: this.argv.clone(),
@@ -749,9 +737,9 @@ impl Process {
 			exec_path: this.exec_path.clone(),
 
 			access_profile: this.access_profile,
-			umask: this.umask,
+			umask: this.umask.load(atomic::Ordering::Release),
 
-			state: State::Running,
+			state: AtomicU8::new(State::Running as _),
 			vfork_state,
 
 			priority: this.priority,
@@ -873,12 +861,6 @@ impl Process {
 				ent.update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}
 		}
-	}
-
-	/// Returns an immutable reference to the process's resource usage
-	/// structure.
-	pub fn get_rusage(&self) -> &RUsage {
-		&self.rusage
 	}
 
 	/// If the process is a vfork child, resets its state and its parent's

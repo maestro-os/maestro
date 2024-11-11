@@ -97,7 +97,7 @@ Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
 nonvoluntary_ctxt_switches: 0",
 			name = DisplayableStr(name),
-			umask = self.0.umask,
+			umask = self.0.umask(),
 			state_char = state.as_char(),
 			state_name = state.as_str(),
 			pid = self.0.get_pid(),

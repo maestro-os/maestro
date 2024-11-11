@@ -20,6 +20,8 @@
 
 use crate::time::unit::Timeval;
 
+// TODO support 64 bit
+
 /// Usage of each resource by a process.
 #[derive(Clone, Default, Debug)]
 pub struct RUsage {

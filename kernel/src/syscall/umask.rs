@@ -19,7 +19,7 @@
 //! The `umask` syscall is used to set the process's file creation mask.
 
 use crate::{file, process::Process, syscall::Args};
-use core::mem;
+use core::{mem, sync::atomic};
 use utils::{
 	errno::{EResult, Errno},
 	lock::{IntMutex, IntMutexGuard},
@@ -27,6 +27,6 @@ use utils::{
 };
 
 pub fn umask(Args(mask): Args<file::Mode>, proc: Arc<Process>) -> EResult<usize> {
-	let prev = mem::replace(&mut proc.umask, mask & 0o777);
+	let prev = proc.umask.swap(mask & 0o777, atomic::Ordering::Relaxed);
 	Ok(prev as _)
 }

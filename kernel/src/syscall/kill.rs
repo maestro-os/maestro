@@ -69,10 +69,7 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 /// there is a process that could be killed.
 fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	let pgid = match pid {
-		0 => {
-			let proc = Process::current();
-			proc.pgid
-		}
+		0 => Process::current().get_pgid(),
 		i if i < 0 => -pid as Pid,
 		_ => pid as Pid,
 	};

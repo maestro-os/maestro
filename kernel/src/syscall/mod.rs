@@ -426,7 +426,7 @@ pub struct Umask(file::Mode);
 
 impl FromSyscall for Umask {
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Self(Process::current().umask)
+		Self(Process::current().umask())
 	}
 }
 
