@@ -62,11 +62,10 @@ impl WaitQueue {
 			// Yield
 			Scheduler::tick();
 			// TODO try to remove the process from the queue (since it might get woken up by
-			// something else) Execution resumes. If the current process had received a signal,
-			// return
+			// something else)
 			{
-				let proc = Process::current();
-				if proc.next_signal(true).is_some() {
+				// If the current process had received a signal, return
+				if Process::current().signal.lock().next_signal(true).is_some() {
 					return Err(errno!(EINTR));
 				}
 			}

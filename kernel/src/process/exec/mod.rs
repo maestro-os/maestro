@@ -31,13 +31,13 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
-	process::{mem_space::MemSpace, signal::SignalHandler, Process},
+	process::{mem_space::MemSpace, Process},
 };
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno::EResult,
 	lock::{IntMutex, Mutex},
-	ptr::arc::{Arc, AtomicArc},
+	ptr::arc::Arc,
 };
 
 /// Information to prepare a program image to be executed.
@@ -108,15 +108,20 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 			Ok(Arc::new(Mutex::new(new_fds))?)
 		})
 		.transpose()?;
+	let signal_handlers = Arc::new(Default::default())?;
 	// Flush to process
-	proc.argv.swap(argv);
-	proc.envp.swap(envp);
+	proc.argv = argv;
+	proc.envp = envp;
 	// TODO Set exec path
 	proc.file_descriptors = fds;
 	mem_space.lock().bind();
 	proc.mem_space = Some(mem_space);
 	// Reset signals
-	proc.signal_handlers.lock().fill(SignalHandler::Default);
+	{
+		let mut signal_manager = proc.signal.lock();
+		signal_manager.handlers = signal_handlers;
+		signal_manager.sigpending = Default::default();
+	}
 	proc.reset_vfork();
 	proc.tls_entries = Default::default();
 	proc.update_tss();

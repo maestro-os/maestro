@@ -50,7 +50,7 @@ use crate::{
 		pid::PidHandle,
 		rusage::RUsage,
 		scheduler::{Scheduler, SCHEDULER},
-		signal::SigSet,
+		signal::{SigSet, SignalAction},
 	},
 	register_get,
 	syscall::FromSyscallArg,
@@ -70,7 +70,7 @@ use core::{
 };
 use mem_space::MemSpace;
 use pid::Pid;
-use signal::{Signal, SignalAction, SignalHandler};
+use signal::{Signal, SignalHandler};
 use utils::{
 	collections::{
 		path::{Path, PathBuf},
@@ -79,8 +79,8 @@ use utils::{
 	},
 	errno,
 	errno::{AllocResult, EResult},
-	lock::{IntMutex, Mutex},
-	ptr::arc::{Arc, AtomicArc},
+	lock::{atomic::AtomicU64, IntMutex, Mutex},
+	ptr::arc::Arc,
 };
 
 /// The opcode of the `hlt` instruction.
@@ -213,6 +213,79 @@ enum VForkState {
 	Running,
 }
 
+/// A process's filesystem access information.
+pub struct ProcessFs {
+	/// The process's access profile, containing user and group IDs.
+	pub access_profile: AccessProfile,
+	/// The process's current umask.
+	pub umask: AtomicU32,
+	/// Current working directory
+	///
+	/// The field contains both the path and the directory.
+	pub cwd: Arc<vfs::Entry>,
+	/// Current root path used by the process
+	pub chroot: Arc<vfs::Entry>,
+}
+
+impl ProcessFs {
+	/// Returns the current umask.
+	pub fn umask(&self) -> file::Mode {
+		self.umask.load(atomic::Ordering::Release)
+	}
+}
+
+impl Clone for ProcessFs {
+	fn clone(&self) -> Self {
+		Self {
+			access_profile: self.access_profile,
+			umask: AtomicU32::new(self.umask.load(atomic::Ordering::Release)),
+			cwd: self.cwd.clone(),
+			chroot: self.chroot.clone(),
+		}
+	}
+}
+
+/// A process's signal management information.
+pub struct ProcessSignal {
+	/// The list of signal handlers.
+	pub handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
+	/// A bitfield storing the set of blocked signals.
+	pub sigmask: SigSet,
+	/// A bitfield storing the set of pending signals.
+	sigpending: SigSet,
+}
+
+impl ProcessSignal {
+	/// Tells whether the given signal is blocked by the process.
+	pub fn is_signal_blocked(&self, sig: Signal) -> bool {
+		self.sigmask.is_set(sig.get_id() as _)
+	}
+
+	/// Returns the ID of the next signal to be handled.
+	///
+	/// If `peek` is `false`, the signal is cleared from the bitfield.
+	///
+	/// If no signal is pending, the function returns `None`.
+	pub fn next_signal(&mut self, peek: bool) -> Option<Signal> {
+		let sig = self
+			.sigpending
+			.iter()
+			.enumerate()
+			.filter(|(_, b)| *b)
+			.filter_map(|(i, _)| {
+				let s = Signal::try_from(i as c_int).ok()?;
+				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
+			})
+			.next();
+		if !peek {
+			if let Some(id) = sig {
+				self.sigpending.clear(id.get_id() as _);
+			}
+		}
+		sig
+	}
+}
+
 /// The **Process Control Block** (PCB). This structure stores all the information
 /// about a process.
 pub struct Process {
@@ -222,27 +295,17 @@ pub struct Process {
 	pub tid: Pid,
 
 	/// The argv of the process.
-	pub argv: AtomicArc<Vec<String>>,
+	pub argv: Arc<Vec<String>>,
 	/// The environment variables of the process, separated by `\0`.
-	pub envp: AtomicArc<String>,
+	pub envp: Arc<String>,
 	/// The path to the process's executable.
-	pub exec_path: AtomicArc<PathBuf>,
-
-	/// The process's access profile, containing user and group IDs.
-	pub access_profile: AccessProfile,
-	/// The process's current umask.
-	pub umask: AtomicU32,
+	pub exec_path: Arc<PathBuf>,
 
 	/// The current state of the process.
 	state: AtomicU8,
 	/// The current vfork state of the process (see documentation of
 	/// `VForkState`).
 	vfork_state: VForkState,
-
-	/// The priority of the process.
-	pub priority: usize,
-	/// The nice value of the process.
-	pub nice: usize,
 
 	/// A pointer to the parent process.
 	parent: Option<Arc<Process>>,
@@ -255,36 +318,26 @@ pub struct Process {
 	/// The list of processes in the process group.
 	process_group: Vec<Pid>,
 
-	/// Structure managing the process's timers. This manager is shared between all threads of the
-	/// same process.
-	timer_manager: Arc<Mutex<TimerManager>>,
-
-	/// Kernel stack pointer of saved context.
-	kernel_sp: AtomicPtr<u8>,
-
 	/// The virtual memory of the process.
 	mem_space: Option<Arc<IntMutex<MemSpace>>>,
 	/// A pointer to the kernelspace stack.
 	kernel_stack: NonNull<u8>,
+	/// Kernel stack pointer of saved context.
+	kernel_sp: AtomicPtr<u8>,
 
-	/// Current working directory
-	///
-	/// The field contains both the path and the directory.
-	pub cwd: AtomicArc<vfs::Entry>,
-	/// Current root path used by the process
-	pub chroot: AtomicArc<vfs::Entry>,
+	/// Process's timers, shared between all threads of the same process.
+	pub timer_manager: Arc<Mutex<TimerManager>>,
+
+	/// Filesystem access information.
+	pub fs: Mutex<ProcessFs>, // TODO rwlock
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
 
-	/// A bitfield storing the set of blocked signals.
-	pub sigmask: SigSet,
-	/// A bitfield storing the set of pending signals.
-	sigpending: SigSet,
-	/// The list of signal handlers.
-	pub signal_handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
+	/// The process's signal management structure.
+	pub signal: Mutex<ProcessSignal>, // TODO rwlock
 
 	/// TLS entries.
-	pub tls_entries: [gdt::Entry; TLS_ENTRIES_COUNT],
+	pub tls_entries: [AtomicU64; TLS_ENTRIES_COUNT],
 
 	/// The process's resources usage.
 	pub rusage: RUsage,
@@ -435,42 +488,41 @@ impl Process {
 			pid,
 			tid: pid::INIT_PID,
 
-			argv: AtomicArc::new(Arc::new(Vec::new())?),
-			envp: AtomicArc::new(Arc::new(String::new())?),
-			exec_path: AtomicArc::new(Arc::new(PathBuf::root()?)?),
-
-			access_profile: rs.access_profile,
-			umask: AtomicU32::new(DEFAULT_UMASK),
+			argv: Arc::new(Arc::new(Vec::new())?),
+			envp: Arc::new(Arc::new(String::new())?),
+			exec_path: Arc::new(Arc::new(PathBuf::root()?)?),
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_state: VForkState::None,
-
-			priority: 0,
-			nice: 0,
 
 			parent: None,
 			children: Vec::new(),
 			group_leader: None,
 			process_group: Vec::new(),
 
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
-
-			kernel_sp: AtomicPtr::default(),
-
 			mem_space: None,
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
+			kernel_sp: AtomicPtr::default(),
 
-			cwd: root_dir.clone(),
-			chroot: root_dir,
+			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
+
+			fs: Mutex::new(ProcessFs {
+				access_profile: rs.access_profile,
+				umask: AtomicU32::new(DEFAULT_UMASK),
+				cwd: root_dir.clone(),
+				chroot: root_dir,
+			}),
 			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
 
-			sigmask: Default::default(),
-			sigpending: Default::default(),
-			signal_handlers: Arc::new(Mutex::new(Default::default()))?,
+			signal: Mutex::new(ProcessSignal {
+				handlers: Arc::new(Default::default())?,
+				sigmask: Default::default(),
+				sigpending: Default::default(),
+			}),
 
-			tls_entries: [gdt::Entry::default(); TLS_ENTRIES_COUNT],
+			tls_entries: Default::default(),
 
-			rusage: RUsage::default(),
+			rusage: Default::default(),
 
 			exit_status: 0,
 			termsig: 0,
@@ -532,11 +584,6 @@ impl Process {
 			.unwrap_or(self.get_pid())
 	}
 
-	/// Returns the process's umask.
-	pub fn umask(&self) -> file::Mode {
-		self.umask.load(atomic::Ordering::Relaxed)
-	}
-
 	/// Returns the process's current state.
 	///
 	/// **Note**: since the process cannot be locked, this function may cause data races. Use with
@@ -548,12 +595,28 @@ impl Process {
 	}
 
 	/// Sets the process's state to `new_state`.
+	///
+	/// If the transition from the previous state to `new_state` is invalid, the function does
+	/// nothing.
 	pub fn set_state(&self, new_state: State) {
-		let old_state = self.get_state();
-		if old_state == new_state || old_state == State::Zombie {
+		let Ok(old_state) = self.state.fetch_update(
+			atomic::Ordering::Release,
+			atomic::Ordering::Acquire,
+			|old_state| {
+				let old_state = State::from_id(old_state);
+				let valid = match (old_state, new_state) {
+					(State::Running | State::Sleeping, _) | (State::Stopped, State::Running) => {
+						true
+					}
+					_ => false,
+				};
+				valid.then_some(new_state as u8)
+			},
+		) else {
+			// Invalid transition, do nothing
 			return;
-		}
-		self.state.store(new_state as _, atomic::Ordering::Relaxed);
+		};
+		let old_state = State::from_id(old_state);
 		// Update the number of running processes
 		if old_state != State::Running && new_state == State::Running {
 			SCHEDULER.get().lock().increment_running();
@@ -602,11 +665,6 @@ impl Process {
 			atomic::Ordering::SeqCst,
 			|old_state| (old_state == State::Sleeping as _).then_some(State::Running as _),
 		);
-	}
-
-	/// Returns the process's timer manager.
-	pub fn timer_manager(&self) -> Arc<Mutex<TimerManager>> {
-		self.timer_manager.clone()
 	}
 
 	/// Returns the process's parent.
@@ -691,6 +749,8 @@ impl Process {
 	/// If the process is not running, the behaviour is undefined.
 	pub fn fork(this: Arc<Self>, fork_options: ForkOptions) -> EResult<Arc<Self>> {
 		debug_assert!(matches!(this.get_state(), State::Running));
+		let pid = PidHandle::unique()?;
+		let pid_int = pid.get();
 		// Handle vfork
 		let vfork_state = if fork_options.vfork {
 			this.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
@@ -721,13 +781,21 @@ impl Process {
 				.transpose()?
 		};
 		// Clone signal handlers
-		let signal_handlers = if fork_options.share_sighand {
-			this.signal_handlers.clone()
-		} else {
-			Arc::new(Mutex::new(this.signal_handlers.lock().clone()))?
+		let signal_handlers = {
+			let signal_manager = this.signal.lock();
+			if fork_options.share_sighand {
+				signal_manager.handlers.clone()
+			} else {
+				let handlers = signal_manager.handlers.lock().clone();
+				Arc::new(Mutex::new(handlers))?
+			}
 		};
-		let pid = PidHandle::unique()?;
-		let pid_int = pid.get();
+		// Clone TLS entries
+		let mut tls_entries: [AtomicU64; TLS_ENTRIES_COUNT] = Default::default();
+		for (dst, src) in tls_entries.iter_mut().zip(&this.tls_entries) {
+			let val = src.load(atomic::Ordering::Acquire);
+			dst.store(val, atomic::Ordering::Release);
+		}
 		let process = Self {
 			pid,
 			tid: pid_int,
@@ -736,37 +804,31 @@ impl Process {
 			envp: this.envp.clone(),
 			exec_path: this.exec_path.clone(),
 
-			access_profile: this.access_profile,
-			umask: AtomicU32::new(this.umask.load(atomic::Ordering::Release)),
-
 			state: AtomicU8::new(State::Running as _),
 			vfork_state,
-
-			priority: this.priority,
-			nice: this.nice,
 
 			parent: Some(this.clone()),
 			children: Vec::new(),
 			group_leader: this.group_leader.clone(),
 			process_group: Vec::new(),
 
+			mem_space: Some(mem_space),
+			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
+			kernel_sp: AtomicPtr::new(null_mut()), // TODO
+
 			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
-			kernel_sp: AtomicPtr::new(null_mut()), // TODO
-
-			mem_space: Some(mem_space),
-			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
-
-			cwd: this.cwd.clone(),
-			chroot: this.chroot.clone(),
+			fs: Mutex::new(this.fs.lock().clone()),
 			file_descriptors,
 
-			sigmask: this.sigmask,
-			sigpending: Default::default(),
-			signal_handlers,
+			signal: Mutex::new(ProcessSignal {
+				handlers: signal_handlers,
+				sigmask: this.signal.lock().sigmask,
+				sigpending: Default::default(),
+			}),
 
-			tls_entries: this.tls_entries,
+			tls_entries,
 
 			rusage: RUsage::default(),
 
@@ -782,73 +844,42 @@ impl Process {
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
 	pub fn kill(&self, sig: Signal) {
+		let mut signal_manager = self.signal.lock();
 		// Ignore blocked signals
-		if sig.can_catch() && self.sigmask.is_set(sig.get_id() as _) {
+		if sig.can_catch() && signal_manager.sigmask.is_set(sig.get_id() as _) {
 			return;
 		}
 		// Statistics
 		self.rusage.ru_nsignals = self.rusage.ru_nsignals.saturating_add(1);
-		// If the signal's action can be executed now, do it
-		{
-			let handlers = self.signal_handlers.clone();
-			let handlers = handlers.lock();
-			let handler = &handlers[sig.get_id() as usize];
-			match handler {
-				SignalHandler::Ignore => return,
-				SignalHandler::Default
-					if self.state != State::Stopped
-						|| sig.get_default_action() == SignalAction::Continue =>
-				{
-					sig.get_default_action().exec(sig, self);
-					return;
-				}
-				_ => {}
-			}
+		// If the signal cannot be caught, execute the default action regardless of other settings
+		if !sig.can_catch() {
+			sig.get_default_action().exec(sig, self);
+			return;
 		}
-		// Set the signal as pending
-		self.sigpending.set(sig.get_id() as _);
+		// Handle signal
+		let handler = signal_manager.handlers.lock()[sig.get_id() as usize].clone();
+		let default_action = sig.get_default_action();
+		match handler {
+			SignalHandler::Ignore => return,
+			// If the signal's action can be executed now, do it
+			SignalHandler::Default
+				if self.get_state() != State::Stopped
+					|| default_action == SignalAction::Continue =>
+			{
+				default_action.exec(sig, self)
+			}
+			_ => signal_manager.sigpending.set(sig.get_id() as _),
+		}
 	}
 
 	/// Kills every process in the process group.
 	pub fn kill_group(&self, sig: Signal) {
 		self.process_group
 			.iter()
-			// Avoid deadlock
-			.filter(|pid| **pid != self.pid.get())
 			.filter_map(|pid| Process::get_by_pid(*pid))
 			.for_each(|proc| {
 				proc.kill(sig);
 			});
-		self.kill(sig);
-	}
-
-	/// Tells whether the given signal is blocked by the process.
-	pub fn is_signal_blocked(&self, sig: Signal) -> bool {
-		self.sigmask.is_set(sig.get_id() as _)
-	}
-
-	/// Returns the ID of the next signal to be handled.
-	///
-	/// If `peek` is `false`, the signal is cleared from the bitfield.
-	///
-	/// If no signal is pending, the function returns `None`.
-	pub fn next_signal(&self, peek: bool) -> Option<Signal> {
-		let sig = self
-			.sigpending
-			.iter()
-			.enumerate()
-			.filter(|(_, b)| *b)
-			.filter_map(|(i, _)| {
-				let s = Signal::try_from(i as c_int).ok()?;
-				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
-			})
-			.next();
-		if !peek {
-			if let Some(id) = sig {
-				self.sigpending.clear(id.get_id() as _);
-			}
-		}
-		sig
 	}
 
 	/// Updates the `n`th TLS entry in the GDT.
@@ -858,6 +889,7 @@ impl Process {
 	/// This function does not flush the GDT's cache. Thus, it is the caller's responsibility.
 	pub fn update_tls(&self, n: usize) {
 		if let Some(ent) = self.tls_entries.get(n) {
+			let ent = gdt::Entry(ent.load(atomic::Ordering::Release));
 			unsafe {
 				ent.update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}
@@ -911,8 +943,11 @@ impl Process {
 		// TODO Take into account userspace-set values (oom may be disabled for this
 		// process, an absolute score or a bonus might be given, etc...)
 		// If the process is owned by the superuser, give it a bonus
-		if self.access_profile.is_privileged() {
-			score = score.saturating_sub(100);
+		{
+			let fs = self.fs.lock();
+			if fs.access_profile.is_privileged() {
+				score = score.saturating_sub(100);
+			}
 		}
 		score
 	}
@@ -934,10 +969,11 @@ impl AccessProfile {
 			return true;
 		}
 		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
-		self.uid == proc.access_profile.uid
-			|| self.uid == proc.access_profile.suid
-			|| self.euid == proc.access_profile.uid
-			|| self.euid == proc.access_profile.suid
+		let fs = proc.fs.lock();
+		self.uid == fs.access_profile.uid
+			|| self.uid == fs.access_profile.suid
+			|| self.euid == fs.access_profile.uid
+			|| self.euid == fs.access_profile.suid
 	}
 }
 
@@ -975,18 +1011,17 @@ pub fn yield_current(ring: u8, frame: &mut IntFrame) {
 	if proc.get_state() != State::Running {
 		Scheduler::tick();
 	}
+	let mut signal_manager = proc.signal.lock();
 	// If no signal is pending, return
-	let Some(sig) = proc.next_signal(false) else {
+	let Some(sig) = signal_manager.next_signal(false) else {
 		return;
 	};
 	// Prepare signal for execution
-	let handlers = proc.signal_handlers.clone();
-	let handlers = handlers.lock();
-	handlers[sig.get_id() as usize].exec(sig, &proc, frame);
+	signal_manager.handlers.lock()[sig.get_id() as usize].exec(sig, &proc, frame);
 	// Alter the execution flow of the current context according to the new state of the
 	// process
 	match proc.get_state() {
 		State::Running => {}
-		State::Sleeping | State::Stopped | State::Zombie => Scheduler::tick(),
+		_ => Scheduler::tick(),
 	}
 }

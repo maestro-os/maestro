@@ -44,8 +44,7 @@ pub fn timer_settime(
 	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Get timer
-	let manager_mutex = proc.timer_manager().clone();
-	let mut manager = manager_mutex.lock();
+	let mut manager = proc.timer_manager.lock();
 	let timer = manager
 		.get_timer_mut(timerid)
 		.ok_or_else(|| errno!(EINVAL))?;

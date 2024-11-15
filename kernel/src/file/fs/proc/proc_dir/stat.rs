@@ -35,8 +35,7 @@ struct StatDisp<'p>(&'p Process);
 
 impl<'p> fmt::Display for StatDisp<'p> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let argv = self.0.argv.get();
-		let name = argv.first().map(String::as_bytes).unwrap_or(b"?");
+		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
 		// FIXME deadlock
 		//let vmem_usage = self.0.get_vmem_usage();
 		let vmem_usage = 0;
@@ -56,8 +55,8 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 			sid = 0,            // TODO
 			user_jiffies = 0,   // TODO
 			kernel_jiffies = 0, // TODO
-			priority = self.0.priority,
-			nice = self.0.nice,
+			priority = 0, // TODO
+			nice = 0, // TODO
 			num_threads = 1, // TODO
 			sp = VirtAddr(user_regs.get_stack_address() as _),
 			pc = VirtAddr(user_regs.get_program_counter() as _),

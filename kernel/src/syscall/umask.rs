@@ -27,6 +27,10 @@ use utils::{
 };
 
 pub fn umask(Args(mask): Args<file::Mode>, proc: Arc<Process>) -> EResult<usize> {
-	let prev = proc.umask.swap(mask & 0o777, atomic::Ordering::Relaxed);
+	let prev = proc
+		.fs
+		.lock()
+		.umask
+		.swap(mask & 0o777, atomic::Ordering::Relaxed);
 	Ok(prev as _)
 }

@@ -102,7 +102,7 @@ impl UContext32 {
 				oldmask: 0, // TODO
 				cr2: 0,
 			},
-			uc_sigmask: process.sigmask,
+			uc_sigmask: process.signal.lock().sigmask,
 			// TODO
 			__fpregs_mem: FpState32 {
 				cw: 0,
@@ -133,7 +133,7 @@ impl UContext32 {
 		frame.rdi = self.uc_mcontext.gregs[GReg32::Edi as usize] as _;
 		frame.rbp = self.uc_mcontext.gregs[GReg32::Ebp as usize] as _;
 		// TODO restore fpstate
-		proc.sigmask = self.uc_sigmask;
+		proc.signal.lock().sigmask = self.uc_sigmask;
 	}
 }
 
@@ -267,7 +267,7 @@ impl UContext64 {
 				fpregs: 0, // TODO
 				__reserved1: [0; 8],
 			},
-			uc_sigmask: process.sigmask,
+			uc_sigmask: process.signal.lock().sigmask,
 			// TODO
 			__fpregs_mem: FpState64 {
 				cwd: 0,
@@ -311,7 +311,7 @@ impl UContext64 {
 		frame.r14 = self.uc_mcontext.gregs[GReg64::R14 as usize] as _;
 		frame.r15 = self.uc_mcontext.gregs[GReg64::R15 as usize] as _;
 		// TODO restore fpstate
-		proc.sigmask = self.uc_sigmask;
+		proc.signal.lock().sigmask = self.uc_sigmask;
 	}
 }
 

@@ -26,6 +26,6 @@ use utils::{
 };
 
 pub fn timer_delete(Args(timerid): Args<TimerT>, proc: Arc<Process>) -> EResult<usize> {
-	proc.timer_manager().lock().delete_timer(timerid)?;
+	proc.timer_manager.lock().delete_timer(timerid)?;
 	Ok(0)
 }

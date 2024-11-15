@@ -33,8 +33,6 @@ use core::{
 	ptr::{drop_in_place, NonNull},
 	sync::atomic::{AtomicUsize, Ordering},
 };
-use core::mem;
-use core::sync::atomic::AtomicPtr;
 
 /// Inner structure shared between arcs pointing to the same object.
 pub struct ArcInner<T: ?Sized> {
@@ -234,66 +232,5 @@ impl<T: ?Sized> Drop for Arc<T> {
 			let layout = Layout::for_value(inner);
 			__dealloc(self.inner.cast(), layout);
 		}
-	}
-}
-
-/// Wrapper for an [`Arc`], allowing to atomically swap it for another.
-///
-/// This structure uses interior mutability.
-///
-/// Note that this structure disables niche optimization.
-pub struct AtomicArc<T> {
-	/// Pointer to shared object.
-	inner: AtomicPtr<ArcInner<T>>,
-}
-
-impl<T> AtomicArc<T> {
-	/// Creates a new instance with the given [`Arc`].
-	pub fn new(arc: Arc<T>) -> Self {
-		let inner = arc.inner.as_ptr();
-		mem::forget(arc);
-		Self {
-			inner: AtomicPtr::new(inner),
-		}
-	}
-
-	/// Atomically replaces the inner [`Arc`] for `other`, returning the previous.
-	pub fn swap(&self, other: Arc<T>) -> Arc<T> {
-		let new = other.inner.as_ptr();
-		mem::forget(other);
-		let old = self.inner.swap(new, Ordering::Release);
-		Arc {
-			inner: NonNull::new(old).unwrap(),
-		}
-	}
-
-	/// Returns a reference of the inner [`Arc`].
-	pub fn get(&self) -> Arc<T> {
-		let inner = self.inner.load(Ordering::Relaxed);
-		let inner_ref = unsafe { &*inner };
-		inner_ref.ref_count.fetch_add(1, Ordering::Relaxed);
-		Arc {
-			inner: NonNull::new(inner).unwrap(),
-		}
-	}
-}
-
-impl<T> Clone for AtomicArc<T> {
-	fn clone(&self) -> Self {
-		let inner = self.inner.load(Ordering::Relaxed);
-		let inner_ref = unsafe { &*inner };
-		inner_ref.ref_count.fetch_add(1, Ordering::Relaxed);
-		Self {
-			inner: AtomicPtr::new(inner),
-		}
-	}
-}
-
-impl<T> Drop for AtomicArc<T> {
-	fn drop(&mut self) {
-		let inner = self.inner.load(Ordering::Relaxed);
-		drop(Arc {
-			inner: NonNull::new(inner).unwrap(),
-		});
 	}
 }

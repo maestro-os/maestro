@@ -26,6 +26,6 @@ use utils::{
 };
 
 pub fn setgid(Args(gid): Args<Gid>, proc: Arc<Process>) -> EResult<usize> {
-	proc.access_profile.set_gid(gid)?;
+	proc.fs.lock().access_profile.set_gid(gid)?;
 	Ok(0)
 }

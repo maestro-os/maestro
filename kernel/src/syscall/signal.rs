@@ -43,14 +43,13 @@ pub fn signal(
 	Args((signum, handler)): Args<(c_int, *const c_void)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let signal_handlers = proc.signal_handlers.clone();
 	// Validation
 	let signal = Signal::try_from(signum)?;
 	// Conversion
 	let new_handler = SignalHandler::from_legacy(handler);
 	// Set new handler and get old
 	let old_handler = mem::replace(
-		&mut signal_handlers.lock()[signal.get_id() as usize],
+		&mut proc.signal.lock().handlers.lock()[signal.get_id() as usize],
 		new_handler,
 	);
 	// Convert to pointer and return

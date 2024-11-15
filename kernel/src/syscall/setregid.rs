@@ -55,10 +55,11 @@ pub fn setregid(
 		-1 => ap.egid,
 		i => i as _,
 	};
-	proc.access_profile.gid = new_rgid;
-	proc.access_profile.egid = new_egid;
+	let mut fs = proc.fs.lock();
+	fs.access_profile.gid = new_rgid;
+	fs.access_profile.egid = new_egid;
 	if new_rgid != ap.gid || new_egid != ap.gid {
-		proc.access_profile.sgid = new_egid;
+		fs.access_profile.sgid = new_egid;
 	}
 	Ok(0)
 }

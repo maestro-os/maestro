@@ -39,8 +39,8 @@ pub fn rt_sigaction(
 ) -> EResult<usize> {
 	// Validation
 	let signal = Signal::try_from(signum)?;
-	let signal_handlers_mutex = proc.signal_handlers.clone();
-	let mut signal_handlers = signal_handlers_mutex.lock();
+	let signal_manager = proc.signal.lock();
+	let mut signal_handlers = signal_manager.handlers.lock();
 	// Save the old structure
 	let old = signal_handlers[signal.get_id() as usize].get_action();
 	oldact.copy_to_user(old)?;

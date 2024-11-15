@@ -145,28 +145,14 @@ impl Scheduler {
 		self.curr_proc.clone()
 	}
 
-	/// Updates the scheduler's heuristic with the new priority of a process.
-	///
-	/// Arguments:
-	/// - `old` is the old priority of the process.
-	/// - `new` is the new priority of the process.
-	///
-	/// The function doesn't need to know the process which has been updated
-	/// since it updates global information.
-	fn update_priority(&mut self, _old: usize, _new: usize) {
-		// TODO
-	}
-
 	/// Adds a process to the scheduler.
 	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<Process>> {
 		if process.get_state() == State::Running {
 			self.increment_running();
 		}
 		let pid = process.pid.get();
-		let priority = process.priority;
 		let ptr = Arc::new(process)?;
 		self.processes.insert(pid, ptr.clone())?;
-		self.update_priority(0, priority);
 		Ok(ptr)
 	}
 
@@ -179,7 +165,6 @@ impl Scheduler {
 			self.decrement_running();
 		}
 		self.processes.remove(&pid);
-		self.update_priority(proc.priority, 0);
 	}
 
 	/// Returns the current ticking frequency of the scheduler.

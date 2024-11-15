@@ -89,21 +89,10 @@ impl SignalAction {
 					signal = sig.get_id()
 				);
 				process.set_state(State::Zombie);
-				process.set_waitable(sig.get_id() as _);
 			}
 			SignalAction::Ignore => {}
-			SignalAction::Stop => {
-				if matches!(process.state, State::Running) {
-					process.set_state(State::Stopped);
-				}
-				process.set_waitable(sig.get_id());
-			}
-			SignalAction::Continue => {
-				if matches!(process.state, State::Stopped) {
-					process.set_state(State::Running);
-				}
-				process.set_waitable(sig.get_id());
-			}
+			SignalAction::Stop => process.set_state(State::Stopped),
+			SignalAction::Continue => process.set_state(State::Running),
 		}
 	}
 }
@@ -386,10 +375,13 @@ impl SignalHandler {
 				ptr::write_volatile(ctx_addr.as_ptr(), ucontext::UContext64::new(process, frame));
 			}
 		}
-		// Block signals from `sa_mask`
-		process.sigmask.0 |= action.sa_mask.0;
-		if action.sa_flags & SA_NODEFER == 0 {
-			process.sigmask.set(signal.get_id() as _);
+		// Block signal from `sa_mask`
+		{
+			let mut signals_manager = process.signal.lock();
+			signals_manager.sigmask.0 |= action.sa_mask.0;
+			if action.sa_flags & SA_NODEFER == 0 {
+				signals_manager.sigmask.set(signal.get_id() as _);
+			}
 		}
 		// Prepare registers for the trampoline
 		frame.rbp = 0;

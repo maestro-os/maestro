@@ -33,55 +33,55 @@ use core::{
 use utils::{errno::EResult, lock::IntMutex, ptr::arc::Arc};
 
 /// TODO doc
-const CLONE_IO: c_ulong = -0x80000000 as _;
+pub const CLONE_IO: c_ulong = -0x80000000 as _;
 /// If specified, the parent and child processes share the same memory space.
-const CLONE_VM: c_ulong = 0x100;
+pub const CLONE_VM: c_ulong = 0x100;
 /// TODO doc
-const CLONE_FS: c_ulong = 0x200;
+pub const CLONE_FS: c_ulong = 0x200;
 /// If specified, the parent and child processes share the same file descriptors
 /// table.
-const CLONE_FILES: c_ulong = 0x400;
+pub const CLONE_FILES: c_ulong = 0x400;
 /// If specified, the parent and child processes share the same signal handlers
 /// table.
-const CLONE_SIGHAND: c_ulong = 0x800;
+pub const CLONE_SIGHAND: c_ulong = 0x800;
 /// TODO doc
-const CLONE_PIDFD: c_ulong = 0x1000;
+pub const CLONE_PIDFD: c_ulong = 0x1000;
 /// TODO doc
-const CLONE_PTRACE: c_ulong = 0x2000;
+pub const CLONE_PTRACE: c_ulong = 0x2000;
 /// TODO doc
-const CLONE_VFORK: c_ulong = 0x4000;
+pub const CLONE_VFORK: c_ulong = 0x4000;
 /// TODO doc
-const CLONE_PARENT: c_ulong = 0x8000;
+pub const CLONE_PARENT: c_ulong = 0x8000;
 /// TODO doc
-const CLONE_THREAD: c_ulong = 0x10000;
+pub const CLONE_THREAD: c_ulong = 0x10000;
 /// TODO doc
-const CLONE_NEWNS: c_ulong = 0x20000;
+pub const CLONE_NEWNS: c_ulong = 0x20000;
 /// TODO doc
-const CLONE_SYSVSEM: c_ulong = 0x40000;
+pub const CLONE_SYSVSEM: c_ulong = 0x40000;
 /// TODO doc
-const CLONE_SETTLS: c_ulong = 0x80000;
+pub const CLONE_SETTLS: c_ulong = 0x80000;
 /// TODO doc
-const CLONE_PARENT_SETTID: c_ulong = 0x100000;
+pub const CLONE_PARENT_SETTID: c_ulong = 0x100000;
 /// TODO doc
-const CLONE_CHILD_CLEARTID: c_ulong = 0x200000;
+pub const CLONE_CHILD_CLEARTID: c_ulong = 0x200000;
 /// TODO doc
-const CLONE_DETACHED: c_ulong = 0x400000;
+pub const CLONE_DETACHED: c_ulong = 0x400000;
 /// TODO doc
-const CLONE_UNTRACED: c_ulong = 0x800000;
+pub const CLONE_UNTRACED: c_ulong = 0x800000;
 /// TODO doc
-const CLONE_CHILD_SETTID: c_ulong = 0x1000000;
+pub const CLONE_CHILD_SETTID: c_ulong = 0x1000000;
 /// TODO doc
-const CLONE_NEWCGROUP: c_ulong = 0x2000000;
+pub const CLONE_NEWCGROUP: c_ulong = 0x2000000;
 /// TODO doc
-const CLONE_NEWUTS: c_ulong = 0x4000000;
+pub const CLONE_NEWUTS: c_ulong = 0x4000000;
 /// TODO doc
-const CLONE_NEWIPC: c_ulong = 0x8000000;
+pub const CLONE_NEWIPC: c_ulong = 0x8000000;
 /// TODO doc
-const CLONE_NEWUSER: c_ulong = 0x10000000;
+pub const CLONE_NEWUSER: c_ulong = 0x10000000;
 /// TODO doc
-const CLONE_NEWPID: c_ulong = 0x20000000;
+pub const CLONE_NEWPID: c_ulong = 0x20000000;
 /// TODO doc
-const CLONE_NEWNET: c_ulong = 0x40000000;
+pub const CLONE_NEWNET: c_ulong = 0x40000000;
 
 #[allow(clippy::type_complexity)]
 pub fn clone(

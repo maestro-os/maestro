@@ -22,8 +22,13 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	process::{ForkOptions, Process},
+	process::{mem_space::copy::SyscallPtr, ForkOptions, Process},
+	syscall::{
+		clone::{clone, CLONE_VFORK, CLONE_VM},
+		Args,
+	},
 };
+use core::ptr::null_mut;
 use utils::{
 	errno::{EResult, Errno},
 	lock::{IntMutex, Mutex},
@@ -31,6 +36,8 @@ use utils::{
 };
 
 pub fn fork(proc: Arc<Process>) -> EResult<usize> {
-	let new_proc = Process::fork(proc, ForkOptions::default())?;
-	Ok(new_proc.get_pid() as _)
+	clone(
+		Args((0, null_mut(), SyscallPtr(None), 0, SyscallPtr(None))),
+		proc,
+	)
 }

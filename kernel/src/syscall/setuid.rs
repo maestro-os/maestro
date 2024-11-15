@@ -26,6 +26,6 @@ use utils::{
 };
 
 pub fn setuid(Args(uid): Args<Uid>, proc: Arc<Process>) -> EResult<usize> {
-	proc.access_profile.set_uid(uid)?;
+	proc.fs.lock().access_profile.set_uid(uid)?;
 	Ok(0)
 }

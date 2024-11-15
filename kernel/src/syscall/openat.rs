@@ -112,7 +112,7 @@ pub fn do_openat(
 			.map(PathBuf::try_from)
 			.ok_or_else(|| errno!(EFAULT))??;
 		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		let mode = mode & !proc.umask();
+		let mode = mode & !proc.fs.lock().umask();
 		(rs, pathname, fds_mutex, mode)
 	};
 

@@ -300,11 +300,12 @@ impl ResolutionSettings {
 	///
 	/// `follow_links` tells whether symbolic links are followed.
 	pub fn for_process(proc: &Process, follow_links: bool) -> Self {
+		let fs = proc.fs.lock();
 		Self {
-			root: proc.chroot.get(),
-			cwd: Some(proc.cwd.get()),
+			root: fs.chroot.clone(),
+			cwd: Some(fs.cwd.clone()),
 
-			access_profile: proc.access_profile,
+			access_profile: fs.access_profile,
 
 			create: false,
 			follow_link: follow_links,

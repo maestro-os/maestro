@@ -23,8 +23,15 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	process::{scheduler, scheduler::Scheduler, ForkOptions, Process},
+	process::{
+		mem_space::copy::SyscallPtr, scheduler, scheduler::Scheduler, ForkOptions, Process,
+	},
+	syscall::{
+		clone::{clone, CLONE_VFORK, CLONE_VM},
+		Args,
+	},
 };
+use core::ptr::null_mut;
 use utils::{
 	errno::{EResult, Errno},
 	lock::IntMutex,
@@ -32,19 +39,14 @@ use utils::{
 };
 
 pub fn vfork(proc: Arc<Process>) -> EResult<usize> {
-	let new_pid = {
-		let new_proc = Process::fork(
-			proc,
-			ForkOptions {
-				vfork: true,
-				..ForkOptions::default()
-			},
-		)?;
-		new_proc.get_pid()
-	};
-	// Let another process run instead of the current. Because the current
-	// process must now wait for the child process to terminate or execute a program
-	Scheduler::tick();
-	// Set parent's return value to the child's PID
-	Ok(new_pid as _)
+	clone(
+		Args((
+			CLONE_VFORK | CLONE_VM,
+			null_mut(),
+			SyscallPtr(None),
+			0,
+			SyscallPtr(None),
+		)),
+		proc,
+	)
 }

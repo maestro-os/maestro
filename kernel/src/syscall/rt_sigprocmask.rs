@@ -45,16 +45,17 @@ pub fn rt_sigprocmask(
 	if unlikely(sigsetsize != 8) {
 		return Err(errno!(EINVAL));
 	}
+	let mut signal_manager = proc.signal.lock();
 	// Save old set
-	let cur = proc.sigmask.0.to_ne_bytes();
+	let cur = signal_manager.sigmask.0.to_ne_bytes();
 	oldset.copy_to_user(0, &cur)?;
 	// Apply new set
 	if let Some(set) = set.copy_from_user(..8)? {
 		let set = u64::from_ne_bytes(set.try_into().unwrap());
 		match how {
-			SIG_BLOCK => proc.sigmask.0 |= set,
-			SIG_UNBLOCK => proc.sigmask.0 &= !set,
-			SIG_SETMASK => proc.sigmask.0 = set,
+			SIG_BLOCK => signal_manager.sigmask.0 |= set,
+			SIG_UNBLOCK => signal_manager.sigmask.0 &= !set,
+			SIG_SETMASK => signal_manager.sigmask.0 = set,
 			_ => return Err(errno!(EINVAL)),
 		}
 	}

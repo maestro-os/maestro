@@ -308,8 +308,7 @@ pub(super) fn tick() {
 			break;
 		};
 		// Get timer manager
-		let timer_manager_mutex = proc.timer_manager();
-		let mut timer_manager = timer_manager_mutex.lock();
+		let mut timer_manager = proc.timer_manager.lock();
 
 		// Get timer
 		let Some(timer) = timer_manager.get_timer_mut(timer_id) else {

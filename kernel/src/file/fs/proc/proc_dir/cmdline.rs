@@ -34,8 +34,7 @@ struct CmdlineDisp<'p>(&'p Process);
 
 impl<'p> fmt::Display for CmdlineDisp<'p> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let argv = self.0.argv.get();
-		for a in argv.iter() {
+		for a in self.0.argv.iter() {
 			write!(f, "{a}\0")?;
 		}
 		Ok(())

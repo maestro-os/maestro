@@ -34,9 +34,9 @@ struct StatusDisp<'p>(&'p Process);
 
 impl<'p> fmt::Display for StatusDisp<'p> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let argv = self.0.argv.get();
-		let name = argv.first().map(String::as_bytes).unwrap_or(b"?");
+		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
 		let state = self.0.get_state();
+		let fs = self.0.fs.lock();
 		// TODO Fill every fields with process's data
 		writeln!(
 			f,
@@ -98,19 +98,19 @@ Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
 nonvoluntary_ctxt_switches: 0",
 			name = DisplayableStr(name),
-			umask = self.0.umask(),
+			umask = fs.umask(),
 			state_char = state.as_char(),
 			state_name = state.as_str(),
 			pid = self.0.get_pid(),
 			ppid = self.0.get_parent_pid(),
-			uid = self.0.access_profile.uid,
-			euid = self.0.access_profile.euid,
-			suid = self.0.access_profile.suid,
-			ruid = self.0.access_profile.uid,
-			gid = self.0.access_profile.gid,
-			egid = self.0.access_profile.egid,
-			sgid = self.0.access_profile.sgid,
-			rgid = self.0.access_profile.gid,
+			uid = fs.access_profile.uid,
+			euid = fs.access_profile.euid,
+			suid = fs.access_profile.suid,
+			ruid = fs.access_profile.uid,
+			gid = fs.access_profile.gid,
+			egid = fs.access_profile.egid,
+			sgid = fs.access_profile.sgid,
+			rgid = fs.access_profile.gid,
 		)
 	}
 }

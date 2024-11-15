@@ -51,12 +51,9 @@ impl NodeOps for Cwd {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let cwd = vfs::Entry::get_path(
-			&Process::get_by_pid(self.0)
-				.ok_or_else(|| errno!(ENOENT))?
-				.cwd
-				.get(),
-		)?;
+		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
+		let fs = proc.fs.lock();
+		let cwd = vfs::Entry::get_path(&fs.cwd)?;
 		format_content!(off, buf, "{cwd}")
 	}
 }

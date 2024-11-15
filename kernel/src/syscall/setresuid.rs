@@ -47,15 +47,16 @@ pub fn setresuid(
 		}
 	}
 	// Update
-	proc.access_profile.uid = match ruid {
+	let mut fs = proc.fs.lock();
+	fs.access_profile.uid = match ruid {
 		-1 => ap.uid,
 		i => i as _,
 	};
-	proc.access_profile.euid = match euid {
+	fs.access_profile.euid = match euid {
 		-1 => ap.euid,
 		i => i as _,
 	};
-	proc.access_profile.suid = match suid {
+	fs.access_profile.suid = match suid {
 		-1 => ap.suid,
 		i => i as _,
 	};

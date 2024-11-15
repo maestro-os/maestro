@@ -47,15 +47,16 @@ pub fn setresgid(
 		}
 	}
 	// Update
-	proc.access_profile.gid = match rgid {
+	let mut fs = proc.fs.lock();
+	fs.access_profile.gid = match rgid {
 		-1 => ap.gid,
 		i => i as _,
 	};
-	proc.access_profile.egid = match egid {
+	fs.access_profile.egid = match egid {
 		-1 => ap.egid,
 		i => i as _,
 	};
-	proc.access_profile.sgid = match sgid {
+	fs.access_profile.sgid = match sgid {
 		-1 => ap.sgid,
 		i => i as _,
 	};

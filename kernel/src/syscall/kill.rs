@@ -36,7 +36,7 @@ use utils::{
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 	let proc = Process::current();
-	let ap = proc.access_profile;
+	let ap = proc.fs.lock().access_profile;
 	// Closure sending the signal
 	let f = |target: &Process| {
 		if matches!(target.get_state(), State::Zombie) {
