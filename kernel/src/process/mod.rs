@@ -50,7 +50,7 @@ use crate::{
 		pid::PidHandle,
 		rusage::RUsage,
 		scheduler::{Scheduler, SCHEDULER},
-		signal::{SigSet, SignalAction},
+		signal::SigSet,
 	},
 	register_get,
 	syscall::FromSyscallArg,
@@ -79,7 +79,7 @@ use utils::{
 	},
 	errno,
 	errno::{AllocResult, EResult},
-	lock::{atomic::AtomicU64, IntMutex, Mutex},
+	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
@@ -337,7 +337,7 @@ pub struct Process {
 	pub signal: Mutex<ProcessSignal>, // TODO rwlock
 
 	/// TLS entries.
-	pub tls_entries: [AtomicU64; TLS_ENTRIES_COUNT],
+	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The process's resources usage.
 	pub rusage: RUsage,
@@ -488,9 +488,9 @@ impl Process {
 			pid,
 			tid: pid::INIT_PID,
 
-			argv: Arc::new(Arc::new(Vec::new())?),
-			envp: Arc::new(Arc::new(String::new())?),
-			exec_path: Arc::new(Arc::new(PathBuf::root()?)?),
+			argv: Arc::new(Vec::new())?,
+			envp: Arc::new(String::new())?,
+			exec_path: Arc::new(PathBuf::root()?)?,
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_state: VForkState::None,
@@ -520,7 +520,7 @@ impl Process {
 				sigpending: Default::default(),
 			}),
 
-			tls_entries: Default::default(),
+			tls: Default::default(),
 
 			rusage: Default::default(),
 
@@ -790,12 +790,6 @@ impl Process {
 				Arc::new(Mutex::new(handlers))?
 			}
 		};
-		// Clone TLS entries
-		let mut tls_entries: [AtomicU64; TLS_ENTRIES_COUNT] = Default::default();
-		for (dst, src) in tls_entries.iter_mut().zip(&this.tls_entries) {
-			let val = src.load(atomic::Ordering::Acquire);
-			dst.store(val, atomic::Ordering::Release);
-		}
 		let process = Self {
 			pid,
 			tid: pid_int,
@@ -828,7 +822,7 @@ impl Process {
 				sigpending: Default::default(),
 			}),
 
-			tls_entries,
+			tls: Mutex::new(this.tls.lock().clone()),
 
 			rusage: RUsage::default(),
 
@@ -851,23 +845,23 @@ impl Process {
 		}
 		// Statistics
 		self.rusage.ru_nsignals = self.rusage.ru_nsignals.saturating_add(1);
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] received signal `{signal}`",
+			pid = self.get_pid(),
+			signal = sig.get_id()
+		);
+		let default_action = sig.get_default_action();
 		// If the signal cannot be caught, execute the default action regardless of other settings
 		if !sig.can_catch() {
-			sig.get_default_action().exec(sig, self);
+			default_action.exec(self);
 			return;
 		}
 		// Handle signal
 		let handler = signal_manager.handlers.lock()[sig.get_id() as usize].clone();
-		let default_action = sig.get_default_action();
 		match handler {
 			SignalHandler::Ignore => return,
-			// If the signal's action can be executed now, do it
-			SignalHandler::Default
-				if self.get_state() != State::Stopped
-					|| default_action == SignalAction::Continue =>
-			{
-				default_action.exec(sig, self)
-			}
+			SignalHandler::Default => default_action.exec(self),
 			_ => signal_manager.sigpending.set(sig.get_id() as _),
 		}
 	}
@@ -888,8 +882,8 @@ impl Process {
 	///
 	/// This function does not flush the GDT's cache. Thus, it is the caller's responsibility.
 	pub fn update_tls(&self, n: usize) {
-		if let Some(ent) = self.tls_entries.get(n) {
-			let ent = gdt::Entry(ent.load(atomic::Ordering::Release));
+		let entries = self.tls.lock();
+		if let Some(ent) = entries.get(n) {
 			unsafe {
 				ent.update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
 			}

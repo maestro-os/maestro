@@ -78,18 +78,10 @@ pub enum SignalAction {
 
 impl SignalAction {
 	/// Executes the signal action for the given process.
-	pub fn exec(self, sig: Signal, process: &Process) {
+	pub fn exec(self, process: &Process) {
 		match self {
 			// TODO when `Abort`ing, dump core
-			SignalAction::Terminate | SignalAction::Abort => {
-				#[cfg(feature = "strace")]
-				println!(
-					"[strace {pid}] killed by signal `{signal}`",
-					pid = process.get_pid(),
-					signal = sig.get_id()
-				);
-				process.set_state(State::Zombie);
-			}
+			SignalAction::Terminate | SignalAction::Abort => process.set_state(State::Zombie),
 			SignalAction::Ignore => {}
 			SignalAction::Stop => process.set_state(State::Stopped),
 			SignalAction::Continue => process.set_state(State::Running),
@@ -325,7 +317,7 @@ impl SignalHandler {
 				// Signals on the init process can be executed only if the process has set a
 				// signal handler
 				if !process.is_init() || !signal.can_catch() {
-					signal.get_default_action().exec(signal, process);
+					signal.get_default_action().exec(process);
 				}
 				return;
 			}

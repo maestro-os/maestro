@@ -123,7 +123,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		signal_manager.sigpending = Default::default();
 	}
 	proc.reset_vfork();
-	proc.tls_entries = Default::default();
+	*proc.tls.lock() = Default::default();
 	proc.update_tss();
 	// Set the process's registers
 	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.bit32);
