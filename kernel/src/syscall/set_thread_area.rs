@@ -73,7 +73,7 @@ pub fn set_thread_area(
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {
 		info.set_entry_number((TLS_BEGIN_INDEX + id) as _);
-		u_info.copy_to_user(info.clone())?;
+		u_info.copy_to_user(&info)?;
 	}
 	// Update the entry
 	*entry = info.to_descriptor();

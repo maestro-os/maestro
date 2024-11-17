@@ -43,7 +43,7 @@ pub fn rt_sigaction(
 	let mut signal_handlers = signal_manager.handlers.lock();
 	// Save the old structure
 	let old = signal_handlers[signal.get_id() as usize].get_action();
-	oldact.copy_to_user(old)?;
+	oldact.copy_to_user(&old)?;
 	// Set the new structure
 	if let Some(new) = act.copy_from_user()? {
 		signal_handlers[signal.get_id() as usize] = SignalHandler::Handler(new);

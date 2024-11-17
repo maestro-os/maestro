@@ -57,6 +57,6 @@ pub fn socketpair(
 	let file1 = File::open_floating(sock, file::O_RDWR)?;
 	// Create file descriptors
 	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
-	sv.copy_to_user([fd0_id as _, fd1_id as _])?;
+	sv.copy_to_user(&[fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }

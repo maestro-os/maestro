@@ -51,7 +51,7 @@ pub fn do_fstatfs(
 		.ok_or_else(|| errno!(ENOSYS))?
 		.fs
 		.get_stat()?;
-	buf.copy_to_user(stat)?;
+	buf.copy_to_user(&stat)?;
 	Ok(0)
 }
 

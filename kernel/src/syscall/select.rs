@@ -186,13 +186,13 @@ pub fn do_select<T: TimeUnit>(
 	};
 	// Write back
 	if let Some(val) = readfds_set {
-		readfds.copy_to_user(val)?;
+		readfds.copy_to_user(&val)?;
 	}
 	if let Some(val) = writefds_set {
-		writefds.copy_to_user(val)?;
+		writefds.copy_to_user(&val)?;
 	}
 	if let Some(val) = exceptfds_set {
-		exceptfds.copy_to_user(val)?;
+		exceptfds.copy_to_user(&val)?;
 	}
 	Ok(res)
 }

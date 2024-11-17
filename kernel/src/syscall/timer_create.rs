@@ -48,6 +48,6 @@ pub fn timer_create(
 		sigev_notify_thread_id: proc.tid,
 	});
 	let id = proc.timer_manager.lock().create_timer(clockid, sevp_val)?;
-	timerid.copy_to_user(id as _)?;
+	timerid.copy_to_user(&(id as _))?;
 	Ok(0)
 }

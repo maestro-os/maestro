@@ -50,7 +50,7 @@ pub fn timer_settime(
 		.ok_or_else(|| errno!(EINVAL))?;
 	// Write old value
 	let old = timer.get_time();
-	old_value.copy_to_user(old)?;
+	old_value.copy_to_user(&old)?;
 	// Set new value
 	let mut new_value_val = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	if (flags & TIMER_ABSTIME) == 0 {

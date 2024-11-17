@@ -30,6 +30,6 @@ use utils::errno::EResult;
 
 pub fn time(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
 	let time = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-	tloc.copy_to_user(time as _)?;
+	tloc.copy_to_user(&(time as _))?;
 	Ok(time as _)
 }

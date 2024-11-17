@@ -48,7 +48,7 @@ use crate::{
 	process::{
 		mem_space::{copy, copy::SyscallPtr},
 		pid::PidHandle,
-		rusage::RUsage,
+		rusage::Rusage,
 		scheduler::{Scheduler, SCHEDULER},
 		signal::SigSet,
 	},
@@ -340,7 +340,7 @@ pub struct Process {
 	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The process's resources usage.
-	pub rusage: RUsage,
+	pub rusage: Rusage,
 
 	/// The exit status of the process after exiting.
 	exit_status: ExitStatus,
@@ -822,7 +822,7 @@ impl Process {
 
 			tls: Mutex::new(this.tls.lock().clone()),
 
-			rusage: RUsage::default(),
+			rusage: Rusage::default(),
 
 			exit_status: this.exit_status,
 			termsig: 0,
@@ -842,7 +842,9 @@ impl Process {
 			return;
 		}
 		// Statistics
-		self.rusage.ru_nsignals = self.rusage.ru_nsignals.saturating_add(1);
+		self.rusage
+			.ru_nsignals
+			.fetch_add(1, atomic::Ordering::Relaxed);
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] received signal `{signal}`",

@@ -66,7 +66,7 @@ pub fn _llseek(
 	};
 	let off = base.checked_add(off).ok_or_else(|| errno!(EOVERFLOW))?;
 	// Write the result to the userspace
-	result.copy_to_user(off)?;
+	result.copy_to_user(&off)?;
 	// Set the new offset
 	file.off.store(off, atomic::Ordering::Release);
 	Ok(0)

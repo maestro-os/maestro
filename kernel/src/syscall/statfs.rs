@@ -52,7 +52,7 @@ pub(super) fn do_statfs(
 		.fs
 		.get_stat()?;
 	// Write structure to userspace
-	buf.copy_to_user(stat)?;
+	buf.copy_to_user(&stat)?;
 	Ok(0)
 }
 

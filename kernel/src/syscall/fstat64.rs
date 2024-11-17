@@ -139,6 +139,6 @@ pub fn fstat64(
 			TimestampScale::Nanosecond,
 		)),
 	};
-	statbuf.copy_to_user(stat)?;
+	statbuf.copy_to_user(&stat)?;
 	Ok(0)
 }

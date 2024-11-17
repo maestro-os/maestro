@@ -35,8 +35,8 @@ pub fn getresuid(
 	Args((ruid, euid, suid)): Args<(SyscallPtr<Uid>, SyscallPtr<Uid>, SyscallPtr<Uid>)>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
-	ruid.copy_to_user(ap.uid)?;
-	euid.copy_to_user(ap.euid)?;
-	suid.copy_to_user(ap.suid)?;
+	ruid.copy_to_user(&ap.uid)?;
+	euid.copy_to_user(&ap.euid)?;
+	suid.copy_to_user(&ap.suid)?;
 	Ok(0)
 }

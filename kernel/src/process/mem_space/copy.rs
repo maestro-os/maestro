@@ -115,13 +115,13 @@ impl<T: Sized + fmt::Debug> SyscallPtr<T> {
 	///
 	/// If the value is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
-	pub fn copy_to_user(&self, val: T) -> EResult<()> {
+	pub fn copy_to_user(&self, val: &T) -> EResult<()> {
 		let Some(ptr) = self.0 else {
 			return Ok(());
 		};
 		unsafe {
 			copy_to_user_raw(
-				&val as *const _ as *const _,
+				val as *const _ as *const _,
 				ptr.as_ptr() as *mut _,
 				size_of::<T>(),
 			)?;

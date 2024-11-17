@@ -21,7 +21,7 @@
 use crate::{
 	process,
 	process::{
-		mem_space::copy::SyscallPtr, pid::Pid, rusage::RUsage, scheduler, scheduler::Scheduler,
+		mem_space::copy::SyscallPtr, pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler,
 		Process, State,
 	},
 	syscall::{waitpid::scheduler::SCHEDULER, Args},
@@ -100,7 +100,7 @@ fn get_waitable(
 	pid: i32,
 	wstatus: &SyscallPtr<i32>,
 	options: i32,
-	rusage: &SyscallPtr<RUsage>,
+	rusage: &SyscallPtr<Rusage>,
 ) -> EResult<Option<Pid>> {
 	let mut empty = true;
 	let mut sched = SCHEDULER.get().lock();
@@ -127,8 +127,8 @@ fn get_waitable(
 	};
 	let pid = proc.get_pid();
 	// Write values back
-	wstatus.copy_to_user(get_wstatus(&proc))?;
-	rusage.copy_to_user(proc.rusage.clone())?;
+	wstatus.copy_to_user(&get_wstatus(&proc))?;
+	rusage.copy_to_user(&proc.rusage)?;
 	// Clear the waitable flag if requested
 	if options & WNOWAIT == 0 {
 		// If the process was a zombie, remove it
@@ -145,7 +145,7 @@ pub fn do_waitpid(
 	pid: i32,
 	wstatus: SyscallPtr<i32>,
 	options: i32,
-	rusage: SyscallPtr<RUsage>,
+	rusage: SyscallPtr<Rusage>,
 ) -> EResult<usize> {
 	loop {
 		{

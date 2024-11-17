@@ -35,6 +35,6 @@ pub fn clock_gettime(
 	Args((clockid, tp)): Args<(ClockIdT, SyscallPtr<Timespec>)>,
 ) -> EResult<usize> {
 	let curr_time = clock::current_time_struct::<Timespec>(clockid)?;
-	tp.copy_to_user(curr_time)?;
+	tp.copy_to_user(&curr_time)?;
 	Ok(0)
 }
