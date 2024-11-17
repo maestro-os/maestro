@@ -604,12 +604,10 @@ impl Process {
 			atomic::Ordering::Acquire,
 			|old_state| {
 				let old_state = State::from_id(old_state);
-				let valid = match (old_state, new_state) {
-					(State::Running | State::Sleeping, _) | (State::Stopped, State::Running) => {
-						true
-					}
-					_ => false,
-				};
+				let valid = matches!(
+					(old_state, new_state),
+					(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
+				);
 				valid.then_some(new_state as u8)
 			},
 		) else {
@@ -916,35 +914,6 @@ impl Process {
 		self.set_state(State::Zombie);
 		self.reset_vfork();
 	}
-
-	/// Returns the number of virtual memory pages used by the process.
-	pub fn get_vmem_usage(&self) -> usize {
-		if let Some(mem_space_mutex) = &self.mem_space {
-			let mem_space = mem_space_mutex.lock();
-			mem_space.get_vmem_usage()
-		} else {
-			0
-		}
-	}
-
-	/// Returns the OOM score, used by the OOM killer to determine the process
-	/// to kill in case the system runs out of memory.
-	///
-	/// A higher score means a higher probability of getting killed.
-	pub fn get_oom_score(&self) -> u16 {
-		let mut score: u16 = 0;
-		// TODO Compute the score using physical memory usage
-		// TODO Take into account userspace-set values (oom may be disabled for this
-		// process, an absolute score or a bonus might be given, etc...)
-		// If the process is owned by the superuser, give it a bonus
-		{
-			let fs = self.fs.lock();
-			if fs.access_profile.is_privileged() {
-				score = score.saturating_sub(100);
-			}
-		}
-		score
-	}
 }
 
 impl fmt::Debug for Process {
@@ -983,6 +952,24 @@ impl Drop for Process {
 	}
 }
 
+/// Returns `true` if the execution shall continue. Else, the execution shall be paused.
+fn yield_current_impl(frame: &mut IntFrame) -> bool {
+	// If the process is not running anymore, stop execution
+	let proc = Process::current();
+	if proc.get_state() != State::Running {
+		return false;
+	}
+	// If no signal is pending, continue
+	let mut signal_manager = proc.signal.lock();
+	let Some(sig) = signal_manager.next_signal(false) else {
+		return true;
+	};
+	// Prepare for execution of signal handler
+	signal_manager.handlers.lock()[sig.get_id() as usize].exec(sig, &proc, frame);
+	// If the process is still running, continue execution
+	proc.get_state() == State::Running
+}
+
 /// Before returning to userspace from the current context, this function checks the state of the
 /// current process to potentially alter the execution flow.
 ///
@@ -1000,22 +987,9 @@ pub fn yield_current(ring: u8, frame: &mut IntFrame) {
 	if ring < 3 {
 		return;
 	}
-	let proc = Process::current();
-	// If the process is not running anymore, stop execution
-	if proc.get_state() != State::Running {
+	// Use a separate function to drop everything, since `Scheduler::tick` may never return
+	let cont = yield_current_impl(frame);
+	if !cont {
 		Scheduler::tick();
-	}
-	let mut signal_manager = proc.signal.lock();
-	// If no signal is pending, return
-	let Some(sig) = signal_manager.next_signal(false) else {
-		return;
-	};
-	// Prepare signal for execution
-	signal_manager.handlers.lock()[sig.get_id() as usize].exec(sig, &proc, frame);
-	// Alter the execution flow of the current context according to the new state of the
-	// process
-	match proc.get_state() {
-		State::Running => {}
-		_ => Scheduler::tick(),
 	}
 }
