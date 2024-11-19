@@ -28,41 +28,8 @@ use crate::{
 	memory::VirtAddr,
 	process::{pid::Pid, Process},
 };
-use core::{fmt, fmt::Formatter};
-use utils::{collections::string::String, errno, errno::EResult, DisplayableStr};
-
-struct StatDisp<'p>(&'p Process);
-
-impl<'p> fmt::Display for StatDisp<'p> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
-		// FIXME deadlock
-		//let vmem_usage = self.0.get_vmem_usage();
-		let vmem_usage = 0;
-		let user_regs = self.0.user_regs();
-		// TODO Fill every fields with process's data
-		write!(
-			f,
-			"{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
-0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
-TODO TODO TODO TODO {sp:?} {pc:?} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
-TODO TODO TODO TODO TODO TODO TODO TODO TODO",
-			pid = self.0.get_pid(),
-			name = DisplayableStr(name),
-			state_char = self.0.get_state().as_char(),
-			ppid = self.0.get_parent_pid(),
-			pgid = self.0.get_pgid(),
-			sid = 0,            // TODO
-			user_jiffies = 0,   // TODO
-			kernel_jiffies = 0, // TODO
-			priority = 0, // TODO
-			nice = 0, // TODO
-			num_threads = 1, // TODO
-			sp = VirtAddr(user_regs.get_stack_address() as _),
-			pc = VirtAddr(user_regs.get_program_counter() as _),
-		)
-	}
-}
+use core::fmt;
+use utils::{errno, errno::EResult};
 
 /// The `stat` node of the proc.
 #[derive(Debug)]
@@ -87,6 +54,32 @@ impl NodeOps for StatNode {
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		format_content!(off, buf, "{}", StatDisp(&proc))
+		let mem_space = proc.mem_space.as_ref().unwrap().lock();
+		let disp = fmt::from_fn(|f| {
+			let user_regs = proc.user_regs();
+			// TODO Fill every fields with process's data
+			write!(
+				f,
+				"{pid} ({name}) {state_char} {ppid} {pgid} {sid} TODO TODO 0 \
+0 0 0 0 {user_jiffies} {kernel_jiffies} TODO TODO {priority} {nice} {num_threads} 0 {vmem_usage} \
+TODO TODO TODO TODO {sp:?} {pc:?} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
+TODO TODO TODO TODO TODO TODO TODO TODO TODO",
+				pid = self.0,
+				name = mem_space.exe_info.exe.name,
+				state_char = proc.get_state().as_char(),
+				ppid = proc.get_parent_pid(),
+				pgid = proc.get_pgid(),
+				sid = 0,            // TODO
+				user_jiffies = 0,   // TODO
+				kernel_jiffies = 0, // TODO
+				priority = 0, // TODO
+				nice = 0, // TODO
+				num_threads = 1, // TODO
+				vmem_usage = mem_space.get_vmem_usage(),
+				sp = VirtAddr(user_regs.get_stack_address() as _),
+				pc = VirtAddr(user_regs.get_program_counter() as _),
+			)
+		});
+		format_content!(off, buf, "{disp}")
 	}
 }

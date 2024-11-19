@@ -156,7 +156,7 @@ pub fn execve(
 		(file, argv, envp)
 	};
 	let program_image = exec::build_image(
-		&file,
+		file,
 		ExecInfo {
 			path_resolution: &rs,
 			argv,

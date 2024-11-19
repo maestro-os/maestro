@@ -339,8 +339,7 @@ impl SignalHandler {
 		let ctx_addr = stack_addr - ctx_size;
 		let signal_sp = stack_addr - (ctx_size + arg_len);
 		{
-			let mem_space = process.get_mem_space().unwrap();
-			let mut mem_space = mem_space.lock();
+			let mut mem_space = process.mem_space.as_ref().unwrap().lock();
 			mem_space.bind();
 			// FIXME: a stack overflow would cause an infinite loop
 			oom::wrap(|| mem_space.alloc(signal_sp, arg_len));

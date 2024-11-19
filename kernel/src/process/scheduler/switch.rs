@@ -111,7 +111,7 @@ switch_asm:
 #[no_mangle]
 extern "C" fn switch_finish(_prev: &mut Process, next: &mut Process) {
 	// Bind the memory space
-	next.get_mem_space().unwrap().lock().bind();
+	next.mem_space.as_ref().unwrap().lock().bind();
 	// Update the TSS for the process
 	next.update_tss();
 	// Update TLS entries in the GDT

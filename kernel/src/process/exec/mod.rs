@@ -52,11 +52,6 @@ pub struct ExecInfo<'s> {
 
 /// A built program image.
 pub struct ProgramImage {
-	/// The argv of the program.
-	argv: Vec<String>,
-	/// The environment variables of the program.
-	envp: String,
-
 	/// The image's memory space.
 	mem_space: MemSpace,
 	/// Tells whether the program is 32 bit.
@@ -71,8 +66,9 @@ pub struct ProgramImage {
 /// A program executor, whose role is to load a program and to prepare it for execution.
 pub trait Executor {
 	/// Builds a program image.
-	/// `file` is the program's file.
-	fn build_image(&self, file: &vfs::Entry) -> EResult<ProgramImage>;
+	///
+	/// `file` is the program's VFS entry.
+	fn build_image(&self, file: Arc<vfs::Entry>) -> EResult<ProgramImage>;
 }
 
 /// Builds a program image from the given executable file.
@@ -83,11 +79,9 @@ pub trait Executor {
 ///
 /// The function returns a memory space containing the program image and the
 /// pointer to the entry point.
-pub fn build_image(file: &vfs::Entry, info: ExecInfo) -> EResult<ProgramImage> {
+pub fn build_image(file: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	// TODO Support other formats than ELF (wasm?)
-
-	let exec = elf::ELFExecutor::new(info)?;
-	exec.build_image(file)
+	elf::ELFExecutor(info).build_image(file)
 }
 
 /// Executes the program image `image` on the process `proc`.
@@ -96,8 +90,6 @@ pub fn build_image(file: &vfs::Entry, info: ExecInfo) -> EResult<ProgramImage> {
 /// for each register so that the execution beings when the interrupt handler returns.
 pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
 	// Preform all fallible operations first before touching the process
-	let argv = Arc::new(image.argv)?;
-	let envp = Arc::new(image.envp)?;
 	let mem_space = Arc::new(IntMutex::new(image.mem_space))?;
 	let fds = proc
 		.file_descriptors
@@ -110,9 +102,6 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		.transpose()?;
 	let signal_handlers = Arc::new(Default::default())?;
 	// Flush to process
-	proc.argv = argv;
-	proc.envp = envp;
-	// TODO Set exec path
 	proc.file_descriptors = fds;
 	mem_space.lock().bind();
 	proc.mem_space = Some(mem_space);

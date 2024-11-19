@@ -74,7 +74,6 @@ use signal::{Signal, SignalHandler};
 use utils::{
 	collections::{
 		path::{Path, PathBuf},
-		string::String,
 		vec::Vec,
 	},
 	errno,
@@ -294,13 +293,6 @@ pub struct Process {
 	/// The thread ID of the process.
 	pub tid: Pid,
 
-	/// The argv of the process.
-	pub argv: Arc<Vec<String>>,
-	/// The environment variables of the process, separated by `\0`.
-	pub envp: Arc<String>,
-	/// The path to the process's executable.
-	pub exec_path: Arc<PathBuf>,
-
 	/// The current state of the process.
 	state: AtomicU8,
 	/// The current vfork state of the process (see documentation of
@@ -319,7 +311,7 @@ pub struct Process {
 	process_group: Vec<Pid>,
 
 	/// The virtual memory of the process.
-	mem_space: Option<Arc<IntMutex<MemSpace>>>,
+	pub mem_space: Option<Arc<IntMutex<MemSpace>>>,
 	/// A pointer to the kernelspace stack.
 	kernel_stack: NonNull<u8>,
 	/// Kernel stack pointer of saved context.
@@ -396,7 +388,7 @@ pub(crate) fn init() -> EResult<()> {
 		};
 		// Check access
 		let success = {
-			let Some(mem_space_mutex) = curr_proc.get_mem_space() else {
+			let Some(mem_space_mutex) = curr_proc.mem_space.as_ref() else {
 				return CallbackResult::Panic;
 			};
 			let mut mem_space = mem_space_mutex.lock();
@@ -487,10 +479,6 @@ impl Process {
 		let process = Self {
 			pid,
 			tid: pid::INIT_PID,
-
-			argv: Arc::new(Vec::new())?,
-			envp: Arc::new(String::new())?,
-			exec_path: Arc::new(PathBuf::root()?)?,
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_state: VForkState::None,
@@ -699,14 +687,6 @@ impl Process {
 		todo!()
 	}
 
-	/// Returns a reference to the process's memory space.
-	///
-	/// If the process is terminated, the function returns `None`.
-	#[inline(always)]
-	pub fn get_mem_space(&self) -> Option<&Arc<IntMutex<MemSpace>>> {
-		self.mem_space.as_ref()
-	}
-
 	/// Updates the TSS on the current kernel for the process.
 	pub fn update_tss(&self) {
 		// Set kernel stack pointer
@@ -758,7 +738,7 @@ impl Process {
 		};
 		// Clone memory space
 		let mem_space = {
-			let curr_mem_space = this.get_mem_space().unwrap();
+			let curr_mem_space = this.mem_space.as_ref().unwrap();
 			if fork_options.share_memory || fork_options.vfork {
 				curr_mem_space.clone()
 			} else {
@@ -791,10 +771,6 @@ impl Process {
 		let process = Self {
 			pid,
 			tid: pid_int,
-
-			argv: this.argv.clone(),
-			envp: this.envp.clone(),
-			exec_path: this.exec_path.clone(),
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_state,

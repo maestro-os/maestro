@@ -33,6 +33,7 @@
 #![feature(array_chunks)]
 #![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
+#![feature(debug_closure_helpers)]
 #![feature(exposed_provenance)]
 #![feature(lang_items)]
 #![feature(once_cell_try)]
@@ -141,7 +142,7 @@ fn init(init_path: String) -> EResult<()> {
 		let rs = ResolutionSettings::kernel_follow();
 		let file = vfs::get_file_from_path(path, &rs)?;
 		let program_image = exec::build_image(
-			&file,
+			file,
 			ExecInfo {
 				path_resolution: &rs,
 				argv: vec![init_path]?,

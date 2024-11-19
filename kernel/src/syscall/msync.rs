@@ -59,7 +59,7 @@ pub fn msync(
 	let pages = length.div_ceil(PAGE_SIZE);
 	while i < pages {
 		let mapping = mem_space.get_mapping_for_addr(addr).ok_or(errno!(ENOMEM))?;
-		mapping.fs_sync(mem_space.get_vmem())?; // TODO Use flags
+		mapping.fs_sync(&mem_space.vmem)?; // TODO Use flags
 		i += mapping.get_size().get();
 	}
 	Ok(0)
