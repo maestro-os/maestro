@@ -86,7 +86,9 @@ pub(super) fn poll(
 			}
 		}
 		{
-			let fds_arr = fds.copy_from_user(..nfds)?.ok_or_else(|| errno!(EFAULT))?;
+			let fds_arr = fds
+				.copy_from_user_vec(0, nfds)?
+				.ok_or_else(|| errno!(EFAULT))?;
 			// Check the file descriptors list
 			for fd in &fds_arr {
 				if fd.events as u32 & POLLIN != 0 {

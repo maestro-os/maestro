@@ -24,7 +24,6 @@ use core::{
 	fmt,
 	intrinsics::{likely, unlikely},
 	mem::{size_of, size_of_val, MaybeUninit},
-	ops::{Bound, RangeBounds},
 	ptr,
 	ptr::{null_mut, NonNull},
 };
@@ -141,15 +140,6 @@ impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 	}
 }
 
-/// Turns the given range bound into the corresponding index.
-fn bound_to_index(b: Bound<&usize>) -> usize {
-	match b {
-		Bound::Included(v) => *v + 1,
-		Bound::Excluded(v) => *v,
-		Bound::Unbounded => 0,
-	}
-}
-
 /// Wrapper for a slice.
 ///
 /// The size of the slice is required when trying to access it.
@@ -169,29 +159,46 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 
 	/// Copies the slice from userspace and returns it.
 	///
-	/// `range` is the bytes range to copy from the source userspace slice. An unbounded side is
-	/// considered to be `0`.
+	/// Arguments:
+	/// - `off` is the offset relative to the beginning of the userspace slice.
+	/// - `buf` is the destination slice.
 	///
-	/// If the pointer is null, the function returns `None`.
+	/// If the pointer is null, the function returns `false`.
 	///
 	/// If the slice is not accessible, the function returns an error.
-	pub fn copy_from_user<R: RangeBounds<usize>>(&self, range: R) -> EResult<Option<Vec<T>>> {
+	pub fn copy_from_user(&self, off: usize, buf: &mut [T]) -> EResult<bool> {
 		let Some(ptr) = self.0 else {
-			return Ok(None);
+			return Ok(false);
 		};
-		let start = bound_to_index(range.start_bound());
-		let end = bound_to_index(range.end_bound());
-		let len = end.saturating_sub(start);
-		let mut buf: Vec<T> = Vec::with_capacity(len)?;
+		let len = buf.len();
 		unsafe {
-			buf.set_len(len);
 			copy_from_user_raw(
-				ptr.as_ptr().add(start) as *const _,
+				ptr.as_ptr().add(off) as *const _,
 				buf.as_mut_ptr() as *mut _,
 				size_of::<T>() * len,
 			)?;
-			Ok(Some(buf))
 		}
+		Ok(true)
+	}
+
+	/// Same as [`copy_from_user`], except the function allocates and returns a [`Vec`] instead of
+	/// copying to a provided buffer.
+	///
+	/// If the pointer is null, the function returns `None`.
+	pub fn copy_from_user_vec(&self, off: usize, len: usize) -> EResult<Option<Vec<T>>> {
+		let Some(ptr) = self.0 else {
+			return Ok(None);
+		};
+		let mut buf = Vec::with_capacity(len)?;
+		unsafe {
+			buf.set_len(len);
+			copy_from_user_raw(
+				ptr.as_ptr().add(off) as *const _,
+				buf.as_mut_ptr() as *mut _,
+				size_of::<T>() * len,
+			)?;
+		}
+		Ok(Some(buf))
 	}
 
 	/// Copies the value to userspace.

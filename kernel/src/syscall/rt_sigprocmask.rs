@@ -50,7 +50,7 @@ pub fn rt_sigprocmask(
 	let cur = signal_manager.sigmask.0.to_ne_bytes();
 	oldset.copy_to_user(0, &cur)?;
 	// Apply new set
-	if let Some(set) = set.copy_from_user(..8)? {
+	if let Some(set) = set.copy_from_user_vec(0, 8)? {
 		let set = u64::from_ne_bytes(set.try_into().unwrap());
 		match how {
 			SIG_BLOCK => signal_manager.sigmask.0 |= set,

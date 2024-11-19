@@ -54,12 +54,12 @@ fn write(
 	file: &File,
 ) -> EResult<usize> {
 	let mut off = 0;
-	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
+	let iov = iov.copy_from_user_vec(0, iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
 		// The size to write. This is limited to avoid an overflow on the total length
 		let l = min(i.iov_len, i32::MAX as usize - off);
 		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
-		if let Some(buf) = ptr.copy_from_user(..l)? {
+		if let Some(buf) = ptr.copy_from_user_vec(0, l)? {
 			let len = if let Some(offset) = offset {
 				let file_off = offset + off as u64;
 				file.ops.write(file, file_off, &buf)?

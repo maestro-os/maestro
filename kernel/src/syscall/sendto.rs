@@ -23,7 +23,7 @@ use crate::{
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
-use core::{any::Any, ffi::c_int};
+use core::{any::Any, ffi::c_int, intrinsics::unlikely};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -45,17 +45,16 @@ pub fn sendto(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	if addrlen < 0 {
+	if unlikely(addrlen < 0) {
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
 	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Get slices
-	let _buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
+	let _buf_slice = buf.copy_from_user_vec(0, len)?.ok_or(errno!(EFAULT))?;
 	let _dest_addr_slice = dest_addr
-		.copy_from_user(..(addrlen as usize))?
+		.copy_from_user_vec(0, addrlen as usize)?
 		.ok_or(errno!(EFAULT))?;
-	// TODO
 	todo!()
 }

@@ -54,7 +54,7 @@ fn read(
 	file: &File,
 ) -> EResult<usize> {
 	let mut off = 0;
-	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
+	let iov = iov.copy_from_user_vec(0, iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
 		// The size to read. This is limited to avoid an overflow on the total length
 		let max_len = min(i.iov_len, i32::MAX as usize - off);
