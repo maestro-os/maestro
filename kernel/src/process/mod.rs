@@ -80,6 +80,7 @@ use utils::{
 	errno::{AllocResult, EResult},
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
+	unsafe_mut::UnsafeMut,
 };
 
 /// The opcode of the `hlt` instruction.
@@ -311,7 +312,7 @@ pub struct Process {
 	process_group: Vec<Pid>,
 
 	/// The virtual memory of the process.
-	pub mem_space: Option<Arc<IntMutex<MemSpace>>>,
+	pub mem_space: UnsafeMut<Option<Arc<IntMutex<MemSpace>>>>,
 	/// A pointer to the kernelspace stack.
 	kernel_stack: NonNull<u8>,
 	/// Kernel stack pointer of saved context.
@@ -323,7 +324,7 @@ pub struct Process {
 	/// Filesystem access information.
 	pub fs: Mutex<ProcessFs>, // TODO rwlock
 	/// The list of open file descriptors with their respective ID.
-	pub file_descriptors: Option<Arc<Mutex<FileDescriptorTable>>>,
+	pub file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
 
 	/// The process's signal management structure.
 	pub signal: Mutex<ProcessSignal>, // TODO rwlock

@@ -101,10 +101,13 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		})
 		.transpose()?;
 	let signal_handlers = Arc::new(Default::default())?;
-	// Flush to process
-	proc.file_descriptors = fds;
+	// All fallible operations succeeded, flush to process
 	mem_space.lock().bind();
-	proc.mem_space = Some(mem_space);
+	// Safe because no other thread can execute this function at the same time for the same process
+	unsafe {
+		*proc.file_descriptors.get_mut() = fds;
+		*proc.mem_space.get_mut() = Some(mem_space);
+	}
 	// Reset signals
 	{
 		let mut signal_manager = proc.signal.lock();

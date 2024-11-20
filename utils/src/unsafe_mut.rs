@@ -18,29 +18,37 @@
 
 //! Unsafe mutable wrapper.
 
-use core::cell::UnsafeCell;
+use core::{cell::UnsafeCell, ops::Deref};
 
 /// Wrapper allowing safe immutable accesses, or unsafe mutable accesses at the same time.
 pub struct UnsafeMut<T>(UnsafeCell<T>);
 
 impl<T> UnsafeMut<T> {
-    /// Creates a new instance.
-    pub fn new(val: T) -> Self {
-        Self(UnsafeCell::new(val))
-    }
-    
-    /// Returns an immutable reference.
-    pub fn get(&self) -> &T {
-        unsafe { &*self.0.get() }
-    }
+	/// Creates a new instance.
+	pub fn new(val: T) -> Self {
+		Self(UnsafeCell::new(val))
+	}
 
-    /// Returns a mutable reference.
-    /// 
-    /// # Safety
-    /// 
-    /// The caller must ensure no other thread is accessing the value at the same time.
-    #[allow(clippy::mut_from_ref)]
-    pub unsafe fn get_mut(&self) -> &mut T {
-        unsafe { &mut *self.0.get() }
-    }
+	/// Returns an immutable reference.
+	pub fn get(&self) -> &T {
+		unsafe { &*self.0.get() }
+	}
+
+	/// Returns a mutable reference.
+	///
+	/// # Safety
+	///
+	/// The caller must ensure no other thread is accessing the value at the same time.
+	#[allow(clippy::mut_from_ref)]
+	pub unsafe fn get_mut(&self) -> &mut T {
+		unsafe { &mut *self.0.get() }
+	}
+}
+
+impl<T> Deref for UnsafeMut<T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.get()
+	}
 }
