@@ -72,12 +72,9 @@ use mem_space::MemSpace;
 use pid::Pid;
 use signal::{Signal, SignalHandler};
 use utils::{
-	collections::{
-		path::{Path, PathBuf},
-		vec::Vec,
-	},
+	collections::path::{Path, PathBuf},
 	errno,
-	errno::{AllocResult, EResult},
+	errno::EResult,
 	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	unsafe_mut::UnsafeMut,
@@ -302,15 +299,12 @@ pub struct Process {
 
 	/// A pointer to the parent process.
 	parent: Option<Arc<Process>>,
-	/// The list of children processes.
-	children: Vec<Pid>,
 	/// The process's group leader. The PID of the group leader is the PGID of this process.
 	///
 	/// If `None`, the process is its own leader (to avoid self reference).
 	group_leader: Option<Arc<Process>>,
-	/// The list of processes in the process group.
-	process_group: Vec<Pid>,
-
+	// TODO children
+	// TODO process group
 	/// The virtual memory of the process.
 	pub mem_space: UnsafeMut<Option<Arc<IntMutex<MemSpace>>>>,
 	/// A pointer to the kernelspace stack.
@@ -336,7 +330,7 @@ pub struct Process {
 	pub rusage: Rusage,
 
 	/// The exit status of the process after exiting.
-	exit_status: ExitStatus,
+	exit_status: UnsafeMut<ExitStatus>,
 	/// The terminating signal.
 	termsig: u8,
 }
@@ -485,11 +479,9 @@ impl Process {
 			vfork_state: VForkState::None,
 
 			parent: None,
-			children: Vec::new(),
 			group_leader: None,
-			process_group: Vec::new(),
 
-			mem_space: None,
+			mem_space: UnsafeMut::new(None),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 			kernel_sp: AtomicPtr::default(),
 
@@ -501,7 +493,7 @@ impl Process {
 				cwd: root_dir.clone(),
 				chroot: root_dir,
 			}),
-			file_descriptors: Some(Arc::new(Mutex::new(file_descriptors))?),
+			file_descriptors: UnsafeMut::new(Some(Arc::new(Mutex::new(file_descriptors))?)),
 
 			signal: Mutex::new(ProcessSignal {
 				handlers: Arc::new(Default::default())?,
@@ -513,7 +505,7 @@ impl Process {
 
 			rusage: Default::default(),
 
-			exit_status: 0,
+			exit_status: UnsafeMut::new(0),
 			termsig: 0,
 		};
 		Ok(SCHEDULER.get().lock().add_process(process)?)
@@ -549,12 +541,6 @@ impl Process {
 		// TODO remove process from the old group's list
 		// TODO add process to the new group's list
 		Ok(())
-	}
-
-	/// Returns an immutable slice to the PIDs of the process in the group of the current process.
-	#[inline(always)]
-	pub fn get_group_processes(&self) -> &[Pid] {
-		&self.process_group
 	}
 
 	/// The function tells whether the process is in an orphaned process group.
@@ -654,33 +640,6 @@ impl Process {
 		);
 	}
 
-	/// Returns the process's parent.
-	///
-	/// If the process is the init process, the function returns `None`.
-	#[inline(always)]
-	pub fn get_parent(&self) -> Option<Arc<Process>> {
-		self.parent.clone()
-	}
-
-	/// Returns an immutable slice of the PIDs of the process's children.
-	#[inline(always)]
-	pub fn get_children(&self) -> &[Pid] {
-		&self.children
-	}
-
-	/// Adds the process with the given PID `pid` as child to the process.
-	pub fn add_child(&self, pid: Pid) -> AllocResult<()> {
-		let i = self.children.binary_search(&pid).unwrap_or_else(|i| i);
-		self.children.insert(i, pid)
-	}
-
-	/// Removes the process with the given PID `pid` as child to the process.
-	pub fn remove_child(&self, pid: Pid) {
-		if let Ok(i) = self.children.binary_search(&pid) {
-			self.children.remove(i);
-		}
-	}
-
 	/// Returns the last known userspace registers state.
 	///
 	/// This information is stored at the beginning of the process's interrupt stack.
@@ -748,7 +707,7 @@ impl Process {
 		};
 		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
-			this.file_descriptors.clone()
+			this.file_descriptors.get().clone()
 		} else {
 			this.file_descriptors
 				.as_ref()
@@ -777,11 +736,9 @@ impl Process {
 			vfork_state,
 
 			parent: Some(this.clone()),
-			children: Vec::new(),
 			group_leader: this.group_leader.clone(),
-			process_group: Vec::new(),
 
-			mem_space: Some(mem_space),
+			mem_space: UnsafeMut::new(Some(mem_space)),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 			kernel_sp: AtomicPtr::new(null_mut()), // TODO
 
@@ -789,7 +746,7 @@ impl Process {
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 
 			fs: Mutex::new(this.fs.lock().clone()),
-			file_descriptors,
+			file_descriptors: UnsafeMut::new(file_descriptors),
 
 			signal: Mutex::new(ProcessSignal {
 				handlers: signal_handlers,

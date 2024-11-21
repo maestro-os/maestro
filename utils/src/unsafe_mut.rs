@@ -52,3 +52,10 @@ impl<T> Deref for UnsafeMut<T> {
 		self.get()
 	}
 }
+
+impl<T: Clone> Clone for UnsafeMut<T> {
+	fn clone(&self) -> Self {
+		let inner = unsafe { &*self.0.get() };
+		Self(UnsafeCell::new(inner.clone()))
+	}
+}
