@@ -28,7 +28,6 @@ use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutex,
 	ptr::arc::Arc,
 };
 

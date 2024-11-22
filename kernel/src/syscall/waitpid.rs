@@ -30,8 +30,6 @@ use core::{ffi::c_int, iter};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	interrupt::cli,
-	lock::IntMutex,
 };
 
 /// Wait flag. Returns immediately if no child has exited.

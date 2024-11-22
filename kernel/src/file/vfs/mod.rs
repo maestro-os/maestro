@@ -30,7 +30,11 @@ use super::{
 	File, FileLocation, FileType, Stat,
 };
 use crate::{
-	device, device::DeviceID, file::vfs::mountpoint::MountPoint, process::Process,
+	device,
+	device::DeviceID,
+	file::vfs::mountpoint::MountPoint,
+	process::Process,
+	sync::{mutex::Mutex, once::OnceInit},
 	syscall::ioctl::Request,
 };
 use core::{
@@ -50,7 +54,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	limits::{LINK_MAX, PATH_MAX, SYMLOOP_MAX},
-	lock::{once::OnceInit, Mutex},
 	ptr::arc::Arc,
 	vec,
 };

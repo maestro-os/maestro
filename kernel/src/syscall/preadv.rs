@@ -21,14 +21,11 @@
 use crate::{
 	file::fd::FileDescriptorTable,
 	process::{iovec::IOVec, mem_space::copy::SyscallSlice, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno::EResult,
-	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
-};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn preadv(
 	Args((fd, iov, iovcnt, offset)): Args<(c_int, SyscallSlice<IOVec>, c_int, isize)>,

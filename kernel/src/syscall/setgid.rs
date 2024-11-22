@@ -21,7 +21,6 @@
 use crate::{file::perm::Gid, process::Process, syscall::Args};
 use utils::{
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 

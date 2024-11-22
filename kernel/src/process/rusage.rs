@@ -18,9 +18,8 @@
 
 //! Monitoring of the resource usage of processes.
 
-use crate::time::unit::Timeval;
+use crate::{sync::mutex::Mutex, time::unit::Timeval};
 use core::sync::atomic::AtomicI64;
-use utils::lock::Mutex;
 
 // TODO Place calls in kernel's code to update usage
 

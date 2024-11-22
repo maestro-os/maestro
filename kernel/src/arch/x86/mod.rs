@@ -76,6 +76,36 @@ pub fn get_rflags() -> usize {
 	flags
 }
 
+/// Tells whether maskable interruptions are enabled on the current core.
+#[inline]
+pub fn is_interrupt_enabled() -> bool {
+	get_rflags() & 0x200 != 0
+}
+
+/// Disables maskable interruptions on the current core.
+#[inline(always)]
+pub fn cli() {
+	unsafe {
+		asm!("cli");
+	}
+}
+
+/// Enables maskable interruptions on the current core.
+#[inline(always)]
+pub fn sti() {
+	unsafe {
+		asm!("sti");
+	}
+}
+
+/// Waits for an interruption on the current core.
+#[inline(always)]
+pub fn hlt() {
+	unsafe {
+		asm!("hlt");
+	}
+}
+
 /// Calls the CPUID instruction.
 #[inline]
 pub fn cpuid(mut eax: u32, mut ebx: u32, mut ecx: u32, mut edx: u32) -> (u32, u32, u32, u32) {

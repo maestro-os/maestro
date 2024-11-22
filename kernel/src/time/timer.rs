@@ -29,6 +29,7 @@ use crate::{
 		signal::{SigEvent, Signal, SIGEV_SIGNAL, SIGEV_THREAD},
 		Process,
 	},
+	sync::mutex::IntMutex,
 	time::unit::Timespec32,
 };
 use utils::{
@@ -36,7 +37,6 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	limits::TIMER_MAX,
-	lock::IntMutex,
 };
 
 // TODO make sure a timer doesn't send a signal to a thread that do not belong to the manager's

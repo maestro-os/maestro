@@ -35,8 +35,6 @@ use core::{mem::size_of, ptr};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	interrupt::cli,
-	lock::{IntMutex, IntMutexGuard},
 };
 
 pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {

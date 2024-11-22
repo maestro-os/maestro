@@ -25,6 +25,7 @@
 //! size of a frame in pages.
 
 use super::{stats, PhysAddr, VirtAddr};
+use crate::sync::mutex::IntMutex;
 use core::{
 	alloc::AllocError,
 	cmp::min,
@@ -33,7 +34,7 @@ use core::{
 	ptr::{null_mut, NonNull},
 	slice,
 };
-use utils::{errno::AllocResult, limits::PAGE_SIZE, lock::IntMutex, math};
+use utils::{errno::AllocResult, limits::PAGE_SIZE, math};
 
 /// The order of a memory frame.
 pub type FrameOrder = u8;

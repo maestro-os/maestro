@@ -24,11 +24,11 @@ use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile},
 	memory::VirtAddr,
 	process::mem_space::MemSpace,
+	sync::mutex::{IntMutex, Mutex},
 };
 use core::ffi::{c_int, c_void};
 use utils::{
 	errno::{EResult, Errno},
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 

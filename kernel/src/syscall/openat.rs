@@ -40,7 +40,6 @@ use utils::{
 	collections::path::{Path, PathBuf},
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

@@ -21,7 +21,10 @@
 //! interruptions.
 
 use crate::{
-	arch::x86::{gdt, pic, DEFAULT_FLAGS},
+	arch::{
+		x86,
+		x86::{cli, gdt, pic, sti, DEFAULT_FLAGS},
+	},
 	syscall::syscall,
 };
 use core::{
@@ -30,11 +33,7 @@ use core::{
 	mem::size_of,
 	ptr::addr_of,
 };
-use utils::{
-	errno::EResult,
-	interrupt,
-	interrupt::{cli, sti},
-};
+use utils::errno::EResult;
 
 /// Makes the interrupt switch to ring 0.
 const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
@@ -504,7 +503,7 @@ static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] =
 /// This function saves the state of the interrupt flag and restores it before
 /// returning.
 pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
-	let int = interrupt::is_enabled();
+	let int = x86::is_interrupt_enabled();
 	// Here is assumed that no interruption will change flags register. Which could cause a
 	// race condition
 	cli();

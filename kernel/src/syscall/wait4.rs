@@ -21,7 +21,7 @@
 use super::{waitpid, Args};
 use crate::process::{mem_space::copy::SyscallPtr, rusage::Rusage, Process};
 use core::ffi::c_int;
-use utils::{errno::EResult, lock::IntMutex};
+use utils::errno::EResult;
 
 pub fn wait4(
 	Args((pid, wstatus, options, rusage)): Args<(

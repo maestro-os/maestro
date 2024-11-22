@@ -22,7 +22,6 @@ use crate::{file, process::Process, syscall::Args};
 use core::{mem, sync::atomic};
 use utils::{
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 

@@ -22,6 +22,7 @@
 use crate::{
 	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
 	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
+	sync::mutex::Mutex,
 	syscall::{ioctl, FromSyscallArg},
 };
 use core::{
@@ -33,7 +34,6 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	limits::PIPE_BUF,
-	lock::Mutex,
 	vec,
 };
 

@@ -27,6 +27,7 @@ use crate::{
 		FileType, Stat,
 	},
 	process::{mem_space::copy::SyscallString, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 	time::{
 		clock::{current_time, CLOCK_REALTIME},
@@ -39,7 +40,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::SYMLINK_MAX,
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

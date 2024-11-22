@@ -21,7 +21,6 @@
 use crate::{process::Process, syscall::Args, time::unit::TimerT};
 use utils::{
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 

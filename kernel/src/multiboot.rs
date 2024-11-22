@@ -20,9 +20,8 @@
 //! image. It provides essential information such as the memory mapping and the
 //! ELF structure of the kernel.
 
-use crate::memory::PhysAddr;
+use crate::{memory::PhysAddr, sync::once::OnceInit};
 use core::{ffi::c_void, ptr::null, slice};
-use utils::lock::once::OnceInit;
 
 /// Multiboot2 magic number.
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;

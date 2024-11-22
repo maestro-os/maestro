@@ -32,11 +32,11 @@ use crate::{
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
 	process::{mem_space::MemSpace, Process},
+	sync::mutex::{IntMutex, Mutex},
 };
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno::EResult,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 

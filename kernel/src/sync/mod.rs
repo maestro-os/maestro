@@ -16,15 +16,9 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `setuid` syscall sets the UID of the process's owner.
+//! Kernel synchronization primitives.
 
-use crate::{file::perm::Uid, process::Process, syscall::Args};
-use utils::{
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
-
-pub fn setuid(Args(uid): Args<Uid>, proc: Arc<Process>) -> EResult<usize> {
-	proc.fs.lock().access_profile.set_uid(uid)?;
-	Ok(0)
-}
+pub mod atomic;
+pub mod mutex;
+pub mod once;
+pub mod spinlock;

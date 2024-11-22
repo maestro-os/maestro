@@ -21,13 +21,13 @@
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
 	process::{mem_space::copy::SyscallSlice, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{any::Any, cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

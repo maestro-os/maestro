@@ -22,11 +22,11 @@ use super::SHT_SYMTAB;
 use crate::{
 	memory::{PhysAddr, VirtAddr},
 	multiboot,
+	sync::once::OnceInit,
 };
 use utils::{
 	collections::hashmap::HashMap,
 	errno::{AllocResult, CollectResult},
-	lock::once::OnceInit,
 };
 
 /// A kernel ELF section header.

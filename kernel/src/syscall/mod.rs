@@ -165,6 +165,7 @@ use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
 	process,
 	process::{mem_space::MemSpace, signal::Signal, Process},
+	sync::mutex::{IntMutex, Mutex},
 };
 use _exit::_exit;
 use _llseek::_llseek;
@@ -293,11 +294,7 @@ use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use unlinkat::unlinkat;
-use utils::{
-	errno::EResult,
-	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
-};
+use utils::{errno::EResult, ptr::arc::Arc};
 use utimensat::utimensat;
 use vfork::vfork;
 use wait4::wait4;

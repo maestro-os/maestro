@@ -73,6 +73,7 @@ pub mod power;
 pub mod print;
 pub mod process;
 pub mod selftest;
+pub mod sync;
 pub mod syscall;
 pub mod time;
 pub mod tty;
@@ -88,6 +89,7 @@ use crate::{
 		scheduler::switch,
 		Process,
 	},
+	sync::mutex::Mutex,
 	tty::TTY,
 };
 use core::{arch::asm, ffi::c_void};
@@ -95,7 +97,6 @@ pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
 	errno::EResult,
-	lock::Mutex,
 	vec,
 };
 

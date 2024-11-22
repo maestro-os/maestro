@@ -24,12 +24,7 @@ use crate::{
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::EResult,
-	lock::{IntMutex, IntMutexGuard},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn getresuid(
 	Args((ruid, euid, suid)): Args<(SyscallPtr<Uid>, SyscallPtr<Uid>, SyscallPtr<Uid>)>,

@@ -29,6 +29,7 @@ use crate::{
 		mem_space::copy::{SyscallPtr, SyscallString},
 		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::{c_int, c_uint};
@@ -36,7 +37,6 @@ use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

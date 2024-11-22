@@ -23,6 +23,7 @@ use crate::{
 	memory,
 	memory::VirtAddr,
 	process::{mem_space::MemSpace, Process},
+	sync::mutex::IntMutex,
 	syscall::Args,
 };
 use core::ffi::{c_int, c_void};
@@ -30,7 +31,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::PAGE_SIZE,
-	lock::IntMutex,
 	ptr::arc::Arc,
 };
 

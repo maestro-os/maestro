@@ -25,15 +25,12 @@ use crate::{
 		copy::{SyscallPtr, SyscallSlice},
 		MemSpace,
 	},
+	sync::mutex::Mutex,
 	syscall::Args,
 	time::unit::Timespec,
 };
 use core::ffi::c_int;
-use utils::{
-	errno::EResult,
-	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
-};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 #[allow(clippy::type_complexity)]
 pub fn pselect6(

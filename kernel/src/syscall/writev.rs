@@ -27,6 +27,7 @@ use crate::{
 		signal::Signal,
 		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };
 use core::{cmp::min, ffi::c_int, sync::atomic};
@@ -34,7 +35,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::IOV_MAX,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 

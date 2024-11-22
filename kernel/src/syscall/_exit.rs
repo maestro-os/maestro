@@ -22,7 +22,7 @@
 use super::Args;
 use crate::process::{scheduler, scheduler::Scheduler, Process};
 use core::ffi::c_int;
-use utils::{errno::EResult, lock::IntMutexGuard};
+use utils::errno::EResult;
 
 /// Exits the current process.
 ///

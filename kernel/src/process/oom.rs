@@ -24,7 +24,8 @@
 //!
 //! This is an emergency procedure which is not supposed to be used under normal conditions.
 
-use utils::{errno::AllocResult, lock::Mutex};
+use crate::sync::mutex::Mutex;
+use utils::errno::AllocResult;
 
 /// The maximum number of times the kernel tries to kill a process to retrieve
 /// memory.

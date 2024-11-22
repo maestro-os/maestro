@@ -30,6 +30,7 @@ use crate::{
 		scheduler::Scheduler,
 		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::{poll, Args},
 	time::{
 		clock,
@@ -44,7 +45,6 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 

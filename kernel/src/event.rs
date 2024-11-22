@@ -22,8 +22,9 @@ use crate::{
 	arch::x86::{idt, idt::IntFrame, pic},
 	crypto::rand,
 	process,
+	sync::mutex::IntMutex,
 };
-use utils::{collections::vec::Vec, errno::AllocResult, lock::IntMutex};
+use utils::{collections::vec::Vec, errno::AllocResult};
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.

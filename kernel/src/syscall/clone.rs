@@ -30,7 +30,7 @@ use core::{
 	ffi::{c_int, c_ulong, c_void},
 	ptr::NonNull,
 };
-use utils::{errno::EResult, lock::IntMutex, ptr::arc::Arc};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 /// TODO doc
 pub const CLONE_IO: c_ulong = -0x80000000 as _;

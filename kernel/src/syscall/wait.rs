@@ -21,7 +21,7 @@
 use super::waitpid;
 use crate::process::{mem_space::copy::SyscallPtr, Process};
 use core::ffi::c_int;
-use utils::{errno::EResult, lock::IntMutex};
+use utils::errno::EResult;
 
 pub fn wait(wstatus: SyscallPtr<c_int>) -> EResult<usize> {
 	waitpid::do_waitpid(-1, wstatus, waitpid::WEXITED, SyscallPtr(None))

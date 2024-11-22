@@ -53,6 +53,7 @@ use crate::{
 		signal::SigSet,
 	},
 	register_get,
+	sync::mutex::{IntMutex, Mutex},
 	syscall::FromSyscallArg,
 	time::timer::TimerManager,
 };
@@ -75,7 +76,6 @@ use utils::{
 	collections::path::{Path, PathBuf},
 	errno,
 	errno::EResult,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	unsafe_mut::UnsafeMut,
 };

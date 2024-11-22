@@ -22,13 +22,13 @@
 use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile, FileType},
 	process::Process,
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	TryClone,
 };

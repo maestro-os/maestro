@@ -27,6 +27,7 @@ use crate::{
 		INode, Mode,
 	},
 	process::{mem_space::copy::SyscallPtr, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 	time::unit::{TimeUnit, Timespec, TimestampScale},
 };
@@ -34,7 +35,6 @@ use core::ffi::{c_int, c_long};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

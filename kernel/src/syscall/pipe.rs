@@ -22,10 +22,11 @@ use crate::{
 	file,
 	file::{fd::FileDescriptorTable, pipe::PipeBuffer, File, FileLocation},
 	process::mem_space::copy::SyscallPtr,
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{boxed::Box, errno::EResult, lock::Mutex, ptr::arc::Arc};
+use utils::{boxed::Box, errno::EResult, ptr::arc::Arc};
 
 pub fn pipe(
 	Args(pipefd): Args<SyscallPtr<[c_int; 2]>>,

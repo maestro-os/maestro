@@ -23,6 +23,7 @@ use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
@@ -30,7 +31,6 @@ use utils::{
 	boxed::Box,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

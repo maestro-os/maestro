@@ -22,14 +22,10 @@
 use crate::{
 	process,
 	process::{pid::Pid, scheduler::Scheduler, Process},
+	sync::mutex::{IntMutex, Mutex},
 };
 use core::mem;
-use utils::{
-	collections::vec::Vec,
-	errno,
-	errno::EResult,
-	lock::{IntMutex, Mutex},
-};
+use utils::{collections::vec::Vec, errno, errno::EResult};
 
 /// A queue of processes waiting on a resource.
 ///

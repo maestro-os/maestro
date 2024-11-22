@@ -24,6 +24,7 @@ use crate::{
 		mem_space::{copy::SyscallPtr, MemSpace},
 		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{
@@ -33,7 +34,6 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 

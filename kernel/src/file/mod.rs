@@ -39,6 +39,7 @@ use crate::{
 		fs::Filesystem,
 		perm::{Gid, Uid},
 	},
+	sync::{atomic::AtomicU64, mutex::Mutex},
 	syscall::ioctl,
 	time::{
 		clock,
@@ -53,7 +54,6 @@ use utils::{
 	collections::string::String,
 	errno,
 	errno::{AllocResult, EResult},
-	lock::{atomic::AtomicU64, Mutex},
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
 };

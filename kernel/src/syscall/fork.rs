@@ -31,7 +31,6 @@ use crate::{
 use core::ptr::null_mut;
 use utils::{
 	errno::{EResult, Errno},
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 

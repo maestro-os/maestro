@@ -24,11 +24,12 @@
 pub mod switch;
 
 use crate::{
-	arch::x86::idt::IntFrame,
+	arch::x86::{cli, idt::IntFrame},
 	event,
 	event::{CallbackHook, CallbackResult},
 	memory::stack,
 	process::{pid::Pid, scheduler::switch::switch, Process, State},
+	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 	time,
 };
 use core::{mem, sync::atomic};
@@ -38,9 +39,7 @@ use utils::{
 		vec::Vec,
 	},
 	errno::AllocResult,
-	interrupt::cli,
 	limits::PAGE_SIZE,
-	lock::{atomic::AtomicU64, once::OnceInit, IntMutex},
 	math::rational::Rational,
 	ptr::arc::Arc,
 	vec,

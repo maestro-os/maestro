@@ -27,6 +27,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{mem_space::copy::SyscallString, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
@@ -34,7 +35,6 @@ use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

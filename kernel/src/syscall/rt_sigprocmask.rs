@@ -26,7 +26,6 @@ use core::{cmp::min, ffi::c_int, intrinsics::unlikely};
 use utils::{
 	errno,
 	errno::{EResult, Errno, EINVAL},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 

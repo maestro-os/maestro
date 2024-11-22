@@ -25,6 +25,7 @@ use crate::{
 		FileType,
 	},
 	process::Process,
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{
@@ -34,7 +35,6 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

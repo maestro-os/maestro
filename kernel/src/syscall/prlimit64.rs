@@ -24,13 +24,13 @@ use crate::{
 		pid::Pid,
 		Process,
 	},
+	sync::mutex::IntMutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutex,
 	ptr::arc::Arc,
 };
 

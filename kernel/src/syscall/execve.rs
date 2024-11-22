@@ -39,8 +39,6 @@ use utils::{
 	},
 	errno,
 	errno::{CollectResult, EResult, Errno},
-	interrupt::cli,
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

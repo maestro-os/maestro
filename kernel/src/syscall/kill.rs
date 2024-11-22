@@ -27,7 +27,6 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	interrupt::cli,
 };
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.

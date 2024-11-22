@@ -22,9 +22,8 @@
 //! from. This is an undesirable state which requires to reboot the host
 //! machine.
 
-use crate::{logger, memory::VirtAddr, power, register_get};
+use crate::{arch::x86::cli, logger, memory::VirtAddr, power, register_get};
 use core::panic::PanicInfo;
-use utils::interrupt::cli;
 
 /// Called on Rust panic.
 #[panic_handler]

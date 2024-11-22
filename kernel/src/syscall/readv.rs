@@ -25,6 +25,7 @@ use crate::{
 		mem_space::{copy::SyscallSlice, MemSpace},
 		scheduler, Process,
 	},
+	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };
 use core::{cmp::min, ffi::c_int, intrinsics::unlikely, sync::atomic};
@@ -33,7 +34,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::IOV_MAX,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	vec,
 };

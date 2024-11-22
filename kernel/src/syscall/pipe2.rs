@@ -22,6 +22,7 @@ use crate::{
 	file,
 	file::{fd::FileDescriptorTable, pipe::PipeBuffer, vfs, File, FileLocation},
 	process::{mem_space::copy::SyscallPtr, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
@@ -29,7 +30,6 @@ use utils::{
 	boxed::Box,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
