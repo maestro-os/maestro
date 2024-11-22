@@ -66,6 +66,8 @@ impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 	}
 }
 
+impl<T: ?Sized, const INT: bool> !Send for MutexGuard<'_, T, INT> {}
+
 unsafe impl<T: ?Sized + Sync, const INT: bool> Sync for MutexGuard<'_, T, INT> {}
 
 impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for MutexGuard<'_, T, INT> {

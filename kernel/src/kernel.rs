@@ -36,6 +36,7 @@
 #![feature(debug_closure_helpers)]
 #![feature(exposed_provenance)]
 #![feature(lang_items)]
+#![feature(negative_impls)]
 #![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
