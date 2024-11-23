@@ -357,7 +357,7 @@ impl SignalHandler {
 			// Signal number
 			args[2] = signal.get_id() as _;
 			// Pointer to the handler
-			args[1] = handler_pointer as _;
+			args[1] = handler_pointer as usize as _;
 			// Padding (return pointer)
 			args[0] = 0;
 		} else {
@@ -386,7 +386,7 @@ impl SignalHandler {
 				// Arguments
 				frame.rdi = ctx_addr.0 as _;
 				frame.rsi = signal.get_id() as _;
-				frame.rdx = handler_pointer as _;
+				frame.rdx = handler_pointer as usize as _;
 			}
 		}
 	}

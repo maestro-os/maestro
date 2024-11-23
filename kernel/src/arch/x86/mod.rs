@@ -207,7 +207,7 @@ pub unsafe fn set_smap_enabled(enabled: bool) {
 
 /// FXstate buffer.
 #[repr(align(16))]
-struct FxState([u8; 512]);
+pub struct FxState([u8; 512]);
 
 /// Saves the current x87 FPU, MMX and SSE state to the given buffer.
 #[inline]

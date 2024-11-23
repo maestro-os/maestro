@@ -18,6 +18,8 @@
 
 //! Userspace signal context structures.
 
+#![allow(missing_docs)]
+
 use crate::{
 	arch::x86::{gdt, idt::IntFrame},
 	process::{signal::SigSet, Process},

@@ -170,12 +170,11 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 		let Some(ptr) = self.0 else {
 			return Ok(false);
 		};
-		let len = buf.len();
 		unsafe {
 			copy_from_user_raw(
 				ptr.as_ptr().add(off) as *const _,
 				buf.as_mut_ptr() as *mut _,
-				size_of::<T>() * len,
+				size_of_val(buf),
 			)?;
 		}
 		Ok(true)

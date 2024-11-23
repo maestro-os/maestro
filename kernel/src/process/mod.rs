@@ -73,9 +73,12 @@ use mem_space::MemSpace;
 use pid::Pid;
 use signal::{Signal, SignalHandler};
 use utils::{
-	collections::path::{Path, PathBuf},
+	collections::{
+		path::{Path, PathBuf},
+		vec::Vec,
+	},
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	ptr::arc::Arc,
 	unsafe_mut::UnsafeMut,
 };
@@ -182,6 +185,21 @@ pub struct ForkOptions {
 	pub stack: Option<NonNull<c_void>>,
 }
 
+/// A process's links to other processes.
+#[derive(Default)]
+pub struct ProcessLinks {
+	/// A pointer to the parent process.
+	parent: Option<Arc<Process>>,
+	/// The list of children processes.
+	pub children: Vec<Pid>,
+	/// The process's group leader. The PID of the group leader is the PGID of this process.
+	///
+	/// If `None`, the process is its own leader (to avoid self reference).
+	group_leader: Option<Arc<Process>>,
+	/// The list of processes in the process group.
+	pub process_group: Vec<Pid>,
+}
+
 /// A process's filesystem access information.
 pub struct ProcessFs {
 	/// The process's access profile, containing user and group IDs.
@@ -199,7 +217,7 @@ pub struct ProcessFs {
 impl ProcessFs {
 	/// Returns the current umask.
 	pub fn umask(&self) -> file::Mode {
-		self.umask.load(Release)
+		self.umask.load(Acquire)
 	}
 }
 
@@ -207,7 +225,7 @@ impl Clone for ProcessFs {
 	fn clone(&self) -> Self {
 		Self {
 			access_profile: self.access_profile,
-			umask: AtomicU32::new(self.umask.load(Release)),
+			umask: AtomicU32::new(self.umask.load(Acquire)),
 			cwd: self.cwd.clone(),
 			chroot: self.chroot.clone(),
 		}
@@ -273,14 +291,9 @@ pub struct Process {
 	/// If `true`, the parent can resume after a `vfork`.
 	pub vfork_done: AtomicBool,
 
-	/// A pointer to the parent process.
-	parent: Option<Arc<Process>>,
-	/// The process's group leader. The PID of the group leader is the PGID of this process.
-	///
-	/// If `None`, the process is its own leader (to avoid self reference).
-	group_leader: Option<Arc<Process>>,
-	// TODO children
-	// TODO process group
+	/// The links to other processes.
+	pub links: Mutex<ProcessLinks>,
+
 	/// The virtual memory of the process.
 	pub mem_space: UnsafeMut<Option<Arc<IntMutex<MemSpace>>>>,
 	/// A pointer to the kernelspace stack.
@@ -449,8 +462,7 @@ impl Process {
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
 
-			parent: None,
-			group_leader: None,
+			links: Mutex::new(ProcessLinks::default()),
 
 			mem_space: UnsafeMut::new(None),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
@@ -496,7 +508,9 @@ impl Process {
 
 	/// Returns the process group ID.
 	pub fn get_pgid(&self) -> Pid {
-		self.group_leader
+		self.links
+			.lock()
+			.group_leader
 			.as_ref()
 			.map(|p| p.get_pid())
 			.unwrap_or(self.get_pid())
@@ -504,19 +518,34 @@ impl Process {
 
 	/// Sets the process's group ID to the given value `pgid`, updating the associated group.
 	pub fn set_pgid(&self, pgid: Pid) -> EResult<()> {
-		let new_group_leader = (pgid != 0 && pgid != self.get_pid())
+		let pid = self.get_pid();
+		let new_leader = (pgid != 0 && pgid != pid)
 			.then(|| Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH)))
 			.transpose()?;
-		// TODO use an atomic swap to get the former group
-		self.group_leader = new_group_leader;
-		// TODO remove process from the old group's list
-		// TODO add process to the new group's list
+		let mut links = self.links.lock();
+		let old_leader = mem::replace(&mut links.group_leader, new_leader.clone());
+		// Remove process from the old group's list
+		if let Some(leader) = old_leader {
+			let mut links = leader.links.lock();
+			if let Ok(i) = links.process_group.binary_search(&pid) {
+				links.process_group.remove(i);
+			}
+		}
+		// Add process to the new group's list
+		if let Some(leader) = new_leader {
+			let mut links = leader.links.lock();
+			if let Err(i) = links.process_group.binary_search(&pid) {
+				oom::wrap(|| links.process_group.insert(i, pid));
+			}
+		}
 		Ok(())
 	}
 
 	/// The function tells whether the process is in an orphaned process group.
 	pub fn is_in_orphan_process_group(&self) -> bool {
-		self.group_leader
+		self.links
+			.lock()
+			.group_leader
 			.as_ref()
 			.map(|group_leader| group_leader.get_state() == State::Zombie)
 			.unwrap_or(false)
@@ -524,10 +553,27 @@ impl Process {
 
 	/// Returns the parent process's PID.
 	pub fn get_parent_pid(&self) -> Pid {
-		self.parent
+		self.links
+			.lock()
+			.parent
 			.as_ref()
 			.map(|parent| parent.get_pid())
 			.unwrap_or(self.get_pid())
+	}
+
+	/// Adds the process with the given PID `pid` as child to the process.
+	pub fn add_child(&self, pid: Pid) -> AllocResult<()> {
+		let mut links = self.links.lock();
+		let i = links.children.binary_search(&pid).unwrap_or_else(|i| i);
+		links.children.insert(i, pid)
+	}
+
+	/// Removes the process with the given PID `pid` as child to the process.
+	pub fn remove_child(&self, pid: Pid) {
+		let mut links = self.links.lock();
+		if let Ok(i) = links.children.binary_search(&pid) {
+			links.children.remove(i);
+		}
 	}
 
 	/// Returns the process's current state.
@@ -574,21 +620,22 @@ impl Process {
 			}
 			// Attach every child to the init process
 			let init_proc = Process::get_by_pid(pid::INIT_PID).unwrap();
-			let children = mem::take(&mut self.children);
+			let children = mem::take(&mut self.links.lock().children);
 			for child_pid in children {
 				// Check just in case
 				if child_pid == self.pid.get() {
 					continue;
 				}
 				if let Some(child) = Process::get_by_pid(child_pid) {
-					child.parent = Some(init_proc.clone());
+					child.links.lock().parent = Some(init_proc.clone());
 					oom::wrap(|| init_proc.add_child(child_pid));
 				}
 			}
 		}
 		// Send SIGCHLD
 		if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
-			if let Some(parent) = &self.parent {
+			let links = self.links.lock();
+			if let Some(parent) = &links.parent {
 				parent.kill(Signal::SIGCHLD);
 			}
 		}
@@ -605,7 +652,8 @@ impl Process {
 	/// Signals the parent that the `vfork` operation has completed.
 	pub fn vfork_wake(&self) {
 		self.vfork_done.store(true, Release);
-		if let Some(parent) = &self.parent {
+		let links = self.links.lock();
+		if let Some(parent) = &links.parent {
 			parent.set_state(State::Running);
 		}
 	}
@@ -688,8 +736,11 @@ impl Process {
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
 
-			parent: Some(this.clone()),
-			group_leader: this.group_leader.clone(),
+			links: Mutex::new(ProcessLinks {
+				parent: Some(this.clone()),
+				group_leader: this.links.lock().group_leader.clone(),
+				..Default::default()
+			}),
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
@@ -710,7 +761,7 @@ impl Process {
 				termsig: 0,
 			}),
 
-			tls: Mutex::new(this.tls.lock().clone()),
+			tls: Mutex::new(*this.tls.lock()),
 
 			rusage: Rusage::default(),
 		};
@@ -741,7 +792,9 @@ impl Process {
 
 	/// Kills every process in the process group.
 	pub fn kill_group(&self, sig: Signal) {
-		self.process_group
+		self.links
+			.lock()
+			.process_group
 			.iter()
 			.filter_map(|pid| Process::get_by_pid(*pid))
 			.for_each(|proc| {

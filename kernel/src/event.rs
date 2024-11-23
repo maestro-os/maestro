@@ -112,6 +112,7 @@ impl Drop for CallbackHook {
 }
 
 /// The default value for `CALLBACKS`.
+#[allow(clippy::declare_interior_mutable_const)]
 const CALLBACKS_INIT: IntMutex<Vec<Callback>> = IntMutex::new(Vec::new());
 /// List containing vectors that store callbacks for every interrupt watchdogs.
 static CALLBACKS: [IntMutex<Vec<Callback>>; idt::ENTRIES_COUNT as _] =

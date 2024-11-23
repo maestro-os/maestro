@@ -75,7 +75,9 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	// Kill process group
 	Process::get_by_pid(pgid)
 		.ok_or_else(|| errno!(ESRCH))?
-		.get_group_processes()
+		.links
+		.lock()
+		.process_group
 		.iter()
 		.try_for_each(|pid| try_kill(*pid as _, sig))
 }

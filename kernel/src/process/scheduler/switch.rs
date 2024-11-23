@@ -56,14 +56,16 @@ pub fn init(frame: &IntFrame) -> ! {
 /// Switches context from `prev` to `next`.
 ///
 /// After returning, the execution will continue on `next`.
-#[inline]
-pub fn switch(prev: *const Process, next: *const Process) {
-	unsafe {
-		switch_asm(prev, next);
-	}
+///
+/// # Safety
+///
+/// The pointers must point to valid processes.
+pub unsafe fn switch(prev: *const Process, next: *const Process) {
+	switch_asm(prev, next);
 }
 
 extern "C" {
+	#[allow(improper_ctypes)]
 	fn switch_asm(prev: *const Process, next: *const Process);
 }
 
@@ -107,7 +109,7 @@ switch_asm:
 	jmp switch_finish
 ", off = const offset_of!(Process, kernel_sp));
 
-/// Jumped to from [`switch_asm`], finishing the switch.
+/// Jumped to from [`switch`], finishing the switch.
 #[no_mangle]
 extern "C" fn switch_finish(_prev: &mut Process, next: &mut Process) {
 	// Bind the memory space
