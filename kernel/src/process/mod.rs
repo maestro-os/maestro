@@ -736,19 +736,7 @@ impl Process {
 			pid = self.get_pid(),
 			signal = sig.get_id()
 		);
-		let default_action = sig.get_default_action();
-		// If the signal cannot be caught, execute the default action regardless of other settings
-		if !sig.can_catch() {
-			default_action.exec(self);
-			return;
-		}
-		// Handle signal
-		let handler = signal_manager.handlers.lock()[sig.get_id() as usize].clone();
-		match handler {
-			SignalHandler::Ignore => return,
-			SignalHandler::Default => default_action.exec(self),
-			_ => signal_manager.sigpending.set(sig.get_id() as _),
-		}
+		signal_manager.sigpending.set(sig.get_id() as _);
 	}
 
 	/// Kills every process in the process group.
