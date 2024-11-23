@@ -21,5 +21,6 @@
 pub mod atomic;
 pub mod mutex;
 pub mod once;
+pub mod rcu;
 pub mod rwlock;
 pub mod spinlock;

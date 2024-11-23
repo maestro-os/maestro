@@ -37,7 +37,7 @@ use core::{
 /// Inner structure shared between arcs pointing to the same object.
 pub struct ArcInner<T: ?Sized> {
 	/// References counter.
-	ref_count: AtomicUsize,
+	pub ref_count: AtomicUsize,
 	/// The object the `Arc` points to.
 	obj: T,
 }
@@ -75,7 +75,7 @@ impl<T: ?Sized> ArcInner<T> {
 /// A thread-safe reference-counting pointer. `Arc` stands for 'Atomically Reference Counted'.
 pub struct Arc<T: ?Sized> {
 	/// Pointer to shared object.
-	inner: NonNull<ArcInner<T>>,
+	pub inner: NonNull<ArcInner<T>>,
 }
 
 unsafe impl<T: ?Sized + Sync + Send> Send for Arc<T> {}
