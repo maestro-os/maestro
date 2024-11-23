@@ -69,8 +69,10 @@ fn iter_targets(curr_proc: &Process, pid: i32) -> impl Iterator<Item = Pid> + '_
 
 /// Returns the wait status for the given process.
 fn get_wstatus(proc: &Process) -> i32 {
-	let status = proc.get_exit_status();
-	let termsig = proc.get_termsig();
+	let (status, termsig) = {
+		let signal = proc.signal.lock();
+		(signal.exit_status, signal.termsig)
+	};
 	#[allow(clippy::let_and_return)]
 	let wstatus = match proc.get_state() {
 		State::Running | State::Sleeping => 0xffff,

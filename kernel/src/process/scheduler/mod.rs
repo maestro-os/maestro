@@ -203,7 +203,8 @@ impl Scheduler {
 			.as_ref()
 			.map(|proc| proc.get_pid())
 			.or_else(|| self.processes.first_key_value().map(|(pid, _)| *pid))?;
-		let process_filter = |(_, proc): &(&Pid, &Arc<Process>)| proc.can_run();
+		let process_filter =
+			|(_, proc): &(&Pid, &Arc<Process>)| matches!(proc.get_state(), State::Running);
 		self.processes
 			.range((curr_pid + 1)..)
 			.find(process_filter)

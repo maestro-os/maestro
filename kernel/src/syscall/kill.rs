@@ -77,12 +77,7 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 		.ok_or_else(|| errno!(ESRCH))?
 		.get_group_processes()
 		.iter()
-		// Avoid deadlock
-		.filter(|pid| **pid != pgid)
-		.try_for_each(|pid| try_kill(*pid as _, sig))?;
-	// Kill process group owner
-	try_kill(pgid, sig)?;
-	Ok(())
+		.try_for_each(|pid| try_kill(*pid as _, sig))
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.

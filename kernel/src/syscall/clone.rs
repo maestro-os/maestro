@@ -21,14 +21,16 @@
 use crate::{
 	arch::x86::idt::IntFrame,
 	process::{
-		mem_space::copy::SyscallPtr, scheduler, scheduler::Scheduler, user_desc::UserDesc,
-		ForkOptions, Process,
+		mem_space::copy::SyscallPtr, pid::Pid, scheduler, scheduler::Scheduler,
+		user_desc::UserDesc, ForkOptions, Process, State,
 	},
 	syscall::{Args, FromSyscallArg},
 };
 use core::{
 	ffi::{c_int, c_ulong, c_void},
+	intrinsics::unlikely,
 	ptr::NonNull,
+	sync::atomic::Ordering::Relaxed,
 };
 use utils::{errno::EResult, ptr::arc::Arc};
 
@@ -83,6 +85,34 @@ pub const CLONE_NEWPID: c_ulong = 0x20000000;
 /// TODO doc
 pub const CLONE_NEWNET: c_ulong = 0x40000000;
 
+/// Wait for the vfork operation to complete.
+fn wait_vfork_done(child_pid: Pid) {
+	loop {
+		// Use a scope to avoid holding references that could be lost, since `tick` could never
+		// return
+		{
+			let proc = Process::current();
+			let Some(child) = Process::get_by_pid(child_pid) else {
+				// Child disappeared for some reason, stop
+				break;
+			};
+			// If done, stop waiting
+			if child.is_vfork_done() {
+				break;
+			}
+			// Sleep until done
+			proc.set_state(State::Sleeping);
+			// If vfork has completed in between, cancel sleeping
+			if unlikely(child.is_vfork_done()) {
+				proc.set_state(State::Running);
+				break;
+			}
+		}
+		// Let another process run while we wait
+		Scheduler::tick();
+	}
+}
+
 #[allow(clippy::type_complexity)]
 pub fn clone(
 	Args((flags, stack, _parent_tid, _tls, _child_tid)): Args<(
@@ -94,18 +124,16 @@ pub fn clone(
 	)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let new_tid = {
+	let (child_pid, child_tid) = {
 		if flags & CLONE_PARENT_SETTID != 0 {
 			todo!()
 		}
-		let new_proc = Process::fork(
-			proc,
+		let child = Process::fork(
+			proc.clone(),
 			ForkOptions {
 				share_memory: flags & CLONE_VM != 0,
 				share_fd: flags & CLONE_FILES != 0,
 				share_sighand: flags & CLONE_SIGHAND != 0,
-
-				vfork: flags & CLONE_VFORK != 0,
 
 				stack: NonNull::new(stack),
 			},
@@ -119,12 +147,10 @@ pub fn clone(
 		if flags & CLONE_CHILD_SETTID != 0 {
 			todo!()
 		}
-		new_proc.tid
+		(child.get_pid(), child.tid)
 	};
 	if flags & CLONE_VFORK != 0 {
-		// Let another process run instead of the current. Because the current
-		// process must now wait for the child process to terminate or execute a program
-		Scheduler::tick();
+		wait_vfork_done(child_pid);
 	}
-	Ok(new_tid as _)
+	Ok(child_tid as _)
 }

@@ -114,7 +114,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		signal_manager.handlers = signal_handlers;
 		signal_manager.sigpending = Default::default();
 	}
-	proc.reset_vfork();
+	proc.vfork_wake();
 	*proc.tls.lock() = Default::default();
 	proc.update_tss();
 	// Set the process's registers

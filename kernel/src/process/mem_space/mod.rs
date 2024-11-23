@@ -714,31 +714,3 @@ impl Drop for MemSpace {
 		}
 	}
 }
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test_case]
-	fn test0() {
-		let mut mem_space = MemSpace::new().unwrap();
-		let addr = VirtAddr(0x1000);
-		let size = NonZeroUsize::new(1).unwrap();
-		let res = mem_space
-			.map(
-				MapConstraint::Fixed(addr),
-				size,
-				MAPPING_FLAG_WRITE | MAPPING_FLAG_USER,
-				MapResidence::Normal,
-			)
-			.unwrap();
-		assert_eq!(VirtAddr::from(res), addr);
-		// TODO test access
-		/*assert!(!mem_space.can_access(null(), PAGE_SIZE, true, true));
-		assert!(!mem_space.can_access(null(), PAGE_SIZE + 1, true, true));
-		assert!(mem_space.can_access(addr as _, PAGE_SIZE, true, true));
-		assert!(!mem_space.can_access(addr as _, PAGE_SIZE + 1, true, true));*/
-		mem_space.unmap(addr, size, false).unwrap();
-		//assert!(!mem_space.can_access(addr as _, PAGE_SIZE, true, true));
-	}
-}

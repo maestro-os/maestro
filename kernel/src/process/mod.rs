@@ -64,9 +64,9 @@ use core::{
 	mem,
 	mem::{size_of, ManuallyDrop},
 	ptr::{null_mut, NonNull},
-	sync::{
-		atomic,
-		atomic::{AtomicPtr, AtomicU32, AtomicU8},
+	sync::atomic::{
+		AtomicBool, AtomicPtr, AtomicU32, AtomicU8,
+		Ordering::{Acquire, Relaxed, Release, SeqCst},
 	},
 };
 use mem_space::MemSpace;
@@ -178,36 +178,8 @@ pub struct ForkOptions {
 	/// handlers table.
 	pub share_sighand: bool,
 
-	/// If `true`, the parent is paused until the child process exits or executes
-	/// a program.
-	///
-	/// Underneath, this option makes the parent and child use the same memory space.
-	///
-	/// This is useful in order to avoid an unnecessary clone of the memory space in case the
-	/// child process executes a program or exits quickly.
-	pub vfork: bool,
-
 	/// The stack address the child process begins with.
 	pub stack: Option<NonNull<c_void>>,
-}
-
-/// The vfork operation is similar to the fork operation except the parent
-/// process isn't executed until the child process exits or executes a program.
-///
-/// The reason for this is to prevent useless copies of memory pages when the
-/// child process is created only to execute a program.
-///
-/// It implies that the child process shares the same memory space as the
-/// parent.
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum VForkState {
-	/// The process is not in vfork state.
-	None,
-
-	/// The process is the parent waiting for the child to terminate.
-	Waiting,
-	/// The process is the child the parent waits for.
-	Running,
 }
 
 /// A process's filesystem access information.
@@ -227,7 +199,7 @@ pub struct ProcessFs {
 impl ProcessFs {
 	/// Returns the current umask.
 	pub fn umask(&self) -> file::Mode {
-		self.umask.load(atomic::Ordering::Release)
+		self.umask.load(Release)
 	}
 }
 
@@ -235,7 +207,7 @@ impl Clone for ProcessFs {
 	fn clone(&self) -> Self {
 		Self {
 			access_profile: self.access_profile,
-			umask: AtomicU32::new(self.umask.load(atomic::Ordering::Release)),
+			umask: AtomicU32::new(self.umask.load(Release)),
 			cwd: self.cwd.clone(),
 			chroot: self.chroot.clone(),
 		}
@@ -250,6 +222,11 @@ pub struct ProcessSignal {
 	pub sigmask: SigSet,
 	/// A bitfield storing the set of pending signals.
 	sigpending: SigSet,
+
+	/// The exit status of the process after exiting.
+	pub exit_status: ExitStatus,
+	/// The terminating signal.
+	pub termsig: u8,
 }
 
 impl ProcessSignal {
@@ -293,9 +270,8 @@ pub struct Process {
 
 	/// The current state of the process.
 	state: AtomicU8,
-	/// The current vfork state of the process (see documentation of
-	/// `VForkState`).
-	vfork_state: VForkState,
+	/// If `true`, the parent can resume after a `vfork`.
+	pub vfork_done: AtomicBool,
 
 	/// A pointer to the parent process.
 	parent: Option<Arc<Process>>,
@@ -328,11 +304,6 @@ pub struct Process {
 
 	/// The process's resources usage.
 	pub rusage: Rusage,
-
-	/// The exit status of the process after exiting.
-	exit_status: UnsafeMut<ExitStatus>,
-	/// The terminating signal.
-	termsig: u8,
 }
 
 /// Initializes processes system. This function must be called only once, at
@@ -476,7 +447,7 @@ impl Process {
 			tid: pid::INIT_PID,
 
 			state: AtomicU8::new(State::Running as _),
-			vfork_state: VForkState::None,
+			vfork_done: AtomicBool::new(false),
 
 			parent: None,
 			group_leader: None,
@@ -499,14 +470,14 @@ impl Process {
 				handlers: Arc::new(Default::default())?,
 				sigmask: Default::default(),
 				sigpending: Default::default(),
+
+				exit_status: 0,
+				termsig: 0,
 			}),
 
 			tls: Default::default(),
 
 			rusage: Default::default(),
-
-			exit_status: UnsafeMut::new(0),
-			termsig: 0,
 		};
 		Ok(SCHEDULER.get().lock().add_process(process)?)
 	}
@@ -565,7 +536,7 @@ impl Process {
 	/// caution
 	#[inline(always)]
 	pub fn get_state(&self) -> State {
-		let id = self.state.load(atomic::Ordering::Relaxed);
+		let id = self.state.load(Relaxed);
 		State::from_id(id)
 	}
 
@@ -574,18 +545,14 @@ impl Process {
 	/// If the transition from the previous state to `new_state` is invalid, the function does
 	/// nothing.
 	pub fn set_state(&self, new_state: State) {
-		let Ok(old_state) = self.state.fetch_update(
-			atomic::Ordering::Release,
-			atomic::Ordering::Acquire,
-			|old_state| {
-				let old_state = State::from_id(old_state);
-				let valid = matches!(
-					(old_state, new_state),
-					(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
-				);
-				valid.then_some(new_state as u8)
-			},
-		) else {
+		let Ok(old_state) = self.state.fetch_update(Release, Acquire, |old_state| {
+			let old_state = State::from_id(old_state);
+			let valid = matches!(
+				(old_state, new_state),
+				(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
+			);
+			valid.then_some(new_state as u8)
+		}) else {
 			// Invalid transition, do nothing
 			return;
 		};
@@ -600,9 +567,11 @@ impl Process {
 			if self.is_init() {
 				panic!("Terminated init process!");
 			}
-			// Remove the memory space and file descriptors table to save memory
-			//self.mem_space = None; // TODO Handle the case where the memory space is bound
-			self.file_descriptors = None;
+			// Remove the memory space and file descriptors table to reclaim memory
+			unsafe {
+				//self.mem_space = None; // TODO Handle the case where the memory space is bound
+				*self.file_descriptors.get_mut() = None;
+			}
 			// Attach every child to the init process
 			let init_proc = Process::get_by_pid(pid::INIT_PID).unwrap();
 			let children = mem::take(&mut self.children);
@@ -625,19 +594,26 @@ impl Process {
 		}
 	}
 
-	/// Tells whether the scheduler can run the process.
-	pub fn can_run(&self) -> bool {
-		matches!(self.get_state(), State::Running) && self.vfork_state != VForkState::Waiting
-	}
-
 	/// Wakes up the process if in [`State::Sleeping`] state.
 	pub fn wake(&self) {
 		// TODO make sure the ordering is right
-		let _ = self.state.fetch_update(
-			atomic::Ordering::SeqCst,
-			atomic::Ordering::SeqCst,
-			|old_state| (old_state == State::Sleeping as _).then_some(State::Running as _),
-		);
+		let _ = self.state.fetch_update(SeqCst, SeqCst, |old_state| {
+			(old_state == State::Sleeping as _).then_some(State::Running as _)
+		});
+	}
+
+	/// Signals the parent that the `vfork` operation has completed.
+	pub fn vfork_wake(&self) {
+		self.vfork_done.store(true, Release);
+		if let Some(parent) = &self.parent {
+			parent.set_state(State::Running);
+		}
+	}
+
+	/// Tells whether the vfork operation has completed.
+	#[inline]
+	pub fn is_vfork_done(&self) -> bool {
+		self.vfork_done.load(Relaxed)
 	}
 
 	/// Returns the last known userspace registers state.
@@ -659,22 +635,6 @@ impl Process {
 		}
 	}
 
-	/// Returns the exit status.
-	///
-	/// If the process is still running, the value is undefined.
-	#[inline(always)]
-	pub fn get_exit_status(&self) -> ExitStatus {
-		self.exit_status
-	}
-
-	/// Returns the signal number that killed the process.
-	///
-	/// If the process was not killed, the value is undefined.
-	#[inline(always)]
-	pub fn get_termsig(&self) -> u8 {
-		self.termsig
-	}
-
 	/// Forks the current process.
 	///
 	/// The internal state of the process (registers and memory) are always copied.
@@ -689,17 +649,10 @@ impl Process {
 		debug_assert!(matches!(this.get_state(), State::Running));
 		let pid = PidHandle::unique()?;
 		let pid_int = pid.get();
-		// Handle vfork
-		let vfork_state = if fork_options.vfork {
-			this.vfork_state = VForkState::Waiting; // TODO Cancel if the following code fails
-			VForkState::Running
-		} else {
-			VForkState::None
-		};
 		// Clone memory space
 		let mem_space = {
 			let curr_mem_space = this.mem_space.as_ref().unwrap();
-			if fork_options.share_memory || fork_options.vfork {
+			if fork_options.share_memory {
 				curr_mem_space.clone()
 			} else {
 				Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?
@@ -733,7 +686,7 @@ impl Process {
 			tid: pid_int,
 
 			state: AtomicU8::new(State::Running as _),
-			vfork_state,
+			vfork_done: AtomicBool::new(false),
 
 			parent: Some(this.clone()),
 			group_leader: this.group_leader.clone(),
@@ -752,14 +705,14 @@ impl Process {
 				handlers: signal_handlers,
 				sigmask: this.signal.lock().sigmask,
 				sigpending: Default::default(),
+
+				exit_status: 0,
+				termsig: 0,
 			}),
 
 			tls: Mutex::new(this.tls.lock().clone()),
 
 			rusage: Rusage::default(),
-
-			exit_status: this.exit_status,
-			termsig: 0,
 		};
 		this.add_child(pid_int)?;
 		Ok(SCHEDULER.get().lock().add_process(process)?)
@@ -776,9 +729,7 @@ impl Process {
 			return;
 		}
 		// Statistics
-		self.rusage
-			.ru_nsignals
-			.fetch_add(1, atomic::Ordering::Relaxed);
+		self.rusage.ru_nsignals.fetch_add(1, Relaxed);
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] received signal `{signal}`",
@@ -824,19 +775,6 @@ impl Process {
 		}
 	}
 
-	/// If the process is a vfork child, resets its state and its parent's
-	/// state.
-	pub fn reset_vfork(&self) {
-		if self.vfork_state != VForkState::Running {
-			return;
-		}
-		self.vfork_state = VForkState::None;
-		// Reset the parent's vfork state if needed
-		if let Some(parent) = &self.parent {
-			parent.vfork_state = VForkState::None;
-		}
-	}
-
 	/// Exits the process with the given `status`.
 	///
 	/// This function changes the process's status to `Zombie`.
@@ -846,9 +784,9 @@ impl Process {
 			"[strace {pid}] exited with status `{status}`",
 			pid = self.pid.get()
 		);
-		self.exit_status = status as ExitStatus;
+		self.signal.lock().exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
-		self.reset_vfork();
+		self.vfork_wake();
 	}
 }
 

@@ -183,7 +183,7 @@ use clock_gettime64::clock_gettime64;
 use clone::clone;
 use close::close;
 use connect::connect;
-use core::{arch::global_asm, fmt, ptr};
+use core::{arch::global_asm, fmt, ops::Deref, ptr};
 use creat::creat;
 use delete_module::delete_module;
 use dup::dup;
@@ -402,7 +402,7 @@ impl FromSyscall for Arc<IntMutex<MemSpace>> {
 impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
 	#[inline]
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().file_descriptors.clone().unwrap()
+		Process::current().file_descriptors.deref().clone().unwrap()
 	}
 }
 
