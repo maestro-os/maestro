@@ -27,6 +27,12 @@ use core::{
 	mem::offset_of,
 };
 
+// include registers save/restore macros
+#[cfg(target_arch = "x86")]
+global_asm!(r#".include "arch/x86/src/regs.s""#);
+#[cfg(target_arch = "x86_64")]
+global_asm!(r#".include "arch/x86_64/src/regs.s""#);
+
 /// Jumps to a context with the given `frame`.
 pub fn init(frame: &IntFrame) -> ! {
 	#[cfg(target_arch = "x86")]
@@ -43,10 +49,10 @@ pub fn init(frame: &IntFrame) -> ! {
 	#[cfg(target_arch = "x86_64")]
 	unsafe {
 		asm!(
-			r"mov esp, {}
+			r"mov rsp, {}
 			LOAD_REGS
-			add esp, 8
-			iretd",
+			add rsp, 16
+			iretq",
 			in(reg) frame,
 			options(noreturn)
 		)

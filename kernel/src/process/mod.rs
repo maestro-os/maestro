@@ -316,7 +316,7 @@ pub struct Process {
 	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The process's resources usage.
-	pub rusage: Rusage,
+	pub rusage: Mutex<Rusage>,
 }
 
 /// Initializes processes system. This function must be called only once, at
@@ -763,7 +763,7 @@ impl Process {
 
 			tls: Mutex::new(*this.tls.lock()),
 
-			rusage: Rusage::default(),
+			rusage: Mutex::new(Rusage::default()),
 		};
 		this.add_child(pid_int)?;
 		Ok(SCHEDULER.get().lock().add_process(process)?)
@@ -780,7 +780,7 @@ impl Process {
 			return;
 		}
 		// Statistics
-		self.rusage.ru_nsignals.fetch_add(1, Relaxed);
+		self.rusage.lock().ru_nsignals += 1;
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] received signal `{signal}`",

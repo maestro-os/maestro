@@ -992,6 +992,12 @@ extern "C" {
 	pub fn syscall();
 }
 
+// include registers save/restore macros
+#[cfg(target_arch = "x86")]
+global_asm!(r#".include "arch/x86/src/regs.s""#);
+#[cfg(target_arch = "x86_64")]
+global_asm!(r#".include "arch/x86_64/src/regs.s""#);
+
 #[cfg(target_arch = "x86")]
 global_asm!(
 	r"

@@ -306,7 +306,7 @@ STORE_REGS
 
 	xor ebp, ebp
 	push esp
-	call event_handler
+	call interrupt_handler
 	add esp, 4
 
 LOAD_REGS
@@ -330,7 +330,7 @@ STORE_REGS
 
 	xor rbp, rbp
 	mov rdi, rsp
-	call event_handler
+	call interrupt_handler
 
 LOAD_REGS
 	add rsp, 16
@@ -357,7 +357,7 @@ STORE_REGS
 
 	xor ebp, ebp
 	push esp
-	call event_handler
+	call interrupt_handler
 	add esp, 4
 
 LOAD_REGS
@@ -380,7 +380,7 @@ STORE_REGS
 
 	xor rbp, rbp
 	mov rdi, rsp
-	call event_handler
+	call interrupt_handler
 
 LOAD_REGS
 	add rsp, 16
@@ -410,7 +410,7 @@ STORE_REGS
 
 	xor ebp, ebp
 	push esp
-	call event_handler
+	call interrupt_handler
 	add esp, 4
 
 LOAD_REGS
@@ -433,7 +433,7 @@ STORE_REGS
 
 	xor rbp, rbp
 	mov rdi, rsp
-	call event_handler
+	call interrupt_handler
 
 LOAD_REGS
 	add rsp, 16

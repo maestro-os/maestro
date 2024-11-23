@@ -180,8 +180,8 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 		Ok(true)
 	}
 
-	/// Same as [`copy_from_user`], except the function allocates and returns a [`Vec`] instead of
-	/// copying to a provided buffer.
+	/// Same as [`Self::copy_from_user`], except the function allocates and returns a [`Vec`]
+	/// instead of copying to a provided buffer.
 	///
 	/// If the pointer is null, the function returns `None`.
 	pub fn copy_from_user_vec(&self, off: usize, len: usize) -> EResult<Option<Vec<T>>> {

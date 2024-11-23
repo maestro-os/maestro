@@ -129,7 +129,7 @@ fn get_waitable(
 	let pid = proc.get_pid();
 	// Write values back
 	wstatus.copy_to_user(&get_wstatus(&proc))?;
-	rusage.copy_to_user(&proc.rusage)?;
+	rusage.copy_to_user(&proc.rusage.lock())?;
 	// Clear the waitable flag if requested
 	if options & WNOWAIT == 0 {
 		// If the process was a zombie, remove it
