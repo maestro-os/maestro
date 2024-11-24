@@ -21,6 +21,8 @@
 // Register save/restore macros.
 
 .macro STORE_REGS
+    push fs
+    push gs
     push ebp
     push edi
     push esi
@@ -38,4 +40,6 @@
     pop esi
     pop edi
     pop ebp
+    pop gs
+    pop fs
 .endm

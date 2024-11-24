@@ -53,7 +53,7 @@ pub const ENTRIES_COUNT: usize = 0x81;
 
 /// Interruption stack frame, with saved registers state.
 #[cfg(target_arch = "x86")]
-#[repr(C)]
+#[repr(C, packed)]
 #[allow(missing_docs)]
 #[derive(Default)]
 pub struct IntFrame {
@@ -66,8 +66,8 @@ pub struct IntFrame {
 	pub rdi: u32,
 	pub rbp: u32,
 
-	pub gs: u32,
-	pub fs: u32,
+	pub gs: u16,
+	pub fs: u16,
 
 	/// Interruption number.
 	pub int: u32,
@@ -84,7 +84,7 @@ pub struct IntFrame {
 /// Interruption stack frame, with saved registers state.
 #[cfg(target_arch = "x86_64")]
 #[allow(missing_docs)]
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Default)]
 pub struct IntFrame {
 	pub rax: u64,
@@ -104,8 +104,8 @@ pub struct IntFrame {
 	pub r14: u64,
 	pub r15: u64,
 
-	pub gs: u32,
-	pub fs: u32,
+	pub gs: u16,
+	pub fs: u16,
 
 	/// Interruption number.
 	pub int: u64,
