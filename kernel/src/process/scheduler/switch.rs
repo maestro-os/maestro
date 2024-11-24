@@ -22,42 +22,7 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	process::{Process, TLS_ENTRIES_COUNT},
 };
-use core::{
-	arch::{asm, global_asm},
-	mem::offset_of,
-};
-
-// include registers save/restore macros
-#[cfg(target_arch = "x86")]
-global_asm!(r#".include "arch/x86/src/regs.s""#);
-#[cfg(target_arch = "x86_64")]
-global_asm!(r#".include "arch/x86_64/src/regs.s""#);
-
-/// Jumps to a context with the given `frame`.
-pub fn init(frame: &IntFrame) -> ! {
-	#[cfg(target_arch = "x86")]
-	unsafe {
-		asm!(
-			r"mov esp, {}
-			LOAD_REGS
-			add esp, 8
-			iretd",
-			in(reg) frame,
-			options(noreturn)
-		)
-	}
-	#[cfg(target_arch = "x86_64")]
-	unsafe {
-		asm!(
-			r"mov rsp, {}
-			LOAD_REGS
-			add rsp, 16
-			iretq",
-			in(reg) frame,
-			options(noreturn)
-		)
-	}
-}
+use core::{arch::global_asm, mem::offset_of};
 
 /// Switches context from `prev` to `next`.
 ///
@@ -71,12 +36,29 @@ pub unsafe fn switch(prev: *const Process, next: *const Process) {
 }
 
 extern "C" {
+	/// Jumps to a new context with the given `frame`.
+	///
+	/// # Safety
+	///
+	/// The context described by `frame` must be valid.
+	pub fn init_ctx(frame: &IntFrame) -> !;
 	#[allow(improper_ctypes)]
 	fn switch_asm(prev: *const Process, next: *const Process);
 }
 
 #[cfg(target_arch = "x86")]
-global_asm!(r"
+global_asm!(r#"
+.include "arch/x86/src/regs.s"
+
+.global init_ctx
+.global switch_asm
+
+init_ctx:
+	mov esp, [esp + 4]
+	LOAD_REGS
+	add esp, 8
+	iretd
+
 switch_asm:
 	push ebp
 	push ebx
@@ -89,10 +71,21 @@ switch_asm:
 	push ebp
 
 	jmp switch_finish
-", off = const offset_of!(Process, kernel_sp));
+"#, off = const offset_of!(Process, kernel_sp));
 
 #[cfg(target_arch = "x86_64")]
-global_asm!(r"
+global_asm!(r#"
+.include "arch/x86_64/src/regs.s"
+
+.global init_ctx
+.global switch_asm
+
+init_ctx:
+	mov rsp, rdi
+	LOAD_REGS
+	add rsp, 16
+	iretq
+
 switch_asm:
 	push rbp
 	push rbx
@@ -113,7 +106,7 @@ switch_asm:
 	push rbp
 
 	jmp switch_finish
-", off = const offset_of!(Process, kernel_sp));
+"#, off = const offset_of!(Process, kernel_sp));
 
 /// Jumped to from [`switch`], finishing the switch.
 #[no_mangle]

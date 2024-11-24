@@ -158,7 +158,9 @@ fn init(init_path: String) -> EResult<()> {
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
 	}
-	switch::init(&frame);
+	unsafe {
+		switch::init_ctx(&frame);
+	}
 }
 
 /// An inner function is required to ensure everything in scope is dropped before calling
