@@ -50,8 +50,12 @@ extern "C" {
 global_asm!(r#"
 .include "arch/x86/src/regs.s"
 
+.section .text
+
 .global init_ctx
 .global switch_asm
+.type init_ctx, @function
+.type switch_asm, @function
 
 init_ctx:
 	mov esp, [esp + 4]
@@ -77,8 +81,12 @@ switch_asm:
 global_asm!(r#"
 .include "arch/x86_64/src/regs.s"
 
+.section .text
+
 .global init_ctx
 .global switch_asm
+.type init_ctx, @function
+.type switch_asm, @function
 
 init_ctx:
 	mov rsp, rdi

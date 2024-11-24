@@ -1001,6 +1001,8 @@ global_asm!(r#".include "arch/x86_64/src/regs.s""#);
 #[cfg(target_arch = "x86")]
 global_asm!(
 	r"
+.section .text
+
 .global syscall
 .type syscall, @function
 
@@ -1023,6 +1025,8 @@ LOAD_REGS
 #[cfg(target_arch = "x86_64")]
 global_asm!(
 	r"
+.section .text
+
 .global syscall
 .type syscall, @function
 
