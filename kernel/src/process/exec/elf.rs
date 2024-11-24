@@ -39,18 +39,17 @@ use crate::{
 use core::{
 	cmp::{max, min},
 	intrinsics::unlikely,
-	mem::size_of,
 	num::NonZeroUsize,
 	ptr,
 	ptr::null_mut,
-	slice,
 };
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
+	vec,
 };
 
 /// Used to define the end of the entries list.
@@ -125,15 +124,6 @@ struct ELFLoadInfo {
 	entry_point: VirtAddr,
 }
 
-/// An entry of System V's Auxiliary Vectors.
-#[repr(C)]
-struct AuxEntry {
-	/// The entry's type.
-	a_type: i32,
-	/// The entry's value.
-	a_val: isize,
-}
-
 /// Enumeration of possible values for an auxiliary vector entry.
 enum AuxEntryDescValue {
 	/// A single number.
@@ -142,22 +132,12 @@ enum AuxEntryDescValue {
 	String(&'static [u8]),
 }
 
-/// Structure describing an auxiliary vector entry.
+/// An auxiliary vector entry.
 struct AuxEntryDesc {
 	/// The entry's type.
-	a_type: i32,
+	pub a_type: i32,
 	/// The entry's value.
-	a_val: AuxEntryDescValue,
-}
-
-impl AuxEntryDesc {
-	/// Creates a new instance with the given type `a_type` and value `a_val`.
-	pub fn new(a_type: i32, a_val: AuxEntryDescValue) -> Self {
-		Self {
-			a_type,
-			a_val,
-		}
-	}
+	pub a_val: AuxEntryDescValue,
 }
 
 /// Builds an auxiliary vector.
@@ -170,83 +150,82 @@ fn build_auxiliary(
 	exec_info: &ExecInfo,
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
-) -> EResult<Vec<AuxEntryDesc>> {
-	let mut aux = Vec::new();
-
-	aux.push(AuxEntryDesc::new(
-		AT_PHDR,
-		AuxEntryDescValue::Number(load_info.phdr.0),
-	))?;
-	aux.push(AuxEntryDesc::new(
-		AT_PHENT,
-		AuxEntryDescValue::Number(load_info.phentsize as _),
-	))?;
-	aux.push(AuxEntryDesc::new(
-		AT_PHNUM,
-		AuxEntryDescValue::Number(load_info.phnum as _),
-	))?;
-
-	aux.push(AuxEntryDesc::new(
-		AT_PAGESZ,
-		AuxEntryDescValue::Number(PAGE_SIZE),
-	))?;
-
-	aux.push(AuxEntryDesc::new(AT_NOTELF, AuxEntryDescValue::Number(0)))?;
-	aux.push(AuxEntryDesc::new(
-		AT_UID,
-		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.uid as _),
-	))?;
-	aux.push(AuxEntryDesc::new(
-		AT_EUID,
-		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.euid as _),
-	))?;
-	aux.push(AuxEntryDesc::new(
-		AT_GID,
-		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.gid as _),
-	))?;
-	aux.push(AuxEntryDesc::new(
-		AT_EGID,
-		AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.egid as _),
-	))?;
-	aux.push(AuxEntryDesc::new(
-		AT_PLATFORM,
-		AuxEntryDescValue::String(crate::NAME.as_bytes()),
-	))?;
-
-	let hwcap = x86::get_hwcap();
-	aux.push(AuxEntryDesc::new(
-		AT_HWCAP,
-		AuxEntryDescValue::Number(hwcap as _),
-	))?;
-
-	aux.push(AuxEntryDesc::new(AT_SECURE, AuxEntryDescValue::Number(0)))?; // TODO
-	aux.push(AuxEntryDesc::new(
-		AT_BASE_PLATFORM,
-		AuxEntryDescValue::String(crate::NAME.as_bytes()),
-	))?;
-	aux.push(AuxEntryDesc::new(
-		AT_RANDOM,
-		AuxEntryDescValue::String(&[0; 16]),
-	))?; // TODO
-	aux.push(AuxEntryDesc::new(
-		AT_EXECFN,
-		AuxEntryDescValue::String("TODO\0".as_bytes()),
-	))?; // TODO
-
-	// vDSO
-	aux.push(AuxEntryDesc::new(
-		AT_SYSINFO,
-		AuxEntryDescValue::Number(vdso.entry.as_ptr() as _),
-	))?;
-	aux.push(AuxEntryDesc::new(
-		AT_SYSINFO_EHDR,
-		AuxEntryDescValue::Number(vdso.begin.0),
-	))?;
-
-	// End
-	aux.push(AuxEntryDesc::new(AT_NULL, AuxEntryDescValue::Number(0)))?;
-
-	Ok(aux)
+) -> AllocResult<Vec<AuxEntryDesc>> {
+	vec![
+		AuxEntryDesc {
+			a_type: AT_PHDR,
+			a_val: AuxEntryDescValue::Number(load_info.phdr.0),
+		},
+		AuxEntryDesc {
+			a_type: AT_PHENT,
+			a_val: AuxEntryDescValue::Number(load_info.phentsize as _),
+		},
+		AuxEntryDesc {
+			a_type: AT_PHNUM,
+			a_val: AuxEntryDescValue::Number(load_info.phnum as _),
+		},
+		AuxEntryDesc {
+			a_type: AT_PAGESZ,
+			a_val: AuxEntryDescValue::Number(PAGE_SIZE),
+		},
+		AuxEntryDesc {
+			a_type: AT_NOTELF,
+			a_val: AuxEntryDescValue::Number(0),
+		},
+		AuxEntryDesc {
+			a_type: AT_UID,
+			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.uid as _),
+		},
+		AuxEntryDesc {
+			a_type: AT_EUID,
+			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.euid as _),
+		},
+		AuxEntryDesc {
+			a_type: AT_GID,
+			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.gid as _),
+		},
+		AuxEntryDesc {
+			a_type: AT_EGID,
+			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.egid as _),
+		},
+		AuxEntryDesc {
+			a_type: AT_PLATFORM,
+			a_val: AuxEntryDescValue::String(crate::NAME.as_bytes()),
+		},
+		AuxEntryDesc {
+			a_type: AT_HWCAP,
+			a_val: AuxEntryDescValue::Number(x86::get_hwcap() as _),
+		},
+		AuxEntryDesc {
+			a_type: AT_SECURE,
+			a_val: AuxEntryDescValue::Number(0), // TODO
+		},
+		AuxEntryDesc {
+			a_type: AT_BASE_PLATFORM,
+			a_val: AuxEntryDescValue::String(crate::NAME.as_bytes()),
+		},
+		AuxEntryDesc {
+			a_type: AT_RANDOM,
+			a_val: AuxEntryDescValue::String(&[0; 16]), // TODO
+		},
+		AuxEntryDesc {
+			a_type: AT_EXECFN,
+			a_val: AuxEntryDescValue::String("TODO\0".as_bytes()), // TODO
+		},
+		AuxEntryDesc {
+			a_type: AT_SYSINFO,
+			a_val: AuxEntryDescValue::Number(vdso.entry.as_ptr() as _),
+		},
+		AuxEntryDesc {
+			a_type: AT_SYSINFO_EHDR,
+			a_val: AuxEntryDescValue::Number(vdso.begin.0),
+		},
+		// End
+		AuxEntryDesc {
+			a_type: AT_NULL,
+			a_val: AuxEntryDescValue::Number(0),
+		},
+	]
 }
 
 /// Reads the file `file`.
@@ -442,39 +421,45 @@ fn load_elf(
 	})
 }
 
+/// Computes the size of the initial data on the stack.
+///
+/// `bit32` indicates whether userspace runs in 32 bit.
+///
 /// Returns two values:
 /// - The size in bytes of the buffer to store the arguments and environment variables, padding
 ///   included.
 /// - The required size in bytes for the data to be written on the stack before the program starts.
-fn get_init_stack_size(argv: &[String], envp: &[String], aux: &[AuxEntryDesc]) -> (usize, usize) {
+fn get_init_stack_size(
+	argv: &[String],
+	envp: &[String],
+	aux: &[AuxEntryDesc],
+	bit32: bool,
+) -> (usize, usize) {
+	let size = if bit32 { 4 } else { 8 };
 	// The size of the block storing the arguments and environment
-	let mut info_block_size = 0;
-	for a in aux {
-		if let AuxEntryDescValue::String(slice) = a.a_val {
-			info_block_size += slice.len() + 1;
-		}
-	}
-	for e in envp {
-		info_block_size += e.len() + 1;
-	}
-	for a in argv {
-		info_block_size += a.len() + 1;
-	}
-
-	// The padding before the information block allowing to preserve stack alignment
-	let info_block_pad = 4 - (info_block_size % 4);
-
+	let info_block_size = aux
+		.iter()
+		.filter_map(|a| {
+			if let AuxEntryDescValue::String(slice) = a.a_val {
+				Some(slice.len() + 1)
+			} else {
+				None
+			}
+		})
+		.chain(envp.iter().map(|e| e.len() + 1))
+		.chain(argv.iter().map(|a| a.len() + 1))
+		.sum::<usize>()
+		// Add padding before the information block allowing to preserve stack alignment
+		.next_multiple_of(size);
 	// The size of the auxiliary vector
-	let aux_size = aux.len() * size_of::<AuxEntry>();
-	// The size of the environment pointers + the null fourbyte
-	let envp_size = envp.len() * 4 + 4;
-	// The size of the argument pointers + the null fourbyte + argc
-	let argv_size = argv.len() * 4 + 8;
-
+	let aux_size = aux.len() * (size * 2);
+	// The size of the environment pointers + null
+	let envp_size = (envp.len() + 1) * size;
+	// The size of the argument pointers + null + argc
+	let argv_size = (argv.len() + 2) * size;
 	// The total size of the stack data in bytes
-	let total_size = info_block_size + info_block_pad + aux_size + envp_size + argv_size;
-
-	(info_block_size + info_block_pad, total_size)
+	let total_size = info_block_size + aux_size + envp_size + argv_size;
+	(info_block_size, total_size)
 }
 
 /// Helper to pre-allocate space on the stack.
@@ -491,6 +476,33 @@ fn stack_prealloc(mem_space: &mut MemSpace, stack: *mut u8, len: usize) -> EResu
 	Ok(())
 }
 
+/// Writes `val` on `stack`.
+///
+/// `bit32` indicates whether userspace runs in 32 bit.
+///
+/// # Safety
+///
+/// `stack` must be a valid pointer.
+#[inline]
+unsafe fn write_val(stack: &mut *mut u8, val: usize, bit32: bool) {
+	if bit32 {
+		*(*stack as *mut u32) = val as u32;
+		*stack = stack.add(4);
+	} else {
+		*(*stack as *mut u64) = val as u64;
+		*stack = stack.add(8);
+	}
+}
+
+/// Copies `str` to `stack` with a nul-terminating byte, and increases `stack` accordingly.
+#[inline]
+unsafe fn copy_string(stack: &mut *mut u8, str: &[u8]) {
+	let len = str.len();
+	ptr::copy_nonoverlapping(str.as_ptr(), *stack, len);
+	*stack.add(len) = 0;
+	*stack = stack.add(len + 1);
+}
+
 /// Initializes the stack data of the process according to the System V ABI.
 ///
 /// The start/end of `argv` and `envp` in userspace are also updated into `exe_info`.
@@ -500,85 +512,55 @@ fn stack_prealloc(mem_space: &mut MemSpace, stack: *mut u8, len: usize) -> EResu
 /// - `argv` is the list of arguments.
 /// - `envp` is the environment.
 /// - `aux` is the auxiliary vector.
+/// - `exe_info` is the execution information stored the memory space's structure.
+/// - `bit32` indicates whether userspace runs in 32 bit.
 ///
-/// The function returns the distance between the top of the stack and the
-/// new bottom after the data has been written.
-fn init_stack(
+/// # Safety
+///
+/// `stack` must point to a valid stack.
+unsafe fn init_stack(
 	user_stack: *mut u8,
 	argv: &[String],
 	envp: &[String],
 	aux: &[AuxEntryDesc],
 	exe_info: &mut mem_space::ExeInfo,
+	bit32: bool,
 ) {
-	let (info_size, total_size) = get_init_stack_size(argv, envp, aux);
-	// A slice on the stack representing the region which will contain the
-	// arguments and environment variables
-	let info_slice = unsafe {
-		let ptr = user_stack.sub(info_size);
-		slice::from_raw_parts_mut(ptr, info_size)
-	};
-	// A slice on the stack representing the region to fill
-	let stack_slice = unsafe {
-		let ptr = user_stack.sub(total_size) as *mut u32;
-		slice::from_raw_parts_mut(ptr, total_size / size_of::<u32>())
-	};
-	// The offset in the information block
-	let mut info_off = 0;
-	// The offset in the pointers list
-	let mut stack_off = 0;
-	// Set argc
-	stack_slice[stack_off] = argv.len() as u32;
-	stack_off += 1;
+	let (info_size, total_size) = get_init_stack_size(argv, envp, aux, bit32);
+	let mut info_ptr = user_stack.sub(info_size);
+	let mut args_ptr = user_stack.sub(total_size);
+	// Push argc
+	write_val(&mut args_ptr, argv.len(), bit32);
 	// Set argv
-	exe_info.argv_begin = VirtAddr::from(info_slice.as_ptr()) + info_off;
+	exe_info.argv_begin = VirtAddr::from(info_ptr);
 	for arg in argv {
-		// Set the argument's pointer
-		stack_slice[stack_off] = &info_slice[info_off] as *const _ as u32;
-		// Copy string
-		let len = arg.len();
-		info_slice[info_off..(info_off + len)].copy_from_slice(arg);
-		info_slice[info_off + len] = 0;
-		info_off += len + 1;
-		stack_off += 1;
+		write_val(&mut args_ptr, info_ptr as _, bit32);
+		copy_string(&mut info_ptr, arg);
 	}
 	// Set the nul byte to end argv
-	stack_slice[stack_off] = 0;
-	stack_off += 1;
+	write_val(&mut args_ptr, 0, bit32);
+	exe_info.argv_end = VirtAddr::from(info_ptr);
 	// Set environment
-	exe_info.argv_end = VirtAddr::from(info_slice.as_ptr()) + info_off;
 	exe_info.envp_begin = exe_info.argv_end;
 	for var in envp {
-		// Set the variable's pointer
-		stack_slice[stack_off] = &info_slice[info_off] as *const _ as u32;
-		// Copy string
-		let len = var.len();
-		info_slice[info_off..(info_off + len)].copy_from_slice(var);
-		info_slice[info_off + len] = 0;
-		info_off += len + 1;
-		stack_off += 1;
+		write_val(&mut args_ptr, info_ptr as _, bit32);
+		copy_string(&mut info_ptr, var);
 	}
 	// Set the nul bytes to end envp
-	stack_slice[stack_off] = 0;
-	stack_off += 1;
-	exe_info.envp_end = VirtAddr::from(info_slice.as_ptr()) + info_off;
+	write_val(&mut args_ptr, 0, bit32);
+	exe_info.envp_end = VirtAddr::from(info_ptr);
 	// Set auxiliary vector
 	for a in aux {
 		let val = match a.a_val {
-			AuxEntryDescValue::Number(n) => n as _,
+			AuxEntryDescValue::Number(n) => n,
 			AuxEntryDescValue::String(slice) => {
-				let val = &info_slice[info_off] as *const _ as _;
-				// Copy string
-				let len = slice.len();
-				info_slice[info_off..(info_off + len)].copy_from_slice(slice);
-				info_slice[info_off + len] = 0;
-				info_off += len + 1;
-				val
+				let begin = info_ptr;
+				copy_string(&mut info_ptr, slice);
+				begin as usize
 			}
 		};
-		// Set the entry
-		stack_slice[stack_off] = a.a_type as _;
-		stack_slice[stack_off + 1] = val;
-		stack_off += 2;
+		write_val(&mut args_ptr, a.a_type as _, bit32);
+		write_val(&mut args_ptr, val, bit32);
 	}
 }
 
@@ -592,6 +574,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 	fn build_image(&self, file: Arc<vfs::Entry>) -> EResult<ProgramImage> {
 		let image = read_exec_file(&file, &self.0.path_resolution.access_profile)?;
 		let parser = ELFParser::new(&image)?;
+		let bit32 = parser.class() == Class::Bit32;
 		let mut mem_space = MemSpace::new(file)?;
 		let load_info = load_elf(&parser, &mut mem_space, null_mut())?;
 		let user_stack = mem_space
@@ -605,7 +588,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 		let vdso = vdso::map(&mut mem_space)?;
 		// Initialize the userspace stack
 		let aux = build_auxiliary(&self.0, &load_info, &vdso)?;
-		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux);
+		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, bit32);
 		stack_prealloc(&mut mem_space, user_stack, init_stack_size)?;
 		unsafe {
 			vmem::switch(&mem_space.vmem, || {
@@ -616,6 +599,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 						&self.0.envp,
 						&aux,
 						&mut mem_space.exe_info,
+						bit32,
 					);
 				});
 			});
@@ -623,7 +607,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 		mem_space.set_brk_init(VirtAddr::from(load_info.load_end).align_to(PAGE_SIZE));
 		Ok(ProgramImage {
 			mem_space,
-			bit32: parser.class() == Class::Bit32,
+			bit32,
 
 			entry_point: load_info.entry_point,
 			user_stack: VirtAddr::from(user_stack) - init_stack_size,
