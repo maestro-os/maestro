@@ -59,6 +59,6 @@ pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
 	utils::slice_copy(crate::VERSION.as_bytes(), &mut utsname.release);
 	utils::slice_copy(&[], &mut utsname.version);
 	utils::slice_copy(crate::ARCH.as_bytes(), &mut utsname.machine);
-	buf.copy_to_user(utsname)?;
+	buf.copy_to_user(&utsname)?;
 	Ok(0)
 }

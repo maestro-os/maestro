@@ -21,13 +21,13 @@
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
 	process::{mem_space::copy::SyscallSlice, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -42,9 +42,9 @@ pub fn bind(
 	// Get socket
 	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
-	let addr = addr
-		.copy_from_user(..(addrlen as usize))?
+	let buf = addr
+		.copy_from_user_vec(0, addrlen as usize)?
 		.ok_or_else(|| errno!(EFAULT))?;
-	sock.bind(&addr)?;
+	sock.bind(&buf)?;
 	Ok(0)
 }

@@ -21,13 +21,13 @@
 use crate::{
 	file::fd::{FileDescriptorTable, NewFDConstraint},
 	process::Process,
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

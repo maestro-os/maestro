@@ -21,7 +21,7 @@
 mod block;
 mod chunk;
 
-use crate::{memory, memory::malloc::ptr::NonNull};
+use crate::{memory, memory::malloc::ptr::NonNull, sync::mutex::IntMutex};
 use block::Block;
 use chunk::Chunk;
 use core::{
@@ -32,7 +32,7 @@ use core::{
 	ptr,
 	ptr::drop_in_place,
 };
-use utils::{errno::AllocResult, lock::IntMutex};
+use utils::errno::AllocResult;
 
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());

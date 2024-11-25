@@ -24,19 +24,14 @@ use crate::{
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::EResult,
-	lock::{IntMutex, IntMutexGuard},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn getresgid(
 	Args((rgid, egid, sgid)): Args<(SyscallPtr<Gid>, SyscallPtr<Gid>, SyscallPtr<Gid>)>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
-	rgid.copy_to_user(ap.gid)?;
-	egid.copy_to_user(ap.egid)?;
-	sgid.copy_to_user(ap.sgid)?;
+	rgid.copy_to_user(&ap.gid)?;
+	egid.copy_to_user(&ap.egid)?;
+	sgid.copy_to_user(&ap.sgid)?;
 	Ok(0)
 }

@@ -47,22 +47,24 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the read operation.
 	fn check_sigttin(&self, tty: &TTYDisplay) -> EResult<()> {
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
-		if proc.pgid == tty.get_pgrp() {
+		let proc = Process::current();
+		if proc.get_pgid() == tty.get_pgrp() {
 			return Ok(());
 		}
-		// Hold the signal handlers table to avoid a race condition
-		let signal_handlers = proc.signal_handlers.clone();
-		let signal_handlers = signal_handlers.lock();
-		let handler = &signal_handlers[Signal::SIGTTIN.get_id() as usize];
-		if proc.is_signal_blocked(Signal::SIGTTIN)
-			|| matches!(handler, SignalHandler::Ignore)
-			|| proc.is_in_orphan_process_group()
-		{
+		if proc.is_in_orphan_process_group() {
 			return Err(errno!(EIO));
 		}
-		drop(signal_handlers);
+		{
+			let signal_manager = proc.signal.lock();
+			if signal_manager.is_signal_blocked(Signal::SIGTTIN) {
+				return Err(errno!(EIO));
+			}
+			let handler =
+				signal_manager.handlers.lock()[Signal::SIGTTIN.get_id() as usize].clone();
+			if matches!(handler, SignalHandler::Ignore) {
+				return Err(errno!(EIO));
+			}
+		}
 		proc.kill_group(Signal::SIGTTIN);
 		Ok(())
 	}
@@ -73,22 +75,24 @@ impl TTYDeviceHandle {
 	///
 	/// This function must be called before performing the write operation.
 	fn check_sigttou(&self, tty: &TTYDisplay) -> EResult<()> {
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
+		let proc = Process::current();
 		if tty.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
 			return Ok(());
 		}
-		// Hold the signal handlers table to avoid a race condition
-		let signal_handlers = proc.signal_handlers.clone();
-		let signal_handlers = signal_handlers.lock();
-		let handler = &signal_handlers[Signal::SIGTTOU.get_id() as usize];
-		if proc.is_signal_blocked(Signal::SIGTTOU) || matches!(handler, SignalHandler::Ignore) {
-			return Ok(());
+		{
+			let signal_manager = proc.signal.lock();
+			if signal_manager.is_signal_blocked(Signal::SIGTTOU) {
+				return Err(errno!(EIO));
+			}
+			let handler =
+				signal_manager.handlers.lock()[Signal::SIGTTOU.get_id() as usize].clone();
+			if matches!(handler, SignalHandler::Ignore) {
+				return Err(errno!(EIO));
+			}
 		}
 		if proc.is_in_orphan_process_group() {
 			return Err(errno!(EIO));
 		}
-		drop(signal_handlers);
 		proc.kill_group(Signal::SIGTTOU);
 		Ok(())
 	}
@@ -134,7 +138,7 @@ impl DeviceIO for TTYDeviceHandle {
 		match request.get_old_format() {
 			ioctl::TCGETS => {
 				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
-				termios_ptr.copy_to_user(tty.get_termios().clone())?;
+				termios_ptr.copy_to_user(tty.get_termios())?;
 				Ok(0)
 			}
 			// TODO Implement correct behaviours for each
@@ -149,7 +153,7 @@ impl DeviceIO for TTYDeviceHandle {
 			}
 			ioctl::TIOCGPGRP => {
 				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
-				pgid_ptr.copy_to_user(tty.get_pgrp())?;
+				pgid_ptr.copy_to_user(&tty.get_pgrp())?;
 				Ok(0)
 			}
 			ioctl::TIOCSPGRP => {
@@ -161,7 +165,7 @@ impl DeviceIO for TTYDeviceHandle {
 			}
 			ioctl::TIOCGWINSZ => {
 				let winsize = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
-				winsize.copy_to_user(tty.get_winsize().clone())?;
+				winsize.copy_to_user(tty.get_winsize())?;
 				Ok(0)
 			}
 			ioctl::TIOCSWINSZ => {

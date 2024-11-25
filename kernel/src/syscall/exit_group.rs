@@ -21,10 +21,7 @@
 
 use crate::{process::Process, syscall::Args};
 use core::ffi::c_int;
-use utils::{
-	errno::{EResult, Errno},
-	lock::IntMutexGuard,
-};
+use utils::errno::{EResult, Errno};
 
 pub fn exit_group(Args(status): Args<c_int>) -> EResult<usize> {
 	super::_exit::do_exit(status as _, true);

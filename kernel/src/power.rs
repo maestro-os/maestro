@@ -18,17 +18,18 @@
 
 //! This module handles system power.
 
-use crate::arch::x86::io::{inb, outb};
+use crate::arch::x86::{
+	cli, hlt,
+	io::{inb, outb},
+};
 use core::arch::asm;
-use utils::interrupt::cli;
 
 /// Halts the kernel until reboot.
 pub fn halt() -> ! {
 	// TODO Send a signal to all other cores to stop them
 	loop {
-		unsafe {
-			asm!("cli", "hlt");
-		}
+		cli();
+		hlt();
 	}
 }
 

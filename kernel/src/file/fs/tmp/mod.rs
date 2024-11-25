@@ -31,6 +31,7 @@ use crate::{
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		DirEntry, FileLocation, FileType, INode, Mode, Stat,
 	},
+	sync::mutex::Mutex,
 	time::unit::Timestamp,
 };
 use core::{
@@ -44,7 +45,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	limits::PAGE_SIZE,
-	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
 };

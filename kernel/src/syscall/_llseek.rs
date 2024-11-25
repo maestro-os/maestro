@@ -24,6 +24,7 @@ use crate::{
 		mem_space::{copy::SyscallPtr, MemSpace},
 		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{
@@ -33,7 +34,6 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
@@ -66,7 +66,7 @@ pub fn _llseek(
 	};
 	let off = base.checked_add(off).ok_or_else(|| errno!(EOVERFLOW))?;
 	// Write the result to the userspace
-	result.copy_to_user(off)?;
+	result.copy_to_user(&off)?;
 	// Set the new offset
 	file.off.store(off, atomic::Ordering::Release);
 	Ok(0)

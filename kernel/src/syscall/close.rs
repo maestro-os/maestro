@@ -19,12 +19,11 @@
 //! The `close` system call closes the given file descriptor.
 
 use super::Args;
-use crate::{file::fd::FileDescriptorTable, process::Process};
+use crate::{file::fd::FileDescriptorTable, process::Process, sync::mutex::Mutex};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

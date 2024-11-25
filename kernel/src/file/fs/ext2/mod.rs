@@ -53,6 +53,7 @@ use crate::{
 		fs::{downcast_fs, Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
 		DirEntry, FileLocation, FileType, INode, Stat,
 	},
+	sync::mutex::Mutex,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use bgd::BlockGroupDescriptor;
@@ -71,7 +72,6 @@ use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::EResult,
-	lock::Mutex,
 	math,
 	ptr::{arc::Arc, cow::Cow},
 	vec,

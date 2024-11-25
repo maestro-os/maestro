@@ -23,7 +23,7 @@ use crate::elf::relocation::Relocation;
 use utils::bytes;
 
 /// The ELF's class.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Class {
 	/// 32 bit
 	Bit32,

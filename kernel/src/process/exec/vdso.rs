@@ -29,6 +29,7 @@ use crate::{
 			MapConstraint, MemSpace,
 		},
 	},
+	sync::mutex::Mutex,
 };
 use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
 use utils::{
@@ -36,7 +37,6 @@ use utils::{
 	errno::{AllocResult, CollectResult, EResult},
 	include_bytes_aligned,
 	limits::PAGE_SIZE,
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

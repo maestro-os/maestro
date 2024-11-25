@@ -23,13 +23,13 @@ use crate::{
 	module,
 	module::Module,
 	process::{mem_space::copy::SyscallString, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{alloc::AllocError, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 	vec,
 };

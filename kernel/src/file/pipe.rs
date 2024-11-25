@@ -22,6 +22,7 @@
 use crate::{
 	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
 	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
+	sync::mutex::Mutex,
 	syscall::{ioctl, FromSyscallArg},
 };
 use core::{
@@ -33,7 +34,6 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	limits::PIPE_BUF,
-	lock::Mutex,
 	vec,
 };
 
@@ -117,9 +117,9 @@ impl FileOps for PipeBuffer {
 	fn ioctl(&self, _file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
-				let len = self.inner.lock().buffer.get_data_len();
-				let count_ptr = SyscallPtr::<c_int>::from_syscall_arg(argp as usize);
-				count_ptr.copy_to_user(len as _)?;
+				let len = self.inner.lock().buffer.get_data_len() as c_int;
+				let count_ptr = SyscallPtr::from_syscall_arg(argp as usize);
+				count_ptr.copy_to_user(&len)?;
 			}
 			_ => return Err(errno!(ENOTTY)),
 		}
@@ -154,7 +154,7 @@ impl FileOps for PipeBuffer {
 		let len = self.wr_queue.wait_until(|| {
 			let mut inner = self.inner.lock();
 			if inner.readers == 0 {
-				Process::current().lock().kill(Signal::SIGPIPE);
+				Process::current().kill(Signal::SIGPIPE);
 				return Some(Err(errno!(EPIPE)));
 			}
 			let len = inner.buffer.write(buf);

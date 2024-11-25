@@ -27,7 +27,6 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
@@ -41,18 +40,16 @@ pub fn timer_settime(
 		SyscallPtr<ITimerspec32>,
 		SyscallPtr<ITimerspec32>,
 	)>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let proc = proc.lock();
 	// Get timer
-	let manager_mutex = proc.timer_manager().clone();
-	let mut manager = manager_mutex.lock();
+	let mut manager = proc.timer_manager.lock();
 	let timer = manager
 		.get_timer_mut(timerid)
 		.ok_or_else(|| errno!(EINVAL))?;
 	// Write old value
 	let old = timer.get_time();
-	old_value.copy_to_user(old)?;
+	old_value.copy_to_user(&old)?;
 	// Set new value
 	let mut new_value_val = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	if (flags & TIMER_ABSTIME) == 0 {

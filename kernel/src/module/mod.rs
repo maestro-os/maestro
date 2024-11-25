@@ -38,6 +38,7 @@ use crate::{
 		relocation,
 		relocation::GOT_SYM,
 	},
+	sync::mutex::Mutex,
 };
 use core::{
 	cmp::min,
@@ -48,7 +49,6 @@ use utils::{
 	collections::{hashmap::HashMap, string::String, vec::Vec},
 	errno,
 	errno::EResult,
-	lock::Mutex,
 	vec, DisplayableStr, TryClone,
 };
 use version::{Dependency, Version};

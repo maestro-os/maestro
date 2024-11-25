@@ -30,6 +30,7 @@ pub mod tcp;
 use crate::{
 	file::perm::AccessProfile,
 	net::sockaddr::{SockAddrIn, SockAddrIn6},
+	sync::mutex::Mutex,
 };
 use buff::BuffList;
 use core::{cmp::Ordering, mem::size_of};
@@ -37,7 +38,6 @@ use utils::{
 	collections::{hashmap::HashMap, string::String, vec::Vec},
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

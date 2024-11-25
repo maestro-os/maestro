@@ -30,16 +30,11 @@ use crate::{
 	elf, memory,
 	memory::{memmap, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
 	register_get,
+	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };
 use core::{alloc::AllocError, cmp::min, intrinsics::unlikely, mem, ptr::NonNull};
-use utils::{
-	collections::vec::Vec,
-	errno::AllocResult,
-	limits::PAGE_SIZE,
-	lock::{once::OnceInit, Mutex},
-	vec,
-};
+use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE, vec};
 
 /// Tells whether the given range of memory overlaps with the kernelspace.
 ///

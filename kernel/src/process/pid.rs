@@ -21,7 +21,8 @@
 //! Each process must have a unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.
 
-use utils::{collections::id_allocator::IDAllocator, errno::AllocResult, lock::Mutex};
+use crate::sync::mutex::Mutex;
+use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
 
 /// Type representing a Process ID. This ID is unique for every running
 /// processes.
@@ -67,6 +68,7 @@ impl PidHandle {
 	}
 
 	/// Returns the actual PID.
+	#[inline]
 	pub fn get(&self) -> Pid {
 		self.0
 	}

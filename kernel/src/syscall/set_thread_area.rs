@@ -28,55 +28,51 @@ use core::mem::size_of;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
 /// The index of the first entry for TLS segments in the GDT.
 const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
 
-/// Returns the ID of a free TLS entry for the given process.
-pub fn get_free_entry(process: &mut Process) -> EResult<usize> {
-	process
-		.tls_entries
-		.iter()
-		.enumerate()
-		.find(|(_, e)| !e.is_present())
-		.map(|(i, _)| i)
-		.ok_or(errno!(ESRCH))
-}
-
 /// Returns an entry ID for the given process and entry number.
 ///
 /// If the id is `-1`, the function shall find a free entry.
-pub fn get_entry(proc: &mut Process, entry_number: i32) -> EResult<(usize, &mut gdt::Entry)> {
+fn get_entry(
+	entries: &mut [gdt::Entry; process::TLS_ENTRIES_COUNT],
+	entry_number: i32,
+) -> EResult<(usize, &mut gdt::Entry)> {
 	const BEGIN_ENTRY: i32 = TLS_BEGIN_INDEX as i32;
 	const END_ENTRY: i32 = BEGIN_ENTRY + process::TLS_ENTRIES_COUNT as i32;
 	let id = match entry_number {
-		// Allocate an entry
-		-1 => get_free_entry(proc)?,
+		// Find a free entry
+		-1 => entries
+			.iter()
+			.enumerate()
+			.find(|(_, e)| !e.is_present())
+			.map(|(i, _)| i)
+			.ok_or(errno!(ESRCH))?,
 		// Valid entry index
 		BEGIN_ENTRY..END_ENTRY => (entry_number - BEGIN_ENTRY) as usize,
 		// Out of bounds
 		_ => return Err(errno!(EINVAL)),
 	};
-	Ok((id, &mut proc.tls_entries[id]))
+	Ok((id, &mut entries[id]))
 }
 
 pub fn set_thread_area(
 	Args(u_info): Args<SyscallPtr<UserDesc>>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Read user_desc
 	let mut info = u_info.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let mut proc = proc.lock();
 	// Get the entry with its id
-	let (id, entry) = get_entry(&mut proc, info.get_entry_number())?;
+	let mut entries = proc.tls.lock();
+	let (id, entry) = get_entry(&mut entries, info.get_entry_number())?;
 	// If the entry is allocated, tell the userspace its ID
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {
 		info.set_entry_number((TLS_BEGIN_INDEX + id) as _);
-		u_info.copy_to_user(info.clone())?;
+		u_info.copy_to_user(&info)?;
 	}
 	// Update the entry
 	*entry = info.to_descriptor();

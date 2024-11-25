@@ -25,6 +25,7 @@ use crate::{
 		mem_space::{copy::SyscallSlice, MemSpace},
 		scheduler, Process,
 	},
+	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };
 use core::{cmp::min, ffi::c_int, intrinsics::unlikely, sync::atomic};
@@ -33,7 +34,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::IOV_MAX,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	vec,
 };
@@ -54,7 +54,7 @@ fn read(
 	file: &File,
 ) -> EResult<usize> {
 	let mut off = 0;
-	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
+	let iov = iov.copy_from_user_vec(0, iovcnt)?.ok_or(errno!(EFAULT))?;
 	for i in iov {
 		// The size to read. This is limited to avoid an overflow on the total length
 		let max_len = min(i.iov_len, i32::MAX as usize - off);

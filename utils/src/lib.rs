@@ -50,11 +50,10 @@ pub mod bytes;
 pub mod collections;
 pub mod cpio;
 pub mod errno;
-pub mod interrupt;
 pub mod limits;
-pub mod lock;
 pub mod math;
 pub mod ptr;
+pub mod unsafe_mut;
 
 use crate::errno::AllocResult;
 use core::{

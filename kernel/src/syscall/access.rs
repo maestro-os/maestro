@@ -24,6 +24,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{mem_space::copy::SyscallString, Process},
+	sync::mutex::Mutex,
 	syscall::{
 		util::{
 			at,
@@ -37,7 +38,6 @@ use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

@@ -18,11 +18,10 @@
 
 //! The `fcntl64` syscall call allows to manipulate a file descriptor.
 
-use crate::{file::fd::FileDescriptorTable, syscall::Args};
+use crate::{file::fd::FileDescriptorTable, sync::mutex::Mutex, syscall::Args};
 use core::ffi::{c_int, c_void};
 use utils::{
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

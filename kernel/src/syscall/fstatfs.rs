@@ -21,13 +21,13 @@
 use crate::{
 	file::{fd::FileDescriptorTable, fs::Statfs},
 	process::{mem_space::copy::SyscallPtr, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{ffi::c_int, intrinsics::size_of};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -51,7 +51,7 @@ pub fn do_fstatfs(
 		.ok_or_else(|| errno!(ENOSYS))?
 		.fs
 		.get_stat()?;
-	buf.copy_to_user(stat)?;
+	buf.copy_to_user(&stat)?;
 	Ok(0)
 }
 

@@ -24,13 +24,13 @@ use crate::{
 		mem_space::copy::{SyscallPtr, SyscallSlice},
 		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{any::Any, cmp::min, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -49,6 +49,6 @@ pub fn getsockname(
 	let name = sock.get_sockname().lock();
 	let len = min(name.len(), addrlen_val as _);
 	addr.copy_to_user(0, &name[..len])?;
-	addrlen.copy_to_user(len as _)?;
+	addrlen.copy_to_user(&(len as _))?;
 	Ok(0)
 }

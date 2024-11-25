@@ -23,11 +23,10 @@ pub mod pit;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod rtc;
 
-use crate::time::unit::Timestamp;
+use crate::{sync::mutex::Mutex, time::unit::Timestamp};
 use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, string::String},
-	lock::Mutex,
 	math::rational::Rational,
 };
 

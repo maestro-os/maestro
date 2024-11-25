@@ -24,17 +24,12 @@ use crate::{
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::EResult,
-	lock::{IntMutex, IntMutexGuard},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn setregid(
 	Args((rgid, egid)): Args<(c_int, c_int)>,
 	ap: AccessProfile,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Validation
 	if rgid < -1 || egid < -1 {
@@ -47,7 +42,6 @@ pub fn setregid(
 		return Err(errno!(EPERM));
 	}
 	// Update
-	let mut proc = proc.lock();
 	let new_rgid = match rgid {
 		-1 => ap.gid,
 		i => i as _,
@@ -56,10 +50,11 @@ pub fn setregid(
 		-1 => ap.egid,
 		i => i as _,
 	};
-	proc.access_profile.gid = new_rgid;
-	proc.access_profile.egid = new_egid;
+	let mut fs = proc.fs.lock();
+	fs.access_profile.gid = new_rgid;
+	fs.access_profile.egid = new_egid;
 	if new_rgid != ap.gid || new_egid != ap.gid {
-		proc.access_profile.sgid = new_egid;
+		fs.access_profile.sgid = new_egid;
 	}
 	Ok(0)
 }

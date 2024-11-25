@@ -21,11 +21,10 @@
 use crate::{file::perm::Uid, process::Process, syscall::Args};
 use utils::{
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
-pub fn setuid(Args(uid): Args<Uid>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	proc.lock().access_profile.set_uid(uid)?;
+pub fn setuid(Args(uid): Args<Uid>, proc: Arc<Process>) -> EResult<usize> {
+	proc.fs.lock().access_profile.set_uid(uid)?;
 	Ok(0)
 }

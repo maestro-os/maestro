@@ -50,6 +50,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType, Mode, Stat,
 	},
+	sync::mutex::Mutex,
 	syscall::ioctl,
 };
 use core::{ffi::c_void, fmt, num::NonZeroU64};
@@ -62,7 +63,6 @@ use utils::{
 	},
 	errno,
 	errno::EResult,
-	lock::Mutex,
 	ptr::arc::Arc,
 	slice_copy, vec, TryClone,
 };

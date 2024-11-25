@@ -28,14 +28,15 @@ pub mod elf;
 pub mod vdso;
 
 use crate::{
+	arch::x86::idt::IntFrame,
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
-	process::{mem_space::MemSpace, regs::Regs32, signal::SignalHandler, Process},
+	process::{mem_space::MemSpace, Process},
+	sync::mutex::{IntMutex, Mutex},
 };
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno::EResult,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
@@ -51,13 +52,10 @@ pub struct ExecInfo<'s> {
 
 /// A built program image.
 pub struct ProgramImage {
-	/// The argv of the program.
-	argv: Vec<String>,
-	/// The environment variables of the program.
-	envp: String,
-
 	/// The image's memory space.
 	mem_space: MemSpace,
+	/// Tells whether the program is 32 bit.
+	bit32: bool,
 
 	/// A pointer to the entry point of the program.
 	entry_point: VirtAddr,
@@ -68,8 +66,9 @@ pub struct ProgramImage {
 /// A program executor, whose role is to load a program and to prepare it for execution.
 pub trait Executor {
 	/// Builds a program image.
-	/// `file` is the program's file.
-	fn build_image(&self, file: &vfs::Entry) -> EResult<ProgramImage>;
+	///
+	/// `file` is the program's VFS entry.
+	fn build_image(&self, file: Arc<vfs::Entry>) -> EResult<ProgramImage>;
 }
 
 /// Builds a program image from the given executable file.
@@ -80,22 +79,19 @@ pub trait Executor {
 ///
 /// The function returns a memory space containing the program image and the
 /// pointer to the entry point.
-pub fn build_image(file: &vfs::Entry, info: ExecInfo) -> EResult<ProgramImage> {
+pub fn build_image(file: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	// TODO Support other formats than ELF (wasm?)
-
-	let exec = elf::ELFExecutor::new(info)?;
-	exec.build_image(file)
+	elf::ELFExecutor(info).build_image(file)
 }
 
 /// Executes the program image `image` on the process `proc`.
-pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
-	proc.argv = Arc::new(image.argv)?;
-	proc.envp = Arc::new(image.envp)?;
-	// TODO Set exec path
-	// Set the new memory space to the process
-	proc.set_mem_space(Some(Arc::new(IntMutex::new(image.mem_space))?));
-	// Duplicate the file descriptor table
-	proc.file_descriptors = proc
+///
+/// `frame` is the interrupt frame of the current content. The function sets the appropriate values
+/// for each register so that the execution beings when the interrupt handler returns.
+pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
+	// Preform all fallible operations first before touching the process
+	let mem_space = Arc::new(IntMutex::new(image.mem_space))?;
+	let fds = proc
 		.file_descriptors
 		.as_ref()
 		.map(|fds_mutex| -> EResult<_> {
@@ -104,16 +100,24 @@ pub fn exec(proc: &mut Process, image: ProgramImage) -> EResult<()> {
 			Ok(Arc::new(Mutex::new(new_fds))?)
 		})
 		.transpose()?;
+	let signal_handlers = Arc::new(Default::default())?;
+	// All fallible operations succeeded, flush to process
+	mem_space.lock().bind();
+	// Safe because no other thread can execute this function at the same time for the same process
+	unsafe {
+		*proc.file_descriptors.get_mut() = fds;
+		*proc.mem_space.get_mut() = Some(mem_space);
+	}
 	// Reset signals
-	proc.signal_handlers.lock().fill(SignalHandler::Default);
-	proc.reset_vfork();
-	proc.tls_entries = Default::default();
+	{
+		let mut signal_manager = proc.signal.lock();
+		signal_manager.handlers = signal_handlers;
+		signal_manager.sigpending = Default::default();
+	}
+	proc.vfork_wake();
+	*proc.tls.lock() = Default::default();
 	proc.update_tss();
 	// Set the process's registers
-	proc.regs = Regs32 {
-		esp: image.user_stack.0 as _,
-		eip: image.entry_point.0 as _,
-		..Default::default()
-	};
+	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.bit32);
 	Ok(())
 }

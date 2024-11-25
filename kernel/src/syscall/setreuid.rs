@@ -24,17 +24,12 @@ use crate::{
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::EResult,
-	lock::{IntMutex, IntMutexGuard},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn setreuid(
 	Args((ruid, euid)): Args<(c_int, c_int)>,
 	ap: AccessProfile,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Validation
 	if ruid < -1 || euid < -1 {
@@ -46,7 +41,6 @@ pub fn setreuid(
 		return Err(errno!(EPERM));
 	}
 	// Update
-	let mut proc = proc.lock();
 	let new_ruid = match ruid {
 		-1 => ap.uid,
 		i => i as _,
@@ -55,10 +49,11 @@ pub fn setreuid(
 		-1 => ap.euid,
 		i => i as _,
 	};
-	proc.access_profile.uid = new_ruid;
-	proc.access_profile.euid = new_euid;
+	let mut fs = proc.fs.lock();
+	fs.access_profile.uid = new_ruid;
+	fs.access_profile.euid = new_euid;
 	if new_ruid != ap.uid || new_euid != ap.uid {
-		proc.access_profile.suid = new_euid;
+		fs.access_profile.suid = new_euid;
 	}
 	Ok(0)
 }

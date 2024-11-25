@@ -33,13 +33,14 @@ use crate::{
 	file::wait_queue::WaitQueue,
 	memory::vmem,
 	process::{pid::Pid, signal::Signal, Process},
+	sync::mutex::Mutex,
 	tty::{
 		ansi::ANSIBuffer,
 		termios::{consts::*, Termios},
 	},
 };
 use core::{cmp::min, ptr};
-use utils::{errno::EResult, lock::Mutex};
+use utils::errno::EResult;
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: vga::Pos = 128;
@@ -100,8 +101,7 @@ fn send_signal(sig: Signal, pgrp: Pid) {
 	if pgrp == 0 {
 		return;
 	}
-	if let Some(proc_mutex) = Process::get_by_pid(pgrp) {
-		let mut proc = proc_mutex.lock();
+	if let Some(proc) = Process::get_by_pid(pgrp) {
 		proc.kill_group(sig);
 	}
 }

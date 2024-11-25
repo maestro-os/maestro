@@ -29,6 +29,7 @@ use crate::{
 		mem_space::copy::{SyscallPtr, SyscallString},
 		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::{c_int, c_uint};
@@ -36,7 +37,6 @@ use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -149,7 +149,7 @@ pub fn statx(
 		None => (0, 0),
 	};
 	// Write
-	statxbuff.copy_to_user(Statx {
+	statxbuff.copy_to_user(&Statx {
 		stx_mask: !0,      // TODO
 		stx_blksize: 512,  // TODO
 		stx_attributes: 0, // TODO

@@ -27,6 +27,7 @@ use crate::{
 		mem_space::{residence::MapResidence, MemSpace},
 		Process,
 	},
+	sync::mutex::{IntMutex, Mutex},
 	syscall::{mmap::mem_space::MapConstraint, Args},
 };
 use core::{
@@ -38,7 +39,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::PAGE_SIZE,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 

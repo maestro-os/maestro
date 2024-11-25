@@ -403,8 +403,8 @@ pub unsafe fn map(
 		} else if previous_entry & FLAG_PAGE_SIZE != 0 {
 			// A PSE entry is present, need to expand it for the mapping
 			table.expand(index)?;
-			table[index] |= flags;
 		}
+		table[index] |= flags;
 		// Jump to next table
 		table = unsafe { unwrap_entry(table[index]).0.as_mut() };
 	}

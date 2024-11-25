@@ -25,15 +25,10 @@ use crate::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
-pub fn setpgid(
-	Args((mut pid, mut pgid)): Args<(Pid, Pid)>,
-	proc: Arc<IntMutex<Process>>,
-) -> EResult<usize> {
-	let mut proc = proc.lock();
+pub fn setpgid(Args((mut pid, mut pgid)): Args<(Pid, Pid)>, proc: Arc<Process>) -> EResult<usize> {
 	// TODO Check processes SID
 	if pid == 0 {
 		pid = proc.get_pid();
@@ -42,13 +37,12 @@ pub fn setpgid(
 		pgid = pid;
 	}
 	if pid == proc.get_pid() {
-		proc.pgid = pgid;
+		proc.set_pgid(pgid)?;
 	} else {
 		// Avoid deadlock
 		drop(proc);
 		Process::get_by_pid(pid)
 			.ok_or_else(|| errno!(ESRCH))?
-			.lock()
 			.set_pgid(pgid)?;
 	}
 	Ok(0)

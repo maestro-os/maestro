@@ -18,7 +18,10 @@
 
 //! Filesystem node cache, allowing to handle hard links pointing to the same node.
 
-use crate::file::{fs::NodeOps, FileLocation, FileType};
+use crate::{
+	file::{fs::NodeOps, FileLocation, FileType},
+	sync::mutex::Mutex,
+};
 use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
@@ -27,7 +30,6 @@ use utils::{
 	boxed::Box,
 	collections::hashmap::HashSet,
 	errno::{AllocResult, EResult},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

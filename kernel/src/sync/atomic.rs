@@ -18,6 +18,8 @@
 
 //! Implementation of [`AtomicU64`].
 
+#[cfg(not(target_has_atomic = "64"))]
+use super::mutex::IntMutex;
 use core::{fmt, fmt::Formatter, sync::atomic};
 
 /// Fulfills the role of `AtomicU64`, while being available on 32 bits platforms.
@@ -28,7 +30,7 @@ pub struct AtomicU64(core::sync::atomic::AtomicU64);
 /// Fulfills the role of `AtomicU64`, while being available on 32 bits platforms.
 #[cfg(not(target_has_atomic = "64"))]
 #[derive(Default)]
-pub struct AtomicU64(super::IntMutex<u64>);
+pub struct AtomicU64(IntMutex<u64>);
 
 impl AtomicU64 {
 	/// Creates a new instance with the given value.
@@ -39,7 +41,7 @@ impl AtomicU64 {
 		}
 		#[cfg(not(target_has_atomic = "64"))]
 		{
-			Self(super::IntMutex::new(val))
+			Self(IntMutex::new(val))
 		}
 	}
 

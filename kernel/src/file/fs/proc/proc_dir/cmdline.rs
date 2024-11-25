@@ -19,6 +19,7 @@
 //! The `cmdline` node allows to retrieve the list of command line arguments of
 //! the process.
 
+use super::read_memory;
 use crate::{
 	file::{
 		fs::{proc::get_proc_owner, NodeOps},
@@ -27,19 +28,8 @@ use crate::{
 	format_content,
 	process::{pid::Pid, Process},
 };
-use core::{fmt, fmt::Formatter};
+use core::fmt;
 use utils::{errno, errno::EResult};
-
-struct CmdlineDisp<'p>(&'p Process);
-
-impl<'p> fmt::Display for CmdlineDisp<'p> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		for a in self.0.argv.iter() {
-			write!(f, "{a}\0")?;
-		}
-		Ok(())
-	}
-}
 
 /// The cmdline node of the proc.
 #[derive(Clone, Debug)]
@@ -63,8 +53,16 @@ impl NodeOps for Cmdline {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", CmdlineDisp(&proc))
+		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
+		let mem_space = proc.mem_space.as_ref().unwrap().lock();
+		let disp = fmt::from_fn(|f| {
+			read_memory(
+				f,
+				&mem_space,
+				mem_space.exe_info.argv_begin,
+				mem_space.exe_info.argv_end,
+			)
+		});
+		format_content!(off, buf, "{disp}")
 	}
 }

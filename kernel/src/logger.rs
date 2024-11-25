@@ -21,13 +21,12 @@
 //! If the logger is set as silent, logs will not show up on screen, but will be kept in memory
 //! anyway.
 
-use crate::tty::TTY;
+use crate::{sync::mutex::IntMutex, tty::TTY};
 use core::{
 	cmp::{min, Ordering},
 	fmt,
 	fmt::Write,
 };
-use utils::lock::IntMutex;
 
 /// The size of the kernel logs buffer in bytes.
 const LOGS_SIZE: usize = 1048576;

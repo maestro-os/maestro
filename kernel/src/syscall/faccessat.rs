@@ -21,10 +21,11 @@
 use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
 	process::mem_space::copy::SyscallString,
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{errno::EResult, lock::Mutex, ptr::arc::Arc};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn faccessat(
 	Args((dir_fd, pathname, mode)): Args<(c_int, SyscallString, c_int)>,

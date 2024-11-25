@@ -140,7 +140,7 @@ impl DeviceIO for StorageDeviceHandle {
 				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
 				// Write to userspace
 				let hd_geo_ptr = SyscallPtr::<HdGeometry>::from_syscall_arg(argp as usize);
-				hd_geo_ptr.copy_to_user(HdGeometry {
+				hd_geo_ptr.copy_to_user(&HdGeometry {
 					heads: h,
 					sectors: s,
 					cylinders: c,
@@ -161,13 +161,13 @@ impl DeviceIO for StorageDeviceHandle {
 			ioctl::BLKSSZGET => {
 				let blk_size = self.block_size();
 				let size_ptr = SyscallPtr::<u32>::from_syscall_arg(argp as usize);
-				size_ptr.copy_to_user(blk_size.get() as _)?;
+				size_ptr.copy_to_user(&(blk_size.get() as _))?;
 				Ok(0)
 			}
 			ioctl::BLKGETSIZE64 => {
 				let size = self.block_size().get() * self.blocks_count();
 				let size_ptr = SyscallPtr::<u64>::from_syscall_arg(argp as usize);
-				size_ptr.copy_to_user(size)?;
+				size_ptr.copy_to_user(&size)?;
 				Ok(0)
 			}
 			_ => Err(errno!(ENOTTY)),

@@ -21,13 +21,13 @@
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
 	process::{mem_space::copy::SyscallSlice, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{any::Any, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -45,7 +45,9 @@ pub fn setsockopt(
 	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Set opt
-	let optval_slice = optval.copy_from_user(..optlen)?.ok_or(errno!(EFAULT))?;
+	let optval_slice = optval
+		.copy_from_user_vec(0, optlen)?
+		.ok_or(errno!(EFAULT))?;
 	sock.set_opt(level, optname, &optval_slice)
 		.map(|opt| opt as _)
 }

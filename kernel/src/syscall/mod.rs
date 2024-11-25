@@ -160,10 +160,12 @@ mod writev;
 
 //use wait::wait;
 use crate::{
+	arch::x86::idt::IntFrame,
 	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
 	process,
-	process::{mem_space::MemSpace, regs::Regs32, signal::Signal, Process},
+	process::{mem_space::MemSpace, signal::Signal, Process},
+	sync::mutex::{IntMutex, Mutex},
 };
 use _exit::_exit;
 use _llseek::_llseek;
@@ -181,7 +183,7 @@ use clock_gettime64::clock_gettime64;
 use clone::clone;
 use close::close;
 use connect::connect;
-use core::{arch::global_asm, fmt, ptr};
+use core::{arch::global_asm, fmt, ops::Deref, ptr};
 use creat::creat;
 use delete_module::delete_module;
 use dup::dup;
@@ -292,11 +294,7 @@ use umount::umount;
 use uname::uname;
 use unlink::unlink;
 use unlinkat::unlinkat;
-use utils::{
-	errno::EResult,
-	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
-};
+use utils::{errno::EResult, ptr::arc::Arc};
 use utimensat::utimensat;
 use vfork::vfork;
 use wait4::wait4;
@@ -308,36 +306,61 @@ use writev::writev;
 pub const SIGRETURN_ID: usize = 0x077;
 
 /// A system call handler.
-pub trait SyscallHandler<'p, Args> {
+pub trait SyscallHandler<Args> {
 	/// Calls the system call.
 	///
 	/// Arguments:
 	/// - `name` is the name of the system call.
-	/// - `regs` is the register state of the process at the moment of the system call.
+	/// - `frame` is the interrupt handler's stack frame.
 	///
 	/// The function returns the result of the system call.
-	fn call(self, name: &str, regs: &'p Regs32) -> EResult<usize>;
+	fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize>;
 }
 
 /// Implementation of [`SyscallHandler`] for functions with arguments.
 macro_rules! impl_syscall_handler {
     ($($ty:ident),*) => {
-        impl<'p, F, $($ty,)*> SyscallHandler<'p, ($($ty,)*)> for F
+		// Implementation **without** trailing reference to frame
+        impl<F, $($ty,)*> SyscallHandler<($($ty,)*)> for F
         where F: FnOnce($($ty,)*) -> EResult<usize>,
-			$($ty: FromSyscall<'p>,)*
+			$($ty: FromSyscall,)*
         {
 			#[allow(non_snake_case, unused_variables)]
-            fn call(self, name: &str, regs: &'p Regs32) -> EResult<usize> {
+            fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
 				#[cfg(feature = "strace")]
 				let pid = {
-					let pid = Process::current().lock().get_pid();
+					let pid = Process::current().get_pid();
 					print!("[strace {pid}] {name}");
 					pid
 				};
                 $(
-                    let $ty = $ty::from_syscall(regs);
+                    let $ty = $ty::from_syscall(frame);
                 )*
                 let res = self($($ty,)*);
+				#[cfg(feature = "strace")]
+				println!("[strace {pid}] -> {res:?}");
+				res
+            }
+        }
+
+		// Implementation **with** trailing reference to frame
+		#[allow(unused_parens)]
+        impl<F, $($ty,)*> SyscallHandler<($($ty,)* &mut IntFrame)> for F
+        where F: FnOnce($($ty,)* &mut IntFrame) -> EResult<usize>,
+			$($ty: FromSyscall,)*
+        {
+			#[allow(non_snake_case, unused_variables)]
+            fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
+				#[cfg(feature = "strace")]
+				let pid = {
+					let pid = Process::current().get_pid();
+					print!("[strace {pid}] {name}");
+					pid
+				};
+                $(
+                    let $ty = $ty::from_syscall(frame);
+                )*
+                let res = self($($ty,)* frame);
 				#[cfg(feature = "strace")]
 				println!("[strace {pid}] -> {res:?}");
 				res
@@ -357,57 +380,50 @@ impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8);
 
 /// Extracts a value from the process that made a system call.
-pub trait FromSyscall<'p> {
+pub trait FromSyscall {
 	/// Constructs the value from the given process or syscall argument value.
-	fn from_syscall(regs: &'p Regs32) -> Self;
+	fn from_syscall(frame: &IntFrame) -> Self;
 }
 
-impl<'p> FromSyscall<'p> for Arc<IntMutex<Process>> {
+impl FromSyscall for Arc<Process> {
 	#[inline]
-	fn from_syscall(_regs: &'p Regs32) -> Self {
+	fn from_syscall(_frame: &IntFrame) -> Self {
 		Process::current()
 	}
 }
 
-impl FromSyscall<'_> for Arc<IntMutex<MemSpace>> {
+impl FromSyscall for Arc<IntMutex<MemSpace>> {
 	#[inline]
-	fn from_syscall(_regs: &Regs32) -> Self {
-		Process::current().lock().get_mem_space().unwrap().clone()
+	fn from_syscall(_frame: &IntFrame) -> Self {
+		Process::current().mem_space.as_ref().unwrap().clone()
 	}
 }
 
-impl FromSyscall<'_> for Arc<Mutex<FileDescriptorTable>> {
+impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
 	#[inline]
-	fn from_syscall(_regs: &Regs32) -> Self {
-		Process::current().lock().file_descriptors.clone().unwrap()
+	fn from_syscall(_frame: &IntFrame) -> Self {
+		Process::current().file_descriptors.deref().clone().unwrap()
 	}
 }
 
-impl FromSyscall<'_> for AccessProfile {
-	fn from_syscall(_regs: &Regs32) -> Self {
-		Process::current().lock().access_profile
+impl FromSyscall for AccessProfile {
+	fn from_syscall(_frame: &IntFrame) -> Self {
+		Process::current().fs.lock().access_profile
 	}
 }
 
-impl FromSyscall<'_> for ResolutionSettings {
-	fn from_syscall(_regs: &Regs32) -> Self {
-		ResolutionSettings::for_process(&Process::current().lock(), true)
+impl FromSyscall for ResolutionSettings {
+	fn from_syscall(_frame: &IntFrame) -> Self {
+		ResolutionSettings::for_process(&Process::current(), true)
 	}
 }
 
 /// The umask of the process performing the system call.
 pub struct Umask(file::Mode);
 
-impl FromSyscall<'_> for Umask {
-	fn from_syscall(_regs: &Regs32) -> Self {
-		Self(Process::current().lock().umask)
-	}
-}
-
-impl<'p> FromSyscall<'p> for &'p Regs32 {
-	#[inline]
-	fn from_syscall(regs: &'p Regs32) -> Self {
-		regs
+impl FromSyscall for Umask {
+	fn from_syscall(_frame: &IntFrame) -> Self {
+		Self(Process::current().fs.lock().umask())
 	}
 }
 
@@ -415,9 +431,9 @@ impl<'p> FromSyscall<'p> for &'p Regs32 {
 #[derive(Debug)]
 pub struct Args<T: fmt::Debug>(pub T);
 
-impl<T: FromSyscallArg> FromSyscall<'_> for Args<T> {
-	fn from_syscall(regs: &Regs32) -> Self {
-		let arg = T::from_syscall_arg(regs.get_syscall_arg(0));
+impl<T: FromSyscallArg> FromSyscall for Args<T> {
+	fn from_syscall(frame: &IntFrame) -> Self {
+		let arg = T::from_syscall_arg(frame.get_syscall_arg(0));
 		#[cfg(feature = "strace")]
 		println!("({arg:?})");
 		Self(arg)
@@ -426,15 +442,15 @@ impl<T: FromSyscallArg> FromSyscall<'_> for Args<T> {
 
 macro_rules! impl_from_syscall_args {
     ($($ty:ident),*) => {
-		impl<$($ty: FromSyscallArg,)*> FromSyscall<'_> for Args<($($ty,)*)> {
+		impl<$($ty: FromSyscallArg,)*> FromSyscall for Args<($($ty,)*)> {
 			#[inline]
 			#[allow(non_snake_case, unused_variables, unused_mut, unused_assignments)]
 			fn from_syscall(
-				regs: &Regs32,
+				frame: &IntFrame,
 			) -> Self {
 				let mut cursor = 0;
                 $(
-                    let $ty = $ty::from_syscall_arg(regs.get_syscall_arg(cursor));
+                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor));
 					cursor += 1;
                 )*
 				let args = ($($ty,)*);
@@ -496,42 +512,41 @@ impl<T> FromSyscallArg for *mut T {
 
 /// Syscall declaration.
 macro_rules! syscall {
-	($name:ident, $regs:expr) => {{
-		const NAME: &str = stringify!($name);
-		SyscallHandler::call($name, NAME, $regs)
-	}};
+	($name:ident, $frame:expr) => {
+		SyscallHandler::call($name, stringify!($name), $frame)
+	};
 }
 
 /// Executes the system call associated with the given `id` and returns its result.
 ///
 /// If the syscall doesn't exist, the function returns `None`.
 #[inline]
-fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
+fn do_syscall(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 	match id {
-		0x001 => Some(syscall!(_exit, regs)),
-		0x002 => Some(syscall!(fork, regs)),
-		0x003 => Some(syscall!(read, regs)),
-		0x004 => Some(syscall!(write, regs)),
-		0x005 => Some(syscall!(open, regs)),
-		0x006 => Some(syscall!(close, regs)),
-		0x007 => Some(syscall!(waitpid, regs)),
-		0x008 => Some(syscall!(creat, regs)),
-		0x009 => Some(syscall!(link, regs)),
-		0x00a => Some(syscall!(unlink, regs)),
-		0x00b => Some(syscall!(execve, regs)),
-		0x00c => Some(syscall!(chdir, regs)),
-		0x00d => Some(syscall!(time, regs)),
-		0x00e => Some(syscall!(mknod, regs)),
-		0x00f => Some(syscall!(chmod, regs)),
-		0x010 => Some(syscall!(lchown, regs)),
-		0x011 => Some(syscall!(r#break, regs)),
+		0x001 => Some(syscall!(_exit, frame)),
+		0x002 => Some(syscall!(fork, frame)),
+		0x003 => Some(syscall!(read, frame)),
+		0x004 => Some(syscall!(write, frame)),
+		0x005 => Some(syscall!(open, frame)),
+		0x006 => Some(syscall!(close, frame)),
+		0x007 => Some(syscall!(waitpid, frame)),
+		0x008 => Some(syscall!(creat, frame)),
+		0x009 => Some(syscall!(link, frame)),
+		0x00a => Some(syscall!(unlink, frame)),
+		0x00b => Some(syscall!(execve, frame)),
+		0x00c => Some(syscall!(chdir, frame)),
+		0x00d => Some(syscall!(time, frame)),
+		0x00e => Some(syscall!(mknod, frame)),
+		0x00f => Some(syscall!(chmod, frame)),
+		0x010 => Some(syscall!(lchown, frame)),
+		0x011 => Some(syscall!(r#break, frame)),
 		// TODO 0x012 => Some(syscall!(oldstat, regs)),
 		// TODO 0x013 => Some(syscall!(lseek, regs)),
-		0x014 => Some(syscall!(getpid, regs)),
-		0x015 => Some(syscall!(mount, regs)),
-		0x016 => Some(syscall!(umount, regs)),
-		0x017 => Some(syscall!(setuid, regs)),
-		0x018 => Some(syscall!(getuid, regs)),
+		0x014 => Some(syscall!(getpid, frame)),
+		0x015 => Some(syscall!(mount, frame)),
+		0x016 => Some(syscall!(umount, frame)),
+		0x017 => Some(syscall!(setuid, frame)),
+		0x018 => Some(syscall!(getuid, frame)),
 		// TODO 0x019 => Some(syscall!(stime, regs)),
 		// TODO 0x01a => Some(syscall!(ptrace, regs)),
 		// TODO 0x01b => Some(syscall!(alarm, regs)),
@@ -540,74 +555,74 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x01e => Some(syscall!(utime, regs)),
 		// TODO 0x01f => Some(syscall!(stty, regs)),
 		// TODO 0x020 => Some(syscall!(gtty, regs)),
-		0x021 => Some(syscall!(access, regs)),
+		0x021 => Some(syscall!(access, frame)),
 		// TODO 0x022 => Some(syscall!(nice, regs)),
 		// TODO 0x023 => Some(syscall!(ftime, regs)),
 		// TODO 0x024 => Some(syscall!(sync, regs)),
-		0x025 => Some(syscall!(kill, regs)),
-		0x026 => Some(syscall!(rename, regs)),
-		0x027 => Some(syscall!(mkdir, regs)),
-		0x028 => Some(syscall!(rmdir, regs)),
-		0x029 => Some(syscall!(dup, regs)),
-		0x02a => Some(syscall!(pipe, regs)),
+		0x025 => Some(syscall!(kill, frame)),
+		0x026 => Some(syscall!(rename, frame)),
+		0x027 => Some(syscall!(mkdir, frame)),
+		0x028 => Some(syscall!(rmdir, frame)),
+		0x029 => Some(syscall!(dup, frame)),
+		0x02a => Some(syscall!(pipe, frame)),
 		// TODO 0x02b => Some(syscall!(times, regs)),
 		// TODO 0x02c => Some(syscall!(prof, regs)),
-		0x02d => Some(syscall!(brk, regs)),
-		0x02e => Some(syscall!(setgid, regs)),
-		0x02f => Some(syscall!(getgid, regs)),
-		0x030 => Some(syscall!(signal, regs)),
-		0x031 => Some(syscall!(geteuid, regs)),
-		0x032 => Some(syscall!(getegid, regs)),
+		0x02d => Some(syscall!(brk, frame)),
+		0x02e => Some(syscall!(setgid, frame)),
+		0x02f => Some(syscall!(getgid, frame)),
+		0x030 => Some(syscall!(signal, frame)),
+		0x031 => Some(syscall!(geteuid, frame)),
+		0x032 => Some(syscall!(getegid, frame)),
 		// TODO 0x033 => Some(syscall!(acct, regs)),
 		// TODO 0x034 => Some(syscall!(umount2, regs)),
 		// TODO 0x035 => Some(syscall!(lock, regs)),
-		0x036 => Some(syscall!(ioctl, regs)),
-		0x037 => Some(syscall!(fcntl, regs)),
+		0x036 => Some(syscall!(ioctl, frame)),
+		0x037 => Some(syscall!(fcntl, frame)),
 		// TODO 0x038 => Some(syscall!(mpx, regs)),
-		0x039 => Some(syscall!(setpgid, regs)),
+		0x039 => Some(syscall!(setpgid, frame)),
 		// TODO 0x03a => Some(syscall!(ulimit, regs)),
 		// TODO 0x03b => Some(syscall!(oldolduname, regs)),
-		0x03c => Some(syscall!(umask, regs)),
-		0x03d => Some(syscall!(chroot, regs)),
+		0x03c => Some(syscall!(umask, frame)),
+		0x03d => Some(syscall!(chroot, frame)),
 		// TODO 0x03e => Some(syscall!(ustat, regs)),
-		0x03f => Some(syscall!(dup2, regs)),
-		0x040 => Some(syscall!(getppid, regs)),
+		0x03f => Some(syscall!(dup2, frame)),
+		0x040 => Some(syscall!(getppid, frame)),
 		// TODO 0x041 => Some(syscall!(getpgrp, regs)),
 		// TODO 0x042 => Some(syscall!(setsid, regs)),
 		// TODO 0x043 => Some(syscall!(sigaction, regs)),
 		// TODO 0x044 => Some(syscall!(sgetmask, regs)),
 		// TODO 0x045 => Some(syscall!(ssetmask, regs)),
-		0x046 => Some(syscall!(setreuid, regs)),
-		0x047 => Some(syscall!(setregid, regs)),
+		0x046 => Some(syscall!(setreuid, frame)),
+		0x047 => Some(syscall!(setregid, frame)),
 		// TODO 0x048 => Some(syscall!(sigsuspend, regs)),
 		// TODO 0x049 => Some(syscall!(sigpending, regs)),
-		0x04a => Some(syscall!(sethostname, regs)),
+		0x04a => Some(syscall!(sethostname, frame)),
 		// TODO 0x04b => Some(syscall!(setrlimit, regs)),
 		// TODO 0x04c => Some(syscall!(getrlimit, regs)),
-		0x04d => Some(syscall!(getrusage, regs)),
+		0x04d => Some(syscall!(getrusage, frame)),
 		// TODO 0x04e => Some(syscall!(gettimeofday, regs)),
 		// TODO 0x04f => Some(syscall!(settimeofday, regs)),
 		// TODO 0x050 => Some(syscall!(getgroups, regs)),
 		// TODO 0x051 => Some(syscall!(setgroups, regs)),
-		0x052 => Some(syscall!(select, regs)),
-		0x053 => Some(syscall!(symlink, regs)),
+		0x052 => Some(syscall!(select, frame)),
+		0x053 => Some(syscall!(symlink, frame)),
 		// TODO 0x054 => Some(syscall!(oldlstat, regs)),
-		0x055 => Some(syscall!(readlink, regs)),
+		0x055 => Some(syscall!(readlink, frame)),
 		// TODO 0x056 => Some(syscall!(uselib, regs)),
 		// TODO 0x057 => Some(syscall!(swapon, regs)),
-		0x058 => Some(syscall!(reboot, regs)),
+		0x058 => Some(syscall!(reboot, frame)),
 		// TODO 0x059 => Some(syscall!(readdir, regs)),
-		0x05a => Some(syscall!(mmap, regs)),
-		0x05b => Some(syscall!(munmap, regs)),
-		0x05c => Some(syscall!(truncate, regs)),
+		0x05a => Some(syscall!(mmap, frame)),
+		0x05b => Some(syscall!(munmap, frame)),
+		0x05c => Some(syscall!(truncate, frame)),
 		// TODO 0x05d => Some(syscall!(ftruncate, regs)),
-		0x05e => Some(syscall!(fchmod, regs)),
+		0x05e => Some(syscall!(fchmod, frame)),
 		// TODO 0x05f => Some(syscall!(fchown, regs)),
 		// TODO 0x060 => Some(syscall!(getpriority, regs)),
 		// TODO 0x061 => Some(syscall!(setpriority, regs)),
 		// TODO 0x062 => Some(syscall!(profil, regs)),
-		0x063 => Some(syscall!(statfs, regs)),
-		0x064 => Some(syscall!(fstatfs, regs)),
+		0x063 => Some(syscall!(statfs, frame)),
+		0x064 => Some(syscall!(fstatfs, frame)),
 		// TODO 0x065 => Some(syscall!(ioperm, regs)),
 		// TODO 0x066 => Some(syscall!(socketcall, regs)),
 		// TODO 0x067 => Some(syscall!(syslog, regs)),
@@ -621,37 +636,37 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x06f => Some(syscall!(vhangup, regs)),
 		// TODO 0x070 => Some(syscall!(idle, regs)),
 		// TODO 0x071 => Some(syscall!(vm86old, regs)),
-		0x072 => Some(syscall!(wait4, regs)),
+		0x072 => Some(syscall!(wait4, frame)),
 		// TODO 0x073 => Some(syscall!(swapoff, regs)),
 		// TODO 0x074 => Some(syscall!(sysinfo, regs)),
 		// TODO 0x075 => Some(syscall!(ipc, regs)),
-		0x076 => Some(syscall!(fsync, regs)),
-		SIGRETURN_ID => Some(syscall!(sigreturn, regs)),
-		0x078 => Some(syscall!(clone, regs)),
+		0x076 => Some(syscall!(fsync, frame)),
+		SIGRETURN_ID => Some(syscall!(sigreturn, frame)),
+		0x078 => Some(syscall!(clone, frame)),
 		// TODO 0x079 => Some(syscall!(setdomainname, regs)),
-		0x07a => Some(syscall!(uname, regs)),
+		0x07a => Some(syscall!(uname, frame)),
 		// TODO 0x07c => Some(syscall!(adjtimex, regs)),
-		0x07d => Some(syscall!(mprotect, regs)),
+		0x07d => Some(syscall!(mprotect, frame)),
 		// TODO 0x07e => Some(syscall!(sigprocmask, regs)),
 		// TODO 0x07f => Some(syscall!(create_module, regs)),
-		0x080 => Some(syscall!(init_module, regs)),
-		0x081 => Some(syscall!(delete_module, regs)),
+		0x080 => Some(syscall!(init_module, frame)),
+		0x081 => Some(syscall!(delete_module, frame)),
 		// TODO 0x083 => Some(syscall!(quotactl, regs)),
-		0x084 => Some(syscall!(getpgid, regs)),
-		0x085 => Some(syscall!(fchdir, regs)),
+		0x084 => Some(syscall!(getpgid, frame)),
+		0x085 => Some(syscall!(fchdir, frame)),
 		// TODO 0x086 => Some(syscall!(bdflush, regs)),
 		// TODO 0x087 => Some(syscall!(sysfs, regs)),
 		// TODO 0x088 => Some(syscall!(personality, regs)),
 		// TODO 0x089 => Some(syscall!(afs_syscall, regs)),
 		// TODO 0x08a => Some(syscall!(setfsuid, regs)),
 		// TODO 0x08b => Some(syscall!(setfsgid, regs)),
-		0x08c => Some(syscall!(_llseek, regs)),
-		0x08d => Some(syscall!(getdents, regs)),
-		0x08e => Some(syscall!(_newselect, regs)),
+		0x08c => Some(syscall!(_llseek, frame)),
+		0x08d => Some(syscall!(getdents, frame)),
+		0x08e => Some(syscall!(_newselect, frame)),
 		// TODO 0x08f => Some(syscall!(flock, regs)),
-		0x090 => Some(syscall!(msync, regs)),
-		0x091 => Some(syscall!(readv, regs)),
-		0x092 => Some(syscall!(writev, regs)),
+		0x090 => Some(syscall!(msync, frame)),
+		0x091 => Some(syscall!(readv, frame)),
+		0x092 => Some(syscall!(writev, frame)),
 		// TODO 0x093 => Some(syscall!(getsid, regs)),
 		// TODO 0x094 => Some(syscall!(fdatasync, regs)),
 		// TODO 0x095 => Some(syscall!(_sysctl, regs)),
@@ -663,71 +678,71 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x09b => Some(syscall!(sched_getparam, regs)),
 		// TODO 0x09c => Some(syscall!(sched_setscheduler, regs)),
 		// TODO 0x09d => Some(syscall!(sched_getscheduler, regs)),
-		0x09e => Some(syscall!(sched_yield, regs)),
+		0x09e => Some(syscall!(sched_yield, frame)),
 		// TODO 0x09f => Some(syscall!(sched_get_priority_max, regs)),
 		// TODO 0x0a0 => Some(syscall!(sched_get_priority_min, regs)),
 		// TODO 0x0a1 => Some(syscall!(sched_rr_get_interval, regs)),
-		0x0a2 => Some(syscall!(nanosleep, regs)),
+		0x0a2 => Some(syscall!(nanosleep, frame)),
 		// TODO 0x0a3 => Some(syscall!(mremap, regs)),
-		0x0a4 => Some(syscall!(setresuid, regs)),
-		0x0a5 => Some(syscall!(getresuid, regs)),
+		0x0a4 => Some(syscall!(setresuid, frame)),
+		0x0a5 => Some(syscall!(getresuid, frame)),
 		// TODO 0x0a6 => Some(syscall!(vm86, regs)),
 		// TODO 0x0a7 => Some(syscall!(query_module, regs)),
-		0x0a8 => Some(syscall!(poll, regs)),
+		0x0a8 => Some(syscall!(poll, frame)),
 		// TODO 0x0a9 => Some(syscall!(nfsservctl, regs)),
-		0x0aa => Some(syscall!(setresgid, regs)),
-		0x0ab => Some(syscall!(getresgid, regs)),
+		0x0aa => Some(syscall!(setresgid, frame)),
+		0x0ab => Some(syscall!(getresgid, frame)),
 		// TODO 0x0ac => Some(syscall!(prctl, regs)),
 		// TODO 0x0ad => Some(syscall!(rt_sigreturn, regs)),
-		0x0ae => Some(syscall!(rt_sigaction, regs)),
-		0x0af => Some(syscall!(rt_sigprocmask, regs)),
+		0x0ae => Some(syscall!(rt_sigaction, frame)),
+		0x0af => Some(syscall!(rt_sigprocmask, frame)),
 		// TODO 0x0b0 => Some(syscall!(rt_sigpending, regs)),
 		// TODO 0x0b1 => Some(syscall!(rt_sigtimedwait, regs)),
 		// TODO 0x0b2 => Some(syscall!(rt_sigqueueinfo, regs)),
 		// TODO 0x0b3 => Some(syscall!(rt_sigsuspend, regs)),
 		// TODO 0x0b4 => Some(syscall!(pread64, regs)),
 		// TODO 0x0b5 => Some(syscall!(pwrite64, regs)),
-		0x0b6 => Some(syscall!(chown, regs)),
-		0x0b7 => Some(syscall!(getcwd, regs)),
+		0x0b6 => Some(syscall!(chown, frame)),
+		0x0b7 => Some(syscall!(getcwd, frame)),
 		// TODO 0x0b8 => Some(syscall!(capget, regs)),
 		// TODO 0x0b9 => Some(syscall!(capset, regs)),
 		// TODO 0x0ba => Some(syscall!(sigaltstack, regs)),
 		// TODO 0x0bb => Some(syscall!(sendfile, regs)),
 		// TODO 0x0bc => Some(syscall!(getpmsg, regs)),
 		// TODO 0x0bd => Some(syscall!(putpmsg, regs)),
-		0x0be => Some(syscall!(vfork, regs)),
+		0x0be => Some(syscall!(vfork, frame)),
 		// TODO 0x0bf => Some(syscall!(ugetrlimit, regs)),
-		0x0c0 => Some(syscall!(mmap2, regs)),
+		0x0c0 => Some(syscall!(mmap2, frame)),
 		// TODO 0x0c1 => Some(syscall!(truncate64, regs)),
 		// TODO 0x0c2 => Some(syscall!(ftruncate64, regs)),
 		// TODO 0x0c3 => Some(syscall!(stat64, regs)),
 		// TODO 0x0c4 => Some(syscall!(lstat64, regs)),
-		0x0c5 => Some(syscall!(fstat64, regs)),
+		0x0c5 => Some(syscall!(fstat64, frame)),
 		// TODO 0x0c6 => Some(syscall!(lchown32, regs)),
-		0x0c7 => Some(syscall!(getuid, regs)),   // getuid32
-		0x0c8 => Some(syscall!(getgid, regs)),   // getgid32
-		0x0c9 => Some(syscall!(geteuid, regs)),  // geteuid32
-		0x0ca => Some(syscall!(getegid, regs)),  // getegid32
-		0x0cb => Some(syscall!(setreuid, regs)), // setreuid32
-		0x0cc => Some(syscall!(setregid, regs)), // setregid32
+		0x0c7 => Some(syscall!(getuid, frame)),   // getuid32
+		0x0c8 => Some(syscall!(getgid, frame)),   // getgid32
+		0x0c9 => Some(syscall!(geteuid, frame)),  // geteuid32
+		0x0ca => Some(syscall!(getegid, frame)),  // getegid32
+		0x0cb => Some(syscall!(setreuid, frame)), // setreuid32
+		0x0cc => Some(syscall!(setregid, frame)), // setregid32
 		// TODO 0x0cd => Some(syscall!(getgroups32, regs)),
 		// TODO 0x0ce => Some(syscall!(setgroups32, regs)),
 		// TODO 0x0cf => Some(syscall!(fchown32, regs)),
-		0x0d0 => Some(syscall!(setresuid, regs)), // setresuid32
-		0x0d1 => Some(syscall!(getresuid, regs)), // getresuid32
-		0x0d2 => Some(syscall!(setresgid, regs)), // setresgid32
-		0x0d3 => Some(syscall!(getresgid, regs)), // getresgid32
-		0x0d4 => Some(syscall!(chown, regs)),     // chown32
-		0x0d5 => Some(syscall!(setuid, regs)),    // setuid32
-		0x0d6 => Some(syscall!(setgid, regs)),    // setgid32
+		0x0d0 => Some(syscall!(setresuid, frame)), // setresuid32
+		0x0d1 => Some(syscall!(getresuid, frame)), // getresuid32
+		0x0d2 => Some(syscall!(setresgid, frame)), // setresgid32
+		0x0d3 => Some(syscall!(getresgid, frame)), // getresgid32
+		0x0d4 => Some(syscall!(chown, frame)),     // chown32
+		0x0d5 => Some(syscall!(setuid, frame)),    // setuid32
+		0x0d6 => Some(syscall!(setgid, frame)),    // setgid32
 		// TODO 0x0d7 => Some(syscall!(setfsuid32, regs)),
 		// TODO 0x0d8 => Some(syscall!(setfsgid32, regs)),
 		// TODO 0x0d9 => Some(syscall!(pivot_root, regs)),
 		// TODO 0x0da => Some(syscall!(mincore, regs)),
-		0x0db => Some(syscall!(madvise, regs)),
-		0x0dc => Some(syscall!(getdents64, regs)),
-		0x0dd => Some(syscall!(fcntl64, regs)),
-		0x0e0 => Some(syscall!(gettid, regs)),
+		0x0db => Some(syscall!(madvise, frame)),
+		0x0dc => Some(syscall!(getdents64, frame)),
+		0x0dd => Some(syscall!(fcntl64, frame)),
+		0x0e0 => Some(syscall!(gettid, frame)),
 		// TODO 0x0e1 => Some(syscall!(readahead, regs)),
 		// TODO 0x0e2 => Some(syscall!(setxattr, regs)),
 		// TODO 0x0e3 => Some(syscall!(lsetxattr, regs)),
@@ -741,12 +756,12 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x0eb => Some(syscall!(removexattr, regs)),
 		// TODO 0x0ec => Some(syscall!(lremovexattr, regs)),
 		// TODO 0x0ed => Some(syscall!(fremovexattr, regs)),
-		0x0ee => Some(syscall!(tkill, regs)),
+		0x0ee => Some(syscall!(tkill, frame)),
 		// TODO 0x0ef => Some(syscall!(sendfile64, regs)),
 		// TODO 0x0f0 => Some(syscall!(futex, regs)),
 		// TODO 0x0f1 => Some(syscall!(sched_setaffinity, regs)),
 		// TODO 0x0f2 => Some(syscall!(sched_getaffinity, regs)),
-		0x0f3 => Some(syscall!(set_thread_area, regs)),
+		0x0f3 => Some(syscall!(set_thread_area, frame)),
 		// TODO 0x0f4 => Some(syscall!(get_thread_area, regs)),
 		// TODO 0x0f5 => Some(syscall!(io_setup, regs)),
 		// TODO 0x0f6 => Some(syscall!(io_destroy, regs)),
@@ -754,27 +769,27 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x0f8 => Some(syscall!(io_submit, regs)),
 		// TODO 0x0f9 => Some(syscall!(io_cancel, regs)),
 		// TODO 0x0fa => Some(syscall!(fadvise64, regs)),
-		0x0fc => Some(syscall!(exit_group, regs)),
+		0x0fc => Some(syscall!(exit_group, frame)),
 		// TODO 0x0fd => Some(syscall!(lookup_dcookie, regs)),
 		// TODO 0x0fe => Some(syscall!(epoll_create, regs)),
 		// TODO 0x0ff => Some(syscall!(epoll_ctl, regs)),
 		// TODO 0x100 => Some(syscall!(epoll_wait, regs)),
 		// TODO 0x101 => Some(syscall!(remap_file_pages, regs)),
-		0x102 => Some(syscall!(set_tid_address, regs)),
-		0x103 => Some(syscall!(timer_create, regs)),
-		0x104 => Some(syscall!(timer_settime, regs)),
+		0x102 => Some(syscall!(set_tid_address, frame)),
+		0x103 => Some(syscall!(timer_create, frame)),
+		0x104 => Some(syscall!(timer_settime, frame)),
 		// TODO 0x105 => Some(syscall!(timer_gettime, regs)),
 		// TODO 0x106 => Some(syscall!(timer_getoverrun, regs)),
-		0x107 => Some(syscall!(timer_delete, regs)),
+		0x107 => Some(syscall!(timer_delete, frame)),
 		// TODO 0x108 => Some(syscall!(clock_settime, regs)),
-		0x109 => Some(syscall!(clock_gettime, regs)),
+		0x109 => Some(syscall!(clock_gettime, frame)),
 		// TODO 0x10a => Some(syscall!(clock_getres, regs)),
 		// TODO 0x10b => Some(syscall!(clock_nanosleep, regs)),
-		0x10c => Some(syscall!(statfs64, regs)),
-		0x10d => Some(syscall!(fstatfs64, regs)),
+		0x10c => Some(syscall!(statfs64, frame)),
+		0x10d => Some(syscall!(fstatfs64, frame)),
 		// TODO 0x10e => Some(syscall!(tgkill, regs)),
 		// TODO 0x10f => Some(syscall!(utimes, regs)),
-		0x110 => Some(syscall!(fadvise64_64, regs)),
+		0x110 => Some(syscall!(fadvise64_64, frame)),
 		// TODO 0x111 => Some(syscall!(vserver, regs)),
 		// TODO 0x112 => Some(syscall!(mbind, regs)),
 		// TODO 0x113 => Some(syscall!(get_mempolicy, regs)),
@@ -796,20 +811,20 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x124 => Some(syscall!(inotify_add_watch, regs)),
 		// TODO 0x125 => Some(syscall!(inotify_rm_watch, regs)),
 		// TODO 0x126 => Some(syscall!(migrate_pages, regs)),
-		0x127 => Some(syscall!(openat, regs)),
+		0x127 => Some(syscall!(openat, frame)),
 		// TODO 0x128 => Some(syscall!(mkdirat, regs)),
 		// TODO 0x129 => Some(syscall!(mknodat, regs)),
 		// TODO 0x12a => Some(syscall!(fchownat, regs)),
 		// TODO 0x12b => Some(syscall!(futimesat, regs)),
 		// TODO 0x12c => Some(syscall!(fstatat64, regs)),
-		0x12d => Some(syscall!(unlinkat, regs)),
+		0x12d => Some(syscall!(unlinkat, frame)),
 		// TODO 0x12e => Some(syscall!(renameat, regs)),
-		0x12f => Some(syscall!(linkat, regs)),
-		0x130 => Some(syscall!(symlinkat, regs)),
+		0x12f => Some(syscall!(linkat, frame)),
+		0x130 => Some(syscall!(symlinkat, frame)),
 		// TODO 0x131 => Some(syscall!(readlinkat, regs)),
-		0x132 => Some(syscall!(fchmodat, regs)),
-		0x133 => Some(syscall!(faccessat, regs)),
-		0x134 => Some(syscall!(pselect6, regs)),
+		0x132 => Some(syscall!(fchmodat, frame)),
+		0x133 => Some(syscall!(faccessat, frame)),
+		0x134 => Some(syscall!(pselect6, frame)),
 		// TODO 0x135 => Some(syscall!(ppoll, regs)),
 		// TODO 0x136 => Some(syscall!(unshare, regs)),
 		// TODO 0x137 => Some(syscall!(set_robust_list, regs)),
@@ -821,7 +836,7 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x13d => Some(syscall!(move_pages, regs)),
 		// TODO 0x13e => Some(syscall!(getcpu, regs)),
 		// TODO 0x13f => Some(syscall!(epoll_pwait, regs)),
-		0x140 => Some(syscall!(utimensat, regs)),
+		0x140 => Some(syscall!(utimensat, frame)),
 		// TODO 0x141 => Some(syscall!(signalfd, regs)),
 		// TODO 0x142 => Some(syscall!(timerfd_create, regs)),
 		// TODO 0x143 => Some(syscall!(eventfd, regs)),
@@ -832,60 +847,60 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x148 => Some(syscall!(eventfd2, regs)),
 		// TODO 0x149 => Some(syscall!(epoll_create1, regs)),
 		// TODO 0x14a => Some(syscall!(dup3, regs)),
-		0x14b => Some(syscall!(pipe2, regs)),
+		0x14b => Some(syscall!(pipe2, frame)),
 		// TODO 0x14c => Some(syscall!(inotify_init1, regs)),
-		0x14d => Some(syscall!(preadv, regs)),
-		0x14e => Some(syscall!(pwritev, regs)),
+		0x14d => Some(syscall!(preadv, frame)),
+		0x14e => Some(syscall!(pwritev, frame)),
 		// TODO 0x14f => Some(syscall!(rt_tgsigqueueinfo, regs)),
 		// TODO 0x150 => Some(syscall!(perf_event_open, regs)),
 		// TODO 0x151 => Some(syscall!(recvmmsg, regs)),
 		// TODO 0x152 => Some(syscall!(fanotify_init, regs)),
 		// TODO 0x153 => Some(syscall!(fanotify_mark, regs)),
-		0x154 => Some(syscall!(prlimit64, regs)),
+		0x154 => Some(syscall!(prlimit64, frame)),
 		// TODO 0x155 => Some(syscall!(name_to_handle_at, regs)),
 		// TODO 0x156 => Some(syscall!(open_by_handle_at, regs)),
 		// TODO 0x157 => Some(syscall!(clock_adjtime, regs)),
-		0x158 => Some(syscall!(syncfs, regs)),
+		0x158 => Some(syscall!(syncfs, frame)),
 		// TODO 0x159 => Some(syscall!(sendmmsg, regs)),
 		// TODO 0x15a => Some(syscall!(setns, regs)),
 		// TODO 0x15b => Some(syscall!(process_vm_readv, regs)),
 		// TODO 0x15c => Some(syscall!(process_vm_writev, regs)),
 		// TODO 0x15d => Some(syscall!(kcmp, regs)),
-		0x15e => Some(syscall!(finit_module, regs)),
+		0x15e => Some(syscall!(finit_module, frame)),
 		// TODO 0x15f => Some(syscall!(sched_setattr, regs)),
 		// TODO 0x160 => Some(syscall!(sched_getattr, regs)),
-		0x161 => Some(syscall!(renameat2, regs)),
+		0x161 => Some(syscall!(renameat2, frame)),
 		// TODO 0x162 => Some(syscall!(seccomp, regs)),
-		0x163 => Some(syscall!(getrandom, regs)),
+		0x163 => Some(syscall!(getrandom, frame)),
 		// TODO 0x164 => Some(syscall!(memfd_create, regs)),
 		// TODO 0x165 => Some(syscall!(bpf, regs)),
 		// TODO 0x166 => Some(syscall!(execveat, regs)),
-		0x167 => Some(syscall!(socket, regs)),
-		0x168 => Some(syscall!(socketpair, regs)),
-		0x169 => Some(syscall!(bind, regs)),
-		0x16a => Some(syscall!(connect, regs)),
+		0x167 => Some(syscall!(socket, frame)),
+		0x168 => Some(syscall!(socketpair, frame)),
+		0x169 => Some(syscall!(bind, frame)),
+		0x16a => Some(syscall!(connect, frame)),
 		// TODO 0x16b => Some(syscall!(listen, regs)),
 		// TODO 0x16c => Some(syscall!(accept4, regs)),
-		0x16d => Some(syscall!(getsockopt, regs)),
-		0x16e => Some(syscall!(setsockopt, regs)),
-		0x16f => Some(syscall!(getsockname, regs)),
+		0x16d => Some(syscall!(getsockopt, frame)),
+		0x16e => Some(syscall!(setsockopt, frame)),
+		0x16f => Some(syscall!(getsockname, frame)),
 		// TODO 0x170 => Some(syscall!(getpeername, regs)),
-		0x171 => Some(syscall!(sendto, regs)),
+		0x171 => Some(syscall!(sendto, frame)),
 		// TODO 0x172 => Some(syscall!(sendmsg, regs)),
 		// TODO 0x173 => Some(syscall!(recvfrom, regs)),
 		// TODO 0x174 => Some(syscall!(recvmsg, regs)),
-		0x175 => Some(syscall!(shutdown, regs)),
+		0x175 => Some(syscall!(shutdown, frame)),
 		// TODO 0x176 => Some(syscall!(userfaultfd, regs)),
 		// TODO 0x177 => Some(syscall!(membarrier, regs)),
 		// TODO 0x178 => Some(syscall!(mlock2, regs)),
 		// TODO 0x179 => Some(syscall!(copy_file_range, regs)),
-		0x17a => Some(syscall!(preadv2, regs)),
-		0x17b => Some(syscall!(pwritev2, regs)),
+		0x17a => Some(syscall!(preadv2, frame)),
+		0x17b => Some(syscall!(pwritev2, frame)),
 		// TODO 0x17c => Some(syscall!(pkey_mprotect, regs)),
 		// TODO 0x17d => Some(syscall!(pkey_alloc, regs)),
 		// TODO 0x17e => Some(syscall!(pkey_free, regs)),
-		0x17f => Some(syscall!(statx, regs)),
-		0x180 => Some(syscall!(arch_prctl, regs)),
+		0x17f => Some(syscall!(statx, frame)),
+		0x180 => Some(syscall!(arch_prctl, frame)),
 		// TODO 0x181 => Some(syscall!(io_pgetevents, regs)),
 		// TODO 0x182 => Some(syscall!(rseq, regs)),
 		// TODO 0x189 => Some(syscall!(semget, regs)),
@@ -898,7 +913,7 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x190 => Some(syscall!(msgsnd, regs)),
 		// TODO 0x191 => Some(syscall!(msgrcv, regs)),
 		// TODO 0x192 => Some(syscall!(msgctl, regs)),
-		0x193 => Some(syscall!(clock_gettime64, regs)),
+		0x193 => Some(syscall!(clock_gettime64, frame)),
 		// TODO 0x194 => Some(syscall!(clock_settime64, regs)),
 		// TODO 0x195 => Some(syscall!(clock_adjtime64, regs)),
 		// TODO 0x196 => Some(syscall!(clock_getres_time64, regs)),
@@ -933,7 +948,7 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 		// TODO 0x1b4 => Some(syscall!(close_range, regs)),
 		// TODO 0x1b5 => Some(syscall!(openat2, regs)),
 		// TODO 0x1b6 => Some(syscall!(pidfd_getfd, regs)),
-		0x1b7 => Some(syscall!(faccessat2, regs)),
+		0x1b7 => Some(syscall!(faccessat2, frame)),
 		// TODO 0x1b8 => Some(syscall!(process_madvise, regs)),
 		// TODO 0x1b9 => Some(syscall!(epoll_pwait2, regs)),
 		// TODO 0x1ba => Some(syscall!(mount_setattr, regs)),
@@ -951,15 +966,14 @@ fn do_syscall(id: usize, regs: &Regs32) -> Option<EResult<usize>> {
 
 /// Called whenever a system call is triggered.
 #[no_mangle]
-pub extern "C" fn syscall_handler(regs: &mut Regs32) {
-	let id = regs.get_syscall_id();
-	match do_syscall(id, regs) {
+pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
+	let id = frame.get_syscall_id();
+	match do_syscall(id, frame) {
 		// Success: Set the return value
-		Some(res) => regs.set_syscall_return(res),
+		Some(res) => frame.set_syscall_return(res),
 		// The system call does not exist: Kill the process with SIGSYS
 		None => {
-			let proc_mutex = Process::current();
-			let mut proc = proc_mutex.lock();
+			let proc = Process::current();
 			#[cfg(feature = "strace")]
 			crate::println!(
 				"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
@@ -970,10 +984,63 @@ pub extern "C" fn syscall_handler(regs: &mut Regs32) {
 		}
 	}
 	// If the process has been killed, handle it
-	process::yield_current(3, regs);
+	process::yield_current(3, frame);
 }
 
 extern "C" {
 	/// The syscall interrupt handler.
 	pub fn syscall();
 }
+
+// include registers save/restore macros
+#[cfg(target_arch = "x86")]
+global_asm!(r#".include "arch/x86/src/regs.s""#);
+#[cfg(target_arch = "x86_64")]
+global_asm!(r#".include "arch/x86_64/src/regs.s""#);
+
+#[cfg(target_arch = "x86")]
+global_asm!(
+	r"
+.section .text
+
+.global syscall
+.type syscall, @function
+
+syscall:
+	cld
+	push 0 # code (absent)
+	push 0 # interrupt ID (absent)
+STORE_REGS
+
+	xor ebp, ebp
+	push esp
+	call syscall_handler
+	add esp, 4
+
+LOAD_REGS
+	add esp, 8
+	iretd"
+);
+
+#[cfg(target_arch = "x86_64")]
+global_asm!(
+	r"
+.section .text
+
+.global syscall
+.type syscall, @function
+
+syscall:
+	cld
+	push 0 # code (absent)
+	push 0 # interrupt ID (absent)
+STORE_REGS
+
+	xor rbp, rbp
+	mov rdi, rsp
+	call syscall_handler
+
+LOAD_REGS
+	add rsp, 16
+	iretq"
+);

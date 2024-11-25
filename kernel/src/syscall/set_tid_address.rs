@@ -24,17 +24,12 @@ use crate::{
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno::EResult,
-	lock::{IntMutex, IntMutexGuard},
-	ptr::arc::Arc,
-};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn set_tid_address(
 	Args(_tidptr): Args<SyscallPtr<c_int>>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let proc = proc.lock();
 	// TODO set process's clear_child_tid
 	Ok(proc.tid as _)
 }

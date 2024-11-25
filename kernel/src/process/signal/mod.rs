@@ -18,13 +18,12 @@
 
 //! POSIX signals implementation.
 
-mod signal_trampoline;
+mod trampoline;
+pub mod ucontext;
 
 use super::{oom, Process, State, REDZONE_SIZE};
 use crate::{
-	file::perm::Uid,
-	memory::VirtAddr,
-	process::{pid::Pid, regs::Regs32, signal::signal_trampoline::signal_trampoline},
+	arch::x86::idt::IntFrame, file::perm::Uid, memory::VirtAddr, process::pid::Pid,
 	time::unit::ClockIdT,
 };
 use core::{
@@ -32,7 +31,7 @@ use core::{
 	fmt,
 	mem::{size_of, transmute},
 	ptr,
-	ptr::{null_mut, NonNull},
+	ptr::NonNull,
 	slice,
 };
 use utils::{errno, errno::Errno};
@@ -79,32 +78,13 @@ pub enum SignalAction {
 
 impl SignalAction {
 	/// Executes the signal action for the given process.
-	pub fn exec(self, sig: Signal, process: &mut Process) {
+	pub fn exec(self, process: &Process) {
 		match self {
 			// TODO when `Abort`ing, dump core
-			SignalAction::Terminate | SignalAction::Abort => {
-				#[cfg(feature = "strace")]
-				println!(
-					"[strace {pid}] killed by signal `{signal}`",
-					pid = process.get_pid(),
-					signal = sig.get_id()
-				);
-				process.set_state(State::Zombie);
-				process.set_waitable(sig.get_id() as _);
-			}
+			SignalAction::Terminate | SignalAction::Abort => process.set_state(State::Zombie),
 			SignalAction::Ignore => {}
-			SignalAction::Stop => {
-				if matches!(process.state, State::Running) {
-					process.set_state(State::Stopped);
-				}
-				process.set_waitable(sig.get_id());
-			}
-			SignalAction::Continue => {
-				if matches!(process.state, State::Stopped) {
-					process.set_state(State::Running);
-				}
-				process.set_waitable(sig.get_id());
-			}
+			SignalAction::Stop => process.set_state(State::Stopped),
+			SignalAction::Continue => process.set_state(State::Running),
 		}
 	}
 }
@@ -255,23 +235,6 @@ impl SigEvent {
 	}
 }
 
-/// Saved information to be used by the trampoline to restore the state of the process.
-#[repr(C)]
-#[derive(Debug)]
-pub struct UContext {
-	/// TODO
-	pub uc_flags: u32,
-	/// TODO
-	pub uc_link: *mut UContext,
-	/// Blocked signals mask before the signal.
-	pub uc_sigmask: SigSet,
-	/// The stack used to handle the signal.
-	pub uc_stack: *mut c_void,
-	// FIXME: `Regs` does not match the actual layout of mcontext_t
-	/// Saved registers.
-	pub uc_mcontext: Regs32,
-}
-
 /// Enumeration containing the different possibilities for signal handling.
 #[derive(Clone, Debug, Default)]
 pub enum SignalHandler {
@@ -341,69 +304,89 @@ impl SignalHandler {
 	}
 
 	/// Executes the action for `signal` on `process`.
-	pub fn exec(&self, signal: Signal, process: &mut Process) {
+	pub fn exec(&self, signal: Signal, process: &Process, frame: &mut IntFrame) {
 		let process_state = process.get_state();
 		if matches!(process_state, State::Zombie) {
 			return;
 		}
-		match self {
-			Self::Ignore => {}
-			// TODO handle SA_SIGINFO
-			Self::Handler(action) if signal.can_catch() => {
-				// Prepare the signal handler stack
-				// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
-				// SA_ONSTACK)
-				let stack_addr = VirtAddr(process.regs.esp as _) - REDZONE_SIZE;
-				let signal_data_size = size_of::<UContext>() + size_of::<usize>() * 4;
-				let signal_esp = stack_addr - signal_data_size;
-				{
-					let mem_space = process.get_mem_space().unwrap();
-					let mut mem_space = mem_space.lock();
-					mem_space.bind();
-					// FIXME: a stack overflow would cause an infinite loop
-					oom::wrap(|| mem_space.alloc(signal_esp, signal_data_size));
-				}
-				// Write data on stack
-				let ctx = UContext {
-					uc_flags: 0, // TODO
-					uc_link: null_mut(),
-					uc_sigmask: process.sigmask,
-					uc_stack: stack_addr.as_ptr(),
-					uc_mcontext: process.regs.clone(),
-				};
-				unsafe {
-					// Write `ctx`
-					let ctx_addr = stack_addr - size_of::<UContext>();
-					ptr::write_volatile(ctx_addr.as_ptr(), ctx);
-					let args = slice::from_raw_parts_mut(signal_esp.as_ptr::<usize>(), 4);
-					// Pointer to  `ctx`
-					args[3] = ctx_addr.0;
-					// Signal number
-					args[2] = signal.get_id() as usize;
-					// Pointer to the handler
-					args[1] = action.sa_handler.sa_handler.unwrap() as usize;
-					// Padding (return pointer)
-					args[0] = 0;
-				}
-				// Block signals from `sa_mask`
-				process.sigmask.0 |= action.sa_mask.0;
-				if action.sa_flags & SA_NODEFER == 0 {
-					process.sigmask.set(signal.get_id() as _);
-				}
-				// Prepare registers for the trampoline
-				let signal_trampoline = signal_trampoline as *const c_void;
-				process.regs.ebp = 0;
-				process.regs.esp = signal_esp.0 as _;
-				process.regs.eip = signal_trampoline as _;
-			}
+		let action = match self {
+			Self::Handler(action) if signal.can_catch() => action,
+			Self::Ignore => return,
 			// Execute default action
 			_ => {
 				// Signals on the init process can be executed only if the process has set a
 				// signal handler
-				if signal.can_catch() && process.is_init() {
-					return;
+				if !process.is_init() || !signal.can_catch() {
+					signal.get_default_action().exec(process);
 				}
-				signal.get_default_action().exec(signal, process)
+				return;
+			}
+		};
+		// TODO handle SA_SIGINFO
+		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
+		// SA_ONSTACK)
+		// Prepare the signal handler stack
+		let stack_addr = VirtAddr(frame.get_stack_address()) - REDZONE_SIZE;
+		// Size of the `ucontext_t` struct and arguments *on the stack*
+		let (ctx_size, arg_len) = if frame.is_32bit() {
+			(size_of::<ucontext::UContext32>(), size_of::<usize>() * 4)
+		} else {
+			#[cfg(target_arch = "x86")]
+			unreachable!();
+			#[cfg(target_arch = "x86_64")]
+			(size_of::<ucontext::UContext64>(), 0)
+		};
+		let ctx_addr = stack_addr - ctx_size;
+		let signal_sp = stack_addr - (ctx_size + arg_len);
+		{
+			let mut mem_space = process.mem_space.as_ref().unwrap().lock();
+			mem_space.bind();
+			// FIXME: a stack overflow would cause an infinite loop
+			oom::wrap(|| mem_space.alloc(signal_sp, arg_len));
+		}
+		let handler_pointer = unsafe { action.sa_handler.sa_handler.unwrap() };
+		// Write data on stack
+		if frame.is_32bit() {
+			let args = unsafe {
+				ptr::write_volatile(ctx_addr.as_ptr(), ucontext::UContext32::new(process, frame));
+				// Arguments slice
+				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 4)
+			};
+			// Pointer to  `ctx`
+			args[3] = ctx_addr.0 as _;
+			// Signal number
+			args[2] = signal.get_id() as _;
+			// Pointer to the handler
+			args[1] = handler_pointer as usize as _;
+			// Padding (return pointer)
+			args[0] = 0;
+		} else {
+			#[cfg(target_arch = "x86_64")]
+			unsafe {
+				ptr::write_volatile(ctx_addr.as_ptr(), ucontext::UContext64::new(process, frame));
+			}
+		}
+		// Block signal from `sa_mask`
+		{
+			let mut signals_manager = process.signal.lock();
+			signals_manager.sigmask.0 |= action.sa_mask.0;
+			if action.sa_flags & SA_NODEFER == 0 {
+				signals_manager.sigmask.set(signal.get_id() as _);
+			}
+		}
+		// Prepare registers for the trampoline
+		frame.rbp = 0;
+		frame.rsp = signal_sp.0 as _;
+		if frame.is_32bit() {
+			frame.rip = trampoline::trampoline32 as *const c_void as _;
+		} else {
+			#[cfg(target_arch = "x86_64")]
+			{
+				frame.rip = trampoline::trampoline64 as *const c_void as _;
+				// Arguments
+				frame.rdi = ctx_addr.0 as _;
+				frame.rsi = signal.get_id() as _;
+				frame.rdx = handler_pointer as usize as _;
 			}
 		}
 	}

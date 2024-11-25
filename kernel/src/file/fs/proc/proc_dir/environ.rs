@@ -20,12 +20,16 @@
 
 use crate::{
 	file::{
-		fs::{proc::get_proc_owner, NodeOps},
+		fs::{
+			proc::{get_proc_owner, proc_dir::read_memory},
+			NodeOps,
+		},
 		FileLocation, FileType, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
 };
+use core::fmt;
 use utils::{errno, errno::EResult};
 
 /// The `environ` node of the proc.
@@ -50,8 +54,16 @@ impl NodeOps for Environ {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", proc.envp)
+		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
+		let mem_space = proc.mem_space.as_ref().unwrap().lock();
+		let disp = fmt::from_fn(|f| {
+			read_memory(
+				f,
+				&mem_space,
+				mem_space.exe_info.envp_begin,
+				mem_space.exe_info.envp_end,
+			)
+		});
+		format_content!(off, buf, "{disp}")
 	}
 }

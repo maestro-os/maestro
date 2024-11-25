@@ -28,15 +28,14 @@ use core::intrinsics::unlikely;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
 pub fn getcwd(
 	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
-	let cwd = vfs::Entry::get_path(&proc.lock().cwd)?;
+	let cwd = vfs::Entry::get_path(&proc.fs.lock().cwd)?;
 	if unlikely(size < cwd.len() + 1) {
 		return Err(errno!(ERANGE));
 	}

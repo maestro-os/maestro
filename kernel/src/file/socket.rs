@@ -21,6 +21,7 @@
 use crate::{
 	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
 	net::{osi, SocketDesc},
+	sync::mutex::Mutex,
 	syscall::ioctl::Request,
 };
 use core::{
@@ -31,7 +32,6 @@ use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	lock::Mutex,
 	vec,
 };
 

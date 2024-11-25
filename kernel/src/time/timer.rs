@@ -29,6 +29,7 @@ use crate::{
 		signal::{SigEvent, Signal, SIGEV_SIGNAL, SIGEV_THREAD},
 		Process,
 	},
+	sync::mutex::IntMutex,
 	time::unit::Timespec32,
 };
 use utils::{
@@ -36,7 +37,6 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	limits::TIMER_MAX,
-	lock::IntMutex,
 };
 
 // TODO make sure a timer doesn't send a signal to a thread that do not belong to the manager's
@@ -157,7 +157,7 @@ impl Timer {
 	/// Fires the timer.
 	///
 	/// `proc` is the process to which the timer is fired.
-	pub fn fire(&mut self, proc: &mut Process) {
+	pub fn fire(&mut self, proc: &Process) {
 		match self.sevp.sigev_notify {
 			SIGEV_SIGNAL => {
 				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo) else {
@@ -302,15 +302,13 @@ pub(super) fn tick() {
 		let timer_id = *timer_id;
 
 		// Get process
-		let Some(proc_mutex) = Process::get_by_pid(pid) else {
+		let Some(proc) = Process::get_by_pid(pid) else {
 			// invalid timer, remove
 			queue.pop_first();
 			break;
 		};
-		let mut proc = proc_mutex.lock();
 		// Get timer manager
-		let timer_manager_mutex = proc.timer_manager();
-		let mut timer_manager = timer_manager_mutex.lock();
+		let mut timer_manager = proc.timer_manager.lock();
 
 		// Get timer
 		let Some(timer) = timer_manager.get_timer_mut(timer_id) else {
@@ -334,7 +332,7 @@ pub(super) fn tick() {
 			break;
 		}
 
-		timer.fire(&mut proc);
+		timer.fire(&proc);
 
 		if timer.is_oneshot() {
 			queue.pop_first();

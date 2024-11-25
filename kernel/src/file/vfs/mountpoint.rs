@@ -28,6 +28,7 @@ use crate::{
 		vfs::{node, node::Node, EntryChild, ResolutionSettings},
 		FileLocation, FileType,
 	},
+	sync::mutex::Mutex,
 };
 use core::fmt;
 use utils::{
@@ -38,7 +39,6 @@ use utils::{
 	},
 	errno,
 	errno::{AllocResult, EResult},
-	lock::Mutex,
 	ptr::arc::Arc,
 	TryClone,
 };

@@ -19,10 +19,10 @@
 //! The `sched_yield` system call ends the current tick of the current process and returns the
 //! control back to the scheduler.
 
-use crate::process::scheduler;
+use crate::process::{scheduler, scheduler::Scheduler};
 use utils::errno::{EResult, Errno};
 
 pub fn sched_yield() -> EResult<usize> {
-	scheduler::end_tick();
+	Scheduler::tick();
 	Ok(0)
 }

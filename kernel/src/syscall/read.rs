@@ -21,14 +21,13 @@
 use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, FileType},
-	process::{mem_space::copy::SyscallSlice, regs::Regs32, scheduler, Process},
+	process::{mem_space::copy::SyscallSlice, scheduler, Process},
+	sync::mutex::Mutex,
 };
 use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	interrupt::cli,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	vec,
 };

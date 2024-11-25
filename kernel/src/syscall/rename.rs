@@ -21,12 +21,12 @@
 use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
 	process::mem_space::copy::SyscallString,
+	sync::mutex::Mutex,
 	syscall::{renameat2::do_renameat2, util::at::AT_FDCWD, Args},
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

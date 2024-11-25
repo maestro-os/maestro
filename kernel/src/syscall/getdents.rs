@@ -22,6 +22,7 @@
 use crate::{
 	file::{fd::FileDescriptorTable, FileType, INode},
 	process::{mem_space::copy::SyscallSlice, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{
@@ -35,7 +36,6 @@ use utils::{
 	bytes::as_bytes,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 	vec,
 };

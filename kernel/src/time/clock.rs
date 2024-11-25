@@ -18,12 +18,15 @@
 
 //! This module implements system clocks.
 
-use crate::time::{
-	unit::{ClockIdT, TimeUnit},
-	Timestamp, TimestampScale,
+use crate::{
+	sync::atomic::AtomicU64,
+	time::{
+		unit::{ClockIdT, TimeUnit},
+		Timestamp, TimestampScale,
+	},
 };
 use core::{cmp::max, sync::atomic};
-use utils::{errno, errno::EResult, lock::atomic::AtomicU64};
+use utils::{errno, errno::EResult};
 
 /// System clock ID
 pub const CLOCK_REALTIME: ClockIdT = 0;

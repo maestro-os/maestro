@@ -21,8 +21,8 @@
 use crate::{
 	process,
 	process::{
-		mem_space::copy::SyscallPtr, pid::Pid, regs::Regs32, rusage::RUsage, scheduler, Process,
-		State,
+		mem_space::copy::SyscallPtr, pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler,
+		Process, State,
 	},
 	syscall::{waitpid::scheduler::SCHEDULER, Args},
 };
@@ -30,8 +30,6 @@ use core::{ffi::c_int, iter};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	interrupt::cli,
-	lock::IntMutex,
 };
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -57,11 +55,12 @@ fn iter_targets(curr_proc: &Process, pid: i32) -> impl Iterator<Item = Pid> + '_
 	let mut i = 0;
 	iter::from_fn(move || {
 		// FIXME: select only process that are children of `curr_proc`
+		let links = curr_proc.links.lock();
 		let res = match pid {
 			// FIXME: must wait for any child process whose pgid is equal to -pid
-			..-1 => curr_proc.get_group_processes().get(i).cloned(),
-			-1 => curr_proc.get_children().get(i).cloned(),
-			0 => curr_proc.get_group_processes().get(i).cloned(),
+			..-1 => links.process_group.get(i).cloned(),
+			-1 => links.children.get(i).cloned(),
+			0 => links.process_group.get(i).cloned(),
 			_ => (i == 0).then_some(pid as _),
 		};
 		i += 1;
@@ -71,8 +70,10 @@ fn iter_targets(curr_proc: &Process, pid: i32) -> impl Iterator<Item = Pid> + '_
 
 /// Returns the wait status for the given process.
 fn get_wstatus(proc: &Process) -> i32 {
-	let status = proc.get_exit_status().unwrap_or(0);
-	let termsig = proc.get_termsig();
+	let (status, termsig) = {
+		let signal = proc.signal.lock();
+		(signal.exit_status, signal.termsig)
+	};
 	#[allow(clippy::let_and_return)]
 	let wstatus = match proc.get_state() {
 		State::Running | State::Sleeping => 0xffff,
@@ -96,11 +97,11 @@ fn get_wstatus(proc: &Process) -> i32 {
 /// - `options` is a set of flags.
 /// - `rusage` is the pointer to the resource usage structure.
 fn get_waitable(
-	curr_proc: &mut Process,
+	curr_proc: &Process,
 	pid: i32,
 	wstatus: &SyscallPtr<i32>,
 	options: i32,
-	rusage: &SyscallPtr<RUsage>,
+	rusage: &SyscallPtr<Rusage>,
 ) -> EResult<Option<Pid>> {
 	let mut empty = true;
 	let mut sched = SCHEDULER.get().lock();
@@ -110,13 +111,12 @@ fn get_waitable(
 		.filter_map(|pid| sched.get_by_pid(pid))
 		// Select a waitable process
 		.find(|proc| {
-			let proc = proc.lock();
 			let state = proc.get_state();
 			let stopped = options & WUNTRACED != 0 && matches!(state, State::Stopped);
 			let exited = options & WEXITED != 0 && matches!(state, State::Zombie);
 			let continued =
 				options & WCONTINUED != 0 && matches!(state, State::Running | State::Sleeping);
-			proc.is_waitable() && (stopped || exited || continued)
+			stopped || exited || continued
 		});
 	let Some(proc) = proc else {
 		return if empty {
@@ -126,17 +126,14 @@ fn get_waitable(
 			Ok(None)
 		};
 	};
-	let mut proc = proc.lock();
 	let pid = proc.get_pid();
 	// Write values back
-	wstatus.copy_to_user(get_wstatus(&proc))?;
-	rusage.copy_to_user(proc.get_rusage().clone())?;
+	wstatus.copy_to_user(&get_wstatus(&proc))?;
+	rusage.copy_to_user(&proc.rusage.lock())?;
 	// Clear the waitable flag if requested
 	if options & WNOWAIT == 0 {
-		proc.clear_waitable();
 		// If the process was a zombie, remove it
 		if matches!(proc.get_state(), State::Zombie) {
-			drop(proc);
 			curr_proc.remove_child(pid);
 			sched.remove_process(pid);
 		}
@@ -149,17 +146,12 @@ pub fn do_waitpid(
 	pid: i32,
 	wstatus: SyscallPtr<i32>,
 	options: i32,
-	rusage: SyscallPtr<RUsage>,
+	rusage: SyscallPtr<Rusage>,
 ) -> EResult<usize> {
-	// Sleep until a target process is waitable
 	loop {
 		{
-			let proc_mutex = Process::current();
-			let mut proc = proc_mutex.lock();
-			if proc.next_signal(true).is_some() {
-				return Err(errno!(EINTR));
-			}
-			let result = get_waitable(&mut proc, pid, &wstatus, options, &rusage)?;
+			let proc = Process::current();
+			let result = get_waitable(&proc, pid, &wstatus, options, &rusage)?;
 			// On success, return
 			if let Some(p) = result {
 				return Ok(p as _);
@@ -168,11 +160,11 @@ pub fn do_waitpid(
 			if options & WNOHANG != 0 {
 				return Ok(0);
 			}
-			// When a child process is paused or resumed by a signal or is terminated, it
-			// changes the state of the current process to wake it up
+			// When a child process has its state changed by a signal, SIGCHLD is sent to the
+			// current process to wake it up
 			proc.set_state(State::Sleeping);
 		}
-		scheduler::end_tick();
+		Scheduler::tick();
 	}
 }
 

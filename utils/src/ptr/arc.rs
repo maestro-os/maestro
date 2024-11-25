@@ -36,8 +36,8 @@ use core::{
 
 /// Inner structure shared between arcs pointing to the same object.
 pub struct ArcInner<T: ?Sized> {
-	/// Strong references counter.
-	strong: AtomicUsize,
+	/// References counter.
+	pub ref_count: AtomicUsize,
 	/// The object the `Arc` points to.
 	obj: T,
 }
@@ -66,7 +66,7 @@ impl<T: ?Sized> ArcInner<T> {
 		// Initialize
 		let i = inner.as_mut();
 		// The initial strong reference
-		i.strong = AtomicUsize::new(1);
+		i.ref_count = AtomicUsize::new(1);
 		init(&mut i.obj);
 		Ok(inner)
 	}
@@ -75,7 +75,7 @@ impl<T: ?Sized> ArcInner<T> {
 /// A thread-safe reference-counting pointer. `Arc` stands for 'Atomically Reference Counted'.
 pub struct Arc<T: ?Sized> {
 	/// Pointer to shared object.
-	inner: NonNull<ArcInner<T>>,
+	pub inner: NonNull<ArcInner<T>>,
 }
 
 unsafe impl<T: ?Sized + Sync + Send> Send for Arc<T> {}
@@ -126,7 +126,7 @@ impl<T> Arc<T> {
 		// Avoid double free
 		let this = ManuallyDrop::new(this);
 		let inner = this.inner();
-		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
+		if inner.ref_count.fetch_sub(1, Ordering::Release) != 1 {
 			return None;
 		}
 		unsafe {
@@ -155,7 +155,7 @@ impl<T: ?Sized> Arc<T> {
 	/// Returns the number of strong pointers to the allocation.
 	#[inline]
 	pub fn strong_count(this: &Self) -> usize {
-		this.inner().strong.load(Ordering::Relaxed)
+		this.inner().ref_count.load(Ordering::Relaxed)
 	}
 }
 
@@ -182,7 +182,7 @@ impl<T: ?Sized> Deref for Arc<T> {
 impl<T: ?Sized> Clone for Arc<T> {
 	fn clone(&self) -> Self {
 		let inner = self.inner();
-		let old_count = inner.strong.fetch_add(1, Ordering::Relaxed);
+		let old_count = inner.ref_count.fetch_add(1, Ordering::Relaxed);
 		if old_count == usize::MAX {
 			panic!("Arc reference count overflow");
 		}
@@ -221,7 +221,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Arc<T> {
 impl<T: ?Sized> Drop for Arc<T> {
 	fn drop(&mut self) {
 		let inner = self.inner();
-		if inner.strong.fetch_sub(1, Ordering::Release) != 1 {
+		if inner.ref_count.fetch_sub(1, Ordering::Release) != 1 {
 			return;
 		}
 		unsafe {

@@ -21,13 +21,12 @@
 use super::{util, Args};
 use crate::{
 	process,
-	process::{pid::Pid, regs::Regs32, scheduler::SCHEDULER, signal::Signal, Process, State},
+	process::{pid::Pid, scheduler::SCHEDULER, signal::Signal, Process, State},
 };
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	interrupt::cli,
 };
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
@@ -35,11 +34,10 @@ use utils::{
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
-	let ap = proc.access_profile;
+	let proc = Process::current();
+	let ap = proc.fs.lock().access_profile;
 	// Closure sending the signal
-	let f = |target: &mut Process| {
+	let f = |target: &Process| {
 		if matches!(target.get_state(), State::Zombie) {
 			return Ok(());
 		}
@@ -52,11 +50,10 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 		Ok(())
 	};
 	if pid == proc.get_pid() {
-		f(&mut proc)?;
+		f(&proc)?;
 	} else {
-		let target_mutex = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		let mut target_proc = target_mutex.lock();
-		f(&mut target_proc)?;
+		let target_proc = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
+		f(&target_proc)?;
 	}
 	Ok(())
 }
@@ -71,26 +68,18 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 /// there is a process that could be killed.
 fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 	let pgid = match pid {
-		0 => {
-			let proc_mutex = Process::current();
-			let proc = proc_mutex.lock();
-			proc.pgid
-		}
+		0 => Process::current().get_pgid(),
 		i if i < 0 => -pid as Pid,
 		_ => pid as Pid,
 	};
 	// Kill process group
 	Process::get_by_pid(pgid)
 		.ok_or_else(|| errno!(ESRCH))?
+		.links
 		.lock()
-		.get_group_processes()
+		.process_group
 		.iter()
-		// Avoid deadlock
-		.filter(|pid| **pid != pgid)
-		.try_for_each(|pid| try_kill(*pid as _, sig))?;
-	// Kill process group owner
-	try_kill(pgid, sig)?;
-	Ok(())
+		.try_for_each(|pid| try_kill(*pid as _, sig))
 }
 
 /// Sends the signal `sig` to the processes according to the given value `pid`.

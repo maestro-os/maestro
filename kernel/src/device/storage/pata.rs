@@ -40,9 +40,10 @@
 use crate::{
 	arch::x86::io::inb,
 	device::{storage::ide, DeviceIO},
+	sync::mutex::Mutex,
 };
 use core::{cmp::min, num::NonZeroU64};
-use utils::{errno, errno::EResult, lock::Mutex};
+use utils::{errno, errno::EResult};
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;

@@ -18,13 +18,11 @@
 
 //! Mutually exclusive access primitive implementation.
 //!
-//! A `Mutex` allows to ensure that one, and only thread accesses its data at once, preventing race
-//! conditions.
+//! A [`Mutex`] protects its wrapped data from being accessed concurrently, avoid data races.
 //!
 //! One particularity with kernel development is that multi-threading is not the
 //! only way to get concurrency issues. Another factor to take into account is
-//! that fact that an interruption may be triggered at any moment while
-//! executing the code unless disabled.
+//! that fact that an interruption may be triggered at any moment, unless disabled.
 //!
 //! For this reason, mutexes in the kernel are equipped with an option allowing to disable
 //! interrupts while being locked.
@@ -32,14 +30,12 @@
 //! If an exception is raised while a mutex that disables interruptions is
 //! acquired, the behaviour is undefined.
 
-pub mod atomic;
-pub mod once;
-pub mod spinlock;
-
 use crate::{
-	interrupt,
-	interrupt::{cli, sti},
-	lock::spinlock::Spinlock,
+	arch::{
+		x86,
+		x86::{cli, sti},
+	},
+	sync::spinlock::Spinlock,
 };
 use core::{
 	cell::UnsafeCell,
@@ -69,6 +65,8 @@ impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 		unsafe { &mut (*self.mutex.inner.get()).data }
 	}
 }
+
+impl<T: ?Sized, const INT: bool> !Send for MutexGuard<'_, T, INT> {}
 
 unsafe impl<T: ?Sized + Sync, const INT: bool> Sync for MutexGuard<'_, T, INT> {}
 
@@ -130,7 +128,7 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	/// unlocked.
 	pub fn lock(&self) -> MutexGuard<T, INT> {
 		let int_state = if !INT {
-			let enabled = interrupt::is_enabled();
+			let enabled = x86::is_interrupt_enabled();
 			cli();
 			enabled
 		} else {

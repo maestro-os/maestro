@@ -42,7 +42,7 @@ pub fn init_module(
 		return Err(errno!(EPERM));
 	}
 	let image = module_image
-		.copy_from_user(..len as usize)?
+		.copy_from_user_vec(0, len as usize)?
 		.ok_or_else(|| errno!(EFAULT))?;
 	let module = Module::load(&image)?;
 	if !module::is_loaded(module.get_name()) {

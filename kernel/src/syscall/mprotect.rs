@@ -24,13 +24,13 @@ use crate::{
 	memory,
 	memory::stats::MemInfo,
 	process::{mem_space, mem_space::MemSpace, Process},
+	sync::mutex::IntMutex,
 };
 use core::ffi::{c_int, c_void};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::PAGE_SIZE,
-	lock::IntMutex,
 	ptr::arc::Arc,
 };
 

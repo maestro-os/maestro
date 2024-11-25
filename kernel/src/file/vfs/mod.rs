@@ -30,7 +30,11 @@ use super::{
 	File, FileLocation, FileType, Stat,
 };
 use crate::{
-	device, device::DeviceID, file::vfs::mountpoint::MountPoint, process::Process,
+	device,
+	device::DeviceID,
+	file::vfs::mountpoint::MountPoint,
+	process::Process,
+	sync::{mutex::Mutex, once::OnceInit},
 	syscall::ioctl::Request,
 };
 use core::{
@@ -50,7 +54,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	limits::{LINK_MAX, PATH_MAX, SYMLOOP_MAX},
-	lock::{once::OnceInit, Mutex},
 	ptr::arc::Arc,
 	vec,
 };
@@ -300,11 +303,12 @@ impl ResolutionSettings {
 	///
 	/// `follow_links` tells whether symbolic links are followed.
 	pub fn for_process(proc: &Process, follow_links: bool) -> Self {
+		let fs = proc.fs.lock();
 		Self {
-			root: proc.chroot.clone(),
-			cwd: Some(proc.cwd.clone()),
+			root: fs.chroot.clone(),
+			cwd: Some(fs.cwd.clone()),
 
-			access_profile: proc.access_profile,
+			access_profile: fs.access_profile,
 
 			create: false,
 			follow_link: follow_links,

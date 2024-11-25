@@ -38,8 +38,7 @@ pub fn readlink(
 ) -> EResult<usize> {
 	// process lock has to be dropped to avoid deadlock with procfs
 	let (path, rs) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
+		let proc = Process::current();
 
 		// Get file's path
 		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;

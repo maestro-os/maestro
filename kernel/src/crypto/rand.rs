@@ -18,11 +18,10 @@
 
 //! This module implements randomness functions.
 
-use crate::crypto::chacha20;
+use crate::{crypto::chacha20, sync::mutex::IntMutex};
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno::AllocResult,
-	lock::IntMutex,
 	vec,
 };
 

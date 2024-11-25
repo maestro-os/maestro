@@ -23,9 +23,9 @@
 //! This data is meant to be used by the memory allocators.
 
 use super::{stats, PhysAddr, VirtAddr};
-use crate::{elf::kernel::sections, multiboot, multiboot::BootInfo};
+use crate::{elf::kernel::sections, multiboot, multiboot::BootInfo, sync::once::OnceInit};
 use core::{cmp::min, iter};
-use utils::{limits::PAGE_SIZE, lock::once::OnceInit};
+use utils::limits::PAGE_SIZE;
 
 /// Physical memory map information.
 #[derive(Debug)]

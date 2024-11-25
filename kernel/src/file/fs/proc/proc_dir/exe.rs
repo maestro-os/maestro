@@ -22,7 +22,7 @@
 use crate::{
 	file::{
 		fs::{proc::get_proc_owner, NodeOps},
-		FileLocation, FileType, Stat,
+		vfs, FileLocation, FileType, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -51,8 +51,13 @@ impl NodeOps for Exe {
 	}
 
 	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", proc.exec_path)
+		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
+		let path = proc
+			.mem_space
+			.as_ref()
+			.map(|mem_space| vfs::Entry::get_path(&mem_space.lock().exe_info.exe))
+			.transpose()?
+			.unwrap_or_default();
+		format_content!(off, buf, "{path}")
 	}
 }
