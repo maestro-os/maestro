@@ -664,11 +664,14 @@ impl Process {
 		self.vfork_done.load(Relaxed)
 	}
 
-	/// Returns the last known userspace registers state.
+	/// Reads the last known userspace registers state.
 	///
 	/// This information is stored at the beginning of the process's interrupt stack.
 	pub fn user_regs(&self) -> IntFrame {
-		todo!()
+		// (x86) The frame will always be complete since entering the stack from the beginning can
+		// only be done from userspace, thus the stack pointer and segment are present for `iret`
+		let off = buddy::get_frame_size(KERNEL_STACK_ORDER) - size_of::<IntFrame>();
+		unsafe { self.kernel_stack.byte_add(off).cast().read_volatile() }
 	}
 
 	/// Updates the TSS on the current kernel for the process.
