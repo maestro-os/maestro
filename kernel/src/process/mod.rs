@@ -250,7 +250,7 @@ pub struct ProcessSignal {
 impl ProcessSignal {
 	/// Tells whether the given signal is blocked by the process.
 	pub fn is_signal_blocked(&self, sig: Signal) -> bool {
-		self.sigmask.is_set(sig.get_id() as _)
+		self.sigmask.is_set(sig as _)
 	}
 
 	/// Returns the ID of the next signal to be handled.
@@ -271,7 +271,7 @@ impl ProcessSignal {
 			.next();
 		if !peek {
 			if let Some(id) = sig {
-				self.sigpending.clear(id.get_id() as _);
+				self.sigpending.clear(id as _);
 			}
 		}
 		sig
@@ -779,18 +779,18 @@ impl Process {
 	pub fn kill(&self, sig: Signal) {
 		let mut signal_manager = self.signal.lock();
 		// Ignore blocked signals
-		if sig.can_catch() && signal_manager.sigmask.is_set(sig.get_id() as _) {
+		if sig.can_catch() && signal_manager.sigmask.is_set(sig as _) {
 			return;
 		}
 		// Statistics
 		self.rusage.lock().ru_nsignals += 1;
 		#[cfg(feature = "strace")]
 		println!(
-			"[strace {pid}] received signal `{signal}`",
+			"[strace {pid}] received signal `{sig}`",
 			pid = self.get_pid(),
-			signal = sig.get_id()
+			sig = sig as c_int
 		);
-		signal_manager.sigpending.set(sig.get_id() as _);
+		signal_manager.sigpending.set(sig as _);
 	}
 
 	/// Kills every process in the process group.
@@ -869,7 +869,7 @@ fn yield_current_impl(frame: &mut IntFrame) -> bool {
 		return true;
 	};
 	// Prepare for execution of signal handler
-	signal_manager.handlers.lock()[sig.get_id() as usize].exec(sig, &proc, frame);
+	signal_manager.handlers.lock()[sig as usize].exec(sig, &proc, frame);
 	// If the process is still running, continue execution
 	proc.get_state() == State::Running
 }

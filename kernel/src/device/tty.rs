@@ -59,8 +59,7 @@ impl TTYDeviceHandle {
 			if signal_manager.is_signal_blocked(Signal::SIGTTIN) {
 				return Err(errno!(EIO));
 			}
-			let handler =
-				signal_manager.handlers.lock()[Signal::SIGTTIN.get_id() as usize].clone();
+			let handler = signal_manager.handlers.lock()[Signal::SIGTTIN as usize].clone();
 			if matches!(handler, SignalHandler::Ignore) {
 				return Err(errno!(EIO));
 			}
@@ -84,8 +83,7 @@ impl TTYDeviceHandle {
 			if signal_manager.is_signal_blocked(Signal::SIGTTOU) {
 				return Err(errno!(EIO));
 			}
-			let handler =
-				signal_manager.handlers.lock()[Signal::SIGTTOU.get_id() as usize].clone();
+			let handler = signal_manager.handlers.lock()[Signal::SIGTTOU as usize].clone();
 			if matches!(handler, SignalHandler::Ignore) {
 				return Err(errno!(EIO));
 			}

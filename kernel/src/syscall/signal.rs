@@ -48,7 +48,7 @@ pub fn signal(
 	let new_handler = SignalHandler::from_legacy(handler);
 	// Set new handler and get old
 	let old_handler = mem::replace(
-		&mut proc.signal.lock().handlers.lock()[signal.get_id() as usize],
+		&mut proc.signal.lock().handlers.lock()[signal as usize],
 		new_handler,
 	);
 	// Convert to pointer and return
