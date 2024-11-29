@@ -805,20 +805,6 @@ impl Process {
 			});
 	}
 
-	/// Updates the `n`th TLS entry in the GDT.
-	///
-	/// If `n` is out of bounds, the function does nothing.
-	///
-	/// This function does not flush the GDT's cache. Thus, it is the caller's responsibility.
-	pub fn update_tls(&self, n: usize) {
-		let entries = self.tls.lock();
-		if let Some(ent) = entries.get(n) {
-			unsafe {
-				ent.update_gdt(gdt::TLS_OFFSET + n * size_of::<gdt::Entry>());
-			}
-		}
-	}
-
 	/// Exits the process with the given `status`.
 	///
 	/// This function changes the process's status to `Zombie`.

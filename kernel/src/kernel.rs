@@ -87,7 +87,7 @@ use crate::{
 	process::{
 		exec,
 		exec::{exec, ExecInfo},
-		scheduler::switch,
+		scheduler::{switch, SCHEDULER},
 		Process,
 	},
 	sync::mutex::Mutex,
@@ -157,6 +157,7 @@ fn init(init_path: String) -> EResult<()> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
+		SCHEDULER.get().lock().swap_current_process(Some(proc));
 	}
 	unsafe {
 		switch::init_ctx(&frame);
