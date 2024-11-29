@@ -40,7 +40,7 @@ pub fn timer_create(
 	let timerid_val = timerid.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let sevp_val = sevp.copy_from_user()?.unwrap_or_else(|| SigEvent {
 		sigev_notify: SIGEV_SIGNAL,
-		sigev_signo: Signal::SIGALRM.get_id() as _,
+		sigev_signo: Signal::SIGALRM as _,
 		sigev_value: timerid_val,
 		sigev_notify_function: None,
 		sigev_notify_attributes: None,

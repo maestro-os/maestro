@@ -140,8 +140,13 @@ impl Scheduler {
 	/// Returns the current running process.
 	///
 	/// If no process is running, the function returns `None`.
-	pub fn get_current_process(&mut self) -> Option<Arc<Process>> {
+	pub fn get_current_process(&self) -> Option<Arc<Process>> {
 		self.curr_proc.clone()
+	}
+
+	/// Swaps the current running process for `new`, returning the previous.
+	pub fn swap_current_process(&mut self, new: Option<Arc<Process>>) -> Option<Arc<Process>> {
+		mem::replace(&mut self.curr_proc, new)
 	}
 
 	/// Adds a process to the scheduler.
@@ -223,6 +228,8 @@ impl Scheduler {
 	/// If no process is ready to run, the scheduler halts the current core until a process becomes
 	/// runnable.
 	pub fn tick() {
+		// Disable interrupts so that no interrupt can occur before switching to the next process
+		cli();
 		let sched_mutex = SCHEDULER.get();
 		let (prev, next, tmp_stack) = {
 			let mut sched = sched_mutex.lock();
@@ -237,12 +244,10 @@ impl Scheduler {
 			}
 			// Swap current running process. We use pointers to avoid cloning the Arc
 			let next_ptr = next.as_ref().map(Arc::as_ptr);
-			let prev = mem::replace(&mut sched.curr_proc, next);
+			let prev = sched.swap_current_process(next);
 			let prev_ptr = prev.as_ref().map(Arc::as_ptr);
 			(prev_ptr, next_ptr, sched.get_tmp_stack())
 		};
-		// Disable interrupts so that no interrupt can occur before switch to the next process
-		cli();
 		unsafe {
 			match (prev, next) {
 				// Runnable process found: resume execution

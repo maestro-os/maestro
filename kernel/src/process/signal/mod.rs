@@ -355,7 +355,7 @@ impl SignalHandler {
 			// Pointer to  `ctx`
 			args[3] = ctx_addr.0 as _;
 			// Signal number
-			args[2] = signal.get_id() as _;
+			args[2] = signal as _;
 			// Pointer to the handler
 			args[1] = handler_pointer as usize as _;
 			// Padding (return pointer)
@@ -371,7 +371,7 @@ impl SignalHandler {
 			let mut signals_manager = process.signal.lock();
 			signals_manager.sigmask.0 |= action.sa_mask.0;
 			if action.sa_flags & SA_NODEFER == 0 {
-				signals_manager.sigmask.set(signal.get_id() as _);
+				signals_manager.sigmask.set(signal as _);
 			}
 		}
 		// Prepare registers for the trampoline
@@ -385,7 +385,7 @@ impl SignalHandler {
 				frame.rip = trampoline::trampoline64 as *const c_void as _;
 				// Arguments
 				frame.rdi = ctx_addr.0 as _;
-				frame.rsi = signal.get_id() as _;
+				frame.rsi = signal as _;
 				frame.rdx = handler_pointer as usize as _;
 			}
 		}
@@ -393,144 +393,84 @@ impl SignalHandler {
 }
 
 /// Enumeration of signal types.
+#[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Signal {
 	/// Hangup.
-	SIGHUP,
+	SIGHUP = 1,
 	/// Terminal interrupt.
-	SIGINT,
+	SIGINT = 2,
 	/// Terminal quit.
-	SIGQUIT,
+	SIGQUIT = 3,
 	/// Illegal instruction.
-	SIGILL,
+	SIGILL = 4,
 	/// Trace/breakpoint trap.
-	SIGTRAP,
+	SIGTRAP = 5,
 	/// Process abort.
-	SIGABRT,
+	SIGABRT = 6,
 	/// Access to an undefined portion of a memory object.
-	SIGBUS,
+	SIGBUS = 7,
 	/// Erroneous arithmetic operation.
-	SIGFPE,
+	SIGFPE = 8,
 	/// Kill.
-	SIGKILL,
+	SIGKILL = 9,
 	/// User-defined signal 1.
-	SIGUSR1,
+	SIGUSR1 = 10,
 	/// Invalid memory reference.
-	SIGSEGV,
+	SIGSEGV = 11,
 	/// User-defined signal 2.
-	SIGUSR2,
+	SIGUSR2 = 12,
 	/// Write on a pipe with no one to read it.
-	SIGPIPE,
+	SIGPIPE = 13,
 	/// Alarm clock.
-	SIGALRM,
+	SIGALRM = 14,
 	/// Termination.
-	SIGTERM,
+	SIGTERM = 15,
 	/// Child process terminated.
-	SIGCHLD,
+	SIGCHLD = 17,
 	/// Continue executing.
-	SIGCONT,
+	SIGCONT = 18,
 	/// Stop executing.
-	SIGSTOP,
+	SIGSTOP = 19,
 	/// Terminal stop.
-	SIGTSTP,
+	SIGTSTP = 20,
 	/// Background process attempting to read.
-	SIGTTIN,
+	SIGTTIN = 21,
 	/// Background process attempting to write.
-	SIGTTOU,
+	SIGTTOU = 22,
 	/// High bandwidth data is available at a socket.
-	SIGURG,
+	SIGURG = 23,
 	/// CPU time limit exceeded.
-	SIGXCPU,
+	SIGXCPU = 24,
 	/// File size limit exceeded.
-	SIGXFSZ,
+	SIGXFSZ = 25,
 	/// Virtual timer expired.
-	SIGVTALRM,
+	SIGVTALRM = 26,
 	/// Profiling timer expired.
-	SIGPROF,
+	SIGPROF = 27,
 	/// Window resize.
-	SIGWINCH,
+	SIGWINCH = 28,
 	/// Pollable event.
-	SIGPOLL,
+	SIGPOLL = 29,
 	/// Bad system call.
-	SIGSYS,
+	SIGSYS = 31,
 }
 
-impl TryFrom<c_int> for Signal {
+impl TryFrom<i32> for Signal {
 	type Error = Errno;
 
 	/// `id` is the signal ID.
-	fn try_from(id: c_int) -> Result<Self, Self::Error> {
-		match id {
-			1 => Ok(Self::SIGHUP),
-			2 => Ok(Self::SIGINT),
-			3 => Ok(Self::SIGQUIT),
-			4 => Ok(Self::SIGILL),
-			5 => Ok(Self::SIGTRAP),
-			6 => Ok(Self::SIGABRT),
-			7 => Ok(Self::SIGBUS),
-			8 => Ok(Self::SIGFPE),
-			9 => Ok(Self::SIGKILL),
-			10 => Ok(Self::SIGUSR1),
-			11 => Ok(Self::SIGSEGV),
-			12 => Ok(Self::SIGUSR2),
-			13 => Ok(Self::SIGPIPE),
-			14 => Ok(Self::SIGALRM),
-			15 => Ok(Self::SIGTERM),
-			17 => Ok(Self::SIGCHLD),
-			18 => Ok(Self::SIGCONT),
-			19 => Ok(Self::SIGSTOP),
-			20 => Ok(Self::SIGTSTP),
-			21 => Ok(Self::SIGTTIN),
-			22 => Ok(Self::SIGTTOU),
-			23 => Ok(Self::SIGURG),
-			24 => Ok(Self::SIGXCPU),
-			25 => Ok(Self::SIGXFSZ),
-			26 => Ok(Self::SIGVTALRM),
-			27 => Ok(Self::SIGPROF),
-			28 => Ok(Self::SIGWINCH),
-			29 => Ok(Self::SIGPOLL),
-			31 => Ok(Self::SIGSYS),
-			_ => Err(errno!(EINVAL)),
+	fn try_from(id: i32) -> Result<Self, Self::Error> {
+		if matches!(id, (1..=15) | (17..=29) | 31) {
+			// Safe because the value is in range
+			unsafe { Ok(transmute::<i32, Self>(id)) }
+		} else {
+			Err(errno!(EINVAL))
 		}
 	}
 }
 
 impl Signal {
-	/// Returns the signal's ID.
-	pub const fn get_id(&self) -> u8 {
-		match self {
-			Self::SIGHUP => 1,
-			Self::SIGINT => 2,
-			Self::SIGQUIT => 3,
-			Self::SIGILL => 4,
-			Self::SIGTRAP => 5,
-			Self::SIGABRT => 6,
-			Self::SIGBUS => 7,
-			Self::SIGFPE => 8,
-			Self::SIGKILL => 9,
-			Self::SIGUSR1 => 10,
-			Self::SIGSEGV => 11,
-			Self::SIGUSR2 => 12,
-			Self::SIGPIPE => 13,
-			Self::SIGALRM => 14,
-			Self::SIGTERM => 15,
-			Self::SIGCHLD => 17,
-			Self::SIGCONT => 18,
-			Self::SIGSTOP => 19,
-			Self::SIGTSTP => 20,
-			Self::SIGTTIN => 21,
-			Self::SIGTTOU => 22,
-			Self::SIGURG => 23,
-			Self::SIGXCPU => 24,
-			Self::SIGXFSZ => 25,
-			Self::SIGVTALRM => 26,
-			Self::SIGPROF => 27,
-			Self::SIGWINCH => 28,
-			Self::SIGPOLL => 29,
-			Self::SIGSYS => 31,
-		}
-	}
-
 	/// Returns the default action for the signal.
 	pub fn get_default_action(&self) -> SignalAction {
 		match self {

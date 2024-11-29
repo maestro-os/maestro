@@ -19,8 +19,8 @@
 //! Context switching utilities.
 
 use crate::{
-	arch::x86::idt::IntFrame,
-	process::{Process, TLS_ENTRIES_COUNT},
+	arch::x86::{gdt, idt::IntFrame},
+	process::Process,
 };
 use core::{arch::global_asm, mem::offset_of};
 
@@ -124,8 +124,13 @@ extern "C" fn switch_finish(_prev: &mut Process, next: &mut Process) {
 	// Update the TSS for the process
 	next.update_tss();
 	// Update TLS entries in the GDT
-	for i in 0..TLS_ENTRIES_COUNT {
-		next.update_tls(i);
+	{
+		let tls = next.tls.lock();
+		for (i, ent) in tls.iter().enumerate() {
+			unsafe {
+				ent.update_gdt(gdt::TLS_OFFSET + i * size_of::<gdt::Entry>());
+			}
+		}
 	}
 	// TODO switch FPU
 }

@@ -76,7 +76,9 @@ pub fn set_thread_area(
 	}
 	// Update the entry
 	*entry = info.to_descriptor();
-	proc.update_tls(id);
+	unsafe {
+		entry.update_gdt(gdt::TLS_OFFSET + id * size_of::<gdt::Entry>());
+	}
 	gdt::flush();
 	Ok(0)
 }
