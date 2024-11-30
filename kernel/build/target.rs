@@ -61,4 +61,9 @@ impl<'s> Target<'s> {
 	pub fn src(&self) -> PathBuf {
 		PathBuf::from(format!("arch/{}/src/", self.name))
 	}
+
+	/// Returns the name of the architecture for the compatibility vDSO, if any.
+	pub fn compat_vdso(&self) -> Option<&str> {
+		(self.name == "x86_64").then_some("x86")
+	}
 }

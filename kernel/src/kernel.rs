@@ -247,6 +247,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	println!("Initializing processes...");
 	process::init().unwrap_or_else(|e| panic!("Failed to init processes! ({e})"));
+	exec::vdso::init().unwrap_or_else(|e| panic!("Failed to load vDSO! ({e})"));
 
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();

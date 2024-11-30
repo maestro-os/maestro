@@ -26,19 +26,20 @@ use std::{
 	process::{exit, Command},
 };
 
-/// Compiles the vDSO.
-pub fn compile_vdso(env: &Env, target: &Target) -> io::Result<()> {
-	let file = PathBuf::from(format!("vdso/{}.s", target.name));
-	println!("cargo:rerun-if-changed=vdso/linker.ld");
-	println!("cargo:rerun-if-changed={}", file.display());
-	// The path to the shared library to be compiled
-	let out_path = env
-		.manifest_dir
-		.join(format!("target/{}/{}", target.name, env.profile))
-		.join("vdso.so");
-	// Compile
-	let status = Command::new("clang")
-		.arg("-Tvdso/linker.ld")
+fn compile_vdso_impl(
+	env: &Env,
+	target: &Target,
+	compat_name: Option<&str>,
+) -> io::Result<PathBuf> {
+	let arch_name = compat_name.unwrap_or(target.name);
+	let src = PathBuf::from(format!("vdso/{arch_name}.s"));
+	println!("cargo:rerun-if-changed={}", src.display());
+	let out_path = env.manifest_dir.join(format!(
+		"target/{}/{}/vdso-{arch_name}.so",
+		target.name, env.profile
+	));
+	let mut cmd = Command::new("clang");
+	cmd.arg("-Tvdso/linker.ld")
 		.arg("-nostdlib")
 		.arg("-Wall")
 		.arg("-Wextra")
@@ -47,15 +48,30 @@ pub fn compile_vdso(env: &Env, target: &Target) -> io::Result<()> {
 		.arg("-target")
 		.arg(&target.triplet)
 		.arg("-shared")
-		.arg(file)
+		.arg(src)
 		.arg("-o")
-		.arg(&out_path)
-		.status()?;
+		.arg(&out_path);
+	if compat_name.is_some() {
+		cmd.arg("-m32");
+	}
+	let status = cmd.status()?;
 	if !status.success() {
 		exit(1);
 	}
-	// Pass vDSO path to the rest of the codebase
+	Ok(out_path)
+}
+
+/// Compiles the vDSO.
+pub fn compile_vdso(env: &Env, target: &Target) -> io::Result<()> {
+	println!("cargo:rerun-if-changed=vdso/linker.ld");
+	// Compile main vDSO and pass it to the codebase
+	let out_path = compile_vdso_impl(env, target, None)?;
 	println!("cargo:rustc-env=VDSO_PATH={}", out_path.display());
+	if let Some(name) = target.compat_vdso() {
+		// Compile compat vDSO and pass it to the codebase
+		let out_path = compile_vdso_impl(env, target, Some(name))?;
+		println!("cargo:rustc-env=VDSO_COMPAT_PATH={}", out_path.display());
+	}
 	Ok(())
 }
 

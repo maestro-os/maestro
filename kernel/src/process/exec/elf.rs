@@ -151,7 +151,7 @@ fn build_auxiliary(
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
 ) -> AllocResult<Vec<AuxEntryDesc>> {
-	vec![
+	let mut vec = vec![
 		AuxEntryDesc {
 			a_type: AT_PHDR,
 			a_val: AuxEntryDescValue::Number(load_info.phdr.0),
@@ -210,22 +210,25 @@ fn build_auxiliary(
 		},
 		AuxEntryDesc {
 			a_type: AT_EXECFN,
-			a_val: AuxEntryDescValue::String("TODO\0".as_bytes()), // TODO
-		},
-		AuxEntryDesc {
-			a_type: AT_SYSINFO,
-			a_val: AuxEntryDescValue::Number(vdso.entry.as_ptr() as _),
+			a_val: AuxEntryDescValue::String(b"TODO\0"), // TODO
 		},
 		AuxEntryDesc {
 			a_type: AT_SYSINFO_EHDR,
 			a_val: AuxEntryDescValue::Number(vdso.begin.0),
 		},
-		// End
-		AuxEntryDesc {
-			a_type: AT_NULL,
-			a_val: AuxEntryDescValue::Number(0),
-		},
-	]
+	]?;
+	if let Some(entry) = vdso.entry {
+		vec.push(AuxEntryDesc {
+			a_type: AT_SYSINFO,
+			a_val: AuxEntryDescValue::Number(entry.as_ptr() as _),
+		})?;
+	}
+	// End
+	vec.push(AuxEntryDesc {
+		a_type: AT_NULL,
+		a_val: AuxEntryDescValue::Number(0),
+	})?;
+	Ok(vec)
 }
 
 /// Reads the file `file`.
@@ -585,7 +588,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 				MapResidence::Normal,
 			)?
 			.wrapping_add(process::USER_STACK_SIZE * PAGE_SIZE);
-		let vdso = vdso::map(&mut mem_space)?;
+		let vdso = vdso::map(&mut mem_space, bit32)?;
 		// Initialize the userspace stack
 		let aux = build_auxiliary(&self.0, &load_info, &vdso)?;
 		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, bit32);
