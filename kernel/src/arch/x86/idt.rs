@@ -53,7 +53,7 @@ pub const ENTRIES_COUNT: usize = 0x81;
 
 /// Interruption stack frame, with saved registers state.
 #[cfg(target_arch = "x86")]
-#[repr(C, packed)]
+#[repr(C)]
 #[allow(missing_docs)]
 #[derive(Default)]
 pub struct IntFrame {
@@ -84,7 +84,7 @@ pub struct IntFrame {
 /// Interruption stack frame, with saved registers state.
 #[cfg(target_arch = "x86_64")]
 #[allow(missing_docs)]
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Default)]
 pub struct IntFrame {
 	pub rax: u64,
@@ -103,6 +103,9 @@ pub struct IntFrame {
 	pub r13: u64,
 	pub r14: u64,
 	pub r15: u64,
+
+	// manual padding due to `gs` and `fs`
+	_padding: u32,
 
 	pub gs: u16,
 	pub fs: u16,
