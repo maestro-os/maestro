@@ -23,7 +23,7 @@
 use crate::{
 	arch::{
 		x86,
-		x86::{cli, gdt, gdt::USER_CS64, pic, sti, DEFAULT_FLAGS},
+		x86::{cli, gdt, pic, sti, DEFAULT_FLAGS},
 	},
 	syscall::syscall,
 };
@@ -140,7 +140,18 @@ impl IntFrame {
 	/// `0`.
 	#[inline]
 	pub const fn get_syscall_arg(&self, n: u8) -> usize {
-		let val = if self.cs as usize & !0b11 == USER_CS64 {
+		#[cfg(target_arch = "x86")]
+		let val = match n {
+			0 => self.rbx,
+			1 => self.rcx,
+			2 => self.rdx,
+			3 => self.rsi,
+			4 => self.rdi,
+			5 => self.rbp,
+			_ => 0,
+		};
+		#[cfg(target_arch = "x86_64")]
+		let val = if self.cs as usize & !0b11 == gdt::USER_CS64 {
 			match n {
 				0 => self.rdi,
 				1 => self.rsi,

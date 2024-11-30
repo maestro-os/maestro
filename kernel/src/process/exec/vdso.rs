@@ -94,6 +94,7 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 /// If `compat` is true, the compatibility image is used.
 ///
 /// The function returns the virtual address to the mapped vDSO.
+#[allow(unused_variables)]
 pub fn map(mem_space: &mut MemSpace, compat: bool) -> EResult<MappedVDSO> {
 	#[cfg(not(target_arch = "x86_64"))]
 	let vdso = VDSO.get();
