@@ -30,7 +30,7 @@ use crate::arch::x86::gdt;
 use core::{arch::asm, mem, ptr::addr_of};
 
 /// Task State Segment.
-#[repr(C, align(8))]
+#[repr(C)]
 #[allow(missing_docs)]
 #[cfg(target_arch = "x86")]
 pub struct Tss {
@@ -64,7 +64,7 @@ pub struct Tss {
 }
 
 /// Task State Segment.
-#[repr(C, align(8))]
+#[repr(C, packed)]
 #[allow(missing_docs)]
 #[cfg(target_arch = "x86_64")]
 pub struct Tss {
@@ -107,8 +107,12 @@ pub static mut TSS: Tss = unsafe { mem::zeroed() };
 
 /// Initializes the TSS.
 pub(crate) fn init() {
-	let [gdt_entry_low, gdt_entry_high] =
-		gdt::Entry::new64(addr_of!(TSS) as u64, size_of::<Tss>() as _, 0b10001001, 0);
+	let [gdt_entry_low, gdt_entry_high] = gdt::Entry::new64(
+		addr_of!(TSS) as u64,
+		size_of::<Tss>() as u32 - 1,
+		0b10001001,
+		0,
+	);
 	unsafe {
 		gdt_entry_low.update_gdt(gdt::TSS_OFFSET);
 		gdt_entry_high.update_gdt(gdt::TSS_OFFSET + size_of::<gdt::Entry>());

@@ -58,6 +58,10 @@ global_asm!(r#"
 .type switch_asm, @function
 
 init_ctx:
+	# Set user data segment
+	mov ax, 0x23
+	mov es, ax
+	mov ds, ax
 	mov esp, [esp + 4]
 	LOAD_REGS
 	add esp, 8
@@ -89,6 +93,10 @@ global_asm!(r#"
 .type switch_asm, @function
 
 init_ctx:
+	# Set user data segment
+	mov ax, 0x23
+	mov es, ax
+	mov ds, ax
 	mov rsp, rdi
 	LOAD_REGS
 	add rsp, 16
