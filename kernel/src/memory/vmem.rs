@@ -226,7 +226,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 	}
 
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	fn unmap_impl(&mut self, virtaddr: VirtAddr) -> AllocResult<x86::paging::Rollback> {
+	fn unmap_impl(&mut self, virtaddr: VirtAddr) -> x86::paging::Rollback {
 		let res = unsafe { x86::paging::unmap(self.vmem.inner_mut(), virtaddr) };
 		invalidate_page_current(virtaddr);
 		res
@@ -242,7 +242,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		if unlikely(!KERNEL && is_kernelspace(virtaddr, 1)) {
 			return Err(AllocError);
 		}
-		let r = self.unmap_impl(virtaddr)?;
+		let r = self.unmap_impl(virtaddr);
 		self.rollback.push(r)
 	}
 
@@ -265,7 +265,7 @@ impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
 		self.rollback.reserve(pages)?;
 		for i in 0..pages {
 			let virtaddr = virtaddr + i * PAGE_SIZE;
-			let r = self.unmap_impl(virtaddr)?;
+			let r = self.unmap_impl(virtaddr);
 			self.rollback.push(r)?;
 		}
 		Ok(())

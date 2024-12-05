@@ -52,7 +52,7 @@ use core::{
 	ops::{Deref, DerefMut},
 	ptr::{addr_of, NonNull},
 };
-use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE};
+use utils::{errno::AllocResult, limits::PAGE_SIZE};
 
 /// Paging entry.
 #[cfg(target_arch = "x86")]
@@ -303,28 +303,38 @@ pub fn translate(page_dir: &Table, addr: VirtAddr) -> Option<PhysAddr> {
 	Some(PhysAddr(phys_addr))
 }
 
+/// An entry to be rollbacked if necessary.
+struct RollbackEntry {
+	/// Pointer to the previous entry.
+	ptr: NonNull<Entry>,
+	/// Previous value of the entry.
+	previous: Entry,
+	/// If `true`, the table can be removed if empty.
+	free: bool,
+}
+
 /// Memory paging rollback hook, allowing to undo modifications on a virtual memory context if an
 /// operation in a transaction fails, allowing to preserve integrity.
+#[derive(Default)]
 pub struct Rollback {
-	/// The list of modified entries, with their respective previous value and a boolean
-	/// indicating whether the underlying table could be freed.
-	///
-	/// This field works in a FIFO fashion. That is, the rollback operation must begin with the
-	/// last element.
-	entries: Vec<(NonNull<Entry>, Entry, bool)>,
+	/// The list of modified entries, with information allowing rollback.
+	entries: [Option<RollbackEntry>; DEPTH],
 }
 
 impl Rollback {
 	fn cleanup_table(cur_entry: Entry, prev_entry: Entry) {
 		let cur_has_table = cur_entry & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT;
 		let prev_has_table = prev_entry & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT;
-		if !cur_has_table && prev_has_table {
-			unsafe {
-				let (mut table_ptr, _) = unwrap_entry(prev_entry);
-				let table = table_ptr.as_mut();
-				if table.is_empty() {
-					free_table(table_ptr);
-				}
+		if !prev_has_table {
+			// Nothing to clean up
+			return;
+		}
+		// If not reusing the same table, remove
+		unsafe {
+			let (prev_table, _) = unwrap_entry(prev_entry);
+			let (cur_table, _) = unwrap_entry(cur_entry);
+			if !cur_has_table || cur_table != prev_table {
+				free_table(prev_table);
 			}
 		}
 	}
@@ -333,13 +343,13 @@ impl Rollback {
 	#[cold]
 	pub fn rollback(mut self) {
 		let entries = mem::take(&mut self.entries);
-		for (mut ptr, prev_entry, free) in entries.into_iter().rev() {
-			let ent = unsafe { ptr.as_mut() };
+		for mut ent in entries.into_iter().flatten() {
 			// Reverse entry change
-			let prev_entry = mem::replace(ent, prev_entry);
-			if free {
+			let ptr = unsafe { ent.ptr.as_mut() };
+			let rollback_ent = mem::replace(ptr, ent.previous);
+			if ent.free {
 				// If a table was just created by the operation and is now empty, remove it
-				Self::cleanup_table(*ent, prev_entry)
+				Self::cleanup_table(*ptr, rollback_ent)
 			}
 		}
 	}
@@ -349,14 +359,19 @@ impl Drop for Rollback {
 	fn drop(&mut self) {
 		// Remove old tables if empty
 		let entries = mem::take(&mut self.entries);
-		for (mut ptr, prev_entry, free) in entries.into_iter().rev() {
-			let ent = unsafe { ptr.as_mut() };
-			if free {
+		for mut ent in entries.into_iter().flatten() {
+			if ent.free {
 				// If a table was just removed by the operation and is now empty, remove it
-				Self::cleanup_table(*ent, prev_entry)
+				let ptr = unsafe { ent.ptr.as_mut() };
+				Self::cleanup_table(*ptr, ent.previous);
 			}
 		}
 	}
+}
+
+/// Tells whether a table may be freed if empty.
+fn can_remove_table(level: usize, index: usize) -> bool {
+	(1..(DEPTH - 1)).contains(&level) || (level == DEPTH - 1 && index < USERSPACE_TABLES)
 }
 
 /// Inner implementation of [`crate::memory::vmem::VMemTransaction::map`] for x86.
@@ -377,30 +392,27 @@ pub unsafe fn map(
 	// TODO support FLAG_PAGE_SIZE (requires a way to specify a which level it must be enabled)
 	let flags = (flags & FLAGS_MASK & !FLAG_PAGE_SIZE) | FLAG_PRESENT;
 	// Set entries
-	let mut previous_entries = Vec::with_capacity(DEPTH)?;
+	let mut rollback = Rollback::default();
 	for level in (0..DEPTH).rev() {
 		let index = get_addr_element_index(virtaddr, level);
-		let previous_entry = table[index];
+		let previous = table[index];
 		// Add entry for rollback
-		let may_remove_table = level > 0 && (level < DEPTH - 1 || index < USERSPACE_TABLES);
-		previous_entries
-			.push((
-				NonNull::from(&table[index]),
-				previous_entry,
-				may_remove_table,
-			))
-			.unwrap();
+		rollback.entries[level] = Some(RollbackEntry {
+			ptr: NonNull::from(&table[index]),
+			previous,
+			free: can_remove_table(level, index),
+		});
 		if level == 0 {
 			table[index] = to_entry(physaddr, flags);
 			break;
 		}
 		// Allocate a table if necessary
-		if previous_entry & FLAG_PRESENT == 0 {
+		if previous & FLAG_PRESENT == 0 {
 			// No table is present, allocate one
 			let new_table = alloc_table()?;
 			let addr = VirtAddr::from(new_table).kernel_to_physical().unwrap();
 			table[index] = to_entry(addr, flags);
-		} else if previous_entry & FLAG_PAGE_SIZE != 0 {
+		} else if previous & FLAG_PAGE_SIZE != 0 {
 			// A PSE entry is present, need to expand it for the mapping
 			table.expand(index)?;
 		}
@@ -408,9 +420,7 @@ pub unsafe fn map(
 		// Jump to next table
 		table = unsafe { unwrap_entry(table[index]).0.as_mut() };
 	}
-	Ok(Rollback {
-		entries: previous_entries,
-	})
+	Ok(rollback)
 }
 
 /// Inner implementation of [`crate::memory::vmem::VMemTransaction::unmap`] for x86.
@@ -419,34 +429,42 @@ pub unsafe fn map(
 ///
 /// In case the unmapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
-pub unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) -> AllocResult<Rollback> {
+pub unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) -> Rollback {
 	// Sanitize
 	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
-	// Set entries
-	let mut previous_entries = Vec::with_capacity(DEPTH)?;
+	// Read entries
+	let mut tables: [Option<(NonNull<Table>, usize)>; DEPTH] = [None; DEPTH];
 	for level in (0..DEPTH).rev() {
 		let index = get_addr_element_index(virtaddr, level);
-		// Remove entry and get previous value
-		let previous_entry = mem::replace(&mut table[index], 0);
-		// Add entry for rollback
-		let may_remove_table = level > 0 && (level < DEPTH - 1 || index < USERSPACE_TABLES);
-		previous_entries
-			.push((
-				NonNull::from(&table[index]),
-				previous_entry,
-				may_remove_table,
-			))
-			.unwrap();
-		// If the entry did not exist or was PSE, stop here
-		if previous_entry & FLAG_PRESENT == 0 || previous_entry & FLAG_PAGE_SIZE != 0 {
+		let entry = table[index];
+		tables[level] = Some((NonNull::from(table), index));
+		// If the entry does not exist or is PSE, stop here
+		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE != 0 {
 			break;
 		}
 		// Jump to next table
-		table = unsafe { unwrap_entry(previous_entry).0.as_mut() };
+		table = unsafe { unwrap_entry(entry).0.as_mut() };
 	}
-	Ok(Rollback {
-		entries: previous_entries,
-	})
+	// Remove entry and go up to remove tables that are now empty
+	let mut rollback = Rollback::default();
+	for (level, t) in tables.into_iter().enumerate() {
+		let Some((mut table, index)) = t else {
+			continue;
+		};
+		// Remove entry
+		let table = unsafe { table.as_mut() };
+		let previous = mem::replace(&mut table[index], 0);
+		// Add entry for rollback
+		rollback.entries[level] = Some(RollbackEntry {
+			ptr: NonNull::from(&table[index]),
+			previous,
+			free: can_remove_table(level, index),
+		});
+		if !table.is_empty() {
+			break;
+		}
+	}
+	rollback
 }
 
 /// Binds the given page directory to the current CPU.
