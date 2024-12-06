@@ -48,24 +48,10 @@ extern "C" {
 
 #[cfg(target_arch = "x86")]
 global_asm!(r#"
-.include "arch/x86/src/regs.s"
-
 .section .text
 
-.global init_ctx
 .global switch_asm
-.type init_ctx, @function
 .type switch_asm, @function
-
-init_ctx:
-	# Set user data segment
-	mov ax, 0x23
-	mov es, ax
-	mov ds, ax
-	mov esp, [esp + 4]
-	LOAD_REGS
-	add esp, 8
-	iretd
 
 switch_asm:
 	push ebp
@@ -83,24 +69,10 @@ switch_asm:
 
 #[cfg(target_arch = "x86_64")]
 global_asm!(r#"
-.include "arch/x86_64/src/regs.s"
-
 .section .text
 
-.global init_ctx
 .global switch_asm
-.type init_ctx, @function
 .type switch_asm, @function
-
-init_ctx:
-	# Set user data segment
-	mov ax, 0x23
-	mov es, ax
-	mov ds, ax
-	mov rsp, rdi
-	LOAD_REGS
-	add rsp, 16
-	iretq
 
 switch_asm:
 	push rbp

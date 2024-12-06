@@ -27,12 +27,7 @@ use crate::{
 	},
 	syscall::syscall,
 };
-use core::{
-	arch::{asm, global_asm},
-	ffi::c_void,
-	mem::size_of,
-	ptr::addr_of,
-};
+use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
 use utils::errno::EResult;
 
 /// Makes the interrupt switch to ring 0.
@@ -215,12 +210,6 @@ impl IntFrame {
 	}
 }
 
-// include registers save/restore macros
-#[cfg(target_arch = "x86")]
-global_asm!(r#".include "arch/x86/src/regs.s""#);
-#[cfg(target_arch = "x86_64")]
-global_asm!(r#".include "arch/x86_64/src/regs.s""#);
-
 /// An IDT header.
 #[repr(C, packed)]
 struct InterruptDescriptorTable {
@@ -296,218 +285,57 @@ impl InterruptDescriptor {
 	}
 }
 
-/// Declare an error handler.
-///
-/// An error can be accompanied by a code, in which case the handler must be declared with the
-/// `code` keyword.
-macro_rules! error {
-	($name:ident, $id:expr) => {
-		extern "C" {
-			fn $name();
-		}
+extern "C" {
+	fn error0();
+	fn error1();
+	fn error2();
+	fn error3();
+	fn error4();
+	fn error5();
+	fn error6();
+	fn error7();
+	fn error8();
+	fn error9();
+	fn error10();
+	fn error11();
+	fn error12();
+	fn error13();
+	fn error14();
+	fn error15();
+	fn error16();
+	fn error17();
+	fn error18();
+	fn error19();
+	fn error20();
+	fn error21();
+	fn error22();
+	fn error23();
+	fn error24();
+	fn error25();
+	fn error26();
+	fn error27();
+	fn error28();
+	fn error29();
+	fn error30();
+	fn error31();
 
-		#[cfg(target_arch = "x86")]
-		global_asm!(
-			r"
-.global {name}
-.type {name}, @function
-
-{name}:
-	cld
-	push 0 # code (absent)
-	push {id}
-
-STORE_REGS
-
-	xor ebp, ebp
-	push esp
-	call interrupt_handler
-	add esp, 4
-
-LOAD_REGS
-	add esp, 8
-	iretd",
-			name = sym $name,
-			id = const($id)
-		);
-
-		#[cfg(target_arch = "x86_64")]
-		global_asm!(
-			r"
-.global {name}
-.type {name}, @function
-
-{name}:
-	cld
-	push 0 # code (absent)
-	push {id}
-STORE_REGS
-
-	xor rbp, rbp
-	mov rdi, rsp
-	call interrupt_handler
-
-LOAD_REGS
-	add rsp, 16
-	iretq",
-			name = sym $name,
-			id = const($id)
-		);
-	};
-	($name:ident, $id:expr, code) => {
-		extern "C" {
-			fn $name();
-		}
-
-		#[cfg(target_arch = "x86")]
-		global_asm!(
-			r#"
-.global {name}
-.type {name}, @function
-
-{name}:
-	cld
-	push {id}
-STORE_REGS
-
-	xor ebp, ebp
-	push esp
-	call interrupt_handler
-	add esp, 4
-
-LOAD_REGS
-	add esp, 8
-	iretd"#,
-			name = sym $name,
-			id = const($id)
-		);
-
-		#[cfg(target_arch = "x86_64")]
-		global_asm!(
-			r#"
-.global {name}
-.type {name}, @function
-
-{name}:
-	cld
-	push {id}
-STORE_REGS
-
-	xor rbp, rbp
-	mov rdi, rsp
-	call interrupt_handler
-
-LOAD_REGS
-	add rsp, 16
-	iretq"#,
-			name = sym $name,
-			id = const($id)
-		);
-	};
+	fn irq0();
+	fn irq1();
+	fn irq2();
+	fn irq3();
+	fn irq4();
+	fn irq5();
+	fn irq6();
+	fn irq7();
+	fn irq8();
+	fn irq9();
+	fn irq10();
+	fn irq11();
+	fn irq12();
+	fn irq13();
+	fn irq14();
+	fn irq15();
 }
-
-macro_rules! irq {
-	($name:ident, $id:expr) => {
-		extern "C" {
-			fn $name();
-		}
-
-		#[cfg(target_arch = "x86")]
-		global_asm!(
-			r#"
-.global {name}
-
-{name}:
-	cld
-	push 0 # code (absent)
-	push {id}
-STORE_REGS
-
-	xor ebp, ebp
-	push esp
-	call interrupt_handler
-	add esp, 4
-
-LOAD_REGS
-	add esp, 8
-	iretd"#,
-			name = sym $name,
-			id = const($id)
-		);
-
-		#[cfg(target_arch = "x86_64")]
-		global_asm!(
-			r#"
-.global {name}
-
-{name}:
-	cld
-	push 0 # code (absent)
-	push {id}
-STORE_REGS
-
-	xor rbp, rbp
-	mov rdi, rsp
-	call interrupt_handler
-
-LOAD_REGS
-	add rsp, 16
-	iretq"#,
-			name = sym $name,
-			id = const($id)
-		);
-	};
-}
-
-error!(error0, 0x0);
-error!(error1, 0x1);
-error!(error2, 0x2);
-error!(error3, 0x3);
-error!(error4, 0x4);
-error!(error5, 0x5);
-error!(error6, 0x6);
-error!(error7, 0x7);
-error!(error8, 0x8, code);
-error!(error9, 0x9);
-error!(error10, 0xa, code);
-error!(error11, 0xb, code);
-error!(error12, 0xc, code);
-error!(error13, 0xd, code);
-error!(error14, 0xe, code);
-error!(error15, 0xf);
-error!(error16, 0x10);
-error!(error17, 0x11, code);
-error!(error18, 0x12);
-error!(error19, 0x13);
-error!(error20, 0x14);
-error!(error21, 0x15);
-error!(error22, 0x16);
-error!(error23, 0x17);
-error!(error24, 0x18);
-error!(error25, 0x19);
-error!(error26, 0x1a);
-error!(error27, 0x1b);
-error!(error28, 0x1c);
-error!(error29, 0x1d);
-error!(error30, 0x1e, code);
-error!(error31, 0x1f);
-
-irq!(irq0, 0x20);
-irq!(irq1, 0x21);
-irq!(irq2, 0x22);
-irq!(irq3, 0x23);
-irq!(irq4, 0x24);
-irq!(irq5, 0x25);
-irq!(irq6, 0x26);
-irq!(irq7, 0x27);
-irq!(irq8, 0x28);
-irq!(irq9, 0x29);
-irq!(irq10, 0x2a);
-irq!(irq11, 0x2b);
-irq!(irq12, 0x2c);
-irq!(irq13, 0x2d);
-irq!(irq14, 0x2e);
-irq!(irq15, 0x2f);
 
 /// The list of IDT entries.
 static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] =
