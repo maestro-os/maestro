@@ -23,7 +23,6 @@
 .macro STORE_REGS
     push fs
     push gs
-    sub rsp, 4 # padding
     push r15
     push r14
     push r13
@@ -57,7 +56,6 @@
     pop r13
     pop r14
     pop r15
-    add rsp, 4 # padding
     pop gs
     pop fs
 .endm

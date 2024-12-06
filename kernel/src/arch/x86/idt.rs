@@ -61,8 +61,8 @@ pub struct IntFrame {
 	pub rdi: u32,
 	pub rbp: u32,
 
-	pub gs: u16,
-	pub fs: u16,
+	pub gs: u32,
+	pub fs: u32,
 
 	/// Interruption number.
 	pub int: u32,
@@ -99,11 +99,8 @@ pub struct IntFrame {
 	pub r14: u64,
 	pub r15: u64,
 
-	// manual padding due to `gs` and `fs`
-	_padding: u32,
-
-	pub gs: u16,
-	pub fs: u16,
+	pub gs: u64,
+	pub fs: u64,
 
 	/// Interruption number.
 	pub int: u64,
