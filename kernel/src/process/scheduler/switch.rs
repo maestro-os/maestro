@@ -35,6 +35,9 @@ pub unsafe fn switch(prev: *const Process, next: *const Process) {
 	switch_asm(prev, next);
 }
 
+// Note: the functions below are saving only the registers that are not clobbered by the call to
+// them
+
 extern "C" {
 	/// Jumps to a new context with the given `frame`.
 	///
@@ -42,6 +45,15 @@ extern "C" {
 	///
 	/// The context described by `frame` must be valid.
 	pub fn init_ctx(frame: &IntFrame) -> !;
+	/// Saves state of the current context in `parent`, then switches to the next context described
+	/// by `frame`.
+	///
+	/// # Safety
+	///
+	/// The context described by `frame` must be valid.
+	#[allow(improper_ctypes)]
+	pub fn fork_asm(frame: &IntFrame, parent: *const Process);
+
 	#[allow(improper_ctypes)]
 	fn switch_asm(prev: *const Process, next: *const Process);
 }
@@ -50,19 +62,40 @@ extern "C" {
 global_asm!(r#"
 .section .text
 
+.global fork_asm
 .global switch_asm
+.type fork_asm, @function
 .type switch_asm, @function
+
+fork_asm:
+	# Save parent context
+	push ebp
+	push ebx
+	push esi
+	push edi
+    mov eax, [esp + 24]
+    mov [eax + {off}], esp
+
+	# Set stack at the frame's position
+	add esp, 16
+	jmp init_ctx
 
 switch_asm:
 	push ebp
 	push ebx
+	push esi
+	push edi
 
     # Swap contexts
-    mov [edi + {off}], esp
-    mov esp, [esi + {off}]
+    mov eax, [esp + 24]
+    mov [eax + {off}], esp
+    mov eax, [esp + 20]
+    mov esp, [eax + {off}]
 
-	push ebx
-	push ebp
+	pop edi
+	pop esi
+	pop ebx
+	pop ebp
 
 	jmp switch_finish
 "#, off = const offset_of!(Process, kernel_sp));
@@ -71,8 +104,22 @@ switch_asm:
 global_asm!(r#"
 .section .text
 
+.global fork_asm
 .global switch_asm
+.type fork_asm, @function
 .type switch_asm, @function
+
+fork_asm:
+	# Save parent context
+	push rbp
+	push rbx
+	push r12
+	push r13
+	push r14
+	push r15
+    mov [rsi + {off}], rsp
+
+	jmp init_ctx
 
 switch_asm:
 	push rbp
@@ -86,26 +133,32 @@ switch_asm:
     mov [rdi + {off}], rsp
     mov rsp, [rsi + {off}]
 
-	push r15
-	push r14
-	push r13
-	push r12
-	push rbx
-	push rbp
+	pop r15
+	pop r14
+	pop r13
+	pop r12
+	pop rbx
+	pop rbp
 
 	jmp switch_finish
 "#, off = const offset_of!(Process, kernel_sp));
 
 /// Jumped to from [`switch`], finishing the switch.
 #[no_mangle]
-extern "C" fn switch_finish(_prev: &mut Process, next: &mut Process) {
+extern "C" fn switch_finish(_prev: &Process, next: &Process) {
+	finish(next);
+}
+
+/// Finishes switching context to `proc`, that is restore everything else than general-purpose
+/// registers.
+pub fn finish(proc: &Process) {
 	// Bind the memory space
-	next.mem_space.as_ref().unwrap().lock().bind();
+	proc.mem_space.as_ref().unwrap().lock().bind();
 	// Update the TSS for the process
-	next.update_tss();
+	proc.update_tss();
 	// Update TLS entries in the GDT
 	{
-		let tls = next.tls.lock();
+		let tls = proc.tls.lock();
 		for (i, ent) in tls.iter().enumerate() {
 			unsafe {
 				ent.update_gdt(gdt::TLS_OFFSET + i * size_of::<gdt::Entry>());

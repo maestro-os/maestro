@@ -58,12 +58,12 @@ use crate::{
 	time::timer::TimerManager,
 };
 use core::{
-	ffi::{c_int, c_void},
+	ffi::c_int,
 	fmt,
 	fmt::Formatter,
 	mem,
 	mem::{size_of, ManuallyDrop},
-	ptr::{null_mut, NonNull},
+	ptr::NonNull,
 	sync::atomic::{
 		AtomicBool, AtomicPtr, AtomicU32, AtomicU8,
 		Ordering::{Acquire, Relaxed, Release, SeqCst},
@@ -180,9 +180,6 @@ pub struct ForkOptions {
 	/// If `true`, the parent and child processes both share the same signal
 	/// handlers table.
 	pub share_sighand: bool,
-
-	/// The stack address the child process begins with.
-	pub stack: Option<NonNull<c_void>>,
 }
 
 /// A process's links to other processes.
@@ -603,8 +600,11 @@ impl Process {
 			return;
 		};
 		let old_state = State::from_id(old_state);
+		if new_state == old_state {
+			return;
+		}
 		// Update the number of running processes
-		if old_state != State::Running && new_state == State::Running {
+		if new_state == State::Running {
 			SCHEDULER.get().lock().increment_running();
 		} else if old_state == State::Running {
 			SCHEDULER.get().lock().decrement_running();
@@ -688,14 +688,13 @@ impl Process {
 
 	/// Forks the current process.
 	///
-	/// The internal state of the process (registers and memory) are always copied.
-	/// Other data may be copied according to provided fork options.
+	/// Arguments:
+	/// - `this` is the parent process.
+	/// - `fork_options` are the options for the fork operation.
 	///
-	/// `fork_options` are the options for the fork operation.
+	/// On fail, the function returns an error.
 	///
-	/// On fail, the function returns an `Err` with the appropriate Errno.
-	///
-	/// If the process is not running, the behaviour is undefined.
+	/// If the `this` is not running, the behaviour is undefined.
 	pub fn fork(this: Arc<Self>, fork_options: ForkOptions) -> EResult<Arc<Self>> {
 		debug_assert!(matches!(this.get_state(), State::Running));
 		let pid = PidHandle::unique()?;
@@ -747,7 +746,7 @@ impl Process {
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
-			kernel_sp: AtomicPtr::new(null_mut()), // TODO
+			kernel_sp: AtomicPtr::default(),
 
 			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,

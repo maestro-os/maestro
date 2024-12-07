@@ -37,7 +37,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn vfork(proc: Arc<Process>) -> EResult<usize> {
+pub fn vfork(proc: Arc<Process>, frame: &mut IntFrame) -> EResult<usize> {
 	clone(
 		Args((
 			CLONE_VFORK | CLONE_VM,
@@ -47,5 +47,6 @@ pub fn vfork(proc: Arc<Process>) -> EResult<usize> {
 			SyscallPtr(None),
 		)),
 		proc,
+		frame,
 	)
 }

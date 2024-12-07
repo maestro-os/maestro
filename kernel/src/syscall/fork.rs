@@ -34,9 +34,10 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn fork(proc: Arc<Process>) -> EResult<usize> {
+pub fn fork(proc: Arc<Process>, frame: &mut IntFrame) -> EResult<usize> {
 	clone(
 		Args((0, null_mut(), SyscallPtr(None), 0, SyscallPtr(None))),
 		proc,
+		frame,
 	)
 }

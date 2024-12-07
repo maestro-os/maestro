@@ -148,8 +148,8 @@ impl<T: ?Sized> Arc<T> {
 	}
 
 	/// Returns a pointer to the inner object.
-	pub fn as_ptr(&self) -> *const T {
-		&self.inner().obj
+	pub fn as_ptr(this: &Self) -> *const T {
+		&this.inner().obj
 	}
 
 	/// Returns the number of strong pointers to the allocation.

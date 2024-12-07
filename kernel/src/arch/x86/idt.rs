@@ -50,7 +50,7 @@ pub const ENTRIES_COUNT: usize = 0x81;
 #[cfg(target_arch = "x86")]
 #[repr(C)]
 #[allow(missing_docs)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct IntFrame {
 	// Using the prefix `r` to avoid duplicate code
 	pub rax: u32,
@@ -80,7 +80,7 @@ pub struct IntFrame {
 #[cfg(target_arch = "x86_64")]
 #[allow(missing_docs)]
 #[repr(C)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct IntFrame {
 	pub rax: u64,
 	pub rbx: u64,

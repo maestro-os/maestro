@@ -19,10 +19,18 @@
 //! The `clone` system call creates a child process.
 
 use crate::{
-	arch::x86::idt::IntFrame,
+	arch::x86::{cli, idt::IntFrame},
 	process::{
-		mem_space::copy::SyscallPtr, pid::Pid, scheduler, scheduler::Scheduler,
-		user_desc::UserDesc, ForkOptions, Process, State,
+		mem_space::copy::SyscallPtr,
+		pid::Pid,
+		scheduler,
+		scheduler::{
+			switch,
+			switch::{fork_asm, init_ctx},
+			Scheduler, SCHEDULER,
+		},
+		user_desc::UserDesc,
+		ForkOptions, Process, State,
 	},
 	syscall::{Args, FromSyscallArg},
 };
@@ -123,31 +131,33 @@ pub fn clone(
 		SyscallPtr<c_int>,
 	)>,
 	proc: Arc<Process>,
+	frame: &mut IntFrame,
 ) -> EResult<usize> {
 	let (child_pid, child_tid) = {
-		if flags & CLONE_PARENT_SETTID != 0 {
-			todo!()
-		}
+		// Disable interruptions so that the scheduler does not attempt to start the new process
+		cli();
 		let child = Process::fork(
 			proc.clone(),
 			ForkOptions {
 				share_memory: flags & CLONE_VM != 0,
 				share_fd: flags & CLONE_FILES != 0,
 				share_sighand: flags & CLONE_SIGHAND != 0,
-
-				stack: NonNull::new(stack),
 			},
 		)?;
-		if flags & CLONE_SETTLS != 0 {
-			todo!()
+		let child_pid = child.get_pid();
+		let child_tid = child.tid;
+		// Switch
+		switch::finish(&child);
+		SCHEDULER.get().lock().swap_current_process(Some(child));
+		let mut child_frame = frame.clone();
+		child_frame.rax = 0; // Return value
+		if !stack.is_null() {
+			child_frame.rsp = stack as _;
 		}
-		if flags & CLONE_CHILD_CLEARTID != 0 {
-			todo!()
+		unsafe {
+			fork_asm(&child_frame, Arc::as_ptr(&proc));
 		}
-		if flags & CLONE_CHILD_SETTID != 0 {
-			todo!()
-		}
-		(child.get_pid(), child.tid)
+		(child_pid, child_tid)
 	};
 	if flags & CLONE_VFORK != 0 {
 		wait_vfork_done(child_pid);
