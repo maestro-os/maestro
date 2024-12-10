@@ -87,9 +87,9 @@ switch_asm:
 	push edi
 
     # Swap contexts
-    mov eax, [esp + 24]
-    mov [eax + {off}], esp
     mov eax, [esp + 20]
+    mov [eax + {off}], esp
+    mov eax, [esp + 24]
     mov esp, [eax + {off}]
 
 	pop edi
