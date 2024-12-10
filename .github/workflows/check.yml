@@ -53,6 +53,7 @@ jobs:
         working-directory: kernel
         run: cargo doc --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
   build:
+    name: build (${{ matrix.arch }}, ${{ matrix.profile.dir }})
     runs-on: [self-hosted, linux]
     needs: clippy
     strategy:
@@ -64,11 +65,10 @@ jobs:
             dir: "debug"
           - name: "release"
             dir: "release"
-        feature: ["", "strace"]
     steps:
       - name: Build
         working-directory: kernel
-        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --profile ${{ matrix.profile.name }} --features ${{ matrix.feature }}
+        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --profile ${{ matrix.profile.name }} --all-features
       - name: Check Multiboot2
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/${{ matrix.arch }}/${{ matrix.profile.dir }}/maestro
