@@ -44,7 +44,7 @@ pub const TSS_OFFSET: usize = 40;
 /// The offset of Thread Local Storage (TLS) entries.
 pub const TLS_OFFSET: usize = 56;
 /// The offset of the user data segment (64 bits).
-pub const USER_CS64: usize = 88;
+pub const USER_CS64: usize = 80;
 
 /// A GDT entry.
 #[repr(C, align(8))]

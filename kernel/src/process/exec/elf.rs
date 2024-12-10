@@ -41,7 +41,6 @@ use core::{
 	intrinsics::unlikely,
 	num::NonZeroUsize,
 	ptr,
-	ptr::null_mut,
 };
 use utils::{
 	collections::{string::String, vec::Vec},
@@ -579,7 +578,8 @@ impl<'s> Executor for ELFExecutor<'s> {
 		let parser = ELFParser::new(&image)?;
 		let bit32 = parser.class() == Class::Bit32;
 		let mut mem_space = MemSpace::new(file)?;
-		let load_info = load_elf(&parser, &mut mem_space, null_mut())?;
+		let load_base = VirtAddr(PAGE_SIZE).as_ptr(); // TODO ASLR
+		let load_info = load_elf(&parser, &mut mem_space, load_base)?;
 		let user_stack = mem_space
 			.map(
 				MapConstraint::None,
