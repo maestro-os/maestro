@@ -59,33 +59,19 @@ jobs:
       fail-fast: false
       matrix:
         arch: ["x86", "x86_64"]
-    steps:
-      - name: Debug
-        working-directory: kernel
-        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
-      - name: Check Multiboot2 (debug)
-        working-directory: kernel
-        run: grub-file --is-x86-multiboot2 target/${{ matrix.arch }}/debug/maestro
-      - name: Release
-        working-directory: kernel
-        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --release
-      - name: Check Multiboot2 (release)
-        working-directory: kernel
-        run: grub-file --is-x86-multiboot2 target/${{ matrix.arch }}/release/maestro
-  strace:
-    runs-on: [self-hosted, linux]
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: ["x86", "x86_64"]
+        profile:
+          - name: "dev"
+            dir: "debug"
+          - name: "release"
+            dir: "release"
+        feature: ["", "strace"]
     steps:
       - name: Build
         working-directory: kernel
-        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --features strace
-      - name: Check Multiboot2 for x86
+        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --profile ${{ matrix.profile.name }} --features ${{ matrix.feature }}
+      - name: Check Multiboot2
         working-directory: kernel
-        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
+        run: grub-file --is-x86-multiboot2 target/${{ matrix.arch }}/${{ matrix.profile.dir }}/maestro
   miri:
     runs-on: [self-hosted, linux]
     needs: build
