@@ -101,6 +101,7 @@ jobs:
         run: ci/test.sh self
         timeout-minutes: 10
   inttest:
+    name: inttest (${{ matrix.arch.kernel }})
     runs-on: [self-hosted, linux]
     needs: build
     strategy:
@@ -111,6 +112,7 @@ jobs:
             user: "i686-unknown-linux-musl"
           - kernel: "x86_64"
             user: "x86_64-unknown-linux-musl"
+            user_compat: "i686-unknown-linux-musl"
     steps:
       - name: Build tests
         working-directory: inttest
@@ -120,6 +122,20 @@ jobs:
           ./build.sh
           mv disk ../kernel/qemu_disk
       - name: Run
+        working-directory: kernel
+        env:
+          CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
+        run: ci/test.sh int
+        timeout-minutes: 10
+      - name: Build tests (compat)
+        if: ${{ matrix.arch.user_compat }}
+        working-directory: inttest
+        env:
+          TARGET: ${{ matrix.arch.user_compat }}
+        run: |
+          ./build.sh
+          mv disk ../kernel/qemu_disk
+      - name: Run (compat)
         working-directory: kernel
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
