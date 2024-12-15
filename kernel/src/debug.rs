@@ -65,3 +65,26 @@ pub fn print_callstack(stack: &[VirtAddr]) {
 		crate::println!("{i}: {pc:p} -> {}", DisplayableStr(name));
 	}
 }
+
+/// Utilities to manipulate QEMU.
+#[cfg(config_debug_qemu)]
+pub mod qemu {
+	use crate::{arch::x86::io::outl, power};
+
+	/// The port used to trigger QEMU emulator exit with the given exit code.
+	const EXIT_PORT: u16 = 0xf4;
+
+	/// QEMU exit code for success.
+	pub const SUCCESS: u32 = 0x10;
+	/// QEMU exit code for failure.
+	pub const FAILURE: u32 = 0x11;
+
+	/// Exits QEMU with the given status.
+	pub fn exit(status: u32) {
+		unsafe {
+			outl(EXIT_PORT, status);
+		}
+		// halt in case exiting did not succeed for some reason
+		power::halt();
+	}
+}

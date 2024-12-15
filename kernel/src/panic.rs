@@ -22,7 +22,7 @@
 //! from. This is an undesirable state which requires to reboot the host
 //! machine.
 
-use crate::{arch::x86::cli, logger, memory::VirtAddr, power, register_get};
+use crate::{arch::x86::cli, debug, logger, memory::VirtAddr, power, register_get};
 use core::panic::PanicInfo;
 
 /// Called on Rust panic.
@@ -37,9 +37,8 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		if selftest::is_running() {
 			crate::println!("FAILED\n");
 			crate::println!("Error: {panic_info}\n");
-
 			#[cfg(config_debug_qemu)]
-			selftest::qemu::exit(selftest::qemu::FAILURE);
+			debug::qemu::exit(debug::qemu::FAILURE);
 			power::halt();
 		}
 	}
@@ -75,7 +74,8 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		}
 		debug::print_callstack(&callstack);
 	}
-
+	#[cfg(config_debug_qemu)]
+	debug::qemu::exit(debug::qemu::FAILURE);
 	power::halt();
 }
 

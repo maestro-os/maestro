@@ -54,11 +54,9 @@ pub fn reboot(
 	// Debug commands: shutdown with QEMU
 	#[cfg(config_debug_qemu)]
 	{
-		use crate::selftest::qemu;
+		use crate::debug::qemu;
 		match cmd {
-			// success
 			-1 => qemu::exit(qemu::SUCCESS),
-			// failure
 			-2 => qemu::exit(qemu::FAILURE),
 			_ => {}
 		}

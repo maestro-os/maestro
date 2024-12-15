@@ -12,7 +12,7 @@
 storage_test = false
 
 # If enabled, the kernel is compiled for QEMU. This feature is not *required* for QEMU but
-# it can provide additional features.
+# it can provide additional features. On panic, the kernel will shut down the virtual machine.
 qemu = false
 
 # If enabled, the kernel places a magic number in malloc chunks to allow checking integrity.
