@@ -19,7 +19,7 @@
 //! Context switching utilities.
 
 use crate::{
-	arch::x86::{gdt, idt::IntFrame},
+	arch::x86::{gdt, idt::IntFrame, tss::TSS},
 	process::Process,
 };
 use core::{arch::global_asm, mem::offset_of};
@@ -32,7 +32,19 @@ use core::{arch::global_asm, mem::offset_of};
 ///
 /// The pointers must point to valid processes.
 pub unsafe fn switch(prev: *const Process, next: *const Process) {
+	#[cfg(not(target_arch = "x86_64"))]
 	switch_asm(prev, next);
+	#[cfg(target_arch = "x86_64")]
+	{
+		use crate::arch::x86;
+		let (gs_base, kernel_gs_base) = (
+			x86::rdmsr(x86::IA32_GS_BASE),
+			x86::rdmsr(x86::IA32_KERNEL_GS_BASE),
+		);
+		switch_asm(prev, next);
+		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
+		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, kernel_gs_base);
+	}
 }
 
 // Note: the functions below are saving only the registers that are not clobbered by the call to
@@ -155,7 +167,9 @@ pub fn finish(proc: &Process) {
 	// Bind the memory space
 	proc.mem_space.as_ref().unwrap().lock().bind();
 	// Update the TSS for the process
-	proc.update_tss();
+	unsafe {
+		TSS.set_kernel_stack(proc.kernel_stack_top());
+	}
 	// Update TLS entries in the GDT
 	{
 		let tls = proc.tls.lock();

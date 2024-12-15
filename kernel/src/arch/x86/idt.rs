@@ -25,7 +25,7 @@ use crate::{
 		x86,
 		x86::{cli, gdt, pic, sti, DEFAULT_FLAGS},
 	},
-	syscall::syscall,
+	syscall::syscall_int,
 };
 use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
 use utils::errno::EResult;
@@ -356,6 +356,25 @@ pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 	res
 }
 
+/// Enables the syscall/sysret instruction pairs if available.
+#[cfg(target_arch = "x86_64")]
+fn enable_syscall_inst() {
+	let (_, _, _, mask) = super::cpuid(0x80000001, 0, 0, 0);
+	let available = mask & (1 << 11) != 0;
+	if !available {
+		return;
+	}
+	// STAR
+	super::wrmsr(
+		0xc0000081,
+		(gdt::KERNEL_CS as u64) << 32 | (gdt::USER_CS as u64) << 48,
+	);
+	// LSTAR
+	super::wrmsr(0xc0000082, crate::syscall::syscall as usize as u64);
+	// SFMASK (clear direction and interrupt flag)
+	super::wrmsr(0xc0000084, 0x600);
+}
+
 /// Initializes the IDT.
 ///
 /// This function must be called only once at kernel initialization.
@@ -417,12 +436,14 @@ pub fn init() {
 		IDT_ENTRIES[0x2e] = InterruptDescriptor::new(irq14 as _, 0x8, 0x8e);
 		IDT_ENTRIES[0x2f] = InterruptDescriptor::new(irq15 as _, 0x8, 0x8e);
 		// System calls
-		IDT_ENTRIES[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall as _, 0x8, 0xee);
+		IDT_ENTRIES[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall_int as _, 0x8, 0xee);
 		// Load
 		let idt = InterruptDescriptorTable {
 			size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
 			offset: addr_of!(IDT_ENTRIES) as _,
 		};
 		asm!("lidt [{}]", in(reg) &idt);
+		#[cfg(target_arch = "x86_64")]
+		enable_syscall_inst();
 	}
 }

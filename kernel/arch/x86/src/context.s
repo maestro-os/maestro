@@ -17,7 +17,6 @@
  */
 
 .intel_syntax noprefix
-.include "arch/x86/src/regs.s"
 .section .text
 
 .macro ERROR id
@@ -25,19 +24,9 @@
 .type error\id, @function
 
 error\id:
-	cld
 	push 0 # code (absent)
 	push \id
-STORE_REGS
-
-	xor ebp, ebp
-	push esp
-	call interrupt_handler
-	add esp, 4
-
-LOAD_REGS
-	add esp, 8
-	iretd
+    jmp int_common
 .endm
 
 .macro ERROR_CODE id
@@ -45,18 +34,8 @@ LOAD_REGS
 .type error\id, @function
 
 error\id:
-	cld
 	push \id
-STORE_REGS
-
-	xor ebp, ebp
-	push esp
-	call interrupt_handler
-	add esp, 4
-
-LOAD_REGS
-	add esp, 8
-	iretd
+    jmp int_common
 .endm
 
 .macro IRQ id
@@ -64,19 +43,9 @@ LOAD_REGS
 .type irq\id, @function
 
 irq\id:
-	cld
 	push 0 # code (absent)
 	push (0x20 + \id)
-STORE_REGS
-
-	xor ebp, ebp
-	push esp
-	call interrupt_handler
-	add esp, 4
-
-LOAD_REGS
-	add esp, 8
-	iretd
+	jmp int_common
 .endm
 
 ERROR 0
@@ -129,8 +98,44 @@ IRQ 13
 IRQ 14
 IRQ 15
 
+.macro STORE_REGS
+    push fs
+    push gs
+    push ebp
+    push edi
+    push esi
+    push edx
+    push ecx
+    push ebx
+    push eax
+.endm
+
+.macro LOAD_REGS
+    pop eax
+    pop ebx
+    pop ecx
+    pop edx
+    pop esi
+    pop edi
+    pop ebp
+    pop gs
+    pop fs
+.endm
+
 .global init_ctx
+.global syscall_int
 .type init_ctx, @function
+.type syscall_int, @function
+
+int_common:
+STORE_REGS
+    cld
+	push esp
+	call interrupt_handler
+	add esp, 4
+LOAD_REGS
+	add esp, 8
+	iretd
 
 init_ctx:
 	# Set user data segment
@@ -142,16 +147,12 @@ init_ctx:
 	add esp, 8
 	iretd
 
-.global syscall
-.type syscall, @function
-
-syscall:
+syscall_int:
 	cld
 	push 0 # code (absent)
 	push 0 # interrupt ID (absent)
 STORE_REGS
 
-	xor ebp, ebp
 	push esp
 	call syscall_handler
 	add esp, 4

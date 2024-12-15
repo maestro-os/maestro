@@ -39,12 +39,12 @@ pub const KERNEL_DS: usize = 16;
 pub const USER_CS: usize = 24;
 /// The offset of the user data segment (32 bits).
 pub const USER_DS: usize = 32;
-/// The offset of the Task State Segment (TSS).
-pub const TSS_OFFSET: usize = 40;
-/// The offset of Thread Local Storage (TLS) entries.
-pub const TLS_OFFSET: usize = 56;
 /// The offset of the user data segment (64 bits).
-pub const USER_CS64: usize = 80;
+pub const USER_CS64: usize = 40;
+/// The offset of the Task State Segment (TSS).
+pub const TSS_OFFSET: usize = 48;
+/// The offset of Thread Local Storage (TLS) entries.
+pub const TLS_OFFSET: usize = 64;
 
 /// A GDT entry.
 #[repr(C, align(8))]

@@ -28,6 +28,11 @@ pub mod tss;
 
 use core::arch::asm;
 
+/// MSR: GS base
+pub const IA32_GS_BASE: u32 = 0xc0000101;
+/// MSR: Kernel GS base
+pub const IA32_KERNEL_GS_BASE: u32 = 0xc0000102;
+
 /// Process default `rflags`
 pub const DEFAULT_FLAGS: usize = 0x202;
 /// Process default `FCW`
@@ -132,6 +137,39 @@ pub fn cpuid(mut eax: u32, mut ebx: u32, mut ecx: u32, mut edx: u32) -> (u32, u3
 		);
 	}
 	(eax, ebx, ecx, edx)
+}
+
+/// Read value from a Model Specific Register.
+#[inline]
+pub fn rdmsr(msr: u32) -> u64 {
+	let mut edx: u32;
+	let mut eax: u32;
+	unsafe {
+		asm!(
+			"rdmsr",
+			in("ecx") msr,
+			out("edx") edx,
+			out("eax") eax,
+			options(nostack)
+		);
+	}
+	(edx as u64) << 32 | eax as u64
+}
+
+/// Write value to a Model Specific Register.
+#[inline]
+pub fn wrmsr(msr: u32, val: u64) {
+	let edx = (val >> 32) as u32;
+	let eax = val as u32;
+	unsafe {
+		asm!(
+			"wrmsr",
+			in("ecx") msr,
+			in("edx") edx,
+			in("eax") eax,
+			options(nostack)
+		);
+	}
 }
 
 /// Returns HWCAP bitmask for ELF.

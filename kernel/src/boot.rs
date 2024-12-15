@@ -27,9 +27,6 @@ pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
 #[cfg(target_arch = "x86_64")]
 pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff800000000800);
 
-#[cfg(target_arch = "x86")]
-pub type InitGdt = [gdt::Entry; 10];
-#[cfg(target_arch = "x86_64")]
 pub type InitGdt = [gdt::Entry; 11];
 
 /// The initial Global Descriptor Table.
@@ -49,6 +46,8 @@ static INIT_GDT: InitGdt = [
 	gdt::Entry::new(0, !0, 0b11111010, 0b1100),
 	// User data segment (32 bits)
 	gdt::Entry::new(0, !0, 0b11110010, 0b1100),
+	// User code segment (64 bits), unused by 32 bit kernel
+	gdt::Entry::new(0, !0, 0b11111010, 0b1010),
 	// TSS
 	gdt::Entry(0),
 	gdt::Entry(0),
@@ -56,9 +55,6 @@ static INIT_GDT: InitGdt = [
 	gdt::Entry(0),
 	gdt::Entry(0),
 	gdt::Entry(0),
-	// User code segment (64 bits)
-	#[cfg(target_arch = "x86_64")]
-	gdt::Entry::new(0, !0, 0b11111010, 0b1010),
 ];
 
 /// The paging object used to remap the kernel to higher memory.
@@ -276,7 +272,7 @@ multiboot_entry:
 	# Enable LME
 	mov ecx, 0xc0000080 # EFER
 	rdmsr
-	or eax, 0x100
+	or eax, 0x901
 	wrmsr
 
     # Enable paging and write protect

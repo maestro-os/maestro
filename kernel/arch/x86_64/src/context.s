@@ -17,7 +17,6 @@
  */
 
 .intel_syntax noprefix
-.include "arch/x86_64/src/regs.s"
 .section .text
 
 .macro ERROR id
@@ -25,18 +24,9 @@
 .type error\id, @function
 
 error\id:
-	cld
 	push 0 # code (absent)
 	push \id
-STORE_REGS
-
-	xor rbp, rbp
-	mov rdi, rsp
-	call interrupt_handler
-
-LOAD_REGS
-	add rsp, 16
-	iretq
+	jmp int_common
 .endm
 
 .macro ERROR_CODE id
@@ -44,17 +34,8 @@ LOAD_REGS
 .type error\id, @function
 
 error\id:
-	cld
 	push \id
-STORE_REGS
-
-	xor rbp, rbp
-	mov rdi, rsp
-	call interrupt_handler
-
-LOAD_REGS
-	add rsp, 16
-	iretq
+	jmp int_common
 .endm
 
 .macro IRQ id
@@ -62,18 +43,9 @@ LOAD_REGS
 .type irq\id, @function
 
 irq\id:
-	cld
 	push 0 # code (absent)
 	push (0x20 + \id)
-STORE_REGS
-
-	xor rbp, rbp
-	mov rdi, rsp
-	call interrupt_handler
-
-LOAD_REGS
-	add rsp, 16
-	iretq
+	jmp int_common
 .endm
 
 ERROR 0
@@ -126,8 +98,63 @@ IRQ 13
 IRQ 14
 IRQ 15
 
+.macro STORE_REGS
+    push fs
+    push gs
+    push r15
+    push r14
+    push r13
+    push r12
+    push r11
+    push r10
+    push r9
+    push r8
+    push rbp
+    push rdi
+    push rsi
+    push rdx
+    push rcx
+    push rbx
+    push rax
+.endm
+
+.macro LOAD_REGS
+    pop rax
+    pop rbx
+    pop rcx
+    pop rdx
+    pop rsi
+    pop rdi
+    pop rbp
+    pop r8
+    pop r9
+    pop r10
+    pop r11
+    pop r12
+    pop r13
+    pop r14
+    pop r15
+    # discard gs as it is handled by `swapgs`
+    # This is necessary since setting `gs` to null clears the hidden gs base register on Intel processors
+    add rsp, 8
+    pop fs
+.endm
+
 .global init_ctx
+.global syscall_int
+.global syscall
 .type init_ctx, @function
+.type syscall_int, @function
+.type syscall, @function
+
+int_common:
+STORE_REGS
+	cld
+	mov rdi, rsp
+	call interrupt_handler
+LOAD_REGS
+	add rsp, 16
+	iretq
 
 init_ctx:
 	# Set user data segment
@@ -139,19 +166,45 @@ init_ctx:
 	add rsp, 16
 	iretq
 
-.global syscall
-.type syscall, @function
-
-syscall:
+syscall_int:
 	cld
 	push 0 # code (absent)
 	push 0 # interrupt ID (absent)
 STORE_REGS
 
-	xor rbp, rbp
 	mov rdi, rsp
 	call syscall_handler
 
 LOAD_REGS
 	add rsp, 16
 	iretq
+
+syscall:
+    # Switch to kernelspace stack
+    swapgs
+    mov [gs:0x8], rsp
+    mov rsp, [gs:0x0]
+
+    sti
+
+    # Push artificial iret frame
+    push 0x23
+    push qword [gs:0x8]
+    push r11
+    push 0x2b
+    push rcx
+
+    push 0 # code (absent)
+    push 0 # interrupt ID (absent)
+
+STORE_REGS
+
+	mov rdi, rsp
+	call syscall_handler
+
+    # Cleanup
+LOAD_REGS
+	cli
+	mov rsp, [gs:0x8]
+	swapgs
+    sysretq

@@ -989,5 +989,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 
 extern "C" {
 	/// The syscall interrupt handler.
+	pub fn syscall_int();
+	/// Trampoline for the `syscall` instruction.
 	pub fn syscall();
 }

@@ -32,7 +32,13 @@ use crate::{
 	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 	time,
 };
-use core::{mem, sync::atomic};
+use core::{
+	mem,
+	sync::{
+		atomic,
+		atomic::{AtomicPtr, Ordering::Release},
+	},
+};
 use utils::{
 	collections::{
 		btreemap::{BTreeMap, MapIterator},
@@ -56,7 +62,18 @@ pub fn init() -> AllocResult<()> {
 	unsafe {
 		SCHEDULER.init(IntMutex::new(Scheduler::new()?));
 	}
+	SCHEDULER.get().lock().setup_gs_base();
 	Ok(())
+}
+
+/// Kernel CPU local storage.
+#[derive(Default)]
+#[repr(C)]
+pub struct KernelGs {
+	/// The current kernel stack.
+	kernel_stack: AtomicPtr<u8>,
+	/// The stashed user stack.
+	user_stack: AtomicPtr<u8>,
 }
 
 /// A process scheduler.
@@ -78,6 +95,9 @@ pub struct Scheduler {
 	curr_proc: Option<Arc<Process>>,
 	/// The current number of processes in running state.
 	running_procs: usize,
+
+	/// CPU local storage.
+	gs: KernelGs,
 }
 
 impl Scheduler {
@@ -104,7 +124,19 @@ impl Scheduler {
 			processes: BTreeMap::new(),
 			curr_proc: None,
 			running_procs: 0,
+
+			gs: KernelGs::default(),
 		})
+	}
+
+	/// Sets the GS base on the current core.
+	#[inline]
+	fn setup_gs_base(&self) {
+		#[cfg(target_arch = "x86_64")]
+		{
+			use crate::arch::x86;
+			x86::wrmsr(x86::IA32_KERNEL_GS_BASE, &self.gs as *const _ as u64);
+		}
 	}
 
 	/// Returns a pointer to the top of the tmp stack for the given kernel `kernel`.
@@ -146,6 +178,9 @@ impl Scheduler {
 
 	/// Swaps the current running process for `new`, returning the previous.
 	pub fn swap_current_process(&mut self, new: Option<Arc<Process>>) -> Option<Arc<Process>> {
+		if let Some(proc) = &new {
+			self.gs.kernel_stack.store(proc.kernel_stack_top(), Release);
+		}
 		mem::replace(&mut self.curr_proc, new)
 	}
 

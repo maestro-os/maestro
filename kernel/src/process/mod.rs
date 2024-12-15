@@ -33,7 +33,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{gdt, idt::IntFrame, tss, tss::TSS},
+	arch::x86::{gdt, idt::IntFrame, tss},
 	event,
 	event::CallbackResult,
 	file,
@@ -664,25 +664,28 @@ impl Process {
 		self.vfork_done.load(Relaxed)
 	}
 
+	/// Returns a pointer to the top of the process's kernel stack.
+	#[inline]
+	pub fn kernel_stack_top(&self) -> *mut u8 {
+		unsafe {
+			self.kernel_stack
+				.add(buddy::get_frame_size(KERNEL_STACK_ORDER))
+				.as_ptr()
+		}
+	}
+
 	/// Reads the last known userspace registers state.
 	///
 	/// This information is stored at the beginning of the process's interrupt stack.
+	#[inline]
 	pub fn user_regs(&self) -> IntFrame {
 		// (x86) The frame will always be complete since entering the stack from the beginning can
 		// only be done from userspace, thus the stack pointer and segment are present for `iret`
-		let off = buddy::get_frame_size(KERNEL_STACK_ORDER) - size_of::<IntFrame>();
-		unsafe { self.kernel_stack.byte_add(off).cast().read_volatile() }
-	}
-
-	/// Updates the TSS on the current kernel for the process.
-	pub fn update_tss(&self) {
-		// Set kernel stack pointer
 		unsafe {
-			let kernel_stack_begin = self
-				.kernel_stack
-				.as_ptr()
-				.add(buddy::get_frame_size(KERNEL_STACK_ORDER));
-			TSS.set_kernel_stack(kernel_stack_begin);
+			self.kernel_stack_top()
+				.sub(size_of::<IntFrame>())
+				.cast::<IntFrame>()
+				.read_volatile()
 		}
 	}
 
