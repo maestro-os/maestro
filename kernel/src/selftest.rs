@@ -25,7 +25,9 @@
 //! make them pass even though they should not. Even if this scenario is unlikely, this remains a
 //! concern since the kernel has to be as reliable as possible.
 
-use crate::{debug, power};
+#[cfg(config_debug_qemu)]
+use crate::debug::qemu;
+use crate::power;
 use core::{
 	any::type_name,
 	sync::{atomic, atomic::AtomicBool},
@@ -65,7 +67,7 @@ pub fn runner(tests: &[&dyn Testable]) {
 	RUNNING.store(false, atomic::Ordering::Relaxed);
 	crate::println!("No more tests to run");
 	#[cfg(config_debug_qemu)]
-	debug::qemu::exit(debug::qemu::SUCCESS);
+	qemu::exit(qemu::SUCCESS);
 	power::halt();
 }
 
