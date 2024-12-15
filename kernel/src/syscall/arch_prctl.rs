@@ -27,5 +27,5 @@ use utils::{
 
 pub fn arch_prctl(Args((_code, _addr)): Args<(c_int, usize)>) -> EResult<usize> {
 	// TODO
-	Err(errno!(EINVAL))
+	Ok(0)
 }
