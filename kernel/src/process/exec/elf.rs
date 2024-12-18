@@ -22,11 +22,7 @@ use super::vdso;
 use crate::{
 	arch::x86,
 	elf,
-	elf::{
-		parser::{Class, ELFParser, ProgramHeader, Rel, Rela},
-		relocation,
-		relocation::GOT_SYM,
-	},
+	elf::parser::{Class, ELFParser, ProgramHeader},
 	file::{perm::AccessProfile, vfs, FileType},
 	memory::{vmem, VirtAddr},
 	process,
@@ -143,10 +139,12 @@ struct AuxEntryDesc {
 ///
 /// Arguments:
 /// - `exec_info` is the set of execution information.
+/// - `load_base` is the base address at which the ELF is loaded.
 /// - `load_info` is the set of ELF load information.
 /// - `vdso` is the set of vDSO information.
 fn build_auxiliary(
 	exec_info: &ExecInfo,
+	load_base: *mut u8,
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
 ) -> AllocResult<Vec<AuxEntryDesc>> {
@@ -166,6 +164,10 @@ fn build_auxiliary(
 		AuxEntryDesc {
 			a_type: AT_PAGESZ,
 			a_val: AuxEntryDescValue::Number(PAGE_SIZE),
+		},
+		AuxEntryDesc {
+			a_type: AT_BASE,
+			a_val: AuxEntryDescValue::Number(load_base as _),
 		},
 		AuxEntryDesc {
 			a_type: AT_NOTELF,
@@ -343,7 +345,7 @@ fn load_elf(
 	let phdr = elf
 		.iter_segments()
 		.find(|seg| seg.p_type == elf::PT_PHDR)
-		.map(|seg| ptr::with_exposed_provenance_mut(seg.p_vaddr as _));
+		.map(|seg| VirtAddr::from(load_base) + seg.p_vaddr as usize);
 	let (phdr, phdr_needs_copy) = match phdr {
 		Some(phdr) => (phdr, false),
 		// Not phdr segment. Load it manually
@@ -358,12 +360,12 @@ fn load_elf(
 				mem_space::MAPPING_FLAG_USER,
 				MapResidence::Normal,
 			)?;
-			(phdr, true)
+			(VirtAddr::from(phdr), true)
 		}
 	};
 	// Switch to the process's vmem to write onto the virtual memory
 	unsafe {
-		vmem::switch(&mem_space.vmem, move || -> EResult<()> {
+		vmem::switch(&mem_space.vmem, move || {
 			// Copy segments' data
 			for seg in elf.iter_segments() {
 				copy_segment(load_base, &seg, elf.as_slice());
@@ -373,49 +375,16 @@ fn load_elf(
 				let image_phdr = &elf.as_slice()[(ehdr.e_phoff as usize)..];
 				vmem::write_ro(|| {
 					vmem::smap_disable(|| {
-						ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr, phdr_size);
+						ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr.as_ptr(), phdr_size);
 					});
 				});
 			}
-			// Closure returning a symbol
-			let get_sym = |sym_section: u32, sym: usize| {
-				let section = elf.get_section_by_index(sym_section as _)?;
-				let sym = elf.get_symbol_by_index(&section, sym as _)?;
-				sym.is_defined()
-					.then_some(load_base as usize + sym.st_value as usize)
-			};
-			let got_sym = elf.get_symbol_by_name(GOT_SYM);
-			for section in elf.iter_sections() {
-				for rel in elf.iter_rel::<Rel>(&section) {
-					relocation::perform(
-						&rel,
-						load_base as _,
-						&section,
-						get_sym,
-						got_sym.as_ref(),
-						true,
-					)
-					.map_err(|_| errno!(EINVAL))?;
-				}
-				for rela in elf.iter_rel::<Rela>(&section) {
-					relocation::perform(
-						&rela,
-						load_base as _,
-						&section,
-						get_sym,
-						got_sym.as_ref(),
-						true,
-					)
-					.map_err(|_| errno!(EINVAL))?;
-				}
-			}
-			Ok(())
-		})?;
+		});
 	}
 	Ok(ELFLoadInfo {
 		load_end,
 
-		phdr: phdr.into(),
+		phdr,
 		phentsize,
 		phnum,
 
@@ -590,7 +559,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 			.wrapping_add(process::USER_STACK_SIZE * PAGE_SIZE);
 		let vdso = vdso::map(&mut mem_space, bit32)?;
 		// Initialize the userspace stack
-		let aux = build_auxiliary(&self.0, &load_info, &vdso)?;
+		let aux = build_auxiliary(&self.0, load_base, &load_info, &vdso)?;
 		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, bit32);
 		stack_prealloc(&mut mem_space, user_stack, init_stack_size)?;
 		unsafe {

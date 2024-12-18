@@ -1347,7 +1347,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 	#[cfg(target_arch = "x86")]
 	let res = do_syscall32(id, frame);
 	#[cfg(target_arch = "x86_64")]
-	let res = if frame.cs == (gdt::USER_CS as u64) {
+	let res = if frame.cs & !0b11 == (gdt::USER_CS as u64) {
 		do_syscall32(id, frame)
 	} else {
 		do_syscall64(id, frame)
