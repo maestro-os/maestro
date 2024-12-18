@@ -375,7 +375,11 @@ fn load_elf(
 				let image_phdr = &elf.as_slice()[(ehdr.e_phoff as usize)..];
 				vmem::write_ro(|| {
 					vmem::smap_disable(|| {
-						ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr.as_ptr(), phdr_size);
+						ptr::copy_nonoverlapping::<u8>(
+							image_phdr.as_ptr(),
+							phdr.as_ptr(),
+							phdr_size,
+						);
 					});
 				});
 			}
