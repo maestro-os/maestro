@@ -28,6 +28,8 @@ pub mod tss;
 
 use core::arch::asm;
 
+/// MSR: FS base
+pub const IA32_FS_BASE: u32 = 0xc0000100;
 /// MSR: GS base
 pub const IA32_GS_BASE: u32 = 0xc0000101;
 /// MSR: Kernel GS base

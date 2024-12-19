@@ -37,11 +37,11 @@ pub unsafe fn switch(prev: *const Process, next: *const Process) {
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::arch::x86;
-		let (gs_base, kernel_gs_base) = (
-			x86::rdmsr(x86::IA32_GS_BASE),
-			x86::rdmsr(x86::IA32_KERNEL_GS_BASE),
-		);
+		let fs_base = x86::rdmsr(x86::IA32_FS_BASE);
+		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
+		let kernel_gs_base = x86::rdmsr(x86::IA32_KERNEL_GS_BASE);
 		switch_asm(prev, next);
+		x86::wrmsr(x86::IA32_FS_BASE, fs_base);
 		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
 		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, kernel_gs_base);
 	}
@@ -140,11 +140,15 @@ switch_asm:
 	push r13
 	push r14
 	push r15
+	push fs
+	push gs
 
     # Swap contexts
     mov [rdi + {off}], rsp
     mov rsp, [rsi + {off}]
 
+	pop gs
+	pop fs
 	pop r15
 	pop r14
 	pop r13

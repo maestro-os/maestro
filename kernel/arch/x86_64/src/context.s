@@ -134,10 +134,9 @@ IRQ 15
     pop r13
     pop r14
     pop r15
-    # discard gs as it is handled by `swapgs`
-    # This is necessary since setting `gs` to null clears the hidden gs base register on Intel processors
-    add rsp, 8
-    pop fs
+    # discard fs and gs
+    # This is necessary since setting either to null clears the associated hidden base register on Intel processors
+    add rsp, 16
 .endm
 
 .global init_ctx
@@ -164,19 +163,21 @@ init_ctx:
 	mov rsp, rdi
 	LOAD_REGS
 	add rsp, 16
+	swapgs
 	iretq
 
 syscall_int:
+    # `swapgs` is safe here because this entry may be called only from userspace
+    swapgs
 	cld
 	push 0 # code (absent)
 	push 0 # interrupt ID (absent)
 STORE_REGS
-
 	mov rdi, rsp
 	call syscall_handler
-
 LOAD_REGS
 	add rsp, 16
+    swapgs
 	iretq
 
 syscall:

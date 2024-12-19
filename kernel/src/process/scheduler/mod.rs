@@ -135,7 +135,9 @@ impl Scheduler {
 		#[cfg(target_arch = "x86_64")]
 		{
 			use crate::arch::x86;
-			x86::wrmsr(x86::IA32_KERNEL_GS_BASE, &self.gs as *const _ as u64);
+			// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
+			// when switching to userspace
+			x86::wrmsr(x86::IA32_GS_BASE, &self.gs as *const _ as u64);
 		}
 	}
 
