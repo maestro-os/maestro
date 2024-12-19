@@ -122,13 +122,15 @@ global_asm!(r#"
 .type switch_asm, @function
 
 fork_asm:
-	# Save parent context
+	# Save parent context, to resume in `switch_asm`
 	push rbp
 	push rbx
 	push r12
 	push r13
 	push r14
 	push r15
+	push fs
+	push gs
     mov [rsi + {off}], rsp
 
 	jmp init_ctx
