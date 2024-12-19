@@ -36,7 +36,7 @@ use core::{
 	mem,
 	sync::{
 		atomic,
-		atomic::{AtomicPtr, Ordering::Release},
+		atomic::{AtomicUsize, Ordering::Release},
 	},
 };
 use utils::{
@@ -71,9 +71,9 @@ pub fn init() -> AllocResult<()> {
 #[repr(C)]
 pub struct KernelGs {
 	/// The current kernel stack.
-	kernel_stack: AtomicPtr<u8>,
+	pub kernel_stack: AtomicUsize,
 	/// The stashed user stack.
-	user_stack: AtomicPtr<u8>,
+	pub user_stack: AtomicUsize,
 }
 
 /// A process scheduler.
@@ -97,7 +97,7 @@ pub struct Scheduler {
 	running_procs: usize,
 
 	/// CPU local storage.
-	gs: KernelGs,
+	pub gs: KernelGs,
 }
 
 impl Scheduler {
@@ -181,7 +181,9 @@ impl Scheduler {
 	/// Swaps the current running process for `new`, returning the previous.
 	pub fn swap_current_process(&mut self, new: Option<Arc<Process>>) -> Option<Arc<Process>> {
 		if let Some(proc) = &new {
-			self.gs.kernel_stack.store(proc.kernel_stack_top(), Release);
+			self.gs
+				.kernel_stack
+				.store(proc.kernel_stack_top() as _, Release);
 		}
 		mem::replace(&mut self.curr_proc, new)
 	}

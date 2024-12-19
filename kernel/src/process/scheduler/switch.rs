@@ -24,6 +24,26 @@ use crate::{
 };
 use core::{arch::global_asm, mem::offset_of};
 
+/// Stashes current segment values during execution of `f`, restoring them after.
+pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
+	#[cfg(not(target_arch = "x86_64"))]
+	{
+		f()
+	}
+	#[cfg(target_arch = "x86_64")]
+	{
+		use crate::arch::x86;
+		let fs_base = x86::rdmsr(x86::IA32_FS_BASE);
+		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
+		let kernel_gs_base = x86::rdmsr(x86::IA32_KERNEL_GS_BASE);
+		let res = f();
+		x86::wrmsr(x86::IA32_FS_BASE, fs_base);
+		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
+		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, kernel_gs_base);
+		res
+	}
+}
+
 /// Switches context from `prev` to `next`.
 ///
 /// After returning, the execution will continue on `next`.
@@ -32,19 +52,7 @@ use core::{arch::global_asm, mem::offset_of};
 ///
 /// The pointers must point to valid processes.
 pub unsafe fn switch(prev: *const Process, next: *const Process) {
-	#[cfg(not(target_arch = "x86_64"))]
-	switch_asm(prev, next);
-	#[cfg(target_arch = "x86_64")]
-	{
-		use crate::arch::x86;
-		let fs_base = x86::rdmsr(x86::IA32_FS_BASE);
-		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
-		let kernel_gs_base = x86::rdmsr(x86::IA32_KERNEL_GS_BASE);
-		switch_asm(prev, next);
-		x86::wrmsr(x86::IA32_FS_BASE, fs_base);
-		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
-		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, kernel_gs_base);
-	}
+	stash_segments(|| switch_asm(prev, next));
 }
 
 // Note: the functions below are saving only the registers that are not clobbered by the call to

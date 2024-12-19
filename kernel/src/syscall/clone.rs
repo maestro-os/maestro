@@ -26,7 +26,7 @@ use crate::{
 		scheduler,
 		scheduler::{
 			switch,
-			switch::{fork_asm, init_ctx},
+			switch::{fork_asm, init_ctx, stash_segments},
 			Scheduler, SCHEDULER,
 		},
 		user_desc::UserDesc,
@@ -154,9 +154,9 @@ pub fn clone(
 		if !stack.is_null() {
 			child_frame.rsp = stack as _;
 		}
-		unsafe {
+		stash_segments(|| unsafe {
 			fork_asm(&child_frame, Arc::as_ptr(&proc));
-		}
+		});
 		(child_pid, child_tid)
 	};
 	if flags & CLONE_VFORK != 0 {
