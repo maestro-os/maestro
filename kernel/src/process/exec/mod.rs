@@ -31,10 +31,9 @@ use crate::{
 	arch::x86::{idt::IntFrame, tss::TSS},
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
-	process::{mem_space::MemSpace, scheduler::SCHEDULER, Process},
+	process::{mem_space::MemSpace, Process},
 	sync::mutex::{IntMutex, Mutex},
 };
-use core::sync::atomic::Ordering::Relaxed;
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno::EResult,
@@ -126,7 +125,8 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	// Reset fs and gs and update user stack
 	#[cfg(target_arch = "x86_64")]
 	{
-		use crate::arch::x86;
+		use crate::{arch::x86, process::scheduler::SCHEDULER};
+		use core::sync::atomic::Ordering::Relaxed;
 		x86::wrmsr(x86::IA32_FS_BASE, 0);
 		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
 		SCHEDULER

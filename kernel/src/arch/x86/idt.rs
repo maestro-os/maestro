@@ -198,7 +198,9 @@ impl IntFrame {
 		let cs_segment = if bit32 { gdt::USER_CS } else { gdt::USER_CS64 };
 		*frame = IntFrame {
 			// Returning with `sysret`
+			#[cfg(target_arch = "x86_64")]
 			rcx: pc as _,
+			#[cfg(target_arch = "x86_64")]
 			r11: DEFAULT_FLAGS as _,
 			// Returning with `iret`
 			rip: pc as _,
