@@ -97,7 +97,7 @@ const USER_STACK_SIZE: usize = 2048;
 /// The flags for the userspace stack mapping.
 const USER_STACK_FLAGS: u8 = mem_space::MAPPING_FLAG_WRITE | mem_space::MAPPING_FLAG_USER;
 /// The size of the kernelspace stack of a process in number of pages.
-const KERNEL_STACK_ORDER: FrameOrder = 2;
+const KERNEL_STACK_ORDER: FrameOrder = 4;
 
 /// The file descriptor number of the standard input stream.
 const STDIN_FILENO: u32 = 0;
