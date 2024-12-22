@@ -169,6 +169,7 @@ use crate::{
 };
 use _exit::_exit;
 use _llseek::_llseek;
+use _llseek::lseek;
 use _newselect::_newselect;
 use access::access;
 use arch_prctl::arch_prctl;
@@ -976,7 +977,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x005 => syscall!(fstat, frame),
 		// TODO 0x006 => syscall!(lstat, frame),
 		0x007 => syscall!(poll, frame),
-		// TODO 0x008 => syscall!(lseek, frame),
+		0x008 => syscall!(lseek, frame),
 		0x009 => syscall!(mmap, frame),
 		0x00a => syscall!(mprotect, frame),
 		0x00b => syscall!(munmap, frame),
