@@ -314,7 +314,7 @@ struct RollbackEntry {
 }
 
 /// Memory paging rollback hook, allowing to undo modifications on a virtual memory context if an
-/// operation in a transaction fails, allowing to preserve integrity.
+/// operation in a transaction fails, preserving coherence.
 #[derive(Default)]
 pub struct Rollback {
 	/// The list of modified entries, with information allowing rollback.
@@ -509,6 +509,24 @@ pub fn flush_current() {
 	}
 }
 
+unsafe fn free_impl(mut page_dir: NonNull<Table>, depth: usize) {
+	if depth < DEPTH - 1 {
+		let pd = unsafe { page_dir.as_mut() };
+		let max = if depth == 0 {
+			USERSPACE_TABLES
+		} else {
+			ENTRIES_PER_TABLE
+		};
+		for entry in &pd[..max] {
+			let (table, flags) = unwrap_entry(*entry);
+			if flags & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT {
+				free_impl(table, depth + 1);
+			}
+		}
+	}
+	free_table(page_dir);
+}
+
 /// Destroys the given page directory, including its children elements.
 ///
 /// # Safety
@@ -516,15 +534,8 @@ pub fn flush_current() {
 /// It is assumed the context is not being used.
 ///
 /// Subsequent uses of `page_dir` are undefined.
-pub unsafe fn free(mut page_dir: NonNull<Table>) {
-	let pd = unsafe { page_dir.as_mut() };
-	for entry in &pd[..USERSPACE_TABLES] {
-		let (table, flags) = unwrap_entry(*entry);
-		if flags & (FLAG_PRESENT | FLAG_PAGE_SIZE) == FLAG_PRESENT {
-			free_table(table);
-		}
-	}
-	free_table(page_dir);
+pub unsafe fn free(page_dir: NonNull<Table>) {
+	free_impl(page_dir, 0);
 }
 
 /// Prepares for virtual memory management on the current CPU.
