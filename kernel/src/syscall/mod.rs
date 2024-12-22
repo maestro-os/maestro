@@ -56,7 +56,6 @@ mod fcntl;
 mod fcntl64;
 mod finit_module;
 mod fork;
-mod fstat64;
 mod fstatfs;
 mod fstatfs64;
 mod fsync;
@@ -132,9 +131,9 @@ mod signal;
 mod sigreturn;
 mod socket;
 mod socketpair;
+mod stat;
 mod statfs;
 mod statfs64;
-mod statx;
 mod symlink;
 mod symlinkat;
 mod syncfs;
@@ -166,10 +165,10 @@ use crate::{
 	process,
 	process::{mem_space::MemSpace, signal::Signal, Process},
 	sync::mutex::{IntMutex, Mutex},
+	syscall::stat::{lstat64, stat64},
 };
 use _exit::_exit;
-use _llseek::_llseek;
-use _llseek::lseek;
+use _llseek::{_llseek, lseek};
 use _newselect::_newselect;
 use access::access;
 use arch_prctl::arch_prctl;
@@ -201,7 +200,6 @@ use fcntl::fcntl;
 use fcntl64::fcntl64;
 use finit_module::finit_module;
 use fork::fork;
-use fstat64::fstat64;
 use fstatfs::fstatfs;
 use fstatfs64::fstatfs64;
 use fsync::fsync;
@@ -278,9 +276,9 @@ use signal::signal;
 use sigreturn::sigreturn;
 use socket::socket;
 use socketpair::socketpair;
+use stat::{fstat, fstat64, lstat, stat, statx};
 use statfs::statfs;
 use statfs64::statfs64;
-use statx::statx;
 use symlink::symlink;
 use symlinkat::symlinkat;
 use syncfs::syncfs;
@@ -629,9 +627,9 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x067 => syscall!(syslog, frame),
 		// TODO 0x068 => syscall!(setitimer, frame),
 		// TODO 0x069 => syscall!(getitimer, frame),
-		// TODO 0x06a => syscall!(stat, frame),
-		// TODO 0x06b => syscall!(lstat, frame),
-		// TODO 0x06c => syscall!(fstat, frame),
+		0x06a => syscall!(stat, frame),
+		0x06b => syscall!(lstat, frame),
+		0x06c => syscall!(fstat, frame),
 		// TODO 0x06d => syscall!(olduname, frame),
 		// TODO 0x06e => syscall!(iopl, frame),
 		// TODO 0x06f => syscall!(vhangup, frame),
@@ -716,8 +714,8 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x0c0 => syscall!(mmap2, frame),
 		// TODO 0x0c1 => syscall!(truncate64, frame),
 		// TODO 0x0c2 => syscall!(ftruncate64, frame),
-		// TODO 0x0c3 => syscall!(stat64, frame),
-		// TODO 0x0c4 => syscall!(lstat64, frame),
+		0x0c3 => syscall!(stat64, frame),
+		0x0c4 => syscall!(lstat64, frame),
 		0x0c5 => syscall!(fstat64, frame),
 		// TODO 0x0c6 => syscall!(lchown32, frame),
 		0x0c7 => syscall!(getuid, frame),   // getuid32
@@ -973,9 +971,9 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x001 => syscall!(write, frame),
 		0x002 => syscall!(open, frame),
 		0x003 => syscall!(close, frame),
-		// TODO 0x004 => syscall!(stat, frame),
-		// TODO 0x005 => syscall!(fstat, frame),
-		// TODO 0x006 => syscall!(lstat, frame),
+		0x004 => syscall!(stat64, frame),
+		0x005 => syscall!(fstat64, frame),
+		0x006 => syscall!(lstat64, frame),
 		0x007 => syscall!(poll, frame),
 		0x008 => syscall!(lseek, frame),
 		0x009 => syscall!(mmap, frame),
