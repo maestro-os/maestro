@@ -24,7 +24,7 @@
 pub mod switch;
 
 use crate::{
-	arch::x86::{cli, idt::IntFrame},
+	arch::x86::{cli, idt::IntFrame, pic},
 	event,
 	event::{CallbackHook, CallbackResult},
 	memory::stack,
@@ -287,6 +287,8 @@ impl Scheduler {
 			let prev_ptr = prev.as_ref().map(Arc::as_ptr);
 			(prev_ptr, next_ptr, sched.get_tmp_stack())
 		};
+		// Send end of interrupt, so that the next tick can be received
+		pic::end_of_interrupt(0);
 		unsafe {
 			match (prev, next) {
 				// Runnable process found: resume execution

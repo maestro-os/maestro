@@ -92,7 +92,7 @@ pub fn enable_irq(mut n: u8) {
 	};
 
 	unsafe {
-		let value = inb(port) | (1 << n);
+		let value = inb(port) & !(1 << n);
 		outb(port, value);
 	}
 }
@@ -107,7 +107,7 @@ pub fn disable_irq(mut n: u8) {
 	};
 
 	unsafe {
-		let value = inb(port) & !(1 << n);
+		let value = inb(port) | (1 << n);
 		outb(port, value);
 	}
 }

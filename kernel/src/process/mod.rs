@@ -603,6 +603,11 @@ impl Process {
 		if new_state == old_state {
 			return;
 		}
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
+			pid = self.get_pid()
+		);
 		// Update the number of running processes
 		if new_state == State::Running {
 			SCHEDULER.get().lock().increment_running();
