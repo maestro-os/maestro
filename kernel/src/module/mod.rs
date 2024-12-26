@@ -38,18 +38,21 @@ use crate::{
 		relocation,
 		relocation::GOT_SYM,
 	},
+	println,
 	sync::mutex::Mutex,
 };
 use core::{
+	borrow::Borrow,
 	cmp::min,
+	hash::{Hash, Hasher},
 	mem::{size_of, transmute},
 	slice,
 };
 use utils::{
-	collections::{hashmap::HashMap, string::String, vec::Vec},
+	collections::{hashmap::HashSet, string::String, vec::Vec},
 	errno,
 	errno::EResult,
-	vec, DisplayableStr, TryClone,
+	vec, DisplayableStr,
 };
 use version::{Dependency, Version};
 
@@ -102,6 +105,29 @@ macro_rules! module {
 			pub static MOD_DEPS: [Dependency; const_len(&$deps)] = $deps;
 		}
 	};
+}
+
+/// Wrapper to store [`Module`] in a [`HashSet`].
+struct NameHash(Module);
+
+impl Borrow<[u8]> for NameHash {
+	fn borrow(&self) -> &[u8] {
+		&self.0.name
+	}
+}
+
+impl Eq for NameHash {}
+
+impl PartialEq for NameHash {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.name.eq(&other.0.name)
+	}
+}
+
+impl Hash for NameHash {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.0.name.hash(state)
+	}
 }
 
 // TODO keep offsets of name, version and dependencies instead of allocating
@@ -194,7 +220,7 @@ impl Module {
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> EResult<Self> {
 		let parser = ELFParser::new(image).inspect_err(|_| {
-			crate::println!("Invalid ELF file as loaded module");
+			println!("Invalid ELF file as loaded module");
 		})?;
 		// Allocate memory for the module
 		let mem_size = Self::get_load_size(&parser);
@@ -216,85 +242,70 @@ impl Module {
 		let get_sym = |sym_section: u32, sym: usize| {
 			let section = parser.get_section_by_index(sym_section as _)?;
 			let sym = parser.get_symbol_by_index(&section, sym as _)?;
-			if !sym.is_defined() {
-				let strtab = parser.get_section_by_index(section.sh_link as _)?;
-				let name = parser.get_symbol_name(&strtab, &sym)?;
-				// Look inside the kernel image or other modules
-				let Some(other_sym) = Self::resolve_symbol(name) else {
-					crate::println!(
-						"Symbol `{}` not found in kernel or other loaded modules",
-						DisplayableStr(name)
-					);
-					return None;
-				};
-				Some(other_sym.st_value as usize)
-			} else {
-				Some(load_base as usize + sym.st_value as usize)
+			if sym.is_defined() {
+				return Some(load_base as usize + sym.st_value as usize);
 			}
+			let strtab = parser.get_section_by_index(section.sh_link as _)?;
+			let name = parser.get_symbol_name(&strtab, &sym)?;
+			// Look inside the kernel image or other modules
+			let Some(other_sym) = Self::resolve_symbol(name) else {
+				println!(
+					"Symbol `{}` not found in kernel or other loaded modules",
+					DisplayableStr(name)
+				);
+				return None;
+			};
+			Some(other_sym.st_value as usize)
 		};
 		let got_sym = parser.get_symbol_by_name(GOT_SYM);
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel::<Rel>(&section) {
 				unsafe {
-					relocation::perform(
-						&rel,
-						load_base,
-						&section,
-						get_sym,
-						got_sym.as_ref(),
-						false,
-					)
+					relocation::perform(&rel, load_base, &section, get_sym, got_sym.as_ref())
 				}
 				.map_err(|_| errno!(EINVAL))?;
 			}
 			for rela in parser.iter_rel::<Rela>(&section) {
 				unsafe {
-					relocation::perform(
-						&rela,
-						load_base,
-						&section,
-						get_sym,
-						got_sym.as_ref(),
-						false,
-					)
+					relocation::perform(&rela, load_base, &section, get_sym, got_sym.as_ref())
 				}
 				.map_err(|_| errno!(EINVAL))?;
 			}
 		}
 		// Check the magic number
 		let magic = Self::get_attribute::<u64>(&mem, &parser, b"MOD_MAGIC").ok_or_else(|| {
-			crate::println!("Missing `MOD_MAGIC` symbol in module image");
+			println!("Missing `MOD_MAGIC` symbol in module image");
 			errno!(EINVAL)
 		})?;
 		if *magic != MOD_MAGIC {
-			crate::println!("Module has an invalid magic number");
+			println!("Module has an invalid magic number");
 			return Err(errno!(EINVAL));
 		}
 		// Get the module's name
 		let name =
 			Self::get_attribute::<&'static str>(&mem, &parser, b"MOD_NAME").ok_or_else(|| {
-				crate::println!("Missing `MOD_NAME` symbol in module image");
+				println!("Missing `MOD_NAME` symbol in module image");
 				errno!(EINVAL)
 			})?;
 		let name = String::try_from(*name)?;
 		// Get the module's version
 		let version =
 			Self::get_attribute::<Version>(&mem, &parser, b"MOD_VERSION").ok_or_else(|| {
-				crate::println!("Missing `MOD_VERSION` symbol in module image");
+				println!("Missing `MOD_VERSION` symbol in module image");
 				errno!(EINVAL)
 			})?;
 		// Get the module's dependencies
 		let deps = Self::get_array_attribute::<Dependency>(&mem, &parser, b"MOD_DEPS")
 			.ok_or_else(|| {
-				crate::println!("Missing `MOD_DEPS` symbol in module image");
+				println!("Missing `MOD_DEPS` symbol in module image");
 				errno!(EINVAL)
 			})?;
 		let deps = Vec::try_from(deps)?;
-		crate::println!("Load module `{name}` version `{version}`");
+		println!("Load module `{name}` version `{version}`");
 		// TODO Check that all dependencies are loaded
 		// Initialize module
 		let init = parser.get_symbol_by_name(b"init").ok_or_else(|| {
-			crate::println!("Missing `init` symbol in module image");
+			println!("Missing `init` symbol in module image");
 			errno!(EINVAL)
 		})?;
 		let ok = unsafe {
@@ -303,7 +314,7 @@ impl Module {
 			func()
 		};
 		if !ok {
-			crate::println!("Failed to load module `{name}`");
+			println!("Failed to load module `{name}`");
 			return Err(errno!(EINVAL));
 		}
 		// Retrieve destructor function
@@ -341,29 +352,35 @@ impl Drop for Module {
 		if let Some(fini) = self.fini {
 			fini();
 		}
-		crate::println!("Unloaded module `{}`", self.name);
+		println!("Unloaded module `{}`", self.name);
 	}
 }
 
 /// The list of modules. The key is the name of the module and the value is the
 /// module itself.
-static MODULES: Mutex<HashMap<String, Module>> = Mutex::new(HashMap::new());
-
-/// Tells whether a module with the given name is loaded.
-pub fn is_loaded(name: &[u8]) -> bool {
-	let modules = MODULES.lock();
-	modules.get(name).is_some()
-}
+static MODULES: Mutex<HashSet<NameHash>> = Mutex::new(HashSet::new());
 
 /// Adds the given module to the modules list.
+///
+/// If a module with the same name is already loaded, the function returns [`errno::EEXIST`].
 pub fn add(module: Module) -> EResult<()> {
+	let module = NameHash(module);
 	let mut modules = MODULES.lock();
-	modules.insert(module.name.try_clone()?, module)?;
-	Ok(())
+	if modules.contains(&module) {
+		modules.insert(module)?;
+		Ok(())
+	} else {
+		Err(errno!(EEXIST))
+	}
 }
 
 /// Removes the module with name `name`.
-pub fn remove(name: &[u8]) {
-	let mut modules = MODULES.lock();
-	modules.remove(name);
+///
+/// If no module with this name is loaded, the function returns [`errno::ENOENT`].
+pub fn remove(name: &[u8]) -> EResult<()> {
+	MODULES
+		.lock()
+		.remove(name)
+		.map(drop)
+		.ok_or_else(|| errno!(ENOENT))
 }

@@ -52,10 +52,6 @@ pub fn finit_module(
 		.ok_or_else(|| errno!(ENOEXEC))?
 		.read_all()?;
 	let module = Module::load(&image)?;
-	if !module::is_loaded(module.get_name()) {
-		module::add(module)?;
-		Ok(0)
-	} else {
-		Err(errno!(EEXIST))
-	}
+	module::add(module)?;
+	Ok(0)
 }

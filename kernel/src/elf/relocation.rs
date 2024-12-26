@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! ELF relocations implementation.
+//! ELF kernel modules relocations implementation.
 
 use crate::{
 	elf,
@@ -67,7 +67,6 @@ pub trait Relocation {
 ///     - The index of the section containing the symbol.
 ///     - The index of the symbol in the section.
 /// - `got` is the Global Offset Table's symbol (named after [`GOT_SYM`]).
-/// - `user` tells whether the relocation must be done for userspace or kernelspace.
 ///
 /// If the relocation cannot be performed, the function returns an error.
 ///
@@ -80,7 +79,6 @@ pub unsafe fn perform<R: Relocation, F>(
 	rel_section: &SectionHeader,
 	get_sym: F,
 	got: Option<&Sym>,
-	user: bool,
 ) -> Result<(), RelocationError>
 where
 	F: FnOnce(u32, usize) -> Option<usize>,
@@ -121,8 +119,8 @@ where
 		_ => return Err(RelocationError),
 	} as u32;
 	let addr = base_addr.add(relocation.get_offset()) as *mut u32;
-	// If the resulting address is not accessible, error
-	if unlikely(user != bound_check(addr as _, size_of_val(&value))) {
+	// If the resulting address is in userspace, error
+	if unlikely(bound_check(addr as _, size_of_val(&value))) {
 		return Err(RelocationError);
 	}
 	let value = match relocation.get_type() {
