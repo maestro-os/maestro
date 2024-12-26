@@ -164,3 +164,24 @@ pub fn clone(
 	}
 	Ok(child_tid as _)
 }
+
+#[allow(clippy::type_complexity)]
+pub fn clone2(
+	Args((flags, stack_base, stack_size, parent_tid, child_tid, tls)): Args<(
+		c_ulong,
+		*mut c_void,
+		c_int,
+		SyscallPtr<c_int>,
+		SyscallPtr<c_int>,
+		c_ulong,
+	)>,
+	proc: Arc<Process>,
+	frame: &mut IntFrame,
+) -> EResult<usize> {
+	let stack = stack_base.wrapping_byte_add(stack_size as _);
+	clone(
+		Args((flags, stack, parent_tid, tls, child_tid)),
+		proc,
+		frame,
+	)
+}

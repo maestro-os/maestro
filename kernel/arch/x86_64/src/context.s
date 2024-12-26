@@ -190,7 +190,7 @@ syscall:
 
     # Push artificial iret frame
     push 0x23
-    push qword [gs:0x8]
+    push [gs:0x8]
     push r11
     push 0x2b
     push rcx
@@ -206,6 +206,6 @@ STORE_REGS
     # Cleanup
 LOAD_REGS
 	cli
-	mov rsp, [gs:0x8]
+	mov rsp, [rsp + 0x28]
 	swapgs
     sysretq

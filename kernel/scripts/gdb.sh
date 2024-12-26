@@ -10,6 +10,8 @@ if [ -z "$ARCH" ]; then
   ARCH="x86_64"
 fi
 
+cargo build $CARGOFLAGS --target arch/$ARCH/$ARCH.json
+
 export QEMUFLAGS="$QEMUFLAGS -s -S -d int"
 setsid cargo run $CARGOFLAGS --target arch/$ARCH/$ARCH.json >qemu.log 2>&1 &
 QEMU_PID=$!

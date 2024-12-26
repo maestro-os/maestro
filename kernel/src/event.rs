@@ -173,8 +173,8 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 		}
 	}
 	// If not a hardware exception, send EOI
-	if id >= ERROR_MESSAGES.len() as u32 {
-		pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
+	if let Some(irq) = id.checked_sub(ERROR_MESSAGES.len() as u32) {
+		pic::end_of_interrupt(irq as _);
 	}
 	process::yield_current(ring, frame);
 }
