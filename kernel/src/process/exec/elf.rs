@@ -398,7 +398,7 @@ fn load_elf(
 
 /// Computes the size of the initial data on the stack.
 ///
-/// `bit32` indicates whether userspace runs in 32 bit.
+/// `compat` indicates whether userspace runs in compatibility mode.
 ///
 /// Returns two values:
 /// - The size in bytes of the buffer to store the arguments and environment variables, padding
@@ -408,9 +408,9 @@ fn get_init_stack_size(
 	argv: &[String],
 	envp: &[String],
 	aux: &[AuxEntryDesc],
-	bit32: bool,
+	compat: bool,
 ) -> (usize, usize) {
-	let size = if bit32 { 4 } else { 8 };
+	let size = if compat { 4 } else { 8 };
 	// The size of the block storing the arguments and environment
 	let info_block_size = aux
 		.iter()
@@ -453,14 +453,14 @@ fn stack_prealloc(mem_space: &mut MemSpace, stack: *mut u8, len: usize) -> EResu
 
 /// Writes `val` on `stack`.
 ///
-/// `bit32` indicates whether userspace runs in 32 bit.
+/// `compat` indicates whether userspace runs in compatibility mode.
 ///
 /// # Safety
 ///
 /// `stack` must be a valid pointer.
 #[inline]
-unsafe fn write_val(stack: &mut *mut u8, val: usize, bit32: bool) {
-	if bit32 {
+unsafe fn write_val(stack: &mut *mut u8, val: usize, compat: bool) {
+	if compat {
 		*(*stack as *mut u32) = val as u32;
 		*stack = stack.add(4);
 	} else {
@@ -488,7 +488,7 @@ unsafe fn copy_string(stack: &mut *mut u8, str: &[u8]) {
 /// - `envp` is the environment.
 /// - `aux` is the auxiliary vector.
 /// - `exe_info` is the execution information stored the memory space's structure.
-/// - `bit32` indicates whether userspace runs in 32 bit.
+/// - `compat` indicates whether userspace runs in compatibility mode.
 ///
 /// # Safety
 ///
@@ -499,30 +499,30 @@ unsafe fn init_stack(
 	envp: &[String],
 	aux: &[AuxEntryDesc],
 	exe_info: &mut mem_space::ExeInfo,
-	bit32: bool,
+	compat: bool,
 ) {
-	let (info_size, total_size) = get_init_stack_size(argv, envp, aux, bit32);
+	let (info_size, total_size) = get_init_stack_size(argv, envp, aux, compat);
 	let mut info_ptr = user_stack.sub(info_size);
 	let mut args_ptr = user_stack.sub(total_size);
 	// Push argc
-	write_val(&mut args_ptr, argv.len(), bit32);
+	write_val(&mut args_ptr, argv.len(), compat);
 	// Set argv
 	exe_info.argv_begin = VirtAddr::from(info_ptr);
 	for arg in argv {
-		write_val(&mut args_ptr, info_ptr as _, bit32);
+		write_val(&mut args_ptr, info_ptr as _, compat);
 		copy_string(&mut info_ptr, arg);
 	}
 	// Set the nul byte to end argv
-	write_val(&mut args_ptr, 0, bit32);
+	write_val(&mut args_ptr, 0, compat);
 	exe_info.argv_end = VirtAddr::from(info_ptr);
 	// Set environment
 	exe_info.envp_begin = exe_info.argv_end;
 	for var in envp {
-		write_val(&mut args_ptr, info_ptr as _, bit32);
+		write_val(&mut args_ptr, info_ptr as _, compat);
 		copy_string(&mut info_ptr, var);
 	}
 	// Set the nul bytes to end envp
-	write_val(&mut args_ptr, 0, bit32);
+	write_val(&mut args_ptr, 0, compat);
 	exe_info.envp_end = VirtAddr::from(info_ptr);
 	// Set auxiliary vector
 	for a in aux {
@@ -534,8 +534,8 @@ unsafe fn init_stack(
 				begin as usize
 			}
 		};
-		write_val(&mut args_ptr, a.a_type as _, bit32);
-		write_val(&mut args_ptr, val, bit32);
+		write_val(&mut args_ptr, a.a_type as _, compat);
+		write_val(&mut args_ptr, val, compat);
 	}
 }
 
@@ -549,7 +549,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 	fn build_image(&self, file: Arc<vfs::Entry>) -> EResult<ProgramImage> {
 		let image = read_exec_file(&file, &self.0.path_resolution.access_profile)?;
 		let parser = ELFParser::new(&image)?;
-		let bit32 = parser.class() == Class::Bit32;
+		let compat = parser.class() == Class::Bit32;
 		let mut mem_space = MemSpace::new(file)?;
 		let load_base = VirtAddr(PAGE_SIZE).as_ptr(); // TODO ASLR
 		let load_info = load_elf(&parser, &mut mem_space, load_base)?;
@@ -561,10 +561,10 @@ impl<'s> Executor for ELFExecutor<'s> {
 				MapResidence::Normal,
 			)?
 			.wrapping_add(process::USER_STACK_SIZE * PAGE_SIZE);
-		let vdso = vdso::map(&mut mem_space, bit32)?;
+		let vdso = vdso::map(&mut mem_space, compat)?;
 		// Initialize the userspace stack
 		let aux = build_auxiliary(&self.0, load_base, &load_info, &vdso)?;
-		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, bit32);
+		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, compat);
 		stack_prealloc(&mut mem_space, user_stack, init_stack_size)?;
 		unsafe {
 			vmem::switch(&mem_space.vmem, || {
@@ -575,7 +575,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 						&self.0.envp,
 						&aux,
 						&mut mem_space.exe_info,
-						bit32,
+						compat,
 					);
 				});
 			});
@@ -583,7 +583,7 @@ impl<'s> Executor for ELFExecutor<'s> {
 		mem_space.set_brk_init(VirtAddr::from(load_info.load_end).align_to(PAGE_SIZE));
 		Ok(ProgramImage {
 			mem_space,
-			bit32,
+			compat,
 
 			entry_point: load_info.entry_point,
 			user_stack: VirtAddr::from(user_stack) - init_stack_size,

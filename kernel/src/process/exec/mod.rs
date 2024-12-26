@@ -54,8 +54,8 @@ pub struct ExecInfo<'s> {
 pub struct ProgramImage {
 	/// The image's memory space.
 	mem_space: MemSpace,
-	/// Tells whether the program is 32 bit.
-	bit32: bool,
+	/// Tells whether the program runs in compatibility mode.
+	compat: bool,
 
 	/// A pointer to the entry point of the program.
 	entry_point: VirtAddr,
@@ -121,7 +121,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		TSS.set_kernel_stack(proc.kernel_stack_top());
 	}
 	// Set the process's registers
-	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.bit32);
+	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.compat);
 	// Reset fs and gs and update user stack
 	#[cfg(target_arch = "x86_64")]
 	{

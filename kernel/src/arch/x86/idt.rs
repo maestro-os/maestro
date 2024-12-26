@@ -192,10 +192,10 @@ impl IntFrame {
 	/// Arguments:
 	/// - `pc` is the program counter
 	/// - `sp` is the stack pointer
-	/// - `bit32` tells whether the program is 32 bits. If the kernel is compiled for 32 bit, this
-	///   value is ignored.
-	pub fn exec(frame: &mut Self, pc: usize, sp: usize, bit32: bool) {
-		let cs_segment = if bit32 { gdt::USER_CS } else { gdt::USER_CS64 };
+	/// - `compat` tells whether the program runs in compatibility mode. If the kernel is compiled
+	///   for 32 bit, this value is ignored.
+	pub fn exec(frame: &mut Self, pc: usize, sp: usize, compat: bool) {
+		let cs_segment = if compat { gdt::USER_CS } else { gdt::USER_CS64 };
 		*frame = IntFrame {
 			// Returning with `sysret`
 			#[cfg(target_arch = "x86_64")]
