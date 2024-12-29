@@ -22,7 +22,10 @@ use super::vdso;
 use crate::{
 	arch::x86,
 	elf,
-	elf::parser::{Class, ELFParser, ProgramHeader},
+	elf::{
+		parser::{Class, ELFParser, ProgramHeader},
+		ET_DYN,
+	},
 	file::{perm::AccessProfile, vfs, FileType},
 	memory::{vmem, VirtAddr},
 	process,
@@ -400,10 +403,8 @@ fn load_elf(
 ///
 /// `compat` indicates whether userspace runs in compatibility mode.
 ///
-/// Returns two values:
-/// - The size in bytes of the buffer to store the arguments and environment variables, padding
-///   included.
-/// - The required size in bytes for the data to be written on the stack before the program starts.
+/// Returns the size of the "information" part, and the total size on the stack (including the
+/// "information" part).
 fn get_init_stack_size(
 	argv: &[String],
 	envp: &[String],
@@ -551,7 +552,13 @@ impl<'s> Executor for ELFExecutor<'s> {
 		let parser = ELFParser::new(&image)?;
 		let compat = parser.class() == Class::Bit32;
 		let mut mem_space = MemSpace::new(file)?;
-		let load_base = VirtAddr(PAGE_SIZE).as_ptr(); // TODO ASLR
+		let load_base = if parser.hdr().e_type == ET_DYN {
+			// TODO ASLR
+			PAGE_SIZE
+		} else {
+			0
+		};
+		let load_base = VirtAddr(load_base).as_ptr();
 		let load_info = load_elf(&parser, &mut mem_space, load_base)?;
 		let user_stack = mem_space
 			.map(
