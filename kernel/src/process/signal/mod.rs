@@ -328,7 +328,7 @@ impl SignalHandler {
 		// Prepare the signal handler stack
 		let stack_addr = VirtAddr(frame.get_stack_address()) - REDZONE_SIZE;
 		// Size of the `ucontext_t` struct and arguments *on the stack*
-		let (ctx_size, arg_len) = if frame.is_32bit() {
+		let (ctx_size, arg_len) = if frame.is_compat() {
 			(size_of::<ucontext::UContext32>(), size_of::<usize>() * 4)
 		} else {
 			#[cfg(target_arch = "x86")]
@@ -346,7 +346,7 @@ impl SignalHandler {
 		}
 		let handler_pointer = unsafe { action.sa_handler.sa_handler.unwrap() };
 		// Write data on stack
-		if frame.is_32bit() {
+		if frame.is_compat() {
 			let args = unsafe {
 				ptr::write_volatile(ctx_addr.as_ptr(), ucontext::UContext32::new(process, frame));
 				// Arguments slice
@@ -377,7 +377,7 @@ impl SignalHandler {
 		// Prepare registers for the trampoline
 		frame.rbp = 0;
 		frame.rsp = signal_sp.0 as _;
-		if frame.is_32bit() {
+		if frame.is_compat() {
 			frame.rip = trampoline::trampoline32 as *const c_void as _;
 		} else {
 			#[cfg(target_arch = "x86_64")]

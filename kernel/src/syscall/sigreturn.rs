@@ -41,14 +41,14 @@ pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 	let proc = Process::current();
 	// Retrieve and restore previous state
 	let ctx_ptr = frame.get_stack_address();
-	if frame.is_32bit() {
-		let ctx = SyscallPtr::<ucontext::UContext32>::from_syscall_arg(ctx_ptr);
+	if frame.is_compat() {
+		let ctx = SyscallPtr::<ucontext::UContext32>::from_ptr(ctx_ptr);
 		let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		ctx.restore_regs(&proc, frame);
 	} else {
 		#[cfg(target_arch = "x86_64")]
 		{
-			let ctx = SyscallPtr::<ucontext::UContext64>::from_syscall_arg(ctx_ptr);
+			let ctx = SyscallPtr::<ucontext::UContext64>::from_ptr(ctx_ptr);
 			let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 			ctx.restore_regs(&proc, frame);
 		}

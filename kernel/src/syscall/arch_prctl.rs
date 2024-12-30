@@ -54,13 +54,13 @@ pub fn arch_prctl(Args((code, addr)): Args<(c_int, usize)>) -> EResult<usize> {
 		#[cfg(target_arch = "x86_64")]
 		ARCH_GET_FS => {
 			let val = x86::rdmsr(x86::IA32_FS_BASE) as usize;
-			let ptr = SyscallPtr::<usize>::from_syscall_arg(addr);
+			let ptr = SyscallPtr::<usize>::from_ptr(addr);
 			ptr.copy_to_user(&val)?;
 		}
 		#[cfg(target_arch = "x86_64")]
 		ARCH_GET_GS => {
 			let val = x86::rdmsr(x86::IA32_GS_BASE) as usize;
-			let ptr = SyscallPtr::<usize>::from_syscall_arg(addr);
+			let ptr = SyscallPtr::<usize>::from_ptr(addr);
 			ptr.copy_to_user(&val)?;
 		}
 		// TODO ARCH_GET_CPUID

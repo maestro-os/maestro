@@ -135,14 +135,14 @@ impl DeviceIO for TTYDeviceHandle {
 		let mut tty = TTY.display.lock();
 		match request.get_old_format() {
 			ioctl::TCGETS => {
-				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
+				let termios_ptr = SyscallPtr::<Termios>::from_ptr(argp as usize);
 				termios_ptr.copy_to_user(tty.get_termios())?;
 				Ok(0)
 			}
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
 				self.check_sigttou(&tty)?;
-				let termios_ptr = SyscallPtr::<Termios>::from_syscall_arg(argp as usize);
+				let termios_ptr = SyscallPtr::<Termios>::from_ptr(argp as usize);
 				let termios = termios_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -150,24 +150,24 @@ impl DeviceIO for TTYDeviceHandle {
 				Ok(0)
 			}
 			ioctl::TIOCGPGRP => {
-				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
+				let pgid_ptr = SyscallPtr::<Pid>::from_ptr(argp as usize);
 				pgid_ptr.copy_to_user(&tty.get_pgrp())?;
 				Ok(0)
 			}
 			ioctl::TIOCSPGRP => {
 				self.check_sigttou(&tty)?;
-				let pgid_ptr = SyscallPtr::<Pid>::from_syscall_arg(argp as usize);
+				let pgid_ptr = SyscallPtr::<Pid>::from_ptr(argp as usize);
 				let pgid = pgid_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_pgrp(pgid);
 				Ok(0)
 			}
 			ioctl::TIOCGWINSZ => {
-				let winsize = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
+				let winsize = SyscallPtr::<WinSize>::from_ptr(argp as usize);
 				winsize.copy_to_user(tty.get_winsize())?;
 				Ok(0)
 			}
 			ioctl::TIOCSWINSZ => {
-				let winsize_ptr = SyscallPtr::<WinSize>::from_syscall_arg(argp as usize);
+				let winsize_ptr = SyscallPtr::<WinSize>::from_ptr(argp as usize);
 				let winsize = winsize_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;

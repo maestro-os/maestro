@@ -115,9 +115,9 @@ pub struct IntFrame {
 }
 
 impl IntFrame {
-	/// Tells whether the interrupted context is 32 bit.
-	pub const fn is_32bit(&self) -> bool {
-		self.cs as usize == gdt::USER_CS | 3
+	/// Tells whether the interrupted context is in compatibility mode.
+	pub const fn is_compat(&self) -> bool {
+		self.cs as usize & !0b11 == gdt::USER_CS
 	}
 
 	/// Returns the ID of the system call being executed.

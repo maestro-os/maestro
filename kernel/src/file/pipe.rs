@@ -118,7 +118,7 @@ impl FileOps for PipeBuffer {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
 				let len = self.inner.lock().buffer.get_data_len() as c_int;
-				let count_ptr = SyscallPtr::from_syscall_arg(argp as usize);
+				let count_ptr = SyscallPtr::from_ptr(argp as usize);
 				count_ptr.copy_to_user(&len)?;
 			}
 			_ => return Err(errno!(ENOTTY)),

@@ -435,7 +435,7 @@ pub struct Args<T: fmt::Debug>(pub T);
 
 impl<T: FromSyscallArg> FromSyscall for Args<T> {
 	fn from_syscall(frame: &IntFrame) -> Self {
-		let arg = T::from_syscall_arg(frame.get_syscall_arg(0));
+		let arg = T::from_syscall_arg(frame.get_syscall_arg(0), frame.is_compat());
 		#[cfg(feature = "strace")]
 		println!("({arg:?})");
 		Self(arg)
@@ -452,7 +452,7 @@ macro_rules! impl_from_syscall_args {
 			) -> Self {
 				let mut cursor = 0;
                 $(
-                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor));
+                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor), frame.is_compat());
 					cursor += 1;
                 )*
 				let args = ($($ty,)*);
@@ -474,15 +474,26 @@ impl_from_syscall_args!(T1, T2, T3, T4, T5, T6);
 /// A value that can be constructed from a system call argument.
 ///
 /// The [`fmt::Debug`] trait is required for the `strace` feature.
-pub trait FromSyscallArg: fmt::Debug {
-	/// Constructs a value from the given system call argument value.
-	fn from_syscall_arg(val: usize) -> Self;
+pub trait FromSyscallArg: fmt::Debug + Sized {
+	/// Constructs a value from the given pointer passed as a system call argument.
+	///
+	/// Arguments:
+	/// - `ptr`: is the pointer
+	/// - `compat`: if true, pointers are 4 bytes in size, else 8 bytes
+	fn from_syscall_arg(ptr: usize, compat: bool) -> Self;
+
+	/// Constructs a value from the given pointer.
+	///
+	/// `compat` is set to `false`.
+	fn from_ptr(ptr: usize) -> Self {
+		Self::from_syscall_arg(ptr, false)
+	}
 }
 
 macro_rules! impl_from_syscall_arg_primitive {
 	($type:ident) => {
 		impl FromSyscallArg for $type {
-			fn from_syscall_arg(val: usize) -> Self {
+			fn from_syscall_arg(val: usize, _compat: bool) -> Self {
 				val as _
 			}
 		}
@@ -501,13 +512,13 @@ impl_from_syscall_arg_primitive!(isize);
 impl_from_syscall_arg_primitive!(usize);
 
 impl<T> FromSyscallArg for *const T {
-	fn from_syscall_arg(val: usize) -> Self {
+	fn from_syscall_arg(val: usize, _compat: bool) -> Self {
 		ptr::with_exposed_provenance(val)
 	}
 }
 
 impl<T> FromSyscallArg for *mut T {
-	fn from_syscall_arg(val: usize) -> Self {
+	fn from_syscall_arg(val: usize, _compat: bool) -> Self {
 		ptr::with_exposed_provenance_mut(val)
 	}
 }
@@ -1349,7 +1360,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 	#[cfg(target_arch = "x86")]
 	let res = do_syscall32(id, frame);
 	#[cfg(target_arch = "x86_64")]
-	let res = if frame.cs & !0b11 == (gdt::USER_CS as u64) {
+	let res = if frame.is_compat() {
 		do_syscall32(id, frame)
 	} else {
 		do_syscall64(id, frame)

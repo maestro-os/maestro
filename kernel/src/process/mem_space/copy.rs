@@ -75,8 +75,8 @@ unsafe fn copy_to_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()
 pub struct SyscallPtr<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
 
 impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallPtr<T> {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
+	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(ptr)))
 	}
 }
 
@@ -146,8 +146,8 @@ impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 pub struct SyscallSlice<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
 
 impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallSlice<T> {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
+	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(ptr)))
 	}
 }
 
@@ -240,8 +240,8 @@ impl<T: fmt::Debug> fmt::Debug for SyscallSlice<T> {
 pub struct SyscallString(pub Option<NonNull<u8>>);
 
 impl FromSyscallArg for SyscallString {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
+	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(ptr)))
 	}
 }
 
@@ -300,20 +300,24 @@ impl fmt::Debug for SyscallString {
 }
 
 /// Wrapper for a C-style, NULL-terminated string array.
-pub struct SyscallArray(pub Option<NonNull<*const u8>>);
+// Using `c_void` as the size of the pointer is different when using compat mode
+pub struct SyscallArray {
+	/// The array's pointer
+	ptr: Option<NonNull<*const u8>>,
+	/// If true, pointers are 4 bytes in size, else 8 bytes
+	compat: bool,
+}
 
 impl FromSyscallArg for SyscallArray {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
+	fn from_syscall_arg(ptr: usize, compat: bool) -> Self {
+		Self {
+			ptr: NonNull::new(ptr::with_exposed_provenance_mut(ptr)),
+			compat,
+		}
 	}
 }
 
 impl SyscallArray {
-	/// Returns an immutable pointer to the data.
-	pub fn as_ptr(&self) -> *const *const u8 {
-		self.0.map(NonNull::as_ptr).unwrap_or(null_mut())
-	}
-
 	/// Returns an iterator over the array's elements.
 	pub fn iter(&self) -> SyscallArrayIterator {
 		SyscallArrayIterator {
@@ -345,21 +349,32 @@ pub struct SyscallArrayIterator<'a> {
 	i: usize,
 }
 
+impl<'a> SyscallArrayIterator<'a> {
+	fn next_impl(&mut self) -> EResult<Option<String>> {
+		let Some(ptr) = self.arr.ptr else {
+			return Err(errno!(EFAULT));
+		};
+		let str_ptr = if self.arr.compat {
+			let str_ptr = unsafe { ptr.cast::<u32>().add(self.i) };
+			let str_ptr = SyscallPtr(Some(str_ptr)).copy_from_user()?.unwrap();
+			ptr::without_provenance(str_ptr as usize)
+		} else {
+			let str_ptr = unsafe { ptr.add(self.i) };
+			SyscallPtr(Some(str_ptr)).copy_from_user()?.unwrap()
+		};
+		let res = SyscallString(NonNull::new(str_ptr as _)).copy_from_user()?;
+		// Do not increment if reaching `NULL`
+		if likely(res.is_some()) {
+			self.i += 1;
+		}
+		Ok(res)
+	}
+}
+
 impl<'a> Iterator for SyscallArrayIterator<'a> {
 	type Item = EResult<String>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let Some(arr) = self.arr.0 else {
-			return Some(Err(errno!(EFAULT)));
-		};
-		let str_ptr = unsafe { arr.add(self.i).read_volatile() };
-		let res = SyscallString(NonNull::new(str_ptr as _))
-			.copy_from_user()
-			.transpose();
-		// Do not increment if reaching `NULL`
-		if res.is_some() {
-			self.i += 1;
-		}
-		res
+		self.next_impl().transpose()
 	}
 }

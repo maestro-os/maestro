@@ -58,7 +58,7 @@ fn read(
 	for i in iov {
 		// The size to read. This is limited to avoid an overflow on the total length
 		let max_len = min(i.iov_len, i32::MAX as usize - off);
-		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
+		let ptr = SyscallSlice::<u8>::from_ptr(i.iov_base as usize);
 		// Read
 		// TODO perf: do not use a buffer
 		let mut buf = vec![0u8; max_len]?;

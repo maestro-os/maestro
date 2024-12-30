@@ -340,7 +340,7 @@ pub(crate) fn init() -> EResult<()> {
 			// General Protection Fault
 			0x0d => {
 				// Get the instruction opcode
-				let ptr = SyscallPtr::<u8>::from_syscall_arg(frame.get_program_counter());
+				let ptr = SyscallPtr::<u8>::from_ptr(frame.get_program_counter());
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {

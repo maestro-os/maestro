@@ -47,7 +47,7 @@ pub fn read_memory(
 		return Ok(());
 	}
 	let f = || {
-		let slice = SyscallSlice::from_syscall_arg(begin.0);
+		let slice = SyscallSlice::from_ptr(begin.0);
 		let len = end.0.saturating_sub(begin.0);
 		let mut i = 0;
 		let mut buf: [u8; 128] = [0; 128];

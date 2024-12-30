@@ -106,8 +106,8 @@ impl<T> From<NonNull<T>> for VirtAddr {
 }
 
 impl FromSyscallArg for VirtAddr {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(val)
+	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
+		Self(ptr)
 	}
 }
 
