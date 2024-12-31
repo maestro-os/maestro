@@ -1,6 +1,6 @@
 # Script
 
-A script can be run directly by a the kernel by specifying its interpreter use a **shebang**.
+A script can be run directly by the kernel by specifying its interpreter use a **shebang**.
 
 The syntax of a shebang is the following:
 

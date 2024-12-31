@@ -2,8 +2,6 @@
 
 A process is a program being executed by the kernel. Each process has a unique PID which is allocated at creation.
 
-
-
 ## State
 
 A process can have the following states:
@@ -23,8 +21,6 @@ The following transitions are valid:
 - (S|T) -> R
 - (R|S|T) -> Z
 
-
-
 ## Scheduler
 
 The scheduler is a component that decide which process is running, and when.
@@ -33,4 +29,4 @@ The system triggers interruptions periodically in order to interrupt the current
 
 The frequency of interruption is determined by the number of processes in running state.
 
-To determine the next process to be run, the scheduler uses different informations such as state and priority of the process.
+To determine the next process to be run, the scheduler uses different information such as state and priority of the process.

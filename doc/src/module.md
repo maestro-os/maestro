@@ -4,8 +4,6 @@ A kernel module allows to add a feature to the kernel at runtime.
 
 This chapter describes how to write a kernel module.
 
-
-
 ## Template
 
 A basic kernel module contains the following files:
@@ -44,8 +42,6 @@ The following properties have to be taken into account when writing a module:
 
 On success, `init` returns `true`. On failure, it returns `false`.
 
-
-
 ## Versioning
 
 Kernel module versioning is a small subset of the [SemVer](https://semver.org/) specification.
@@ -57,21 +53,15 @@ Versions MUST have the following format: `X.Y.Z` where:
 
 The same rules as the SemVer specification apply for those numbers.
 
-
-
 ### Backus-Naur Form
 
 ```
 <version> ::= <major> "." <minor> "." <patch>
 ```
 
-
-
 ## Interface references
 
 The references to the kernel's internals and module interfaces can be found [here](references/kernel/index.html).
-
-
 
 ## Building
 

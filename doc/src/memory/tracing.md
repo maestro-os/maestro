@@ -12,8 +12,6 @@ When run, the kernel will then write tracing data to the **COM2** serial port.
 
 This data can then be fed to [kern-profile](https://github.com/maestro-os/kern-profile) to generate a FlameGraph.
 
-
-
 ## Data format
 
 The output data is a series of samples. A sample represents an operation on the allocator.

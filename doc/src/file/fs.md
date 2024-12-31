@@ -3,9 +3,7 @@
 A filesystem is a representation of a files hierarchy on a storage device.
 
 The following filesystems are natively supported:
-- **ext2**: a common filesystem in UNIX environments. Now obsolete (to be replaced by ext4)
-
-
+- **ext2**: a common filesystem in UNIX environments. Now obsolete (to be replaced by **ext4**)
 
 ## kernfs
 
@@ -20,6 +18,6 @@ Native kernfs kinds include:
 
 The **VFS** is a filesystem that has no representation on any storage device. Rather, it is built from other filesystems that are assembled together to form the system's files hierarchy.
 
-**Mouting** a filesystem is the action of adding a filesystem to the VFS so that it becomes accessible to users.
+**Mounting** a filesystem is the action of adding a filesystem to the VFS so that it becomes accessible to users.
 
 The directory on which a filesystem is mounted is called a **mountpoint**.

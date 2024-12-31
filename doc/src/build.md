@@ -1,7 +1,7 @@
 # Build a system from scratch
 
 This guide describes how to build an operating system **from scratch**.
-If you are just willing to quickly install a system, the best option is to use the [installer](../installer.md).
+If you are just willing to quickly install a system, the best option is to use the [installer](installer.md).
 
 > An intermediate system (such as a Linux distribution) is required to perform the installation from scratch.
 
