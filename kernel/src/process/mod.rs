@@ -33,7 +33,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{gdt, idt::IntFrame, tss},
+	arch::x86::{gdt, idt::IntFrame, tss, FxState},
 	event,
 	event::CallbackResult,
 	file,
@@ -297,6 +297,8 @@ pub struct Process {
 	kernel_stack: NonNull<u8>,
 	/// Kernel stack pointer of saved context.
 	kernel_sp: AtomicPtr<u8>,
+	/// The process's FPU state.
+	fpu: Mutex<FxState>,
 
 	/// Process's timers, shared between all threads of the same process.
 	pub timer_manager: Arc<Mutex<TimerManager>>,
@@ -464,6 +466,7 @@ impl Process {
 			mem_space: UnsafeMut::new(None),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 			kernel_sp: AtomicPtr::default(),
+			fpu: Mutex::new(FxState([0; 512])),
 
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
 
@@ -755,6 +758,7 @@ impl Process {
 			mem_space: UnsafeMut::new(Some(mem_space)),
 			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
 			kernel_sp: AtomicPtr::default(),
+			fpu: Mutex::new(this.fpu.lock().clone()),
 
 			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,

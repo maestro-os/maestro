@@ -19,7 +19,7 @@
 //! Context switching utilities.
 
 use crate::{
-	arch::x86::{gdt, idt::IntFrame, tss::TSS},
+	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, tss::TSS},
 	process::Process,
 };
 use core::{arch::global_asm, mem::offset_of};
@@ -169,29 +169,29 @@ switch_asm:
 	jmp switch_finish
 "#, off = const offset_of!(Process, kernel_sp));
 
-/// Jumped to from [`switch`], finishing the switch.
-#[no_mangle]
-extern "C" fn switch_finish(_prev: &Process, next: &Process) {
-	finish(next);
-}
-
-/// Finishes switching context to `proc`, that is restore everything else than general-purpose
-/// registers.
-pub fn finish(proc: &Process) {
+/// Finishes switching context from `prev` to `next`, that is restore everything else than
+/// general-purpose registers.
+///
+/// This function is jumped to from [`switch`].
+#[export_name = "switch_finish"]
+pub extern "C" fn finish(prev: &Process, next: &Process) {
 	// Bind the memory space
-	proc.mem_space.as_ref().unwrap().lock().bind();
+	next.mem_space.as_ref().unwrap().lock().bind();
 	// Update the TSS for the process
 	unsafe {
-		TSS.set_kernel_stack(proc.kernel_stack_top());
+		TSS.set_kernel_stack(next.kernel_stack_top());
 	}
 	// Update TLS entries in the GDT
 	{
-		let tls = proc.tls.lock();
+		let tls = next.tls.lock();
 		for (i, ent) in tls.iter().enumerate() {
 			unsafe {
 				ent.update_gdt(gdt::TLS_OFFSET + i * size_of::<gdt::Entry>());
 			}
 		}
 	}
-	// TODO switch FPU
+	// TODO save and restore only if necessary (enable the FPU when the first interruption occurs)
+	// Save and restore FPU state
+	fxsave(&mut prev.fpu.lock());
+	fxrstor(&next.fpu.lock());
 }
