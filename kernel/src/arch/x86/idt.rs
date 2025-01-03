@@ -373,7 +373,7 @@ fn enable_syscall_inst() {
 	// STAR
 	super::wrmsr(
 		0xc0000081,
-		(gdt::KERNEL_CS as u64) << 32 | (gdt::USER_CS as u64) << 48,
+		((gdt::KERNEL_CS as u64) << 32) | ((gdt::USER_CS as u64) << 48),
 	);
 	// LSTAR
 	super::wrmsr(0xc0000082, crate::syscall::syscall as usize as u64);

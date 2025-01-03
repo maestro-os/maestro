@@ -542,7 +542,7 @@ pub unsafe fn free(page_dir: NonNull<Table>) {
 pub(crate) fn prepare() {
 	// Set cr4 flags
 	// Enable GLOBAL flag
-	let mut cr4 = register_get!("cr4") | 1 << 7;
+	let mut cr4 = register_get!("cr4") | (1 << 7);
 	let (smep, smap) = supports_supervisor_prot();
 	if smep {
 		cr4 |= 1 << 20;

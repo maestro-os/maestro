@@ -34,13 +34,12 @@
 #![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
 #![feature(debug_closure_helpers)]
-#![feature(exposed_provenance)]
 #![feature(lang_items)]
 #![feature(negative_impls)]
 #![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
-#![feature(strict_provenance)]
+#![feature(strict_provenance_lints)]
 #![feature(trait_upcasting)]
 #![deny(fuzzy_provenance_casts)]
 #![deny(missing_docs)]
@@ -93,7 +92,7 @@ use crate::{
 	sync::mutex::Mutex,
 	tty::TTY,
 };
-use core::{arch::asm, ffi::c_void};
+use core::{arch::asm, ffi::c_void, intrinsics::unlikely};
 pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
@@ -181,7 +180,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	}
 
 	// Read multiboot information
-	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {
+	if unlikely(magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8)) {
 		panic!("Bootloader non compliant with Multiboot2!");
 	}
 	let boot_info = unsafe { multiboot::read(multiboot_ptr) };

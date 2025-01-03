@@ -24,6 +24,7 @@ use crate::{
 	process,
 	sync::mutex::IntMutex,
 };
+use core::ptr;
 use utils::{collections::vec::Vec, errno::AllocResult};
 
 /// The list of interrupt error messages ordered by index of the corresponding
@@ -103,7 +104,7 @@ impl Drop for CallbackHook {
 		let i = vec
 			.iter()
 			.enumerate()
-			.find(|(_, c)| **c == self.callback)
+			.find(|(_, c)| ptr::fn_addr_eq(**c, self.callback))
 			.map(|(i, _)| i);
 		if let Some(i) = i {
 			vec.remove(i);

@@ -85,25 +85,9 @@ pub struct Tss {
 	pub iopb: u16,
 }
 
-impl Tss {
-	/// Sets the kernel stack pointer.
-	pub fn set_kernel_stack(&mut self, kernel_stack: *mut u8) {
-		#[cfg(target_arch = "x86")]
-		{
-			self.esp0 = kernel_stack as _;
-			self.ss0 = gdt::KERNEL_DS as _;
-			self.ss = gdt::USER_DS as _;
-		}
-		#[cfg(target_arch = "x86_64")]
-		{
-			self.rsp0 = kernel_stack as _;
-		}
-	}
-}
-
 /// The Task State Segment.
 #[no_mangle]
-pub static mut TSS: Tss = unsafe { mem::zeroed() };
+static mut TSS: Tss = unsafe { mem::zeroed() };
 
 /// Initializes the TSS.
 pub(crate) fn init() {
@@ -122,5 +106,23 @@ pub(crate) fn init() {
 			"ltr ax",
 			off = const gdt::TSS_OFFSET
 		);
+	}
+}
+
+/// Sets the kernel stack pointer on the TSS.
+///
+/// # Safety
+///
+/// This function is **not** reentrant.
+pub unsafe fn set_kernel_stack(kernel_stack: *mut u8) {
+	#[cfg(target_arch = "x86")]
+	{
+		TSS.esp0 = kernel_stack as _;
+		TSS.ss0 = gdt::KERNEL_DS as _;
+		TSS.ss = gdt::USER_DS as _;
+	}
+	#[cfg(target_arch = "x86_64")]
+	{
+		TSS.rsp0 = kernel_stack as _;
 	}
 }

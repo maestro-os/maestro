@@ -431,7 +431,7 @@ pub struct ELF64Rela {
 pub fn hash_sym_name(name: &[u8]) -> u32 {
 	let res = name.iter().fold(0u32, |mut res, c| {
 		res = res.wrapping_mul(16) + *c as u32;
-		res ^= res >> 24 & 0xf0;
+		res ^= (res >> 24) & 0xf0;
 		res
 	});
 	res & 0xfffffff

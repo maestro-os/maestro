@@ -41,7 +41,7 @@ pub struct ParseError<'s> {
 	token: Option<(usize, usize)>,
 }
 
-impl<'s> fmt::Display for ParseError<'s> {
+impl fmt::Display for ParseError<'_> {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		write!(
 			fmt,

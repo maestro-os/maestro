@@ -147,15 +147,18 @@ pub fn clone(
 		let child_pid = child.get_pid();
 		let child_tid = child.tid;
 		// Switch
-		switch::finish(&child);
-		SCHEDULER.get().lock().swap_current_process(Some(child));
+		switch::finish(&proc, &child);
+		SCHEDULER
+			.get()
+			.lock()
+			.swap_current_process(Some(child.clone()));
 		let mut child_frame = frame.clone();
 		child_frame.rax = 0; // Return value
 		if !stack.is_null() {
 			child_frame.rsp = stack as _;
 		}
 		stash_segments(|| unsafe {
-			fork_asm(&child_frame, Arc::as_ptr(&proc));
+			fork_asm(Arc::as_ptr(&proc), Arc::as_ptr(&child), &child_frame);
 		});
 		(child_pid, child_tid)
 	};

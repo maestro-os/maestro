@@ -113,7 +113,7 @@ struct FormatContentWriter<'b> {
 	dst_cursor: usize,
 }
 
-impl<'b> Write for FormatContentWriter<'b> {
+impl Write for FormatContentWriter<'_> {
 	fn write_str(&mut self, s: &str) -> fmt::Result {
 		if s.is_empty() {
 			return Ok(());

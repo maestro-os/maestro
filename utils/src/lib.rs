@@ -38,7 +38,7 @@
 #![feature(pointer_is_aligned_to)]
 #![feature(portable_simd)]
 #![feature(set_ptr_value)]
-#![feature(strict_provenance)]
+#![feature(strict_provenance_lints)]
 #![feature(trusted_len)]
 #![feature(unsize)]
 #![deny(fuzzy_provenance_casts)]

@@ -221,7 +221,7 @@ impl Zone {
 ///
 /// If a frame points to itself, it means that no more elements are present in
 /// the list.
-#[repr(packed)]
+#[repr(Rust, packed)]
 struct Frame {
 	/// Identifier of the previous frame in the free list.
 	prev: FrameID,

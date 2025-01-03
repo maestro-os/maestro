@@ -349,7 +349,7 @@ pub struct SyscallArrayIterator<'a> {
 	i: usize,
 }
 
-impl<'a> SyscallArrayIterator<'a> {
+impl SyscallArrayIterator<'_> {
 	fn next_impl(&mut self) -> EResult<Option<String>> {
 		let Some(ptr) = self.arr.ptr else {
 			return Err(errno!(EFAULT));
@@ -371,7 +371,7 @@ impl<'a> SyscallArrayIterator<'a> {
 	}
 }
 
-impl<'a> Iterator for SyscallArrayIterator<'a> {
+impl Iterator for SyscallArrayIterator<'_> {
 	type Item = EResult<String>;
 
 	fn next(&mut self) -> Option<Self::Item> {

@@ -155,7 +155,7 @@ pub fn rdmsr(msr: u32) -> u64 {
 			options(nostack)
 		);
 	}
-	(edx as u64) << 32 | eax as u64
+	((edx as u64) << 32) | eax as u64
 }
 
 /// Write value to a Model Specific Register.

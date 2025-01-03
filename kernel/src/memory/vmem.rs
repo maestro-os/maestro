@@ -158,7 +158,7 @@ pub struct VMemTransaction<'v, const KERNEL: bool> {
 	rollback: Vec<x86::paging::Rollback>,
 }
 
-impl<'v, const KERNEL: bool> VMemTransaction<'v, KERNEL> {
+impl<const KERNEL: bool> VMemTransaction<'_, KERNEL> {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	fn map_impl(
 		&mut self,

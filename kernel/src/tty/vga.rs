@@ -174,7 +174,7 @@ pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
 	debug_assert!(y < HEIGHT);
 
 	let pos = (y as usize) * (WIDTH as usize) + (x as usize);
-	let c = (c as Char) | (color as Char) << 8;
+	let c = (c as Char) | ((color as Char) << 8);
 
 	debug_assert!(pos < BUFFER_SIZE as usize);
 	unsafe {

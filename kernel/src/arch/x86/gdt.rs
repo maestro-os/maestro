@@ -134,7 +134,7 @@ impl Entry {
 	/// Tells whether the entry is present.
 	#[inline(always)]
 	pub const fn is_present(&self) -> bool {
-		(self.0 >> 47 & 1) != 0
+		(self.0 >> 47) & 1 != 0
 	}
 
 	/// Sets the entry present or not.

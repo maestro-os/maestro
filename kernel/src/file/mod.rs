@@ -255,7 +255,7 @@ pub struct DirEntry<'name> {
 	pub name: Cow<'name, [u8]>,
 }
 
-impl<'name> TryClone for DirEntry<'name> {
+impl TryClone for DirEntry<'_> {
 	fn try_clone(&self) -> AllocResult<Self> {
 		Ok(Self {
 			inode: self.inode,

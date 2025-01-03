@@ -19,7 +19,7 @@
 //! Context switching utilities.
 
 use crate::{
-	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, tss::TSS},
+	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, tss},
 	process::Process,
 };
 use core::{arch::global_asm, mem::offset_of};
@@ -72,7 +72,7 @@ extern "C" {
 	///
 	/// The context described by `frame` must be valid.
 	#[allow(improper_ctypes)]
-	pub fn fork_asm(frame: &IntFrame, parent: *const Process);
+	pub fn fork_asm(parent: *const Process, child: *const Process, frame: &IntFrame);
 
 	#[allow(improper_ctypes)]
 	fn switch_asm(prev: *const Process, next: *const Process);
@@ -93,14 +93,18 @@ fork_asm:
 	push ebx
 	push esi
 	push edi
-    mov eax, [esp + 24]
+    mov eax, [esp + 20]
     mov [eax + {off}], esp
 
-	# Set stack at the frame's position
-	add esp, 16
+	# Set stack at the frame's position (shift by 4 to fake `eip`)
+	add esp, 24
 	jmp init_ctx
 
 switch_asm:
+	# Preserve arguments across stack switch
+	mov eax, [esp + 4]
+	mov edx, [esp + 8]
+	
 	push ebp
 	push ebx
 	push esi
@@ -117,6 +121,8 @@ switch_asm:
 	pop ebx
 	pop ebp
 
+	mov [esp + 4], eax
+	mov [esp + 8], edx
 	jmp switch_finish
 "#, off = const offset_of!(Process, kernel_sp));
 
@@ -139,8 +145,9 @@ fork_asm:
 	push r15
 	push fs
 	push gs
-    mov [rsi + {off}], rsp
+    mov [rdi + {off}], rsp
 
+	mov rdi, rdx
 	jmp init_ctx
 
 switch_asm:
@@ -179,7 +186,7 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	next.mem_space.as_ref().unwrap().lock().bind();
 	// Update the TSS for the process
 	unsafe {
-		TSS.set_kernel_stack(next.kernel_stack_top());
+		tss::set_kernel_stack(next.kernel_stack_top());
 	}
 	// Update TLS entries in the GDT
 	{

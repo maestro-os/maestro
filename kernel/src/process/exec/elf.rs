@@ -543,7 +543,7 @@ unsafe fn init_stack(
 /// The program executor for ELF files.
 pub struct ELFExecutor<'s>(pub ExecInfo<'s>);
 
-impl<'s> Executor for ELFExecutor<'s> {
+impl Executor for ELFExecutor<'_> {
 	// TODO Ensure there is no way to write in kernel space (check segments position
 	// and relocations)
 	// TODO Handle suid and sgid
