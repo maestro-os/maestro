@@ -136,6 +136,7 @@ jobs:
           ./build.sh
           mv disk ../kernel/qemu_disk
       - name: Run (compat)
+        if: ${{ matrix.arch.user_compat }}
         working-directory: kernel
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
