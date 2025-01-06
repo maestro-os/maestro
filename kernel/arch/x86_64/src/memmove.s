@@ -15,7 +15,7 @@ memmove:
     jae __memcpy_fwd
     mov rcx, rdx
     lea rdi, [rdi + rdx - 1]
-    lea rsi, [rdi + rdx - 1]
+    lea rsi, [rsi + rdx - 1]
     std
     rep movsb
     cld
