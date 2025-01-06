@@ -24,7 +24,14 @@ mod chunk;
 use crate::{memory, memory::malloc::ptr::NonNull, sync::mutex::IntMutex};
 use block::Block;
 use chunk::Chunk;
-use core::{alloc::Layout, cmp::Ordering, intrinsics::unlikely, num::NonZeroUsize, ptr};
+use core::{
+	alloc::{AllocError, Layout},
+	cmp::Ordering,
+	intrinsics::unlikely,
+	num::NonZeroUsize,
+	ptr,
+	ptr::drop_in_place,
+};
 use utils::errno::AllocResult;
 
 /// The allocator's mutex.
@@ -41,17 +48,17 @@ unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	let chunk = &mut free_chunk.chunk;
 	chunk.used = true;
 	// Return pointer
-	let ptr = chunk.ptr();
+	let ptr = chunk.get_ptr_mut();
 	debug_assert!(ptr.is_aligned_to(chunk::ALIGNMENT));
-	debug_assert!(ptr.as_ptr() as usize >= memory::PROCESS_END.0);
+	debug_assert!(ptr as usize >= memory::PROCESS_END.0);
 	#[cfg(feature = "memtrace")]
 	super::trace::sample(
 		"malloc",
 		super::trace::SampleOp::Alloc,
-		ptr.as_ptr() as usize,
+		ptr as usize,
 		n.get(),
 	);
-	Ok(ptr)
+	NonNull::new(ptr).ok_or(AllocError)
 }
 
 unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
@@ -104,11 +111,10 @@ unsafe fn free(mut ptr: NonNull<u8>) {
 	free_chunk.next = None;
 	// Merge with adjacent chunks
 	let chunk = chunk.coalesce();
-	// If this is the last chunk in the block, free the block
 	if chunk.is_single() {
 		chunk.as_free_chunk().unwrap().free_list_remove();
-		let block = Block::from_first_chunk(NonNull::from(chunk));
-		block.drop_in_place();
+		let block = Block::from_first_chunk(chunk);
+		drop_in_place(block);
 	}
 	#[cfg(feature = "memtrace")]
 	super::trace::sample("malloc", super::trace::SampleOp::Free, ptr.as_ptr() as _, 0);
