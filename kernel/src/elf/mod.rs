@@ -165,31 +165,6 @@ pub const STT_FILE: u8 = 4;
 /// Thread-Local Storage (TLS) symbol.
 pub const STT_TLS: u8 = 6;
 
-/// No relocation.
-pub const R_386_NONE: u8 = 0;
-/// Relocation type.
-pub const R_386_32: u8 = 1;
-/// Relocation type.
-pub const R_386_PC32: u8 = 2;
-/// Relocation type.
-pub const R_386_GOT32: u8 = 3;
-/// Relocation type.
-pub const R_386_PLT32: u8 = 4;
-/// Relocation type.
-pub const R_386_COPY: u8 = 5;
-/// Relocation type.
-pub const R_386_GLOB_DAT: u8 = 6;
-/// Relocation type.
-pub const R_386_JMP_SLOT: u8 = 7;
-/// Relocation type.
-pub const R_386_RELATIVE: u8 = 8;
-/// Relocation type.
-pub const R_386_GOTOFF: u8 = 9;
-/// Relocation type.
-pub const R_386_GOTPC: u8 = 10;
-/// Relocation type.
-pub const R_386_IRELATIVE: u8 = 42;
-
 /// 32 bit ELF header.
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]

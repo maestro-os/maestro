@@ -18,15 +18,29 @@
 
 //! ELF kernel modules relocations implementation.
 
-use crate::{
-	elf,
-	elf::parser::{SectionHeader, Sym},
-	process::mem_space::bound_check,
-};
-use core::{intrinsics::unlikely, mem::size_of_val, ptr};
+use crate::{elf::parser::SectionHeader, process::mem_space::bound_check};
+use core::intrinsics::unlikely;
 
-/// The name of the symbol pointing to the global offset table.
-pub const GOT_SYM: &[u8] = b"_GLOBAL_OFFSET_TABLE_";
+const R_386_NONE: u8 = 0;
+const R_386_32: u8 = 1;
+const R_386_PC32: u8 = 2;
+const R_386_GOT32: u8 = 3;
+const R_386_PLT32: u8 = 4;
+const R_386_COPY: u8 = 5;
+const R_386_GLOB_DAT: u8 = 6;
+const R_386_JMP_SLOT: u8 = 7;
+const R_386_RELATIVE: u8 = 8;
+const R_386_GOTOFF: u8 = 9;
+const R_386_GOTPC: u8 = 10;
+const R_386_IRELATIVE: u8 = 42;
+
+const R_X86_64_NONE: u8 = 0;
+const R_X86_64_64: u8 = 1;
+const R_X86_64_PC32: u8 = 2;
+const R_X86_64_COPY: u8 = 5;
+const R_X86_64_GLOB_DAT: u8 = 6;
+const R_X86_64_JUMP_SLOT: u8 = 7;
+const R_X86_64_RELATIVE: u8 = 8;
 
 /// ELF relocation error.
 pub struct RelocationError;
@@ -58,15 +72,15 @@ pub trait Relocation {
 	}
 }
 
-/// Performs the relocation.
+/// Performs the relocation for a kernel module.
 ///
 /// Arguments:
+/// - `rel` is the relocation.
 /// - `base_addr` is the base address at which the ELF is loaded.
 /// - `rel_section` is the section containing the relocation.
-/// - `get_sym` is a closure returning the a symbol. Arguments are:
+/// - `get_sym` is a closure returning the value of a symbol. Arguments are:
 ///     - The index of the section containing the symbol.
 ///     - The index of the symbol in the section.
-/// - `got` is the Global Offset Table's symbol (named after [`GOT_SYM`]).
 ///
 /// If the relocation cannot be performed, the function returns an error.
 ///
@@ -74,59 +88,76 @@ pub trait Relocation {
 ///
 /// TODO
 pub unsafe fn perform<R: Relocation, F>(
-	relocation: &R,
-	base_addr: *const u8,
+	rel: &R,
+	base_addr: *mut u8,
 	rel_section: &SectionHeader,
 	get_sym: F,
-	got: Option<&Sym>,
 ) -> Result<(), RelocationError>
 where
 	F: FnOnce(u32, usize) -> Option<usize>,
 {
-	let got_off = got.map(|sym| sym.st_value as usize).unwrap_or(0);
-	// The address of the GOT
-	let got_addr = (base_addr as usize).wrapping_add(got_off);
-	// The offset in the GOT entry for the symbol
-	let got_offset = 0usize; // TODO
-						  // The offset in the PLT entry for the symbol
-	let plt_offset = 0usize; // TODO
-						  // The value of the symbol
-	let sym_val = get_sym(rel_section.sh_link, relocation.get_sym());
-	let value = match relocation.get_type() {
-		elf::R_386_32 => sym_val
+	// The value of the symbol
+	let sym_val = get_sym(rel_section.sh_link, rel.get_sym());
+	#[cfg(target_pointer_width = "32")]
+	let value = match rel.get_type() {
+		R_386_32 => sym_val
 			.ok_or(RelocationError)?
-			.wrapping_add_signed(relocation.get_addend()),
-		elf::R_386_PC32 => sym_val
+			.wrapping_add_signed(rel.get_addend()),
+		R_386_PC32 => sym_val
 			.ok_or(RelocationError)?
-			.wrapping_add_signed(relocation.get_addend())
-			.wrapping_sub(relocation.get_offset()),
-		elf::R_386_GOT32 => got_offset.wrapping_add_signed(relocation.get_addend()),
-		elf::R_386_PLT32 => plt_offset
-			.wrapping_add_signed(relocation.get_addend())
-			.wrapping_sub(relocation.get_offset()),
-		elf::R_386_COPY => return Ok(()),
-		elf::R_386_GLOB_DAT | elf::R_386_JMP_SLOT => sym_val.unwrap_or(0),
-		elf::R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(relocation.get_addend()),
-		elf::R_386_GOTOFF => sym_val
-			.ok_or(RelocationError)?
-			.wrapping_add_signed(relocation.get_addend())
-			.wrapping_sub(got_addr),
-		elf::R_386_GOTPC => got_addr
-			.wrapping_add_signed(relocation.get_addend())
-			.wrapping_sub(relocation.get_offset()),
+			.wrapping_add_signed(rel.get_addend())
+			.wrapping_sub(rel.get_offset()),
+		R_386_GLOB_DAT | R_386_JMP_SLOT => sym_val.unwrap_or(0),
+		R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(rel.get_addend()),
 		// Ignored
-		elf::R_386_IRELATIVE => return Ok(()),
+		R_386_NONE | R_386_COPY | R_386_IRELATIVE => return Ok(()),
+		// Invalid or unsupported
 		_ => return Err(RelocationError),
-	} as u32;
-	let addr = base_addr.add(relocation.get_offset()) as *mut u32;
-	// If the resulting address is in userspace, error
-	if unlikely(bound_check(addr as _, size_of_val(&value))) {
+	};
+	#[cfg(target_pointer_width = "32")]
+	let size = 4;
+	#[cfg(target_pointer_width = "64")]
+	let (value, size) = match rel.get_type() {
+		R_X86_64_64 => (
+			sym_val
+				.ok_or(RelocationError)?
+				.wrapping_add_signed(rel.get_addend()),
+			8,
+		),
+		R_X86_64_PC32 => (
+			sym_val
+				.ok_or(RelocationError)?
+				.wrapping_add_signed(rel.get_addend())
+				.wrapping_sub(rel.get_offset()),
+			4,
+		),
+		R_X86_64_GLOB_DAT | R_X86_64_JUMP_SLOT => (sym_val.unwrap_or(0), 8),
+		R_X86_64_RELATIVE => (
+			(base_addr as usize).wrapping_add_signed(rel.get_addend()),
+			8,
+		),
+		// Ignored
+		R_X86_64_NONE | R_X86_64_COPY => return Ok(()),
+		// Invalid or unsupported
+		_ => return Err(RelocationError),
+	};
+	// If the address is in userspace, error
+	let addr = base_addr.add(rel.get_offset());
+	if unlikely(bound_check(addr as _, size)) {
 		return Err(RelocationError);
 	}
-	let value = match relocation.get_type() {
-		elf::R_386_RELATIVE => ptr::read_volatile(addr).wrapping_add(value),
-		_ => value,
-	};
-	ptr::write_volatile(addr, value);
+	// Write value
+	match rel.get_type() {
+		// R_X86_64_RELATIVE has the same value
+		R_386_RELATIVE => {
+			let addr = addr as *mut usize;
+			*addr = (*addr).wrapping_add(value);
+		}
+		_ => match size {
+			4 => *(addr as *mut u32) = value as _,
+			8 => *(addr as *mut u64) = value as _,
+			_ => unreachable!(),
+		},
+	}
 	Ok(())
 }

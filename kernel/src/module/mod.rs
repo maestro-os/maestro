@@ -36,7 +36,6 @@ use crate::{
 		kernel::KernSym,
 		parser::{ELFParser, Rel, Rela},
 		relocation,
-		relocation::GOT_SYM,
 	},
 	println,
 	sync::mutex::Mutex,
@@ -226,7 +225,7 @@ impl Module {
 		let mem_size = Self::get_load_size(&parser);
 		let mut mem = vec![0; mem_size]?;
 		// The base virtual address at which the module is loaded
-		let load_base = mem.as_ptr();
+		let load_base = mem.as_mut_ptr();
 		// Copy the module's image
 		parser
 			.iter_segments()
@@ -257,19 +256,14 @@ impl Module {
 			};
 			Some(other_sym.st_value as usize)
 		};
-		let got_sym = parser.get_symbol_by_name(GOT_SYM);
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel::<Rel>(&section) {
-				unsafe {
-					relocation::perform(&rel, load_base, &section, get_sym, got_sym.as_ref())
-				}
-				.map_err(|_| errno!(EINVAL))?;
+				unsafe { relocation::perform(&rel, load_base, &section, get_sym) }
+					.map_err(|_| errno!(EINVAL))?;
 			}
 			for rela in parser.iter_rel::<Rela>(&section) {
-				unsafe {
-					relocation::perform(&rela, load_base, &section, get_sym, got_sym.as_ref())
-				}
-				.map_err(|_| errno!(EINVAL))?;
+				unsafe { relocation::perform(&rela, load_base, &section, get_sym) }
+					.map_err(|_| errno!(EINVAL))?;
 			}
 		}
 		// Check the magic number
