@@ -126,16 +126,10 @@ impl Chunk {
 		self.next = None;
 	}
 
-	/// Returns an immutable pointer to the chunks' data.
+	/// Returns a pointer to the chunks' data.
 	#[inline]
-	pub fn get_ptr(&self) -> *const u8 {
-		unsafe { (self as *const Self as *const u8).add(size_of::<Self>()) }
-	}
-
-	/// Returns a mutable pointer to the chunks' data.
-	#[inline]
-	pub fn get_ptr_mut(&mut self) -> *mut u8 {
-		unsafe { (self as *mut Self as *mut u8).add(size_of::<Self>()) }
+	pub fn ptr(&self) -> NonNull<u8> {
+		unsafe { NonNull::from(self).byte_add(size_of::<Self>()).cast() }
 	}
 
 	/// Returns the size of the chunk.
@@ -151,11 +145,11 @@ impl Chunk {
 		#[cfg(config_debug_malloc_magic)]
 		debug_assert_eq!(self.magic, CHUNK_MAGIC);
 
-		debug_assert!(self as *const _ as usize >= crate::memory::PROCESS_END as usize);
+		debug_assert!(self as *const _ as usize >= crate::memory::PROCESS_END.0);
 		debug_assert!(self.get_size() >= get_min_chunk_size());
 
 		if let Some(prev) = self.get_prev() {
-			debug_assert!(prev as *const _ as usize >= crate::memory::PROCESS_END as usize);
+			debug_assert!(prev as *const _ as usize >= crate::memory::PROCESS_END.0);
 
 			#[cfg(config_debug_malloc_magic)]
 			debug_assert_eq!(prev.magic, CHUNK_MAGIC);
@@ -163,12 +157,12 @@ impl Chunk {
 			debug_assert!((prev as *const Self as usize) < (self as *const Self as usize));
 			debug_assert!(prev.get_size() >= get_min_chunk_size());
 			debug_assert!(
-				(prev.get_ptr() as usize) + prev.get_size() <= (self as *const Self as usize)
+				(prev.ptr().as_ptr() as usize) + prev.get_size() <= (self as *const Self as usize)
 			);
 		}
 
 		if let Some(next) = self.get_next() {
-			debug_assert!(next as *const _ as usize >= crate::memory::PROCESS_END as usize);
+			debug_assert!(next as *const _ as usize >= crate::memory::PROCESS_END.0);
 
 			#[cfg(config_debug_malloc_magic)]
 			debug_assert_eq!(next.magic, CHUNK_MAGIC);
@@ -176,11 +170,11 @@ impl Chunk {
 			debug_assert!((self as *const Self as usize) < (next as *const Self as usize));
 			debug_assert!(next.get_size() >= get_min_chunk_size());
 			debug_assert!(
-				(self.get_ptr() as usize) + self.get_size() <= (next as *const Self as usize)
+				(self.ptr().as_ptr() as usize) + self.get_size() <= (next as *const Self as usize)
 			);
 		}
 
-		debug_assert!(self.get_ptr().is_aligned_to(ALIGNMENT));
+		debug_assert!(self.ptr().is_aligned_to(ALIGNMENT));
 	}
 
 	/// Returns a mutable reference for the given chunk as a free chunk.
@@ -188,12 +182,7 @@ impl Chunk {
 	/// If the chunk is used, the function returns `None`.
 	#[inline]
 	pub fn as_free_chunk(&mut self) -> Option<&mut FreeChunk> {
-		if !self.used {
-			let c = unsafe { &mut *(self as *mut Self as *mut FreeChunk) };
-			Some(c)
-		} else {
-			None
-		}
+		(!self.used).then_some(unsafe { &mut *(self as *mut Self as *mut FreeChunk) })
 	}
 
 	/// Returns the pointer to the next chunk for splitting the current chunk
@@ -203,16 +192,14 @@ impl Chunk {
 	fn get_split_next_chunk(&mut self, size: usize) -> Option<&'static mut FreeChunk> {
 		#[cfg(config_debug_malloc_check)]
 		self.check();
+		let data = self.ptr().as_ptr();
 		let min_data_size = get_min_chunk_size();
 		let size = max(size, min_data_size);
-		let next_ptr = unsafe { utils::align(self.get_ptr().add(size), ALIGNMENT) };
-		let new_size = (next_ptr as usize) - (self.get_ptr() as usize);
+		let next_ptr = unsafe { utils::align(data.add(size), ALIGNMENT) };
+		let new_size = next_ptr as usize - data as usize;
 		debug_assert!(new_size >= size);
-		if new_size + size_of::<Chunk>() + min_data_size <= self.size {
-			Some(unsafe { &mut *(next_ptr as *mut FreeChunk) })
-		} else {
-			None
-		}
+		(new_size + size_of::<Chunk>() + min_data_size <= self.size)
+			.then_some(unsafe { &mut *(next_ptr as *mut FreeChunk) })
 	}
 
 	/// Splits the chunk with the given size `size` if necessary.
@@ -229,7 +216,7 @@ impl Chunk {
 		}
 		// Create next chunk
 		let next = self.get_split_next_chunk(size)?;
-		let new_size = (next as *mut _ as usize) - (self.get_ptr() as usize);
+		let new_size = next as *mut _ as usize - self.ptr().as_ptr() as usize;
 		let next_size = self.size - new_size - size_of::<Chunk>();
 		unsafe {
 			ptr::write_volatile(next, FreeChunk::new(next_size));
@@ -499,8 +486,8 @@ pub fn get_available_chunk(size: NonZeroUsize) -> AllocResult<&'static mut FreeC
 	let free_chunk = if let Some(f) = free_list {
 		unsafe { f.unwrap().as_mut() }
 	} else {
-		let block = Block::new(size)?;
-		block.first_chunk.as_free_chunk().unwrap()
+		let mut block = Block::new(size)?;
+		unsafe { block.as_mut().first_chunk.as_free_chunk().unwrap() }
 	};
 	#[cfg(config_debug_malloc_check)]
 	free_chunk.check();
