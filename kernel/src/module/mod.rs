@@ -28,6 +28,7 @@
 //!
 //! Thus, **Kernel Modules** contain **Modules**.
 
+pub(crate) mod relocation;
 pub mod version;
 
 use crate::{
@@ -35,7 +36,6 @@ use crate::{
 	elf::{
 		kernel::KernSym,
 		parser::{ELFParser, Rel, Rela},
-		relocation,
 	},
 	println,
 	sync::mutex::Mutex,

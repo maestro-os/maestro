@@ -24,7 +24,6 @@
 
 pub mod kernel;
 pub mod parser;
-pub mod relocation;
 
 use crate::process::mem_space;
 use macros::AnyRepr;

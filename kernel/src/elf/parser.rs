@@ -19,7 +19,7 @@
 //! ELF parser.
 
 use super::*;
-use crate::elf::relocation::Relocation;
+use crate::module::relocation::Relocation;
 use utils::bytes;
 
 /// The ELF's class.
