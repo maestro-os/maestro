@@ -602,8 +602,12 @@ impl<'data> ELFParser<'data> {
 	/// If the section does not exist, the function returns `None`.
 	pub fn get_section_by_index(&self, i: usize) -> Option<SectionHeader> {
 		let hdr = self.hdr();
+		// Bound check
+		if i >= hdr.e_shnum as usize {
+			return None;
+		}
 		let off = hdr.e_shoff as usize + i * hdr.e_shentsize as usize;
-		let end = hdr.e_shnum as usize * hdr.e_shentsize as usize;
+		let end = off + hdr.e_shentsize as usize;
 		SectionHeader::parse(self.0.get(off..end)?, self.class())
 	}
 
@@ -670,11 +674,13 @@ impl<'data> ELFParser<'data> {
 	///
 	/// If the symbol does not exist, the function returns `None`.
 	pub fn get_symbol_by_index(&self, symtab: &SectionHeader, i: usize) -> Option<Sym> {
-		let begin = symtab.sh_offset as usize;
-		let off = begin + i * symtab.sh_entsize as usize;
-		let end = begin + symtab.sh_size as usize;
-		let data = self.0.get(off..end)?;
-		Sym::parse(data, self.class())
+		// Bound check
+		if i >= (symtab.sh_size / symtab.sh_entsize) as usize {
+			return None;
+		}
+		let off = symtab.sh_offset as usize + i * symtab.sh_entsize as usize;
+		let end = off + symtab.sh_entsize as usize;
+		Sym::parse(self.0.get(off..end)?, self.class())
 	}
 
 	/// Returns the symbol with name `name`.
