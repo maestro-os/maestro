@@ -37,6 +37,7 @@ use crate::{
 		kernel::KernSym,
 		parser::{ELFParser, Rel, Rela},
 	},
+	module::relocation::RelocationError,
 	println,
 	sync::mutex::Mutex,
 };
@@ -44,6 +45,7 @@ use core::{
 	borrow::Borrow,
 	cmp::min,
 	hash::{Hash, Hasher},
+	intrinsics::unlikely,
 	mem::{size_of, transmute},
 	slice,
 };
@@ -129,6 +131,105 @@ impl Hash for NameHash {
 	}
 }
 
+/// Returns the size required to load the module image.
+fn get_load_size(parser: &ELFParser) -> usize {
+	parser
+		.iter_segments()
+		.map(|seg| seg.p_vaddr as usize + seg.p_memsz as usize)
+		.max()
+		.unwrap_or(0)
+}
+
+/// Resolves an external symbol from the kernel or another module.
+///
+/// `name` is the name of the symbol to look for.
+///
+/// If the symbol doesn't exist, the function returns `None`.
+fn resolve_symbol(name: &[u8]) -> Option<&'static KernSym> {
+	// The symbol on the kernel side
+	let kernel_sym = elf::kernel::get_symbol_by_name(name)?;
+	// TODO check symbols from other loaded modules
+	Some(kernel_sym)
+}
+
+/// Returns the value of a symbol from the kernel or another module, in order to relocate a module.
+///
+/// Arguments:
+/// - `parser` is the parser for the module to be loaded
+/// - `load_base` is the pointer at which the module is being loaded
+/// - `sym_section` is the section containing symbols
+/// - `sym` is the index of the symbol in `sym_section`
+///
+/// If the symbol does not exist, the function prints an error and returns `None`.
+fn get_symbol_value(
+	parser: &ELFParser,
+	load_base: *const u8,
+	sym_section: u32,
+	sym: usize,
+) -> Option<usize> {
+	let section = parser.get_section_by_index(sym_section as _)?;
+	let sym = parser.get_symbol_by_index(&section, sym as _)?;
+	if sym.is_defined() {
+		return Some(load_base as usize + sym.st_value as usize);
+	}
+	let strtab = parser.get_section_by_index(section.sh_link as _)?;
+	let name = parser.get_symbol_name(&strtab, &sym)?;
+	// Look inside the kernel image or other modules
+	let Some(other_sym) = resolve_symbol(name) else {
+		println!(
+			"Symbol `{}` not found in kernel or other loaded modules",
+			DisplayableStr(name)
+		);
+		return None;
+	};
+	Some(other_sym.st_value as usize)
+}
+
+/// Returns the value of the given attribute of a module.
+///
+/// Arguments:
+/// - `mem` is the segment of memory on which the module is loaded.
+/// - `parser` is the module's parser.
+/// - `name` is the attribute's name.
+///
+/// If the attribute doesn't exist, the function returns `None`.
+fn get_attribute<'mem, T>(
+	mem: &'mem [u8],
+	parser: &ELFParser<'mem>,
+	name: &[u8],
+) -> Option<&'mem T> {
+	let sym = parser.get_symbol_by_name(name)?;
+	let off = sym.st_value as usize;
+	if off + size_of::<T>() >= mem.len() {
+		return None;
+	}
+	let val = unsafe { &*(&mem[off] as *const _ as *const T) };
+	Some(val)
+}
+
+/// Returns the array value of the given attribute of a module.
+///
+/// Arguments:
+/// - `mem` is the segment of memory on which the module is loaded.
+/// - `parser` is the module's parser.
+/// - `name` is the attribute's name.
+///
+/// If the attribute doesn't exist, the function returns `None`.
+fn get_array_attribute<'mem, T>(
+	mem: &'mem [u8],
+	parser: &ELFParser<'mem>,
+	name: &[u8],
+) -> Option<&'mem [T]> {
+	let sym = parser.get_symbol_by_name(name)?;
+	let off = sym.st_value as usize;
+	let len = sym.st_size as usize / size_of::<T>();
+	let slice = unsafe {
+		let ptr = &*(&mem[off] as *const _ as *const T);
+		slice::from_raw_parts(ptr, len)
+	};
+	Some(slice)
+}
+
 // TODO keep offsets of name, version and dependencies instead of allocating
 /// A loaded kernel module.
 pub struct Module {
@@ -150,79 +251,13 @@ pub struct Module {
 }
 
 impl Module {
-	/// Returns the size required to load the module image.
-	fn get_load_size(parser: &ELFParser) -> usize {
-		parser
-			.iter_segments()
-			.map(|seg| seg.p_vaddr as usize + seg.p_memsz as usize)
-			.max()
-			.unwrap_or(0)
-	}
-
-	/// Resolves an external symbol from the kernel or another module.
-	///
-	/// `name` is the name of the symbol to look for.
-	///
-	/// If the symbol doesn't exist, the function returns `None`.
-	fn resolve_symbol(name: &[u8]) -> Option<&KernSym> {
-		// The symbol on the kernel side
-		let kernel_sym = elf::kernel::get_symbol_by_name(name)?;
-		// TODO check symbols from other loaded modules
-		Some(kernel_sym)
-	}
-
-	/// Returns the value of the given attribute of a module.
-	///
-	/// Arguments:
-	/// - `mem` is the segment of memory on which the module is loaded.
-	/// - `parser` is the module's parser.
-	/// - `name` is the attribute's name.
-	///
-	/// If the attribute doesn't exist, the function returns `None`.
-	fn get_attribute<'mem, T>(
-		mem: &'mem [u8],
-		parser: &ELFParser<'mem>,
-		name: &[u8],
-	) -> Option<&'mem T> {
-		let sym = parser.get_symbol_by_name(name)?;
-		let off = sym.st_value as usize;
-		if off + size_of::<T>() >= mem.len() {
-			return None;
-		}
-		let val = unsafe { &*(&mem[off] as *const _ as *const T) };
-		Some(val)
-	}
-
-	/// Returns the array value of the given attribute of a module.
-	///
-	/// Arguments:
-	/// - `mem` is the segment of memory on which the module is loaded.
-	/// - `parser` is the module's parser.
-	/// - `name` is the attribute's name.
-	///
-	/// If the attribute doesn't exist, the function returns `None`.
-	fn get_array_attribute<'mem, T>(
-		mem: &'mem [u8],
-		parser: &ELFParser<'mem>,
-		name: &[u8],
-	) -> Option<&'mem [T]> {
-		let sym = parser.get_symbol_by_name(name)?;
-		let off = sym.st_value as usize;
-		let len = sym.st_size as usize / size_of::<T>();
-		let slice = unsafe {
-			let ptr = &*(&mem[off] as *const _ as *const T);
-			slice::from_raw_parts(ptr, len)
-		};
-		Some(slice)
-	}
-
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> EResult<Self> {
 		let parser = ELFParser::new(image).inspect_err(|_| {
 			println!("Invalid ELF file as loaded module");
 		})?;
 		// Allocate memory for the module
-		let mem_size = Self::get_load_size(&parser);
+		let mem_size = get_load_size(&parser);
 		let mut mem = vec![0; mem_size]?;
 		// The base virtual address at which the module is loaded
 		let load_base = mem.as_mut_ptr();
@@ -239,35 +274,28 @@ impl Module {
 			});
 		// Closure returning a symbol
 		let get_sym = |sym_section: u32, sym: usize| {
-			let section = parser.get_section_by_index(sym_section as _)?;
-			let sym = parser.get_symbol_by_index(&section, sym as _)?;
-			if sym.is_defined() {
-				return Some(load_base as usize + sym.st_value as usize);
-			}
-			let strtab = parser.get_section_by_index(section.sh_link as _)?;
-			let name = parser.get_symbol_name(&strtab, &sym)?;
-			// Look inside the kernel image or other modules
-			let Some(other_sym) = Self::resolve_symbol(name) else {
-				println!(
-					"Symbol `{}` not found in kernel or other loaded modules",
-					DisplayableStr(name)
-				);
-				return None;
-			};
-			Some(other_sym.st_value as usize)
+			get_symbol_value(&parser, load_base, sym_section, sym).ok_or(RelocationError)
 		};
+		let mut relocation_failure = false;
 		for section in parser.iter_sections() {
 			for rel in parser.iter_rel::<Rel>(&section) {
-				unsafe { relocation::perform(&rel, load_base, &section, get_sym) }
-					.map_err(|_| errno!(EINVAL))?;
+				let res = unsafe { relocation::perform(&rel, load_base, &section, get_sym) };
+				if res.is_err() {
+					relocation_failure = true;
+				}
 			}
 			for rela in parser.iter_rel::<Rela>(&section) {
-				unsafe { relocation::perform(&rela, load_base, &section, get_sym) }
-					.map_err(|_| errno!(EINVAL))?;
+				let res = unsafe { relocation::perform(&rela, load_base, &section, get_sym) };
+				if res.is_err() {
+					relocation_failure = true;
+				}
 			}
 		}
+		if unlikely(relocation_failure) {
+			return Err(errno!(EINVAL));
+		}
 		// Check the magic number
-		let magic = Self::get_attribute::<u64>(&mem, &parser, b"MOD_MAGIC").ok_or_else(|| {
+		let magic = get_attribute::<u64>(&mem, &parser, b"MOD_MAGIC").ok_or_else(|| {
 			println!("Missing `MOD_MAGIC` symbol in module image");
 			errno!(EINVAL)
 		})?;
@@ -276,21 +304,20 @@ impl Module {
 			return Err(errno!(EINVAL));
 		}
 		// Get the module's name
-		let name =
-			Self::get_attribute::<&'static str>(&mem, &parser, b"MOD_NAME").ok_or_else(|| {
-				println!("Missing `MOD_NAME` symbol in module image");
-				errno!(EINVAL)
-			})?;
+		let name = get_attribute::<&'static str>(&mem, &parser, b"MOD_NAME").ok_or_else(|| {
+			println!("Missing `MOD_NAME` symbol in module image");
+			errno!(EINVAL)
+		})?;
 		let name = String::try_from(*name)?;
 		// Get the module's version
 		let version =
-			Self::get_attribute::<Version>(&mem, &parser, b"MOD_VERSION").ok_or_else(|| {
+			get_attribute::<Version>(&mem, &parser, b"MOD_VERSION").ok_or_else(|| {
 				println!("Missing `MOD_VERSION` symbol in module image");
 				errno!(EINVAL)
 			})?;
 		// Get the module's dependencies
-		let deps = Self::get_array_attribute::<Dependency>(&mem, &parser, b"MOD_DEPS")
-			.ok_or_else(|| {
+		let deps =
+			get_array_attribute::<Dependency>(&mem, &parser, b"MOD_DEPS").ok_or_else(|| {
 				println!("Missing `MOD_DEPS` symbol in module image");
 				errno!(EINVAL)
 			})?;

@@ -102,20 +102,17 @@ pub unsafe fn perform<R: Relocation, F>(
 	get_sym: F,
 ) -> Result<(), RelocationError>
 where
-	F: FnOnce(u32, usize) -> Option<usize>,
+	F: FnOnce(u32, usize) -> Result<usize, RelocationError>,
 {
 	// The value of the symbol
 	let get_sym = || get_sym(rel_section.sh_link, rel.get_sym());
 	#[cfg(target_pointer_width = "32")]
 	let value = match rel.get_type() {
-		R_386_32 => get_sym()
-			.ok_or(RelocationError)?
-			.wrapping_add_signed(rel.get_addend()),
-		R_386_PC32 => get_sym()
-			.ok_or(RelocationError)?
+		R_386_32 => get_sym()?.wrapping_add_signed(rel.get_addend()),
+		R_386_PC32 => get_sym()?
 			.wrapping_add_signed(rel.get_addend())
 			.wrapping_sub(rel.get_offset()),
-		R_386_GLOB_DAT | R_386_JMP_SLOT => get_sym().unwrap_or(0),
+		R_386_GLOB_DAT | R_386_JMP_SLOT => get_sym()?.unwrap_or(0),
 		R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(rel.get_addend()),
 		// Ignored
 		R_386_NONE | R_386_COPY | R_386_IRELATIVE => return Ok(()),
@@ -126,20 +123,14 @@ where
 	let size = 4;
 	#[cfg(target_pointer_width = "64")]
 	let (value, size) = match rel.get_type() {
-		R_X86_64_64 => (
-			get_sym()
-				.ok_or(RelocationError)?
-				.wrapping_add_signed(rel.get_addend()),
-			8,
-		),
+		R_X86_64_64 => (get_sym()?.wrapping_add_signed(rel.get_addend()), 8),
 		R_X86_64_PC32 => (
-			get_sym()
-				.ok_or(RelocationError)?
+			get_sym()?
 				.wrapping_add_signed(rel.get_addend())
 				.wrapping_sub(rel.get_offset()),
 			4,
 		),
-		R_X86_64_GLOB_DAT | R_X86_64_JUMP_SLOT => (get_sym().unwrap_or(0), 8),
+		R_X86_64_GLOB_DAT | R_X86_64_JUMP_SLOT => (get_sym()?, 8),
 		R_X86_64_RELATIVE => (
 			(base_addr as usize).wrapping_add_signed(rel.get_addend()),
 			8,
@@ -155,17 +146,10 @@ where
 		return Err(RelocationError);
 	}
 	// Write value
-	match rel.get_type() {
-		// R_X86_64_RELATIVE has the same value
-		R_386_RELATIVE => {
-			let addr = addr as *mut usize;
-			*addr = (*addr).wrapping_add(value);
-		}
-		_ => match size {
-			4 => *(addr as *mut u32) = value as _,
-			8 => *(addr as *mut u64) = value as _,
-			_ => unreachable!(),
-		},
+	match size {
+		4 => *(addr as *mut u32) = value as _,
+		8 => *(addr as *mut u64) = value as _,
+		_ => unreachable!(),
 	}
 	Ok(())
 }
