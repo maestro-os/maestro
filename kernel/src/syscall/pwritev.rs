@@ -28,8 +28,15 @@ use core::ffi::c_int;
 use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn pwritev(
-	Args((fd, iov, iovcnt, offset)): Args<(c_int, SyscallSlice<IOVec>, c_int, isize)>,
+	Args((fd, iov, iovcnt, offset_low, offset_high)): Args<(
+		c_int,
+		SyscallSlice<IOVec>,
+		c_int,
+		isize,
+		isize,
+	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	let offset = offset_low | (offset_high << 32);
 	super::writev::do_writev(fd, iov, iovcnt, Some(offset), None, fds)
 }
