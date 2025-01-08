@@ -687,30 +687,28 @@ impl<'data> ELFParser<'data> {
 	///
 	/// If the symbol does not exist, the function returns `None`.
 	pub fn get_symbol_by_name(&self, name: &[u8]) -> Option<Sym> {
-		if self.has_hash() {
-			// Fast path: get symbol from hash table
-			self.hash_find(name)
-		} else {
-			// Slow path: iterate
-			self.iter_sections()
-				.filter_map(|section| {
-					let strtab_section = self.get_section_by_index(section.sh_link as _)?;
-					Some((section, strtab_section))
-				})
-				.flat_map(|(section, strtab_section)| {
-					self.iter_symbols(&section).filter(move |sym| {
-						let sym_name_begin =
-							strtab_section.sh_offset as usize + sym.st_name as usize;
-						let sym_name_end = sym_name_begin + name.len();
-						let sym_name = self.0.get(sym_name_begin..sym_name_end);
-						match sym_name {
-							Some(sym_name) => sym_name == name,
-							None => false,
-						}
-					})
-				})
-				.next()
+		// Fast path: get symbol from hash table
+		if let Some(section) = self.get_hash_section() {
+			return self.hash_find(&section, name);
 		}
+		// Slow path: iterate
+		self.iter_sections()
+			.filter_map(|section| {
+				let strtab_section = self.get_section_by_index(section.sh_link as _)?;
+				Some((section, strtab_section))
+			})
+			.flat_map(|(section, strtab_section)| {
+				self.iter_symbols(&section).filter(move |sym| {
+					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
+					let sym_name_end = sym_name_begin + name.len();
+					let sym_name = self.0.get(sym_name_begin..sym_name_end);
+					match sym_name {
+						Some(sym_name) => sym_name == name,
+						None => false,
+					}
+				})
+			})
+			.next()
 	}
 
 	/// Returns the name of the symbol `sym` using the string table section `strtab`.
@@ -754,25 +752,19 @@ impl<'data> ELFParser<'data> {
 		self.iter_sections().find(|s| s.sh_type == SHT_HASH)
 	}
 
-	/// Tells whether the ELF has a hash table.
-	pub fn has_hash(&self) -> bool {
-		self.get_hash_section().is_some()
-	}
-
 	/// Finds a symbol with the given name in the hash table.
 	///
 	/// If the ELF does not have a hash table, if the table is invalid, or if the symbol could not
 	/// be found, the function returns `None`.
-	pub fn hash_find(&self, name: &[u8]) -> Option<Sym> {
+	pub fn hash_find(&self, hash_section: &SectionHeader, name: &[u8]) -> Option<Sym> {
 		// TODO implement SHT_GNU_HASH
 		// TODO if not present, fallback to this:
 		// Get required sections
-		let hashtab = self.get_hash_section()?;
-		let symtab = self.get_section_by_index(hashtab.sh_link as _)?;
+		let symtab = self.get_section_by_index(hash_section.sh_link as _)?;
 		let strtab = self.get_section_by_index(symtab.sh_link as _)?;
 		// Get slice over hash table
-		let begin = hashtab.sh_offset as usize;
-		let end = begin + hashtab.sh_size as usize;
+		let begin = hash_section.sh_offset as usize;
+		let end = begin + hash_section.sh_size as usize;
 		let slice = &self.0[begin..end];
 		// Closure to get a word from the slice
 		let get = |off: usize| {

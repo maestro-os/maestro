@@ -360,7 +360,7 @@ static MODULES: Mutex<HashSet<NameHash>> = Mutex::new(HashSet::new());
 pub fn add(module: Module) -> EResult<()> {
 	let module = NameHash(module);
 	let mut modules = MODULES.lock();
-	if modules.contains(&module) {
+	if !modules.contains(&module) {
 		modules.insert(module)?;
 		Ok(())
 	} else {
