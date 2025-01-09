@@ -37,6 +37,7 @@ pub fn preadv(
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	#[allow(arithmetic_overflow)]
 	let offset = offset_low | (offset_high << 32);
 	super::readv::do_readv(fd, iov, iovcnt, Some(offset), None, fds)
 }

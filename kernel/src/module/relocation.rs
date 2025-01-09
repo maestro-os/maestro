@@ -112,7 +112,7 @@ where
 		R_386_PC32 => get_sym()?
 			.wrapping_add_signed(rel.get_addend())
 			.wrapping_sub(rel.get_offset()),
-		R_386_GLOB_DAT | R_386_JMP_SLOT => get_sym()?.unwrap_or(0),
+		R_386_GLOB_DAT | R_386_JMP_SLOT => get_sym()?,
 		R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(rel.get_addend()),
 		// Ignored
 		R_386_NONE | R_386_COPY | R_386_IRELATIVE => return Ok(()),

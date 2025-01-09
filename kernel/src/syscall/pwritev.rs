@@ -37,6 +37,7 @@ pub fn pwritev(
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	#[allow(arithmetic_overflow)]
 	let offset = offset_low | (offset_high << 32);
 	super::writev::do_writev(fd, iov, iovcnt, Some(offset), None, fds)
 }
