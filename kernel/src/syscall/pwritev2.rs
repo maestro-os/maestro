@@ -20,7 +20,10 @@
 
 use crate::{
 	file::fd::FileDescriptorTable,
-	process::{iovec::IOVec, mem_space::copy::SyscallSlice, Process},
+	process::{
+		mem_space::copy::{SyscallIOVec, SyscallSlice},
+		Process,
+	},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -28,13 +31,7 @@ use core::ffi::c_int;
 use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn pwritev2(
-	Args((fd, iov, iovcnt, offset, flags)): Args<(
-		c_int,
-		SyscallSlice<IOVec>,
-		c_int,
-		isize,
-		c_int,
-	)>,
+	Args((fd, iov, iovcnt, offset, flags)): Args<(c_int, SyscallIOVec, c_int, isize, c_int)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	super::writev::do_writev(fd, iov, iovcnt, Some(offset), Some(flags), fds)

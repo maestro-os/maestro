@@ -21,6 +21,7 @@
 use crate::{memory::vmem, process::mem_space::bound_check, syscall::FromSyscallArg};
 use core::{
 	cmp::min,
+	ffi::c_void,
 	fmt,
 	intrinsics::{likely, unlikely},
 	mem::{size_of, size_of_val, MaybeUninit},
@@ -376,5 +377,114 @@ impl Iterator for SyscallArrayIterator<'_> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.next_impl().transpose()
+	}
+}
+
+/// An entry of an IO vector used for scatter/gather IO.
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct IOVec {
+	/// Starting address.
+	pub iov_base: *mut c_void,
+	/// Number of bytes to transfer.
+	pub iov_len: usize,
+}
+
+/// An [`IOVec`] for compatibility mode.
+#[repr(C)]
+#[derive(Clone, Debug)]
+struct IOVecCompat {
+	/// Starting address.
+	pub iov_base: u32,
+	/// Number of bytes to transfer.
+	pub iov_len: u32,
+}
+
+/// An [`IOVec`] as a system call argument.
+pub struct SyscallIOVec {
+	/// The pointer to the iovec.
+	ptr: Option<NonNull<u8>>,
+	/// Tells whether the userspace is in compatibility mode.
+	compat: bool,
+}
+
+impl FromSyscallArg for SyscallIOVec {
+	fn from_syscall_arg(ptr: usize, compat: bool) -> Self {
+		Self {
+			ptr: NonNull::new(ptr::with_exposed_provenance_mut(ptr)),
+			compat,
+		}
+	}
+}
+
+impl fmt::Debug for SyscallIOVec {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self.ptr {
+			Some(ptr) => write!(fmt, "{ptr:p}"),
+			None => write!(fmt, "NULL"),
+		}
+	}
+}
+
+impl SyscallIOVec {
+	/// Returns an iterator over the iovec.
+	///
+	/// `count` is the number of elements in the vector.
+	pub fn iter(&self, count: usize) -> IOVecIter {
+		IOVecIter {
+			vec: self,
+			cursor: 0,
+			count,
+		}
+	}
+}
+
+/// Iterator over [`IOVec`]s.
+pub struct IOVecIter<'a> {
+	/// The iovec pointer.
+	vec: &'a SyscallIOVec,
+	/// Cursor
+	cursor: usize,
+	/// The number of elements.
+	count: usize,
+}
+
+impl Iterator for IOVecIter<'_> {
+	type Item = EResult<IOVec>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let stride = if self.vec.compat {
+			size_of::<IOVecCompat>()
+		} else {
+			size_of::<IOVec>()
+		};
+		// Bound check
+		if unlikely(self.cursor >= self.count * stride) {
+			return None;
+		}
+		let iov = unsafe {
+			let ptr = self.vec.ptr?.byte_add(self.cursor);
+			if self.vec.compat {
+				let mut iov = MaybeUninit::<IOVecCompat>::uninit();
+				copy_from_user_raw(
+					ptr.as_ptr(),
+					iov.as_mut_ptr() as *mut _,
+					size_of::<IOVecCompat>(),
+				)
+				.map(|_| {
+					let iovec = iov.assume_init();
+					IOVec {
+						iov_base: ptr::with_exposed_provenance_mut(iovec.iov_base as _),
+						iov_len: iovec.iov_len as _,
+					}
+				})
+			} else {
+				let mut iov = MaybeUninit::<IOVec>::uninit();
+				copy_from_user_raw(ptr.as_ptr(), iov.as_mut_ptr() as *mut _, size_of::<IOVec>())
+					.map(|_| iov.assume_init())
+			}
+		};
+		self.cursor += stride;
+		Some(iov)
 	}
 }

@@ -20,7 +20,10 @@
 
 use crate::{
 	file::fd::FileDescriptorTable,
-	process::{iovec::IOVec, mem_space::copy::SyscallSlice, Process},
+	process::{
+		mem_space::copy::{SyscallIOVec, SyscallSlice},
+		Process,
+	},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -30,7 +33,7 @@ use utils::{errno::EResult, ptr::arc::Arc};
 pub fn pwritev(
 	Args((fd, iov, iovcnt, offset_low, offset_high)): Args<(
 		c_int,
-		SyscallSlice<IOVec>,
+		SyscallIOVec,
 		c_int,
 		isize,
 		isize,
