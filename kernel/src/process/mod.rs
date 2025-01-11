@@ -651,9 +651,20 @@ impl Process {
 	/// Wakes up the process if in [`State::Sleeping`] state.
 	pub fn wake(&self) {
 		// TODO make sure the ordering is right
-		let _ = self.state.fetch_update(SeqCst, SeqCst, |old_state| {
+		let res = self.state.fetch_update(SeqCst, SeqCst, |old_state| {
 			(old_state == State::Sleeping as _).then_some(State::Running as _)
 		});
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
+			old_state = State::Sleeping,
+			new_state = State::Running,
+			pid = self.get_pid()
+		);
+		// Update the number of running processes
+		if res.is_ok() {
+			SCHEDULER.get().lock().increment_running();
+		}
 	}
 
 	/// Signals the parent that the `vfork` operation has completed.

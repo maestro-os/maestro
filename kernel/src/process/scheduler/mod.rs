@@ -220,7 +220,7 @@ impl Scheduler {
 		self.running_procs += 1;
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		if self.running_procs > 1 {
+		if self.running_procs >= 1 {
 			pit.set_frequency(self.get_ticking_frequency());
 			pit.set_enabled(true);
 		}
@@ -231,7 +231,7 @@ impl Scheduler {
 		self.running_procs -= 1;
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		if self.running_procs <= 1 {
+		if self.running_procs == 0 {
 			pit.set_enabled(false);
 		} else {
 			pit.set_frequency(self.get_ticking_frequency());
