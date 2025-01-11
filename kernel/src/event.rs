@@ -162,7 +162,11 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	// Call corresponding callbacks
 	let callbacks = &CALLBACKS[id as usize];
 	let mut i = 0;
-	while let Some(callback) = callbacks.lock().get(i).cloned() {
+	loop {
+		// Not putting this in a loop's condition to ensure it is dropped at each turn
+		let Some(callback) = callbacks.lock().get(i).cloned() else {
+			break;
+		};
 		i += 1;
 		let res = callback(id, code, frame, ring);
 		match res {
