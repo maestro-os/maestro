@@ -118,17 +118,27 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	*proc.tls.lock() = Default::default();
 	// Set TSS here for the first process to be executed
 	unsafe {
-		tss::set_kernel_stack(proc.kernel_stack_top());
+		tss::set_kernel_stack(proc.kernel_stack.top().as_ptr());
 	}
 	// Set the process's registers
 	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.compat);
-	// Reset fs and gs and update user stack
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::{arch::x86, process::scheduler::SCHEDULER};
-		use core::sync::atomic::Ordering::Relaxed;
+		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
+		// Reset segment selector
+		unsafe {
+			asm!(
+				"xor {tmp}, {tmp}",
+				"mov fs, {tmp}",
+				"mov gs, {tmp}",
+				tmp = out(reg) _
+			);
+		}
+		// Reset MSR
 		x86::wrmsr(x86::IA32_FS_BASE, 0);
 		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
+		// Update user stack
 		SCHEDULER
 			.get()
 			.lock()

@@ -20,23 +20,48 @@
 
 use crate::{
 	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, tss},
+	memory::vmem,
 	process::Process,
 };
-use core::{arch::global_asm, mem::offset_of};
+use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
 
 /// Stashes current segment values during execution of `f`, restoring them after.
 pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
 	#[cfg(not(target_arch = "x86_64"))]
 	{
+		// No need to save segments, this is done when switching to kernelspace
 		f()
 	}
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::arch::x86;
+		use core::arch::asm;
+		// Save MSR
 		let fs_base = x86::rdmsr(x86::IA32_FS_BASE);
 		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
 		let kernel_gs_base = x86::rdmsr(x86::IA32_KERNEL_GS_BASE);
+		// Save segment selectors
+		let mut fs: u16;
+		let mut gs: u16;
+		unsafe {
+			asm!(
+				"mov {fs:x}, fs",
+				"mov {gs:x}, gs",
+				fs = out(reg) fs,
+				gs = out(reg) gs
+			);
+		}
 		let res = f();
+		// Restore segment selectors
+		unsafe {
+			asm!(
+				"mov fs, {fs:x}",
+				"mov gs, {gs:x}",
+				fs = in(reg) fs,
+				gs = in(reg) gs
+			);
+		}
+		// Restore MSR
 		x86::wrmsr(x86::IA32_FS_BASE, fs_base);
 		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
 		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, kernel_gs_base);
@@ -76,6 +101,9 @@ extern "C" {
 
 	#[allow(improper_ctypes)]
 	fn switch_asm(prev: *const Process, next: *const Process);
+
+	/// The idle task code.
+	pub fn idle_task() -> !;
 }
 
 #[cfg(target_arch = "x86")]
@@ -143,8 +171,6 @@ fork_asm:
 	push r13
 	push r14
 	push r15
-	push fs
-	push gs
     mov [rdi + {off}], rsp
 
 	mov rdi, rdx
@@ -157,15 +183,11 @@ switch_asm:
 	push r13
 	push r14
 	push r15
-	push fs
-	push gs
 
     # Swap contexts
     mov [rdi + {off}], rsp
     mov rsp, [rsi + {off}]
 
-	pop gs
-	pop fs
 	pop r15
 	pop r14
 	pop r13
@@ -183,10 +205,14 @@ switch_asm:
 #[export_name = "switch_finish"]
 pub extern "C" fn finish(prev: &Process, next: &Process) {
 	// Bind the memory space
-	next.mem_space.as_ref().unwrap().lock().bind();
+	match next.mem_space.as_ref() {
+		Some(mem_space) => mem_space.lock().bind(),
+		// No associated memory context: bind the kernel's
+		None => vmem::kernel().lock().bind(),
+	}
 	// Update the TSS for the process
 	unsafe {
-		tss::set_kernel_stack(next.kernel_stack_top());
+		tss::set_kernel_stack(next.kernel_stack.top().as_ptr());
 	}
 	// Update TLS entries in the GDT
 	{
@@ -201,4 +227,50 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	// Save and restore FPU state
 	fxsave(&mut prev.fpu.lock());
 	fxrstor(&next.fpu.lock());
+}
+
+/// Initialization frame for the idle task.
+#[cfg(target_arch = "x86")]
+#[repr(C, packed)]
+struct IdleInit {
+	/// Padding for unused registers pop.
+	pad: [u8; 16],
+	/// Program counter.
+	rip: u32,
+	/// Space for the arguments to [`switch`].
+	args: [u32; 2],
+}
+
+#[cfg(target_arch = "x86_64")]
+#[repr(C, packed)]
+struct IdleInit {
+	/// Padding for unused registers pop.
+	pad: [u8; 48],
+	/// Program counter.
+	rip: u64,
+}
+
+/// Writes an initialization frame for the idle task on `stack`.
+///
+/// The function returns the new stack pointer with the frame on top.
+///
+/// # Safety
+///
+/// `stack` must be the top of a valid stack.
+pub unsafe fn init_idle(stack: NonNull<u8>) -> *mut u8 {
+	#[cfg(target_arch = "x86")]
+	let frame = IdleInit {
+		pad: [0; 16],
+		rip: idle_task as _,
+		// this will get written on by the function `stack`
+		args: [0; 2],
+	};
+	#[cfg(target_arch = "x86_64")]
+	let frame = IdleInit {
+		pad: [0; 48],
+		rip: idle_task as *const u8 as _,
+	};
+	let stack = stack.cast().sub(1);
+	stack.write(frame);
+	stack.cast().as_ptr()
 }

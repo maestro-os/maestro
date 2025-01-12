@@ -40,7 +40,6 @@ pub mod buddy;
 pub mod malloc;
 pub mod memmap;
 pub mod mmio;
-pub mod stack;
 pub mod stats;
 #[cfg(feature = "memtrace")]
 mod trace;

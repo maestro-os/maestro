@@ -21,6 +21,7 @@
 use core::{cell::UnsafeCell, ops::Deref};
 
 /// Wrapper allowing safe immutable accesses, or unsafe mutable accesses at the same time.
+#[derive(Default)]
 pub struct UnsafeMut<T>(UnsafeCell<T>);
 
 impl<T> UnsafeMut<T> {

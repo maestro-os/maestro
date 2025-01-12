@@ -86,13 +86,13 @@ use crate::{
 	process::{
 		exec,
 		exec::{exec, ExecInfo},
-		scheduler::{switch, SCHEDULER},
+		scheduler::{switch, switch::idle_task, SCHEDULER},
 		Process,
 	},
 	sync::mutex::Mutex,
 	tty::TTY,
 };
-use core::{arch::asm, ffi::c_void, intrinsics::unlikely};
+use core::{ffi::c_void, intrinsics::unlikely};
 pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
@@ -113,23 +113,6 @@ const INIT_PATH: &[u8] = b"/sbin/init";
 
 /// The current hostname of the system.
 pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
-
-/// Makes the kernel wait for an interrupt, then returns.
-/// This function enables interruptions.
-#[inline(always)]
-pub fn wait() {
-	unsafe {
-		asm!("sti", "hlt");
-	}
-}
-
-/// Enters the kernel loop and processes every interrupt indefinitely.
-#[inline]
-pub fn enter_loop() -> ! {
-	loop {
-		wait();
-	}
-}
 
 /// Launches the init process.
 ///
@@ -156,15 +139,14 @@ fn init(init_path: String) -> EResult<()> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
-		SCHEDULER.get().lock().swap_current_process(Some(proc));
+		SCHEDULER.get().lock().swap_current_process(proc);
 	}
 	unsafe {
 		switch::init_ctx(&frame);
 	}
 }
 
-/// An inner function is required to ensure everything in scope is dropped before calling
-/// [`enter_loop`].
+/// An inner function is required to ensure everything in scope is dropped before idle.
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
 	TTY.display.lock().show();
@@ -265,5 +247,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_main_inner(magic, multiboot_ptr);
-	enter_loop();
+	unsafe {
+		idle_task();
+	}
 }

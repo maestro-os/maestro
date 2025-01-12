@@ -27,7 +27,6 @@ use crate::{
 	arch::x86::{cli, idt::IntFrame, pic},
 	event,
 	event::{CallbackHook, CallbackResult},
-	memory::stack,
 	process::{pid::Pid, scheduler::switch::switch, Process, State},
 	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 	time,
@@ -40,19 +39,11 @@ use core::{
 	},
 };
 use utils::{
-	collections::{
-		btreemap::{BTreeMap, MapIterator},
-		vec::Vec,
-	},
+	collections::btreemap::{BTreeMap, MapIterator},
 	errno::AllocResult,
-	limits::PAGE_SIZE,
 	math::rational::Rational,
 	ptr::arc::Arc,
-	vec,
 };
-
-/// The size of the temporary stack for context switching.
-const TMP_STACK_SIZE: usize = 16 * PAGE_SIZE;
 
 /// The process scheduler.
 pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
@@ -85,16 +76,17 @@ pub struct Scheduler {
 	tick_callback_hook: CallbackHook,
 	/// The total number of ticks since the instantiation of the scheduler.
 	total_ticks: AtomicU64,
-	/// The scheduler's temporary stacks.
-	tmp_stack: Vec<u8>,
 
 	/// A binary tree containing all processes registered to the current
 	/// scheduler.
 	processes: BTreeMap<Pid, Arc<Process>>,
 	/// The process currently being executed by the scheduler's core.
-	curr_proc: Option<Arc<Process>>,
+	curr_proc: Arc<Process>,
 	/// The current number of processes in running state.
 	running_procs: usize,
+
+	/// The task used to idle.
+	idle_task: Arc<Process>,
 
 	/// CPU local storage.
 	pub gs: KernelGs,
@@ -103,8 +95,6 @@ pub struct Scheduler {
 impl Scheduler {
 	/// Creates a new instance of scheduler.
 	pub(super) fn new() -> AllocResult<Self> {
-		// Allocate context switching stacks
-		let tmp_stack = vec![0; TMP_STACK_SIZE]?;
 		// Register tick callback
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
@@ -116,14 +106,16 @@ impl Scheduler {
 			},
 		)?
 		.unwrap();
+		let idle_task = Process::idle_task()?;
 		Ok(Self {
 			tick_callback_hook,
 			total_ticks: AtomicU64::new(0),
-			tmp_stack,
 
 			processes: BTreeMap::new(),
-			curr_proc: None,
+			curr_proc: idle_task.clone(),
 			running_procs: 0,
+
+			idle_task,
 
 			gs: KernelGs::default(),
 		})
@@ -139,11 +131,6 @@ impl Scheduler {
 			// when switching to userspace
 			x86::wrmsr(x86::IA32_GS_BASE, &self.gs as *const _ as u64);
 		}
-	}
-
-	/// Returns a pointer to the top of the tmp stack for the given kernel `kernel`.
-	pub fn get_tmp_stack(&mut self) -> *mut u8 {
-		unsafe { self.tmp_stack.as_mut_ptr().add(self.tmp_stack.len()) }
 	}
 
 	/// Returns the total number of ticks since the instantiation of the
@@ -172,19 +159,15 @@ impl Scheduler {
 	}
 
 	/// Returns the current running process.
-	///
-	/// If no process is running, the function returns `None`.
-	pub fn get_current_process(&self) -> Option<Arc<Process>> {
+	pub fn get_current_process(&self) -> Arc<Process> {
 		self.curr_proc.clone()
 	}
 
 	/// Swaps the current running process for `new`, returning the previous.
-	pub fn swap_current_process(&mut self, new: Option<Arc<Process>>) -> Option<Arc<Process>> {
-		if let Some(proc) = &new {
-			self.gs
-				.kernel_stack
-				.store(proc.kernel_stack_top() as _, Release);
-		}
+	pub fn swap_current_process(&mut self, new: Arc<Process>) -> Arc<Process> {
+		self.gs
+			.kernel_stack
+			.store(new.kernel_stack.top().as_ptr() as _, Release);
 		mem::replace(&mut self.curr_proc, new)
 	}
 
@@ -242,11 +225,7 @@ impl Scheduler {
 	fn get_next_process(&self) -> Option<Arc<Process>> {
 		// Get the current process, or take the first process in the list if no
 		// process is running
-		let curr_pid = self
-			.curr_proc
-			.as_ref()
-			.map(|proc| proc.get_pid())
-			.or_else(|| self.processes.first_key_value().map(|(pid, _)| *pid))?;
+		let curr_pid = self.curr_proc.get_pid();
 		let process_filter =
 			|(_, proc): &(&Pid, &Arc<Process>)| matches!(proc.get_state(), State::Running);
 		self.processes
@@ -269,35 +248,24 @@ impl Scheduler {
 	pub fn tick() {
 		// Disable interrupts so that no interrupt can occur before switching to the next process
 		cli();
-		let sched_mutex = SCHEDULER.get();
-		let (prev, next, tmp_stack) = {
-			let mut sched = sched_mutex.lock();
+		let (prev, next) = {
+			let mut sched = SCHEDULER.get().lock();
 			sched.total_ticks.fetch_add(1, atomic::Ordering::Relaxed);
 			// Find the next process to run
-			let next = sched.get_next_process();
+			let next = sched.get_next_process().unwrap_or(sched.idle_task.clone());
 			// If the process to run is the current, do nothing
-			let cur_pid = sched.curr_proc.as_ref().map(|proc| proc.get_pid());
-			let next_pid = next.as_ref().map(|proc| proc.get_pid());
-			if cur_pid == next_pid {
+			if next.get_pid() == sched.curr_proc.get_pid() {
 				return;
 			}
 			// Swap current running process. We use pointers to avoid cloning the Arc
-			let next_ptr = next.as_ref().map(Arc::as_ptr);
+			let next_ptr = Arc::as_ptr(&next);
 			let prev = sched.swap_current_process(next);
-			let prev_ptr = prev.as_ref().map(Arc::as_ptr);
-			(prev_ptr, next_ptr, sched.get_tmp_stack())
+			(Arc::as_ptr(&prev), next_ptr)
 		};
 		// Send end of interrupt, so that the next tick can be received
 		pic::end_of_interrupt(0);
 		unsafe {
-			match (prev, next) {
-				// Runnable process found: resume execution
-				(Some(prev), Some(next)) => switch(prev, next),
-				// No runnable process found: idle
-				(_, None) => stack::switch(tmp_stack as _, crate::enter_loop),
-				// Scheduler running with no task on it?
-				(None, _) => unreachable!(),
-			}
+			switch(prev, next);
 		}
 	}
 }

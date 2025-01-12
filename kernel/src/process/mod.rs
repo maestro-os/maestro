@@ -45,10 +45,10 @@ use crate::{
 	},
 	memory::{buddy, buddy::FrameOrder, VirtAddr},
 	process::{
-		mem_space::{copy, copy::SyscallPtr},
-		pid::PidHandle,
+		mem_space::{copy, copy::SyscallPtr, MAPPING_FLAG_USER, MAPPING_FLAG_WRITE},
+		pid::{PidHandle, IDLE_PID, INIT_PID},
 		rusage::Rusage,
-		scheduler::{Scheduler, SCHEDULER},
+		scheduler::{switch, Scheduler, SCHEDULER},
 		signal::SigSet,
 	},
 	register_get,
@@ -60,8 +60,9 @@ use core::{
 	ffi::c_int,
 	fmt,
 	fmt::Formatter,
+	intrinsics::unlikely,
 	mem,
-	mem::{size_of, ManuallyDrop},
+	mem::ManuallyDrop,
 	ptr::NonNull,
 	sync::atomic::{
 		AtomicBool, AtomicPtr, AtomicU32, AtomicU8,
@@ -94,7 +95,7 @@ const DEFAULT_UMASK: file::Mode = 0o022;
 /// The size of the userspace stack of a process in number of pages.
 const USER_STACK_SIZE: usize = 2048;
 /// The flags for the userspace stack mapping.
-const USER_STACK_FLAGS: u8 = mem_space::MAPPING_FLAG_WRITE | mem_space::MAPPING_FLAG_USER;
+const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 /// The size of the kernelspace stack of a process in number of pages.
 const KERNEL_STACK_ORDER: FrameOrder = 4;
 
@@ -181,6 +182,30 @@ pub struct ForkOptions {
 	pub share_sighand: bool,
 }
 
+/// Wrapper for the kernel stack, allowing to free it on drop.
+struct KernelStack(NonNull<u8>);
+
+impl KernelStack {
+	/// Allocates a new stack.
+	pub fn new() -> AllocResult<Self> {
+		buddy::alloc_kernel(KERNEL_STACK_ORDER).map(Self)
+	}
+
+	/// Returns a pointer to the top of the stack.
+	#[inline]
+	pub fn top(&self) -> NonNull<u8> {
+		unsafe { self.0.add(buddy::get_frame_size(KERNEL_STACK_ORDER)) }
+	}
+}
+
+impl Drop for KernelStack {
+	fn drop(&mut self) {
+		unsafe {
+			buddy::free_kernel(self.0.as_ptr(), KERNEL_STACK_ORDER);
+		}
+	}
+}
+
 /// A process's links to other processes.
 #[derive(Default)]
 pub struct ProcessLinks {
@@ -244,6 +269,18 @@ pub struct ProcessSignal {
 }
 
 impl ProcessSignal {
+	/// Creates a new instance.
+	pub fn new() -> AllocResult<Self> {
+		Ok(ProcessSignal {
+			handlers: Arc::new(Default::default())?,
+			sigmask: Default::default(),
+			sigpending: Default::default(),
+
+			exit_status: 0,
+			termsig: 0,
+		})
+	}
+
 	/// Tells whether the given signal is blocked by the process.
 	pub fn is_signal_blocked(&self, sig: Signal) -> bool {
 		self.sigmask.is_set(sig as _)
@@ -286,32 +323,28 @@ pub struct Process {
 	state: AtomicU8,
 	/// If `true`, the parent can resume after a `vfork`.
 	pub vfork_done: AtomicBool,
-
 	/// The links to other processes.
 	pub links: Mutex<ProcessLinks>,
 
-	/// The virtual memory of the process.
-	pub mem_space: UnsafeMut<Option<Arc<IntMutex<MemSpace>>>>,
 	/// A pointer to the kernelspace stack.
-	kernel_stack: NonNull<u8>,
+	kernel_stack: KernelStack,
 	/// Kernel stack pointer of saved context.
 	kernel_sp: AtomicPtr<u8>,
 	/// The process's FPU state.
 	fpu: Mutex<FxState>,
+	/// TLS entries.
+	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
-	/// Process's timers, shared between all threads of the same process.
-	pub timer_manager: Arc<Mutex<TimerManager>>,
-
+	/// The virtual memory of the process.
+	pub mem_space: UnsafeMut<Option<Arc<IntMutex<MemSpace>>>>,
 	/// Filesystem access information.
 	pub fs: Mutex<ProcessFs>, // TODO rwlock
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
-
+	/// Process's timers, shared between all threads of the same process.
+	pub timer_manager: Arc<Mutex<TimerManager>>,
 	/// The process's signal management structure.
 	pub signal: Mutex<ProcessSignal>, // TODO rwlock
-
-	/// TLS entries.
-	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The process's resources usage.
 	pub rusage: Mutex<Rusage>,
@@ -329,6 +362,9 @@ pub(crate) fn init() -> EResult<()> {
 		}
 		// Get process
 		let proc = Process::current();
+		if unlikely(proc.is_idle_task()) {
+			return CallbackResult::Panic;
+		}
 		match id {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
@@ -360,12 +396,13 @@ pub(crate) fn init() -> EResult<()> {
 		let accessed_addr = VirtAddr(register_get!("cr2"));
 		let pc = frame.get_program_counter();
 		// Get current process
-		let Some(curr_proc) = Process::current_opt() else {
+		let proc = Process::current();
+		if unlikely(proc.is_idle_task()) {
 			return CallbackResult::Panic;
-		};
+		}
 		// Check access
 		let success = {
-			let Some(mem_space_mutex) = curr_proc.mem_space.as_ref() else {
+			let Some(mem_space_mutex) = proc.mem_space.as_ref() else {
 				return CallbackResult::Panic;
 			};
 			let mut mem_space = mem_space_mutex.lock();
@@ -381,7 +418,7 @@ pub(crate) fn init() -> EResult<()> {
 					return CallbackResult::Panic;
 				}
 			} else {
-				curr_proc.kill(Signal::SIGSEGV);
+				proc.kill(Signal::SIGSEGV);
 			}
 		}
 		CallbackResult::Continue
@@ -413,17 +450,44 @@ impl Process {
 	}
 
 	/// Returns the current running process.
-	///
-	/// If no process is running, the function returns `None`.
-	pub fn current_opt() -> Option<Arc<Self>> {
+	pub fn current() -> Arc<Self> {
 		SCHEDULER.get().lock().get_current_process()
 	}
 
-	/// Returns the current running process.
+	/// Creates an idle task.
 	///
-	/// If no process is running, the function makes the kernel panic.
-	pub fn current() -> Arc<Self> {
-		Self::current_opt().expect("no running process")
+	/// The idle task is a special process, running in kernelspace, used by the scheduler when no
+	/// task is ready to run.
+	pub fn idle_task() -> AllocResult<Arc<Self>> {
+		let kernel_stack = KernelStack::new()?;
+		let kernel_sp = unsafe { switch::init_idle(kernel_stack.top()) };
+		Arc::new(Self {
+			pid: PidHandle::default(),
+			tid: 0,
+
+			state: AtomicU8::new(State::Running as _),
+			vfork_done: AtomicBool::new(false),
+			links: Default::default(),
+
+			kernel_stack,
+			kernel_sp: AtomicPtr::new(kernel_sp),
+			fpu: Mutex::new(FxState([0; 512])),
+			tls: Default::default(),
+
+			// TODO this is not needed. find a way to avoid init
+			mem_space: Default::default(),
+			fs: Mutex::new(ProcessFs {
+				access_profile: AccessProfile::KERNEL,
+				umask: Default::default(),
+				cwd: vfs::root(),
+				chroot: vfs::root(),
+			}),
+			file_descriptors: Default::default(),
+			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
+			signal: Mutex::new(ProcessSignal::new()?),
+
+			rusage: Default::default(),
+		})
 	}
 
 	/// Creates the init process and places it into the scheduler's queue.
@@ -455,20 +519,18 @@ impl Process {
 		let pid = PidHandle::init()?;
 		let process = Self {
 			pid,
-			tid: pid::INIT_PID,
+			tid: INIT_PID,
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
-
 			links: Mutex::new(ProcessLinks::default()),
 
-			mem_space: UnsafeMut::new(None),
-			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
+			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
 			fpu: Mutex::new(FxState([0; 512])),
+			tls: Default::default(),
 
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid::INIT_PID)?))?,
-
+			mem_space: UnsafeMut::new(None),
 			fs: Mutex::new(ProcessFs {
 				access_profile: rs.access_profile,
 				umask: AtomicU32::new(DEFAULT_UMASK),
@@ -476,7 +538,7 @@ impl Process {
 				chroot: root_dir,
 			}),
 			file_descriptors: UnsafeMut::new(Some(Arc::new(Mutex::new(file_descriptors))?)),
-
+			timer_manager: Arc::new(Mutex::new(TimerManager::new(INIT_PID)?))?,
 			signal: Mutex::new(ProcessSignal {
 				handlers: Arc::new(Default::default())?,
 				sigmask: Default::default(),
@@ -485,8 +547,6 @@ impl Process {
 				exit_status: 0,
 				termsig: 0,
 			}),
-
-			tls: Default::default(),
 
 			rusage: Default::default(),
 		};
@@ -499,10 +559,15 @@ impl Process {
 		self.pid.get()
 	}
 
+	/// Tells whether the process is an idle task.
+	pub fn is_idle_task(&self) -> bool {
+		self.pid.get() == IDLE_PID
+	}
+
 	/// Tells whether the process is the init process.
 	#[inline(always)]
 	pub fn is_init(&self) -> bool {
-		self.pid.get() == pid::INIT_PID
+		self.pid.get() == INIT_PID
 	}
 
 	/// Returns the process group ID.
@@ -626,7 +691,7 @@ impl Process {
 				*self.file_descriptors.get_mut() = None;
 			}
 			// Attach every child to the init process
-			let init_proc = Process::get_by_pid(pid::INIT_PID).unwrap();
+			let init_proc = Process::get_by_pid(INIT_PID).unwrap();
 			let children = mem::take(&mut self.links.lock().children);
 			for child_pid in children {
 				// Check just in case
@@ -682,16 +747,6 @@ impl Process {
 		self.vfork_done.load(Relaxed)
 	}
 
-	/// Returns a pointer to the top of the process's kernel stack.
-	#[inline]
-	pub fn kernel_stack_top(&self) -> *mut u8 {
-		unsafe {
-			self.kernel_stack
-				.add(buddy::get_frame_size(KERNEL_STACK_ORDER))
-				.as_ptr()
-		}
-	}
-
 	/// Reads the last known userspace registers state.
 	///
 	/// This information is stored at the beginning of the process's interrupt stack.
@@ -700,9 +755,10 @@ impl Process {
 		// (x86) The frame will always be complete since entering the stack from the beginning can
 		// only be done from userspace, thus the stack pointer and segment are present for `iret`
 		unsafe {
-			self.kernel_stack_top()
-				.sub(size_of::<IntFrame>())
+			self.kernel_stack
+				.top()
 				.cast::<IntFrame>()
+				.sub(1)
 				.read_volatile()
 		}
 	}
@@ -758,24 +814,22 @@ impl Process {
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
-
 			links: Mutex::new(ProcessLinks {
 				parent: Some(this.clone()),
 				group_leader: this.links.lock().group_leader.clone(),
 				..Default::default()
 			}),
 
-			mem_space: UnsafeMut::new(Some(mem_space)),
-			kernel_stack: buddy::alloc_kernel(KERNEL_STACK_ORDER)?,
+			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
 			fpu: Mutex::new(this.fpu.lock().clone()),
+			tls: Mutex::new(*this.tls.lock()),
 
-			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
-
+			mem_space: UnsafeMut::new(Some(mem_space)),
 			fs: Mutex::new(this.fs.lock().clone()),
 			file_descriptors: UnsafeMut::new(file_descriptors),
-
+			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
+			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 			signal: Mutex::new(ProcessSignal {
 				handlers: signal_handlers,
 				sigmask: this.signal.lock().sigmask,
@@ -784,8 +838,6 @@ impl Process {
 				exit_status: 0,
 				termsig: 0,
 			}),
-
-			tls: Mutex::new(*this.tls.lock()),
 
 			rusage: Mutex::new(Rusage::default()),
 		};
@@ -869,10 +921,6 @@ impl Drop for Process {
 	fn drop(&mut self) {
 		if self.is_init() {
 			panic!("Terminated init process!");
-		}
-		// Free kernel stack
-		unsafe {
-			buddy::free_kernel(self.kernel_stack.as_ptr(), KERNEL_STACK_ORDER);
 		}
 	}
 }

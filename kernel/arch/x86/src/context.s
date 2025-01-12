@@ -124,8 +124,10 @@ IRQ 15
 
 .global init_ctx
 .global syscall_int
+.global idle_task
 .type init_ctx, @function
 .type syscall_int, @function
+.type idle_task, @function
 
 int_common:
 STORE_REGS
@@ -160,3 +162,13 @@ STORE_REGS
 LOAD_REGS
 	add esp, 8
 	iretd
+
+idle_task:
+    # Lazy cleanup
+    xor ax, ax
+    mov fs, ax
+    mov gs, ax
+0:
+    sti
+    hlt
+    jmp 0b

@@ -22,7 +22,6 @@ use super::Args;
 use crate::{
 	arch::x86::idt::IntFrame,
 	file::{vfs, vfs::ResolutionSettings, File},
-	memory::stack,
 	process::{
 		exec,
 		exec::{exec, ExecInfo, ProgramImage},
