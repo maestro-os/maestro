@@ -19,7 +19,7 @@
 //! ELF kernel modules relocations implementation.
 
 use crate::{elf::parser::SectionHeader, process::mem_space::bound_check};
-use core::intrinsics::unlikely;
+use core::{intrinsics::unlikely, ptr};
 
 const R_386_NONE: u8 = 0;
 const R_386_32: u8 = 1;
@@ -147,8 +147,8 @@ where
 	}
 	// Write value
 	match size {
-		4 => *(addr as *mut u32) = value as _,
-		8 => *(addr as *mut u64) = value as _,
+		4 => ptr::write_unaligned::<u32>(addr as _, value as _),
+		8 => ptr::write_unaligned::<u64>(addr as _, value as _),
 		_ => unreachable!(),
 	}
 	Ok(())

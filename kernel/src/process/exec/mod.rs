@@ -126,6 +126,8 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	{
 		use crate::{arch::x86, process::scheduler::SCHEDULER};
 		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
+		// Preserve GS base
+		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
 		// Reset segment selector
 		unsafe {
 			asm!(
@@ -137,6 +139,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		}
 		// Reset MSR
 		x86::wrmsr(x86::IA32_FS_BASE, 0);
+		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
 		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
 		// Update user stack
 		SCHEDULER
