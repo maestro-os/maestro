@@ -23,7 +23,13 @@ pub mod ucontext;
 
 use super::{oom, Process, State, REDZONE_SIZE};
 use crate::{
-	arch::x86::idt::IntFrame, file::perm::Uid, memory::VirtAddr, process::pid::Pid,
+	arch::x86::idt::IntFrame,
+	file::perm::Uid,
+	memory::VirtAddr,
+	process::{
+		pid::Pid,
+		signal::ucontext::{UContext32, UContext64},
+	},
 	time::unit::ClockIdT,
 };
 use core::{
@@ -328,16 +334,20 @@ impl SignalHandler {
 		// Prepare the signal handler stack
 		let stack_addr = VirtAddr(frame.get_stack_address()) - REDZONE_SIZE;
 		// Size of the `ucontext_t` struct and arguments *on the stack*
-		let (ctx_size, arg_len) = if frame.is_compat() {
-			(size_of::<ucontext::UContext32>(), size_of::<usize>() * 4)
+		let (ctx_size, ctx_align, arg_len) = if frame.is_compat() {
+			(
+				size_of::<UContext32>(),
+				align_of::<UContext32>(),
+				size_of::<usize>() * 4,
+			)
 		} else {
 			#[cfg(target_arch = "x86")]
 			unreachable!();
 			#[cfg(target_arch = "x86_64")]
-			(size_of::<ucontext::UContext64>(), 0)
+			(size_of::<UContext64>(), align_of::<UContext64>(), 0)
 		};
-		let ctx_addr = stack_addr - ctx_size;
-		let signal_sp = stack_addr - (ctx_size + arg_len);
+		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
+		let signal_sp = ctx_addr - arg_len;
 		{
 			let mut mem_space = process.mem_space.as_ref().unwrap().lock();
 			mem_space.bind();
@@ -347,9 +357,9 @@ impl SignalHandler {
 		let handler_pointer = unsafe { action.sa_handler.sa_handler.unwrap() };
 		// Write data on stack
 		if frame.is_compat() {
+			// Arguments slice
 			let args = unsafe {
-				ptr::write_volatile(ctx_addr.as_ptr(), ucontext::UContext32::new(process, frame));
-				// Arguments slice
+				ptr::write_volatile(ctx_addr.as_ptr(), UContext32::new(process, frame));
 				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 4)
 			};
 			// Pointer to  `ctx`
@@ -363,7 +373,7 @@ impl SignalHandler {
 		} else {
 			#[cfg(target_arch = "x86_64")]
 			unsafe {
-				ptr::write_volatile(ctx_addr.as_ptr(), ucontext::UContext64::new(process, frame));
+				ptr::write_volatile(ctx_addr.as_ptr(), UContext64::new(process, frame));
 			}
 		}
 		// Block signal from `sa_mask`
@@ -383,6 +393,7 @@ impl SignalHandler {
 			#[cfg(target_arch = "x86_64")]
 			{
 				frame.rip = trampoline::trampoline64 as *const c_void as _;
+				frame.rcx = frame.rip;
 				// Arguments
 				frame.rdi = ctx_addr.0 as _;
 				frame.rsi = signal as _;

@@ -932,13 +932,17 @@ fn yield_current_impl(frame: &mut IntFrame) -> bool {
 	if proc.get_state() != State::Running {
 		return false;
 	}
-	// If no signal is pending, continue
-	let mut signal_manager = proc.signal.lock();
-	let Some(sig) = signal_manager.next_signal(false) else {
-		return true;
+	// Get signal handler to execute, if any
+	let (sig, handler) = {
+		let mut signal_manager = proc.signal.lock();
+		let Some(sig) = signal_manager.next_signal(false) else {
+			return true;
+		};
+		let handler = signal_manager.handlers.lock()[sig as usize].clone();
+		(sig, handler)
 	};
 	// Prepare for execution of signal handler
-	signal_manager.handlers.lock()[sig as usize].exec(sig, &proc, frame);
+	handler.exec(sig, &proc, frame);
 	// If the process is still running, continue execution
 	proc.get_state() == State::Running
 }

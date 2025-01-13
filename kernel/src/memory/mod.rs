@@ -145,6 +145,13 @@ macro_rules! addr_impl {
 			pub fn align_to(self, align: usize) -> Self {
 				Self(self.0.next_multiple_of(align))
 			}
+
+			/// Computes and returns the previous address to be aligned to `align`.
+			///
+			/// If `self` is already aligned, the function returns `self`.
+			pub fn down_align_to(self, align: usize) -> Self {
+				Self(self.0 & !(align - 1))
+			}
 		}
 
 		impl Deref for $name {
