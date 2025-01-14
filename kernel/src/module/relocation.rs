@@ -115,7 +115,7 @@ where
 		R_386_GLOB_DAT | R_386_JMP_SLOT => get_sym()?,
 		R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(rel.get_addend()),
 		// Ignored
-		R_386_NONE | R_386_COPY | R_386_IRELATIVE => return Ok(()),
+		R_386_NONE | R_386_COPY => return Ok(()),
 		// Invalid or unsupported
 		_ => return Err(RelocationError),
 	};
