@@ -22,13 +22,7 @@ pub mod ucontext;
 
 use super::{oom, Process, State, REDZONE_SIZE};
 use crate::{
-	arch::x86::idt::IntFrame,
-	file::perm::Uid,
-	memory::VirtAddr,
-	process::{
-		pid::Pid,
-		signal::ucontext::{UContext32, UContext64},
-	},
+	arch::x86::idt::IntFrame, file::perm::Uid, memory::VirtAddr, process::pid::Pid,
 	time::unit::ClockIdT,
 };
 use core::{
@@ -38,6 +32,9 @@ use core::{
 	ptr::NonNull,
 	slice,
 };
+use ucontext::UContext32;
+#[cfg(target_pointer_width = "64")]
+use ucontext::UContext64;
 use utils::{errno, errno::Errno};
 
 /// Signal handler value: Ignoring the signal.
@@ -349,9 +346,9 @@ impl SignalHandler {
 				size_of::<usize>() * 4,
 			)
 		} else {
-			#[cfg(target_arch = "x86")]
+			#[cfg(target_pointer_width = "32")]
 			unreachable!();
-			#[cfg(target_arch = "x86_64")]
+			#[cfg(target_pointer_width = "64")]
 			(size_of::<UContext64>(), align_of::<UContext64>(), 0)
 		};
 		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
@@ -378,7 +375,7 @@ impl SignalHandler {
 			// Padding (return pointer)
 			args[0] = 0;
 		} else {
-			#[cfg(target_arch = "x86_64")]
+			#[cfg(target_pointer_width = "64")]
 			unsafe {
 				ptr::write_volatile(ctx_addr.as_ptr(), UContext64::new(process, frame));
 			}
@@ -395,7 +392,7 @@ impl SignalHandler {
 		frame.rbp = 0;
 		frame.rsp = signal_sp.0 as _;
 		frame.rip = action.sa_restorer as _;
-		#[cfg(target_arch = "x86_64")]
+		#[cfg(target_pointer_width = "64")]
 		if !frame.is_compat() {
 			frame.rcx = frame.rip;
 			// Arguments

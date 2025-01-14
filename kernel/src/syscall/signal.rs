@@ -22,7 +22,7 @@
 use crate::{
 	process::{
 		signal,
-		signal::{SigAction, Signal, SignalHandler, SA_RESTART},
+		signal::{Signal, SignalHandler},
 		Process,
 	},
 	syscall::Args,
@@ -42,15 +42,11 @@ pub fn signal(
 	Args((signum, handler)): Args<(c_int, *const c_void)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
-	// Validation
 	let signal = Signal::try_from(signum)?;
-	// Conversion
 	let new_handler = SignalHandler::from_legacy(handler);
-	// Set new handler and get old
 	let old_handler = mem::replace(
 		&mut proc.signal.lock().handlers.lock()[signal as usize],
 		new_handler,
 	);
-	// Convert to pointer and return
 	Ok(old_handler.to_legacy() as _)
 }
