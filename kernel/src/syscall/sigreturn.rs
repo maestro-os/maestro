@@ -31,7 +31,7 @@ use crate::{
 	},
 	syscall::FromSyscallArg,
 };
-use core::{mem::size_of, ptr};
+use core::{intrinsics::unlikely, mem::size_of, ptr};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -50,9 +50,12 @@ pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 		{
 			let ctx = SyscallPtr::<ucontext::UContext64>::from_ptr(ctx_ptr);
 			let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-			ctx.restore_regs(&proc, frame);
+			let res = ctx.restore_regs(&proc, frame);
+			if unlikely(res.is_err()) {
+				proc.kill(Signal::SIGSEGV);
+			}
 		}
 	}
-	// Do not touch register
+	// Left register untouched
 	Ok(frame.get_syscall_id())
 }

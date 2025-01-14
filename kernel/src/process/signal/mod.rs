@@ -18,7 +18,6 @@
 
 //! POSIX signals implementation.
 
-mod trampoline;
 pub mod ucontext;
 
 use super::{oom, Process, State, REDZONE_SIZE};
@@ -34,7 +33,6 @@ use crate::{
 };
 use core::{
 	ffi::{c_int, c_void},
-	fmt,
 	mem::{size_of, transmute},
 	ptr,
 	ptr::NonNull,
@@ -49,12 +47,14 @@ pub const SIG_DFL: usize = 0x1;
 
 // TODO implement all flags
 /// [`SigAction`] flag: If set, use `sa_sigaction` instead of `sa_handler`.
-pub const SA_SIGINFO: i32 = 0x00000004;
+pub const SA_SIGINFO: u32 = 0x00000004;
+/// [`SigAction`] flag: If set, use [`SigAction::sa_restorer`] as signal trampoline.
+pub const SA_RESTORER: u32 = 0x04000000;
 /// [`SigAction`] flag: If set, the system call must restart after being interrupted by a signal.
-pub const SA_RESTART: i32 = 0x10000000;
+pub const SA_RESTART: u32 = 0x10000000;
 /// [`SigAction`] flag: If set, the signal is not added to the signal mask of the process when
 /// executed.
-pub const SA_NODEFER: i32 = 0x40000000;
+pub const SA_NODEFER: u32 = 0x40000000;
 
 /// Notify method: generate a signal
 pub const SIGEV_SIGNAL: c_int = 0;
@@ -178,34 +178,41 @@ impl SigSet {
 	}
 }
 
-/// Union of the `sa_handler` and `sa_sigaction` fields.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub union SigActionHandler {
-	/// The pointer to the signal's handler.
-	pub sa_handler: Option<extern "C" fn(i32)>,
-	/// Used instead of `sa_handler` if [`SA_SIGINFO`] is specified in `sa_flags`.
-	pub sa_sigaction: Option<extern "C" fn(i32, *mut SigInfo, *mut c_void)>,
-}
-
-impl fmt::Debug for SigActionHandler {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let ptr = unsafe { self.sa_handler };
-		fmt::Debug::fmt(&ptr, f)
-	}
-}
-
 /// An action to be executed when a signal is received.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct SigAction {
-	/// The pointer to the signal's handler.
-	pub sa_handler: SigActionHandler,
+	/// Pointer to the signal handler.
+	pub sa_handler: usize,
 	/// A mask of signals that should be masked while executing the signal
 	/// handler.
 	pub sa_mask: SigSet,
 	/// A set of flags which modifies the behaviour of the signal.
-	pub sa_flags: i32,
+	pub sa_flags: u32,
+	/// Pointer to the signal trampoline.
+	pub sa_restorer: usize,
+}
+
+impl From<CompatSigAction> for SigAction {
+	fn from(sig_action: CompatSigAction) -> Self {
+		Self {
+			sa_handler: sig_action.sa_handler as usize,
+			sa_mask: sig_action.sa_mask,
+			sa_flags: sig_action.sa_flags,
+			sa_restorer: sig_action.sa_restorer as usize,
+		}
+	}
+}
+
+/// Compatibility version of [`SigAction`].
+#[allow(missing_docs)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CompatSigAction {
+	pub sa_handler: u32,
+	pub sa_mask: SigSet,
+	pub sa_flags: u32,
+	pub sa_restorer: u32,
 }
 
 /// Notification from asynchronous routines.
@@ -255,8 +262,7 @@ pub enum SignalHandler {
 
 impl From<SigAction> for SignalHandler {
 	fn from(action: SigAction) -> Self {
-		let handler = unsafe { transmute::<SigActionHandler, usize>(action.sa_handler) };
-		match handler {
+		match action.sa_handler {
 			SIG_IGN => Self::Ignore,
 			SIG_DFL => Self::Default,
 			_ => Self::Handler(action),
@@ -271,12 +277,13 @@ impl SignalHandler {
 		match handler as usize {
 			SIG_IGN => Self::Ignore,
 			SIG_DFL => Self::Default,
-			_ => Self::Handler(SigAction {
-				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(handler) },
+			handler => Self::Handler(SigAction {
+				sa_handler: handler,
 				sa_mask: Default::default(),
 				// TODO use System V semantic like Linux instead of BSD? (SA_RESETHAND |
 				// SA_NODEFER)
 				sa_flags: SA_RESTART,
+				sa_restorer: 0,
 			}),
 		}
 	}
@@ -286,9 +293,7 @@ impl SignalHandler {
 		match self {
 			SignalHandler::Ignore => SIG_IGN,
 			SignalHandler::Default => SIG_DFL,
-			SignalHandler::Handler(action) => unsafe {
-				transmute::<Option<extern "C" fn(i32)>, usize>(action.sa_handler.sa_handler)
-			},
+			SignalHandler::Handler(action) => action.sa_handler as _,
 		}
 	}
 
@@ -296,20 +301,22 @@ impl SignalHandler {
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
-				sa_handler: unsafe { transmute::<usize, SigActionHandler>(SIG_IGN) },
+				sa_handler: SIG_IGN,
 				sa_mask: Default::default(),
 				sa_flags: 0,
+				sa_restorer: 0,
 			},
 			Self::Default => SigAction {
-				sa_handler: unsafe { transmute::<usize, SigActionHandler>(SIG_DFL) },
+				sa_handler: SIG_DFL,
 				sa_mask: Default::default(),
 				sa_flags: 0,
+				sa_restorer: 0,
 			},
 			Self::Handler(action) => *action,
 		}
 	}
 
-	/// Executes the action for `signal` on `process`.
+	/// Executes the action for `signal` on the **current** process `process`.
 	pub fn exec(&self, signal: Signal, process: &Process, frame: &mut IntFrame) {
 		let process_state = process.get_state();
 		if matches!(process_state, State::Zombie) {
@@ -328,6 +335,7 @@ impl SignalHandler {
 				return;
 			}
 		};
+		// TODO trigger EFAULT if SA_RESTORER is not set
 		// TODO handle SA_SIGINFO
 		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
 		// SA_ONSTACK)
@@ -354,7 +362,6 @@ impl SignalHandler {
 			// FIXME: a stack overflow would cause an infinite loop
 			oom::wrap(|| mem_space.alloc(signal_sp, arg_len));
 		}
-		let handler_pointer = unsafe { action.sa_handler.sa_handler.unwrap() };
 		// Write data on stack
 		if frame.is_compat() {
 			// Arguments slice
@@ -367,7 +374,7 @@ impl SignalHandler {
 			// Signal number
 			args[2] = signal as _;
 			// Pointer to the handler
-			args[1] = handler_pointer as usize as _;
+			args[1] = action.sa_handler as _;
 			// Padding (return pointer)
 			args[0] = 0;
 		} else {
@@ -387,18 +394,14 @@ impl SignalHandler {
 		// Prepare registers for the trampoline
 		frame.rbp = 0;
 		frame.rsp = signal_sp.0 as _;
-		if frame.is_compat() {
-			frame.rip = trampoline::trampoline32 as *const c_void as _;
-		} else {
-			#[cfg(target_arch = "x86_64")]
-			{
-				frame.rip = trampoline::trampoline64 as *const c_void as _;
-				frame.rcx = frame.rip;
-				// Arguments
-				frame.rdi = ctx_addr.0 as _;
-				frame.rsi = signal as _;
-				frame.rdx = handler_pointer as usize as _;
-			}
+		frame.rip = action.sa_restorer as _;
+		#[cfg(target_arch = "x86_64")]
+		if !frame.is_compat() {
+			frame.rcx = frame.rip;
+			// Arguments
+			frame.rdi = ctx_addr.0 as _;
+			frame.rsi = signal as _;
+			frame.rdx = action.sa_handler as _;
 		}
 	}
 }

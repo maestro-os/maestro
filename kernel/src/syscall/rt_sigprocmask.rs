@@ -19,7 +19,11 @@
 //! The `rt_sigprocmask` system call allows to change the blocked signal mask.
 
 use crate::{
-	process::{mem_space::copy::SyscallSlice, signal::SigSet, Process},
+	process::{
+		mem_space::copy::{SyscallPtr, SyscallSlice},
+		signal::SigSet,
+		Process,
+	},
 	syscall::Args,
 };
 use core::{cmp::min, ffi::c_int, intrinsics::unlikely};
@@ -37,24 +41,27 @@ const SIG_UNBLOCK: i32 = 1;
 const SIG_SETMASK: i32 = 2;
 
 pub fn rt_sigprocmask(
-	Args((how, set, oldset, sigsetsize)): Args<(c_int, SyscallSlice<u8>, SyscallSlice<u8>, usize)>,
+	Args((how, set, oldset, sigsetsize)): Args<(
+		c_int,
+		SyscallPtr<SigSet>,
+		SyscallPtr<SigSet>,
+		usize,
+	)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Validation
-	if unlikely(sigsetsize != 8) {
+	if unlikely(sigsetsize != size_of::<SigSet>()) {
 		return Err(errno!(EINVAL));
 	}
 	let mut signal_manager = proc.signal.lock();
 	// Save old set
-	let cur = signal_manager.sigmask.0.to_ne_bytes();
-	oldset.copy_to_user(0, &cur)?;
+	oldset.copy_to_user(&signal_manager.sigmask)?;
 	// Apply new set
-	if let Some(set) = set.copy_from_user_vec(0, 8)? {
-		let set = u64::from_ne_bytes(set.try_into().unwrap());
+	if let Some(set) = set.copy_from_user()? {
 		match how {
-			SIG_BLOCK => signal_manager.sigmask.0 |= set,
-			SIG_UNBLOCK => signal_manager.sigmask.0 &= !set,
-			SIG_SETMASK => signal_manager.sigmask.0 = set,
+			SIG_BLOCK => signal_manager.sigmask.0 |= set.0,
+			SIG_UNBLOCK => signal_manager.sigmask.0 &= !set.0,
+			SIG_SETMASK => signal_manager.sigmask.0 = set.0,
 			_ => return Err(errno!(EINVAL)),
 		}
 	}
