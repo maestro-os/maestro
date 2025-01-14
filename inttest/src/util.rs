@@ -18,7 +18,7 @@
 
 //! Utility features.
 
-use libc::{gid_t, mode_t, uid_t};
+use libc::{gid_t, mode_t, pid_t, sighandler_t, uid_t};
 use std::{
 	error::Error,
 	ffi::{c_int, c_ulong, c_void, CStr, CString},
@@ -195,5 +195,23 @@ pub fn exec(cmd: &mut Command) -> TestResult {
 			"Command failed (status: {code}): {cmd:?}",
 			code = status.code().unwrap(),
 		)))
+	}
+}
+
+pub fn signal(signum: c_int, handler: sighandler_t) -> io::Result<()> {
+	let res = unsafe { libc::signal(signum, handler) } as isize;
+	if res >= 0 {
+		Ok(())
+	} else {
+		Err(io::Error::last_os_error())
+	}
+}
+
+pub fn kill(pid: pid_t, sig: c_int) -> io::Result<()> {
+	let res = unsafe { libc::kill(pid, sig) };
+	if res >= 0 {
+		Ok(())
+	} else {
+		Err(io::Error::last_os_error())
 	}
 }
