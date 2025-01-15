@@ -59,3 +59,7 @@ pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 	// Left register untouched
 	Ok(frame.get_syscall_id())
 }
+
+pub fn rt_sigreturn(frame: &mut IntFrame) -> EResult<usize> {
+	sigreturn(frame)
+}
