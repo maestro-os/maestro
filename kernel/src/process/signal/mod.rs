@@ -44,14 +44,14 @@ pub const SIG_DFL: usize = 0x1;
 
 // TODO implement all flags
 /// [`SigAction`] flag: If set, use `sa_sigaction` instead of `sa_handler`.
-pub const SA_SIGINFO: u32 = 0x00000004;
+pub const SA_SIGINFO: u64 = 0x00000004;
 /// [`SigAction`] flag: If set, use [`SigAction::sa_restorer`] as signal trampoline.
-pub const SA_RESTORER: u32 = 0x04000000;
+pub const SA_RESTORER: u64 = 0x04000000;
 /// [`SigAction`] flag: If set, the system call must restart after being interrupted by a signal.
-pub const SA_RESTART: u32 = 0x10000000;
+pub const SA_RESTART: u64 = 0x10000000;
 /// [`SigAction`] flag: If set, the signal is not added to the signal mask of the process when
 /// executed.
-pub const SA_NODEFER: u32 = 0x40000000;
+pub const SA_NODEFER: u64 = 0x40000000;
 
 /// Notify method: generate a signal
 pub const SIGEV_SIGNAL: c_int = 0;
@@ -149,7 +149,7 @@ pub struct SigInfo {
 	si_arch: u32,
 }
 
-/// A bits signal mask.
+/// Kernelspace signal mask.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SigSet(pub u64);
 
@@ -175,28 +175,29 @@ impl SigSet {
 	}
 }
 
-/// An action to be executed when a signal is received.
+/// Action to be executed when a signal is received.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct SigAction {
 	/// Pointer to the signal handler.
 	pub sa_handler: usize,
+	/// A set of flags which modifies the behaviour of the signal.
+	pub sa_flags: u64,
+	/// Pointer to the signal trampoline.
+	pub sa_restorer: usize,
 	/// A mask of signals that should be masked while executing the signal
 	/// handler.
 	pub sa_mask: SigSet,
-	/// A set of flags which modifies the behaviour of the signal.
-	pub sa_flags: u32,
-	/// Pointer to the signal trampoline.
-	pub sa_restorer: usize,
 }
 
 impl From<CompatSigAction> for SigAction {
 	fn from(sig_action: CompatSigAction) -> Self {
+		let sa_mask = sig_action.sa_mask[0] as u64 | ((sig_action.sa_mask[1] as u64) << 32);
 		Self {
-			sa_handler: sig_action.sa_handler as usize,
-			sa_mask: sig_action.sa_mask,
-			sa_flags: sig_action.sa_flags,
-			sa_restorer: sig_action.sa_restorer as usize,
+			sa_handler: sig_action.sa_handler as _,
+			sa_flags: sig_action.sa_flags as _,
+			sa_restorer: sig_action.sa_restorer as _,
+			sa_mask: SigSet(sa_mask),
 		}
 	}
 }
@@ -204,12 +205,27 @@ impl From<CompatSigAction> for SigAction {
 /// Compatibility version of [`SigAction`].
 #[allow(missing_docs)]
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct CompatSigAction {
 	pub sa_handler: u32,
-	pub sa_mask: SigSet,
 	pub sa_flags: u32,
 	pub sa_restorer: u32,
+	pub sa_mask: [u32; 2],
+}
+
+impl From<SigAction> for CompatSigAction {
+	fn from(sig_action: SigAction) -> Self {
+		let sa_mask = [
+			sig_action.sa_mask.0 as u32,
+			(sig_action.sa_mask.0 >> 32) as u32,
+		];
+		Self {
+			sa_handler: sig_action.sa_handler as _,
+			sa_flags: sig_action.sa_flags as _,
+			sa_restorer: sig_action.sa_restorer as _,
+			sa_mask,
+		}
+	}
 }
 
 /// Notification from asynchronous routines.
@@ -276,11 +292,11 @@ impl SignalHandler {
 			SIG_DFL => Self::Default,
 			handler => Self::Handler(SigAction {
 				sa_handler: handler,
-				sa_mask: Default::default(),
 				// TODO use System V semantic like Linux instead of BSD? (SA_RESETHAND |
 				// SA_NODEFER)
 				sa_flags: SA_RESTART,
 				sa_restorer: 0,
+				sa_mask: Default::default(),
 			}),
 		}
 	}
@@ -299,15 +315,15 @@ impl SignalHandler {
 		match self {
 			Self::Ignore => SigAction {
 				sa_handler: SIG_IGN,
-				sa_mask: Default::default(),
 				sa_flags: 0,
 				sa_restorer: 0,
+				sa_mask: Default::default(),
 			},
 			Self::Default => SigAction {
 				sa_handler: SIG_DFL,
-				sa_mask: Default::default(),
 				sa_flags: 0,
 				sa_restorer: 0,
+				sa_mask: Default::default(),
 			},
 			Self::Handler(action) => *action,
 		}
@@ -343,13 +359,17 @@ impl SignalHandler {
 			(
 				size_of::<UContext32>(),
 				align_of::<UContext32>(),
-				size_of::<usize>() * 4,
+				size_of::<u32>() * 4,
 			)
 		} else {
 			#[cfg(target_pointer_width = "32")]
 			unreachable!();
 			#[cfg(target_pointer_width = "64")]
-			(size_of::<UContext64>(), align_of::<UContext64>(), 0)
+			(
+				size_of::<UContext64>(),
+				align_of::<UContext64>(),
+				size_of::<u64>(),
+			)
 		};
 		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
 		let signal_sp = ctx_addr - arg_len;
@@ -361,23 +381,23 @@ impl SignalHandler {
 		}
 		// Write data on stack
 		if frame.is_compat() {
-			// Arguments slice
 			let args = unsafe {
 				ptr::write_volatile(ctx_addr.as_ptr(), UContext32::new(process, frame));
-				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 4)
+				// Arguments slice
+				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 3)
 			};
-			// Pointer to  `ctx`
-			args[3] = ctx_addr.0 as _;
+			// Pointer to `ctx`
+			args[2] = ctx_addr.0 as _;
 			// Signal number
-			args[2] = signal as _;
-			// Pointer to the handler
-			args[1] = action.sa_handler as _;
-			// Padding (return pointer)
-			args[0] = 0;
+			args[1] = signal as _;
+			// Return pointer
+			args[0] = action.sa_restorer as _;
 		} else {
 			#[cfg(target_pointer_width = "64")]
 			unsafe {
 				ptr::write_volatile(ctx_addr.as_ptr(), UContext64::new(process, frame));
+				// Return pointer
+				ptr::write_volatile(signal_sp.as_ptr::<u64>(), action.sa_restorer as _);
 			}
 		}
 		// Block signal from `sa_mask`
@@ -391,14 +411,13 @@ impl SignalHandler {
 		// Prepare registers for the trampoline
 		frame.rbp = 0;
 		frame.rsp = signal_sp.0 as _;
-		frame.rip = action.sa_restorer as _;
+		frame.rip = action.sa_handler as _;
 		#[cfg(target_pointer_width = "64")]
 		if !frame.is_compat() {
 			frame.rcx = frame.rip;
 			// Arguments
-			frame.rdi = ctx_addr.0 as _;
-			frame.rsi = signal as _;
-			frame.rdx = action.sa_handler as _;
+			frame.rdi = signal as _;
+			frame.rsi = ctx_addr.0 as _;
 		}
 	}
 }

@@ -82,16 +82,13 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 		.try_for_each(|pid| try_kill(*pid as _, sig))
 }
 
-/// Sends the signal `sig` to the processes according to the given value `pid`.
-///
-/// If `sig` is `None`, the function doesn't send a signal, but still checks if
-/// there is a process that could be killed.
-fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
+pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
+	let sig = (sig != 0).then(|| Signal::try_from(sig)).transpose()?;
 	match pid {
 		// Kill the process with the given PID
-		1.. => try_kill(pid as _, sig),
+		1.. => try_kill(pid as _, sig)?,
 		// Kill all processes in the current process group
-		0 => try_kill_group(0, sig),
+		0 => try_kill_group(0, sig)?,
 		// Kill all processes for which the current process has the permission
 		-1 => {
 			let sched = SCHEDULER.get().lock();
@@ -102,15 +99,9 @@ fn send_signal(pid: i32, sig: Option<Signal>) -> EResult<()> {
 				// TODO Check permission
 				try_kill(*pid, sig)?;
 			}
-			Ok(())
 		}
 		// Kill the given process group
-		..-1 => try_kill_group(-pid as _, sig),
+		..-1 => try_kill_group(-pid as _, sig)?,
 	}
-}
-
-pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
-	let sig = (sig != 0).then(|| Signal::try_from(sig)).transpose()?;
-	send_signal(pid, sig)?;
 	Ok(0)
 }
