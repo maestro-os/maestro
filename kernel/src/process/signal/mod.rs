@@ -359,7 +359,7 @@ impl SignalHandler {
 			(
 				size_of::<UContext32>(),
 				align_of::<UContext32>(),
-				size_of::<u32>() * 4,
+				size_of::<u32>() * 2,
 			)
 		} else {
 			#[cfg(target_pointer_width = "32")]
@@ -384,11 +384,9 @@ impl SignalHandler {
 			let args = unsafe {
 				ptr::write_volatile(ctx_addr.as_ptr(), UContext32::new(process, frame));
 				// Arguments slice
-				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 3)
+				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 2)
 			};
-			// Pointer to `ctx`
-			args[2] = ctx_addr.0 as _;
-			// Signal number
+			// Argument
 			args[1] = signal as _;
 			// Return pointer
 			args[0] = action.sa_restorer as _;
@@ -415,9 +413,8 @@ impl SignalHandler {
 		#[cfg(target_pointer_width = "64")]
 		if !frame.is_compat() {
 			frame.rcx = frame.rip;
-			// Arguments
+			// Argument
 			frame.rdi = signal as _;
-			frame.rsi = ctx_addr.0 as _;
 		}
 	}
 }

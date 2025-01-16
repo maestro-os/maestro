@@ -128,6 +128,8 @@ impl UContext32 {
 	/// Restores the context.
 	pub fn restore_regs(&self, proc: &Process, frame: &mut IntFrame) {
 		// Restore general registers
+		frame.gs = self.uc_mcontext.gregs[GReg32::Gs as usize] as _;
+		frame.fs = self.uc_mcontext.gregs[GReg32::Fs as usize] as _;
 		frame.rax = self.uc_mcontext.gregs[GReg32::Eax as usize] as _;
 		frame.rbx = self.uc_mcontext.gregs[GReg32::Ebx as usize] as _;
 		frame.rcx = self.uc_mcontext.gregs[GReg32::Ecx as usize] as _;

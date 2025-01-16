@@ -24,6 +24,7 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
+	memory::VirtAddr,
 	process::{
 		mem_space::copy::SyscallPtr,
 		signal::{ucontext, Signal},
@@ -40,16 +41,18 @@ use utils::{
 pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 	let proc = Process::current();
 	// Retrieve and restore previous state
-	let ctx_ptr = frame.get_stack_address();
+	let stack_ptr = frame.get_stack_address();
 	if frame.is_compat() {
-		let ctx = SyscallPtr::<ucontext::UContext32>::from_ptr(ctx_ptr);
-		let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+		let ctx = SyscallPtr::<ucontext::UContext32>::from_ptr(stack_ptr)
+			.copy_from_user()?
+			.ok_or_else(|| errno!(EFAULT))?;
 		ctx.restore_regs(&proc, frame);
 	} else {
 		#[cfg(target_arch = "x86_64")]
 		{
-			let ctx = SyscallPtr::<ucontext::UContext64>::from_ptr(ctx_ptr);
-			let ctx = ctx.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+			let ctx = SyscallPtr::<ucontext::UContext64>::from_ptr(stack_ptr)
+				.copy_from_user()?
+				.ok_or_else(|| errno!(EFAULT))?;
 			let res = ctx.restore_regs(&proc, frame);
 			if unlikely(res.is_err()) {
 				proc.kill(Signal::SIGSEGV);

@@ -167,6 +167,7 @@ use crate::{
 	sync::mutex::{IntMutex, Mutex},
 	syscall::{
 		clone::clone2,
+		rt_sigaction::compat_rt_sigaction,
 		sigreturn::rt_sigreturn,
 		stat::{lstat64, stat64},
 	},
@@ -708,7 +709,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x0ab => syscall!(getresgid, frame),
 		// TODO 0x0ac => syscall!(prctl, frame),
 		0x0ad => syscall!(rt_sigreturn, frame),
-		0x0ae => syscall!(rt_sigaction, frame),
+		0x0ae => syscall!(compat_rt_sigaction, frame),
 		0x0af => syscall!(rt_sigprocmask, frame),
 		// TODO 0x0b0 => syscall!(rt_sigpending, frame),
 		// TODO 0x0b1 => syscall!(rt_sigtimedwait, frame),
