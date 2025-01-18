@@ -32,7 +32,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{gdt, idt::IntFrame, tss, FxState},
+	arch::x86::{gdt, idt, idt::IntFrame, tss, FxState},
 	event,
 	event::CallbackResult,
 	file,
@@ -655,64 +655,69 @@ impl Process {
 	/// If the transition from the previous state to `new_state` is invalid, the function does
 	/// nothing.
 	pub fn set_state(&self, new_state: State) {
-		let Ok(old_state) = self.state.fetch_update(Release, Acquire, |old_state| {
+		// Disable interruptions to ensure the function can finish before the scheduler switches
+		// context (and thus never resume if the new state is `Zombie`)
+		idt::wrap_disable_interrupts(|| {
+			let Ok(old_state) = self.state.fetch_update(Release, Acquire, |old_state| {
+				let old_state = State::from_id(old_state);
+				let valid = matches!(
+					(old_state, new_state),
+					(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
+				);
+				valid.then_some(new_state as u8)
+			}) else {
+				// Invalid transition, do nothing
+				return;
+			};
 			let old_state = State::from_id(old_state);
-			let valid = matches!(
-				(old_state, new_state),
-				(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
+			if new_state == old_state {
+				return;
+			}
+			#[cfg(feature = "strace")]
+			println!(
+				"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
+				pid = self.get_pid()
 			);
-			valid.then_some(new_state as u8)
-		}) else {
-			// Invalid transition, do nothing
-			return;
-		};
-		let old_state = State::from_id(old_state);
-		if new_state == old_state {
-			return;
-		}
-		#[cfg(feature = "strace")]
-		println!(
-			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
-			pid = self.get_pid()
-		);
-		// Update the number of running processes
-		if new_state == State::Running {
-			SCHEDULER.get().lock().increment_running();
-		} else if old_state == State::Running {
-			SCHEDULER.get().lock().decrement_running();
-		}
-		if new_state == State::Zombie {
-			if self.is_init() {
-				panic!("Terminated init process!");
+			// Update the number of running processes
+			if new_state == State::Running {
+				SCHEDULER.get().lock().increment_running();
+			} else if old_state == State::Running {
+				SCHEDULER.get().lock().decrement_running();
 			}
-			// Remove the memory space and file descriptors table to reclaim memory
-			unsafe {
-				//self.mem_space = None; // TODO Handle the case where the memory space is bound
-				*self.file_descriptors.get_mut() = None;
-			}
-			// Attach every child to the init process
-			let init_proc = Process::get_by_pid(INIT_PID).unwrap();
-			let children = mem::take(&mut self.links.lock().children);
-			for child_pid in children {
-				// Check just in case
-				if child_pid == self.pid.get() {
-					continue;
+			if new_state == State::Zombie {
+				if self.is_init() {
+					panic!("Terminated init process!");
 				}
-				if let Some(child) = Process::get_by_pid(child_pid) {
-					child.links.lock().parent = Some(init_proc.clone());
-					oom::wrap(|| init_proc.add_child(child_pid));
+				// Remove the memory space and file descriptors table to reclaim memory
+				unsafe {
+					//self.mem_space = None; // TODO Handle the case where the memory space is
+					// bound
+					*self.file_descriptors.get_mut() = None;
+				}
+				// Attach every child to the init process
+				let init_proc = Process::get_by_pid(INIT_PID).unwrap();
+				let children = mem::take(&mut self.links.lock().children);
+				for child_pid in children {
+					// Check just in case
+					if child_pid == self.pid.get() {
+						continue;
+					}
+					if let Some(child) = Process::get_by_pid(child_pid) {
+						child.links.lock().parent = Some(init_proc.clone());
+						oom::wrap(|| init_proc.add_child(child_pid));
+					}
+				}
+				// Set vfork as done just in case
+				self.vfork_wake();
+			}
+			// Send SIGCHLD
+			if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
+				let links = self.links.lock();
+				if let Some(parent) = &links.parent {
+					parent.kill(Signal::SIGCHLD);
 				}
 			}
-			// Set vfork as done just in case
-			self.vfork_wake();
-		}
-		// Send SIGCHLD
-		if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
-			let links = self.links.lock();
-			if let Some(parent) = &links.parent {
-				parent.kill(Signal::SIGCHLD);
-			}
-		}
+		});
 	}
 
 	/// Wakes up the process if in [`State::Sleeping`] state.
