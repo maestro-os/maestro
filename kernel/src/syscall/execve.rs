@@ -30,6 +30,7 @@ use crate::{
 		Process,
 	},
 };
+use core::intrinsics::unlikely;
 use utils::{
 	collections::{
 		path::{Path, PathBuf},
@@ -84,37 +85,31 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 	let mut file = vfs::get_file_from_path(path, rs)?;
 	let mut i = 0;
 	loop {
-		let shebang = &mut shebangs[i];
+		// Check permission
+		let stat = file.stat()?;
+		if !rs.access_profile.can_execute_file(&stat) {
+			return Err(errno!(EACCES));
+		}
 		// Read file
-		let len = {
-			// Check permission
-			let stat = file.stat()?;
-			if !rs.access_profile.can_execute_file(&stat) {
-				return Err(errno!(EACCES));
-			}
-			file.node()
-				.ops
-				.read_content(&file.node().location, 0, &mut shebang.buf)?
-		};
+		let shebang = &mut shebangs[i];
+		let len = file
+			.node()
+			.ops
+			.read_content(&file.node().location, 0, &mut shebang.buf)?;
 		// Parse shebang
 		shebang.end = shebang.buf[..len]
 			.iter()
 			.position(|b| *b == b'\n')
 			.unwrap_or(len);
-		if !matches!(shebang.buf[..shebang.end], [b'#', b'!', _, ..]) {
+		let Some(interp_path) = shebang.buf[..shebang.end].strip_prefix(b"#!") else {
 			break;
-		}
+		};
+		let interp_path = Path::new(interp_path)?;
 		i += 1;
 		// If there is still an interpreter but the limit has been reached
-		if i >= INTERP_MAX {
+		if unlikely(i >= INTERP_MAX) {
 			return Err(errno!(ELOOP));
 		}
-		// Get interpreter path
-		let interp_end = shebang.buf[2..shebang.end]
-			.iter()
-			.position(|b| (*b as char).is_ascii_whitespace())
-			.unwrap_or(shebang.end);
-		let interp_path = Path::new(&shebang.buf[2..(2 + interp_end)])?;
 		// Read interpreter
 		file = vfs::get_file_from_path(interp_path, rs)?;
 	}
