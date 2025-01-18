@@ -703,6 +703,8 @@ impl Process {
 					oom::wrap(|| init_proc.add_child(child_pid));
 				}
 			}
+			// Set vfork as done just in case
+			self.vfork_wake();
 		}
 		// Send SIGCHLD
 		if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
@@ -889,7 +891,6 @@ impl Process {
 		);
 		self.signal.lock().exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
-		self.vfork_wake();
 	}
 }
 

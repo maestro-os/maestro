@@ -266,7 +266,7 @@ impl NodeOps for Node {
 				};
 				let new_len = max(content.len(), end);
 				content.resize(new_len, 0)?;
-				content[off..].copy_from_slice(buf);
+				content[off..end].copy_from_slice(buf);
 			}
 			NodeContent::Link(content) => {
 				content.resize(buf.len(), 0)?;

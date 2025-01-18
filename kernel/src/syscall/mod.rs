@@ -166,7 +166,7 @@ use crate::{
 	process::{mem_space::MemSpace, signal::Signal, Process},
 	sync::mutex::{IntMutex, Mutex},
 	syscall::{
-		clone::clone2,
+		clone::clone_64,
 		rt_sigaction::compat_rt_sigaction,
 		sigreturn::rt_sigreturn,
 		stat::{lstat64, stat64},
@@ -1039,7 +1039,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x035 => syscall!(socketpair, frame),
 		0x036 => syscall!(setsockopt, frame),
 		0x037 => syscall!(getsockopt, frame),
-		0x038 => syscall!(clone2, frame),
+		0x038 => syscall!(clone_64, frame),
 		0x039 => syscall!(fork, frame),
 		0x03a => syscall!(vfork, frame),
 		0x03b => syscall!(execve, frame),
