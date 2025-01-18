@@ -26,7 +26,7 @@ use crate::{
 		exec,
 		exec::{exec, ExecInfo, ProgramImage},
 		mem_space::copy::{SyscallArray, SyscallString},
-		scheduler::SCHEDULER,
+		scheduler::{switch::init_ctx, SCHEDULER},
 		Process,
 	},
 };
@@ -144,23 +144,26 @@ pub fn execve(
 	rs: ResolutionSettings,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
-	let (file, argv, envp) = {
+	// Use scope to drop everything before calling `init_ctx`
+	{
 		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 		let argv = argv.iter();
 		let (file, argv) = get_file(&path, &rs, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
-		(file, argv, envp)
-	};
-	let program_image = exec::build_image(
-		file,
-		ExecInfo {
-			path_resolution: &rs,
-			argv,
-			envp,
-		},
-	)?;
-	let proc = Process::current();
-	exec(&proc, frame, program_image)?;
-	Ok(0)
+		let program_image = exec::build_image(
+			file,
+			ExecInfo {
+				path_resolution: &rs,
+				argv,
+				envp,
+			},
+		)?;
+		let proc = Process::current();
+		exec(&proc, frame, program_image)?;
+	}
+	// Use `init_ctx` to handle transition to compatibility mode
+	unsafe {
+		init_ctx(frame);
+	}
 }

@@ -122,7 +122,7 @@ fn wait_vfork_done(child_pid: Pid) {
 }
 
 #[allow(clippy::type_complexity)]
-pub fn clone(
+pub fn compat_clone(
 	Args((flags, stack, _parent_tid, _tls, _child_tid)): Args<(
 		c_ulong,
 		*mut c_void,
@@ -166,7 +166,7 @@ pub fn clone(
 }
 
 #[allow(clippy::type_complexity)]
-pub fn clone_64(
+pub fn clone(
 	Args((flags, stack, parent_tid, child_tid, tls)): Args<(
 		c_ulong,
 		*mut c_void,
@@ -177,7 +177,7 @@ pub fn clone_64(
 	proc: Arc<Process>,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
-	clone(
+	compat_clone(
 		Args((flags, stack, parent_tid, tls, child_tid)),
 		proc,
 		frame,

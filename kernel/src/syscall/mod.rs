@@ -165,12 +165,6 @@ use crate::{
 	process,
 	process::{mem_space::MemSpace, signal::Signal, Process},
 	sync::mutex::{IntMutex, Mutex},
-	syscall::{
-		clone::clone_64,
-		rt_sigaction::compat_rt_sigaction,
-		sigreturn::rt_sigreturn,
-		stat::{lstat64, stat64},
-	},
 };
 use _exit::_exit;
 use _llseek::{_llseek, lseek};
@@ -185,7 +179,7 @@ use chown::chown;
 use chroot::chroot;
 use clock_gettime::clock_gettime;
 use clock_gettime64::clock_gettime64;
-use clone::clone;
+use clone::{clone, compat_clone};
 use close::close;
 use connect::connect;
 use core::{arch::global_asm, fmt, ops::Deref, ptr};
@@ -260,7 +254,7 @@ use reboot::reboot;
 use rename::rename;
 use renameat2::renameat2;
 use rmdir::rmdir;
-use rt_sigaction::rt_sigaction;
+use rt_sigaction::{compat_rt_sigaction, rt_sigaction};
 use rt_sigprocmask::rt_sigprocmask;
 use sched_yield::sched_yield;
 use select::select;
@@ -278,10 +272,10 @@ use setsockopt::setsockopt;
 use setuid::setuid;
 use shutdown::shutdown;
 use signal::signal;
-use sigreturn::sigreturn;
+use sigreturn::{rt_sigreturn, sigreturn};
 use socket::socket;
 use socketpair::socketpair;
-use stat::{fstat, fstat64, lstat, stat, statx};
+use stat::{fstat, fstat64, lstat, lstat64, stat, stat64, statx};
 use statfs::statfs;
 use statfs64::statfs64;
 use symlink::symlink;
@@ -657,7 +651,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x075 => syscall!(ipc, frame),
 		0x076 => syscall!(fsync, frame),
 		SIGRETURN_ID => syscall!(sigreturn, frame),
-		0x078 => syscall!(clone, frame),
+		0x078 => syscall!(compat_clone, frame),
 		// TODO 0x079 => syscall!(setdomainname, frame),
 		0x07a => syscall!(uname, frame),
 		// TODO 0x07c => syscall!(adjtimex, frame),
@@ -1039,7 +1033,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x035 => syscall!(socketpair, frame),
 		0x036 => syscall!(setsockopt, frame),
 		0x037 => syscall!(getsockopt, frame),
-		0x038 => syscall!(clone_64, frame),
+		0x038 => syscall!(clone, frame),
 		0x039 => syscall!(fork, frame),
 		0x03a => syscall!(vfork, frame),
 		0x03b => syscall!(execve, frame),
