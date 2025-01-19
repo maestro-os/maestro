@@ -9,11 +9,11 @@ sed -i 's/^qemu = false$/qemu = true/' build-config.toml
 
 case $1 in
 	self)
-		cargo test --lib
+		cargo test --lib $CARGOFLAGS
 		;;
 	int)
 		set +e
-		cargo run
+		cargo run $CARGOFLAGS
 		STATUS=$?
 		set -e
 		# FIXME: the clock currently starts at the timestamp zero, which causes fsck to detect errors due to the low value for dtime

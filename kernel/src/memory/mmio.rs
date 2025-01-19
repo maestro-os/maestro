@@ -20,16 +20,16 @@
 //! memory.
 
 use super::{buddy, vmem, PhysAddr, VirtAddr};
-use crate::process::oom;
+use crate::{arch::x86, process::oom};
 use core::ptr::NonNull;
 use utils::errno::AllocResult;
 
 /// Default flags for kernelspace in virtual memory.
-const DEFAULT_FLAGS: u32 = vmem::x86::FLAG_WRITE;
+const DEFAULT_FLAGS: x86::paging::Entry = x86::paging::FLAG_WRITE;
 
 /// MMIO flags in virtual memory.
-const MMIO_FLAGS: u32 =
-	vmem::x86::FLAG_WRITE_THROUGH | vmem::x86::FLAG_WRITE | vmem::x86::FLAG_GLOBAL;
+const MMIO_FLAGS: x86::paging::Entry =
+	x86::paging::FLAG_WRITE_THROUGH | x86::paging::FLAG_WRITE | x86::paging::FLAG_GLOBAL;
 
 // TODO allow usage of virtual memory that isn't linked to any physical pages
 
@@ -63,7 +63,7 @@ impl MMIO {
 
 		let mut flags = MMIO_FLAGS;
 		if !prefetchable {
-			flags |= vmem::x86::FLAG_CACHE_DISABLE;
+			flags |= x86::paging::FLAG_CACHE_DISABLE;
 		}
 
 		let mut vmem = vmem::kernel().lock();

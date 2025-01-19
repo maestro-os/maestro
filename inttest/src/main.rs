@@ -25,6 +25,7 @@ use std::process::exit;
 
 mod filesystem;
 mod procfs;
+mod signal;
 mod util;
 
 /*
@@ -98,7 +99,18 @@ const TESTS: &[TestSuite] = &[
 		],
 	},
 	// TODO fork/clone (threads)
-	// TODO signals (handlers and masking)
+	TestSuite {
+		name: "signal",
+		desc: "Test signals",
+		tests: &[
+			Test {
+				name: "handler",
+				desc: "Register and use a signal handler",
+				start: signal::handler,
+			}, /* TODO signal masking
+			    * TODO pause */
+		],
+	},
 	// TODO ELF files (execve)
 	// TODO user/group file accesses (including SUID/SGID)
 	// TODO mmap/munmap (including shared libraries)

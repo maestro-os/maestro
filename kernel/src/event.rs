@@ -19,18 +19,17 @@
 //! Interrupt callback register interface.
 
 use crate::{
-	crypto::{rand, rand::EntropyPool},
-	idt,
-	idt::pic,
+	arch::x86::{idt, idt::IntFrame, pic},
+	crypto::rand,
 	process,
-	process::regs::Regs,
+	sync::mutex::IntMutex,
 };
-use core::{ffi::c_void, intrinsics::unlikely, ptr::NonNull};
-use utils::{boxed::Box, collections::vec::Vec, errno::AllocResult, lock::IntMutex};
+use core::ptr;
+use utils::{collections::vec::Vec, errno::AllocResult};
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 static ERROR_MESSAGES: &[&str] = &[
 	"Divide-by-zero Error",
 	"Debug",
@@ -49,7 +48,7 @@ static ERROR_MESSAGES: &[&str] = &[
 	"Page Fault",
 	"Unknown",
 	"x87 Floating-Point Exception",
-	"Alignement Check",
+	"Alignment Check",
 	"Machine Check",
 	"SIMD Floating-Point Exception",
 	"Virtualization Exception",
@@ -65,16 +64,6 @@ static ERROR_MESSAGES: &[&str] = &[
 	"Security Exception",
 	"Unknown",
 ];
-
-/// Returns the error message corresponding to the given interrupt vector index
-/// `i`.
-fn get_error_message(i: u32) -> &'static str {
-	if (i as usize) < ERROR_MESSAGES.len() {
-		ERROR_MESSAGES[i as usize]
-	} else {
-		"Unknown"
-	}
-}
 
 /// The action to execute after the interrupt handler has returned.
 pub enum CallbackResult {
@@ -96,7 +85,7 @@ pub enum CallbackResult {
 /// - `ring` tells the ring at which the code was running.
 ///
 /// The return value tells which action to perform next.
-type CallbackWrapper = Box<dyn FnMut(u32, u32, &Regs, u32) -> CallbackResult>;
+pub type Callback = fn(u32, u32, &mut IntFrame, u8) -> CallbackResult;
 
 /// Structure used to detect whenever the object owning the callback is
 /// destroyed, allowing to unregister it automatically.
@@ -105,7 +94,7 @@ pub struct CallbackHook {
 	/// The id of the interrupt the callback is bound to.
 	id: u32,
 	/// The pointer of the callback.
-	ptr: NonNull<c_void>,
+	callback: Callback,
 }
 
 impl Drop for CallbackHook {
@@ -115,7 +104,7 @@ impl Drop for CallbackHook {
 		let i = vec
 			.iter()
 			.enumerate()
-			.find(|(_, c)| c.as_ptr() as *mut c_void == self.ptr.as_ptr())
+			.find(|(_, c)| ptr::fn_addr_eq(**c, self.callback))
 			.map(|(i, _)| i);
 		if let Some(i) = i {
 			vec.remove(i);
@@ -125,14 +114,14 @@ impl Drop for CallbackHook {
 
 /// The default value for `CALLBACKS`.
 #[allow(clippy::declare_interior_mutable_const)]
-const CALLBACKS_INIT: IntMutex<Vec<CallbackWrapper>> = IntMutex::new(Vec::new());
+const CALLBACKS_INIT: IntMutex<Vec<Callback>> = IntMutex::new(Vec::new());
 /// List containing vectors that store callbacks for every interrupt watchdogs.
-static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] =
+static CALLBACKS: [IntMutex<Vec<Callback>>; idt::ENTRIES_COUNT as _] =
 	[CALLBACKS_INIT; idt::ENTRIES_COUNT as _];
 
 /// Registers the given callback and returns a reference to it.
 ///
-/// The latest registered callback is executed last. Thus, callback that are registered before can
+/// The latest registered callback is executed last. Thus, callback that are registered first can
 /// prevent next callbacks from being executed.
 ///
 /// Arguments:
@@ -142,79 +131,55 @@ static CALLBACKS: [IntMutex<Vec<CallbackWrapper>>; idt::ENTRIES_COUNT as _] =
 /// If an allocation fails, the function shall return an error.
 ///
 /// If the provided ID is invalid, the function returns `None`.
-pub fn register_callback<C>(id: u32, callback: C) -> AllocResult<Option<CallbackHook>>
-where
-	C: 'static + FnMut(u32, u32, &Regs, u32) -> CallbackResult,
-{
-	if unlikely(id as usize >= CALLBACKS.len()) {
+pub fn register_callback(id: u32, callback: Callback) -> AllocResult<Option<CallbackHook>> {
+	let Some(callbacks) = CALLBACKS.get(id as usize) else {
 		return Ok(None);
-	}
-
-	let mut vec = CALLBACKS[id as usize].lock();
-	let b = Box::new(callback)?;
-	let ptr = b.as_ptr();
-	vec.push(b)?;
-
+	};
+	let mut vec = callbacks.lock();
+	vec.push(callback)?;
 	Ok(Some(CallbackHook {
 		id,
-		ptr: NonNull::new(ptr as _).unwrap(),
+		callback,
 	}))
 }
 
-/// Unlocks the callback vector with id `id`. This function is to be used in
-/// case of an event callback that never returns.
+/// Called whenever an interruption is triggered.
 ///
-/// This function does not re-enable interruptions.
-///
-/// # Safety
-///
-/// This function is marked as unsafe since it may lead to concurrency issues if
-/// not used properly. It must be called from the same CPU core as the one that
-/// locked the mutex since unlocking changes the interrupt flag.
+/// `frame` is the stack frame of the interruption, with general purpose registers saved.
 #[no_mangle]
-pub unsafe extern "C" fn unlock_callbacks(id: usize) {
-	CALLBACKS[id].unlock(false);
-}
-
-/// Feeds the entropy pool using the given data.
-fn feed_entropy<T>(pool: &mut EntropyPool, val: &T) {
-	let buff = utils::bytes::as_bytes(val);
-	pool.write(buff);
-}
-
-/// This function is called whenever an interruption is triggered.
-///
-/// Arguments:
-/// - `id` is the identifier of the interrupt type This value is architecture-dependent
-/// - `code` is an optional code associated with the interrupt If the interrupt type doesn't have a
-///   code, the value is `0`
-/// - `regs` is the state of the registers at the moment of the interrupt
-/// - `ring` tells the ring at which the code was running
-#[no_mangle]
-extern "C" fn event_handler(id: u32, code: u32, ring: u32, regs: &mut Regs) {
+extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	// Feed entropy pool
 	{
+		let buf = utils::bytes::as_bytes(frame);
 		let mut pool = rand::ENTROPY_POOL.lock();
 		if let Some(pool) = &mut *pool {
-			feed_entropy(pool, &id);
-			feed_entropy(pool, &code);
-			feed_entropy(pool, &ring);
-			feed_entropy(pool, regs);
+			pool.write(buf);
 		}
 	}
-
-	let mut callbacks = CALLBACKS[id as usize].lock();
-	for c in callbacks.iter_mut() {
-		let res = c(id, code, regs, ring);
+	let id = frame.int as u32;
+	let ring = (frame.cs & 0b11) as u8;
+	let code = frame.code as u32;
+	// Call corresponding callbacks
+	let callbacks = &CALLBACKS[id as usize];
+	let mut i = 0;
+	loop {
+		// Not putting this in a loop's condition to ensure it is dropped at each turn
+		let Some(callback) = callbacks.lock().get(i).cloned() else {
+			break;
+		};
+		i += 1;
+		let res = callback(id, code, frame, ring);
 		match res {
 			CallbackResult::Continue => {}
-			CallbackResult::Panic => panic!("{}, code: {code:x}", get_error_message(id)),
+			CallbackResult::Panic => {
+				let error = ERROR_MESSAGES.get(id as usize).unwrap_or(&"Unknown");
+				panic!("{error}, code: {code:x}");
+			}
 		}
 	}
-	// Unlock to avoid deadlocks
-	if id >= ERROR_MESSAGES.len() as u32 {
-		pic::end_of_interrupt((id - ERROR_MESSAGES.len() as u32) as _);
+	// If not a hardware exception, send EOI
+	if let Some(irq) = id.checked_sub(ERROR_MESSAGES.len() as u32) {
+		pic::end_of_interrupt(irq as _);
 	}
-	drop(callbacks);
-	process::yield_current(ring, regs)
+	process::yield_current(ring, frame);
 }

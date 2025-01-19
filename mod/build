@@ -4,15 +4,15 @@
 
 KERN_SRC=$(realpath $(dirname $0)/..)
 if [ -z "$ARCH" ]; then
-	ARCH="x86"
+	ARCH="x86_64"
 fi
-CARGOFLAGS="--target $KERN_SRC/kernel/arch/$ARCH/$ARCH.json $CARGOFLAGS"
+export CARGOFLAGS="--target $KERN_SRC/kernel/arch/$ARCH/$ARCH.json $CARGOFLAGS"
 
 if [ ! -z "$PROFILE" ] && [ "$PROFILE" != "debug" ]; then
 	CARGOFLAGS="$CARGOFLAGS --profile $PROFILE"
 else
-  PROFILE="debug"
+	export PROFILE="debug"
 fi
-export RUSTFLAGS="--extern kernel=$KERN_SRC/kernel/target/$ARCH/$PROFILE/libkernel.so -L $KERN_SRC/kernel/target/$ARCH/$PROFILE/deps -L $KERN_SRC/kernel/target/$PROFILE/deps $RUSTFLAGS"
+export RUSTFLAGS="--extern kernel=$KERN_SRC/kernel/target/$ARCH/$PROFILE/libkernel.rlib -L $KERN_SRC/kernel/target/$ARCH/$PROFILE/deps -L $KERN_SRC/kernel/target/$PROFILE/deps $RUSTFLAGS"
 
 cargo build $CARGOFLAGS $@

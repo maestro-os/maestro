@@ -22,13 +22,13 @@ use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
 	process::{mem_space::copy::SyscallString, Process},
+	sync::mutex::Mutex,
 	syscall::{linkat::linkat, util::at::AT_FDCWD},
 };
 use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

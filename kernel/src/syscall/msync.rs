@@ -23,6 +23,7 @@ use crate::{
 	memory,
 	memory::VirtAddr,
 	process::{mem_space::MemSpace, Process},
+	sync::mutex::IntMutex,
 	syscall::Args,
 };
 use core::ffi::{c_int, c_void};
@@ -30,7 +31,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::PAGE_SIZE,
-	lock::IntMutex,
 	ptr::arc::Arc,
 };
 
@@ -59,7 +59,7 @@ pub fn msync(
 	let pages = length.div_ceil(PAGE_SIZE);
 	while i < pages {
 		let mapping = mem_space.get_mapping_for_addr(addr).ok_or(errno!(ENOMEM))?;
-		mapping.fs_sync(mem_space.get_vmem())?; // TODO Use flags
+		mapping.fs_sync(&mem_space.vmem)?; // TODO Use flags
 		i += mapping.get_size().get();
 	}
 	Ok(0)

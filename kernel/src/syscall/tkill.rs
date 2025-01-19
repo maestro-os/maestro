@@ -19,6 +19,7 @@
 //! The `tkill` system call allows to send a signal to a specific thread.
 
 use crate::{
+	file::perm::AccessProfile,
 	process::{pid::Pid, signal::Signal, Process},
 	syscall::Args,
 };
@@ -26,28 +27,18 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
 pub fn tkill(
 	Args((tid, sig)): Args<(Pid, c_int)>,
-	proc: Arc<IntMutex<Process>>,
+	access_profile: AccessProfile,
 ) -> EResult<usize> {
 	let signal = Signal::try_from(sig)?;
-	let mut proc = proc.lock();
-	// Check if the thread to kill is the current
-	if proc.tid == tid {
-		proc.kill(signal);
-	} else {
-		// Get the thread
-		let thread_mutex = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
-		let mut thread = thread_mutex.lock();
-		// Check permission
-		if !proc.access_profile.can_kill(&thread) {
-			return Err(errno!(EPERM));
-		}
-		thread.kill(signal);
+	let thread = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
+	if !access_profile.can_kill(&thread) {
+		return Err(errno!(EPERM));
 	}
+	thread.kill(signal);
 	Ok(0)
 }

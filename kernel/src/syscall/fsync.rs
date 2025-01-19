@@ -18,12 +18,11 @@
 
 //! The `fsync` system call synchronizes the state of a file to storage.
 
-use crate::{file::fd::FileDescriptorTable, process::Process, syscall::Args};
+use crate::{file::fd::FileDescriptorTable, process::Process, sync::mutex::Mutex, syscall::Args};
 use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

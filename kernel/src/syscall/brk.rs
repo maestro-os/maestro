@@ -22,12 +22,12 @@
 use crate::{
 	memory::VirtAddr,
 	process::{mem_space::MemSpace, Process},
+	sync::mutex::IntMutex,
 	syscall::Args,
 };
 use core::ffi::c_void;
 use utils::{
 	errno::{EResult, Errno},
-	lock::IntMutex,
 	ptr::arc::Arc,
 };
 

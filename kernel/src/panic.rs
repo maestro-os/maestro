@@ -22,9 +22,10 @@
 //! from. This is an undesirable state which requires to reboot the host
 //! machine.
 
-use crate::{logger, memory::VirtAddr, power, register_get};
+#[cfg(config_debug_qemu)]
+use crate::debug::qemu;
+use crate::{arch::x86::cli, logger, memory::VirtAddr, power, register_get};
 use core::panic::PanicInfo;
-use utils::interrupt::cli;
 
 /// Called on Rust panic.
 #[panic_handler]
@@ -38,9 +39,8 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		if selftest::is_running() {
 			crate::println!("FAILED\n");
 			crate::println!("Error: {panic_info}\n");
-
 			#[cfg(config_debug_qemu)]
-			selftest::qemu::exit(selftest::qemu::FAILURE);
+			qemu::exit(qemu::FAILURE);
 			power::halt();
 		}
 	}
@@ -65,14 +65,19 @@ fn panic(panic_info: &PanicInfo) -> ! {
 		use core::ptr;
 
 		crate::println!("--- Callstack ---");
-		let ebp = ptr::with_exposed_provenance(register_get!("ebp"));
+		#[cfg(target_arch = "x86")]
+		let frame = register_get!("ebp");
+		#[cfg(target_arch = "x86_64")]
+		let frame = register_get!("rbp");
+		let ebp = ptr::with_exposed_provenance(frame);
 		let mut callstack: [VirtAddr; 8] = [VirtAddr::default(); 8];
 		unsafe {
 			debug::get_callstack(ebp, &mut callstack);
 		}
 		debug::print_callstack(&callstack);
 	}
-
+	#[cfg(config_debug_qemu)]
+	qemu::exit(qemu::FAILURE);
 	power::halt();
 }
 

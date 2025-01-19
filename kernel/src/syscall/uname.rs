@@ -19,8 +19,10 @@
 //! The `uname` syscall is used to retrieve information about the system.
 
 use crate::{
+	arch::ARCH,
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
+	HOSTNAME, NAME, VERSION,
 };
 use utils::{
 	errno,
@@ -54,11 +56,11 @@ pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
 		version: [0; UTSNAME_LENGTH],
 		machine: [0; UTSNAME_LENGTH],
 	};
-	utils::slice_copy(crate::NAME.as_bytes(), &mut utsname.sysname);
-	utils::slice_copy(&crate::HOSTNAME.lock(), &mut utsname.nodename);
-	utils::slice_copy(crate::VERSION.as_bytes(), &mut utsname.release);
+	utils::slice_copy(NAME.as_bytes(), &mut utsname.sysname);
+	utils::slice_copy(&HOSTNAME.lock(), &mut utsname.nodename);
+	utils::slice_copy(VERSION.as_bytes(), &mut utsname.release);
 	utils::slice_copy(&[], &mut utsname.version);
-	utils::slice_copy(crate::ARCH.as_bytes(), &mut utsname.machine);
-	buf.copy_to_user(utsname)?;
+	utils::slice_copy(ARCH.as_bytes(), &mut utsname.machine);
+	buf.copy_to_user(&utsname)?;
 	Ok(0)
 }

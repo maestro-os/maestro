@@ -40,7 +40,6 @@ use core::ffi::c_int;
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

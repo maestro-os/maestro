@@ -6,13 +6,16 @@
 # - ARCH: specifies the architecture to build for
 # - AUX_ELF: specifies the path to an auxiliary ELF file whose symbols will be added to gdb
 
+if [ -z "$ARCH" ]; then
+  ARCH="x86_64"
+fi
+
+cargo build $CARGOFLAGS --target arch/$ARCH/$ARCH.json
+
 export QEMUFLAGS="$QEMUFLAGS -s -S -d int"
-setsid cargo run $CARGOFLAGS >qemu.log 2>&1 &
+setsid cargo run $CARGOFLAGS --target arch/$ARCH/$ARCH.json >qemu.log 2>&1 &
 QEMU_PID=$!
 
-if [ -z "$ARCH" ]; then
-  ARCH="x86"
-fi
 KERN_PATH="target/$ARCH/debug/maestro"
 
 if ! [ -z "$AUX_ELF" ]; then

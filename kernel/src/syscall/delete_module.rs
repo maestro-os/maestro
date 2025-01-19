@@ -41,6 +41,6 @@ pub fn delete_module(
 	}
 	let name = name.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	// TODO handle dependency (don't unload a module that is required by another)
-	module::remove(&name);
+	module::remove(&name)?;
 	Ok(0)
 }

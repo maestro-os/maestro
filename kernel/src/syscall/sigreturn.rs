@@ -23,38 +23,46 @@
 //! to allow normal execution.
 
 use crate::{
+	arch::x86::idt::IntFrame,
+	memory::VirtAddr,
 	process::{
 		mem_space::copy::SyscallPtr,
-		regs::Regs,
-		signal::{Signal, UContext},
+		signal::{ucontext, Signal},
 		Process,
 	},
 	syscall::FromSyscallArg,
 };
-use core::{mem::size_of, ptr};
+use core::{intrinsics::unlikely, mem::size_of, ptr};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	interrupt::cli,
-	lock::{IntMutex, IntMutexGuard},
 };
 
-pub fn sigreturn(regs: &Regs) -> EResult<usize> {
-	// Avoid re-enabling interrupts before context switching
-	cli();
-	// Retrieve the previous state
-	let ctx_ptr = regs.esp - size_of::<UContext>();
-	let ctx_ptr = SyscallPtr::<UContext>::from_syscall_arg(ctx_ptr);
-	let ctx = ctx_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	{
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
-		// Restores the state of the process before the signal handler
-		proc.sigmask = ctx.uc_sigmask;
+pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
+	let proc = Process::current();
+	// Retrieve and restore previous state
+	let stack_ptr = frame.get_stack_address();
+	if frame.is_compat() {
+		let ctx = SyscallPtr::<ucontext::UContext32>::from_ptr(stack_ptr)
+			.copy_from_user()?
+			.ok_or_else(|| errno!(EFAULT))?;
+		ctx.restore_regs(&proc, frame);
+	} else {
+		#[cfg(target_arch = "x86_64")]
+		{
+			let ctx = SyscallPtr::<ucontext::UContext64>::from_ptr(stack_ptr)
+				.copy_from_user()?
+				.ok_or_else(|| errno!(EFAULT))?;
+			let res = ctx.restore_regs(&proc, frame);
+			if unlikely(res.is_err()) {
+				proc.kill(Signal::SIGSEGV);
+			}
+		}
 	}
-	// Do not handle the next pending signal here, to prevent signal spamming from completely
-	// blocking the process
-	unsafe {
-		ctx.uc_mcontext.switch(true);
-	}
+	// Left register untouched
+	Ok(frame.get_syscall_id())
+}
+
+pub fn rt_sigreturn(frame: &mut IntFrame) -> EResult<usize> {
+	sigreturn(frame)
 }

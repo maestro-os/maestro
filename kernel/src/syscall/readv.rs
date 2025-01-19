@@ -21,10 +21,13 @@
 use crate::{
 	file::{fd::FileDescriptorTable, File, FileType},
 	process::{
-		iovec::IOVec,
-		mem_space::{copy::SyscallSlice, MemSpace},
+		mem_space::{
+			copy::{SyscallIOVec, SyscallSlice},
+			MemSpace,
+		},
 		scheduler, Process,
 	},
+	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };
 use core::{cmp::min, ffi::c_int, intrinsics::unlikely, sync::atomic};
@@ -33,7 +36,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::IOV_MAX,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 	vec,
 };
@@ -47,18 +49,13 @@ use utils::{
 /// - `iovcnt` is the number of chunks in `iov`
 /// - `offset` is the offset at which the read operation in the file begins
 /// - `open_file` is the file to read from
-fn read(
-	iov: &SyscallSlice<IOVec>,
-	iovcnt: usize,
-	offset: Option<u64>,
-	file: &File,
-) -> EResult<usize> {
+fn read(iov: SyscallIOVec, iovcnt: usize, offset: Option<u64>, file: &File) -> EResult<usize> {
 	let mut off = 0;
-	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
-	for i in iov {
+	for i in iov.iter(iovcnt) {
+		let i = i?;
 		// The size to read. This is limited to avoid an overflow on the total length
 		let max_len = min(i.iov_len, i32::MAX as usize - off);
-		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
+		let ptr = SyscallSlice::<u8>::from_ptr(i.iov_base as usize);
 		// Read
 		// TODO perf: do not use a buffer
 		let mut buf = vec![0u8; max_len]?;
@@ -92,7 +89,7 @@ fn read(
 /// - `flags` is the set of flags
 pub fn do_readv(
 	fd: c_int,
-	iov: SyscallSlice<IOVec>,
+	iov: SyscallIOVec,
 	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
@@ -112,12 +109,12 @@ pub fn do_readv(
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	let len = read(&iov, iovcnt as _, offset, &file)?;
+	let len = read(iov, iovcnt as _, offset, &file)?;
 	Ok(len as _)
 }
 
 pub fn readv(
-	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
+	Args((fd, iov, iovcnt)): Args<(c_int, SyscallIOVec, c_int)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_readv(fd, iov, iovcnt, None, None, fds)

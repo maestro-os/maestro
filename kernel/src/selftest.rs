@@ -25,6 +25,8 @@
 //! make them pass even though they should not. Even if this scenario is unlikely, this remains a
 //! concern since the kernel has to be as reliable as possible.
 
+#[cfg(config_debug_qemu)]
+use crate::debug::qemu;
 use crate::power;
 use core::{
 	any::type_name,
@@ -33,29 +35,6 @@ use core::{
 
 /// Boolean value telling whether selftesting is running.
 static RUNNING: AtomicBool = AtomicBool::new(false);
-
-/// This module contains utilities to manipulate QEMU for testing.
-#[cfg(config_debug_qemu)]
-pub mod qemu {
-	use crate::{io, power};
-
-	/// The port used to trigger QEMU emulator exit with the given exit code.
-	const EXIT_PORT: u16 = 0xf4;
-
-	/// QEMU exit code for success.
-	pub const SUCCESS: u32 = 0x10;
-	/// QEMU exit code for failure.
-	pub const FAILURE: u32 = 0x11;
-
-	/// Exits QEMU with the given status.
-	pub fn exit(status: u32) {
-		unsafe {
-			io::outl(EXIT_PORT, status);
-		}
-		// halt in case exiting did not succeed for some reason
-		power::halt();
-	}
-}
 
 /// Trait for any testable feature.
 pub trait Testable {

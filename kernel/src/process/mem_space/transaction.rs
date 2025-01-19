@@ -206,7 +206,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	}
 }
 
-impl<'m, 'v> Drop for MemSpaceTransaction<'m, 'v> {
+impl Drop for MemSpaceTransaction<'_, '_> {
 	fn drop(&mut self) {
 		// If the transaction was not committed, rollback
 		let gaps_complement = mem::take(&mut self.gaps_complement);

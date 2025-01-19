@@ -21,15 +21,11 @@
 
 use crate::{
 	process,
-	process::{pid::Pid, scheduler, Process},
+	process::{pid::Pid, scheduler::Scheduler, Process},
+	sync::mutex::{IntMutex, Mutex},
 };
 use core::mem;
-use utils::{
-	collections::vec::Vec,
-	errno,
-	errno::EResult,
-	lock::{IntMutex, Mutex},
-};
+use utils::{collections::vec::Vec, errno, errno::EResult};
 
 /// A queue of processes waiting on a resource.
 ///
@@ -55,20 +51,17 @@ impl WaitQueue {
 			}
 			// Queue
 			{
-				let proc_mutex = Process::current();
-				let mut proc = proc_mutex.lock();
+				let proc = Process::current();
 				self.0.lock().push(proc.get_pid())?;
 				proc.set_state(process::State::Sleeping);
 			}
 			// Yield
-			scheduler::end_tick();
+			Scheduler::tick();
 			// TODO try to remove the process from the queue (since it might get woken up by
-			// something else) Execution resumes. If the current process had received a signal,
-			// return
+			// something else)
 			{
-				let proc_mutex = Process::current();
-				let mut proc = proc_mutex.lock();
-				if proc.next_signal(true).is_some() {
+				// If the current process had received a signal, return
+				if Process::current().signal.lock().next_signal(true).is_some() {
 					return Err(errno!(EINTR));
 				}
 			}
@@ -93,7 +86,7 @@ impl WaitQueue {
 			};
 			break proc;
 		};
-		proc.lock().wake();
+		proc.wake();
 	}
 
 	/// Wakes all processes.
@@ -104,7 +97,7 @@ impl WaitQueue {
 				// Process does not exist, try next
 				continue;
 			};
-			proc.lock().wake();
+			proc.wake();
 		}
 	}
 }

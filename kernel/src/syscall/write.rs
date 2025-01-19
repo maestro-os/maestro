@@ -21,16 +21,14 @@
 use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, FileType},
-	idt,
-	process::{mem_space::copy::SyscallSlice, regs::Regs, scheduler, Process},
+	process::{mem_space::copy::SyscallSlice, scheduler, Process},
+	sync::mutex::Mutex,
 	syscall::Signal,
 };
 use core::{cmp::min, ffi::c_int, sync::atomic};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	interrupt::cli,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
@@ -51,7 +49,7 @@ pub fn write(
 		return Err(errno!(EINVAL));
 	}
 	// TODO find a way to avoid allocating here
-	let buf_slice = buf.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
+	let buf_slice = buf.copy_from_user_vec(0, len)?.ok_or(errno!(EFAULT))?;
 	// Write file
 	let off = file.off.load(atomic::Ordering::Acquire);
 	let len = file.ops.write(&file, off, &buf_slice)?;

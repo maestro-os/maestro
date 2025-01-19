@@ -21,11 +21,10 @@
 use crate::{file::perm::Gid, process::Process, syscall::Args};
 use utils::{
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
-pub fn setgid(Args(gid): Args<Gid>, proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	proc.lock().access_profile.set_gid(gid)?;
+pub fn setgid(Args(gid): Args<Gid>, proc: Arc<Process>) -> EResult<usize> {
+	proc.fs.lock().access_profile.set_gid(gid)?;
 	Ok(0)
 }

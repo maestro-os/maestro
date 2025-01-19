@@ -38,10 +38,14 @@ pub enum SampleOp {
 /// - `size` is the new size of the allocation. The unit is dependent on the allocator.
 pub fn sample(allocator: &str, op: SampleOp, addr: usize, size: usize) {
 	// Dump callstack
-	let ebp = ptr::with_exposed_provenance::<usize>(register_get!("ebp"));
+	#[cfg(target_arch = "x86")]
+	let frame = register_get!("ebp");
+	#[cfg(target_arch = "x86_64")]
+	let frame = register_get!("rbp");
+	let frame = ptr::with_exposed_provenance::<usize>(frame);
 	let mut callstack: [VirtAddr; 64] = [VirtAddr::default(); 64];
 	unsafe {
-		debug::get_callstack(ebp, &mut callstack);
+		debug::get_callstack(frame, &mut callstack);
 	}
 	// COM2
 	let mut serial = serial::PORTS[1].lock();

@@ -21,10 +21,9 @@
 use crate::process::Process;
 use utils::{
 	errno::{EResult, Errno},
-	lock::{IntMutex, IntMutexGuard},
 	ptr::arc::Arc,
 };
 
-pub fn getppid(proc: Arc<IntMutex<Process>>) -> EResult<usize> {
-	Ok(proc.lock().get_parent_pid() as _)
+pub fn getppid(proc: Arc<Process>) -> EResult<usize> {
+	Ok(proc.get_parent_pid() as _)
 }

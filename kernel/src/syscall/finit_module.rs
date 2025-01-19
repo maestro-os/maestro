@@ -23,13 +23,13 @@ use crate::{
 	module,
 	module::Module,
 	process::{mem_space::copy::SyscallString, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{alloc::AllocError, ffi::c_int};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 	vec,
 };
@@ -52,10 +52,6 @@ pub fn finit_module(
 		.ok_or_else(|| errno!(ENOEXEC))?
 		.read_all()?;
 	let module = Module::load(&image)?;
-	if !module::is_loaded(module.get_name()) {
-		module::add(module)?;
-		Ok(0)
-	} else {
-		Err(errno!(EEXIST))
-	}
+	module::add(module)?;
+	Ok(0)
 }

@@ -18,24 +18,38 @@
 
 //! Functions to explore the kernel's ELF structures.
 
-use super::{ELF32SectionHeader, ELF32Sym, SHT_SYMTAB};
+use super::SHT_SYMTAB;
 use crate::{
 	memory::{PhysAddr, VirtAddr},
 	multiboot,
+	sync::once::OnceInit,
 };
 use utils::{
 	collections::hashmap::HashMap,
 	errno::{AllocResult, CollectResult},
-	lock::once::OnceInit,
 };
 
+/// A kernel ELF section header.
+#[cfg(target_arch = "x86")]
+pub type KernSectionHeader = super::ELF32SectionHeader;
+/// A kernel ELF section header.
+#[cfg(target_arch = "x86_64")]
+pub type KernSectionHeader = super::ELF64SectionHeader;
+
+/// A kernel ELF symbol.
+#[cfg(target_arch = "x86")]
+pub type KernSym = super::ELF32Sym;
+/// A kernel ELF symbol.
+#[cfg(target_arch = "x86_64")]
+pub type KernSym = super::ELF64Sym;
+
 /// A reference to the strtab.
-static STRTAB: OnceInit<&'static ELF32SectionHeader> = unsafe { OnceInit::new() };
+static STRTAB: OnceInit<&'static KernSectionHeader> = unsafe { OnceInit::new() };
 /// Name-to-symbol map for the kernel.
-static SYMBOLS: OnceInit<HashMap<&'static [u8], ELF32Sym>> = unsafe { OnceInit::new() };
+static SYMBOLS: OnceInit<HashMap<&'static [u8], KernSym>> = unsafe { OnceInit::new() };
 
 /// Returns an iterator over the kernel's ELF sections.
-pub fn sections() -> impl Iterator<Item = &'static ELF32SectionHeader> {
+pub fn sections() -> impl Iterator<Item = &'static KernSectionHeader> {
 	let boot_info = multiboot::get_boot_info();
 	(0..boot_info.elf_num).map(|i| get_section_by_offset(i).unwrap())
 }
@@ -43,7 +57,7 @@ pub fn sections() -> impl Iterator<Item = &'static ELF32SectionHeader> {
 /// Returns a reference to the `n`th kernel section.
 ///
 /// If the section does not exist, the function returns `None`.
-pub fn get_section_by_offset(n: u32) -> Option<&'static ELF32SectionHeader> {
+pub fn get_section_by_offset(n: u32) -> Option<&'static KernSectionHeader> {
 	let boot_info = multiboot::get_boot_info();
 	if n < boot_info.elf_num {
 		let offset = n as usize * boot_info.elf_entsize as usize;
@@ -60,7 +74,7 @@ pub fn get_section_by_offset(n: u32) -> Option<&'static ELF32SectionHeader> {
 /// Returns the name of the given kernel ELF section.
 ///
 /// If the name of the symbol could not be found, the function returns `None`.
-pub fn get_section_name(section: &ELF32SectionHeader) -> Option<&'static [u8]> {
+pub fn get_section_name(section: &KernSectionHeader) -> Option<&'static [u8]> {
 	let boot_info = multiboot::get_boot_info();
 	// `unwrap` cannot fail because the ELF will always have this section
 	let names_section = get_section_by_offset(boot_info.elf_shndx).unwrap();
@@ -77,12 +91,12 @@ pub fn get_section_name(section: &ELF32SectionHeader) -> Option<&'static [u8]> {
 /// `name` is the name of the required section.
 ///
 /// If the section doesn't exist, the function returns `None`.
-pub fn get_section_by_name(name: &[u8]) -> Option<&'static ELF32SectionHeader> {
+pub fn get_section_by_name(name: &[u8]) -> Option<&'static KernSectionHeader> {
 	sections().find(|s| get_section_name(s) == Some(name))
 }
 
 /// Returns an iterator over the kernel's ELF symbols.
-pub fn symbols() -> impl Iterator<Item = &'static ELF32Sym> {
+pub fn symbols() -> impl Iterator<Item = &'static KernSym> {
 	let symtab = sections()
 		.find(|section| section.sh_type == SHT_SYMTAB)
 		.unwrap();
@@ -93,14 +107,14 @@ pub fn symbols() -> impl Iterator<Item = &'static ELF32Sym> {
 	let symbols_count = (symtab.sh_size / symtab.sh_entsize) as usize;
 	(0..symbols_count).map(move |i| {
 		let off = i * symtab.sh_entsize as usize;
-		unsafe { &*(begin.add(off) as *const ELF32Sym) }
+		unsafe { &*(begin.add(off) as *const KernSym) }
 	})
 }
 
 /// Returns the name of the given kernel ELF symbol.
 ///
 /// If the name of the symbol could not be found, the function returns `None`.
-pub fn get_symbol_name(symbol: &ELF32Sym) -> Option<&'static [u8]> {
+pub fn get_symbol_name(symbol: &KernSym) -> Option<&'static [u8]> {
 	let ptr = PhysAddr(STRTAB.get().sh_addr as usize + symbol.st_name as usize)
 		.kernel_to_virtual()
 		.unwrap()
@@ -129,7 +143,7 @@ pub fn get_function_name(inst: VirtAddr) -> Option<&'static [u8]> {
 /// `name` is the name of the symbol to get.
 ///
 /// If the symbol doesn't exist, the function returns `None`.
-pub fn get_symbol_by_name(name: &[u8]) -> Option<&'static ELF32Sym> {
+pub fn get_symbol_by_name(name: &[u8]) -> Option<&'static KernSym> {
 	SYMBOLS.get().get(name)
 }
 

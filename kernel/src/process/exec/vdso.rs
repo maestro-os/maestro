@@ -29,6 +29,7 @@ use crate::{
 			MapConstraint, MemSpace,
 		},
 	},
+	sync::once::OnceInit,
 };
 use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
 use utils::{
@@ -36,22 +37,15 @@ use utils::{
 	errno::{AllocResult, CollectResult, EResult},
 	include_bytes_aligned,
 	limits::PAGE_SIZE,
-	lock::Mutex,
 	ptr::arc::Arc,
 };
-
-/// The ELF image of the vDSO.
-static ELF_IMAGE: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
 
 /// Information on the vDSO ELF image.
 struct Vdso {
 	/// The list of pages on which the image is loaded.
 	pages: Arc<Vec<Arc<ResidencePage>>>,
-	/// The length of the ELF image in bytes.
-	len: usize,
-
 	/// The offset of the vDSO's entry.
-	entry_off: usize,
+	entry_off: Option<NonZeroUsize>,
 }
 
 /// Information about the mapped vDSO.
@@ -59,28 +53,30 @@ pub struct MappedVDSO {
 	/// The virtual address to the beginning of the vDSO
 	pub begin: VirtAddr,
 	/// The pointer to the entry point of the vDSO
-	pub entry: NonNull<u8>,
+	pub entry: Option<NonNull<u8>>,
 }
 
 /// The info of the vDSO. If `None`, the vDSO is not loaded yet.
-static VDSO: Mutex<Option<Vdso>> = Mutex::new(None);
+static VDSO: OnceInit<Vdso> = unsafe { OnceInit::new() };
+/// Same as [`VDSO`], except for the compat image.
+#[cfg(target_arch = "x86_64")]
+static VDSO_COMPAT: OnceInit<Vdso> = unsafe { OnceInit::new() };
 
 /// Loads the vDSO in memory and returns the image.
-fn load_image() -> EResult<Vdso> {
-	let parser = ELFParser::new(ELF_IMAGE)?;
-	let entry_off = parser.hdr().e_entry as _;
+fn load_image(elf: &[u8]) -> EResult<Vdso> {
+	let parser = ELFParser::new(elf)?;
 	// Load image into pages
-	let pages_count = ELF_IMAGE.len().div_ceil(PAGE_SIZE);
+	let pages_count = elf.len().div_ceil(PAGE_SIZE);
 	let pages = (0..pages_count)
 		.map(|i| {
 			let off = i * PAGE_SIZE;
-			let len = min(PAGE_SIZE, ELF_IMAGE.len() - off);
+			let len = min(PAGE_SIZE, elf.len() - off);
 			// Alloc page
 			let physaddr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
 			let virtaddr = physaddr.kernel_to_virtual().unwrap();
 			let virtaddr = unsafe { &mut *virtaddr.as_ptr::<Page>() };
 			// Copy data
-			let src = &ELF_IMAGE[off..(off + len)];
+			let src = &elf[off..(off + len)];
 			virtaddr[..src.len()].copy_from_slice(src);
 			virtaddr[src.len()..].fill(0);
 			Arc::new(ResidencePage::new(physaddr))
@@ -89,34 +85,57 @@ fn load_image() -> EResult<Vdso> {
 		.0?;
 	Ok(Vdso {
 		pages: Arc::new(pages)?,
-		len: ELF_IMAGE.len(),
-
-		entry_off,
+		entry_off: NonZeroUsize::new(parser.hdr().e_entry as usize),
 	})
 }
 
 /// Maps the vDSO into the given memory space.
 ///
-/// The function returns the virtual pointer to the mapped vDSO.
-pub fn map(mem_space: &mut MemSpace) -> EResult<MappedVDSO> {
-	let mut elf_image = VDSO.lock();
-	let img = elf_image.get_or_insert_with(|| load_image().expect("Failed to load vDSO"));
-	let vdso_pages = img.len.div_ceil(PAGE_SIZE);
-	let Some(vdso_pages) = NonZeroUsize::new(vdso_pages) else {
-		panic!("Invalid vDSO image");
+/// If `compat` is true, the compatibility image is used.
+///
+/// The function returns the virtual address to the mapped vDSO.
+#[allow(unused_variables)]
+pub fn map(mem_space: &mut MemSpace, compat: bool) -> EResult<MappedVDSO> {
+	#[cfg(not(target_arch = "x86_64"))]
+	let vdso = VDSO.get();
+	#[cfg(target_arch = "x86_64")]
+	let vdso = {
+		if !compat {
+			VDSO.get()
+		} else {
+			VDSO_COMPAT.get()
+		}
 	};
 	// TODO ASLR
+	let pages_count = NonZeroUsize::new(vdso.pages.len()).unwrap();
 	let begin = mem_space.map(
 		MapConstraint::None,
-		vdso_pages,
+		pages_count,
 		mem_space::MAPPING_FLAG_USER,
 		MapResidence::Static {
-			pages: img.pages.clone(),
+			pages: vdso.pages.clone(),
 		},
 	)?;
-	let entry_ptr = begin.wrapping_add(img.entry_off);
 	Ok(MappedVDSO {
 		begin: begin.into(),
-		entry: NonNull::new(entry_ptr).unwrap(),
+		entry: vdso
+			.entry_off
+			.and_then(|off| NonNull::new(begin.wrapping_add(off.get()))),
 	})
+}
+
+/// Loads the vDSO.
+pub(crate) fn init() -> EResult<()> {
+	// Main image
+	unsafe {
+		static ELF: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
+		VDSO.init(load_image(ELF)?);
+	}
+	// 32 bit image for backward compat
+	#[cfg(target_arch = "x86_64")]
+	unsafe {
+		static ELF: &[u8] = include_bytes_aligned!(usize, env!("VDSO_COMPAT_PATH"));
+		VDSO_COMPAT.init(load_image(ELF)?);
+	}
+	Ok(())
 }

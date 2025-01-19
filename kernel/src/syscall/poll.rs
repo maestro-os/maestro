@@ -20,7 +20,7 @@
 //! descriptors.
 
 use crate::{
-	process::{mem_space::copy::SyscallSlice, scheduler, Process},
+	process::{mem_space::copy::SyscallSlice, scheduler, scheduler::Scheduler, Process},
 	syscall::Args,
 	time::{
 		clock,
@@ -86,7 +86,9 @@ pub(super) fn poll(
 			}
 		}
 		{
-			let fds_arr = fds.copy_from_user(..nfds)?.ok_or_else(|| errno!(EFAULT))?;
+			let fds_arr = fds
+				.copy_from_user_vec(0, nfds)?
+				.ok_or_else(|| errno!(EFAULT))?;
 			// Check the file descriptors list
 			for fd in &fds_arr {
 				if fd.events as u32 & POLLIN != 0 {
@@ -129,6 +131,6 @@ pub(super) fn poll(
 		}
 		// TODO Make process sleep until an event occurs on a file descriptor in
 		// `fds`
-		scheduler::end_tick();
+		Scheduler::tick();
 	}
 }

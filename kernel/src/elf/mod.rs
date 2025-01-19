@@ -24,7 +24,6 @@
 
 pub mod kernel;
 pub mod parser;
-pub mod relocation;
 
 use crate::process::mem_space;
 use macros::AnyRepr;
@@ -111,39 +110,39 @@ pub const PF_W: u32 = 0x2;
 pub const PF_R: u32 = 0x4;
 
 /// The section header is inactive.
-pub const SHT_NULL: u32 = 0x00000000;
+pub const SHT_NULL: u32 = 0x0;
 /// The section holds information defined by the program.
-pub const SHT_PROGBITS: u32 = 0x00000001;
+pub const SHT_PROGBITS: u32 = 0x1;
 /// The section holds a symbol table.
-pub const SHT_SYMTAB: u32 = 0x00000002;
+pub const SHT_SYMTAB: u32 = 0x2;
 /// the section holds a string table.
-pub const SHT_STRTAB: u32 = 0x00000003;
+pub const SHT_STRTAB: u32 = 0x3;
 /// The section holds relocation entries with explicit attends.
-pub const SHT_RELA: u32 = 0x00000004;
+pub const SHT_RELA: u32 = 0x4;
 /// The section holds a symbol hash table.
-pub const SHT_HASH: u32 = 0x00000005;
+pub const SHT_HASH: u32 = 0x5;
 /// The section holds information for dynamic linking.
-pub const SHT_DYNAMIC: u32 = 0x00000006;
+pub const SHT_DYNAMIC: u32 = 0x6;
 /// The section holds information that marks the file in some way.
-pub const SHT_NOTE: u32 = 0x00000007;
+pub const SHT_NOTE: u32 = 0x7;
 /// The section is empty but contains information in its offset.
-pub const SHT_NOBITS: u32 = 0x00000008;
+pub const SHT_NOBITS: u32 = 0x8;
 /// The section holds relocation entries without explicit attends.
-pub const SHT_REL: u32 = 0x00000009;
+pub const SHT_REL: u32 = 0x9;
 /// Reserved section type.
-pub const SHT_SHLIB: u32 = 0x0000000a;
+pub const SHT_SHLIB: u32 = 0xa;
 /// The section holds a symbol table.
-pub const SHT_DYNSYM: u32 = 0x0000000b;
+pub const SHT_DYNSYM: u32 = 0xb;
 
-/// The section contains writable data.
-pub const SHF_WRITE: u32 = 0x00000001;
-/// The section occupies memory during execution.
-pub const SHF_ALLOC: u32 = 0x00000002;
-/// The section contains executable machine instructions.
-pub const SHF_EXECINSTR: u32 = 0x00000004;
-/// Thread-Local Storage (TLS) section.
+/// Section flag: Contains writable data.
+pub const SHF_WRITE: u32 = 0x1;
+/// Section flag: Occupies memory during execution.
+pub const SHF_ALLOC: u32 = 0x2;
+/// Section flag: Contains executable machine instructions.
+pub const SHF_EXECINSTR: u32 = 0x4;
+/// Section flag: Thread-Local Storage (TLS) section.
 pub const SHF_TLS: u32 = 0x400;
-/// All bits included in this mask are reserved for processor-specific
+/// Section flag: All bits included in this mask are reserved for processor-specific
 /// semantics.
 pub const SHF_MASKPROC: u32 = 0xf0000000;
 
@@ -165,32 +164,7 @@ pub const STT_FILE: u8 = 4;
 /// Thread-Local Storage (TLS) symbol.
 pub const STT_TLS: u8 = 6;
 
-/// No relocation.
-pub const R_386_NONE: u8 = 0;
-/// Relocation type.
-pub const R_386_32: u8 = 1;
-/// Relocation type.
-pub const R_386_PC32: u8 = 2;
-/// Relocation type.
-pub const R_386_GOT32: u8 = 3;
-/// Relocation type.
-pub const R_386_PLT32: u8 = 4;
-/// Relocation type.
-pub const R_386_COPY: u8 = 5;
-/// Relocation type.
-pub const R_386_GLOB_DAT: u8 = 6;
-/// Relocation type.
-pub const R_386_JMP_SLOT: u8 = 7;
-/// Relocation type.
-pub const R_386_RELATIVE: u8 = 8;
-/// Relocation type.
-pub const R_386_GOTOFF: u8 = 9;
-/// Relocation type.
-pub const R_386_GOTPC: u8 = 10;
-/// Relocation type.
-pub const R_386_IRELATIVE: u8 = 42;
-
-/// A 32 bits ELF header.
+/// 32 bit ELF header.
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ELFHeader {
@@ -225,7 +199,43 @@ pub struct ELF32ELFHeader {
 	pub e_shstrndx: u16,
 }
 
-/// Structure representing an ELF program header.
+/// 64 bit ELF header.
+#[cfg(target_pointer_width = "64")]
+#[derive(AnyRepr, Clone, Debug)]
+#[repr(C)]
+pub struct ELF64ELFHeader {
+	/// Identification bytes.
+	pub e_ident: [u8; EI_NIDENT],
+	/// Identifies the object file type.
+	pub e_type: u16,
+	/// Specifies the required machine type.
+	pub e_machine: u16,
+	/// The file's version.
+	pub e_version: u32,
+	/// The virtual address of the file's entry point.
+	pub e_entry: u64,
+	/// The program header table's file offset in bytes.
+	pub e_phoff: u64,
+	/// The section header table's file offset in bytes.
+	pub e_shoff: u64,
+	/// Processor-specific flags.
+	pub e_flags: u32,
+	/// ELF header's size in bytes.
+	pub e_ehsize: u16,
+	/// The size of one entry in the program header table.
+	pub e_phentsize: u16,
+	/// The number of entries in the program header table.
+	pub e_phnum: u16,
+	/// The size of one entry in the section header table.
+	pub e_shentsize: u16,
+	/// The number of entries in the section header table.
+	pub e_shnum: u16,
+	/// The section header table index holding the header of the section name
+	/// string table.
+	pub e_shstrndx: u16,
+}
+
+/// 32 bit ELF program header.
 #[derive(AnyRepr, Clone, Debug)]
 #[repr(C)]
 pub struct ELF32ProgramHeader {
@@ -247,37 +257,30 @@ pub struct ELF32ProgramHeader {
 	pub p_align: u32,
 }
 
-impl ELF32ProgramHeader {
-	/// Tells whether the program header is valid.
-	///
-	/// `file_size` is the size of the file.
-	fn is_valid(&self, file_size: usize) -> EResult<()> {
-		// TODO Check p_type
-		if (self.p_offset + self.p_filesz) as usize > file_size {
-			return Err(errno!(EINVAL));
-		}
-		if self.p_align != 0 && !self.p_align.is_power_of_two() {
-			return Err(errno!(EINVAL));
-		}
-
-		Ok(())
-	}
-
-	/// Returns the flags to map the current segment into a process's memory
-	/// space.
-	pub fn get_mem_space_flags(&self) -> u8 {
-		let mut flags = mem_space::MAPPING_FLAG_USER;
-		if self.p_flags & PF_X != 0 {
-			flags |= mem_space::MAPPING_FLAG_EXEC;
-		}
-		if self.p_flags & PF_W != 0 {
-			flags |= mem_space::MAPPING_FLAG_WRITE;
-		}
-		flags
-	}
+/// 64 bit ELF program header.
+#[cfg(target_pointer_width = "64")]
+#[derive(AnyRepr, Clone, Debug)]
+#[repr(C)]
+pub struct ELF64ProgramHeader {
+	/// Tells what kind of segment this header describes.
+	pub p_type: u32,
+	/// Segment's flags.
+	pub p_flags: u32,
+	/// The offset of the segment's content in the file.
+	pub p_offset: u64,
+	/// The virtual address of the segment's content.
+	pub p_vaddr: u64,
+	/// The physical address of the segment's content (if relevant).
+	pub p_paddr: u64,
+	/// The size of the segment's content in the file.
+	pub p_filesz: u64,
+	/// The size of the segment's content in memory.
+	pub p_memsz: u64,
+	/// Segment's alignment.
+	pub p_align: u64,
 }
 
-/// A 32 bits ELF section header.
+/// 32 bit ELF section header.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32SectionHeader {
@@ -305,23 +308,36 @@ pub struct ELF32SectionHeader {
 	pub sh_entsize: u32,
 }
 
-impl ELF32SectionHeader {
-	/// Tells whether the section header is valid.
-	///
-	/// `file_size` is the size of the file.
-	fn is_valid(&self, file_size: usize) -> EResult<()> {
-		// TODO Check sh_name
-		if self.sh_type & SHT_NOBITS == 0 && (self.sh_offset + self.sh_size) as usize > file_size {
-			return Err(errno!(EINVAL));
-		}
-		if self.sh_addralign != 0 && !self.sh_addralign.is_power_of_two() {
-			return Err(errno!(EINVAL));
-		}
-		Ok(())
-	}
+/// 64 bit ELF section header.
+#[cfg(target_pointer_width = "64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64SectionHeader {
+	/// Index in the string table section specifying the name of the section.
+	pub sh_name: u32,
+	/// The type of the section.
+	pub sh_type: u32,
+	/// Section flags.
+	pub sh_flags: u64,
+	/// The address to the section's data in memory during execution.
+	pub sh_addr: u64,
+	/// The offset of the section's data in the ELF file.
+	pub sh_offset: u64,
+	/// The size of the section's data in bytes.
+	pub sh_size: u64,
+	/// Section header table index link.
+	pub sh_link: u32,
+	/// Extra-information whose interpretation depends on the section type.
+	pub sh_info: u32,
+	/// Alignment constraints of the section in memory. `0` or `1` means that
+	/// the section doesn't require specific alignment.
+	pub sh_addralign: u64,
+	/// If the section is a table of entry, this field holds the size of one
+	/// entry. Else, holds `0`.
+	pub sh_entsize: u64,
 }
 
-/// A 32 bits ELF symbol in memory.
+/// 32 bit ELF symbol in memory.
 #[derive(AnyRepr, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ELF32Sym {
@@ -339,19 +355,77 @@ pub struct ELF32Sym {
 	pub st_shndx: u16,
 }
 
-impl ELF32Sym {
-	/// Tells whether the symbol is defined.
-	pub fn is_defined(&self) -> bool {
-		self.st_shndx != 0
-	}
+/// 32 bit ELF relocation.
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF32Rel {
+	/// The location of the relocation action.
+	pub r_offset: u32,
+	/// The relocation type and symbol index.
+	pub r_info: u32,
+}
+
+/// 64 bit ELF relocation.
+#[cfg(target_pointer_width = "64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64Rel {
+	/// The location of the relocation action.
+	pub r_offset: u64,
+	/// The relocation type and symbol index.
+	pub r_info: u64,
+}
+
+/// 32 bit ELF relocation with an addend.
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF32Rela {
+	/// The location of the relocation action.
+	pub r_offset: u32,
+	/// The relocation type and symbol index.
+	pub r_info: u32,
+	/// A constant value used to compute the relocation.
+	pub r_addend: i32,
+}
+
+/// 64 bit ELF relocation with an addend.
+#[cfg(target_pointer_width = "64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64Rela {
+	/// The location of the relocation action.
+	pub r_offset: u64,
+	/// The relocation type and symbol index.
+	pub r_info: u64,
+	/// A constant value used to compute the relocation.
+	pub r_addend: i64,
 }
 
 /// The hash function for an ELF hash table.
 pub fn hash_sym_name(name: &[u8]) -> u32 {
 	let res = name.iter().fold(0u32, |mut res, c| {
 		res = res.wrapping_mul(16) + *c as u32;
-		res ^= res >> 24 & 0xf0;
+		res ^= (res >> 24) & 0xf0;
 		res
 	});
 	res & 0xfffffff
+}
+
+/// 64 bit ELF symbol in memory.
+#[cfg(target_pointer_width = "64")]
+#[derive(AnyRepr, Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ELF64Sym {
+	/// Offset in the string table section specifying the name of the symbol.
+	pub st_name: u32,
+	/// The symbol's type and binding attributes.
+	pub st_info: u8,
+	/// Holds `0`.
+	pub st_other: u8,
+	/// The index of the section the symbol is in.
+	pub st_shndx: u16,
+	/// The value of the symbol.
+	pub st_value: u64,
+	/// The size of the symbol.
+	pub st_size: u64,
 }

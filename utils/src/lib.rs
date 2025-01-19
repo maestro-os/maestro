@@ -38,7 +38,7 @@
 #![feature(pointer_is_aligned_to)]
 #![feature(portable_simd)]
 #![feature(set_ptr_value)]
-#![feature(strict_provenance)]
+#![feature(strict_provenance_lints)]
 #![feature(trusted_len)]
 #![feature(unsize)]
 #![deny(fuzzy_provenance_casts)]
@@ -50,11 +50,10 @@ pub mod bytes;
 pub mod collections;
 pub mod cpio;
 pub mod errno;
-pub mod interrupt;
 pub mod limits;
-pub mod lock;
 pub mod math;
 pub mod ptr;
+pub mod unsafe_mut;
 
 use crate::errno::AllocResult;
 use core::{

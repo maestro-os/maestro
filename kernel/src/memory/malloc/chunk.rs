@@ -41,17 +41,13 @@ use utils::errno::AllocResult;
 const CHUNK_MAGIC: u32 = 0xdeadbeef;
 /// Chunk flag indicating that the chunk is being used
 const CHUNK_FLAG_USED: u8 = 0b1;
-/// The minimum amount of bytes required to create a free chunk.
-const FREE_CHUNK_MIN: usize = 8;
 /// The required alignment for pointers returned by allocator.
-pub const ALIGNMENT: usize = 8;
-/// The size of the smallest free list bin.
-const FREE_LIST_SMALLEST_SIZE: usize = FREE_CHUNK_MIN;
+pub const ALIGNMENT: usize = 16;
 /// The number of free list bins.
 const FREE_LIST_BINS: usize = 8;
 
 /// A chunk of allocated or free memory, stored in linked lists.
-#[repr(align(8))]
+#[repr(align(16))]
 pub struct Chunk {
 	/// The magic number to check integrity of the chunk.
 	#[cfg(config_debug_malloc_magic)]
@@ -352,7 +348,7 @@ impl Chunk {
 ///
 /// This is because the linked list for the list of free chunks needs to be located after the
 /// chunks header, in order to use the chunk's body to store it.
-#[repr(C, align(8))]
+#[repr(C, align(16))]
 pub struct FreeChunk {
 	/// The chunk
 	pub chunk: Chunk,
@@ -446,10 +442,10 @@ static mut FREE_LISTS: [Option<NonNull<FreeChunk>>; FREE_LIST_BINS] = [None; FRE
 const fn get_min_chunk_size() -> usize {
 	let len = size_of::<FreeChunk>() - size_of::<Chunk>();
 	// Required because `max` is not `const`
-	if len > FREE_CHUNK_MIN {
+	if len > ALIGNMENT {
 		len
 	} else {
-		FREE_CHUNK_MIN
+		ALIGNMENT
 	}
 }
 
@@ -483,9 +479,7 @@ fn get_free_list(
 	// FIXME: this is dirty
 	let free_lists = unsafe { &mut *addr_of_mut!(FREE_LISTS) };
 	let i = min(
-		(size / FREE_LIST_SMALLEST_SIZE)
-			.checked_ilog2()
-			.unwrap_or(0) as usize,
+		(size / ALIGNMENT).checked_ilog2().unwrap_or(0) as usize,
 		FREE_LIST_BINS - 1,
 	);
 	if splittable {

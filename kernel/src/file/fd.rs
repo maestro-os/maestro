@@ -21,14 +21,13 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-use crate::file::File;
+use crate::{file::File, sync::mutex::Mutex};
 use core::{cmp::max, ffi::c_int, mem};
 use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, CollectResult, EResult},
 	limits::OPEN_MAX,
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 

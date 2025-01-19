@@ -28,13 +28,12 @@ use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutex,
 	ptr::arc::Arc,
 };
 
 pub fn chdir(
 	Args(path): Args<SyscallString>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
@@ -50,6 +49,6 @@ pub fn chdir(
 		return Err(errno!(EACCES));
 	}
 	// Set new cwd
-	proc.lock().cwd = dir;
+	proc.fs.lock().cwd = dir;
 	Ok(0)
 }

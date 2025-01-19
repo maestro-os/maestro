@@ -20,19 +20,27 @@
 
 use crate::{
 	file::fd::FileDescriptorTable,
-	process::{iovec::IOVec, mem_space::copy::SyscallSlice, Process},
+	process::{
+		mem_space::copy::{SyscallIOVec, SyscallSlice},
+		Process,
+	},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno::EResult,
-	lock::{IntMutex, Mutex},
-	ptr::arc::Arc,
-};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn pwritev(
-	Args((fd, iov, iovcnt, offset)): Args<(c_int, SyscallSlice<IOVec>, c_int, isize)>,
+	Args((fd, iov, iovcnt, offset_low, offset_high)): Args<(
+		c_int,
+		SyscallIOVec,
+		c_int,
+		isize,
+		isize,
+	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	#[allow(arithmetic_overflow)]
+	let offset = offset_low | (offset_high << 32);
 	super::writev::do_writev(fd, iov, iovcnt, Some(offset), None, fds)
 }

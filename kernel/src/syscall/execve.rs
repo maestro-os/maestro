@@ -20,17 +20,17 @@
 
 use super::Args;
 use crate::{
+	arch::x86::idt::IntFrame,
 	file::{vfs, vfs::ResolutionSettings, File},
-	memory::stack,
 	process::{
 		exec,
-		exec::{ExecInfo, ProgramImage},
+		exec::{exec, ExecInfo, ProgramImage},
 		mem_space::copy::{SyscallArray, SyscallString},
-		regs::Regs,
-		scheduler::SCHEDULER,
+		scheduler::{switch::init_ctx, SCHEDULER},
 		Process,
 	},
 };
+use core::intrinsics::unlikely;
 use utils::{
 	collections::{
 		path::{Path, PathBuf},
@@ -39,8 +39,6 @@ use utils::{
 	},
 	errno,
 	errno::{CollectResult, EResult, Errno},
-	interrupt::cli,
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -87,37 +85,31 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 	let mut file = vfs::get_file_from_path(path, rs)?;
 	let mut i = 0;
 	loop {
-		let shebang = &mut shebangs[i];
+		// Check permission
+		let stat = file.stat()?;
+		if !rs.access_profile.can_execute_file(&stat) {
+			return Err(errno!(EACCES));
+		}
 		// Read file
-		let len = {
-			// Check permission
-			let stat = file.stat()?;
-			if !rs.access_profile.can_execute_file(&stat) {
-				return Err(errno!(EACCES));
-			}
-			file.node()
-				.ops
-				.read_content(&file.node().location, 0, &mut shebang.buf)?
-		};
+		let shebang = &mut shebangs[i];
+		let len = file
+			.node()
+			.ops
+			.read_content(&file.node().location, 0, &mut shebang.buf)?;
 		// Parse shebang
 		shebang.end = shebang.buf[..len]
 			.iter()
 			.position(|b| *b == b'\n')
 			.unwrap_or(len);
-		if !matches!(shebang.buf[..shebang.end], [b'#', b'!', _, ..]) {
+		let Some(interp_path) = shebang.buf[..shebang.end].strip_prefix(b"#!") else {
 			break;
-		}
+		};
+		let interp_path = Path::new(interp_path)?;
 		i += 1;
 		// If there is still an interpreter but the limit has been reached
-		if i >= INTERP_MAX {
+		if unlikely(i >= INTERP_MAX) {
 			return Err(errno!(ELOOP));
 		}
-		// Get interpreter path
-		let interp_end = shebang.buf[2..shebang.end]
-			.iter()
-			.position(|b| (*b as char).is_ascii_whitespace())
-			.unwrap_or(shebang.end);
-		let interp_path = Path::new(&shebang.buf[2..(2 + interp_end)])?;
 		// Read interpreter
 		file = vfs::get_file_from_path(interp_path, rs)?;
 	}
@@ -142,63 +134,31 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 	Ok((file, final_argv))
 }
 
-/// Performs the execution on the current process.
-fn do_exec(
-	file: &vfs::Entry,
-	rs: &ResolutionSettings,
-	argv: Vec<String>,
-	envp: Vec<String>,
-) -> EResult<Regs> {
-	let program_image = build_image(file, rs, argv, envp)?;
-	let proc_mutex = Process::current();
-	let mut proc = proc_mutex.lock();
-	// Execute the program
-	exec::exec(&mut proc, program_image)?;
-	Ok(proc.regs.clone())
-}
-
-/// Builds a program image.
-///
-/// Arguments:
-/// - `file` is the executable file
-/// - `path_resolution` is settings for path resolution
-/// - `argv` is the arguments list
-/// - `envp` is the environment variables list
-fn build_image(
-	file: &vfs::Entry,
-	path_resolution: &ResolutionSettings,
-	argv: Vec<String>,
-	envp: Vec<String>,
-) -> EResult<ProgramImage> {
-	let exec_info = ExecInfo {
-		path_resolution,
-		argv,
-		envp,
-	};
-	exec::build_image(file, exec_info)
-}
-
 pub fn execve(
 	Args((pathname, argv, envp)): Args<(SyscallString, SyscallArray, SyscallArray)>,
 	rs: ResolutionSettings,
+	frame: &mut IntFrame,
 ) -> EResult<usize> {
-	let (file, argv, envp) = {
+	// Use scope to drop everything before calling `init_ctx`
+	{
 		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 		let argv = argv.iter();
 		let (file, argv) = get_file(&path, &rs, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
-		(file, argv, envp)
-	};
-	// Disable interrupt to prevent stack switching while using a temporary stack,
-	// preventing this temporary stack from being used as a signal handling stack
-	cli();
-	let tmp_stack = SCHEDULER.get().lock().get_tmp_stack();
-	let exec = move || {
-		let regs = do_exec(&file, &rs, argv, envp)?;
-		unsafe {
-			regs.switch(true);
-		}
-	};
-	unsafe { stack::switch(tmp_stack as _, exec) }
+		let program_image = exec::build_image(
+			file,
+			ExecInfo {
+				path_resolution: &rs,
+				argv,
+				envp,
+			},
+		)?;
+		let proc = Process::current();
+		exec(&proc, frame, program_image)?;
+	}
+	// Use `init_ctx` to handle transition to compatibility mode
+	unsafe {
+		init_ctx(frame);
+	}
 }

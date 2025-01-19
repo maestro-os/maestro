@@ -23,6 +23,7 @@ use crate::{
 	process::{mem_space::copy::SyscallSlice, Process},
 	syscall::Args,
 };
+use core::intrinsics::unlikely;
 use utils::{
 	collections::vec::Vec,
 	errno,
@@ -35,7 +36,7 @@ pub fn sethostname(
 	ap: AccessProfile,
 ) -> EResult<usize> {
 	// Check the size of the hostname is in bounds
-	if len > HOST_NAME_MAX {
+	if unlikely(len > HOST_NAME_MAX) {
 		return Err(errno!(EINVAL));
 	}
 	// Check permission
@@ -43,6 +44,6 @@ pub fn sethostname(
 		return Err(errno!(EPERM));
 	}
 	let mut hostname = crate::HOSTNAME.lock();
-	*hostname = name.copy_from_user(..len)?.ok_or(errno!(EFAULT))?;
+	*hostname = name.copy_from_user_vec(0, len)?.ok_or(errno!(EFAULT))?;
 	Ok(0)
 }

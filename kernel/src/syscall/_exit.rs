@@ -20,9 +20,9 @@
 //! status code.
 
 use super::Args;
-use crate::process::{scheduler, Process};
+use crate::process::{scheduler, scheduler::Scheduler, Process};
 use core::ffi::c_int;
-use utils::{errno::EResult, lock::IntMutexGuard};
+use utils::errno::EResult;
 
 /// Exits the current process.
 ///
@@ -32,8 +32,7 @@ use utils::{errno::EResult, lock::IntMutexGuard};
 /// - `proc` is the current process.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	{
-		let proc_mutex = Process::current();
-		let mut proc = proc_mutex.lock();
+		let proc = Process::current();
 		proc.exit(status);
 		let _pid = proc.get_pid();
 		let _tid = proc.tid;
@@ -42,7 +41,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 			// process with pid `pid`
 		}
 	}
-	scheduler::end_tick();
+	Scheduler::tick();
 	// Cannot resume since the process is now a zombie
 	unreachable!();
 }

@@ -20,10 +20,10 @@
 //! process.
 
 use crate::{
-	process::{mem_space::copy::SyscallPtr, rusage::RUsage, Process},
+	process::{mem_space::copy::SyscallPtr, rusage::Rusage, Process},
 	syscall::Args,
 };
-use core::ffi::c_int;
+use core::{ffi::c_int, ops::Deref};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -34,15 +34,16 @@ const RUSAGE_SELF: i32 = 0;
 /// Returns the resource usage of the process's children.
 const RUSAGE_CHILDREN: i32 = -1;
 
-pub fn getrusage(Args((who, usage)): Args<(c_int, SyscallPtr<RUsage>)>) -> EResult<usize> {
+pub fn getrusage(Args((who, usage)): Args<(c_int, SyscallPtr<Rusage>)>) -> EResult<usize> {
+	let proc = Process::current();
 	let rusage = match who {
-		RUSAGE_SELF => Process::current().lock().get_rusage().clone(),
+		RUSAGE_SELF => proc.rusage.lock().clone(),
 		RUSAGE_CHILDREN => {
 			// TODO Return resources of terminated children
-			RUsage::default()
+			Rusage::default()
 		}
 		_ => return Err(errno!(EINVAL)),
 	};
-	usage.copy_to_user(rusage)?;
+	usage.copy_to_user(&rusage)?;
 	Ok(0)
 }

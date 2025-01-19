@@ -35,45 +35,43 @@ jobs:
       - name: Integration tests
         working-directory: inttest
         run: cargo fmt --check
-  documentation:
+  book:
     runs-on: [self-hosted, linux]
     needs: clippy
     steps:
       - name: Build book
         run: mdbook build doc/
-      - name: Build references
-        working-directory: kernel
-        run: ci/doc.sh
-  build:
+  documentation:
     runs-on: [self-hosted, linux]
     needs: clippy
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ["x86", "x86_64"]
     steps:
-      - name: Debug
+      - name: Build references
         working-directory: kernel
-        run: ci/build.sh
-      - name: Check Multiboot2 for x86 (debug)
-        working-directory: kernel
-        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
-      - name: Release
-        working-directory: kernel
-        env:
-          CARGOFLAGS: --release
-        run: ci/build.sh
-      - name: Check Multiboot2 for x86 (release)
-        working-directory: kernel
-        run: grub-file --is-x86-multiboot2 target/x86/release/maestro
-  strace:
+        run: cargo doc --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
+  build:
+    name: build (${{ matrix.arch }}, ${{ matrix.profile.dir }})
     runs-on: [self-hosted, linux]
-    needs: build
+    needs: clippy
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ["x86", "x86_64"]
+        profile:
+          - name: "dev"
+            dir: "debug"
+          - name: "release"
+            dir: "release"
     steps:
       - name: Build
         working-directory: kernel
-        env:
-          CARGOFLAGS: --features strace
-        run: ci/build.sh
-      - name: Check Multiboot2 for x86
+        run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --profile ${{ matrix.profile.name }} --all-features
+      - name: Check Multiboot2
         working-directory: kernel
-        run: grub-file --is-x86-multiboot2 target/x86/debug/maestro
+        run: grub-file --is-x86-multiboot2 target/${{ matrix.arch }}/${{ matrix.profile.dir }}/maestro
   miri:
     runs-on: [self-hosted, linux]
     needs: build
@@ -87,6 +85,10 @@ jobs:
   selftest:
     runs-on: [self-hosted, linux]
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ["x86", "x86_64"]
     steps:
       - name: Run utils tests
         working-directory: utils
@@ -94,18 +96,49 @@ jobs:
         timeout-minutes: 10
       - name: Run kernel tests
         working-directory: kernel
+        env:
+          CARGOFLAGS: --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
         run: ci/test.sh self
         timeout-minutes: 10
   inttest:
+    name: inttest (${{ matrix.arch.kernel }})
     runs-on: [self-hosted, linux]
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - kernel: "x86"
+            user: "i686-unknown-linux-musl"
+          - kernel: "x86_64"
+            user: "x86_64-unknown-linux-musl"
+            user_compat: "i686-unknown-linux-musl"
     steps:
       - name: Build tests
         working-directory: inttest
+        env:
+          TARGET: ${{ matrix.arch.user }}
         run: |
           ./build.sh
           mv disk ../kernel/qemu_disk
       - name: Run
         working-directory: kernel
+        env:
+          CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
+        run: ci/test.sh int
+        timeout-minutes: 10
+      - name: Build tests (compat)
+        if: ${{ matrix.arch.user_compat }}
+        working-directory: inttest
+        env:
+          TARGET: ${{ matrix.arch.user_compat }}
+        run: |
+          ./build.sh
+          mv disk ../kernel/qemu_disk
+      - name: Run (compat)
+        if: ${{ matrix.arch.user_compat }}
+        working-directory: kernel
+        env:
+          CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
         run: ci/test.sh int
         timeout-minutes: 10

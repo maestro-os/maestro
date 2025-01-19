@@ -18,10 +18,7 @@
 
 //! The `getegid` syscall returns the effective GID of the process's owner.
 
-use crate::{
-	file::perm::AccessProfile,
-	process::{regs::Regs, Process},
-};
+use crate::{file::perm::AccessProfile, process::Process};
 use utils::errno::EResult;
 
 pub fn getegid(ap: AccessProfile) -> EResult<usize> {

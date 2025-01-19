@@ -25,6 +25,7 @@
 use crate::{
 	device,
 	device::{id, Device, DeviceID, DeviceIO, DeviceType},
+	sync::mutex::Mutex,
 };
 use core::{cmp::max, mem::ManuallyDrop, num::NonZeroU64};
 use utils::{
@@ -32,7 +33,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	format,
-	lock::Mutex,
 };
 
 /// The ramdisks' major number.

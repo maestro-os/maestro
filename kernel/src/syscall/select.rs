@@ -26,8 +26,11 @@ use crate::{
 			copy::{SyscallPtr, SyscallSlice},
 			MemSpace,
 		},
-		scheduler, Process,
+		scheduler,
+		scheduler::Scheduler,
+		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::{poll, Args},
 	time::{
 		clock,
@@ -42,7 +45,6 @@ use core::{
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
@@ -180,17 +182,17 @@ pub fn do_select<T: TimeUnit>(
 			break 0;
 		}
 		// TODO Make the process sleep?
-		scheduler::end_tick();
+		Scheduler::tick();
 	};
 	// Write back
 	if let Some(val) = readfds_set {
-		readfds.copy_to_user(val)?;
+		readfds.copy_to_user(&val)?;
 	}
 	if let Some(val) = writefds_set {
-		writefds.copy_to_user(val)?;
+		writefds.copy_to_user(&val)?;
 	}
 	if let Some(val) = exceptfds_set {
-		exceptfds.copy_to_user(val)?;
+		exceptfds.copy_to_user(&val)?;
 	}
 	Ok(res)
 }

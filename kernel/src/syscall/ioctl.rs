@@ -19,51 +19,50 @@
 //! The `ioctl` syscall allows to control a device represented by a file
 //! descriptor.
 
-use crate::{file::fd::FileDescriptorTable, process::Process, syscall::Args};
+use crate::{file::fd::FileDescriptorTable, process::Process, sync::mutex::Mutex, syscall::Args};
 use core::ffi::{c_int, c_ulong, c_void};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 // ioctl requests: hard drive
 
 /// ioctl request: get device geometry.
-pub const HDIO_GETGEO: u32 = 0x00000301;
+pub const HDIO_GETGEO: c_ulong = 0x00000301;
 
 // ioctl requests: storage
 
 /// ioctl request: re-read partition table.
-pub const BLKRRPART: u32 = 0x0000125f;
+pub const BLKRRPART: c_ulong = 0x0000125f;
 /// ioctl request: get block size.
-pub const BLKSSZGET: u32 = 0x00001268;
+pub const BLKSSZGET: c_ulong = 0x00001268;
 /// ioctl request: get storage size in bytes.
-pub const BLKGETSIZE64: u32 = 0x00001272;
+pub const BLKGETSIZE64: c_ulong = 0x00001272;
 
 // ioctl requests: TTY
 
 /// ioctl request: Returns the current serial port settings.
-pub const TCGETS: u32 = 0x00005401;
+pub const TCGETS: c_ulong = 0x00005401;
 /// ioctl request: Sets the serial port settings. Making the change immediately.
-pub const TCSETS: u32 = 0x00005402;
+pub const TCSETS: c_ulong = 0x00005402;
 /// ioctl request: Sets the serial port settings. Making the change only when
 /// all currently written data has been transmitted. At this points, any
 /// received data is discarded.
-pub const TCSETSW: u32 = 0x00005403;
+pub const TCSETSW: c_ulong = 0x00005403;
 /// ioctl request: Sets the serial port settings. Making the change only when
 /// all currently written data has been transmitted.
-pub const TCSETSF: u32 = 0x00005404;
+pub const TCSETSF: c_ulong = 0x00005404;
 /// ioctl request: Get the foreground process group ID on the terminal.
-pub const TIOCGPGRP: u32 = 0x0000540f;
+pub const TIOCGPGRP: c_ulong = 0x0000540f;
 /// ioctl request: Set the foreground process group ID on the terminal.
-pub const TIOCSPGRP: u32 = 0x00005410;
+pub const TIOCSPGRP: c_ulong = 0x00005410;
 /// ioctl request: Returns the window size of the terminal.
-pub const TIOCGWINSZ: u32 = 0x00005413;
+pub const TIOCGWINSZ: c_ulong = 0x00005413;
 /// ioctl request: Sets the window size of the terminal.
-pub const TIOCSWINSZ: u32 = 0x00005414;
+pub const TIOCSWINSZ: c_ulong = 0x00005414;
 /// ioctl request: Returns the number of bytes available on the file descriptor.
-pub const FIONREAD: u32 = 0x0000541b;
+pub const FIONREAD: c_ulong = 0x0000541b;
 
 /// IO directions for ioctl requests.
 #[derive(Eq, PartialEq)]
@@ -117,7 +116,7 @@ impl From<c_ulong> for Request {
 impl Request {
 	/// Returns the value as the old format for ioctl.
 	pub fn get_old_format(&self) -> c_ulong {
-		((self.major as u32) << 8) | self.minor as u32
+		(((self.major as u32) << 8) | self.minor as u32) as _
 	}
 }
 

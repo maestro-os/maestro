@@ -1,3 +1,0 @@
-# Physical memory map
-
-TODO

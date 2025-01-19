@@ -24,6 +24,7 @@ use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::{mem_space::copy::SyscallPtr, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
@@ -31,7 +32,6 @@ use utils::{
 	boxed::Box,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -57,6 +57,6 @@ pub fn socketpair(
 	let file1 = File::open_floating(sock, file::O_RDWR)?;
 	// Create file descriptors
 	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
-	sv.copy_to_user([fd0_id as _, fd1_id as _])?;
+	sv.copy_to_user(&[fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }

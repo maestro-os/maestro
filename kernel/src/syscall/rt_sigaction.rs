@@ -21,32 +21,47 @@
 use crate::{
 	process::{
 		mem_space::copy::SyscallPtr,
-		signal::{SigAction, SignalHandler},
+		signal::{CompatSigAction, SigAction, SignalHandler},
 		Process,
 	},
 	syscall::{Args, Signal},
 };
-use core::ffi::c_int;
-use utils::{
-	errno::EResult,
-	lock::{IntMutex, IntMutexGuard},
-	ptr::arc::Arc,
-};
+use core::{ffi::c_int, fmt::Debug};
+use utils::{errno::EResult, ptr::arc::Arc};
+
+fn do_rt_sigaction<S: Debug + From<SigAction> + Into<SigAction>>(
+	signum: c_int,
+	act: SyscallPtr<S>,
+	oldact: SyscallPtr<S>,
+	proc: Arc<Process>,
+) -> EResult<usize> {
+	let signal = Signal::try_from(signum)?;
+	let signal_manager = proc.signal.lock();
+	let mut signal_handlers = signal_manager.handlers.lock();
+	// Save the old structure
+	let old = signal_handlers[signal as usize].get_action().into();
+	oldact.copy_to_user(&old)?;
+	// Set the new structure
+	if let Some(new) = act.copy_from_user()? {
+		signal_handlers[signal as usize] = SignalHandler::Handler(new.into());
+	}
+	Ok(0)
+}
 
 pub fn rt_sigaction(
 	Args((signum, act, oldact)): Args<(c_int, SyscallPtr<SigAction>, SyscallPtr<SigAction>)>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 ) -> EResult<usize> {
-	// Validation
-	let signal = Signal::try_from(signum)?;
-	let signal_handlers_mutex = proc.lock().signal_handlers.clone();
-	let mut signal_handlers = signal_handlers_mutex.lock();
-	// Save the old structure
-	let old = signal_handlers[signal.get_id() as usize].get_action();
-	oldact.copy_to_user(old)?;
-	// Set the new structure
-	if let Some(new) = act.copy_from_user()? {
-		signal_handlers[signal.get_id() as usize] = SignalHandler::Handler(new);
-	}
-	Ok(0)
+	do_rt_sigaction(signum, act, oldact, proc)
+}
+
+pub fn compat_rt_sigaction(
+	Args((signum, act, oldact)): Args<(
+		c_int,
+		SyscallPtr<CompatSigAction>,
+		SyscallPtr<CompatSigAction>,
+	)>,
+	proc: Arc<Process>,
+) -> EResult<usize> {
+	do_rt_sigaction(signum, act, oldact, proc)
 }

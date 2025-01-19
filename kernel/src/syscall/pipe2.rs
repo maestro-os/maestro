@@ -22,6 +22,7 @@ use crate::{
 	file,
 	file::{fd::FileDescriptorTable, pipe::PipeBuffer, vfs, File, FileLocation},
 	process::{mem_space::copy::SyscallPtr, Process},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
@@ -29,7 +30,6 @@ use utils::{
 	boxed::Box,
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -46,6 +46,6 @@ pub fn pipe2(
 	let file0 = File::open_floating(ops.clone(), flags | file::O_RDONLY)?;
 	let file1 = File::open_floating(ops, flags | file::O_WRONLY)?;
 	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
-	pipefd.copy_to_user([fd0_id as _, fd1_id as _])?;
+	pipefd.copy_to_user(&[fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }

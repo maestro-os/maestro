@@ -148,7 +148,8 @@ impl GPTEntry {
 
 /// A GPT header.
 #[derive(AnyRepr, Clone)]
-#[repr(C)]
+// use `packed` to avoid padding on 64-bit platforms
+#[repr(C, packed)]
 pub struct Gpt {
 	/// The header's signature.
 	signature: [u8; 8],

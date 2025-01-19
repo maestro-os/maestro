@@ -21,7 +21,8 @@
 //! Each process must have a unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.
 
-use utils::{collections::id_allocator::IDAllocator, errno::AllocResult, lock::Mutex};
+use crate::sync::mutex::Mutex;
+use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
 
 /// Type representing a Process ID. This ID is unique for every running
 /// processes.
@@ -29,7 +30,9 @@ pub type Pid = u16;
 
 /// The maximum possible PID.
 const MAX_PID: Pid = 32768;
-/// The PID of the init process.
+/// Special PID for the idle task.
+pub const IDLE_PID: Pid = 0;
+/// PID of the init process.
 pub const INIT_PID: Pid = 1;
 
 /// The PID allocator.
@@ -46,7 +49,7 @@ fn allocator_do<F: Fn(&mut IDAllocator) -> AllocResult<T>, T>(f: F) -> AllocResu
 }
 
 /// Wrapper for a PID, freeing it on drop.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PidHandle(Pid);
 
 impl PidHandle {
@@ -67,6 +70,7 @@ impl PidHandle {
 	}
 
 	/// Returns the actual PID.
+	#[inline]
 	pub fn get(&self) -> Pid {
 		self.0
 	}
@@ -74,9 +78,13 @@ impl PidHandle {
 
 impl Drop for PidHandle {
 	fn drop(&mut self) {
+		// Cannot free PID `0`
+		let Some(i) = self.0.checked_sub(1) else {
+			return;
+		};
 		// Cannot fail
 		let _ = allocator_do(|a| {
-			a.free((self.0 - 1) as _);
+			a.free(i as _);
 			Ok(())
 		});
 	}

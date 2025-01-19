@@ -25,6 +25,7 @@
 //! size of a frame in pages.
 
 use super::{stats, PhysAddr, VirtAddr};
+use crate::sync::mutex::IntMutex;
 use core::{
 	alloc::AllocError,
 	cmp::min,
@@ -33,7 +34,7 @@ use core::{
 	ptr::{null_mut, NonNull},
 	slice,
 };
-use utils::{errno::AllocResult, limits::PAGE_SIZE, lock::IntMutex, math};
+use utils::{errno::AllocResult, limits::PAGE_SIZE, math};
 
 /// The order of a memory frame.
 pub type FrameOrder = u8;
@@ -220,7 +221,7 @@ impl Zone {
 ///
 /// If a frame points to itself, it means that no more elements are present in
 /// the list.
-#[repr(packed)]
+#[repr(Rust, packed)]
 struct Frame {
 	/// Identifier of the previous frame in the free list.
 	prev: FrameID,
@@ -464,7 +465,7 @@ pub fn get_frame_size(order: FrameOrder) -> usize {
 pub fn get_order(pages: usize) -> FrameOrder {
 	// this is equivalent to `ceil(log2(pages))`
 	if likely(pages != 0) {
-		(u32::BITS - pages.leading_zeros()) as _
+		(usize::BITS - pages.leading_zeros()) as _
 	} else {
 		0
 	}

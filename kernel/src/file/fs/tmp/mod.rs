@@ -31,6 +31,7 @@ use crate::{
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		DirEntry, FileLocation, FileType, INode, Mode, Stat,
 	},
+	sync::mutex::Mutex,
 	time::unit::Timestamp,
 };
 use core::{
@@ -44,7 +45,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	limits::PAGE_SIZE,
-	lock::Mutex,
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
 };
@@ -266,7 +266,7 @@ impl NodeOps for Node {
 				};
 				let new_len = max(content.len(), end);
 				content.resize(new_len, 0)?;
-				content[off..].copy_from_slice(buf);
+				content[off..end].copy_from_slice(buf);
 			}
 			NodeContent::Link(content) => {
 				content.resize(buf.len(), 0)?;

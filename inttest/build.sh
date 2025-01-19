@@ -3,7 +3,7 @@
 set -e
 
 if [ -z "$TARGET" ]; then
-	export TARGET=i686-unknown-linux-musl
+	export TARGET=x86_64-unknown-linux-musl
 fi
 
 # Build

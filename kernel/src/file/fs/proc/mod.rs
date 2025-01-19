@@ -65,11 +65,9 @@ use version::Version;
 /// If the process does not exist, the function returns `(0, 0)`.
 fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 	Process::get_by_pid(pid)
-		.map(|proc_mutex| {
-			let proc = proc_mutex.lock();
-			let uid = proc.access_profile.euid;
-			let gid = proc.access_profile.egid;
-			(uid, gid)
+		.map(|proc| {
+			let fs = proc.fs.lock();
+			(fs.access_profile.euid, fs.access_profile.egid)
 		})
 		.unwrap_or((0, 0))
 }

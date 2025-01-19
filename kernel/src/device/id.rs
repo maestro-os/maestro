@@ -18,9 +18,9 @@
 
 //! This module handles minor/major numbers, including their allocation.
 
-use crate::device::DeviceType;
+use crate::{device::DeviceType, sync::mutex::Mutex};
 use core::cell::OnceCell;
-use utils::{collections::id_allocator::IDAllocator, errno::AllocResult, lock::Mutex};
+use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
 
 /// The number of major numbers.
 const MAJOR_COUNT: u32 = 256;

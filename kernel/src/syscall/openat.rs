@@ -35,12 +35,11 @@ use crate::{
 		unit::TimestampScale,
 	},
 };
-use core::ffi::c_int;
+use core::{ffi::c_int, ops::Deref};
 use utils::{
 	collections::path::{Path, PathBuf},
 	errno,
 	errno::{EResult, Errno},
-	lock::Mutex,
 	ptr::arc::Arc,
 };
 
@@ -101,8 +100,7 @@ pub fn do_openat(
 	mode: file::Mode,
 ) -> EResult<usize> {
 	let (rs, pathname, fds_mutex, mode) = {
-		let proc_mutex = Process::current();
-		let proc = proc_mutex.lock();
+		let proc = Process::current();
 		let follow_link = flags & O_NOFOLLOW == 0;
 		let rs = ResolutionSettings {
 			create: flags & O_CREAT != 0,
@@ -112,8 +110,8 @@ pub fn do_openat(
 			.copy_from_user()?
 			.map(PathBuf::try_from)
 			.ok_or_else(|| errno!(EFAULT))??;
-		let fds_mutex = proc.file_descriptors.clone().unwrap();
-		let mode = mode & !proc.umask;
+		let fds_mutex = proc.file_descriptors.deref().clone().unwrap();
+		let mode = mode & !proc.fs.lock().umask();
 		(rs, pathname, fds_mutex, mode)
 	};
 

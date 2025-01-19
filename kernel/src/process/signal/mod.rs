@@ -18,23 +18,23 @@
 
 //! POSIX signals implementation.
 
-mod signal_trampoline;
+pub mod ucontext;
 
 use super::{oom, Process, State, REDZONE_SIZE};
 use crate::{
-	file::perm::Uid,
-	memory::VirtAddr,
-	process::{pid::Pid, regs::Regs, signal::signal_trampoline::signal_trampoline},
+	arch::x86::idt::IntFrame, file::perm::Uid, memory::VirtAddr, process::pid::Pid,
 	time::unit::ClockIdT,
 };
 use core::{
 	ffi::{c_int, c_void},
-	fmt,
 	mem::{size_of, transmute},
 	ptr,
-	ptr::{null_mut, NonNull},
+	ptr::NonNull,
 	slice,
 };
+use ucontext::UContext32;
+#[cfg(target_pointer_width = "64")]
+use ucontext::UContext64;
 use utils::{errno, errno::Errno};
 
 /// Signal handler value: Ignoring the signal.
@@ -44,12 +44,14 @@ pub const SIG_DFL: usize = 0x1;
 
 // TODO implement all flags
 /// [`SigAction`] flag: If set, use `sa_sigaction` instead of `sa_handler`.
-pub const SA_SIGINFO: i32 = 0x00000004;
+pub const SA_SIGINFO: u64 = 0x00000004;
+/// [`SigAction`] flag: If set, use [`SigAction::sa_restorer`] as signal trampoline.
+pub const SA_RESTORER: u64 = 0x04000000;
 /// [`SigAction`] flag: If set, the system call must restart after being interrupted by a signal.
-pub const SA_RESTART: i32 = 0x10000000;
+pub const SA_RESTART: u64 = 0x10000000;
 /// [`SigAction`] flag: If set, the signal is not added to the signal mask of the process when
 /// executed.
-pub const SA_NODEFER: i32 = 0x40000000;
+pub const SA_NODEFER: u64 = 0x40000000;
 
 /// Notify method: generate a signal
 pub const SIGEV_SIGNAL: c_int = 0;
@@ -79,32 +81,13 @@ pub enum SignalAction {
 
 impl SignalAction {
 	/// Executes the signal action for the given process.
-	pub fn exec(self, sig: Signal, process: &mut Process) {
+	pub fn exec(self, process: &Process) {
 		match self {
 			// TODO when `Abort`ing, dump core
-			SignalAction::Terminate | SignalAction::Abort => {
-				#[cfg(feature = "strace")]
-				println!(
-					"[strace {pid}] killed by signal `{signal}`",
-					pid = process.get_pid(),
-					signal = sig.get_id()
-				);
-				process.set_state(State::Zombie);
-				process.set_waitable(sig.get_id() as _);
-			}
+			SignalAction::Terminate | SignalAction::Abort => process.set_state(State::Zombie),
 			SignalAction::Ignore => {}
-			SignalAction::Stop => {
-				if matches!(process.state, State::Running) {
-					process.set_state(State::Stopped);
-				}
-				process.set_waitable(sig.get_id());
-			}
-			SignalAction::Continue => {
-				if matches!(process.state, State::Stopped) {
-					process.set_state(State::Running);
-				}
-				process.set_waitable(sig.get_id());
-			}
+			SignalAction::Stop => process.set_state(State::Stopped),
+			SignalAction::Continue => process.set_state(State::Running),
 		}
 	}
 }
@@ -166,7 +149,7 @@ pub struct SigInfo {
 	si_arch: u32,
 }
 
-/// A bits signal mask.
+/// Kernelspace signal mask.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SigSet(pub u64);
 
@@ -192,34 +175,57 @@ impl SigSet {
 	}
 }
 
-/// Union of the `sa_handler` and `sa_sigaction` fields.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub union SigActionHandler {
-	/// The pointer to the signal's handler.
-	pub sa_handler: Option<extern "C" fn(i32)>,
-	/// Used instead of `sa_handler` if [`SA_SIGINFO`] is specified in `sa_flags`.
-	pub sa_sigaction: Option<extern "C" fn(i32, *mut SigInfo, *mut c_void)>,
-}
-
-impl fmt::Debug for SigActionHandler {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		let ptr = unsafe { self.sa_handler };
-		fmt::Debug::fmt(&ptr, f)
-	}
-}
-
-/// An action to be executed when a signal is received.
+/// Action to be executed when a signal is received.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct SigAction {
-	/// The pointer to the signal's handler.
-	pub sa_handler: SigActionHandler,
+	/// Pointer to the signal handler.
+	pub sa_handler: usize,
+	/// A set of flags which modifies the behaviour of the signal.
+	pub sa_flags: u64,
+	/// Pointer to the signal trampoline.
+	pub sa_restorer: usize,
 	/// A mask of signals that should be masked while executing the signal
 	/// handler.
 	pub sa_mask: SigSet,
-	/// A set of flags which modifies the behaviour of the signal.
-	pub sa_flags: i32,
+}
+
+impl From<CompatSigAction> for SigAction {
+	fn from(sig_action: CompatSigAction) -> Self {
+		let sa_mask = sig_action.sa_mask[0] as u64 | ((sig_action.sa_mask[1] as u64) << 32);
+		Self {
+			sa_handler: sig_action.sa_handler as _,
+			sa_flags: sig_action.sa_flags as _,
+			sa_restorer: sig_action.sa_restorer as _,
+			sa_mask: SigSet(sa_mask),
+		}
+	}
+}
+
+/// Compatibility version of [`SigAction`].
+#[allow(missing_docs)]
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct CompatSigAction {
+	pub sa_handler: u32,
+	pub sa_flags: u32,
+	pub sa_restorer: u32,
+	pub sa_mask: [u32; 2],
+}
+
+impl From<SigAction> for CompatSigAction {
+	fn from(sig_action: SigAction) -> Self {
+		let sa_mask = [
+			sig_action.sa_mask.0 as u32,
+			(sig_action.sa_mask.0 >> 32) as u32,
+		];
+		Self {
+			sa_handler: sig_action.sa_handler as _,
+			sa_flags: sig_action.sa_flags as _,
+			sa_restorer: sig_action.sa_restorer as _,
+			sa_mask,
+		}
+	}
 }
 
 /// Notification from asynchronous routines.
@@ -255,23 +261,6 @@ impl SigEvent {
 	}
 }
 
-/// Saved information to be used by the trampoline to restore the state of the process.
-#[repr(C)]
-#[derive(Debug)]
-pub struct UContext {
-	/// TODO
-	pub uc_flags: u32,
-	/// TODO
-	pub uc_link: *mut UContext,
-	/// Blocked signals mask before the signal.
-	pub uc_sigmask: SigSet,
-	/// The stack used to handle the signal.
-	pub uc_stack: *mut c_void,
-	// FIXME: `Regs` does not match the actual layout of mcontext_t
-	/// Saved registers.
-	pub uc_mcontext: Regs,
-}
-
 /// Enumeration containing the different possibilities for signal handling.
 #[derive(Clone, Debug, Default)]
 pub enum SignalHandler {
@@ -286,8 +275,7 @@ pub enum SignalHandler {
 
 impl From<SigAction> for SignalHandler {
 	fn from(action: SigAction) -> Self {
-		let handler = unsafe { transmute::<SigActionHandler, usize>(action.sa_handler) };
-		match handler {
+		match action.sa_handler {
 			SIG_IGN => Self::Ignore,
 			SIG_DFL => Self::Default,
 			_ => Self::Handler(action),
@@ -302,12 +290,13 @@ impl SignalHandler {
 		match handler as usize {
 			SIG_IGN => Self::Ignore,
 			SIG_DFL => Self::Default,
-			_ => Self::Handler(SigAction {
-				sa_handler: unsafe { transmute::<*const c_void, SigActionHandler>(handler) },
-				sa_mask: Default::default(),
+			handler => Self::Handler(SigAction {
+				sa_handler: handler,
 				// TODO use System V semantic like Linux instead of BSD? (SA_RESETHAND |
 				// SA_NODEFER)
 				sa_flags: SA_RESTART,
+				sa_restorer: 0,
+				sa_mask: Default::default(),
 			}),
 		}
 	}
@@ -317,9 +306,7 @@ impl SignalHandler {
 		match self {
 			SignalHandler::Ignore => SIG_IGN,
 			SignalHandler::Default => SIG_DFL,
-			SignalHandler::Handler(action) => unsafe {
-				transmute::<Option<extern "C" fn(i32)>, usize>(action.sa_handler.sa_handler)
-			},
+			SignalHandler::Handler(action) => action.sa_handler as _,
 		}
 	}
 
@@ -327,227 +314,190 @@ impl SignalHandler {
 	pub fn get_action(&self) -> SigAction {
 		match self {
 			Self::Ignore => SigAction {
-				sa_handler: unsafe { transmute::<usize, SigActionHandler>(SIG_IGN) },
-				sa_mask: Default::default(),
+				sa_handler: SIG_IGN,
 				sa_flags: 0,
+				sa_restorer: 0,
+				sa_mask: Default::default(),
 			},
 			Self::Default => SigAction {
-				sa_handler: unsafe { transmute::<usize, SigActionHandler>(SIG_DFL) },
-				sa_mask: Default::default(),
+				sa_handler: SIG_DFL,
 				sa_flags: 0,
+				sa_restorer: 0,
+				sa_mask: Default::default(),
 			},
 			Self::Handler(action) => *action,
 		}
 	}
 
-	/// Executes the action for `signal` on `process`.
-	pub fn exec(&self, signal: Signal, process: &mut Process) {
+	/// Executes the action for `signal` on the **current** process `process`.
+	pub fn exec(&self, signal: Signal, process: &Process, frame: &mut IntFrame) {
 		let process_state = process.get_state();
 		if matches!(process_state, State::Zombie) {
 			return;
 		}
-		match self {
-			Self::Ignore => {}
-			// TODO handle SA_SIGINFO
-			Self::Handler(action) if signal.can_catch() => {
-				// Prepare the signal handler stack
-				// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
-				// SA_ONSTACK)
-				let stack_addr = VirtAddr(process.regs.esp) - REDZONE_SIZE;
-				let signal_data_size = size_of::<UContext>() + size_of::<usize>() * 4;
-				let signal_esp = stack_addr - signal_data_size;
-				{
-					let mem_space = process.get_mem_space().unwrap();
-					let mut mem_space = mem_space.lock();
-					mem_space.bind();
-					// FIXME: a stack overflow would cause an infinite loop
-					oom::wrap(|| mem_space.alloc(signal_esp, signal_data_size));
-				}
-				// Write data on stack
-				let ctx = UContext {
-					uc_flags: 0, // TODO
-					uc_link: null_mut(),
-					uc_sigmask: process.sigmask,
-					uc_stack: stack_addr.as_ptr(),
-					uc_mcontext: process.regs.clone(),
-				};
-				unsafe {
-					// Write `ctx`
-					let ctx_addr = stack_addr - size_of::<UContext>();
-					ptr::write_volatile(ctx_addr.as_ptr(), ctx);
-					let args = slice::from_raw_parts_mut(signal_esp.as_ptr::<usize>(), 4);
-					// Pointer to  `ctx`
-					args[3] = ctx_addr.0;
-					// Signal number
-					args[2] = signal.get_id() as usize;
-					// Pointer to the handler
-					args[1] = action.sa_handler.sa_handler.unwrap() as usize;
-					// Padding (return pointer)
-					args[0] = 0;
-				}
-				// Block signals from `sa_mask`
-				process.sigmask.0 |= action.sa_mask.0;
-				if action.sa_flags & SA_NODEFER == 0 {
-					process.sigmask.set(signal.get_id() as _);
-				}
-				// Prepare registers for the trampoline
-				let signal_trampoline = signal_trampoline as *const c_void;
-				process.regs.ebp = 0;
-				process.regs.esp = signal_esp.0;
-				process.regs.eip = signal_trampoline as _;
-			}
+		let action = match self {
+			Self::Handler(action) if signal.can_catch() => action,
+			Self::Ignore => return,
 			// Execute default action
 			_ => {
 				// Signals on the init process can be executed only if the process has set a
 				// signal handler
-				if signal.can_catch() && process.is_init() {
-					return;
+				if !process.is_init() || !signal.can_catch() {
+					signal.get_default_action().exec(process);
 				}
-				signal.get_default_action().exec(signal, process)
+				return;
 			}
+		};
+		// TODO trigger EFAULT if SA_RESTORER is not set
+		// TODO handle SA_SIGINFO
+		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
+		// SA_ONSTACK)
+		// Prepare the signal handler stack
+		let stack_addr = VirtAddr(frame.get_stack_address()) - REDZONE_SIZE;
+		// Size of the `ucontext_t` struct and arguments *on the stack*
+		let (ctx_size, ctx_align, arg_len) = if frame.is_compat() {
+			(
+				size_of::<UContext32>(),
+				align_of::<UContext32>(),
+				size_of::<u32>() * 2,
+			)
+		} else {
+			#[cfg(target_pointer_width = "32")]
+			unreachable!();
+			#[cfg(target_pointer_width = "64")]
+			(
+				size_of::<UContext64>(),
+				align_of::<UContext64>(),
+				size_of::<u64>(),
+			)
+		};
+		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
+		let signal_sp = ctx_addr - arg_len;
+		{
+			let mut mem_space = process.mem_space.as_ref().unwrap().lock();
+			mem_space.bind();
+			// FIXME: a stack overflow would cause an infinite loop
+			oom::wrap(|| mem_space.alloc(signal_sp, arg_len));
+		}
+		// Write data on stack
+		if frame.is_compat() {
+			let args = unsafe {
+				ptr::write_volatile(ctx_addr.as_ptr(), UContext32::new(process, frame));
+				// Arguments slice
+				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 2)
+			};
+			// Argument
+			args[1] = signal as _;
+			// Return pointer
+			args[0] = action.sa_restorer as _;
+		} else {
+			#[cfg(target_pointer_width = "64")]
+			unsafe {
+				ptr::write_volatile(ctx_addr.as_ptr(), UContext64::new(process, frame));
+				// Return pointer
+				ptr::write_volatile(signal_sp.as_ptr::<u64>(), action.sa_restorer as _);
+			}
+		}
+		// Block signal from `sa_mask`
+		{
+			let mut signals_manager = process.signal.lock();
+			signals_manager.sigmask.0 |= action.sa_mask.0;
+			if action.sa_flags & SA_NODEFER == 0 {
+				signals_manager.sigmask.set(signal as _);
+			}
+		}
+		// Prepare registers for the trampoline
+		frame.rbp = 0;
+		frame.rsp = signal_sp.0 as _;
+		frame.rip = action.sa_handler as _;
+		#[cfg(target_pointer_width = "64")]
+		if !frame.is_compat() {
+			frame.rcx = frame.rip;
+			// Argument
+			frame.rdi = signal as _;
 		}
 	}
 }
 
 /// Enumeration of signal types.
+#[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Signal {
 	/// Hangup.
-	SIGHUP,
+	SIGHUP = 1,
 	/// Terminal interrupt.
-	SIGINT,
+	SIGINT = 2,
 	/// Terminal quit.
-	SIGQUIT,
+	SIGQUIT = 3,
 	/// Illegal instruction.
-	SIGILL,
+	SIGILL = 4,
 	/// Trace/breakpoint trap.
-	SIGTRAP,
+	SIGTRAP = 5,
 	/// Process abort.
-	SIGABRT,
+	SIGABRT = 6,
 	/// Access to an undefined portion of a memory object.
-	SIGBUS,
+	SIGBUS = 7,
 	/// Erroneous arithmetic operation.
-	SIGFPE,
+	SIGFPE = 8,
 	/// Kill.
-	SIGKILL,
+	SIGKILL = 9,
 	/// User-defined signal 1.
-	SIGUSR1,
+	SIGUSR1 = 10,
 	/// Invalid memory reference.
-	SIGSEGV,
+	SIGSEGV = 11,
 	/// User-defined signal 2.
-	SIGUSR2,
+	SIGUSR2 = 12,
 	/// Write on a pipe with no one to read it.
-	SIGPIPE,
+	SIGPIPE = 13,
 	/// Alarm clock.
-	SIGALRM,
+	SIGALRM = 14,
 	/// Termination.
-	SIGTERM,
+	SIGTERM = 15,
 	/// Child process terminated.
-	SIGCHLD,
+	SIGCHLD = 17,
 	/// Continue executing.
-	SIGCONT,
+	SIGCONT = 18,
 	/// Stop executing.
-	SIGSTOP,
+	SIGSTOP = 19,
 	/// Terminal stop.
-	SIGTSTP,
+	SIGTSTP = 20,
 	/// Background process attempting to read.
-	SIGTTIN,
+	SIGTTIN = 21,
 	/// Background process attempting to write.
-	SIGTTOU,
+	SIGTTOU = 22,
 	/// High bandwidth data is available at a socket.
-	SIGURG,
+	SIGURG = 23,
 	/// CPU time limit exceeded.
-	SIGXCPU,
+	SIGXCPU = 24,
 	/// File size limit exceeded.
-	SIGXFSZ,
+	SIGXFSZ = 25,
 	/// Virtual timer expired.
-	SIGVTALRM,
+	SIGVTALRM = 26,
 	/// Profiling timer expired.
-	SIGPROF,
+	SIGPROF = 27,
 	/// Window resize.
-	SIGWINCH,
+	SIGWINCH = 28,
 	/// Pollable event.
-	SIGPOLL,
+	SIGPOLL = 29,
 	/// Bad system call.
-	SIGSYS,
+	SIGSYS = 31,
 }
 
-impl TryFrom<c_int> for Signal {
+impl TryFrom<i32> for Signal {
 	type Error = Errno;
 
 	/// `id` is the signal ID.
-	fn try_from(id: c_int) -> Result<Self, Self::Error> {
-		match id {
-			1 => Ok(Self::SIGHUP),
-			2 => Ok(Self::SIGINT),
-			3 => Ok(Self::SIGQUIT),
-			4 => Ok(Self::SIGILL),
-			5 => Ok(Self::SIGTRAP),
-			6 => Ok(Self::SIGABRT),
-			7 => Ok(Self::SIGBUS),
-			8 => Ok(Self::SIGFPE),
-			9 => Ok(Self::SIGKILL),
-			10 => Ok(Self::SIGUSR1),
-			11 => Ok(Self::SIGSEGV),
-			12 => Ok(Self::SIGUSR2),
-			13 => Ok(Self::SIGPIPE),
-			14 => Ok(Self::SIGALRM),
-			15 => Ok(Self::SIGTERM),
-			17 => Ok(Self::SIGCHLD),
-			18 => Ok(Self::SIGCONT),
-			19 => Ok(Self::SIGSTOP),
-			20 => Ok(Self::SIGTSTP),
-			21 => Ok(Self::SIGTTIN),
-			22 => Ok(Self::SIGTTOU),
-			23 => Ok(Self::SIGURG),
-			24 => Ok(Self::SIGXCPU),
-			25 => Ok(Self::SIGXFSZ),
-			26 => Ok(Self::SIGVTALRM),
-			27 => Ok(Self::SIGPROF),
-			28 => Ok(Self::SIGWINCH),
-			29 => Ok(Self::SIGPOLL),
-			31 => Ok(Self::SIGSYS),
-			_ => Err(errno!(EINVAL)),
+	fn try_from(id: i32) -> Result<Self, Self::Error> {
+		if matches!(id, (1..=15) | (17..=29) | 31) {
+			// Safe because the value is in range
+			unsafe { Ok(transmute::<i32, Self>(id)) }
+		} else {
+			Err(errno!(EINVAL))
 		}
 	}
 }
 
 impl Signal {
-	/// Returns the signal's ID.
-	pub const fn get_id(&self) -> u8 {
-		match self {
-			Self::SIGHUP => 1,
-			Self::SIGINT => 2,
-			Self::SIGQUIT => 3,
-			Self::SIGILL => 4,
-			Self::SIGTRAP => 5,
-			Self::SIGABRT => 6,
-			Self::SIGBUS => 7,
-			Self::SIGFPE => 8,
-			Self::SIGKILL => 9,
-			Self::SIGUSR1 => 10,
-			Self::SIGSEGV => 11,
-			Self::SIGUSR2 => 12,
-			Self::SIGPIPE => 13,
-			Self::SIGALRM => 14,
-			Self::SIGTERM => 15,
-			Self::SIGCHLD => 17,
-			Self::SIGCONT => 18,
-			Self::SIGSTOP => 19,
-			Self::SIGTSTP => 20,
-			Self::SIGTTIN => 21,
-			Self::SIGTTOU => 22,
-			Self::SIGURG => 23,
-			Self::SIGXCPU => 24,
-			Self::SIGXFSZ => 25,
-			Self::SIGVTALRM => 26,
-			Self::SIGPROF => 27,
-			Self::SIGWINCH => 28,
-			Self::SIGPOLL => 29,
-			Self::SIGSYS => 31,
-		}
-	}
-
 	/// Returns the default action for the signal.
 	pub fn get_default_action(&self) -> SignalAction {
 		match self {

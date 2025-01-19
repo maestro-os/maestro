@@ -46,6 +46,6 @@ pub fn nanosleep(
 		// TODO Make the current process sleep
 	}
 	// Set remaining time to zero
-	rem.copy_to_user(Timespec32::default())?;
+	rem.copy_to_user(&Timespec32::default())?;
 	Ok(0)
 }

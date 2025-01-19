@@ -32,13 +32,12 @@ use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
-	lock::IntMutex,
 	ptr::arc::Arc,
 };
 
 pub fn chroot(
 	Args(path): Args<SyscallString>,
-	proc: Arc<IntMutex<Process>>,
+	proc: Arc<Process>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	// Check permission
@@ -56,6 +55,6 @@ pub fn chroot(
 	if file.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	proc.lock().chroot = file;
+	proc.fs.lock().chroot = file;
 	Ok(0)
 }

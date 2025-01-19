@@ -27,19 +27,40 @@ use crate::{
 	format_content,
 	process::{pid::Pid, Process},
 };
-use core::{fmt, fmt::Formatter};
-use utils::{collections::string::String, errno, errno::EResult, DisplayableStr};
+use core::fmt;
+use utils::{errno, errno::EResult};
 
-struct StatusDisp<'p>(&'p Process);
+/// The `status` node of the proc.
+#[derive(Debug)]
+pub struct Status(Pid);
 
-impl<'p> fmt::Display for StatusDisp<'p> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let name = self.0.argv.first().map(String::as_bytes).unwrap_or(b"?");
-		let state = self.0.get_state();
-		// TODO Fill every fields with process's data
-		writeln!(
-			f,
-			"Name: {name}
+impl From<Pid> for Status {
+	fn from(pid: Pid) -> Self {
+		Self(pid)
+	}
+}
+
+impl NodeOps for Status {
+	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
+		let (uid, gid) = get_proc_owner(self.0);
+		Ok(Stat {
+			mode: FileType::Regular.to_mode() | 0o444,
+			uid,
+			gid,
+			..Default::default()
+		})
+	}
+
+	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
+		let mem_space = proc.mem_space.as_ref().unwrap().lock();
+		let disp = fmt::from_fn(|f| {
+			let state = proc.get_state();
+			let fs = proc.fs.lock();
+			// TODO Fill every fields with process's data
+			writeln!(
+				f,
+				"Name: {name}
 Umask: {umask:4o}
 State: {state_char} ({state_name})
 Tgid: 0
@@ -96,48 +117,22 @@ Mems_allowed: 00000001
 Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
 nonvoluntary_ctxt_switches: 0",
-			name = DisplayableStr(name),
-			umask = self.0.umask,
-			state_char = state.as_char(),
-			state_name = state.as_str(),
-			pid = self.0.get_pid(),
-			ppid = self.0.get_parent_pid(),
-			uid = self.0.access_profile.uid,
-			euid = self.0.access_profile.euid,
-			suid = self.0.access_profile.suid,
-			ruid = self.0.access_profile.uid,
-			gid = self.0.access_profile.gid,
-			egid = self.0.access_profile.egid,
-			sgid = self.0.access_profile.sgid,
-			rgid = self.0.access_profile.gid,
-		)
-	}
-}
-
-/// The `status` node of the proc.
-#[derive(Debug)]
-pub struct Status(Pid);
-
-impl From<Pid> for Status {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
-
-impl NodeOps for Status {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let proc_mutex = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let proc = proc_mutex.lock();
-		format_content!(off, buf, "{}", StatusDisp(&proc))
+				name = mem_space.exe_info.exe.name,
+				umask = fs.umask(),
+				state_char = state.as_char(),
+				state_name = state.as_str(),
+				pid = self.0,
+				ppid = proc.get_parent_pid(),
+				uid = fs.access_profile.uid,
+				euid = fs.access_profile.euid,
+				suid = fs.access_profile.suid,
+				ruid = fs.access_profile.uid,
+				gid = fs.access_profile.gid,
+				egid = fs.access_profile.egid,
+				sgid = fs.access_profile.sgid,
+				rgid = fs.access_profile.gid,
+			)
+		});
+		format_content!(off, buf, "{disp}")
 	}
 }

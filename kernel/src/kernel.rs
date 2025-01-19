@@ -33,12 +33,13 @@
 #![feature(array_chunks)]
 #![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
-#![feature(exposed_provenance)]
+#![feature(debug_closure_helpers)]
 #![feature(lang_items)]
+#![feature(negative_impls)]
 #![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
-#![feature(strict_provenance)]
+#![feature(strict_provenance_lints)]
 #![feature(trait_upcasting)]
 #![deny(fuzzy_provenance_casts)]
 #![deny(missing_docs)]
@@ -51,19 +52,15 @@
 #![reexport_test_harness_main = "kernel_selftest"]
 
 pub mod acpi;
+pub mod arch;
+mod boot;
 pub mod cmdline;
-pub mod cpu;
 pub mod crypto;
 pub mod debug;
 pub mod device;
 pub mod elf;
 pub mod event;
 pub mod file;
-#[cfg(target_arch = "x86")]
-pub mod gdt;
-#[macro_use]
-pub mod idt;
-pub mod io;
 pub mod logger;
 pub mod memory;
 pub mod module;
@@ -76,23 +73,30 @@ pub mod power;
 pub mod print;
 pub mod process;
 pub mod selftest;
+pub mod sync;
 pub mod syscall;
 pub mod time;
 pub mod tty;
 
 use crate::{
+	arch::x86::{enable_sse, has_sse, idt, idt::IntFrame},
 	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
 	memory::vmem,
-	process::{exec, exec::ExecInfo, Process},
+	process::{
+		exec,
+		exec::{exec, ExecInfo},
+		scheduler::{switch, switch::idle_task, SCHEDULER},
+		Process,
+	},
+	sync::mutex::Mutex,
 	tty::TTY,
 };
-use core::{arch::asm, ffi::c_void};
+use core::{ffi::c_void, intrinsics::unlikely};
 pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
 	errno::EResult,
-	lock::Mutex,
 	vec,
 };
 
@@ -101,74 +105,61 @@ pub const NAME: &str = env!("CARGO_PKG_NAME");
 /// Current kernel version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The name of the current architecture.
-pub const ARCH: &str = "x86";
-
 /// The path to the init process binary.
 const INIT_PATH: &[u8] = b"/sbin/init";
 
 /// The current hostname of the system.
 pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
-/// Makes the kernel wait for an interrupt, then returns.
-/// This function enables interruptions.
-#[inline(always)]
-pub fn wait() {
-	unsafe {
-		asm!("sti", "hlt");
-	}
-}
-
-/// Enters the kernel loop and processes every interrupt indefinitely.
-#[inline]
-pub fn enter_loop() -> ! {
-	loop {
-		wait();
-	}
-}
-
 /// Launches the init process.
 ///
 /// `init_path` is the path to the init program.
+///
+/// On success, the function does not return.
 fn init(init_path: String) -> EResult<()> {
-	// The initial environment
-	let env: Vec<String> = vec![
-		b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
-		b"TERM=maestro".try_into()?,
-	]?;
-
-	let rs = ResolutionSettings::kernel_follow();
-
-	let path = Path::new(&init_path)?;
-	let file = vfs::get_file_from_path(path, &rs)?;
-
-	let exec_info = ExecInfo {
-		path_resolution: &rs,
-		argv: vec![init_path]?,
-		envp: env,
-	};
-	let program_image = exec::build_image(&file, exec_info)?;
-
-	let proc_mutex = Process::new()?;
-	let mut proc = proc_mutex.lock();
-	exec::exec(&mut proc, program_image)
+	let mut frame = IntFrame::default();
+	{
+		let path = Path::new(&init_path)?;
+		let rs = ResolutionSettings::kernel_follow();
+		let file = vfs::get_file_from_path(path, &rs)?;
+		let program_image = exec::build_image(
+			file,
+			ExecInfo {
+				path_resolution: &rs,
+				argv: vec![init_path]?,
+				envp: vec![
+					b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
+						.try_into()?,
+					b"TERM=maestro".try_into()?,
+				]?,
+			},
+		)?;
+		let proc = Process::init()?;
+		exec(&proc, &mut frame, program_image)?;
+		SCHEDULER.get().lock().swap_current_process(proc);
+	}
+	unsafe {
+		switch::init_ctx(&frame);
+	}
 }
 
-/// An inner function is required to ensure everything in scope is dropped before calling
-/// [`enter_loop`].
+/// An inner function is required to ensure everything in scope is dropped before idle.
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
 	TTY.display.lock().show();
-	// Ensure the CPU has SSE
-	if !cpu::sse::is_present() {
-		panic!("SSE support is required to run this kernel :(");
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
+		// Ensure the CPU has SSE
+		if !has_sse() {
+			panic!("SSE support is required to run this kernel :(");
+		}
+		enable_sse();
+		// Initialize IDT
+		idt::init();
 	}
-	cpu::sse::enable();
-	// Initialize IDT
-	idt::init();
 
 	// Read multiboot information
-	if magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8) {
+	if unlikely(magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8)) {
 		panic!("Bootloader non compliant with Multiboot2!");
 	}
 	let boot_info = unsafe { multiboot::read(multiboot_ptr) };
@@ -234,6 +225,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	println!("Initializing processes...");
 	process::init().unwrap_or_else(|e| panic!("Failed to init processes! ({e})"));
+	exec::vdso::init().unwrap_or_else(|e| panic!("Failed to load vDSO! ({e})"));
 
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
@@ -252,5 +244,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 #[no_mangle]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_main_inner(magic, multiboot_ptr);
-	enter_loop();
+	unsafe {
+		idle_task();
+	}
 }

@@ -30,9 +30,10 @@ pub mod residence;
 mod transaction;
 
 use crate::{
-	file::perm::AccessProfile,
+	arch::x86::paging::{PAGE_FAULT_PRESENT, PAGE_FAULT_USER, PAGE_FAULT_WRITE},
+	file::{perm::AccessProfile, vfs},
 	memory,
-	memory::{vmem, vmem::VMem, VirtAddr, PROCESS_END},
+	memory::{vmem::VMem, VirtAddr, PROCESS_END},
 };
 use core::{
 	alloc::AllocError,
@@ -51,6 +52,7 @@ use utils::{
 	collections::{btreemap::BTreeMap, vec::Vec},
 	errno::{AllocResult, CollectResult, EResult},
 	limits::PAGE_SIZE,
+	ptr::arc::Arc,
 	TryClone,
 };
 
@@ -175,11 +177,6 @@ struct MemSpaceState {
 
 	/// The number of used virtual memory pages.
 	vmem_usage: usize,
-
-	/// The initial pointer of the `[s]brk` system calls.
-	brk_init: VirtAddr,
-	/// The current pointer of the `[s]brk` system calls.
-	brk_addr: VirtAddr,
 }
 
 impl MemSpaceState {
@@ -240,20 +237,58 @@ impl MemSpaceState {
 	}
 }
 
+/// Executable program information.
+#[derive(Clone)]
+pub struct ExeInfo {
+	/// The VFS entry of the program loaded on this memory space.
+	pub exe: Arc<vfs::Entry>,
+
+	/// Address to the beginning of program argument.
+	pub argv_begin: VirtAddr,
+	/// Address to the end of program argument.
+	pub argv_end: VirtAddr,
+	/// Address to the beginning of program environment.
+	pub envp_begin: VirtAddr,
+	/// Address to the end of program environment.
+	pub envp_end: VirtAddr,
+}
+
 /// A virtual memory space.
 pub struct MemSpace {
 	/// The memory space's structure, used as a model for `vmem`.
 	state: MemSpaceState,
 	/// Architecture-specific virtual memory context handler.
-	vmem: VMem,
+	pub vmem: VMem,
+
+	/// The initial pointer of the `[s]brk` system calls.
+	brk_init: VirtAddr,
+	/// The current pointer of the `[s]brk` system calls.
+	brk: VirtAddr,
+
+	/// Executable program information.
+	pub exe_info: ExeInfo,
 }
 
 impl MemSpace {
 	/// Creates a new virtual memory object.
-	pub fn new() -> AllocResult<Self> {
+	///
+	/// `exe` is the VFS entry of the program loaded on the memory space.
+	pub fn new(exe: Arc<vfs::Entry>) -> AllocResult<Self> {
 		let mut s = Self {
 			state: MemSpaceState::default(),
 			vmem: VMem::new()?,
+
+			brk_init: Default::default(),
+			brk: Default::default(),
+
+			exe_info: ExeInfo {
+				exe,
+
+				argv_begin: Default::default(),
+				argv_end: Default::default(),
+				envp_begin: Default::default(),
+				envp_end: Default::default(),
+			},
 		};
 		// Create the default gap of memory which is present at the beginning
 		let begin = memory::ALLOC_BEGIN;
@@ -263,12 +298,6 @@ impl MemSpace {
 		transaction.insert_gap(gap)?;
 		transaction.commit();
 		Ok(s)
-	}
-
-	/// Returns an immutable reference to the virtual memory context.
-	#[inline]
-	pub fn get_vmem(&self) -> &VMem {
-		&self.vmem
 	}
 
 	/// Returns the number of virtual memory pages in the memory space.
@@ -509,11 +538,13 @@ impl MemSpace {
 				mappings,
 
 				vmem_usage: self.state.vmem_usage,
-
-				brk_init: self.state.brk_init,
-				brk_addr: self.state.brk_addr,
 			},
 			vmem: new_vmem,
+
+			brk_init: self.brk_init,
+			brk: self.brk,
+
+			exe_info: self.exe_info.clone(),
 		})
 	}
 
@@ -570,7 +601,7 @@ impl MemSpace {
 
 	/// Returns the address for the `brk` syscall.
 	pub fn get_brk(&self) -> VirtAddr {
-		self.state.brk_addr
+		self.brk
 	}
 
 	/// Sets the initial pointer for the `brk` syscall.
@@ -580,8 +611,8 @@ impl MemSpace {
 	/// `addr` MUST be page-aligned.
 	pub fn set_brk_init(&mut self, addr: VirtAddr) {
 		debug_assert!(addr.is_aligned_to(PAGE_SIZE));
-		self.state.brk_init = addr;
-		self.state.brk_addr = addr;
+		self.brk_init = addr;
+		self.brk = addr;
 	}
 
 	/// Sets the address for the `brk` syscall.
@@ -589,13 +620,13 @@ impl MemSpace {
 	/// If the memory cannot be allocated, the function returns an error.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn set_brk(&mut self, addr: VirtAddr) -> AllocResult<()> {
-		if addr >= self.state.brk_addr {
+		if addr >= self.brk {
 			// Check the pointer is valid
 			if addr > COPY_BUFFER {
 				return Err(AllocError);
 			}
 			// Allocate memory
-			let begin = self.state.brk_addr.align_to(PAGE_SIZE);
+			let begin = self.brk.align_to(PAGE_SIZE);
 			let pages = (addr.0 - begin.0).div_ceil(PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
@@ -609,7 +640,7 @@ impl MemSpace {
 			)?;
 		} else {
 			// Check the pointer is valid
-			if unlikely(addr < self.state.brk_init) {
+			if unlikely(addr < self.brk_init) {
 				return Err(AllocError);
 			}
 			// Free memory
@@ -620,7 +651,7 @@ impl MemSpace {
 			};
 			self.unmap(begin, pages, true)?;
 		}
-		self.state.brk_addr = addr;
+		self.brk = addr;
 		Ok(())
 	}
 
@@ -637,20 +668,20 @@ impl MemSpace {
 	///
 	/// If the process should continue, the function returns `true`, else `false`.
 	pub fn handle_page_fault(&mut self, addr: VirtAddr, code: u32) -> bool {
-		if code & vmem::x86::PAGE_FAULT_PRESENT == 0 {
+		if code & PAGE_FAULT_PRESENT == 0 {
 			return false;
 		}
 		let Some(mapping) = self.state.get_mut_mapping_for_addr(addr) else {
 			return false;
 		};
 		// Check permissions
-		let code_write = code & vmem::x86::PAGE_FAULT_WRITE != 0;
+		let code_write = code & PAGE_FAULT_WRITE != 0;
 		let mapping_write = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
 		if code_write && !mapping_write {
 			return false;
 		}
 		// TODO check exec
-		let code_userspace = code & vmem::x86::PAGE_FAULT_USER != 0;
+		let code_userspace = code & PAGE_FAULT_USER != 0;
 		let mapping_userspace = mapping.get_flags() & MAPPING_FLAG_USER != 0;
 		if code_userspace && !mapping_userspace {
 			return false;
@@ -681,33 +712,5 @@ impl Drop for MemSpace {
 			// Ignore I/O errors
 			let _ = m.fs_sync(&self.vmem);
 		}
-	}
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test_case]
-	fn test0() {
-		let mut mem_space = MemSpace::new().unwrap();
-		let addr = VirtAddr(0x1000);
-		let size = NonZeroUsize::new(1).unwrap();
-		let res = mem_space
-			.map(
-				MapConstraint::Fixed(addr),
-				size,
-				MAPPING_FLAG_WRITE | MAPPING_FLAG_USER,
-				MapResidence::Normal,
-			)
-			.unwrap();
-		assert_eq!(VirtAddr::from(res), addr);
-		// TODO test access
-		/*assert!(!mem_space.can_access(null(), PAGE_SIZE, true, true));
-		assert!(!mem_space.can_access(null(), PAGE_SIZE + 1, true, true));
-		assert!(mem_space.can_access(addr as _, PAGE_SIZE, true, true));
-		assert!(!mem_space.can_access(addr as _, PAGE_SIZE + 1, true, true));*/
-		mem_space.unmap(addr, size, false).unwrap();
-		//assert!(!mem_space.can_access(addr as _, PAGE_SIZE, true, true));
 	}
 }

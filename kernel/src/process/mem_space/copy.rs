@@ -20,12 +20,11 @@
 
 use crate::{memory::vmem, process::mem_space::bound_check, syscall::FromSyscallArg};
 use core::{
-	arch::global_asm,
 	cmp::min,
+	ffi::c_void,
 	fmt,
 	intrinsics::{likely, unlikely},
 	mem::{size_of, size_of_val, MaybeUninit},
-	ops::{Bound, RangeBounds},
 	ptr,
 	ptr::{null_mut, NonNull},
 };
@@ -36,38 +35,9 @@ use utils::{
 	limits::PAGE_SIZE,
 };
 
-// TODO optimize copy
-global_asm!(
-	r"
-.global raw_copy
-.global copy_fault
-
-raw_copy:
-	push esi
-	push edi
-
-	mov esi, 12[esp]
-	mov edi, 16[esp]
-	mov ecx, 20[esp]
-
-	rep movsb
-
-	pop edi
-	pop esi
-	mov eax, 1
-	ret
-
-copy_fault:
-	pop edi
-	pop esi
-	xor eax, eax
-	ret
-"
-);
-
 extern "C" {
 	/// Copy, with access check. On success, the function returns `true`.
-	pub fn raw_copy(src: *const u8, dst: *mut u8, n: usize) -> bool;
+	pub fn raw_copy(dst: *mut u8, src: *const u8, n: usize) -> bool;
 	/// Function to be called back when a page fault occurs while using [`raw_copy`].
 	pub fn copy_fault();
 }
@@ -79,7 +49,7 @@ unsafe fn copy_from_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<
 	if unlikely(!bound_check(src as _, n)) {
 		return Err(errno!(EFAULT));
 	}
-	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
+	let res = vmem::smap_disable(|| raw_copy(dst, src, n));
 	if likely(res) {
 		Ok(())
 	} else {
@@ -94,7 +64,7 @@ unsafe fn copy_to_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()
 	if unlikely(!bound_check(dst as _, n)) {
 		return Err(errno!(EFAULT));
 	}
-	let res = vmem::smap_disable(|| raw_copy(src, dst, n));
+	let res = vmem::smap_disable(|| raw_copy(dst, src, n));
 	if likely(res) {
 		Ok(())
 	} else {
@@ -106,8 +76,8 @@ unsafe fn copy_to_user_raw(src: *const u8, dst: *mut u8, n: usize) -> EResult<()
 pub struct SyscallPtr<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
 
 impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallPtr<T> {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
+	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(ptr)))
 	}
 }
 
@@ -145,13 +115,13 @@ impl<T: Sized + fmt::Debug> SyscallPtr<T> {
 	///
 	/// If the value is located on lazily allocated pages, the function
 	/// allocates physical pages in order to allow writing.
-	pub fn copy_to_user(&self, val: T) -> EResult<()> {
+	pub fn copy_to_user(&self, val: &T) -> EResult<()> {
 		let Some(ptr) = self.0 else {
 			return Ok(());
 		};
 		unsafe {
 			copy_to_user_raw(
-				&val as *const _ as *const _,
+				val as *const _ as *const _,
 				ptr.as_ptr() as *mut _,
 				size_of::<T>(),
 			)?;
@@ -171,23 +141,14 @@ impl<T: fmt::Debug> fmt::Debug for SyscallPtr<T> {
 	}
 }
 
-/// Turns the given range bound into the corresponding index.
-fn bound_to_index(b: Bound<&usize>) -> usize {
-	match b {
-		Bound::Included(v) => *v + 1,
-		Bound::Excluded(v) => *v,
-		Bound::Unbounded => 0,
-	}
-}
-
 /// Wrapper for a slice.
 ///
 /// The size of the slice is required when trying to access it.
 pub struct SyscallSlice<T: Sized + fmt::Debug>(pub Option<NonNull<T>>);
 
 impl<T: Sized + fmt::Debug> FromSyscallArg for SyscallSlice<T> {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
+	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(ptr)))
 	}
 }
 
@@ -199,29 +160,45 @@ impl<T: Sized + fmt::Debug> SyscallSlice<T> {
 
 	/// Copies the slice from userspace and returns it.
 	///
-	/// `range` is the bytes range to copy from the source userspace slice. An unbounded side is
-	/// considered to be `0`.
+	/// Arguments:
+	/// - `off` is the offset relative to the beginning of the userspace slice.
+	/// - `buf` is the destination slice.
 	///
-	/// If the pointer is null, the function returns `None`.
+	/// If the pointer is null, the function returns `false`.
 	///
 	/// If the slice is not accessible, the function returns an error.
-	pub fn copy_from_user<R: RangeBounds<usize>>(&self, range: R) -> EResult<Option<Vec<T>>> {
+	pub fn copy_from_user(&self, off: usize, buf: &mut [T]) -> EResult<bool> {
+		let Some(ptr) = self.0 else {
+			return Ok(false);
+		};
+		unsafe {
+			copy_from_user_raw(
+				ptr.as_ptr().add(off) as *const _,
+				buf.as_mut_ptr() as *mut _,
+				size_of_val(buf),
+			)?;
+		}
+		Ok(true)
+	}
+
+	/// Same as [`Self::copy_from_user`], except the function allocates and returns a [`Vec`]
+	/// instead of copying to a provided buffer.
+	///
+	/// If the pointer is null, the function returns `None`.
+	pub fn copy_from_user_vec(&self, off: usize, len: usize) -> EResult<Option<Vec<T>>> {
 		let Some(ptr) = self.0 else {
 			return Ok(None);
 		};
-		let start = bound_to_index(range.start_bound());
-		let end = bound_to_index(range.end_bound());
-		let len = end.saturating_sub(start);
-		let mut buf: Vec<T> = Vec::with_capacity(len)?;
+		let mut buf = Vec::with_capacity(len)?;
 		unsafe {
 			buf.set_len(len);
 			copy_from_user_raw(
-				ptr.as_ptr().add(start) as *const _,
+				ptr.as_ptr().add(off) as *const _,
 				buf.as_mut_ptr() as *mut _,
 				size_of::<T>() * len,
 			)?;
-			Ok(Some(buf))
 		}
+		Ok(Some(buf))
 	}
 
 	/// Copies the value to userspace.
@@ -264,8 +241,8 @@ impl<T: fmt::Debug> fmt::Debug for SyscallSlice<T> {
 pub struct SyscallString(pub Option<NonNull<u8>>);
 
 impl FromSyscallArg for SyscallString {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
+	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
+		Self(NonNull::new(ptr::with_exposed_provenance_mut(ptr)))
 	}
 }
 
@@ -324,20 +301,24 @@ impl fmt::Debug for SyscallString {
 }
 
 /// Wrapper for a C-style, NULL-terminated string array.
-pub struct SyscallArray(pub Option<NonNull<*const u8>>);
+// Using `c_void` as the size of the pointer is different when using compat mode
+pub struct SyscallArray {
+	/// The array's pointer
+	ptr: Option<NonNull<*const u8>>,
+	/// If true, pointers are 4 bytes in size, else 8 bytes
+	compat: bool,
+}
 
 impl FromSyscallArg for SyscallArray {
-	fn from_syscall_arg(val: usize) -> Self {
-		Self(NonNull::new(ptr::with_exposed_provenance_mut(val)))
+	fn from_syscall_arg(ptr: usize, compat: bool) -> Self {
+		Self {
+			ptr: NonNull::new(ptr::with_exposed_provenance_mut(ptr)),
+			compat,
+		}
 	}
 }
 
 impl SyscallArray {
-	/// Returns an immutable pointer to the data.
-	pub fn as_ptr(&self) -> *const *const u8 {
-		self.0.map(NonNull::as_ptr).unwrap_or(null_mut())
-	}
-
 	/// Returns an iterator over the array's elements.
 	pub fn iter(&self) -> SyscallArrayIterator {
 		SyscallArrayIterator {
@@ -369,21 +350,141 @@ pub struct SyscallArrayIterator<'a> {
 	i: usize,
 }
 
-impl<'a> Iterator for SyscallArrayIterator<'a> {
+impl SyscallArrayIterator<'_> {
+	fn next_impl(&mut self) -> EResult<Option<String>> {
+		let Some(ptr) = self.arr.ptr else {
+			return Err(errno!(EFAULT));
+		};
+		let str_ptr = if self.arr.compat {
+			let str_ptr = unsafe { ptr.cast::<u32>().add(self.i) };
+			let str_ptr = SyscallPtr(Some(str_ptr)).copy_from_user()?.unwrap();
+			ptr::without_provenance(str_ptr as usize)
+		} else {
+			let str_ptr = unsafe { ptr.add(self.i) };
+			SyscallPtr(Some(str_ptr)).copy_from_user()?.unwrap()
+		};
+		let res = SyscallString(NonNull::new(str_ptr as _)).copy_from_user()?;
+		// Do not increment if reaching `NULL`
+		if likely(res.is_some()) {
+			self.i += 1;
+		}
+		Ok(res)
+	}
+}
+
+impl Iterator for SyscallArrayIterator<'_> {
 	type Item = EResult<String>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let Some(arr) = self.arr.0 else {
-			return Some(Err(errno!(EFAULT)));
-		};
-		let str_ptr = unsafe { arr.add(self.i).read_volatile() };
-		let res = SyscallString(NonNull::new(str_ptr as _))
-			.copy_from_user()
-			.transpose();
-		// Do not increment if reaching `NULL`
-		if res.is_some() {
-			self.i += 1;
+		self.next_impl().transpose()
+	}
+}
+
+/// An entry of an IO vector used for scatter/gather IO.
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct IOVec {
+	/// Starting address.
+	pub iov_base: *mut c_void,
+	/// Number of bytes to transfer.
+	pub iov_len: usize,
+}
+
+/// An [`IOVec`] for compatibility mode.
+#[repr(C)]
+#[derive(Clone, Debug)]
+struct IOVecCompat {
+	/// Starting address.
+	pub iov_base: u32,
+	/// Number of bytes to transfer.
+	pub iov_len: u32,
+}
+
+/// An [`IOVec`] as a system call argument.
+pub struct SyscallIOVec {
+	/// The pointer to the iovec.
+	ptr: Option<NonNull<u8>>,
+	/// Tells whether the userspace is in compatibility mode.
+	compat: bool,
+}
+
+impl FromSyscallArg for SyscallIOVec {
+	fn from_syscall_arg(ptr: usize, compat: bool) -> Self {
+		Self {
+			ptr: NonNull::new(ptr::with_exposed_provenance_mut(ptr)),
+			compat,
 		}
-		res
+	}
+}
+
+impl fmt::Debug for SyscallIOVec {
+	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self.ptr {
+			Some(ptr) => write!(fmt, "{ptr:p}"),
+			None => write!(fmt, "NULL"),
+		}
+	}
+}
+
+impl SyscallIOVec {
+	/// Returns an iterator over the iovec.
+	///
+	/// `count` is the number of elements in the vector.
+	pub fn iter(&self, count: usize) -> IOVecIter {
+		IOVecIter {
+			vec: self,
+			cursor: 0,
+			count,
+		}
+	}
+}
+
+/// Iterator over [`IOVec`]s.
+pub struct IOVecIter<'a> {
+	/// The iovec pointer.
+	vec: &'a SyscallIOVec,
+	/// Cursor
+	cursor: usize,
+	/// The number of elements.
+	count: usize,
+}
+
+impl Iterator for IOVecIter<'_> {
+	type Item = EResult<IOVec>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let stride = if self.vec.compat {
+			size_of::<IOVecCompat>()
+		} else {
+			size_of::<IOVec>()
+		};
+		// Bound check
+		if unlikely(self.cursor >= self.count * stride) {
+			return None;
+		}
+		let iov = unsafe {
+			let ptr = self.vec.ptr?.byte_add(self.cursor);
+			if self.vec.compat {
+				let mut iov = MaybeUninit::<IOVecCompat>::uninit();
+				copy_from_user_raw(
+					ptr.as_ptr(),
+					iov.as_mut_ptr() as *mut _,
+					size_of::<IOVecCompat>(),
+				)
+				.map(|_| {
+					let iovec = iov.assume_init();
+					IOVec {
+						iov_base: ptr::with_exposed_provenance_mut(iovec.iov_base as _),
+						iov_len: iovec.iov_len as _,
+					}
+				})
+			} else {
+				let mut iov = MaybeUninit::<IOVec>::uninit();
+				copy_from_user_raw(ptr.as_ptr(), iov.as_mut_ptr() as *mut _, size_of::<IOVec>())
+					.map(|_| iov.assume_init())
+			}
+		};
+		self.cursor += stride;
+		Some(iov)
 	}
 }

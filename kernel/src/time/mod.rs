@@ -34,37 +34,28 @@ use core::mem::ManuallyDrop;
 use unit::{Timestamp, TimestampScale};
 use utils::{boxed::Box, errno::EResult, math::rational::Rational};
 
+/// Timer frequency.
+const FREQUENCY: Rational = Rational::from_frac(1, 1024);
+
 /// Initializes time management.
 pub(crate) fn init() -> EResult<()> {
 	// Initialize hardware clocks
 	let mut hw_clocks = hw::CLOCKS.lock();
-	#[cfg(target_arch = "x86")]
-	{
-		hw_clocks.insert(b"pit".try_into()?, Box::new(hw::pit::PIT::new())?)?;
-		hw_clocks.insert(b"rtc".try_into()?, Box::new(hw::rtc::RTC::new())?)?;
-		// TODO implement HPET
-		// TODO implement APIC timer
-	}
-
+	hw_clocks.insert(b"pit".try_into()?, Box::new(hw::pit::PIT::new())?)?;
+	hw_clocks.insert(b"rtc".try_into()?, Box::new(hw::rtc::RTC::new())?)?;
+	// TODO implement HPET
+	// TODO implement APIC timer
 	// Link hardware clock to software clock
-	#[cfg(target_arch = "x86")]
-	{
-		let rtc = hw_clocks.get_mut(b"rtc".as_slice()).unwrap();
-		let freq = Rational::from_frac(1, 1024);
-		rtc.set_frequency(freq);
-
-		let hook = event::register_callback(rtc.get_interrupt_vector(), move |_, _, _, _| {
-			hw::rtc::RTC::reset();
-			// FIXME: the value is probably not right
-			clock::update(i64::from(freq * 1_000_000_000) as _);
-			timer::tick();
-
-			CallbackResult::Continue
-		})?;
-		let _ = ManuallyDrop::new(hook);
-
-		rtc.set_enabled(true);
-	}
-
+	let rtc = hw_clocks.get_mut(b"rtc".as_slice()).unwrap();
+	rtc.set_frequency(FREQUENCY);
+	let hook = event::register_callback(rtc.get_interrupt_vector(), move |_, _, _, _| {
+		hw::rtc::RTC::reset();
+		// FIXME: the value is probably not right
+		clock::update(i64::from(FREQUENCY * 1_000_000_000) as _);
+		timer::tick();
+		CallbackResult::Continue
+	})?;
+	let _ = ManuallyDrop::new(hook);
+	rtc.set_enabled(true);
 	Ok(())
 }

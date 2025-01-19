@@ -21,12 +21,15 @@
 use crate::{
 	file::{fd::FileDescriptorTable, File, FileType, O_NONBLOCK},
 	process::{
-		iovec::IOVec,
-		mem_space::{copy::SyscallSlice, MemSpace},
+		mem_space::{
+			copy::{SyscallIOVec, SyscallSlice},
+			MemSpace,
+		},
 		scheduler,
 		signal::Signal,
 		Process,
 	},
+	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };
 use core::{cmp::min, ffi::c_int, sync::atomic};
@@ -34,7 +37,6 @@ use utils::{
 	errno,
 	errno::{EResult, Errno},
 	limits::IOV_MAX,
-	lock::{IntMutex, Mutex},
 	ptr::arc::Arc,
 };
 
@@ -47,19 +49,14 @@ use utils::{
 /// - `iovcnt` is the number of chunks in `iov`
 /// - `offset` is the offset at which the write operation in the file begins
 /// - `file` is the file to write to
-fn write(
-	iov: &SyscallSlice<IOVec>,
-	iovcnt: usize,
-	offset: Option<u64>,
-	file: &File,
-) -> EResult<usize> {
+fn write(iov: SyscallIOVec, iovcnt: usize, offset: Option<u64>, file: &File) -> EResult<usize> {
 	let mut off = 0;
-	let iov = iov.copy_from_user(..iovcnt)?.ok_or(errno!(EFAULT))?;
-	for i in iov {
+	for i in iov.iter(iovcnt) {
+		let i = i?;
 		// The size to write. This is limited to avoid an overflow on the total length
 		let l = min(i.iov_len, i32::MAX as usize - off);
-		let ptr = SyscallSlice::<u8>::from_syscall_arg(i.iov_base as usize);
-		if let Some(buf) = ptr.copy_from_user(..l)? {
+		let ptr = SyscallSlice::<u8>::from_ptr(i.iov_base as usize);
+		if let Some(buf) = ptr.copy_from_user_vec(0, l)? {
 			let len = if let Some(offset) = offset {
 				let file_off = offset + off as u64;
 				file.ops.write(file, file_off, &buf)?
@@ -87,7 +84,7 @@ fn write(
 /// - `flags` is the set of flags
 pub fn do_writev(
 	fd: i32,
-	iov: SyscallSlice<IOVec>,
+	iov: SyscallIOVec,
 	iovcnt: i32,
 	offset: Option<isize>,
 	_flags: Option<i32>,
@@ -107,11 +104,11 @@ pub fn do_writev(
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	write(&iov, iovcnt as _, offset, &file)
+	write(iov, iovcnt as _, offset, &file)
 }
 
 pub fn writev(
-	Args((fd, iov, iovcnt)): Args<(c_int, SyscallSlice<IOVec>, c_int)>,
+	Args((fd, iov, iovcnt)): Args<(c_int, SyscallIOVec, c_int)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_writev(fd, iov, iovcnt, None, None, fds)
