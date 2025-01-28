@@ -333,7 +333,7 @@ impl<'s> From<&'s [u8]> for Component<'s> {
 	}
 }
 
-impl<'p> AsRef<[u8]> for Component<'p> {
+impl AsRef<[u8]> for Component<'_> {
 	fn as_ref(&self) -> &[u8] {
 		match self {
 			Component::RootDir => b"/",
@@ -344,14 +344,14 @@ impl<'p> AsRef<[u8]> for Component<'p> {
 	}
 }
 
-impl<'p> AsRef<Path> for Component<'p> {
+impl AsRef<Path> for Component<'_> {
 	fn as_ref(&self) -> &Path {
 		let slice: &[u8] = self.as_ref();
 		Path::new_unbounded(slice)
 	}
 }
 
-impl<'p> fmt::Debug for Component<'p> {
+impl fmt::Debug for Component<'_> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			Component::RootDir => write!(f, "RootDir"),
@@ -441,13 +441,13 @@ impl<'p> Iterator for Components<'p> {
 	}
 }
 
-impl<'p> DoubleEndedIterator for Components<'p> {
+impl DoubleEndedIterator for Components<'_> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		self.next_impl(true)
 	}
 }
 
-impl<'p> FusedIterator for Components<'p> {}
+impl FusedIterator for Components<'_> {}
 
 #[cfg(test)]
 mod test {

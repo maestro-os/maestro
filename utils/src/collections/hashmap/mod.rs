@@ -622,11 +622,11 @@ impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for Iter<'m, K, V, H> {
 	}
 }
 
-impl<'m, K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for Iter<'m, K, V, H> {}
+impl<K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for Iter<'_, K, V, H> {}
 
-impl<'m, K: Hash + Eq, V, H: Default + Hasher> FusedIterator for Iter<'m, K, V, H> {}
+impl<K: Hash + Eq, V, H: Default + Hasher> FusedIterator for Iter<'_, K, V, H> {}
 
-unsafe impl<'m, K: Hash + Eq, V, H: Default + Hasher> TrustedLen for Iter<'m, K, V, H> {}
+unsafe impl<K: Hash + Eq, V, H: Default + Hasher> TrustedLen for Iter<'_, K, V, H> {}
 
 /// The implementation of the hash set.
 pub struct HashSet<K: Eq + Hash, H: Default + Hasher = FxHasher>(HashMap<K, (), H>);

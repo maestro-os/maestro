@@ -747,7 +747,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 			// The node has no children
 			_ => None,
 		};
-		let both_black = node.is_black() && replacement.as_ref().map_or(true, |r| r.is_black());
+		let both_black = node.is_black() && replacement.as_ref().is_none_or(|r| r.is_black());
 		let parent = node.get_parent();
 		let Some(replacement) = replacement else {
 			// The node has no children
@@ -1199,11 +1199,11 @@ impl<'m, K: Ord, V> IntoIterator for &'m BTreeMap<K, V> {
 	}
 }
 
-impl<'m, K: Ord, V> ExactSizeIterator for MapIterator<'m, K, V> {}
+impl<K: Ord, V> ExactSizeIterator for MapIterator<'_, K, V> {}
 
-impl<'m, K: Ord, V> FusedIterator for MapIterator<'m, K, V> {}
+impl<K: Ord, V> FusedIterator for MapIterator<'_, K, V> {}
 
-unsafe impl<'m, K: Ord, V> TrustedLen for MapIterator<'m, K, V> {}
+unsafe impl<K: Ord, V> TrustedLen for MapIterator<'_, K, V> {}
 
 /// Mutable reference iterator for [`BTreeMap`]. This iterator traverses the tree in pre-order.
 pub struct MapMutIterator<'m, K: Ord, V> {
@@ -1244,11 +1244,11 @@ impl<'m, K: Ord, V> IntoIterator for &'m mut BTreeMap<K, V> {
 	}
 }
 
-impl<'m, K: Ord, V> ExactSizeIterator for MapMutIterator<'m, K, V> {}
+impl<K: Ord, V> ExactSizeIterator for MapMutIterator<'_, K, V> {}
 
-impl<'m, K: Ord, V> FusedIterator for MapMutIterator<'m, K, V> {}
+impl<K: Ord, V> FusedIterator for MapMutIterator<'_, K, V> {}
 
-unsafe impl<'m, K: Ord, V> TrustedLen for MapMutIterator<'m, K, V> {}
+unsafe impl<K: Ord, V> TrustedLen for MapMutIterator<'_, K, V> {}
 
 /// Same as [`MapIterator`], but restrained to a predefined range.
 pub struct MapRange<'m, K: Ord, V, R: RangeBounds<K>> {
@@ -1310,7 +1310,7 @@ where
 	pred: F,
 }
 
-impl<'m, K: Ord, V, F: FnMut(&K, &mut V) -> bool> Iterator for DrainFilter<'m, K, V, F> {
+impl<K: Ord, V, F: FnMut(&K, &mut V) -> bool> Iterator for DrainFilter<'_, K, V, F> {
 	type Item = (K, V);
 
 	fn next(&mut self) -> Option<Self::Item> {

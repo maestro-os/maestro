@@ -39,6 +39,7 @@ impl<K, V> KeyHash<K, V> {
 	}
 
 	/// Returns a mutable reference to the underlying entry.
+	#[allow(clippy::mut_from_ref)]
 	unsafe fn inner_mut(&self) -> &mut LruEntry<K, V> {
 		&mut *self.0.as_ptr()
 	}
