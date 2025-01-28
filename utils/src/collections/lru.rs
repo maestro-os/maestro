@@ -167,6 +167,8 @@ pub struct LruCache<K: Eq + Hash, V> {
 	// use a HashSet instead of a HashMap to avoid storing the key twice
 	/// Hash map to locate entries from key.
 	hash: HashSet<KeyHash<K, V>>,
+	/// The capacity of the cache in number of elements.
+	capacity: usize,
 
 	// cannot be null since the capacity cannot be zero
 	/// Most recent element.
@@ -178,34 +180,35 @@ pub struct LruCache<K: Eq + Hash, V> {
 impl<K: Eq + Hash, V> LruCache<K, V> {
 	/// Creates a new instance with the given capacity.
 	pub fn new(capacity: NonZeroUsize) -> AllocResult<Self> {
-		let cap = capacity.get();
-		let hash = HashSet::with_capacity(cap)?;
-		let layout = Layout::array::<LruEntry<K, V>>(cap).unwrap();
+		let capacity = capacity.get();
+		let hash = HashSet::with_capacity(capacity)?;
+		let layout = Layout::array::<LruEntry<K, V>>(capacity).unwrap();
 		unsafe {
 			// Initialize entries
 			let mem = __alloc(layout)?.cast();
-			for i in 0..cap {
+			for i in 0..capacity {
 				mem.add(i).write(LruEntry {
 					key: MaybeUninit::uninit(),
 					val: MaybeUninit::uninit(),
 
 					prev: i.checked_sub(1).map(|i| mem.add(i)),
-					next: (i + 1 < cap).then_some(mem.add(i + 1)),
+					next: (i + 1 < capacity).then_some(mem.add(i + 1)),
 				});
 			}
 			Ok(Self {
 				mem,
 				hash,
+				capacity,
 
 				head: mem,
-				tail: mem.add(cap - 1),
+				tail: mem.add(capacity - 1),
 			})
 		}
 	}
 
 	/// Returns the capacity of the cache.
 	pub fn capacity(&self) -> usize {
-		self.hash.capacity()
+		self.capacity
 	}
 
 	/// Returns the number of elements in the cache.
