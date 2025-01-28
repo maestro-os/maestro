@@ -97,7 +97,7 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 #[allow(unused_variables)]
 pub fn map(mem_space: &mut MemSpace, compat: bool) -> EResult<MappedVDSO> {
 	#[cfg(not(target_arch = "x86_64"))]
-	let vdso = VDSO.get();
+	let vdso = &*VDSO;
 	#[cfg(target_arch = "x86_64")]
 	let vdso = {
 		if !compat {
