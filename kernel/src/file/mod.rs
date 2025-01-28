@@ -39,7 +39,7 @@ use crate::{
 		fs::Filesystem,
 		perm::{Gid, Uid},
 	},
-	sync::{atomic::AtomicU64, mutex::Mutex},
+	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
 	syscall::ioctl,
 	time::{
 		clock,
@@ -670,7 +670,7 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 	let root = mountpoint::create_root(source)?;
 	// Init the VFS's root entry.
 	unsafe {
-		vfs::ROOT.init(root);
+		OnceInit::init(&vfs::ROOT, root);
 	}
 	Ok(())
 }

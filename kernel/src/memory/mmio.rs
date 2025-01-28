@@ -19,8 +19,8 @@
 //! MMIO (Memory-Mapped I/O) allows to access a device's registers by mapping them on the main
 //! memory.
 
-use super::{buddy, vmem, PhysAddr, VirtAddr};
-use crate::{arch::x86, process::oom};
+use super::{buddy, PhysAddr, VirtAddr};
+use crate::{arch::x86, memory::vmem::KERNEL_VMEM, process::oom};
 use core::ptr::NonNull;
 use utils::errno::AllocResult;
 
@@ -66,7 +66,7 @@ impl MMIO {
 			flags |= x86::paging::FLAG_CACHE_DISABLE;
 		}
 
-		let mut vmem = vmem::kernel().lock();
+		let mut vmem = KERNEL_VMEM.lock();
 		let mut transaction = vmem.transaction();
 		transaction.map_range(phys_addr, virt_addr, pages, flags)?;
 		transaction.commit();
@@ -88,7 +88,7 @@ impl MMIO {
 	///
 	/// The previously allocated chunk is freed by this function.
 	pub fn unmap(&self) -> AllocResult<()> {
-		let mut vmem = vmem::kernel().lock();
+		let mut vmem = KERNEL_VMEM.lock();
 		let mut transaction = vmem.transaction();
 		transaction.map_range(
 			self.phys_addr,

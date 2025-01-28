@@ -47,7 +47,7 @@ pub fn chroot(
 	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	let rs = ResolutionSettings {
-		root: vfs::root(),
+		root: vfs::ROOT.clone(),
 		..rs
 	};
 	// Get file

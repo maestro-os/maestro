@@ -143,7 +143,6 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
 		// Update user stack
 		SCHEDULER
-			.get()
 			.lock()
 			.gs
 			.user_stack

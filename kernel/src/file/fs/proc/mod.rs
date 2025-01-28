@@ -216,7 +216,7 @@ impl NodeOps for RootDir {
 		// Iterate on processes
 		if off < Pid::MAX as usize {
 			// Find next process
-			let sched = SCHEDULER.get().lock();
+			let sched = SCHEDULER.lock();
 			// TODO start iterating at `off`
 			let pid = sched
 				.iter_process()

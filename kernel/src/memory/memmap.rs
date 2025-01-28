@@ -47,23 +47,17 @@ pub struct PhysMapInfo {
 }
 
 /// Physical memory map information.
-static MAP: OnceInit<PhysMapInfo> = unsafe { OnceInit::new() };
-
-/// Returns the structure storing physical memory mapping information.
-pub fn get_info() -> &'static PhysMapInfo {
-	MAP.get()
-}
+pub static PHYS_MAP: OnceInit<PhysMapInfo> = unsafe { OnceInit::new() };
 
 /// Prints the physical memory mapping.
 #[cfg(debug_assertions)]
 pub(crate) fn print_entries() {
-	let phys_map = get_info();
-	debug_assert!(!phys_map.memory_maps.is_null());
+	debug_assert!(!PHYS_MAP.memory_maps.is_null());
 	crate::println!("--- Memory mapping ---");
 	crate::println!("<begin> <end> <type>");
-	for off in (0..phys_map.memory_maps_size).step_by(phys_map.memory_maps_entry_size) {
+	for off in (0..PHYS_MAP.memory_maps_size).step_by(PHYS_MAP.memory_maps_entry_size) {
 		// Safe because in range
-		let entry = unsafe { &*phys_map.memory_maps.byte_add(off) };
+		let entry = unsafe { &*PHYS_MAP.memory_maps.byte_add(off) };
 		if entry.is_valid() {
 			let begin = entry.addr;
 			let end = begin + entry.len;
@@ -126,7 +120,7 @@ pub(crate) fn init(boot_info: &BootInfo) {
 		phys_main_pages,
 	};
 	unsafe {
-		MAP.init(phys_map);
+		OnceInit::init(&PHYS_MAP, phys_map);
 	}
 	// Update memory stats
 	let mut stats = stats::MEM_INFO.lock();

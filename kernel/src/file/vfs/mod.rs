@@ -247,12 +247,7 @@ impl Entry {
 }
 
 /// The root entry of the VFS.
-pub(super) static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
-
-/// Returns the root entry.
-pub fn root() -> Arc<Entry> {
-	ROOT.get().clone()
-}
+pub static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
 
 /// Settings for a path resolution operation.
 #[derive(Clone, Debug)]
@@ -281,7 +276,7 @@ impl ResolutionSettings {
 	/// Kernel access, following symbolic links.
 	pub fn kernel_follow() -> Self {
 		Self {
-			root: root(),
+			root: ROOT.clone(),
 			cwd: None,
 
 			access_profile: AccessProfile::KERNEL,

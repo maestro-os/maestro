@@ -439,19 +439,19 @@ impl Process {
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.get().lock().get_by_pid(pid)
+		SCHEDULER.lock().get_by_pid(pid)
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(tid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.get().lock().get_by_tid(tid)
+		SCHEDULER.lock().get_by_tid(tid)
 	}
 
 	/// Returns the current running process.
 	pub fn current() -> Arc<Self> {
-		SCHEDULER.get().lock().get_current_process()
+		SCHEDULER.lock().get_current_process()
 	}
 
 	/// Creates an idle task.
@@ -479,8 +479,8 @@ impl Process {
 			fs: Mutex::new(ProcessFs {
 				access_profile: AccessProfile::KERNEL,
 				umask: Default::default(),
-				cwd: vfs::root(),
-				chroot: vfs::root(),
+				cwd: vfs::ROOT.clone(),
+				chroot: vfs::ROOT.clone(),
 			}),
 			file_descriptors: Default::default(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
@@ -550,7 +550,7 @@ impl Process {
 
 			rusage: Default::default(),
 		};
-		Ok(SCHEDULER.get().lock().add_process(process)?)
+		Ok(SCHEDULER.lock().add_process(process)?)
 	}
 
 	/// Returns the process's ID.
@@ -680,9 +680,9 @@ impl Process {
 			);
 			// Update the number of running processes
 			if new_state == State::Running {
-				SCHEDULER.get().lock().increment_running();
+				SCHEDULER.lock().increment_running();
 			} else if old_state == State::Running {
-				SCHEDULER.get().lock().decrement_running();
+				SCHEDULER.lock().decrement_running();
 			}
 			if new_state == State::Zombie {
 				if self.is_init() {
@@ -735,7 +735,7 @@ impl Process {
 		);
 		// Update the number of running processes
 		if res.is_ok() {
-			SCHEDULER.get().lock().increment_running();
+			SCHEDULER.lock().increment_running();
 		}
 	}
 
@@ -849,7 +849,7 @@ impl Process {
 			rusage: Mutex::new(Rusage::default()),
 		};
 		this.add_child(pid_int)?;
-		Ok(SCHEDULER.get().lock().add_process(process)?)
+		Ok(SCHEDULER.lock().add_process(process)?)
 	}
 
 	/// Kills the process with the given signal `sig`.

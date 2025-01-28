@@ -104,7 +104,7 @@ fn get_waitable(
 	rusage: &SyscallPtr<Rusage>,
 ) -> EResult<Option<Pid>> {
 	let mut empty = true;
-	let mut sched = SCHEDULER.get().lock();
+	let mut sched = SCHEDULER.lock();
 	// Find a waitable process
 	let proc = iter_targets(curr_proc, pid)
 		.inspect(|_| empty = false)
