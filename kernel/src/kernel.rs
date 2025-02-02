@@ -36,6 +36,7 @@
 #![feature(debug_closure_helpers)]
 #![feature(lang_items)]
 #![feature(negative_impls)]
+#![feature(offset_of_enum)]
 #![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]

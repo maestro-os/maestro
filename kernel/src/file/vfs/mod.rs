@@ -349,15 +349,16 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 	else {
 		return Ok(None);
 	};
-	let node = node::insert(Node {
-		location: FileLocation {
+	let node = Node::new(
+		FileLocation {
 			// The file is on the same mountpoint as the parent since mountpoint roots are always
 			// in cache
 			mountpoint_id: lookup_dir.node().location.mountpoint_id,
 			inode: entry.inode,
 		},
 		ops,
-	})?;
+	)?;
+	node::insert(node.clone())?;
 	// Create entry and insert in parent
 	let ent = Arc::new(Entry {
 		name: String::try_from(name)?,

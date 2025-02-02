@@ -25,16 +25,17 @@
 //! size of a frame in pages.
 
 use super::{stats, PhysAddr, VirtAddr};
-use crate::sync::mutex::IntMutex;
+use crate::{file::vfs::node::Node, sync::mutex::IntMutex};
 use core::{
 	alloc::AllocError,
-	cmp::min,
 	intrinsics::likely,
-	mem::size_of,
+	mem::{offset_of, size_of},
+	ptr,
 	ptr::{null_mut, NonNull},
 	slice,
+	sync::atomic::AtomicBool,
 };
-use utils::{errno::AllocResult, limits::PAGE_SIZE, math};
+use utils::{errno::AllocResult, limits::PAGE_SIZE, math, ptr::arc::Arc};
 
 /// The order of a memory frame.
 pub type FrameOrder = u8;
@@ -62,8 +63,6 @@ pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b10;
 
 /// The size of the metadata for one frame.
 pub const FRAME_METADATA_SIZE: usize = size_of::<Frame>();
-/// Value indicating that the frame is used.
-pub const FRAME_STATE_USED: FrameID = !0_u32;
 
 /// An allocatable zone of memory, initialized at boot.
 pub(crate) struct Zone {
@@ -77,7 +76,7 @@ pub(crate) struct Zone {
 	allocated_pages: usize,
 	/// The free list containing linked lists to free frames. Each linked list contain frames of
 	/// the order corresponding to the element in this array
-	free_list: [Option<NonNull<Frame>>; (MAX_ORDER + 1) as usize],
+	free_list: [Option<NonNull<FreeFrame>>; (MAX_ORDER + 1) as usize],
 }
 
 impl Zone {
@@ -98,25 +97,29 @@ impl Zone {
 	/// available pages.
 	fn fill_free_list(&mut self) {
 		let frames = self.frames();
-		let mut frame: FrameID = 0;
+		// Init all frames to avoid undefined values
+		for f in frames.iter_mut() {
+			unsafe {
+				ptr::write(f, Frame::Free(Default::default()));
+			}
+		}
+		// Init free lists
+		let mut i: FrameID = 0;
 		let mut order = MAX_ORDER;
-		while frame < self.pages_count as FrameID {
+		while i < self.pages_count as FrameID {
 			// Check the order fits in remaining pages
-			let p = math::pow2(order as FrameID) as FrameID;
-			if frame + p > self.pages_count {
+			let len = math::pow2(order as FrameID) as FrameID;
+			if i + len > self.pages_count {
 				order -= 1;
 				continue;
 			}
 			// Init frame
-			let f = &mut frames[frame as usize];
-			f.mark_free(self);
-			f.order = order;
-			f.link(self);
+			let frame = &mut frames[i as usize];
+			let free_frame = frame.mark_free(order);
+			free_frame.link(self);
 			// Jump to next offset
-			frame += p;
+			i += len;
 		}
-		#[cfg(debug_assertions)]
-		self.check_free_list();
 	}
 
 	/// Creates a buddy allocator zone.
@@ -146,16 +149,8 @@ impl Zone {
 
 	/// Returns an available frame owned by this zone, with an order of at least
 	/// `order`.
-	fn get_available_frame(&mut self, order: FrameOrder) -> Option<NonNull<Frame>> {
-		let mut frame = self.free_list[(order as usize)..]
-			.iter_mut()
-			.filter_map(|f| *f)
-			.next()?;
-		let f = unsafe { frame.as_mut() };
-		debug_assert!(!f.is_used());
-		debug_assert!(f.addr(self) >= self.begin);
-		debug_assert!(f.addr(self) < self.begin + self.get_size());
-		Some(frame)
+	fn get_available_frame(&mut self, order: FrameOrder) -> Option<NonNull<FreeFrame>> {
+		self.free_list[(order as usize)..].iter().find_map(|f| *f)
 	}
 
 	/// Returns the identifier for the frame at the given physical address.
@@ -170,191 +165,75 @@ impl Zone {
 	fn frames(&self) -> &'static mut [Frame] {
 		unsafe { slice::from_raw_parts_mut(self.metadata_begin, self.pages_count as usize) }
 	}
-
-	/// Checks the correctness of the free list for the zone.
-	///
-	/// Every frame in the free list must have an order equal to the order of the bucket it's
-	/// inserted in and must be free.
-	///
-	/// If a frame is the first of a list, it must not have a previous element.
-	///
-	/// If a frame is invalid, the function shall result in the kernel
-	/// panicking.
-	#[cfg(debug_assertions)]
-	fn check_free_list(&self) {
-		let zone_size = (self.pages_count as usize) * PAGE_SIZE;
-		let frames = self.frames();
-		for (order, list) in self.free_list.iter().enumerate() {
-			let Some(mut first) = *list else {
-				continue;
-			};
-			let mut frame = unsafe { first.as_mut() };
-			let mut is_first = true;
-			// Iterate on linked list
-			loop {
-				let id = frame.get_id(self);
-				frame.check_broken(self);
-				debug_assert!(!frame.is_used());
-				debug_assert_eq!(frame.order, order as _);
-				debug_assert!(!is_first || frame.prev == id);
-
-				let frame_ptr = frame.addr(self);
-				debug_assert!(frame_ptr >= self.begin);
-				debug_assert!(frame_ptr + frame.get_size() <= self.begin + zone_size);
-
-				if frame.next == id {
-					break;
-				}
-				frame = &mut frames[frame.next as usize];
-				is_first = false;
-			}
-		}
-	}
 }
 
-/// The metadata for a frame of physical memory.
+/// Returns the ID of `frame` in the associated zone `zone`.
 ///
-/// The structure has an internal linked list for the free list.
-/// This linked list doesn't store pointers but frame identifiers to save memory.
+/// # Safety
 ///
-/// If either `prev` or `next` has value [`FRAME_STATE_USED`], the frame is marked as used.
-///
-/// If a frame points to itself, it means that no more elements are present in
-/// the list.
-#[repr(Rust, packed)]
-struct Frame {
-	/// Identifier of the previous frame in the free list.
-	prev: FrameID,
-	/// Identifier of the next frame in the free list.
-	next: FrameID,
+/// `frame` must be a pointer to either [`Frame`] itself, [`FreeFrame`] or [`PageState`].
+unsafe fn frame_id<T>(zone: &Zone, frame: &T) -> FrameID {
+	let self_off = frame as *const _ as usize;
+	let Some(off) = self_off.checked_sub(zone.metadata_begin as usize) else {
+		unreachable!();
+	};
+	(off / size_of::<Frame>()) as u32
+}
 
-	/// Order of the current frame
+/// Free frame linked list.
+#[derive(Debug, Default)]
+struct FreeFrame {
+	/// Previous frame in the free list.
+	prev: Option<NonNull<Self>>,
+	/// Next frame in the free list.
+	next: Option<NonNull<Self>>,
+	/// Order of the frame, used to check the size of the matching buddy when coalescing.
 	order: FrameOrder,
 }
 
-impl Frame {
-	/// Returns the id of the current frame in the associated zone `zone`.
-	fn get_id(&self, zone: &Zone) -> FrameID {
-		let self_off = self as *const _ as usize;
-		let zone_off = zone.metadata_begin as *const _ as usize;
-		debug_assert!(self_off >= zone_off);
-
-		((self_off - zone_off) / size_of::<Self>()) as u32
+impl FreeFrame {
+	/// Returns a mutable reference to the wrapping [`Frame`].
+	fn frame(&mut self) -> &mut Frame {
+		let off = offset_of!(Frame, Free.0);
+		unsafe { &mut *(self as *mut _ as *mut Frame).byte_sub(off) }
 	}
 
-	/// Returns the identifier of the buddy frame in zone `zone`, taking in
-	/// account the frame's order.
+	/// Returns the index of the buddy frame in zone `zone`.
+	///
+	/// `order` is the order of the `self` frame.
 	///
 	/// The caller has the responsibility to check that it is below the number of frames in the
 	/// zone.
 	#[inline]
 	fn get_buddy_id(&self, zone: &Zone) -> FrameID {
-		self.get_id(zone) ^ (1 << self.order) as u32
+		let id = unsafe { frame_id(zone, self) };
+		id ^ math::pow2(self.order) as u32
 	}
 
-	/// Returns the address of the associated physical memory.
-	fn addr(&self, zone: &Zone) -> PhysAddr {
-		zone.begin + self.get_id(zone) as usize * PAGE_SIZE
-	}
-
-	/// Tells whether the frame is used or not.
-	#[inline]
-	fn is_used(&self) -> bool {
-		(self.prev == FRAME_STATE_USED) || (self.next == FRAME_STATE_USED)
-	}
-
-	/// Returns the size of the frame in bytes.
-	#[inline]
-	fn get_size(&self) -> usize {
-		get_frame_size(self.order)
-	}
-
-	/// Marks the frame as used. The frame must not be linked to any free list.
-	#[inline]
-	fn mark_used(&mut self) {
-		self.prev = FRAME_STATE_USED;
-		self.next = FRAME_STATE_USED;
-	}
-
-	/// Marks the frame as free. The frame must not be linked to any free list.
-	#[inline]
-	fn mark_free(&mut self, zone: &Zone) {
-		let id = self.get_id(zone);
-		self.prev = id;
-		self.next = id;
-	}
-
-	/// Debug function to assert that the chunk is valid.
-	///
-	/// Invalid chunk shall result in the kernel panicking.
-	#[cfg(debug_assertions)]
-	fn check_broken(&self, zone: &Zone) {
-		debug_assert!(self.prev == FRAME_STATE_USED || self.prev < zone.pages_count);
-		debug_assert!(self.next == FRAME_STATE_USED || self.next < zone.pages_count);
-		debug_assert!(self.order <= MAX_ORDER);
-	}
-
-	/// Links the frame into zone `zone`'s free list.
+	/// Links the frame into zone `zone`'s free list of order `order`.
 	fn link(&mut self, zone: &mut Zone) {
-		#[cfg(debug_assertions)]
-		{
-			self.check_broken(zone);
-			zone.check_free_list();
-			debug_assert!(!self.is_used());
-		}
-		let id = self.get_id(zone);
-		self.prev = id;
-		self.next = if let Some(mut next) = zone.free_list[self.order as usize] {
+		let order = self.order;
+		self.prev = None;
+		self.next = zone.free_list[order as usize];
+		if let Some(mut next) = self.next {
 			let next = unsafe { next.as_mut() };
-			debug_assert!(!next.is_used());
-			next.prev = id;
-			next.get_id(zone)
-		} else {
-			id
-		};
-		zone.free_list[self.order as usize] = NonNull::new(self);
-		#[cfg(debug_assertions)]
-		{
-			self.check_broken(zone);
-			zone.check_free_list();
+			next.prev = NonNull::new(self);
 		}
+		zone.free_list[order as usize] = NonNull::new(self);
 	}
 
-	/// Unlinks the frame from zone `zone`'s free list. The frame must not be
-	/// used.
+	/// Unlinks the frame from zone `zone`'s free list of order `order`.
 	fn unlink(&mut self, zone: &mut Zone) {
-		#[cfg(debug_assertions)]
-		{
-			self.check_broken(zone);
-			debug_assert!(!self.is_used());
-			zone.check_free_list();
+		if let Some(mut prev) = self.prev {
+			let prev = unsafe { &mut prev.as_mut() };
+			prev.next = self.next;
+		} else {
+			// First element of the list: update it
+			zone.free_list[self.order as usize] = self.next;
 		}
-
-		let frames = zone.frames();
-		let id = self.get_id(zone);
-		let has_prev = self.prev != id;
-		let has_next = self.next != id;
-
-		let first = &mut zone.free_list[self.order as usize];
-		if first.map(NonNull::as_ptr) == Some(self) {
-			*first = if has_next {
-				NonNull::new(&mut frames[self.next as usize])
-			} else {
-				None
-			};
-		}
-
-		if has_prev {
-			frames[self.prev as usize].next = if has_next { self.next } else { self.prev };
-		}
-		if has_next {
-			frames[self.next as usize].prev = if has_prev { self.prev } else { self.next };
-		}
-
-		#[cfg(debug_assertions)]
-		{
-			self.check_broken(zone);
-			zone.check_free_list();
+		if let Some(mut next) = self.next {
+			let next = unsafe { &mut next.as_mut() };
+			next.prev = self.prev;
 		}
 	}
 
@@ -366,37 +245,23 @@ impl Frame {
 	///
 	/// The frame must not be marked as used.
 	fn split(&mut self, zone: &mut Zone, order: FrameOrder) {
-		#[cfg(debug_assertions)]
-		self.check_broken(zone);
-		debug_assert!(!self.is_used());
 		debug_assert!(order <= MAX_ORDER);
-		debug_assert!(self.order >= order);
-
 		let frames = zone.frames();
-
 		self.unlink(zone);
 		while self.order > order {
 			self.order -= 1;
-			// Get buddy ID
+			// Get buddy
 			let buddy = self.get_buddy_id(zone);
-			if buddy >= zone.pages_count {
-				break;
-			}
-			// Update buddy
 			let buddy_frame = &mut frames[buddy as usize];
-			buddy_frame.mark_free(zone);
-			buddy_frame.order = self.order;
-			buddy_frame.link(zone);
+			let free_buddy = buddy_frame.mark_free(self.order);
+			free_buddy.link(zone);
 		}
-
-		#[cfg(debug_assertions)]
-		self.check_broken(zone);
 	}
 
 	/// Coalesces the frame in zone `zone` with free buddy blocks recursively
 	/// until no buddy is available anymore.
 	///
-	/// The current frame must not be marked as used.
+	/// The current frame must be free.
 	///
 	/// Buddies that are merged with the frame are unlinked.
 	///
@@ -404,46 +269,96 @@ impl Frame {
 	///
 	/// The frame is linked to the free list by the function.
 	fn coalesce(&mut self, zone: &mut Zone) {
-		#[cfg(debug_assertions)]
-		self.check_broken(zone);
-		debug_assert!(!self.is_used());
-
 		let frames = zone.frames();
-
 		while self.order < MAX_ORDER {
-			let id = self.get_id(zone);
+			let id = unsafe { frame_id(zone, self) };
 			// Get buddy ID
 			let buddy = self.get_buddy_id(zone);
+			// Check if coalesce is possible
 			if buddy >= zone.pages_count {
 				break;
 			}
-			// Check if coalesce is possible
-			let new_pages_count = math::pow2((self.order + 1) as usize) as FrameID;
-			if min(id, buddy) + new_pages_count > zone.pages_count {
-				break;
-			}
 			let buddy_frame = &mut frames[buddy as usize];
-			#[cfg(debug_assertions)]
-			buddy_frame.check_broken(zone);
-			if buddy_frame.order != self.order || buddy_frame.is_used() {
+			let Frame::Free(free_buddy) = buddy_frame else {
+				break;
+			};
+			if free_buddy.order != self.order {
 				break;
 			}
 			// Update buddy
-			buddy_frame.unlink(zone);
+			free_buddy.unlink(zone);
 			if id < buddy {
 				self.order += 1;
 			} else {
-				buddy_frame.order += 1;
-				buddy_frame.coalesce(zone);
+				free_buddy.order += 1;
+				free_buddy.coalesce(zone);
 				return;
 			}
 		}
-
-		#[cfg(debug_assertions)]
-		zone.check_free_list();
 		self.link(zone);
-		#[cfg(debug_assertions)]
-		self.check_broken(zone);
+	}
+}
+
+/// State of a physical page.
+#[derive(Debug, Default)]
+pub struct PageState {
+	/// The mapped node, if any.
+	node: Option<Arc<Node>>,
+	/// The offset of the page in the node. If not in a node, the value is irrelevant.
+	index: u64,
+	/// Flag indicating whether the page needs synchronization to the backing store.
+	dirty: AtomicBool,
+}
+
+impl PageState {
+	/// Returns the address of the associated physical memory.
+	fn addr(&self, zone: &Zone) -> PhysAddr {
+		let id = unsafe { frame_id(zone, self) };
+		zone.begin + id as usize * PAGE_SIZE
+	}
+}
+
+/// The metadata for a frame of physical memory.
+enum Frame {
+	/// The frame is free.
+	Free(FreeFrame),
+	/// The frame is allocated.
+	Allocated(PageState),
+}
+
+impl Frame {
+	/// Tells whether the frame is used or not.
+	#[inline]
+	fn is_allocated(&self) -> bool {
+		matches!(self, Frame::Allocated(_))
+	}
+
+	/// Marks the frame as free. The frame must not be linked to any free list.
+	///
+	/// The function returns the free representation of the frame.
+	#[inline]
+	fn mark_free(&mut self, order: FrameOrder) -> &mut FreeFrame {
+		*self = Frame::Free(FreeFrame {
+			prev: None,
+			next: None,
+			order,
+		});
+		match self {
+			Frame::Free(f) => f,
+			_ => unreachable!(),
+		}
+	}
+
+	/// Marks the frame as used. The frame must not be linked to any free list.
+	///
+	/// The function returns the used representation of the frame.
+	#[inline]
+	fn mark_used(&mut self) -> &PageState {
+		*self = Frame::Allocated(Default::default());
+		match self {
+			Frame::Allocated(f) => f,
+			_ => unreachable!(),
+		}
 	}
 }
 
@@ -499,17 +414,14 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<PhysAddr> {
 	let begin_zone = (flags & ZONE_TYPE_MASK) as usize;
 	let (mut frame, zone) = zones[begin_zone..]
 		.iter_mut()
-		.filter_map(|z| Some((z.get_available_frame(order)?, z)))
-		.next()
+		.find_map(|z| Some((z.get_available_frame(order)?, z)))
 		.ok_or(AllocError)?;
 	let frame = unsafe { frame.as_mut() };
 	// Do the actual allocation
-	debug_assert!(!frame.is_used());
 	frame.split(zone, order);
-	let addr = frame.addr(zone);
-	debug_assert!(addr.is_aligned_to(PAGE_SIZE));
+	let state = frame.frame().mark_used();
+	let addr = state.addr(zone);
 	debug_assert!(addr >= zone.begin && addr < zone.begin + zone.get_size());
-	frame.mark_used();
 	// Statistics
 	let pages_count = math::pow2(order as usize);
 	zone.allocated_pages += pages_count;
@@ -553,9 +465,9 @@ pub unsafe fn free(addr: PhysAddr, order: FrameOrder) {
 	let frame_id = zone.get_frame_id_from_addr(addr);
 	debug_assert!(frame_id < zone.pages_count);
 	let frame = &mut frames[frame_id as usize];
-	debug_assert!(frame.is_used());
-	frame.mark_free(zone);
-	frame.coalesce(zone);
+	debug_assert!(frame.is_allocated());
+	let free_frame = frame.mark_free(order);
+	free_frame.coalesce(zone);
 	// Statistics
 	let pages_count = math::pow2(order as usize);
 	zone.allocated_pages -= pages_count;

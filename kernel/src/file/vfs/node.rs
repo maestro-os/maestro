@@ -20,6 +20,7 @@
 
 use crate::{
 	file::{fs::NodeOps, FileLocation, FileType},
+	memory::buddy::PageState,
 	sync::mutex::Mutex,
 };
 use core::{
@@ -28,7 +29,7 @@ use core::{
 };
 use utils::{
 	boxed::Box,
-	collections::hashmap::HashSet,
+	collections::{hashmap::HashSet, vec::Vec},
 	errno::{AllocResult, EResult},
 	ptr::arc::Arc,
 };
@@ -40,9 +41,21 @@ pub struct Node {
 	pub location: FileLocation,
 	/// Handle for node operations.
 	pub ops: Box<dyn NodeOps>,
+	// TODO need a sparse array, inside of a rwlock
+	/// Mapped pages.
+	pages: Mutex<Vec<&'static PageState>>,
 }
 
 impl Node {
+	/// Instantiates a new node structure.
+	pub fn new(location: FileLocation, ops: Box<dyn NodeOps>) -> AllocResult<Arc<Self>> {
+		Arc::new(Self {
+			location,
+			ops,
+			pages: Mutex::new(Vec::new()),
+		})
+	}
+
 	/// Releases the node, removing it from the disk if this is the last reference to it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
 		// Lock to avoid race condition later
@@ -115,10 +128,7 @@ pub(super) fn get_or_insert(location: FileLocation, ops: Box<dyn NodeOps>) -> ER
 		// The node is not in cache. Insert it
 		None => {
 			// Create and insert node
-			let node = Arc::new(Node {
-				location,
-				ops,
-			})?;
+			let node = Node::new(location, ops)?;
 			used_nodes.insert(NodeEntry(node.clone()))?;
 			Ok(node)
 		}
@@ -126,11 +136,10 @@ pub(super) fn get_or_insert(location: FileLocation, ops: Box<dyn NodeOps>) -> ER
 }
 
 /// Inserts a new node in cache.
-pub(super) fn insert(node: Node) -> AllocResult<Arc<Node>> {
+pub(super) fn insert(node: Arc<Node>) -> AllocResult<()> {
 	let mut used_nodes = USED_NODES.lock();
-	let node = Arc::new(node)?;
-	used_nodes.insert(NodeEntry(node.clone()))?;
-	Ok(node)
+	used_nodes.insert(NodeEntry(node))?;
+	Ok(())
 }
 
 /// The function removes the node from:
