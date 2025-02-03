@@ -18,16 +18,13 @@
 
 //! Once-initialized objects.
 
-use core::{cell::UnsafeCell, mem::MaybeUninit};
+use core::{cell::UnsafeCell, mem::MaybeUninit, ops::Deref};
 
 /// An object that is meant to be initialized once at boot, then accessed in read-only.
 ///
 /// The value **must** be initialized with `init` before calling `get`. Failure to do so results in
 /// an undefined behavior.
-pub struct OnceInit<T> {
-	/// The inner value. If `None`, it has not been initialized yet.
-	val: UnsafeCell<MaybeUninit<T>>,
-}
+pub struct OnceInit<T>(UnsafeCell<MaybeUninit<T>>);
 
 impl<T> OnceInit<T> {
 	/// Creates a new instance waiting to be initialized.
@@ -36,9 +33,7 @@ impl<T> OnceInit<T> {
 	///
 	/// The value **must** be initialized with before calling `get`.
 	pub const unsafe fn new() -> Self {
-		Self {
-			val: UnsafeCell::new(MaybeUninit::uninit()),
-		}
+		Self(UnsafeCell::new(MaybeUninit::uninit()))
 	}
 
 	/// Initializes with the given value.
@@ -48,13 +43,20 @@ impl<T> OnceInit<T> {
 	/// # Safety
 	///
 	/// It is the caller's responsibility to enforce concurrency rules.
-	pub unsafe fn init(&self, val: T) {
-		(*self.val.get()).write(val);
+	pub unsafe fn init(this: &Self, val: T) -> &T {
+		unsafe {
+			let inner = &mut *this.0.get();
+			inner.write(val);
+			inner.assume_init_ref()
+		}
 	}
+}
 
-	/// Returns the inner value.
-	pub fn get(&self) -> &T {
-		unsafe { (*self.val.get()).assume_init_ref() }
+impl<T> Deref for OnceInit<T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		unsafe { (*self.0.get()).assume_init_ref() }
 	}
 }
 

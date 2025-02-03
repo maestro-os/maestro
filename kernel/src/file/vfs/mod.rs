@@ -247,12 +247,7 @@ impl Entry {
 }
 
 /// The root entry of the VFS.
-pub(super) static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
-
-/// Returns the root entry.
-pub fn root() -> Arc<Entry> {
-	ROOT.get().clone()
-}
+pub static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
 
 /// Settings for a path resolution operation.
 #[derive(Clone, Debug)]
@@ -281,7 +276,7 @@ impl ResolutionSettings {
 	/// Kernel access, following symbolic links.
 	pub fn kernel_follow() -> Self {
 		Self {
-			root: root(),
+			root: ROOT.clone(),
 			cwd: None,
 
 			access_profile: AccessProfile::KERNEL,
@@ -354,15 +349,16 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 	else {
 		return Ok(None);
 	};
-	let node = node::insert(Node {
-		location: FileLocation {
+	let node = Node::new(
+		FileLocation {
 			// The file is on the same mountpoint as the parent since mountpoint roots are always
 			// in cache
 			mountpoint_id: lookup_dir.node().location.mountpoint_id,
 			inode: entry.inode,
 		},
 		ops,
-	})?;
+	)?;
+	node::insert(node.clone())?;
 	// Create entry and insert in parent
 	let ent = Arc::new(Entry {
 		name: String::try_from(name)?,

@@ -20,7 +20,7 @@
 
 use crate::{
 	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, tss},
-	memory::vmem,
+	memory::vmem::KERNEL_VMEM,
 	process::Process,
 };
 use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
@@ -208,7 +208,7 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	match next.mem_space.as_ref() {
 		Some(mem_space) => mem_space.lock().bind(),
 		// No associated memory context: bind the kernel's
-		None => vmem::kernel().lock().bind(),
+		None => KERNEL_VMEM.lock().bind(),
 	}
 	// Update the TSS for the process
 	unsafe {

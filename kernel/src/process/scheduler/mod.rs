@@ -51,9 +51,9 @@ pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() }
 /// Initializes schedulers.
 pub fn init() -> AllocResult<()> {
 	unsafe {
-		SCHEDULER.init(IntMutex::new(Scheduler::new()?));
+		OnceInit::init(&SCHEDULER, IntMutex::new(Scheduler::new()?));
 	}
-	SCHEDULER.get().lock().setup_gs_base();
+	SCHEDULER.lock().setup_gs_base();
 	Ok(())
 }
 
@@ -249,7 +249,7 @@ impl Scheduler {
 		// Disable interrupts so that no interrupt can occur before switching to the next process
 		cli();
 		let (prev, next) = {
-			let mut sched = SCHEDULER.get().lock();
+			let mut sched = SCHEDULER.lock();
 			sched.total_ticks.fetch_add(1, atomic::Ordering::Relaxed);
 			// Find the next process to run
 			let next = sched.get_next_process().unwrap_or(sched.idle_task.clone());

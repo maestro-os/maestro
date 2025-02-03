@@ -234,13 +234,14 @@ pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
 	let fs = get_fs(&source, None, PathBuf::root()?, false)?;
 	// Get filesystem root node
 	let root_inode = fs.get_root_inode();
-	let node = node::insert(Node {
-		location: FileLocation {
+	let node = Node::new(
+		FileLocation {
 			mountpoint_id: 0,
 			inode: root_inode,
 		},
-		ops: fs.node_from_inode(root_inode)?,
-	})?;
+		fs.node_from_inode(root_inode)?,
+	)?;
+	node::insert(node.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry::from_node(node))?;
 	// Create mountpoint
@@ -283,13 +284,14 @@ pub fn create(
 	let id = mps.iter().map(|(i, _)| *i + 1).max().unwrap_or(0);
 	// Get filesystem root node
 	let root_inode = fs.get_root_inode();
-	let node = node::insert(Node {
-		location: FileLocation {
+	let node = Node::new(
+		FileLocation {
 			mountpoint_id: id,
 			inode: root_inode,
 		},
-		ops: fs.node_from_inode(root_inode)?,
-	})?;
+		fs.node_from_inode(root_inode)?,
+	)?;
+	node::insert(node.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry {
 		name: target.name.try_clone()?,

@@ -66,7 +66,7 @@ fn update_parent<'p>(
 /// `data` is the slice of data representing the initramfs image.
 pub fn load(data: &[u8]) -> EResult<()> {
 	// The stored parent directory
-	let mut cur_parent: (&Path, Arc<vfs::Entry>) = (Path::root(), vfs::root());
+	let mut cur_parent: (&Path, Arc<vfs::Entry>) = (Path::root(), vfs::ROOT.clone());
 	let cpio_parser = CPIOParser::new(data);
 	for entry in cpio_parser {
 		let hdr = entry.get_hdr();

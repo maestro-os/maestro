@@ -91,7 +91,7 @@ pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
 		0 => try_kill_group(0, sig)?,
 		// Kill all processes for which the current process has the permission
 		-1 => {
-			let sched = SCHEDULER.get().lock();
+			let sched = SCHEDULER.lock();
 			for (pid, _) in sched.iter_process() {
 				if *pid == process::pid::INIT_PID {
 					continue;
