@@ -207,7 +207,7 @@ impl FreeFrame {
 	#[inline]
 	fn get_buddy_id(&self, zone: &Zone) -> FrameID {
 		let id = unsafe { frame_id(zone, self) };
-		id ^ math::pow2(self.order) as u32
+		id ^ math::pow2(self.order as u32)
 	}
 
 	/// Links the frame into zone `zone`'s free list of order `order`.
