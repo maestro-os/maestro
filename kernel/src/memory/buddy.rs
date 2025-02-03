@@ -303,11 +303,11 @@ impl FreeFrame {
 #[derive(Debug, Default)]
 pub struct PageState {
 	/// The mapped node, if any.
-	node: Option<Arc<Node>>,
+	pub node: Option<Arc<Node>>,
 	/// The offset of the page in the node. If not in a node, the value is irrelevant.
-	index: u64,
+	pub index: u64,
 	/// Flag indicating whether the page needs synchronization to the backing store.
-	dirty: AtomicBool,
+	pub dirty: AtomicBool,
 }
 
 impl PageState {
