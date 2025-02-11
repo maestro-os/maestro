@@ -44,7 +44,7 @@ pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<u
 		return Err(errno!(EACCES));
 	}
 	file.node()
-		.ops
+		.node_ops
 		.truncate_content(&file.node().location, length as _)?;
 
 	Ok(0)

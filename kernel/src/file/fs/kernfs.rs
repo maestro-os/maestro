@@ -24,7 +24,7 @@
 //!
 //! This module implements utilities for kernfs.
 
-use crate::file::{fs::NodeOps, DirEntry, FileLocation, FileType, INode, Stat};
+use crate::file::{fs::NodeOps, vfs::node::Node, DirEntry, FileLocation, FileType, INode, Stat};
 use core::{
 	cmp::min,
 	fmt,
@@ -174,7 +174,7 @@ macro_rules! format_content {
 pub struct StaticLink(pub &'static [u8]);
 
 impl NodeOps for StaticLink {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
+	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
 		Ok(Stat {
 			mode: FileType::Link.to_mode() | 0o777,
 			..Default::default()
@@ -271,7 +271,7 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 }
 
 impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
+	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
 		Ok(Stat {
 			mode: FileType::Directory.to_mode() | 0o555,
 			..Default::default()
@@ -280,17 +280,13 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 
 	fn entry_by_name<'n>(
 		&self,
-		_loc: &FileLocation,
+		_dir: &Node,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
 		self.entry_by_name_inner(name)
 	}
 
-	fn next_entry(
-		&self,
-		_loc: &FileLocation,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+	fn next_entry(&self, _dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		self.next_entry_inner(off)
 	}
 }

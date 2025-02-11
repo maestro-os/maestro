@@ -85,7 +85,7 @@ pub fn do_getdents<E: Dirent>(
 	let mut buf_off = 0;
 	// Iterate over entries and fill the buffer
 	loop {
-		let Some((entry, next_off)) = node.ops.next_entry(&node.location, off)? else {
+		let Some((entry, next_off)) = node.node_ops.next_entry(&node, off)? else {
 			break;
 		};
 		// Skip entries whose inode cannot fit in the structure

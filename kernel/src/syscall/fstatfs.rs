@@ -46,9 +46,7 @@ pub fn do_fstatfs(
 		.as_ref()
 		.ok_or_else(|| errno!(ENOSYS))?
 		.node()
-		.location
-		.get_mountpoint()
-		.ok_or_else(|| errno!(ENOSYS))?
+		.mp
 		.fs
 		.get_stat()?;
 	buf.copy_to_user(&stat)?;

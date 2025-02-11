@@ -94,7 +94,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 		let shebang = &mut shebangs[i];
 		let len = file
 			.node()
-			.ops
+			.node_ops
 			.read_content(&file.node().location, 0, &mut shebang.buf)?;
 		// Parse shebang
 		shebang.end = shebang.buf[..len]

@@ -107,8 +107,8 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			FileType::Regular | FileType::Link => {
 				let content = entry.get_content();
 				file.node()
-					.ops
-					.write_content(&file.node().location, 0, content)?;
+					.node_ops
+					.write_content(&file.node().inner, 0, content)?;
 			}
 			_ => {}
 		}

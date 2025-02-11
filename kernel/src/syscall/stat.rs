@@ -125,17 +125,11 @@ pub struct Stat64 {
 /// Extract device number and inode from [`vfs::Entry`].
 fn entry_info(entry: &vfs::Entry) -> EResult<(u64, INode)> {
 	let node = entry.node();
-	let mount_source = &node
-		.location
-		.get_mountpoint()
-		.ok_or_else(|| errno!(ENOENT))?
-		.source;
-	let st_dev = match mount_source {
+	let st_dev = match node.mp.source {
 		MountSource::Device(dev) => dev.get_device_number(),
 		MountSource::NoDev(_) => 0,
 	};
-	let st_ino = node.location.inode;
-	Ok((st_dev, st_ino))
+	Ok((st_dev, node.inode))
 }
 
 fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat32>) -> EResult<()> {
@@ -365,15 +359,15 @@ pub fn statx(
 	let stat = file.stat()?;
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
-	let (stx_dev_major, stx_dev_minor) = match file.node().location.get_mountpoint().as_deref() {
-		Some(MountPoint {
+	let (stx_dev_major, stx_dev_minor) = match file.node().mp.as_ref() {
+		MountPoint {
 			source: MountSource::Device(DeviceID {
 				major,
 				minor,
 				..
 			}),
 			..
-		}) => (*major, *minor),
+		} => (*major, *minor),
 		_ => (0, 0),
 	};
 	// Write
@@ -386,7 +380,7 @@ pub fn statx(
 		stx_gid: stat.gid as _,
 		stx_mode: stat.mode as _,
 		__padding0: 0,
-		stx_ino: file.node().location.inode,
+		stx_ino: file.node().inode,
 		stx_size: stat.size,
 		stx_blocks: stat.blocks,
 		stx_attributes_mask: 0, // TODO

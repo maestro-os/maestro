@@ -19,7 +19,11 @@
 //! Filesystem node cache, allowing to handle hard links pointing to the same node.
 
 use crate::{
-	file::{fs::NodeOps, FileLocation, FileType},
+	file::{
+		fs::{Filesystem, NodeOps},
+		vfs::mountpoint::MountPoint,
+		FileLocation, FileType, INode,
+	},
 	memory::buddy::PageState,
 	sync::mutex::Mutex,
 };
@@ -37,12 +41,14 @@ use utils::{
 /// A filesystem node, cached by the VFS.
 #[derive(Debug)]
 pub struct Node {
-	/// The location of the file on a filesystem.
-	pub location: FileLocation,
-	/// Handle for node operations.
-	pub ops: Box<dyn NodeOps>,
+	/// Node ID
+	pub inode: INode,
+	/// Mountpoint of the filesystem on which the node is located
+	pub mp: Arc<MountPoint>,
+	/// Handle for node operations
+	pub node_ops: Box<dyn NodeOps>,
 	// TODO need a sparse array, inside of a rwlock
-	/// Mapped pages.
+	/// Mapped pages
 	pages: Mutex<Vec<&'static PageState>>,
 }
 
@@ -51,9 +57,14 @@ impl Node {
 	pub fn new(location: FileLocation, ops: Box<dyn NodeOps>) -> AllocResult<Arc<Self>> {
 		Arc::new(Self {
 			location,
-			ops,
+			node_ops: ops,
 			pages: Mutex::new(Vec::new()),
 		})
+	}
+
+	/// Returns a reference to the underlying filesystem.
+	pub fn get_filesystem(&self) -> &dyn Filesystem {
+		&*self.mp.fs
 	}
 
 	/// Releases the node, removing it from the disk if this is the last reference to it.
@@ -68,7 +79,7 @@ impl Node {
 		let Some(node) = Arc::into_inner(this) else {
 			return Ok(());
 		};
-		Self::try_remove(&node.location, &*node.ops)
+		Self::try_remove(&node.location, &*node.node_ops)
 	}
 
 	/// Removes the node from the disk if it is orphan.

@@ -85,6 +85,8 @@ impl Hash for EntryChild {
 }
 
 /// A VFS entry, representing a directory entry cached in memory.
+///
+/// An entry can be negative. That is, represent a non-existent file.
 #[derive(Debug)]
 pub struct Entry {
 	/// Filename.
@@ -99,30 +101,30 @@ pub struct Entry {
 	children: Mutex<HashSet<EntryChild>>,
 	/// The node associated with the entry.
 	///
-	/// If `None`, the file do not actually exist.
+	/// If `None`, the entry is negative.
 	node: Option<Arc<Node>>,
 }
 
 impl Entry {
-	/// Creates a new entry for the given `node`.
-	pub fn from_node(node: Arc<Node>) -> Self {
+	/// Creates a new entry representing the root of a filesystem.
+	pub fn new_root(root: Arc<Node>) -> Self {
 		Self {
 			name: String::new(),
 			parent: None,
 			children: Default::default(),
-			node: Some(node),
+			node: Some(root),
 		}
 	}
 
 	/// If the entry is a mountpoint, return it.
-	pub fn get_mountpoint(&self) -> Option<Arc<MountPoint>> {
-		let mp_id = self.node.as_ref()?.location.mountpoint_id;
+	pub fn as_mountpoint(&self) -> Option<Arc<MountPoint>> {
+		let node = self.node.as_ref()?;
 		match &self.parent {
 			// The parent is on the same mountpoint: this IS NOT the root of a mountpoint
-			Some(parent) if parent.node().location.mountpoint_id == mp_id => None,
-			// The parent is on a different mountpoint, or there is no parent: this IS the root of
-			// a mountpoint
-			Some(_) | None => mountpoint::from_id(mp_id),
+			Some(parent) if parent.node().mp.id == node.mp.id => None,
+			// The parent is on a different mountpoint or there is no parent: this IS the root of a
+			// mountpoint
+			Some(_) | None => Some(node.mp.clone()),
 		}
 	}
 
@@ -141,7 +143,7 @@ impl Entry {
 	/// If the entry represents a non-existent file, the function panics.
 	#[inline]
 	pub fn stat(&self) -> EResult<Stat> {
-		self.node().ops.get_stat(&self.node().location)
+		self.node().node_ops.get_stat(&self.node())
 	}
 
 	/// Returns the file's type.
@@ -158,8 +160,8 @@ impl Entry {
 		const INCREMENT: usize = 512;
 		let len: usize = self
 			.node()
-			.ops
-			.get_stat(&self.node().location)?
+			.node_ops
+			.get_stat(self.node())?
 			.size
 			.try_into()
 			.map_err(|_| errno!(EOVERFLOW))?;
@@ -179,10 +181,11 @@ impl Entry {
 					.ok_or_else(|| errno!(EOVERFLOW))?;
 				buf.resize(new_size, 0)?;
 			}
-			let len =
-				self.node()
-					.ops
-					.read_content(&self.node().location, off as _, &mut buf[off..])?;
+			let len = self.node().node_ops.read_content(
+				&self.node().location,
+				off as _,
+				&mut buf[off..],
+			)?;
 			// Reached EOF, stop here
 			if len == 0 {
 				break;
@@ -344,8 +347,8 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 	// Not in cache. Try to get from the filesystem
 	let Some((entry, ops)) = lookup_dir
 		.node()
-		.ops
-		.entry_by_name(&lookup_dir.node().location, name)?
+		.node_ops
+		.entry_by_name(lookup_dir.node(), name)?
 	else {
 		return Ok(None);
 	};
@@ -353,7 +356,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		FileLocation {
 			// The file is on the same mountpoint as the parent since mountpoint roots are always
 			// in cache
-			mountpoint_id: lookup_dir.node().location.mountpoint_id,
+			mountpoint_id: lookup_dir.node().mp.id,
 			inode: entry.inode,
 		},
 		ops,
@@ -602,12 +605,9 @@ pub fn create_file(
 	};
 	stat.gid = gid;
 	// Add file to filesystem
-	let (inode, ops) = parent
-		.node()
-		.ops
-		.add_file(&parent.node().location, name, stat)?;
+	let (inode, ops) = parent.node().node_ops.create(parent.node(), name, stat)?;
 	let location = FileLocation {
-		mountpoint_id: parent.node().location.mountpoint_id,
+		mountpoint_id: parent.node().mp.id,
 		inode,
 	};
 	let node = node::get_or_insert(location, ops)?;
@@ -655,13 +655,13 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 		return Err(errno!(EACCES));
 	}
 	// Check the target and source are both on the same mountpoint
-	if parent.node().location.mountpoint_id != target.node().location.mountpoint_id {
+	if parent.node().mp.id != target.node().mp.id {
 		return Err(errno!(EXDEV));
 	}
 	parent
 		.node()
-		.ops
-		.link(&parent.node().location, name, target.node().location.inode)?;
+		.node_ops
+		.link(parent.node(), name, target.node().inode)?;
 	Ok(())
 }
 
@@ -695,7 +695,7 @@ pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()
 		// The entry is in cache
 		Some(EntryChild(entry)) => {
 			// If the file to remove is a mountpoint, error
-			if parent.node().location.mountpoint_id != entry.node().location.mountpoint_id {
+			if parent.node().mp.id != entry.node().mp.id {
 				return Err(errno!(EBUSY));
 			}
 			let stat = entry.stat()?;
@@ -705,7 +705,7 @@ pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()
 				return Err(errno!(EACCES));
 			}
 			// Remove link from filesystem
-			parent.node().ops.unlink(&parent.node().location, name)?;
+			parent.node().node_ops.unlink(parent.node(), name)?;
 			// Remove link from cache
 			let EntryChild(ent) = children.remove(name).unwrap();
 			drop(children);
@@ -715,12 +715,12 @@ pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()
 		None => {
 			let (entry, ops) = parent
 				.node()
-				.ops
-				.entry_by_name(&parent.node().location, name)?
+				.node_ops
+				.entry_by_name(parent.node(), name)?
 				.ok_or_else(|| errno!(ENOENT))?;
 			let loc = FileLocation {
 				// The entry cannot be a mountpoint since it is not in cache
-				mountpoint_id: parent.node().location.mountpoint_id,
+				mountpoint_id: parent.node().mp.id,
 				inode: entry.inode,
 			};
 			let stat = ops.get_stat(&loc)?;
@@ -730,7 +730,7 @@ pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()
 				return Err(errno!(EACCES));
 			}
 			// Remove link from filesystem
-			parent.node().ops.unlink(&parent.node().location, name)?;
+			parent.node().node_ops.unlink(parent.node(), name)?;
 			node::try_remove(&loc, &*ops)
 		}
 	}
@@ -806,7 +806,7 @@ impl super::FileOps for FileOps {
 			.read_bytes(off, buf),
 			None => {
 				let node = file.vfs_entry.as_ref().unwrap().node();
-				node.ops.read_content(&node.location, off, buf)
+				node.node_ops.read_content(&node.location, off, buf)
 			}
 		}
 	}
@@ -828,7 +828,7 @@ impl super::FileOps for FileOps {
 			.write_bytes(off, buf),
 			None => {
 				let node = file.vfs_entry.as_ref().unwrap().node();
-				node.ops.write_content(&node.location, off, buf)
+				node.node_ops.write_content(&node.location, off, buf)
 			}
 		}
 	}

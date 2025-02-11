@@ -249,10 +249,6 @@ impl Filesystem for ProcFS {
 		b"proc"
 	}
 
-	fn use_cache(&self) -> bool {
-		false
-	}
-
 	fn get_root_inode(&self) -> INode {
 		kernfs::ROOT_INODE
 	}

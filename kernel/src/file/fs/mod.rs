@@ -27,10 +27,17 @@ pub mod tmp;
 
 use super::{
 	perm::{Gid, Uid},
-	DirEntry, FileLocation, INode, Mode, Stat,
+	DirEntry, File, INode, Mode, Stat,
 };
-use crate::{device::DeviceIO, sync::mutex::Mutex, time::unit::Timestamp};
-use core::{any::Any, ffi::c_int, fmt::Debug};
+use crate::{
+	device::DeviceIO, file::vfs::node::Node, sync::mutex::Mutex, syscall::ioctl,
+	time::unit::Timestamp,
+};
+use core::{
+	any::Any,
+	ffi::{c_int, c_void},
+	fmt::Debug,
+};
 use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, path::PathBuf, string::String},
@@ -98,76 +105,21 @@ pub struct StatSet {
 
 /// Filesystem node operations.
 pub trait NodeOps: Debug {
-	/// Returns the file's status.
-	///
-	/// `loc` is the location of the file.
-	fn get_stat(&self, loc: &FileLocation) -> EResult<Stat>;
+	/// Returns the node's status.
+	fn get_stat(&self, node: &Node) -> EResult<Stat>;
 
-	/// Sets the file's status.
+	/// Sets the node's status.
 	///
-	/// Arguments:
-	/// - `loc` is the location of the file.
-	/// - `set` is the set of status attributes to modify on the file.
+	/// `set` is the set of status attributes to modify on the file.
 	///
 	/// The default implementation of this function does nothing.
-	fn set_stat(&self, loc: &FileLocation, set: StatSet) -> EResult<()> {
-		let _ = (loc, set);
+	fn set_stat(&self, node: &Node, set: StatSet) -> EResult<()> {
+		let _ = (node, set);
 		Ok(())
 	}
 
-	/// Reads from the node with into the buffer `buf`.
-	///
-	/// Arguments:
-	/// - `loc` is the location of the file.
-	/// - `off` is the offset from which the data will be read from the node's data.
-	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
-	///   number of bytes to read.
-	///
-	/// This function is relevant for the following file types:
-	/// - `Regular`: Reads the content of the file
-	/// - `Link`: Reads the path the link points to
-	///
-	/// The function returns the number of bytes read and whether the *end-of-file* has been
-	/// reached.
-	///
-	/// The default implementation of this function returns an error.
-	fn read_content(&self, loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let _ = (loc, off, buf);
-		Err(errno!(EINVAL))
-	}
-
-	/// Writes to the node from the buffer `buf`.
-	///
-	/// Arguments:
-	/// - `loc` is the location of the file.
-	/// - `off` is the offset at which the data will be written in the node's data.
-	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
-	///   number of bytes to write.
-	///
-	/// This function is relevant for the following file types:
-	/// - `Regular`: Writes the content of the file
-	/// - `Link`: Writes the path the link points to. `off` is ignored for links and is always
-	///   considered to be zero
-	///
-	/// The default implementation of this function returns an error.
-	fn write_content(&self, loc: &FileLocation, off: u64, buf: &[u8]) -> EResult<usize> {
-		let _ = (loc, off, buf);
-		Err(errno!(EINVAL))
-	}
-
-	/// Changes the size of the file, truncating its content if necessary.
-	///
-	/// If `size` is greater than or equals to the current size of the file, the function does
-	/// nothing.
-	///
-	/// The default implementation of this function returns an error.
-	fn truncate_content(&self, loc: &FileLocation, size: u64) -> EResult<()> {
-		let _ = (loc, size);
-		Err(errno!(EINVAL))
-	}
-
-	/// Returns the directory entry with the given `name`, along with its offset and the handle of
-	/// the file.
+	/// Returns the directory entry in `dir` with the given `name`, along with its offset and the
+	/// handle of the file.
 	///
 	/// If the entry does not exist, the function returns `None`.
 	///
@@ -176,15 +128,15 @@ pub trait NodeOps: Debug {
 	/// The default implementation of this function returns an error.
 	fn entry_by_name<'n>(
 		&self,
-		loc: &FileLocation,
+		dir: &Node,
 		name: &'n [u8],
 	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let _ = (loc, name);
+		let _ = (dir, name);
 		Err(errno!(ENOTDIR))
 	}
 
-	/// Returns the directory entry at the given offset `off`. The first entry is always located at
-	/// offset `0`.
+	/// Returns the directory entry in `dir` at the given offset `off`. The first entry is always
+	/// located at offset `0`.
 	///
 	/// The second returned value is the offset to the next entry.
 	///
@@ -193,22 +145,18 @@ pub trait NodeOps: Debug {
 	/// If the node is not a directory, the function returns [`ENOTDIR`].
 	///
 	/// The default implementation of this function returns an error.
-	fn next_entry(
-		&self,
-		loc: &FileLocation,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let _ = (loc, off);
+	fn next_entry(&self, dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
+		let _ = (dir, off);
 		Err(errno!(ENOTDIR))
 	}
 
 	/// Helper function to check whether the node is an empty directory.
 	///
 	/// If the node is not a directory, the function returns `false`.
-	fn is_empty_directory(&self, loc: &FileLocation) -> EResult<bool> {
+	fn is_empty_directory(&self, node: &Node) -> EResult<bool> {
 		let mut off = 0;
 		loop {
-			let res = self.next_entry(loc, off);
+			let res = self.next_entry(node, off);
 			let (ent, next_off) = match res {
 				Ok(Some(ent)) => ent,
 				Ok(None) => break,
@@ -235,9 +183,9 @@ pub trait NodeOps: Debug {
 	/// handle.
 	///
 	/// The default implementation of this function returns an error.
-	fn add_file(
+	fn create(
 		&self,
-		parent: &FileLocation,
+		parent: &Node,
 		name: &[u8],
 		stat: Stat,
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
@@ -256,7 +204,7 @@ pub trait NodeOps: Debug {
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn link(&self, parent: &FileLocation, name: &[u8], target: INode) -> EResult<()> {
+	fn link(&self, parent: &Node, name: &[u8], target: INode) -> EResult<()> {
 		let _ = (parent, name, target);
 		Err(errno!(ENOTDIR))
 	}
@@ -270,24 +218,134 @@ pub trait NodeOps: Debug {
 	/// On success, the function returns the number of links to the target node left, along with
 	/// the target inode.
 	///
+	/// If the file to be removed is a non-empty directory, the function returns
+	/// [`errno::ENOTEMPTY`].
+	///
 	/// If this feature is not supported by the filesystem, the function returns
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
+	fn unlink(&self, parent: &Node, name: &[u8]) -> EResult<()> {
 		let _ = (parent, name);
 		Err(errno!(ENOTDIR))
 	}
 
-	/// Removes a file from the filesystem.
+	/// Creates a symbolic link into the directory.
 	///
-	/// If the file to be removed is a non-empty directory, the function returns
-	/// [`errno::ENOTEMPTY`].
+	/// Arguments:
+	/// - `parent` is the parent directory
+	/// - `path` is the path the symbolic link points to
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn remove_node(&self, loc: &FileLocation) -> EResult<()> {
-		let _ = loc;
-		Err(errno!(ENOTDIR))
+	fn symlink(&self, parent: &Node, path: &[u8]) -> EResult<()> {
+		let _ = (parent, path);
+		Err(errno!(EINVAL))
+	}
+
+	/// Reads the path the symbolic link points to and writes it into `buf`.
+	///
+	/// If the node is not a symbolic link, the function returns [`errno::EINVAL`].
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
+	///
+	/// The default implementation of this function returns an error.
+	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<()> {
+		let _ = (node, buf);
+		Err(errno!(EINVAL))
+	}
+}
+
+/// Open file operations.
+///
+/// This trait is separated so that files with a special behavior can be handled. As an example,
+/// *device files*, *pipes* or *sockets* have a behavior that is independent of the underlying
+/// filesystem.
+pub trait FileOps: Any + Debug {
+	/// Returns the file's status.
+	///
+	/// This function **MUST** be overridden when there is no [`Node`] associated with `file`.
+	fn get_stat(&self, file: &File) -> EResult<Stat> {
+		let node = file.vfs_entry.as_ref().unwrap().node();
+		node.node_ops.get_stat(&*node)
+	}
+
+	/// Increments the reference counter.
+	fn acquire(&self, file: &File) {
+		let _ = file;
+	}
+
+	/// Decrements the reference counter.
+	fn release(&self, file: &File) {
+		let _ = file;
+	}
+
+	/// Wait for events on the file.
+	///
+	/// Arguments:
+	/// - `file` is the file to perform the operation onto
+	/// - `mask` is the mask of events to wait for
+	///
+	/// On success, the function returns the mask events that occurred.
+	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
+		let _ = (file, mask);
+		Err(errno!(EINVAL))
+	}
+
+	/// Performs an ioctl operation on the device file.
+	///
+	/// Arguments:
+	/// - `file` is the file to perform the operation onto
+	/// - `request` is the ID of the request to perform
+	/// - `argp` is a pointer to the argument
+	fn ioctl(&self, file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+		let _ = (file, request, argp);
+		Err(errno!(EINVAL))
+	}
+
+	/// Reads from the content of `file` into the buffer `buf`.
+	///
+	/// Arguments:
+	/// - `file` is the location of the file
+	/// - `off` is the offset from which the data will be read from the node's data
+	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
+	///   number of bytes to read
+	///
+	/// The function returns the number of bytes read and whether the *end-of-file* has been
+	/// reached.
+	///
+	/// The default implementation of this function returns an error.
+	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let _ = (file, off, buf);
+		Err(errno!(EINVAL))
+	}
+
+	/// Writes to the content of `file` from the buffer `buf`.
+	///
+	/// Arguments:
+	/// - `file` is the file
+	/// - `off` is the offset at which the data will be written in the node's data
+	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
+	///   number of bytes to write
+	///
+	/// The default implementation of this function returns an error.
+	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+		let _ = (file, off, buf);
+		Err(errno!(EINVAL))
+	}
+
+	/// Changes the size of the file, truncating its content if necessary.
+	///
+	/// If `size` is greater than or equals to the current size of the file, the function does
+	/// nothing.
+	///
+	/// The default implementation of this function returns an error.
+	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
+		let _ = (file, size);
+		Err(errno!(EINVAL))
 	}
 }
 
@@ -298,8 +356,6 @@ pub trait NodeOps: Debug {
 pub trait Filesystem: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
-	/// Tells the kernel can cache the filesystem's files in memory.
-	fn use_cache(&self) -> bool;
 	/// Returns the root inode of the filesystem.
 	fn get_root_inode(&self) -> INode;
 	/// Returns statistics about the filesystem.
@@ -309,6 +365,11 @@ pub trait Filesystem: Any + Debug {
 	///
 	/// If the node does not exist, the function returns [`errno::ENOENT`].
 	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>>;
+
+	/// Removes `node` from the filesystem.
+	///
+	/// This function should be called only when no link to the node remain.
+	fn destroy_node(&self, node: &Node) -> EResult<()>;
 }
 
 /// Downcasts the given `fs` into `F`.

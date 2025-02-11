@@ -65,7 +65,7 @@ pub fn symlink(
 	)?;
 	// TODO remove file on failure
 	file.node()
-		.ops
+		.node_ops
 		.write_content(&file.node().location, 0, target.as_bytes())?;
 	Ok(0)
 }

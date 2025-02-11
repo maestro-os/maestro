@@ -33,7 +33,7 @@ pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> ER
 	let Some(ent) = &file.vfs_entry else {
 		return Ok(0);
 	};
-	let _mountpoint = ent.node().location.get_mountpoint();
+	let _mountpoint = &ent.node().mp;
 	// TODO Sync all files on mountpoint
 	Ok(0)
 }

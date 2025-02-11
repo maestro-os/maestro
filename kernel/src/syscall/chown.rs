@@ -49,8 +49,8 @@ pub fn do_chown(
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-	file.node().ops.set_stat(
-		&file.node().location,
+	file.node().node_ops.set_stat(
+		file.node(),
 		StatSet {
 			uid: (owner > -1).then_some(owner as _),
 			gid: (group > -1).then_some(group as _),

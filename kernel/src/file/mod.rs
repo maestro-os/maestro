@@ -36,18 +36,17 @@ pub mod wait_queue;
 use crate::{
 	device::{DeviceID, DeviceType},
 	file::{
-		fs::Filesystem,
+		fs::{FileOps, Filesystem},
 		perm::{Gid, Uid},
 	},
 	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
-	syscall::ioctl,
 	time::{
 		clock,
 		clock::CLOCK_MONOTONIC,
 		unit::{Timestamp, TimestampScale},
 	},
 };
-use core::{any::Any, ffi::c_void, fmt::Debug, intrinsics::unlikely, ops::Deref};
+use core::{any::Any, fmt::Debug, intrinsics::unlikely, ops::Deref};
 use perm::AccessProfile;
 use utils::{
 	boxed::Box,
@@ -343,54 +342,6 @@ impl Stat {
 	}
 }
 
-/// File operations.
-pub trait FileOps: Any + Debug {
-	/// Returns the file's status.
-	fn get_stat(&self, file: &File) -> EResult<Stat>;
-
-	/// Increments the reference counter of the file.
-	fn acquire(&self, file: &File);
-	/// Decrements the reference counter of the file.
-	fn release(&self, file: &File);
-
-	/// Wait for events on the file.
-	///
-	/// Arguments:
-	/// - `file` is the file to perform the operation onto.
-	/// - `mask` is the mask of events to wait for.
-	///
-	/// On success, the function returns the mask events that occurred.
-	fn poll(&self, file: &File, mask: u32) -> EResult<u32>;
-
-	/// Performs an ioctl operation on the device file.
-	///
-	/// Arguments:
-	/// - `file` is the file to perform the operation onto.
-	/// - `request` is the ID of the request to perform.
-	/// - `argp` is a pointer to the argument.
-	fn ioctl(&self, file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32>;
-
-	/// Reads the file's content.
-	///
-	/// Arguments:
-	/// - `file` is the file to perform the operation onto.
-	/// - `off` is the offset to read at on the file.
-	/// - `buf` is the buffer on which the read data is written.
-	///
-	/// On success, the function returns the number of bytes written.
-	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize>;
-
-	/// Writes the file's content.
-	///
-	/// Arguments:
-	/// - `file` is the file to perform the operation onto.
-	/// - `off` is the offset to write at on the file.
-	/// - `buf` is the buffer containing the data to write.
-	///
-	/// On success, the function returns the number of bytes written.
-	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize>;
-}
-
 /// An object that may optionally have a reference counter.
 #[derive(Debug)]
 pub enum CounterOption<T: ?Sized> {
@@ -511,7 +462,7 @@ impl File {
 			.as_ref()
 			.ok_or_else(|| errno!(EINVAL))?
 			.node();
-		node.ops.truncate_content(&node.location, size)
+		node.node_ops.truncate_content(&node.location, size)
 	}
 
 	/// Closes the file, removing it the underlying node if no link remain and this was the last

@@ -243,7 +243,7 @@ pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
 	)?;
 	node::insert(node.clone())?;
 	// Create an entry for the root of the mountpoint
-	let root_entry = Arc::new(vfs::Entry::from_node(node))?;
+	let root_entry = Arc::new(vfs::Entry::new_root(node))?;
 	// Create mountpoint
 	let mountpoint = Arc::new(MountPoint {
 		id: 0,
@@ -329,7 +329,7 @@ pub fn create(
 ///
 /// If the mountpoint is busy, the function returns [`errno::EBUSY`].
 pub fn remove(target: Arc<vfs::Entry>) -> EResult<()> {
-	let Some(mp) = target.get_mountpoint() else {
+	let Some(mp) = target.as_mountpoint() else {
 		return Err(errno!(EINVAL));
 	};
 	// TODO Check if another mount point is present in a subdirectory? (EBUSY)

@@ -20,7 +20,7 @@
 //! and another writing, with a buffer in between.
 
 use crate::{
-	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
+	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat},
 	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
 	sync::mutex::Mutex,
 	syscall::{ioctl, FromSyscallArg},
