@@ -144,7 +144,7 @@ impl NodeOps for RootDir {
 		})
 	}
 
-	fn entry_by_name<'n>(
+	fn lookup_entry<'n>(
 		&self,
 		_loc: &FileLocation,
 		name: &'n [u8],

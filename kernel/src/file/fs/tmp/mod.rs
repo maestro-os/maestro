@@ -290,7 +290,7 @@ impl NodeOps for TmpFSNode {
 		Ok(())
 	}
 
-	fn entry_by_name<'n>(
+	fn lookup_entry<'n>(
 		&self,
 		dir: &Node,
 		name: &'n [u8],

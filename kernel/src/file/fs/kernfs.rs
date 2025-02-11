@@ -226,14 +226,14 @@ pub struct StaticDir<T: 'static + Clone + Debug = ()> {
 	/// The directory's entries, sorted alphabetically by name.
 	///
 	/// **Warning**: If this array is not sorted correctly, the behaviour of
-	/// [`NodeOps::entry_by_name`] is undefined.
+	/// [`NodeOps::lookup_entry`] is undefined.
 	pub entries: &'static [StaticEntryBuilder<T>],
 	/// Data used to initialize sub-nodes.
 	pub data: T,
 }
 
 impl<T: 'static + Clone + Debug> StaticDir<T> {
-	/// Inner implementation of [`Self::entry_by_name`].
+	/// Inner implementation of [`Self::lookup_entry`].
 	pub fn entry_by_name_inner<'n>(
 		&self,
 		name: &'n [u8],
@@ -278,7 +278,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 		})
 	}
 
-	fn entry_by_name<'n>(
+	fn lookup_entry<'n>(
 		&self,
 		_dir: &Node,
 		name: &'n [u8],

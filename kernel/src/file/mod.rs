@@ -38,6 +38,7 @@ use crate::{
 	file::{
 		fs::{FileOps, Filesystem},
 		perm::{Gid, Uid},
+		vfs::node::Node,
 	},
 	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
 	time::{
@@ -402,6 +403,11 @@ impl File {
 		};
 		file.ops.acquire(&file);
 		Ok(Arc::new(file)?)
+	}
+
+	/// Returns a reference to the file's node.
+	pub fn node(&self) -> Option<&Node> {
+		self.vfs_entry.as_ref().map(|e| e.node().as_ref())
 	}
 
 	/// Returns the underlying buffer, if any.

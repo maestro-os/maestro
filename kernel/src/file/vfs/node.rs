@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{
-		fs::{Filesystem, NodeOps},
+		fs::{FileOps, Filesystem, NodeOps},
 		vfs::mountpoint::MountPoint,
 		FileLocation, FileType, INode,
 	},
@@ -47,21 +47,14 @@ pub struct Node {
 	pub mp: Arc<MountPoint>,
 	/// Handle for node operations
 	pub node_ops: Box<dyn NodeOps>,
+	/// Handle for open file operations
+	pub file_ops: Box<dyn FileOps>,
 	// TODO need a sparse array, inside of a rwlock
 	/// Mapped pages
-	pages: Mutex<Vec<&'static PageState>>,
+	pub pages: Mutex<Vec<&'static PageState>>,
 }
 
 impl Node {
-	/// Instantiates a new node structure.
-	pub fn new(location: FileLocation, ops: Box<dyn NodeOps>) -> AllocResult<Arc<Self>> {
-		Arc::new(Self {
-			location,
-			node_ops: ops,
-			pages: Mutex::new(Vec::new()),
-		})
-	}
-
 	/// Returns a reference to the underlying filesystem.
 	pub fn get_filesystem(&self) -> &dyn Filesystem {
 		&*self.mp.fs
@@ -131,25 +124,13 @@ static USED_NODES: Mutex<HashSet<NodeEntry>> = Mutex::new(HashSet::new());
 
 /// Looks in the nodes cache for the node with the given location. If not in cache, the node is
 /// created and inserted.
-pub(super) fn get_or_insert(location: FileLocation, ops: Box<dyn NodeOps>) -> EResult<Arc<Node>> {
-	let mut used_nodes = USED_NODES.lock();
-	let node = used_nodes.get(&location).map(|e| e.0.clone());
-	match node {
-		Some(node) => Ok(node),
-		// The node is not in cache. Insert it
-		None => {
-			// Create and insert node
-			let node = Node::new(location, ops)?;
-			used_nodes.insert(NodeEntry(node.clone()))?;
-			Ok(node)
-		}
-	}
+pub(super) fn lookup(location: FileLocation) -> Option<Arc<Node>> {
+	USED_NODES.lock().get(&location).map(|e| e.0.clone())
 }
 
 /// Inserts a new node in cache.
 pub(super) fn insert(node: Arc<Node>) -> AllocResult<()> {
-	let mut used_nodes = USED_NODES.lock();
-	used_nodes.insert(NodeEntry(node))?;
+	USED_NODES.lock().insert(NodeEntry(node))?;
 	Ok(())
 }
 

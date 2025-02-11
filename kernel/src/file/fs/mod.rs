@@ -27,7 +27,7 @@ pub mod tmp;
 
 use super::{
 	perm::{Gid, Uid},
-	DirEntry, File, INode, Mode, Stat,
+	vfs, DirEntry, File, INode, Mode, Stat,
 };
 use crate::{
 	device::DeviceIO, file::vfs::node::Node, sync::mutex::Mutex, syscall::ioctl,
@@ -118,20 +118,16 @@ pub trait NodeOps: Debug {
 		Ok(())
 	}
 
-	/// Returns the directory entry in `dir` with the given `name`, along with its offset and the
-	/// handle of the file.
+	/// Looks for an entry in `dir` with the name in `ent`. If found, the function sets the
+	/// corresponding [`Node`] in `ent`.
 	///
-	/// If the entry does not exist, the function returns `None`.
+	/// If the entry does not exist, the function set the node to `None`.
 	///
 	/// If the node is not a directory, the function returns [`ENOTDIR`].
 	///
 	/// The default implementation of this function returns an error.
-	fn entry_by_name<'n>(
-		&self,
-		dir: &Node,
-		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let _ = (dir, name);
+	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+		let _ = (dir, ent);
 		Err(errno!(ENOTDIR))
 	}
 

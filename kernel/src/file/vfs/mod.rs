@@ -27,19 +27,15 @@ pub mod node;
 use super::{
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	File, FileLocation, FileType, Stat,
+	FileLocation, FileType, Stat,
 };
 use crate::{
-	device,
-	device::DeviceID,
 	file::vfs::mountpoint::MountPoint,
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit},
-	syscall::ioctl::Request,
 };
 use core::{
 	borrow::Borrow,
-	ffi::c_void,
 	hash::{Hash, Hasher},
 	intrinsics::unlikely,
 };
@@ -136,6 +132,11 @@ impl Entry {
 		self.node
 			.as_ref()
 			.expect("trying to access a non-existent node")
+	}
+
+	/// Initializes the node.
+	pub fn set_node(&mut self, node: Option<Arc<Node>>) {
+		self.node = node;
 	}
 
 	/// Helper returning the status of the underlying node.
@@ -348,7 +349,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 	let Some((entry, ops)) = lookup_dir
 		.node()
 		.node_ops
-		.entry_by_name(lookup_dir.node(), name)?
+		.lookup_entry(lookup_dir.node(), name)?
 	else {
 		return Ok(None);
 	};
@@ -610,7 +611,7 @@ pub fn create_file(
 		mountpoint_id: parent.node().mp.id,
 		inode,
 	};
-	let node = node::get_or_insert(location, ops)?;
+	let node = node::lookup(location, ops)?;
 	// Create entry and insert it in parent
 	let entry = Arc::new(Entry {
 		name: String::try_from(name)?,
@@ -668,8 +669,8 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 /// Removes a hard link to a file.
 ///
 /// Arguments:
-/// - `parent` is the parent directory of the file to remove
-/// - `name` is the name of the file to remove
+/// - `dir` is the parent directory of the file to remove
+/// - `entry` is the entry to remove
 /// - `ap` is the access profile to check permissions
 ///
 /// The following errors can be returned:
@@ -680,8 +681,8 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 /// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()> {
-	let parent_stat = parent.stat()?;
+pub fn unlink(dir: &Node, entry: &Entry, ap: &AccessProfile) -> EResult<()> {
+	let parent_stat = dir.stat()?;
 	// Check permission
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -742,94 +743,4 @@ pub fn unlink_from_path(path: &Path, resolution_settings: &ResolutionSettings) -
 	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	let parent = get_file_from_path(parent, resolution_settings)?;
 	unlink(parent, file_name, &resolution_settings.access_profile)
-}
-
-/// Implementation of [`super::FileOps`] for file from the VFS.
-#[derive(Debug)]
-pub struct FileOps;
-
-impl super::FileOps for FileOps {
-	fn get_stat(&self, file: &File) -> EResult<Stat> {
-		file.vfs_entry.as_ref().unwrap().stat()
-	}
-
-	fn acquire(&self, _file: &File) {}
-
-	fn release(&self, _file: &File) {}
-
-	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
-		let stat = self.get_stat(file)?;
-		let dev_type = stat.get_type().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => device::get(&DeviceID {
-				dev_type,
-				major: stat.dev_major,
-				minor: stat.dev_minor,
-			})
-			.ok_or_else(|| errno!(ENODEV))?
-			.get_io()
-			.poll(mask),
-			None => todo!(),
-		}
-	}
-
-	fn ioctl(&self, file: &File, request: Request, argp: *const c_void) -> EResult<u32> {
-		let stat = self.get_stat(file)?;
-		let dev_type = stat
-			.get_type()
-			.and_then(FileType::to_device_type)
-			.ok_or_else(|| errno!(ENOTTY))?;
-		device::get(&DeviceID {
-			dev_type,
-			major: stat.dev_major,
-			minor: stat.dev_minor,
-		})
-		.ok_or_else(|| errno!(ENODEV))?
-		.get_io()
-		.ioctl(request, argp)
-	}
-
-	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		if unlikely(!file.can_read()) {
-			return Err(errno!(EACCES));
-		}
-		let stat = self.get_stat(file)?;
-		let dev_type = stat.get_type().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => device::get(&DeviceID {
-				dev_type,
-				major: stat.dev_major,
-				minor: stat.dev_minor,
-			})
-			.ok_or_else(|| errno!(ENODEV))?
-			.get_io()
-			.read_bytes(off, buf),
-			None => {
-				let node = file.vfs_entry.as_ref().unwrap().node();
-				node.node_ops.read_content(&node.location, off, buf)
-			}
-		}
-	}
-
-	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
-		if unlikely(!file.can_write()) {
-			return Err(errno!(EACCES));
-		}
-		let stat = self.get_stat(file)?;
-		let dev_type = stat.get_type().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => device::get(&DeviceID {
-				dev_type,
-				major: stat.dev_major,
-				minor: stat.dev_minor,
-			})
-			.ok_or_else(|| errno!(ENODEV))?
-			.get_io()
-			.write_bytes(off, buf),
-			None => {
-				let node = file.vfs_entry.as_ref().unwrap().node();
-				node.node_ops.write_content(&node.location, off, buf)
-			}
-		}
-	}
 }

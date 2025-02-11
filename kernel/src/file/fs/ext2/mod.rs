@@ -50,9 +50,10 @@ mod inode;
 use crate::{
 	device::DeviceIO,
 	file::{
-		fs::{downcast_fs, Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
+		fs::{downcast_fs, FileOps, Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
+		vfs,
 		vfs::node::Node,
-		DirEntry, FileLocation, FileType, INode, Stat,
+		DirEntry, File, FileType, INode, Stat,
 	},
 	sync::mutex::Mutex,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
@@ -74,7 +75,7 @@ use utils::{
 	errno,
 	errno::EResult,
 	math,
-	ptr::{arc::Arc, cow::Cow},
+	ptr::arc::Arc,
 	vec,
 };
 
@@ -231,7 +232,7 @@ fn write<T>(off: u64, blk_size: u32, io: &dyn DeviceIO, val: &T) -> EResult<()> 
 	write_block(blk as _, blk_size, io, &buf)
 }
 
-/// File operations.
+/// Node operations.
 #[derive(Debug)]
 struct Ext2NodeOps;
 
@@ -284,71 +285,24 @@ impl NodeOps for Ext2NodeOps {
 		inode_.write(node.inode as _, &superblock, &*fs.io)
 	}
 
-	fn read_content(&self, loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let fs = loc.get_filesystem().unwrap();
-		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		let superblock = fs.superblock.lock();
-		let inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
-		match inode_.get_type() {
-			FileType::Regular => inode_.read_content(off, buf, &superblock, &*fs.io),
-			FileType::Link => inode_.read_link(&superblock, &*fs.io, off, buf),
-			_ => Err(errno!(EINVAL)),
-		}
-	}
-
-	fn write_content(&self, loc: &FileLocation, off: u64, buf: &[u8]) -> EResult<usize> {
-		let fs = loc.get_filesystem().unwrap();
-		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		let mut superblock = fs.superblock.lock();
-		let mut inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
-		match inode_.get_type() {
-			FileType::Regular => inode_.write_content(off, buf, &mut superblock, &*fs.io)?,
-			FileType::Link => inode_.write_link(&mut superblock, &*fs.io, buf)?,
-			_ => return Err(errno!(EINVAL)),
-		}
-		inode_.write(loc.inode as _, &superblock, &*fs.io)?;
-		superblock.write(&*fs.io)?;
-		Ok(buf.len() as _)
-	}
-
-	fn truncate_content(&self, loc: &FileLocation, size: u64) -> EResult<()> {
-		let fs = loc.get_filesystem().unwrap();
-		let fs = downcast_fs::<Ext2Fs>(&*fs);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
-		let mut superblock = fs.superblock.lock();
-		let mut inode_ = Ext2INode::read(loc.inode as _, &superblock, &*fs.io)?;
-		match inode_.get_type() {
-			FileType::Regular => inode_.truncate(&mut superblock, &*fs.io, size)?,
-			_ => return Err(errno!(EINVAL)),
-		}
-		inode_.write(loc.inode as _, &superblock, &*fs.io)?;
-		superblock.write(&*fs.io)?;
-		Ok(())
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		dir: &Node,
-		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
+	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(dir.get_filesystem());
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(dir.inode as _, &superblock, &*fs.io)?;
-		let Some((inode, entry_type, _)) = inode_.get_dirent(name, &superblock, &*fs.io)? else {
-			return Ok(None);
-		};
-		let ent = DirEntry {
-			inode: inode as _,
-			entry_type,
-			name: Cow::Borrowed(name),
-		};
-		Ok(Some((ent, Box::new(Ext2NodeOps)?)))
+		let node = inode_
+			.get_dirent(&ent.name, &superblock, &*fs.io)?
+			.map(|(inode, ..)| {
+				Arc::new(Node {
+					inode: inode as _,
+					mp: Arc {},
+					node_ops: Box::new(Ext2NodeOps)?,
+					file_ops: Box::new(Ext2FileOps)?,
+					pages: Default::default(),
+				})
+			})
+			.transpose()?;
+		ent.set_node(node);
+		Ok(())
 	}
 
 	fn next_entry(&self, dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
@@ -529,6 +483,60 @@ impl NodeOps for Ext2NodeOps {
 
 	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<()> {
 		todo!()
+	}
+}
+
+/// Open file operations.
+#[derive(Debug)]
+pub struct Ext2FileOps;
+
+impl FileOps for Ext2FileOps {
+	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let node = file.node().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		let superblock = fs.superblock.lock();
+		let inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
+		match inode_.get_type() {
+			FileType::Regular => inode_.read_content(off, buf, &superblock, &*fs.io),
+			FileType::Link => inode_.read_link(&superblock, &*fs.io, off, buf),
+			_ => Err(errno!(EINVAL)),
+		}
+	}
+
+	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+		let node = file.node().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		if unlikely(fs.readonly) {
+			return Err(errno!(EROFS));
+		}
+		let mut superblock = fs.superblock.lock();
+		let mut inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
+		match inode_.get_type() {
+			FileType::Regular => inode_.write_content(off, buf, &mut superblock, &*fs.io)?,
+			FileType::Link => inode_.write_link(&mut superblock, &*fs.io, buf)?,
+			_ => return Err(errno!(EINVAL)),
+		}
+		inode_.write(node.inode as _, &superblock, &*fs.io)?;
+		superblock.write(&*fs.io)?;
+		Ok(buf.len() as _)
+	}
+
+	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
+		let node = file.node().unwrap();
+		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		if unlikely(fs.readonly) {
+			return Err(errno!(EROFS));
+		}
+		let fs = downcast_fs::<Ext2Fs>(fs);
+		let mut superblock = fs.superblock.lock();
+		let mut inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
+		match inode_.get_type() {
+			FileType::Regular => inode_.truncate(&mut superblock, &*fs.io, size)?,
+			_ => return Err(errno!(EINVAL)),
+		}
+		inode_.write(node.inode as _, &superblock, &*fs.io)?;
+		superblock.write(&*fs.io)?;
+		Ok(())
 	}
 }
 
