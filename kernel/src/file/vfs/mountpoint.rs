@@ -25,8 +25,8 @@ use crate::{
 		fs,
 		fs::{Filesystem, FilesystemType},
 		vfs,
-		vfs::{node, node::Node, EntryChild, ResolutionSettings},
-		FileLocation, FileType,
+		vfs::{node, EntryChild, ResolutionSettings},
+		FileType,
 	},
 	sync::mutex::Mutex,
 };
@@ -195,16 +195,6 @@ pub struct MountPoint {
 	pub root_entry: Arc<vfs::Entry>,
 }
 
-impl MountPoint {
-	/// Returns the location of the root directory of the mounted filesystem.
-	pub fn get_root_location(&self) -> FileLocation {
-		FileLocation {
-			mountpoint_id: self.id,
-			inode: self.fs.get_root_inode(),
-		}
-	}
-}
-
 impl Drop for MountPoint {
 	fn drop(&mut self) {
 		// If not associated with a device, stop
@@ -233,17 +223,10 @@ pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<MountPoint>>> = Mutex::new(HashM
 pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
 	let fs = get_fs(&source, None, PathBuf::root()?, false)?;
 	// Get filesystem root node
-	let root_inode = fs.get_root_inode();
-	let node = Node::new(
-		FileLocation {
-			mountpoint_id: 0,
-			inode: root_inode,
-		},
-		fs.node_from_inode(root_inode)?,
-	)?;
-	node::insert(node.clone())?;
+	let root = fs.root()?;
+	node::insert(root.clone())?;
 	// Create an entry for the root of the mountpoint
-	let root_entry = Arc::new(vfs::Entry::new_root(node))?;
+	let root_entry = Arc::new(vfs::Entry::new_root(root))?;
 	// Create mountpoint
 	let mountpoint = Arc::new(MountPoint {
 		id: 0,
@@ -283,21 +266,14 @@ pub fn create(
 	// TODO improve
 	let id = mps.iter().map(|(i, _)| *i + 1).max().unwrap_or(0);
 	// Get filesystem root node
-	let root_inode = fs.get_root_inode();
-	let node = Node::new(
-		FileLocation {
-			mountpoint_id: id,
-			inode: root_inode,
-		},
-		fs.node_from_inode(root_inode)?,
-	)?;
-	node::insert(node.clone())?;
+	let root = fs.root()?;
+	node::insert(root.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry {
 		name: target.name.try_clone()?,
 		parent: target.parent.clone(),
 		children: Default::default(),
-		node: Some(node),
+		node: Some(root),
 	})?;
 	// Create mountpoint
 	let mountpoint = Arc::new(MountPoint {

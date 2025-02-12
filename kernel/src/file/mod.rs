@@ -47,7 +47,7 @@ use crate::{
 		unit::{Timestamp, TimestampScale},
 	},
 };
-use core::{any::Any, fmt::Debug, intrinsics::unlikely, ops::Deref};
+use core::{any::Any, fmt::Debug, ops::Deref};
 use perm::AccessProfile;
 use utils::{
 	boxed::Box,
@@ -343,33 +343,13 @@ impl Stat {
 	}
 }
 
-/// An object that may optionally have a reference counter.
-#[derive(Debug)]
-pub enum CounterOption<T: ?Sized> {
-	/// The object has a reference counter.
-	Some(Arc<T>),
-	/// The object does not have a reference counter.
-	None(Box<T>),
-}
-
-impl<T: ?Sized> Deref for CounterOption<T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		match self {
-			CounterOption::Some(t) => t.deref(),
-			CounterOption::None(t) => t.deref(),
-		}
-	}
-}
-
 /// An open file description.
 #[derive(Debug)]
 pub struct File {
 	/// The VFS entry of the file.
 	pub vfs_entry: Option<Arc<vfs::Entry>>,
 	/// Handle for file operations.
-	pub ops: CounterOption<dyn FileOps>,
+	pub ops: Box<dyn FileOps>,
 	/// Open file description flags.
 	pub flags: Mutex<i32>,
 	/// The current offset in the file.
@@ -382,10 +362,13 @@ impl File {
 	/// Arguments:
 	/// - `entry` is the VFS entry of the file.
 	/// - `flags` is the open file description's flags.
+	///
+	/// If the entry is negative, the function returns [`errno::ENOENT`].
 	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
+		let ops = entry.node.as_ref().ok_or_else(errno!(ENOENT))?.file_ops;
 		let file = Self {
 			vfs_entry: Some(entry),
-			ops: CounterOption::None(Box::new(vfs::FileOps)?),
+			ops,
 			flags: Mutex::new(flags),
 			off: Default::default(),
 		};
@@ -394,10 +377,10 @@ impl File {
 	}
 
 	/// Open a file with no associated VFS entry.
-	pub fn open_floating(ops: Arc<dyn FileOps>, flags: i32) -> EResult<Arc<Self>> {
+	pub fn open_floating(ops: Box<dyn FileOps>, flags: i32) -> EResult<Arc<Self>> {
 		let file = Self {
 			vfs_entry: None,
-			ops: CounterOption::Some(ops),
+			ops,
 			flags: Mutex::new(flags),
 			off: Default::default(),
 		};
@@ -453,22 +436,6 @@ impl File {
 	pub fn get_type(&self) -> EResult<FileType> {
 		let stat = self.stat()?;
 		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
-	}
-
-	/// Truncates the file to the given `size`.
-	///
-	/// If `size` is greater than or equals to the current size of the file, the function does
-	/// nothing.
-	pub fn truncate(&self, size: u64) -> EResult<()> {
-		if unlikely(!self.can_write()) {
-			return Err(errno!(EACCES));
-		}
-		let node = self
-			.vfs_entry
-			.as_ref()
-			.ok_or_else(|| errno!(EINVAL))?
-			.node();
-		node.node_ops.truncate_content(&node.location, size)
 	}
 
 	/// Closes the file, removing it the underlying node if no link remain and this was the last

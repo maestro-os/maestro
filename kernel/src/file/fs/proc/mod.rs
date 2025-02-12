@@ -26,7 +26,7 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{kernfs, Filesystem, FilesystemType, NodeOps};
+use super::{Filesystem, FilesystemType, NodeOps};
 use crate::{
 	device::DeviceIO,
 	file::{
@@ -41,7 +41,7 @@ use crate::{
 		perm::{Gid, Uid},
 		vfs,
 		vfs::node::Node,
-		DirEntry, FileType, INode, Stat,
+		DirEntry, FileType, Stat,
 	},
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
 };
@@ -245,10 +245,6 @@ impl Filesystem for ProcFS {
 		b"proc"
 	}
 
-	fn get_root_inode(&self) -> INode {
-		kernfs::ROOT_INODE
-	}
-
 	fn get_stat(&self) -> EResult<Statfs> {
 		Ok(Statfs {
 			f_type: 0,
@@ -265,12 +261,8 @@ impl Filesystem for ProcFS {
 		})
 	}
 
-	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
-		if inode == kernfs::ROOT_INODE {
-			Ok(Box::new(RootDir)? as _)
-		} else {
-			Err(errno!(ENOENT))
-		}
+	fn root(&self) -> EResult<Arc<Node>> {
+		Ok(Box::new(RootDir)? as _)
 	}
 
 	fn destroy_node(&self, _node: &Node) -> EResult<()> {

@@ -98,7 +98,7 @@ pub struct Entry {
 	/// The node associated with the entry.
 	///
 	/// If `None`, the entry is negative.
-	node: Option<Arc<Node>>,
+	pub node: Option<Arc<Node>>,
 }
 
 impl Entry {
@@ -132,11 +132,6 @@ impl Entry {
 		self.node
 			.as_ref()
 			.expect("trying to access a non-existent node")
-	}
-
-	/// Initializes the node.
-	pub fn set_node(&mut self, node: Option<Arc<Node>>) {
-		self.node = node;
 	}
 
 	/// Helper returning the status of the underlying node.
@@ -182,11 +177,10 @@ impl Entry {
 					.ok_or_else(|| errno!(EOVERFLOW))?;
 				buf.resize(new_size, 0)?;
 			}
-			let len = self.node().node_ops.read_content(
-				&self.node().location,
-				off as _,
-				&mut buf[off..],
-			)?;
+			let len =
+				self.node()
+					.node_ops
+					.read_content(&self.node(), off as _, &mut buf[off..])?;
 			// Reached EOF, stop here
 			if len == 0 {
 				break;
@@ -346,32 +340,26 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		};
 	}
 	// Not in cache. Try to get from the filesystem
-	let Some((entry, ops)) = lookup_dir
-		.node()
-		.node_ops
-		.lookup_entry(lookup_dir.node(), name)?
-	else {
-		return Ok(None);
-	};
-	let node = Node::new(
-		FileLocation {
-			// The file is on the same mountpoint as the parent since mountpoint roots are always
-			// in cache
-			mountpoint_id: lookup_dir.node().mp.id,
-			inode: entry.inode,
-		},
-		ops,
-	)?;
-	node::insert(node.clone())?;
-	// Create entry and insert in parent
-	let ent = Arc::new(Entry {
+	let mut ent = Entry {
 		name: String::try_from(name)?,
 		parent: Some(lookup_dir.clone()),
 		children: Default::default(),
-		node: Some(node),
-	})?;
-	children.insert(EntryChild(ent.clone()))?;
-	Ok(Some(ent))
+		node: None,
+	};
+	lookup_dir
+		.node()
+		.node_ops
+		.lookup_entry(lookup_dir.node(), &mut ent)?;
+	if let Some(node) = ent.node.clone() {
+		// The entry exists: insert it in cache
+		node::insert(node)?;
+		let ent = Arc::new(ent)?;
+		children.insert(EntryChild(ent.clone()))?;
+		Ok(Some(ent))
+	} else {
+		// The entry does not exist
+		Ok(None)
+	}
 }
 
 /// Resolves the symbolic link `link` and returns the target.

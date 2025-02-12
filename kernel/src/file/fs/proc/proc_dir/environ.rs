@@ -24,7 +24,7 @@ use crate::{
 			proc::{get_proc_owner, proc_dir::read_memory},
 			FileOps,
 		},
-		File, FileLocation, FileType, Stat,
+		File, FileType, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},

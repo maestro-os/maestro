@@ -1024,10 +1024,6 @@ impl Filesystem for Ext2Fs {
 		b"ext2"
 	}
 
-	fn get_root_inode(&self) -> INode {
-		inode::ROOT_DIRECTORY_INODE as _
-	}
-
 	fn get_stat(&self) -> EResult<Statfs> {
 		let superblock = self.superblock.lock();
 		let fragment_size = math::pow2(superblock.s_log_frag_size + 10);
@@ -1047,10 +1043,10 @@ impl Filesystem for Ext2Fs {
 		})
 	}
 
-	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
+	fn root(&self) -> EResult<Arc<Node>> {
 		let superblock = self.superblock.lock();
 		// Check the inode exists
-		Ext2INode::read(inode as _, &superblock, &*self.io)?;
+		Ext2INode::read(inode::ROOT_DIRECTORY_INODE as _, &superblock, &*self.io)?;
 		Ok(Box::new(Ext2NodeOps)?)
 	}
 

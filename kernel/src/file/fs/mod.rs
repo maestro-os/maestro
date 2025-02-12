@@ -42,7 +42,7 @@ use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, path::PathBuf, string::String},
 	errno,
-	errno::{EResult, ENOTDIR},
+	errno::EResult,
 	ptr::arc::Arc,
 };
 
@@ -104,7 +104,7 @@ pub struct StatSet {
 }
 
 /// Filesystem node operations.
-pub trait NodeOps: Debug {
+pub trait NodeOps: Any + Debug {
 	/// Returns the node's status.
 	fn get_stat(&self, node: &Node) -> EResult<Stat>;
 
@@ -126,7 +126,7 @@ pub trait NodeOps: Debug {
 	/// If the node is not a directory, the function returns [`ENOTDIR`].
 	///
 	/// The default implementation of this function returns an error.
-	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let _ = (dir, ent);
 		Err(errno!(ENOTDIR))
 	}
@@ -144,28 +144,6 @@ pub trait NodeOps: Debug {
 	fn next_entry(&self, dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let _ = (dir, off);
 		Err(errno!(ENOTDIR))
-	}
-
-	/// Helper function to check whether the node is an empty directory.
-	///
-	/// If the node is not a directory, the function returns `false`.
-	fn is_empty_directory(&self, node: &Node) -> EResult<bool> {
-		let mut off = 0;
-		loop {
-			let res = self.next_entry(node, off);
-			let (ent, next_off) = match res {
-				Ok(Some(ent)) => ent,
-				Ok(None) => break,
-				Err(e) if e.as_int() == ENOTDIR => return Ok(false),
-				Err(e) => return Err(e),
-			};
-			let name = ent.name.as_ref();
-			if name != b"." && name != b".." {
-				return Ok(false);
-			}
-			off = next_off;
-		}
-		Ok(true)
 	}
 
 	/// Adds a file into the directory.
@@ -352,15 +330,13 @@ pub trait FileOps: Any + Debug {
 pub trait Filesystem: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
-	/// Returns the root inode of the filesystem.
-	fn get_root_inode(&self) -> INode;
 	/// Returns statistics about the filesystem.
 	fn get_stat(&self) -> EResult<Statfs>;
 
-	/// Returns the node handle for the given `inode`.
+	/// Returns the root node.
 	///
 	/// If the node does not exist, the function returns [`errno::ENOENT`].
-	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>>;
+	fn root(&self) -> EResult<Arc<Node>>;
 
 	/// Removes `node` from the filesystem.
 	///
