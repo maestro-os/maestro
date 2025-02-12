@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{
-		fs::{proc::get_proc_owner, NodeOps},
-		FileLocation, FileType, Stat,
+		fs::{proc::get_proc_owner, FileOps},
+		File, FileType, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -40,8 +40,8 @@ impl From<Pid> for Status {
 	}
 }
 
-impl NodeOps for Status {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
+impl FileOps for Status {
+	fn get_stat(&self, _file: &File) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
 			mode: FileType::Regular.to_mode() | 0o444,
@@ -51,7 +51,7 @@ impl NodeOps for Status {
 		})
 	}
 
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let mem_space = proc.mem_space.as_ref().unwrap().lock();
 		let disp = fmt::from_fn(|f| {

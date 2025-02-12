@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{
-		fs::{proc::get_proc_owner, NodeOps},
-		vfs, FileLocation, FileType, Stat,
+		fs::{proc::get_proc_owner, FileOps},
+		vfs, File, FileType, Stat,
 	},
 	format_content,
 	process::{pid::Pid, Process},
@@ -39,8 +39,8 @@ impl From<Pid> for Cwd {
 	}
 }
 
-impl NodeOps for Cwd {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
+impl FileOps for Cwd {
+	fn get_stat(&self, _file: &File) -> EResult<Stat> {
 		let (uid, gid) = get_proc_owner(self.0);
 		Ok(Stat {
 			mode: FileType::Link.to_mode() | 0o444,
@@ -50,7 +50,7 @@ impl NodeOps for Cwd {
 		})
 	}
 
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let fs = proc.fs.lock();
 		let cwd = vfs::Entry::get_path(&fs.cwd)?;

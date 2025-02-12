@@ -24,7 +24,12 @@
 //!
 //! This module implements utilities for kernfs.
 
-use crate::file::{fs::NodeOps, vfs::node::Node, DirEntry, FileLocation, FileType, INode, Stat};
+use crate::file::{
+	fs::{FileOps, NodeOps},
+	vfs,
+	vfs::node::Node,
+	DirEntry, File, FileType, INode, Stat,
+};
 use core::{
 	cmp::min,
 	fmt,
@@ -35,7 +40,7 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
-	ptr::cow::Cow,
+	ptr::{arc::Arc, cow::Cow},
 	vec, DisplayableStr,
 };
 
@@ -173,15 +178,15 @@ macro_rules! format_content {
 #[derive(Debug, Default)]
 pub struct StaticLink(pub &'static [u8]);
 
-impl NodeOps for StaticLink {
-	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
+impl FileOps for StaticLink {
+	fn get_stat(&self, _file: &File) -> EResult<Stat> {
 		Ok(Stat {
 			mode: FileType::Link.to_mode() | 0o777,
 			..Default::default()
 		})
 	}
 
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		format_content!(off, buf, "{}", DisplayableStr(self.0))
 	}
 }
@@ -196,25 +201,25 @@ pub struct StaticEntryBuilder<T = ()> {
 	/// The type of the entry.
 	pub entry_type: FileType,
 	/// A builder which returns a handle to perform operations on the node.
-	pub init: fn(T) -> AllocResult<Box<dyn NodeOps>>,
+	pub init: fn(T) -> AllocResult<Box<dyn FileOps>>,
 }
 
 /// Helper to initialize an entry handle, using [`Default`].
-pub fn entry_init_default<'e, E: 'e + NodeOps + Default>(
+pub fn entry_init_default<'e, E: 'e + FileOps + Default>(
 	_: (),
-) -> AllocResult<Box<dyn 'e + NodeOps>> {
+) -> AllocResult<Box<dyn 'e + FileOps>> {
 	box_wrap(E::default())
 }
 
 /// Helper to initialize an entry handle, using [`From`].
-pub fn entry_init_from<'e, E: 'e + NodeOps + From<T>, T>(
+pub fn entry_init_from<'e, E: 'e + FileOps + From<T>, T>(
 	val: T,
-) -> AllocResult<Box<dyn 'e + NodeOps>> {
+) -> AllocResult<Box<dyn 'e + FileOps>> {
 	box_wrap(E::from(val))
 }
 
-/// Helper to wrap a [`NodeOps`] into a [`Box`].
-pub fn box_wrap<'n, N: 'n + NodeOps>(ops: N) -> AllocResult<Box<dyn 'n + NodeOps>> {
+/// Helper to wrap a [`FileOps`] into a [`Box`].
+pub fn box_wrap<'n, N: 'n + FileOps>(ops: N) -> AllocResult<Box<dyn 'n + FileOps>> {
 	Ok(Box::new(ops)? as _)
 }
 
@@ -234,23 +239,25 @@ pub struct StaticDir<T: 'static + Clone + Debug = ()> {
 
 impl<T: 'static + Clone + Debug> StaticDir<T> {
 	/// Inner implementation of [`Self::lookup_entry`].
-	pub fn entry_by_name_inner<'n>(
-		&self,
-		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let Ok(index) = self.entries.binary_search_by(|e| e.name.cmp(name)) else {
-			return Ok(None);
-		};
-		let e = &self.entries[index];
-		let ops = (e.init)(self.data.clone())?;
-		Ok(Some((
-			DirEntry {
-				inode: 0,
-				entry_type: e.entry_type,
-				name: Cow::Borrowed(name),
-			},
-			ops,
-		)))
+	pub fn entry_by_name_inner(&self, ent: &mut vfs::Entry) -> EResult<()> {
+		let node = self
+			.entries
+			.binary_search_by(|e| e.name.cmp(&ent.name))
+			.ok()
+			.map(|index| {
+				let e = &self.entries[index];
+				let ops = (e.init)(self.data.clone())?;
+				Arc::new(Node {
+					inode: 0,
+					mp: Arc {},
+					node_ops: (),
+					file_ops: (),
+					pages: Default::default(),
+				})
+			})
+			.transpose()?;
+		ent.set_node(node);
+		Ok(())
 	}
 
 	/// Inner implementation of [`Self::next_entry`].
@@ -278,18 +285,16 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 		})
 	}
 
-	fn lookup_entry<'n>(
-		&self,
-		_dir: &Node,
-		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		self.entry_by_name_inner(name)
+	fn lookup_entry(&self, _dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+		self.entry_by_name_inner(ent)
 	}
 
 	fn next_entry(&self, _dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		self.next_entry_inner(off)
 	}
 }
+
+impl<T: 'static + Clone + Debug> FileOps for StaticDir<T> {}
 
 #[cfg(test)]
 mod test {

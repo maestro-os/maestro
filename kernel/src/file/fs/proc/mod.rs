@@ -39,7 +39,9 @@ use crate::{
 			Statfs,
 		},
 		perm::{Gid, Uid},
-		DirEntry, FileLocation, FileType, INode, Stat,
+		vfs,
+		vfs::node::Node,
+		DirEntry, FileType, INode, Stat,
 	},
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
 };
@@ -137,81 +139,75 @@ impl RootDir {
 }
 
 impl NodeOps for RootDir {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
+	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
 		Ok(Stat {
 			mode: FileType::Directory.to_mode() | 0o555,
 			..Default::default()
 		})
 	}
 
-	fn lookup_entry<'n>(
-		&self,
-		_loc: &FileLocation,
-		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let pid = core::str::from_utf8(name).ok().and_then(|s| s.parse().ok());
+	fn lookup_entry<'n>(&self, _node: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+		let pid = core::str::from_utf8(&ent.name)
+			.ok()
+			.and_then(|s| s.parse().ok());
 		let Some(pid) = pid else {
-			return Self::STATIC.entry_by_name_inner(name);
+			return Self::STATIC.entry_by_name_inner(ent);
 		};
-		// Check the process exists
-		if Process::get_by_pid(pid).is_none() {
-			return Ok(None);
-		}
-		// Return the entry for the process
-		Ok(Some((
-			DirEntry {
-				inode: 0,
-				entry_type: FileType::Directory,
-				name: Cow::Borrowed(name),
-			},
-			Box::new(StaticDir {
-				entries: &[
-					StaticEntryBuilder {
-						name: b"cmdline",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Cmdline, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"cwd",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Cwd, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"environ",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Environ, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"exe",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Exe, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"mounts",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Mounts, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"stat",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<StatNode, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"status",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Status, Pid>,
-					},
-				],
-				data: pid,
-			})? as _,
-		)))
+		let node = Process::get_by_pid(pid)
+			.map(|_| {
+				Arc::new(Node {
+					inode: 0,
+					mp: Arc {},
+					node_ops: Box::new(StaticDir {
+						entries: &[
+							StaticEntryBuilder {
+								name: b"cmdline",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Cmdline, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"cwd",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Cwd, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"environ",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Environ, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"exe",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Exe, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"mounts",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Mounts, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"stat",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<StatNode, Pid>,
+							},
+							StaticEntryBuilder {
+								name: b"status",
+								entry_type: FileType::Regular,
+								init: entry_init_from::<Status, Pid>,
+							},
+						],
+						data: pid,
+					})?,
+					file_ops: (),
+					pages: Default::default(),
+				})
+			})
+			.transpose()?;
+		ent.set_node(node);
+		Ok(())
 	}
 
-	fn next_entry(
-		&self,
-		_loc: &FileLocation,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
+	fn next_entry(&self, _node: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
 		// Iterate on processes
 		if off < Pid::MAX as usize {
@@ -275,6 +271,10 @@ impl Filesystem for ProcFS {
 		} else {
 			Err(errno!(ENOENT))
 		}
+	}
+
+	fn destroy_node(&self, _node: &Node) -> EResult<()> {
+		Err(errno!(EINVAL))
 	}
 }
 
