@@ -68,7 +68,7 @@ pub fn do_unlinkat(
 		return Err(errno!(ENOENT));
 	};
 	let name = pathname.file_name().ok_or_else(|| errno!(ENOENT))?;
-	vfs::unlink(parent, name, &rs.access_profile)?;
+	vfs::unlink(&parent, name, &rs.access_profile)?;
 	Ok(0)
 }
 

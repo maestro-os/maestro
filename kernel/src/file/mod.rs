@@ -36,7 +36,7 @@ pub mod wait_queue;
 use crate::{
 	device::{DeviceID, DeviceType},
 	file::{
-		fs::{FileOps, Filesystem},
+		fs::FileOps,
 		perm::{Gid, Uid},
 		vfs::node::Node,
 	},
@@ -57,10 +57,7 @@ use utils::{
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
 };
-use vfs::{
-	mountpoint,
-	mountpoint::{MountPoint, MountSource},
-};
+use vfs::{mountpoint, mountpoint::MountSource};
 
 /// A filesystem node ID.
 ///
@@ -215,35 +212,6 @@ impl FileType {
 	}
 }
 
-/// The location of a file.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FileLocation {
-	/// The ID of the mountpoint of the file.
-	pub mountpoint_id: u32,
-	/// The file's inode.
-	pub inode: INode,
-}
-
-impl FileLocation {
-	/// Location to nowhere.
-	pub const fn nowhere() -> Self {
-		Self {
-			mountpoint_id: 0,
-			inode: 0,
-		}
-	}
-
-	/// Returns the mountpoint on which the file is located.
-	pub fn get_mountpoint(&self) -> Option<Arc<MountPoint>> {
-		mountpoint::from_id(self.mountpoint_id)
-	}
-
-	/// Returns the filesystem associated with the location, if any.
-	pub fn get_filesystem(&self) -> Option<Arc<dyn Filesystem>> {
-		self.get_mountpoint().map(|mp| mp.fs.clone())
-	}
-}
-
 /// An entry in a directory, independent of the filesystem type.
 #[derive(Debug)]
 pub struct DirEntry<'name> {
@@ -365,7 +333,7 @@ impl File {
 	///
 	/// If the entry is negative, the function returns [`errno::ENOENT`].
 	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
-		let ops = entry.node.as_ref().ok_or_else(errno!(ENOENT))?.file_ops;
+		let ops = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?.file_ops;
 		let file = Self {
 			vfs_entry: Some(entry),
 			ops,

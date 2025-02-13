@@ -27,7 +27,7 @@ pub mod node;
 use super::{
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	FileLocation, FileType, Stat,
+	FileType, Stat,
 };
 use crate::{
 	file::vfs::mountpoint::MountPoint,
@@ -117,10 +117,10 @@ impl Entry {
 		let node = self.node.as_ref()?;
 		match &self.parent {
 			// The parent is on the same mountpoint: this IS NOT the root of a mountpoint
-			Some(parent) if parent.node().mp.id == node.mp.id => None,
+			Some(parent) if parent.node().fs.id == node.fs.id => None,
 			// The parent is on a different mountpoint or there is no parent: this IS the root of a
 			// mountpoint
-			Some(_) | None => Some(node.mp.clone()),
+			Some(_) | None => Some(node.fs.clone()),
 		}
 	}
 
@@ -352,7 +352,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		.lookup_entry(lookup_dir.node(), &mut ent)?;
 	if let Some(node) = ent.node.clone() {
 		// The entry exists: insert it in cache
-		node::insert(node)?;
+		node.fs.node_insert(node)?;
 		let ent = Arc::new(ent)?;
 		children.insert(EntryChild(ent.clone()))?;
 		Ok(Some(ent))
@@ -594,12 +594,9 @@ pub fn create_file(
 	};
 	stat.gid = gid;
 	// Add file to filesystem
+	// TODO: this should return a `Node`
 	let (inode, ops) = parent.node().node_ops.create(parent.node(), name, stat)?;
-	let location = FileLocation {
-		mountpoint_id: parent.node().mp.id,
-		inode,
-	};
-	let node = node::lookup(location, ops)?;
+	parent.node().fs.node_insert(node.clone())?;
 	// Create entry and insert it in parent
 	let entry = Arc::new(Entry {
 		name: String::try_from(name)?,
@@ -644,7 +641,7 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 		return Err(errno!(EACCES));
 	}
 	// Check the target and source are both on the same mountpoint
-	if parent.node().mp.id != target.node().mp.id {
+	if parent.node().fs.id != target.node().fs.id {
 		return Err(errno!(EXDEV));
 	}
 	parent

@@ -249,7 +249,7 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 				let ops = (e.init)(self.data.clone())?;
 				Arc::new(Node {
 					inode: 0,
-					mp: Arc {},
+					fs: Arc {},
 					node_ops: (),
 					file_ops: (),
 					pages: Default::default(),

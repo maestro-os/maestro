@@ -25,7 +25,7 @@ use crate::{
 		fs,
 		fs::{Filesystem, FilesystemType},
 		vfs,
-		vfs::{node, EntryChild, ResolutionSettings},
+		vfs::{EntryChild, ResolutionSettings},
 		FileType,
 	},
 	sync::mutex::Mutex,
@@ -134,7 +134,7 @@ impl fmt::Display for MountSource {
 }
 
 /// The list of loaded filesystems associated with their respective sources.
-static FILESYSTEMS: Mutex<HashMap<DeviceID, Arc<dyn Filesystem>>> = Mutex::new(HashMap::new());
+static FILESYSTEMS: Mutex<HashMap<DeviceID, Arc<Filesystem>>> = Mutex::new(HashMap::new());
 
 /// Returns the loaded filesystem with the given source `source`. If not loaded, the function loads
 /// it.
@@ -149,7 +149,7 @@ fn get_fs(
 	fs_type: Option<Arc<dyn FilesystemType>>,
 	target_path: PathBuf,
 	readonly: bool,
-) -> EResult<Arc<dyn Filesystem>> {
+) -> EResult<Arc<Filesystem>> {
 	match source {
 		MountSource::Device(dev_id) => {
 			let mut filesystems = FILESYSTEMS.lock();
@@ -189,7 +189,7 @@ pub struct MountPoint {
 	/// The source of the mountpoint.
 	pub source: MountSource,
 	/// The filesystem associated with the mountpoint.
-	pub fs: Arc<dyn Filesystem>,
+	pub fs: Arc<Filesystem>,
 
 	/// The root entry of the mountpoint.
 	pub root_entry: Arc<vfs::Entry>,
@@ -223,8 +223,8 @@ pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<MountPoint>>> = Mutex::new(HashM
 pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
 	let fs = get_fs(&source, None, PathBuf::root()?, false)?;
 	// Get filesystem root node
-	let root = fs.root()?;
-	node::insert(root.clone())?;
+	let root = fs.superblock.root()?;
+	fs.node_insert(root.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry::new_root(root))?;
 	// Create mountpoint
@@ -266,8 +266,8 @@ pub fn create(
 	// TODO improve
 	let id = mps.iter().map(|(i, _)| *i + 1).max().unwrap_or(0);
 	// Get filesystem root node
-	let root = fs.root()?;
-	node::insert(root.clone())?;
+	let root = fs.superblock.root()?;
+	fs.node_insert(root.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry {
 		name: target.name.try_clone()?,

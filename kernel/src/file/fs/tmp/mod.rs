@@ -25,8 +25,8 @@ use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{
-			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemType,
-			NodeOps, StatSet, Statfs,
+			downcast_sb, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemType,
+			NodeOps, StatSet, Statfs, SuperblockOps,
 		},
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		vfs,
@@ -250,11 +250,10 @@ impl NodeOps for TmpFSNode {
 			.ok()
 			.map(|inode| {
 				let ent = entries[inode].try_clone()?;
-				let fs = dir.get_filesystem();
 				Arc::new(Node {
 					inode: inode as _,
-					mp: Arc {},
-					node_ops: fs.root(ent.inode)?,
+					fs: dir.fs.clone(),
+					node_ops: dir.fs.root(ent.inode)?,
 					file_ops: (),
 					pages: Default::default(),
 				})
@@ -287,7 +286,7 @@ impl NodeOps for TmpFSNode {
 		name: &[u8],
 		stat: Stat,
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		let fs = downcast_fs::<TmpFS>(parent.get_filesystem());
+		let fs = downcast_sb::<TmpFS>(&*parent.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -324,7 +323,7 @@ impl NodeOps for TmpFSNode {
 	}
 
 	fn link(&self, parent: &Node, name: &[u8], inode: INode) -> EResult<()> {
-		let fs = downcast_fs::<TmpFS>(parent.get_filesystem());
+		let fs = downcast_sb::<TmpFS>(&*parent.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -353,7 +352,7 @@ impl NodeOps for TmpFSNode {
 	}
 
 	fn unlink(&self, parent: &Node, name: &[u8]) -> EResult<()> {
-		let fs = downcast_fs::<TmpFS>(parent.get_filesystem());
+		let fs = downcast_sb::<TmpFS>(&*parent.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -368,7 +367,7 @@ impl NodeOps for TmpFSNode {
 			.map_err(|_| errno!(ENOENT))?;
 		let ent = &parent_entries[ent_index];
 		// Get the entry's node
-		let node = downcast_fs::<TmpFS>(fs)
+		let node = downcast_sb::<TmpFS>(fs)
 			.nodes
 			.lock()
 			.get_node(ent.inode)?
@@ -505,7 +504,7 @@ impl TmpFS {
 	}
 }
 
-impl Filesystem for TmpFS {
+impl SuperblockOps for TmpFS {
 	fn get_name(&self) -> &[u8] {
 		b"tmpfs"
 	}
@@ -531,7 +530,7 @@ impl Filesystem for TmpFS {
 	}
 
 	fn destroy_node(&self, node: &Node) -> EResult<()> {
-		let fs = downcast_fs::<TmpFS>(node.get_filesystem());
+		let fs = downcast_sb::<TmpFS>(&*node.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -558,7 +557,7 @@ impl FilesystemType for TmpFsType {
 		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<dyn Filesystem>> {
-		Ok(Arc::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
+	) -> EResult<Arc<Filesystem>> {
+		Ok(Filesystem::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
 	}
 }

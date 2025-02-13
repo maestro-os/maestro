@@ -19,7 +19,10 @@
 //! Implementation of `stat*` system calls, allowing to retrieve the status of a file.
 
 use crate::{
-	device::{id::makedev, DeviceID},
+	device::{
+		id::{major, makedev, minor},
+		DeviceID,
+	},
 	file,
 	file::{
 		fd::FileDescriptorTable,
@@ -123,17 +126,13 @@ pub struct Stat64 {
 }
 
 /// Extract device number and inode from [`vfs::Entry`].
-fn entry_info(entry: &vfs::Entry) -> EResult<(u64, INode)> {
+fn entry_info(entry: &vfs::Entry) -> (u64, INode) {
 	let node = entry.node();
-	let st_dev = match node.mp.source {
-		MountSource::Device(dev) => dev.get_device_number(),
-		MountSource::NoDev(_) => 0,
-	};
-	Ok((st_dev, node.inode))
+	(node.fs.dev, node.inode)
 }
 
 fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat32>) -> EResult<()> {
-	let (st_dev, st_ino) = entry.map(entry_info).transpose()?.unwrap_or_default();
+	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
 	statbuf.copy_to_user(&Stat32 {
 		st_dev: st_dev as _,
 		st_ino: st_ino as _,
@@ -156,7 +155,7 @@ fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat32>
 }
 
 fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat64>) -> EResult<()> {
-	let (st_dev, st_ino) = entry.map(entry_info).transpose()?.unwrap_or_default();
+	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
 	statbuf.copy_to_user(&Stat64 {
 		st_dev,
 		st_ino,
@@ -359,17 +358,9 @@ pub fn statx(
 	let stat = file.stat()?;
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
-	let (stx_dev_major, stx_dev_minor) = match file.node().mp.as_ref() {
-		MountPoint {
-			source: MountSource::Device(DeviceID {
-				major,
-				minor,
-				..
-			}),
-			..
-		} => (*major, *minor),
-		_ => (0, 0),
-	};
+	let (stx_dev, stx_ino) = entry_info(&file);
+	let stx_dev_minor = minor(stx_dev);
+	let stx_dev_major = major(stx_dev);
 	// Write
 	statxbuff.copy_to_user(&Statx {
 		stx_mask: !0,      // TODO
@@ -380,7 +371,7 @@ pub fn statx(
 		stx_gid: stat.gid as _,
 		stx_mode: stat.mode as _,
 		__padding0: 0,
-		stx_ino: file.node().inode,
+		stx_ino,
 		stx_size: stat.size,
 		stx_blocks: stat.blocks,
 		stx_attributes_mask: 0, // TODO

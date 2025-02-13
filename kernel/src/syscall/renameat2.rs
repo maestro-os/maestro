@@ -103,7 +103,7 @@ pub(super) fn do_renameat2(
 	}
 	// Remove source file
 	// TODO on failure, undo previous creation
-	vfs::unlink(old_parent, old_name, &rs.access_profile)?;
+	vfs::unlink(&old_parent, old_name, &rs.access_profile)?;
 	Ok(0)
 }
 

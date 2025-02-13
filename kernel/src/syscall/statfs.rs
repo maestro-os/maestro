@@ -45,8 +45,8 @@ pub(super) fn do_statfs(
 	let path = PathBuf::try_from(path)?;
 	let stat = vfs::get_file_from_path(&path, &rs)?
 		.node()
-		.mp
 		.fs
+		.superblock
 		.get_stat()?;
 	// Write structure to userspace
 	buf.copy_to_user(&stat)?;

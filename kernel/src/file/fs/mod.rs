@@ -42,7 +42,7 @@ use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, path::PathBuf, string::String},
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	ptr::arc::Arc,
 };
 
@@ -323,11 +323,8 @@ pub trait FileOps: Any + Debug {
 	}
 }
 
-/// A filesystem.
-///
-/// Type implementing this trait must use of internal mutability to allow multiple threads to
-/// perform operations on a filesystem at the same time.
-pub trait Filesystem: Any + Debug {
+/// Filesystem superblock operations.
+pub trait SuperblockOps: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
 	/// Returns statistics about the filesystem.
@@ -344,11 +341,60 @@ pub trait Filesystem: Any + Debug {
 	fn destroy_node(&self, node: &Node) -> EResult<()>;
 }
 
-/// Downcasts the given `fs` into `F`.
+/// Downcasts the given `sb` into `S`.
 ///
 /// If the filesystem type do not match, the function panics.
-pub fn downcast_fs<F: Filesystem>(fs: &dyn Filesystem) -> &F {
-	(fs as &dyn Any).downcast_ref().unwrap()
+pub fn downcast_sb<S: SuperblockOps>(sb: &dyn SuperblockOps) -> &S {
+	(sb as &dyn Any).downcast_ref().unwrap()
+}
+
+/// A filesystem.
+#[derive(Debug)]
+pub struct Filesystem {
+	/// Device number
+	pub dev: u64,
+	/// Superblock operations
+	pub superblock: Box<dyn SuperblockOps>,
+	/// Nodes cache for the current filesystem
+	node_cache: Mutex<HashMap<INode, Arc<Node>>>,
+}
+
+impl Filesystem {
+	/// Creates a new instance.
+	pub fn new<S: SuperblockOps>(superblock: S) -> AllocResult<Arc<Self>> {
+		Arc::new(Self {
+			superblock: Box::new(superblock)?,
+			node_cache: Default::default(),
+		})
+	}
+
+	/// Looks for the node with ID `inode` in cache.
+	pub(crate) fn node_lookup(&self, inode: INode) -> Option<Arc<Node>> {
+		self.node_cache.lock().get(&inode).cloned()
+	}
+
+	/// Inserts the node in cache.
+	pub(crate) fn node_insert(&self, node: Arc<Node>) -> AllocResult<()> {
+		self.node_cache.lock().insert(node.inode, node)?;
+		Ok(())
+	}
+
+	/// Removes the node from the cache.
+	pub(crate) fn node_remove(&self, inode: INode) -> EResult<()> {
+		let mut cache = self.node_cache.lock();
+		// If the node is not in cache, stop
+		let Some(node) = cache.get(&inode) else {
+			return Ok(());
+		};
+		// If the node is referenced elsewhere, stop
+		if Arc::strong_count(node) > 1 {
+			return Ok(());
+		}
+		// Remove from cache. `unwrap` cannot fail since we checked it exists before
+		let node = cache.remove(&inode).unwrap();
+		let node = Arc::into_inner(node).unwrap();
+		node.try_remove()
+	}
 }
 
 /// A filesystem type.
@@ -372,7 +418,7 @@ pub trait FilesystemType {
 		io: Option<Arc<dyn DeviceIO>>,
 		mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<dyn Filesystem>>;
+	) -> EResult<Arc<Filesystem>>;
 }
 
 /// The list of filesystem types.
@@ -381,8 +427,7 @@ static FS_TYPES: Mutex<HashMap<String, Arc<dyn FilesystemType>>> = Mutex::new(Ha
 /// Registers a new filesystem type.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
 	let name = String::try_from(fs_type.get_name())?;
-	let mut fs_types = FS_TYPES.lock();
-	fs_types.insert(name, Arc::new(fs_type)?)?;
+	FS_TYPES.lock().insert(name, Arc::new(fs_type)?)?;
 	Ok(())
 }
 
@@ -390,14 +435,12 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
 ///
 /// If the filesystem type doesn't exist, the function does nothing.
 pub fn unregister(name: &[u8]) {
-	let mut fs_types = FS_TYPES.lock();
-	fs_types.remove(name);
+	FS_TYPES.lock().remove(name);
 }
 
 /// Returns the filesystem type with name `name`.
 pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
-	let fs_types = FS_TYPES.lock();
-	fs_types.get(name).cloned()
+	FS_TYPES.lock().get(name).cloned()
 }
 
 /// Detects the filesystem type on the given IO interface `io`.
@@ -415,9 +458,9 @@ pub fn detect(io: &dyn DeviceIO) -> EResult<Arc<dyn FilesystemType>> {
 ///
 /// This function must be called only once, at initialization.
 pub fn register_defaults() -> EResult<()> {
-	register(ext2::Ext2FsType {})?;
-	register(tmp::TmpFsType {})?;
-	register(proc::ProcFsType {})?;
+	register(ext2::Ext2FsType)?;
+	register(tmp::TmpFsType)?;
+	register(proc::ProcFsType)?;
 	// TODO sysfs
 	Ok(())
 }

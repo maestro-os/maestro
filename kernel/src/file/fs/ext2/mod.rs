@@ -50,7 +50,10 @@ mod inode;
 use crate::{
 	device::DeviceIO,
 	file::{
-		fs::{downcast_fs, FileOps, Filesystem, FilesystemType, NodeOps, StatSet, Statfs},
+		fs::{
+			downcast_sb, FileOps, Filesystem, FilesystemType, NodeOps, StatSet, Statfs,
+			SuperblockOps,
+		},
 		vfs,
 		vfs::node::Node,
 		DirEntry, File, FileType, INode, Stat,
@@ -238,7 +241,7 @@ struct Ext2NodeOps;
 
 impl NodeOps for Ext2NodeOps {
 	fn get_stat(&self, node: &Node) -> EResult<Stat> {
-		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*node.fs.superblock);
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
 		let (dev_major, dev_minor) = inode_.get_device();
@@ -258,7 +261,7 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn set_stat(&self, node: &Node, set: StatSet) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*node.fs.superblock);
 		let superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
 		if let Some(mode) = set.mode {
@@ -286,7 +289,7 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(dir.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*dir.fs.superblock);
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(dir.inode as _, &superblock, &*fs.io)?;
 		ent.node = inode_
@@ -294,7 +297,7 @@ impl NodeOps for Ext2NodeOps {
 			.map(|(inode, ..)| {
 				Arc::new(Node {
 					inode: inode as _,
-					mp: Arc {},
+					fs: dir.fs.clone(),
 					node_ops: Box::new(Ext2NodeOps)?,
 					file_ops: Box::new(Ext2FileOps)?,
 					pages: Default::default(),
@@ -305,7 +308,7 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn next_entry(&self, dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let fs = downcast_fs::<Ext2Fs>(dir.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*dir.fs.superblock);
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(dir.inode as _, &superblock, &*fs.io)?;
 		inode_.next_dirent(off, &superblock, &*fs.io)
@@ -317,13 +320,12 @@ impl NodeOps for Ext2NodeOps {
 		name: &[u8],
 		stat: Stat,
 	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		let fs = downcast_fs::<Ext2Fs>(parent.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*parent.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		let ops = Box::new(Ext2NodeOps)?;
-		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut superblock = fs.superblock.lock();
 		// Get parent directory
 		let mut parent_ = Ext2INode::read(parent.inode as _, &superblock, &*fs.io)?;
@@ -399,7 +401,7 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn link(&self, parent: &Node, name: &[u8], target: INode) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(parent.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*parent.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -440,7 +442,7 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn unlink(&self, parent: &Node, name: &[u8]) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(parent.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*parent.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -492,7 +494,7 @@ pub struct Ext2FileOps;
 impl FileOps for Ext2FileOps {
 	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let node = file.node().unwrap();
-		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*node.fs.superblock);
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
 		match inode_.get_type() {
@@ -504,7 +506,7 @@ impl FileOps for Ext2FileOps {
 
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
 		let node = file.node().unwrap();
-		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*node.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -522,11 +524,10 @@ impl FileOps for Ext2FileOps {
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
 		let node = file.node().unwrap();
-		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*node.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let fs = downcast_fs::<Ext2Fs>(fs);
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
 		match inode_.get_type() {
@@ -1018,7 +1019,7 @@ impl Ext2Fs {
 
 // TODO Update the write timestamp when the fs is written (take mount flags into
 // account)
-impl Filesystem for Ext2Fs {
+impl SuperblockOps for Ext2Fs {
 	fn get_name(&self) -> &[u8] {
 		b"ext2"
 	}
@@ -1050,7 +1051,7 @@ impl Filesystem for Ext2Fs {
 	}
 
 	fn destroy_node(&self, node: &Node) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(node.get_filesystem());
+		let fs = downcast_sb::<Ext2Fs>(&*node.fs.superblock);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -1099,10 +1100,10 @@ impl FilesystemType for Ext2FsType {
 		io: Option<Arc<dyn DeviceIO>>,
 		mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<dyn Filesystem>> {
+	) -> EResult<Arc<Filesystem>> {
 		let io = io.ok_or_else(|| errno!(ENODEV))?;
 		let superblock = Superblock::read(&*io)?;
 		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
-		Ok(Arc::new(fs)? as _)
+		Ok(Filesystem::new(fs)?)
 	}
 }

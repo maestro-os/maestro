@@ -26,7 +26,7 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{Filesystem, FilesystemType, NodeOps};
+use super::{Filesystem, FilesystemType, NodeOps, SuperblockOps};
 use crate::{
 	device::DeviceIO,
 	file::{
@@ -157,7 +157,7 @@ impl NodeOps for RootDir {
 			.map(|_| {
 				Arc::new(Node {
 					inode: 0,
-					mp: Arc {},
+					fs: Arc {},
 					node_ops: Box::new(StaticDir {
 						entries: &[
 							StaticEntryBuilder {
@@ -239,7 +239,7 @@ impl NodeOps for RootDir {
 #[derive(Debug)]
 pub struct ProcFS;
 
-impl Filesystem for ProcFS {
+impl SuperblockOps for ProcFS {
 	fn get_name(&self) -> &[u8] {
 		b"proc"
 	}
@@ -286,7 +286,7 @@ impl FilesystemType for ProcFsType {
 		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
-	) -> EResult<Arc<dyn Filesystem>> {
-		Ok(Arc::new(ProcFS)?)
+	) -> EResult<Arc<Filesystem>> {
+		Ok(Filesystem::new(ProcFS)?)
 	}
 }

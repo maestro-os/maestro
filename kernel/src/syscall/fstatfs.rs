@@ -46,8 +46,8 @@ pub fn do_fstatfs(
 		.as_ref()
 		.ok_or_else(|| errno!(ENOSYS))?
 		.node()
-		.mp
 		.fs
+		.superblock
 		.get_stat()?;
 	buf.copy_to_user(&stat)?;
 	Ok(0)
