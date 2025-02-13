@@ -245,7 +245,7 @@ impl NodeOps for TmpFSNode {
 		let NodeContent::Directory(entries) = &inner.content else {
 			return Err(errno!(ENOTDIR));
 		};
-		let node = entries
+		ent.node = entries
 			.binary_search_by(|ent| ent.name.as_ref().cmp(&ent.name))
 			.ok()
 			.map(|inode| {
@@ -260,7 +260,6 @@ impl NodeOps for TmpFSNode {
 				})
 			})
 			.transpose()?;
-		ent.set_node(node);
 		Ok(())
 	}
 

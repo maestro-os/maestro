@@ -153,7 +153,7 @@ impl NodeOps for RootDir {
 		let Some(pid) = pid else {
 			return Self::STATIC.entry_by_name_inner(ent);
 		};
-		let node = Process::get_by_pid(pid)
+		ent.node = Process::get_by_pid(pid)
 			.map(|_| {
 				Arc::new(Node {
 					inode: 0,
@@ -203,7 +203,6 @@ impl NodeOps for RootDir {
 				})
 			})
 			.transpose()?;
-		ent.set_node(node);
 		Ok(())
 	}
 

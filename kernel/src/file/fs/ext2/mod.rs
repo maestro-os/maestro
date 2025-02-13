@@ -289,7 +289,7 @@ impl NodeOps for Ext2NodeOps {
 		let fs = downcast_fs::<Ext2Fs>(dir.get_filesystem());
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(dir.inode as _, &superblock, &*fs.io)?;
-		let node = inode_
+		ent.node = inode_
 			.get_dirent(&ent.name, &superblock, &*fs.io)?
 			.map(|(inode, ..)| {
 				Arc::new(Node {
@@ -301,7 +301,6 @@ impl NodeOps for Ext2NodeOps {
 				})
 			})
 			.transpose()?;
-		ent.set_node(node);
 		Ok(())
 	}
 

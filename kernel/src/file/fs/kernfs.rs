@@ -240,7 +240,7 @@ pub struct StaticDir<T: 'static + Clone + Debug = ()> {
 impl<T: 'static + Clone + Debug> StaticDir<T> {
 	/// Inner implementation of [`Self::lookup_entry`].
 	pub fn entry_by_name_inner(&self, ent: &mut vfs::Entry) -> EResult<()> {
-		let node = self
+		ent.node = self
 			.entries
 			.binary_search_by(|e| e.name.cmp(&ent.name))
 			.ok()
@@ -256,7 +256,6 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 				})
 			})
 			.transpose()?;
-		ent.set_node(node);
 		Ok(())
 	}
 

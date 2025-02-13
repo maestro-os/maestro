@@ -669,7 +669,7 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 /// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn unlink(dir: &Node, entry: &Entry, ap: &AccessProfile) -> EResult<()> {
+pub fn unlink(dir: &Entry, entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 	let parent_stat = dir.stat()?;
 	// Check permission
 	if parent_stat.get_type() != Some(FileType::Directory) {
@@ -678,51 +678,25 @@ pub fn unlink(dir: &Node, entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	// Lock now to avoid race conditions
-	let mut children = parent.children.lock();
-	match children.get(name) {
-		// The entry is in cache
-		Some(EntryChild(entry)) => {
-			// If the file to remove is a mountpoint, error
-			if parent.node().mp.id != entry.node().mp.id {
-				return Err(errno!(EBUSY));
-			}
-			let stat = entry.stat()?;
-			// Check permission
-			let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
-			if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
-				return Err(errno!(EACCES));
-			}
-			// Remove link from filesystem
-			parent.node().node_ops.unlink(parent.node(), name)?;
-			// Remove link from cache
-			let EntryChild(ent) = children.remove(name).unwrap();
-			drop(children);
-			Entry::release(ent)
-		}
-		// The entry is not in cache
-		None => {
-			let (entry, ops) = parent
-				.node()
-				.node_ops
-				.entry_by_name(parent.node(), name)?
-				.ok_or_else(|| errno!(ENOENT))?;
-			let loc = FileLocation {
-				// The entry cannot be a mountpoint since it is not in cache
-				mountpoint_id: parent.node().mp.id,
-				inode: entry.inode,
-			};
-			let stat = ops.get_stat(&loc)?;
-			// Check permission
-			let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
-			if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
-				return Err(errno!(EACCES));
-			}
-			// Remove link from filesystem
-			parent.node().node_ops.unlink(parent.node(), name)?;
-			node::try_remove(&loc, &*ops)
-		}
+	let stat = entry.stat()?;
+	let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
+	if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
+		return Err(errno!(EACCES));
 	}
+	// If the file to remove is a mountpoint, error
+	if entry.as_mountpoint().is_some() {
+		return Err(errno!(EBUSY));
+	}
+	// Lock now to avoid race conditions
+	let mut children = dir.children.lock();
+	// Remove link from filesystem
+	let dir_node = dir.node();
+	dir_node.node_ops.unlink(dir_node, &entry.name)?;
+	// Remove link from cache
+	let EntryChild(ent) = children.remove(entry.name.as_bytes()).unwrap();
+	// Drop to avoid deadlock
+	drop(children);
+	Entry::release(ent)
 }
 
 /// Helper function to remove a hard link from a given `path`.
@@ -730,5 +704,5 @@ pub fn unlink_from_path(path: &Path, resolution_settings: &ResolutionSettings) -
 	let file_name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
 	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	let parent = get_file_from_path(parent, resolution_settings)?;
-	unlink(parent, file_name, &resolution_settings.access_profile)
+	unlink(&parent, file_name, &resolution_settings.access_profile)
 }
