@@ -326,7 +326,6 @@ impl Drop for FileDescriptorTable {
 mod test {
 	use super::*;
 	use crate::file::{fs::FileOps, File};
-	use utils::boxed::Box;
 
 	/// Dummy node ops for testing purpose.
 	#[derive(Debug)]
@@ -336,7 +335,7 @@ mod test {
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_file() -> Arc<File> {
-		File::open_floating(Box::new(Dummy).unwrap(), 0).unwrap()
+		File::open_floating(Arc::new(Dummy).unwrap(), 0).unwrap()
 	}
 
 	#[test_case]

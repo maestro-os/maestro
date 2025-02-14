@@ -47,10 +47,9 @@ use crate::{
 		unit::{Timestamp, TimestampScale},
 	},
 };
-use core::{any::Any, fmt::Debug, ops::Deref};
+use core::{any::Any, fmt::Debug, ops::Deref, ptr::NonNull};
 use perm::AccessProfile;
 use utils::{
-	boxed::Box,
 	collections::{string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
@@ -311,13 +310,38 @@ impl Stat {
 	}
 }
 
+/// A wrapper around [`FileOps`] to allow referencing the field in the associated [`Node`] without
+/// using [`Arc`].
+///
+/// # Safety
+///
+/// This structure is meant to be used only in [`File`].
+#[derive(Debug)]
+enum FileOpsWrapper {
+	/// Borrowed from [`Node`]
+	Borrowed(NonNull<dyn FileOps>),
+	/// Owned
+	Owned(Arc<dyn FileOps>),
+}
+
+impl Deref for FileOpsWrapper {
+	type Target = dyn FileOps;
+
+	fn deref(&self) -> &Self::Target {
+		match self {
+			FileOpsWrapper::Borrowed(o) => unsafe { o.as_ref() },
+			FileOpsWrapper::Owned(o) => o.as_ref(),
+		}
+	}
+}
+
 /// An open file description.
 #[derive(Debug)]
 pub struct File {
 	/// The VFS entry of the file.
 	pub vfs_entry: Option<Arc<vfs::Entry>>,
 	/// Handle for file operations.
-	pub ops: Box<dyn FileOps>,
+	pub ops: FileOpsWrapper,
 	/// Open file description flags.
 	pub flags: Mutex<i32>,
 	/// The current offset in the file.
@@ -333,7 +357,14 @@ impl File {
 	///
 	/// If the entry is negative, the function returns [`errno::ENOENT`].
 	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
-		let ops = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?.file_ops;
+		let ops = FileOpsWrapper::Borrowed(NonNull::from(
+			entry
+				.node
+				.as_ref()
+				.ok_or_else(|| errno!(ENOENT))?
+				.file_ops
+				.as_ref(),
+		));
 		let file = Self {
 			vfs_entry: Some(entry),
 			ops,
@@ -345,10 +376,10 @@ impl File {
 	}
 
 	/// Open a file with no associated VFS entry.
-	pub fn open_floating(ops: Box<dyn FileOps>, flags: i32) -> EResult<Arc<Self>> {
+	pub fn open_floating(ops: Arc<dyn FileOps>, flags: i32) -> EResult<Arc<Self>> {
 		let file = Self {
 			vfs_entry: None,
-			ops,
+			ops: FileOpsWrapper::Owned(ops),
 			flags: Mutex::new(flags),
 			off: Default::default(),
 		};
