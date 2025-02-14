@@ -38,6 +38,7 @@ use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
 	intrinsics::unlikely,
+	ptr,
 };
 use node::Node;
 use utils::{
@@ -594,9 +595,12 @@ pub fn create_file(
 	};
 	stat.gid = gid;
 	// Add file to filesystem
-	// TODO: this should return a `Node`
-	let (inode, ops) = parent.node().node_ops.create(parent.node(), name, stat)?;
+	let node = parent.node().fs.ops.create_node(&stat)?;
 	parent.node().fs.node_insert(node.clone())?;
+	parent
+		.node()
+		.node_ops
+		.link(parent.node(), name, node.inode)?;
 	// Create entry and insert it in parent
 	let entry = Arc::new(Entry {
 		name: String::try_from(name)?,
@@ -640,8 +644,8 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	// Check the target and source are both on the same mountpoint
-	if parent.node().fs.id != target.node().fs.id {
+	// Check the target and source are both on the same filesystem
+	if !ptr::eq(parent.node().fs.as_ref(), target.node().fs.as_ref()) {
 		return Err(errno!(EXDEV));
 	}
 	parent

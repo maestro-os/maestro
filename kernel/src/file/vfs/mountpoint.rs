@@ -223,7 +223,7 @@ pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<MountPoint>>> = Mutex::new(HashM
 pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
 	let fs = get_fs(&source, None, PathBuf::root()?, false)?;
 	// Get filesystem root node
-	let root = fs.superblock.root()?;
+	let root = fs.ops.root()?;
 	fs.node_insert(root.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry::new_root(root))?;
@@ -266,7 +266,7 @@ pub fn create(
 	// TODO improve
 	let id = mps.iter().map(|(i, _)| *i + 1).max().unwrap_or(0);
 	// Get filesystem root node
-	let root = fs.superblock.root()?;
+	let root = fs.ops.root()?;
 	fs.node_insert(root.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry {

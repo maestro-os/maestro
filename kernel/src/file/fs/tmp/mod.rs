@@ -25,8 +25,8 @@ use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{
-			downcast_sb, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemType,
-			NodeOps, StatSet, Statfs, SuperblockOps,
+			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemOps,
+			FilesystemType, NodeOps, StatSet, Statfs,
 		},
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		vfs,
@@ -156,7 +156,7 @@ impl TmpFSNode {
 	///
 	/// Provided inodes are used only if the file is a directory, to create the `.` and `..`
 	/// entries.
-	pub fn new(stat: Stat, inode: Option<INode>, parent_inode: Option<INode>) -> EResult<Self> {
+	pub fn new(stat: &Stat, inode: Option<INode>, parent_inode: Option<INode>) -> EResult<Self> {
 		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		let content = match file_type {
 			FileType::Regular => NodeContent::Regular(Vec::new()),
@@ -280,50 +280,8 @@ impl NodeOps for TmpFSNode {
 		Ok(res?)
 	}
 
-	fn create(
-		&self,
-		parent: &Node,
-		name: &[u8],
-		stat: Stat,
-	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		let fs = downcast_sb::<TmpFS>(&*parent.fs.superblock);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		let entry_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
-		let mut nodes = fs.nodes.lock();
-		// Allocate a new slot. In case of later failure, this does not need rollback as the unused
-		// slot is reused at the next call
-		let (inode, slot) = nodes.get_free_slot()?;
-		// Get parent entries
-		let mut parent_inner = self.0.lock();
-		let NodeContent::Directory(parent_entries) = &mut parent_inner.content else {
-			return Err(errno!(ENOTDIR));
-		};
-		// Prepare node to be added
-		let node = TmpFSNode::new(stat, Some(inode), Some(parent.inode))?;
-		// Add entry to parent
-		let ent = DirEntry {
-			inode,
-			entry_type,
-			name: Cow::Owned(name.try_into()?),
-		};
-		let res = parent_entries.binary_search_by(|ent| ent.name.as_ref().cmp(name));
-		let Err(ent_index) = res else {
-			return Err(errno!(EEXIST));
-		};
-		parent_entries.insert(ent_index, ent)?;
-		// Insert node
-		*slot = Some(node.clone());
-		// Update links count
-		if entry_type == FileType::Directory {
-			parent_inner.nlink += 1;
-		}
-		Ok((inode, Box::new(node)?))
-	}
-
 	fn link(&self, parent: &Node, name: &[u8], inode: INode) -> EResult<()> {
-		let fs = downcast_sb::<TmpFS>(&*parent.fs.superblock);
+		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -352,7 +310,7 @@ impl NodeOps for TmpFSNode {
 	}
 
 	fn unlink(&self, parent: &Node, name: &[u8]) -> EResult<()> {
-		let fs = downcast_sb::<TmpFS>(&*parent.fs.superblock);
+		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -367,7 +325,7 @@ impl NodeOps for TmpFSNode {
 			.map_err(|_| errno!(ENOENT))?;
 		let ent = &parent_entries[ent_index];
 		// Get the entry's node
-		let node = downcast_sb::<TmpFS>(fs)
+		let node = downcast_fs::<TmpFS>(fs)
 			.nodes
 			.lock()
 			.get_node(ent.inode)?
@@ -477,7 +435,7 @@ impl TmpFS {
 	/// - `readonly` tells whether the filesystem is readonly.
 	pub fn new(max_size: usize, readonly: bool) -> EResult<Self> {
 		let root = TmpFSNode::new(
-			Stat {
+			&Stat {
 				mode: FileType::Directory.to_mode() | 0o1777,
 				nlink: 0,
 				uid: ROOT_UID,
@@ -504,7 +462,7 @@ impl TmpFS {
 	}
 }
 
-impl SuperblockOps for TmpFS {
+impl FilesystemOps for TmpFS {
 	fn get_name(&self) -> &[u8] {
 		b"tmpfs"
 	}
@@ -529,13 +487,29 @@ impl SuperblockOps for TmpFS {
 		Ok(Box::new(self.nodes.lock().get_node(kernfs::ROOT_INODE)?.clone())? as _)
 	}
 
-	fn destroy_node(&self, node: &Node) -> EResult<()> {
-		let fs = downcast_sb::<TmpFS>(&*node.fs.superblock);
-		if unlikely(fs.readonly) {
+	fn create_node(&self, stat: &Stat) -> EResult<Arc<Node>> {
+		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut nodes = fs.nodes.lock();
-		nodes.remove_node(node.inode);
+		let mut nodes = self.nodes.lock();
+		let (inode, slot) = nodes.get_free_slot()?;
+		let node = TmpFSNode::new(stat, Some(inode), None)?;
+		*slot = Some(node);
+		let node = Arc::new(Node {
+			inode,
+			fs: self,
+			node_ops: (),
+			file_ops: (),
+			pages: Default::default(),
+		})?;
+		Ok(node)
+	}
+
+	fn destroy_node(&self, node: &Node) -> EResult<()> {
+		if unlikely(self.readonly) {
+			return Err(errno!(EROFS));
+		}
+		self.nodes.lock().remove_node(node.inode);
 		Ok(())
 	}
 }
@@ -558,6 +532,6 @@ impl FilesystemType for TmpFsType {
 		_mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Arc<Filesystem>> {
-		Ok(Filesystem::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
+		Ok(Filesystem::new(0, TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
 	}
 }

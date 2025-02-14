@@ -146,27 +146,6 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(ENOTDIR))
 	}
 
-	/// Adds a file into the directory.
-	///
-	/// Arguments:
-	/// - `parent` is the location of the parent directory.
-	/// - `name` is the name of the hard link to add.
-	/// - `stat` is the status of the file to add.
-	///
-	/// On success, the function returns the allocated [`INode`] together with the new file's
-	/// handle.
-	///
-	/// The default implementation of this function returns an error.
-	fn create(
-		&self,
-		parent: &Node,
-		name: &[u8],
-		stat: Stat,
-	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		let _ = (parent, name, stat);
-		Err(errno!(ENOTDIR))
-	}
-
 	/// Adds a hard link into the directory.
 	///
 	/// Arguments:
@@ -323,8 +302,8 @@ pub trait FileOps: Any + Debug {
 	}
 }
 
-/// Filesystem superblock operations.
-pub trait SuperblockOps: Any + Debug {
+/// Filesystem operations.
+pub trait FilesystemOps: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
 	/// Returns statistics about the filesystem.
@@ -335,17 +314,19 @@ pub trait SuperblockOps: Any + Debug {
 	/// If the node does not exist, the function returns [`errno::ENOENT`].
 	fn root(&self) -> EResult<Arc<Node>>;
 
+	/// Creates a node on the filesystem.
+	fn create_node(&self, stat: &Stat) -> EResult<Arc<Node>>;
 	/// Removes `node` from the filesystem.
 	///
 	/// This function should be called only when no link to the node remain.
 	fn destroy_node(&self, node: &Node) -> EResult<()>;
 }
 
-/// Downcasts the given `sb` into `S`.
+/// Downcasts the given `fs` into `F`.
 ///
 /// If the filesystem type do not match, the function panics.
-pub fn downcast_sb<S: SuperblockOps>(sb: &dyn SuperblockOps) -> &S {
-	(sb as &dyn Any).downcast_ref().unwrap()
+pub fn downcast_fs<F: FilesystemOps>(fs: &dyn FilesystemOps) -> &F {
+	(fs as &dyn Any).downcast_ref().unwrap()
 }
 
 /// A filesystem.
@@ -353,17 +334,22 @@ pub fn downcast_sb<S: SuperblockOps>(sb: &dyn SuperblockOps) -> &S {
 pub struct Filesystem {
 	/// Device number
 	pub dev: u64,
-	/// Superblock operations
-	pub superblock: Box<dyn SuperblockOps>,
+	/// Filesystem operations
+	pub ops: Box<dyn FilesystemOps>,
 	/// Nodes cache for the current filesystem
-	node_cache: Mutex<HashMap<INode, Arc<Node>>>,
+	pub(super) node_cache: Mutex<HashMap<INode, Arc<Node>>>,
 }
 
 impl Filesystem {
 	/// Creates a new instance.
-	pub fn new<S: SuperblockOps>(superblock: S) -> AllocResult<Arc<Self>> {
+	///
+	/// Arguments:
+	/// - `dev` is the device number
+	/// - `ops` is the handle for operations on the filesystem
+	pub fn new<F: FilesystemOps>(dev: u64, ops: F) -> AllocResult<Arc<Self>> {
 		Arc::new(Self {
-			superblock: Box::new(superblock)?,
+			dev,
+			ops: Box::new(ops)?,
 			node_cache: Default::default(),
 		})
 	}

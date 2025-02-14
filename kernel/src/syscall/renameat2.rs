@@ -30,7 +30,7 @@ use crate::{
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::ffi::c_int;
+use core::{ffi::c_int, ptr};
 use utils::{
 	collections::path::PathBuf,
 	errno,
@@ -91,8 +91,8 @@ pub(super) fn do_renameat2(
 	};
 	// Create destination file
 	{
-		// If source and destination are on different mountpoints, error
-		if new_parent.node().location.mountpoint_id != old.node().location.mountpoint_id {
+		// If source and destination are on different filesystems, error
+		if !ptr::eq(new_parent.node().fs.as_ref(), old.node().fs.as_ref()) {
 			return Err(errno!(EXDEV));
 		}
 		// TODO Check permissions if sticky bit is set

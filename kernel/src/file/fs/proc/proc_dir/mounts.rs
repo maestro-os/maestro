@@ -64,7 +64,7 @@ impl fmt::Display for Mounts {
 			let Ok(target) = vfs::Entry::get_path(&mp.root_entry) else {
 				continue;
 			};
-			let fs_type = mp.fs.superblock.get_name();
+			let fs_type = mp.fs.ops.get_name();
 			let flags = "TODO"; // TODO
 			writeln!(
 				f,

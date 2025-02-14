@@ -46,7 +46,7 @@ pub(super) fn do_statfs(
 	let stat = vfs::get_file_from_path(&path, &rs)?
 		.node()
 		.fs
-		.superblock
+		.ops
 		.get_stat()?;
 	// Write structure to userspace
 	buf.copy_to_user(&stat)?;

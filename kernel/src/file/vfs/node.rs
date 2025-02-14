@@ -49,16 +49,16 @@ pub struct Node {
 impl Node {
 	/// Releases the node, removing it from the disk if this is the last reference to it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
-		// Lock to avoid race condition later
-		let mut used_nodes = USED_NODES.lock();
-		// current instance + the one in `USED_NODE` = `2`
-		if Arc::strong_count(&this) > 2 {
-			return Ok(());
+		{
+			let mut cache = this.fs.node_cache.lock();
+			// current instance + the one in `USED_NODE` = `2`
+			if Arc::strong_count(&this) > 2 {
+				return Ok(());
+			}
+			cache.remove(&this.inode);
 		}
-		used_nodes.remove(&this.location);
-		let Some(node) = Arc::into_inner(this) else {
-			return Ok(());
-		};
+		// `unwrap` cannot fail since we removed it from the cache
+		let node = Arc::into_inner(this).unwrap();
 		node.try_remove()
 	}
 
@@ -70,7 +70,7 @@ impl Node {
 		// If the file is a directory, the threshold is `1` because of the `.` entry
 		let remove = (dir && stat.nlink <= 1) || stat.nlink == 0;
 		if remove {
-			self.fs.superblock.destroy_node(&self)?;
+			self.fs.ops.destroy_node(&self)?;
 		}
 		Ok(())
 	}
