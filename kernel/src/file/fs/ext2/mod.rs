@@ -385,7 +385,7 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn symlink(&self, parent: &Node, path: &[u8]) -> EResult<()> {
+	fn symlink(&self, parent: &Node, path: &[u8]) -> EResult<Arc<Node>> {
 		todo!()
 	}
 

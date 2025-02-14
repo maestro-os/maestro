@@ -58,32 +58,25 @@ pub fn symlinkat(
 		.map(PathBuf::try_from)
 		.transpose()?;
 	// Create link
-	let resolved = at::get_file(&fds.lock(), rs.clone(), newdirfd, linkpath.as_deref(), 0)?;
-	match resolved {
-		Resolved::Creatable {
-			parent,
-			name,
-		} => {
-			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
-			let file = vfs::create_file(
-				parent,
-				name,
-				&rs.access_profile,
-				Stat {
-					mode: FileType::Link.to_mode() | 0o777,
-					ctime: ts,
-					mtime: ts,
-					atime: ts,
-					..Default::default()
-				},
-			)?;
-			// TODO remove file on failure
-			file.node()
-				.node_ops
-				.write_content(&file.node().location, 0, target.as_bytes())?;
-		}
-		Resolved::Found(_) => return Err(errno!(EEXIST)),
-	}
-
+	let Resolved::Creatable {
+		parent,
+		name,
+	} = at::get_file(&fds.lock(), rs.clone(), newdirfd, linkpath.as_deref(), 0)?
+	else {
+		return Err(errno!(EEXIST));
+	};
+	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
+	vfs::symlink(
+		&parent,
+		name,
+		target.as_bytes(),
+		&rs.access_profile,
+		Stat {
+			ctime: ts,
+			mtime: ts,
+			atime: ts,
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }

@@ -187,14 +187,14 @@ pub trait NodeOps: Any + Debug {
 	///
 	/// Arguments:
 	/// - `parent` is the parent directory
-	/// - `path` is the path the symbolic link points to
+	/// - `target` is the path the symbolic link points to
 	///
 	/// If this feature is not supported by the filesystem, the function returns
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn symlink(&self, parent: &Node, path: &[u8]) -> EResult<()> {
-		let _ = (parent, path);
+	fn symlink(&self, parent: &Node, target: &[u8]) -> EResult<Arc<Node>> {
+		let _ = (parent, target);
 		Err(errno!(EINVAL))
 	}
 

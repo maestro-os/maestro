@@ -82,6 +82,6 @@ pub fn linkat(
 	else {
 		return Err(errno!(EEXIST));
 	};
-	vfs::link(&new_parent, new_name, &old, &rs.access_profile)?;
+	vfs::link(&new_parent, new_name, old, &rs.access_profile)?;
 	Ok(0)
 }

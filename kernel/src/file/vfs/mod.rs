@@ -20,7 +20,16 @@
 //!
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' directly.
-
+//!
+//! # Note about creating files
+//!
+//! When creating a file of any type, the following fields in the provided [`Stat`] structure are
+//! ignored:
+/// - `nlink`
+/// - `uid`
+/// - `gid`
+///
+/// `uid` and `gid` are set according to `ap`
 pub mod mountpoint;
 pub mod node;
 
@@ -556,13 +565,6 @@ pub fn get_file_from_path(
 ///   for the created file
 /// - `stat` is the status of the newly created file
 ///
-/// From the provided `stat`, the following fields are ignored:
-/// - `nlink`
-/// - `uid`
-/// - `gid`
-///
-/// `uid` and `gid` are set according to `ap`.
-///
 /// The following errors can be returned:
 /// - The filesystem is read-only: [`errno::EROFS`]
 /// - I/O failed: [`errno::EIO`]
@@ -586,21 +588,18 @@ pub fn create_file(
 		return Err(errno!(EACCES));
 	}
 	stat.uid = ap.euid;
-	let gid = if parent_stat.mode & perm::S_ISGID != 0 {
+	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
 		// parent directory
 		parent_stat.gid
 	} else {
 		ap.egid
 	};
-	stat.gid = gid;
 	// Add file to filesystem
-	let node = parent.node().fs.ops.create_node(&stat)?;
-	parent.node().fs.node_insert(node.clone())?;
-	parent
-		.node()
-		.node_ops
-		.link(parent.node(), name, node.inode)?;
+	let parent_node = parent.node();
+	let node = parent_node.fs.ops.create_node(&stat)?;
+	parent_node.fs.node_insert(node.clone())?;
+	parent_node.node_ops.link(parent_node, name, node.inode)?;
 	// Create entry and insert it in parent
 	let entry = Arc::new(Entry {
 		name: String::try_from(name)?,
@@ -628,7 +627,12 @@ pub fn create_file(
 /// - `target` is a directory: [`errno::EPERM`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> EResult<()> {
+pub fn link(
+	parent: &Arc<Entry>,
+	name: &[u8],
+	target: Arc<Entry>,
+	ap: &AccessProfile,
+) -> EResult<()> {
 	let parent_stat = parent.stat()?;
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
@@ -648,17 +652,20 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 	if !ptr::eq(parent.node().fs.as_ref(), target.node().fs.as_ref()) {
 		return Err(errno!(EXDEV));
 	}
+	// Add link to the filesystem
 	parent
 		.node()
 		.node_ops
 		.link(parent.node(), name, target.node().inode)?;
+	// Add entry to the cache
+	parent.children.lock().insert(EntryChild(target))?;
 	Ok(())
 }
 
 /// Removes a hard link to a file.
 ///
 /// Arguments:
-/// - `dir` is the parent directory of the file to remove
+/// - `parent` is the parent directory of the file to remove
 /// - `entry` is the entry to remove
 /// - `ap` is the access profile to check permissions
 ///
@@ -670,8 +677,8 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 /// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn unlink(dir: &Entry, entry: &Entry, ap: &AccessProfile) -> EResult<()> {
-	let parent_stat = dir.stat()?;
+pub fn unlink(parent: &Entry, entry: &Entry, ap: &AccessProfile) -> EResult<()> {
+	let parent_stat = parent.stat()?;
 	// Check permission
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -689,9 +696,9 @@ pub fn unlink(dir: &Entry, entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 		return Err(errno!(EBUSY));
 	}
 	// Lock now to avoid race conditions
-	let mut children = dir.children.lock();
+	let mut children = parent.children.lock();
 	// Remove link from filesystem
-	let dir_node = dir.node();
+	let dir_node = parent.node();
 	dir_node.node_ops.unlink(dir_node, &entry.name)?;
 	// Remove link from cache
 	let EntryChild(ent) = children.remove(entry.name.as_bytes()).unwrap();
@@ -706,4 +713,56 @@ pub fn unlink_from_path(path: &Path, resolution_settings: &ResolutionSettings) -
 	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
 	let parent = get_file_from_path(parent, resolution_settings)?;
 	unlink(&parent, file_name, &resolution_settings.access_profile)
+}
+
+/// Creates a symbolic link.
+///
+/// Arguments:
+/// - `parent` is the parent directory of where the new symbolic link will be created
+/// - `name` is the name of the symbolic link
+/// - `target` is the path the link points to
+/// - `ap` is the access profile to check permissions
+/// - `stat` is the status of the newly created file. Note that the `mode` is field is ignored and
+///   replaced with the appropriate value
+///
+/// TODO: detail errors
+///
+/// Other errors can be returned depending on the underlying filesystem.
+pub fn symlink(
+	parent: &Arc<Entry>,
+	name: &[u8],
+	target: &[u8],
+	ap: &AccessProfile,
+	mut stat: Stat,
+) -> EResult<()> {
+	let parent_stat = parent.stat()?;
+	// Validation
+	if parent_stat.get_type() != Some(FileType::Directory) {
+		return Err(errno!(ENOTDIR));
+	}
+	if !ap.can_write_directory(&parent_stat) {
+		return Err(errno!(EACCES));
+	}
+	stat.mode = FileType::Link.to_mode() | 0o777;
+	stat.uid = ap.euid;
+	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
+		// If SGID is set, the newly created file shall inherit the group ID of the
+		// parent directory
+		parent_stat.gid
+	} else {
+		ap.egid
+	};
+	// Add link to the filesystem
+	let parent_node = parent.node();
+	let node = parent_node.node_ops.symlink(parent_node, target)?;
+	// Add link to the cache
+	parent_node.fs.node_insert(node.clone())?;
+	let ent = Arc::new(Entry {
+		name: String::try_from(name)?,
+		parent: Some(parent.clone()),
+		children: Default::default(),
+		node: Some(node),
+	})?;
+	parent.children.lock().insert(EntryChild(ent))?;
+	Ok(())
 }
