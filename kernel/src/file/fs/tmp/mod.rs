@@ -25,8 +25,8 @@ use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{
-			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemOps,
-			FilesystemType, NodeOps, StatSet, Statfs,
+			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, FilesystemOps, FilesystemType,
+			NodeOps, StatSet, Statfs,
 		},
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		vfs,
@@ -254,7 +254,7 @@ impl NodeOps for TmpFSNode {
 					inode: inode as _,
 					fs: dir.fs.clone(),
 					node_ops: dir.fs.root(ent.inode)?,
-					file_ops: (),
+					file_ops: Box::new(TmpFSFile)?,
 					pages: Default::default(),
 				})
 			})
@@ -484,7 +484,15 @@ impl FilesystemOps for TmpFS {
 	}
 
 	fn root(&self) -> EResult<Arc<Node>> {
-		Ok(Box::new(self.nodes.lock().get_node(kernfs::ROOT_INODE)?.clone())? as _)
+		let node = self.nodes.lock().get_node(kernfs::ROOT_INODE)?.clone();
+		let node = Arc::new(Node {
+			inode: kernfs::ROOT_INODE,
+			fs: self,
+			node_ops: Box::new(node)?,
+			file_ops: Box::new(TmpFSFile)?,
+			pages: Default::default(),
+		})?;
+		Ok(node as _)
 	}
 
 	fn create_node(&self, stat: &Stat) -> EResult<Arc<Node>> {
@@ -494,12 +502,12 @@ impl FilesystemOps for TmpFS {
 		let mut nodes = self.nodes.lock();
 		let (inode, slot) = nodes.get_free_slot()?;
 		let node = TmpFSNode::new(stat, Some(inode), None)?;
-		*slot = Some(node);
+		*slot = Some(node.clone());
 		let node = Arc::new(Node {
 			inode,
 			fs: self,
-			node_ops: (),
-			file_ops: (),
+			node_ops: Box::new(node)?,
+			file_ops: Box::new(TmpFSFile)?,
 			pages: Default::default(),
 		})?;
 		Ok(node)
@@ -531,7 +539,7 @@ impl FilesystemType for TmpFsType {
 		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<Filesystem>> {
-		Ok(Filesystem::new(0, TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
+	) -> EResult<Box<dyn FilesystemOps>> {
+		Ok(Box::new(TmpFS::new(DEFAULT_MAX_SIZE, readonly)?)?)
 	}
 }

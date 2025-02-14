@@ -26,7 +26,7 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{Filesystem, FilesystemOps, FilesystemType, NodeOps};
+use super::{FilesystemOps, FilesystemType, NodeOps};
 use crate::{
 	device::DeviceIO,
 	file::{
@@ -290,7 +290,7 @@ impl FilesystemType for ProcFsType {
 		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
-	) -> EResult<Arc<Filesystem>> {
-		Ok(Filesystem::new(0, ProcFS)?)
+	) -> EResult<Box<dyn FilesystemOps>> {
+		Ok(Box::new(ProcFS)?)
 	}
 }

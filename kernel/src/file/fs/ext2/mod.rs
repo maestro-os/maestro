@@ -50,10 +50,7 @@ mod inode;
 use crate::{
 	device::DeviceIO,
 	file::{
-		fs::{
-			downcast_fs, FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, StatSet,
-			Statfs,
-		},
+		fs::{downcast_fs, FileOps, FilesystemOps, FilesystemType, NodeOps, StatSet, Statfs},
 		vfs,
 		vfs::node::Node,
 		DirEntry, File, FileType, INode, Stat,
@@ -392,7 +389,7 @@ impl NodeOps for Ext2NodeOps {
 		todo!()
 	}
 
-	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<()> {
+	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
 		todo!()
 	}
 }
@@ -1062,10 +1059,9 @@ impl FilesystemType for Ext2FsType {
 		io: Option<Arc<dyn DeviceIO>>,
 		mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<Filesystem>> {
+	) -> EResult<Box<dyn FilesystemOps>> {
 		let io = io.ok_or_else(|| errno!(ENODEV))?;
 		let superblock = Superblock::read(&*io)?;
-		let fs = Ext2Fs::new(superblock, io, mountpath, readonly)?;
-		Ok(Filesystem::new(fs)?)
+		Ok(Box::new(Ext2Fs::new(superblock, io, mountpath, readonly)?)?)
 	}
 }

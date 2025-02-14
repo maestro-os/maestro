@@ -353,7 +353,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		.lookup_entry(lookup_dir.node(), &mut ent)?;
 	if let Some(node) = ent.node.clone() {
 		// The entry exists: insert it in cache
-		node.fs.node_insert(node)?;
+		node.fs.node_insert(node.clone())?;
 		let ent = Arc::new(ent)?;
 		children.insert(EntryChild(ent.clone()))?;
 		Ok(Some(ent))

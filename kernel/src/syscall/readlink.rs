@@ -54,10 +54,7 @@ pub fn readlink(
 	}
 	// Read link
 	let mut buffer = vec![0; bufsiz]?;
-	let len = file
-		.node()
-		.node_ops
-		.read_content(&file.node().location, 0, &mut buffer)?;
+	let len = file.node().node_ops.readlink(&file.node(), &mut buffer)?;
 	buf.copy_to_user(0, &buffer)?;
 	Ok(len as _)
 }

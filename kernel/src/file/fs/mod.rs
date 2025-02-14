@@ -198,7 +198,10 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(EINVAL))
 	}
 
-	/// Reads the path the symbolic link points to and writes it into `buf`.
+	/// Reads the path the symbolic link points to and writes it into `buf`. If the actual path is
+	/// larger than the provided buffer, it is truncated.
+	///
+	/// On success, the function returns the number of bytes read.
 	///
 	/// If the node is not a symbolic link, the function returns [`errno::EINVAL`].
 	///
@@ -206,7 +209,7 @@ pub trait NodeOps: Any + Debug {
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<()> {
+	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
 		let _ = (node, buf);
 		Err(errno!(EINVAL))
 	}
@@ -267,8 +270,7 @@ pub trait FileOps: Any + Debug {
 	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
 	///   number of bytes to read
 	///
-	/// The function returns the number of bytes read and whether the *end-of-file* has been
-	/// reached.
+	/// On success, the function returns the number of bytes read.
 	///
 	/// The default implementation of this function returns an error.
 	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
@@ -283,6 +285,8 @@ pub trait FileOps: Any + Debug {
 	/// - `off` is the offset at which the data will be written in the node's data
 	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
 	///   number of bytes to write
+	///
+	/// On success, the function returns the number of bytes written.
 	///
 	/// The default implementation of this function returns an error.
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
@@ -346,10 +350,10 @@ impl Filesystem {
 	/// Arguments:
 	/// - `dev` is the device number
 	/// - `ops` is the handle for operations on the filesystem
-	pub fn new<F: FilesystemOps>(dev: u64, ops: F) -> AllocResult<Arc<Self>> {
+	pub fn new(dev: u64, ops: Box<dyn FilesystemOps>) -> AllocResult<Arc<Self>> {
 		Arc::new(Self {
 			dev,
-			ops: Box::new(ops)?,
+			ops,
 			node_cache: Default::default(),
 		})
 	}
@@ -404,7 +408,7 @@ pub trait FilesystemType {
 		io: Option<Arc<dyn DeviceIO>>,
 		mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<Filesystem>>;
+	) -> EResult<Box<dyn FilesystemOps>>;
 }
 
 /// The list of filesystem types.

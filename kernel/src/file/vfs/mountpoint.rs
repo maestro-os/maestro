@@ -163,7 +163,9 @@ fn get_fs(
 				Some(f) => f,
 				None => fs::detect(Arc::as_ref(dev.get_io()))?,
 			};
-			let fs = fs_type.load_filesystem(Some(dev.get_io().clone()), target_path, readonly)?;
+			let ops =
+				fs_type.load_filesystem(Some(dev.get_io().clone()), target_path, readonly)?;
+			let fs = Filesystem::new(dev_id.get_device_number(), ops)?;
 			// Insert new filesystem into filesystems list
 			filesystems.insert(*dev_id, fs.clone())?;
 			Ok(fs)
@@ -173,7 +175,9 @@ fn get_fs(
 				Some(f) => f,
 				None => fs::get_type(name).ok_or_else(|| errno!(ENODEV))?,
 			};
-			fs_type.load_filesystem(None, target_path, readonly)
+			let ops = fs_type.load_filesystem(None, target_path, readonly)?;
+			let fs = Filesystem::new(0, ops)?;
+			Ok(fs)
 		}
 	}
 }
