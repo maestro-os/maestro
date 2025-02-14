@@ -21,7 +21,7 @@
 use super::Args;
 use crate::{
 	arch::x86::idt::IntFrame,
-	file::{vfs, vfs::ResolutionSettings, File},
+	file::{vfs, vfs::ResolutionSettings, File, O_RDONLY},
 	process::{
 		exec,
 		exec::{exec, ExecInfo, ProgramImage},
@@ -82,20 +82,20 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 ) -> EResult<(Arc<vfs::Entry>, Vec<String>)> {
 	let mut shebangs: [ShebangBuffer; INTERP_MAX] = Default::default();
 	// Read and parse shebangs
-	let mut file = vfs::get_file_from_path(path, rs)?;
+	let mut ent = vfs::get_file_from_path(path, rs)?;
 	let mut i = 0;
 	loop {
 		// Check permission
-		let stat = file.stat()?;
-		if !rs.access_profile.can_execute_file(&stat) {
+		let stat = ent.stat()?;
+		if !rs.access_profile.can_read_file(&stat) || !rs.access_profile.can_execute_file(&stat) {
 			return Err(errno!(EACCES));
 		}
 		// Read file
 		let shebang = &mut shebangs[i];
-		let len = file
-			.node()
-			.node_ops
-			.read_content(&file.node().location, 0, &mut shebang.buf)?;
+		let len = {
+			let file = File::open_entry(ent, O_RDONLY)?;
+			file.ops.read(&file, 0, &mut shebang.buf)?
+		};
 		// Parse shebang
 		shebang.end = shebang.buf[..len]
 			.iter()
@@ -111,7 +111,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 			return Err(errno!(ELOOP));
 		}
 		// Read interpreter
-		file = vfs::get_file_from_path(interp_path, rs)?;
+		ent = vfs::get_file_from_path(interp_path, rs)?;
 	}
 	// Build arguments
 	let final_argv = shebangs[..i]
@@ -131,7 +131,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 		.chain(argv)
 		.collect::<EResult<CollectResult<Vec<String>>>>()?
 		.0?;
-	Ok((file, final_argv))
+	Ok((ent, final_argv))
 }
 
 pub fn execve(

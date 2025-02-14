@@ -21,7 +21,7 @@
 
 use crate::{
 	device, file,
-	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat},
+	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType, Stat, O_WRONLY},
 };
 use utils::{collections::path::Path, cpio::CPIOParser, errno, errno::EResult, ptr::arc::Arc};
 
@@ -103,14 +103,10 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			Err(e) if e.as_int() == errno::EEXIST => continue,
 			Err(e) => return Err(e),
 		};
-		match file.get_type()? {
-			FileType::Regular | FileType::Link => {
-				let content = entry.get_content();
-				file.node()
-					.node_ops
-					.write_content(&file.node().inner, 0, content)?;
-			}
-			_ => {}
+		if matches!(file.get_type()?, FileType::Regular | FileType::Link) {
+			let content = entry.get_content();
+			let file = File::open_entry(file, O_WRONLY)?;
+			file.ops.write(&file, 0, content)?;
 		}
 	}
 	Ok(())

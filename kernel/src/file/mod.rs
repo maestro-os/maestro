@@ -51,11 +51,11 @@ use core::{any::Any, fmt::Debug, ops::Deref};
 use perm::AccessProfile;
 use utils::{
 	boxed::Box,
-	collections::string::String,
+	collections::{string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	ptr::{arc::Arc, cow::Cow},
-	TryClone,
+	vec, TryClone,
 };
 use vfs::{mountpoint, mountpoint::MountSource};
 
@@ -404,6 +404,46 @@ impl File {
 	pub fn get_type(&self) -> EResult<FileType> {
 		let stat = self.stat()?;
 		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
+	}
+
+	/// Reads the content of the file into a buffer.
+	///
+	/// **Caution**: the function reads until EOF, meaning the caller should not call this function
+	/// on an infinite file.
+	pub fn read_all(&self) -> EResult<Vec<u8>> {
+		const INCREMENT: usize = 512;
+		let len: usize = self
+			.ops
+			.get_stat(self)?
+			.size
+			.try_into()
+			.map_err(|_| errno!(EOVERFLOW))?;
+		let len = len
+			.checked_add(INCREMENT)
+			.ok_or_else(|| errno!(EOVERFLOW))?;
+		// Add more space to allow check for EOF
+		let mut buf = vec![0u8; len]?;
+		let mut off = 0;
+		// Read until EOF
+		loop {
+			// If the size has been exceeded, resize the buffer
+			if off >= buf.len() {
+				let new_size = buf
+					.len()
+					.checked_add(INCREMENT)
+					.ok_or_else(|| errno!(EOVERFLOW))?;
+				buf.resize(new_size, 0)?;
+			}
+			let len = self.ops.read(self, off as _, &mut buf[off..])?;
+			// Reached EOF, stop here
+			if len == 0 {
+				break;
+			}
+			off += len;
+		}
+		// Adjust the size of the buffer
+		buf.truncate(off);
+		Ok(buf)
 	}
 
 	/// Closes the file, removing it the underlying node if no link remain and this was the last

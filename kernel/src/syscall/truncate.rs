@@ -19,7 +19,7 @@
 //! The `truncate` syscall allows to truncate a file.
 
 use crate::{
-	file::{vfs, vfs::ResolutionSettings},
+	file::{vfs, vfs::ResolutionSettings, File, O_WRONLY},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 };
@@ -31,21 +31,17 @@ use utils::{
 
 pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<usize> {
 	let proc = Process::current();
-
 	let rs = ResolutionSettings::for_process(&proc, true);
-
 	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
-
 	let file = vfs::get_file_from_path(&path, &rs)?;
 	// Permission check
 	let stat = file.stat()?;
 	if !rs.access_profile.can_write_file(&stat) {
 		return Err(errno!(EACCES));
 	}
-	file.node()
-		.node_ops
-		.truncate_content(&file.node().location, length as _)?;
-
+	// Truncate
+	let file = File::open_entry(file, O_WRONLY)?;
+	file.ops.truncate(&file, length as _)?;
 	Ok(0)
 }

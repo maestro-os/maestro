@@ -36,7 +36,7 @@ pub mod node;
 use super::{
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	FileType, Stat,
+	File, FileType, Stat, O_RDONLY,
 };
 use crate::{
 	file::vfs::mountpoint::MountPoint,
@@ -55,7 +55,6 @@ use utils::{
 		hashmap::HashSet,
 		path::{Component, Path, PathBuf},
 		string::String,
-		vec::Vec,
 	},
 	errno,
 	errno::EResult,
@@ -156,50 +155,6 @@ impl Entry {
 	#[inline]
 	pub fn get_type(&self) -> EResult<FileType> {
 		FileType::from_mode(self.stat()?.mode).ok_or_else(|| errno!(EUCLEAN))
-	}
-
-	/// Reads the whole content of the file into a buffer.
-	///
-	/// **Caution**: the function reads until EOF, meaning the caller should not call this function
-	/// on an infinite file.
-	pub fn read_all(&self) -> EResult<Vec<u8>> {
-		const INCREMENT: usize = 512;
-		let len: usize = self
-			.node()
-			.node_ops
-			.get_stat(self.node())?
-			.size
-			.try_into()
-			.map_err(|_| errno!(EOVERFLOW))?;
-		let len = len
-			.checked_add(INCREMENT)
-			.ok_or_else(|| errno!(EOVERFLOW))?;
-		// Add more space to allow check for EOF
-		let mut buf = vec![0u8; len]?;
-		let mut off = 0;
-		// Read until EOF
-		loop {
-			// If the size has been exceeded, resize the buffer
-			if off >= buf.len() {
-				let new_size = buf
-					.len()
-					.checked_add(INCREMENT)
-					.ok_or_else(|| errno!(EOVERFLOW))?;
-				buf.resize(new_size, 0)?;
-			}
-			let len =
-				self.node()
-					.node_ops
-					.read_content(&self.node(), off as _, &mut buf[off..])?;
-			// Reached EOF, stop here
-			if len == 0 {
-				break;
-			}
-			off += len;
-		}
-		// Adjust the size of the buffer
-		buf.truncate(off);
-		Ok(buf)
 	}
 
 	/// Returns the absolute path to reach the entry.
@@ -382,7 +337,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 ///
 /// Symbolic links are followed recursively, including the last element of the target path.
 fn resolve_link(
-	link: &Entry,
+	link: Arc<Entry>,
 	root: Arc<Entry>,
 	lookup_dir: Arc<Entry>,
 	access_profile: AccessProfile,
@@ -393,6 +348,7 @@ fn resolve_link(
 		return Err(errno!(ELOOP));
 	}
 	// Read link
+	let link = File::open_entry(link, O_RDONLY)?;
 	let link_path = PathBuf::try_from(String::from(link.read_all()?))?;
 	// Resolve link
 	let rs = ResolutionSettings {
@@ -455,7 +411,7 @@ fn resolve_path_impl<'p>(
 			FileType::Directory => lookup_dir = entry,
 			FileType::Link => {
 				lookup_dir = resolve_link(
-					&entry,
+					entry,
 					settings.root.clone(),
 					lookup_dir,
 					settings.access_profile,
@@ -503,7 +459,7 @@ fn resolve_path_impl<'p>(
 	// Resolve symbolic link if necessary
 	if settings.follow_link && entry.stat()?.get_type() == Some(FileType::Link) {
 		Ok(Resolved::Found(resolve_link(
-			&entry,
+			entry,
 			settings.root.clone(),
 			lookup_dir,
 			settings.access_profile,
