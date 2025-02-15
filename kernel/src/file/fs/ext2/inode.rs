@@ -24,7 +24,7 @@ use super::{
 };
 use crate::{
 	device::DeviceIO,
-	file::{DirEntry, FileType, INode, Mode},
+	file::{FileType, INode, Mode},
 };
 use core::{
 	cmp::{max, min},
@@ -33,7 +33,7 @@ use core::{
 	num::NonZeroU32,
 };
 use macros::AnyRepr;
-use utils::{bytes, errno, errno::EResult, math, ptr::cow::Cow, vec};
+use utils::{bytes, errno, errno::EResult, math, vec};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -434,7 +434,7 @@ impl Ext2INode {
 	/// - `io` is the I/O interface
 	///
 	/// If the block does not exist, the function returns `None`.
-	fn translate_blk_off(
+	pub fn translate_blk_off(
 		&self,
 		off: u32,
 		superblock: &Superblock,
@@ -781,65 +781,6 @@ impl Ext2INode {
 			off += ent.rec_len as u64;
 		}
 		Ok(None)
-	}
-
-	/// Returns the next used directory entry starting from the offset `off`.
-	///
-	/// Arguments:
-	/// - `off` is the offset of the entry to return
-	/// - `superblock` is the filesystem's superblock
-	/// - `io` is the I/O interface
-	///
-	/// On success, the function returns the entry and the offset to the next entry.
-	pub fn next_dirent(
-		&self,
-		mut off: u64,
-		superblock: &Superblock,
-		io: &dyn DeviceIO,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		if self.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// If the list is exhausted, stop
-		if off >= self.get_size(superblock) {
-			return Ok(None);
-		}
-		let blk_size = superblock.get_block_size();
-		let mut buf = vec![0; blk_size as _]?;
-		// If the offset is not at the beginning of a block, read it so that `next_dirent` works
-		// correctly
-		if off % blk_size as u64 != 0 {
-			let blk_off = off / blk_size as u64;
-			let res = self.translate_blk_off(blk_off as _, superblock, io);
-			let blk_off = match res {
-				Ok(Some(o)) => o,
-				// If reaching a zero block, stop
-				Ok(None) => return Ok(None),
-				// If reaching the block limit, stop
-				Err(e) if e.as_int() == errno::EOVERFLOW => return Ok(None),
-				Err(e) => return Err(e),
-			};
-			read_block(blk_off.get() as _, blk_size, io, &mut buf)?;
-		}
-		// Read the next entry, skipping free ones
-		let ent = loop {
-			// If no entry remain, stop
-			let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? else {
-				return Ok(None);
-			};
-			off += ent.rec_len as u64;
-			if !ent.is_free() {
-				break ent;
-			}
-		};
-		let entry_type = ent.get_type(superblock, io)?;
-		let name = ent.get_name(superblock).try_into()?;
-		let ent = DirEntry {
-			inode: ent.inode as _,
-			entry_type,
-			name: Cow::Owned(name),
-		};
-		Ok(Some((ent, off)))
 	}
 
 	/// Tells whether the current directory is empty.

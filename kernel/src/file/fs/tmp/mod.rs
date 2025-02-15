@@ -31,7 +31,7 @@ use crate::{
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		vfs,
 		vfs::node::Node,
-		DirEntry, File, FileType, INode, Mode, Stat,
+		DirContext, DirEntry, File, FileType, INode, Mode, Stat,
 	},
 	sync::mutex::Mutex,
 	time::unit::Timestamp,
@@ -49,7 +49,6 @@ use utils::{
 	errno::EResult,
 	limits::PAGE_SIZE,
 	ptr::{arc::Arc, cow::Cow},
-	TryClone,
 };
 
 // TODO count memory usage to enforce quota
@@ -59,11 +58,22 @@ const DEFAULT_MAX_SIZE: usize = 512 * 1024 * 1024;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
+/// TmpFS directory entries.
+#[derive(Debug)]
+struct Dirent {
+	/// The entry's inode
+	inode: INode,
+	/// Cached file type
+	entry_type: FileType,
+	/// The name of the entry
+	name: Cow<'static, [u8]>,
+}
+
 /// The content of a [`TmpFSNode`].
 #[derive(Debug)]
 enum NodeContent {
 	Regular(Vec<u8>),
-	Directory(Vec<DirEntry<'static>>),
+	Directory(Vec<Dirent>),
 	Link(Vec<u8>),
 	Fifo,
 	Socket,
@@ -163,14 +173,14 @@ impl TmpFSNode {
 			FileType::Directory => {
 				let mut entries = Vec::new();
 				if let Some(inode) = inode {
-					entries.push(DirEntry {
+					entries.push(Dirent {
 						inode,
 						entry_type: FileType::Directory,
 						name: Cow::Borrowed(b"."),
 					})?;
 				}
 				if let Some(parent_inode) = parent_inode {
-					entries.push(DirEntry {
+					entries.push(Dirent {
 						inode: parent_inode,
 						entry_type: FileType::Directory,
 						name: Cow::Borrowed(b".."),
@@ -241,6 +251,7 @@ impl NodeOps for TmpFSNode {
 	}
 
 	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+		let fs = downcast_fs::<TmpFS>(&*dir.fs.ops);
 		let inner = self.0.lock();
 		let NodeContent::Directory(entries) = &inner.content else {
 			return Err(errno!(ENOTDIR));
@@ -248,36 +259,20 @@ impl NodeOps for TmpFSNode {
 		ent.node = entries
 			.binary_search_by(|ent| ent.name.as_ref().cmp(&ent.name))
 			.ok()
-			.map(|inode| {
-				let ent = entries[inode].try_clone()?;
-				Arc::new(Node {
-					inode: inode as _,
+			.map(|inode| -> EResult<_> {
+				let ent = &entries[inode];
+				let node = fs.nodes.lock().get_node(ent.inode)?.clone();
+				let node = Arc::new(Node {
+					inode: ent.inode as _,
 					fs: dir.fs.clone(),
-					node_ops: dir.fs.root(ent.inode)?,
+					node_ops: Box::new(node)?,
 					file_ops: Box::new(TmpFSFile)?,
 					pages: Default::default(),
-				})
+				})?;
+				Ok(node)
 			})
 			.transpose()?;
 		Ok(())
-	}
-
-	fn next_entry(&self, _dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let inner = self.0.lock();
-		let NodeContent::Directory(entries) = &inner.content else {
-			return Err(errno!(ENOTDIR));
-		};
-		// Convert offset to `usize`
-		let res = off
-			.try_into()
-			.ok()
-			// Get entry
-			.and_then(|off: usize| entries.get(off))
-			.map(|ent| ent.try_clone())
-			.transpose()
-			// Add offset
-			.map(|ent| ent.map(|entry| (entry, off + 1)));
-		Ok(res?)
 	}
 
 	fn link(&self, parent: &Node, name: &[u8], inode: INode) -> EResult<()> {
@@ -294,7 +289,7 @@ impl NodeOps for TmpFSNode {
 			return Err(errno!(ENOTDIR));
 		};
 		// Insert the new entry
-		let ent = DirEntry {
+		let ent = Dirent {
 			inode,
 			entry_type: inner.get_type(),
 			name: Cow::Owned(name.try_into()?),
@@ -408,6 +403,27 @@ impl FileOps for TmpFSFile {
 			_ => return Err(errno!(EINVAL)),
 		};
 		content.truncate(size as _);
+		Ok(())
+	}
+
+	fn iter_entries(&self, dir: &File, ctx: &mut DirContext) -> EResult<()> {
+		let inner = file_to_node(dir).lock();
+		let NodeContent::Directory(entries) = &inner.content else {
+			return Err(errno!(ENOTDIR));
+		};
+		let off: usize = ctx.off.try_into().map_err(|_| errno!(EOVERFLOW))?;
+		let iter = entries.iter().skip(off);
+		for e in iter {
+			ctx.off += 1;
+			let ent = DirEntry {
+				inode: e.inode,
+				entry_type: e.entry_type,
+				name: &e.name,
+			};
+			if !(*ctx.write)(&ent)? {
+				break;
+			}
+		}
 		Ok(())
 	}
 }

@@ -26,7 +26,7 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{FilesystemOps, FilesystemType, NodeOps};
+use super::{FileOps, FilesystemOps, FilesystemType, NodeOps};
 use crate::{
 	device::DeviceIO,
 	file::{
@@ -41,7 +41,7 @@ use crate::{
 		perm::{Gid, Uid},
 		vfs,
 		vfs::node::Node,
-		DirEntry, FileType, Stat,
+		DirContext, DirEntry, File, FileType, Stat,
 	},
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
 };
@@ -53,12 +53,7 @@ use self_link::SelfNode;
 use sys_dir::OsRelease;
 use uptime::Uptime;
 use utils::{
-	boxed::Box,
-	collections::path::PathBuf,
-	errno,
-	errno::EResult,
-	format,
-	ptr::{arc::Arc, cow::Cow},
+	boxed::Box, collections::path::PathBuf, errno, errno::EResult, format, ptr::arc::Arc,
 };
 use version::Version;
 
@@ -151,7 +146,7 @@ impl NodeOps for RootDir {
 			.ok()
 			.and_then(|s| s.parse().ok());
 		let Some(pid) = pid else {
-			return Self::STATIC.entry_by_name_inner(ent);
+			return Self::STATIC.lookup_entry_inner(ent);
 		};
 		ent.node = Process::get_by_pid(pid)
 			.map(|_| {
@@ -205,33 +200,41 @@ impl NodeOps for RootDir {
 			.transpose()?;
 		Ok(())
 	}
+}
 
-	fn next_entry(&self, _node: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
-		// Iterate on processes
-		if off < Pid::MAX as usize {
-			// Find next process
-			let sched = SCHEDULER.lock();
-			// TODO start iterating at `off`
-			let pid = sched
-				.iter_process()
-				.map(|(pid, _)| pid)
-				.find(|pid| **pid >= off as Pid);
-			if let Some(pid) = pid {
-				return Ok(Some((
-					DirEntry {
-						inode: 0,
-						entry_type: FileType::Directory,
-						name: Cow::Owned(format!("{pid}")?),
-					},
-					*pid as u64 + 1,
-				)));
+impl FileOps for RootDir {
+	fn iter_entries(&self, _dir: &File, ctx: &mut DirContext) -> EResult<()> {
+		let off: usize = ctx.off.try_into().map_err(|_| errno!(EINVAL))?;
+		// Iterate on static entries
+		let static_iter = Self::STATIC.entries.iter().skip(off);
+		for e in static_iter {
+			let ent = DirEntry {
+				inode: 0,
+				entry_type: e.entry_type,
+				name: e.name,
+			};
+			ctx.off += 1;
+			if !(ctx.write)(&ent)? {
+				return Ok(());
 			}
 		}
-		// No process left, go to static entries
-		let off = off.saturating_sub(Pid::MAX as usize);
-		let ent = Self::STATIC.next_entry_inner(off as _)?;
-		Ok(ent.map(|(ent, next)| (ent, next + Pid::MAX as u64)))
+		// Iterate on processes
+		let off = ctx.off as usize - Self::STATIC.entries.len();
+		let sched = SCHEDULER.lock();
+		let proc_iter = sched.iter_process().skip(off);
+		for (pid, _) in proc_iter {
+			let name = format!("{pid}")?;
+			let ent = DirEntry {
+				inode: 0,
+				entry_type: FileType::Directory,
+				name: &name,
+			};
+			ctx.off += 1;
+			if !(ctx.write)(&ent)? {
+				return Ok(());
+			}
+		}
+		Ok(())
 	}
 }
 

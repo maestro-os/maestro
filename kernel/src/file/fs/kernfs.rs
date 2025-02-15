@@ -28,7 +28,7 @@ use crate::file::{
 	fs::{FileOps, NodeOps},
 	vfs,
 	vfs::node::Node,
-	DirEntry, File, FileType, INode, Stat,
+	DirContext, DirEntry, File, FileType, INode, Stat,
 };
 use core::{
 	cmp::min,
@@ -40,7 +40,7 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
-	ptr::{arc::Arc, cow::Cow},
+	ptr::arc::Arc,
 	vec, DisplayableStr,
 };
 
@@ -238,8 +238,7 @@ pub struct StaticDir<T: 'static + Clone + Debug = ()> {
 }
 
 impl<T: 'static + Clone + Debug> StaticDir<T> {
-	/// Inner implementation of [`Self::lookup_entry`].
-	pub fn entry_by_name_inner(&self, ent: &mut vfs::Entry) -> EResult<()> {
+	pub fn lookup_entry_inner(&self, ent: &mut vfs::Entry) -> EResult<()> {
 		ent.node = self
 			.entries
 			.binary_search_by(|e| e.name.cmp(&ent.name))
@@ -248,7 +247,7 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 				let e = &self.entries[index];
 				Arc::new(Node {
 					inode: 0,
-					fs: Arc {},
+					fs: self,
 					node_ops: (),
 					file_ops: (e.init)(self.data.clone())?,
 					pages: Default::default(),
@@ -256,22 +255,6 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 			})
 			.transpose()?;
 		Ok(())
-	}
-
-	/// Inner implementation of [`Self::next_entry`].
-	pub fn next_entry_inner(&self, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
-		let Some(e) = self.entries.get(off) else {
-			return Ok(None);
-		};
-		Ok(Some((
-			DirEntry {
-				inode: 0,
-				entry_type: e.entry_type,
-				name: Cow::Borrowed(e.name),
-			},
-			(off + 1) as _,
-		)))
 	}
 }
 
@@ -284,15 +267,27 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 	}
 
 	fn lookup_entry(&self, _dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
-		self.entry_by_name_inner(ent)
-	}
-
-	fn next_entry(&self, _dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		self.next_entry_inner(off)
+		self.lookup_entry_inner(ent)
 	}
 }
 
-impl<T: 'static + Clone + Debug> FileOps for StaticDir<T> {}
+impl<T: 'static + Clone + Debug> FileOps for StaticDir<T> {
+	fn iter_entries(&self, _dir: &File, ctx: &mut DirContext) -> EResult<()> {
+		let iter = self.entries.iter().skip(ctx.off as usize);
+		for e in iter {
+			let ent = DirEntry {
+				inode: 0,
+				entry_type: e.entry_type,
+				name: e.name,
+			};
+			ctx.off += 1;
+			if !(ctx.write)(&ent)? {
+				break;
+			}
+		}
+		Ok(())
+	}
+}
 
 #[cfg(test)]
 mod test {

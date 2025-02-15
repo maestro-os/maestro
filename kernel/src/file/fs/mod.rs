@@ -27,7 +27,7 @@ pub mod tmp;
 
 use super::{
 	perm::{Gid, Uid},
-	vfs, DirEntry, File, INode, Mode, Stat,
+	vfs, DirContext, File, INode, Mode, Stat,
 };
 use crate::{
 	device::DeviceIO, file::vfs::node::Node, sync::mutex::Mutex, syscall::ioctl,
@@ -128,21 +128,6 @@ pub trait NodeOps: Any + Debug {
 	/// The default implementation of this function returns an error.
 	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let _ = (dir, ent);
-		Err(errno!(ENOTDIR))
-	}
-
-	/// Returns the directory entry in `dir` at the given offset `off`. The first entry is always
-	/// located at offset `0`.
-	///
-	/// The second returned value is the offset to the next entry.
-	///
-	/// If no entry is left, the function returns `None`.
-	///
-	/// If the node is not a directory, the function returns [`ENOTDIR`].
-	///
-	/// The default implementation of this function returns an error.
-	fn next_entry(&self, dir: &Node, off: u64) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let _ = (dir, off);
 		Err(errno!(ENOTDIR))
 	}
 
@@ -320,6 +305,16 @@ pub trait FileOps: Any + Debug {
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
 		let _ = (file, size);
 		Err(errno!(EINVAL))
+	}
+
+	/// Iterates on the entries of the directory `dir`.
+	///
+	/// If the node is not a directory, the function returns [`ENOTDIR`].
+	///
+	/// The default implementation of this function returns an error.
+	fn iter_entries(&self, dir: &File, ctx: &mut DirContext) -> EResult<()> {
+		let _ = (dir, ctx);
+		Err(errno!(ENOTDIR))
 	}
 }
 

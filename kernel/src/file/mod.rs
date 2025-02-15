@@ -52,9 +52,9 @@ use perm::AccessProfile;
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
-	errno::{AllocResult, EResult},
-	ptr::{arc::Arc, cow::Cow},
-	vec, TryClone,
+	errno::EResult,
+	ptr::arc::Arc,
+	vec,
 };
 use vfs::{mountpoint, mountpoint::MountSource};
 
@@ -219,17 +219,15 @@ pub struct DirEntry<'name> {
 	/// The entry's type.
 	pub entry_type: FileType,
 	/// The name of the entry.
-	pub name: Cow<'name, [u8]>,
+	pub name: &'name [u8],
 }
 
-impl TryClone for DirEntry<'_> {
-	fn try_clone(&self) -> AllocResult<Self> {
-		Ok(Self {
-			inode: self.inode,
-			entry_type: self.entry_type,
-			name: self.name.try_clone()?,
-		})
-	}
+/// Directory entries iteration context.
+pub struct DirContext<'f> {
+	/// Function to write the next entry. If returning `false`, the iteration stops
+	pub write: &'f mut dyn FnMut(&DirEntry) -> EResult<bool>,
+	/// Current iteration offset
+	pub off: u64,
 }
 
 /// File status information.
