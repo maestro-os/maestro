@@ -47,7 +47,6 @@ use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
 	intrinsics::unlikely,
-	ptr,
 };
 use node::Node;
 use utils::{
@@ -604,8 +603,7 @@ pub fn link(
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	// Check the target and source are both on the same filesystem
-	if !ptr::eq(parent.node().fs.as_ref(), target.node().fs.as_ref()) {
+	if !parent.node().is_same_fs(target.node()) {
 		return Err(errno!(EXDEV));
 	}
 	// Add link to the filesystem
@@ -720,5 +718,72 @@ pub fn symlink(
 		node: Some(node),
 	})?;
 	parent.children.lock().insert(EntryChild(ent))?;
+	Ok(())
+}
+
+/// Moves a file `old` to the directory `new_parent`, **on the same filesystem**.
+///
+/// If `old` is a directory, the destination shall not exist or be an empty directory.
+///
+/// Arguments:
+/// - `old` is the file to move
+/// - `new_parent` is the new parent directory for the file
+/// - `new_name` is new name of the file
+/// - `ap` is the access profile to check permissions
+///
+/// TODO: detail errors
+///
+/// Other errors can be returned depending on the underlying filesystem.
+pub fn rename(
+	old: Arc<Entry>,
+	new_parent: Arc<Entry>,
+	new_name: &[u8],
+	ap: &AccessProfile,
+) -> EResult<()> {
+	// If `old` has no parent, it's the root, so it's a mountpoint
+	let old_parent = old.parent.as_ref().ok_or_else(|| errno!(EBUSY))?;
+	// Validation
+	if !new_parent.node().is_same_fs(old.node()) {
+		return Err(errno!(EXDEV));
+	}
+	if old.as_mountpoint().is_some() {
+		return Err(errno!(EBUSY));
+	}
+	// Check permissions on `old`
+	let old_parent_stat = old_parent.stat()?;
+	if !ap.can_write_directory(&old_parent_stat) {
+		return Err(errno!(EACCES));
+	}
+	let old_stat = old.stat()?;
+	if old_stat.mode & S_ISVTX != 0 && ap.euid != old_stat.uid && ap.euid != old_parent_stat.uid {
+		return Err(errno!(EACCES));
+	}
+	// Get new from cache
+	let new_children = new_parent.children.lock();
+	let new = new_children.get(new_name).map(|e| e.0);
+	let new = match new {
+		Some(e) => e,
+		None => {
+			// TODO load from filesystem
+			todo!()
+		}
+	};
+	if new.as_mountpoint().is_some() {
+		return Err(errno!(EBUSY));
+	}
+	// Check permissions on `new`
+	let new_parent_stat = new_parent.stat()?;
+	if !ap.can_write_directory(&new_parent_stat) {
+		return Err(errno!(EACCES));
+	}
+	let new_stat = new.stat()?;
+	if new_stat.mode & S_ISVTX != 0 && ap.euid != new_stat.uid && ap.euid != new_parent_stat.uid {
+		return Err(errno!(EACCES));
+	}
+	// Perform rename
+	let old_node = old.node();
+	old_node.node_ops.rename(old_node, new_parent, new_name)?;
+	// Update cache
+	// TODO
 	Ok(())
 }

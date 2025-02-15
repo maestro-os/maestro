@@ -44,8 +44,6 @@ const RENAME_NOREPLACE: c_int = 1;
 const RENAME_EXCHANGE: c_int = 2;
 
 // TODO implement flags
-// TODO do not allow rename if the file is in use (example: cwd of a process, listing subfiles,
-// etc...)
 
 pub(super) fn do_renameat2(
 	olddirfd: c_int,
@@ -65,9 +63,6 @@ pub(super) fn do_renameat2(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.ok_or_else(|| errno!(EFAULT))??;
-	let old_parent_path = oldpath.parent().ok_or_else(|| errno!(ENOTDIR))?;
-	let old_name = oldpath.file_name().ok_or_else(|| errno!(ENOENT))?;
-	let old_parent = vfs::get_file_from_path(old_parent_path, &rs)?;
 	let Resolved::Found(old) = at::get_file(&fds.lock(), rs.clone(), olddirfd, Some(&oldpath), 0)?
 	else {
 		return Err(errno!(ENOENT));
@@ -81,7 +76,6 @@ pub(super) fn do_renameat2(
 		create: true,
 		..rs
 	};
-	// TODO RENAME_NOREPLACE
 	let Resolved::Creatable {
 		parent: new_parent,
 		name: new_name,
@@ -89,21 +83,7 @@ pub(super) fn do_renameat2(
 	else {
 		return Err(errno!(EEXIST));
 	};
-	// Create destination file
-	{
-		// If source and destination are on different filesystems, error
-		if !ptr::eq(new_parent.node().fs.as_ref(), old.node().fs.as_ref()) {
-			return Err(errno!(EXDEV));
-		}
-		// TODO Check permissions if sticky bit is set
-		// Create link at new location
-		// The `..` entry is already updated by the file system since having the same
-		// directory in several locations is not allowed
-		vfs::link(&new_parent, new_name, &old, &rs.access_profile)?;
-	}
-	// Remove source file
-	// TODO on failure, undo previous creation
-	vfs::unlink(&old_parent, old_name, &rs.access_profile)?;
+	vfs::rename(old, new_parent, new_name, &rs.access_profile)?;
 	Ok(0)
 }
 

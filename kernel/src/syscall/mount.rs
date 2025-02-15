@@ -58,13 +58,13 @@ pub fn mount(
 	let filesystemtype_slice = filesystemtype.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let fs_type = fs::get_type(&filesystemtype_slice).ok_or(errno!(ENODEV))?;
 	// Get target file
-	let target_file = vfs::get_file_from_path(&target_path, &rs)?;
+	let target = vfs::get_file_from_path(&target_path, &rs)?;
 	// Check the target is a directory
-	if target_file.get_type()? != FileType::Directory {
+	if target.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	// TODO Use `data`
 	// Create mountpoint
-	mountpoint::create(mount_source, Some(fs_type), mountflags as _, target_file)?;
+	mountpoint::create(mount_source, Some(fs_type), mountflags as _, target)?;
 	Ok(0)
 }

@@ -213,6 +213,23 @@ pub trait NodeOps: Any + Debug {
 		let _ = (node, buf);
 		Err(errno!(EINVAL))
 	}
+
+	/// Renames or moves a file on the filesystem.
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
+	///
+	/// The default implementation of this function returns an error.
+	fn rename(
+		&self,
+		old_parent: &Node,
+		old_name: &[u8],
+		new_parent: &Node,
+		new_name: &[u8],
+	) -> EResult<()> {
+		let _ = (old_parent, old_name, new_parent, new_name);
+		Err(errno!(EINVAL))
+	}
 }
 
 /// Open file operations.

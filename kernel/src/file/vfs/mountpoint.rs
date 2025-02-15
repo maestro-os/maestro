@@ -89,8 +89,8 @@ impl MountSource {
 		let path = Path::new(string)?;
 		let result = vfs::get_file_from_path(path, &ResolutionSettings::kernel_follow());
 		match result {
-			Ok(file) => {
-				let stat = file.stat()?;
+			Ok(ent) => {
+				let stat = ent.stat()?;
 				match stat.get_type() {
 					Some(FileType::BlockDevice) => Ok(Self::Device(DeviceID {
 						dev_type: DeviceType::Block,

@@ -34,14 +34,14 @@ pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<u
 	let rs = ResolutionSettings::for_process(&proc, true);
 	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
-	let file = vfs::get_file_from_path(&path, &rs)?;
+	let ent = vfs::get_file_from_path(&path, &rs)?;
 	// Permission check
-	let stat = file.stat()?;
+	let stat = ent.stat()?;
 	if !rs.access_profile.can_write_file(&stat) {
 		return Err(errno!(EACCES));
 	}
 	// Truncate
-	let file = File::open_entry(file, O_WRONLY)?;
+	let file = File::open_entry(ent, O_WRONLY)?;
 	file.ops.truncate(&file, length as _)?;
 	Ok(0)
 }

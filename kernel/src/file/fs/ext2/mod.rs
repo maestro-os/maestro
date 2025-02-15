@@ -392,6 +392,16 @@ impl NodeOps for Ext2NodeOps {
 	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
 		todo!()
 	}
+
+	fn rename(
+		&self,
+		old_parent: &Node,
+		old_name: &[u8],
+		new_parent: &Node,
+		new_name: &[u8],
+	) -> EResult<()> {
+		todo!()
+	}
 }
 
 /// Open file operations.

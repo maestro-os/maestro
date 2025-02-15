@@ -26,6 +26,7 @@ use crate::{
 	memory::buddy::PageState,
 	sync::mutex::Mutex,
 };
+use core::ptr;
 use utils::{boxed::Box, collections::vec::Vec, errno::EResult, ptr::arc::Arc};
 
 /// A filesystem node, cached by the VFS.
@@ -47,6 +48,11 @@ pub struct Node {
 }
 
 impl Node {
+	/// Tells whether the current node and `other` are on the same filesystem.
+	pub fn is_same_fs(&self, other: &Self) -> bool {
+		ptr::eq(self.fs.as_ref(), other.fs.as_ref())
+	}
+
 	/// Releases the node, removing it from the disk if this is the last reference to it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
 		{

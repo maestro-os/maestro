@@ -48,8 +48,8 @@ fn update_parent<'p>(
 		None => vfs::get_file_from_path(new, &ResolutionSettings::kernel_nofollow()),
 	};
 	match result {
-		Ok(file) => {
-			*parent = (new, file);
+		Ok(ent) => {
+			*parent = (new, ent);
 			Ok(())
 		}
 		// If the directory does not exist, create recursively
