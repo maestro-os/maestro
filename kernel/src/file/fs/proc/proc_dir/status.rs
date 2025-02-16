@@ -32,13 +32,7 @@ use utils::{errno, errno::EResult};
 
 /// The `status` node of the proc.
 #[derive(Debug)]
-pub struct Status(Pid);
-
-impl From<Pid> for Status {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
+pub struct Status(pub Pid);
 
 impl FileOps for Status {
 	fn get_stat(&self, _file: &File) -> EResult<Stat> {

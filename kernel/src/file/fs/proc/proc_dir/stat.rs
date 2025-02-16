@@ -33,13 +33,7 @@ use utils::{errno, errno::EResult};
 
 /// The `stat` node of the proc.
 #[derive(Debug)]
-pub struct StatNode(Pid);
-
-impl From<Pid> for StatNode {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
+pub struct StatNode(pub Pid);
 
 impl FileOps for StatNode {
 	fn get_stat(&self, _file: &File) -> EResult<Stat> {

@@ -291,9 +291,8 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		.node()
 		.node_ops
 		.lookup_entry(lookup_dir.node(), &mut ent)?;
-	if let Some(node) = ent.node.clone() {
+	if ent.node.is_some() {
 		// The entry exists: insert it in cache
-		node.fs.node_insert(node.clone())?;
 		let ent = Arc::new(ent)?;
 		children.insert(EntryChild(ent.clone()))?;
 		Ok(Some(ent))
@@ -529,7 +528,10 @@ pub fn create_file(
 	};
 	// Add file to filesystem
 	let parent_node = parent.node();
-	let node = parent_node.fs.ops.create_node(&stat)?;
+	let node = parent_node
+		.fs
+		.ops
+		.create_node(parent_node.fs.clone(), &stat)?;
 	parent_node.fs.node_insert(node.clone())?;
 	parent_node.node_ops.link(parent_node, name, node.inode)?;
 	// Create entry and insert it in parent
@@ -687,7 +689,6 @@ pub fn symlink(
 	let parent_node = parent.node();
 	let node = parent_node.node_ops.symlink(parent_node, target)?;
 	// Add link to the cache
-	parent_node.fs.node_insert(node.clone())?;
 	let ent = Arc::new(Entry {
 		name: String::try_from(name)?,
 		parent: Some(parent.clone()),

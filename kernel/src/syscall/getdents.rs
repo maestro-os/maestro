@@ -80,11 +80,16 @@ fn do_getdents<F: FnMut(&DirEntry) -> EResult<bool>>(
 		return Err(errno!(EBADF));
 	}
 	let file = fds.lock().get_fd(fd as _)?.get_file().clone();
+	if file.stat()?.get_type() != Some(FileType::Directory) {
+		return Err(errno!(ENOTDIR));
+	}
 	let mut ctx = DirContext {
 		write: &mut write,
 		off: file.off.load(atomic::Ordering::Acquire),
 	};
-	file.ops.iter_entries(&file, &mut ctx)?;
+	// cannot fail since we know this is a directory
+	let node = file.node().unwrap();
+	node.node_ops.iter_entries(node, &mut ctx)?;
 	file.off.store(ctx.off, atomic::Ordering::Release);
 	Ok(())
 }

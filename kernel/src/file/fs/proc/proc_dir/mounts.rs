@@ -33,13 +33,7 @@ use utils::{errno::EResult, DisplayableStr};
 
 /// The `mounts` node.
 #[derive(Debug)]
-pub struct Mounts(Pid);
-
-impl From<Pid> for Mounts {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
+pub struct Mounts(pub Pid);
 
 impl FileOps for Mounts {
 	fn get_stat(&self, _file: &File) -> EResult<Stat> {

@@ -51,8 +51,8 @@ use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{
-			downcast_fs, ext2::dirent::Dirent, FileOps, FilesystemOps, FilesystemType, NodeOps,
-			StatSet, Statfs,
+			downcast_fs, ext2::dirent::Dirent, FileOps, Filesystem, FilesystemOps, FilesystemType,
+			NodeOps, StatSet, Statfs,
 		},
 		vfs,
 		vfs::node::Node,
@@ -307,6 +307,58 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
+	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
+		let superblock = fs.superblock.lock();
+		let inode = Ext2INode::read(dir.inode as _, &superblock, &*fs.io)?;
+		if inode.get_type() != FileType::Directory {
+			return Err(errno!(ENOTDIR));
+		}
+		// Iterate on entries
+		let blk_size = superblock.get_block_size();
+		let mut buf = vec![0; blk_size as _]?;
+		'outer: while ctx.off < inode.get_size(&superblock) {
+			// Read content block
+			let blk_off = ctx.off / blk_size as u64;
+			let res = inode.translate_blk_off(blk_off as _, &superblock, &*fs.io);
+			let blk_off = match res {
+				Ok(Some(o)) => o,
+				// If reaching a zero block, stop
+				Ok(None) => break,
+				// If reaching the block limit, stop
+				Err(e) if e.as_int() == errno::EOVERFLOW => break,
+				Err(e) => return Err(e),
+			};
+			read_block(blk_off.get() as _, blk_size, &*fs.io, &mut buf)?;
+			// Read the next entry in the current block, skipping free ones
+			let ent = loop {
+				// Read entry
+				let inner_off = (ctx.off % blk_size as u64) as usize;
+				let ent = Dirent::from_slice(&mut buf[inner_off..], &superblock)?;
+				// Update offset
+				let prev_off = ctx.off;
+				ctx.off += ent.rec_len as u64;
+				// If not free, use this entry
+				if !ent.is_free() {
+					break ent;
+				}
+				// If the next entry is on another block, read next block
+				if (prev_off / blk_size as u64) != (ctx.off / blk_size as u64) {
+					continue 'outer;
+				}
+			};
+			let ent = DirEntry {
+				inode: ent.inode as _,
+				entry_type: ent.get_type(&superblock, &*fs.io)?,
+				name: ent.get_name(&superblock),
+			};
+			if !(ctx.write)(&ent)? {
+				break;
+			}
+		}
+		Ok(())
+	}
+
 	fn link(&self, parent: &Node, name: &[u8], target: INode) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
@@ -449,59 +501,6 @@ impl FileOps for Ext2FileOps {
 		}
 		inode_.write(node.inode as _, &superblock, &*fs.io)?;
 		superblock.write(&*fs.io)?;
-		Ok(())
-	}
-
-	fn iter_entries(&self, dir: &File, ctx: &mut DirContext) -> EResult<()> {
-		let node = dir.node().unwrap();
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let superblock = fs.superblock.lock();
-		let inode = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
-		if inode.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// Iterate on entries
-		let blk_size = superblock.get_block_size();
-		let mut buf = vec![0; blk_size as _]?;
-		'outer: while ctx.off < inode.get_size(&superblock) {
-			// Read content block
-			let blk_off = ctx.off / blk_size as u64;
-			let res = inode.translate_blk_off(blk_off as _, &superblock, &*fs.io);
-			let blk_off = match res {
-				Ok(Some(o)) => o,
-				// If reaching a zero block, stop
-				Ok(None) => break,
-				// If reaching the block limit, stop
-				Err(e) if e.as_int() == errno::EOVERFLOW => break,
-				Err(e) => return Err(e),
-			};
-			read_block(blk_off.get() as _, blk_size, &*fs.io, &mut buf)?;
-			// Read the next entry in the current block, skipping free ones
-			let ent = loop {
-				// Read entry
-				let inner_off = (ctx.off % blk_size as u64) as usize;
-				let ent = Dirent::from_slice(&mut buf[inner_off..], &superblock)?;
-				// Update offset
-				let prev_off = ctx.off;
-				ctx.off += ent.rec_len as u64;
-				// If not free, use this entry
-				if !ent.is_free() {
-					break ent;
-				}
-				// If the next entry is on another block, read next block
-				if (prev_off / blk_size as u64) != (ctx.off / blk_size as u64) {
-					continue 'outer;
-				}
-			};
-			let ent = DirEntry {
-				inode: ent.inode as _,
-				entry_type: ent.get_type(&superblock, &*fs.io)?,
-				name: ent.get_name(&superblock),
-			};
-			if !(ctx.write)(&ent)? {
-				break;
-			}
-		}
 		Ok(())
 	}
 }
@@ -1009,20 +1008,16 @@ impl FilesystemOps for Ext2Fs {
 		})
 	}
 
-	fn root(&self) -> EResult<Arc<Node>> {
-		let superblock = self.superblock.lock();
-		// Check the inode exists
-		Ext2INode::read(inode::ROOT_DIRECTORY_INODE as _, &superblock, &*self.io)?;
-		Ok(Arc::new(Node {
-			inode: 0,
-			fs: self,
-			node_ops: Box::new(Ext2NodeOps)?,
-			file_ops: Box::new(Ext2FileOps)?,
-			pages: Default::default(),
-		})?)
+	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
+		Filesystem::node_get_or_insert(fs, inode::ROOT_DIRECTORY_INODE as _, || {
+			let superblock = self.superblock.lock();
+			// Check the inode exists
+			Ext2INode::read(inode::ROOT_DIRECTORY_INODE as _, &superblock, &*self.io)?;
+			Ok((Box::new(Ext2NodeOps)?, Box::new(Ext2FileOps)?))
+		})
 	}
 
-	fn create_node(&self, stat: &Stat) -> EResult<Arc<Node>> {
+	fn create_node(&self, fs: Arc<Filesystem>, stat: &Stat) -> EResult<Arc<Node>> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -1061,11 +1056,12 @@ impl FilesystemOps for Ext2Fs {
 		superblock.write(&*self.io)?;
 		let node = Arc::new(Node {
 			inode: inode_index as _,
-			fs: self,
+			fs,
 			node_ops: Box::new(Ext2NodeOps)?,
 			file_ops: Box::new(Ext2FileOps)?,
 			pages: Default::default(),
 		})?;
+		node.fs.node_insert(node.clone())?;
 		Ok(node)
 	}
 

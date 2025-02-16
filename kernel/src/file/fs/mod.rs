@@ -131,6 +131,16 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(ENOTDIR))
 	}
 
+	/// Iterates on the entries of the directory `dir`.
+	///
+	/// If the node is not a directory, the function returns [`ENOTDIR`].
+	///
+	/// The default implementation of this function returns an error.
+	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+		let _ = (dir, ctx);
+		Err(errno!(ENOTDIR))
+	}
+
 	/// Adds a hard link into the directory.
 	///
 	/// Arguments:
@@ -306,17 +316,14 @@ pub trait FileOps: Any + Debug {
 		let _ = (file, size);
 		Err(errno!(EINVAL))
 	}
-
-	/// Iterates on the entries of the directory `dir`.
-	///
-	/// If the node is not a directory, the function returns [`ENOTDIR`].
-	///
-	/// The default implementation of this function returns an error.
-	fn iter_entries(&self, dir: &File, ctx: &mut DirContext) -> EResult<()> {
-		let _ = (dir, ctx);
-		Err(errno!(ENOTDIR))
-	}
 }
+
+#[derive(Debug)]
+struct DummyOps;
+
+impl NodeOps for DummyOps {}
+
+impl FileOps for DummyOps {}
 
 /// Filesystem operations.
 pub trait FilesystemOps: Any + Debug {
@@ -328,10 +335,10 @@ pub trait FilesystemOps: Any + Debug {
 	/// Returns the root node.
 	///
 	/// If the node does not exist, the function returns [`errno::ENOENT`].
-	fn root(&self) -> EResult<Arc<Node>>;
+	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>>;
 
 	/// Creates a node on the filesystem.
-	fn create_node(&self, stat: &Stat) -> EResult<Arc<Node>>;
+	fn create_node(&self, fs: Arc<Filesystem>, stat: &Stat) -> EResult<Arc<Node>>;
 	/// Removes `node` from the filesystem.
 	///
 	/// This function should be called only when no link to the node remain.
@@ -371,18 +378,42 @@ impl Filesystem {
 	}
 
 	/// Looks for the node with ID `inode` in cache.
-	pub(crate) fn node_lookup(&self, inode: INode) -> Option<Arc<Node>> {
+	pub fn node_lookup(&self, inode: INode) -> Option<Arc<Node>> {
 		self.node_cache.lock().get(&inode).cloned()
 	}
 
+	/// Get the node with the ID `inode` from cache. If not present, initialize it with `init`.
+	pub fn node_get_or_insert<Init: FnOnce() -> EResult<(Box<dyn NodeOps>, Box<dyn FileOps>)>>(
+		this: Arc<Self>,
+		inode: INode,
+		init: Init,
+	) -> EResult<Arc<Node>> {
+		let mut cache = this.node_cache.lock();
+		// If then node is in cache, return it
+		if let Some(node) = cache.get(&inode) {
+			return Ok(node.clone());
+		}
+		// The node is not in cache, initialize and insert it
+		let (node_ops, file_ops) = init()?;
+		let node = Arc::new(Node {
+			inode,
+			fs: this.clone(),
+			node_ops,
+			file_ops,
+			pages: Default::default(),
+		})?;
+		cache.insert(node.inode, node.clone())?;
+		Ok(node)
+	}
+
 	/// Inserts the node in cache.
-	pub(crate) fn node_insert(&self, node: Arc<Node>) -> AllocResult<()> {
+	pub fn node_insert(&self, node: Arc<Node>) -> AllocResult<()> {
 		self.node_cache.lock().insert(node.inode, node)?;
 		Ok(())
 	}
 
 	/// Removes the node from the cache.
-	pub(crate) fn node_remove(&self, inode: INode) -> EResult<()> {
+	pub fn node_remove(&self, inode: INode) -> EResult<()> {
 		let mut cache = self.node_cache.lock();
 		// If the node is not in cache, stop
 		let Some(node) = cache.get(&inode) else {

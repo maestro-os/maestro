@@ -25,8 +25,8 @@ use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{
-			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, FilesystemOps, FilesystemType,
-			NodeOps, StatSet, Statfs,
+			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemOps,
+			FilesystemType, NodeOps, StatSet, Statfs,
 		},
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		vfs,
@@ -275,6 +275,27 @@ impl NodeOps for TmpFSNode {
 		Ok(())
 	}
 
+	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+		let inner = file_to_node(dir).lock();
+		let NodeContent::Directory(entries) = &inner.content else {
+			return Err(errno!(ENOTDIR));
+		};
+		let off: usize = ctx.off.try_into().map_err(|_| errno!(EOVERFLOW))?;
+		let iter = entries.iter().skip(off);
+		for e in iter {
+			ctx.off += 1;
+			let ent = DirEntry {
+				inode: e.inode,
+				entry_type: e.entry_type,
+				name: &e.name,
+			};
+			if !(*ctx.write)(&ent)? {
+				break;
+			}
+		}
+		Ok(())
+	}
+
 	fn link(&self, parent: &Node, name: &[u8], inode: INode) -> EResult<()> {
 		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
@@ -405,27 +426,6 @@ impl FileOps for TmpFSFile {
 		content.truncate(size as _);
 		Ok(())
 	}
-
-	fn iter_entries(&self, dir: &File, ctx: &mut DirContext) -> EResult<()> {
-		let inner = file_to_node(dir).lock();
-		let NodeContent::Directory(entries) = &inner.content else {
-			return Err(errno!(ENOTDIR));
-		};
-		let off: usize = ctx.off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let iter = entries.iter().skip(off);
-		for e in iter {
-			ctx.off += 1;
-			let ent = DirEntry {
-				inode: e.inode,
-				entry_type: e.entry_type,
-				name: &e.name,
-			};
-			if !(*ctx.write)(&ent)? {
-				break;
-			}
-		}
-		Ok(())
-	}
 }
 
 /// A temporary file system.
@@ -499,19 +499,18 @@ impl FilesystemOps for TmpFS {
 		})
 	}
 
-	fn root(&self) -> EResult<Arc<Node>> {
+	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
 		let node = self.nodes.lock().get_node(kernfs::ROOT_INODE)?.clone();
-		let node = Arc::new(Node {
-			inode: kernfs::ROOT_INODE,
-			fs: self,
+		Ok(Arc::new(Node {
+			inode: 0,
+			fs,
 			node_ops: Box::new(node)?,
 			file_ops: Box::new(TmpFSFile)?,
 			pages: Default::default(),
-		})?;
-		Ok(node as _)
+		})?)
 	}
 
-	fn create_node(&self, stat: &Stat) -> EResult<Arc<Node>> {
+	fn create_node(&self, fs: Arc<Filesystem>, stat: &Stat) -> EResult<Arc<Node>> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -521,7 +520,7 @@ impl FilesystemOps for TmpFS {
 		*slot = Some(node.clone());
 		let node = Arc::new(Node {
 			inode,
-			fs: self,
+			fs,
 			node_ops: Box::new(node)?,
 			file_ops: Box::new(TmpFSFile)?,
 			pages: Default::default(),

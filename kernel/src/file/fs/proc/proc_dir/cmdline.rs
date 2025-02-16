@@ -33,13 +33,7 @@ use utils::{errno, errno::EResult};
 
 /// The cmdline node of the proc.
 #[derive(Clone, Debug)]
-pub struct Cmdline(Pid);
-
-impl From<Pid> for Cmdline {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
+pub struct Cmdline(pub Pid);
 
 impl FileOps for Cmdline {
 	fn get_stat(&self, _file: &File) -> EResult<Stat> {

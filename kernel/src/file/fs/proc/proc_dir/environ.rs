@@ -34,13 +34,7 @@ use utils::{errno, errno::EResult};
 
 /// The `environ` node of the proc.
 #[derive(Clone, Debug)]
-pub struct Environ(Pid);
-
-impl From<Pid> for Environ {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
+pub struct Environ(pub Pid);
 
 impl FileOps for Environ {
 	fn get_stat(&self, _file: &File) -> EResult<Stat> {

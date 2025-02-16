@@ -26,22 +26,19 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{FileOps, FilesystemOps, FilesystemType, NodeOps};
+use super::{DummyOps, Filesystem, FilesystemOps, FilesystemType, NodeOps};
 use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{
-			kernfs::{
-				box_wrap, entry_init_default, entry_init_from, StaticDir, StaticEntryBuilder,
-				StaticLink,
-			},
+			kernfs::{box_file, box_node, EitherOps, StaticDir, StaticEntry, StaticLink},
 			proc::proc_dir::environ::Environ,
 			Statfs,
 		},
 		perm::{Gid, Uid},
 		vfs,
 		vfs::node::Node,
-		DirContext, DirEntry, File, FileType, Stat,
+		DirContext, DirEntry, FileType, Stat,
 	},
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
 };
@@ -80,53 +77,53 @@ impl RootDir {
 	/// processes.
 	const STATIC: StaticDir = StaticDir {
 		entries: &[
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"meminfo",
 				entry_type: FileType::Regular,
-				init: entry_init_default::<MemInfo>,
+				init: EitherOps::File(|_| box_file(MemInfo)),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"mounts",
 				entry_type: FileType::Link,
-				init: |_| box_wrap(StaticLink(b"self/mounts")),
+				init: EitherOps::Node(|_| box_node(StaticLink(b"self/mounts"))),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"self",
 				entry_type: FileType::Link,
-				init: entry_init_default::<SelfNode>,
+				init: EitherOps::Node(|_| box_node(SelfNode)),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"sys",
 				entry_type: FileType::Directory,
-				init: |_| {
-					box_wrap(StaticDir {
-						entries: &[(StaticEntryBuilder {
+				init: EitherOps::Node(|_| {
+					box_node(StaticDir {
+						entries: &[(StaticEntry {
 							name: b"kernel",
 							entry_type: FileType::Directory,
-							init: |_| {
-								box_wrap(StaticDir {
-									entries: &[StaticEntryBuilder {
+							init: EitherOps::Node(|_| {
+								box_node(StaticDir {
+									entries: &[StaticEntry {
 										name: b"osrelease",
 										entry_type: FileType::Regular,
-										init: entry_init_default::<OsRelease>,
+										init: EitherOps::File(|_| box_file(OsRelease)),
 									}],
 									data: (),
 								})
-							},
+							}),
 						})],
 						data: (),
 					})
-				},
+				}),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"uptime",
 				entry_type: FileType::Regular,
-				init: entry_init_default::<Uptime>,
+				init: EitherOps::File(|_| box_file(Uptime)),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"version",
 				entry_type: FileType::Regular,
-				init: entry_init_default::<Version>,
+				init: EitherOps::File(|_| box_file(Version)),
 			},
 		],
 		data: (),
@@ -141,69 +138,67 @@ impl NodeOps for RootDir {
 		})
 	}
 
-	fn lookup_entry<'n>(&self, _node: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let pid = core::str::from_utf8(&ent.name)
 			.ok()
 			.and_then(|s| s.parse().ok());
 		let Some(pid) = pid else {
-			return Self::STATIC.lookup_entry_inner(ent);
+			return Self::STATIC.lookup_entry_inner(dir, ent);
 		};
 		ent.node = Process::get_by_pid(pid)
 			.map(|_| {
 				Arc::new(Node {
 					inode: 0,
-					fs: self,
+					fs: dir.fs.clone(),
 					node_ops: Box::new(StaticDir {
 						entries: &[
-							StaticEntryBuilder {
+							StaticEntry {
 								name: b"cmdline",
 								entry_type: FileType::Regular,
-								init: entry_init_from::<Cmdline, Pid>,
+								init: EitherOps::File(|pid| box_file(Cmdline(pid))),
 							},
-							StaticEntryBuilder {
+							StaticEntry {
 								name: b"cwd",
 								entry_type: FileType::Regular,
-								init: entry_init_from::<Cwd, Pid>,
+								init: EitherOps::File(|pid| box_file(Cwd(pid))),
 							},
-							StaticEntryBuilder {
+							StaticEntry {
 								name: b"environ",
 								entry_type: FileType::Regular,
-								init: entry_init_from::<Environ, Pid>,
+								init: EitherOps::File(|pid| box_file(Environ(pid))),
 							},
-							StaticEntryBuilder {
+							StaticEntry {
 								name: b"exe",
 								entry_type: FileType::Regular,
-								init: entry_init_from::<Exe, Pid>,
+								init: EitherOps::File(|pid| box_file(Exe(pid))),
 							},
-							StaticEntryBuilder {
+							StaticEntry {
 								name: b"mounts",
 								entry_type: FileType::Regular,
-								init: entry_init_from::<Mounts, Pid>,
+								init: EitherOps::File(|pid| box_file(Mounts(pid))),
 							},
-							StaticEntryBuilder {
+							StaticEntry {
 								name: b"stat",
 								entry_type: FileType::Regular,
-								init: entry_init_from::<StatNode, Pid>,
+								init: EitherOps::File(|pid| box_file(StatNode(pid))),
 							},
-							StaticEntryBuilder {
+							StaticEntry {
 								name: b"status",
 								entry_type: FileType::Regular,
-								init: entry_init_from::<Status, Pid>,
+								init: EitherOps::File(|pid| box_file(Status(pid))),
 							},
 						],
 						data: pid,
 					})?,
-					file_ops: (),
+					file_ops: Box::new(DummyOps)?,
 					pages: Default::default(),
 				})
 			})
 			.transpose()?;
 		Ok(())
 	}
-}
 
-impl FileOps for RootDir {
-	fn iter_entries(&self, _dir: &File, ctx: &mut DirContext) -> EResult<()> {
+	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
 		let off: usize = ctx.off.try_into().map_err(|_| errno!(EINVAL))?;
 		// Iterate on static entries
 		let static_iter = Self::STATIC.entries.iter().skip(off);
@@ -263,11 +258,17 @@ impl FilesystemOps for ProcFS {
 		})
 	}
 
-	fn root(&self) -> EResult<Arc<Node>> {
-		Ok(Box::new(RootDir)? as _)
+	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
+		Ok(Arc::new(Node {
+			inode: 0,
+			fs,
+			node_ops: Box::new(RootDir)?,
+			file_ops: Box::new(DummyOps)?,
+			pages: Default::default(),
+		})?)
 	}
 
-	fn create_node(&self, _stat: &Stat) -> EResult<Arc<Node>> {
+	fn create_node(&self, _fs: Arc<Filesystem>, _stat: &Stat) -> EResult<Arc<Node>> {
 		Err(errno!(EINVAL))
 	}
 

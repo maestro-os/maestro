@@ -31,13 +31,7 @@ use utils::{errno, errno::EResult};
 
 /// The `cwd` node.
 #[derive(Debug)]
-pub struct Cwd(Pid);
-
-impl From<Pid> for Cwd {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
+pub struct Cwd(pub Pid);
 
 impl FileOps for Cwd {
 	fn get_stat(&self, _file: &File) -> EResult<Stat> {

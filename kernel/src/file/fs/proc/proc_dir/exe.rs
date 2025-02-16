@@ -31,13 +31,7 @@ use utils::{errno, errno::EResult};
 
 /// The `exe` node.
 #[derive(Debug)]
-pub struct Exe(Pid);
-
-impl From<Pid> for Exe {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
+pub struct Exe(pub Pid);
 
 impl FileOps for Exe {
 	fn get_stat(&self, _file: &File) -> EResult<Stat> {
