@@ -399,6 +399,12 @@ impl Filesystem {
 	}
 }
 
+impl Drop for Filesystem {
+	fn drop(&mut self) {
+		// TODO sync filesystem
+	}
+}
+
 /// A filesystem type.
 pub trait FilesystemType {
 	/// Returns the name of the filesystem.

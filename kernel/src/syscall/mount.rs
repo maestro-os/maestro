@@ -65,6 +65,6 @@ pub fn mount(
 	}
 	// TODO Use `data`
 	// Create mountpoint
-	mountpoint::create(mount_source, Some(fs_type), mountflags as _, target)?;
+	mountpoint::create(mount_source, Some(fs_type), mountflags as _, Some(target))?;
 	Ok(0)
 }

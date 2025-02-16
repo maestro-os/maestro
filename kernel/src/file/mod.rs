@@ -628,7 +628,7 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 		}),
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	let root = mountpoint::create_root(source)?;
+	let root = mountpoint::create(source, None, 0, None)?;
 	// Init the VFS's root entry.
 	unsafe {
 		OnceInit::init(&vfs::ROOT, root);

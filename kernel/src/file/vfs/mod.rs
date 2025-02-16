@@ -39,7 +39,6 @@ use super::{
 	File, FileType, Stat, O_RDONLY,
 };
 use crate::{
-	file::vfs::mountpoint::MountPoint,
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit},
 };
@@ -110,28 +109,6 @@ pub struct Entry {
 }
 
 impl Entry {
-	/// Creates a new entry representing the root of a filesystem.
-	pub fn new_root(root: Arc<Node>) -> Self {
-		Self {
-			name: String::new(),
-			parent: None,
-			children: Default::default(),
-			node: Some(root),
-		}
-	}
-
-	/// If the entry is a mountpoint, return it.
-	pub fn as_mountpoint(&self) -> Option<Arc<MountPoint>> {
-		let node = self.node.as_ref()?;
-		match &self.parent {
-			// The parent is on the same mountpoint: this IS NOT the root of a mountpoint
-			Some(parent) if parent.node().fs.id == node.fs.id => None,
-			// The parent is on a different mountpoint or there is no parent: this IS the root of a
-			// mountpoint
-			Some(_) | None => Some(node.fs.clone()),
-		}
-	}
-
 	/// Returns a reference to the underlying node.
 	///
 	/// If the entry represents a non-existent file, the function panics.
@@ -646,7 +623,7 @@ pub fn unlink(parent: &Entry, entry: &Entry, ap: &AccessProfile) -> EResult<()> 
 		return Err(errno!(EACCES));
 	}
 	// If the file to remove is a mountpoint, error
-	if entry.as_mountpoint().is_some() {
+	if entry.is_mountpoint() {
 		return Err(errno!(EBUSY));
 	}
 	// Lock now to avoid race conditions
@@ -746,7 +723,7 @@ pub fn rename(
 	if !new_parent.node().is_same_fs(old.node()) {
 		return Err(errno!(EXDEV));
 	}
-	if old.as_mountpoint().is_some() {
+	if old.is_mountpoint() {
 		return Err(errno!(EBUSY));
 	}
 	// Check permissions on `old`
@@ -768,7 +745,7 @@ pub fn rename(
 			todo!()
 		}
 	};
-	if new.as_mountpoint().is_some() {
+	if new.is_mountpoint() {
 		return Err(errno!(EBUSY));
 	}
 	// Check permissions on `new`

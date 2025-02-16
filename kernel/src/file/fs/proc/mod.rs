@@ -152,7 +152,7 @@ impl NodeOps for RootDir {
 			.map(|_| {
 				Arc::new(Node {
 					inode: 0,
-					fs: Arc {},
+					fs: self,
 					node_ops: Box::new(StaticDir {
 						entries: &[
 							StaticEntryBuilder {

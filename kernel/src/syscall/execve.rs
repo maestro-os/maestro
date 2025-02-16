@@ -93,7 +93,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 		// Read file
 		let shebang = &mut shebangs[i];
 		let len = {
-			let file = File::open_entry(ent, O_RDONLY)?;
+			let file = File::open_entry(ent.clone(), O_RDONLY)?;
 			file.ops.read(&file, 0, &mut shebang.buf)?
 		};
 		// Parse shebang

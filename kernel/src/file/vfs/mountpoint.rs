@@ -185,16 +185,12 @@ fn get_fs(
 /// A mount point, allowing to attach a filesystem to a directory on the VFS.
 #[derive(Debug)]
 pub struct MountPoint {
-	/// The ID of the mountpoint.
-	pub id: u32,
 	/// Mount flags.
 	pub flags: u32,
-
 	/// The source of the mountpoint.
 	pub source: MountSource,
 	/// The filesystem associated with the mountpoint.
 	pub fs: Arc<Filesystem>,
-
 	/// The root entry of the mountpoint.
 	pub root_entry: Arc<vfs::Entry>,
 }
@@ -221,29 +217,8 @@ impl Drop for MountPoint {
 }
 
 /// The list of mountpoints with their respective ID.
-pub static MOUNT_POINTS: Mutex<HashMap<u32, Arc<MountPoint>>> = Mutex::new(HashMap::new());
-
-/// Creates the root mountpoint and returns the newly created root entry of the VFS.
-pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
-	let fs = get_fs(&source, None, PathBuf::root()?, false)?;
-	// Get filesystem root node
-	let root = fs.ops.root()?;
-	fs.node_insert(root.clone())?;
-	// Create an entry for the root of the mountpoint
-	let root_entry = Arc::new(vfs::Entry::new_root(root))?;
-	// Create mountpoint
-	let mountpoint = Arc::new(MountPoint {
-		id: 0,
-		flags: 0,
-
-		source,
-		fs,
-
-		root_entry: root_entry.clone(),
-	})?;
-	MOUNT_POINTS.lock().insert(0, mountpoint)?;
-	Ok(root_entry)
-}
+pub static MOUNT_POINTS: Mutex<HashMap<*const vfs::Entry, Arc<MountPoint>>> =
+	Mutex::new(HashMap::new());
 
 /// Creates a new mountpoint.
 ///
@@ -253,52 +228,54 @@ pub(crate) fn create_root(source: MountSource) -> EResult<Arc<vfs::Entry>> {
 /// - `source` is the source of the mountpoint
 /// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automatically
 /// - `flags` are the mount flags
-/// - `target` is the target directory
+/// - `target` is the target directory. If `None`, the mountpoint is root
 ///
-/// The function returns the ID of the newly created mountpoint.
+/// The function returns the root VFS entry of the mountpoint.
 pub fn create(
 	source: MountSource,
 	fs_type: Option<Arc<dyn FilesystemType>>,
 	flags: u32,
-	target: Arc<vfs::Entry>,
-) -> EResult<()> {
+	target: Option<Arc<vfs::Entry>>,
+) -> EResult<Arc<vfs::Entry>> {
 	// Get filesystem
-	let target_path = vfs::Entry::get_path(&target)?;
+	let (target_path, name, parent) = match target {
+		Some(target) => (
+			vfs::Entry::get_path(&target)?,
+			target.name.try_clone()?,
+			target.parent.clone(),
+		),
+		None => (PathBuf::root()?, String::new(), None),
+	};
 	let fs = get_fs(&source, fs_type, target_path, flags & FLAG_RDONLY != 0)?;
 	let mut mps = MOUNT_POINTS.lock();
-	// Mountpoint ID allocation
-	// TODO improve
-	let id = mps.iter().map(|(i, _)| *i + 1).max().unwrap_or(0);
+	// TODO get root node from cache if present instead
 	// Get filesystem root node
 	let root = fs.ops.root()?;
 	fs.node_insert(root.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry {
-		name: target.name.try_clone()?,
-		parent: target.parent.clone(),
+		name,
+		parent: parent.clone(),
 		children: Default::default(),
 		node: Some(root),
 	})?;
 	// Create mountpoint
 	let mountpoint = Arc::new(MountPoint {
-		id,
 		flags,
-
 		source,
 		fs,
-
 		root_entry: root_entry.clone(),
 	})?;
 	// If the next insertion fails, this will be undone by the implementation of `Drop`
-	mps.insert(id, mountpoint)?;
+	mps.insert(Arc::as_ptr(&root_entry), mountpoint)?;
 	// Replace `target` with the mountpoint's root in the tree
-	if let Some(target_parent) = &target.parent {
+	if let Some(target_parent) = &parent {
 		target_parent
 			.children
 			.lock()
-			.insert(EntryChild(root_entry))?;
+			.insert(EntryChild(root_entry.clone()))?;
 	}
-	Ok(())
+	Ok(root_entry)
 }
 
 /// Removes the mountpoint at the given `target` entry.
@@ -309,29 +286,22 @@ pub fn create(
 ///
 /// If the mountpoint is busy, the function returns [`errno::EBUSY`].
 pub fn remove(target: Arc<vfs::Entry>) -> EResult<()> {
-	let Some(mp) = target.as_mountpoint() else {
-		return Err(errno!(EINVAL));
-	};
-	// TODO Check if another mount point is present in a subdirectory? (EBUSY)
+	// TODO Check if another mount point is present in a subdirectory (EBUSY)
 	// TODO Check if busy (EBUSY)
-	// TODO sync fs
 	// Detach entry from parent
 	let Some(parent) = &target.parent else {
 		// Cannot unmount root filesystem
 		return Err(errno!(EINVAL));
 	};
 	parent.children.lock().remove(target.name.as_bytes());
-	// If this was the last reference to the mountpoint, remove it
-	let mut mps = MOUNT_POINTS.lock();
-	if Arc::strong_count(&mp) <= 2 {
-		mps.remove(&mp.id);
-	}
+	// TODO release node and children
+	MOUNT_POINTS.lock().remove(&Arc::as_ptr(&target));
 	Ok(())
 }
 
-/// Returns the mountpoint with id `id`.
+/// Returns the mountpoint for the root entry `ent`.
 ///
-/// If it does not exist, the function returns `None`.
-pub fn from_id(id: u32) -> Option<Arc<MountPoint>> {
-	MOUNT_POINTS.lock().get(&id).cloned()
+/// If `ent` is not associated to a mountpoint, the function returns `None`.
+pub fn from_entry(ent: &Arc<vfs::Entry>) -> Option<Arc<MountPoint>> {
+	MOUNT_POINTS.lock().get(&Arc::as_ptr(&ent)).cloned()
 }
