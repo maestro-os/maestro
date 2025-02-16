@@ -54,7 +54,8 @@ pub fn readlink(
 	}
 	// Read link
 	let mut buffer = vec![0; bufsiz]?;
-	let len = ent.node().node_ops.readlink(&ent.node(), &mut buffer)?;
+	let node = ent.node();
+	let len = node.node_ops.readlink(node, &mut buffer)?;
 	buf.copy_to_user(0, &buffer)?;
 	Ok(len as _)
 }

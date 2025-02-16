@@ -218,9 +218,9 @@ pub trait NodeOps: Any + Debug {
 	fn rename(
 		&self,
 		old_parent: &Node,
-		old_name: &[u8],
+		old_name: &vfs::Entry,
 		new_parent: &Node,
-		new_name: &[u8],
+		new_name: &vfs::Entry,
 	) -> EResult<()> {
 		let _ = (old_parent, old_name, new_parent, new_name);
 		Err(errno!(EINVAL))
@@ -238,7 +238,7 @@ pub trait FileOps: Any + Debug {
 	/// This function **MUST** be overridden when there is no [`Node`] associated with `file`.
 	fn get_stat(&self, file: &File) -> EResult<Stat> {
 		let node = file.vfs_entry.as_ref().unwrap().node();
-		node.node_ops.get_stat(&*node)
+		node.node_ops.get_stat(node)
 	}
 
 	/// Increments the reference counter.
@@ -321,7 +321,11 @@ pub trait FileOps: Any + Debug {
 #[derive(Debug)]
 struct DummyOps;
 
-impl NodeOps for DummyOps {}
+impl NodeOps for DummyOps {
+	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
+		todo!()
+	}
+}
 
 impl FileOps for DummyOps {}
 

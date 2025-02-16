@@ -275,8 +275,8 @@ impl NodeOps for TmpFSNode {
 		Ok(())
 	}
 
-	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
-		let inner = file_to_node(dir).lock();
+	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+		let inner = self.0.lock();
 		let NodeContent::Directory(entries) = &inner.content else {
 			return Err(errno!(ENOTDIR));
 		};

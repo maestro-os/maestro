@@ -126,7 +126,7 @@ pub fn getdents(
 		// Write entry
 		dirp.copy_to_user(buf_off, as_bytes(&ent))?;
 		// Copy file name
-		dirp.copy_to_user(buf_off + offset_of!(LinuxDirent, d_name), &entry.name)?;
+		dirp.copy_to_user(buf_off + offset_of!(LinuxDirent, d_name), entry.name)?;
 		// Write nul byte and entry type
 		dirp.copy_to_user(
 			buf_off + offset_of!(LinuxDirent, d_name) + entry.name.len(),

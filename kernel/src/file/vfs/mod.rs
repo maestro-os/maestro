@@ -124,7 +124,8 @@ impl Entry {
 	/// If the entry represents a non-existent file, the function panics.
 	#[inline]
 	pub fn stat(&self) -> EResult<Stat> {
-		self.node().node_ops.get_stat(&self.node())
+		let node = self.node();
+		node.node_ops.get_stat(node)
 	}
 
 	/// Returns the file's type.
@@ -598,7 +599,6 @@ pub fn link(
 /// Removes a hard link to a file.
 ///
 /// Arguments:
-/// - `parent` is the parent directory of the file to remove
 /// - `entry` is the entry to remove
 /// - `ap` is the access profile to check permissions
 ///
@@ -610,9 +610,14 @@ pub fn link(
 /// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn unlink(parent: &Entry, entry: &Entry, ap: &AccessProfile) -> EResult<()> {
+pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
+	// Get parent
+	let Some(parent) = &entry.parent else {
+		// Cannot unlink root of the VFS
+		return Err(errno!(EBUSY));
+	};
+	// Validation
 	let parent_stat = parent.stat()?;
-	// Check permission
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
@@ -638,14 +643,6 @@ pub fn unlink(parent: &Entry, entry: &Entry, ap: &AccessProfile) -> EResult<()> 
 	// Drop to avoid deadlock
 	drop(children);
 	Entry::release(ent)
-}
-
-/// Helper function to remove a hard link from a given `path`.
-pub fn unlink_from_path(path: &Path, resolution_settings: &ResolutionSettings) -> EResult<()> {
-	let file_name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
-	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
-	let parent = get_file_from_path(parent, resolution_settings)?;
-	unlink(&parent, file_name, &resolution_settings.access_profile)
 }
 
 /// Creates a symbolic link.
@@ -738,7 +735,7 @@ pub fn rename(
 	}
 	// Get new from cache
 	let new_children = new_parent.children.lock();
-	let new = new_children.get(new_name).map(|e| e.0);
+	let new = new_children.get(new_name).map(|e| e.0.clone());
 	let new = match new {
 		Some(e) => e,
 		None => {
@@ -759,8 +756,11 @@ pub fn rename(
 		return Err(errno!(EACCES));
 	}
 	// Perform rename
-	let old_node = old.node();
-	old_node.node_ops.rename(old_node, new_parent, new_name)?;
+	let old_parent_node = old.node();
+	let new_parent_node = new.node();
+	old_parent_node
+		.node_ops
+		.rename(old_parent_node, &old, new_parent_node, &new)?;
 	// Update cache
 	// TODO
 	Ok(())

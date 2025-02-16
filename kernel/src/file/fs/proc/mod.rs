@@ -143,7 +143,7 @@ impl NodeOps for RootDir {
 			.ok()
 			.and_then(|s| s.parse().ok());
 		let Some(pid) = pid else {
-			return Self::STATIC.lookup_entry_inner(dir, ent);
+			return Self::STATIC.lookup_entry(dir, ent);
 		};
 		ent.node = Process::get_by_pid(pid)
 			.map(|_| {

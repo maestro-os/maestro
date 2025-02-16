@@ -433,20 +433,20 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn symlink(&self, parent: &Node, path: &[u8]) -> EResult<Arc<Node>> {
+	fn symlink(&self, _parent: &Node, _path: &[u8]) -> EResult<Arc<Node>> {
 		todo!()
 	}
 
-	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
+	fn readlink(&self, _node: &Node, _buf: &mut [u8]) -> EResult<usize> {
 		todo!()
 	}
 
 	fn rename(
 		&self,
-		old_parent: &Node,
-		old_name: &[u8],
-		new_parent: &Node,
-		new_name: &[u8],
+		_old_parent: &Node,
+		_old_name: &vfs::Entry,
+		_new_parent: &Node,
+		_new_name: &vfs::Entry,
 	) -> EResult<()> {
 		todo!()
 	}

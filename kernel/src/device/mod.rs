@@ -62,7 +62,7 @@ use utils::{
 		path::{Path, PathBuf},
 	},
 	errno,
-	errno::EResult,
+	errno::{EResult, ENOENT},
 	ptr::arc::Arc,
 	slice_copy, vec, TryClone,
 };
@@ -313,9 +313,16 @@ impl Device {
 
 	/// If exists, removes the device file.
 	///
-	/// If the file doesn't exist, the function does nothing.
+	/// If the file does not exist, the function does nothing.
 	pub fn remove_file(&self) -> EResult<()> {
-		vfs::unlink_from_path(&self.path, &ResolutionSettings::kernel_follow())
+		let rs = ResolutionSettings::kernel_follow();
+		let res = vfs::get_file_from_path(&self.path, &rs);
+		let ent = match res {
+			Ok(ent) => ent,
+			Err(e) if e.as_int() == ENOENT => return Ok(()),
+			Err(e) => return Err(e),
+		};
+		vfs::unlink(&ent, &rs.access_profile)
 	}
 }
 

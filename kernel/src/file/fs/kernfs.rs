@@ -237,8 +237,15 @@ pub struct StaticDir<T: 'static + Clone + Debug = ()> {
 	pub data: T,
 }
 
-impl<T: 'static + Clone + Debug> StaticDir<T> {
-	pub fn lookup_entry_inner(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
+	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
+		Ok(Stat {
+			mode: FileType::Directory.to_mode() | 0o555,
+			..Default::default()
+		})
+	}
+
+	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		ent.node = self
 			.entries
 			.binary_search_by(|e| e.name.cmp(&ent.name))
@@ -266,19 +273,6 @@ impl<T: 'static + Clone + Debug> StaticDir<T> {
 			})
 			.transpose()?;
 		Ok(())
-	}
-}
-
-impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
-	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Directory.to_mode() | 0o555,
-			..Default::default()
-		})
-	}
-
-	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
-		self.lookup_entry_inner(dir, ent)
 	}
 
 	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {

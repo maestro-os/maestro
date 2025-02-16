@@ -315,7 +315,7 @@ impl Stat {
 ///
 /// This structure is meant to be used only in [`File`].
 #[derive(Debug)]
-enum FileOpsWrapper {
+pub enum FileOpsWrapper {
 	/// Borrowed from [`Node`]
 	Borrowed(NonNull<dyn FileOps>),
 	/// Owned
