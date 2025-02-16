@@ -623,7 +623,7 @@ pub fn unlink(parent: &Entry, entry: &Entry, ap: &AccessProfile) -> EResult<()> 
 		return Err(errno!(EACCES));
 	}
 	// If the file to remove is a mountpoint, error
-	if entry.is_mountpoint() {
+	if mountpoint::from_entry(entry).is_some() {
 		return Err(errno!(EBUSY));
 	}
 	// Lock now to avoid race conditions
@@ -723,7 +723,7 @@ pub fn rename(
 	if !new_parent.node().is_same_fs(old.node()) {
 		return Err(errno!(EXDEV));
 	}
-	if old.is_mountpoint() {
+	if mountpoint::from_entry(&old).is_some() {
 		return Err(errno!(EBUSY));
 	}
 	// Check permissions on `old`
@@ -745,7 +745,7 @@ pub fn rename(
 			todo!()
 		}
 	};
-	if new.is_mountpoint() {
+	if mountpoint::from_entry(&new).is_some() {
 		return Err(errno!(EBUSY));
 	}
 	// Check permissions on `new`

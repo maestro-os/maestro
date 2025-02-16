@@ -302,6 +302,6 @@ pub fn remove(target: Arc<vfs::Entry>) -> EResult<()> {
 /// Returns the mountpoint for the root entry `ent`.
 ///
 /// If `ent` is not associated to a mountpoint, the function returns `None`.
-pub fn from_entry(ent: &Arc<vfs::Entry>) -> Option<Arc<MountPoint>> {
-	MOUNT_POINTS.lock().get(&Arc::as_ptr(&ent)).cloned()
+pub fn from_entry(ent: &vfs::Entry) -> Option<Arc<MountPoint>> {
+	MOUNT_POINTS.lock().get(&(ent as _)).cloned()
 }
