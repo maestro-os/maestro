@@ -19,8 +19,7 @@
 //! This module implements Copy-On-Write (COW) pointers.
 
 use crate::{TryClone, TryToOwned};
-use core::{borrow::Borrow, fmt};
-use core::ops::Deref;
+use core::{borrow::Borrow, fmt, ops::Deref};
 
 /// A clone-on-write smart pointer.
 pub enum Cow<'a, B: 'a + ?Sized + TryToOwned> {

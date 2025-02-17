@@ -123,7 +123,7 @@ pub trait NodeOps: Any + Debug {
 	///
 	/// If the entry does not exist, the function set the node to `None`.
 	///
-	/// If the node is not a directory, the function returns [`ENOTDIR`].
+	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
 	///
 	/// The default implementation of this function returns an error.
 	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
@@ -133,7 +133,7 @@ pub trait NodeOps: Any + Debug {
 
 	/// Iterates on the entries of the directory `dir`.
 	///
-	/// If the node is not a directory, the function returns [`ENOTDIR`].
+	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
 	///
 	/// The default implementation of this function returns an error.
 	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {

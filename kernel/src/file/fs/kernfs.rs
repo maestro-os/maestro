@@ -162,9 +162,9 @@ pub fn format_content_args(off: u64, buf: &mut [u8], args: fmt::Arguments<'_>) -
 
 /// Formats the content of a kernfs node and write it on a buffer.
 ///
-/// This is meant to be used in [`NodeOps::read_content`].
+/// This is meant to be used in [`FileOps::read`].
 ///
-/// `off` and `buf` are the corresponding arguments from [`NodeOps::read_content`].
+/// `off` and `buf` are the corresponding arguments from [`FileOps::read`].
 #[macro_export]
 macro_rules! format_content {
     ($off:expr, $buf:expr, $($arg:tt)*) => {{
