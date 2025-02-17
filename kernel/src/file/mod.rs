@@ -34,7 +34,8 @@ pub mod vfs;
 pub mod wait_queue;
 
 use crate::{
-	device::{DeviceID, DeviceType},
+	device,
+	device::{Device, DeviceFileOps, DeviceID, DeviceType},
 	file::{
 		fs::FileOps,
 		perm::{Gid, Uid},
@@ -355,14 +356,16 @@ impl File {
 	///
 	/// If the entry is negative, the function returns [`errno::ENOENT`].
 	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
-		let ops = FileOpsWrapper::Borrowed(NonNull::from(
-			entry
-				.node
-				.as_ref()
-				.ok_or_else(|| errno!(ENOENT))?
-				.file_ops
-				.as_ref(),
-		));
+		let node = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let stat = node.node_ops.get_stat(node)?;
+		let ops = match stat.get_type() {
+			Some(FileType::Fifo) => todo!(), // TODO get buffer from cache, or create
+			Some(FileType::Socket) => todo!(), // TODO get buffer from cache, or create
+			Some(FileType::BlockDevice | FileType::CharDevice) => {
+				FileOpsWrapper::Owned(Arc::new(DeviceFileOps)?)
+			}
+			_ => FileOpsWrapper::Borrowed(NonNull::from(node.file_ops.as_ref())),
+		};
 		let file = Self {
 			vfs_entry: Some(entry),
 			ops,
@@ -393,6 +396,18 @@ impl File {
 	/// Returns the underlying buffer, if any.
 	pub fn get_buffer<B: FileOps>(&self) -> Option<&B> {
 		(self.ops.deref() as &dyn Any).downcast_ref::<B>()
+	}
+
+	/// If the file is a device, returns the associated device.
+	pub fn as_device(&self) -> Option<Arc<Device>> {
+		// FIXME: this is not necessary anymore when we have the file type stored in `Node`
+		let stat = self.stat().unwrap();
+		let dev_type = stat.get_type()?.to_device_type()?;
+		device::get(&DeviceID {
+			dev_type,
+			major: stat.dev_major,
+			minor: stat.dev_minor,
+		})
 	}
 
 	/// Returns the open file description's flags.

@@ -437,8 +437,14 @@ impl NodeOps for Ext2NodeOps {
 		todo!()
 	}
 
-	fn readlink(&self, _node: &Node, _buf: &mut [u8]) -> EResult<usize> {
-		todo!()
+	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		let superblock = fs.superblock.lock();
+		let inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
+		if inode_.get_type() != FileType::Link {
+			return Err(errno!(EINVAL));
+		}
+		inode_.read_link(&superblock, &*fs.io, buf)
 	}
 
 	fn rename(
@@ -462,11 +468,10 @@ impl FileOps for Ext2FileOps {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		let superblock = fs.superblock.lock();
 		let inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
-		match inode_.get_type() {
-			FileType::Regular => inode_.read_content(off, buf, &superblock, &*fs.io),
-			FileType::Link => inode_.read_link(&superblock, &*fs.io, off, buf),
-			_ => Err(errno!(EINVAL)),
+		if inode_.get_type() != FileType::Regular {
+			return Err(errno!(EINVAL));
 		}
+		inode_.read_content(off, buf, &superblock, &*fs.io)
 	}
 
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
@@ -477,11 +482,10 @@ impl FileOps for Ext2FileOps {
 		}
 		let mut superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
-		match inode_.get_type() {
-			FileType::Regular => inode_.write_content(off, buf, &mut superblock, &*fs.io)?,
-			FileType::Link => inode_.write_link(&mut superblock, &*fs.io, buf)?,
-			_ => return Err(errno!(EINVAL)),
+		if inode_.get_type() != FileType::Regular {
+			return Err(errno!(EINVAL));
 		}
+		inode_.write_content(off, buf, &mut superblock, &*fs.io)?;
 		inode_.write(node.inode as _, &superblock, &*fs.io)?;
 		superblock.write(&*fs.io)?;
 		Ok(buf.len() as _)

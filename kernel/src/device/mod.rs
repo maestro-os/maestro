@@ -45,13 +45,14 @@ use crate::{
 	device::manager::DeviceManager,
 	file,
 	file::{
+		fs::FileOps,
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileType, Mode, Stat,
+		File, FileType, Mode, Stat,
 	},
 	sync::mutex::Mutex,
-	syscall::ioctl,
+	syscall::{ioctl, ioctl::Request},
 };
 use core::{ffi::c_void, fmt, num::NonZeroU64};
 use keyboard::KeyboardManager;
@@ -377,6 +378,32 @@ pub fn unregister(id: &DeviceID) -> EResult<()> {
 pub fn get(id: &DeviceID) -> Option<Arc<Device>> {
 	let devs = DEVICES.lock();
 	devs.get(id).cloned()
+}
+
+/// Device file operations.
+#[derive(Debug)]
+pub struct DeviceFileOps;
+
+impl FileOps for DeviceFileOps {
+	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.io.read_bytes(off, buf)
+	}
+
+	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.io.write_bytes(off, buf)
+	}
+
+	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
+		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.io.poll(mask)
+	}
+
+	fn ioctl(&self, file: &File, request: Request, argp: *const c_void) -> EResult<u32> {
+		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.io.ioctl(request, argp)
+	}
 }
 
 /// Initializes devices management.

@@ -976,7 +976,6 @@ impl Ext2INode {
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock
 	/// - `io` is the I/O interface
-	/// - `off` is the offset from which the link is read
 	/// - `buf` is the buffer in which the content is written
 	///
 	/// If the file is not a symbolic link, the behaviour is undefined.
@@ -986,24 +985,18 @@ impl Ext2INode {
 		&self,
 		superblock: &Superblock,
 		io: &dyn DeviceIO,
-		off: u64,
 		buf: &mut [u8],
 	) -> EResult<usize> {
 		let size = self.get_size(superblock);
 		if size <= SYMLINK_INLINE_LIMIT {
 			// The target is stored inline in the inode
-			let Some(len) = size.checked_sub(off) else {
-				return Err(errno!(EINVAL));
-			};
-			// Copy
-			let len = min(buf.len(), len as usize);
+			let len = min(buf.len(), size as usize);
 			let src = bytes::as_bytes(&self.i_block);
-			let off = off as usize;
-			buf[..len].copy_from_slice(&src[off..(off + len)]);
+			buf[..len].copy_from_slice(&src[..len]);
 			Ok(len)
 		} else {
 			// The target is stored like in regular files
-			self.read_content(off, buf, superblock, io)
+			self.read_content(0, buf, superblock, io)
 		}
 	}
 
