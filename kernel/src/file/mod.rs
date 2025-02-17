@@ -39,8 +39,11 @@ use crate::{
 	file::{
 		fs::FileOps,
 		perm::{Gid, Uid},
+		pipe::PipeBuffer,
+		socket::Socket,
 		vfs::node::Node,
 	},
+	net::{SocketDesc, SocketDomain, SocketType},
 	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
 	time::{
 		clock,
@@ -358,9 +361,20 @@ impl File {
 	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
 		let node = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
 		let stat = node.node_ops.get_stat(node)?;
+		// Get or create ops
 		let ops = match stat.get_type() {
-			Some(FileType::Fifo) => todo!(), // TODO get buffer from cache, or create
-			Some(FileType::Socket) => todo!(), // TODO get buffer from cache, or create
+			Some(FileType::Fifo) => {
+				FileOpsWrapper::Owned(node.fs.buffer_get_or_insert(node.inode, PipeBuffer::new)?)
+			}
+			Some(FileType::Socket) => {
+				FileOpsWrapper::Owned(node.fs.buffer_get_or_insert(node.inode, || {
+					Socket::new(SocketDesc {
+						domain: SocketDomain::AfUnix,
+						type_: SocketType::SockStream,
+						protocol: 0,
+					})
+				})?)
+			}
 			Some(FileType::BlockDevice | FileType::CharDevice) => {
 				FileOpsWrapper::Owned(Arc::new(DeviceFileOps)?)
 			}

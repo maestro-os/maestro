@@ -365,6 +365,8 @@ pub struct Filesystem {
 	pub ops: Box<dyn FilesystemOps>,
 	/// Nodes cache for the current filesystem
 	pub(super) node_cache: Mutex<HashMap<INode, Arc<Node>>>,
+	/// Active buffers on the filesystem.
+	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>>,
 }
 
 impl Filesystem {
@@ -378,6 +380,7 @@ impl Filesystem {
 			dev,
 			ops,
 			node_cache: Default::default(),
+			buffers: Default::default(),
 		})
 	}
 
@@ -393,11 +396,9 @@ impl Filesystem {
 		init: Init,
 	) -> EResult<Arc<Node>> {
 		let mut cache = this.node_cache.lock();
-		// If then node is in cache, return it
 		if let Some(node) = cache.get(&inode) {
 			return Ok(node.clone());
 		}
-		// The node is not in cache, initialize and insert it
 		let (node_ops, file_ops) = init()?;
 		let node = Arc::new(Node {
 			inode,
@@ -431,6 +432,22 @@ impl Filesystem {
 		let node = cache.remove(&inode).unwrap();
 		let node = Arc::into_inner(node).unwrap();
 		node.try_remove()
+	}
+
+	/// Get the buffer associated with the ID `inode` from cache. If not present, initialize it
+	/// with `init`.
+	pub fn buffer_get_or_insert<F: FileOps, Init: FnOnce() -> AllocResult<F>>(
+		&self,
+		inode: INode,
+		init: Init,
+	) -> AllocResult<Arc<dyn FileOps>> {
+		let mut buffers = self.buffers.lock();
+		if let Some(buf) = buffers.get(&inode) {
+			return Ok(buf.clone());
+		}
+		let buf = Arc::new(init()?)?;
+		buffers.insert(inode, buf.clone())?;
+		Ok(buf)
 	}
 }
 
