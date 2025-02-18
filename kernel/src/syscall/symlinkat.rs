@@ -57,6 +57,11 @@ pub fn symlinkat(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.transpose()?;
+	let rs = ResolutionSettings {
+		create: true,
+		follow_link: true,
+		..rs
+	};
 	// Create link
 	let Resolved::Creatable {
 		parent,

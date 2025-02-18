@@ -36,7 +36,7 @@ pub mod node;
 use super::{
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	File, FileType, Stat, O_RDONLY,
+	FileType, Stat,
 };
 use crate::{
 	process::Process,
@@ -324,8 +324,11 @@ fn resolve_link(
 		return Err(errno!(ELOOP));
 	}
 	// Read link
-	let link = File::open_entry(link, O_RDONLY)?;
-	let link_path = PathBuf::try_from(String::from(link.read_all()?))?;
+	let size = link.stat()?.size as usize;
+	let mut buf = vec![0; size]?;
+	let node = link.node();
+	node.node_ops.readlink(node, &mut buf)?;
+	let link_path = PathBuf::try_from(String::from(buf))?;
 	// Resolve link
 	let rs = ResolutionSettings {
 		root,
