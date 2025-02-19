@@ -47,17 +47,15 @@ pub fn readlink(
 		let rs = ResolutionSettings::for_process(&proc, false);
 		(path, rs)
 	};
-	let file = vfs::get_file_from_path(&path, &rs)?;
+	let ent = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
-	if file.get_type()? != FileType::Link {
+	if ent.get_type()? != FileType::Link {
 		return Err(errno!(EINVAL));
 	}
 	// Read link
 	let mut buffer = vec![0; bufsiz]?;
-	let len = file
-		.node()
-		.ops
-		.read_content(&file.node().location, 0, &mut buffer)?;
+	let node = ent.node();
+	let len = node.node_ops.readlink(node, &mut buffer)?;
 	buf.copy_to_user(0, &buffer)?;
 	Ok(len as _)
 }

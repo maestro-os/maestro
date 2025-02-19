@@ -20,10 +20,7 @@
 //! status of the process.
 
 use crate::{
-	file::{
-		fs::{proc::get_proc_owner, NodeOps},
-		FileLocation, FileType, Stat,
-	},
+	file::{fs::FileOps, File},
 	format_content,
 	process::{pid::Pid, Process},
 };
@@ -32,26 +29,10 @@ use utils::{errno, errno::EResult};
 
 /// The `status` node of the proc.
 #[derive(Debug)]
-pub struct Status(Pid);
+pub struct Status(pub Pid);
 
-impl From<Pid> for Status {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
-
-impl NodeOps for Status {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+impl FileOps for Status {
+	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let mem_space = proc.mem_space.as_ref().unwrap().lock();
 		let disp = fmt::from_fn(|f| {

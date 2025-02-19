@@ -97,13 +97,13 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 #[allow(unused_variables)]
 pub fn map(mem_space: &mut MemSpace, compat: bool) -> EResult<MappedVDSO> {
 	#[cfg(not(target_arch = "x86_64"))]
-	let vdso = VDSO.get();
+	let vdso = &*VDSO;
 	#[cfg(target_arch = "x86_64")]
 	let vdso = {
 		if !compat {
-			VDSO.get()
+			&*VDSO
 		} else {
-			VDSO_COMPAT.get()
+			&*VDSO_COMPAT
 		}
 	};
 	// TODO ASLR
@@ -129,13 +129,13 @@ pub(crate) fn init() -> EResult<()> {
 	// Main image
 	unsafe {
 		static ELF: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
-		VDSO.init(load_image(ELF)?);
+		OnceInit::init(&VDSO, load_image(ELF)?);
 	}
 	// 32 bit image for backward compat
 	#[cfg(target_arch = "x86_64")]
 	unsafe {
 		static ELF: &[u8] = include_bytes_aligned!(usize, env!("VDSO_COMPAT_PATH"));
-		VDSO_COMPAT.init(load_image(ELF)?);
+		OnceInit::init(&VDSO_COMPAT, load_image(ELF)?);
 	}
 	Ok(())
 }

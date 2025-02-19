@@ -36,6 +36,7 @@
 #![feature(debug_closure_helpers)]
 #![feature(lang_items)]
 #![feature(negative_impls)]
+#![feature(offset_of_enum)]
 #![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
@@ -121,9 +122,9 @@ fn init(init_path: String) -> EResult<()> {
 	{
 		let path = Path::new(&init_path)?;
 		let rs = ResolutionSettings::kernel_follow();
-		let file = vfs::get_file_from_path(path, &rs)?;
+		let ent = vfs::get_file_from_path(path, &rs)?;
 		let program_image = exec::build_image(
-			file,
+			ent,
 			ExecInfo {
 				path_resolution: &rs,
 				argv: vec![init_path]?,
@@ -136,7 +137,7 @@ fn init(init_path: String) -> EResult<()> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
-		SCHEDULER.get().lock().swap_current_process(proc);
+		SCHEDULER.lock().swap_current_process(proc);
 	}
 	unsafe {
 		switch::init_ctx(&frame);

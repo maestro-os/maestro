@@ -90,7 +90,7 @@ pub fn do_access(
 		file
 	};
 	// Do access checks
-	let stat = file.stat()?;
+	let stat = file.stat();
 	if (mode & R_OK != 0) && !ap.check_read_access(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}

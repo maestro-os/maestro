@@ -46,7 +46,7 @@ pub fn fchdir(
 		.vfs_entry
 		.clone()
 		.ok_or_else(|| errno!(ENOTDIR))?;
-	let stat = file.stat()?;
+	let stat = file.stat();
 	// Check the file is an accessible directory
 	if stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));

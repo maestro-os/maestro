@@ -61,7 +61,6 @@ mod fstatfs64;
 mod fsync;
 mod getcwd;
 mod getdents;
-mod getdents64;
 mod getegid;
 mod geteuid;
 mod getgid;
@@ -165,6 +164,7 @@ use crate::{
 	process,
 	process::{mem_space::MemSpace, signal::Signal, Process},
 	sync::mutex::{IntMutex, Mutex},
+	syscall::getdents::getdents64,
 };
 use _exit::_exit;
 use _llseek::{_llseek, lseek};
@@ -204,7 +204,6 @@ use fstatfs64::fstatfs64;
 use fsync::fsync;
 use getcwd::getcwd;
 use getdents::getdents;
-use getdents64::getdents64;
 use getegid::getegid;
 use geteuid::geteuid;
 use getgid::getgid;

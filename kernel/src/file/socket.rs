@@ -19,7 +19,7 @@
 //! This file implements sockets.
 
 use crate::{
-	file::{wait_queue::WaitQueue, File, FileOps, FileType, Stat},
+	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat},
 	net::{osi, SocketDesc},
 	sync::mutex::Mutex,
 	syscall::ioctl::Request,

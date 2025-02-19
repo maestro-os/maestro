@@ -26,7 +26,7 @@ use crate::{
 		parser::{Class, ELFParser, ProgramHeader},
 		ET_DYN,
 	},
-	file::{perm::AccessProfile, vfs, FileType},
+	file::{perm::AccessProfile, vfs, File, FileType, O_RDONLY},
 	memory::{vmem, VirtAddr},
 	process,
 	process::{
@@ -240,15 +240,16 @@ fn build_auxiliary(
 /// `ap` is the access profile to check permissions.
 ///
 /// If the file is not executable, the function returns an error.
-fn read_exec_file(file: &vfs::Entry, ap: &AccessProfile) -> EResult<Vec<u8>> {
+fn read_exec_file(file: Arc<vfs::Entry>, ap: &AccessProfile) -> EResult<Vec<u8>> {
 	// Check that the file can be executed by the user
-	let stat = file.stat()?;
+	let stat = file.stat();
 	if unlikely(stat.get_type() != Some(FileType::Regular)) {
 		return Err(errno!(EACCES));
 	}
 	if unlikely(!ap.can_execute_file(&stat)) {
 		return Err(errno!(EACCES));
 	}
+	let file = File::open_entry(file, O_RDONLY)?;
 	file.read_all()
 }
 
@@ -548,7 +549,7 @@ impl Executor for ELFExecutor<'_> {
 	// and relocations)
 	// TODO Handle suid and sgid
 	fn build_image(&self, file: Arc<vfs::Entry>) -> EResult<ProgramImage> {
-		let image = read_exec_file(&file, &self.0.path_resolution.access_profile)?;
+		let image = read_exec_file(file.clone(), &self.0.path_resolution.access_profile)?;
 		let parser = ELFParser::new(&image)?;
 		let compat = parser.class() == Class::Bit32;
 		let mut mem_space = MemSpace::new(file)?;

@@ -45,13 +45,14 @@ use crate::{
 	device::manager::DeviceManager,
 	file,
 	file::{
+		fs::FileOps,
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileType, Mode, Stat,
+		File, FileType, Mode, Stat,
 	},
 	sync::mutex::Mutex,
-	syscall::ioctl,
+	syscall::{ioctl, ioctl::Request},
 };
 use core::{ffi::c_void, fmt, num::NonZeroU64};
 use keyboard::KeyboardManager;
@@ -62,7 +63,7 @@ use utils::{
 		path::{Path, PathBuf},
 	},
 	errno,
-	errno::EResult,
+	errno::{EResult, ENOENT},
 	ptr::arc::Arc,
 	slice_copy, vec, TryClone,
 };
@@ -313,9 +314,16 @@ impl Device {
 
 	/// If exists, removes the device file.
 	///
-	/// If the file doesn't exist, the function does nothing.
+	/// If the file does not exist, the function does nothing.
 	pub fn remove_file(&self) -> EResult<()> {
-		vfs::unlink_from_path(&self.path, &ResolutionSettings::kernel_follow())
+		let rs = ResolutionSettings::kernel_follow();
+		let res = vfs::get_file_from_path(&self.path, &rs);
+		let ent = match res {
+			Ok(ent) => ent,
+			Err(e) if e.as_int() == ENOENT => return Ok(()),
+			Err(e) => return Err(e),
+		};
+		vfs::unlink(&ent, &rs.access_profile)
 	}
 }
 
@@ -370,6 +378,32 @@ pub fn unregister(id: &DeviceID) -> EResult<()> {
 pub fn get(id: &DeviceID) -> Option<Arc<Device>> {
 	let devs = DEVICES.lock();
 	devs.get(id).cloned()
+}
+
+/// Device file operations.
+#[derive(Debug)]
+pub struct DeviceFileOps;
+
+impl FileOps for DeviceFileOps {
+	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.io.read_bytes(off, buf)
+	}
+
+	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.io.write_bytes(off, buf)
+	}
+
+	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
+		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.io.poll(mask)
+	}
+
+	fn ioctl(&self, file: &File, request: Request, argp: *const c_void) -> EResult<u32> {
+		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.io.ioctl(request, argp)
+	}
 }
 
 /// Initializes devices management.

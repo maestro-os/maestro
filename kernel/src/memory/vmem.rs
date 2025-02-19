@@ -28,7 +28,7 @@ use crate::{
 		},
 	},
 	elf, memory,
-	memory::{memmap, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
+	memory::{memmap::PHYS_MAP, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
 	register_get,
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
@@ -372,12 +372,7 @@ pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &VMem, f: F) -> T {
 }
 
 /// The kernel's virtual memory context.
-static KERNEL_VMEM: OnceInit<Mutex<VMem<true>>> = unsafe { OnceInit::new() };
-
-/// Returns a reference to the kernel's virtual memory context.
-pub fn kernel() -> &'static Mutex<VMem<true>> {
-	KERNEL_VMEM.get()
-}
+pub static KERNEL_VMEM: OnceInit<Mutex<VMem<true>>> = unsafe { OnceInit::new() };
 
 /// Initializes virtual memory management.
 pub(crate) fn init() -> AllocResult<()> {
@@ -390,8 +385,7 @@ pub(crate) fn init() -> AllocResult<()> {
 	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
 	// the kernel for interrupts
 	// Map kernel
-	let memmap = memmap::get_info();
-	let kernelspace_size = min(memmap.memory_size, KERNELSPACE_SIZE / PAGE_SIZE);
+	let kernelspace_size = min(PHYS_MAP.memory_size, KERNELSPACE_SIZE / PAGE_SIZE);
 	transaction.map_range(
 		PhysAddr::default(),
 		memory::KERNEL_BEGIN,
@@ -430,7 +424,7 @@ pub(crate) fn init() -> AllocResult<()> {
 	drop(transaction);
 	kernel_vmem.bind();
 	unsafe {
-		KERNEL_VMEM.init(Mutex::new(kernel_vmem));
+		OnceInit::init(&KERNEL_VMEM, Mutex::new(kernel_vmem));
 	}
 	Ok(())
 }
@@ -451,8 +445,7 @@ mod test {
 	#[test_case]
 	fn vmem_basic1() {
 		let vmem = VMem::new().unwrap();
-		let memmap = memmap::get_info();
-		for i in (0..memmap.memory_size).step_by(PAGE_SIZE) {
+		for i in (0..PHYS_MAP.memory_size).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(KERNEL_BEGIN + i), Some(PhysAddr(i)));
 		}
 	}
