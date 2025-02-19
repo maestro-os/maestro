@@ -144,16 +144,15 @@ pub trait NodeOps: Any + Debug {
 	/// Adds a hard link into the directory.
 	///
 	/// Arguments:
-	/// - `parent` is the location of the parent directory.
-	/// - `name` is the name of the hard link to add.
-	/// - `target` is the inode the link points to.
+	/// - `parent` is the location of the parent directory
+	/// - `ent` is the entry to add
 	///
 	/// If this feature is not supported by the filesystem, the function returns
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn link(&self, parent: &Node, name: &[u8], target: INode) -> EResult<()> {
-		let _ = (parent, name, target);
+	fn link(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
+		let _ = (parent, ent);
 		Err(errno!(ENOTDIR))
 	}
 
@@ -178,21 +177,6 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(ENOTDIR))
 	}
 
-	/// Creates a symbolic link into the directory.
-	///
-	/// Arguments:
-	/// - `parent` is the parent directory
-	/// - `target` is the path the symbolic link points to
-	///
-	/// If this feature is not supported by the filesystem, the function returns
-	/// an error.
-	///
-	/// The default implementation of this function returns an error.
-	fn symlink(&self, parent: &Node, target: &[u8]) -> EResult<Arc<Node>> {
-		let _ = (parent, target);
-		Err(errno!(EINVAL))
-	}
-
 	/// Reads the path the symbolic link points to and writes it into `buf`. If the actual path is
 	/// larger than the provided buffer, it is truncated.
 	///
@@ -205,6 +189,19 @@ pub trait NodeOps: Any + Debug {
 	///
 	/// The default implementation of this function returns an error.
 	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
+		let _ = (node, buf);
+		Err(errno!(EINVAL))
+	}
+
+	/// Writes the path the symbolic link points to and writes it into `buf`.
+	///
+	/// If the node is not a symbolic link, the function returns [`errno::EINVAL`].
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
+	///
+	/// The default implementation of this function returns an error.
+	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
 		let _ = (node, buf);
 		Err(errno!(EINVAL))
 	}

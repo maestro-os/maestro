@@ -537,14 +537,16 @@ pub fn create_file(
 		.ops
 		.create_node(parent_node.fs.clone(), &stat)?;
 	parent_node.fs.node_insert(node.clone())?;
-	parent_node.node_ops.link(parent_node, name, node.inode)?;
-	// Create entry and insert it in parent
-	let entry = Arc::new(Entry {
+	// Add link to filesystem
+	let ent = Entry {
 		name: String::try_from(name)?,
 		parent: Some(parent.clone()),
 		children: Default::default(),
 		node: Some(node),
-	})?;
+	};
+	parent_node.node_ops.link(parent_node, &ent)?;
+	// Add entry to cache
+	let entry = Arc::new(ent)?;
 	parent.children.lock().insert(EntryChild(entry.clone()))?;
 	Ok(entry)
 }
@@ -567,8 +569,8 @@ pub fn create_file(
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn link(
 	parent: &Arc<Entry>,
-	name: &[u8],
-	target: Arc<Entry>,
+	name: String,
+	target: Arc<Node>,
 	ap: &AccessProfile,
 ) -> EResult<()> {
 	let parent_stat = parent.stat()?;
@@ -576,7 +578,7 @@ pub fn link(
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	let target_stat = target.stat()?;
+	let target_stat = target.node_ops.get_stat(&target)?;
 	if target_stat.get_type() == Some(FileType::Directory) {
 		return Err(errno!(EPERM));
 	}
@@ -586,16 +588,19 @@ pub fn link(
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	if !parent.node().is_same_fs(target.node()) {
+	if !parent.node().is_same_fs(&target) {
 		return Err(errno!(EXDEV));
 	}
 	// Add link to the filesystem
-	parent
-		.node()
-		.node_ops
-		.link(parent.node(), name, target.node().inode)?;
+	let ent = Entry {
+		name,
+		parent: Some(parent.clone()),
+		children: Default::default(),
+		node: Some(target),
+	};
+	parent.node().node_ops.link(parent.node(), &ent)?;
 	// Add entry to the cache
-	parent.children.lock().insert(EntryChild(target))?;
+	parent.children.lock().insert(EntryChild(Arc::new(ent)?))?;
 	Ok(())
 }
 
@@ -685,17 +690,23 @@ pub fn symlink(
 	} else {
 		ap.egid
 	};
-	// Add link to the filesystem
+	// Create node
 	let parent_node = parent.node();
-	let node = parent_node.node_ops.symlink(parent_node, target)?;
-	// Add link to the cache
-	let ent = Arc::new(Entry {
+	let fs = parent_node.fs.clone();
+	let node = fs.ops.create_node(fs.clone(), &stat)?;
+	node.node_ops.writelink(&node, target)?;
+	// Add node to cache
+	fs.node_insert(node.clone())?;
+	// Add link to the filesystem
+	let ent = Entry {
 		name: String::try_from(name)?,
 		parent: Some(parent.clone()),
 		children: Default::default(),
 		node: Some(node),
-	})?;
-	parent.children.lock().insert(EntryChild(ent))?;
+	};
+	parent_node.node_ops.link(parent_node, &ent)?;
+	// Add link to the cache
+	parent.children.lock().insert(EntryChild(Arc::new(ent)?))?;
 	Ok(())
 }
 

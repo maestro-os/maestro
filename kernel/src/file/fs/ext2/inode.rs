@@ -896,7 +896,7 @@ impl Ext2INode {
 			Dirent::write_new(
 				&mut buf[inner_off..],
 				superblock,
-				entry_inode,
+				entry_inode as _,
 				rec_len,
 				Some(file_type),
 				name,

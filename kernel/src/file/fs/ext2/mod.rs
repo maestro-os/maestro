@@ -359,12 +359,13 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn link(&self, parent: &Node, name: &[u8], target: INode) -> EResult<()> {
+	fn link(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		let mut superblock = fs.superblock.lock();
+		let target_inode = ent.node().inode;
 		// Parent inode
 		let mut parent_ = Ext2INode::read(parent.inode as _, &superblock, &*fs.io)?;
 		// Check the parent file is a directory
@@ -372,27 +373,30 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(ENOTDIR));
 		}
 		// Check the entry does not exist
-		if parent_.get_dirent(name, &superblock, &*fs.io)?.is_some() {
+		if parent_
+			.get_dirent(&ent.name, &superblock, &*fs.io)?
+			.is_some()
+		{
 			return Err(errno!(EEXIST));
 		}
 		// The inode
-		let mut inode_ = Ext2INode::read(target as _, &superblock, &*fs.io)?;
+		let mut target_ = Ext2INode::read(target_inode, &superblock, &*fs.io)?;
 		// Check the maximum number of links is not exceeded
-		if inode_.i_links_count == u16::MAX {
+		if target_.i_links_count == u16::MAX {
 			return Err(errno!(EMFILE));
 		}
 		// Update links count
-		inode_.i_links_count += 1;
+		target_.i_links_count += 1;
 		// Write directory entry
 		parent_.add_dirent(
 			&mut superblock,
 			&*fs.io,
-			target as _,
-			name,
-			inode_.get_type(),
+			target_inode as _,
+			&ent.name,
+			target_.get_type(),
 		)?;
 		parent_.write(parent.inode as _, &superblock, &*fs.io)?;
-		inode_.write(target as _, &superblock, &*fs.io)?;
+		target_.write(target_inode, &superblock, &*fs.io)?;
 		Ok(())
 	}
 
@@ -433,10 +437,6 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn symlink(&self, _parent: &Node, _path: &[u8]) -> EResult<Arc<Node>> {
-		todo!()
-	}
-
 	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		let superblock = fs.superblock.lock();
@@ -445,6 +445,16 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(EINVAL));
 		}
 		inode_.read_link(&superblock, &*fs.io, buf)
+	}
+
+	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		let mut superblock = fs.superblock.lock();
+		let mut inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
+		if inode_.get_type() != FileType::Link {
+			return Err(errno!(EINVAL));
+		}
+		inode_.write_link(&mut superblock, &*fs.io, buf)
 	}
 
 	fn rename(

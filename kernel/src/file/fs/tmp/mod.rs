@@ -49,6 +49,7 @@ use utils::{
 	errno::EResult,
 	limits::PAGE_SIZE,
 	ptr::{arc::Arc, cow::Cow},
+	TryClone,
 };
 
 // TODO count memory usage to enforce quota
@@ -296,12 +297,13 @@ impl NodeOps for TmpFSNode {
 		Ok(())
 	}
 
-	fn link(&self, parent: &Node, name: &[u8], inode: INode) -> EResult<()> {
+	fn link(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
 		// Get node
+		let inode = ent.node().inode;
 		let node = fs.nodes.lock().get_node(inode)?.clone();
 		let mut inner = node.0.lock();
 		let mut parent_inner = self.0.lock();
@@ -313,9 +315,9 @@ impl NodeOps for TmpFSNode {
 		let ent = Dirent {
 			inode,
 			entry_type: inner.get_type(),
-			name: Cow::Owned(name.try_into()?),
+			name: Cow::Owned(ent.name.try_clone()?),
 		};
-		let res = parent_entries.binary_search_by(|ent| ent.name.as_ref().cmp(name));
+		let res = parent_entries.binary_search_by(|e| e.name.as_ref().cmp(&ent.name));
 		let Err(ent_index) = res else {
 			return Err(errno!(EEXIST));
 		};
