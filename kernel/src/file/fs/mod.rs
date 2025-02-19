@@ -105,9 +105,6 @@ pub struct StatSet {
 
 /// Filesystem node operations.
 pub trait NodeOps: Any + Debug {
-	/// Returns the node's status.
-	fn get_stat(&self, node: &Node) -> EResult<Stat>;
-
 	/// Sets the node's status.
 	///
 	/// `set` is the set of status attributes to modify on the file.
@@ -235,7 +232,8 @@ pub trait FileOps: Any + Debug {
 	/// This function **MUST** be overridden when there is no [`Node`] associated with `file`.
 	fn get_stat(&self, file: &File) -> EResult<Stat> {
 		let node = file.vfs_entry.as_ref().unwrap().node();
-		node.node_ops.get_stat(node)
+		let stat = node.stat.lock().clone();
+		Ok(stat)
 	}
 
 	/// Increments the reference counter.
@@ -318,11 +316,7 @@ pub trait FileOps: Any + Debug {
 #[derive(Debug)]
 struct DummyOps;
 
-impl NodeOps for DummyOps {
-	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
-		todo!()
-	}
-}
+impl NodeOps for DummyOps {}
 
 impl FileOps for DummyOps {}
 
@@ -387,7 +381,9 @@ impl Filesystem {
 	}
 
 	/// Get the node with the ID `inode` from cache. If not present, initialize it with `init`.
-	pub fn node_get_or_insert<Init: FnOnce() -> EResult<(Box<dyn NodeOps>, Box<dyn FileOps>)>>(
+	pub fn node_get_or_insert<
+		Init: FnOnce() -> EResult<(Stat, Box<dyn NodeOps>, Box<dyn FileOps>)>,
+	>(
 		this: Arc<Self>,
 		inode: INode,
 		init: Init,
@@ -396,12 +392,16 @@ impl Filesystem {
 		if let Some(node) = cache.get(&inode) {
 			return Ok(node.clone());
 		}
-		let (node_ops, file_ops) = init()?;
+		let (stat, node_ops, file_ops) = init()?;
 		let node = Arc::new(Node {
 			inode,
 			fs: this.clone(),
+
+			stat: Mutex::new(stat),
+
 			node_ops,
 			file_ops,
+
 			pages: Default::default(),
 		})?;
 		cache.insert(node.inode, node.clone())?;

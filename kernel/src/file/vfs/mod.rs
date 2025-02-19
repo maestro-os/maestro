@@ -123,15 +123,14 @@ impl Entry {
 	///
 	/// If the entry represents a non-existent file, the function panics.
 	#[inline]
-	pub fn stat(&self) -> EResult<Stat> {
-		let node = self.node();
-		node.node_ops.get_stat(node)
+	pub fn stat(&self) -> Stat {
+		self.node().stat.lock().clone()
 	}
 
 	/// Returns the file's type.
 	#[inline]
 	pub fn get_type(&self) -> EResult<FileType> {
-		FileType::from_mode(self.stat()?.mode).ok_or_else(|| errno!(EUCLEAN))
+		FileType::from_mode(self.stat().mode).ok_or_else(|| errno!(EUCLEAN))
 	}
 
 	/// Returns the absolute path to reach the entry.
@@ -324,7 +323,7 @@ fn resolve_link(
 		return Err(errno!(ELOOP));
 	}
 	// Read link
-	let size = link.stat()?.size as usize;
+	let size = link.stat().size as usize;
 	let mut buf = vec![0; size]?;
 	let node = link.node();
 	node.node_ops.readlink(node, &mut buf)?;
@@ -365,7 +364,7 @@ fn resolve_path_impl<'p>(
 	// Iterate on intermediate components
 	for comp in components {
 		// Check lookup permission
-		let lookup_dir_stat = lookup_dir.stat()?;
+		let lookup_dir_stat = lookup_dir.stat();
 		if !settings
 			.access_profile
 			.can_search_directory(&lookup_dir_stat)
@@ -416,7 +415,7 @@ fn resolve_path_impl<'p>(
 		Component::Normal(name) => name,
 	};
 	// Check lookup permission
-	let lookup_dir_stat = lookup_dir.stat()?;
+	let lookup_dir_stat = lookup_dir.stat();
 	if !settings
 		.access_profile
 		.can_search_directory(&lookup_dir_stat)
@@ -436,7 +435,7 @@ fn resolve_path_impl<'p>(
 		};
 	};
 	// Resolve symbolic link if necessary
-	if settings.follow_link && entry.stat()?.get_type() == Some(FileType::Link) {
+	if settings.follow_link && entry.get_type()? == FileType::Link {
 		Ok(Resolved::Found(resolve_link(
 			entry,
 			settings.root.clone(),
@@ -514,7 +513,7 @@ pub fn create_file(
 	ap: &AccessProfile,
 	mut stat: Stat,
 ) -> EResult<Arc<Entry>> {
-	let parent_stat = parent.stat()?;
+	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -573,12 +572,12 @@ pub fn link(
 	target: Arc<Node>,
 	ap: &AccessProfile,
 ) -> EResult<()> {
-	let parent_stat = parent.stat()?;
+	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	let target_stat = target.node_ops.get_stat(&target)?;
+	let target_stat = target.stat();
 	if target_stat.get_type() == Some(FileType::Directory) {
 		return Err(errno!(EPERM));
 	}
@@ -625,14 +624,14 @@ pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 		return Err(errno!(EBUSY));
 	};
 	// Validation
-	let parent_stat = parent.stat()?;
+	let parent_stat = parent.stat();
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let stat = entry.stat()?;
+	let stat = entry.stat();
 	let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
 	if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
 		return Err(errno!(EACCES));
@@ -673,7 +672,7 @@ pub fn symlink(
 	ap: &AccessProfile,
 	mut stat: Stat,
 ) -> EResult<()> {
-	let parent_stat = parent.stat()?;
+	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -739,11 +738,11 @@ pub fn rename(
 		return Err(errno!(EBUSY));
 	}
 	// Check permissions on `old`
-	let old_parent_stat = old_parent.stat()?;
+	let old_parent_stat = old_parent.stat();
 	if !ap.can_write_directory(&old_parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let old_stat = old.stat()?;
+	let old_stat = old.stat();
 	if old_stat.mode & S_ISVTX != 0 && ap.euid != old_stat.uid && ap.euid != old_parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
@@ -761,11 +760,11 @@ pub fn rename(
 		return Err(errno!(EBUSY));
 	}
 	// Check permissions on `new`
-	let new_parent_stat = new_parent.stat()?;
+	let new_parent_stat = new_parent.stat();
 	if !ap.can_write_directory(&new_parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let new_stat = new.stat()?;
+	let new_stat = new.stat();
 	if new_stat.mode & S_ISVTX != 0 && ap.euid != new_stat.uid && ap.euid != new_parent_stat.uid {
 		return Err(errno!(EACCES));
 	}

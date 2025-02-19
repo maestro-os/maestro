@@ -86,7 +86,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 	let mut i = 0;
 	loop {
 		// Check permission
-		let stat = ent.stat()?;
+		let stat = ent.stat();
 		if !rs.access_profile.can_read_file(&stat) || !rs.access_profile.can_execute_file(&stat) {
 			return Err(errno!(EACCES));
 		}

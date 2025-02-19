@@ -360,9 +360,8 @@ impl File {
 	/// If the entry is negative, the function returns [`errno::ENOENT`].
 	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
 		let node = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
-		let stat = node.node_ops.get_stat(node)?;
 		// Get or create ops
-		let ops = match stat.get_type() {
+		let ops = match node.get_type() {
 			Some(FileType::Fifo) => {
 				FileOpsWrapper::Owned(node.fs.buffer_get_or_insert(node.inode, PipeBuffer::new)?)
 			}

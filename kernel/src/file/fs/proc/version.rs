@@ -19,7 +19,7 @@
 //! The `version` file returns the version of the kernel.
 
 use crate::{
-	file::{fs::FileOps, File, FileType, Stat},
+	file::{fs::FileOps, File},
 	format_content,
 };
 use utils::errno::EResult;
@@ -29,13 +29,6 @@ use utils::errno::EResult;
 pub struct Version;
 
 impl FileOps for Version {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			..Default::default()
-		})
-	}
-
 	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		format_content!(off, buf, "{} version {}\n", crate::NAME, crate::VERSION)
 	}

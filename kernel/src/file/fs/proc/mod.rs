@@ -31,16 +31,19 @@ use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{
-			kernfs::{box_file, box_node, EitherOps, StaticDir, StaticEntry, StaticLink},
+			kernfs::{
+				box_file, box_node, static_dir_stat, EitherOps, StaticDir, StaticEntry, StaticLink,
+			},
 			proc::proc_dir::environ::Environ,
 			Statfs,
 		},
 		perm::{Gid, Uid},
 		vfs,
 		vfs::node::Node,
-		DirContext, DirEntry, FileType, Stat,
+		DirContext, DirEntry, FileType, Mode, Stat,
 	},
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
+	sync::mutex::Mutex,
 };
 use mem_info::MemInfo;
 use proc_dir::{
@@ -66,6 +69,17 @@ fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 		.unwrap_or((0, 0))
 }
 
+/// Returns the status of a file in a process's directory.
+fn proc_file_stat(pid: Pid, mode: Mode) -> Stat {
+	let (uid, gid) = get_proc_owner(pid);
+	Stat {
+		mode,
+		uid,
+		gid,
+		..Default::default()
+	}
+}
+
 /// The root directory of the proc.
 #[derive(Clone, Debug)]
 struct RootDir;
@@ -79,32 +93,41 @@ impl RootDir {
 		entries: &[
 			StaticEntry {
 				name: b"meminfo",
-				entry_type: FileType::Regular,
+				stat: |_| Stat {
+					mode: FileType::Regular.to_mode() | 0o444,
+					..Default::default()
+				},
 				init: EitherOps::File(|_| box_file(MemInfo)),
 			},
 			StaticEntry {
 				name: b"mounts",
-				entry_type: FileType::Link,
+				stat: |_| Stat {
+					mode: FileType::Link.to_mode() | 0o777,
+					..Default::default()
+				},
 				init: EitherOps::Node(|_| box_node(StaticLink(b"self/mounts"))),
 			},
 			StaticEntry {
 				name: b"self",
-				entry_type: FileType::Link,
+				stat: |_| Stat {
+					mode: FileType::Link.to_mode() | 0o777,
+					..Default::default()
+				},
 				init: EitherOps::Node(|_| box_node(SelfNode)),
 			},
 			StaticEntry {
 				name: b"sys",
-				entry_type: FileType::Directory,
+				stat: |_| static_dir_stat(),
 				init: EitherOps::Node(|_| {
 					box_node(StaticDir {
 						entries: &[(StaticEntry {
 							name: b"kernel",
-							entry_type: FileType::Directory,
+							stat: |_| static_dir_stat(),
 							init: EitherOps::Node(|_| {
 								box_node(StaticDir {
 									entries: &[StaticEntry {
 										name: b"osrelease",
-										entry_type: FileType::Regular,
+										stat: |_| static_dir_stat(),
 										init: EitherOps::File(|_| box_file(OsRelease)),
 									}],
 									data: (),
@@ -117,27 +140,35 @@ impl RootDir {
 			},
 			StaticEntry {
 				name: b"uptime",
-				entry_type: FileType::Regular,
+				stat: |_| Stat {
+					mode: FileType::Regular.to_mode() | 0o444,
+					..Default::default()
+				},
 				init: EitherOps::File(|_| box_file(Uptime)),
 			},
 			StaticEntry {
 				name: b"version",
-				entry_type: FileType::Regular,
+				stat: |_| Stat {
+					mode: FileType::Regular.to_mode() | 0o444,
+					..Default::default()
+				},
 				init: EitherOps::File(|_| box_file(Version)),
 			},
 		],
 		data: (),
 	};
+
+	/// Returns the directory's status.
+	#[inline]
+	fn stat() -> Stat {
+		Stat {
+			mode: FileType::Directory.to_mode() | 0o555,
+			..Default::default()
+		}
+	}
 }
 
 impl NodeOps for RootDir {
-	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Directory.to_mode() | 0o555,
-			..Default::default()
-		})
-	}
-
 	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let pid = core::str::from_utf8(&ent.name)
 			.ok()
@@ -150,47 +181,61 @@ impl NodeOps for RootDir {
 				Arc::new(Node {
 					inode: 0,
 					fs: dir.fs.clone(),
+
+					stat: Mutex::new(static_dir_stat()),
+
 					node_ops: Box::new(StaticDir {
 						entries: &[
 							StaticEntry {
 								name: b"cmdline",
-								entry_type: FileType::Regular,
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+								},
 								init: EitherOps::File(|pid| box_file(Cmdline(pid))),
 							},
 							StaticEntry {
 								name: b"cwd",
-								entry_type: FileType::Regular,
-								init: EitherOps::File(|pid| box_file(Cwd(pid))),
+								stat: |pid| proc_file_stat(pid, FileType::Link.to_mode() | 0o777),
+								init: EitherOps::Node(|pid| box_node(Cwd(pid))),
 							},
 							StaticEntry {
 								name: b"environ",
-								entry_type: FileType::Regular,
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o400)
+								},
 								init: EitherOps::File(|pid| box_file(Environ(pid))),
 							},
 							StaticEntry {
 								name: b"exe",
-								entry_type: FileType::Regular,
-								init: EitherOps::File(|pid| box_file(Exe(pid))),
+								stat: |pid| proc_file_stat(pid, FileType::Link.to_mode() | 0o444),
+								init: EitherOps::Node(|pid| box_node(Exe(pid))),
 							},
 							StaticEntry {
 								name: b"mounts",
-								entry_type: FileType::Regular,
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+								},
 								init: EitherOps::File(|pid| box_file(Mounts(pid))),
 							},
 							StaticEntry {
 								name: b"stat",
-								entry_type: FileType::Regular,
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+								},
 								init: EitherOps::File(|pid| box_file(StatNode(pid))),
 							},
 							StaticEntry {
 								name: b"status",
-								entry_type: FileType::Regular,
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+								},
 								init: EitherOps::File(|pid| box_file(Status(pid))),
 							},
 						],
 						data: pid,
 					})?,
 					file_ops: Box::new(DummyOps)?,
+
 					pages: Default::default(),
 				})
 			})
@@ -203,9 +248,11 @@ impl NodeOps for RootDir {
 		// Iterate on static entries
 		let static_iter = Self::STATIC.entries.iter().skip(off);
 		for e in static_iter {
+			let stat = (e.stat)(());
+			let entry_type = stat.get_type().ok_or_else(|| errno!(EUCLEAN))?;
 			let ent = DirEntry {
 				inode: 0,
-				entry_type: e.entry_type,
+				entry_type,
 				name: e.name,
 			};
 			ctx.off += 1;
@@ -262,8 +309,12 @@ impl FilesystemOps for ProcFS {
 		Ok(Arc::new(Node {
 			inode: 0,
 			fs,
+
+			stat: Mutex::new(RootDir::stat()),
+
 			node_ops: Box::new(RootDir)?,
 			file_ops: Box::new(DummyOps)?,
+
 			pages: Default::default(),
 		})?)
 	}

@@ -242,7 +242,7 @@ fn build_auxiliary(
 /// If the file is not executable, the function returns an error.
 fn read_exec_file(file: Arc<vfs::Entry>, ap: &AccessProfile) -> EResult<Vec<u8>> {
 	// Check that the file can be executed by the user
-	let stat = file.stat()?;
+	let stat = file.stat();
 	if unlikely(stat.get_type() != Some(FileType::Regular)) {
 		return Err(errno!(EACCES));
 	}

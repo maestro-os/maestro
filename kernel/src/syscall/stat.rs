@@ -184,7 +184,7 @@ pub fn stat(
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 	let pathname = PathBuf::try_from(pathname)?;
 	let ent = vfs::get_file_from_path(&pathname, &rs)?;
-	let stat = ent.stat()?;
+	let stat = ent.stat();
 	do_stat32(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
@@ -196,7 +196,7 @@ pub fn stat64(
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 	let pathname = PathBuf::try_from(pathname)?;
 	let ent = vfs::get_file_from_path(&pathname, &rs)?;
-	let stat = ent.stat()?;
+	let stat = ent.stat();
 	do_stat64(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
@@ -234,7 +234,7 @@ pub fn lstat(
 		..rs
 	};
 	let ent = vfs::get_file_from_path(&pathname, &rs)?;
-	let stat = ent.stat()?;
+	let stat = ent.stat();
 	do_stat32(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
@@ -250,7 +250,7 @@ pub fn lstat64(
 		..rs
 	};
 	let ent = vfs::get_file_from_path(&pathname, &rs)?;
-	let stat = ent.stat()?;
+	let stat = ent.stat();
 	do_stat64(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
@@ -355,7 +355,7 @@ pub fn statx(
 		return Err(errno!(ENOENT));
 	};
 	// Get file's stat
-	let stat = file.stat()?;
+	let stat = file.stat();
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
 	let (stx_dev, stx_ino) = entry_info(&file);

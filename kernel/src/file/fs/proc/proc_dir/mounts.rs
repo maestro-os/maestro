@@ -19,12 +19,7 @@
 //! Implementation of the `mounts` node which allows to get the list of mountpoint.
 
 use crate::{
-	file::{
-		fs::{proc::get_proc_owner, FileOps},
-		vfs,
-		vfs::mountpoint,
-		File, FileType, Stat,
-	},
+	file::{fs::FileOps, vfs, vfs::mountpoint, File},
 	format_content,
 	process::pid::Pid,
 };
@@ -36,16 +31,6 @@ use utils::{errno::EResult, DisplayableStr};
 pub struct Mounts(pub Pid);
 
 impl FileOps for Mounts {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
 	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		format_content!(off, buf, "{}", self)
 	}

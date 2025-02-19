@@ -240,26 +240,6 @@ fn write<T>(off: u64, blk_size: u32, io: &dyn DeviceIO, val: &T) -> EResult<()> 
 struct Ext2NodeOps;
 
 impl NodeOps for Ext2NodeOps {
-	fn get_stat(&self, node: &Node) -> EResult<Stat> {
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let superblock = fs.superblock.lock();
-		let inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
-		let (dev_major, dev_minor) = inode_.get_device();
-		Ok(Stat {
-			mode: inode_.i_mode as _,
-			nlink: inode_.i_links_count as _,
-			uid: inode_.i_uid,
-			gid: inode_.i_gid,
-			size: inode_.get_size(&superblock),
-			blocks: inode_.i_blocks as _,
-			dev_major: dev_major as _,
-			dev_minor: dev_minor as _,
-			ctime: inode_.i_ctime as _,
-			mtime: inode_.i_mtime as _,
-			atime: inode_.i_atime as _,
-		})
-	}
-
 	fn set_stat(&self, node: &Node, set: StatSet) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		let superblock = fs.superblock.lock();
@@ -294,14 +274,21 @@ impl NodeOps for Ext2NodeOps {
 		let inode_ = Ext2INode::read(dir.inode as _, &superblock, &*fs.io)?;
 		ent.node = inode_
 			.get_dirent(&ent.name, &superblock, &*fs.io)?
-			.map(|(inode, ..)| {
-				Arc::new(Node {
+			.map(|(inode, ..)| -> EResult<_> {
+				let inode_ = Ext2INode::read(inode as _, &superblock, &*fs.io)?;
+				let stat = inode_.stat(&superblock);
+				let node = Arc::new(Node {
 					inode: inode as _,
 					fs: dir.fs.clone(),
+
+					stat: Mutex::new(stat),
+
 					node_ops: Box::new(Ext2NodeOps)?,
 					file_ops: Box::new(Ext2FileOps)?,
+
 					pages: Default::default(),
-				})
+				})?;
+				Ok(node)
 			})
 			.transpose()?;
 		Ok(())
@@ -1026,8 +1013,9 @@ impl FilesystemOps for Ext2Fs {
 		Filesystem::node_get_or_insert(fs, inode::ROOT_DIRECTORY_INODE as _, || {
 			let superblock = self.superblock.lock();
 			// Check the inode exists
-			Ext2INode::read(inode::ROOT_DIRECTORY_INODE as _, &superblock, &*self.io)?;
-			Ok((Box::new(Ext2NodeOps)?, Box::new(Ext2FileOps)?))
+			let inode = Ext2INode::read(inode::ROOT_DIRECTORY_INODE as _, &superblock, &*self.io)?;
+			let stat = inode.stat(&superblock);
+			Ok((stat, Box::new(Ext2NodeOps)?, Box::new(Ext2FileOps)?))
 		})
 	}
 
@@ -1071,8 +1059,12 @@ impl FilesystemOps for Ext2Fs {
 		let node = Arc::new(Node {
 			inode: inode_index as _,
 			fs,
+
+			stat: Mutex::new(inode.stat(&superblock)),
+
 			node_ops: Box::new(Ext2NodeOps)?,
 			file_ops: Box::new(Ext2FileOps)?,
+
 			pages: Default::default(),
 		})?;
 		node.fs.node_insert(node.clone())?;

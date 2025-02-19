@@ -36,8 +36,7 @@ pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<u
 	let path = PathBuf::try_from(path)?;
 	let ent = vfs::get_file_from_path(&path, &rs)?;
 	// Permission check
-	let stat = ent.stat()?;
-	if !rs.access_profile.can_write_file(&stat) {
+	if !rs.access_profile.can_write_file(&ent.stat()) {
 		return Err(errno!(EACCES));
 	}
 	// Truncate

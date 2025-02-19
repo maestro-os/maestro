@@ -21,7 +21,7 @@
 use crate::{
 	file::{
 		fs::{FileOps, Filesystem, NodeOps},
-		FileType, INode,
+		FileType, INode, Stat,
 	},
 	memory::buddy::PageState,
 	sync::mutex::Mutex,
@@ -37,6 +37,9 @@ pub struct Node {
 	/// The filesystem on which the node is located
 	pub fs: Arc<Filesystem>,
 
+	/// The node's status.
+	pub stat: Mutex<Stat>,
+
 	/// Handle for node operations
 	pub node_ops: Box<dyn NodeOps>,
 	/// Handle for open file operations
@@ -48,7 +51,21 @@ pub struct Node {
 }
 
 impl Node {
+	/// Returns the current status of the node.
+	#[inline]
+	pub fn stat(&self) -> Stat {
+		self.stat.lock().clone()
+	}
+
+	/// Returns the type of the file.
+	#[inline]
+	pub fn get_type(&self) -> Option<FileType> {
+		let stat = self.stat.lock();
+		FileType::from_mode(stat.mode)
+	}
+
 	/// Tells whether the current node and `other` are on the same filesystem.
+	#[inline]
 	pub fn is_same_fs(&self, other: &Self) -> bool {
 		ptr::eq(self.fs.as_ref(), other.fs.as_ref())
 	}
@@ -71,7 +88,7 @@ impl Node {
 	/// Removes the node from the disk if it is orphan.
 	pub fn try_remove(self) -> EResult<()> {
 		// If there is no hard link left to the node, remove it
-		let stat = self.node_ops.get_stat(&self)?;
+		let stat = self.stat.lock();
 		let dir = stat.get_type() == Some(FileType::Directory);
 		// If the file is a directory, the threshold is `1` because of the `.` entry
 		let remove = (dir && stat.nlink <= 1) || stat.nlink == 0;

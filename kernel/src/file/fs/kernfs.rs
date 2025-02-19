@@ -24,11 +24,14 @@
 //!
 //! This module implements utilities for kernfs.
 
-use crate::file::{
-	fs::{DummyOps, FileOps, NodeOps},
-	vfs,
-	vfs::node::Node,
-	DirContext, DirEntry, FileType, INode, Stat,
+use crate::{
+	file::{
+		fs::{DummyOps, FileOps, NodeOps},
+		vfs,
+		vfs::node::Node,
+		DirContext, DirEntry, FileType, INode, Stat,
+	},
+	sync::mutex::Mutex,
 };
 use core::{
 	cmp::min,
@@ -179,13 +182,6 @@ macro_rules! format_content {
 pub struct StaticLink(pub &'static [u8]);
 
 impl NodeOps for StaticLink {
-	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Link.to_mode() | 0o777,
-			..Default::default()
-		})
-	}
-
 	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
 		format_content!(0, buf, "{}", DisplayableStr(self.0))
 	}
@@ -207,8 +203,8 @@ pub enum EitherOps<T> {
 pub struct StaticEntry<T = ()> {
 	/// The name of the entry
 	pub name: &'static [u8],
-	/// The type of the entry
-	pub entry_type: FileType,
+	/// The node's status
+	pub stat: fn(T) -> Stat,
 	/// A builder which returns a handle to perform operations
 	pub init: EitherOps<T>,
 }
@@ -237,21 +233,25 @@ pub struct StaticDir<T: 'static + Clone + Debug = ()> {
 	pub data: T,
 }
 
-impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
-	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Directory.to_mode() | 0o555,
-			..Default::default()
-		})
+/// Returns [`Stat`] for [`StaticDir`].
+#[inline]
+pub fn static_dir_stat() -> Stat {
+	Stat {
+		mode: FileType::Directory.to_mode() | 0o555,
+		..Default::default()
 	}
+}
 
+impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		ent.node = self
 			.entries
 			.binary_search_by(|e| e.name.cmp(&ent.name))
 			.ok()
 			.map(|index| {
-				let (node_ops, file_ops) = match self.entries[index].init {
+				let ent = &self.entries[index];
+				let stat = (ent.stat)(self.data.clone());
+				let (node_ops, file_ops) = match ent.init {
 					EitherOps::Node(init) => {
 						let node_ops = init(self.data.clone())?;
 						let file_ops = Box::new(DummyOps)? as _;
@@ -266,8 +266,12 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 				Arc::new(Node {
 					inode: 0,
 					fs: dir.fs.clone(),
+
+					stat: Mutex::new(stat),
+
 					node_ops,
 					file_ops,
+
 					pages: Default::default(),
 				})
 			})
@@ -278,9 +282,11 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
 		let iter = self.entries.iter().skip(ctx.off as usize);
 		for e in iter {
+			let stat = (e.stat)(self.data.clone());
+			let entry_type = stat.get_type().ok_or_else(|| errno!(EUCLEAN))?;
 			let ent = DirEntry {
 				inode: 0,
-				entry_type: e.entry_type,
+				entry_type,
 				name: e.name,
 			};
 			ctx.off += 1;

@@ -220,11 +220,6 @@ impl TmpFSNode {
 }
 
 impl NodeOps for TmpFSNode {
-	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
-		let inner = self.0.lock();
-		Ok(inner.as_stat())
-	}
-
 	fn set_stat(&self, _node: &Node, set: StatSet) -> EResult<()> {
 		let mut inner = self.0.lock();
 		if let Some(mode) = set.mode {
@@ -263,11 +258,16 @@ impl NodeOps for TmpFSNode {
 			.map(|inode| -> EResult<_> {
 				let ent = &entries[inode];
 				let node = fs.nodes.lock().get_node(ent.inode)?.clone();
+				let stat = node.0.lock().as_stat();
 				let node = Arc::new(Node {
 					inode: ent.inode as _,
 					fs: dir.fs.clone(),
+
+					stat: Mutex::new(stat),
+
 					node_ops: Box::new(node)?,
 					file_ops: Box::new(TmpFSFile)?,
+
 					pages: Default::default(),
 				})?;
 				Ok(node)
@@ -503,11 +503,16 @@ impl FilesystemOps for TmpFS {
 
 	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
 		let node = self.nodes.lock().get_node(kernfs::ROOT_INODE)?.clone();
+		let stat = node.0.lock().as_stat();
 		Ok(Arc::new(Node {
 			inode: 0,
 			fs,
+
+			stat: Mutex::new(stat),
+
 			node_ops: Box::new(node)?,
 			file_ops: Box::new(TmpFSFile)?,
+
 			pages: Default::default(),
 		})?)
 	}
@@ -520,11 +525,16 @@ impl FilesystemOps for TmpFS {
 		let (inode, slot) = nodes.get_free_slot()?;
 		let node = TmpFSNode::new(stat, Some(inode), None)?;
 		*slot = Some(node.clone());
+		let stat = node.0.lock().as_stat();
 		let node = Arc::new(Node {
 			inode,
 			fs,
+
+			stat: Mutex::new(stat),
+
 			node_ops: Box::new(node)?,
 			file_ops: Box::new(TmpFSFile)?,
+
 			pages: Default::default(),
 		})?;
 		Ok(node)

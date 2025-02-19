@@ -45,7 +45,7 @@ pub fn fchmod(
 		.clone()
 		.ok_or_else(|| errno!(EROFS))?;
 	// Check permissions
-	let stat = file.stat()?;
+	let stat = file.stat();
 	if !ap.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}

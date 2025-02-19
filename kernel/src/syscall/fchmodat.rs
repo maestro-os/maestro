@@ -54,7 +54,7 @@ pub fn fchmodat(
 		return Err(errno!(ENOENT));
 	};
 	// Check permission
-	let stat = file.stat()?;
+	let stat = file.stat();
 	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}

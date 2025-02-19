@@ -20,7 +20,7 @@
 //! system.
 
 use crate::{
-	file::{fs::FileOps, File, FileType, Stat},
+	file::{fs::FileOps, File},
 	format_content, memory,
 };
 use utils::errno::EResult;
@@ -30,13 +30,6 @@ use utils::errno::EResult;
 pub struct MemInfo;
 
 impl FileOps for MemInfo {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			..Default::default()
-		})
-	}
-
 	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let mem_info = memory::stats::MEM_INFO.lock();
 		format_content!(off, buf, "{}", *mem_info)

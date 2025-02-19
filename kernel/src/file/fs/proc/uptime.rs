@@ -19,7 +19,7 @@
 //! The uptime file returns the amount of time elapsed since the system started up.
 
 use crate::{
-	file::{fs::FileOps, File, FileType, Stat},
+	file::{fs::FileOps, File},
 	format_content,
 };
 use utils::errno::EResult;
@@ -29,13 +29,6 @@ use utils::errno::EResult;
 pub struct Uptime;
 
 impl FileOps for Uptime {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			..Default::default()
-		})
-	}
-
 	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		// TODO
 		format_content!(off, buf, "0.00 0.00\n")

@@ -19,7 +19,7 @@
 //! Implementation of the `self` symlink, which points to the current process's directory.
 
 use crate::{
-	file::{fs::NodeOps, vfs::node::Node, FileType, Stat},
+	file::{fs::NodeOps, vfs::node::Node},
 	format_content,
 	process::Process,
 };
@@ -30,13 +30,6 @@ use utils::errno::EResult;
 pub struct SelfNode;
 
 impl NodeOps for SelfNode {
-	fn get_stat(&self, _node: &Node) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Link.to_mode() | 0o777,
-			..Default::default()
-		})
-	}
-
 	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
 		let pid = Process::current().get_pid();
 		format_content!(0, buf, "{pid}")

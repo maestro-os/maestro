@@ -24,7 +24,7 @@ use super::{
 };
 use crate::{
 	device::DeviceIO,
-	file::{FileType, INode, Mode},
+	file::{FileType, INode, Mode, Stat},
 };
 use core::{
 	cmp::{max, min},
@@ -361,6 +361,24 @@ impl Ext2INode {
 		let blk_size = superblock.get_block_size();
 		let off = Self::get_disk_offset(i, superblock, io)?;
 		read::<Self>(off, blk_size, io)
+	}
+
+	/// Returns the file's status.
+	pub fn stat(&self, superblock: &Superblock) -> Stat {
+		let (dev_major, dev_minor) = self.get_device();
+		Stat {
+			mode: self.i_mode as _,
+			nlink: self.i_links_count as _,
+			uid: self.i_uid,
+			gid: self.i_gid,
+			size: self.get_size(superblock),
+			blocks: self.i_blocks as _,
+			dev_major: dev_major as _,
+			dev_minor: dev_minor as _,
+			ctime: self.i_ctime as _,
+			mtime: self.i_mtime as _,
+			atime: self.i_atime as _,
+		}
 	}
 
 	/// Returns the type of the file.

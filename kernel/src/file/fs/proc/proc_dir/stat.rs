@@ -20,10 +20,7 @@
 //! status of the process.
 
 use crate::{
-	file::{
-		fs::{proc::get_proc_owner, FileOps},
-		File, FileType, Stat,
-	},
+	file::{fs::FileOps, File},
 	format_content,
 	memory::VirtAddr,
 	process::{pid::Pid, Process},
@@ -36,16 +33,6 @@ use utils::{errno, errno::EResult};
 pub struct StatNode(pub Pid);
 
 impl FileOps for StatNode {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
 	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let mem_space = proc.mem_space.as_ref().unwrap().lock();
