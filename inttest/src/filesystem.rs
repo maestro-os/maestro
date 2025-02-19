@@ -106,8 +106,8 @@ pub fn directories() -> TestResult {
 	fs::create_dir_all("/abc/def/ghi")?;
 	log!("Stat `/abc`");
 	let stat = util::stat("/abc")?;
-	log!("Stat `/abc/def`");
 	test_assert_eq!(stat.st_nlink, 3);
+	log!("Stat `/abc/def`");
 	let stat = util::stat("/abc/def")?;
 	test_assert_eq!(stat.st_nlink, 3);
 	log!("Stat `/abc/def/ghi`");

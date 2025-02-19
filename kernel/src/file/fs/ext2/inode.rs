@@ -24,7 +24,7 @@ use super::{
 };
 use crate::{
 	device::DeviceIO,
-	file::{DirEntry, FileType, INode, Mode},
+	file::{FileType, INode, Mode, Stat},
 };
 use core::{
 	cmp::{max, min},
@@ -33,7 +33,7 @@ use core::{
 	num::NonZeroU32,
 };
 use macros::AnyRepr;
-use utils::{bytes, errno, errno::EResult, math, ptr::cow::Cow, vec};
+use utils::{bytes, errno, errno::EResult, math, vec};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -363,6 +363,24 @@ impl Ext2INode {
 		read::<Self>(off, blk_size, io)
 	}
 
+	/// Returns the file's status.
+	pub fn stat(&self, superblock: &Superblock) -> Stat {
+		let (dev_major, dev_minor) = self.get_device();
+		Stat {
+			mode: self.i_mode as _,
+			nlink: self.i_links_count as _,
+			uid: self.i_uid,
+			gid: self.i_gid,
+			size: self.get_size(superblock),
+			blocks: self.i_blocks as _,
+			dev_major: dev_major as _,
+			dev_minor: dev_minor as _,
+			ctime: self.i_ctime as _,
+			mtime: self.i_mtime as _,
+			atime: self.i_atime as _,
+		}
+	}
+
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> FileType {
 		let file_type = self.i_mode & 0xf000;
@@ -434,7 +452,7 @@ impl Ext2INode {
 	/// - `io` is the I/O interface
 	///
 	/// If the block does not exist, the function returns `None`.
-	fn translate_blk_off(
+	pub fn translate_blk_off(
 		&self,
 		off: u32,
 		superblock: &Superblock,
@@ -783,65 +801,6 @@ impl Ext2INode {
 		Ok(None)
 	}
 
-	/// Returns the next used directory entry starting from the offset `off`.
-	///
-	/// Arguments:
-	/// - `off` is the offset of the entry to return
-	/// - `superblock` is the filesystem's superblock
-	/// - `io` is the I/O interface
-	///
-	/// On success, the function returns the entry and the offset to the next entry.
-	pub fn next_dirent(
-		&self,
-		mut off: u64,
-		superblock: &Superblock,
-		io: &dyn DeviceIO,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		if self.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// If the list is exhausted, stop
-		if off >= self.get_size(superblock) {
-			return Ok(None);
-		}
-		let blk_size = superblock.get_block_size();
-		let mut buf = vec![0; blk_size as _]?;
-		// If the offset is not at the beginning of a block, read it so that `next_dirent` works
-		// correctly
-		if off % blk_size as u64 != 0 {
-			let blk_off = off / blk_size as u64;
-			let res = self.translate_blk_off(blk_off as _, superblock, io);
-			let blk_off = match res {
-				Ok(Some(o)) => o,
-				// If reaching a zero block, stop
-				Ok(None) => return Ok(None),
-				// If reaching the block limit, stop
-				Err(e) if e.as_int() == errno::EOVERFLOW => return Ok(None),
-				Err(e) => return Err(e),
-			};
-			read_block(blk_off.get() as _, blk_size, io, &mut buf)?;
-		}
-		// Read the next entry, skipping free ones
-		let ent = loop {
-			// If no entry remain, stop
-			let Some(ent) = next_dirent(self, superblock, io, &mut buf, off)? else {
-				return Ok(None);
-			};
-			off += ent.rec_len as u64;
-			if !ent.is_free() {
-				break ent;
-			}
-		};
-		let entry_type = ent.get_type(superblock, io)?;
-		let name = ent.get_name(superblock).try_into()?;
-		let ent = DirEntry {
-			inode: ent.inode as _,
-			entry_type,
-			name: Cow::Owned(name),
-		};
-		Ok(Some((ent, off)))
-	}
-
 	/// Tells whether the current directory is empty.
 	pub fn is_directory_empty(&self, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<bool> {
 		let blk_size = superblock.get_block_size() as u64;
@@ -955,7 +914,7 @@ impl Ext2INode {
 			Dirent::write_new(
 				&mut buf[inner_off..],
 				superblock,
-				entry_inode,
+				entry_inode as _,
 				rec_len,
 				Some(file_type),
 				name,
@@ -1035,7 +994,6 @@ impl Ext2INode {
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock
 	/// - `io` is the I/O interface
-	/// - `off` is the offset from which the link is read
 	/// - `buf` is the buffer in which the content is written
 	///
 	/// If the file is not a symbolic link, the behaviour is undefined.
@@ -1045,24 +1003,18 @@ impl Ext2INode {
 		&self,
 		superblock: &Superblock,
 		io: &dyn DeviceIO,
-		off: u64,
 		buf: &mut [u8],
 	) -> EResult<usize> {
 		let size = self.get_size(superblock);
 		if size <= SYMLINK_INLINE_LIMIT {
 			// The target is stored inline in the inode
-			let Some(len) = size.checked_sub(off) else {
-				return Err(errno!(EINVAL));
-			};
-			// Copy
-			let len = min(buf.len(), len as usize);
+			let len = min(buf.len(), size as usize);
 			let src = bytes::as_bytes(&self.i_block);
-			let off = off as usize;
-			buf[..len].copy_from_slice(&src[off..(off + len)]);
+			buf[..len].copy_from_slice(&src[..len]);
 			Ok(len)
 		} else {
 			// The target is stored like in regular files
-			self.read_content(off, buf, superblock, io)
+			self.read_content(0, buf, superblock, io)
 		}
 	}
 

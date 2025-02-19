@@ -19,7 +19,7 @@
 //! This module implements Copy-On-Write (COW) pointers.
 
 use crate::{TryClone, TryToOwned};
-use core::{borrow::Borrow, fmt};
+use core::{borrow::Borrow, fmt, ops::Deref};
 
 /// A clone-on-write smart pointer.
 pub enum Cow<'a, B: 'a + ?Sized + TryToOwned> {
@@ -75,6 +75,14 @@ impl<'a, B: 'a + ?Sized + TryToOwned> From<&'a B> for Cow<'a, B> {
 
 impl<'a, B: 'a + ?Sized + TryToOwned> Borrow<B> for Cow<'a, B> {
 	fn borrow(&self) -> &B {
+		self.as_ref()
+	}
+}
+
+impl<'a, B: 'a + ?Sized + TryToOwned> Deref for Cow<'a, B> {
+	type Target = B;
+
+	fn deref(&self) -> &B {
 		self.as_ref()
 	}
 }

@@ -44,13 +44,14 @@ pub fn do_chown(
 	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Get file
-	let file = vfs::get_file_from_path(&path, &rs)?;
+	let ent = vfs::get_file_from_path(&path, &rs)?;
 	// TODO allow changing group to any group whose owner is member
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-	file.node().ops.set_stat(
-		&file.node().location,
+	let node = ent.node();
+	node.node_ops.set_stat(
+		node,
 		StatSet {
 			uid: (owner > -1).then_some(owner as _),
 			gid: (group > -1).then_some(group as _),

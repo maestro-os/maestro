@@ -19,7 +19,10 @@
 //! Implementation of `stat*` system calls, allowing to retrieve the status of a file.
 
 use crate::{
-	device::{id::makedev, DeviceID},
+	device::{
+		id::{major, makedev, minor},
+		DeviceID,
+	},
 	file,
 	file::{
 		fd::FileDescriptorTable,
@@ -123,23 +126,13 @@ pub struct Stat64 {
 }
 
 /// Extract device number and inode from [`vfs::Entry`].
-fn entry_info(entry: &vfs::Entry) -> EResult<(u64, INode)> {
+fn entry_info(entry: &vfs::Entry) -> (u64, INode) {
 	let node = entry.node();
-	let mount_source = &node
-		.location
-		.get_mountpoint()
-		.ok_or_else(|| errno!(ENOENT))?
-		.source;
-	let st_dev = match mount_source {
-		MountSource::Device(dev) => dev.get_device_number(),
-		MountSource::NoDev(_) => 0,
-	};
-	let st_ino = node.location.inode;
-	Ok((st_dev, st_ino))
+	(node.fs.dev, node.inode)
 }
 
 fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat32>) -> EResult<()> {
-	let (st_dev, st_ino) = entry.map(entry_info).transpose()?.unwrap_or_default();
+	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
 	statbuf.copy_to_user(&Stat32 {
 		st_dev: st_dev as _,
 		st_ino: st_ino as _,
@@ -162,7 +155,7 @@ fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat32>
 }
 
 fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat64>) -> EResult<()> {
-	let (st_dev, st_ino) = entry.map(entry_info).transpose()?.unwrap_or_default();
+	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
 	statbuf.copy_to_user(&Stat64 {
 		st_dev,
 		st_ino,
@@ -191,7 +184,7 @@ pub fn stat(
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 	let pathname = PathBuf::try_from(pathname)?;
 	let ent = vfs::get_file_from_path(&pathname, &rs)?;
-	let stat = ent.stat()?;
+	let stat = ent.stat();
 	do_stat32(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
@@ -203,7 +196,7 @@ pub fn stat64(
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 	let pathname = PathBuf::try_from(pathname)?;
 	let ent = vfs::get_file_from_path(&pathname, &rs)?;
-	let stat = ent.stat()?;
+	let stat = ent.stat();
 	do_stat64(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
@@ -241,7 +234,7 @@ pub fn lstat(
 		..rs
 	};
 	let ent = vfs::get_file_from_path(&pathname, &rs)?;
-	let stat = ent.stat()?;
+	let stat = ent.stat();
 	do_stat32(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
@@ -257,7 +250,7 @@ pub fn lstat64(
 		..rs
 	};
 	let ent = vfs::get_file_from_path(&pathname, &rs)?;
-	let stat = ent.stat()?;
+	let stat = ent.stat();
 	do_stat64(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
@@ -362,20 +355,12 @@ pub fn statx(
 		return Err(errno!(ENOENT));
 	};
 	// Get file's stat
-	let stat = file.stat()?;
+	let stat = file.stat();
 	// TODO Use mask?
 	// Get the major and minor numbers of the device of the file's filesystem
-	let (stx_dev_major, stx_dev_minor) = match file.node().location.get_mountpoint().as_deref() {
-		Some(MountPoint {
-			source: MountSource::Device(DeviceID {
-				major,
-				minor,
-				..
-			}),
-			..
-		}) => (*major, *minor),
-		_ => (0, 0),
-	};
+	let (stx_dev, stx_ino) = entry_info(&file);
+	let stx_dev_minor = minor(stx_dev);
+	let stx_dev_major = major(stx_dev);
 	// Write
 	statxbuff.copy_to_user(&Statx {
 		stx_mask: !0,      // TODO
@@ -386,7 +371,7 @@ pub fn statx(
 		stx_gid: stat.gid as _,
 		stx_mode: stat.mode as _,
 		__padding0: 0,
-		stx_ino: file.node().location.inode,
+		stx_ino,
 		stx_size: stat.size,
 		stx_blocks: stat.blocks,
 		stx_attributes_mask: 0, // TODO

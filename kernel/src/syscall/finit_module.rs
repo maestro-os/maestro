@@ -43,14 +43,7 @@ pub fn finit_module(
 		return Err(errno!(EPERM));
 	}
 	// Read file
-	let image = fds
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.vfs_entry
-		.as_ref()
-		.ok_or_else(|| errno!(ENOEXEC))?
-		.read_all()?;
+	let image = fds.lock().get_fd(fd)?.get_file().read_all()?;
 	let module = Module::load(&image)?;
 	module::add(module)?;
 	Ok(0)

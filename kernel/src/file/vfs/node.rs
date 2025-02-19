@@ -19,146 +19,82 @@
 //! Filesystem node cache, allowing to handle hard links pointing to the same node.
 
 use crate::{
-	file::{fs::NodeOps, FileLocation, FileType},
+	file::{
+		fs::{FileOps, Filesystem, NodeOps},
+		FileType, INode, Stat,
+	},
 	memory::buddy::PageState,
 	sync::mutex::Mutex,
 };
-use core::{
-	borrow::Borrow,
-	hash::{Hash, Hasher},
-};
-use utils::{
-	boxed::Box,
-	collections::{hashmap::HashSet, vec::Vec},
-	errno::{AllocResult, EResult},
-	ptr::arc::Arc,
-};
+use core::ptr;
+use utils::{boxed::Box, collections::vec::Vec, errno::EResult, ptr::arc::Arc};
 
 /// A filesystem node, cached by the VFS.
 #[derive(Debug)]
 pub struct Node {
-	/// The location of the file on a filesystem.
-	pub location: FileLocation,
-	/// Handle for node operations.
-	pub ops: Box<dyn NodeOps>,
+	/// Node ID
+	pub inode: INode,
+	/// The filesystem on which the node is located
+	pub fs: Arc<Filesystem>,
+
+	/// The node's status.
+	pub stat: Mutex<Stat>,
+
+	/// Handle for node operations
+	pub node_ops: Box<dyn NodeOps>,
+	/// Handle for open file operations
+	pub file_ops: Box<dyn FileOps>,
+
 	// TODO need a sparse array, inside of a rwlock
-	/// Mapped pages.
-	pages: Mutex<Vec<&'static PageState>>,
+	/// Mapped pages
+	pub pages: Mutex<Vec<&'static PageState>>,
 }
 
 impl Node {
-	/// Instantiates a new node structure.
-	pub fn new(location: FileLocation, ops: Box<dyn NodeOps>) -> AllocResult<Arc<Self>> {
-		Arc::new(Self {
-			location,
-			ops,
-			pages: Mutex::new(Vec::new()),
-		})
+	/// Returns the current status of the node.
+	#[inline]
+	pub fn stat(&self) -> Stat {
+		self.stat.lock().clone()
+	}
+
+	/// Returns the type of the file.
+	#[inline]
+	pub fn get_type(&self) -> Option<FileType> {
+		let stat = self.stat.lock();
+		FileType::from_mode(stat.mode)
+	}
+
+	/// Tells whether the current node and `other` are on the same filesystem.
+	#[inline]
+	pub fn is_same_fs(&self, other: &Self) -> bool {
+		ptr::eq(self.fs.as_ref(), other.fs.as_ref())
 	}
 
 	/// Releases the node, removing it from the disk if this is the last reference to it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
-		// Lock to avoid race condition later
-		let mut used_nodes = USED_NODES.lock();
-		// current instance + the one in `USED_NODE` = `2`
-		if Arc::strong_count(&this) > 2 {
-			return Ok(());
+		{
+			let mut cache = this.fs.node_cache.lock();
+			// current instance + the one in `USED_NODE` = `2`
+			if Arc::strong_count(&this) > 2 {
+				return Ok(());
+			}
+			cache.remove(&this.inode);
 		}
-		used_nodes.remove(&this.location);
-		let Some(node) = Arc::into_inner(this) else {
-			return Ok(());
-		};
-		Self::try_remove(&node.location, &*node.ops)
+		// `unwrap` cannot fail since we removed it from the cache
+		let node = Arc::into_inner(this).unwrap();
+		node.try_remove()
 	}
 
 	/// Removes the node from the disk if it is orphan.
-	///
-	/// Arguments:
-	/// - `loc` is the location of the node
-	/// - `ops` is the handle to perform operations on the node
-	fn try_remove(loc: &FileLocation, ops: &dyn NodeOps) -> EResult<()> {
+	pub fn try_remove(self) -> EResult<()> {
 		// If there is no hard link left to the node, remove it
-		let stat = ops.get_stat(loc)?;
+		let stat = self.stat.lock();
 		let dir = stat.get_type() == Some(FileType::Directory);
 		// If the file is a directory, the threshold is `1` because of the `.` entry
 		let remove = (dir && stat.nlink <= 1) || stat.nlink == 0;
 		if remove {
-			ops.remove_node(loc)?;
+			self.fs.ops.destroy_node(&self)?;
 		}
 		Ok(())
 	}
-}
-
-/// An entry in the nodes cache.
-///
-/// The [`Hash`] and [`PartialEq`] traits are forwarded to the entry's location.
-#[derive(Debug)]
-struct NodeEntry(Arc<Node>);
-
-impl Borrow<FileLocation> for NodeEntry {
-	fn borrow(&self) -> &FileLocation {
-		&self.0.location
-	}
-}
-
-impl Eq for NodeEntry {}
-
-impl PartialEq for NodeEntry {
-	fn eq(&self, other: &Self) -> bool {
-		self.0.location.eq(&other.0.location)
-	}
-}
-
-impl Hash for NodeEntry {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.0.location.hash(state)
-	}
-}
-
-/// The list of nodes current in use.
-static USED_NODES: Mutex<HashSet<NodeEntry>> = Mutex::new(HashSet::new());
-
-/// Looks in the nodes cache for the node with the given location. If not in cache, the node is
-/// created and inserted.
-pub(super) fn get_or_insert(location: FileLocation, ops: Box<dyn NodeOps>) -> EResult<Arc<Node>> {
-	let mut used_nodes = USED_NODES.lock();
-	let node = used_nodes.get(&location).map(|e| e.0.clone());
-	match node {
-		Some(node) => Ok(node),
-		// The node is not in cache. Insert it
-		None => {
-			// Create and insert node
-			let node = Node::new(location, ops)?;
-			used_nodes.insert(NodeEntry(node.clone()))?;
-			Ok(node)
-		}
-	}
-}
-
-/// Inserts a new node in cache.
-pub(super) fn insert(node: Arc<Node>) -> AllocResult<()> {
-	let mut used_nodes = USED_NODES.lock();
-	used_nodes.insert(NodeEntry(node))?;
-	Ok(())
-}
-
-/// The function removes the node from:
-/// - the cache if no reference to it is taken
-/// - the filesystem if it is orphan
-///
-/// Arguments:
-/// - `loc` is the location of the node
-/// - `ops` is the handle to perform operations on the node
-pub(super) fn try_remove(loc: &FileLocation, ops: &dyn NodeOps) -> EResult<()> {
-	let mut used_nodes = USED_NODES.lock();
-	// Remove from cache
-	if let Some(NodeEntry(node)) = used_nodes.get(loc) {
-		// If the node is referenced elsewhere, stop
-		if Arc::strong_count(node) > 1 {
-			return Ok(());
-		}
-		used_nodes.remove(loc);
-	}
-	// Remove the node
-	Node::try_remove(loc, ops)
 }

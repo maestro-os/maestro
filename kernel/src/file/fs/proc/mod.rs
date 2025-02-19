@@ -26,22 +26,24 @@ mod sys_dir;
 mod uptime;
 mod version;
 
-use super::{kernfs, Filesystem, FilesystemType, NodeOps};
+use super::{DummyOps, Filesystem, FilesystemOps, FilesystemType, NodeOps};
 use crate::{
 	device::DeviceIO,
 	file::{
 		fs::{
 			kernfs::{
-				box_wrap, entry_init_default, entry_init_from, StaticDir, StaticEntryBuilder,
-				StaticLink,
+				box_file, box_node, static_dir_stat, EitherOps, StaticDir, StaticEntry, StaticLink,
 			},
 			proc::proc_dir::environ::Environ,
 			Statfs,
 		},
 		perm::{Gid, Uid},
-		DirEntry, FileLocation, FileType, INode, Stat,
+		vfs,
+		vfs::node::Node,
+		DirContext, DirEntry, FileType, Mode, Stat,
 	},
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
+	sync::mutex::Mutex,
 };
 use mem_info::MemInfo;
 use proc_dir::{
@@ -51,12 +53,7 @@ use self_link::SelfNode;
 use sys_dir::OsRelease;
 use uptime::Uptime;
 use utils::{
-	boxed::Box,
-	collections::path::PathBuf,
-	errno,
-	errno::EResult,
-	format,
-	ptr::{arc::Arc, cow::Cow},
+	boxed::Box, collections::path::PathBuf, errno, errno::EResult, format, ptr::arc::Arc,
 };
 use version::Version;
 
@@ -72,6 +69,17 @@ fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 		.unwrap_or((0, 0))
 }
 
+/// Returns the status of a file in a process's directory.
+fn proc_file_stat(pid: Pid, mode: Mode) -> Stat {
+	let (uid, gid) = get_proc_owner(pid);
+	Stat {
+		mode,
+		uid,
+		gid,
+		..Default::default()
+	}
+}
+
 /// The root directory of the proc.
 #[derive(Clone, Debug)]
 struct RootDir;
@@ -83,160 +91,192 @@ impl RootDir {
 	/// processes.
 	const STATIC: StaticDir = StaticDir {
 		entries: &[
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"meminfo",
-				entry_type: FileType::Regular,
-				init: entry_init_default::<MemInfo>,
+				stat: |_| Stat {
+					mode: FileType::Regular.to_mode() | 0o444,
+					..Default::default()
+				},
+				init: EitherOps::File(|_| box_file(MemInfo)),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"mounts",
-				entry_type: FileType::Link,
-				init: |_| box_wrap(StaticLink(b"self/mounts")),
+				stat: |_| Stat {
+					mode: FileType::Link.to_mode() | 0o777,
+					..Default::default()
+				},
+				init: EitherOps::Node(|_| box_node(StaticLink(b"self/mounts"))),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"self",
-				entry_type: FileType::Link,
-				init: entry_init_default::<SelfNode>,
+				stat: |_| Stat {
+					mode: FileType::Link.to_mode() | 0o777,
+					..Default::default()
+				},
+				init: EitherOps::Node(|_| box_node(SelfNode)),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"sys",
-				entry_type: FileType::Directory,
-				init: |_| {
-					box_wrap(StaticDir {
-						entries: &[(StaticEntryBuilder {
+				stat: |_| static_dir_stat(),
+				init: EitherOps::Node(|_| {
+					box_node(StaticDir {
+						entries: &[(StaticEntry {
 							name: b"kernel",
-							entry_type: FileType::Directory,
-							init: |_| {
-								box_wrap(StaticDir {
-									entries: &[StaticEntryBuilder {
+							stat: |_| static_dir_stat(),
+							init: EitherOps::Node(|_| {
+								box_node(StaticDir {
+									entries: &[StaticEntry {
 										name: b"osrelease",
-										entry_type: FileType::Regular,
-										init: entry_init_default::<OsRelease>,
+										stat: |_| static_dir_stat(),
+										init: EitherOps::File(|_| box_file(OsRelease)),
 									}],
 									data: (),
 								})
-							},
+							}),
 						})],
 						data: (),
 					})
-				},
+				}),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"uptime",
-				entry_type: FileType::Regular,
-				init: entry_init_default::<Uptime>,
+				stat: |_| Stat {
+					mode: FileType::Regular.to_mode() | 0o444,
+					..Default::default()
+				},
+				init: EitherOps::File(|_| box_file(Uptime)),
 			},
-			StaticEntryBuilder {
+			StaticEntry {
 				name: b"version",
-				entry_type: FileType::Regular,
-				init: entry_init_default::<Version>,
+				stat: |_| Stat {
+					mode: FileType::Regular.to_mode() | 0o444,
+					..Default::default()
+				},
+				init: EitherOps::File(|_| box_file(Version)),
 			},
 		],
 		data: (),
 	};
+
+	/// Returns the directory's status.
+	#[inline]
+	fn stat() -> Stat {
+		Stat {
+			mode: FileType::Directory.to_mode() | 0o555,
+			..Default::default()
+		}
+	}
 }
 
 impl NodeOps for RootDir {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Directory.to_mode() | 0o555,
-			..Default::default()
-		})
-	}
-
-	fn entry_by_name<'n>(
-		&self,
-		_loc: &FileLocation,
-		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let pid = core::str::from_utf8(name).ok().and_then(|s| s.parse().ok());
+	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+		let pid = core::str::from_utf8(&ent.name)
+			.ok()
+			.and_then(|s| s.parse().ok());
 		let Some(pid) = pid else {
-			return Self::STATIC.entry_by_name_inner(name);
+			return Self::STATIC.lookup_entry(dir, ent);
 		};
-		// Check the process exists
-		if Process::get_by_pid(pid).is_none() {
-			return Ok(None);
-		}
-		// Return the entry for the process
-		Ok(Some((
-			DirEntry {
-				inode: 0,
-				entry_type: FileType::Directory,
-				name: Cow::Borrowed(name),
-			},
-			Box::new(StaticDir {
-				entries: &[
-					StaticEntryBuilder {
-						name: b"cmdline",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Cmdline, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"cwd",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Cwd, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"environ",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Environ, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"exe",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Exe, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"mounts",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Mounts, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"stat",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<StatNode, Pid>,
-					},
-					StaticEntryBuilder {
-						name: b"status",
-						entry_type: FileType::Regular,
-						init: entry_init_from::<Status, Pid>,
-					},
-				],
-				data: pid,
-			})? as _,
-		)))
+		ent.node = Process::get_by_pid(pid)
+			.map(|_| {
+				Arc::new(Node {
+					inode: 0,
+					fs: dir.fs.clone(),
+
+					stat: Mutex::new(static_dir_stat()),
+
+					node_ops: Box::new(StaticDir {
+						entries: &[
+							StaticEntry {
+								name: b"cmdline",
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+								},
+								init: EitherOps::File(|pid| box_file(Cmdline(pid))),
+							},
+							StaticEntry {
+								name: b"cwd",
+								stat: |pid| proc_file_stat(pid, FileType::Link.to_mode() | 0o777),
+								init: EitherOps::Node(|pid| box_node(Cwd(pid))),
+							},
+							StaticEntry {
+								name: b"environ",
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o400)
+								},
+								init: EitherOps::File(|pid| box_file(Environ(pid))),
+							},
+							StaticEntry {
+								name: b"exe",
+								stat: |pid| proc_file_stat(pid, FileType::Link.to_mode() | 0o444),
+								init: EitherOps::Node(|pid| box_node(Exe(pid))),
+							},
+							StaticEntry {
+								name: b"mounts",
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+								},
+								init: EitherOps::File(|pid| box_file(Mounts(pid))),
+							},
+							StaticEntry {
+								name: b"stat",
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+								},
+								init: EitherOps::File(|pid| box_file(StatNode(pid))),
+							},
+							StaticEntry {
+								name: b"status",
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+								},
+								init: EitherOps::File(|pid| box_file(Status(pid))),
+							},
+						],
+						data: pid,
+					})?,
+					file_ops: Box::new(DummyOps)?,
+
+					pages: Default::default(),
+				})
+			})
+			.transpose()?;
+		Ok(())
 	}
 
-	fn next_entry(
-		&self,
-		_loc: &FileLocation,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
-		// Iterate on processes
-		if off < Pid::MAX as usize {
-			// Find next process
-			let sched = SCHEDULER.lock();
-			// TODO start iterating at `off`
-			let pid = sched
-				.iter_process()
-				.map(|(pid, _)| pid)
-				.find(|pid| **pid >= off as Pid);
-			if let Some(pid) = pid {
-				return Ok(Some((
-					DirEntry {
-						inode: 0,
-						entry_type: FileType::Directory,
-						name: Cow::Owned(format!("{pid}")?),
-					},
-					*pid as u64 + 1,
-				)));
+	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+		let off: usize = ctx.off.try_into().map_err(|_| errno!(EINVAL))?;
+		// Iterate on static entries
+		let static_iter = Self::STATIC.entries.iter().skip(off);
+		for e in static_iter {
+			let stat = (e.stat)(());
+			let entry_type = stat.get_type().ok_or_else(|| errno!(EUCLEAN))?;
+			let ent = DirEntry {
+				inode: 0,
+				entry_type,
+				name: e.name,
+			};
+			ctx.off += 1;
+			if !(ctx.write)(&ent)? {
+				return Ok(());
 			}
 		}
-		// No process left, go to static entries
-		let off = off.saturating_sub(Pid::MAX as usize);
-		let ent = Self::STATIC.next_entry_inner(off as _)?;
-		Ok(ent.map(|(ent, next)| (ent, next + Pid::MAX as u64)))
+		// Iterate on processes
+		let off = ctx.off as usize - Self::STATIC.entries.len();
+		let sched = SCHEDULER.lock();
+		let proc_iter = sched.iter_process().skip(off);
+		for (pid, _) in proc_iter {
+			let name = format!("{pid}")?;
+			let ent = DirEntry {
+				inode: 0,
+				entry_type: FileType::Directory,
+				name: &name,
+			};
+			ctx.off += 1;
+			if !(ctx.write)(&ent)? {
+				return Ok(());
+			}
+		}
+		Ok(())
 	}
 }
 
@@ -244,17 +284,9 @@ impl NodeOps for RootDir {
 #[derive(Debug)]
 pub struct ProcFS;
 
-impl Filesystem for ProcFS {
+impl FilesystemOps for ProcFS {
 	fn get_name(&self) -> &[u8] {
 		b"proc"
-	}
-
-	fn use_cache(&self) -> bool {
-		false
-	}
-
-	fn get_root_inode(&self) -> INode {
-		kernfs::ROOT_INODE
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
@@ -273,12 +305,26 @@ impl Filesystem for ProcFS {
 		})
 	}
 
-	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>> {
-		if inode == kernfs::ROOT_INODE {
-			Ok(Box::new(RootDir)? as _)
-		} else {
-			Err(errno!(ENOENT))
-		}
+	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
+		Ok(Arc::new(Node {
+			inode: 0,
+			fs,
+
+			stat: Mutex::new(RootDir::stat()),
+
+			node_ops: Box::new(RootDir)?,
+			file_ops: Box::new(DummyOps)?,
+
+			pages: Default::default(),
+		})?)
+	}
+
+	fn create_node(&self, _fs: Arc<Filesystem>, _stat: &Stat) -> EResult<Arc<Node>> {
+		Err(errno!(EINVAL))
+	}
+
+	fn destroy_node(&self, _node: &Node) -> EResult<()> {
+		Err(errno!(EINVAL))
 	}
 }
 
@@ -299,7 +345,7 @@ impl FilesystemType for ProcFsType {
 		_io: Option<Arc<dyn DeviceIO>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
-	) -> EResult<Arc<dyn Filesystem>> {
-		Ok(Arc::new(ProcFS)?)
+	) -> EResult<Box<dyn FilesystemOps>> {
+		Ok(Box::new(ProcFS)?)
 	}
 }

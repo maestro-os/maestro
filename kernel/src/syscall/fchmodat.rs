@@ -54,12 +54,12 @@ pub fn fchmodat(
 		return Err(errno!(ENOENT));
 	};
 	// Check permission
-	let stat = file.stat()?;
+	let stat = file.stat();
 	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.node().ops.set_stat(
-		&file.node().location,
+	file.node().node_ops.set_stat(
+		file.node(),
 		StatSet {
 			mode: Some(mode & 0o7777),
 			..Default::default()

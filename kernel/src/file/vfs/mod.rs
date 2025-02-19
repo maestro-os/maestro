@@ -20,26 +20,30 @@
 //!
 //! To manipulate files, the VFS should be used instead of
 //! calling the filesystems' directly.
-
+//!
+//! # Note about creating files
+//!
+//! When creating a file of any type, the following fields in the provided [`Stat`] structure are
+//! ignored:
+/// - `nlink`
+/// - `uid`
+/// - `gid`
+///
+/// `uid` and `gid` are set according to `ap`
 pub mod mountpoint;
 pub mod node;
 
 use super::{
 	perm,
 	perm::{AccessProfile, S_ISVTX},
-	File, FileLocation, FileType, Stat,
+	FileType, Stat,
 };
 use crate::{
-	device,
-	device::DeviceID,
-	file::vfs::mountpoint::MountPoint,
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit},
-	syscall::ioctl::Request,
 };
 use core::{
 	borrow::Borrow,
-	ffi::c_void,
 	hash::{Hash, Hasher},
 	intrinsics::unlikely,
 };
@@ -49,7 +53,6 @@ use utils::{
 		hashmap::HashSet,
 		path::{Component, Path, PathBuf},
 		string::String,
-		vec::Vec,
 	},
 	errno,
 	errno::EResult,
@@ -85,6 +88,8 @@ impl Hash for EntryChild {
 }
 
 /// A VFS entry, representing a directory entry cached in memory.
+///
+/// An entry can be negative. That is, represent a non-existent file.
 #[derive(Debug)]
 pub struct Entry {
 	/// Filename.
@@ -99,33 +104,11 @@ pub struct Entry {
 	children: Mutex<HashSet<EntryChild>>,
 	/// The node associated with the entry.
 	///
-	/// If `None`, the file do not actually exist.
-	node: Option<Arc<Node>>,
+	/// If `None`, the entry is negative.
+	pub node: Option<Arc<Node>>,
 }
 
 impl Entry {
-	/// Creates a new entry for the given `node`.
-	pub fn from_node(node: Arc<Node>) -> Self {
-		Self {
-			name: String::new(),
-			parent: None,
-			children: Default::default(),
-			node: Some(node),
-		}
-	}
-
-	/// If the entry is a mountpoint, return it.
-	pub fn get_mountpoint(&self) -> Option<Arc<MountPoint>> {
-		let mp_id = self.node.as_ref()?.location.mountpoint_id;
-		match &self.parent {
-			// The parent is on the same mountpoint: this IS NOT the root of a mountpoint
-			Some(parent) if parent.node().location.mountpoint_id == mp_id => None,
-			// The parent is on a different mountpoint, or there is no parent: this IS the root of
-			// a mountpoint
-			Some(_) | None => mountpoint::from_id(mp_id),
-		}
-	}
-
 	/// Returns a reference to the underlying node.
 	///
 	/// If the entry represents a non-existent file, the function panics.
@@ -140,58 +123,14 @@ impl Entry {
 	///
 	/// If the entry represents a non-existent file, the function panics.
 	#[inline]
-	pub fn stat(&self) -> EResult<Stat> {
-		self.node().ops.get_stat(&self.node().location)
+	pub fn stat(&self) -> Stat {
+		self.node().stat.lock().clone()
 	}
 
 	/// Returns the file's type.
 	#[inline]
 	pub fn get_type(&self) -> EResult<FileType> {
-		FileType::from_mode(self.stat()?.mode).ok_or_else(|| errno!(EUCLEAN))
-	}
-
-	/// Reads the whole content of the file into a buffer.
-	///
-	/// **Caution**: the function reads until EOF, meaning the caller should not call this function
-	/// on an infinite file.
-	pub fn read_all(&self) -> EResult<Vec<u8>> {
-		const INCREMENT: usize = 512;
-		let len: usize = self
-			.node()
-			.ops
-			.get_stat(&self.node().location)?
-			.size
-			.try_into()
-			.map_err(|_| errno!(EOVERFLOW))?;
-		let len = len
-			.checked_add(INCREMENT)
-			.ok_or_else(|| errno!(EOVERFLOW))?;
-		// Add more space to allow check for EOF
-		let mut buf = vec![0u8; len]?;
-		let mut off = 0;
-		// Read until EOF
-		loop {
-			// If the size has been exceeded, resize the buffer
-			if off >= buf.len() {
-				let new_size = buf
-					.len()
-					.checked_add(INCREMENT)
-					.ok_or_else(|| errno!(EOVERFLOW))?;
-				buf.resize(new_size, 0)?;
-			}
-			let len =
-				self.node()
-					.ops
-					.read_content(&self.node().location, off as _, &mut buf[off..])?;
-			// Reached EOF, stop here
-			if len == 0 {
-				break;
-			}
-			off += len;
-		}
-		// Adjust the size of the buffer
-		buf.truncate(off);
-		Ok(buf)
+		FileType::from_mode(self.stat().mode).ok_or_else(|| errno!(EUCLEAN))
 	}
 
 	/// Returns the absolute path to reach the entry.
@@ -342,32 +281,25 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		};
 	}
 	// Not in cache. Try to get from the filesystem
-	let Some((entry, ops)) = lookup_dir
-		.node()
-		.ops
-		.entry_by_name(&lookup_dir.node().location, name)?
-	else {
-		return Ok(None);
-	};
-	let node = Node::new(
-		FileLocation {
-			// The file is on the same mountpoint as the parent since mountpoint roots are always
-			// in cache
-			mountpoint_id: lookup_dir.node().location.mountpoint_id,
-			inode: entry.inode,
-		},
-		ops,
-	)?;
-	node::insert(node.clone())?;
-	// Create entry and insert in parent
-	let ent = Arc::new(Entry {
+	let mut ent = Entry {
 		name: String::try_from(name)?,
 		parent: Some(lookup_dir.clone()),
 		children: Default::default(),
-		node: Some(node),
-	})?;
-	children.insert(EntryChild(ent.clone()))?;
-	Ok(Some(ent))
+		node: None,
+	};
+	lookup_dir
+		.node()
+		.node_ops
+		.lookup_entry(lookup_dir.node(), &mut ent)?;
+	if ent.node.is_some() {
+		// The entry exists: insert it in cache
+		let ent = Arc::new(ent)?;
+		children.insert(EntryChild(ent.clone()))?;
+		Ok(Some(ent))
+	} else {
+		// The entry does not exist
+		Ok(None)
+	}
 }
 
 /// Resolves the symbolic link `link` and returns the target.
@@ -380,7 +312,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 ///
 /// Symbolic links are followed recursively, including the last element of the target path.
 fn resolve_link(
-	link: &Entry,
+	link: Arc<Entry>,
 	root: Arc<Entry>,
 	lookup_dir: Arc<Entry>,
 	access_profile: AccessProfile,
@@ -391,7 +323,11 @@ fn resolve_link(
 		return Err(errno!(ELOOP));
 	}
 	// Read link
-	let link_path = PathBuf::try_from(String::from(link.read_all()?))?;
+	let size = link.stat().size as usize;
+	let mut buf = vec![0; size]?;
+	let node = link.node();
+	node.node_ops.readlink(node, &mut buf)?;
+	let link_path = PathBuf::try_from(String::from(buf))?;
 	// Resolve link
 	let rs = ResolutionSettings {
 		root,
@@ -428,7 +364,7 @@ fn resolve_path_impl<'p>(
 	// Iterate on intermediate components
 	for comp in components {
 		// Check lookup permission
-		let lookup_dir_stat = lookup_dir.stat()?;
+		let lookup_dir_stat = lookup_dir.stat();
 		if !settings
 			.access_profile
 			.can_search_directory(&lookup_dir_stat)
@@ -453,7 +389,7 @@ fn resolve_path_impl<'p>(
 			FileType::Directory => lookup_dir = entry,
 			FileType::Link => {
 				lookup_dir = resolve_link(
-					&entry,
+					entry,
 					settings.root.clone(),
 					lookup_dir,
 					settings.access_profile,
@@ -479,7 +415,7 @@ fn resolve_path_impl<'p>(
 		Component::Normal(name) => name,
 	};
 	// Check lookup permission
-	let lookup_dir_stat = lookup_dir.stat()?;
+	let lookup_dir_stat = lookup_dir.stat();
 	if !settings
 		.access_profile
 		.can_search_directory(&lookup_dir_stat)
@@ -499,9 +435,9 @@ fn resolve_path_impl<'p>(
 		};
 	};
 	// Resolve symbolic link if necessary
-	if settings.follow_link && entry.stat()?.get_type() == Some(FileType::Link) {
+	if settings.follow_link && entry.get_type()? == FileType::Link {
 		Ok(Resolved::Found(resolve_link(
-			&entry,
+			entry,
 			settings.root.clone(),
 			lookup_dir,
 			settings.access_profile,
@@ -563,13 +499,6 @@ pub fn get_file_from_path(
 ///   for the created file
 /// - `stat` is the status of the newly created file
 ///
-/// From the provided `stat`, the following fields are ignored:
-/// - `nlink`
-/// - `uid`
-/// - `gid`
-///
-/// `uid` and `gid` are set according to `ap`.
-///
 /// The following errors can be returned:
 /// - The filesystem is read-only: [`errno::EROFS`]
 /// - I/O failed: [`errno::EIO`]
@@ -584,7 +513,7 @@ pub fn create_file(
 	ap: &AccessProfile,
 	mut stat: Stat,
 ) -> EResult<Arc<Entry>> {
-	let parent_stat = parent.stat()?;
+	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
@@ -593,31 +522,30 @@ pub fn create_file(
 		return Err(errno!(EACCES));
 	}
 	stat.uid = ap.euid;
-	let gid = if parent_stat.mode & perm::S_ISGID != 0 {
+	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
 		// parent directory
 		parent_stat.gid
 	} else {
 		ap.egid
 	};
-	stat.gid = gid;
 	// Add file to filesystem
-	let (inode, ops) = parent
-		.node()
+	let parent_node = parent.node();
+	let node = parent_node
+		.fs
 		.ops
-		.add_file(&parent.node().location, name, stat)?;
-	let location = FileLocation {
-		mountpoint_id: parent.node().location.mountpoint_id,
-		inode,
-	};
-	let node = node::get_or_insert(location, ops)?;
-	// Create entry and insert it in parent
-	let entry = Arc::new(Entry {
+		.create_node(parent_node.fs.clone(), &stat)?;
+	parent_node.fs.node_insert(node.clone())?;
+	// Add link to filesystem
+	let ent = Entry {
 		name: String::try_from(name)?,
 		parent: Some(parent.clone()),
 		children: Default::default(),
 		node: Some(node),
-	})?;
+	};
+	parent_node.node_ops.link(parent_node, &ent)?;
+	// Add entry to cache
+	let entry = Arc::new(ent)?;
 	parent.children.lock().insert(EntryChild(entry.clone()))?;
 	Ok(entry)
 }
@@ -638,13 +566,18 @@ pub fn create_file(
 /// - `target` is a directory: [`errno::EPERM`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> EResult<()> {
-	let parent_stat = parent.stat()?;
+pub fn link(
+	parent: &Arc<Entry>,
+	name: String,
+	target: Arc<Node>,
+	ap: &AccessProfile,
+) -> EResult<()> {
+	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	let target_stat = target.stat()?;
+	let target_stat = target.stat();
 	if target_stat.get_type() == Some(FileType::Directory) {
 		return Err(errno!(EPERM));
 	}
@@ -654,22 +587,26 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	// Check the target and source are both on the same mountpoint
-	if parent.node().location.mountpoint_id != target.node().location.mountpoint_id {
+	if !parent.node().is_same_fs(&target) {
 		return Err(errno!(EXDEV));
 	}
-	parent
-		.node()
-		.ops
-		.link(&parent.node().location, name, target.node().location.inode)?;
+	// Add link to the filesystem
+	let ent = Entry {
+		name,
+		parent: Some(parent.clone()),
+		children: Default::default(),
+		node: Some(target),
+	};
+	parent.node().node_ops.link(parent.node(), &ent)?;
+	// Add entry to the cache
+	parent.children.lock().insert(EntryChild(Arc::new(ent)?))?;
 	Ok(())
 }
 
 /// Removes a hard link to a file.
 ///
 /// Arguments:
-/// - `parent` is the parent directory of the file to remove
-/// - `name` is the name of the file to remove
+/// - `entry` is the entry to remove
 /// - `ap` is the access profile to check permissions
 ///
 /// The following errors can be returned:
@@ -680,156 +617,164 @@ pub fn link(parent: &Entry, name: &[u8], target: &Entry, ap: &AccessProfile) -> 
 /// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn unlink(parent: Arc<Entry>, name: &[u8], ap: &AccessProfile) -> EResult<()> {
-	let parent_stat = parent.stat()?;
-	// Check permission
+pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
+	// Get parent
+	let Some(parent) = &entry.parent else {
+		// Cannot unlink root of the VFS
+		return Err(errno!(EBUSY));
+	};
+	// Validation
+	let parent_stat = parent.stat();
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
+	let stat = entry.stat();
+	let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
+	if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
+		return Err(errno!(EACCES));
+	}
+	// If the file to remove is a mountpoint, error
+	if mountpoint::from_entry(entry).is_some() {
+		return Err(errno!(EBUSY));
+	}
 	// Lock now to avoid race conditions
 	let mut children = parent.children.lock();
-	match children.get(name) {
-		// The entry is in cache
-		Some(EntryChild(entry)) => {
-			// If the file to remove is a mountpoint, error
-			if parent.node().location.mountpoint_id != entry.node().location.mountpoint_id {
-				return Err(errno!(EBUSY));
-			}
-			let stat = entry.stat()?;
-			// Check permission
-			let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
-			if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
-				return Err(errno!(EACCES));
-			}
-			// Remove link from filesystem
-			parent.node().ops.unlink(&parent.node().location, name)?;
-			// Remove link from cache
-			let EntryChild(ent) = children.remove(name).unwrap();
-			drop(children);
-			Entry::release(ent)
-		}
-		// The entry is not in cache
+	// Remove link from filesystem
+	let dir_node = parent.node();
+	dir_node.node_ops.unlink(dir_node, &entry.name)?;
+	// Remove link from cache
+	let EntryChild(ent) = children.remove(entry.name.as_bytes()).unwrap();
+	// Drop to avoid deadlock
+	drop(children);
+	Entry::release(ent)
+}
+
+/// Creates a symbolic link.
+///
+/// Arguments:
+/// - `parent` is the parent directory of where the new symbolic link will be created
+/// - `name` is the name of the symbolic link
+/// - `target` is the path the link points to
+/// - `ap` is the access profile to check permissions
+/// - `stat` is the status of the newly created file. Note that the `mode` is field is ignored and
+///   replaced with the appropriate value
+///
+/// TODO: detail errors
+///
+/// Other errors can be returned depending on the underlying filesystem.
+pub fn symlink(
+	parent: &Arc<Entry>,
+	name: &[u8],
+	target: &[u8],
+	ap: &AccessProfile,
+	mut stat: Stat,
+) -> EResult<()> {
+	let parent_stat = parent.stat();
+	// Validation
+	if parent_stat.get_type() != Some(FileType::Directory) {
+		return Err(errno!(ENOTDIR));
+	}
+	if !ap.can_write_directory(&parent_stat) {
+		return Err(errno!(EACCES));
+	}
+	stat.mode = FileType::Link.to_mode() | 0o777;
+	stat.uid = ap.euid;
+	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
+		// If SGID is set, the newly created file shall inherit the group ID of the
+		// parent directory
+		parent_stat.gid
+	} else {
+		ap.egid
+	};
+	// Create node
+	let parent_node = parent.node();
+	let fs = parent_node.fs.clone();
+	let node = fs.ops.create_node(fs.clone(), &stat)?;
+	node.node_ops.writelink(&node, target)?;
+	// Add node to cache
+	fs.node_insert(node.clone())?;
+	// Add link to the filesystem
+	let ent = Entry {
+		name: String::try_from(name)?,
+		parent: Some(parent.clone()),
+		children: Default::default(),
+		node: Some(node),
+	};
+	parent_node.node_ops.link(parent_node, &ent)?;
+	// Add link to the cache
+	parent.children.lock().insert(EntryChild(Arc::new(ent)?))?;
+	Ok(())
+}
+
+/// Moves a file `old` to the directory `new_parent`, **on the same filesystem**.
+///
+/// If `old` is a directory, the destination shall not exist or be an empty directory.
+///
+/// Arguments:
+/// - `old` is the file to move
+/// - `new_parent` is the new parent directory for the file
+/// - `new_name` is new name of the file
+/// - `ap` is the access profile to check permissions
+///
+/// TODO: detail errors
+///
+/// Other errors can be returned depending on the underlying filesystem.
+pub fn rename(
+	old: Arc<Entry>,
+	new_parent: Arc<Entry>,
+	new_name: &[u8],
+	ap: &AccessProfile,
+) -> EResult<()> {
+	// If `old` has no parent, it's the root, so it's a mountpoint
+	let old_parent = old.parent.as_ref().ok_or_else(|| errno!(EBUSY))?;
+	// Validation
+	if !new_parent.node().is_same_fs(old.node()) {
+		return Err(errno!(EXDEV));
+	}
+	if mountpoint::from_entry(&old).is_some() {
+		return Err(errno!(EBUSY));
+	}
+	// Check permissions on `old`
+	let old_parent_stat = old_parent.stat();
+	if !ap.can_write_directory(&old_parent_stat) {
+		return Err(errno!(EACCES));
+	}
+	let old_stat = old.stat();
+	if old_stat.mode & S_ISVTX != 0 && ap.euid != old_stat.uid && ap.euid != old_parent_stat.uid {
+		return Err(errno!(EACCES));
+	}
+	// Get new from cache
+	let new_children = new_parent.children.lock();
+	let new = new_children.get(new_name).map(|e| e.0.clone());
+	let new = match new {
+		Some(e) => e,
 		None => {
-			let (entry, ops) = parent
-				.node()
-				.ops
-				.entry_by_name(&parent.node().location, name)?
-				.ok_or_else(|| errno!(ENOENT))?;
-			let loc = FileLocation {
-				// The entry cannot be a mountpoint since it is not in cache
-				mountpoint_id: parent.node().location.mountpoint_id,
-				inode: entry.inode,
-			};
-			let stat = ops.get_stat(&loc)?;
-			// Check permission
-			let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
-			if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
-				return Err(errno!(EACCES));
-			}
-			// Remove link from filesystem
-			parent.node().ops.unlink(&parent.node().location, name)?;
-			node::try_remove(&loc, &*ops)
+			// TODO load from filesystem
+			todo!()
 		}
+	};
+	if mountpoint::from_entry(&new).is_some() {
+		return Err(errno!(EBUSY));
 	}
-}
-
-/// Helper function to remove a hard link from a given `path`.
-pub fn unlink_from_path(path: &Path, resolution_settings: &ResolutionSettings) -> EResult<()> {
-	let file_name = path.file_name().ok_or_else(|| errno!(ENOENT))?;
-	let parent = path.parent().ok_or_else(|| errno!(ENOENT))?;
-	let parent = get_file_from_path(parent, resolution_settings)?;
-	unlink(parent, file_name, &resolution_settings.access_profile)
-}
-
-/// Implementation of [`super::FileOps`] for file from the VFS.
-#[derive(Debug)]
-pub struct FileOps;
-
-impl super::FileOps for FileOps {
-	fn get_stat(&self, file: &File) -> EResult<Stat> {
-		file.vfs_entry.as_ref().unwrap().stat()
+	// Check permissions on `new`
+	let new_parent_stat = new_parent.stat();
+	if !ap.can_write_directory(&new_parent_stat) {
+		return Err(errno!(EACCES));
 	}
-
-	fn acquire(&self, _file: &File) {}
-
-	fn release(&self, _file: &File) {}
-
-	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
-		let stat = self.get_stat(file)?;
-		let dev_type = stat.get_type().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => device::get(&DeviceID {
-				dev_type,
-				major: stat.dev_major,
-				minor: stat.dev_minor,
-			})
-			.ok_or_else(|| errno!(ENODEV))?
-			.get_io()
-			.poll(mask),
-			None => todo!(),
-		}
+	let new_stat = new.stat();
+	if new_stat.mode & S_ISVTX != 0 && ap.euid != new_stat.uid && ap.euid != new_parent_stat.uid {
+		return Err(errno!(EACCES));
 	}
-
-	fn ioctl(&self, file: &File, request: Request, argp: *const c_void) -> EResult<u32> {
-		let stat = self.get_stat(file)?;
-		let dev_type = stat
-			.get_type()
-			.and_then(FileType::to_device_type)
-			.ok_or_else(|| errno!(ENOTTY))?;
-		device::get(&DeviceID {
-			dev_type,
-			major: stat.dev_major,
-			minor: stat.dev_minor,
-		})
-		.ok_or_else(|| errno!(ENODEV))?
-		.get_io()
-		.ioctl(request, argp)
-	}
-
-	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		if unlikely(!file.can_read()) {
-			return Err(errno!(EACCES));
-		}
-		let stat = self.get_stat(file)?;
-		let dev_type = stat.get_type().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => device::get(&DeviceID {
-				dev_type,
-				major: stat.dev_major,
-				minor: stat.dev_minor,
-			})
-			.ok_or_else(|| errno!(ENODEV))?
-			.get_io()
-			.read_bytes(off, buf),
-			None => {
-				let node = file.vfs_entry.as_ref().unwrap().node();
-				node.ops.read_content(&node.location, off, buf)
-			}
-		}
-	}
-
-	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
-		if unlikely(!file.can_write()) {
-			return Err(errno!(EACCES));
-		}
-		let stat = self.get_stat(file)?;
-		let dev_type = stat.get_type().and_then(FileType::to_device_type);
-		match dev_type {
-			Some(dev_type) => device::get(&DeviceID {
-				dev_type,
-				major: stat.dev_major,
-				minor: stat.dev_minor,
-			})
-			.ok_or_else(|| errno!(ENODEV))?
-			.get_io()
-			.write_bytes(off, buf),
-			None => {
-				let node = file.vfs_entry.as_ref().unwrap().node();
-				node.ops.write_content(&node.location, off, buf)
-			}
-		}
-	}
+	// Perform rename
+	let old_parent_node = old.node();
+	let new_parent_node = new.node();
+	old_parent_node
+		.node_ops
+		.rename(old_parent_node, &old, new_parent_node, &new)?;
+	// Update cache
+	// TODO
+	Ok(())
 }
