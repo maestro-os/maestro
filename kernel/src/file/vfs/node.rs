@@ -27,7 +27,14 @@ use crate::{
 	sync::mutex::Mutex,
 };
 use core::ptr;
-use utils::{boxed::Box, collections::vec::Vec, errno::EResult, ptr::arc::Arc};
+use utils::{
+	boxed::Box,
+	collections::{path::PathBuf, string::String, vec::Vec},
+	errno::EResult,
+	limits::SYMLINK_MAX,
+	ptr::arc::Arc,
+	vec,
+};
 
 /// A filesystem node, cached by the VFS.
 #[derive(Debug)]
@@ -68,6 +75,22 @@ impl Node {
 	#[inline]
 	pub fn is_same_fs(&self, other: &Self) -> bool {
 		ptr::eq(self.fs.as_ref(), other.fs.as_ref())
+	}
+
+	/// Reads the symbolic link.
+	pub fn readlink(&self) -> EResult<PathBuf> {
+		const INCREMENT: usize = 64;
+		let mut buf = vec![0u8; INCREMENT]?;
+		let mut len;
+		loop {
+			len = self.node_ops.readlink(self, &mut buf)?;
+			if len < buf.len() || buf.len() >= SYMLINK_MAX {
+				break;
+			}
+			buf.resize(buf.len() + INCREMENT, 0)?;
+		}
+		buf.truncate(len);
+		PathBuf::try_from(String::from(buf))
 	}
 
 	/// Releases the node, removing it from the disk if this is the last reference to it.

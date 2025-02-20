@@ -323,12 +323,7 @@ fn resolve_link(
 	if unlikely(symlink_rec + 1 > SYMLOOP_MAX) {
 		return Err(errno!(ELOOP));
 	}
-	// Read link
-	let size = link.stat().size as usize;
-	let mut buf = vec![0; size]?;
-	let node = link.node();
-	node.node_ops.readlink(node, &mut buf)?;
-	let link_path = PathBuf::try_from(String::from(buf))?;
+	let target = link.node().readlink()?;
 	// Resolve link
 	let rs = ResolutionSettings {
 		root,
@@ -337,7 +332,7 @@ fn resolve_link(
 		create: false,
 		follow_link: true,
 	};
-	let resolved = resolve_path_impl(&link_path, &rs, symlink_rec + 1)?;
+	let resolved = resolve_path_impl(&target, &rs, symlink_rec + 1)?;
 	let Resolved::Found(target) = resolved else {
 		// Because `create` is set to `false`
 		unreachable!();
