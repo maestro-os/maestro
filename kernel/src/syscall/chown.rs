@@ -49,10 +49,9 @@ pub fn do_chown(
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-	let node = ent.node();
-	node.node_ops.set_stat(
-		node,
-		StatSet {
+	vfs::set_stat(
+		ent.node(),
+		&StatSet {
 			uid: (owner > -1).then_some(owner as _),
 			gid: (group > -1).then_some(group as _),
 			..Default::default()

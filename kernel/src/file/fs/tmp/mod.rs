@@ -30,7 +30,7 @@ use crate::{
 		},
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::node::Node,
+		vfs::{node::Node, Entry},
 		DirContext, DirEntry, File, FileType, INode, Mode, Stat,
 	},
 	sync::mutex::Mutex,
@@ -220,7 +220,7 @@ impl TmpFSNode {
 }
 
 impl NodeOps for TmpFSNode {
-	fn set_stat(&self, _node: &Node, set: StatSet) -> EResult<()> {
+	fn set_stat(&self, _node: &Node, set: &StatSet) -> EResult<()> {
 		let mut inner = self.0.lock();
 		if let Some(mode) = set.mode {
 			inner.mode = mode;
@@ -363,6 +363,38 @@ impl NodeOps for TmpFSNode {
 		inner.nlink = inner.nlink.saturating_sub(1);
 		Ok(())
 	}
+
+	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
+		let inner = self.0.lock();
+		let NodeContent::Regular(content) = &inner.content else {
+			return Err(errno!(EINVAL));
+		};
+		let len = min(buf.len(), content.len());
+		buf[..len].copy_from_slice(&content[..len]);
+		Ok(len)
+	}
+
+	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
+		let mut inner = self.0.lock();
+		let NodeContent::Regular(content) = &mut inner.content else {
+			return Err(errno!(EINVAL));
+		};
+		content.resize(buf.len(), 0)?;
+		content.copy_from_slice(buf);
+		// Update status
+		node.stat.lock().size = buf.len() as _;
+		Ok(())
+	}
+
+	fn rename(
+		&self,
+		_old_parent: &Node,
+		_old_name: &Entry,
+		_new_parent: &Node,
+		_new_name: &Entry,
+	) -> EResult<()> {
+		todo!()
+	}
 }
 
 /// Get [`NodeInner`] from [`File`].
@@ -379,10 +411,8 @@ pub struct TmpFSFile;
 impl FileOps for TmpFSFile {
 	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let inner = file_to_node(file).lock();
-		let content = match &inner.content {
-			NodeContent::Regular(content) | NodeContent::Link(content) => content,
-			NodeContent::Directory(_) => return Err(errno!(EISDIR)),
-			_ => return Err(errno!(EINVAL)),
+		let NodeContent::Regular(content) = &inner.content else {
+			return Err(errno!(EINVAL));
 		};
 		if off > content.len() as u64 {
 			return Err(errno!(EINVAL));
@@ -395,35 +425,29 @@ impl FileOps for TmpFSFile {
 
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
 		let mut inner = file_to_node(file).lock();
-		match &mut inner.content {
-			NodeContent::Regular(content) => {
-				if off > content.len() as u64 {
-					return Err(errno!(EINVAL));
-				}
-				let off = off as usize;
-				let Some(end) = off.checked_add(buf.len()) else {
-					return Err(errno!(EOVERFLOW));
-				};
-				let new_len = max(content.len(), end);
-				content.resize(new_len, 0)?;
-				content[off..end].copy_from_slice(buf);
-			}
-			NodeContent::Link(content) => {
-				content.resize(buf.len(), 0)?;
-				content.copy_from_slice(buf);
-			}
-			NodeContent::Directory(_) => return Err(errno!(EISDIR)),
-			_ => return Err(errno!(EINVAL)),
+		let NodeContent::Regular(content) = &mut inner.content else {
+			return Err(errno!(EINVAL));
+		};
+		if off > content.len() as u64 {
+			return Err(errno!(EINVAL));
 		}
+		let off = off as usize;
+		let Some(end) = off.checked_add(buf.len()) else {
+			return Err(errno!(EOVERFLOW));
+		};
+		let new_len = max(content.len(), end);
+		content.resize(new_len, 0)?;
+		content[off..end].copy_from_slice(buf);
+		// Update status
+		let node = file.node().unwrap();
+		node.stat.lock().size = new_len as _;
 		Ok(buf.len())
 	}
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
 		let mut inner = file_to_node(file).lock();
-		let content = match &mut inner.content {
-			NodeContent::Regular(content) => content,
-			NodeContent::Directory(_) => return Err(errno!(EISDIR)),
-			_ => return Err(errno!(EINVAL)),
+		let NodeContent::Regular(content) = &mut inner.content else {
+			return Err(errno!(EINVAL));
 		};
 		content.truncate(size as _);
 		Ok(())

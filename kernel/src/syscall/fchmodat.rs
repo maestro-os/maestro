@@ -24,6 +24,7 @@ use crate::{
 	file::{
 		fd::FileDescriptorTable,
 		fs::StatSet,
+		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{mem_space::copy::SyscallString, Process},
@@ -58,9 +59,9 @@ pub fn fchmodat(
 	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.node().node_ops.set_stat(
+	vfs::set_stat(
 		file.node(),
-		StatSet {
+		&StatSet {
 			mode: Some(mode & 0o7777),
 			..Default::default()
 		},

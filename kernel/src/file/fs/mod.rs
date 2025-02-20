@@ -110,7 +110,7 @@ pub trait NodeOps: Any + Debug {
 	/// `set` is the set of status attributes to modify on the file.
 	///
 	/// The default implementation of this function does nothing.
-	fn set_stat(&self, node: &Node, set: StatSet) -> EResult<()> {
+	fn set_stat(&self, node: &Node, set: &StatSet) -> EResult<()> {
 		let _ = (node, set);
 		Ok(())
 	}

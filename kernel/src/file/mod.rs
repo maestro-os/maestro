@@ -413,7 +413,6 @@ impl File {
 
 	/// If the file is a device, returns the associated device.
 	pub fn as_device(&self) -> Option<Arc<Device>> {
-		// FIXME: this is not necessary anymore when we have the file type stored in `Node`
 		let stat = self.stat().unwrap();
 		let dev_type = stat.get_type()?.to_device_type()?;
 		device::get(&DeviceID {
@@ -470,8 +469,7 @@ impl File {
 	pub fn read_all(&self) -> EResult<Vec<u8>> {
 		const INCREMENT: usize = 512;
 		let len: usize = self
-			.ops
-			.get_stat(self)?
+			.stat()?
 			.size
 			.try_into()
 			.map_err(|_| errno!(EOVERFLOW))?;

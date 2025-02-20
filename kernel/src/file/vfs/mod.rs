@@ -39,6 +39,7 @@ use super::{
 	FileType, Stat,
 };
 use crate::{
+	file::fs::StatSet,
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit},
 };
@@ -488,6 +489,36 @@ pub fn get_file_from_path(
 	resolution_settings: &ResolutionSettings,
 ) -> EResult<Arc<Entry>> {
 	get_file_from_path_opt(path, resolution_settings)?.ok_or_else(|| errno!(ENOENT))
+}
+
+/// Updates status of a node.
+pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
+	// Update filesystem
+	node.node_ops.set_stat(node, set)?;
+	// Update cached status
+	let mut stat = node.stat.lock();
+	if let Some(mode) = set.mode {
+		stat.mode = mode;
+	}
+	if let Some(nlink) = set.nlink {
+		stat.nlink = nlink;
+	}
+	if let Some(uid) = set.uid {
+		stat.uid = uid;
+	}
+	if let Some(gid) = set.gid {
+		stat.gid = gid;
+	}
+	if let Some(ctime) = set.ctime {
+		stat.ctime = ctime;
+	}
+	if let Some(mtime) = set.mtime {
+		stat.mtime = mtime;
+	}
+	if let Some(atime) = set.atime {
+		stat.atime = atime;
+	}
+	Ok(())
 }
 
 /// Creates a file, adds it to the VFS, then returns it.

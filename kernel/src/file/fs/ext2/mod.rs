@@ -240,7 +240,7 @@ fn write<T>(off: u64, blk_size: u32, io: &dyn DeviceIO, val: &T) -> EResult<()> 
 struct Ext2NodeOps;
 
 impl NodeOps for Ext2NodeOps {
-	fn set_stat(&self, node: &Node, set: StatSet) -> EResult<()> {
+	fn set_stat(&self, node: &Node, set: &StatSet) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		let superblock = fs.superblock.lock();
 		let mut inode_ = Ext2INode::read(node.inode as _, &superblock, &*fs.io)?;
@@ -441,7 +441,10 @@ impl NodeOps for Ext2NodeOps {
 		if inode_.get_type() != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
-		inode_.write_link(&mut superblock, &*fs.io, buf)
+		inode_.write_link(&mut superblock, &*fs.io, buf)?;
+		// Update status
+		node.stat.lock().size = buf.len() as _;
+		Ok(())
 	}
 
 	fn rename(
@@ -485,6 +488,8 @@ impl FileOps for Ext2FileOps {
 		inode_.write_content(off, buf, &mut superblock, &*fs.io)?;
 		inode_.write(node.inode as _, &superblock, &*fs.io)?;
 		superblock.write(&*fs.io)?;
+		// Update status
+		node.stat.lock().size = inode_.get_size(&superblock);
 		Ok(buf.len() as _)
 	}
 
