@@ -89,8 +89,6 @@ pub struct Statfs {
 pub struct StatSet {
 	/// Set the mode of the file.
 	pub mode: Option<Mode>,
-	/// Set the number of links to the file.
-	pub nlink: Option<u16>,
 	/// Set the owner's user ID.
 	pub uid: Option<Uid>,
 	/// Set the owner's group ID.
@@ -156,8 +154,8 @@ pub trait NodeOps: Any + Debug {
 	/// Removes a hard link from the directory.
 	///
 	/// Arguments:
-	/// - `parent` is the parent directory.
-	/// - `name` is the name of the hard link to remove.
+	/// - `parent` is the parent directory
+	/// - `ent` is the hard link to remove
 	///
 	/// On success, the function returns the number of links to the target node left, along with
 	/// the target inode.
@@ -169,8 +167,8 @@ pub trait NodeOps: Any + Debug {
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn unlink(&self, parent: &Node, name: &[u8]) -> EResult<()> {
-		let _ = (parent, name);
+	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
+		let _ = (parent, ent);
 		Err(errno!(ENOTDIR))
 	}
 

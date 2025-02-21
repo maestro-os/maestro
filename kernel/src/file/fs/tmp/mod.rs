@@ -30,7 +30,7 @@ use crate::{
 		},
 		perm::{Gid, Uid, ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::{node::Node, Entry},
+		vfs::node::Node,
 		DirContext, DirEntry, File, FileType, INode, Mode, Stat,
 	},
 	sync::mutex::Mutex,
@@ -225,9 +225,6 @@ impl NodeOps for TmpFSNode {
 		if let Some(mode) = set.mode {
 			inner.mode = mode;
 		}
-		if let Some(nlink) = set.nlink {
-			inner.nlink = nlink;
-		}
 		if let Some(uid) = set.uid {
 			inner.uid = uid;
 		}
@@ -327,7 +324,7 @@ impl NodeOps for TmpFSNode {
 		Ok(())
 	}
 
-	fn unlink(&self, parent: &Node, name: &[u8]) -> EResult<()> {
+	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
@@ -339,7 +336,7 @@ impl NodeOps for TmpFSNode {
 		};
 		// Get entry to remove
 		let ent_index = parent_entries
-			.binary_search_by(|ent| ent.name.as_ref().cmp(name))
+			.binary_search_by(|e| e.name.as_ref().cmp(&ent.name))
 			.map_err(|_| errno!(ENOENT))?;
 		let ent = &parent_entries[ent_index];
 		// Get the entry's node
@@ -389,9 +386,9 @@ impl NodeOps for TmpFSNode {
 	fn rename(
 		&self,
 		_old_parent: &Node,
-		_old_name: &Entry,
+		_old_name: &vfs::Entry,
 		_new_parent: &Node,
-		_new_name: &Entry,
+		_new_name: &vfs::Entry,
 	) -> EResult<()> {
 		todo!()
 	}

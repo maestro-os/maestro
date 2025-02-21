@@ -495,9 +495,6 @@ pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
 	if let Some(mode) = set.mode {
 		stat.mode = mode;
 	}
-	if let Some(nlink) = set.nlink {
-		stat.nlink = nlink;
-	}
 	if let Some(uid) = set.uid {
 		stat.uid = uid;
 	}
@@ -670,7 +667,7 @@ pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 	let mut children = parent.children.lock();
 	// Remove link from filesystem
 	let dir_node = parent.node();
-	dir_node.node_ops.unlink(dir_node, &entry.name)?;
+	dir_node.node_ops.unlink(dir_node, entry)?;
 	// Remove link from cache
 	let EntryChild(ent) = children.remove(entry.name.as_bytes()).unwrap();
 	// Drop to avoid deadlock

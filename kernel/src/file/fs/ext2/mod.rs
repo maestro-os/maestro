@@ -247,9 +247,6 @@ impl NodeOps for Ext2NodeOps {
 		if let Some(mode) = set.mode {
 			inode_.set_permissions(mode);
 		}
-		if let Some(nlink) = set.nlink {
-			inode_.i_links_count = nlink;
-		}
 		if let Some(uid) = set.uid {
 			inode_.i_uid = uid;
 		}
@@ -352,47 +349,61 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(EROFS));
 		}
 		let mut superblock = fs.superblock.lock();
-		let target_inode = ent.node().inode;
+		let target = ent.node();
 		// Parent inode
-		let mut parent_ = Ext2INode::read(parent.inode as _, &superblock, &*fs.io)?;
+		let mut parent_inode = Ext2INode::read(parent.inode as _, &superblock, &*fs.io)?;
 		// Check the parent file is a directory
-		if parent_.get_type() != FileType::Directory {
+		if parent_inode.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		// Check the entry does not exist
-		if parent_
+		if parent_inode
 			.get_dirent(&ent.name, &superblock, &*fs.io)?
 			.is_some()
 		{
 			return Err(errno!(EEXIST));
 		}
-		// The inode
-		let mut target_ = Ext2INode::read(target_inode, &superblock, &*fs.io)?;
-		// Check the maximum number of links is not exceeded
-		if target_.i_links_count == u16::MAX {
+		let mut target_inode = Ext2INode::read(target.inode, &superblock, &*fs.io)?;
+		if unlikely(target_inode.i_links_count == u16::MAX) {
 			return Err(errno!(EMFILE));
 		}
-		// Update links count
-		target_.i_links_count += 1;
-		// Write directory entry
-		parent_.add_dirent(
+		if target_inode.get_type() == FileType::Directory {
+			if unlikely(parent_inode.i_links_count == u16::MAX) {
+				return Err(errno!(EMFILE));
+			}
+			// Create the `..` entry
+			target_inode.add_dirent(
+				&mut superblock,
+				&*fs.io,
+				parent.inode as _,
+				b"..",
+				FileType::Directory,
+			)?;
+			parent_inode.i_links_count += 1;
+			parent.stat.lock().nlink = parent_inode.i_links_count;
+		}
+		// Create entry
+		parent_inode.add_dirent(
 			&mut superblock,
 			&*fs.io,
-			target_inode as _,
+			target.inode as _,
 			&ent.name,
-			target_.get_type(),
+			target_inode.get_type(),
 		)?;
-		parent_.write(parent.inode as _, &superblock, &*fs.io)?;
-		target_.write(target_inode, &superblock, &*fs.io)?;
+		target_inode.i_links_count += 1;
+		target.stat.lock().nlink = target_inode.i_links_count;
+		// Write
+		parent_inode.write(parent.inode as _, &superblock, &*fs.io)?;
+		target_inode.write(target.inode, &superblock, &*fs.io)?;
 		Ok(())
 	}
 
-	fn unlink(&self, parent: &Node, name: &[u8]) -> EResult<()> {
+	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		if name == b"." || name == b".." {
+		if ent.name == "." || ent.name == ".." {
 			return Err(errno!(EINVAL));
 		}
 		let mut superblock = fs.superblock.lock();
@@ -404,20 +415,23 @@ impl NodeOps for Ext2NodeOps {
 		}
 		// The inode number and the offset of the entry
 		let (remove_inode, _, remove_off) = parent_
-			.get_dirent(name, &superblock, &*fs.io)?
+			.get_dirent(&ent.name, &superblock, &*fs.io)?
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mut remove_inode_ = Ext2INode::read(remove_inode as _, &superblock, &*fs.io)?;
-		if remove_inode_.get_type() == FileType::Directory {
+		let mut target = Ext2INode::read(remove_inode as _, &superblock, &*fs.io)?;
+		if target.get_type() == FileType::Directory {
 			// If the directory is not empty, error
-			if !remove_inode_.is_directory_empty(&superblock, &*fs.io)? {
+			if !target.is_directory_empty(&superblock, &*fs.io)? {
 				return Err(errno!(ENOTEMPTY));
 			}
 			// Decrement links because of the `..` entry being removed
 			parent_.i_links_count = parent_.i_links_count.saturating_sub(1);
+			parent.stat.lock().nlink = parent_.i_links_count;
 		}
 		// Decrement the hard links count
-		remove_inode_.i_links_count = remove_inode_.i_links_count.saturating_sub(1);
-		remove_inode_.write(remove_inode as _, &superblock, &*fs.io)?;
+		target.i_links_count = target.i_links_count.saturating_sub(1);
+		ent.node().stat.lock().nlink = target.i_links_count;
+		// Write
+		target.write(remove_inode as _, &superblock, &*fs.io)?;
 		// Remove the directory entry
 		parent_.remove_dirent(remove_off, &mut superblock, &*fs.io)?;
 		parent_.write(parent.inode as _, &superblock, &*fs.io)?;
@@ -1041,7 +1055,7 @@ impl FilesystemOps for Ext2Fs {
 			i_atime: stat.atime as _,
 			i_dtime: 0,
 			i_gid: stat.gid,
-			i_links_count: 1,
+			i_links_count: 0,
 			i_blocks: 0,
 			i_flags: 0,
 			i_osd1: 0,
@@ -1054,8 +1068,22 @@ impl FilesystemOps for Ext2Fs {
 		};
 		// If device, set major/minor
 		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
-		if matches!(file_type, FileType::BlockDevice | FileType::CharDevice) {
-			inode.set_device(stat.dev_major as u8, stat.dev_minor as u8);
+		match file_type {
+			FileType::Directory => {
+				// Create the `.` entry
+				inode.add_dirent(
+					&mut superblock,
+					&*self.io,
+					inode_index,
+					b".",
+					FileType::Directory,
+				)?;
+				inode.i_links_count += 1;
+			}
+			FileType::BlockDevice | FileType::CharDevice => {
+				inode.set_device(stat.dev_major as u8, stat.dev_minor as u8);
+			}
+			_ => {}
 		}
 		// Write node
 		inode.write(inode_index as _, &superblock, &*self.io)?;
