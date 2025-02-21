@@ -52,7 +52,7 @@ pub fn fchmod(
 	vfs::set_stat(
 		file.node(),
 		&StatSet {
-			mode: Some(mode & 0o7777),
+			mode: Some(mode),
 			..Default::default()
 		},
 	)?;

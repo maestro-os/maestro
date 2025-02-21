@@ -228,7 +228,9 @@ pub struct DirEntry<'name> {
 
 /// Directory entries iteration context.
 pub struct DirContext<'f> {
-	/// Function to write the next entry. If returning `false`, the iteration stops
+	/// Function to write the next entry.
+	///
+	/// If returning `false`, the iteration stops and the offset is not updated
 	pub write: &'f mut dyn FnMut(&DirEntry) -> EResult<bool>,
 	/// Current iteration offset
 	pub off: u64,

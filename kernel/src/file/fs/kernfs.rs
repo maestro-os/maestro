@@ -289,10 +289,10 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 				entry_type,
 				name: e.name,
 			};
-			ctx.off += 1;
 			if !(ctx.write)(&ent)? {
 				break;
 			}
+			ctx.off += 1;
 		}
 		Ok(())
 	}

@@ -255,10 +255,10 @@ impl NodeOps for RootDir {
 				entry_type,
 				name: e.name,
 			};
-			ctx.off += 1;
 			if !(ctx.write)(&ent)? {
 				return Ok(());
 			}
+			ctx.off += 1;
 		}
 		// Iterate on processes
 		let off = ctx.off as usize - Self::STATIC.entries.len();
@@ -271,10 +271,10 @@ impl NodeOps for RootDir {
 				entry_type: FileType::Directory,
 				name: &name,
 			};
-			ctx.off += 1;
 			if !(ctx.write)(&ent)? {
 				return Ok(());
 			}
+			ctx.off += 1;
 		}
 		Ok(())
 	}

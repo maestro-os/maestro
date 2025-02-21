@@ -493,7 +493,7 @@ pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
 	// Update cached status
 	let mut stat = node.stat.lock();
 	if let Some(mode) = set.mode {
-		stat.mode = mode;
+		stat.mode = (stat.mode & !0o7777) | (mode & 0o7777);
 	}
 	if let Some(uid) = set.uid {
 		stat.uid = uid;

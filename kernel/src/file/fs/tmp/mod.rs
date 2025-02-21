@@ -281,7 +281,6 @@ impl NodeOps for TmpFSNode {
 		let off: usize = ctx.off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		let iter = entries.iter().skip(off);
 		for e in iter {
-			ctx.off += 1;
 			let ent = DirEntry {
 				inode: e.inode,
 				entry_type: e.entry_type,
@@ -290,6 +289,7 @@ impl NodeOps for TmpFSNode {
 			if !(*ctx.write)(&ent)? {
 				break;
 			}
+			ctx.off += 1;
 		}
 		Ok(())
 	}

@@ -321,24 +321,25 @@ impl NodeOps for Ext2NodeOps {
 				let ent = Dirent::from_slice(&mut buf[inner_off..], &superblock)?;
 				// Update offset
 				let prev_off = ctx.off;
-				ctx.off += ent.rec_len as u64;
 				// If not free, use this entry
 				if !ent.is_free() {
 					break ent;
 				}
+				ctx.off += ent.rec_len as u64;
 				// If the next entry is on another block, read next block
 				if (prev_off / blk_size as u64) != (ctx.off / blk_size as u64) {
 					continue 'outer;
 				}
 			};
-			let ent = DirEntry {
+			let e = DirEntry {
 				inode: ent.inode as _,
 				entry_type: ent.get_type(&superblock, &*fs.io)?,
 				name: ent.get_name(&superblock),
 			};
-			if !(ctx.write)(&ent)? {
+			if !(ctx.write)(&e)? {
 				break;
 			}
+			ctx.off += ent.rec_len as u64;
 		}
 		Ok(())
 	}
