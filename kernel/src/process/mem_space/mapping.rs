@@ -24,17 +24,17 @@
 use super::gap::MemGap;
 use crate::{
 	arch::x86::paging,
+	file::File,
 	memory::{
+		buddy,
+		buddy::FLAG_ZONE_TYPE_USER,
 		vmem,
 		vmem::{VMem, VMemTransaction},
-		VirtAddr,
+		PhysAddr, VirtAddr,
 	},
-	process::mem_space::{
-		residence::{MapResidence, Page, ResidencePage},
-		COPY_BUFFER,
-	},
+	process::mem_space::{zeroed_page, Page, COPY_BUFFER, MAPPING_FLAG_SHARED},
 };
-use core::{alloc::AllocError, num::NonZeroUsize, ops::Range, slice};
+use core::{alloc::AllocError, num::NonZeroUsize, ops::Range};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
@@ -42,6 +42,32 @@ use utils::{
 	ptr::arc::Arc,
 	TryClone,
 };
+
+/// Wrapper for an allocated physical page of memory.
+///
+/// On drop, the page is freed.
+#[derive(Debug)]
+pub struct AnonPage(PhysAddr);
+
+impl AnonPage {
+	/// Allocates a new, *uninitialized* page.
+	pub fn new() -> AllocResult<Self> {
+		buddy::alloc(0, FLAG_ZONE_TYPE_USER).map(Self)
+	}
+
+	/// Returns the page's physical address.
+	pub fn get(&self) -> PhysAddr {
+		self.0
+	}
+}
+
+impl Drop for AnonPage {
+	fn drop(&mut self) {
+		unsafe {
+			buddy::free(self.0, 0);
+		}
+	}
+}
 
 /// A mapping in a memory space.
 #[derive(Debug)]
@@ -52,11 +78,15 @@ pub struct MemMapping {
 	size: NonZeroUsize,
 	/// The mapping's flags.
 	flags: u8,
-	/// The residence of the mapping.
-	residence: MapResidence,
 
-	/// The list of allocated physical pages. Each page may be shared with other mappings.
-	phys_pages: Vec<Option<Arc<ResidencePage>>>,
+	/// The mapped file, if any
+	file: Option<Arc<File>>,
+	/// The offset in the mapped file. If no file is mapped, this field is not relevant
+	off: u64,
+
+	// TODO use a sparse array?
+	/// The list of allocated physical pages.
+	anon_pages: Vec<Option<Arc<AnonPage>>>,
 }
 
 impl MemMapping {
@@ -64,28 +94,30 @@ impl MemMapping {
 	///
 	/// Arguments:
 	/// - `begin` is the pointer on the virtual memory to the beginning of the mapping. This
-	///   pointer must be page-aligned.
-	/// - `size` is the size of the mapping in pages. The size must be greater than 0.
-	/// - `flags` the mapping's flags.
-	/// - `file` is the open file the mapping points to, with an offset in it. If `None`, the
-	///   mapping doesn't point to any file.
-	/// - `residence` is the residence for the mapping.
+	///   pointer must be page-aligned
+	/// - `size` is the size of the mapping in pages. The size must be greater than 0
+	/// - `flags` the mapping's flags
+	/// - `file` is the open file the mapping points to. If `None`, no file is mapped
+	/// - `off` is the offset in `file`, if applicable
 	pub fn new(
 		begin: *mut u8,
 		size: NonZeroUsize,
 		flags: u8,
-		residence: MapResidence,
+		file: Option<Arc<File>>,
+		off: u64,
 	) -> AllocResult<Self> {
 		debug_assert!(begin.is_aligned_to(PAGE_SIZE));
-		let mut phys_pages = Vec::new();
-		phys_pages.resize(size.get(), None)?;
+		let mut anon_pages = Vec::new();
+		anon_pages.resize(size.get(), None)?;
 		Ok(Self {
 			begin,
 			size,
 			flags,
-			residence,
 
-			phys_pages,
+			file,
+			off,
+
+			anon_pages,
 		})
 	}
 
@@ -110,7 +142,7 @@ impl MemMapping {
 	/// page at this offset is higher than `1`.
 	///
 	/// `flags` is the set of flags of the mapping.
-	fn is_cow(phys_page: &Arc<ResidencePage>, flags: u8) -> bool {
+	fn is_cow(phys_page: &Arc<AnonPage>, flags: u8) -> bool {
 		if flags & super::MAPPING_FLAG_SHARED != 0 {
 			return false;
 		}
@@ -162,7 +194,7 @@ impl MemMapping {
 		let virtaddr = VirtAddr::from(self.begin) + offset * PAGE_SIZE;
 		// Get previous page
 		let previous = self
-			.phys_pages
+			.anon_pages
 			// Bound check
 			.get(offset)
 			.ok_or(AllocError)?;
@@ -175,9 +207,9 @@ impl MemMapping {
 			_ => {}
 		}
 		// Allocate and map new page
-		let new = self.residence.acquire_page(offset)?;
+		let new = Arc::new(AnonPage::new()?)?;
 		// Tells initializing the new page is necessary
-		let init = self.residence.is_normal();
+		let init = self.file.is_none();
 		// Tells whether a copy from the previous page is necessary
 		let copy = previous.is_some();
 		if init {
@@ -214,7 +246,7 @@ impl MemMapping {
 			});
 		}
 		// Store the new page and drop the previous
-		self.phys_pages[offset] = Some(new);
+		self.anon_pages[offset] = Some(new);
 		// Make the new page writable if necessary. Does not fail since the page has already been
 		// mapped
 		let flags = self.get_vmem_flags(true);
@@ -224,16 +256,15 @@ impl MemMapping {
 
 	/// Applies the mapping to the given `vmem_transaction`.
 	pub fn apply_to(&mut self, vmem_transaction: &mut VMemTransaction<false>) -> AllocResult<()> {
-		let default_page = self.residence.get_default_page();
-		if let Some(default_page) = default_page {
-			for (offset, phys_page) in self.phys_pages.iter().enumerate() {
+		if self.flags & MAPPING_FLAG_SHARED == 0 {
+			for (offset, phys_page) in self.anon_pages.iter().enumerate() {
 				let (physaddr, write) = phys_page
 					.as_ref()
 					.map(|physaddr| {
 						let write = !Self::is_cow(physaddr, self.flags);
 						(physaddr.get(), write)
 					})
-					.unwrap_or((default_page, false));
+					.unwrap_or((zeroed_page(), false));
 				let virtaddr = VirtAddr::from(self.begin) + offset * PAGE_SIZE;
 				let flags = self.get_vmem_flags(write);
 				vmem_transaction.map(physaddr, virtaddr, flags)?;
@@ -271,9 +302,11 @@ impl MemMapping {
 					begin: self.begin,
 					size,
 					flags: self.flags,
-					residence: self.residence.clone(),
 
-					phys_pages: Vec::try_from(&self.phys_pages[..size.get()])?,
+					file: self.file.clone(),
+					off: self.off,
+
+					anon_pages: Vec::try_from(&self.anon_pages[..size.get()])?,
 				})
 			})
 			.transpose()?;
@@ -289,15 +322,15 @@ impl MemMapping {
 			.checked_sub(end)
 			.and_then(NonZeroUsize::new)
 			.map(|size| {
-				let mut residence = self.residence.clone();
-				residence.offset_add(end);
 				Ok(Self {
 					begin: self.begin.wrapping_add(end * PAGE_SIZE),
 					size,
 					flags: self.flags,
-					residence,
 
-					phys_pages: Vec::try_from(&self.phys_pages[end..])?,
+					file: self.file.clone(),
+					off: self.off + end as u64,
+
+					anon_pages: Vec::try_from(&self.anon_pages[end..])?,
 				})
 			})
 			.transpose()?;
@@ -314,33 +347,17 @@ impl MemMapping {
 	/// - The associated file has been removed or cannot be accessed
 	///
 	/// If the mapping is lock, the function returns [`crate::errno::EBUSY`].
-	pub fn fs_sync(&self, vmem: &VMem) -> EResult<()> {
+	pub fn fs_sync(&self, _vmem: &VMem) -> EResult<()> {
 		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
 			return Ok(());
 		}
 		// TODO if locked, EBUSY
 		// Get file
-		let MapResidence::File {
-			file,
-			off,
-		} = &self.residence
-		else {
+		let Some(_file) = &self.file else {
 			return Ok(());
 		};
-		// Sync
-		unsafe {
-			vmem::switch(vmem, || {
-				// TODO Make use of dirty flag if present on the current architecture to update
-				// only pages that have been modified
-				let slice = slice::from_raw_parts(self.begin, self.size.get() * PAGE_SIZE);
-				let mut i = 0;
-				while i < slice.len() {
-					let l = file.ops.write(file, *off, &slice[i..])?;
-					i += l;
-				}
-				Ok(())
-			})
-		}
+		// TODO iterate on pages to look for dirty ones, then write them back to disk
+		todo!()
 	}
 
 	/// Unmaps the mapping using the given `vmem_transaction`.
@@ -372,9 +389,11 @@ impl TryClone for MemMapping {
 			begin: self.begin,
 			size: self.size,
 			flags: self.flags,
-			residence: self.residence.clone(),
 
-			phys_pages: self.phys_pages.try_clone()?,
+			file: self.file.clone(),
+			off: self.off,
+
+			anon_pages: self.anon_pages.try_clone()?,
 		})
 	}
 }

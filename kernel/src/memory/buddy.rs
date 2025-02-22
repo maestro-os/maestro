@@ -441,6 +441,25 @@ pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<u8>> {
 		.ok_or(AllocError)
 }
 
+/// Returns the instance of [`PageState`] associated with the page at `addr`.
+///
+/// If the page is not allocated, the function panics.
+pub fn page_state(addr: PhysAddr) -> &'static PageState {
+	debug_assert!(addr.is_aligned_to(PAGE_SIZE));
+	// Get zone
+	let mut zones = ZONES.lock();
+	let zone = get_zone_for_addr(&mut zones, addr).unwrap();
+	let frames = zone.frames();
+	// Get frame
+	let frame_id = zone.get_frame_id_from_addr(addr);
+	debug_assert!(frame_id < zone.pages_count);
+	let frame = &frames[frame_id as usize];
+	let Frame::Allocated(state) = frame else {
+		panic!("attempt to retrieve the state of a free page");
+	};
+	state
+}
+
 /// Frees the given memory frame that was allocated using the buddy allocator.
 ///
 /// Arguments:

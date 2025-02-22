@@ -25,15 +25,14 @@
 
 pub mod copy;
 mod gap;
-mod mapping;
-pub mod residence;
+pub mod mapping;
 mod transaction;
 
 use crate::{
 	arch::x86::paging::{PAGE_FAULT_PRESENT, PAGE_FAULT_USER, PAGE_FAULT_WRITE},
-	file::{perm::AccessProfile, vfs},
+	file::{perm::AccessProfile, vfs, File},
 	memory,
-	memory::{vmem::VMem, VirtAddr, PROCESS_END},
+	memory::{buddy::PageState, vmem::VMem, PhysAddr, VirtAddr, PROCESS_END},
 };
 use core::{
 	alloc::AllocError,
@@ -43,10 +42,10 @@ use core::{
 	intrinsics::unlikely,
 	mem,
 	num::NonZeroUsize,
+	ptr,
 };
 use gap::MemGap;
 use mapping::MemMapping;
-use residence::MapResidence;
 use transaction::MemSpaceTransaction;
 use utils::{
 	collections::{btreemap::BTreeMap, vec::Vec},
@@ -71,6 +70,23 @@ pub const MAPPING_FLAG_SHARED: u8 = 0b1000;
 
 /// The virtual address of the buffer used to map pages for copy.
 const COPY_BUFFER: VirtAddr = VirtAddr(PROCESS_END.0 - PAGE_SIZE);
+
+/// Type representing a memory page.
+pub type Page = [u8; PAGE_SIZE];
+
+/// Returns a physical address to the default zeroed page.
+///
+/// This page is meant to be mapped in read-only and is a placeholder for pages that are
+/// accessed without being allocated nor written.
+#[inline]
+fn zeroed_page() -> PhysAddr {
+	#[repr(align(4096))]
+	struct DefaultPage(Page);
+	static DEFAULT_PAGE: DefaultPage = DefaultPage([0; PAGE_SIZE]);
+	VirtAddr::from(DEFAULT_PAGE.0.as_ptr())
+		.kernel_to_physical()
+		.unwrap()
+}
 
 /// Tells whether the address is in bound of the userspace.
 pub fn bound_check(addr: usize, n: usize) -> bool {
@@ -320,10 +336,11 @@ impl MemSpace {
 	/// The function has complexity `O(log n)`.
 	///
 	/// Arguments:
-	/// - `map_constraint` is the constraint to fulfill for the allocation.
-	/// - `size` represents the size of the mapping in number of memory pages.
-	/// - `flags` represents the flags for the mapping.
-	/// - `residence` is the residence of the mapping to be created.
+	/// - `map_constraint` is the constraint to fulfill for the allocation
+	/// - `size` represents the size of the mapping in number of memory pages
+	/// - `flags` represents the flags for the mapping
+	/// - `file` is the open file the mapping points to. If `None`, no file is mapped
+	/// - `off` is the offset in `file`, if applicable
 	///
 	/// The underlying physical memory is not allocated directly but only when an attempt to write
 	/// the memory is detected.
@@ -336,14 +353,15 @@ impl MemSpace {
 		map_constraint: MapConstraint,
 		size: NonZeroUsize,
 		flags: u8,
-		residence: MapResidence,
+		file: Option<Arc<File>>,
+		off: u64,
 	) -> AllocResult<*mut u8> {
 		if !map_constraint.is_valid() {
 			return Err(AllocError);
 		}
 		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
 		// Get suitable gap for the given constraint
-		let (gap, off) = match map_constraint {
+		let (gap, gap_off) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
 				Self::unmap_impl(&mut transaction, addr, size, true)?;
 				// Remove gaps that are present where the mapping is to be placed
@@ -382,9 +400,9 @@ impl MemSpace {
 				(gap, 0)
 			}
 		};
-		let addr = (gap.get_begin() + off * PAGE_SIZE).as_ptr();
+		let addr = (gap.get_begin() + gap_off * PAGE_SIZE).as_ptr();
 		// Split the old gap to fit the mapping, and insert new gaps
-		let (left_gap, right_gap) = gap.consume(off, size.get());
+		let (left_gap, right_gap) = gap.consume(gap_off, size.get());
 		transaction.remove_gap(gap.get_begin())?;
 		if let Some(new_gap) = left_gap {
 			transaction.insert_gap(new_gap)?;
@@ -393,10 +411,25 @@ impl MemSpace {
 			transaction.insert_gap(new_gap)?;
 		}
 		// Create the mapping
-		let m = MemMapping::new(addr, size, flags, residence)?;
+		let m = MemMapping::new(addr, size, flags, file, off)?;
 		transaction.insert_mapping(m)?;
 		transaction.commit();
 		Ok(addr)
+	}
+
+	/// Maps a chunk of memory population with the given static pages.
+	///
+	/// It is assumed that pages in `pages` will remain allocated until the chunk is freed.
+	pub fn map_special(
+		&mut self,
+		flags: u8,
+		pages: &[&'static PageState],
+	) -> AllocResult<*mut u8> {
+		let Some(len) = NonZeroUsize::new(pages.len()) else {
+			return Ok(ptr::dangling_mut());
+		};
+		let _physaddr = self.map(MapConstraint::None, len, flags, None, 0)?;
+		todo!()
 	}
 
 	/// Implementation for `unmap`.
@@ -632,12 +665,7 @@ impl MemSpace {
 				return Ok(());
 			};
 			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
-			self.map(
-				MapConstraint::Fixed(begin),
-				pages,
-				flags,
-				MapResidence::Normal,
-			)?;
+			self.map(MapConstraint::Fixed(begin), pages, flags, None, 0)?;
 		} else {
 			// Check the pointer is valid
 			if unlikely(addr < self.brk_init) {

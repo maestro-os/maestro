@@ -22,11 +22,7 @@ use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile, FileType},
 	memory,
 	memory::VirtAddr,
-	process::{
-		mem_space,
-		mem_space::{residence::MapResidence, MemSpace},
-		Process,
-	},
+	process::{mem_space, mem_space::MemSpace, Process},
 	sync::mutex::{IntMutex, Mutex},
 	syscall::{mmap::mem_space::MapConstraint, Args},
 };
@@ -106,8 +102,7 @@ pub fn do_mmap(
 			MapConstraint::None
 		}
 	};
-	// The file the mapping points to
-	let file_mutex = if fd >= 0 {
+	let file = if fd >= 0 {
 		// Check the alignment of the offset
 		if offset as usize % PAGE_SIZE != 0 {
 			return Err(errno!(EINVAL));
@@ -118,42 +113,33 @@ pub fn do_mmap(
 		None
 	};
 	// TODO anon flag
-	// Get residence
-	let residence = match file_mutex {
-		Some(file) => {
-			let stat = file.stat()?;
-			// Check the file is suitable
-			if stat.get_type() != Some(FileType::Regular) {
-				return Err(errno!(EACCES));
-			}
-			if prot & PROT_READ != 0 && !ap.can_read_file(&stat) {
-				return Err(errno!(EPERM));
-			}
-			if prot & PROT_WRITE != 0 && !ap.can_write_file(&stat) {
-				return Err(errno!(EPERM));
-			}
-			if prot & PROT_EXEC != 0 && !ap.can_execute_file(&stat) {
-				return Err(errno!(EPERM));
-			}
-			MapResidence::File {
-				file,
-				off: offset,
-			}
+	if let Some(file) = &file {
+		let stat = file.stat()?;
+		// Check the file is suitable
+		if stat.get_type() != Some(FileType::Regular) {
+			return Err(errno!(EACCES));
 		}
-		None => {
-			// TODO If the mapping requires a fd, return an error
-			MapResidence::Normal
+		if prot & PROT_READ != 0 && !ap.can_read_file(&stat) {
+			return Err(errno!(EPERM));
 		}
-	};
+		if prot & PROT_WRITE != 0 && !ap.can_write_file(&stat) {
+			return Err(errno!(EPERM));
+		}
+		if prot & PROT_EXEC != 0 && !ap.can_execute_file(&stat) {
+			return Err(errno!(EPERM));
+		}
+	} else {
+		// TODO If the mapping requires a fd, return an error
+	}
 	let flags = get_flags(flags, prot);
 	let mut mem_space = mem_space.lock();
 	// The pointer on the virtual memory to the beginning of the mapping
-	let result = mem_space.map(constraint, pages, flags, residence.clone());
+	let result = mem_space.map(constraint, pages, flags, file.clone(), offset);
 	match result {
 		Ok(ptr) => Ok(ptr as _),
 		Err(e) => {
 			if constraint != MapConstraint::None {
-				let ptr = mem_space.map(MapConstraint::None, pages, flags, residence)?;
+				let ptr = mem_space.map(MapConstraint::None, pages, flags, file, offset)?;
 				Ok(ptr as _)
 			} else {
 				Err(e.into())

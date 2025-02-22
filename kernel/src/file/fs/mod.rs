@@ -30,8 +30,8 @@ use super::{
 	vfs, DirContext, File, INode, Mode, Stat,
 };
 use crate::{
-	device::DeviceIO, file::vfs::node::Node, sync::mutex::Mutex, syscall::ioctl,
-	time::unit::Timestamp,
+	device::DeviceIO, file::vfs::node::Node, process::mem_space::mapping::MemMapping,
+	sync::mutex::Mutex, syscall::ioctl, time::unit::Timestamp,
 };
 use core::{
 	any::Any,
@@ -296,6 +296,18 @@ pub trait FileOps: Any + Debug {
 	/// The default implementation of this function returns an error.
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
 		let _ = (file, off, buf);
+		Err(errno!(EINVAL))
+	}
+
+	/// Maps the file in memory.
+	///
+	/// Arguments:
+	/// - `file` is the file to map
+	/// - `mem` is virtual memory chunk to map
+	///
+	/// The default implementation of this function returns an error.
+	fn mmap(&self, file: &File, mem: &MemMapping) -> EResult<()> {
+		let _ = (file, mem);
 		Err(errno!(EINVAL))
 	}
 

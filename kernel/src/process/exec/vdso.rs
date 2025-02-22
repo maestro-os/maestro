@@ -21,14 +21,8 @@
 
 use crate::{
 	elf::parser::ELFParser,
-	memory::{buddy, VirtAddr},
-	process::{
-		mem_space,
-		mem_space::{
-			residence::{MapResidence, Page, ResidencePage},
-			MapConstraint, MemSpace,
-		},
-	},
+	memory::{buddy, buddy::PageState, VirtAddr},
+	process::mem_space::{MemSpace, Page, MAPPING_FLAG_EXEC, MAPPING_FLAG_USER},
 	sync::once::OnceInit,
 };
 use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
@@ -37,13 +31,12 @@ use utils::{
 	errno::{AllocResult, CollectResult, EResult},
 	include_bytes_aligned,
 	limits::PAGE_SIZE,
-	ptr::arc::Arc,
 };
 
 /// Information on the vDSO ELF image.
 struct Vdso {
 	/// The list of pages on which the image is loaded.
-	pages: Arc<Vec<Arc<ResidencePage>>>,
+	pages: Vec<&'static PageState>,
 	/// The offset of the vDSO's entry.
 	entry_off: Option<NonZeroUsize>,
 }
@@ -79,12 +72,12 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 			let src = &elf[off..(off + len)];
 			virtaddr[..src.len()].copy_from_slice(src);
 			virtaddr[src.len()..].fill(0);
-			Arc::new(ResidencePage::new(physaddr))
+			Ok(buddy::page_state(physaddr))
 		})
 		.collect::<AllocResult<CollectResult<_>>>()?
 		.0?;
 	Ok(Vdso {
-		pages: Arc::new(pages)?,
+		pages,
 		entry_off: NonZeroUsize::new(parser.hdr().e_entry as usize),
 	})
 }
@@ -106,16 +99,7 @@ pub fn map(mem_space: &mut MemSpace, compat: bool) -> EResult<MappedVDSO> {
 			&*VDSO_COMPAT
 		}
 	};
-	// TODO ASLR
-	let pages_count = NonZeroUsize::new(vdso.pages.len()).unwrap();
-	let begin = mem_space.map(
-		MapConstraint::None,
-		pages_count,
-		mem_space::MAPPING_FLAG_USER,
-		MapResidence::Static {
-			pages: vdso.pages.clone(),
-		},
-	)?;
+	let begin = mem_space.map_special(MAPPING_FLAG_USER | MAPPING_FLAG_EXEC, &vdso.pages)?;
 	Ok(MappedVDSO {
 		begin: begin.into(),
 		entry: vdso
