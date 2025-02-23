@@ -26,17 +26,16 @@ use crate::{
 	arch::x86::paging,
 	file::File,
 	memory::{
-		buddy,
-		buddy::{Flags, ZONE_USER},
+		buddy::ZONE_USER,
 		vmem,
 		vmem::{VMem, VMemTransaction},
-		PhysAddr, VirtAddr,
+		PhysAddr, RcPage, VirtAddr,
 	},
 	process::mem_space::{
-		zeroed_page, Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_SHARED, PROT_EXEC, PROT_WRITE,
+		Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE,
 	},
 };
-use core::{alloc::AllocError, num::NonZeroUsize, ops::Range};
+use core::{num::NonZeroUsize, ops::Range};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
@@ -45,30 +44,41 @@ use utils::{
 	TryClone,
 };
 
-/// Wrapper for an allocated physical page of memory.
+/// Returns a physical address to the default zeroed page.
 ///
-/// On drop, the page is freed.
-#[derive(Debug)]
-pub struct AnonPage(PhysAddr);
-
-impl AnonPage {
-	/// Allocates a new, *uninitialized* page.
-	pub fn new(flags: Flags) -> AllocResult<Self> {
-		buddy::alloc(0, flags).map(Self)
-	}
-
-	/// Returns the page's physical address.
-	pub fn get(&self) -> PhysAddr {
-		self.0
-	}
+/// This page is meant to be mapped in read-only and is a placeholder for pages that are
+/// accessed without being allocated nor written.
+#[inline]
+fn zeroed_page() -> PhysAddr {
+	#[repr(align(4096))]
+	struct DefaultPage(Page);
+	static DEFAULT_PAGE: DefaultPage = DefaultPage([0; PAGE_SIZE]);
+	VirtAddr::from(DEFAULT_PAGE.0.as_ptr())
+		.kernel_to_physical()
+		.unwrap()
 }
 
-impl Drop for AnonPage {
-	fn drop(&mut self) {
-		unsafe {
-			buddy::free(self.0, 0);
+/// Returns virtual memory context flags.
+///
+/// Arguments:
+/// - `prot` is the memory protection
+/// - `cow` tells whether we are pending Copy-On-Write
+fn vmem_flags(prot: u8, cow: bool) -> paging::Entry {
+	let mut flags = 0;
+	if !cow && prot & PROT_WRITE != 0 {
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+		{
+			flags |= paging::FLAG_WRITE;
 		}
 	}
+	// Careful, the condition is inverted here. Using == instead of !=
+	if prot & PROT_EXEC == 0 {
+		#[cfg(target_arch = "x86_64")]
+		{
+			flags |= paging::FLAG_XD;
+		}
+	}
+	flags
 }
 
 /// A mapping in a memory space.
@@ -90,7 +100,7 @@ pub struct MemMapping {
 
 	// TODO use a sparse array?
 	/// The list of allocated physical pages
-	pub(super) anon_pages: Vec<Option<Arc<AnonPage>>>,
+	pub(super) anon_pages: Vec<Option<RcPage>>,
 }
 
 impl MemMapping {
@@ -113,8 +123,6 @@ impl MemMapping {
 		off: u64,
 	) -> AllocResult<Self> {
 		debug_assert!(addr.is_aligned_to(PAGE_SIZE));
-		let mut anon_pages = Vec::new();
-		anon_pages.resize(size.get(), None)?;
 		Ok(Self {
 			addr,
 			size,
@@ -124,7 +132,7 @@ impl MemMapping {
 			file,
 			off,
 
-			anon_pages,
+			anon_pages: Vec::new(),
 		})
 	}
 
@@ -148,138 +156,144 @@ impl MemMapping {
 		self.flags
 	}
 
-	/// Tells whether the given `page` is in COW mode.
-	///
-	/// An offset is in COW mode if the mapping is not shared, and the number of references to the
-	/// page at this offset is higher than `1`.
-	///
-	/// `flags` is the set of flags of the mapping.
-	fn is_cow(phys_page: &Arc<AnonPage>, flags: u8) -> bool {
-		if flags & MAP_SHARED != 0 {
-			return false;
-		}
-		// Check if currently shared
-		Arc::strong_count(phys_page) > 1
-	}
-
-	/// Returns virtual memory context flags.
-	///
-	/// If `write` is `false, write is disabled even if enabled on the mapping.
-	fn vmem_flags(&self, write: bool) -> paging::Entry {
-		let mut flags = 0;
-		if write && self.prot & PROT_WRITE != 0 {
-			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-			{
-				flags |= paging::FLAG_WRITE;
-			}
-		}
-		// Careful, the condition is inverted here. Using == instead of !=
-		if self.flags & PROT_EXEC == 0 {
-			#[cfg(target_arch = "x86_64")]
-			{
-				flags |= paging::FLAG_XD;
-			}
-		}
-		flags
-	}
-
 	/// If the offset `offset` is pending for an allocation, forces an allocation of a physical
 	/// page for that offset.
 	///
-	/// An offset in a mapping is pending for an allocation if any of the following is true:
-	/// - no physical page has been assigned to it other than the default (`page` is `None`)
-	/// - the offset is in Copy-On-Write mode
+	/// **Note**: it is assumed the associated virtual memory is bound.
 	///
-	/// The function also applies the mapping of the page to the given `vmem_transaction`
-	/// (regardless of whether the page was effectively in COW mode).
+	/// If a file is associated with the mapping, the function uses the page cache's content
+	/// (potentially populating it by reading from the disk).
 	pub(super) fn alloc(
 		&mut self,
 		offset: usize,
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> AllocResult<()> {
 		let virtaddr = VirtAddr::from(self.addr) + offset * PAGE_SIZE;
-		// Get previous page
-		let previous = self
-			.anon_pages
-			// Bound check
-			.get(offset)
-			.ok_or(AllocError)?;
-		match previous {
-			// If not pending for an allocation: map and stop here
-			Some(physaddr) if !Self::is_cow(physaddr, self.flags) => {
-				let flags = self.vmem_flags(true);
-				return vmem_transaction.map(physaddr.get(), virtaddr, flags);
-			}
-			_ => {}
-		}
-		// Allocate and map new page
-		let new = Arc::new(AnonPage::new(ZONE_USER)?)?;
-		// Tells initializing the new page is necessary
-		let init = self.file.is_none();
-		// Tells whether a copy from the previous page is necessary
-		let copy = previous.is_some();
-		if init {
-			if let Some(previous) = &previous {
-				// Map previous page for copy
-				vmem_transaction.map(previous.get(), COPY_BUFFER, 0)?;
-			}
-		}
-		// Map new page
-		let new_physaddr = new.get();
-		// If the page has to be initialized, do not allow writing during initialization to avoid
-		// concurrency issues
-		let flags = self.vmem_flags(!init);
-		vmem_transaction.map(new_physaddr, virtaddr, flags)?;
-		if !init {
-			return Ok(());
-		}
-		// Initialize the new page
-		unsafe {
-			let dest = self.addr.add(offset * PAGE_SIZE) as *mut Page;
-			// Switch to make sure the right vmem is bound, but this should already be the case
-			// so consider this has no cost
-			vmem::switch(vmem_transaction.vmem, move || {
-				vmem::write_ro(|| {
-					vmem::smap_disable(|| {
-						let dest = &mut *dest;
-						if copy {
-							dest.copy_from_slice(&*COPY_BUFFER.as_ptr::<Page>());
-						} else {
-							dest.fill(0);
-						}
+		// If an anonymous page is already present, use it
+		let anon_page = self.anon_pages.get(offset).and_then(Option::as_ref);
+		if let Some(page) = anon_page {
+			if self.flags & MAP_PRIVATE != 0 && page.is_shared() {
+				// The page cannot be shared: we need our own copy
+				let anon_page = RcPage::new(ZONE_USER)?;
+				let anon_physaddr = anon_page.phys_addr();
+				// Copy data
+				vmem_transaction.map(anon_physaddr, COPY_BUFFER, 0)?;
+				vmem::invalidate_page_current(COPY_BUFFER);
+				unsafe {
+					let src = &*virtaddr.as_ptr::<Page>();
+					let dst = &mut *COPY_BUFFER.as_ptr::<Page>();
+					vmem::write_ro(|| {
+						dst.copy_from_slice(src);
 					});
-				});
-			});
+				}
+				// Map the page
+				let flags = vmem_flags(self.prot, false);
+				vmem_transaction
+					.map(anon_physaddr, virtaddr, flags)
+					.unwrap();
+				self.anon_pages[offset] = Some(anon_page);
+			} else {
+				// Nothing to do, just map the page
+				let flags = vmem_flags(self.prot, false);
+				return vmem_transaction.map(page.phys_addr(), virtaddr, flags);
+			}
 		}
-		// Store the new page and drop the previous
-		self.anon_pages[offset] = Some(new);
-		// Make the new page writable if necessary. Does not fail since the page has already been
-		// mapped
-		let flags = self.vmem_flags(true);
-		vmem_transaction.map(new_physaddr, virtaddr, flags).unwrap();
+		// Else, allocate a page
+		match &self.file {
+			// Anonymous mapping
+			None => {
+				// TODO: what if there is already a page and the mapping is private?
+				let page = RcPage::new(ZONE_USER)?;
+				let physaddr = page.phys_addr();
+				// Zero page
+				vmem_transaction.map(physaddr, COPY_BUFFER, 0)?;
+				vmem::invalidate_page_current(COPY_BUFFER);
+				unsafe {
+					let buf = &mut *COPY_BUFFER.as_ptr::<Page>();
+					vmem::write_ro(|| {
+						buf.fill(0);
+					});
+				}
+				// Map the page
+				let flags = vmem_flags(self.prot, false);
+				vmem_transaction.map(physaddr, virtaddr, flags).unwrap();
+				self.anon_pages[offset] = Some(page);
+			}
+			// Mapped file
+			Some(file) => {
+				// Get page from file
+				let node = file.node().unwrap();
+				let pages = node.pages.lock();
+				let page = pages.get(offset).and_then(Option::as_ref);
+				if page.is_none() {
+					// The page is not in cache, read it from disk
+					todo!()
+				}
+				// cannot fail since we just insert the page in cache if it was not present
+				let file_page = pages.get(offset).and_then(Option::as_ref).unwrap();
+				let file_physaddr = file_page.phys_addr();
+				if self.flags & MAP_PRIVATE != 0 {
+					let anon_page = RcPage::new(ZONE_USER)?;
+					let anon_physaddr = anon_page.phys_addr();
+					// Copy data
+					vmem_transaction.map(anon_physaddr, COPY_BUFFER, 0)?;
+					vmem::invalidate_page_current(COPY_BUFFER);
+					unsafe {
+						let src = &*file_page.virt_addr().as_ptr::<Page>();
+						let dst = &mut *COPY_BUFFER.as_ptr::<Page>();
+						vmem::write_ro(|| {
+							dst.copy_from_slice(src);
+						});
+					}
+					// Map the page
+					let flags = vmem_flags(self.prot, false);
+					vmem_transaction
+						.map(anon_physaddr, virtaddr, flags)
+						.unwrap();
+					self.anon_pages[offset] = Some(anon_page);
+				} else {
+					// Just use the file's page
+					let flags = vmem_flags(self.prot, false);
+					vmem_transaction
+						.map(file_physaddr, virtaddr, flags)
+						.unwrap();
+				}
+			}
+		}
 		Ok(())
 	}
 
 	/// Applies the mapping to the given `vmem_transaction`.
 	pub fn apply_to(&mut self, vmem_transaction: &mut VMemTransaction<false>) -> AllocResult<()> {
-		if self.flags & MAP_SHARED == 0 {
-			for (offset, phys_page) in self.anon_pages.iter().enumerate() {
-				let (physaddr, write) = phys_page
-					.as_ref()
-					.map(|physaddr| {
-						let write = !Self::is_cow(physaddr, self.flags);
-						(physaddr.get(), write)
-					})
-					.unwrap_or((zeroed_page(), false));
-				let virtaddr = VirtAddr::from(self.addr) + offset * PAGE_SIZE;
-				let flags = self.vmem_flags(write);
-				vmem_transaction.map(physaddr, virtaddr, flags)?;
-				// TODO invalidate cache for this page
-			}
-		} else {
-			for i in 0..self.size.get() {
-				self.alloc(i, vmem_transaction)?;
-			}
+		let shared = self.flags & MAP_SHARED != 0;
+		let mut file_pages = self.file.as_mut().map(|file| {
+			// cannot fail since a mapped file always has an associated Node
+			let node = file.node().unwrap();
+			node.pages.lock()
+		});
+		for off in 0..self.size.get() {
+			// Get page
+			let anon_page = self.anon_pages.get(off).and_then(Option::as_ref);
+			let page = if let Some(page) = anon_page {
+				Some(page)
+			} else if let Some(file_pages) = &mut file_pages {
+				let page = file_pages.get(off).and_then(Option::as_ref);
+				if page.is_none() {
+					// The page is not in cache, read it from disk
+					todo!()
+				}
+				file_pages.get(off).and_then(Option::as_ref)
+			} else {
+				None
+			};
+			// Map
+			let (physaddr, pending_cow) = page
+				.map(|p| (p.phys_addr(), !shared && p.is_shared()))
+				.unwrap_or((zeroed_page(), true));
+			let virtaddr = VirtAddr::from(self.addr) + off * PAGE_SIZE;
+			let flags = vmem_flags(self.prot, pending_cow);
+			vmem_transaction.map(physaddr, virtaddr, flags)?;
+			// TODO invalidate cache for this page
 		}
 		Ok(())
 	}

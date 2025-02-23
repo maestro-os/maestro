@@ -21,10 +21,8 @@
 
 use crate::{
 	elf::parser::ELFParser,
-	memory::{buddy::ZONE_KERNEL, VirtAddr},
-	process::mem_space::{
-		mapping::AnonPage, MemSpace, Page, MAP_ANONYMOUS, MAP_PRIVATE, PROT_EXEC, PROT_READ,
-	},
+	memory::{buddy::ZONE_KERNEL, RcPage, VirtAddr},
+	process::mem_space::{MemSpace, Page, MAP_ANONYMOUS, MAP_PRIVATE, PROT_EXEC, PROT_READ},
 	sync::once::OnceInit,
 };
 use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
@@ -33,13 +31,12 @@ use utils::{
 	errno::{AllocResult, CollectResult, EResult},
 	include_bytes_aligned,
 	limits::PAGE_SIZE,
-	ptr::arc::Arc,
 };
 
 /// Information on the vDSO ELF image.
 struct Vdso {
 	/// The list of pages on which the image is loaded.
-	pages: Vec<Arc<AnonPage>>,
+	pages: Vec<RcPage>,
 	/// The offset of the vDSO's entry.
 	entry_off: Option<NonZeroUsize>,
 }
@@ -68,9 +65,8 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 			let off = i * PAGE_SIZE;
 			let len = min(PAGE_SIZE, elf.len() - off);
 			// Alloc page
-			let page = Arc::new(AnonPage::new(ZONE_KERNEL)?)?;
-			let virtaddr = page.get().kernel_to_virtual().unwrap();
-			let virtaddr = unsafe { &mut *virtaddr.as_ptr::<Page>() };
+			let page = RcPage::new(ZONE_KERNEL)?;
+			let virtaddr = unsafe { &mut *page.virt_addr().as_ptr::<Page>() };
 			// Copy data
 			let src = &elf[off..(off + len)];
 			virtaddr[..src.len()].copy_from_slice(src);

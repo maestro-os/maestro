@@ -23,7 +23,7 @@ use crate::{
 		fs::{FileOps, Filesystem, NodeOps},
 		FileType, INode, Stat,
 	},
-	memory::buddy::PageState,
+	memory::RcPage,
 	sync::mutex::Mutex,
 };
 use core::ptr;
@@ -54,7 +54,7 @@ pub struct Node {
 
 	// TODO need a sparse array, inside of a rwlock
 	/// Mapped pages
-	pub pages: Mutex<Vec<&'static PageState>>,
+	pub pages: Mutex<Vec<Option<RcPage>>>,
 }
 
 impl Node {

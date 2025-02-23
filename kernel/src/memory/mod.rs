@@ -26,7 +26,10 @@
 //! - Kernelspace: Virtual memory above `KERNEL_BEGIN`, used by the kernel itself and shared across
 //!   processes
 
-use crate::syscall::FromSyscallArg;
+use crate::{
+	memory::buddy::{Flags, PageState},
+	syscall::FromSyscallArg,
+};
 use core::{
 	fmt,
 	mem::size_of,
@@ -34,6 +37,7 @@ use core::{
 	ptr,
 	ptr::NonNull,
 };
+use utils::{errno::AllocResult, ptr::arc::Arc};
 
 pub mod alloc;
 pub mod buddy;
@@ -197,3 +201,53 @@ macro_rules! addr_impl {
 
 addr_impl!(PhysAddr);
 addr_impl!(VirtAddr);
+
+/// Reference-counted allocated physical page.
+///
+/// When the reference count reaches zero, the page is freed.
+///
+/// A new reference can be created with [`Clone`].
+#[derive(Clone, Debug)]
+pub struct RcPage(Arc<PhysAddr>);
+
+impl RcPage {
+	/// Allocates a new, *uninitialized* page.
+	pub fn new(flags: Flags) -> AllocResult<Self> {
+		let addr = buddy::alloc(0, flags)?;
+		Ok(Self(Arc::new(addr)?))
+	}
+
+	/// Returns the page's physical address.
+	#[inline]
+	pub fn phys_addr(&self) -> PhysAddr {
+		*self.0
+	}
+
+	/// Returns the page's virtual address.
+	#[inline]
+	pub fn virt_addr(&self) -> VirtAddr {
+		self.phys_addr().kernel_to_virtual().unwrap()
+	}
+
+	/// Returns the page's state structure.
+	#[inline]
+	pub fn state(&self) -> &'static PageState {
+		buddy::page_state(self.phys_addr())
+	}
+
+	/// Tells whether there are other references to the same page.
+	#[inline]
+	pub fn is_shared(&self) -> bool {
+		Arc::strong_count(&self.0) > 1
+	}
+}
+
+impl Drop for RcPage {
+	fn drop(&mut self) {
+		if !self.is_shared() {
+			unsafe {
+				buddy::free(self.phys_addr(), 0);
+			}
+		}
+	}
+}

@@ -32,8 +32,7 @@ use crate::{
 	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_PRESENT, PAGE_FAULT_WRITE},
 	file::{perm::AccessProfile, vfs, File},
 	memory,
-	memory::{vmem::VMem, PhysAddr, VirtAddr, PROCESS_END},
-	process::mem_space::mapping::AnonPage,
+	memory::{vmem::VMem, RcPage, VirtAddr, PROCESS_END},
 };
 use core::{
 	alloc::AllocError,
@@ -76,20 +75,6 @@ const COPY_BUFFER: VirtAddr = VirtAddr(PROCESS_END.0 - PAGE_SIZE);
 
 /// Type representing a memory page.
 pub type Page = [u8; PAGE_SIZE];
-
-/// Returns a physical address to the default zeroed page.
-///
-/// This page is meant to be mapped in read-only and is a placeholder for pages that are
-/// accessed without being allocated nor written.
-#[inline]
-fn zeroed_page() -> PhysAddr {
-	#[repr(align(4096))]
-	struct DefaultPage(Page);
-	static DEFAULT_PAGE: DefaultPage = DefaultPage([0; PAGE_SIZE]);
-	VirtAddr::from(DEFAULT_PAGE.0.as_ptr())
-		.kernel_to_physical()
-		.unwrap()
-}
 
 /// Tells whether the address is in bound of the userspace.
 pub fn bound_check(addr: usize, n: usize) -> bool {
@@ -444,12 +429,7 @@ impl MemSpace {
 	}
 
 	/// Maps a chunk of memory population with the given static pages.
-	pub fn map_special(
-		&mut self,
-		prot: u8,
-		flags: u8,
-		pages: &[Arc<AnonPage>],
-	) -> AllocResult<*mut u8> {
+	pub fn map_special(&mut self, prot: u8, flags: u8, pages: &[RcPage]) -> AllocResult<*mut u8> {
 		let Some(len) = NonZeroUsize::new(pages.len()) else {
 			return Err(AllocError);
 		};
