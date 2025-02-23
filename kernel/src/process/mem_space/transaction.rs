@@ -158,7 +158,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 		let size = mapping.get_size().get();
 		mapping.apply_to(&mut self.vmem_transaction)?;
 		insert(
-			mapping.get_begin(),
+			mapping.get_addr(),
 			mapping,
 			&mut self.mem_space_state.mappings,
 			&mut self.mappings_complement,

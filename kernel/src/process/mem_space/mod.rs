@@ -32,7 +32,8 @@ use crate::{
 	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_PRESENT, PAGE_FAULT_WRITE},
 	file::{perm::AccessProfile, vfs, File},
 	memory,
-	memory::{buddy::PageState, vmem::VMem, PhysAddr, VirtAddr, PROCESS_END},
+	memory::{vmem::VMem, PhysAddr, VirtAddr, PROCESS_END},
+	process::mem_space::mapping::AnonPage,
 };
 use core::{
 	alloc::AllocError,
@@ -42,7 +43,6 @@ use core::{
 	intrinsics::unlikely,
 	mem,
 	num::NonZeroUsize,
-	ptr,
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -334,43 +334,24 @@ impl MemSpace {
 		self.state.get_mapping_for_addr(addr)
 	}
 
-	/// Maps a chunk of memory.
-	///
-	/// The function has complexity `O(log n)`.
-	///
-	/// Arguments:
-	/// - `map_constraint` is the constraint to fulfill for the allocation
-	/// - `size` is the size of the mapping in number of memory pages
-	/// - `prot` is the memory protection
-	/// - `flags` is the flags for the mapping
-	/// - `file` is the open file the mapping points to. If `None`, no file is mapped
-	/// - `off` is the offset in `file`, if applicable
-	///
-	/// The underlying physical memory is not allocated directly but only when an attempt to write
-	/// the memory is detected.
-	///
-	/// On success, the function returns a pointer to the newly mapped virtual memory.
-	///
-	/// If the given pointer is not page-aligned, the function returns an error.
-	pub fn map(
-		&mut self,
+	fn map_impl(
+		transaction: &mut MemSpaceTransaction,
 		map_constraint: MapConstraint,
 		size: NonZeroUsize,
 		prot: u8,
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
-	) -> AllocResult<*mut u8> {
+	) -> AllocResult<MemMapping> {
 		if !map_constraint.is_valid() {
 			return Err(AllocError);
 		}
-		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
 		// Get suitable gap for the given constraint
 		let (gap, gap_off) = match map_constraint {
 			MapConstraint::Fixed(addr) => {
-				Self::unmap_impl(&mut transaction, addr, size, true)?;
+				Self::unmap_impl(transaction, addr, size, true)?;
 				// Remove gaps that are present where the mapping is to be placed
-				remove_gaps_in_range(&mut transaction, addr, size.get())?;
+				remove_gaps_in_range(transaction, addr, size.get())?;
 				// Create a fictive gap. This is required because fixed allocations may be used
 				// outside allowed gaps
 				let gap = MemGap::new(addr, size);
@@ -416,26 +397,82 @@ impl MemSpace {
 			transaction.insert_gap(new_gap)?;
 		}
 		// Create the mapping
-		let m = MemMapping::new(addr, size, prot, flags, file, off)?;
-		transaction.insert_mapping(m)?;
+		MemMapping::new(addr, size, prot, flags, file, off)
+	}
+
+	/// Maps a chunk of memory.
+	///
+	/// The function has complexity `O(log n)`.
+	///
+	/// Arguments:
+	/// - `map_constraint` is the constraint to fulfill for the allocation
+	/// - `size` is the size of the mapping in number of memory pages
+	/// - `prot` is the memory protection
+	/// - `flags` is the flags for the mapping
+	/// - `file` is the open file the mapping points to. If `None`, no file is mapped
+	/// - `off` is the offset in `file`, if applicable
+	///
+	/// The underlying physical memory is not allocated directly but only when an attempt to write
+	/// the memory is detected.
+	///
+	/// On success, the function returns a pointer to the newly mapped virtual memory.
+	///
+	/// If the given pointer is not page-aligned, the function returns an error.
+	pub fn map(
+		&mut self,
+		map_constraint: MapConstraint,
+		size: NonZeroUsize,
+		prot: u8,
+		flags: u8,
+		file: Option<Arc<File>>,
+		off: u64,
+	) -> AllocResult<*mut u8> {
+		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
+		let map = Self::map_impl(
+			&mut transaction,
+			map_constraint,
+			size,
+			prot,
+			flags,
+			file,
+			off,
+		)?;
+		let addr = map.get_addr();
+		transaction.insert_mapping(map)?;
 		transaction.commit();
 		Ok(addr)
 	}
 
 	/// Maps a chunk of memory population with the given static pages.
-	///
-	/// It is assumed that pages in `pages` will remain allocated until the chunk is freed.
 	pub fn map_special(
 		&mut self,
 		prot: u8,
 		flags: u8,
-		pages: &[&'static PageState],
+		pages: &[Arc<AnonPage>],
 	) -> AllocResult<*mut u8> {
 		let Some(len) = NonZeroUsize::new(pages.len()) else {
-			return Ok(ptr::dangling_mut());
+			return Err(AllocError);
 		};
-		let _physaddr = self.map(MapConstraint::None, len, prot, flags, None, 0)?;
-		todo!()
+		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
+		let mut map = Self::map_impl(
+			&mut transaction,
+			MapConstraint::None,
+			len,
+			prot,
+			flags,
+			None,
+			0,
+		)?;
+		// Populate
+		map.anon_pages
+			.iter_mut()
+			.zip(pages.iter().cloned())
+			.for_each(|(dst, src)| *dst = Some(src));
+		// Commit
+		let addr = map.get_addr();
+		transaction.insert_mapping(map)?;
+		transaction.commit();
+		Ok(addr)
 	}
 
 	/// Implementation for `unmap`.
@@ -461,7 +498,7 @@ impl MemSpace {
 				continue;
 			};
 			// The pointer to the beginning of the mapping
-			let mapping_begin = mapping.get_begin();
+			let mapping_begin = mapping.get_addr();
 			// The offset in the mapping to the beginning of pages to unmap
 			let inner_off = (page_addr.0 - mapping_begin as usize) / PAGE_SIZE;
 			// The number of pages to unmap in the mapping
@@ -603,7 +640,7 @@ impl MemSpace {
 		while off < len {
 			let addr = addr + off;
 			if let Some(mapping) = self.state.get_mut_mapping_for_addr(addr) {
-				let page_offset = (addr.0 - mapping.get_begin() as usize) / PAGE_SIZE;
+				let page_offset = (addr.0 - mapping.get_addr() as usize) / PAGE_SIZE;
 				mapping.alloc(page_offset, &mut transaction)?;
 			}
 			off += PAGE_SIZE;
@@ -722,7 +759,7 @@ impl MemSpace {
 			return false;
 		}
 		// Map the accessed page
-		let page_offset = (addr.0 - mapping.get_begin() as usize) / PAGE_SIZE;
+		let page_offset = (addr.0 - mapping.get_addr() as usize) / PAGE_SIZE;
 		let mut transaction = self.vmem.transaction();
 		// TODO use OOM killer
 		mapping
