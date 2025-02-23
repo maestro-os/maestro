@@ -19,7 +19,10 @@
 //! ELF parser.
 
 use super::*;
-use crate::module::relocation::Relocation;
+use crate::{
+	module::relocation::Relocation,
+	process::mem_space::{PROT_EXEC, PROT_READ, PROT_WRITE},
+};
 use utils::bytes;
 
 /// The ELF's class.
@@ -212,15 +215,17 @@ impl ProgramHeader {
 		Ok(())
 	}
 
-	/// Returns the flags to map the current segment into a process's memory
-	/// space.
-	pub fn get_mem_space_flags(&self) -> u8 {
-		let mut flags = mem_space::MAPPING_FLAG_USER;
+	/// Returns the map protection for the segment.
+	pub fn mmap_prot(&self) -> u8 {
+		let mut flags = 0;
 		if self.p_flags & PF_X != 0 {
-			flags |= mem_space::MAPPING_FLAG_EXEC;
+			flags |= PROT_EXEC;
 		}
 		if self.p_flags & PF_W != 0 {
-			flags |= mem_space::MAPPING_FLAG_WRITE;
+			flags |= PROT_WRITE;
+		}
+		if self.p_flags & PF_R != 0 {
+			flags |= PROT_READ;
 		}
 		flags
 	}

@@ -55,11 +55,11 @@ pub const ZONES_COUNT: usize = 3;
 const ZONE_TYPE_MASK: Flags = 0b11;
 
 /// Buddy allocator flag: allocate in user zone
-pub const FLAG_ZONE_TYPE_USER: Flags = 0b00;
+pub const ZONE_USER: Flags = 0b00;
 /// Buddy allocator flag: allocate in MMIO zone
-pub const FLAG_ZONE_TYPE_MMIO: Flags = 0b01;
+pub const ZONE_MMIO: Flags = 0b01;
 /// Buddy allocator flag: allocate in kernel zone
-pub const FLAG_ZONE_TYPE_KERNEL: Flags = 0b10;
+pub const ZONE_KERNEL: Flags = 0b10;
 
 /// The size of the metadata for one frame.
 pub const FRAME_METADATA_SIZE: usize = size_of::<Frame>();
@@ -435,7 +435,7 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<PhysAddr> {
 ///
 /// The function returns the virtual address, to the frame.
 pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<u8>> {
-	alloc(order, FLAG_ZONE_TYPE_KERNEL)?
+	alloc(order, ZONE_KERNEL)?
 		.kernel_to_virtual()
 		.and_then(|addr| NonNull::new(addr.as_ptr()))
 		.ok_or(AllocError)
@@ -568,7 +568,7 @@ mod test {
 		let mut frames: [PhysAddr; 100] = [PhysAddr(0); 100];
 		unsafe {
 			for frame in &mut frames {
-				*frame = alloc(0, FLAG_ZONE_TYPE_KERNEL).unwrap();
+				*frame = alloc(0, ZONE_KERNEL).unwrap();
 			}
 			for frame in frames {
 				free(frame, 0);

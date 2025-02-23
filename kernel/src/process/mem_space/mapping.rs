@@ -27,12 +27,14 @@ use crate::{
 	file::File,
 	memory::{
 		buddy,
-		buddy::FLAG_ZONE_TYPE_USER,
+		buddy::ZONE_USER,
 		vmem,
 		vmem::{VMem, VMemTransaction},
 		PhysAddr, VirtAddr,
 	},
-	process::mem_space::{zeroed_page, Page, COPY_BUFFER, MAPPING_FLAG_SHARED},
+	process::mem_space::{
+		zeroed_page, Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_SHARED, PROT_EXEC, PROT_WRITE,
+	},
 };
 use core::{alloc::AllocError, num::NonZeroUsize, ops::Range};
 use utils::{
@@ -52,7 +54,7 @@ pub struct AnonPage(PhysAddr);
 impl AnonPage {
 	/// Allocates a new, *uninitialized* page.
 	pub fn new() -> AllocResult<Self> {
-		buddy::alloc(0, FLAG_ZONE_TYPE_USER).map(Self)
+		buddy::alloc(0, ZONE_USER).map(Self)
 	}
 
 	/// Returns the page's physical address.
@@ -74,9 +76,11 @@ impl Drop for AnonPage {
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
 	begin: *mut u8,
-	/// The size of the mapping in pages.
+	/// The size of the mapping in pages
 	size: NonZeroUsize,
-	/// The mapping's flags.
+	/// Memory protection
+	prot: u8,
+	/// Mapping flags
 	flags: u8,
 
 	/// The mapped file, if any
@@ -85,7 +89,7 @@ pub struct MemMapping {
 	off: u64,
 
 	// TODO use a sparse array?
-	/// The list of allocated physical pages.
+	/// The list of allocated physical pages
 	anon_pages: Vec<Option<Arc<AnonPage>>>,
 }
 
@@ -96,12 +100,14 @@ impl MemMapping {
 	/// - `begin` is the pointer on the virtual memory to the beginning of the mapping. This
 	///   pointer must be page-aligned
 	/// - `size` is the size of the mapping in pages. The size must be greater than 0
+	/// - `prot` is the memory protection
 	/// - `flags` the mapping's flags
 	/// - `file` is the open file the mapping points to. If `None`, no file is mapped
 	/// - `off` is the offset in `file`, if applicable
 	pub fn new(
 		begin: *mut u8,
 		size: NonZeroUsize,
+		prot: u8,
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
@@ -112,6 +118,7 @@ impl MemMapping {
 		Ok(Self {
 			begin,
 			size,
+			prot,
 			flags,
 
 			file,
@@ -131,6 +138,11 @@ impl MemMapping {
 		self.size
 	}
 
+	/// Returns memory protection.
+	pub fn get_prot(&self) -> u8 {
+		self.prot
+	}
+
 	/// Returns the mapping's flags.
 	pub fn get_flags(&self) -> u8 {
 		self.flags
@@ -143,7 +155,7 @@ impl MemMapping {
 	///
 	/// `flags` is the set of flags of the mapping.
 	fn is_cow(phys_page: &Arc<AnonPage>, flags: u8) -> bool {
-		if flags & super::MAPPING_FLAG_SHARED != 0 {
+		if flags & MAP_SHARED != 0 {
 			return false;
 		}
 		// Check if currently shared
@@ -153,22 +165,16 @@ impl MemMapping {
 	/// Returns virtual memory context flags.
 	///
 	/// If `write` is `false, write is disabled even if enabled on the mapping.
-	fn get_vmem_flags(&self, write: bool) -> paging::Entry {
+	fn vmem_flags(&self, write: bool) -> paging::Entry {
 		let mut flags = 0;
-		if write && self.flags & super::MAPPING_FLAG_WRITE != 0 {
+		if write && self.prot & PROT_WRITE != 0 {
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			{
 				flags |= paging::FLAG_WRITE;
 			}
 		}
-		if self.flags & super::MAPPING_FLAG_USER != 0 {
-			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-			{
-				flags |= paging::FLAG_USER;
-			}
-		}
 		// Careful, the condition is inverted here. Using == instead of !=
-		if self.flags & super::MAPPING_FLAG_EXEC == 0 {
+		if self.flags & PROT_EXEC == 0 {
 			#[cfg(target_arch = "x86_64")]
 			{
 				flags |= paging::FLAG_XD;
@@ -201,7 +207,7 @@ impl MemMapping {
 		match previous {
 			// If not pending for an allocation: map and stop here
 			Some(physaddr) if !Self::is_cow(physaddr, self.flags) => {
-				let flags = self.get_vmem_flags(true);
+				let flags = self.vmem_flags(true);
 				return vmem_transaction.map(physaddr.get(), virtaddr, flags);
 			}
 			_ => {}
@@ -222,7 +228,7 @@ impl MemMapping {
 		let new_physaddr = new.get();
 		// If the page has to be initialized, do not allow writing during initialization to avoid
 		// concurrency issues
-		let flags = self.get_vmem_flags(!init);
+		let flags = self.vmem_flags(!init);
 		vmem_transaction.map(new_physaddr, virtaddr, flags)?;
 		if !init {
 			return Ok(());
@@ -249,14 +255,14 @@ impl MemMapping {
 		self.anon_pages[offset] = Some(new);
 		// Make the new page writable if necessary. Does not fail since the page has already been
 		// mapped
-		let flags = self.get_vmem_flags(true);
+		let flags = self.vmem_flags(true);
 		vmem_transaction.map(new_physaddr, virtaddr, flags).unwrap();
 		Ok(())
 	}
 
 	/// Applies the mapping to the given `vmem_transaction`.
 	pub fn apply_to(&mut self, vmem_transaction: &mut VMemTransaction<false>) -> AllocResult<()> {
-		if self.flags & MAPPING_FLAG_SHARED == 0 {
+		if self.flags & MAP_SHARED == 0 {
 			for (offset, phys_page) in self.anon_pages.iter().enumerate() {
 				let (physaddr, write) = phys_page
 					.as_ref()
@@ -266,7 +272,7 @@ impl MemMapping {
 					})
 					.unwrap_or((zeroed_page(), false));
 				let virtaddr = VirtAddr::from(self.begin) + offset * PAGE_SIZE;
-				let flags = self.get_vmem_flags(write);
+				let flags = self.vmem_flags(write);
 				vmem_transaction.map(physaddr, virtaddr, flags)?;
 				// TODO invalidate cache for this page
 			}
@@ -301,6 +307,7 @@ impl MemMapping {
 				Ok(MemMapping {
 					begin: self.begin,
 					size,
+					prot: self.prot,
 					flags: self.flags,
 
 					file: self.file.clone(),
@@ -325,6 +332,7 @@ impl MemMapping {
 				Ok(Self {
 					begin: self.begin.wrapping_add(end * PAGE_SIZE),
 					size,
+					prot: self.prot,
 					flags: self.flags,
 
 					file: self.file.clone(),
@@ -348,7 +356,7 @@ impl MemMapping {
 	///
 	/// If the mapping is lock, the function returns [`crate::errno::EBUSY`].
 	pub fn fs_sync(&self, _vmem: &VMem) -> EResult<()> {
-		if self.flags & super::MAPPING_FLAG_SHARED == 0 {
+		if self.flags & MAP_ANONYMOUS != 0 {
 			return Ok(());
 		}
 		// TODO if locked, EBUSY
@@ -388,6 +396,7 @@ impl TryClone for MemMapping {
 		Ok(Self {
 			begin: self.begin,
 			size: self.size,
+			prot: self.prot,
 			flags: self.flags,
 
 			file: self.file.clone(),

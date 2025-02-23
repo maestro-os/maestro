@@ -22,7 +22,11 @@ use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile, FileType},
 	memory,
 	memory::VirtAddr,
-	process::{mem_space, mem_space::MemSpace, Process},
+	process::{
+		mem_space,
+		mem_space::{MemSpace, MAP_FIXED, PROT_EXEC, PROT_READ, PROT_WRITE},
+		Process,
+	},
 	sync::mutex::{IntMutex, Mutex},
 	syscall::{mmap::mem_space::MapConstraint, Args},
 };
@@ -37,33 +41,6 @@ use utils::{
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
 };
-
-/// Data can be read.
-pub const PROT_READ: i32 = 0b001;
-/// Data can be written.
-pub const PROT_WRITE: i32 = 0b010;
-/// Data can be executed.
-pub const PROT_EXEC: i32 = 0b100;
-
-/// Changes are shared.
-const MAP_SHARED: i32 = 0b001;
-/// Interpret addr exactly.
-const MAP_FIXED: i32 = 0b010;
-
-/// Converts mmap's `flags` and `prot` to mem space mapping flags.
-fn get_flags(flags: i32, prot: i32) -> u8 {
-	let mut mem_flags = mem_space::MAPPING_FLAG_USER;
-	if flags & MAP_SHARED != 0 {
-		mem_flags |= mem_space::MAPPING_FLAG_SHARED;
-	}
-	if prot & PROT_WRITE != 0 {
-		mem_flags |= mem_space::MAPPING_FLAG_WRITE;
-	}
-	if prot & PROT_EXEC != 0 {
-		mem_flags |= mem_space::MAPPING_FLAG_EXEC;
-	}
-	mem_flags
-}
 
 /// Performs the `mmap` system call.
 #[allow(clippy::too_many_arguments)]
@@ -91,6 +68,8 @@ pub fn do_mmap(
 	if unlikely(addr.0.checked_add(pages.get() * PAGE_SIZE).is_none()) {
 		return Err(errno!(EINVAL));
 	}
+	let prot = prot as u8;
+	let flags = flags as u8;
 	let constraint = {
 		if !addr.is_null() {
 			if flags & MAP_FIXED != 0 {
@@ -131,15 +110,14 @@ pub fn do_mmap(
 	} else {
 		// TODO If the mapping requires a fd, return an error
 	}
-	let flags = get_flags(flags, prot);
 	let mut mem_space = mem_space.lock();
 	// The pointer on the virtual memory to the beginning of the mapping
-	let result = mem_space.map(constraint, pages, flags, file.clone(), offset);
+	let result = mem_space.map(constraint, pages, prot, flags, file.clone(), offset);
 	match result {
 		Ok(ptr) => Ok(ptr as _),
 		Err(e) => {
 			if constraint != MapConstraint::None {
-				let ptr = mem_space.map(MapConstraint::None, pages, flags, file, offset)?;
+				let ptr = mem_space.map(MapConstraint::None, pages, prot, flags, file, offset)?;
 				Ok(ptr as _)
 			} else {
 				Err(e.into())

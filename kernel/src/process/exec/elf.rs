@@ -32,7 +32,7 @@ use crate::{
 	process::{
 		exec::{vdso::MappedVDSO, ExecInfo, Executor, ProgramImage},
 		mem_space,
-		mem_space::{MapConstraint, MemSpace},
+		mem_space::{MapConstraint, MemSpace, MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE},
 	},
 };
 use core::{cmp::max, intrinsics::unlikely, num::NonZeroUsize, ptr};
@@ -265,7 +265,8 @@ fn map_segment(
 		mem_space.map(
 			MapConstraint::Fixed(addr),
 			pages,
-			seg.get_mem_space_flags(),
+			seg.mmap_prot(),
+			MAP_PRIVATE,
 			Some(file.clone()),
 			off,
 		)?;
@@ -315,7 +316,8 @@ fn load_elf(
 			let phdr = mem_space.map(
 				MapConstraint::None,
 				pages,
-				mem_space::MAPPING_FLAG_USER,
+				PROT_READ,
+				MAP_PRIVATE | MAP_ANONYMOUS,
 				None,
 				0,
 			)?;
@@ -532,7 +534,8 @@ impl Executor for ELFExecutor<'_> {
 			.map(
 				MapConstraint::None,
 				process::USER_STACK_SIZE.try_into().unwrap(),
-				process::USER_STACK_FLAGS,
+				PROT_READ | PROT_WRITE,
+				MAP_PRIVATE | MAP_ANONYMOUS,
 				None,
 				0,
 			)?

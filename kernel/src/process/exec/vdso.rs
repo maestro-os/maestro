@@ -21,8 +21,12 @@
 
 use crate::{
 	elf::parser::ELFParser,
-	memory::{buddy, buddy::PageState, VirtAddr},
-	process::mem_space::{MemSpace, Page, MAPPING_FLAG_EXEC, MAPPING_FLAG_USER},
+	memory::{
+		buddy,
+		buddy::{PageState, ZONE_KERNEL},
+		VirtAddr,
+	},
+	process::mem_space::{MemSpace, Page, MAP_ANONYMOUS, MAP_PRIVATE, PROT_EXEC, PROT_READ},
 	sync::once::OnceInit,
 };
 use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
@@ -65,7 +69,7 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 			let off = i * PAGE_SIZE;
 			let len = min(PAGE_SIZE, elf.len() - off);
 			// Alloc page
-			let physaddr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
+			let physaddr = buddy::alloc(0, ZONE_KERNEL)?;
 			let virtaddr = physaddr.kernel_to_virtual().unwrap();
 			let virtaddr = unsafe { &mut *virtaddr.as_ptr::<Page>() };
 			// Copy data
@@ -99,7 +103,11 @@ pub fn map(mem_space: &mut MemSpace, compat: bool) -> EResult<MappedVDSO> {
 			&*VDSO_COMPAT
 		}
 	};
-	let begin = mem_space.map_special(MAPPING_FLAG_USER | MAPPING_FLAG_EXEC, &vdso.pages)?;
+	let begin = mem_space.map_special(
+		PROT_READ | PROT_EXEC,
+		MAP_PRIVATE | MAP_ANONYMOUS,
+		&vdso.pages,
+	)?;
 	Ok(MappedVDSO {
 		begin: begin.into(),
 		entry: vdso

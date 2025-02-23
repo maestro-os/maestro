@@ -29,7 +29,7 @@ pub mod mapping;
 mod transaction;
 
 use crate::{
-	arch::x86::paging::{PAGE_FAULT_PRESENT, PAGE_FAULT_USER, PAGE_FAULT_WRITE},
+	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_PRESENT, PAGE_FAULT_WRITE},
 	file::{perm::AccessProfile, vfs, File},
 	memory,
 	memory::{buddy::PageState, vmem::VMem, PhysAddr, VirtAddr, PROCESS_END},
@@ -55,18 +55,21 @@ use utils::{
 	TryClone,
 };
 
-/// Flag telling that a memory mapping can be written to.
-pub const MAPPING_FLAG_WRITE: u8 = 0b00001;
-/// Flag telling that a memory mapping can contain executable instructions.
-pub const MAPPING_FLAG_EXEC: u8 = 0b00010;
-/// Flag telling that a memory mapping is accessible from userspace.
-pub const MAPPING_FLAG_USER: u8 = 0b00100;
-/// Flag telling that a memory mapping has its physical memory shared with one
-/// or more other mappings.
-///
-/// If the mapping is associated with a file, modifications made to the mapping are update to the
-/// file.
-pub const MAPPING_FLAG_SHARED: u8 = 0b1000;
+/// Page can be read
+pub const PROT_READ: u8 = 0x1;
+/// Page can be written
+pub const PROT_WRITE: u8 = 0x2;
+/// Page can be executed
+pub const PROT_EXEC: u8 = 0x4;
+
+/// Changes are shared across mappings on the same region
+pub const MAP_SHARED: u8 = 0x1;
+/// Changes are *not* shared across mappings on the same region
+pub const MAP_PRIVATE: u8 = 0x2;
+/// Interpret `addr` exactly
+pub const MAP_FIXED: u8 = 0x10;
+/// The mapping is not backed by any file
+pub const MAP_ANONYMOUS: u8 = 0x20;
 
 /// The virtual address of the buffer used to map pages for copy.
 const COPY_BUFFER: VirtAddr = VirtAddr(PROCESS_END.0 - PAGE_SIZE);
@@ -337,8 +340,9 @@ impl MemSpace {
 	///
 	/// Arguments:
 	/// - `map_constraint` is the constraint to fulfill for the allocation
-	/// - `size` represents the size of the mapping in number of memory pages
-	/// - `flags` represents the flags for the mapping
+	/// - `size` is the size of the mapping in number of memory pages
+	/// - `prot` is the memory protection
+	/// - `flags` is the flags for the mapping
 	/// - `file` is the open file the mapping points to. If `None`, no file is mapped
 	/// - `off` is the offset in `file`, if applicable
 	///
@@ -352,6 +356,7 @@ impl MemSpace {
 		&mut self,
 		map_constraint: MapConstraint,
 		size: NonZeroUsize,
+		prot: u8,
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
@@ -411,7 +416,7 @@ impl MemSpace {
 			transaction.insert_gap(new_gap)?;
 		}
 		// Create the mapping
-		let m = MemMapping::new(addr, size, flags, file, off)?;
+		let m = MemMapping::new(addr, size, prot, flags, file, off)?;
 		transaction.insert_mapping(m)?;
 		transaction.commit();
 		Ok(addr)
@@ -422,13 +427,14 @@ impl MemSpace {
 	/// It is assumed that pages in `pages` will remain allocated until the chunk is freed.
 	pub fn map_special(
 		&mut self,
+		prot: u8,
 		flags: u8,
 		pages: &[&'static PageState],
 	) -> AllocResult<*mut u8> {
 		let Some(len) = NonZeroUsize::new(pages.len()) else {
 			return Ok(ptr::dangling_mut());
 		};
-		let _physaddr = self.map(MapConstraint::None, len, flags, None, 0)?;
+		let _physaddr = self.map(MapConstraint::None, len, prot, flags, None, 0)?;
 		todo!()
 	}
 
@@ -664,8 +670,14 @@ impl MemSpace {
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};
-			let flags = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
-			self.map(MapConstraint::Fixed(begin), pages, flags, None, 0)?;
+			self.map(
+				MapConstraint::Fixed(begin),
+				pages,
+				PROT_READ | PROT_WRITE | PROT_EXEC,
+				MAP_ANONYMOUS,
+				None,
+				0,
+			)?;
 		} else {
 			// Check the pointer is valid
 			if unlikely(addr < self.brk_init) {
@@ -703,15 +715,10 @@ impl MemSpace {
 			return false;
 		};
 		// Check permissions
-		let code_write = code & PAGE_FAULT_WRITE != 0;
-		let mapping_write = mapping.get_flags() & MAPPING_FLAG_WRITE != 0;
-		if code_write && !mapping_write {
+		if code & PAGE_FAULT_WRITE != 0 && mapping.get_prot() & PROT_WRITE == 0 {
 			return false;
 		}
-		// TODO check exec
-		let code_userspace = code & PAGE_FAULT_USER != 0;
-		let mapping_userspace = mapping.get_flags() & MAPPING_FLAG_USER != 0;
-		if code_userspace && !mapping_userspace {
+		if code & PAGE_FAULT_INSTRUCTION != 0 && mapping.get_prot() & PROT_EXEC == 0 {
 			return false;
 		}
 		// Map the accessed page

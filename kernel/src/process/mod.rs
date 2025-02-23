@@ -45,7 +45,7 @@ use crate::{
 	},
 	memory::{buddy, buddy::FrameOrder, VirtAddr},
 	process::{
-		mem_space::{copy, copy::SyscallPtr, MAPPING_FLAG_USER, MAPPING_FLAG_WRITE},
+		mem_space::{copy, copy::SyscallPtr},
 		pid::{PidHandle, IDLE_PID, INIT_PID},
 		rusage::Rusage,
 		scheduler::{switch, Scheduler, SCHEDULER},
@@ -94,8 +94,6 @@ const DEFAULT_UMASK: file::Mode = 0o022;
 
 /// The size of the userspace stack of a process in number of pages.
 const USER_STACK_SIZE: usize = 2048;
-/// The flags for the userspace stack mapping.
-const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 /// The size of the kernelspace stack of a process in number of pages.
 const KERNEL_STACK_ORDER: FrameOrder = 4;
 
