@@ -24,7 +24,7 @@ use crate::{
 	memory::VirtAddr,
 	process::{
 		mem_space,
-		mem_space::{MemSpace, MAP_FIXED, PROT_EXEC, PROT_READ, PROT_WRITE},
+		mem_space::{MemSpace, MAP_ANONYMOUS, MAP_FIXED, PROT_EXEC, PROT_READ, PROT_WRITE},
 		Process,
 	},
 	sync::mutex::{IntMutex, Mutex},
@@ -81,20 +81,18 @@ pub fn do_mmap(
 			MapConstraint::None
 		}
 	};
-	let file = if fd >= 0 {
-		// Check the alignment of the offset
-		if offset as usize % PAGE_SIZE != 0 {
+	let file = if flags & MAP_ANONYMOUS == 0 {
+		// Validation
+		if unlikely(fd < 0) {
+			return Err(errno!(EBADF));
+		}
+		if unlikely(offset as usize % PAGE_SIZE != 0) {
 			return Err(errno!(EINVAL));
 		}
-		let fd = fds.lock().get_fd(fd)?.get_file().clone();
-		Some(fd)
-	} else {
-		None
-	};
-	// TODO anon flag
-	if let Some(file) = &file {
+		// Get file
+		let file = fds.lock().get_fd(fd)?.get_file().clone();
+		// Check permissions
 		let stat = file.stat()?;
-		// Check the file is suitable
 		if stat.get_type() != Some(FileType::Regular) {
 			return Err(errno!(EACCES));
 		}
@@ -107,9 +105,10 @@ pub fn do_mmap(
 		if prot & PROT_EXEC != 0 && !ap.can_execute_file(&stat) {
 			return Err(errno!(EPERM));
 		}
+		Some(file)
 	} else {
-		// TODO If the mapping requires a fd, return an error
-	}
+		None
+	};
 	let mut mem_space = mem_space.lock();
 	// The pointer on the virtual memory to the beginning of the mapping
 	let result = mem_space.map(constraint, pages, prot, flags, file.clone(), offset);
@@ -146,6 +145,32 @@ pub fn mmap(
 		flags,
 		fd,
 		offset as _,
+		fds,
+		ap,
+		mem_space,
+	)
+}
+
+pub fn mmap2(
+	Args((addr, length, prot, flags, fd, offset)): Args<(
+		VirtAddr,
+		usize,
+		c_int,
+		c_int,
+		c_int,
+		u64,
+	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	ap: AccessProfile,
+	mem_space: Arc<IntMutex<MemSpace>>,
+) -> EResult<usize> {
+	do_mmap(
+		addr,
+		length,
+		prot,
+		flags,
+		fd,
+		offset * 4096,
 		fds,
 		ap,
 		mem_space,

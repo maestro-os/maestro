@@ -85,7 +85,6 @@ mod madvise;
 mod mkdir;
 mod mknod;
 mod mmap;
-mod mmap2;
 mod mount;
 mod mprotect;
 mod msync;
@@ -164,7 +163,7 @@ use crate::{
 	process,
 	process::{mem_space::MemSpace, signal::Signal, Process},
 	sync::mutex::{IntMutex, Mutex},
-	syscall::getdents::getdents64,
+	syscall::{getdents::getdents64, mmap::mmap2},
 };
 use _exit::_exit;
 use _llseek::{_llseek, lseek};
@@ -228,7 +227,6 @@ use madvise::madvise;
 use mkdir::mkdir;
 use mknod::mknod;
 use mmap::mmap;
-use mmap2::mmap2;
 use mount::mount;
 use mprotect::mprotect;
 use msync::msync;
