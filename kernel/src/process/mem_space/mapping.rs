@@ -354,7 +354,7 @@ impl MemMapping {
 	/// - The mapping is not associated with a file
 	/// - The associated file has been removed or cannot be accessed
 	///
-	/// If the mapping is lock, the function returns [`crate::errno::EBUSY`].
+	/// If the mapping is locked, the function returns [`utils::errno::EBUSY`].
 	pub fn fs_sync(&self, _vmem: &VMem) -> EResult<()> {
 		if self.flags & MAP_ANONYMOUS != 0 {
 			return Ok(());
