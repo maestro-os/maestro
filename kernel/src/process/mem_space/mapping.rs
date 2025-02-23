@@ -27,8 +27,7 @@ use crate::{
 	file::File,
 	memory::{
 		buddy::ZONE_USER,
-		vmem,
-		vmem::{VMem, VMemTransaction},
+		vmem::{invalidate_page_current, write_ro, VMem, VMemTransaction},
 		PhysAddr, RcPage, VirtAddr,
 	},
 	process::mem_space::{
@@ -79,6 +78,45 @@ fn vmem_flags(prot: u8, cow: bool) -> paging::Entry {
 		}
 	}
 	flags
+}
+
+/// Initializes a new page and maps it at `virtaddr`.
+///
+/// Arguments:
+/// - `vmem_transaction` is the transaction on which the page mapping takes place
+/// - `prot` is the memory protection for the newly mapped page
+/// - `src` is the virtual address of the page containing the data to initialize the new page with.
+///   If `None`, the new page is initialized with zeros
+/// - `dst` is the virtual address at which the new page is mapped
+fn init_page(
+	vmem_transaction: &mut VMemTransaction<false>,
+	prot: u8,
+	src: Option<VirtAddr>,
+	dst: VirtAddr,
+) -> AllocResult<RcPage> {
+	// Allocate destination page
+	let new_page = RcPage::new(ZONE_USER)?;
+	let new_physaddr = new_page.phys_addr();
+	// Map destination page to copy buffer
+	vmem_transaction.map(new_physaddr, COPY_BUFFER, 0)?;
+	invalidate_page_current(COPY_BUFFER);
+	// Copy or zero
+	unsafe {
+		let src = src.map(|src| &*src.as_ptr::<Page>());
+		let dst = &mut *COPY_BUFFER.as_ptr::<Page>();
+		// Required since the copy buffer is mapped without write permission
+		write_ro(|| {
+			if let Some(src) = src {
+				dst.copy_from_slice(src);
+			} else {
+				dst.fill(0);
+			}
+		});
+	}
+	// Map the page
+	let flags = vmem_flags(prot, false);
+	vmem_transaction.map(new_physaddr, dst, flags)?;
+	Ok(new_page)
 }
 
 /// A mapping in a memory space.
@@ -174,49 +212,20 @@ impl MemMapping {
 		if let Some(page) = anon_page {
 			if self.flags & MAP_PRIVATE != 0 && page.is_shared() {
 				// The page cannot be shared: we need our own copy
-				let anon_page = RcPage::new(ZONE_USER)?;
-				let anon_physaddr = anon_page.phys_addr();
-				// Copy data
-				vmem_transaction.map(anon_physaddr, COPY_BUFFER, 0)?;
-				vmem::invalidate_page_current(COPY_BUFFER);
-				unsafe {
-					let src = &*virtaddr.as_ptr::<Page>();
-					let dst = &mut *COPY_BUFFER.as_ptr::<Page>();
-					vmem::write_ro(|| {
-						dst.copy_from_slice(src);
-					});
-				}
-				// Map the page
-				let flags = vmem_flags(self.prot, false);
-				vmem_transaction
-					.map(anon_physaddr, virtaddr, flags)
-					.unwrap();
-				self.anon_pages[offset] = Some(anon_page);
+				let page = init_page(vmem_transaction, self.prot, Some(virtaddr), virtaddr)?;
+				self.anon_pages[offset] = Some(page);
 			} else {
 				// Nothing to do, just map the page
 				let flags = vmem_flags(self.prot, false);
-				return vmem_transaction.map(page.phys_addr(), virtaddr, flags);
+				vmem_transaction.map(page.phys_addr(), virtaddr, flags)?;
 			}
+			return Ok(());
 		}
 		// Else, allocate a page
 		match &self.file {
 			// Anonymous mapping
 			None => {
-				// TODO: what if there is already a page and the mapping is private?
-				let page = RcPage::new(ZONE_USER)?;
-				let physaddr = page.phys_addr();
-				// Zero page
-				vmem_transaction.map(physaddr, COPY_BUFFER, 0)?;
-				vmem::invalidate_page_current(COPY_BUFFER);
-				unsafe {
-					let buf = &mut *COPY_BUFFER.as_ptr::<Page>();
-					vmem::write_ro(|| {
-						buf.fill(0);
-					});
-				}
-				// Map the page
-				let flags = vmem_flags(self.prot, false);
-				vmem_transaction.map(physaddr, virtaddr, flags).unwrap();
+				let page = init_page(vmem_transaction, self.prot, None, virtaddr)?;
 				self.anon_pages[offset] = Some(page);
 			}
 			// Mapped file
@@ -233,30 +242,17 @@ impl MemMapping {
 				let file_page = pages.get(offset).and_then(Option::as_ref).unwrap();
 				let file_physaddr = file_page.phys_addr();
 				if self.flags & MAP_PRIVATE != 0 {
-					let anon_page = RcPage::new(ZONE_USER)?;
-					let anon_physaddr = anon_page.phys_addr();
-					// Copy data
-					vmem_transaction.map(anon_physaddr, COPY_BUFFER, 0)?;
-					vmem::invalidate_page_current(COPY_BUFFER);
-					unsafe {
-						let src = &*file_page.virt_addr().as_ptr::<Page>();
-						let dst = &mut *COPY_BUFFER.as_ptr::<Page>();
-						vmem::write_ro(|| {
-							dst.copy_from_slice(src);
-						});
-					}
-					// Map the page
-					let flags = vmem_flags(self.prot, false);
-					vmem_transaction
-						.map(anon_physaddr, virtaddr, flags)
-						.unwrap();
-					self.anon_pages[offset] = Some(anon_page);
+					let page = init_page(
+						vmem_transaction,
+						self.prot,
+						Some(file_page.virt_addr()),
+						virtaddr,
+					)?;
+					self.anon_pages[offset] = Some(page);
 				} else {
 					// Just use the file's page
 					let flags = vmem_flags(self.prot, false);
-					vmem_transaction
-						.map(file_physaddr, virtaddr, flags)
-						.unwrap();
+					vmem_transaction.map(file_physaddr, virtaddr, flags)?;
 				}
 			}
 		}
