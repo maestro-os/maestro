@@ -30,7 +30,7 @@ use utils::{
 		hashmap::{Entry, HashMap},
 	},
 	errno,
-	errno::AllocResult,
+	errno::{AllocResult, EResult},
 };
 
 /// Applies the difference in `complement` to rollback operations.
@@ -154,7 +154,7 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	/// Inserts the given mapping into the state.
 	///
 	/// On failure, the transaction is dropped and rolled back.
-	pub fn insert_mapping(&mut self, mut mapping: MemMapping) -> AllocResult<()> {
+	pub fn insert_mapping(&mut self, mut mapping: MemMapping) -> EResult<()> {
 		let size = mapping.get_size().get();
 		mapping.apply_to(&mut self.vmem_transaction)?;
 		insert(

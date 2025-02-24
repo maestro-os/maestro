@@ -119,7 +119,7 @@ pub fn do_mmap(
 				let ptr = mem_space.map(MapConstraint::None, pages, prot, flags, file, offset)?;
 				Ok(ptr as _)
 			} else {
-				Err(e.into())
+				Err(e)
 			}
 		}
 	}

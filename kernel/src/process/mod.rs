@@ -398,26 +398,29 @@ pub(crate) fn init() -> EResult<()> {
 		if unlikely(proc.is_idle_task()) {
 			return CallbackResult::Panic;
 		}
-		// Check access
-		let success = {
-			let Some(mem_space_mutex) = proc.mem_space.as_ref() else {
-				return CallbackResult::Panic;
-			};
-			let mut mem_space = mem_space_mutex.lock();
-			mem_space.handle_page_fault(accessed_addr, code)
+		let Some(mem_space_mutex) = proc.mem_space.as_ref() else {
+			return CallbackResult::Panic;
 		};
-		if !success {
-			if ring < 3 {
-				// Check if the fault was caused by a user <-> kernel copy
-				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
-					// Jump to `copy_fault`
-					frame.set_program_counter(copy::copy_fault as usize);
+		// Check access
+		let sig = mem_space_mutex
+			.lock()
+			.handle_page_fault(accessed_addr, code);
+		match sig {
+			Ok(true) => {}
+			Ok(false) => {
+				if ring < 3 {
+					// Check if the fault was caused by a user <-> kernel copy
+					if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
+						// Jump to `copy_fault`
+						frame.set_program_counter(copy::copy_fault as usize);
+					} else {
+						return CallbackResult::Panic;
+					}
 				} else {
-					return CallbackResult::Panic;
+					proc.kill(Signal::SIGSEGV);
 				}
-			} else {
-				proc.kill(Signal::SIGSEGV);
 			}
+			Err(_) => proc.kill(Signal::SIGBUS),
 		}
 		CallbackResult::Continue
 	};

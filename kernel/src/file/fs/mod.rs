@@ -30,8 +30,8 @@ use super::{
 	vfs, DirContext, File, INode, Mode, Stat,
 };
 use crate::{
-	device::DeviceIO, file::vfs::node::Node, process::mem_space::mapping::MemMapping,
-	sync::mutex::Mutex, syscall::ioctl, time::unit::Timestamp,
+	device::DeviceIO, file::vfs::node::Node, memory::RcPage, sync::mutex::Mutex, syscall::ioctl,
+	time::unit::Timestamp,
 };
 use core::{
 	any::Any,
@@ -217,6 +217,29 @@ pub trait NodeOps: Any + Debug {
 		let _ = (old_parent, old_name, new_parent, new_name);
 		Err(errno!(EINVAL))
 	}
+
+	/// Reads a page at `off` in `node`. from storage or the page cache (if present).
+	///
+	/// The function attempts to read the page from the following places, in this order:
+	/// - `node`'s pages cache
+	/// - Storage's page cache
+	/// - Storage
+	///
+	/// Note that `off` is in pages.
+	///
+	/// The default implementation of this function returns an error.
+	fn readahead(&self, node: &Node, off: u64) -> EResult<RcPage> {
+		let _ = (node, off);
+		Err(errno!(EINVAL))
+	}
+
+	/// If in the page cache, writes the content of the page at `off` in `node` back to storage.
+	///
+	/// The default implementation of this function returns an error.
+	fn writeback(&self, node: &Node, off: u64) -> EResult<()> {
+		let _ = (node, off);
+		Err(errno!(EINVAL))
+	}
 }
 
 /// Open file operations.
@@ -296,18 +319,6 @@ pub trait FileOps: Any + Debug {
 	/// The default implementation of this function returns an error.
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
 		let _ = (file, off, buf);
-		Err(errno!(EINVAL))
-	}
-
-	/// Maps the file in memory.
-	///
-	/// Arguments:
-	/// - `file` is the file to map
-	/// - `mem` is virtual memory chunk to map
-	///
-	/// The default implementation of this function returns an error.
-	fn mmap(&self, file: &File, mem: &MemMapping) -> EResult<()> {
-		let _ = (file, mem);
 		Err(errno!(EINVAL))
 	}
 

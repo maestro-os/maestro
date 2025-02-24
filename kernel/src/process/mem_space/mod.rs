@@ -25,7 +25,7 @@
 
 pub mod copy;
 mod gap;
-pub mod mapping;
+mod mapping;
 mod transaction;
 
 use crate::{
@@ -48,6 +48,7 @@ use mapping::MemMapping;
 use transaction::MemSpaceTransaction;
 use utils::{
 	collections::{btreemap::BTreeMap, vec::Vec},
+	errno,
 	errno::{AllocResult, CollectResult, EResult},
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
@@ -327,9 +328,9 @@ impl MemSpace {
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
-	) -> AllocResult<MemMapping> {
+	) -> EResult<MemMapping> {
 		if !map_constraint.is_valid() {
-			return Err(AllocError);
+			return Err(errno!(ENOMEM));
 		}
 		// Get suitable gap for the given constraint
 		let (gap, gap_off) = match map_constraint {
@@ -382,7 +383,8 @@ impl MemSpace {
 			transaction.insert_gap(new_gap)?;
 		}
 		// Create the mapping
-		MemMapping::new(addr, size, prot, flags, file, off)
+		let m = MemMapping::new(addr, size, prot, flags, file, off)?;
+		Ok(m)
 	}
 
 	/// Maps a chunk of memory.
@@ -411,7 +413,7 @@ impl MemSpace {
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
-	) -> AllocResult<*mut u8> {
+	) -> EResult<*mut u8> {
 		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
 		let map = Self::map_impl(
 			&mut transaction,
@@ -442,7 +444,8 @@ impl MemSpace {
 			flags,
 			None,
 			0,
-		)?;
+		)
+		.map_err(|_| AllocError)?;
 		// Populate
 		map.anon_pages
 			.iter_mut()
@@ -450,7 +453,7 @@ impl MemSpace {
 			.for_each(|(dst, src)| *dst = Some(src));
 		// Commit
 		let addr = map.get_addr();
-		transaction.insert_mapping(map)?;
+		transaction.insert_mapping(map).map_err(|_| AllocError)?;
 		transaction.commit();
 		Ok(addr)
 	}
@@ -465,7 +468,7 @@ impl MemSpace {
 		addr: VirtAddr,
 		size: NonZeroUsize,
 		nogap: bool,
-	) -> AllocResult<()> {
+	) -> EResult<()> {
 		// Remove every mapping in the chunk to unmap
 		let mut i = 0;
 		while i < size.get() {
@@ -540,10 +543,10 @@ impl MemSpace {
 	/// be revoked and further attempts to access it shall result in a page
 	/// fault.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn unmap(&mut self, addr: VirtAddr, size: NonZeroUsize, brk: bool) -> AllocResult<()> {
+	pub fn unmap(&mut self, addr: VirtAddr, size: NonZeroUsize, brk: bool) -> EResult<()> {
 		// Validation
 		if unlikely(!addr.is_aligned_to(PAGE_SIZE)) {
-			return Err(AllocError);
+			return Err(errno!(ENOMEM));
 		}
 		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
 		// Do not create gaps if unmapping for `*brk` system calls as this space is reserved by
@@ -564,7 +567,7 @@ impl MemSpace {
 	}
 
 	/// Clones the current memory space for process forking.
-	pub fn fork(&mut self) -> AllocResult<MemSpace> {
+	pub fn fork(&mut self) -> EResult<MemSpace> {
 		// Clone gaps
 		let gaps = self.state.gaps.try_clone()?;
 		// Clone vmem and mappings and update them for COW
@@ -581,7 +584,7 @@ impl MemSpace {
 				new_mapping.apply_to(&mut new_vmem_transaction)?;
 				Ok((*p, new_mapping))
 			})
-			.collect::<AllocResult<CollectResult<_>>>()?
+			.collect::<EResult<CollectResult<_>>>()?
 			.0?;
 		// No fallible operation left, commit
 		new_vmem_transaction.commit();
@@ -614,7 +617,7 @@ impl MemSpace {
 	///
 	/// On error, allocations that have been made are not freed as it does not affect the behaviour
 	/// from the user's point of view.
-	pub fn alloc(&mut self, addr: VirtAddr, len: usize) -> AllocResult<()> {
+	pub fn alloc(&mut self, addr: VirtAddr, len: usize) -> EResult<()> {
 		let mut transaction = self.vmem.transaction();
 		let mut off = 0;
 		while off < len {
@@ -694,7 +697,8 @@ impl MemSpace {
 				MAP_ANONYMOUS,
 				None,
 				0,
-			)?;
+			)
+			.map_err(|_| AllocError)?;
 		} else {
 			// Check the pointer is valid
 			if unlikely(addr < self.brk_init) {
@@ -706,7 +710,7 @@ impl MemSpace {
 			let Some(pages) = NonZeroUsize::new(pages) else {
 				return Ok(());
 			};
-			self.unmap(begin, pages, true)?;
+			self.unmap(begin, pages, true).map_err(|_| AllocError)?;
 		}
 		self.brk = addr;
 		Ok(())
@@ -724,29 +728,26 @@ impl MemSpace {
 	/// - `code` is the error code given along with the error.
 	///
 	/// If the process should continue, the function returns `true`, else `false`.
-	pub fn handle_page_fault(&mut self, addr: VirtAddr, code: u32) -> bool {
+	pub fn handle_page_fault(&mut self, addr: VirtAddr, code: u32) -> EResult<bool> {
 		if code & PAGE_FAULT_PRESENT == 0 {
-			return false;
+			return Ok(false);
 		}
 		let Some(mapping) = self.state.get_mut_mapping_for_addr(addr) else {
-			return false;
+			return Ok(false);
 		};
 		// Check permissions
 		if code & PAGE_FAULT_WRITE != 0 && mapping.get_prot() & PROT_WRITE == 0 {
-			return false;
+			return Ok(false);
 		}
 		if code & PAGE_FAULT_INSTRUCTION != 0 && mapping.get_prot() & PROT_EXEC == 0 {
-			return false;
+			return Ok(false);
 		}
 		// Map the accessed page
 		let page_offset = (addr.0 - mapping.get_addr() as usize) / PAGE_SIZE;
 		let mut transaction = self.vmem.transaction();
-		// TODO use OOM killer
-		mapping
-			.alloc(page_offset, &mut transaction)
-			.expect("Out of memory!");
+		mapping.alloc(page_offset, &mut transaction)?;
 		transaction.commit();
-		true
+		Ok(true)
 	}
 }
 

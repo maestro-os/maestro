@@ -201,11 +201,14 @@ impl MemMapping {
 	///
 	/// If a file is associated with the mapping, the function uses the page cache's content
 	/// (potentially populating it by reading from the disk).
+	///
+	/// Upon allocation failure, or failure to read a page from the disk, the function returns an
+	/// error.
 	pub(super) fn alloc(
 		&mut self,
 		offset: usize,
 		vmem_transaction: &mut VMemTransaction<false>,
-	) -> AllocResult<()> {
+	) -> EResult<()> {
 		let virtaddr = VirtAddr::from(self.addr) + offset * PAGE_SIZE;
 		// If an anonymous page is already present, use it
 		let anon_page = self.anon_pages.get(offset).and_then(Option::as_ref);
@@ -232,14 +235,7 @@ impl MemMapping {
 			Some(file) => {
 				// Get page from file
 				let node = file.node().unwrap();
-				let pages = node.pages.lock();
-				let page = pages.get(offset).and_then(Option::as_ref);
-				if page.is_none() {
-					// The page is not in cache, read it from disk
-					todo!()
-				}
-				// cannot fail since we just insert the page in cache if it was not present
-				let file_page = pages.get(offset).and_then(Option::as_ref).unwrap();
+				let file_page = node.node_ops.readahead(node, offset as _)?;
 				let file_physaddr = file_page.phys_addr();
 				if self.flags & MAP_PRIVATE != 0 {
 					let page = init_page(
@@ -260,25 +256,21 @@ impl MemMapping {
 	}
 
 	/// Applies the mapping to the given `vmem_transaction`.
-	pub fn apply_to(&mut self, vmem_transaction: &mut VMemTransaction<false>) -> AllocResult<()> {
+	///
+	/// Upon allocation failure, or failure to read a page from the disk, the function returns an
+	/// error.
+	pub fn apply_to(&mut self, vmem_transaction: &mut VMemTransaction<false>) -> EResult<()> {
 		let shared = self.flags & MAP_SHARED != 0;
-		let mut file_pages = self.file.as_mut().map(|file| {
-			// cannot fail since a mapped file always has an associated Node
-			let node = file.node().unwrap();
-			node.pages.lock()
-		});
 		for off in 0..self.size.get() {
 			// Get page
 			let anon_page = self.anon_pages.get(off).and_then(Option::as_ref);
 			let page = if let Some(page) = anon_page {
+				Some(page.clone())
+			} else if let Some(file) = &self.file {
+				// cannot fail since a mapped file always has an associated Node
+				let node = file.node().unwrap();
+				let page = node.node_ops.readahead(node, off as _)?;
 				Some(page)
-			} else if let Some(file_pages) = &mut file_pages {
-				let page = file_pages.get(off).and_then(Option::as_ref);
-				if page.is_none() {
-					// The page is not in cache, read it from disk
-					todo!()
-				}
-				file_pages.get(off).and_then(Option::as_ref)
 			} else {
 				None
 			};
