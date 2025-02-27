@@ -28,7 +28,7 @@ mod version;
 
 use super::{DummyOps, Filesystem, FilesystemOps, FilesystemType, NodeOps};
 use crate::{
-	device::DeviceIO,
+	device::BlkDev,
 	file::{
 		fs::{
 			kernfs::{
@@ -336,13 +336,13 @@ impl FilesystemType for ProcFsType {
 		b"procfs"
 	}
 
-	fn detect(&self, _io: &dyn DeviceIO) -> EResult<bool> {
+	fn detect(&self, _dev: &BlkDev) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
-		_io: Option<Arc<dyn DeviceIO>>,
+		_dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
 	) -> EResult<Box<dyn FilesystemOps>> {

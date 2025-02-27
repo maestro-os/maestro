@@ -24,96 +24,79 @@
 
 use crate::{
 	device,
-	device::{id, Device, DeviceID, DeviceIO, DeviceType},
+	device::{id, BlkDev, BlockDeviceOps, DeviceID, DeviceType},
+	memory::RcPage,
 	sync::mutex::Mutex,
 };
-use core::{cmp::max, mem::ManuallyDrop, num::NonZeroU64};
+use core::{mem::ManuallyDrop, num::NonZeroU64};
 use utils::{
 	collections::{path::PathBuf, vec::Vec},
 	errno,
 	errno::EResult,
 	format,
+	limits::PAGE_SIZE,
 };
 
-/// The ramdisks' major number.
+/// The ramdisks major number
 const RAM_DISK_MAJOR: u32 = 1;
-/// The number of ramdisks on the system.
+/// The number of ramdisks on the system
 const RAM_DISK_COUNT: usize = 16;
-/// The maximum size of the ramdisk in bytes.
-const RAM_DISK_SIZE: usize = 4 * 1024 * 1024;
-
-// TODO Add a mechanism to free when cleared?
-// TODO allow concurrent I/O?
+/// The maximum size of the ramdisk in pages
+const MAX_PAGES: u64 = 1024;
 
 /// A disk, on RAM.
-#[derive(Default)]
-pub struct RAMDisk(Mutex<Vec<u8>>);
+#[derive(Debug, Default)]
+pub struct RamDisk(Mutex<Vec<RcPage>>);
 
-impl DeviceIO for RAMDisk {
+impl BlockDeviceOps for RamDisk {
 	fn block_size(&self) -> NonZeroU64 {
-		1.try_into().unwrap()
+		(PAGE_SIZE as u64).try_into().unwrap()
 	}
 
 	fn blocks_count(&self) -> u64 {
-		RAM_DISK_SIZE as u64
+		MAX_PAGES
 	}
 
-	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let end = off.saturating_add(buf.len() as u64);
+	fn read_page(&self, off: u64) -> EResult<RcPage> {
 		// Bound check
-		if end > RAM_DISK_SIZE as u64 {
-			return Err(errno!(EINVAL));
+		if off >= MAX_PAGES {
+			return Err(errno!(EOVERFLOW));
 		}
 		let off = off as usize;
-		let end = end as usize;
-		// Copy
-		let data = self.0.lock();
-		buf.copy_from_slice(&data[off..end]);
-		Ok(buf.len())
-	}
-
-	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize> {
-		let end = off.saturating_add(buf.len() as u64);
-		// Bound check
-		if end > RAM_DISK_SIZE as u64 {
-			return Err(errno!(EINVAL));
+		let mut pages = self.0.lock();
+		// If the RAM is not large enough, expand it
+		while pages.len() <= off {
+			pages.push(RcPage::new_zeroed()?)?;
 		}
-		let off = off as usize;
-		let end = end as usize;
-		let mut data = self.0.lock();
-		// Adapt size
-		let new_size = max(end, data.len());
-		self.0.lock().resize(new_size, 0)?;
-		// Copy
-		data[off..end].copy_from_slice(buf);
-		Ok(buf.len())
+		Ok(pages[off].clone())
 	}
-}
 
-/// Structure representing a device for a ram disk.
-struct RAMDiskHandle {
-	/// The ramdisk.
-	disk: RAMDisk,
+	fn write_page(&self, off: u64, _buf: &[u8]) -> EResult<()> {
+		// Nothing to do, just check offset
+		if off < MAX_PAGES {
+			Ok(())
+		} else {
+			Err(errno!(EOVERFLOW))
+		}
+	}
 }
 
 /// Creates every ramdisk instances.
 pub(crate) fn create() -> EResult<()> {
-	// TODO Undo all on fail?
 	let _major = ManuallyDrop::new(id::alloc_major(DeviceType::Block, Some(RAM_DISK_MAJOR))?);
 
 	for i in 0..RAM_DISK_COUNT {
 		let path = PathBuf::try_from(format!("/dev/ram{i}")?)?;
-		let dev = Device::new(
+		let dev = BlkDev::new(
 			DeviceID {
-				dev_type: DeviceType::Block,
 				major: RAM_DISK_MAJOR,
 				minor: i as _,
 			},
 			path,
 			0o666,
-			RAMDisk::default(),
+			RamDisk::default(),
 		)?;
-		device::register(dev)?;
+		device::register_blk(dev)?;
 	}
 
 	Ok(())

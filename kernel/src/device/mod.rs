@@ -51,29 +51,31 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		File, FileType, Mode, Stat,
 	},
+	memory::RcPage,
 	sync::mutex::Mutex,
-	syscall::{ioctl, ioctl::Request},
+	syscall::ioctl,
 };
-use core::{ffi::c_void, fmt, num::NonZeroU64};
+use core::{ffi::c_void, fmt, intrinsics::likely, num::NonZeroU64};
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 use utils::{
+	boxed::Box,
 	collections::{
+		btreemap::BTreeMap,
 		hashmap::HashMap,
 		path::{Path, PathBuf},
 	},
 	errno,
-	errno::{EResult, ENOENT},
+	errno::{AllocResult, EResult, ENOENT},
+	limits::PAGE_SIZE,
 	ptr::arc::Arc,
-	slice_copy, vec, TryClone,
+	slice_copy,
 };
 
 /// Enumeration representing the type of the device.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum DeviceType {
-	/// A block device.
 	Block,
-	/// A char device.
 	Char,
 }
 
@@ -87,17 +89,70 @@ impl DeviceType {
 	}
 }
 
-impl fmt::Display for DeviceType {
-	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-		fmt::Debug::fmt(self, fmt)
+/// Creates a device file.
+///
+/// Arguments:
+/// - `id` is the ID of the device
+/// - `dev_type` is the device type
+/// - `path` is the path of the device file
+/// - `perms` is the permissions of the device file
+///
+/// If the file already exist, the function does nothing.
+///
+/// The function takes a mutex guard because it needs to unlock the device
+/// in order to create the file without a deadlock since the VFS accesses a device to write on
+/// the filesystem.
+pub fn create_file(id: &DeviceID, dev_type: DeviceType, path: &Path, perms: Mode) -> EResult<()> {
+	// Create the parent directory in which the device file is located
+	let parent_path = path.parent().unwrap_or(Path::root());
+	file::util::create_dirs(parent_path)?;
+	// Resolve path
+	let resolved = vfs::resolve_path(
+		path,
+		&ResolutionSettings {
+			create: true,
+			..ResolutionSettings::kernel_follow()
+		},
+	)?;
+	match resolved {
+		Resolved::Creatable {
+			parent,
+			name,
+		} => {
+			// Create the device file
+			vfs::create_file(
+				parent,
+				name,
+				&AccessProfile::KERNEL,
+				Stat {
+					mode: dev_type.to_file_type().to_mode() | perms,
+					dev_major: id.major,
+					dev_minor: id.minor,
+					..Default::default()
+				},
+			)?;
+			Ok(())
+		}
+		// The file exists, do nothing
+		Resolved::Found(_) => Ok(()),
 	}
+}
+
+/// If it exists, removes the file at `path`.
+pub fn remove_file(path: &Path) -> EResult<()> {
+	let rs = ResolutionSettings::kernel_follow();
+	let res = vfs::get_file_from_path(path, &rs);
+	let ent = match res {
+		Ok(ent) => ent,
+		Err(e) if e.as_int() == ENOENT => return Ok(()),
+		Err(e) => return Err(e),
+	};
+	vfs::unlink(&ent, &rs.access_profile)
 }
 
 /// A device type, major and minor, who act as a unique ID for a device.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct DeviceID {
-	/// The type of the device.
-	pub dev_type: DeviceType,
 	/// The major number.
 	pub major: u32,
 	/// The minor number.
@@ -114,74 +169,29 @@ impl DeviceID {
 /// Device I/O interface.
 ///
 /// This trait makes use of **interior mutability** to allow concurrent accesses.
-pub trait DeviceIO {
+pub trait BlockDeviceOps: fmt::Debug {
 	/// Returns the granularity of I/O for the device, in bytes.
 	fn block_size(&self) -> NonZeroU64;
 	/// Returns the number of blocks on the device.
 	fn blocks_count(&self) -> u64;
 
-	/// Reads data from the device.
+	/// Reads a page of data from the device.
 	///
-	/// Arguments:
-	/// - `off` is the offset on the device, in blocks
-	/// - `buf` is the buffer to which the data is written
+	/// `off` is the offset on the device, in pages
 	///
-	/// The size of the buffer has to be a multiple of the block size.
-	///
-	/// On success, the function returns the number of bytes read.
-	fn read(&self, off: u64, buf: &mut [u8]) -> EResult<usize>;
+	/// On success, the function returns the page.
+	fn read_page(&self, off: u64) -> EResult<RcPage>;
 
-	/// Writes data to the device.
+	/// Writes a page of data to the device.
 	///
 	/// Arguments:
-	/// - `off` is the offset on the device, in blocks
-	/// - `buf` is the buffer from which the data is read
+	/// - `off` is the offset on the device, in pages
+	/// - `buf` contains the data to write
 	///
-	/// The size of the buffer has to be a multiple of the block size.
+	/// The size of the buffer has to be a multiple of the page size.
 	///
 	/// On success, the function returns the number of bytes written.
-	fn write(&self, off: u64, buf: &[u8]) -> EResult<usize>;
-
-	/// Reads data from the device.
-	///
-	/// Contrary to [`Self::read`], `off` is in bytes and no block alignment is required.
-	fn read_bytes(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let blk_size = self.block_size().get();
-		let mut blk = vec![0u8; blk_size as usize]?;
-		let start = off / blk_size;
-		let end = off
-			.checked_add(buf.len() as u64)
-			.ok_or_else(|| errno!(EOVERFLOW))?
-			.div_ceil(blk_size);
-		let mut buf_off = 0;
-		for i in start..end {
-			self.read(i, &mut blk)?;
-			let inner_off = (off % blk_size) as usize;
-			buf_off += slice_copy(&blk[inner_off..], &mut buf[buf_off..]);
-		}
-		Ok(buf_off)
-	}
-
-	/// Writes data to the device.
-	///
-	/// Contrary to [`Self::write`], `off` is in bytes and no block alignment is required.
-	fn write_bytes(&self, off: u64, buf: &[u8]) -> EResult<usize> {
-		let blk_size = self.block_size().get();
-		let mut blk = vec![0u8; blk_size as usize]?;
-		let start = off / blk_size;
-		let end = off
-			.checked_add(buf.len() as u64)
-			.ok_or_else(|| errno!(EOVERFLOW))?
-			.div_ceil(blk_size);
-		let mut buf_off = 0;
-		for i in start..end {
-			self.read(i, &mut blk)?;
-			let inner_off = (off % blk_size) as usize;
-			buf_off += slice_copy(&buf[buf_off..], &mut blk[inner_off..]);
-			self.write(i, &blk)?;
-		}
-		Ok(buf_off)
-	}
+	fn write_page(&self, off: u64, buf: &[u8]) -> EResult<()>;
 
 	/// Polls the device with the given mask.
 	fn poll(&self, mask: u32) -> EResult<u32> {
@@ -200,209 +210,191 @@ pub trait DeviceIO {
 	}
 }
 
-/// A device, either a block device or a char device.
-///
-/// Each device has a major and a minor number.
-pub struct Device {
-	/// The device's ID.
-	id: DeviceID,
-	/// The path to the device file.
-	path: PathBuf,
-	/// The file's mode.
-	mode: Mode,
+/// A block device.
+#[derive(Debug)]
+pub struct BlkDev {
+	/// The device's ID
+	pub id: DeviceID,
+	/// The path to the device file
+	pub path: PathBuf,
+	/// The file's mode
+	pub mode: Mode,
 
-	/// The device I/O interface.
-	io: Arc<dyn DeviceIO>,
+	/// The device I/O interface
+	pub ops: Box<dyn BlockDeviceOps>,
+
+	// TODO rwlock
+	/// The page cache
+	///
+	/// The key is the offset in the file
+	pub pages: Mutex<BTreeMap<u64, RcPage>>,
 }
 
-impl Device {
-	// TODO accept both `&'static Path` and `PathBuf`?
+impl BlkDev {
 	/// Creates a new instance.
 	///
 	/// Arguments:
-	/// - `id` is the device's ID.
-	/// - `path` is the path to the device's file.
-	/// - `mode` is the set of permissions associated with the device's file.
-	/// - `handle` is the handle for I/O operations.
-	pub fn new<IO: 'static + DeviceIO>(
+	/// - `id` is the device's ID
+	/// - `path` is the path to the device's file
+	/// - `mode` is the set of permissions associated with the device's file
+	/// - `handle` is the handle for I/O operations
+	pub fn new<IO: 'static + BlockDeviceOps>(
 		id: DeviceID,
 		path: PathBuf,
 		mode: Mode,
-		handle: IO,
-	) -> EResult<Self> {
-		Ok(Self {
+		ops: IO,
+	) -> EResult<Arc<Self>> {
+		let dev = Arc::new(Self {
+			id,
+			path,
+			mode,
+
+			ops: Box::new(ops)?,
+
+			pages: Mutex::new(BTreeMap::new()),
+		})?;
+		if likely(file::is_init()) {
+			create_file(&id, DeviceType::Block, &dev.path, mode)?;
+		}
+		Ok(dev)
+	}
+
+	/// Reads a page from the device.
+	///
+	/// If not in cache, the function reads the page from the device, then inserts it in cache.
+	pub fn read_page(&self, off: u64) -> EResult<RcPage> {
+		// First check cache
+		let mut pages = self.pages.lock();
+		let cached = pages.get(&off).cloned();
+		if let Some(page) = cached {
+			return Ok(page);
+		}
+		// Cache miss: read from device and insert in cache
+		let page = self.ops.read_page(off)?;
+		pages.insert(off, page.clone())?;
+		Ok(page)
+	}
+}
+
+impl Drop for BlkDev {
+	fn drop(&mut self) {
+		let _ = remove_file(&self.path);
+	}
+}
+
+/// A character device.
+#[derive(Debug)]
+pub struct CharDev {
+	/// The device's ID
+	pub id: DeviceID,
+	/// The path to the device file
+	pub path: PathBuf,
+	/// The file's mode
+	pub mode: Mode,
+
+	/// The device I/O interface
+	pub ops: Box<dyn FileOps>,
+}
+
+impl CharDev {
+	/// Creates a new instance.
+	///
+	/// Arguments:
+	/// - `id` is the device's ID
+	/// - `path` is the path to the device's file
+	/// - `mode` is the set of permissions associated with the device's file
+	/// - `handle` is the handle for I/O operations
+	pub fn new<IO: 'static + FileOps>(
+		id: DeviceID,
+		path: PathBuf,
+		mode: Mode,
+		ops: IO,
+	) -> EResult<Arc<Self>> {
+		let dev = Arc::new(Self {
 			id,
 
 			path,
 			mode,
 
-			io: Arc::new(handle)?,
-		})
-	}
-
-	/// Returns the device ID.
-	#[inline]
-	pub fn get_id(&self) -> &DeviceID {
-		&self.id
-	}
-
-	/// Returns the path to the device file.
-	#[inline]
-	pub fn get_path(&self) -> &Path {
-		&self.path
-	}
-
-	/// Returns the device file's mode.
-	#[inline]
-	pub fn get_mode(&self) -> Mode {
-		self.mode
-	}
-
-	/// Returns the I/O interface.
-	#[inline]
-	pub fn get_io(&self) -> &Arc<dyn DeviceIO> {
-		&self.io
-	}
-
-	/// Creates a device file.
-	///
-	/// Arguments:
-	/// - `id` is the ID of the device.
-	/// - `path` is the path of the device file.
-	/// - `perms` is the permissions of the device file.
-	///
-	/// If the file already exist, the function does nothing.
-	///
-	/// The function takes a mutex guard because it needs to unlock the device
-	/// in order to create the file without a deadlock since the VFS accesses a device to write on
-	/// the filesystem.
-	pub fn create_file(id: &DeviceID, path: &Path, perms: Mode) -> EResult<()> {
-		// Create the parent directory in which the device file is located
-		let parent_path = path.parent().unwrap_or(Path::root());
-		file::util::create_dirs(parent_path)?;
-		// Resolve path
-		let resolved = vfs::resolve_path(
-			path,
-			&ResolutionSettings {
-				create: true,
-				..ResolutionSettings::kernel_follow()
-			},
-		)?;
-		match resolved {
-			Resolved::Creatable {
-				parent,
-				name,
-			} => {
-				// Create the device file
-				vfs::create_file(
-					parent,
-					name,
-					&AccessProfile::KERNEL,
-					Stat {
-						mode: id.dev_type.to_file_type().to_mode() | perms,
-						dev_major: id.major,
-						dev_minor: id.minor,
-						..Default::default()
-					},
-				)?;
-				Ok(())
-			}
-			// The file exists, do nothing
-			Resolved::Found(_) => Ok(()),
+			ops: Box::new(ops)?,
+		})?;
+		if likely(file::is_init()) {
+			create_file(&id, DeviceType::Char, &dev.path, mode)?;
 		}
-	}
-
-	/// If exists, removes the device file.
-	///
-	/// If the file does not exist, the function does nothing.
-	pub fn remove_file(&self) -> EResult<()> {
-		let rs = ResolutionSettings::kernel_follow();
-		let res = vfs::get_file_from_path(&self.path, &rs);
-		let ent = match res {
-			Ok(ent) => ent,
-			Err(e) if e.as_int() == ENOENT => return Ok(()),
-			Err(e) => return Err(e),
-		};
-		vfs::unlink(&ent, &rs.access_profile)
+		Ok(dev)
 	}
 }
 
-impl Drop for Device {
+impl Drop for CharDev {
 	fn drop(&mut self) {
-		if let Err(_e) = self.remove_file() {
-			// TODO Log the error
-		}
+		let _ = remove_file(&self.path);
 	}
 }
 
-/// The list of registered devices.
-static DEVICES: Mutex<HashMap<DeviceID, Arc<Device>>> = Mutex::new(HashMap::new());
+/// The list of registered block devices.
+pub static BLK_DEVICES: Mutex<HashMap<DeviceID, Arc<BlkDev>>> = Mutex::new(HashMap::new());
+/// The list of registered character devices.
+pub static CHAR_DEVICES: Mutex<HashMap<DeviceID, Arc<CharDev>>> = Mutex::new(HashMap::new());
 
-/// Registers the given device.
-///
-/// If the device ID is already used, the function fails.
-///
-/// If files management is initialized, the function creates the associated device file.
-pub fn register(device: Device) -> EResult<()> {
-	let id = device.id;
-	let path = device.path.try_clone()?;
-	let mode = device.get_mode();
-	// Insert
-	DEVICES.lock().insert(id, Arc::new(device)?)?;
-	// Create file if files management has been initialized
-	if file::is_init() {
-		Device::create_file(&id, &path, mode)?;
-	}
+/// Helper to insert a block device.
+#[inline]
+pub fn register_blk(dev: Arc<BlkDev>) -> AllocResult<()> {
+	BLK_DEVICES.lock().insert(dev.id, dev)?;
 	Ok(())
 }
 
-/// Unregisters the device with the given ID.
-///
-/// If the device doesn't exist, the function does nothing.
-///
-/// If files management is initialized, the function removes the associated device file.
-pub fn unregister(id: &DeviceID) -> EResult<()> {
-	let dev = {
-		let mut devs = DEVICES.lock();
-		devs.remove(id)
-	};
-	if let Some(dev) = dev {
-		dev.remove_file()?;
-	}
+/// Helper to insert a character device.
+#[inline]
+pub fn register_char(dev: Arc<CharDev>) -> AllocResult<()> {
+	CHAR_DEVICES.lock().insert(dev.id, dev)?;
 	Ok(())
 }
 
-/// Returns a mutable reference to the device with the given ID.
-///
-/// If the device doesn't exist, the function returns `None`.
-pub fn get(id: &DeviceID) -> Option<Arc<Device>> {
-	let devs = DEVICES.lock();
-	devs.get(id).cloned()
-}
-
-/// Device file operations.
+/// Block device file operations.
 #[derive(Debug)]
-pub struct DeviceFileOps;
+pub struct BlkDevFileOps;
 
-impl FileOps for DeviceFileOps {
+impl FileOps for BlkDevFileOps {
 	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
-		dev.io.read_bytes(off, buf)
+		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
+		let start = off / PAGE_SIZE as u64;
+		let end = off
+			.checked_add(buf.len() as u64)
+			.ok_or_else(|| errno!(EOVERFLOW))?
+			.div_ceil(PAGE_SIZE as u64);
+		let mut buf_off = 0;
+		for off in start..end {
+			let page = dev.read_page(off)?;
+			let inner_off = off as usize % PAGE_SIZE;
+			buf_off += slice_copy(&blk[inner_off..], &mut buf[buf_off..]);
+		}
+		Ok(buf_off)
 	}
 
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
-		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
-		dev.io.write_bytes(off, buf)
+		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
+		let start = off / PAGE_SIZE as u64;
+		let end = off
+			.checked_add(buf.len() as u64)
+			.ok_or_else(|| errno!(EOVERFLOW))?
+			.div_ceil(PAGE_SIZE as u64);
+		let mut buf_off = 0;
+		for off in start..end {
+			let page = dev.read_page(off)?;
+			let inner_off = off as usize % PAGE_SIZE;
+			buf_off += slice_copy(&buf[buf_off..], &mut blk[inner_off..]);
+		}
+		Ok(buf_off)
 	}
 
 	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
-		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
-		dev.io.poll(mask)
+		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.ops.poll(mask)
 	}
 
-	fn ioctl(&self, file: &File, request: Request, argp: *const c_void) -> EResult<u32> {
-		let dev = file.as_device().ok_or_else(|| errno!(ENODEV))?;
-		dev.io.ioctl(request, argp)
+	fn ioctl(&self, file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
+		dev.ops.ioctl(request, argp)
 	}
 }
 
@@ -435,11 +427,14 @@ pub(crate) fn init() -> EResult<()> {
 /// This function must be used only once at boot, after files management has been initialized.
 pub(crate) fn stage2() -> EResult<()> {
 	default::create().unwrap_or_else(|e| panic!("Failed to create default devices! ({e})"));
-	// Collecting all data to create device files is necessary to avoid a deadlock, because disk
-	// accesses require locking the filesystem's device
-	let devs = DEVICES.lock();
+	// Create device files
+	let devs = BLK_DEVICES.lock();
 	for (id, dev) in devs.iter() {
-		Device::create_file(id, &dev.path, dev.mode)?;
+		create_file(id, DeviceType::Block, &dev.path, dev.mode)?;
+	}
+	let devs = CHAR_DEVICES.lock();
+	for (id, dev) in devs.iter() {
+		create_file(id, DeviceType::Char, &dev.path, dev.mode)?;
 	}
 	Ok(())
 }

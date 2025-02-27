@@ -19,8 +19,7 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
 use crate::{
-	device,
-	device::{DeviceID, DeviceType},
+	device::{DeviceID, BLK_DEVICES},
 	file::{
 		fs,
 		fs::{Filesystem, FilesystemType},
@@ -72,7 +71,7 @@ pub const FLAG_SYNCHRONOUS: u32 = 0b100000000000;
 /// Value specifying the device from which a filesystem is mounted.
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub enum MountSource {
-	/// The mountpoint is mounted from a device.
+	/// The mountpoint is mounted from a block device.
 	Device(DeviceID),
 	/// The mountpoint is bound to a virtual filesystem and thus isn't
 	/// associated with any device.
@@ -91,19 +90,13 @@ impl MountSource {
 		match result {
 			Ok(ent) => {
 				let stat = ent.stat();
-				match stat.get_type() {
-					Some(FileType::BlockDevice) => Ok(Self::Device(DeviceID {
-						dev_type: DeviceType::Block,
-						major: stat.dev_major,
-						minor: stat.dev_minor,
-					})),
-					Some(FileType::CharDevice) => Ok(Self::Device(DeviceID {
-						dev_type: DeviceType::Char,
-						major: stat.dev_major,
-						minor: stat.dev_minor,
-					})),
-					_ => Err(errno!(EINVAL)),
+				if stat.get_type() != Some(FileType::BlockDevice) {
+					return Err(errno!(EINVAL));
 				}
+				Ok(Self::Device(DeviceID {
+					major: stat.dev_major,
+					minor: stat.dev_minor,
+				}))
 			}
 			Err(err) if err == errno!(ENOENT) => Ok(Self::NoDev(String::try_from(string)?)),
 			Err(err) => Err(err),
@@ -124,10 +117,9 @@ impl fmt::Display for MountSource {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 		match self {
 			Self::Device(DeviceID {
-				dev_type,
 				major,
 				minor,
-			}) => write!(fmt, "dev({dev_type}:{major}:{minor})"),
+			}) => write!(fmt, "blk({major}:{minor})"),
 			Self::NoDev(name) => write!(fmt, "{name}"),
 		}
 	}
@@ -158,13 +150,16 @@ fn get_fs(
 				return Ok(fs.clone());
 			}
 			// Else, load it
-			let dev = device::get(dev_id).ok_or_else(|| errno!(ENODEV))?;
+			let dev = BLK_DEVICES
+				.lock()
+				.get(dev_id)
+				.ok_or_else(|| errno!(ENODEV))?
+				.clone();
 			let fs_type = match fs_type {
 				Some(f) => f,
-				None => fs::detect(Arc::as_ref(dev.get_io()))?,
+				None => fs::detect(&dev)?,
 			};
-			let ops =
-				fs_type.load_filesystem(Some(dev.get_io().clone()), target_path, readonly)?;
+			let ops = fs_type.load_filesystem(Some(dev), target_path, readonly)?;
 			let fs = Filesystem::new(dev_id.get_device_number(), ops)?;
 			// Insert new filesystem into filesystems list
 			filesystems.insert(*dev_id, fs.clone())?;

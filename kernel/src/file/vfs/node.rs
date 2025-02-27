@@ -29,7 +29,7 @@ use crate::{
 use core::ptr;
 use utils::{
 	boxed::Box,
-	collections::{path::PathBuf, string::String, vec::Vec},
+	collections::{btreemap::BTreeMap, path::PathBuf, string::String},
 	errno::EResult,
 	limits::SYMLINK_MAX,
 	ptr::arc::Arc,
@@ -52,9 +52,9 @@ pub struct Node {
 	/// Handle for open file operations
 	pub file_ops: Box<dyn FileOps>,
 
-	// TODO need a sparse array, inside of a rwlock
-	/// Mapped pages
-	pub pages: Mutex<Vec<Option<RcPage>>>,
+	// TODO use rwlock
+	/// The page cache
+	pub pages: Mutex<BTreeMap<u64, RcPage>>,
 }
 
 impl Node {

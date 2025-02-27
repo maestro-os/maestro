@@ -22,7 +22,7 @@
 //! filesystem is unmounted.
 
 use crate::{
-	device::DeviceIO,
+	device::BlkDev,
 	file::{
 		fs::{
 			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemOps,
@@ -578,13 +578,13 @@ impl FilesystemType for TmpFsType {
 		b"tmpfs"
 	}
 
-	fn detect(&self, _io: &dyn DeviceIO) -> EResult<bool> {
+	fn detect(&self, _dev: &BlkDev) -> EResult<bool> {
 		Ok(false)
 	}
 
 	fn load_filesystem(
 		&self,
-		_io: Option<Arc<dyn DeviceIO>>,
+		_dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Box<dyn FilesystemOps>> {

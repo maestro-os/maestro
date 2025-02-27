@@ -23,7 +23,7 @@ use crate::device::{
 	bar::BAR,
 	bus::pci,
 	storage::{pata::PATAInterface, PhysicalDevice},
-	DeviceIO,
+	BlockDeviceOps,
 };
 use utils::{errno::AllocResult, ptr::arc::Arc};
 
@@ -148,7 +148,9 @@ impl Controller {
 	///
 	/// If an error is returned from a call to the closure, the function returns
 	/// with the same error.
-	pub(super) fn detect(&self) -> impl '_ + Iterator<Item = AllocResult<Arc<dyn DeviceIO>>> {
+	pub(super) fn detect(
+		&self,
+	) -> impl '_ + Iterator<Item = AllocResult<Arc<dyn BlockDeviceOps>>> {
 		(0..4)
 			.map(|i| {
 				let secondary = (i & 0b10) != 0;
@@ -176,6 +178,6 @@ impl Controller {
 			})
 			// TODO log errors?
 			.filter_map(|(channel, slave)| PATAInterface::new(channel, slave).ok())
-			.map(|i| Arc::new(i).map(|a| a as Arc<dyn DeviceIO>))
+			.map(|i| Arc::new(i).map(|a| a as Arc<dyn BlockDeviceOps>))
 	}
 }

@@ -204,10 +204,9 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Initializing time management...");
 	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));
 
-	// FIXME
-	/*println!("Initializing ramdisks...");
+	println!("Initializing ramdisks...");
 	device::storage::ramdisk::create()
-		.unwrap_or_else(|e| kernel_panic!("Failed to create ramdisks! ({})", e));*/
+		.unwrap_or_else(|e| panic!("Failed to create ramdisks! ({e})"));
 	println!("Initializing devices management...");
 	device::init().unwrap_or_else(|e| panic!("Failed to initialize devices management! ({e})"));
 	net::osi::init().unwrap_or_else(|e| panic!("Failed to initialize network! ({e})"));

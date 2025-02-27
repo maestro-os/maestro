@@ -34,8 +34,7 @@ pub mod vfs;
 pub mod wait_queue;
 
 use crate::{
-	device,
-	device::{Device, DeviceFileOps, DeviceID, DeviceType},
+	device::{BlkDev, BlkDevFileOps, DeviceID, DeviceType, BLK_DEVICES, CHAR_DEVICES},
 	file::{
 		fs::FileOps,
 		perm::{Gid, Uid},
@@ -362,8 +361,9 @@ impl File {
 	/// If the entry is negative, the function returns [`errno::ENOENT`].
 	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
 		let node = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let stat = node.stat.lock().clone();
 		// Get or create ops
-		let ops = match node.get_type() {
+		let ops = match stat.get_type() {
 			Some(FileType::Fifo) => {
 				FileOpsWrapper::Owned(node.fs.buffer_get_or_insert(node.inode, PipeBuffer::new)?)
 			}
@@ -376,8 +376,16 @@ impl File {
 					})
 				})?)
 			}
-			Some(FileType::BlockDevice | FileType::CharDevice) => {
-				FileOpsWrapper::Owned(Arc::new(DeviceFileOps)?)
+			Some(FileType::BlockDevice) => FileOpsWrapper::Owned(Arc::new(BlkDevFileOps)?),
+			Some(FileType::CharDevice) => {
+				let devices = CHAR_DEVICES.lock();
+				let dev = devices
+					.get(&DeviceID {
+						major: stat.dev_major,
+						minor: stat.dev_minor,
+					})
+					.ok_or_else(|| errno!(ENODEV))?;
+				FileOpsWrapper::Borrowed(NonNull::from(dev.ops.as_ref()))
 			}
 			_ => FileOpsWrapper::Borrowed(NonNull::from(node.file_ops.as_ref())),
 		};
@@ -413,15 +421,19 @@ impl File {
 		(self.ops.deref() as &dyn Any).downcast_ref::<B>()
 	}
 
-	/// If the file is a device, returns the associated device.
-	pub fn as_device(&self) -> Option<Arc<Device>> {
+	/// If the file is a block device, returns the associated device.
+	pub fn as_block_device(&self) -> Option<Arc<BlkDev>> {
 		let stat = self.stat().unwrap();
-		let dev_type = stat.get_type()?.to_device_type()?;
-		device::get(&DeviceID {
-			dev_type,
-			major: stat.dev_major,
-			minor: stat.dev_minor,
-		})
+		if stat.get_type()? != FileType::BlockDevice {
+			return None;
+		}
+		BLK_DEVICES
+			.lock()
+			.get(&DeviceID {
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			})
+			.cloned()
 	}
 
 	/// Returns the open file description's flags.
@@ -650,7 +662,6 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 	// Create the root mountpoint
 	let source = match root {
 		Some((major, minor)) => MountSource::Device(DeviceID {
-			dev_type: DeviceType::Block,
 			major,
 			minor,
 		}),

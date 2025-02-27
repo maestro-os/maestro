@@ -27,7 +27,7 @@
 //!   processes
 
 use crate::{
-	memory::buddy::{Flags, PageState},
+	memory::buddy::{Flags, PageState, ZONE_KERNEL},
 	syscall::FromSyscallArg,
 };
 use core::{
@@ -36,8 +36,9 @@ use core::{
 	ops::{Add, Deref, DerefMut, Sub},
 	ptr,
 	ptr::NonNull,
+	slice,
 };
-use utils::{errno::AllocResult, ptr::arc::Arc};
+use utils::{errno::AllocResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 pub mod alloc;
 pub mod buddy;
@@ -217,6 +218,15 @@ impl RcPage {
 		Ok(Self(Arc::new(addr)?))
 	}
 
+	/// Allocates a new, zeroed page in the kernel zone.
+	pub fn new_zeroed() -> AllocResult<Self> {
+		let page = Self::new(ZONE_KERNEL)?;
+		unsafe {
+			page.slice_mut().fill(0);
+		}
+		Ok(page)
+	}
+
 	/// Returns the page's physical address.
 	#[inline]
 	pub fn phys_addr(&self) -> PhysAddr {
@@ -227,6 +237,16 @@ impl RcPage {
 	#[inline]
 	pub fn virt_addr(&self) -> VirtAddr {
 		self.phys_addr().kernel_to_virtual().unwrap()
+	}
+
+	/// Returns a mutable slice over the page.
+	///
+	/// # Safety
+	///
+	/// The caller must ensure no concurrent accesses are made.
+	pub unsafe fn slice_mut(&self) -> &mut [u8] {
+		let ptr = self.virt_addr().as_ptr::<u8>();
+		slice::from_raw_parts_mut(ptr, PAGE_SIZE)
 	}
 
 	/// Returns the page's state structure.

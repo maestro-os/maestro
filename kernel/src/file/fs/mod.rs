@@ -30,7 +30,7 @@ use super::{
 	vfs, DirContext, File, INode, Mode, Stat,
 };
 use crate::{
-	device::DeviceIO, file::vfs::node::Node, memory::RcPage, sync::mutex::Mutex, syscall::ioctl,
+	device::BlkDev, file::vfs::node::Node, memory::RcPage, sync::mutex::Mutex, syscall::ioctl,
 	time::unit::Timestamp,
 };
 use core::{
@@ -218,12 +218,10 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(EINVAL))
 	}
 
-	/// Reads a page at `off` in `node`. from storage or the page cache (if present).
+	/// Reads a page at `off` in `node`.
 	///
-	/// The function attempts to read the page from the following places, in this order:
-	/// - `node`'s pages cache
-	/// - Storage's page cache
-	/// - Storage
+	/// First, the function attempts to read the page from the node's page cache. If not present,
+	/// then it is read from disk.
 	///
 	/// Note that `off` is in pages.
 	///
@@ -482,18 +480,18 @@ pub trait FilesystemType {
 
 	/// Tells whether the given IO interface has the current filesystem.
 	///
-	/// `io` is the IO interface.
-	fn detect(&self, io: &dyn DeviceIO) -> EResult<bool>;
+	/// `dev` is the device containing the potential filesystem
+	fn detect(&self, dev: &BlkDev) -> EResult<bool>;
 
 	/// Creates a new instance of the filesystem to mount it.
 	///
 	/// Arguments:
-	/// - `io` is the IO interface.
-	/// - `mountpath` is the path on which the filesystem is mounted.
-	/// - `readonly` tells whether the filesystem is mounted in read-only.
+	/// - `dev` is the mounted device
+	/// - `mountpath` is the path on which the filesystem is mounted
+	/// - `readonly` tells whether the filesystem is mounted in read-only
 	fn load_filesystem(
 		&self,
-		io: Option<Arc<dyn DeviceIO>>,
+		dev: Option<Arc<BlkDev>>,
 		mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Box<dyn FilesystemOps>>;
@@ -521,11 +519,11 @@ pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
 	FS_TYPES.lock().get(name).cloned()
 }
 
-/// Detects the filesystem type on the given IO interface `io`.
-pub fn detect(io: &dyn DeviceIO) -> EResult<Arc<dyn FilesystemType>> {
+/// Detects the filesystem type on device
+pub fn detect(dev: &BlkDev) -> EResult<Arc<dyn FilesystemType>> {
 	let fs_types = FS_TYPES.lock();
 	for (_, fs_type) in fs_types.iter() {
-		if fs_type.detect(io)? {
+		if fs_type.detect(dev)? {
 			return Ok(fs_type.clone());
 		}
 	}
