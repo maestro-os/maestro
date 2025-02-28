@@ -23,10 +23,9 @@
 //! alongside with the boot code.
 
 use super::{Partition, Table};
-use crate::device::BlkDev;
+use crate::{device::BlkDev, memory::RcPageObj};
 use macros::AnyRepr;
 use utils::{
-	bytes::from_bytes,
 	collections::vec::Vec,
 	errno::{CollectResult, EResult},
 };
@@ -81,13 +80,14 @@ impl Clone for MbrTable {
 }
 
 impl Table for MbrTable {
-	fn read(storage: &BlkDev) -> EResult<Option<Self>> {
-		let page = storage.read_page(0)?;
-		let mbr_table: &MbrTable = from_bytes(&buf).unwrap();
-		if mbr_table.signature != MBR_SIGNATURE {
+	fn read(dev: &BlkDev) -> EResult<Option<Self>> {
+		let page = dev.read_page(0)?;
+		let table: RcPageObj<Self> = RcPageObj::new(page, 0);
+		let table = unsafe { table.as_ref() }.clone();
+		if table.signature != MBR_SIGNATURE {
 			return Ok(None);
 		}
-		Ok(Some(mbr_table.clone()))
+		Ok(Some(table))
 	}
 
 	fn get_type(&self) -> &'static str {

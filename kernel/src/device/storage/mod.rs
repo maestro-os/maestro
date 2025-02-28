@@ -100,31 +100,27 @@ impl BlockDeviceOps for StorageDeviceHandle {
 	}
 
 	fn read_page(&self, off: u64) -> EResult<RcPage> {
-		// Bound check
 		let (start, size) = match &self.partition {
 			Some(p) => (p.offset, p.size),
 			None => (0, self.blocks_count()),
 		};
-		let blk_size = self.block_size().get();
-		let buf_blks = (buf.len() as u64).div_ceil(blk_size);
-		if off.saturating_add(buf_blks) > size {
-			return Err(errno!(EINVAL));
+		if off < size {
+			self.dev.read_page(start + off)
+		} else {
+			Err(errno!(EINVAL))
 		}
-		self.dev.read_page(start + off)
 	}
 
 	fn write_page(&self, off: u64, buf: &[u8]) -> EResult<()> {
-		// Bound check
 		let (start, size) = match &self.partition {
 			Some(p) => (p.offset, p.size),
 			None => (0, self.blocks_count()),
 		};
-		let blk_size = self.block_size().get();
-		let buf_blks = (buf.len() as u64).div_ceil(blk_size);
-		if off.saturating_add(buf_blks) > size {
-			return Err(errno!(EINVAL));
+		if off < size {
+			self.dev.ops.write_page(start + off, buf)
+		} else {
+			Err(errno!(EINVAL))
 		}
-		self.dev.ops.write_page(start + off, buf)
 	}
 
 	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {

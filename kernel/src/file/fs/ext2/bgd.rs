@@ -20,8 +20,8 @@
 //! Table which represents a block group, which is a subdivision of the
 //! filesystem.
 
-use super::Superblock;
-use crate::device::BlkDev;
+use super::{blk_to_page, Superblock, SUPERBLOCK_OFFSET};
+use crate::{device::BlkDev, memory::RcPageObj};
 use core::mem::size_of;
 use macros::AnyRepr;
 use utils::errno::EResult;
@@ -42,24 +42,18 @@ pub struct BlockGroupDescriptor {
 	pub bg_free_inodes_count: u16,
 	/// Number of directories in group.
 	pub bg_used_dirs_count: u16,
-	/// Structure padding.
+
 	pub bg_pad: [u8; 14],
 }
 
 impl BlockGroupDescriptor {
-	/// Reads the `i`th block group descriptor from the given device.
-	pub fn read(i: u32, superblock: &Superblock, dev: &BlkDev) -> EResult<Self> {
-		let blk_size = superblock.get_block_size();
-		let off = (superblock.get_bgdt_offset() * blk_size as u64)
-			+ (i as u64 * size_of::<Self>() as u64);
-		read::<Self>(off, blk_size, dev)
-	}
-
-	/// Writes the current block group descriptor.
-	pub fn write(&self, i: u32, superblock: &Superblock, dev: &BlkDev) -> EResult<()> {
-		let blk_size = superblock.get_block_size();
-		let off = (superblock.get_bgdt_offset() * blk_size as u64)
-			+ (i as u64 * size_of::<Self>() as u64);
-		write(off, blk_size, dev, self)
+	/// Returns the `i`th block group descriptor
+	pub fn get(i: u32, sp: &Superblock, dev: &BlkDev) -> EResult<RcPageObj<Self>> {
+		let blk_size = sp.get_block_size() as usize;
+		let bgd_per_blk = blk_size / size_of::<Self>();
+		let bgdt_blk = (SUPERBLOCK_OFFSET / blk_size) + 1;
+		let blk = bgdt_blk + (i as usize / bgd_per_blk);
+		let page = dev.read_page(blk_to_page(blk as _, blk_size as _))?;
+		Ok(RcPageObj::new(page, i as usize % bgd_per_blk))
 	}
 }

@@ -32,13 +32,19 @@ use crate::{
 };
 use core::{
 	fmt,
+	marker::PhantomData,
 	mem::size_of,
 	ops::{Add, Deref, DerefMut, Sub},
 	ptr,
 	ptr::NonNull,
 	slice,
 };
-use utils::{errno::AllocResult, limits::PAGE_SIZE, ptr::arc::Arc};
+use utils::{
+	bytes::{from_bytes, from_bytes_mut, AnyRepr},
+	errno::AllocResult,
+	limits::PAGE_SIZE,
+	ptr::arc::Arc,
+};
 
 pub mod alloc;
 pub mod buddy;
@@ -269,5 +275,54 @@ impl Drop for RcPage {
 				buddy::free(self.phys_addr(), 0);
 			}
 		}
+	}
+}
+
+/// A view of an object contained in a [`RcPage`].
+pub struct RcPageObj<T: AnyRepr> {
+	/// The page containing the object.
+	page: RcPage,
+	/// The offset in the page.
+	off: usize,
+
+	_phantom: PhantomData<T>,
+}
+
+impl<T: AnyRepr> RcPageObj<T> {
+	/// Creates a new instance.
+	///
+	/// If `off` is too big, causing an overflow on the page's size, accessing the object will
+	/// panic.
+	pub fn new(page: RcPage, off: usize) -> Self {
+		Self {
+			page,
+			off,
+
+			_phantom: PhantomData,
+		}
+	}
+
+	/// Returns an immutable reference over the object.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure no one else is mutating the object while the
+	/// returned reference is living.
+	#[inline]
+	pub unsafe fn as_ref(&self) -> &T {
+		let slice = &self.page.slice_mut()[self.off..];
+		from_bytes(slice).unwrap()
+	}
+
+	/// Returns a mutable reference over the object.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure no one else is mutating the object while the
+	/// returned reference is living.
+	#[inline]
+	pub unsafe fn as_mut(&mut self) -> &mut T {
+		let slice = &mut self.page.slice_mut()[self.off..];
+		from_bytes_mut(slice).unwrap()
 	}
 }

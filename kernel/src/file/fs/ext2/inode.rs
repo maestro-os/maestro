@@ -22,6 +22,7 @@ use super::{bgd::BlockGroupDescriptor, dirent, dirent::Dirent, Superblock};
 use crate::{
 	device::BlkDev,
 	file::{FileType, INode, Mode, Stat},
+	memory::RcPageObj,
 };
 use core::{
 	cmp::{max, min},
@@ -30,7 +31,7 @@ use core::{
 	num::NonZeroU32,
 };
 use macros::AnyRepr;
-use utils::{bytes, errno, errno::EResult, math, vec};
+use utils::{bytes, errno, errno::EResult, limits::PAGE_SIZE, math, vec};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -317,10 +318,8 @@ pub struct Ext2INode {
 }
 
 impl Ext2INode {
-	/// Returns the offset of the inode on the disk in bytes.
-	///
-	/// `i` is the inode's index (starting at `1`).
-	fn get_disk_offset(i: INode, superblock: &Superblock, dev: &BlkDev) -> EResult<u64> {
+	/// Reads the `i`th inode from the given device.
+	pub fn read(i: INode, superblock: &Superblock, dev: &BlkDev) -> EResult<RcPageObj<Self>> {
 		let i: u32 = i.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		// Check the index is correct
 		let Some(i) = i.checked_sub(1) else {
@@ -328,28 +327,18 @@ impl Ext2INode {
 		};
 		let blk_size = superblock.get_block_size() as u64;
 		let inode_size = superblock.get_inode_size() as u64;
-		// The block group the inode is located in
-		let blk_grp = i / superblock.s_inodes_per_group;
-		// The offset of the inode in the block group's bitfield
-		let inode_grp_off = i % superblock.s_inodes_per_group;
-		// The offset of the inode's block
-		let inode_table_blk_off = (inode_grp_off as u64 * inode_size) / blk_size;
-		// The offset of the inode in the block
-		let inode_blk_off = (i as u64 * inode_size) % blk_size;
 		// Read BGD
-		let bgd = BlockGroupDescriptor::read(blk_grp, superblock, dev)?;
-		// The block containing the inode
+		let blk_grp = i / superblock.s_inodes_per_group;
+		let bgd = BlockGroupDescriptor::get(blk_grp, superblock, dev)?;
+		let bgd = unsafe { bgd.as_ref() };
+		let inode_grp_off = i % superblock.s_inodes_per_group;
+		let inode_table_blk_off = (inode_grp_off as u64 * inode_size) / blk_size;
+		// Read the page containing the inode
 		let blk = bgd.bg_inode_table as u64 + inode_table_blk_off;
-		// The offset of the inode on the disk
-		let inode_offset = (blk * blk_size) + inode_blk_off;
-		Ok(inode_offset)
-	}
-
-	/// Reads the `i`th inode from the given device.
-	pub fn read(i: INode, superblock: &Superblock, dev: &BlkDev) -> EResult<Self> {
-		let blk_size = superblock.get_block_size();
-		let off = Self::get_disk_offset(i, superblock, dev)?;
-		read::<Self>(off, blk_size, dev)
+		let page = blk * (blk_size / PAGE_SIZE as u64);
+		let page = dev.read_page(page)?;
+		let page_off = (i as u64 * inode_size) % blk_size;
+		Ok(RcPageObj::new(page, page_off as _))
 	}
 
 	/// Returns the file's status.
@@ -486,8 +475,6 @@ impl Ext2INode {
 			read_block(blk.get() as _, blk_size, dev, &mut buf)?;
 			let ents = bytes::slice_from_bytes_mut(&mut buf).unwrap();
 			let b = ensure_allocated(&mut ents[*off], superblock, dev)?;
-			// TODO avoided if unnecessary
-			write_block(blk.get() as _, blk_size, dev, &buf)?;
 			blk = b;
 		}
 		Ok(blk)
@@ -512,11 +499,6 @@ impl Ext2INode {
 		if free {
 			let b = mem::take(b);
 			let empty = ents.iter().all(|b| *b == 0);
-			if !empty {
-				// The block is not empty, save
-				write_block(blk as _, blk_size, dev, &buf)?;
-			}
-			// If the block is empty, there is no point in saving it since it will be freed
 			superblock.free_block(dev, b)?;
 			Ok(empty)
 		} else {
@@ -630,8 +612,6 @@ impl Ext2INode {
 			// Write data to buffer
 			let len = min(buf.len() - cur, (blk_size - blk_inner_off as u32) as usize);
 			blk_buff[blk_inner_off..(blk_inner_off + len)].copy_from_slice(&buf[cur..(cur + len)]);
-			// Write block
-			write_block(blk_off.get() as _, blk_size, dev, &blk_buff)?;
 			cur += len;
 		}
 		// Update size
@@ -872,14 +852,9 @@ impl Ext2INode {
 			)?;
 			// Create free entries to cover remaining free space
 			fill_free_entries(&mut buf[(inner_off + rec_len as usize)..], superblock)?;
-			// Write block
-			let blk_off = (off / blk_size as u64) as u32;
-			let blk_off = self.translate_blk_off(blk_off, superblock, dev)?.unwrap();
-			write_block(blk_off.get() as _, blk_size, dev, &buf)?;
 		} else {
 			// No suitable free entry: Fill a new block
 			let blocks = self.get_blocks(superblock);
-			let blk = self.alloc_content_blk(blocks, superblock, dev)?;
 			buf.fill(0);
 			// Create used entry
 			Dirent::write_new(
@@ -892,8 +867,6 @@ impl Ext2INode {
 			)?;
 			// Create free entries to cover remaining free space
 			fill_free_entries(&mut buf[rec_len as usize..], superblock)?;
-			// Write block
-			write_block(blk.get() as _, blk_size, dev, &buf)?;
 			self.set_size(superblock, (blocks as u64 + 1) * blk_size as u64, false);
 		}
 		Ok(())
@@ -932,10 +905,9 @@ impl Ext2INode {
 			if file_blk_off as u32 + 1 >= self.get_blocks(superblock) {
 				self.set_size(superblock, file_blk_off * blk_size as u64, false);
 			}
-			self.free_content_blk(file_blk_off as _, superblock, dev)
-		} else {
-			write_block(disk_blk_off.get() as _, blk_size, dev, &buf)
+			self.free_content_blk(file_blk_off as _, superblock, dev)?;
 		}
+		Ok(())
 	}
 
 	/// Reads the content symbolic link.
@@ -1016,12 +988,5 @@ impl Ext2INode {
 		) {
 			self.i_block[0] = ((major as u32) << 8) | (minor as u32);
 		}
-	}
-
-	/// Writes the inode on the device.
-	pub fn write(&self, i: INode, superblock: &Superblock, dev: &BlkDev) -> EResult<()> {
-		let blk_size = superblock.get_block_size();
-		let off = Self::get_disk_offset(i, superblock, dev)?;
-		write(off, blk_size, dev, self)
 	}
 }
