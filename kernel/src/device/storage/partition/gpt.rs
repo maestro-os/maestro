@@ -27,7 +27,6 @@ use crate::{
 use core::{intrinsics::unlikely, mem::size_of};
 use macros::AnyRepr;
 use utils::{
-	bytes::from_bytes,
 	collections::vec::Vec,
 	errno,
 	errno::{CollectResult, EResult},
@@ -193,7 +192,7 @@ impl Gpt {
 		let blocks_count = dev.ops.blocks_count();
 		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 		let page = dev.read_page(lba)?;
-		let gpt_hdr = from_bytes::<Self>(&buf).unwrap().clone();
+		let gpt_hdr: Self = unsafe { page.read(0) };
 		if unlikely(!gpt_hdr.is_valid()) {
 			return Err(errno!(EINVAL));
 		}
@@ -241,7 +240,7 @@ impl Gpt {
 				let off = entries_start + (i as u64 * self.entry_size as u64) / block_size;
 				let inner_off = ((i as u64 * self.entry_size as u64) % block_size) as usize;
 				let page = dev.read_page(off)?;
-				let ent = from_bytes::<GPTEntry>(&buf[inner_off..]).unwrap().clone();
+				let ent: GPTEntry = unsafe { page.read(inner_off) };
 				Ok(ent)
 			})
 			// Ignore empty entries

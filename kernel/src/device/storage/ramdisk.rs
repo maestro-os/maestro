@@ -30,6 +30,7 @@ use crate::{
 };
 use core::{mem::ManuallyDrop, num::NonZeroU64};
 use utils::{
+	boxed::Box,
 	collections::{path::PathBuf, vec::Vec},
 	errno,
 	errno::EResult,
@@ -94,7 +95,7 @@ pub(crate) fn create() -> EResult<()> {
 			},
 			path,
 			0o666,
-			RamDisk::default(),
+			Box::new(RamDisk::default())?,
 		)?;
 		device::register_blk(dev)?;
 	}

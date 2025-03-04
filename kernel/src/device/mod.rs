@@ -188,9 +188,7 @@ pub trait BlockDeviceOps: fmt::Debug {
 	/// - `off` is the offset on the device, in pages
 	/// - `buf` contains the data to write
 	///
-	/// The size of the buffer has to be a multiple of the page size.
-	///
-	/// On success, the function returns the number of bytes written.
+	/// The size of the buffer has to be [`PAGE_SIZE`].
 	fn write_page(&self, off: u64, buf: &[u8]) -> EResult<()>;
 
 	/// Polls the device with the given mask.
@@ -238,18 +236,18 @@ impl BlkDev {
 	/// - `path` is the path to the device's file
 	/// - `mode` is the set of permissions associated with the device's file
 	/// - `handle` is the handle for I/O operations
-	pub fn new<IO: 'static + BlockDeviceOps>(
+	pub fn new(
 		id: DeviceID,
 		path: PathBuf,
 		mode: Mode,
-		ops: IO,
+		ops: Box<dyn BlockDeviceOps>,
 	) -> EResult<Arc<Self>> {
 		let dev = Arc::new(Self {
 			id,
 			path,
 			mode,
 
-			ops: Box::new(ops)?,
+			ops,
 
 			pages: Mutex::new(BTreeMap::new()),
 		})?;
@@ -355,7 +353,7 @@ pub fn register_char(dev: Arc<CharDev>) -> AllocResult<()> {
 pub struct BlkDevFileOps;
 
 impl FileOps for BlkDevFileOps {
-	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, file: &File, mut off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
 		let start = off / PAGE_SIZE as u64;
 		let end = off
@@ -363,15 +361,19 @@ impl FileOps for BlkDevFileOps {
 			.ok_or_else(|| errno!(EOVERFLOW))?
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
-		for off in start..end {
-			let page = dev.read_page(off)?;
+		for page_off in start..end {
+			let page = dev.read_page(page_off)?;
 			let inner_off = off as usize % PAGE_SIZE;
-			buf_off += slice_copy(&blk[inner_off..], &mut buf[buf_off..]);
+			let slice = unsafe { page.slice() };
+			// TODO ensure this is concurrency-friendly
+			let len = slice_copy(&slice[inner_off..], &mut buf[buf_off..]);
+			buf_off += len;
+			off += len as u64;
 		}
 		Ok(buf_off)
 	}
 
-	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, file: &File, mut off: u64, buf: &[u8]) -> EResult<usize> {
 		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
 		let start = off / PAGE_SIZE as u64;
 		let end = off
@@ -379,10 +381,14 @@ impl FileOps for BlkDevFileOps {
 			.ok_or_else(|| errno!(EOVERFLOW))?
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
-		for off in start..end {
-			let page = dev.read_page(off)?;
+		for page_off in start..end {
+			let page = dev.read_page(page_off)?;
 			let inner_off = off as usize % PAGE_SIZE;
-			buf_off += slice_copy(&buf[buf_off..], &mut blk[inner_off..]);
+			let slice = unsafe { page.slice() };
+			// TODO ensure this is concurrency-friendly
+			let len = slice_copy(&buf[buf_off..], &mut slice[inner_off..]);
+			buf_off += len;
+			off += len as u64;
 		}
 		Ok(buf_off)
 	}

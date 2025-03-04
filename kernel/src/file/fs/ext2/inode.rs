@@ -22,7 +22,6 @@ use super::{bgd::BlockGroupDescriptor, dirent, dirent::Dirent, Superblock};
 use crate::{
 	device::BlkDev,
 	file::{FileType, INode, Mode, Stat},
-	memory::RcPageObj,
 };
 use core::{
 	cmp::{max, min},
@@ -184,9 +183,7 @@ fn ensure_allocated(
 	dev: &BlkDev,
 ) -> EResult<NonZeroU32> {
 	if *blk == 0 {
-		let new_blk = superblock.get_free_block(dev)?;
-		superblock.mark_block_used(dev, new_blk)?;
-		*blk = new_blk;
+		*blk = superblock.alloc_block(dev)?;
 	}
 	Ok(NonZeroU32::new(*blk).unwrap())
 }

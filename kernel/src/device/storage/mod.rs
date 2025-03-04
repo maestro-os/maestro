@@ -44,6 +44,7 @@ use core::{
 };
 use partition::Partition;
 use utils::{
+	boxed::Box,
 	collections::{
 		path::{Path, PathBuf},
 		vec::Vec,
@@ -78,11 +79,11 @@ struct HdGeometry {
 
 /// Handle for the device file of a whole storage device or a partition.
 #[derive(Debug)]
-pub struct StorageDeviceHandle {
+pub struct PartitionOps {
 	/// The block device
 	pub dev: Arc<BlkDev>,
 	/// The partition associated with the handle. If `None`, the handle covers the whole device.
-	pub partition: Option<Partition>,
+	pub partition: Partition,
 
 	/// The ID of the storage device in the manager.
 	pub storage_id: u32,
@@ -90,7 +91,7 @@ pub struct StorageDeviceHandle {
 	pub path_prefix: PathBuf,
 }
 
-impl BlockDeviceOps for StorageDeviceHandle {
+impl BlockDeviceOps for PartitionOps {
 	fn block_size(&self) -> NonZeroU64 {
 		self.dev.ops.block_size()
 	}
@@ -100,24 +101,16 @@ impl BlockDeviceOps for StorageDeviceHandle {
 	}
 
 	fn read_page(&self, off: u64) -> EResult<RcPage> {
-		let (start, size) = match &self.partition {
-			Some(p) => (p.offset, p.size),
-			None => (0, self.blocks_count()),
-		};
-		if off < size {
-			self.dev.read_page(start + off)
+		if off < self.partition.size {
+			self.dev.read_page(self.partition.offset + off)
 		} else {
 			Err(errno!(EINVAL))
 		}
 	}
 
 	fn write_page(&self, off: u64, buf: &[u8]) -> EResult<()> {
-		let (start, size) = match &self.partition {
-			Some(p) => (p.offset, p.size),
-			None => (0, self.blocks_count()),
-		};
-		if off < size {
-			self.dev.ops.write_page(start + off, buf)
+		if off < self.partition.size {
+			self.dev.ops.write_page(self.partition.offset + off, buf)
 		} else {
 			Err(errno!(EINVAL))
 		}
@@ -126,12 +119,8 @@ impl BlockDeviceOps for StorageDeviceHandle {
 	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		match request.get_old_format() {
 			ioctl::HDIO_GETGEO => {
-				// Starting LBA and size in sectors count
-				let (start, size) = match &self.partition {
-					Some(partition) => (partition.offset as _, partition.size),
-					None => (0, self.blocks_count()),
-				};
 				// Translate from LBA to CHS
+				let size = self.partition.size;
 				let s = (size % c_uchar::MAX as u64) as _;
 				let h = ((size - s as u64) / c_uchar::MAX as u64 % c_uchar::MAX as u64) as _;
 				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
@@ -141,7 +130,7 @@ impl BlockDeviceOps for StorageDeviceHandle {
 					heads: h,
 					sectors: s,
 					cylinders: c,
-					start,
+					start: self.partition.offset,
 				})?;
 				Ok(0)
 			}
@@ -210,13 +199,13 @@ impl StorageManager {
 			let path = PathBuf::try_from(format!("{path_prefix}{part_nbr}")?)?;
 
 			// Create the partition's device file
-			let handle = StorageDeviceHandle {
+			let handle = Box::new(PartitionOps {
 				dev: dev.clone(),
-				partition: Some(partition),
+				partition,
 
 				storage_id,
 				path_prefix: path_prefix.to_path_buf()?,
-			};
+			})?;
 			let dev = BlkDev::new(
 				DeviceID {
 					// TODO use a different major for different storage device types
@@ -250,39 +239,25 @@ impl StorageManager {
 	// TODO Handle the case where there is more devices that the number of devices
 	// that can be handled in the range of minor numbers
 	// TODO When failing, remove previously registered devices
-	/// Adds the given storage device to the manager.
-	fn add(&mut self, dev: Arc<BlkDev>) -> EResult<()> {
-		// The device files' major number
-		let major = self.major_block.get_major();
-		// The id of the storage interface in the manager's list
+	/// Registers a new storage device.
+	fn add(&mut self, ops: Box<dyn BlockDeviceOps>) -> EResult<()> {
 		let storage_id = self.interfaces.len() as u32;
-
 		// Prefix is the path of the main device file
 		// TODO Handle if out of the alphabet
-		let letter = (b'a' + (storage_id as u8)) as char;
+		let letter = (b'a' + storage_id as u8) as char;
 		let main_path = PathBuf::try_from(format!("/dev/sd{letter}")?)?;
-
 		// Create the main device file
-		let main_handle = StorageDeviceHandle {
-			dev: dev.clone(),
-			partition: None,
-
-			storage_id,
-			path_prefix: main_path.try_clone()?,
-		};
-		let main_device = BlkDev::new(
+		let dev = BlkDev::new(
 			DeviceID {
-				major,
+				major: self.major_block.get_major(),
 				minor: storage_id * MAX_PARTITIONS as u32,
 			},
 			main_path.try_clone()?,
 			STORAGE_MODE,
-			main_handle,
+			ops,
 		)?;
-		device::register_blk(main_device)?;
-
+		device::register_blk(dev.clone())?;
 		Self::read_partitions(dev.clone(), storage_id, &main_path)?;
-
 		self.interfaces.push(dev)?;
 		Ok(())
 	}
@@ -404,18 +379,14 @@ impl DeviceManager for StorageManager {
 			return Ok(());
 		}
 
-		let mut register_iface = |res: EResult<_>| {
-			let res = res.and_then(|dev| self.add(dev));
-			if let Err(e) = res {
-				println!("Could not register storage device: {e}");
-			}
-		};
-
 		// TODO use device class as a hint
 		// TODO handle other controller types
 		if let Some(ide) = ide::Controller::new(dev) {
 			for iface in ide.detect() {
-				register_iface(iface.map_err(Into::into));
+				let res = iface.map_err(Into::into).and_then(|ops| self.add(ops));
+				if let Err(e) = res {
+					println!("Could not register storage device: {e}");
+				}
 			}
 		}
 

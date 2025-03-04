@@ -445,7 +445,7 @@ impl BlockDeviceOps for PATAInterface {
 		// Read
 		let page = RcPage::new(ZONE_KERNEL)?;
 		// Safe since no one else has a reference to the page
-		let slice = unsafe { page.slice_mut() };
+		let slice = unsafe { page.slice() };
 		for i in 0..SECTOR_PER_PAGE {
 			self.wait_io()?;
 			for j in 0..256 {

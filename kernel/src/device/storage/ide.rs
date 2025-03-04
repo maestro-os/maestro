@@ -25,7 +25,7 @@ use crate::device::{
 	storage::{pata::PATAInterface, PhysicalDevice},
 	BlockDeviceOps,
 };
-use utils::{errno::AllocResult, ptr::arc::Arc};
+use utils::{boxed::Box, errno::AllocResult};
 
 /// The beginning of the port range for the primary ATA bus (compatibility
 /// mode).
@@ -150,7 +150,7 @@ impl Controller {
 	/// with the same error.
 	pub(super) fn detect(
 		&self,
-	) -> impl '_ + Iterator<Item = AllocResult<Arc<dyn BlockDeviceOps>>> {
+	) -> impl '_ + Iterator<Item = AllocResult<Box<dyn BlockDeviceOps>>> {
 		(0..4)
 			.map(|i| {
 				let secondary = (i & 0b10) != 0;
@@ -178,6 +178,6 @@ impl Controller {
 			})
 			// TODO log errors?
 			.filter_map(|(channel, slave)| PATAInterface::new(channel, slave).ok())
-			.map(|i| Arc::new(i).map(|a| a as Arc<dyn BlockDeviceOps>))
+			.map(|i| Box::new(i).map(|a| a as Box<dyn BlockDeviceOps>))
 	}
 }

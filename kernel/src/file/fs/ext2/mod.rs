@@ -58,7 +58,7 @@ use crate::{
 		vfs::node::Node,
 		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
-	memory::{RcPage, RcPageObj},
+	memory::RcPage,
 	sync::mutex::Mutex,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
@@ -68,6 +68,10 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	intrinsics::unlikely,
+	sync::atomic::{
+		AtomicU8, AtomicUsize,
+		Ordering::{Acquire, Release},
+	},
 };
 use inode::Ext2INode;
 use macros::AnyRepr;
@@ -152,6 +156,34 @@ const MAX_NAME_LEN: usize = 255;
 #[inline]
 fn blk_to_page(blk: u64, blk_size: u32) -> u64 {
 	blk * (blk_size as u64 / PAGE_SIZE as u64)
+}
+
+/// Finds a `0` bit in the given page, sets it atomically, then returns its offset.
+///
+/// If no bit is found, the function returns `None`.
+fn bitmap_alloc_impl(page: &RcPage) -> Option<u32> {
+	// Iterate on `usize` units
+	const UNIT_COUNT: usize = PAGE_SIZE / size_of::<usize>();
+	for unit_off in 0..UNIT_COUNT {
+		let unit: &AtomicUsize = unsafe { page.as_ref(unit_off * size_of::<usize>()) };
+		// The offset of the newly allocated entry in the unit
+		let mut off = 0;
+		let res = unit.fetch_update(Release, Acquire, |unit| {
+			if unit != !0 {
+				// Find the offset of a zero bit
+				off = unit.trailing_ones();
+				Some(unit | (1 << off))
+			} else {
+				// No bit available
+				None
+			}
+		});
+		if res.is_ok() {
+			let units_off = unit_off * size_of::<usize>() * 8;
+			return Some(units_off as u32 + off);
+		}
+	}
+	None
 }
 
 /// Node operations.
@@ -475,7 +507,7 @@ impl FileOps for Ext2FileOps {
 
 /// The ext2 superblock structure.
 #[repr(C)]
-#[derive(AnyRepr, Clone, Debug)]
+#[derive(AnyRepr, Debug)]
 pub struct Superblock {
 	/// Total number of inodes in the filesystem.
 	s_inodes_count: u32,
@@ -618,117 +650,71 @@ impl Superblock {
 		}
 	}
 
-	/// Searches in the given bitmap block `bitmap` for the first element that
-	/// is not set.
-	///
-	/// The function returns the index to the element.
-	///
-	/// If every element is set, the function returns `None`.
-	fn search_bitmap_blk(bitmap: &[u8]) -> Option<u32> {
-		for (i, b) in bitmap.iter().enumerate() {
-			if *b == 0xff {
-				continue;
-			}
-
-			for j in 0..8 {
-				if (*b >> j) & 0b1 == 0 {
-					return Some((i * 8 + j) as _);
-				}
-			}
-		}
-
-		None
-	}
-
-	/// Searches into a bitmap starting at block `start`.
+	/// Finds a free element in the given bitmap, allocates it, and returns its index.
 	///
 	/// Arguments:
-	/// - `io` is the I/O interface.
-	/// - `start` is the starting block.
-	/// - `size` is the number of entries.
-	fn search_bitmap(&self, io: &BlkDev, start: u32, size: u32) -> EResult<Option<u32>> {
+	/// - `start` is the starting block to search into
+	/// - `size` is the number of elements in the bitmap
+	fn bitmap_alloc(&self, dev: &BlkDev, start_blk: u32, size: u32) -> EResult<Option<u32>> {
 		let blk_size = self.get_block_size();
-		let mut buff = vec![0; blk_size as _]?;
-		let mut i = 0;
-
-		while (i * (blk_size * 8)) < size {
-			let bitmap_blk_index = start + i;
-			read_block(bitmap_blk_index as _, blk_size, io, buff.as_mut_slice())?;
-
-			if let Some(j) = Self::search_bitmap_blk(buff.as_slice()) {
-				return Ok(Some(i * (blk_size * 8) + j));
+		let start_page = blk_to_page(start_blk as _, blk_size);
+		let end_blk = start_blk + (size / (blk_size * 8));
+		let end_page = blk_to_page(end_blk as _, blk_size);
+		// Iterate on pages
+		for page_off in start_page..end_page {
+			let page = dev.read_page(page_off)?;
+			if let Some(off) = bitmap_alloc_impl(&page) {
+				let page_off = (page_off - start_page) as u32;
+				return Ok(Some(page_off * PAGE_SIZE as u32 * 8 + off));
 			}
-
-			i += 1;
 		}
-
 		Ok(None)
 	}
 
-	/// Changes the state of the `i`th bit to `val` in the bitmap starting at block `start`.
+	/// Frees the element at `index` in the bitmap starting at the block `start_blk`.
 	///
 	/// The function returns the previous value of the bit.
-	fn set_bitmap(&self, dev: &BlkDev, start: u32, i: u32, val: bool) -> EResult<bool> {
+	fn bitmap_free(&self, dev: &BlkDev, start_blk: u32, index: u32) -> EResult<bool> {
+		// Get page
 		let blk_size = self.get_block_size();
-		let bitmap_byte_index = i / 8;
-		let bitmap_bit_index = i % 8;
-		// Read page
-		let blk = start + (i / (blk_size * 8));
-		let page = dev.read_page(blk_to_page(blk as _, blk_size))?;
-		// Set bit
-		let prev = buff[bitmap_byte_index as usize] & (1 << bitmap_bit_index) != 0;
-		if val {
-			buff[bitmap_byte_index as usize] |= 1 << bitmap_bit_index;
-		} else {
-			buff[bitmap_byte_index as usize] &= !(1 << bitmap_bit_index);
-		}
-		Ok(prev)
+		let page_per_blk = blk_size / PAGE_SIZE as u32;
+		let page = start_blk * page_per_blk + (index / (PAGE_SIZE as u32 * 8));
+		let page = dev.read_page(page as _)?;
+		// Atomically clear bit
+		let bitmap_byte_index = index / 8;
+		let byte: &AtomicU8 = unsafe { page.as_ref(bitmap_byte_index as usize) };
+		let bitmap_bit_index = index % 8;
+		let prev = byte.fetch_or(1 << bitmap_bit_index, Release);
+		Ok(prev & (1 << bitmap_bit_index) != 0)
 	}
 
-	/// Returns the ID of a free inode in the filesystem.
-	///
-	/// If no free inode can be found, the function returns an error.
-	pub fn find_free_inode(&self, dev: &BlkDev) -> EResult<u32> {
-		for i in 0..self.get_block_groups_count() {
-			let bgd = BlockGroupDescriptor::get(i as _, self, dev)?;
-			let bgd = unsafe { bgd.as_ref() };
-			if bgd.bg_free_inodes_count > 0 {
-				if let Some(j) =
-					self.search_bitmap(dev, bgd.bg_inode_bitmap, self.s_inodes_per_group)?
-				{
-					return Ok(i * self.s_inodes_per_group + j + 1);
-				}
-			}
-		}
-
-		Err(errno!(ENOSPC))
-	}
-
-	/// Marks the inode `inode` used on the filesystem.
+	/// Allocates an inode and returns its ID.
 	///
 	/// `directory` tells whether the inode is allocated for a directory.
 	///
-	/// If the inode is already marked as used, the behaviour is undefined.
-	pub fn mark_inode_used(&mut self, dev: &BlkDev, inode: u32, directory: bool) -> EResult<()> {
-		if inode == 0 {
-			return Ok(());
+	/// If no free inode can be found, the function returns an error.
+	pub fn alloc_inode(&mut self, dev: &BlkDev, directory: bool) -> EResult<u32> {
+		if unlikely(self.s_free_inodes_count == 0) {
+			return Err(errno!(ENOSPC));
 		}
-
-		let group = (inode - 1) / self.s_inodes_per_group;
-		let mut bgd = BlockGroupDescriptor::get(group, self, dev)?;
-		let bgd = unsafe { bgd.as_mut() };
-
-		let bitfield_index = (inode - 1) % self.s_inodes_per_group;
-		let prev = self.set_bitmap(dev, bgd.bg_inode_bitmap, bitfield_index, true)?;
-		if !prev {
-			bgd.bg_free_inodes_count -= 1;
-			if directory {
-				bgd.bg_used_dirs_count += 1;
+		for group in 0..self.get_block_groups_count() {
+			let bgd = BlockGroupDescriptor::get(group, self, dev)?;
+			let bgd = unsafe { bgd.as_ref() };
+			if bgd.bg_free_inodes_count == 0 {
+				continue;
 			}
-			self.s_free_inodes_count -= 1;
+			if let Some(j) =
+				self.bitmap_alloc(dev, bgd.bg_inode_bitmap, self.s_inodes_per_group)?
+			{
+				bgd -= 1;
+				if directory {
+					bgd.bg_used_dirs_count += 1;
+				}
+				self.s_free_inodes_count -= 1;
+				return Ok(group * self.s_inodes_per_group + j + 1);
+			}
 		}
-
-		Ok(())
+		Err(errno!(ENOSPC))
 	}
 
 	/// Marks the inode `inode` available on the filesystem.
@@ -739,17 +725,19 @@ impl Superblock {
 	///
 	/// If the inode is already marked as free, the behaviour is undefined.
 	pub fn free_inode(&mut self, dev: &BlkDev, inode: INode, directory: bool) -> EResult<()> {
+		// Validation
 		let inode: u32 = inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		if inode == 0 {
+		if unlikely(inode == 0) {
 			return Ok(());
 		}
-
+		// Get block group
 		let group = (inode - 1) / self.s_inodes_per_group;
 		let mut bgd = BlockGroupDescriptor::get(group, self, dev)?;
 		let bgd = unsafe { bgd.as_mut() };
-
+		// Clear bit and update counters
 		let bitfield_index = (inode - 1) % self.s_inodes_per_group;
-		let prev = self.set_bitmap(dev, bgd.bg_inode_bitmap, bitfield_index, false)?;
+		let prev = self.bitmap_free(dev, bgd.bg_inode_bitmap, bitfield_index)?;
+		// Check to avoid overflow in case of corrupted filesystem
 		if prev {
 			bgd.bg_free_inodes_count += 1;
 			if directory {
@@ -757,78 +745,55 @@ impl Superblock {
 			}
 			self.s_free_inodes_count += 1;
 		}
-
 		Ok(())
 	}
 
 	/// Returns the ID of a free block in the filesystem.
-	pub fn get_free_block(&self, dev: &BlkDev) -> EResult<u32> {
+	pub fn alloc_block(&mut self, dev: &BlkDev) -> EResult<u32> {
+		if unlikely(self.s_free_inodes_count == 0) {
+			return Err(errno!(ENOSPC));
+		}
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::get(i as _, self, dev)?;
 			let bgd = unsafe { bgd.as_ref() };
-			if bgd.bg_free_blocks_count > 0 {
-				if let Some(j) =
-					self.search_bitmap(dev, bgd.bg_block_bitmap, self.s_blocks_per_group)?
-				{
-					let blk = i * self.s_blocks_per_group + j;
-					if blk > 2 && blk < self.s_blocks_count {
-						return Ok(blk);
-					} else {
-						return Err(errno!(EUCLEAN));
-					}
-				}
+			if bgd.bg_free_blocks_count == 0 {
+				continue;
 			}
-		}
-		Err(errno!(ENOSPC))
-	}
-
-	/// Marks the block `blk` used on the filesystem.
-	///
-	/// If `blk` is zero, the function does nothing.
-	pub fn mark_block_used(&mut self, dev: &BlkDev, blk: u32) -> EResult<()> {
-		if blk == 0 {
-			return Ok(());
-		}
-		if blk <= 2 || blk >= self.s_blocks_count {
-			return Err(errno!(EUCLEAN));
-		}
-
-		let group = blk / self.s_blocks_per_group;
-		let mut bgd = BlockGroupDescriptor::get(group, self, dev)?;
-		let bgd = unsafe { bgd.as_mut() };
-
-		let bitfield_index = blk % self.s_blocks_per_group;
-		let prev = self.set_bitmap(dev, bgd.bg_block_bitmap, bitfield_index, true)?;
-		if !prev {
+			let Some(j) = self.bitmap_alloc(dev, bgd.bg_block_bitmap, self.s_blocks_per_group)?
+			else {
+				continue;
+			};
+			let blk_index = i * self.s_blocks_per_group + j;
+			if unlikely(blk_index <= 2 || blk_index >= self.s_blocks_count) {
+				return Err(errno!(EUCLEAN));
+			}
 			bgd.bg_free_blocks_count -= 1;
 			self.s_free_blocks_count -= 1;
+			return Ok(blk_index);
 		}
-
-		Ok(())
+		Err(errno!(ENOSPC))
 	}
 
 	/// Marks the block `blk` available on the filesystem.
 	///
 	/// If `blk` is zero, the function does nothing.
 	pub fn free_block(&mut self, dev: &BlkDev, blk: u32) -> EResult<()> {
-		if blk == 0 {
-			return Ok(());
-		}
-		if blk <= 2 || blk >= self.s_blocks_count {
+		// Validation
+		if unlikely(blk <= 2 || blk >= self.s_blocks_count) {
 			return Err(errno!(EUCLEAN));
 		}
-
+		// Get block group
 		let group = blk / self.s_blocks_per_group;
 		let mut bgd = BlockGroupDescriptor::get(group, self, dev)?;
 		let bgd = unsafe { bgd.as_mut() };
-
+		// Clear bit and update counters
 		let bitfield_index = blk % self.s_blocks_per_group;
-		let prev = self.set_bitmap(dev, bgd.bg_block_bitmap, bitfield_index, false)?;
+		let prev = self.bitmap_free(dev, bgd.bg_block_bitmap, bitfield_index)?;
+		// Check to avoid overflow in case of corrupted filesystem
 		if prev {
 			bgd.bg_free_blocks_count += 1;
 			self.s_free_blocks_count += 1;
 		}
-
 		Ok(())
 	}
 }

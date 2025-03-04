@@ -23,7 +23,7 @@
 //! alongside with the boot code.
 
 use super::{Partition, Table};
-use crate::{device::BlkDev, memory::RcPageObj};
+use crate::device::BlkDev;
 use macros::AnyRepr;
 use utils::{
 	collections::vec::Vec,
@@ -82,8 +82,7 @@ impl Clone for MbrTable {
 impl Table for MbrTable {
 	fn read(dev: &BlkDev) -> EResult<Option<Self>> {
 		let page = dev.read_page(0)?;
-		let table: RcPageObj<Self> = RcPageObj::new(page, 0);
-		let table = unsafe { table.as_ref() }.clone();
+		let table: Self = unsafe { page.read(0) };
 		if table.signature != MBR_SIGNATURE {
 			return Ok(None);
 		}

@@ -32,7 +32,6 @@ use crate::{
 };
 use core::{
 	fmt,
-	marker::PhantomData,
 	mem::size_of,
 	ops::{Add, Deref, DerefMut, Sub},
 	ptr,
@@ -228,7 +227,7 @@ impl RcPage {
 	pub fn new_zeroed() -> AllocResult<Self> {
 		let page = Self::new(ZONE_KERNEL)?;
 		unsafe {
-			page.slice_mut().fill(0);
+			page.slice().fill(0);
 		}
 		Ok(page)
 	}
@@ -240,6 +239,8 @@ impl RcPage {
 	}
 
 	/// Returns the page's virtual address.
+	///
+	/// If the address is not allocated in the kernel zone, the function panics.
 	#[inline]
 	pub fn virt_addr(&self) -> VirtAddr {
 		self.phys_addr().kernel_to_virtual().unwrap()
@@ -250,9 +251,44 @@ impl RcPage {
 	/// # Safety
 	///
 	/// The caller must ensure no concurrent accesses are made.
-	pub unsafe fn slice_mut(&self) -> &mut [u8] {
+	pub unsafe fn slice(&self) -> &mut [u8] {
 		let ptr = self.virt_addr().as_ptr::<u8>();
 		slice::from_raw_parts_mut(ptr, PAGE_SIZE)
+	}
+
+	/// Returns an immutable reference over `T` at offset `off`.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure no one else is mutating the value while the
+	/// returned reference is living.
+	#[inline]
+	pub unsafe fn as_ref<T: AnyRepr>(&self, off: usize) -> &T {
+		let slice = &self.slice()[off..];
+		from_bytes(slice).unwrap()
+	}
+
+	/// Returns a mutable reference over `T` at offset `off`.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure no one else is mutating the value while the
+	/// returned reference is living.
+	#[inline]
+	pub unsafe fn as_mut<T: AnyRepr>(&self, off: usize) -> &mut T {
+		let slice = &mut self.slice()[off..];
+		from_bytes_mut(slice).unwrap()
+	}
+
+	/// Reads `T` from the page at offset `off`.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure no one else is mutating the value while reading
+	/// it.
+	#[inline]
+	pub unsafe fn read<T: AnyRepr + Clone>(&self, off: usize) -> T {
+		self.as_ref::<T>(off).clone()
 	}
 
 	/// Returns the page's state structure.
@@ -275,54 +311,5 @@ impl Drop for RcPage {
 				buddy::free(self.phys_addr(), 0);
 			}
 		}
-	}
-}
-
-/// A view of an object contained in a [`RcPage`].
-pub struct RcPageObj<T: AnyRepr> {
-	/// The page containing the object.
-	page: RcPage,
-	/// The offset in the page.
-	off: usize,
-
-	_phantom: PhantomData<T>,
-}
-
-impl<T: AnyRepr> RcPageObj<T> {
-	/// Creates a new instance.
-	///
-	/// If `off` is too big, causing an overflow on the page's size, accessing the object will
-	/// panic.
-	pub fn new(page: RcPage, off: usize) -> Self {
-		Self {
-			page,
-			off,
-
-			_phantom: PhantomData,
-		}
-	}
-
-	/// Returns an immutable reference over the object.
-	///
-	/// # Safety
-	///
-	/// It is the caller's responsibility to ensure no one else is mutating the object while the
-	/// returned reference is living.
-	#[inline]
-	pub unsafe fn as_ref(&self) -> &T {
-		let slice = &self.page.slice_mut()[self.off..];
-		from_bytes(slice).unwrap()
-	}
-
-	/// Returns a mutable reference over the object.
-	///
-	/// # Safety
-	///
-	/// It is the caller's responsibility to ensure no one else is mutating the object while the
-	/// returned reference is living.
-	#[inline]
-	pub unsafe fn as_mut(&mut self) -> &mut T {
-		let slice = &mut self.page.slice_mut()[self.off..];
-		from_bytes_mut(slice).unwrap()
 	}
 }

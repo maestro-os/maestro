@@ -21,7 +21,7 @@
 //! filesystem.
 
 use super::{blk_to_page, Superblock, SUPERBLOCK_OFFSET};
-use crate::{device::BlkDev, memory::RcPageObj};
+use crate::device::BlkDev;
 use core::mem::size_of;
 use macros::AnyRepr;
 use utils::errno::EResult;
