@@ -21,7 +21,6 @@
 pub mod ide;
 pub mod partition;
 pub mod pata;
-pub mod ramdisk;
 
 use crate::{
 	device,
