@@ -30,7 +30,7 @@ use super::{
 	vfs, DirContext, File, INode, Mode, Stat,
 };
 use crate::{
-	device::BlkDev, file::vfs::node::Node, memory::RcPage, sync::mutex::Mutex, syscall::ioctl,
+	device::BlkDev, file::vfs::node::Node, memory::RcFrame, sync::mutex::Mutex, syscall::ioctl,
 	time::unit::Timestamp,
 };
 use core::{
@@ -226,7 +226,7 @@ pub trait NodeOps: Any + Debug {
 	/// Note that `off` is in pages.
 	///
 	/// The default implementation of this function returns an error.
-	fn readahead(&self, node: &Node, off: u64) -> EResult<RcPage> {
+	fn readahead(&self, node: &Node, off: u64) -> EResult<RcFrame> {
 		let _ = (node, off);
 		Err(errno!(EINVAL))
 	}
@@ -373,8 +373,6 @@ pub struct Filesystem {
 	pub dev: u64,
 	/// Filesystem operations
 	pub ops: Box<dyn FilesystemOps>,
-	/// Nodes cache for the current filesystem
-	pub(super) node_cache: Mutex<HashMap<INode, Arc<Node>>>,
 	/// Active buffers on the filesystem.
 	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>>,
 }
@@ -389,65 +387,8 @@ impl Filesystem {
 		Arc::new(Self {
 			dev,
 			ops,
-			node_cache: Default::default(),
 			buffers: Default::default(),
 		})
-	}
-
-	/// Looks for the node with ID `inode` in cache.
-	pub fn node_lookup(&self, inode: INode) -> Option<Arc<Node>> {
-		self.node_cache.lock().get(&inode).cloned()
-	}
-
-	/// Get the node with the ID `inode` from cache. If not present, initialize it with `init`.
-	pub fn node_get_or_insert<
-		Init: FnOnce() -> EResult<(Stat, Box<dyn NodeOps>, Box<dyn FileOps>)>,
-	>(
-		this: Arc<Self>,
-		inode: INode,
-		init: Init,
-	) -> EResult<Arc<Node>> {
-		let mut cache = this.node_cache.lock();
-		if let Some(node) = cache.get(&inode) {
-			return Ok(node.clone());
-		}
-		let (stat, node_ops, file_ops) = init()?;
-		let node = Arc::new(Node {
-			inode,
-			fs: this.clone(),
-
-			stat: Mutex::new(stat),
-
-			node_ops,
-			file_ops,
-
-			pages: Default::default(),
-		})?;
-		cache.insert(node.inode, node.clone())?;
-		Ok(node)
-	}
-
-	/// Inserts the node in cache.
-	pub fn node_insert(&self, node: Arc<Node>) -> AllocResult<()> {
-		self.node_cache.lock().insert(node.inode, node)?;
-		Ok(())
-	}
-
-	/// Removes the node from the cache.
-	pub fn node_remove(&self, inode: INode) -> EResult<()> {
-		let mut cache = self.node_cache.lock();
-		// If the node is not in cache, stop
-		let Some(node) = cache.get(&inode) else {
-			return Ok(());
-		};
-		// If the node is referenced elsewhere, stop
-		if Arc::strong_count(node) > 1 {
-			return Ok(());
-		}
-		// Remove from cache. `unwrap` cannot fail since we checked it exists before
-		let node = cache.remove(&inode).unwrap();
-		let node = Arc::into_inner(node).unwrap();
-		node.try_remove()
 	}
 
 	/// Get the buffer associated with the ID `inode` from cache. If not present, initialize it

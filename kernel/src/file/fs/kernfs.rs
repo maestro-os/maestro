@@ -272,7 +272,8 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 					node_ops,
 					file_ops,
 
-					pages: Default::default(),
+					lock: Default::default(),
+					cache: Default::default(),
 				})
 			})
 			.transpose()?;
@@ -283,10 +284,9 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 		let iter = self.entries.iter().skip(ctx.off as usize);
 		for e in iter {
 			let stat = (e.stat)(self.data.clone());
-			let entry_type = stat.get_type().ok_or_else(|| errno!(EUCLEAN))?;
 			let ent = DirEntry {
 				inode: 0,
-				entry_type,
+				entry_type: stat.get_type(),
 				name: e.name,
 			};
 			if !(ctx.write)(&ent)? {

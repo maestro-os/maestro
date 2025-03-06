@@ -21,15 +21,15 @@
 use crate::{
 	file::{
 		fs::{FileOps, Filesystem, NodeOps},
+		page_cache::PageCache,
 		FileType, INode, Stat,
 	},
-	memory::RcPage,
 	sync::mutex::Mutex,
 };
 use core::ptr;
 use utils::{
 	boxed::Box,
-	collections::{btreemap::BTreeMap, path::PathBuf, string::String},
+	collections::{path::PathBuf, string::String},
 	errno::EResult,
 	limits::SYMLINK_MAX,
 	ptr::arc::Arc,
@@ -52,9 +52,10 @@ pub struct Node {
 	/// Handle for open file operations
 	pub file_ops: Box<dyn FileOps>,
 
-	// TODO use rwlock
-	/// The page cache
-	pub pages: Mutex<BTreeMap<u64, RcPage>>,
+	/// A lock to be used by the filesystem implementation
+	pub lock: Mutex<()>,
+	/// The device's page cache
+	pub cache: PageCache,
 }
 
 impl Node {
@@ -95,28 +96,17 @@ impl Node {
 
 	/// Releases the node, removing it from the disk if this is the last reference to it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
-		{
-			let mut cache = this.fs.node_cache.lock();
-			// current instance + the one in `USED_NODE` = `2`
-			if Arc::strong_count(&this) > 2 {
-				return Ok(());
-			}
-			cache.remove(&this.inode);
-		}
-		// `unwrap` cannot fail since we removed it from the cache
-		let node = Arc::into_inner(this).unwrap();
-		node.try_remove()
-	}
-
-	/// Removes the node from the disk if it is orphan.
-	pub fn try_remove(self) -> EResult<()> {
+		// If other references are left, do nothing
+		let Some(node) = Arc::into_inner(this) else {
+			return Ok(());
+		};
 		// If there is no hard link left to the node, remove it
-		let stat = self.stat.lock();
+		let stat = node.stat.lock();
 		let dir = stat.get_type() == Some(FileType::Directory);
 		// If the file is a directory, the threshold is `1` because of the `.` entry
 		let remove = (dir && stat.nlink <= 1) || stat.nlink == 0;
 		if remove {
-			self.fs.ops.destroy_node(&self)?;
+			node.fs.ops.destroy_node(&node)?;
 		}
 		Ok(())
 	}

@@ -40,7 +40,7 @@
 use crate::{
 	arch::x86::io::inb,
 	device::{storage::ide, BlockDeviceOps},
-	memory::{buddy::ZONE_KERNEL, RcPage},
+	memory::{buddy::ZONE_KERNEL, RcFrame},
 	sync::mutex::Mutex,
 };
 use core::num::NonZeroU64;
@@ -392,7 +392,7 @@ impl BlockDeviceOps for PATAInterface {
 		self.sectors_count
 	}
 
-	fn read_page(&self, off: u64) -> EResult<RcPage> {
+	fn read_frame(&self, off: u64) -> EResult<RcFrame> {
 		// If the offset and size are out of bounds of the disk, return an error
 		if off >= self.sectors_count || off + SECTOR_PER_PAGE > self.sectors_count {
 			return Err(errno!(EOVERFLOW));
@@ -443,7 +443,7 @@ impl BlockDeviceOps for PATAInterface {
 			self.send_command(COMMAND_READ_SECTORS);
 		}
 		// Read
-		let page = RcPage::new(ZONE_KERNEL)?;
+		let page = RcFrame::new(ZONE_KERNEL)?;
 		// Safe since no one else has a reference to the page
 		let slice = unsafe { page.slice() };
 		for i in 0..SECTOR_PER_PAGE {
@@ -458,7 +458,7 @@ impl BlockDeviceOps for PATAInterface {
 		Ok(page)
 	}
 
-	fn write_page(&self, off: u64, buf: &[u8]) -> EResult<()> {
+	fn write_frame(&self, off: u64, buf: &[u8]) -> EResult<()> {
 		// If the offset and size are out of bounds of the disk, return an error
 		if off >= self.sectors_count || off + SECTOR_PER_PAGE > self.sectors_count {
 			return Err(errno!(EOVERFLOW));

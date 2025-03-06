@@ -78,21 +78,6 @@ pub fn from_bytes<T: AnyRepr>(slice: &[u8]) -> Option<&T> {
 	}
 }
 
-/// Reinterprets the given slice of bytes as another type.
-///
-/// If the size or alignment of the structure is invalid, the function returns `None`.
-pub fn from_bytes_mut<T: AnyRepr>(slice: &mut [u8]) -> Option<&mut T> {
-	let size = size_of::<T>();
-	let align = align_of::<T>();
-	if size <= slice.len() && slice.as_ptr().is_aligned_to(align) {
-		// Safe because the slice is large enough
-		let val = unsafe { &mut *(slice.as_mut_ptr() as *mut T) };
-		Some(val)
-	} else {
-		None
-	}
-}
-
 /// Reinterprets the given slice of bytes as a slice of another type.
 ///
 /// If the length of `slice` is not a multiple of the size of `T`, the function truncates the

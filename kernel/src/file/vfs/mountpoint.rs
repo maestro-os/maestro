@@ -246,7 +246,6 @@ pub fn create(
 	// TODO get root node from cache if present instead
 	// Get filesystem root node
 	let root = fs.ops.root(fs.clone())?;
-	fs.node_insert(root.clone())?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry {
 		name,

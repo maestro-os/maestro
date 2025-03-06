@@ -28,7 +28,7 @@ use crate::{
 	memory::{
 		buddy::ZONE_USER,
 		vmem::{invalidate_page_current, write_ro, VMem, VMemTransaction},
-		PhysAddr, RcPage, VirtAddr,
+		PhysAddr, RcFrame, VirtAddr,
 	},
 	process::mem_space::{
 		Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE,
@@ -93,9 +93,9 @@ fn init_page(
 	prot: u8,
 	src: Option<VirtAddr>,
 	dst: VirtAddr,
-) -> AllocResult<RcPage> {
+) -> AllocResult<RcFrame> {
 	// Allocate destination page
-	let new_page = RcPage::new(ZONE_USER)?;
+	let new_page = RcFrame::new(ZONE_USER)?;
 	let new_physaddr = new_page.phys_addr();
 	// Map destination page to copy buffer
 	vmem_transaction.map(new_physaddr, COPY_BUFFER, 0)?;
@@ -138,7 +138,7 @@ pub struct MemMapping {
 
 	// TODO use a sparse array?
 	/// The list of allocated physical pages
-	pub(super) anon_pages: Vec<Option<RcPage>>,
+	pub(super) anon_pages: Vec<Option<RcFrame>>,
 }
 
 impl MemMapping {

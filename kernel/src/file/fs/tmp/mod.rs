@@ -265,7 +265,8 @@ impl NodeOps for TmpFSNode {
 					node_ops: Box::new(node)?,
 					file_ops: Box::new(TmpFSFile)?,
 
-					pages: Default::default(),
+					lock: Default::default(),
+					cache: Default::default(),
 				})?;
 				Ok(node)
 			})
@@ -283,7 +284,7 @@ impl NodeOps for TmpFSNode {
 		for e in iter {
 			let ent = DirEntry {
 				inode: e.inode,
-				entry_type: e.entry_type,
+				entry_type: Some(e.entry_type),
 				name: &e.name,
 			};
 			if !(*ctx.write)(&ent)? {
@@ -534,7 +535,8 @@ impl FilesystemOps for TmpFS {
 			node_ops: Box::new(node)?,
 			file_ops: Box::new(TmpFSFile)?,
 
-			pages: Default::default(),
+			lock: Default::default(),
+			cache: Default::default(),
 		})?)
 	}
 
@@ -556,7 +558,8 @@ impl FilesystemOps for TmpFS {
 			node_ops: Box::new(node)?,
 			file_ops: Box::new(TmpFSFile)?,
 
-			pages: Default::default(),
+			lock: Default::default(),
+			cache: Default::default(),
 		})?;
 		Ok(node)
 	}

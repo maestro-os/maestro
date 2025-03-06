@@ -26,6 +26,7 @@
 
 pub mod fd;
 pub mod fs;
+pub mod page_cache;
 pub mod perm;
 pub mod pipe;
 pub mod socket;
@@ -217,11 +218,11 @@ impl FileType {
 /// An entry in a directory, independent of the filesystem type.
 #[derive(Debug)]
 pub struct DirEntry<'name> {
-	/// The entry's inode.
+	/// The entry's inode
 	pub inode: INode,
-	/// The entry's type.
-	pub entry_type: FileType,
-	/// The name of the entry.
+	/// The entry's type, if known
+	pub entry_type: Option<FileType>,
+	/// The name of the entry
 	pub name: &'name [u8],
 }
 

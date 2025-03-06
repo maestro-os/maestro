@@ -24,6 +24,7 @@
 
 use super::{Partition, Table};
 use crate::device::BlkDev;
+use core::intrinsics::unlikely;
 use macros::AnyRepr;
 use utils::{
 	collections::vec::Vec,
@@ -81,12 +82,12 @@ impl Clone for MbrTable {
 
 impl Table for MbrTable {
 	fn read(dev: &BlkDev) -> EResult<Option<Self>> {
-		let page = dev.read_page(0)?;
-		let table: Self = unsafe { page.read(0) };
-		if table.signature != MBR_SIGNATURE {
+		let page = dev.read_frame(0)?;
+		let table = &page.slice::<Self>()[0];
+		if unlikely(table.signature != MBR_SIGNATURE) {
 			return Ok(None);
 		}
-		Ok(Some(table))
+		Ok(Some(table.clone()))
 	}
 
 	fn get_type(&self) -> &'static str {

@@ -236,7 +236,8 @@ impl NodeOps for RootDir {
 					})?,
 					file_ops: Box::new(DummyOps)?,
 
-					pages: Default::default(),
+					lock: Default::default(),
+					cache: Default::default(),
 				})
 			})
 			.transpose()?;
@@ -249,10 +250,9 @@ impl NodeOps for RootDir {
 		let static_iter = Self::STATIC.entries.iter().skip(off);
 		for e in static_iter {
 			let stat = (e.stat)(());
-			let entry_type = stat.get_type().ok_or_else(|| errno!(EUCLEAN))?;
 			let ent = DirEntry {
 				inode: 0,
-				entry_type,
+				entry_type: stat.get_type(),
 				name: e.name,
 			};
 			if !(ctx.write)(&ent)? {
@@ -268,7 +268,7 @@ impl NodeOps for RootDir {
 			let name = format!("{pid}")?;
 			let ent = DirEntry {
 				inode: 0,
-				entry_type: FileType::Directory,
+				entry_type: Some(FileType::Directory),
 				name: &name,
 			};
 			if !(ctx.write)(&ent)? {
@@ -315,7 +315,8 @@ impl FilesystemOps for ProcFS {
 			node_ops: Box::new(RootDir)?,
 			file_ops: Box::new(DummyOps)?,
 
-			pages: Default::default(),
+			lock: Default::default(),
+			cache: Default::default(),
 		})?)
 	}
 

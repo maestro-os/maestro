@@ -19,8 +19,8 @@
 //! A directory entry is an entry stored into an inode's content which
 //! represents a subfile in a directory.
 
-use super::{Ext2INode, Superblock};
-use crate::{device::BlkDev, file::FileType};
+use super::Superblock;
+use crate::file::FileType;
 use core::{cmp::min, intrinsics::unlikely, mem::offset_of};
 use macros::AnyRepr;
 use utils::{errno, errno::EResult};
@@ -188,31 +188,20 @@ impl Dirent {
 
 	/// Returns the file type associated with the entry.
 	///
-	/// If the type cannot be retrieved from the entry directly, the function retrieves it from the
-	/// inode.
-	pub fn get_type(&self, superblock: &Superblock, dev: &BlkDev) -> EResult<FileType> {
-		let ent_type =
-			if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
-				match self.file_type {
-					TYPE_INDICATOR_REGULAR => Some(FileType::Regular),
-					TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
-					TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
-					TYPE_INDICATOR_BLOCK_DEVICE => Some(FileType::BlockDevice),
-					TYPE_INDICATOR_FIFO => Some(FileType::Fifo),
-					TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
-					TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
-					_ => None,
-				}
-			} else {
-				None
-			};
-		// If the type could not be retrieved from the entry itself, get it from the inode
-		match ent_type {
-			Some(t) => Ok(t),
-			None => {
-				let inode = Ext2INode::read(self.inode as _, superblock, dev)?;
-				unsafe { Ok(inode.as_ref().get_type()) }
-			}
+	/// If the type cannot be retrieved from the entry directly, the function returns [`None`].
+	pub fn get_type(&self, superblock: &Superblock) -> Option<FileType> {
+		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			return None;
+		}
+		match self.file_type {
+			TYPE_INDICATOR_REGULAR => Some(FileType::Regular),
+			TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
+			TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
+			TYPE_INDICATOR_BLOCK_DEVICE => Some(FileType::BlockDevice),
+			TYPE_INDICATOR_FIFO => Some(FileType::Fifo),
+			TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
+			TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
+			_ => None,
 		}
 	}
 

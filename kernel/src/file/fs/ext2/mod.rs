@@ -51,33 +51,34 @@ use crate::{
 	device::BlkDev,
 	file::{
 		fs::{
-			downcast_fs, ext2::dirent::Dirent, FileOps, Filesystem, FilesystemOps, FilesystemType,
-			NodeOps, StatSet, Statfs,
+			downcast_fs,
+			ext2::{dirent::Dirent, inode::ROOT_DIRECTORY_INODE},
+			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, StatSet, Statfs,
 		},
 		vfs,
 		vfs::node::Node,
 		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
-	memory::RcPage,
+	memory::{RcFrame, RcFrameVal},
 	sync::mutex::Mutex,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
 use bgd::BlockGroupDescriptor;
 use core::{
-	cmp::{max, min},
+	cmp::max,
 	fmt,
 	fmt::Formatter,
 	intrinsics::unlikely,
 	sync::atomic::{
-		AtomicU8, AtomicUsize,
-		Ordering::{Acquire, Release},
+		AtomicU16, AtomicU32, AtomicU8, AtomicUsize,
+		Ordering::{Acquire, Relaxed, Release},
 	},
 };
 use inode::Ext2INode;
 use macros::AnyRepr;
 use utils::{
 	boxed::Box, collections::path::PathBuf, errno, errno::EResult, limits::PAGE_SIZE, math,
-	ptr::arc::Arc, vec,
+	ptr::arc::Arc,
 };
 
 // TODO Take into account user's UID/GID when allocating block/inode to handle
@@ -152,20 +153,22 @@ const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
 /// The maximum length of a name in the filesystem.
 const MAX_NAME_LEN: usize = 255;
 
-/// Converts a block offset to a page offset.
-#[inline]
-fn blk_to_page(blk: u64, blk_size: u32) -> u64 {
-	blk * (blk_size as u64 / PAGE_SIZE as u64)
+/// Reads the block at offset `off` from the disk.
+fn read_block(dev: &BlkDev, sp: &Superblock, off: u64) -> EResult<RcFrame> {
+	// cannot overflow since `s_log_block_size` is at least `2`
+	let order = sp.s_log_block_size - 2;
+	let page_off = off << order;
+	dev.read_frame(page_off, order as _)
 }
 
-/// Finds a `0` bit in the given page, sets it atomically, then returns its offset.
+/// Finds a `0` bit in the given block, sets it atomically, then returns its offset.
 ///
 /// If no bit is found, the function returns `None`.
-fn bitmap_alloc_impl(page: &RcPage) -> Option<u32> {
+fn bitmap_alloc_impl(blk: &RcFrame) -> Option<u32> {
 	// Iterate on `usize` units
 	const UNIT_COUNT: usize = PAGE_SIZE / size_of::<usize>();
 	for unit_off in 0..UNIT_COUNT {
-		let unit: &AtomicUsize = unsafe { page.as_ref(unit_off * size_of::<usize>()) };
+		let unit = &blk.slice::<AtomicUsize>()[unit_off];
 		// The offset of the newly allocated entry in the unit
 		let mut off = 0;
 		let res = unit.fetch_update(Release, Acquire, |unit| {
@@ -193,10 +196,7 @@ struct Ext2NodeOps;
 impl NodeOps for Ext2NodeOps {
 	fn set_stat(&self, node: &Node, set: &StatSet) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let sp = fs.sp.lock();
-		let sp = unsafe { sp.as_ref() };
-		let mut inode_ = Ext2INode::read(node.inode as _, sp, &*fs.dev)?;
-		let inode_ = unsafe { inode_.as_mut() };
+		let mut inode_ = Ext2INode::get(node, &fs.sp, &*fs.dev)?;
 		if let Some(mode) = set.mode {
 			inode_.set_permissions(mode);
 		}
@@ -220,28 +220,25 @@ impl NodeOps for Ext2NodeOps {
 
 	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
-		let sp = fs.sp.lock();
-		let sp = unsafe { sp.as_ref() };
-		let inode_ = Ext2INode::read(dir.inode as _, sp, &*fs.dev)?;
-		let inode_ = unsafe { inode_.as_ref() };
+		let inode_ = Ext2INode::get(dir, &fs.sp, &fs.dev)?;
 		ent.node = inode_
-			.get_dirent(&ent.name, sp, &*fs.dev)?
+			.get_dirent(&ent.name, &fs.sp, &fs.dev)?
 			.map(|(inode, ..)| -> EResult<_> {
-				let inode_ = Ext2INode::read(inode as _, sp, &*fs.dev)?;
-				let inode_ = unsafe { inode_.as_ref() };
-				let stat = inode_.stat(sp);
-				let node = Arc::new(Node {
+				let mut node = Node {
 					inode: inode as _,
 					fs: dir.fs.clone(),
 
-					stat: Mutex::new(stat),
+					stat: Default::default(),
 
 					node_ops: Box::new(Ext2NodeOps)?,
 					file_ops: Box::new(Ext2FileOps)?,
 
-					pages: Default::default(),
-				})?;
-				Ok(node)
+					lock: Default::default(),
+					cache: Default::default(),
+				};
+				let stat = Ext2INode::get(&node, &fs.sp, &fs.dev)?.stat(&fs.sp);
+				node.stat = Mutex::new(stat);
+				Ok(Arc::new(node)?)
 			})
 			.transpose()?;
 		Ok(())
@@ -249,20 +246,16 @@ impl NodeOps for Ext2NodeOps {
 
 	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
-		let sp = fs.sp.lock();
-		let sp = unsafe { sp.as_ref() };
-		let inode = Ext2INode::read(dir.inode as _, sp, &*fs.dev)?;
-		let inode = unsafe { inode.as_ref() };
+		let inode = Ext2INode::get(dir, &fs.sp, &fs.dev)?;
 		if inode.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		// Iterate on entries
-		let blk_size = sp.get_block_size();
-		let mut buf = vec![0; blk_size as _]?;
-		'outer: while ctx.off < inode.get_size(sp) {
+		let blk_size = fs.sp.get_block_size();
+		'outer: while ctx.off < inode.get_size(&fs.sp) {
 			// Read content block
 			let blk_off = ctx.off / blk_size as u64;
-			let res = inode.translate_blk_off(blk_off as _, sp, &*fs.dev);
+			let res = inode.translate_blk_off(blk_off as _, &fs.sp, &*fs.dev);
 			let blk_off = match res {
 				Ok(Some(o)) => o,
 				// If reaching a zero block, stop
@@ -271,12 +264,14 @@ impl NodeOps for Ext2NodeOps {
 				Err(e) if e.as_int() == errno::EOVERFLOW => break,
 				Err(e) => return Err(e),
 			};
-			read_block(blk_off.get() as _, blk_size, &*fs.dev, &mut buf)?;
+			let blk = read_block(&fs.dev, &fs.sp, blk_off.get() as _)?;
+			// Safe since the node is locked
+			let blk_slice = unsafe { blk.slice_mut() };
 			// Read the next entry in the current block, skipping free ones
 			let ent = loop {
 				// Read entry
 				let inner_off = (ctx.off % blk_size as u64) as usize;
-				let ent = Dirent::from_slice(&mut buf[inner_off..], sp)?;
+				let ent = Dirent::from_slice(&mut blk_slice[inner_off..], &fs.sp)?;
 				// Update offset
 				let prev_off = ctx.off;
 				// If not free, use this entry
@@ -291,8 +286,8 @@ impl NodeOps for Ext2NodeOps {
 			};
 			let e = DirEntry {
 				inode: ent.inode as _,
-				entry_type: ent.get_type(sp, &*fs.dev)?,
-				name: ent.get_name(sp),
+				entry_type: ent.get_type(&fs.sp),
+				name: ent.get_name(&fs.sp),
 			};
 			if !(ctx.write)(&e)? {
 				break;
@@ -307,22 +302,21 @@ impl NodeOps for Ext2NodeOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut sp = fs.sp.lock();
-		let sp = unsafe { sp.as_mut() };
 		let target = ent.node();
 		// Parent inode
-		let mut parent_inode = Ext2INode::read(parent.inode as _, sp, &*fs.dev)?;
-		let parent_inode = unsafe { parent_inode.as_mut() };
+		let mut parent_inode = Ext2INode::get(parent as _, &fs.sp, &*fs.dev)?;
 		// Check the parent file is a directory
 		if parent_inode.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
 		// Check the entry does not exist
-		if parent_inode.get_dirent(&ent.name, sp, &*fs.dev)?.is_some() {
+		if parent_inode
+			.get_dirent(&ent.name, &fs.sp, &fs.dev)?
+			.is_some()
+		{
 			return Err(errno!(EEXIST));
 		}
-		let mut target_inode = Ext2INode::read(target.inode, sp, &*fs.dev)?;
-		let target_inode = unsafe { target_inode.as_mut() };
+		let mut target_inode = Ext2INode::get(target, &fs.sp, &fs.dev)?;
 		if unlikely(target_inode.i_links_count == u16::MAX) {
 			return Err(errno!(EMFILE));
 		}
@@ -332,8 +326,8 @@ impl NodeOps for Ext2NodeOps {
 			}
 			// Create the `..` entry
 			target_inode.add_dirent(
-				sp,
-				&*fs.dev,
+				&fs.sp,
+				&fs.dev,
 				parent.inode as _,
 				b"..",
 				FileType::Directory,
@@ -343,8 +337,8 @@ impl NodeOps for Ext2NodeOps {
 		}
 		// Create entry
 		parent_inode.add_dirent(
-			sp,
-			&*fs.dev,
+			&fs.sp,
+			&fs.dev,
 			target.inode as _,
 			&ent.name,
 			target_inode.get_type(),
@@ -362,24 +356,20 @@ impl NodeOps for Ext2NodeOps {
 		if ent.name == "." || ent.name == ".." {
 			return Err(errno!(EINVAL));
 		}
-		let mut sp = fs.sp.lock();
-		let sp = unsafe { sp.as_mut() };
 		// The parent inode
-		let mut parent_ = Ext2INode::read(parent.inode as _, sp, &*fs.dev)?;
-		let parent_ = unsafe { parent_.as_mut() };
+		let mut parent_ = Ext2INode::get(parent, &fs.sp, &fs.dev)?;
 		// Check the parent file is a directory
 		if parent_.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
-		// The inode number and the offset of the entry
-		let (remove_inode, _, remove_off) = parent_
-			.get_dirent(&ent.name, sp, &*fs.dev)?
+		// The offset of the entry to the remove
+		let (_, remove_off) = parent_
+			.get_dirent(&ent.name, &fs.sp, &fs.dev)?
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mut target = Ext2INode::read(remove_inode as _, sp, &*fs.dev)?;
-		let target = unsafe { target.as_mut() };
+		let mut target = Ext2INode::get(ent.node(), &fs.sp, &fs.dev)?;
 		if target.get_type() == FileType::Directory {
 			// If the directory is not empty, error
-			if !target.is_directory_empty(sp, &*fs.dev)? {
+			if !target.is_directory_empty(&fs.sp, &fs.dev)? {
 				return Err(errno!(ENOTEMPTY));
 			}
 			// Decrement links because of the `..` entry being removed
@@ -390,32 +380,26 @@ impl NodeOps for Ext2NodeOps {
 		target.i_links_count = target.i_links_count.saturating_sub(1);
 		ent.node().stat.lock().nlink = target.i_links_count;
 		// Remove the directory entry
-		parent_.remove_dirent(remove_off, sp, &*fs.dev)?;
+		parent_.remove_dirent(remove_off, &fs.sp, &fs.dev)?;
 		Ok(())
 	}
 
 	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let sp = fs.sp.lock();
-		let sp = unsafe { sp.as_ref() };
-		let inode_ = Ext2INode::read(node.inode as _, sp, &*fs.dev)?;
-		let inode_ = unsafe { inode_.as_ref() };
+		let inode_ = Ext2INode::get(node, &fs.sp, &fs.dev)?;
 		if inode_.get_type() != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
-		inode_.read_link(sp, &fs.dev, buf)
+		inode_.read_link(&fs.sp, &fs.dev, buf)
 	}
 
 	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let mut sp = fs.sp.lock();
-		let sp = unsafe { sp.as_mut() };
-		let mut inode_ = Ext2INode::read(node.inode as _, sp, &fs.dev)?;
-		let inode_ = unsafe { inode_.as_mut() };
+		let mut inode_ = Ext2INode::get(node, &fs.sp, &fs.dev)?;
 		if inode_.get_type() != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
-		inode_.write_link(sp, &fs.dev, buf)?;
+		inode_.write_link(&fs.sp, &fs.dev, buf)?;
 		// Update status
 		node.stat.lock().size = buf.len() as _;
 		Ok(())
@@ -431,18 +415,9 @@ impl NodeOps for Ext2NodeOps {
 		todo!()
 	}
 
-	fn readahead(&self, node: &Node, off: u64) -> EResult<RcPage> {
-		// First check cache
-		let mut pages = node.pages.lock();
-		let cached = pages.get(&off).cloned();
-		if let Some(page) = cached {
-			return Ok(page);
-		}
-		// Cache miss: read from device and insert in cache
+	fn readahead(&self, node: &Node, off: u64) -> EResult<RcFrame> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let page = fs.dev.read_page(off)?;
-		pages.insert(off, page.clone())?;
-		Ok(page)
+		node.cache.get_or_insert(off, &*fs.dev.ops)
 	}
 
 	fn writeback(&self, _node: &Node, _off: u64) -> EResult<()> {
@@ -458,14 +433,11 @@ impl FileOps for Ext2FileOps {
 	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let node = file.node().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let sp = fs.sp.lock();
-		let sp = unsafe { sp.as_ref() };
-		let inode_ = Ext2INode::read(node.inode as _, sp, &*fs.dev)?;
-		let inode_ = unsafe { inode_.as_ref() };
+		let inode_ = Ext2INode::get(node, &fs.sp, &fs.dev)?;
 		if inode_.get_type() != FileType::Regular {
 			return Err(errno!(EINVAL));
 		}
-		inode_.read_content(off, buf, sp, &*fs.dev)
+		inode_.read_content(off, buf, &fs.sp, &fs.dev)
 	}
 
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
@@ -474,16 +446,13 @@ impl FileOps for Ext2FileOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut sp = fs.sp.lock();
-		let sp = unsafe { sp.as_mut() };
-		let mut inode_ = Ext2INode::read(node.inode as _, sp, &*fs.dev)?;
-		let inode_ = unsafe { inode_.as_mut() };
+		let mut inode_ = Ext2INode::get(node, &fs.sp, &fs.dev)?;
 		if inode_.get_type() != FileType::Regular {
 			return Err(errno!(EINVAL));
 		}
-		inode_.write_content(off, buf, sp, &*fs.dev)?;
+		inode_.write_content(off, buf, &fs.sp, &fs.dev)?;
 		// Update status
-		node.stat.lock().size = inode_.get_size(sp);
+		node.stat.lock().size = inode_.get_size(&fs.sp);
 		Ok(buf.len() as _)
 	}
 
@@ -493,12 +462,9 @@ impl FileOps for Ext2FileOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut sp = fs.sp.lock();
-		let sp = unsafe { sp.as_mut() };
-		let mut inode_ = Ext2INode::read(node.inode as _, sp, &*fs.dev)?;
-		let inode_ = unsafe { inode_.as_mut() };
+		let mut inode_ = Ext2INode::get(node, &fs.sp, &fs.dev)?;
 		match inode_.get_type() {
-			FileType::Regular => inode_.truncate(sp, &*fs.dev, size)?,
+			FileType::Regular => inode_.truncate(&fs.sp, &fs.dev, size)?,
 			_ => return Err(errno!(EINVAL)),
 		}
 		Ok(())
@@ -516,9 +482,9 @@ pub struct Superblock {
 	/// Number of blocks reserved for the superuser.
 	s_r_blocks_count: u32,
 	/// Total number of unallocated blocks.
-	s_free_blocks_count: u32,
+	s_free_blocks_count: AtomicU32,
 	/// Total number of unallocated inodes.
-	s_free_inodes_count: u32,
+	s_free_inodes_count: AtomicU32,
 	/// Block number of the block containing the superblock.
 	s_first_data_block: u32,
 	/// `log2(block_size) - 10`
@@ -532,11 +498,11 @@ pub struct Superblock {
 	/// The number of inodes per block group.
 	s_inodes_per_group: u32,
 	/// The timestamp of the last mount operation.
-	s_mtime: u32,
+	s_mtime: AtomicU32,
 	/// The timestamp of the last write operation.
 	s_wtime: u32,
 	/// The number of mounts since the last consistency check.
-	s_mnt_count: u16,
+	s_mnt_count: AtomicU16,
 	/// The number of mounts allowed before a consistency check must be done.
 	s_max_mnt_count: u16,
 	/// The ext2 signature.
@@ -601,9 +567,9 @@ pub struct Superblock {
 
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
-	fn read(dev: &BlkDev) -> EResult<RcPageObj<Self>> {
-		let page = dev.read_page(0)?;
-		Ok(RcPageObj::new(page, SUPERBLOCK_OFFSET))
+	fn read(dev: &BlkDev) -> EResult<RcFrameVal<Self>> {
+		let page = dev.read_frame(0)?;
+		Ok(RcFrameVal::new(page, SUPERBLOCK_OFFSET))
 	}
 
 	/// Tells whether the superblock is valid.
@@ -657,15 +623,13 @@ impl Superblock {
 	/// - `size` is the number of elements in the bitmap
 	fn bitmap_alloc(&self, dev: &BlkDev, start_blk: u32, size: u32) -> EResult<Option<u32>> {
 		let blk_size = self.get_block_size();
-		let start_page = blk_to_page(start_blk as _, blk_size);
 		let end_blk = start_blk + (size / (blk_size * 8));
-		let end_page = blk_to_page(end_blk as _, blk_size);
-		// Iterate on pages
-		for page_off in start_page..end_page {
-			let page = dev.read_page(page_off)?;
+		// Iterate on blocks
+		for blk_off in start_blk..end_blk {
+			let page = read_block(dev, self, blk_off as _)?;
 			if let Some(off) = bitmap_alloc_impl(&page) {
-				let page_off = (page_off - start_page) as u32;
-				return Ok(Some(page_off * PAGE_SIZE as u32 * 8 + off));
+				let blk_off = blk_off - start_blk;
+				return Ok(Some(blk_off * blk_size * 8 + off));
 			}
 		}
 		Ok(None)
@@ -675,14 +639,13 @@ impl Superblock {
 	///
 	/// The function returns the previous value of the bit.
 	fn bitmap_free(&self, dev: &BlkDev, start_blk: u32, index: u32) -> EResult<bool> {
-		// Get page
+		// Get block
 		let blk_size = self.get_block_size();
-		let page_per_blk = blk_size / PAGE_SIZE as u32;
-		let page = start_blk * page_per_blk + (index / (PAGE_SIZE as u32 * 8));
-		let page = dev.read_page(page as _)?;
+		let blk_off = start_blk + index / (blk_size * 8);
+		let page = read_block(dev, self, blk_off as _)?;
 		// Atomically clear bit
 		let bitmap_byte_index = index / 8;
-		let byte: &AtomicU8 = unsafe { page.as_ref(bitmap_byte_index as usize) };
+		let byte = &page.slice::<AtomicU8>()[bitmap_byte_index as usize];
 		let bitmap_bit_index = index % 8;
 		let prev = byte.fetch_or(1 << bitmap_bit_index, Release);
 		Ok(prev & (1 << bitmap_bit_index) != 0)
@@ -693,24 +656,23 @@ impl Superblock {
 	/// `directory` tells whether the inode is allocated for a directory.
 	///
 	/// If no free inode can be found, the function returns an error.
-	pub fn alloc_inode(&mut self, dev: &BlkDev, directory: bool) -> EResult<u32> {
-		if unlikely(self.s_free_inodes_count == 0) {
+	pub fn alloc_inode(&self, dev: &BlkDev, directory: bool) -> EResult<u32> {
+		if unlikely(self.s_free_inodes_count.load(Acquire) == 0) {
 			return Err(errno!(ENOSPC));
 		}
 		for group in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::get(group, self, dev)?;
-			let bgd = unsafe { bgd.as_ref() };
-			if bgd.bg_free_inodes_count == 0 {
+			if bgd.bg_free_inodes_count.load(Acquire) == 0 {
 				continue;
 			}
 			if let Some(j) =
 				self.bitmap_alloc(dev, bgd.bg_inode_bitmap, self.s_inodes_per_group)?
 			{
-				bgd -= 1;
+				self.s_free_inodes_count.fetch_sub(1, Release);
+				bgd.bg_free_inodes_count.fetch_sub(1, Release);
 				if directory {
-					bgd.bg_used_dirs_count += 1;
+					bgd.bg_used_dirs_count.fetch_add(1, Release);
 				}
-				self.s_free_inodes_count -= 1;
 				return Ok(group * self.s_inodes_per_group + j + 1);
 			}
 		}
@@ -724,7 +686,7 @@ impl Superblock {
 	/// `directory` tells whether the inode is allocated for a directory.
 	///
 	/// If the inode is already marked as free, the behaviour is undefined.
-	pub fn free_inode(&mut self, dev: &BlkDev, inode: INode, directory: bool) -> EResult<()> {
+	pub fn free_inode(&self, dev: &BlkDev, inode: INode, directory: bool) -> EResult<()> {
 		// Validation
 		let inode: u32 = inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		if unlikely(inode == 0) {
@@ -732,31 +694,29 @@ impl Superblock {
 		}
 		// Get block group
 		let group = (inode - 1) / self.s_inodes_per_group;
-		let mut bgd = BlockGroupDescriptor::get(group, self, dev)?;
-		let bgd = unsafe { bgd.as_mut() };
+		let bgd = BlockGroupDescriptor::get(group, self, dev)?;
 		// Clear bit and update counters
 		let bitfield_index = (inode - 1) % self.s_inodes_per_group;
 		let prev = self.bitmap_free(dev, bgd.bg_inode_bitmap, bitfield_index)?;
 		// Check to avoid overflow in case of corrupted filesystem
 		if prev {
-			bgd.bg_free_inodes_count += 1;
+			self.s_free_inodes_count.fetch_add(1, Release);
+			bgd.bg_free_inodes_count.fetch_add(1, Release);
 			if directory {
-				bgd.bg_used_dirs_count -= 1;
+				bgd.bg_used_dirs_count.fetch_sub(1, Release);
 			}
-			self.s_free_inodes_count += 1;
 		}
 		Ok(())
 	}
 
 	/// Returns the ID of a free block in the filesystem.
-	pub fn alloc_block(&mut self, dev: &BlkDev) -> EResult<u32> {
-		if unlikely(self.s_free_inodes_count == 0) {
+	pub fn alloc_block(&self, dev: &BlkDev) -> EResult<u32> {
+		if unlikely(self.s_free_inodes_count.load(Acquire) == 0) {
 			return Err(errno!(ENOSPC));
 		}
 		for i in 0..self.get_block_groups_count() {
 			let bgd = BlockGroupDescriptor::get(i as _, self, dev)?;
-			let bgd = unsafe { bgd.as_ref() };
-			if bgd.bg_free_blocks_count == 0 {
+			if bgd.bg_free_blocks_count.load(Acquire) == 0 {
 				continue;
 			}
 			let Some(j) = self.bitmap_alloc(dev, bgd.bg_block_bitmap, self.s_blocks_per_group)?
@@ -767,8 +727,8 @@ impl Superblock {
 			if unlikely(blk_index <= 2 || blk_index >= self.s_blocks_count) {
 				return Err(errno!(EUCLEAN));
 			}
-			bgd.bg_free_blocks_count -= 1;
-			self.s_free_blocks_count -= 1;
+			self.s_free_blocks_count.fetch_sub(1, Release);
+			bgd.bg_free_blocks_count.fetch_sub(1, Release);
 			return Ok(blk_index);
 		}
 		Err(errno!(ENOSPC))
@@ -777,22 +737,21 @@ impl Superblock {
 	/// Marks the block `blk` available on the filesystem.
 	///
 	/// If `blk` is zero, the function does nothing.
-	pub fn free_block(&mut self, dev: &BlkDev, blk: u32) -> EResult<()> {
+	pub fn free_block(&self, dev: &BlkDev, blk: u32) -> EResult<()> {
 		// Validation
 		if unlikely(blk <= 2 || blk >= self.s_blocks_count) {
 			return Err(errno!(EUCLEAN));
 		}
 		// Get block group
 		let group = blk / self.s_blocks_per_group;
-		let mut bgd = BlockGroupDescriptor::get(group, self, dev)?;
-		let bgd = unsafe { bgd.as_mut() };
+		let bgd = BlockGroupDescriptor::get(group, self, dev)?;
 		// Clear bit and update counters
 		let bitfield_index = blk % self.s_blocks_per_group;
 		let prev = self.bitmap_free(dev, bgd.bg_block_bitmap, bitfield_index)?;
 		// Check to avoid overflow in case of corrupted filesystem
 		if prev {
-			bgd.bg_free_blocks_count += 1;
-			self.s_free_blocks_count += 1;
+			self.s_free_blocks_count.fetch_add(1, Release);
+			bgd.bg_free_blocks_count.fetch_add(1, Release);
 		}
 		Ok(())
 	}
@@ -803,7 +762,7 @@ struct Ext2Fs {
 	/// The device on which the filesystem is located
 	dev: Arc<BlkDev>,
 	/// The filesystem's superblock
-	sp: Mutex<RcPageObj<Superblock>>,
+	sp: RcFrameVal<Superblock>,
 	/// Tells whether the filesystem is mounted in read-only
 	readonly: bool,
 }
@@ -816,45 +775,49 @@ impl FilesystemOps for Ext2Fs {
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
-		let sp = self.sp.lock();
-		let sp = unsafe { sp.as_ref() };
-		let fragment_size = math::pow2(sp.s_log_frag_size + 10);
 		Ok(Statfs {
 			f_type: EXT2_MAGIC as _,
-			f_bsize: sp.get_block_size(),
-			f_blocks: sp.s_blocks_count as _,
-			f_bfree: sp.s_free_blocks_count as _,
+			f_bsize: self.sp.get_block_size(),
+			f_blocks: self.sp.s_blocks_count as _,
+			f_bfree: self.sp.s_free_blocks_count.load(Relaxed) as _,
 			// TODO Subtract blocks for superuser
-			f_bavail: sp.s_free_blocks_count as _,
-			f_files: sp.s_inodes_count as _,
-			f_ffree: sp.s_free_inodes_count as _,
+			f_bavail: self.sp.s_free_blocks_count.load(Relaxed) as _,
+			f_files: self.sp.s_inodes_count as _,
+			f_ffree: self.sp.s_free_inodes_count.load(Relaxed) as _,
 			f_fsid: Default::default(),
 			f_namelen: MAX_NAME_LEN as _,
-			f_frsize: fragment_size,
+			f_frsize: math::pow2(self.sp.s_log_frag_size + 10),
 			f_flags: 0, // TODO
 		})
 	}
 
 	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
-		Filesystem::node_get_or_insert(fs, inode::ROOT_DIRECTORY_INODE as _, || {
-			let sp = self.sp.lock();
-			let sp = unsafe { sp.as_ref() };
-			// Check the inode exists
-			let inode = Ext2INode::read(inode::ROOT_DIRECTORY_INODE as _, &sp, &*self.dev)?;
-			let inode = unsafe { inode.as_ref() };
-			let stat = inode.stat(&sp);
-			Ok((stat, Box::new(Ext2NodeOps)?, Box::new(Ext2FileOps)?))
-		})
+		let mut node = Node {
+			inode: ROOT_DIRECTORY_INODE as _,
+			fs,
+
+			stat: Default::default(),
+
+			node_ops: Box::new(Ext2NodeOps)?,
+			file_ops: Box::new(Ext2FileOps)?,
+
+			lock: Default::default(),
+			cache: Default::default(),
+		};
+		let stat = Ext2INode::get(&node, &self.sp, &self.dev)?.stat(&self.sp);
+		node.stat = Mutex::new(stat);
+		Ok(Arc::new(node)?)
 	}
 
 	fn create_node(&self, fs: Arc<Filesystem>, stat: &Stat) -> EResult<Arc<Node>> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut sp = self.sp.lock();
-		let sp = unsafe { sp.as_mut() };
-		// Get a free inode ID
-		let inode_index = sp.find_free_inode(&*self.dev)?;
+		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
+		// Allocate an inode
+		let inode_index = self
+			.sp
+			.alloc_inode(&*self.dev, file_type == FileType::Directory)?;
 		// Create inode
 		let mut inode = Ext2INode {
 			i_mode: stat.mode as _,
@@ -877,11 +840,10 @@ impl FilesystemOps for Ext2Fs {
 			i_osd2: [0; 12],
 		};
 		// If device, set major/minor
-		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		match file_type {
 			FileType::Directory => {
 				// Create the `.` entry
-				inode.add_dirent(sp, &self.dev, inode_index, b".", FileType::Directory)?;
+				inode.add_dirent(&self.sp, &self.dev, inode_index, b".", FileType::Directory)?;
 				inode.i_links_count += 1;
 			}
 			FileType::BlockDevice | FileType::CharDevice => {
@@ -889,20 +851,18 @@ impl FilesystemOps for Ext2Fs {
 			}
 			_ => {}
 		}
-		// Mark as used and return
-		sp.mark_inode_used(&self.dev, inode_index, file_type == FileType::Directory)?;
 		let node = Arc::new(Node {
 			inode: inode_index as _,
 			fs,
 
-			stat: Mutex::new(inode.stat(&sp)),
+			stat: Mutex::new(inode.stat(&self.sp)),
 
 			node_ops: Box::new(Ext2NodeOps)?,
 			file_ops: Box::new(Ext2FileOps)?,
 
-			pages: Default::default(),
+			lock: Default::default(),
+			cache: Default::default(),
 		})?;
-		node.fs.node_insert(node.clone())?;
 		Ok(node)
 	}
 
@@ -910,20 +870,17 @@ impl FilesystemOps for Ext2Fs {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut sp = self.sp.lock();
-		let sp = unsafe { sp.as_mut() };
-		let mut inode_ = Ext2INode::read(node.inode, &sp, &self.dev)?;
-		let inode_ = unsafe { inode_.as_mut() };
+		let mut inode = Ext2INode::get(node, &self.sp, &self.dev)?;
 		// Remove the inode
-		inode_.i_links_count = 0;
+		inode.i_links_count = 0;
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-		inode_.i_dtime = timestamp as _;
-		inode_.free_content(sp, &self.dev)?;
+		inode.i_dtime = timestamp as _;
+		inode.free_content(&self.sp, &self.dev)?;
 		// Free inode
-		sp.free_inode(
+		self.sp.free_inode(
 			&self.dev,
 			node.inode,
-			inode_.get_type() == FileType::Directory,
+			inode.get_type() == FileType::Directory,
 		)?;
 		Ok(())
 	}
@@ -931,10 +888,8 @@ impl FilesystemOps for Ext2Fs {
 
 impl fmt::Debug for Ext2Fs {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let sp = self.sp.lock();
-		let sp = unsafe { sp.as_ref() };
 		f.debug_struct("Ext2Fs")
-			.field("superblock", sp)
+			.field("superblock", &*self.sp)
 			.field("readonly", &self.readonly)
 			.finish()
 	}
@@ -949,29 +904,26 @@ impl FilesystemType for Ext2FsType {
 	}
 
 	fn detect(&self, dev: &BlkDev) -> EResult<bool> {
-		let sp = Superblock::read(dev)?;
-		unsafe { Ok(sp.as_ref().is_valid()) }
+		Superblock::read(dev).map(|sp| sp.is_valid())
 	}
 
 	fn load_filesystem(
 		&self,
 		dev: Option<Arc<BlkDev>>,
-		mountpath: PathBuf,
+		_mountpath: PathBuf,
 		readonly: bool,
 	) -> EResult<Box<dyn FilesystemOps>> {
 		let dev = dev.ok_or_else(|| errno!(ENODEV))?;
-		let mut sp_view = Superblock::read(&*dev)?;
-		let sp = unsafe { sp_view.as_mut() };
-		if !sp.is_valid() {
+		let sp = Superblock::read(&*dev)?;
+		if unlikely(!sp.is_valid()) {
 			return Err(errno!(EINVAL));
 		}
-		if (sp.get_block_size() as usize) < PAGE_SIZE {
+		if unlikely(sp.s_log_block_size < 2) {
 			return Err(errno!(EINVAL));
 		}
 		// Check the filesystem does not require features that are not implemented by
 		// the driver
 		if sp.s_rev_level >= 1 {
-			// TODO Implement journal
 			let unsupported_required_features = REQUIRED_FEATURE_COMPRESSION
 				| REQUIRED_FEATURE_JOURNAL_REPLAY
 				| REQUIRED_FEATURE_JOURNAL_DEVIXE;
@@ -979,7 +931,6 @@ impl FilesystemType for Ext2FsType {
 				// TODO Log?
 				return Err(errno!(EINVAL));
 			}
-			// TODO Implement
 			let unsupported_write_features = WRITE_REQUIRED_DIRECTORY_BINARY_TREE;
 			if !readonly && sp.s_feature_ro_compat & unsupported_write_features != 0 {
 				// TODO Log?
@@ -987,24 +938,24 @@ impl FilesystemType for Ext2FsType {
 			}
 		}
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-		if sp.s_mnt_count >= sp.s_max_mnt_count {
+		if unlikely(sp.s_mnt_count.load(Relaxed) >= sp.s_max_mnt_count) {
 			return Err(errno!(EINVAL));
 		}
 		// TODO
-		/*if timestamp >= superblock.last_fsck_timestamp + superblock.fsck_interval {
+		/*if unlikely(timestamp >= superblock.s_lastcheck + superblock.s_checkinterval) {
 			return Err(errno::EINVAL);
 		}*/
-		sp.s_mnt_count += 1;
 		// Set the last mount path
-		let mountpath_bytes = mountpath.as_bytes();
+		/*let mountpath_bytes = mountpath.as_bytes();
 		let len = min(mountpath_bytes.len(), sp.s_last_mounted.len());
 		sp.s_last_mounted[..len].copy_from_slice(&mountpath_bytes[..len]);
-		sp.s_last_mounted[len..].fill(0);
+		sp.s_last_mounted[len..].fill(0);*/
 		// Set the last mount timestamp
-		sp.s_mtime = timestamp as _;
+		sp.s_mtime.store(timestamp as _, Relaxed);
+		sp.s_mnt_count.fetch_add(1, Relaxed);
 		Ok(Box::new(Ext2Fs {
 			dev,
-			sp: Mutex::new(sp_view),
+			sp,
 			readonly,
 		})?)
 	}

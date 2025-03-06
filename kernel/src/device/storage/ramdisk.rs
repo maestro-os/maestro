@@ -25,7 +25,7 @@
 use crate::{
 	device,
 	device::{id, BlkDev, BlockDeviceOps, DeviceID, DeviceType},
-	memory::RcPage,
+	memory::RcFrame,
 	sync::mutex::Mutex,
 };
 use core::{mem::ManuallyDrop, num::NonZeroU64};
@@ -47,7 +47,7 @@ const MAX_PAGES: u64 = 1024;
 
 /// A disk, on RAM.
 #[derive(Debug, Default)]
-pub struct RamDisk(Mutex<Vec<RcPage>>);
+pub struct RamDisk(Mutex<Vec<RcFrame>>);
 
 impl BlockDeviceOps for RamDisk {
 	fn block_size(&self) -> NonZeroU64 {
@@ -58,7 +58,7 @@ impl BlockDeviceOps for RamDisk {
 		MAX_PAGES
 	}
 
-	fn read_page(&self, off: u64) -> EResult<RcPage> {
+	fn read_frame(&self, off: u64) -> EResult<RcFrame> {
 		// Bound check
 		if off >= MAX_PAGES {
 			return Err(errno!(EOVERFLOW));
@@ -67,12 +67,12 @@ impl BlockDeviceOps for RamDisk {
 		let mut pages = self.0.lock();
 		// If the RAM is not large enough, expand it
 		while pages.len() <= off {
-			pages.push(RcPage::new_zeroed()?)?;
+			pages.push(RcFrame::new_zeroed()?)?;
 		}
 		Ok(pages[off].clone())
 	}
 
-	fn write_page(&self, off: u64, _buf: &[u8]) -> EResult<()> {
+	fn write_frame(&self, off: u64, _buf: &[u8]) -> EResult<()> {
 		// Nothing to do, just check offset
 		if off < MAX_PAGES {
 			Ok(())

@@ -558,7 +558,6 @@ pub fn create_file(
 		.fs
 		.ops
 		.create_node(parent_node.fs.clone(), &stat)?;
-	parent_node.fs.node_insert(node.clone())?;
 	// Add link to filesystem
 	let ent = Entry {
 		name: String::try_from(name)?,
@@ -717,8 +716,6 @@ pub fn symlink(
 	let fs = parent_node.fs.clone();
 	let node = fs.ops.create_node(fs.clone(), &stat)?;
 	node.node_ops.writelink(&node, target)?;
-	// Add node to cache
-	fs.node_insert(node.clone())?;
 	// Add link to the filesystem
 	let ent = Entry {
 		name: String::try_from(name)?,

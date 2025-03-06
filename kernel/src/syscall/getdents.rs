@@ -20,7 +20,7 @@
 //! directory.
 
 use crate::{
-	file::{fd::FileDescriptorTable, DirContext, DirEntry, FileType, INode},
+	file::{fd::FileDescriptorTable, DirContext, DirEntry, FileType, INode, DT_UNKNOWN},
 	process::{mem_space::copy::SyscallSlice, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
@@ -116,6 +116,10 @@ pub fn getdents(
 		if buf_off + reclen > count {
 			return Ok(false);
 		}
+		let d_type = entry
+			.entry_type
+			.map(FileType::to_dirent_type)
+			.unwrap_or(DT_UNKNOWN);
 		// Write entry
 		let ent = LinuxDirent {
 			d_ino: entry.inode as _,
@@ -130,7 +134,7 @@ pub fn getdents(
 		// Write nul byte and entry type
 		dirp.copy_to_user(
 			buf_off + offset_of!(LinuxDirent, d_name) + entry.name.len(),
-			&[b'\0', entry.entry_type.to_dirent_type()],
+			&[b'\0', d_type],
 		)?;
 		buf_off += reclen;
 		Ok(true)
@@ -155,14 +159,18 @@ pub fn getdents64(
 		if buf_off + reclen > count {
 			return Ok(false);
 		}
+		let d_type = entry
+			.entry_type
+			.map(FileType::to_dirent_type)
+			.unwrap_or(DT_UNKNOWN);
+		// Write entry
 		let ent = LinuxDirent64 {
 			d_ino: entry.inode,
 			d_off: (buf_off + reclen) as _,
 			d_reclen: reclen as _,
-			d_type: entry.entry_type.to_dirent_type(),
+			d_type,
 			d_name: [],
 		};
-		// Write entry
 		dirp.copy_to_user(buf_off, as_bytes(&ent))?;
 		// Copy file name
 		dirp.copy_to_user(buf_off + offset_of!(LinuxDirent64, d_name), entry.name)?;

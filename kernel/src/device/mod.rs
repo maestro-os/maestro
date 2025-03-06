@@ -46,12 +46,13 @@ use crate::{
 	file,
 	file::{
 		fs::FileOps,
+		page_cache::PageCache,
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 		File, FileType, Mode, Stat,
 	},
-	memory::RcPage,
+	memory::{buddy::FrameOrder, RcFrame},
 	sync::mutex::Mutex,
 	syscall::ioctl,
 };
@@ -61,7 +62,6 @@ use storage::StorageManager;
 use utils::{
 	boxed::Box,
 	collections::{
-		btreemap::BTreeMap,
 		hashmap::HashMap,
 		path::{Path, PathBuf},
 	},
@@ -175,21 +175,13 @@ pub trait BlockDeviceOps: fmt::Debug {
 	/// Returns the number of blocks on the device.
 	fn blocks_count(&self) -> u64;
 
-	/// Reads a page of data from the device.
-	///
-	/// `off` is the offset on the device, in pages
+	/// Reads a frame of data from the device.
 	///
 	/// On success, the function returns the page.
-	fn read_page(&self, off: u64) -> EResult<RcPage>;
+	fn read_frame(&self, frame: &RcFrame) -> EResult<()>;
 
-	/// Writes a page of data to the device.
-	///
-	/// Arguments:
-	/// - `off` is the offset on the device, in pages
-	/// - `buf` contains the data to write
-	///
-	/// The size of the buffer has to be [`PAGE_SIZE`].
-	fn write_page(&self, off: u64, buf: &[u8]) -> EResult<()>;
+	/// Writes a frame of data to the device.
+	fn write_frame(&self, frame: &RcFrame) -> EResult<()>;
 
 	/// Polls the device with the given mask.
 	fn poll(&self, mask: u32) -> EResult<u32> {
@@ -220,12 +212,8 @@ pub struct BlkDev {
 
 	/// The device I/O interface
 	pub ops: Box<dyn BlockDeviceOps>,
-
-	// TODO rwlock
-	/// The page cache
-	///
-	/// The key is the offset in the file
-	pub pages: Mutex<BTreeMap<u64, RcPage>>,
+	/// The device's page cache
+	cache: PageCache,
 }
 
 impl BlkDev {
@@ -248,8 +236,7 @@ impl BlkDev {
 			mode,
 
 			ops,
-
-			pages: Mutex::new(BTreeMap::new()),
+			cache: Default::default(),
 		})?;
 		if likely(file::is_init()) {
 			create_file(&id, DeviceType::Block, &dev.path, mode)?;
@@ -257,20 +244,11 @@ impl BlkDev {
 		Ok(dev)
 	}
 
-	/// Reads a page from the device.
+	/// Reads a frame from the device, containing the page at `off`.
 	///
-	/// If not in cache, the function reads the page from the device, then inserts it in cache.
-	pub fn read_page(&self, off: u64) -> EResult<RcPage> {
-		// First check cache
-		let mut pages = self.pages.lock();
-		let cached = pages.get(&off).cloned();
-		if let Some(page) = cached {
-			return Ok(page);
-		}
-		// Cache miss: read from device and insert in cache
-		let page = self.ops.read_page(off)?;
-		pages.insert(off, page.clone())?;
-		Ok(page)
+	/// If not in cache, the function reads the frame from the device, then inserts it in cache.
+	pub fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame> {
+		self.cache.get_or_insert(off, &*self.ops)
 	}
 }
 
@@ -362,7 +340,7 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = dev.read_page(page_off)?;
+			let page = dev.read_frame(page_off)?;
 			let inner_off = off as usize % PAGE_SIZE;
 			let slice = unsafe { page.slice() };
 			// TODO ensure this is concurrency-friendly
@@ -382,7 +360,7 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = dev.read_page(page_off)?;
+			let page = dev.read_frame(page_off)?;
 			let inner_off = off as usize % PAGE_SIZE;
 			let slice = unsafe { page.slice() };
 			// TODO ensure this is concurrency-friendly

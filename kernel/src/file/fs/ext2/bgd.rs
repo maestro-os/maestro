@@ -20,15 +20,15 @@
 //! Table which represents a block group, which is a subdivision of the
 //! filesystem.
 
-use super::{blk_to_page, Superblock, SUPERBLOCK_OFFSET};
-use crate::device::BlkDev;
-use core::mem::size_of;
+use super::{read_block, Superblock, SUPERBLOCK_OFFSET};
+use crate::{device::BlkDev, memory::RcFrameVal};
+use core::{mem::size_of, sync::atomic::AtomicU16};
 use macros::AnyRepr;
 use utils::errno::EResult;
 
 /// A block group descriptor.
 #[repr(C)]
-#[derive(AnyRepr, Clone)]
+#[derive(AnyRepr)]
 pub struct BlockGroupDescriptor {
 	/// The block address of the block usage bitmap.
 	pub bg_block_bitmap: u32,
@@ -37,23 +37,26 @@ pub struct BlockGroupDescriptor {
 	/// Starting block address of inode table.
 	pub bg_inode_table: u32,
 	/// Number of unallocated blocks in group.
-	pub bg_free_blocks_count: u16,
+	pub bg_free_blocks_count: AtomicU16,
 	/// Number of unallocated inodes in group.
-	pub bg_free_inodes_count: u16,
+	pub bg_free_inodes_count: AtomicU16,
 	/// Number of directories in group.
-	pub bg_used_dirs_count: u16,
+	pub bg_used_dirs_count: AtomicU16,
 
 	pub bg_pad: [u8; 14],
 }
 
 impl BlockGroupDescriptor {
 	/// Returns the `i`th block group descriptor
-	pub fn get(i: u32, sp: &Superblock, dev: &BlkDev) -> EResult<RcPageObj<Self>> {
+	pub fn get(i: u32, sp: &Superblock, dev: &BlkDev) -> EResult<RcFrameVal<Self>> {
 		let blk_size = sp.get_block_size() as usize;
 		let bgd_per_blk = blk_size / size_of::<Self>();
-		let bgdt_blk = (SUPERBLOCK_OFFSET / blk_size) + 1;
-		let blk = bgdt_blk + (i as usize / bgd_per_blk);
-		let page = dev.read_page(blk_to_page(blk as _, blk_size as _))?;
-		Ok(RcPageObj::new(page, i as usize % bgd_per_blk))
+		// Read block
+		let bgdt_blk_off = (SUPERBLOCK_OFFSET / blk_size) + 1;
+		let blk_off = bgdt_blk_off as u32 + (i / bgd_per_blk as u32);
+		let blk = read_block(dev, sp, blk_off as _)?;
+		// Get entry
+		let off = i as usize % bgd_per_blk;
+		Ok(RcFrameVal::new(blk, off))
 	}
 }

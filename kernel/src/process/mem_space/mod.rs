@@ -32,16 +32,10 @@ use crate::{
 	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_PRESENT, PAGE_FAULT_WRITE},
 	file::{perm::AccessProfile, vfs, File},
 	memory,
-	memory::{vmem::VMem, RcPage, VirtAddr, PROCESS_END},
+	memory::{vmem::VMem, RcFrame, VirtAddr, PROCESS_END},
 };
 use core::{
-	alloc::AllocError,
-	cmp::{min, Ordering},
-	ffi::c_void,
-	fmt,
-	intrinsics::unlikely,
-	mem,
-	num::NonZeroUsize,
+	alloc::AllocError, cmp::min, ffi::c_void, fmt, intrinsics::unlikely, mem, num::NonZeroUsize,
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -52,7 +46,7 @@ use utils::{
 	errno::{AllocResult, CollectResult, EResult},
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
-	TryClone,
+	range_cmp, TryClone,
 };
 
 /// Page can be read
@@ -197,28 +191,12 @@ impl MemSpaceState {
 			.find(|g| g.get_size() >= size)
 	}
 
-	/// Comparison function to search for the object containing the address `addr`.
-	///
-	/// Arguments:
-	/// - `begin` is the beginning of the object to compare for
-	/// - `size` is the size of the object in pages
-	fn addr_search(begin: VirtAddr, size: usize, addr: VirtAddr) -> Ordering {
-		let end = begin + size * PAGE_SIZE;
-		if addr >= begin && addr < end {
-			Ordering::Equal
-		} else if addr < begin {
-			Ordering::Less
-		} else {
-			Ordering::Greater
-		}
-	}
-
 	/// Returns a reference to the gap containing the given virtual address.
 	///
 	/// If no gap contain the pointer, the function returns `None`.
 	fn get_gap_for_addr(&self, addr: VirtAddr) -> Option<&MemGap> {
 		self.gaps
-			.cmp_get(|key, value| Self::addr_search(*key, value.get_size().get(), addr))
+			.cmp_get(|key, value| range_cmp(key.0, value.get_size().get() * PAGE_SIZE, addr.0))
 	}
 
 	/// Returns an immutable reference to the memory mapping containing the given virtual
@@ -227,7 +205,7 @@ impl MemSpaceState {
 	/// If no mapping contains the address, the function returns `None`.
 	pub fn get_mapping_for_addr(&self, addr: VirtAddr) -> Option<&MemMapping> {
 		self.mappings.cmp_get(|key, value| {
-			Self::addr_search(VirtAddr::from(*key), value.get_size().get(), addr)
+			range_cmp(*key as usize, value.get_size().get() * PAGE_SIZE, addr.0)
 		})
 	}
 
@@ -237,7 +215,7 @@ impl MemSpaceState {
 	/// If no mapping contains the address, the function returns `None`.
 	pub fn get_mut_mapping_for_addr(&mut self, addr: VirtAddr) -> Option<&mut MemMapping> {
 		self.mappings.cmp_get_mut(|key, value| {
-			Self::addr_search(VirtAddr::from(*key), value.get_size().get(), addr)
+			range_cmp(*key as usize, value.get_size().get() * PAGE_SIZE, addr.0)
 		})
 	}
 }
@@ -431,7 +409,7 @@ impl MemSpace {
 	}
 
 	/// Maps a chunk of memory population with the given static pages.
-	pub fn map_special(&mut self, prot: u8, flags: u8, pages: &[RcPage]) -> AllocResult<*mut u8> {
+	pub fn map_special(&mut self, prot: u8, flags: u8, pages: &[RcFrame]) -> AllocResult<*mut u8> {
 		let Some(len) = NonZeroUsize::new(pages.len()) else {
 			return Err(AllocError);
 		};

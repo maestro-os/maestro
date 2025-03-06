@@ -27,23 +27,19 @@
 //!   processes
 
 use crate::{
-	memory::buddy::{Flags, PageState, ZONE_KERNEL},
+	memory::buddy::{Flags, FrameOrder, ZONE_KERNEL},
 	syscall::FromSyscallArg,
 };
 use core::{
 	fmt,
+	marker::PhantomData,
 	mem::size_of,
 	ops::{Add, Deref, DerefMut, Sub},
 	ptr,
 	ptr::NonNull,
 	slice,
 };
-use utils::{
-	bytes::{from_bytes, from_bytes_mut, AnyRepr},
-	errno::AllocResult,
-	limits::PAGE_SIZE,
-	ptr::arc::Arc,
-};
+use utils::{bytes::AnyRepr, errno::AllocResult, ptr::arc::Arc};
 
 pub mod alloc;
 pub mod buddy;
@@ -208,26 +204,53 @@ macro_rules! addr_impl {
 addr_impl!(PhysAddr);
 addr_impl!(VirtAddr);
 
-/// Reference-counted allocated physical page.
+#[derive(Debug)]
+struct RcFrameInner {
+	/// Starting address of the frame
+	addr: PhysAddr,
+	/// The order of the frame
+	order: FrameOrder,
+	/// The page offset in the file associated with the frame (if any)
+	file_off: u64,
+}
+
+impl Drop for RcFrameInner {
+	fn drop(&mut self) {
+		unsafe {
+			buddy::free(self.addr, self.order);
+		}
+	}
+}
+
+/// Reference-counted allocated physical memory frame.
 ///
-/// When the reference count reaches zero, the page is freed.
+/// A frame can be associated to an offset in a file. In this case, the offset must be a multiple
+/// of the size of the frame.
+///
+/// When the reference count reaches zero, the frame is freed.
 ///
 /// A new reference can be created with [`Clone`].
 #[derive(Clone, Debug)]
-pub struct RcPage(Arc<PhysAddr>);
+pub struct RcFrame(Arc<RcFrameInner>);
 
-impl RcPage {
-	/// Allocates a new, *uninitialized* page.
-	pub fn new(flags: Flags) -> AllocResult<Self> {
-		let addr = buddy::alloc(0, flags)?;
-		Ok(Self(Arc::new(addr)?))
+impl RcFrame {
+	/// Allocates a new, *uninitialized* frame.
+	///
+	/// `file_off` is the file offset in pages, if any
+	pub fn new(order: FrameOrder, flags: Flags, file_off: u64) -> AllocResult<Self> {
+		let addr = buddy::alloc(order, flags)?;
+		Ok(Self(Arc::new(RcFrameInner {
+			addr,
+			order,
+			file_off,
+		})?))
 	}
 
 	/// Allocates a new, zeroed page in the kernel zone.
-	pub fn new_zeroed() -> AllocResult<Self> {
-		let page = Self::new(ZONE_KERNEL)?;
+	pub fn new_zeroed(order: FrameOrder) -> AllocResult<Self> {
+		let page = Self::new(order, ZONE_KERNEL, 0)?;
 		unsafe {
-			page.slice().fill(0);
+			page.slice_mut().fill(0);
 		}
 		Ok(page)
 	}
@@ -235,7 +258,7 @@ impl RcPage {
 	/// Returns the page's physical address.
 	#[inline]
 	pub fn phys_addr(&self) -> PhysAddr {
-		*self.0
+		self.0.addr
 	}
 
 	/// Returns the page's virtual address.
@@ -246,70 +269,78 @@ impl RcPage {
 		self.phys_addr().kernel_to_virtual().unwrap()
 	}
 
-	/// Returns a mutable slice over the page.
+	/// Returns an immutable slice over the page.
+	pub fn slice<T: AnyRepr>(&self) -> &[T] {
+		let ptr = self.virt_addr().as_ptr::<T>();
+		let len = buddy::get_frame_size(self.0.order) / size_of::<T>();
+		unsafe { slice::from_raw_parts_mut(ptr, len) }
+	}
+
+	/// Returns a mutable slice.
 	///
 	/// # Safety
 	///
-	/// The caller must ensure no concurrent accesses are made.
-	pub unsafe fn slice(&self) -> &mut [u8] {
-		let ptr = self.virt_addr().as_ptr::<u8>();
-		slice::from_raw_parts_mut(ptr, PAGE_SIZE)
-	}
-
-	/// Returns an immutable reference over `T` at offset `off`.
-	///
-	/// # Safety
-	///
-	/// It is the caller's responsibility to ensure no one else is mutating the value while the
-	/// returned reference is living.
+	/// It is the caller's responsibility to ensure no other mutable reference exist at the same
+	/// time.
 	#[inline]
-	pub unsafe fn as_ref<T: AnyRepr>(&self, off: usize) -> &T {
-		let slice = &self.slice()[off..];
-		from_bytes(slice).unwrap()
+	pub unsafe fn slice_mut<T: AnyRepr>(&self) -> &mut [T] {
+		let ptr = self.virt_addr().as_ptr::<T>();
+		let len = buddy::get_frame_size(self.0.order) / size_of::<T>();
+		unsafe { slice::from_raw_parts_mut(ptr, len) }
 	}
 
-	/// Returns a mutable reference over `T` at offset `off`.
-	///
-	/// # Safety
-	///
-	/// It is the caller's responsibility to ensure no one else is mutating the value while the
-	/// returned reference is living.
-	#[inline]
-	pub unsafe fn as_mut<T: AnyRepr>(&self, off: usize) -> &mut T {
-		let slice = &mut self.slice()[off..];
-		from_bytes_mut(slice).unwrap()
-	}
-
-	/// Reads `T` from the page at offset `off`.
-	///
-	/// # Safety
-	///
-	/// It is the caller's responsibility to ensure no one else is mutating the value while reading
-	/// it.
-	#[inline]
-	pub unsafe fn read<T: AnyRepr + Clone>(&self, off: usize) -> T {
-		self.as_ref::<T>(off).clone()
-	}
-
-	/// Returns the page's state structure.
-	#[inline]
-	pub fn state(&self) -> &'static PageState {
-		buddy::page_state(self.phys_addr())
-	}
-
-	/// Tells whether there are other references to the same page.
+	/// Tells whether there are other references to the same frame.
 	#[inline]
 	pub fn is_shared(&self) -> bool {
 		Arc::strong_count(&self.0) > 1
 	}
+
+	/// Returns the order of the frame.
+	#[inline]
+	pub fn order(&self) -> FrameOrder {
+		self.0.order
+	}
+
+	/// Returns the file offset associated with the frame, in pages.
+	#[inline]
+	pub fn file_offset(&self) -> u64 {
+		self.0.file_off
+	}
 }
 
-impl Drop for RcPage {
-	fn drop(&mut self) {
-		if !self.is_shared() {
-			unsafe {
-				buddy::free(self.phys_addr(), 0);
-			}
+/// A view over an object on a frame.
+pub struct RcFrameVal<T: AnyRepr> {
+	/// The frame the value is located on (considered as an array of this object)
+	frame: RcFrame,
+	/// The offset of the object in the array
+	off: usize,
+	_phantom: PhantomData<T>,
+}
+
+impl<T: AnyRepr> RcFrameVal<T> {
+	/// Creates a new instance.
+	pub fn new(frame: RcFrame, off: usize) -> Self {
+		Self {
+			frame,
+			off,
+			_phantom: PhantomData,
 		}
+	}
+
+	/// Returns a mutable reference to the value.
+	///
+	/// # Safety
+	///
+	/// The caller must ensure no other reference to the value is living at the same time.
+	pub unsafe fn as_mut(&self) -> &mut T {
+		&mut self.frame.slice_mut()[self.off]
+	}
+}
+
+impl<T: AnyRepr> Deref for RcFrameVal<T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&self.frame.slice()[self.off]
 	}
 }
