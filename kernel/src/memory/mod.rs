@@ -39,7 +39,7 @@ use core::{
 	ptr::NonNull,
 	slice,
 };
-use utils::{bytes::AnyRepr, errno::AllocResult, ptr::arc::Arc};
+use utils::{bytes::AnyRepr, errno::AllocResult, math::pow2, ptr::arc::Arc};
 
 pub mod alloc;
 pub mod buddy;
@@ -210,8 +210,6 @@ struct RcFrameInner {
 	addr: PhysAddr,
 	/// The order of the frame
 	order: FrameOrder,
-	/// The page offset in the file associated with the frame (if any)
-	file_off: u64,
 }
 
 impl Drop for RcFrameInner {
@@ -224,9 +222,6 @@ impl Drop for RcFrameInner {
 
 /// Reference-counted allocated physical memory frame.
 ///
-/// A frame can be associated to an offset in a file. In this case, the offset must be a multiple
-/// of the size of the frame.
-///
 /// When the reference count reaches zero, the frame is freed.
 ///
 /// A new reference can be created with [`Clone`].
@@ -235,20 +230,17 @@ pub struct RcFrame(Arc<RcFrameInner>);
 
 impl RcFrame {
 	/// Allocates a new, *uninitialized* frame.
-	///
-	/// `file_off` is the file offset in pages, if any
-	pub fn new(order: FrameOrder, flags: Flags, file_off: u64) -> AllocResult<Self> {
+	pub fn new(order: FrameOrder, flags: Flags) -> AllocResult<Self> {
 		let addr = buddy::alloc(order, flags)?;
 		Ok(Self(Arc::new(RcFrameInner {
 			addr,
 			order,
-			file_off,
 		})?))
 	}
 
 	/// Allocates a new, zeroed page in the kernel zone.
 	pub fn new_zeroed(order: FrameOrder) -> AllocResult<Self> {
-		let page = Self::new(order, ZONE_KERNEL, 0)?;
+		let page = Self::new(order, ZONE_KERNEL)?;
 		unsafe {
 			page.slice_mut().fill(0);
 		}
@@ -283,6 +275,7 @@ impl RcFrame {
 	/// It is the caller's responsibility to ensure no other mutable reference exist at the same
 	/// time.
 	#[inline]
+	#[allow(clippy::mut_from_ref)]
 	pub unsafe fn slice_mut<T: AnyRepr>(&self) -> &mut [T] {
 		let ptr = self.virt_addr().as_ptr::<T>();
 		let len = buddy::get_frame_size(self.0.order) / size_of::<T>();
@@ -301,16 +294,19 @@ impl RcFrame {
 		self.0.order
 	}
 
-	/// Returns the file offset associated with the frame, in pages.
+	/// Returns the number of pages in the frame
 	#[inline]
-	pub fn file_offset(&self) -> u64 {
-		self.0.file_off
+	pub fn pages_count(&self) -> usize {
+		pow2(self.order() as usize)
 	}
 }
 
-/// A view over an object on a frame.
+/// A view over an object on a frame, where the frame is considered as an array of this object
+/// type.
+///
+/// This structure is useful to *return* a mapped value from a function.
 pub struct RcFrameVal<T: AnyRepr> {
-	/// The frame the value is located on (considered as an array of this object)
+	/// The frame the value is located on
 	frame: RcFrame,
 	/// The offset of the object in the array
 	off: usize,
@@ -332,6 +328,8 @@ impl<T: AnyRepr> RcFrameVal<T> {
 	/// # Safety
 	///
 	/// The caller must ensure no other reference to the value is living at the same time.
+	#[inline]
+	#[allow(clippy::mut_from_ref)]
 	pub unsafe fn as_mut(&self) -> &mut T {
 		&mut self.frame.slice_mut()[self.off]
 	}
@@ -340,6 +338,7 @@ impl<T: AnyRepr> RcFrameVal<T> {
 impl<T: AnyRepr> Deref for RcFrameVal<T> {
 	type Target = T;
 
+	#[inline]
 	fn deref(&self) -> &Self::Target {
 		&self.frame.slice()[self.off]
 	}

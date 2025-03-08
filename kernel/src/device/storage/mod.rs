@@ -32,7 +32,7 @@ use crate::{
 		BlkDev, BlockDeviceOps, DeviceID, DeviceType, BLK_DEVICES,
 	},
 	file::Mode,
-	memory::RcFrame,
+	memory::{buddy::FrameOrder, RcFrame},
 	println,
 	process::mem_space::copy::SyscallPtr,
 	syscall::{ioctl, FromSyscallArg},
@@ -99,17 +99,17 @@ impl BlockDeviceOps for PartitionOps {
 		self.dev.ops.blocks_count()
 	}
 
-	fn read_frame(&self, off: u64) -> EResult<RcFrame> {
+	fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame> {
 		if off < self.partition.size {
-			self.dev.read_frame(self.partition.offset + off)
+			self.dev.read_frame(self.partition.offset + off, order)
 		} else {
 			Err(errno!(EINVAL))
 		}
 	}
 
-	fn write_frame(&self, off: u64, buf: &[u8]) -> EResult<()> {
+	fn write_frame(&self, off: u64, frame: &RcFrame) -> EResult<()> {
 		if off < self.partition.size {
-			self.dev.ops.write_frame(self.partition.offset + off, buf)
+			self.dev.ops.write_frame(self.partition.offset + off, frame)
 		} else {
 			Err(errno!(EINVAL))
 		}

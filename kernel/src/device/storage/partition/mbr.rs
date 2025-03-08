@@ -82,7 +82,7 @@ impl Clone for MbrTable {
 
 impl Table for MbrTable {
 	fn read(dev: &BlkDev) -> EResult<Option<Self>> {
-		let page = dev.read_frame(0)?;
+		let page = dev.read_frame(0, 0)?;
 		let table = &page.slice::<Self>()[0];
 		if unlikely(table.signature != MBR_SIGNATURE) {
 			return Ok(None);

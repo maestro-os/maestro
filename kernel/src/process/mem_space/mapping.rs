@@ -95,7 +95,7 @@ fn init_page(
 	dst: VirtAddr,
 ) -> AllocResult<RcFrame> {
 	// Allocate destination page
-	let new_page = RcFrame::new(ZONE_USER)?;
+	let new_page = RcFrame::new(0, ZONE_USER)?;
 	let new_physaddr = new_page.phys_addr();
 	// Map destination page to copy buffer
 	vmem_transaction.map(new_physaddr, COPY_BUFFER, 0)?;

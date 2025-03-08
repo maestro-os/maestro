@@ -16,12 +16,18 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
+//! The page cache allows to avoid unnecessary disk I/O by using all the available memory on the
+//! system to cache the content of the disk.
+
 use crate::{
 	device::BlockDeviceOps,
-	memory::{buddy::ZONE_KERNEL, RcFrame},
+	memory::{
+		buddy::{FrameOrder, ZONE_KERNEL},
+		RcFrame,
+	},
 	sync::mutex::Mutex,
 };
-use utils::{collections::btreemap::BTreeMap, errno::EResult, math::pow2, range_cmp};
+use utils::{collections::btreemap::BTreeMap, errno::EResult, range_cmp};
 
 /// A page cache
 #[derive(Debug, Default)]
@@ -37,17 +43,23 @@ impl PageCache {
 	/// inserts it in the cache.
 	///
 	/// If the page is not in cache, the function returns `None`.
-	pub fn get_or_insert(&self, off: u64, ops: &dyn BlockDeviceOps) -> EResult<RcFrame> {
+	pub fn get_or_insert(
+		&self,
+		off: u64,
+		order: FrameOrder,
+		ops: &dyn BlockDeviceOps,
+	) -> EResult<RcFrame> {
 		let mut pages = self.pages.lock();
 		// First check cache
-		let page = pages
-			.cmp_get(|_, frame| range_cmp(frame.file_offset(), pow2(frame.order()) as u64, off));
-		if let Some(page) = page {
-			return Ok(page.clone());
+		let frame = pages
+			.cmp_get(|frame_off, frame| range_cmp(*frame_off, frame.pages_count() as u64, off));
+		// TODO: if the order does not match, either cache miss, or return a view over the frame?
+		// (works only if the requested order is smaller)
+		if let Some(frame) = frame {
+			return Ok(frame.clone());
 		}
 		// Cache miss: read and insert
-		let frame = RcFrame::new(0, ZONE_KERNEL, off)?;
-		ops.read_frame(&frame)?;
+		let frame = ops.read_frame(off, order)?;
 		pages.insert(off, frame.clone())?;
 		Ok(frame)
 	}

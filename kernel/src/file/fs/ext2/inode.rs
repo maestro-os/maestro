@@ -341,7 +341,7 @@ impl Ext2INode {
 		let blk_off = bgd.bg_inode_table as u64 + inode_table_blk_off;
 		let blk = read_block(dev, sp, blk_off)?;
 		// Get the entry
-		let off = (i as u64 * inode_size) % blk_size;
+		let off = i as u64 % (blk_size / inode_size);
 		Ok(INodeWrap {
 			guard: node.lock.lock(),
 			inode: RcFrameVal::new(blk, off as _),

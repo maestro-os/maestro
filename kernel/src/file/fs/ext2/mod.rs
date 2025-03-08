@@ -196,7 +196,7 @@ struct Ext2NodeOps;
 impl NodeOps for Ext2NodeOps {
 	fn set_stat(&self, node: &Node, set: &StatSet) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let mut inode_ = Ext2INode::get(node, &fs.sp, &*fs.dev)?;
+		let mut inode_ = Ext2INode::get(node, &fs.sp, &fs.dev)?;
 		if let Some(mode) = set.mode {
 			inode_.set_permissions(mode);
 		}
@@ -255,7 +255,7 @@ impl NodeOps for Ext2NodeOps {
 		'outer: while ctx.off < inode.get_size(&fs.sp) {
 			// Read content block
 			let blk_off = ctx.off / blk_size as u64;
-			let res = inode.translate_blk_off(blk_off as _, &fs.sp, &*fs.dev);
+			let res = inode.translate_blk_off(blk_off as _, &fs.sp, &fs.dev);
 			let blk_off = match res {
 				Ok(Some(o)) => o,
 				// If reaching a zero block, stop
@@ -304,7 +304,7 @@ impl NodeOps for Ext2NodeOps {
 		}
 		let target = ent.node();
 		// Parent inode
-		let mut parent_inode = Ext2INode::get(parent as _, &fs.sp, &*fs.dev)?;
+		let mut parent_inode = Ext2INode::get(parent as _, &fs.sp, &fs.dev)?;
 		// Check the parent file is a directory
 		if parent_inode.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
@@ -417,7 +417,8 @@ impl NodeOps for Ext2NodeOps {
 
 	fn readahead(&self, node: &Node, off: u64) -> EResult<RcFrame> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		node.cache.get_or_insert(off, &*fs.dev.ops)
+		node.cache
+			.get_or_insert(off, || fs.dev.ops.read_frame(off, 0))
 	}
 
 	fn writeback(&self, _node: &Node, _off: u64) -> EResult<()> {
@@ -568,8 +569,8 @@ pub struct Superblock {
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
 	fn read(dev: &BlkDev) -> EResult<RcFrameVal<Self>> {
-		let page = dev.read_frame(0)?;
-		Ok(RcFrameVal::new(page, SUPERBLOCK_OFFSET))
+		let page = dev.read_frame(0, 0)?;
+		Ok(RcFrameVal::new(page, 1))
 	}
 
 	/// Tells whether the superblock is valid.
@@ -817,7 +818,7 @@ impl FilesystemOps for Ext2Fs {
 		// Allocate an inode
 		let inode_index = self
 			.sp
-			.alloc_inode(&*self.dev, file_type == FileType::Directory)?;
+			.alloc_inode(&self.dev, file_type == FileType::Directory)?;
 		// Create inode
 		let mut inode = Ext2INode {
 			i_mode: stat.mode as _,
@@ -914,7 +915,7 @@ impl FilesystemType for Ext2FsType {
 		readonly: bool,
 	) -> EResult<Box<dyn FilesystemOps>> {
 		let dev = dev.ok_or_else(|| errno!(ENODEV))?;
-		let sp = Superblock::read(&*dev)?;
+		let sp = Superblock::read(&dev)?;
 		if unlikely(!sp.is_valid()) {
 			return Err(errno!(EINVAL));
 		}

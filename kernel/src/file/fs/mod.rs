@@ -218,12 +218,10 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(EINVAL))
 	}
 
-	/// Reads a page at `off` in `node`.
+	/// Reads a page at offset `off` in pages, from `node`.
 	///
 	/// First, the function attempts to read the page from the node's page cache. If not present,
 	/// then it is read from disk.
-	///
-	/// Note that `off` is in pages.
 	///
 	/// The default implementation of this function returns an error.
 	fn readahead(&self, node: &Node, off: u64) -> EResult<RcFrame> {
@@ -231,7 +229,8 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(EINVAL))
 	}
 
-	/// If in the page cache, writes the content of the page at `off` in `node` back to storage.
+	/// If in the page cache, writes the content of the page at offset `off` in `node` back to
+	/// storage.
 	///
 	/// The default implementation of this function returns an error.
 	fn writeback(&self, node: &Node, off: u64) -> EResult<()> {

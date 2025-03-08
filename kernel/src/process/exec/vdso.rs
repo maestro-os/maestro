@@ -65,7 +65,7 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 			let off = i * PAGE_SIZE;
 			let len = min(PAGE_SIZE, elf.len() - off);
 			// Alloc page
-			let page = RcFrame::new(ZONE_KERNEL)?;
+			let page = RcFrame::new(0, ZONE_KERNEL)?;
 			let virtaddr = unsafe { &mut *page.virt_addr().as_ptr::<Page>() };
 			// Copy data
 			let src = &elf[off..(off + len)];

@@ -73,6 +73,7 @@ use utils::{
 };
 
 /// Enumeration representing the type of the device.
+#[allow(missing_docs)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum DeviceType {
 	Block,
@@ -177,11 +178,13 @@ pub trait BlockDeviceOps: fmt::Debug {
 
 	/// Reads a frame of data from the device.
 	///
-	/// On success, the function returns the page.
-	fn read_frame(&self, frame: &RcFrame) -> EResult<()>;
+	/// `off` is the offset of the frame on the device, in pages.
+	fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame>;
 
 	/// Writes a frame of data to the device.
-	fn write_frame(&self, frame: &RcFrame) -> EResult<()>;
+	///
+	/// `off` is the offset of the frame on the device, in pages.
+	fn write_frame(&self, off: u64, frame: &RcFrame) -> EResult<()>;
 
 	/// Polls the device with the given mask.
 	fn poll(&self, mask: u32) -> EResult<u32> {
@@ -248,7 +251,8 @@ impl BlkDev {
 	///
 	/// If not in cache, the function reads the frame from the device, then inserts it in cache.
 	pub fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame> {
-		self.cache.get_or_insert(off, &*self.ops)
+		self.cache
+			.get_or_insert(off, || self.ops.read_frame(off, order))
 	}
 }
 
@@ -340,11 +344,10 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = dev.read_frame(page_off)?;
+			let page = dev.read_frame(page_off, 0)?;
 			let inner_off = off as usize % PAGE_SIZE;
-			let slice = unsafe { page.slice() };
 			// TODO ensure this is concurrency-friendly
-			let len = slice_copy(&slice[inner_off..], &mut buf[buf_off..]);
+			let len = slice_copy(&page.slice()[inner_off..], &mut buf[buf_off..]);
 			buf_off += len;
 			off += len as u64;
 		}
@@ -360,9 +363,9 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = dev.read_frame(page_off)?;
+			let page = dev.read_frame(page_off, 0)?;
 			let inner_off = off as usize % PAGE_SIZE;
-			let slice = unsafe { page.slice() };
+			let slice = unsafe { page.slice_mut() };
 			// TODO ensure this is concurrency-friendly
 			let len = slice_copy(&buf[buf_off..], &mut slice[inner_off..]);
 			buf_off += len;
