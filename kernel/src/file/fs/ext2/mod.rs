@@ -86,8 +86,6 @@ use utils::{
 // TODO when accessing an inode, we need to lock the corresponding `Node` structure. This is
 // currently not an issue since everything is locked by the superblock's Mutex but this very slow
 
-/// The offset of the superblock from the beginning of the device.
-const SUPERBLOCK_OFFSET: usize = 1024;
 /// The filesystem's magic number.
 const EXT2_MAGIC: u16 = 0xef53;
 
@@ -921,9 +919,14 @@ impl FilesystemType for Ext2FsType {
 		if unlikely(sp.s_log_block_size < 2) {
 			return Err(errno!(EINVAL));
 		}
-		// Check the filesystem does not require features that are not implemented by
-		// the driver
 		if sp.s_rev_level >= 1 {
+			if unlikely(
+				!sp.s_inode_size.is_power_of_two()
+					|| sp.s_inode_size < 128
+					|| sp.s_inode_size as u32 > sp.get_block_size(),
+			) {
+				return Err(errno!(EINVAL));
+			}
 			let unsupported_required_features = REQUIRED_FEATURE_COMPRESSION
 				| REQUIRED_FEATURE_JOURNAL_REPLAY
 				| REQUIRED_FEATURE_JOURNAL_DEVIXE;

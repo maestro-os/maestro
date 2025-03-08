@@ -340,8 +340,10 @@ impl Ext2INode {
 		// Read the block containing the inode
 		let blk_off = bgd.bg_inode_table as u64 + inode_table_blk_off;
 		let blk = read_block(dev, sp, blk_off)?;
-		// Get the entry
+		// Entry offset
 		let off = i as u64 % (blk_size / inode_size);
+		// Adapt to the size of an inode
+		let off = off * (inode_size / 128);
 		Ok(INodeWrap {
 			guard: node.lock.lock(),
 			inode: RcFrameVal::new(blk, off as _),
@@ -498,16 +500,14 @@ impl Ext2INode {
 		let Some(off) = offsets.first() else {
 			return Ok(true);
 		};
-		let blk_size = sp.get_block_size();
-		let mut buf = vec![0u8; blk_size as _]?;
-		read_block(dev, sp, blk as _)?;
-		let ents = bytes::slice_from_bytes_mut(&mut buf).unwrap();
-		let b = &mut ents[*off];
+		let blk = read_block(dev, sp, blk as _)?;
+		let ents = blk.slice::<AtomicU32>();
+		let b = &ents[*off];
 		// Handle child block and determine whether the entry in the current block should be freed
-		let free = Self::free_content_blk_impl(*b, &offsets[1..], sp, dev)?;
+		let free = Self::free_content_blk_impl(b.load(Relaxed), &offsets[1..], sp, dev)?;
 		if free {
-			let b = mem::take(b);
-			let empty = ents.iter().all(|b| *b == 0);
+			let b = b.swap(0, Relaxed);
+			let empty = ents.iter().all(|b| b.load(Relaxed) == 0);
 			sp.free_block(dev, b)?;
 			Ok(empty)
 		} else {

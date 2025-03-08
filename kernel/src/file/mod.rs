@@ -170,7 +170,7 @@ impl FileType {
 		match mode & 0o770000 {
 			S_IFSOCK => Some(Self::Socket),
 			S_IFLNK => Some(Self::Link),
-			S_IFREG | 0 => Some(Self::Regular),
+			S_IFREG => Some(Self::Regular),
 			S_IFBLK => Some(Self::BlockDevice),
 			S_IFDIR => Some(Self::Directory),
 			S_IFCHR => Some(Self::CharDevice),

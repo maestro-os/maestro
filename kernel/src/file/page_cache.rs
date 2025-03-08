@@ -24,7 +24,7 @@ use crate::{
 	memory::{buddy::FrameOrder, RcFrame},
 	sync::mutex::Mutex,
 };
-use utils::{collections::btreemap::BTreeMap, errno::EResult, range_cmp};
+use utils::{collections::btreemap::BTreeMap, errno::EResult};
 
 /// A page cache
 #[derive(Debug, Default)]
@@ -32,7 +32,7 @@ pub struct PageCache {
 	/// Cached frames
 	///
 	/// The key is the file offset, in pages, to the start of the frame
-	pages: Mutex<BTreeMap<u64, RcFrame>>,
+	frames: Mutex<BTreeMap<u64, RcFrame>>,
 }
 
 impl PageCache {
@@ -46,18 +46,16 @@ impl PageCache {
 		order: FrameOrder,
 		ops: &dyn BlockDeviceOps,
 	) -> EResult<RcFrame> {
-		let mut pages = self.pages.lock();
-		// First check cache
-		let frame = pages
-			.cmp_get(|frame_off, frame| range_cmp(*frame_off, frame.pages_count() as u64, off));
-		// TODO: if the order does not match, either cache miss, or return a view over the frame?
-		// (works only if the requested order is smaller)
-		if let Some(frame) = frame {
-			return Ok(frame.clone());
+		let mut frames = self.frames.lock();
+		match frames.get(&off) {
+			// Cache hit
+			Some(frame) if frame.order() == order => Ok(frame.clone()),
+			// Cache miss: read and insert
+			_ => {
+				let frame = ops.read_frame(off, order)?;
+				frames.insert(off, frame.clone())?;
+				Ok(frame)
+			}
 		}
-		// Cache miss: read and insert
-		let frame = ops.read_frame(off, order)?;
-		pages.insert(off, frame.clone())?;
-		Ok(frame)
 	}
 }

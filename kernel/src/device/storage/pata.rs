@@ -370,7 +370,7 @@ impl PATAInterface {
 	///
 	/// Arguments:
 	/// - `off` is the offset of the first sector
-	/// - `count` is the number of sector on which the operation is applied
+	/// - `count` is the number of sectors on which the operation is applied
 	/// - `write` tells whether this is a write operation. If `false`, this is a read operation
 	fn prepare_io(&self, off: u64, count: u16, write: bool) -> u16 {
 		// Tells whether we have to use LBA48
@@ -440,12 +440,13 @@ impl BlockDeviceOps for PATAInterface {
 
 	fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame> {
 		let frame = RcFrame::new(order, ZONE_KERNEL)?;
+		let off = off
+			.checked_mul(SECTOR_PER_PAGE)
+			.ok_or_else(|| errno!(EOVERFLOW))?;
 		let size = frame.pages_count() as u64 * SECTOR_PER_PAGE;
 		// If the offset and size are out of bounds of the disk, return an error
-		let end = off
-			.checked_add(frame.pages_count() as u64)
-			.ok_or_else(|| errno!(EOVERFLOW))?;
-		if end * SECTOR_PER_PAGE > self.sectors_count {
+		let end = off.checked_add(size).ok_or_else(|| errno!(EOVERFLOW))?;
+		if end > self.sectors_count {
 			return Err(errno!(EOVERFLOW));
 		}
 		// Avoid data race
@@ -459,10 +460,12 @@ impl BlockDeviceOps for PATAInterface {
 			let off = off + i;
 			let count = (size - i).min(u16::MAX as u64) as u16;
 			let count = self.prepare_io(off, count, false);
-			for j in 0..count {
+			let start = i as usize;
+			let end = start + count as usize;
+			for j in start..end {
 				self.wait_io()?;
 				for k in 0..256 {
-					let index = j as usize * 256 + k;
+					let index = j * 256 + k;
 					buf[index] = self.inw(PortOffset::Ata(DATA_REGISTER_OFFSET));
 				}
 			}
@@ -472,12 +475,13 @@ impl BlockDeviceOps for PATAInterface {
 	}
 
 	fn write_frame(&self, off: u64, frame: &RcFrame) -> EResult<()> {
+		let off = off
+			.checked_mul(SECTOR_PER_PAGE)
+			.ok_or_else(|| errno!(EOVERFLOW))?;
 		let size = frame.pages_count() as u64 * SECTOR_PER_PAGE;
 		// If the offset and size are out of bounds of the disk, return an error
-		let end = off
-			.checked_add(frame.pages_count() as u64)
-			.ok_or_else(|| errno!(EOVERFLOW))?;
-		if end * SECTOR_PER_PAGE > self.sectors_count {
+		let end = off.checked_add(size).ok_or_else(|| errno!(EOVERFLOW))?;
+		if end > self.sectors_count {
 			return Err(errno!(EOVERFLOW));
 		}
 		// Avoid data race
@@ -490,10 +494,12 @@ impl BlockDeviceOps for PATAInterface {
 			let off = off + i;
 			let count = (size - i).min(u16::MAX as u64) as u16;
 			let count = self.prepare_io(off, count, false);
-			for j in 0..count {
+			let start = i as usize;
+			let end = start + count as usize;
+			for j in start..end {
 				self.wait_io()?;
 				for k in 0..256 {
-					let index = j as usize * 256 + k;
+					let index = j * 256 + k;
 					self.outw(PortOffset::Ata(DATA_REGISTER_OFFSET), buf[index])
 				}
 			}

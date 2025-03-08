@@ -20,11 +20,14 @@
 //! Table which represents a block group, which is a subdivision of the
 //! filesystem.
 
-use super::{read_block, Superblock, SUPERBLOCK_OFFSET};
+use super::{read_block, Superblock};
 use crate::{device::BlkDev, memory::RcFrameVal};
 use core::{mem::size_of, sync::atomic::AtomicU16};
 use macros::AnyRepr;
 use utils::errno::EResult;
+
+/// Start block of the block group descriptor table
+const BGDT_START_BLK: u32 = 1;
 
 /// A block group descriptor.
 #[repr(C)]
@@ -52,8 +55,7 @@ impl BlockGroupDescriptor {
 		let blk_size = sp.get_block_size() as usize;
 		let bgd_per_blk = blk_size / size_of::<Self>();
 		// Read block
-		let bgdt_blk_off = (SUPERBLOCK_OFFSET / blk_size) + 1;
-		let blk_off = bgdt_blk_off as u32 + (i / bgd_per_blk as u32);
+		let blk_off = BGDT_START_BLK + (i / bgd_per_blk as u32);
 		let blk = read_block(dev, sp, blk_off as _)?;
 		// Get entry
 		let off = i as usize % bgd_per_blk;
