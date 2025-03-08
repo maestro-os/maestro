@@ -18,10 +18,12 @@
 
 //! Utility functions for byte representations of types.
 
+#[cfg(target_has_atomic = "64")]
+use core::sync::atomic::AtomicU64;
 use core::{
 	mem::{align_of, size_of, size_of_val},
 	slice,
-	sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize},
+	sync::atomic::{AtomicU16, AtomicU32, AtomicU8, AtomicUsize},
 };
 
 /// Marker trait for a type valid for any bit representation.
