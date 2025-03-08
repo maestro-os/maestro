@@ -21,10 +21,7 @@
 
 use crate::{
 	device::BlockDeviceOps,
-	memory::{
-		buddy::{FrameOrder, ZONE_KERNEL},
-		RcFrame,
-	},
+	memory::{buddy::FrameOrder, RcFrame},
 	sync::mutex::Mutex,
 };
 use utils::{collections::btreemap::BTreeMap, errno::EResult, range_cmp};

@@ -417,8 +417,7 @@ impl NodeOps for Ext2NodeOps {
 
 	fn readahead(&self, node: &Node, off: u64) -> EResult<RcFrame> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		node.cache
-			.get_or_insert(off, || fs.dev.ops.read_frame(off, 0))
+		node.cache.get_or_insert(off, 0, &*fs.dev.ops)
 	}
 
 	fn writeback(&self, _node: &Node, _off: u64) -> EResult<()> {
