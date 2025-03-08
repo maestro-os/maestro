@@ -129,7 +129,7 @@ impl BlockDeviceOps for PartitionOps {
 					heads: h,
 					sectors: s,
 					cylinders: c,
-					start: self.partition.offset,
+					start: self.partition.offset as _,
 				})?;
 				Ok(0)
 			}
