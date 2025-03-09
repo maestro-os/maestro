@@ -248,22 +248,20 @@ fn map_segment(
 	load_base: *mut u8,
 	seg: &ProgramHeader,
 ) -> EResult<Option<*mut u8>> {
-	// Load only loadable segments
 	if seg.p_type != elf::PT_LOAD {
 		return Ok(None);
 	}
 	if unlikely(seg.p_align as usize != PAGE_SIZE) {
 		return Err(errno!(EINVAL));
 	}
-	let page_start = seg.p_vaddr as usize & (PAGE_SIZE - 1);
+	let page_start = seg.p_vaddr as usize & !(PAGE_SIZE - 1);
 	let page_off = seg.p_vaddr as usize % PAGE_SIZE;
 	let addr = load_base.wrapping_add(page_start);
 	let size = seg.p_filesz as usize + page_off;
 	let off = seg.p_offset - page_off as u64;
 	if let Some(pages) = NonZeroUsize::new(size.div_ceil(PAGE_SIZE)) {
-		let addr = VirtAddr::from(addr).down_align_to(PAGE_SIZE);
 		mem_space.map(
-			MapConstraint::Fixed(addr),
+			MapConstraint::Fixed(VirtAddr::from(addr)),
 			pages,
 			seg.mmap_prot(),
 			MAP_PRIVATE,

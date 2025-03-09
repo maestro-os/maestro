@@ -61,8 +61,8 @@ pub type Entry = u32;
 #[cfg(target_arch = "x86_64")]
 pub type Entry = u64;
 
-#[cfg(target_arch = "x86_64")]
 /// **x86 paging flag**: If set, execution of instruction is disabled.
+#[cfg(target_arch = "x86_64")]
 pub const FLAG_XD: Entry = 1 << 63;
 /// **x86 paging flag**: If set, prevents the CPU from updating the associated
 /// addresses when the TLB is flushed.
@@ -86,7 +86,7 @@ pub const FLAG_WRITE: Entry = 0b000000010;
 pub const FLAG_PRESENT: Entry = 0b000000001;
 
 /// Flags mask in a page directory entry.
-pub const FLAGS_MASK: Entry = 0xfff;
+pub const FLAGS_MASK: Entry = ((1u64 << 63) | 0xfff) as Entry;
 /// Address mask in a page directory entry. The address doesn't need every byte
 /// since it must be page-aligned.
 pub const ADDR_MASK: Entry = !FLAGS_MASK;
@@ -123,7 +123,7 @@ const USERSPACE_TABLES: usize = if cfg!(target_arch = "x86") { 768 } else { 256 
 /// The number of tables reserved for the kernelspace.
 const KERNELSPACE_TABLES: usize = ENTRIES_PER_TABLE - USERSPACE_TABLES;
 /// Kernel space entries flags.
-const KERNEL_FLAGS: Entry = FLAG_PRESENT | FLAG_WRITE | FLAG_USER | FLAG_GLOBAL;
+const KERNEL_FLAGS: Entry = FLAG_PRESENT | FLAG_WRITE | FLAG_GLOBAL;
 
 /// Paging table.
 #[repr(C, align(4096))]
@@ -406,6 +406,7 @@ pub unsafe fn map(
 			table[index] = to_entry(physaddr, flags);
 			break;
 		}
+		let flags = flags & !FLAG_XD;
 		// Allocate a table if necessary
 		if previous & FLAG_PRESENT == 0 {
 			// No table is present, allocate one
