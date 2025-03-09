@@ -243,7 +243,8 @@ impl MemMapping {
 			Some(file) => {
 				// Get page from file
 				let node = file.node().unwrap();
-				let file_page = node.node_ops.readahead(node, offset as _)?;
+				let file_page_off = self.off / PAGE_SIZE as u64 + offset as u64;
+				let file_page = node.node_ops.readahead(node, file_page_off)?;
 				let file_physaddr = file_page.phys_addr();
 				if self.flags & MAP_PRIVATE != 0 {
 					let page = init_page(
@@ -277,7 +278,8 @@ impl MemMapping {
 			} else if let Some(file) = &self.file {
 				// cannot fail since a mapped file always has an associated Node
 				let node = file.node().unwrap();
-				let page = node.node_ops.readahead(node, off as _)?;
+				let file_page_off = self.off / PAGE_SIZE as u64 + off as u64;
+				let page = node.node_ops.readahead(node, file_page_off)?;
 				Some(page)
 			} else {
 				None

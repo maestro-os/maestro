@@ -251,7 +251,8 @@ impl BlkDev {
 	///
 	/// If not in cache, the function reads the frame from the device, then inserts it in cache.
 	pub fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame> {
-		self.cache.get_or_insert(off, order, &*self.ops)
+		self.cache
+			.get_or_insert(off, order, || self.ops.read_frame(off, order))
 	}
 }
 

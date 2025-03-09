@@ -371,8 +371,15 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn readahead(&self, node: &Node, off: u64) -> EResult<RcFrame> {
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		node.cache.get_or_insert(off, 0, &*fs.dev.ops)
+		node.cache.get_or_insert(off, 0, || {
+			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+			let inode = Ext2INode::get(node, fs)?;
+			let off: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
+			let blk_off = inode
+				.translate_blk_off(off, fs)?
+				.ok_or_else(|| errno!(EOVERFLOW))?;
+			fs.dev.ops.read_frame(blk_off.get() as _, 0)
+		})
 	}
 
 	fn writeback(&self, _node: &Node, _off: u64) -> EResult<()> {

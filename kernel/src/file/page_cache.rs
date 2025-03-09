@@ -20,7 +20,6 @@
 //! system to cache the content of the disk.
 
 use crate::{
-	device::BlockDeviceOps,
 	memory::{buddy::FrameOrder, RcFrame},
 	sync::mutex::Mutex,
 };
@@ -36,15 +35,13 @@ pub struct PageCache {
 }
 
 impl PageCache {
-	/// Looks for the frame containing the page at the offset `off`, or reads it from `ops`, then
-	/// inserts it in the cache.
-	///
-	/// If the page is not in cache, the function returns `None`.
-	pub fn get_or_insert(
+	/// Looks for a frame in cache at offset `off`, or reads it from `init` and inserts it in the
+	/// cache.
+	pub fn get_or_insert<Init: FnOnce() -> EResult<RcFrame>>(
 		&self,
 		off: u64,
 		order: FrameOrder,
-		ops: &dyn BlockDeviceOps,
+		init: Init,
 	) -> EResult<RcFrame> {
 		let mut frames = self.frames.lock();
 		match frames.get(&off) {
@@ -52,7 +49,7 @@ impl PageCache {
 			Some(frame) if frame.order() == order => Ok(frame.clone()),
 			// Cache miss: read and insert
 			_ => {
-				let frame = ops.read_frame(off, order)?;
+				let frame = init()?;
 				frames.insert(off, frame.clone())?;
 				Ok(frame)
 			}
