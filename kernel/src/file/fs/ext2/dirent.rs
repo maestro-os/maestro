@@ -19,11 +19,17 @@
 //! A directory entry is an entry stored into an inode's content which
 //! represents a subfile in a directory.
 
-use super::Superblock;
-use crate::file::FileType;
-use core::{cmp::min, intrinsics::unlikely, mem::offset_of};
+use super::{read_block, Ext2Fs, Superblock};
+use crate::{
+	file::{fs::ext2::inode::Ext2INode, FileType},
+	memory::RcFrame,
+};
+use core::{cmp::min, intrinsics::unlikely, mem::offset_of, ptr::NonNull};
 use macros::AnyRepr;
-use utils::{errno, errno::EResult};
+use utils::{
+	errno,
+	errno::{EResult, EOVERFLOW},
+};
 
 /// Directory entry type indicator: Unknown
 const TYPE_INDICATOR_UNKNOWN: u8 = 0;
@@ -224,5 +230,94 @@ impl Dirent {
 	/// Tells whether the entry is valid.
 	pub fn is_free(&self) -> bool {
 		self.inode == 0
+	}
+}
+
+/// An iterator over a directory's entries, including free ones.
+///
+/// The iterator returns the entry, along with its offset in the directory.
+pub struct DirentIterator<'a> {
+	/// The filesystem
+	fs: &'a Ext2Fs,
+	/// The directory's inode
+	inode: &'a Ext2INode,
+
+	/// The current block
+	blk: &'a mut Option<RcFrame>,
+	/// The current offset in the directory
+	off: u64,
+}
+
+impl<'a> DirentIterator<'a> {
+	/// Creates a new iterator over `inode`.
+	///
+	/// The iterator needs `blk` to be stored outside the iterator for lifetime reason.
+	///
+	/// `off` is the starting offset
+	pub fn new(
+		fs: &'a Ext2Fs,
+		inode: &'a Ext2INode,
+		blk: &'a mut Option<RcFrame>,
+		off: u64,
+	) -> Self {
+		Self {
+			fs,
+			inode,
+
+			blk,
+			off,
+		}
+	}
+
+	/// Reads the block for the entry at the offset `off`.
+	///
+	/// If reaching the end of the allocated blocks, the function returns `None`.
+	fn get_block(fs: &Ext2Fs, inode: &Ext2INode, off: u64) -> EResult<Option<RcFrame>> {
+		let blk_off = off / fs.sp.get_block_size() as u64;
+		let res = inode.translate_blk_off(blk_off as _, fs);
+		let blk_off = match res {
+			Ok(Some(o)) => o,
+			// If reaching a zero block, stop
+			Ok(None) => return Ok(None),
+			// If reaching the block limit, stop
+			Err(e) if e.as_int() == EOVERFLOW => return Ok(None),
+			Err(e) => return Err(e),
+		};
+		let blk = read_block(fs, blk_off.get() as _)?;
+		Ok(Some(blk))
+	}
+
+	fn next_impl(&mut self) -> EResult<Option<(u64, &'a Dirent)>> {
+		let blk_size = self.fs.sp.get_block_size() as u64;
+		// If at the beginning of the block, read it
+		let inner_off = (self.off % blk_size) as usize;
+		if inner_off == 0 {
+			//*self.blk = Self::get_block(self.fs, self.inode, self.off)?;
+		}
+		// If no block remain, stop
+		let Some(blk) = self.blk.as_mut() else {
+			return Ok(None);
+		};
+		// Safe since the node is locked
+		let blk_slice = unsafe { blk.slice_mut() };
+		// Read entry
+		let ent = Dirent::from_slice(&mut blk_slice[inner_off..], &self.fs.sp)?;
+		let prev_off = self.off;
+		self.off += ent.rec_len as u64;
+		// If on the next block, ensure the offset is at the beginning
+		if (prev_off / blk_size) != (self.off / blk_size) {
+			self.off &= !(blk_size - 1);
+		}
+		// Use a `NonNull` to get the right lifetime
+		let mut ent = NonNull::from(ent);
+		Ok(Some((prev_off, unsafe { ent.as_mut() })))
+	}
+}
+
+impl<'a> Iterator for DirentIterator<'a> {
+	type Item = EResult<(u64, &'a Dirent)>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.next_impl().transpose()
 	}
 }

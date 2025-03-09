@@ -20,8 +20,8 @@
 //! Table which represents a block group, which is a subdivision of the
 //! filesystem.
 
-use super::{read_block, Superblock};
-use crate::{device::BlkDev, memory::RcFrameVal};
+use super::{read_block, Ext2Fs};
+use crate::memory::RcFrameVal;
 use core::{mem::size_of, sync::atomic::AtomicU16};
 use macros::AnyRepr;
 use utils::errno::EResult;
@@ -51,12 +51,12 @@ pub struct BlockGroupDescriptor {
 
 impl BlockGroupDescriptor {
 	/// Returns the `i`th block group descriptor
-	pub fn get(i: u32, sp: &Superblock, dev: &BlkDev) -> EResult<RcFrameVal<Self>> {
-		let blk_size = sp.get_block_size() as usize;
+	pub fn get(i: u32, fs: &Ext2Fs) -> EResult<RcFrameVal<Self>> {
+		let blk_size = fs.sp.get_block_size() as usize;
 		let bgd_per_blk = blk_size / size_of::<Self>();
 		// Read block
 		let blk_off = BGDT_START_BLK + (i / bgd_per_blk as u32);
-		let blk = read_block(dev, sp, blk_off as _)?;
+		let blk = read_block(fs, blk_off as _)?;
 		// Get entry
 		let off = i as usize % bgd_per_blk;
 		Ok(RcFrameVal::new(blk, off))
