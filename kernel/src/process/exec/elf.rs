@@ -249,7 +249,7 @@ fn map_segment(
 	seg: &ProgramHeader,
 ) -> EResult<Option<*mut u8>> {
 	// Load only loadable segments
-	if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
+	if seg.p_type != elf::PT_LOAD {
 		return Ok(None);
 	}
 	if unlikely(seg.p_align as usize != PAGE_SIZE) {
@@ -289,63 +289,46 @@ fn load_elf(
 	mem_space: &mut MemSpace,
 	load_base: *mut u8,
 ) -> EResult<ELFLoadInfo> {
-	// Allocate memory for segments
+	// Map segments
 	let mut load_end = load_base;
 	for seg in elf.iter_segments() {
 		if let Some(end) = map_segment(file, mem_space, load_base, &seg)? {
 			load_end = max(end, load_end);
 		}
 	}
+	// Load phdr
 	let ehdr = elf.hdr();
 	let phentsize = ehdr.e_phentsize as usize;
 	let phnum = ehdr.e_phnum as usize;
-	// The size in bytes of the phdr table
+	// Size of the phdr
 	let phdr_size = phentsize * phnum;
-	let phdr = elf
-		.iter_segments()
-		.find(|seg| seg.p_type == elf::PT_PHDR)
-		.map(|seg| VirtAddr::from(load_base) + seg.p_vaddr as usize);
-	let (phdr, phdr_needs_copy) = match phdr {
-		Some(phdr) => (phdr, false),
-		// No phdr segment. Load it manually
-		None => {
-			let pages = phdr_size.div_ceil(PAGE_SIZE);
-			let Some(pages) = NonZeroUsize::new(pages) else {
-				return Err(errno!(EINVAL));
-			};
-			let phdr = mem_space.map(
-				MapConstraint::None,
-				pages,
-				PROT_READ,
-				MAP_PRIVATE | MAP_ANONYMOUS,
-				None,
-				0,
-			)?;
-			(VirtAddr::from(phdr), true)
-		}
+	let pages = phdr_size.div_ceil(PAGE_SIZE);
+	let Some(pages) = NonZeroUsize::new(pages) else {
+		return Err(errno!(EINVAL));
 	};
-	// Switch to the process's vmem to write onto the virtual memory
+	let phdr = mem_space.map(
+		MapConstraint::None,
+		pages,
+		PROT_READ,
+		MAP_PRIVATE | MAP_ANONYMOUS,
+		None,
+		0,
+	)?;
+	// Copy phdr
 	unsafe {
 		vmem::switch(&mem_space.vmem, move || {
-			// Copy phdr's data if necessary
-			if phdr_needs_copy {
-				let image_phdr = &elf.as_slice()[(ehdr.e_phoff as usize)..];
-				vmem::write_ro(|| {
-					vmem::smap_disable(|| {
-						ptr::copy_nonoverlapping::<u8>(
-							image_phdr.as_ptr(),
-							phdr.as_ptr(),
-							phdr_size,
-						);
-					});
+			let image_phdr = &elf.as_slice()[(ehdr.e_phoff as usize)..];
+			vmem::write_ro(|| {
+				vmem::smap_disable(|| {
+					ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr, phdr_size);
 				});
-			}
+			});
 		});
 	}
 	Ok(ELFLoadInfo {
 		load_end,
 
-		phdr,
+		phdr: VirtAddr::from(phdr),
 		phentsize,
 		phnum,
 

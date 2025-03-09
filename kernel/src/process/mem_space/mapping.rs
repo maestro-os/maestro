@@ -27,6 +27,7 @@ use crate::{
 	file::File,
 	memory::{
 		buddy::ZONE_USER,
+		vmem,
 		vmem::{invalidate_page_current, write_ro, VMem, VMemTransaction},
 		PhysAddr, RcFrame, VirtAddr,
 	},
@@ -104,14 +105,16 @@ fn init_page(
 	unsafe {
 		let src = src.map(|src| &*src.as_ptr::<Page>());
 		let dst = &mut *COPY_BUFFER.as_ptr::<Page>();
-		// Required since the copy buffer is mapped without write permission
-		write_ro(|| {
-			if let Some(src) = src {
-				dst.copy_from_slice(src);
-			} else {
-				dst.fill(0);
-			}
-		});
+		vmem::switch(vmem_transaction.vmem, || {
+			// Required since the copy buffer is mapped without write permission
+			write_ro(|| {
+				if let Some(src) = src {
+					dst.copy_from_slice(src);
+				} else {
+					dst.fill(0);
+				}
+			});
+		})
 	}
 	// Map the page
 	let flags = vmem_flags(prot, false);
@@ -161,6 +164,8 @@ impl MemMapping {
 		off: u64,
 	) -> AllocResult<Self> {
 		debug_assert!(addr.is_aligned_to(PAGE_SIZE));
+		let mut anon_pages = Vec::new();
+		anon_pages.resize(size.get(), None)?;
 		Ok(Self {
 			addr,
 			size,
@@ -170,7 +175,7 @@ impl MemMapping {
 			file,
 			off,
 
-			anon_pages: Vec::new(),
+			anon_pages,
 		})
 	}
 
