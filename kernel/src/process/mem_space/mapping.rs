@@ -23,10 +23,7 @@
 
 use super::gap::MemGap;
 use crate::{
-	arch::x86::{
-		paging,
-		paging::{FLAG_USER, FLAG_WRITE, FLAG_XD},
-	},
+	arch::x86::paging,
 	file::File,
 	memory::{
 		buddy::ZONE_USER,
@@ -67,18 +64,18 @@ fn zeroed_page() -> PhysAddr {
 /// - `prot` is the memory protection
 /// - `cow` tells whether we are pending Copy-On-Write
 fn vmem_flags(prot: u8, cow: bool) -> paging::Entry {
-	let mut flags = FLAG_USER;
+	let mut flags = paging::FLAG_USER;
 	if !cow && prot & PROT_WRITE != 0 {
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		{
-			flags |= FLAG_WRITE;
+			flags |= paging::FLAG_WRITE;
 		}
 	}
 	// Careful, the condition is inverted here. Using == instead of !=
 	if prot & PROT_EXEC == 0 {
 		#[cfg(target_arch = "x86_64")]
 		{
-			flags |= FLAG_XD;
+			flags |= paging::FLAG_XD;
 		}
 	}
 	flags

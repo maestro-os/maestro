@@ -406,6 +406,7 @@ pub unsafe fn map(
 			table[index] = to_entry(physaddr, flags);
 			break;
 		}
+		#[cfg(target_arch = "x86_64")]
 		let flags = flags & !FLAG_XD;
 		// Allocate a table if necessary
 		if previous & FLAG_PRESENT == 0 {
