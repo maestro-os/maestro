@@ -272,13 +272,13 @@ impl NodeOps for Ext2NodeOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
+		// Check the parent file is a directory
+		if parent.get_type() != Some(FileType::Directory) {
+			return Err(errno!(ENOTDIR));
+		}
 		let target = ent.node();
 		// Parent inode
 		let mut parent_inode = Ext2INode::get(parent as _, fs)?;
-		// Check the parent file is a directory
-		if parent_inode.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
 		// Check the entry does not exist
 		if parent_inode.get_dirent(&ent.name, fs)?.is_some() {
 			return Err(errno!(EEXIST));
@@ -772,7 +772,20 @@ impl FilesystemOps for Ext2Fs {
 		// Allocate an inode
 		let inode_index = self.alloc_inode(file_type == FileType::Directory)?;
 		// Create inode
-		let mut inode = Ext2INode {
+		let mut node = Node {
+			inode: inode_index as _,
+			fs,
+
+			stat: Default::default(),
+
+			node_ops: Box::new(Ext2NodeOps)?,
+			file_ops: Box::new(Ext2FileOps)?,
+
+			lock: Default::default(),
+			cache: Default::default(),
+		};
+		let mut inode = Ext2INode::get(&node, self)?;
+		*inode = Ext2INode {
 			i_mode: stat.mode as _,
 			i_uid: stat.uid,
 			i_size: 0,
@@ -804,18 +817,11 @@ impl FilesystemOps for Ext2Fs {
 			}
 			_ => {}
 		}
-		let node = Arc::new(Node {
-			inode: inode_index as _,
-			fs,
-
-			stat: Mutex::new(inode.stat(&self.sp)),
-
-			node_ops: Box::new(Ext2NodeOps)?,
-			file_ops: Box::new(Ext2FileOps)?,
-
-			lock: Default::default(),
-			cache: Default::default(),
-		})?;
+		// Update stat on `node` and return it
+		let stat = inode.stat(&self.sp);
+		drop(inode);
+		node.stat = Mutex::new(stat);
+		let node = Arc::new(node)?;
 		Ok(node)
 	}
 

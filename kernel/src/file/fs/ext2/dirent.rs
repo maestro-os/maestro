@@ -292,7 +292,7 @@ impl<'a> DirentIterator<'a> {
 		// If at the beginning of the block, read it
 		let inner_off = (self.off % blk_size) as usize;
 		if inner_off == 0 {
-			//*self.blk = Self::get_block(self.fs, self.inode, self.off)?;
+			*self.blk = Self::get_block(self.fs, self.inode, self.off)?;
 		}
 		// If no block remain, stop
 		let Some(blk) = self.blk.as_mut() else {
