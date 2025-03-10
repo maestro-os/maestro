@@ -476,7 +476,7 @@ impl<'t, K: Ord, V> VacantEntry<'t, K, V> {
 			None => *self.tree.root.get_mut() = Some(node),
 		}
 		self.tree.len += 1;
-		#[cfg(debug_assertions)]
+		#[cfg(feature = "healthcheck")]
 		self.tree.check();
 		Ok(&mut n.value)
 	}
@@ -821,7 +821,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		let root = self.get_root()?;
 		let node = get_node(root, |k| key.cmp(k.borrow())).ok()?;
 		let (_, value) = self.remove_node(node);
-		#[cfg(debug_assertions)]
+		#[cfg(feature = "healthcheck")]
 		self.check();
 		Some(value)
 	}
@@ -863,7 +863,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// If the tree is invalid, the function makes the kernel panic.
 	///
 	/// This function is available only in debug mode.
-	#[cfg(debug_assertions)]
+	#[cfg(feature = "healthcheck")]
 	pub fn check(&self) {
 		let Some(root) = self.get_root() else {
 			return;
