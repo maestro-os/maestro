@@ -35,7 +35,7 @@ use crate::{
 		mem_space::{MapConstraint, MemSpace, MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE},
 	},
 };
-use core::{cmp::max, intrinsics::unlikely, num::NonZeroUsize, ptr};
+use core::{cmp::max, intrinsics::unlikely, num::NonZeroUsize, ptr, slice};
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
@@ -248,26 +248,28 @@ fn map_segment(
 	load_base: *mut u8,
 	seg: &ProgramHeader,
 ) -> EResult<Option<*mut u8>> {
-	if seg.p_type != elf::PT_LOAD {
-		return Ok(None);
+	if unlikely(seg.p_memsz < seg.p_filesz) {
+		return Err(errno!(EINVAL));
 	}
 	if unlikely(seg.p_align as usize != PAGE_SIZE) {
 		return Err(errno!(EINVAL));
 	}
 	let page_start = seg.p_vaddr as usize & !(PAGE_SIZE - 1);
-	let page_off = seg.p_vaddr as usize % PAGE_SIZE;
+	let page_off = seg.p_vaddr as usize & (PAGE_SIZE - 1);
 	let addr = load_base.wrapping_add(page_start);
-	let size = seg.p_filesz as usize + page_off;
+	let size = seg.p_memsz as usize + page_off;
 	let off = seg.p_offset - page_off as u64;
 	if let Some(pages) = NonZeroUsize::new(size.div_ceil(PAGE_SIZE)) {
+		let addr = VirtAddr::from(addr);
 		mem_space.map(
-			MapConstraint::Fixed(VirtAddr::from(addr)),
+			MapConstraint::Fixed(addr),
 			pages,
 			seg.mmap_prot(),
 			MAP_PRIVATE,
 			Some(file.clone()),
 			off,
 		)?;
+		mem_space.alloc(addr, size)?;
 	}
 	// The pointer to the end of the virtual memory chunk
 	let mem_end = addr.wrapping_add(size);
@@ -287,38 +289,39 @@ fn load_elf(
 	mem_space: &mut MemSpace,
 	load_base: *mut u8,
 ) -> EResult<ELFLoadInfo> {
-	// Map segments
+	let ehdr = elf.hdr();
 	let mut load_end = load_base;
+	let mut phdr_addr = 0;
 	for seg in elf.iter_segments() {
+		if seg.p_type != elf::PT_LOAD {
+			continue;
+		}
 		if let Some(end) = map_segment(file, mem_space, load_base, &seg)? {
 			load_end = max(end, load_end);
 		}
+		// If the segment contains the phdr, keep its address
+		if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
+			phdr_addr = (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
+		}
 	}
-	// Load phdr
-	let ehdr = elf.hdr();
-	let phentsize = ehdr.e_phentsize as usize;
-	let phnum = ehdr.e_phnum as usize;
-	// Size of the phdr
-	let phdr_size = phentsize * phnum;
-	let pages = phdr_size.div_ceil(PAGE_SIZE);
-	let Some(pages) = NonZeroUsize::new(pages) else {
-		return Err(errno!(EINVAL));
-	};
-	let phdr = mem_space.map(
-		MapConstraint::None,
-		pages,
-		PROT_READ,
-		MAP_PRIVATE | MAP_ANONYMOUS,
-		None,
-		0,
-	)?;
-	// Copy phdr
+	phdr_addr += load_base as usize;
+	// Zero the end of segments when needed
 	unsafe {
 		vmem::switch(&mem_space.vmem, move || {
-			let image_phdr = &elf.as_slice()[(ehdr.e_phoff as usize)..];
 			vmem::write_ro(|| {
 				vmem::smap_disable(|| {
-					ptr::copy_nonoverlapping::<u8>(image_phdr.as_ptr(), phdr, phdr_size);
+					for seg in elf.iter_segments() {
+						if seg.p_type != elf::PT_LOAD {
+							continue;
+						}
+						if let Some(len) = seg.p_memsz.checked_sub(seg.p_filesz) {
+							let begin =
+								ptr::with_exposed_provenance_mut::<u8>(seg.p_vaddr as usize)
+									.add(seg.p_filesz as usize);
+							let slice = slice::from_raw_parts_mut(begin, len as usize);
+							slice.fill(0);
+						}
+					}
 				});
 			});
 		});
@@ -326,9 +329,9 @@ fn load_elf(
 	Ok(ELFLoadInfo {
 		load_end,
 
-		phdr: VirtAddr::from(phdr),
-		phentsize,
-		phnum,
+		phdr: VirtAddr(phdr_addr),
+		phentsize: ehdr.e_phentsize as _,
+		phnum: ehdr.e_phnum as _,
 
 		entry_point: VirtAddr::from(load_base) + elf.hdr().e_entry as usize,
 	})
