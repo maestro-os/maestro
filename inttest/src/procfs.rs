@@ -19,30 +19,10 @@
 //! procfs filesystem testing.
 
 use crate::{
-	log, test_assert_eq, util,
+	test_assert_eq,
 	util::{TestError, TestResult},
 };
-use std::{
-	collections::HashMap, env, env::current_dir, ffi::CString, fs, os::unix::ffi::OsStrExt,
-	ptr::null,
-};
-
-pub fn mount() -> TestResult {
-	log!("Create directory");
-	fs::create_dir_all("/proc")?;
-	log!("Mount");
-	let src = CString::new("procfs")?;
-	let target = CString::new("/proc")?;
-	let fstype = CString::new("procfs")?;
-	util::mount(
-		src.as_c_str(),
-		target.as_c_str(),
-		fstype.as_c_str(),
-		0,
-		null(),
-	)?;
-	Ok(())
-}
+use std::{collections::HashMap, env, env::current_dir, fs, os::unix::ffi::OsStrExt};
 
 pub fn cwd() -> TestResult {
 	let cwd = fs::read_link("/proc/self/cwd")?;
@@ -50,12 +30,11 @@ pub fn cwd() -> TestResult {
 	Ok(())
 }
 
-// TODO: not yet implemented
-/*pub fn exe() -> TestResult {
+pub fn exe() -> TestResult {
 	let exe = fs::read_link("/proc/self/exe")?;
 	test_assert_eq!(exe.as_os_str().as_bytes(), b"/maestro-test");
 	Ok(())
-}*/
+}
 
 pub fn cmdline() -> TestResult {
 	let args0 = fs::read("/proc/self/cmdline")?;

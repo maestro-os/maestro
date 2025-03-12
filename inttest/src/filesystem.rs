@@ -31,14 +31,14 @@ use std::{
 	path::Path,
 };
 
-pub fn basic() -> TestResult {
+pub fn basic(root: &Path) -> TestResult {
 	log!("File creation");
-	let path = Path::new("test");
+	let path = root.join("test");
 	let mut file = OpenOptions::new()
 		.create_new(true)
 		.read(true)
 		.write(true)
-		.open(path)?;
+		.open(&path)?;
 
 	log!("File write");
 	let len = file.write(b"hello world!")?;
@@ -78,9 +78,9 @@ pub fn basic() -> TestResult {
 
 	log!("File remove");
 	test_assert!(path.exists());
-	fs::remove_file(path)?;
+	fs::remove_file(&path)?;
 	test_assert!(!path.exists());
-	test_assert!(matches!(fs::remove_file(path), Err(e) if e.kind() == io::ErrorKind::NotFound));
+	test_assert!(matches!(fs::remove_file(&path), Err(e) if e.kind() == io::ErrorKind::NotFound));
 
 	log!("File use after remove");
 	let off = file.seek(SeekFrom::End(0))?;
@@ -97,32 +97,32 @@ pub fn basic() -> TestResult {
 
 // TODO O_APPEND
 
-pub fn directories() -> TestResult {
+pub fn directories(root: &Path) -> TestResult {
 	log!("Create directory at non-existent location (invalid)");
-	let res = fs::create_dir("/abc/def");
+	let path = root.join("abc/def");
+	let res = fs::create_dir(&path);
 	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::NotFound));
 
 	log!("Create directories");
-	fs::create_dir_all("/abc/def/ghi")?;
-	log!("Stat `/abc`");
-	let stat = util::stat("/abc")?;
-	test_assert_eq!(stat.st_nlink, 3);
-	log!("Stat `/abc/def`");
-	let stat = util::stat("/abc/def")?;
-	test_assert_eq!(stat.st_nlink, 3);
-	log!("Stat `/abc/def/ghi`");
-	let stat = util::stat("/abc/def/ghi")?;
-	test_assert_eq!(stat.st_nlink, 2);
-	test_assert_eq!(stat.st_mode & 0o7777, 0o755);
+	fs::create_dir_all(root.join("abc/def/ghi"))?;
+	let mut path = root.to_path_buf();
+	for (dir, links) in [("abc", 3), ("def", 3), ("ghi", 2)] {
+		path = path.join(dir);
+		log!("Stat `{}`", path.display());
+		let stat = util::stat(&path)?;
+		test_assert_eq!(stat.st_mode & 0o7777, 0o755);
+		test_assert_eq!(stat.st_nlink, links);
+	}
 	log!("Cleanup");
-	fs::remove_dir_all("/abc/def")?;
+	fs::remove_dir_all(root.join("abc/def/ghi"))?;
 
 	log!("Create entries");
 	for i in 0..100 {
-		fs::create_dir(format!("/abc/{i}"))?;
+		fs::create_dir(root.join(format!("abc/{i}")))?;
 	}
 	log!("List entries");
-	let mut entries = fs::read_dir("/abc")?
+	let path = root.join("abc");
+	let mut entries = fs::read_dir(&path)?
 		.map(|ent| {
 			let ent = ent?;
 			test_assert!(ent.file_type()?.is_dir());
@@ -139,169 +139,182 @@ pub fn directories() -> TestResult {
 	}
 
 	log!("Remove non-empty directory (invalid)");
-	let res = fs::remove_dir("/abc");
+	let res = fs::remove_dir(&path);
 	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::DirectoryNotEmpty));
 
 	log!("Cleanup");
-	fs::remove_dir_all("/abc")?;
+	fs::remove_dir_all(path)?;
 	Ok(())
 }
 
-pub fn dir_perms() -> TestResult {
-	fs::create_dir_all("/foo/bar")?;
-	util::chown("/foo", 1000, 1000)?;
-	util::chown("/foo/bar", 1000, 1000)?;
+pub fn dir_perms(root: &Path) -> TestResult {
+	let dir_foo = root.join("foo");
+	let dir_bar = dir_foo.join("bar");
+	let dir_no_perm = dir_foo.join("no_perm");
+	fs::create_dir_all(&dir_bar)?;
+	util::chown(&dir_foo, 1000, 1000)?;
+	util::chown(&dir_bar, 1000, 1000)?;
 
 	unprivileged(|| {
 		log!("No permission");
-		util::chmod("/foo", 0o000)?;
-		util::stat("/foo")?;
-		let res = util::stat("/foo/bar");
+		util::chmod(&dir_foo, 0o000)?;
+		util::stat(&dir_foo)?;
+		let res = util::stat(&dir_bar);
 		test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
-		let res = fs::read_dir("/foo");
+		let res = fs::read_dir(&dir_foo);
 		test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
 
 		log!("Entries list and write without search permissions");
 		for mode in [0o444, 0o666] {
-			util::chmod("/foo", mode)?;
-			let res = util::stat("/foo/bar");
+			util::chmod(&dir_foo, mode)?;
+			let res = util::stat(&dir_bar);
 			test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
-			fs::read_dir("/foo")?;
-			let res = fs::create_dir("/foo/no_perm");
+			fs::read_dir(&dir_foo)?;
+			let res = fs::create_dir(&dir_no_perm);
 			test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
 		}
 
 		log!("Search permissions");
-		util::chmod("/foo", 0o555)?;
-		fs::read_dir("/foo")?;
-		let res = fs::create_dir("/foo/no_perm");
+		util::chmod(&dir_foo, 0o555)?;
+		fs::read_dir(&dir_foo)?;
+		let res = fs::create_dir(&dir_no_perm);
 		test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
 
 		Ok(())
 	})??;
 
 	log!("Cleanup");
-	fs::remove_dir_all("/foo")?;
+	fs::remove_dir_all(&dir_foo)?;
 	Ok(())
 }
 
-pub fn hardlinks() -> TestResult {
+pub fn hardlinks(root: &Path) -> TestResult {
+	let test_dir = root.join("test_dir");
+	let file = root.join("file");
+	let link = root.join("link");
+
 	log!("Create link to directory (invalid)");
-	fs::create_dir("test_dir")?;
-	let res = fs::hard_link("test_dir", "bad_link");
+	fs::create_dir(&test_dir)?;
+	let res = fs::hard_link(&test_dir, &link);
 	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::PermissionDenied));
 	// Check the link has not been created
-	let res = fs::remove_dir("bad_link");
+	let res = fs::remove_dir(&link);
 	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::NotFound));
 	log!("Cleanup");
-	fs::remove_dir("test_dir")?;
+	fs::remove_dir(&test_dir)?;
 
 	log!("Create link to file");
-	fs::hard_link("inttest", "good_link")?;
+	fs::write(&file, b"abc")?;
+	fs::hard_link(&file, &link)?;
 	log!("Stat original");
-	let inode0 = util::stat("inttest")?.st_ino;
+	let inode0 = util::stat(&file)?.st_ino;
 	log!("Stat link");
-	let inode1 = util::stat("good_link")?.st_ino;
+	let inode1 = util::stat(&link)?.st_ino;
 	test_assert_eq!(inode0, inode1);
 	log!("Remove link to file");
-	fs::remove_file("good_link")?;
-	util::stat("inttest")?;
-	let res = util::stat("good_link");
+	fs::remove_file(&link)?;
+	util::stat(&file)?;
+	let res = util::stat(&link);
 	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::NotFound));
+	log!("Cleanup");
+	fs::remove_file(&file)?;
 
-	log!("Create link to file that don't exist (invalid)");
-	let res = fs::hard_link("not_found", "link");
+	log!("Create link to file that does not exist (invalid)");
+	let res = fs::hard_link(&file, &link);
 	test_assert!(matches!(res, Err(e) if e.kind() == io::ErrorKind::NotFound));
 
 	Ok(())
 }
 
-pub fn symlinks() -> TestResult {
+pub fn symlinks(root: &Path) -> TestResult {
+	let target = root.join("target");
+	let link = root.join("link");
+	let link_slash = root.join("link/");
+
 	log!("Create link");
-	unix::fs::symlink("inttest", "testlink")?;
+	fs::write(&target, b"abc")?;
+	unix::fs::symlink(&target, &link)?;
 	log!("Cleanup");
-	fs::remove_file("testlink")?;
+	fs::remove_file(&target)?;
+	fs::remove_file(&link)?;
 
 	log!("Create directory");
-	fs::create_dir("target")?;
+	fs::create_dir(&target)?;
 	log!("Create link to directory");
-	unix::fs::symlink("target", "link")?;
+	unix::fs::symlink(&target, &link)?;
 	log!("Stat link");
-	test_assert!(fs::symlink_metadata("link")?.is_symlink());
-	// FIXME: path resolution
-	/*log!("Stat directory");
-	test_assert!(fs::symlink_metadata("link/")?.is_dir());*/
+	test_assert!(fs::symlink_metadata(&link)?.is_symlink());
+	log!("Stat directory");
+	test_assert!(fs::symlink_metadata(&link_slash)?.is_dir());
 
 	log!("Make dangling");
-	fs::remove_dir("target")?;
+	fs::remove_dir(&target)?;
 	log!("Stat link");
-	test_assert!(fs::symlink_metadata("link")?.is_symlink());
-	// FIXME: path resolution
-	/*log!("Stat directory");
+	test_assert!(fs::symlink_metadata(&link)?.is_symlink());
+	log!("Stat directory");
 	test_assert!(
-		matches!(fs::symlink_metadata("link/"), Err(e) if e.kind() == io::ErrorKind::NotFound)
-	);*/
+		matches!(fs::symlink_metadata(&link_slash), Err(e) if e.kind() == io::ErrorKind::NotFound)
+	);
 	log!("Cleanup");
-	fs::remove_file("link")?;
+	fs::remove_file(&link)?;
 
 	Ok(())
 }
 
-pub fn rename() -> TestResult {
+pub fn rename(root: &Path) -> TestResult {
+	let old = root.join("old");
+	let new = root.join("new");
+
 	log!("Create file");
-	{
-		let mut file = OpenOptions::new()
-			.create_new(true)
-			.read(true)
-			.write(true)
-			.open("old")?;
-		file.write_all(b"abcdef")?;
-	}
+	fs::write(&old, b"abcdef")?;
 
 	log!("Rename");
-	fs::rename("old", "new")?;
+	fs::rename(&old, &new)?;
 	log!("Stat old file");
-	test_assert!(matches!(fs::metadata("old"), Err(e) if e.kind() == io::ErrorKind::NotFound));
+	test_assert!(matches!(fs::metadata(&old), Err(e) if e.kind() == io::ErrorKind::NotFound));
 	log!("Stat new file");
-	let metadata = fs::metadata("new")?;
+	let metadata = fs::metadata(&new)?;
 	test_assert!(metadata.is_file());
 	test_assert_eq!(metadata.len(), 6);
 	test_assert_eq!(metadata.nlink(), 1);
 	log!("Read new file");
-	test_assert_eq!(fs::read("new")?, b"abcdef");
+	test_assert_eq!(fs::read(&new)?, b"abcdef");
 	log!("Cleanup");
-	fs::remove_file("new")?;
+	fs::remove_file(&new)?;
 
 	// FIXME: moving a directory is broken
-	/*log!("Create directories");
-	fs::create_dir_all("old/foo/bar")?;
+	log!("Create directories");
+	fs::create_dir_all(old.join("foo/bar"))?;
 	log!("Rename");
-	fs::rename("old", "new")?;
+	fs::rename(&old, &new)?;
 	log!("Stat old directory");
-	test_assert!(matches!(fs::metadata("old"), Err(e) if e.kind() == io::ErrorKind::NotFound));
+	test_assert!(matches!(fs::metadata(&old), Err(e) if e.kind() == io::ErrorKind::NotFound));
 	log!("Stat new directories");
-	for (path, links) in [("new", 3), ("foo", 3), ("bar", 2)] {
-		let metadata = fs::metadata(path)?;
+	let mut path = root.to_path_buf();
+	for (dir, links) in [("new", 3), ("foo", 3), ("bar", 2)] {
+		path = path.join(dir);
+		let metadata = fs::metadata(&path)?;
 		test_assert!(metadata.is_dir());
 		test_assert_eq!(metadata.nlink(), links);
 	}
 	log!("Cleanup");
-	fs::remove_dir_all("new")?;
-	test_assert!(matches!(fs::metadata("new"), Err(e) if e.kind() == io::ErrorKind::NotFound));*/
+	fs::remove_dir_all(&new)?;
+	test_assert!(matches!(fs::metadata(&new), Err(e) if e.kind() == io::ErrorKind::NotFound));
 
 	// TODO test moving across mountpoints
 
 	Ok(())
 }
 
-pub fn fifo() -> TestResult {
+pub fn fifo(root: &Path) -> TestResult {
 	log!("Create fifo");
-	util::mkfifo("fifo", 0o666)?;
-	// TODO test read/write (need another thread/process)
-	log!("Cleanup");
-	fs::remove_file("fifo")?;
+	let path = root.join("fifo");
+	util::mkfifo(&path, 0o666)?;
 
-	// TODO test on tmpfs
+	// TODO test read/write (need another thread/process)
+
+	log!("Cleanup");
+	fs::remove_file(path)?;
 
 	Ok(())
 }

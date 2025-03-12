@@ -155,6 +155,15 @@ pub fn mount(
 	}
 }
 
+pub fn umount(src: &CStr) -> io::Result<()> {
+	let res = unsafe { libc::umount(src.as_ptr()) };
+	if res >= 0 {
+		Ok(())
+	} else {
+		Err(io::Error::last_os_error())
+	}
+}
+
 pub fn seteuid(uid: uid_t) -> io::Result<()> {
 	let res = unsafe { libc::seteuid(uid) };
 	if res >= 0 {
