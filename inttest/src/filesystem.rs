@@ -127,7 +127,7 @@ pub fn mmap(root: &Path) -> TestResult {
 	log!("Write to file");
 	file.seek(SeekFrom::Start(0))?;
 	let content: Vec<u8> = (0..8192).map(|_| 2).collect();
-	file.write(&content)?;
+	file.write_all(&content)?;
 
 	log!("Remove file");
 	fs::remove_file(&path)?;
