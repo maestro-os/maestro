@@ -301,10 +301,9 @@ fn load_elf(
 		}
 		// If the segment contains the phdr, keep its address
 		if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
-			phdr_addr = (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
+			phdr_addr = load_base as usize + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
 		}
 	}
-	phdr_addr += load_base as usize;
 	// Zero the end of segments when needed
 	unsafe {
 		vmem::switch(&mem_space.vmem, move || {
@@ -316,8 +315,7 @@ fn load_elf(
 						}
 						if let Some(len) = seg.p_memsz.checked_sub(seg.p_filesz) {
 							let begin =
-								ptr::with_exposed_provenance_mut::<u8>(seg.p_vaddr as usize)
-									.add(seg.p_filesz as usize);
+								load_base.add(seg.p_vaddr as usize + seg.p_filesz as usize);
 							let slice = slice::from_raw_parts_mut(begin, len as usize);
 							slice.fill(0);
 						}
