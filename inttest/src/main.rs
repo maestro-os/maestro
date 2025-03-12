@@ -60,7 +60,12 @@ macro_rules! fs_suite {
 					desc: "Create, remove and modify the properties of a single file",
 					start: || filesystem::basic(Path::new($root)),
 				},
-				// TODO mmap/munmap
+				Test {
+					name: "mmap",
+					desc: "Map a file",
+					start: || filesystem::mmap(Path::new($root)),
+				},
+				// TODO private mapped file
 				// TODO umask
 				Test {
 					name: "directories",
@@ -123,9 +128,10 @@ const TESTS: &[TestSuite] = &[
 			// TODO other filesystem types
 		],
 	},
+	// TODO fork/clone (threads)
+	// TODO anonymous map (both shared and private)
 	fs_suite!("/"),
 	fs_suite!("/tmp"),
-	// TODO fork/clone (threads)
 	TestSuite {
 		name: "signal",
 		desc: "Test signals",

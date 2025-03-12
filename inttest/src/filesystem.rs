@@ -22,6 +22,7 @@ use crate::{
 	log, test_assert, test_assert_eq, util,
 	util::{unprivileged, TestError, TestResult},
 };
+use memmap2::MmapOptions;
 use std::{
 	fs,
 	fs::OpenOptions,
@@ -96,6 +97,47 @@ pub fn basic(root: &Path) -> TestResult {
 }
 
 // TODO O_APPEND
+
+pub fn mmap(root: &Path) -> TestResult {
+	log!("Create file");
+	let path = root.join("file");
+	let mut file = OpenOptions::new()
+		.create(true)
+		.truncate(true)
+		.read(true)
+		.write(true)
+		.open(&path)?;
+
+	log!("Map a page");
+	let mut mmap = unsafe { MmapOptions::new().offset(4096).len(4096).map_mut(&file)? };
+	test_assert!(mmap.iter().all(|b| *b == 0));
+
+	log!("Write on page");
+	mmap.fill(1);
+
+	log!("Read from file");
+	let content = fs::read(&path)?;
+	test_assert_eq!(content.len(), 8192);
+	test_assert!(content.iter().enumerate().all(|(i, b)| if i < 4096 {
+		*b == 0
+	} else {
+		*b == 1
+	}));
+
+	log!("Write to file");
+	file.seek(SeekFrom::Start(0))?;
+	let content: Vec<u8> = (0..8192).map(|_| 2).collect();
+	file.write(&content)?;
+
+	log!("Remove file");
+	fs::remove_file(&path)?;
+	test_assert!(!path.exists());
+
+	log!("Check the file's content is still mapped");
+	test_assert!(mmap.iter().all(|b| *b == 2));
+
+	Ok(())
+}
 
 pub fn directories(root: &Path) -> TestResult {
 	log!("Create directory at non-existent location (invalid)");
