@@ -27,6 +27,7 @@ use crate::{
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 };
+use core::ffi::c_int;
 use utils::{
 	collections::path::PathBuf,
 	errno,
@@ -34,6 +35,14 @@ use utils::{
 };
 
 pub fn umount(Args(target): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
+	umount2(Args((target, 0)), rs)
+}
+
+pub fn umount2(
+	Args((target, _flags)): Args<(SyscallString, c_int)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	// TODO handle flags
 	// Check permission
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));

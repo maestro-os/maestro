@@ -285,7 +285,7 @@ use timer_settime::timer_settime;
 use tkill::tkill;
 use truncate::truncate;
 use umask::umask;
-use umount::umount;
+use umount::{umount, umount2};
 use uname::uname;
 use unlink::unlink;
 use unlinkat::unlinkat;
@@ -580,7 +580,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x031 => syscall!(geteuid, frame),
 		0x032 => syscall!(getegid, frame),
 		// TODO 0x033 => syscall!(acct, frame),
-		// TODO 0x034 => syscall!(umount2, frame),
+		0x034 => syscall!(umount2, frame),
 		// TODO 0x035 => syscall!(lock, frame),
 		0x036 => syscall!(ioctl, frame),
 		0x037 => syscall!(fcntl, frame),
@@ -1140,7 +1140,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x0a3 => syscall!(acct, frame),
 		// TODO 0x0a4 => syscall!(settimeofday, frame),
 		0x0a5 => syscall!(mount, frame),
-		// TODO 0x0a6 => syscall!(umount2, frame),
+		0x0a6 => syscall!(umount2, frame),
 		// TODO 0x0a7 => syscall!(swapon, frame),
 		// TODO 0x0a8 => syscall!(swapoff, frame),
 		0x0a9 => syscall!(reboot, frame),

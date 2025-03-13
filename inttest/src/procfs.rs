@@ -32,7 +32,7 @@ pub fn cwd() -> TestResult {
 
 pub fn exe() -> TestResult {
 	let exe = fs::read_link("/proc/self/exe")?;
-	test_assert_eq!(exe.as_os_str().as_bytes(), b"/maestro-test");
+	test_assert_eq!(exe.as_os_str().as_bytes(), b"/inttest");
 	Ok(())
 }
 

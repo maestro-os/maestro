@@ -245,19 +245,21 @@ impl NodeOps for TmpFSNode {
 
 	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<TmpFS>(&*dir.fs.ops);
-		let inner = self.0.lock();
-		let NodeContent::Directory(entries) = &inner.content else {
-			return Err(errno!(ENOTDIR));
+		let inode = {
+			let inner = self.0.lock();
+			let NodeContent::Directory(entries) = &inner.content else {
+				return Err(errno!(ENOTDIR));
+			};
+			entries
+				.binary_search_by(|ent| ent.name.as_ref().cmp(&ent.name))
+				.ok()
 		};
-		ent.node = entries
-			.binary_search_by(|ent| ent.name.as_ref().cmp(&ent.name))
-			.ok()
+		ent.node = inode
 			.map(|inode| -> EResult<_> {
-				let ent = &entries[inode];
-				let node = fs.nodes.lock().get_node(ent.inode)?.clone();
+				let node = fs.nodes.lock().get_node(inode as _)?.clone();
 				let stat = node.0.lock().as_stat();
 				let node = Arc::new(Node {
-					inode: ent.inode as _,
+					inode: inode as _,
 					fs: dir.fs.clone(),
 
 					stat: Mutex::new(stat),
