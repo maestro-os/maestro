@@ -25,10 +25,15 @@ use crate::{
 	limits, DisplayableStr, TryClone,
 };
 use core::{
-	alloc::AllocError, borrow::Borrow, fmt, fmt::Formatter, hash::Hash, intrinsics::likely,
-	iter::FusedIterator, ops::Deref,
+	alloc::AllocError,
+	borrow::Borrow,
+	fmt,
+	fmt::Formatter,
+	hash::Hash,
+	intrinsics::{likely, unlikely},
+	iter::FusedIterator,
+	ops::Deref,
 };
-use std::intrinsics::unlikely;
 
 /// The character used as a path separator.
 pub const PATH_SEPARATOR: u8 = b'/';
