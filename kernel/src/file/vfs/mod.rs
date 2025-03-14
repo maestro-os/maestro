@@ -544,6 +544,7 @@ pub fn create_file(
 	if !ap.can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
+	stat.nlink = 0;
 	stat.uid = ap.euid;
 	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the
@@ -703,6 +704,7 @@ pub fn symlink(
 		return Err(errno!(EACCES));
 	}
 	stat.mode = FileType::Link.to_mode() | 0o777;
+	stat.nlink = 0;
 	stat.uid = ap.euid;
 	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
 		// If SGID is set, the newly created file shall inherit the group ID of the

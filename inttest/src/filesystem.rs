@@ -156,7 +156,7 @@ pub fn directories(root: &Path) -> TestResult {
 		test_assert_eq!(stat.st_nlink, links);
 	}
 	log!("Cleanup");
-	fs::remove_dir_all(root.join("abc/def/ghi"))?;
+	fs::remove_dir_all(root.join("abc/def"))?;
 
 	log!("Create entries");
 	for i in 0..100 {

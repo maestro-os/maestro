@@ -119,16 +119,18 @@ impl NodeOps for NodeContent {
 		if parent_entries.get(ent.name.as_ref()).is_some() {
 			return Err(errno!(EEXIST));
 		}
-		// Insert entry
-		let node = ent.node();
-		parent_entries.insert(Cow::Owned(ent.name.try_clone()?), node.clone())?;
 		// If this is a directory, create `.` and `..`
+		let node = ent.node();
 		let content = NodeContent::from_ops(&*node.node_ops);
 		if let NodeContent::Directory(ents) = content {
 			let mut ents = ents.lock();
 			ents.insert(Cow::Borrowed(b"."), node.clone())?;
 			ents.insert(Cow::Borrowed(b".."), parent.clone())?;
+			// Update links count
+			node.stat.lock().nlink += 1;
+			parent.stat.lock().nlink += 1;
 		}
+		parent_entries.insert(Cow::Owned(ent.name.try_clone()?), node.clone())?;
 		node.stat.lock().nlink += 1;
 		Ok(())
 	}
@@ -160,8 +162,8 @@ impl NodeOps for NodeContent {
 			}
 			// Remove `.` and `..` to break cycles
 			ents.clear();
-			// Decrement the number of hard links to the parent (because of the entry `..` in the
-			// removed node)
+			// Decrement references count
+			node.stat.lock().nlink -= 1;
 			parent.stat.lock().nlink -= 1;
 		}
 		// Remove
