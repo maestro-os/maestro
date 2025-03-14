@@ -652,7 +652,7 @@ impl Ext2INode {
 		// TODO If the hash index is enabled, use it
 		// Linear lookup
 		let mut blk = None;
-		for ent in DirentIterator::new(fs, self, &mut blk, 0) {
+		for ent in DirentIterator::new(fs, self, &mut blk, 0)? {
 			let (off, ent) = ent?;
 			if !ent.is_free() && ent.get_name(&fs.sp) == name {
 				return Ok(Some((ent.inode, off)));
@@ -664,7 +664,7 @@ impl Ext2INode {
 	/// Tells whether the current directory is empty.
 	pub fn is_directory_empty(&self, fs: &Ext2Fs) -> EResult<bool> {
 		let mut blk = None;
-		for ent in DirentIterator::new(fs, self, &mut blk, 0) {
+		for ent in DirentIterator::new(fs, self, &mut blk, 0)? {
 			let (_, ent) = ent?;
 			if !ent.is_free() {
 				let name = ent.get_name(&fs.sp);
@@ -688,7 +688,7 @@ impl Ext2INode {
 		let blk_size = fs.sp.get_block_size() as u64;
 		let mut free_length = 0;
 		let mut blk = None;
-		for ent in DirentIterator::new(fs, self, &mut blk, 0) {
+		for ent in DirentIterator::new(fs, self, &mut blk, 0)? {
 			let (off, ent) = ent?;
 			// If the entry is used, reset counter
 			if !ent.is_free() {

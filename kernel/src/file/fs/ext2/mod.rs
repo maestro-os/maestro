@@ -251,18 +251,17 @@ impl NodeOps for Ext2NodeOps {
 		}
 		// Iterate on entries
 		let mut blk = None;
-		for ent in DirentIterator::new(fs, &inode, &mut blk, ctx.off) {
+		for ent in DirentIterator::new(fs, &inode, &mut blk, ctx.off)? {
 			let (off, ent) = ent?;
-			if ent.is_free() {
-				continue;
-			}
-			let e = DirEntry {
-				inode: ent.inode as _,
-				entry_type: ent.get_type(&fs.sp),
-				name: ent.get_name(&fs.sp),
-			};
-			if !(ctx.write)(&e)? {
-				break;
+			if !ent.is_free() {
+				let e = DirEntry {
+					inode: ent.inode as _,
+					entry_type: ent.get_type(&fs.sp),
+					name: ent.get_name(&fs.sp),
+				};
+				if !(ctx.write)(&e)? {
+					break;
+				}
 			}
 			ctx.off = off + ent.rec_len as u64;
 		}

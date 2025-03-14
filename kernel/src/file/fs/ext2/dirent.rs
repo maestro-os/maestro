@@ -260,14 +260,15 @@ impl<'a> DirentIterator<'a> {
 		inode: &'a Ext2INode,
 		blk: &'a mut Option<RcFrame>,
 		off: u64,
-	) -> Self {
-		Self {
+	) -> EResult<Self> {
+		*blk = Self::get_block(fs, inode, off)?;
+		Ok(Self {
 			fs,
 			inode,
 
 			blk,
 			off,
-		}
+		})
 	}
 
 	/// Reads the block for the entry at the offset `off`.

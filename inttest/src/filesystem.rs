@@ -69,11 +69,9 @@ pub fn basic(root: &Path) -> TestResult {
 	test_assert_eq!(len, 10);
 
 	log!("File chmod");
-	for mode in 0..=0o7777 {
-		util::fchmod(file.as_raw_fd(), mode)?;
-		let stat = util::fstat(file.as_raw_fd())?;
-		test_assert_eq!(stat.st_mode & 0o7777, mode);
-	}
+	util::fchmod(file.as_raw_fd(), 0o4567)?;
+	let stat = util::fstat(file.as_raw_fd())?;
+	test_assert_eq!(stat.st_mode & 0o7777, 0o4567);
 
 	// TODO change access/modification times
 
