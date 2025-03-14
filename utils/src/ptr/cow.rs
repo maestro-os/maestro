@@ -19,7 +19,12 @@
 //! This module implements Copy-On-Write (COW) pointers.
 
 use crate::{TryClone, TryToOwned};
-use core::{borrow::Borrow, fmt, ops::Deref};
+use core::{
+	borrow::Borrow,
+	fmt,
+	hash::{Hash, Hasher},
+	ops::Deref,
+};
 
 /// A clone-on-write smart pointer.
 pub enum Cow<'a, B: 'a + ?Sized + TryToOwned> {
@@ -107,6 +112,20 @@ where
 			Self::Borrowed(r) => Self::Borrowed(*r),
 			Self::Owned(v) => Self::Owned(v.try_clone()?),
 		})
+	}
+}
+
+impl<'a, B: 'a + ?Sized + TryToOwned + Eq> Eq for Cow<'a, B> {}
+
+impl<'a, B: 'a + ?Sized + TryToOwned + PartialEq> PartialEq for Cow<'a, B> {
+	fn eq(&self, other: &Self) -> bool {
+		self.as_ref().eq(other.as_ref())
+	}
+}
+
+impl<'a, B: 'a + ?Sized + TryToOwned + Hash> Hash for Cow<'a, B> {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.as_ref().hash(state)
 	}
 }
 

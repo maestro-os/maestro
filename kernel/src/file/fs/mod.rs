@@ -146,7 +146,7 @@ pub trait NodeOps: Any + Debug {
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn link(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
+	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
 		let _ = (parent, ent);
 		Err(errno!(ENOTDIR))
 	}
@@ -351,7 +351,7 @@ pub trait FilesystemOps: Any + Debug {
 	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>>;
 
 	/// Creates a node on the filesystem.
-	fn create_node(&self, fs: Arc<Filesystem>, stat: &Stat) -> EResult<Arc<Node>>;
+	fn create_node(&self, fs: Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>>;
 	/// Removes `node` from the filesystem.
 	///
 	/// This function should be called only when no link to the node remain.
@@ -434,7 +434,7 @@ pub trait FilesystemType {
 		dev: Option<Arc<BlkDev>>,
 		mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Box<dyn FilesystemOps>>;
+	) -> EResult<Arc<Filesystem>>;
 }
 
 /// The list of filesystem types.

@@ -33,7 +33,7 @@ use core::{
 	sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 use macros::AnyRepr;
-use utils::{bytes, errno, errno::EResult, math};
+use utils::{bytes, errno, errno::EResult, limits::NAME_MAX, math};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -731,7 +731,7 @@ impl Ext2INode {
 	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		// If the name is too long, error
-		if unlikely(name.len() > super::MAX_NAME_LEN) {
+		if unlikely(name.len() > NAME_MAX) {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		let mut rec_len = (dirent::NAME_OFF + name.len()).next_multiple_of(dirent::ALIGN) as u16;

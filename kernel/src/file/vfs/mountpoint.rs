@@ -37,7 +37,7 @@ use utils::{
 		string::String,
 	},
 	errno,
-	errno::{AllocResult, EResult},
+	errno::{AllocResult, EResult, ENOENT},
 	ptr::arc::Arc,
 	TryClone,
 };
@@ -98,7 +98,7 @@ impl MountSource {
 					minor: stat.dev_minor,
 				}))
 			}
-			Err(err) if err == errno!(ENOENT) => Ok(Self::NoDev(String::try_from(string)?)),
+			Err(err) if err.as_int() == ENOENT => Ok(Self::NoDev(String::try_from(string)?)),
 			Err(err) => Err(err),
 		}
 	}
@@ -159,9 +159,7 @@ fn get_fs(
 				Some(f) => f,
 				None => fs::detect(&dev)?,
 			};
-			let ops = fs_type.load_filesystem(Some(dev), target_path, readonly)?;
-			let fs = Filesystem::new(dev_id.get_device_number(), ops)?;
-			// Insert new filesystem into filesystems list
+			let fs = fs_type.load_filesystem(Some(dev), target_path, readonly)?;
 			filesystems.insert(*dev_id, fs.clone())?;
 			Ok(fs)
 		}
@@ -170,9 +168,7 @@ fn get_fs(
 				Some(f) => f,
 				None => fs::get_type(name).ok_or_else(|| errno!(ENODEV))?,
 			};
-			let ops = fs_type.load_filesystem(None, target_path, readonly)?;
-			let fs = Filesystem::new(0, ops)?;
-			Ok(fs)
+			fs_type.load_filesystem(None, target_path, readonly)
 		}
 	}
 }

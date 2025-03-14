@@ -44,7 +44,7 @@ use utils::{
 	errno,
 	errno::{AllocResult, EResult},
 	ptr::arc::Arc,
-	vec, DisplayableStr,
+	DisplayableStr,
 };
 
 /// The index of the root inode.
@@ -55,18 +55,18 @@ pub const ROOT_INODE: INode = 1;
 /// Each element of the inner vector is a slot to store a node. If a slot is `None`, it means it is
 /// free to be used.
 #[derive(Debug)]
-pub struct NodeStorage<N: NodeOps>(Vec<Option<N>>);
+pub struct NodeStorage(Vec<Option<Arc<Node>>>);
 
-impl<N: NodeOps> NodeStorage<N> {
-	/// Creates a new instance with the given root node.
-	pub fn new(root: N) -> AllocResult<Self> {
-		Ok(Self(vec![Some(root)]?))
+impl NodeStorage {
+	/// Creates a new instance.
+	pub fn new() -> AllocResult<Self> {
+		Ok(Self(Vec::new()))
 	}
 
 	/// Returns an immutable reference to the node with inode `inode`.
 	///
 	/// If the node does not exist, the function returns an error.
-	pub fn get_node(&self, inode: INode) -> EResult<&N> {
+	pub fn get_node(&self, inode: INode) -> EResult<&Arc<Node>> {
 		let index = (inode as usize)
 			.checked_sub(1)
 			.ok_or_else(|| errno!(ENOENT))?;
@@ -76,10 +76,20 @@ impl<N: NodeOps> NodeStorage<N> {
 			.ok_or_else(|| errno!(ENOENT))
 	}
 
+	/// Sets the root node.
+	pub fn set_root(&mut self, root: Arc<Node>) -> AllocResult<()> {
+		if let Some(slot) = self.0.first_mut() {
+			*slot = Some(root);
+			Ok(())
+		} else {
+			self.0.push(Some(root))
+		}
+	}
+
 	/// Returns a free slot for a new node.
 	///
 	/// If no slot is available, the function allocates a new one.
-	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<N>)> {
+	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<Arc<Node>>)> {
 		let slot = self
 			.0
 			.iter_mut()
@@ -108,7 +118,7 @@ impl<N: NodeOps> NodeStorage<N> {
 	/// so results in a memory leak.
 	///
 	/// If the node doesn't exist, the function does nothing.
-	pub fn remove_node(&mut self, inode: INode) -> Option<N> {
+	pub fn remove_node(&mut self, inode: INode) -> Option<Arc<Node>> {
 		self.0.get_mut(inode as usize - 1).and_then(Option::take)
 	}
 }

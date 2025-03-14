@@ -320,7 +320,7 @@ impl FilesystemOps for ProcFS {
 		})?)
 	}
 
-	fn create_node(&self, _fs: Arc<Filesystem>, _stat: &Stat) -> EResult<Arc<Node>> {
+	fn create_node(&self, _fs: Arc<Filesystem>, _stat: Stat) -> EResult<Arc<Node>> {
 		Err(errno!(EINVAL))
 	}
 
@@ -346,7 +346,7 @@ impl FilesystemType for ProcFsType {
 		_dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
 		_readonly: bool,
-	) -> EResult<Box<dyn FilesystemOps>> {
-		Ok(Box::new(ProcFS)?)
+	) -> EResult<Arc<Filesystem>> {
+		Ok(Filesystem::new(0, Box::new(ProcFS)?)?)
 	}
 }

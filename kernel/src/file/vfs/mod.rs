@@ -557,7 +557,7 @@ pub fn create_file(
 	let node = parent_node
 		.fs
 		.ops
-		.create_node(parent_node.fs.clone(), &stat)?;
+		.create_node(parent_node.fs.clone(), stat)?;
 	// Add link to filesystem
 	let ent = Entry {
 		name: String::try_from(name)?,
@@ -565,7 +565,7 @@ pub fn create_file(
 		children: Default::default(),
 		node: Some(node),
 	};
-	parent_node.node_ops.link(parent_node, &ent)?;
+	parent_node.node_ops.link(parent_node.clone(), &ent)?;
 	// Add entry to cache
 	let entry = Arc::new(ent)?;
 	parent.children.lock().insert(EntryChild(entry.clone()))?;
@@ -619,7 +619,7 @@ pub fn link(
 		children: Default::default(),
 		node: Some(target),
 	};
-	parent.node().node_ops.link(parent.node(), &ent)?;
+	parent.node().node_ops.link(parent.node().clone(), &ent)?;
 	// Add entry to the cache
 	parent.children.lock().insert(EntryChild(Arc::new(ent)?))?;
 	Ok(())
@@ -714,7 +714,7 @@ pub fn symlink(
 	// Create node
 	let parent_node = parent.node();
 	let fs = parent_node.fs.clone();
-	let node = fs.ops.create_node(fs.clone(), &stat)?;
+	let node = fs.ops.create_node(fs.clone(), stat)?;
 	node.node_ops.writelink(&node, target)?;
 	// Add link to the filesystem
 	let ent = Entry {
@@ -723,7 +723,7 @@ pub fn symlink(
 		children: Default::default(),
 		node: Some(node),
 	};
-	parent_node.node_ops.link(parent_node, &ent)?;
+	parent_node.node_ops.link(parent_node.clone(), &ent)?;
 	// Add link to the cache
 	parent.children.lock().insert(EntryChild(Arc::new(ent)?))?;
 	Ok(())

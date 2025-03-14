@@ -77,7 +77,12 @@ use core::{
 use inode::Ext2INode;
 use macros::AnyRepr;
 use utils::{
-	boxed::Box, collections::path::PathBuf, errno, errno::EResult, limits::PAGE_SIZE, math,
+	boxed::Box,
+	collections::path::PathBuf,
+	errno,
+	errno::EResult,
+	limits::{NAME_MAX, PAGE_SIZE},
+	math,
 	ptr::arc::Arc,
 };
 // TODO Take into account user's UID/GID when allocating block/inode to handle
@@ -146,9 +151,6 @@ const WRITE_REQUIRED_SPARSE_SUPERBLOCKS: u32 = 0x1;
 const WRITE_REQUIRED_64_BITS: u32 = 0x2;
 /// `s_feature_ro_compat`: Directory contents are stored in the form of a Binary Tree.
 const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
-
-/// The maximum length of a name in the filesystem.
-const MAX_NAME_LEN: usize = 255;
 
 /// Reads the block at offset `off` from the disk.
 fn read_block(fs: &Ext2Fs, off: u64) -> EResult<RcFrame> {
@@ -267,7 +269,7 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn link(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
+	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
@@ -278,7 +280,7 @@ impl NodeOps for Ext2NodeOps {
 		}
 		let target = ent.node();
 		// Parent inode
-		let mut parent_inode = Ext2INode::get(parent as _, fs)?;
+		let mut parent_inode = Ext2INode::get(&parent, fs)?;
 		// Check the entry does not exist
 		if parent_inode.get_dirent(&ent.name, fs)?.is_some() {
 			return Err(errno!(EEXIST));
@@ -747,7 +749,7 @@ impl FilesystemOps for Ext2Fs {
 			f_files: self.sp.s_inodes_count as _,
 			f_ffree: self.sp.s_free_inodes_count.load(Relaxed) as _,
 			f_fsid: Default::default(),
-			f_namelen: MAX_NAME_LEN as _,
+			f_namelen: NAME_MAX as _,
 			f_frsize: math::pow2(self.sp.s_log_frag_size + 10),
 			f_flags: 0, // TODO
 		})
@@ -771,7 +773,7 @@ impl FilesystemOps for Ext2Fs {
 		Ok(Arc::new(node)?)
 	}
 
-	fn create_node(&self, fs: Arc<Filesystem>, stat: &Stat) -> EResult<Arc<Node>> {
+	fn create_node(&self, fs: Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -874,7 +876,7 @@ impl FilesystemType for Ext2FsType {
 		dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Box<dyn FilesystemOps>> {
+	) -> EResult<Arc<Filesystem>> {
 		let dev = dev.ok_or_else(|| errno!(ENODEV))?;
 		let sp = Superblock::read(&dev)?;
 		if unlikely(!sp.is_valid()) {
@@ -920,10 +922,13 @@ impl FilesystemType for Ext2FsType {
 		// Set the last mount timestamp
 		sp.s_mtime.store(timestamp as _, Relaxed);
 		sp.s_mnt_count.fetch_add(1, Relaxed);
-		Ok(Box::new(Ext2Fs {
-			dev,
-			sp,
-			readonly,
-		})?)
+		Ok(Filesystem::new(
+			dev.id.get_device_number(),
+			Box::new(Ext2Fs {
+				dev,
+				sp,
+				readonly,
+			})?,
+		)?)
 	}
 }

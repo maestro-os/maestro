@@ -29,6 +29,7 @@ use macros::AnyRepr;
 use utils::{
 	errno,
 	errno::{EResult, EOVERFLOW},
+	limits::NAME_MAX,
 };
 
 /// Directory entry type indicator: Unknown
@@ -102,7 +103,7 @@ impl Dirent {
 		) {
 			return Err(errno!(EINVAL));
 		}
-		if unlikely(name.len() > super::MAX_NAME_LEN) {
+		if unlikely(name.len() > NAME_MAX) {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		// Reinterpret
@@ -178,7 +179,7 @@ impl Dirent {
 	///
 	/// If the name is too long, the function returns [`ENAMETOOLONG`].
 	pub fn set_name(&mut self, superblock: &Superblock, name: &[u8]) -> EResult<()> {
-		if name.len() > super::MAX_NAME_LEN {
+		if name.len() > NAME_MAX {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		let len = min(name.len(), self.rec_len as usize - NAME_OFF);
