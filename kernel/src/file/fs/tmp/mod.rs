@@ -59,8 +59,10 @@ enum NodeContent {
 	Regular(Mutex<Vec<u8>>),
 	/// Directory entries
 	Directory(Mutex<HashMap<Cow<'static, [u8]>, Arc<Node>>>),
+	// TODO we could avoid having a mutex here since the path is set only when the link is
+	// created
 	/// Symbolic link path
-	Link(Vec<u8>),
+	Link(Mutex<Vec<u8>>),
 	/// No content
 	None,
 }
@@ -173,7 +175,7 @@ impl NodeOps for NodeContent {
 	}
 
 	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
-		let NodeContent::Regular(content) = self else {
+		let NodeContent::Link(content) = self else {
 			return Err(errno!(EINVAL));
 		};
 		let content = content.lock();
@@ -183,7 +185,7 @@ impl NodeOps for NodeContent {
 	}
 
 	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
-		let NodeContent::Regular(content) = self else {
+		let NodeContent::Link(content) = self else {
 			return Err(errno!(EINVAL));
 		};
 		let mut content = content.lock();

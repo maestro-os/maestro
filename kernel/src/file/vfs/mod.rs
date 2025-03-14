@@ -236,8 +236,8 @@ impl ResolutionSettings {
 
 	/// Returns the default for the given process.
 	///
-	/// `follow_links` tells whether symbolic links are followed.
-	pub fn for_process(proc: &Process, follow_links: bool) -> Self {
+	/// `follow_link` tells whether symbolic links are followed.
+	pub fn for_process(proc: &Process, follow_link: bool) -> Self {
 		let fs = proc.fs.lock();
 		Self {
 			root: fs.chroot.clone(),
@@ -246,7 +246,7 @@ impl ResolutionSettings {
 			access_profile: fs.access_profile,
 
 			create: false,
-			follow_link: follow_links,
+			follow_link,
 		}
 	}
 }
