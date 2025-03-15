@@ -32,6 +32,7 @@ use crate::{
 };
 use core::{
 	fmt,
+	fmt::Formatter,
 	marker::PhantomData,
 	mem::size_of,
 	ops::{Add, Deref, DerefMut, Sub},
@@ -341,5 +342,11 @@ impl<T: AnyRepr> Deref for RcFrameVal<T> {
 	#[inline]
 	fn deref(&self) -> &Self::Target {
 		&self.frame.slice()[self.off]
+	}
+}
+
+impl<T: AnyRepr + fmt::Debug> fmt::Debug for RcFrameVal<T> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		fmt::Debug::fmt(self.deref(), f)
 	}
 }

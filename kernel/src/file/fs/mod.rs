@@ -352,6 +352,15 @@ pub trait FilesystemOps: Any + Debug {
 
 	/// Creates a node on the filesystem.
 	fn create_node(&self, fs: Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>>;
+
+	/// Releases a node instance from the inner node cache.
+	///
+	/// The default implementation of this function is a no-op.
+	fn release_node(&self, node: Arc<Node>) -> EResult<()> {
+		let _ = node;
+		Ok(())
+	}
+
 	/// Removes `node` from the filesystem.
 	///
 	/// This function should be called only when no link to the node remain.
@@ -372,6 +381,7 @@ pub struct Filesystem {
 	pub dev: u64,
 	/// Filesystem operations
 	pub ops: Box<dyn FilesystemOps>,
+
 	/// Active buffers on the filesystem.
 	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>>,
 }
@@ -386,6 +396,7 @@ impl Filesystem {
 		Arc::new(Self {
 			dev,
 			ops,
+
 			buffers: Default::default(),
 		})
 	}

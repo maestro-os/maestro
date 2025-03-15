@@ -43,6 +43,9 @@
 //!
 //! For more information, see the [specifications](https://www.nongnu.org/ext2-doc/ext2.html).
 
+// TODO Take into account user's UID/GID when allocating block/inode to handle
+// reserved blocks/inodes
+
 mod bgd;
 mod dirent;
 mod inode;
@@ -56,7 +59,7 @@ use crate::{
 			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, StatSet, Statfs,
 		},
 		vfs,
-		vfs::node::Node,
+		vfs::node::{Node, NodeCache},
 		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
 	memory::{RcFrame, RcFrameVal},
@@ -66,8 +69,6 @@ use crate::{
 use bgd::BlockGroupDescriptor;
 use core::{
 	cmp::max,
-	fmt,
-	fmt::Formatter,
 	intrinsics::unlikely,
 	sync::atomic::{
 		AtomicU16, AtomicU32, AtomicU8, AtomicUsize,
@@ -85,10 +86,6 @@ use utils::{
 	math,
 	ptr::arc::Arc,
 };
-// TODO Take into account user's UID/GID when allocating block/inode to handle
-// reserved blocks/inodes
-// TODO when accessing an inode, we need to lock the corresponding `Node` structure. This is
-// currently not an issue since everything is locked by the superblock's Mutex but this very slow
 
 /// The filesystem's magic number.
 const EXT2_MAGIC: u16 = 0xef53;
@@ -223,21 +220,23 @@ impl NodeOps for Ext2NodeOps {
 		ent.node = inode_
 			.get_dirent(&ent.name, fs)?
 			.map(|(inode, ..)| -> EResult<_> {
-				let mut node = Node {
-					inode: inode as _,
-					fs: dir.fs.clone(),
+				fs.node_cache.get_or_insert(inode as _, || {
+					let mut node = Node {
+						inode: inode as _,
+						fs: dir.fs.clone(),
 
-					stat: Default::default(),
+						stat: Default::default(),
 
-					node_ops: Box::new(Ext2NodeOps)?,
-					file_ops: Box::new(Ext2FileOps)?,
+						node_ops: Box::new(Ext2NodeOps)?,
+						file_ops: Box::new(Ext2FileOps)?,
 
-					lock: Default::default(),
-					cache: Default::default(),
-				};
-				let stat = Ext2INode::get(&node, fs)?.stat(&fs.sp);
-				node.stat = Mutex::new(stat);
-				Ok(Arc::new(node)?)
+						lock: Default::default(),
+						cache: Default::default(),
+					};
+					let stat = Ext2INode::get(&node, fs)?.stat(&fs.sp);
+					node.stat = Mutex::new(stat);
+					Ok(Arc::new(node)?)
+				})
 			})
 			.transpose()?;
 		Ok(())
@@ -581,13 +580,17 @@ impl Superblock {
 }
 
 /// An instance of the ext2 filesystem.
+#[derive(Debug)]
 struct Ext2Fs {
 	/// The device on which the filesystem is located
 	dev: Arc<BlkDev>,
 	/// The filesystem's superblock
 	sp: RcFrameVal<Superblock>,
-	/// Tells whether the filesystem is mounted in read-only
+	/// Tells whether the filesystem is mounted as read-only
 	readonly: bool,
+
+	/// The nodes cache.
+	node_cache: NodeCache,
 }
 
 impl Ext2Fs {
@@ -755,21 +758,24 @@ impl FilesystemOps for Ext2Fs {
 	}
 
 	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
-		let mut node = Node {
-			inode: ROOT_DIRECTORY_INODE as _,
-			fs,
+		self.node_cache
+			.get_or_insert(ROOT_DIRECTORY_INODE as _, || {
+				let mut node = Node {
+					inode: ROOT_DIRECTORY_INODE as _,
+					fs,
 
-			stat: Default::default(),
+					stat: Default::default(),
 
-			node_ops: Box::new(Ext2NodeOps)?,
-			file_ops: Box::new(Ext2FileOps)?,
+					node_ops: Box::new(Ext2NodeOps)?,
+					file_ops: Box::new(Ext2FileOps)?,
 
-			lock: Default::default(),
-			cache: Default::default(),
-		};
-		let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
-		node.stat = Mutex::new(stat);
-		Ok(Arc::new(node)?)
+					lock: Default::default(),
+					cache: Default::default(),
+				};
+				let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
+				node.stat = Mutex::new(stat);
+				Ok(Arc::new(node)?)
+			})
 	}
 
 	fn create_node(&self, fs: Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
@@ -829,7 +835,9 @@ impl FilesystemOps for Ext2Fs {
 		let stat = inode.stat(&self.sp);
 		drop(inode);
 		node.stat = Mutex::new(stat);
+		// Insert in cache
 		let node = Arc::new(node)?;
+		self.node_cache.insert(node.clone())?;
 		Ok(node)
 	}
 
@@ -846,15 +854,6 @@ impl FilesystemOps for Ext2Fs {
 		// Free inode
 		self.free_inode(node.inode, inode.get_type() == FileType::Directory)?;
 		Ok(())
-	}
-}
-
-impl fmt::Debug for Ext2Fs {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Ext2Fs")
-			.field("superblock", &*self.sp)
-			.field("readonly", &self.readonly)
-			.finish()
 	}
 }
 
@@ -927,6 +926,8 @@ impl FilesystemType for Ext2FsType {
 				dev,
 				sp,
 				readonly,
+
+				node_cache: Default::default(),
 			})?,
 		)?)
 	}
