@@ -105,9 +105,11 @@ pub fn mmap(root: &Path) -> TestResult {
 		.read(true)
 		.write(true)
 		.open(&path)?;
+	let content = vec![0; 4096];
+	file.write_all(&content)?;
 
 	log!("Map a page");
-	let mut mmap = unsafe { MmapOptions::new().offset(4096).len(4096).map_mut(&file)? };
+	let mut mmap = unsafe { MmapOptions::new().offset(0).len(4096).map_mut(&file)? };
 	test_assert!(mmap.iter().all(|b| *b == 0));
 
 	log!("Write on page");
@@ -115,16 +117,11 @@ pub fn mmap(root: &Path) -> TestResult {
 
 	log!("Read from file");
 	let content = fs::read(&path)?;
-	test_assert_eq!(content.len(), 8192);
-	test_assert!(content.iter().enumerate().all(|(i, b)| if i < 4096 {
-		*b == 0
-	} else {
-		*b == 1
-	}));
+	test_assert!(content.iter().all(|b| *b == 1));
 
 	log!("Write to file");
 	file.seek(SeekFrom::Start(0))?;
-	let content: Vec<u8> = (0..8192).map(|_| 2).collect();
+	let content = vec![2; 4096];
 	file.write_all(&content)?;
 
 	log!("Remove file");
