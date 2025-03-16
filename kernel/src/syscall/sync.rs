@@ -16,30 +16,55 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `msync` system call synchronizes a memory mapping with its file on the
-//! disk.
+//! Filesystem synchronization system calls.
 
 use crate::{
-	memory,
+	file::{fd::FileDescriptorTable, vfs},
 	memory::VirtAddr,
-	process::{mem_space::MemSpace, Process},
-	sync::mutex::IntMutex,
+	process::mem_space::MemSpace,
+	sync::mutex::{IntMutex, Mutex},
 	syscall::Args,
 };
-use core::ffi::{c_int, c_void};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	limits::PAGE_SIZE,
-	ptr::arc::Arc,
-};
+use core::{ffi::c_int, intrinsics::unlikely};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
-/// Schedules a synchronization and returns directly.
+/// Schedules a synchronization and returns directly
 const MS_ASYNC: i32 = 0b001;
-/// Synchronizes the mapping before returning.
+/// Synchronizes the mapping before returning
 const MS_SYNC: i32 = 0b010;
-/// Invalides other mappings of the same file, so they can be updated.
+/// Invalidates other mappings of the same file, so they can be updated
 const MS_INVALIDATE: i32 = 0b100;
+
+pub fn sync() -> EResult<usize> {
+	// TODO sync all files on the VFS
+	Ok(0)
+}
+
+pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+	let fds = fds.lock();
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
+	let file = fds.get_fd(fd)?.get_file();
+	let Some(ent) = &file.vfs_entry else {
+		return Ok(0);
+	};
+	let _fs = &ent.node().fs;
+	// TODO sync all files on the filesystem
+	Ok(0)
+}
+
+pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+	let fds = fds.lock();
+	if fd < 0 {
+		return Err(errno!(EBADF));
+	}
+	let file = fds.get_fd(fd)?.get_file();
+	if let Some(node) = file.node() {
+		node.sync(.., true)?;
+	}
+	Ok(0)
+}
 
 pub fn msync(
 	Args((addr, length, flags)): Args<(VirtAddr, usize, c_int)>,
@@ -50,7 +75,7 @@ pub fn msync(
 		return Err(errno!(EINVAL));
 	}
 	// Check for conflicts in flags
-	if flags & MS_ASYNC != 0 && flags & MS_SYNC != 0 {
+	if unlikely(flags & MS_ASYNC != 0 && flags & MS_SYNC != 0) {
 		return Err(errno!(EINVAL));
 	}
 	// Iterate over mappings
@@ -59,7 +84,7 @@ pub fn msync(
 	let pages = length.div_ceil(PAGE_SIZE);
 	while i < pages {
 		let mapping = mem_space.get_mapping_for_addr(addr).ok_or(errno!(ENOMEM))?;
-		mapping.fs_sync(&mem_space.vmem)?; // TODO Use flags
+		mapping.sync(&mem_space.vmem)?; // TODO Use flags
 		i += mapping.get_size().get();
 	}
 	Ok(0)

@@ -29,8 +29,10 @@ pub fn main() {
 		eprintln!("[KILLED] {sig}");
 	}
 	let cmd = if status.success() { -1 } else { -2 };
-	// Shutdown
 	unsafe {
+		// Sync to disk
+		libc::sync();
+		// Shutdown
 		libc::syscall(libc::SYS_reboot, 0xde145e83u32, 0x40367d6eu32, cmd, 0);
 	}
 	panic!("Shutdown failed!");

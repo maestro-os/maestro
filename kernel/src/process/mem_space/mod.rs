@@ -741,7 +741,7 @@ impl Drop for MemSpace {
 		let mappings = mem::take(&mut self.state.mappings);
 		for (_, m) in mappings {
 			// Ignore I/O errors
-			let _ = m.fs_sync(&self.vmem);
+			let _ = m.sync(&self.vmem);
 		}
 	}
 }

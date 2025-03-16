@@ -58,7 +58,6 @@ mod finit_module;
 mod fork;
 mod fstatfs;
 mod fstatfs64;
-mod fsync;
 mod getcwd;
 mod getdents;
 mod getegid;
@@ -87,7 +86,6 @@ mod mknod;
 mod mmap;
 mod mount;
 mod mprotect;
-mod msync;
 mod munmap;
 mod nanosleep;
 mod open;
@@ -134,7 +132,7 @@ mod statfs;
 mod statfs64;
 mod symlink;
 mod symlinkat;
-mod syncfs;
+mod sync;
 mod time;
 mod timer_create;
 mod timer_delete;
@@ -163,7 +161,11 @@ use crate::{
 	process,
 	process::{mem_space::MemSpace, signal::Signal, Process},
 	sync::mutex::{IntMutex, Mutex},
-	syscall::{getdents::getdents64, mmap::mmap2},
+	syscall::{
+		getdents::getdents64,
+		mmap::mmap2,
+		sync::{fsync, msync, sync, syncfs},
+	},
 };
 use _exit::_exit;
 use _llseek::{_llseek, lseek};
@@ -200,7 +202,6 @@ use finit_module::finit_module;
 use fork::fork;
 use fstatfs::fstatfs;
 use fstatfs64::fstatfs64;
-use fsync::fsync;
 use getcwd::getcwd;
 use getdents::getdents;
 use getegid::getegid;
@@ -229,7 +230,6 @@ use mknod::mknod;
 use mmap::mmap;
 use mount::mount;
 use mprotect::mprotect;
-use msync::msync;
 use munmap::munmap;
 use nanosleep::nanosleep;
 use open::open;
@@ -277,7 +277,6 @@ use statfs::statfs;
 use statfs64::statfs64;
 use symlink::symlink;
 use symlinkat::symlinkat;
-use syncfs::syncfs;
 use time::time;
 use timer_create::timer_create;
 use timer_delete::timer_delete;
@@ -564,7 +563,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x021 => syscall!(access, frame),
 		// TODO 0x022 => syscall!(nice, frame),
 		// TODO 0x023 => syscall!(ftime, frame),
-		// TODO 0x024 => syscall!(sync, frame),
+		0x024 => syscall!(sync, frame),
 		0x025 => syscall!(kill, frame),
 		0x026 => syscall!(rename, frame),
 		0x027 => syscall!(mkdir, frame),
@@ -1136,7 +1135,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x09f => syscall!(adjtimex, frame),
 		// TODO 0x0a0 => syscall!(setrlimit, frame),
 		0x0a1 => syscall!(chroot, frame),
-		// TODO 0x0a2 => syscall!(sync, frame),
+		0x0a2 => syscall!(sync, frame),
 		// TODO 0x0a3 => syscall!(acct, frame),
 		// TODO 0x0a4 => syscall!(settimeofday, frame),
 		0x0a5 => syscall!(mount, frame),

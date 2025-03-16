@@ -364,8 +364,8 @@ impl MemMapping {
 	/// - The associated file has been removed or cannot be accessed
 	///
 	/// If the mapping is locked, the function returns [`utils::errno::EBUSY`].
-	pub fn fs_sync(&self, _vmem: &VMem) -> EResult<()> {
-		if self.flags & MAP_ANONYMOUS != 0 {
+	pub fn sync(&self, _vmem: &VMem) -> EResult<()> {
+		if self.flags & (MAP_ANONYMOUS | MAP_PRIVATE) != 0 {
 			return Ok(());
 		}
 		// TODO if locked, EBUSY
@@ -392,7 +392,7 @@ impl MemMapping {
 		pages_range: Range<usize>,
 		vmem_transaction: &mut VMemTransaction<false>,
 	) -> EResult<()> {
-		self.fs_sync(vmem_transaction.vmem)?;
+		self.sync(vmem_transaction.vmem)?;
 		let addr = VirtAddr::from(self.addr) + pages_range.start * PAGE_SIZE;
 		let len = pages_range.end - pages_range.start;
 		vmem_transaction.unmap_range(addr, len)?;

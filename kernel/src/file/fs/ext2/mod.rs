@@ -841,6 +841,10 @@ impl FilesystemOps for Ext2Fs {
 		Ok(node)
 	}
 
+	fn release_node(&self, inode: INode) {
+		self.node_cache.remove(inode);
+	}
+
 	fn destroy_node(&self, node: &Node) -> EResult<()> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));

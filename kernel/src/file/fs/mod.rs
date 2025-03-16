@@ -353,12 +353,11 @@ pub trait FilesystemOps: Any + Debug {
 	/// Creates a node on the filesystem.
 	fn create_node(&self, fs: Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>>;
 
-	/// Releases a node instance from the inner node cache.
+	/// Releases the node with ID `inode` from the inner node cache.
 	///
 	/// The default implementation of this function is a no-op.
-	fn release_node(&self, node: Arc<Node>) -> EResult<()> {
-		let _ = node;
-		Ok(())
+	fn release_node(&self, inode: INode) {
+		let _ = inode;
 	}
 
 	/// Removes `node` from the filesystem.

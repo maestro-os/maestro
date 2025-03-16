@@ -31,6 +31,7 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	hash::{Hash, Hasher},
+	ops::RangeBounds,
 	ptr,
 };
 use utils::{
@@ -100,20 +101,33 @@ impl Node {
 		PathBuf::try_from(String::from(buf))
 	}
 
+	/// Synchronizes the node to disk.
+	///
+	/// Arguments:
+	/// - `range` is the range of pages to be synchronized
+	/// - `metadata` tells whether the node's metadata are synchronized
+	pub fn sync<R: RangeBounds<u64>>(&self, _range: R, _metadata: bool) -> EResult<()> {
+		todo!()
+	}
+
 	/// Releases the node, removing it from the disk if this is the last reference to it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
-		// If other references are left, do nothing
-		let Some(node) = Arc::into_inner(this) else {
+		// If other references are left (aside from the one in the filesystem's cache), do nothing
+		if Arc::strong_count(&this) > 2 {
 			return Ok(());
-		};
-		// If there is no hard link left to the node, remove it
-		let stat = node.stat.lock();
-		let dir = stat.get_type() == Some(FileType::Directory);
-		// If the file is a directory, the threshold is `1` because of the `.` entry
-		let remove = (dir && stat.nlink <= 1) || stat.nlink == 0;
-		if remove {
-			node.fs.ops.destroy_node(&node)?;
 		}
+		let (file_type, nlink) = {
+			let stat = this.stat.lock();
+			(stat.get_type(), stat.nlink)
+		};
+		let dir = file_type == Some(FileType::Directory);
+		// If there is no hard link left to the node, remove it
+		// If the file is a directory, the threshold is `1` because of the `.` entry
+		if (dir && nlink <= 1) || nlink == 0 {
+			this.fs.ops.destroy_node(&this)?;
+		}
+		// Remove the node from the filesystem's cache
+		this.fs.ops.release_node(this.inode);
 		Ok(())
 	}
 }
@@ -178,14 +192,8 @@ impl NodeCache {
 		}
 	}
 
-	/// If `node` is the last reference, removes it from the cache.
-	pub fn release(&self, node: Arc<Node>) {
-		// Lock now to avoid race condition
-		let mut cache = self.0.lock();
-		// this reference + the one in cache = 2
-		if Arc::strong_count(&node) > 2 {
-			return;
-		}
-		cache.remove(&node.inode);
+	/// Removes the node with ID `inode` from the cache.
+	pub fn remove(&self, inode: INode) {
+		self.0.lock().remove(&inode);
 	}
 }
