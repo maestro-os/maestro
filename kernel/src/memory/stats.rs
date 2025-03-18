@@ -30,6 +30,12 @@ pub struct MemInfo {
 	pub mem_total: usize,
 	/// The total amount of free physical memory.
 	pub mem_free: usize,
+	/// The total amount of free + reclaimable memory.
+	pub mem_available: usize,
+	/// The total amount of active (mapped) memory.
+	pub active: usize,
+	/// The total amount of inactive (not mapped but cached) memory.
+	pub inactive: usize,
 }
 
 impl Display for MemInfo {
@@ -37,8 +43,11 @@ impl Display for MemInfo {
 		writeln!(
 			f,
 			"MemTotal: {} kB
-MemFree: {} kB",
-			self.mem_total, self.mem_free,
+MemFree: {} kB
+MemAvailable: {} kB
+Active: {} kB
+Inactive: {} kB",
+			self.mem_total, self.mem_free, self.mem_available, self.active, self.inactive
 		)
 	}
 }
@@ -47,4 +56,7 @@ MemFree: {} kB",
 pub static MEM_INFO: Mutex<MemInfo> = Mutex::new(MemInfo {
 	mem_total: 0,
 	mem_free: 0,
+	mem_available: 0,
+	active: 0,
+	inactive: 0,
 });

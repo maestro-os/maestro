@@ -35,7 +35,7 @@ use crate::{
 		vfs::node::Node,
 		DirContext, DirEntry, File, FileType, Stat,
 	},
-	memory::RcFrame,
+	memory::cache::RcFrame,
 	sync::mutex::Mutex,
 };
 use core::{

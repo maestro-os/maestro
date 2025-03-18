@@ -21,9 +21,9 @@
 use crate::{
 	file::{
 		fs::{FileOps, Filesystem, NodeOps},
-		page_cache::PageCache,
 		FileType, INode, Stat,
 	},
+	memory::cache::PageCache,
 	sync::mutex::Mutex,
 };
 use core::{

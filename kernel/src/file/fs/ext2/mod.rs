@@ -62,7 +62,7 @@ use crate::{
 		vfs::node::{Node, NodeCache},
 		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
-	memory::{RcFrame, RcFrameVal},
+	memory::cache::{RcFrame, RcFrameVal},
 	sync::mutex::Mutex,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };

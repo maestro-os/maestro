@@ -32,7 +32,7 @@ use crate::{
 		BlkDev, BlockDeviceOps, DeviceID, DeviceType, BLK_DEVICES,
 	},
 	file::Mode,
-	memory::{buddy::FrameOrder, RcFrame},
+	memory::{buddy::FrameOrder, cache::RcFrame},
 	println,
 	process::mem_space::copy::SyscallPtr,
 	syscall::{ioctl, FromSyscallArg},

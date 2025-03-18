@@ -46,13 +46,15 @@ use crate::{
 	file,
 	file::{
 		fs::FileOps,
-		page_cache::PageCache,
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 		File, FileType, Mode, Stat,
 	},
-	memory::{buddy::FrameOrder, RcFrame},
+	memory::{
+		buddy::FrameOrder,
+		cache::{PageCache, RcFrame},
+	},
 	sync::mutex::Mutex,
 	syscall::ioctl,
 };

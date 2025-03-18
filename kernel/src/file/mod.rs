@@ -26,7 +26,6 @@
 
 pub mod fd;
 pub mod fs;
-pub mod page_cache;
 pub mod perm;
 pub mod pipe;
 pub mod socket;

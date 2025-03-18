@@ -32,7 +32,7 @@ use crate::{
 	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_PRESENT, PAGE_FAULT_WRITE},
 	file::{perm::AccessProfile, vfs, File},
 	memory,
-	memory::{vmem::VMem, RcFrame, VirtAddr, PROCESS_END},
+	memory::{cache::RcFrame, vmem::VMem, VirtAddr, PROCESS_END},
 };
 use core::{
 	alloc::AllocError, cmp::min, ffi::c_void, fmt, intrinsics::unlikely, mem, num::NonZeroUsize,

@@ -21,7 +21,7 @@
 //! filesystem.
 
 use super::{read_block, Ext2Fs};
-use crate::memory::RcFrameVal;
+use crate::memory::cache::RcFrameVal;
 use core::{mem::size_of, sync::atomic::AtomicU16};
 use macros::AnyRepr;
 use utils::errno::EResult;

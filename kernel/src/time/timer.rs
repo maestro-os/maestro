@@ -23,8 +23,8 @@ use super::{
 	unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, TimestampScale},
 };
 use crate::{
+	memory::oom,
 	process::{
-		oom,
 		pid::Pid,
 		signal::{SigEvent, Signal, SIGEV_SIGNAL, SIGEV_THREAD},
 		Process,

@@ -21,7 +21,7 @@
 
 use crate::{
 	elf::parser::ELFParser,
-	memory::{buddy::ZONE_KERNEL, RcFrame, VirtAddr},
+	memory::{buddy::ZONE_KERNEL, cache::RcFrame, VirtAddr},
 	process::mem_space::{MemSpace, Page, MAP_ANONYMOUS, MAP_PRIVATE, PROT_EXEC, PROT_READ},
 	sync::once::OnceInit,
 };

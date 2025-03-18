@@ -27,9 +27,10 @@ use crate::{
 	file::File,
 	memory::{
 		buddy::ZONE_USER,
+		cache::RcFrame,
 		vmem,
 		vmem::{invalidate_page_current, write_ro, VMem, VMemTransaction},
-		PhysAddr, RcFrame, VirtAddr,
+		PhysAddr, VirtAddr,
 	},
 	process::mem_space::{
 		Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE,

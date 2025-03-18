@@ -22,7 +22,7 @@
 use super::{read_block, Ext2Fs, Superblock};
 use crate::{
 	file::{fs::ext2::inode::Ext2INode, FileType},
-	memory::RcFrame,
+	memory::cache::RcFrame,
 };
 use core::{cmp::min, intrinsics::unlikely, mem::offset_of, ptr::NonNull};
 use macros::AnyRepr;

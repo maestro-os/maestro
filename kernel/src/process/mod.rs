@@ -24,7 +24,6 @@
 
 pub mod exec;
 pub mod mem_space;
-pub mod oom;
 pub mod pid;
 pub mod rusage;
 pub mod scheduler;
@@ -43,7 +42,7 @@ use crate::{
 		vfs::ResolutionSettings,
 		File, O_RDWR,
 	},
-	memory::{buddy, buddy::FrameOrder, VirtAddr},
+	memory::{buddy, buddy::FrameOrder, oom, VirtAddr},
 	process::{
 		mem_space::{copy, copy::SyscallPtr},
 		pid::{PidHandle, IDLE_PID, INIT_PID},

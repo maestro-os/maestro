@@ -21,7 +21,7 @@
 use super::{bgd::BlockGroupDescriptor, dirent, dirent::Dirent, read_block, Ext2Fs, Superblock};
 use crate::{
 	file::{fs::ext2::dirent::DirentIterator, vfs::node::Node, FileType, Mode, Stat},
-	memory::{RcFrame, RcFrameVal},
+	memory::cache::{RcFrame, RcFrameVal},
 	sync::mutex::MutexGuard,
 };
 use core::{

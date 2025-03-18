@@ -42,7 +42,7 @@ use crate::{
 	device::{storage::ide, BlockDeviceOps},
 	memory::{
 		buddy::{FrameOrder, ZONE_KERNEL},
-		RcFrame,
+		cache::RcFrame,
 	},
 	sync::mutex::Mutex,
 };
