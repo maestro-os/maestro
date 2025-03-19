@@ -16,15 +16,8 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements collections.
+//! Intrusive collections work by having their metadata inserted inside each element.
+//!
+//! Operations using those structures are *generally* unsafe. They should be avoided when possible.
 
-pub mod bitfield;
-pub mod btreemap;
-pub mod hashmap;
-pub mod id_allocator;
-pub mod intrusive;
-pub mod lru;
-pub mod path;
-pub mod ring_buffer;
-pub mod string;
-pub mod vec;
+pub mod list;
