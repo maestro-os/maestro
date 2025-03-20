@@ -111,7 +111,7 @@ impl ListNode {
 /// Inside, the linked list forms a cycle to allow iterating both ways.
 ///
 /// A list of `Foo` structures can be created this way:
-/// ```
+/// ```no_run
 /// use core::pin::pin;
 /// use utils::{collections::list::ListNode, list};
 ///
