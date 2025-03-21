@@ -23,7 +23,6 @@ pub mod btreemap;
 pub mod hashmap;
 pub mod id_allocator;
 pub mod list;
-pub mod lru;
 pub mod path;
 pub mod ring_buffer;
 pub mod string;

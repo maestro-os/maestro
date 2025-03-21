@@ -24,6 +24,8 @@
 use crate::ptr::arc::Arc;
 use core::{
 	cell::UnsafeCell,
+	fmt,
+	fmt::Formatter,
 	marker::{PhantomData, PhantomPinned},
 	pin::Pin,
 	ptr,
@@ -98,6 +100,12 @@ impl ListNode {
 		if let Some(mut next) = next {
 			*next.as_mut().prev.get() = prev;
 		}
+	}
+}
+
+impl fmt::Debug for ListNode {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_struct("ListNode").finish()
 	}
 }
 
