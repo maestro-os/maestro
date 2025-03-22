@@ -23,12 +23,7 @@
 
 use crate::ptr::arc::Arc;
 use core::{
-	cell::UnsafeCell,
-	fmt,
-	fmt::Formatter,
-	marker::{PhantomData, PhantomPinned},
-	pin::Pin,
-	ptr,
+	cell::UnsafeCell, fmt, fmt::Formatter, intrinsics::unlikely, marker::PhantomData, mem, ptr,
 	ptr::NonNull,
 };
 
@@ -39,7 +34,6 @@ use core::{
 pub struct ListNode {
 	prev: UnsafeCell<Option<NonNull<ListNode>>>,
 	next: UnsafeCell<Option<NonNull<ListNode>>>,
-	_pin: PhantomPinned,
 }
 
 impl ListNode {
@@ -66,6 +60,23 @@ impl ListNode {
 	#[inline]
 	pub fn next(&self) -> Option<&Self> {
 		unsafe { (*self.next.get()).map(|n| n.as_ref()) }
+	}
+
+	/// Inserts `self` before `node` in the list.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure concurrency and consistency are handled
+	/// correctly.
+	pub unsafe fn insert_before(&self, mut node: NonNull<ListNode>) {
+		// Insert in the new list
+		*self.next.get() = Some(node);
+		*self.prev.get() = *node.as_ref().prev.get();
+		// Link back
+		*node.as_mut().prev.get() = Some(NonNull::from(self));
+		if let Some(prev) = self.prev() {
+			*prev.next.get() = Some(NonNull::from(self));
+		}
 	}
 
 	/// Inserts `self` after `node` in the list.
@@ -120,7 +131,6 @@ impl fmt::Debug for ListNode {
 ///
 /// A list of `Foo` structures can be created this way:
 /// ```no_run
-/// use core::pin::pin;
 /// use utils::{collections::list::ListNode, list};
 ///
 /// struct Foo {
@@ -128,15 +138,15 @@ impl fmt::Debug for ListNode {
 /// 	node: ListNode,
 /// }
 ///
-/// let _list = pin!(list!(Foo, node));
+/// let _list = list!(Foo, node);
 /// ```
 ///
 /// Pinning the list is required to avoid dangling pointers.
 ///
 /// When dropped, if the list is not empty, the remaining nodes are all unlinked.
 pub struct List<T, const OFF: usize> {
-	// We are using `prev` as the tail and `next` as the head
-	base: ListNode,
+	// This is the head element. `prev` points to the tail
+	head: Option<NonNull<ListNode>>,
 	_data: PhantomData<T>,
 }
 
@@ -145,126 +155,126 @@ pub struct List<T, const OFF: usize> {
 /// This macro can be used in a `const` context.
 #[macro_export]
 macro_rules! list {
-	($ty:ty, $field:ident) => {{
-		const OFF: usize = core::mem::offset_of!($ty, $field);
-		$crate::collections::list::List::<$ty, OFF>::_new()
-	}};
+	($ty:ty, $field:ident) => {
+		<$crate::list_type!($ty, $field)>::_new()
+	};
+}
+
+/// The type signature for a list.
+///
+/// This macro is necessary to avoid having to specify the `OFF` generic manually.
+#[macro_export]
+macro_rules! list_type {
+	($ty:ty, $field:ident) => {
+		$crate::collections::list::List::<$ty, { core::mem::offset_of!($ty, $field) }>
+	};
 }
 
 impl<T, const OFF: usize> List<T, OFF> {
 	/// Use [`crate::list`] instead!
 	pub const fn _new() -> Self {
 		Self {
-			base: ListNode {
-				prev: UnsafeCell::new(None),
-				next: UnsafeCell::new(None),
-				_pin: PhantomPinned,
-			},
+			head: None,
 			_data: PhantomData,
 		}
 	}
 
-	fn iter_impl(&mut self) -> Iter<'_, T, OFF> {
-		Iter {
-			list: NonNull::from(&mut *self),
+	fn get_node(val: &T) -> NonNull<ListNode> {
+		unsafe { NonNull::from(val).byte_add(OFF).cast::<ListNode>() }
+	}
 
-			start: self.base.next().unwrap_or(&self.base),
-			end: &self.base,
-		}
+	fn head_node(&self) -> Option<&ListNode> {
+		unsafe { self.head.map(|n| n.as_ref()) }
 	}
 
 	/// Returns an iterator over the list.
-	pub fn iter(self: Pin<&mut Self>) -> Iter<'_, T, OFF> {
-		unsafe { self.get_unchecked_mut().iter_impl() }
-	}
-
-	fn insert_front_impl(&mut self, mut node: NonNull<ListNode>) {
-		let base_node = NonNull::from(&mut self.base);
-		let node_ref = unsafe { node.as_mut() };
-		if self.base.next().is_some() {
-			// There is already an element in the list
-			unsafe {
-				node_ref.insert_after(base_node);
-			}
-		} else {
-			// There is element in the list: insert the first element and make a cycle
-			*node_ref.prev.get_mut() = Some(base_node);
-			*node_ref.next.get_mut() = Some(base_node);
-			*self.base.prev.get_mut() = Some(node);
-			*self.base.next.get_mut() = Some(node);
+	pub fn iter(&mut self) -> Iter<'_, T, OFF> {
+		Iter {
+			list: NonNull::from(&mut *self),
+			range: self.head_node().map(|head| (head, head.prev().unwrap())),
+			fuse: false,
 		}
 	}
 
 	/// Inserts `val` at the first position of the list.
-	pub fn insert_front(self: Pin<&mut Self>, val: Arc<T>) {
-		unsafe {
-			let this = self.get_unchecked_mut();
-			let inner = NonNull::from(&*Arc::into_raw(val));
-			let node = inner.byte_add(OFF).cast::<ListNode>();
-			this.insert_front_impl(node);
+	pub fn insert_front(&mut self, val: Arc<T>) {
+		let node = Self::get_node(&val);
+		// Keep reference
+		mem::forget(val);
+		if let Some(head) = self.head {
+			// There is already an element in the list
+			unsafe {
+				node.as_ref().insert_before(head);
+			}
+		} else {
+			// The list is empty: make a cycle
+			unsafe {
+				*node.as_ref().prev.get() = Some(node);
+				*node.as_ref().next.get() = Some(node);
+			}
 		}
+		// Update head
+		self.head = Some(node);
 	}
 
 	/// Removes the first element of the list and returns it, if any.
-	pub fn remove_front(self: Pin<&mut Self>) -> Option<Arc<T>> {
-		let this = unsafe { self.get_unchecked_mut() };
-		let head = (*this.base.next.get_mut())?;
-		let mut cursor = Cursor {
-			list: NonNull::from(this),
-			node: head,
-
-			phantom: PhantomData,
+	pub fn remove_front(&mut self) -> Option<Arc<T>> {
+		let cursor = Cursor {
+			list: NonNull::from(&mut *self),
+			node: self.head_node()?,
 		};
 		Some(cursor.remove())
 	}
 
-	fn clear_impl(&mut self) {
-		for mut node in self.iter_impl() {
-			node.remove();
-		}
-	}
-
 	/// Unlinks all the elements from the list.
-	pub fn clear(self: Pin<&mut Self>) {
-		unsafe {
-			self.get_unchecked_mut().clear_impl();
+	pub fn clear(&mut self) {
+		for node in self.iter() {
+			node.remove();
 		}
 	}
 }
 
 impl<T, const OFF: usize> Drop for List<T, OFF> {
 	fn drop(&mut self) {
-		self.clear_impl();
+		self.clear();
 	}
 }
 
 /// Cursor over an element in a [`List`].
 pub struct Cursor<'l, T: 'l, const OFF: usize> {
 	list: NonNull<List<T, OFF>>,
-	node: NonNull<ListNode>,
-
-	phantom: PhantomData<&'l mut T>,
+	node: &'l ListNode,
 }
 
 impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 	/// Returns the cursor's node.
 	#[inline]
 	pub fn node(&self) -> &ListNode {
-		unsafe { self.node.as_ref() }
+		self.node
 	}
 
 	/// Returns a reference to the node's value.
 	#[inline]
 	pub fn value(&self) -> &T {
-		unsafe { self.node().container(OFF) }
+		unsafe { self.node.container(OFF) }
 	}
 
 	/// Removes the element from the list, returning the value as an [`Arc`].
-	pub fn remove(&mut self) -> Arc<T> {
-		let node = self.node();
+	pub fn remove(mut self) -> Arc<T> {
 		unsafe {
-			node.unlink();
-			Arc::from_raw(node.container(OFF))
+			let list = self.list.as_mut();
+			// Cannot fail since `self` is in the list
+			let head = list.head_node().unwrap();
+			// If the node to remove is the head, change it
+			if ptr::eq(self.node, head) {
+				list.head = head
+					.next()
+					// If nothing else than the head remain, the list shall become empty
+					.filter(|next| !ptr::eq(*next, head))
+					.map(NonNull::from);
+			}
+			self.node.unlink();
+			Arc::from_raw(self.node.container(OFF))
 		}
 	}
 
@@ -273,8 +283,18 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 	/// This is useful when the list is used as an LRU.
 	pub fn lru_promote(&mut self) {
 		unsafe {
-			self.node().unlink();
-			self.list.as_mut().insert_front_impl(self.node);
+			let list = self.list.as_mut();
+			// Cannot fail since `self` is in the list
+			let head = list.head.unwrap();
+			// If the node is already the head, do nothing
+			if ptr::eq(self.node, head.as_ptr()) {
+				return;
+			}
+			// Move the node in the list
+			self.node.unlink();
+			self.node.insert_before(head);
+			// Update head
+			list.head.replace(NonNull::from(self.node));
 		}
 	}
 }
@@ -282,42 +302,46 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 /// Double-ended iterator over a [`List`], returning a [`Cursor`] for each element.
 pub struct Iter<'l, T: 'l, const OFF: usize> {
 	list: NonNull<List<T, OFF>>,
-
-	// The remaining range to iterate on
-	start: &'l ListNode,
-	end: &'l ListNode,
+	range: Option<(&'l ListNode, &'l ListNode)>,
+	fuse: bool,
 }
 
 impl<'l, T: 'l, const OFF: usize> Iterator for Iter<'l, T, OFF> {
 	type Item = Cursor<'l, T, OFF>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if ptr::eq(self.start, self.end) {
+		let (start, end) = self.range.as_mut()?;
+		if unlikely(self.fuse) {
 			return None;
 		}
-		let node = self.start;
-		self.start = node.next()?;
+		if unlikely(ptr::eq(*start, *end)) {
+			self.fuse = true;
+		}
+		let node = *start;
+		// Cannot fail since the list is a cycle
+		*start = start.next().unwrap();
 		Some(Cursor {
 			list: self.list,
-			node: NonNull::from(node),
-
-			phantom: PhantomData,
+			node,
 		})
 	}
 }
 
 impl<'l, T: 'l, const OFF: usize> DoubleEndedIterator for Iter<'l, T, OFF> {
 	fn next_back(&mut self) -> Option<Self::Item> {
-		if ptr::eq(self.start, self.end) {
+		let (start, end) = self.range.as_mut()?;
+		if unlikely(self.fuse) {
 			return None;
 		}
-		let node = self.end.prev()?;
-		self.end = node;
+		if unlikely(ptr::eq(*start, *end)) {
+			self.fuse = true;
+		}
+		let node = *end;
+		// Cannot fail since the list is a cycle
+		*end = end.prev().unwrap();
 		Some(Cursor {
 			list: self.list,
-			node: NonNull::from(node),
-
-			phantom: PhantomData,
+			node,
 		})
 	}
 }
@@ -332,15 +356,15 @@ mod test {
 		node: ListNode,
 	}
 
-	fn init<const OFF: usize>(mut list: Pin<&mut List<Foo, OFF>>) {
-		list.as_mut().insert_front(
+	fn init(list: &mut list_type!(Foo, node)) {
+		list.insert_front(
 			Arc::new(Foo {
 				foo: 0,
 				node: ListNode::default(),
 			})
 			.unwrap(),
 		);
-		list.as_mut().insert_front(
+		list.insert_front(
 			Arc::new(Foo {
 				foo: 1,
 				node: ListNode::default(),
@@ -359,7 +383,7 @@ mod test {
 	#[test]
 	fn list_basic() {
 		let mut list = pin!(list!(Foo, node));
-		init(list.as_mut());
+		init(&mut list);
 
 		let mut iter = list.iter();
 		for (i, j) in iter.by_ref().rev().enumerate() {
@@ -371,13 +395,13 @@ mod test {
 	#[test]
 	fn list_remove() {
 		let mut list = pin!(list!(Foo, node));
-		init(list.as_mut());
+		init(&mut list);
 
 		let removed = list
 			.as_mut()
 			.iter()
 			.find(|c| c.value().foo == 1)
-			.map(|mut c| c.remove());
+			.map(|c| c.remove());
 
 		let mut iter = list.iter().rev();
 		assert_eq!(iter.next().map(|n| n.value().foo), Some(0));
@@ -390,9 +414,9 @@ mod test {
 	#[test]
 	fn list_lru_promote() {
 		let mut list = pin!(list!(Foo, node));
-		init(list.as_mut());
+		init(&mut list);
 
-		let mut promoted = list.as_mut().iter().find(|c| c.value().foo == 1).unwrap();
+		let mut promoted = list.iter().find(|c| c.value().foo == 1).unwrap();
 		promoted.lru_promote();
 
 		let mut iter = list.iter().rev();
