@@ -26,6 +26,7 @@
 //!   reclaimed at anytime
 
 use crate::{
+	arch::x86::sti,
 	device::BlkDev,
 	file::vfs::node::Node,
 	memory::{
@@ -355,7 +356,8 @@ fn flush_impl(lru: &mut list_type!(RcFrameInner, lru), cur_ts: UTimestamp) {
 }
 
 /// The entry point of the kernel task flushing cached memory back to disk.
-pub fn flush_task() {
+pub(crate) fn flush_task() -> ! {
+	sti();
 	loop {
 		// cannot fail since `CLOCK_BOOTTIME` is valid
 		let cur_ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();

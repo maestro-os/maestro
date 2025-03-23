@@ -22,6 +22,7 @@
 //! A bitfield is used to store the used PIDs.
 
 use crate::sync::mutex::Mutex;
+use core::{alloc::AllocError, ops::Deref};
 use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
 
 /// Type representing a Process ID. This ID is unique for every running
@@ -49,30 +50,39 @@ fn allocator_do<F: Fn(&mut IDAllocator) -> AllocResult<T>, T>(f: F) -> AllocResu
 }
 
 /// Wrapper for a PID, freeing it on drop.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PidHandle(Pid);
 
 impl PidHandle {
-	/// Returns the init PID.
+	/// Allocates the given `pid`.
 	///
-	/// This function **must not** be used outside the creation of the first process.
-	pub(super) fn init() -> AllocResult<Self> {
+	/// If already allocated, the function returns an error.
+	pub(super) fn mark_used(pid: Pid) -> AllocResult<Self> {
+		let Some(id) = pid.checked_sub(1) else {
+			// Pid `0` is not allocated, just return a handle
+			return Ok(Self(pid));
+		};
 		allocator_do(|a| {
-			a.set_used((INIT_PID - 1) as _);
-			Ok(())
-		})?;
-		Ok(Self(INIT_PID))
+			if !a.is_used(id as _) {
+				a.set_used(id as _);
+				Ok(Self(pid))
+			} else {
+				Err(AllocError)
+			}
+		})
 	}
 
 	/// Returns an unused PID and marks it as used.
 	pub fn unique() -> AllocResult<PidHandle> {
 		allocator_do(|allocator| allocator.alloc(None)).map(|i| PidHandle((i + 1) as _))
 	}
+}
 
-	/// Returns the actual PID.
-	#[inline]
-	pub fn get(&self) -> Pid {
-		self.0
+impl Deref for PidHandle {
+	type Target = Pid;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
 	}
 }
 

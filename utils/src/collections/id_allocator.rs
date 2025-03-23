@@ -37,8 +37,19 @@ impl IDAllocator {
 			used: Bitfield::new((max + 1) as _)?,
 		})
 	}
+	
+	/// Tells whether `id` is marked as used.
+	/// 
+	/// If out of bounds, the function returns `true`.
+	pub fn is_used(&self, id: u32) -> bool {
+		if id <= self.used.len() as _ {
+			self.used.is_set(id as _)
+		} else {
+			true
+		}
+	}
 
-	/// Sets the id `id` as used.
+	/// Sets `id` as used.
 	pub fn set_used(&mut self, id: u32) {
 		if id <= self.used.len() as _ {
 			self.used.set(id as _);

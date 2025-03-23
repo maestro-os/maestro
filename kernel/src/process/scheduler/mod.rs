@@ -172,14 +172,12 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<Process>> {
-		if process.get_state() == State::Running {
+	pub fn add_process(&mut self, proc: Arc<Process>) -> AllocResult<()> {
+		if proc.get_state() == State::Running {
 			self.increment_running();
 		}
-		let pid = process.pid.get();
-		let ptr = Arc::new(process)?;
-		self.processes.insert(pid, ptr.clone())?;
-		Ok(ptr)
+		self.processes.insert(*proc.pid, proc.clone())?;
+		Ok(())
 	}
 
 	/// Removes the process with the given pid `pid`.

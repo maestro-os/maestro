@@ -47,7 +47,11 @@ use crate::{
 		mem_space::{copy, copy::SyscallPtr},
 		pid::{PidHandle, IDLE_PID, INIT_PID},
 		rusage::Rusage,
-		scheduler::{switch, Scheduler, SCHEDULER},
+		scheduler::{
+			switch,
+			switch::{idle_task, KThreadEntry},
+			Scheduler, SCHEDULER,
+		},
 		signal::SigSet,
 	},
 	register_get,
@@ -454,16 +458,27 @@ impl Process {
 		SCHEDULER.lock().get_current_process()
 	}
 
-	/// Creates an idle task.
+	/// Creates a kernel thread.
 	///
-	/// The idle task is a special process, running in kernelspace, used by the scheduler when no
-	/// task is ready to run.
-	pub fn idle_task() -> AllocResult<Arc<Self>> {
+	/// Arguments:
+	/// - `pid` is the PID to use. If `None`, an available PID is allocated
+	/// - `queue` tells whether the thread shall be added to the scheduler's queue
+	/// - `entry` is entry point of the newly created thread
+	pub fn new_kthread(
+		pid: Option<Pid>,
+		entry: KThreadEntry,
+		queue: bool,
+	) -> AllocResult<Arc<Self>> {
+		let pid = match pid {
+			Some(pid) => PidHandle::mark_used(pid)?,
+			None => PidHandle::unique()?,
+		};
+		let tid = *pid;
 		let kernel_stack = KernelStack::new()?;
-		let kernel_sp = unsafe { switch::init_idle(kernel_stack.top()) };
-		Arc::new(Self {
-			pid: PidHandle::default(),
-			tid: 0,
+		let kernel_sp = unsafe { switch::init_kthread(kernel_stack.top(), entry) };
+		let thread = Arc::new(Self {
+			pid,
+			tid,
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
@@ -487,7 +502,20 @@ impl Process {
 			signal: Mutex::new(ProcessSignal::new()?),
 
 			rusage: Default::default(),
-		})
+		})?;
+		if queue {
+			SCHEDULER.lock().add_process(thread.clone())?;
+		}
+		Ok(thread)
+	}
+
+	/// Creates an idle task.
+	///
+	/// The idle task is a special process, running in kernelspace, used by the scheduler when no
+	/// task is ready to run.
+	#[inline]
+	pub(crate) fn idle_task() -> AllocResult<Arc<Self>> {
+		Self::new_kthread(Some(0), || unsafe { idle_task() }, false)
 	}
 
 	/// Creates the init process and places it into the scheduler's queue.
@@ -516,9 +544,8 @@ impl Process {
 			fds_table
 		};
 		let root_dir = vfs::get_file_from_path(Path::root(), &rs)?;
-		let pid = PidHandle::init()?;
-		let process = Self {
-			pid,
+		let proc = Arc::new(Self {
+			pid: PidHandle::mark_used(INIT_PID)?,
 			tid: INIT_PID,
 
 			state: AtomicU8::new(State::Running as _),
@@ -549,25 +576,26 @@ impl Process {
 			}),
 
 			rusage: Default::default(),
-		};
-		Ok(SCHEDULER.lock().add_process(process)?)
+		})?;
+		SCHEDULER.lock().add_process(proc.clone())?;
+		Ok(proc)
 	}
 
 	/// Returns the process's ID.
 	#[inline]
 	pub fn get_pid(&self) -> Pid {
-		self.pid.get()
+		*self.pid
 	}
 
 	/// Tells whether the process is an idle task.
 	pub fn is_idle_task(&self) -> bool {
-		self.pid.get() == IDLE_PID
+		*self.pid == IDLE_PID
 	}
 
 	/// Tells whether the process is the init process.
 	#[inline(always)]
 	pub fn is_init(&self) -> bool {
-		self.pid.get() == INIT_PID
+		*self.pid == INIT_PID
 	}
 
 	/// Returns the process group ID.
@@ -699,7 +727,7 @@ impl Process {
 				let children = mem::take(&mut self.links.lock().children);
 				for child_pid in children {
 					// Check just in case
-					if child_pid == self.pid.get() {
+					if child_pid == *self.pid {
 						continue;
 					}
 					if let Some(child) = Process::get_by_pid(child_pid) {
@@ -782,7 +810,7 @@ impl Process {
 	pub fn fork(this: Arc<Self>, fork_options: ForkOptions) -> EResult<Arc<Self>> {
 		debug_assert!(matches!(this.get_state(), State::Running));
 		let pid = PidHandle::unique()?;
-		let pid_int = pid.get();
+		let pid_int = *pid;
 		// Clone memory space
 		let mem_space = {
 			let curr_mem_space = this.mem_space.as_ref().unwrap();
@@ -815,7 +843,7 @@ impl Process {
 				Arc::new(Mutex::new(handlers))?
 			}
 		};
-		let process = Self {
+		let proc = Arc::new(Self {
 			pid,
 			tid: pid_int,
 
@@ -847,9 +875,10 @@ impl Process {
 			}),
 
 			rusage: Mutex::new(Rusage::default()),
-		};
+		})?;
 		this.add_child(pid_int)?;
-		Ok(SCHEDULER.lock().add_process(process)?)
+		SCHEDULER.lock().add_process(proc.clone())?;
+		Ok(proc)
 	}
 
 	/// Kills the process with the given signal `sig`.
@@ -892,7 +921,7 @@ impl Process {
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] exited with status `{status}`",
-			pid = self.pid.get()
+			pid = *self.pid
 		);
 		self.signal.lock().exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
@@ -901,9 +930,7 @@ impl Process {
 
 impl fmt::Debug for Process {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Process")
-			.field("pid", &self.pid.get())
-			.finish()
+		f.debug_struct("Process").field("pid", &self.pid).finish()
 	}
 }
 
