@@ -355,3 +355,8 @@ pub fn fifo(root: &Path) -> TestResult {
 
 	Ok(())
 }
+
+pub fn persistence(root: &Path) -> TestResult {
+	fs::write(root.join("persistent"), "persistence OK")?;
+	Ok(())
+}

@@ -56,6 +56,11 @@ macro_rules! fs_suite {
 			desc: concat!("Files and filesystem handling (", $root, ")"),
 			tests: &[
 				Test {
+					name: "persistence",
+					desc: "Leave a file which will be accessed from the outside to check writeback to disk works",
+					start: || filesystem::persistence(Path::new($root)),
+				},
+				Test {
 					name: "basic",
 					desc: "Create, remove and modify the properties of a single file",
 					start: || filesystem::basic(Path::new($root)),
