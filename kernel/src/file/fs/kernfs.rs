@@ -37,6 +37,7 @@ use core::{
 	cmp::min,
 	fmt,
 	fmt::{Debug, Write},
+	sync::atomic::AtomicBool,
 };
 use utils::{
 	boxed::Box,
@@ -278,6 +279,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 					fs: dir.fs.clone(),
 
 					stat: Mutex::new(stat),
+					dirty: AtomicBool::new(false),
 
 					node_ops,
 					file_ops,

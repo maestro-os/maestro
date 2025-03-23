@@ -28,7 +28,7 @@ use crate::{
 	file::{
 		fs::{
 			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemOps,
-			FilesystemType, NodeOps, StatSet, Statfs,
+			FilesystemType, NodeOps, Statfs,
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
@@ -42,6 +42,7 @@ use core::{
 	any::Any,
 	cmp::{max, min},
 	intrinsics::unlikely,
+	sync::atomic::AtomicBool,
 };
 use utils::{
 	boxed::Box,
@@ -77,10 +78,6 @@ impl NodeContent {
 }
 
 impl NodeOps for NodeContent {
-	fn set_stat(&self, _node: &Node, _set: &StatSet) -> EResult<()> {
-		Ok(())
-	}
-
 	fn lookup_entry(&self, _dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let NodeContent::Directory(entries) = self else {
 			return Err(errno!(ENOTDIR));
@@ -227,14 +224,14 @@ pub struct TmpFSFile;
 
 impl FileOps for TmpFSFile {
 	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let node_ops = &*file.node().unwrap().node_ops;
-		let pages = NodeContent::from_ops(node_ops);
+		let node = file.node().unwrap();
+		let pages = NodeContent::from_ops(&*node.node_ops);
 		let NodeContent::Regular(pages) = pages else {
 			return Err(errno!(EINVAL));
 		};
 		// Validation
 		let mut off: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let size = file.node().unwrap().stat.lock().size as usize;
+		let size = node.stat.lock().size as usize;
 		if off > size {
 			return Err(errno!(EINVAL));
 		}
@@ -390,6 +387,7 @@ impl FilesystemOps for TmpFS {
 			fs,
 
 			stat: Mutex::new(stat),
+			dirty: AtomicBool::new(false),
 
 			node_ops: Box::new(content)?,
 			file_ops: Box::new(TmpFSFile)?,
@@ -452,6 +450,7 @@ impl FilesystemType for TmpFsType {
 				mtime: 0,
 				atime: 0,
 			}),
+			dirty: AtomicBool::new(false),
 
 			node_ops: Box::new(NodeContent::Directory(Default::default()))?,
 			file_ops: Box::new(TmpFSFile)?,

@@ -103,16 +103,6 @@ pub struct StatSet {
 
 /// Filesystem node operations.
 pub trait NodeOps: Any + Debug {
-	/// Sets the node's status.
-	///
-	/// `set` is the set of status attributes to modify on the file.
-	///
-	/// The default implementation of this function does nothing.
-	fn set_stat(&self, node: &Node, set: &StatSet) -> EResult<()> {
-		let _ = (node, set);
-		Ok(())
-	}
-
 	/// Looks for an entry in `dir` with the name in `ent`. If found, the function sets the
 	/// corresponding [`Node`] in `ent`.
 	///
@@ -235,6 +225,14 @@ pub trait NodeOps: Any + Debug {
 	fn writeback(&self, frame: &RcFrame) -> EResult<()> {
 		let _ = frame;
 		Err(errno!(EINVAL))
+	}
+
+	/// Updates the node's status back to disk.
+	///
+	/// The default implementation of this function does nothing.
+	fn sync_stat(&self, node: &Node) -> EResult<()> {
+		let _ = node;
+		Ok(())
 	}
 }
 

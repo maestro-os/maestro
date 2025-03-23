@@ -56,7 +56,7 @@ use crate::{
 		fs::{
 			downcast_fs,
 			ext2::{dirent::DirentIterator, inode::ROOT_DIRECTORY_INODE},
-			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, StatSet, Statfs,
+			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs,
 		},
 		vfs,
 		vfs::node::{Node, NodeCache},
@@ -71,7 +71,7 @@ use core::{
 	cmp::max,
 	intrinsics::unlikely,
 	sync::atomic::{
-		AtomicU16, AtomicU32, AtomicU8, AtomicUsize,
+		AtomicBool, AtomicU16, AtomicU32, AtomicU8, AtomicUsize,
 		Ordering::{Acquire, Relaxed, Release},
 	},
 };
@@ -190,30 +190,6 @@ fn bitmap_alloc_impl(blk: &RcFrame) -> Option<u32> {
 struct Ext2NodeOps;
 
 impl NodeOps for Ext2NodeOps {
-	fn set_stat(&self, node: &Node, set: &StatSet) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let mut inode_ = Ext2INode::get(node, fs)?;
-		if let Some(mode) = set.mode {
-			inode_.set_permissions(mode);
-		}
-		if let Some(uid) = set.uid {
-			inode_.i_uid = uid;
-		}
-		if let Some(gid) = set.gid {
-			inode_.i_gid = gid;
-		}
-		if let Some(ctime) = set.ctime {
-			inode_.i_ctime = ctime as _;
-		}
-		if let Some(mtime) = set.mtime {
-			inode_.i_mtime = mtime as _;
-		}
-		if let Some(atime) = set.atime {
-			inode_.i_atime = atime as _;
-		}
-		Ok(())
-	}
-
 	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
 		let inode_ = Ext2INode::get(dir, fs)?;
@@ -226,6 +202,7 @@ impl NodeOps for Ext2NodeOps {
 						fs: dir.fs.clone(),
 
 						stat: Default::default(),
+						dirty: AtomicBool::new(false),
 
 						node_ops: Box::new(Ext2NodeOps)?,
 						file_ops: Box::new(Ext2FileOps)?,
@@ -384,6 +361,19 @@ impl NodeOps for Ext2NodeOps {
 
 	fn writeback(&self, _frame: &RcFrame) -> EResult<()> {
 		todo!()
+	}
+
+	fn sync_stat(&self, node: &Node) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		let stat = node.stat.lock().clone();
+		let mut inode_ = Ext2INode::get(node, fs)?;
+		inode_.set_permissions(stat.mode);
+		inode_.i_uid = stat.uid;
+		inode_.i_gid = stat.gid;
+		inode_.i_ctime = stat.ctime as _;
+		inode_.i_mtime = stat.mtime as _;
+		inode_.i_atime = stat.atime as _;
+		Ok(())
 	}
 }
 
@@ -765,6 +755,7 @@ impl FilesystemOps for Ext2Fs {
 					fs,
 
 					stat: Default::default(),
+					dirty: AtomicBool::new(false),
 
 					node_ops: Box::new(Ext2NodeOps)?,
 					file_ops: Box::new(Ext2FileOps)?,
@@ -791,6 +782,7 @@ impl FilesystemOps for Ext2Fs {
 			fs,
 
 			stat: Default::default(),
+			dirty: AtomicBool::new(false),
 
 			node_ops: Box::new(Ext2NodeOps)?,
 			file_ops: Box::new(Ext2FileOps)?,

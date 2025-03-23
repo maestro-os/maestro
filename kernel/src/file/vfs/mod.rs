@@ -47,6 +47,7 @@ use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
 	intrinsics::unlikely,
+	sync::atomic::Ordering::Release,
 };
 use node::Node;
 use utils::{
@@ -488,9 +489,6 @@ pub fn get_file_from_path(
 
 /// Updates status of a node.
 pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
-	// Update filesystem
-	node.node_ops.set_stat(node, set)?;
-	// Update cached status
 	let mut stat = node.stat.lock();
 	if let Some(mode) = set.mode {
 		stat.mode = (stat.mode & !0o7777) | (mode & 0o7777);
@@ -510,6 +508,7 @@ pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
 	if let Some(atime) = set.atime {
 		stat.atime = atime;
 	}
+	node.dirty.store(true, Release);
 	Ok(())
 }
 

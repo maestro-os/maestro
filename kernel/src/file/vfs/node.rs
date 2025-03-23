@@ -33,6 +33,7 @@ use core::{
 	hash::{Hash, Hasher},
 	ops::RangeBounds,
 	ptr,
+	sync::atomic::{AtomicBool, Ordering::Acquire},
 };
 use utils::{
 	boxed::Box,
@@ -53,6 +54,8 @@ pub struct Node {
 
 	/// The node's status.
 	pub stat: Mutex<Stat>,
+	/// Tells whether the node's stat is dirty.
+	pub dirty: AtomicBool,
 
 	/// Handle for node operations
 	pub node_ops: Box<dyn NodeOps>,
@@ -106,7 +109,11 @@ impl Node {
 	/// Arguments:
 	/// - `range` is the range of pages to be synchronized
 	/// - `metadata` tells whether the node's metadata are synchronized
-	pub fn sync<R: RangeBounds<u64>>(&self, _range: R, _metadata: bool) -> EResult<()> {
+	pub fn sync<R: RangeBounds<u64>>(&self, _range: R, metadata: bool) -> EResult<()> {
+		if metadata && self.dirty.swap(false, Acquire) {
+			self.node_ops.sync_stat(self)?;
+		}
+		// TODO writeback content on the given range
 		todo!()
 	}
 

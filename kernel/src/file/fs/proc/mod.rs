@@ -45,6 +45,7 @@ use crate::{
 	process::{pid::Pid, scheduler::SCHEDULER, Process},
 	sync::mutex::Mutex,
 };
+use core::sync::atomic::AtomicBool;
 use mem_info::MemInfo;
 use proc_dir::{
 	cmdline::Cmdline, cwd::Cwd, exe::Exe, mounts::Mounts, stat::StatNode, status::Status,
@@ -183,6 +184,7 @@ impl NodeOps for RootDir {
 					fs: dir.fs.clone(),
 
 					stat: Mutex::new(static_dir_stat()),
+					dirty: AtomicBool::new(false),
 
 					node_ops: Box::new(StaticDir {
 						entries: &[
@@ -311,6 +313,7 @@ impl FilesystemOps for ProcFS {
 			fs,
 
 			stat: Mutex::new(RootDir::stat()),
+			dirty: AtomicBool::new(false),
 
 			node_ops: Box::new(RootDir)?,
 			file_ops: Box::new(DummyOps)?,
