@@ -25,7 +25,7 @@
 //! size of a frame in pages.
 
 use super::{stats, PhysAddr, VirtAddr};
-use crate::{file::vfs::node::Node, sync::mutex::IntMutex};
+use crate::sync::mutex::IntMutex;
 use core::{
 	alloc::AllocError,
 	intrinsics::likely,
@@ -33,9 +33,8 @@ use core::{
 	ptr,
 	ptr::{null_mut, NonNull},
 	slice,
-	sync::atomic::AtomicBool,
 };
-use utils::{errno::AllocResult, limits::PAGE_SIZE, math, ptr::arc::Arc};
+use utils::{errno::AllocResult, limits::PAGE_SIZE, math};
 
 /// The order of a memory frame.
 pub type FrameOrder = u8;
@@ -195,7 +194,7 @@ impl FreeFrame {
 	/// Returns a mutable reference to the wrapping [`Frame`].
 	fn frame(&mut self) -> &mut Frame {
 		let off = offset_of!(Frame, Free.0);
-		unsafe { &mut *(self as *mut _ as *mut Frame).byte_sub(off) }
+		unsafe { NonNull::from(self).byte_sub(off).cast().as_mut() }
 	}
 
 	/// Returns the index of the buddy frame in zone `zone`.
@@ -299,36 +298,23 @@ impl FreeFrame {
 	}
 }
 
-/// State of a physical page.
-#[derive(Debug, Default)]
-pub struct PageState {
-	/// The mapped node, if any
-	node: Option<Arc<Node>>,
-	/// Flag indicating whether the page needs synchronization to the backing store
-	dirty: AtomicBool,
-}
-
-impl PageState {
-	/// Returns the address of the associated physical memory.
-	fn addr(&self, zone: &Zone) -> PhysAddr {
-		let id = unsafe { frame_id(zone, self) };
-		zone.begin + id as usize * PAGE_SIZE
-	}
-}
-
 /// The metadata for a frame of physical memory.
 enum Frame {
-	/// The frame is free.
 	Free(FreeFrame),
-	/// The frame is allocated.
-	Allocated(PageState),
+	Allocated,
 }
 
 impl Frame {
 	/// Tells whether the frame is used or not.
 	#[inline]
 	fn is_allocated(&self) -> bool {
-		matches!(self, Frame::Allocated(_))
+		matches!(self, Frame::Allocated)
+	}
+
+	/// Returns the address of the associated physical memory.
+	fn addr(&self, zone: &Zone) -> PhysAddr {
+		let id = unsafe { frame_id(zone, self) };
+		zone.begin + id as usize * PAGE_SIZE
 	}
 
 	/// Marks the frame as free. The frame must not be linked to any free list.
@@ -351,12 +337,8 @@ impl Frame {
 	///
 	/// The function returns the used representation of the frame.
 	#[inline]
-	fn mark_used(&mut self) -> &PageState {
-		*self = Frame::Allocated(Default::default());
-		match self {
-			Frame::Allocated(f) => f,
-			_ => unreachable!(),
-		}
+	fn mark_used(&mut self) {
+		*self = Frame::Allocated;
 	}
 }
 
@@ -417,8 +399,9 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<PhysAddr> {
 	let frame = unsafe { frame.as_mut() };
 	// Do the actual allocation
 	frame.split(zone, order);
-	let state = frame.frame().mark_used();
-	let addr = state.addr(zone);
+	let frame = frame.frame();
+	frame.mark_used();
+	let addr = frame.addr(zone);
 	debug_assert!(addr >= zone.begin && addr < zone.begin + zone.get_size());
 	// Statistics
 	let pages_count = math::pow2(order as usize);
@@ -437,25 +420,6 @@ pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<u8>> {
 		.kernel_to_virtual()
 		.and_then(|addr| NonNull::new(addr.as_ptr()))
 		.ok_or(AllocError)
-}
-
-/// Returns the instance of [`PageState`] associated with the page at `addr`.
-///
-/// If the page is not allocated, the function panics.
-pub fn page_state(addr: PhysAddr) -> &'static PageState {
-	debug_assert!(addr.is_aligned_to(PAGE_SIZE));
-	// Get zone
-	let mut zones = ZONES.lock();
-	let zone = get_zone_for_addr(&mut zones, addr).unwrap();
-	let frames = zone.frames();
-	// Get frame
-	let frame_id = zone.get_frame_id_from_addr(addr);
-	debug_assert!(frame_id < zone.pages_count);
-	let frame = &frames[frame_id as usize];
-	let Frame::Allocated(state) = frame else {
-		panic!("attempt to retrieve the state of a free page");
-	};
-	state
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator.
