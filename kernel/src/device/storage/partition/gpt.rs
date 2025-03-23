@@ -31,6 +31,7 @@ use utils::{
 	collections::vec::Vec,
 	errno,
 	errno::{CollectResult, EResult},
+	ptr::arc::Arc,
 };
 
 /// The signature in the GPT header.
@@ -184,7 +185,7 @@ impl Gpt {
 	/// Reads the header structure device `dev` at the given LBA `lba`.
 	///
 	/// If the header is invalid, the function returns an error.
-	fn read_hdr(dev: &BlkDev, lba: i64) -> EResult<Self> {
+	fn read_hdr(dev: &Arc<BlkDev>, lba: i64) -> EResult<Self> {
 		let block_size = dev.ops.block_size().get() as _;
 		if unlikely(size_of::<Gpt>() > block_size) {
 			return Err(errno!(EINVAL));
@@ -192,7 +193,7 @@ impl Gpt {
 		// Read the first block
 		let blocks_count = dev.ops.blocks_count();
 		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		let page = dev.read_frame(lba, 0)?;
+		let page = BlkDev::read_frame(dev, lba, 0)?;
 		let gpt_hdr = &page.slice::<Self>()[0];
 		if unlikely(!gpt_hdr.is_valid()) {
 			return Err(errno!(EINVAL));
@@ -230,7 +231,7 @@ impl Gpt {
 	/// Returns the list of entries in the table.
 	///
 	/// `dev` is the block device
-	fn get_entries(&self, dev: &BlkDev) -> EResult<Vec<GPTEntry>> {
+	fn get_entries(&self, dev: &Arc<BlkDev>) -> EResult<Vec<GPTEntry>> {
 		let block_size = dev.ops.block_size().get();
 		let blocks_count = dev.ops.blocks_count();
 		let entries_start =
@@ -240,7 +241,7 @@ impl Gpt {
 			.map(|i| {
 				let off = entries_start + (i as u64 * self.entry_size as u64) / block_size;
 				let inner_off = ((i as u64 * self.entry_size as u64) % block_size) as usize;
-				let page = dev.read_frame(off, 0)?;
+				let page = BlkDev::read_frame(dev, off, 0)?;
 				let ent = from_bytes::<GPTEntry>(&page.slice()[inner_off..])
 					.unwrap()
 					.clone();
@@ -269,7 +270,7 @@ impl Gpt {
 }
 
 impl Table for Gpt {
-	fn read(dev: &BlkDev) -> EResult<Option<Self>> {
+	fn read(dev: &Arc<BlkDev>) -> EResult<Option<Self>> {
 		// Read headers
 		let main_hdr = match Self::read_hdr(dev, 1) {
 			Ok(hdr) => hdr,
@@ -294,7 +295,7 @@ impl Table for Gpt {
 		"GPT"
 	}
 
-	fn read_partitions(&self, dev: &BlkDev) -> EResult<Vec<Partition>> {
+	fn read_partitions(&self, dev: &Arc<BlkDev>) -> EResult<Vec<Partition>> {
 		let blocks_count = dev.ops.blocks_count();
 		let mut partitions = Vec::new();
 		for e in self.get_entries(dev)? {

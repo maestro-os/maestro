@@ -29,6 +29,7 @@ use macros::AnyRepr;
 use utils::{
 	collections::vec::Vec,
 	errno::{CollectResult, EResult},
+	ptr::arc::Arc,
 };
 
 /// The signature of the MBR partition table.
@@ -81,8 +82,8 @@ impl Clone for MbrTable {
 }
 
 impl Table for MbrTable {
-	fn read(dev: &BlkDev) -> EResult<Option<Self>> {
-		let page = dev.read_frame(0, 0)?;
+	fn read(dev: &Arc<BlkDev>) -> EResult<Option<Self>> {
+		let page = BlkDev::read_frame(dev, 0, 0)?;
 		let table = &page.slice::<Self>()[0];
 		if unlikely(table.signature != MBR_SIGNATURE) {
 			return Ok(None);
@@ -94,7 +95,7 @@ impl Table for MbrTable {
 		"MBR"
 	}
 
-	fn read_partitions(&self, _: &BlkDev) -> EResult<Vec<Partition>> {
+	fn read_partitions(&self, _: &Arc<BlkDev>) -> EResult<Vec<Partition>> {
 		let partitions = self
 			.partitions
 			.iter()

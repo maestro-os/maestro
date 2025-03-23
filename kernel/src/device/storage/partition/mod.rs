@@ -25,7 +25,7 @@ mod mbr;
 use crate::device::BlkDev;
 use gpt::Gpt;
 use mbr::MbrTable;
-use utils::{boxed::Box, collections::vec::Vec, errno::EResult};
+use utils::{boxed::Box, collections::vec::Vec, errno::EResult, ptr::arc::Arc};
 
 /// A disk partition bounds.
 #[derive(Debug)]
@@ -42,7 +42,7 @@ pub trait Table {
 	///
 	/// If the partition table isn't present on the storage interface, the
 	/// function returns `None`.
-	fn read(dev: &BlkDev) -> EResult<Option<Self>>
+	fn read(dev: &Arc<BlkDev>) -> EResult<Option<Self>>
 	where
 		Self: Sized;
 
@@ -52,13 +52,13 @@ pub trait Table {
 	/// Reads the partitions list.
 	///
 	/// `dev` is the storage device on which the partitions are to be read.
-	fn read_partitions(&self, dev: &BlkDev) -> EResult<Vec<Partition>>;
+	fn read_partitions(&self, dev: &Arc<BlkDev>) -> EResult<Vec<Partition>>;
 }
 
 /// Reads the list of partitions from the block device.
 ///
 /// If no partitions table is present, the function returns `None`.
-pub fn read(dev: &BlkDev) -> EResult<Option<Box<dyn Table>>> {
+pub fn read(dev: &Arc<BlkDev>) -> EResult<Option<Box<dyn Table>>> {
 	// Try GPT
 	if let Some(table) = Gpt::read(dev)? {
 		return Ok(Some(Box::new(table)?));

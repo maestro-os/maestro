@@ -412,8 +412,8 @@ impl File {
 	}
 
 	/// Returns a reference to the file's node.
-	pub fn node(&self) -> Option<&Node> {
-		self.vfs_entry.as_ref().map(|e| e.node().as_ref())
+	pub fn node(&self) -> Option<&Arc<Node>> {
+		self.vfs_entry.as_ref().map(|e| e.node())
 	}
 
 	/// Returns the underlying buffer, if any.

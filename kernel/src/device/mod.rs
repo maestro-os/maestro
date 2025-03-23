@@ -181,7 +181,7 @@ pub trait BlockDeviceOps: fmt::Debug {
 	/// Reads a frame of data from the device.
 	///
 	/// `off` is the offset of the frame on the device, in pages.
-	fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame>;
+	fn read_frame(&self, dev: &Arc<BlkDev>, off: u64, order: FrameOrder) -> EResult<RcFrame>;
 
 	/// Writes a frame of data to the device.
 	///
@@ -218,7 +218,7 @@ pub struct BlkDev {
 	/// The device I/O interface
 	pub ops: Box<dyn BlockDeviceOps>,
 	/// The device's page cache
-	cache: PageCache,
+	pub(crate) cache: PageCache,
 }
 
 impl BlkDev {
@@ -249,12 +249,12 @@ impl BlkDev {
 		Ok(dev)
 	}
 
-	/// Reads a frame from the device, containing the page at `off`.
+	/// Reads a frame from the device, at the offset `off`.
 	///
 	/// If not in cache, the function reads the frame from the device, then inserts it in cache.
-	pub fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame> {
-		self.cache
-			.get_or_insert(off, order, || self.ops.read_frame(off, order))
+	pub fn read_frame(this: &Arc<Self>, off: u64, order: FrameOrder) -> EResult<RcFrame> {
+		this.cache
+			.get_or_insert(off, order, || this.ops.read_frame(this, off, order))
 	}
 }
 
@@ -346,7 +346,7 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = dev.read_frame(page_off, 0)?;
+			let page = BlkDev::read_frame(&dev, page_off, 0)?;
 			let inner_off = off as usize % PAGE_SIZE;
 			// TODO ensure this is concurrency-friendly
 			let len = slice_copy(&page.slice()[inner_off..], &mut buf[buf_off..]);
@@ -365,7 +365,7 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = dev.read_frame(page_off, 0)?;
+			let page = BlkDev::read_frame(&dev, page_off, 0)?;
 			let inner_off = off as usize % PAGE_SIZE;
 			let slice = unsafe { page.slice_mut() };
 			// TODO ensure this is concurrency-friendly

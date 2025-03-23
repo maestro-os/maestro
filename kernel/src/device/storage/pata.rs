@@ -39,15 +39,15 @@
 
 use crate::{
 	arch::x86::io::inb,
-	device::{storage::ide, BlockDeviceOps},
+	device::{storage::ide, BlkDev, BlockDeviceOps},
 	memory::{
 		buddy::{FrameOrder, ZONE_KERNEL},
-		cache::RcFrame,
+		cache::{FrameOwner, RcFrame},
 	},
 	sync::mutex::Mutex,
 };
 use core::num::NonZeroU64;
-use utils::{errno, errno::EResult, limits::PAGE_SIZE};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 /// Offset to the data register.
 const DATA_REGISTER_OFFSET: u16 = 0;
@@ -438,8 +438,8 @@ impl BlockDeviceOps for PATAInterface {
 		self.sectors_count
 	}
 
-	fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame> {
-		let frame = RcFrame::new(order, ZONE_KERNEL)?;
+	fn read_frame(&self, dev: &Arc<BlkDev>, off: u64, order: FrameOrder) -> EResult<RcFrame> {
+		let frame = RcFrame::new(order, ZONE_KERNEL, FrameOwner::BlkDev(dev.clone()), off)?;
 		let off = off
 			.checked_mul(SECTOR_PER_PAGE)
 			.ok_or_else(|| errno!(EOVERFLOW))?;

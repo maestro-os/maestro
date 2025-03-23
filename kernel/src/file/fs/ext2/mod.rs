@@ -154,7 +154,7 @@ fn read_block(fs: &Ext2Fs, off: u64) -> EResult<RcFrame> {
 	// cannot overflow since `s_log_block_size` is at least `2`
 	let order = fs.sp.s_log_block_size - 2;
 	let page_off = off << order;
-	fs.dev.read_frame(page_off, order as _)
+	BlkDev::read_frame(&fs.dev, page_off, order as _)
 }
 
 /// Finds a `0` bit in the given block, sets it atomically, then returns its offset.
@@ -370,7 +370,7 @@ impl NodeOps for Ext2NodeOps {
 		todo!()
 	}
 
-	fn readahead(&self, node: &Node, off: u64) -> EResult<RcFrame> {
+	fn readahead(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
 		node.cache.get_or_insert(off, 0, || {
 			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 			let inode = Ext2INode::get(node, fs)?;
@@ -378,11 +378,11 @@ impl NodeOps for Ext2NodeOps {
 			let blk_off = inode
 				.translate_blk_off(off, fs)?
 				.ok_or_else(|| errno!(EOVERFLOW))?;
-			fs.dev.ops.read_frame(blk_off.get() as _, 0)
+			fs.dev.ops.read_frame(&fs.dev, blk_off.get() as _, 0)
 		})
 	}
 
-	fn writeback(&self, _node: &Node, _off: u64) -> EResult<()> {
+	fn writeback(&self, _frame: &RcFrame) -> EResult<()> {
 		todo!()
 	}
 }
@@ -529,8 +529,8 @@ pub struct Superblock {
 
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
-	fn read(dev: &BlkDev) -> EResult<RcFrameVal<Self>> {
-		let page = dev.read_frame(0, 0)?;
+	fn read(dev: &Arc<BlkDev>) -> EResult<RcFrameVal<Self>> {
+		let page = BlkDev::read_frame(dev, 0, 0)?;
 		Ok(RcFrameVal::new(page, 1))
 	}
 
@@ -869,7 +869,7 @@ impl FilesystemType for Ext2FsType {
 		b"ext2"
 	}
 
-	fn detect(&self, dev: &BlkDev) -> EResult<bool> {
+	fn detect(&self, dev: &Arc<BlkDev>) -> EResult<bool> {
 		Superblock::read(dev).map(|sp| sp.is_valid())
 	}
 

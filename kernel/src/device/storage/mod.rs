@@ -99,9 +99,9 @@ impl BlockDeviceOps for PartitionOps {
 		self.dev.ops.blocks_count()
 	}
 
-	fn read_frame(&self, off: u64, order: FrameOrder) -> EResult<RcFrame> {
+	fn read_frame(&self, _dev: &Arc<BlkDev>, off: u64, order: FrameOrder) -> EResult<RcFrame> {
 		if off < self.partition.size {
-			self.dev.read_frame(self.partition.offset + off, order)
+			BlkDev::read_frame(&self.dev, self.partition.offset + off, order)
 		} else {
 			Err(errno!(EINVAL))
 		}

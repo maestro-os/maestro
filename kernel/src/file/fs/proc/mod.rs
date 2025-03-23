@@ -337,7 +337,7 @@ impl FilesystemType for ProcFsType {
 		b"procfs"
 	}
 
-	fn detect(&self, _dev: &BlkDev) -> EResult<bool> {
+	fn detect(&self, _dev: &Arc<BlkDev>) -> EResult<bool> {
 		Ok(false)
 	}
 

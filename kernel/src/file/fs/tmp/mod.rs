@@ -35,7 +35,7 @@ use crate::{
 		vfs::node::Node,
 		DirContext, DirEntry, File, FileType, Stat,
 	},
-	memory::cache::RcFrame,
+	memory::cache::{FrameOwner, RcFrame},
 	sync::mutex::Mutex,
 };
 use core::{
@@ -208,7 +208,7 @@ impl NodeOps for NodeContent {
 		todo!()
 	}
 
-	fn readahead(&self, _node: &Node, off: u64) -> EResult<RcFrame> {
+	fn readahead(&self, _node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
 		let i: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		let NodeContent::Regular(pages) = self else {
 			return Err(errno!(EINVAL));
@@ -216,7 +216,7 @@ impl NodeOps for NodeContent {
 		pages.lock().get(i).cloned().ok_or_else(|| errno!(EINVAL))
 	}
 
-	fn writeback(&self, _node: &Node, _off: u64) -> EResult<()> {
+	fn writeback(&self, _frame: &RcFrame) -> EResult<()> {
 		Ok(())
 	}
 }
@@ -260,14 +260,14 @@ impl FileOps for TmpFSFile {
 	}
 
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
-		let node_ops = &*file.node().unwrap().node_ops;
-		let pages = NodeContent::from_ops(node_ops);
+		let node = file.node().unwrap();
+		let pages = NodeContent::from_ops(&*node.node_ops);
 		let NodeContent::Regular(pages) = pages else {
 			return Err(errno!(EINVAL));
 		};
 		// Validation
 		let mut off: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let mut stat = file.node().unwrap().stat.lock();
+		let mut stat = node.stat.lock();
 		if off > stat.size as usize {
 			return Err(errno!(EINVAL));
 		}
@@ -281,7 +281,9 @@ impl FileOps for TmpFSFile {
 		if let Some(count) = end_page.checked_sub(pages.len()) {
 			pages.reserve(count)?;
 			for _ in 0..count {
-				pages.push(RcFrame::new_zeroed(0)?)?;
+				let frame =
+					RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), pages.len() as _)?;
+				pages.push(frame)?;
 			}
 		}
 		// Copy
@@ -300,8 +302,8 @@ impl FileOps for TmpFSFile {
 	}
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
-		let node_ops = &*file.node().unwrap().node_ops;
-		let pages = NodeContent::from_ops(node_ops);
+		let node = file.node().unwrap();
+		let pages = NodeContent::from_ops(&*node.node_ops);
 		let NodeContent::Regular(pages) = pages else {
 			return Err(errno!(EINVAL));
 		};
@@ -313,7 +315,9 @@ impl FileOps for TmpFSFile {
 		if let Some(count) = new_pages_count.checked_sub(pages.len()) {
 			pages.reserve(count)?;
 			for _ in 0..count {
-				pages.push(RcFrame::new_zeroed(0)?)?;
+				let frame =
+					RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), pages.len() as _)?;
+				pages.push(frame)?;
 			}
 		} else {
 			pages.truncate(new_pages_count);
@@ -325,7 +329,7 @@ impl FileOps for TmpFSFile {
 			}
 		}
 		// Update status
-		file.node().unwrap().stat.lock().size = size as _;
+		node.stat.lock().size = size as _;
 		Ok(())
 	}
 }
@@ -414,7 +418,7 @@ impl FilesystemType for TmpFsType {
 		b"tmpfs"
 	}
 
-	fn detect(&self, _dev: &BlkDev) -> EResult<bool> {
+	fn detect(&self, _dev: &Arc<BlkDev>) -> EResult<bool> {
 		Ok(false)
 	}
 

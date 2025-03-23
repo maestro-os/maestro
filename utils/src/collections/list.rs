@@ -226,6 +226,20 @@ impl<T, const OFF: usize> List<T, OFF> {
 		Some(cursor.remove())
 	}
 
+	/// Removes a value from the list.
+	///
+	/// # Safety
+	///
+	/// The function is marked as unsafe because it cannot ensure `val` actually is inserted in
+	/// `self`. This is the caller's responsibility.
+	pub unsafe fn remove(&mut self, val: &Arc<T>) {
+		let cursor = Cursor {
+			list: NonNull::from(&mut *self),
+			node: Self::get_node(val).as_ref(),
+		};
+		cursor.remove();
+	}
+
 	/// Unlinks all the elements from the list.
 	pub fn clear(&mut self) {
 		for node in self.iter() {
@@ -259,6 +273,15 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 		unsafe { self.node.container(OFF) }
 	}
 
+	/// Returns an [`Arc`] with the value in it.
+	#[inline]
+	pub fn arc(&self) -> Arc<T> {
+		let arc = unsafe { Arc::from_raw(self.value()) };
+		// Increment reference count
+		mem::forget(arc.clone());
+		arc
+	}
+
 	/// Removes the element from the list, returning the value as an [`Arc`].
 	pub fn remove(mut self) -> Arc<T> {
 		unsafe {
@@ -274,7 +297,7 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 					.map(NonNull::from);
 			}
 			self.node.unlink();
-			Arc::from_raw(self.node.container(OFF))
+			Arc::from_raw(self.value())
 		}
 	}
 

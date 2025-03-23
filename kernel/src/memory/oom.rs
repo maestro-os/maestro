@@ -24,12 +24,16 @@
 //!
 //! This is an emergency procedure which is not supposed to be used under normal conditions.
 
+use crate::memory::cache;
 use utils::errno::AllocResult;
 
 /// TODO doc
 pub fn reclaim() {
 	// TODO try the following one after the other:
 	// - shrink page cache
+	if cache::shrink() {
+		return;
+	}
 	// - shrink directory entries cache
 	// - swap memory to disk
 	// - if the kernel is configured for it, prompt the user to select processes to kill
@@ -44,12 +48,11 @@ pub fn reclaim() {
 ///
 /// If the OOM killer is unable to free enough memory, the kernel may panic.
 pub fn wrap<T, F: FnMut() -> AllocResult<T>>(mut f: F) -> T {
-	for _ in 0..5 {
+	loop {
 		if let Ok(r) = f() {
 			return r;
 		}
 		reclaim();
 		// TODO Check if current process has been killed
 	}
-	panic!("OOM killer is unable to free up space for new allocations!");
 }

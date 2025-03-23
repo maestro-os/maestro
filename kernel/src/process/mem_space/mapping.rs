@@ -27,7 +27,7 @@ use crate::{
 	file::File,
 	memory::{
 		buddy::ZONE_USER,
-		cache::RcFrame,
+		cache::{FrameOwner, RcFrame},
 		vmem,
 		vmem::{invalidate_page_current, write_ro, VMem, VMemTransaction},
 		PhysAddr, VirtAddr,
@@ -97,7 +97,7 @@ fn init_page(
 	dst: VirtAddr,
 ) -> AllocResult<RcFrame> {
 	// Allocate destination page
-	let new_page = RcFrame::new(0, ZONE_USER)?;
+	let new_page = RcFrame::new(0, ZONE_USER, FrameOwner::Anon, 0)?;
 	let new_physaddr = new_page.phys_addr();
 	// Map destination page to copy buffer
 	vmem_transaction.map(new_physaddr, COPY_BUFFER, 0)?;

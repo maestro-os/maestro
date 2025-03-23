@@ -224,17 +224,16 @@ pub trait NodeOps: Any + Debug {
 	/// then it is read from disk.
 	///
 	/// The default implementation of this function returns an error.
-	fn readahead(&self, node: &Node, off: u64) -> EResult<RcFrame> {
+	fn readahead(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
 		let _ = (node, off);
 		Err(errno!(EINVAL))
 	}
 
-	/// If in the page cache, writes the content of the page at offset `off` in `node` back to
-	/// storage.
+	/// Writes the frame `frame` back to storage.
 	///
 	/// The default implementation of this function returns an error.
-	fn writeback(&self, node: &Node, off: u64) -> EResult<()> {
-		let _ = (node, off);
+	fn writeback(&self, frame: &RcFrame) -> EResult<()> {
+		let _ = frame;
 		Err(errno!(EINVAL))
 	}
 }
@@ -431,7 +430,7 @@ pub trait FilesystemType {
 	/// Tells whether the given IO interface has the current filesystem.
 	///
 	/// `dev` is the device containing the potential filesystem
-	fn detect(&self, dev: &BlkDev) -> EResult<bool>;
+	fn detect(&self, dev: &Arc<BlkDev>) -> EResult<bool>;
 
 	/// Creates a new instance of the filesystem to mount it.
 	///
@@ -470,7 +469,7 @@ pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
 }
 
 /// Detects the filesystem type on device
-pub fn detect(dev: &BlkDev) -> EResult<Arc<dyn FilesystemType>> {
+pub fn detect(dev: &Arc<BlkDev>) -> EResult<Arc<dyn FilesystemType>> {
 	let fs_types = FS_TYPES.lock();
 	for (_, fs_type) in fs_types.iter() {
 		if fs_type.detect(dev)? {
