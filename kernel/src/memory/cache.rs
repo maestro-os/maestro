@@ -48,7 +48,10 @@ use core::{
 	marker::PhantomData,
 	ops::Deref,
 	slice,
-	sync::atomic::Ordering::{Acquire, Release},
+	sync::atomic::{
+		AtomicU8,
+		Ordering::{Acquire, Release},
+	},
 };
 use utils::{
 	bytes::AnyRepr,
@@ -58,6 +61,11 @@ use utils::{
 	math::pow2,
 	ptr::arc::Arc,
 };
+
+/// Frame flag, tells whether it has been written to
+const FLAG_DIRTY: u8 = 0x1;
+/// Frame flag, tells whether it is active
+const FLAG_ACTIVE: u8 = 0x2;
 
 // TODO must be configurable
 /// The timeout, in milliseconds, after which a dirty page may be written back to disk.
@@ -83,6 +91,8 @@ struct RcFrameInner {
 
 	/// The node from which the data comes from.
 	owner: FrameOwner,
+	/// Frame flags
+	flags: AtomicU8,
 	/// The offset of the data in the node in pages.
 	off: u64,
 
@@ -123,6 +133,7 @@ impl RcFrame {
 			order,
 
 			owner,
+			flags: AtomicU8::new(0),
 			off,
 
 			lru: Default::default(),
@@ -203,9 +214,19 @@ impl RcFrame {
 		self.0.off
 	}
 
-	/// Tells whether the frame is dirty, atomically clearing the dirty bit(s) in the virtual
-	/// memory context.
-	pub fn poll_dirty(&self) -> bool {
+	/// Marks the frame as active if it is not already.
+	#[inline]
+	pub fn mark_active(&self) {
+		todo!()
+	}
+
+	/// Tells whether the frame has been accessed and is dirty, atomically clearing the dirty bits
+	/// in the virtual memory context.
+	///
+	/// Returns values:
+	/// - Whether the frame has been accessed
+	/// - Whether the frame has been written to (is dirty)
+	pub fn poll_access(&self) -> (bool, bool) {
 		/*if let Some(mem_space) = Process::current().mem_space.as_deref() {
 			mem_space
 				.lock()
@@ -230,6 +251,12 @@ impl RcFrame {
 		}
 		self.0.last_write.store(ts, Release);
 		Ok(())
+	}
+}
+
+impl Drop for RcFrame {
+	fn drop(&mut self) {
+		todo!()
 	}
 }
 
@@ -314,46 +341,8 @@ impl PageCache {
 	}
 }
 
-/// Global cache for **active** frames
-static ACTIVE_LRU: Mutex<list_type!(RcFrameInner, lru)> = Mutex::new(list!(RcFrameInner, lru));
-/// Global cache for **inactive** frames
-static INACTIVE_LRU: Mutex<list_type!(RcFrameInner, lru)> = Mutex::new(list!(RcFrameInner, lru));
-
-/// Inserts a frame in the inactive LRU.
-pub fn insert_inactive(frame: &RcFrame) {
-	// Insert the frame into the inactive LRU
-	let mut lru = INACTIVE_LRU.lock();
-	lru.insert_front(frame.0.clone());
-	// Update statistics
-	MEM_INFO.lock().inactive += frame.pages_count() * 4;
-}
-
-/// Removes a frame from the inactive LRU.
-pub fn remove_inactive(frame: &RcFrame) {
-	// Remove from the inactive LRU
-	let mut lru = INACTIVE_LRU.lock();
-	unsafe {
-		lru.remove(&frame.0);
-	}
-	// Update statistics
-	MEM_INFO.lock().inactive -= frame.pages_count() * 4;
-}
-
-fn flush_impl(lru: &mut list_type!(RcFrameInner, lru), cur_ts: UTimestamp) {
-	for slot in lru.iter().rev() {
-		let frame = RcFrame(slot.arc());
-		if !frame.poll_dirty() {
-			continue;
-		}
-		// If the writeback timeout is exceeded, write
-		let last_write = frame.0.last_write.load(Acquire);
-		if cur_ts >= last_write + WRITEBACK_TIMEOUT {
-			if let Err(errno) = frame.writeback(cur_ts) {
-				println!("Disk writeback I/O failure: {errno}");
-			}
-		}
-	}
-}
+/// Global cache for all frames
+static LRU: Mutex<list_type!(RcFrameInner, lru)> = Mutex::new(list!(RcFrameInner, lru));
 
 /// The entry point of the kernel task flushing cached memory back to disk.
 pub(crate) fn flush_task() -> ! {
@@ -361,8 +350,35 @@ pub(crate) fn flush_task() -> ! {
 	loop {
 		// cannot fail since `CLOCK_BOOTTIME` is valid
 		let cur_ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
-		flush_impl(&mut ACTIVE_LRU.lock(), cur_ts);
-		flush_impl(&mut INACTIVE_LRU.lock(), cur_ts);
+		// Iterate on all frames
+		let mut lru = LRU.lock();
+		for mut slot in lru.iter().rev() {
+			let frame = RcFrame(slot.arc());
+			let (accessed, dirty) = frame.poll_access();
+			// No need to check `dirty` since a dirty page is automatically accessed
+			if accessed {
+				slot.lru_promote();
+			}
+			// If the frame has not been written to, nothing else to do
+			let flags = frame.0.flags.load(Acquire);
+			if !dirty && flags & FLAG_DIRTY == 0 {
+				continue;
+			}
+			// If the writeback timeout is exceeded, write
+			let last_write = frame.0.last_write.load(Acquire);
+			if cur_ts >= last_write + WRITEBACK_TIMEOUT {
+				match frame.writeback(cur_ts) {
+					// On success, clear the dirty flag
+					Ok(_) => {
+						frame.0.flags.fetch_and(!FLAG_DIRTY, Release);
+					}
+					Err(errno) => println!("Disk writeback I/O failure: {errno}"),
+				}
+			} else {
+				// Set the dirty flag for later writeback
+				frame.0.flags.fetch_or(FLAG_DIRTY, Release);
+			}
+		}
 		// TODO sleep during WRITEBACK_TIMEOUT?
 	}
 }
@@ -371,28 +387,50 @@ pub(crate) fn flush_task() -> ! {
 ///
 /// If the cache cannot shrink, the function returns `false`.
 pub fn shrink() -> bool {
-	// Remove the last frame of the inactive cache
-	let mut lru = INACTIVE_LRU.lock();
-	let Some(frame) = lru.iter().next_back() else {
-		return false;
-	};
-	let frame = RcFrame(frame.remove());
-	// If dirty, write frame back to disk
-	if frame.poll_dirty() {
-		// No need to update the timestamp since we are removing the frame
-		if let Err(errno) = frame.writeback(0) {
-			println!("Disk writeback I/O failure: {errno}");
+	// Search for and remove an inactive frame
+	let frame = {
+		// Iterate, with the least recently used first
+		let mut lru = LRU.lock();
+		let mut iter = lru.iter().rev();
+		loop {
+			let Some(cursor) = iter.next() else {
+				// No more frames remaining
+				return false;
+			};
+			let frame = RcFrame(cursor.arc());
+			// If the frame is active, skip to the next
+			let flags = frame.0.flags.load(Acquire);
+			if flags & FLAG_ACTIVE != 0 {
+				continue;
+			}
+			// Remove the frame from its owner node
+			let cache = match &frame.0.owner {
+				FrameOwner::Anon => None,
+				FrameOwner::BlkDev(blk) => Some(&blk.cache),
+				FrameOwner::Node(node) => Some(&node.cache),
+			};
+			if let Some(cache) = cache {
+				// We lock the cache first to avoid having someone else activating and writing to
+				// the page in between the moment we write it to disk and the moment we remove it
+				// from cache
+				let mut cache = cache.frames.lock();
+				// If dirty, write the frame back to disk
+				let (_, dirty) = frame.poll_access();
+				if dirty {
+					// No need to update the timestamp since we are removing the frame
+					if let Err(errno) = frame.writeback(0) {
+						// On error, jump to the next frame to avoid loosing data
+						println!("Disk writeback I/O failure: {errno}");
+						continue;
+					}
+				}
+				cache.remove(&frame.0.off);
+			}
+			// Remove the frame from the cache
+			cursor.remove();
+			break frame;
 		}
-	}
-	// Remove the frame from its owner node
-	let cache = match &frame.0.owner {
-		FrameOwner::Anon => None,
-		FrameOwner::BlkDev(blk) => Some(&blk.cache),
-		FrameOwner::Node(node) => Some(&node.cache),
 	};
-	if let Some(cache) = cache {
-		cache.frames.lock().remove(&frame.0.off);
-	}
 	// Update statistics
 	MEM_INFO.lock().inactive -= frame.pages_count() * 4;
 	true
