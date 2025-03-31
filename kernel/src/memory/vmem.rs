@@ -116,6 +116,15 @@ impl<const KERNEL: bool> VMem<KERNEL> {
 		}
 	}
 
+	/// Polls, on the given range, the value of the access/dirty flags, clearing them atomically.
+	///
+	/// The function returns, in this order:
+	/// - Whether the range has been accessed (read from or written to)
+	/// - Whether the range has is dirty (written to)
+	pub fn poll_access(&self, addr: VirtAddr, pages: usize) -> (bool, bool) {
+		x86::paging::poll_access(self.inner(), addr, pages)
+	}
+
 	/// Binds the virtual memory context to the current CPU.
 	pub fn bind(&self) {
 		let phys_addr = VirtAddr::from(self.table.as_ptr())

@@ -469,6 +469,11 @@ pub unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) -> Rollback {
 	rollback
 }
 
+/// Inner implementation of [`crate::memory::vmem::VMem::poll_access`] for x86.
+pub fn poll_access(_table: &Table, _virtaddr: VirtAddr, _pages: usize) -> (bool, bool) {
+	todo!()
+}
+
 /// Binds the given page directory to the current CPU.
 ///
 /// # Safety

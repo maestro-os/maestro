@@ -33,9 +33,10 @@ use crate::{
 		buddy,
 		buddy::{Flags, FrameOrder, ZONE_KERNEL},
 		stats::MEM_INFO,
-		PhysAddr, VirtAddr,
+		vmem, PhysAddr, VirtAddr,
 	},
 	println,
+	process::Process,
 	sync::{atomic::AtomicU64, mutex::Mutex},
 	time::{
 		clock::{current_time, CLOCK_BOOTTIME},
@@ -230,17 +231,16 @@ impl RcFrame {
 	/// - Whether the frame has been accessed
 	/// - Whether the frame has been written to (is dirty)
 	pub fn poll_access(&self) -> (bool, bool) {
-		/*if let Some(mem_space) = Process::current().mem_space.as_deref() {
+		if let Some(mem_space) = Process::current().mem_space.as_deref() {
 			mem_space
 				.lock()
 				.vmem
-				.poll_dirty(self.virt_addr(), self.pages_count())
+				.poll_access(self.virt_addr(), self.pages_count())
 		} else {
 			vmem::KERNEL_VMEM
 				.lock()
-				.poll_dirty(self.virt_addr(), self.pages_count())
-		}*/
-		todo!()
+				.poll_access(self.virt_addr(), self.pages_count())
+		}
 	}
 
 	/// Writes the frame's data back to disk.
