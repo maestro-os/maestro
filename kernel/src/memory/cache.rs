@@ -57,6 +57,7 @@ use core::{
 use utils::{
 	bytes::AnyRepr,
 	collections::{btreemap::BTreeMap, list::ListNode},
+	concurrent_copy,
 	errno::{AllocResult, EResult},
 	list, list_type,
 	math::pow2,
@@ -210,10 +211,16 @@ impl RcFrame {
 		self.0.off
 	}
 
-	/// Marks the frame as active if it is not already.
-	#[inline]
-	pub fn mark_active(&self) {
-		todo!()
+	/// Allocates a new frame owned by `node` and copies the content of `self` to it.
+	pub fn duplicate(&self, node: &Arc<Node>) -> AllocResult<Self> {
+		let frame = Self::new(
+			self.order(),
+			ZONE_KERNEL,
+			FrameOwner::Node(node.clone()),
+			self.offset(),
+		)?;
+		concurrent_copy(self.slice(), frame.slice());
+		Ok(frame)
 	}
 
 	/// Tells whether the frame has been accessed and is dirty, atomically clearing the dirty bits

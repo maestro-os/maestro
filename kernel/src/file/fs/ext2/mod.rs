@@ -355,7 +355,10 @@ impl NodeOps for Ext2NodeOps {
 			let blk_off = inode
 				.translate_blk_off(off, fs)?
 				.ok_or_else(|| errno!(EOVERFLOW))?;
-			fs.dev.ops.read_frame(&fs.dev, blk_off.get() as _, 0)
+			fs.dev
+				.ops
+				.read_frame(&fs.dev, blk_off.get() as _, 0)
+				.and_then(|frame| Ok(frame.duplicate(node)?))
 		})
 	}
 

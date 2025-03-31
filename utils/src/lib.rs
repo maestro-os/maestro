@@ -66,7 +66,9 @@ use core::{
 	mem::size_of,
 	ops::Add,
 	ptr::NonNull,
-	slice, write,
+	slice,
+	sync::atomic::{AtomicU8, Ordering::Relaxed},
+	write,
 };
 
 // C functions required by LLVM
@@ -180,6 +182,15 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) -> usize {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
 	len
+}
+
+// TODO optimize
+/// Safely copies data from `src` to `dst` .
+pub fn concurrent_copy(src: &[AtomicU8], dst: &[AtomicU8]) {
+	for (src, dst) in src.iter().zip(dst.iter()) {
+		let b = src.load(Relaxed);
+		dst.store(b, Relaxed);
+	}
 }
 
 /// Compares `needle` to the range starting at `start`, with a size of `size`.
