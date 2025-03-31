@@ -45,11 +45,12 @@ use crate::{
 use core::{
 	fmt,
 	fmt::Formatter,
+	intrinsics::unlikely,
 	marker::PhantomData,
 	ops::Deref,
 	slice,
 	sync::atomic::{
-		AtomicU8,
+		AtomicBool,
 		Ordering::{Acquire, Release},
 	},
 };
@@ -61,11 +62,6 @@ use utils::{
 	math::pow2,
 	ptr::arc::Arc,
 };
-
-/// Frame flag, tells whether it has been written to
-const FLAG_DIRTY: u8 = 0x1;
-/// Frame flag, tells whether it is active
-const FLAG_ACTIVE: u8 = 0x2;
 
 // TODO must be configurable
 /// The timeout, in milliseconds, after which a dirty page may be written back to disk.
@@ -91,13 +87,13 @@ struct RcFrameInner {
 
 	/// The node from which the data comes from.
 	owner: FrameOwner,
-	/// Frame flags
-	flags: AtomicU8,
 	/// The offset of the data in the node in pages.
 	off: u64,
 
 	/// The node for the cache LRU.
 	lru: ListNode,
+	/// Tells whether the frame has been written to
+	dirty: AtomicBool,
 	/// Timestamp of the last write to disk, in milliseconds.
 	last_write: AtomicU64,
 }
@@ -133,10 +129,10 @@ impl RcFrame {
 			order,
 
 			owner,
-			flags: AtomicU8::new(0),
 			off,
 
 			lru: Default::default(),
+			dirty: AtomicBool::new(false),
 			last_write: AtomicU64::new(0),
 		})?))
 	}
@@ -254,12 +250,6 @@ impl RcFrame {
 	}
 }
 
-impl Drop for RcFrame {
-	fn drop(&mut self) {
-		todo!()
-	}
-}
-
 /// A view over an object on a frame, where the frame is considered as an array of this object
 /// type.
 ///
@@ -327,17 +317,28 @@ impl PageCache {
 		order: FrameOrder,
 		init: Init,
 	) -> EResult<RcFrame> {
-		let mut frames = self.frames.lock();
-		match frames.get(&off) {
-			// Cache hit
-			Some(frame) if frame.order() == order => Ok(frame.clone()),
-			// Cache miss: read and insert
-			_ => {
-				let frame = init()?;
-				frames.insert(off, frame.clone())?;
-				Ok(frame)
+		let (frame, insert) = {
+			let mut frames = self.frames.lock();
+			match frames.get(&off) {
+				// Cache hit
+				Some(frame) if frame.order() == order => (frame.clone(), false),
+				// Cache miss: read and insert
+				_ => {
+					let frame = init()?;
+					frames.insert(off, frame.clone())?;
+					(frame, true)
+				}
 			}
+		};
+		// Insert in the LRU, or promote
+		let mut lru = LRU.lock();
+		if unlikely(insert) {
+			lru.insert_front(frame.0.clone());
+		} else {
+			// TODO promote in the LRU. We must make sure the frame cannot be promoted by someone
+			// else before being inserted
 		}
+		Ok(frame)
 	}
 }
 
@@ -360,8 +361,7 @@ pub(crate) fn flush_task() -> ! {
 				slot.lru_promote();
 			}
 			// If the frame has not been written to, nothing else to do
-			let flags = frame.0.flags.load(Acquire);
-			if !dirty && flags & FLAG_DIRTY == 0 {
+			if !dirty && !frame.0.dirty.load(Acquire) {
 				continue;
 			}
 			// If the writeback timeout is exceeded, write
@@ -370,13 +370,13 @@ pub(crate) fn flush_task() -> ! {
 				match frame.writeback(cur_ts) {
 					// On success, clear the dirty flag
 					Ok(_) => {
-						frame.0.flags.fetch_and(!FLAG_DIRTY, Release);
+						frame.0.dirty.fetch_and(false, Release);
 					}
 					Err(errno) => println!("Disk writeback I/O failure: {errno}"),
 				}
 			} else {
 				// Set the dirty flag for later writeback
-				frame.0.flags.fetch_or(FLAG_DIRTY, Release);
+				frame.0.dirty.fetch_or(true, Release);
 			}
 		}
 		// TODO sleep during WRITEBACK_TIMEOUT?
@@ -393,40 +393,45 @@ pub fn shrink() -> bool {
 		let mut lru = LRU.lock();
 		let mut iter = lru.iter().rev();
 		loop {
-			let Some(cursor) = iter.next() else {
+			let Some(mut cursor) = iter.next() else {
 				// No more frames remaining
 				return false;
 			};
+			// Get as an Arc to access the reference counter
 			let frame = RcFrame(cursor.arc());
-			// If the frame is active, skip to the next
-			let flags = frame.0.flags.load(Acquire);
-			if flags & FLAG_ACTIVE != 0 {
-				continue;
-			}
-			// Remove the frame from its owner node
-			let cache = match &frame.0.owner {
-				FrameOwner::Anon => None,
-				FrameOwner::BlkDev(blk) => Some(&blk.cache),
-				FrameOwner::Node(node) => Some(&node.cache),
-			};
-			if let Some(cache) = cache {
-				// We lock the cache first to avoid having someone else activating and writing to
-				// the page in between the moment we write it to disk and the moment we remove it
-				// from cache
-				let mut cache = cache.frames.lock();
-				// If dirty, write the frame back to disk
-				let (_, dirty) = frame.poll_access();
-				if dirty {
-					// No need to update the timestamp since we are removing the frame
-					if let Err(errno) = frame.writeback(0) {
-						// On error, jump to the next frame to avoid loosing data
-						println!("Disk writeback I/O failure: {errno}");
-						continue;
-					}
+			{
+				// We lock the cache first to avoid having someone else activating the page while
+				// we are removing it
+				let cache = match &frame.0.owner {
+					FrameOwner::Anon => None,
+					FrameOwner::BlkDev(blk) => Some(&blk.cache),
+					FrameOwner::Node(node) => Some(&node.cache),
+				};
+				let mut cache = cache.map(|c| c.frames.lock());
+				// If the frame is active, skip to the next. The references in `LRU` + `PageCache`
+				// + `frame` = 3
+				if Arc::strong_count(&frame.0) > 3 {
+					continue;
 				}
-				cache.remove(&frame.0.off);
+				// Remove the frame from its owner node
+				if let Some(cache) = &mut cache {
+					// If dirty, write the frame back to disk
+					let (_, dirty) = frame.poll_access();
+					if dirty {
+						// No need to update the timestamp since we are removing the frame
+						if let Err(errno) = frame.writeback(0) {
+							// On error, jump to the next frame to avoid loosing data. Also promote
+							// it in the LRU to reduce the likelihood of meeting it at the next
+							// call
+							println!("Disk writeback I/O failure: {errno}");
+							cursor.lru_promote();
+							continue;
+						}
+					}
+					cache.remove(&frame.0.off);
+				}
 			}
-			// Remove the frame from the cache
+			// Remove the frame from the LRU
 			cursor.remove();
 			break frame;
 		}
