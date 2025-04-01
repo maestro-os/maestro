@@ -290,7 +290,7 @@ fn can_remove_table(level: usize, index: usize) -> bool {
 	(1..(DEPTH - 1)).contains(&level) || (level == DEPTH - 1 && index < USERSPACE_TABLES)
 }
 
-/// Inner implementation of [`crate::memory::vmem::VMemTransaction::map`] for x86.
+/// Inner implementation of [`crate::memory::vmem::VMem::map`] for x86.
 ///
 /// # Safety
 ///
@@ -329,7 +329,7 @@ pub unsafe fn map(mut table: &mut Table, physaddr: PhysAddr, virtaddr: VirtAddr,
 	}
 }
 
-/// Inner implementation of [`crate::memory::vmem::VMemTransaction::unmap`] for x86.
+/// Inner implementation of [`crate::memory::vmem::VMem::unmap`] for x86.
 ///
 /// # Safety
 ///
