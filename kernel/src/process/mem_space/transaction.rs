@@ -19,18 +19,14 @@
 //! Implementation of memory space transactions to modify [`MemSpaceState`] atomically.
 
 use super::{gap::MemGap, mapping::MemMapping, MemSpaceState};
-use crate::memory::{
-	vmem::{VMem, VMemTransaction},
-	VirtAddr,
-};
+use crate::memory::{vmem::VMem, VirtAddr};
 use core::{alloc::AllocError, hash::Hash, mem};
 use utils::{
 	collections::{
 		btreemap::BTreeMap,
 		hashmap::{Entry, HashMap},
 	},
-	errno,
-	errno::{AllocResult, EResult},
+	errno::AllocResult,
 };
 
 /// Applies the difference in `complement` to rollback operations.
@@ -89,11 +85,11 @@ fn insert<K: Clone + Ord + Hash, V>(
 /// operations can fail, it is necessary to ensure every operation are performed, or rollback to
 /// avoid inconsistent states.
 #[must_use = "A transaction must be committed, or its result is discarded"]
-pub(super) struct MemSpaceTransaction<'m, 'v> {
+pub(super) struct MemSpaceTransaction<'m> {
 	/// The memory space on which the transaction applies.
 	pub mem_space_state: &'m mut MemSpaceState,
-	/// The virtual memory transaction on which this transaction applies.
-	vmem_transaction: VMemTransaction<'v, false>,
+	/// The virtual memory context on which this transaction applies.
+	vmem: &'m mut VMem,
 
 	/// The complement used to restore `gaps` on rollback.
 	gaps_complement: HashMap<VirtAddr, Option<MemGap>>,
@@ -109,13 +105,13 @@ pub(super) struct MemSpaceTransaction<'m, 'v> {
 	vmem_usage: usize,
 }
 
-impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
+impl<'m> MemSpaceTransaction<'m> {
 	/// Begins a new transaction for the given memory space.
-	pub fn new(mem_space_state: &'m mut MemSpaceState, vmem: &'v mut VMem<false>) -> Self {
+	pub fn new(mem_space_state: &'m mut MemSpaceState, vmem: &'m mut VMem) -> Self {
 		let vmem_usage = mem_space_state.vmem_usage;
 		Self {
 			mem_space_state,
-			vmem_transaction: vmem.transaction(),
+			vmem,
 
 			gaps_complement: Default::default(),
 			mappings_complement: Default::default(),
@@ -154,9 +150,8 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	/// Inserts the given mapping into the state.
 	///
 	/// On failure, the transaction is dropped and rolled back.
-	pub fn insert_mapping(&mut self, mut mapping: MemMapping) -> EResult<()> {
+	pub fn insert_mapping(&mut self, mapping: MemMapping) -> AllocResult<()> {
 		let size = mapping.get_size().get();
-		mapping.apply_to(&mut self.vmem_transaction)?;
 		insert(
 			mapping.get_addr(),
 			mapping,
@@ -174,15 +169,11 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 	pub fn remove_mapping(&mut self, mapping_begin: *mut u8) -> AllocResult<()> {
 		if let Some(mapping) = self.mem_space_state.mappings.get(&mapping_begin) {
 			self.mappings_discard.insert(mapping_begin, ())?;
-			let size = mapping.get_size().get();
-			// Apply to vmem
-			let res = mapping.unmap(0..size, &mut self.vmem_transaction);
-			// Ignore disk I/O errors
-			if matches!(res, Err(e) if e.as_int() == errno::ENOMEM) {
-				return Err(AllocError);
-			}
+			// Apply to vmem. No rollback is required since this would be corrected by a page fault
+			self.vmem
+				.unmap_range(VirtAddr::from(mapping.get_addr()), mapping.get_size().get());
 			// Update usage
-			self.vmem_usage -= size;
+			self.vmem_usage -= mapping.get_size().get();
 		}
 		Ok(())
 	}
@@ -202,11 +193,10 @@ impl<'m, 'v> MemSpaceTransaction<'m, 'v> {
 		}
 		// Update vmem
 		self.mem_space_state.vmem_usage = self.vmem_usage;
-		self.vmem_transaction.commit();
 	}
 }
 
-impl Drop for MemSpaceTransaction<'_, '_> {
+impl Drop for MemSpaceTransaction<'_> {
 	fn drop(&mut self) {
 		// If the transaction was not committed, rollback
 		let gaps_complement = mem::take(&mut self.gaps_complement);

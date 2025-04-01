@@ -168,8 +168,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	#[cfg(debug_assertions)]
 	memory::memmap::print_entries();
 	memory::alloc::init();
-	vmem::init()
-		.unwrap_or_else(|_| panic!("Cannot initialize kernel virtual memory! (out of memory)"));
+	vmem::init();
 
 	// From now on, the kernel considers that memory management has been fully
 	// initialized

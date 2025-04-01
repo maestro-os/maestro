@@ -189,7 +189,7 @@ struct KernelStack(NonNull<u8>);
 impl KernelStack {
 	/// Allocates a new stack.
 	pub fn new() -> AllocResult<Self> {
-		buddy::alloc_kernel(KERNEL_STACK_ORDER).map(Self)
+		buddy::alloc_kernel(KERNEL_STACK_ORDER, 0).map(Self)
 	}
 
 	/// Returns a pointer to the top of the stack.

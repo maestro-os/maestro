@@ -24,11 +24,11 @@
 //! The order of a frame is the `n` in the expression `pow(2, n)` that represents the
 //! size of a frame in pages.
 
-use super::{stats, PhysAddr, VirtAddr};
+use super::{oom, stats, PhysAddr, VirtAddr};
 use crate::sync::mutex::IntMutex;
 use core::{
 	alloc::AllocError,
-	intrinsics::likely,
+	intrinsics::{likely, unlikely},
 	mem::{offset_of, size_of},
 	ptr,
 	ptr::{null_mut, NonNull},
@@ -59,6 +59,8 @@ pub const ZONE_USER: Flags = 0b00;
 pub const ZONE_MMIO: Flags = 0b01;
 /// Buddy allocator flag: allocate in kernel zone
 pub const ZONE_KERNEL: Flags = 0b10;
+/// Buddy allocator flag: on allocation failure, attempt to free up memory, then retry
+pub const BUDDY_RETRY: Flags = 0b100;
 
 /// The size of the metadata for one frame.
 pub const FRAME_METADATA_SIZE: usize = size_of::<Frame>();
@@ -386,16 +388,30 @@ fn get_zone_for_addr(zones: &mut [Zone; ZONES_COUNT], phys_addr: PhysAddr) -> Op
 ///
 /// On success, the function returns a *physical* pointer to the allocated memory.
 pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<PhysAddr> {
-	if order > MAX_ORDER {
+	if unlikely(order > MAX_ORDER) {
 		return Err(AllocError);
 	}
 	// Select a zone and frame to allocate on
-	let mut zones = ZONES.lock();
 	let begin_zone = (flags & ZONE_TYPE_MASK) as usize;
-	let (mut frame, zone) = zones[begin_zone..]
-		.iter_mut()
-		.find_map(|z| Some((z.get_available_frame(order)?, z)))
-		.ok_or(AllocError)?;
+	let mut guard = None;
+	let (mut frame, zone) = loop {
+		let zones = guard.get_or_insert(ZONES.lock());
+		let res = zones[begin_zone..]
+			.iter_mut()
+			.find_map(|z| Some((z.get_available_frame(order)?, z)));
+		// If a frame has been found, use it
+		if let Some(res) = res {
+			break res;
+		}
+		// If allowed, reclaim memory and retry the allocation
+		if flags & BUDDY_RETRY != 0 {
+			// Avoid deadlock
+			guard = None;
+			oom::reclaim();
+		} else {
+			return Err(AllocError);
+		}
+	};
 	let frame = unsafe { frame.as_mut() };
 	// Do the actual allocation
 	frame.split(zone, order);
@@ -414,9 +430,11 @@ pub fn alloc(order: FrameOrder, flags: Flags) -> AllocResult<PhysAddr> {
 
 /// Calls [`alloc()`] with order `order`, allocating in the kernel zone.
 ///
+/// Regardless of the zone provided in `flags`, [`ZONE_KERNEL`] is used.
+///
 /// The function returns the virtual address, to the frame.
-pub fn alloc_kernel(order: FrameOrder) -> AllocResult<NonNull<u8>> {
-	alloc(order, ZONE_KERNEL)?
+pub fn alloc_kernel(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<u8>> {
+	alloc(order, (flags & !ZONE_TYPE_MASK) | ZONE_KERNEL)?
 		.kernel_to_virtual()
 		.and_then(|addr| NonNull::new(addr.as_ptr()))
 		.ok_or(AllocError)
@@ -485,7 +503,7 @@ mod test {
 	fn buddy0() {
 		let alloc_pages = allocated_pages_count();
 		unsafe {
-			let p = alloc_kernel(0).unwrap();
+			let p = alloc_kernel(0, 0).unwrap();
 			let slice = slice::from_raw_parts_mut(p.as_ptr(), get_frame_size(0));
 			slice.fill(!0);
 			free_kernel(p.as_ptr(), 0);
@@ -497,7 +515,7 @@ mod test {
 	fn buddy1() {
 		let alloc_pages = allocated_pages_count();
 		unsafe {
-			let p = alloc_kernel(1).unwrap();
+			let p = alloc_kernel(1, 0).unwrap();
 			let slice = slice::from_raw_parts_mut(p.as_ptr(), get_frame_size(0));
 			slice.fill(!0);
 			free_kernel(p.as_ptr(), 1);
@@ -507,7 +525,7 @@ mod test {
 
 	fn lifo_test(i: usize) {
 		unsafe {
-			let p = alloc_kernel(0).unwrap();
+			let p = alloc_kernel(0, 0).unwrap();
 			let slice = slice::from_raw_parts_mut(p.as_ptr(), get_frame_size(0));
 			slice.fill(!0);
 			if i > 0 {
@@ -541,7 +559,7 @@ mod test {
 
 	fn get_dangling(order: FrameOrder) -> *mut u8 {
 		unsafe {
-			let p = alloc_kernel(order).unwrap();
+			let p = alloc_kernel(order, 0).unwrap();
 			let slice = slice::from_raw_parts_mut(p.as_ptr(), get_frame_size(0));
 			slice.fill(!0);
 			free_kernel(p.as_ptr(), 0);
@@ -582,7 +600,7 @@ mod test {
 		let alloc_pages = allocated_pages_count();
 		unsafe {
 			let mut first: Option<NonNull<TestDupNode>> = None;
-			while let Ok(p) = alloc_kernel(0) {
+			while let Ok(p) = alloc_kernel(0, 0) {
 				let mut node = p.cast::<TestDupNode>();
 				let n = node.as_mut();
 				n.next = first;
