@@ -222,8 +222,8 @@ pub trait NodeOps: Any + Debug {
 	/// Writes the frame `frame` back to storage.
 	///
 	/// The default implementation of this function returns an error.
-	fn writeback(&self, frame: &RcFrame) -> EResult<()> {
-		let _ = frame;
+	fn writeback(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
+		let _ = (node, frame);
 		Err(errno!(EINVAL))
 	}
 

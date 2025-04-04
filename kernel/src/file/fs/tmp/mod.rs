@@ -213,7 +213,7 @@ impl NodeOps for NodeContent {
 		pages.lock().get(i).cloned().ok_or_else(|| errno!(EINVAL))
 	}
 
-	fn writeback(&self, _frame: &RcFrame) -> EResult<()> {
+	fn writeback(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
 		Ok(())
 	}
 }
@@ -278,8 +278,8 @@ impl FileOps for TmpFSFile {
 		if let Some(count) = end_page.checked_sub(pages.len()) {
 			pages.reserve(count)?;
 			for _ in 0..count {
-				let frame =
-					RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), pages.len() as _)?;
+				// The offset is not necessary since `writeback` is a no-op
+				let frame = RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), 0)?;
 				pages.push(frame)?;
 			}
 		}
@@ -312,8 +312,8 @@ impl FileOps for TmpFSFile {
 		if let Some(count) = new_pages_count.checked_sub(pages.len()) {
 			pages.reserve(count)?;
 			for _ in 0..count {
-				let frame =
-					RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), pages.len() as _)?;
+				// The offset is not necessary since `writeback` is a no-op
+				let frame = RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), 0)?;
 				pages.push(frame)?;
 			}
 		} else {

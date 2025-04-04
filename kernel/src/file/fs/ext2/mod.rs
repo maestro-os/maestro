@@ -362,8 +362,9 @@ impl NodeOps for Ext2NodeOps {
 		})
 	}
 
-	fn writeback(&self, _frame: &RcFrame) -> EResult<()> {
-		todo!()
+	fn writeback(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		fs.dev.ops.write_frame(frame.dev_offset(), frame)
 	}
 
 	fn sync_stat(&self, node: &Node) -> EResult<()> {
