@@ -23,6 +23,7 @@ use crate::{
 	module::relocation::Relocation,
 	process::mem_space::{PROT_EXEC, PROT_READ, PROT_WRITE},
 };
+use core::intrinsics::unlikely;
 use utils::bytes;
 
 /// The ELF's class.
@@ -496,10 +497,10 @@ impl<'data> ELFParser<'data> {
 	/// an error.
 	pub fn new(image: &'data [u8]) -> EResult<Self> {
 		// Check signature
-		if image.len() < EI_NIDENT {
+		if unlikely(image.len() < EI_NIDENT) {
 			return Err(errno!(EINVAL));
 		}
-		if !image.starts_with(b"\x7fELF") {
+		if unlikely(!image.starts_with(b"\x7fELF")) {
 			return Err(errno!(EINVAL));
 		}
 		// Detect 32/64 bit
@@ -522,7 +523,7 @@ impl<'data> ELFParser<'data> {
 			0x3e => cfg!(target_arch = "x86_64"),
 			_ => false,
 		};
-		if !valid {
+		if unlikely(!valid) {
 			return Err(errno!(EINVAL));
 		}
 		// Check header validity
@@ -531,10 +532,10 @@ impl<'data> ELFParser<'data> {
 			#[cfg(target_pointer_width = "64")]
 			Class::Bit64 => size_of::<ELF64ELFHeader>(),
 		};
-		if (ehdr.e_ehsize as usize) < min_size {
+		if unlikely((ehdr.e_ehsize as usize) < min_size) {
 			return Err(errno!(EINVAL));
 		}
-		if ehdr.e_shstrndx >= ehdr.e_shnum {
+		if unlikely(ehdr.e_shstrndx >= ehdr.e_shnum) {
 			return Err(errno!(EINVAL));
 		}
 		let p = Self(image);
