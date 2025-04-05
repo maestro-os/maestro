@@ -347,7 +347,7 @@ impl NodeOps for Ext2NodeOps {
 		todo!()
 	}
 
-	fn readahead(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
 		node.cache.get_or_insert(off, 0, || {
 			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 			let inode = Ext2INode::get(node, fs)?;
@@ -362,7 +362,7 @@ impl NodeOps for Ext2NodeOps {
 		})
 	}
 
-	fn writeback(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
+	fn write_page(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		fs.dev.ops.write_frame(frame.dev_offset(), frame)
 	}

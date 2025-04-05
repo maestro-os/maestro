@@ -238,7 +238,7 @@ impl MemMapping {
 					// Get page from file
 					let node = file.node().unwrap();
 					let file_page_off = self.off / PAGE_SIZE as u64 + offset as u64;
-					let page = node.node_ops.readahead(node, file_page_off)?;
+					let page = node.node_ops.read_page(node, file_page_off)?;
 					self.anon_pages[offset].insert(page)
 				}
 			}

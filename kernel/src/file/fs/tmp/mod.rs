@@ -205,7 +205,7 @@ impl NodeOps for NodeContent {
 		todo!()
 	}
 
-	fn readahead(&self, _node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
 		let i: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		let NodeContent::Regular(pages) = self else {
 			return Err(errno!(EINVAL));
@@ -213,7 +213,7 @@ impl NodeOps for NodeContent {
 		pages.lock().get(i).cloned().ok_or_else(|| errno!(EINVAL))
 	}
 
-	fn writeback(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
+	fn write_page(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
 		Ok(())
 	}
 }

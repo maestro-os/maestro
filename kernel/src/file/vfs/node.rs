@@ -31,7 +31,6 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	hash::{Hash, Hasher},
-	ops::RangeBounds,
 	ptr,
 	sync::atomic::{AtomicBool, Ordering::Acquire},
 };
@@ -104,17 +103,14 @@ impl Node {
 		PathBuf::try_from(String::from(buf))
 	}
 
-	/// Synchronizes the node to disk.
+	/// Synchronizes the node's cached content to disk.
 	///
-	/// Arguments:
-	/// - `range` is the range of pages to be synchronized
-	/// - `metadata` tells whether the node's metadata are synchronized
-	pub fn sync<R: RangeBounds<u64>>(&self, _range: R, metadata: bool) -> EResult<()> {
+	/// `metadata` tells whether the node's metadata are also synchronized to disk
+	pub fn sync(&self, metadata: bool) -> EResult<()> {
 		if metadata && self.dirty.swap(false, Acquire) {
 			self.node_ops.sync_stat(self)?;
 		}
-		// TODO writeback content on the given range
-		todo!()
+		self.cache.sync()
 	}
 
 	/// Releases the node, removing it from the disk if this is the last reference to it.

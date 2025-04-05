@@ -61,7 +61,7 @@ pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> ERe
 	}
 	let file = fds.get_fd(fd)?.get_file();
 	if let Some(node) = file.node() {
-		node.sync(.., true)?;
+		node.sync(true)?;
 	}
 	Ok(0)
 }

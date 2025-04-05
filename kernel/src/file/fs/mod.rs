@@ -214,7 +214,7 @@ pub trait NodeOps: Any + Debug {
 	/// then it is read from disk.
 	///
 	/// The default implementation of this function returns an error.
-	fn readahead(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
 		let _ = (node, off);
 		Err(errno!(EINVAL))
 	}
@@ -222,7 +222,7 @@ pub trait NodeOps: Any + Debug {
 	/// Writes the frame `frame` back to storage.
 	///
 	/// The default implementation of this function returns an error.
-	fn writeback(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
+	fn write_page(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
 		let _ = (node, frame);
 		Err(errno!(EINVAL))
 	}

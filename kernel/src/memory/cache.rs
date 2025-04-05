@@ -266,7 +266,7 @@ impl RcFrame {
 		match &self.0.owner {
 			FrameOwner::Anon => return Ok(()),
 			FrameOwner::BlkDev(blk) => blk.ops.write_frame(self.dev_offset(), self)?,
-			FrameOwner::Node(node) => node.node_ops.writeback(node, self)?,
+			FrameOwner::Node(node) => node.node_ops.write_page(node, self)?,
 		}
 		self.0.last_write.store(ts, Release);
 		Ok(())
@@ -362,6 +362,18 @@ impl PageCache {
 			// else before being inserted
 		}
 		Ok(frame)
+	}
+
+	/// Synchronizes all frames in the cache back to disk.
+	pub fn sync(&self) -> EResult<()> {
+		// cannot fail since `CLOCK_BOOTTIME` is valid
+		let cur_ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
+		// Sync all frames
+		let frames = self.frames.lock();
+		for (_, frame) in frames.iter() {
+			frame.writeback(cur_ts)?;
+		}
+		Ok(())
 	}
 }
 
