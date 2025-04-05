@@ -16,24 +16,16 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the PATA interface for hard drives.
+//! PATA interface implementation, for hard drives I/O.
 //!
-//! The PATA interface is an old, deprecated interface that has been replaced by
-//! the SATA interface.
+//! The PATA interface is an old, deprecated interface implemented for backward compatibility.
 //!
-//! ATA devices may be detected by the PCI, but if not, it doesn't mean that
+//! ATA devices may be detected by the PCI, but if not, it does not mean that
 //! they are not present. The disk(s) may instead use the standardized IO ports
 //! for legacy support.
 //!
 //! Legacy PATA can support up to two buses, each supporting up to two drives.
 //! Each bus has its own set of ports.
-//!
-//! Before using a drive, the kernel has to:
-//! - Reset the ATA controller
-//! - Select the drive (with the dedicated command)
-//! - Identify it to retrieve information, such as whether the drives support LBA48
-//!
-//! TODO
 
 // TODO Add support for third and fourth bus
 
@@ -49,69 +41,71 @@ use crate::{
 use core::num::NonZeroU64;
 use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
-/// Offset to the data register.
+/// Offset to the data register
 const DATA_REGISTER_OFFSET: u16 = 0;
-/// Offset to the error register.
+/// Offset to the error register
 const ERROR_REGISTER_OFFSET: u16 = 1;
-/// Offset to the features register.
+/// Offset to the features register
 const FEATURES_REGISTER_OFFSET: u16 = 1;
-/// Offset to the sectors count register.
+/// Offset to the sectors count register
 const SECTORS_COUNT_REGISTER_OFFSET: u16 = 2;
-/// Offset to the LBA low register.
+/// Offset to the LBA low register
 const LBA_LO_REGISTER_OFFSET: u16 = 3;
-/// Offset to the LBA mid register.
+/// Offset to the LBA mid register
 const LBA_MID_REGISTER_OFFSET: u16 = 4;
-/// Offset to the LBA high register.
+/// Offset to the LBA high register
 const LBA_HI_REGISTER_OFFSET: u16 = 5;
-/// Offset to the drive register.
+/// Offset to the drive register
 const DRIVE_REGISTER_OFFSET: u16 = 6;
-/// Offset to the status register.
+/// Offset to the status register
 const STATUS_REGISTER_OFFSET: u16 = 7;
-/// Offset to the command register.
+/// Offset to the command register
 const COMMAND_REGISTER_OFFSET: u16 = 7;
 
-/// Selects the master drive.
+/// Selects the master drive
 const SELECT_MASTER: u8 = 0xa0;
-/// Selects the slave drive.
+/// Selects the slave drive
 const SELECT_SLAVE: u8 = 0xb0;
 
-/// Reads sectors from the disk with LBA28.
+/// Reads sectors from the disk (LBA28)
 const COMMAND_READ_SECTORS: u8 = 0x20;
-/// Writes sectors on the disk with LBA28.
+/// Writes sectors on the disk (LBA28)
 const COMMAND_WRITE_SECTORS: u8 = 0x30;
-/// Flush cache command.
+/// Flush cache command
 const COMMAND_CACHE_FLUSH: u8 = 0xe7;
-/// Identifies the selected drive.
+/// Flush cache command (LBA48)
+const COMMAND_CACHE_FLUSH_EXT: u8 = 0xea;
+/// Identifies the selected drive
 const COMMAND_IDENTIFY: u8 = 0xec;
 
-/// Address mark not found.
+/// Address mark not found
 const ERROR_AMNF: u8 = 0b00000001;
-/// Track zero not found.
+/// Track zero not found
 const ERROR_TKZNF: u8 = 0b00000010;
-/// Aborted command.
+/// Aborted command
 const ERROR_ABRT: u8 = 0b00000100;
-/// Media change request.
+/// Media change request
 const ERROR_MCR: u8 = 0b00001000;
-/// ID not found.
+/// ID not found
 const ERROR_IDNF: u8 = 0b00010000;
-/// Media changed.
+/// Media changed
 const ERROR_MC: u8 = 0b00100000;
-/// Uncorrectable data error.
+/// Uncorrectable data error
 const ERROR_UNC: u8 = 0b01000000;
-/// Bad block detected.
+/// Bad block detected
 const ERROR_BBK: u8 = 0b10000000;
 
-/// Indicates an error occurred.
+/// Indicates an error occurred
 const STATUS_ERR: u8 = 0b00000001;
-/// Set when drive has PIO data to transfer or is ready to accept PIO data.
+/// Set when drive has PIO data to transfer or is ready to accept PIO data
 const STATUS_DRQ: u8 = 0b00001000;
-/// Overlapped Mode Service Request.
+/// Overlapped Mode Service Request
 const STATUS_SRV: u8 = 0b00010000;
-/// Drive Fault Error.
+/// Drive Fault Error
 const STATUS_DF: u8 = 0b00100000;
-/// Clear after an error. Set otherwise.
+/// Clear after an error. Set otherwise
 const STATUS_RDY: u8 = 0b01000000;
-/// Indicates the drive is preparing to send/receive data.
+/// Indicates the drive is preparing to send/receive data
 const STATUS_BSY: u8 = 0b10000000;
 
 /// The size of a sector in bytes
@@ -282,8 +276,12 @@ impl PATAInterface {
 	}
 
 	/// Flushes the drive's cache. The device is assumed to be selected.
-	fn cache_flush(&self) {
-		self.send_command(COMMAND_CACHE_FLUSH);
+	fn cache_flush(&self, lba48: bool) {
+		if lba48 {
+			self.send_command(COMMAND_CACHE_FLUSH_EXT);
+		} else {
+			self.send_command(COMMAND_CACHE_FLUSH);
+		}
 		self.wait_busy();
 	}
 
@@ -372,7 +370,11 @@ impl PATAInterface {
 	/// - `off` is the offset of the first sector
 	/// - `count` is the number of sectors on which the operation is applied
 	/// - `write` tells whether this is a write operation. If `false`, this is a read operation
-	fn prepare_io(&self, off: u64, count: u16, write: bool) -> u16 {
+	///
+	/// The function returns a tuple containing:
+	/// - The number of sectors to write
+	/// - Whether we are using LBA48
+	fn prepare_io(&self, off: u64, count: u16, write: bool) -> (u16, bool) {
 		// Tells whether we have to use LBA48
 		let lba48 = self.lba48 && (count > u8::MAX as u16 || off + count as u64 >= 1 << 28);
 		let mut drive = if lba48 { 0x40 } else { 0xe0 };
@@ -410,7 +412,7 @@ impl PATAInterface {
 			cmd |= 0x4;
 		}
 		self.send_command(cmd);
-		count
+		(count, lba48)
 	}
 
 	/// Waits for the drive to be ready for IO operation.
@@ -459,7 +461,7 @@ impl BlockDeviceOps for PATAInterface {
 		while i < size {
 			let off = off + i;
 			let count = (size - i).min(u16::MAX as u64) as u16;
-			let count = self.prepare_io(off, count, false);
+			let (count, _) = self.prepare_io(off, count, false);
 			let start = i as usize;
 			let end = start + count as usize;
 			for j in start..end {
@@ -493,7 +495,7 @@ impl BlockDeviceOps for PATAInterface {
 		for i in 0..size {
 			let off = off + i;
 			let count = (size - i).min(u16::MAX as u64) as u16;
-			let count = self.prepare_io(off, count, false);
+			let (count, lba48) = self.prepare_io(off, count, false);
 			let start = i as usize;
 			let end = start + count as usize;
 			for j in start..end {
@@ -503,7 +505,7 @@ impl BlockDeviceOps for PATAInterface {
 					self.outw(PortOffset::Ata(DATA_REGISTER_OFFSET), buf[index])
 				}
 			}
-			self.cache_flush();
+			self.cache_flush(lba48);
 		}
 		Ok(())
 	}
