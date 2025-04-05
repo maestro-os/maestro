@@ -82,32 +82,36 @@ fn vmem_flags(prot: u8, cow: bool) -> usize {
 	flags
 }
 
-/// Initializes a new page and maps it at `virtaddr`.
+/// Initializes a new page and maps it at `dst`.
 ///
 /// Arguments:
 /// - `vmem` is the transaction on which the page mapping takes place
 /// - `prot` is the memory protection for the newly mapped page
-/// - `src` is the virtual address of the page containing the data to initialize the new page with.
-///   If `None`, the new page is initialized with zeros
+/// - `src` is the page containing the data to initialize the new page with. If `None`, the new
+///   page is initialized with zeros
 /// - `dst` is the virtual address at which the new page is mapped
 fn init_page(
 	vmem: &mut VMem,
 	prot: u8,
-	src: Option<VirtAddr>,
+	src: Option<&RcFrame>,
 	dst: VirtAddr,
 ) -> AllocResult<RcFrame> {
 	// Allocate destination page
 	let new_page = RcFrame::new(0, ZONE_USER, FrameOwner::Anon, 0)?;
-	let new_physaddr = new_page.phys_addr();
-	// Map destination page to copy buffer
-	vmem.map(new_physaddr, COPY_BUFFER, 0);
+	// Map source page to copy buffer if any
+	if let Some(src) = src {
+		vmem.map(src.phys_addr(), COPY_BUFFER, 0);
+	}
+	// Map destination page
+	let flags = vmem_flags(prot, false);
+	vmem.map(new_page.phys_addr(), dst, flags);
 	// Copy or zero
 	unsafe {
-		let src = src.map(|src| &*src.as_ptr::<Page>());
-		let dst = &mut *COPY_BUFFER.as_ptr::<Page>();
 		vmem::switch(vmem, || {
 			// Required since the copy buffer is mapped without write permission
 			write_ro(|| {
+				let src = src.is_some().then_some(&*COPY_BUFFER.as_ptr::<Page>());
+				let dst = &mut *dst.as_ptr::<Page>();
 				if let Some(src) = src {
 					dst.copy_from_slice(src);
 				} else {
@@ -116,9 +120,6 @@ fn init_page(
 			});
 		})
 	}
-	// Map the page
-	let flags = vmem_flags(prot, false);
-	vmem.map(new_physaddr, dst, flags);
 	Ok(new_page)
 }
 
@@ -210,32 +211,35 @@ impl MemMapping {
 	///
 	/// Upon allocation failure, or failure to read a page from the disk, the function returns an
 	/// error.
-	pub(super) fn map(&mut self, offset: usize, vmem: &mut VMem) -> EResult<()> {
+	pub fn map(&mut self, offset: usize, vmem: &mut VMem) -> EResult<()> {
 		let virtaddr = VirtAddr::from(self.addr) + offset * PAGE_SIZE;
-		let anon_page = self.anon_pages.get(offset).and_then(Option::as_ref);
-		let page = if let Some(page) = anon_page {
+		let page = if let Some(page) = &self.anon_pages[offset] {
 			// An anonymous page is already present, use it
 			if self.flags & MAP_PRIVATE != 0 && page.is_shared() {
 				// The page cannot be shared: we need our own copy
-				init_page(vmem, self.prot, Some(virtaddr), virtaddr)?
-			} else {
-				// The page is already there, just map
-				let flags = vmem_flags(self.prot, false);
-				vmem.map(page.phys_addr(), virtaddr, flags);
+				let page = init_page(vmem, self.prot, Some(page), virtaddr)?;
+				self.anon_pages[offset] = Some(page);
 				return Ok(());
+			} else {
+				// The page is already there, just map it
+				page
 			}
 		} else {
 			// Else, Allocate a page
 			match &self.file {
 				// Anonymous mapping
-				None => init_page(vmem, self.prot, None, virtaddr)?,
+				None => {
+					let page = init_page(vmem, self.prot, None, virtaddr)?;
+					self.anon_pages[offset] = Some(page);
+					return Ok(());
+				}
 				// Mapped file
 				Some(file) => {
 					// Get page from file
 					let node = file.node().unwrap();
 					let file_page_off = self.off / PAGE_SIZE as u64 + offset as u64;
-					let file_page = node.node_ops.readahead(node, file_page_off)?;
-					init_page(vmem, self.prot, Some(file_page.virt_addr()), virtaddr)?
+					let page = node.node_ops.readahead(node, file_page_off)?;
+					self.anon_pages[offset].insert(page)
 				}
 			}
 		};
@@ -243,7 +247,6 @@ impl MemMapping {
 		let pending_cow = self.flags & MAP_SHARED == 0 && page.is_shared();
 		let flags = vmem_flags(self.prot, pending_cow);
 		vmem.map(page.phys_addr(), virtaddr, flags);
-		self.anon_pages[offset] = Some(page);
 		Ok(())
 	}
 

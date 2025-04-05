@@ -151,12 +151,13 @@ impl RcFrame {
 	/// - `owner` is the node from which the data comes from
 	/// - `dev_off` is the offset of the frame on the device
 	pub fn new_zeroed(order: FrameOrder, owner: FrameOwner, dev_off: u64) -> AllocResult<Self> {
-		let page = Self::new(order, ZONE_KERNEL, owner, dev_off)?;
+		let frame = Self::new(order, ZONE_KERNEL, owner, dev_off)?;
 		unsafe {
-			page.slice_mut().fill(0);
+			frame.slice_mut().fill(0);
 		}
-		// TODO clear dirty flags?
-		Ok(page)
+		// Clear the dirty flag to avoid an unnecessary writeback
+		let _ = frame.poll_access();
+		Ok(frame)
 	}
 
 	/// Returns the page's physical address.
@@ -197,8 +198,14 @@ impl RcFrame {
 	/// Tells whether there are other references to the same frame.
 	#[inline]
 	pub fn is_shared(&self) -> bool {
-		// The references in `LRU` + `PageCache` + `self` = 3
-		Arc::strong_count(&self.0) > 3
+		let ref_count = Arc::strong_count(&self.0);
+		match self.0.owner {
+			FrameOwner::Anon => ref_count > 1,
+			_ => {
+				// The references in `LRU` + `PageCache` + `self` = 3
+				ref_count > 3
+			}
+		}
 	}
 
 	/// Returns the order of the frame.
@@ -228,7 +235,8 @@ impl RcFrame {
 			self.dev_offset(),
 		)?;
 		concurrent_copy(self.slice(), frame.slice());
-		// TODO clear dirty flags to avoid an unnecessary write
+		// Clear the dirty flag to avoid an unnecessary writeback
+		let _ = frame.poll_access();
 		Ok(frame)
 	}
 
