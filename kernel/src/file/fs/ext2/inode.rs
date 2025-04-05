@@ -25,7 +25,6 @@ use crate::{
 	sync::mutex::MutexGuard,
 };
 use core::{
-	cmp::{max, min},
 	intrinsics::unlikely,
 	mem,
 	num::NonZeroU32,
@@ -33,7 +32,7 @@ use core::{
 	sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 use macros::AnyRepr;
-use utils::{bytes, errno, errno::EResult, limits::NAME_MAX, math};
+use utils::{errno, errno::EResult, limits::NAME_MAX, math};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -112,7 +111,7 @@ const SECTOR_SIZE: u32 = 512;
 
 /// The maximum length for a symlink to be stored in the inode itself instead of a
 /// separate block.
-const SYMLINK_INLINE_LIMIT: u64 = 60;
+pub const SYMLINK_INLINE_LIMIT: u64 = 60;
 
 /// The inode of the root directory.
 pub const ROOT_DIRECTORY_INODE: u32 = 2;
@@ -190,7 +189,7 @@ fn indirections_offsets(
 /// Checks for an invalid block number.
 ///
 /// If the block number is zero, the function returns `None`.
-fn check_blk_off(blk: u32, sp: &Superblock) -> EResult<Option<NonZeroU32>> {
+pub fn check_blk_off(blk: u32, sp: &Superblock) -> EResult<Option<NonZeroU32>> {
 	if unlikely(blk >= sp.s_blocks_count) {
 		return Err(errno!(EUCLEAN));
 	}
@@ -371,7 +370,7 @@ impl Ext2INode {
 	/// - `superblock` is the filesystem's superblock
 	/// - `size` is the file's size
 	/// - `inline` is `true` if the inode is a symlink storing the target inline
-	fn set_size(&mut self, sp: &Superblock, size: u64, inline: bool) {
+	pub fn set_size(&mut self, sp: &Superblock, size: u64, inline: bool) {
 		let has_version = sp.s_rev_level >= 1;
 		let has_feature = sp.s_feature_ro_compat & super::WRITE_REQUIRED_64_BITS != 0;
 		if has_version && has_feature {
@@ -424,7 +423,7 @@ impl Ext2INode {
 	/// **Note**: the function assumes the inode is locked.
 	///
 	/// On success, the function returns the allocated disk block offset.
-	fn alloc_content_blk(&mut self, off: u32, fs: &Ext2Fs) -> EResult<u32> {
+	pub fn alloc_content_blk(&mut self, off: u32, fs: &Ext2Fs) -> EResult<u32> {
 		let mut offsets: [usize; 4] = [0; 4];
 		let depth = indirections_offsets(off, fs.sp.get_entries_per_block_log(), &mut offsets)?;
 		// Allocate the first level if needed
@@ -472,7 +471,7 @@ impl Ext2INode {
 	/// Frees a content block at the given file block offset `off`.
 	///
 	/// If the block is not allocated, the function does nothing.
-	fn free_content_blk(&mut self, off: u32, fs: &Ext2Fs) -> EResult<()> {
+	pub fn free_content_blk(&mut self, off: u32, fs: &Ext2Fs) -> EResult<()> {
 		let mut offsets: [usize; 4] = [0; 4];
 		let depth = indirections_offsets(off, fs.sp.get_entries_per_block_log(), &mut offsets)?;
 		let blk = &mut self.i_block[offsets[0]];
@@ -482,113 +481,6 @@ impl Ext2INode {
 		if Self::free_content_blk_impl(*blk, &offsets[1..depth], fs)? {
 			let blk = mem::take(blk);
 			fs.free_block(blk)?;
-		}
-		Ok(())
-	}
-
-	/// Reads the content of the inode.
-	///
-	/// Arguments:
-	/// - `off` is the offset at which the inode is read
-	/// - `buf` is the buffer in which the data is to be written
-	///
-	/// The function returns the number of bytes that have been read and boolean
-	/// telling whether EOF is reached.
-	pub fn read_content(&self, off: u64, buf: &mut [u8], fs: &Ext2Fs) -> EResult<usize> {
-		let size = self.get_size(&fs.sp);
-		if off > size {
-			return Err(errno!(EINVAL));
-		}
-		let blk_size = fs.sp.get_block_size();
-		let mut cur = 0;
-		let max = min(buf.len(), (size - off) as usize);
-		while cur < max {
-			// Get slice of the destination buffer corresponding to the current block
-			let blk_off = (off + cur as u64) / blk_size as u64;
-			let blk_inner_off = ((off + cur as u64) % blk_size as u64) as usize;
-			let len = min(max - cur, (blk_size - blk_inner_off as u32) as usize);
-			let dst = &mut buf[cur..(cur + len)];
-			// Get disk block offset
-			if let Some(blk_off) = self.translate_blk_off(blk_off as _, fs)? {
-				// A content block is present, copy
-				let blk = read_block(fs, blk_off.get() as _)?;
-				// FIXME we need a concurrency-safe copy
-				let src = &blk.slice()[blk_inner_off..(blk_inner_off + len)];
-				dst.copy_from_slice(src);
-			} else {
-				// No content block, writing zeros
-				dst.fill(0);
-			}
-			cur += len;
-		}
-		Ok(cur)
-	}
-
-	/// Writes the content of the inode.
-	///
-	/// Arguments:
-	/// - `off` is the offset at which the inode is written
-	/// - `buf` is the buffer in which the data is to be written
-	///
-	/// The function returns the number of bytes that have been written.
-	pub fn write_content(&mut self, off: u64, buf: &[u8], fs: &Ext2Fs) -> EResult<()> {
-		let curr_size = self.get_size(&fs.sp);
-		if off > curr_size {
-			return Err(errno!(EINVAL));
-		}
-		let blk_size = fs.sp.get_block_size();
-		let mut cur = 0;
-		while cur < buf.len() {
-			// Get block offset and read it
-			let blk_off = (off + cur as u64) / blk_size as u64;
-			let blk = if let Some(blk_off) = self.translate_blk_off(blk_off as _, fs)? {
-				// A content block is present, read it
-				read_block(fs, blk_off.get() as _)?
-			} else {
-				// No content block, allocate one
-				let blk_off = self.alloc_content_blk(blk_off as u32, fs)?;
-				let blk = read_block(fs, blk_off as _)?;
-				// No one else can access the block since we just allocated it
-				unsafe {
-					blk.slice_mut().fill(0);
-				}
-				blk
-			};
-			// Offset inside the block
-			let blk_inner_off = ((off + cur as u64) % blk_size as u64) as usize;
-			// Write data to buffer
-			let len = min(buf.len() - cur, (blk_size - blk_inner_off as u32) as usize);
-			let src = &buf[cur..(cur + len)];
-			let dst = unsafe { &mut blk.slice_mut()[blk_inner_off..(blk_inner_off + len)] };
-			// FIXME we need a concurrency-safe copy
-			dst.copy_from_slice(src);
-			cur += len;
-		}
-		// Update size
-		let new_size = max(off + buf.len() as u64, curr_size);
-		self.set_size(&fs.sp, new_size, false);
-		Ok(())
-	}
-
-	/// Truncates the file to the given size `size`.
-	///
-	/// If `size` is greater than or equal to the previous size, the function
-	/// does nothing.
-	pub fn truncate(&mut self, fs: &Ext2Fs, size: u64) -> EResult<()> {
-		let old_size = self.get_size(&fs.sp);
-		if size >= old_size {
-			return Ok(());
-		}
-		// Change the size
-		self.set_size(&fs.sp, size, false);
-		// The size of a block
-		let blk_size = fs.sp.get_block_size();
-		// The index of the beginning block to free
-		let begin = size.div_ceil(blk_size as _) as u32;
-		// The index of the end block to free
-		let end = old_size.div_ceil(blk_size as _) as u32;
-		for i in begin..end {
-			self.free_content_blk(i, fs)?;
 		}
 		Ok(())
 	}
@@ -619,7 +511,6 @@ impl Ext2INode {
 			return Ok(());
 		}
 		self.set_size(&fs.sp, 0, false);
-		// TODO write inode
 		// Free blocks
 		for (off, blk) in self.i_block.iter().enumerate() {
 			let Some(blk) = check_blk_off(*blk, &fs.sp)? else {
@@ -805,51 +696,6 @@ impl Ext2INode {
 				self.set_size(&fs.sp, file_blk_off * blk_size as u64, false);
 			}
 			self.free_content_blk(file_blk_off as _, fs)?;
-		}
-		Ok(())
-	}
-
-	/// Reads the content symbolic link.
-	///
-	/// If the file is not a symbolic link, the behaviour is undefined.
-	///
-	/// On success, the function returns the number of bytes written to `buf`.
-	pub fn read_link(&self, fs: &Ext2Fs, buf: &mut [u8]) -> EResult<usize> {
-		let size = self.get_size(&fs.sp);
-		if size <= SYMLINK_INLINE_LIMIT {
-			// The target is stored inline in the inode
-			let len = min(buf.len(), size as usize);
-			let src = bytes::as_bytes(&self.i_block);
-			buf[..len].copy_from_slice(&src[..len]);
-			Ok(len)
-		} else {
-			// The target is stored like in regular files
-			self.read_content(0, buf, fs)
-		}
-	}
-
-	/// Writes the content symbolic link. The function always truncates the content to the size of
-	/// `buf`.
-	///
-	/// If the file is not a symbolic link, the behaviour is undefined.
-	pub fn write_link(&mut self, fs: &Ext2Fs, buf: &[u8]) -> EResult<()> {
-		let old_size = self.get_size(&fs.sp);
-		let new_size = buf.len() as u64;
-		// Erase previous
-		if old_size <= SYMLINK_INLINE_LIMIT {
-			self.i_block.fill(0);
-		}
-		// Write target
-		if new_size <= SYMLINK_INLINE_LIMIT {
-			// The target is stored inline in the inode
-			self.truncate(fs, 0)?;
-			// Copy
-			let dst = bytes::as_bytes_mut(&mut self.i_block);
-			dst[..buf.len()].copy_from_slice(buf);
-			self.set_size(&fs.sp, new_size, true);
-		} else {
-			self.truncate(fs, new_size)?;
-			self.write_content(0, buf, fs)?;
 		}
 		Ok(())
 	}

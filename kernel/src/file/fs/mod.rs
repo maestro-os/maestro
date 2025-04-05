@@ -35,15 +35,19 @@ use crate::{
 };
 use core::{
 	any::Any,
+	cmp::min,
 	ffi::{c_int, c_void},
 	fmt::Debug,
+	intrinsics::unlikely,
 };
 use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, path::PathBuf, string::String},
 	errno,
 	errno::{AllocResult, EResult},
+	limits::PAGE_SIZE,
 	ptr::arc::Arc,
+	slice_copy,
 };
 
 /// Used in the f_fsid field of [`Statfs`].
@@ -181,6 +185,9 @@ pub trait NodeOps: Any + Debug {
 	/// Writes the path the symbolic link points to and writes it into `buf`.
 	///
 	/// If the node is not a symbolic link, the function returns [`errno::EINVAL`].
+	///
+	/// **Note**: this function must be called **only** for the creation of the symbolic link.
+	/// After being created, the content is immutable.
 	///
 	/// If this feature is not supported by the filesystem, the function returns
 	/// an error.
@@ -326,6 +333,68 @@ pub trait FileOps: Any + Debug {
 		let _ = (file, size);
 		Err(errno!(EINVAL))
 	}
+}
+
+/// Generic implementation for [`FileOps::read`] on regular files.
+///
+/// **Note**: `file` **must** have an associated [`Node`], otherwise the function panics.
+pub fn generic_file_read(file: &File, mut off: u64, buf: &mut [u8]) -> EResult<usize> {
+	let node = file.node().unwrap();
+	let size = file.stat()?.size;
+	if unlikely(off > size) {
+		return Err(errno!(EINVAL));
+	}
+	let buf_len = min(buf.len() as u64, size - off);
+	let start = off / PAGE_SIZE as u64;
+	let end = off
+		.checked_add(buf_len)
+		.ok_or_else(|| errno!(EOVERFLOW))?
+		.div_ceil(PAGE_SIZE as u64);
+	let mut buf_off = 0;
+	for page_off in start..end {
+		let page = node.node_ops.read_page(node, page_off)?;
+		let inner_off = off as usize % PAGE_SIZE;
+		// FIXME: this is not concurrency friendly
+		let len = slice_copy(
+			&page.slice()[inner_off..],
+			&mut buf[buf_off..buf_len as usize],
+		);
+		buf_off += len;
+		off += len as u64;
+	}
+	Ok(buf_off)
+}
+
+/// Generic implementation for [`FileOps::write`] on regular files.
+///
+/// **Note**: `file` **must** have an associated [`Node`], otherwise the function panics.
+pub fn generic_file_write(file: &File, mut off: u64, buf: &[u8]) -> EResult<usize> {
+	let node = file.node().unwrap();
+	let size = file.stat()?.size;
+	if unlikely(off > size) {
+		return Err(errno!(EINVAL));
+	}
+	// Extend the file if necessary
+	let end = off + buf.len() as u64;
+	if end > size {
+		file.ops.truncate(file, end)?;
+	}
+	let start = off / PAGE_SIZE as u64;
+	let end = off
+		.checked_add(buf.len() as u64)
+		.ok_or_else(|| errno!(EOVERFLOW))?
+		.div_ceil(PAGE_SIZE as u64);
+	let mut buf_off = 0;
+	for page_off in start..end {
+		let page = node.node_ops.read_page(node, page_off)?;
+		let inner_off = off as usize % PAGE_SIZE;
+		let slice = unsafe { page.slice_mut() };
+		// FIXME: this is not concurrency friendly
+		let len = slice_copy(&buf[buf_off..], &mut slice[inner_off..]);
+		buf_off += len;
+		off += len as u64;
+	}
+	Ok(buf_off)
 }
 
 #[derive(Debug)]

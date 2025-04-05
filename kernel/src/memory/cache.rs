@@ -375,6 +375,20 @@ impl PageCache {
 		}
 		Ok(())
 	}
+
+	/// Removes, without flushing, all the pages after the offset `off` (included).
+	pub fn truncate(&self, off: u64) {
+		let mut lru = LRU.lock();
+		self.frames.lock().retain(|o, frame| {
+			let retain = *o < off;
+			if !retain {
+				unsafe {
+					lru.remove(&frame.0);
+				}
+			}
+			retain
+		});
+	}
 }
 
 /// Global cache for all frames

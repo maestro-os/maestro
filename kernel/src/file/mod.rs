@@ -467,7 +467,11 @@ impl File {
 
 	/// Returns the file's status.
 	pub fn stat(&self) -> EResult<Stat> {
-		self.ops.get_stat(self)
+		if let Some(node) = self.node() {
+			Ok(node.stat())
+		} else {
+			self.ops.get_stat(self)
+		}
 	}
 
 	/// Returns the type of the file.

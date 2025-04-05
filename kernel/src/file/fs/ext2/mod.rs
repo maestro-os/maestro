@@ -56,7 +56,8 @@ use crate::{
 		fs::{
 			downcast_fs,
 			ext2::{dirent::DirentIterator, inode::ROOT_DIRECTORY_INODE},
-			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs,
+			generic_file_read, generic_file_write, FileOps, Filesystem, FilesystemOps,
+			FilesystemType, NodeOps, Statfs,
 		},
 		vfs,
 		vfs::node::{Node, NodeCache},
@@ -68,7 +69,7 @@ use crate::{
 };
 use bgd::BlockGroupDescriptor;
 use core::{
-	cmp::max,
+	cmp::{max, min},
 	intrinsics::unlikely,
 	sync::atomic::{
 		AtomicBool, AtomicU16, AtomicU32, AtomicU8, AtomicUsize,
@@ -79,10 +80,11 @@ use inode::Ext2INode;
 use macros::AnyRepr;
 use utils::{
 	boxed::Box,
+	bytes,
 	collections::path::PathBuf,
 	errno,
 	errno::EResult,
-	limits::{NAME_MAX, PAGE_SIZE},
+	limits::{NAME_MAX, PAGE_SIZE, SYMLINK_MAX},
 	math,
 	ptr::arc::Arc,
 };
@@ -322,17 +324,57 @@ impl NodeOps for Ext2NodeOps {
 		if inode_.get_type() != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
-		inode_.read_link(fs, buf)
+		let size = inode_.get_size(&fs.sp);
+		if unlikely(size > SYMLINK_MAX as u64) {
+			return Err(errno!(EUCLEAN));
+		}
+		if size <= inode::SYMLINK_INLINE_LIMIT {
+			// The target is stored inline in the inode
+			let len = min(buf.len(), size as usize);
+			let src = bytes::as_bytes(&inode_.i_block);
+			buf[..len].copy_from_slice(&src[..len]);
+			Ok(len)
+		} else {
+			// The target is stored like in regular files
+			let blk =
+				inode::check_blk_off(inode_.i_block[0], &fs.sp)?.ok_or_else(|| errno!(EUCLEAN))?;
+			let blk = read_block(fs, blk.get() as _)?;
+			// FIXME we need a concurrency-safe copy
+			let len = min(buf.len(), size as usize);
+			buf.copy_from_slice(&blk.slice()[..len]);
+			Ok(len)
+		}
 	}
 
 	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
+		if unlikely(buf.len() > SYMLINK_MAX) {
+			return Err(errno!(ENAMETOOLONG));
+		}
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		let mut inode_ = Ext2INode::get(node, fs)?;
 		if inode_.get_type() != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
-		inode_.write_link(fs, buf)?;
-		// Update status
+		// Get storage slice
+		let inline = buf.len() <= inode::SYMLINK_INLINE_LIMIT as usize;
+		if inline {
+			// Store inline
+			let dst = bytes::as_bytes_mut(&mut inode_.i_block);
+			dst[..buf.len()].copy_from_slice(buf);
+			dst[buf.len()..].fill(0);
+		} else {
+			// Allocate a block
+			let blk_off = inode_.alloc_content_blk(0, fs)?;
+			inode_.i_block[0] = blk_off;
+			let blk = read_block(fs, blk_off as _)?;
+			// No one else can access the block since we just allocated it
+			let dst = unsafe { blk.slice_mut() };
+			// Copy
+			dst[..buf.len()].copy_from_slice(buf);
+			dst[buf.len()..].fill(0);
+		}
+		// Update size
+		inode_.set_size(&fs.sp, buf.len() as _, inline);
 		node.stat.lock().size = buf.len() as _;
 		Ok(())
 	}
@@ -387,13 +429,17 @@ pub struct Ext2FileOps;
 
 impl FileOps for Ext2FileOps {
 	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+		// TODO replace by filetype-specific FileOps
 		let node = file.node().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let inode_ = Ext2INode::get(node, fs)?;
-		if inode_.get_type() != FileType::Regular {
-			return Err(errno!(EINVAL));
+		{
+			let inode_ = Ext2INode::get(node, fs)?;
+			if inode_.get_type() != FileType::Regular {
+				return Err(errno!(EINVAL));
+			}
 		}
-		inode_.read_content(off, buf, fs)
+		// TODO O_DIRECT
+		generic_file_read(file, off, buf)
 	}
 
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
@@ -402,14 +448,15 @@ impl FileOps for Ext2FileOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut inode_ = Ext2INode::get(node, fs)?;
-		if inode_.get_type() != FileType::Regular {
-			return Err(errno!(EINVAL));
+		// TODO replace by filetype-specific FileOps
+		{
+			let inode_ = Ext2INode::get(node, fs)?;
+			if inode_.get_type() != FileType::Regular {
+				return Err(errno!(EINVAL));
+			}
 		}
-		inode_.write_content(off, buf, fs)?;
-		// Update status
-		node.stat.lock().size = inode_.get_size(&fs.sp);
-		Ok(buf.len() as _)
+		// TODO O_DIRECT
+		generic_file_write(file, off, buf)
 	}
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
@@ -419,10 +466,33 @@ impl FileOps for Ext2FileOps {
 			return Err(errno!(EROFS));
 		}
 		let mut inode_ = Ext2INode::get(node, fs)?;
-		match inode_.get_type() {
-			FileType::Regular => inode_.truncate(fs, size)?,
-			_ => return Err(errno!(EINVAL)),
+		// TODO replace by filetype-specific FileOps
+		if inode_.get_type() != FileType::Regular {
+			return Err(errno!(EINVAL));
 		}
+		// The size of a block
+		let blk_size = fs.sp.get_block_size();
+		let old_size = inode_.get_size(&fs.sp);
+		if size < old_size {
+			// Shrink the file
+			let start = size.div_ceil(blk_size as _) as u32;
+			let end = old_size.div_ceil(blk_size as _) as u32;
+			for off in start..end {
+				inode_.free_content_blk(off, fs)?;
+			}
+			// Clear cache
+			node.cache.truncate(start as _);
+		} else {
+			// Expand the file
+			let start = old_size.div_ceil(blk_size as _) as u32;
+			let end = size.div_ceil(blk_size as _) as u32;
+			for off in start..end {
+				inode_.alloc_content_blk(off, fs)?;
+			}
+		}
+		// Update size
+		inode_.set_size(&fs.sp, size, false);
+		node.stat.lock().size = size;
 		Ok(())
 	}
 }

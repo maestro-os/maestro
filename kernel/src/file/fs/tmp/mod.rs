@@ -27,8 +27,8 @@ use crate::{
 	device::BlkDev,
 	file::{
 		fs::{
-			downcast_fs, kernfs, kernfs::NodeStorage, FileOps, Filesystem, FilesystemOps,
-			FilesystemType, NodeOps, Statfs,
+			downcast_fs, generic_file_read, generic_file_write, kernfs, kernfs::NodeStorage,
+			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs,
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
@@ -38,12 +38,7 @@ use crate::{
 	memory::cache::{FrameOwner, RcFrame},
 	sync::mutex::Mutex,
 };
-use core::{
-	any::Any,
-	cmp::{max, min},
-	intrinsics::unlikely,
-	sync::atomic::AtomicBool,
-};
+use core::{any::Any, cmp::min, intrinsics::unlikely, sync::atomic::AtomicBool};
 use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, path::PathBuf, vec::Vec},
@@ -51,7 +46,7 @@ use utils::{
 	errno::EResult,
 	limits::{NAME_MAX, PAGE_SIZE},
 	ptr::{arc::Arc, cow::Cow},
-	slice_copy, TryClone,
+	TryClone,
 };
 
 // TODO use rwlock
@@ -224,78 +219,16 @@ pub struct TmpFSFile;
 
 impl FileOps for TmpFSFile {
 	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let node = file.node().unwrap();
-		let pages = NodeContent::from_ops(&*node.node_ops);
-		let NodeContent::Regular(pages) = pages else {
-			return Err(errno!(EINVAL));
-		};
-		// Validation
-		let mut off: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let size = node.stat.lock().size as usize;
-		if off > size {
-			return Err(errno!(EINVAL));
-		}
-		let start_page = off / PAGE_SIZE;
-		let pages = pages.lock();
-		let end_page = off
-			.checked_add(buf.len())
-			.ok_or_else(|| errno!(EOVERFLOW))?
-			.div_ceil(PAGE_SIZE)
-			.min(pages.len());
-		// Copy
-		let mut buf_off = 0;
-		for page in &pages[start_page..end_page] {
-			let inner_start = off % PAGE_SIZE;
-			let inner_end = min(inner_start + (size - off), PAGE_SIZE);
-			// TODO ensure this is concurrency-friendly
-			let slice = page.slice();
-			let len = slice_copy(&slice[inner_start..inner_end], &mut buf[buf_off..]);
-			buf_off += len;
-			off += len;
-		}
-		Ok(buf_off)
+		generic_file_read(file, off, buf)
 	}
 
 	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
 		let node = file.node().unwrap();
-		let pages = NodeContent::from_ops(&*node.node_ops);
-		let NodeContent::Regular(pages) = pages else {
-			return Err(errno!(EINVAL));
-		};
-		// Validation
-		let mut off: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let mut stat = node.stat.lock();
-		if off > stat.size as usize {
-			return Err(errno!(EINVAL));
+		let fs = downcast_fs::<TmpFS>(&*node.fs.ops);
+		if unlikely(fs.readonly) {
+			return Err(errno!(EROFS));
 		}
-		let start_page = off / PAGE_SIZE;
-		let end_page = off
-			.checked_add(buf.len())
-			.ok_or_else(|| errno!(EOVERFLOW))?
-			.div_ceil(PAGE_SIZE);
-		let mut pages = pages.lock();
-		// Allocate pages if necessary
-		if let Some(count) = end_page.checked_sub(pages.len()) {
-			pages.reserve(count)?;
-			for _ in 0..count {
-				// The offset is not necessary since `writeback` is a no-op
-				let frame = RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), 0)?;
-				pages.push(frame)?;
-			}
-		}
-		// Copy
-		let mut buf_off = 0;
-		for page in &pages[start_page..end_page] {
-			let inner_off = off % PAGE_SIZE;
-			// TODO ensure this is concurrency-friendly
-			let slice = unsafe { page.slice_mut() };
-			let len = slice_copy(&buf[buf_off..], &mut slice[inner_off..]);
-			buf_off += len;
-			off += len;
-		}
-		// Update status
-		stat.size = max(off as _, stat.size);
-		Ok(buf_off)
+		generic_file_write(file, off, buf)
 	}
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
@@ -324,6 +257,8 @@ impl FileOps for TmpFSFile {
 				let slice = unsafe { page.slice_mut() };
 				slice[inner_off..].fill(0);
 			}
+			// Clear cache
+			node.cache.truncate(new_pages_count as _);
 		}
 		// Update status
 		node.stat.lock().size = size as _;

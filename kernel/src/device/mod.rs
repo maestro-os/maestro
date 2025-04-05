@@ -348,7 +348,7 @@ impl FileOps for BlkDevFileOps {
 		for page_off in start..end {
 			let page = BlkDev::read_frame(&dev, page_off, 0)?;
 			let inner_off = off as usize % PAGE_SIZE;
-			// TODO ensure this is concurrency-friendly
+			// FIXME: this is not concurrency friendly
 			let len = slice_copy(&page.slice()[inner_off..], &mut buf[buf_off..]);
 			buf_off += len;
 			off += len as u64;
@@ -368,7 +368,7 @@ impl FileOps for BlkDevFileOps {
 			let page = BlkDev::read_frame(&dev, page_off, 0)?;
 			let inner_off = off as usize % PAGE_SIZE;
 			let slice = unsafe { page.slice_mut() };
-			// TODO ensure this is concurrency-friendly
+			// FIXME: this is not concurrency friendly
 			let len = slice_copy(&buf[buf_off..], &mut slice[inner_off..]);
 			buf_off += len;
 			off += len as u64;
