@@ -21,6 +21,7 @@
 pub mod bitfield;
 pub mod btreemap;
 pub mod hashmap;
+pub mod hashset;
 pub mod id_allocator;
 pub mod list;
 pub mod path;
