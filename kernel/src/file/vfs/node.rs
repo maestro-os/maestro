@@ -36,7 +36,7 @@ use core::{
 };
 use utils::{
 	boxed::Box,
-	collections::{hashmap::HashSet, path::PathBuf, string::String},
+	collections::{hashset::HashSet, path::PathBuf, string::String},
 	errno::EResult,
 	limits::SYMLINK_MAX,
 	ptr::arc::Arc,

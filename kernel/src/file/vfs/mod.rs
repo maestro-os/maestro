@@ -52,7 +52,7 @@ use core::{
 use node::Node;
 use utils::{
 	collections::{
-		hashmap::HashSet,
+		hashset::HashSet,
 		path::{Component, Path, PathBuf},
 		string::String,
 	},
