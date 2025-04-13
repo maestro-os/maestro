@@ -134,13 +134,15 @@ impl VMem {
 		}
 	}
 
-	/// Polls, on the given range, the value of the access/dirty flags, clearing them atomically.
+	/// Polls the value of the dirty flags on the page at `addr`, clearing it atomically.
 	///
-	/// The function returns, in this order:
-	/// - Whether the range has been accessed (read from or written to)
-	/// - Whether the range has is dirty (written to)
-	pub fn poll_access(&self, addr: VirtAddr, pages: usize) -> (bool, bool) {
-		x86::paging::poll_access(self.inner(), addr, pages)
+	/// The function returns:
+	/// - The physical address of the page
+	/// - Whether the page is dirty
+	///
+	/// If the page is not mapped, the function returns `None`.
+	pub fn poll_dirty(&self, addr: VirtAddr) -> Option<(PhysAddr, bool)> {
+		x86::paging::poll_dirty(self.inner(), addr)
 	}
 
 	/// Binds the virtual memory context to the current CPU.

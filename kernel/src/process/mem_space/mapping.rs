@@ -26,6 +26,7 @@ use crate::{
 	arch::x86::paging,
 	file::File,
 	memory::{
+		buddy,
 		buddy::ZONE_USER,
 		cache::{FrameOwner, RcFrame},
 		vmem,
@@ -35,8 +36,15 @@ use crate::{
 	process::mem_space::{
 		Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE,
 	},
+	time::{
+		clock::{current_time, CLOCK_BOOTTIME},
+		unit::TimestampScale,
+	},
 };
-use core::num::NonZeroUsize;
+use core::{
+	num::NonZeroUsize,
+	sync::atomic::Ordering::{Relaxed, Release},
+};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
@@ -154,7 +162,7 @@ impl MemMapping {
 	/// - `size` is the size of the mapping in pages. The size must be greater than 0
 	/// - `prot` is the memory protection
 	/// - `flags` the mapping's flags
-	/// - `file` is the open file the mapping points to. If `None`, no file is mapped
+	/// - `file` is the mapped file. If `None`, no file is mapped
 	/// - `off` is the offset in `file`, if applicable
 	pub fn new(
 		addr: *mut u8,
@@ -206,8 +214,8 @@ impl MemMapping {
 	///
 	/// **Note**: it is assumed the associated virtual memory is bound.
 	///
-	/// If a file is associated with the mapping, the function uses the page cache's content
-	/// (potentially populating it by reading from the disk).
+	/// If a file is mapped, the function uses the page cache's content (potentially populating it
+	/// by reading from the disk).
 	///
 	/// Upon allocation failure, or failure to read a page from the disk, the function returns an
 	/// error.
@@ -237,8 +245,8 @@ impl MemMapping {
 				Some(file) => {
 					// Get page from file
 					let node = file.node().unwrap();
-					let file_page_off = self.off / PAGE_SIZE as u64 + offset as u64;
-					let page = node.node_ops.read_page(node, file_page_off)?;
+					let file_off = self.off / PAGE_SIZE as u64 + offset as u64;
+					let page = node.node_ops.read_page(node, file_off)?;
 					self.anon_pages[offset].insert(page)
 				}
 			}
@@ -313,24 +321,46 @@ impl MemMapping {
 
 	/// Synchronizes the data on the memory mapping back to the filesystem.
 	///
-	/// `vmem` is the virtual memory context to read from.
+	/// Arguments:
+	/// - `vmem` is the virtual memory context
+	/// - `sync` tells whether the synchronization should be performed synchronously
 	///
 	/// The function does nothing if:
 	/// - The mapping is not shared
 	/// - The mapping is not associated with a file
-	/// - The associated file has been removed or cannot be accessed
 	///
 	/// If the mapping is locked, the function returns [`utils::errno::EBUSY`].
-	pub fn sync(&self, _vmem: &VMem) -> EResult<()> {
+	pub fn sync(&self, vmem: &VMem, sync: bool) -> EResult<()> {
 		if self.flags & (MAP_ANONYMOUS | MAP_PRIVATE) != 0 {
 			return Ok(());
 		}
 		// TODO if locked, EBUSY
-		// Get file
-		let Some(_file) = &self.file else {
+		let Some(file) = &self.file else {
 			return Ok(());
 		};
-		// TODO iterate on pages to look for dirty ones, then write them back to disk
+		let node = file.node().unwrap();
+		// cannot fail since `CLOCK_BOOTTIME` is valid
+		let ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
+		// TODO: polling pages one by one is inefficient
+		for off in 0..self.size.get() {
+			let virtaddr = VirtAddr::from(self.addr) + off * PAGE_SIZE;
+			let Some((physaddr, true)) = vmem.poll_dirty(virtaddr) else {
+				continue;
+			};
+			let page = buddy::get_page(physaddr);
+			// When sync, reset the dirty flag before writing. Because doing the opposite could
+			// result in ignoring a potential write happening in between the moment we write to
+			// disk and the moment we set the dirty flag
+			page.dirty.store(!sync, Release);
+			if sync {
+				let off = page.off.load(Relaxed);
+				let Some(frame) = node.mapped.get(off) else {
+					continue;
+				};
+				// TODO warn on error?
+				let _ = frame.writeback(Some(ts));
+			}
+		}
 		Ok(())
 	}
 }

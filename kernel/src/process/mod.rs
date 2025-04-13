@@ -398,13 +398,11 @@ pub(crate) fn init() -> EResult<()> {
 		let pc = frame.get_program_counter();
 		// Get current process
 		let proc = Process::current();
-		let Some(mem_space_mutex) = proc.mem_space.as_ref() else {
+		let Some(mem_space) = proc.mem_space.as_ref() else {
 			return CallbackResult::Panic;
 		};
 		// Check access
-		let sig = mem_space_mutex
-			.lock()
-			.handle_page_fault(accessed_addr, code);
+		let sig = mem_space.lock().handle_page_fault(accessed_addr, code);
 		match sig {
 			Ok(true) => {}
 			Ok(false) => {

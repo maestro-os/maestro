@@ -208,7 +208,7 @@ impl NodeOps for NodeContent {
 		pages.lock().get(i).cloned().ok_or_else(|| errno!(EINVAL))
 	}
 
-	fn write_page(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
+	fn write_frame(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
 		Ok(())
 	}
 }
@@ -258,7 +258,7 @@ impl FileOps for TmpFSFile {
 				slice[inner_off..].fill(0);
 			}
 			// Clear cache
-			node.cache.truncate(new_pages_count as _);
+			node.mapped.truncate(new_pages_count as _);
 		}
 		// Update status
 		node.stat.lock().size = size as _;
@@ -328,7 +328,7 @@ impl FilesystemOps for TmpFS {
 			file_ops: Box::new(TmpFSFile)?,
 
 			lock: Default::default(),
-			cache: Default::default(),
+			mapped: Default::default(),
 		})?;
 		*slot = Some(node.clone());
 		Ok(node)
@@ -391,7 +391,7 @@ impl FilesystemType for TmpFsType {
 			file_ops: Box::new(TmpFSFile)?,
 
 			lock: Default::default(),
-			cache: Default::default(),
+			mapped: Default::default(),
 		})?;
 		// Insert node
 		downcast_fs::<TmpFS>(&*fs.ops)

@@ -309,9 +309,9 @@ impl MemSpace {
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
-	) -> AllocResult<MemMapping> {
+	) -> EResult<MemMapping> {
 		if !map_constraint.is_valid() {
-			return Err(AllocError);
+			return Err(errno!(ENOMEM));
 		}
 		// Get suitable gap for the given constraint
 		let (gap, gap_off) = match map_constraint {
@@ -364,8 +364,7 @@ impl MemSpace {
 			transaction.insert_gap(new_gap)?;
 		}
 		// Create the mapping
-		let m = MemMapping::new(addr, size, prot, flags, file, off)?;
-		Ok(m)
+		Ok(MemMapping::new(addr, size, prot, flags, file, off)?)
 	}
 
 	/// Maps a chunk of memory.
@@ -394,7 +393,7 @@ impl MemSpace {
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
-	) -> AllocResult<*mut u8> {
+	) -> EResult<*mut u8> {
 		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
 		let map = Self::map_impl(
 			&mut transaction,
@@ -449,7 +448,7 @@ impl MemSpace {
 		addr: VirtAddr,
 		size: NonZeroUsize,
 		nogap: bool,
-	) -> AllocResult<()> {
+	) -> EResult<()> {
 		// Remove every mapping in the chunk to unmap
 		let mut i = 0;
 		while i < size.get() {
@@ -722,7 +721,7 @@ impl Drop for MemSpace {
 		let mappings = mem::take(&mut self.state.mappings);
 		for (_, m) in mappings {
 			// Ignore I/O errors
-			let _ = m.sync(&self.vmem);
+			let _ = m.sync(&self.vmem, true);
 		}
 	}
 }

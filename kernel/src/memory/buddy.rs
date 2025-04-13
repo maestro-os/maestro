@@ -25,7 +25,7 @@
 //! size of a frame in pages.
 
 use super::{oom, stats, PhysAddr, VirtAddr};
-use crate::sync::mutex::IntMutex;
+use crate::sync::{atomic::AtomicU64, mutex::IntMutex};
 use core::{
 	alloc::AllocError,
 	intrinsics::{likely, unlikely},
@@ -33,6 +33,7 @@ use core::{
 	ptr,
 	ptr::{null_mut, NonNull},
 	slice,
+	sync::atomic::{AtomicBool, Ordering::Relaxed},
 };
 use utils::{errno::AllocResult, limits::PAGE_SIZE, math};
 
@@ -300,17 +301,40 @@ impl FreeFrame {
 	}
 }
 
+/// Metadata of an allocated page of memory.
+#[derive(Default)]
+pub struct Page {
+	/// If part of a mapped file, this is the offset in the file
+	pub off: AtomicU64,
+
+	/// Tells whether the page has been written to
+	pub dirty: AtomicBool,
+	/// Timestamp of the last write to disk, in milliseconds
+	pub last_write: AtomicU64,
+}
+
+impl Page {
+	/// Re-initializes the structure to be used for a file mapping.
+	///
+	/// `off` is the offset in file to set for the page.
+	pub fn init(&self, off: u64) {
+		self.off.store(off, Relaxed);
+		self.dirty.store(false, Relaxed);
+		self.last_write.store(0, Relaxed);
+	}
+}
+
 /// The metadata for a frame of physical memory.
 enum Frame {
 	Free(FreeFrame),
-	Allocated,
+	Allocated(Page),
 }
 
 impl Frame {
 	/// Tells whether the frame is used or not.
 	#[inline]
 	fn is_allocated(&self) -> bool {
-		matches!(self, Frame::Allocated)
+		matches!(self, Frame::Allocated(_))
 	}
 
 	/// Returns the address of the associated physical memory.
@@ -340,7 +364,7 @@ impl Frame {
 	/// The function returns the used representation of the frame.
 	#[inline]
 	fn mark_used(&mut self) {
-		*self = Frame::Allocated;
+		*self = Frame::Allocated(Default::default());
 	}
 }
 
@@ -438,6 +462,21 @@ pub fn alloc_kernel(order: FrameOrder, flags: Flags) -> AllocResult<NonNull<u8>>
 		.kernel_to_virtual()
 		.and_then(|addr| NonNull::new(addr.as_ptr()))
 		.ok_or(AllocError)
+}
+
+/// Returns a reference to the metadata of the page at `addr`.
+pub fn get_page(addr: PhysAddr) -> &'static Page {
+	debug_assert!(addr.is_aligned_to(PAGE_SIZE));
+	let mut zones = ZONES.lock();
+	let zone = get_zone_for_addr(&mut zones, addr).unwrap();
+	let frames = zone.frames();
+	let frame_id = zone.get_frame_id_from_addr(addr);
+	debug_assert!(frame_id < zone.pages_count);
+	let frame = &frames[frame_id as usize];
+	match frame {
+		Frame::Allocated(p) => p,
+		Frame::Free(_) => panic!("retrieving metadata of an unallocated frame"),
+	}
 }
 
 /// Frees the given memory frame that was allocated using the buddy allocator.

@@ -31,15 +31,15 @@
 
 use crate::{
 	arch::x86::io::inb,
-	device::{storage::ide, BlkDev, BlockDeviceOps},
+	device::{storage::ide, BlockDeviceOps},
 	memory::{
 		buddy::{FrameOrder, ZONE_KERNEL},
 		cache::{FrameOwner, RcFrame},
 	},
 	sync::mutex::Mutex,
 };
-use core::num::NonZeroU64;
-use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
+use core::{intrinsics::unlikely, num::NonZeroU64};
+use utils::{bytes::slice_from_bytes, errno, errno::EResult, limits::PAGE_SIZE};
 
 /// Offset to the data register
 const DATA_REGISTER_OFFSET: u16 = 0;
@@ -440,8 +440,8 @@ impl BlockDeviceOps for PATAInterface {
 		self.sectors_count
 	}
 
-	fn read_frame(&self, dev: &Arc<BlkDev>, off: u64, order: FrameOrder) -> EResult<RcFrame> {
-		let frame = RcFrame::new(order, ZONE_KERNEL, FrameOwner::BlkDev(dev.clone()), off)?;
+	fn read_frame(&self, off: u64, order: FrameOrder, owner: FrameOwner) -> EResult<RcFrame> {
+		let frame = RcFrame::new(order, ZONE_KERNEL, owner, off)?;
 		let off = off
 			.checked_mul(SECTOR_PER_PAGE)
 			.ok_or_else(|| errno!(EOVERFLOW))?;
@@ -476,11 +476,14 @@ impl BlockDeviceOps for PATAInterface {
 		Ok(frame)
 	}
 
-	fn write_frame(&self, off: u64, frame: &RcFrame) -> EResult<()> {
+	fn write_pages(&self, off: u64, buf: &[u8]) -> EResult<()> {
+		if unlikely(buf.len() % PAGE_SIZE != 0) {
+			return Err(errno!(EINVAL));
+		}
 		let off = off
 			.checked_mul(SECTOR_PER_PAGE)
 			.ok_or_else(|| errno!(EOVERFLOW))?;
-		let size = frame.pages_count() as u64 * SECTOR_PER_PAGE;
+		let size = buf.len() as u64 / SECTOR_SIZE;
 		// If the offset and size are out of bounds of the disk, return an error
 		let end = off.checked_add(size).ok_or_else(|| errno!(EOVERFLOW))?;
 		if end > self.sectors_count {
@@ -491,7 +494,7 @@ impl BlockDeviceOps for PATAInterface {
 		// Select disk
 		self.select(false);
 		// Write
-		let buf = frame.slice();
+		let buf = slice_from_bytes::<u16>(buf).unwrap();
 		for i in 0..size {
 			let off = off + i;
 			let count = (size - i).min(u16::MAX as u64) as u16;

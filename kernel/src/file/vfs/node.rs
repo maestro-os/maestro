@@ -23,7 +23,7 @@ use crate::{
 		fs::{FileOps, Filesystem, NodeOps},
 		FileType, INode, Stat,
 	},
-	memory::cache::PageCache,
+	memory::cache::MappedNode,
 	sync::mutex::Mutex,
 };
 use core::{
@@ -63,8 +63,8 @@ pub struct Node {
 
 	/// A lock to be used by the filesystem implementation
 	pub lock: Mutex<()>,
-	/// The device's page cache
-	pub cache: PageCache,
+	/// The node as mapped
+	pub mapped: MappedNode,
 }
 
 impl Node {
@@ -110,7 +110,7 @@ impl Node {
 		if metadata && self.dirty.swap(false, Acquire) {
 			self.node_ops.sync_stat(self)?;
 		}
-		self.cache.sync()
+		self.mapped.sync()
 	}
 
 	/// Releases the node, removing it from the disk if this is the last reference to it.

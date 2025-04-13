@@ -96,7 +96,6 @@ pub fn prlimit64(
 		SyscallPtr<RLimit>,
 		SyscallPtr<RLimit>,
 	)>,
-	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid != 0 {
@@ -105,7 +104,6 @@ pub fn prlimit64(
 	} else {
 		None
 	};
-	let _mem_space = mem_space.lock();
 	// TODO Implement all
 	match resource {
 		RLIMIT_CPU => {}

@@ -23,7 +23,7 @@
 //! alongside with the boot code.
 
 use super::{Partition, Table};
-use crate::device::BlkDev;
+use crate::{device::BlkDev, memory::cache::FrameOwner};
 use core::intrinsics::unlikely;
 use macros::AnyRepr;
 use utils::{
@@ -83,7 +83,7 @@ impl Clone for MbrTable {
 
 impl Table for MbrTable {
 	fn read(dev: &Arc<BlkDev>) -> EResult<Option<Self>> {
-		let page = BlkDev::read_frame(dev, 0, 0)?;
+		let page = BlkDev::read_frame(dev, 0, 0, FrameOwner::BlkDev(dev.clone()))?;
 		let table = &page.slice::<Self>()[0];
 		if unlikely(table.signature != MBR_SIGNATURE) {
 			return Ok(None);

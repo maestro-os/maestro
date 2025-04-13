@@ -54,16 +54,24 @@ pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> ER
 	Ok(0)
 }
 
-pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+fn do_fsync(fd: c_int, fds: Arc<Mutex<FileDescriptorTable>>, metadata: bool) -> EResult<usize> {
 	let fds = fds.lock();
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
 	let file = fds.get_fd(fd)?.get_file();
 	if let Some(node) = file.node() {
-		node.sync(true)?;
+		node.sync(metadata)?;
 	}
 	Ok(0)
+}
+
+pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+	do_fsync(fd, fds, true)
+}
+
+pub fn fsyncdata(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+	do_fsync(fd, fds, false)
 }
 
 pub fn msync(
@@ -75,16 +83,18 @@ pub fn msync(
 		return Err(errno!(EINVAL));
 	}
 	// Check for conflicts in flags
-	if unlikely(flags & MS_ASYNC != 0 && flags & MS_SYNC != 0) {
+	if unlikely((flags & MS_ASYNC != 0) == (flags & MS_SYNC != 0)) {
 		return Err(errno!(EINVAL));
 	}
+	let sync = flags & MS_SYNC != 0;
 	// Iterate over mappings
 	let mem_space = mem_space.lock();
 	let mut i = 0;
 	let pages = length.div_ceil(PAGE_SIZE);
 	while i < pages {
 		let mapping = mem_space.get_mapping_for_addr(addr).ok_or(errno!(ENOMEM))?;
-		mapping.sync(&mem_space.vmem)?; // TODO Use flags
+		// TODO MS_INVALIDATE
+		mapping.sync(&mem_space.vmem, sync)?;
 		i += mapping.get_size().get();
 	}
 	Ok(0)

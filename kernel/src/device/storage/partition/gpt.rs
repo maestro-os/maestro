@@ -23,6 +23,7 @@ use super::{Partition, Table};
 use crate::{
 	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
 	device::BlkDev,
+	memory::cache::FrameOwner,
 };
 use core::{intrinsics::unlikely, mem::size_of};
 use macros::AnyRepr;
@@ -193,7 +194,7 @@ impl Gpt {
 		// Read the first block
 		let blocks_count = dev.ops.blocks_count();
 		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		let page = BlkDev::read_frame(dev, lba, 0)?;
+		let page = BlkDev::read_frame(dev, lba, 0, FrameOwner::BlkDev(dev.clone()))?;
 		let gpt_hdr = &page.slice::<Self>()[0];
 		if unlikely(!gpt_hdr.is_valid()) {
 			return Err(errno!(EINVAL));
@@ -241,7 +242,7 @@ impl Gpt {
 			.map(|i| {
 				let off = entries_start + (i as u64 * self.entry_size as u64) / block_size;
 				let inner_off = ((i as u64 * self.entry_size as u64) % block_size) as usize;
-				let page = BlkDev::read_frame(dev, off, 0)?;
+				let page = BlkDev::read_frame(dev, off, 0, FrameOwner::BlkDev(dev.clone()))?;
 				let ent = from_bytes::<GPTEntry>(&page.slice()[inner_off..])
 					.unwrap()
 					.clone();

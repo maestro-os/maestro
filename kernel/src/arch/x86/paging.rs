@@ -28,10 +28,7 @@ use core::{
 	mem,
 	ops::{Deref, DerefMut},
 	ptr::NonNull,
-	sync::atomic::{
-		AtomicUsize,
-		Ordering::{Acquire, Relaxed, Release},
-	},
+	sync::atomic::{AtomicUsize, Ordering::Relaxed},
 };
 use utils::limits::PAGE_SIZE;
 
@@ -366,37 +363,11 @@ pub unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) {
 	}
 }
 
-fn poll_access_impl(mut table: &Table, addr: VirtAddr) -> usize {
-	for level in (0..DEPTH).rev() {
-		let index = get_addr_element_index(addr, level);
-		// Do not clear flags early since doing this on levels other than the last could hide other
-		// set flags for the next iterations
-		let entry = table[index].load(Acquire);
-		if entry & FLAG_PRESENT == 0 {
-			return 0;
-		}
-		if level == 0 || entry & FLAG_PAGE_SIZE != 0 {
-			return table[index].fetch_and(!(FLAG_ACCESSED | FLAG_DIRTY), Release);
-		}
-		// Jump to next table
-		let phys_addr = PhysAddr(entry & ADDR_MASK);
-		let virt_addr = phys_addr.kernel_to_virtual().unwrap();
-		table = unsafe { &*virt_addr.as_ptr() };
-	}
-	0
-}
-
-/// Inner implementation of [`crate::memory::vmem::VMem::poll_access`] for x86.
-pub fn poll_access(table: &Table, virtaddr: VirtAddr, pages: usize) -> (bool, bool) {
-	// Sanitize
-	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
-	// Test each page
-	let flags = (0..pages).fold(0, |flags, i| {
-		let virtaddr = virtaddr + i * PAGE_SIZE;
-		let ent = poll_access_impl(table, virtaddr);
-		flags | (ent & (FLAG_ACCESSED | FLAG_DIRTY))
-	});
-	(flags & FLAG_ACCESSED != 0, flags & FLAG_DIRTY != 0)
+/// Inner implementation of [`crate::memory::vmem::VMem::poll_dirty`] for x86.
+pub fn poll_dirty(table: &Table, virtaddr: VirtAddr) -> Option<(PhysAddr, bool)> {
+	let entry = translate_impl(table, virtaddr)?;
+	let physaddr = PhysAddr(entry & ADDR_MASK);
+	Some((physaddr, entry & FLAG_DIRTY != 0))
 }
 
 /// Binds the given page directory to the current CPU.

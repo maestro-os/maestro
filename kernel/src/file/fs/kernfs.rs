@@ -285,7 +285,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 					file_ops,
 
 					lock: Default::default(),
-					cache: Default::default(),
+					mapped: Default::default(),
 				})
 			})
 			.transpose()?;

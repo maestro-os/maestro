@@ -31,13 +31,12 @@ use crate::{
 	file::vfs::node::Node,
 	memory::{
 		buddy,
-		buddy::{Flags, FrameOrder, ZONE_KERNEL},
+		buddy::{Flags, FrameOrder, Page, ZONE_KERNEL},
 		stats::MEM_INFO,
-		vmem, PhysAddr, VirtAddr,
+		PhysAddr, VirtAddr,
 	},
 	println,
-	process::Process,
-	sync::{atomic::AtomicU64, mutex::IntMutex},
+	sync::mutex::IntMutex,
 	time::{
 		clock::{current_time, CLOCK_BOOTTIME},
 		unit::{Timestamp, TimestampScale, UTimestamp},
@@ -50,16 +49,13 @@ use core::{
 	marker::PhantomData,
 	ops::Deref,
 	slice,
-	sync::atomic::{
-		AtomicBool,
-		Ordering::{Acquire, Release},
-	},
+	sync::atomic::Ordering::{Acquire, Release},
 };
 use utils::{
 	bytes::AnyRepr,
 	collections::{btreemap::BTreeMap, list::ListNode},
-	concurrent_copy,
 	errno::{AllocResult, EResult},
+	limits::PAGE_SIZE,
 	list, list_type,
 	math::pow2,
 	ptr::arc::Arc,
@@ -70,14 +66,25 @@ use utils::{
 const WRITEBACK_TIMEOUT: u64 = 100;
 
 /// The node from which the data of a [`RcFrame`] comes from.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum FrameOwner {
-	/// No owner, for anonymous mappings.
+	/// No owner, for anonymous mappings
 	Anon,
-	/// Owned by a block device.
+	/// Owned by a block device
 	BlkDev(Arc<BlkDev>),
-	/// Owned by a filesystem node.
+	/// Owned by a filesystem node
 	Node(Arc<Node>),
+}
+
+impl FrameOwner {
+	/// Returns a reference to the inner [`MappedNode`] if any.
+	pub fn inner(&self) -> Option<&MappedNode> {
+		match self {
+			FrameOwner::Anon => None,
+			FrameOwner::BlkDev(b) => Some(&b.mapped),
+			FrameOwner::Node(n) => Some(&n.mapped),
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -87,17 +94,14 @@ struct RcFrameInner {
 	/// The order of the frame
 	order: FrameOrder,
 
-	/// The node from which the data comes from.
+	/// The node from which the data originates
 	owner: FrameOwner,
-	/// The device offset of the data in the node in pages.
-	dev_off: u64,
 
-	/// The node for the cache LRU.
+	/// The node for the cache LRU
 	lru: ListNode,
-	/// Tells whether the frame has been written to
-	dirty: AtomicBool,
-	/// Timestamp of the last write to disk, in milliseconds.
-	last_write: AtomicU64,
+
+	/// The device offset of the data in the node in pages
+	dev_off: u64,
 }
 
 impl Drop for RcFrameInner {
@@ -122,7 +126,7 @@ impl RcFrame {
 	/// Arguments:
 	/// - `order` is the order of the buddy allocation
 	/// - `flags` is the flags for the buddy allocation
-	/// - `owner` is the node from which the data comes from
+	/// - `owner` is the node from which the data originates
 	/// - `dev_off` is the offset of the frame on the device
 	pub fn new(
 		order: FrameOrder,
@@ -136,11 +140,10 @@ impl RcFrame {
 			order,
 
 			owner,
-			dev_off,
 
 			lru: Default::default(),
-			dirty: AtomicBool::new(false),
-			last_write: AtomicU64::new(0),
+
+			dev_off,
 		})?))
 	}
 
@@ -155,8 +158,6 @@ impl RcFrame {
 		unsafe {
 			frame.slice_mut().fill(0);
 		}
-		// Clear the dirty flag to avoid an unnecessary writeback
-		let _ = frame.poll_access();
 		Ok(frame)
 	}
 
@@ -199,12 +200,11 @@ impl RcFrame {
 	#[inline]
 	pub fn is_shared(&self) -> bool {
 		let ref_count = Arc::strong_count(&self.0);
-		match self.0.owner {
-			FrameOwner::Anon => ref_count > 1,
-			_ => {
-				// The references in `LRU` + `PageCache` + `self` = 3
-				ref_count > 3
-			}
+		match self.0.owner.inner() {
+			// Anonymous mapping
+			None => ref_count > 1,
+			// The references in `LRU` + `PageCache` + `self` = 3
+			Some(_) => ref_count > 3,
 		}
 	}
 
@@ -226,49 +226,53 @@ impl RcFrame {
 		self.0.dev_off
 	}
 
-	/// Allocates a new frame owned by `node` and copies the content of `self` to it.
-	pub fn duplicate(&self, node: &Arc<Node>) -> AllocResult<Self> {
-		let frame = Self::new(
-			self.order(),
-			ZONE_KERNEL,
-			FrameOwner::Node(node.clone()),
-			self.dev_offset(),
-		)?;
-		concurrent_copy(self.slice(), frame.slice());
-		// Clear the dirty flag to avoid an unnecessary writeback
-		let _ = frame.poll_access();
-		Ok(frame)
+	/// Returns metadata for the `n`th page of the frame.
+	#[inline]
+	pub fn get_page(&self, n: usize) -> &'static Page {
+		let addr = self.phys_addr() + n * PAGE_SIZE;
+		buddy::get_page(addr)
 	}
 
-	/// Tells whether the frame has been accessed and is dirty, atomically clearing the dirty bits
-	/// in the virtual memory context.
+	/// Initializes the [`Page`] structures of the associated pages.
 	///
-	/// Returns values:
-	/// - Whether the frame has been accessed
-	/// - Whether the frame has been written to (is dirty)
-	pub fn poll_access(&self) -> (bool, bool) {
-		if let Some(mem_space) = Process::current().mem_space.as_deref() {
-			mem_space
-				.lock()
-				.vmem
-				.poll_access(self.virt_addr(), self.pages_count())
-		} else {
-			vmem::KERNEL_VMEM
-				.lock()
-				.poll_access(self.virt_addr(), self.pages_count())
+	/// `off` is the offset of the frame in the associated file.
+	pub fn init_pages(&self, off: u64) {
+		for n in 0..self.pages_count() {
+			let page = self.get_page(n);
+			page.init(off + n as u64);
 		}
 	}
 
-	/// Writes the frame's data back to disk.
+	/// Writes dirty pages back to disk, if their timestamp has expired.
 	///
-	/// `ts` is the timestamp at which the frame is written
-	pub fn writeback(&self, ts: UTimestamp) -> EResult<()> {
-		match &self.0.owner {
-			FrameOwner::Anon => return Ok(()),
-			FrameOwner::BlkDev(blk) => blk.ops.write_frame(self.dev_offset(), self)?,
-			FrameOwner::Node(node) => node.node_ops.write_page(node, self)?,
+	/// `ts` is the timestamp at which the frame is written. If `None`, the timestamp is ignored.
+	pub fn writeback(&self, ts: Option<UTimestamp>) -> EResult<()> {
+		// Iterate on pages
+		for n in 0..self.pages_count() {
+			let page = self.get_page(n);
+			// If not dirty, skip
+			if !page.dirty.load(Acquire) {
+				continue;
+			}
+			// If not old enough, skip
+			if let Some(ts) = ts {
+				let last_write = page.last_write.load(Acquire);
+				if ts < last_write + WRITEBACK_TIMEOUT {
+					continue;
+				}
+			}
+			// Write page
+			match &self.0.owner {
+				FrameOwner::Anon => {}
+				FrameOwner::BlkDev(blk) => blk.ops.write_pages(self.dev_offset(), self.slice())?,
+				FrameOwner::Node(node) => node.node_ops.write_frame(node, self)?,
+			}
+			// Update page metadata
+			page.dirty.store(false, Release);
+			if let Some(ts) = ts {
+				page.last_write.store(ts, Release);
+			}
 		}
-		self.0.last_write.store(ts, Release);
 		Ok(())
 	}
 }
@@ -324,30 +328,38 @@ impl<T: AnyRepr + fmt::Debug> fmt::Debug for RcFrameVal<T> {
 
 /// A page cache
 #[derive(Debug, Default)]
-pub struct PageCache {
+pub struct MappedNode {
 	/// Cached frames
 	///
-	/// The key is the file offset, in pages, to the start of the frame
-	frames: IntMutex<BTreeMap<u64, RcFrame>>,
+	/// The key is the file offset, in pages, to the start of the node
+	cache: IntMutex<BTreeMap<u64, RcFrame>>,
 }
 
-impl PageCache {
+impl MappedNode {
+	/// Returns the frame at the offset `off`.
+	///
+	/// If not present, the function returns `None`.
+	pub fn get(&self, off: u64) -> Option<RcFrame> {
+		self.cache.lock().get(&off).cloned()
+	}
+
 	/// Looks for a frame in cache at offset `off`, or reads it from `init` and inserts it in the
 	/// cache.
-	pub fn get_or_insert<Init: FnOnce() -> EResult<RcFrame>>(
+	pub fn get_or_insert_frame<Init: FnOnce() -> EResult<RcFrame>>(
 		&self,
 		off: u64,
 		order: FrameOrder,
 		init: Init,
 	) -> EResult<RcFrame> {
 		let (frame, insert) = {
-			let mut frames = self.frames.lock();
+			let mut frames = self.cache.lock();
 			match frames.get(&off) {
 				// Cache hit
 				Some(frame) if frame.order() == order => (frame.clone(), false),
 				// Cache miss: read and insert
 				_ => {
 					let frame = init()?;
+					frame.init_pages(off);
 					frames.insert(off, frame.clone())?;
 					(frame, true)
 				}
@@ -367,11 +379,11 @@ impl PageCache {
 	/// Synchronizes all frames in the cache back to disk.
 	pub fn sync(&self) -> EResult<()> {
 		// cannot fail since `CLOCK_BOOTTIME` is valid
-		let cur_ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
+		let ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
 		// Sync all frames
-		let frames = self.frames.lock();
+		let frames = self.cache.lock();
 		for (_, frame) in frames.iter() {
-			frame.writeback(cur_ts)?;
+			frame.writeback(Some(ts))?;
 		}
 		Ok(())
 	}
@@ -379,7 +391,7 @@ impl PageCache {
 	/// Removes, without flushing, all the pages after the offset `off` (included).
 	pub fn truncate(&self, off: u64) {
 		let mut lru = LRU.lock();
-		self.frames.lock().retain(|o, frame| {
+		self.cache.lock().retain(|o, frame| {
 			let retain = *o < off;
 			if !retain {
 				unsafe {
@@ -397,30 +409,12 @@ static LRU: IntMutex<list_type!(RcFrameInner, lru)> = IntMutex::new(list!(RcFram
 fn flush_task_inner(cur_ts: Timestamp) {
 	// Iterate on all frames
 	let mut lru = LRU.lock();
-	for mut cursor in lru.iter().rev() {
+	for cursor in lru.iter().rev() {
 		let frame = RcFrame(cursor.arc());
-		let (accessed, dirty) = frame.poll_access();
-		// No need to check `dirty` since a dirty page is automatically accessed
-		if accessed {
-			cursor.lru_promote();
-		}
-		// If the frame has not been written to, nothing else to do
-		if !dirty && !frame.0.dirty.load(Acquire) {
+		if let Err(errno) = frame.writeback(Some(cur_ts)) {
+			// Failure, try the next frame
+			println!("Disk writeback I/O failure: {errno}");
 			continue;
-		}
-		// If the writeback timeout is exceeded, write
-		let last_write = frame.0.last_write.load(Acquire);
-		if cur_ts >= last_write + WRITEBACK_TIMEOUT {
-			match frame.writeback(cur_ts) {
-				// On success, clear the dirty flag
-				Ok(_) => {
-					frame.0.dirty.fetch_and(false, Release);
-				}
-				Err(errno) => println!("Disk writeback I/O failure: {errno}"),
-			}
-		} else {
-			// Set the dirty flag for later writeback
-			frame.0.dirty.fetch_or(true, Release);
 		}
 	}
 }
@@ -447,7 +441,7 @@ pub fn shrink() -> bool {
 		let mut lru = LRU.lock();
 		let mut iter = lru.iter().rev();
 		loop {
-			let Some(mut cursor) = iter.next() else {
+			let Some(cursor) = iter.next() else {
 				// No more frames remaining
 				return false;
 			};
@@ -456,31 +450,18 @@ pub fn shrink() -> bool {
 			{
 				// We lock the cache first to avoid having someone else activating the page while
 				// we are removing it
-				let cache = match &frame.0.owner {
-					FrameOwner::Anon => None,
-					FrameOwner::BlkDev(blk) => Some(&blk.cache),
-					FrameOwner::Node(node) => Some(&node.cache),
-				};
-				let mut cache = cache.map(|c| c.frames.lock());
+				let mut cache = frame.0.owner.inner().map(|m| m.cache.lock());
 				// If the frame is active, skip to the next
 				if frame.is_shared() {
 					continue;
 				}
-				// Remove the frame from its owner node
+				if let Err(errno) = frame.writeback(None) {
+					// Failure, try the next frame
+					println!("Disk writeback I/O failure: {errno}");
+					continue;
+				}
+				// Remove the frame from its node
 				if let Some(cache) = &mut cache {
-					// If dirty, write the frame back to disk
-					let (_, dirty) = frame.poll_access();
-					if dirty {
-						// No need to update the timestamp since we are removing the frame
-						if let Err(errno) = frame.writeback(0) {
-							// On error, jump to the next frame to avoid loosing data. Also promote
-							// it in the LRU to reduce the likelihood of meeting it at the next
-							// call
-							println!("Disk writeback I/O failure: {errno}");
-							cursor.lru_promote();
-							continue;
-						}
-					}
 					cache.remove(&frame.0.dev_off);
 				}
 			}

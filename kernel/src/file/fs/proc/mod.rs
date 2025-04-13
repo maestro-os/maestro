@@ -239,7 +239,7 @@ impl NodeOps for RootDir {
 					file_ops: Box::new(DummyOps)?,
 
 					lock: Default::default(),
-					cache: Default::default(),
+					mapped: Default::default(),
 				})
 			})
 			.transpose()?;
@@ -319,7 +319,7 @@ impl FilesystemOps for ProcFS {
 			file_ops: Box::new(DummyOps)?,
 
 			lock: Default::default(),
-			cache: Default::default(),
+			mapped: Default::default(),
 		})?)
 	}
 

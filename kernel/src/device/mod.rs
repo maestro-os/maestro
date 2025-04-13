@@ -53,7 +53,7 @@ use crate::{
 	},
 	memory::{
 		buddy::FrameOrder,
-		cache::{PageCache, RcFrame},
+		cache::{FrameOwner, MappedNode, RcFrame},
 	},
 	sync::mutex::Mutex,
 	syscall::ioctl,
@@ -181,12 +181,12 @@ pub trait BlockDeviceOps: fmt::Debug {
 	/// Reads a frame of data from the device.
 	///
 	/// `off` is the offset of the frame on the device, in pages.
-	fn read_frame(&self, dev: &Arc<BlkDev>, off: u64, order: FrameOrder) -> EResult<RcFrame>;
+	fn read_frame(&self, off: u64, order: FrameOrder, owner: FrameOwner) -> EResult<RcFrame>;
 
 	/// Writes a frame of data to the device.
 	///
 	/// `off` is the offset of the frame on the device, in pages.
-	fn write_frame(&self, off: u64, frame: &RcFrame) -> EResult<()>;
+	fn write_pages(&self, off: u64, buf: &[u8]) -> EResult<()>;
 
 	/// Polls the device with the given mask.
 	fn poll(&self, mask: u32) -> EResult<u32> {
@@ -217,8 +217,8 @@ pub struct BlkDev {
 
 	/// The device I/O interface
 	pub ops: Box<dyn BlockDeviceOps>,
-	/// The device's page cache
-	pub(crate) cache: PageCache,
+	/// The device as a mapped node
+	pub(crate) mapped: MappedNode,
 }
 
 impl BlkDev {
@@ -241,7 +241,7 @@ impl BlkDev {
 			mode,
 
 			ops,
-			cache: Default::default(),
+			mapped: Default::default(),
 		})?;
 		if likely(file::is_init()) {
 			create_file(&id, DeviceType::Block, &dev.path, mode)?;
@@ -252,9 +252,19 @@ impl BlkDev {
 	/// Reads a frame from the device, at the offset `off`.
 	///
 	/// If not in cache, the function reads the frame from the device, then inserts it in cache.
-	pub fn read_frame(this: &Arc<Self>, off: u64, order: FrameOrder) -> EResult<RcFrame> {
-		this.cache
-			.get_or_insert(off, order, || this.ops.read_frame(this, off, order))
+	pub fn read_frame(
+		this: &Arc<Self>,
+		off: u64,
+		order: FrameOrder,
+		owner: FrameOwner,
+	) -> EResult<RcFrame> {
+		if let Some(mapped) = owner.inner() {
+			mapped.get_or_insert_frame(off, order, || {
+				this.ops.read_frame(off, order, owner.clone())
+			})
+		} else {
+			this.ops.read_frame(off, order, owner)
+		}
 	}
 }
 
@@ -346,7 +356,7 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = BlkDev::read_frame(&dev, page_off, 0)?;
+			let page = BlkDev::read_frame(&dev, page_off, 0, FrameOwner::BlkDev(dev.clone()))?;
 			let inner_off = off as usize % PAGE_SIZE;
 			// FIXME: this is not concurrency friendly
 			let len = slice_copy(&page.slice()[inner_off..], &mut buf[buf_off..]);
@@ -365,7 +375,7 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = BlkDev::read_frame(&dev, page_off, 0)?;
+			let page = BlkDev::read_frame(&dev, page_off, 0, FrameOwner::BlkDev(dev.clone()))?;
 			let inner_off = off as usize % PAGE_SIZE;
 			let slice = unsafe { page.slice_mut() };
 			// FIXME: this is not concurrency friendly

@@ -243,7 +243,7 @@ fn build_auxiliary(
 /// If loaded, the function return the pointer to the end of the segment in
 /// virtual memory.
 fn map_segment(
-	file: &Arc<File>,
+	file: Arc<File>,
 	mem_space: &mut MemSpace,
 	load_base: *mut u8,
 	seg: &ProgramHeader,
@@ -266,7 +266,7 @@ fn map_segment(
 			pages,
 			seg.mmap_prot(),
 			MAP_PRIVATE,
-			Some(file.clone()),
+			Some(file),
 			off,
 		)?;
 		mem_space.alloc(addr, size)?;
@@ -296,7 +296,7 @@ fn load_elf(
 		if seg.p_type != elf::PT_LOAD {
 			continue;
 		}
-		if let Some(end) = map_segment(file, mem_space, load_base, &seg)? {
+		if let Some(end) = map_segment(file.clone(), mem_space, load_base, &seg)? {
 			load_end = max(end, load_end);
 		}
 		// If the segment contains the phdr, keep its address

@@ -63,7 +63,7 @@ use crate::{
 		vfs::node::{Node, NodeCache},
 		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
-	memory::cache::{RcFrame, RcFrameVal},
+	memory::cache::{FrameOwner, RcFrame, RcFrameVal},
 	sync::mutex::Mutex,
 	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
 };
@@ -156,7 +156,12 @@ fn read_block(fs: &Ext2Fs, off: u64) -> EResult<RcFrame> {
 	// cannot overflow since `s_log_block_size` is at least `2`
 	let order = fs.sp.s_log_block_size - 2;
 	let page_off = off << order;
-	BlkDev::read_frame(&fs.dev, page_off, order as _)
+	BlkDev::read_frame(
+		&fs.dev,
+		page_off,
+		order as _,
+		FrameOwner::BlkDev(fs.dev.clone()),
+	)
 }
 
 /// Finds a `0` bit in the given block, sets it atomically, then returns its offset.
@@ -210,7 +215,7 @@ impl NodeOps for Ext2NodeOps {
 						file_ops: Box::new(Ext2FileOps)?,
 
 						lock: Default::default(),
-						cache: Default::default(),
+						mapped: Default::default(),
 					};
 					let stat = Ext2INode::get(&node, fs)?.stat(&fs.sp);
 					node.stat = Mutex::new(stat);
@@ -390,7 +395,7 @@ impl NodeOps for Ext2NodeOps {
 	}
 
 	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
-		node.cache.get_or_insert(off, 0, || {
+		node.mapped.get_or_insert_frame(off, 0, || {
 			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 			let inode = Ext2INode::get(node, fs)?;
 			let off: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
@@ -399,14 +404,13 @@ impl NodeOps for Ext2NodeOps {
 				.ok_or_else(|| errno!(EOVERFLOW))?;
 			fs.dev
 				.ops
-				.read_frame(&fs.dev, blk_off.get() as _, 0)
-				.and_then(|frame| Ok(frame.duplicate(node)?))
+				.read_frame(blk_off.get() as _, 0, FrameOwner::Node(node.clone()))
 		})
 	}
 
-	fn write_page(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
+	fn write_frame(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		fs.dev.ops.write_frame(frame.dev_offset(), frame)
+		fs.dev.ops.write_pages(frame.dev_offset(), frame.slice())
 	}
 
 	fn sync_stat(&self, node: &Node) -> EResult<()> {
@@ -481,7 +485,7 @@ impl FileOps for Ext2FileOps {
 				inode_.free_content_blk(off, fs)?;
 			}
 			// Clear cache
-			node.cache.truncate(start as _);
+			node.mapped.truncate(start as _);
 		} else {
 			// Expand the file
 			let start = old_size.div_ceil(blk_size as _) as u32;
@@ -594,7 +598,7 @@ pub struct Superblock {
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
 	fn read(dev: &Arc<BlkDev>) -> EResult<RcFrameVal<Self>> {
-		let page = BlkDev::read_frame(dev, 0, 0)?;
+		let page = BlkDev::read_frame(dev, 0, 0, FrameOwner::BlkDev(dev.clone()))?;
 		Ok(RcFrameVal::new(page, 1))
 	}
 
@@ -835,7 +839,7 @@ impl FilesystemOps for Ext2Fs {
 					file_ops: Box::new(Ext2FileOps)?,
 
 					lock: Default::default(),
-					cache: Default::default(),
+					mapped: Default::default(),
 				};
 				let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
 				node.stat = Mutex::new(stat);
@@ -862,7 +866,7 @@ impl FilesystemOps for Ext2Fs {
 			file_ops: Box::new(Ext2FileOps)?,
 
 			lock: Default::default(),
-			cache: Default::default(),
+			mapped: Default::default(),
 		};
 		let mut inode = Ext2INode::get(&node, self)?;
 		*inode = Ext2INode {

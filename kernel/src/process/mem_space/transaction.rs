@@ -26,7 +26,7 @@ use utils::{
 		btreemap::BTreeMap,
 		hashmap::{Entry, HashMap},
 	},
-	errno::AllocResult,
+	errno::{AllocResult, EResult},
 };
 
 /// Applies the difference in `complement` to rollback operations.
@@ -89,7 +89,7 @@ pub(super) struct MemSpaceTransaction<'m> {
 	/// The memory space on which the transaction applies.
 	pub mem_space_state: &'m mut MemSpaceState,
 	/// The virtual memory context on which this transaction applies.
-	vmem: &'m mut VMem,
+	pub vmem: &'m mut VMem,
 
 	/// The complement used to restore `gaps` on rollback.
 	gaps_complement: HashMap<VirtAddr, Option<MemGap>>,
@@ -166,9 +166,11 @@ impl<'m> MemSpaceTransaction<'m> {
 	/// Removes the mapping beginning at the given address from the state.
 	///
 	/// On failure, the transaction is dropped and rolled back.
-	pub fn remove_mapping(&mut self, mapping_begin: *mut u8) -> AllocResult<()> {
+	pub fn remove_mapping(&mut self, mapping_begin: *mut u8) -> EResult<()> {
 		if let Some(mapping) = self.mem_space_state.mappings.get(&mapping_begin) {
 			self.mappings_discard.insert(mapping_begin, ())?;
+			// Sync to disk
+			mapping.sync(self.vmem, true)?;
 			// Apply to vmem. No rollback is required since this would be corrected by a page fault
 			self.vmem
 				.unmap_range(VirtAddr::from(mapping.get_addr()), mapping.get_size().get());
