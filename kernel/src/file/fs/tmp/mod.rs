@@ -41,13 +41,72 @@ use crate::{
 use core::{any::Any, cmp::min, intrinsics::unlikely, sync::atomic::AtomicBool};
 use utils::{
 	boxed::Box,
-	collections::{hashmap::HashMap, path::PathBuf, vec::Vec},
+	collections::{path::PathBuf, vec::Vec},
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	limits::{NAME_MAX, PAGE_SIZE},
 	ptr::{arc::Arc, cow::Cow},
 	TryClone,
 };
+
+#[derive(Debug)]
+struct TmpfsDirEntry {
+	name: Cow<'static, [u8]>,
+	node: Arc<Node>,
+}
+
+#[derive(Debug, Default)]
+struct DirInner {
+	// Using a `Vec` with holes is necessary for `iter_entries` so we can keep the same offsets
+	// for entries in between each calls
+	entries: Vec<Option<TmpfsDirEntry>>,
+	used_slots: usize,
+	// TODO: add a structure to map entry names to slots in `entries`
+}
+
+impl DirInner {
+	/// Returns the node of the entry with the given `name`.
+	///
+	/// If no such entry exist, the function returns `None`.
+	fn find(&self, name: &[u8]) -> Option<&Arc<Node>> {
+		self.entries
+			.iter()
+			.filter_map(|e| e.as_ref())
+			.find(|e| e.name.as_ref() == name)
+			.map(|e| &e.node)
+	}
+
+	/// Inserts a new entry.
+	fn insert(&mut self, ent: TmpfsDirEntry) -> AllocResult<()> {
+		if self.used_slots == self.entries.len() {
+			self.entries.push(Some(ent))?;
+		} else {
+			let slot = self.entries.iter_mut().find(|e| e.is_none()).unwrap();
+			*slot = Some(ent);
+		}
+		self.used_slots += 1;
+		Ok(())
+	}
+
+	/// Removes the entry with name `name`, if any.
+	fn remove(&mut self, name: &[u8]) {
+		let slots_count = self.entries.len();
+		let slot = self
+			.entries
+			.iter_mut()
+			.enumerate()
+			.find(|(_, e)| matches!(e, Some(e) if e.name.as_ref() == name));
+		let Some((index, slot)) = slot else {
+			return;
+		};
+		if index == slots_count - 1 {
+			self.entries.truncate(index);
+		} else {
+			*slot = None;
+		}
+		self.used_slots -= 1;
+	}
+}
 
 // TODO use rwlock
 /// The content of a [`TmpFSNode`]
@@ -56,7 +115,7 @@ enum NodeContent {
 	/// Regular file content
 	Regular(Mutex<Vec<RcFrame>>),
 	/// Directory entries
-	Directory(Mutex<HashMap<Cow<'static, [u8]>, Arc<Node>>>),
+	Directory(Mutex<DirInner>),
 	// TODO we could avoid having a mutex here since the path is set only when the link is
 	// created
 	/// Symbolic link path
@@ -74,25 +133,25 @@ impl NodeContent {
 
 impl NodeOps for NodeContent {
 	fn lookup_entry(&self, _dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
-		let NodeContent::Directory(entries) = self else {
+		let NodeContent::Directory(inner) = self else {
 			return Err(errno!(ENOTDIR));
 		};
-		ent.node = entries.lock().get(ent.name.as_ref()).cloned();
+		ent.node = inner.lock().find(ent.name.as_ref()).cloned();
 		Ok(())
 	}
 
 	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
-		let NodeContent::Directory(entries) = self else {
+		let NodeContent::Directory(inner) = self else {
 			return Err(errno!(ENOTDIR));
 		};
 		let off: usize = ctx.off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let entries = entries.lock();
-		let iter = entries.iter().skip(off);
-		for (name, node) in iter {
+		let inner = inner.lock();
+		let iter = inner.entries.iter().skip(off).filter_map(|e| e.as_ref());
+		for e in iter {
 			let ent = DirEntry {
-				inode: node.inode,
-				entry_type: node.stat.lock().get_type(),
-				name,
+				inode: e.node.inode,
+				entry_type: e.node.stat.lock().get_type(),
+				name: e.name.as_ref(),
 			};
 			if !(*ctx.write)(&ent)? {
 				break;
@@ -108,25 +167,34 @@ impl NodeOps for NodeContent {
 			return Err(errno!(EROFS));
 		}
 		// Check if an entry already exists
-		let NodeContent::Directory(parent_entries) = self else {
+		let NodeContent::Directory(parent_inner) = self else {
 			return Err(errno!(ENOTDIR));
 		};
-		let mut parent_entries = parent_entries.lock();
-		if parent_entries.get(ent.name.as_ref()).is_some() {
+		let mut parent_inner = parent_inner.lock();
+		if parent_inner.find(ent.name.as_ref()).is_some() {
 			return Err(errno!(EEXIST));
 		}
 		// If this is a directory, create `.` and `..`
 		let node = ent.node();
 		let content = NodeContent::from_ops(&*node.node_ops);
-		if let NodeContent::Directory(ents) = content {
-			let mut ents = ents.lock();
-			ents.insert(Cow::Borrowed(b"."), node.clone())?;
-			ents.insert(Cow::Borrowed(b".."), parent.clone())?;
+		if let NodeContent::Directory(inner) = content {
+			let mut inner = inner.lock();
+			inner.insert(TmpfsDirEntry {
+				name: Cow::Borrowed(b"."),
+				node: node.clone(),
+			})?;
+			inner.insert(TmpfsDirEntry {
+				name: Cow::Borrowed(b".."),
+				node: parent.clone(),
+			})?;
 			// Update links count
 			node.stat.lock().nlink += 1;
 			parent.stat.lock().nlink += 1;
 		}
-		parent_entries.insert(Cow::Owned(ent.name.try_clone()?), node.clone())?;
+		parent_inner.insert(TmpfsDirEntry {
+			name: Cow::Owned(ent.name.try_clone()?),
+			node: node.clone(),
+		})?;
 		node.stat.lock().nlink += 1;
 		Ok(())
 	}
@@ -137,34 +205,36 @@ impl NodeOps for NodeContent {
 			return Err(errno!(EROFS));
 		}
 		// Find entry
-		let NodeContent::Directory(parent_entries) = self else {
+		let NodeContent::Directory(parent_inner) = self else {
 			return Err(errno!(ENOTDIR));
 		};
-		let mut parent_entries = parent_entries.lock();
-		let node = parent_entries
-			.get(ent.name.as_ref())
+		let mut parent_inner = parent_inner.lock();
+		let node = parent_inner
+			.find(ent.name.as_ref())
 			.ok_or_else(|| errno!(ENOENT))?;
 		// Handle directory-specifics
 		let content = NodeContent::from_ops(&*node.node_ops);
-		if let NodeContent::Directory(ents) = content {
+		if let NodeContent::Directory(inner) = content {
 			// If not empty, error
-			let mut ents = ents.lock();
-			if ents.len() > 2
-				|| ents
+			let mut inner = inner.lock();
+			let not_empty = inner.used_slots > 2
+				|| inner
+					.entries
 					.iter()
-					.any(|(name, _)| name.as_ref() != b"." && name.as_ref() != b"..")
-			{
+					.filter_map(|e| e.as_ref())
+					.any(|e| !matches!(e.name.as_ref(), b"." | b".."));
+			if not_empty {
 				return Err(errno!(ENOTEMPTY));
 			}
 			// Remove `.` and `..` to break cycles
-			ents.clear();
+			inner.entries.clear();
 			// Decrement references count
 			node.stat.lock().nlink -= 1;
 			parent.stat.lock().nlink -= 1;
 		}
 		// Remove
 		node.stat.lock().nlink -= 1;
-		parent_entries.remove(ent.name.as_ref());
+		parent_inner.remove(ent.name.as_ref());
 		Ok(())
 	}
 
@@ -404,8 +474,14 @@ impl FilesystemType for TmpFsType {
 			unreachable!();
 		};
 		let mut entries = entries.lock();
-		entries.insert(Cow::Borrowed(b"."), root.clone())?;
-		entries.insert(Cow::Borrowed(b".."), root.clone())?;
+		entries.insert(TmpfsDirEntry {
+			name: Cow::Borrowed(b"."),
+			node: root.clone(),
+		})?;
+		entries.insert(TmpfsDirEntry {
+			name: Cow::Borrowed(b".."),
+			node: root.clone(),
+		})?;
 		Ok(fs)
 	}
 }
