@@ -99,7 +99,7 @@ pub struct Entry {
 	/// The parent of the entry.
 	///
 	/// If `None`, the current entry is the root of the VFS.
-	parent: Option<Arc<Entry>>,
+	pub parent: Option<Arc<Entry>>,
 	/// The list of cached file entries.
 	///
 	/// This is not an exhaustive list of the file's entries. Only those that are loaded.
@@ -111,6 +111,12 @@ pub struct Entry {
 }
 
 impl Entry {
+	/// Tells whether the entry is negative. That is, if it represents a non-existent entry.
+	#[inline]
+	pub fn is_negative(&self) -> bool {
+		self.node.is_none()
+	}
+
 	/// Returns a reference to the underlying node.
 	///
 	/// If the entry represents a non-existent file, the function panics.
@@ -271,16 +277,13 @@ pub enum Resolved<'s> {
 
 /// Resolves an entry with the given `name`, in the given `lookup_dir`.
 ///
-/// If the entry does not exist, the function returns `None`.
-fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Entry>>> {
+/// If the entry does not exist in cache or on the filesystem, the function returns a negative
+/// entry.
+fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Arc<Entry>> {
 	let mut children = lookup_dir.children.lock();
 	// Try to get from cache first
 	if let Some(ent) = children.get(name) {
-		return if ent.0.node.is_some() {
-			Ok(Some(ent.0.clone()))
-		} else {
-			Ok(None)
-		};
+		return Ok(ent.0.clone());
 	}
 	// Not in cache. Try to get from the filesystem
 	let mut ent = Entry {
@@ -293,15 +296,10 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Option<Arc<Ent
 		.node()
 		.node_ops
 		.lookup_entry(lookup_dir.node(), &mut ent)?;
-	if ent.node.is_some() {
-		// The entry exists: insert it in cache
-		let ent = Arc::new(ent)?;
-		children.insert(EntryChild(ent.clone()))?;
-		Ok(Some(ent))
-	} else {
-		// The entry does not exist
-		Ok(None)
-	}
+	// Insert in cache
+	let ent = Arc::new(ent)?;
+	children.insert(EntryChild(ent.clone()))?;
+	Ok(ent)
 }
 
 /// Resolves the symbolic link `link` and returns the target.
@@ -381,7 +379,10 @@ fn resolve_path_impl<'p>(
 			_ => continue,
 		};
 		// Get entry
-		let entry = resolve_entry(&lookup_dir, name)?.ok_or_else(|| errno!(ENOENT))?;
+		let entry = resolve_entry(&lookup_dir, name)?;
+		if entry.is_negative() {
+			return Err(errno!(ENOENT));
+		}
 		match entry.get_type()? {
 			FileType::Directory => lookup_dir = entry,
 			FileType::Link => {
@@ -420,7 +421,8 @@ fn resolve_path_impl<'p>(
 		return Err(errno!(EACCES));
 	}
 	// Get entry
-	let Some(entry) = resolve_entry(&lookup_dir, name)? else {
+	let entry = resolve_entry(&lookup_dir, name)?;
+	if entry.is_negative() {
 		// The file does not exist
 		return if settings.create {
 			Ok(Resolved::Creatable {
@@ -430,7 +432,7 @@ fn resolve_path_impl<'p>(
 		} else {
 			Err(errno!(ENOENT))
 		};
-	};
+	}
 	// Resolve symbolic link if necessary
 	if settings.follow_link && entry.get_type()? == FileType::Link {
 		Ok(Resolved::Found(resolve_link(
@@ -751,7 +753,7 @@ pub fn rename(
 ) -> EResult<()> {
 	// If `old` has no parent, it's the root, so it's a mountpoint
 	let old_parent = old.parent.as_ref().ok_or_else(|| errno!(EBUSY))?;
-	// Validation
+	// Parents validation
 	if !new_parent.node().is_same_fs(old.node()) {
 		return Err(errno!(EXDEV));
 	}
@@ -767,35 +769,28 @@ pub fn rename(
 	if old_stat.mode & S_ISVTX != 0 && ap.euid != old_stat.uid && ap.euid != old_parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
-	// Get new from cache
-	let new_children = new_parent.children.lock();
-	let new = new_children.get(new_name).map(|e| e.0.clone());
-	let new = match new {
-		Some(e) => e,
-		None => {
-			// TODO load from filesystem
-			todo!()
-		}
-	};
-	if mountpoint::from_entry(&new).is_some() {
-		return Err(errno!(EBUSY));
-	}
 	// Check permissions on `new`
 	let new_parent_stat = new_parent.stat();
 	if !ap.can_write_directory(&new_parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let new_stat = new.stat();
-	if new_stat.mode & S_ISVTX != 0 && ap.euid != new_stat.uid && ap.euid != new_parent_stat.uid {
-		return Err(errno!(EACCES));
+	let new = resolve_entry(&new_parent, new_name)?;
+	// Validation
+	if !new.is_negative() {
+		if mountpoint::from_entry(&new).is_some() {
+			return Err(errno!(EBUSY));
+		}
+		let new_stat = new.stat();
+		if new_stat.mode & S_ISVTX != 0
+			&& ap.euid != new_stat.uid
+			&& ap.euid != new_parent_stat.uid
+		{
+			return Err(errno!(EACCES));
+		}
 	}
 	// Perform rename
-	let old_parent_node = old.node();
-	let new_parent_node = new.node();
-	old_parent_node
-		.node_ops
-		.rename(old_parent_node, &old, new_parent_node, &new)?;
-	// Update cache
-	// TODO
+	old.node().node_ops.rename(&old, new_parent, new_name)?;
+	// Invalidate cache
+	old_parent.children.lock().remove(&*old.name);
 	Ok(())
 }

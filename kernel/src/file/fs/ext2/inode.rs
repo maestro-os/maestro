@@ -20,7 +20,7 @@
 
 use super::{bgd::BlockGroupDescriptor, dirent, dirent::Dirent, read_block, Ext2Fs, Superblock};
 use crate::{
-	file::{fs::ext2::dirent::DirentIterator, vfs::node::Node, FileType, Mode, Stat},
+	file::{fs::ext2::dirent::DirentIterator, vfs::node::Node, FileType, INode, Mode, Stat},
 	memory::cache::{RcFrame, RcFrameVal},
 	sync::mutex::MutexGuard,
 };
@@ -668,14 +668,17 @@ impl Ext2INode {
 		Ok(())
 	}
 
-	/// Removes the entry from the current directory.
+	/// Changes the inode associated with a directory entry.
 	///
-	/// `off` is the offset of the entry to remove.
+	/// Arguments:
+	/// - `off` is the offset of the entry to update
+	/// - `inode` is the new inode to assign
 	///
 	/// If the entry does not exist, the function does nothing.
 	///
-	/// If the file is not a directory, the behaviour is undefined.
-	pub fn remove_dirent(&mut self, off: u64, fs: &Ext2Fs) -> EResult<()> {
+	/// If using the value `0` for `inode`, the entry is freed. If this was the last entry in its
+	/// block, the block is also freed.
+	pub fn set_dirent_inode(&mut self, off: u64, inode: INode, fs: &Ext2Fs) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		let blk_size = fs.sp.get_block_size();
 		let file_blk_off = off / blk_size as u64;
@@ -688,9 +691,9 @@ impl Ext2INode {
 		// Read and free entry
 		let slice = unsafe { blk.slice_mut() };
 		let ent = Dirent::from_slice(&mut slice[inner_off..], &fs.sp)?;
-		ent.inode = 0;
+		ent.inode = inode as _;
 		// If the block is now empty, free it
-		if is_block_empty(slice, &fs.sp)? {
+		if inode == 0 && is_block_empty(slice, &fs.sp)? {
 			// If this is the last block, update the file's size
 			if file_blk_off as u32 + 1 >= self.get_blocks(&fs.sp) {
 				self.set_size(&fs.sp, file_blk_off * blk_size as u64, false);

@@ -96,11 +96,11 @@ macro_rules! fs_suite {
 				// TODO test with big files
 				// TODO try to fill the filesystem
 				// FIXME
-				/*Test {
+				Test {
 					name: "rename",
 					desc: "Test renaming files",
 					start: || filesystem::rename(Path::new($root)),
-				},*/
+				},
 				Test {
 					name: "fifo",
 					desc: "Test FIFO files",

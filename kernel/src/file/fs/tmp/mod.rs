@@ -46,7 +46,7 @@ use utils::{
 	errno::{AllocResult, EResult},
 	limits::{NAME_MAX, PAGE_SIZE},
 	ptr::{arc::Arc, cow::Cow},
-	TryClone,
+	TryClone, TryToOwned,
 };
 
 #[derive(Debug)]
@@ -86,6 +86,20 @@ impl DirInner {
 		}
 		self.used_slots += 1;
 		Ok(())
+	}
+
+	/// Changes the node the entry with name `name` points to.
+	///
+	/// If no such entry exist, the function does nothing.
+	fn set_inode(&mut self, name: &[u8], node: Arc<Node>) {
+		let ent = self
+			.entries
+			.iter_mut()
+			.filter_map(|e| e.as_mut())
+			.find(|e| e.name.as_ref() == name);
+		if let Some(ent) = ent {
+			ent.node = node;
+		}
 	}
 
 	/// Removes the entry with name `name`, if any.
@@ -262,12 +276,46 @@ impl NodeOps for NodeContent {
 
 	fn rename(
 		&self,
-		_old_parent: &Node,
-		_old_name: &vfs::Entry,
-		_new_parent: &Node,
-		_new_name: &vfs::Entry,
+		entry: &vfs::Entry,
+		new_parent: Arc<vfs::Entry>,
+		new_name: &[u8],
 	) -> EResult<()> {
-		todo!()
+		let old_parent = entry.parent.as_ref().unwrap();
+		let old_parent_node = old_parent.node();
+		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
+		let NodeContent::Directory(old_parent_inner) = old_parent_ops else {
+			return Err(errno!(ENOTDIR));
+		};
+		let new_parent_node = new_parent.node();
+		let new_parent_ops = NodeContent::from_ops(&*new_parent_node.node_ops);
+		let NodeContent::Directory(new_parent_inner) = new_parent_ops else {
+			return Err(errno!(ENOTDIR));
+		};
+		// Create new entry
+		let entry_node = entry.node();
+		new_parent_inner.lock().insert(TmpfsDirEntry {
+			name: Cow::Owned(new_name.try_to_owned()?),
+			node: entry_node.clone(),
+		})?;
+		// Update the `..` entry
+		let node_ops = NodeContent::from_ops(&*entry_node.node_ops);
+		if let NodeContent::Directory(inner) = node_ops {
+			let mut new_parent_stat = new_parent_node.stat.lock();
+			if unlikely(new_parent_stat.nlink == u16::MAX) {
+				return Err(errno!(EMFILE));
+			}
+			inner.lock().set_inode(b"..", new_parent_node.clone());
+			// Update links count
+			new_parent_stat.nlink += 1;
+		}
+		// Remove old entry
+		old_parent_inner.lock().remove(&entry.name);
+		// Update links count
+		if let NodeContent::Directory(_) = node_ops {
+			let mut old_parent_stat = old_parent_node.stat.lock();
+			old_parent_stat.nlink = old_parent_stat.nlink.saturating_sub(1);
+		}
+		Ok(())
 	}
 
 	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcFrame> {

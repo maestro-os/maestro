@@ -319,7 +319,6 @@ pub fn rename(root: &Path) -> TestResult {
 	log!("Cleanup");
 	fs::remove_file(&new)?;
 
-	// FIXME: moving a directory is broken
 	log!("Create directories");
 	fs::create_dir_all(old.join("foo/bar"))?;
 	log!("Rename");
@@ -337,8 +336,6 @@ pub fn rename(root: &Path) -> TestResult {
 	log!("Cleanup");
 	fs::remove_dir_all(&new)?;
 	test_assert!(matches!(fs::metadata(&new), Err(e) if e.kind() == io::ErrorKind::NotFound));
-
-	// TODO test moving across mountpoints
 
 	Ok(())
 }

@@ -319,7 +319,7 @@ impl NodeOps for Ext2NodeOps {
 		target.i_links_count = target.i_links_count.saturating_sub(1);
 		ent.node().stat.lock().nlink = target.i_links_count;
 		// Remove the directory entry
-		parent_.remove_dirent(remove_off, fs)?;
+		parent_.set_dirent_inode(remove_off, 0, fs)?;
 		Ok(())
 	}
 
@@ -386,12 +386,60 @@ impl NodeOps for Ext2NodeOps {
 
 	fn rename(
 		&self,
-		_old_parent: &Node,
-		_old_name: &vfs::Entry,
-		_new_parent: &Node,
-		_new_name: &vfs::Entry,
+		entry: &vfs::Entry,
+		new_parent: Arc<vfs::Entry>,
+		new_name: &[u8],
 	) -> EResult<()> {
-		todo!()
+		let entry_node = entry.node();
+		let fs = downcast_fs::<Ext2Fs>(&*entry_node.fs.ops);
+		if unlikely(fs.readonly) {
+			return Err(errno!(EROFS));
+		}
+		// Create new entry
+		let dir = {
+			let new_parent_node = new_parent.node();
+			let mut new_parent_inode = Ext2INode::get(new_parent_node, fs)?;
+			// Check the entry does not exist
+			if new_parent_inode.get_dirent(&entry.name, fs)?.is_some() {
+				return Err(errno!(EEXIST));
+			}
+			let mut inode = Ext2INode::get(entry.node(), fs)?;
+			let dir = inode.get_type() == FileType::Directory;
+			// Update the `..` entry
+			if dir {
+				if unlikely(new_parent_inode.i_links_count == u16::MAX) {
+					return Err(errno!(EMFILE));
+				}
+				let (_, off) = inode
+					.get_dirent(b"..", fs)?
+					.ok_or_else(|| errno!(EUCLEAN))?;
+				inode.set_dirent_inode(off, new_parent_node.inode, fs)?;
+				// Update links count
+				new_parent_inode.i_links_count += 1;
+				new_parent.node().stat.lock().nlink = new_parent_inode.i_links_count;
+			}
+			new_parent_inode.add_dirent(
+				fs,
+				entry_node.inode as _,
+				new_name,
+				inode.get_type(),
+			)?;
+			dir
+		};
+		// Remove old entry
+		let old_parent = entry.parent.as_ref().unwrap();
+		let old_parent_node = old_parent.node();
+		let mut old_parent_inode = Ext2INode::get(old_parent_node, fs)?;
+		let (_, off) = old_parent_inode
+			.get_dirent(&entry.name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
+		old_parent_inode.set_dirent_inode(off, 0, fs)?;
+		// Update links count
+		if dir {
+			old_parent_inode.i_links_count = old_parent_inode.i_links_count.saturating_sub(1);
+			old_parent_node.stat.lock().nlink = old_parent_inode.i_links_count;
+		}
+		Ok(())
 	}
 
 	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {

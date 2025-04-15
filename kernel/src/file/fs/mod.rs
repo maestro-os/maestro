@@ -206,12 +206,11 @@ pub trait NodeOps: Any + Debug {
 	/// The default implementation of this function returns an error.
 	fn rename(
 		&self,
-		old_parent: &Node,
-		old_name: &vfs::Entry,
-		new_parent: &Node,
-		new_name: &vfs::Entry,
+		old_entry: &vfs::Entry,
+		new_parent: Arc<vfs::Entry>,
+		new_name: &[u8],
 	) -> EResult<()> {
-		let _ = (old_parent, old_name, new_parent, new_name);
+		let _ = (old_entry, new_parent, new_name);
 		Err(errno!(EINVAL))
 	}
 

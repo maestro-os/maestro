@@ -76,14 +76,18 @@ pub(super) fn do_renameat2(
 		create: true,
 		..rs
 	};
-	let Resolved::Creatable {
-		parent: new_parent,
-		name: new_name,
-	} = at::get_file(&fds.lock(), rs.clone(), newdirfd, Some(&newpath), 0)?
-	else {
-		return Err(errno!(EEXIST));
-	};
-	vfs::rename(old, new_parent, new_name, &rs.access_profile)?;
+	let res = at::get_file(&fds.lock(), rs.clone(), newdirfd, Some(&newpath), 0)?;
+	match res {
+		Resolved::Found(new) => {
+			// cannot move the root of the vfs
+			let new_parent = new.parent.clone().ok_or_else(|| errno!(EBUSY))?;
+			vfs::rename(old, new_parent, &new.name, &rs.access_profile)?;
+		}
+		Resolved::Creatable {
+			parent: new_parent,
+			name: new_name,
+		} => vfs::rename(old, new_parent, new_name, &rs.access_profile)?,
+	}
 	Ok(0)
 }
 
