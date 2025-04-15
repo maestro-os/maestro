@@ -243,12 +243,7 @@ pub fn create(
 	// Get filesystem root node
 	let root = fs.ops.root(fs.clone())?;
 	// Create an entry for the root of the mountpoint
-	let root_entry = Arc::new(vfs::Entry {
-		name,
-		parent: parent.clone(),
-		children: Default::default(),
-		node: Some(root),
-	})?;
+	let root_entry = Arc::new(vfs::Entry::new(name, parent.clone(), Some(root)))?;
 	// Create mountpoint
 	let mountpoint = Arc::new(MountPoint {
 		flags,

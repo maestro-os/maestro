@@ -53,12 +53,14 @@ use node::Node;
 use utils::{
 	collections::{
 		hashset::HashSet,
+		list::ListNode,
 		path::{Component, Path, PathBuf},
 		string::String,
 	},
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	limits::{LINK_MAX, PATH_MAX, SYMLOOP_MAX},
+	list, list_type,
 	ptr::arc::Arc,
 	vec,
 };
@@ -108,9 +110,24 @@ pub struct Entry {
 	///
 	/// If `None`, the entry is negative.
 	pub node: Option<Arc<Node>>,
+
+	/// Node for the LRU
+	lru: ListNode,
 }
 
 impl Entry {
+	/// Creates a new instance.
+	pub fn new(name: String, parent: Option<Arc<Entry>>, node: Option<Arc<Node>>) -> Self {
+		Self {
+			name,
+			parent,
+			children: Default::default(),
+			node,
+
+			lru: Default::default(),
+		}
+	}
+
 	/// Tells whether the entry is negative. That is, if it represents a non-existent entry.
 	#[inline]
 	pub fn is_negative(&self) -> bool {
@@ -163,34 +180,89 @@ impl Entry {
 		Ok(PathBuf::new_unchecked(String::from(buf)))
 	}
 
+	/// Makes `self` a child of its parent, if any. The entry is also inserted in the LRU.
+	///
+	/// The function returns `self` wrapped into an [`Arc`].
+	pub fn link_parent(self) -> AllocResult<Arc<Self>> {
+		let entry = Arc::new(self)?;
+		if let Some(parent) = &entry.parent {
+			parent.children.lock().insert(EntryChild(entry.clone()))?;
+		}
+		LRU.lock().insert_front(entry.clone());
+		Ok(entry)
+	}
+
 	/// Releases the entry, removing it the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
-		let Some(parent) = &this.parent else {
+		let Some(parent) = this.parent.clone() else {
 			// This is the root of the VFS, stop
 			return Ok(());
 		};
-		{
-			// Lock to avoid a race condition with `strong_count`
-			let mut parent_children = parent.children.lock();
-			// If this is **not** the last reference to the current (the one held by its own
-			// parent
-			// + the one that we hold here)
-			if Arc::strong_count(&this) > 2 {
-				return Ok(());
-			}
-			parent_children.remove(&*this.name);
+		// Lock now to avoid a race condition with `strong_count`
+		let mut parent_children = parent.children.lock();
+		/*
+		 * If this is **not** the last reference to the entry, we cannot remove it.
+		 *
+		 * The reference held by its own parent + the one held by the LRU + the one that we
+		 * hold here = 3
+		 *
+		 * We cannot release an entry with at least one cached child. Fortunately, a child
+		 * entry refers to its parent, so the condition below is sufficient.
+		 */
+		if Arc::strong_count(&this) > 3 {
+			return Ok(());
 		}
-		let Some(c) = Arc::into_inner(this) else {
-			// The entry was already detached from its parent before: someone else references it
+		// Remove other references
+		parent_children.remove(&*this.name);
+		unsafe {
+			LRU.lock().remove(&this);
+		}
+		// If other references remain, we cannot go further
+		let Some(entry) = Arc::into_inner(this) else {
 			return Ok(());
 		};
+		drop(parent_children);
 		// Release the inner node if present
-		if let Some(node) = c.node {
+		if let Some(node) = entry.node {
 			Node::release(node)?;
 		}
 		Ok(())
 	}
+}
+
+/// Directory entries LRU.
+static LRU: Mutex<list_type!(Entry, lru)> = Mutex::new(list!(Entry, lru));
+
+/// Attempts to shrink the directory entries cache.
+///
+/// If the cache cannot shrink, the function returns `false`.
+pub fn shrink_entries() -> bool {
+	let mut lru = LRU.lock();
+	for cursor in lru.iter().rev() {
+		let entry = cursor.arc();
+		// The following is the same as the implementation of `Entry::release`. We don't call
+		// directly to reuse the lock on `LRU`
+		let Some(parent) = entry.parent.clone() else {
+			continue;
+		};
+		let mut parent_children = parent.children.lock();
+		if Arc::strong_count(&entry) > 3 {
+			continue;
+		}
+		parent_children.remove(&*entry.name);
+		cursor.remove();
+		let Some(entry) = Arc::into_inner(entry) else {
+			continue;
+		};
+		drop(parent_children);
+		if let Some(node) = entry.node {
+			// TODO log I/O errors?
+			let _ = Node::release(node);
+		}
+		return true;
+	}
+	false
 }
 
 /// The root entry of the VFS.
@@ -283,23 +355,26 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Arc<Entry>> {
 	let mut children = lookup_dir.children.lock();
 	// Try to get from cache first
 	if let Some(ent) = children.get(name) {
-		return Ok(ent.0.clone());
+		let ent = ent.0.clone();
+		drop(children);
+		// Promote the entry in the LRU
+		unsafe {
+			LRU.lock().lru_promote(&ent);
+		}
+		return Ok(ent);
 	}
 	// Not in cache. Try to get from the filesystem
-	let mut ent = Entry {
-		name: String::try_from(name)?,
-		parent: Some(lookup_dir.clone()),
-		children: Default::default(),
-		node: None,
-	};
+	let mut entry = Entry::new(String::try_from(name)?, Some(lookup_dir.clone()), None);
 	lookup_dir
 		.node()
 		.node_ops
-		.lookup_entry(lookup_dir.node(), &mut ent)?;
-	// Insert in cache
-	let ent = Arc::new(ent)?;
-	children.insert(EntryChild(ent.clone()))?;
-	Ok(ent)
+		.lookup_entry(lookup_dir.node(), &mut entry)?;
+	// Insert in cache. Do not use `link_parent` to keep `children` locked
+	let entry = Arc::new(entry)?;
+	children.insert(EntryChild(entry.clone()))?;
+	drop(children);
+	LRU.lock().insert_front(entry.clone());
+	Ok(entry)
 }
 
 /// Resolves the symbolic link `link` and returns the target.
@@ -561,17 +636,9 @@ pub fn create_file(
 		.ops
 		.create_node(parent_node.fs.clone(), stat)?;
 	// Add link to filesystem
-	let ent = Entry {
-		name: String::try_from(name)?,
-		parent: Some(parent.clone()),
-		children: Default::default(),
-		node: Some(node),
-	};
+	let ent = Entry::new(String::try_from(name)?, Some(parent.clone()), Some(node));
 	parent_node.node_ops.link(parent_node.clone(), &ent)?;
-	// Add entry to cache
-	let entry = Arc::new(ent)?;
-	parent.children.lock().insert(EntryChild(entry.clone()))?;
-	Ok(entry)
+	Ok(ent.link_parent()?)
 }
 
 /// Creates a new hard link to the given target file.
@@ -615,15 +682,9 @@ pub fn link(
 		return Err(errno!(EXDEV));
 	}
 	// Add link to the filesystem
-	let ent = Entry {
-		name,
-		parent: Some(parent.clone()),
-		children: Default::default(),
-		node: Some(target),
-	};
+	let ent = Entry::new(name, Some(parent.clone()), Some(target));
 	parent.node().node_ops.link(parent.node().clone(), &ent)?;
-	// Add entry to the cache
-	parent.children.lock().insert(EntryChild(Arc::new(ent)?))?;
+	ent.link_parent()?;
 	Ok(())
 }
 
@@ -673,7 +734,8 @@ pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 	let EntryChild(ent) = children.remove(entry.name.as_bytes()).unwrap();
 	// Drop to avoid deadlock
 	drop(children);
-	Entry::release(ent)
+	Entry::release(ent)?;
+	Ok(())
 }
 
 /// Creates a symbolic link.
@@ -720,15 +782,9 @@ pub fn symlink(
 	let node = fs.ops.create_node(fs.clone(), stat)?;
 	node.node_ops.writelink(&node, target)?;
 	// Add link to the filesystem
-	let ent = Entry {
-		name: String::try_from(name)?,
-		parent: Some(parent.clone()),
-		children: Default::default(),
-		node: Some(node),
-	};
+	let ent = Entry::new(String::try_from(name)?, Some(parent.clone()), Some(node));
 	parent_node.node_ops.link(parent_node.clone(), &ent)?;
-	// Add link to the cache
-	parent.children.lock().insert(EntryChild(Arc::new(ent)?))?;
+	ent.link_parent()?;
 	Ok(())
 }
 

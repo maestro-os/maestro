@@ -240,6 +240,20 @@ impl<T, const OFF: usize> List<T, OFF> {
 		cursor.remove();
 	}
 
+	/// Moves the node to the beginning of the list.
+	///
+	/// # Safety
+	///
+	/// The function is marked as unsafe because it cannot ensure `val` actually is inserted in
+	/// `self`. This is the caller's responsibility.
+	pub unsafe fn lru_promote(&mut self, val: &Arc<T>) {
+		let mut cursor = Cursor {
+			list: NonNull::from(&mut *self),
+			node: Self::get_node(val).as_ref(),
+		};
+		cursor.lru_promote();
+	}
+
 	/// Unlinks all the elements from the list.
 	pub fn clear(&mut self) {
 		for node in self.iter() {

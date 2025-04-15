@@ -519,7 +519,7 @@ impl File {
 		Ok(buf)
 	}
 
-	/// Closes the file, removing it the underlying node if no link remain and this was the last
+	/// Closes the file, removing the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn close(self) -> EResult<()> {
 		self.ops.release(&self);

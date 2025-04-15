@@ -24,17 +24,20 @@
 //!
 //! This is an emergency procedure which is not supposed to be used under normal conditions.
 
-use crate::memory::cache;
+use crate::{file::vfs, memory::cache};
 use utils::errno::AllocResult;
 
-/// TODO doc
+/// Attempts to reclaim memory from different places, or panics on failure.
 pub fn reclaim() {
-	// TODO try the following one after the other:
-	// - shrink page cache
+	// Attempt to shrink the page cache
 	if cache::shrink() {
 		return;
 	}
-	// - shrink directory entries cache
+	// Attempt to shrink the directory entries cache
+	if vfs::shrink_entries() {
+		return;
+	}
+	// TODO Attempt to:
 	// - swap memory to disk
 	// - if the kernel is configured for it, prompt the user to select processes to kill
 	// - if the kernel is configured for it, kill the process with the highest OOM score (ignore
