@@ -274,12 +274,7 @@ impl NodeOps for NodeContent {
 		Ok(())
 	}
 
-	fn rename(
-		&self,
-		entry: &vfs::Entry,
-		new_parent: Arc<vfs::Entry>,
-		new_name: &[u8],
-	) -> EResult<()> {
+	fn rename(&self, entry: &vfs::Entry, new_parent: &vfs::Entry, new_name: &[u8]) -> EResult<()> {
 		let old_parent = entry.parent.as_ref().unwrap();
 		let old_parent_node = old_parent.node();
 		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
@@ -300,12 +295,12 @@ impl NodeOps for NodeContent {
 		// Update the `..` entry
 		let node_ops = NodeContent::from_ops(&*entry_node.node_ops);
 		if let NodeContent::Directory(inner) = node_ops {
+			inner.lock().set_inode(b"..", new_parent_node.clone());
+			// Update links count
 			let mut new_parent_stat = new_parent_node.stat.lock();
 			if unlikely(new_parent_stat.nlink == u16::MAX) {
 				return Err(errno!(EMFILE));
 			}
-			inner.lock().set_inode(b"..", new_parent_node.clone());
-			// Update links count
 			new_parent_stat.nlink += 1;
 		}
 		// Remove old entry

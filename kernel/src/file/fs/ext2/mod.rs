@@ -384,12 +384,7 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn rename(
-		&self,
-		entry: &vfs::Entry,
-		new_parent: Arc<vfs::Entry>,
-		new_name: &[u8],
-	) -> EResult<()> {
+	fn rename(&self, entry: &vfs::Entry, new_parent: &vfs::Entry, new_name: &[u8]) -> EResult<()> {
 		let entry_node = entry.node();
 		let fs = downcast_fs::<Ext2Fs>(&*entry_node.fs.ops);
 		if unlikely(fs.readonly) {
@@ -400,7 +395,7 @@ impl NodeOps for Ext2NodeOps {
 			let new_parent_node = new_parent.node();
 			let mut new_parent_inode = Ext2INode::get(new_parent_node, fs)?;
 			// Check the entry does not exist
-			if new_parent_inode.get_dirent(&entry.name, fs)?.is_some() {
+			if new_parent_inode.get_dirent(new_name, fs)?.is_some() {
 				return Err(errno!(EEXIST));
 			}
 			let mut inode = Ext2INode::get(entry.node(), fs)?;
@@ -418,12 +413,7 @@ impl NodeOps for Ext2NodeOps {
 				new_parent_inode.i_links_count += 1;
 				new_parent.node().stat.lock().nlink = new_parent_inode.i_links_count;
 			}
-			new_parent_inode.add_dirent(
-				fs,
-				entry_node.inode as _,
-				new_name,
-				inode.get_type(),
-			)?;
+			new_parent_inode.add_dirent(fs, entry_node.inode as _, new_name, inode.get_type())?;
 			dir
 		};
 		// Remove old entry

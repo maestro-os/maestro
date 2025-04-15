@@ -207,7 +207,7 @@ pub trait NodeOps: Any + Debug {
 	fn rename(
 		&self,
 		old_entry: &vfs::Entry,
-		new_parent: Arc<vfs::Entry>,
+		new_parent: &vfs::Entry,
 		new_name: &[u8],
 	) -> EResult<()> {
 		let _ = (old_entry, new_parent, new_name);

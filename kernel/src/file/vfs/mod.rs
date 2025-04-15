@@ -789,8 +789,9 @@ pub fn rename(
 		}
 	}
 	// Perform rename
-	old.node().node_ops.rename(&old, new_parent, new_name)?;
+	old.node().node_ops.rename(&old, &new_parent, new_name)?;
 	// Invalidate cache
 	old_parent.children.lock().remove(&*old.name);
+	new_parent.children.lock().remove(new_name);
 	Ok(())
 }
