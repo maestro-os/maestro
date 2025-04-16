@@ -35,8 +35,6 @@ mod chdir;
 mod chmod;
 mod chown;
 mod chroot;
-mod clock_gettime;
-mod clock_gettime64;
 mod clone;
 mod close;
 mod connect;
@@ -87,7 +85,6 @@ mod mmap;
 mod mount;
 mod mprotect;
 mod munmap;
-mod nanosleep;
 mod open;
 mod openat;
 mod pipe;
@@ -134,9 +131,6 @@ mod symlink;
 mod symlinkat;
 mod sync;
 mod time;
-mod timer_create;
-mod timer_delete;
-mod timer_settime;
 mod tkill;
 mod truncate;
 mod umask;
@@ -165,6 +159,9 @@ use crate::{
 		getdents::getdents64,
 		mmap::mmap2,
 		sync::{fsync, msync, sync, syncfs},
+		time::{
+			clock_gettime, clock_gettime64, nanosleep, timer_create, timer_delete, timer_settime,
+		},
 	},
 };
 use _exit::_exit;
@@ -178,8 +175,6 @@ use chdir::chdir;
 use chmod::chmod;
 use chown::chown;
 use chroot::chroot;
-use clock_gettime::clock_gettime;
-use clock_gettime64::clock_gettime64;
 use clone::{clone, compat_clone};
 use close::close;
 use connect::connect;
@@ -231,7 +226,6 @@ use mmap::mmap;
 use mount::mount;
 use mprotect::mprotect;
 use munmap::munmap;
-use nanosleep::nanosleep;
 use open::open;
 use openat::openat;
 use pipe::pipe;
@@ -278,9 +272,6 @@ use statfs64::statfs64;
 use symlink::symlink;
 use symlinkat::symlinkat;
 use time::time;
-use timer_create::timer_create;
-use timer_delete::timer_delete;
-use timer_settime::timer_settime;
 use tkill::tkill;
 use truncate::truncate;
 use umask::umask;
