@@ -29,13 +29,78 @@ pub mod hw;
 pub mod timer;
 pub mod unit;
 
-use crate::{event, event::CallbackResult};
-use core::mem::ManuallyDrop;
-use unit::{Timestamp, TimestampScale};
-use utils::{boxed::Box, errno::EResult, math::rational::Rational};
+use crate::{
+	event,
+	event::CallbackResult,
+	process::{
+		scheduler::Scheduler,
+		signal::{SigEvent, Signal, SIGEV_SIGNAL},
+		Process, State,
+	},
+	time::{
+		clock::{current_time_ns, Clock},
+		timer::Timer,
+		unit::TimeUnit,
+	},
+};
+use core::{intrinsics::unlikely, mem::ManuallyDrop};
+use unit::Timestamp;
+use utils::{boxed::Box, errno, errno::EResult, math::rational::Rational};
 
 /// Timer frequency.
 const FREQUENCY: Rational = Rational::from_frac(1, 1024);
+
+/// Makes the current thread sleep until `ts`, in nanoseconds.
+///
+/// `clock` is the clock to use.
+///
+/// If the current process is interrupted by a signal, the function returns [`errno::EINTR`] and
+/// sets the remaining time in `remain`.
+pub fn sleep_until(clock: Clock, ts: Timestamp, remain: &mut Timestamp) -> EResult<()> {
+	// Setup timer
+	let pid = Process::current().get_pid();
+	let mut timer = Timer::new(
+		clock,
+		pid,
+		SigEvent {
+			sigev_notify: SIGEV_SIGNAL,
+			sigev_signo: Signal::SIGALRM as _,
+			sigev_value: 0,
+			sigev_notify_function: None,
+			sigev_notify_attributes: None,
+			sigev_notify_thread_id: 0,
+		},
+	)?;
+	timer.set_time(0, ts)?;
+	// Loop until the timer expires
+	loop {
+		let cur_ts = current_time_ns(clock);
+		if unlikely(timer.has_expired(cur_ts)) {
+			break;
+		}
+		// The timer has not expired, we need to sleep
+		{
+			let proc = Process::current();
+			if proc.has_pending_signal() {
+				*remain = timer.get_time().it_value.to_nano();
+				return Err(errno!(EINTR));
+			}
+			proc.set_state(State::Sleeping);
+		}
+		Scheduler::tick();
+	}
+	Ok(())
+}
+
+/// Makes the current thread sleep for `delay`, in nanoseconds.
+///
+/// `clock` is the clock to use.
+///
+/// If the current process is interrupted by a signal, the function returns [`errno::EINTR`] and
+/// sets the remaining time in `remain`.
+pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> EResult<()> {
+	sleep_until(clock, current_time_ns(clock) + delay, remain)
+}
 
 /// Initializes time management.
 pub(crate) fn init() -> EResult<()> {

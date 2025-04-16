@@ -21,6 +21,7 @@
 use crate::{
 	file::{fs::FileOps, File},
 	format_content,
+	time::clock::{current_time_ns, Clock},
 };
 use utils::errno::EResult;
 
@@ -30,7 +31,10 @@ pub struct Uptime;
 
 impl FileOps for Uptime {
 	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		// TODO
-		format_content!(off, buf, "0.00 0.00\n")
+		let uptime = current_time_ns(Clock::Boottime) / 10_000_000;
+		let uptime_upper = uptime / 100;
+		let uptime_lower = uptime % 100;
+		// TODO second value is the total amount of time each core has spent idle
+		format_content!(off, buf, "{uptime_upper}.{uptime_lower:02} 0.00\n")
 	}
 }

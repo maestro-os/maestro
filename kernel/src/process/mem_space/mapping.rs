@@ -35,10 +35,7 @@ use crate::{
 	process::mem_space::{
 		Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE,
 	},
-	time::{
-		clock::{current_time, CLOCK_BOOTTIME},
-		unit::TimestampScale,
-	},
+	time::clock::{current_time_ms, Clock},
 };
 use core::num::NonZeroUsize;
 use utils::{
@@ -334,8 +331,7 @@ impl MemMapping {
 		if self.file.is_none() {
 			return Ok(());
 		}
-		// cannot fail since `CLOCK_BOOTTIME` is valid
-		let ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
+		let ts = current_time_ms(Clock::Boottime);
 		for frame in self.anon_pages.iter().flatten() {
 			vmem.poll_dirty(VirtAddr::from(self.addr), self.size.get());
 			if sync {

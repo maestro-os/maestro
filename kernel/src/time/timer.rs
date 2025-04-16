@@ -16,157 +16,89 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements timers.
+//! Timers implementation.
 
-use super::{
-	clock,
-	unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, TimestampScale},
-};
+use super::unit::{ITimerspec32, TimerT};
 use crate::{
 	memory::oom,
 	process::{
 		pid::Pid,
-		signal::{SigEvent, Signal, SIGEV_SIGNAL, SIGEV_THREAD},
+		signal::{SigEvent, Signal, SIGEV_NONE, SIGEV_SIGNAL, SIGEV_THREAD},
 		Process,
 	},
-	sync::mutex::IntMutex,
-	time::unit::Timespec32,
+	sync::mutex::{IntMutex, Mutex},
+	time::{
+		clock::{current_time_ns, Clock},
+		unit::{TimeUnit, Timespec32, Timestamp},
+	},
 };
+use core::intrinsics::unlikely;
 use utils::{
+	boxed::Box,
 	collections::{btreemap::BTreeMap, hashmap::HashMap, id_allocator::IDAllocator},
 	errno,
 	errno::{AllocResult, EResult},
 	limits::TIMER_MAX,
 };
-
 // TODO make sure a timer doesn't send a signal to a thread that do not belong to the manager's
 // process
 
-/// Structure representing a per-process timer.
-pub struct Timer {
-	/// The ID of the clock to use.
-	clockid: ClockIdT,
+#[derive(Default)]
+struct TimerSpec {
+	/// The timer's interval, in nanoseconds.
+	interval: Timestamp,
+	/// The next timestamp, in nanoseconds, at which the timer will expire.
+	///
+	/// If zero, the timer is unarmed.
+	next: Option<Timestamp>,
+}
+
+struct TimerInner {
+	/// The clock to user.
+	clock: Clock,
+	/// PID of the process to notify.
+	pid: Pid,
 	/// Definition of the action to perform when the timer is triggered.
 	sevp: SigEvent,
 
-	/// The timer's interval between firing.
-	interval: Timespec32,
-	/// The next timestamp at which the timer will expire. If `None`, the timer is unarmed.
-	next: Option<Timespec>,
+	/// Timer setting.
+	spec: Mutex<TimerSpec>,
 }
 
-impl Timer {
-	/// Creates a timer.
-	///
-	/// Arguments:
-	/// - `clockid` is the ID of the clock to use.
-	/// - `sevp` describes the event to be triggered by the clock.
-	pub fn new(clockid: ClockIdT, sevp: SigEvent) -> EResult<Self> {
-		// Check arguments are valid
-		let _ = clock::current_time(clockid, TimestampScale::Nanosecond)?;
-		if !sevp.is_valid() {
-			return Err(errno!(EINVAL));
-		}
-
-		Ok(Self {
-			clockid,
-			sevp,
-
-			interval: Default::default(),
-			next: Default::default(),
-		})
-	}
-
-	/// Tells whether the timer is armed.
-	#[inline]
-	pub fn is_armed(&self) -> bool {
-		self.next.is_some()
-	}
-
+impl TimerInner {
 	/// Tells whether the timer must be fired.
 	///
-	/// `curr` is the current timestamp.
+	/// `cur_ts` is the current timestamp.
 	#[inline]
-	pub fn has_expired(&self, curr: &Timespec) -> bool {
-		self.next.as_ref().map(|next| curr >= next).unwrap_or(true)
+	fn has_expired(&self, cur_ts: Timestamp) -> bool {
+		self.spec
+			.lock()
+			.next
+			.map(|next| cur_ts >= next)
+			.unwrap_or(true)
 	}
 
 	/// Tells whether the timer is oneshot. If not, the timer repeats until manually stopped.
 	#[inline]
-	pub fn is_oneshot(&self) -> bool {
-		self.interval.is_zero()
-	}
-
-	/// Returns the current state of the timer.
-	#[inline]
-	pub fn get_time(&self) -> ITimerspec32 {
-		let ts: Timespec = clock::current_time_struct(self.clockid).unwrap();
-		let value = self.next.map(|next| next - ts).unwrap_or_default();
-
-		ITimerspec32 {
-			it_interval: self.interval,
-			it_value: Timespec32 {
-				tv_nsec: value.tv_nsec as _,
-				tv_sec: value.tv_sec as _,
-			},
-		}
-	}
-
-	/// Computes the timestamp at which the timer will fire next.
-	///
-	/// Arguments:
-	/// - `spec` is the timer's setting.
-	/// - `ts` is the current timestamp.
-	fn compute_next(spec: &ITimerspec32, ts: Timespec32) -> Timespec {
-		let time = if spec.it_value.is_zero() {
-			spec.it_interval
-		} else {
-			ts + spec.it_value
-		};
-
-		Timespec {
-			tv_nsec: time.tv_nsec as _,
-			tv_sec: time.tv_sec as _,
-		}
-	}
-
-	/// Sets the timer's state.
-	///
-	/// Arguments:
-	/// - `spec` is the new setting of the timer.
-	/// - `pid` is the PID of the process associated with the timer.
-	/// - `timer_id` is the ID of the timer.
-	///
-	/// On allocation error, the function returns an error.
-	#[inline]
-	pub fn set_time(&mut self, spec: ITimerspec32, pid: Pid, timer_id: TimerT) -> EResult<()> {
-		let mut queue = TIMERS_QUEUE.lock();
-		if let Some(next) = self.next {
-			queue.remove(&(next, pid, timer_id));
-		}
-
-		let ts: Timespec32 = clock::current_time_struct(self.clockid).unwrap();
-		let next = Self::compute_next(&spec, ts);
-		self.interval = spec.it_interval;
-		self.next = Some(next);
-
-		queue.insert((next, pid, timer_id), ())?;
-		Ok(())
+	fn is_oneshot(&self) -> bool {
+		self.spec.lock().interval == 0
 	}
 
 	/// Fires the timer.
-	///
-	/// `proc` is the process to which the timer is fired.
-	pub fn fire(&mut self, proc: &Process) {
+	fn fire(&self) {
 		match self.sevp.sigev_notify {
+			SIGEV_NONE => {}
 			SIGEV_SIGNAL => {
 				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo) else {
+					return;
+				};
+				let Some(proc) = Process::get_by_pid(self.pid) else {
 					return;
 				};
 				// TODO on sigint_t, set si_code to SI_TIMER
 				proc.kill(signal);
 			}
-			SIGEV_THREAD => todo!(), // TODO
+			SIGEV_THREAD => todo!(),
 			_ => {}
 		}
 	}
@@ -175,46 +107,116 @@ impl Timer {
 	///
 	/// Arguments:
 	/// - `queue` is the queue.
-	/// - `ts` is the timestamp.
-	/// - `pid` is the PID of the process associated with the timer.
-	/// - `timer_id` is the ID of the timer.
+	/// - `ts` is the current timestamp in nanoseconds.
 	///
 	/// On allocation error, the function returns an error.
 	fn reset(
-		&mut self,
-		queue: &mut BTreeMap<(Timespec, Pid, TimerT), ()>,
-		ts: Timespec,
-		pid: Pid,
-		timer_id: TimerT,
+		&self,
+		queue: &mut BTreeMap<(Timestamp, *const TimerInner), ()>,
+		ts: Timestamp,
 	) -> AllocResult<()> {
-		if let Some(next) = self.next {
-			queue.remove(&(next, pid, timer_id));
+		let mut spec = self.spec.lock();
+		// Remove from queue
+		if let Some(next) = spec.next {
+			queue.remove(&(next, self));
 		}
-
-		if self.interval.is_zero() {
-			self.next = None;
-			return Ok(());
+		if spec.interval == 0 {
+			spec.next = None;
+		} else {
+			let next = ts + spec.interval;
+			spec.next = Some(next);
+			// Insert back in queue
+			queue.insert((next, self), ())?;
 		}
-
-		let next = Self::compute_next(
-			&ITimerspec32 {
-				it_interval: self.interval,
-				it_value: self.interval,
-			},
-			Timespec32 {
-				tv_nsec: ts.tv_nsec as _,
-				tv_sec: ts.tv_sec as _,
-			},
-		);
-		queue.insert((next, pid, timer_id), ())?;
-
-		self.next = Some(next);
-
 		Ok(())
 	}
 }
 
-/// Structure managing a process's timers.
+/// A per-process timer.
+pub struct Timer(Box<TimerInner>);
+
+impl Timer {
+	/// Creates a timer.
+	///
+	/// Arguments:
+	/// - `clock` is the clock to use.
+	/// - `pid` is the PID of the process to notify.
+	/// - `sevp` describes the event to be triggered by the clock.
+	pub fn new(clock: Clock, pid: Pid, sevp: SigEvent) -> EResult<Self> {
+		// Validation
+		if unlikely(!sevp.is_valid()) {
+			return Err(errno!(EINVAL));
+		}
+		Ok(Self(Box::new(TimerInner {
+			clock,
+			pid,
+			sevp,
+
+			spec: Default::default(),
+		})?))
+	}
+
+	/// Returns the current state of the timer.
+	#[inline]
+	pub fn get_time(&self) -> ITimerspec32 {
+		let spec = self.0.spec.lock();
+		let value = spec
+			.next
+			.map(|next| next.saturating_sub(current_time_ns(self.0.clock)))
+			.unwrap_or(0);
+		ITimerspec32 {
+			it_interval: Timespec32::from_nano(spec.interval),
+			it_value: Timespec32::from_nano(value),
+		}
+	}
+
+	/// Sets the timer's state.
+	///
+	/// Arguments:
+	/// - `interval` is the interval between two timer tick
+	/// - `value` is the initial value of the timer
+	///
+	/// On allocation error, the function returns an error.
+	pub fn set_time(&mut self, interval: Timestamp, value: Timestamp) -> AllocResult<()> {
+		let mut queue = TIMERS_QUEUE.lock();
+		let mut spec = self.0.spec.lock();
+		// Remove from queue
+		if let Some(next) = spec.next {
+			queue.remove(&(next, self.0.as_ptr()));
+		}
+		// Update timer
+		spec.interval = interval;
+		// Arm or disarm
+		if value == 0 {
+			spec.next = None;
+		} else {
+			let next = current_time_ns(self.0.clock) + interval;
+			spec.next = Some(next);
+			// Insert back in queue
+			queue.insert((next, self.0.as_ptr()), ())?;
+		}
+		Ok(())
+	}
+
+	/// Tells whether the timer must be fired.
+	///
+	/// `cur_ts` is the current timestamp.
+	#[inline]
+	pub fn has_expired(&self, cur_ts: Timestamp) -> bool {
+		self.0.has_expired(cur_ts)
+	}
+}
+
+impl Drop for Timer {
+	fn drop(&mut self) {
+		let next = self.0.spec.lock().next;
+		if let Some(next) = next {
+			TIMERS_QUEUE.lock().remove(&(next, self.0.as_ptr()));
+		}
+	}
+}
+
+/// Manager for a process's timers.
 pub struct TimerManager {
 	/// The PID of the process to which the manager is associated.
 	pid: Pid,
@@ -226,7 +228,9 @@ pub struct TimerManager {
 }
 
 impl TimerManager {
-	/// Creates a manager.
+	/// Creates a new instance.
+	///
+	/// `pid` is the PID of the process owning the timers.
 	pub fn new(pid: Pid) -> AllocResult<Self> {
 		Ok(Self {
 			pid,
@@ -239,18 +243,18 @@ impl TimerManager {
 	/// Creates a timer.
 	///
 	/// Arguments:
-	/// - `clockid` is the ID of the clock to use.
+	/// - `clock` is the clock to use.
 	/// - `sevp` describes the event to be triggered by the clock.
 	///
 	/// On success, the function returns the ID of the newly created timer.
-	pub fn create_timer(&mut self, clockid: ClockIdT, sevp: SigEvent) -> EResult<u32> {
-		let timer = Timer::new(clockid, sevp)?;
+	pub fn create_timer(&mut self, clock: Clock, sevp: SigEvent) -> EResult<u32> {
+		let timer = Timer::new(clock, self.pid, sevp)?;
 		let id = self.id_allocator.alloc(None)?;
 		if let Err(e) = self.timers.insert(id, timer) {
+			// Allocation error: rollback
 			self.id_allocator.free(id);
 			return Err(e.into());
 		}
-
 		Ok(id)
 	}
 
@@ -263,7 +267,7 @@ impl TimerManager {
 
 	/// Deletes the timer with the given ID.
 	///
-	/// If the timer doesn't exist, the function returns an error.
+	/// If the timer does not exist, the function returns an error.
 	pub fn delete_timer(&mut self, id: TimerT) -> EResult<()> {
 		self.timers
 			.remove(&(id as _))
@@ -272,72 +276,35 @@ impl TimerManager {
 	}
 }
 
-impl Drop for TimerManager {
-	fn drop(&mut self) {
-		let mut queue = TIMERS_QUEUE.lock();
-		queue.retain(|(_, pid, _), _| *pid != self.pid);
-	}
-}
-
 /// The queue of timers to be fired next.
 ///
 /// The key has the following elements:
-/// - the timestamp at which the timer will fire next
-/// - the PID of the process owning the timer
-/// - the ID of the timer
-static TIMERS_QUEUE: IntMutex<BTreeMap<(Timespec, Pid, TimerT), ()>> =
+/// - the timestamp, in nanoseconds, at which the timer will fire next
+/// - a pointer to the timer
+static TIMERS_QUEUE: IntMutex<BTreeMap<(Timestamp, *const TimerInner), ()>> =
 	IntMutex::new(BTreeMap::new());
 
-/// Ticks active timers and triggers them if necessary.
+/// Triggers all expired timers.
 pub(super) fn tick() {
-	let mut times: [Option<Timespec>; 12] = Default::default();
+	let mut times: [Option<Timestamp>; 12] = Default::default();
 	let mut queue = TIMERS_QUEUE.lock();
-
 	loop {
 		// Peek next timer
-		let Some(((_, pid, timer_id), _)) = queue.first_key_value() else {
+		let Some(((_, timer), _)) = queue.first_key_value() else {
 			break;
 		};
-		let pid = *pid;
-		let timer_id = *timer_id;
-
-		// Get process
-		let Some(proc) = Process::get_by_pid(pid) else {
-			// invalid timer, remove
-			queue.pop_first();
-			break;
-		};
-		// Get timer manager
-		let mut timer_manager = proc.timer_manager.lock();
-
-		// Get timer
-		let Some(timer) = timer_manager.get_timer_mut(timer_id) else {
-			// invalid timer, remove
-			queue.pop_first();
-			break;
-		};
-
+		let timer = unsafe { &**timer };
 		// Get current time
-		let ts = match times[timer.clockid as usize] {
-			Some(ts) => ts,
-			None => {
-				let ts = clock::current_time_struct(timer.clockid).unwrap();
-				times[timer.clockid as usize] = Some(ts);
-				ts
-			}
-		};
-
-		if !timer.has_expired(&ts) {
-			// If this timer has not expired, all the next timers won't be expired either
+		let ts = *times[timer.clock as usize].get_or_insert_with(|| current_time_ns(timer.clock));
+		if !timer.has_expired(ts) {
+			// If this timer has not expired, all the following timers won't be expired either
 			break;
 		}
-
-		timer.fire(&proc);
-
+		timer.fire();
 		if timer.is_oneshot() {
 			queue.pop_first();
 		} else {
-			oom::wrap(|| timer.reset(&mut queue, ts, pid, timer_id));
+			oom::wrap(|| timer.reset(&mut queue, ts));
 		}
 	}
 }

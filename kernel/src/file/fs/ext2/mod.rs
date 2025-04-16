@@ -65,7 +65,7 @@ use crate::{
 	},
 	memory::cache::{FrameOwner, RcFrame, RcFrameVal},
 	sync::mutex::Mutex,
-	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
+	time::clock::{current_time_sec, Clock},
 };
 use bgd::BlockGroupDescriptor;
 use core::{
@@ -983,8 +983,8 @@ impl FilesystemOps for Ext2Fs {
 		let mut inode = Ext2INode::get(node, self)?;
 		// Remove the inode
 		inode.i_links_count = 0;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
-		inode.i_dtime = timestamp as _;
+		let ts = current_time_sec(Clock::Monotonic);
+		inode.i_dtime = ts as _;
 		inode.free_content(self)?;
 		inode.mark_dirty();
 		// Free inode
@@ -1044,7 +1044,7 @@ impl FilesystemType for Ext2FsType {
 				return Err(errno!(EROFS));
 			}
 		}
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
+		let ts = current_time_sec(Clock::Monotonic);
 		if unlikely(sp.s_mnt_count.load(Relaxed) >= sp.s_max_mnt_count) {
 			return Err(errno!(EINVAL));
 		}
@@ -1058,7 +1058,7 @@ impl FilesystemType for Ext2FsType {
 		sp.s_last_mounted[..len].copy_from_slice(&mountpath_bytes[..len]);
 		sp.s_last_mounted[len..].fill(0);*/
 		// Set the last mount timestamp
-		sp.s_mtime.store(timestamp as _, Relaxed);
+		sp.s_mtime.store(ts as _, Relaxed);
 		sp.s_mnt_count.fetch_add(1, Relaxed);
 		sp.mark_dirty();
 		Ok(Filesystem::new(

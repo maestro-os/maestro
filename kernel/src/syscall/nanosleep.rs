@@ -22,30 +22,32 @@
 use crate::{
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
-	time::{clock, clock::CLOCK_MONOTONIC, unit::Timespec32},
+	time::{
+		clock,
+		clock::{current_time_ns, Clock},
+		sleep_for,
+		unit::{TimeUnit, Timespec32, Timestamp},
+	},
 };
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
-// TODO Handle signal interruption (EINTR)
-
 pub fn nanosleep(
 	Args((req, rem)): Args<(SyscallPtr<Timespec32>, SyscallPtr<Timespec32>)>,
 ) -> EResult<usize> {
-	let start_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
-	let delay = req.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	// Loop until time is elapsed or the process is interrupted by a signal
-	loop {
-		let curr_time = clock::current_time_struct::<Timespec32>(CLOCK_MONOTONIC)?;
-		if curr_time >= start_time + delay {
-			break;
+	let delay = req
+		.copy_from_user()?
+		.ok_or_else(|| errno!(EFAULT))?
+		.to_nano();
+	let mut remain = 0;
+	let res = sleep_for(Clock::Monotonic, delay, &mut remain);
+	match res {
+		Ok(_) => Ok(0),
+		Err(e) => {
+			rem.copy_to_user(&Timespec32::from_nano(remain))?;
+			Err(e)
 		}
-		// TODO Allow interruption by signal
-		// TODO Make the current process sleep
 	}
-	// Set remaining time to zero
-	rem.copy_to_user(&Timespec32::default())?;
-	Ok(0)
 }

@@ -25,7 +25,10 @@ use crate::{
 		Process,
 	},
 	syscall::Args,
-	time::unit::{ClockIdT, TimerT},
+	time::{
+		clock::Clock,
+		unit::{ClockIdT, TimerT},
+	},
 };
 use utils::{
 	errno,
@@ -37,6 +40,7 @@ pub fn timer_create(
 	Args((clockid, sevp, timerid)): Args<(ClockIdT, SyscallPtr<SigEvent>, SyscallPtr<TimerT>)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
+	let clock = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
 	let timerid_val = timerid.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let sevp_val = sevp.copy_from_user()?.unwrap_or_else(|| SigEvent {
 		sigev_notify: SIGEV_SIGNAL,
@@ -46,7 +50,7 @@ pub fn timer_create(
 		sigev_notify_attributes: None,
 		sigev_notify_thread_id: proc.tid,
 	});
-	let id = proc.timer_manager.lock().create_timer(clockid, sevp_val)?;
+	let id = proc.timer_manager.lock().create_timer(clock, sevp_val)?;
 	timerid.copy_to_user(&(id as _))?;
 	Ok(0)
 }

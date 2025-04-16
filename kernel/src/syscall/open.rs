@@ -31,10 +31,7 @@ use crate::{
 	},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::{openat::do_openat, util::at::AT_FDCWD},
-	time::{
-		clock::{current_time, CLOCK_REALTIME},
-		unit::TimestampScale,
-	},
+	time::clock::current_time_ns,
 };
 use core::ffi::c_int;
 use utils::{

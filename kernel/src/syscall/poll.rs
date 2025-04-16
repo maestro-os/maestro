@@ -24,8 +24,8 @@ use crate::{
 	syscall::Args,
 	time::{
 		clock,
-		clock::CLOCK_MONOTONIC,
-		unit::{Timestamp, TimestampScale},
+		clock::{current_time_ms, Clock},
+		unit::Timestamp,
 	},
 };
 use core::ffi::c_int;
@@ -75,12 +75,11 @@ pub(super) fn poll(
 ) -> EResult<usize> {
 	// The timeout. `None` means no timeout
 	let to = (timeout >= 0).then_some(timeout as Timestamp);
-	// The start timestamp
-	let start_ts = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)?;
+	let start_ts = current_time_ms(Clock::Monotonic);
 	loop {
 		// Check whether the system call timed out
 		if let Some(timeout) = to {
-			let now = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Millisecond)?;
+			let now = current_time_ms(Clock::Monotonic);
 			if now >= start_ts + timeout {
 				return Ok(0);
 			}

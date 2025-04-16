@@ -34,7 +34,7 @@ use crate::{
 	syscall::{poll, Args},
 	time::{
 		clock,
-		clock::CLOCK_MONOTONIC,
+		clock::{current_time_ns, Clock},
 		unit::{TimeUnit, Timeval},
 	},
 };
@@ -102,12 +102,14 @@ pub fn do_select<T: TimeUnit>(
 	timeout: SyscallPtr<T>,
 	_sigmask: Option<SyscallSlice<u8>>,
 ) -> EResult<usize> {
-	// Get start timestamp
-	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
+	let start = current_time_ns(Clock::Monotonic);
 	// Get timeout
-	let timeout = timeout.copy_from_user()?.unwrap_or_default();
+	let timeout = timeout
+		.copy_from_user()?
+		.map(|t| t.to_nano())
+		.unwrap_or_default();
 	// Tells whether the syscall immediately returns
-	let polling = timeout.is_zero();
+	let polling = timeout == 0;
 	// The end timestamp
 	let end = start + timeout;
 	// Read
@@ -176,9 +178,9 @@ pub fn do_select<T: TimeUnit>(
 		if all_zeros || polling || events_count > 0 {
 			break events_count;
 		}
-		let curr = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
+		let ts = current_time_ns(Clock::Monotonic);
 		// On timeout, return 0
-		if curr >= end {
+		if ts >= end {
 			break 0;
 		}
 		// TODO Make the process sleep?

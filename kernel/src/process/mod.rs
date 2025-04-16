@@ -743,6 +743,11 @@ impl Process {
 		});
 	}
 
+	/// Tells whether there is a pending signal on the process.
+	pub fn has_pending_signal(&self) -> bool {
+		Process::current().signal.lock().next_signal(true).is_some()
+	}
+
 	/// Wakes up the process if in [`State::Sleeping`] state.
 	pub fn wake(&self) {
 		// TODO make sure the ordering is right

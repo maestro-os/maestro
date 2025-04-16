@@ -23,7 +23,8 @@ use crate::{
 	syscall::Args,
 	time::{
 		clock,
-		unit::{ClockIdT, Timespec},
+		clock::Clock,
+		unit::{ClockIdT, TimeUnit, Timespec},
 	},
 };
 use utils::{
@@ -34,7 +35,8 @@ use utils::{
 pub fn clock_gettime(
 	Args((clockid, tp)): Args<(ClockIdT, SyscallPtr<Timespec>)>,
 ) -> EResult<usize> {
-	let curr_time = clock::current_time_struct::<Timespec>(clockid)?;
-	tp.copy_to_user(&curr_time)?;
+	let clk = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
+	let ts = clock::current_time_ns(clk);
+	tp.copy_to_user(&Timespec::from_nano(ts))?;
 	Ok(0)
 }

@@ -22,14 +22,16 @@
 use crate::{
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
-	time::{clock, clock::CLOCK_MONOTONIC, unit::TimestampScale},
+	time::{
+		clock,
+		clock::{current_time_ns, current_time_sec, Clock},
+	},
 };
 use utils::errno::EResult;
 
 // TODO Watch for timestamp overflow
-
 pub fn time(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
-	let time = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
+	let time = current_time_sec(Clock::Monotonic);
 	tloc.copy_to_user(&(time as _))?;
 	Ok(time as _)
 }

@@ -21,7 +21,7 @@
 use crate::{
 	process::{mem_space::copy::SyscallPtr, Process},
 	syscall::Args,
-	time::unit::{ITimerspec32, TimerT},
+	time::unit::{ITimerspec32, TimeUnit, TimerT},
 };
 use core::ffi::c_int;
 use utils::{
@@ -55,6 +55,9 @@ pub fn timer_settime(
 	if (flags & TIMER_ABSTIME) == 0 {
 		new_value_val.it_value = new_value_val.it_value + old.it_value;
 	}
-	timer.set_time(new_value_val, proc.get_pid(), timerid)?;
+	timer.set_time(
+		new_value_val.it_interval.to_nano(),
+		new_value_val.it_value.to_nano(),
+	)?;
 	Ok(0)
 }

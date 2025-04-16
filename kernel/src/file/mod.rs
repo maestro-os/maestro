@@ -45,9 +45,8 @@ use crate::{
 	net::{SocketDesc, SocketDomain, SocketType},
 	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
 	time::{
-		clock,
-		clock::CLOCK_MONOTONIC,
-		unit::{Timestamp, TimestampScale},
+		clock::{current_time_sec, Clock},
+		unit::Timestamp,
 	},
 };
 use core::{any::Any, fmt::Debug, ops::Deref, ptr::NonNull};
@@ -301,14 +300,14 @@ impl Stat {
 	/// Sets the owner user ID, updating `ctime` with the current timestamp.
 	pub fn set_uid(&mut self, uid: Uid) {
 		self.uid = uid;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
+		let timestamp = current_time_sec(Clock::Monotonic);
 		self.ctime = timestamp;
 	}
 
 	/// Sets the owner group ID, updating `ctime` with the current timestamp.
 	pub fn set_gid(&mut self, gid: Gid) {
 		self.gid = gid;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
+		let timestamp = current_time_sec(Clock::Monotonic);
 		self.ctime = timestamp;
 	}
 }
