@@ -21,7 +21,6 @@
 
 use super::HwClock;
 use crate::arch::x86::{idt, io::outb, pic};
-use utils::math::rational::Rational;
 
 /// PIT channel number 0.
 const CHANNEL_0: u16 = 0x40;
@@ -72,7 +71,7 @@ const MODE_5: u8 = 0b101 << 1;
 const BCD_MODE: u8 = 0b1;
 
 /// The base frequency of the PIT.
-const BASE_FREQUENCY: Rational = Rational::from_integer(1193182);
+const BASE_FREQUENCY: u32 = 1193182;
 
 // FIXME prevent having several instances at the same time
 
@@ -87,16 +86,13 @@ impl PIT {
 	pub fn new() -> Self {
 		let mut s = Self {};
 		s.set_enabled(false);
-
 		idt::wrap_disable_interrupts(|| unsafe {
 			outb(
 				PIT_COMMAND,
 				SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
 			);
-
-			s.set_frequency(Rational::from(1));
+			s.set_frequency(1);
 		});
-
 		s
 	}
 }
@@ -110,9 +106,9 @@ impl HwClock for PIT {
 		}
 	}
 
-	fn set_frequency(&mut self, frequency: Rational) {
-		let mut count = if frequency != Rational::from(0) {
-			i64::from(BASE_FREQUENCY / frequency) as u16
+	fn set_frequency(&mut self, frequency: u32) {
+		let mut count = if frequency != 0 {
+			(BASE_FREQUENCY / frequency) as u16
 		} else {
 			0
 		};

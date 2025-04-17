@@ -34,7 +34,7 @@ use crate::{
 	event::CallbackResult,
 	process::{
 		scheduler::Scheduler,
-		signal::{SigEvent, Signal, SIGEV_SIGNAL},
+		signal::{SigEvent, SIGEV_NONE},
 		Process, State,
 	},
 	time::{
@@ -45,33 +45,30 @@ use crate::{
 };
 use core::{intrinsics::unlikely, mem::ManuallyDrop};
 use unit::Timestamp;
-use utils::{boxed::Box, errno, errno::EResult, math::rational::Rational};
+use utils::{boxed::Box, errno, errno::EResult};
 
 /// Timer frequency.
-const FREQUENCY: Rational = Rational::from_frac(1, 1024);
+const FREQUENCY: u32 = 1024;
 
-/// Makes the current thread sleep until `ts`, in nanoseconds.
+/// Makes the current thread sleep for `delay`, in nanoseconds.
 ///
 /// `clock` is the clock to use.
 ///
 /// If the current process is interrupted by a signal, the function returns [`errno::EINTR`] and
 /// sets the remaining time in `remain`.
-pub fn sleep_until(clock: Clock, ts: Timestamp, remain: &mut Timestamp) -> EResult<()> {
+pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> EResult<()> {
 	// Setup timer
 	let pid = Process::current().get_pid();
+	// FIXME: there can be allocation failures here
 	let mut timer = Timer::new(
 		clock,
 		pid,
 		SigEvent {
-			sigev_notify: SIGEV_SIGNAL,
-			sigev_signo: Signal::SIGALRM as _,
-			sigev_value: 0,
-			sigev_notify_function: None,
-			sigev_notify_attributes: None,
-			sigev_notify_thread_id: 0,
+			sigev_notify: SIGEV_NONE,
+			..Default::default()
 		},
 	)?;
-	timer.set_time(0, ts)?;
+	timer.set_time(0, delay)?;
 	// Loop until the timer expires
 	loop {
 		let cur_ts = current_time_ns(clock);
@@ -92,16 +89,6 @@ pub fn sleep_until(clock: Clock, ts: Timestamp, remain: &mut Timestamp) -> EResu
 	Ok(())
 }
 
-/// Makes the current thread sleep for `delay`, in nanoseconds.
-///
-/// `clock` is the clock to use.
-///
-/// If the current process is interrupted by a signal, the function returns [`errno::EINTR`] and
-/// sets the remaining time in `remain`.
-pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> EResult<()> {
-	sleep_until(clock, current_time_ns(clock) + delay, remain)
-}
-
 /// Initializes time management.
 pub(crate) fn init() -> EResult<()> {
 	// Initialize hardware clocks
@@ -115,8 +102,8 @@ pub(crate) fn init() -> EResult<()> {
 	rtc.set_frequency(FREQUENCY);
 	let hook = event::register_callback(rtc.get_interrupt_vector(), move |_, _, _, _| {
 		hw::rtc::RTC::reset();
-		// FIXME: the value is probably not right
-		clock::update(i64::from(FREQUENCY * 1_000_000_000) as _);
+		// FIXME: we are loosing precision here
+		clock::update((1_000_000_000 / FREQUENCY) as _);
 		timer::tick();
 		CallbackResult::Continue
 	})?;
