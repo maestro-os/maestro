@@ -41,7 +41,6 @@ use core::{
 use utils::{
 	collections::btreemap::{BTreeMap, MapIterator},
 	errno::AllocResult,
-	math::rational::Rational,
 	ptr::arc::Arc,
 };
 
@@ -193,8 +192,8 @@ impl Scheduler {
 	}
 
 	/// Returns the current ticking frequency of the scheduler.
-	pub fn get_ticking_frequency(&self) -> Rational {
-		Rational::from_integer((10 * self.running_procs) as _)
+	pub fn get_ticking_frequency(&self) -> u32 {
+		(10 * self.running_procs) as _
 	}
 
 	/// Increments the number of running processes.

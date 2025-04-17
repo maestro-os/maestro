@@ -26,7 +26,7 @@
 //!   reclaimed at anytime
 
 use crate::{
-	arch::x86::{hlt, sti},
+	arch::x86::sti,
 	device::BlkDev,
 	file::vfs::node::Node,
 	memory::{
@@ -456,8 +456,7 @@ pub(crate) fn flush_task() -> ! {
 		flush_task_inner(cur_ts);
 		// Sleep
 		let mut remain = 0;
-		let _ = sleep_for(Clock::Monotonic, WRITEBACK_TIMEOUT, &mut remain);
-		hlt();
+		let _ = sleep_for(Clock::Monotonic, WRITEBACK_TIMEOUT * 1_000_000, &mut remain);
 	}
 }
 

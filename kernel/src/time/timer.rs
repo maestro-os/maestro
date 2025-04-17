@@ -86,13 +86,13 @@ impl TimerInner {
 
 	/// Fires the timer.
 	fn fire(&self) {
+		let Some(proc) = Process::get_by_pid(self.pid) else {
+			return;
+		};
 		match self.sevp.sigev_notify {
-			SIGEV_NONE => {}
+			SIGEV_NONE => proc.wake(),
 			SIGEV_SIGNAL => {
 				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo) else {
-					return;
-				};
-				let Some(proc) = Process::get_by_pid(self.pid) else {
 					return;
 				};
 				// TODO on sigint_t, set si_code to SI_TIMER
@@ -190,7 +190,7 @@ impl Timer {
 		if value == 0 {
 			spec.next = None;
 		} else {
-			let next = current_time_ns(self.0.clock) + interval;
+			let next = current_time_ns(self.0.clock) + value;
 			spec.next = Some(next);
 			// Insert back in queue
 			queue.insert((next, self.0.as_ptr()), ())?;
