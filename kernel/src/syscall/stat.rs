@@ -37,7 +37,7 @@ use crate::{
 	process::mem_space::copy::{SyscallPtr, SyscallString},
 	sync::mutex::Mutex,
 	syscall::{util::at, Args},
-	time::unit::{TimeUnit, Timespec, TimestampScale},
+	time::unit::Timespec,
 };
 use core::{
 	ffi::{c_int, c_long, c_uint, c_ushort},

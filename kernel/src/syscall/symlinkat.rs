@@ -29,10 +29,7 @@ use crate::{
 	process::{mem_space::copy::SyscallString, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
-	time::{
-		clock::{current_time, CLOCK_REALTIME},
-		unit::TimestampScale,
-	},
+	time::clock::{current_time_ns, current_time_sec, Clock},
 };
 use core::ffi::c_int;
 use utils::{
@@ -70,7 +67,7 @@ pub fn symlinkat(
 	else {
 		return Err(errno!(EEXIST));
 	};
-	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
+	let ts = current_time_sec(Clock::Realtime);
 	vfs::symlink(
 		&parent,
 		name,

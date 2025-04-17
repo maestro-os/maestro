@@ -36,10 +36,7 @@ use crate::{
 	process::mem_space::{
 		Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE,
 	},
-	time::{
-		clock::{current_time, CLOCK_BOOTTIME},
-		unit::TimestampScale,
-	},
+	time::clock::{current_time_ms, Clock},
 };
 use core::{
 	num::NonZeroUsize,
@@ -339,8 +336,7 @@ impl MemMapping {
 			return Ok(());
 		};
 		let node = file.node().unwrap();
-		// cannot fail since `CLOCK_BOOTTIME` is valid
-		let ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
+		let ts = current_time_ms(Clock::Boottime);
 		// TODO: polling pages one by one is inefficient
 		for off in 0..self.size.get() {
 			let virtaddr = VirtAddr::from(self.addr) + off * PAGE_SIZE;

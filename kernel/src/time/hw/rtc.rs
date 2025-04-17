@@ -23,7 +23,6 @@ use crate::arch::x86::{
 	idt,
 	io::{inb, outb},
 };
-use utils::math::rational::Rational;
 
 /// The ID of the port used to select the CMOS register to read.
 const SELECT_PORT: u16 = 0x70;
@@ -70,7 +69,6 @@ impl HwClock for RTC {
 		idt::wrap_disable_interrupts(|| unsafe {
 			outb(SELECT_PORT, STATUS_B_REGISTER | 0x80);
 			let prev = inb(VALUE_PORT);
-
 			outb(SELECT_PORT, STATUS_B_REGISTER | 0x80);
 			if enable {
 				outb(VALUE_PORT, prev | 0x40);
@@ -80,14 +78,13 @@ impl HwClock for RTC {
 		});
 	}
 
-	fn set_frequency(&mut self, _freq: Rational) {
-		// TODO adapt to given frequency
-
+	fn set_frequency(&mut self, freq: u32) {
+		let rate = (32768u32 / freq).trailing_zeros() as u8 + 1;
 		idt::wrap_disable_interrupts(|| unsafe {
-			outb(0x70, STATUS_A_REGISTER | 0x80);
+			outb(SELECT_PORT, STATUS_A_REGISTER | 0x80);
 			let prev = inb(VALUE_PORT);
-			outb(0x70, STATUS_A_REGISTER | 0x80);
-			outb(0x71, (prev & 0xf0) | 6);
+			outb(SELECT_PORT, STATUS_A_REGISTER | 0x80);
+			outb(VALUE_PORT, (prev & 0xf0) | (rate & 0x0f));
 		});
 	}
 

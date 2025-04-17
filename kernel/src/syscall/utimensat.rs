@@ -35,7 +35,7 @@ use crate::{
 	time,
 	time::{
 		clock,
-		clock::CLOCK_MONOTONIC,
+		clock::{current_time_ns, Clock},
 		unit::{TimeUnit, Timespec},
 	},
 	tty::vga::DEFAULT_COLOR,
@@ -62,15 +62,13 @@ pub fn utimensat(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.transpose()?;
-	let times_val = match times.copy_from_user()? {
-		Some(times) => times,
-		None => {
-			let ts = clock::current_time_struct(CLOCK_MONOTONIC)?;
-			[ts, ts]
-		}
-	};
-	let atime = times_val[0];
-	let mtime = times_val[1];
+	let (atime, mtime) = times
+		.copy_from_user()?
+		.map(|[atime, mtime]| (atime.to_nano(), mtime.to_nano()))
+		.unwrap_or_else(|| {
+			let ts = current_time_ns(Clock::Monotonic);
+			(ts, ts)
+		});
 	// Get file
 	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, pathname.as_deref(), flags)?
 	else {
@@ -80,8 +78,8 @@ pub fn utimensat(
 	vfs::set_stat(
 		file.node(),
 		&StatSet {
-			atime: Some(atime.to_nano() / 1000000000),
-			mtime: Some(mtime.to_nano() / 1000000000),
+			atime: Some(atime / 1_000_000_000),
+			mtime: Some(mtime / 1_000_000_000),
 			..Default::default()
 		},
 	)?;

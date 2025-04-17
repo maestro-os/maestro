@@ -230,7 +230,7 @@ impl From<SigAction> for CompatSigAction {
 
 /// Notification from asynchronous routines.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SigEvent {
 	/// Notification method.
 	pub sigev_notify: c_int,
@@ -249,15 +249,13 @@ pub struct SigEvent {
 impl SigEvent {
 	/// Tells whether the structure is valid.
 	pub fn is_valid(&self) -> bool {
-		if !matches!(self.sigev_notify, SIGEV_SIGNAL | SIGEV_NONE | SIGEV_THREAD) {
-			return false;
-		}
-		if Signal::try_from(self.sigev_signo).is_err() {
-			return false;
-		}
 		// TODO check sigev_notify_thread_id
-
-		true
+		match self.sigev_notify {
+			SIGEV_NONE => true,
+			SIGEV_SIGNAL => Signal::try_from(self.sigev_signo).is_ok(),
+			SIGEV_THREAD => true,
+			_ => false,
+		}
 	}
 }
 

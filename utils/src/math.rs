@@ -18,10 +18,8 @@
 
 //! The functions in this module implement utilities for integer mathematics.
 //!
-//! Since floating point numbers are slow, unprecise and may even disabled by
+//! Since floating point numbers are slow, imprecise and may even be disabled by
 //! default, the kernel uses only integers.
-
-pub mod rational;
 
 use core::ops::{Rem, Shl};
 
@@ -56,7 +54,6 @@ where
 		a = b;
 		b = r;
 	}
-
 	a
 }
 

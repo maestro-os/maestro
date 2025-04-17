@@ -23,10 +23,7 @@ use crate::{
 	process::{mem_space::copy::SyscallString, Process},
 	sync::mutex::Mutex,
 	syscall::{symlinkat::symlinkat, util::at::AT_FDCWD, Args},
-	time::{
-		clock::{current_time, CLOCK_REALTIME},
-		unit::TimestampScale,
-	},
+	time::clock::current_time_ns,
 };
 use utils::{
 	collections::path::{Path, PathBuf},

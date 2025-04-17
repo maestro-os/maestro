@@ -33,7 +33,7 @@ use crate::{
 	file::wait_queue::WaitQueue,
 	memory::vmem,
 	process::{pid::Pid, signal::Signal, Process},
-	sync::mutex::Mutex,
+	sync::mutex::IntMutex,
 	tty::{
 		ansi::ANSIBuffer,
 		termios::{consts::*, Termios},
@@ -421,16 +421,16 @@ struct TTYInput {
 /// A TTY.
 pub struct TTY {
 	/// Display manager.
-	pub display: Mutex<TTYDisplay>,
+	pub display: IntMutex<TTYDisplay>,
 	/// Input manager.
-	input: Mutex<TTYInput>,
+	input: IntMutex<TTYInput>,
 	/// The queue of processes waiting for incoming data to read.
 	rd_queue: WaitQueue,
 }
 
 /// The TTY.
 pub static TTY: TTY = TTY {
-	display: Mutex::new(TTYDisplay {
+	display: IntMutex::new(TTYDisplay {
 		cursor_x: 0,
 		cursor_y: 0,
 
@@ -452,7 +452,7 @@ pub static TTY: TTY = TTY {
 		cursor_visible: true,
 		current_color: vga::DEFAULT_COLOR,
 	}),
-	input: Mutex::new(TTYInput {
+	input: IntMutex::new(TTYInput {
 		buf: [0; INPUT_MAX],
 		input_size: 0,
 		available_size: 0,
