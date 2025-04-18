@@ -495,10 +495,11 @@ impl BlockDeviceOps for PATAInterface {
 		self.select(false);
 		// Write
 		let buf = slice_from_bytes::<u16>(buf).unwrap();
-		for i in 0..size {
+		let mut i = 0;
+		while i < size {
 			let off = off + i;
 			let count = (size - i).min(u16::MAX as u64) as u16;
-			let (count, lba48) = self.prepare_io(off, count, false);
+			let (count, lba48) = self.prepare_io(off, count, true);
 			let start = i as usize;
 			let end = start + count as usize;
 			for j in start..end {
@@ -509,6 +510,7 @@ impl BlockDeviceOps for PATAInterface {
 				}
 			}
 			self.cache_flush(lba48);
+			i += count as u64;
 		}
 		Ok(())
 	}
