@@ -31,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{gdt, idt, idt::IntFrame, tss, FxState},
+	arch::x86::{cli, gdt, idt, idt::IntFrame, tss, FxState},
 	event,
 	event::CallbackResult,
 	file,
@@ -955,6 +955,9 @@ impl Drop for Process {
 
 /// Returns `true` if the execution shall continue. Else, the execution shall be paused.
 fn yield_current_impl(frame: &mut IntFrame) -> bool {
+	// Disable interruptions to prevent execution from being stopped before the reference to
+	// `Process` is dropped
+	cli();
 	// If the process is not running anymore, stop execution
 	let proc = Process::current();
 	if proc.get_state() != State::Running {
@@ -985,6 +988,8 @@ fn yield_current_impl(frame: &mut IntFrame) -> bool {
 /// The execution flow can be altered by:
 /// - The process is no longer in [`State::Running`] state
 /// - A signal handler has to be executed
+///
+/// This function disables interruptions.
 ///
 /// This function never returns in case the process state turns to [`State::Zombie`].
 pub fn yield_current(ring: u8, frame: &mut IntFrame) {

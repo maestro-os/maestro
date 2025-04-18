@@ -176,19 +176,20 @@ impl Scheduler {
 		if proc.get_state() == State::Running {
 			self.increment_running();
 		}
-		self.processes.insert(*proc.pid, proc.clone())?;
+		self.processes.insert(*proc.pid, proc)?;
 		Ok(())
 	}
 
 	/// Removes the process with the given pid `pid`.
+	///
+	/// If the process is not attached to this scheduler, the function does nothing.
 	pub fn remove_process(&mut self, pid: Pid) {
-		let Some(proc) = self.get_by_pid(pid) else {
-			return;
-		};
-		if proc.get_state() == State::Running {
-			self.decrement_running();
+		let proc = self.processes.remove(&pid);
+		if let Some(proc) = proc {
+			if proc.get_state() == State::Running {
+				self.decrement_running();
+			}
 		}
-		self.processes.remove(&pid);
 	}
 
 	/// Returns the current ticking frequency of the scheduler.
@@ -250,7 +251,9 @@ impl Scheduler {
 			let mut sched = SCHEDULER.lock();
 			sched.total_ticks.fetch_add(1, atomic::Ordering::Relaxed);
 			// Find the next process to run
-			let next = sched.get_next_process().unwrap_or(sched.idle_task.clone());
+			let next = sched
+				.get_next_process()
+				.unwrap_or_else(|| sched.idle_task.clone());
 			// If the process to run is the current, do nothing
 			if next.get_pid() == sched.curr_proc.get_pid() {
 				return;

@@ -348,10 +348,7 @@ impl MemMapping {
 				continue;
 			};
 			let page = buddy::get_page(physaddr);
-			// When sync, reset the dirty flag before writing. Because doing the opposite could
-			// result in ignoring a potential write happening in between the moment we write to
-			// disk and the moment we set the dirty flag
-			page.dirty.store(!sync, Release);
+			page.dirty.store(true, Release);
 			if sync {
 				let off = page.off.load(Relaxed);
 				let Some(frame) = node.mapped.get(off) else {
