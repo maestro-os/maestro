@@ -135,7 +135,7 @@ impl VMem {
 	}
 
 	/// Polls the dirty flags on the range of `pages` pages starting at `addr`, clearing them
-	/// atomically, and setting them to the associated [`Page`] structure.
+	/// atomically, and setting them to the associated [`buddy::Page`] structure.
 	pub fn poll_dirty(&self, addr: VirtAddr, pages: usize) {
 		for n in 0..pages {
 			// TODO polling pages one by one is inefficient
