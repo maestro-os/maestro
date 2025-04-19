@@ -28,12 +28,12 @@ use crate::{
 		},
 	},
 	elf, memory,
-	memory::{memmap::PHYS_MAP, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
+	memory::{buddy, memmap::PHYS_MAP, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
 	register_get,
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };
-use core::{cmp::min, ptr::NonNull};
+use core::{cmp::min, ptr::NonNull, sync::atomic::Ordering::Release};
 use utils::limits::PAGE_SIZE;
 
 /// A virtual memory context.
@@ -134,15 +134,18 @@ impl VMem {
 		}
 	}
 
-	/// Polls the value of the dirty flags on the page at `addr`, clearing it atomically.
-	///
-	/// The function returns:
-	/// - The physical address of the page
-	/// - Whether the page is dirty
-	///
-	/// If the page is not mapped, the function returns `None`.
-	pub fn poll_dirty(&self, addr: VirtAddr) -> Option<(PhysAddr, bool)> {
-		x86::paging::poll_dirty(self.inner(), addr)
+	/// Polls the dirty flags on the range of `pages` pages starting at `addr`, clearing them
+	/// atomically, and setting them to the associated [`Page`] structure.
+	pub fn poll_dirty(&self, addr: VirtAddr, pages: usize) {
+		for n in 0..pages {
+			// TODO polling pages one by one is inefficient
+			let addr = addr + n * PAGE_SIZE;
+			let Some((physaddr, true)) = x86::paging::poll_dirty(self.inner(), addr) else {
+				continue;
+			};
+			let page = buddy::get_page(physaddr);
+			page.dirty.store(true, Release);
+		}
 	}
 
 	/// Binds the virtual memory context to the current CPU.

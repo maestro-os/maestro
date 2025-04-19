@@ -26,7 +26,6 @@ use crate::{
 	arch::x86::paging,
 	file::File,
 	memory::{
-		buddy,
 		buddy::ZONE_USER,
 		cache::{FrameOwner, RcFrame},
 		vmem,
@@ -41,10 +40,7 @@ use crate::{
 		unit::TimestampScale,
 	},
 };
-use core::{
-	num::NonZeroUsize,
-	sync::atomic::Ordering::{Relaxed, Release},
-};
+use core::num::NonZeroUsize;
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
@@ -335,27 +331,16 @@ impl MemMapping {
 			return Ok(());
 		}
 		// TODO if locked, EBUSY
-		let Some(file) = &self.file else {
+		if self.file.is_none() {
 			return Ok(());
-		};
-		let node = file.node().unwrap();
+		}
 		// cannot fail since `CLOCK_BOOTTIME` is valid
 		let ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
-		// TODO: polling pages one by one is inefficient
-		for off in 0..self.size.get() {
-			let virtaddr = VirtAddr::from(self.addr) + off * PAGE_SIZE;
-			let Some((physaddr, true)) = vmem.poll_dirty(virtaddr) else {
-				continue;
-			};
-			let page = buddy::get_page(physaddr);
-			page.dirty.store(true, Release);
+		for frame in self.anon_pages.iter().flatten() {
+			vmem.poll_dirty(VirtAddr::from(self.addr), self.size.get());
 			if sync {
-				let off = page.off.load(Relaxed);
-				let Some(frame) = node.mapped.get(off) else {
-					continue;
-				};
 				// TODO warn on error?
-				let _ = frame.writeback(Some(ts));
+				let _ = frame.writeback(Some(ts), false);
 			}
 		}
 		Ok(())

@@ -27,16 +27,12 @@ use crate::{
 	sync::mutex::Mutex,
 };
 use core::{
-	borrow::Borrow,
-	fmt,
-	fmt::Formatter,
-	hash::{Hash, Hasher},
 	ptr,
 	sync::atomic::{AtomicBool, Ordering::Acquire},
 };
 use utils::{
 	boxed::Box,
-	collections::{hashset::HashSet, path::PathBuf, string::String},
+	collections::{path::PathBuf, string::String},
 	errno::EResult,
 	limits::SYMLINK_MAX,
 	ptr::arc::Arc,
@@ -130,73 +126,7 @@ impl Node {
 			this.fs.ops.destroy_node(&this)?;
 		}
 		// Remove the node from the filesystem's cache
-		this.fs.ops.release_node(this.inode);
+		this.fs.node_remove(this.inode);
 		Ok(())
-	}
-}
-
-struct NodeWrapper(Arc<Node>);
-
-impl Borrow<INode> for NodeWrapper {
-	fn borrow(&self) -> &INode {
-		&self.0.inode
-	}
-}
-
-impl Eq for NodeWrapper {}
-
-impl PartialEq for NodeWrapper {
-	fn eq(&self, other: &Self) -> bool {
-		self.0.inode == other.0.inode
-	}
-}
-
-impl Hash for NodeWrapper {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.0.inode.hash(state)
-	}
-}
-
-impl fmt::Debug for NodeWrapper {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		fmt::Debug::fmt(&self.0, f)
-	}
-}
-
-/// Cache for nodes for use inside filesystem implementations, to avoid duplications of [`Node`]
-/// instances when several entries point to the same node.
-#[derive(Debug, Default)]
-pub struct NodeCache(Mutex<HashSet<NodeWrapper>>);
-
-impl NodeCache {
-	/// Inserts a node in cache. If already present, the previous entry is dropped.
-	pub fn insert(&self, node: Arc<Node>) -> EResult<()> {
-		self.0.lock().insert(NodeWrapper(node))?;
-		Ok(())
-	}
-
-	/// Returns the node with ID `inode` from the cache, or if not in cache, initializes it with
-	/// `init` and inserts it.
-	pub fn get_or_insert<F: FnOnce() -> EResult<Arc<Node>>>(
-		&self,
-		inode: INode,
-		init: F,
-	) -> EResult<Arc<Node>> {
-		let mut cache = self.0.lock();
-		match cache.get(&inode) {
-			// Cache hit
-			Some(node) => Ok(node.0.clone()),
-			// Cache miss, create instance and insert
-			None => {
-				let node = init()?;
-				cache.insert(NodeWrapper(node.clone()))?;
-				Ok(node)
-			}
-		}
-	}
-
-	/// Removes the node with ID `inode` from the cache.
-	pub fn remove(&self, inode: INode) {
-		self.0.lock().remove(&inode);
 	}
 }

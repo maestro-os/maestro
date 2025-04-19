@@ -307,10 +307,10 @@ impl FilesystemOps for ProcFS {
 		})
 	}
 
-	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
+	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>> {
 		Ok(Arc::new(Node {
 			inode: 0,
-			fs,
+			fs: fs.clone(),
 
 			stat: Mutex::new(RootDir::stat()),
 			dirty: AtomicBool::new(false),
@@ -323,7 +323,7 @@ impl FilesystemOps for ProcFS {
 		})?)
 	}
 
-	fn create_node(&self, _fs: Arc<Filesystem>, _stat: Stat) -> EResult<Arc<Node>> {
+	fn create_node(&self, _fs: &Arc<Filesystem>, _stat: Stat) -> EResult<Arc<Node>> {
 		Err(errno!(EINVAL))
 	}
 

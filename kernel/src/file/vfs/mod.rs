@@ -631,10 +631,7 @@ pub fn create_file(
 	};
 	// Add file to filesystem
 	let parent_node = parent.node();
-	let node = parent_node
-		.fs
-		.ops
-		.create_node(parent_node.fs.clone(), stat)?;
+	let node = parent_node.fs.ops.create_node(&parent_node.fs, stat)?;
 	// Add link to filesystem
 	let ent = Entry::new(String::try_from(name)?, Some(parent.clone()), Some(node));
 	parent_node.node_ops.link(parent_node.clone(), &ent)?;
@@ -778,8 +775,7 @@ pub fn symlink(
 	};
 	// Create node
 	let parent_node = parent.node();
-	let fs = parent_node.fs.clone();
-	let node = fs.ops.create_node(fs.clone(), stat)?;
+	let node = parent_node.fs.ops.create_node(&parent_node.fs, stat)?;
 	node.node_ops.writelink(&node, target)?;
 	// Add link to the filesystem
 	let ent = Entry::new(String::try_from(name)?, Some(parent.clone()), Some(node));

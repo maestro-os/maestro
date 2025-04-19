@@ -301,7 +301,7 @@ impl FreeFrame {
 	}
 }
 
-/// Metadata of an allocated page of memory.
+/// Metadata of an allocated physical page of memory.
 #[derive(Default)]
 pub struct Page {
 	/// If part of a mapped file, this is the offset in the file

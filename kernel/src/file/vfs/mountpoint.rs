@@ -126,7 +126,7 @@ impl fmt::Display for MountSource {
 }
 
 /// The list of loaded filesystems associated with their respective sources.
-static FILESYSTEMS: Mutex<HashMap<DeviceID, Arc<Filesystem>>> = Mutex::new(HashMap::new());
+pub static FILESYSTEMS: Mutex<HashMap<DeviceID, Arc<Filesystem>>> = Mutex::new(HashMap::new());
 
 /// Returns the loaded filesystem with the given source `source`. If not loaded, the function loads
 /// it.
@@ -241,7 +241,7 @@ pub fn create(
 	let mut mps = MOUNT_POINTS.lock();
 	// TODO get root node from cache if present instead
 	// Get filesystem root node
-	let root = fs.ops.root(fs.clone())?;
+	let root = fs.ops.root(&fs)?;
 	// Create an entry for the root of the mountpoint
 	let root_entry = Arc::new(vfs::Entry::new(name, parent.clone(), Some(root)))?;
 	// Create mountpoint

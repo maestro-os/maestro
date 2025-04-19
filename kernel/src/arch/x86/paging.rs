@@ -364,6 +364,12 @@ pub unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) {
 }
 
 /// Inner implementation of [`crate::memory::vmem::VMem::poll_dirty`] for x86.
+///
+/// The function returns:
+/// - The physical address of the page
+/// - Whether the page is dirty
+///
+/// If the page is not mapped, the function returns `None`.
 pub fn poll_dirty(table: &Table, virtaddr: VirtAddr) -> Option<(PhysAddr, bool)> {
 	let entry = translate_impl(table, virtaddr)?;
 	let physaddr = PhysAddr(entry & ADDR_MASK);

@@ -245,21 +245,23 @@ impl RcFrame {
 
 	/// Writes dirty pages back to disk, if their timestamp has expired.
 	///
-	/// `ts` is the timestamp at which the frame is written. If `None`, the timestamp is ignored.
-	pub fn writeback(&self, ts: Option<UTimestamp>) -> EResult<()> {
-		// Iterate on pages
+	/// Arguments:
+	/// - `ts` is the timestamp at which the frame is written. If `None`, the timestamp is ignored
+	/// - `check_ts`: if `true`, pages are flushed only if the last flush is old enough (only if
+	///   `ts` is specified)
+	pub fn writeback(&self, ts: Option<UTimestamp>, check_ts: bool) -> EResult<()> {
 		for n in 0..self.pages_count() {
 			let page = self.get_page(n);
-			// If not dirty, skip
-			if !page.dirty.load(Acquire) {
-				continue;
-			}
 			// If not old enough, skip
 			if let Some(ts) = ts {
 				let last_write = page.last_write.load(Acquire);
-				if ts < last_write + WRITEBACK_TIMEOUT {
+				if check_ts && ts < last_write + WRITEBACK_TIMEOUT {
 					continue;
 				}
+			}
+			// If not dirty, skip
+			if !page.dirty.swap(false, Acquire) {
+				continue;
 			}
 			// Write page
 			match &self.0.owner {
@@ -267,8 +269,7 @@ impl RcFrame {
 				FrameOwner::BlkDev(blk) => blk.ops.write_pages(self.dev_offset(), self.slice())?,
 				FrameOwner::Node(node) => node.node_ops.write_frame(node, self)?,
 			}
-			// Update page metadata
-			page.dirty.store(false, Release);
+			// Update write timestamp
 			if let Some(ts) = ts {
 				page.last_write.store(ts, Release);
 			}
@@ -383,7 +384,7 @@ impl MappedNode {
 		// Sync all frames
 		let frames = self.cache.lock();
 		for (_, frame) in frames.iter() {
-			frame.writeback(Some(ts))?;
+			frame.writeback(Some(ts), false)?;
 		}
 		Ok(())
 	}
@@ -411,7 +412,7 @@ fn flush_task_inner(cur_ts: Timestamp) {
 	let mut lru = LRU.lock();
 	for cursor in lru.iter().rev() {
 		let frame = RcFrame(cursor.arc());
-		if let Err(errno) = frame.writeback(Some(cur_ts)) {
+		if let Err(errno) = frame.writeback(Some(cur_ts), true) {
 			// Failure, try the next frame
 			println!("Disk writeback I/O failure: {errno}");
 			continue;
@@ -455,7 +456,7 @@ pub fn shrink() -> bool {
 				if frame.is_shared() {
 					continue;
 				}
-				if let Err(errno) = frame.writeback(None) {
+				if let Err(errno) = frame.writeback(None, false) {
 					// Failure, try the next frame
 					println!("Disk writeback I/O failure: {errno}");
 					continue;

@@ -411,11 +411,11 @@ impl FilesystemOps for TmpFS {
 		})
 	}
 
-	fn root(&self, _fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
+	fn root(&self, _fs: &Arc<Filesystem>) -> EResult<Arc<Node>> {
 		self.nodes.lock().get_node(kernfs::ROOT_INODE).cloned()
 	}
 
-	fn create_node(&self, fs: Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
+	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -432,7 +432,7 @@ impl FilesystemOps for TmpFS {
 		let (inode, slot) = nodes.get_free_slot()?;
 		let node = Arc::new(Node {
 			inode,
-			fs,
+			fs: fs.clone(),
 
 			stat: Mutex::new(stat),
 			dirty: AtomicBool::new(false),

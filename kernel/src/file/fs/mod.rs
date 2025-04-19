@@ -35,14 +35,17 @@ use crate::{
 };
 use core::{
 	any::Any,
+	borrow::Borrow,
 	cmp::min,
 	ffi::{c_int, c_void},
-	fmt::Debug,
+	fmt,
+	fmt::{Debug, Formatter},
+	hash::{Hash, Hasher},
 	intrinsics::unlikely,
 };
 use utils::{
 	boxed::Box,
-	collections::{hashmap::HashMap, path::PathBuf, string::String},
+	collections::{hashmap::HashMap, hashset::HashSet, path::PathBuf, string::String},
 	errno,
 	errno::{AllocResult, EResult},
 	limits::PAGE_SIZE,
@@ -413,22 +416,22 @@ pub trait FilesystemOps: Any + Debug {
 	/// Returns the root node.
 	///
 	/// If the node does not exist, the function returns [`errno::ENOENT`].
-	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>>;
+	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>>;
 
 	/// Creates a node on the filesystem.
-	fn create_node(&self, fs: Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>>;
-
-	/// Releases the node with ID `inode` from the inner node cache.
-	///
-	/// The default implementation of this function is a no-op.
-	fn release_node(&self, inode: INode) {
-		let _ = inode;
-	}
+	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>>;
 
 	/// Removes `node` from the filesystem.
 	///
 	/// This function should be called only when no link to the node remain.
 	fn destroy_node(&self, node: &Node) -> EResult<()>;
+
+	/// Synchronizes the filesystem to its backing storage.
+	///
+	/// The default implementation of this function does nothing.
+	fn sync_fs(&self) -> EResult<()> {
+		Ok(())
+	}
 }
 
 /// Downcasts the given `fs` into `F`.
@@ -436,6 +439,34 @@ pub trait FilesystemOps: Any + Debug {
 /// If the filesystem type do not match, the function panics.
 pub fn downcast_fs<F: FilesystemOps>(fs: &dyn FilesystemOps) -> &F {
 	(fs as &dyn Any).downcast_ref().unwrap()
+}
+
+struct NodeWrapper(Arc<Node>);
+
+impl Borrow<INode> for NodeWrapper {
+	fn borrow(&self) -> &INode {
+		&self.0.inode
+	}
+}
+
+impl Eq for NodeWrapper {}
+
+impl PartialEq for NodeWrapper {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.inode == other.0.inode
+	}
+}
+
+impl Hash for NodeWrapper {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.0.inode.hash(state)
+	}
+}
+
+impl fmt::Debug for NodeWrapper {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		fmt::Debug::fmt(&self.0, f)
+	}
 }
 
 /// A filesystem.
@@ -446,7 +477,9 @@ pub struct Filesystem {
 	/// Filesystem operations
 	pub ops: Box<dyn FilesystemOps>,
 
-	/// Active buffers on the filesystem.
+	/// Cached [`Node`]s, to avoid duplications when several entries point to the same node
+	nodes: Mutex<HashSet<NodeWrapper>>,
+	/// Active buffers on the filesystem
 	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>>,
 }
 
@@ -461,6 +494,7 @@ impl Filesystem {
 			dev,
 			ops,
 
+			nodes: Default::default(),
 			buffers: Default::default(),
 		})
 	}
@@ -480,11 +514,54 @@ impl Filesystem {
 		buffers.insert(inode, buf.clone())?;
 		Ok(buf)
 	}
+
+	/// Inserts a node in cache. If already present, the previous entry is dropped.
+	pub fn node_insert(&self, node: Arc<Node>) -> EResult<()> {
+		self.nodes.lock().insert(NodeWrapper(node))?;
+		Ok(())
+	}
+
+	/// Returns the node with ID `inode` from the cache, or if not in cache, initializes it with
+	/// `init` and inserts it.
+	pub fn node_get_or_insert<F: FnOnce() -> EResult<Arc<Node>>>(
+		&self,
+		inode: INode,
+		init: F,
+	) -> EResult<Arc<Node>> {
+		let mut nodes = self.nodes.lock();
+		match nodes.get(&inode) {
+			// Cache hit
+			Some(node) => Ok(node.0.clone()),
+			// Cache miss, create instance and insert
+			None => {
+				let node = init()?;
+				nodes.insert(NodeWrapper(node.clone()))?;
+				Ok(node)
+			}
+		}
+	}
+
+	/// Removes the node with ID `inode` from the cache.
+	pub fn node_remove(&self, inode: INode) {
+		self.nodes.lock().remove(&inode);
+	}
+
+	/// Synchronizes the whole filesystem to disk.
+	pub fn sync(&self) -> EResult<()> {
+		// Synchronize all nodes to disk
+		let nodes = self.nodes.lock();
+		for node in nodes.iter() {
+			node.0.sync(true)?;
+		}
+		// Synchronize filesystem structures
+		self.ops.sync_fs()
+	}
 }
 
 impl Drop for Filesystem {
 	fn drop(&mut self) {
-		// TODO sync filesystem
+		// TODO warning on error?
+		let _ = self.sync();
 	}
 }
 

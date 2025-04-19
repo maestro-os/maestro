@@ -60,7 +60,7 @@ use crate::{
 			FilesystemType, NodeOps, Statfs,
 		},
 		vfs,
-		vfs::node::{Node, NodeCache},
+		vfs::node::Node,
 		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
 	memory::cache::{FrameOwner, RcFrame, RcFrameVal},
@@ -203,7 +203,7 @@ impl NodeOps for Ext2NodeOps {
 		ent.node = inode_
 			.get_dirent(&ent.name, fs)?
 			.map(|(inode, ..)| -> EResult<_> {
-				fs.node_cache.get_or_insert(inode as _, || {
+				dir.fs.node_get_or_insert(inode as _, || {
 					let mut node = Node {
 						inode: inode as _,
 						fs: dir.fs.clone(),
@@ -694,9 +694,6 @@ struct Ext2Fs {
 	sp: RcFrameVal<Superblock>,
 	/// Tells whether the filesystem is mounted as read-only
 	readonly: bool,
-
-	/// The nodes cache.
-	node_cache: NodeCache,
 }
 
 impl Ext2Fs {
@@ -863,29 +860,28 @@ impl FilesystemOps for Ext2Fs {
 		})
 	}
 
-	fn root(&self, fs: Arc<Filesystem>) -> EResult<Arc<Node>> {
-		self.node_cache
-			.get_or_insert(ROOT_DIRECTORY_INODE as _, || {
-				let mut node = Node {
-					inode: ROOT_DIRECTORY_INODE as _,
-					fs,
+	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>> {
+		fs.node_get_or_insert(ROOT_DIRECTORY_INODE as _, || {
+			let mut node = Node {
+				inode: ROOT_DIRECTORY_INODE as _,
+				fs: fs.clone(),
 
-					stat: Default::default(),
-					dirty: AtomicBool::new(false),
+				stat: Default::default(),
+				dirty: AtomicBool::new(false),
 
-					node_ops: Box::new(Ext2NodeOps)?,
-					file_ops: Box::new(Ext2FileOps)?,
+				node_ops: Box::new(Ext2NodeOps)?,
+				file_ops: Box::new(Ext2FileOps)?,
 
-					lock: Default::default(),
-					mapped: Default::default(),
-				};
-				let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
-				node.stat = Mutex::new(stat);
-				Ok(Arc::new(node)?)
-			})
+				lock: Default::default(),
+				mapped: Default::default(),
+			};
+			let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
+			node.stat = Mutex::new(stat);
+			Ok(Arc::new(node)?)
+		})
 	}
 
-	fn create_node(&self, fs: Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
+	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
@@ -895,7 +891,7 @@ impl FilesystemOps for Ext2Fs {
 		// Create inode
 		let mut node = Node {
 			inode: inode_index as _,
-			fs,
+			fs: fs.clone(),
 
 			stat: Default::default(),
 			dirty: AtomicBool::new(false),
@@ -945,12 +941,8 @@ impl FilesystemOps for Ext2Fs {
 		node.stat = Mutex::new(stat);
 		// Insert in cache
 		let node = Arc::new(node)?;
-		self.node_cache.insert(node.clone())?;
+		fs.node_insert(node.clone())?;
 		Ok(node)
-	}
-
-	fn release_node(&self, inode: INode) {
-		self.node_cache.remove(inode);
 	}
 
 	fn destroy_node(&self, node: &Node) -> EResult<()> {
@@ -966,6 +958,10 @@ impl FilesystemOps for Ext2Fs {
 		// Free inode
 		self.free_inode(node.inode, inode.get_type() == FileType::Directory)?;
 		Ok(())
+	}
+
+	fn sync_fs(&self) -> EResult<()> {
+		self.dev.mapped.sync()
 	}
 }
 
@@ -1038,8 +1034,6 @@ impl FilesystemType for Ext2FsType {
 				dev,
 				sp,
 				readonly,
-
-				node_cache: Default::default(),
 			})?,
 		)?)
 	}

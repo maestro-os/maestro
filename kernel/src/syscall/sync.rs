@@ -19,7 +19,7 @@
 //! Filesystem synchronization system calls.
 
 use crate::{
-	file::{fd::FileDescriptorTable, vfs},
+	file::{fd::FileDescriptorTable, vfs, vfs::mountpoint::FILESYSTEMS},
 	memory::VirtAddr,
 	process::mem_space::MemSpace,
 	sync::mutex::{IntMutex, Mutex},
@@ -36,21 +36,25 @@ const MS_SYNC: i32 = 0b010;
 const MS_INVALIDATE: i32 = 0b100;
 
 pub fn sync() -> EResult<usize> {
-	// TODO sync all files on the VFS
+	let fs = FILESYSTEMS.lock();
+	for (_, fs) in fs.iter() {
+		// TODO warn on failure?
+		let _ = fs.sync();
+	}
 	Ok(0)
 }
 
 pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
 	let fds = fds.lock();
-	if fd < 0 {
+	if unlikely(fd < 0) {
 		return Err(errno!(EBADF));
 	}
 	let file = fds.get_fd(fd)?.get_file();
 	let Some(ent) = &file.vfs_entry else {
 		return Ok(0);
 	};
-	let _fs = &ent.node().fs;
-	// TODO sync all files on the filesystem
+	// TODO warn on failure?
+	let _ = ent.node().fs.sync();
 	Ok(0)
 }
 
