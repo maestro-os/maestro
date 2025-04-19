@@ -26,21 +26,16 @@ use crate::{
 		parser::{Class, ELFParser, ProgramHeader},
 		ET_DYN,
 	},
-	file::{perm::AccessProfile, vfs, FileType},
+	file::{vfs, File, FileType, O_RDONLY},
 	memory::{vmem, VirtAddr},
 	process,
 	process::{
 		exec::{vdso::MappedVDSO, ExecInfo, Executor, ProgramImage},
 		mem_space,
-		mem_space::{residence::MapResidence, MapConstraint, MemSpace},
+		mem_space::{MapConstraint, MemSpace, MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE},
 	},
 };
-use core::{
-	cmp::{max, min},
-	intrinsics::unlikely,
-	num::NonZeroUsize,
-	ptr,
-};
+use core::{cmp::max, intrinsics::unlikely, num::NonZeroUsize, ptr, slice};
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
@@ -235,165 +230,106 @@ fn build_auxiliary(
 	Ok(vec)
 }
 
-/// Reads the file `file`.
-///
-/// `ap` is the access profile to check permissions.
-///
-/// If the file is not executable, the function returns an error.
-fn read_exec_file(file: &vfs::Entry, ap: &AccessProfile) -> EResult<Vec<u8>> {
-	// Check that the file can be executed by the user
-	let stat = file.stat()?;
-	if unlikely(stat.get_type() != Some(FileType::Regular)) {
-		return Err(errno!(EACCES));
-	}
-	if unlikely(!ap.can_execute_file(&stat)) {
-		return Err(errno!(EACCES));
-	}
-	file.read_all()
-}
-
-/// Allocates memory in userspace for an ELF segment.
+/// Maps the segment `seg` in memory.
 ///
 /// If the segment is not loadable, the function does nothing.
 ///
 /// Arguments:
-/// - `load_base` is the address at which the executable is loaded.
-/// - `mem_space` is the memory space to allocate into.
-/// - `seg` is the segment for which the memory is allocated.
+/// - `file` is the file from which the segment is mapped
+/// - `mem_space` is the memory space to allocate into
+/// - `load_base` is the base address at which the executable is loaded
+/// - `seg` is the segment for which the memory is allocated
 ///
 /// If loaded, the function return the pointer to the end of the segment in
 /// virtual memory.
-fn alloc_segment(
-	load_base: *mut u8,
+fn map_segment(
+	file: Arc<File>,
 	mem_space: &mut MemSpace,
+	load_base: *mut u8,
 	seg: &ProgramHeader,
 ) -> EResult<Option<*mut u8>> {
-	// Load only loadable segments
-	if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
-		return Ok(None);
-	}
-	// Check the alignment is correct
-	if unlikely(!seg.p_align.is_power_of_two()) {
+	if unlikely(seg.p_memsz < seg.p_filesz) {
 		return Err(errno!(EINVAL));
 	}
-	// The size of the padding before the segment
-	let pad = seg.p_vaddr as usize % max(seg.p_align as usize, PAGE_SIZE);
-	// The pointer to the beginning of the segment in memory
-	let mem_begin = load_base.wrapping_add(seg.p_vaddr as usize - pad);
-	// The length of the memory to allocate in pages
-	let pages = (pad + seg.p_memsz as usize).div_ceil(PAGE_SIZE);
-	if let Some(pages) = NonZeroUsize::new(pages) {
+	if unlikely(seg.p_align as usize != PAGE_SIZE) {
+		return Err(errno!(EINVAL));
+	}
+	let page_start = seg.p_vaddr as usize & !(PAGE_SIZE - 1);
+	let page_off = seg.p_vaddr as usize & (PAGE_SIZE - 1);
+	let addr = load_base.wrapping_add(page_start);
+	let size = seg.p_memsz as usize + page_off;
+	let off = seg.p_offset - page_off as u64;
+	if let Some(pages) = NonZeroUsize::new(size.div_ceil(PAGE_SIZE)) {
+		let addr = VirtAddr::from(addr);
 		mem_space.map(
-			MapConstraint::Fixed(VirtAddr::from(mem_begin)),
+			MapConstraint::Fixed(addr),
 			pages,
-			seg.get_mem_space_flags(),
-			MapResidence::Normal,
+			seg.mmap_prot(),
+			MAP_PRIVATE,
+			Some(file),
+			off,
 		)?;
-		// Pre-allocate the pages to make them writable
-		mem_space.alloc(VirtAddr::from(mem_begin), pages.get() * PAGE_SIZE)?;
+		mem_space.alloc(addr, size)?;
 	}
 	// The pointer to the end of the virtual memory chunk
-	let mem_end = mem_begin.wrapping_add(pages * PAGE_SIZE);
+	let mem_end = addr.wrapping_add(size);
 	Ok(Some(mem_end))
-}
-
-/// Copies the segment's data into memory.
-///
-/// If the segment isn't loadable, the function does nothing.
-///
-/// Arguments:
-/// - `load_base` is the address at which the executable is loaded.
-/// - `seg` is the segment.
-/// - `image` is the ELF file image.
-fn copy_segment(load_base: *mut u8, seg: &ProgramHeader, image: &[u8]) {
-	// Load only loadable segments
-	if seg.p_type != elf::PT_LOAD && seg.p_type != elf::PT_PHDR {
-		return;
-	}
-	// The pointer to the beginning of the segment's data in the file
-	let file_begin = &image[seg.p_offset as usize];
-	// The pointer to the beginning of the segment in the virtual memory
-	let begin = load_base.wrapping_add(seg.p_vaddr as usize);
-	// The length of data to be copied from file
-	let len = min(seg.p_memsz, seg.p_filesz) as usize;
-	// Copy the segment's data
-	unsafe {
-		vmem::write_ro(|| vmem::smap_disable(|| ptr::copy_nonoverlapping(file_begin, begin, len)));
-	}
 }
 
 /// Loads the ELF file parsed by `elf` into the memory space `mem_space`.
 ///
 /// Arguments:
-/// - `elf` is the ELF image.
-/// - `mem_space` is the memory space.
-/// - `load_base` is the base address at which the ELF is loaded.
+/// - `file` is the file containing the ELF image
+/// - `elf` is the ELF image
+/// - `mem_space` is the memory space
+/// - `load_base` is the base address at which the ELF is loaded
 fn load_elf(
+	file: &Arc<File>,
 	elf: &ELFParser,
 	mem_space: &mut MemSpace,
 	load_base: *mut u8,
 ) -> EResult<ELFLoadInfo> {
-	// Allocate memory for segments
+	let ehdr = elf.hdr();
 	let mut load_end = load_base;
+	let mut phdr_addr = 0;
 	for seg in elf.iter_segments() {
-		if let Some(end) = alloc_segment(load_base, mem_space, &seg)? {
+		if seg.p_type != elf::PT_LOAD {
+			continue;
+		}
+		if let Some(end) = map_segment(file.clone(), mem_space, load_base, &seg)? {
 			load_end = max(end, load_end);
 		}
-	}
-	let ehdr = elf.hdr();
-	let phentsize = ehdr.e_phentsize as usize;
-	let phnum = ehdr.e_phnum as usize;
-	// The size in bytes of the phdr table
-	let phdr_size = phentsize * phnum;
-	let phdr = elf
-		.iter_segments()
-		.find(|seg| seg.p_type == elf::PT_PHDR)
-		.map(|seg| VirtAddr::from(load_base) + seg.p_vaddr as usize);
-	let (phdr, phdr_needs_copy) = match phdr {
-		Some(phdr) => (phdr, false),
-		// Not phdr segment. Load it manually
-		None => {
-			let pages = phdr_size.div_ceil(PAGE_SIZE);
-			let Some(pages) = NonZeroUsize::new(pages) else {
-				return Err(errno!(EINVAL));
-			};
-			let phdr = mem_space.map(
-				MapConstraint::None,
-				pages,
-				mem_space::MAPPING_FLAG_USER,
-				MapResidence::Normal,
-			)?;
-			(VirtAddr::from(phdr), true)
+		// If the segment contains the phdr, keep its address
+		if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
+			phdr_addr = load_base as usize + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
 		}
-	};
-	// Switch to the process's vmem to write onto the virtual memory
+	}
+	// Zero the end of segments when needed
 	unsafe {
 		vmem::switch(&mem_space.vmem, move || {
-			// Copy segments' data
-			for seg in elf.iter_segments() {
-				copy_segment(load_base, &seg, elf.as_slice());
-			}
-			// Copy phdr's data if necessary
-			if phdr_needs_copy {
-				let image_phdr = &elf.as_slice()[(ehdr.e_phoff as usize)..];
-				vmem::write_ro(|| {
-					vmem::smap_disable(|| {
-						ptr::copy_nonoverlapping::<u8>(
-							image_phdr.as_ptr(),
-							phdr.as_ptr(),
-							phdr_size,
-						);
-					});
+			vmem::write_ro(|| {
+				vmem::smap_disable(|| {
+					for seg in elf.iter_segments() {
+						if seg.p_type != elf::PT_LOAD {
+							continue;
+						}
+						if let Some(len) = seg.p_memsz.checked_sub(seg.p_filesz) {
+							let begin =
+								load_base.add(seg.p_vaddr as usize + seg.p_filesz as usize);
+							let slice = slice::from_raw_parts_mut(begin, len as usize);
+							slice.fill(0);
+						}
+					}
 				});
-			}
+			});
 		});
 	}
 	Ok(ELFLoadInfo {
 		load_end,
 
-		phdr,
-		phentsize,
-		phnum,
+		phdr: VirtAddr(phdr_addr),
+		phentsize: ehdr.e_phentsize as _,
+		phnum: ehdr.e_phnum as _,
 
 		entry_point: VirtAddr::from(load_base) + elf.hdr().e_entry as usize,
 	})
@@ -544,14 +480,30 @@ unsafe fn init_stack(
 pub struct ELFExecutor<'s>(pub ExecInfo<'s>);
 
 impl Executor for ELFExecutor<'_> {
-	// TODO Ensure there is no way to write in kernel space (check segments position
-	// and relocations)
 	// TODO Handle suid and sgid
-	fn build_image(&self, file: Arc<vfs::Entry>) -> EResult<ProgramImage> {
-		let image = read_exec_file(&file, &self.0.path_resolution.access_profile)?;
+	fn build_image(&self, ent: Arc<vfs::Entry>) -> EResult<ProgramImage> {
+		// Check that the file can be executed by the user
+		let stat = ent.stat();
+		if unlikely(stat.get_type() != Some(FileType::Regular)) {
+			return Err(errno!(EACCES));
+		}
+		if unlikely(
+			!self
+				.0
+				.path_resolution
+				.access_profile
+				.can_execute_file(&stat),
+		) {
+			return Err(errno!(EACCES));
+		}
+		// Open file
+		let file = File::open_entry(ent.clone(), O_RDONLY)?;
+		// Read and parse file
+		let image = file.read_all()?;
 		let parser = ELFParser::new(&image)?;
 		let compat = parser.class() == Class::Bit32;
-		let mut mem_space = MemSpace::new(file)?;
+		// Initialize memory space
+		let mut mem_space = MemSpace::new(ent)?;
 		let load_base = if parser.hdr().e_type == ET_DYN {
 			// TODO ASLR
 			PAGE_SIZE
@@ -559,13 +511,15 @@ impl Executor for ELFExecutor<'_> {
 			0
 		};
 		let load_base = VirtAddr(load_base).as_ptr();
-		let load_info = load_elf(&parser, &mut mem_space, load_base)?;
+		let load_info = load_elf(&file, &parser, &mut mem_space, load_base)?;
 		let user_stack = mem_space
 			.map(
 				MapConstraint::None,
 				process::USER_STACK_SIZE.try_into().unwrap(),
-				process::USER_STACK_FLAGS,
-				MapResidence::Normal,
+				PROT_READ | PROT_WRITE,
+				MAP_PRIVATE | MAP_ANONYMOUS,
+				None,
+				0,
 			)?
 			.wrapping_add(process::USER_STACK_SIZE * PAGE_SIZE);
 		let vdso = vdso::map(&mut mem_space, compat)?;

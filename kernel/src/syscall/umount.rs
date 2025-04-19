@@ -27,6 +27,7 @@ use crate::{
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::Args,
 };
+use core::ffi::c_int;
 use utils::{
 	collections::path::PathBuf,
 	errno,
@@ -34,6 +35,14 @@ use utils::{
 };
 
 pub fn umount(Args(target): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
+	umount2(Args((target, 0)), rs)
+}
+
+pub fn umount2(
+	Args((target, _flags)): Args<(SyscallString, c_int)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	// TODO handle flags
 	// Check permission
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
@@ -41,8 +50,8 @@ pub fn umount(Args(target): Args<SyscallString>, rs: ResolutionSettings) -> ERes
 	// Get target directory
 	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let target_path = PathBuf::try_from(target_slice)?;
-	let target_file = vfs::get_file_from_path(&target_path, &rs)?;
+	let target = vfs::get_file_from_path(&target_path, &rs)?;
 	// Remove mountpoint
-	mountpoint::remove(target_file)?;
+	mountpoint::remove(target)?;
 	Ok(0)
 }

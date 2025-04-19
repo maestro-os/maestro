@@ -20,7 +20,7 @@
 
 pub mod ucontext;
 
-use super::{oom, Process, State, REDZONE_SIZE};
+use super::{Process, State, REDZONE_SIZE};
 use crate::{
 	arch::x86::idt::IntFrame, file::perm::Uid, memory::VirtAddr, process::pid::Pid,
 	time::unit::ClockIdT,
@@ -373,12 +373,8 @@ impl SignalHandler {
 		};
 		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
 		let signal_sp = ctx_addr - arg_len;
-		{
-			let mut mem_space = process.mem_space.as_ref().unwrap().lock();
-			mem_space.bind();
-			// FIXME: a stack overflow would cause an infinite loop
-			oom::wrap(|| mem_space.alloc(signal_sp, arg_len));
-		}
+		// Bind virtual memory
+		process.mem_space.as_ref().unwrap().lock().bind();
 		// Write data on stack
 		if frame.is_compat() {
 			let args = unsafe {

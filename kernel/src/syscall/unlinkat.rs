@@ -51,7 +51,6 @@ pub fn do_unlinkat(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.ok_or_else(|| errno!(EFAULT))??;
-	let parent_path = pathname.parent().ok_or_else(|| errno!(ENOENT))?;
 	let rs = ResolutionSettings {
 		follow_link: false,
 		..rs
@@ -61,14 +60,13 @@ pub fn do_unlinkat(
 		&fds.lock(),
 		rs.clone(),
 		dirfd,
-		Some(parent_path),
+		Some(&pathname),
 		flags | AT_EMPTY_PATH,
 	)?;
 	let Resolved::Found(parent) = resolved else {
 		return Err(errno!(ENOENT));
 	};
-	let name = pathname.file_name().ok_or_else(|| errno!(ENOENT))?;
-	vfs::unlink(parent, name, &rs.access_profile)?;
+	vfs::unlink(&parent, &rs.access_profile)?;
 	Ok(0)
 }
 

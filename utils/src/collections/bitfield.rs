@@ -149,7 +149,7 @@ pub struct BitfieldIterator<'b> {
 	cursor: usize,
 }
 
-impl<'b> Iterator for BitfieldIterator<'b> {
+impl Iterator for BitfieldIterator<'_> {
 	type Item = bool;
 
 	fn next(&mut self) -> Option<Self::Item> {

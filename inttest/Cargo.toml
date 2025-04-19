@@ -13,3 +13,4 @@ path = "src/boot.rs"
 
 [dependencies]
 libc = "0.2.153"
+memmap2 = "0.9.5"

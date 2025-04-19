@@ -27,7 +27,8 @@ use core::{
 	hash::{Hash, Hasher},
 	intrinsics::size_of_val,
 	marker::Unsize,
-	mem::ManuallyDrop,
+	mem,
+	mem::{offset_of, ManuallyDrop},
 	ops::{CoerceUnsized, Deref, DispatchFromDyn},
 	ptr,
 	ptr::{drop_in_place, NonNull},
@@ -119,6 +120,29 @@ impl<T> Arc<T> {
 		Ok(Self {
 			inner,
 		})
+	}
+
+	/// Constructs an `Arc<T>` from a raw pointer.
+	///
+	/// # Safety
+	///
+	/// The raw pointer must have been previously returned by a call to [`Arc<T>::into_raw`]. Else,
+	/// the behaviour is undefined.
+	pub unsafe fn from_raw(ptr: *const T) -> Arc<T> {
+		let off = offset_of!(ArcInner<T>, obj);
+		Arc {
+			inner: unsafe { NonNull::new_unchecked(ptr.byte_sub(off) as *mut ArcInner<T>) },
+		}
+	}
+
+	/// Consumes the `Arc`, returning the wrapped pointer.
+	///
+	/// To avoid a memory leak, the pointer must be converted back to an `Arc` using
+	/// [`Arc::from_raw`].
+	pub fn into_raw(this: Arc<T>) -> *const T {
+		let ptr = this.as_ref() as *const T;
+		mem::forget(this);
+		ptr
 	}
 
 	/// Returns the inner value of the `Arc` if this is the last reference to it.

@@ -20,10 +20,14 @@
 
 #![feature(io_error_more)]
 
-use crate::util::TestResult;
-use std::process::exit;
+use crate::{
+	mount::{mount, umount},
+	util::TestResult,
+};
+use std::{path::Path, process::exit};
 
 mod filesystem;
+mod mount;
 mod procfs;
 mod signal;
 mod util;
@@ -45,60 +49,94 @@ struct Test {
 	start: fn() -> TestResult,
 }
 
+macro_rules! fs_suite {
+	($root:literal) => {
+		TestSuite {
+			name: "filesystem",
+			desc: concat!("Files and filesystem handling (", $root, ")"),
+			tests: &[
+				Test {
+					name: "persistence",
+					desc: "Leave a file which will be accessed from the outside to check writeback to disk works",
+					start: || filesystem::persistence(Path::new($root)),
+				},
+				Test {
+					name: "basic",
+					desc: "Create, remove and modify the properties of a single file",
+					start: || filesystem::basic(Path::new($root)),
+				},
+				Test {
+					name: "mmap",
+					desc: "Map a file",
+					start: || filesystem::mmap(Path::new($root)),
+				},
+				// TODO private mapped file
+				// TODO umask
+				Test {
+					name: "directories",
+					desc: "Create, remove and modify the properties directories",
+					start: || filesystem::directories(Path::new($root)),
+				},
+				Test {
+					name: "dir_perms",
+					desc: "Test directory permissions",
+					start: || filesystem::dir_perms(Path::new($root)),
+				},
+				Test {
+					name: "hardlinks",
+					desc: "Test hard links",
+					start: || filesystem::hardlinks(Path::new($root)),
+				},
+				Test {
+					name: "symlinks",
+					desc: "Test symbolic links",
+					start: || filesystem::symlinks(Path::new($root)),
+				},
+				// TODO test with a lot of files
+				// TODO test with big files
+				// TODO try to fill the filesystem
+				// FIXME
+				Test {
+					name: "rename",
+					desc: "Test renaming files",
+					start: || filesystem::rename(Path::new($root)),
+				},
+				Test {
+					name: "fifo",
+					desc: "Test FIFO files",
+					start: || filesystem::fifo(Path::new($root)),
+				},
+				// TODO file socket
+				// TODO check /dev/* contents
+			],
+		}
+	};
+}
+
 /// The list of tests to perform.
 const TESTS: &[TestSuite] = &[
 	// TODO test partitions (both MBR and GPT)
 	TestSuite {
-		name: "filesystem",
-		desc: "Files and filesystems handling",
+		name: "mount",
+		desc: "Filesystem mount",
 		tests: &[
 			Test {
-				name: "basic",
-				desc: "Create, remove and modify the properties of a single file",
-				start: filesystem::basic,
-			},
-			// TODO umask
-			Test {
-				name: "directories",
-				desc: "Create, remove and modify the properties directories",
-				start: filesystem::directories,
+				name: "procfs",
+				desc: "Mount procfs",
+				start: || mount("procfs", "/proc", "procfs"),
 			},
 			Test {
-				name: "dir_perms",
-				desc: "Test directory permissions",
-				start: filesystem::dir_perms,
+				name: "tmpfs",
+				desc: "Mount tmpfs",
+				start: || mount("tmpfs", "/tmp", "tmpfs"),
 			},
-			Test {
-				name: "hardlinks",
-				desc: "Test hard links",
-				start: filesystem::hardlinks,
-			},
-			Test {
-				name: "symlinks",
-				desc: "Test symbolic links",
-				start: filesystem::symlinks,
-			},
-			// TODO test with a lot of files
-			// TODO test with big files
-			// TODO try to fill the filesystem
-			// TODO mount/umount (procfs and tmpfs. check /proc/mounts too)
-			// TODO mount/umount another real filesystem
-			// FIXME
-			/*Test {
-				name: "rename",
-				desc: "Test renaming files",
-				start: filesystem::rename,
-			},*/
-			Test {
-				name: "fifo",
-				desc: "Test FIFO files",
-				start: filesystem::fifo,
-			},
-			// TODO file socket (including in tmpfs)
-			// TODO check /dev/* contents
+			// TODO other filesystem types
 		],
 	},
 	// TODO fork/clone (threads)
+	// TODO anonymous map (both shared and private)
+	fs_suite!("/"),
+	fs_suite!("/tmp"),
 	TestSuite {
 		name: "signal",
 		desc: "Test signals",
@@ -113,7 +151,6 @@ const TESTS: &[TestSuite] = &[
 	},
 	// TODO ELF files (execve)
 	// TODO user/group file accesses (including SUID/SGID)
-	// TODO mmap/munmap (including shared libraries)
 	// TODO time ((non-)monotonic clock, sleep and timer_*)
 	// TODO termcaps
 	// TODO SSE/MMX/AVX states consistency
@@ -122,21 +159,15 @@ const TESTS: &[TestSuite] = &[
 		desc: "Test correctness of the procfs filesystem",
 		tests: &[
 			Test {
-				name: "mount",
-				desc: "Mount the procfs",
-				start: procfs::mount,
-			},
-			Test {
 				name: "/proc/self/cwd",
 				desc: "/proc/self/cwd",
 				start: procfs::cwd,
 			},
-			// TODO: not yet implemented
-			/*Test {
+			Test {
 				name: "/proc/self/exe",
 				desc: "/proc/self/exe",
 				start: procfs::exe,
-			},*/
+			},
 			Test {
 				name: "/proc/self/cmdline",
 				desc: "/proc/self/cmdline",
@@ -174,6 +205,22 @@ const TESTS: &[TestSuite] = &[
 	// TODO scripts (Shell/Perl)
 	// TODO compilation (C/C++/Rust)
 	// TODO network
+	TestSuite {
+		name: "Unmount",
+		desc: "Unmount filesystems",
+		tests: &[
+			Test {
+				name: "procfs",
+				desc: "Unmount procfs",
+				start: || umount("/proc"),
+			},
+			Test {
+				name: "tmpfs",
+				desc: "Unmount tmpfs",
+				start: || umount("/tmp"),
+			},
+		],
+	},
 ];
 
 fn main() {

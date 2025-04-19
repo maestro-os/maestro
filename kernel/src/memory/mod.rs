@@ -37,9 +37,11 @@ use core::{
 
 pub mod alloc;
 pub mod buddy;
+pub mod cache;
 pub mod malloc;
 pub mod memmap;
 pub mod mmio;
+pub mod oom;
 pub mod stats;
 #[cfg(feature = "memtrace")]
 mod trace;

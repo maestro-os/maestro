@@ -20,7 +20,7 @@
 //! communicate with it.
 
 use crate::{
-	device::DeviceIO,
+	file::{fs::FileOps, File},
 	process::{
 		mem_space::copy::SyscallPtr,
 		pid::Pid,
@@ -34,10 +34,11 @@ use crate::{
 	},
 	tty::{termios, termios::Termios, TTYDisplay, WinSize, TTY},
 };
-use core::{ffi::c_void, num::NonZeroU64};
+use core::ffi::c_void;
 use utils::{errno, errno::EResult};
 
 /// A TTY device's handle.
+#[derive(Debug)]
 pub struct TTYDeviceHandle;
 
 impl TTYDeviceHandle {
@@ -96,42 +97,26 @@ impl TTYDeviceHandle {
 	}
 }
 
-impl DeviceIO for TTYDeviceHandle {
-	fn block_size(&self) -> NonZeroU64 {
-		1.try_into().unwrap()
-	}
-
-	fn blocks_count(&self) -> u64 {
-		0
-	}
-
-	fn read(&self, _off: u64, buff: &mut [u8]) -> EResult<usize> {
+impl FileOps for TTYDeviceHandle {
+	fn read(&self, _file: &File, _off: u64, buf: &mut [u8]) -> EResult<usize> {
 		self.check_sigttin(&TTY.display.lock())?;
-		let len = TTY.read(buff)?;
+		let len = TTY.read(buf)?;
 		Ok(len)
 	}
 
-	fn write(&self, _off: u64, buff: &[u8]) -> EResult<usize> {
+	fn write(&self, _file: &File, _off: u64, buf: &[u8]) -> EResult<usize> {
 		self.check_sigttou(&TTY.display.lock())?;
-		TTY.display.lock().write(buff);
-		Ok(buff.len())
+		TTY.display.lock().write(buf);
+		Ok(buf.len())
 	}
 
-	fn read_bytes(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		self.read(off, buf)
-	}
-
-	fn write_bytes(&self, off: u64, buf: &[u8]) -> EResult<usize> {
-		self.write(off, buf)
-	}
-
-	fn poll(&self, mask: u32) -> EResult<u32> {
+	fn poll(&self, _file: &File, mask: u32) -> EResult<u32> {
 		let input = TTY.has_input_available();
 		let res = (if input { POLLIN } else { 0 } | POLLOUT) & mask;
 		Ok(res)
 	}
 
-	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+	fn ioctl(&self, _file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let mut tty = TTY.display.lock();
 		match request.get_old_format() {
 			ioctl::TCGETS => {

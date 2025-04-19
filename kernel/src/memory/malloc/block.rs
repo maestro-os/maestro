@@ -53,7 +53,7 @@ impl Block {
 		debug_assert!(first_chunk_size >= min_size.get());
 		// Allocate the block
 		let block = unsafe {
-			let mut ptr = buddy::alloc_kernel(block_order)?.cast();
+			let mut ptr = buddy::alloc_kernel(block_order, 0)?.cast();
 			ptr::write_volatile(
 				ptr.as_mut(),
 				Self {

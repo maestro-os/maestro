@@ -9,3 +9,4 @@ macros = { path = "../macros" }
 [features]
 default = []
 std = []
+healthcheck = []

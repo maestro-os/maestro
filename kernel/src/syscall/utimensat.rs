@@ -23,6 +23,7 @@ use crate::{
 	file::{
 		fd::FileDescriptorTable,
 		fs::StatSet,
+		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{
@@ -76,9 +77,9 @@ pub fn utimensat(
 		return Err(errno!(ENOENT));
 	};
 	// Update timestamps
-	file.node().ops.set_stat(
-		&file.node().location,
-		StatSet {
+	vfs::set_stat(
+		file.node(),
+		&StatSet {
 			atime: Some(atime.to_nano() / 1000000000),
 			mtime: Some(mtime.to_nano() / 1000000000),
 			..Default::default()

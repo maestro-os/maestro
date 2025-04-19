@@ -25,7 +25,6 @@
 pub mod kernel;
 pub mod parser;
 
-use crate::process::mem_space;
 use macros::AnyRepr;
 use utils::{errno, errno::EResult};
 

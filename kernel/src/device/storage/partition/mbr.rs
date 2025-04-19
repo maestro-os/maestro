@@ -23,9 +23,14 @@
 //! alongside with the boot code.
 
 use super::{Partition, Table};
-use crate::device::DeviceIO;
+use crate::{device::BlkDev, memory::cache::FrameOwner};
+use core::intrinsics::unlikely;
 use macros::AnyRepr;
-use utils::{bytes::from_bytes, collections::vec::Vec, errno::EResult, vec};
+use utils::{
+	collections::vec::Vec,
+	errno::{CollectResult, EResult},
+	ptr::arc::Arc,
+};
 
 /// The signature of the MBR partition table.
 const MBR_SIGNATURE: u16 = 0xaa55;
@@ -77,36 +82,30 @@ impl Clone for MbrTable {
 }
 
 impl Table for MbrTable {
-	fn read(storage: &dyn DeviceIO) -> EResult<Option<Self>> {
-		// Read first sector
-		let blk_size = storage.block_size().get();
-		let len = 512usize.next_multiple_of(blk_size as usize);
-		let mut buf = vec![0u8; len]?;
-		storage.read(0, &mut buf)?;
-		let mbr_table: &MbrTable = from_bytes(&buf).unwrap();
-		if mbr_table.signature != MBR_SIGNATURE {
+	fn read(dev: &Arc<BlkDev>) -> EResult<Option<Self>> {
+		let page = BlkDev::read_frame(dev, 0, 0, FrameOwner::BlkDev(dev.clone()))?;
+		let table = &page.slice::<Self>()[0];
+		if unlikely(table.signature != MBR_SIGNATURE) {
 			return Ok(None);
 		}
-		Ok(Some(mbr_table.clone()))
+		Ok(Some(table.clone()))
 	}
 
 	fn get_type(&self) -> &'static str {
 		"MBR"
 	}
 
-	fn get_partitions(&self, _: &dyn DeviceIO) -> EResult<Vec<Partition>> {
-		let mut partitions = Vec::<Partition>::new();
-
-		for mbr_partition in self.partitions.iter() {
-			if mbr_partition.partition_type != 0 {
-				let partition = Partition {
-					offset: mbr_partition.lba_start as _,
-					size: mbr_partition.sectors_count as _,
-				};
-				partitions.push(partition)?;
-			}
-		}
-
+	fn read_partitions(&self, _: &Arc<BlkDev>) -> EResult<Vec<Partition>> {
+		let partitions = self
+			.partitions
+			.iter()
+			.filter(|p| p.partition_type != 0)
+			.map(|p| Partition {
+				offset: p.lba_start as _,
+				size: p.sectors_count as _,
+			})
+			.collect::<CollectResult<_>>()
+			.0?;
 		Ok(partitions)
 	}
 }

@@ -20,7 +20,10 @@
 //! status code.
 
 use super::Args;
-use crate::process::{scheduler, scheduler::Scheduler, Process};
+use crate::{
+	arch::x86::cli,
+	process::{scheduler, scheduler::Scheduler, Process},
+};
 use core::ffi::c_int;
 use utils::errno::EResult;
 
@@ -31,6 +34,9 @@ use utils::errno::EResult;
 /// - `thread_group`: if `true`, the function exits the whole process group.
 /// - `proc` is the current process.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
+	// Disable interruptions to prevent execution from being stopped before the reference to
+	// `Process` is dropped
+	cli();
 	{
 		let proc = Process::current();
 		proc.exit(status);

@@ -20,7 +20,7 @@
 
 use crate::{
 	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, tss},
-	memory::vmem,
+	memory::vmem::KERNEL_VMEM,
 	process::Process,
 };
 use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
@@ -208,7 +208,7 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	match next.mem_space.as_ref() {
 		Some(mem_space) => mem_space.lock().bind(),
 		// No associated memory context: bind the kernel's
-		None => vmem::kernel().lock().bind(),
+		None => KERNEL_VMEM.lock().bind(),
 	}
 	// Update the TSS for the process
 	unsafe {
@@ -229,10 +229,12 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	fxrstor(&next.fpu.lock());
 }
 
-/// Initialization frame for the idle task.
+/// The entry point of a kernel thread.
+pub type KThreadEntry = fn() -> !;
+
 #[cfg(target_arch = "x86")]
 #[repr(C, packed)]
-struct IdleInit {
+struct KThreadInit {
 	/// Padding for unused registers pop.
 	pad: [u8; 16],
 	/// Program counter.
@@ -243,32 +245,32 @@ struct IdleInit {
 
 #[cfg(target_arch = "x86_64")]
 #[repr(C, packed)]
-struct IdleInit {
+struct KThreadInit {
 	/// Padding for unused registers pop.
 	pad: [u8; 48],
 	/// Program counter.
 	rip: u64,
 }
 
-/// Writes an initialization frame for the idle task on `stack`.
+/// Writes an initialization frame for a kernel thread on `stack`.
 ///
 /// The function returns the new stack pointer with the frame on top.
 ///
 /// # Safety
 ///
 /// `stack` must be the top of a valid stack.
-pub unsafe fn init_idle(stack: NonNull<u8>) -> *mut u8 {
+pub unsafe fn init_kthread(stack: NonNull<u8>, entry: KThreadEntry) -> *mut u8 {
 	#[cfg(target_arch = "x86")]
-	let frame = IdleInit {
+	let frame = KThreadInit {
 		pad: [0; 16],
-		rip: idle_task as _,
+		rip: entry as *const u8 as _,
 		// this will get written on by the function `stack`
 		args: [0; 2],
 	};
 	#[cfg(target_arch = "x86_64")]
-	let frame = IdleInit {
+	let frame = KThreadInit {
 		pad: [0; 48],
-		rip: idle_task as *const u8 as _,
+		rip: entry as *const u8 as _,
 	};
 	let stack = stack.cast().sub(1);
 	stack.write(frame);

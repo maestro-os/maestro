@@ -51,9 +51,9 @@ pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() }
 /// Initializes schedulers.
 pub fn init() -> AllocResult<()> {
 	unsafe {
-		SCHEDULER.init(IntMutex::new(Scheduler::new()?));
+		OnceInit::init(&SCHEDULER, IntMutex::new(Scheduler::new()?));
 	}
-	SCHEDULER.get().lock().setup_gs_base();
+	SCHEDULER.lock().setup_gs_base();
 	Ok(())
 }
 
@@ -172,25 +172,24 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<Process>> {
-		if process.get_state() == State::Running {
+	pub fn add_process(&mut self, proc: Arc<Process>) -> AllocResult<()> {
+		if proc.get_state() == State::Running {
 			self.increment_running();
 		}
-		let pid = process.pid.get();
-		let ptr = Arc::new(process)?;
-		self.processes.insert(pid, ptr.clone())?;
-		Ok(ptr)
+		self.processes.insert(*proc.pid, proc)?;
+		Ok(())
 	}
 
 	/// Removes the process with the given pid `pid`.
+	///
+	/// If the process is not attached to this scheduler, the function does nothing.
 	pub fn remove_process(&mut self, pid: Pid) {
-		let Some(proc) = self.get_by_pid(pid) else {
-			return;
-		};
-		if proc.get_state() == State::Running {
-			self.decrement_running();
+		let proc = self.processes.remove(&pid);
+		if let Some(proc) = proc {
+			if proc.get_state() == State::Running {
+				self.decrement_running();
+			}
 		}
-		self.processes.remove(&pid);
 	}
 
 	/// Returns the current ticking frequency of the scheduler.
@@ -249,10 +248,12 @@ impl Scheduler {
 		// Disable interrupts so that no interrupt can occur before switching to the next process
 		cli();
 		let (prev, next) = {
-			let mut sched = SCHEDULER.get().lock();
+			let mut sched = SCHEDULER.lock();
 			sched.total_ticks.fetch_add(1, atomic::Ordering::Relaxed);
 			// Find the next process to run
-			let next = sched.get_next_process().unwrap_or(sched.idle_task.clone());
+			let next = sched
+				.get_next_process()
+				.unwrap_or_else(|| sched.idle_task.clone());
 			// If the process to run is the current, do nothing
 			if next.get_pid() == sched.curr_proc.get_pid() {
 				return;

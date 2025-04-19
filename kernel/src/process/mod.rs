@@ -24,7 +24,6 @@
 
 pub mod exec;
 pub mod mem_space;
-pub mod oom;
 pub mod pid;
 pub mod rusage;
 pub mod scheduler;
@@ -32,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{gdt, idt, idt::IntFrame, tss, FxState},
+	arch::x86::{cli, gdt, idt, idt::IntFrame, tss, FxState},
 	event,
 	event::CallbackResult,
 	file,
@@ -43,12 +42,16 @@ use crate::{
 		vfs::ResolutionSettings,
 		File, O_RDWR,
 	},
-	memory::{buddy, buddy::FrameOrder, VirtAddr},
+	memory::{buddy, buddy::FrameOrder, oom, VirtAddr},
 	process::{
-		mem_space::{copy, copy::SyscallPtr, MAPPING_FLAG_USER, MAPPING_FLAG_WRITE},
+		mem_space::{copy, copy::SyscallPtr},
 		pid::{PidHandle, IDLE_PID, INIT_PID},
 		rusage::Rusage,
-		scheduler::{switch, Scheduler, SCHEDULER},
+		scheduler::{
+			switch,
+			switch::{idle_task, KThreadEntry},
+			Scheduler, SCHEDULER,
+		},
 		signal::SigSet,
 	},
 	register_get,
@@ -94,8 +97,6 @@ const DEFAULT_UMASK: file::Mode = 0o022;
 
 /// The size of the userspace stack of a process in number of pages.
 const USER_STACK_SIZE: usize = 2048;
-/// The flags for the userspace stack mapping.
-const USER_STACK_FLAGS: u8 = MAPPING_FLAG_WRITE | MAPPING_FLAG_USER;
 /// The size of the kernelspace stack of a process in number of pages.
 const KERNEL_STACK_ORDER: FrameOrder = 4;
 
@@ -188,7 +189,7 @@ struct KernelStack(NonNull<u8>);
 impl KernelStack {
 	/// Allocates a new stack.
 	pub fn new() -> AllocResult<Self> {
-		buddy::alloc_kernel(KERNEL_STACK_ORDER).map(Self)
+		buddy::alloc_kernel(KERNEL_STACK_ORDER, 0).map(Self)
 	}
 
 	/// Returns a pointer to the top of the stack.
@@ -397,29 +398,27 @@ pub(crate) fn init() -> EResult<()> {
 		let pc = frame.get_program_counter();
 		// Get current process
 		let proc = Process::current();
-		if unlikely(proc.is_idle_task()) {
+		let Some(mem_space) = proc.mem_space.as_ref() else {
 			return CallbackResult::Panic;
-		}
-		// Check access
-		let success = {
-			let Some(mem_space_mutex) = proc.mem_space.as_ref() else {
-				return CallbackResult::Panic;
-			};
-			let mut mem_space = mem_space_mutex.lock();
-			mem_space.handle_page_fault(accessed_addr, code)
 		};
-		if !success {
-			if ring < 3 {
-				// Check if the fault was caused by a user <-> kernel copy
-				if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
-					// Jump to `copy_fault`
-					frame.set_program_counter(copy::copy_fault as usize);
+		// Check access
+		let sig = mem_space.lock().handle_page_fault(accessed_addr, code);
+		match sig {
+			Ok(true) => {}
+			Ok(false) => {
+				if ring < 3 {
+					// Check if the fault was caused by a user <-> kernel copy
+					if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
+						// Jump to `copy_fault`
+						frame.set_program_counter(copy::copy_fault as usize);
+					} else {
+						return CallbackResult::Panic;
+					}
 				} else {
-					return CallbackResult::Panic;
+					proc.kill(Signal::SIGSEGV);
 				}
-			} else {
-				proc.kill(Signal::SIGSEGV);
 			}
+			Err(_) => proc.kill(Signal::SIGBUS),
 		}
 		CallbackResult::Continue
 	};
@@ -439,31 +438,42 @@ impl Process {
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.get().lock().get_by_pid(pid)
+		SCHEDULER.lock().get_by_pid(pid)
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(tid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.get().lock().get_by_tid(tid)
+		SCHEDULER.lock().get_by_tid(tid)
 	}
 
 	/// Returns the current running process.
 	pub fn current() -> Arc<Self> {
-		SCHEDULER.get().lock().get_current_process()
+		SCHEDULER.lock().get_current_process()
 	}
 
-	/// Creates an idle task.
+	/// Creates a kernel thread.
 	///
-	/// The idle task is a special process, running in kernelspace, used by the scheduler when no
-	/// task is ready to run.
-	pub fn idle_task() -> AllocResult<Arc<Self>> {
+	/// Arguments:
+	/// - `pid` is the PID to use. If `None`, an available PID is allocated
+	/// - `queue` tells whether the thread shall be added to the scheduler's queue
+	/// - `entry` is entry point of the newly created thread
+	pub fn new_kthread(
+		pid: Option<Pid>,
+		entry: KThreadEntry,
+		queue: bool,
+	) -> AllocResult<Arc<Self>> {
+		let pid = match pid {
+			Some(pid) => PidHandle::mark_used(pid)?,
+			None => PidHandle::unique()?,
+		};
+		let tid = *pid;
 		let kernel_stack = KernelStack::new()?;
-		let kernel_sp = unsafe { switch::init_idle(kernel_stack.top()) };
-		Arc::new(Self {
-			pid: PidHandle::default(),
-			tid: 0,
+		let kernel_sp = unsafe { switch::init_kthread(kernel_stack.top(), entry) };
+		let thread = Arc::new(Self {
+			pid,
+			tid,
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
@@ -479,15 +489,28 @@ impl Process {
 			fs: Mutex::new(ProcessFs {
 				access_profile: AccessProfile::KERNEL,
 				umask: Default::default(),
-				cwd: vfs::root(),
-				chroot: vfs::root(),
+				cwd: vfs::ROOT.clone(),
+				chroot: vfs::ROOT.clone(),
 			}),
 			file_descriptors: Default::default(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
 			signal: Mutex::new(ProcessSignal::new()?),
 
 			rusage: Default::default(),
-		})
+		})?;
+		if queue {
+			SCHEDULER.lock().add_process(thread.clone())?;
+		}
+		Ok(thread)
+	}
+
+	/// Creates an idle task.
+	///
+	/// The idle task is a special process, running in kernelspace, used by the scheduler when no
+	/// task is ready to run.
+	#[inline]
+	pub(crate) fn idle_task() -> AllocResult<Arc<Self>> {
+		Self::new_kthread(Some(0), || unsafe { idle_task() }, false)
 	}
 
 	/// Creates the init process and places it into the scheduler's queue.
@@ -499,8 +522,8 @@ impl Process {
 		let file_descriptors = {
 			let mut fds_table = FileDescriptorTable::default();
 			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_file = vfs::get_file_from_path(&tty_path, &rs)?;
-			let tty_file = File::open_entry(tty_file, O_RDWR)?;
+			let tty_ent = vfs::get_file_from_path(&tty_path, &rs)?;
+			let tty_file = File::open_entry(tty_ent, O_RDWR)?;
 			let (stdin_fd_id, _) = fds_table.create_fd(0, tty_file)?;
 			assert_eq!(stdin_fd_id, STDIN_FILENO);
 			fds_table.duplicate_fd(
@@ -516,9 +539,8 @@ impl Process {
 			fds_table
 		};
 		let root_dir = vfs::get_file_from_path(Path::root(), &rs)?;
-		let pid = PidHandle::init()?;
-		let process = Self {
-			pid,
+		let proc = Arc::new(Self {
+			pid: PidHandle::mark_used(INIT_PID)?,
 			tid: INIT_PID,
 
 			state: AtomicU8::new(State::Running as _),
@@ -549,25 +571,26 @@ impl Process {
 			}),
 
 			rusage: Default::default(),
-		};
-		Ok(SCHEDULER.get().lock().add_process(process)?)
+		})?;
+		SCHEDULER.lock().add_process(proc.clone())?;
+		Ok(proc)
 	}
 
 	/// Returns the process's ID.
 	#[inline]
 	pub fn get_pid(&self) -> Pid {
-		self.pid.get()
+		*self.pid
 	}
 
 	/// Tells whether the process is an idle task.
 	pub fn is_idle_task(&self) -> bool {
-		self.pid.get() == IDLE_PID
+		*self.pid == IDLE_PID
 	}
 
 	/// Tells whether the process is the init process.
 	#[inline(always)]
 	pub fn is_init(&self) -> bool {
-		self.pid.get() == INIT_PID
+		*self.pid == INIT_PID
 	}
 
 	/// Returns the process group ID.
@@ -680,9 +703,9 @@ impl Process {
 			);
 			// Update the number of running processes
 			if new_state == State::Running {
-				SCHEDULER.get().lock().increment_running();
+				SCHEDULER.lock().increment_running();
 			} else if old_state == State::Running {
-				SCHEDULER.get().lock().decrement_running();
+				SCHEDULER.lock().decrement_running();
 			}
 			if new_state == State::Zombie {
 				if self.is_init() {
@@ -699,7 +722,7 @@ impl Process {
 				let children = mem::take(&mut self.links.lock().children);
 				for child_pid in children {
 					// Check just in case
-					if child_pid == self.pid.get() {
+					if child_pid == *self.pid {
 						continue;
 					}
 					if let Some(child) = Process::get_by_pid(child_pid) {
@@ -735,7 +758,7 @@ impl Process {
 		);
 		// Update the number of running processes
 		if res.is_ok() {
-			SCHEDULER.get().lock().increment_running();
+			SCHEDULER.lock().increment_running();
 		}
 	}
 
@@ -782,7 +805,7 @@ impl Process {
 	pub fn fork(this: Arc<Self>, fork_options: ForkOptions) -> EResult<Arc<Self>> {
 		debug_assert!(matches!(this.get_state(), State::Running));
 		let pid = PidHandle::unique()?;
-		let pid_int = pid.get();
+		let pid_int = *pid;
 		// Clone memory space
 		let mem_space = {
 			let curr_mem_space = this.mem_space.as_ref().unwrap();
@@ -815,7 +838,7 @@ impl Process {
 				Arc::new(Mutex::new(handlers))?
 			}
 		};
-		let process = Self {
+		let proc = Arc::new(Self {
 			pid,
 			tid: pid_int,
 
@@ -847,9 +870,10 @@ impl Process {
 			}),
 
 			rusage: Mutex::new(Rusage::default()),
-		};
+		})?;
 		this.add_child(pid_int)?;
-		Ok(SCHEDULER.get().lock().add_process(process)?)
+		SCHEDULER.lock().add_process(proc.clone())?;
+		Ok(proc)
 	}
 
 	/// Kills the process with the given signal `sig`.
@@ -892,7 +916,7 @@ impl Process {
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] exited with status `{status}`",
-			pid = self.pid.get()
+			pid = *self.pid
 		);
 		self.signal.lock().exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
@@ -901,9 +925,7 @@ impl Process {
 
 impl fmt::Debug for Process {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Process")
-			.field("pid", &self.pid.get())
-			.finish()
+		f.debug_struct("Process").field("pid", &self.pid).finish()
 	}
 }
 
@@ -933,6 +955,9 @@ impl Drop for Process {
 
 /// Returns `true` if the execution shall continue. Else, the execution shall be paused.
 fn yield_current_impl(frame: &mut IntFrame) -> bool {
+	// Disable interruptions to prevent execution from being stopped before the reference to
+	// `Process` is dropped
+	cli();
 	// If the process is not running anymore, stop execution
 	let proc = Process::current();
 	if proc.get_state() != State::Running {
@@ -963,6 +988,8 @@ fn yield_current_impl(frame: &mut IntFrame) -> bool {
 /// The execution flow can be altered by:
 /// - The process is no longer in [`State::Running`] state
 /// - A signal handler has to be executed
+///
+/// This function disables interruptions.
 ///
 /// This function never returns in case the process state turns to [`State::Zombie`].
 pub fn yield_current(ring: u8, frame: &mut IntFrame) {

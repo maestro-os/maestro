@@ -36,6 +36,7 @@
 #![feature(debug_closure_helpers)]
 #![feature(lang_items)]
 #![feature(negative_impls)]
+#![feature(offset_of_enum)]
 #![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
@@ -82,7 +83,7 @@ use crate::{
 	arch::x86::{enable_sse, has_sse, idt, idt::IntFrame},
 	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
-	memory::vmem,
+	memory::{cache, vmem},
 	process::{
 		exec,
 		exec::{exec, ExecInfo},
@@ -116,14 +117,14 @@ pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 /// `init_path` is the path to the init program.
 ///
 /// On success, the function does not return.
-fn init(init_path: String) -> EResult<()> {
+fn init(init_path: String) -> EResult<IntFrame> {
 	let mut frame = IntFrame::default();
 	{
 		let path = Path::new(&init_path)?;
 		let rs = ResolutionSettings::kernel_follow();
-		let file = vfs::get_file_from_path(path, &rs)?;
+		let ent = vfs::get_file_from_path(path, &rs)?;
 		let program_image = exec::build_image(
-			file,
+			ent,
 			ExecInfo {
 				path_resolution: &rs,
 				argv: vec![init_path]?,
@@ -136,11 +137,9 @@ fn init(init_path: String) -> EResult<()> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
-		SCHEDULER.get().lock().swap_current_process(proc);
+		SCHEDULER.lock().swap_current_process(proc);
 	}
-	unsafe {
-		switch::init_ctx(&frame);
-	}
+	Ok(frame)
 }
 
 /// An inner function is required to ensure everything in scope is dropped before idle.
@@ -169,8 +168,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	#[cfg(debug_assertions)]
 	memory::memmap::print_entries();
 	memory::alloc::init();
-	vmem::init()
-		.unwrap_or_else(|_| panic!("Cannot initialize kernel virtual memory! (out of memory)"));
+	vmem::init();
 
 	// From now on, the kernel considers that memory management has been fully
 	// initialized
@@ -203,10 +201,6 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Initializing time management...");
 	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));
 
-	// FIXME
-	/*println!("Initializing ramdisks...");
-	device::storage::ramdisk::create()
-		.unwrap_or_else(|e| kernel_panic!("Failed to create ramdisks! ({})", e));*/
 	println!("Initializing devices management...");
 	device::init().unwrap_or_else(|e| panic!("Failed to initialize devices management! ({e})"));
 	net::osi::init().unwrap_or_else(|e| panic!("Failed to initialize network! ({e})"));
@@ -229,7 +223,15 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
-	init(init_path).unwrap_or_else(|e| panic!("Cannot execute init process: {e}"));
+	let init_frame =
+		init(init_path).unwrap_or_else(|e| panic!("Cannot execute init process: {e}"));
+
+	Process::new_kthread(None, cache::flush_task, true)
+		.unwrap_or_else(|e| panic!("Cannot launch the cache flush task: {e}"));
+
+	unsafe {
+		switch::init_ctx(&init_frame);
+	}
 }
 
 /// This is the main function of the Rust source code, responsible for the

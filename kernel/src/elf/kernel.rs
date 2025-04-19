@@ -21,7 +21,7 @@
 use super::SHT_SYMTAB;
 use crate::{
 	memory::{PhysAddr, VirtAddr},
-	multiboot,
+	multiboot::BOOT_INFO,
 	sync::once::OnceInit,
 };
 use utils::{
@@ -50,19 +50,17 @@ static SYMBOLS: OnceInit<HashMap<&'static [u8], KernSym>> = unsafe { OnceInit::n
 
 /// Returns an iterator over the kernel's ELF sections.
 pub fn sections() -> impl Iterator<Item = &'static KernSectionHeader> {
-	let boot_info = multiboot::get_boot_info();
-	(0..boot_info.elf_num).map(|i| get_section_by_offset(i).unwrap())
+	(0..BOOT_INFO.elf_num).map(|i| get_section_by_offset(i).unwrap())
 }
 
 /// Returns a reference to the `n`th kernel section.
 ///
 /// If the section does not exist, the function returns `None`.
 pub fn get_section_by_offset(n: u32) -> Option<&'static KernSectionHeader> {
-	let boot_info = multiboot::get_boot_info();
-	if n < boot_info.elf_num {
-		let offset = n as usize * boot_info.elf_entsize as usize;
+	if n < BOOT_INFO.elf_num {
+		let offset = n as usize * BOOT_INFO.elf_entsize as usize;
 		let section = unsafe {
-			let elf_sections = boot_info.elf_sections.kernel_to_virtual().unwrap();
+			let elf_sections = BOOT_INFO.elf_sections.kernel_to_virtual().unwrap();
 			&*(elf_sections + offset).as_ptr()
 		};
 		Some(section)
@@ -75,9 +73,8 @@ pub fn get_section_by_offset(n: u32) -> Option<&'static KernSectionHeader> {
 ///
 /// If the name of the symbol could not be found, the function returns `None`.
 pub fn get_section_name(section: &KernSectionHeader) -> Option<&'static [u8]> {
-	let boot_info = multiboot::get_boot_info();
 	// `unwrap` cannot fail because the ELF will always have this section
-	let names_section = get_section_by_offset(boot_info.elf_shndx).unwrap();
+	let names_section = get_section_by_offset(BOOT_INFO.elf_shndx).unwrap();
 	let ptr = PhysAddr(names_section.sh_addr as usize + section.sh_name as usize)
 		.kernel_to_virtual()
 		.unwrap()
@@ -115,7 +112,7 @@ pub fn symbols() -> impl Iterator<Item = &'static KernSym> {
 ///
 /// If the name of the symbol could not be found, the function returns `None`.
 pub fn get_symbol_name(symbol: &KernSym) -> Option<&'static [u8]> {
-	let ptr = PhysAddr(STRTAB.get().sh_addr as usize + symbol.st_name as usize)
+	let ptr = PhysAddr(STRTAB.sh_addr as usize + symbol.st_name as usize)
 		.kernel_to_virtual()
 		.unwrap()
 		.as_ptr();
@@ -144,7 +141,7 @@ pub fn get_function_name(inst: VirtAddr) -> Option<&'static [u8]> {
 ///
 /// If the symbol doesn't exist, the function returns `None`.
 pub fn get_symbol_by_name(name: &[u8]) -> Option<&'static KernSym> {
-	SYMBOLS.get().get(name)
+	SYMBOLS.get(name)
 }
 
 /// Fills the kernel symbols map.
@@ -153,7 +150,7 @@ pub(crate) fn init() -> AllocResult<()> {
 	// STRTAB must be initialized first because it is used to build the symbol map
 	let strtab = get_section_by_name(b".strtab").unwrap();
 	unsafe {
-		STRTAB.init(strtab);
+		OnceInit::init(&STRTAB, strtab);
 	}
 	// Build the symbol map
 	let map = symbols()
@@ -165,7 +162,7 @@ pub(crate) fn init() -> AllocResult<()> {
 		.collect::<CollectResult<_>>()
 		.0?;
 	unsafe {
-		SYMBOLS.init(map);
+		OnceInit::init(&SYMBOLS, map);
 	}
 	Ok(())
 }

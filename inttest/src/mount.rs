@@ -16,24 +16,30 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `syncfs` system call allows to synchronize the filesystem containing the
-//! file pointed by the given file descriptor.
+//! Filesystem mounting tests.
 
-use crate::{file::fd::FileDescriptorTable, process::Process, sync::mutex::Mutex, syscall::Args};
-use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use crate::{log, util, util::TestResult};
+use std::{ffi::CString, fs, ptr::null};
 
-pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
-	let fds = fds.lock();
-	let file = fds.get_fd(fd)?.get_file();
-	let Some(ent) = &file.vfs_entry else {
-		return Ok(0);
-	};
-	let _mountpoint = ent.node().location.get_mountpoint();
-	// TODO Sync all files on mountpoint
-	Ok(0)
+pub fn mount(src: &str, target: &str, fstype: &str) -> TestResult {
+	log!("Create directory");
+	fs::create_dir_all(target)?;
+	log!("Mount");
+	let src = CString::new(src)?;
+	let target = CString::new(target)?;
+	let fstype = CString::new(fstype)?;
+	util::mount(
+		src.as_c_str(),
+		target.as_c_str(),
+		fstype.as_c_str(),
+		0,
+		null(),
+	)?;
+	Ok(())
+}
+
+pub fn umount(target: &str) -> TestResult {
+	let target = CString::new(target)?;
+	util::umount(target.as_c_str())?;
+	Ok(())
 }

@@ -20,10 +20,7 @@
 //! file of the process.
 
 use crate::{
-	file::{
-		fs::{proc::get_proc_owner, NodeOps},
-		vfs, FileLocation, FileType, Stat,
-	},
+	file::{fs::NodeOps, vfs, vfs::node::Node},
 	format_content,
 	process::{pid::Pid, Process},
 };
@@ -31,26 +28,10 @@ use utils::{errno, errno::EResult};
 
 /// The `exe` node.
 #[derive(Debug)]
-pub struct Exe(Pid);
-
-impl From<Pid> for Exe {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
+pub struct Exe(pub Pid);
 
 impl NodeOps for Exe {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Link.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let path = proc
 			.mem_space
@@ -58,6 +39,6 @@ impl NodeOps for Exe {
 			.map(|mem_space| vfs::Entry::get_path(&mem_space.lock().exe_info.exe))
 			.transpose()?
 			.unwrap_or_default();
-		format_content!(off, buf, "{path}")
+		format_content!(0, buf, "{path}")
 	}
 }

@@ -34,18 +34,6 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-/// Converts the given `prot` to mapping flags.
-fn prot_to_flags(prot: i32) -> u8 {
-	let mut mem_flags = 0;
-	if prot & mmap::PROT_WRITE != 0 {
-		mem_flags |= mem_space::MAPPING_FLAG_WRITE;
-	}
-	if prot & mmap::PROT_EXEC != 0 {
-		mem_flags |= mem_space::MAPPING_FLAG_EXEC;
-	}
-	mem_flags
-}
-
 pub fn mprotect(
 	Args((addr, len, prot)): Args<(*mut c_void, usize, c_int)>,
 	mem_space: Arc<IntMutex<MemSpace>>,
@@ -55,7 +43,7 @@ pub fn mprotect(
 	if !addr.is_aligned_to(PAGE_SIZE) || len == 0 {
 		return Err(errno!(EINVAL));
 	}
-	let flags = prot_to_flags(prot);
-	mem_space.lock().set_prot(addr, len, flags, &ap)?;
+	let prot = prot as u8;
+	mem_space.lock().set_prot(addr, len, prot, &ap)?;
 	Ok(0)
 }

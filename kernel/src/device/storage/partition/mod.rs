@@ -22,12 +22,13 @@
 mod gpt;
 mod mbr;
 
-use crate::device::DeviceIO;
+use crate::device::BlkDev;
 use gpt::Gpt;
 use mbr::MbrTable;
-use utils::{boxed::Box, collections::vec::Vec, errno::EResult};
+use utils::{boxed::Box, collections::vec::Vec, errno::EResult, ptr::arc::Arc};
 
 /// A disk partition bounds.
+#[derive(Debug)]
 pub struct Partition {
 	/// The offset to the first sector of the partition.
 	pub offset: u64,
@@ -37,11 +38,11 @@ pub struct Partition {
 
 /// Trait representing a partition table.
 pub trait Table {
-	/// Reads the partition table from the given storage interface `storage`.
+	/// Reads the partition table from the given storage device `dev`.
 	///
 	/// If the partition table isn't present on the storage interface, the
 	/// function returns `None`.
-	fn read(storage: &dyn DeviceIO) -> EResult<Option<Self>>
+	fn read(dev: &Arc<BlkDev>) -> EResult<Option<Self>>
 	where
 		Self: Sized;
 
@@ -50,21 +51,20 @@ pub trait Table {
 
 	/// Reads the partitions list.
 	///
-	/// `storage` is the storage interface on which the partitions are to be
-	/// read.
-	fn get_partitions(&self, storage: &dyn DeviceIO) -> EResult<Vec<Partition>>;
+	/// `dev` is the storage device on which the partitions are to be read.
+	fn read_partitions(&self, dev: &Arc<BlkDev>) -> EResult<Vec<Partition>>;
 }
 
-/// Reads the list of partitions from the given storage interface `storage`.
+/// Reads the list of partitions from the block device.
 ///
 /// If no partitions table is present, the function returns `None`.
-pub fn read(storage: &dyn DeviceIO) -> EResult<Option<Box<dyn Table>>> {
+pub fn read(dev: &Arc<BlkDev>) -> EResult<Option<Box<dyn Table>>> {
 	// Try GPT
-	if let Some(table) = Gpt::read(storage)? {
+	if let Some(table) = Gpt::read(dev)? {
 		return Ok(Some(Box::new(table)?));
 	}
 	// Try MBR
-	if let Some(table) = MbrTable::read(storage)? {
+	if let Some(table) = MbrTable::read(dev)? {
 		return Ok(Some(Box::new(table)?));
 	}
 	Ok(None)

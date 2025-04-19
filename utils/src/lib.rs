@@ -59,13 +59,16 @@ use crate::errno::AllocResult;
 use core::{
 	alloc::{AllocError, Layout},
 	borrow::Borrow,
-	cmp::min,
+	cmp::{min, Ordering},
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Write,
 	mem::size_of,
+	ops::Add,
 	ptr::NonNull,
-	slice, write,
+	slice,
+	sync::atomic::{AtomicU8, Ordering::Relaxed},
+	write,
 };
 
 // C functions required by LLVM
@@ -179,6 +182,29 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) -> usize {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
 	len
+}
+
+// TODO optimize
+/// Safely copies data from `src` to `dst` .
+pub fn concurrent_copy(src: &[AtomicU8], dst: &[AtomicU8]) {
+	for (src, dst) in src.iter().zip(dst.iter()) {
+		let b = src.load(Relaxed);
+		dst.store(b, Relaxed);
+	}
+}
+
+/// Compares `needle` to the range starting at `start`, with a size of `size`.
+///
+/// If `needle` is inside of the range, the function returns [`Ordering::Equal`].
+pub fn range_cmp<T: Add<Output = T> + Ord + Copy>(start: T, size: T, needle: T) -> Ordering {
+	let end = start + size;
+	if needle < start {
+		Ordering::Less
+	} else if needle >= end {
+		Ordering::Greater
+	} else {
+		Ordering::Equal
+	}
 }
 
 /// Same as the [`Clone`] trait, but the operation can fail (on memory allocation
