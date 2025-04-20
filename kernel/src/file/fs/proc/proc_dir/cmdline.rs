@@ -35,7 +35,10 @@ pub struct Cmdline(pub Pid);
 impl FileOps for Cmdline {
 	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let mem_space = proc.mem_space.as_ref().unwrap().lock();
+		let Some(mem_space) = proc.mem_space.as_ref() else {
+			return Ok(0);
+		};
+		let mem_space = mem_space.lock();
 		let disp = fmt::from_fn(|f| {
 			read_memory(
 				f,

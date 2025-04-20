@@ -25,7 +25,7 @@ use crate::{
 	process::{pid::Pid, Process},
 };
 use core::fmt;
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `status` node of the proc.
 #[derive(Debug)]
@@ -34,8 +34,12 @@ pub struct Status(pub Pid);
 impl FileOps for Status {
 	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let mem_space = proc.mem_space.as_ref().unwrap().lock();
+		let mem_space = proc.mem_space.as_ref().map(|m| m.lock());
 		let disp = fmt::from_fn(|f| {
+			let name = mem_space
+				.as_ref()
+				.map(|m| m.exe_info.exe.name.as_bytes())
+				.unwrap_or_default();
 			let state = proc.get_state();
 			let fs = proc.fs.lock();
 			// TODO Fill every fields with process's data
@@ -98,7 +102,7 @@ Mems_allowed: 00000001
 Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
 nonvoluntary_ctxt_switches: 0",
-				name = mem_space.exe_info.exe.name,
+				name = DisplayableStr(name),
 				umask = fs.umask(),
 				state_char = state.as_char(),
 				state_name = state.as_str(),
