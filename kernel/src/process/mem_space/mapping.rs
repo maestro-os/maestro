@@ -216,7 +216,7 @@ impl MemMapping {
 		let virtaddr = VirtAddr::from(self.addr) + offset * PAGE_SIZE;
 		let page = if let Some(page) = &self.anon_pages[offset] {
 			// An anonymous page is already present, use it
-			if self.flags & MAP_PRIVATE != 0 && page.is_shared() {
+			if self.flags & MAP_SHARED == 0 && page.is_shared() {
 				// The page cannot be shared: we need our own copy
 				let page = init_page(vmem, self.prot, Some(page), virtaddr)?;
 				self.anon_pages[offset] = Some(page);
