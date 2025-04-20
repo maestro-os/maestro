@@ -287,12 +287,13 @@ impl ProcessSignal {
 		self.sigmask.is_set(sig as _)
 	}
 
-	/// Returns the ID of the next signal to be handled.
-	///
-	/// If `peek` is `false`, the signal is cleared from the bitfield.
+	/// Returns the ID of the next signal to be handled, clearing it from the pending signals mask.
 	///
 	/// If no signal is pending, the function returns `None`.
-	pub fn next_signal(&mut self, peek: bool) -> Option<Signal> {
+	pub fn next_signal(&mut self) -> Option<Signal> {
+		if self.sigpending.is_empty() {
+			return None;
+		}
 		let sig = self
 			.sigpending
 			.iter()
@@ -303,10 +304,8 @@ impl ProcessSignal {
 				(!s.can_catch() || !self.sigmask.is_set(i)).then_some(s)
 			})
 			.next();
-		if !peek {
-			if let Some(id) = sig {
-				self.sigpending.clear(id as _);
-			}
+		if let Some(id) = sig {
+			self.sigpending.clear(id as _);
 		}
 		sig
 	}
@@ -745,7 +744,8 @@ impl Process {
 
 	/// Tells whether there is a pending signal on the process.
 	pub fn has_pending_signal(&self) -> bool {
-		Process::current().signal.lock().next_signal(true).is_some()
+		let signal = self.signal.lock();
+		signal.sigpending.0 & !signal.sigmask.0 != 0
 	}
 
 	/// Wakes up the process if in [`State::Sleeping`] state.
@@ -971,7 +971,7 @@ fn yield_current_impl(frame: &mut IntFrame) -> bool {
 	// Get signal handler to execute, if any
 	let (sig, handler) = {
 		let mut signal_manager = proc.signal.lock();
-		let Some(sig) = signal_manager.next_signal(false) else {
+		let Some(sig) = signal_manager.next_signal() else {
 			return true;
 		};
 		let handler = signal_manager.handlers.lock()[sig as usize].clone();

@@ -154,22 +154,32 @@ pub struct SigInfo {
 pub struct SigSet(pub u64);
 
 impl SigSet {
+	/// Tells whether the set is all cleared.
+	#[inline]
+	pub fn is_empty(&self) -> bool {
+		self.0 == 0
+	}
+
 	/// Tells whether the `n`th bit is set.
+	#[inline]
 	pub fn is_set(&self, n: usize) -> bool {
 		self.0 & (1 << n) != 0
 	}
 
 	/// Sets the `n`th bit.
+	#[inline]
 	pub fn set(&mut self, n: usize) {
 		self.0 |= (1 << n) as u64;
 	}
 
 	/// Sets the `n`th bit.
+	#[inline]
 	pub fn clear(&mut self, n: usize) {
 		self.0 &= !((1 << n) as u64);
 	}
 
 	/// Returns an iterator over the bitset's values
+	#[inline]
 	pub fn iter(&self) -> impl Iterator<Item = bool> + '_ {
 		(0..64).map(|n| self.is_set(n))
 	}
