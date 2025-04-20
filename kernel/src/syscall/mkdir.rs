@@ -23,10 +23,7 @@ use crate::{
 	file::{vfs, vfs::ResolutionSettings, FileType, Stat},
 	process::{mem_space::copy::SyscallString, Process},
 	syscall::{Args, Umask},
-	time::{
-		clock::{current_time, CLOCK_REALTIME},
-		unit::TimestampScale,
-	},
+	time::clock::{current_time_ns, current_time_sec, Clock},
 };
 use utils::{
 	collections::path::{Path, PathBuf},
@@ -47,7 +44,7 @@ pub fn mkdir(
 		let parent_path = path.parent().unwrap_or(Path::root());
 		let parent = vfs::get_file_from_path(parent_path, &rs)?;
 		let mode = mode & !umask.0;
-		let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
+		let ts = current_time_sec(Clock::Realtime);
 		// Create the directory
 		vfs::create_file(
 			parent,

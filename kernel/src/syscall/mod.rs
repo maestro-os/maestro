@@ -35,8 +35,6 @@ mod chdir;
 mod chmod;
 mod chown;
 mod chroot;
-mod clock_gettime;
-mod clock_gettime64;
 mod clone;
 mod close;
 mod connect;
@@ -87,7 +85,6 @@ mod mmap;
 mod mount;
 mod mprotect;
 mod munmap;
-mod nanosleep;
 mod open;
 mod openat;
 mod pipe;
@@ -134,9 +131,6 @@ mod symlink;
 mod symlinkat;
 mod sync;
 mod time;
-mod timer_create;
-mod timer_delete;
-mod timer_settime;
 mod tkill;
 mod truncate;
 mod umask;
@@ -165,6 +159,10 @@ use crate::{
 		getdents::getdents64,
 		mmap::mmap2,
 		sync::{fsync, msync, sync, syncfs},
+		time::{
+			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time64, timer_create,
+			timer_delete, timer_settime,
+		},
 	},
 };
 use _exit::_exit;
@@ -178,8 +176,6 @@ use chdir::chdir;
 use chmod::chmod;
 use chown::chown;
 use chroot::chroot;
-use clock_gettime::clock_gettime;
-use clock_gettime64::clock_gettime64;
 use clone::{clone, compat_clone};
 use close::close;
 use connect::connect;
@@ -231,7 +227,6 @@ use mmap::mmap;
 use mount::mount;
 use mprotect::mprotect;
 use munmap::munmap;
-use nanosleep::nanosleep;
 use open::open;
 use openat::openat;
 use pipe::pipe;
@@ -277,10 +272,7 @@ use statfs::statfs;
 use statfs64::statfs64;
 use symlink::symlink;
 use symlinkat::symlinkat;
-use time::time;
-use timer_create::timer_create;
-use timer_delete::timer_delete;
-use timer_settime::timer_settime;
+use time::time32;
 use tkill::tkill;
 use truncate::truncate;
 use umask::umask;
@@ -540,7 +532,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x00a => syscall!(unlink, frame),
 		0x00b => syscall!(execve, frame),
 		0x00c => syscall!(chdir, frame),
-		0x00d => syscall!(time, frame),
+		0x00d => syscall!(time32, frame),
 		0x00e => syscall!(mknod, frame),
 		0x00f => syscall!(chmod, frame),
 		0x010 => syscall!(lchown, frame),
@@ -687,7 +679,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x09f => syscall!(sched_get_priority_max, frame),
 		// TODO 0x0a0 => syscall!(sched_get_priority_min, frame),
 		// TODO 0x0a1 => syscall!(sched_rr_get_interval, frame),
-		0x0a2 => syscall!(nanosleep, frame),
+		0x0a2 => syscall!(nanosleep32, frame),
 		// TODO 0x0a3 => syscall!(mremap, frame),
 		0x0a4 => syscall!(setresuid, frame),
 		0x0a5 => syscall!(getresuid, frame),
@@ -1008,7 +1000,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x020 => syscall!(dup, frame),
 		0x021 => syscall!(dup2, frame),
 		// TODO 0x022 => syscall!(pause, frame),
-		0x023 => syscall!(nanosleep, frame),
+		0x023 => syscall!(nanosleep64, frame),
 		// TODO 0x024 => syscall!(getitimer, frame),
 		// TODO 0x025 => syscall!(alarm, frame),
 		// TODO 0x026 => syscall!(setitimer, frame),
@@ -1174,7 +1166,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x0c6 => syscall!(lremovexattr, frame),
 		// TODO 0x0c7 => syscall!(fremovexattr, frame),
 		0x0c8 => syscall!(tkill, frame),
-		0x0c9 => syscall!(time, frame),
+		0x0c9 => syscall!(time64, frame),
 		// TODO 0x0ca => syscall!(futex, frame),
 		// TODO 0x0cb => syscall!(sched_setaffinity, frame),
 		// TODO 0x0cc => syscall!(sched_getaffinity, frame),

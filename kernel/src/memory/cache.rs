@@ -26,7 +26,7 @@
 //!   reclaimed at anytime
 
 use crate::{
-	arch::x86::{hlt, sti},
+	arch::x86::sti,
 	device::BlkDev,
 	file::vfs::node::Node,
 	memory::{
@@ -38,8 +38,9 @@ use crate::{
 	println,
 	sync::mutex::IntMutex,
 	time::{
-		clock::{current_time, CLOCK_BOOTTIME},
-		unit::{Timestamp, TimestampScale, UTimestamp},
+		clock::{current_time_ms, Clock},
+		sleep_for,
+		unit::{Timestamp, UTimestamp},
 	},
 };
 use core::{
@@ -407,8 +408,7 @@ impl MappedNode {
 
 	/// Synchronizes all frames in the cache back to disk.
 	pub fn sync(&self) -> EResult<()> {
-		// cannot fail since `CLOCK_BOOTTIME` is valid
-		let ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
+		let ts = current_time_ms(Clock::Boottime);
 		// Sync all frames
 		let frames = self.cache.lock();
 		for (_, frame) in frames.iter() {
@@ -452,11 +452,11 @@ fn flush_task_inner(cur_ts: Timestamp) {
 pub(crate) fn flush_task() -> ! {
 	sti();
 	loop {
-		// cannot fail since `CLOCK_BOOTTIME` is valid
-		let cur_ts = current_time(CLOCK_BOOTTIME, TimestampScale::Millisecond).unwrap();
+		let cur_ts = current_time_ms(Clock::Boottime);
 		flush_task_inner(cur_ts);
-		// TODO sleep during WRITEBACK_TIMEOUT
-		hlt();
+		// Sleep
+		let mut remain = 0;
+		let _ = sleep_for(Clock::Monotonic, WRITEBACK_TIMEOUT * 1_000_000, &mut remain);
 	}
 }
 

@@ -16,42 +16,57 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements system clocks.
+//! System clocks.
 
 use crate::{
 	sync::atomic::AtomicU64,
-	time::{
-		unit::{ClockIdT, TimeUnit},
-		Timestamp, TimestampScale,
-	},
+	time::{unit::ClockIdT, Timestamp},
 };
-use core::{cmp::max, sync::atomic};
-use utils::{errno, errno::EResult};
+use core::{
+	cmp::max,
+	sync::atomic::Ordering::{Acquire, Release},
+};
 
-/// System clock ID
-pub const CLOCK_REALTIME: ClockIdT = 0;
-/// System clock ID
-pub const CLOCK_MONOTONIC: ClockIdT = 1;
-/// System clock ID
-pub const CLOCK_PROCESS_CPUTIME_ID: ClockIdT = 2;
-/// System clock ID
-pub const CLOCK_THREAD_CPUTIME_ID: ClockIdT = 3;
-/// System clock ID
-pub const CLOCK_MONOTONIC_RAW: ClockIdT = 4;
-/// System clock ID
-pub const CLOCK_REALTIME_COARSE: ClockIdT = 5;
-/// System clock ID
-pub const CLOCK_MONOTONIC_COARSE: ClockIdT = 6;
-/// System clock ID
-pub const CLOCK_BOOTTIME: ClockIdT = 7;
-/// System clock ID
-pub const CLOCK_REALTIME_ALARM: ClockIdT = 8;
-/// System clock ID
-pub const CLOCK_BOOTTIME_ALARM: ClockIdT = 9;
-/// System clock ID
-pub const CLOCK_SGI_CYCLE: ClockIdT = 10;
-/// System clock ID
-pub const CLOCK_TAI: ClockIdT = 11;
+/// Available clocks
+#[derive(Clone, Copy, Debug)]
+#[allow(missing_docs)]
+pub enum Clock {
+	Realtime = 0,
+	Monotonic = 1,
+	ProcessCputimeId = 2,
+	ThreadCputimeId = 3,
+	MonotonicRaw = 4,
+	RealtimeCoarse = 5,
+	MonotonicCoarse = 6,
+	Boottime = 7,
+	RealtimeAlarm = 8,
+	BoottimeAlarm = 9,
+	SgiCycle = 10,
+	Tai = 11,
+}
+
+impl Clock {
+	/// Returns the clock with the given ID.
+	///
+	/// If the ID is invalid, the function returns `None`.
+	pub fn from_id(id: ClockIdT) -> Option<Self> {
+		match id {
+			0 => Some(Self::Realtime),
+			1 => Some(Self::Monotonic),
+			2 => Some(Self::ProcessCputimeId),
+			3 => Some(Self::ThreadCputimeId),
+			4 => Some(Self::MonotonicRaw),
+			5 => Some(Self::RealtimeCoarse),
+			6 => Some(Self::MonotonicCoarse),
+			7 => Some(Self::Boottime),
+			8 => Some(Self::RealtimeAlarm),
+			9 => Some(Self::BoottimeAlarm),
+			10 => Some(Self::SgiCycle),
+			11 => Some(Self::Tai),
+			_ => None,
+		}
+	}
+}
 
 // TODO allow accessing clocks through an address shared with userspace (vDSO)
 
@@ -65,46 +80,44 @@ static BOOTTIME: AtomicU64 = AtomicU64::new(0);
 
 /// Updates clocks with the given delta value in nanoseconds.
 pub fn update(delta: Timestamp) {
-	REALTIME.fetch_add(delta as _, atomic::Ordering::Relaxed);
-	MONOTONIC.fetch_add(delta as _, atomic::Ordering::Relaxed);
-	BOOTTIME.fetch_add(delta as _, atomic::Ordering::Relaxed);
+	REALTIME.fetch_add(delta as _, Release);
+	MONOTONIC.fetch_add(delta as _, Release);
+	BOOTTIME.fetch_add(delta as _, Release);
 }
 
-/// Returns the current timestamp according to the clock with the given ID.
+/// Returns the current timestamp in nanoseconds.
 ///
-/// Arguments:
-/// - `clk` is the ID of the clock to use.
-/// - `scale` is the scale of the timestamp to return.
+/// `clk` is the clock to use.
+///
+/// The returned timestamp is in nanoseconds.
 ///
 /// If the clock is invalid, the function returns an error.
-pub fn current_time(clk: ClockIdT, scale: TimestampScale) -> EResult<Timestamp> {
-	// TODO implement all clocks
-	let raw_ts = match clk {
-		CLOCK_REALTIME | CLOCK_REALTIME_ALARM => REALTIME.load(atomic::Ordering::Relaxed),
-		CLOCK_MONOTONIC => {
-			let realtime = REALTIME.load(atomic::Ordering::Relaxed);
-			let monotonic = MONOTONIC.load(atomic::Ordering::Relaxed);
+pub fn current_time_ns(clk: Clock) -> Timestamp {
+	match clk {
+		Clock::Realtime | Clock::RealtimeAlarm => REALTIME.load(Acquire),
+		Clock::Monotonic => {
+			let realtime = REALTIME.load(Acquire);
+			let monotonic = MONOTONIC.load(Acquire);
 			max(realtime, monotonic)
 		}
-		CLOCK_BOOTTIME | CLOCK_BOOTTIME_ALARM => BOOTTIME.load(atomic::Ordering::Relaxed),
-		_ => return Err(errno!(EINVAL)),
-	};
-
-	Ok(TimestampScale::convert(
-		raw_ts as _,
-		TimestampScale::Nanosecond,
-		scale,
-	))
+		Clock::Boottime | Clock::BoottimeAlarm => BOOTTIME.load(Acquire),
+		// TODO implement all clocks
+		_ => 0,
+	}
 }
 
-/// Returns the current timestamp according to the clock with the given ID.
+/// Returns the current timestamp in milliseconds.
 ///
-/// Arguments:
-/// - `clk` is the ID of the clock to use.
-/// - `scale` is the scale of the timestamp to return.
+/// `clk` is the clock to use.
+#[inline]
+pub fn current_time_ms(clk: Clock) -> Timestamp {
+	current_time_ns(clk) / 1_000_000
+}
+
+/// Returns the current timestamp in seconds.
 ///
-/// If the clock is invalid, the function returns an error.
-pub fn current_time_struct<T: TimeUnit>(clk: ClockIdT) -> EResult<T> {
-	let ts = current_time(clk, TimestampScale::Nanosecond)?;
-	Ok(T::from_nano(ts))
+/// `clk` is the clock to use.
+#[inline]
+pub fn current_time_sec(clk: Clock) -> Timestamp {
+	current_time_ns(clk) / 1_000_000_000
 }
