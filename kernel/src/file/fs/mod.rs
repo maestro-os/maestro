@@ -393,6 +393,7 @@ pub fn generic_file_write(file: &File, mut off: u64, buf: &[u8]) -> EResult<usiz
 		let slice = unsafe { page.slice_mut() };
 		// FIXME: this is not concurrency friendly
 		let len = slice_copy(&buf[buf_off..], &mut slice[inner_off..]);
+		page.mark_dirty();
 		buf_off += len;
 		off += len as u64;
 	}

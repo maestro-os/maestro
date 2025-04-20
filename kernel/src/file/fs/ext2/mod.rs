@@ -164,13 +164,23 @@ fn read_block(fs: &Ext2Fs, off: u64) -> EResult<RcFrame> {
 	)
 }
 
+/// Zeros the block at the given offset on the disk.
+fn zero_block(fs: &Ext2Fs, off: u64) -> EResult<()> {
+	let blk = read_block(fs, off)?;
+	for b in blk.slice::<AtomicUsize>() {
+		b.store(0, Relaxed);
+	}
+	blk.mark_dirty();
+	Ok(())
+}
+
 /// Finds a `0` bit in the given block, sets it atomically, then returns its offset.
 ///
 /// If no bit is found, the function returns `None`.
 fn bitmap_alloc_impl(blk: &RcFrame) -> Option<u32> {
 	// Iterate on `usize` units
-	const UNIT_COUNT: usize = PAGE_SIZE / size_of::<usize>();
-	for unit_off in 0..UNIT_COUNT {
+	let unit_count = blk.len() / size_of::<usize>();
+	for unit_off in 0..unit_count {
 		let unit = &blk.slice::<AtomicUsize>()[unit_off];
 		// The offset of the newly allocated entry in the unit
 		let mut off = 0;
@@ -185,8 +195,9 @@ fn bitmap_alloc_impl(blk: &RcFrame) -> Option<u32> {
 			}
 		});
 		if res.is_ok() {
-			let units_off = unit_off * size_of::<usize>() * 8;
-			return Some(units_off as u32 + off);
+			blk.mark_page_dirty(unit_off / (PAGE_SIZE / size_of::<usize>()));
+			let unit_off = unit_off * size_of::<usize>() * 8;
+			return Some(unit_off as u32 + off);
 		}
 	}
 	None
@@ -284,6 +295,8 @@ impl NodeOps for Ext2NodeOps {
 		parent_inode.add_dirent(fs, target.inode as _, &ent.name, target_inode.get_type())?;
 		target_inode.i_links_count += 1;
 		target.stat.lock().nlink = target_inode.i_links_count;
+		parent_inode.mark_dirty();
+		target_inode.mark_dirty();
 		Ok(())
 	}
 
@@ -320,6 +333,8 @@ impl NodeOps for Ext2NodeOps {
 		ent.node().stat.lock().nlink = target.i_links_count;
 		// Remove the directory entry
 		parent_.set_dirent_inode(remove_off, 0, fs)?;
+		parent_.mark_dirty();
+		target.mark_dirty();
 		Ok(())
 	}
 
@@ -381,6 +396,7 @@ impl NodeOps for Ext2NodeOps {
 		// Update size
 		inode_.set_size(&fs.sp, buf.len() as _, inline);
 		node.stat.lock().size = buf.len() as _;
+		inode_.mark_dirty();
 		Ok(())
 	}
 
@@ -414,6 +430,8 @@ impl NodeOps for Ext2NodeOps {
 				new_parent.node().stat.lock().nlink = new_parent_inode.i_links_count;
 			}
 			new_parent_inode.add_dirent(fs, entry_node.inode as _, new_name, inode.get_type())?;
+			new_parent_inode.mark_dirty();
+			inode.mark_dirty();
 			dir
 		};
 		// Remove old entry
@@ -429,6 +447,7 @@ impl NodeOps for Ext2NodeOps {
 			old_parent_inode.i_links_count = old_parent_inode.i_links_count.saturating_sub(1);
 			old_parent_node.stat.lock().nlink = old_parent_inode.i_links_count;
 		}
+		old_parent_inode.mark_dirty();
 		Ok(())
 	}
 
@@ -461,6 +480,7 @@ impl NodeOps for Ext2NodeOps {
 		inode_.i_ctime = stat.ctime as _;
 		inode_.i_mtime = stat.mtime as _;
 		inode_.i_atime = stat.atime as _;
+		inode_.mark_dirty();
 		Ok(())
 	}
 }
@@ -723,12 +743,14 @@ impl Ext2Fs {
 		// Get block
 		let blk_size = self.sp.get_block_size();
 		let blk_off = start_blk + index / (blk_size * 8);
-		let page = read_block(self, blk_off as _)?;
+		let blk = read_block(self, blk_off as _)?;
 		// Atomically clear bit
 		let bitmap_byte_index = index / 8;
-		let byte = &page.slice::<AtomicU8>()[bitmap_byte_index as usize];
+		let byte = &blk.slice::<AtomicU8>()[bitmap_byte_index as usize];
 		let bitmap_bit_index = index % 8;
+		// Atomic write and mark as dirty
 		let prev = byte.fetch_or(1 << bitmap_bit_index, Release);
+		blk.mark_page_dirty(bitmap_byte_index as usize / PAGE_SIZE);
 		Ok(prev & (1 << bitmap_bit_index) != 0)
 	}
 
@@ -752,6 +774,8 @@ impl Ext2Fs {
 				if directory {
 					bgd.bg_used_dirs_count.fetch_add(1, Release);
 				}
+				self.sp.mark_dirty();
+				bgd.mark_dirty();
 				return Ok(group * self.sp.s_inodes_per_group + j + 1);
 			}
 		}
@@ -784,6 +808,8 @@ impl Ext2Fs {
 			if directory {
 				bgd.bg_used_dirs_count.fetch_sub(1, Release);
 			}
+			self.sp.mark_dirty();
+			bgd.mark_dirty();
 		}
 		Ok(())
 	}
@@ -808,6 +834,8 @@ impl Ext2Fs {
 			}
 			self.sp.s_free_blocks_count.fetch_sub(1, Release);
 			bgd.bg_free_blocks_count.fetch_sub(1, Release);
+			self.sp.mark_dirty();
+			bgd.mark_dirty();
 			return Ok(blk_index);
 		}
 		Err(errno!(ENOSPC))
@@ -831,6 +859,8 @@ impl Ext2Fs {
 		if prev {
 			self.sp.s_free_blocks_count.fetch_add(1, Release);
 			bgd.bg_free_blocks_count.fetch_add(1, Release);
+			self.sp.mark_dirty();
+			bgd.mark_dirty();
 		}
 		Ok(())
 	}
@@ -935,6 +965,7 @@ impl FilesystemOps for Ext2Fs {
 			}
 			_ => {}
 		}
+		inode.mark_dirty();
 		// Update stat on `node` and return it
 		let stat = inode.stat(&self.sp);
 		drop(inode);
@@ -955,6 +986,7 @@ impl FilesystemOps for Ext2Fs {
 		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second)?;
 		inode.i_dtime = timestamp as _;
 		inode.free_content(self)?;
+		inode.mark_dirty();
 		// Free inode
 		self.free_inode(node.inode, inode.get_type() == FileType::Directory)?;
 		Ok(())
@@ -1028,6 +1060,7 @@ impl FilesystemType for Ext2FsType {
 		// Set the last mount timestamp
 		sp.s_mtime.store(timestamp as _, Relaxed);
 		sp.s_mnt_count.fetch_add(1, Relaxed);
+		sp.mark_dirty();
 		Ok(Filesystem::new(
 			dev.id.get_device_number(),
 			Box::new(Ext2Fs {

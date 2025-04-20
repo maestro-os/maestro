@@ -208,7 +208,7 @@ impl RcFrame {
 		}
 	}
 
-	/// Returns the order of the frame.
+	/// Returns the order of the frame
 	#[inline]
 	pub fn order(&self) -> FrameOrder {
 		self.0.order
@@ -218,6 +218,13 @@ impl RcFrame {
 	#[inline]
 	pub fn pages_count(&self) -> usize {
 		pow2(self.order() as usize)
+	}
+
+	/// Returns the size of the frame in bytes
+	#[inline]
+	#[allow(clippy::len_without_is_empty)]
+	pub fn len(&self) -> usize {
+		self.pages_count() * PAGE_SIZE
 	}
 
 	/// Returns the device offset of the frame, if any.
@@ -240,6 +247,18 @@ impl RcFrame {
 		for n in 0..self.pages_count() {
 			let page = self.get_page(n);
 			page.init(off + n as u64);
+		}
+	}
+
+	/// Marks the `n`th page as dirty.
+	pub fn mark_page_dirty(&self, n: usize) {
+		self.get_page(n).dirty.store(true, Release);
+	}
+
+	/// Marks all pages on the frame as dirty.
+	pub fn mark_dirty(&self) {
+		for n in 0..self.pages_count() {
+			self.mark_page_dirty(n);
 		}
 	}
 
@@ -309,6 +328,15 @@ impl<T: AnyRepr> RcFrameVal<T> {
 	#[allow(clippy::mut_from_ref)]
 	pub unsafe fn as_mut(&self) -> &mut T {
 		&mut self.frame.slice_mut()[self.off]
+	}
+
+	/// Marks the pages storing the inner value as dirty.
+	pub fn mark_dirty(&self) {
+		let start = self.off / PAGE_SIZE;
+		let end = (self.off + size_of::<T>()).div_ceil(PAGE_SIZE);
+		for n in start..end {
+			self.frame.mark_page_dirty(n);
+		}
 	}
 }
 

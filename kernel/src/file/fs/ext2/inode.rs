@@ -18,7 +18,9 @@
 
 //! An inode represents a file in the filesystem.
 
-use super::{bgd::BlockGroupDescriptor, dirent, dirent::Dirent, read_block, Ext2Fs, Superblock};
+use super::{
+	bgd::BlockGroupDescriptor, dirent, dirent::Dirent, read_block, zero_block, Ext2Fs, Superblock,
+};
 use crate::{
 	file::{fs::ext2::dirent::DirentIterator, vfs::node::Node, FileType, INode, Mode, Stat},
 	memory::cache::{RcFrame, RcFrameVal},
@@ -32,7 +34,12 @@ use core::{
 	sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 use macros::AnyRepr;
-use utils::{errno, errno::EResult, limits::NAME_MAX, math};
+use utils::{
+	errno,
+	errno::EResult,
+	limits::{NAME_MAX, PAGE_SIZE},
+	math,
+};
 
 /// The maximum number of direct blocks for each inodes.
 pub const DIRECT_BLOCKS_COUNT: usize = 12;
@@ -126,6 +133,14 @@ pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
 pub(super) struct INodeWrap<'n> {
 	guard: MutexGuard<'n, (), true>,
 	inode: RcFrameVal<Ext2INode>,
+}
+
+impl INodeWrap<'_> {
+	/// Marks the associated page as dirty.
+	#[inline]
+	pub fn mark_dirty(&self) {
+		self.inode.mark_dirty()
+	}
 }
 
 impl Deref for INodeWrap<'_> {
@@ -374,11 +389,9 @@ impl Ext2INode {
 		let has_version = sp.s_rev_level >= 1;
 		let has_feature = sp.s_feature_ro_compat & super::WRITE_REQUIRED_64_BITS != 0;
 		if has_version && has_feature {
-			self.i_dir_acl = ((size >> 32) & 0xffffffff) as u32;
-			self.i_size = (size & 0xffffffff) as u32;
-		} else {
-			self.i_size = size as u32;
+			self.i_dir_acl = (size >> 32) as u32;
 		}
+		self.i_size = size as u32;
 		if !inline {
 			let blk_size = sp.get_block_size();
 			let sector_per_blk = blk_size / SECTOR_SIZE;
@@ -430,6 +443,7 @@ impl Ext2INode {
 		let blk_off = &mut self.i_block[offsets[0]];
 		if *blk_off == 0 {
 			*blk_off = fs.alloc_block()?;
+			zero_block(fs, *blk_off as _)?;
 		}
 		// Perform indirections
 		let mut blk_off = *blk_off;
@@ -441,7 +455,9 @@ impl Ext2INode {
 			let mut b = ent.load(Relaxed);
 			if b == 0 {
 				let new = fs.alloc_block()?;
+				zero_block(fs, new as _)?;
 				ent.store(new, Relaxed);
+				blk.mark_page_dirty(*off / (PAGE_SIZE / size_of::<AtomicU32>()));
 				b = new;
 			}
 			blk_off = b;
@@ -455,11 +471,12 @@ impl Ext2INode {
 		};
 		let blk = read_block(fs, blk as _)?;
 		let ents = blk.slice::<AtomicU32>();
-		let b = &ents[*off];
+		let ent = &ents[*off];
 		// Handle child block and determine whether the entry in the current block should be freed
-		let free = Self::free_content_blk_impl(b.load(Relaxed), &offsets[1..], fs)?;
+		let free = Self::free_content_blk_impl(ent.load(Relaxed), &offsets[1..], fs)?;
 		if free {
-			let b = b.swap(0, Relaxed);
+			let b = ent.swap(0, Relaxed);
+			blk.mark_page_dirty(*off / (PAGE_SIZE / size_of::<AtomicU32>()));
 			let empty = ents.iter().all(|b| b.load(Relaxed) == 0);
 			fs.free_block(b)?;
 			Ok(empty)
@@ -651,6 +668,7 @@ impl Ext2INode {
 			)?;
 			// Create free entries to cover remaining free space
 			fill_free_entries(&mut buf[(inner_off + rec_len as usize)..], &fs.sp)?;
+			blk.mark_dirty();
 		} else {
 			// No suitable free entry: Fill a new block
 			let blocks = self.get_blocks(&fs.sp);
@@ -664,6 +682,7 @@ impl Ext2INode {
 			// Create free entries to cover remaining free space
 			fill_free_entries(&mut buf[rec_len as usize..], &fs.sp)?;
 			self.set_size(&fs.sp, (blocks as u64 + 1) * blk_size as u64, false);
+			blk.mark_dirty();
 		}
 		Ok(())
 	}
