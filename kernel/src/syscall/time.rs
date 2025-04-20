@@ -39,10 +39,16 @@ use utils::{errno, errno::EResult, ptr::arc::Arc};
 /// If set, the specified time is *not* relative to the timer's current counter.
 const TIMER_ABSTIME: c_int = 1;
 
-// TODO Watch for timestamp overflow
-pub fn time(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
+pub fn time32(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
 	let time = current_time_sec(Clock::Monotonic);
-	tloc.copy_to_user(&(time as _))?;
+	let time: u32 = time.try_into().map_err(|_| errno!(EOVERFLOW))?;
+	tloc.copy_to_user(&time)?;
+	Ok(time as _)
+}
+
+pub fn time64(Args(tloc): Args<SyscallPtr<u64>>) -> EResult<usize> {
+	let time = current_time_sec(Clock::Monotonic);
+	tloc.copy_to_user(&time)?;
 	Ok(time as _)
 }
 
@@ -64,7 +70,7 @@ pub fn clock_gettime64(
 	Ok(0)
 }
 
-pub fn nanosleep(
+pub fn nanosleep32(
 	Args((req, rem)): Args<(SyscallPtr<Timespec32>, SyscallPtr<Timespec32>)>,
 ) -> EResult<usize> {
 	let delay = req
@@ -77,6 +83,24 @@ pub fn nanosleep(
 		Ok(_) => Ok(0),
 		Err(e) => {
 			rem.copy_to_user(&Timespec32::from_nano(remain))?;
+			Err(e)
+		}
+	}
+}
+
+pub fn nanosleep64(
+	Args((req, rem)): Args<(SyscallPtr<Timespec>, SyscallPtr<Timespec>)>,
+) -> EResult<usize> {
+	let delay = req
+		.copy_from_user()?
+		.ok_or_else(|| errno!(EFAULT))?
+		.to_nano();
+	let mut remain = 0;
+	let res = sleep_for(Clock::Monotonic, delay, &mut remain);
+	match res {
+		Ok(_) => Ok(0),
+		Err(e) => {
+			rem.copy_to_user(&Timespec::from_nano(remain))?;
 			Err(e)
 		}
 	}
