@@ -654,11 +654,23 @@ impl Process {
 		links.children.insert(i, pid)
 	}
 
-	/// Removes the process with the given PID `pid` as child to the process.
-	pub fn remove_child(&self, pid: Pid) {
-		let mut links = self.links.lock();
-		if let Ok(i) = links.children.binary_search(&pid) {
-			links.children.remove(i);
+	/// Unlinks the process from its parent and group.
+	pub fn unlink(&self) {
+		let (parent, group_leader) = {
+			let mut links = self.links.lock();
+			(links.parent.take(), links.group_leader.take())
+		};
+		if let Some(parent) = parent {
+			let mut links = parent.links.lock();
+			if let Ok(i) = links.children.binary_search(&self.get_pid()) {
+				links.children.remove(i);
+			}
+		}
+		if let Some(group_leader) = group_leader {
+			let mut links = group_leader.links.lock();
+			if let Ok(i) = links.process_group.binary_search(&self.get_pid()) {
+				links.process_group.remove(i);
+			}
 		}
 	}
 
@@ -724,6 +736,7 @@ impl Process {
 					if child_pid == *self.pid {
 						continue;
 					}
+					// TODO do the same for process group members
 					if let Some(child) = Process::get_by_pid(child_pid) {
 						child.links.lock().parent = Some(init_proc.clone());
 						oom::wrap(|| init_proc.add_child(child_pid));
@@ -843,6 +856,12 @@ impl Process {
 				Arc::new(Mutex::new(handlers))?
 			}
 		};
+		let group_leader = this
+			.links
+			.lock()
+			.group_leader
+			.clone()
+			.unwrap_or_else(|| this.clone());
 		let proc = Arc::new(Self {
 			pid,
 			tid: pid_int,
@@ -851,7 +870,7 @@ impl Process {
 			vfork_done: AtomicBool::new(false),
 			links: Mutex::new(ProcessLinks {
 				parent: Some(this.clone()),
-				group_leader: this.links.lock().group_leader.clone(),
+				group_leader: Some(group_leader.clone()),
 				..Default::default()
 			}),
 
@@ -874,9 +893,16 @@ impl Process {
 				termsig: 0,
 			}),
 
-			rusage: Mutex::new(Rusage::default()),
+			rusage: Default::default(),
 		})?;
+		// TODO on failure, must undo
 		this.add_child(pid_int)?;
+		{
+			let mut links = group_leader.links.lock();
+			if let Err(i) = links.process_group.binary_search(&pid_int) {
+				links.process_group.insert(i, pid_int)?;
+			}
+		}
 		SCHEDULER.lock().add_process(proc.clone())?;
 		Ok(proc)
 	}
@@ -912,6 +938,7 @@ impl Process {
 			.for_each(|proc| {
 				proc.kill(sig);
 			});
+		self.kill(sig);
 	}
 
 	/// Exits the process with the given `status`.

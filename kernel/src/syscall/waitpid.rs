@@ -134,7 +134,7 @@ fn get_waitable(
 	if options & WNOWAIT == 0 {
 		// If the process was a zombie, remove it
 		if matches!(proc.get_state(), State::Zombie) {
-			curr_proc.remove_child(pid);
+			proc.unlink();
 			sched.remove_process(pid);
 		}
 	}
