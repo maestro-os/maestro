@@ -34,7 +34,7 @@ use crate::{
 	},
 	tty::{termios, termios::Termios, TTYDisplay, WinSize, TTY},
 };
-use core::{cmp::min, ffi::c_void};
+use core::ffi::c_void;
 use utils::{errno, errno::EResult};
 
 /// A TTY device's handle.
@@ -164,9 +164,8 @@ impl FileOps for TTYDeviceHandle {
 		let mut i = 0;
 		let mut b: [u8; 128] = [0; 128];
 		while i < buf.len() {
-			let l = min(buf.len() - i, b.len());
-			buf.copy_from_user(i, &mut b[..l])?;
-			tty.write(&b);
+			let l = buf.copy_from_user(i, &mut b)?;
+			tty.write(&b[..l]);
 			i += l;
 		}
 		Ok(buf.len())
