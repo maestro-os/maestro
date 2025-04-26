@@ -20,8 +20,8 @@
 
 use crate::{
 	arch::x86::{cli, idt::IntFrame},
+	memory::user::UserPtr,
 	process::{
-		mem_space::copy::UserPtr,
 		pid::Pid,
 		scheduler,
 		scheduler::{

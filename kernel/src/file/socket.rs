@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat},
+	memory::user::UserSlice,
 	net::{osi, SocketDesc},
-	process::mem_space::copy::UserSlice,
 	sync::mutex::Mutex,
 	syscall::ioctl::Request,
 };

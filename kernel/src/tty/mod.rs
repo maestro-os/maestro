@@ -31,8 +31,8 @@ pub mod vga;
 use crate::{
 	device::serial,
 	file::wait_queue::WaitQueue,
-	memory::vmem,
-	process::{mem_space::copy::UserSlice, pid::Pid, signal::Signal, Process},
+	memory::{user::UserSlice, vmem},
+	process::{pid::Pid, signal::Signal, Process},
 	sync::mutex::IntMutex,
 	tty::{
 		ansi::ANSIBuffer,

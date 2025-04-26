@@ -20,8 +20,9 @@
 
 use crate::{
 	arch::x86::gdt,
+	memory::user::UserPtr,
 	process,
-	process::{mem_space::copy::UserPtr, user_desc::UserDesc, Process},
+	process::{user_desc::UserDesc, Process},
 	syscall::Args,
 };
 use core::mem::size_of;

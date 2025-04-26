@@ -54,8 +54,8 @@ use crate::{
 	memory::{
 		buddy::FrameOrder,
 		cache::{FrameOwner, MappedNode, RcFrame},
+		user::UserSlice,
 	},
-	process::mem_space::copy::UserSlice,
 	sync::mutex::Mutex,
 	syscall::ioctl,
 };

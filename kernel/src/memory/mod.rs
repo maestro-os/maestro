@@ -45,6 +45,7 @@ pub mod oom;
 pub mod stats;
 #[cfg(feature = "memtrace")]
 mod trace;
+pub mod user;
 pub mod vmem;
 
 /// Address of the beginning of the allocatable region in the virtual memory.

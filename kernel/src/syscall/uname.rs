@@ -19,10 +19,7 @@
 //! The `uname` syscall is used to retrieve information about the system.
 
 use crate::{
-	arch::ARCH,
-	process::{mem_space::copy::UserPtr, Process},
-	syscall::Args,
-	HOSTNAME, NAME, VERSION,
+	arch::ARCH, memory::user::UserPtr, process::Process, syscall::Args, HOSTNAME, NAME, VERSION,
 };
 use utils::{
 	errno,

@@ -35,11 +35,13 @@ use crate::{
 		vfs::node::Node,
 		DirContext, DirEntry, File, FileType, Stat,
 	},
-	memory::cache::{FrameOwner, RcFrame},
-	process::mem_space::copy::UserSlice,
+	memory::{
+		cache::{FrameOwner, RcFrame},
+		user::UserSlice,
+	},
 	sync::mutex::Mutex,
 };
-use core::{any::Any, cmp::min, intrinsics::unlikely, sync::atomic::AtomicBool};
+use core::{any::Any, intrinsics::unlikely, sync::atomic::AtomicBool};
 use utils::{
 	boxed::Box,
 	collections::{path::PathBuf, vec::Vec},

@@ -22,8 +22,9 @@
 use crate::{
 	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
+	memory::user::UserPtr,
 	net::{SocketDesc, SocketDomain, SocketType},
-	process::{mem_space::copy::UserPtr, Process},
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };

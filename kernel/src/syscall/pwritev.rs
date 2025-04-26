@@ -19,12 +19,7 @@
 //! The `pwritev` system call allows to write sparse data on a file descriptor.
 
 use crate::{
-	file::fd::FileDescriptorTable,
-	process::{
-		mem_space::copy::{UserIOVec, UserSlice},
-		Process,
-	},
-	sync::mutex::Mutex,
+	file::fd::FileDescriptorTable, memory::user::UserIOVec, process::Process, sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;

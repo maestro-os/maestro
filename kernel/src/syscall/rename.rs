@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
-	process::mem_space::copy::UserString,
+	memory::user::UserString,
 	sync::mutex::Mutex,
 	syscall::{renameat2::do_renameat2, util::at::AT_FDCWD, Args},
 };

@@ -20,7 +20,8 @@
 //! process.
 
 use crate::{
-	process::{mem_space::copy::UserPtr, rusage::Rusage, Process},
+	memory::user::UserPtr,
+	process::{rusage::Rusage, Process},
 	syscall::Args,
 };
 use core::{ffi::c_int, ops::Deref};

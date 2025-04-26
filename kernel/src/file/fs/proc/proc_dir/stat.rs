@@ -22,8 +22,8 @@
 use crate::{
 	file::{fs::FileOps, File},
 	format_content,
-	memory::VirtAddr,
-	process::{mem_space::copy::UserSlice, pid::Pid, Process},
+	memory::{user::UserSlice, VirtAddr},
+	process::{pid::Pid, Process},
 };
 use core::fmt;
 use utils::{errno, errno::EResult, DisplayableStr};

@@ -24,7 +24,8 @@ use crate::{
 		vfs,
 		vfs::{mountpoint, ResolutionSettings},
 	},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;

@@ -24,7 +24,8 @@ use crate::{
 		File,
 	},
 	format_content,
-	process::{mem_space::copy::UserSlice, pid::Pid, Process},
+	memory::user::UserSlice,
+	process::{pid::Pid, Process},
 };
 use core::fmt;
 use utils::{errno, errno::EResult};

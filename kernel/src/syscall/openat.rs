@@ -28,7 +28,8 @@ use crate::{
 		File, FileType, Stat, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOCTTY, O_NOFOLLOW,
 		O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY,
 	},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{util::at, Args},
 	time::clock::{current_time_ns, current_time_sec, Clock},
 };

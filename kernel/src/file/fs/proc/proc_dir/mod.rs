@@ -19,8 +19,8 @@
 //! Implementation of the directory of a process in the proc.
 
 use crate::{
-	memory::{vmem, VirtAddr},
-	process::mem_space::{copy::UserSlice, MemSpace},
+	memory::{user::UserSlice, vmem, VirtAddr},
+	process::mem_space::MemSpace,
 };
 use core::{cmp::min, fmt, intrinsics::unlikely};
 use utils::DisplayableStr;

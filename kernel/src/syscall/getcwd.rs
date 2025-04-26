@@ -19,11 +19,7 @@
 //! The `getcwd` system call allows to retrieve the current working directory of
 //! the current process.
 
-use crate::{
-	file::vfs,
-	process::{mem_space::copy::UserSlice, Process},
-	syscall::Args,
-};
+use crate::{file::vfs, memory::user::UserSlice, process::Process, syscall::Args};
 use core::intrinsics::unlikely;
 use utils::{
 	errno,

@@ -22,10 +22,10 @@ use super::Args;
 use crate::{
 	arch::x86::idt::IntFrame,
 	file::{vfs, vfs::ResolutionSettings, File, O_RDONLY},
+	memory::user::{UserArray, UserSlice, UserString},
 	process::{
 		exec,
 		exec::{exec, ExecInfo, ProgramImage},
-		mem_space::copy::{UserArray, UserSlice, UserString},
 		scheduler::{switch::init_ctx, SCHEDULER},
 		Process,
 	},

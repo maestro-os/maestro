@@ -18,7 +18,7 @@
 
 //! This module implements randomness functions.
 
-use crate::{crypto::chacha20, process::mem_space::copy::UserSlice, sync::mutex::IntMutex};
+use crate::{crypto::chacha20, memory::user::UserSlice, sync::mutex::IntMutex};
 use core::{cmp::min, num::Wrapping};
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},

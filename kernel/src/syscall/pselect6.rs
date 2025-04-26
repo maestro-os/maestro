@@ -20,14 +20,8 @@
 
 use super::select::{do_select, FDSet};
 use crate::{
-	file::fd::FileDescriptorTable,
-	process::mem_space::{
-		copy::{UserPtr, UserSlice},
-		MemSpace,
-	},
-	sync::mutex::Mutex,
-	syscall::Args,
-	time::unit::Timespec,
+	file::fd::FileDescriptorTable, memory::user::UserPtr, process::mem_space::MemSpace,
+	sync::mutex::Mutex, syscall::Args, time::unit::Timespec,
 };
 use core::ffi::c_int;
 use utils::{errno::EResult, ptr::arc::Arc};

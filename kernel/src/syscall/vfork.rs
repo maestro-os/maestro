@@ -23,7 +23,8 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	process::{mem_space::copy::UserPtr, scheduler, scheduler::Scheduler, ForkOptions, Process},
+	memory::user::UserPtr,
+	process::{scheduler, scheduler::Scheduler, ForkOptions, Process},
 	syscall::{
 		clone::{clone, CLONE_VFORK, CLONE_VM},
 		Args,

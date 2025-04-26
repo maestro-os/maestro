@@ -27,7 +27,7 @@ use crate::{
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
 	sync::mutex::Mutex,
 	syscall::Args,
 };

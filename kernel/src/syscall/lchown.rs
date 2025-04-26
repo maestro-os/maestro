@@ -18,7 +18,7 @@
 
 //! The `lchown` system call changes the owner of a symbolic link file.
 
-use crate::{file::vfs::ResolutionSettings, process::mem_space::copy::UserString, syscall::Args};
+use crate::{file::vfs::ResolutionSettings, memory::user::UserString, syscall::Args};
 use core::ffi::c_int;
 use utils::errno::EResult;
 

@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, vfs, vfs::ResolutionSettings, FileType, Stat},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
 	sync::mutex::Mutex,
 	syscall::{symlinkat::symlinkat, util::at::AT_FDCWD, Args},
 	time::clock::current_time_ns,

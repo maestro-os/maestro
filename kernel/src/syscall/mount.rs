@@ -24,10 +24,8 @@ use crate::{
 		vfs::{mountpoint, mountpoint::MountSource, ResolutionSettings},
 		FileType,
 	},
-	process::{
-		mem_space::copy::{UserPtr, UserString},
-		Process,
-	},
+	memory::user::{UserPtr, UserString},
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::{c_ulong, c_void};

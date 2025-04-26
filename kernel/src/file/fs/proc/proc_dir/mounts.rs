@@ -21,7 +21,8 @@
 use crate::{
 	file::{fs::FileOps, vfs, vfs::mountpoint, File},
 	format_content,
-	process::{mem_space::copy::UserSlice, pid::Pid},
+	memory::user::UserSlice,
+	process::pid::Pid,
 };
 use core::{fmt, fmt::Formatter};
 use utils::{errno::EResult, DisplayableStr};

@@ -19,8 +19,8 @@
 //! The `rt_sigaction` system call sets the action for a signal.
 
 use crate::{
+	memory::user::UserPtr,
 	process::{
-		mem_space::copy::UserPtr,
 		signal::{CompatSigAction, SigAction, SignalHandler},
 		Process,
 	},

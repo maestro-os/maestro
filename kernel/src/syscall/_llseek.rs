@@ -20,10 +20,8 @@
 
 use crate::{
 	file::fd::FileDescriptorTable,
-	process::{
-		mem_space::{copy::UserPtr, MemSpace},
-		Process,
-	},
+	memory::user::UserPtr,
+	process::{mem_space::MemSpace, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };

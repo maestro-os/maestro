@@ -20,10 +20,8 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
-	process::{
-		mem_space::copy::{UserPtr, UserSlice},
-		Process,
-	},
+	memory::user::{UserPtr, UserSlice},
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };

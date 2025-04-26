@@ -31,7 +31,7 @@ use crate::{
 		vfs::node::Node,
 		DirContext, DirEntry, FileType, INode, Stat,
 	},
-	process::mem_space::copy::UserSlice,
+	memory::user::UserSlice,
 	sync::mutex::Mutex,
 };
 use core::{
@@ -329,7 +329,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 
 #[cfg(test)]
 mod test {
-	use crate::process::mem_space::copy::UserSlice;
+	use crate::memory::user::UserSlice;
 
 	#[test_case]
 	fn content_chunks() {

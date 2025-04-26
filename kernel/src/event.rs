@@ -21,8 +21,8 @@
 use crate::{
 	arch::x86::{idt, idt::IntFrame, pic},
 	crypto::rand,
+	memory::user::UserSlice,
 	process,
-	process::mem_space::copy::UserSlice,
 	sync::mutex::IntMutex,
 };
 use core::ptr;

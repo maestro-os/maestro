@@ -21,15 +21,8 @@
 
 use crate::{
 	file::fd::FileDescriptorTable,
-	process::{
-		mem_space::{
-			copy::{UserPtr, UserSlice},
-			MemSpace,
-		},
-		scheduler,
-		scheduler::Scheduler,
-		Process,
-	},
+	memory::user::UserPtr,
+	process::{mem_space::MemSpace, scheduler, scheduler::Scheduler, Process},
 	sync::mutex::Mutex,
 	syscall::{poll, Args},
 	time::{

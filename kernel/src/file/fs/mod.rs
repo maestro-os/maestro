@@ -30,8 +30,11 @@ use super::{
 	vfs, DirContext, File, INode, Mode, Stat,
 };
 use crate::{
-	device::BlkDev, file::vfs::node::Node, memory::cache::RcFrame,
-	process::mem_space::copy::UserSlice, sync::mutex::Mutex, syscall::ioctl,
+	device::BlkDev,
+	file::vfs::node::Node,
+	memory::{cache::RcFrame, user::UserSlice},
+	sync::mutex::Mutex,
+	syscall::ioctl,
 	time::unit::Timestamp,
 };
 use core::{

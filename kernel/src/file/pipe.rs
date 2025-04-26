@@ -21,11 +21,8 @@
 
 use crate::{
 	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat, O_NONBLOCK},
-	process::{
-		mem_space::copy::{UserPtr, UserSlice},
-		signal::Signal,
-		Process,
-	},
+	memory::user::{UserPtr, UserSlice},
+	process::{signal::Signal, Process},
 	sync::mutex::Mutex,
 	syscall::{ioctl, FromSyscallArg},
 };

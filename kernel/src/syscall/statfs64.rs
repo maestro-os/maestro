@@ -21,7 +21,7 @@
 use super::statfs::do_statfs;
 use crate::{
 	file::{fs::Statfs, vfs::ResolutionSettings},
-	process::mem_space::copy::{UserPtr, UserString},
+	memory::user::{UserPtr, UserString},
 	syscall::Args,
 };
 use utils::errno::EResult;

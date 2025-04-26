@@ -24,9 +24,8 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	memory::VirtAddr,
+	memory::{user::UserPtr, VirtAddr},
 	process::{
-		mem_space::copy::UserPtr,
 		signal::{ucontext, Signal},
 		Process,
 	},

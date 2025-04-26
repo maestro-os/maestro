@@ -22,7 +22,8 @@ use crate::{
 	device::id,
 	file,
 	file::{vfs, vfs::ResolutionSettings, FileType, Stat},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{Args, Umask},
 	time::clock::{current_time_ns, current_time_sec, Clock},
 };

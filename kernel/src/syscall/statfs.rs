@@ -20,10 +20,8 @@
 
 use crate::{
 	file::{fs::Statfs, vfs, vfs::ResolutionSettings},
-	process::{
-		mem_space::copy::{UserPtr, UserString},
-		Process,
-	},
+	memory::user::{UserPtr, UserString},
+	process::Process,
 	syscall::Args,
 };
 use utils::{

@@ -22,7 +22,8 @@
 use crate::{
 	file::{fs::NodeOps, vfs, vfs::node::Node},
 	format_content,
-	process::{mem_space::copy::UserSlice, pid::Pid, Process},
+	memory::user::UserSlice,
+	process::{pid::Pid, Process},
 };
 use utils::{errno, errno::EResult};
 

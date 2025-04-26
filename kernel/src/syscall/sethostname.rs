@@ -18,11 +18,7 @@
 
 //! The `sethostname` syscall sets the hostname of the system.
 
-use crate::{
-	file::perm::AccessProfile,
-	process::{mem_space::copy::UserSlice, Process},
-	syscall::Args,
-};
+use crate::{file::perm::AccessProfile, memory::user::UserSlice, process::Process, syscall::Args};
 use core::intrinsics::unlikely;
 use utils::{
 	collections::vec::Vec,

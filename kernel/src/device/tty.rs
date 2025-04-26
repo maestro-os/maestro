@@ -21,8 +21,8 @@
 
 use crate::{
 	file::{fs::FileOps, File},
+	memory::user::{UserPtr, UserSlice},
 	process::{
-		mem_space::copy::{UserPtr, UserSlice},
 		pid::Pid,
 		signal::{Signal, SignalHandler},
 		Process,

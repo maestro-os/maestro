@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{vfs, vfs::ResolutionSettings, File, O_WRONLY},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use utils::{

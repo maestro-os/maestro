@@ -20,15 +20,8 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, File, FileType, O_NONBLOCK},
-	process::{
-		mem_space::{
-			copy::{UserIOVec, UserSlice},
-			MemSpace,
-		},
-		scheduler,
-		signal::Signal,
-		Process,
-	},
+	memory::user::{UserIOVec, UserSlice},
+	process::{mem_space::MemSpace, scheduler, signal::Signal, Process},
 	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };

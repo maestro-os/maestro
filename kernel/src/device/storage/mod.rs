@@ -35,9 +35,9 @@ use crate::{
 	memory::{
 		buddy::FrameOrder,
 		cache::{FrameOwner, RcFrame},
+		user::UserPtr,
 	},
 	println,
-	process::mem_space::copy::UserPtr,
 	syscall::{ioctl, FromSyscallArg},
 };
 use core::{

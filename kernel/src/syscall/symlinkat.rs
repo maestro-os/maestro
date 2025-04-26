@@ -26,7 +26,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType, Stat,
 	},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
 	sync::mutex::Mutex,
 	syscall::Args,
 	time::clock::{current_time_ns, current_time_sec, Clock},

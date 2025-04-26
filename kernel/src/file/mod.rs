@@ -42,8 +42,8 @@ use crate::{
 		socket::Socket,
 		vfs::node::Node,
 	},
+	memory::user::UserSlice,
 	net::{SocketDesc, SocketDomain, SocketType},
-	process::mem_space::copy::UserSlice,
 	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
 	time::{
 		clock::{current_time_sec, Clock},

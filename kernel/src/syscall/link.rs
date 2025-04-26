@@ -21,7 +21,8 @@
 use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::{linkat::linkat, util::at::AT_FDCWD},
 };

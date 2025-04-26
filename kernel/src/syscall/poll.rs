@@ -20,7 +20,8 @@
 //! descriptors.
 
 use crate::{
-	process::{mem_space::copy::UserSlice, scheduler, scheduler::Scheduler, Process},
+	memory::user::UserSlice,
+	process::{scheduler, scheduler::Scheduler, Process},
 	syscall::Args,
 	time::{
 		clock,

@@ -20,8 +20,9 @@
 
 use crate::{
 	file::{perm::AccessProfile, vfs::ResolutionSettings},
+	memory::user::UserString,
 	module,
-	process::{mem_space::copy::UserString, Process},
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_uint;

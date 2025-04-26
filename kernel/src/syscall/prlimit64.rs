@@ -19,11 +19,8 @@
 //! The `prlimit64` syscall returns the limit for a given resource.
 
 use crate::{
-	process::{
-		mem_space::{copy::UserPtr, MemSpace},
-		pid::Pid,
-		Process,
-	},
+	memory::user::UserPtr,
+	process::{mem_space::MemSpace, pid::Pid, Process},
 	sync::mutex::IntMutex,
 	syscall::Args,
 };

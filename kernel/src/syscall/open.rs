@@ -29,7 +29,8 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		File, FileType, Stat,
 	},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{openat::do_openat, util::at::AT_FDCWD},
 	time::clock::current_time_ns,
 };

@@ -23,8 +23,7 @@ use crate::{
 		fs::{FileOps, Filesystem, NodeOps},
 		FileType, INode, Stat,
 	},
-	memory::cache::MappedNode,
-	process::mem_space::copy::UserSlice,
+	memory::{cache::MappedNode, user::UserSlice},
 	sync::mutex::Mutex,
 };
 use core::{

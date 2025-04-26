@@ -20,8 +20,8 @@
 //! the UNIX Epoch.
 
 use crate::{
+	memory::user::UserPtr,
 	process::{
-		mem_space::copy::UserPtr,
 		signal::{SigEvent, Signal, SIGEV_SIGNAL},
 		Process,
 	},

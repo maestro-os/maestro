@@ -26,10 +26,8 @@ use crate::{
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{
-		mem_space::copy::{UserPtr, UserString},
-		Process,
-	},
+	memory::user::{UserPtr, UserString},
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 	time,

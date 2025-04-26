@@ -24,7 +24,7 @@ use crate::{
 	device::{tty::TTYDeviceHandle, DeviceID},
 	file::{fs::FileOps, File},
 	logger::LOGGER,
-	process::mem_space::copy::UserSlice,
+	memory::user::UserSlice,
 	syscall::getrandom::{do_getrandom, GRND_RANDOM},
 };
 use core::{cmp::min, mem::ManuallyDrop};

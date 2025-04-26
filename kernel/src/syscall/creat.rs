@@ -22,7 +22,7 @@ use super::{open, Args};
 use crate::{
 	file,
 	file::{O_CREAT, O_TRUNC, O_WRONLY},
-	process::mem_space::copy::UserString,
+	memory::user::UserString,
 	syscall::{openat::do_openat, util::at::AT_FDCWD},
 };
 use core::ffi::c_int;

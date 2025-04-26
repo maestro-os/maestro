@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{fs::StatSet, vfs, vfs::ResolutionSettings},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;

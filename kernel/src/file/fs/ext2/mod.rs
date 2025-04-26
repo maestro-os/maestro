@@ -63,8 +63,10 @@ use crate::{
 		vfs::node::Node,
 		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
-	memory::cache::{FrameOwner, RcFrame, RcFrameVal},
-	process::mem_space::copy::UserSlice,
+	memory::{
+		cache::{FrameOwner, RcFrame, RcFrameVal},
+		user::UserSlice,
+	},
 	sync::mutex::Mutex,
 	time::clock::{current_time_sec, Clock},
 };

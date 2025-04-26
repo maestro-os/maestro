@@ -19,10 +19,7 @@
 //! The `set_tid_address` system call sets the `clear_child_tid` attribute with
 //! the given pointer.
 
-use crate::{
-	process::{mem_space::copy::UserPtr, Process},
-	syscall::Args,
-};
+use crate::{memory::user::UserPtr, process::Process, syscall::Args};
 use core::ffi::c_int;
 use utils::{errno::EResult, ptr::arc::Arc};
 

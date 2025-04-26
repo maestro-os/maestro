@@ -20,9 +20,9 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile},
+	memory::user::UserString,
 	module,
 	module::Module,
-	process::{mem_space::copy::UserString, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };

@@ -20,7 +20,8 @@
 
 use crate::{
 	file::perm::{AccessProfile, Uid},
-	process::{mem_space::copy::UserPtr, Process},
+	memory::user::UserPtr,
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;

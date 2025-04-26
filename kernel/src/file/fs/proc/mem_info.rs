@@ -22,7 +22,7 @@
 use crate::{
 	file::{fs::FileOps, File},
 	format_content, memory,
-	process::mem_space::copy::UserSlice,
+	memory::user::UserSlice,
 };
 use utils::errno::EResult;
 

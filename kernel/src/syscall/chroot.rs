@@ -25,7 +25,8 @@ use crate::{
 		vfs::{mountpoint, ResolutionSettings},
 		FileType,
 	},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use utils::{

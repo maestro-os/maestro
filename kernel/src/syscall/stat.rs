@@ -34,7 +34,7 @@ use crate::{
 		},
 		File, INode, Mode, Stat,
 	},
-	process::mem_space::copy::{UserPtr, UserString},
+	memory::user::{UserPtr, UserString},
 	sync::mutex::Mutex,
 	syscall::{util::at, Args},
 	time::unit::Timespec,

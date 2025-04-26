@@ -23,7 +23,8 @@ use crate::{
 		fd::FileDescriptorTable,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::{
 		util::{

@@ -20,12 +20,10 @@
 
 use crate::{
 	file::perm::AccessProfile,
+	memory::user::{UserSlice, UserString},
 	module,
 	module::Module,
-	process::{
-		mem_space::copy::{UserSlice, UserString},
-		Process,
-	},
+	process::Process,
 	syscall::Args,
 };
 use core::{ffi::c_ulong, intrinsics::unlikely};

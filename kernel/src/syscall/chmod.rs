@@ -21,7 +21,8 @@
 use crate::{
 	file,
 	file::{fd::FileDescriptorTable, fs::StatSet, vfs, vfs::ResolutionSettings},
-	process::{mem_space::copy::UserString, Process},
+	memory::user::UserString,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::{fchmodat::fchmodat, util::at::AT_FDCWD, Args},
 };

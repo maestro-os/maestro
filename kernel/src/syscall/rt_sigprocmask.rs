@@ -19,11 +19,8 @@
 //! The `rt_sigprocmask` system call allows to change the blocked signal mask.
 
 use crate::{
-	process::{
-		mem_space::copy::{UserPtr, UserSlice},
-		signal::SigSet,
-		Process,
-	},
+	memory::user::UserPtr,
+	process::{signal::SigSet, Process},
 	syscall::Args,
 };
 use core::{cmp::min, ffi::c_int, intrinsics::unlikely};

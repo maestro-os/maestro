@@ -21,7 +21,8 @@
 use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, FileType},
-	process::{mem_space::copy::UserSlice, scheduler, Process},
+	memory::user::UserSlice,
+	process::{scheduler, Process},
 	sync::mutex::Mutex,
 	syscall::Signal,
 };

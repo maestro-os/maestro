@@ -21,7 +21,7 @@
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::arch::x86;
 use crate::{
-	process::mem_space::copy::UserPtr,
+	memory::user::UserPtr,
 	syscall::{Args, FromSyscallArg},
 };
 use core::ffi::c_int;
