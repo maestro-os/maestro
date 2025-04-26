@@ -22,7 +22,7 @@ use crate::{
 	file::{fd::FileDescriptorTable, perm::AccessProfile},
 	module,
 	module::Module,
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -35,7 +35,7 @@ use utils::{
 };
 
 pub fn finit_module(
-	Args((fd, _param_values, _flags)): Args<(c_int, SyscallString, c_int)>,
+	Args((fd, _param_values, _flags)): Args<(c_int, UserString, c_int)>,
 	ap: AccessProfile,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

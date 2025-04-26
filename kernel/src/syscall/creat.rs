@@ -22,12 +22,12 @@ use super::{open, Args};
 use crate::{
 	file,
 	file::{O_CREAT, O_TRUNC, O_WRONLY},
-	process::mem_space::copy::SyscallString,
+	process::mem_space::copy::UserString,
 	syscall::{openat::do_openat, util::at::AT_FDCWD},
 };
 use core::ffi::c_int;
 use utils::errno::EResult;
 
-pub fn creat(Args((pathname, mode)): Args<(SyscallString, c_int)>) -> EResult<usize> {
+pub fn creat(Args((pathname, mode)): Args<(UserString, c_int)>) -> EResult<usize> {
 	do_openat(AT_FDCWD, pathname, O_CREAT | O_WRONLY | O_TRUNC, mode as _)
 }

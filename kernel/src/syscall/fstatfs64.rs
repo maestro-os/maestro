@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, fs::Statfs},
-	process::{mem_space::copy::SyscallPtr, Process},
+	process::{mem_space::copy::UserPtr, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -32,7 +32,7 @@ use utils::{
 };
 
 pub fn fstatfs64(
-	Args((fd, sz, buf)): Args<(c_int, usize, SyscallPtr<Statfs>)>,
+	Args((fd, sz, buf)): Args<(c_int, usize, UserPtr<Statfs>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	super::fstatfs::do_fstatfs(fd, sz, buf, &fds.lock())

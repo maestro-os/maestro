@@ -23,9 +23,7 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	process::{
-		mem_space::copy::SyscallPtr, scheduler, scheduler::Scheduler, ForkOptions, Process,
-	},
+	process::{mem_space::copy::UserPtr, scheduler, scheduler::Scheduler, ForkOptions, Process},
 	syscall::{
 		clone::{clone, CLONE_VFORK, CLONE_VM},
 		Args,
@@ -42,8 +40,8 @@ pub fn vfork(proc: Arc<Process>, frame: &mut IntFrame) -> EResult<usize> {
 		Args((
 			CLONE_VFORK | CLONE_VM,
 			null_mut(),
-			SyscallPtr(None),
-			SyscallPtr(None),
+			UserPtr(None),
+			UserPtr(None),
 			0,
 		)),
 		proc,

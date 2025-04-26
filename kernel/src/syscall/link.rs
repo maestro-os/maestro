@@ -21,7 +21,7 @@
 use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	sync::mutex::Mutex,
 	syscall::{linkat::linkat, util::at::AT_FDCWD},
 };
@@ -33,7 +33,7 @@ use utils::{
 };
 
 pub fn link(
-	Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>,
+	Args((oldpath, newpath)): Args<(UserString, UserString)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {

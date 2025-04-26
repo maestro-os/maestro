@@ -20,7 +20,7 @@
 
 use crate::{
 	process::{
-		mem_space::{copy::SyscallPtr, MemSpace},
+		mem_space::{copy::UserPtr, MemSpace},
 		pid::Pid,
 		Process,
 	},
@@ -93,8 +93,8 @@ pub fn prlimit64(
 	Args((pid, resource, _new_limit, _old_limit)): Args<(
 		Pid,
 		c_int,
-		SyscallPtr<RLimit>,
-		SyscallPtr<RLimit>,
+		UserPtr<RLimit>,
+		UserPtr<RLimit>,
 	)>,
 ) -> EResult<usize> {
 	// The target process. If None, the current process is the target

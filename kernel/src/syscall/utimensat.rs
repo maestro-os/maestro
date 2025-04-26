@@ -27,7 +27,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 	},
 	process::{
-		mem_space::copy::{SyscallPtr, SyscallString},
+		mem_space::copy::{UserPtr, UserString},
 		Process,
 	},
 	sync::mutex::Mutex,
@@ -51,8 +51,8 @@ use utils::{
 pub fn utimensat(
 	Args((dirfd, pathname, times, flags)): Args<(
 		c_int,
-		SyscallString,
-		SyscallPtr<[Timespec; 2]>,
+		UserString,
+		UserPtr<[Timespec; 2]>,
 		c_int,
 	)>,
 	rs: ResolutionSettings,

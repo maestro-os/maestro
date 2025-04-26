@@ -103,7 +103,7 @@ impl<T: Default + Copy, B: AsRef<[T]> + AsMut<[T]>> RingBuffer<T, B> {
 		self.buffer.as_mut()
 	}
 
-	/// Peeks dat afrom the buffer and writes it in `buf`.
+	/// Peeks data from the buffer and writes it in `buf`.
 	///
 	/// Contrary to `read`, this function doesn't consume the data.
 	///

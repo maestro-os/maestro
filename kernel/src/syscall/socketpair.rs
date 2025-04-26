@@ -23,7 +23,7 @@ use crate::{
 	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
 	net::{SocketDesc, SocketDomain, SocketType},
-	process::{mem_space::copy::SyscallPtr, Process},
+	process::{mem_space::copy::UserPtr, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -36,7 +36,7 @@ use utils::{
 };
 
 pub fn socketpair(
-	Args((domain, r#type, protocol, sv)): Args<(c_int, c_int, c_int, SyscallPtr<[c_int; 2]>)>,
+	Args((domain, r#type, protocol, sv)): Args<(c_int, c_int, c_int, UserPtr<[c_int; 2]>)>,
 	ap: AccessProfile,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

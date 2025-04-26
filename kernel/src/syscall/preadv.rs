@@ -21,7 +21,7 @@
 use crate::{
 	file::fd::FileDescriptorTable,
 	process::{
-		mem_space::copy::{SyscallIOVec, SyscallSlice},
+		mem_space::copy::{UserIOVec, UserSlice},
 		Process,
 	},
 	sync::mutex::Mutex,
@@ -33,7 +33,7 @@ use utils::{errno::EResult, ptr::arc::Arc};
 pub fn preadv(
 	Args((fd, iov, iovcnt, offset_low, offset_high)): Args<(
 		c_int,
-		SyscallIOVec,
+		UserIOVec,
 		c_int,
 		isize,
 		isize,

@@ -23,26 +23,27 @@ use crate::{
 	module,
 	module::Module,
 	process::{
-		mem_space::copy::{SyscallSlice, SyscallString},
+		mem_space::copy::{UserSlice, UserString},
 		Process,
 	},
 	syscall::Args,
 };
-use core::ffi::c_ulong;
+use core::{ffi::c_ulong, intrinsics::unlikely};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
 };
 
 pub fn init_module(
-	Args((module_image, len, _param_values)): Args<(SyscallSlice<u8>, c_ulong, SyscallString)>,
+	Args((module_image, len, _param_values)): Args<(*mut u8, c_ulong, UserString)>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
-	if !ap.is_privileged() {
+	let module_image = UserSlice::from_user(module_image, len as _)?;
+	if unlikely(!ap.is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	let image = module_image
-		.copy_from_user_vec(0, len as usize)?
+		.copy_from_user_vec(0)?
 		.ok_or_else(|| errno!(EFAULT))?;
 	let module = Module::load(&image)?;
 	module::add(module)?;

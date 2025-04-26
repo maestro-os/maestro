@@ -21,7 +21,7 @@
 use crate::{
 	process,
 	process::{
-		mem_space::copy::SyscallPtr, pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler,
+		mem_space::copy::UserPtr, pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler,
 		Process, State,
 	},
 	syscall::{waitpid::scheduler::SCHEDULER, Args},
@@ -99,9 +99,9 @@ fn get_wstatus(proc: &Process) -> i32 {
 fn get_waitable(
 	curr_proc: &Process,
 	pid: i32,
-	wstatus: &SyscallPtr<i32>,
+	wstatus: &UserPtr<i32>,
 	options: i32,
-	rusage: &SyscallPtr<Rusage>,
+	rusage: &UserPtr<Rusage>,
 ) -> EResult<Option<Pid>> {
 	let mut empty = true;
 	let mut sched = SCHEDULER.lock();
@@ -144,9 +144,9 @@ fn get_waitable(
 /// Executes the `waitpid` system call.
 pub fn do_waitpid(
 	pid: i32,
-	wstatus: SyscallPtr<i32>,
+	wstatus: UserPtr<i32>,
 	options: i32,
-	rusage: SyscallPtr<Rusage>,
+	rusage: UserPtr<Rusage>,
 ) -> EResult<usize> {
 	loop {
 		{
@@ -169,7 +169,7 @@ pub fn do_waitpid(
 }
 
 pub fn waitpid(
-	Args((pid, wstatus, options)): Args<(c_int, SyscallPtr<c_int>, c_int)>,
+	Args((pid, wstatus, options)): Args<(c_int, UserPtr<c_int>, c_int)>,
 ) -> EResult<usize> {
-	do_waitpid(pid, wstatus, options | WEXITED, SyscallPtr(None))
+	do_waitpid(pid, wstatus, options | WEXITED, UserPtr(None))
 }

@@ -22,7 +22,7 @@
 use crate::{
 	file::{fs::FileOps, File},
 	format_content,
-	process::{pid::Pid, Process},
+	process::{mem_space::copy::UserSlice, pid::Pid, Process},
 };
 use core::fmt;
 use utils::{errno, errno::EResult, DisplayableStr};
@@ -32,7 +32,7 @@ use utils::{errno, errno::EResult, DisplayableStr};
 pub struct Status(pub Pid);
 
 impl FileOps for Status {
-	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let mem_space = proc.mem_space.as_ref().map(|m| m.lock());
 		let disp = fmt::from_fn(|f| {

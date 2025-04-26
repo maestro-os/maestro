@@ -27,7 +27,7 @@ use crate::{
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	sync::mutex::Mutex,
 	syscall::{util::at::AT_EMPTY_PATH, Args},
 };
@@ -42,7 +42,7 @@ use utils::{
 /// Perform the `unlinkat` system call.
 pub fn do_unlinkat(
 	dirfd: c_int,
-	pathname: SyscallString,
+	pathname: UserString,
 	flags: c_int,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
@@ -71,7 +71,7 @@ pub fn do_unlinkat(
 }
 
 pub fn unlinkat(
-	Args((dirfd, pathname, flags)): Args<(c_int, SyscallString, c_int)>,
+	Args((dirfd, pathname, flags)): Args<(c_int, UserString, c_int)>,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

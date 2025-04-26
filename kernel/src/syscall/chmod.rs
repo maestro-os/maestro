@@ -21,7 +21,7 @@
 use crate::{
 	file,
 	file::{fd::FileDescriptorTable, fs::StatSet, vfs, vfs::ResolutionSettings},
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	sync::mutex::Mutex,
 	syscall::{fchmodat::fchmodat, util::at::AT_FDCWD, Args},
 };
@@ -34,7 +34,7 @@ use utils::{
 };
 
 pub fn chmod(
-	Args((pathname, mode)): Args<(SyscallString, file::Mode)>,
+	Args((pathname, mode)): Args<(UserString, file::Mode)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {

@@ -23,7 +23,7 @@
 use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, vfs, vfs::ResolutionSettings},
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	sync::mutex::Mutex,
 	syscall::{unlinkat::do_unlinkat, util::at::AT_FDCWD},
 };
@@ -34,7 +34,7 @@ use utils::{
 };
 
 pub fn unlink(
-	Args(pathname): Args<SyscallString>,
+	Args(pathname): Args<UserString>,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

@@ -20,8 +20,12 @@
 //! and another writing, with a buffer in between.
 
 use crate::{
-	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat},
-	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
+	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat, O_NONBLOCK},
+	process::{
+		mem_space::copy::{UserPtr, UserSlice},
+		signal::Signal,
+		Process,
+	},
 	sync::mutex::Mutex,
 	syscall::{ioctl, FromSyscallArg},
 };
@@ -118,7 +122,7 @@ impl FileOps for PipeBuffer {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
 				let len = self.inner.lock().buffer.get_data_len() as c_int;
-				let count_ptr = SyscallPtr::from_ptr(argp as usize);
+				let count_ptr = UserPtr::from_ptr(argp as usize);
 				count_ptr.copy_to_user(&len)?;
 			}
 			_ => return Err(errno!(ENOTTY)),
@@ -126,7 +130,7 @@ impl FileOps for PipeBuffer {
 		Ok(0)
 	}
 
-	fn read(&self, _file: &File, _off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		if unlikely(buf.is_empty()) {
 			return Ok(0);
 		}
@@ -135,19 +139,22 @@ impl FileOps for PipeBuffer {
 			let len = inner.buffer.read(buf);
 			if len > 0 {
 				self.wr_queue.wake_next();
-				Some(len)
+				return Some(Ok(len));
+			}
+			// Nothing to read
+			if inner.writers == 0 {
+				return Some(Ok(0));
+			}
+			if file.get_flags() & O_NONBLOCK != 0 {
+				Some(Err(errno!(EAGAIN)))
 			} else {
-				if inner.writers == 0 {
-					return Some(0);
-				}
-				// TODO if O_NONBLOCK, return `EAGAIN`
 				None
 			}
-		})?;
+		})??;
 		Ok(len)
 	}
 
-	fn write(&self, _file: &File, _off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		if unlikely(buf.is_empty()) {
 			return Ok(0);
 		}
@@ -160,9 +167,12 @@ impl FileOps for PipeBuffer {
 			let len = inner.buffer.write(buf);
 			if len > 0 {
 				self.rd_queue.wake_next();
-				Some(Ok(len))
+				return Some(Ok(len));
+			}
+			// No space left to write
+			if file.get_flags() & O_NONBLOCK != 0 {
+				Some(Err(errno!(EAGAIN)))
 			} else {
-				// TODO if O_NONBLOCK, return `EAGAIN`
 				None
 			}
 		})??;

@@ -22,10 +22,11 @@ use crate::{
 	arch::x86::{idt, idt::IntFrame, pic},
 	crypto::rand,
 	process,
+	process::mem_space::copy::UserSlice,
 	sync::mutex::IntMutex,
 };
 use core::ptr;
-use utils::{collections::vec::Vec, errno::AllocResult};
+use utils::{bytes::as_bytes, collections::vec::Vec, errno::AllocResult};
 
 /// The list of interrupt error messages ordered by index of the corresponding
 /// interrupt vector.
@@ -150,10 +151,10 @@ pub fn register_callback(id: u32, callback: Callback) -> AllocResult<Option<Call
 extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	// Feed entropy pool
 	{
-		let buf = utils::bytes::as_bytes(frame);
 		let mut pool = rand::ENTROPY_POOL.lock();
 		if let Some(pool) = &mut *pool {
-			pool.write(buf);
+			let buf = unsafe { UserSlice::from_slice(as_bytes(frame)) };
+			let _ = pool.write(buf);
 		}
 	}
 	let id = frame.int as u32;

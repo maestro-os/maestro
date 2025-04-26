@@ -20,7 +20,7 @@
 
 use crate::{
 	arch::ARCH,
-	process::{mem_space::copy::SyscallPtr, Process},
+	process::{mem_space::copy::UserPtr, Process},
 	syscall::Args,
 	HOSTNAME, NAME, VERSION,
 };
@@ -48,7 +48,7 @@ pub struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
+pub fn uname(Args(buf): Args<UserPtr<Utsname>>) -> EResult<usize> {
 	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
 		nodename: [0; UTSNAME_LENGTH],

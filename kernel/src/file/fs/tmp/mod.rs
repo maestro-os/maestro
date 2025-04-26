@@ -36,6 +36,7 @@ use crate::{
 		DirContext, DirEntry, File, FileType, Stat,
 	},
 	memory::cache::{FrameOwner, RcFrame},
+	process::mem_space::copy::UserSlice,
 	sync::mutex::Mutex,
 };
 use core::{any::Any, cmp::min, intrinsics::unlikely, sync::atomic::AtomicBool};
@@ -252,14 +253,12 @@ impl NodeOps for NodeContent {
 		Ok(())
 	}
 
-	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
+	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		let NodeContent::Link(content) = self else {
 			return Err(errno!(EINVAL));
 		};
 		let content = content.lock();
-		let len = min(buf.len(), content.len());
-		buf[..len].copy_from_slice(&content[..len]);
-		Ok(len)
+		buf.copy_to_user(0, &*content)
 	}
 
 	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
@@ -331,11 +330,11 @@ impl NodeOps for NodeContent {
 pub struct TmpFSFile;
 
 impl FileOps for TmpFSFile {
-	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		generic_file_read(file, off, buf)
 	}
 
-	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let node = file.node().unwrap();
 		let fs = downcast_fs::<TmpFS>(&*node.fs.ops);
 		if unlikely(fs.readonly) {

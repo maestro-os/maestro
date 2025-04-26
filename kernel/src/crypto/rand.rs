@@ -18,32 +18,27 @@
 
 //! This module implements randomness functions.
 
-use crate::{crypto::chacha20, sync::mutex::IntMutex};
+use crate::{crypto::chacha20, process::mem_space::copy::UserSlice, sync::mutex::IntMutex};
+use core::{cmp::min, num::Wrapping};
 use utils::{
 	collections::{ring_buffer::RingBuffer, vec::Vec},
-	errno::AllocResult,
+	errno::{AllocResult, EResult},
 	vec,
 };
-
-/// The size of the entropy buffer in bytes.
-const ENTROPY_BUFFER_SIZE: usize = 32768;
-/// The minimum number of bytes needed to read entropy.
-const ENTROPY_THRESHOLD: usize = 1024;
 
 // TODO Implement entropy extraction (Fast Key Erasure?)
 
 /// An entropy pool.
 pub struct EntropyPool {
-	/// Data pending to be treated. This buffer is used as a cache when input data is not large
-	/// enough.
+	/// Available, non-encoded entropy
 	pending: RingBuffer<u8, Vec<u8>>,
-	/// The buffer containing entropy.
-	buff: RingBuffer<u8, Vec<u8>>,
+	/// Unused remains of the last encoding round
+	remain: RingBuffer<u8, Vec<u8>>,
 
 	/// The ChaCha20 counter.
-	counter: u64,
+	counter: Wrapping<u64>,
 
-	/// The seed to be used for pseudo-random generation (when the pool runs out of entropy).
+	/// The seed to be used for pseudo-random generation (urandom).
 	pseudo_seed: u64,
 }
 
@@ -51,96 +46,95 @@ impl EntropyPool {
 	/// Creates a new instance.
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
-			pending: RingBuffer::new(vec![0; 56]?),
-			buff: RingBuffer::new(vec![0; ENTROPY_BUFFER_SIZE]?),
+			pending: RingBuffer::new(vec![0; 32768]?),
+			remain: RingBuffer::new(vec![0; 56]?),
 
-			counter: 0,
+			counter: Wrapping::default(),
 
 			pseudo_seed: 0,
 		})
 	}
 
-	/// Returns the number of available bytes.
-	pub fn available_bytes(&self) -> usize {
-		self.buff.get_data_len()
+	/// Reads data from the pending entropy buffer, encodes it and writes it in `dst`.
+	///
+	/// If not enough entropy is available, the function returns `false`
+	fn encode(&mut self, dst: &mut [u8; 64]) -> bool {
+		// Read data from the pending entropy buffer
+		let mut src = [0u8; 56];
+		// TODO need a function to read the exact amount or fail
+		let read_len = self.pending.read(&mut src);
+		if read_len < src.len() {
+			return false;
+		}
+		// Add data
+		dst[0..48].copy_from_slice(&src[..48]);
+		// Add counter to buffer
+		dst[48..56].copy_from_slice(&self.counter.0.to_ne_bytes());
+		// Add nonce
+		dst[56..].copy_from_slice(&src[48..]);
+		// Encode with ChaCha20
+		chacha20::block(dst);
+		// Update pseudo seed
+		let mut seed: [u8; 8] = [0; 8];
+		seed.copy_from_slice(&dst[..8]);
+		self.pseudo_seed = u64::from_ne_bytes(seed);
+		// Update counter
+		self.counter += 1;
+		true
 	}
 
 	/// Reads entropy from the pool.
 	///
+	/// Arguments:
+	/// - `buf` is where random bytes are written to
+	/// - `random`: if `true`, limit randomness to the available entropy, returning just the amount
+	///   that could be read
+	/// - `nonblocking`: if `true`, do not block if entropy is missing
+	///
 	/// The function returns the number of bytes read.
-	///
-	/// If the pool do not contain enough entropy, the function returns `0`, unless
-	/// `bypass_threshold` is set to `true`. In which case, randomness is not guaranteed.
-	pub fn read(&mut self, buff: &mut [u8], bypass_threshold: bool) -> usize {
-		let available = self.buff.get_data_len();
-		if available < ENTROPY_THRESHOLD {
-			// TODO first, encode some bytes from `pending`, then use them (if available)
-			if !bypass_threshold {
-				return 0;
+	pub fn read(
+		&mut self,
+		buf: UserSlice<u8>,
+		random: bool,
+		_nonblocking: bool,
+	) -> EResult<usize> {
+		// First, use remaining used entropy
+		let mut off = self.remain.read(buf);
+		// If we need more entropy, iterate
+		let mut encode_buf = [0u8; 64];
+		while off < buf.len() {
+			let res = self.encode(&mut encode_buf);
+			// If not enough entropy is available
+			if !res {
+				// TODO if blocking, block until enough entropy is available
+				if !random {
+					// urandom is allowed: use a PRNG
+					let mut seed = self.pseudo_seed;
+					for b in encode_buf.iter_mut() {
+						seed = 6364136223846793005u64.wrapping_mul(seed).wrapping_add(1);
+						*b = (seed & 0xff) as _;
+					}
+					self.pseudo_seed = seed;
+				} else {
+					// urandom is not allowed, stop
+					break;
+				}
 			}
-			// Use a PRNG to create fake entropy
-			let mut seed = self.pseudo_seed;
-			for b in buff.iter_mut() {
-				seed = 6364136223846793005u64.wrapping_mul(seed).wrapping_add(1);
-				*b = (seed & 0xff) as _;
-			}
-			self.pseudo_seed = seed;
-			buff.len()
-		} else {
-			self.buff.read(buff)
+			// Copy to user
+			let l = min(buf.len() - off, encode_buf.len());
+			buf.copy_to_user(off, &encode_buf[..l])?;
+			// Keep remaining bytes
+			self.remain.write(&encode_buf[l..]);
+			off += l;
 		}
-	}
-
-	/// Encodes data to fill the entropy buffer.
-	///
-	/// The function returns the number of consumed bytes from the given buffer.
-	fn encode(&mut self, buff: &[u8]) -> usize {
-		let mut off = 0;
-		let mut encode_buff: [u8; 64] = [0; 64];
-		while off < buff.len() && buff.len() - off >= self.pending.get_size() {
-			// Add data
-			encode_buff[0..48].copy_from_slice(&buff[off..(off + 48)]);
-			off += 48;
-			// Add counter to buffer
-			encode_buff[48..56].copy_from_slice(&self.counter.to_ne_bytes());
-			// Add nonce
-			encode_buff[56..].copy_from_slice(&buff[off..(off + 8)]);
-			off += 8;
-
-			// Encode with ChaCha20
-			chacha20::block(&mut encode_buff);
-			// Update pseudo seed
-			let mut seed: [u8; 8] = [0; 8];
-			seed.copy_from_slice(&encode_buff[..8]);
-			self.pseudo_seed = u64::from_ne_bytes(seed);
-
-			// Write
-			let l = self.buff.write(&encode_buff[8..]);
-			if l == 0 {
-				break;
-			}
-			self.counter += 1;
-		}
-		off
+		Ok(off)
 	}
 
 	/// Writes entropy to the pool.
 	///
 	/// The function returns the number of bytes written.
-	pub fn write(&mut self, buff: &[u8]) -> usize {
-		let mut off = 0;
-		if !self.buff.is_full() {
-			off = self.encode(buff);
-		}
-		// Put remaining bytes into pending buffer
-		while off < buff.len() {
-			let l = self.pending.write(&buff[off..]);
-			if l == 0 {
-				break;
-			}
-			off += l;
-		}
-		buff.len() - off
+	pub fn write(&mut self, buf: UserSlice<u8>) -> EResult<usize> {
+		self.pending.write(buf)
 	}
 }
 

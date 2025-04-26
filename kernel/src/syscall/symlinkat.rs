@@ -26,7 +26,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType, Stat,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 	time::clock::{current_time_ns, current_time_sec, Clock},
@@ -41,7 +41,7 @@ use utils::{
 };
 
 pub fn symlinkat(
-	Args((target, newdirfd, linkpath)): Args<(SyscallString, c_int, SyscallString)>,
+	Args((target, newdirfd, linkpath)): Args<(UserString, c_int, UserString)>,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

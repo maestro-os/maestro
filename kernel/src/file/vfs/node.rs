@@ -24,6 +24,7 @@ use crate::{
 		FileType, INode, Stat,
 	},
 	memory::cache::MappedNode,
+	process::mem_space::copy::UserSlice,
 	sync::mutex::Mutex,
 };
 use core::{
@@ -89,7 +90,8 @@ impl Node {
 		let mut buf = vec![0u8; INCREMENT]?;
 		let mut len;
 		loop {
-			len = self.node_ops.readlink(self, &mut buf)?;
+			let b = UserSlice::from_slice_mut(&mut buf);
+			len = self.node_ops.readlink(self, b)?;
 			if len < buf.len() || buf.len() >= SYMLINK_MAX {
 				break;
 			}

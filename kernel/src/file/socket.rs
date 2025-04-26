@@ -21,6 +21,7 @@
 use crate::{
 	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat},
 	net::{osi, SocketDesc},
+	process::mem_space::copy::UserSlice,
 	sync::mutex::Mutex,
 	syscall::ioctl::Request,
 };
@@ -181,14 +182,14 @@ impl FileOps for Socket {
 		todo!()
 	}
 
-	fn read(&self, _file: &File, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, _off: u64, _buf: UserSlice<u8>) -> EResult<usize> {
 		if !self.desc.type_.is_stream() {
 			// TODO error
 		}
 		todo!()
 	}
 
-	fn write(&self, _file: &File, _off: u64, _buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _file: &File, _off: u64, _buf: UserSlice<u8>) -> EResult<usize> {
 		// A destination address is required
 		let Some(_stack) = self.stack.as_ref() else {
 			return Err(errno!(EDESTADDRREQ));

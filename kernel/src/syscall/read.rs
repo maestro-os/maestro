@@ -21,7 +21,7 @@
 use super::Args;
 use crate::{
 	file::{fd::FileDescriptorTable, FileType},
-	process::{mem_space::copy::SyscallSlice, scheduler, Process},
+	process::{mem_space::copy::UserSlice, scheduler, Process},
 	sync::mutex::Mutex,
 };
 use core::{cmp::min, ffi::c_int, sync::atomic};
@@ -33,27 +33,24 @@ use utils::{
 };
 
 pub fn read(
-	Args((fd, buf, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
+	Args((fd, buf, count)): Args<(c_int, *mut u8, usize)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	let buf = UserSlice::from_user(buf, count)?;
 	// Validation
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
 	let file = fds.lock().get_fd(fd)?.get_file().clone();
-	// Validation
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	// TODO perf: a buffer is not necessarily required
-	let mut buffer = vec![0u8; count]?;
+	// Read
 	let off = file.off.load(atomic::Ordering::Acquire);
-	let len = file.ops.read(&file, off, &mut buffer)?;
+	let len = file.ops.read(&file, off, buf)?;
 	// Update offset
 	let new_off = off.saturating_add(len as u64);
 	file.off.store(new_off, atomic::Ordering::Release);
-	// Write back
-	buf.copy_to_user(0, &buffer[..len])?;
 	Ok(len as _)
 }

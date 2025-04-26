@@ -64,6 +64,7 @@ use crate::{
 		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
 	memory::cache::{FrameOwner, RcFrame, RcFrameVal},
+	process::mem_space::copy::UserSlice,
 	sync::mutex::Mutex,
 	time::clock::{current_time_sec, Clock},
 };
@@ -338,7 +339,7 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
+	fn readlink(&self, node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		let inode_ = Ext2INode::get(node, fs)?;
 		if inode_.get_type() != FileType::Link {
@@ -352,16 +353,15 @@ impl NodeOps for Ext2NodeOps {
 			// The target is stored inline in the inode
 			let len = min(buf.len(), size as usize);
 			let src = bytes::as_bytes(&inode_.i_block);
-			buf[..len].copy_from_slice(&src[..len]);
+			buf.copy_to_user(0, &src[..len])?;
 			Ok(len)
 		} else {
 			// The target is stored like in regular files
 			let blk =
 				inode::check_blk_off(inode_.i_block[0], &fs.sp)?.ok_or_else(|| errno!(EUCLEAN))?;
 			let blk = read_block(fs, blk.get() as _)?;
-			// FIXME we need a concurrency-safe copy
 			let len = min(buf.len(), size as usize);
-			buf.copy_from_slice(&blk.slice()[..len]);
+			buf.copy_to_user(0, &blk.slice()[..len])?;
 			Ok(len)
 		}
 	}
@@ -490,7 +490,7 @@ impl NodeOps for Ext2NodeOps {
 pub struct Ext2FileOps;
 
 impl FileOps for Ext2FileOps {
-	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		// TODO replace by filetype-specific FileOps
 		let node = file.node().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
@@ -504,7 +504,7 @@ impl FileOps for Ext2FileOps {
 		generic_file_read(file, off, buf)
 	}
 
-	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let node = file.node().unwrap();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		if unlikely(fs.readonly) {

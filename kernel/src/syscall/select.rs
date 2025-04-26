@@ -23,7 +23,7 @@ use crate::{
 	file::fd::FileDescriptorTable,
 	process::{
 		mem_space::{
-			copy::{SyscallPtr, SyscallSlice},
+			copy::{UserPtr, UserSlice},
 			MemSpace,
 		},
 		scheduler,
@@ -96,11 +96,11 @@ impl FDSet {
 pub fn do_select<T: TimeUnit>(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	nfds: u32,
-	readfds: SyscallPtr<FDSet>,
-	writefds: SyscallPtr<FDSet>,
-	exceptfds: SyscallPtr<FDSet>,
-	timeout: SyscallPtr<T>,
-	_sigmask: Option<SyscallSlice<u8>>,
+	readfds: UserPtr<FDSet>,
+	writefds: UserPtr<FDSet>,
+	exceptfds: UserPtr<FDSet>,
+	timeout: UserPtr<T>,
+	_sigmask: Option<*mut u8>,
 ) -> EResult<usize> {
 	let start = current_time_ns(Clock::Monotonic);
 	// Get timeout
@@ -203,10 +203,10 @@ pub fn do_select<T: TimeUnit>(
 pub fn select(
 	Args((nfds, readfds, writefds, exceptfds, timeout)): Args<(
 		c_int,
-		SyscallPtr<FDSet>,
-		SyscallPtr<FDSet>,
-		SyscallPtr<FDSet>,
-		SyscallPtr<Timeval>,
+		UserPtr<FDSet>,
+		UserPtr<FDSet>,
+		UserPtr<FDSet>,
+		UserPtr<Timeval>,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

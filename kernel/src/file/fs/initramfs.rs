@@ -22,6 +22,7 @@
 use crate::{
 	device, file,
 	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType, Stat, O_WRONLY},
+	process::mem_space::copy::UserSlice,
 };
 use utils::{collections::path::Path, cpio::CPIOParser, errno, errno::EResult, ptr::arc::Arc};
 
@@ -104,7 +105,7 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			Err(e) => return Err(e),
 		};
 		if matches!(file.get_type()?, FileType::Regular | FileType::Link) {
-			let content = entry.get_content();
+			let content = unsafe { UserSlice::from_slice(entry.get_content()) };
 			let file = File::open_entry(file, O_WRONLY)?;
 			file.ops.write(&file, 0, content)?;
 		}

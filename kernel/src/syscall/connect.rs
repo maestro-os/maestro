@@ -20,11 +20,11 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
-	process::{mem_space::copy::SyscallSlice, Process},
+	process::{mem_space::copy::UserSlice, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{any::Any, ffi::c_int};
+use core::{any::Any, ffi::c_int, intrinsics::unlikely};
 use utils::{
 	errno,
 	errno::{EResult, Errno},
@@ -33,19 +33,18 @@ use utils::{
 
 /// The implementation of the `connect` syscall.
 pub fn connect(
-	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, isize)>,
+	Args((sockfd, addr, addrlen)): Args<(c_int, *mut u8, isize)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
-	if addrlen < 0 {
+	if unlikely(addrlen < 0) {
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
 	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
-	let _addr = addr
-		.copy_from_user_vec(0, addrlen as usize)?
-		.ok_or_else(|| errno!(EFAULT))?;
+	let addr = UserSlice::from_user(addr, addrlen as _)?;
+	let _addr = addr.copy_from_user_vec(0)?.ok_or_else(|| errno!(EFAULT))?;
 	// TODO connect socket
 	todo!()
 }

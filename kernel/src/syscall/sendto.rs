@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
-	process::{mem_space::copy::SyscallSlice, Process},
+	process::{mem_space::copy::UserSlice, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -36,14 +36,16 @@ use utils::{
 pub fn sendto(
 	Args((sockfd, buf, len, _flags, dest_addr, addrlen)): Args<(
 		c_int,
-		SyscallSlice<u8>,
+		*mut u8,
 		usize,
 		c_int,
-		SyscallSlice<u8>,
+		*mut u8,
 		isize,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	let buf = UserSlice::from_user(buf, len)?;
+	let dest_addr = UserSlice::from_user(dest_addr, addrlen as _)?;
 	// Validation
 	if unlikely(addrlen < 0) {
 		return Err(errno!(EINVAL));
@@ -52,9 +54,7 @@ pub fn sendto(
 	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Get slices
-	let _buf_slice = buf.copy_from_user_vec(0, len)?.ok_or(errno!(EFAULT))?;
-	let _dest_addr_slice = dest_addr
-		.copy_from_user_vec(0, addrlen as usize)?
-		.ok_or(errno!(EFAULT))?;
+	let _buf_slice = buf.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
+	let _dest_addr_slice = dest_addr.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
 	todo!()
 }

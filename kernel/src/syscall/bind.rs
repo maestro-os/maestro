@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
-	process::{mem_space::copy::SyscallSlice, Process},
+	process::{mem_space::copy::UserSlice, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -32,7 +32,7 @@ use utils::{
 };
 
 pub fn bind(
-	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, isize)>,
+	Args((sockfd, addr, addrlen)): Args<(c_int, *mut u8, isize)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
@@ -42,9 +42,8 @@ pub fn bind(
 	// Get socket
 	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
-	let buf = addr
-		.copy_from_user_vec(0, addrlen as usize)?
-		.ok_or_else(|| errno!(EFAULT))?;
-	sock.bind(&buf)?;
+	let addr = UserSlice::from_user(addr, addrlen as _)?;
+	let addr = addr.copy_from_user_vec(0)?.ok_or_else(|| errno!(EFAULT))?;
+	sock.bind(&addr)?;
 	Ok(0)
 }

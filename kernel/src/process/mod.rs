@@ -44,7 +44,7 @@ use crate::{
 	},
 	memory::{buddy, buddy::FrameOrder, oom, VirtAddr},
 	process::{
-		mem_space::{copy, copy::SyscallPtr},
+		mem_space::{copy, copy::UserPtr},
 		pid::{PidHandle, IDLE_PID, INIT_PID},
 		rusage::Rusage,
 		scheduler::{
@@ -377,7 +377,7 @@ pub(crate) fn init() -> EResult<()> {
 			// General Protection Fault
 			0x0d => {
 				// Get the instruction opcode
-				let ptr = SyscallPtr::<u8>::from_ptr(frame.get_program_counter());
+				let ptr = UserPtr::<u8>::from_ptr(frame.get_program_counter());
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {

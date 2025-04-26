@@ -21,7 +21,7 @@
 use crate::{
 	file::fd::FileDescriptorTable,
 	process::{
-		mem_space::{copy::SyscallPtr, MemSpace},
+		mem_space::{copy::UserPtr, MemSpace},
 		Process,
 	},
 	sync::mutex::Mutex,
@@ -48,7 +48,7 @@ fn do_lseek(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	fd: c_uint,
 	offset: u64,
-	result: Option<SyscallPtr<u64>>,
+	result: Option<UserPtr<u64>>,
 	whence: c_uint,
 ) -> EResult<usize> {
 	let fds = fds_mutex.lock();
@@ -75,7 +75,7 @@ pub fn _llseek(
 		c_uint,
 		u32,
 		u32,
-		SyscallPtr<u64>,
+		UserPtr<u64>,
 		c_uint,
 	)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,

@@ -22,7 +22,7 @@ use super::select::{do_select, FDSet};
 use crate::{
 	file::fd::FileDescriptorTable,
 	process::mem_space::{
-		copy::{SyscallPtr, SyscallSlice},
+		copy::{UserPtr, UserSlice},
 		MemSpace,
 	},
 	sync::mutex::Mutex,
@@ -36,11 +36,11 @@ use utils::{errno::EResult, ptr::arc::Arc};
 pub fn pselect6(
 	Args((nfds, readfds, writefds, exceptfds, timeout, sigmask)): Args<(
 		c_int,
-		SyscallPtr<FDSet>,
-		SyscallPtr<FDSet>,
-		SyscallPtr<FDSet>,
-		SyscallPtr<Timespec>,
-		SyscallSlice<u8>,
+		UserPtr<FDSet>,
+		UserPtr<FDSet>,
+		UserPtr<FDSet>,
+		UserPtr<Timespec>,
+		*mut u8,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
-	process::mem_space::copy::SyscallString,
+	process::mem_space::copy::UserString,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -28,7 +28,7 @@ use core::ffi::c_int;
 use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn faccessat(
-	Args((dir_fd, pathname, mode)): Args<(c_int, SyscallString, c_int)>,
+	Args((dir_fd, pathname, mode)): Args<(c_int, UserString, c_int)>,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

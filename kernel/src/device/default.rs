@@ -24,6 +24,8 @@ use crate::{
 	device::{tty::TTYDeviceHandle, DeviceID},
 	file::{fs::FileOps, File},
 	logger::LOGGER,
+	process::mem_space::copy::UserSlice,
+	syscall::getrandom::{do_getrandom, GRND_RANDOM},
 };
 use core::{cmp::min, mem::ManuallyDrop};
 use utils::{collections::path::PathBuf, errno, errno::EResult};
@@ -33,11 +35,11 @@ use utils::{collections::path::PathBuf, errno, errno::EResult};
 pub struct NullDeviceHandle;
 
 impl FileOps for NullDeviceHandle {
-	fn read(&self, _file: &File, _off: u64, _buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, _: u64, _buf: UserSlice<u8>) -> EResult<usize> {
 		Ok(0)
 	}
 
-	fn write(&self, _file: &File, _off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		Ok(buf.len())
 	}
 }
@@ -47,12 +49,18 @@ impl FileOps for NullDeviceHandle {
 pub struct ZeroDeviceHandle;
 
 impl FileOps for ZeroDeviceHandle {
-	fn read(&self, _file: &File, _offset: u64, buf: &mut [u8]) -> EResult<usize> {
-		buf.fill(0);
+	fn read(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		let mut i = 0;
+		let b: [u8; 128] = [0; 128];
+		while i < buf.len() {
+			let l = min(buf.len() - i, b.len());
+			buf.copy_to_user(i, &b[..l])?;
+			i += l;
+		}
 		Ok(buf.len())
 	}
 
-	fn write(&self, _file: &File, _offset: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		Ok(buf.len())
 	}
 }
@@ -64,22 +72,15 @@ impl FileOps for ZeroDeviceHandle {
 pub struct RandomDeviceHandle;
 
 impl FileOps for RandomDeviceHandle {
-	fn read(&self, _file: &File, _: u64, buf: &mut [u8]) -> EResult<usize> {
-		let mut pool = rand::ENTROPY_POOL.lock();
-		if let Some(pool) = &mut *pool {
-			// TODO actual make this device blocking
-			Ok(pool.read(buf, false))
-		} else {
-			Ok(0)
-		}
+	fn read(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		do_getrandom(buf, GRND_RANDOM)
 	}
 
-	fn write(&self, _file: &File, _: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 		if let Some(pool) = &mut *pool {
-			// TODO actual make this device blocking
-			let len = pool.write(buf);
-			Ok(len as _)
+			// TODO make blocking if the pool is full?
+			pool.write(buf)
 		} else {
 			Err(errno!(EINVAL))
 		}
@@ -94,21 +95,14 @@ impl FileOps for RandomDeviceHandle {
 pub struct URandomDeviceHandle;
 
 impl FileOps for URandomDeviceHandle {
-	fn read(&self, _file: &File, _: u64, buf: &mut [u8]) -> EResult<usize> {
-		let mut pool = rand::ENTROPY_POOL.lock();
-		if let Some(pool) = &mut *pool {
-			let len = pool.read(buf, true);
-			Ok(len)
-		} else {
-			Ok(0)
-		}
+	fn read(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		do_getrandom(buf, 0)
 	}
 
-	fn write(&self, _file: &File, _: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let mut pool = rand::ENTROPY_POOL.lock();
 		if let Some(pool) = &mut *pool {
-			let len = pool.write(buf);
-			Ok(len)
+			pool.write(buf)
 		} else {
 			Err(errno!(EINVAL))
 		}
@@ -120,18 +114,18 @@ impl FileOps for URandomDeviceHandle {
 pub struct KMsgDeviceHandle;
 
 impl FileOps for KMsgDeviceHandle {
-	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let off = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let logger = LOGGER.lock();
 		let size = logger.get_size();
 		let content = logger.get_content();
 
-		let len = min(size - off, buf.len());
-		buf[..len].copy_from_slice(&content[off..(off + len)]);
-		Ok(len)
+		let l = min(size - off, buf.len());
+		buf.copy_to_user(0, &content[off..(off + l)])?;
+		Ok(l)
 	}
 
-	fn write(&self, _file: &File, _off: u64, _buf: &[u8]) -> EResult<usize> {
+	fn write(&self, _file: &File, _off: u64, _buf: UserSlice<u8>) -> EResult<usize> {
 		todo!();
 	}
 }

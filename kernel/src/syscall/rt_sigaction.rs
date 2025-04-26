@@ -20,7 +20,7 @@
 
 use crate::{
 	process::{
-		mem_space::copy::SyscallPtr,
+		mem_space::copy::UserPtr,
 		signal::{CompatSigAction, SigAction, SignalHandler},
 		Process,
 	},
@@ -31,8 +31,8 @@ use utils::{errno::EResult, ptr::arc::Arc};
 
 fn do_rt_sigaction<S: Debug + From<SigAction> + Into<SigAction>>(
 	signum: c_int,
-	act: SyscallPtr<S>,
-	oldact: SyscallPtr<S>,
+	act: UserPtr<S>,
+	oldact: UserPtr<S>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
 	let signal = Signal::try_from(signum)?;
@@ -49,18 +49,14 @@ fn do_rt_sigaction<S: Debug + From<SigAction> + Into<SigAction>>(
 }
 
 pub fn rt_sigaction(
-	Args((signum, act, oldact)): Args<(c_int, SyscallPtr<SigAction>, SyscallPtr<SigAction>)>,
+	Args((signum, act, oldact)): Args<(c_int, UserPtr<SigAction>, UserPtr<SigAction>)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
 	do_rt_sigaction(signum, act, oldact, proc)
 }
 
 pub fn compat_rt_sigaction(
-	Args((signum, act, oldact)): Args<(
-		c_int,
-		SyscallPtr<CompatSigAction>,
-		SyscallPtr<CompatSigAction>,
-	)>,
+	Args((signum, act, oldact)): Args<(c_int, UserPtr<CompatSigAction>, UserPtr<CompatSigAction>)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
 	do_rt_sigaction(signum, act, oldact, proc)

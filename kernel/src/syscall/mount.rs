@@ -25,7 +25,7 @@ use crate::{
 		FileType,
 	},
 	process::{
-		mem_space::copy::{SyscallPtr, SyscallString},
+		mem_space::copy::{UserPtr, UserString},
 		Process,
 	},
 	syscall::Args,
@@ -39,11 +39,11 @@ use utils::{
 
 pub fn mount(
 	Args((source, target, filesystemtype, mountflags, _data)): Args<(
-		SyscallString,
-		SyscallString,
-		SyscallString,
+		UserString,
+		UserString,
+		UserString,
 		c_ulong,
-		SyscallPtr<c_void>,
+		UserPtr<c_void>,
 	)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {

@@ -22,7 +22,6 @@ pub mod buff;
 pub mod icmp;
 pub mod ip;
 pub mod lo;
-pub mod netlink;
 pub mod osi;
 pub mod sockaddr;
 pub mod tcp;

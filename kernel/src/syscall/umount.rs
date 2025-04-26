@@ -24,7 +24,7 @@ use crate::{
 		vfs,
 		vfs::{mountpoint, ResolutionSettings},
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	syscall::Args,
 };
 use core::ffi::c_int;
@@ -34,12 +34,12 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn umount(Args(target): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
+pub fn umount(Args(target): Args<UserString>, rs: ResolutionSettings) -> EResult<usize> {
 	umount2(Args((target, 0)), rs)
 }
 
 pub fn umount2(
-	Args((target, _flags)): Args<(SyscallString, c_int)>,
+	Args((target, _flags)): Args<(UserString, c_int)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	// TODO handle flags

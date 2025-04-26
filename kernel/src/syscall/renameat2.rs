@@ -26,7 +26,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -47,9 +47,9 @@ const RENAME_EXCHANGE: c_int = 2;
 
 pub(super) fn do_renameat2(
 	olddirfd: c_int,
-	oldpath: SyscallString,
+	oldpath: UserString,
 	newdirfd: c_int,
-	newpath: SyscallString,
+	newpath: UserString,
 	_flags: c_int,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
@@ -94,9 +94,9 @@ pub(super) fn do_renameat2(
 pub fn renameat2(
 	Args((olddirfd, oldpath, newdirfd, newpath, flags)): Args<(
 		c_int,
-		SyscallString,
+		UserString,
 		c_int,
-		SyscallString,
+		UserString,
 		c_int,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,

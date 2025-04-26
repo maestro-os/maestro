@@ -21,7 +21,7 @@
 use crate::{
 	file::{fs::Statfs, vfs, vfs::ResolutionSettings},
 	process::{
-		mem_space::copy::{SyscallPtr, SyscallString},
+		mem_space::copy::{UserPtr, UserString},
 		Process,
 	},
 	syscall::Args,
@@ -33,8 +33,8 @@ use utils::{
 };
 
 pub(super) fn do_statfs(
-	path: SyscallString,
-	buf: SyscallPtr<Statfs>,
+	path: UserString,
+	buf: UserPtr<Statfs>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let rs = ResolutionSettings {
@@ -54,7 +54,7 @@ pub(super) fn do_statfs(
 }
 
 pub fn statfs(
-	Args((path, buf)): Args<(SyscallString, SyscallPtr<Statfs>)>,
+	Args((path, buf)): Args<(UserString, UserPtr<Statfs>)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	do_statfs(path, buf, rs)

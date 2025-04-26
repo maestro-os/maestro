@@ -30,8 +30,9 @@ use super::{
 	vfs, DirContext, File, INode, Mode, Stat,
 };
 use crate::{
-	device::BlkDev, file::vfs::node::Node, memory::cache::RcFrame, sync::mutex::Mutex,
-	syscall::ioctl, time::unit::Timestamp,
+	device::BlkDev, file::vfs::node::Node, memory::cache::RcFrame,
+	process::mem_space::copy::UserSlice, sync::mutex::Mutex, syscall::ioctl,
+	time::unit::Timestamp,
 };
 use core::{
 	any::Any,
@@ -50,7 +51,6 @@ use utils::{
 	errno::{AllocResult, EResult},
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
-	slice_copy,
 };
 
 /// Used in the f_fsid field of [`Statfs`].
@@ -169,8 +169,8 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(ENOTDIR))
 	}
 
-	/// Reads the path the symbolic link points to and writes it into `buf`. If the actual path is
-	/// larger than the provided buffer, it is truncated.
+	/// Reads the path the symbolic link points to and writes it into `buf`.
+	/// If the actual path is larger than the provided buffer, it is truncated.
 	///
 	/// On success, the function returns the number of bytes read.
 	///
@@ -180,7 +180,7 @@ pub trait NodeOps: Any + Debug {
 	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn readlink(&self, node: &Node, buf: &mut [u8]) -> EResult<usize> {
+	fn readlink(&self, node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		let _ = (node, buf);
 		Err(errno!(EINVAL))
 	}
@@ -298,13 +298,12 @@ pub trait FileOps: Any + Debug {
 	/// Arguments:
 	/// - `file` is the location of the file
 	/// - `off` is the offset from which the data will be read from the node's data
-	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
-	///   number of bytes to read
+	/// - `buf` is the buffer in which the data is to be written
 	///
 	/// On success, the function returns the number of bytes read.
 	///
 	/// The default implementation of this function returns an error.
-	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let _ = (file, off, buf);
 		Err(errno!(EINVAL))
 	}
@@ -314,13 +313,12 @@ pub trait FileOps: Any + Debug {
 	/// Arguments:
 	/// - `file` is the file
 	/// - `off` is the offset at which the data will be written in the node's data
-	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
-	///   number of bytes to write
+	/// - `buf` is the buffer in which the data is to be read from
 	///
 	/// On success, the function returns the number of bytes written.
 	///
 	/// The default implementation of this function returns an error.
-	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let _ = (file, off, buf);
 		Err(errno!(EINVAL))
 	}
@@ -340,7 +338,7 @@ pub trait FileOps: Any + Debug {
 /// Generic implementation for [`FileOps::read`] on regular files.
 ///
 /// **Note**: `file` **must** have an associated [`Node`], otherwise the function panics.
-pub fn generic_file_read(file: &File, mut off: u64, buf: &mut [u8]) -> EResult<usize> {
+pub fn generic_file_read(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 	let node = file.node().unwrap();
 	let size = file.stat()?.size;
 	if unlikely(off > size) {
@@ -348,19 +346,15 @@ pub fn generic_file_read(file: &File, mut off: u64, buf: &mut [u8]) -> EResult<u
 	}
 	let buf_len = min(buf.len() as u64, size - off);
 	let start = off / PAGE_SIZE as u64;
-	let end = off
-		.checked_add(buf_len)
-		.ok_or_else(|| errno!(EOVERFLOW))?
-		.div_ceil(PAGE_SIZE as u64);
+	let end = off.saturating_add(buf_len).div_ceil(PAGE_SIZE as u64);
 	let mut buf_off = 0;
 	for page_off in start..end {
 		let page = node.node_ops.read_page(node, page_off)?;
 		let inner_off = off as usize % PAGE_SIZE;
-		// FIXME: this is not concurrency friendly
-		let len = slice_copy(
-			&page.slice()[inner_off..],
-			&mut buf[buf_off..buf_len as usize],
-		);
+		let len = unsafe {
+			let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);
+			buf.copy_to_user_raw(buf_off, page_ptr, PAGE_SIZE - inner_off)?
+		};
 		buf_off += len;
 		off += len as u64;
 	}
@@ -370,29 +364,29 @@ pub fn generic_file_read(file: &File, mut off: u64, buf: &mut [u8]) -> EResult<u
 /// Generic implementation for [`FileOps::write`] on regular files.
 ///
 /// **Note**: `file` **must** have an associated [`Node`], otherwise the function panics.
-pub fn generic_file_write(file: &File, mut off: u64, buf: &[u8]) -> EResult<usize> {
+pub fn generic_file_write(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 	let node = file.node().unwrap();
 	let size = file.stat()?.size;
 	if unlikely(off > size) {
 		return Err(errno!(EINVAL));
 	}
 	// Extend the file if necessary
-	let end = off + buf.len() as u64;
+	let end = off + buf.len() as u64; // FIXME: overflow
 	if end > size {
 		file.ops.truncate(file, end)?;
 	}
 	let start = off / PAGE_SIZE as u64;
 	let end = off
-		.checked_add(buf.len() as u64)
-		.ok_or_else(|| errno!(EOVERFLOW))?
+		.saturating_add(buf.len() as u64)
 		.div_ceil(PAGE_SIZE as u64);
 	let mut buf_off = 0;
 	for page_off in start..end {
 		let page = node.node_ops.read_page(node, page_off)?;
 		let inner_off = off as usize % PAGE_SIZE;
-		let slice = unsafe { page.slice_mut() };
-		// FIXME: this is not concurrency friendly
-		let len = slice_copy(&buf[buf_off..], &mut slice[inner_off..]);
+		let len = unsafe {
+			let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);
+			buf.copy_from_user_raw(buf_off, page_ptr, PAGE_SIZE - inner_off)?
+		};
 		page.mark_dirty();
 		buf_off += len;
 		off += len as u64;

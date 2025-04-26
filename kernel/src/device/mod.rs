@@ -55,6 +55,7 @@ use crate::{
 		buddy::FrameOrder,
 		cache::{FrameOwner, MappedNode, RcFrame},
 	},
+	process::mem_space::copy::UserSlice,
 	sync::mutex::Mutex,
 	syscall::ioctl,
 };
@@ -71,7 +72,6 @@ use utils::{
 	errno::{AllocResult, EResult, ENOENT},
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
-	slice_copy,
 };
 
 /// Enumeration representing the type of the device.
@@ -347,7 +347,7 @@ pub fn register_char(dev: Arc<CharDev>) -> AllocResult<()> {
 pub struct BlkDevFileOps;
 
 impl FileOps for BlkDevFileOps {
-	fn read(&self, file: &File, mut off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
 		let start = off / PAGE_SIZE as u64;
 		let end = off
@@ -358,15 +358,17 @@ impl FileOps for BlkDevFileOps {
 		for page_off in start..end {
 			let page = BlkDev::read_frame(&dev, page_off, 0, FrameOwner::BlkDev(dev.clone()))?;
 			let inner_off = off as usize % PAGE_SIZE;
-			// FIXME: this is not concurrency friendly
-			let len = slice_copy(&page.slice()[inner_off..], &mut buf[buf_off..]);
+			let len = unsafe {
+				let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);
+				buf.copy_to_user_raw(buf_off, page_ptr, PAGE_SIZE - inner_off)?
+			};
 			buf_off += len;
 			off += len as u64;
 		}
 		Ok(buf_off)
 	}
 
-	fn write(&self, file: &File, mut off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
 		let start = off / PAGE_SIZE as u64;
 		let end = off
@@ -377,9 +379,10 @@ impl FileOps for BlkDevFileOps {
 		for page_off in start..end {
 			let page = BlkDev::read_frame(&dev, page_off, 0, FrameOwner::BlkDev(dev.clone()))?;
 			let inner_off = off as usize % PAGE_SIZE;
-			let slice = unsafe { page.slice_mut() };
-			// FIXME: this is not concurrency friendly
-			let len = slice_copy(&buf[buf_off..], &mut slice[inner_off..]);
+			let len = unsafe {
+				let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);
+				buf.copy_from_user_raw(buf_off, page_ptr, PAGE_SIZE - inner_off)?
+			};
 			page.mark_dirty();
 			buf_off += len;
 			off += len as u64;

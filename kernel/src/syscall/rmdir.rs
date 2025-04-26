@@ -26,7 +26,7 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	process::{mem_space::copy::UserString, Process},
 	syscall::Args,
 };
 use utils::{
@@ -35,7 +35,7 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn rmdir(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
+pub fn rmdir(Args(pathname): Args<UserString>, rs: ResolutionSettings) -> EResult<usize> {
 	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	let entry = vfs::get_file_from_path(&path, &rs)?;

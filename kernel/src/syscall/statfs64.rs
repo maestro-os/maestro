@@ -21,14 +21,14 @@
 use super::statfs::do_statfs;
 use crate::{
 	file::{fs::Statfs, vfs::ResolutionSettings},
-	process::mem_space::copy::{SyscallPtr, SyscallString},
+	process::mem_space::copy::{UserPtr, UserString},
 	syscall::Args,
 };
 use utils::errno::EResult;
 
 // TODO Check args types
 pub fn statfs64(
-	Args((path, _sz, buf)): Args<(SyscallString, usize, SyscallPtr<Statfs>)>,
+	Args((path, _sz, buf)): Args<(UserString, usize, UserPtr<Statfs>)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	// TODO Use `sz`
