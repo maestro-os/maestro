@@ -211,6 +211,12 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 		self.len == 0
 	}
 
+	/// Same as [`Self::copy_from_user`], with a pointer `ptr` and length `len` instead of a slice.
+	///
+	/// # Safety
+	///
+	/// If the pointer/length pair does not point to a valid chunk of memory, the behaviour is
+	/// undefined.
 	pub unsafe fn copy_from_user_raw(
 		&self,
 		off: usize,
@@ -220,7 +226,7 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 		let Some(ptr) = self.ptr else {
 			return Ok(0);
 		};
-		let len = min(len, self.len);
+		let len = min(len, self.len.saturating_sub(off));
 		unsafe {
 			user_copy(
 				ptr.as_ptr().add(off) as *const _,
@@ -254,18 +260,25 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 		let Some(ptr) = self.ptr else {
 			return Ok(None);
 		};
-		let mut buf = Vec::with_capacity(self.len)?;
+		let len = self.len.saturating_sub(off);
+		let mut buf = Vec::with_capacity(len)?;
 		unsafe {
-			buf.set_len(self.len);
+			buf.set_len(len);
 			user_copy(
 				ptr.as_ptr().add(off) as *const _,
 				buf.as_mut_ptr() as *mut _,
-				size_of::<T>() * self.len,
+				size_of::<T>() * len,
 			)?;
 		}
 		Ok(Some(buf))
 	}
 
+	/// Same as [`Self::copy_to_user`], with a pointer `ptr` and length `len` instead of a slice.
+	///
+	/// # Safety
+	///
+	/// If the pointer/length pair does not point to a valid chunk of memory, the behaviour is
+	/// undefined.
 	pub unsafe fn copy_to_user_raw(
 		&self,
 		off: usize,
@@ -275,7 +288,7 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 		let Some(ptr) = self.ptr else {
 			return Ok(0);
 		};
-		let len = min(len, self.len);
+		let len = min(len, self.len.saturating_sub(off));
 		unsafe {
 			user_copy(
 				src as *const _,
@@ -302,7 +315,7 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 	}
 }
 
-impl<'a, T: fmt::Debug> fmt::Debug for UserSlice<'a, T> {
+impl<T: fmt::Debug> fmt::Debug for UserSlice<'_, T> {
 	fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self.ptr {
 			Some(ptr) => write!(fmt, "{ptr:p}"),

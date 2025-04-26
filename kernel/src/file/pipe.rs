@@ -21,7 +21,10 @@
 
 use crate::{
 	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat, O_NONBLOCK},
-	memory::user::{UserPtr, UserSlice},
+	memory::{
+		ring_buffer::RingBuffer,
+		user::{UserPtr, UserSlice},
+	},
 	process::{signal::Signal, Process},
 	sync::mutex::Mutex,
 	syscall::{ioctl, FromSyscallArg},
@@ -29,19 +32,18 @@ use crate::{
 use core::{
 	ffi::{c_int, c_void},
 	intrinsics::unlikely,
+	num::NonZeroUsize,
 };
 use utils::{
-	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	limits::PIPE_BUF,
-	vec,
 };
 
 #[derive(Debug)]
 struct PipeInner {
 	/// The pipe's buffer.
-	buffer: RingBuffer<u8, Vec<u8>>,
+	buffer: RingBuffer,
 	/// The number of readers on the pipe.
 	readers: usize,
 	/// The number of writers on the pipe.
@@ -64,7 +66,7 @@ impl PipeBuffer {
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
 			inner: Mutex::new(PipeInner {
-				buffer: RingBuffer::new(vec![0; PIPE_BUF]?),
+				buffer: RingBuffer::new(NonZeroUsize::new(PIPE_BUF).unwrap())?,
 				readers: 0,
 				writers: 0,
 			}),
@@ -75,7 +77,7 @@ impl PipeBuffer {
 
 	/// Returns the capacity of the pipe in bytes.
 	pub fn get_capacity(&self) -> usize {
-		self.inner.lock().buffer.get_size()
+		PIPE_BUF
 	}
 }
 
@@ -133,7 +135,10 @@ impl FileOps for PipeBuffer {
 		}
 		let len = self.rd_queue.wait_until(|| {
 			let mut inner = self.inner.lock();
-			let len = inner.buffer.read(buf);
+			let len = match inner.buffer.read(buf) {
+				Ok(l) => l,
+				Err(e) => return Some(Err(e)),
+			};
 			if len > 0 {
 				self.wr_queue.wake_next();
 				return Some(Ok(len));
@@ -161,7 +166,10 @@ impl FileOps for PipeBuffer {
 				Process::current().kill(Signal::SIGPIPE);
 				return Some(Err(errno!(EPIPE)));
 			}
-			let len = inner.buffer.write(buf);
+			let len = match inner.buffer.write(buf) {
+				Ok(l) => l,
+				Err(e) => return Some(Err(e)),
+			};
 			if len > 0 {
 				self.rd_queue.wake_next();
 				return Some(Ok(len));

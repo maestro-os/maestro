@@ -18,22 +18,25 @@
 
 //! This module implements randomness functions.
 
-use crate::{crypto::chacha20, memory::user::UserSlice, sync::mutex::IntMutex};
-use core::{cmp::min, num::Wrapping};
-use utils::{
-	collections::{ring_buffer::RingBuffer, vec::Vec},
-	errno::{AllocResult, EResult},
-	vec,
+use crate::{
+	crypto::chacha20,
+	memory::{ring_buffer::RingBuffer, user::UserSlice},
+	sync::mutex::IntMutex,
 };
+use core::{
+	cmp::min,
+	num::{NonZeroUsize, Wrapping},
+};
+use utils::errno::{AllocResult, EResult};
 
 // TODO Implement entropy extraction (Fast Key Erasure?)
 
 /// An entropy pool.
 pub struct EntropyPool {
 	/// Available, non-encoded entropy
-	pending: RingBuffer<u8, Vec<u8>>,
+	pending: RingBuffer,
 	/// Unused remains of the last encoding round
-	remain: RingBuffer<u8, Vec<u8>>,
+	remain: RingBuffer,
 
 	/// The ChaCha20 counter.
 	counter: Wrapping<u64>,
@@ -46,8 +49,8 @@ impl EntropyPool {
 	/// Creates a new instance.
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
-			pending: RingBuffer::new(vec![0; 32768]?),
-			remain: RingBuffer::new(vec![0; 56]?),
+			pending: RingBuffer::new(NonZeroUsize::new(32768).unwrap())?,
+			remain: RingBuffer::new(NonZeroUsize::new(56).unwrap())?,
 
 			counter: Wrapping::default(),
 
@@ -58,14 +61,13 @@ impl EntropyPool {
 	/// Reads data from the pending entropy buffer, encodes it and writes it in `dst`.
 	///
 	/// If not enough entropy is available, the function returns `false`
-	fn encode(&mut self, dst: &mut [u8; 64]) -> bool {
+	fn encode(&mut self, dst: &mut [u8; 64]) -> EResult<bool> {
 		// Read data from the pending entropy buffer
 		let mut src = [0u8; 56];
-		// TODO need a function to read the exact amount or fail
-		let read_len = self.pending.read(&mut src);
-		if read_len < src.len() {
-			return false;
+		if self.pending.get_data_len() < src.len() {
+			return Ok(false);
 		}
+		self.pending.read(UserSlice::from_slice_mut(&mut src))?;
 		// Add data
 		dst[0..48].copy_from_slice(&src[..48]);
 		// Add counter to buffer
@@ -80,7 +82,7 @@ impl EntropyPool {
 		self.pseudo_seed = u64::from_ne_bytes(seed);
 		// Update counter
 		self.counter += 1;
-		true
+		Ok(true)
 	}
 
 	/// Reads entropy from the pool.
@@ -99,11 +101,11 @@ impl EntropyPool {
 		_nonblocking: bool,
 	) -> EResult<usize> {
 		// First, use remaining used entropy
-		let mut off = self.remain.read(buf);
+		let mut off = self.remain.read(buf)?;
 		// If we need more entropy, iterate
 		let mut encode_buf = [0u8; 64];
 		while off < buf.len() {
-			let res = self.encode(&mut encode_buf);
+			let res = self.encode(&mut encode_buf)?;
 			// If not enough entropy is available
 			if !res {
 				// TODO if blocking, block until enough entropy is available
@@ -124,7 +126,8 @@ impl EntropyPool {
 			let l = min(buf.len() - off, encode_buf.len());
 			buf.copy_to_user(off, &encode_buf[..l])?;
 			// Keep remaining bytes
-			self.remain.write(&encode_buf[l..]);
+			self.remain
+				.write(UserSlice::from_slice_mut(&mut encode_buf[l..]))?;
 			off += l;
 		}
 		Ok(off)

@@ -135,7 +135,7 @@ struct FormatContentWriter<'a> {
 	res: EResult<()>,
 }
 
-impl<'a> Write for FormatContentWriter<'a> {
+impl Write for FormatContentWriter<'_> {
 	fn write_str(&mut self, s: &str) -> fmt::Result {
 		if s.is_empty() {
 			return Ok(());

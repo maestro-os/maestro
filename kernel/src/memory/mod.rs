@@ -42,6 +42,7 @@ pub mod malloc;
 pub mod memmap;
 pub mod mmio;
 pub mod oom;
+pub mod ring_buffer;
 pub mod stats;
 #[cfg(feature = "memtrace")]
 mod trace;

@@ -260,7 +260,7 @@ impl NodeOps for NodeContent {
 			return Err(errno!(EINVAL));
 		};
 		let content = content.lock();
-		buf.copy_to_user(0, &*content)
+		buf.copy_to_user(0, &content)
 	}
 
 	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {

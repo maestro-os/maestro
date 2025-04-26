@@ -41,6 +41,7 @@ pub fn do_getrandom(buf: UserSlice<u8>, flags: c_uint) -> EResult<usize> {
 	pool.read(buf, flags & GRND_RANDOM != 0, flags & GRND_NONBLOCK != 0)
 }
 
+#[allow(missing_docs)]
 pub fn getrandom(Args((buf, buflen, flags)): Args<(*mut u8, usize, c_uint)>) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, buflen)?;
 	do_getrandom(buf, flags)

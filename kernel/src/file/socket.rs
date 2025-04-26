@@ -20,20 +20,20 @@
 
 use crate::{
 	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat},
-	memory::user::UserSlice,
+	memory::{ring_buffer::RingBuffer, user::UserSlice},
 	net::{osi, SocketDesc},
 	sync::mutex::Mutex,
 	syscall::ioctl::Request,
 };
 use core::{
 	ffi::{c_int, c_void},
+	num::NonZeroUsize,
 	sync::{atomic, atomic::AtomicUsize},
 };
 use utils::{
-	collections::{ring_buffer::RingBuffer, vec::Vec},
+	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
-	vec,
 };
 
 /// The maximum size of a socket's buffers.
@@ -57,9 +57,9 @@ pub struct Socket {
 	sockname: Mutex<Vec<u8>>,
 
 	/// The buffer containing received data. If `None`, reception has been shutdown.
-	rx_buff: Mutex<Option<RingBuffer<u8, Vec<u8>>>>,
+	rx_buff: Mutex<Option<RingBuffer>>,
 	/// The buffer containing data to be transmitted. If `None`, transmission has been shutdown.
-	tx_buff: Mutex<Option<RingBuffer<u8, Vec<u8>>>>,
+	tx_buff: Mutex<Option<RingBuffer>>,
 
 	/// Receive wait queue.
 	rx_queue: WaitQueue,
@@ -77,8 +77,12 @@ impl Socket {
 
 			sockname: Default::default(),
 
-			rx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
-			tx_buff: Mutex::new(Some(RingBuffer::new(vec![0; BUFFER_SIZE]?))),
+			rx_buff: Mutex::new(Some(RingBuffer::new(
+				NonZeroUsize::new(BUFFER_SIZE).unwrap(),
+			)?)),
+			tx_buff: Mutex::new(Some(RingBuffer::new(
+				NonZeroUsize::new(BUFFER_SIZE).unwrap(),
+			)?)),
 
 			rx_queue: WaitQueue::new(),
 			tx_queue: WaitQueue::new(),
