@@ -66,8 +66,7 @@ use core::{
 	mem::size_of,
 	ops::Add,
 	ptr::NonNull,
-	slice,
-	write,
+	slice, write,
 };
 
 // C functions required by LLVM

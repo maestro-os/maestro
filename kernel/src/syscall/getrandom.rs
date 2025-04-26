@@ -29,7 +29,7 @@ use utils::{
 /// If set, bytes are drawn from the randomness source instead of `urandom`.
 pub const GRND_RANDOM: u32 = 2;
 /// If set, the function does not block. If no entropy is available, the function
-/// returns [`EAGAIN`].
+/// returns [`errno::EAGAIN`].
 pub const GRND_NONBLOCK: u32 = 1;
 
 /// Performs the `getrandom` system call.
