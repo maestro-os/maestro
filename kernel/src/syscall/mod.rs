@@ -64,7 +64,7 @@ mod getgid;
 mod getpgid;
 mod getpid;
 mod getppid;
-pub mod getrandom;
+mod getrandom;
 mod getresgid;
 mod getresuid;
 mod getrusage;

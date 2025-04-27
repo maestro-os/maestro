@@ -20,12 +20,14 @@
 
 use super::{id, register_char, CharDev, DeviceType};
 use crate::{
-	crypto::rand,
+	crypto::{
+		rand,
+		rand::{getrandom, GRND_RANDOM},
+	},
 	device::{tty::TTYDeviceHandle, DeviceID},
 	file::{fs::FileOps, File},
 	logger::LOGGER,
 	memory::user::UserSlice,
-	syscall::getrandom::{do_getrandom, GRND_RANDOM},
 };
 use core::{cmp::min, mem::ManuallyDrop};
 use utils::{collections::path::PathBuf, errno, errno::EResult};
@@ -73,7 +75,7 @@ pub struct RandomDeviceHandle;
 
 impl FileOps for RandomDeviceHandle {
 	fn read(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		do_getrandom(buf, GRND_RANDOM)
+		getrandom(buf, GRND_RANDOM)
 	}
 
 	fn write(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
@@ -96,7 +98,7 @@ pub struct URandomDeviceHandle;
 
 impl FileOps for URandomDeviceHandle {
 	fn read(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		do_getrandom(buf, 0)
+		getrandom(buf, 0)
 	}
 
 	fn write(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {

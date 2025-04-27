@@ -26,23 +26,7 @@ use utils::{
 	vec,
 };
 
-/// If set, bytes are drawn from the randomness source instead of `urandom`.
-pub const GRND_RANDOM: u32 = 2;
-/// If set, the function does not block. If no entropy is available, the function
-/// returns [`errno::EAGAIN`].
-pub const GRND_NONBLOCK: u32 = 1;
-
-/// Performs the `getrandom` system call.
-pub fn do_getrandom(buf: UserSlice<u8>, flags: c_uint) -> EResult<usize> {
-	let mut pool = rand::ENTROPY_POOL.lock();
-	let Some(pool) = &mut *pool else {
-		return Ok(0);
-	};
-	pool.read(buf, flags & GRND_RANDOM != 0, flags & GRND_NONBLOCK != 0)
-}
-
-#[allow(missing_docs)]
 pub fn getrandom(Args((buf, buflen, flags)): Args<(*mut u8, usize, c_uint)>) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, buflen)?;
-	do_getrandom(buf, flags)
+	rand::getrandom(buf, flags)
 }

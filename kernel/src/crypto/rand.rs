@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements randomness functions.
+//! Randomness engines.
 
 use crate::{
 	crypto::chacha20,
@@ -25,9 +25,16 @@ use crate::{
 };
 use core::{
 	cmp::min,
+	ffi::c_uint,
 	num::{NonZeroUsize, Wrapping},
 };
 use utils::errno::{AllocResult, EResult};
+
+/// `getrandom` flag: If set, bytes are drawn from the randomness source instead of `urandom`.
+pub const GRND_RANDOM: u32 = 2;
+/// `getrandom` flag: If set, the function does not block. If no entropy is available, the function
+/// returns [`errno::EAGAIN`].
+pub const GRND_NONBLOCK: u32 = 1;
 
 // TODO Implement entropy extraction (Fast Key Erasure?)
 
@@ -143,6 +150,17 @@ impl EntropyPool {
 
 /// The entropy pool.
 pub static ENTROPY_POOL: IntMutex<Option<EntropyPool>> = IntMutex::new(None);
+
+/// Writes entropy to `buf`.
+///
+/// `flags` work the same way as the `getrandom` system call.
+pub fn getrandom(buf: UserSlice<u8>, flags: c_uint) -> EResult<usize> {
+	let mut pool = ENTROPY_POOL.lock();
+	let Some(pool) = &mut *pool else {
+		return Ok(0);
+	};
+	pool.read(buf, flags & GRND_RANDOM != 0, flags & GRND_NONBLOCK != 0)
+}
 
 /// Initializes randomness sources.
 pub(super) fn init() -> AllocResult<()> {
