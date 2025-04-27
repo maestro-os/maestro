@@ -35,7 +35,6 @@ use crate::{
 	sync::mutex::Mutex,
 };
 use core::{
-	cmp::min,
 	fmt,
 	fmt::{Debug, Write},
 	sync::atomic::AtomicBool,
@@ -128,7 +127,7 @@ impl NodeStorage {
 /// Writer for [`format_content_args`].
 #[derive(Debug)]
 struct FormatContentWriter<'a> {
-	src_cursor: u64,
+	src_cursor: usize,
 	dst: UserSlice<'a, u8>,
 	dst_cursor: usize,
 
@@ -142,30 +141,31 @@ impl Write for FormatContentWriter<'_> {
 		}
 		let chunk = s.as_bytes();
 		// If at least part of the chunk is inside the range to read, copy
-		if (chunk.len() as u64) > self.src_cursor {
+		if chunk.len() > self.src_cursor {
 			// If the end of the output buffer is reached, stop
 			if self.dst_cursor >= self.dst.len() {
 				return Err(fmt::Error);
 			}
 			// Offset and size of the range in the chunk to copy
-			let src_cursor = self.src_cursor as usize;
-			let size = min(
-				self.dst.len().saturating_sub(self.dst_cursor),
-				chunk.len().saturating_sub(src_cursor),
-			);
 			// Write
 			let res = self
 				.dst
-				.copy_to_user(self.dst_cursor, &chunk[src_cursor..(src_cursor + size)])
-				.map(|_| ());
-			self.res = self.res.and(res);
-			if self.res.is_err() {
+				.copy_to_user(self.dst_cursor, &chunk[self.src_cursor..]);
+			let len = match res {
+				Ok(l) => l,
+				Err(e) => {
+					self.res = Err(e);
+					return Err(fmt::Error);
+				}
+			};
+			self.dst_cursor += len;
+			// If reached the end of the userspace buffer, stop
+			if self.src_cursor + len < chunk.len() {
 				return Err(fmt::Error);
 			}
-			self.dst_cursor += size;
 		}
 		// Update cursor
-		self.src_cursor = self.src_cursor.saturating_sub(chunk.len() as _);
+		self.src_cursor = self.src_cursor.saturating_sub(chunk.len());
 		Ok(())
 	}
 }
@@ -177,7 +177,7 @@ pub fn format_content_args(
 	args: fmt::Arguments<'_>,
 ) -> EResult<usize> {
 	let mut writer = FormatContentWriter {
-		src_cursor: off,
+		src_cursor: off.try_into().map_err(|_| errno!(EOVERFLOW))?,
 		dst: buf,
 		dst_cursor: 0,
 

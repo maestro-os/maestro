@@ -72,7 +72,7 @@ use crate::{
 };
 use bgd::BlockGroupDescriptor;
 use core::{
-	cmp::{max, min},
+	cmp::max,
 	intrinsics::unlikely,
 	sync::atomic::{
 		AtomicBool, AtomicU16, AtomicU32, AtomicU8, AtomicUsize,
@@ -353,17 +353,15 @@ impl NodeOps for Ext2NodeOps {
 		}
 		if size <= inode::SYMLINK_INLINE_LIMIT {
 			// The target is stored inline in the inode
-			let len = min(buf.len(), size as usize);
 			let src = bytes::as_bytes(&inode_.i_block);
-			buf.copy_to_user(0, &src[..len])?;
+			let len = buf.copy_to_user(0, &src[..size as usize])?;
 			Ok(len)
 		} else {
 			// The target is stored like in regular files
 			let blk =
 				inode::check_blk_off(inode_.i_block[0], &fs.sp)?.ok_or_else(|| errno!(EUCLEAN))?;
 			let blk = read_block(fs, blk.get() as _)?;
-			let len = min(buf.len(), size as usize);
-			buf.copy_to_user(0, &blk.slice()[..len])?;
+			let len = buf.copy_to_user(0, &blk.slice()[..size as usize])?;
 			Ok(len)
 		}
 	}
