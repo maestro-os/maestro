@@ -21,7 +21,8 @@
 use crate::{
 	file,
 	file::{fd::FileDescriptorTable, pipe::PipeBuffer, vfs, File},
-	process::{mem_space::copy::SyscallPtr, Process},
+	memory::user::UserPtr,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -34,7 +35,7 @@ use utils::{
 };
 
 pub fn pipe2(
-	Args((pipefd, flags)): Args<(SyscallPtr<[c_int; 2]>, c_int)>,
+	Args((pipefd, flags)): Args<(UserPtr<[c_int; 2]>, c_int)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation

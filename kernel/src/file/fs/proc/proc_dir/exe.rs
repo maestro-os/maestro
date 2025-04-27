@@ -22,6 +22,7 @@
 use crate::{
 	file::{fs::NodeOps, vfs, vfs::node::Node},
 	format_content,
+	memory::user::UserSlice,
 	process::{pid::Pid, Process},
 };
 use utils::{errno, errno::EResult};
@@ -31,7 +32,7 @@ use utils::{errno, errno::EResult};
 pub struct Exe(pub Pid);
 
 impl NodeOps for Exe {
-	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
+	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let path = proc
 			.mem_space

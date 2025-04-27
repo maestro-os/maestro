@@ -25,7 +25,8 @@ use crate::{
 		vfs::{mountpoint, ResolutionSettings},
 		FileType,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use utils::{
@@ -36,7 +37,7 @@ use utils::{
 };
 
 pub fn chroot(
-	Args(path): Args<SyscallString>,
+	Args(path): Args<UserString>,
 	proc: Arc<Process>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {

@@ -24,6 +24,7 @@ use crate::{
 		File,
 	},
 	format_content,
+	memory::user::UserSlice,
 	process::{pid::Pid, Process},
 };
 use core::fmt;
@@ -34,7 +35,7 @@ use utils::{errno, errno::EResult};
 pub struct Environ(pub Pid);
 
 impl FileOps for Environ {
-	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let Some(mem_space) = proc.mem_space.as_ref() else {
 			return Ok(0);

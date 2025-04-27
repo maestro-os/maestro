@@ -21,7 +21,8 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, DirContext, DirEntry, FileType, INode, DT_UNKNOWN},
-	process::{mem_space::copy::SyscallSlice, Process},
+	memory::user::UserSlice,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -95,10 +96,11 @@ fn do_getdents<F: FnMut(&DirEntry) -> EResult<bool>>(
 }
 
 pub fn getdents(
-	Args((fd, dirp, count)): Args<(c_int, SyscallSlice<u8>, c_uint)>,
+	Args((fd, dirp, count)): Args<(c_int, *mut u8, c_uint)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let count = count as usize;
+	let dirp = UserSlice::from_user(dirp, count)?;
 	let mut buf_off = 0;
 	do_getdents(fd, fds, |entry| {
 		// Skip entries whose inode cannot fit in the structure
@@ -143,9 +145,10 @@ pub fn getdents(
 }
 
 pub fn getdents64(
-	Args((fd, dirp, count)): Args<(c_int, SyscallSlice<u8>, usize)>,
+	Args((fd, dirp, count)): Args<(c_int, *mut u8, usize)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
+	let dirp = UserSlice::from_user(dirp, count)?;
 	let mut buf_off = 0;
 	do_getdents(fd as _, fds, |entry| {
 		let reclen = (size_of::<LinuxDirent64>() + entry.name.len() + 1)

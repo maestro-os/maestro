@@ -20,8 +20,8 @@
 //! the UNIX Epoch.
 
 use crate::{
+	memory::user::UserPtr,
 	process::{
-		mem_space::copy::SyscallPtr,
 		signal::{SigEvent, Signal, SIGEV_SIGNAL},
 		Process,
 	},
@@ -39,22 +39,20 @@ use utils::{errno, errno::EResult, ptr::arc::Arc};
 /// If set, the specified time is *not* relative to the timer's current counter.
 const TIMER_ABSTIME: c_int = 1;
 
-pub fn time32(Args(tloc): Args<SyscallPtr<u32>>) -> EResult<usize> {
+pub fn time32(Args(tloc): Args<UserPtr<u32>>) -> EResult<usize> {
 	let time = current_time_sec(Clock::Monotonic);
 	let time: u32 = time.try_into().map_err(|_| errno!(EOVERFLOW))?;
 	tloc.copy_to_user(&time)?;
 	Ok(time as _)
 }
 
-pub fn time64(Args(tloc): Args<SyscallPtr<u64>>) -> EResult<usize> {
+pub fn time64(Args(tloc): Args<UserPtr<u64>>) -> EResult<usize> {
 	let time = current_time_sec(Clock::Monotonic);
 	tloc.copy_to_user(&time)?;
 	Ok(time as _)
 }
 
-pub fn clock_gettime(
-	Args((clockid, tp)): Args<(ClockIdT, SyscallPtr<Timespec>)>,
-) -> EResult<usize> {
+pub fn clock_gettime(Args((clockid, tp)): Args<(ClockIdT, UserPtr<Timespec>)>) -> EResult<usize> {
 	let clk = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
 	let ts = current_time_ns(clk);
 	tp.copy_to_user(&Timespec::from_nano(ts))?;
@@ -62,7 +60,7 @@ pub fn clock_gettime(
 }
 
 pub fn clock_gettime64(
-	Args((clockid, tp)): Args<(ClockIdT, SyscallPtr<Timespec>)>,
+	Args((clockid, tp)): Args<(ClockIdT, UserPtr<Timespec>)>,
 ) -> EResult<usize> {
 	let clock = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
 	let ts = current_time_ns(clock);
@@ -71,7 +69,7 @@ pub fn clock_gettime64(
 }
 
 pub fn nanosleep32(
-	Args((req, rem)): Args<(SyscallPtr<Timespec32>, SyscallPtr<Timespec32>)>,
+	Args((req, rem)): Args<(UserPtr<Timespec32>, UserPtr<Timespec32>)>,
 ) -> EResult<usize> {
 	let delay = req
 		.copy_from_user()?
@@ -89,7 +87,7 @@ pub fn nanosleep32(
 }
 
 pub fn nanosleep64(
-	Args((req, rem)): Args<(SyscallPtr<Timespec>, SyscallPtr<Timespec>)>,
+	Args((req, rem)): Args<(UserPtr<Timespec>, UserPtr<Timespec>)>,
 ) -> EResult<usize> {
 	let delay = req
 		.copy_from_user()?
@@ -107,7 +105,7 @@ pub fn nanosleep64(
 }
 
 pub fn timer_create(
-	Args((clockid, sevp, timerid)): Args<(ClockIdT, SyscallPtr<SigEvent>, SyscallPtr<TimerT>)>,
+	Args((clockid, sevp, timerid)): Args<(ClockIdT, UserPtr<SigEvent>, UserPtr<TimerT>)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
 	let clock = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
@@ -134,8 +132,8 @@ pub fn timer_settime(
 	Args((timerid, flags, new_value, old_value)): Args<(
 		TimerT,
 		c_int,
-		SyscallPtr<ITimerspec32>,
-		SyscallPtr<ITimerspec32>,
+		UserPtr<ITimerspec32>,
+		UserPtr<ITimerspec32>,
 	)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {

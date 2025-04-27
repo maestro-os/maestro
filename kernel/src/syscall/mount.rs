@@ -24,10 +24,8 @@ use crate::{
 		vfs::{mountpoint, mountpoint::MountSource, ResolutionSettings},
 		FileType,
 	},
-	process::{
-		mem_space::copy::{SyscallPtr, SyscallString},
-		Process,
-	},
+	memory::user::{UserPtr, UserString},
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::{c_ulong, c_void};
@@ -39,11 +37,11 @@ use utils::{
 
 pub fn mount(
 	Args((source, target, filesystemtype, mountflags, _data)): Args<(
-		SyscallString,
-		SyscallString,
-		SyscallString,
+		UserString,
+		UserString,
+		UserString,
 		c_ulong,
-		SyscallPtr<c_void>,
+		UserPtr<c_void>,
 	)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {

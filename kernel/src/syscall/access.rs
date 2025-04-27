@@ -23,7 +23,8 @@ use crate::{
 		fd::FileDescriptorTable,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::{
 		util::{
@@ -61,7 +62,7 @@ const X_OK: i32 = 1;
 /// - `fds_mutex` is the file descriptor table.
 pub fn do_access(
 	dirfd: Option<i32>,
-	pathname: SyscallString,
+	pathname: UserString,
 	mode: i32,
 	flags: Option<i32>,
 	rs: ResolutionSettings,
@@ -104,7 +105,7 @@ pub fn do_access(
 }
 
 pub fn access(
-	Args((pathname, mode)): Args<(SyscallString, c_int)>,
+	Args((pathname, mode)): Args<(UserString, c_int)>,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

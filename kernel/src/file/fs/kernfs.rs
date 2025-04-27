@@ -31,10 +31,10 @@ use crate::{
 		vfs::node::Node,
 		DirContext, DirEntry, FileType, INode, Stat,
 	},
+	memory::user::UserSlice,
 	sync::mutex::Mutex,
 };
 use core::{
-	cmp::min,
 	fmt,
 	fmt::{Debug, Write},
 	sync::atomic::AtomicBool,
@@ -126,10 +126,12 @@ impl NodeStorage {
 
 /// Writer for [`format_content_args`].
 #[derive(Debug)]
-struct FormatContentWriter<'b> {
-	src_cursor: u64,
-	dst: &'b mut [u8],
+struct FormatContentWriter<'a> {
+	src_cursor: usize,
+	dst: UserSlice<'a, u8>,
 	dst_cursor: usize,
+
+	res: EResult<()>,
 }
 
 impl Write for FormatContentWriter<'_> {
@@ -139,36 +141,51 @@ impl Write for FormatContentWriter<'_> {
 		}
 		let chunk = s.as_bytes();
 		// If at least part of the chunk is inside the range to read, copy
-		if (chunk.len() as u64) > self.src_cursor {
+		if chunk.len() > self.src_cursor {
 			// If the end of the output buffer is reached, stop
 			if self.dst_cursor >= self.dst.len() {
 				return Err(fmt::Error);
 			}
 			// Offset and size of the range in the chunk to copy
-			let src_cursor = self.src_cursor as usize;
-			let size = min(
-				self.dst.len().saturating_sub(self.dst_cursor),
-				chunk.len().saturating_sub(src_cursor),
-			);
-			self.dst[self.dst_cursor..(self.dst_cursor + size)]
-				.copy_from_slice(&chunk[src_cursor..(src_cursor + size)]);
-			self.dst_cursor += size;
+			// Write
+			let res = self
+				.dst
+				.copy_to_user(self.dst_cursor, &chunk[self.src_cursor..]);
+			let len = match res {
+				Ok(l) => l,
+				Err(e) => {
+					self.res = Err(e);
+					return Err(fmt::Error);
+				}
+			};
+			self.dst_cursor += len;
+			// If reached the end of the userspace buffer, stop
+			if self.src_cursor + len < chunk.len() {
+				return Err(fmt::Error);
+			}
 		}
 		// Update cursor
-		self.src_cursor = self.src_cursor.saturating_sub(chunk.len() as _);
+		self.src_cursor = self.src_cursor.saturating_sub(chunk.len());
 		Ok(())
 	}
 }
 
 /// Implementation of [`crate::format_content`].
-pub fn format_content_args(off: u64, buf: &mut [u8], args: fmt::Arguments<'_>) -> EResult<usize> {
+pub fn format_content_args(
+	off: u64,
+	buf: UserSlice<u8>,
+	args: fmt::Arguments<'_>,
+) -> EResult<usize> {
 	let mut writer = FormatContentWriter {
-		src_cursor: off,
+		src_cursor: off.try_into().map_err(|_| errno!(EOVERFLOW))?,
 		dst: buf,
 		dst_cursor: 0,
+
+		res: Ok(()),
 	};
 	let res = fmt::write(&mut writer, args);
-	if res.is_err() && (writer.dst_cursor < writer.dst.len()) {
+	writer.res?;
+	if res.is_err() && writer.dst_cursor < writer.dst.len() {
 		panic!("a formatting trait implementation returned an error");
 	}
 	Ok(writer.dst_cursor)
@@ -193,7 +210,7 @@ macro_rules! format_content {
 pub struct StaticLink(pub &'static [u8]);
 
 impl NodeOps for StaticLink {
-	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
+	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		format_content!(0, buf, "{}", DisplayableStr(self.0))
 	}
 }
@@ -312,27 +329,73 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 
 #[cfg(test)]
 mod test {
+	use crate::memory::user::UserSlice;
+
 	#[test_case]
 	fn content_chunks() {
 		let val = 123;
 		let mut out = [0u8; 9];
-		let len = format_content!(0, &mut out, "{} {} {}", val, "def", "ghi").unwrap();
+		let len = format_content!(
+			0,
+			UserSlice::from_slice_mut(&mut out),
+			"{} {} {}",
+			val,
+			"def",
+			"ghi"
+		)
+		.unwrap();
 		assert_eq!(out.as_slice(), b"123 def g");
 		assert_eq!(len, 9);
+
 		let mut out = [0u8; 9];
-		let len = format_content!(9, &mut out, "{} {} {}", "abc", "def", val).unwrap();
+		let len = format_content!(
+			9,
+			UserSlice::from_slice_mut(&mut out),
+			"{} {} {}",
+			"abc",
+			"def",
+			val
+		)
+		.unwrap();
 		assert_eq!(out.as_slice(), b"23\0\0\0\0\0\0\0");
 		assert_eq!(len, 2);
+
 		let mut out = [0u8; 9];
-		let len = format_content!(3, &mut out, "{} {} {}", "abc", val, "ghi").unwrap();
+		let len = format_content!(
+			3,
+			UserSlice::from_slice_mut(&mut out),
+			"{} {} {}",
+			"abc",
+			val,
+			"ghi"
+		)
+		.unwrap();
 		assert_eq!(out.as_slice(), b" 123 ghi\0");
 		assert_eq!(len, 8);
+
 		let mut out = [0u8; 9];
-		let len = format_content!(4, &mut out, "{} {} {}", val, "def", "ghi").unwrap();
+		let len = format_content!(
+			4,
+			UserSlice::from_slice_mut(&mut out),
+			"{} {} {}",
+			val,
+			"def",
+			"ghi"
+		)
+		.unwrap();
 		assert_eq!(out.as_slice(), b"def ghi\0\0");
 		assert_eq!(len, 7);
+
 		let mut out = [0u8; 5];
-		let len = format_content!(0, &mut out, "{} {} {}", "abc", val, "ghi").unwrap();
+		let len = format_content!(
+			0,
+			UserSlice::from_slice_mut(&mut out),
+			"{} {} {}",
+			"abc",
+			val,
+			"ghi"
+		)
+		.unwrap();
 		assert_eq!(out.as_slice(), b"abc 1");
 		assert_eq!(len, 5);
 	}

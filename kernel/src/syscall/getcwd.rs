@@ -19,11 +19,7 @@
 //! The `getcwd` system call allows to retrieve the current working directory of
 //! the current process.
 
-use crate::{
-	file::vfs,
-	process::{mem_space::copy::SyscallSlice, Process},
-	syscall::Args,
-};
+use crate::{file::vfs, memory::user::UserSlice, process::Process, syscall::Args};
 use core::intrinsics::unlikely;
 use utils::{
 	errno,
@@ -31,10 +27,8 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn getcwd(
-	Args((buf, size)): Args<(SyscallSlice<u8>, usize)>,
-	proc: Arc<Process>,
-) -> EResult<usize> {
+pub fn getcwd(Args((buf, size)): Args<(*mut u8, usize)>, proc: Arc<Process>) -> EResult<usize> {
+	let buf = UserSlice::from_user(buf, size)?;
 	let cwd = vfs::Entry::get_path(&proc.fs.lock().cwd)?;
 	if unlikely(size < cwd.len() + 1) {
 		return Err(errno!(ERANGE));

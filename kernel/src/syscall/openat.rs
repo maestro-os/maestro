@@ -28,7 +28,8 @@ use crate::{
 		File, FileType, Stat, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOCTTY, O_NOFOLLOW,
 		O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{util::at, Args},
 	time::clock::{current_time_ns, current_time_sec, Clock},
 };
@@ -91,7 +92,7 @@ fn get_file(
 /// Perform the `openat` system call.
 pub fn do_openat(
 	dirfd: c_int,
-	pathname: SyscallString,
+	pathname: UserString,
 	flags: c_int,
 	mode: file::Mode,
 ) -> EResult<usize> {
@@ -152,7 +153,7 @@ pub fn do_openat(
 }
 
 pub fn openat(
-	Args((dirfd, pathname, flags, mode)): Args<(c_int, SyscallString, c_int, file::Mode)>,
+	Args((dirfd, pathname, flags, mode)): Args<(c_int, UserString, c_int, file::Mode)>,
 ) -> EResult<usize> {
 	do_openat(dirfd, pathname, flags, mode)
 }

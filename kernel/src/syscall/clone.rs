@@ -20,8 +20,8 @@
 
 use crate::{
 	arch::x86::{cli, idt::IntFrame},
+	memory::user::UserPtr,
 	process::{
-		mem_space::copy::SyscallPtr,
 		pid::Pid,
 		scheduler,
 		scheduler::{
@@ -126,9 +126,9 @@ pub fn compat_clone(
 	Args((flags, stack, _parent_tid, _tls, _child_tid)): Args<(
 		c_ulong,
 		*mut c_void,
-		SyscallPtr<c_int>,
+		UserPtr<c_int>,
 		c_ulong,
-		SyscallPtr<c_int>,
+		UserPtr<c_int>,
 	)>,
 	proc: Arc<Process>,
 	frame: &mut IntFrame,
@@ -170,8 +170,8 @@ pub fn clone(
 	Args((flags, stack, parent_tid, child_tid, tls)): Args<(
 		c_ulong,
 		*mut c_void,
-		SyscallPtr<c_int>,
-		SyscallPtr<c_int>,
+		UserPtr<c_int>,
+		UserPtr<c_int>,
 		c_ulong,
 	)>,
 	proc: Arc<Process>,

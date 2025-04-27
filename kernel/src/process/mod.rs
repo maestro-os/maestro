@@ -42,9 +42,8 @@ use crate::{
 		vfs::ResolutionSettings,
 		File, O_RDWR,
 	},
-	memory::{buddy, buddy::FrameOrder, oom, VirtAddr},
+	memory::{buddy, buddy::FrameOrder, oom, user, user::UserPtr, VirtAddr},
 	process::{
-		mem_space::{copy, copy::SyscallPtr},
 		pid::{PidHandle, IDLE_PID, INIT_PID},
 		rusage::Rusage,
 		scheduler::{
@@ -377,7 +376,7 @@ pub(crate) fn init() -> EResult<()> {
 			// General Protection Fault
 			0x0d => {
 				// Get the instruction opcode
-				let ptr = SyscallPtr::<u8>::from_ptr(frame.get_program_counter());
+				let ptr = UserPtr::<u8>::from_ptr(frame.get_program_counter());
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {
@@ -407,9 +406,9 @@ pub(crate) fn init() -> EResult<()> {
 			Ok(false) => {
 				if ring < 3 {
 					// Check if the fault was caused by a user <-> kernel copy
-					if (copy::raw_copy as usize..copy::copy_fault as usize).contains(&pc) {
+					if (user::raw_copy as usize..user::copy_fault as usize).contains(&pc) {
 						// Jump to `copy_fault`
-						frame.set_program_counter(copy::copy_fault as usize);
+						frame.set_program_counter(user::copy_fault as usize);
 					} else {
 						return CallbackResult::Panic;
 					}

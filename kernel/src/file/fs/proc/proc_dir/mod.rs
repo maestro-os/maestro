@@ -19,9 +19,8 @@
 //! Implementation of the directory of a process in the proc.
 
 use crate::{
-	memory::{vmem, VirtAddr},
-	process::mem_space::{copy::SyscallSlice, MemSpace},
-	syscall::FromSyscallArg,
+	memory::{user::UserSlice, vmem, VirtAddr},
+	process::mem_space::MemSpace,
 };
 use core::{cmp::min, fmt, intrinsics::unlikely};
 use utils::DisplayableStr;
@@ -47,8 +46,10 @@ pub fn read_memory(
 		return Ok(());
 	}
 	let f = || {
-		let slice = SyscallSlice::from_ptr(begin.0);
 		let len = end.0.saturating_sub(begin.0);
+		let Ok(slice) = UserSlice::from_user(begin.as_ptr(), len) else {
+			return Ok(());
+		};
 		let mut i = 0;
 		let mut buf: [u8; 128] = [0; 128];
 		while i < len {

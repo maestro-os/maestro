@@ -27,7 +27,7 @@ use crate::{
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -40,7 +40,7 @@ use utils::{
 };
 
 pub fn fchmodat(
-	Args((dirfd, pathname, mode, flags)): Args<(c_int, SyscallString, file::Mode, c_int)>,
+	Args((dirfd, pathname, mode, flags)): Args<(c_int, UserString, file::Mode, c_int)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {

@@ -20,14 +20,15 @@
 
 use crate::{
 	file::perm::{AccessProfile, Gid, Uid},
-	process::{mem_space::copy::SyscallPtr, Process},
+	memory::user::UserPtr,
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn getresgid(
-	Args((rgid, egid, sgid)): Args<(SyscallPtr<Gid>, SyscallPtr<Gid>, SyscallPtr<Gid>)>,
+	Args((rgid, egid, sgid)): Args<(UserPtr<Gid>, UserPtr<Gid>, UserPtr<Gid>)>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
 	rgid.copy_to_user(&ap.gid)?;

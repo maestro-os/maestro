@@ -34,7 +34,7 @@ use crate::{
 		},
 		File, INode, Mode, Stat,
 	},
-	process::mem_space::copy::{SyscallPtr, SyscallString},
+	memory::user::{UserPtr, UserString},
 	sync::mutex::Mutex,
 	syscall::{util::at, Args},
 	time::unit::Timespec,
@@ -131,7 +131,7 @@ fn entry_info(entry: &vfs::Entry) -> (u64, INode) {
 	(node.fs.dev, node.inode)
 }
 
-fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat32>) -> EResult<()> {
+fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<Stat32>) -> EResult<()> {
 	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
 	statbuf.copy_to_user(&Stat32 {
 		st_dev: st_dev as _,
@@ -154,7 +154,7 @@ fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat32>
 	})
 }
 
-fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat64>) -> EResult<()> {
+fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<Stat64>) -> EResult<()> {
 	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
 	statbuf.copy_to_user(&Stat64 {
 		st_dev,
@@ -178,7 +178,7 @@ fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: SyscallPtr<Stat64>
 }
 
 pub fn stat(
-	Args((pathname, statbuf)): Args<(SyscallString, SyscallPtr<Stat32>)>,
+	Args((pathname, statbuf)): Args<(UserString, UserPtr<Stat32>)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
@@ -190,7 +190,7 @@ pub fn stat(
 }
 
 pub fn stat64(
-	Args((pathname, statbuf)): Args<(SyscallString, SyscallPtr<Stat64>)>,
+	Args((pathname, statbuf)): Args<(UserString, UserPtr<Stat64>)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
@@ -202,7 +202,7 @@ pub fn stat64(
 }
 
 pub fn fstat(
-	Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat32>)>,
+	Args((fd, statbuf)): Args<(c_int, UserPtr<Stat32>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let fds = fds.lock();
@@ -213,7 +213,7 @@ pub fn fstat(
 }
 
 pub fn fstat64(
-	Args((fd, statbuf)): Args<(c_int, SyscallPtr<Stat64>)>,
+	Args((fd, statbuf)): Args<(c_int, UserPtr<Stat64>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let fds = fds.lock();
@@ -224,7 +224,7 @@ pub fn fstat64(
 }
 
 pub fn lstat(
-	Args((pathname, statbuf)): Args<(SyscallString, SyscallPtr<Stat32>)>,
+	Args((pathname, statbuf)): Args<(UserString, UserPtr<Stat32>)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
@@ -240,7 +240,7 @@ pub fn lstat(
 }
 
 pub fn lstat64(
-	Args((pathname, statbuf)): Args<(SyscallString, SyscallPtr<Stat64>)>,
+	Args((pathname, statbuf)): Args<(UserString, UserPtr<Stat64>)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
@@ -332,10 +332,10 @@ pub struct Statx {
 pub fn statx(
 	Args((dirfd, pathname, flags, _mask, statxbuff)): Args<(
 		c_int,
-		SyscallString,
+		UserString,
 		c_int,
 		c_uint,
-		SyscallPtr<Statx>,
+		UserPtr<Statx>,
 	)>,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,

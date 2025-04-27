@@ -22,6 +22,7 @@
 use crate::{
 	file::{fs::FileOps, File},
 	format_content, memory,
+	memory::user::UserSlice,
 };
 use utils::errno::EResult;
 
@@ -30,7 +31,7 @@ use utils::errno::EResult;
 pub struct MemInfo;
 
 impl FileOps for MemInfo {
-	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let mem_info = memory::stats::MEM_INFO.lock();
 		format_content!(off, buf, "{}", *mem_info)
 	}

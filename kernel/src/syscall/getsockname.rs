@@ -20,10 +20,8 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
-	process::{
-		mem_space::copy::{SyscallPtr, SyscallSlice},
-		Process,
-	},
+	memory::user::{UserPtr, UserSlice},
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -35,7 +33,7 @@ use utils::{
 };
 
 pub fn getsockname(
-	Args((sockfd, addr, addrlen)): Args<(c_int, SyscallSlice<u8>, SyscallPtr<isize>)>,
+	Args((sockfd, addr, addrlen)): Args<(c_int, *mut u8, UserPtr<isize>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Get socket
@@ -48,6 +46,7 @@ pub fn getsockname(
 	}
 	let name = sock.get_sockname().lock();
 	let len = min(name.len(), addrlen_val as _);
+	let addr = UserSlice::from_user(addr, len)?;
 	addr.copy_to_user(0, &name[..len])?;
 	addrlen.copy_to_user(&(len as _))?;
 	Ok(0)

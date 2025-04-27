@@ -21,6 +21,7 @@
 use crate::{
 	file::{fs::NodeOps, vfs::node::Node},
 	format_content,
+	memory::user::UserSlice,
 	process::Process,
 };
 use utils::errno::EResult;
@@ -30,7 +31,7 @@ use utils::errno::EResult;
 pub struct SelfNode;
 
 impl NodeOps for SelfNode {
-	fn readlink(&self, _node: &Node, buf: &mut [u8]) -> EResult<usize> {
+	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		let pid = Process::current().get_pid();
 		format_content!(0, buf, "{pid}")
 	}

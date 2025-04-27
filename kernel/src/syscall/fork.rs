@@ -22,7 +22,8 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	process::{mem_space::copy::SyscallPtr, ForkOptions, Process},
+	memory::user::UserPtr,
+	process::{ForkOptions, Process},
 	syscall::{
 		clone::{clone, CLONE_VFORK, CLONE_VM},
 		Args,
@@ -36,7 +37,7 @@ use utils::{
 
 pub fn fork(proc: Arc<Process>, frame: &mut IntFrame) -> EResult<usize> {
 	clone(
-		Args((0, null_mut(), SyscallPtr(None), SyscallPtr(None), 0)),
+		Args((0, null_mut(), UserPtr(None), UserPtr(None), 0)),
 		proc,
 		frame,
 	)

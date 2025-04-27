@@ -35,9 +35,9 @@ use crate::{
 	memory::{
 		buddy::FrameOrder,
 		cache::{FrameOwner, RcFrame},
+		user::UserPtr,
 	},
 	println,
-	process::mem_space::copy::SyscallPtr,
 	syscall::{ioctl, FromSyscallArg},
 };
 use core::{
@@ -127,7 +127,7 @@ impl BlockDeviceOps for PartitionOps {
 				let h = ((size - s as u64) / c_uchar::MAX as u64 % c_uchar::MAX as u64) as _;
 				let c = ((size - s as u64) / c_uchar::MAX as u64 / c_uchar::MAX as u64) as _;
 				// Write to userspace
-				let hd_geo_ptr = SyscallPtr::<HdGeometry>::from_ptr(argp as usize);
+				let hd_geo_ptr = UserPtr::<HdGeometry>::from_ptr(argp as usize);
 				hd_geo_ptr.copy_to_user(&HdGeometry {
 					heads: h,
 					sectors: s,
@@ -147,13 +147,13 @@ impl BlockDeviceOps for PartitionOps {
 			}
 			ioctl::BLKSSZGET => {
 				let blk_size = self.block_size();
-				let size_ptr = SyscallPtr::<u32>::from_ptr(argp as usize);
+				let size_ptr = UserPtr::<u32>::from_ptr(argp as usize);
 				size_ptr.copy_to_user(&(blk_size.get() as _))?;
 				Ok(0)
 			}
 			ioctl::BLKGETSIZE64 => {
 				let size = self.block_size().get() * self.blocks_count();
-				let size_ptr = SyscallPtr::<u64>::from_ptr(argp as usize);
+				let size_ptr = UserPtr::<u64>::from_ptr(argp as usize);
 				size_ptr.copy_to_user(&size)?;
 				Ok(0)
 			}

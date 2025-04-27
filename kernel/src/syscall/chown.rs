@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{fs::StatSet, vfs, vfs::ResolutionSettings},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;
@@ -32,7 +33,7 @@ use utils::{
 
 /// Performs the `chown` syscall.
 pub fn do_chown(
-	pathname: SyscallString,
+	pathname: UserString,
 	owner: c_int,
 	group: c_int,
 	rs: ResolutionSettings,
@@ -61,7 +62,7 @@ pub fn do_chown(
 }
 
 pub fn chown(
-	Args((pathname, owner, group)): Args<(SyscallString, c_int, c_int)>,
+	Args((pathname, owner, group)): Args<(UserString, c_int, c_int)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	do_chown(pathname, owner, group, rs)

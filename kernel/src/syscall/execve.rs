@@ -22,10 +22,10 @@ use super::Args;
 use crate::{
 	arch::x86::idt::IntFrame,
 	file::{vfs, vfs::ResolutionSettings, File, O_RDONLY},
+	memory::user::{UserArray, UserSlice, UserString},
 	process::{
 		exec,
 		exec::{exec, ExecInfo, ProgramImage},
-		mem_space::copy::{SyscallArray, SyscallString},
 		scheduler::{switch::init_ctx, SCHEDULER},
 		Process,
 	},
@@ -94,7 +94,8 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 		let shebang = &mut shebangs[i];
 		let len = {
 			let file = File::open_entry(ent.clone(), O_RDONLY)?;
-			file.ops.read(&file, 0, &mut shebang.buf)?
+			let buf = UserSlice::from_slice_mut(&mut shebang.buf);
+			file.ops.read(&file, 0, buf)?
 		};
 		// Parse shebang
 		shebang.end = shebang.buf[..len]
@@ -135,7 +136,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 }
 
 pub fn execve(
-	Args((pathname, argv, envp)): Args<(SyscallString, SyscallArray, SyscallArray)>,
+	Args((pathname, argv, envp)): Args<(UserString, UserArray, UserArray)>,
 	rs: ResolutionSettings,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {

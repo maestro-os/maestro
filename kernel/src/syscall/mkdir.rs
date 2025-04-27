@@ -21,7 +21,8 @@
 use crate::{
 	file,
 	file::{vfs, vfs::ResolutionSettings, FileType, Stat},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{Args, Umask},
 	time::clock::{current_time_ns, current_time_sec, Clock},
 };
@@ -32,7 +33,7 @@ use utils::{
 };
 
 pub fn mkdir(
-	Args((pathname, mode)): Args<(SyscallString, file::Mode)>,
+	Args((pathname, mode)): Args<(UserString, file::Mode)>,
 	rs: ResolutionSettings,
 	umask: Umask,
 ) -> EResult<usize> {

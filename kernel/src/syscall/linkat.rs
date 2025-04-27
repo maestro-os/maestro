@@ -26,7 +26,8 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -41,9 +42,9 @@ use utils::{
 pub fn linkat(
 	Args((olddirfd, oldpath, newdirfd, newpath, flags)): Args<(
 		c_int,
-		SyscallString,
+		UserString,
 		c_int,
-		SyscallString,
+		UserString,
 		c_int,
 	)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,

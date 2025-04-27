@@ -21,6 +21,7 @@
 use crate::{
 	file::{fs::FileOps, vfs, vfs::mountpoint, File},
 	format_content,
+	memory::user::UserSlice,
 	process::pid::Pid,
 };
 use core::{fmt, fmt::Formatter};
@@ -31,8 +32,8 @@ use utils::{errno::EResult, DisplayableStr};
 pub struct Mounts(pub Pid);
 
 impl FileOps for Mounts {
-	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		format_content!(off, buf, "{}", self)
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		format_content!(off, buf, "{self}")
 	}
 }
 

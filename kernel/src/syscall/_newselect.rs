@@ -20,11 +20,8 @@
 
 use super::select::{do_select, FDSet};
 use crate::{
-	file::fd::FileDescriptorTable,
-	process::mem_space::{copy::SyscallPtr, MemSpace},
-	sync::mutex::Mutex,
-	syscall::Args,
-	time::unit::Timeval,
+	file::fd::FileDescriptorTable, memory::user::UserPtr, process::mem_space::MemSpace,
+	sync::mutex::Mutex, syscall::Args, time::unit::Timeval,
 };
 use core::ffi::c_int;
 use utils::{errno::EResult, ptr::arc::Arc};
@@ -33,10 +30,10 @@ use utils::{errno::EResult, ptr::arc::Arc};
 pub fn _newselect(
 	Args((nfds, readfds, writefds, exceptfds, timeout)): Args<(
 		c_int,
-		SyscallPtr<FDSet>,
-		SyscallPtr<FDSet>,
-		SyscallPtr<FDSet>,
-		SyscallPtr<Timeval>,
+		UserPtr<FDSet>,
+		UserPtr<FDSet>,
+		UserPtr<FDSet>,
+		UserPtr<Timeval>,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

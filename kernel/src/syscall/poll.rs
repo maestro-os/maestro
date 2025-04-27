@@ -20,7 +20,8 @@
 //! descriptors.
 
 use crate::{
-	process::{mem_space::copy::SyscallSlice, scheduler, scheduler::Scheduler, Process},
+	memory::user::UserSlice,
+	process::{scheduler, scheduler::Scheduler, Process},
 	syscall::Args,
 	time::{
 		clock,
@@ -71,8 +72,9 @@ pub struct PollFD {
 }
 
 pub(super) fn poll(
-	Args((fds, nfds, timeout)): Args<(SyscallSlice<PollFD>, usize, c_int)>,
+	Args((fds, nfds, timeout)): Args<(*mut PollFD, usize, c_int)>,
 ) -> EResult<usize> {
+	let fds = UserSlice::from_user(fds, nfds)?;
 	// The timeout. `None` means no timeout
 	let to = (timeout >= 0).then_some(timeout as Timestamp);
 	let start_ts = current_time_ms(Clock::Monotonic);
@@ -85,9 +87,7 @@ pub(super) fn poll(
 			}
 		}
 		{
-			let fds_arr = fds
-				.copy_from_user_vec(0, nfds)?
-				.ok_or_else(|| errno!(EFAULT))?;
+			let fds_arr = fds.copy_from_user_vec(0)?.ok_or_else(|| errno!(EFAULT))?;
 			// Check the file descriptors list
 			for fd in &fds_arr {
 				if fd.events as u32 & POLLIN != 0 {

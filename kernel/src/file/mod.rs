@@ -42,6 +42,7 @@ use crate::{
 		socket::Socket,
 		vfs::node::Node,
 	},
+	memory::user::UserSlice,
 	net::{SocketDesc, SocketDomain, SocketType},
 	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
 	time::{
@@ -506,7 +507,8 @@ impl File {
 					.ok_or_else(|| errno!(EOVERFLOW))?;
 				buf.resize(new_size, 0)?;
 			}
-			let len = self.ops.read(self, off as _, &mut buf[off..])?;
+			let buf = UserSlice::from_slice_mut(&mut buf[off..]);
+			let len = self.ops.read(self, off as _, buf)?;
 			// Reached EOF, stop here
 			if len == 0 {
 				break;

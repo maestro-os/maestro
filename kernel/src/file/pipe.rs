@@ -20,27 +20,30 @@
 //! and another writing, with a buffer in between.
 
 use crate::{
-	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat},
-	process::{mem_space::copy::SyscallPtr, signal::Signal, Process},
+	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat, O_NONBLOCK},
+	memory::{
+		ring_buffer::RingBuffer,
+		user::{UserPtr, UserSlice},
+	},
+	process::{signal::Signal, Process},
 	sync::mutex::Mutex,
 	syscall::{ioctl, FromSyscallArg},
 };
 use core::{
 	ffi::{c_int, c_void},
 	intrinsics::unlikely,
+	num::NonZeroUsize,
 };
 use utils::{
-	collections::{ring_buffer::RingBuffer, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	limits::PIPE_BUF,
-	vec,
 };
 
 #[derive(Debug)]
 struct PipeInner {
 	/// The pipe's buffer.
-	buffer: RingBuffer<u8, Vec<u8>>,
+	buffer: RingBuffer,
 	/// The number of readers on the pipe.
 	readers: usize,
 	/// The number of writers on the pipe.
@@ -63,7 +66,7 @@ impl PipeBuffer {
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
 			inner: Mutex::new(PipeInner {
-				buffer: RingBuffer::new(vec![0; PIPE_BUF]?),
+				buffer: RingBuffer::new(NonZeroUsize::new(PIPE_BUF).unwrap())?,
 				readers: 0,
 				writers: 0,
 			}),
@@ -74,7 +77,7 @@ impl PipeBuffer {
 
 	/// Returns the capacity of the pipe in bytes.
 	pub fn get_capacity(&self) -> usize {
-		self.inner.lock().buffer.get_size()
+		PIPE_BUF
 	}
 }
 
@@ -118,7 +121,7 @@ impl FileOps for PipeBuffer {
 		match request.get_old_format() {
 			ioctl::FIONREAD => {
 				let len = self.inner.lock().buffer.get_data_len() as c_int;
-				let count_ptr = SyscallPtr::from_ptr(argp as usize);
+				let count_ptr = UserPtr::from_ptr(argp as usize);
 				count_ptr.copy_to_user(&len)?;
 			}
 			_ => return Err(errno!(ENOTTY)),
@@ -126,28 +129,34 @@ impl FileOps for PipeBuffer {
 		Ok(0)
 	}
 
-	fn read(&self, _file: &File, _off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		if unlikely(buf.is_empty()) {
 			return Ok(0);
 		}
 		let len = self.rd_queue.wait_until(|| {
 			let mut inner = self.inner.lock();
-			let len = inner.buffer.read(buf);
+			let len = match inner.buffer.read(buf) {
+				Ok(l) => l,
+				Err(e) => return Some(Err(e)),
+			};
 			if len > 0 {
 				self.wr_queue.wake_next();
-				Some(len)
+				return Some(Ok(len));
+			}
+			// Nothing to read
+			if inner.writers == 0 {
+				return Some(Ok(0));
+			}
+			if file.get_flags() & O_NONBLOCK != 0 {
+				Some(Err(errno!(EAGAIN)))
 			} else {
-				if inner.writers == 0 {
-					return Some(0);
-				}
-				// TODO if O_NONBLOCK, return `EAGAIN`
 				None
 			}
-		})?;
+		})??;
 		Ok(len)
 	}
 
-	fn write(&self, _file: &File, _off: u64, buf: &[u8]) -> EResult<usize> {
+	fn write(&self, file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		if unlikely(buf.is_empty()) {
 			return Ok(0);
 		}
@@ -157,12 +166,18 @@ impl FileOps for PipeBuffer {
 				Process::current().kill(Signal::SIGPIPE);
 				return Some(Err(errno!(EPIPE)));
 			}
-			let len = inner.buffer.write(buf);
+			let len = match inner.buffer.write(buf) {
+				Ok(l) => l,
+				Err(e) => return Some(Err(e)),
+			};
 			if len > 0 {
 				self.rd_queue.wake_next();
-				Some(Ok(len))
+				return Some(Ok(len));
+			}
+			// No space left to write
+			if file.get_flags() & O_NONBLOCK != 0 {
+				Some(Err(errno!(EAGAIN)))
 			} else {
-				// TODO if O_NONBLOCK, return `EAGAIN`
 				None
 			}
 		})??;

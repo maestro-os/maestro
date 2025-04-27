@@ -21,6 +21,7 @@
 use crate::{
 	file::{fs::FileOps, File, FileType, Stat},
 	format_content,
+	memory::user::UserSlice,
 };
 use utils::errno::EResult;
 
@@ -36,7 +37,7 @@ impl FileOps for OsRelease {
 		})
 	}
 
-	fn read(&self, _file: &File, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		format_content!(off, buf, "{}\n", crate::VERSION)
 	}
 }

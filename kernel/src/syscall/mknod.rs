@@ -22,7 +22,8 @@ use crate::{
 	device::id,
 	file,
 	file::{vfs, vfs::ResolutionSettings, FileType, Stat},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{Args, Umask},
 	time::clock::{current_time_ns, current_time_sec, Clock},
 };
@@ -33,7 +34,7 @@ use utils::{
 };
 
 pub fn mknod(
-	Args((pathname, mode, dev)): Args<(SyscallString, file::Mode, u64)>,
+	Args((pathname, mode, dev)): Args<(UserString, file::Mode, u64)>,
 	umask: Umask,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {

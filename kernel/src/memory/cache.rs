@@ -187,8 +187,8 @@ impl RcFrame {
 	///
 	/// # Safety
 	///
-	/// It is the caller's responsibility to ensure no other mutable reference exist at the same
-	/// time.
+	/// It is the caller's responsibility to ensure no one else is accessing the content of the
+	/// frame at the same time.
 	#[inline]
 	#[allow(clippy::mut_from_ref)]
 	pub unsafe fn slice_mut<T: AnyRepr>(&self) -> &mut [T] {

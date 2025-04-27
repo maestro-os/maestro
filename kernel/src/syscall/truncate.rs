@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{vfs, vfs::ResolutionSettings, File, O_WRONLY},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use utils::{
@@ -29,7 +30,7 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn truncate(Args((path, length)): Args<(SyscallString, usize)>) -> EResult<usize> {
+pub fn truncate(Args((path, length)): Args<(UserString, usize)>) -> EResult<usize> {
 	let proc = Process::current();
 	let rs = ResolutionSettings::for_process(&proc, true);
 	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;

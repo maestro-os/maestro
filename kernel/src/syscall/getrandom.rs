@@ -18,11 +18,7 @@
 
 //! The `getrandom` system call allows to get random bytes.
 
-use crate::{
-	crypto::rand,
-	process::{mem_space::copy::SyscallSlice, Process},
-	syscall::Args,
-};
+use crate::{crypto::rand, memory::user::UserSlice, process::Process, syscall::Args};
 use core::ffi::c_uint;
 use utils::{
 	errno,
@@ -30,31 +26,7 @@ use utils::{
 	vec,
 };
 
-/// If set, bytes are drawn from the randomness source instead of `urandom`.
-const GRND_RANDOM: u32 = 2;
-/// If set, the function doesn't block. If no entropy is available, the function
-/// returns [`EAGAIN`].
-const GRND_NONBLOCK: u32 = 1;
-
-pub fn getrandom(
-	Args((buf, buflen, flags)): Args<(SyscallSlice<u8>, usize, c_uint)>,
-) -> EResult<usize> {
-	let bypass_threshold = flags & GRND_RANDOM == 0;
-	let nonblock = flags & GRND_NONBLOCK != 0;
-	let mut pool_guard = rand::ENTROPY_POOL.lock();
-	let Some(pool) = &mut *pool_guard else {
-		return Ok(0);
-	};
-	if nonblock && buflen > pool.available_bytes() {
-		return Err(errno!(EAGAIN));
-	}
-	// Write
-	let mut tmp: [u8; 256] = [0; 256];
-	let mut i = 0;
-	while i < buflen {
-		let len = pool.read(&mut tmp[..buflen - i], bypass_threshold);
-		buf.copy_to_user(i, &tmp[..len])?;
-		i += len;
-	}
-	Ok(i as _)
+pub fn getrandom(Args((buf, buflen, flags)): Args<(*mut u8, usize, c_uint)>) -> EResult<usize> {
+	let buf = UserSlice::from_user(buf, buflen)?;
+	rand::getrandom(buf, flags)
 }
