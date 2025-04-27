@@ -29,7 +29,7 @@ use crate::{
 	logger::LOGGER,
 	memory::user::UserSlice,
 };
-use core::{cmp::min, mem::ManuallyDrop};
+use core::mem::ManuallyDrop;
 use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 /// Device which does nothing.
@@ -52,12 +52,10 @@ pub struct ZeroDeviceHandle;
 
 impl FileOps for ZeroDeviceHandle {
 	fn read(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let mut i = 0;
 		let b: [u8; 128] = [0; 128];
+		let mut i = 0;
 		while i < buf.len() {
-			let l = min(buf.len() - i, b.len());
-			buf.copy_to_user(i, &b[..l])?;
-			i += l;
+			i += buf.copy_to_user(i, &b)?;
 		}
 		Ok(buf.len())
 	}
@@ -119,11 +117,8 @@ impl FileOps for KMsgDeviceHandle {
 	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let off = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let logger = LOGGER.lock();
-		let size = logger.get_size();
 		let content = logger.get_content();
-
-		let l = min(size - off, buf.len());
-		buf.copy_to_user(0, &content[off..(off + l)])?;
+		let l = buf.copy_to_user(0, &content[off..])?;
 		Ok(l)
 	}
 
