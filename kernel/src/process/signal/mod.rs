@@ -382,7 +382,7 @@ impl SignalHandler {
 		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
 		let signal_sp = ctx_addr - arg_len;
 		// Bind virtual memory
-		process.mem_space.as_ref().unwrap().lock().bind();
+		process.mem_space.as_ref().unwrap().bind();
 		// Write data on stack
 		if frame.is_compat() {
 			let args = unsafe {

@@ -18,8 +18,11 @@
 
 //! Implementation of memory space transactions to modify [`MemSpaceState`] atomically.
 
-use super::{gap::MemGap, mapping::MemMapping, MemSpaceState};
-use crate::memory::{vmem::VMem, VirtAddr};
+use super::{gap::MemGap, mapping::MemMapping, MemSpace, MemSpaceState};
+use crate::{
+	memory::{vmem::VMem, VirtAddr},
+	sync::mutex::MutexGuard,
+};
 use core::{alloc::AllocError, hash::Hash, mem};
 use utils::{
 	collections::{
@@ -86,10 +89,10 @@ fn insert<K: Clone + Ord + Hash, V>(
 /// avoid inconsistent states.
 #[must_use = "A transaction must be committed, or its result is discarded"]
 pub(super) struct MemSpaceTransaction<'m> {
-	/// The memory space on which the transaction applies.
-	pub mem_space_state: &'m mut MemSpaceState,
-	/// The virtual memory context on which this transaction applies.
-	pub vmem: &'m mut VMem,
+	/// The memory space state on which the transaction applies.
+	pub state: MutexGuard<'m, MemSpaceState, false>,
+	/// The virtual memory context
+	pub vmem: MutexGuard<'m, VMem, false>,
 
 	/// The complement used to restore `gaps` on rollback.
 	gaps_complement: HashMap<VirtAddr, Option<MemGap>>,
@@ -107,10 +110,12 @@ pub(super) struct MemSpaceTransaction<'m> {
 
 impl<'m> MemSpaceTransaction<'m> {
 	/// Begins a new transaction for the given memory space.
-	pub fn new(mem_space_state: &'m mut MemSpaceState, vmem: &'m mut VMem) -> Self {
-		let vmem_usage = mem_space_state.vmem_usage;
+	pub fn new(mem_space: &'m MemSpace) -> Self {
+		let state = mem_space.state.lock();
+		let vmem = mem_space.vmem.lock();
+		let vmem_usage = state.vmem_usage;
 		Self {
-			mem_space_state,
+			state,
 			vmem,
 
 			gaps_complement: Default::default(),
@@ -130,7 +135,7 @@ impl<'m> MemSpaceTransaction<'m> {
 		insert(
 			gap.get_begin(),
 			gap,
-			&mut self.mem_space_state.gaps,
+			&mut self.state.gaps,
 			&mut self.gaps_complement,
 			&mut self.gaps_discard,
 		)?;
@@ -141,7 +146,7 @@ impl<'m> MemSpaceTransaction<'m> {
 	///
 	/// On failure, the transaction is dropped and rolled back.
 	pub fn remove_gap(&mut self, gap_begin: VirtAddr) -> AllocResult<()> {
-		if let Some(gap) = self.mem_space_state.gaps.get(&gap_begin) {
+		if let Some(gap) = self.state.gaps.get(&gap_begin) {
 			self.gaps_discard.insert(gap.get_begin(), ())?;
 		}
 		Ok(())
@@ -155,7 +160,7 @@ impl<'m> MemSpaceTransaction<'m> {
 		insert(
 			mapping.get_addr(),
 			mapping,
-			&mut self.mem_space_state.mappings,
+			&mut self.state.mappings,
 			&mut self.mappings_complement,
 			&mut self.mappings_discard,
 		)?;
@@ -167,10 +172,10 @@ impl<'m> MemSpaceTransaction<'m> {
 	///
 	/// On failure, the transaction is dropped and rolled back.
 	pub fn remove_mapping(&mut self, mapping_begin: *mut u8) -> EResult<()> {
-		if let Some(mapping) = self.mem_space_state.mappings.get(&mapping_begin) {
+		if let Some(mapping) = self.state.mappings.get(&mapping_begin) {
 			self.mappings_discard.insert(mapping_begin, ())?;
 			// Sync to disk
-			mapping.sync(self.vmem, true)?;
+			mapping.sync(&self.vmem, true)?;
 			// Apply to vmem. No rollback is required since this would be corrected by a page fault
 			self.vmem
 				.unmap_range(VirtAddr::from(mapping.get_addr()), mapping.get_size().get());
@@ -187,14 +192,14 @@ impl<'m> MemSpaceTransaction<'m> {
 		self.mappings_complement.clear();
 		// Discard gaps
 		for (ptr, _) in self.gaps_discard.iter() {
-			self.mem_space_state.gaps.remove(ptr);
+			self.state.gaps.remove(ptr);
 		}
 		// Discard mappings
 		for (ptr, _) in self.mappings_discard.iter() {
-			self.mem_space_state.mappings.remove(ptr);
+			self.state.mappings.remove(ptr);
 		}
 		// Update vmem
-		self.mem_space_state.vmem_usage = self.vmem_usage;
+		self.state.vmem_usage = self.vmem_usage;
 	}
 }
 
@@ -202,8 +207,8 @@ impl Drop for MemSpaceTransaction<'_> {
 	fn drop(&mut self) {
 		// If the transaction was not committed, rollback
 		let gaps_complement = mem::take(&mut self.gaps_complement);
-		rollback(&mut self.mem_space_state.gaps, gaps_complement);
+		rollback(&mut self.state.gaps, gaps_complement);
 		let mappings_complement = mem::take(&mut self.mappings_complement);
-		rollback(&mut self.mem_space_state.mappings, mappings_complement);
+		rollback(&mut self.state.mappings, mappings_complement);
 	}
 }

@@ -37,7 +37,7 @@ impl NodeOps for Exe {
 		let path = proc
 			.mem_space
 			.as_ref()
-			.map(|mem_space| vfs::Entry::get_path(&mem_space.lock().exe_info.exe))
+			.map(|mem_space| vfs::Entry::get_path(&mem_space.exe_info.exe))
 			.transpose()?
 			.unwrap_or_default();
 		format_content!(0, buf, "{path}")

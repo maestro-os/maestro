@@ -36,7 +36,7 @@ use utils::{
 
 pub fn mprotect(
 	Args((addr, len, prot)): Args<(*mut c_void, usize, c_int)>,
-	mem_space: Arc<IntMutex<MemSpace>>,
+	mem_space: Arc<MemSpace>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
@@ -44,6 +44,6 @@ pub fn mprotect(
 		return Err(errno!(EINVAL));
 	}
 	let prot = prot as u8;
-	mem_space.lock().set_prot(addr, len, prot, &ap)?;
+	mem_space.set_prot(addr, len, prot, &ap)?;
 	Ok(0)
 }

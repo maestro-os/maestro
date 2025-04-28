@@ -94,7 +94,7 @@ const F_DUPFD_CLOEXEC: c_int = 1030;
 /// Change the capacity of the pipe referred to by the file descriptor to be at least the given
 /// number of bytes.
 const F_SETPIPE_SZ: c_int = 1031;
-/// Return the capacity of the pipe referred to bt the file descriptor.
+/// Return the capacity of the pipe referred to by the file descriptor.
 const F_GETPIPE_SZ: c_int = 1032;
 /// Add the seals given in the bit-mask argument to the set of seals of the inode referred to by
 /// the file descriptor.

@@ -36,7 +36,7 @@ use utils::{
 
 pub fn munmap(
 	Args((addr, length)): Args<(VirtAddr, usize)>,
-	mem_space: Arc<IntMutex<MemSpace>>,
+	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	// Check address alignment
 	if !addr.is_aligned_to(PAGE_SIZE) || length == 0 {
@@ -52,8 +52,6 @@ pub fn munmap(
 	if unlikely(end > memory::PROCESS_END.0) {
 		return Err(errno!(EINVAL));
 	}
-	mem_space
-		.lock()
-		.unmap(addr, NonZeroUsize::new(pages).unwrap(), false)?;
+	mem_space.unmap(addr, NonZeroUsize::new(pages).unwrap())?;
 	Ok(0)
 }

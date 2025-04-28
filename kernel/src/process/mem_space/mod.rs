@@ -28,10 +28,18 @@ mod mapping;
 mod transaction;
 
 use crate::{
-	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
+	arch::{
+		x86,
+		x86::{
+			idt,
+			paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
+		},
+	},
 	file::{perm::AccessProfile, vfs, File},
 	memory,
-	memory::{cache::RcFrame, vmem::VMem, VirtAddr, PROCESS_END},
+	memory::{cache::RcFrame, vmem::VMem, PhysAddr, VirtAddr, PROCESS_END},
+	register_get,
+	sync::mutex::IntMutex,
 };
 use core::{
 	alloc::AllocError, cmp::min, ffi::c_void, fmt, intrinsics::unlikely, mem, num::NonZeroUsize,
@@ -123,7 +131,7 @@ fn remove_gaps_in_range(
 ) -> AllocResult<()> {
 	// Start the search at the gap containing the start address
 	let search_start = transaction
-		.mem_space_state
+		.state
 		.get_gap_for_addr(start)
 		.map(MemGap::get_begin)
 		// No gap contain the start address, start at the next one
@@ -132,7 +140,7 @@ fn remove_gaps_in_range(
 	let end = start + size * PAGE_SIZE;
 	// Collect gaps that match
 	let gaps = transaction
-		.mem_space_state
+		.state
 		.gaps
 		.range(search_start..end)
 		.map(|(_, b)| b.clone())
@@ -161,7 +169,7 @@ fn remove_gaps_in_range(
 }
 
 /// Inner state of the memory space, to use as a model for the virtual memory context.
-#[derive(Debug, Default)]
+#[derive(Default, Debug)]
 struct MemSpaceState {
 	/// Binary tree storing the list of memory gaps, ready for new mappings.
 	///
@@ -172,6 +180,11 @@ struct MemSpaceState {
 	///
 	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
 	mappings: BTreeMap<*mut u8, MemMapping>,
+
+	/// The initial pointer of the `[s]brk` system calls.
+	brk_init: VirtAddr,
+	/// The current pointer of the `[s]brk` system calls.
+	brk: VirtAddr,
 
 	/// The number of used virtual memory pages.
 	vmem_usage: usize,
@@ -238,17 +251,12 @@ pub struct ExeInfo {
 /// A virtual memory space.
 pub struct MemSpace {
 	/// The memory space's structure, used as a model for `vmem`.
-	state: MemSpaceState,
+	state: IntMutex<MemSpaceState>,
 	/// Architecture-specific virtual memory context handler.
 	///
-	/// We use it as a cache which can be invalidated by unmapping. When a page fault occurs, we
-	/// can then fetch the actual mapping from here.
-	pub vmem: VMem,
-
-	/// The initial pointer of the `[s]brk` system calls.
-	brk_init: VirtAddr,
-	/// The current pointer of the `[s]brk` system calls.
-	brk: VirtAddr,
+	/// We use it as a cache which can be invalidated by unmapping. When a page fault occurs, this
+	/// field is corrected by the [`MemSpace`].
+	vmem: IntMutex<VMem>,
 
 	/// Executable program information.
 	pub exe_info: ExeInfo,
@@ -259,12 +267,9 @@ impl MemSpace {
 	///
 	/// `exe` is the VFS entry of the program loaded on the memory space.
 	pub fn new(exe: Arc<vfs::Entry>) -> AllocResult<Self> {
-		let mut s = Self {
-			state: MemSpaceState::default(),
-			vmem: unsafe { VMem::new() },
-
-			brk_init: Default::default(),
-			brk: Default::default(),
+		let s = Self {
+			state: Default::default(),
+			vmem: IntMutex::new(unsafe { VMem::new() }),
 
 			exe_info: ExeInfo {
 				exe,
@@ -279,7 +284,7 @@ impl MemSpace {
 		let begin = memory::ALLOC_BEGIN;
 		let size = (COPY_BUFFER.0 - begin.0) / PAGE_SIZE;
 		let gap = MemGap::new(begin, NonZeroUsize::new(size).unwrap());
-		let mut transaction = MemSpaceTransaction::new(&mut s.state, &mut s.vmem);
+		let mut transaction = MemSpaceTransaction::new(&s);
 		transaction.insert_gap(gap)?;
 		transaction.commit();
 		Ok(s)
@@ -288,16 +293,7 @@ impl MemSpace {
 	/// Returns the number of virtual memory pages in the memory space.
 	#[inline]
 	pub fn get_vmem_usage(&self) -> usize {
-		self.state.vmem_usage
-	}
-
-	/// Returns an immutable reference to the memory mapping containing the given virtual
-	/// address.
-	///
-	/// If no mapping contains the address, the function returns `None`.
-	#[inline]
-	pub fn get_mapping_for_addr(&self, addr: VirtAddr) -> Option<&MemMapping> {
-		self.state.get_mapping_for_addr(addr)
+		self.state.lock().vmem_usage
 	}
 
 	fn map_impl(
@@ -325,7 +321,7 @@ impl MemSpace {
 			}
 			MapConstraint::Hint(addr) => {
 				transaction
-					.mem_space_state
+					.state
 					// Get the gap for the pointer
 					.get_gap_for_addr(addr)
 					.and_then(|gap| {
@@ -337,18 +333,14 @@ impl MemSpace {
 					})
 					// Hint cannot be satisfied. Get a large enough gap
 					.or_else(|| {
-						let gap = transaction.mem_space_state.get_gap(size)?;
+						let gap = transaction.state.get_gap(size)?;
 						Some((gap.clone(), 0))
 					})
 					.ok_or(AllocError)?
 					.clone()
 			}
 			MapConstraint::None => {
-				let gap = transaction
-					.mem_space_state
-					.get_gap(size)
-					.ok_or(AllocError)?
-					.clone();
+				let gap = transaction.state.get_gap(size).ok_or(AllocError)?.clone();
 				(gap, 0)
 			}
 		};
@@ -385,7 +377,7 @@ impl MemSpace {
 	///
 	/// If the given pointer is not page-aligned, the function returns an error.
 	pub fn map(
-		&mut self,
+		&self,
 		map_constraint: MapConstraint,
 		size: NonZeroUsize,
 		prot: u8,
@@ -393,7 +385,7 @@ impl MemSpace {
 		file: Option<Arc<File>>,
 		off: u64,
 	) -> EResult<*mut u8> {
-		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
+		let mut transaction = MemSpaceTransaction::new(self);
 		let map = Self::map_impl(
 			&mut transaction,
 			map_constraint,
@@ -410,11 +402,11 @@ impl MemSpace {
 	}
 
 	/// Maps a chunk of memory population with the given static pages.
-	pub fn map_special(&mut self, prot: u8, flags: u8, pages: &[RcFrame]) -> AllocResult<*mut u8> {
+	pub fn map_special(&self, prot: u8, flags: u8, pages: &[RcFrame]) -> AllocResult<*mut u8> {
 		let Some(len) = NonZeroUsize::new(pages.len()) else {
 			return Err(AllocError);
 		};
-		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
+		let mut transaction = MemSpaceTransaction::new(self);
 		let mut map = Self::map_impl(
 			&mut transaction,
 			MapConstraint::None,
@@ -454,7 +446,7 @@ impl MemSpace {
 			// The current page's beginning
 			let page_addr = addr + i * PAGE_SIZE;
 			// The mapping containing the page
-			let Some(mapping) = transaction.mem_space_state.get_mapping_for_addr(page_addr) else {
+			let Some(mapping) = transaction.state.get_mapping_for_addr(page_addr) else {
 				// TODO jump to next mapping directly using binary tree (currently O(n log n))
 				i += 1;
 				continue;
@@ -485,7 +477,7 @@ impl MemSpace {
 				let prev_gap = (!gap.get_begin().is_null())
 					.then(|| {
 						let prev_gap_ptr = gap.get_begin() - 1;
-						transaction.mem_space_state.get_gap_for_addr(prev_gap_ptr)
+						transaction.state.get_gap_for_addr(prev_gap_ptr)
 					})
 					.flatten()
 					.cloned();
@@ -494,10 +486,7 @@ impl MemSpace {
 					gap.merge(&p);
 				}
 				// Merge next gap
-				let next_gap = transaction
-					.mem_space_state
-					.get_gap_for_addr(gap.get_end())
-					.cloned();
+				let next_gap = transaction.state.get_gap_for_addr(gap.get_end()).cloned();
 				if let Some(n) = next_gap {
 					transaction.remove_gap(n.get_begin())?;
 					gap.merge(&n);
@@ -513,7 +502,6 @@ impl MemSpace {
 	/// Arguments:
 	/// - `addr` represents the aligned address of the beginning of the chunk to unmap.
 	/// - `size` represents the size of the mapping in number of memory pages.
-	/// - `brk` tells whether the function is called through the `brk` syscall.
 	///
 	/// The function frees the physical memory the mapping points to
 	/// unless shared by one or several other memory mappings.
@@ -522,49 +510,79 @@ impl MemSpace {
 	/// be revoked and further attempts to access it shall result in a page
 	/// fault.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn unmap(&mut self, addr: VirtAddr, size: NonZeroUsize, brk: bool) -> EResult<()> {
+	pub fn unmap(&self, addr: VirtAddr, size: NonZeroUsize) -> EResult<()> {
 		// Validation
 		if unlikely(!addr.is_aligned_to(PAGE_SIZE)) {
 			return Err(errno!(ENOMEM));
 		}
-		let mut transaction = MemSpaceTransaction::new(&mut self.state, &mut self.vmem);
-		// Do not create gaps if unmapping for `*brk` system calls as this space is reserved by
-		// it and must not be reused by `mmap`
-		Self::unmap_impl(&mut transaction, addr, size, brk)?;
+		let mut transaction = MemSpaceTransaction::new(self);
+		Self::unmap_impl(&mut transaction, addr, size, false)?;
 		transaction.commit();
 		Ok(())
 	}
 
 	/// Binds the memory space to the current kernel.
 	pub fn bind(&self) {
-		self.vmem.bind();
+		self.vmem.lock().bind();
 	}
 
-	/// Tells whether the memory space is bound.
-	pub fn is_bound(&self) -> bool {
-		self.vmem.is_bound()
+	/// Executes the closure `f` while being bound to the virtual memory context.
+	///
+	/// After execution, the function restores the previous context.
+	///
+	/// The function disables interruptions while executing the closure. This is due
+	/// to the fact that if interruptions were enabled, the scheduler would be able
+	/// to change the running process, and thus when resuming execution, the virtual
+	/// memory context would be changed to the process's context, making the
+	/// behaviour undefined.
+	///
+	/// # Safety
+	///
+	/// The caller must ensure that the stack is accessible in both the current and given virtual
+	/// memory contexts.
+	pub unsafe fn switch<'m, F: FnOnce(&'m Self) -> T, T>(&'m self, f: F) -> T {
+		idt::wrap_disable_interrupts(|| {
+			let vmem = self.vmem.lock();
+			if vmem.is_bound() {
+				// Avoid deadlock
+				drop(vmem);
+				f(self)
+			} else {
+				// Get current vmem
+				let page_dir = PhysAddr(register_get!("cr3"));
+				// Bind temporary vmem
+				vmem.bind();
+				// Avoid deadlock
+				drop(vmem);
+				let result = f(self);
+				// Restore previous vmem
+				x86::paging::bind(page_dir);
+				result
+			}
+		})
 	}
 
 	/// Clones the current memory space for process forking.
-	pub fn fork(&mut self) -> EResult<MemSpace> {
+	pub fn fork(&self) -> EResult<MemSpace> {
+		let state = self.state.lock();
+		let mut vmem = self.vmem.lock();
 		// Clone first to mark as shared
-		let mappings = self.state.mappings.try_clone()?;
+		let mappings = state.mappings.try_clone()?;
 		// Unmap to invalidate the virtual memory context
-		for (_, m) in &self.state.mappings {
-			self.vmem
-				.unmap_range(VirtAddr::from(m.get_addr()), m.get_size().get());
+		for (_, m) in &state.mappings {
+			vmem.unmap_range(VirtAddr::from(m.get_addr()), m.get_size().get());
 		}
 		Ok(Self {
-			state: MemSpaceState {
-				gaps: self.state.gaps.try_clone()?,
+			state: IntMutex::new(MemSpaceState {
+				gaps: state.gaps.try_clone()?,
 				mappings,
 
-				vmem_usage: self.state.vmem_usage,
-			},
-			vmem: unsafe { VMem::new() },
+				brk_init: state.brk_init,
+				brk: state.brk,
 
-			brk_init: self.brk_init,
-			brk: self.brk,
+				vmem_usage: state.vmem_usage,
+			}),
+			vmem: IntMutex::new(unsafe { VMem::new() }),
 
 			exe_info: self.exe_info.clone(),
 		})
@@ -580,13 +598,15 @@ impl MemSpace {
 	///
 	/// On error, allocations that have been made are not freed as it does not affect the behaviour
 	/// from the user's point of view.
-	pub fn alloc(&mut self, addr: VirtAddr, len: usize) -> EResult<()> {
+	pub fn alloc(&self, addr: VirtAddr, len: usize) -> EResult<()> {
+		let mut state = self.state.lock();
+		let mut vmem = self.vmem.lock();
 		let mut off = 0;
 		while off < len {
 			let addr = addr + off;
-			if let Some(mapping) = self.state.get_mut_mapping_for_addr(addr) {
+			if let Some(mapping) = state.get_mut_mapping_for_addr(addr) {
 				let page_offset = (addr.0 - mapping.get_addr() as usize) / PAGE_SIZE;
-				mapping.map(page_offset, &mut self.vmem)?;
+				mapping.map(page_offset, &mut vmem)?;
 			}
 			off += PAGE_SIZE;
 		}
@@ -604,7 +624,7 @@ impl MemSpace {
 	/// If a mapping to be modified is associated with a file, and the file doesn't have the
 	/// matching permissions, the function returns an error.
 	pub fn set_prot(
-		&mut self,
+		&self,
 		_addr: *mut c_void,
 		_len: usize,
 		_prot: u8,
@@ -619,11 +639,6 @@ impl MemSpace {
 		Ok(())
 	}
 
-	/// Returns the address for the `brk` syscall.
-	pub fn get_brk(&self) -> VirtAddr {
-		self.brk
-	}
-
 	/// Sets the initial pointer for the `brk` syscall.
 	///
 	/// This function MUST be called *only once*, before the program starts.
@@ -631,27 +646,31 @@ impl MemSpace {
 	/// `addr` MUST be page-aligned.
 	pub fn set_brk_init(&mut self, addr: VirtAddr) {
 		debug_assert!(addr.is_aligned_to(PAGE_SIZE));
-		self.brk_init = addr;
-		self.brk = addr;
+		let mut state = self.state.lock();
+		state.brk_init = addr;
+		state.brk = addr;
 	}
 
-	/// Sets the address for the `brk` syscall.
+	/// Performs the `brk` system call.
 	///
-	/// If the memory cannot be allocated, the function returns an error.
+	/// On failure, the function does nothing and returns the current brk address.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn set_brk(&mut self, addr: VirtAddr) -> AllocResult<()> {
-		if addr >= self.brk {
+	pub fn brk(&self, addr: VirtAddr) -> VirtAddr {
+		let mut transaction = MemSpaceTransaction::new(self);
+		let old = transaction.state.brk;
+		if addr >= old {
 			// Check the pointer is valid
-			if addr > COPY_BUFFER {
-				return Err(AllocError);
+			if unlikely(addr > COPY_BUFFER) {
+				return old;
 			}
 			// Allocate memory
-			let begin = self.brk.align_to(PAGE_SIZE);
+			let begin = old.align_to(PAGE_SIZE);
 			let pages = (addr.0 - begin.0).div_ceil(PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
-				return Ok(());
+				return old;
 			};
-			self.map(
+			let res = Self::map_impl(
+				&mut transaction,
 				MapConstraint::Fixed(begin),
 				pages,
 				PROT_READ | PROT_WRITE | PROT_EXEC,
@@ -659,21 +678,47 @@ impl MemSpace {
 				None,
 				0,
 			)
-			.map_err(|_| AllocError)?;
+			.and_then(|map| Ok(transaction.insert_mapping(map)?));
+			if res.is_err() {
+				return old;
+			}
 		} else {
 			// Check the pointer is valid
-			if unlikely(addr < self.brk_init) {
-				return Err(AllocError);
+			if unlikely(addr < transaction.state.brk_init) {
+				return old;
 			}
 			// Free memory
 			let begin = addr.align_to(PAGE_SIZE);
 			let pages = (begin.0 - addr.0).div_ceil(PAGE_SIZE);
 			let Some(pages) = NonZeroUsize::new(pages) else {
-				return Ok(());
+				return old;
 			};
-			self.unmap(begin, pages, true).map_err(|_| AllocError)?;
+			let res = Self::unmap_impl(&mut transaction, begin, pages, true);
+			if res.is_err() {
+				return old;
+			}
 		}
-		self.brk = addr;
+		transaction.state.brk = addr;
+		transaction.commit();
+		addr
+	}
+
+	/// Synchronizes memory to the backing storage on the given range.
+	///
+	/// Arguments:
+	/// - `addr` is the address to the beginning of the range
+	/// - `pages` is the number of pages in the range
+	/// - `sync` tells whether the synchronization should be performed synchronously
+	pub fn sync(&self, addr: VirtAddr, pages: usize, sync: bool) -> EResult<()> {
+		let state = self.state.lock();
+		let vmem = self.vmem.lock();
+		// Iterate over mappings
+		let mut i = 0;
+		while i < pages {
+			let mapping = state.get_mapping_for_addr(addr).ok_or(AllocError)?;
+			mapping.sync(&vmem, sync)?;
+			i += mapping.get_size().get();
+		}
 		Ok(())
 	}
 
@@ -689,8 +734,10 @@ impl MemSpace {
 	/// - `code` is the error code given along with the error.
 	///
 	/// If the process should continue, the function returns `true`, else `false`.
-	pub fn handle_page_fault(&mut self, addr: VirtAddr, code: u32) -> EResult<bool> {
-		let Some(mapping) = self.state.get_mut_mapping_for_addr(addr) else {
+	pub fn handle_page_fault(&self, addr: VirtAddr, code: u32) -> EResult<bool> {
+		let mut state = self.state.lock();
+		let mut vmem = self.vmem.lock();
+		let Some(mapping) = state.get_mut_mapping_for_addr(addr) else {
 			return Ok(false);
 		};
 		// Check permissions
@@ -703,7 +750,7 @@ impl MemSpace {
 		}
 		// Map the accessed page
 		let page_offset = (addr.0 - mapping.get_addr() as usize) / PAGE_SIZE;
-		mapping.map(page_offset, &mut self.vmem)?;
+		mapping.map(page_offset, &mut vmem)?;
 		Ok(true)
 	}
 }
@@ -716,11 +763,13 @@ impl fmt::Debug for MemSpace {
 
 impl Drop for MemSpace {
 	fn drop(&mut self) {
+		let mut state = self.state.lock();
+		let vmem = self.vmem.lock();
 		// Synchronize all mappings to disk
-		let mappings = mem::take(&mut self.state.mappings);
+		let mappings = mem::take(&mut state.mappings);
 		for (_, m) in mappings {
 			// Ignore I/O errors
-			let _ = m.sync(&self.vmem, true);
+			let _ = m.sync(&vmem, true);
 		}
 	}
 }

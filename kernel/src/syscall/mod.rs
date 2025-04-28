@@ -378,7 +378,7 @@ impl FromSyscall for Arc<Process> {
 	}
 }
 
-impl FromSyscall for Arc<IntMutex<MemSpace>> {
+impl FromSyscall for Arc<MemSpace> {
 	#[inline]
 	fn from_syscall(_frame: &IntFrame) -> Self {
 		Process::current().mem_space.as_ref().unwrap().clone()

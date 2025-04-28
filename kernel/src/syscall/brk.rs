@@ -31,15 +31,7 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-pub fn brk(
-	Args(addr): Args<VirtAddr>,
-	mem_space_mutex: Arc<IntMutex<MemSpace>>,
-) -> EResult<usize> {
-	let mut mem_space = mem_space_mutex.lock();
-	let old = mem_space.get_brk();
-	if mem_space.set_brk(addr).is_ok() {
-		Ok(addr.0 as _)
-	} else {
-		Ok(old.0 as _)
-	}
+pub fn brk(Args(addr): Args<VirtAddr>, mem_space: Arc<MemSpace>) -> EResult<usize> {
+	let addr = mem_space.brk(addr);
+	Ok(addr.0 as _)
 }

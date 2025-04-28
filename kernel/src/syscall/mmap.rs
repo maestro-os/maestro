@@ -53,7 +53,7 @@ pub fn do_mmap(
 	offset: u64,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
-	mem_space: Arc<IntMutex<MemSpace>>,
+	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
 	if !addr.is_aligned_to(PAGE_SIZE) || length == 0 {
@@ -109,7 +109,6 @@ pub fn do_mmap(
 	} else {
 		None
 	};
-	let mut mem_space = mem_space.lock();
 	// The pointer on the virtual memory to the beginning of the mapping
 	let result = mem_space.map(constraint, pages, prot, flags, file.clone(), offset);
 	match result {
@@ -136,7 +135,7 @@ pub fn mmap(
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
-	mem_space: Arc<IntMutex<MemSpace>>,
+	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	do_mmap(
 		addr,
@@ -162,7 +161,7 @@ pub fn mmap2(
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
-	mem_space: Arc<IntMutex<MemSpace>>,
+	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	do_mmap(
 		addr,

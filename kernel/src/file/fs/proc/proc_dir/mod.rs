@@ -19,7 +19,7 @@
 //! Implementation of the directory of a process in the proc.
 
 use crate::{
-	memory::{user::UserSlice, vmem, VirtAddr},
+	memory::{user::UserSlice, VirtAddr},
 	process::mem_space::MemSpace,
 };
 use core::{cmp::min, fmt, intrinsics::unlikely};
@@ -45,7 +45,7 @@ pub fn read_memory(
 	if begin.is_null() {
 		return Ok(());
 	}
-	let f = || {
+	let f = |_| {
 		let len = end.0.saturating_sub(begin.0);
 		let Ok(slice) = UserSlice::from_user(begin.as_ptr(), len) else {
 			return Ok(());
@@ -63,5 +63,5 @@ pub fn read_memory(
 		}
 		Ok(())
 	};
-	unsafe { vmem::switch(&mem_space.vmem, f) }
+	unsafe { mem_space.switch(f) }
 }

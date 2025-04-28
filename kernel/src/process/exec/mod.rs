@@ -32,7 +32,7 @@ use crate::{
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
 	process::{mem_space::MemSpace, Process},
-	sync::mutex::{IntMutex, Mutex},
+	sync::mutex::Mutex,
 };
 use utils::{
 	collections::{string::String, vec::Vec},
@@ -90,7 +90,7 @@ pub fn build_image(file: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImag
 /// for each register so that the execution beings when the interrupt handler returns.
 pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
 	// Preform all fallible operations first before touching the process
-	let mem_space = Arc::new(IntMutex::new(image.mem_space))?;
+	let mem_space = Arc::new(image.mem_space)?;
 	let fds = proc
 		.file_descriptors
 		.as_ref()
@@ -102,7 +102,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		.transpose()?;
 	let signal_handlers = Arc::new(Default::default())?;
 	// All fallible operations succeeded, flush to process
-	mem_space.lock().bind();
+	mem_space.bind();
 	// Safe because no other thread can execute this function at the same time for the same process
 	unsafe {
 		*proc.file_descriptors.get_mut() = fds;

@@ -28,7 +28,6 @@ use crate::{
 	memory::{
 		buddy::ZONE_USER,
 		cache::{FrameOwner, RcFrame},
-		vmem,
 		vmem::{write_ro, VMem},
 		PhysAddr, VirtAddr,
 	},
@@ -108,18 +107,16 @@ fn init_page(
 	vmem.map(new_page.phys_addr(), dst, flags);
 	// Copy or zero
 	unsafe {
-		vmem::switch(vmem, || {
-			// Required since the copy buffer is mapped without write permission
-			write_ro(|| {
-				let src = src.is_some().then_some(&*COPY_BUFFER.as_ptr::<Page>());
-				let dst = &mut *dst.as_ptr::<Page>();
-				if let Some(src) = src {
-					dst.copy_from_slice(src);
-				} else {
-					dst.fill(0);
-				}
-			});
-		})
+		// Required since the copy buffer is mapped without write permission
+		write_ro(|| {
+			let src = src.is_some().then_some(&*COPY_BUFFER.as_ptr::<Page>());
+			let dst = &mut *dst.as_ptr::<Page>();
+			if let Some(src) = src {
+				dst.copy_from_slice(src);
+			} else {
+				dst.fill(0);
+			}
+		});
 	}
 	Ok(new_page)
 }

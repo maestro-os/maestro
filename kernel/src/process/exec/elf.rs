@@ -244,7 +244,7 @@ fn build_auxiliary(
 /// virtual memory.
 fn map_segment(
 	file: Arc<File>,
-	mem_space: &mut MemSpace,
+	mem_space: &MemSpace,
 	load_base: *mut u8,
 	seg: &ProgramHeader,
 ) -> EResult<Option<*mut u8>> {
@@ -292,21 +292,23 @@ fn load_elf(
 	let ehdr = elf.hdr();
 	let mut load_end = load_base;
 	let mut phdr_addr = 0;
-	for seg in elf.iter_segments() {
-		if seg.p_type != elf::PT_LOAD {
-			continue;
-		}
-		if let Some(end) = map_segment(file.clone(), mem_space, load_base, &seg)? {
-			load_end = max(end, load_end);
-		}
-		// If the segment contains the phdr, keep its address
-		if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
-			phdr_addr = load_base as usize + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
-		}
-	}
-	// Zero the end of segments when needed
 	unsafe {
-		vmem::switch(&mem_space.vmem, move || {
+		mem_space.switch(|mem_space| -> EResult<()> {
+			// Map segments
+			for seg in elf.iter_segments() {
+				if seg.p_type != elf::PT_LOAD {
+					continue;
+				}
+				if let Some(end) = map_segment(file.clone(), mem_space, load_base, &seg)? {
+					load_end = max(end, load_end);
+				}
+				// If the segment contains the phdr, keep its address
+				if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
+					phdr_addr =
+						load_base as usize + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
+				}
+			}
+			// Zero the end of segments when needed
 			vmem::write_ro(|| {
 				vmem::smap_disable(|| {
 					for seg in elf.iter_segments() {
@@ -322,7 +324,8 @@ fn load_elf(
 					}
 				});
 			});
-		});
+			Ok(())
+		})?;
 	}
 	Ok(ELFLoadInfo {
 		load_end,
@@ -377,7 +380,7 @@ fn get_init_stack_size(
 /// Helper to pre-allocate space on the stack.
 ///
 /// `len` is the space to allocate in bytes.
-fn stack_prealloc(mem_space: &mut MemSpace, stack: *mut u8, len: usize) -> EResult<()> {
+fn stack_prealloc(mem_space: &MemSpace, stack: *mut u8, len: usize) -> EResult<()> {
 	let pages_count = len.div_ceil(PAGE_SIZE);
 	if unlikely(pages_count >= process::USER_STACK_SIZE) {
 		return Err(errno!(ENOMEM));
@@ -526,21 +529,24 @@ impl Executor for ELFExecutor<'_> {
 		// Initialize the userspace stack
 		let aux = build_auxiliary(&self.0, load_base, &load_info, &vdso)?;
 		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, compat);
-		stack_prealloc(&mut mem_space, user_stack, init_stack_size)?;
+		let mut exe_info = mem_space.exe_info.clone();
 		unsafe {
-			vmem::switch(&mem_space.vmem, || {
-				vmem::smap_disable(|| {
+			mem_space.switch(|mem_space| {
+				stack_prealloc(mem_space, user_stack, init_stack_size)?;
+				vmem::smap_disable(|| -> EResult<()> {
 					init_stack(
 						user_stack,
 						&self.0.argv,
 						&self.0.envp,
 						&aux,
-						&mut mem_space.exe_info,
+						&mut exe_info,
 						compat,
 					);
-				});
-			});
+					Ok(())
+				})
+			})?;
 		}
+		mem_space.exe_info = exe_info;
 		mem_space.set_brk_init(VirtAddr::from(load_info.load_end).align_to(PAGE_SIZE));
 		Ok(ProgramImage {
 			mem_space,

@@ -54,7 +54,7 @@ use crate::{
 		signal::SigSet,
 	},
 	register_get,
-	sync::mutex::{IntMutex, Mutex},
+	sync::mutex::Mutex,
 	syscall::FromSyscallArg,
 	time::timer::TimerManager,
 };
@@ -335,7 +335,7 @@ pub struct Process {
 	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The virtual memory of the process.
-	pub mem_space: UnsafeMut<Option<Arc<IntMutex<MemSpace>>>>,
+	pub mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
 	/// Filesystem access information.
 	pub fs: Mutex<ProcessFs>, // TODO rwlock
 	/// The list of open file descriptors with their respective ID.
@@ -400,7 +400,7 @@ pub(crate) fn init() -> EResult<()> {
 			return CallbackResult::Panic;
 		};
 		// Check access
-		let sig = mem_space.lock().handle_page_fault(accessed_addr, code);
+		let sig = mem_space.handle_page_fault(accessed_addr, code);
 		match sig {
 			Ok(true) => {}
 			Ok(false) => {
@@ -829,7 +829,7 @@ impl Process {
 			if fork_options.share_memory {
 				curr_mem_space.clone()
 			} else {
-				Arc::new(IntMutex::new(curr_mem_space.lock().fork()?))?
+				Arc::new(curr_mem_space.fork()?)?
 			}
 		};
 		// Clone file descriptors

@@ -80,7 +80,7 @@ pub fn fsyncdata(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) ->
 
 pub fn msync(
 	Args((addr, length, flags)): Args<(VirtAddr, usize, c_int)>,
-	mem_space: Arc<IntMutex<MemSpace>>,
+	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	// Check address alignment
 	if !addr.is_aligned_to(PAGE_SIZE) {
@@ -91,15 +91,8 @@ pub fn msync(
 		return Err(errno!(EINVAL));
 	}
 	let sync = flags & MS_SYNC != 0;
-	// Iterate over mappings
-	let mem_space = mem_space.lock();
-	let mut i = 0;
 	let pages = length.div_ceil(PAGE_SIZE);
-	while i < pages {
-		let mapping = mem_space.get_mapping_for_addr(addr).ok_or(errno!(ENOMEM))?;
-		// TODO MS_INVALIDATE
-		mapping.sync(&mem_space.vmem, sync)?;
-		i += mapping.get_size().get();
-	}
+	// TODO MS_INVALIDATE
+	mem_space.sync(addr, pages, sync)?;
 	Ok(0)
 }

@@ -22,14 +22,12 @@
 use crate::{
 	arch::{
 		x86,
-		x86::{
-			idt,
-			paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_USER, FLAG_WRITE, FLAG_WRITE_THROUGH},
+		x86::paging::{
+			FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_USER, FLAG_WRITE, FLAG_WRITE_THROUGH,
 		},
 	},
 	elf, memory,
 	memory::{buddy, memmap::PHYS_MAP, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
-	register_get,
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };
@@ -227,38 +225,6 @@ pub unsafe fn smap_disable<F: FnOnce() -> T, T>(f: F) -> T {
 	let res = f();
 	x86::set_smap_enabled(true);
 	res
-}
-
-/// Executes the given closure `f` while being bound to the given virtual memory
-/// context `vmem`.
-///
-/// After execution, the function restores the previous context.
-///
-/// The function disables interruptions while executing the closure. This is due
-/// to the fact that if interruptions were enabled, the scheduler would be able
-/// to change the running process, and thus when resuming execution, the virtual
-/// memory context would be changed to the process's context, making the
-/// behaviour undefined.
-///
-/// # Safety
-///
-/// The caller must ensure that the stack is accessible in both the current and given virtual
-/// memory contexts.
-pub unsafe fn switch<F: FnOnce() -> T, T>(vmem: &VMem, f: F) -> T {
-	idt::wrap_disable_interrupts(|| {
-		if vmem.is_bound() {
-			f()
-		} else {
-			// Get current vmem
-			let page_dir = PhysAddr(register_get!("cr3"));
-			// Bind temporary vmem
-			vmem.bind();
-			let result = f();
-			// Restore previous vmem
-			x86::paging::bind(page_dir);
-			result
-		}
-	})
 }
 
 /// The kernel's virtual memory context.

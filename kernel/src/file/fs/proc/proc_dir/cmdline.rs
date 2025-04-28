@@ -39,11 +39,10 @@ impl FileOps for Cmdline {
 		let Some(mem_space) = proc.mem_space.as_ref() else {
 			return Ok(0);
 		};
-		let mem_space = mem_space.lock();
 		let disp = fmt::from_fn(|f| {
 			read_memory(
 				f,
-				&mem_space,
+				mem_space,
 				mem_space.exe_info.argv_begin,
 				mem_space.exe_info.argv_end,
 			)

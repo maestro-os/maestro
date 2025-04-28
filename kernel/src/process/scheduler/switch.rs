@@ -206,7 +206,7 @@ switch_asm:
 pub extern "C" fn finish(prev: &Process, next: &Process) {
 	// Bind the memory space
 	match next.mem_space.as_ref() {
-		Some(mem_space) => mem_space.lock().bind(),
+		Some(mem_space) => mem_space.bind(),
 		// No associated memory context: bind the kernel's
 		None => KERNEL_VMEM.lock().bind(),
 	}
