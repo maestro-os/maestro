@@ -32,7 +32,7 @@ pub struct MemInfo;
 
 impl FileOps for MemInfo {
 	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let mem_info = memory::stats::MEM_INFO.lock();
-		format_content!(off, buf, "{}", *mem_info)
+		let mem_info = memory::stats::MEM_INFO.lock().clone();
+		format_content!(off, buf, "{}", mem_info)
 	}
 }

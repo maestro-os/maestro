@@ -25,6 +25,7 @@ use core::{
 };
 
 /// Stores memory usage information. Each field is in KiB.
+#[derive(Clone)]
 pub struct MemInfo {
 	/// The total amount of memory on the system.
 	pub mem_total: usize,
