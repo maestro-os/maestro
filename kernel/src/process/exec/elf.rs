@@ -286,14 +286,14 @@ fn map_segment(
 fn load_elf(
 	file: &Arc<File>,
 	elf: &ELFParser,
-	mem_space: &mut MemSpace,
+	mem_space: &Arc<MemSpace>,
 	load_base: *mut u8,
 ) -> EResult<ELFLoadInfo> {
 	let ehdr = elf.hdr();
 	let mut load_end = load_base;
 	let mut phdr_addr = 0;
 	unsafe {
-		mem_space.switch(|mem_space| -> EResult<()> {
+		MemSpace::switch(mem_space, |mem_space| -> EResult<()> {
 			// Map segments
 			for seg in elf.iter_segments() {
 				if seg.p_type != elf::PT_LOAD {
@@ -514,7 +514,7 @@ impl Executor for ELFExecutor<'_> {
 			0
 		};
 		let load_base = VirtAddr(load_base).as_ptr();
-		let load_info = load_elf(&file, &parser, &mut mem_space, load_base)?;
+		let load_info = load_elf(&file, &parser, &mem_space, load_base)?;
 		let user_stack = mem_space
 			.map(
 				MapConstraint::None,
@@ -525,13 +525,13 @@ impl Executor for ELFExecutor<'_> {
 				0,
 			)?
 			.wrapping_add(process::USER_STACK_SIZE * PAGE_SIZE);
-		let vdso = vdso::map(&mut mem_space, compat)?;
+		let vdso = vdso::map(&mem_space, compat)?;
 		// Initialize the userspace stack
 		let aux = build_auxiliary(&self.0, load_base, &load_info, &vdso)?;
 		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, compat);
 		let mut exe_info = mem_space.exe_info.clone();
 		unsafe {
-			mem_space.switch(|mem_space| {
+			MemSpace::switch(&mem_space, |mem_space| {
 				stack_prealloc(mem_space, user_stack, init_stack_size)?;
 				vmem::smap_disable(|| -> EResult<()> {
 					init_stack(
@@ -546,8 +546,10 @@ impl Executor for ELFExecutor<'_> {
 				})
 			})?;
 		}
-		mem_space.exe_info = exe_info;
-		mem_space.set_brk_init(VirtAddr::from(load_info.load_end).align_to(PAGE_SIZE));
+		// Set immutable fields
+		let m = Arc::as_mut(&mut mem_space).unwrap(); // Cannot fail since no one else hold a reference
+		m.exe_info = exe_info;
+		m.set_brk_init(VirtAddr::from(load_info.load_end).align_to(PAGE_SIZE));
 		Ok(ProgramImage {
 			mem_space,
 			compat,

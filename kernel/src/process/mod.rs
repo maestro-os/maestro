@@ -47,7 +47,7 @@ use crate::{
 		pid::{PidHandle, IDLE_PID, INIT_PID},
 		rusage::Rusage,
 		scheduler::{
-			switch,
+			core_local, switch,
 			switch::{idle_task, KThreadEntry},
 			Scheduler, SCHEDULER,
 		},
@@ -394,9 +394,7 @@ pub(crate) fn init() -> EResult<()> {
 	let page_fault_callback = |_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
 		let accessed_addr = VirtAddr(register_get!("cr2"));
 		let pc = frame.get_program_counter();
-		// Get current process
-		let proc = Process::current();
-		let Some(mem_space) = proc.mem_space.as_ref() else {
+		let Some(mem_space) = core_local().mem_space.get() else {
 			return CallbackResult::Panic;
 		};
 		// Check access
@@ -413,10 +411,10 @@ pub(crate) fn init() -> EResult<()> {
 						return CallbackResult::Panic;
 					}
 				} else {
-					proc.kill(Signal::SIGSEGV);
+					Process::current().kill(Signal::SIGSEGV);
 				}
 			}
-			Err(_) => proc.kill(Signal::SIGBUS),
+			Err(_) => Process::current().kill(Signal::SIGBUS),
 		}
 		CallbackResult::Continue
 	};

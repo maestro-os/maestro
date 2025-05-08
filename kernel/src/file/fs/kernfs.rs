@@ -136,9 +136,6 @@ struct FormatContentWriter<'a> {
 
 impl Write for FormatContentWriter<'_> {
 	fn write_str(&mut self, s: &str) -> fmt::Result {
-		if s.is_empty() {
-			return Ok(());
-		}
 		let chunk = s.as_bytes();
 		// If at least part of the chunk is inside the range to read, copy
 		if chunk.len() > self.src_cursor {
@@ -146,7 +143,6 @@ impl Write for FormatContentWriter<'_> {
 			if self.dst_cursor >= self.dst.len() {
 				return Err(fmt::Error);
 			}
-			// Offset and size of the range in the chunk to copy
 			// Write
 			let res = self
 				.dst

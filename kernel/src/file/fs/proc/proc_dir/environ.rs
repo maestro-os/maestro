@@ -27,8 +27,7 @@ use crate::{
 	memory::user::UserSlice,
 	process::{pid::Pid, Process},
 };
-use core::fmt;
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `environ` node of the proc.
 #[derive(Clone, Debug)]
@@ -40,14 +39,11 @@ impl FileOps for Environ {
 		let Some(mem_space) = proc.mem_space.as_ref() else {
 			return Ok(0);
 		};
-		let disp = fmt::from_fn(|f| {
-			read_memory(
-				f,
-				mem_space,
-				mem_space.exe_info.envp_begin,
-				mem_space.exe_info.envp_end,
-			)
-		});
-		format_content!(off, buf, "{disp}")
+		let environ = read_memory(
+			mem_space,
+			mem_space.exe_info.envp_begin,
+			mem_space.exe_info.envp_end,
+		)?;
+		format_content!(off, buf, "{}", DisplayableStr(&environ))
 	}
 }

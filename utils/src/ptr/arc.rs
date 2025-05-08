@@ -31,8 +31,8 @@ use core::{
 	mem::{offset_of, ManuallyDrop},
 	ops::{CoerceUnsized, Deref, DispatchFromDyn},
 	ptr,
-	ptr::{drop_in_place, NonNull},
-	sync::atomic::{AtomicUsize, Ordering},
+	ptr::{drop_in_place, null, null_mut, NonNull},
+	sync::atomic::{AtomicPtr, AtomicUsize, Ordering, Ordering::Relaxed},
 };
 
 /// Inner structure shared between arcs pointing to the same object.
@@ -175,6 +175,18 @@ impl<T: ?Sized> Arc<T> {
 	pub fn as_ptr(this: &Self) -> *const T {
 		&this.inner().obj
 	}
+	
+	/// Returns a mutable reference into the given `Arc`, if there are no other `Arc` pointers to the same allocation.
+	pub fn as_mut(this: &mut Self) -> Option<&mut T> {
+		// Cannot have a race condition since `this` is mutably borrowed
+		if Arc::strong_count(this) == 1 {
+			Some(unsafe {
+				&mut this.inner.as_mut().obj
+			})
+		} else {
+			None
+		}
+	}
 
 	/// Returns the number of strong pointers to the allocation.
 	#[inline]
@@ -256,5 +268,48 @@ impl<T: ?Sized> Drop for Arc<T> {
 			let layout = Layout::for_value(inner);
 			__dealloc(self.inner.cast(), layout);
 		}
+	}
+}
+
+/// Relaxed atomic [`Arc`] storage.
+#[derive(Default)]
+pub struct RelaxedArcCell<T>(AtomicPtr<T>);
+
+impl<T> From<Arc<T>> for RelaxedArcCell<T> {
+	fn from(val: Arc<T>) -> Self {
+		let ptr = Arc::into_raw(val);
+		Self(AtomicPtr::new(ptr as _))
+	}
+}
+
+impl<T> RelaxedArcCell<T> {
+	/// Creates a new instance.
+	#[inline]
+	pub const fn new() -> Self {
+		Self(AtomicPtr::new(null_mut()))
+	}
+
+	/// Get a copy of the inner [`Arc`].
+	pub fn get(&self) -> Option<Arc<T>> {
+		let ptr = self.0.load(Relaxed);
+		(!ptr.is_null()).then(|| {
+			let arc = unsafe { Arc::from_raw(ptr) };
+			// Increment reference counter
+			mem::forget(arc.clone());
+			arc
+		})
+	}
+
+	/// Swaps the inner value for `val`, returning the previous.
+	pub fn replace(&self, val: Option<Arc<T>>) -> Option<Arc<T>> {
+		let new = val.map(Arc::into_raw).unwrap_or(null());
+		let old = self.0.swap(new as _, Relaxed);
+		(!old.is_null()).then(|| unsafe { Arc::from_raw(old) })
+	}
+
+	/// Set the inner [`Arc`].
+	#[inline]
+	pub fn set(&self, val: Option<Arc<T>>) {
+		self.replace(val);
 	}
 }

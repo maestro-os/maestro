@@ -22,8 +22,7 @@ use crate::{
 	memory::{user::UserSlice, VirtAddr},
 	process::mem_space::MemSpace,
 };
-use core::{cmp::min, fmt, intrinsics::unlikely};
-use utils::DisplayableStr;
+use utils::{collections::vec::Vec, errno::AllocResult, ptr::arc::Arc, vec};
 
 pub mod cmdline;
 pub mod cwd;
@@ -37,31 +36,26 @@ pub mod status;
 ///
 /// `begin` and `end` represent the range of memory to read.
 pub fn read_memory(
-	f: &mut fmt::Formatter<'_>,
-	mem_space: &MemSpace,
+	mem_space: &Arc<MemSpace>,
 	begin: VirtAddr,
 	end: VirtAddr,
-) -> fmt::Result {
-	if begin.is_null() {
-		return Ok(());
-	}
-	let f = |_| {
-		let len = end.0.saturating_sub(begin.0);
-		let Ok(slice) = UserSlice::from_user(begin.as_ptr(), len) else {
-			return Ok(());
-		};
-		let mut i = 0;
-		let mut buf: [u8; 128] = [0; 128];
-		while i < len {
-			let l = min(len - i, buf.len());
-			let res = slice.copy_from_user(i, &mut buf[..l]);
-			if unlikely(res.is_err()) {
-				break;
-			}
-			write!(f, "{}", DisplayableStr(&buf[..l]))?;
-			i += l;
-		}
-		Ok(())
+) -> AllocResult<Vec<u8>> {
+	let len = end.0.saturating_sub(begin.0);
+	let mut buf = vec![0; len]?;
+	let Ok(slice) = UserSlice::from_user(begin.as_ptr(), len) else {
+		// Slice is out of range: return zeros
+		return Ok(buf);
 	};
-	unsafe { mem_space.switch(f) }
+	unsafe {
+		MemSpace::switch(mem_space, |_| {
+			let mut i = 0;
+			while i < len {
+				let Ok(len) = slice.copy_from_user(i, &mut buf[i..]) else {
+					break;
+				};
+				i += len;
+			}
+		});
+	}
+	Ok(buf)
 }

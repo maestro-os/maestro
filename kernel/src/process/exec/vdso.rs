@@ -91,7 +91,7 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 ///
 /// The function returns the virtual address to the mapped vDSO.
 #[allow(unused_variables)]
-pub fn map(mem_space: &mut MemSpace, compat: bool) -> EResult<MappedVDSO> {
+pub fn map(mem_space: &MemSpace, compat: bool) -> EResult<MappedVDSO> {
 	#[cfg(not(target_arch = "x86_64"))]
 	let vdso = &*VDSO;
 	#[cfg(target_arch = "x86_64")]

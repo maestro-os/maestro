@@ -26,8 +26,7 @@ use crate::{
 	memory::user::UserSlice,
 	process::{pid::Pid, Process},
 };
-use core::fmt;
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The cmdline node of the proc.
 #[derive(Clone, Debug)]
@@ -39,14 +38,11 @@ impl FileOps for Cmdline {
 		let Some(mem_space) = proc.mem_space.as_ref() else {
 			return Ok(0);
 		};
-		let disp = fmt::from_fn(|f| {
-			read_memory(
-				f,
-				mem_space,
-				mem_space.exe_info.argv_begin,
-				mem_space.exe_info.argv_end,
-			)
-		});
-		format_content!(off, buf, "{disp}")
+		let cmdline = read_memory(
+			mem_space,
+			mem_space.exe_info.argv_begin,
+			mem_space.exe_info.argv_end,
+		)?;
+		format_content!(off, buf, "{}", DisplayableStr(&cmdline))
 	}
 }

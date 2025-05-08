@@ -28,17 +28,14 @@ mod mapping;
 mod transaction;
 
 use crate::{
-	arch::{
-		x86,
-		x86::{
-			idt,
-			paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
-		},
+	arch::x86::{
+		idt,
+		paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
 	},
 	file::{perm::AccessProfile, vfs, File},
 	memory,
-	memory::{cache::RcFrame, vmem::VMem, PhysAddr, VirtAddr, PROCESS_END},
-	register_get,
+	memory::{cache::RcFrame, vmem::VMem, VirtAddr, PROCESS_END},
+	process::scheduler::core_local,
 	sync::mutex::IntMutex,
 };
 use core::{
@@ -266,7 +263,7 @@ impl MemSpace {
 	/// Creates a new virtual memory object.
 	///
 	/// `exe` is the VFS entry of the program loaded on the memory space.
-	pub fn new(exe: Arc<vfs::Entry>) -> AllocResult<Self> {
+	pub fn new(exe: Arc<vfs::Entry>) -> AllocResult<Arc<Self>> {
 		let s = Self {
 			state: Default::default(),
 			vmem: IntMutex::new(unsafe { VMem::new() }),
@@ -287,7 +284,7 @@ impl MemSpace {
 		let mut transaction = MemSpaceTransaction::new(&s);
 		transaction.insert_gap(gap)?;
 		transaction.commit();
-		Ok(s)
+		Arc::new(s)
 	}
 
 	/// Returns the number of virtual memory pages in the memory space.
@@ -522,13 +519,14 @@ impl MemSpace {
 	}
 
 	/// Binds the memory space to the current kernel.
-	pub fn bind(&self) {
-		self.vmem.lock().bind();
+	pub fn bind(this: &Arc<Self>) {
+		this.vmem.lock().bind();
+		core_local().mem_space.set(Some(this.clone()));
 	}
 
-	/// Executes the closure `f` while being bound to the virtual memory context.
+	/// Temporarily switches to `this` to executes the closure `f`.
 	///
-	/// After execution, the function restores the previous context.
+	/// After execution, the function restores the previous memory space.
 	///
 	/// The function disables interruptions while executing the closure. This is due
 	/// to the fact that if interruptions were enabled, the scheduler would be able
@@ -540,25 +538,19 @@ impl MemSpace {
 	///
 	/// The caller must ensure that the stack is accessible in both the current and given virtual
 	/// memory contexts.
-	pub unsafe fn switch<'m, F: FnOnce(&'m Self) -> T, T>(&'m self, f: F) -> T {
+	pub unsafe fn switch<'m, F: FnOnce(&'m Arc<Self>) -> T, T>(this: &'m Arc<Self>, f: F) -> T {
 		idt::wrap_disable_interrupts(|| {
-			let vmem = self.vmem.lock();
-			if vmem.is_bound() {
-				// Avoid deadlock
-				drop(vmem);
-				f(self)
-			} else {
-				// Get current vmem
-				let page_dir = PhysAddr(register_get!("cr3"));
-				// Bind temporary vmem
-				vmem.bind();
-				// Avoid deadlock
-				drop(vmem);
-				let result = f(self);
-				// Restore previous vmem
-				x86::paging::bind(page_dir);
-				result
+			// Bind `this`
+			this.vmem.lock().bind();
+			let old = core_local().mem_space.replace(Some(this.clone()));
+			// Execute function
+			let res = f(this);
+			// Restore previous
+			if let Some(old) = &old {
+				old.vmem.lock().bind();
 			}
+			core_local().mem_space.set(old);
+			res
 		})
 	}
 

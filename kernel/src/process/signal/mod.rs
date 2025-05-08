@@ -22,7 +22,10 @@ pub mod ucontext;
 
 use super::{Process, State, REDZONE_SIZE};
 use crate::{
-	arch::x86::idt::IntFrame, file::perm::Uid, memory::VirtAddr, process::pid::Pid,
+	arch::x86::idt::IntFrame,
+	file::perm::Uid,
+	memory::VirtAddr,
+	process::{mem_space::MemSpace, pid::Pid},
 	time::unit::ClockIdT,
 };
 use core::{
@@ -382,7 +385,8 @@ impl SignalHandler {
 		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
 		let signal_sp = ctx_addr - arg_len;
 		// Bind virtual memory
-		process.mem_space.as_ref().unwrap().bind();
+		let mem_space = process.mem_space.as_ref().unwrap();
+		MemSpace::bind(mem_space);
 		// Write data on stack
 		if frame.is_compat() {
 			let args = unsafe {

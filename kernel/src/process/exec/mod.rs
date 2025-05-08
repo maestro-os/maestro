@@ -53,7 +53,7 @@ pub struct ExecInfo<'s> {
 /// A built program image.
 pub struct ProgramImage {
 	/// The image's memory space.
-	mem_space: MemSpace,
+	mem_space: Arc<MemSpace>,
 	/// Tells whether the program runs in compatibility mode.
 	compat: bool,
 
@@ -90,7 +90,6 @@ pub fn build_image(file: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImag
 /// for each register so that the execution beings when the interrupt handler returns.
 pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
 	// Preform all fallible operations first before touching the process
-	let mem_space = Arc::new(image.mem_space)?;
 	let fds = proc
 		.file_descriptors
 		.as_ref()
@@ -102,11 +101,11 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		.transpose()?;
 	let signal_handlers = Arc::new(Default::default())?;
 	// All fallible operations succeeded, flush to process
-	mem_space.bind();
+	MemSpace::bind(&image.mem_space);
 	// Safe because no other thread can execute this function at the same time for the same process
 	unsafe {
 		*proc.file_descriptors.get_mut() = fds;
-		*proc.mem_space.get_mut() = Some(mem_space);
+		*proc.mem_space.get_mut() = Some(image.mem_space);
 	}
 	// Reset signals
 	{
@@ -124,7 +123,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.compat);
 	#[cfg(target_arch = "x86_64")]
 	{
-		use crate::{arch::x86, process::scheduler::SCHEDULER};
+		use crate::{arch::x86, process::scheduler::core_local};
 		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
 		// Preserve GS base
 		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
@@ -142,9 +141,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
 		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
 		// Update user stack
-		SCHEDULER
-			.lock()
-			.gs
+		core_local()
 			.user_stack
 			.store(image.user_stack.0 as _, Relaxed);
 	}
