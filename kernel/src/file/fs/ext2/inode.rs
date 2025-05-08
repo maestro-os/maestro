@@ -711,6 +711,7 @@ impl Ext2INode {
 		let slice = unsafe { blk.slice_mut() };
 		let ent = Dirent::from_slice(&mut slice[inner_off..], &fs.sp)?;
 		ent.inode = inode as _;
+		blk.mark_dirty();
 		// If the block is now empty, free it
 		if inode == 0 && is_block_empty(slice, &fs.sp)? {
 			// If this is the last block, update the file's size

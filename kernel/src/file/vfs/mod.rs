@@ -706,8 +706,9 @@ pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 	let dir_node = parent.node();
 	dir_node.node_ops.unlink(dir_node, entry)?;
 	// Remove link from cache
-	let EntryChild(ent) = children.remove(entry.name.as_bytes()).unwrap();
-	Entry::release(ent)?;
+	if let Some(EntryChild(ent)) = children.remove(entry.name.as_bytes()) {
+		Entry::release(ent)?;
+	}
 	Ok(())
 }
 

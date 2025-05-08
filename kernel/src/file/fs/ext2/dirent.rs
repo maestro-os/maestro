@@ -24,7 +24,7 @@ use crate::{
 	file::{fs::ext2::inode::Ext2INode, FileType},
 	memory::cache::RcFrame,
 };
-use core::{cmp::min, intrinsics::unlikely, mem::offset_of, ptr::NonNull};
+use core::{intrinsics::unlikely, mem::offset_of, ptr::NonNull};
 use macros::AnyRepr;
 use utils::{
 	errno,
@@ -170,27 +170,6 @@ impl Dirent {
 	pub fn get_name(&self, superblock: &Superblock) -> &[u8] {
 		let name_length = self.name_len(superblock);
 		&self.name[..name_length]
-	}
-
-	/// Sets the name of the entry.
-	///
-	/// If the length of the entry is shorter than the required space, the name
-	/// shall be truncated.
-	///
-	/// If the name is too long, the function returns [`ENAMETOOLONG`].
-	pub fn set_name(&mut self, superblock: &Superblock, name: &[u8]) -> EResult<()> {
-		if name.len() > NAME_MAX {
-			return Err(errno!(ENAMETOOLONG));
-		}
-		let len = min(name.len(), self.rec_len as usize - NAME_OFF);
-		self.name[..len].copy_from_slice(&name[..len]);
-		self.name_len = len as u8;
-		// If the file type hint feature is not enabled, set the high byte of the name length to
-		// zero
-		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
-			self.file_type = 0;
-		}
-		Ok(())
 	}
 
 	/// Returns the file type associated with the entry.
