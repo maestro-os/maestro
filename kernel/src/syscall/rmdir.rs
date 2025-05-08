@@ -45,6 +45,6 @@ pub fn rmdir(Args(pathname): Args<UserString>, rs: ResolutionSettings) -> EResul
 	if stat != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	vfs::unlink(&entry, &rs.access_profile)?;
+	vfs::unlink(entry, &rs.access_profile)?;
 	Ok(0)
 }

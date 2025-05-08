@@ -322,20 +322,22 @@ impl NodeOps for Ext2NodeOps {
 			.get_dirent(&ent.name, fs)?
 			.ok_or_else(|| errno!(ENOENT))?;
 		let mut target = Ext2INode::get(ent.node(), fs)?;
+		// Remove the directory entry
+		parent_.set_dirent_inode(remove_off, 0, fs)?;
+		target.i_links_count = target.i_links_count.saturating_sub(1);
+		ent.node().stat.lock().nlink = target.i_links_count;
 		if target.get_type() == FileType::Directory {
 			// If the directory is not empty, error
 			if !target.is_directory_empty(fs)? {
 				return Err(errno!(ENOTEMPTY));
 			}
-			// Decrement links because of the `..` entry being removed
-			parent_.i_links_count = parent_.i_links_count.saturating_sub(1);
-			parent.stat.lock().nlink = parent_.i_links_count;
+			// Remove `..`
+			if let Some((_, parent_entry_off)) = target.get_dirent(b"..", fs)? {
+				target.set_dirent_inode(parent_entry_off, 0, fs)?;
+				parent_.i_links_count = parent_.i_links_count.saturating_sub(1);
+				parent.stat.lock().nlink = parent_.i_links_count;
+			}
 		}
-		// Decrement the hard links count
-		target.i_links_count = target.i_links_count.saturating_sub(1);
-		ent.node().stat.lock().nlink = target.i_links_count;
-		// Remove the directory entry
-		parent_.set_dirent_inode(remove_off, 0, fs)?;
 		parent_.mark_dirty();
 		target.mark_dirty();
 		Ok(())
@@ -727,8 +729,8 @@ impl Ext2Fs {
 		let end_blk = start_blk + size.div_ceil(blk_size * 8);
 		// Iterate on blocks
 		for blk_off in start_blk..end_blk {
-			let page = read_block(self, blk_off as _)?;
-			if let Some(off) = bitmap_alloc_impl(&page) {
+			let blk = read_block(self, blk_off as _)?;
+			if let Some(off) = bitmap_alloc_impl(&blk) {
 				let blk_off = blk_off - start_blk;
 				return Ok(Some(blk_off * blk_size * 8 + off));
 			}
@@ -749,7 +751,7 @@ impl Ext2Fs {
 		let byte = &blk.slice::<AtomicU8>()[bitmap_byte_index as usize];
 		let bitmap_bit_index = index % 8;
 		// Atomic write and mark as dirty
-		let prev = byte.fetch_or(1 << bitmap_bit_index, Release);
+		let prev = byte.fetch_and(!(1 << bitmap_bit_index), Release);
 		blk.mark_page_dirty(bitmap_byte_index as usize / PAGE_SIZE);
 		Ok(prev & (1 << bitmap_bit_index) != 0)
 	}

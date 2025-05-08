@@ -150,7 +150,7 @@ pub fn remove_file(path: &Path) -> EResult<()> {
 		Err(e) if e.as_int() == ENOENT => return Ok(()),
 		Err(e) => return Err(e),
 	};
-	vfs::unlink(&ent, &rs.access_profile)
+	vfs::unlink(ent, &rs.access_profile)
 }
 
 /// A device type, major and minor, who act as a unique ID for a device.

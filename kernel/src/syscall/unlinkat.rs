@@ -67,7 +67,7 @@ pub fn do_unlinkat(
 	let Resolved::Found(parent) = resolved else {
 		return Err(errno!(ENOENT));
 	};
-	vfs::unlink(&parent, &rs.access_profile)?;
+	vfs::unlink(parent, &rs.access_profile)?;
 	Ok(0)
 }
 

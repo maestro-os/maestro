@@ -677,7 +677,7 @@ pub fn link(
 /// - The file to remove is a mountpoint: [`errno::EBUSY`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
+pub fn unlink(entry: Arc<Entry>, ap: &AccessProfile) -> EResult<()> {
 	// Get parent
 	let Some(parent) = &entry.parent else {
 		// Cannot unlink root of the VFS
@@ -697,18 +697,19 @@ pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 		return Err(errno!(EACCES));
 	}
 	// If the file to remove is a mountpoint, error
-	if mountpoint::from_entry(entry).is_some() {
+	if mountpoint::from_entry(&entry).is_some() {
 		return Err(errno!(EBUSY));
 	}
 	// Lock now to avoid race conditions
 	let mut children = parent.children.lock();
 	// Remove link from filesystem
 	let dir_node = parent.node();
-	dir_node.node_ops.unlink(dir_node, entry)?;
+	dir_node.node_ops.unlink(dir_node, &entry)?;
 	// Remove link from cache
-	if let Some(EntryChild(ent)) = children.remove(entry.name.as_bytes()) {
-		Entry::release(ent)?;
-	}
+	children.remove(entry.name.as_bytes());
+	drop(children);
+	// Remove the underlying node if this was the last reference to it
+	Entry::release(entry)?;
 	Ok(())
 }
 
