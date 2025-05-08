@@ -409,6 +409,9 @@ impl FileOps for DummyOps {}
 pub trait FilesystemOps: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
+	/// Tells whether the directory of this filesystem can be cached.
+	fn cache_entries(&self) -> bool;
+
 	/// Returns statistics about the filesystem.
 	fn get_stat(&self) -> EResult<Statfs>;
 

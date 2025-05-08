@@ -192,37 +192,13 @@ impl Entry {
 		Ok(entry)
 	}
 
-	/// Releases the entry, removing it the underlying node if no link remain and this was the last
+	/// Releases the entry, removing the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
-		let Some(parent) = this.parent.clone() else {
-			// This is the root of the VFS, stop
-			return Ok(());
-		};
-		// Lock now to avoid a race condition with `strong_count`
-		let mut parent_children = parent.children.lock();
-		/*
-		 * If this is **not** the last reference to the entry, we cannot remove it.
-		 *
-		 * The reference held by its own parent + the one held by the LRU + the one that we
-		 * hold here = 3
-		 *
-		 * We cannot release an entry with at least one cached child. Fortunately, a child
-		 * entry refers to its parent, so the condition below is sufficient.
-		 */
-		if Arc::strong_count(&this) > 3 {
-			return Ok(());
-		}
-		// Remove other references
-		parent_children.remove(&*this.name);
-		unsafe {
-			LRU.lock().remove(&this);
-		}
 		// If other references remain, we cannot go further
 		let Some(entry) = Arc::into_inner(this) else {
 			return Ok(());
 		};
-		drop(parent_children);
 		// Release the inner node if present
 		if let Some(node) = entry.node {
 			Node::release(node)?;
@@ -365,15 +341,17 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Arc<Entry>> {
 	}
 	// Not in cache. Try to get from the filesystem
 	let mut entry = Entry::new(String::try_from(name)?, Some(lookup_dir.clone()), None);
-	lookup_dir
-		.node()
+	let lookup_dir_node = lookup_dir.node();
+	lookup_dir_node
 		.node_ops
-		.lookup_entry(lookup_dir.node(), &mut entry)?;
-	// Insert in cache. Do not use `link_parent` to keep `children` locked
+		.lookup_entry(lookup_dir_node, &mut entry)?;
 	let entry = Arc::new(entry)?;
-	children.insert(EntryChild(entry.clone()))?;
-	drop(children);
-	LRU.lock().insert_front(entry.clone());
+	if lookup_dir_node.fs.ops.cache_entries() {
+		// Insert in cache. Do not use `link_parent` to keep `children` locked
+		children.insert(EntryChild(entry.clone()))?;
+		drop(children);
+		LRU.lock().insert_front(entry.clone());
+	}
 	Ok(entry)
 }
 
@@ -729,8 +707,6 @@ pub fn unlink(entry: &Entry, ap: &AccessProfile) -> EResult<()> {
 	dir_node.node_ops.unlink(dir_node, entry)?;
 	// Remove link from cache
 	let EntryChild(ent) = children.remove(entry.name.as_bytes()).unwrap();
-	// Drop to avoid deadlock
-	drop(children);
 	Entry::release(ent)?;
 	Ok(())
 }

@@ -396,6 +396,10 @@ impl FilesystemOps for TmpFS {
 		b"tmpfs"
 	}
 
+	fn cache_entries(&self) -> bool {
+		false
+	}
+
 	fn get_stat(&self) -> EResult<Statfs> {
 		Ok(Statfs {
 			f_type: 0,

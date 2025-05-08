@@ -873,6 +873,10 @@ impl FilesystemOps for Ext2Fs {
 		b"ext2"
 	}
 
+	fn cache_entries(&self) -> bool {
+		true
+	}
+
 	fn get_stat(&self) -> EResult<Statfs> {
 		Ok(Statfs {
 			f_type: EXT2_MAGIC as _,

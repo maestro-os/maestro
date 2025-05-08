@@ -291,6 +291,10 @@ impl FilesystemOps for ProcFS {
 		b"proc"
 	}
 
+	fn cache_entries(&self) -> bool {
+		false
+	}
+
 	fn get_stat(&self) -> EResult<Statfs> {
 		Ok(Statfs {
 			f_type: 0,
@@ -328,7 +332,7 @@ impl FilesystemOps for ProcFS {
 	}
 
 	fn destroy_node(&self, _node: &Node) -> EResult<()> {
-		Err(errno!(EINVAL))
+		Ok(())
 	}
 }
 
