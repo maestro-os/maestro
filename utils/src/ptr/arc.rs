@@ -175,14 +175,13 @@ impl<T: ?Sized> Arc<T> {
 	pub fn as_ptr(this: &Self) -> *const T {
 		&this.inner().obj
 	}
-	
-	/// Returns a mutable reference into the given `Arc`, if there are no other `Arc` pointers to the same allocation.
+
+	/// Returns a mutable reference into the given `Arc`, if there are no other `Arc` pointers to
+	/// the same allocation.
 	pub fn as_mut(this: &mut Self) -> Option<&mut T> {
 		// Cannot have a race condition since `this` is mutably borrowed
 		if Arc::strong_count(this) == 1 {
-			Some(unsafe {
-				&mut this.inner.as_mut().obj
-			})
+			Some(unsafe { &mut this.inner.as_mut().obj })
 		} else {
 			None
 		}

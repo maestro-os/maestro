@@ -31,7 +31,6 @@ use crate::{
 };
 use core::{
 	mem,
-	ptr::addr_of,
 	sync::{
 		atomic,
 		atomic::{AtomicUsize, Ordering::Release},
@@ -62,6 +61,7 @@ pub fn init() -> AllocResult<()> {
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::arch::x86;
+		use core::ptr::addr_of;
 		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
 		// when switching to userspace
 		x86::wrmsr(x86::IA32_GS_BASE, addr_of!(CORE_LOCAL) as u64);
