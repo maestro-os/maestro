@@ -26,7 +26,7 @@ use crate::{
 		signal::{SigEvent, Signal, SIGEV_NONE, SIGEV_SIGNAL, SIGEV_THREAD},
 		Process,
 	},
-	sync::mutex::{IntMutex, Mutex},
+	sync::mutex::IntMutex,
 	time::{
 		clock::{current_time_ns, Clock},
 		unit::{TimeUnit, Timespec32, Timestamp},
@@ -62,7 +62,7 @@ struct TimerInner {
 	sevp: SigEvent,
 
 	/// Timer setting.
-	spec: Mutex<TimerSpec>,
+	spec: IntMutex<TimerSpec>,
 }
 
 impl TimerInner {
