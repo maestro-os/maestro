@@ -89,10 +89,12 @@ fn insert<K: Clone + Ord + Hash, V>(
 /// avoid inconsistent states.
 #[must_use = "A transaction must be committed, or its result is discarded"]
 pub(super) struct MemSpaceTransaction<'m> {
-	/// The memory space state on which the transaction applies.
-	pub state: MutexGuard<'m, MemSpaceState, false>,
+	// It is important that `vmem` is placed before `state` since they are dropped according to
+	// the order of declaration. This is important for interrupt masking
 	/// The virtual memory context
 	pub vmem: MutexGuard<'m, VMem, false>,
+	/// The memory space state on which the transaction applies.
+	pub state: MutexGuard<'m, MemSpaceState, false>,
 
 	/// The complement used to restore `gaps` on rollback.
 	gaps_complement: HashMap<VirtAddr, Option<MemGap>>,
@@ -115,8 +117,8 @@ impl<'m> MemSpaceTransaction<'m> {
 		let vmem = mem_space.vmem.lock();
 		let vmem_usage = state.vmem_usage;
 		Self {
-			state,
 			vmem,
+			state,
 
 			gaps_complement: Default::default(),
 			mappings_complement: Default::default(),
