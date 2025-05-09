@@ -64,10 +64,10 @@ pub fn do_unlinkat(
 		Some(&pathname),
 		flags | AT_EMPTY_PATH,
 	)?;
-	let Resolved::Found(parent) = resolved else {
+	let Resolved::Found(ent) = resolved else {
 		return Err(errno!(ENOENT));
 	};
-	vfs::unlink(parent, &rs.access_profile)?;
+	vfs::unlink(ent, &rs.access_profile)?;
 	Ok(0)
 }
 

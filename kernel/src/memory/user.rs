@@ -227,13 +227,11 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 			return Ok(0);
 		};
 		let len = min(len, self.len.saturating_sub(off));
-		unsafe {
-			user_copy(
-				ptr.as_ptr().add(off) as *const _,
-				dst as *mut _,
-				size_of::<T>() * len,
-			)?;
-		}
+		user_copy(
+			ptr.as_ptr().add(off) as *const _,
+			dst as *mut _,
+			size_of::<T>() * len,
+		)?;
 		Ok(len)
 	}
 
@@ -289,13 +287,11 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 			return Ok(0);
 		};
 		let len = min(len, self.len.saturating_sub(off));
-		unsafe {
-			user_copy(
-				src as *const _,
-				ptr.as_ptr().add(off) as *mut _,
-				size_of::<T>() * len,
-			)?;
-		}
+		user_copy(
+			src as *const _,
+			ptr.as_ptr().add(off) as *mut _,
+			size_of::<T>() * len,
+		)?;
 		Ok(len)
 	}
 

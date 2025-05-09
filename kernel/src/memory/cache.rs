@@ -180,7 +180,7 @@ impl RcFrame {
 	pub fn slice<T: AnyRepr>(&self) -> &[T] {
 		let ptr = self.virt_addr().as_ptr::<T>();
 		let len = buddy::get_frame_size(self.0.order) / size_of::<T>();
-		unsafe { slice::from_raw_parts_mut(ptr, len) }
+		unsafe { slice::from_raw_parts(ptr, len) }
 	}
 
 	/// Returns a mutable slice.
