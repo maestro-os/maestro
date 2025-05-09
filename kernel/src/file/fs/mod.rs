@@ -375,14 +375,12 @@ pub fn generic_file_write(file: &File, mut off: u64, buf: UserSlice<u8>) -> ERes
 		return Err(errno!(EINVAL));
 	}
 	// Extend the file if necessary
-	let end = off + buf.len() as u64; // FIXME: overflow
+	let end = off.saturating_add(buf.len() as u64);
 	if end > size {
 		file.ops.truncate(file, end)?;
 	}
 	let start = off / PAGE_SIZE as u64;
-	let end = off
-		.saturating_add(buf.len() as u64)
-		.div_ceil(PAGE_SIZE as u64);
+	let end = end.div_ceil(PAGE_SIZE as u64);
 	let mut buf_off = 0;
 	for page_off in start..end {
 		let page = node.node_ops.read_page(node, page_off)?;

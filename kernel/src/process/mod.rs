@@ -916,12 +916,12 @@ impl Process {
 		}
 		// Statistics
 		self.rusage.lock().ru_nsignals += 1;
-		/*#[cfg(feature = "strace")]
+		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] received signal `{sig}`",
 			pid = self.get_pid(),
 			sig = sig as c_int
-		);*/
+		);
 		signal_manager.sigpending.set(sig as _);
 	}
 
