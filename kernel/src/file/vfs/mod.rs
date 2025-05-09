@@ -195,10 +195,34 @@ impl Entry {
 	/// Releases the entry, removing the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn release(this: Arc<Self>) -> EResult<()> {
+		let Some(parent) = this.parent.clone() else {
+			// This is the root of the VFS, stop
+			return Ok(());
+		};
+		// Lock now to avoid a race condition with `strong_count`
+		let mut parent_children = parent.children.lock();
+		/*
+		 * If this is **not** the last reference to the entry, we cannot remove it.
+		 *
+		 * The reference held by its own parent + the one held by the LRU + the one that we
+		 * hold here = 3
+		 *
+		 * We cannot release an entry with at least one cached child. Fortunately, a child
+		 * entry refers to its parent, so the condition below is sufficient.
+		 */
+		if Arc::strong_count(&this) > 3 {
+			return Ok(());
+		}
+		// Remove other references
+		parent_children.remove(&*this.name);
+		unsafe {
+			LRU.lock().remove(&this);
+		}
 		// If other references remain, we cannot go further
 		let Some(entry) = Arc::into_inner(this) else {
 			return Ok(());
 		};
+		drop(parent_children);
 		// Release the inner node if present
 		if let Some(node) = entry.node {
 			Node::release(node)?;
@@ -707,6 +731,7 @@ pub fn unlink(entry: Arc<Entry>, ap: &AccessProfile) -> EResult<()> {
 	dir_node.node_ops.unlink(dir_node, &entry)?;
 	// Remove link from cache
 	children.remove(entry.name.as_bytes());
+	// Drop to avoid deadlock
 	drop(children);
 	// Remove the underlying node if this was the last reference to it
 	Entry::release(entry)?;
