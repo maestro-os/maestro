@@ -96,7 +96,13 @@ Then follow the instructions in [README.md](kernel/README.md)
 
 The kernel's book contains general information on how to use the kernel.
 
-The book can be built using *mdbook*, with the command:
+> `mdbook` and `mdbook-mermaid` are required:
+> 
+> ```sh
+> cargo install mdbook mdbook-mermaid
+> ```
+
+Build the book with:
 
 ```sh
 mdbook build doc/
