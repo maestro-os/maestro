@@ -15,11 +15,26 @@ A process can have the following states:
 
 The `Running` state is the only state in which a process can be executed.
 
-The following transitions are valid:
-- R -> S
-- (R|S) -> T
-- (S|T) -> R
-- (R|S|T) -> Z
+The following state transitions are valid:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Running
+
+    Sleeping --> Running
+    Stopped --> Running
+
+    Running --> Sleeping
+ 
+    Running --> Stopped
+    Sleeping --> Stopped
+ 
+    Stopped --> Zombie
+    Sleeping --> Zombie
+    Running --> Zombie
+    
+    Zombie --> [*]
+```
 
 ## Scheduler
 

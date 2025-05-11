@@ -43,7 +43,7 @@ cargo build               # Debug mode
 cargo build --release     # Release mode
 ```
 
-The default architecture is `x86`. To specify another architecture, add the following parameter to the build command: `--target arch/<arch>/<arch>.json`, where `<arch>` is the selected architecture.
+The default architecture is `x86_64`. To specify another architecture, add the following parameter to the build command: `--target arch/<arch>/<arch>.json`, where `<arch>` is the selected architecture.
 
 The list of available architecture can be retrieved by typing:
 
