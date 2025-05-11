@@ -34,13 +34,24 @@ To stay updated with the project, follow the [blog](https://blog.lenot.re)!
 
 # Features
 
+CPU architectures support
+
+| Architecture | Status |
+|--------------|--------|
+| x86_64       | ✅      |
+| x86          | ✅      |
+| AArch64      | 📅     |
+
+> - ✅ **Supported**
+> - 📅 **Planned** (not currently supported)
+
 The following features are currently implemented (non-exhaustive):
 - Terminal with [VGA text mode](https://en.wikipedia.org/wiki/VGA_text_mode) and [PS/2](https://en.wikipedia.org/wiki/PS/2_port) keyboard (with forward compatibility with USB handled by the motherboard's firmware)
     - Partial support of [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code)
 - Memory allocation/virtual memory
     - [Buddy allocator](https://en.wikipedia.org/wiki/Buddy_memory_allocation)
     - Internal memory allocator, with similarities with **dlmalloc**'s implementation, working on top of the buddy allocator
-- Processes and [scheduler](https://en.wikipedia.org/wiki/Scheduling_(computing)) ([round-robin](https://en.wikipedia.org/wiki/Round-robin_scheduling))
+- Processes and [scheduler](https://en.wikipedia.org/wiki/Scheduling_(computing))
     - POSIX signals
 - [PCI](https://en.wikipedia.org/wiki/Peripheral_Component_Interconnect) devices enumeration
 - Files:
@@ -51,7 +62,7 @@ The following features are currently implemented (non-exhaustive):
     - Virtual filesystems (`/tmp` and `/proc`)
     - initramfs
 - Time/Clock ([RTC](https://en.wikipedia.org/wiki/Real-time_clock))
-- Linux system calls (roughly 30% are currently implemented)
+- Linux's system calls (roughly 30% are currently implemented)
 - Kernel modules
 - [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) programs
 
@@ -85,9 +96,16 @@ Then follow the instructions in [README.md](kernel/README.md)
 
 The kernel's book contains general information on how to use the kernel.
 
-The book can be built using *mdbook*, with the command:
+> `mdbook` and `mdbook-mermaid` are required:
+> 
+> ```sh
+> cargo install mdbook mdbook-mermaid
+> ```
+
+Build the book with:
 
 ```sh
+mdbook-mermaid install doc/
 mdbook build doc/
 ```
 

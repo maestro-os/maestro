@@ -15,8 +15,8 @@ Multiboot allows passing command line arguments to the kernel at boot. The follo
 The kernel is divided into two parts:
 - Booting stub, located at `0x100000` on virtual memory
 - Main kernel code, located at different positions depending on the architecture in virtual memory:
-  - x86: `0xc0200000`
-  - x86_64: `0xffff800000200000`
+  - **x86**: `0xc0200000`
+  - **x86_64**: `0xffff800000200000`
 
 Because GRUB loads the whole kernel at `0x100000`, it is required to remap the memory to use the main code of the kernel. This is done through paging.
 

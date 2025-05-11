@@ -39,6 +39,8 @@ jobs:
     runs-on: [self-hosted, linux]
     needs: clippy
     steps:
+      - name: Prepare
+        run: mdbook-mermaid install doc/
       - name: Build book
         run: mdbook build doc/
   documentation:
