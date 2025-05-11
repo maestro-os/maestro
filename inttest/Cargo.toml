@@ -12,5 +12,5 @@ name = "init"
 path = "src/boot.rs"
 
 [dependencies]
-libc = "0.2.153"
+libc = "0.2.172"
 memmap2 = "0.9.5"
