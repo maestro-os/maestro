@@ -250,7 +250,7 @@ pub(crate) fn init() {
 	// Make the kernel's code read-only
 	let iter = elf::kernel::sections().filter(|s| s.sh_addralign as usize == PAGE_SIZE);
 	for section in iter {
-		let write = section.sh_flags & elf::SHF_WRITE != 0;
+		let write = section.sh_flags as u32 & elf::SHF_WRITE != 0;
 		let user = elf::kernel::get_section_name(section) == Some(b".user");
 		let mut flags = FLAG_GLOBAL;
 		if write {

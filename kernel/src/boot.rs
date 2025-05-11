@@ -90,8 +90,8 @@ static mut REMAP: Table = const {
 /// This directory identity maps the first GiB of physical memory.
 ///
 /// The static is marked as **mutable** because the CPU will set the dirty flag.
-#[no_mangle]
-#[link_section = ".boot.data"]
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".boot.data")]
 #[cfg(target_arch = "x86_64")]
 static mut REMAP_DIR: Table = const {
 	use crate::arch::x86::paging::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};

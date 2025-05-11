@@ -159,9 +159,11 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 			let _ = pool.write(buf);
 		}
 	}
+	let id = frame.int as u32;
 	let ring = (frame.cs & 0b11) as u8;
+	let code = frame.code as u32;
 	// Call corresponding callbacks
-	let callbacks = &CALLBACKS[frame.int as usize];
+	let callbacks = &CALLBACKS[id as usize];
 	let mut i = 0;
 	loop {
 		// Not putting this in a loop's condition to ensure it is dropped at each turn
@@ -169,17 +171,17 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 			break;
 		};
 		i += 1;
-		let res = callback(frame.int, frame.code, frame, ring);
+		let res = callback(id, code, frame, ring);
 		match res {
 			CallbackResult::Continue => {}
 			CallbackResult::Panic => {
-				let error = ERROR_MESSAGES.get(frame.int as usize).unwrap_or(&"Unknown");
-				panic!("{error}, code: {:x}", frame.code);
+				let error = ERROR_MESSAGES.get(id as usize).unwrap_or(&"Unknown");
+				panic!("{error}, code: {code:x}");
 			}
 		}
 	}
 	// If not a hardware exception, send EOI
-	if let Some(irq) = frame.int.checked_sub(ERROR_MESSAGES.len() as u32) {
+	if let Some(irq) = id.checked_sub(ERROR_MESSAGES.len() as u32) {
 		pic::end_of_interrupt(irq as _);
 	}
 	process::yield_current(ring, frame);
