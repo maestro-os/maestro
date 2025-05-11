@@ -151,11 +151,11 @@ impl Chunk {
 		#[cfg(config_debug_malloc_magic)]
 		debug_assert_eq!(self.magic, CHUNK_MAGIC);
 
-		debug_assert!(self as *const _ as usize >= crate::memory::PROCESS_END as usize);
+		debug_assert!(self as *const _ as usize >= crate::memory::PROCESS_END.0);
 		debug_assert!(self.get_size() >= get_min_chunk_size());
 
 		if let Some(prev) = self.get_prev() {
-			debug_assert!(prev as *const _ as usize >= crate::memory::PROCESS_END as usize);
+			debug_assert!(prev as *const _ as usize >= crate::memory::PROCESS_END.0);
 
 			#[cfg(config_debug_malloc_magic)]
 			debug_assert_eq!(prev.magic, CHUNK_MAGIC);
@@ -168,7 +168,7 @@ impl Chunk {
 		}
 
 		if let Some(next) = self.get_next() {
-			debug_assert!(next as *const _ as usize >= crate::memory::PROCESS_END as usize);
+			debug_assert!(next as *const _ as usize >= crate::memory::PROCESS_END.0);
 
 			#[cfg(config_debug_malloc_magic)]
 			debug_assert_eq!(next.magic, CHUNK_MAGIC);
