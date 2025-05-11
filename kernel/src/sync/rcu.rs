@@ -21,7 +21,7 @@
 
 use core::{
 	mem,
-	ptr::{NonNull, null_mut},
+	ptr::NonNull,
 	sync::atomic::{
 		AtomicPtr,
 		Ordering::{Acquire, Relaxed, SeqCst},
@@ -79,15 +79,14 @@ impl<T> RcuOptionArc<T> {
 	pub fn get(&self) -> Option<Arc<T>> {
 		// TODO enter RCU read critical section
 		let inner = self.inner.load(Acquire);
-		let arc = NonNull::new(inner).map(|inner| {
+		NonNull::new(inner).map(|inner| {
 			let inner_ref = unsafe { inner.as_ref() };
 			inner_ref.ref_count.fetch_add(1, Relaxed);
 			Arc {
 				inner,
 			}
-		});
-		// TODO exit RCU read critical section
-		arc
+		})
+		// TODO exit RCU read critical section before returning
 	}
 
 	/// Atomically swap the inner [`Arc`] for the given `other`.
@@ -95,7 +94,7 @@ impl<T> RcuOptionArc<T> {
 		let new = other
 			.as_ref()
 			.map(|arc| arc.inner.as_ptr())
-			.unwrap_or(null_mut());
+			.unwrap_or_default();
 		// avoid decrementing reference counter
 		mem::forget(other);
 		let old = self.inner.swap(new, SeqCst);

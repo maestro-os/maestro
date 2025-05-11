@@ -50,7 +50,7 @@ fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {
 		Fields::Unnamed(fields) => {
 			let parse_lines = fields.unnamed.iter().enumerate().map(|(i, _)| {
 				// TODO Fix span
-				let ident = Ident::new(format!("field{}", i).as_str(), Span::call_site());
+				let ident = Ident::new(format!("field{i}").as_str(), Span::call_site());
 
 				quote! {
 					let #ident = match AMLParseable::parse(off + curr_off, &b[curr_off..])? {
@@ -129,7 +129,7 @@ pub fn derive_parseable(input: TokenStream) -> TokenStream {
 						let fields = fields.unnamed.iter().enumerate().map(|(i, _)| {
 							// TODO Fix span
 							let ident =
-								Ident::new(format!("field{}", i).as_str(), Span::call_site());
+								Ident::new(format!("field{i}").as_str(), Span::call_site());
 							quote! { #ident, }
 						});
 

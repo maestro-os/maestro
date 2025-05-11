@@ -26,7 +26,7 @@ use core::{
 	marker::PhantomData,
 	mem::{MaybeUninit, size_of},
 	ptr,
-	ptr::{NonNull, null_mut},
+	ptr::NonNull,
 };
 use utils::{
 	collections::{string::String, vec::Vec},
@@ -67,7 +67,7 @@ impl<T: Sized + fmt::Debug> FromSyscallArg for UserPtr<T> {
 impl<T: Sized + fmt::Debug> UserPtr<T> {
 	/// Returns a mutable pointer to the data.
 	pub fn as_ptr(&self) -> *mut T {
-		self.0.map(NonNull::as_ptr).unwrap_or(null_mut())
+		self.0.map(NonNull::as_ptr).unwrap_or_default()
 	}
 
 	/// Copies the value from userspace and returns it.
@@ -196,7 +196,7 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 
 	/// Returns a mutable pointer to the data.
 	pub fn as_ptr(&self) -> *mut T {
-		self.ptr.map(NonNull::as_ptr).unwrap_or(null_mut())
+		self.ptr.map(NonNull::as_ptr).unwrap_or_default()
 	}
 
 	/// Returns the length of the slice in number of elements.
@@ -333,7 +333,7 @@ impl FromSyscallArg for UserString {
 impl UserString {
 	/// Returns an immutable pointer to the data.
 	pub fn as_ptr(&self) -> *const u8 {
-		self.0.map(NonNull::as_ptr).unwrap_or(null_mut())
+		self.0.map(NonNull::as_ptr).unwrap_or_default()
 	}
 
 	/// Returns an immutable reference to the string.
