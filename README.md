@@ -105,6 +105,7 @@ The kernel's book contains general information on how to use the kernel.
 Build the book with:
 
 ```sh
+mdbook-mermaid install doc/
 mdbook build doc/
 ```
 
