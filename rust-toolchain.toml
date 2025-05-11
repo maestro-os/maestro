@@ -1,5 +1,5 @@
 [toolchain]
-channel = "nightly-2024-12-31"
+channel = "nightly-2025-05-10"
 components = ["rustfmt", "rustc-dev", "rust-src", "clippy", "miri"]
 targets = ["i686-unknown-linux-musl", "x86_64-unknown-linux-musl"]
 profile = "minimal"

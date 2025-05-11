@@ -22,13 +22,13 @@
 use crate::{
 	memory::user::UserPtr,
 	process::{
-		signal::{SigEvent, Signal, SIGEV_SIGNAL},
 		Process,
+		signal::{SIGEV_SIGNAL, SigEvent, Signal},
 	},
 	syscall::Args,
 	time::{
 		clock,
-		clock::{current_time_ns, current_time_sec, Clock},
+		clock::{Clock, current_time_ns, current_time_sec},
 		sleep_for,
 		unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, Timespec32},
 	},

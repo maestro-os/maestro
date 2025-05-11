@@ -20,7 +20,7 @@
 
 use crate::{
 	file,
-	file::{fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs, File},
+	file::{File, fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
 	sync::mutex::Mutex,

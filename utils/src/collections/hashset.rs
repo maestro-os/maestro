@@ -21,14 +21,13 @@
 use super::{
 	hashmap,
 	hashmap::{
-		hash,
+		Entry, HashMap, hash,
 		hash::FxHasher,
 		raw,
 		raw::{CTRL_DELETED, CTRL_EMPTY},
-		Entry, HashMap,
 	},
 };
-use crate::{errno::CollectResult, TryClone};
+use crate::{TryClone, errno::CollectResult};
 use core::{
 	alloc::AllocError,
 	borrow::Borrow,

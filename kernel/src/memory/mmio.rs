@@ -19,7 +19,7 @@
 //! MMIO (Memory-Mapped I/O) allows to access a device's registers by mapping them on the main
 //! memory.
 
-use super::{buddy, oom, PhysAddr, VirtAddr};
+use super::{PhysAddr, VirtAddr, buddy, oom};
 use crate::{arch::x86, memory::vmem::KERNEL_VMEM};
 use core::ptr::NonNull;
 use utils::errno::AllocResult;

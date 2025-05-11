@@ -20,7 +20,7 @@
 //! current process.
 
 use crate::{
-	file::{vfs, vfs::ResolutionSettings, FileType},
+	file::{FileType, vfs, vfs::ResolutionSettings},
 	memory::user::UserString,
 	process::Process,
 	syscall::Args,

@@ -18,7 +18,7 @@
 
 //! The Open Systems Interconnection (OSI) model defines the architecure of a network stack.
 
-use super::{buff::BuffList, ip, SocketDesc, SocketDomain, SocketType};
+use super::{SocketDesc, SocketDomain, SocketType, buff::BuffList, ip};
 use crate::sync::mutex::Mutex;
 use core::fmt::Debug;
 use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult};

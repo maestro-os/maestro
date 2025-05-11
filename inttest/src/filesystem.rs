@@ -20,7 +20,7 @@
 
 use crate::{
 	log, test_assert, test_assert_eq, util,
-	util::{unprivileged, TestError, TestResult},
+	util::{TestError, TestResult, unprivileged},
 };
 use memmap2::MmapOptions;
 use std::{

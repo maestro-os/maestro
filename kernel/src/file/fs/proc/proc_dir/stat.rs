@@ -20,13 +20,13 @@
 //! status of the process.
 
 use crate::{
-	file::{fs::FileOps, File},
+	file::{File, fs::FileOps},
 	format_content,
-	memory::{user::UserSlice, VirtAddr},
-	process::{pid::Pid, Process},
+	memory::{VirtAddr, user::UserSlice},
+	process::{Process, pid::Pid},
 };
 use core::fmt;
-use utils::{errno, errno::EResult, DisplayableStr};
+use utils::{DisplayableStr, errno, errno::EResult};
 
 /// The `stat` node of the proc.
 #[derive(Debug)]
@@ -57,9 +57,9 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 				sid = 0,            // TODO
 				user_jiffies = 0,   // TODO
 				kernel_jiffies = 0, // TODO
-				priority = 0, // TODO
-				nice = 0, // TODO
-				num_threads = 1, // TODO
+				priority = 0,       // TODO
+				nice = 0,           // TODO
+				num_threads = 1,    // TODO
 				sp = VirtAddr(user_regs.get_stack_address() as _),
 				pc = VirtAddr(user_regs.get_program_counter() as _),
 			)

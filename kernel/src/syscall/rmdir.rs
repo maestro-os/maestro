@@ -22,9 +22,8 @@
 
 use crate::{
 	file::{
-		vfs,
+		FileType, vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileType,
 	},
 	memory::user::UserString,
 	process::Process,

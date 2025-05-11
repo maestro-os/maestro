@@ -19,8 +19,8 @@
 //! TODO doc
 
 use super::{
-	named_obj::NamedObj, namespace_modifier::NameSpaceModifierObj, type1_opcode::Type1Opcode,
-	type2_opcode::Type2Opcode, AMLParseable, Error,
+	AMLParseable, Error, named_obj::NamedObj, namespace_modifier::NameSpaceModifierObj,
+	type1_opcode::Type1Opcode, type2_opcode::Type2Opcode,
 };
 use macros::Parseable;
 

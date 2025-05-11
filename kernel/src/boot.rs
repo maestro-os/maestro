@@ -30,8 +30,8 @@ pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff800000000800);
 pub type InitGdt = [gdt::Entry; 11];
 
 /// The initial Global Descriptor Table.
-#[no_mangle]
-#[link_section = ".boot.data"]
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".boot.data")]
 static INIT_GDT: InitGdt = [
 	// First entry, empty
 	gdt::Entry(0),
@@ -60,8 +60,8 @@ static INIT_GDT: InitGdt = [
 /// The paging object used to remap the kernel to higher memory.
 ///
 /// The static is marked as **mutable** because the CPU will set the dirty flag.
-#[no_mangle]
-#[link_section = ".boot.data"]
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".boot.data")]
 static mut REMAP: Table = const {
 	#[cfg(target_arch = "x86")]
 	{
@@ -108,7 +108,7 @@ static mut REMAP_DIR: Table = const {
 	dir
 };
 
-extern "C" {
+unsafe extern "C" {
 	/// The kernel's entry point.
 	fn multiboot_entry();
 }

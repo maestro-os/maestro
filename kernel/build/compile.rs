@@ -19,11 +19,11 @@
 //! Some parts of the kernel are implemented in C and assembly language. Those parts are compiled
 //! by the code present in this module.
 
-use crate::{target::Target, util::list_c_files, Env};
+use crate::{Env, target::Target, util::list_c_files};
 use std::{
 	io,
 	path::{Path, PathBuf},
-	process::{exit, Command},
+	process::{Command, exit},
 };
 
 fn compile_vdso_impl(

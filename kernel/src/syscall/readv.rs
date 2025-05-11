@@ -19,9 +19,9 @@
 //! The `readv` system call allows to read from file descriptor and write it into a sparse buffer.
 
 use crate::{
-	file::{fd::FileDescriptorTable, File, FileType},
+	file::{File, FileType, fd::FileDescriptorTable},
 	memory::user::{UserIOVec, UserSlice},
-	process::{mem_space::MemSpace, scheduler, Process},
+	process::{Process, mem_space::MemSpace, scheduler},
 	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };

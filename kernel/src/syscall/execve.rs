@@ -21,13 +21,12 @@
 use super::Args;
 use crate::{
 	arch::x86::idt::IntFrame,
-	file::{vfs, vfs::ResolutionSettings, File, O_RDONLY},
+	file::{File, O_RDONLY, vfs, vfs::ResolutionSettings},
 	memory::user::{UserArray, UserSlice, UserString},
 	process::{
-		exec,
-		exec::{exec, ExecInfo, ProgramImage},
-		scheduler::{switch::init_ctx, SCHEDULER},
-		Process,
+		Process, exec,
+		exec::{ExecInfo, ProgramImage, exec},
+		scheduler::{SCHEDULER, switch::init_ctx},
 	},
 };
 use core::intrinsics::unlikely;

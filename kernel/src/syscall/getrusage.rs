@@ -21,7 +21,7 @@
 
 use crate::{
 	memory::user::UserPtr,
-	process::{rusage::Rusage, Process},
+	process::{Process, rusage::Rusage},
 	syscall::Args,
 };
 use core::{ffi::c_int, ops::Deref};

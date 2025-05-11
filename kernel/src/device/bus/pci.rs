@@ -31,12 +31,12 @@
 use crate::{
 	arch::x86::io::{inl, outl},
 	device::{
-		bar::{BARType, BAR},
+		DeviceManager,
+		bar::{BAR, BARType},
 		manager,
 		manager::PhysicalDevice,
-		DeviceManager,
 	},
-	memory::{mmio::MMIO, PhysAddr},
+	memory::{PhysAddr, mmio::MMIO},
 };
 use core::{cmp::min, mem::size_of};
 use utils::{
@@ -449,20 +449,12 @@ impl PhysicalDevice for PCIDevice {
 
 	fn get_interrupt_line(&self) -> Option<u8> {
 		let n = (self.info[11] & 0xff) as u8;
-		if n != 0xff {
-			Some(n)
-		} else {
-			None
-		}
+		if n != 0xff { Some(n) } else { None }
 	}
 
 	fn get_interrupt_pin(&self) -> Option<u8> {
 		let n = ((self.info[11] >> 8) & 0xff) as u8;
-		if n != 0 {
-			Some(n)
-		} else {
-			None
-		}
+		if n != 0 { Some(n) } else { None }
 	}
 }
 

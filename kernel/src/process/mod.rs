@@ -31,25 +31,24 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{cli, gdt, idt, idt::IntFrame, tss, FxState},
+	arch::x86::{FxState, cli, gdt, idt, idt::IntFrame, tss},
 	event,
 	event::CallbackResult,
 	file,
 	file::{
+		File, O_RDWR,
 		fd::{FileDescriptorTable, NewFDConstraint},
 		perm::AccessProfile,
 		vfs,
 		vfs::ResolutionSettings,
-		File, O_RDWR,
 	},
-	memory::{buddy, buddy::FrameOrder, oom, user, user::UserPtr, VirtAddr},
+	memory::{VirtAddr, buddy, buddy::FrameOrder, oom, user, user::UserPtr},
 	process::{
-		pid::{PidHandle, IDLE_PID, INIT_PID},
+		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			core_local, switch,
-			switch::{idle_task, KThreadEntry},
-			Scheduler, SCHEDULER,
+			SCHEDULER, Scheduler, core_local, switch,
+			switch::{KThreadEntry, idle_task},
 		},
 		signal::SigSet,
 	},
@@ -67,7 +66,7 @@ use core::{
 	mem::ManuallyDrop,
 	ptr::NonNull,
 	sync::atomic::{
-		AtomicBool, AtomicPtr, AtomicU32, AtomicU8,
+		AtomicBool, AtomicPtr, AtomicU8, AtomicU32,
 		Ordering::{Acquire, Relaxed, Release, SeqCst},
 	},
 };

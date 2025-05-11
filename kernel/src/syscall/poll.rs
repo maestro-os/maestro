@@ -21,11 +21,11 @@
 
 use crate::{
 	memory::user::UserSlice,
-	process::{scheduler, scheduler::Scheduler, Process},
+	process::{Process, scheduler, scheduler::Scheduler},
 	syscall::Args,
 	time::{
 		clock,
-		clock::{current_time_ms, Clock},
+		clock::{Clock, current_time_ms},
 		unit::Timestamp,
 	},
 };

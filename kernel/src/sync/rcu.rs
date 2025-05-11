@@ -21,7 +21,7 @@
 
 use core::{
 	mem,
-	ptr::{null_mut, NonNull},
+	ptr::{NonNull, null_mut},
 	sync::atomic::{
 		AtomicPtr,
 		Ordering::{Acquire, Relaxed, SeqCst},

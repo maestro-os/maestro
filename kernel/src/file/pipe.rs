@@ -20,14 +20,14 @@
 //! and another writing, with a buffer in between.
 
 use crate::{
-	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat, O_NONBLOCK},
+	file::{File, FileType, O_NONBLOCK, Stat, fs::FileOps, wait_queue::WaitQueue},
 	memory::{
 		ring_buffer::RingBuffer,
 		user::{UserPtr, UserSlice},
 	},
-	process::{signal::Signal, Process},
+	process::{Process, signal::Signal},
 	sync::mutex::Mutex,
-	syscall::{ioctl, FromSyscallArg},
+	syscall::{FromSyscallArg, ioctl},
 };
 use core::{
 	ffi::{c_int, c_void},

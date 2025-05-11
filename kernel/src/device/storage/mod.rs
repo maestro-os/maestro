@@ -25,11 +25,11 @@ pub mod pata;
 use crate::{
 	device,
 	device::{
+		BLK_DEVICES, BlkDev, BlockDeviceOps, DeviceID, DeviceType,
 		bus::pci,
 		id,
 		id::MajorBlock,
 		manager::{DeviceManager, PhysicalDevice},
-		BlkDev, BlockDeviceOps, DeviceID, DeviceType, BLK_DEVICES,
 	},
 	file::Mode,
 	memory::{
@@ -38,7 +38,7 @@ use crate::{
 		user::UserPtr,
 	},
 	println,
-	syscall::{ioctl, FromSyscallArg},
+	syscall::{FromSyscallArg, ioctl},
 };
 use core::{
 	ffi::{c_uchar, c_ulong, c_ushort, c_void},
@@ -46,6 +46,7 @@ use core::{
 };
 use partition::Partition;
 use utils::{
+	TryClone,
 	boxed::Box,
 	collections::{
 		path::{Path, PathBuf},
@@ -55,7 +56,6 @@ use utils::{
 	errno::EResult,
 	format,
 	ptr::arc::Arc,
-	TryClone,
 };
 
 /// The major number for storage devices.

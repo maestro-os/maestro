@@ -21,8 +21,8 @@
 use crate::{
 	memory::user::UserPtr,
 	process,
-	process::{pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler, Process, State},
-	syscall::{waitpid::scheduler::SCHEDULER, Args},
+	process::{Process, State, pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler},
+	syscall::{Args, waitpid::scheduler::SCHEDULER},
 };
 use core::{ffi::c_int, iter};
 use utils::{

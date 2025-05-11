@@ -18,10 +18,10 @@
 
 //! The `wait4` system call waits for a process to change state.
 
-use super::{waitpid, Args};
+use super::{Args, waitpid};
 use crate::{
 	memory::user::UserPtr,
-	process::{rusage::Rusage, Process},
+	process::{Process, rusage::Rusage},
 };
 use core::ffi::c_int;
 use utils::errno::EResult;

@@ -19,10 +19,10 @@
 //! The uptime file returns the amount of time elapsed since the system started up.
 
 use crate::{
-	file::{fs::FileOps, File},
+	file::{File, fs::FileOps},
 	format_content,
 	memory::user::UserSlice,
-	time::clock::{current_time_ns, Clock},
+	time::clock::{Clock, current_time_ns},
 };
 use utils::errno::EResult;
 

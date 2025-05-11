@@ -153,7 +153,7 @@ use crate::{
 	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
 	process,
-	process::{mem_space::MemSpace, signal::Signal, Process},
+	process::{Process, mem_space::MemSpace, signal::Signal},
 	sync::mutex::{IntMutex, Mutex},
 	syscall::{
 		getdents::getdents64,
@@ -171,6 +171,7 @@ use _newselect::_newselect;
 use access::access;
 use arch_prctl::arch_prctl;
 use bind::bind;
+use r#break::r#break;
 use brk::brk;
 use chdir::chdir;
 use chmod::chmod;
@@ -238,7 +239,6 @@ use prlimit64::prlimit64;
 use pselect6::pselect6;
 use pwritev::pwritev;
 use pwritev2::pwritev2;
-use r#break::r#break;
 use read::read;
 use readlink::readlink;
 use readv::readv;
@@ -1338,7 +1338,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 }
 
 /// Called whenever a system call is triggered.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 	let id = frame.get_syscall_id();
 	#[cfg(target_arch = "x86")]
@@ -1368,7 +1368,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 	process::yield_current(3, frame);
 }
 
-extern "C" {
+unsafe extern "C" {
 	/// The syscall interrupt handler.
 	pub fn syscall_int();
 	/// Trampoline for the `syscall` instruction.

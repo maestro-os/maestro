@@ -23,7 +23,7 @@
 
 use crate::{sync::mutex::IntMutex, tty::TTY};
 use core::{
-	cmp::{min, Ordering},
+	cmp::{Ordering, min},
 	fmt,
 	fmt::Write,
 };

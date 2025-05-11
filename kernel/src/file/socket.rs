@@ -19,9 +19,9 @@
 //! This file implements sockets.
 
 use crate::{
-	file::{fs::FileOps, wait_queue::WaitQueue, File, FileType, Stat},
+	file::{File, FileType, Stat, fs::FileOps, wait_queue::WaitQueue},
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
-	net::{osi, SocketDesc},
+	net::{SocketDesc, osi},
 	sync::mutex::Mutex,
 	syscall::ioctl::Request,
 };

@@ -20,7 +20,7 @@
 //! system.
 
 use crate::{
-	file::{fs::FileOps, File},
+	file::{File, fs::FileOps},
 	format_content, memory,
 	memory::user::UserSlice,
 };

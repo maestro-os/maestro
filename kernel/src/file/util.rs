@@ -18,7 +18,7 @@
 
 //! This module implements utility functions for files manipulations.
 
-use crate::file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat};
+use crate::file::{FileType, Stat, perm::AccessProfile, vfs, vfs::ResolutionSettings};
 use utils::{
 	collections::path::{Component, Path, PathBuf},
 	errno,

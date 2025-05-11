@@ -24,9 +24,9 @@ use core::{
 	fmt,
 	intrinsics::{likely, unlikely},
 	marker::PhantomData,
-	mem::{size_of, MaybeUninit},
+	mem::{MaybeUninit, size_of},
 	ptr,
-	ptr::{null_mut, NonNull},
+	ptr::{NonNull, null_mut},
 };
 use utils::{
 	collections::{string::String, vec::Vec},
@@ -35,7 +35,7 @@ use utils::{
 	limits::PAGE_SIZE,
 };
 
-extern "C" {
+unsafe extern "C" {
 	/// Copy, with access check. On success, the function returns `true`.
 	pub fn raw_copy(dst: *mut u8, src: *const u8, n: usize) -> bool;
 	/// Function to be called back when a page fault occurs while using [`raw_copy`].

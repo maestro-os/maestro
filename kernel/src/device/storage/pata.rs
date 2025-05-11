@@ -31,7 +31,7 @@
 
 use crate::{
 	arch::x86::io::inb,
-	device::{storage::ide, BlockDeviceOps},
+	device::{BlockDeviceOps, storage::ide},
 	memory::{
 		buddy::{FrameOrder, ZONE_KERNEL},
 		cache::{FrameOwner, RcFrame},

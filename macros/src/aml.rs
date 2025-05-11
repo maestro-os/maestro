@@ -21,7 +21,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::quote;
-use syn::{parse_macro_input, Data, DataEnum, DataStruct, DeriveInput, Fields};
+use syn::{Data, DataEnum, DataStruct, DeriveInput, Fields, parse_macro_input};
 
 /// Returns the parse code for the given set of fields.
 fn parse_expr(fields: &Fields) -> proc_macro2::TokenStream {

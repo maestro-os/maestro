@@ -28,10 +28,10 @@ use core::{
 	intrinsics::size_of_val,
 	marker::Unsize,
 	mem,
-	mem::{offset_of, ManuallyDrop},
+	mem::{ManuallyDrop, offset_of},
 	ops::{CoerceUnsized, Deref, DispatchFromDyn},
 	ptr,
-	ptr::{drop_in_place, null, null_mut, NonNull},
+	ptr::{NonNull, drop_in_place, null, null_mut},
 	sync::atomic::{AtomicPtr, AtomicUsize, Ordering, Ordering::Relaxed},
 };
 

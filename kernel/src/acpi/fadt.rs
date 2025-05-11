@@ -18,7 +18,7 @@
 
 //! This module handles ACPI's Fixed ACPI Description Table (FADT).
 
-use super::{dsdt::Dsdt, Table, TableHdr};
+use super::{Table, TableHdr, dsdt::Dsdt};
 use core::{ptr, slice};
 
 /// TODO doc

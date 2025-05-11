@@ -23,16 +23,16 @@ use crate::{
 	arch::x86,
 	elf,
 	elf::{
-		parser::{Class, ELFParser, ProgramHeader},
 		ET_DYN,
+		parser::{Class, ELFParser, ProgramHeader},
 	},
-	file::{vfs, File, FileType, O_RDONLY},
-	memory::{vmem, VirtAddr},
+	file::{File, FileType, O_RDONLY, vfs},
+	memory::{VirtAddr, vmem},
 	process,
 	process::{
-		exec::{vdso::MappedVDSO, ExecInfo, Executor, ProgramImage},
+		exec::{ExecInfo, Executor, ProgramImage, vdso::MappedVDSO},
 		mem_space,
-		mem_space::{MapConstraint, MemSpace, MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE},
+		mem_space::{MAP_ANONYMOUS, MAP_PRIVATE, MapConstraint, MemSpace, PROT_READ, PROT_WRITE},
 	},
 };
 use core::{cmp::max, intrinsics::unlikely, num::NonZeroUsize, ptr, slice};

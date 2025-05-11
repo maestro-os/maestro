@@ -29,7 +29,7 @@
 //! - User: Memory used for userspace mappings. This zone doesn't require virtual memory to
 //!   correspond with the physical memory, thus it can be located outside the kernelspace.
 
-use crate::memory::{buddy, memmap::PHYS_MAP, KERNELSPACE_SIZE};
+use crate::memory::{KERNELSPACE_SIZE, buddy, memmap::PHYS_MAP};
 use core::cmp::min;
 use utils::limits::PAGE_SIZE;
 

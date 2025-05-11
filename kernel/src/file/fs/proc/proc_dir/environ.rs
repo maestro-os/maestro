@@ -20,14 +20,14 @@
 
 use crate::{
 	file::{
-		fs::{proc::proc_dir::read_memory, FileOps},
 		File,
+		fs::{FileOps, proc::proc_dir::read_memory},
 	},
 	format_content,
 	memory::user::UserSlice,
-	process::{pid::Pid, Process},
+	process::{Process, pid::Pid},
 };
-use utils::{errno, errno::EResult, DisplayableStr};
+use utils::{DisplayableStr, errno, errno::EResult};
 
 /// The `environ` node of the proc.
 #[derive(Clone, Debug)]

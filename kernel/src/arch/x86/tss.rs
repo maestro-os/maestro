@@ -86,7 +86,7 @@ pub struct Tss {
 }
 
 /// The Task State Segment.
-#[no_mangle]
+#[unsafe(no_mangle)]
 static mut TSS: Tss = unsafe { mem::zeroed() };
 
 /// Initializes the TSS.

@@ -24,10 +24,10 @@
 use crate::{
 	arch::x86::idt::IntFrame,
 	memory::user::UserPtr,
-	process::{scheduler, scheduler::Scheduler, ForkOptions, Process},
+	process::{ForkOptions, Process, scheduler, scheduler::Scheduler},
 	syscall::{
-		clone::{clone, CLONE_VFORK, CLONE_VM},
 		Args,
+		clone::{CLONE_VFORK, CLONE_VM, clone},
 	},
 };
 use core::ptr::null_mut;

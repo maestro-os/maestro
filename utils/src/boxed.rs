@@ -19,7 +19,7 @@
 //! The `Box` structure allows to hold an object on the heap and handles its
 //! memory properly.
 
-use crate::{errno::AllocResult, AllocError, TryClone, __alloc, __dealloc};
+use crate::{__alloc, __dealloc, AllocError, TryClone, errno::AllocResult};
 use core::{
 	alloc::Layout,
 	borrow::{Borrow, BorrowMut},
@@ -28,7 +28,7 @@ use core::{
 	mem,
 	mem::ManuallyDrop,
 	ops::{CoerceUnsized, Deref, DerefMut, DispatchFromDyn},
-	ptr::{drop_in_place, NonNull},
+	ptr::{NonNull, drop_in_place},
 };
 
 /// A `Box` allows to store an object on the heap.

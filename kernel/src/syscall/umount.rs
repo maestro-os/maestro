@@ -22,7 +22,7 @@
 use crate::{
 	file::{
 		vfs,
-		vfs::{mountpoint, ResolutionSettings},
+		vfs::{ResolutionSettings, mountpoint},
 	},
 	memory::user::UserString,
 	process::Process,

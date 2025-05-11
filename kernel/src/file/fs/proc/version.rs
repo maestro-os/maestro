@@ -19,7 +19,7 @@
 //! The `version` file returns the version of the kernel.
 
 use crate::{
-	file::{fs::FileOps, File},
+	file::{File, fs::FileOps},
 	format_content,
 	memory::user::UserSlice,
 };

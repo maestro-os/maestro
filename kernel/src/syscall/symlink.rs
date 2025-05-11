@@ -19,10 +19,10 @@
 //! The `symlink` syscall allows to create a symbolic link.
 
 use crate::{
-	file::{fd::FileDescriptorTable, vfs, vfs::ResolutionSettings, FileType, Stat},
+	file::{FileType, Stat, fd::FileDescriptorTable, vfs, vfs::ResolutionSettings},
 	memory::user::UserString,
 	sync::mutex::Mutex,
-	syscall::{symlinkat::symlinkat, util::at::AT_FDCWD, Args},
+	syscall::{Args, symlinkat::symlinkat, util::at::AT_FDCWD},
 	time::clock::current_time_ns,
 };
 use utils::{

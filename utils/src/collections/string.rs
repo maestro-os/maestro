@@ -19,9 +19,9 @@
 //! This module implements the String structure which wraps the `str` type.
 
 use crate::{
+	AllocError, TryClone, TryToOwned,
 	collections::vec::Vec,
 	errno::{AllocResult, CollectResult},
-	AllocError, TryClone, TryToOwned,
 };
 use core::{
 	borrow::{Borrow, BorrowMut},

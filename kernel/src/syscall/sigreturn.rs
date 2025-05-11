@@ -24,10 +24,10 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	memory::{user::UserPtr, VirtAddr},
+	memory::{VirtAddr, user::UserPtr},
 	process::{
-		signal::{ucontext, Signal},
 		Process,
+		signal::{Signal, ucontext},
 	},
 	syscall::FromSyscallArg,
 };

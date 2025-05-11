@@ -22,13 +22,13 @@ use super::unit::{ITimerspec32, TimerT};
 use crate::{
 	memory::oom,
 	process::{
-		pid::Pid,
-		signal::{SigEvent, Signal, SIGEV_NONE, SIGEV_SIGNAL, SIGEV_THREAD},
 		Process,
+		pid::Pid,
+		signal::{SIGEV_NONE, SIGEV_SIGNAL, SIGEV_THREAD, SigEvent, Signal},
 	},
 	sync::mutex::IntMutex,
 	time::{
-		clock::{current_time_ns, Clock},
+		clock::{Clock, current_time_ns},
 		unit::{TimeUnit, Timespec32, Timestamp},
 	},
 };

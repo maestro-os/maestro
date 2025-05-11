@@ -23,9 +23,9 @@ pub mod hash;
 pub(super) mod raw;
 
 use crate::{
-	collections::hashmap::raw::{RawTable, CTRL_DELETED, CTRL_EMPTY, GROUP_SIZE},
-	errno::{AllocResult, CollectResult},
 	TryClone,
+	collections::hashmap::raw::{CTRL_DELETED, CTRL_EMPTY, GROUP_SIZE, RawTable},
+	errno::{AllocResult, CollectResult},
 };
 use core::{
 	alloc::AllocError,
@@ -37,7 +37,7 @@ use core::{
 	mem,
 	ops::{BitAnd, Index, IndexMut},
 	ptr,
-	simd::{cmp::SimdPartialEq, u8x16, Mask},
+	simd::{Mask, cmp::SimdPartialEq, u8x16},
 };
 use hash::FxHasher;
 use raw::Slot;
@@ -487,11 +487,11 @@ impl<K: Eq + Hash + fmt::Debug, V: fmt::Debug, H: Default + Hasher> fmt::Debug
 }
 
 impl<
-		K: Eq + Hash + TryClone<Error = E>,
-		V: TryClone<Error = E>,
-		H: Default + Hasher,
-		E: From<AllocError>,
-	> TryClone for HashMap<K, V, H>
+	K: Eq + Hash + TryClone<Error = E>,
+	V: TryClone<Error = E>,
+	H: Default + Hasher,
+	E: From<AllocError>,
+> TryClone for HashMap<K, V, H>
 {
 	type Error = E;
 

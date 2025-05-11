@@ -53,29 +53,28 @@ mod inode;
 use crate::{
 	device::BlkDev,
 	file::{
+		DirContext, DirEntry, File, FileType, INode, Stat,
 		fs::{
-			downcast_fs,
+			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs, downcast_fs,
 			ext2::{dirent::DirentIterator, inode::ROOT_DIRECTORY_INODE},
-			generic_file_read, generic_file_write, FileOps, Filesystem, FilesystemOps,
-			FilesystemType, NodeOps, Statfs,
+			generic_file_read, generic_file_write,
 		},
 		vfs,
 		vfs::node::Node,
-		DirContext, DirEntry, File, FileType, INode, Stat,
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame, RcFrameVal},
 		user::UserSlice,
 	},
 	sync::mutex::Mutex,
-	time::clock::{current_time_sec, Clock},
+	time::clock::{Clock, current_time_sec},
 };
 use bgd::BlockGroupDescriptor;
 use core::{
 	cmp::max,
 	intrinsics::unlikely,
 	sync::atomic::{
-		AtomicBool, AtomicU16, AtomicU32, AtomicU8, AtomicUsize,
+		AtomicBool, AtomicU8, AtomicU16, AtomicU32, AtomicUsize,
 		Ordering::{Acquire, Relaxed, Release},
 	},
 };

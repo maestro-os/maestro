@@ -24,14 +24,14 @@
 //! The order of a frame is the `n` in the expression `pow(2, n)` that represents the
 //! size of a frame in pages.
 
-use super::{oom, stats, PhysAddr, VirtAddr};
+use super::{PhysAddr, VirtAddr, oom, stats};
 use crate::sync::{atomic::AtomicU64, mutex::IntMutex};
 use core::{
 	alloc::AllocError,
 	intrinsics::{likely, unlikely},
 	mem::{offset_of, size_of},
 	ptr,
-	ptr::{null_mut, NonNull},
+	ptr::{NonNull, null_mut},
 	slice,
 	sync::atomic::{AtomicBool, Ordering::Relaxed},
 };

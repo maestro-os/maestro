@@ -33,12 +33,12 @@ use crate::{
 	event,
 	event::CallbackResult,
 	process::{
-		scheduler::Scheduler,
-		signal::{SigEvent, SIGEV_NONE},
 		Process, State,
+		scheduler::Scheduler,
+		signal::{SIGEV_NONE, SigEvent},
 	},
 	time::{
-		clock::{current_time_ns, Clock},
+		clock::{Clock, current_time_ns},
 		timer::Timer,
 		unit::TimeUnit,
 	},

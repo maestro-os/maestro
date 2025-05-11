@@ -21,7 +21,7 @@
 use crate::{
 	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, tss},
 	memory::vmem::KERNEL_VMEM,
-	process::{mem_space::MemSpace, Process},
+	process::{Process, mem_space::MemSpace},
 };
 use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
 
@@ -83,7 +83,7 @@ pub unsafe fn switch(prev: *const Process, next: *const Process) {
 // Note: the functions below are saving only the registers that are not clobbered by the call to
 // them
 
-extern "C" {
+unsafe extern "C" {
 	/// Jumps to a new context with the given `frame`.
 	///
 	/// # Safety
@@ -202,7 +202,7 @@ switch_asm:
 /// general-purpose registers.
 ///
 /// This function is jumped to from [`switch`].
-#[export_name = "switch_finish"]
+#[unsafe(export_name = "switch_finish")]
 pub extern "C" fn finish(prev: &Process, next: &Process) {
 	// Bind the memory space
 	match next.mem_space.as_ref() {

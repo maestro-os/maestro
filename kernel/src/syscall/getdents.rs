@@ -20,7 +20,7 @@
 //! directory.
 
 use crate::{
-	file::{fd::FileDescriptorTable, DirContext, DirEntry, FileType, INode, DT_UNKNOWN},
+	file::{DT_UNKNOWN, DirContext, DirEntry, FileType, INode, fd::FileDescriptorTable},
 	memory::user::UserSlice,
 	process::Process,
 	sync::mutex::Mutex,

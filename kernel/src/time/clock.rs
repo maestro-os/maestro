@@ -20,7 +20,7 @@
 
 use crate::{
 	sync::atomic::AtomicU64,
-	time::{unit::ClockIdT, Timestamp},
+	time::{Timestamp, unit::ClockIdT},
 };
 use core::{
 	cmp::max,

@@ -20,9 +20,9 @@
 
 use crate::{
 	log,
-	util::{kill, signal, TestResult},
+	util::{TestResult, kill, signal},
 };
-use libc::{getpid, SIGINT, SIG_DFL};
+use libc::{SIG_DFL, SIGINT, getpid};
 use std::{
 	ffi::c_int,
 	sync::atomic::{

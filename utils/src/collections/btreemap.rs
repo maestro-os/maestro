@@ -21,8 +21,8 @@
 //! See [Rust's documentation](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html) for details.
 
 use crate::{
+	__alloc, __dealloc, AllocError, TryClone,
 	errno::{AllocResult, CollectResult},
-	AllocError, TryClone, __alloc, __dealloc,
 };
 use core::{
 	alloc::Layout,
@@ -1605,9 +1605,10 @@ mod test {
 			.0
 			.unwrap();
 		let len = b.len();
-		assert!(b
-			.drain_filter(|k, v| k == v && k % 2 == 0)
-			.all(|(k, v)| k == v && k % 2 == 0));
+		assert!(
+			b.drain_filter(|k, v| k == v && k % 2 == 0)
+				.all(|(k, v)| k == v && k % 2 == 0)
+		);
 		assert_eq!(b.len(), len / 2 + 1);
 		assert!(b.into_iter().all(|(k, v)| k == v && k % 2 != 0));
 	}

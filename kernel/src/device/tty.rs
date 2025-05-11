@@ -20,19 +20,18 @@
 //! communicate with it.
 
 use crate::{
-	file::{fs::FileOps, File},
+	file::{File, fs::FileOps},
 	memory::user::{UserPtr, UserSlice},
 	process::{
+		Process,
 		pid::Pid,
 		signal::{Signal, SignalHandler},
-		Process,
 	},
 	syscall::{
-		ioctl,
+		FromSyscallArg, ioctl,
 		poll::{POLLIN, POLLOUT},
-		FromSyscallArg,
 	},
-	tty::{termios, termios::Termios, TTYDisplay, WinSize, TTY},
+	tty::{TTY, TTYDisplay, WinSize, termios, termios::Termios},
 };
 use core::ffi::c_void;
 use utils::{errno, errno::EResult};

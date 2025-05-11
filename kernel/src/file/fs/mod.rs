@@ -26,8 +26,9 @@ pub mod proc;
 pub mod tmp;
 
 use super::{
+	DirContext, File, INode, Mode, Stat,
 	perm::{Gid, Uid},
-	vfs, DirContext, File, INode, Mode, Stat,
+	vfs,
 };
 use crate::{
 	device::BlkDev,

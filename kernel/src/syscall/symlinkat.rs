@@ -21,15 +21,15 @@
 use super::util::at;
 use crate::{
 	file::{
+		FileType, Stat,
 		fd::FileDescriptorTable,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileType, Stat,
 	},
 	memory::user::UserString,
 	sync::mutex::Mutex,
 	syscall::Args,
-	time::clock::{current_time_ns, current_time_sec, Clock},
+	time::clock::{Clock, current_time_ns, current_time_sec},
 };
 use core::ffi::c_int;
 use utils::{

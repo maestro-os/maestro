@@ -21,7 +21,7 @@
 
 use crate::{
 	process,
-	process::{pid::Pid, scheduler::Scheduler, Process},
+	process::{Process, pid::Pid, scheduler::Scheduler},
 	sync::mutex::{IntMutex, Mutex},
 };
 use core::mem;

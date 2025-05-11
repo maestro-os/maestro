@@ -25,7 +25,7 @@ use crate::{
 	arch::x86::{cli, idt::IntFrame, pic},
 	event,
 	event::{CallbackHook, CallbackResult},
-	process::{mem_space::MemSpace, pid::Pid, scheduler::switch::switch, Process, State},
+	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
 	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 	time,
 };

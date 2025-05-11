@@ -19,7 +19,7 @@
 //! The `setpgid` system call allows to set the process group ID of a process.
 
 use crate::{
-	process::{pid::Pid, Process},
+	process::{Process, pid::Pid},
 	syscall::Args,
 };
 use utils::{

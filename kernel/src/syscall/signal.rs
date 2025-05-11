@@ -21,9 +21,8 @@
 
 use crate::{
 	process::{
-		signal,
+		Process, signal,
 		signal::{Signal, SignalHandler},
-		Process,
 	},
 	syscall::Args,
 };

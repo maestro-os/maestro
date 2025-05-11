@@ -18,9 +18,9 @@
 
 //! Implementation of memory space transactions to modify [`MemSpaceState`] atomically.
 
-use super::{gap::MemGap, mapping::MemMapping, MemSpace, MemSpaceState};
+use super::{MemSpace, MemSpaceState, gap::MemGap, mapping::MemMapping};
 use crate::{
-	memory::{vmem::VMem, VirtAddr},
+	memory::{VirtAddr, vmem::VMem},
 	sync::mutex::MutexGuard,
 };
 use core::{alloc::AllocError, hash::Hash, mem};

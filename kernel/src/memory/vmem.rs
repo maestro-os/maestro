@@ -27,7 +27,7 @@ use crate::{
 		},
 	},
 	elf, memory,
-	memory::{buddy, memmap::PHYS_MAP, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
+	memory::{KERNELSPACE_SIZE, PhysAddr, VirtAddr, buddy, memmap::PHYS_MAP},
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };

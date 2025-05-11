@@ -19,10 +19,11 @@
 //! This module implements structure to represent file paths.
 
 use crate::{
+	DisplayableStr, TryClone,
 	collections::string::String,
 	errno,
 	errno::{AllocResult, CollectResult, EResult, Errno},
-	limits, DisplayableStr, TryClone,
+	limits,
 };
 use core::{
 	alloc::AllocError,

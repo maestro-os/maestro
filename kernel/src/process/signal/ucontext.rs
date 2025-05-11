@@ -22,7 +22,7 @@
 
 use crate::{
 	arch::x86::{gdt, idt::IntFrame},
-	process::{signal::SigSet, Process},
+	process::{Process, signal::SigSet},
 };
 
 // TODO restore everything
@@ -195,7 +195,7 @@ pub struct FpReg32 {
 mod long {
 	use crate::{
 		arch::x86::idt::IntFrame,
-		process::{mem_space::bound_check, signal::SigSet, Process},
+		process::{Process, mem_space::bound_check, signal::SigSet},
 	};
 	use core::intrinsics::unlikely;
 	use utils::{errno, errno::EResult};

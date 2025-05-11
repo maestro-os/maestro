@@ -113,7 +113,7 @@ pub fn disable_irq(mut n: u8) {
 }
 
 /// Sends an End-Of-Interrupt message to the PIC for the given interrupt `irq`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn end_of_interrupt(irq: u8) {
 	unsafe {
 		if irq >= 0x8 {

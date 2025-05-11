@@ -19,13 +19,13 @@
 //! Implementation of the `mounts` node which allows to get the list of mountpoint.
 
 use crate::{
-	file::{fs::FileOps, vfs, vfs::mountpoint, File},
+	file::{File, fs::FileOps, vfs, vfs::mountpoint},
 	format_content,
 	memory::user::UserSlice,
 	process::pid::Pid,
 };
 use core::{fmt, fmt::Formatter};
-use utils::{errno::EResult, DisplayableStr};
+use utils::{DisplayableStr, errno::EResult};
 
 /// The `mounts` node.
 #[derive(Debug)]

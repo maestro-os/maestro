@@ -18,7 +18,7 @@
 
 //! `_newselect` is similar to `select`.
 
-use super::select::{do_select, FDSet};
+use super::select::{FDSet, do_select};
 use crate::{
 	file::fd::FileDescriptorTable, memory::user::UserPtr, process::mem_space::MemSpace,
 	sync::mutex::Mutex, syscall::Args, time::unit::Timeval,

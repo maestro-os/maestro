@@ -21,12 +21,12 @@
 
 use super::read_memory;
 use crate::{
-	file::{fs::FileOps, File},
+	file::{File, fs::FileOps},
 	format_content,
 	memory::user::UserSlice,
-	process::{pid::Pid, Process},
+	process::{Process, pid::Pid},
 };
-use utils::{errno, errno::EResult, DisplayableStr};
+use utils::{DisplayableStr, errno, errno::EResult};
 
 /// The cmdline node of the proc.
 #[derive(Clone, Debug)]

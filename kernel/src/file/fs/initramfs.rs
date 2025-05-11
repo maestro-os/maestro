@@ -21,7 +21,7 @@
 
 use crate::{
 	device, file,
-	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType, Stat, O_WRONLY},
+	file::{File, FileType, O_WRONLY, Stat, perm::AccessProfile, vfs, vfs::ResolutionSettings},
 	memory::user::UserSlice,
 };
 use utils::{collections::path::Path, cpio::CPIOParser, errno, errno::EResult, ptr::arc::Arc};

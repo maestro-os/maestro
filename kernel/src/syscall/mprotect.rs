@@ -18,12 +18,12 @@
 
 //! The `mprotect` system call allows to set permissions for the given range of memory.
 
-use super::{mmap, Args};
+use super::{Args, mmap};
 use crate::{
 	file::perm::AccessProfile,
 	memory,
 	memory::stats::MemInfo,
-	process::{mem_space, mem_space::MemSpace, Process},
+	process::{Process, mem_space, mem_space::MemSpace},
 	sync::mutex::IntMutex,
 };
 use core::ffi::{c_int, c_void};

@@ -20,7 +20,7 @@
 
 use crate::{
 	file::perm::AccessProfile,
-	process::{pid::Pid, signal::Signal, Process},
+	process::{Process, pid::Pid, signal::Signal},
 	syscall::Args,
 };
 use core::ffi::c_int;

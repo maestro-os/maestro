@@ -18,14 +18,14 @@
 
 //! This module implements default devices.
 
-use super::{id, register_char, CharDev, DeviceType};
+use super::{CharDev, DeviceType, id, register_char};
 use crate::{
 	crypto::{
 		rand,
-		rand::{getrandom, GRND_RANDOM},
+		rand::{GRND_RANDOM, getrandom},
 	},
-	device::{tty::TTYDeviceHandle, DeviceID},
-	file::{fs::FileOps, File},
+	device::{DeviceID, tty::TTYDeviceHandle},
+	file::{File, fs::FileOps},
 	logger::LOGGER,
 	memory::user::UserSlice,
 };

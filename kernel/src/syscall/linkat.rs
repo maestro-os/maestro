@@ -21,10 +21,10 @@
 use super::util::at;
 use crate::{
 	file::{
+		FileType,
 		fd::FileDescriptorTable,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		FileType,
 	},
 	memory::user::UserString,
 	process::Process,

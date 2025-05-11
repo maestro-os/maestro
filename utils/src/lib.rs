@@ -27,8 +27,9 @@
 //! failures. Instead, one should use the collections provided in [`collections`].
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![allow(internal_features)]
 #![allow(clippy::tabs_in_doc_comments)]
+#![allow(internal_features)]
+#![allow(unsafe_op_in_unsafe_fn)]
 #![feature(allocator_api)]
 #![feature(associated_type_defaults)]
 #![feature(coerce_unsized)]
@@ -59,7 +60,7 @@ use crate::errno::AllocResult;
 use core::{
 	alloc::{AllocError, Layout},
 	borrow::Borrow,
-	cmp::{min, Ordering},
+	cmp::{Ordering, min},
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Write,
@@ -71,7 +72,7 @@ use core::{
 
 // C functions required by LLVM
 #[allow(unused)]
-extern "C" {
+unsafe extern "C" {
 	fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *const c_void;
 	fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *const c_void;
 	fn memcmp(dest: *const c_void, src: *const c_void, n: usize) -> c_int;
@@ -81,7 +82,7 @@ extern "C" {
 
 // Global allocator functions
 #[cfg(not(any(feature = "std", test)))]
-extern "Rust" {
+unsafe extern "Rust" {
 	fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>>;
 	fn __realloc(
 		ptr: NonNull<u8>,

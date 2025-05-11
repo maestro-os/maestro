@@ -50,10 +50,11 @@ use core::{
 	slice,
 };
 use utils::{
+	DisplayableStr,
 	collections::{hashset::HashSet, string::String, vec::Vec},
 	errno,
 	errno::EResult,
-	vec, DisplayableStr,
+	vec,
 };
 use version::{Dependency, Version};
 
@@ -78,13 +79,14 @@ pub const MOD_MAGIC: u64 = 0x9792df56efb7c93f;
 macro_rules! module {
 	($deps:expr) => {
 		mod module_meta {
-			use kernel::module::version::Dependency;
-			use kernel::module::version::Version;
+			use kernel::module::version::{Dependency, Version};
 
 			const fn get_version() -> Version {
 				let result = Version::parse(env!("CARGO_PKG_VERSION"));
 				let Some(version) = result else {
-					panic!("invalid module version (see kernel's documentation for versioning specifications)");
+					panic!(
+						"invalid module version (see kernel's documentation for versioning specifications)"
+					);
 				};
 				version
 			}

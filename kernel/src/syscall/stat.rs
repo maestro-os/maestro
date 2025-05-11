@@ -20,23 +20,23 @@
 
 use crate::{
 	device::{
-		id::{major, makedev, minor},
 		DeviceID,
+		id::{major, makedev, minor},
 	},
 	file,
 	file::{
+		File, INode, Mode, Stat,
 		fd::FileDescriptorTable,
 		perm::{Gid, Uid},
 		vfs,
 		vfs::{
-			mountpoint::{MountPoint, MountSource},
 			ResolutionSettings, Resolved,
+			mountpoint::{MountPoint, MountSource},
 		},
-		File, INode, Mode, Stat,
 	},
 	memory::user::{UserPtr, UserString},
 	sync::mutex::Mutex,
-	syscall::{util::at, Args},
+	syscall::{Args, util::at},
 	time::unit::Timespec,
 };
 use core::{

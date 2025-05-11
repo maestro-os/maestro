@@ -21,11 +21,11 @@
 use crate::{
 	device::id,
 	file,
-	file::{vfs, vfs::ResolutionSettings, FileType, Stat},
+	file::{FileType, Stat, vfs, vfs::ResolutionSettings},
 	memory::user::UserString,
 	process::Process,
 	syscall::{Args, Umask},
-	time::clock::{current_time_ns, current_time_sec, Clock},
+	time::clock::{Clock, current_time_ns, current_time_sec},
 };
 use utils::{
 	collections::path::{Path, PathBuf},
