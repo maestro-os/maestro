@@ -19,11 +19,8 @@
 //! The `rt_sigprocmask` system call allows to change the blocked signal mask.
 
 use crate::{
-	process::{
-		mem_space::copy::{SyscallPtr, SyscallSlice},
-		signal::SigSet,
-		Process,
-	},
+	memory::user::UserPtr,
+	process::{signal::SigSet, Process},
 	syscall::Args,
 };
 use core::{cmp::min, ffi::c_int, intrinsics::unlikely};
@@ -41,12 +38,7 @@ const SIG_UNBLOCK: i32 = 1;
 const SIG_SETMASK: i32 = 2;
 
 pub fn rt_sigprocmask(
-	Args((how, set, oldset, sigsetsize)): Args<(
-		c_int,
-		SyscallPtr<SigSet>,
-		SyscallPtr<SigSet>,
-		usize,
-	)>,
+	Args((how, set, oldset, sigsetsize)): Args<(c_int, UserPtr<SigSet>, UserPtr<SigSet>, usize)>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Validation

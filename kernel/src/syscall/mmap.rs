@@ -24,7 +24,7 @@ use crate::{
 	memory::VirtAddr,
 	process::{
 		mem_space,
-		mem_space::{residence::MapResidence, MemSpace},
+		mem_space::{MemSpace, MAP_ANONYMOUS, MAP_FIXED, PROT_EXEC, PROT_READ, PROT_WRITE},
 		Process,
 	},
 	sync::mutex::{IntMutex, Mutex},
@@ -42,33 +42,6 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-/// Data can be read.
-pub const PROT_READ: i32 = 0b001;
-/// Data can be written.
-pub const PROT_WRITE: i32 = 0b010;
-/// Data can be executed.
-pub const PROT_EXEC: i32 = 0b100;
-
-/// Changes are shared.
-const MAP_SHARED: i32 = 0b001;
-/// Interpret addr exactly.
-const MAP_FIXED: i32 = 0b010;
-
-/// Converts mmap's `flags` and `prot` to mem space mapping flags.
-fn get_flags(flags: i32, prot: i32) -> u8 {
-	let mut mem_flags = mem_space::MAPPING_FLAG_USER;
-	if flags & MAP_SHARED != 0 {
-		mem_flags |= mem_space::MAPPING_FLAG_SHARED;
-	}
-	if prot & PROT_WRITE != 0 {
-		mem_flags |= mem_space::MAPPING_FLAG_WRITE;
-	}
-	if prot & PROT_EXEC != 0 {
-		mem_flags |= mem_space::MAPPING_FLAG_EXEC;
-	}
-	mem_flags
-}
-
 /// Performs the `mmap` system call.
 #[allow(clippy::too_many_arguments)]
 pub fn do_mmap(
@@ -80,7 +53,7 @@ pub fn do_mmap(
 	offset: u64,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
-	mem_space: Arc<IntMutex<MemSpace>>,
+	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
 	if !addr.is_aligned_to(PAGE_SIZE) || length == 0 {
@@ -95,6 +68,8 @@ pub fn do_mmap(
 	if unlikely(addr.0.checked_add(pages.get() * PAGE_SIZE).is_none()) {
 		return Err(errno!(EINVAL));
 	}
+	let prot = prot as u8;
+	let flags = flags as u8;
 	let constraint = {
 		if !addr.is_null() {
 			if flags & MAP_FIXED != 0 {
@@ -106,57 +81,44 @@ pub fn do_mmap(
 			MapConstraint::None
 		}
 	};
-	// The file the mapping points to
-	let file_mutex = if fd >= 0 {
-		// Check the alignment of the offset
-		if offset as usize % PAGE_SIZE != 0 {
+	let file = if flags & MAP_ANONYMOUS == 0 {
+		// Validation
+		if unlikely(fd < 0) {
+			return Err(errno!(EBADF));
+		}
+		if unlikely(offset as usize % PAGE_SIZE != 0) {
 			return Err(errno!(EINVAL));
 		}
-		let fd = fds.lock().get_fd(fd)?.get_file().clone();
-		Some(fd)
+		// Get file
+		let file = fds.lock().get_fd(fd)?.get_file().clone();
+		// Check permissions
+		let stat = file.stat()?;
+		if stat.get_type() != Some(FileType::Regular) {
+			return Err(errno!(EACCES));
+		}
+		if prot & PROT_READ != 0 && !ap.can_read_file(&stat) {
+			return Err(errno!(EPERM));
+		}
+		if prot & PROT_WRITE != 0 && !ap.can_write_file(&stat) {
+			return Err(errno!(EPERM));
+		}
+		if prot & PROT_EXEC != 0 && !ap.can_execute_file(&stat) {
+			return Err(errno!(EPERM));
+		}
+		Some(file)
 	} else {
 		None
 	};
-	// TODO anon flag
-	// Get residence
-	let residence = match file_mutex {
-		Some(file) => {
-			let stat = file.stat()?;
-			// Check the file is suitable
-			if stat.get_type() != Some(FileType::Regular) {
-				return Err(errno!(EACCES));
-			}
-			if prot & PROT_READ != 0 && !ap.can_read_file(&stat) {
-				return Err(errno!(EPERM));
-			}
-			if prot & PROT_WRITE != 0 && !ap.can_write_file(&stat) {
-				return Err(errno!(EPERM));
-			}
-			if prot & PROT_EXEC != 0 && !ap.can_execute_file(&stat) {
-				return Err(errno!(EPERM));
-			}
-			MapResidence::File {
-				file,
-				off: offset,
-			}
-		}
-		None => {
-			// TODO If the mapping requires a fd, return an error
-			MapResidence::Normal
-		}
-	};
-	let flags = get_flags(flags, prot);
-	let mut mem_space = mem_space.lock();
 	// The pointer on the virtual memory to the beginning of the mapping
-	let result = mem_space.map(constraint, pages, flags, residence.clone());
+	let result = mem_space.map(constraint, pages, prot, flags, file.clone(), offset);
 	match result {
 		Ok(ptr) => Ok(ptr as _),
 		Err(e) => {
 			if constraint != MapConstraint::None {
-				let ptr = mem_space.map(MapConstraint::None, pages, flags, residence)?;
+				let ptr = mem_space.map(MapConstraint::None, pages, prot, flags, file, offset)?;
 				Ok(ptr as _)
 			} else {
-				Err(e.into())
+				Err(e)
 			}
 		}
 	}
@@ -173,7 +135,7 @@ pub fn mmap(
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	ap: AccessProfile,
-	mem_space: Arc<IntMutex<MemSpace>>,
+	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	do_mmap(
 		addr,
@@ -182,6 +144,32 @@ pub fn mmap(
 		flags,
 		fd,
 		offset as _,
+		fds,
+		ap,
+		mem_space,
+	)
+}
+
+pub fn mmap2(
+	Args((addr, length, prot, flags, fd, offset)): Args<(
+		VirtAddr,
+		usize,
+		c_int,
+		c_int,
+		c_int,
+		u64,
+	)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	ap: AccessProfile,
+	mem_space: Arc<MemSpace>,
+) -> EResult<usize> {
+	do_mmap(
+		addr,
+		length,
+		prot,
+		flags,
+		fd,
+		offset * 4096,
 		fds,
 		ap,
 		mem_space,

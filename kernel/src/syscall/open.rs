@@ -29,12 +29,10 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		File, FileType, Stat,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{openat::do_openat, util::at::AT_FDCWD},
-	time::{
-		clock::{current_time, CLOCK_REALTIME},
-		unit::TimestampScale,
-	},
+	time::clock::current_time_ns,
 };
 use core::ffi::c_int;
 use utils::{
@@ -44,7 +42,7 @@ use utils::{
 };
 
 pub fn open(
-	Args((pathname, flags, mode)): Args<(SyscallString, c_int, file::Mode)>,
+	Args((pathname, flags, mode)): Args<(UserString, c_int, file::Mode)>,
 ) -> EResult<usize> {
 	do_openat(AT_FDCWD, pathname, flags, mode)
 }

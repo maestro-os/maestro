@@ -20,9 +20,12 @@
 
 pub mod ucontext;
 
-use super::{oom, Process, State, REDZONE_SIZE};
+use super::{Process, State, REDZONE_SIZE};
 use crate::{
-	arch::x86::idt::IntFrame, file::perm::Uid, memory::VirtAddr, process::pid::Pid,
+	arch::x86::idt::IntFrame,
+	file::perm::Uid,
+	memory::VirtAddr,
+	process::{mem_space::MemSpace, pid::Pid},
 	time::unit::ClockIdT,
 };
 use core::{
@@ -154,22 +157,32 @@ pub struct SigInfo {
 pub struct SigSet(pub u64);
 
 impl SigSet {
+	/// Tells whether the set is all cleared.
+	#[inline]
+	pub fn is_empty(&self) -> bool {
+		self.0 == 0
+	}
+
 	/// Tells whether the `n`th bit is set.
+	#[inline]
 	pub fn is_set(&self, n: usize) -> bool {
 		self.0 & (1 << n) != 0
 	}
 
 	/// Sets the `n`th bit.
+	#[inline]
 	pub fn set(&mut self, n: usize) {
 		self.0 |= (1 << n) as u64;
 	}
 
 	/// Sets the `n`th bit.
+	#[inline]
 	pub fn clear(&mut self, n: usize) {
 		self.0 &= !((1 << n) as u64);
 	}
 
 	/// Returns an iterator over the bitset's values
+	#[inline]
 	pub fn iter(&self) -> impl Iterator<Item = bool> + '_ {
 		(0..64).map(|n| self.is_set(n))
 	}
@@ -230,7 +243,7 @@ impl From<SigAction> for CompatSigAction {
 
 /// Notification from asynchronous routines.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SigEvent {
 	/// Notification method.
 	pub sigev_notify: c_int,
@@ -249,15 +262,13 @@ pub struct SigEvent {
 impl SigEvent {
 	/// Tells whether the structure is valid.
 	pub fn is_valid(&self) -> bool {
-		if !matches!(self.sigev_notify, SIGEV_SIGNAL | SIGEV_NONE | SIGEV_THREAD) {
-			return false;
-		}
-		if Signal::try_from(self.sigev_signo).is_err() {
-			return false;
-		}
 		// TODO check sigev_notify_thread_id
-
-		true
+		match self.sigev_notify {
+			SIGEV_NONE => true,
+			SIGEV_SIGNAL => Signal::try_from(self.sigev_signo).is_ok(),
+			SIGEV_THREAD => true,
+			_ => false,
+		}
 	}
 }
 
@@ -373,12 +384,9 @@ impl SignalHandler {
 		};
 		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
 		let signal_sp = ctx_addr - arg_len;
-		{
-			let mut mem_space = process.mem_space.as_ref().unwrap().lock();
-			mem_space.bind();
-			// FIXME: a stack overflow would cause an infinite loop
-			oom::wrap(|| mem_space.alloc(signal_sp, arg_len));
-		}
+		// Bind virtual memory
+		let mem_space = process.mem_space.as_ref().unwrap();
+		MemSpace::bind(mem_space);
 		// Write data on stack
 		if frame.is_compat() {
 			let args = unsafe {

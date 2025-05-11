@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
-	process::{mem_space::copy::SyscallSlice, Process},
+	memory::user::UserSlice,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -32,21 +33,16 @@ use utils::{
 };
 
 pub fn getsockopt(
-	Args((sockfd, level, optname, optval, optlen)): Args<(
-		c_int,
-		c_int,
-		c_int,
-		SyscallSlice<u8>,
-		usize,
-	)>,
+	Args((sockfd, level, optname, optval, optlen)): Args<(c_int, c_int, c_int, *mut u8, usize)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Get socket
 	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let val = sock.get_opt(level, optname)?;
-	// Write back
+	// Write
 	let len = min(val.len(), optlen);
+	let optval = UserSlice::from_user(optval, optlen)?;
 	optval.copy_to_user(0, &val[..len])?;
 	Ok(len as _)
 }

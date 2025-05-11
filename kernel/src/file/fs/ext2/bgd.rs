@@ -20,15 +20,18 @@
 //! Table which represents a block group, which is a subdivision of the
 //! filesystem.
 
-use super::{read, write, Superblock};
-use crate::device::DeviceIO;
-use core::mem::size_of;
+use super::{read_block, Ext2Fs};
+use crate::memory::cache::RcFrameVal;
+use core::{mem::size_of, sync::atomic::AtomicU16};
 use macros::AnyRepr;
 use utils::errno::EResult;
 
+/// Start block of the block group descriptor table
+const BGDT_START_BLK: u32 = 1;
+
 /// A block group descriptor.
 #[repr(C)]
-#[derive(AnyRepr, Clone)]
+#[derive(AnyRepr)]
 pub struct BlockGroupDescriptor {
 	/// The block address of the block usage bitmap.
 	pub bg_block_bitmap: u32,
@@ -37,39 +40,25 @@ pub struct BlockGroupDescriptor {
 	/// Starting block address of inode table.
 	pub bg_inode_table: u32,
 	/// Number of unallocated blocks in group.
-	pub bg_free_blocks_count: u16,
+	pub bg_free_blocks_count: AtomicU16,
 	/// Number of unallocated inodes in group.
-	pub bg_free_inodes_count: u16,
+	pub bg_free_inodes_count: AtomicU16,
 	/// Number of directories in group.
-	pub bg_used_dirs_count: u16,
-	/// Structure padding.
+	pub bg_used_dirs_count: AtomicU16,
+
 	pub bg_pad: [u8; 14],
 }
 
 impl BlockGroupDescriptor {
-	/// Reads the `i`th block group descriptor from the given device.
-	///
-	/// Arguments:
-	/// - `i` the id of the group descriptor to write.
-	/// - `superblock` is the filesystem's superblock.
-	/// - `io` is the I/O interface.
-	pub fn read(i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<Self> {
-		let blk_size = superblock.get_block_size();
-		let off = (superblock.get_bgdt_offset() * blk_size as u64)
-			+ (i as u64 * size_of::<Self>() as u64);
-		read::<Self>(off, blk_size, io)
-	}
-
-	/// Writes the current block group descriptor.
-	///
-	/// Arguments:
-	/// - `i` the id of the group descriptor to write.
-	/// - `superblock` is the filesystem's superblock.
-	/// - `io` is the I/O interface.
-	pub fn write(&self, i: u32, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<()> {
-		let blk_size = superblock.get_block_size();
-		let off = (superblock.get_bgdt_offset() * blk_size as u64)
-			+ (i as u64 * size_of::<Self>() as u64);
-		write(off, blk_size, io, self)
+	/// Returns the `i`th block group descriptor
+	pub fn get(i: u32, fs: &Ext2Fs) -> EResult<RcFrameVal<Self>> {
+		let blk_size = fs.sp.get_block_size() as usize;
+		let bgd_per_blk = blk_size / size_of::<Self>();
+		// Read block
+		let blk_off = BGDT_START_BLK + (i / bgd_per_blk as u32);
+		let blk = read_block(fs, blk_off as _)?;
+		// Get entry
+		let off = i as usize % bgd_per_blk;
+		Ok(RcFrameVal::new(blk, off))
 	}
 }

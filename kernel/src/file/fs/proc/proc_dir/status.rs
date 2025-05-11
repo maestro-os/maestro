@@ -20,41 +20,27 @@
 //! status of the process.
 
 use crate::{
-	file::{
-		fs::{proc::get_proc_owner, NodeOps},
-		FileLocation, FileType, Stat,
-	},
+	file::{fs::FileOps, File},
 	format_content,
+	memory::user::UserSlice,
 	process::{pid::Pid, Process},
 };
 use core::fmt;
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `status` node of the proc.
 #[derive(Debug)]
-pub struct Status(Pid);
+pub struct Status(pub Pid);
 
-impl From<Pid> for Status {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
-
-impl NodeOps for Status {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+impl FileOps for Status {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let mem_space = proc.mem_space.as_ref().unwrap().lock();
 		let disp = fmt::from_fn(|f| {
+			let name = proc
+				.mem_space
+				.as_ref()
+				.map(|m| m.exe_info.exe.name.as_bytes())
+				.unwrap_or_default();
 			let state = proc.get_state();
 			let fs = proc.fs.lock();
 			// TODO Fill every fields with process's data
@@ -117,7 +103,7 @@ Mems_allowed: 00000001
 Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
 nonvoluntary_ctxt_switches: 0",
-				name = mem_space.exe_info.exe.name,
+				name = DisplayableStr(name),
 				umask = fs.umask(),
 				state_char = state.as_char(),
 				state_name = state.as_str(),

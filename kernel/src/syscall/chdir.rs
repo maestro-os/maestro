@@ -21,7 +21,8 @@
 
 use crate::{
 	file::{vfs, vfs::ResolutionSettings, FileType},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use utils::{
@@ -32,7 +33,7 @@ use utils::{
 };
 
 pub fn chdir(
-	Args(path): Args<SyscallString>,
+	Args(path): Args<UserString>,
 	proc: Arc<Process>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
@@ -41,7 +42,7 @@ pub fn chdir(
 	// Get directory
 	let dir = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
-	let stat = dir.stat()?;
+	let stat = dir.stat();
 	if stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}

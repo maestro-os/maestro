@@ -21,20 +21,13 @@
 
 use crate::{
 	file::fd::FileDescriptorTable,
-	process::{
-		mem_space::{
-			copy::{SyscallPtr, SyscallSlice},
-			MemSpace,
-		},
-		scheduler,
-		scheduler::Scheduler,
-		Process,
-	},
+	memory::user::UserPtr,
+	process::{mem_space::MemSpace, scheduler, scheduler::Scheduler, Process},
 	sync::mutex::Mutex,
 	syscall::{poll, Args},
 	time::{
 		clock,
-		clock::CLOCK_MONOTONIC,
+		clock::{current_time_ns, Clock},
 		unit::{TimeUnit, Timeval},
 	},
 };
@@ -96,18 +89,20 @@ impl FDSet {
 pub fn do_select<T: TimeUnit>(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	nfds: u32,
-	readfds: SyscallPtr<FDSet>,
-	writefds: SyscallPtr<FDSet>,
-	exceptfds: SyscallPtr<FDSet>,
-	timeout: SyscallPtr<T>,
-	_sigmask: Option<SyscallSlice<u8>>,
+	readfds: UserPtr<FDSet>,
+	writefds: UserPtr<FDSet>,
+	exceptfds: UserPtr<FDSet>,
+	timeout: UserPtr<T>,
+	_sigmask: Option<*mut u8>,
 ) -> EResult<usize> {
-	// Get start timestamp
-	let start = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
+	let start = current_time_ns(Clock::Monotonic);
 	// Get timeout
-	let timeout = timeout.copy_from_user()?.unwrap_or_default();
+	let timeout = timeout
+		.copy_from_user()?
+		.map(|t| t.to_nano())
+		.unwrap_or_default();
 	// Tells whether the syscall immediately returns
-	let polling = timeout.is_zero();
+	let polling = timeout == 0;
 	// The end timestamp
 	let end = start + timeout;
 	// Read
@@ -176,9 +171,9 @@ pub fn do_select<T: TimeUnit>(
 		if all_zeros || polling || events_count > 0 {
 			break events_count;
 		}
-		let curr = clock::current_time_struct::<T>(CLOCK_MONOTONIC)?;
+		let ts = current_time_ns(Clock::Monotonic);
 		// On timeout, return 0
-		if curr >= end {
+		if ts >= end {
 			break 0;
 		}
 		// TODO Make the process sleep?
@@ -201,10 +196,10 @@ pub fn do_select<T: TimeUnit>(
 pub fn select(
 	Args((nfds, readfds, writefds, exceptfds, timeout)): Args<(
 		c_int,
-		SyscallPtr<FDSet>,
-		SyscallPtr<FDSet>,
-		SyscallPtr<FDSet>,
-		SyscallPtr<Timeval>,
+		UserPtr<FDSet>,
+		UserPtr<FDSet>,
+		UserPtr<FDSet>,
+		UserPtr<Timeval>,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

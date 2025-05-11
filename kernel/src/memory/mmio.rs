@@ -19,16 +19,16 @@
 //! MMIO (Memory-Mapped I/O) allows to access a device's registers by mapping them on the main
 //! memory.
 
-use super::{buddy, vmem, PhysAddr, VirtAddr};
-use crate::{arch::x86, process::oom};
+use super::{buddy, oom, PhysAddr, VirtAddr};
+use crate::{arch::x86, memory::vmem::KERNEL_VMEM};
 use core::ptr::NonNull;
 use utils::errno::AllocResult;
 
 /// Default flags for kernelspace in virtual memory.
-const DEFAULT_FLAGS: x86::paging::Entry = x86::paging::FLAG_WRITE;
+const DEFAULT_FLAGS: usize = x86::paging::FLAG_WRITE;
 
 /// MMIO flags in virtual memory.
-const MMIO_FLAGS: x86::paging::Entry =
+const MMIO_FLAGS: usize =
 	x86::paging::FLAG_WRITE_THROUGH | x86::paging::FLAG_WRITE | x86::paging::FLAG_GLOBAL;
 
 // TODO allow usage of virtual memory that isn't linked to any physical pages
@@ -59,17 +59,16 @@ impl MMIO {
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
 	pub fn new(phys_addr: PhysAddr, pages: usize, prefetchable: bool) -> AllocResult<Self> {
 		let order = buddy::get_order(pages);
-		let virt_addr = buddy::alloc_kernel(order)?.into();
+		let virt_addr = buddy::alloc_kernel(order, 0)?.into();
 
 		let mut flags = MMIO_FLAGS;
 		if !prefetchable {
 			flags |= x86::paging::FLAG_CACHE_DISABLE;
 		}
 
-		let mut vmem = vmem::kernel().lock();
-		let mut transaction = vmem.transaction();
-		transaction.map_range(phys_addr, virt_addr, pages, flags)?;
-		transaction.commit();
+		KERNEL_VMEM
+			.lock()
+			.map_range(phys_addr, virt_addr, pages, flags);
 
 		Ok(Self {
 			phys_addr,
@@ -88,15 +87,12 @@ impl MMIO {
 	///
 	/// The previously allocated chunk is freed by this function.
 	pub fn unmap(&self) -> AllocResult<()> {
-		let mut vmem = vmem::kernel().lock();
-		let mut transaction = vmem.transaction();
-		transaction.map_range(
+		KERNEL_VMEM.lock().map_range(
 			self.phys_addr,
 			self.phys_addr.kernel_to_virtual().unwrap(),
 			self.pages,
 			DEFAULT_FLAGS,
-		)?;
-		transaction.commit();
+		);
 		// Free allocated virtual pages
 		let order = buddy::get_order(self.pages);
 		unsafe {

@@ -27,15 +27,32 @@ pub mod tmp;
 
 use super::{
 	perm::{Gid, Uid},
-	DirEntry, FileLocation, INode, Mode, Stat,
+	vfs, DirContext, File, INode, Mode, Stat,
 };
-use crate::{device::DeviceIO, sync::mutex::Mutex, time::unit::Timestamp};
-use core::{any::Any, ffi::c_int, fmt::Debug};
+use crate::{
+	device::BlkDev,
+	file::vfs::node::Node,
+	memory::{cache::RcFrame, user::UserSlice},
+	sync::mutex::Mutex,
+	syscall::ioctl,
+	time::unit::Timestamp,
+};
+use core::{
+	any::Any,
+	borrow::Borrow,
+	cmp::min,
+	ffi::{c_int, c_void},
+	fmt,
+	fmt::{Debug, Formatter},
+	hash::{Hash, Hasher},
+	intrinsics::unlikely,
+};
 use utils::{
 	boxed::Box,
-	collections::{hashmap::HashMap, path::PathBuf, string::String},
+	collections::{hashmap::HashMap, hashset::HashSet, path::PathBuf, string::String},
 	errno,
-	errno::{EResult, ENOTDIR},
+	errno::{AllocResult, EResult},
+	limits::PAGE_SIZE,
 	ptr::arc::Arc,
 };
 
@@ -82,8 +99,6 @@ pub struct Statfs {
 pub struct StatSet {
 	/// Set the mode of the file.
 	pub mode: Option<Mode>,
-	/// Set the number of links to the file.
-	pub nlink: Option<u16>,
 	/// Set the owner's user ID.
 	pub uid: Option<Uid>,
 	/// Set the owner's group ID.
@@ -97,61 +112,217 @@ pub struct StatSet {
 }
 
 /// Filesystem node operations.
-pub trait NodeOps: Debug {
-	/// Returns the file's status.
+pub trait NodeOps: Any + Debug {
+	/// Looks for an entry in `dir` with the name in `ent`. If found, the function sets the
+	/// corresponding [`Node`] in `ent`.
 	///
-	/// `loc` is the location of the file.
-	fn get_stat(&self, loc: &FileLocation) -> EResult<Stat>;
-
-	/// Sets the file's status.
+	/// If the entry does not exist, the function set the node to `None`.
 	///
-	/// Arguments:
-	/// - `loc` is the location of the file.
-	/// - `set` is the set of status attributes to modify on the file.
-	///
-	/// The default implementation of this function does nothing.
-	fn set_stat(&self, loc: &FileLocation, set: StatSet) -> EResult<()> {
-		let _ = (loc, set);
-		Ok(())
-	}
-
-	/// Reads from the node with into the buffer `buf`.
-	///
-	/// Arguments:
-	/// - `loc` is the location of the file.
-	/// - `off` is the offset from which the data will be read from the node's data.
-	/// - `buf` is the buffer in which the data is to be written. The length of the buffer is the
-	///   number of bytes to read.
-	///
-	/// This function is relevant for the following file types:
-	/// - `Regular`: Reads the content of the file
-	/// - `Link`: Reads the path the link points to
-	///
-	/// The function returns the number of bytes read and whether the *end-of-file* has been
-	/// reached.
+	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
 	///
 	/// The default implementation of this function returns an error.
-	fn read_content(&self, loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let _ = (loc, off, buf);
+	fn lookup_entry(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+		let _ = (dir, ent);
+		Err(errno!(ENOTDIR))
+	}
+
+	/// Iterates on the entries of the directory `dir`.
+	///
+	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
+	///
+	/// The default implementation of this function returns an error.
+	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+		let _ = (dir, ctx);
+		Err(errno!(ENOTDIR))
+	}
+
+	/// Adds a hard link into the directory.
+	///
+	/// Arguments:
+	/// - `parent` is the location of the parent directory
+	/// - `ent` is the entry to add
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
+	///
+	/// The default implementation of this function returns an error.
+	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
+		let _ = (parent, ent);
+		Err(errno!(ENOTDIR))
+	}
+
+	/// Removes a hard link from the directory.
+	///
+	/// Arguments:
+	/// - `parent` is the parent directory
+	/// - `ent` is the hard link to remove
+	///
+	/// On success, the function returns the number of links to the target node left, along with
+	/// the target inode.
+	///
+	/// If the file to be removed is a non-empty directory, the function returns
+	/// [`errno::ENOTEMPTY`].
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
+	///
+	/// The default implementation of this function returns an error.
+	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
+		let _ = (parent, ent);
+		Err(errno!(ENOTDIR))
+	}
+
+	/// Reads the path the symbolic link points to and writes it into `buf`.
+	/// If the actual path is larger than the provided buffer, it is truncated.
+	///
+	/// On success, the function returns the number of bytes read.
+	///
+	/// If the node is not a symbolic link, the function returns [`errno::EINVAL`].
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
+	///
+	/// The default implementation of this function returns an error.
+	fn readlink(&self, node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
+		let _ = (node, buf);
 		Err(errno!(EINVAL))
 	}
 
-	/// Writes to the node from the buffer `buf`.
+	/// Writes the path the symbolic link points to and writes it into `buf`.
 	///
-	/// Arguments:
-	/// - `loc` is the location of the file.
-	/// - `off` is the offset at which the data will be written in the node's data.
-	/// - `buf` is the buffer in which the data is to be read from. The length of the buffer is the
-	///   number of bytes to write.
+	/// If the node is not a symbolic link, the function returns [`errno::EINVAL`].
 	///
-	/// This function is relevant for the following file types:
-	/// - `Regular`: Writes the content of the file
-	/// - `Link`: Writes the path the link points to. `off` is ignored for links and is always
-	///   considered to be zero
+	/// **Note**: this function must be called **only** for the creation of the symbolic link.
+	/// After being created, the content is immutable.
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
 	///
 	/// The default implementation of this function returns an error.
-	fn write_content(&self, loc: &FileLocation, off: u64, buf: &[u8]) -> EResult<usize> {
-		let _ = (loc, off, buf);
+	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
+		let _ = (node, buf);
+		Err(errno!(EINVAL))
+	}
+
+	/// Renames or moves a file on the filesystem.
+	///
+	/// If this feature is not supported by the filesystem, the function returns
+	/// an error.
+	///
+	/// The default implementation of this function returns an error.
+	fn rename(
+		&self,
+		old_entry: &vfs::Entry,
+		new_parent: &vfs::Entry,
+		new_name: &[u8],
+	) -> EResult<()> {
+		let _ = (old_entry, new_parent, new_name);
+		Err(errno!(EINVAL))
+	}
+
+	/// Reads a page at offset `off` in pages, from `node`.
+	///
+	/// First, the function attempts to read the page from the node's page cache. If not present,
+	/// then it is read from disk.
+	///
+	/// The default implementation of this function returns an error.
+	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+		let _ = (node, off);
+		Err(errno!(EINVAL))
+	}
+
+	/// Writes the frame `frame` back to storage.
+	///
+	/// The default implementation of this function returns an error.
+	fn write_frame(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
+		let _ = (node, frame);
+		Err(errno!(EINVAL))
+	}
+
+	/// Updates the node's status back to disk.
+	///
+	/// The default implementation of this function does nothing.
+	fn sync_stat(&self, node: &Node) -> EResult<()> {
+		let _ = node;
+		Ok(())
+	}
+}
+
+/// Open file operations.
+///
+/// This trait is separated so that files with a special behavior can be handled. As an example,
+/// *device files*, *pipes* or *sockets* have a behavior that is independent of the underlying
+/// filesystem.
+pub trait FileOps: Any + Debug {
+	/// Returns the file's status.
+	///
+	/// This function **MUST** be overridden when there is no [`Node`] associated with `file`.
+	fn get_stat(&self, file: &File) -> EResult<Stat> {
+		let node = file.vfs_entry.as_ref().unwrap().node();
+		let stat = node.stat.lock().clone();
+		Ok(stat)
+	}
+
+	/// Increments the reference counter.
+	fn acquire(&self, file: &File) {
+		let _ = file;
+	}
+
+	/// Decrements the reference counter.
+	fn release(&self, file: &File) {
+		let _ = file;
+	}
+
+	/// Wait for events on the file.
+	///
+	/// Arguments:
+	/// - `file` is the file to perform the operation onto
+	/// - `mask` is the mask of events to wait for
+	///
+	/// On success, the function returns the mask events that occurred.
+	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
+		let _ = (file, mask);
+		Err(errno!(EINVAL))
+	}
+
+	/// Performs an ioctl operation on the device file.
+	///
+	/// Arguments:
+	/// - `file` is the file to perform the operation onto
+	/// - `request` is the ID of the request to perform
+	/// - `argp` is a pointer to the argument
+	fn ioctl(&self, file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+		let _ = (file, request, argp);
+		Err(errno!(EINVAL))
+	}
+
+	/// Reads from the content of `file` into the buffer `buf`.
+	///
+	/// Arguments:
+	/// - `file` is the location of the file
+	/// - `off` is the offset from which the data will be read from the node's data
+	/// - `buf` is the buffer in which the data is to be written
+	///
+	/// On success, the function returns the number of bytes read.
+	///
+	/// The default implementation of this function returns an error.
+	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		let _ = (file, off, buf);
+		Err(errno!(EINVAL))
+	}
+
+	/// Writes to the content of `file` from the buffer `buf`.
+	///
+	/// Arguments:
+	/// - `file` is the file
+	/// - `off` is the offset at which the data will be written in the node's data
+	/// - `buf` is the buffer in which the data is to be read from
+	///
+	/// On success, the function returns the number of bytes written.
+	///
+	/// The default implementation of this function returns an error.
+	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		let _ = (file, off, buf);
 		Err(errno!(EINVAL))
 	}
 
@@ -161,161 +332,237 @@ pub trait NodeOps: Debug {
 	/// nothing.
 	///
 	/// The default implementation of this function returns an error.
-	fn truncate_content(&self, loc: &FileLocation, size: u64) -> EResult<()> {
-		let _ = (loc, size);
+	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
+		let _ = (file, size);
 		Err(errno!(EINVAL))
-	}
-
-	/// Returns the directory entry with the given `name`, along with its offset and the handle of
-	/// the file.
-	///
-	/// If the entry does not exist, the function returns `None`.
-	///
-	/// If the node is not a directory, the function returns [`ENOTDIR`].
-	///
-	/// The default implementation of this function returns an error.
-	fn entry_by_name<'n>(
-		&self,
-		loc: &FileLocation,
-		name: &'n [u8],
-	) -> EResult<Option<(DirEntry<'n>, Box<dyn NodeOps>)>> {
-		let _ = (loc, name);
-		Err(errno!(ENOTDIR))
-	}
-
-	/// Returns the directory entry at the given offset `off`. The first entry is always located at
-	/// offset `0`.
-	///
-	/// The second returned value is the offset to the next entry.
-	///
-	/// If no entry is left, the function returns `None`.
-	///
-	/// If the node is not a directory, the function returns [`ENOTDIR`].
-	///
-	/// The default implementation of this function returns an error.
-	fn next_entry(
-		&self,
-		loc: &FileLocation,
-		off: u64,
-	) -> EResult<Option<(DirEntry<'static>, u64)>> {
-		let _ = (loc, off);
-		Err(errno!(ENOTDIR))
-	}
-
-	/// Helper function to check whether the node is an empty directory.
-	///
-	/// If the node is not a directory, the function returns `false`.
-	fn is_empty_directory(&self, loc: &FileLocation) -> EResult<bool> {
-		let mut off = 0;
-		loop {
-			let res = self.next_entry(loc, off);
-			let (ent, next_off) = match res {
-				Ok(Some(ent)) => ent,
-				Ok(None) => break,
-				Err(e) if e.as_int() == ENOTDIR => return Ok(false),
-				Err(e) => return Err(e),
-			};
-			let name = ent.name.as_ref();
-			if name != b"." && name != b".." {
-				return Ok(false);
-			}
-			off = next_off;
-		}
-		Ok(true)
-	}
-
-	/// Adds a file into the directory.
-	///
-	/// Arguments:
-	/// - `parent` is the location of the parent directory.
-	/// - `name` is the name of the hard link to add.
-	/// - `stat` is the status of the file to add.
-	///
-	/// On success, the function returns the allocated [`INode`] together with the new file's
-	/// handle.
-	///
-	/// The default implementation of this function returns an error.
-	fn add_file(
-		&self,
-		parent: &FileLocation,
-		name: &[u8],
-		stat: Stat,
-	) -> EResult<(INode, Box<dyn NodeOps>)> {
-		let _ = (parent, name, stat);
-		Err(errno!(ENOTDIR))
-	}
-
-	/// Adds a hard link into the directory.
-	///
-	/// Arguments:
-	/// - `parent` is the location of the parent directory.
-	/// - `name` is the name of the hard link to add.
-	/// - `target` is the inode the link points to.
-	///
-	/// If this feature is not supported by the filesystem, the function returns
-	/// an error.
-	///
-	/// The default implementation of this function returns an error.
-	fn link(&self, parent: &FileLocation, name: &[u8], target: INode) -> EResult<()> {
-		let _ = (parent, name, target);
-		Err(errno!(ENOTDIR))
-	}
-
-	/// Removes a hard link from the directory.
-	///
-	/// Arguments:
-	/// - `parent` is the parent directory.
-	/// - `name` is the name of the hard link to remove.
-	///
-	/// On success, the function returns the number of links to the target node left, along with
-	/// the target inode.
-	///
-	/// If this feature is not supported by the filesystem, the function returns
-	/// an error.
-	///
-	/// The default implementation of this function returns an error.
-	fn unlink(&self, parent: &FileLocation, name: &[u8]) -> EResult<()> {
-		let _ = (parent, name);
-		Err(errno!(ENOTDIR))
-	}
-
-	/// Removes a file from the filesystem.
-	///
-	/// If the file to be removed is a non-empty directory, the function returns
-	/// [`errno::ENOTEMPTY`].
-	///
-	/// The default implementation of this function returns an error.
-	fn remove_node(&self, loc: &FileLocation) -> EResult<()> {
-		let _ = loc;
-		Err(errno!(ENOTDIR))
 	}
 }
 
-/// A filesystem.
+/// Generic implementation for [`FileOps::read`] on regular files.
 ///
-/// Type implementing this trait must use of internal mutability to allow multiple threads to
-/// perform operations on a filesystem at the same time.
-pub trait Filesystem: Any + Debug {
+/// **Note**: `file` **must** have an associated [`Node`], otherwise the function panics.
+pub fn generic_file_read(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+	let node = file.node().unwrap();
+	let size = file.stat()?.size;
+	if unlikely(off > size) {
+		return Err(errno!(EINVAL));
+	}
+	let buf_len = min(buf.len() as u64, size - off);
+	let start = off / PAGE_SIZE as u64;
+	let end = off.saturating_add(buf_len).div_ceil(PAGE_SIZE as u64);
+	let mut buf_off = 0;
+	for page_off in start..end {
+		let page = node.node_ops.read_page(node, page_off)?;
+		let inner_off = off as usize % PAGE_SIZE;
+		let len = min(size - off, (PAGE_SIZE - inner_off) as u64) as usize;
+		let len = unsafe {
+			let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);
+			buf.copy_to_user_raw(buf_off, page_ptr, len)?
+		};
+		buf_off += len;
+		off += len as u64;
+	}
+	Ok(buf_off)
+}
+
+/// Generic implementation for [`FileOps::write`] on regular files.
+///
+/// **Note**: `file` **must** have an associated [`Node`], otherwise the function panics.
+pub fn generic_file_write(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+	let node = file.node().unwrap();
+	let size = file.stat()?.size;
+	if unlikely(off > size) {
+		return Err(errno!(EINVAL));
+	}
+	// Extend the file if necessary
+	let end = off.saturating_add(buf.len() as u64);
+	if end > size {
+		file.ops.truncate(file, end)?;
+	}
+	let start = off / PAGE_SIZE as u64;
+	let end = end.div_ceil(PAGE_SIZE as u64);
+	let mut buf_off = 0;
+	for page_off in start..end {
+		let page = node.node_ops.read_page(node, page_off)?;
+		let inner_off = off as usize % PAGE_SIZE;
+		let len = unsafe {
+			let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);
+			buf.copy_from_user_raw(buf_off, page_ptr, PAGE_SIZE - inner_off)?
+		};
+		page.mark_dirty();
+		buf_off += len;
+		off += len as u64;
+	}
+	Ok(buf_off)
+}
+
+#[derive(Debug)]
+struct DummyOps;
+
+impl NodeOps for DummyOps {}
+
+impl FileOps for DummyOps {}
+
+/// Filesystem operations.
+pub trait FilesystemOps: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
-	/// Tells the kernel can cache the filesystem's files in memory.
-	fn use_cache(&self) -> bool;
-	/// Returns the root inode of the filesystem.
-	fn get_root_inode(&self) -> INode;
+	/// Tells whether the directory of this filesystem can be cached.
+	fn cache_entries(&self) -> bool;
+
 	/// Returns statistics about the filesystem.
 	fn get_stat(&self) -> EResult<Statfs>;
 
-	/// Returns the node handle for the given `inode`.
+	/// Returns the root node.
 	///
 	/// If the node does not exist, the function returns [`errno::ENOENT`].
-	fn node_from_inode(&self, inode: INode) -> EResult<Box<dyn NodeOps>>;
+	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>>;
+
+	/// Creates a node on the filesystem.
+	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>>;
+
+	/// Removes `node` from the filesystem.
+	///
+	/// This function should be called only when no link to the node remain.
+	fn destroy_node(&self, node: &Node) -> EResult<()>;
+
+	/// Synchronizes the filesystem to its backing storage.
+	///
+	/// The default implementation of this function does nothing.
+	fn sync_fs(&self) -> EResult<()> {
+		Ok(())
+	}
 }
 
 /// Downcasts the given `fs` into `F`.
 ///
 /// If the filesystem type do not match, the function panics.
-pub fn downcast_fs<F: Filesystem>(fs: &dyn Filesystem) -> &F {
+pub fn downcast_fs<F: FilesystemOps>(fs: &dyn FilesystemOps) -> &F {
 	(fs as &dyn Any).downcast_ref().unwrap()
+}
+
+struct NodeWrapper(Arc<Node>);
+
+impl Borrow<INode> for NodeWrapper {
+	fn borrow(&self) -> &INode {
+		&self.0.inode
+	}
+}
+
+impl Eq for NodeWrapper {}
+
+impl PartialEq for NodeWrapper {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.inode == other.0.inode
+	}
+}
+
+impl Hash for NodeWrapper {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.0.inode.hash(state)
+	}
+}
+
+impl fmt::Debug for NodeWrapper {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		fmt::Debug::fmt(&self.0, f)
+	}
+}
+
+/// A filesystem.
+#[derive(Debug)]
+pub struct Filesystem {
+	/// Device number
+	pub dev: u64,
+	/// Filesystem operations
+	pub ops: Box<dyn FilesystemOps>,
+
+	/// Cached [`Node`]s, to avoid duplications when several entries point to the same node
+	nodes: Mutex<HashSet<NodeWrapper>>,
+	/// Active buffers on the filesystem
+	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>>,
+}
+
+impl Filesystem {
+	/// Creates a new instance.
+	///
+	/// Arguments:
+	/// - `dev` is the device number
+	/// - `ops` is the handle for operations on the filesystem
+	pub fn new(dev: u64, ops: Box<dyn FilesystemOps>) -> AllocResult<Arc<Self>> {
+		Arc::new(Self {
+			dev,
+			ops,
+
+			nodes: Default::default(),
+			buffers: Default::default(),
+		})
+	}
+
+	/// Get the buffer associated with the ID `inode` from cache. If not present, initialize it
+	/// with `init`.
+	pub fn buffer_get_or_insert<F: FileOps, Init: FnOnce() -> AllocResult<F>>(
+		&self,
+		inode: INode,
+		init: Init,
+	) -> AllocResult<Arc<dyn FileOps>> {
+		let mut buffers = self.buffers.lock();
+		if let Some(buf) = buffers.get(&inode) {
+			return Ok(buf.clone());
+		}
+		let buf = Arc::new(init()?)?;
+		buffers.insert(inode, buf.clone())?;
+		Ok(buf)
+	}
+
+	/// Inserts a node in cache. If already present, the previous entry is dropped.
+	pub fn node_insert(&self, node: Arc<Node>) -> EResult<()> {
+		self.nodes.lock().insert(NodeWrapper(node))?;
+		Ok(())
+	}
+
+	/// Returns the node with ID `inode` from the cache, or if not in cache, initializes it with
+	/// `init` and inserts it.
+	pub fn node_get_or_insert<F: FnOnce() -> EResult<Arc<Node>>>(
+		&self,
+		inode: INode,
+		init: F,
+	) -> EResult<Arc<Node>> {
+		let mut nodes = self.nodes.lock();
+		match nodes.get(&inode) {
+			// Cache hit
+			Some(node) => Ok(node.0.clone()),
+			// Cache miss, create instance and insert
+			None => {
+				let node = init()?;
+				nodes.insert(NodeWrapper(node.clone()))?;
+				Ok(node)
+			}
+		}
+	}
+
+	/// Removes the node with ID `inode` from the cache.
+	pub fn node_remove(&self, inode: INode) {
+		self.nodes.lock().remove(&inode);
+	}
+
+	/// Synchronizes the whole filesystem to disk.
+	pub fn sync(&self) -> EResult<()> {
+		// Synchronize all nodes to disk
+		let nodes = self.nodes.lock();
+		for node in nodes.iter() {
+			node.0.sync(true)?;
+		}
+		// Synchronize filesystem structures
+		self.ops.sync_fs()
+	}
+}
+
+impl Drop for Filesystem {
+	fn drop(&mut self) {
+		// TODO warning on error?
+		let _ = self.sync();
+	}
 }
 
 /// A filesystem type.
@@ -325,21 +572,21 @@ pub trait FilesystemType {
 
 	/// Tells whether the given IO interface has the current filesystem.
 	///
-	/// `io` is the IO interface.
-	fn detect(&self, io: &dyn DeviceIO) -> EResult<bool>;
+	/// `dev` is the device containing the potential filesystem
+	fn detect(&self, dev: &Arc<BlkDev>) -> EResult<bool>;
 
 	/// Creates a new instance of the filesystem to mount it.
 	///
 	/// Arguments:
-	/// - `io` is the IO interface.
-	/// - `mountpath` is the path on which the filesystem is mounted.
-	/// - `readonly` tells whether the filesystem is mounted in read-only.
+	/// - `dev` is the mounted device
+	/// - `mountpath` is the path on which the filesystem is mounted
+	/// - `readonly` tells whether the filesystem is mounted in read-only
 	fn load_filesystem(
 		&self,
-		io: Option<Arc<dyn DeviceIO>>,
+		dev: Option<Arc<BlkDev>>,
 		mountpath: PathBuf,
 		readonly: bool,
-	) -> EResult<Arc<dyn Filesystem>>;
+	) -> EResult<Arc<Filesystem>>;
 }
 
 /// The list of filesystem types.
@@ -348,8 +595,7 @@ static FS_TYPES: Mutex<HashMap<String, Arc<dyn FilesystemType>>> = Mutex::new(Ha
 /// Registers a new filesystem type.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
 	let name = String::try_from(fs_type.get_name())?;
-	let mut fs_types = FS_TYPES.lock();
-	fs_types.insert(name, Arc::new(fs_type)?)?;
+	FS_TYPES.lock().insert(name, Arc::new(fs_type)?)?;
 	Ok(())
 }
 
@@ -357,21 +603,19 @@ pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
 ///
 /// If the filesystem type doesn't exist, the function does nothing.
 pub fn unregister(name: &[u8]) {
-	let mut fs_types = FS_TYPES.lock();
-	fs_types.remove(name);
+	FS_TYPES.lock().remove(name);
 }
 
 /// Returns the filesystem type with name `name`.
 pub fn get_type(name: &[u8]) -> Option<Arc<dyn FilesystemType>> {
-	let fs_types = FS_TYPES.lock();
-	fs_types.get(name).cloned()
+	FS_TYPES.lock().get(name).cloned()
 }
 
-/// Detects the filesystem type on the given IO interface `io`.
-pub fn detect(io: &dyn DeviceIO) -> EResult<Arc<dyn FilesystemType>> {
+/// Detects the filesystem type on device
+pub fn detect(dev: &Arc<BlkDev>) -> EResult<Arc<dyn FilesystemType>> {
 	let fs_types = FS_TYPES.lock();
 	for (_, fs_type) in fs_types.iter() {
-		if fs_type.detect(io)? {
+		if fs_type.detect(dev)? {
 			return Ok(fs_type.clone());
 		}
 	}
@@ -382,9 +626,9 @@ pub fn detect(io: &dyn DeviceIO) -> EResult<Arc<dyn FilesystemType>> {
 ///
 /// This function must be called only once, at initialization.
 pub fn register_defaults() -> EResult<()> {
-	register(ext2::Ext2FsType {})?;
-	register(tmp::TmpFsType {})?;
-	register(proc::ProcFsType {})?;
+	register(ext2::Ext2FsType)?;
+	register(tmp::TmpFsType)?;
+	register(proc::ProcFsType)?;
 	// TODO sysfs
 	Ok(())
 }

@@ -120,8 +120,10 @@ unsafe fn free(mut ptr: NonNull<u8>) {
 	super::trace::sample("malloc", super::trace::SampleOp::Free, ptr.as_ptr() as _, 0);
 }
 
+/// See Rust documentation.
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
+pub unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 	let Some(size) = NonZeroUsize::new(layout.size()) else {
 		return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
 	};
@@ -129,8 +131,10 @@ unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 	Ok(NonNull::slice_from_raw_parts(ptr, size.get()))
 }
 
+/// See Rust documentation.
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-unsafe fn __realloc(
+pub unsafe fn __realloc(
 	ptr: NonNull<u8>,
 	old_layout: Layout,
 	new_layout: Layout,
@@ -143,8 +147,10 @@ unsafe fn __realloc(
 	Ok(NonNull::slice_from_raw_parts(ptr, new_size.get()))
 }
 
+/// See Rust documentation.
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-unsafe fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
+pub unsafe fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
 	if unlikely(layout.size() == 0) {
 		return;
 	}

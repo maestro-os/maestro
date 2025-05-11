@@ -20,8 +20,9 @@
 //! system.
 
 use crate::{
-	file::{fs::NodeOps, FileLocation, FileType, Stat},
+	file::{fs::FileOps, File},
 	format_content, memory,
+	memory::user::UserSlice,
 };
 use utils::errno::EResult;
 
@@ -29,16 +30,9 @@ use utils::errno::EResult;
 #[derive(Debug, Default)]
 pub struct MemInfo;
 
-impl NodeOps for MemInfo {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		let mem_info = memory::stats::MEM_INFO.lock();
-		format_content!(off, buf, "{}", *mem_info)
+impl FileOps for MemInfo {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		let mem_info = memory::stats::MEM_INFO.lock().clone();
+		format_content!(off, buf, "{}", mem_info)
 	}
 }

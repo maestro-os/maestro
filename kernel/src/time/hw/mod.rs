@@ -27,18 +27,17 @@ use crate::{sync::mutex::Mutex, time::unit::Timestamp};
 use utils::{
 	boxed::Box,
 	collections::{hashmap::HashMap, string::String},
-	math::rational::Rational,
 };
 
 /// Trait representing a hardware clock.
 pub trait HwClock {
 	/// Enables or disable the clock.
 	fn set_enabled(&mut self, enable: bool);
-	/// Sets the clock's frequency.
+	/// Sets the clock's frequency in hertz.
 	///
 	/// The actual frequency is the closest possible rounded down according to the clock's
 	/// resolution.
-	fn set_frequency(&mut self, freq: Rational);
+	fn set_frequency(&mut self, freq: u32);
 
 	/// Returns the value of the clock, if applicable.
 	fn get_value(&self) -> Option<Timestamp> {

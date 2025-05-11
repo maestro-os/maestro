@@ -18,8 +18,6 @@
 
 //! The role of the process scheduler is to interrupt the currently running
 //! process periodically to switch to another process that is in running state.
-//!
-//! TODO
 
 pub mod switch;
 
@@ -27,7 +25,7 @@ use crate::{
 	arch::x86::{cli, idt::IntFrame, pic},
 	event,
 	event::{CallbackHook, CallbackResult},
-	process::{pid::Pid, scheduler::switch::switch, Process, State},
+	process::{mem_space::MemSpace, pid::Pid, scheduler::switch::switch, Process, State},
 	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 	time,
 };
@@ -41,30 +39,55 @@ use core::{
 use utils::{
 	collections::btreemap::{BTreeMap, MapIterator},
 	errno::AllocResult,
-	math::rational::Rational,
-	ptr::arc::Arc,
+	ptr::arc::{Arc, RelaxedArcCell},
 };
 
 /// The process scheduler.
 pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
+/// Core-local storage.
+static CORE_LOCAL: CoreLocal = CoreLocal {
+	kernel_stack: AtomicUsize::new(0),
+	user_stack: AtomicUsize::new(0),
+
+	mem_space: RelaxedArcCell::new(),
+};
 
 /// Initializes schedulers.
 pub fn init() -> AllocResult<()> {
 	unsafe {
-		SCHEDULER.init(IntMutex::new(Scheduler::new()?));
+		OnceInit::init(&SCHEDULER, IntMutex::new(Scheduler::new()?));
 	}
-	SCHEDULER.get().lock().setup_gs_base();
+	// Set GS base on the current core
+	#[cfg(target_arch = "x86_64")]
+	{
+		use crate::arch::x86;
+		use core::ptr::addr_of;
+		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
+		// when switching to userspace
+		x86::wrmsr(x86::IA32_GS_BASE, addr_of!(CORE_LOCAL) as u64);
+	}
 	Ok(())
 }
 
-/// Kernel CPU local storage.
-#[derive(Default)]
+/// Kernel core-local storage.
 #[repr(C)]
-pub struct KernelGs {
-	/// The current kernel stack.
+pub struct CoreLocal {
+	/// The current kernel stack
 	pub kernel_stack: AtomicUsize,
-	/// The stashed user stack.
+	/// The stashed user stack
 	pub user_stack: AtomicUsize,
+
+	/// Attached memory space.
+	///
+	/// The pointer stored by this field is returned by [`Arc::into_raw`].
+	pub mem_space: RelaxedArcCell<MemSpace>,
+}
+
+/// Returns the core-local structure for the current core.
+#[inline]
+pub fn core_local() -> &'static CoreLocal {
+	// TODO use `gs`
+	&CORE_LOCAL
 }
 
 /// A process scheduler.
@@ -87,9 +110,6 @@ pub struct Scheduler {
 
 	/// The task used to idle.
 	idle_task: Arc<Process>,
-
-	/// CPU local storage.
-	pub gs: KernelGs,
 }
 
 impl Scheduler {
@@ -116,21 +136,7 @@ impl Scheduler {
 			running_procs: 0,
 
 			idle_task,
-
-			gs: KernelGs::default(),
 		})
-	}
-
-	/// Sets the GS base on the current core.
-	#[inline]
-	fn setup_gs_base(&self) {
-		#[cfg(target_arch = "x86_64")]
-		{
-			use crate::arch::x86;
-			// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
-			// when switching to userspace
-			x86::wrmsr(x86::IA32_GS_BASE, &self.gs as *const _ as u64);
-		}
 	}
 
 	/// Returns the total number of ticks since the instantiation of the
@@ -165,37 +171,36 @@ impl Scheduler {
 
 	/// Swaps the current running process for `new`, returning the previous.
 	pub fn swap_current_process(&mut self, new: Arc<Process>) -> Arc<Process> {
-		self.gs
+		core_local()
 			.kernel_stack
 			.store(new.kernel_stack.top().as_ptr() as _, Release);
 		mem::replace(&mut self.curr_proc, new)
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, process: Process) -> AllocResult<Arc<Process>> {
-		if process.get_state() == State::Running {
+	pub fn add_process(&mut self, proc: Arc<Process>) -> AllocResult<()> {
+		if proc.get_state() == State::Running {
 			self.increment_running();
 		}
-		let pid = process.pid.get();
-		let ptr = Arc::new(process)?;
-		self.processes.insert(pid, ptr.clone())?;
-		Ok(ptr)
+		self.processes.insert(*proc.pid, proc)?;
+		Ok(())
 	}
 
 	/// Removes the process with the given pid `pid`.
+	///
+	/// If the process is not attached to this scheduler, the function does nothing.
 	pub fn remove_process(&mut self, pid: Pid) {
-		let Some(proc) = self.get_by_pid(pid) else {
-			return;
-		};
-		if proc.get_state() == State::Running {
-			self.decrement_running();
+		let proc = self.processes.remove(&pid);
+		if let Some(proc) = proc {
+			if proc.get_state() == State::Running {
+				self.decrement_running();
+			}
 		}
-		self.processes.remove(&pid);
 	}
 
 	/// Returns the current ticking frequency of the scheduler.
-	pub fn get_ticking_frequency(&self) -> Rational {
-		Rational::from_integer((10 * self.running_procs) as _)
+	pub fn get_ticking_frequency(&self) -> u32 {
+		(10 * self.running_procs) as _
 	}
 
 	/// Increments the number of running processes.
@@ -249,10 +254,12 @@ impl Scheduler {
 		// Disable interrupts so that no interrupt can occur before switching to the next process
 		cli();
 		let (prev, next) = {
-			let mut sched = SCHEDULER.get().lock();
+			let mut sched = SCHEDULER.lock();
 			sched.total_ticks.fetch_add(1, atomic::Ordering::Relaxed);
 			// Find the next process to run
-			let next = sched.get_next_process().unwrap_or(sched.idle_task.clone());
+			let next = sched
+				.get_next_process()
+				.unwrap_or_else(|| sched.idle_task.clone());
 			// If the process to run is the current, do nothing
 			if next.get_pid() == sched.curr_proc.get_pid() {
 				return;

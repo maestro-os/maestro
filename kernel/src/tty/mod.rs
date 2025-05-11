@@ -31,9 +31,9 @@ pub mod vga;
 use crate::{
 	device::serial,
 	file::wait_queue::WaitQueue,
-	memory::vmem,
+	memory::{user::UserSlice, vmem},
 	process::{pid::Pid, signal::Signal, Process},
-	sync::mutex::Mutex,
+	sync::mutex::IntMutex,
 	tty::{
 		ansi::ANSIBuffer,
 		termios::{consts::*, Termios},
@@ -337,22 +337,21 @@ impl TTYDisplay {
 		}
 	}
 
-	/// Writes string `buffer` to TTY.
-	pub fn write(&mut self, buffer: &[u8]) {
+	/// Writes the content of `buf` to the TTY.
+	pub fn write(&mut self, buf: &[u8]) {
 		// TODO Add a compilation and/or runtime option for this
-		serial::PORTS[0].lock().write(buffer);
+		serial::PORTS[0].lock().write(buf);
 
 		let mut i = 0;
-		while i < buffer.len() {
-			let c = buffer[i];
+		while i < buf.len() {
+			let c = buf[i];
 			if c == ansi::ESCAPE_CHAR {
-				let j = ansi::handle(self, &buffer[i..buffer.len()]);
+				let j = ansi::handle(self, &buf[i..buf.len()]);
 				if j > 0 {
 					i += j;
 					continue;
 				}
 			}
-
 			self.putchar(c);
 			i += 1;
 		}
@@ -421,16 +420,16 @@ struct TTYInput {
 /// A TTY.
 pub struct TTY {
 	/// Display manager.
-	pub display: Mutex<TTYDisplay>,
+	pub display: IntMutex<TTYDisplay>,
 	/// Input manager.
-	input: Mutex<TTYInput>,
+	input: IntMutex<TTYInput>,
 	/// The queue of processes waiting for incoming data to read.
 	rd_queue: WaitQueue,
 }
 
 /// The TTY.
 pub static TTY: TTY = TTY {
-	display: Mutex::new(TTYDisplay {
+	display: IntMutex::new(TTYDisplay {
 		cursor_x: 0,
 		cursor_y: 0,
 
@@ -452,7 +451,7 @@ pub static TTY: TTY = TTY {
 		cursor_visible: true,
 		current_color: vga::DEFAULT_COLOR,
 	}),
-	input: Mutex::new(TTYInput {
+	input: IntMutex::new(TTYInput {
 		buf: [0; INPUT_MAX],
 		input_size: 0,
 		available_size: 0,
@@ -462,10 +461,10 @@ pub static TTY: TTY = TTY {
 
 impl TTY {
 	// TODO Implement IUTF8
-	/// Reads inputs from the TTY and places it into the buffer `buf`.
+	/// Reads inputs from the TTY and writes it into the buffer `buf`.
 	///
 	/// The function returns the number of bytes read.
-	pub fn read(&self, buf: &mut [u8]) -> EResult<usize> {
+	pub fn read(&self, buf: UserSlice<u8>) -> EResult<usize> {
 		self.rd_queue.wait_until(|| {
 			let termios = self.display.lock().get_termios().clone();
 			let mut input = self.input.lock();
@@ -489,7 +488,7 @@ impl TTY {
 					input.buf.rotate_left(1);
 					input.input_size -= 1;
 					input.available_size -= 1;
-					return Some(0);
+					return Some(Ok(0));
 				}
 				if let Some(eof_off) = eof_off {
 					// Making the next call EOF
@@ -500,7 +499,10 @@ impl TTY {
 				len = min(buf.len(), input.available_size);
 			}
 			// Copy data
-			buf[..len].copy_from_slice(&input.buf[..len]);
+			let res = buf.copy_to_user(0, &input.buf[..len]);
+			if let Err(e) = res {
+				return Some(Err(e));
+			}
 			// Shift data
 			input.buf.rotate_left(len);
 			input.input_size -= len;
@@ -509,8 +511,8 @@ impl TTY {
 			if termios.c_iflag & IMAXBEL != 0 && input.input_size >= buf.len() {
 				ring_bell();
 			}
-			Some(len)
-		})
+			Some(Ok(len))
+		})?
 	}
 
 	/// Tells whether the TTY has any data available to be read.

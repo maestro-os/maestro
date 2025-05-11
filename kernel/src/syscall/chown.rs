@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{fs::StatSet, vfs, vfs::ResolutionSettings},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;
@@ -32,7 +33,7 @@ use utils::{
 
 /// Performs the `chown` syscall.
 pub fn do_chown(
-	pathname: SyscallString,
+	pathname: UserString,
 	owner: c_int,
 	group: c_int,
 	rs: ResolutionSettings,
@@ -44,14 +45,14 @@ pub fn do_chown(
 	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	// Get file
-	let file = vfs::get_file_from_path(&path, &rs)?;
+	let ent = vfs::get_file_from_path(&path, &rs)?;
 	// TODO allow changing group to any group whose owner is member
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-	file.node().ops.set_stat(
-		&file.node().location,
-		StatSet {
+	vfs::set_stat(
+		ent.node(),
+		&StatSet {
 			uid: (owner > -1).then_some(owner as _),
 			gid: (group > -1).then_some(group as _),
 			..Default::default()
@@ -61,7 +62,7 @@ pub fn do_chown(
 }
 
 pub fn chown(
-	Args((pathname, owner, group)): Args<(SyscallString, c_int, c_int)>,
+	Args((pathname, owner, group)): Args<(UserString, c_int, c_int)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	do_chown(pathname, owner, group, rs)

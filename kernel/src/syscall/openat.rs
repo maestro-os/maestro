@@ -28,12 +28,10 @@ use crate::{
 		File, FileType, Stat, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOCTTY, O_NOFOLLOW,
 		O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{util::at, Args},
-	time::{
-		clock::{current_time, CLOCK_REALTIME},
-		unit::TimestampScale,
-	},
+	time::clock::{current_time_ns, current_time_sec, Clock},
 };
 use core::{ffi::c_int, ops::Deref};
 use utils::{
@@ -42,7 +40,6 @@ use utils::{
 	errno::{EResult, Errno},
 	ptr::arc::Arc,
 };
-
 // TODO Implement all flags
 
 // TODO rewrite doc
@@ -75,7 +72,7 @@ fn get_file(
 			parent,
 			name,
 		} => {
-			let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
+			let ts = current_time_sec(Clock::Realtime);
 			vfs::create_file(
 				parent,
 				name,
@@ -95,7 +92,7 @@ fn get_file(
 /// Perform the `openat` system call.
 pub fn do_openat(
 	dirfd: c_int,
-	pathname: SyscallString,
+	pathname: UserString,
 	flags: c_int,
 	mode: file::Mode,
 ) -> EResult<usize> {
@@ -126,7 +123,7 @@ pub fn do_openat(
 		O_RDWR => (true, true),
 		_ => return Err(errno!(EINVAL)),
 	};
-	let stat = file.stat()?;
+	let stat = file.stat();
 	if read && !rs.access_profile.can_read_file(&stat) {
 		return Err(errno!(EACCES));
 	}
@@ -144,7 +141,7 @@ pub fn do_openat(
 	let file = File::open_entry(file, flags & FLAGS_MASK)?;
 	// Truncate if necessary
 	if flags & O_TRUNC != 0 && file_type == Some(FileType::Regular) {
-		file.truncate(0)?;
+		file.ops.truncate(&file, 0)?;
 	}
 	// Create FD
 	let mut fd_flags = 0;
@@ -156,7 +153,7 @@ pub fn do_openat(
 }
 
 pub fn openat(
-	Args((dirfd, pathname, flags, mode)): Args<(c_int, SyscallString, c_int, file::Mode)>,
+	Args((dirfd, pathname, flags, mode)): Args<(c_int, UserString, c_int, file::Mode)>,
 ) -> EResult<usize> {
 	do_openat(dirfd, pathname, flags, mode)
 }

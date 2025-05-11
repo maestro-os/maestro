@@ -20,8 +20,9 @@
 
 use crate::{
 	arch::x86::gdt,
+	memory::user::UserPtr,
 	process,
-	process::{mem_space::copy::SyscallPtr, user_desc::UserDesc, Process},
+	process::{user_desc::UserDesc, Process},
 	syscall::Args,
 };
 use core::mem::size_of;
@@ -60,7 +61,7 @@ fn get_entry(
 }
 
 pub fn set_thread_area(
-	Args(u_info): Args<SyscallPtr<UserDesc>>,
+	Args(u_info): Args<UserPtr<UserDesc>>,
 	proc: Arc<Process>,
 ) -> EResult<usize> {
 	// Read user_desc

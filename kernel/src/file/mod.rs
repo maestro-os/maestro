@@ -34,33 +34,32 @@ pub mod vfs;
 pub mod wait_queue;
 
 use crate::{
-	device::{DeviceID, DeviceType},
+	device::{BlkDev, BlkDevFileOps, DeviceID, DeviceType, BLK_DEVICES, CHAR_DEVICES},
 	file::{
-		fs::Filesystem,
+		fs::FileOps,
 		perm::{Gid, Uid},
+		pipe::PipeBuffer,
+		socket::Socket,
+		vfs::node::Node,
 	},
-	sync::{atomic::AtomicU64, mutex::Mutex},
-	syscall::ioctl,
+	memory::user::UserSlice,
+	net::{SocketDesc, SocketDomain, SocketType},
+	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
 	time::{
-		clock,
-		clock::CLOCK_MONOTONIC,
-		unit::{Timestamp, TimestampScale},
+		clock::{current_time_sec, Clock},
+		unit::Timestamp,
 	},
 };
-use core::{any::Any, ffi::c_void, fmt::Debug, intrinsics::unlikely, ops::Deref};
+use core::{any::Any, fmt::Debug, ops::Deref, ptr::NonNull};
 use perm::AccessProfile;
 use utils::{
-	boxed::Box,
-	collections::string::String,
+	collections::{string::String, vec::Vec},
 	errno,
-	errno::{AllocResult, EResult},
-	ptr::{arc::Arc, cow::Cow},
-	TryClone,
+	errno::EResult,
+	ptr::arc::Arc,
+	vec,
 };
-use vfs::{
-	mountpoint,
-	mountpoint::{MountPoint, MountSource},
-};
+use vfs::{mountpoint, mountpoint::MountSource};
 
 /// A filesystem node ID.
 ///
@@ -170,7 +169,7 @@ impl FileType {
 		match mode & 0o770000 {
 			S_IFSOCK => Some(Self::Socket),
 			S_IFLNK => Some(Self::Link),
-			S_IFREG | 0 => Some(Self::Regular),
+			S_IFREG => Some(Self::Regular),
 			S_IFBLK => Some(Self::BlockDevice),
 			S_IFDIR => Some(Self::Directory),
 			S_IFCHR => Some(Self::CharDevice),
@@ -215,54 +214,25 @@ impl FileType {
 	}
 }
 
-/// The location of a file.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FileLocation {
-	/// The ID of the mountpoint of the file.
-	pub mountpoint_id: u32,
-	/// The file's inode.
-	pub inode: INode,
-}
-
-impl FileLocation {
-	/// Location to nowhere.
-	pub const fn nowhere() -> Self {
-		Self {
-			mountpoint_id: 0,
-			inode: 0,
-		}
-	}
-
-	/// Returns the mountpoint on which the file is located.
-	pub fn get_mountpoint(&self) -> Option<Arc<MountPoint>> {
-		mountpoint::from_id(self.mountpoint_id)
-	}
-
-	/// Returns the filesystem associated with the location, if any.
-	pub fn get_filesystem(&self) -> Option<Arc<dyn Filesystem>> {
-		self.get_mountpoint().map(|mp| mp.fs.clone())
-	}
-}
-
 /// An entry in a directory, independent of the filesystem type.
 #[derive(Debug)]
 pub struct DirEntry<'name> {
-	/// The entry's inode.
+	/// The entry's inode
 	pub inode: INode,
-	/// The entry's type.
-	pub entry_type: FileType,
-	/// The name of the entry.
-	pub name: Cow<'name, [u8]>,
+	/// The entry's type, if known
+	pub entry_type: Option<FileType>,
+	/// The name of the entry
+	pub name: &'name [u8],
 }
 
-impl TryClone for DirEntry<'_> {
-	fn try_clone(&self) -> AllocResult<Self> {
-		Ok(Self {
-			inode: self.inode,
-			entry_type: self.entry_type,
-			name: self.name.try_clone()?,
-		})
-	}
+/// Directory entries iteration context.
+pub struct DirContext<'f> {
+	/// Function to write the next entry.
+	///
+	/// If returning `false`, the iteration stops and the offset is not updated
+	pub write: &'f mut dyn FnMut(&DirEntry) -> EResult<bool>,
+	/// Current iteration offset
+	pub off: u64,
 }
 
 /// File status information.
@@ -331,82 +301,39 @@ impl Stat {
 	/// Sets the owner user ID, updating `ctime` with the current timestamp.
 	pub fn set_uid(&mut self, uid: Uid) {
 		self.uid = uid;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
+		let timestamp = current_time_sec(Clock::Monotonic);
 		self.ctime = timestamp;
 	}
 
 	/// Sets the owner group ID, updating `ctime` with the current timestamp.
 	pub fn set_gid(&mut self, gid: Gid) {
 		self.gid = gid;
-		let timestamp = clock::current_time(CLOCK_MONOTONIC, TimestampScale::Second).unwrap_or(0);
+		let timestamp = current_time_sec(Clock::Monotonic);
 		self.ctime = timestamp;
 	}
 }
 
-/// File operations.
-pub trait FileOps: Any + Debug {
-	/// Returns the file's status.
-	fn get_stat(&self, file: &File) -> EResult<Stat>;
-
-	/// Increments the reference counter of the file.
-	fn acquire(&self, file: &File);
-	/// Decrements the reference counter of the file.
-	fn release(&self, file: &File);
-
-	/// Wait for events on the file.
-	///
-	/// Arguments:
-	/// - `file` is the file to perform the operation onto.
-	/// - `mask` is the mask of events to wait for.
-	///
-	/// On success, the function returns the mask events that occurred.
-	fn poll(&self, file: &File, mask: u32) -> EResult<u32>;
-
-	/// Performs an ioctl operation on the device file.
-	///
-	/// Arguments:
-	/// - `file` is the file to perform the operation onto.
-	/// - `request` is the ID of the request to perform.
-	/// - `argp` is a pointer to the argument.
-	fn ioctl(&self, file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32>;
-
-	/// Reads the file's content.
-	///
-	/// Arguments:
-	/// - `file` is the file to perform the operation onto.
-	/// - `off` is the offset to read at on the file.
-	/// - `buf` is the buffer on which the read data is written.
-	///
-	/// On success, the function returns the number of bytes written.
-	fn read(&self, file: &File, off: u64, buf: &mut [u8]) -> EResult<usize>;
-
-	/// Writes the file's content.
-	///
-	/// Arguments:
-	/// - `file` is the file to perform the operation onto.
-	/// - `off` is the offset to write at on the file.
-	/// - `buf` is the buffer containing the data to write.
-	///
-	/// On success, the function returns the number of bytes written.
-	fn write(&self, file: &File, off: u64, buf: &[u8]) -> EResult<usize>;
-}
-
-/// An object that may optionally have a reference counter.
+/// A wrapper around [`FileOps`] to allow referencing the field in the associated [`Node`] without
+/// using [`Arc`].
+///
+/// # Safety
+///
+/// This structure is meant to be used only in [`File`].
 #[derive(Debug)]
-pub enum CounterOption<T: ?Sized> {
-	/// The object has a reference counter.
-	Some(Arc<T>),
-	/// The object does not have a reference counter.
-	None(Box<T>),
+pub enum FileOpsWrapper {
+	/// Borrowed from [`Node`]
+	Borrowed(NonNull<dyn FileOps>),
+	/// Owned
+	Owned(Arc<dyn FileOps>),
 }
 
-impl<T: ?Sized> Deref for CounterOption<T> {
-	type Target = T;
+impl Deref for FileOpsWrapper {
+	type Target = dyn FileOps;
 
 	fn deref(&self) -> &Self::Target {
 		match self {
-			CounterOption::Some(t) => t.deref(),
-			CounterOption::None(t) => t.deref(),
+			FileOpsWrapper::Borrowed(o) => unsafe { o.as_ref() },
+			FileOpsWrapper::Owned(o) => o.as_ref(),
 		}
 	}
 }
@@ -417,7 +344,7 @@ pub struct File {
 	/// The VFS entry of the file.
 	pub vfs_entry: Option<Arc<vfs::Entry>>,
 	/// Handle for file operations.
-	pub ops: CounterOption<dyn FileOps>,
+	pub ops: FileOpsWrapper,
 	/// Open file description flags.
 	pub flags: Mutex<i32>,
 	/// The current offset in the file.
@@ -430,10 +357,41 @@ impl File {
 	/// Arguments:
 	/// - `entry` is the VFS entry of the file.
 	/// - `flags` is the open file description's flags.
+	///
+	/// If the entry is negative, the function returns [`errno::ENOENT`].
 	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
+		let node = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let stat = node.stat.lock().clone();
+		// Get or create ops
+		let ops = match stat.get_type() {
+			Some(FileType::Fifo) => {
+				FileOpsWrapper::Owned(node.fs.buffer_get_or_insert(node.inode, PipeBuffer::new)?)
+			}
+			Some(FileType::Socket) => {
+				FileOpsWrapper::Owned(node.fs.buffer_get_or_insert(node.inode, || {
+					Socket::new(SocketDesc {
+						domain: SocketDomain::AfUnix,
+						type_: SocketType::SockStream,
+						protocol: 0,
+					})
+				})?)
+			}
+			Some(FileType::BlockDevice) => FileOpsWrapper::Owned(Arc::new(BlkDevFileOps)?),
+			Some(FileType::CharDevice) => {
+				let devices = CHAR_DEVICES.lock();
+				let dev = devices
+					.get(&DeviceID {
+						major: stat.dev_major,
+						minor: stat.dev_minor,
+					})
+					.ok_or_else(|| errno!(ENODEV))?;
+				FileOpsWrapper::Borrowed(NonNull::from(dev.ops.as_ref()))
+			}
+			_ => FileOpsWrapper::Borrowed(NonNull::from(node.file_ops.as_ref())),
+		};
 		let file = Self {
 			vfs_entry: Some(entry),
-			ops: CounterOption::None(Box::new(vfs::FileOps)?),
+			ops,
 			flags: Mutex::new(flags),
 			off: Default::default(),
 		};
@@ -445,7 +403,7 @@ impl File {
 	pub fn open_floating(ops: Arc<dyn FileOps>, flags: i32) -> EResult<Arc<Self>> {
 		let file = Self {
 			vfs_entry: None,
-			ops: CounterOption::Some(ops),
+			ops: FileOpsWrapper::Owned(ops),
 			flags: Mutex::new(flags),
 			off: Default::default(),
 		};
@@ -453,9 +411,29 @@ impl File {
 		Ok(Arc::new(file)?)
 	}
 
+	/// Returns a reference to the file's node.
+	pub fn node(&self) -> Option<&Arc<Node>> {
+		self.vfs_entry.as_ref().map(|e| e.node())
+	}
+
 	/// Returns the underlying buffer, if any.
 	pub fn get_buffer<B: FileOps>(&self) -> Option<&B> {
 		(self.ops.deref() as &dyn Any).downcast_ref::<B>()
+	}
+
+	/// If the file is a block device, returns the associated device.
+	pub fn as_block_device(&self) -> Option<Arc<BlkDev>> {
+		let stat = self.stat().unwrap();
+		if stat.get_type()? != FileType::BlockDevice {
+			return None;
+		}
+		BLK_DEVICES
+			.lock()
+			.get(&DeviceID {
+				major: stat.dev_major,
+				minor: stat.dev_minor,
+			})
+			.cloned()
 	}
 
 	/// Returns the open file description's flags.
@@ -489,7 +467,11 @@ impl File {
 
 	/// Returns the file's status.
 	pub fn stat(&self) -> EResult<Stat> {
-		self.ops.get_stat(self)
+		if let Some(node) = self.node() {
+			Ok(node.stat())
+		} else {
+			self.ops.get_stat(self)
+		}
 	}
 
 	/// Returns the type of the file.
@@ -498,23 +480,47 @@ impl File {
 		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
 	}
 
-	/// Truncates the file to the given `size`.
+	/// Reads the content of the file into a buffer.
 	///
-	/// If `size` is greater than or equals to the current size of the file, the function does
-	/// nothing.
-	pub fn truncate(&self, size: u64) -> EResult<()> {
-		if unlikely(!self.can_write()) {
-			return Err(errno!(EACCES));
+	/// **Caution**: the function reads until EOF, meaning the caller should not call this function
+	/// on an infinite file.
+	pub fn read_all(&self) -> EResult<Vec<u8>> {
+		const INCREMENT: usize = 512;
+		let len: usize = self
+			.stat()?
+			.size
+			.try_into()
+			.map_err(|_| errno!(EOVERFLOW))?;
+		let len = len
+			.checked_add(INCREMENT)
+			.ok_or_else(|| errno!(EOVERFLOW))?;
+		// Add more space to allow check for EOF
+		let mut buf = vec![0u8; len]?;
+		let mut off = 0;
+		// Read until EOF
+		loop {
+			// If the size has been exceeded, resize the buffer
+			if off >= buf.len() {
+				let new_size = buf
+					.len()
+					.checked_add(INCREMENT)
+					.ok_or_else(|| errno!(EOVERFLOW))?;
+				buf.resize(new_size, 0)?;
+			}
+			let buf = UserSlice::from_slice_mut(&mut buf[off..]);
+			let len = self.ops.read(self, off as _, buf)?;
+			// Reached EOF, stop here
+			if len == 0 {
+				break;
+			}
+			off += len;
 		}
-		let node = self
-			.vfs_entry
-			.as_ref()
-			.ok_or_else(|| errno!(EINVAL))?
-			.node();
-		node.ops.truncate_content(&node.location, size)
+		// Adjust the size of the buffer
+		buf.truncate(off);
+		Ok(buf)
 	}
 
-	/// Closes the file, removing it the underlying node if no link remain and this was the last
+	/// Closes the file, removing the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn close(self) -> EResult<()> {
 		self.ops.release(&self);
@@ -661,16 +667,15 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 	// Create the root mountpoint
 	let source = match root {
 		Some((major, minor)) => MountSource::Device(DeviceID {
-			dev_type: DeviceType::Block,
 			major,
 			minor,
 		}),
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
-	let root = mountpoint::create_root(source)?;
+	let root = mountpoint::create(source, None, 0, None)?;
 	// Init the VFS's root entry.
 	unsafe {
-		vfs::ROOT.init(root);
+		OnceInit::init(&vfs::ROOT, root);
 	}
 	Ok(())
 }

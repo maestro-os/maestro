@@ -20,7 +20,8 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, fs::Statfs},
-	process::{mem_space::copy::SyscallPtr, Process},
+	memory::user::UserPtr,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -35,7 +36,7 @@ use utils::{
 pub fn do_fstatfs(
 	fd: c_int,
 	_sz: usize,
-	buf: SyscallPtr<Statfs>,
+	buf: UserPtr<Statfs>,
 	fds: &FileDescriptorTable,
 ) -> EResult<usize> {
 	// TODO use `sz`
@@ -46,17 +47,15 @@ pub fn do_fstatfs(
 		.as_ref()
 		.ok_or_else(|| errno!(ENOSYS))?
 		.node()
-		.location
-		.get_mountpoint()
-		.ok_or_else(|| errno!(ENOSYS))?
 		.fs
+		.ops
 		.get_stat()?;
 	buf.copy_to_user(&stat)?;
 	Ok(0)
 }
 
 pub fn fstatfs(
-	Args((fd, buf)): Args<(c_int, SyscallPtr<Statfs>)>,
+	Args((fd, buf)): Args<(c_int, UserPtr<Statfs>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_fstatfs(fd, size_of::<Statfs>(), buf, &fds.lock())

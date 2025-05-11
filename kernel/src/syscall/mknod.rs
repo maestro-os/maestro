@@ -22,12 +22,10 @@ use crate::{
 	device::id,
 	file,
 	file::{vfs, vfs::ResolutionSettings, FileType, Stat},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::{Args, Umask},
-	time::{
-		clock::{current_time, CLOCK_REALTIME},
-		unit::TimestampScale,
-	},
+	time::clock::{current_time_ns, current_time_sec, Clock},
 };
 use utils::{
 	collections::path::{Path, PathBuf},
@@ -36,7 +34,7 @@ use utils::{
 };
 
 pub fn mknod(
-	Args((pathname, mode, dev)): Args<(SyscallString, file::Mode, u64)>,
+	Args((pathname, mode, dev)): Args<(UserString, file::Mode, u64)>,
 	umask: Umask,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
@@ -58,7 +56,7 @@ pub fn mknod(
 		(_, true) => return Err(errno!(EINVAL)),
 	}
 	// Create file
-	let ts = current_time(CLOCK_REALTIME, TimestampScale::Second)?;
+	let ts = current_time_sec(Clock::Realtime);
 	let parent = vfs::get_file_from_path(parent_path, &rs)?;
 	vfs::create_file(
 		parent,

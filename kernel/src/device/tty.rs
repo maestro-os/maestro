@@ -20,9 +20,9 @@
 //! communicate with it.
 
 use crate::{
-	device::DeviceIO,
+	file::{fs::FileOps, File},
+	memory::user::{UserPtr, UserSlice},
 	process::{
-		mem_space::copy::SyscallPtr,
 		pid::Pid,
 		signal::{Signal, SignalHandler},
 		Process,
@@ -34,10 +34,11 @@ use crate::{
 	},
 	tty::{termios, termios::Termios, TTYDisplay, WinSize, TTY},
 };
-use core::{ffi::c_void, num::NonZeroU64};
+use core::ffi::c_void;
 use utils::{errno, errno::EResult};
 
 /// A TTY device's handle.
+#[derive(Debug)]
 pub struct TTYDeviceHandle;
 
 impl TTYDeviceHandle {
@@ -96,53 +97,25 @@ impl TTYDeviceHandle {
 	}
 }
 
-impl DeviceIO for TTYDeviceHandle {
-	fn block_size(&self) -> NonZeroU64 {
-		1.try_into().unwrap()
-	}
-
-	fn blocks_count(&self) -> u64 {
-		0
-	}
-
-	fn read(&self, _off: u64, buff: &mut [u8]) -> EResult<usize> {
-		self.check_sigttin(&TTY.display.lock())?;
-		let len = TTY.read(buff)?;
-		Ok(len)
-	}
-
-	fn write(&self, _off: u64, buff: &[u8]) -> EResult<usize> {
-		self.check_sigttou(&TTY.display.lock())?;
-		TTY.display.lock().write(buff);
-		Ok(buff.len())
-	}
-
-	fn read_bytes(&self, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		self.read(off, buf)
-	}
-
-	fn write_bytes(&self, off: u64, buf: &[u8]) -> EResult<usize> {
-		self.write(off, buf)
-	}
-
-	fn poll(&self, mask: u32) -> EResult<u32> {
+impl FileOps for TTYDeviceHandle {
+	fn poll(&self, _file: &File, mask: u32) -> EResult<u32> {
 		let input = TTY.has_input_available();
 		let res = (if input { POLLIN } else { 0 } | POLLOUT) & mask;
 		Ok(res)
 	}
 
-	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+	fn ioctl(&self, _file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let mut tty = TTY.display.lock();
 		match request.get_old_format() {
 			ioctl::TCGETS => {
-				let termios_ptr = SyscallPtr::<Termios>::from_ptr(argp as usize);
+				let termios_ptr = UserPtr::<Termios>::from_ptr(argp as usize);
 				termios_ptr.copy_to_user(tty.get_termios())?;
 				Ok(0)
 			}
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
 				self.check_sigttou(&tty)?;
-				let termios_ptr = SyscallPtr::<Termios>::from_ptr(argp as usize);
+				let termios_ptr = UserPtr::<Termios>::from_ptr(argp as usize);
 				let termios = termios_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -150,24 +123,24 @@ impl DeviceIO for TTYDeviceHandle {
 				Ok(0)
 			}
 			ioctl::TIOCGPGRP => {
-				let pgid_ptr = SyscallPtr::<Pid>::from_ptr(argp as usize);
+				let pgid_ptr = UserPtr::<Pid>::from_ptr(argp as usize);
 				pgid_ptr.copy_to_user(&tty.get_pgrp())?;
 				Ok(0)
 			}
 			ioctl::TIOCSPGRP => {
 				self.check_sigttou(&tty)?;
-				let pgid_ptr = SyscallPtr::<Pid>::from_ptr(argp as usize);
+				let pgid_ptr = UserPtr::<Pid>::from_ptr(argp as usize);
 				let pgid = pgid_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 				tty.set_pgrp(pgid);
 				Ok(0)
 			}
 			ioctl::TIOCGWINSZ => {
-				let winsize = SyscallPtr::<WinSize>::from_ptr(argp as usize);
+				let winsize = UserPtr::<WinSize>::from_ptr(argp as usize);
 				winsize.copy_to_user(tty.get_winsize())?;
 				Ok(0)
 			}
 			ioctl::TIOCSWINSZ => {
-				let winsize_ptr = SyscallPtr::<WinSize>::from_ptr(argp as usize);
+				let winsize_ptr = UserPtr::<WinSize>::from_ptr(argp as usize);
 				let winsize = winsize_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
@@ -176,5 +149,25 @@ impl DeviceIO for TTYDeviceHandle {
 			}
 			_ => Err(errno!(EINVAL)),
 		}
+	}
+
+	fn read(&self, _file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		self.check_sigttin(&TTY.display.lock())?;
+		let len = TTY.read(buf)?;
+		Ok(len)
+	}
+
+	fn write(&self, _file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		let mut tty = TTY.display.lock();
+		self.check_sigttou(&tty)?;
+		// Write
+		let mut i = 0;
+		let mut b: [u8; 128] = [0; 128];
+		while i < buf.len() {
+			let l = buf.copy_from_user(i, &mut b)?;
+			tty.write(&b[..l]);
+			i += l;
+		}
+		Ok(buf.len())
 	}
 }

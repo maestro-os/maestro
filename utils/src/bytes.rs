@@ -18,9 +18,12 @@
 
 //! Utility functions for byte representations of types.
 
+#[cfg(target_has_atomic = "64")]
+use core::sync::atomic::AtomicU64;
 use core::{
 	mem::{align_of, size_of, size_of_val},
 	slice,
+	sync::atomic::{AtomicU16, AtomicU32, AtomicU8, AtomicUsize},
 };
 
 /// Marker trait for a type valid for any bit representation.
@@ -41,6 +44,13 @@ unsafe impl AnyRepr for u8 {}
 unsafe impl AnyRepr for u16 {}
 unsafe impl AnyRepr for u32 {}
 unsafe impl AnyRepr for u64 {}
+
+unsafe impl AnyRepr for AtomicU8 {}
+unsafe impl AnyRepr for AtomicU16 {}
+unsafe impl AnyRepr for AtomicU32 {}
+#[cfg(target_has_atomic = "64")]
+unsafe impl AnyRepr for AtomicU64 {}
+unsafe impl AnyRepr for AtomicUsize {}
 
 unsafe impl<T: AnyRepr> AnyRepr for [T] {}
 unsafe impl<T: AnyRepr, const N: usize> AnyRepr for [T; N] {}

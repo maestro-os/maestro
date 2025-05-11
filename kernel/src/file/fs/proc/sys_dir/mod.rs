@@ -19,8 +19,9 @@
 //! TODO doc
 
 use crate::{
-	file::{fs::NodeOps, FileLocation, FileType, Stat},
+	file::{fs::FileOps, File, FileType, Stat},
 	format_content,
+	memory::user::UserSlice,
 };
 use utils::errno::EResult;
 
@@ -28,15 +29,15 @@ use utils::errno::EResult;
 #[derive(Debug, Default)]
 pub struct OsRelease;
 
-impl NodeOps for OsRelease {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
+impl FileOps for OsRelease {
+	fn get_stat(&self, _file: &File) -> EResult<Stat> {
 		Ok(Stat {
 			mode: FileType::Regular.to_mode() | 0o444,
 			..Default::default()
 		})
 	}
 
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		format_content!(off, buf, "{}\n", crate::VERSION)
 	}
 }

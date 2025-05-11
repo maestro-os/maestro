@@ -20,7 +20,7 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
-	process::mem_space::copy::SyscallString,
+	memory::user::UserString,
 	sync::mutex::Mutex,
 	syscall::{renameat2::do_renameat2, util::at::AT_FDCWD, Args},
 };
@@ -31,7 +31,7 @@ use utils::{
 };
 
 pub fn rename(
-	Args((oldpath, newpath)): Args<(SyscallString, SyscallString)>,
+	Args((oldpath, newpath)): Args<(UserString, UserString)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {

@@ -20,14 +20,15 @@
 
 use crate::{
 	file::perm::{AccessProfile, Uid},
-	process::{mem_space::copy::SyscallPtr, Process},
+	memory::user::UserPtr,
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn getresuid(
-	Args((ruid, euid, suid)): Args<(SyscallPtr<Uid>, SyscallPtr<Uid>, SyscallPtr<Uid>)>,
+	Args((ruid, euid, suid)): Args<(UserPtr<Uid>, UserPtr<Uid>, UserPtr<Uid>)>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
 	ruid.copy_to_user(&ap.uid)?;

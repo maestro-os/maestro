@@ -20,36 +20,24 @@
 
 use crate::{
 	file,
-	file::{fs::StatSet, vfs, vfs::ResolutionSettings},
-	process::{mem_space::copy::SyscallString, Process},
-	syscall::Args,
+	file::{fd::FileDescriptorTable, fs::StatSet, vfs, vfs::ResolutionSettings},
+	memory::user::UserString,
+	process::Process,
+	sync::mutex::Mutex,
+	syscall::{fchmodat::fchmodat, util::at::AT_FDCWD, Args},
 };
 use core::ffi::c_int;
 use utils::{
 	collections::path::PathBuf,
 	errno,
 	errno::{EResult, Errno},
+	ptr::arc::Arc,
 };
 
 pub fn chmod(
-	Args((pathname, mode)): Args<(SyscallString, file::Mode)>,
+	Args((pathname, mode)): Args<(UserString, file::Mode)>,
+	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	// Get file
-	let file = vfs::get_file_from_path(&path, &rs)?;
-	// Check permissions
-	let stat = file.stat()?;
-	if !rs.access_profile.can_set_file_permissions(&stat) {
-		return Err(errno!(EPERM));
-	}
-	file.node().ops.set_stat(
-		&file.node().location,
-		StatSet {
-			mode: Some(mode & 0o777),
-			..Default::default()
-		},
-	)?;
-	Ok(0)
+	fchmodat(Args((AT_FDCWD, pathname, mode, 0)), fds_mutex, rs)
 }

@@ -20,10 +20,8 @@
 
 use crate::{
 	file::{fs::Statfs, vfs, vfs::ResolutionSettings},
-	process::{
-		mem_space::copy::{SyscallPtr, SyscallString},
-		Process,
-	},
+	memory::user::{UserPtr, UserString},
+	process::Process,
 	syscall::Args,
 };
 use utils::{
@@ -33,8 +31,8 @@ use utils::{
 };
 
 pub(super) fn do_statfs(
-	path: SyscallString,
-	buf: SyscallPtr<Statfs>,
+	path: UserString,
+	buf: UserPtr<Statfs>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	let rs = ResolutionSettings {
@@ -45,11 +43,8 @@ pub(super) fn do_statfs(
 	let path = PathBuf::try_from(path)?;
 	let stat = vfs::get_file_from_path(&path, &rs)?
 		.node()
-		.location
-		.get_mountpoint()
-		// Unwrapping will not fail since the file is accessed from path
-		.unwrap()
 		.fs
+		.ops
 		.get_stat()?;
 	// Write structure to userspace
 	buf.copy_to_user(&stat)?;
@@ -57,7 +52,7 @@ pub(super) fn do_statfs(
 }
 
 pub fn statfs(
-	Args((path, buf)): Args<(SyscallString, SyscallPtr<Statfs>)>,
+	Args((path, buf)): Args<(UserString, UserPtr<Statfs>)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
 	do_statfs(path, buf, rs)

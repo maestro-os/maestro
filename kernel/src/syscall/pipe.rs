@@ -20,8 +20,8 @@
 
 use crate::{
 	file,
-	file::{fd::FileDescriptorTable, pipe::PipeBuffer, File, FileLocation},
-	process::mem_space::copy::SyscallPtr,
+	file::{fd::FileDescriptorTable, pipe::PipeBuffer, File},
+	memory::user::UserPtr,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -29,7 +29,7 @@ use core::ffi::c_int;
 use utils::{boxed::Box, errno::EResult, ptr::arc::Arc};
 
 pub fn pipe(
-	Args(pipefd): Args<SyscallPtr<[c_int; 2]>>,
+	Args(pipefd): Args<UserPtr<[c_int; 2]>>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	let ops = Arc::new(PipeBuffer::new()?)?;

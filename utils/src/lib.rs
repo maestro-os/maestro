@@ -59,11 +59,12 @@ use crate::errno::AllocResult;
 use core::{
 	alloc::{AllocError, Layout},
 	borrow::Borrow,
-	cmp::min,
+	cmp::{min, Ordering},
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Write,
 	mem::size_of,
+	ops::Add,
 	ptr::NonNull,
 	slice, write,
 };
@@ -179,6 +180,20 @@ pub fn slice_copy(src: &[u8], dst: &mut [u8]) -> usize {
 	let len = min(src.len(), dst.len());
 	dst[..len].copy_from_slice(&src[..len]);
 	len
+}
+
+/// Compares `needle` to the range starting at `start`, with a size of `size`.
+///
+/// If `needle` is inside of the range, the function returns [`Ordering::Equal`].
+pub fn range_cmp<T: Add<Output = T> + Ord + Copy>(start: T, size: T, needle: T) -> Ordering {
+	let end = start + size;
+	if needle < start {
+		Ordering::Less
+	} else if needle >= end {
+		Ordering::Greater
+	} else {
+		Ordering::Equal
+	}
 }
 
 /// Same as the [`Clone`] trait, but the operation can fail (on memory allocation

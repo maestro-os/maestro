@@ -19,11 +19,9 @@
 //! The `waitpid` system call allows to wait for an event from a child process.
 
 use crate::{
+	memory::user::UserPtr,
 	process,
-	process::{
-		mem_space::copy::SyscallPtr, pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler,
-		Process, State,
-	},
+	process::{pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler, Process, State},
 	syscall::{waitpid::scheduler::SCHEDULER, Args},
 };
 use core::{ffi::c_int, iter};
@@ -99,12 +97,12 @@ fn get_wstatus(proc: &Process) -> i32 {
 fn get_waitable(
 	curr_proc: &Process,
 	pid: i32,
-	wstatus: &SyscallPtr<i32>,
+	wstatus: UserPtr<i32>,
 	options: i32,
-	rusage: &SyscallPtr<Rusage>,
+	rusage: UserPtr<Rusage>,
 ) -> EResult<Option<Pid>> {
 	let mut empty = true;
-	let mut sched = SCHEDULER.get().lock();
+	let mut sched = SCHEDULER.lock();
 	// Find a waitable process
 	let proc = iter_targets(curr_proc, pid)
 		.inspect(|_| empty = false)
@@ -134,7 +132,7 @@ fn get_waitable(
 	if options & WNOWAIT == 0 {
 		// If the process was a zombie, remove it
 		if matches!(proc.get_state(), State::Zombie) {
-			curr_proc.remove_child(pid);
+			proc.unlink();
 			sched.remove_process(pid);
 		}
 	}
@@ -144,14 +142,14 @@ fn get_waitable(
 /// Executes the `waitpid` system call.
 pub fn do_waitpid(
 	pid: i32,
-	wstatus: SyscallPtr<i32>,
+	wstatus: UserPtr<i32>,
 	options: i32,
-	rusage: SyscallPtr<Rusage>,
+	rusage: UserPtr<Rusage>,
 ) -> EResult<usize> {
 	loop {
 		{
 			let proc = Process::current();
-			let result = get_waitable(&proc, pid, &wstatus, options, &rusage)?;
+			let result = get_waitable(&proc, pid, wstatus, options, rusage.clone())?;
 			// On success, return
 			if let Some(p) = result {
 				return Ok(p as _);
@@ -169,7 +167,7 @@ pub fn do_waitpid(
 }
 
 pub fn waitpid(
-	Args((pid, wstatus, options)): Args<(c_int, SyscallPtr<c_int>, c_int)>,
+	Args((pid, wstatus, options)): Args<(c_int, UserPtr<c_int>, c_int)>,
 ) -> EResult<usize> {
-	do_waitpid(pid, wstatus, options | WEXITED, SyscallPtr(None))
+	do_waitpid(pid, wstatus, options | WEXITED, UserPtr(None))
 }

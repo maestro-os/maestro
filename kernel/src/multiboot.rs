@@ -183,12 +183,7 @@ impl Default for BootInfo {
 }
 
 /// The field storing the information given to the kernel at boot time.
-static BOOT_INFO: OnceInit<BootInfo> = unsafe { OnceInit::new() };
-
-/// Returns boot information provided by Multiboot.
-pub fn get_boot_info() -> &'static BootInfo {
-	BOOT_INFO.get()
-}
+pub static BOOT_INFO: OnceInit<BootInfo> = unsafe { OnceInit::new() };
 
 /// Reinterprets a tag with the given type.
 unsafe fn reinterpret_tag<T>(tag: &Tag) -> &'static T {
@@ -269,6 +264,5 @@ pub(crate) unsafe fn read(ptr: *const c_void) -> &'static BootInfo {
 	tag = next(tag);
 	boot_info.tags_end = PhysAddr(tag as _);
 	// Write to static variable and return
-	BOOT_INFO.init(boot_info);
-	BOOT_INFO.get()
+	OnceInit::init(&BOOT_INFO, boot_info)
 }

@@ -20,13 +20,8 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, File, FileType},
-	process::{
-		mem_space::{
-			copy::{SyscallIOVec, SyscallSlice},
-			MemSpace,
-		},
-		scheduler, Process,
-	},
+	memory::user::{UserIOVec, UserSlice},
+	process::{mem_space::MemSpace, scheduler, Process},
 	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };
@@ -49,28 +44,25 @@ use utils::{
 /// - `iovcnt` is the number of chunks in `iov`
 /// - `offset` is the offset at which the read operation in the file begins
 /// - `open_file` is the file to read from
-fn read(iov: SyscallIOVec, iovcnt: usize, offset: Option<u64>, file: &File) -> EResult<usize> {
+fn read(iov: UserIOVec, iovcnt: usize, offset: Option<u64>, file: &File) -> EResult<usize> {
 	let mut off = 0;
 	for i in iov.iter(iovcnt) {
 		let i = i?;
 		// The size to read. This is limited to avoid an overflow on the total length
 		let max_len = min(i.iov_len, i32::MAX as usize - off);
-		let ptr = SyscallSlice::<u8>::from_ptr(i.iov_base as usize);
+		let buf = UserSlice::<u8>::from_user(i.iov_base, max_len)?;
 		// Read
-		// TODO perf: do not use a buffer
-		let mut buf = vec![0u8; max_len]?;
 		let len = if let Some(offset) = offset {
 			let file_off = offset + off as u64;
-			file.ops.read(file, file_off, &mut buf)?
+			file.ops.read(file, file_off, buf)?
 		} else {
 			let off = file.off.load(atomic::Ordering::Acquire);
-			let len = file.ops.read(file, off, &mut buf)?;
+			let len = file.ops.read(file, off, buf)?;
 			// Update offset
 			let new_off = off.saturating_add(len as u64);
 			file.off.store(new_off, atomic::Ordering::Release);
 			len
 		};
-		ptr.copy_to_user(0, &buf[..len])?;
 		off += len;
 		if unlikely(len < max_len) {
 			break;
@@ -89,7 +81,7 @@ fn read(iov: SyscallIOVec, iovcnt: usize, offset: Option<u64>, file: &File) -> E
 /// - `flags` is the set of flags
 pub fn do_readv(
 	fd: c_int,
-	iov: SyscallIOVec,
+	iov: UserIOVec,
 	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
@@ -114,7 +106,7 @@ pub fn do_readv(
 }
 
 pub fn readv(
-	Args((fd, iov, iovcnt)): Args<(c_int, SyscallIOVec, c_int)>,
+	Args((fd, iov, iovcnt)): Args<(c_int, UserIOVec, c_int)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_readv(fd, iov, iovcnt, None, None, fds)

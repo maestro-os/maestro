@@ -22,16 +22,17 @@
 use super::{Partition, Table};
 use crate::{
 	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
-	device::DeviceIO,
+	device::BlkDev,
+	memory::cache::FrameOwner,
 };
-use core::mem::size_of;
+use core::{intrinsics::unlikely, mem::size_of};
 use macros::AnyRepr;
 use utils::{
 	bytes::from_bytes,
 	collections::vec::Vec,
 	errno,
 	errno::{CollectResult, EResult},
-	vec,
+	ptr::arc::Arc,
 };
 
 /// The signature in the GPT header.
@@ -182,26 +183,23 @@ pub struct Gpt {
 }
 
 impl Gpt {
-	/// Reads the header structure from the given storage interface `storage` at
-	/// the given LBA `lba`.
+	/// Reads the header structure device `dev` at the given LBA `lba`.
 	///
 	/// If the header is invalid, the function returns an error.
-	fn read_hdr(storage: &dyn DeviceIO, lba: i64) -> EResult<Self> {
-		let block_size = storage.block_size().get() as _;
-		let blocks_count = storage.blocks_count();
-		if size_of::<Gpt>() > block_size {
+	fn read_hdr(dev: &Arc<BlkDev>, lba: i64) -> EResult<Self> {
+		let block_size = dev.ops.block_size().get() as _;
+		if unlikely(size_of::<Gpt>() > block_size) {
 			return Err(errno!(EINVAL));
 		}
 		// Read the first block
-		let mut buf = vec![0; block_size]?;
+		let blocks_count = dev.ops.blocks_count();
 		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		storage.read(lba, &mut buf)?;
-		// Validate
-		let gpt_hdr = from_bytes::<Self>(&buf).unwrap().clone();
-		if !gpt_hdr.is_valid() {
+		let page = BlkDev::read_frame(dev, lba, 0, FrameOwner::BlkDev(dev.clone()))?;
+		let gpt_hdr = &page.slice::<Self>()[0];
+		if unlikely(!gpt_hdr.is_valid()) {
 			return Err(errno!(EINVAL));
 		}
-		Ok(gpt_hdr)
+		Ok(gpt_hdr.clone())
 	}
 
 	/// Tells whether the header is valid.
@@ -233,20 +231,21 @@ impl Gpt {
 
 	/// Returns the list of entries in the table.
 	///
-	/// `storage` is the storage device interface.
-	fn get_entries(&self, storage: &dyn DeviceIO) -> EResult<Vec<GPTEntry>> {
-		let block_size = storage.block_size().get();
-		let blocks_count = storage.blocks_count();
+	/// `dev` is the block device
+	fn get_entries(&self, dev: &Arc<BlkDev>) -> EResult<Vec<GPTEntry>> {
+		let block_size = dev.ops.block_size().get();
+		let blocks_count = dev.ops.blocks_count();
 		let entries_start =
 			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
-		let mut buf = vec![0; block_size as usize]?;
 		let entries = (0..self.entries_number)
 			// Read entry
 			.map(|i| {
 				let off = entries_start + (i as u64 * self.entry_size as u64) / block_size;
 				let inner_off = ((i as u64 * self.entry_size as u64) % block_size) as usize;
-				storage.read(off, &mut buf)?;
-				let ent = from_bytes::<GPTEntry>(&buf[inner_off..]).unwrap().clone();
+				let page = BlkDev::read_frame(dev, off, 0, FrameOwner::BlkDev(dev.clone()))?;
+				let ent = from_bytes::<GPTEntry>(&page.slice()[inner_off..])
+					.unwrap()
+					.clone();
 				Ok(ent)
 			})
 			// Ignore empty entries
@@ -272,26 +271,24 @@ impl Gpt {
 }
 
 impl Table for Gpt {
-	fn read(storage: &dyn DeviceIO) -> EResult<Option<Self>> {
-		let blocks_count = storage.blocks_count();
-
-		let main_hdr = match Self::read_hdr(storage, 1) {
+	fn read(dev: &Arc<BlkDev>) -> EResult<Option<Self>> {
+		// Read headers
+		let main_hdr = match Self::read_hdr(dev, 1) {
 			Ok(hdr) => hdr,
 			Err(e) if e == errno!(EINVAL) => return Ok(None),
 			Err(e) => return Err(e),
 		};
-		let alternate_hdr = Self::read_hdr(storage, main_hdr.alternate_hdr_lba)?;
-
-		let main_entries = main_hdr.get_entries(storage)?;
-		let alternate_entries = alternate_hdr.get_entries(storage)?;
-
+		let alternate_hdr = Self::read_hdr(dev, main_hdr.alternate_hdr_lba)?;
+		// Get entries
+		let main_entries = main_hdr.get_entries(dev)?;
+		let alternate_entries = alternate_hdr.get_entries(dev)?;
 		// Check entries correctness
+		let blocks_count = dev.ops.blocks_count();
 		for (main_entry, alternate_entry) in main_entries.iter().zip(alternate_entries.iter()) {
 			if !main_entry.eq(alternate_entry, main_hdr.entry_size as _, blocks_count) {
 				return Err(errno!(EINVAL));
 			}
 		}
-
 		Ok(Some(main_hdr))
 	}
 
@@ -299,23 +296,20 @@ impl Table for Gpt {
 		"GPT"
 	}
 
-	fn get_partitions(&self, storage: &dyn DeviceIO) -> EResult<Vec<Partition>> {
-		let blocks_count = storage.blocks_count();
+	fn read_partitions(&self, dev: &Arc<BlkDev>) -> EResult<Vec<Partition>> {
+		let blocks_count = dev.ops.blocks_count();
 		let mut partitions = Vec::new();
-
-		for e in self.get_entries(storage)? {
+		for e in self.get_entries(dev)? {
 			let start = translate_lba(e.start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 			let end = translate_lba(e.end, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 			// Doesn't overflow because the condition `end >= start` has already been
 			// checked + 1 is required because the ending LBA is included
 			let size = (end - start) + 1;
-
 			partitions.push(Partition {
 				offset: start,
 				size,
 			})?;
 		}
-
 		Ok(partitions)
 	}
 }

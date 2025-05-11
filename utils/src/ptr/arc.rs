@@ -27,11 +27,12 @@ use core::{
 	hash::{Hash, Hasher},
 	intrinsics::size_of_val,
 	marker::Unsize,
-	mem::ManuallyDrop,
+	mem,
+	mem::{offset_of, ManuallyDrop},
 	ops::{CoerceUnsized, Deref, DispatchFromDyn},
 	ptr,
-	ptr::{drop_in_place, NonNull},
-	sync::atomic::{AtomicUsize, Ordering},
+	ptr::{drop_in_place, null, null_mut, NonNull},
+	sync::atomic::{AtomicPtr, AtomicUsize, Ordering, Ordering::Relaxed},
 };
 
 /// Inner structure shared between arcs pointing to the same object.
@@ -121,6 +122,29 @@ impl<T> Arc<T> {
 		})
 	}
 
+	/// Constructs an `Arc<T>` from a raw pointer.
+	///
+	/// # Safety
+	///
+	/// The raw pointer must have been previously returned by a call to [`Arc<T>::into_raw`]. Else,
+	/// the behaviour is undefined.
+	pub unsafe fn from_raw(ptr: *const T) -> Arc<T> {
+		let off = offset_of!(ArcInner<T>, obj);
+		Arc {
+			inner: unsafe { NonNull::new_unchecked(ptr.byte_sub(off) as *mut ArcInner<T>) },
+		}
+	}
+
+	/// Consumes the `Arc`, returning the wrapped pointer.
+	///
+	/// To avoid a memory leak, the pointer must be converted back to an `Arc` using
+	/// [`Arc::from_raw`].
+	pub fn into_raw(this: Arc<T>) -> *const T {
+		let ptr = this.as_ref() as *const T;
+		mem::forget(this);
+		ptr
+	}
+
 	/// Returns the inner value of the `Arc` if this is the last reference to it.
 	pub fn into_inner(this: Self) -> Option<T> {
 		// Avoid double free
@@ -150,6 +174,17 @@ impl<T: ?Sized> Arc<T> {
 	/// Returns a pointer to the inner object.
 	pub fn as_ptr(this: &Self) -> *const T {
 		&this.inner().obj
+	}
+
+	/// Returns a mutable reference into the given `Arc`, if there are no other `Arc` pointers to
+	/// the same allocation.
+	pub fn as_mut(this: &mut Self) -> Option<&mut T> {
+		// Cannot have a race condition since `this` is mutably borrowed
+		if Arc::strong_count(this) == 1 {
+			Some(unsafe { &mut this.inner.as_mut().obj })
+		} else {
+			None
+		}
 	}
 
 	/// Returns the number of strong pointers to the allocation.
@@ -232,5 +267,48 @@ impl<T: ?Sized> Drop for Arc<T> {
 			let layout = Layout::for_value(inner);
 			__dealloc(self.inner.cast(), layout);
 		}
+	}
+}
+
+/// Relaxed atomic [`Arc`] storage.
+#[derive(Default)]
+pub struct RelaxedArcCell<T>(AtomicPtr<T>);
+
+impl<T> From<Arc<T>> for RelaxedArcCell<T> {
+	fn from(val: Arc<T>) -> Self {
+		let ptr = Arc::into_raw(val);
+		Self(AtomicPtr::new(ptr as _))
+	}
+}
+
+impl<T> RelaxedArcCell<T> {
+	/// Creates a new instance.
+	#[inline]
+	pub const fn new() -> Self {
+		Self(AtomicPtr::new(null_mut()))
+	}
+
+	/// Get a copy of the inner [`Arc`].
+	pub fn get(&self) -> Option<Arc<T>> {
+		let ptr = self.0.load(Relaxed);
+		(!ptr.is_null()).then(|| {
+			let arc = unsafe { Arc::from_raw(ptr) };
+			// Increment reference counter
+			mem::forget(arc.clone());
+			arc
+		})
+	}
+
+	/// Swaps the inner value for `val`, returning the previous.
+	pub fn replace(&self, val: Option<Arc<T>>) -> Option<Arc<T>> {
+		let new = val.map(Arc::into_raw).unwrap_or(null());
+		let old = self.0.swap(new as _, Relaxed);
+		(!old.is_null()).then(|| unsafe { Arc::from_raw(old) })
+	}
+
+	/// Set the inner [`Arc`].
+	#[inline]
+	pub fn set(&self, val: Option<Arc<T>>) {
+		self.replace(val);
 	}
 }

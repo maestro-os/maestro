@@ -21,7 +21,8 @@
 
 use crate::{
 	device, file,
-	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, FileType, Stat},
+	file::{perm::AccessProfile, vfs, vfs::ResolutionSettings, File, FileType, Stat, O_WRONLY},
+	memory::user::UserSlice,
 };
 use utils::{collections::path::Path, cpio::CPIOParser, errno, errno::EResult, ptr::arc::Arc};
 
@@ -48,8 +49,8 @@ fn update_parent<'p>(
 		None => vfs::get_file_from_path(new, &ResolutionSettings::kernel_nofollow()),
 	};
 	match result {
-		Ok(file) => {
-			*parent = (new, file);
+		Ok(ent) => {
+			*parent = (new, ent);
 			Ok(())
 		}
 		// If the directory does not exist, create recursively
@@ -66,7 +67,7 @@ fn update_parent<'p>(
 /// `data` is the slice of data representing the initramfs image.
 pub fn load(data: &[u8]) -> EResult<()> {
 	// The stored parent directory
-	let mut cur_parent: (&Path, Arc<vfs::Entry>) = (Path::root(), vfs::root());
+	let mut cur_parent: (&Path, Arc<vfs::Entry>) = (Path::root(), vfs::ROOT.clone());
 	let cpio_parser = CPIOParser::new(data);
 	for entry in cpio_parser {
 		let hdr = entry.get_hdr();
@@ -103,14 +104,10 @@ pub fn load(data: &[u8]) -> EResult<()> {
 			Err(e) if e.as_int() == errno::EEXIST => continue,
 			Err(e) => return Err(e),
 		};
-		match file.get_type()? {
-			FileType::Regular | FileType::Link => {
-				let content = entry.get_content();
-				file.node()
-					.ops
-					.write_content(&file.node().location, 0, content)?;
-			}
-			_ => {}
+		if matches!(file.get_type()?, FileType::Regular | FileType::Link) {
+			let content = unsafe { UserSlice::from_slice(entry.get_content()) };
+			let file = File::open_entry(file, O_WRONLY)?;
+			file.ops.write(&file, 0, content)?;
 		}
 	}
 	Ok(())

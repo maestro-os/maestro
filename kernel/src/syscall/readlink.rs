@@ -20,10 +20,8 @@
 
 use crate::{
 	file::{vfs, vfs::ResolutionSettings, FileType},
-	process::{
-		mem_space::copy::{SyscallSlice, SyscallString},
-		Process,
-	},
+	memory::user::{UserSlice, UserString},
+	process::Process,
 	syscall::Args,
 };
 use utils::{
@@ -34,30 +32,21 @@ use utils::{
 };
 
 pub fn readlink(
-	Args((pathname, buf, bufsiz)): Args<(SyscallString, SyscallSlice<u8>, usize)>,
+	Args((pathname, buf, bufsiz)): Args<(UserString, *mut u8, usize)>,
 ) -> EResult<usize> {
-	// process lock has to be dropped to avoid deadlock with procfs
-	let (path, rs) = {
-		let proc = Process::current();
-
-		// Get file's path
-		let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
-
-		let rs = ResolutionSettings::for_process(&proc, false);
-		(path, rs)
-	};
-	let file = vfs::get_file_from_path(&path, &rs)?;
+	let proc = Process::current();
+	// Get file
+	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	let rs = ResolutionSettings::for_process(&proc, false);
+	let ent = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
-	if file.get_type()? != FileType::Link {
+	if ent.get_type()? != FileType::Link {
 		return Err(errno!(EINVAL));
 	}
 	// Read link
-	let mut buffer = vec![0; bufsiz]?;
-	let len = file
-		.node()
-		.ops
-		.read_content(&file.node().location, 0, &mut buffer)?;
-	buf.copy_to_user(0, &buffer)?;
+	let buf = UserSlice::from_user(buf, bufsiz)?;
+	let node = ent.node();
+	let len = node.node_ops.readlink(node, buf)?;
 	Ok(len as _)
 }

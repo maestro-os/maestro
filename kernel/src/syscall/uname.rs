@@ -19,10 +19,7 @@
 //! The `uname` syscall is used to retrieve information about the system.
 
 use crate::{
-	arch::ARCH,
-	process::{mem_space::copy::SyscallPtr, Process},
-	syscall::Args,
-	HOSTNAME, NAME, VERSION,
+	arch::ARCH, memory::user::UserPtr, process::Process, syscall::Args, HOSTNAME, NAME, VERSION,
 };
 use utils::{
 	errno,
@@ -48,7 +45,7 @@ pub struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-pub fn uname(Args(buf): Args<SyscallPtr<Utsname>>) -> EResult<usize> {
+pub fn uname(Args(buf): Args<UserPtr<Utsname>>) -> EResult<usize> {
 	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
 		nodename: [0; UTSNAME_LENGTH],

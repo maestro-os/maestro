@@ -18,11 +18,7 @@
 
 //! The `sethostname` syscall sets the hostname of the system.
 
-use crate::{
-	file::perm::AccessProfile,
-	process::{mem_space::copy::SyscallSlice, Process},
-	syscall::Args,
-};
+use crate::{file::perm::AccessProfile, memory::user::UserSlice, process::Process, syscall::Args};
 use core::intrinsics::unlikely;
 use utils::{
 	collections::vec::Vec,
@@ -32,7 +28,7 @@ use utils::{
 };
 
 pub fn sethostname(
-	Args((name, len)): Args<(SyscallSlice<u8>, usize)>,
+	Args((name, len)): Args<(*mut u8, usize)>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
 	// Check the size of the hostname is in bounds
@@ -43,7 +39,9 @@ pub fn sethostname(
 	if !ap.is_privileged() {
 		return Err(errno!(EPERM));
 	}
+	// Copy
+	let name = UserSlice::from_user(name, len)?;
 	let mut hostname = crate::HOSTNAME.lock();
-	*hostname = name.copy_from_user_vec(0, len)?.ok_or(errno!(EFAULT))?;
+	*hostname = name.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
 	Ok(0)
 }

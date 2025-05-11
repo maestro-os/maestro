@@ -25,7 +25,8 @@ use crate::{
 		vfs::{mountpoint, ResolutionSettings},
 		FileType,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use utils::{
@@ -36,7 +37,7 @@ use utils::{
 };
 
 pub fn chroot(
-	Args(path): Args<SyscallString>,
+	Args(path): Args<UserString>,
 	proc: Arc<Process>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
@@ -47,14 +48,14 @@ pub fn chroot(
 	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
 	let rs = ResolutionSettings {
-		root: vfs::root(),
+		root: vfs::ROOT.clone(),
 		..rs
 	};
 	// Get file
-	let file = vfs::get_file_from_path(&path, &rs)?;
-	if file.get_type()? != FileType::Directory {
+	let ent = vfs::get_file_from_path(&path, &rs)?;
+	if ent.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	proc.fs.lock().chroot = file;
+	proc.fs.lock().chroot = ent;
 	Ok(0)
 }

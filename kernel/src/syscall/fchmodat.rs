@@ -24,9 +24,10 @@ use crate::{
 	file::{
 		fd::FileDescriptorTable,
 		fs::StatSet,
+		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -39,7 +40,7 @@ use utils::{
 };
 
 pub fn fchmodat(
-	Args((dirfd, pathname, mode, flags)): Args<(c_int, SyscallString, file::Mode, c_int)>,
+	Args((dirfd, pathname, mode, flags)): Args<(c_int, UserString, file::Mode, c_int)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
@@ -54,14 +55,14 @@ pub fn fchmodat(
 		return Err(errno!(ENOENT));
 	};
 	// Check permission
-	let stat = file.stat()?;
+	let stat = file.stat();
 	if !rs.access_profile.can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
-	file.node().ops.set_stat(
-		&file.node().location,
-		StatSet {
-			mode: Some(mode & 0o7777),
+	vfs::set_stat(
+		file.node(),
+		&StatSet {
+			mode: Some(mode),
 			..Default::default()
 		},
 	)?;

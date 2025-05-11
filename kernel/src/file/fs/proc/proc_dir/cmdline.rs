@@ -21,48 +21,28 @@
 
 use super::read_memory;
 use crate::{
-	file::{
-		fs::{proc::get_proc_owner, NodeOps},
-		FileLocation, FileType, Stat,
-	},
+	file::{fs::FileOps, File},
 	format_content,
+	memory::user::UserSlice,
 	process::{pid::Pid, Process},
 };
-use core::fmt;
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The cmdline node of the proc.
 #[derive(Clone, Debug)]
-pub struct Cmdline(Pid);
+pub struct Cmdline(pub Pid);
 
-impl From<Pid> for Cmdline {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
-
-impl NodeOps for Cmdline {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+impl FileOps for Cmdline {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let mem_space = proc.mem_space.as_ref().unwrap().lock();
-		let disp = fmt::from_fn(|f| {
-			read_memory(
-				f,
-				&mem_space,
-				mem_space.exe_info.argv_begin,
-				mem_space.exe_info.argv_end,
-			)
-		});
-		format_content!(off, buf, "{disp}")
+		let Some(mem_space) = proc.mem_space.as_ref() else {
+			return Ok(0);
+		};
+		let cmdline = read_memory(
+			mem_space,
+			mem_space.exe_info.argv_begin,
+			mem_space.exe_info.argv_end,
+		)?;
+		format_content!(off, buf, "{}", DisplayableStr(&cmdline))
 	}
 }

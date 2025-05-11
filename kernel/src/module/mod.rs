@@ -50,7 +50,7 @@ use core::{
 	slice,
 };
 use utils::{
-	collections::{hashmap::HashSet, string::String, vec::Vec},
+	collections::{hashset::HashSet, string::String, vec::Vec},
 	errno,
 	errno::EResult,
 	vec, DisplayableStr,

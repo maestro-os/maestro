@@ -26,7 +26,8 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 		FileType,
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -41,9 +42,9 @@ use utils::{
 pub fn linkat(
 	Args((olddirfd, oldpath, newdirfd, newpath, flags)): Args<(
 		c_int,
-		SyscallString,
+		UserString,
 		c_int,
-		SyscallString,
+		UserString,
 		c_int,
 	)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
@@ -82,6 +83,7 @@ pub fn linkat(
 	else {
 		return Err(errno!(EEXIST));
 	};
-	vfs::link(&new_parent, new_name, &old, &rs.access_profile)?;
+	let name = new_name.try_into()?;
+	vfs::link(&new_parent, name, old.node().clone(), &rs.access_profile)?;
 	Ok(0)
 }

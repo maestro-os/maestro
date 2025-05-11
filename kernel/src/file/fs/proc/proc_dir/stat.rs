@@ -20,42 +20,27 @@
 //! status of the process.
 
 use crate::{
-	file::{
-		fs::{proc::get_proc_owner, NodeOps},
-		FileLocation, FileType, Stat,
-	},
+	file::{fs::FileOps, File},
 	format_content,
-	memory::VirtAddr,
+	memory::{user::UserSlice, VirtAddr},
 	process::{pid::Pid, Process},
 };
 use core::fmt;
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, DisplayableStr};
 
 /// The `stat` node of the proc.
 #[derive(Debug)]
-pub struct StatNode(Pid);
+pub struct StatNode(pub Pid);
 
-impl From<Pid> for StatNode {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
-
-impl NodeOps for StatNode {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
+impl FileOps for StatNode {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let mem_space = proc.mem_space.as_ref().unwrap().lock();
 		let disp = fmt::from_fn(|f| {
+			let (name, vmem_usage) = proc
+				.mem_space
+				.as_ref()
+				.map(|m| (m.exe_info.exe.name.as_bytes(), m.get_vmem_usage()))
+				.unwrap_or_default();
 			let user_regs = proc.user_regs();
 			// TODO Fill every fields with process's data
 			write!(
@@ -65,7 +50,7 @@ impl NodeOps for StatNode {
 TODO TODO TODO TODO {sp:?} {pc:?} TODO TODO TODO TODO 0 0 0 TODO TODO TODO TODO TODO TODO TODO TODO \
 TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 				pid = self.0,
-				name = mem_space.exe_info.exe.name,
+				name = DisplayableStr(name),
 				state_char = proc.get_state().as_char(),
 				ppid = proc.get_parent_pid(),
 				pgid = proc.get_pgid(),
@@ -75,7 +60,6 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO",
 				priority = 0, // TODO
 				nice = 0, // TODO
 				num_threads = 1, // TODO
-				vmem_usage = mem_space.get_vmem_usage(),
 				sp = VirtAddr(user_regs.get_stack_address() as _),
 				pc = VirtAddr(user_regs.get_program_counter() as _),
 			)

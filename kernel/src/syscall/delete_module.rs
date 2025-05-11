@@ -20,8 +20,9 @@
 
 use crate::{
 	file::{perm::AccessProfile, vfs::ResolutionSettings},
+	memory::user::UserString,
 	module,
-	process::{mem_space::copy::SyscallString, Process},
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_uint;
@@ -33,7 +34,7 @@ use utils::{
 // TODO handle flags
 
 pub fn delete_module(
-	Args((name, _flags)): Args<(SyscallString, c_uint)>,
+	Args((name, _flags)): Args<(UserString, c_uint)>,
 	ap: AccessProfile,
 ) -> EResult<usize> {
 	if !ap.is_privileged() {

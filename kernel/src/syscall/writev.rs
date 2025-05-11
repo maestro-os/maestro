@@ -20,15 +20,8 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, File, FileType, O_NONBLOCK},
-	process::{
-		mem_space::{
-			copy::{SyscallIOVec, SyscallSlice},
-			MemSpace,
-		},
-		scheduler,
-		signal::Signal,
-		Process,
-	},
+	memory::user::{UserIOVec, UserSlice},
+	process::{mem_space::MemSpace, scheduler, signal::Signal, Process},
 	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };
@@ -49,27 +42,25 @@ use utils::{
 /// - `iovcnt` is the number of chunks in `iov`
 /// - `offset` is the offset at which the write operation in the file begins
 /// - `file` is the file to write to
-fn write(iov: SyscallIOVec, iovcnt: usize, offset: Option<u64>, file: &File) -> EResult<usize> {
+fn write(iov: UserIOVec, iovcnt: usize, offset: Option<u64>, file: &File) -> EResult<usize> {
 	let mut off = 0;
 	for i in iov.iter(iovcnt) {
 		let i = i?;
 		// The size to write. This is limited to avoid an overflow on the total length
-		let l = min(i.iov_len, i32::MAX as usize - off);
-		let ptr = SyscallSlice::<u8>::from_ptr(i.iov_base as usize);
-		if let Some(buf) = ptr.copy_from_user_vec(0, l)? {
-			let len = if let Some(offset) = offset {
-				let file_off = offset + off as u64;
-				file.ops.write(file, file_off, &buf)?
-			} else {
-				let off = file.off.load(atomic::Ordering::Acquire);
-				let len = file.ops.write(file, off, &buf)?;
-				// Update offset
-				let new_off = off.saturating_add(len as u64);
-				file.off.store(new_off, atomic::Ordering::Release);
-				len
-			};
-			off += len;
-		}
+		let len = min(i.iov_len, i32::MAX as usize - off);
+		let buf = UserSlice::<u8>::from_user(i.iov_base, len)?;
+		let len = if let Some(offset) = offset {
+			let file_off = offset + off as u64;
+			file.ops.write(file, file_off, buf)?
+		} else {
+			let off = file.off.load(atomic::Ordering::Acquire);
+			let len = file.ops.write(file, off, buf)?;
+			// Update offset
+			let new_off = off.saturating_add(len as u64);
+			file.off.store(new_off, atomic::Ordering::Release);
+			len
+		};
+		off += len;
 	}
 	Ok(off)
 }
@@ -84,7 +75,7 @@ fn write(iov: SyscallIOVec, iovcnt: usize, offset: Option<u64>, file: &File) -> 
 /// - `flags` is the set of flags
 pub fn do_writev(
 	fd: i32,
-	iov: SyscallIOVec,
+	iov: UserIOVec,
 	iovcnt: i32,
 	offset: Option<isize>,
 	_flags: Option<i32>,
@@ -108,7 +99,7 @@ pub fn do_writev(
 }
 
 pub fn writev(
-	Args((fd, iov, iovcnt)): Args<(c_int, SyscallIOVec, c_int)>,
+	Args((fd, iov, iovcnt)): Args<(c_int, UserIOVec, c_int)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_writev(fd, iov, iovcnt, None, None, fds)

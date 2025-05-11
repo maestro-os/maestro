@@ -24,9 +24,8 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	memory::VirtAddr,
+	memory::{user::UserPtr, VirtAddr},
 	process::{
-		mem_space::copy::SyscallPtr,
 		signal::{ucontext, Signal},
 		Process,
 	},
@@ -43,14 +42,14 @@ pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 	// Retrieve and restore previous state
 	let stack_ptr = frame.get_stack_address();
 	if frame.is_compat() {
-		let ctx = SyscallPtr::<ucontext::UContext32>::from_ptr(stack_ptr)
+		let ctx = UserPtr::<ucontext::UContext32>::from_ptr(stack_ptr)
 			.copy_from_user()?
 			.ok_or_else(|| errno!(EFAULT))?;
 		ctx.restore_regs(&proc, frame);
 	} else {
 		#[cfg(target_arch = "x86_64")]
 		{
-			let ctx = SyscallPtr::<ucontext::UContext64>::from_ptr(stack_ptr)
+			let ctx = UserPtr::<ucontext::UContext64>::from_ptr(stack_ptr)
 				.copy_from_user()?
 				.ok_or_else(|| errno!(EFAULT))?;
 			let res = ctx.restore_regs(&proc, frame);

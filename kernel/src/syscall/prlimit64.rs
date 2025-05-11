@@ -19,11 +19,8 @@
 //! The `prlimit64` syscall returns the limit for a given resource.
 
 use crate::{
-	process::{
-		mem_space::{copy::SyscallPtr, MemSpace},
-		pid::Pid,
-		Process,
-	},
+	memory::user::UserPtr,
+	process::{mem_space::MemSpace, pid::Pid, Process},
 	sync::mutex::IntMutex,
 	syscall::Args,
 };
@@ -93,10 +90,9 @@ pub fn prlimit64(
 	Args((pid, resource, _new_limit, _old_limit)): Args<(
 		Pid,
 		c_int,
-		SyscallPtr<RLimit>,
-		SyscallPtr<RLimit>,
+		UserPtr<RLimit>,
+		UserPtr<RLimit>,
 	)>,
-	mem_space: Arc<IntMutex<MemSpace>>,
 ) -> EResult<usize> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid != 0 {
@@ -105,7 +101,6 @@ pub fn prlimit64(
 	} else {
 		None
 	};
-	let _mem_space = mem_space.lock();
 	// TODO Implement all
 	match resource {
 		RLIMIT_CPU => {}

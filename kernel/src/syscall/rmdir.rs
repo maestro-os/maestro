@@ -21,8 +21,13 @@
 //! If no link remain to the directory, the function also removes it.
 
 use crate::{
-	file::{vfs, vfs::ResolutionSettings, FileType},
-	process::{mem_space::copy::SyscallString, Process},
+	file::{
+		vfs,
+		vfs::{ResolutionSettings, Resolved},
+		FileType,
+	},
+	memory::user::UserString,
+	process::Process,
 	syscall::Args,
 };
 use utils::{
@@ -31,17 +36,15 @@ use utils::{
 	errno::{EResult, Errno},
 };
 
-pub fn rmdir(Args(pathname): Args<SyscallString>, rs: ResolutionSettings) -> EResult<usize> {
+pub fn rmdir(Args(pathname): Args<UserString>, rs: ResolutionSettings) -> EResult<usize> {
 	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
+	let entry = vfs::get_file_from_path(&path, &rs)?;
 	// Validation
-	{
-		let file = vfs::get_file_from_path(&path, &rs)?;
-		if file.get_type()? != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
+	let stat = entry.get_type()?;
+	if stat != FileType::Directory {
+		return Err(errno!(ENOTDIR));
 	}
-	// Remove
-	vfs::unlink_from_path(&path, &rs)?;
+	vfs::unlink(entry, &rs.access_profile)?;
 	Ok(0)
 }

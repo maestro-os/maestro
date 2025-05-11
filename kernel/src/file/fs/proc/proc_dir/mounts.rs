@@ -19,13 +19,9 @@
 //! Implementation of the `mounts` node which allows to get the list of mountpoint.
 
 use crate::{
-	file::{
-		fs::{proc::get_proc_owner, NodeOps},
-		vfs,
-		vfs::mountpoint,
-		FileLocation, FileType, Stat,
-	},
+	file::{fs::FileOps, vfs, vfs::mountpoint, File},
 	format_content,
+	memory::user::UserSlice,
 	process::pid::Pid,
 };
 use core::{fmt, fmt::Formatter};
@@ -33,27 +29,11 @@ use utils::{errno::EResult, DisplayableStr};
 
 /// The `mounts` node.
 #[derive(Debug)]
-pub struct Mounts(Pid);
+pub struct Mounts(pub Pid);
 
-impl From<Pid> for Mounts {
-	fn from(pid: Pid) -> Self {
-		Self(pid)
-	}
-}
-
-impl NodeOps for Mounts {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		let (uid, gid) = get_proc_owner(self.0);
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			uid,
-			gid,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		format_content!(off, buf, "{}", self)
+impl FileOps for Mounts {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		format_content!(off, buf, "{self}")
 	}
 }
 
@@ -64,7 +44,7 @@ impl fmt::Display for Mounts {
 			let Ok(target) = vfs::Entry::get_path(&mp.root_entry) else {
 				continue;
 			};
-			let fs_type = mp.fs.get_name();
+			let fs_type = mp.fs.ops.get_name();
 			let flags = "TODO"; // TODO
 			writeln!(
 				f,

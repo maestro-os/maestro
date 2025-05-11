@@ -24,10 +24,8 @@ use crate::{
 		vfs::{mountpoint, mountpoint::MountSource, ResolutionSettings},
 		FileType,
 	},
-	process::{
-		mem_space::copy::{SyscallPtr, SyscallString},
-		Process,
-	},
+	memory::user::{UserPtr, UserString},
+	process::Process,
 	syscall::Args,
 };
 use core::ffi::{c_ulong, c_void};
@@ -39,11 +37,11 @@ use utils::{
 
 pub fn mount(
 	Args((source, target, filesystemtype, mountflags, _data)): Args<(
-		SyscallString,
-		SyscallString,
-		SyscallString,
+		UserString,
+		UserString,
+		UserString,
 		c_ulong,
-		SyscallPtr<c_void>,
+		UserPtr<c_void>,
 	)>,
 	rs: ResolutionSettings,
 ) -> EResult<usize> {
@@ -58,13 +56,13 @@ pub fn mount(
 	let filesystemtype_slice = filesystemtype.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let fs_type = fs::get_type(&filesystemtype_slice).ok_or(errno!(ENODEV))?;
 	// Get target file
-	let target_file = vfs::get_file_from_path(&target_path, &rs)?;
+	let target = vfs::get_file_from_path(&target_path, &rs)?;
 	// Check the target is a directory
-	if target_file.get_type()? != FileType::Directory {
+	if target.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
 	// TODO Use `data`
 	// Create mountpoint
-	mountpoint::create(mount_source, Some(fs_type), mountflags as _, target_file)?;
+	mountpoint::create(mount_source, Some(fs_type), mountflags as _, Some(target))?;
 	Ok(0)
 }

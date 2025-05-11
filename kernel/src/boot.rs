@@ -20,7 +20,7 @@ use crate::{
 	arch::x86::{gdt, paging::Table},
 	memory::VirtAddr,
 };
-use core::arch::global_asm;
+use core::{arch::global_asm, sync::atomic::AtomicUsize};
 
 #[cfg(target_arch = "x86")]
 pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
@@ -68,21 +68,21 @@ static mut REMAP: Table = const {
 		use crate::arch::x86::paging::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
 		use utils::limits::PAGE_SIZE;
 
-		let mut dir = [0; 1024];
+		let mut dir = Table::new();
 		// TODO use for loop when stabilized
 		let mut i = 0;
 		while i < 256 {
-			let addr = (i * PAGE_SIZE * 1024) as u32;
+			let addr = i * PAGE_SIZE * 1024;
 			let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
-			dir[i] = ent;
-			dir[i + 768] = ent;
+			dir.0[i] = AtomicUsize::new(ent);
+			dir.0[i + 768] = AtomicUsize::new(ent);
 			i += 1;
 		}
-		Table(dir)
+		dir
 	}
 	// This is initialized at runtime in assembly
 	#[cfg(target_arch = "x86_64")]
-	Table([0; 512])
+	Table::new()
 };
 
 /// Directory use for the stage 1 of kernel remapping to higher memory under `x86_64`.
@@ -97,16 +97,15 @@ static mut REMAP_DIR: Table = const {
 	use crate::arch::x86::paging::{FLAG_PAGE_SIZE, FLAG_PRESENT, FLAG_WRITE};
 	use utils::limits::PAGE_SIZE;
 
-	let mut dir = [0; 512];
+	let mut dir = Table::new();
 	// TODO use for loop when stabilized
 	let mut i = 0;
-	while i < dir.len() {
-		let addr = (i * PAGE_SIZE * 512) as u64;
-		let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
-		dir[i] = ent;
+	while i < dir.0.len() {
+		let addr = i * PAGE_SIZE * 512;
+		dir.0[i] = AtomicUsize::new(addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT);
 		i += 1;
 	}
-	Table(dir)
+	dir
 };
 
 extern "C" {

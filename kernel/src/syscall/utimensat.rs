@@ -23,18 +23,17 @@ use crate::{
 	file::{
 		fd::FileDescriptorTable,
 		fs::StatSet,
+		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{
-		mem_space::copy::{SyscallPtr, SyscallString},
-		Process,
-	},
+	memory::user::{UserPtr, UserString},
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 	time,
 	time::{
 		clock,
-		clock::CLOCK_MONOTONIC,
+		clock::{current_time_ns, Clock},
 		unit::{TimeUnit, Timespec},
 	},
 	tty::vga::DEFAULT_COLOR,
@@ -50,8 +49,8 @@ use utils::{
 pub fn utimensat(
 	Args((dirfd, pathname, times, flags)): Args<(
 		c_int,
-		SyscallString,
-		SyscallPtr<[Timespec; 2]>,
+		UserString,
+		UserPtr<[Timespec; 2]>,
 		c_int,
 	)>,
 	rs: ResolutionSettings,
@@ -61,26 +60,24 @@ pub fn utimensat(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.transpose()?;
-	let times_val = match times.copy_from_user()? {
-		Some(times) => times,
-		None => {
-			let ts = clock::current_time_struct(CLOCK_MONOTONIC)?;
-			[ts, ts]
-		}
-	};
-	let atime = times_val[0];
-	let mtime = times_val[1];
+	let (atime, mtime) = times
+		.copy_from_user()?
+		.map(|[atime, mtime]| (atime.to_nano(), mtime.to_nano()))
+		.unwrap_or_else(|| {
+			let ts = current_time_ns(Clock::Monotonic);
+			(ts, ts)
+		});
 	// Get file
 	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, pathname.as_deref(), flags)?
 	else {
 		return Err(errno!(ENOENT));
 	};
 	// Update timestamps
-	file.node().ops.set_stat(
-		&file.node().location,
-		StatSet {
-			atime: Some(atime.to_nano() / 1000000000),
-			mtime: Some(mtime.to_nano() / 1000000000),
+	vfs::set_stat(
+		file.node(),
+		&StatSet {
+			atime: Some(atime / 1_000_000_000),
+			mtime: Some(mtime / 1_000_000_000),
 			..Default::default()
 		},
 	)?;

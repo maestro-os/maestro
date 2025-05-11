@@ -19,11 +19,18 @@
 //! A directory entry is an entry stored into an inode's content which
 //! represents a subfile in a directory.
 
-use super::{Ext2INode, Superblock};
-use crate::{device::DeviceIO, file::FileType};
-use core::{cmp::min, intrinsics::unlikely, mem::offset_of};
+use super::{read_block, Ext2Fs, Superblock};
+use crate::{
+	file::{fs::ext2::inode::Ext2INode, FileType},
+	memory::cache::RcFrame,
+};
+use core::{intrinsics::unlikely, mem::offset_of, ptr::NonNull};
 use macros::AnyRepr;
-use utils::{errno, errno::EResult};
+use utils::{
+	errno,
+	errno::{EResult, EOVERFLOW},
+	limits::NAME_MAX,
+};
 
 /// Directory entry type indicator: Unknown
 const TYPE_INDICATOR_UNKNOWN: u8 = 0;
@@ -96,7 +103,7 @@ impl Dirent {
 		) {
 			return Err(errno!(EINVAL));
 		}
-		if unlikely(name.len() > super::MAX_NAME_LEN) {
+		if unlikely(name.len() > NAME_MAX) {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		// Reinterpret
@@ -165,51 +172,22 @@ impl Dirent {
 		&self.name[..name_length]
 	}
 
-	/// Sets the name of the entry.
-	///
-	/// If the length of the entry is shorter than the required space, the name
-	/// shall be truncated.
-	///
-	/// If the name is too long, the function returns [`ENAMETOOLONG`].
-	pub fn set_name(&mut self, superblock: &Superblock, name: &[u8]) -> EResult<()> {
-		if name.len() > super::MAX_NAME_LEN {
-			return Err(errno!(ENAMETOOLONG));
-		}
-		let len = min(name.len(), self.rec_len as usize - NAME_OFF);
-		self.name[..len].copy_from_slice(&name[..len]);
-		self.name_len = len as u8;
-		// If the file type hint feature is not enabled, set the high byte of the name length to
-		// zero
-		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
-			self.file_type = 0;
-		}
-		Ok(())
-	}
-
 	/// Returns the file type associated with the entry.
 	///
-	/// If the type cannot be retrieved from the entry directly, the function retrieves it from the
-	/// inode.
-	pub fn get_type(&self, superblock: &Superblock, io: &dyn DeviceIO) -> EResult<FileType> {
-		let ent_type =
-			if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
-				match self.file_type {
-					TYPE_INDICATOR_REGULAR => Some(FileType::Regular),
-					TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
-					TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
-					TYPE_INDICATOR_BLOCK_DEVICE => Some(FileType::BlockDevice),
-					TYPE_INDICATOR_FIFO => Some(FileType::Fifo),
-					TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
-					TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
-					_ => None,
-				}
-			} else {
-				None
-			};
-		// If the type could not be retrieved from the entry itself, get it from the inode
-		match ent_type {
-			Some(t) => Ok(t),
-			None => Ok(Ext2INode::read(self.inode as _, superblock, io)?.get_type()),
+	/// If the type cannot be retrieved from the entry directly, the function returns [`None`].
+	pub fn get_type(&self, superblock: &Superblock) -> Option<FileType> {
+		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			return None;
+		}
+		match self.file_type {
+			TYPE_INDICATOR_REGULAR => Some(FileType::Regular),
+			TYPE_INDICATOR_DIRECTORY => Some(FileType::Directory),
+			TYPE_INDICATOR_CHAR_DEVICE => Some(FileType::CharDevice),
+			TYPE_INDICATOR_BLOCK_DEVICE => Some(FileType::BlockDevice),
+			TYPE_INDICATOR_FIFO => Some(FileType::Fifo),
+			TYPE_INDICATOR_SOCKET => Some(FileType::Socket),
+			TYPE_INDICATOR_SYMLINK => Some(FileType::Link),
+			_ => None,
 		}
 	}
 
@@ -232,5 +210,95 @@ impl Dirent {
 	/// Tells whether the entry is valid.
 	pub fn is_free(&self) -> bool {
 		self.inode == 0
+	}
+}
+
+/// An iterator over a directory's entries, including free ones.
+///
+/// The iterator returns the entry, along with its offset in the directory.
+pub struct DirentIterator<'a> {
+	/// The filesystem
+	fs: &'a Ext2Fs,
+	/// The directory's inode
+	inode: &'a Ext2INode,
+
+	/// The current block
+	blk: &'a mut Option<RcFrame>,
+	/// The current offset in the directory
+	off: u64,
+}
+
+impl<'a> DirentIterator<'a> {
+	/// Creates a new iterator over `inode`.
+	///
+	/// The iterator needs `blk` to be stored outside the iterator for lifetime reason.
+	///
+	/// `off` is the starting offset
+	pub fn new(
+		fs: &'a Ext2Fs,
+		inode: &'a Ext2INode,
+		blk: &'a mut Option<RcFrame>,
+		off: u64,
+	) -> EResult<Self> {
+		*blk = Self::get_block(fs, inode, off)?;
+		Ok(Self {
+			fs,
+			inode,
+
+			blk,
+			off,
+		})
+	}
+
+	/// Reads the block for the entry at the offset `off`.
+	///
+	/// If reaching the end of the allocated blocks, the function returns `None`.
+	fn get_block(fs: &Ext2Fs, inode: &Ext2INode, off: u64) -> EResult<Option<RcFrame>> {
+		let blk_off = off / fs.sp.get_block_size() as u64;
+		let res = inode.translate_blk_off(blk_off as _, fs);
+		let blk_off = match res {
+			Ok(Some(o)) => o,
+			// If reaching a zero block, stop
+			Ok(None) => return Ok(None),
+			// If reaching the block limit, stop
+			Err(e) if e.as_int() == EOVERFLOW => return Ok(None),
+			Err(e) => return Err(e),
+		};
+		let blk = read_block(fs, blk_off.get() as _)?;
+		Ok(Some(blk))
+	}
+
+	fn next_impl(&mut self) -> EResult<Option<(u64, &'a Dirent)>> {
+		let blk_size = self.fs.sp.get_block_size() as u64;
+		// If at the beginning of the block, read it
+		let inner_off = (self.off % blk_size) as usize;
+		if inner_off == 0 {
+			*self.blk = Self::get_block(self.fs, self.inode, self.off)?;
+		}
+		// If no block remain, stop
+		let Some(blk) = self.blk.as_mut() else {
+			return Ok(None);
+		};
+		// Safe since the node is locked
+		let blk_slice = unsafe { blk.slice_mut() };
+		// Read entry
+		let ent = Dirent::from_slice(&mut blk_slice[inner_off..], &self.fs.sp)?;
+		let prev_off = self.off;
+		self.off += ent.rec_len as u64;
+		// If on the next block, ensure the offset is at the beginning
+		if (prev_off / blk_size) != (self.off / blk_size) {
+			self.off &= !(blk_size - 1);
+		}
+		// Use a `NonNull` to get the right lifetime
+		let mut ent = NonNull::from(ent);
+		Ok(Some((prev_off, unsafe { ent.as_mut() })))
+	}
+}
+
+impl<'a> Iterator for DirentIterator<'a> {
+	type Item = EResult<(u64, &'a Dirent)>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.next_impl().transpose()
 	}
 }

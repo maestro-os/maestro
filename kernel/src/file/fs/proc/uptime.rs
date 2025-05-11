@@ -19,8 +19,10 @@
 //! The uptime file returns the amount of time elapsed since the system started up.
 
 use crate::{
-	file::{fs::NodeOps, FileLocation, FileType, Stat},
+	file::{fs::FileOps, File},
 	format_content,
+	memory::user::UserSlice,
+	time::clock::{current_time_ns, Clock},
 };
 use utils::errno::EResult;
 
@@ -28,16 +30,12 @@ use utils::errno::EResult;
 #[derive(Debug, Default)]
 pub struct Uptime;
 
-impl NodeOps for Uptime {
-	fn get_stat(&self, _loc: &FileLocation) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			..Default::default()
-		})
-	}
-
-	fn read_content(&self, _loc: &FileLocation, off: u64, buf: &mut [u8]) -> EResult<usize> {
-		// TODO
-		format_content!(off, buf, "0.00 0.00\n")
+impl FileOps for Uptime {
+	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		let uptime = current_time_ns(Clock::Boottime) / 10_000_000;
+		let uptime_upper = uptime / 100;
+		let uptime_lower = uptime % 100;
+		// TODO second value is the total amount of time each core has spent idle
+		format_content!(off, buf, "{uptime_upper}.{uptime_lower:02} 0.00\n")
 	}
 }

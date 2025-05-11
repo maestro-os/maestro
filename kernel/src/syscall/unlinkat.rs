@@ -27,7 +27,8 @@ use crate::{
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
-	process::{mem_space::copy::SyscallString, Process},
+	memory::user::UserString,
+	process::Process,
 	sync::mutex::Mutex,
 	syscall::{util::at::AT_EMPTY_PATH, Args},
 };
@@ -42,7 +43,7 @@ use utils::{
 /// Perform the `unlinkat` system call.
 pub fn do_unlinkat(
 	dirfd: c_int,
-	pathname: SyscallString,
+	pathname: UserString,
 	flags: c_int,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
@@ -51,7 +52,6 @@ pub fn do_unlinkat(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.ok_or_else(|| errno!(EFAULT))??;
-	let parent_path = pathname.parent().ok_or_else(|| errno!(ENOENT))?;
 	let rs = ResolutionSettings {
 		follow_link: false,
 		..rs
@@ -61,19 +61,18 @@ pub fn do_unlinkat(
 		&fds.lock(),
 		rs.clone(),
 		dirfd,
-		Some(parent_path),
+		Some(&pathname),
 		flags | AT_EMPTY_PATH,
 	)?;
-	let Resolved::Found(parent) = resolved else {
+	let Resolved::Found(ent) = resolved else {
 		return Err(errno!(ENOENT));
 	};
-	let name = pathname.file_name().ok_or_else(|| errno!(ENOENT))?;
-	vfs::unlink(parent, name, &rs.access_profile)?;
+	vfs::unlink(ent, &rs.access_profile)?;
 	Ok(0)
 }
 
 pub fn unlinkat(
-	Args((dirfd, pathname, flags)): Args<(c_int, SyscallString, c_int)>,
+	Args((dirfd, pathname, flags)): Args<(c_int, UserString, c_int)>,
 	rs: ResolutionSettings,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {

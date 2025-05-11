@@ -29,18 +29,17 @@
 //! - User: Memory used for userspace mappings. This zone doesn't require virtual memory to
 //!   correspond with the physical memory, thus it can be located outside the kernelspace.
 
-use crate::memory::{buddy, memmap, KERNELSPACE_SIZE};
+use crate::memory::{buddy, memmap::PHYS_MAP, KERNELSPACE_SIZE};
 use core::cmp::min;
 use utils::limits::PAGE_SIZE;
 
 /// Initializes the memory allocators.
 pub(crate) fn init() {
-	let phys_map = memmap::get_info();
 	// The number of available physical memory pages
-	let mut available_pages = phys_map.phys_main_pages;
+	let mut available_pages = PHYS_MAP.phys_main_pages;
 
 	// The pointer to the beginning of the buddy allocator's metadata
-	let metadata_begin = phys_map.phys_main_begin.align_to(PAGE_SIZE);
+	let metadata_begin = PHYS_MAP.phys_main_begin.align_to(PAGE_SIZE);
 	let metadata_begin_virt = metadata_begin.kernel_to_virtual().unwrap();
 	// The size of the buddy allocator's metadata
 	let metadata_size = available_pages * buddy::FRAME_METADATA_SIZE;

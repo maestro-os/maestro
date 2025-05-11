@@ -61,7 +61,7 @@ impl WaitQueue {
 			// something else)
 			{
 				// If the current process had received a signal, return
-				if Process::current().signal.lock().next_signal(true).is_some() {
+				if Process::current().has_pending_signal() {
 					return Err(errno!(EINTR));
 				}
 			}

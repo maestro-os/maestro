@@ -21,14 +21,12 @@
 
 use crate::{
 	elf::parser::ELFParser,
-	memory::{buddy, VirtAddr},
-	process::{
-		mem_space,
-		mem_space::{
-			residence::{MapResidence, Page, ResidencePage},
-			MapConstraint, MemSpace,
-		},
+	memory::{
+		buddy::ZONE_KERNEL,
+		cache::{FrameOwner, RcFrame},
+		VirtAddr,
 	},
+	process::mem_space::{MemSpace, Page, MAP_ANONYMOUS, MAP_PRIVATE, PROT_EXEC, PROT_READ},
 	sync::once::OnceInit,
 };
 use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
@@ -37,13 +35,12 @@ use utils::{
 	errno::{AllocResult, CollectResult, EResult},
 	include_bytes_aligned,
 	limits::PAGE_SIZE,
-	ptr::arc::Arc,
 };
 
 /// Information on the vDSO ELF image.
 struct Vdso {
 	/// The list of pages on which the image is loaded.
-	pages: Arc<Vec<Arc<ResidencePage>>>,
+	pages: Vec<RcFrame>,
 	/// The offset of the vDSO's entry.
 	entry_off: Option<NonZeroUsize>,
 }
@@ -72,19 +69,18 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 			let off = i * PAGE_SIZE;
 			let len = min(PAGE_SIZE, elf.len() - off);
 			// Alloc page
-			let physaddr = buddy::alloc(0, buddy::FLAG_ZONE_TYPE_KERNEL)?;
-			let virtaddr = physaddr.kernel_to_virtual().unwrap();
-			let virtaddr = unsafe { &mut *virtaddr.as_ptr::<Page>() };
+			let page = RcFrame::new(0, ZONE_KERNEL, FrameOwner::Anon, 0)?;
+			let virtaddr = unsafe { &mut *page.virt_addr().as_ptr::<Page>() };
 			// Copy data
 			let src = &elf[off..(off + len)];
 			virtaddr[..src.len()].copy_from_slice(src);
 			virtaddr[src.len()..].fill(0);
-			Arc::new(ResidencePage::new(physaddr))
+			Ok(page)
 		})
 		.collect::<AllocResult<CollectResult<_>>>()?
 		.0?;
 	Ok(Vdso {
-		pages: Arc::new(pages)?,
+		pages,
 		entry_off: NonZeroUsize::new(parser.hdr().e_entry as usize),
 	})
 }
@@ -95,26 +91,21 @@ fn load_image(elf: &[u8]) -> EResult<Vdso> {
 ///
 /// The function returns the virtual address to the mapped vDSO.
 #[allow(unused_variables)]
-pub fn map(mem_space: &mut MemSpace, compat: bool) -> EResult<MappedVDSO> {
+pub fn map(mem_space: &MemSpace, compat: bool) -> EResult<MappedVDSO> {
 	#[cfg(not(target_arch = "x86_64"))]
-	let vdso = VDSO.get();
+	let vdso = &*VDSO;
 	#[cfg(target_arch = "x86_64")]
 	let vdso = {
 		if !compat {
-			VDSO.get()
+			&*VDSO
 		} else {
-			VDSO_COMPAT.get()
+			&*VDSO_COMPAT
 		}
 	};
-	// TODO ASLR
-	let pages_count = NonZeroUsize::new(vdso.pages.len()).unwrap();
-	let begin = mem_space.map(
-		MapConstraint::None,
-		pages_count,
-		mem_space::MAPPING_FLAG_USER,
-		MapResidence::Static {
-			pages: vdso.pages.clone(),
-		},
+	let begin = mem_space.map_special(
+		PROT_READ | PROT_EXEC,
+		MAP_PRIVATE | MAP_ANONYMOUS,
+		&vdso.pages,
 	)?;
 	Ok(MappedVDSO {
 		begin: begin.into(),
@@ -129,13 +120,13 @@ pub(crate) fn init() -> EResult<()> {
 	// Main image
 	unsafe {
 		static ELF: &[u8] = include_bytes_aligned!(usize, env!("VDSO_PATH"));
-		VDSO.init(load_image(ELF)?);
+		OnceInit::init(&VDSO, load_image(ELF)?);
 	}
 	// 32 bit image for backward compat
 	#[cfg(target_arch = "x86_64")]
 	unsafe {
 		static ELF: &[u8] = include_bytes_aligned!(usize, env!("VDSO_COMPAT_PATH"));
-		VDSO_COMPAT.init(load_image(ELF)?);
+		OnceInit::init(&VDSO_COMPAT, load_image(ELF)?);
 	}
 	Ok(())
 }
