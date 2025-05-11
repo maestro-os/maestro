@@ -48,9 +48,13 @@ use core::{
 	fmt::Formatter,
 	intrinsics::unlikely,
 	marker::PhantomData,
+	mem,
 	ops::Deref,
 	slice,
-	sync::atomic::Ordering::{Acquire, Release},
+	sync::atomic::{
+		AtomicUsize,
+		Ordering::{Acquire, Release},
+	},
 };
 use utils::{
 	bytes::AnyRepr,
@@ -97,12 +101,13 @@ struct RcFrameInner {
 
 	/// The node from which the data originates
 	owner: FrameOwner,
-
-	/// The node for the cache LRU
-	lru: ListNode,
-
 	/// The device offset of the data in the node in pages
 	dev_off: u64,
+
+	/// The number of places where the frame is mapped.
+	map_count: AtomicUsize,
+	/// The node for the cache LRU
+	lru: ListNode,
 }
 
 impl Drop for RcFrameInner {
@@ -141,10 +146,10 @@ impl RcFrame {
 			order,
 
 			owner,
-
-			lru: Default::default(),
-
 			dev_off,
+
+			map_count: Default::default(),
+			lru: Default::default(),
 		})?))
 	}
 
@@ -195,18 +200,6 @@ impl RcFrame {
 		let ptr = self.virt_addr().as_ptr::<T>();
 		let len = buddy::get_frame_size(self.0.order) / size_of::<T>();
 		unsafe { slice::from_raw_parts_mut(ptr, len) }
-	}
-
-	/// Tells whether there are other references to the same frame.
-	#[inline]
-	pub fn is_shared(&self) -> bool {
-		let ref_count = Arc::strong_count(&self.0);
-		match self.0.owner.inner() {
-			// Anonymous mapping
-			None => ref_count > 1,
-			// The references in `LRU` + `PageCache` + `self` = 3
-			Some(_) => ref_count > 3,
-		}
 	}
 
 	/// Returns the order of the frame
@@ -295,6 +288,18 @@ impl RcFrame {
 			}
 		}
 		Ok(())
+	}
+
+	/// Returns a reference to the map counter.
+	#[inline]
+	pub fn map_counter(&self) -> &AtomicUsize {
+		&self.0.map_count
+	}
+
+	/// Tells whether the frame is mapped in multiple places
+	#[inline]
+	pub fn is_shared(&self) -> bool {
+		self.0.map_count.load(Acquire) > 1
 	}
 }
 
@@ -432,6 +437,19 @@ impl MappedNode {
 	}
 }
 
+impl Drop for MappedNode {
+	fn drop(&mut self) {
+		// Unlink all remaining pages from the LRU
+		let mut lru = LRU.lock();
+		let cache = mem::take(&mut self.cache).into_inner();
+		for (_, frame) in cache {
+			unsafe {
+				lru.remove(&frame.0);
+			}
+		}
+	}
+}
+
 /// Global cache for all frames
 static LRU: IntMutex<list_type!(RcFrameInner, lru)> = IntMutex::new(list!(RcFrameInner, lru));
 
@@ -480,8 +498,9 @@ pub fn shrink() -> bool {
 				// We lock the cache first to avoid having someone else activating the page while
 				// we are removing it
 				let mut cache = frame.0.owner.inner().map(|m| m.cache.lock());
-				// If the frame is active, skip to the next
-				if frame.is_shared() {
+				// If the frame is used somewhere else, skip to the next
+				let count = 2 + cache.is_some() as usize;
+				if Arc::strong_count(&frame.0) > count {
 					continue;
 				}
 				if let Err(errno) = frame.writeback(None, false) {

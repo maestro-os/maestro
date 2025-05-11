@@ -35,7 +35,7 @@ use crate::{
 	file::{perm::AccessProfile, vfs, File},
 	memory,
 	memory::{cache::RcFrame, vmem::VMem, VirtAddr, PROCESS_END},
-	process::scheduler::core_local,
+	process::{mem_space::mapping::MappedFrame, scheduler::core_local},
 	sync::mutex::IntMutex,
 };
 use core::{
@@ -62,7 +62,7 @@ pub const PROT_EXEC: u8 = 0x4;
 
 /// Changes are shared across mappings on the same region
 pub const MAP_SHARED: u8 = 0x1;
-/// Changes are *not* shared across mappings on the same region
+/// Changes are not carried to the underlying file
 pub const MAP_PRIVATE: u8 = 0x2;
 /// Interpret `addr` exactly
 pub const MAP_FIXED: u8 = 0x10;
@@ -415,10 +415,10 @@ impl MemSpace {
 		)
 		.map_err(|_| AllocError)?;
 		// Populate
-		map.anon_pages
+		map.pages
 			.iter_mut()
 			.zip(pages.iter().cloned())
-			.for_each(|(dst, src)| *dst = Some(src));
+			.for_each(|(dst, src)| *dst = Some(MappedFrame::new(src)));
 		// Commit
 		let addr = map.get_addr();
 		transaction.insert_mapping(map)?;
@@ -580,31 +580,6 @@ impl MemSpace {
 		})
 	}
 
-	/// Allocates the physical pages on the given range.
-	///
-	/// Arguments:
-	/// - `addr` is the virtual address to beginning of the range to allocate.
-	/// - `len` is the size of the range in bytes.
-	///
-	/// If the mapping does not exist, the function returns an error.
-	///
-	/// On error, allocations that have been made are not freed as it does not affect the behaviour
-	/// from the user's point of view.
-	pub fn alloc(&self, addr: VirtAddr, len: usize) -> EResult<()> {
-		let mut state = self.state.lock();
-		let mut vmem = self.vmem.lock();
-		let mut off = 0;
-		while off < len {
-			let addr = addr + off;
-			if let Some(mapping) = state.get_mut_mapping_for_addr(addr) {
-				let page_offset = (addr.0 - mapping.get_addr() as usize) / PAGE_SIZE;
-				mapping.map(page_offset, &mut vmem)?;
-			}
-			off += PAGE_SIZE;
-		}
-		Ok(())
-	}
-
 	/// Sets protection for the given range of memory.
 	///
 	/// Arguments:
@@ -734,7 +709,8 @@ impl MemSpace {
 		};
 		// Check permissions
 		let prot = mapping.get_prot();
-		if unlikely(code & PAGE_FAULT_WRITE != 0 && prot & PROT_WRITE == 0) {
+		let write = code & PAGE_FAULT_WRITE != 0;
+		if unlikely(write && prot & PROT_WRITE == 0) {
 			return Ok(false);
 		}
 		if unlikely(code & PAGE_FAULT_INSTRUCTION != 0 && prot & PROT_EXEC == 0) {
@@ -742,7 +718,7 @@ impl MemSpace {
 		}
 		// Map the accessed page
 		let page_offset = (addr.0 - mapping.get_addr() as usize) / PAGE_SIZE;
-		mapping.map(page_offset, &mut vmem)?;
+		mapping.map(page_offset, &mut vmem, write)?;
 		Ok(true)
 	}
 }

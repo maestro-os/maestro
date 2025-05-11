@@ -36,7 +36,7 @@ use crate::{
 	},
 	time::clock::{current_time_ms, Clock},
 };
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, ops::Deref, sync::atomic::Ordering::Release};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
@@ -57,6 +57,38 @@ fn zeroed_page() -> PhysAddr {
 	VirtAddr::from(DEFAULT_PAGE.0.as_ptr())
 		.kernel_to_physical()
 		.unwrap()
+}
+
+/// A wrapper for a mapped frame, allowing to update the map counter.
+#[derive(Debug)]
+pub(super) struct MappedFrame(RcFrame);
+
+impl MappedFrame {
+	/// Creates a new instance.
+	pub fn new(frame: RcFrame) -> Self {
+		frame.map_counter().fetch_add(1, Release);
+		Self(frame)
+	}
+}
+
+impl Deref for MappedFrame {
+	type Target = RcFrame;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl Clone for MappedFrame {
+	fn clone(&self) -> Self {
+		Self::new(self.0.clone())
+	}
+}
+
+impl Drop for MappedFrame {
+	fn drop(&mut self) {
+		self.0.map_counter().fetch_sub(1, Release);
+	}
 }
 
 /// Returns virtual memory context flags.
@@ -82,6 +114,7 @@ fn vmem_flags(prot: u8, cow: bool) -> usize {
 	flags
 }
 
+// FIXME: SMAP and mapping the page to userspace before init (potential data leak to userspace)
 /// Initializes a new page and maps it at `dst`.
 ///
 /// Arguments:
@@ -140,7 +173,7 @@ pub struct MemMapping {
 
 	// TODO use a sparse array?
 	/// The list of allocated physical pages
-	pub(super) anon_pages: Vec<Option<RcFrame>>,
+	pub(super) pages: Vec<Option<MappedFrame>>,
 }
 
 impl MemMapping {
@@ -163,8 +196,8 @@ impl MemMapping {
 		off: u64,
 	) -> AllocResult<Self> {
 		debug_assert!(addr.is_aligned_to(PAGE_SIZE));
-		let mut anon_pages = Vec::new();
-		anon_pages.resize(size.get(), None)?;
+		let mut pages = Vec::new();
+		pages.resize(size.get(), None)?;
 		Ok(Self {
 			addr,
 			size,
@@ -174,7 +207,7 @@ impl MemMapping {
 			file,
 			off,
 
-			anon_pages,
+			pages,
 		})
 	}
 
@@ -200,6 +233,8 @@ impl MemMapping {
 
 	/// Maps the page at the offset `offset` of the mapping, onto `vmem`.
 	///
+	/// `write` tells whether the page has to be mapped for writing.
+	///
 	/// If no underlying physical memory exist for this offset, the function might allocate it.
 	///
 	/// **Note**: it is assumed the associated virtual memory is bound.
@@ -209,42 +244,58 @@ impl MemMapping {
 	///
 	/// Upon allocation failure, or failure to read a page from the disk, the function returns an
 	/// error.
-	pub fn map(&mut self, offset: usize, vmem: &mut VMem) -> EResult<()> {
+	pub fn map(&mut self, offset: usize, vmem: &mut VMem, write: bool) -> EResult<()> {
 		let virtaddr = VirtAddr::from(self.addr) + offset * PAGE_SIZE;
-		let page = if let Some(page) = &self.anon_pages[offset] {
-			// An anonymous page is already present, use it
-			if self.flags & MAP_SHARED == 0 && page.is_shared() {
-				// The page cannot be shared: we need our own copy
+		if let Some(page) = &self.pages[offset] {
+			// A page is already present, use it
+			let mut phys_addr = page.phys_addr();
+			let pending_cow = self.flags & MAP_SHARED == 0 && page.is_shared();
+			if pending_cow {
+				// The page cannot be shared: we need our own copy (regardless of whether we are
+				// reading or writing)
 				let page = init_page(vmem, self.prot, Some(page), virtaddr)?;
-				self.anon_pages[offset] = Some(page);
-				return Ok(());
-			} else {
-				// The page is already there, just map it
-				page
+				phys_addr = page.phys_addr();
+				self.pages[offset] = Some(MappedFrame::new(page));
 			}
-		} else {
-			// Else, Allocate a page
-			match &self.file {
-				// Anonymous mapping
-				None => {
+			// Map the page
+			let flags = vmem_flags(self.prot, false);
+			vmem.map(phys_addr, virtaddr, flags);
+			return Ok(());
+		}
+		// Else, Allocate a page
+		match &self.file {
+			// Anonymous mapping
+			None => {
+				let phys_addr = if write {
 					let page = init_page(vmem, self.prot, None, virtaddr)?;
-					self.anon_pages[offset] = Some(page);
-					return Ok(());
-				}
-				// Mapped file
-				Some(file) => {
-					// Get page from file
-					let node = file.node().unwrap();
-					let file_off = self.off / PAGE_SIZE as u64 + offset as u64;
-					let page = node.node_ops.read_page(node, file_off)?;
-					self.anon_pages[offset].insert(page)
-				}
+					let phys_addr = page.phys_addr();
+					self.pages[offset] = Some(MappedFrame::new(page));
+					phys_addr
+				} else {
+					// Lazy allocation: map the zeroed page
+					zeroed_page()
+				};
+				// Map
+				let flags = vmem_flags(self.prot, !write);
+				vmem.map(phys_addr, virtaddr, flags);
 			}
-		};
-		// Map
-		let pending_cow = self.flags & MAP_SHARED == 0 && page.is_shared();
-		let flags = vmem_flags(self.prot, pending_cow);
-		vmem.map(page.phys_addr(), virtaddr, flags);
+			// Mapped file
+			Some(file) => {
+				// Get page from file
+				let node = file.node().unwrap();
+				let file_off = self.off / PAGE_SIZE as u64 + offset as u64;
+				let mut page = node.node_ops.read_page(node, file_off)?;
+				// If the mapping is private, we need our own copy
+				if self.flags & MAP_PRIVATE != 0 {
+					page = init_page(vmem, self.prot, Some(&page), virtaddr)?;
+				}
+				let phys_addr = page.phys_addr();
+				self.pages[offset] = Some(MappedFrame::new(page));
+				// Map
+				let flags = vmem_flags(self.prot, !write);
+				vmem.map(phys_addr, virtaddr, flags);
+			}
+		}
 		Ok(())
 	}
 
@@ -277,7 +328,7 @@ impl MemMapping {
 					file: self.file.clone(),
 					off: self.off,
 
-					anon_pages: Vec::try_from(&self.anon_pages[..size.get()])?,
+					pages: Vec::try_from(&self.pages[..size.get()])?,
 				})
 			})
 			.transpose()?;
@@ -302,7 +353,7 @@ impl MemMapping {
 					file: self.file.clone(),
 					off: self.off + end as u64,
 
-					anon_pages: Vec::try_from(&self.anon_pages[end..])?,
+					pages: Vec::try_from(&self.pages[end..])?,
 				})
 			})
 			.transpose()?;
@@ -329,7 +380,7 @@ impl MemMapping {
 			return Ok(());
 		}
 		let ts = current_time_ms(Clock::Boottime);
-		for frame in self.anon_pages.iter().flatten() {
+		for frame in self.pages.iter().flatten() {
 			vmem.poll_dirty(VirtAddr::from(self.addr), self.size.get());
 			if sync {
 				// TODO warn on error?
@@ -351,7 +402,7 @@ impl TryClone for MemMapping {
 			file: self.file.clone(),
 			off: self.off,
 
-			anon_pages: self.anon_pages.try_clone()?,
+			pages: self.pages.try_clone()?,
 		})
 	}
 }

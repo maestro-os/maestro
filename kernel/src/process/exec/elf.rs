@@ -269,7 +269,6 @@ fn map_segment(
 			Some(file),
 			off,
 		)?;
-		mem_space.alloc(addr, size)?;
 	}
 	// The pointer to the end of the virtual memory chunk
 	let mem_end = addr.wrapping_add(size);
@@ -375,20 +374,6 @@ fn get_init_stack_size(
 	// The total size of the stack data in bytes
 	let total_size = info_block_size + aux_size + envp_size + argv_size;
 	(info_block_size, total_size)
-}
-
-/// Helper to pre-allocate space on the stack.
-///
-/// `len` is the space to allocate in bytes.
-fn stack_prealloc(mem_space: &MemSpace, stack: *mut u8, len: usize) -> EResult<()> {
-	let pages_count = len.div_ceil(PAGE_SIZE);
-	if unlikely(pages_count >= process::USER_STACK_SIZE) {
-		return Err(errno!(ENOMEM));
-	}
-	let len = pages_count * PAGE_SIZE;
-	let begin = VirtAddr::from(stack) - len;
-	mem_space.alloc(begin, len)?;
-	Ok(())
 }
 
 /// Writes `val` on `stack`.
@@ -531,8 +516,7 @@ impl Executor for ELFExecutor<'_> {
 		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, compat);
 		let mut exe_info = mem_space.exe_info.clone();
 		unsafe {
-			MemSpace::switch(&mem_space, |mem_space| {
-				stack_prealloc(mem_space, user_stack, init_stack_size)?;
+			MemSpace::switch(&mem_space, |_| {
 				vmem::smap_disable(|| -> EResult<()> {
 					init_stack(
 						user_stack,
